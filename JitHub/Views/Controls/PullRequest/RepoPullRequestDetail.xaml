@@ -1,0 +1,106 @@
+﻿<UserControl
+    x:Class="JitHub.Views.Controls.PullRequest.RepoPullRequestDetail"
+    xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+    xmlns:local="using:JitHub.Views.Controls"
+    xmlns:muxc="using:Microsoft.UI.Xaml.Controls"
+    xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+    xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+    mc:Ignorable="d"
+    d:DesignHeight="300"
+    d:DesignWidth="400">
+    <Grid>
+        <Grid.RowDefinitions>
+            <RowDefinition Height="auto"/>
+            <RowDefinition Height="*"/>
+        </Grid.RowDefinitions>
+        <Grid
+            Grid.Row="0"
+            Padding="8 0">
+            <Grid.RowDefinitions>
+                <RowDefinition Height="auto"/>
+                <RowDefinition Height=" *"/>
+            </Grid.RowDefinitions>
+            <Grid
+                Grid.Row="0"
+                HorizontalAlignment="Stretch">
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="*"/>
+                    <ColumnDefinition Width="auto"/>
+                </Grid.ColumnDefinitions>
+                <TextBlock
+                    Grid.Column="0"
+                    VerticalAlignment="Center"
+                    FontSize="20"
+                    IsTextSelectionEnabled="True"
+                    TextWrapping="Wrap">
+                    <Run
+                        FontWeight="SemiBold"
+                        Text="{x:Bind ViewModel.PullRequest.Title, Mode=OneWay}"/>
+                    <Run
+                        Foreground="{ThemeResource SystemColorGrayTextBrush}"
+                        Text="{x:Bind ViewModel.PullRequest.Number, Converter={StaticResource NumberToHashTaggedStringConverter}, Mode=OneWay}"/>
+                </TextBlock>
+                <Button
+                    Grid.Column="1"
+                    HorizontalAlignment="Right"
+                    VerticalAlignment="Top"
+                    Command="{x:Bind ViewModel.EditCommand, Mode=OneWay}"
+                    Visibility="{x:Bind ViewModel.IsAuthor, Converter={StaticResource BoolToVisibilityConverter}, Mode=OneWay}">
+                    Edit
+                </Button>
+            </Grid>
+            <Grid
+                Grid.Row="1"
+                Padding="0 0 0 4"
+                BorderBrush="{ThemeResource BorderGray}"
+                BorderThickness="0 0 0 1">
+                <StackPanel
+                    Orientation="Horizontal"
+                    Spacing="4">
+                    <Border
+                        Margin="0 0 4 0"
+                        CornerRadius="4"
+                        Padding="4 0"
+                        BorderBrush="{ThemeResource BorderGray}"
+                        BorderThickness="1"
+                        Background="{x:Bind ViewModel.PullRequest.State, Converter={StaticResource OpenStatusToColorConverter}, Mode=OneWay}">
+                        <TextBlock
+                            Foreground="White"
+                            FontWeight="SemiBold"
+                            FontSize="14"
+                            VerticalAlignment="Center"
+                            Padding="0 0 0 4"
+                            Text="{x:Bind ViewModel.PullRequest.State.StringValue, Mode=OneWay}"/>
+                    </Border>
+                    <TextBlock
+                        VerticalAlignment="Center"
+                        FontSize="16"
+                        TextWrapping="Wrap"
+                        Foreground="{ThemeResource SystemColorGrayTextBrush}">
+                        <Run
+                            Text="{x:Bind ViewModel.PullRequest.User.Login, Mode=OneWay}"/>
+                        <Run
+                            Text="{x:Bind ViewModel.PullRequest.CreatedAt, Converter={StaticResource OpenDateToStringForDetailConverter}, ConverterParameter=pull&#160;request, Mode=OneWay}"/>
+                    </TextBlock>
+                </StackPanel>
+            </Grid>
+        </Grid>
+        <muxc:NavigationView
+            Grid.Row="1"
+            x:Name="RepoPullRequestDetailNavView"
+            IsBackButtonVisible="Collapsed"
+            PaneDisplayMode="Top"
+            IsSettingsVisible="False"
+            Style="{StaticResource PullRequestNavigationViewStyle}"
+            BackRequested="{x:Bind ViewModel.RepoPullRequestDetailNavView_BackRequested}"
+            ItemInvoked="{x:Bind ViewModel.RepoPullRequestDetailNavView_ItemInvoked}">
+            <muxc:NavigationView.MenuItems>
+                <muxc:NavigationViewItem Content="Conversation" Tag="Conversation" IsSelected="True"/>
+                <muxc:NavigationViewItem Content="Commits" Tag="Commits"/>
+            </muxc:NavigationView.MenuItems>
+            <Frame
+                x:Name="RepoPullRequestDetailFrame"/>
+        </muxc:NavigationView>
+    </Grid>
+</UserControl>

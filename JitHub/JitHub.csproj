@@ -1,0 +1,1385 @@
+﻿<?xml version="1.0" encoding="utf-8"?>
+<Project ToolsVersion="15.0" DefaultTargets="Build" xmlns="http://schemas.microsoft.com/developer/msbuild/2003">
+  <Import Project="$(MSBuildExtensionsPath)\$(MSBuildToolsVersion)\Microsoft.Common.props" Condition="Exists('$(MSBuildExtensionsPath)\$(MSBuildToolsVersion)\Microsoft.Common.props')" />
+  <PropertyGroup>
+    <LangVersion>10.0</LangVersion>
+    <Configuration Condition=" '$(Configuration)' == '' ">Debug</Configuration>
+    <Platform Condition=" '$(Platform)' == '' ">x86</Platform>
+    <ProjectGuid>{452E051F-938D-4F26-9D54-4598A97F8BEF}</ProjectGuid>
+    <OutputType>AppContainerExe</OutputType>
+    <AppDesignerFolder>Properties</AppDesignerFolder>
+    <RootNamespace>JitHub</RootNamespace>
+    <AssemblyName>JitHub</AssemblyName>
+    <DefaultLanguage>en-US</DefaultLanguage>
+    <TargetPlatformIdentifier>UAP</TargetPlatformIdentifier>
+    <TargetPlatformVersion Condition=" '$(TargetPlatformVersion)' == '' ">10.0.22000.0</TargetPlatformVersion>
+    <TargetPlatformMinVersion>10.0.19041.0</TargetPlatformMinVersion>
+    <MinimumVisualStudioVersion>14</MinimumVisualStudioVersion>
+    <FileAlignment>512</FileAlignment>
+    <ProjectTypeGuids>{A5A43C5B-DE2A-4C0C-9213-0A381AF9435A};{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}</ProjectTypeGuids>
+    <WindowsXamlEnableOverview>true</WindowsXamlEnableOverview>
+    <AppxPackageSigningEnabled>True</AppxPackageSigningEnabled>
+    <GenerateAppInstallerFile>False</GenerateAppInstallerFile>
+    <PackageCertificateKeyFile>
+    </PackageCertificateKeyFile>
+    <AppxPackageSigningTimestampDigestAlgorithm>SHA256</AppxPackageSigningTimestampDigestAlgorithm>
+    <AppxAutoIncrementPackageRevision>True</AppxAutoIncrementPackageRevision>
+    <GenerateTestArtifacts>True</GenerateTestArtifacts>
+    <AppxBundle>Always</AppxBundle>
+    <AppxBundlePlatforms>x86|x64|arm|arm64</AppxBundlePlatforms>
+    <HoursBetweenUpdateChecks>24</HoursBetweenUpdateChecks>
+    <PackageCertificateThumbprint>8D152E0318409B1EAEC7DD6EBEF62D255E17EB84</PackageCertificateThumbprint>
+  </PropertyGroup>
+  <PropertyGroup Condition="'$(Configuration)|$(Platform)' == 'Debug|x86'">
+    <DebugSymbols>true</DebugSymbols>
+    <OutputPath>bin\x86\Debug\</OutputPath>
+    <DefineConstants>DEBUG;TRACE;NETFX_CORE;WINDOWS_UWP</DefineConstants>
+    <NoWarn>;2008</NoWarn>
+    <DebugType>full</DebugType>
+    <PlatformTarget>x86</PlatformTarget>
+    <UseVSHostingProcess>false</UseVSHostingProcess>
+    <ErrorReport>prompt</ErrorReport>
+    <Prefer32Bit>true</Prefer32Bit>
+  </PropertyGroup>
+  <PropertyGroup Condition="'$(Configuration)|$(Platform)' == 'Release|x86'">
+    <OutputPath>bin\x86\Release\</OutputPath>
+    <DefineConstants>TRACE;NETFX_CORE;WINDOWS_UWP</DefineConstants>
+    <Optimize>true</Optimize>
+    <NoWarn>;2008</NoWarn>
+    <DebugType>pdbonly</DebugType>
+    <PlatformTarget>x86</PlatformTarget>
+    <UseVSHostingProcess>false</UseVSHostingProcess>
+    <ErrorReport>prompt</ErrorReport>
+    <Prefer32Bit>true</Prefer32Bit>
+    <UseDotNetNativeToolchain>true</UseDotNetNativeToolchain>
+  </PropertyGroup>
+  <PropertyGroup Condition="'$(Configuration)|$(Platform)' == 'Debug|ARM'">
+    <DebugSymbols>true</DebugSymbols>
+    <OutputPath>bin\ARM\Debug\</OutputPath>
+    <DefineConstants>DEBUG;TRACE;NETFX_CORE;WINDOWS_UWP</DefineConstants>
+    <NoWarn>;2008</NoWarn>
+    <DebugType>full</DebugType>
+    <PlatformTarget>ARM</PlatformTarget>
+    <UseVSHostingProcess>false</UseVSHostingProcess>
+    <ErrorReport>prompt</ErrorReport>
+    <Prefer32Bit>true</Prefer32Bit>
+  </PropertyGroup>
+  <PropertyGroup Condition="'$(Configuration)|$(Platform)' == 'Release|ARM'">
+    <OutputPath>bin\ARM\Release\</OutputPath>
+    <DefineConstants>TRACE;NETFX_CORE;WINDOWS_UWP</DefineConstants>
+    <Optimize>true</Optimize>
+    <NoWarn>;2008</NoWarn>
+    <DebugType>pdbonly</DebugType>
+    <PlatformTarget>ARM</PlatformTarget>
+    <UseVSHostingProcess>false</UseVSHostingProcess>
+    <ErrorReport>prompt</ErrorReport>
+    <Prefer32Bit>true</Prefer32Bit>
+    <UseDotNetNativeToolchain>true</UseDotNetNativeToolchain>
+  </PropertyGroup>
+  <PropertyGroup Condition="'$(Configuration)|$(Platform)' == 'Debug|ARM64'">
+    <DebugSymbols>true</DebugSymbols>
+    <OutputPath>bin\ARM64\Debug\</OutputPath>
+    <DefineConstants>DEBUG;TRACE;NETFX_CORE;WINDOWS_UWP</DefineConstants>
+    <NoWarn>;2008</NoWarn>
+    <DebugType>full</DebugType>
+    <PlatformTarget>ARM64</PlatformTarget>
+    <UseVSHostingProcess>false</UseVSHostingProcess>
+    <ErrorReport>prompt</ErrorReport>
+    <Prefer32Bit>true</Prefer32Bit>
+    <UseDotNetNativeToolchain>true</UseDotNetNativeToolchain>
+  </PropertyGroup>
+  <PropertyGroup Condition="'$(Configuration)|$(Platform)' == 'Release|ARM64'">
+    <OutputPath>bin\ARM64\Release\</OutputPath>
+    <DefineConstants>TRACE;NETFX_CORE;WINDOWS_UWP</DefineConstants>
+    <Optimize>true</Optimize>
+    <NoWarn>;2008</NoWarn>
+    <DebugType>pdbonly</DebugType>
+    <PlatformTarget>ARM64</PlatformTarget>
+    <UseVSHostingProcess>false</UseVSHostingProcess>
+    <ErrorReport>prompt</ErrorReport>
+    <Prefer32Bit>true</Prefer32Bit>
+    <UseDotNetNativeToolchain>true</UseDotNetNativeToolchain>
+  </PropertyGroup>
+  <PropertyGroup Condition="'$(Configuration)|$(Platform)' == 'Debug|x64'">
+    <DebugSymbols>true</DebugSymbols>
+    <OutputPath>bin\x64\Debug\</OutputPath>
+    <DefineConstants>DEBUG;TRACE;NETFX_CORE;WINDOWS_UWP</DefineConstants>
+    <NoWarn>;2008</NoWarn>
+    <DebugType>full</DebugType>
+    <PlatformTarget>x64</PlatformTarget>
+    <UseVSHostingProcess>false</UseVSHostingProcess>
+    <ErrorReport>prompt</ErrorReport>
+    <Prefer32Bit>true</Prefer32Bit>
+  </PropertyGroup>
+  <PropertyGroup Condition="'$(Configuration)|$(Platform)' == 'Release|x64'">
+    <OutputPath>bin\x64\Release\</OutputPath>
+    <DefineConstants>TRACE;NETFX_CORE;WINDOWS_UWP</DefineConstants>
+    <Optimize>true</Optimize>
+    <NoWarn>;2008</NoWarn>
+    <DebugType>pdbonly</DebugType>
+    <PlatformTarget>x64</PlatformTarget>
+    <UseVSHostingProcess>false</UseVSHostingProcess>
+    <ErrorReport>prompt</ErrorReport>
+    <Prefer32Bit>true</Prefer32Bit>
+    <UseDotNetNativeToolchain>true</UseDotNetNativeToolchain>
+  </PropertyGroup>
+  <PropertyGroup>
+    <RestoreProjectStyle>PackageReference</RestoreProjectStyle>
+  </PropertyGroup>
+  <ItemGroup>
+    <Compile Include="App.xaml.cs">
+      <DependentUpon>App.xaml</DependentUpon>
+    </Compile>
+    <Compile Include="Converters\Activities\CommitShaToShortConverter.cs" />
+    <Compile Include="Converters\Activities\PushEventPayloadToCommitStringConverter.cs" />
+    <Compile Include="Converters\Activities\RefFullStringToBranchConverter.cs" />
+    <Compile Include="Converters\BoolToVisibilityConverter.cs" />
+    <Compile Include="Converters\BoolToVisibilityReverseConverter.cs" />
+    <Compile Include="Converters\Code\IsExpandToFolderFilledIconConverter.cs" />
+    <Compile Include="Converters\Code\IsExpandToFolderOutlineIconConverter.cs" />
+    <Compile Include="Converters\Commit\CommandableCommitToDetailViewModelConverter.cs" />
+    <Compile Include="Converters\Common\BoolToAccentColorConverter.cs" />
+    <Compile Include="Converters\Common\ColorToSolidBrushConverter.cs" />
+    <Compile Include="Converters\Common\DiffToMarkdownConverter.cs" />
+    <Compile Include="Converters\Common\ListToShorterListConverter.cs" />
+    <Compile Include="Converters\Common\MarkdownToMarkdownConfigConverter.cs" />
+    <Compile Include="Converters\Common\NumberToKizedStringConverter.cs" />
+    <Compile Include="Converters\Common\ObjToVisibilityConverter.cs" />
+    <Compile Include="Converters\Common\ReactionTypeToEmojiConverter.cs" />
+    <Compile Include="Converters\Common\SizeToLengthConverter.cs" />
+    <Compile Include="Converters\Common\StringToImageSourceConverter.cs" />
+    <Compile Include="Converters\Common\UseGradientToForegroundConverter.cs" />
+    <Compile Include="Converters\HexColorToColorStringConverter.cs" />
+    <Compile Include="Converters\HexColorToForegroundConverter.cs" />
+    <Compile Include="Converters\Issues\CommentDateBodyConverter.cs" />
+    <Compile Include="Converters\Issues\IssueModelToIssueDetailViewModelConverter.cs" />
+    <Compile Include="Converters\Issues\NumberOfCommentsToDescriptionDetailConverter.cs" />
+    <Compile Include="Converters\Issues\NumberToHashTaggedStringConverter.cs" />
+    <Compile Include="Converters\Issues\OpenDateToStringConverter.cs" />
+    <Compile Include="Converters\Issues\OpenDateToStringForDetailConverter.cs" />
+    <Compile Include="Converters\Issues\ReactionDictionaryToUserNameListConverter.cs" />
+    <Compile Include="Converters\Issues\ReactionVotesMapToBoolConverter.cs" />
+    <Compile Include="Converters\Issues\StringToVisibilityConverter.cs" />
+    <Compile Include="Converters\Issues\UserToDiscriptionStringConverter.cs" />
+    <Compile Include="Converters\LanguageToVisibilityConverter.cs" />
+    <Compile Include="Converters\OpenStatusToColorConverter.cs" />
+    <Compile Include="Converters\PullRequests\IssueCommentNodeToUserCommentBlockViewModelConverter.cs" />
+    <Compile Include="Converters\PullRequests\MergeStateToStringConverter.cs" />
+    <Compile Include="Converters\PullRequests\PullRequestModelToPullRequestDetailViewModelConverter.cs" />
+    <Compile Include="Converters\PullRequests\ReviewNodeToViewModelConverter.cs" />
+    <Compile Include="Converters\RepoContentNodeToMarkDownConverter.cs" />
+    <Compile Include="Converters\RepoStatusIconConverter.cs" />
+    <Compile Include="Converters\StringToEnabledConverter.cs" />
+    <Compile Include="Converters\Common\StringToSvgSourceConverter.cs" />
+    <Compile Include="Converters\TimeAgoConverter.cs" />
+    <Compile Include="Helpers\ActivityDataTemplateSelector.cs" />
+    <Compile Include="Helpers\CodeViewTreeItemTemplateSelector.cs" />
+    <Compile Include="Helpers\Extensions.cs" />
+    <Compile Include="Helpers\FilterSelectionTemplateSelector.cs" />
+    <Compile Include="Helpers\IssueEventTemplateSelector.cs" />
+    <Compile Include="Helpers\IssueSideItemTemplateSelector.cs" />
+    <Compile Include="Helpers\PlatformHelper.cs" />
+    <Compile Include="Helpers\PRConversationDataTemplateSelector.cs" />
+    <Compile Include="Helpers\RepoIconTemplateSelector.cs" />
+    <Compile Include="Helpers\RichEditBoxExtension.cs" />
+    <Compile Include="Helpers\SuccessAnimation.cs" />
+    <Compile Include="Models\Account.cs" />
+    <Compile Include="Models\ActivitySource.cs" />
+    <Compile Include="Models\Base\EmojiHost.cs" />
+    <Compile Include="Models\Base\RepoSelectableItemModel.cs" />
+    <Compile Include="Models\Base\SelectableItem.cs" />
+    <Compile Include="Models\CodeBranchRef.cs" />
+    <Compile Include="Models\CommandArgs\IssueFormArgs.cs" />
+    <Compile Include="Models\JitHubCommand.cs" />
+    <Compile Include="Models\CreditPersonale.cs" />
+    <Compile Include="Models\FailedRepo.cs" />
+    <Compile Include="Models\FeaturePurchaseState.cs" />
+    <Compile Include="Models\License.cs" />
+    <Compile Include="Models\MenuItem.cs" />
+    <Compile Include="Models\NavArgs\CodeViewerNavArg.cs" />
+    <Compile Include="Models\CommandableCommit.cs" />
+    <Compile Include="Models\CommitsSource.cs" />
+    <Compile Include="Models\Credential.cs" />
+    <Compile Include="Models\EventfulCollection.cs" />
+    <Compile Include="Models\Filter\DateFilter.cs" />
+    <Compile Include="Models\Filter\DropdownFilter.cs" />
+    <Compile Include="Models\Filter\FilterUnit.cs" />
+    <Compile Include="Models\Filter\TextFilter.cs" />
+    <Compile Include="Models\FullPullRequestCommit.cs" />
+    <Compile Include="Models\IssueSidePanelItem.cs" />
+    <Compile Include="Models\IssueSource.cs" />
+    <Compile Include="Models\NavArgs\IssueNavArg.cs" />
+    <Compile Include="Models\NavArgs\ModalArg.cs" />
+    <Compile Include="Models\NavArgs\PageNavArg.cs" />
+    <Compile Include="Models\NavArgs\PullRequestConvPageNavArg.cs" />
+    <Compile Include="Models\NavArgs\PullRequestPageNavArg.cs" />
+    <Compile Include="Models\NavArgs\RepoDetailPageArgs.cs" />
+    <Compile Include="Models\PRConversation\CommitNode.cs" />
+    <Compile Include="Models\PRConversation\EventNode.cs" />
+    <Compile Include="Models\PRConversation\IssueCommentNode.cs" />
+    <Compile Include="Models\PullRequestSource.cs" />
+    <Compile Include="Models\PRConversation\ReviewCommentNode.cs" />
+    <Compile Include="Models\PRConversation\ConversationNode.cs" />
+    <Compile Include="Models\PRConversation\ReviewNode.cs" />
+    <Compile Include="Models\RepoContentNode.cs" />
+    <Compile Include="Models\RepoModel.cs" />
+    <Compile Include="Models\Filter\Selection.cs" />
+    <Compile Include="Models\SelectableLabel.cs" />
+    <Compile Include="Models\SelectableRepoModel.cs" />
+    <Compile Include="Models\SelectableUser.cs" />
+    <Compile Include="Models\SettingsItem.cs" />
+    <Compile Include="Models\SimpleFormData.cs" />
+    <Compile Include="Models\ThemeConst.cs" />
+    <Compile Include="Models\UISize.cs" />
+    <Compile Include="Properties\AssemblyInfo.cs" />
+    <Compile Include="Routers\RouterBase.cs" />
+    <Compile Include="Services\AccountService.cs" />
+    <Compile Include="Services\AppConfig.cs" />
+    <Compile Include="Services\AuthService.cs" />
+    <Compile Include="Services\CommandService.cs" />
+    <Compile Include="Services\FeatureService.cs" />
+    <Compile Include="Services\GitHubService.cs" />
+    <Compile Include="Services\GitHubService.Post.cs" />
+    <Compile Include="Services\GlobalViewModel.cs" />
+    <Compile Include="Services\IAccountService.cs" />
+    <Compile Include="Services\IAppConfig.cs" />
+    <Compile Include="Services\IAuthService.cs" />
+    <Compile Include="Services\ICommandService.cs" />
+    <Compile Include="Services\IGitHubService.cs" />
+    <Compile Include="Services\IMarkdownService.cs" />
+    <Compile Include="Services\INotificationService.cs" />
+    <Compile Include="Services\ISettingService.cs" />
+    <Compile Include="Services\IThemeService.cs" />
+    <Compile Include="Services\MarkdownService.cs" />
+    <Compile Include="Services\ModalService.cs" />
+    <Compile Include="Services\NavigationService.cs" />
+    <Compile Include="Services\NotificationService.cs" />
+    <Compile Include="Services\SettingService.cs" />
+    <Compile Include="Services\ThemeService.cs" />
+    <Compile Include="ViewModels\ActivityListViewModel.cs" />
+    <Compile Include="ViewModels\ActivityViewModels\ActivityViewModel.cs" />
+    <Compile Include="ViewModels\ActivityViewModels\CheckRunActivityViewModel.cs" />
+    <Compile Include="ViewModels\ActivityViewModels\CheckSuiteActivityViewModel.cs" />
+    <Compile Include="ViewModels\ActivityViewModels\GollumActivityViewModel.cs" />
+    <Compile Include="ViewModels\ActivityViewModels\CommitCommentActivityViewModel.cs" />
+    <Compile Include="ViewModels\ActivityViewModels\CreateActivityViewModel.cs" />
+    <Compile Include="ViewModels\ActivityViewModels\DeleteActivityViewModel.cs" />
+    <Compile Include="ViewModels\ActivityViewModels\ForkActivityViewModel.cs" />
+    <Compile Include="ViewModels\ActivityViewModels\IssueActivityViewModel.cs" />
+    <Compile Include="ViewModels\ActivityViewModels\IssueCommentActivityViewModel.cs" />
+    <Compile Include="ViewModels\ActivityViewModels\MemberActivityViewModel.cs" />
+    <Compile Include="ViewModels\ActivityViewModels\PublicActivityViewModel.cs" />
+    <Compile Include="ViewModels\ActivityViewModels\PullRequestActivityViewModel.cs" />
+    <Compile Include="ViewModels\ActivityViewModels\PullRequestCommentActivityViewModel.cs" />
+    <Compile Include="ViewModels\ActivityViewModels\PullRequestReviewActivityViewModel.cs" />
+    <Compile Include="ViewModels\ActivityViewModels\PushActivityViewModel.cs" />
+    <Compile Include="ViewModels\ActivityViewModels\PushWebhookActivityViewModel.cs" />
+    <Compile Include="ViewModels\ActivityViewModels\ReleaseActivityViewModel.cs" />
+    <Compile Include="ViewModels\ActivityViewModels\SponsorshipActivityViewModel.cs" />
+    <Compile Include="ViewModels\ActivityViewModels\StarredActivityViewModel.cs" />
+    <Compile Include="ViewModels\ActivityViewModels\StatusActivityViewModel.cs" />
+    <Compile Include="ViewModels\ActivityViewModels\WatchActivityViewModel.cs" />
+    <Compile Include="ViewModels\Base\LoadableViewModel.cs" />
+    <Compile Include="ViewModels\Base\RepoListViewModel.cs" />
+    <Compile Include="ViewModels\Base\RepoViewModel.cs" />
+    <Compile Include="Models\NavArgs\CommitPageNavArg.cs" />
+    <Compile Include="ViewModels\CommitViewModels\CommitDetailViewModel.cs" />
+    <Compile Include="ViewModels\DashboardViewModel.cs" />
+    <Compile Include="ViewModels\DevConsoleViewModel.cs" />
+    <Compile Include="ViewModels\EmojiViewModels\EmojiPanelViewModel.cs" />
+    <Compile Include="ViewModels\FileDiffViewModel.cs" />
+    <Compile Include="ViewModels\IssueViewModels\ReactionBlockViewModel.cs" />
+    <Compile Include="ViewModels\IssueViewModels\UserIssueListViewModel.cs" />
+    <Compile Include="ViewModels\LoginViewModel.cs" />
+    <Compile Include="ViewModels\MarkdownFormViewModel.cs" />
+    <Compile Include="ViewModels\PullRequestViewModels\ConversationViewModels\ReviewCommentViewModel.cs" />
+    <Compile Include="ViewModels\PullRequestViewModels\ConversationViewModels\ReviewNodeViewModel.cs" />
+    <Compile Include="ViewModels\PullRequestViewModels\MergeFormViewModel.cs" />
+    <Compile Include="ViewModels\PullRequestViewModels\PullRequestCommitsViewModel.cs" />
+    <Compile Include="ViewModels\PullRequestViewModels\PullRequestConversationViewModel.cs" />
+    <Compile Include="ViewModels\IssueViewModels\IssueSideBarViewModel.cs" />
+    <Compile Include="ViewModels\CommitViewModels\RepoCommitsViewModel.cs" />
+    <Compile Include="ViewModels\PullRequestViewModels\RepoPullRequestEditViewModel.cs" />
+    <Compile Include="ViewModels\RepositoryViewModels\RepoDetailViewModel.cs" />
+    <Compile Include="ViewModels\IssueViewModels\RepoIssueDetailViewModel.cs" />
+    <Compile Include="ViewModels\IssueViewModels\RepoIssuePostingViewModel.cs" />
+    <Compile Include="ViewModels\IssueViewModels\RepoIssueViewModel.cs" />
+    <Compile Include="ViewModels\IssueViewModels\RepoIssueViewModel.Filter.cs" />
+    <Compile Include="ViewModels\RepositoryViewModels\RepoFormViewModel.cs" />
+    <Compile Include="ViewModels\RepositoryViewModels\RepoListViewModel.cs" />
+    <Compile Include="ViewModels\PullRequestViewModels\RepoPullRequestDetailViewModel.cs" />
+    <Compile Include="ViewModels\PullRequestViewModels\RepoPullRequestPostingViewModel.cs" />
+    <Compile Include="ViewModels\PullRequestViewModels\RepoPullRequestViewModel.cs" />
+    <Compile Include="ViewModels\PullRequestViewModels\RepoPullRequestViewModel.Filter.cs" />
+    <Compile Include="ViewModels\RepositoryViewModels\RepoManageViewModel.cs" />
+    <Compile Include="ViewModels\RepositoryViewModels\RepoSearchResultViewModel.cs" />
+    <Compile Include="ViewModels\RepositoryViewModels\RepoSideBarViewModel.cs" />
+    <Compile Include="ViewModels\SettingsViewModel.cs" />
+    <Compile Include="ViewModels\ShellViewModel.cs" />
+    <Compile Include="ViewModels\UserViewModel\ProfileButtonViewModel.cs" />
+    <Compile Include="ViewModels\UserViewModel\UserCommentBlockViewModel.cs" />
+    <Compile Include="Views\Controls\ActivityList.xaml.cs">
+      <DependentUpon>ActivityList.xaml</DependentUpon>
+    </Compile>
+    <Compile Include="Views\Controls\Activity\CommitCommentActivity.xaml.cs">
+      <DependentUpon>CommitCommentActivity.xaml</DependentUpon>
+    </Compile>
+    <Compile Include="Views\Controls\Activity\CreateActivity.xaml.cs">
+      <DependentUpon>CreateActivity.xaml</DependentUpon>
+    </Compile>
+    <Compile Include="Views\Controls\Activity\DefaultActivity.xaml.cs">
+      <DependentUpon>DefaultActivity.xaml</DependentUpon>
+    </Compile>
+    <Compile Include="Views\Controls\Activity\DeleteActivity.xaml.cs">
+      <DependentUpon>DeleteActivity.xaml</DependentUpon>
+    </Compile>
+    <Compile Include="Views\Controls\Activity\ForkActivity.xaml.cs">
+      <DependentUpon>ForkActivity.xaml</DependentUpon>
+    </Compile>
+    <Compile Include="Views\Controls\Activity\GollumActivity.xaml.cs">
+      <DependentUpon>GollumActivity.xaml</DependentUpon>
+    </Compile>
+    <Compile Include="Views\Controls\Activity\IssueActivity.xaml.cs">
+      <DependentUpon>IssueActivity.xaml</DependentUpon>
+    </Compile>
+    <Compile Include="Views\Controls\Activity\IssueCommentActivity.xaml.cs">
+      <DependentUpon>IssueCommentActivity.xaml</DependentUpon>
+    </Compile>
+    <Compile Include="Views\Controls\Activity\MemberActivity.xaml.cs">
+      <DependentUpon>MemberActivity.xaml</DependentUpon>
+    </Compile>
+    <Compile Include="Views\Controls\Activity\PublicActivity.xaml.cs">
+      <DependentUpon>PublicActivity.xaml</DependentUpon>
+    </Compile>
+    <Compile Include="Views\Controls\Activity\PullRequestActivity.xaml.cs">
+      <DependentUpon>PullRequestActivity.xaml</DependentUpon>
+    </Compile>
+    <Compile Include="Views\Controls\Activity\PullRequestReviewCommentActivity.xaml.cs">
+      <DependentUpon>PullRequestReviewCommentActivity.xaml</DependentUpon>
+    </Compile>
+    <Compile Include="Views\Controls\Activity\PushEventActivity.xaml.cs">
+      <DependentUpon>PushEventActivity.xaml</DependentUpon>
+    </Compile>
+    <Compile Include="Views\Controls\Activity\ReleaseActivity.xaml.cs">
+      <DependentUpon>ReleaseActivity.xaml</DependentUpon>
+    </Compile>
+    <Compile Include="Views\Controls\Activity\SponsorshipActivity.xaml.cs">
+      <DependentUpon>SponsorshipActivity.xaml</DependentUpon>
+    </Compile>
+    <Compile Include="Views\Controls\Activity\WatchActivity.xaml.cs">
+      <DependentUpon>WatchActivity.xaml</DependentUpon>
+    </Compile>
+    <Compile Include="Views\Controls\Code\CodeButton.xaml.cs">
+      <DependentUpon>CodeButton.xaml</DependentUpon>
+    </Compile>
+    <Compile Include="Views\Controls\Commit\CommitButton.xaml.cs">
+      <DependentUpon>CommitButton.xaml</DependentUpon>
+    </Compile>
+    <Compile Include="Views\Controls\Commit\CommitDetail.xaml.cs">
+      <DependentUpon>CommitDetail.xaml</DependentUpon>
+    </Compile>
+    <Compile Include="Views\Controls\Commit\CommitItem.xaml.cs">
+      <DependentUpon>CommitItem.xaml</DependentUpon>
+    </Compile>
+    <Compile Include="Views\Controls\Commit\FileDiff.xaml.cs">
+      <DependentUpon>FileDiff.xaml</DependentUpon>
+    </Compile>
+    <Compile Include="Views\Controls\Common\Avatar.xaml.cs">
+      <DependentUpon>Avatar.xaml</DependentUpon>
+    </Compile>
+    <Compile Include="Views\Controls\Common\CommentBlock.xaml.cs">
+      <DependentUpon>CommentBlock.xaml</DependentUpon>
+    </Compile>
+    <Compile Include="Views\Controls\Common\CreditPersonaleButton.xaml.cs">
+      <DependentUpon>CreditPersonaleButton.xaml</DependentUpon>
+    </Compile>
+    <Compile Include="Views\Controls\Common\CreditPersonaleDialog.xaml.cs">
+      <DependentUpon>CreditPersonaleDialog.xaml</DependentUpon>
+    </Compile>
+    <Compile Include="Views\Controls\Common\DevConsole.xaml.cs">
+      <DependentUpon>DevConsole.xaml</DependentUpon>
+    </Compile>
+    <Compile Include="Views\Controls\Common\EmojiButton.xaml.cs">
+      <DependentUpon>EmojiButton.xaml</DependentUpon>
+    </Compile>
+    <Compile Include="Views\Controls\Common\FeaturePurchaseDialog.xaml.cs">
+      <DependentUpon>FeaturePurchaseDialog.xaml</DependentUpon>
+    </Compile>
+    <Compile Include="Views\Controls\Common\GroupFilters.xaml.cs">
+      <DependentUpon>GroupFilters.xaml</DependentUpon>
+    </Compile>
+    <Compile Include="Views\Controls\Common\IssueSidePanel.xaml.cs">
+      <DependentUpon>IssueSidePanel.xaml</DependentUpon>
+    </Compile>
+    <Compile Include="Views\Controls\Common\MarkdownViewer.xaml.cs">
+      <DependentUpon>MarkdownViewer.xaml</DependentUpon>
+    </Compile>
+    <Compile Include="Views\Controls\Common\ProLicensePurchaseSuccessDialog.xaml.cs">
+      <DependentUpon>ProLicensePurchaseSuccessDialog.xaml</DependentUpon>
+    </Compile>
+    <Compile Include="Views\Controls\Common\RepoLabel.xaml.cs">
+      <DependentUpon>RepoLabel.xaml</DependentUpon>
+    </Compile>
+    <Compile Include="Views\Controls\Common\MarkdownForm.xaml.cs">
+      <DependentUpon>MarkdownForm.xaml</DependentUpon>
+    </Compile>
+    <Compile Include="Views\Controls\Common\SidePanelDropDown.xaml.cs">
+      <DependentUpon>SidePanelDropDown.xaml</DependentUpon>
+    </Compile>
+    <Compile Include="Views\Controls\Common\SidePanelItem.xaml.cs">
+      <DependentUpon>SidePanelItem.xaml</DependentUpon>
+    </Compile>
+    <Compile Include="Views\Controls\Common\SvgIcon.xaml.cs">
+      <DependentUpon>SvgIcon.xaml</DependentUpon>
+    </Compile>
+    <Compile Include="Views\Controls\Common\ThemeImage.xaml.cs">
+      <DependentUpon>ThemeImage.xaml</DependentUpon>
+    </Compile>
+    <Compile Include="Views\Controls\GFMTextBlock.xaml.cs">
+      <DependentUpon>GFMTextBlock.xaml</DependentUpon>
+    </Compile>
+    <Compile Include="Views\Controls\Common\EmojiPanelButton.xaml.cs">
+      <DependentUpon>EmojiPanelButton.xaml</DependentUpon>
+    </Compile>
+    <Compile Include="Views\Controls\Issue\IssueButton.xaml.cs">
+      <DependentUpon>IssueButton.xaml</DependentUpon>
+    </Compile>
+    <Compile Include="Views\Controls\Issue\IssueForm.xaml.cs">
+      <DependentUpon>IssueForm.xaml</DependentUpon>
+    </Compile>
+    <Compile Include="Views\Controls\Issue\UserIssueList.xaml.cs">
+      <DependentUpon>UserIssueList.xaml</DependentUpon>
+    </Compile>
+    <Compile Include="Views\Controls\PullRequest\Conversation\ReviewBlock.xaml.cs">
+      <DependentUpon>ReviewBlock.xaml</DependentUpon>
+    </Compile>
+    <Compile Include="Views\Controls\PullRequest\Conversation\ReviewCommentBlock.xaml.cs">
+      <DependentUpon>ReviewCommentBlock.xaml</DependentUpon>
+    </Compile>
+    <Compile Include="Views\Controls\PullRequest\DiffTextBlock.xaml.cs">
+      <DependentUpon>DiffTextBlock.xaml</DependentUpon>
+    </Compile>
+    <Compile Include="Views\Controls\PullRequest\MergeForm.xaml.cs">
+      <DependentUpon>MergeForm.xaml</DependentUpon>
+    </Compile>
+    <Compile Include="Views\Controls\PullRequest\PullRequestButton.xaml.cs">
+      <DependentUpon>PullRequestButton.xaml</DependentUpon>
+    </Compile>
+    <Compile Include="Views\Controls\PullRequest\PullRequestEditForm.xaml.cs">
+      <DependentUpon>PullRequestEditForm.xaml</DependentUpon>
+    </Compile>
+    <Compile Include="Views\Controls\PullRequest\PullRequestForm.xaml.cs">
+      <DependentUpon>PullRequestForm.xaml</DependentUpon>
+    </Compile>
+    <Compile Include="Views\Controls\Issue\RepoIssueDetail.xaml.cs">
+      <DependentUpon>RepoIssueDetail.xaml</DependentUpon>
+    </Compile>
+    <Compile Include="Views\Controls\PullRequest\RepoPullRequestDetail.xaml.cs">
+      <DependentUpon>RepoPullRequestDetail.xaml</DependentUpon>
+    </Compile>
+    <Compile Include="Views\Controls\Repo\RepoDeleteConfirmationDialog.xaml.cs">
+      <DependentUpon>RepoDeleteConfirmationDialog.xaml</DependentUpon>
+    </Compile>
+    <Compile Include="Views\Controls\Repo\RepoDeletionFailDialog.xaml.cs">
+      <DependentUpon>RepoDeletionFailDialog.xaml</DependentUpon>
+    </Compile>
+    <Compile Include="Views\Controls\Repo\RepoForm.xaml.cs">
+      <DependentUpon>RepoForm.xaml</DependentUpon>
+    </Compile>
+    <Compile Include="Views\Controls\UserCommentBlock.xaml.cs">
+      <DependentUpon>UserCommentBlock.xaml</DependentUpon>
+    </Compile>
+    <Compile Include="Views\Controls\Profile\ProfileButton.xaml.cs">
+      <DependentUpon>ProfileButton.xaml</DependentUpon>
+    </Compile>
+    <Compile Include="Views\DashboardPage.xaml.cs">
+      <DependentUpon>DashboardPage.xaml</DependentUpon>
+    </Compile>
+    <Compile Include="Views\LoginPage.xaml.cs">
+      <DependentUpon>LoginPage.xaml</DependentUpon>
+    </Compile>
+    <Compile Include="Views\Pages\IssuePage\IssueDetailPage.xaml.cs">
+      <DependentUpon>IssueDetailPage.xaml</DependentUpon>
+    </Compile>
+    <Compile Include="Views\Pages\ProfilePage.xaml.cs">
+      <DependentUpon>ProfilePage.xaml</DependentUpon>
+    </Compile>
+    <Compile Include="Views\Pages\PullRequestCommitsPage.xaml.cs">
+      <DependentUpon>PullRequestCommitsPage.xaml</DependentUpon>
+    </Compile>
+    <Compile Include="Views\Pages\PullRequestConversationPage.xaml.cs">
+      <DependentUpon>PullRequestConversationPage.xaml</DependentUpon>
+    </Compile>
+    <Compile Include="Views\Pages\RepoCodePage.xaml.cs">
+      <DependentUpon>RepoCodePage.xaml</DependentUpon>
+    </Compile>
+    <Compile Include="Views\Pages\RepoCommitsPage.xaml.cs">
+      <DependentUpon>RepoCommitsPage.xaml</DependentUpon>
+    </Compile>
+    <Compile Include="Views\Pages\RepoDetailPage.xaml.cs">
+      <DependentUpon>RepoDetailPage.xaml</DependentUpon>
+    </Compile>
+    <Compile Include="Views\Pages\RepoIssuePage.xaml.cs">
+      <DependentUpon>RepoIssuePage.xaml</DependentUpon>
+    </Compile>
+    <Compile Include="Views\Pages\RepoManagePage.xaml.cs">
+      <DependentUpon>RepoManagePage.xaml</DependentUpon>
+    </Compile>
+    <Compile Include="Views\Pages\RepoPullRequestPage.xaml.cs">
+      <DependentUpon>RepoPullRequestPage.xaml</DependentUpon>
+    </Compile>
+    <Compile Include="Views\Pages\RepoSearchResultPage.xaml.cs">
+      <DependentUpon>RepoSearchResultPage.xaml</DependentUpon>
+    </Compile>
+    <Compile Include="Views\Pages\SettingsPage.xaml.cs">
+      <DependentUpon>SettingsPage.xaml</DependentUpon>
+    </Compile>
+    <Compile Include="Views\Pages\ShellPage.xaml.cs">
+      <DependentUpon>ShellPage.xaml</DependentUpon>
+    </Compile>
+    <Compile Include="Views\RepoListPage.xaml.cs">
+      <DependentUpon>RepoListPage.xaml</DependentUpon>
+    </Compile>
+    <Compile Include="Views\Controls\RepoSideBar.xaml.cs">
+      <DependentUpon>RepoSideBar.xaml</DependentUpon>
+    </Compile>
+  </ItemGroup>
+  <ItemGroup>
+    <AppxManifest Include="Package.appxmanifest">
+      <SubType>Designer</SubType>
+    </AppxManifest>
+  </ItemGroup>
+  <ItemGroup>
+    <Content Include="Assets\dist\**">
+      <CopyToOutputDirectory>Always</CopyToOutputDirectory>
+    </Content>
+    <Content Include="Assets\comments_icon_dark.svg" />
+    <Content Include="Assets\comments_icon_light.svg" />
+    <Content Include="Assets\commit_icon_dark.svg" />
+    <Content Include="Assets\commit_icon_light.svg" />
+    <Content Include="Assets\Data\in-app-purchase.xml" />
+    <Content Include="Assets\files_icon_light.svg" />
+    <Content Include="Assets\files_icon_dark.svg" />
+    <Content Include="Assets\Icons\github_logo_dark.png" />
+    <Content Include="Assets\Icons\github_logo_light.png" />
+    <Content Include="Assets\Icons\no_result.png" />
+    <Content Include="Assets\Icons\select_one.png" />
+    <Content Include="Assets\JakubProfile.png" />
+    <Content Include="Assets\JitHubLogo.png" />
+    <Content Include="Assets\KeiraProfile.png" />
+    <Content Include="Assets\LargeTile.scale-100.png" />
+    <Content Include="Assets\LargeTile.scale-125.png" />
+    <Content Include="Assets\LargeTile.scale-150.png" />
+    <Content Include="Assets\LargeTile.scale-200.png" />
+    <Content Include="Assets\LargeTile.scale-400.png" />
+    <Content Include="Assets\LinkedInLogo.png" />
+    <Content Include="Assets\merge_icon.svg" />
+    <Content Include="Assets\NeroProfile.jpg" />
+    <Content Include="Assets\Octocat.png" />
+    <Content Include="Assets\people_icon_dark.svg" />
+    <Content Include="Assets\people_icon_light.svg" />
+    <Content Include="Assets\pro_x_dark.png" />
+    <Content Include="Assets\pro_x_light.png" />
+    <Content Include="Assets\SmallTile.scale-100.png" />
+    <Content Include="Assets\SmallTile.scale-125.png" />
+    <Content Include="Assets\SmallTile.scale-150.png" />
+    <Content Include="Assets\SmallTile.scale-200.png" />
+    <Content Include="Assets\SmallTile.scale-400.png" />
+    <Content Include="Assets\SplashScreen.scale-100.png" />
+    <Content Include="Assets\SplashScreen.scale-125.png" />
+    <Content Include="Assets\SplashScreen.scale-150.png" />
+    <Content Include="Assets\SplashScreen.scale-400.png" />
+    <Content Include="Assets\Square150x150Logo.scale-100.png" />
+    <Content Include="Assets\Square150x150Logo.scale-125.png" />
+    <Content Include="Assets\Square150x150Logo.scale-150.png" />
+    <Content Include="Assets\Square150x150Logo.scale-400.png" />
+    <Content Include="Assets\Square44x44Logo.altform-lightunplated_targetsize-16.png" />
+    <Content Include="Assets\Square44x44Logo.altform-lightunplated_targetsize-24.png" />
+    <Content Include="Assets\Square44x44Logo.altform-lightunplated_targetsize-256.png" />
+    <Content Include="Assets\Square44x44Logo.altform-lightunplated_targetsize-32.png" />
+    <Content Include="Assets\Square44x44Logo.altform-lightunplated_targetsize-48.png" />
+    <Content Include="Assets\Square44x44Logo.altform-unplated_targetsize-16.png" />
+    <Content Include="Assets\Square44x44Logo.altform-unplated_targetsize-256.png" />
+    <Content Include="Assets\Square44x44Logo.altform-unplated_targetsize-32.png" />
+    <Content Include="Assets\Square44x44Logo.altform-unplated_targetsize-48.png" />
+    <Content Include="Assets\Square44x44Logo.scale-100.png" />
+    <Content Include="Assets\Square44x44Logo.scale-125.png" />
+    <Content Include="Assets\Square44x44Logo.scale-150.png" />
+    <Content Include="Assets\Square44x44Logo.scale-400.png" />
+    <Content Include="Assets\Square44x44Logo.targetsize-16.png" />
+    <Content Include="Assets\Square44x44Logo.targetsize-24.png" />
+    <Content Include="Assets\Square44x44Logo.targetsize-256.png" />
+    <Content Include="Assets\Square44x44Logo.targetsize-32.png" />
+    <Content Include="Assets\Square44x44Logo.targetsize-48.png" />
+    <Content Include="Assets\StoreLogo.scale-100.png" />
+    <Content Include="Assets\StoreLogo.scale-125.png" />
+    <Content Include="Assets\StoreLogo.scale-150.png" />
+    <Content Include="Assets\StoreLogo.scale-200.png" />
+    <Content Include="Assets\StoreLogo.scale-400.png" />
+    <Content Include="Assets\TwitterLogo.png" />
+    <Content Include="Assets\Fonts\FluentIcons.ttf" />
+    <None Include="JitHub_TemporaryKey.pfx" />
+    <None Include="Package.StoreAssociation.xml" />
+    <Content Include="Assets\Wide310x150Logo.scale-100.png" />
+    <Content Include="Assets\Wide310x150Logo.scale-125.png" />
+    <Content Include="Assets\Wide310x150Logo.scale-150.png" />
+    <Content Include="Assets\Wide310x150Logo.scale-400.png" />
+    <Content Include="Properties\Default.rd.xml" />
+    <Content Include="Assets\LockScreenLogo.scale-200.png" />
+    <Content Include="Assets\SplashScreen.scale-200.png" />
+    <Content Include="Assets\Square150x150Logo.scale-200.png" />
+    <Content Include="Assets\Square44x44Logo.scale-200.png" />
+    <Content Include="Assets\Square44x44Logo.targetsize-24_altform-unplated.png" />
+    <Content Include="Assets\Wide310x150Logo.scale-200.png" />
+    <PRIResource Include="Strings\zh-Hans\Resources.resw" />
+    <PRIResource Include="Strings\vi\Resources.resw" />
+    <PRIResource Include="Strings\tr-TR\Resources.resw" />
+    <PRIResource Include="Strings\pt\Resources.resw" />
+    <PRIResource Include="Strings\it\Resources.resw" />
+    <PRIResource Include="Strings\hu-HU\Resources.resw" />
+    <PRIResource Include="Strings\fr\Resources.resw" />
+    <PRIResource Include="Strings\es\Resources.resw" />
+    <PRIResource Include="Strings\en-US\Resources.resw" />
+    <PRIResource Include="Strings\el\Resources.resw" />
+    <PRIResource Include="Strings\de\Resources.resw" />
+    <PRIResource Include="Strings\bn-BD\Resources.resw" />
+  </ItemGroup>
+  <ItemGroup>
+    <ApplicationDefinition Include="App.xaml">
+      <Generator>MSBuild:Compile</Generator>
+      <SubType>Designer</SubType>
+    </ApplicationDefinition>
+    <Page Include="Styles\Buttons.xaml">
+      <SubType>Designer</SubType>
+      <Generator>MSBuild:Compile</Generator>
+    </Page>
+    <Page Include="Styles\CalendarDatePicker.xaml">
+      <SubType>Designer</SubType>
+      <Generator>MSBuild:Compile</Generator>
+    </Page>
+    <Page Include="Styles\Color.xaml">
+      <SubType>Designer</SubType>
+      <Generator>MSBuild:Compile</Generator>
+    </Page>
+    <Page Include="Styles\ComboBox.xaml">
+      <SubType>Designer</SubType>
+      <Generator>MSBuild:Compile</Generator>
+    </Page>
+    <Page Include="Styles\Container.xaml">
+      <SubType>Designer</SubType>
+      <Generator>MSBuild:Compile</Generator>
+    </Page>
+    <Page Include="Styles\DatePicker.xaml">
+      <SubType>Designer</SubType>
+      <Generator>MSBuild:Compile</Generator>
+    </Page>
+    <Page Include="Styles\CustomListDetailView.xaml">
+      <SubType>Designer</SubType>
+      <Generator>MSBuild:Compile</Generator>
+    </Page>
+    <Page Include="Styles\NavigationView.xaml">
+      <SubType>Designer</SubType>
+      <Generator>MSBuild:Compile</Generator>
+    </Page>
+    <Page Include="Styles\TabView.xaml">
+      <SubType>Designer</SubType>
+      <Generator>MSBuild:Compile</Generator>
+    </Page>
+    <Page Include="Styles\TabViewTheme.xaml">
+      <SubType>Designer</SubType>
+      <Generator>MSBuild:Compile</Generator>
+    </Page>
+    <Page Include="Styles\Theme.xaml">
+      <SubType>Designer</SubType>
+      <Generator>MSBuild:Compile</Generator>
+    </Page>
+    <Page Include="Styles\WinUICommonColor.xaml">
+      <SubType>Designer</SubType>
+      <Generator>MSBuild:Compile</Generator>
+    </Page>
+    <Page Include="Views\Controls\Activity\CommitCommentActivity.xaml">
+      <SubType>Designer</SubType>
+      <Generator>MSBuild:Compile</Generator>
+    </Page>
+    <Page Include="Views\Controls\Activity\CreateActivity.xaml">
+      <SubType>Designer</SubType>
+      <Generator>MSBuild:Compile</Generator>
+    </Page>
+    <Page Include="Views\Controls\Activity\DefaultActivity.xaml">
+      <SubType>Designer</SubType>
+      <Generator>MSBuild:Compile</Generator>
+    </Page>
+    <Page Include="Views\Controls\Activity\DeleteActivity.xaml">
+      <SubType>Designer</SubType>
+      <Generator>MSBuild:Compile</Generator>
+    </Page>
+    <Page Include="Views\Controls\Activity\ForkActivity.xaml">
+      <SubType>Designer</SubType>
+      <Generator>MSBuild:Compile</Generator>
+    </Page>
+    <Page Include="Views\Controls\Activity\GollumActivity.xaml">
+      <SubType>Designer</SubType>
+      <Generator>MSBuild:Compile</Generator>
+    </Page>
+    <Page Include="Views\Controls\Activity\IssueActivity.xaml">
+      <SubType>Designer</SubType>
+      <Generator>MSBuild:Compile</Generator>
+    </Page>
+    <Page Include="Views\Controls\Activity\IssueCommentActivity.xaml">
+      <SubType>Designer</SubType>
+      <Generator>MSBuild:Compile</Generator>
+    </Page>
+    <Page Include="Views\Controls\Activity\MemberActivity.xaml">
+      <SubType>Designer</SubType>
+      <Generator>MSBuild:Compile</Generator>
+    </Page>
+    <Page Include="Views\Controls\Activity\PublicActivity.xaml">
+      <SubType>Designer</SubType>
+      <Generator>MSBuild:Compile</Generator>
+    </Page>
+    <Page Include="Views\Controls\Activity\PullRequestActivity.xaml">
+      <SubType>Designer</SubType>
+      <Generator>MSBuild:Compile</Generator>
+    </Page>
+    <Page Include="Views\Controls\Activity\PullRequestReviewCommentActivity.xaml">
+      <SubType>Designer</SubType>
+      <Generator>MSBuild:Compile</Generator>
+    </Page>
+    <Page Include="Views\Controls\Activity\PushEventActivity.xaml">
+      <SubType>Designer</SubType>
+      <Generator>MSBuild:Compile</Generator>
+    </Page>
+    <Page Include="Views\Controls\Activity\ReleaseActivity.xaml">
+      <SubType>Designer</SubType>
+      <Generator>MSBuild:Compile</Generator>
+    </Page>
+    <Page Include="Views\Controls\Activity\SponsorshipActivity.xaml">
+      <SubType>Designer</SubType>
+      <Generator>MSBuild:Compile</Generator>
+    </Page>
+    <Page Include="Views\Controls\Activity\WatchActivity.xaml">
+      <SubType>Designer</SubType>
+      <Generator>MSBuild:Compile</Generator>
+    </Page>
+    <Page Include="Views\Controls\Code\CodeButton.xaml">
+      <SubType>Designer</SubType>
+      <Generator>MSBuild:Compile</Generator>
+    </Page>
+    <Page Include="Views\Controls\Commit\CommitButton.xaml">
+      <SubType>Designer</SubType>
+      <Generator>MSBuild:Compile</Generator>
+    </Page>
+    <Page Include="Views\Controls\Commit\CommitDetail.xaml">
+      <SubType>Designer</SubType>
+      <Generator>MSBuild:Compile</Generator>
+    </Page>
+    <Page Include="Views\Controls\Commit\CommitItem.xaml">
+      <SubType>Designer</SubType>
+      <Generator>MSBuild:Compile</Generator>
+    </Page>
+    <Page Include="Views\Controls\Commit\FileDiff.xaml">
+      <SubType>Designer</SubType>
+      <Generator>MSBuild:Compile</Generator>
+    </Page>
+    <Page Include="Views\Controls\Common\Avatar.xaml">
+      <SubType>Designer</SubType>
+      <Generator>MSBuild:Compile</Generator>
+    </Page>
+    <Page Include="Views\Controls\Common\CommentBlock.xaml">
+      <SubType>Designer</SubType>
+      <Generator>MSBuild:Compile</Generator>
+    </Page>
+    <Page Include="Views\Controls\Common\CreditPersonaleButton.xaml">
+      <SubType>Designer</SubType>
+      <Generator>MSBuild:Compile</Generator>
+    </Page>
+    <Page Include="Views\Controls\Common\CreditPersonaleDialog.xaml">
+      <SubType>Designer</SubType>
+      <Generator>MSBuild:Compile</Generator>
+    </Page>
+    <Page Include="Views\Controls\Common\DevConsole.xaml">
+      <SubType>Designer</SubType>
+      <Generator>MSBuild:Compile</Generator>
+    </Page>
+    <Page Include="Views\Controls\Common\EmojiButton.xaml">
+      <SubType>Designer</SubType>
+      <Generator>MSBuild:Compile</Generator>
+    </Page>
+    <Page Include="Views\Controls\Common\FeaturePurchaseDialog.xaml">
+      <SubType>Designer</SubType>
+      <Generator>MSBuild:Compile</Generator>
+    </Page>
+    <Page Include="Views\Controls\Common\GroupFilters.xaml">
+      <SubType>Designer</SubType>
+      <Generator>MSBuild:Compile</Generator>
+    </Page>
+    <Page Include="Views\Controls\Common\IssueSidePanel.xaml">
+      <SubType>Designer</SubType>
+      <Generator>MSBuild:Compile</Generator>
+    </Page>
+    <Page Include="Views\Controls\Common\MarkdownViewer.xaml">
+      <SubType>Designer</SubType>
+      <Generator>MSBuild:Compile</Generator>
+    </Page>
+    <Page Include="Views\Controls\Common\ProLicensePurchaseSuccessDialog.xaml">
+      <SubType>Designer</SubType>
+      <Generator>MSBuild:Compile</Generator>
+    </Page>
+    <Page Include="Views\Controls\Common\RepoLabel.xaml">
+      <SubType>Designer</SubType>
+      <Generator>MSBuild:Compile</Generator>
+    </Page>
+    <Page Include="Views\Controls\Common\MarkdownForm.xaml">
+      <SubType>Designer</SubType>
+      <Generator>MSBuild:Compile</Generator>
+    </Page>
+    <Page Include="Views\Controls\Common\SidePanelDropDown.xaml">
+      <SubType>Designer</SubType>
+      <Generator>MSBuild:Compile</Generator>
+    </Page>
+    <Page Include="Views\Controls\Common\SidePanelItem.xaml">
+      <SubType>Designer</SubType>
+      <Generator>MSBuild:Compile</Generator>
+    </Page>
+    <Page Include="Views\Controls\Common\SvgIcon.xaml">
+      <SubType>Designer</SubType>
+      <Generator>MSBuild:Compile</Generator>
+    </Page>
+    <Page Include="Views\Controls\Common\ThemeImage.xaml">
+      <SubType>Designer</SubType>
+      <Generator>MSBuild:Compile</Generator>
+    </Page>
+    <Page Include="Views\Controls\GFMTextBlock.xaml">
+      <SubType>Designer</SubType>
+      <Generator>MSBuild:Compile</Generator>
+    </Page>
+    <Page Include="Views\Controls\Common\EmojiPanelButton.xaml">
+      <SubType>Designer</SubType>
+      <Generator>MSBuild:Compile</Generator>
+    </Page>
+    <Page Include="Views\Controls\Issue\IssueButton.xaml">
+      <SubType>Designer</SubType>
+      <Generator>MSBuild:Compile</Generator>
+    </Page>
+    <Page Include="Views\Controls\Issue\IssueForm.xaml">
+      <SubType>Designer</SubType>
+      <Generator>MSBuild:Compile</Generator>
+    </Page>
+    <Page Include="Views\Controls\Issue\UserIssueList.xaml">
+      <SubType>Designer</SubType>
+      <Generator>MSBuild:Compile</Generator>
+    </Page>
+    <Page Include="Views\Controls\PullRequest\Conversation\ReviewBlock.xaml">
+      <SubType>Designer</SubType>
+      <Generator>MSBuild:Compile</Generator>
+    </Page>
+    <Page Include="Views\Controls\PullRequest\Conversation\ReviewCommentBlock.xaml">
+      <SubType>Designer</SubType>
+      <Generator>MSBuild:Compile</Generator>
+    </Page>
+    <Page Include="Views\Controls\PullRequest\DiffTextBlock.xaml">
+      <SubType>Designer</SubType>
+      <Generator>MSBuild:Compile</Generator>
+    </Page>
+    <Page Include="Views\Controls\PullRequest\MergeForm.xaml">
+      <SubType>Designer</SubType>
+      <Generator>MSBuild:Compile</Generator>
+    </Page>
+    <Page Include="Views\Controls\PullRequest\PullRequestButton.xaml">
+      <SubType>Designer</SubType>
+      <Generator>MSBuild:Compile</Generator>
+    </Page>
+    <Page Include="Views\Controls\PullRequest\PullRequestEditForm.xaml">
+      <SubType>Designer</SubType>
+      <Generator>MSBuild:Compile</Generator>
+    </Page>
+    <Page Include="Views\Controls\PullRequest\PullRequestForm.xaml">
+      <SubType>Designer</SubType>
+      <Generator>MSBuild:Compile</Generator>
+    </Page>
+    <Page Include="Views\Controls\PullRequest\RepoPullRequestDetail.xaml">
+      <SubType>Designer</SubType>
+      <Generator>MSBuild:Compile</Generator>
+    </Page>
+    <Page Include="Views\Controls\Repo\RepoDeleteConfirmationDialog.xaml">
+      <SubType>Designer</SubType>
+      <Generator>MSBuild:Compile</Generator>
+    </Page>
+    <Page Include="Views\Controls\Repo\RepoDeletionFailDialog.xaml">
+      <SubType>Designer</SubType>
+      <Generator>MSBuild:Compile</Generator>
+    </Page>
+    <Page Include="Views\Controls\Repo\RepoForm.xaml">
+      <SubType>Designer</SubType>
+      <Generator>MSBuild:Compile</Generator>
+    </Page>
+    <Page Include="Views\Controls\UserCommentBlock.xaml">
+      <SubType>Designer</SubType>
+      <Generator>MSBuild:Compile</Generator>
+    </Page>
+    <Page Include="Views\Controls\Profile\ProfileButton.xaml">
+      <SubType>Designer</SubType>
+      <Generator>MSBuild:Compile</Generator>
+    </Page>
+    <Page Include="Views\DataTemplates\Filter\DateFilter.xaml">
+      <SubType>Designer</SubType>
+      <Generator>MSBuild:Compile</Generator>
+    </Page>
+    <Page Include="Views\DataTemplates\Filter\DropdownFilter.xaml">
+      <SubType>Designer</SubType>
+      <Generator>MSBuild:Compile</Generator>
+    </Page>
+    <Page Include="Views\DataTemplates\Filter\TextFilter.xaml">
+      <SubType>Designer</SubType>
+      <Generator>MSBuild:Compile</Generator>
+    </Page>
+    <Page Include="Views\DataTemplates\Issue\Event\AddedToProjectEvent.xaml">
+      <Generator>MSBuild:Compile</Generator>
+      <SubType>Designer</SubType>
+    </Page>
+    <Page Include="Views\DataTemplates\Issue\Event\AssignedEvent.xaml">
+      <Generator>MSBuild:Compile</Generator>
+      <SubType>Designer</SubType>
+    </Page>
+    <Page Include="Views\DataTemplates\Issue\Event\BaseRefChangedEvent.xaml">
+      <Generator>MSBuild:Compile</Generator>
+      <SubType>Designer</SubType>
+    </Page>
+    <Page Include="Views\DataTemplates\Issue\Event\ClosedEvent.xaml">
+      <Generator>MSBuild:Compile</Generator>
+      <SubType>Designer</SubType>
+    </Page>
+    <Page Include="Views\DataTemplates\Issue\Event\CommentDeletedEvent.xaml">
+      <Generator>MSBuild:Compile</Generator>
+      <SubType>Designer</SubType>
+    </Page>
+    <Page Include="Views\DataTemplates\Issue\Event\CommentedEvent.xaml">
+      <Generator>MSBuild:Compile</Generator>
+      <SubType>Designer</SubType>
+    </Page>
+    <Page Include="Views\DataTemplates\Issue\Event\CommitCommentedEvent.xaml">
+      <Generator>MSBuild:Compile</Generator>
+      <SubType>Designer</SubType>
+    </Page>
+    <Page Include="Views\DataTemplates\Issue\Event\CommittedEvent.xaml">
+      <Generator>MSBuild:Compile</Generator>
+      <SubType>Designer</SubType>
+    </Page>
+    <Page Include="Views\DataTemplates\Issue\Event\ConnectedEvent.xaml">
+      <Generator>MSBuild:Compile</Generator>
+      <SubType>Designer</SubType>
+    </Page>
+    <Page Include="Views\DataTemplates\Issue\Event\ConvertedNoteToIssueEvent.xaml">
+      <Generator>MSBuild:Compile</Generator>
+      <SubType>Designer</SubType>
+    </Page>
+    <Page Include="Views\DataTemplates\Issue\Event\CrossreferencedEvent.xaml">
+      <Generator>MSBuild:Compile</Generator>
+      <SubType>Designer</SubType>
+    </Page>
+    <Page Include="Views\DataTemplates\Issue\Event\DefaultIssueEvent.xaml">
+      <SubType>Designer</SubType>
+      <Generator>MSBuild:Compile</Generator>
+    </Page>
+    <Page Include="Views\DataTemplates\Issue\Event\DemilestonedEvent.xaml">
+      <Generator>MSBuild:Compile</Generator>
+      <SubType>Designer</SubType>
+    </Page>
+    <Page Include="Views\DataTemplates\Issue\Event\HeadRefDeletedEvent.xaml">
+      <Generator>MSBuild:Compile</Generator>
+      <SubType>Designer</SubType>
+    </Page>
+    <Page Include="Views\DataTemplates\Issue\Event\HeadRefForcePushedEvent.xaml">
+      <Generator>MSBuild:Compile</Generator>
+      <SubType>Designer</SubType>
+    </Page>
+    <Page Include="Views\DataTemplates\Issue\Event\HeadRefRestoredEvent.xaml">
+      <Generator>MSBuild:Compile</Generator>
+      <SubType>Designer</SubType>
+    </Page>
+    <Page Include="Views\DataTemplates\Issue\Event\LabeledEvent.xaml">
+      <Generator>MSBuild:Compile</Generator>
+      <SubType>Designer</SubType>
+    </Page>
+    <Page Include="Views\DataTemplates\Issue\Event\LineCommentedEvent.xaml">
+      <Generator>MSBuild:Compile</Generator>
+      <SubType>Designer</SubType>
+    </Page>
+    <Page Include="Views\DataTemplates\Issue\Event\LockedEvent.xaml">
+      <Generator>MSBuild:Compile</Generator>
+      <SubType>Designer</SubType>
+    </Page>
+    <Page Include="Views\DataTemplates\Issue\Event\MarkedAsDuplicateEvent.xaml">
+      <Generator>MSBuild:Compile</Generator>
+      <SubType>Designer</SubType>
+    </Page>
+    <Page Include="Views\DataTemplates\Issue\Event\MentionedEvent.xaml">
+      <Generator>MSBuild:Compile</Generator>
+      <SubType>Designer</SubType>
+    </Page>
+    <Page Include="Views\DataTemplates\Issue\Event\MergedEvent.xaml">
+      <Generator>MSBuild:Compile</Generator>
+      <SubType>Designer</SubType>
+    </Page>
+    <Page Include="Views\DataTemplates\Issue\Event\MilestonedEvent.xaml">
+      <Generator>MSBuild:Compile</Generator>
+      <SubType>Designer</SubType>
+    </Page>
+    <Page Include="Views\DataTemplates\Issue\Event\MovedColumnsInProjectEvent.xaml">
+      <Generator>MSBuild:Compile</Generator>
+      <SubType>Designer</SubType>
+    </Page>
+    <Page Include="Views\DataTemplates\Issue\Event\PinnedEvent.xaml">
+      <Generator>MSBuild:Compile</Generator>
+      <SubType>Designer</SubType>
+    </Page>
+    <Page Include="Views\DataTemplates\Issue\Event\ReadyForReviewEvent.xaml">
+      <Generator>MSBuild:Compile</Generator>
+      <SubType>Designer</SubType>
+    </Page>
+    <Page Include="Views\DataTemplates\Issue\Event\ReferencedEvent.xaml">
+      <Generator>MSBuild:Compile</Generator>
+      <SubType>Designer</SubType>
+    </Page>
+    <Page Include="Views\DataTemplates\Issue\Event\RemovedFromProjectEvent.xaml">
+      <Generator>MSBuild:Compile</Generator>
+      <SubType>Designer</SubType>
+    </Page>
+    <Page Include="Views\DataTemplates\Issue\Event\RenamedEvent.xaml">
+      <Generator>MSBuild:Compile</Generator>
+      <SubType>Designer</SubType>
+    </Page>
+    <Page Include="Views\DataTemplates\Issue\Event\ReopenedEvent.xaml">
+      <Generator>MSBuild:Compile</Generator>
+      <SubType>Designer</SubType>
+    </Page>
+    <Page Include="Views\DataTemplates\Issue\Event\ReviewDismissedEvent.xaml">
+      <Generator>MSBuild:Compile</Generator>
+      <SubType>Designer</SubType>
+    </Page>
+    <Page Include="Views\DataTemplates\Issue\Event\ReviewedEvent.xaml">
+      <Generator>MSBuild:Compile</Generator>
+      <SubType>Designer</SubType>
+    </Page>
+    <Page Include="Views\DataTemplates\Issue\Event\ReviewRequestedEvent.xaml">
+      <Generator>MSBuild:Compile</Generator>
+      <SubType>Designer</SubType>
+    </Page>
+    <Page Include="Views\DataTemplates\Issue\Event\ReviewRequestRemovedEvent.xaml">
+      <Generator>MSBuild:Compile</Generator>
+      <SubType>Designer</SubType>
+    </Page>
+    <Page Include="Views\DataTemplates\Issue\Event\SubscribedEvent.xaml">
+      <Generator>MSBuild:Compile</Generator>
+      <SubType>Designer</SubType>
+    </Page>
+    <Page Include="Views\DataTemplates\Issue\Event\TransferredEvent.xaml">
+      <Generator>MSBuild:Compile</Generator>
+      <SubType>Designer</SubType>
+    </Page>
+    <Page Include="Views\DataTemplates\Issue\Event\UnassignedEvent.xaml">
+      <Generator>MSBuild:Compile</Generator>
+      <SubType>Designer</SubType>
+    </Page>
+    <Page Include="Views\DataTemplates\Issue\Event\UnlabeledEvent.xaml">
+      <Generator>MSBuild:Compile</Generator>
+      <SubType>Designer</SubType>
+    </Page>
+    <Page Include="Views\DataTemplates\Issue\Event\UnlockedEvent.xaml">
+      <Generator>MSBuild:Compile</Generator>
+      <SubType>Designer</SubType>
+    </Page>
+    <Page Include="Views\DataTemplates\Issue\Event\UnmarkedAsDuplicateEvent.xaml">
+      <Generator>MSBuild:Compile</Generator>
+      <SubType>Designer</SubType>
+    </Page>
+    <Page Include="Views\DataTemplates\Issue\Event\UnpinnedEvent.xaml">
+      <Generator>MSBuild:Compile</Generator>
+      <SubType>Designer</SubType>
+    </Page>
+    <Page Include="Views\DataTemplates\Issue\Event\UnsubscribedEvent.xaml">
+      <Generator>MSBuild:Compile</Generator>
+      <SubType>Designer</SubType>
+    </Page>
+    <Page Include="Views\DataTemplates\PullRequestListItem.xaml">
+      <SubType>Designer</SubType>
+      <Generator>MSBuild:Compile</Generator>
+    </Page>
+    <Page Include="Styles\TextBlock.xaml">
+      <SubType>Designer</SubType>
+      <Generator>MSBuild:Compile</Generator>
+    </Page>
+    <Page Include="Views\Controls\ActivityList.xaml">
+      <SubType>Designer</SubType>
+      <Generator>MSBuild:Compile</Generator>
+    </Page>
+    <Page Include="Views\Controls\Issue\RepoIssueDetail.xaml">
+      <SubType>Designer</SubType>
+      <Generator>MSBuild:Compile</Generator>
+    </Page>
+    <Page Include="Views\DashboardPage.xaml">
+      <SubType>Designer</SubType>
+      <Generator>MSBuild:Compile</Generator>
+    </Page>
+    <Page Include="Views\DataTemplates\ActivityListItem.xaml">
+      <SubType>Designer</SubType>
+      <Generator>MSBuild:Compile</Generator>
+    </Page>
+    <Page Include="Views\DataTemplates\Activity\CommitCommentEventTemplate.xaml">
+      <SubType>Designer</SubType>
+      <Generator>MSBuild:Compile</Generator>
+    </Page>
+    <Page Include="Views\DataTemplates\Activity\CreateEventTemplate.xaml">
+      <SubType>Designer</SubType>
+      <Generator>MSBuild:Compile</Generator>
+    </Page>
+    <Page Include="Views\DataTemplates\Activity\DefaultTemplate.xaml">
+      <SubType>Designer</SubType>
+      <Generator>MSBuild:Compile</Generator>
+    </Page>
+    <Page Include="Views\DataTemplates\Activity\DeleteEventTemplate.xaml">
+      <SubType>Designer</SubType>
+      <Generator>MSBuild:Compile</Generator>
+    </Page>
+    <Page Include="Views\DataTemplates\Activity\ForkEventTemplate.xaml">
+      <SubType>Designer</SubType>
+      <Generator>MSBuild:Compile</Generator>
+    </Page>
+    <Page Include="Views\DataTemplates\Activity\GollumEventTemplate.xaml">
+      <SubType>Designer</SubType>
+      <Generator>MSBuild:Compile</Generator>
+    </Page>
+    <Page Include="Views\DataTemplates\Activity\IssueCommentEventTemplate.xaml">
+      <SubType>Designer</SubType>
+      <Generator>MSBuild:Compile</Generator>
+    </Page>
+    <Page Include="Views\DataTemplates\Activity\IssuesEventTemplate.xaml">
+      <SubType>Designer</SubType>
+      <Generator>MSBuild:Compile</Generator>
+    </Page>
+    <Page Include="Views\DataTemplates\Activity\MemberEventTemplate.xaml">
+      <SubType>Designer</SubType>
+      <Generator>MSBuild:Compile</Generator>
+    </Page>
+    <Page Include="Views\DataTemplates\Activity\PublicEventTemplate.xaml">
+      <SubType>Designer</SubType>
+      <Generator>MSBuild:Compile</Generator>
+    </Page>
+    <Page Include="Views\DataTemplates\Activity\PullRequestEventTemplate.xaml">
+      <SubType>Designer</SubType>
+      <Generator>MSBuild:Compile</Generator>
+    </Page>
+    <Page Include="Views\DataTemplates\Activity\PullRequestReviewCommentEventTemplate.xaml">
+      <SubType>Designer</SubType>
+      <Generator>MSBuild:Compile</Generator>
+    </Page>
+    <Page Include="Views\DataTemplates\Activity\PushEventTemplate.xaml">
+      <SubType>Designer</SubType>
+      <Generator>MSBuild:Compile</Generator>
+    </Page>
+    <Page Include="Views\DataTemplates\Activity\ReleaseEventTemplate.xaml">
+      <SubType>Designer</SubType>
+      <Generator>MSBuild:Compile</Generator>
+    </Page>
+    <Page Include="Views\DataTemplates\Activity\SponsorshipEventTemplate.xaml">
+      <SubType>Designer</SubType>
+      <Generator>MSBuild:Compile</Generator>
+    </Page>
+    <Page Include="Views\DataTemplates\Activity\WatchEventTemplate.xaml">
+      <SubType>Designer</SubType>
+      <Generator>MSBuild:Compile</Generator>
+    </Page>
+    <Page Include="Views\DataTemplates\IssueLabel.xaml">
+      <SubType>Designer</SubType>
+      <Generator>MSBuild:Compile</Generator>
+    </Page>
+    <Page Include="Views\DataTemplates\IssueListItem.xaml">
+      <SubType>Designer</SubType>
+      <Generator>MSBuild:Compile</Generator>
+    </Page>
+    <Page Include="Views\DataTemplates\PullRequest\ConversationCommit.xaml">
+      <SubType>Designer</SubType>
+      <Generator>MSBuild:Compile</Generator>
+    </Page>
+    <Page Include="Views\DataTemplates\PullRequest\ConversationEvent.xaml">
+      <SubType>Designer</SubType>
+      <Generator>MSBuild:Compile</Generator>
+    </Page>
+    <Page Include="Views\DataTemplates\PullRequest\ConversationPlainComment.xaml">
+      <SubType>Designer</SubType>
+      <Generator>MSBuild:Compile</Generator>
+    </Page>
+    <Page Include="Views\DataTemplates\PullRequest\ConversationReview.xaml">
+      <SubType>Designer</SubType>
+      <Generator>MSBuild:Compile</Generator>
+    </Page>
+    <Page Include="Views\DataTemplates\RepoListItem.xaml">
+      <SubType>Designer</SubType>
+      <Generator>MSBuild:Compile</Generator>
+    </Page>
+    <Page Include="Views\DataTemplates\Repository\ForkRepo.xaml">
+      <SubType>Designer</SubType>
+      <Generator>MSBuild:Compile</Generator>
+    </Page>
+    <Page Include="Views\DataTemplates\Repository\PrivateRepo.xaml">
+      <SubType>Designer</SubType>
+      <Generator>MSBuild:Compile</Generator>
+    </Page>
+    <Page Include="Views\DataTemplates\Repository\PublicRepo.xaml">
+      <SubType>Designer</SubType>
+      <Generator>MSBuild:Compile</Generator>
+    </Page>
+    <Page Include="Views\DataTemplates\SelectableItem\Selectablelabel.xaml">
+      <SubType>Designer</SubType>
+      <Generator>MSBuild:Compile</Generator>
+    </Page>
+    <Page Include="Views\DataTemplates\SelectableItem\SelectableUser.xaml">
+      <SubType>Designer</SubType>
+      <Generator>MSBuild:Compile</Generator>
+    </Page>
+    <Page Include="Views\LoginPage.xaml">
+      <SubType>Designer</SubType>
+      <Generator>MSBuild:Compile</Generator>
+    </Page>
+    <Page Include="Views\Pages\IssuePage\IssueDetailPage.xaml">
+      <SubType>Designer</SubType>
+      <Generator>MSBuild:Compile</Generator>
+    </Page>
+    <Page Include="Views\Pages\ProfilePage.xaml">
+      <SubType>Designer</SubType>
+      <Generator>MSBuild:Compile</Generator>
+    </Page>
+    <Page Include="Views\Pages\PullRequestCommitsPage.xaml">
+      <SubType>Designer</SubType>
+      <Generator>MSBuild:Compile</Generator>
+    </Page>
+    <Page Include="Views\Pages\PullRequestConversationPage.xaml">
+      <SubType>Designer</SubType>
+      <Generator>MSBuild:Compile</Generator>
+    </Page>
+    <Page Include="Views\Pages\RepoCodePage.xaml">
+      <SubType>Designer</SubType>
+      <Generator>MSBuild:Compile</Generator>
+    </Page>
+    <Page Include="Views\Pages\RepoCommitsPage.xaml">
+      <SubType>Designer</SubType>
+      <Generator>MSBuild:Compile</Generator>
+    </Page>
+    <Page Include="Views\Pages\RepoDetailPage.xaml">
+      <SubType>Designer</SubType>
+      <Generator>MSBuild:Compile</Generator>
+    </Page>
+    <Page Include="Views\Pages\RepoIssuePage.xaml">
+      <SubType>Designer</SubType>
+      <Generator>MSBuild:Compile</Generator>
+    </Page>
+    <Page Include="Views\Pages\RepoManagePage.xaml">
+      <SubType>Designer</SubType>
+      <Generator>MSBuild:Compile</Generator>
+    </Page>
+    <Page Include="Views\Pages\RepoPullRequestPage.xaml">
+      <SubType>Designer</SubType>
+      <Generator>MSBuild:Compile</Generator>
+    </Page>
+    <Page Include="Views\Pages\RepoSearchResultPage.xaml">
+      <SubType>Designer</SubType>
+      <Generator>MSBuild:Compile</Generator>
+    </Page>
+    <Page Include="Views\Pages\SettingsPage.xaml">
+      <SubType>Designer</SubType>
+      <Generator>MSBuild:Compile</Generator>
+    </Page>
+    <Page Include="Views\Pages\ShellPage.xaml">
+      <SubType>Designer</SubType>
+      <Generator>MSBuild:Compile</Generator>
+    </Page>
+    <Page Include="Views\RepoListPage.xaml">
+      <SubType>Designer</SubType>
+      <Generator>MSBuild:Compile</Generator>
+    </Page>
+    <Page Include="Views\Controls\RepoSideBar.xaml">
+      <SubType>Designer</SubType>
+      <Generator>MSBuild:Compile</Generator>
+    </Page>
+  </ItemGroup>
+  <ItemGroup>
+    <PackageReference Include="CommunityToolkit.Labs.Uwp.SegmentedControl">
+      <Version>0.0.2</Version>
+    </PackageReference>
+    <PackageReference Include="CommunityToolkit.Labs.Uwp.SettingsControls">
+      <Version>0.0.17</Version>
+    </PackageReference>
+    <PackageReference Include="CommunityToolkit.Labs.Uwp.Shimmer">
+      <Version>0.0.1</Version>
+    </PackageReference>
+    <PackageReference Include="CommunityToolkit.Mvvm">
+      <Version>8.1.0</Version>
+    </PackageReference>
+    <PackageReference Include="Markdig">
+      <Version>0.31.0</Version>
+    </PackageReference>
+    <PackageReference Include="Microsoft.Extensions.Configuration.Json">
+      <Version>7.0.0</Version>
+    </PackageReference>
+    <PackageReference Include="Microsoft.Extensions.DependencyInjection">
+      <Version>7.0.0</Version>
+    </PackageReference>
+    <PackageReference Include="Microsoft.Extensions.Options.ConfigurationExtensions">
+      <Version>7.0.0</Version>
+    </PackageReference>
+    <PackageReference Include="Microsoft.NETCore.UniversalWindowsPlatform">
+      <Version>6.2.14</Version>
+    </PackageReference>
+    <PackageReference Include="Microsoft.Toolkit.Uwp.UI">
+      <Version>7.1.3</Version>
+    </PackageReference>
+    <PackageReference Include="Microsoft.Toolkit.Uwp.UI.Behaviors">
+      <Version>7.1.3</Version>
+    </PackageReference>
+    <PackageReference Include="Microsoft.Toolkit.Uwp.UI.Controls">
+      <Version>7.1.3</Version>
+    </PackageReference>
+    <PackageReference Include="Microsoft.UI.Xaml">
+      <Version>2.8.2</Version>
+    </PackageReference>
+    <PackageReference Include="Octokit">
+      <Version>5.0.2</Version>
+    </PackageReference>
+    <PackageReference Include="System.Text.Json">
+      <Version>7.0.2</Version>
+    </PackageReference>
+  </ItemGroup>
+  <ItemGroup>
+    <Content Include="appsettings.json">
+      <CopyToOutputDirectory>Always</CopyToOutputDirectory>
+    </Content>
+  </ItemGroup>
+  <ItemGroup>
+    <Folder Include="Views\DataTemplates\Commit\" />
+  </ItemGroup>
+  <ItemGroup>
+    <ProjectReference Include="..\JitHub.Utilities.SVG\JitHub.Utilities.SVG.csproj">
+      <Project>{ace52ff0-0a75-4b14-8d0f-464c9b09b85f}</Project>
+      <Name>JitHub.Utilities.SVG</Name>
+    </ProjectReference>
+    <ProjectReference Include="..\Markdig.UWP\Markdig.UWP.csproj">
+      <Project>{76bb207b-5175-4e9c-af8c-add0ea67ad18}</Project>
+      <Name>Markdig.UWP</Name>
+    </ProjectReference>
+    <ProjectReference Include="..\Utilities.Common\Utilities.Common.csproj">
+      <Project>{001482e8-d779-442f-8920-276d0c3ef45d}</Project>
+      <Name>Utilities.Common</Name>
+    </ProjectReference>
+  </ItemGroup>
+  <PropertyGroup Condition=" '$(VisualStudioVersion)' == '' or '$(VisualStudioVersion)' &lt; '14.0' ">
+    <VisualStudioVersion>14.0</VisualStudioVersion>
+  </PropertyGroup>
+  <Import Project="$(MSBuildExtensionsPath)\Microsoft\WindowsXaml\v$(VisualStudioVersion)\Microsoft.Windows.UI.Xaml.CSharp.targets" />
+  <!-- To modify your build process, add your task inside one of the targets below and uncomment it. 
+       Other similar extension points exist, see Microsoft.Common.targets.
+  <Target Name="BeforeBuild">
+  </Target>
+  <Target Name="AfterBuild">
+  </Target>
+  -->
+</Project>

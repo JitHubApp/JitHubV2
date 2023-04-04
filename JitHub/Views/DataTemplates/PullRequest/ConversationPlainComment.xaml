@@ -1,0 +1,14 @@
+﻿<ResourceDictionary
+    xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation" 
+    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+    xmlns:usercontrols="using:JitHub.Views.Controls"
+    xmlns:prconversation="using:JitHub.Models.PRConversation">
+    <DataTemplate
+        x:Key="PRConversationPlainCommentDataTemplate">
+        <!--For issue style comments-->
+        <Grid>
+            <usercontrols:UserCommentBlock
+                ViewModel="{Binding Item, Converter={StaticResource IssueCommentNodeToUserCommentBlockViewModelConverter}, Mode=OneWay}"/>
+        </Grid>
+    </DataTemplate>
+</ResourceDictionary>

@@ -1,0 +1,112 @@
+﻿<Page
+    x:Class="JitHub.Views.Pages.RepoPullRequestPage"
+    xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+    xmlns:local="using:JitHub.Views.Pages"
+    xmlns:muxc="using:Microsoft.UI.Xaml.Controls"
+    xmlns:prviewmodels="using:JitHub.ViewModels.PullRequestViewModels"
+    xmlns:controls="using:Microsoft.Toolkit.Uwp.UI.Controls"
+    xmlns:interactivity="using:Microsoft.Xaml.Interactivity"
+    xmlns:core="using:Microsoft.Xaml.Interactions.Core"
+    xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+    xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+    xmlns:pr="using:JitHub.Views.Controls.PullRequest"
+    xmlns:common="using:JitHub.Views.Controls.Common"
+    mc:Ignorable="d"
+    Background="Transparent">
+    <Page.DataContext>
+        <prviewmodels:RepoPullRequestViewModel x:Name="ViewModel"/>
+    </Page.DataContext>
+    <Grid>
+        <Grid.RowDefinitions>
+            <RowDefinition Height="auto"/>
+            <RowDefinition Height="*"/>
+        </Grid.RowDefinitions>
+        <Grid
+            Grid.Row="0"
+            Margin="8 0"
+            HorizontalAlignment="Stretch">
+            <Grid.ColumnDefinitions>
+                <ColumnDefinition Width="*"/>
+                <ColumnDefinition Width="auto"/>
+            </Grid.ColumnDefinitions>
+            <common:GroupFilters
+                Grid.Column="0"
+                ApplyFilterCommand="{x:Bind ViewModel.FilterCommand, Mode=OneWay}"
+                ClearFilterCommand="{x:Bind ViewModel.ClearCommand, Mode=OneWay}"
+                Filters="{x:Bind ViewModel.Filters, Mode=TwoWay}"/>
+            <Button
+                Grid.Column="1"
+                Margin="10 0 0 10"
+                VerticalAlignment="Bottom"
+                Command="{x:Bind ViewModel.NewPRCommand, Mode=OneWay}"
+                Style="{ThemeResource AccentButtonStyle}">
+                New Pull Request
+            </Button>
+        </Grid>
+        <muxc:ProgressRing
+            Grid.Row="1"
+            HorizontalAlignment="Center"
+            VerticalAlignment="Center"
+            Width="50"
+            Height="50"
+            Visibility="{x:Bind ViewModel.Loading, Converter={StaticResource BoolToVisibilityConverter}, Mode=OneWay}"
+            IsActive="{x:Bind ViewModel.Loading, Mode=OneWay}"/>
+        <StackPanel
+            Grid.Row="1"
+            Visibility="{x:Bind ViewModel.IsEmpty, Converter={StaticResource BoolToVisibilityConverter}, Mode=OneWay}"
+            HorizontalAlignment="Center"
+            VerticalAlignment="Center"
+            Spacing="8">
+            <Image
+                Width="320"
+                Source="ms-appx:///Assets/Icons/no_result.png"/>
+            <TextBlock
+                HorizontalAlignment="Center"
+                Text="No Pull Request in this repository"/>
+        </StackPanel>
+        <controls:ListDetailsView
+            Grid.Row="1"
+            x:Name="PullRequestPageMasterDetail"
+            BackButtonBehavior="Automatic"
+            Background="Transparent"
+            ItemsSource="{x:Bind ViewModel.PullRequests, Mode=OneWay}"
+            SelectedItem="{x:Bind ViewModel.SelectedPullRequest, Mode=TwoWay}"
+            ItemTemplate="{StaticResource PullRequestListItem}"
+            SelectionChanged="{x:Bind ViewModel.PullRequestPageMasterDetail_SelectionChanged}"
+            NoSelectionContent="Select an pull request to view"
+            CompactModeThresholdWidth="960"
+            Visibility="{x:Bind ViewModel.IsEmpty, Converter={StaticResource BoolToVisibilityReverseConverter}, Mode=OneWay}">
+            <interactivity:Interaction.Behaviors>
+                <core:EventTriggerBehavior EventName="Loaded">
+                    <core:InvokeCommandAction Command="{x:Bind ViewModel.LoadCommand, Mode=OneWay}"/>
+                </core:EventTriggerBehavior>
+            </interactivity:Interaction.Behaviors>
+            <controls:ListDetailsView.DetailsTemplate>
+                <DataTemplate>
+                    <pr:RepoPullRequestDetail ViewModel="{Binding Path=SelectedItem, ElementName=PullRequestPageMasterDetail, Converter={StaticResource PullRequestModelToPullRequestDetailViewModelConverter}, Mode=OneWay}"/>
+                </DataTemplate>
+            </controls:ListDetailsView.DetailsTemplate>
+            <controls:ListDetailsView.NoSelectionContentTemplate>
+                <DataTemplate>
+                    <Grid
+                        VerticalAlignment="Stretch"
+                        HorizontalAlignment="Stretch">
+                        <StackPanel
+                            VerticalAlignment="Center"
+                            HorizontalAlignment="Center"
+                            Spacing="8">
+                            <Image
+                                Width="320"
+                                Source="ms-appx:///Assets/Icons/select_one.png"/>
+                            <TextBlock
+                                HorizontalAlignment="Center"
+                                FontSize="16"
+                                Text="Select a Pull Request to view"/>
+                        </StackPanel>
+                    </Grid>
+                </DataTemplate>
+            </controls:ListDetailsView.NoSelectionContentTemplate>
+        </controls:ListDetailsView>
+    </Grid>
+</Page>

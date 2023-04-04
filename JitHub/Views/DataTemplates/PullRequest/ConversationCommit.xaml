@@ -1,0 +1,29 @@
+﻿<ResourceDictionary
+    xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation" 
+    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+    xmlns:common="using:JitHub.Views.Controls.Common"
+    xmlns:commit="using:JitHub.Views.Controls.Commit">
+    <DataTemplate
+        x:Key="PRConversationCommitDataTemplate">
+        <Grid>
+            <Grid.ColumnDefinitions>
+                <ColumnDefinition Width="48"/>
+                <ColumnDefinition Width="*"/>
+                <ColumnDefinition Width="auto"/>
+            </Grid.ColumnDefinitions>
+            <common:Avatar
+                Grid.Column="0"
+                HorizontalAlignment="Center"
+                Url="{Binding Author.AvatarUrl, Mode=OneWay}"
+                Login="{Binding Author.Name, Mode=OneWay}"/>
+            <commit:CommitButton
+                Grid.Column="1"
+                Repo="{Binding Repo, Mode=OneWay}"
+                CommitId="{Binding Sha, Mode=OneWay}"
+                Text="{Binding Commit.Message, Mode=OneWay}"/>
+            <TextBlock
+                Grid.Column="2"
+                Text="{Binding CreatedAt, Converter={StaticResource TimeAgoConverter}, ConverterParameter='', Mode=OneWay}"/>
+        </Grid>
+    </DataTemplate>
+</ResourceDictionary>

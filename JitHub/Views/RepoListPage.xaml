@@ -1,0 +1,86 @@
+﻿<Page
+    x:Class="JitHub.Views.RepoListPage"
+    xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+    xmlns:local="using:JitHub.Views"
+    xmlns:repoviewmodels="using:JitHub.ViewModels.RepositoryViewModels"
+    xmlns:interactivity="using:Microsoft.Xaml.Interactivity"
+    xmlns:core="using:Microsoft.Xaml.Interactions.Core"
+    xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+    xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+    xmlns:muxc="using:Microsoft.UI.Xaml.Controls"
+    mc:Ignorable="d"
+    Background="{ThemeResource ApplicationPageBackgroundThemeBrush}">
+    <Page.DataContext>
+        <repoviewmodels:RepoListViewModel x:Name="ViewModel"/>
+    </Page.DataContext>
+    <Grid>
+        <Grid>
+            <Grid.RowDefinitions>
+                <RowDefinition Height="auto"/>
+                <RowDefinition Height="*"/>
+            </Grid.RowDefinitions>
+            <Grid
+                Grid.Row="0"
+                Margin="10"
+                HorizontalAlignment="Stretch"
+                VerticalAlignment="Stretch">
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="*"/>
+                    <ColumnDefinition Width="auto"/>
+                    <ColumnDefinition Width="auto"/>
+                </Grid.ColumnDefinitions>
+                <TextBox
+                    Grid.Column="0"
+                    PlaceholderText="Search for repositories..."
+                    HorizontalAlignment="Stretch"
+                    x:Name="SearchBox"
+                    Text="{x:Bind ViewModel.SearchTerm, Mode=TwoWay}"/>
+                <Button
+                    Grid.Column="1"
+                    Margin="5 0"
+                    x:Name="SearchBoxClearButton"
+                    HorizontalAlignment="Center"
+                    Style="{StaticResource ButtonRevealStyle}"
+                    IsEnabled="{x:Bind ViewModel.SearchTerm, Converter={StaticResource StringToEnabledConverter}, Mode=OneWay}"
+                    Command="{x:Bind ViewModel.ClearCommand}">
+                    Clear
+                </Button>
+                <Button
+                    Grid.Column="2"
+                    x:Name="SearchBoxSubmitButton"
+                    HorizontalAlignment="Center"
+                    Style="{StaticResource ButtonRevealStyle}"
+                    Command="{x:Bind ViewModel.SearchCommand}">
+                    Search
+                </Button>
+            </Grid>
+            <muxc:ProgressRing
+                Grid.Row="1"
+                Width="50"
+                Height="50"
+                IsActive="{x:Bind ViewModel.Loading, Mode=OneWay}"
+                Visibility="{x:Bind ViewModel.Loading, Converter={StaticResource BoolToVisibilityConverter}, Mode=OneWay}"
+                HorizontalAlignment="Center"
+                VerticalAlignment="Center"/>
+            <TextBlock
+                Grid.Row="1"
+                Visibility="{x:Bind ViewModel.IsEmpty, Converter={StaticResource BoolToVisibilityConverter}, Mode=OneWay}"
+                Text="No Repository Available"
+                HorizontalAlignment="Center"
+                VerticalAlignment="Center"/>
+            <ScrollViewer
+                Visibility="{x:Bind ViewModel.IsEmpty, Converter={StaticResource BoolToVisibilityReverseConverter}, Mode=OneWay}"
+                Grid.Row="1">
+                <interactivity:Interaction.Behaviors>
+                    <core:EventTriggerBehavior EventName="Loaded">
+                        <core:InvokeCommandAction Command="{x:Bind ViewModel.LoadCommand}"/>
+                    </core:EventTriggerBehavior>
+                </interactivity:Interaction.Behaviors>
+                <muxc:ItemsRepeater
+                    ItemsSource="{x:Bind ViewModel.Repos, Mode=OneWay}"
+                    ItemTemplate="{StaticResource RepoListItem}"/>
+            </ScrollViewer>
+        </Grid>
+    </Grid>
+</Page>

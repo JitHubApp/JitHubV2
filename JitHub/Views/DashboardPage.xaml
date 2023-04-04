@@ -1,0 +1,24 @@
+﻿<Page
+    x:Class="JitHub.Views.DashboardPage"
+    xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+    xmlns:local="using:JitHub.Views"
+    xmlns:viewmodels="using:JitHub.ViewModels"
+    xmlns:uc="using:JitHub.Views.Controls"
+    xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+    xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+    mc:Ignorable="d"
+    Background="Transparent">
+    <Page.DataContext>
+        <viewmodels:DashboardViewModel x:Name="ViewModel"/>
+    </Page.DataContext>
+    <Grid
+        Padding="12">
+        <Grid.ColumnDefinitions>
+            <ColumnDefinition Width="320"/>
+            <ColumnDefinition Width="*"/>
+        </Grid.ColumnDefinitions>
+        <uc:RepoSideBar Grid.Column="0" Margin="0 12 12 0"/>
+        <uc:ActivityList Grid.Column="1"/>
+    </Grid>
+</Page>

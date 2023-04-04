@@ -1,0 +1,171 @@
+﻿<Page
+    x:Class="JitHub.Views.Pages.RepoDetailPage"
+    xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+    xmlns:local="using:JitHub.Views.Pages"
+    xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+    xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+    mc:Ignorable="d"
+    xmlns:repoviewmodels="using:JitHub.ViewModels.RepositoryViewModels"
+    xmlns:animations="using:Microsoft.Toolkit.Uwp.UI.Animations"
+    xmlns:muxc="using:Microsoft.UI.Xaml.Controls"
+    Background="Transparent">
+    <Page.DataContext>
+        <repoviewmodels:RepoDetailViewModel x:Name="ViewModel"/>
+    </Page.DataContext>
+    <Grid>
+        <Grid.RowDefinitions>
+            <RowDefinition Height="auto"/>
+            <RowDefinition Height="*"/>
+        </Grid.RowDefinitions>
+        <muxc:NavigationView
+            Style="{StaticResource PullRequestNavigationViewStyle}"
+            IsBackButtonVisible="Collapsed"
+            BackRequested="{x:Bind ViewModel.RepoDetailNav_BackRequested}"
+            ItemInvoked="{x:Bind ViewModel.RepoDetailNav_ItemInvoked}"
+            MenuItemsSource="{x:Bind ViewModel.MenuItems, Mode=OneWay}"
+            SelectedItem="{x:Bind ViewModel.SelectedItem, Mode=TwoWay}"
+            IsSettingsVisible="False"
+            Grid.Row="1"
+            x:Name="RepoDetailNav"
+            PaneDisplayMode="Top">
+            <muxc:NavigationView.PaneCustomContent>
+                <Grid
+                    Padding="0 0 16 0"
+                    HorizontalAlignment="Stretch">
+                    <StackPanel
+                        Orientation="Horizontal"
+                        Spacing="8"
+                        VerticalAlignment="Center"
+                        HorizontalAlignment="Right">
+                        <muxc:ProgressRing
+                            VerticalAlignment="Center"
+                            IsActive="True"
+                            Height="16"
+                            Width="16"
+                            Visibility="{x:Bind ViewModel.Loading, Converter={StaticResource BoolToVisibilityConverter}, Mode=OneWay}"/>
+                        <ComboBox
+                            Visibility="{x:Bind ViewModel.BranchVisible, Mode=OneWay}"
+                            MinWidth="150"
+                            ItemsSource="{x:Bind ViewModel.Branches, Mode=OneWay}"
+                            DisplayMemberPath="Name"
+                            SelectionChanged="{x:Bind ViewModel.BranchSelectionChanged, Mode=OneWay}"
+                            SelectedItem="{x:Bind ViewModel.SelectedBranch, Mode=OneWay}">
+                            <animations:Implicit.ShowAnimations>
+                                <animations:OpacityAnimation
+                                    Duration="0:0:0.5"
+                                    From="0"
+                                    To="1.0"/>
+                                <animations:TranslationAnimation
+                                    EasingType="Cubic"
+                                    Duration="0:0:0.5"
+                                    From="96, 0, 0"
+                                    To="0"/>
+                            </animations:Implicit.ShowAnimations>
+                            <animations:Implicit.HideAnimations>
+                                <animations:OpacityAnimation
+                                    Duration="0:0:0.5"
+                                    From="1.0"
+                                    To="0"/>
+                                <animations:TranslationAnimation
+                                    EasingType="Cubic"
+                                    Duration="0:0:0.5"
+                                    From="0"
+                                    To="96, 0, 0"/>
+                            </animations:Implicit.HideAnimations>
+                        </ComboBox>
+                        <Button
+                            Padding="8 2"
+                            Command="{x:Bind ViewModel.ToggleWatchCommand, Mode=OneWay}">
+                            <Grid>
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="auto"/>
+                                    <ColumnDefinition Width="auto"/>
+                                </Grid.ColumnDefinitions>
+                                <Grid
+                                    Grid.Column="0">
+                                    <FontIcon
+                                        FontSize="16"
+                                        FontFamily="{StaticResource SegoeFluentIcons}"
+                                        Glyph="&#xe7b3;"/>
+                                    <FontIcon
+                                        Visibility="{x:Bind ViewModel.IsWatching, Converter={StaticResource BoolToVisibilityConverter}, Mode=OneWay}"
+                                        FontSize="16"
+                                        FontFamily="{StaticResource SegoeFluentIcons}"
+                                        Foreground="{ThemeResource PrivateRepoBrush}"
+                                        Glyph="&#xe7b3;"/>
+                                </Grid>
+                                <TextBlock
+                                    Grid.Column="1"
+                                    Margin="8 0 0 2"
+                                    FontSize="16"
+                                    VerticalAlignment="Center"
+                                    Text="{x:Bind ViewModel.Model.SubscribersCount, Converter={StaticResource NumberToKizedStringConverter}, Mode=OneWay}"/>
+                            </Grid>
+                        </Button>
+                        <Button
+                            Padding="8 2"
+                            Command="{x:Bind ViewModel.ToggleStarCommand, Mode=OneWay}">
+                            <Grid>
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="auto"/>
+                                    <ColumnDefinition Width="auto"/>
+                                </Grid.ColumnDefinitions>
+                                <Grid
+                                    Grid.Column="0">
+                                    <FontIcon
+                                        FontSize="16"
+                                        FontFamily="{StaticResource SegoeFluentIcons}"
+                                        Glyph="&#xe734;"/>
+                                    <FontIcon
+                                        Visibility="{x:Bind ViewModel.IsStarred, Converter={StaticResource BoolToVisibilityConverter}, Mode=OneWay}"
+                                        FontSize="16"
+                                        FontFamily="{StaticResource SegoeFluentIcons}"
+                                        Foreground="{ThemeResource PrivateRepoBrush}"
+                                        Glyph="&#xe735;"/>
+                                </Grid>
+                                <TextBlock
+                                    Grid.Column="1"
+                                    Margin="8 0 0 2"
+                                    FontSize="16"
+                                    VerticalAlignment="Center"
+                                    Text="{x:Bind ViewModel.Model.StargazersCount, Converter={StaticResource NumberToKizedStringConverter}, Mode=OneWay}"/>
+                            </Grid>
+                        </Button>
+                        <Button
+                            Padding="8 2"
+                            Command="{x:Bind ViewModel.ForkCommand, Mode=OneWay}">
+                            <Grid>
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="auto"/>
+                                    <ColumnDefinition Width="auto"/>
+                                </Grid.ColumnDefinitions>
+                                <Grid
+                                    Grid.Column="0">
+                                    <FontIcon
+                                        FontSize="16"
+                                        FontFamily="{StaticResource SegoeFluentIcons}"
+                                        Glyph="&#xF003;">
+                                        <FontIcon.RenderTransform>
+                                            <TransformGroup>
+                                                <RotateTransform Angle="270"/>
+                                                <TranslateTransform Y="20"/>
+                                            </TransformGroup>
+                                        </FontIcon.RenderTransform>
+                                    </FontIcon>
+                                </Grid>
+                                <TextBlock
+                                    Grid.Column="1"
+                                    Margin="8 0 0 2"
+                                    FontSize="16"
+                                    VerticalAlignment="Center"
+                                    Text="{x:Bind ViewModel.Model.ForksCount, Converter={StaticResource NumberToKizedStringConverter}, Mode=OneWay}"/>
+                            </Grid>
+                        </Button>
+                    </StackPanel>
+                </Grid>
+            </muxc:NavigationView.PaneCustomContent>
+            <Frame x:Name="RepoDetailFrame"/>
+        </muxc:NavigationView>
+    </Grid>
+</Page>

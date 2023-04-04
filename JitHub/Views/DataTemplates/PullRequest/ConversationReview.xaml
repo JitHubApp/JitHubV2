@@ -1,0 +1,14 @@
+﻿<ResourceDictionary
+    xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation" 
+    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+    xmlns:conversation="using:JitHub.Views.Controls.PullRequest.Conversation">
+    <DataTemplate
+        x:Name="PRConversationReviewDataTemplate"
+        x:Key="PRConversationReviewDataTemplate">
+        <!--For multiple blocks of comments in a single review-->
+        <Grid>
+            <conversation:ReviewBlock
+                ViewModel="{Binding Item, Converter={StaticResource ReviewNodeToViewModelConverter}, Mode=OneWay}"/>
+        </Grid>
+    </DataTemplate>
+</ResourceDictionary>

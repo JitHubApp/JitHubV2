@@ -1,0 +1,68 @@
+﻿<ResourceDictionary
+    xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation" 
+    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+    xmlns:muxc="using:Microsoft.UI.Xaml.Controls"
+    xmlns:local="using:JitHub.Views.DataTemplates"
+    xmlns:controls="using:Microsoft.Toolkit.Uwp.UI.Controls">
+    <DataTemplate x:Key="IssueListItem">
+
+        <Grid
+            Padding="4">
+            <StackPanel
+                Spacing="4"
+                Margin="4 0 0 0">
+                <Grid>
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="auto"/>
+                        <ColumnDefinition Width="*"/>
+                    </Grid.ColumnDefinitions>
+                    <Rectangle
+                        Grid.Column="0"
+                        Width="10"
+                        Height="10"
+                        RadiusY="6"
+                        RadiusX="6"
+                        VerticalAlignment="Center"
+                        Margin="0 0 4 0"
+                        Fill="{Binding Model.State, Converter={StaticResource OpenStatusToColorConverter}, Mode=OneWay}"/>
+
+                    <TextBlock
+                        Grid.Column="1"
+                        FontSize="16"
+                        Padding="0 0 0 4"
+                        FontWeight="SemiBold"
+                        TextWrapping="Wrap"
+                        VerticalAlignment="Center"
+                        Text="{Binding Model.Title, Mode=OneWay}"/>
+
+                </Grid>
+
+                <muxc:ItemsRepeater
+                    ItemsSource="{Binding Model.Labels, Converter={StaticResource ListToShorterListConverter}, ConverterParameter='3', Mode=OneWay}"
+                    ItemTemplate="{StaticResource IssueLabel}">
+                    <muxc:ItemsRepeater.Layout>
+                        <muxc:StackLayout
+                            Orientation="Horizontal"
+                            Spacing="4"/>
+                    </muxc:ItemsRepeater.Layout>
+                </muxc:ItemsRepeater>
+                <Grid
+                    Grid.Row="1">
+                    <StackPanel
+                        Spacing="5"
+                        Orientation="Horizontal">
+                        <TextBlock
+                            Foreground="Gray">
+                            <Run
+                                Text="{Binding Model.Number, Converter={StaticResource NumberToHashTaggedStringConverter}, Mode=OneWay}"/>
+                            <Run
+                                Text="{Binding Model.CreatedAt, Converter={StaticResource OpenDateToStringConverter}, Mode=OneWay}"/>
+                            <Run
+                                Text="{Binding Model.User, Converter={StaticResource UserToDiscriptionStringConverter}, Mode=OneWay}"/>
+                        </TextBlock>
+                    </StackPanel>
+                </Grid>
+            </StackPanel>
+        </Grid>
+    </DataTemplate>
+</ResourceDictionary>

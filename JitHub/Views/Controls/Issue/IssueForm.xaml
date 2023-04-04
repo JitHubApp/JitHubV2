@@ -1,0 +1,44 @@
+﻿<UserControl
+    x:Class="JitHub.Views.Controls.Issue.IssueForm"
+    xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+    xmlns:local="using:JitHub.Views.Controls.Issue"
+    xmlns:common="using:JitHub.Views.Controls.Common"
+    xmlns:issueviewmodels="using:JitHub.ViewModels.IssueViewModels"
+    xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+    xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+    mc:Ignorable="d"
+    d:DesignHeight="300"
+    d:DesignWidth="400">
+    <UserControl.DataContext>
+        <issueviewmodels:RepoIssuePostingViewModel x:Name="ViewModel"/>
+    </UserControl.DataContext>
+
+    <Grid>
+        <StackPanel
+             Spacing="8">
+            <TextBox
+                PlaceholderText="Title"
+                Margin="16 0"
+                Text="{x:Bind ViewModel.Title, Mode=TwoWay}"/>
+            <common:MarkdownForm
+                FormPadding="16 0"
+                Text="{x:Bind ViewModel.Text, Mode=TwoWay}">
+                <common:MarkdownForm.ActionContent>
+                    <Grid
+                        Background="{ThemeResource AppSolidSecondaryRush}"
+                        Height="76"
+                        Padding="16"
+                        HorizontalAlignment="Stretch">
+                        <Button
+                            Click="{x:Bind ViewModel.OnSubmit, Mode=OneWay}"
+                            Style="{ThemeResource AccentButtonStyle}"
+                            HorizontalAlignment="Right"
+                            VerticalContentAlignment="Center"
+                            Content="Post Issue"/>
+                    </Grid>
+                </common:MarkdownForm.ActionContent>
+            </common:MarkdownForm>
+        </StackPanel>
+    </Grid>
+</UserControl>

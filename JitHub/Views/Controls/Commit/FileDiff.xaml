@@ -1,0 +1,26 @@
+﻿<UserControl
+    x:Class="JitHub.Views.Controls.Commit.FileDiff"
+    xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+    xmlns:local="using:JitHub.Views.Controls.Commit"
+    xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+    xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+    xmlns:common="using:JitHub.Views.Controls.Common"
+    xmlns:pullrequest="using:JitHub.Views.Controls.PullRequest"
+    mc:Ignorable="d"
+    d:DesignHeight="300"
+    d:DesignWidth="400">
+
+    <Grid>
+        <common:CommentBlock
+            Margin="0 10 0 0">
+            <common:CommentBlock.HeaderContent>
+                <TextBlock Text="{x:Bind ViewModel.File.Filename, Mode=OneWay}"/>
+            </common:CommentBlock.HeaderContent>
+            <common:CommentBlock.BodyContent>
+                <pullrequest:DiffTextBlock
+                    Patch="{x:Bind ViewModel.File.Patch, Mode=OneWay}"/>
+            </common:CommentBlock.BodyContent>
+        </common:CommentBlock>
+    </Grid>
+</UserControl>

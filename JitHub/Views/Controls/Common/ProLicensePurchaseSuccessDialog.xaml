@@ -1,0 +1,51 @@
+﻿<UserControl
+    x:Class="JitHub.Views.Controls.Common.ProLicensePurchaseSuccessDialog"
+    xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+    xmlns:local="using:JitHub.Views.Controls.Common"
+    xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+    xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+    xmlns:muxc="using:Microsoft.UI.Xaml.Controls"
+    xmlns:animatedvisuals="using:AnimatedVisuals"
+    mc:Ignorable="d"
+    d:DesignHeight="300"
+    d:DesignWidth="400">
+
+    <Grid>
+        <Grid.RowDefinitions>
+            <RowDefinition Height="auto"/>
+            <RowDefinition Height="auto"/>
+        </Grid.RowDefinitions>
+        <Grid
+            Grid.Row="0"
+            Padding="16"
+            Background="{ThemeResource AppSolidPrimaryRush}">
+            <Grid.ColumnDefinitions>
+                <ColumnDefinition Width="auto"/>
+                <ColumnDefinition Width="*"/>
+            </Grid.ColumnDefinitions>
+            <muxc:AnimatedVisualPlayer
+                Grid.Column="0"
+                x:Name="Player"
+                AutoPlay="True"
+                Width="100">
+                <animatedvisuals:SuccessAnimation />
+            </muxc:AnimatedVisualPlayer>
+            <TextBlock
+                Grid.Column="1"
+                VerticalAlignment="Center">
+                <Run Text="Thank you for purchasing JitHub Pro. You have successfully unlocked pro-features!"/>
+            </TextBlock>
+        </Grid>
+        <Grid
+            Grid.Row="1"
+            Padding="16 32"
+            Background="{ThemeResource AppSolidSecondaryRush}">
+            <Button
+                HorizontalAlignment="Right"
+                Style="{ThemeResource AccentButtonStyle}"
+                Command="{x:Bind ConfirmCommand, Mode=OneWay}"
+                Content="Yeah!"/>
+        </Grid>
+    </Grid>
+</UserControl>

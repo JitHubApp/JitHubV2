@@ -1,0 +1,59 @@
+﻿<Page
+    x:Class="JitHub.Views.Pages.PullRequestCommitsPage"
+    xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+    xmlns:local="using:JitHub.Views.Pages"
+    xmlns:interactivity="using:Microsoft.Xaml.Interactivity"
+    xmlns:core="using:Microsoft.Xaml.Interactions.Core"
+    xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+    xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+    xmlns:prviewmodels="using:JitHub.ViewModels.PullRequestViewModels"
+    xmlns:controls="using:Microsoft.Toolkit.Uwp.UI.Controls"
+    xmlns:commit="using:JitHub.Views.Controls.Commit"
+    mc:Ignorable="d"
+    Background="Transparent">
+    <Page.DataContext>
+        <prviewmodels:PullRequestCommitsViewModel x:Name="ViewModel"/>
+    </Page.DataContext>
+    <Grid
+        Background="Transparent">
+        <interactivity:Interaction.Behaviors>
+            <core:EventTriggerBehavior EventName="Loaded">
+                <core:InvokeCommandAction Command="{x:Bind ViewModel.LoadCommand}"/>
+            </core:EventTriggerBehavior>
+        </interactivity:Interaction.Behaviors>
+        <controls:ListDetailsView
+            Background="Transparent"
+            ItemsSource="{x:Bind ViewModel.Commits, Mode=OneWay}"
+            Visibility="{x:Bind ViewModel.Loading, Converter={StaticResource BoolToVisibilityReverseConverter}, Mode=OneWay}"
+            x:Name="PullRequestCommitListDetail"
+            BackButtonBehavior="Automatic"
+            CompactModeThresholdWidth="1080"
+            NoSelectionContent="Select a commit to view"
+            SelectionChanged="{x:Bind ViewModel.SelectionChanged, Mode=OneWay}">
+            <controls:ListDetailsView.ItemTemplate>
+                <DataTemplate>
+                    <Grid>
+                        <commit:CommitItem
+                            ViewModel="{Binding Item, Mode=OneWay}"
+                            ShowHoverMenu="True"/>
+                    </Grid>
+                </DataTemplate>
+            </controls:ListDetailsView.ItemTemplate>
+            <controls:ListDetailsView.NoSelectionContentTemplate>
+                <DataTemplate>
+                    <TextBlock Text="{Binding}" HorizontalAlignment="Center" VerticalAlignment="Center"/>
+                </DataTemplate>
+            </controls:ListDetailsView.NoSelectionContentTemplate>
+            <controls:ListDetailsView.DetailsTemplate>
+                <DataTemplate>
+                    <Grid
+                        Padding="5">
+                        <commit:CommitDetail
+                            ViewModel="{Binding Path=SelectedItem, ElementName=PullRequestCommitListDetail, Converter={StaticResource CommandableCommitToDetailViewModelConverter}, Mode=OneWay}"/>
+                    </Grid>
+                </DataTemplate>
+            </controls:ListDetailsView.DetailsTemplate>
+        </controls:ListDetailsView>
+    </Grid>
+</Page>

@@ -1,0 +1,62 @@
+﻿<UserControl
+    x:Class="JitHub.Views.Controls.Repo.RepoForm"
+    xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+    xmlns:local="using:JitHub.Views.Controls.Repo"
+    xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+    xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+    xmlns:repositoryviewmodels="using:JitHub.ViewModels.RepositoryViewModels"
+    mc:Ignorable="d"
+    d:DesignHeight="300"
+    d:DesignWidth="400">
+    <UserControl.DataContext>
+        <repositoryviewmodels:RepoFormViewModel x:Name="ViewModel"/>
+    </UserControl.DataContext>
+    <Grid>
+        <StackPanel
+            Margin="16 0 16 16"
+            Spacing="8"
+            HorizontalAlignment="Stretch">
+            <TextBlock
+                Text="Name"
+                FontWeight="SemiBold"/>
+            <TextBox
+                Text="{x:Bind ViewModel.Name, Mode=TwoWay}"
+                TextChanged="{x:Bind ViewModel.OnNameChange, Mode=OneWay}"/>
+            <TextBlock
+                Text="{x:Bind ViewModel.Error, Mode=OneWay}"
+                Foreground="Red"/>
+            <TextBlock
+                Text="Description"
+                FontWeight="SemiBold"/>
+            <TextBox
+                Text="{x:Bind ViewModel.Description, Mode=TwoWay}"/>
+            <CheckBox
+                Content="Initialize Readme"
+                IsChecked="{x:Bind ViewModel.CreateReadme, Mode=TwoWay}"/>
+            <TextBlock
+                Text="License Template"
+                FontWeight="SemiBold"/>
+            <ComboBox
+                ItemsSource="{x:Bind ViewModel.Licenses, Mode=OneWay}"
+                SelectedItem="{x:Bind ViewModel.SelectedLicense, Mode=TwoWay}">
+                <ComboBox.ItemTemplate>
+                    <DataTemplate>
+                        <TextBlock Text="{Binding DiaplayName, Mode=OneWay}"/>
+                    </DataTemplate>
+                </ComboBox.ItemTemplate>
+            </ComboBox>
+            <TextBlock
+                Text="Visibility"
+                FontWeight="SemiBold"/>
+            <ComboBox
+                ItemsSource="{x:Bind ViewModel.Visibilities, Mode=OneWay}"
+                SelectedItem="{x:Bind ViewModel.SelectedVisibility, Mode=TwoWay}"/>
+            <Button
+                HorizontalAlignment="Right"
+                Content="Create"
+                Style="{ThemeResource AccentButtonStyle}"
+                Click="{x:Bind ViewModel.CreateNewRepo, Mode=OneWay}"/>
+        </StackPanel>
+    </Grid>
+</UserControl>

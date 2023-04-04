@@ -1,0 +1,131 @@
+﻿<ResourceDictionary
+    xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation" 
+    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+    xmlns:common="using:JitHub.Views.Controls.Common"
+    xmlns:animations="using:Microsoft.Toolkit.Uwp.UI.Animations"
+    xmlns:models="using:JitHub.Models">
+    <DataTemplate x:Key="ForkRepo">
+        <Button
+            HorizontalAlignment="Stretch"
+            HorizontalContentAlignment="Stretch"
+            Background="Transparent"
+            BorderThickness="0"
+            Margin="0 0 4 0"
+            Command="{Binding DetailNavigationCommand}">
+            <animations:Implicit.ShowAnimations>
+                <animations:TranslationAnimation EasingType="Cubic" Duration="0:0:0.5" From="-150, 0, 0" To="0"/>
+            </animations:Implicit.ShowAnimations>
+            <Grid>
+                <StackPanel
+                    Spacing="4"
+                    Orientation="Horizontal">
+                    <FontIcon
+                        FontSize="16"
+                        FontFamily="{StaticResource SegoeFluentIcons}"
+                        VerticalAlignment="Center"
+                        Glyph="&#xF003;">
+                        <FontIcon.RenderTransform>
+                            <TransformGroup>
+                                <RotateTransform Angle="270"/>
+                                <TranslateTransform Y="16"/>
+                            </TransformGroup>
+                        </FontIcon.RenderTransform>
+                    </FontIcon>
+                    <TextBlock
+                        VerticalAlignment="Center"
+                        Text="{Binding Repository.Name}"/>
+                </StackPanel>
+            </Grid>
+        </Button>
+    </DataTemplate>
+    <DataTemplate x:Key="ForkRepoSearchResult">
+        <Button
+            HorizontalAlignment="Stretch"
+            HorizontalContentAlignment="Left"
+            Command="{Binding DetailNavigationCommand, Mode=OneWay}">
+            <Grid>
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="auto"/>
+                    <ColumnDefinition Width="*"/>
+                </Grid.ColumnDefinitions>
+                <FontIcon
+                    Grid.Column="0"
+                    FontSize="16"
+                    VerticalAlignment="Top"
+                    Margin="0 5 5 0"
+                    FontFamily="{StaticResource SegoeFluentIcons}"
+                    Glyph="&#xF003;">
+                    <FontIcon.RenderTransform>
+                        <TransformGroup>
+                            <RotateTransform Angle="270"/>
+                            <TranslateTransform Y="16"/>
+                        </TransformGroup>
+                    </FontIcon.RenderTransform>
+                </FontIcon>
+                <StackPanel
+                    Grid.Column="1">
+                    <TextBlock Text="{Binding Repository.FullName, Mode=OneWay}"/>
+                    <TextBlock
+                        Text="{Binding Repository.Description, Mode=OneWay}"
+                        TextWrapping="Wrap"/>
+                    <StackPanel
+                        Orientation="Horizontal">
+                        <FontIcon
+                            FontSize="16"
+                            FontFamily="{StaticResource SegoeFluentIcons}"
+                            Glyph="&#xE735;"/>
+                        <TextBlock Text="{Binding Repository.StargazersCount, Converter={StaticResource NumberToKizedStringConverter}, Mode=OneWay}"/>
+                    </StackPanel>
+                </StackPanel>
+            </Grid>
+        </Button>
+    </DataTemplate>
+    <DataTemplate
+        x:Key="SelectableForkRepo">
+        <Grid
+            Style="{ThemeResource Container}">
+            <CheckBox
+                IsChecked="{Binding Selected, Mode=TwoWay}">
+                <Grid
+                    Margin="16 0 0 0">
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="auto"/>
+                        <ColumnDefinition Width="*"/>
+                    </Grid.ColumnDefinitions>
+                    <FontIcon
+                        Grid.Column="0"
+                        FontSize="16"
+                        VerticalAlignment="Top"
+                        Margin="0 5 5 0"
+                        FontFamily="{StaticResource SegoeFluentIcons}"
+                        Glyph="&#xF003;">
+                        <FontIcon.RenderTransform>
+                            <TransformGroup>
+                                <RotateTransform Angle="270"/>
+                                <TranslateTransform Y="16"/>
+                            </TransformGroup>
+                        </FontIcon.RenderTransform>
+                    </FontIcon>
+                    <StackPanel
+                        Grid.Column="1">
+                        <TextBlock Text="{Binding Repo.Repository.FullName, Mode=OneWay}"/>
+                        <TextBlock
+                            Text="{Binding Repo.Repository.Description, Mode=OneWay}"
+                            TextWrapping="Wrap"/>
+                        <StackPanel
+                            Orientation="Horizontal"
+                            Spacing="4">
+                            <FontIcon
+                                FontSize="16"
+                                FontFamily="{StaticResource SegoeFluentIcons}"
+                                Glyph="&#xE735;"/>
+                            <TextBlock
+                                VerticalAlignment="Center"
+                                Text="{Binding Repo.Repository.StargazersCount, Converter={StaticResource NumberToKizedStringConverter}, Mode=OneWay}"/>
+                        </StackPanel>
+                    </StackPanel>
+                </Grid>
+            </CheckBox>
+        </Grid>
+    </DataTemplate>
+</ResourceDictionary>

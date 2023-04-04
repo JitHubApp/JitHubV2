@@ -1,0 +1,29 @@
+﻿<UserControl
+    x:Class="JitHub.Views.Controls.Common.Avatar"
+    xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+    xmlns:local="using:JitHub.Views.Controls.Common"
+    xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+    xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+    mc:Ignorable="d"
+    d:DesignHeight="300"
+    d:DesignWidth="400">
+
+    <StackPanel
+        Orientation="Horizontal"
+        ToolTipService.ToolTip="{x:Bind Login, Mode=OneWay}">
+        <Grid
+            Width="{x:Bind Size, Converter={StaticResource SizeToLengthConverter}, Mode=OneWay}"
+            Height="{x:Bind Size, Converter={StaticResource SizeToLengthConverter}, Mode=OneWay}"
+            CornerRadius="50">
+            <Image x:Name="ProfilePic"/>
+        </Grid>
+        <TextBlock
+            Margin="10 0 0 0"
+            Visibility="{x:Bind ShowLogin, Converter={StaticResource BoolToVisibilityConverter}, Mode=OneWay}"
+            VerticalAlignment="Center"
+            FontWeight="SemiBold"
+            Text="{x:Bind Login, Mode=OneWay}"/>
+    </StackPanel>
+    
+</UserControl>

@@ -1,0 +1,30 @@
+﻿<UserControl
+    x:Class="JitHub.Views.Controls.Common.EmojiButton"
+    xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+    xmlns:local="using:JitHub.Views.Controls.Common"
+    xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+    xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+    mc:Ignorable="d"
+    d:DesignHeight="300"
+    d:DesignWidth="400">
+
+    <Button
+        Padding="{x:Bind GetPadding(ShowReactionCount), Mode=OneWay}"
+        Command="{x:Bind ReactionCommand, Mode=OneWay}"
+        Background="{x:Bind Voted, Converter={StaticResource BoolToAccentColorConverter}, Mode=OneWay}"
+        CommandParameter="{x:Bind Reaction, Mode=OneWay}">
+        <StackPanel
+            Orientation="Horizontal">
+            <TextBlock
+                HorizontalAlignment="Center"
+                VerticalAlignment="Center"
+                Text="{x:Bind Reaction, Converter={StaticResource ReactionTypeToEmojiConverter}, Mode=OneWay}"/>
+            <TextBlock
+                HorizontalAlignment="Center"
+                VerticalAlignment="Center"
+                Visibility="{x:Bind ShowReactionCount, Converter={StaticResource BoolToVisibilityConverter}, Mode=OneWay}"
+                Text="{x:Bind ReactionCount, Mode=OneWay}"/>
+        </StackPanel>
+    </Button>
+</UserControl>

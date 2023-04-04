@@ -1,0 +1,57 @@
+﻿<UserControl
+    x:Class="JitHub.Views.Controls.Common.GroupFilters"
+    xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+    xmlns:local="using:JitHub.Views.Controls.Common"
+    xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+    xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+    xmlns:muxc="using:Microsoft.UI.Xaml.Controls"
+    xmlns:helpers="using:JitHub.Helpers"
+    mc:Ignorable="d"
+    d:DesignHeight="300"
+    d:DesignWidth="400"
+    Background="Transparent">
+    <UserControl.Resources>
+        <helpers:FilterSelectionTemplateSelector
+            x:Key="FilterSelectionTemplateSelector"
+            TextTemplate="{StaticResource TextFilter}"
+            DropdownTemplate="{StaticResource DropdownFilter}"
+            DateTemplate="{StaticResource DateFilter}"/>
+    </UserControl.Resources>
+    <Grid>
+        <Grid.ColumnDefinitions>
+            <ColumnDefinition Width="*"/>
+            <ColumnDefinition Width="auto"/>
+            <ColumnDefinition Width="auto"/>
+        </Grid.ColumnDefinitions>
+        <ScrollViewer
+            Grid.Column="0"
+            HorizontalScrollBarVisibility="Auto"
+            VerticalScrollBarVisibility="Disabled"
+            HorizontalScrollMode="Enabled"
+            VerticalScrollMode="Disabled">
+            <muxc:ItemsRepeater
+                ItemsSource="{x:Bind Filters.Instance, Mode=OneWay}"
+                Margin="0 0 0 10"
+                ItemTemplate="{StaticResource FilterSelectionTemplateSelector}">
+                <muxc:ItemsRepeater.Layout>
+                    <muxc:StackLayout Orientation="Horizontal" Spacing="8"/>
+                </muxc:ItemsRepeater.Layout>
+            </muxc:ItemsRepeater>
+        </ScrollViewer>
+        <Button
+            Grid.Column="1"
+            Margin="10 0 0 10"
+            VerticalAlignment="Bottom"
+            Click="OnClearButtonClick">
+            Clear
+        </Button>
+        <Button
+            Grid.Column="2"
+            Margin="10 0 0 10"
+            VerticalAlignment="Bottom"
+            Click="OnFilterButtonClick">
+            Filter
+        </Button>
+    </Grid>
+</UserControl>

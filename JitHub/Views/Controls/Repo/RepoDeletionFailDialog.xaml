@@ -1,0 +1,70 @@
+﻿<UserControl
+    x:Class="JitHub.Views.Controls.Repo.RepoDeletionFailDialog"
+    xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+    xmlns:local="using:JitHub.Views.Controls.Repo"
+    xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+    xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+    xmlns:muxc="using:Microsoft.UI.Xaml.Controls"
+    mc:Ignorable="d"
+    d:DesignHeight="300"
+    d:DesignWidth="400">
+
+    <Grid>
+        <Grid.RowDefinitions>
+            <RowDefinition Height="auto"/>
+            <RowDefinition Height="auto"/>
+        </Grid.RowDefinitions>
+        <Grid
+            Grid.Row="0"
+            Padding="16 32">
+            <StackPanel
+                HorizontalAlignment="Left"
+                VerticalAlignment="Center"
+                Spacing="8">
+                <TextBlock>
+                    <Run Text="{x:Bind FailedRepos.Count, Mode=OneWay}"/>
+                    <Run Text="Repositories failed to be deleted."/>
+                </TextBlock>
+                <muxc:Expander
+                    Header="Details"
+                    MaxWidth="400">
+                    <muxc:Expander.Content>
+                        <muxc:ItemsRepeater
+                            ItemsSource="{x:Bind FailedRepos, Mode=OneWay}">
+                            <muxc:ItemsRepeater.Layout>
+                                <muxc:StackLayout Spacing="4"/>
+                            </muxc:ItemsRepeater.Layout>
+                            <muxc:ItemsRepeater.ItemTemplate>
+                                <DataTemplate>
+                                    <TextBlock
+                                        TextWrapping="Wrap">
+                                        <Run
+                                            Text="{Binding Repo.Repository.Name, Mode=OneWay}"/>
+                                        <LineBreak/>
+                                        <Run
+                                            Text="{Binding Reason, Mode=OneWay}"/>
+                                    </TextBlock>
+                                </DataTemplate>
+                            </muxc:ItemsRepeater.ItemTemplate>
+                        </muxc:ItemsRepeater>
+                    </muxc:Expander.Content>
+                </muxc:Expander>
+            </StackPanel>
+
+        </Grid>
+        <Grid
+            Grid.Row="1"
+            Background="{ThemeResource AppSolidSecondaryRush}"
+            Padding="0 32 16 32">
+            <StackPanel
+                Orientation="Horizontal"
+                HorizontalAlignment="Right"
+                Spacing="8">
+                <Button
+                    Content="Ok"
+                    Command="{x:Bind CancelCommand, Mode=OneWay}"/>
+            </StackPanel>
+        </Grid>
+    </Grid>
+</UserControl>

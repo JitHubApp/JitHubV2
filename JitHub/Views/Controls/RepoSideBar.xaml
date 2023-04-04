@@ -1,0 +1,94 @@
+﻿<UserControl
+    x:Class="JitHub.Views.Controls.RepoSideBar"
+    xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+    xmlns:local="using:JitHub.Views"
+    xmlns:repoviewmodels="using:JitHub.ViewModels.RepositoryViewModels"
+    xmlns:interactivity="using:Microsoft.Xaml.Interactivity"
+    xmlns:core="using:Microsoft.Xaml.Interactions.Core"
+    xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+    xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+    mc:Ignorable="d"
+    xmlns:muxc="using:Microsoft.UI.Xaml.Controls"
+    xmlns:helpers="using:JitHub.Helpers"
+    xmlns:animatedvisuals="using:Microsoft.UI.Xaml.Controls.AnimatedVisuals"
+    d:DesignHeight="300"
+    d:DesignWidth="400">
+    <UserControl.DataContext>
+        <repoviewmodels:RepoSideBarViewModel x:Name="ViewModel"/>
+    </UserControl.DataContext>
+    <UserControl.Resources>
+        <helpers:RepoIconTemplateSelector
+            x:Key="SimpleRepoTemplate"
+            PublicTemplate="{StaticResource PublicRepo}"
+            PrivateTemplate="{StaticResource PrivateRepo}"
+            ForkTemplate="{StaticResource ForkRepo}"/>
+    </UserControl.Resources>
+    <Grid>
+        <Grid.RowDefinitions>
+            <RowDefinition Height="auto"/>
+            <RowDefinition Height="*"/>
+        </Grid.RowDefinitions>
+        <Grid
+            Grid.Row="0"
+            Margin="0 0 0 12">
+            <Grid.ColumnDefinitions>
+                <ColumnDefinition Width="*"/>
+                <ColumnDefinition Width="auto"/>
+                <ColumnDefinition Width="auto"/>
+            </Grid.ColumnDefinitions>
+            <TextBlock
+                Grid.Column="0"
+                FontSize="20"
+                Margin="8 0 0 0"
+                Text="Repositories"/>
+            <Button
+                Grid.Column="1"
+                Background="Transparent"
+                Height="32"
+                BorderThickness="0"
+                Click="{x:Bind ViewModel.OnManageRepo, Mode=OneWay}">
+                <muxc:AnimatedIcon x:Name='ManageRepoIcon'>
+                    <muxc:AnimatedIcon.Source>
+                        <animatedvisuals:AnimatedSettingsVisualSource/>
+                    </muxc:AnimatedIcon.Source>
+                    <muxc:AnimatedIcon.FallbackIconSource>
+                        <muxc:SymbolIconSource Symbol='Setting'/>
+                    </muxc:AnimatedIcon.FallbackIconSource>
+                </muxc:AnimatedIcon>
+            </Button>
+            <Button
+                Grid.Column="2"
+                Margin="8 0 0 0"
+                Content="New"
+                Padding="8 2"
+                Click="{x:Bind ViewModel.OnNewRepo, Mode=OneWay}"
+                Style="{ThemeResource AccentButtonStyle}"/>
+        </Grid>
+
+        <muxc:ProgressBar
+            Grid.Row="1"
+            IsIndeterminate="{x:Bind ViewModel.Loading, Mode=OneWay}"
+            ShowPaused="False"
+            ShowError="False"
+            Visibility="{x:Bind ViewModel.Loading, Converter={StaticResource BoolToVisibilityConverter}, Mode=OneWay}"
+            HorizontalAlignment="Stretch"
+            VerticalAlignment="Top"/>
+        <ScrollViewer
+            Grid.Row="1"
+            Visibility="{x:Bind ViewModel.IsEmpty, Converter={StaticResource BoolToVisibilityReverseConverter}, Mode=OneWay}">
+            <interactivity:Interaction.Behaviors>
+                <core:EventTriggerBehavior EventName="Loaded">
+                    <core:InvokeCommandAction Command="{x:Bind ViewModel.LoadCommand}"/>
+                </core:EventTriggerBehavior>
+            </interactivity:Interaction.Behaviors>
+            <muxc:ItemsRepeater
+                ItemsSource="{x:Bind ViewModel.Repos, Mode=OneWay}"
+                ItemTemplate="{StaticResource SimpleRepoTemplate}">
+                <muxc:ItemsRepeater.Layout>
+                    <muxc:StackLayout Spacing="4"/>
+                </muxc:ItemsRepeater.Layout>
+            </muxc:ItemsRepeater>
+        </ScrollViewer>
+    </Grid>
+</UserControl>

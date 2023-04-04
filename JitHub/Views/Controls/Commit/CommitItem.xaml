@@ -1,0 +1,173 @@
+﻿<UserControl
+    x:Class="JitHub.Views.Controls.Commit.CommitItem"
+    xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+    xmlns:local="using:JitHub.Views.Controls.Commit"
+    xmlns:muxc="using:Microsoft.UI.Xaml.Controls"
+    xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+    xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+    xmlns:common="using:JitHub.Views.Controls.Common"
+    mc:Ignorable="d"
+    PointerEntered="UserControl_PointerEntered"
+    PointerExited="UserControl_PointerExited"
+    Background="Transparent"
+    d:DesignHeight="300"
+    d:DesignWidth="400">
+
+    <UserControl.ContextFlyout>
+        <MenuFlyout>
+            <MenuFlyoutItem
+                Text="Copy"
+                Command="{x:Bind ViewModel.Copy, Mode=OneWay}"
+                CommandParameter="{x:Bind ViewModel.Sha, Mode=OneWay}">
+                <MenuFlyoutItem.Icon>
+                    <FontIcon FontFamily="{StaticResource SegoeFluentIcons}" Glyph="&#xE8C8;"/>
+                </MenuFlyoutItem.Icon>
+            </MenuFlyoutItem>
+            <MenuFlyoutItem
+                Text="Code"
+                Command="{x:Bind ViewModel.ViewCode, Mode=OneWay}"
+                CommandParameter="{x:Bind ViewModel.Sha, Mode=OneWay}">
+                <MenuFlyoutItem.Icon>
+                    <FontIcon FontFamily="{StaticResource SegoeFluentIcons}" Glyph="&#xE943;"/>
+                </MenuFlyoutItem.Icon>
+            </MenuFlyoutItem>
+        </MenuFlyout>
+    </UserControl.ContextFlyout>
+    <Grid>
+        <Grid.ColumnDefinitions>
+            <ColumnDefinition Width="8"/>
+            <ColumnDefinition Width="*"/>
+        </Grid.ColumnDefinitions>
+        <VisualStateManager.VisualStateGroups>
+            <VisualStateGroup
+                x:Name="HoverState">
+                <VisualState x:Name="HoverButtonsHidden"/>
+                <VisualState
+                    x:Name="HoverButtonsShown">
+                    <VisualState.Setters>
+                        <Setter Target="HoverButtonGroup.Visibility" Value="Visible"/>
+                    </VisualState.Setters>
+                </VisualState>
+            </VisualStateGroup>
+        </VisualStateManager.VisualStateGroups>
+        <Grid
+            Grid.Column="1"
+            CornerRadius="4"
+            Padding="4">
+            <muxc:SwipeControl>
+                <muxc:SwipeControl.LeftItems>
+                    <muxc:SwipeItems Mode="Reveal">
+                        <muxc:SwipeItem
+                            Text="Copy"
+                            Command="{x:Bind ViewModel.Copy, Mode=OneWay}"
+                            CommandParameter="{x:Bind ViewModel.Sha, Mode=OneWay}"
+                            Background="Transparent">
+                            <muxc:SwipeItem.IconSource>
+                                <muxc:FontIconSource FontFamily="{StaticResource SegoeFluentIcons}" Glyph="&#xE8C8;"/>
+                            </muxc:SwipeItem.IconSource>
+                        </muxc:SwipeItem>
+                    </muxc:SwipeItems>
+                </muxc:SwipeControl.LeftItems>
+                <muxc:SwipeControl.RightItems>
+                    <muxc:SwipeItems Mode="Reveal">
+                        <muxc:SwipeItem
+                            Text="Code"
+                            Command="{x:Bind ViewModel.ViewCode, Mode=OneWay}"
+                            CommandParameter="{x:Bind ViewModel.Sha, Mode=OneWay}"
+                            Background="Transparent">
+                            <muxc:SwipeItem.IconSource>
+                                <muxc:FontIconSource FontFamily="{StaticResource SegoeFluentIcons}" Glyph="&#xE943;"/>
+                            </muxc:SwipeItem.IconSource>
+                        </muxc:SwipeItem>
+                    </muxc:SwipeItems>
+                </muxc:SwipeControl.RightItems>
+                <Grid>
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="*"/>
+                        <ColumnDefinition Width="auto"/>
+                    </Grid.ColumnDefinitions>
+                    <Grid
+                        Grid.Column="0">
+                        <Grid.RowDefinitions>
+                            <RowDefinition Height="*"/>
+                            <RowDefinition Height="auto"/>
+                        </Grid.RowDefinitions>
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="*"/>
+                            <ColumnDefinition Width="auto"/>
+                        </Grid.ColumnDefinitions>
+                        <TextBlock
+                            Grid.Row="0"
+                            Grid.Column="0"
+                            Margin="0 0 0 10"
+                            FontSize="16"
+                            FontWeight="SemiBold"
+                            MaxLines="1"
+                            TextWrapping="NoWrap"
+                            ToolTipService.ToolTip="{x:Bind ViewModel.Message, Mode=OneWay}"
+                            Text="{x:Bind ViewModel.Message, Mode=OneWay}"/>
+                        <TextBlock
+                            Grid.Row="0"
+                            Grid.Column="1"
+                            Margin="8 0 0 0"
+                            FontSize="16"
+                            FontWeight="Normal"
+                            Foreground="{ThemeResource BorderGray}"
+                            Text="{x:Bind ViewModel.Sha, Converter={StaticResource CommitShaToShortConverter}, Mode=OneWay}"/>
+                        <StackPanel
+                            Grid.Row="1"
+                            Grid.ColumnSpan="2"
+                            Orientation="Horizontal"
+                            Spacing="4">
+                            <common:Avatar
+                                ShowLogin="True"
+                                Foreground="Gray"
+                                Url="{x:Bind ViewModel.AvatarUrl, Mode=OneWay}"
+                                Login="{x:Bind ViewModel.Login, Mode=OneWay}"/>
+                            <TextBlock
+                                VerticalAlignment="Center"
+                                Foreground="Gray"
+                                Text="{x:Bind ViewModel.Date, Converter={StaticResource TimeAgoConverter}, ConverterParameter=committed, Mode=OneWay}"/>
+                        </StackPanel>
+                    </Grid>
+                    <Grid
+                        x:Name="HoverButtonGroup"
+                        Visibility="Collapsed"
+                        Grid.Column="1">
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="auto"/>
+                            <ColumnDefinition Width="auto"/>
+                        </Grid.ColumnDefinitions>
+                        <Button
+                            Grid.Column="0"
+                            Height="40"
+                            Width="40"
+                            Padding="4"
+                            Command="{x:Bind ViewModel.Copy, Mode=OneWay}"
+                            CommandParameter="{x:Bind ViewModel.Sha, Mode=OneWay}"
+                            CornerRadius="8 0 0 8">
+                            <FontIcon
+                                FontSize="16"
+                                FontFamily="{StaticResource SegoeFluentIcons}"
+                                Glyph="&#xE8C8;"/>
+                        </Button>
+                        <Button
+                            Grid.Column="1"
+                            Height="40"
+                            Width="40"
+                            Padding="4"
+                            Command="{x:Bind ViewModel.ViewCode, Mode=OneWay}"
+                            CommandParameter="{x:Bind ViewModel.Sha, Mode=OneWay}"
+                            CornerRadius="0 8 8 0">
+                            <FontIcon
+                                FontSize="16"
+                                FontFamily="{StaticResource SegoeFluentIcons}"
+                                Glyph="&#xE943;"/>
+                        </Button>
+                    </Grid>
+                </Grid>
+            </muxc:SwipeControl>
+        </Grid>
+    </Grid>
+</UserControl>

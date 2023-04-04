@@ -1,0 +1,54 @@
+﻿<UserControl
+    x:Class="JitHub.Views.Controls.Repo.RepoDeleteConfirmationDialog"
+    xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+    xmlns:local="using:JitHub.Views.Controls.Repo"
+    xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+    xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+    mc:Ignorable="d"
+    d:DesignHeight="300"
+    d:DesignWidth="400">
+
+    <Grid>
+        <Grid.RowDefinitions>
+            <RowDefinition Height="auto"/>
+            <RowDefinition Height="auto"/>
+        </Grid.RowDefinitions>
+        <Grid
+            Grid.Row="0"
+            Padding="16 32">
+            <StackPanel
+                HorizontalAlignment="Left"
+                VerticalAlignment="Center"
+                Spacing="8">
+                <TextBlock>
+                    <Run Text="You are about to delete "/>
+                    <Run Text="{x:Bind Number, Mode=OneWay}"/>
+                    <Run Text=" repositories."/>
+                </TextBlock>
+                <CheckBox
+                    Content="Don't show this again."
+                    Unchecked="CheckBox_Checked"
+                    Checked="CheckBox_Checked"/>
+            </StackPanel>
+            
+        </Grid>
+        <Grid
+            Grid.Row="1"
+            Background="{ThemeResource AppSolidSecondaryRush}"
+            Padding="0 32 16 32">
+            <StackPanel
+                Orientation="Horizontal"
+                HorizontalAlignment="Right"
+                Spacing="8">
+                <Button
+                    Content="Confirm"
+                    Style="{ThemeResource AccentButtonStyle}"
+                    Command="{x:Bind ConfirmCommand, Mode=OneWay}"/>
+                <Button
+                    Content="Cancel"
+                    Command="{x:Bind CancelCommand, Mode=OneWay}"/>
+            </StackPanel>
+        </Grid>
+    </Grid>
+</UserControl>
