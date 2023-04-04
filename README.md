@@ -27,9 +27,9 @@
 
 ## Screenshots 📸
 
-<img src="https://github.com/nerocui/JitHub/blob/dev-feature/ScreenShots/screenshot1.png" width="640"/>
-<img src="https://github.com/nerocui/JitHub/blob/dev-feature/ScreenShots/screenshot2.png" width="640"/>
-<img src="https://github.com/nerocui/JitHub/blob/dev-feature/ScreenShots/screenshot3.png" width="640"/>
+<img src="https://github.com/nerocui/JitHubV2/blob/main/ScreenShots/screenshot1.png" width="640"/>
+<img src="https://github.com/nerocui/JitHubV2/blob/main/ScreenShots/screenshot2.png" width="640"/>
+<img src="https://github.com/nerocui/JitHubV2/blob/main/ScreenShots/screenshot3.png" width="640"/>
 
 ## Installation 💾
 
