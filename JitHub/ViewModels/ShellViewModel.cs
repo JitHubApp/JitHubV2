@@ -15,10 +15,7 @@ using System.Collections.ObjectModel;
 using System.Linq;
 using System.Threading.Tasks;
 using System.Windows.Input;
-using Windows.ApplicationModel.Store;
-using Windows.Storage;
 using Windows.System;
-using Windows.UI.Core;
 using Windows.UI.Xaml;
 using Windows.UI.Xaml.Controls;
 using Windows.ApplicationModel.Core;
@@ -26,6 +23,9 @@ using JitHub.Views.Controls.Common;
 using JitHub.Models;
 using Windows.ApplicationModel.DataTransfer;
 using Windows.UI.Xaml.Media.Animation;
+using System.Reactive.Linq;
+using Windows.Foundation;
+using Windows.UI.Core;
 
 namespace JitHub.ViewModels
 {
@@ -379,31 +379,55 @@ namespace JitHub.ViewModels
             _modalService?.Close();
         }
 
-        public void OnTextChange(AutoSuggestBox sender, AutoSuggestBoxTextChangedEventArgs args)
+        public void RegisterSearchDebounce(AutoSuggestBox autoSearchBox)
         {
-            if (args.Reason == AutoSuggestionBoxTextChangeReason.UserInput)
+            var searchObservable = Observable.FromEventPattern<TypedEventHandler<AutoSuggestBox, AutoSuggestBoxTextChangedEventArgs>, AutoSuggestBoxTextChangedEventArgs>
+            (
+                s => autoSearchBox.TextChanged += s,
+                s => autoSearchBox.TextChanged -= s
+            )
+            // throttle the sequence by 400ms
+            .Throttle(TimeSpan.FromMilliseconds(400))
+            // select the text from the event args
+            .Select(async result =>
             {
-                var term = sender.Text.Trim();
-                if (string.IsNullOrWhiteSpace(term))
+                var textBox = result.Sender as AutoSuggestBox;
+                // use the Dispatcher of the UI thread to get the text
+                string text = "";
+                await CoreApplication.MainView.CoreWindow.Dispatcher.RunAsync(CoreDispatcherPriority.Normal,
+                () =>
                 {
-                    SearchResults = new List<Repository>();
-                    return;
-                }
-                var searchRequest = new SearchRepositoriesRequest(term);
-                _timer.Debounce(async () =>
-                {
-                    await CoreApplication.MainView.DispatcherQueue.EnqueueAsync(() =>
-                    {
-                        Searching = true;
-                    });
-                    var result = await _gitHubSerivce.GitHubClient.Search.SearchRepo(searchRequest);
-                    await CoreApplication.MainView.DispatcherQueue.EnqueueAsync(() =>
-                    {
-                        SearchResults = result.Items.ToList();
-                        Searching = false;
-                    });
-                }, TimeSpan.FromMilliseconds(200));
+                    text = textBox.Text;
+                });
+                return text;
+            });
+
+            // subscribe to the observable sequence
+            searchObservable
+            // filter out duplicate values
+            .DistinctUntilChanged()
+            // observe on the UI thread
+            .ObserveOnDispatcher(Windows.UI.Core.CoreDispatcherPriority.High)
+            // perform the search query with the debounced text
+            .Subscribe(async text =>
+            {
+                Search(await text);
+            });
+        }
+
+        private async void Search(string text)
+        {
+            var term = text.Trim();
+            if (string.IsNullOrWhiteSpace(term))
+            {
+                SearchResults = new List<Repository>();
+                return;
             }
+            var searchRequest = new SearchRepositoriesRequest(term);
+            Searching = true;
+            var result = await _gitHubSerivce.GitHubClient.Search.SearchRepo(searchRequest);
+            SearchResults = result.Items.ToList();
+            Searching = false;
         }
 
         public void SuggestionChosen(AutoSuggestBox sender, AutoSuggestBoxSuggestionChosenEventArgs args)

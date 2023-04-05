@@ -7,6 +7,9 @@ using Windows.UI.Xaml.Controls;
 using Windows.UI.Xaml.Media;
 using Windows.UI.Xaml.Media.Animation;
 using Windows.UI.Xaml.Navigation;
+using System.Reactive.Linq;
+using System;
+using Windows.Foundation;
 
 // The Blank Page item template is documented at https://go.microsoft.com/fwlink/?LinkId=234238
 
@@ -27,6 +30,7 @@ namespace JitHub.Views.Pages
             ViewModel.LoadApplication(new RelayCommand(OpenModal), new RelayCommand(CloseModal));
             var notificationService = Ioc.Default.GetService<INotificationService>();
             notificationService.Register(new RelayCommand<string>(PushNotification));
+            
         }
 
         protected override void OnNavigatedTo(NavigationEventArgs e)
@@ -38,6 +42,7 @@ namespace JitHub.Views.Pages
             {
                 animation.TryStart(AppLogoShellPage);
             }
+            ViewModel.RegisterSearchDebounce(SearchBox);
             _ = ViewModel.OnNavigatedTo();
         }
 
