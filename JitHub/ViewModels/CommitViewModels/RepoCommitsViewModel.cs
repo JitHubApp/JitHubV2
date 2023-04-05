@@ -68,9 +68,18 @@ namespace JitHub.ViewModels.CommitViewModels
                 var oldItem = e.RemovedItems[0] as CommandableCommit;
                 var newItem = e.AddedItems[0] as CommandableCommit;
                 if (oldItem != null)
+                {
                     oldItem.Selected = false;
+                }
                 if (newItem != null)
+                {
                     newItem.Selected = true;
+                    SelectedCommit = newItem;
+                }
+                if (newItem == null || e.RemovedItems.Count == 0)
+                {
+                    SelectedCommit = null;
+                }
             }
             catch (Exception) { }
         }

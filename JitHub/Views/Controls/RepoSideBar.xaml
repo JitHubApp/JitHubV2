@@ -24,7 +24,10 @@
             PrivateTemplate="{StaticResource PrivateRepo}"
             ForkTemplate="{StaticResource ForkRepo}"/>
     </UserControl.Resources>
-    <Grid>
+    <Grid
+        Padding="8 12"
+        CornerRadius="8"
+        Background="{ThemeResource ExpanderHeaderBackground}">
         <Grid.RowDefinitions>
             <RowDefinition Height="auto"/>
             <RowDefinition Height="*"/>

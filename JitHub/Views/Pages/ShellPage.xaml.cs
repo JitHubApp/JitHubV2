@@ -7,68 +7,59 @@ using Windows.UI.Xaml.Controls;
 using Windows.UI.Xaml.Media;
 using Windows.UI.Xaml.Media.Animation;
 using Windows.UI.Xaml.Navigation;
-using System.Reactive.Linq;
-using System;
-using Windows.Foundation;
 
-// The Blank Page item template is documented at https://go.microsoft.com/fwlink/?LinkId=234238
+namespace JitHub.Views.Pages;
 
-namespace JitHub.Views.Pages
+public sealed partial class ShellPage : Page
 {
-    /// <summary>
-    /// An empty page that can be used on its own or navigated to within a Frame.
-    /// </summary>
-    public sealed partial class ShellPage : Page
+    private Brush _titleBarModalBrush = new SolidColorBrush(Color.FromArgb(77, 0, 0, 0));
+    public ShellPage()
     {
-        private Brush _titleBarModalBrush = new SolidColorBrush(Color.FromArgb(77, 0, 0, 0));
-        public ShellPage()
-        {
-            this.InitializeComponent();
-            // Set XAML element as a draggable region.
-            
-            Window.Current.SetTitleBar(TitleBar);
-            ViewModel.LoadApplication(new RelayCommand(OpenModal), new RelayCommand(CloseModal));
-            var notificationService = Ioc.Default.GetService<INotificationService>();
-            notificationService.Register(new RelayCommand<string>(PushNotification));
-            
-        }
+        this.InitializeComponent();
+        // Set XAML element as a draggable region.
+        
+        Window.Current.SetTitleBar(TitleBar);
+        ViewModel.LoadApplication(new RelayCommand(OpenModal), new RelayCommand(CloseModal));
+        var notificationService = Ioc.Default.GetService<INotificationService>();
+        notificationService.Register(new RelayCommand<string>(PushNotification));
+        
+    }
 
-        protected override void OnNavigatedTo(NavigationEventArgs e)
+    protected override void OnNavigatedTo(NavigationEventArgs e)
+    {
+        base.OnNavigatedTo(e);
+        ConnectedAnimation animation = ConnectedAnimationService.GetForCurrentView()
+            .GetAnimation("AppLogoAnimation");
+        if (animation != null)
         {
-            base.OnNavigatedTo(e);
-            ConnectedAnimation animation = ConnectedAnimationService.GetForCurrentView()
-                .GetAnimation("AppLogoAnimation");
-            if (animation != null)
-            {
-                animation.TryStart(AppLogoShellPage);
-            }
-            ViewModel.RegisterSearchDebounce(SearchBox);
-            _ = ViewModel.OnNavigatedTo();
+            animation.TryStart(AppLogoShellPage);
         }
+        ViewModel.RegisterSearchDebounce(SearchBox);
+        _ = ViewModel.OnNavigatedTo();
+    }
 
-        protected override void OnNavigatingFrom(NavigatingCancelEventArgs e)
-        {
-            ConnectedAnimationService.GetForCurrentView()
-                .PrepareToAnimate("AppLogoLogoutAnimation", AppLogoShellPage);
-        }
+    protected override void OnNavigatingFrom(NavigatingCancelEventArgs e)
+    {
+        ConnectedAnimationService.GetForCurrentView()
+            .PrepareToAnimate("AppLogoLogoutAnimation", AppLogoShellPage);
+    }
 
-        private void OpenModal()
-        {
-            Modal.Visibility = Visibility.Visible;
-            TitleBar.Background = _titleBarModalBrush;
-            SearchBox.IsEnabled = false;
-        }
+    private void OpenModal()
+    {
+        Modal.Visibility = Visibility.Visible;
+        TitleBar.Background = _titleBarModalBrush;
+        SearchBox.IsEnabled = false;
+    }
 
-        private void CloseModal()
-        {
-            Modal.Visibility = Visibility.Collapsed;
-            TitleBar.Background = new SolidColorBrush(Colors.Transparent);
-            SearchBox.IsEnabled = true;
-        }
+    private void CloseModal()
+    {
+        Modal.Visibility = Visibility.Collapsed;
+        TitleBar.Background = new SolidColorBrush(Colors.Transparent);
+        SearchBox.IsEnabled = true;
+    }
 
-        private void PushNotification(string message)
-        {
-            InAppNotification.Show(message, 3000);   
-        }
+    private void PushNotification(string message)
+    {
+        InAppNotification.Show(message, 3000);   
     }
 }

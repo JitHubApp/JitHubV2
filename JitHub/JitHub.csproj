@@ -137,7 +137,6 @@
     <Compile Include="Converters\BoolToVisibilityReverseConverter.cs" />
     <Compile Include="Converters\Code\IsExpandToFolderFilledIconConverter.cs" />
     <Compile Include="Converters\Code\IsExpandToFolderOutlineIconConverter.cs" />
-    <Compile Include="Converters\Commit\CommandableCommitToDetailViewModelConverter.cs" />
     <Compile Include="Converters\Common\BoolToAccentColorConverter.cs" />
     <Compile Include="Converters\Common\ColorToSolidBrushConverter.cs" />
     <Compile Include="Converters\Common\DiffToMarkdownConverter.cs" />
@@ -507,6 +506,9 @@
     </Compile>
     <Compile Include="Views\Pages\RepoCodePage.xaml.cs">
       <DependentUpon>RepoCodePage.xaml</DependentUpon>
+    </Compile>
+    <Compile Include="Views\Pages\RepoCommitDetailPage.xaml.cs">
+      <DependentUpon>RepoCommitDetailPage.xaml</DependentUpon>
     </Compile>
     <Compile Include="Views\Pages\RepoCommitsPage.xaml.cs">
       <DependentUpon>RepoCommitsPage.xaml</DependentUpon>
@@ -1249,6 +1251,10 @@
       <Generator>MSBuild:Compile</Generator>
     </Page>
     <Page Include="Views\Pages\RepoCodePage.xaml">
+      <SubType>Designer</SubType>
+      <Generator>MSBuild:Compile</Generator>
+    </Page>
+    <Page Include="Views\Pages\RepoCommitDetailPage.xaml">
       <SubType>Designer</SubType>
       <Generator>MSBuild:Compile</Generator>
     </Page>

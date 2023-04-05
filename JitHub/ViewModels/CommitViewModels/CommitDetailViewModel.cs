@@ -16,7 +16,7 @@ namespace JitHub.ViewModels.CommitViewModels
         private ICollection<FileDiffViewModel> _files;
         private CommandableCommit _commandableCommit;
 
-        public ICommand LoadCommand { get; }
+        public ICommand LoadCommand { get; private set; }
         public ICollection<FileDiffViewModel> Files
         {
             get => _files;
@@ -28,7 +28,7 @@ namespace JitHub.ViewModels.CommitViewModels
             set => SetProperty(ref _commandableCommit, value);
         }
 
-        public CommitDetailViewModel(CommandableCommit commit)
+        public void Init(CommandableCommit commit)
         {
             Repo = commit.Repository;
             CommandableCommit = commit;

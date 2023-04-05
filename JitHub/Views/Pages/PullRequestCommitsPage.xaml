@@ -50,7 +50,7 @@
                     <Grid
                         Padding="5">
                         <commit:CommitDetail
-                            ViewModel="{Binding Path=SelectedItem, ElementName=PullRequestCommitListDetail, Converter={StaticResource CommandableCommitToDetailViewModelConverter}, Mode=OneWay}"/>
+                            Commit="{Binding Item, Mode=OneWay}"/>
                     </Grid>
                 </DataTemplate>
             </controls:ListDetailsView.DetailsTemplate>
