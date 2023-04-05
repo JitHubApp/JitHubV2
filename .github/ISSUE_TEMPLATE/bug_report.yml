@@ -1,0 +1,46 @@
+# Copyright (c) Riverside Valley Corporation
+name: 🐛 Bug Report
+description: Create a bug report to help improve!
+labels: [bug]
+title: "🐛 "
+body:
+  - type: markdown
+    attributes:
+      value: |
+        ##### ⏱️ Before you start...
+        - Are you on the latest version? You might be using an old version.
+        - Have you checked whether or not a similar feature request has already been reported?
+  - type: textarea
+    attributes:
+      label: 🪟 What OS build is this issue present?
+      description: Windows key + R > winver.exe / Apple Logo (in menu bar) > About This Mac (may not be like this on Ventura)
+      placeholder: Windows 11 Insider Beta 22623.1250 / macOS Monterey 12.6.3
+  - type: textarea
+    attributes:
+      label: 🔢 What version are you on?
+  - type: textarea
+    attributes:
+      label: 📄 Description
+      description: A clear and concise description of what the bug is.
+    validations:
+      required: true
+  - type: textarea
+    attributes:
+      label: 🪜 Steps To Reproduce
+      description: Steps to reproduce the behavior.
+      placeholder: |
+        1. Go to '....'
+        2. Click on '....'
+        3. Scroll down to '....'
+        4. See the error
+    validations:
+      required: false
+  - type: textarea
+    attributes:
+      label: 🤔 Expected behavior
+      description: A clear and concise description of what you expected to happen.
+  - type: textarea
+    attributes:
+      label: 📸 Assets
+      description: |
+        A list of assets (errors, screenshots) relevant to the bug.
