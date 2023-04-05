@@ -95,7 +95,6 @@
                     x:Name="SearchBox"
                     MinWidth="300"
                     VerticalAlignment="Center"
-                    TextChanged="{x:Bind ViewModel.OnTextChange, Mode=OneWay}"
                     ItemsSource="{x:Bind ViewModel.SearchResults, Mode=OneWay}"
                     QuerySubmitted="{x:Bind ViewModel.OpenRepo, Mode=OneWay}"
                     UpdateTextOnSelect="False"

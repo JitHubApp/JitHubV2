@@ -68,7 +68,6 @@ namespace JitHub
                 services.AddScoped<IAppConfig, AppConfig>();
                 services.AddScoped<IAccountService, AccountService>();
                 services.AddScoped<IAuthService, AuthService>();
-                services.AddScoped<IMarkdownService, MarkdownService>();
                 services.AddScoped<IThemeService, ThemeService>();
                 services.AddScoped<ICommandService, CommandService>();
                 services.AddSingleton<GlobalViewModel>();
