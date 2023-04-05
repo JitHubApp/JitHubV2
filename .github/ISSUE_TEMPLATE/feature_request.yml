@@ -23,25 +23,6 @@ body:
       required: false
   - type: textarea
     attributes:
-      label: ✅ Tasks
-      description: Give an overview of all the specific things you would like to be changed or implemented.
-      value: |
-        ```[tasklist]
-        ### High Priority
-        - [ ] Something
-        - [ ] Another thing
-        - [ ] https://github.com/link/to/an/issue
-        ```
-        ```[tasklist]
-        ### Nice to have
-        - [ ] Something
-        - [ ] Another thing
-        - [ ] https://github.com/link/to/an/issue
-        ```
-    validations:
-      required: false
-  - type: textarea
-    attributes:
       label: 📸 Assets
       description: A list of assets (screenshots, mockups) relevant to this feature request.
     validations:
