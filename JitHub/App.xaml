@@ -226,9 +226,6 @@
             <activitiesconverters:CommitShaToShortConverter
                 x:Key="CommitShaToShortConverter"
                 x:Name="CommitShaToShortConverter"/>
-            <commit:CommandableCommitToDetailViewModelConverter
-                x:Key="CommandableCommitToDetailViewModelConverter"
-                x:Name="CommandableCommitToDetailViewModelConverter"/>
             <code:IsExpandToFolderOutlineIconConverter
                 x:Key="IsExpandToFolderOutlineIconConverter"
                 x:Name="IsExpandToFolderOutlineIconConverter"/>

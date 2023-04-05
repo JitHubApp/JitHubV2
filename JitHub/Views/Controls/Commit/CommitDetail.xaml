@@ -3,113 +3,13 @@
     xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
     xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
     xmlns:local="using:JitHub.Views.Controls"
-    xmlns:muxc="using:Microsoft.UI.Xaml.Controls"
     xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
     xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
-    xmlns:commit="using:JitHub.Views.Controls.Commit"
-    xmlns:common="using:JitHub.Views.Controls.Common"
     mc:Ignorable="d"
     d:DesignHeight="300"
     d:DesignWidth="400">
 
-    <Grid
-        Padding="12">
-        <Grid.RowDefinitions>
-            <RowDefinition Height="auto"/>
-            <RowDefinition Height="*"/>
-        </Grid.RowDefinitions>
-        <muxc:ProgressRing
-            VerticalAlignment="Center"
-            HorizontalAlignment="Center"
-            Height="50"
-            Width="50"
-            IsActive="True"
-            Visibility="{x:Bind ViewModel.Loading, Converter={StaticResource BoolToVisibilityConverter}, Mode=OneWay}"/>
-        <muxc:Expander
-            Grid.Row="0"
-            HorizontalAlignment="Stretch"
-            HorizontalContentAlignment="Stretch"
-            Visibility="{x:Bind ViewModel.Loading, Converter={StaticResource BoolToVisibilityReverseConverter}, Mode=OneWay}">
-            <muxc:Expander.Header>
-                <StackPanel
-                    Orientation="Horizontal"
-                    Spacing="8">
-                    <common:Avatar
-                        ShowLogin="True"
-                        Url="{x:Bind ViewModel.CommandableCommit.AvatarUrl, Mode=OneWay}"
-                        Login="{x:Bind ViewModel.CommandableCommit.Login, Mode=OneWay}"/>
-                    <TextBlock
-                        VerticalAlignment="Center"
-                        Text="{x:Bind ViewModel.CommandableCommit.Date, Converter={StaticResource TimeAgoConverter}, ConverterParameter=committed, Mode=OneWay}"/>
-                </StackPanel>
-            </muxc:Expander.Header>
-            <muxc:Expander.Content>
-                <Grid>
-                    <Grid.RowDefinitions>
-                        <RowDefinition Height="*"/>
-                        <RowDefinition Height="auto"/>
-                    </Grid.RowDefinitions>
-                    <Grid.ColumnDefinitions>
-                        <ColumnDefinition Width="*"/>
-                        <ColumnDefinition Width="auto"/>
-                    </Grid.ColumnDefinitions>
-                    <TextBlock
-                        Grid.Row="0"
-                        Grid.Column="0"
-                        Margin="0 0 0 10"
-                        FontSize="16"
-                        IsTextSelectionEnabled="True"
-                        Text="{x:Bind ViewModel.CommandableCommit.Message, Mode=OneWay}"/>
-                    <StackPanel
-                        Grid.Row="0"
-                        Grid.Column="1"
-                        VerticalAlignment="Top"
-                        Spacing="8"
-                        Orientation="Horizontal">
-                        <TextBlock
-                            VerticalAlignment="Center"
-                            Text="{x:Bind ViewModel.CommandableCommit.Sha, Converter={StaticResource CommitShaToShortConverter}, Mode=OneWay}"/>
-                        <Button
-                            VerticalAlignment="Center"
-                            CornerRadius="8"
-                            Padding="6"
-                            Command="{x:Bind ViewModel.CommandableCommit.Copy, Mode=OneWay}"
-                            CommandParameter="{x:Bind ViewModel.CommandableCommit.Sha, Mode=OneWay}"
-                            Background="Transparent"
-                            FontFamily="Segoe MDL2 Assets">
-                            <FontIcon
-                                FontSize="16"
-                                FontFamily="{StaticResource SegoeFluentIcons}"
-                                Glyph="&#xE8C8;"/>
-                        </Button>
-                    </StackPanel>
-                    <Button
-                        Grid.Row="1"
-                        Grid.Column="1"
-                        Margin="0 8 0 0"
-                        HorizontalAlignment="Right"
-                        Command="{x:Bind ViewModel.CommandableCommit.ViewCode, Mode=OneWay}"
-                        CommandParameter="{x:Bind ViewModel.CommandableCommit.Sha, Mode=OneWay}"
-                        Content="View Files"/>
-                </Grid>
-            </muxc:Expander.Content>
-        </muxc:Expander>
-        <ScrollViewer
-            Grid.Row="1"
-            Visibility="{x:Bind ViewModel.Loading, Converter={StaticResource BoolToVisibilityReverseConverter}, Mode=OneWay}">
-            <muxc:ItemsRepeater
-                ItemsSource="{x:Bind ViewModel.Files, Mode=OneWay}">
-                <muxc:ItemsRepeater.Layout>
-                    <muxc:StackLayout Orientation="Vertical" Spacing="12"/>
-                </muxc:ItemsRepeater.Layout>
-                <muxc:ItemsRepeater.ItemTemplate>
-                    <DataTemplate>
-                        <Grid>
-                            <commit:FileDiff ViewModel="{Binding Item, Mode=OneWay}"/>
-                        </Grid>
-                    </DataTemplate>
-                </muxc:ItemsRepeater.ItemTemplate>
-            </muxc:ItemsRepeater>
-        </ScrollViewer>
+    <Grid>
+        <Frame x:Name="DetailPageFrame"/>
     </Grid>
 </UserControl>

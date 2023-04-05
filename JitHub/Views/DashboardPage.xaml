@@ -18,7 +18,7 @@
             <ColumnDefinition Width="320"/>
             <ColumnDefinition Width="*"/>
         </Grid.ColumnDefinitions>
-        <uc:RepoSideBar Grid.Column="0" Margin="0 12 12 0"/>
+        <uc:RepoSideBar Grid.Column="0" Margin="0 0 12 0"/>
         <uc:ActivityList Grid.Column="1"/>
     </Grid>
 </Page>

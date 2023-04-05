@@ -35,9 +35,9 @@
             WatchEventTemplate="{StaticResource WatchEventTemplate}"/>
     </UserControl.Resources>
     <Grid
-        Padding="16 12 0 0"
+        Padding="12 12 0 0"
         CornerRadius="8"
-        Background="{ThemeResource SystemControlAcrylicElementMediumHighBrush}">
+        Background="{ThemeResource ExpanderHeaderBackground}">
         <Grid.RowDefinitions>
             <RowDefinition Height="auto"/>
             <RowDefinition Height="*"/>

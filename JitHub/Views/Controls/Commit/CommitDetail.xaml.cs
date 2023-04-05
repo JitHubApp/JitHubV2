@@ -1,38 +1,35 @@
-﻿using JitHub.ViewModels.CommitViewModels;
+﻿using JitHub.Models;
+using JitHub.Views.Pages;
 using Windows.UI.Xaml;
 using Windows.UI.Xaml.Controls;
 
-// The User Control item template is documented at https://go.microsoft.com/fwlink/?LinkId=234236
+namespace JitHub.Views.Controls.Commit;
 
-namespace JitHub.Views.Controls.Commit
+public sealed partial class CommitDetail : UserControl
 {
-    public sealed partial class CommitDetail : UserControl
+    public static DependencyProperty CommitProperty = DependencyProperty.Register(
+        nameof(Commit),
+        typeof(CommandableCommit),
+        typeof(CommitDetail),
+        new PropertyMetadata(default(CommandableCommit), OnCommitChanged)
+    );
+
+    private static void OnCommitChanged(DependencyObject d, DependencyPropertyChangedEventArgs e)
     {
-        public static DependencyProperty ViewModelProperty = DependencyProperty.Register(
-            nameof(ViewModel),
-            typeof(CommitDetailViewModel),
-            typeof(CommitDetail),
-            new PropertyMetadata(default(CommitDetailViewModel), OnViewModelChanged)
-        );
+        if (d is CommitDetail self && e.NewValue != null)
+        {
+            var commit = self.DataContext as CommandableCommit;
+            self.DetailPageFrame.Navigate(typeof(RepoCommitDetailPage), commit);
+        }
+    }
 
-        private static void OnViewModelChanged(DependencyObject d, DependencyPropertyChangedEventArgs e)
-        {
-            if (d is CommitDetail self && e.NewValue != null)
-            {
-                self.DataContext = e.NewValue;
-                var viewModel = self.DataContext as CommitDetailViewModel;
-                viewModel.LoadCommand.Execute(null);
-            }
-        }
-
-        public CommitDetailViewModel ViewModel
-        {
-            get => (CommitDetailViewModel)GetValue(ViewModelProperty);
-            set => SetValue(ViewModelProperty, value);
-        }
-        public CommitDetail()
-        {
-            this.InitializeComponent();
-        }
+    public CommandableCommit Commit
+    {
+        get => (CommandableCommit)GetValue(CommitProperty);
+        set => SetValue(CommitProperty, value);
+    }
+    public CommitDetail()
+    {
+        this.InitializeComponent();
     }
 }

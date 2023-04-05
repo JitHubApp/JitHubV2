@@ -7,10 +7,7 @@
     xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
     xmlns:muxc="using:Microsoft.UI.Xaml.Controls"
     xmlns:controls="using:Microsoft.Toolkit.Uwp.UI.Controls"
-    xmlns:commitviewmodels="using:JitHub.ViewModels.CommitViewModels"
     xmlns:commit="using:JitHub.Views.Controls.Commit"
-    xmlns:interactivity="using:Microsoft.Xaml.Interactivity"
-    xmlns:core="using:Microsoft.Xaml.Interactions.Core"
     mc:Ignorable="d"
     Background="Transparent">
     <Grid>
@@ -79,7 +76,7 @@
                     <Grid
                         Padding="4">
                         <commit:CommitDetail
-                            ViewModel="{Binding Path=SelectedItem, ElementName=CommitListDetail, Converter={StaticResource CommandableCommitToDetailViewModelConverter}, Mode=OneWay}"/>
+                            Commit="{Binding Item, Mode=OneWay}"/>
                     </Grid>
                 </DataTemplate>
             </controls:ListDetailsView.DetailsTemplate>
