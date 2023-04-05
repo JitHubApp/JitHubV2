@@ -186,6 +186,7 @@
     <Compile Include="Models\ActivitySource.cs" />
     <Compile Include="Models\Base\EmojiHost.cs" />
     <Compile Include="Models\Base\RepoSelectableItemModel.cs" />
+    <Compile Include="Models\Base\RepoType.cs" />
     <Compile Include="Models\Base\SelectableItem.cs" />
     <Compile Include="Models\CodeBranchRef.cs" />
     <Compile Include="Models\CommandArgs\IssueFormArgs.cs" />

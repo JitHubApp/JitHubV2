@@ -138,5 +138,25 @@ namespace JitHub.ViewModels.RepositoryViewModels
                 await DeleteRepos();
             }
         }
+
+        public override bool IsForked(SelectableRepoModel repo)
+        {
+            return repo.Repo.Repository.Fork;
+        }
+
+        public override bool IsPrivate(SelectableRepoModel repo)
+        {
+            return repo.Repo.Repository.Private;
+        }
+
+        public override bool IsPublic(SelectableRepoModel repo)
+        {
+            return !repo.Repo.Repository.Private;
+        }
+
+        public override ICollection<SelectableRepoModel> NewRepoList()
+        {
+            return new List<SelectableRepoModel>();
+        }
     }
 }
