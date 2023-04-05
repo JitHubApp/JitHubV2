@@ -23,7 +23,7 @@ public partial class RepoSideBarViewModel : RepoListViewModel<RepoModel>
     [ObservableProperty]
     private int _selectedIndex;
     [ObservableProperty]
-    private RepoType _repositoryType;
+    private RepoType _repositoryPublicity;
 
     public FeatureService FeatureService;
     public RepoSideBarViewModel()
@@ -89,7 +89,7 @@ public partial class RepoSideBarViewModel : RepoListViewModel<RepoModel>
     {
         var segmentedControl = sender as Segmented;
         var selectedIndex = segmentedControl.SelectedIndex;
-        RepositoryType = (selectedIndex) switch
+        RepositoryPublicity = (selectedIndex) switch
         {
             0 => RepoType.Public,
             1 => RepoType.Private,

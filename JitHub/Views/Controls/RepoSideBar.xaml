@@ -106,7 +106,7 @@
                 Visibility="{x:Bind ViewModel.IsEmpty, Converter={StaticResource BoolToVisibilityReverseConverter}, Mode=OneWay}">
                 <controls:SwitchPresenter
                     TargetType="enum:RepoType"
-                    Value="{x:Bind ViewModel.RepositoryType, Mode=OneWay}">
+                    Value="{x:Bind ViewModel.RepositoryPublicity, Mode=OneWay}">
                     <controls:Case
                         Value="Public">
                         <muxc:ItemsRepeater
