@@ -1,9 +1,9 @@
-﻿using JitHub.Helpers;
+using JitHub.Helpers;
 using CommunityToolkit.Mvvm.ComponentModel;
 using Octokit;
 using Windows.UI;
-using Windows.UI.Xaml;
-using Windows.UI.Xaml.Media;
+using Microsoft.UI.Xaml;
+using Microsoft.UI.Xaml.Media;
 
 namespace JitHub.Models.Base
 {

@@ -1,4 +1,4 @@
-﻿using JitHub.ViewModels.Base;
+using JitHub.ViewModels.Base;
 using Markdig.UWP;
 using Octokit;
 using System;

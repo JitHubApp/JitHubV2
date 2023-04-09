@@ -1,4 +1,4 @@
-﻿using Windows.UI.Xaml.Documents;
+using Microsoft.UI.Xaml.Documents;
 
 namespace Markdig.UWP.TextElements;
 

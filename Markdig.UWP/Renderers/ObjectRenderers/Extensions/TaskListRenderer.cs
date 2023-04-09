@@ -1,4 +1,4 @@
-﻿using Markdig.Extensions.TaskLists;
+using Markdig.Extensions.TaskLists;
 using Markdig.UWP.TextElements;
 using System;
 

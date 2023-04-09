@@ -1,6 +1,6 @@
-﻿using JitHub.Models.NavArgs;
+using JitHub.Models.NavArgs;
 using System.Windows.Input;
-using Windows.UI.Xaml;
+using Microsoft.UI.Xaml;
 
 namespace JitHub.Services
 {

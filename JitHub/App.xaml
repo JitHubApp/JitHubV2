@@ -14,8 +14,6 @@
     <Application.Resources>
         <ResourceDictionary>
             <ResourceDictionary.MergedDictionaries>
-                <winui:XamlControlsResources ControlsResourcesVersion="Version2"/>
-
                 <!-- Styles -->
                 <ResourceDictionary Source="/Styles/Color.xaml"/>
                 <ResourceDictionary Source="/Styles/Theme.xaml"/>

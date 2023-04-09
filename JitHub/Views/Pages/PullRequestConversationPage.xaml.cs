@@ -1,10 +1,10 @@
-﻿using JitHub.Models.NavArgs;
+using JitHub.Models.NavArgs;
 using JitHub.ViewModels.PullRequestViewModels;
 using CommunityToolkit.Mvvm.Input;
 using Windows.Foundation;
-using Windows.UI.Xaml;
-using Windows.UI.Xaml.Navigation;
-using Page = Windows.UI.Xaml.Controls.Page;
+using Microsoft.UI.Xaml;
+using Microsoft.UI.Xaml.Navigation;
+using Page = Microsoft.UI.Xaml.Controls.Page;
 
 // The Blank Page item template is documented at https://go.microsoft.com/fwlink/?LinkId=234238
 
@@ -31,7 +31,7 @@ namespace JitHub.Views.Pages
 
         }
 
-        private void Page_SizeChanged(object sender, Windows.UI.Xaml.SizeChangedEventArgs e)
+        private void Page_SizeChanged(object sender, Microsoft.UI.Xaml.SizeChangedEventArgs e)
         {
             try
             {

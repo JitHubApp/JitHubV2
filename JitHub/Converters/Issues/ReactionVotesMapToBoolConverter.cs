@@ -1,8 +1,8 @@
-﻿using JitHub.Helpers;
+using JitHub.Helpers;
 using Octokit;
 using System;
 using System.Collections.Generic;
-using Windows.UI.Xaml.Data;
+using Microsoft.UI.Xaml.Data;
 
 namespace JitHub.Converters.Issues
 {

@@ -1,7 +1,7 @@
-﻿using JitHub.Models.PRConversation;
+using JitHub.Models.PRConversation;
 using JitHub.ViewModels.PullRequestViewModels.ConversationViewModels;
 using System;
-using Windows.UI.Xaml.Data;
+using Microsoft.UI.Xaml.Data;
 
 namespace JitHub.Converters.PullRequests
 {

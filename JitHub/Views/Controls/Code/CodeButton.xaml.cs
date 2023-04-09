@@ -1,12 +1,12 @@
-﻿using JitHub.Converters.Activities;
+using JitHub.Converters.Activities;
 using JitHub.Helpers;
 using JitHub.Models.NavArgs;
 using JitHub.Services;
 using JitHub.Views.Pages;
 using CommunityToolkit.Mvvm.DependencyInjection;
 using Octokit;
-using Windows.UI.Xaml;
-using Windows.UI.Xaml.Controls;
+using Microsoft.UI.Xaml;
+using Microsoft.UI.Xaml.Controls;
 
 // The User Control item template is documented at https://go.microsoft.com/fwlink/?LinkId=234236
 

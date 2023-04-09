@@ -1,4 +1,4 @@
-﻿using JitHub.Helpers;
+using JitHub.Helpers;
 using JitHub.Models.NavArgs;
 using JitHub.Services;
 using JitHub.ViewModels.Base;
@@ -11,11 +11,11 @@ using System.Collections.Generic;
 using System.Threading;
 using System.Threading.Tasks;
 using System.Windows.Input;
-using Windows.UI.Xaml.Controls;
-using Windows.UI.Xaml.Media.Animation;
-using Windows.UI.Xaml.Navigation;
+using Microsoft.UI.Xaml.Controls;
+using Microsoft.UI.Xaml.Media.Animation;
+using Microsoft.UI.Xaml.Navigation;
 using System.Linq;
-using Windows.UI.Xaml;
+using Microsoft.UI.Xaml;
 
 namespace JitHub.ViewModels.RepositoryViewModels
 {
@@ -228,7 +228,7 @@ namespace JitHub.ViewModels.RepositoryViewModels
         }
 
         // This is only for code view
-        public void BranchSelectionChanged(object sender, Windows.UI.Xaml.Controls.SelectionChangedEventArgs e)
+        public void BranchSelectionChanged(object sender, Microsoft.UI.Xaml.Controls.SelectionChangedEventArgs e)
         {
             if (e.RemovedItems.Count != 0)
             {

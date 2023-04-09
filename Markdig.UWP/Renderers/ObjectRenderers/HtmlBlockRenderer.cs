@@ -1,4 +1,4 @@
-﻿using HtmlAgilityPack;
+using HtmlAgilityPack;
 using Markdig.Syntax;
 using System;
 using System.Text;

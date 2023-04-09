@@ -1,4 +1,4 @@
-﻿using JitHub.Models;
+using JitHub.Models;
 using JitHub.Models.Base;
 using JitHub.ViewModels.PullRequestViewModels;
 using Octokit;
@@ -7,7 +7,7 @@ using System.Collections.Generic;
 using System.Linq;
 using System.Text;
 using System.Threading.Tasks;
-using Windows.UI.Xaml.Data;
+using Microsoft.UI.Xaml.Data;
 
 namespace JitHub.Converters.PullRequests
 {

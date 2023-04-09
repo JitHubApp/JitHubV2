@@ -1,6 +1,6 @@
 ﻿<ResourceDictionary
     xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
-    xmlns:animations="using:Microsoft.Toolkit.Uwp.UI.Animations"
+    xmlns:animations="using:CommunityToolkit.WinUI.UI.Animations"
     xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml">
     <DataTemplate
         x:Key="DateFilter">

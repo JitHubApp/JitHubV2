@@ -18,28 +18,7 @@
                     <Color x:Key="AppSolidSecondaryColor">#1A1A1A</Color>
                     <Color x:Key="AppBorderColor">#e5e5e5</Color>
                     <Color x:Key="PrivateRepoColor">#FCE100</Color>
-                    <AcrylicBrush
-                        x:Key="TitleBarBrush"
-                        TintColor="{StaticResource TitleBarColor}"
-                        TintLuminosityOpacity="0.7"
-                        TintOpacity="0.7"
-                        BackgroundSource="HostBackdrop"/>
 
-                    <AcrylicBrush
-                        x:Key="AppPrimaryBackgroundBrush"
-                        TintColor="{StaticResource AppPrimaryBackgroundColor}"
-                        TintLuminosityOpacity="0.9"
-                        TintOpacity="0.9"
-                        FallbackColor="{StaticResource AppPrimaryBackgroundColor}"
-                        BackgroundSource="HostBackdrop"/>
-
-                    <AcrylicBrush
-                        x:Key="ModalBrush"
-                        TintColor="{StaticResource AppPrimaryBackgroundColor}"
-                        TintLuminosityOpacity="0.5"
-                        TintOpacity="0.1"
-                        FallbackColor="{StaticResource AppPrimaryBackgroundColor}"
-                        BackgroundSource="Backdrop"/>
                     <LinearGradientBrush x:Key="AppTitleGradientBrush" StartPoint="0.5,0" EndPoint="0.5,1">
                         <GradientStop Color="#0E99F9" Offset="0"/>
                         <GradientStop Color="#80DEFF" Offset="0.5"/>
@@ -74,28 +53,7 @@
                     <Color x:Key="AppSolidSecondaryColor">#1A1A1A</Color>
                     <Color x:Key="AppBorderColor">#e5e5e5</Color>
                     <Color x:Key="PrivateRepoColor">#FCE100</Color>
-                    <AcrylicBrush
-                        x:Key="TitleBarBrush"
-                        TintColor="{StaticResource TitleBarColor}"
-                        TintLuminosityOpacity="0.7"
-                        TintOpacity="0.7"
-                        BackgroundSource="HostBackdrop"/>
 
-                    <AcrylicBrush
-                        x:Key="AppPrimaryBackgroundBrush"
-                        TintColor="{StaticResource AppPrimaryBackgroundColor}"
-                        TintLuminosityOpacity="0.9"
-                        TintOpacity="0.9"
-                        FallbackColor="{StaticResource AppPrimaryBackgroundColor}"
-                        BackgroundSource="HostBackdrop"/>
-
-                    <AcrylicBrush
-                        x:Key="ModalBrush"
-                        TintColor="{StaticResource AppPrimaryBackgroundColor}"
-                        TintLuminosityOpacity="0.5"
-                        TintOpacity="0.1"
-                        FallbackColor="{StaticResource AppPrimaryBackgroundColor}"
-                        BackgroundSource="Backdrop"/>
                     <LinearGradientBrush x:Key="AppTitleGradientBrush" StartPoint="0.5,0" EndPoint="0.5,1">
                         <GradientStop Color="#0E99F9" Offset="0"/>
                         <GradientStop Color="#80DEFF" Offset="0.5"/>
@@ -130,28 +88,7 @@
                     <Color x:Key="AppSolidSecondaryColor">#F3F3F3</Color>
                     <Color x:Key="AppBorderColor">#e5e5e5</Color>
                     <Color x:Key="PrivateRepoColor">#9D5D00</Color>
-                    <AcrylicBrush
-                        x:Key="TitleBarBrush"
-                        TintColor="{StaticResource TitleBarColor}"
-                        TintLuminosityOpacity="0.7"
-                        TintOpacity="0.7"
-                        BackgroundSource="HostBackdrop"/>
 
-                    <AcrylicBrush
-                        x:Key="AppPrimaryBackgroundBrush"
-                        TintColor="{StaticResource AppPrimaryBackgroundColor}"
-                        TintLuminosityOpacity="0.9"
-                        TintOpacity="0.9"
-                        FallbackColor="{StaticResource AppPrimaryBackgroundColor}"
-                        BackgroundSource="HostBackdrop"/>
-
-                    <AcrylicBrush
-                        x:Key="ModalBrush"
-                        TintColor="{StaticResource AppPrimaryBackgroundColor}"
-                        TintLuminosityOpacity="0.5"
-                        TintOpacity="0.1"
-                        FallbackColor="{StaticResource AppPrimaryBackgroundColor}"
-                        BackgroundSource="Backdrop"/>
                     <LinearGradientBrush x:Key="AppTitleGradientBrush" StartPoint="0.5,0" EndPoint="0.5,1">
                         <GradientStop Color="#0E99F9" Offset="0"/>
                         <GradientStop Color="#80DEFF" Offset="0.5"/>
@@ -183,29 +120,7 @@
             <Color x:Key="AppPrimaryBackgroundColor">#000000</Color>
             <Color x:Key="AppBorderColor">#FFFFFF</Color>
             <Color x:Key="PrivateRepoColor">#FFFFFF</Color>
-            <AcrylicBrush
-                x:Key="TitleBarBrush"
-                FallbackColor="{StaticResource TitleBarColor}"
-                TintColor="{StaticResource TitleBarColor}"
-                TintLuminosityOpacity="0.7"
-                TintOpacity="0.7"
-                BackgroundSource="HostBackdrop"/>
 
-            <AcrylicBrush
-                x:Key="AppPrimaryBackgroundBrush"
-                TintColor="{StaticResource AppPrimaryBackgroundColor}"
-                TintLuminosityOpacity="0.9"
-                TintOpacity="0.9"
-                FallbackColor="{StaticResource AppPrimaryBackgroundColor}"
-                BackgroundSource="HostBackdrop"/>
-
-            <AcrylicBrush
-                x:Key="ModalBrush"
-                TintColor="{StaticResource AppPrimaryBackgroundColor}"
-                TintLuminosityOpacity="0.5"
-                TintOpacity="0.1"
-                FallbackColor="{StaticResource AppPrimaryBackgroundColor}"
-                BackgroundSource="Backdrop"/>
             <LinearGradientBrush x:Key="AppTitleGradientBrush" StartPoint="0.5,0" EndPoint="0.5,1">
                 <GradientStop Color="#000000" Offset="0"/>
                 <GradientStop Color="#000000" Offset="0.5"/>

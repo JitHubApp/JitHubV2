@@ -1,9 +1,9 @@
-﻿using System;
+using System;
 using System.IO;
 using System.Runtime.InteropServices.WindowsRuntime;
 using Windows.Security.Cryptography;
-using Windows.UI.Xaml.Data;
-using Windows.UI.Xaml.Media.Imaging;
+using Microsoft.UI.Xaml.Data;
+using Microsoft.UI.Xaml.Media.Imaging;
 
 namespace JitHub.Converters.Common
 {

@@ -1,4 +1,4 @@
-﻿using JitHub.Models.NavArgs;
+using JitHub.Models.NavArgs;
 using JitHub.Services;
 using JitHub.Views;
 using JitHub.Views.Pages;
@@ -14,13 +14,13 @@ using System.Linq;
 using System.Threading.Tasks;
 using System.Windows.Input;
 using Windows.System;
-using Windows.UI.Xaml;
-using Windows.UI.Xaml.Controls;
+using Microsoft.UI.Xaml;
+using Microsoft.UI.Xaml.Controls;
 using Windows.ApplicationModel.Core;
 using JitHub.Views.Controls.Common;
 using JitHub.Models;
 using Windows.ApplicationModel.DataTransfer;
-using Windows.UI.Xaml.Media.Animation;
+using Microsoft.UI.Xaml.Media.Animation;
 using System.Reactive.Linq;
 using Windows.Foundation;
 using Windows.UI.Core;
@@ -189,7 +189,9 @@ namespace JitHub.ViewModels
 
         public void OnShareJitHub(object sender, RoutedEventArgs e)
         {
-            DataTransferManager.ShowShareUI();
+
+                Windows.ApplicationModel.DataTransfer.DataTransferManager.As<UWPToWinAppSDKUpgradeHelpers.IDataTransferManagerInterop>().ShowShareUIForWindow(App.WindowHandle)
+;
         }
 
         public void OnSignOut(object sender, RoutedEventArgs e)
@@ -392,7 +394,9 @@ namespace JitHub.ViewModels
                 var textBox = result.Sender as AutoSuggestBox;
                 // use the Dispatcher of the UI thread to get the text
                 string text = "";
-                await CoreApplication.MainView.CoreWindow.Dispatcher.RunAsync(CoreDispatcherPriority.Normal,
+                await /*
+                TODO UA306_A2: UWP CoreDispatcher : Windows.UI.Core.CoreDispatcher is no longer supported. Use DispatcherQueue instead. Read: https://docs.microsoft.com/en-us/windows/apps/windows-app-sdk/migrate-to-windows-app-sdk/guides/threading
+            */CoreApplication.MainView.CoreWindow.Dispatcher.RunAsync(CoreDispatcherPriority.Normal,
                 () =>
                 {
                     text = textBox.Text;

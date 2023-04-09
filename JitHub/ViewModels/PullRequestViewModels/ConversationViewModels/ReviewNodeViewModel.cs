@@ -1,4 +1,4 @@
-﻿using JitHub.Models.PRConversation;
+using JitHub.Models.PRConversation;
 using JitHub.ViewModels.Base;
 using Octokit;
 using System;

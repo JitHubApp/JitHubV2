@@ -1,8 +1,8 @@
-﻿using Markdig.Syntax.Inlines;
+using Markdig.Syntax.Inlines;
 using System;
-using Windows.UI.Xaml;
-using Windows.UI.Xaml.Documents;
-using Windows.UI.Xaml.Media.Imaging;
+using Microsoft.UI.Xaml;
+using Microsoft.UI.Xaml.Documents;
+using Microsoft.UI.Xaml.Media.Imaging;
 using System.Net.Http;
 using System.Runtime.InteropServices.WindowsRuntime;
 using Windows.Storage.Streams;
@@ -13,7 +13,7 @@ internal class MyImage : IAddChild
 {
     private InlineUIContainer _container;
     private LinkInline _linkInline;
-    private Windows.UI.Xaml.Controls.Image _image;
+    private Microsoft.UI.Xaml.Controls.Image _image;
     private Uri _uri;
     private HtmlNode _htmlNode;
     private IImageProvider _imageProvider;
@@ -77,7 +77,7 @@ internal class MyImage : IAddChild
     private void Init()
     {
         _container = new InlineUIContainer();
-        _image = new Windows.UI.Xaml.Controls.Image();
+        _image = new Microsoft.UI.Xaml.Controls.Image();
 
         _image.Loaded += LoadImage;
 

@@ -1,4 +1,4 @@
-﻿using JitHub.ViewModels.Base;
+using JitHub.ViewModels.Base;
 using NavigationView = Microsoft.UI.Xaml.Controls.NavigationView;
 using NavigationViewItemInvokedEventArgs = Microsoft.UI.Xaml.Controls.NavigationViewItemInvokedEventArgs;
 using System.Windows.Input;

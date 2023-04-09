@@ -1,10 +1,10 @@
-﻿using System;
+using System;
 using System.Numerics;
 using System.Windows.Input;
-using Windows.UI.Xaml;
-using Windows.UI.Xaml.Controls;
-using Windows.UI.Xaml.Media;
-using Windows.UI.Xaml.Media.Animation;
+using Microsoft.UI.Xaml;
+using Microsoft.UI.Xaml.Controls;
+using Microsoft.UI.Xaml.Media;
+using Microsoft.UI.Xaml.Media.Animation;
 
 // The User Control item template is documented at https://go.microsoft.com/fwlink/?LinkId=234236
 
@@ -33,7 +33,7 @@ namespace JitHub.Views.Controls.Profile
             this.InitializeComponent();
         }
 
-        private void Button_PointerEntered(object sender, Windows.UI.Xaml.Input.PointerRoutedEventArgs e)
+        private void Button_PointerEntered(object sender, Microsoft.UI.Xaml.Input.PointerRoutedEventArgs e)
         {
             ((Control)sender).RenderTransform = new ScaleTransform();
             var visual = ((Control)sender).RenderTransform as ScaleTransform;
@@ -70,7 +70,7 @@ namespace JitHub.Views.Controls.Profile
             storyboard.Begin();
         }
 
-        private void Button_PointerExited(object sender, Windows.UI.Xaml.Input.PointerRoutedEventArgs e)
+        private void Button_PointerExited(object sender, Microsoft.UI.Xaml.Input.PointerRoutedEventArgs e)
         {
             ((Control)sender).RenderTransform = new ScaleTransform();
             var visual = ((Control)sender).RenderTransform as ScaleTransform;
@@ -107,12 +107,12 @@ namespace JitHub.Views.Controls.Profile
             storyboard.Begin();
         }
 
-        private void Button_PointerPressed(object sender, Windows.UI.Xaml.Input.PointerRoutedEventArgs e)
+        private void Button_PointerPressed(object sender, Microsoft.UI.Xaml.Input.PointerRoutedEventArgs e)
         {
 
         }
 
-        private void Button_PointerReleased(object sender, Windows.UI.Xaml.Input.PointerRoutedEventArgs e)
+        private void Button_PointerReleased(object sender, Microsoft.UI.Xaml.Input.PointerRoutedEventArgs e)
         {
 
         }

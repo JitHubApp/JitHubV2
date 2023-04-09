@@ -1,8 +1,8 @@
-﻿using Markdig.Extensions.TaskLists;
-using Windows.UI.Xaml;
-using Windows.UI.Xaml.Controls;
-using Windows.UI.Xaml.Documents;
-using Windows.UI.Xaml.Media.Media3D;
+using Markdig.Extensions.TaskLists;
+using Microsoft.UI.Xaml;
+using Microsoft.UI.Xaml.Controls;
+using Microsoft.UI.Xaml.Documents;
+using Microsoft.UI.Xaml.Media.Media3D;
 
 namespace Markdig.UWP.TextElements;
 
@@ -22,7 +22,7 @@ internal class MyTaskListCheckBox : IAddChild
         grid.Height = 16;
         grid.Margin = new Thickness(2, 0, 2, 0);
         grid.BorderThickness = new Thickness(1);
-        grid.BorderBrush = new Windows.UI.Xaml.Media.SolidColorBrush(Windows.UI.Colors.Gray);
+        grid.BorderBrush = new Microsoft.UI.Xaml.Media.SolidColorBrush(Microsoft.UI.Colors.Gray);
         FontIcon icon = new FontIcon();
         icon.FontSize = 16;
         icon.HorizontalAlignment = HorizontalAlignment.Center;

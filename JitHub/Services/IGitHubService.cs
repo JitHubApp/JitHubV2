@@ -1,4 +1,4 @@
-﻿using JitHub.Models;
+using JitHub.Models;
 using JitHub.Models.Base;
 using JitHub.Models.PRConversation;
 using Markdig.UWP;
@@ -6,8 +6,8 @@ using Octokit;
 using System.Collections.Generic;
 using System.Collections.ObjectModel;
 using System.Threading.Tasks;
-using Windows.UI.Xaml.Controls;
-using Windows.UI.Xaml.Media;
+using Microsoft.UI.Xaml.Controls;
+using Microsoft.UI.Xaml.Media;
 
 namespace JitHub.Services
 {

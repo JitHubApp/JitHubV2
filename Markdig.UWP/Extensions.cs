@@ -1,4 +1,4 @@
-﻿using ColorCode;
+using ColorCode;
 using ColorCode.Common;
 using ColorCode.Styling;
 using Markdig.Syntax;
@@ -12,8 +12,8 @@ using System.Text.RegularExpressions;
 using System.Xml.Linq;
 using Windows.Foundation;
 using Windows.UI.ViewManagement;
-using Windows.UI.Xaml.Documents;
-using Windows.UI.Xaml.Media;
+using Microsoft.UI.Xaml.Documents;
+using Microsoft.UI.Xaml.Media;
 
 namespace Markdig.UWP;
 

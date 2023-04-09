@@ -1,4 +1,4 @@
-﻿namespace Markdig.UWP;
+namespace Markdig.UWP;
 
 public record MarkdownConfig
 {

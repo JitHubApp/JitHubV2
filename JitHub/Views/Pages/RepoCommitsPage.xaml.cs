@@ -1,7 +1,7 @@
-﻿using JitHub.Models.NavArgs;
+using JitHub.Models.NavArgs;
 using JitHub.ViewModels.CommitViewModels;
-using Windows.UI.Xaml.Controls;
-using Windows.UI.Xaml.Navigation;
+using Microsoft.UI.Xaml.Controls;
+using Microsoft.UI.Xaml.Navigation;
 
 
 namespace JitHub.Views.Pages

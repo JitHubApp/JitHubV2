@@ -1,6 +1,5 @@
-﻿using JitHub.Services;
+using JitHub.Services;
 using JitHub.ViewModels.ActivityViewModels;
-using Microsoft.Toolkit.Collections;
 using CommunityToolkit.Mvvm.DependencyInjection;
 using Octokit;
 using System;
@@ -9,6 +8,7 @@ using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
 using System.Windows.Input;
+using CommunityToolkit.Common.Collections;
 
 namespace JitHub.Models
 {

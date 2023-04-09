@@ -1,4 +1,4 @@
-﻿using JitHub.Models;
+using JitHub.Models;
 using JitHub.Models.PRConversation;
 using JitHub.Services;
 using JitHub.ViewModels.IssueViewModels;
@@ -8,7 +8,7 @@ using CommunityToolkit.Mvvm.Input;
 using Octokit;
 using System;
 using System.Threading.Tasks;
-using Windows.UI.Xaml.Data;
+using Microsoft.UI.Xaml.Data;
 
 namespace JitHub.Converters.PullRequests
 {

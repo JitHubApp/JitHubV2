@@ -5,7 +5,7 @@
     xmlns:local="using:JitHub.Views.Pages"
     xmlns:muxc="using:Microsoft.UI.Xaml.Controls"
     xmlns:prviewmodels="using:JitHub.ViewModels.PullRequestViewModels"
-    xmlns:controls="using:Microsoft.Toolkit.Uwp.UI.Controls"
+    xmlns:controls="using:CommunityToolkit.WinUI.UI.Controls"
     xmlns:interactivity="using:Microsoft.Xaml.Interactivity"
     xmlns:core="using:Microsoft.Xaml.Interactions.Core"
     xmlns:d="http://schemas.microsoft.com/expression/blend/2008"

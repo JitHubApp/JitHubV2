@@ -1,4 +1,4 @@
-﻿using Octokit;
+using Octokit;
 
 namespace JitHub.Models.NavArgs
 {

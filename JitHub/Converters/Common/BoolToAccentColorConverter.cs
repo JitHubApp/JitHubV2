@@ -1,7 +1,7 @@
-﻿using System;
+using System;
 using Windows.UI.ViewManagement;
-using Windows.UI.Xaml.Data;
-using Windows.UI.Xaml.Media;
+using Microsoft.UI.Xaml.Data;
+using Microsoft.UI.Xaml.Media;
 
 namespace JitHub.Converters.Common
 {

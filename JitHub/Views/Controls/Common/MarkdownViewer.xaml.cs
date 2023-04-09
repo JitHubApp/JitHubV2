@@ -1,6 +1,6 @@
-﻿using Markdig.UWP;
-using Windows.UI.Xaml;
-using Windows.UI.Xaml.Controls;
+using Markdig.UWP;
+using Microsoft.UI.Xaml;
+using Microsoft.UI.Xaml.Controls;
 
 namespace JitHub.Views.Controls.Common
 {

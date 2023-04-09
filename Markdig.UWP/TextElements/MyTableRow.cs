@@ -1,6 +1,6 @@
-﻿using Markdig.Extensions.Tables;
-using Windows.UI.Xaml.Controls;
-using Windows.UI.Xaml.Documents;
+using Markdig.Extensions.Tables;
+using Microsoft.UI.Xaml.Controls;
+using Microsoft.UI.Xaml.Documents;
 
 namespace Markdig.UWP.TextElements;
 

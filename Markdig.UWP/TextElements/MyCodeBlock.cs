@@ -1,14 +1,14 @@
-﻿using ColorCode;
+using ColorCode;
 using Markdig.Helpers;
 using Markdig.Syntax;
 using System;
 using System.Collections.Generic;
 using System.Text;
 using Windows.UI;
-using Windows.UI.Xaml;
-using Windows.UI.Xaml.Controls;
-using Windows.UI.Xaml.Documents;
-using Windows.UI.Xaml.Media;
+using Microsoft.UI.Xaml;
+using Microsoft.UI.Xaml.Controls;
+using Microsoft.UI.Xaml.Documents;
+using Microsoft.UI.Xaml.Media;
 
 namespace Markdig.UWP.TextElements;
 
@@ -29,9 +29,9 @@ internal class MyCodeBlock : IAddChild
         var container = new InlineUIContainer();
         var border = new Border();
         border.Background = (Brush)Application.Current.Resources["ExpanderHeaderBackground"];
-        border.Padding = new Windows.UI.Xaml.Thickness(8);
-        border.Margin = new Windows.UI.Xaml.Thickness(4);
-        border.CornerRadius = new Windows.UI.Xaml.CornerRadius(4);
+        border.Padding = new Thickness(8);
+        border.Margin = new Thickness(4);
+        border.CornerRadius = new CornerRadius(4);
         var richTextBlock = new RichTextBlock();
         
         if (codeBlock is FencedCodeBlock fencedCodeBlock)

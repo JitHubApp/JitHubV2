@@ -1,4 +1,4 @@
-﻿using JitHub.Models;
+using JitHub.Models;
 using JitHub.Models.CommandArgs;
 using CommunityToolkit.Mvvm.Input;
 using System;

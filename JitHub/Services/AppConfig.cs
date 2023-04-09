@@ -1,4 +1,4 @@
-﻿using JitHub.Models;
+using JitHub.Models;
 using Microsoft.Extensions.Configuration;
 using Windows.ApplicationModel;
 

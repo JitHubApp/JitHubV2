@@ -1,4 +1,4 @@
-﻿using JitHub.ViewModels.IssueViewModels;
+using JitHub.ViewModels.IssueViewModels;
 using JitHub.ViewModels.UserViewModel;
 using CommunityToolkit.Mvvm.Input;
 using Octokit;

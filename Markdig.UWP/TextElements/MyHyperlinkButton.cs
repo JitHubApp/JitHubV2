@@ -1,7 +1,7 @@
-﻿using HtmlAgilityPack;
+using HtmlAgilityPack;
 using Markdig.Syntax.Inlines;
-using Windows.UI.Xaml.Controls;
-using Windows.UI.Xaml.Documents;
+using Microsoft.UI.Xaml.Controls;
+using Microsoft.UI.Xaml.Documents;
 
 namespace Markdig.UWP.TextElements;
 
@@ -43,8 +43,8 @@ internal class MyHyperlinkButton : IAddChild
         {
             NavigateUri = Extensions.GetUri(url, baseUrl),
         };
-        _hyperLinkButton.Padding = new Windows.UI.Xaml.Thickness(0);
-        _hyperLinkButton.Margin = new Windows.UI.Xaml.Thickness(0);
+        _hyperLinkButton.Padding = new Microsoft.UI.Xaml.Thickness(0);
+        _hyperLinkButton.Margin = new Microsoft.UI.Xaml.Thickness(0);
         _inlineUIContainer = new InlineUIContainer();
         if (IsHtml)
         {

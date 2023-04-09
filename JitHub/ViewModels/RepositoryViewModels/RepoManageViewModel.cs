@@ -1,4 +1,4 @@
-﻿using JitHub.Models;
+using JitHub.Models;
 using JitHub.Services;
 using JitHub.ViewModels.Base;
 using JitHub.Views.Controls.Repo;

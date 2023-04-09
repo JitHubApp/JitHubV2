@@ -1,7 +1,7 @@
-﻿using JitHub.ViewModels.IssueViewModels;
-using Windows.UI.Xaml;
-using Windows.UI.Xaml.Controls;
-using Windows.UI.Xaml.Navigation;
+using JitHub.ViewModels.IssueViewModels;
+using Microsoft.UI.Xaml;
+using Microsoft.UI.Xaml.Controls;
+using Microsoft.UI.Xaml.Navigation;
 
 // The Blank Page item template is documented at https://go.microsoft.com/fwlink/?LinkId=234238
 
@@ -26,7 +26,7 @@ namespace JitHub.Views.Pages.IssuePage
             ViewModel.LoadCommand.Execute(null);
         }
 
-        private void Page_SizeChanged(object sender, Windows.UI.Xaml.SizeChangedEventArgs e)
+        private void Page_SizeChanged(object sender, Microsoft.UI.Xaml.SizeChangedEventArgs e)
         {
             if (e.NewSize.Width > 768)
             {

@@ -1,8 +1,9 @@
-﻿using Markdig.Syntax.Inlines;
+using Markdig.Syntax.Inlines;
 using System;
 using Windows.UI.Text;
-using Windows.UI.Xaml;
-using Windows.UI.Xaml.Documents;
+using Microsoft.UI.Xaml;
+using Microsoft.UI.Xaml.Documents;
+using Microsoft.UI.Text;
 
 namespace Markdig.UWP.TextElements;
 

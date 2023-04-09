@@ -1,4 +1,4 @@
-﻿using JitHub.Models;
+using JitHub.Models;
 using CommunityToolkit.Mvvm.ComponentModel;
 using System;
 using System.Threading.Tasks;

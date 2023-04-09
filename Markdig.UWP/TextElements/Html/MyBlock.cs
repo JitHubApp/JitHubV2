@@ -1,7 +1,7 @@
-﻿using HtmlAgilityPack;
+using HtmlAgilityPack;
 using System.Collections.Generic;
-using Windows.UI.Xaml.Controls;
-using Windows.UI.Xaml.Documents;
+using Microsoft.UI.Xaml.Controls;
+using Microsoft.UI.Xaml.Documents;
 
 namespace Markdig.UWP.TextElements.Html;
 
@@ -24,11 +24,11 @@ internal class MyBlock : IAddChild
         _paragraph = new Paragraph();
         _paragraph.TextAlignment = align switch
         {
-            "left" => Windows.UI.Xaml.TextAlignment.Left,
-            "right" => Windows.UI.Xaml.TextAlignment.Right,
-            "center" => Windows.UI.Xaml.TextAlignment.Center,
-            "justify" => Windows.UI.Xaml.TextAlignment.Justify,
-            _ => Windows.UI.Xaml.TextAlignment.Left,
+            "left" => Microsoft.UI.Xaml.TextAlignment.Left,
+            "right" => Microsoft.UI.Xaml.TextAlignment.Right,
+            "center" => Microsoft.UI.Xaml.TextAlignment.Center,
+            "justify" => Microsoft.UI.Xaml.TextAlignment.Justify,
+            _ => Microsoft.UI.Xaml.TextAlignment.Left,
         };
         StyleBlock();
     }
@@ -62,7 +62,7 @@ internal class MyBlock : IAddChild
                 {
                     richTextBlock.FontStyle = Windows.UI.Text.FontStyle.Italic;
                 }
-                //_flowDocument.RichTextBlock.Style = (Windows.UI.Xaml.Style)Windows.UI.Xaml.Application.Current.Resources["AddressBlockStyle"];
+                //_flowDocument.RichTextBlock.Style = (Microsoft.UI.Xaml.Style)Microsoft.UI.Xaml.Application.Current.Resources["AddressBlockStyle"];
                 break;
         }
     }

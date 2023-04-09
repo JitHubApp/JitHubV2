@@ -1,12 +1,13 @@
-﻿using JitHub.Services;
+using JitHub.Services;
 using CommunityToolkit.Mvvm.DependencyInjection;
 using CommunityToolkit.Mvvm.Input;
 using Windows.UI;
-using Windows.UI.Xaml;
-using Windows.UI.Xaml.Controls;
-using Windows.UI.Xaml.Media;
-using Windows.UI.Xaml.Media.Animation;
-using Windows.UI.Xaml.Navigation;
+using Microsoft.UI.Xaml;
+using Microsoft.UI.Xaml.Controls;
+using Microsoft.UI.Xaml.Media;
+using Microsoft.UI.Xaml.Media.Animation;
+using Microsoft.UI.Xaml.Navigation;
+using Microsoft.UI;
 
 namespace JitHub.Views.Pages;
 
@@ -18,7 +19,7 @@ public sealed partial class ShellPage : Page
         this.InitializeComponent();
         // Set XAML element as a draggable region.
         
-        Window.Current.SetTitleBar(TitleBar);
+        App.Window.SetTitleBar(TitleBar);
         ViewModel.LoadApplication(new RelayCommand(OpenModal), new RelayCommand(CloseModal));
         var notificationService = Ioc.Default.GetService<INotificationService>();
         notificationService.Register(new RelayCommand<string>(PushNotification));

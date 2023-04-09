@@ -1,9 +1,9 @@
-﻿using JitHub.Views;
+using JitHub.Views;
 using CommunityToolkit.Mvvm.ComponentModel;
 using System;
 using System.Windows.Input;
-using Windows.UI.Xaml.Controls;
-using Windows.UI.Xaml.Media.Animation;
+using Microsoft.UI.Xaml.Controls;
+using Microsoft.UI.Xaml.Media.Animation;
 
 namespace JitHub.Services
 {

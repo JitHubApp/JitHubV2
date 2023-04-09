@@ -1,6 +1,6 @@
-﻿using HtmlAgilityPack;
+using HtmlAgilityPack;
 using Markdig.Syntax.Inlines;
-using Windows.UI.Xaml.Documents;
+using Microsoft.UI.Xaml.Documents;
 
 namespace Markdig.UWP.TextElements;
 
@@ -42,7 +42,7 @@ internal class MyHyperlink : IAddChild
 
     public void AddChild(IAddChild child)
     {
-        if (child.TextElement is Windows.UI.Xaml.Documents.Inline inlineChild)
+        if (child.TextElement is Microsoft.UI.Xaml.Documents.Inline inlineChild)
         {
             try
             {

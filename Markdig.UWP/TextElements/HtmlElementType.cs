@@ -1,4 +1,4 @@
-﻿namespace Markdig.UWP.TextElements;
+namespace Markdig.UWP.TextElements;
 
 public enum HtmlElementType
 {

@@ -1,6 +1,6 @@
-﻿using JitHub.ViewModels.EmojiViewModels;
-using Windows.UI.Xaml;
-using Windows.UI.Xaml.Controls;
+using JitHub.ViewModels.EmojiViewModels;
+using Microsoft.UI.Xaml;
+using Microsoft.UI.Xaml.Controls;
 
 namespace JitHub.Views.Controls.Common
 {

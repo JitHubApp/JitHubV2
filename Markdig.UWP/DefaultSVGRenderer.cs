@@ -1,16 +1,16 @@
-﻿using System;
+using System;
 using System.IO;
 using System.Threading.Tasks;
-using Windows.UI.Xaml.Media.Imaging;
+using Microsoft.UI.Xaml.Media.Imaging;
 
 namespace Markdig.UWP;
 
 internal class DefaultSVGRenderer : ISVGRenderer
 {
-    public async Task<Windows.UI.Xaml.Controls.Image> SvgToImage(string svgString)
+    public async Task<Microsoft.UI.Xaml.Controls.Image> SvgToImage(string svgString)
     {
         SvgImageSource svgImageSource = new SvgImageSource();
-        var image = new Windows.UI.Xaml.Controls.Image();
+        var image = new Microsoft.UI.Xaml.Controls.Image();
         // Create a MemoryStream object and write the SVG string to it
         using (var memoryStream = new MemoryStream())
         using (var streamWriter = new StreamWriter(memoryStream))

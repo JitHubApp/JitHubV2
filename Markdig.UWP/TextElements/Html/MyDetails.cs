@@ -1,9 +1,9 @@
-﻿using HtmlAgilityPack;
+using HtmlAgilityPack;
 using Microsoft.UI.Xaml.Controls;
 using System.Linq;
-using Windows.UI.Xaml;
-using Windows.UI.Xaml.Controls;
-using Windows.UI.Xaml.Documents;
+using Microsoft.UI.Xaml;
+using Microsoft.UI.Xaml.Controls;
+using Microsoft.UI.Xaml.Documents;
 
 namespace Markdig.UWP.TextElements.Html;
 
@@ -32,15 +32,15 @@ internal class MyDetails : IAddChild
 
         _inlineUIContainer = new InlineUIContainer();
         _expander = new Expander();
-        _expander.HorizontalAlignment = Windows.UI.Xaml.HorizontalAlignment.Stretch;
+        _expander.HorizontalAlignment = Microsoft.UI.Xaml.HorizontalAlignment.Stretch;
         _flowDocument = new MyFlowDocument(details);
-        _flowDocument.RichTextBlock.HorizontalAlignment = Windows.UI.Xaml.HorizontalAlignment.Stretch;
+        _flowDocument.RichTextBlock.HorizontalAlignment = Microsoft.UI.Xaml.HorizontalAlignment.Stretch;
         _expander.Content = _flowDocument.RichTextBlock;
         var headerBlock = new TextBlock()
         {
             Text = header?.InnerText
         };
-        headerBlock.HorizontalAlignment = Windows.UI.Xaml.HorizontalAlignment.Stretch;
+        headerBlock.HorizontalAlignment = Microsoft.UI.Xaml.HorizontalAlignment.Stretch;
         _expander.Header = headerBlock;
         _inlineUIContainer.Child = _expander;
         _paragraph = new Paragraph();

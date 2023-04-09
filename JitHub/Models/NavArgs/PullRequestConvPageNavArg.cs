@@ -1,4 +1,4 @@
-﻿using Octokit;
+using Octokit;
 using System.Windows.Input;
 
 namespace JitHub.Models.NavArgs

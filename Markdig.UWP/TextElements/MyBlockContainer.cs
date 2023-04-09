@@ -1,5 +1,5 @@
-﻿using Markdig.Syntax;
-using Windows.UI.Xaml.Documents;
+using Markdig.Syntax;
+using Microsoft.UI.Xaml.Documents;
 
 namespace Markdig.UWP.TextElements;
 

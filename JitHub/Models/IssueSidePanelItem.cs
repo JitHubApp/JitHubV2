@@ -1,6 +1,6 @@
-﻿using JitHub.Models.Base;
+using JitHub.Models.Base;
 using System.Collections.Generic;
-using Windows.UI.Xaml;
+using Microsoft.UI.Xaml;
 
 namespace JitHub.Models
 {

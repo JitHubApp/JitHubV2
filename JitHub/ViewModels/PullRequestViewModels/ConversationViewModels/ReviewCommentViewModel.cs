@@ -1,4 +1,4 @@
-﻿using JitHub.Helpers;
+using JitHub.Helpers;
 using JitHub.Models;
 using JitHub.Models.PRConversation;
 using JitHub.ViewModels.Base;
@@ -11,7 +11,7 @@ using System.Collections.ObjectModel;
 using System.Linq;
 using System.Text;
 using System.Windows.Input;
-using Windows.UI.Xaml;
+using Microsoft.UI.Xaml;
 
 namespace JitHub.ViewModels.PullRequestViewModels.ConversationViewModels
 {

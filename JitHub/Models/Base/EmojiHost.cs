@@ -1,4 +1,4 @@
-﻿namespace JitHub.Models.Base
+namespace JitHub.Models.Base
 {
     public enum EmojiHost
     {

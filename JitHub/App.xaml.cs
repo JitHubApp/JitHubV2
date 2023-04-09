@@ -1,33 +1,33 @@
-﻿using JitHub.Models;
-using JitHub.Services;
-using JitHub.Views;
-using JitHub.Views.Pages;
-using Microsoft.Extensions.DependencyInjection;
-using CommunityToolkit.Mvvm.DependencyInjection;
-using Microsoft.Toolkit.Uwp.Helpers;
+using Microsoft.UI.Xaml;
+using Microsoft.UI.Xaml.Controls;
+using Microsoft.UI.Xaml.Controls.Primitives;
+using Microsoft.UI.Xaml.Data;
+using Microsoft.UI.Xaml.Input;
+using Microsoft.UI.Xaml.Media;
+using Microsoft.UI.Xaml.Navigation;
+using Microsoft.UI.Xaml.Shapes;
+using Microsoft.Windows.AppLifecycle;
 using System;
-using System.Threading.Tasks;
+using System.Collections.Generic;
+using System.IO;
+using System.Linq;
+using System.Runtime.InteropServices.WindowsRuntime;
 using Windows.ApplicationModel;
 using Windows.ApplicationModel.Activation;
-using Windows.ApplicationModel.Core;
-using Windows.ApplicationModel.Store;
-using Windows.Storage;
-using Windows.UI;
-using Windows.UI.ViewManagement;
-using Windows.UI.Xaml;
-using Windows.UI.Xaml.Controls;
-using Windows.UI.Xaml.Media.Animation;
-using Windows.UI.Xaml.Navigation;
+using Windows.Foundation;
+using Windows.Foundation.Collections;
+using JitHub;
+
+// To learn more about WinUI, the WinUI project structure,
+// and more about our project templates, see: http://aka.ms/winui-project-info.
 
 namespace JitHub
 {
     /// <summary>
     /// Provides application-specific behavior to supplement the default Application class.
     /// </summary>
-    sealed partial class App : Application
+    public partial class App : Application
     {
-        private Frame _rootFrame;
-        private bool _servicedConfigured = false;
         /// <summary>
         /// Initializes the singleton application object.  This is the first line of authored code
         /// executed, and as such is the logical equivalent of main() or WinMain().
@@ -35,134 +35,55 @@ namespace JitHub
         public App()
         {
             this.InitializeComponent();
-            this.Suspending += OnSuspending;
-            var store = ApplicationDataStorageHelper.GetCurrent(new Microsoft.Toolkit.Helpers.SystemSerializer());
-            var theme = store.Read<string>(ThemeService.Key);
-            if (theme != null && theme != ThemeConst.System)
-            {
-                RequestedTheme = ThemeService.GetApplicationThemeStatic(theme);
-            }
-        }
-
-        private void InitializeTitleBar()
-        {
-            ApplicationViewTitleBar titleBar = ApplicationView.GetForCurrentView().TitleBar;
-            titleBar.ButtonBackgroundColor = Colors.Transparent;
-            titleBar.ButtonInactiveBackgroundColor = Colors.Transparent;
-            var coreTitleBar = CoreApplication.GetCurrentView().TitleBar;
-            coreTitleBar.ExtendViewIntoTitleBar = true;
-        }
-
-        private void InitializeServices()
-        {
-            if (!_servicedConfigured)
-            {
-                var services = new ServiceCollection();
-
-                services.AddSingleton(new NavigationService(_rootFrame));
-                services.AddSingleton(new ModalService());
-                services.AddSingleton(new FeatureService());
-                services.AddScoped<INotificationService, NotificationService>();
-                services.AddScoped<ISettingService, SettingService>();
-                services.AddScoped<IGitHubService, GitHubService>();
-                services.AddScoped<IAppConfig, AppConfig>();
-                services.AddScoped<IAccountService, AccountService>();
-                services.AddScoped<IAuthService, AuthService>();
-                services.AddScoped<IThemeService, ThemeService>();
-                services.AddScoped<ICommandService, CommandService>();
-                services.AddSingleton<GlobalViewModel>();
-
-                Ioc.Default.ConfigureServices(services.BuildServiceProvider());
-                _servicedConfigured = true;
-            }
-        }
-
-        protected override async void OnActivated(IActivatedEventArgs args)
-        {
-            base.OnActivated(args);
-            var authService = Ioc.Default.GetService<IAuthService>();
-            if (args.Kind == ActivationKind.Protocol)
-            {
-                var eventArgs = args as ProtocolActivatedEventArgs;
-                var query = eventArgs.Uri.Query;
-                var success = await authService.Authorize(query);
-                if (success)
-                {
-                    _rootFrame.Navigate(typeof(ShellPage), null, new SuppressNavigationTransitionInfo());
-                }
-            }
         }
 
         /// <summary>
         /// Invoked when the application is launched normally by the end user.  Other entry points
         /// will be used such as when the application is launched to open a specific file.
         /// </summary>
-        /// <param name="e">Details about the launch request and process.</param>
-        protected override void OnLaunched(LaunchActivatedEventArgs e)
+        /// <param name="args">Details about the launch request and process.</param>
+        protected override async void OnLaunched(Microsoft.UI.Xaml.LaunchActivatedEventArgs e)
         {
-            _rootFrame = Window.Current.Content as Frame;
+            // TODO This code defaults the app to a single instance app. If you need multi instance app, remove this part.
+            // Read: https://docs.microsoft.com/en-us/windows/apps/windows-app-sdk/migrate-to-windows-app-sdk/guides/applifecycle#single-instancing-in-applicationonlaunched
+            // If this is the first instance launched, then register it as the "main" instance.
+            // If this isn't the first instance launched, then "main" will already be registered,
+            // so retrieve it.
+            var mainInstance = Microsoft.Windows.AppLifecycle.AppInstance.FindOrRegisterForKey("main");
+            var activatedEventArgs = Microsoft.Windows.AppLifecycle.AppInstance.GetCurrent().GetActivatedEventArgs();
 
-            // Do not repeat app initialization when the Window already has content,
-            // just ensure that the window is active
-            if (_rootFrame == null)
+            // If the instance that's executing the OnLaunched handler right now
+            // isn't the "main" instance.
+            if (!mainInstance.IsCurrent)
             {
-                // Create a Frame to act as the navigation context and navigate to the first page
-                _rootFrame = new Frame();
-
-                _rootFrame.NavigationFailed += OnNavigationFailed;
-
-                if (e.PreviousExecutionState == ApplicationExecutionState.Terminated)
-                {
-                    //TODO: Load state from previously suspended application
-                }
-
-                // Place the frame in the current Window
-                Window.Current.Content = _rootFrame;
+                // Redirect the activation (and args) to the "main" instance, and exit.
+                await mainInstance.RedirectActivationToAsync(activatedEventArgs);
+                System.Diagnostics.Process.GetCurrentProcess().Kill();
+                return;
             }
 
-            InitializeTitleBar();
-            InitializeServices();
-            
-            if (e.PrelaunchActivated == false)
+            // TODO This code handles app activation types. Add any other activation kinds you want to handle.
+            // Read: https://docs.microsoft.com/en-us/windows/apps/windows-app-sdk/migrate-to-windows-app-sdk/guides/applifecycle#file-type-association
+            if (activatedEventArgs.Kind == ExtendedActivationKind.File)
             {
-                if (_rootFrame.Content == null)
-                {
-                    // When the navigation stack isn't restored navigate to the first page,
-                    // configuring the new page by passing required information as a navigation
-                    // parameter
-                    var _authService = Ioc.Default.GetService<IAuthService>();
-                    if (_authService.Authenticated)
-                        _rootFrame.Navigate(typeof(ShellPage));
-                    else
-                        _rootFrame.Navigate(typeof(LoginPage), e.Arguments);
-                }
-                // Ensure the current window is active
-                Window.Current.Activate();
+                OnFileActivated(activatedEventArgs);
             }
+
+            // Initialize MainWindow here
+            Window = new MainWindow();
+            Window.Activate();
+            WindowHandle = WinRT.Interop.WindowNative.GetWindowHandle(Window);
         }
 
-        /// <summary>
-        /// Invoked when Navigation to a certain page fails
-        /// </summary>
-        /// <param name="sender">The Frame which failed navigation</param>
-        /// <param name="e">Details about the navigation failure</param>
-        void OnNavigationFailed(object sender, NavigationFailedEventArgs e)
+        // TODO This is an example method for the case when app is activated through a file.
+        // Feel free to remove this if you do not need this.
+        public void OnFileActivated(AppActivationArguments activatedEventArgs)
         {
-            throw new Exception("Failed to load Page " + e.SourcePageType.FullName);
+
         }
 
-        /// <summary>
-        /// Invoked when application execution is being suspended.  Application state is saved
-        /// without knowing whether the application will be terminated or resumed with the contents
-        /// of memory still intact.
-        /// </summary>
-        /// <param name="sender">The source of the suspend request.</param>
-        /// <param name="e">Details about the suspend request.</param>
-        private void OnSuspending(object sender, SuspendingEventArgs e)
-        {
-            var deferral = e.SuspendingOperation.GetDeferral();
-            //TODO: Save application state and stop any background activity
-            deferral.Complete();
-        }
+        public static MainWindow Window { get; private set; }
+
+        public static IntPtr WindowHandle { get; private set; }
     }
 }

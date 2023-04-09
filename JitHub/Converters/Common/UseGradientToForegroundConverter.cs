@@ -1,21 +1,20 @@
-﻿using System;
-using Windows.UI;
-using Windows.UI.Xaml.Data;
-using Windows.UI.Xaml.Media;
+using System;
+using Microsoft.UI.Xaml.Data;
+using Microsoft.UI.Xaml.Media;
+using Microsoft.UI;
 
-namespace JitHub.Converters.Common
+namespace JitHub.Converters.Common;
+
+class UseGradientToForegroundConverter : IValueConverter
 {
-    class UseGradientToForegroundConverter : IValueConverter
+    public object Convert(object value, Type targetType, object parameter, string language)
     {
-        public object Convert(object value, Type targetType, object parameter, string language)
-        {
-            var useGradient = (bool)value;
-            return useGradient ? new SolidColorBrush(Colors.Black) : new SolidColorBrush(Colors.White);
-        }
+        var useGradient = (bool)value;
+        return useGradient ? new SolidColorBrush(Colors.Black) : new SolidColorBrush(Colors.White);
+    }
 
-        public object ConvertBack(object value, Type targetType, object parameter, string language)
-        {
-            throw new NotImplementedException();
-        }
+    public object ConvertBack(object value, Type targetType, object parameter, string language)
+    {
+        throw new NotImplementedException();
     }
 }

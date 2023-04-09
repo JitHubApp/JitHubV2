@@ -1,4 +1,4 @@
-﻿using JitHub.ViewModels.Base;
+using JitHub.ViewModels.Base;
 using Octokit;
 using System.Windows.Input;
 

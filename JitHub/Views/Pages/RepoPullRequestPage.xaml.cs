@@ -1,7 +1,7 @@
-﻿using JitHub.Models.NavArgs;
+using JitHub.Models.NavArgs;
 using Octokit;
-using Windows.UI.Xaml.Navigation;
-using Page = Windows.UI.Xaml.Controls.Page;
+using Microsoft.UI.Xaml.Navigation;
+using Page = Microsoft.UI.Xaml.Controls.Page;
 
 // The Blank Page item template is documented at https://go.microsoft.com/fwlink/?LinkId=234238
 

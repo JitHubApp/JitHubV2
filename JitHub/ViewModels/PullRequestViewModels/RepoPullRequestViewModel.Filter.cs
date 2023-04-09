@@ -1,4 +1,4 @@
-﻿using JitHub.Models;
+using JitHub.Models;
 using JitHub.Models.Filter;
 using CommunityToolkit.Mvvm.Input;
 using Octokit;

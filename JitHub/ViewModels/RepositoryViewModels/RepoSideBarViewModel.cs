@@ -1,4 +1,4 @@
-﻿using JitHub.Models;
+using JitHub.Models;
 using JitHub.Services;
 using JitHub.ViewModels.Base;
 using JitHub.Views.Controls.Common;
@@ -11,7 +11,7 @@ using System.Linq;
 using System.Threading.Tasks;
 using CommunityToolkit.Mvvm.ComponentModel;
 using JitHub.Models.Base;
-using Windows.UI.Xaml.Controls;
+using Microsoft.UI.Xaml.Controls;
 using CommunityToolkit.Labs.WinUI;
 
 namespace JitHub.ViewModels.RepositoryViewModels;

@@ -1,4 +1,4 @@
-﻿using JitHub.Models.Base;
+using JitHub.Models.Base;
 using JitHub.Models.NavArgs;
 using JitHub.Services;
 using JitHub.ViewModels.Base;
@@ -9,7 +9,7 @@ using CommunityToolkit.Mvvm.Input;
 using Octokit;
 using System.Threading.Tasks;
 using System.Windows.Input;
-using Windows.UI.Xaml.Controls;
+using Microsoft.UI.Xaml.Controls;
 
 namespace JitHub.ViewModels.PullRequestViewModels
 {

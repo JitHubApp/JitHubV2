@@ -1,4 +1,4 @@
-﻿namespace JitHub.Services
+namespace JitHub.Services
 {
     public interface IAccountService
     {

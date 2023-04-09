@@ -1,4 +1,4 @@
-﻿using Markdig.Renderers;
+using Markdig.Renderers;
 using Markdig.Syntax;
 using Markdig.UWP.Renderers.ObjectRenderers;
 using Markdig.UWP.Renderers.ObjectRenderers.Inlines;

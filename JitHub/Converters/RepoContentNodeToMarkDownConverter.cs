@@ -1,8 +1,8 @@
-﻿using JitHub.Models;
+using JitHub.Models;
 using Octokit;
 using System;
 using System.Linq;
-using Windows.UI.Xaml.Data;
+using Microsoft.UI.Xaml.Data;
 
 namespace JitHub.Converters
 {

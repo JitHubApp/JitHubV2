@@ -1,6 +1,6 @@
-﻿using System;
+using System;
 using System.Threading.Tasks;
-using Windows.UI.Xaml.Media.Imaging;
+using Microsoft.UI.Xaml.Media.Imaging;
 using Svg.Skia;
 using SkiaSharp;
 using System.IO;
@@ -9,11 +9,11 @@ namespace JitHub.Utilities.SVG
 {
     public class SVGRenderer
     {
-        public static async Task<Windows.UI.Xaml.Controls.Image> SvgToImage(string svgString)
+        public static async Task<Microsoft.UI.Xaml.Controls.Image> SvgToImage(string svgString)
         {
             var svg = new SKSvg();
             svg.FromSvg(svgString);
-            Windows.UI.Xaml.Controls.Image image = new Windows.UI.Xaml.Controls.Image();
+            Microsoft.UI.Xaml.Controls.Image image = new Microsoft.UI.Xaml.Controls.Image();
             var width = (double)svg.Picture.CullRect.Width;
             var height = (double)svg.Picture.CullRect.Height;
             using (var bitmap = new SKBitmap((int)svg.Picture.CullRect.Width, (int)svg.Picture.CullRect.Height))

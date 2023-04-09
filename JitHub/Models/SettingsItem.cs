@@ -1,4 +1,4 @@
-﻿using JitHub.Models.Base;
+using JitHub.Models.Base;
 using CommunityToolkit.Mvvm.ComponentModel;
 using Octokit;
 using System.Collections.Generic;

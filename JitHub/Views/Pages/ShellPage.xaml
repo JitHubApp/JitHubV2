@@ -8,12 +8,11 @@
     xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
     xmlns:octokit="using:Octokit"
     mc:Ignorable="d"
-    xmlns:animations="using:Microsoft.Toolkit.Uwp.UI.Animations"
+    xmlns:animations="using:CommunityToolkit.WinUI.UI.Animations"
     xmlns:muxc="using:Microsoft.UI.Xaml.Controls"
     xmlns:animatedvisuals="using:Microsoft.UI.Xaml.Controls.AnimatedVisuals"
-    xmlns:controls="using:Microsoft.Toolkit.Uwp.UI.Controls"
+    xmlns:controls="using:CommunityToolkit.WinUI.UI.Controls"
     xmlns:user="using:JitHub.Views.Controls.Profile"
-    muxc:BackdropMaterial.ApplyToRootOrPageBackground="True"
     Background="Transparent">
     <Page.DataContext>
         <viewmodels:ShellViewModel x:Name="ViewModel"/>

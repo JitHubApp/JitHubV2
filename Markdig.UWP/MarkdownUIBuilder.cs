@@ -1,7 +1,7 @@
-﻿using Markdig.UWP.Renderers;
+using Markdig.UWP.Renderers;
 using Markdig.UWP.TextElements;
 using System;
-using Windows.UI.Xaml;
+using Microsoft.UI.Xaml;
 
 namespace Markdig.UWP;
 

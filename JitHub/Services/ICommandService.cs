@@ -1,4 +1,4 @@
-﻿using JitHub.Models;
+using JitHub.Models;
 using System.Windows.Input;
 
 namespace JitHub.Services

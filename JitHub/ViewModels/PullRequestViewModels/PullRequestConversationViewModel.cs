@@ -1,4 +1,4 @@
-﻿using JitHub.Models.PRConversation;
+using JitHub.Models.PRConversation;
 using JitHub.Services;
 using JitHub.ViewModels.Base;
 using JitHub.ViewModels.IssueViewModels;

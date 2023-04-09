@@ -1,4 +1,4 @@
-﻿namespace JitHub.Models
+namespace JitHub.Models
 {
     public class FailedRepo
     {

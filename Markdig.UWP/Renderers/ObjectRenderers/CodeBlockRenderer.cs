@@ -1,4 +1,4 @@
-﻿using Markdig.Syntax;
+using Markdig.Syntax;
 using Markdig.UWP.TextElements;
 
 namespace Markdig.UWP.Renderers.ObjectRenderers

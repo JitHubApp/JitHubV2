@@ -1,6 +1,6 @@
-﻿using JitHub.Models;
-using Windows.UI.Xaml;
-using Windows.UI.Xaml.Controls;
+using JitHub.Models;
+using Microsoft.UI.Xaml;
+using Microsoft.UI.Xaml.Controls;
 
 namespace JitHub.Helpers
 {

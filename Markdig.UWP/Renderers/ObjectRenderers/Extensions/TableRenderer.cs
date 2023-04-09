@@ -1,7 +1,7 @@
-﻿using Markdig.Extensions.Tables;
+using Markdig.Extensions.Tables;
 using Markdig.UWP.TextElements;
 using System;
-using Windows.UI.Xaml;
+using Microsoft.UI.Xaml;
 
 namespace Markdig.UWP.Renderers.ObjectRenderers.Extensions;
 

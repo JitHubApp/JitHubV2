@@ -1,4 +1,4 @@
-﻿using JitHub.Helpers;
+using JitHub.Helpers;
 using JitHub.Models.NavArgs;
 using JitHub.Services;
 using JitHub.Views.Pages;

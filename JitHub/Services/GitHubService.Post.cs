@@ -1,4 +1,4 @@
-﻿using JitHub.Helpers;
+using JitHub.Helpers;
 using JitHub.Models.PRConversation;
 using Octokit;
 using System;

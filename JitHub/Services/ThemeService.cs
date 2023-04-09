@@ -1,56 +1,55 @@
-﻿using JitHub.Models;
-using Windows.UI;
-using Windows.UI.Xaml;
+using JitHub.Models;
+using Microsoft.UI.Xaml;
+using Microsoft.UI;
 
-namespace JitHub.Services
+namespace JitHub.Services;
+
+public class ThemeService : IThemeService
 {
-    public class ThemeService : IThemeService
+    private ISettingService _settings;
+    public static string Key = "APPLICATION_KEY";
+    public ThemeService(ISettingService settings)
     {
-        private ISettingService _settings;
-        public static string Key = "APPLICATION_KEY";
-        public ThemeService(ISettingService settings)
-        {
-            _settings = settings;
-        }
+        _settings = settings;
+    }
 
-        public void SetTheme(string theme)
-        {
-            _settings.Save(Key, theme);
-        }
+    public void SetTheme(string theme)
+    {
+        _settings.Save(Key, theme);
+    }
 
-        public static ApplicationTheme GetSystemThemeStatic()
-        {
-            var uiSettings = new Windows.UI.ViewManagement.UISettings();
-            var color = uiSettings.GetColorValue(Windows.UI.ViewManagement.UIColorType.Background);
-            return color == Colors.Black ? ApplicationTheme.Dark : ApplicationTheme.Light;
-        }
+    public static ApplicationTheme GetSystemThemeStatic()
+    {
+        var uiSettings = new Windows.UI.ViewManagement.UISettings();
+        var color = uiSettings.GetColorValue(Windows.UI.ViewManagement.UIColorType.Background);
+        return color == Colors.Black ? ApplicationTheme.Dark : ApplicationTheme.Light;
+    }
 
-        public static ApplicationTheme GetApplicationThemeStatic(string theme)
+    public static ApplicationTheme GetApplicationThemeStatic(string theme)
+    {
+        if (theme != ThemeConst.System)
         {
-            if (theme != ThemeConst.System)
-            {
-                return theme == ThemeConst.Dark ? ApplicationTheme.Dark : ApplicationTheme.Light;
-            }
-            else
-            {
-                return GetSystemThemeStatic();
-            }
+            return theme == ThemeConst.Dark ? ApplicationTheme.Dark : ApplicationTheme.Light;
         }
-
-        public ApplicationTheme GetSystemTheme()
+        else
         {
             return GetSystemThemeStatic();
         }
+    }
 
-        public string GetTheme()
-        {
-            return _settings.Get<string>(Key);
-        }
+    public ApplicationTheme GetSystemTheme()
+    {
+        return GetSystemThemeStatic();
+    }
 
-        public ApplicationTheme GetApplicationTheme()
-        {
+    public string GetTheme()
+    {
+        return _settings.Get<string>(Key);
+    }
 
-            return GetApplicationThemeStatic(GetTheme());
-        }
+    public ApplicationTheme GetApplicationTheme()
+    {
+
+        return GetApplicationThemeStatic(GetTheme());
     }
 }

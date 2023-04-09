@@ -1,6 +1,7 @@
-﻿using JitHub.Models;
-using Windows.UI.Xaml;
-using Windows.UI.Xaml.Controls;
+using JitHub.Models;
+using Microsoft.UI.Input;
+using Microsoft.UI.Xaml;
+using Microsoft.UI.Xaml.Controls;
 
 // The User Control item template is documented at https://go.microsoft.com/fwlink/?LinkId=234236
 
@@ -46,9 +47,9 @@ namespace JitHub.Views.Controls.Commit
             this.InitializeComponent();
         }
 
-        private void UserControl_PointerEntered(object sender, Windows.UI.Xaml.Input.PointerRoutedEventArgs e)
+        private void UserControl_PointerEntered(object sender, Microsoft.UI.Xaml.Input.PointerRoutedEventArgs e)
         {
-            var cond = e.Pointer.PointerDeviceType == Windows.Devices.Input.PointerDeviceType.Mouse || e.Pointer.PointerDeviceType == Windows.Devices.Input.PointerDeviceType.Pen;
+            var cond = e.Pointer.PointerDeviceType == PointerDeviceType.Mouse || e.Pointer.PointerDeviceType == PointerDeviceType.Pen;
             var widthOk = ActualWidth >= 400;
             if (cond && ShowHoverMenu && widthOk)
             {
@@ -56,7 +57,7 @@ namespace JitHub.Views.Controls.Commit
             }
         }
 
-        private void UserControl_PointerExited(object sender, Windows.UI.Xaml.Input.PointerRoutedEventArgs e)
+        private void UserControl_PointerExited(object sender, Microsoft.UI.Xaml.Input.PointerRoutedEventArgs e)
         {
             var widthOk = ActualWidth >= 400;
             if (ShowHoverMenu && widthOk)

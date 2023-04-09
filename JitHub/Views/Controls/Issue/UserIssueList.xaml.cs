@@ -1,5 +1,5 @@
-﻿using JitHub.ViewModels.IssueViewModels;
-using Windows.UI.Xaml.Controls;
+using JitHub.ViewModels.IssueViewModels;
+using Microsoft.UI.Xaml.Controls;
 
 namespace JitHub.Views.Controls.Issue;
 

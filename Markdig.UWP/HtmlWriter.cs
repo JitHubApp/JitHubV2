@@ -1,4 +1,4 @@
-﻿using HtmlAgilityPack;
+using HtmlAgilityPack;
 using Markdig.UWP.Renderers;
 using Markdig.UWP.TextElements.Html;
 using Markdig.UWP.TextElements;

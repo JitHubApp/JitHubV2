@@ -7,7 +7,7 @@
     xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
     xmlns:usercontrol="using:JitHub.Views.Controls.Common"
     xmlns:issue="using:JitHub.Views.Controls.Issue"
-    xmlns:controls="using:Microsoft.Toolkit.Uwp.UI.Controls"
+    xmlns:controls="using:CommunityToolkit.WinUI.UI.Controls"
     xmlns:code="using:JitHub.Views.Controls.Code"
     xmlns:markdiguwp="using:Markdig.UWP"
     mc:Ignorable="d"

@@ -1,4 +1,4 @@
-﻿using JitHub.Services;
+using JitHub.Services;
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.DependencyInjection;
 using Octokit;

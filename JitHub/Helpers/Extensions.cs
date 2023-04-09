@@ -1,13 +1,7 @@
-﻿using Octokit;
-using System;
-using System.Collections.Generic;
+using Octokit;
 using System.Globalization;
-using System.Linq;
-using System.Text;
-using System.Threading.Tasks;
 using System.Xml.Linq;
 using Windows.UI;
-using Windows.UI.Xaml.Controls;
 
 namespace JitHub.Helpers
 {
@@ -22,23 +16,6 @@ namespace JitHub.Helpers
 
             Color color = Color.FromArgb(a, r, g, b);
             return color;
-        }
-
-        public static async void HandleResize(this WebView webview)
-        {
-            try
-            {
-                var heightString = await webview.InvokeScriptAsync("eval", new[] { "document.getElementById('container').scrollHeight.toString()" });
-                int height;
-                if (int.TryParse(heightString, out height))
-                {
-                    webview.Height = height;
-                }
-            }
-            catch (Exception e)
-            {
-
-            }
         }
 
         public static string GetRepositoryFullName(this Repository repo)
