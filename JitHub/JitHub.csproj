@@ -28,7 +28,6 @@
     <AppxBundle>Always</AppxBundle>
     <AppxBundlePlatforms>x86|x64|arm|arm64</AppxBundlePlatforms>
     <HoursBetweenUpdateChecks>24</HoursBetweenUpdateChecks>
-    <PackageCertificateThumbprint>8D152E0318409B1EAEC7DD6EBEF62D255E17EB84</PackageCertificateThumbprint>
   </PropertyGroup>
   <PropertyGroup Condition="'$(Configuration)|$(Platform)' == 'Debug|x86'">
     <DebugSymbols>true</DebugSymbols>
@@ -1359,6 +1358,10 @@
     <ProjectReference Include="..\JitHub.Utilities.SVG\JitHub.Utilities.SVG.csproj">
       <Project>{ace52ff0-0a75-4b14-8d0f-464c9b09b85f}</Project>
       <Name>JitHub.Utilities.SVG</Name>
+    </ProjectReference>
+    <ProjectReference Include="..\JitHub.WebView\JitHub.WebView.csproj">
+      <Project>{3bed258e-df3f-4bd8-982a-5ad2c941c897}</Project>
+      <Name>JitHub.WebView</Name>
     </ProjectReference>
     <ProjectReference Include="..\Markdig.UWP\Markdig.UWP.csproj">
       <Project>{76bb207b-5175-4e9c-af8c-add0ea67ad18}</Project>

@@ -38,7 +38,7 @@
                     Duration="0:0:0.5"
                     From="0.95" To="1"/>
             </animations:Implicit.ShowAnimations>
-            <wv2ex:WebView2Ex x:Name="ShellWebView" />
+            <wv2ex:WebView2ExBasicMapping x:Name="ShellWebView" />
         </Grid>
     </Grid>
 </Page>
