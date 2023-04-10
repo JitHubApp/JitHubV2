@@ -54,7 +54,7 @@ JitHub is powered by the following NuGet packages:
 - Skiasharp ✏️
 - Microsoft.Toolkit.Uwp ⚙️
 
-Then, you need to create a file named `secrets.json` in the `JitHub` project folder with the following content:
+Then, you need to create a file named `appsettings.json` in the `JitHub` project folder with the following content. Go to [settings > Developer settings](https://github.com/settings/developers) and create an OAuth app. Name it however you like, and in there you can get your clientID and secret. Copy them into the `appsettings.json` file. This file is gitignored, so please never commit it.
 ```json
 {
   "Credential": {
