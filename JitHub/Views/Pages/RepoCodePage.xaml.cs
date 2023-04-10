@@ -6,6 +6,8 @@ using System.Threading.Tasks;
 using Windows.UI.Xaml.Navigation;
 using Microsoft.Toolkit.Uwp.UI.Helpers;
 using Windows.UI.Xaml;
+using WebView2Ex;
+using Windows.UI;
 
 namespace JitHub.Views.Pages
 {
@@ -46,6 +48,25 @@ namespace JitHub.Views.Pages
                 LoadingIndicator.IsActive = false;
                 WebViewContainer.Visibility = Visibility.Visible;
             };
+        }
+
+        async void InitializeAsync()
+        {
+            var environment =
+                await WebView2Environment.CreateAsync();
+            // similar to as CoreWebView2Environment.CreateAsync() but it adds default language
+
+            ShellWebView.WebView2Runtime = await WebView2Runtime.CreateAsync(environment);
+
+            // WebView2Runtime reference
+            // WebView2Runtime.CompositionController
+            // WebView2Runtime.CoreWebView2
+            // WebView2Runtime.Environment
+
+            // example usage
+            ShellWebView.WebView2Runtime.CompositionController.DefaultBackgroundColor = Colors.Transparent;
+
+            ShellWebView.WebView2Runtime.CoreWebView2.NavigateToString("<div>hello world</div>");
         }
     }
 }
