@@ -7,6 +7,8 @@ using Windows.Win32;
 using Windows.Win32.Foundation;
 using SysPoint = System.Drawing.Point;
 using Windows.Win32.UI.WindowsAndMessaging;
+using System.Runtime.CompilerServices;
+using Windows.Win32.UI.Input.KeyboardAndMouse;
 
 namespace WebView2Ex.Natives;
 
@@ -32,6 +34,8 @@ static class User32
     delegate HWND GetFocusDelegate();
     delegate ushort RegisterClassDelegate(in WNDCLASSW lpWndClass);
     delegate BOOL DestroyWindowDelegate(HWND hWnd);
+    delegate short GetAsyncKeyStateDelegate(int vKey);
+
 
     static readonly ClientToScreenDelegate _ClientToScreen;
     public static bool ClientToScreen(HWND hWnd, ref SysPoint lpPoint)
@@ -56,7 +60,9 @@ static class User32
         nint hInstance,
         nint lpParam
     ) => _CreateWindowEx.Invoke(dwExStyle, lpClassName, lpWindowName, dwStyle, x, y, nWidth, nHeight, hWndParent, hMenu, hInstance, lpParam);
-    
+
+    static readonly GetAsyncKeyStateDelegate _GetAsyncKeyState;
+
     static readonly WNDPROC _DefWindowProc;
     public static LRESULT DefWindowProc(HWND param0, uint param1, WPARAM param2, LPARAM param3)
         => _DefWindowProc.Invoke(param0, param1, param2, param3);
@@ -72,6 +78,8 @@ static class User32
     public static BOOL DestroyWindow(HWND hWnd)
         => _DestroyWindow.Invoke(hWnd);
 
+    public static short GetAsyncKeyState(int vKey)
+        => _GetAsyncKeyState.Invoke(vKey);
 
     static User32()
     {
@@ -109,5 +117,28 @@ static class User32
         _DestroyWindow = Marshal.GetDelegateForFunctionPointer<DestroyWindowDelegate>(
             PInvoke.GetProcAddress(user32module, "DestroyWindow")
         );
+        _GetAsyncKeyState = Marshal.GetDelegateForFunctionPointer<GetAsyncKeyStateDelegate>(
+            PInvoke.GetProcAddress(user32module, "GetAsyncKeyState")
+        );
+    }
+
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    public static bool GetAsyncKeyDown(VIRTUAL_KEY Key) => GetAsyncKeyState((int)Key) != 0;
+
+    public static bool IsShiftDown
+    {
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        get => GetAsyncKeyDown(VIRTUAL_KEY.VK_SHIFT);
+    }
+    public static bool IsAltDown
+    {
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        get => GetAsyncKeyDown(VIRTUAL_KEY.VK_MENU);
+    }
+
+    public static bool IsControlDown
+    {
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        get => GetAsyncKeyDown(VIRTUAL_KEY.VK_CONTROL);
     }
 }
