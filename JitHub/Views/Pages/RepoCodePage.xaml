@@ -26,6 +26,7 @@
             x:Name="WebViewContainer"
             HorizontalAlignment="Stretch"
             VerticalAlignment="Stretch"
+            Visibility="Collapsed"
             ui:VisualExtensions.NormalizedCenterPoint="0.5">
             <animations:Implicit.ShowAnimations>
                 <animations:OpacityAnimation

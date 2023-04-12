@@ -24,9 +24,9 @@ namespace JitHub.Views.Pages
                     "Assets/dist",
                     Microsoft.Web.WebView2.Core.CoreWebView2HostResourceAccessKind.Allow
                 );
-                ShellWebView.CoreWebView2.Settings.AreDevToolsEnabled = false;
+                ShellWebView.CoreWebView2.Settings.AreDevToolsEnabled = true;
+                ShellWebView.WebView2Runtime.CompositionController.DefaultBackgroundColor = Colors.Transparent;
             };
-            WebViewContainer.Visibility = Visibility.Collapsed;
         }
 
         override protected async void OnNavigatedTo(NavigationEventArgs e)
@@ -48,25 +48,6 @@ namespace JitHub.Views.Pages
                 LoadingIndicator.IsActive = false;
                 WebViewContainer.Visibility = Visibility.Visible;
             };
-        }
-
-        async void InitializeAsync()
-        {
-            var environment =
-                await WebView2Environment.CreateAsync();
-            // similar to as CoreWebView2Environment.CreateAsync() but it adds default language
-
-            ShellWebView.WebView2Runtime = await WebView2Runtime.CreateAsync(environment);
-
-            // WebView2Runtime reference
-            // WebView2Runtime.CompositionController
-            // WebView2Runtime.CoreWebView2
-            // WebView2Runtime.Environment
-
-            // example usage
-            ShellWebView.WebView2Runtime.CompositionController.DefaultBackgroundColor = Colors.Transparent;
-
-            ShellWebView.WebView2Runtime.CoreWebView2.NavigateToString("<div>hello world</div>");
         }
     }
 }

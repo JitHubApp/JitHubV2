@@ -11,10 +11,7 @@ $assetPattern = "*-vs-code.zip"
 $zipPath = Join-Path -Path $scriptPath -ChildPath "jithub-vs-code.zip"
 
 # Set the destination path for the extracted folder
-$folderPath = Join-Path -Path $scriptPath -ChildPath "JitHub\Assets\jithub-vs-code"
-
-# Set the new name for the extracted folder
-$newName = "dist"
+$folderPath = Join-Path -Path $scriptPath -ChildPath "JitHub\Assets"
 
 # Call the GitHub API to get the latest release information
 $releasesUri = "https://api.github.com/repos/$repoName/releases/latest"
@@ -31,6 +28,3 @@ Expand-Archive -Path $zipPath -DestinationPath $folderPath
 
 # Remove the zip file using Remove-Item
 Remove-Item -Path $zipPath
-
-# Rename the extracted folder using Rename-Item
-Rename-Item -Path $folderPath -NewName $newName
