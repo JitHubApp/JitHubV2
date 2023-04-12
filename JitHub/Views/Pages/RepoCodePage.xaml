@@ -9,6 +9,7 @@
     xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
     xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
     xmlns:controls="using:Microsoft.UI.Xaml.Controls"
+    xmlns:wv2ex="using:WebView2Ex.UI"
     mc:Ignorable="d"
     Background="Transparent">
     <Grid
@@ -25,6 +26,8 @@
             x:Name="WebViewContainer"
             HorizontalAlignment="Stretch"
             VerticalAlignment="Stretch"
+            Visibility="Collapsed"
+            Padding="8 0 0 0"
             ui:VisualExtensions.NormalizedCenterPoint="0.5">
             <animations:Implicit.ShowAnimations>
                 <animations:OpacityAnimation
@@ -37,10 +40,8 @@
                     Duration="0:0:0.5"
                     From="0.95" To="1"/>
             </animations:Implicit.ShowAnimations>
-            <controls:WebView2
-                x:Name="ShellWebView"
-                CanDrag="True"
-            />
+            <wv2ex:WebView2ExBasicMapping
+                x:Name="ShellWebView" />
         </Grid>
     </Grid>
 </Page>

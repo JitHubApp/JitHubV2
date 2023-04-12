@@ -6,6 +6,8 @@ using System.Threading.Tasks;
 using Windows.UI.Xaml.Navigation;
 using Microsoft.Toolkit.Uwp.UI.Helpers;
 using Windows.UI.Xaml;
+using WebView2Ex;
+using Windows.UI;
 
 namespace JitHub.Views.Pages
 {
@@ -22,9 +24,9 @@ namespace JitHub.Views.Pages
                     "Assets/dist",
                     Microsoft.Web.WebView2.Core.CoreWebView2HostResourceAccessKind.Allow
                 );
-                ShellWebView.CoreWebView2.Settings.AreDevToolsEnabled = false;
+                ShellWebView.CoreWebView2.Settings.AreDevToolsEnabled = true;
+                ShellWebView.WebView2Runtime.CompositionController.DefaultBackgroundColor = Colors.Transparent;
             };
-            WebViewContainer.Visibility = Visibility.Collapsed;
         }
 
         override protected async void OnNavigatedTo(NavigationEventArgs e)
