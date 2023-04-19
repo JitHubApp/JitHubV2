@@ -1,11 +1,12 @@
 ﻿@page "/fetchdata"
 @inject HttpClient Http
+@using Microsoft.Fast.Components.FluentUI
 
 <PageTitle>Function call</PageTitle>
 <h1>Function call</h1>
 
 
-<button @onclick="GetFunctionData">click</button>
+<FluentButton Appearance="Appearance.Accent" @onclick="GetFunctionData">click</FluentButton>
 <p>Response: @responseString</p>
 
 
