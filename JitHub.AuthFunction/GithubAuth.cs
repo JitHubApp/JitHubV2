@@ -8,6 +8,7 @@ using Microsoft.AspNetCore.Http;
 using Microsoft.Extensions.Logging;
 using Octokit;
 using System.Text.Json;
+using Microsoft.AspNetCore.Mvc.Formatters.Internal;
 
 namespace JitHub.AuthFunction
 {
@@ -42,7 +43,7 @@ namespace JitHub.AuthFunction
                 string temporaryCode = req.Query["tempCode"];
                 temporaryCode = temporaryCode ?? req.Headers["tempCode"];
 
-                if (string.IsNullOrEmpty(temporaryCode))
+                if (String.IsNullOrWhiteSpace(temporaryCode))
                 {
                     return null;
                 }
@@ -63,19 +64,19 @@ namespace JitHub.AuthFunction
 
             string tempCode = ProcessRequest(req);
 
-            if (string.IsNullOrEmpty(tempCode))
+            if (String.IsNullOrWhiteSpace(tempCode))
             {
-                return new JsonResult(new { error = "Bad Request, missing Github code" });
+                return new BadRequestObjectResult("Missing Github code");
             }
 
             var token = await Detokenize(tempCode);
 
             if (token == null)
             {
-                return new JsonResult(new { error = "Bad Request, Github request error" });
+                return new BadRequestObjectResult("Bad Request, Github request error");
             }
 
-            return new JsonResult(new { token = token });
+            return new OkObjectResult(new { token = token });
         }
     }
 }
