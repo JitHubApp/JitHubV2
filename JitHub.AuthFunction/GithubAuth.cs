@@ -40,8 +40,8 @@ namespace JitHub.AuthFunction
         {
             try
             {
-                string temporaryCode = req.Query["tempCode"];
-                temporaryCode = temporaryCode ?? req.Headers["tempCode"];
+                string temporaryCode = req.Query["code"];
+                temporaryCode = temporaryCode ?? req.Headers["code"];
 
                 if (String.IsNullOrWhiteSpace(temporaryCode))
                 {
@@ -62,14 +62,14 @@ namespace JitHub.AuthFunction
             ILogger log)
         {
 
-            string tempCode = ProcessRequest(req);
+            string code = ProcessRequest(req);
 
-            if (String.IsNullOrWhiteSpace(tempCode))
+            if (String.IsNullOrWhiteSpace(code))
             {
                 return new BadRequestObjectResult("Missing Github code");
             }
 
-            var token = await Detokenize(tempCode);
+            var token = await Detokenize(code);
 
             if (token == null)
             {
