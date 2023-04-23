@@ -24,8 +24,6 @@
             string tokenString = await ExchangeToken(code);
             RedirectJitHub(tokenString);
         }
-
-
         catch
         {
             AuthStatus = "failed";
@@ -42,10 +40,8 @@
 
     private async Task<string> ExchangeToken(string code)
     {
-
         try
         {
-
             var response = await Http.GetAsync($"/api/GithubCodeToToken?code={code}");
 
             if (response.IsSuccessStatusCode)
@@ -57,18 +53,15 @@
 
                 return responseBody;
             }
-
             else
             {
                 throw new InvalidOperationException($"Request failed, status code:{response.StatusCode}");
             }
         }
-
         catch (Exception ex)
         {
             throw new InvalidOperationException("Method failed", ex);
         }
-
     }
 
     private string ProcessRequest()
@@ -80,12 +73,10 @@
             var code = query.TryGetValue("code", out var valueFromQueryString) ? valueFromQueryString.First() : null;
             return code;
         }
-
         catch (Exception ex)
         {
             throw new InvalidOperationException("Method failed", ex);
         }
-
     }
 
 }

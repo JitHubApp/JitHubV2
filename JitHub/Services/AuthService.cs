@@ -81,7 +81,6 @@ namespace JitHub.Services
             {
                 string responseData = response.Substring(response.IndexOf("token"));
 
-                System.Console.WriteLine(responseData);
                 string[] keyValPairs = responseData.Split('=');
                 string encodedTokenString = keyValPairs[1].Split('&')[0];
                 string tokenString = Uri.UnescapeDataString(encodedTokenString);
@@ -91,7 +90,7 @@ namespace JitHub.Services
                 AuthToken token = JsonSerializer.Deserialize<AuthToken>(tokenString, options);
                 string clientId = _appConfigService.Credential.ClientId;
 
-                if (token != null)
+                if (token != null && token.AccessToken != null)
                 {
                     _githubService.GitHubClient.Credentials = new Credentials(token.AccessToken);
                     await SaveToken(token.AccessToken, clientId);
