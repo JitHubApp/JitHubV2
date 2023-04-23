@@ -6,38 +6,89 @@ using Microsoft.Azure.WebJobs;
 using Microsoft.Azure.WebJobs.Extensions.Http;
 using Microsoft.AspNetCore.Http;
 using Microsoft.Extensions.Logging;
-using Newtonsoft.Json;
 using Octokit;
+using System.Text.Json;
 
 namespace JitHub.AuthFunction
 {
+    public class RequestBody
+    {
+        public string TempCode { get; set; }
+    }
+
     public static class GithubAuth
     {
+        public static async Task<OauthToken> Detokenize(string code)
+        {
+
+            try
+            {
+                string clientId = Environment.GetEnvironmentVariable("JithubClientId");
+                string appSecret = Environment.GetEnvironmentVariable("JithubAppSecret");
+
+
+                var request = new OauthTokenRequest(clientId, appSecret, code);
+
+                var gitHubClient = new GitHubClient(new ProductHeaderValue("JitHub"));
+                var token = await gitHubClient.Oauth.CreateAccessToken(request);
+
+                return token;
+            }
+
+            catch
+            {
+                return null;
+            }
+
+        }
+
+        public static string ProcessRequest(HttpRequest req)
+        {
+            try
+            {
+                string temporaryCode = req.Query["tempCode"];
+
+                temporaryCode = temporaryCode ?? req.Headers["tempCode"];
+
+                if (string.IsNullOrEmpty(temporaryCode))
+                {
+                    return null;
+                }
+
+                return temporaryCode;
+
+
+            }
+
+            catch
+            {
+
+                return null;
+
+            }
+        }
+
         [FunctionName("GithubCodeToToken")]
         public static async Task<IActionResult> Run(
             [HttpTrigger(AuthorizationLevel.Function, "get", Route = null)] HttpRequest req,
             ILogger log)
         {
 
-            string temporaryCode = req.Query["tempCode"];
+            string tempCode = ProcessRequest(req);
 
-            string requestBody = await new StreamReader(req.Body).ReadToEndAsync();
-            dynamic data = JsonConvert.DeserializeObject(requestBody);
+            if (string.IsNullOrEmpty(tempCode))
+            {
+                return new JsonResult(new { error = "Bad Request, missing Github code" });
+            }
 
-            temporaryCode = temporaryCode ?? data?.tempCode;
+            var token = await Detokenize(tempCode);
 
-            string clientId = Environment.GetEnvironmentVariable("JithubClientId");
-            string appSecret = Environment.GetEnvironmentVariable("JithubAppSecret");
+            if (token == null)
+            {
+                return new JsonResult(new { error = "Bad Request, Github request error" });
+            }
 
-
-            var request = new OauthTokenRequest(clientId, appSecret, temporaryCode);
-
-            var gitHubClient = new GitHubClient(new ProductHeaderValue("JitHub"));
-            var token = await gitHubClient.Oauth.CreateAccessToken(request);
-
-            var response = new { token = token };
-
-            return new JsonResult(response);
+            return new JsonResult(new { token = token });
         }
     }
 }
