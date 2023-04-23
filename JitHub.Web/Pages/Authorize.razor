@@ -1,0 +1,91 @@
+﻿@page "/authorize"
+@inject HttpClient Http
+@inject NavigationManager NavigationManager
+@inject NavigationManager Navigation
+
+<PageTitle>Function call</PageTitle>
+<p>Auth status:@AuthStatus</p>
+
+
+
+@code {
+    private string AuthStatus = "authorizing";
+
+    protected override void OnInitialized()
+    {
+        Authroize();
+    }
+
+    private async void Authroize()
+    {
+        try
+        {
+            string code = ProcessRequest();
+            string tokenString = await ExchangeToken(code);
+            RedirectJitHub(tokenString);
+        }
+
+
+        catch
+        {
+            AuthStatus = "failed";
+            this.StateHasChanged();
+
+        }
+
+    }
+
+    private void RedirectJitHub(string tokenString)
+    {
+        Navigation.NavigateTo($"Jithub://auth?token={tokenString}");
+    }
+
+    private async Task<string> ExchangeToken(string code)
+    {
+
+        try
+        {
+
+            var response = await Http.GetAsync($"/api/GithubCodeToToken?code={code}");
+
+            if (response.IsSuccessStatusCode)
+            {
+                var responseBody = await response.Content.ReadAsStringAsync();
+
+                AuthStatus = "success";
+                this.StateHasChanged();
+
+                return responseBody;
+            }
+
+            else
+            {
+                throw new InvalidOperationException($"Request failed, status code:{response.StatusCode}");
+            }
+        }
+
+        catch (Exception ex)
+        {
+            throw new InvalidOperationException("Method failed", ex);
+        }
+
+    }
+
+    private string ProcessRequest()
+    {
+        try
+        {
+            var uri = NavigationManager.ToAbsoluteUri(NavigationManager.Uri);
+            var query = Microsoft.AspNetCore.WebUtilities.QueryHelpers.ParseQuery(uri.Query);
+            var code = query.TryGetValue("code", out var valueFromQueryString) ? valueFromQueryString.First() : null;
+            return code;
+        }
+
+        catch (Exception ex)
+        {
+            throw new InvalidOperationException("Method failed", ex);
+        }
+
+    }
+
+}

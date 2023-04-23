@@ -73,6 +73,6 @@ public static class GithubAuth
             return new BadRequestObjectResult("Bad Request, Github request error");
         }
 
-        return new OkObjectResult(new { token = token });
+        return new OkObjectResult(token);
     }
 }
