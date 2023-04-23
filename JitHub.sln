@@ -21,9 +21,9 @@ Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "JitHub.Utilities.SVG", "Jit
 EndProject
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "JitHub.WebView", "JitHub.WebView\JitHub.WebView.csproj", "{3BED258E-DF3F-4BD8-982A-5AD2C941C897}"
 EndProject
-Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "JitHub.Web", "JitHub.Web\JitHub.Web.csproj", "{64B790F5-C60E-46BB-BCC6-79ABADEC979F}"
+Project("{9A19103F-16F7-4668-BE54-9A1E7A4F7556}") = "JitHub.Web", "JitHub.Web\JitHub.Web.csproj", "{64B790F5-C60E-46BB-BCC6-79ABADEC979F}"
 EndProject
-Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "JitHub.AuthFunction", "JitHub.AuthFunction\JitHub.AuthFunction.csproj", "{C67E89AF-8DFC-4C5B-9ECA-12025588DAE6}"
+Project("{9A19103F-16F7-4668-BE54-9A1E7A4F7556}") = "JitHub.AuthFunction", "JitHub.AuthFunction\JitHub.AuthFunction.csproj", "{C67E89AF-8DFC-4C5B-9ECA-12025588DAE6}"
 EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
