@@ -21,9 +21,7 @@ namespace JitHub.AuthFunction
                 string clientId = Environment.GetEnvironmentVariable("JithubClientId");
                 string appSecret = Environment.GetEnvironmentVariable("JithubAppSecret");
 
-
                 var request = new OauthTokenRequest(clientId, appSecret, code);
-
                 var gitHubClient = new GitHubClient(new ProductHeaderValue("JitHub"));
                 var token = await gitHubClient.Oauth.CreateAccessToken(request);
 
@@ -42,24 +40,18 @@ namespace JitHub.AuthFunction
             try
             {
                 string temporaryCode = req.Query["tempCode"];
-
                 temporaryCode = temporaryCode ?? req.Headers["tempCode"];
 
                 if (string.IsNullOrEmpty(temporaryCode))
                 {
                     return null;
                 }
-
                 return temporaryCode;
-
-
             }
 
             catch
             {
-
                 return null;
-
             }
         }
 
