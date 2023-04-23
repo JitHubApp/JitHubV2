@@ -32,8 +32,8 @@ namespace JitHub.AuthFunction
 
             var request = new OauthTokenRequest(clientId, appSecret, temporaryCode);
 
-            var _gitHubClient = new GitHubClient(new ProductHeaderValue("JitHub"));
-            var token = await _gitHubClient.Oauth.CreateAccessToken(request);
+            var gitHubClient = new GitHubClient(new ProductHeaderValue("JitHub"));
+            var token = await gitHubClient.Oauth.CreateAccessToken(request);
 
             var response = new { token = token };
 
