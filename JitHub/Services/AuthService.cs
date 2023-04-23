@@ -3,9 +3,22 @@ using Octokit;
 using System;
 using System.Threading.Tasks;
 using Windows.Security.Credentials;
+using System.Text.Json;
+using System.Collections.Generic;
 
 namespace JitHub.Services
 {
+    public class AuthToken
+    {
+        public string TokenType { get; set; }
+        public string AccessToken { get; set; }
+        public IReadOnlyList<string> Scope { get; set; }
+        public string Error { get; set; }
+        public string ErrorDescription { get; set; }
+        public string ErrorUri { get; set; }
+
+    }
+
     public class AuthService : ObservableObject, IAuthService
     {
         private IAppConfig _appConfigService;
@@ -47,7 +60,7 @@ namespace JitHub.Services
                 Authenticated = false;
             }
         }
-        
+
         public async Task Authenticate()
         {
             string clientId = _appConfigService.Credential.ClientId;
@@ -66,15 +79,18 @@ namespace JitHub.Services
         {
             try
             {
-                string responseData = response.Substring(response.IndexOf("code"));
+                string responseData = response.Substring(response.IndexOf("token"));
+
+                System.Console.WriteLine(responseData);
                 string[] keyValPairs = responseData.Split('=');
-                string code = keyValPairs[1].Split('&')[0];
+                string encodedTokenString = keyValPairs[1].Split('&')[0];
+                string tokenString = Uri.UnescapeDataString(encodedTokenString);
 
+                var options = new JsonSerializerOptions { PropertyNameCaseInsensitive = true };
+
+                AuthToken token = JsonSerializer.Deserialize<AuthToken>(tokenString, options);
                 string clientId = _appConfigService.Credential.ClientId;
-                string appSecret = _appConfigService.Credential.ClientSecret;
 
-                var request = new OauthTokenRequest(clientId, appSecret, code);
-                var token = await _githubService.GitHubClient.Oauth.CreateAccessToken(request);
                 if (token != null)
                 {
                     _githubService.GitHubClient.Credentials = new Credentials(token.AccessToken);
