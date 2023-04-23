@@ -11,11 +11,6 @@ using System.Text.Json;
 
 namespace JitHub.AuthFunction
 {
-    public class RequestBody
-    {
-        public string TempCode { get; set; }
-    }
-
     public static class GithubAuth
     {
         public static async Task<OauthToken> Detokenize(string code)
