@@ -8,8 +8,8 @@ namespace JitHub.Models
 {
     public class ThemeConst
     {
-        public static string Dark = "DARK";
-        public static string Light = "LIGHT";
-        public static string System = "SYSTEM";
+        public static string Dark = "Dark";
+        public static string Light = "Light";
+        public static string System = "System";
     }
 }

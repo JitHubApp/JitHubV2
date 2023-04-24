@@ -33,13 +33,14 @@
             </muxc:AnimatedVisualPlayer>
             <TextBlock
                 Grid.Column="1"
-                VerticalAlignment="Center">
+                VerticalAlignment="Center"
+                TextWrapping="Wrap">
                 <Run Text="Thank you for purchasing JitHub Pro. You have successfully unlocked pro-features!"/>
             </TextBlock>
         </Grid>
         <Grid
             Grid.Row="1"
-            Padding="16 32"
+            Padding="16 24"
             Background="{ThemeResource AppSolidSecondaryRush}">
             <Button
                 HorizontalAlignment="Right"
