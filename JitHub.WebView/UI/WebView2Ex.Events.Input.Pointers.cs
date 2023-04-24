@@ -185,8 +185,10 @@ partial class WebView2Ex
             OnXamlPointerMessage(PointerEvKind.Up, args);
         }
     }
+    Point LatestMouseEvPosition;
     void HandlePointerMoved(object sender, PointerRoutedEventArgs args)
     {
+        LatestMouseEvPosition = args.GetCurrentPoint(this).Position;
         if (args.Pointer.PointerDeviceType is PointerDeviceType.Mouse)
             OnXamlMouseMessage(MouseEvKind.Move, args);
         else
