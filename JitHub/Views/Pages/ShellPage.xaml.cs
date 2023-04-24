@@ -62,4 +62,16 @@ public sealed partial class ShellPage : Page
     {
         InAppNotification.Show(message, 3000);   
     }
+
+    private void Page_SizeChanged(object sender, Windows.UI.Xaml.SizeChangedEventArgs e)
+    {
+        if (e.NewSize.Width > 900)
+        {
+            VisualStateManager.GoToState(this, "WideLayout", false);
+        }
+        else
+        {
+            VisualStateManager.GoToState(this, "NarrowLayout", false);
+        }
+    }
 }

@@ -38,8 +38,9 @@ namespace JitHub.Models
     {
         public string Link { get; set; }
         public ImageSource LogoSource { get; set; }
-        public static string LinkedInLogo = "ms-appx:///Assets/LinkedInLogo.png";
-        public static string TwitterLogo = "ms-appx:///Assets/TwitterLogo.png";
+        public static string LinkedInLogo = "ms-appx:///Assets/LinkLogos/LinkedIn.png";
+        public static string TwitterLogo = "ms-appx:///Assets/LinkLogos/Twitter.png";
+        public static string GitHubLogo = "ms-appx:///Assets/LinkLogos/GitHub.png";
 
         public PersonalLink(string link, string logoPath)
         {

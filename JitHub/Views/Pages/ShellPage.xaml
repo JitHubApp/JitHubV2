@@ -13,6 +13,7 @@
     xmlns:animatedvisuals="using:Microsoft.UI.Xaml.Controls.AnimatedVisuals"
     xmlns:controls="using:Microsoft.Toolkit.Uwp.UI.Controls"
     xmlns:user="using:JitHub.Views.Controls.Profile"
+    SizeChanged="Page_SizeChanged"
     muxc:BackdropMaterial.ApplyToRootOrPageBackground="True"
     Background="Transparent">
     <Page.DataContext>
@@ -23,6 +24,20 @@
             <RowDefinition Height="auto"/>
             <RowDefinition Height="*"/>
         </Grid.RowDefinitions>
+        <VisualStateManager.VisualStateGroups>
+            <VisualStateGroup>
+                <VisualState x:Name="WideLayout">
+                    <VisualState.Setters>
+                        <Setter Target="ModalContent.Margin" Value="150 0"/>
+                    </VisualState.Setters>
+                </VisualState>
+                <VisualState x:Name="NarrowLayout">
+                    <VisualState.Setters>
+                        <Setter Target="ModalContent.Margin" Value="0"/>
+                    </VisualState.Setters>
+                </VisualState>
+            </VisualStateGroup>
+        </VisualStateManager.VisualStateGroups>
         <Grid
             Grid.Row="0">
             <Grid.ColumnDefinitions>
@@ -214,7 +229,7 @@
             Visibility="Collapsed"
             Background="{ThemeResource SmokeFillColorDefaultBrush}">
             <Grid
-                MinWidth="600"
+                x:Name="ModalContent"
                 Margin="150 0"
                 HorizontalAlignment="Center"
                 VerticalAlignment="Center"

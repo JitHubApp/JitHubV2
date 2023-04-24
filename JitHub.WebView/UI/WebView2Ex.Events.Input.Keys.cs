@@ -66,7 +66,7 @@ partial class WebView2Ex
             LRESULT result = new(SendMessage(GetActiveInputWindowHwnd(), message, wparam, lparam));
             if (result == 0)
             {
-                Debugger.Break();
+                //Debugger.Break();
                 //winrt::check_hresult(HRESULT_FROM_WIN32(::GetLastError()));
             }
         }
