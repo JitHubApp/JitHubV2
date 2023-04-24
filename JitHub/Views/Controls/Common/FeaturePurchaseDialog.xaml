@@ -19,14 +19,14 @@
             Grid.Row="0"
             HorizontalAlignment="Stretch"
             VerticalAlignment="Stretch"
-            Background="{ThemeResource AppTitleGradientBrush}">
+            CornerRadius="8 8 0 0"
+            Background="{ThemeResource SystemControlAccentAcrylicElementAccentMediumHighBrush}">
             <TextBlock
                 HorizontalAlignment="Left"
                 VerticalAlignment="Center"
                 Margin="16 0 0 0"
                 FontWeight="SemiBold"
                 FontSize="20"
-                Foreground="Black"
                 Text="This feature is only available for Pro users"/>
             <Button
                 Padding="0"
@@ -47,7 +47,8 @@
         </Grid>
         <Grid
             Grid.Row="1"
-            Padding="16">
+            Padding="16"
+            Background="{ThemeResource AppSolidPrimaryRush}">
             <StackPanel
                 Spacing="8">
                 <TextBlock Text="To unlock this feature, switch to JitHub Pro."/>
@@ -70,7 +71,8 @@
         <Grid
             Grid.Row="2"
             Background="{ThemeResource AppSolidSecondaryRush}"
-            Padding="0 32 16 32">
+            CornerRadius="0 0 8 8"
+            Padding="0 24 16 24">
             <Button
                 HorizontalAlignment="Right"
                 Style="{ThemeResource AccentButtonStyle}"
