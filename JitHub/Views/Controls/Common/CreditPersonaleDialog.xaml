@@ -10,8 +10,7 @@
     d:DesignHeight="300"
     d:DesignWidth="400">
 
-    <Grid
-        MaxWidth="600">
+    <Grid>
         <Grid.RowDefinitions>
             <RowDefinition Height="118"/>
             <RowDefinition Height="*"/>

@@ -28,12 +28,13 @@
             <VisualStateGroup>
                 <VisualState x:Name="WideLayout">
                     <VisualState.Setters>
-                        <Setter Target="ModalContent.Margin" Value="150 0"/>
+                        <Setter Target="ModalContent.Width" Value="768"/>
+                        <Setter Target="ModalContent.HorizontalAlignment" Value="Center"/>
                     </VisualState.Setters>
                 </VisualState>
                 <VisualState x:Name="NarrowLayout">
                     <VisualState.Setters>
-                        <Setter Target="ModalContent.Margin" Value="0"/>
+                        <Setter Target="ModalContent.HorizontalAlignment" Value="Stretch"/>
                     </VisualState.Setters>
                 </VisualState>
             </VisualStateGroup>
@@ -230,7 +231,6 @@
             Background="{ThemeResource SmokeFillColorDefaultBrush}">
             <Grid
                 x:Name="ModalContent"
-                Margin="150 0"
                 HorizontalAlignment="Center"
                 VerticalAlignment="Center"
                 BorderBrush="{ThemeResource LayerOnAcrylicFillColorDefaultBrush}"
