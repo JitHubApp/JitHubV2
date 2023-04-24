@@ -9,6 +9,8 @@ using Windows.ApplicationModel.Core;
 using Windows.UI;
 using Windows.UI.Xaml;
 using Windows.UI.Xaml.Controls;
+using JitHub.Models.NavArgs;
+using JitHub.Views.Pages;
 
 namespace JitHub.ViewModels
 {
@@ -18,6 +20,8 @@ namespace JitHub.ViewModels
         private string _selectedTheme;
         private IThemeService _themeService;
         private ISettingService _settingService;
+        private NavigationService _navigationService;
+        private IGitHubService _githubService;
         private bool _restartRequired;
         private string _version;
         private int _clickedTime = 0;
@@ -56,6 +60,8 @@ namespace JitHub.ViewModels
         {
             _themeService = Ioc.Default.GetService<IThemeService>();
             _settingService = Ioc.Default.GetService<ISettingService>();
+            _navigationService = Ioc.Default.GetService<NavigationService>();
+            _githubService = Ioc.Default.GetService<IGitHubService>();
             GlobalViewModel = Ioc.Default.GetService<GlobalViewModel>();
             Version = $"{SystemInformation.Instance.ApplicationVersion.Major}.{SystemInformation.Instance.ApplicationVersion.Minor}.{SystemInformation.Instance.ApplicationVersion.Build}.{SystemInformation.Instance.ApplicationVersion.Revision}";
             var light = ThemeConst.Light;
@@ -127,19 +133,15 @@ namespace JitHub.ViewModels
             );
         }
 
-        public void ClickVersionNumber()
-        {
-            ClickedTime++;
-            if (ClickedTime == 8)
-            {
-                GlobalViewModel.ToggleDevMode();
-                ClickedTime = 0;
-            }
-        }
-
         public async void Restart()
         {
             await CoreApplication.RequestRestartAsync(SelectedTheme);
+        }
+
+        public async void ViewJitHubCode()
+        {
+            var jithub = await _githubService.GetRepository("nerocui", "JitHubV2");
+            _navigationService.NavigateTo("JitHub", typeof(RepoDetailPage), new RepoDetailPageArgs(RepoPageType.CodePage, jithub));
         }
 
         public void SelectionChanged(object sender, SelectionChangedEventArgs e)

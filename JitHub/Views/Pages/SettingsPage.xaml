@@ -7,6 +7,7 @@
     xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
     xmlns:controls="using:Microsoft.UI.Xaml.Controls"
     xmlns:viewmodels="using:JitHub.ViewModels"
+    xmlns:labs="using:CommunityToolkit.Labs.WinUI"
     xmlns:common="using:JitHub.Views.Controls.Common"
     mc:Ignorable="d"
     Background="Transparent">
@@ -17,7 +18,7 @@
         Padding="12">
         <ScrollViewer>
             <StackPanel
-                Spacing="12">
+                Spacing="4">
                 <Grid
                     Height="56">
                     <Grid.ColumnDefinitions>
@@ -29,7 +30,7 @@
                         VerticalAlignment="Center"
                         FontSize="20"
                         FontWeight="SemiBold"
-                        Text="⚙ Settings"/>
+                        Text="Settings"/>
                     <Button
                         Grid.Column="1"
                         HorizontalAlignment="Right"
@@ -38,46 +39,52 @@
                         Click="{x:Bind ViewModel.Restart, Mode=OneWay}"
                         Visibility="{x:Bind ViewModel.RestartRequired, Converter={StaticResource BoolToVisibilityConverter}, Mode=OneWay}"/>
                 </Grid>
-                <Grid
-                    CornerRadius="8"
-                    Background="{ThemeResource ExpanderHeaderBackground}"
-                    Padding="20">
-                    <Grid.ColumnDefinitions>
-                        <ColumnDefinition Width="*"/>
-                        <ColumnDefinition Width="auto"/>
-                    </Grid.ColumnDefinitions>
-                    <TextBlock
-                        Grid.Column="0"
-                        VerticalAlignment="Center"
-                        FontSize="16"
-                        Text="🎨 Theme"/>
+                <labs:SettingsCard
+                    Description="Set app theme to light, dark or follow Windows system theme."
+                    Header="Theme">
+                    <labs:SettingsCard.HeaderIcon>
+                        <FontIcon Glyph="&#xE790;" />
+                    </labs:SettingsCard.HeaderIcon>
                     <ComboBox
                         Grid.Column="1"
                         Width="120"
                         SelectionChanged="{x:Bind ViewModel.SelectionChanged, Mode=OneWay}"
                         SelectedItem="{x:Bind ViewModel.SelectedTheme, Mode=TwoWay}"
-                        ItemsSource="{x:Bind ViewModel.Themes, Mode=OneWay}">
-                    </ComboBox>
-                </Grid>
-                <Grid
-                    CornerRadius="8"
-                    Background="{ThemeResource ExpanderHeaderBackground}"
-                    Padding="20">
-                    <Grid.ColumnDefinitions>
-                        <ColumnDefinition Width="*"/>
-                        <ColumnDefinition Width="auto"/>
-                    </Grid.ColumnDefinitions>
-                    <TextBlock
-                        Grid.Column="0"
-                        VerticalAlignment="Center"
-                        FontSize="16"
-                        Text="Version"/>
-                    <TextBlock
-                        Grid.Column="1"
-                        HorizontalAlignment="Right"
-                        Tapped="{x:Bind ViewModel.ClickVersionNumber, Mode=OneWay}"
-                        Text="{x:Bind ViewModel.Version, Mode=OneWay}"/>
-                </Grid>
+                        ItemsSource="{x:Bind ViewModel.Themes, Mode=OneWay}"/>
+                </labs:SettingsCard>
+                <labs:SettingsCard
+                    Header="Developer Mode"
+                    Description="This will enable developer mode where some debug features are turned on.">
+                    <labs:SettingsCard.HeaderIcon>
+                        <FontIcon Glyph="&#xEC7A;" />
+                    </labs:SettingsCard.HeaderIcon>
+                    <ToggleSwitch
+                        IsOn="{x:Bind ViewModel.GlobalViewModel.DevMode, Mode=TwoWay}"/>
+                </labs:SettingsCard>
+                <labs:SettingsCard
+                    Header="JitHub Version"
+                    Description="{x:Bind ViewModel.Version, Mode=OneWay}">
+                    <labs:SettingsCard.HeaderIcon>
+                        <BitmapIcon ShowAsMonochrome="False"
+                            UriSource="ms-appx:///Assets/JitHubLogo.png" />
+                    </labs:SettingsCard.HeaderIcon>
+                    <Button
+                        Click="{x:Bind ViewModel.ViewJitHubCode, Mode=OneWay}"
+                        Style="{StaticResource AccentButtonStyle}">
+                        <StackPanel
+                            Orientation="Horizontal"
+                            Spacing="8">
+                            <common:ThemeImage
+                                IconWidth="24"
+                                IconHeight="24"
+                                DarkSource="ms-appx:///Assets/Icons/github_logo_dark.png"
+                                LightSource="ms-appx:///Assets/Icons/github_logo_light.png"/>
+                            <TextBlock
+                                VerticalAlignment="Center"
+                                Text="View Source Code"/>
+                        </StackPanel>
+                    </Button>
+                </labs:SettingsCard>
                 <StackPanel
                     Spacing="12">
                     <TextBlock
