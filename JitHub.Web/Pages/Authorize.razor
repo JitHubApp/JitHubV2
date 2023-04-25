@@ -16,18 +16,30 @@
         Authroize();
     }
 
+    private void OnAuthFail()
+    {
+        AuthStatus = "failed";
+        this.StateHasChanged();
+    }
+
     private async void Authroize()
     {
         try
         {
             string code = ProcessRequest();
+
+            if (String.IsNullOrWhiteSpace(code))
+            {
+                OnAuthFail();
+                return;
+            }
+
             string tokenString = await ExchangeToken(code);
             RedirectJitHub(tokenString);
         }
         catch
         {
-            AuthStatus = "failed";
-            this.StateHasChanged();
+            OnAuthFail();
 
         }
 
@@ -35,7 +47,7 @@
 
     private void RedirectJitHub(string tokenString)
     {
-        Navigation.NavigateTo($"Jithub://auth?token={tokenString}");
+        Navigation.NavigateTo($"jithub://auth?token={tokenString}");
     }
 
     private async Task<string> ExchangeToken(string code)

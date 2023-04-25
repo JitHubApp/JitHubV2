@@ -3,7 +3,6 @@ using Octokit;
 using System;
 using System.Threading.Tasks;
 using Windows.Security.Credentials;
-using System.Text.Json;
 using System.Collections.Generic;
 
 namespace JitHub.Services
@@ -82,18 +81,14 @@ namespace JitHub.Services
                 string responseData = response.Substring(response.IndexOf("token"));
 
                 string[] keyValPairs = responseData.Split('=');
-                string encodedTokenString = keyValPairs[1].Split('&')[0];
-                string tokenString = Uri.UnescapeDataString(encodedTokenString);
+                string token = keyValPairs[1].Split('&')[0];
 
-                var options = new JsonSerializerOptions { PropertyNameCaseInsensitive = true };
-
-                AuthToken token = JsonSerializer.Deserialize<AuthToken>(tokenString, options);
                 string clientId = _appConfigService.Credential.ClientId;
 
-                if (token != null && token.AccessToken != null)
+                if (token != null)
                 {
-                    _githubService.GitHubClient.Credentials = new Credentials(token.AccessToken);
-                    await SaveToken(token.AccessToken, clientId);
+                    _githubService.GitHubClient.Credentials = new Credentials(token);
+                    await SaveToken(token, clientId);
                     Authenticated = true;
                     AuthenticatedUser = await _githubService.GitHubClient.User.Current();
                 }
