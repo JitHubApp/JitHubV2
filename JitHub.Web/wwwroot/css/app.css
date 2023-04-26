@@ -4,14 +4,25 @@ html, body {
     font-family: 'Helvetica Neue', Helvetica, Arial, sans-serif;
 }
 
+body {
+    height: 100vh;
+}
+
 .valid.modified:not([type=checkbox]) {
     outline: 1px solid #26b050;
+}
+
+#app {
+    height: 100%;
 }
 
 .root {
     display: flex;
     justify-content: center;
     padding-top: 24px;
+    height: 100%;
+    background: rgb(185,152,207);
+    background: linear-gradient(135deg, rgba(185,152,207,1) 50%, rgba(77,15,109,1) 100%);
 }
 
 .app {
