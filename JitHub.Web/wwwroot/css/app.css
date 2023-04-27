@@ -65,6 +65,7 @@ nav {
     border: 1px solid #d2d2d2;
     padding: 0 8px;
     border-radius: 4px;
+    background: #dadada;
 }
 
     .link-container a:hover {
@@ -94,6 +95,10 @@ h2.hero-title {
     font-size: 48px;
     color: white;
 }
+
+    h2.hero-title::after {
+        content: url('../winui.png');
+    }
 
 section#hero svg {
     width: 600px
@@ -209,6 +214,9 @@ section img {
 
 .feature img {
     width: 70%;
+    box-shadow: 2px 3px 5px 0px rgba(0,0,0,0.75);
+    -webkit-box-shadow: 2px 3px 5px 0px rgba(0,0,0,0.75);
+    -moz-box-shadow: 2px 3px 5px 0px rgba(0,0,0,0.75);
 }
 
 .center {
