@@ -28,7 +28,7 @@ h2, h3, h4, h5, h6, p {
 }
 
 nav {
-    padding: 8px;
+    padding: 8px 0;
 }
 
 .nav-wrapper {
@@ -53,23 +53,29 @@ nav {
 }
 
 .link-container a {
-    color: #000000;
+    font-family: Arial, Helvetica, sans-serif;
     text-decoration: none;
     margin-left: 12px;
-    font-weight: 700;
-    background-color: #d8d8d8;
-    padding: 4px 8px;
-    border-radius: 4px;
+    color: black;
+    font-weight: 400;
+    font-size: 28px;
     display: inline-block;
     transition: 300ms;
+    box-sizing: border-box;
+    border: 1px solid #d2d2d2;
+    padding: 0 8px;
+    border-radius: 4px;
+    background: #dadada;
 }
 
     .link-container a:hover {
-        background-color: #e8e8e8;
+        color: #212121;
+        border: 1px solid #ababab;
     }
 
     .link-container a:active {
-        background-color: #9b9b9b;
+        color: #292929;
+        transform: translateY(4px);
     }
 
 section {
@@ -81,14 +87,18 @@ section {
         text-align: center;
         background: rgb(185,152,207);
         background: linear-gradient(155deg, rgb(238, 228, 243) 10%, rgb(117, 49, 150) 100%);
-        padding: 24px;
+        padding: 32px;
     }
 
 h2.hero-title {
     font-family: Arial, Helvetica, sans-serif;
-    font-size: 32px;
+    font-size: 48px;
     color: white;
 }
+
+    h2.hero-title::after {
+        content: url('../winui.png');
+    }
 
 section#hero svg {
     width: 600px
@@ -130,8 +140,15 @@ section img {
     border-radius: 8px;
 }
 
+.devider {
+    width: 100%;
+    border-width: 1px 0 0 0;
+    border-color: #393939;
+    border-style: solid;
+}
+
 .feature {
-    margin-top: 24px;
+    margin: 32px 0;
 }
 
     .feature p {
@@ -141,16 +158,39 @@ section img {
 
 .feature-block {
     display: flex;
+    justify-content: space-between;
 }
+
+    .feature-block h3 {
+        font-family: Arial, Helvetica, sans-serif;
+        margin-bottom: 12px;
+        font-weight: 700;
+        font-size: 32px;
+    }
+
+    .feature-block .description {
+        width: 25%;
+    }
 
 .feature-block-reverse {
     display: flex;
     flex-direction: row-reverse;
+    justify-content: space-between;
 }
+    .feature-block-reverse h3 {
+        font-family: Arial, Helvetica, sans-serif;
+        margin-bottom: 12px;
+        font-weight: 700;
+        font-size: 32px;
+    }
+
+    .feature-block-reverse .description {
+        width: 25%;
+    }
 
 @media only screen and (max-width: 1400px) {
     .feature img {
-        width: 75% !important;
+        width: 85% !important;
     }
 
     .feature-block {
@@ -160,14 +200,23 @@ section img {
     .feature-block-reverse {
         flex-direction: column;
     }
+    .feature-block .description {
+        width: auto;
+        align-self: center;
+        margin-bottom: 12px;
+    }
+    .feature-block-reverse .description {
+        width: auto;
+        align-self: center;
+        margin-bottom: 12px;
+    }
 }
 
 .feature img {
     width: 70%;
-}
-
-.description-container {
-    padding: 48px;
+    box-shadow: 2px 3px 5px 0px rgba(0,0,0,0.75);
+    -webkit-box-shadow: 2px 3px 5px 0px rgba(0,0,0,0.75);
+    -moz-box-shadow: 2px 3px 5px 0px rgba(0,0,0,0.75);
 }
 
 .center {
