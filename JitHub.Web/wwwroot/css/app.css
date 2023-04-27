@@ -1,34 +1,188 @@
 @import url('open-iconic/font/css/open-iconic-bootstrap.min.css');
 
-html, body {
-    font-family: 'Helvetica Neue', Helvetica, Arial, sans-serif;
+body {
+    font-family: 'Segoe UI', sans-serif;
+    margin: 0;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    background: aliceblue;
 }
 
-h1:focus {
-    outline: none;
+h1 {
+    font-weight: 400;
 }
 
-a, .btn-link {
-    color: #0071c1;
+h2, h3, h4, h5, h6, p {
+    margin: 0;
 }
 
-.btn-primary {
-    color: #fff;
-    background-color: #1b6ec2;
-    border-color: #1861ac;
+@media only screen and (max-width: 1600px) {
+    #app {
+        width: 100% !important;
+    }
 }
 
-.btn:focus, .btn:active:focus, .btn-link.nav-link:focus, .form-control:focus, .form-check-input:focus {
-  box-shadow: 0 0 0 0.1rem white, 0 0 0 0.25rem #258cfb;
+#app {
+    width: 1600px;
 }
 
-.content {
-    padding-top: 1.1rem;
+nav {
+    padding: 8px;
 }
 
-.valid.modified:not([type=checkbox]) {
-    outline: 1px solid #26b050;
+.nav-wrapper {
+    width: 100%;
+    justify-content: space-between;
 }
+
+.flex {
+    display: flex;
+}
+
+.flex-row {
+    flex-direction: row;
+}
+
+.flex-row-reverse {
+    flex-direction: row-reverse;
+}
+
+.flex-item {
+    align-self: center;
+}
+
+.link-container a {
+    color: #000000;
+    text-decoration: none;
+    margin-left: 12px;
+    font-weight: 700;
+    background-color: #d8d8d8;
+    padding: 4px 8px;
+    border-radius: 4px;
+    display: inline-block;
+    transition: 300ms;
+}
+
+    .link-container a:hover {
+        background-color: #e8e8e8;
+    }
+
+    .link-container a:active {
+        background-color: #9b9b9b;
+    }
+
+section {
+    margin-bottom: 12px;
+    border-radius: 8px;
+}
+
+    section#hero {
+        text-align: center;
+        background: rgb(185,152,207);
+        background: linear-gradient(155deg, rgb(238, 228, 243) 10%, rgb(117, 49, 150) 100%);
+        padding: 24px;
+    }
+
+h2.hero-title {
+    font-family: Arial, Helvetica, sans-serif;
+    font-size: 32px;
+    color: white;
+}
+
+section#hero svg {
+    width: 600px
+}
+
+#ms-store-btn {
+    width: 135px;
+    transform: translateY(2px);
+}
+
+#source-code-btn {
+    padding: 8px 12px;
+    background-color: #000000;
+    display: inline-block;
+    border-radius: 8px;
+    color: rgb(255, 255, 255);
+    text-decoration: none;
+    margin-right: 24px;
+}
+
+    #source-code-btn img {
+        margin-right: 4px;
+    }
+
+@media only screen and (max-width: 600px) {
+    section#hero svg {
+        width: 100%;
+    }
+}
+
+section#features {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    padding: 24px;
+}
+
+section img {
+    border-radius: 8px;
+}
+
+.feature {
+    margin-top: 24px;
+}
+
+    .feature p {
+        font-size: 24px;
+    }
+
+
+.feature-block {
+    display: flex;
+}
+
+.feature-block-reverse {
+    display: flex;
+    flex-direction: row-reverse;
+}
+
+@media only screen and (max-width: 1400px) {
+    .feature img {
+        width: 75% !important;
+    }
+
+    .feature-block {
+        flex-direction: column;
+    }
+
+    .feature-block-reverse {
+        flex-direction: column;
+    }
+}
+
+.feature img {
+    width: 70%;
+}
+
+.description-container {
+    padding: 48px;
+}
+
+.center {
+    width: 100%;
+    align-items: center;
+    justify-content: center;
+}
+
+.screenshot {
+    transition: 300ms;
+}
+
+    .screenshot:hover {
+        transform: translateY(-4px);
+    }
 
 .invalid {
     outline: 1px solid red;
