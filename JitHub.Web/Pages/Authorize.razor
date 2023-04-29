@@ -4,25 +4,66 @@
 @inject NavigationManager Navigation
 
 <PageTitle>Authorize</PageTitle>
-<p>Auth status:@AuthStatus</p>
+
+@switch (AuthStatus)
+{
+    case State.Loading:
+        @Loading()
+        ;
+        break;
+    case State.Failed:
+        @Failed()
+        ;
+        break;
+    case State.Success:
+        @Success()
+        ;
+        break;
+    default:
+        @Failed()
+        ;
+        break;
+}
+
+
 
 
 
 @code {
-    private string AuthStatus = "authorizing";
 
-    protected override void OnInitialized()
+    enum State
     {
-        Authroize();
+        Loading,
+        Success,
+        Failed
+    }
+
+    private State AuthStatus = State.Loading;
+
+    private string? TokenString;
+
+    RenderFragment Loading()
+    {
+        return (@<div class="auth-wrapper"><div class="spinner-border text-primary" role="status"></div><h4>Authorizing</h4></div>);
+    }
+
+    RenderFragment Failed()
+    {
+        return @<div class="auth-wrapper"><img class="auth-image" src="login_fail.svg" /> <h3>Authorization failed, please <span class="link" @onclick="RedirectJitHub">try again</span>.</h3></div>;
+    }
+
+    RenderFragment Success()
+    {
+        return @<div class="auth-wrapper"><img class="auth-image" src="login_success.svg" /><h2>Authorization successful! Open Jithub through the dialog browser.</h2><h4>If no dialog appears, please press here  <span class="link" @onclick="RedirectJitHub">Jithub</span>.</h4></div>;
     }
 
     private void OnAuthFail()
     {
-        AuthStatus = "failed";
+        AuthStatus = State.Failed;
         this.StateHasChanged();
     }
 
-    private async void Authroize()
+    private async void AuthorizeUser()
     {
         try
         {
@@ -34,8 +75,8 @@
                 return;
             }
 
-            string tokenString = await ExchangeToken(code);
-            RedirectJitHub(tokenString);
+            await ExchangeToken(code);
+            RedirectJitHub();
         }
         catch
         {
@@ -45,9 +86,16 @@
 
     }
 
-    private void RedirectJitHub(string tokenString)
+    private void RedirectJitHub()
     {
-        Navigation.NavigateTo($"jithub://auth?token={tokenString}");
+        if (String.IsNullOrWhiteSpace(TokenString))
+        {
+            Navigation.NavigateTo($"jithub://");
+        }
+        else
+        {
+            Navigation.NavigateTo($"jithub://auth?token={TokenString}");
+        }
     }
 
     private async Task<string> ExchangeToken(string code)
@@ -60,7 +108,12 @@
             {
                 var responseBody = await response.Content.ReadAsStringAsync();
 
-                AuthStatus = "success";
+                if (!string.IsNullOrWhiteSpace(responseBody))
+                {
+                    TokenString = responseBody;
+                }
+
+                AuthStatus = State.Success;
                 this.StateHasChanged();
 
                 return responseBody;
@@ -89,6 +142,13 @@
         {
             throw new InvalidOperationException("Method failed", ex);
         }
+    }
+
+
+
+    protected override void OnInitialized()
+    {
+        AuthorizeUser();
     }
 
 }
