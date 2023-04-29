@@ -23,6 +23,11 @@ public static class GithubAuth
             var gitHubClient = new GitHubClient(new ProductHeaderValue("JitHub"));
             var token = await gitHubClient.Oauth.CreateAccessToken(request);
 
+            if (token == null || string.IsNullOrWhiteSpace(token.AccessToken) || !string.IsNullOrWhiteSpace(token.Error))
+            {
+                return null;
+            }
+
             return token;
         }
 
