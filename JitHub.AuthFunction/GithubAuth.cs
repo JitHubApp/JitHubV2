@@ -42,8 +42,8 @@ public static class GithubAuth
     {
         try
         {
-            string temporaryCode = req.Query["code"];
-            temporaryCode = temporaryCode ?? req.Headers["code"];
+            string temporaryCode = req.Query["tempCode"];
+            temporaryCode = temporaryCode ?? req.Headers["tempCode"];
 
             if (String.IsNullOrWhiteSpace(temporaryCode))
             {
