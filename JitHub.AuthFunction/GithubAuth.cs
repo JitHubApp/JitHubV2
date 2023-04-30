@@ -13,49 +13,44 @@ public static class GithubAuth
 {
     public static async Task<OauthToken> Detokenize(string code)
     {
+        string clientId = Environment.GetEnvironmentVariable("JithubClientId", EnvironmentVariableTarget.Process);
+        string appSecret = Environment.GetEnvironmentVariable("JithubAppSecret", EnvironmentVariableTarget.Process);
+
+        if (clientId == null || appSecret == null)
+        {
+            throw new Exception("Missing client information");
+        }
 
         try
         {
-            string clientId = Environment.GetEnvironmentVariable("JithubClientId");
-            string appSecret = Environment.GetEnvironmentVariable("JithubAppSecret");
-
             var request = new OauthTokenRequest(clientId, appSecret, code);
             var gitHubClient = new GitHubClient(new ProductHeaderValue("JitHub"));
             var token = await gitHubClient.Oauth.CreateAccessToken(request);
 
             if (token == null || string.IsNullOrWhiteSpace(token.AccessToken) || !string.IsNullOrWhiteSpace(token.Error))
             {
-                return null;
+                throw new Exception("Github returned missing token information");
             }
 
             return token;
         }
-
         catch
         {
-            return null;
-        }
+            throw new Exception("Github request error");
 
+        }
     }
 
     public static string ProcessRequest(HttpRequest req)
     {
-        try
-        {
-            string temporaryCode = req.Query["tempCode"];
-            temporaryCode = temporaryCode ?? req.Headers["tempCode"];
+        string temporaryCode = req.Query["tempCode"];
+        temporaryCode = temporaryCode ?? req.Headers["tempCode"];
 
-            if (String.IsNullOrWhiteSpace(temporaryCode))
-            {
-                return null;
-            }
-            return temporaryCode;
-        }
-
-        catch
+        if (String.IsNullOrWhiteSpace(temporaryCode))
         {
-            return null;
+            throw new Exception("Missing temporary code");
         }
+        return temporaryCode;
     }
 
     [FunctionName("GithubCodeToToken")]
@@ -63,21 +58,17 @@ public static class GithubAuth
         [HttpTrigger(AuthorizationLevel.Function, "get", Route = null)] HttpRequest req,
         ILogger log)
     {
-
-        string code = ProcessRequest(req);
-
-        if (String.IsNullOrWhiteSpace(code))
+        try
         {
-            return new BadRequestObjectResult("Missing Github code");
+            string code = ProcessRequest(req);
+            var token = await Detokenize(code);
+
+            return new OkObjectResult(token.AccessToken);
         }
 
-        var token = await Detokenize(code);
-
-        if (token == null)
+        catch (Exception ex)
         {
-            return new BadRequestObjectResult("Bad Request, Github request error");
+            return new BadRequestObjectResult($"{ex}");
         }
-
-        return new OkObjectResult(token.AccessToken);
     }
 }
