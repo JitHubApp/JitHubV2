@@ -102,7 +102,7 @@
     {
         try
         {
-            var response = await Http.GetAsync($"/api/GithubCodeToToken?code={code}");
+            var response = await Http.GetAsync($"/api/GithubCodeToToken?tempCode={code}");
 
             if (response.IsSuccessStatusCode)
             {
