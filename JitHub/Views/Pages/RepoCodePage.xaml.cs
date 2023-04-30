@@ -17,6 +17,7 @@ namespace JitHub.Views.Pages
         public RepoCodePage()
         {
             this.InitializeComponent();
+            var globalViewMode = Ioc.Default.GetService<GlobalViewModel>();
             ShellWebView.CoreWebView2Initialized += (sender, args) =>
             {
                 ShellWebView.CoreWebView2.SetVirtualHostNameToFolderMapping(
@@ -24,7 +25,7 @@ namespace JitHub.Views.Pages
                     "Assets/dist",
                     Microsoft.Web.WebView2.Core.CoreWebView2HostResourceAccessKind.Allow
                 );
-                ShellWebView.CoreWebView2.Settings.AreDevToolsEnabled = true;
+                ShellWebView.CoreWebView2.Settings.AreDevToolsEnabled = globalViewMode.DevMode;
                 ShellWebView.WebView2Runtime.CompositionController.DefaultBackgroundColor = Colors.Transparent;
             };
         }
