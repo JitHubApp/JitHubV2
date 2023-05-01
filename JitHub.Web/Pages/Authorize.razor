@@ -25,6 +25,10 @@
         break;
 }
 
+
+
+
+
 @code {
 
     enum State
@@ -98,7 +102,7 @@
     {
         try
         {
-            var response = await Http.GetAsync($"/api/GithubCodeToToken?tempCode={code}&code={Config.API_KEY}");
+            var response = await Http.GetAsync($"/api/GithubCodeToToken?tempCode={code}");
 
             if (response.IsSuccessStatusCode)
             {
