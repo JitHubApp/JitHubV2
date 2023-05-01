@@ -1,7 +1,7 @@
 {
   "routes": [
     {
-      "route": "/*",
+      "route": "/authorize",
       "serve": "/index.html",
       "statusCode": 200
     }
