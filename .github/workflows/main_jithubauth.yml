@@ -11,8 +11,8 @@ on:
 
 env:
   AZURE_FUNCTIONAPP_NAME: jithubauth
-  AZURE_FUNCTIONAPP_PACKAGE_PATH: JitHub.AuthFunction/published # set this to the path to your web app project, defaults to the repository root
-  DOTNET_VERSION: '6.0.x' # set this to the dotnet version to use
+  AZURE_FUNCTIONAPP_PACKAGE_PATH: JitHub.AuthFunction/output # set this to the path to your web app project, defaults to the repository root
+  DOTNET_VERSION: 6.0.x # set this to the dotnet version to use
   WORKING_DIRECTORY: JitHub.AuthFunction
 
 jobs:
@@ -20,7 +20,7 @@ jobs:
     runs-on: windows-latest
     steps:
       - name: 'Checkout GitHub Action'
-        uses: actions/checkout@v2
+        uses: actions/checkout@v3
 
       - name: Setup DotNet ${{ env.DOTNET_VERSION }} Environment
         uses: actions/setup-dotnet@v1
