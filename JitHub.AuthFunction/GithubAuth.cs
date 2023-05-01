@@ -57,35 +57,35 @@ public static class GithubAuth
     }
 
 
-public static string ProcessRequest(HttpRequest req, ILogger log)
-{
-    string temporaryCode = req.Query["tempCode"];
-    temporaryCode = temporaryCode ?? req.Headers["tempCode"];
-    log.LogInformation($"processed a request with tempCode:{temporaryCode}");
-
-    if (String.IsNullOrWhiteSpace(temporaryCode))
+    public static string ProcessRequest(HttpRequest req, ILogger log)
     {
-        throw new Exception("Missing temporary code");
-    }
-    return temporaryCode;
-}
+        string temporaryCode = req.Query["tempCode"];
+        temporaryCode = temporaryCode ?? req.Headers["tempCode"];
+        log.LogInformation($"processed a request with tempCode:{temporaryCode}");
 
-[FunctionName("GithubCodeToToken")]
-public static async Task<IActionResult> Run(
-    [HttpTrigger(AuthorizationLevel.Function, "get", Route = null)] HttpRequest req,
-    ILogger log)
-{
-    try
-    {
-        string code = ProcessRequest(req, log);
-        var token = await Detokenize(code, log);
-
-        return new OkObjectResult(token.AccessToken);
+        if (String.IsNullOrWhiteSpace(temporaryCode))
+        {
+            throw new Exception("Missing temporary code");
+        }
+        return temporaryCode;
     }
 
-    catch (Exception ex)
+    [FunctionName("GithubCodeToToken")]
+    public static async Task<IActionResult> Run(
+        [HttpTrigger(AuthorizationLevel.Function, "get", Route = null)] HttpRequest req,
+        ILogger log)
     {
-        return new BadRequestObjectResult($"{ex}");
+        try
+        {
+            string code = ProcessRequest(req, log);
+            var token = await Detokenize(code, log);
+
+            return new OkObjectResult(token.AccessToken);
+        }
+
+        catch (Exception ex)
+        {
+            return new BadRequestObjectResult($"{ex}");
+        }
     }
-}
 }
