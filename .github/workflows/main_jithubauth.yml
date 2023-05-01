@@ -1,45 +1,44 @@
-# Docs for the Azure Web Apps Deploy action: https://github.com/azure/functions-action
-# More GitHub Actions for Azure: https://github.com/Azure/actions
+# This workflow will build and deploy a C# .NET6 Azure function to Azure
+# The code is in a folder called "JitHub.AuthFunction"
+# The workflow will run whenever there's a push on the main branch
+# The Azure function's name is "jithubauth"
 
-name: Build and deploy dotnet core app to Azure Function App - jithubauth
+name: Build and deploy Azure function
 
 on:
   push:
     branches:
       - main
-  workflow_dispatch:
 
 env:
-  AZURE_FUNCTIONAPP_NAME: jithubauth
-  AZURE_FUNCTIONAPP_PACKAGE_PATH: JitHub.AuthFunction # set this to the path to your web app project, defaults to the repository root
-  DOTNET_VERSION: 6.0.x # set this to the dotnet version to use
-  WORKING_DIRECTORY: JitHub.AuthFunction
+  AZURE_FUNCTIONAPP_NAME: jithubauth # set this to your Azure function app name
+  AZURE_FUNCTIONAPP_PACKAGE_PATH: JitHub.AuthFunction # set this to the path of your function app project folder
+  DOTNET_VERSION: '6.0.x' # set this to the dotnet version to use
 
 jobs:
   build-and-deploy:
-    runs-on: windows-latest
+    runs-on: windows-latest # change this to windows-latest
     steps:
-      - name: 'Checkout GitHub Action'
-        uses: actions/checkout@v3
+    - name: Checkout
+      uses: actions/checkout@v2
 
-      - name: Setup DotNet ${{ env.DOTNET_VERSION }} Environment
-        uses: actions/setup-dotnet@v1
-        with:
-          dotnet-version: ${{ env.DOTNET_VERSION }}
-      - name: Restore
-        run: dotnet restore "${{ env.WORKING_DIRECTORY }}"
-      - name: 'Resolve Project Dependencies Using Dotnet'
-        shell: pwsh
-        run: |
-          pushd './${{ env.AZURE_FUNCTIONAPP_PACKAGE_PATH }}'
-          dotnet build "${{ env.WORKING_DIRECTORY }}" --configuration Release --output ./JitHub.AuthFunction/output
-          popd
+    - name: Setup .NET Core SDK ${{ env.DOTNET_VERSION }}
+      uses: actions/setup-dotnet@v1
+      with:
+        dotnet-version: ${{ env.DOTNET_VERSION }}
 
-      - name: 'Run Azure Functions Action'
-        uses: Azure/functions-action@v1
-        id: fa
-        with:
-          app-name:  ${{ env.AZURE_FUNCTIONAPP_NAME }}
-          slot-name: 'Production'
-          package: '${{ env.AZURE_FUNCTIONAPP_PACKAGE_PATH }}/output'
-          publish-profile: ${{ secrets.AZUREAPPSERVICE_PUBLISHPROFILE_9634DB30B22840AC94FBE0D1DB96FEAF }}
+    - name: Build and test
+      run: |
+        dotnet build --configuration Release ${{ env.AZURE_FUNCTIONAPP_PACKAGE_PATH }}
+
+    - name: Publish
+      run: |
+        dotnet publish -o ./publish ${{ env.AZURE_FUNCTIONAPP_PACKAGE_PATH }}
+
+    - name: Deploy to Azure Function App
+      uses: Azure/functions-action@v1
+      id: fa
+      with:
+        app-name: ${{ env.AZURE_FUNCTIONAPP_NAME }}
+        package: ./publish
+        publish-profile: ${{ secrets.AZUREAPPSERVICE_PUBLISHPROFILE_9634DB30B22840AC94FBE0D1DB96FEAF }}
