@@ -22,7 +22,7 @@ public static class MarkdownUIBuilder
 
         pipeline.Setup(renderer);
 
-        var document = Markdown.Parse(config.Markdown, pipeline);
+        var document = Markdown.Parse(config.Markdown ?? "", pipeline);
         renderer.Render(document);
 
         return result.RichTextBlock;
