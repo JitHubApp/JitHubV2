@@ -26,19 +26,20 @@ jobs:
         uses: actions/setup-dotnet@v1
         with:
           dotnet-version: ${{ env.DOTNET_VERSION }}
-
+      - name: Restore
+        run: dotnet restore "${{ env.WORKING_DIRECTORY }}"
       - name: 'Resolve Project Dependencies Using Dotnet'
         shell: pwsh
         run: |
           pushd './${{ env.AZURE_FUNCTIONAPP_PACKAGE_PATH }}'
-          dotnet build --configuration Release --output ./output
+          dotnet build "${{ env.WORKING_DIRECTORY }}" --configuration Release --output "${{ env.AZURE_FUNCTIONAPP_PACKAGE_PATH }}"
           popd
 
       - name: 'Run Azure Functions Action'
         uses: Azure/functions-action@v1
         id: fa
         with:
-          app-name: 'jithubauth'
+          app-name:  ${{ env.AZURE_FUNCTIONAPP_NAME }}
           slot-name: 'Production'
-          package: '${{ env.AZURE_FUNCTIONAPP_PACKAGE_PATH }}/output'
+          package: '${{ env.AZURE_FUNCTIONAPP_PACKAGE_PATH }}'
           publish-profile: ${{ secrets.AZUREAPPSERVICE_PUBLISHPROFILE_9634DB30B22840AC94FBE0D1DB96FEAF }}
