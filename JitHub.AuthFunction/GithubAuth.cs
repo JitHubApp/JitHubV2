@@ -13,8 +13,8 @@ public static class GithubAuth
 {
     public static async Task<OauthToken> Detokenize(string code)
     {
-        string clientId = Environment.GetEnvironmentVariable("JithubClientId", EnvironmentVariableTarget.Process);
-        string appSecret = Environment.GetEnvironmentVariable("JithubAppSecret", EnvironmentVariableTarget.Process);
+        string clientId = Environment.GetEnvironmentVariable("JithubClientId");
+        string appSecret = Environment.GetEnvironmentVariable("JithubAppSecret");
 
         if (clientId == null || appSecret == null)
         {
