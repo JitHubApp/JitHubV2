@@ -31,7 +31,7 @@ jobs:
       - name: 'Resolve Project Dependencies Using Dotnet'
         shell: pwsh
         run: |
-          mkdir "${{ env.WORKING_DIRECTORY }}"
+          mkdir "${{ env.AZURE_FUNCTIONAPP_PACKAGE_PATH }}"
           pushd './${{ env.AZURE_FUNCTIONAPP_PACKAGE_PATH }}'
           dotnet build "${{ env.WORKING_DIRECTORY }}" --configuration Release --output "${{ env.AZURE_FUNCTIONAPP_PACKAGE_PATH }}"
           popd
