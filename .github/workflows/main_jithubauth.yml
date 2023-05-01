@@ -32,7 +32,7 @@ jobs:
         shell: pwsh
         run: |
           pushd './${{ env.AZURE_FUNCTIONAPP_PACKAGE_PATH }}'
-          dotnet build "${{ env.WORKING_DIRECTORY }}" --configuration Release --output "${{ env.WORKING_DIRECTORY }}"/output
+          dotnet build "${{ env.WORKING_DIRECTORY }}" --configuration Release --output ./JitHub.AuthFunction/output
           popd
 
       - name: 'Run Azure Functions Action'
