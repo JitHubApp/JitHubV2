@@ -109,6 +109,8 @@
                                 Person="{x:Bind ViewModel.Nero, Mode=OneWay}"/>
                             <common:CreditPersonaleButton
                                 Person="{x:Bind ViewModel.Get, Mode=OneWay}"/>
+                            <common:CreditPersonaleButton
+                                Person="{x:Bind ViewModel.ZyC, Mode=OneWay}"/>
                         </StackPanel>
                     </Grid>
                     <Grid>
