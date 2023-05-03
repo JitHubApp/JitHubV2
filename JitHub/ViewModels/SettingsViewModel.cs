@@ -56,6 +56,7 @@ namespace JitHub.ViewModels
         public CreditPersonale Get;
         public CreditPersonale Keira;
         public CreditPersonale Jakub;
+        public CreditPersonale ZyC;
         public SettingsViewModel()
         {
             _themeService = Ioc.Default.GetService<IThemeService>();
@@ -74,7 +75,7 @@ namespace JitHub.ViewModels
             }
             else if (currentTheme == ThemeConst.Light)
             {
-               SelectedTheme = light;
+                SelectedTheme = light;
             }
             else
             {
@@ -129,6 +130,17 @@ namespace JitHub.ViewModels
                 new List<PersonalLink>()
                 {
                     new PersonalLink("https://twitter.com/AlurDesign", PersonalLink.TwitterLogo),
+                }
+            );
+            ZyC = new CreditPersonale(
+                "",
+                "Ze Chen",
+                "Developer",
+                "Software engineer, always trying to learn something new :)",
+                Color.FromArgb(255, 148, 136, 138),
+                new List<PersonalLink>()
+                {
+                    new PersonalLink("https://github.com/billzyc", PersonalLink.GitHubLogo),
                 }
             );
         }
