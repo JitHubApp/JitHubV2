@@ -86,7 +86,7 @@ public class GithubAuth
             string code = ProcessRequest(req);
             var token = await Detokenize(code);
             var response = req.CreateResponse(System.Net.HttpStatusCode.OK);
-            await response.WriteAsJsonAsync(token);
+            await response.WriteStringAsync(token.AccessToken);
             return response;
         }
 
