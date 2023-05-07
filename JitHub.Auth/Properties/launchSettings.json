@@ -1,0 +1,9 @@
+{
+  "profiles": {
+    "JitHub.Auth": {
+      "commandName": "Project",
+      "commandLineArgs": "--port 7003",
+      "launchBrowser": false
+    }
+  }
+}

@@ -21,9 +21,11 @@ Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "JitHub.Utilities.SVG", "Jit
 EndProject
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "JitHub.WebView", "JitHub.WebView\JitHub.WebView.csproj", "{3BED258E-DF3F-4BD8-982A-5AD2C941C897}"
 EndProject
-Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "JitHub.Web", "JitHub.Web\JitHub.Web.csproj", "{64B790F5-C60E-46BB-BCC6-79ABADEC979F}"
+Project("{9A19103F-16F7-4668-BE54-9A1E7A4F7556}") = "JitHub.Web", "JitHub.Web\JitHub.Web.csproj", "{64B790F5-C60E-46BB-BCC6-79ABADEC979F}"
 EndProject
-Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "JitHub.AuthFunction", "JitHub.AuthFunction\JitHub.AuthFunction.csproj", "{C67E89AF-8DFC-4C5B-9ECA-12025588DAE6}"
+Project("{9A19103F-16F7-4668-BE54-9A1E7A4F7556}") = "JitHub.AuthFunction", "JitHub.AuthFunction\JitHub.AuthFunction.csproj", "{C67E89AF-8DFC-4C5B-9ECA-12025588DAE6}"
+EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "JitHub.Auth", "JitHub.Auth\JitHub.Auth.csproj", "{2E4915B9-5BD3-4A50-87EF-068E37140213}"
 EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
@@ -275,6 +277,26 @@ Global
 		{C67E89AF-8DFC-4C5B-9ECA-12025588DAE6}.Release|x64.Build.0 = Release|Any CPU
 		{C67E89AF-8DFC-4C5B-9ECA-12025588DAE6}.Release|x86.ActiveCfg = Release|Any CPU
 		{C67E89AF-8DFC-4C5B-9ECA-12025588DAE6}.Release|x86.Build.0 = Release|Any CPU
+		{2E4915B9-5BD3-4A50-87EF-068E37140213}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{2E4915B9-5BD3-4A50-87EF-068E37140213}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{2E4915B9-5BD3-4A50-87EF-068E37140213}.Debug|ARM.ActiveCfg = Debug|Any CPU
+		{2E4915B9-5BD3-4A50-87EF-068E37140213}.Debug|ARM.Build.0 = Debug|Any CPU
+		{2E4915B9-5BD3-4A50-87EF-068E37140213}.Debug|ARM64.ActiveCfg = Debug|Any CPU
+		{2E4915B9-5BD3-4A50-87EF-068E37140213}.Debug|ARM64.Build.0 = Debug|Any CPU
+		{2E4915B9-5BD3-4A50-87EF-068E37140213}.Debug|x64.ActiveCfg = Debug|Any CPU
+		{2E4915B9-5BD3-4A50-87EF-068E37140213}.Debug|x64.Build.0 = Debug|Any CPU
+		{2E4915B9-5BD3-4A50-87EF-068E37140213}.Debug|x86.ActiveCfg = Debug|Any CPU
+		{2E4915B9-5BD3-4A50-87EF-068E37140213}.Debug|x86.Build.0 = Debug|Any CPU
+		{2E4915B9-5BD3-4A50-87EF-068E37140213}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{2E4915B9-5BD3-4A50-87EF-068E37140213}.Release|Any CPU.Build.0 = Release|Any CPU
+		{2E4915B9-5BD3-4A50-87EF-068E37140213}.Release|ARM.ActiveCfg = Release|Any CPU
+		{2E4915B9-5BD3-4A50-87EF-068E37140213}.Release|ARM.Build.0 = Release|Any CPU
+		{2E4915B9-5BD3-4A50-87EF-068E37140213}.Release|ARM64.ActiveCfg = Release|Any CPU
+		{2E4915B9-5BD3-4A50-87EF-068E37140213}.Release|ARM64.Build.0 = Release|Any CPU
+		{2E4915B9-5BD3-4A50-87EF-068E37140213}.Release|x64.ActiveCfg = Release|Any CPU
+		{2E4915B9-5BD3-4A50-87EF-068E37140213}.Release|x64.Build.0 = Release|Any CPU
+		{2E4915B9-5BD3-4A50-87EF-068E37140213}.Release|x86.ActiveCfg = Release|Any CPU
+		{2E4915B9-5BD3-4A50-87EF-068E37140213}.Release|x86.Build.0 = Release|Any CPU
 	EndGlobalSection
 	GlobalSection(SolutionProperties) = preSolution
 		HideSolutionNode = FALSE
