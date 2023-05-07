@@ -12,7 +12,7 @@ on:
 
 env:
   AZURE_FUNCTIONAPP_NAME: jithubauth # set this to your Azure function app name
-  AZURE_FUNCTIONAPP_PACKAGE_PATH: JitHub.AuthFunction # set this to the path of your function app project folder
+  AZURE_FUNCTIONAPP_PACKAGE_PATH: JitHub.Auth # set this to the path of your function app project folder
   DOTNET_VERSION: '6.0.x' # set this to the dotnet version to use
 
 jobs:
