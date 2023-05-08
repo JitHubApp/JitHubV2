@@ -58,11 +58,12 @@ Then, you need to create a file named `appsettings.json` in the `JitHub` project
 ```json
 {
   "Credential": {
-    "ClientId": "<your client ID>",
-    "ClientSecret": "<your client secret>"
+    "ClientId": "<your client ID>"
   }
 }
 ```
+
+Finally, set environment variable `JithubAppSecret` to your GitHub seret and `JitHubClientId` to your GitHub client ID.
 
 Now you need to download the built vs code files. Run `.\download-vscode.ps1` in PowerShell. This script will download the latest release of vs code from [jithub-vs-code](https://github.com/nerocui/jithub-vs-code) and unzip it to the `JitHub/Assets/dist` folder. No additional action needs to be performed.
 

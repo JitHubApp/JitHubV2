@@ -2,11 +2,9 @@
 using JitHub.Models.NavArgs;
 using JitHub.Services;
 using CommunityToolkit.Mvvm.DependencyInjection;
-using System.Threading.Tasks;
 using Windows.UI.Xaml.Navigation;
 using Microsoft.Toolkit.Uwp.UI.Helpers;
 using Windows.UI.Xaml;
-using WebView2Ex;
 using Windows.UI;
 
 namespace JitHub.Views.Pages
@@ -26,7 +24,8 @@ namespace JitHub.Views.Pages
                     Microsoft.Web.WebView2.Core.CoreWebView2HostResourceAccessKind.Allow
                 );
                 ShellWebView.CoreWebView2.Settings.AreDevToolsEnabled = globalViewMode.DevMode;
-                ShellWebView.WebView2Runtime.CompositionController.DefaultBackgroundColor = Colors.Transparent;
+                // reverting back to webview2 due to crashes in release mode
+                //ShellWebView.WebView2Runtime.CompositionController.DefaultBackgroundColor = Colors.Transparent;
             };
         }
 
