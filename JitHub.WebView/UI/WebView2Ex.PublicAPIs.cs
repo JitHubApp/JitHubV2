@@ -3,6 +3,7 @@ using WebView2Ex.Natives;
 using Windows.UI.Core;
 using Windows.UI.WindowManagement;
 using Windows.Win32.Foundation;
+using static WebView2Ex.Natives.User32;
 namespace WebView2Ex.UI;
 
 partial class WebView2Ex
@@ -20,7 +21,7 @@ partial class WebView2Ex
     }
     public void SetWindow(CoreWindow coreWindow)
     {
-        SetWindow((HWND)((ICoreWindowInterop)(dynamic)coreWindow).WindowHandle);
+        SetWindow(HWNDFromCoreWindow(coreWindow));
     }
     
 }

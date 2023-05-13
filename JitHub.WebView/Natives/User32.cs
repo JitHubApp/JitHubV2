@@ -9,6 +9,7 @@ using SysPoint = System.Drawing.Point;
 using Windows.Win32.UI.WindowsAndMessaging;
 using System.Runtime.CompilerServices;
 using Windows.Win32.UI.Input.KeyboardAndMouse;
+using Windows.UI.Core;
 
 namespace WebView2Ex.Natives;
 
@@ -140,5 +141,15 @@ static class User32
     {
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         get => GetAsyncKeyDown(VIRTUAL_KEY.VK_CONTROL);
+    }
+
+    static Guid ICoreWindowInteropGUID = typeof(ICoreWindowInterop).GUID;
+    public static HWND HWNDFromCoreWindow(CoreWindow coreWindow)
+    {
+        Marshal.QueryInterface(Marshal.GetIUnknownForObject(CoreWindow.GetForCurrentThread()),
+            ref ICoreWindowInteropGUID,
+            out var corewindowinterop
+        );
+        return new(((ICoreWindowInterop)Marshal.GetObjectForIUnknown(corewindowinterop)).WindowHandle);
     }
 }
