@@ -46,8 +46,7 @@ partial class WebView2Ex
         CoreWindow coreWindow = CoreWindow.GetForCurrentThread();
         if (coreWindow is not null)
         {
-            var coreWindowInterop = (ICoreWindowInterop)((dynamic)coreWindow);
-            m_tempHostHwnd = new(coreWindowInterop.WindowHandle);
+            m_tempHostHwnd = HWNDFromCoreWindow(coreWindow);
         }
         else
         {
@@ -88,8 +87,7 @@ partial class WebView2Ex
             CoreWindow coreWindow = CoreWindow.GetForCurrentThread();
             if (coreWindow is not null)
             {
-                var coreWindowInterop = (ICoreWindowInterop)((dynamic)coreWindow);
-                xamlHostHwnd = new(coreWindowInterop.WindowHandle);
+                xamlHostHwnd = new(HWNDFromCoreWindow(coreWindow));
             }
         }
 
