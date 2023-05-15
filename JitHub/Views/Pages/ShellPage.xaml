@@ -13,6 +13,7 @@
     xmlns:animatedvisuals="using:Microsoft.UI.Xaml.Controls.AnimatedVisuals"
     xmlns:controls="using:Microsoft.Toolkit.Uwp.UI.Controls"
     xmlns:user="using:JitHub.Views.Controls.Profile"
+    SizeChanged="Page_SizeChanged"
     muxc:BackdropMaterial.ApplyToRootOrPageBackground="True"
     Background="Transparent">
     <Page.DataContext>
@@ -23,6 +24,24 @@
             <RowDefinition Height="auto"/>
             <RowDefinition Height="*"/>
         </Grid.RowDefinitions>
+        <VisualStateManager.VisualStateGroups>
+            <VisualStateGroup>
+                <VisualState x:Name="WideLayout">
+                    <VisualState.Setters>
+                        <Setter Target="ModalContent.Width" Value="768"/>
+                        <Setter Target="ModalContent.HorizontalAlignment" Value="Center"/>
+                        <Setter Target="SearchBoxContainer.Width" Value="440"/>
+                        <Setter Target="SearchBoxContainer.HorizontalAlignment" Value="Center"/>
+                    </VisualState.Setters>
+                </VisualState>
+                <VisualState x:Name="NarrowLayout">
+                    <VisualState.Setters>
+                        <Setter Target="ModalContent.HorizontalAlignment" Value="Stretch"/>
+                        <Setter Target="SearchBoxContainer.HorizontalAlignment" Value="Stretch"/>
+                    </VisualState.Setters>
+                </VisualState>
+            </VisualStateGroup>
+        </VisualStateManager.VisualStateGroups>
         <Grid
             Grid.Row="0">
             <Grid.ColumnDefinitions>
@@ -77,47 +96,50 @@
                 Margin="0 12 0 0"
                 Grid.Column="1"
                 VerticalAlignment="Center"
-                HorizontalAlignment="Center">
-                <Grid.ColumnDefinitions>
-                    <ColumnDefinition Width="20"/>
-                    <ColumnDefinition Width="auto"/>
-                </Grid.ColumnDefinitions>
-                <muxc:ProgressRing
-                    Grid.Column="0"
-                    Width="12"
-                    Height="12"
-                    Margin="0 0 4 0"
-                    VerticalAlignment="Center"
-                    IsActive="{x:Bind ViewModel.Searching, Mode=OneWay}"
-                    Visibility="{x:Bind ViewModel.Searching, Converter={StaticResource BoolToVisibilityConverter}, Mode=OneWay}"/>
-                <AutoSuggestBox
-                    Grid.Column="1"
-                    x:Name="SearchBox"
-                    MinWidth="300"
-                    VerticalAlignment="Center"
-                    ItemsSource="{x:Bind ViewModel.SearchResults, Mode=OneWay}"
-                    QuerySubmitted="{x:Bind ViewModel.OpenRepo, Mode=OneWay}"
-                    UpdateTextOnSelect="False"
-                    PlaceholderText="Type to search for repository...">
-                    <animations:Implicit.ShowAnimations>
-                        <animations:TranslationAnimation EasingType="Cubic" Duration="0:0:1" From="0, -200, 0" To="0"/>
-                    </animations:Implicit.ShowAnimations>
-                    <AutoSuggestBox.ItemTemplate>
-                        <DataTemplate x:DataType="octokit:Repository">
-                            <TextBlock Text="{Binding FullName}"/>
-                        </DataTemplate>
-                    </AutoSuggestBox.ItemTemplate>
-                    <AutoSuggestBox.QueryIcon>
-                        <muxc:AnimatedIcon x:Name='FindAnimatedIcon'>
-                            <muxc:AnimatedIcon.Source>
-                                <animatedvisuals:AnimatedFindVisualSource/>
-                            </muxc:AnimatedIcon.Source>
-                            <muxc:AnimatedIcon.FallbackIconSource>
-                                <muxc:SymbolIconSource Symbol='Find'/>
-                            </muxc:AnimatedIcon.FallbackIconSource>
-                        </muxc:AnimatedIcon>
-                    </AutoSuggestBox.QueryIcon>
-                </AutoSuggestBox>
+                HorizontalAlignment="Stretch">
+                <Grid
+                    x:Name="SearchBoxContainer">
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="20"/>
+                        <ColumnDefinition Width="*"/>
+                    </Grid.ColumnDefinitions>
+                    <muxc:ProgressRing
+                        Grid.Column="0"
+                        Width="12"
+                        Height="12"
+                        Margin="0 0 4 0"
+                        VerticalAlignment="Center"
+                        IsActive="{x:Bind ViewModel.Searching, Mode=OneWay}"
+                        Visibility="{x:Bind ViewModel.Searching, Converter={StaticResource BoolToVisibilityConverter}, Mode=OneWay}"/>
+                    <AutoSuggestBox
+                        Grid.Column="1"
+                        x:Name="SearchBox"
+                        VerticalAlignment="Center"
+                        
+                        ItemsSource="{x:Bind ViewModel.SearchResults, Mode=OneWay}"
+                        QuerySubmitted="{x:Bind ViewModel.OpenRepo, Mode=OneWay}"
+                        UpdateTextOnSelect="False"
+                        PlaceholderText="Type to search for repository...">
+                        <animations:Implicit.ShowAnimations>
+                            <animations:TranslationAnimation EasingType="Cubic" Duration="0:0:1" From="0, -200, 0" To="0"/>
+                        </animations:Implicit.ShowAnimations>
+                        <AutoSuggestBox.ItemTemplate>
+                            <DataTemplate x:DataType="octokit:Repository">
+                                <TextBlock Text="{Binding FullName}"/>
+                            </DataTemplate>
+                        </AutoSuggestBox.ItemTemplate>
+                        <AutoSuggestBox.QueryIcon>
+                            <muxc:AnimatedIcon x:Name='FindAnimatedIcon'>
+                                <muxc:AnimatedIcon.Source>
+                                    <animatedvisuals:AnimatedFindVisualSource/>
+                                </muxc:AnimatedIcon.Source>
+                                <muxc:AnimatedIcon.FallbackIconSource>
+                                    <muxc:SymbolIconSource Symbol='Find'/>
+                                </muxc:AnimatedIcon.FallbackIconSource>
+                            </muxc:AnimatedIcon>
+                        </AutoSuggestBox.QueryIcon>
+                    </AutoSuggestBox>
+                </Grid>
             </Grid>
             <StackPanel
                 Spacing="12"
@@ -214,8 +236,7 @@
             Visibility="Collapsed"
             Background="{ThemeResource SmokeFillColorDefaultBrush}">
             <Grid
-                MinWidth="600"
-                Margin="150 0"
+                x:Name="ModalContent"
                 HorizontalAlignment="Center"
                 VerticalAlignment="Center"
                 BorderBrush="{ThemeResource LayerOnAcrylicFillColorDefaultBrush}"

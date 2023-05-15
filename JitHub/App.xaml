@@ -8,7 +8,6 @@
     xmlns:converters="using:JitHub.Converters"
     xmlns:winui="using:Microsoft.UI.Xaml.Controls"
     xmlns:commonconverters="using:JitHub.Converters.Common"
-    xmlns:commit="using:JitHub.Converters.Commit"
     xmlns:utils="using:Utilities.Common"
     xmlns:code="using:JitHub.Converters.Code">
     <Application.Resources>

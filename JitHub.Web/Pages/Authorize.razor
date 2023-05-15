@@ -1,0 +1,154 @@
+﻿@page "/authorize"
+@inject HttpClient Http
+@inject NavigationManager NavigationManager
+@inject NavigationManager Navigation
+
+<PageTitle>Authorize</PageTitle>
+
+@switch (AuthStatus)
+{
+    case State.Loading:
+        @Loading()
+        ;
+        break;
+    case State.Failed:
+        @Failed()
+        ;
+        break;
+    case State.Success:
+        @Success()
+        ;
+        break;
+    default:
+        @Failed()
+        ;
+        break;
+}
+
+
+
+
+
+@code {
+
+    enum State
+    {
+        Loading,
+        Success,
+        Failed
+    }
+
+    private State AuthStatus = State.Loading;
+
+    private string? TokenString;
+
+    RenderFragment Loading()
+    {
+        return (@<div class="auth-wrapper"><div class="spinner-border text-primary" role="status"></div><h4>Authorizing</h4></div>);
+    }
+
+    RenderFragment Failed()
+    {
+        return @<div class="auth-wrapper"><img class="auth-image" src="login_fail.svg" /> <h3>Authorization failed, please <span class="link" @onclick="RedirectJitHub">try again</span>.</h3></div>;
+    }
+
+    RenderFragment Success()
+    {
+        return @<div class="auth-wrapper"><img class="auth-image" src="login_success.svg" /><h2>Authorization successful! Open Jithub through the dialog browser.</h2><h4>If no dialog appears, please press here  <span class="link" @onclick="RedirectJitHub">Jithub</span>.</h4></div>;
+    }
+
+    private void OnAuthFail()
+    {
+        AuthStatus = State.Failed;
+        this.StateHasChanged();
+    }
+
+    private async void AuthorizeUser()
+    {
+        try
+        {
+            string code = ProcessRequest();
+
+            if (String.IsNullOrWhiteSpace(code))
+            {
+                OnAuthFail();
+                return;
+            }
+
+            await ExchangeToken(code);
+            RedirectJitHub();
+        }
+        catch
+        {
+            OnAuthFail();
+
+        }
+
+    }
+
+    private void RedirectJitHub()
+    {
+        if (String.IsNullOrWhiteSpace(TokenString))
+        {
+            Navigation.NavigateTo($"jithub://");
+        }
+        else
+        {
+            Navigation.NavigateTo($"jithub://auth?token={TokenString}");
+        }
+    }
+
+    private async Task<string> ExchangeToken(string code)
+    {
+        try
+        {
+            var response = await Http.GetAsync($"/api/GithubCodeToToken?tempCode={code}");
+
+            if (response.IsSuccessStatusCode)
+            {
+                var responseBody = await response.Content.ReadAsStringAsync();
+
+                if (!string.IsNullOrWhiteSpace(responseBody))
+                {
+                    TokenString = responseBody;
+                }
+
+                AuthStatus = State.Success;
+                this.StateHasChanged();
+
+                return responseBody;
+            }
+            else
+            {
+                throw new InvalidOperationException($"Request failed, status code:{response.StatusCode}");
+            }
+        }
+        catch (Exception ex)
+        {
+            throw new InvalidOperationException("Method failed", ex);
+        }
+    }
+
+    private string ProcessRequest()
+    {
+        try
+        {
+            var uri = NavigationManager.ToAbsoluteUri(NavigationManager.Uri);
+            var query = Microsoft.AspNetCore.WebUtilities.QueryHelpers.ParseQuery(uri.Query);
+            var code = query.TryGetValue("code", out var valueFromQueryString) ? valueFromQueryString.First() : null;
+            return code;
+        }
+        catch (Exception ex)
+        {
+            throw new InvalidOperationException("Method failed", ex);
+        }
+    }
+
+
+
+    protected override void OnInitialized()
+    {
+        AuthorizeUser();
+    }
+
+}

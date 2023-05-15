@@ -10,8 +10,7 @@
     d:DesignHeight="300"
     d:DesignWidth="400">
 
-    <Grid
-        MaxWidth="600">
+    <Grid>
         <Grid.RowDefinitions>
             <RowDefinition Height="118"/>
             <RowDefinition Height="*"/>
@@ -22,6 +21,7 @@
             HorizontalAlignment="Stretch"
             VerticalAlignment="Stretch"
             Padding="16"
+            CornerRadius="8 8 0 0"
             Background="{x:Bind Person.BackgroundBrush, Mode=OneWay}">
             <Grid.ColumnDefinitions>
                 <ColumnDefinition Width="auto"/>
@@ -70,6 +70,7 @@
         <Grid
             Grid.Row="2"
             Padding="16"
+            CornerRadius="0 0 8 8"
             Background="{ThemeResource AppSolidSecondaryRush}">
             <muxc:ItemsRepeater
                 HorizontalAlignment="Left"

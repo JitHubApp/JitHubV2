@@ -12,9 +12,10 @@ namespace JitHub.Services
         public bool DevMode
         {
             get => _devMode;
-            private set
+            set
             {
                 SetProperty(ref _devMode, value);
+                ToggledDevMode();
             }
         }
 
@@ -25,9 +26,8 @@ namespace JitHub.Services
             DevMode = _settingService.Get<bool>(DEV_MODE_TOGGGLE);
         }
 
-        public void ToggleDevMode()
+        public void ToggledDevMode()
         {
-            DevMode = !DevMode;
             _settingService.Save(DEV_MODE_TOGGGLE, DevMode);
             var state = DevMode ? "on" : "off";
             _notificationService.Push($"Dev mode has been turned {state}");

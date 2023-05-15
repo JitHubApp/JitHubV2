@@ -1,0 +1,9 @@
+{
+  "routes": [
+    {
+      "route": "/authorize",
+      "serve": "/index.html",
+      "statusCode": 200
+    }
+  ]
+}

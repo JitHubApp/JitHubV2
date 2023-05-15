@@ -1,0 +1,44 @@
+# This workflow will build and deploy a C# .NET6 Azure function to Azure
+# The code is in a folder called "JitHub.AuthFunction"
+# The workflow will run whenever there's a push on the main branch
+# The Azure function's name is "jithubauth"
+
+name: Build and deploy Azure function
+
+on:
+  push:
+    branches:
+      - main
+
+env:
+  AZURE_FUNCTIONAPP_NAME: jithubauth # set this to your Azure function app name
+  AZURE_FUNCTIONAPP_PACKAGE_PATH: JitHub.Auth # set this to the path of your function app project folder
+  DOTNET_VERSION: '7.0.x' # set this to the dotnet version to use
+
+jobs:
+  build-and-deploy:
+    runs-on: windows-latest # change this to windows-latest
+    steps:
+    - name: Checkout
+      uses: actions/checkout@v2
+
+    - name: Setup .NET Core SDK ${{ env.DOTNET_VERSION }}
+      uses: actions/setup-dotnet@v1
+      with:
+        dotnet-version: ${{ env.DOTNET_VERSION }}
+
+    - name: Build and test
+      run: |
+        dotnet build --configuration Release ${{ env.AZURE_FUNCTIONAPP_PACKAGE_PATH }}
+
+    - name: Publish
+      run: |
+        dotnet publish -o ./publish ${{ env.AZURE_FUNCTIONAPP_PACKAGE_PATH }}
+
+    - name: Deploy to Azure Function App
+      uses: Azure/functions-action@v1
+      id: fa
+      with:
+        app-name: ${{ env.AZURE_FUNCTIONAPP_NAME }}
+        package: ./publish
+        publish-profile: ${{ secrets.AZUREAPPSERVICE_PUBLISHPROFILE_9634DB30B22840AC94FBE0D1DB96FEAF }}

@@ -25,6 +25,7 @@
             x:Name="WebViewContainer"
             HorizontalAlignment="Stretch"
             VerticalAlignment="Stretch"
+            Visibility="Collapsed"
             ui:VisualExtensions.NormalizedCenterPoint="0.5">
             <animations:Implicit.ShowAnimations>
                 <animations:OpacityAnimation
@@ -37,10 +38,8 @@
                     Duration="0:0:0.5"
                     From="0.95" To="1"/>
             </animations:Implicit.ShowAnimations>
-            <controls:WebView2
-                x:Name="ShellWebView"
-                CanDrag="True"
-            />
+            <muxc:WebView2
+                x:Name="ShellWebView" />
         </Grid>
     </Grid>
 </Page>

@@ -562,17 +562,20 @@
     <Content Include="Assets\Icons\github_logo_light.png" />
     <Content Include="Assets\Icons\no_result.png" />
     <Content Include="Assets\Icons\select_one.png" />
-    <Content Include="Assets\JakubProfile.png" />
+    <Content Include="Assets\ContributorsProfilePhotos\JakubProfile.png" />
+    <Content Include="Assets\ContributorsProfilePhotos\NeroProfile.jpg" />
+    <Content Include="Assets\ContributorsProfilePhotos\GetProfile.png" />
+    <Content Include="Assets\ContributorsProfilePhotos\KeiraProfile.png" />
+    <Content Include="Assets\LinkLogos\LinkedIn.png" />
+    <Content Include="Assets\LinkLogos\GitHub.png" />
+    <Content Include="Assets\LinkLogos\Twitter.png" />
     <Content Include="Assets\JitHubLogo.png" />
-    <Content Include="Assets\KeiraProfile.png" />
     <Content Include="Assets\LargeTile.scale-100.png" />
     <Content Include="Assets\LargeTile.scale-125.png" />
     <Content Include="Assets\LargeTile.scale-150.png" />
     <Content Include="Assets\LargeTile.scale-200.png" />
     <Content Include="Assets\LargeTile.scale-400.png" />
-    <Content Include="Assets\LinkedInLogo.png" />
     <Content Include="Assets\merge_icon.svg" />
-    <Content Include="Assets\NeroProfile.jpg" />
     <Content Include="Assets\Octocat.png" />
     <Content Include="Assets\people_icon_dark.svg" />
     <Content Include="Assets\people_icon_light.svg" />
@@ -614,7 +617,6 @@
     <Content Include="Assets\StoreLogo.scale-150.png" />
     <Content Include="Assets\StoreLogo.scale-200.png" />
     <Content Include="Assets\StoreLogo.scale-400.png" />
-    <Content Include="Assets\TwitterLogo.png" />
     <Content Include="Assets\Fonts\FluentIcons.ttf" />
     <None Include="JitHub_TemporaryKey.pfx" />
     <None Include="Package.StoreAssociation.xml" />
@@ -1359,6 +1361,10 @@
     <ProjectReference Include="..\JitHub.Utilities.SVG\JitHub.Utilities.SVG.csproj">
       <Project>{ace52ff0-0a75-4b14-8d0f-464c9b09b85f}</Project>
       <Name>JitHub.Utilities.SVG</Name>
+    </ProjectReference>
+    <ProjectReference Include="..\JitHub.WebView\JitHub.WebView.csproj">
+      <Project>{3bed258e-df3f-4bd8-982a-5ad2c941c897}</Project>
+      <Name>JitHub.WebView</Name>
     </ProjectReference>
     <ProjectReference Include="..\Markdig.UWP\Markdig.UWP.csproj">
       <Project>{76bb207b-5175-4e9c-af8c-add0ea67ad18}</Project>

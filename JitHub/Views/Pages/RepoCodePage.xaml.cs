@@ -2,10 +2,10 @@
 using JitHub.Models.NavArgs;
 using JitHub.Services;
 using CommunityToolkit.Mvvm.DependencyInjection;
-using System.Threading.Tasks;
 using Windows.UI.Xaml.Navigation;
 using Microsoft.Toolkit.Uwp.UI.Helpers;
 using Windows.UI.Xaml;
+using Windows.UI;
 
 namespace JitHub.Views.Pages
 {
@@ -15,6 +15,7 @@ namespace JitHub.Views.Pages
         public RepoCodePage()
         {
             this.InitializeComponent();
+            var globalViewMode = Ioc.Default.GetService<GlobalViewModel>();
             ShellWebView.CoreWebView2Initialized += (sender, args) =>
             {
                 ShellWebView.CoreWebView2.SetVirtualHostNameToFolderMapping(
@@ -22,9 +23,10 @@ namespace JitHub.Views.Pages
                     "Assets/dist",
                     Microsoft.Web.WebView2.Core.CoreWebView2HostResourceAccessKind.Allow
                 );
-                ShellWebView.CoreWebView2.Settings.AreDevToolsEnabled = false;
+                ShellWebView.CoreWebView2.Settings.AreDevToolsEnabled = globalViewMode.DevMode;
+                // reverting back to webview2 due to crashes in release mode
+                //ShellWebView.WebView2Runtime.CompositionController.DefaultBackgroundColor = Colors.Transparent;
             };
-            WebViewContainer.Visibility = Visibility.Collapsed;
         }
 
         override protected async void OnNavigatedTo(NavigationEventArgs e)

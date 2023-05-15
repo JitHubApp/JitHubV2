@@ -126,16 +126,25 @@ git clone https://github.com/nerocui/JitHubV2
 
 - Open `JitHub.sln`.
 - Make sure all projects are loaded.
-- Create a GitHub OAuth app and put the `client-id` and `secret-key` inside the `secrets.json` file in the `JitHub` project directory.
+- Create a GitHub OAuth app and put the `client-id` and `secret-key` inside the `appsettings.json` file in the `JitHub` project directory.
+
+###### 📝 The `appsettings.json` file should be ignored automatically by Git. If for any reason it is not, _do not_ commit it.
+
 ```json
 {
   "Credential": {
-    "ClientId": "<your client ID>",
-    "ClientSecret": "<your client secret>"
+    "ClientId": "<your client ID>"
   }
 }
 ```
+
 ###### 📝 See the [docs](https://github.com/nerocui/JitHubV2/wiki) on how to create a GitHub OAuth app.
+
+Finally, set environment variable `JithubAppSecret` to your GitHub seret and `JitHubClientId` to your GitHub client ID.
+
+Now you need to download the built vs code files. Run `.\download-vscode.ps1` in PowerShell. This script will download the latest release of vs code from [jithub-vs-code](https://github.com/nerocui/jithub-vs-code) and unzip it to the `JitHub/Assets/dist` folder. No additional action needs to be performed.
+
+After that, you can open the `JitHub.sln` file in Visual Studio and run the app.
 
 - Set the Startup Project to `JitHub`
 - Build with `DEBUG|x64` (or `DEBUG|Any CPU`)
