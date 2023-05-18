@@ -1,21 +1,48 @@
+# <img width="64" align="center" src="JitHub/Assets/JitHubLogo.png" /> JitHub
+
+#### A fast, fluent and free GitHub client for Windows, designed for GitHub lovers 💖 who want a bit of spice with their setup.
+
 <p align="center">
-  <span><img src="JitHub/Assets/JitHubLogo.png" alt="JitHub Logo" width="96" height="96">
-  <h1 align="center">JitHub</h1></span>
+  <a title="GitHub Releases" target="_blank" href="https://github.com/nerocui/JitHubV2/releases">
+    <img align="left" src="https://img.shields.io/github/v/release/nerocui/JitHubV2?include_prereleases" alt="Release" />
+  </a>
+  <a title="GitHub Releases" target="_blank" href="https://github.com/nerocui/JitHubV2/releases">
+    <img align="left" src="https://img.shields.io/github/repo-size/nerocui/JitHubV2?color=%23cc0000" alt="Release" />
+  </a>
 </p>
 
+<br/>
 
+---
 
-<p align="center">
-  JitHub is the ultimate UWP app for GitHub lovers 💖. It lets you browse GitHub repositories, issues, pull requests, and more on your Windows device. It is designed to be smooth, fluid, and native, using WinUI for the look and feel and optimized for touch. JitHub is fast, beautiful, and powerful 💪.
-</p>
+## 🎁 Installation
 
-<p align="center">
-  <a href="https://apps.microsoft.com/store/detail/jithub/9MXRBJBB552V">
-   <img src="https://get.microsoft.com/images/en-us%20dark.svg" alt="Download JitHub" width="128"/>
+### 🪟 Microsoft Store
+###### ⭐Recommended⭐
+
+<a title="Microsoft Store" href="https://apps.microsoft.com/store/detail/jithub/9MXRBJBB552V">
+  <img src="https://user-images.githubusercontent.com/71598437/229349655-404beb46-01fa-494c-aba7-5ed94344d9a6.png" alt="Release" />
 </a>
-</p>
 
-## Features 🎁
+### 🔨 Build from Source
+
+See [this section](#-building-the-code)
+
+## 📸 Screenshots
+
+###### 🤩 Stunning. Elegant. Redesigned.
+
+<a title="JitHub Screenshot" target="_blank" href="https://github.com/nerocui/JitHubV2">
+  <img width="640" align="center" src="ScreenShots/screenshot1.png" alt="Screenshot" />
+</a>
+<br/>
+<a title="JitHub Screenshot" target="_blank" href="https://github.com/nerocui/JitHubV2">
+  <img width="640" align="center" src="ScreenShots/screenshot3.png" alt="Screenshot" />
+</a>
+
+######
+
+## 💡 Features
 
 - Browse GitHub repositories by topics, languages, or keywords 🔎
 - View repository details, files, commits, issues, pull requests, and actions 📝
@@ -25,54 +52,16 @@
 - Manage your notifications and profile 🔔
 - Switch between light and dark themes 🌞🌙
 
-## Screenshots 📸
+## 🦜 Contributing & Feedback
 
-<img src="https://github.com/nerocui/JitHubV2/blob/main/ScreenShots/screenshot1.png" width="640"/>
-<img src="https://github.com/nerocui/JitHubV2/blob/main/ScreenShots/screenshot2.png" width="640"/>
-<img src="https://github.com/nerocui/JitHubV2/blob/main/ScreenShots/screenshot3.png" width="640"/>
+There are multiple ways to participate in the community:
 
-## Installation 💾
+- Upvote popular feature requests
+- [Submit a new feature](https://github.com/nerocui/JitHubV2/pulls)
+- [File bugs and feature requests](https://github.com/nerocui/JitHubV2/new/choose).
+- Review source [code changes](https://github.com/nerocui/JitHubV2/commits)
 
-You can download JitHub from the Microsoft Store or build it from source.
-
-### Microsoft Store
-
-[Get JitHub from the Microsoft Store](https://apps.microsoft.com/store/detail/jithub/9MXRBJBB552V) and enjoy the best GitHub experience on Windows 😍.
-
-### Build from source
-
-To build JitHub from source, you need Visual Studio 2019 with the following workloads:
-
-- Universal Windows Platform development 🖥️
-
-JitHub is powered by the following NuGet packages:
-
-- Microsoft.UI.Xaml 🎨
-- Octokit 🐙
-- Markdig 📑
-- Html Agility Pack 🕸️
-- Skiasharp ✏️
-- Microsoft.Toolkit.Uwp ⚙️
-
-Then, you need to create a file named `appsettings.json` in the `JitHub` project folder with the following content. Go to [settings > Developer settings](https://github.com/settings/developers) and create an OAuth app. Name it however you like, and in there you can get your clientID and secret. Copy them into the `appsettings.json` file. This file is gitignored, so please never commit it.
-```json
-{
-  "Credential": {
-    "ClientId": "<your client ID>"
-  }
-}
-```
-
-Finally, set environment variable `JithubAppSecret` to your GitHub seret and `JitHubClientId` to your GitHub client ID.
-
-Now you need to download the built vs code files. Run `.\download-vscode.ps1` in PowerShell. This script will download the latest release of vs code from [jithub-vs-code](https://github.com/nerocui/jithub-vs-code) and unzip it to the `JitHub/Assets/dist` folder. No additional action needs to be performed.
-
-After that, you can open the `JitHub.sln` file in Visual Studio and run the app.
-
-## Contributing 🙌
-
-JitHub is an open source project and welcomes contributions from anyone. If you want to contribute, please follow these steps:
-
+JitHub is an open source project and welcomes source code contributions from anyone. If you want to contribute, please follow these steps:
 1. Fork this repository and clone it to your local machine. 🍴
 2. Create a new branch for your feature or bug fix. 🌿
 3. Make your changes and commit them with a descriptive message. 💬
@@ -82,6 +71,86 @@ JitHub is an open source project and welcomes contributions from anyone. If you 
 
 Please follow the [code of conduct](CODE_OF_CONDUCT.md) and the [coding style guide](CODING_STYLE.md) when contributing.
 
-## License 📄
+### 🏗️ Codebase Structure
 
-JitHub is licensed under the MIT License. See [LICENSE](LICENSE) for details.
+```cs
+.
+├──JitHub                               // JitHub app code (such as code related to UI and GitHub's API)
+├──JitHub.VSCode.Client                 // JitHub VSCode implementation
+├──JitHub.Controls.Editor               // JitHub file editor
+├──JitHub.Services.GitHub.Contributions // JitHub client to obtain user contribution details
+├──JitHub.Utilities.SVG                 // JitHub SVG image renderer service
+|
+├──System.Text.Json.Viewer              // JitHub Json viewer service (for credentials)
+├──Utilities.Common                     // JitHub utilities common files
+|
+├──ScreenShots                          // JitHub screenshots for README and other reference uses.
+|
+├──Markdig.Client.Markdig               // Markdig markdown viewer files
+└──Markdig.UWP                          // Markdig implementation for UWP
+```
+
+### 🗃️ Contributors
+
+<a href="https://github.com/nerocui/JitHubV2/graphs/contributors">
+  <img src="https://contrib.rocks/image?repo=nerocui/JitHubV2" />
+</a>
+
+## 🔨 Building the Code
+
+### 1️⃣ Prerequisites
+
+Ensure you have following components:
+
+- [Git](https://git-scm.com/)
+- [Visual Studio 2022](https://visualstudio.microsoft.com/vs/) with following individual components:
+  - Universal Windows Platform Software Development Kit
+- [Windows 11 or Windows 10](https://www.microsoft.com/en-us/windows) (version 1809+)
+- JitHub is also powered by the following awesome [NuGet](https://nuget.org) packages:
+  - Microsoft.UI.Xaml 🎨
+  - Octokit 🐙
+  - Markdig 📑
+  - Html Agility Pack 🕸️
+  - Skiasharp ✏️
+  - Microsoft.Toolkit.Uwp ⚙️
+
+### 2️⃣ Git
+
+Clone the repository:
+
+```git
+git clone https://github.com/nerocui/JitHubV2
+```
+
+### 3️⃣ Build the project
+
+- Open `JitHub.sln`.
+- Make sure all projects are loaded.
+- Create a GitHub OAuth app and put the `client-id` and `secret-key` inside the `appsettings.json` file in the `JitHub` project directory.
+
+###### 📝 The `appsettings.json` file should be ignored automatically by Git. If for any reason it is not, _do not_ commit it.
+
+```json
+{
+  "Credential": {
+    "ClientId": "<your client ID>"
+  }
+}
+```
+
+###### 📝 See the [docs](https://github.com/nerocui/JitHubV2/wiki) on how to create a GitHub OAuth app.
+
+Finally, set environment variable `JithubAppSecret` to your GitHub seret and `JitHubClientId` to your GitHub client ID.
+
+Now you need to download the built vs code files. Run `.\download-vscode.ps1` in PowerShell. This script will download the latest release of vs code from [jithub-vs-code](https://github.com/nerocui/jithub-vs-code) and unzip it to the `JitHub/Assets/dist` folder. No additional action needs to be performed.
+
+After that, you can open the `JitHub.sln` file in Visual Studio and run the app.
+
+- Set the Startup Project to `JitHub`
+- Build with `DEBUG|x64` (or `DEBUG|Any CPU`)
+
+## ⚖️ License
+
+Copyright (c) 2023 nerocui
+
+Licensed under the MIT license as stated in the [LICENSE](LICENSE.md).
