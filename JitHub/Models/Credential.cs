@@ -1,8 +1,6 @@
-﻿namespace JitHub.Models
+﻿namespace JitHub.Models;
+
+public class Credential
 {
-    public class Credential
-    {
-        public string ClientId { get; set; }
-        public string ClientSecret { get; set; }
-    }
+    public string ClientId { get; set; }
 }

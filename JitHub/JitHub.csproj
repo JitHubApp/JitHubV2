@@ -190,6 +190,7 @@
     <Compile Include="Models\Base\SelectableItem.cs" />
     <Compile Include="Models\CodeBranchRef.cs" />
     <Compile Include="Models\CommandArgs\IssueFormArgs.cs" />
+    <Compile Include="Models\Features.cs" />
     <Compile Include="Models\JitHubCommand.cs" />
     <Compile Include="Models\CreditPersonale.cs" />
     <Compile Include="Models\FailedRepo.cs" />

@@ -1,9 +1,9 @@
 ﻿using JitHub.Models;
 
-namespace JitHub.Services
+namespace JitHub.Services;
+
+internal interface IAppConfig
 {
-    public interface IAppConfig
-    {
-        Credential Credential { get; }
-    }
+    Credential Credential { get; }
+    Features Features { get; }
 }
