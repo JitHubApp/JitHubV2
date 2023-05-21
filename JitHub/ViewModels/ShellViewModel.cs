@@ -299,7 +299,7 @@ namespace JitHub.ViewModels
 
         public void GoToFeedbackPage()
         {
-            var repoName = "nerocui/JitHubFeedback";
+            var repoName = "JitHubApp/JitHubV2";
             var param = new RepoDetailPageArgs(RepoPageType.IssuePage, new IssueNavArg(null, 0), repoName);
             OpenTab(repoName, typeof(RepoDetailPage), param);
         }

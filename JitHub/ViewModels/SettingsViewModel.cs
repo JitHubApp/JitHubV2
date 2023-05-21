@@ -152,7 +152,7 @@ namespace JitHub.ViewModels
 
         public async void ViewJitHubCode()
         {
-            var jithub = await _githubService.GetRepository("nerocui", "JitHubV2");
+            var jithub = await _githubService.GetRepository("JitHubApp", "JitHubV2");
             _navigationService.NavigateTo("JitHub", typeof(RepoDetailPage), new RepoDetailPageArgs(RepoPageType.CodePage, jithub));
         }
 
