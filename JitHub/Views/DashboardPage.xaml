@@ -5,20 +5,62 @@
     xmlns:local="using:JitHub.Views"
     xmlns:viewmodels="using:JitHub.ViewModels"
     xmlns:uc="using:JitHub.Views.Controls"
+    xmlns:controls="using:Microsoft.Toolkit.Uwp.UI.Controls"
+    xmlns:winui="using:Microsoft.UI.Xaml.Controls"
     xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
     xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+    xmlns:widgets="using:JitHub.Views.Controls.Widgets"
     mc:Ignorable="d"
     Background="Transparent">
     <Page.DataContext>
         <viewmodels:DashboardViewModel x:Name="ViewModel"/>
     </Page.DataContext>
     <Grid
-        Padding="12">
-        <Grid.ColumnDefinitions>
-            <ColumnDefinition Width="320"/>
-            <ColumnDefinition Width="*"/>
-        </Grid.ColumnDefinitions>
-        <uc:RepoSideBar Grid.Column="0" Margin="0 0 12 0"/>
-        <uc:ActivityList Grid.Column="1"/>
+        Padding="20">
+        <Grid.RowDefinitions>
+            <RowDefinition Height="auto"/>
+            <RowDefinition Height="*"/>
+        </Grid.RowDefinitions>
+        <Grid
+            Grid.Row="0"
+            Margin="0 0 0 12">
+            <TextBlock
+                FontWeight="SemiBold"
+                Text="Widgets"/>
+            <Button
+                HorizontalAlignment="Right"
+                Content="Add">
+                <Button.Flyout>
+                    <winui:CommandBarFlyout>
+                        <AppBarButton
+                            Label="Test"
+                            Click="{x:Bind ViewModel.AppBarButton_Click}"/>
+                    </winui:CommandBarFlyout>
+                </Button.Flyout>
+            </Button>
+        </Grid>
+        
+        <winui:ItemsRepeaterScrollHost Grid.Row="1">
+            <ScrollViewer>
+                <winui:ItemsRepeater
+                    x:Name="WidgetsHost"
+                    ItemsSource="{x:Bind ViewModel.Widgets, Mode=OneWay}">
+                    <winui:ItemsRepeater.Layout>
+                        <controls:StaggeredLayout
+                            DesiredColumnWidth="320"
+                            ColumnSpacing="8"
+                            RowSpacing="8"/>
+                    </winui:ItemsRepeater.Layout>
+                    <winui:ItemsRepeater.ItemTemplate>
+                        <DataTemplate>
+                            <Grid>
+                                <widgets:WidgetContainer 
+                                    Widget="{Binding Self, Mode=OneWay}"/>
+                            </Grid>
+                        </DataTemplate>
+                    </winui:ItemsRepeater.ItemTemplate>
+                </winui:ItemsRepeater>
+            </ScrollViewer>
+        </winui:ItemsRepeaterScrollHost>
     </Grid>
 </Page>

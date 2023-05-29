@@ -27,5 +27,11 @@ namespace JitHub.Views
         {
             this.InitializeComponent();
         }
+
+        protected override void OnNavigatedTo(NavigationEventArgs e)
+        {
+            base.OnNavigatedTo(e);
+            ViewModel.Load();
+        }
     }
 }

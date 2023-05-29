@@ -18,6 +18,7 @@ using Windows.UI.Xaml;
 using Windows.UI.Xaml.Controls;
 using Windows.UI.Xaml.Media.Animation;
 using Windows.UI.Xaml.Navigation;
+using JitHub.Views.Controls.Widgets.Registrations;
 
 namespace JitHub
 {
@@ -70,6 +71,7 @@ namespace JitHub
                 services.AddScoped<IAuthService, AuthService>();
                 services.AddScoped<IThemeService, ThemeService>();
                 services.AddScoped<ICommandService, CommandService>();
+                services.AddScoped<IWidgetService, WidgetService>();
                 services.AddSingleton<GlobalViewModel>();
 
                 Ioc.Default.ConfigureServices(services.BuildServiceProvider());
@@ -130,11 +132,22 @@ namespace JitHub
                     // When the navigation stack isn't restored navigate to the first page,
                     // configuring the new page by passing required information as a navigation
                     // parameter
+
+                    // auth
                     var _authService = Ioc.Default.GetService<IAuthService>();
                     if (_authService.Authenticated)
+                    {
                         _rootFrame.Navigate(typeof(ShellPage));
+                    }
                     else
+                    {
                         _rootFrame.Navigate(typeof(LoginPage), e.Arguments);
+                    }
+
+                    // widget
+                    var _widgetService = Ioc.Default.GetService<IWidgetService>();
+                    _widgetService.Register(new TestWidgetReg());
+                    _widgetService.Initialize();
                 }
                 // Ensure the current window is active
                 Window.Current.Activate();
