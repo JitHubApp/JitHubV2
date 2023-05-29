@@ -61,7 +61,7 @@
             <StackPanel
                 Spacing="8">
                 <Image
-                    Width="320"
+                    Width="240"
                     Source="ms-appx:///Assets/Icons/no_result.png"/>
                 <TextBlock
                     HorizontalAlignment="Center"
