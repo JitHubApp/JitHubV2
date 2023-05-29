@@ -1,5 +1,5 @@
 ﻿<UserControl
-    x:Class="JitHub.Views.Controls.ActivityList"
+    x:Class="JitHub.Views.Controls.Widgets.ActivityList"
     xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
     xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
     xmlns:local="using:JitHub.Views.Controls"
@@ -34,10 +34,7 @@
             SponsorshipEventTemplate="{StaticResource SponsorshipEventTemplate}"
             WatchEventTemplate="{StaticResource WatchEventTemplate}"/>
     </UserControl.Resources>
-    <Grid
-        Padding="12 12 0 0"
-        CornerRadius="8"
-        Background="{ThemeResource ExpanderHeaderBackground}">
+    <Grid>
         <Grid.RowDefinitions>
             <RowDefinition Height="auto"/>
             <RowDefinition Height="*"/>

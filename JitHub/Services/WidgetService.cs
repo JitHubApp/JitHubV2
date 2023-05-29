@@ -10,15 +10,17 @@ namespace JitHub.Services;
 
 public class WidgetService : IWidgetService
 {
+    private bool _initialized;
     private const string WIDGET_CACHE_KEY = "WIDGET_CACHE_KEY";
     private Dictionary<string, WidgetBase> _widgetRegs = new Dictionary<string, WidgetBase>();
     private Dictionary<string, Widget> _widgetCache = new Dictionary<string, Widget>(); 
     private ApplicationDataStorageHelper _storage;
 
-    public WidgetService(ISettingService settingService)
+    public WidgetService()
     {
         var serializer = new WidgetSerializer();
         _storage = ApplicationDataStorageHelper.GetCurrent(serializer);
+        Initialize();
     }
 
     // create and save to local storage
@@ -57,18 +59,32 @@ public class WidgetService : IWidgetService
 
     public void Initialize()
     {
-        var cache = _storage.Read<Dictionary<string, Widget>>(WIDGET_CACHE_KEY);
-        if (cache != null)
+        if (!_initialized)
         {
-            foreach (var (key, value) in cache)
+            var cache = _storage.Read<Dictionary<string, Widget>>(WIDGET_CACHE_KEY);
+            if (cache != null)
             {
-                _widgetCache.Add(key, value);
+                foreach (var (key, value) in cache)
+                {
+                    _widgetCache.Add(key, value);
+                }
             }
         }
     }
 
-    void IWidgetService.Register(WidgetBase widget)
+    public void Register(WidgetBase widget)
     {
         _widgetRegs.Add(widget.Type, widget);
+    }
+
+    public ICollection<WidgetBase> GetAllRegs()
+    {
+        return _widgetRegs.Values.ToList();
+    }
+
+    public void Delete(string id)
+    {
+        _widgetCache.Remove(id);
+        _storage.Save(WIDGET_CACHE_KEY, _widgetCache);
     }
 }

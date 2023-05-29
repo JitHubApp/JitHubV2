@@ -151,7 +151,7 @@
                 <!--<user:ProfileButton OnClickCommand="{x:Bind ViewModel.GoToProfilePageCommand}"/>-->
                 <Button
                     Background="Transparent"
-                    BorderThickness="0">
+                    BorderBrush="Transparent">
                     <FontIcon FontFamily="{StaticResource SegoeFluentIcons}" Glyph="&#xE712;"/>
                     <Button.Flyout>
                         <muxc:CommandBarFlyout

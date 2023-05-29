@@ -324,7 +324,7 @@
     <Compile Include="ViewModels\ShellViewModel.cs" />
     <Compile Include="ViewModels\UserViewModel\ProfileButtonViewModel.cs" />
     <Compile Include="ViewModels\UserViewModel\UserCommentBlockViewModel.cs" />
-    <Compile Include="Views\Controls\ActivityList.xaml.cs">
+    <Compile Include="Views\Controls\Widgets\ActivityList.xaml.cs">
       <DependentUpon>ActivityList.xaml</DependentUpon>
     </Compile>
     <Compile Include="Views\Controls\Activity\CommitCommentActivity.xaml.cs">
@@ -495,10 +495,8 @@
     <Compile Include="Views\Controls\Profile\ProfileButton.xaml.cs">
       <DependentUpon>ProfileButton.xaml</DependentUpon>
     </Compile>
-    <Compile Include="Views\Controls\Widgets\Registrations\TestWidgetReg.cs" />
-    <Compile Include="Views\Controls\Widgets\TestWidget.xaml.cs">
-      <DependentUpon>TestWidget.xaml</DependentUpon>
-    </Compile>
+    <Compile Include="Views\Controls\Widgets\Registrations\ActivityListReg.cs" />
+    <Compile Include="Views\Controls\Widgets\Registrations\RepoSideBarReg.cs" />
     <Compile Include="Views\Controls\Widgets\WidgetContainer.xaml.cs">
       <DependentUpon>WidgetContainer.xaml</DependentUpon>
     </Compile>
@@ -553,7 +551,7 @@
     <Compile Include="Views\RepoListPage.xaml.cs">
       <DependentUpon>RepoListPage.xaml</DependentUpon>
     </Compile>
-    <Compile Include="Views\Controls\RepoSideBar.xaml.cs">
+    <Compile Include="Views\Controls\Widgets\RepoSideBar.xaml.cs">
       <DependentUpon>RepoSideBar.xaml</DependentUpon>
     </Compile>
   </ItemGroup>
@@ -932,10 +930,6 @@
       <SubType>Designer</SubType>
       <Generator>MSBuild:Compile</Generator>
     </Page>
-    <Page Include="Views\Controls\Widgets\TestWidget.xaml">
-      <SubType>Designer</SubType>
-      <Generator>MSBuild:Compile</Generator>
-    </Page>
     <Page Include="Views\Controls\Widgets\WidgetContainer.xaml">
       <SubType>Designer</SubType>
       <Generator>MSBuild:Compile</Generator>
@@ -1128,7 +1122,7 @@
       <SubType>Designer</SubType>
       <Generator>MSBuild:Compile</Generator>
     </Page>
-    <Page Include="Views\Controls\ActivityList.xaml">
+    <Page Include="Views\Controls\Widgets\ActivityList.xaml">
       <SubType>Designer</SubType>
       <Generator>MSBuild:Compile</Generator>
     </Page>
@@ -1320,7 +1314,7 @@
       <SubType>Designer</SubType>
       <Generator>MSBuild:Compile</Generator>
     </Page>
-    <Page Include="Views\Controls\RepoSideBar.xaml">
+    <Page Include="Views\Controls\Widgets\RepoSideBar.xaml">
       <SubType>Designer</SubType>
       <Generator>MSBuild:Compile</Generator>
     </Page>

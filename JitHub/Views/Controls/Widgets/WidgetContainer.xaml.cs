@@ -44,4 +44,12 @@ public sealed partial class WidgetContainer : UserControl
             Container.Children.Add(widgetUI);
         }
     }
+
+    private void MenuFlyoutItem_Click(object sender, RoutedEventArgs e)
+    {
+        if (Widget.Delete != null && Widget.Delete.CanExecute(Widget.ID))
+        {
+            Widget.Delete.Execute(Widget.ID);
+        }
+    }
 }

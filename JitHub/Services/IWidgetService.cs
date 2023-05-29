@@ -9,6 +9,8 @@ internal interface IWidgetService
     UIElement Get(string id);
     ICollection<Widget> GetAll();
     Widget Create(string type);
+    void Delete(string id);
     void Register(WidgetBase widget);
+    ICollection<WidgetBase> GetAllRegs();
     void Initialize();
 }

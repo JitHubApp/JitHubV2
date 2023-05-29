@@ -2,5 +2,6 @@
 
 internal class WidgetType
 {
-    public static string TestOne = "TextOne";
+    public static string RepoSideBar = "RepoSideBar";
+    public static string ActivityList = "ActivityList";
 }

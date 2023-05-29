@@ -1,47 +1,72 @@
-﻿using Microsoft.Extensions.DependencyInjection;
-using CommunityToolkit.Mvvm.ComponentModel;
+﻿using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.DependencyInjection;
-using System;
 using System.Collections.Generic;
-using System.Linq;
-using System.Text;
-using System.Threading.Tasks;
 using JitHub.Services;
 using JitHub.Models.Widgets;
 using System.Collections.ObjectModel;
 using Windows.UI.Xaml;
+using Windows.UI.Xaml.Controls;
+using CommunityToolkit.Mvvm.Input;
+using System.ComponentModel;
+using System.Xml.Linq;
 
 namespace JitHub.ViewModels;
 
 public partial class DashboardViewModel : ObservableObject
 {
     private IWidgetService _widgetService;
+    private MenuFlyout _container;
 
     public ObservableCollection<Widget> Widgets = new ObservableCollection<Widget>();
-    [ObservableProperty]
-    private ICollection<string> _types;
 
     public DashboardViewModel()
     {
         _widgetService = Ioc.Default.GetService<IWidgetService>();
-        Types = new List<string>()
-        {
-            WidgetType.TestOne
-        };
     }
 
-    public void Load()
+    public void Initialize(MenuFlyout container)
+    {
+        _container = container;
+
+        LoadInstalledWidgets();
+        LoadWidgetLists();
+    }
+
+    private void LoadInstalledWidgets()
     {
         Widgets.Clear();
         var widgets = _widgetService.GetAll();
-        foreach ( var widget in widgets )
+
+        foreach (var widget in widgets)
         {
+            widget.Delete = new RelayCommand<string>(DeleteWidget);
             Widgets.Add(widget);
         }
     }
 
-    public void AppBarButton_Click(object sender, RoutedEventArgs e)
+    private void LoadWidgetLists()
     {
-        Widgets.Add(_widgetService.Create(WidgetType.TestOne));
+        var widgetRegs = _widgetService.GetAllRegs();
+        foreach (var widgetReg in widgetRegs)
+        {
+            var menuItem = new MenuFlyoutItem()
+            {
+                Text = widgetReg.GetName(),
+                Command = new RelayCommand<WidgetBase>(AddWidget),
+                CommandParameter = widgetReg
+            };
+            _container.Items.Add(menuItem);
+        }
+    }
+
+    public void AddWidget(WidgetBase widgetBase)
+    {
+        Widgets.Add(_widgetService.Create(widgetBase.Type));
+    }
+
+    private void DeleteWidget(string id)
+    {
+        _widgetService.Delete(id);
+        LoadInstalledWidgets();
     }
 }

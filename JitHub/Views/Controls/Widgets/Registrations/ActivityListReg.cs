@@ -1,16 +1,13 @@
 ﻿using JitHub.Models.Widgets;
 using System;
-using System.Collections.Generic;
-using System.Linq;
-using System.Text;
-using System.Threading.Tasks;
 using Windows.UI.Xaml;
 
 namespace JitHub.Views.Controls.Widgets.Registrations;
 
-internal class TestWidgetReg : WidgetBase
+internal class ActivityListReg : WidgetBase
 {
-    public string Type { get => WidgetType.TestOne; }
+    public string Type { get => WidgetType.ActivityList; }
+    public const string Name = "Activities";
 
     public Widget Create()
     {
@@ -19,13 +16,18 @@ internal class TestWidgetReg : WidgetBase
         {
             ID = guid.ToString(),
             Type = Type,
-            Name = "Test Widget",
+            Name = Name,
             Size = WidgetSize.Small,
         };
     }
 
     public UIElement GetElement(string id)
     {
-        return new TestWidget(id);
+        return new ActivityList(id);
+    }
+
+    public string GetName()
+    {
+        return Name;
     }
 }

@@ -27,17 +27,16 @@
             <TextBlock
                 FontWeight="SemiBold"
                 Text="Widgets"/>
-            <Button
-                HorizontalAlignment="Right"
-                Content="Add">
-                <Button.Flyout>
-                    <winui:CommandBarFlyout>
-                        <AppBarButton
-                            Label="Test"
-                            Click="{x:Bind ViewModel.AppBarButton_Click}"/>
-                    </winui:CommandBarFlyout>
-                </Button.Flyout>
-            </Button>
+            <winui:DropDownButton
+                Content="Add"
+                HorizontalAlignment="Right">
+                <winui:DropDownButton.Flyout>
+                    <MenuFlyout
+                        x:Name="MenuContainer"
+                        Placement="Bottom">
+                    </MenuFlyout>
+                </winui:DropDownButton.Flyout>
+            </winui:DropDownButton>
         </Grid>
         
         <winui:ItemsRepeaterScrollHost Grid.Row="1">

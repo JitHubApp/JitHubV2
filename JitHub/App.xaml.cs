@@ -133,6 +133,11 @@ namespace JitHub
                     // configuring the new page by passing required information as a navigation
                     // parameter
 
+                    // widget
+                    var _widgetService = Ioc.Default.GetService<IWidgetService>();
+                    _widgetService.Register(new RepoSideBarReg());
+                    _widgetService.Register(new ActivityListReg());
+
                     // auth
                     var _authService = Ioc.Default.GetService<IAuthService>();
                     if (_authService.Authenticated)
@@ -143,11 +148,6 @@ namespace JitHub
                     {
                         _rootFrame.Navigate(typeof(LoginPage), e.Arguments);
                     }
-
-                    // widget
-                    var _widgetService = Ioc.Default.GetService<IWidgetService>();
-                    _widgetService.Register(new TestWidgetReg());
-                    _widgetService.Initialize();
                 }
                 // Ensure the current window is active
                 Window.Current.Activate();
