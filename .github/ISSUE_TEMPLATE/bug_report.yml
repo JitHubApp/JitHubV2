@@ -13,7 +13,7 @@ body:
   - type: textarea
     attributes:
       label: 🪟 What OS build is this issue present?
-      description: Windows key + R > winver.exe / Apple Logo (in menu bar) > About This Mac (may not be like this on Ventura)
+      description: Windows key + R > winver.exe
       placeholder: Windows 11 Insider Beta 22623.1250 / macOS Monterey 12.6.3
   - type: textarea
     attributes:
