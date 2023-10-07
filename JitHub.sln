@@ -3,27 +3,27 @@ Microsoft Visual Studio Solution File, Format Version 12.00
 # Visual Studio Version 17
 VisualStudioVersion = 17.2.32630.192
 MinimumVisualStudioVersion = 10.0.40219.1
-Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "JitHub", "JitHub\JitHub.csproj", "{452E051F-938D-4F26-9D54-4598A97F8BEF}"
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "JitHub", "src\JitHub\JitHub.csproj", "{452E051F-938D-4F26-9D54-4598A97F8BEF}"
 EndProject
-Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "JitHub.Controls.Editor", "JitHub.Controls.Editor\JitHub.Controls.Editor.csproj", "{A0DEDBBB-E297-45F8-9D99-85EF175CB7F0}"
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "JitHub.Controls.Editor", "src\JitHub.Controls.Editor\JitHub.Controls.Editor.csproj", "{A0DEDBBB-E297-45F8-9D99-85EF175CB7F0}"
 EndProject
-Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Markdig.UWP", "Markdig.UWP\Markdig.UWP.csproj", "{76BB207B-5175-4E9C-AF8C-ADD0EA67AD18}"
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Markdig.UWP", "src\Markdig.UWP\Markdig.UWP.csproj", "{76BB207B-5175-4E9C-AF8C-ADD0EA67AD18}"
 EndProject
-Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Markdig.Client.Markdig", "Markdig.Client.Markdig\Markdig.Client.Markdig.csproj", "{6C59FA04-F6B7-440C-9E25-0F336783E2E8}"
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Markdig.Client.Markdig", "src\Markdig.Client.Markdig\Markdig.Client.Markdig.csproj", "{6C59FA04-F6B7-440C-9E25-0F336783E2E8}"
 EndProject
-Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "System.Text.Json.Viewer", "System.Text.Json.Viewer\System.Text.Json.Viewer.csproj", "{77FEF6A4-49A6-46D9-9144-97D876B4130C}"
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "System.Text.Json.Viewer", "src\System.Text.Json.Viewer\System.Text.Json.Viewer.csproj", "{77FEF6A4-49A6-46D9-9144-97D876B4130C}"
 EndProject
-Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "JitHub.Services.GitHub.Contributions", "JitHub.Services.GitHub.Contributions\JitHub.Services.GitHub.Contributions.csproj", "{F178EB94-CB1E-4F0A-9C61-82FD5C1B6624}"
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "JitHub.Services.GitHub.Contributions", "src\JitHub.Services.GitHub.Contributions\JitHub.Services.GitHub.Contributions.csproj", "{F178EB94-CB1E-4F0A-9C61-82FD5C1B6624}"
 EndProject
-Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Utilities.Common", "Utilities.Common\Utilities.Common.csproj", "{001482E8-D779-442F-8920-276D0C3EF45D}"
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Utilities.Common", "src\Utilities.Common\Utilities.Common.csproj", "{001482E8-D779-442F-8920-276D0C3EF45D}"
 EndProject
-Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "JitHub.Utilities.SVG", "JitHub.Utilities.SVG\JitHub.Utilities.SVG.csproj", "{ACE52FF0-0A75-4B14-8D0F-464C9B09B85F}"
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "JitHub.Utilities.SVG", "src\JitHub.Utilities.SVG\JitHub.Utilities.SVG.csproj", "{ACE52FF0-0A75-4B14-8D0F-464C9B09B85F}"
 EndProject
-Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "JitHub.WebView", "JitHub.WebView\JitHub.WebView.csproj", "{3BED258E-DF3F-4BD8-982A-5AD2C941C897}"
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "JitHub.WebView", "src\JitHub.WebView\JitHub.WebView.csproj", "{3BED258E-DF3F-4BD8-982A-5AD2C941C897}"
 EndProject
-Project("{9A19103F-16F7-4668-BE54-9A1E7A4F7556}") = "JitHub.Web", "JitHub.Web\JitHub.Web.csproj", "{64B790F5-C60E-46BB-BCC6-79ABADEC979F}"
+Project("{9A19103F-16F7-4668-BE54-9A1E7A4F7556}") = "JitHub.Web", "src\JitHub.Web\JitHub.Web.csproj", "{64B790F5-C60E-46BB-BCC6-79ABADEC979F}"
 EndProject
-Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "JitHub.Auth", "JitHub.Auth\JitHub.Auth.csproj", "{2E4915B9-5BD3-4A50-87EF-068E37140213}"
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "JitHub.Auth", "src\JitHub.Auth\JitHub.Auth.csproj", "{2E4915B9-5BD3-4A50-87EF-068E37140213}"
 EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
