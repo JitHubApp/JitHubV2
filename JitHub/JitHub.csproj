@@ -497,6 +497,7 @@
     </Compile>
     <Compile Include="Views\Controls\Widgets\Registrations\ActivityListReg.cs" />
     <Compile Include="Views\Controls\Widgets\Registrations\RepoSideBarReg.cs" />
+    <Compile Include="Views\Controls\Widgets\Registrations\UserIssueListReg.cs" />
     <Compile Include="Views\Controls\Widgets\WidgetContainer.xaml.cs">
       <DependentUpon>WidgetContainer.xaml</DependentUpon>
     </Compile>

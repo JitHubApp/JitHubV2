@@ -16,11 +16,9 @@ public partial class UserIssueListViewModel : ObservableObject
     private IAuthService _authService;
 
     [ObservableProperty]
-    private ICollection<Issue> _createdIssues;
+    private ICollection<Issue> _issues;
     [ObservableProperty]
-    private ICollection<Issue> _assignedIssues;
-    [ObservableProperty]
-    private ICollection<Issue> _mentionedIssues;
+    private ICollection<Issue> _pullRequests;
 
     public User User => _authService.AuthenticatedUser;
     
@@ -33,23 +31,8 @@ public partial class UserIssueListViewModel : ObservableObject
     public async void OnLoad(object sender, RoutedEventArgs e)
     {
 
-        var created = await _gitHubService.GitHubClient.Issue.GetAllForCurrent(new IssueRequest()
-        {
-            Filter = IssueFilter.Created,
-            State = ItemStateFilter.Open
-        });
-        var assigned = await _gitHubService.GitHubClient.Issue.GetAllForCurrent(new IssueRequest()
-        {
-            Filter = IssueFilter.Assigned,
-            State = ItemStateFilter.Open
-        });
-        var mentioned = await _gitHubService.GitHubClient.Issue.GetAllForCurrent(new IssueRequest()
-        {
-            Filter = IssueFilter.Mentioned,
-            State = ItemStateFilter.Open
-        });
-        CreatedIssues = created.ToList();
-        AssignedIssues = assigned.ToList();
-        MentionedIssues = mentioned.ToList();
+        var all = await _gitHubService.GetIssuesAssignedToAuthenticatedUser();
+        Issues = all.Where((issue) => issue.PullRequest == null).ToList();
+        PullRequests = all.Where((issue) => issue.PullRequest != null).ToList();
     }
 }

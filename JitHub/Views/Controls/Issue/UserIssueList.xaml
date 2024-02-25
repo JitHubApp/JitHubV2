@@ -22,7 +22,7 @@
                 <labs:SegmentedItem Content="Assigned"/>
             </labs:Segmented>
             <ListView
-                ItemsSource="{x:Bind ViewModel.CreatedIssues}">
+                ItemsSource="{x:Bind ViewModel.Issues, Mode=OneWay}">
                 <ListView.ItemTemplate>
                     <DataTemplate>
                         <Grid>

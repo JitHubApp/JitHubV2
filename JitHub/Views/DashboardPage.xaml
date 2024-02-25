@@ -29,6 +29,7 @@
                 Text="Widgets"/>
             <winui:DropDownButton
                 Content="Add"
+                Style="{ThemeResource AccentButtonStyle}"
                 HorizontalAlignment="Right">
                 <winui:DropDownButton.Flyout>
                     <MenuFlyout
