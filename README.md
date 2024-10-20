@@ -32,11 +32,13 @@ A fast, fluent and free GitHub client for Windows, designed for GitHub lovers �
 ## 📸 Screenshots
 
 <a title="JitHub Screenshot" target="_blank" href="https://github.com/nerocui/JitHubV2">
-  <img width="640" align="center" src="ScreenShots/screenshot1.png" alt="Screenshot" />
+  <img align="center" src="https://github.com/user-attachments/assets/54fbb757-0f13-4f7d-895d-b04aca274a0c" alt="Screenshot" />
 </a>
-<br/>
+
+---
+
 <a title="JitHub Screenshot" target="_blank" href="https://github.com/nerocui/JitHubV2">
-  <img width="640" align="center" src="ScreenShots/screenshot3.png" alt="Screenshot" />
+  <img align="center" src="https://github.com/user-attachments/assets/25a1112c-0677-454d-9bd6-d70118718870" alt="Screenshot" />
 </a>
 
 ## 🦜 Contributing & Feedback
