@@ -7,7 +7,7 @@
     xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
     xmlns:controls="using:Microsoft.UI.Xaml.Controls"
     xmlns:viewmodels="using:JitHub.ViewModels"
-    xmlns:labs="using:CommunityToolkit.Labs.WinUI"
+    xmlns:toolkit="using:CommunityToolkit.WinUI.Controls"
     xmlns:common="using:JitHub.Views.Controls.Common"
     mc:Ignorable="d"
     Background="Transparent">
@@ -39,35 +39,35 @@
                         Click="{x:Bind ViewModel.Restart, Mode=OneWay}"
                         Visibility="{x:Bind ViewModel.RestartRequired, Converter={StaticResource BoolToVisibilityConverter}, Mode=OneWay}"/>
                 </Grid>
-                <labs:SettingsCard
+                <toolkit:SettingsCard
                     Description="Set app theme to light, dark or follow Windows system theme."
                     Header="Theme">
-                    <labs:SettingsCard.HeaderIcon>
+                    <toolkit:SettingsCard.HeaderIcon>
                         <FontIcon Glyph="&#xE790;" />
-                    </labs:SettingsCard.HeaderIcon>
+                    </toolkit:SettingsCard.HeaderIcon>
                     <ComboBox
                         Grid.Column="1"
                         Width="120"
                         SelectionChanged="{x:Bind ViewModel.SelectionChanged, Mode=OneWay}"
                         SelectedItem="{x:Bind ViewModel.SelectedTheme, Mode=TwoWay}"
                         ItemsSource="{x:Bind ViewModel.Themes, Mode=OneWay}"/>
-                </labs:SettingsCard>
-                <labs:SettingsCard
+                </toolkit:SettingsCard>
+                <toolkit:SettingsCard
                     Header="Developer Mode"
                     Description="This will enable developer mode where some debug features are turned on.">
-                    <labs:SettingsCard.HeaderIcon>
+                    <toolkit:SettingsCard.HeaderIcon>
                         <FontIcon Glyph="&#xEC7A;" />
-                    </labs:SettingsCard.HeaderIcon>
+                    </toolkit:SettingsCard.HeaderIcon>
                     <ToggleSwitch
                         IsOn="{x:Bind ViewModel.GlobalViewModel.DevMode, Mode=TwoWay}"/>
-                </labs:SettingsCard>
-                <labs:SettingsCard
+                </toolkit:SettingsCard>
+                <toolkit:SettingsCard
                     Header="JitHub Version"
                     Description="{x:Bind ViewModel.Version, Mode=OneWay}">
-                    <labs:SettingsCard.HeaderIcon>
+                    <toolkit:SettingsCard.HeaderIcon>
                         <BitmapIcon ShowAsMonochrome="False"
                             UriSource="ms-appx:///Assets/JitHubLogo.png" />
-                    </labs:SettingsCard.HeaderIcon>
+                    </toolkit:SettingsCard.HeaderIcon>
                     <Button
                         Click="{x:Bind ViewModel.ViewJitHubCode, Mode=OneWay}"
                         Style="{StaticResource AccentButtonStyle}">
@@ -84,7 +84,7 @@
                                 Text="View Source Code"/>
                         </StackPanel>
                     </Button>
-                </labs:SettingsCard>
+                </toolkit:SettingsCard>
                 <StackPanel
                     Spacing="12">
                     <TextBlock

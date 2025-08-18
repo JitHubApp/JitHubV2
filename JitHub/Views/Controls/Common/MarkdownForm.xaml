@@ -2,73 +2,73 @@
     x:Class="JitHub.Views.Controls.Common.MarkdownForm"
     xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
     xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
-    xmlns:local="using:JitHub.Views.Controls.Common"
-    xmlns:muxc="using:Microsoft.UI.Xaml.Controls"
     xmlns:controls="using:Microsoft.Toolkit.Uwp.UI.Controls"
     xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+    xmlns:local="using:JitHub.Views.Controls.Common"
+    xmlns:markdown="using:CommunityToolkit.Labs.WinUI.MarkdownTextBlock"
     xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+    xmlns:muxc="using:Microsoft.UI.Xaml.Controls"
     xmlns:viewmodels="using:JitHub.ViewModels"
-    xmlns:markdiguwp="using:Markdig.UWP"
-    mc:Ignorable="d"
     d:DesignHeight="300"
-    d:DesignWidth="400">
+    d:DesignWidth="400"
+    mc:Ignorable="d">
     <UserControl.DataContext>
-        <viewmodels:MarkdownFormViewModel x:Name="ViewModel"/>
+        <viewmodels:MarkdownFormViewModel x:Name="ViewModel" />
     </UserControl.DataContext>
     <Grid>
         <Grid.RowDefinitions>
-            <RowDefinition Height="auto"/>
-            <RowDefinition Height="*"/>
+            <RowDefinition Height="auto" />
+            <RowDefinition Height="*" />
         </Grid.RowDefinitions>
         <muxc:NavigationView
             Grid.Row="0"
+            BorderThickness="0"
+            IsBackButtonVisible="Collapsed"
             IsSettingsVisible="False"
             ItemInvoked="{x:Bind ViewModel.OnNavChange, Mode=OneWay}"
-            IsBackButtonVisible="Collapsed"
-            BorderThickness="0"
             PaneDisplayMode="Top">
             <muxc:NavigationView.MenuItems>
-                <muxc:NavigationViewItem Content="Write" Tag="Write" IsSelected="True"/>
-                <muxc:NavigationViewItem Content="Preview" Tag="Preview"/>
+                <muxc:NavigationViewItem
+                    Content="Write"
+                    IsSelected="True"
+                    Tag="Write" />
+                <muxc:NavigationViewItem Content="Preview" Tag="Preview" />
             </muxc:NavigationView.MenuItems>
             <Grid
-                Padding="{x:Bind FormPadding, Mode=OneWay}"
+                Width="auto"
+                Height="auto"
+                MinWidth="320"
                 MinHeight="240"
                 MaxHeight="640"
-                MinWidth="320"
-                Height="auto"
-                Width="auto">
+                Padding="{x:Bind FormPadding, Mode=OneWay}">
                 <controls:SwitchPresenter
-                    VerticalAlignment="Stretch"
                     HorizontalAlignment="Stretch"
+                    VerticalAlignment="Stretch"
                     Value="{x:Bind ViewModel.SelectedBodyView, Mode=OneWay}">
                     <controls:Case Value="Write">
                         <TextBox
                             AcceptsReturn="True"
                             ScrollViewer.HorizontalScrollBarVisibility="Disabled"
                             ScrollViewer.VerticalScrollBarVisibility="Auto"
-                            TextWrapping="Wrap"
+                            Text="{x:Bind Text, Mode=TwoWay}"
                             TextChanged="TextBox_TextChanged"
-                            Text="{x:Bind Text, Mode=TwoWay}"/>
+                            TextWrapping="Wrap" />
                     </controls:Case>
                     <controls:Case Value="Preview">
                         <ScrollViewer>
                             <Grid
-                                Padding="12 4"
-                                CornerRadius="4"
+                                Padding="12,4"
                                 BorderBrush="Gray"
-                                BorderThickness="1">
-                                <markdiguwp:MarkdownViewer
-                                    Config="{x:Bind Text, Converter={StaticResource MarkdownToMarkdownConfigConverter}, Mode=OneWay}"/>
+                                BorderThickness="1"
+                                CornerRadius="4">
+                                <markdown:MarkdownTextBlock Config="{x:Bind Config, Mode=OneWay}" Text="{x:Bind Text, Mode=OneWay}" />
                             </Grid>
                         </ScrollViewer>
-                        
+
                     </controls:Case>
                 </controls:SwitchPresenter>
             </Grid>
         </muxc:NavigationView>
-        <ContentPresenter
-            Grid.Row="1"
-            Content="{x:Bind ActionContent, Mode=OneWay}"/>
+        <ContentPresenter Grid.Row="1" Content="{x:Bind ActionContent, Mode=OneWay}" />
     </Grid>
 </UserControl>

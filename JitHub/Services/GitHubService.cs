@@ -1,9 +1,9 @@
-﻿using CommunityToolkit.Mvvm.DependencyInjection;
+﻿using CommunityToolkit.Labs.WinUI.MarkdownTextBlock;
+using CommunityToolkit.Mvvm.DependencyInjection;
 using JitHub.Models;
 using JitHub.Models.Base;
 using JitHub.Models.PRConversation;
 using JitHub.Utilities.SVG;
-using Markdig.UWP;
 using Octokit;
 using System;
 using System.Collections.Generic;
@@ -23,7 +23,8 @@ namespace JitHub.Services
         private GitHubClient _githubClient;
         private const string _baseUrl = "https://github.com";
         private INotificationService _notificationService;
-        
+        private MarkdownConfig _markdownConfig;
+
         public GitHubClient GitHubClient
         {
             get => _githubClient;
@@ -46,6 +47,12 @@ namespace JitHub.Services
         {
             GitHubClient = new GitHubClient(new ProductHeaderValue("JitHub"));
             NotificationService = Ioc.Default.GetService<INotificationService>();
+            _markdownConfig = new MarkdownConfig()
+            {
+                BaseUrl = _baseUrl,
+                ImageProvider = this,
+                SVGRenderer = this
+            };
         }
 
         public async Task<Repository> GetRepository(string owner, string name)
@@ -452,15 +459,9 @@ namespace JitHub.Services
             return Uri.IsWellFormedUriString(url, UriKind.Absolute) && url.StartsWith(_baseUrl);
         }
 
-        public MarkdownConfig GetMarkdownConfig(string markdown)
+        public MarkdownConfig GetMarkdownConfig()
         {
-            return new MarkdownConfig()
-            {
-                Markdown = markdown,
-                BaseUrl = _baseUrl,
-                ImageProvider = this,
-                SVGRenderer = this,
-            };
+            return _markdownConfig;
         }
 
         public Task<Image> SvgToImage(string svgString)

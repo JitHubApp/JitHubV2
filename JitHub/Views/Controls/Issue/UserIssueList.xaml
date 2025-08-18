@@ -5,8 +5,8 @@
     xmlns:local="using:JitHub.Views.Controls.Issue"
     xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
     xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
-    xmlns:labs="using:CommunityToolkit.Labs.WinUI"
     xmlns:issueviewmodels="using:JitHub.ViewModels.IssueViewModels"
+    xmlns:controls="using:CommunityToolkit.WinUI.Controls"
     mc:Ignorable="d"
     d:DesignHeight="300"
     d:DesignWidth="400">
@@ -17,10 +17,10 @@
                 FontSize="20"
                 Text="Issues"
                 Margin="0 0 0 12"/>
-            <labs:Segmented>
-                <labs:SegmentedItem Content="Created"/>
-                <labs:SegmentedItem Content="Assigned"/>
-            </labs:Segmented>
+            <controls:Segmented>
+                <controls:SegmentedItem Content="Created"/>
+                <controls:SegmentedItem Content="Assigned"/>
+            </controls:Segmented>
             <ListView
                 ItemsSource="{x:Bind ViewModel.CreatedIssues}">
                 <ListView.ItemTemplate>

@@ -1,13 +1,10 @@
-﻿using JitHub.Models;
+﻿using CommunityToolkit.Labs.WinUI.MarkdownTextBlock;
+using JitHub.Models;
 using JitHub.Models.Base;
 using JitHub.Models.PRConversation;
-using Markdig.UWP;
 using Octokit;
 using System.Collections.Generic;
-using System.Collections.ObjectModel;
 using System.Threading.Tasks;
-using Windows.UI.Xaml.Controls;
-using Windows.UI.Xaml.Media;
 
 namespace JitHub.Services
 {
@@ -83,6 +80,6 @@ namespace JitHub.Services
         Task<ICollection<Reaction>> GetReactionFromIssueAsync(long repoId, int number);
         Task<ICollection<Reaction>> GetReactionFromIssueComment(long repoId, int commentId);
         Task<ICollection<Reaction>> GetReactionFromReviewComment(long repoId, int commentId);
-        MarkdownConfig GetMarkdownConfig(string markdown);
+        MarkdownConfig GetMarkdownConfig();
     }
 }

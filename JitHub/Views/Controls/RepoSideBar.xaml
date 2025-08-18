@@ -2,138 +2,122 @@
     x:Class="JitHub.Views.Controls.RepoSideBar"
     xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
     xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
-    xmlns:local="using:JitHub.Views"
-    xmlns:repoviewmodels="using:JitHub.ViewModels.RepositoryViewModels"
-    xmlns:interactivity="using:Microsoft.Xaml.Interactivity"
+    xmlns:animatedvisuals="using:Microsoft.UI.Xaml.Controls.AnimatedVisuals"
+    xmlns:controls="using:Microsoft.Toolkit.Uwp.UI.Controls"
+    xmlns:controls1="using:CommunityToolkit.WinUI.Controls"
     xmlns:core="using:Microsoft.Xaml.Interactions.Core"
     xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
-    xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
-    mc:Ignorable="d"
-    xmlns:labs="using:CommunityToolkit.Labs.WinUI"
-    xmlns:muxc="using:Microsoft.UI.Xaml.Controls"
-    xmlns:helpers="using:JitHub.Helpers"
     xmlns:enum="using:JitHub.Models.Base"
-    xmlns:controls="using:Microsoft.Toolkit.Uwp.UI.Controls"
-    xmlns:animatedvisuals="using:Microsoft.UI.Xaml.Controls.AnimatedVisuals"
+    xmlns:helpers="using:JitHub.Helpers"
+    xmlns:interactivity="using:Microsoft.Xaml.Interactivity"
+    xmlns:local="using:JitHub.Views"
+    xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+    xmlns:muxc="using:Microsoft.UI.Xaml.Controls"
+    xmlns:repoviewmodels="using:JitHub.ViewModels.RepositoryViewModels"
     d:DesignHeight="300"
-    d:DesignWidth="400">
+    d:DesignWidth="400"
+    mc:Ignorable="d">
     <UserControl.DataContext>
-        <repoviewmodels:RepoSideBarViewModel x:Name="ViewModel"/>
+        <repoviewmodels:RepoSideBarViewModel x:Name="ViewModel" />
     </UserControl.DataContext>
     <UserControl.Resources>
         <helpers:RepoIconTemplateSelector
             x:Key="SimpleRepoTemplate"
-            PublicTemplate="{StaticResource PublicRepo}"
+            ForkTemplate="{StaticResource ForkRepo}"
             PrivateTemplate="{StaticResource PrivateRepo}"
-            ForkTemplate="{StaticResource ForkRepo}"/>
+            PublicTemplate="{StaticResource PublicRepo}" />
     </UserControl.Resources>
     <Grid
-        Padding="8 12"
-        CornerRadius="8"
-        Background="{ThemeResource ExpanderHeaderBackground}">
+        Padding="8,12"
+        Background="{ThemeResource ExpanderHeaderBackground}"
+        CornerRadius="8">
         <Grid.RowDefinitions>
-            <RowDefinition Height="auto"/>
-            <RowDefinition Height="*"/>
+            <RowDefinition Height="auto" />
+            <RowDefinition Height="*" />
         </Grid.RowDefinitions>
-        <Grid
-            Grid.Row="0"
-            Margin="0 0 0 8">
+        <Grid Grid.Row="0" Margin="0,0,0,8">
             <Grid.ColumnDefinitions>
-                <ColumnDefinition Width="*"/>
-                <ColumnDefinition Width="auto"/>
-                <ColumnDefinition Width="auto"/>
+                <ColumnDefinition Width="*" />
+                <ColumnDefinition Width="auto" />
+                <ColumnDefinition Width="auto" />
             </Grid.ColumnDefinitions>
             <TextBlock
                 Grid.Column="0"
                 FontSize="20"
-                Text="Repositories"/>
+                Text="Repositories" />
             <Button
                 Grid.Column="1"
-                Background="Transparent"
                 Height="32"
+                Background="Transparent"
                 BorderThickness="0"
                 Click="{x:Bind ViewModel.OnManageRepo, Mode=OneWay}">
-                <muxc:AnimatedIcon x:Name='ManageRepoIcon'>
+                <muxc:AnimatedIcon x:Name="ManageRepoIcon">
                     <muxc:AnimatedIcon.Source>
-                        <animatedvisuals:AnimatedSettingsVisualSource/>
+                        <animatedvisuals:AnimatedSettingsVisualSource />
                     </muxc:AnimatedIcon.Source>
                     <muxc:AnimatedIcon.FallbackIconSource>
-                        <muxc:SymbolIconSource Symbol='Setting'/>
+                        <muxc:SymbolIconSource Symbol="Setting" />
                     </muxc:AnimatedIcon.FallbackIconSource>
                 </muxc:AnimatedIcon>
             </Button>
             <Button
                 Grid.Column="2"
-                Margin="8 0 0 0"
-                Content="New"
-                Padding="8 2"
+                Margin="8,0,0,0"
+                Padding="8,2"
                 Click="{x:Bind ViewModel.OnNewRepo, Mode=OneWay}"
-                Style="{ThemeResource AccentButtonStyle}"/>
+                Content="New"
+                Style="{ThemeResource AccentButtonStyle}" />
         </Grid>
 
         <muxc:ProgressBar
             Grid.Row="1"
-            IsIndeterminate="{x:Bind ViewModel.Loading, Mode=OneWay}"
-            ShowPaused="False"
-            ShowError="False"
-            Visibility="{x:Bind ViewModel.Loading, Converter={StaticResource BoolToVisibilityConverter}, Mode=OneWay}"
             HorizontalAlignment="Stretch"
-            VerticalAlignment="Top"/>
-        <Grid
-            Grid.Row="1">
+            VerticalAlignment="Top"
+            IsIndeterminate="{x:Bind ViewModel.Loading, Mode=OneWay}"
+            ShowError="False"
+            ShowPaused="False"
+            Visibility="{x:Bind ViewModel.Loading, Converter={StaticResource BoolToVisibilityConverter}, Mode=OneWay}" />
+        <Grid Grid.Row="1">
             <Grid.RowDefinitions>
-                <RowDefinition Height="auto"/>
-                <RowDefinition Height="*"/>
+                <RowDefinition Height="auto" />
+                <RowDefinition Height="*" />
             </Grid.RowDefinitions>
             <interactivity:Interaction.Behaviors>
                 <core:EventTriggerBehavior EventName="Loaded">
-                    <core:InvokeCommandAction Command="{x:Bind ViewModel.LoadCommand}"/>
+                    <core:InvokeCommandAction Command="{x:Bind ViewModel.LoadCommand}" />
                 </core:EventTriggerBehavior>
             </interactivity:Interaction.Behaviors>
-            <labs:Segmented
+            <controls1:Segmented
                 Grid.Row="0"
-                Margin="0 0 0 8"
+                Margin="0,0,0,8"
                 HorizontalAlignment="Stretch"
                 SelectedIndex="{x:Bind ViewModel.SelectedIndex, Mode=TwoWay}"
                 SelectionChanged="{x:Bind ViewModel.SegmentedSelectionChanged, Mode=OneWay}"
                 SelectionMode="Single">
-                <labs:SegmentedItem Content="Public"/>
-                <labs:SegmentedItem Content="Private"/>
-                <labs:SegmentedItem Content="Forked"/>
-            </labs:Segmented>
-            <ScrollViewer
-                Grid.Row="1"
-                Visibility="{x:Bind ViewModel.IsEmpty, Converter={StaticResource BoolToVisibilityReverseConverter}, Mode=OneWay}">
-                <controls:SwitchPresenter
-                    TargetType="enum:RepoType"
-                    Value="{x:Bind ViewModel.RepositoryPublicity, Mode=OneWay}">
-                    <controls:Case
-                        Value="Public">
-                        <muxc:ItemsRepeater
-                            ItemsSource="{x:Bind ViewModel.PublicRepos, Mode=OneWay}"
-                            ItemTemplate="{StaticResource SimpleRepoTemplate}">
+                <controls1:SegmentedItem Content="Public" />
+                <controls1:SegmentedItem Content="Private" />
+                <controls1:SegmentedItem Content="Forked" />
+            </controls1:Segmented>
+            <ScrollViewer Grid.Row="1" Visibility="{x:Bind ViewModel.IsEmpty, Converter={StaticResource BoolToVisibilityReverseConverter}, Mode=OneWay}">
+                <controls:SwitchPresenter TargetType="enum:RepoType" Value="{x:Bind ViewModel.RepositoryPublicity, Mode=OneWay}">
+                    <controls:Case Value="Public">
+                        <muxc:ItemsRepeater ItemTemplate="{StaticResource SimpleRepoTemplate}" ItemsSource="{x:Bind ViewModel.PublicRepos, Mode=OneWay}">
                             <muxc:ItemsRepeater.Layout>
-                                <muxc:StackLayout Spacing="2"/>
+                                <muxc:StackLayout Spacing="2" />
                             </muxc:ItemsRepeater.Layout>
                         </muxc:ItemsRepeater>
                     </controls:Case>
-                    <controls:Case
-                        Value="Private">
-                        <muxc:ItemsRepeater
-                            ItemsSource="{x:Bind ViewModel.PrivateRepos, Mode=OneWay}"
-                            ItemTemplate="{StaticResource SimpleRepoTemplate}">
+                    <controls:Case Value="Private">
+                        <muxc:ItemsRepeater ItemTemplate="{StaticResource SimpleRepoTemplate}" ItemsSource="{x:Bind ViewModel.PrivateRepos, Mode=OneWay}">
                             <muxc:ItemsRepeater.Layout>
-                                <muxc:StackLayout Spacing="2"/>
+                                <muxc:StackLayout Spacing="2" />
                             </muxc:ItemsRepeater.Layout>
                         </muxc:ItemsRepeater>
                     </controls:Case>
-                    <controls:Case
-                        Value="Forked">
-                        <muxc:ItemsRepeater
-                            ItemsSource="{x:Bind ViewModel.ForkedRepos, Mode=OneWay}"
-                            ItemTemplate="{StaticResource SimpleRepoTemplate}">
+                    <controls:Case Value="Forked">
+                        <muxc:ItemsRepeater ItemTemplate="{StaticResource SimpleRepoTemplate}" ItemsSource="{x:Bind ViewModel.ForkedRepos, Mode=OneWay}">
                             <muxc:ItemsRepeater.Layout>
-                                <muxc:StackLayout Spacing="2"/>
+                                <muxc:StackLayout Spacing="2" />
                             </muxc:ItemsRepeater.Layout>
                         </muxc:ItemsRepeater>
                     </controls:Case>

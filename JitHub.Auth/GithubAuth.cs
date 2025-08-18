@@ -2,6 +2,7 @@ using Microsoft.Azure.Functions.Worker;
 using Microsoft.Azure.Functions.Worker.Http;
 using Microsoft.Extensions.Logging;
 using Octokit;
+using System.Net;
 
 namespace JitHub.Auth;
 
@@ -79,22 +80,49 @@ public class GithubAuth
     }
 
     [Function("GithubCodeToToken")]
-    public async Task<HttpResponseData> Run([HttpTrigger(AuthorizationLevel.Anonymous, "get")] HttpRequestData req)
+    public async Task<HttpResponseData> Run([HttpTrigger(AuthorizationLevel.Anonymous, "get", "options")] HttpRequestData req)
     {
+        // Handle CORS preflight in dev
+#if DEBUG
+        if (string.Equals(req.Method, "OPTIONS", StringComparison.OrdinalIgnoreCase))
+        {
+            var preflight = req.CreateResponse(HttpStatusCode.NoContent);
+            AddDevCorsHeaders(preflight, req);
+            return preflight;
+        }
+#endif
+
         try
         {
             string code = ProcessRequest(req);
             var token = await Detokenize(code);
-            var response = req.CreateResponse(System.Net.HttpStatusCode.OK);
+            var response = req.CreateResponse(HttpStatusCode.OK);
             await response.WriteStringAsync(token.AccessToken);
+#if DEBUG
+            AddDevCorsHeaders(response, req);
+#endif
             return response;
         }
-
         catch (Exception ex)
         {
-            var response = req.CreateResponse(System.Net.HttpStatusCode.BadRequest);
+            var response = req.CreateResponse(HttpStatusCode.BadRequest);
             await response.WriteAsJsonAsync(new ErrorMessage { Message = ex.Message});
+#if DEBUG
+            AddDevCorsHeaders(response, req);
+#endif
             return response;
         }
     }
+
+#if DEBUG
+    private static void AddDevCorsHeaders(HttpResponseData response, HttpRequestData req)
+    {
+        var origin = req.Headers.TryGetValues("Origin", out var values) ? values.FirstOrDefault() : "*";
+        response.Headers.Add("Access-Control-Allow-Origin", string.IsNullOrEmpty(origin) || origin == "null" ? "*" : origin);
+        response.Headers.Add("Vary", "Origin");
+        response.Headers.Add("Access-Control-Allow-Methods", "GET, OPTIONS");
+        response.Headers.Add("Access-Control-Allow-Headers", "*, Authorization, Content-Type");
+        response.Headers.Add("Access-Control-Max-Age", "86400");
+    }
+#endif
 }

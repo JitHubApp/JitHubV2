@@ -11,7 +11,7 @@ using System.Linq;
 using System.Threading.Tasks;
 using System.Windows.Input;
 using Windows.ApplicationModel.DataTransfer;
-using Markdig.UWP;
+using CommunityToolkit.Labs.WinUI.MarkdownTextBlock;
 
 namespace JitHub.ViewModels.UserViewModel
 {
@@ -56,7 +56,7 @@ namespace JitHub.ViewModels.UserViewModel
             set
             {
                 SetProperty(ref _body, value);
-                SetProperty(ref _markdownConfig, GitHubService.GetMarkdownConfig(value));
+                SetProperty(ref _markdownConfig, GitHubService.GetMarkdownConfig());
             }
         }
 

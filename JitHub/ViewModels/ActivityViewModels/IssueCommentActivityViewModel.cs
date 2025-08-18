@@ -24,7 +24,8 @@ namespace JitHub.ViewModels.ActivityViewModels
             set
             {
                 SetProperty(ref _comment, value);
-                MarkdownConfig = GitHubService.GetMarkdownConfig(value.Body);
+                MarkdownConfig = GitHubService.GetMarkdownConfig();
+                MarkdownText = value?.Body ?? string.Empty;
             }
         }
 

@@ -1,30 +1,33 @@
 ﻿<ResourceDictionary
     xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
-    xmlns:animations="using:Microsoft.Toolkit.Uwp.UI.Animations"
-    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml">
-    <DataTemplate
-        x:Key="TextFilter">
+    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+    xmlns:animations="using:Microsoft.Toolkit.Uwp.UI.Animations">
+    <DataTemplate x:Key="TextFilter">
         <Grid>
             <animations:Implicit.ShowAnimations>
-                <animations:TranslationAnimation EasingType="Cubic" Duration="0:0:0.5" From="0, -100, 0" To="0"/>
-                <animations:OpacityAnimation Duration="0:0:0.5" From="0.5" To="1"/>
+                <animations:TranslationAnimation
+                    EasingType="Cubic"
+                    From="0, -100, 0"
+                    To="0"
+                    Duration="0:0:0.5" />
+                <animations:OpacityAnimation
+                    From="0.5"
+                    To="1"
+                    Duration="0:0:0.5" />
             </animations:Implicit.ShowAnimations>
-            <StackPanel
-                Spacing="4">
+            <StackPanel Spacing="4">
                 <TextBox
                     MinWidth="150"
-                    PlaceholderText="Enter base to filter"
                     Header="{Binding Title, Mode=OneWay}"
+                    PlaceholderText="Enter base to filter"
                     Text="{Binding Text, Mode=TwoWay}">
                     <TextBox.HeaderTemplate>
                         <DataTemplate>
-                            <TextBlock
-                                FontWeight="SemiBold"
-                                Text="{Binding Mode=OneWay}"/>
+                            <TextBlock FontWeight="SemiBold" Text="{Binding Mode=OneWay}" />
                         </DataTemplate>
                     </TextBox.HeaderTemplate>
                 </TextBox>
             </StackPanel>
         </Grid>
-    </DataTemplate>    
+    </DataTemplate>
 </ResourceDictionary>
