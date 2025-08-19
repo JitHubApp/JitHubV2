@@ -61,12 +61,12 @@ namespace JitHub.Views.Controls.Common
         public MarkdownForm()
         {
             this.InitializeComponent();
+            _gitHubService = Ioc.Default.GetService<IGitHubService>();
         }
 
         private void TextBox_TextChanged(object sender, TextChangedEventArgs e)
         {
             ViewModel.Text = Text;
-            _gitHubService = Ioc.Default.GetService<IGitHubService>();
         }
     }
 }

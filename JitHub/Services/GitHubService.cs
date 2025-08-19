@@ -96,7 +96,7 @@ namespace JitHub.Services
                 .ToList();
             singleCommentNodes.Sort((a, b) => DateTimeOffset.Compare(a.CreatedAt, b.CreatedAt));
             var reviewsDict = new Dictionary<long, ReviewNode>();
-            var singleCommentsDict = new Dictionary<int, ReviewCommentNode>();
+            var singleCommentsDict = new Dictionary<long, ReviewCommentNode>();
 
             foreach (var review in reviewNodes)
             {
@@ -369,7 +369,7 @@ namespace JitHub.Services
             }
         }
 
-        public async Task<ICollection<Reaction>> GetReactionFromIssueComment(long repoId, int commentId)
+        public async Task<ICollection<Reaction>> GetReactionFromIssueComment(long repoId, long commentId)
         {
             try
             {
@@ -384,7 +384,7 @@ namespace JitHub.Services
             }
         }
 
-        public async Task<ICollection<Reaction>> GetReactionFromReviewComment(long repoId, int commentId)
+        public async Task<ICollection<Reaction>> GetReactionFromReviewComment(long repoId, long commentId)
         {
             try
             {

@@ -51,7 +51,7 @@ namespace JitHub.Services
         Task CreatePullRequest(string owner, string name, NewPullRequest newPullRequest);
         Task<PullRequestMerge> MergePullRequest(long repoId, int number, MergePullRequest request);
         Task<PullRequest> UpdatePullRequest(long repoId, int number, PullRequestUpdate prUpdate);
-        Task<ReviewCommentNode> ReplyToReview(Repository repo, int number, string replyText, int inReplyToId);
+        Task<ReviewCommentNode> ReplyToReview(Repository repo, int number, string replyText, long inReplyToId);
         Task CreatePullRequestReviewers(string owner, string name, int num, ICollection<string> users);
         Task RemovePullRequestReviewers(string owner, string name, int num, ICollection<string> users);
         Task AssignIssue(string owner, string name, int num, ICollection<string> users);
@@ -68,18 +68,18 @@ namespace JitHub.Services
         Task<ICollection<Collaborator>> GetRepositoryContributors(string owner, string name);
         Task<ICollection<User>> GetIssueAssignees(string owner, string name);
         Task<ICollection<Label>> GetLabelsFromRepository(string owner, string name);
-        Task DeleteIssueCommentReaction(string owner, string repoName, int commentId, int reactionId);
-        Task DeleteIssueCommentReaction(long repoId, int commentId, int reactionId);
-        Task DeleteReviewCommentReaction(string owner, string repoName, int commentId, int reactionId);
-        Task DeleteReviewCommentReaction(long repoId, int commentId, int reactionId);
-        Task DeleteIssueReaction(string owner, string name, int num, int id);
+        Task DeleteIssueCommentReaction(string owner, string repoName, long commentId, long reactionId);
+        Task DeleteIssueCommentReaction(long repoId, long commentId, long reactionId);
+        Task DeleteReviewCommentReaction(string owner, string repoName, long commentId, long reactionId);
+        Task DeleteReviewCommentReaction(long repoId, long commentId, long reactionId);
+        Task DeleteIssueReaction(string owner, string name, int num, long id);
         Task ReactToIssue(long repoId, int number, ReactionType type);
-        Task ReactToIssueComment(long repoId, int commentId, ReactionType type);
-        Task ReactToReviewComment(long repoId, int reviewCommentId, ReactionType type);
+        Task ReactToIssueComment(long repoId, long commentId, ReactionType type);
+        Task ReactToReviewComment(long repoId, long reviewCommentId, ReactionType type);
         Task<ICollection<Reaction>> GetReactions(EmojiHost emojiHost, long repoId, int itemId);
         Task<ICollection<Reaction>> GetReactionFromIssueAsync(long repoId, int number);
-        Task<ICollection<Reaction>> GetReactionFromIssueComment(long repoId, int commentId);
-        Task<ICollection<Reaction>> GetReactionFromReviewComment(long repoId, int commentId);
+        Task<ICollection<Reaction>> GetReactionFromIssueComment(long repoId, long commentId);
+        Task<ICollection<Reaction>> GetReactionFromReviewComment(long repoId, long commentId);
         MarkdownConfig GetMarkdownConfig();
     }
 }

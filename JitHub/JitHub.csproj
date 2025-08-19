@@ -1347,7 +1347,7 @@
       <Version>2.8.7</Version>
     </PackageReference>
     <PackageReference Include="Octokit">
-      <Version>5.0.2</Version>
+      <Version>14.0.0</Version>
     </PackageReference>
     <PackageReference Include="System.Reactive.Linq">
       <Version>5.0.0</Version>

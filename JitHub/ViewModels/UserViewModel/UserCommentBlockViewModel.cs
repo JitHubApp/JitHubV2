@@ -42,7 +42,7 @@ namespace JitHub.ViewModels.UserViewModel
         // only for the issue/pr number
         private int _number;
         // for issue comment and review comment
-        private int _commentId;
+        private long _commentId;
 
         private MenuItem _copyLinkMenuItem;
         private MenuItem _quoteReplyMenuItem;
@@ -56,7 +56,6 @@ namespace JitHub.ViewModels.UserViewModel
             set
             {
                 SetProperty(ref _body, value);
-                SetProperty(ref _markdownConfig, GitHubService.GetMarkdownConfig());
             }
         }
 
@@ -131,6 +130,7 @@ namespace JitHub.ViewModels.UserViewModel
             QuoteReplyMenuItem = new MenuItem("Quote Reply", quoteReplyCommand);
             ReactionCommand = new AsyncRelayCommand<ReactionType>(async type => await ReactToIssue(type, Repo.Id, _number));
             LoadCommand = new AsyncRelayCommand(LoadFromIssue);
+            _markdownConfig = GitHubService.GetMarkdownConfig();
         }
 
         public UserCommentBlockViewModel(IssueCommentNode comment)
@@ -145,6 +145,7 @@ namespace JitHub.ViewModels.UserViewModel
             ReactionCommand = new AsyncRelayCommand<ReactionType>(async type => await ReactToIssueComment(type, Repo.Id, comment.Id));
             Commenter = comment.User;
             LoadCommand = new AsyncRelayCommand(LoadFromIssueComment);
+            _markdownConfig = GitHubService.GetMarkdownConfig();
         }
 
         public UserCommentBlockViewModel(ReviewCommentNode comment, ICommand quoteReplyCommand)
@@ -160,6 +161,7 @@ namespace JitHub.ViewModels.UserViewModel
             QuoteReplyMenuItem = new MenuItem("Quote Reply", quoteReplyCommand, comment.Body);
             ReactionCommand = new RelayCommand<ReactionType>(async type => await ReactToReviewComment(type, Repo.Id, comment.Id));
             LoadCommand = new AsyncRelayCommand(LoadFromReviewComment);
+            _markdownConfig = GitHubService.GetMarkdownConfig();
         }
 
         private async Task ReactToIssue(ReactionType type, long repoId, int number)
@@ -176,7 +178,7 @@ namespace JitHub.ViewModels.UserViewModel
             LoadCommand.Execute(null);
         }
 
-        private async Task ReactToIssueComment(ReactionType type, long repoId, int commentId)
+        private async Task ReactToIssueComment(ReactionType type, long repoId, long commentId)
         {
             if (!_votesMap.ContainsKey(type))
             {
@@ -190,7 +192,7 @@ namespace JitHub.ViewModels.UserViewModel
             LoadCommand.Execute(null);
         }
 
-        private async Task ReactToReviewComment(ReactionType type, long repoId, int commentId)
+        private async Task ReactToReviewComment(ReactionType type, long repoId, long commentId)
         {
             if (!_votesMap.ContainsKey(type))
             {
