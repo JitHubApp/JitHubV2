@@ -30,6 +30,8 @@ var host = new HostBuilder()
                 }
             };
         });
+
+        // CORS is handled in individual functions in Debug mode
     })
     .Build();
 

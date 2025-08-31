@@ -1,4 +1,7 @@
-﻿using System.ComponentModel;
+﻿using CommunityToolkit.Labs.WinUI.MarkdownTextBlock;
+using CommunityToolkit.Mvvm.DependencyInjection;
+using JitHub.Services;
+using System.ComponentModel;
 using System.Windows.Input;
 using Windows.UI.Xaml;
 using Windows.UI.Xaml.Controls;
@@ -10,11 +13,7 @@ namespace JitHub.Views.Controls.Common
     public sealed partial class MarkdownForm : UserControl
     {
 
-        //public static DependencyProperty SubmitCommandProperty = DependencyProperty.Register(
-        //    nameof(SubmitCommand),
-        //    typeof(ICommand),
-        //    typeof(MarkdownForm),
-        //    new PropertyMetadata(default(ICommand), null));
+        private IGitHubService _gitHubService;
 
         public static DependencyProperty ActionContentProperty = DependencyProperty.Register(
             nameof(ActionContent),
@@ -57,9 +56,12 @@ namespace JitHub.Views.Controls.Common
             set => SetValue(FormPaddingProperty, value);
         }
 
+        public MarkdownConfig Config => _gitHubService.GetMarkdownConfig();
+
         public MarkdownForm()
         {
             this.InitializeComponent();
+            _gitHubService = Ioc.Default.GetService<IGitHubService>();
         }
 
         private void TextBox_TextChanged(object sender, TextChangedEventArgs e)

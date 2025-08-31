@@ -116,7 +116,7 @@ namespace JitHub.Services
             }
         }
 
-        public bool CheckAuth(int userId)
+        public bool CheckAuth(long userId)
         {
             try
             {
@@ -129,7 +129,7 @@ namespace JitHub.Services
             }
         }
 
-        public string GetToken(int userId)
+        public string GetToken(long userId)
         {
             try
             {

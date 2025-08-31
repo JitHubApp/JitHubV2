@@ -1,4 +1,4 @@
-﻿using Markdig.UWP;
+﻿using CommunityToolkit.Labs.WinUI.MarkdownTextBlock;
 using Windows.UI.Xaml;
 using Windows.UI.Xaml.Controls;
 

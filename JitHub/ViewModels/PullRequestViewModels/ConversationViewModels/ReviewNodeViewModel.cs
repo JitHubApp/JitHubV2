@@ -46,7 +46,7 @@ namespace JitHub.ViewModels.PullRequestViewModels.ConversationViewModels
             State = review.State;
             SubmittedAt = review.SubmittedAt;
             _review = review;
-            var dict = new Dictionary<int, ReviewCommentNode>();
+            var dict = new Dictionary<long, ReviewCommentNode>();
             foreach (var comment in review.Comments)
             {
                 if (!comment.InReplyToId.HasValue)

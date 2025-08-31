@@ -1,13 +1,39 @@
-﻿<!-- Free Public License 1.0.0 Permission to use, copy, modify, and/or distribute this code for any purpose with or without fee is hereby granted. -->
+﻿<!--  Free Public License 1.0.0 Permission to use, copy, modify, and/or distribute this code for any purpose with or without fee is hereby granted.  -->
 <ResourceDictionary
     xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
     xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
-    xmlns:Windows10version1809="http://schemas.microsoft.com/winfx/2006/xaml/presentation?IsApiContractPresent(Windows.Foundation.UniversalApiContract, 7)"
-    xmlns:BelowWindows10version1809="http://schemas.microsoft.com/winfx/2006/xaml/presentation?IsApiContractNotPresent(Windows.Foundation.UniversalApiContract, 7)">
+    xmlns:BelowWindows10version1809="http://schemas.microsoft.com/winfx/2006/xaml/presentation?IsApiContractNotPresent(Windows.Foundation.UniversalApiContract, 7)"
+    xmlns:Windows10version1809="http://schemas.microsoft.com/winfx/2006/xaml/presentation?IsApiContractPresent(Windows.Foundation.UniversalApiContract, 7)">
     <ResourceDictionary.ThemeDictionaries>
         <ResourceDictionary x:Key="Default">
             <ResourceDictionary.MergedDictionaries>
-                <Windows10version1809:ColorPaletteResources Accent="#FF0073CF" AltHigh="#FF000000" AltLow="#FF000000" AltMedium="#FF000000" AltMediumHigh="#FF000000" AltMediumLow="#FF000000" BaseHigh="#FFFFFFFF" BaseLow="#FF333333" BaseMedium="#FF9A9A9A" BaseMediumHigh="#FFB4B4B4" BaseMediumLow="#FF676767" ChromeAltLow="#FFB4B4B4" ChromeBlackHigh="#FF000000" ChromeBlackLow="#FFB4B4B4" ChromeBlackMedium="#FF000000" ChromeBlackMediumLow="#FF000000" ChromeDisabledHigh="#FF333333" ChromeDisabledLow="#FF9A9A9A" ChromeGray="#FF808080" ChromeHigh="#FF808080" ChromeLow="#FF151515" ChromeMedium="#FF1D1D1D" ChromeMediumLow="#FF2C2C2C" ChromeWhite="#FFFFFFFF" ListLow="#FF1D1D1D" ListMedium="#FF333333" />
+                <Windows10version1809:ColorPaletteResources
+                    Accent="#FF0073CF"
+                    AltHigh="#FF000000"
+                    AltLow="#FF000000"
+                    AltMedium="#FF000000"
+                    AltMediumHigh="#FF000000"
+                    AltMediumLow="#FF000000"
+                    BaseHigh="#FFFFFFFF"
+                    BaseLow="#FF333333"
+                    BaseMedium="#FF9A9A9A"
+                    BaseMediumHigh="#FFB4B4B4"
+                    BaseMediumLow="#FF676767"
+                    ChromeAltLow="#FFB4B4B4"
+                    ChromeBlackHigh="#FF000000"
+                    ChromeBlackLow="#FFB4B4B4"
+                    ChromeBlackMedium="#FF000000"
+                    ChromeBlackMediumLow="#FF000000"
+                    ChromeDisabledHigh="#FF333333"
+                    ChromeDisabledLow="#FF9A9A9A"
+                    ChromeGray="#FF808080"
+                    ChromeHigh="#FF808080"
+                    ChromeLow="#FF151515"
+                    ChromeMedium="#FF1D1D1D"
+                    ChromeMediumLow="#FF2C2C2C"
+                    ChromeWhite="#FFFFFFFF"
+                    ListLow="#FF1D1D1D"
+                    ListMedium="#FF333333" />
                 <ResourceDictionary>
                     <Color x:Key="RegionColor">#FF0D1117</Color>
                     <Color x:Key="TitleBorderColor">#1E4273</Color>
@@ -20,50 +46,76 @@
                     <Color x:Key="PrivateRepoColor">#FCE100</Color>
                     <AcrylicBrush
                         x:Key="TitleBarBrush"
+                        BackgroundSource="HostBackdrop"
                         TintColor="{StaticResource TitleBarColor}"
                         TintLuminosityOpacity="0.7"
-                        TintOpacity="0.7"
-                        BackgroundSource="HostBackdrop"/>
+                        TintOpacity="0.7" />
 
                     <AcrylicBrush
                         x:Key="AppPrimaryBackgroundBrush"
+                        BackgroundSource="HostBackdrop"
+                        FallbackColor="{StaticResource AppPrimaryBackgroundColor}"
                         TintColor="{StaticResource AppPrimaryBackgroundColor}"
                         TintLuminosityOpacity="0.9"
-                        TintOpacity="0.9"
-                        FallbackColor="{StaticResource AppPrimaryBackgroundColor}"
-                        BackgroundSource="HostBackdrop"/>
+                        TintOpacity="0.9" />
 
                     <AcrylicBrush
                         x:Key="ModalBrush"
+                        BackgroundSource="Backdrop"
+                        FallbackColor="{StaticResource AppPrimaryBackgroundColor}"
                         TintColor="{StaticResource AppPrimaryBackgroundColor}"
                         TintLuminosityOpacity="0.5"
-                        TintOpacity="0.1"
-                        FallbackColor="{StaticResource AppPrimaryBackgroundColor}"
-                        BackgroundSource="Backdrop"/>
+                        TintOpacity="0.1" />
                     <LinearGradientBrush x:Key="AppTitleGradientBrush" StartPoint="0.5,0" EndPoint="0.5,1">
-                        <GradientStop Color="#0E99F9" Offset="0"/>
-                        <GradientStop Color="#80DEFF" Offset="0.5"/>
+                        <GradientStop Offset="0" Color="#0E99F9" />
+                        <GradientStop Offset="0.5" Color="#80DEFF" />
                     </LinearGradientBrush>
                     <LinearGradientBrush x:Key="BrandDiagonalGradientBrush" StartPoint="0,0" EndPoint="1,1">
-                        <GradientStop Color="#B998CF" Offset="0"/>
-                        <GradientStop Color="#4D0F6D" Offset="1"/>
+                        <GradientStop Offset="0" Color="#B998CF" />
+                        <GradientStop Offset="1" Color="#4D0F6D" />
                     </LinearGradientBrush>
-                    <SolidColorBrush x:Key="TitleBorderBrush" Color="{StaticResource TitleBorderColor}"/>
+                    <SolidColorBrush x:Key="TitleBorderBrush" Color="{StaticResource TitleBorderColor}" />
                     <SolidColorBrush x:Key="RegionBrush" Color="{StaticResource RegionColor}" />
-                    <SolidColorBrush x:Key="AppSolidPrimaryRush" Color="{StaticResource AppSolidPrimaryColor}"/>
-                    <SolidColorBrush x:Key="AppSolidSecondaryRush" Color="{StaticResource AppSolidSecondaryColor}"/>
+                    <SolidColorBrush x:Key="AppSolidPrimaryRush" Color="{StaticResource AppSolidPrimaryColor}" />
+                    <SolidColorBrush x:Key="AppSolidSecondaryRush" Color="{StaticResource AppSolidSecondaryColor}" />
                     <SolidColorBrush x:Key="AppBorderBrush" Color="{StaticResource RegionColor}" />
-                    <SolidColorBrush x:Key="PrivateRepoBrush" Color="{StaticResource PrivateRepoColor}"/>
+                    <SolidColorBrush x:Key="PrivateRepoBrush" Color="{StaticResource PrivateRepoColor}" />
                     <Border
                         x:Key="AppHighContrastBorder"
                         BorderBrush="Transparent"
-                        BorderThickness="0"/>
+                        BorderThickness="0" />
                 </ResourceDictionary>
             </ResourceDictionary.MergedDictionaries>
         </ResourceDictionary>
         <ResourceDictionary x:Key="Dark">
             <ResourceDictionary.MergedDictionaries>
-                <Windows10version1809:ColorPaletteResources Accent="#FF0073CF" AltHigh="#FF000000" AltLow="#FF000000" AltMedium="#FF000000" AltMediumHigh="#FF000000" AltMediumLow="#FF000000" BaseHigh="#FFFFFFFF" BaseLow="#FF333333" BaseMedium="#FF9A9A9A" BaseMediumHigh="#FFB4B4B4" BaseMediumLow="#FF676767" ChromeAltLow="#FFB4B4B4" ChromeBlackHigh="#FF000000" ChromeBlackLow="#FFB4B4B4" ChromeBlackMedium="#FF000000" ChromeBlackMediumLow="#FF000000" ChromeDisabledHigh="#FF333333" ChromeDisabledLow="#FF9A9A9A" ChromeGray="#FF808080" ChromeHigh="#FF808080" ChromeLow="#FF151515" ChromeMedium="#FF1D1D1D" ChromeMediumLow="#FF2C2C2C" ChromeWhite="#FFFFFFFF" ListLow="#FF1D1D1D" ListMedium="#FF333333" />
+                <Windows10version1809:ColorPaletteResources
+                    Accent="#FF0073CF"
+                    AltHigh="#FF000000"
+                    AltLow="#FF000000"
+                    AltMedium="#FF000000"
+                    AltMediumHigh="#FF000000"
+                    AltMediumLow="#FF000000"
+                    BaseHigh="#FFFFFFFF"
+                    BaseLow="#FF333333"
+                    BaseMedium="#FF9A9A9A"
+                    BaseMediumHigh="#FFB4B4B4"
+                    BaseMediumLow="#FF676767"
+                    ChromeAltLow="#FFB4B4B4"
+                    ChromeBlackHigh="#FF000000"
+                    ChromeBlackLow="#FFB4B4B4"
+                    ChromeBlackMedium="#FF000000"
+                    ChromeBlackMediumLow="#FF000000"
+                    ChromeDisabledHigh="#FF333333"
+                    ChromeDisabledLow="#FF9A9A9A"
+                    ChromeGray="#FF808080"
+                    ChromeHigh="#FF808080"
+                    ChromeLow="#FF151515"
+                    ChromeMedium="#FF1D1D1D"
+                    ChromeMediumLow="#FF2C2C2C"
+                    ChromeWhite="#FFFFFFFF"
+                    ListLow="#FF1D1D1D"
+                    ListMedium="#FF333333" />
                 <ResourceDictionary>
                     <Color x:Key="RegionColor">#FF0D1117</Color>
                     <Color x:Key="TitleBorderColor">#1E4273</Color>
@@ -76,50 +128,76 @@
                     <Color x:Key="PrivateRepoColor">#FCE100</Color>
                     <AcrylicBrush
                         x:Key="TitleBarBrush"
+                        BackgroundSource="HostBackdrop"
                         TintColor="{StaticResource TitleBarColor}"
                         TintLuminosityOpacity="0.7"
-                        TintOpacity="0.7"
-                        BackgroundSource="HostBackdrop"/>
+                        TintOpacity="0.7" />
 
                     <AcrylicBrush
                         x:Key="AppPrimaryBackgroundBrush"
+                        BackgroundSource="HostBackdrop"
+                        FallbackColor="{StaticResource AppPrimaryBackgroundColor}"
                         TintColor="{StaticResource AppPrimaryBackgroundColor}"
                         TintLuminosityOpacity="0.9"
-                        TintOpacity="0.9"
-                        FallbackColor="{StaticResource AppPrimaryBackgroundColor}"
-                        BackgroundSource="HostBackdrop"/>
+                        TintOpacity="0.9" />
 
                     <AcrylicBrush
                         x:Key="ModalBrush"
+                        BackgroundSource="Backdrop"
+                        FallbackColor="{StaticResource AppPrimaryBackgroundColor}"
                         TintColor="{StaticResource AppPrimaryBackgroundColor}"
                         TintLuminosityOpacity="0.5"
-                        TintOpacity="0.1"
-                        FallbackColor="{StaticResource AppPrimaryBackgroundColor}"
-                        BackgroundSource="Backdrop"/>
+                        TintOpacity="0.1" />
                     <LinearGradientBrush x:Key="AppTitleGradientBrush" StartPoint="0.5,0" EndPoint="0.5,1">
-                        <GradientStop Color="#0E99F9" Offset="0"/>
-                        <GradientStop Color="#80DEFF" Offset="0.5"/>
+                        <GradientStop Offset="0" Color="#0E99F9" />
+                        <GradientStop Offset="0.5" Color="#80DEFF" />
                     </LinearGradientBrush>
                     <LinearGradientBrush x:Key="BrandDiagonalGradientBrush" StartPoint="0,0" EndPoint="1,1">
-                        <GradientStop Color="#B998CF" Offset="0"/>
-                        <GradientStop Color="#4D0F6D" Offset="1"/>
+                        <GradientStop Offset="0" Color="#B998CF" />
+                        <GradientStop Offset="1" Color="#4D0F6D" />
                     </LinearGradientBrush>
-                    <SolidColorBrush x:Key="TitleBorderBrush" Color="{StaticResource TitleBorderColor}"/>
-                    <SolidColorBrush x:Key="RegionBrush" Color="{StaticResource RegionColor}"/>
-                    <SolidColorBrush x:Key="AppSolidPrimaryRush" Color="{StaticResource AppSolidPrimaryColor}"/>
-                    <SolidColorBrush x:Key="AppSolidSecondaryRush" Color="{StaticResource AppSolidSecondaryColor}"/>
+                    <SolidColorBrush x:Key="TitleBorderBrush" Color="{StaticResource TitleBorderColor}" />
+                    <SolidColorBrush x:Key="RegionBrush" Color="{StaticResource RegionColor}" />
+                    <SolidColorBrush x:Key="AppSolidPrimaryRush" Color="{StaticResource AppSolidPrimaryColor}" />
+                    <SolidColorBrush x:Key="AppSolidSecondaryRush" Color="{StaticResource AppSolidSecondaryColor}" />
                     <SolidColorBrush x:Key="AppBorderBrush" Color="{StaticResource RegionColor}" />
-                    <SolidColorBrush x:Key="PrivateRepoBrush" Color="{StaticResource PrivateRepoColor}"/>
+                    <SolidColorBrush x:Key="PrivateRepoBrush" Color="{StaticResource PrivateRepoColor}" />
                     <Border
                         x:Key="AppHighContrastBorder"
                         BorderBrush="Transparent"
-                        BorderThickness="0"/>
+                        BorderThickness="0" />
                 </ResourceDictionary>
             </ResourceDictionary.MergedDictionaries>
         </ResourceDictionary>
         <ResourceDictionary x:Key="Light">
             <ResourceDictionary.MergedDictionaries>
-                <Windows10version1809:ColorPaletteResources Accent="#FF0073CF" AltHigh="#FFFFFFFF" AltLow="#FFFFFFFF" AltMedium="#FFFFFFFF" AltMediumHigh="#FFFFFFFF" AltMediumLow="#FFFFFFFF" BaseHigh="#FF000000" BaseLow="#FFCCCCCC" BaseMedium="#FF898989" BaseMediumHigh="#FF5D5D5D" BaseMediumLow="#FF737373" ChromeAltLow="#FF5D5D5D" ChromeBlackHigh="#FF000000" ChromeBlackLow="#FFCCCCCC" ChromeBlackMedium="#FF5D5D5D" ChromeBlackMediumLow="#FF898989" ChromeDisabledHigh="#FFCCCCCC" ChromeDisabledLow="#FF898989" ChromeGray="#FF737373" ChromeHigh="#FFCCCCCC" ChromeLow="#FFECECEC" ChromeMedium="#FFE6E6E6" ChromeMediumLow="#FFECECEC" ChromeWhite="#FFFFFFFF" ListLow="#FFE6E6E6" ListMedium="#FFCCCCCC" />
+                <Windows10version1809:ColorPaletteResources
+                    Accent="#FF0073CF"
+                    AltHigh="#FFFFFFFF"
+                    AltLow="#FFFFFFFF"
+                    AltMedium="#FFFFFFFF"
+                    AltMediumHigh="#FFFFFFFF"
+                    AltMediumLow="#FFFFFFFF"
+                    BaseHigh="#FF000000"
+                    BaseLow="#FFCCCCCC"
+                    BaseMedium="#FF898989"
+                    BaseMediumHigh="#FF5D5D5D"
+                    BaseMediumLow="#FF737373"
+                    ChromeAltLow="#FF5D5D5D"
+                    ChromeBlackHigh="#FF000000"
+                    ChromeBlackLow="#FFCCCCCC"
+                    ChromeBlackMedium="#FF5D5D5D"
+                    ChromeBlackMediumLow="#FF898989"
+                    ChromeDisabledHigh="#FFCCCCCC"
+                    ChromeDisabledLow="#FF898989"
+                    ChromeGray="#FF737373"
+                    ChromeHigh="#FFCCCCCC"
+                    ChromeLow="#FFECECEC"
+                    ChromeMedium="#FFE6E6E6"
+                    ChromeMediumLow="#FFECECEC"
+                    ChromeWhite="#FFFFFFFF"
+                    ListLow="#FFE6E6E6"
+                    ListMedium="#FFCCCCCC" />
                 <ResourceDictionary>
                     <Color x:Key="RegionColor">#FFFAF9F8</Color>
                     <Color x:Key="TitleBorderColor">#BAD8FF</Color>
@@ -132,44 +210,44 @@
                     <Color x:Key="PrivateRepoColor">#9D5D00</Color>
                     <AcrylicBrush
                         x:Key="TitleBarBrush"
+                        BackgroundSource="HostBackdrop"
                         TintColor="{StaticResource TitleBarColor}"
                         TintLuminosityOpacity="0.7"
-                        TintOpacity="0.7"
-                        BackgroundSource="HostBackdrop"/>
+                        TintOpacity="0.7" />
 
                     <AcrylicBrush
                         x:Key="AppPrimaryBackgroundBrush"
+                        BackgroundSource="HostBackdrop"
+                        FallbackColor="{StaticResource AppPrimaryBackgroundColor}"
                         TintColor="{StaticResource AppPrimaryBackgroundColor}"
                         TintLuminosityOpacity="0.9"
-                        TintOpacity="0.9"
-                        FallbackColor="{StaticResource AppPrimaryBackgroundColor}"
-                        BackgroundSource="HostBackdrop"/>
+                        TintOpacity="0.9" />
 
                     <AcrylicBrush
                         x:Key="ModalBrush"
+                        BackgroundSource="Backdrop"
+                        FallbackColor="{StaticResource AppPrimaryBackgroundColor}"
                         TintColor="{StaticResource AppPrimaryBackgroundColor}"
                         TintLuminosityOpacity="0.5"
-                        TintOpacity="0.1"
-                        FallbackColor="{StaticResource AppPrimaryBackgroundColor}"
-                        BackgroundSource="Backdrop"/>
+                        TintOpacity="0.1" />
                     <LinearGradientBrush x:Key="AppTitleGradientBrush" StartPoint="0.5,0" EndPoint="0.5,1">
-                        <GradientStop Color="#0E99F9" Offset="0"/>
-                        <GradientStop Color="#80DEFF" Offset="0.5"/>
+                        <GradientStop Offset="0" Color="#0E99F9" />
+                        <GradientStop Offset="0.5" Color="#80DEFF" />
                     </LinearGradientBrush>
                     <LinearGradientBrush x:Key="BrandDiagonalGradientBrush" StartPoint="0,0" EndPoint="1,1">
-                        <GradientStop Color="#B998CF" Offset="0"/>
-                        <GradientStop Color="#4D0F6D" Offset="1"/>
+                        <GradientStop Offset="0" Color="#B998CF" />
+                        <GradientStop Offset="1" Color="#4D0F6D" />
                     </LinearGradientBrush>
-                    <SolidColorBrush x:Key="TitleBorderBrush" Color="{StaticResource TitleBorderColor}"/>
-                    <SolidColorBrush x:Key="RegionBrush" Color="{StaticResource RegionColor}"/>
-                    <SolidColorBrush x:Key="AppSolidPrimaryRush" Color="{StaticResource AppSolidPrimaryColor}"/>
-                    <SolidColorBrush x:Key="AppSolidSecondaryRush" Color="{StaticResource AppSolidSecondaryColor}"/>
+                    <SolidColorBrush x:Key="TitleBorderBrush" Color="{StaticResource TitleBorderColor}" />
+                    <SolidColorBrush x:Key="RegionBrush" Color="{StaticResource RegionColor}" />
+                    <SolidColorBrush x:Key="AppSolidPrimaryRush" Color="{StaticResource AppSolidPrimaryColor}" />
+                    <SolidColorBrush x:Key="AppSolidSecondaryRush" Color="{StaticResource AppSolidSecondaryColor}" />
                     <SolidColorBrush x:Key="AppBorderBrush" Color="{StaticResource AppBorderColor}" />
-                    <SolidColorBrush x:Key="PrivateRepoBrush" Color="{StaticResource PrivateRepoColor}"/>
+                    <SolidColorBrush x:Key="PrivateRepoBrush" Color="{StaticResource PrivateRepoColor}" />
                     <Border
                         x:Key="AppHighContrastBorder"
                         BorderBrush="Transparent"
-                        BorderThickness="0"/>
+                        BorderThickness="0" />
                 </ResourceDictionary>
             </ResourceDictionary.MergedDictionaries>
         </ResourceDictionary>
@@ -185,45 +263,45 @@
             <Color x:Key="PrivateRepoColor">#FFFFFF</Color>
             <AcrylicBrush
                 x:Key="TitleBarBrush"
+                BackgroundSource="HostBackdrop"
                 FallbackColor="{StaticResource TitleBarColor}"
                 TintColor="{StaticResource TitleBarColor}"
                 TintLuminosityOpacity="0.7"
-                TintOpacity="0.7"
-                BackgroundSource="HostBackdrop"/>
+                TintOpacity="0.7" />
 
             <AcrylicBrush
                 x:Key="AppPrimaryBackgroundBrush"
+                BackgroundSource="HostBackdrop"
+                FallbackColor="{StaticResource AppPrimaryBackgroundColor}"
                 TintColor="{StaticResource AppPrimaryBackgroundColor}"
                 TintLuminosityOpacity="0.9"
-                TintOpacity="0.9"
-                FallbackColor="{StaticResource AppPrimaryBackgroundColor}"
-                BackgroundSource="HostBackdrop"/>
+                TintOpacity="0.9" />
 
             <AcrylicBrush
                 x:Key="ModalBrush"
+                BackgroundSource="Backdrop"
+                FallbackColor="{StaticResource AppPrimaryBackgroundColor}"
                 TintColor="{StaticResource AppPrimaryBackgroundColor}"
                 TintLuminosityOpacity="0.5"
-                TintOpacity="0.1"
-                FallbackColor="{StaticResource AppPrimaryBackgroundColor}"
-                BackgroundSource="Backdrop"/>
+                TintOpacity="0.1" />
             <LinearGradientBrush x:Key="AppTitleGradientBrush" StartPoint="0.5,0" EndPoint="0.5,1">
-                <GradientStop Color="#000000" Offset="0"/>
-                <GradientStop Color="#000000" Offset="0.5"/>
+                <GradientStop Offset="0" Color="#000000" />
+                <GradientStop Offset="0.5" Color="#000000" />
             </LinearGradientBrush>
             <LinearGradientBrush x:Key="BrandDiagonalGradientBrush" StartPoint="0,0" EndPoint="1,1">
-                <GradientStop Color="#000000" Offset="0"/>
-                <GradientStop Color="#000000" Offset="1"/>
+                <GradientStop Offset="0" Color="#000000" />
+                <GradientStop Offset="1" Color="#000000" />
             </LinearGradientBrush>
-            <SolidColorBrush x:Key="TitleBorderBrush" Color="{StaticResource TitleBorderColor}"/>
-            <SolidColorBrush x:Key="RegionBrush" Color="{StaticResource RegionColor}"/>
-            <SolidColorBrush x:Key="AppSolidPrimaryRush" Color="{StaticResource AppSolidPrimaryColor}"/>
-            <SolidColorBrush x:Key="AppSolidSecondaryRush" Color="{StaticResource AppSolidSecondaryColor}"/>
+            <SolidColorBrush x:Key="TitleBorderBrush" Color="{StaticResource TitleBorderColor}" />
+            <SolidColorBrush x:Key="RegionBrush" Color="{StaticResource RegionColor}" />
+            <SolidColorBrush x:Key="AppSolidPrimaryRush" Color="{StaticResource AppSolidPrimaryColor}" />
+            <SolidColorBrush x:Key="AppSolidSecondaryRush" Color="{StaticResource AppSolidSecondaryColor}" />
             <SolidColorBrush x:Key="AppBorderBrush" Color="{StaticResource AppBorderColor}" />
-            <SolidColorBrush x:Key="PrivateRepoBrush" Color="{StaticResource PrivateRepoColor}"/>
+            <SolidColorBrush x:Key="PrivateRepoBrush" Color="{StaticResource PrivateRepoColor}" />
             <Border
                 x:Key="AppHighContrastBorder"
                 BorderBrush="#FFFFFF"
-                BorderThickness="2"/>
+                BorderThickness="2" />
         </ResourceDictionary>
     </ResourceDictionary.ThemeDictionaries>
 </ResourceDictionary>

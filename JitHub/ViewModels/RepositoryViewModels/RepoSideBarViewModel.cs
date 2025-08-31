@@ -12,7 +12,7 @@ using System.Threading.Tasks;
 using CommunityToolkit.Mvvm.ComponentModel;
 using JitHub.Models.Base;
 using Windows.UI.Xaml.Controls;
-using CommunityToolkit.Labs.WinUI;
+using CommunityToolkit.WinUI.Controls;
 
 namespace JitHub.ViewModels.RepositoryViewModels;
 

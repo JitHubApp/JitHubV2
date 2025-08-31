@@ -1,34 +1,31 @@
 <ResourceDictionary
-    xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation" 
+    xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
     xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
     xmlns:common="using:JitHub.Views.Controls.Common">
-    <DataTemplate
-        x:Key="MovedColumnsInProjectEventTemplate">
+    <DataTemplate x:Key="MovedColumnsInProjectEventTemplate">
         <Grid>
             <Grid.ColumnDefinitions>
-                <ColumnDefinition Width="48"/>
-                <ColumnDefinition Width="*"/>
+                <ColumnDefinition Width="48" />
+                <ColumnDefinition Width="*" />
             </Grid.ColumnDefinitions>
             <common:Avatar
                 Grid.Column="0"
                 HorizontalAlignment="Center"
-                Url="{Binding Actor.AvatarUrl, Mode=OneWay}"
-                Login="{Binding Actor.Login, Mode=OneWay}"/>
+                Login="{Binding Actor.Login, Mode=OneWay}"
+                Url="{Binding Actor.AvatarUrl, Mode=OneWay}" />
             <StackPanel
                 Grid.Column="1"
-                Orientation="Horizontal"
                 VerticalAlignment="Center"
+                Orientation="Horizontal"
                 Spacing="4">
-                <TextBlock
-                    Text="{Binding Actor.Login, Mode=OneWay}"/>
+                <TextBlock Text="{Binding Actor.Login, Mode=OneWay}" />
                 <TextBlock>
-                    <Run Text="moved this issue from "/>
-                    <Run Text="{Binding ProjectCard.PreviousColumnName, Mode=OneWay}"/>
-                    <Run Text=" to "/>
-                    <Run Text="{Binding ProjectCard.ColumnName, Mode=OneWay}"/>
+                    <Run Text="moved this issue from " />
+                    <Run Text="{Binding ProjectCard.PreviousColumnName, Mode=OneWay}" />
+                    <Run Text=" to " />
+                    <Run Text="{Binding ProjectCard.ColumnName, Mode=OneWay}" />
                 </TextBlock>
-                <TextBlock
-                    Text="{Binding CreatedAt, Converter={StaticResource TimeAgoConverter}, ConverterParameter='', Mode=OneWay}"/>
+                <TextBlock Text="{Binding CreatedAt, Converter={StaticResource TimeAgoConverter}, ConverterParameter='', Mode=OneWay}" />
             </StackPanel>
         </Grid>
     </DataTemplate>

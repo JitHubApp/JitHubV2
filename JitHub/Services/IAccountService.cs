@@ -3,7 +3,7 @@
     public interface IAccountService
     {
         void RemoveUser();
-        void SaveUser(int userId);
+        void SaveUser(long userId);
         int GetUser();
     }
 }

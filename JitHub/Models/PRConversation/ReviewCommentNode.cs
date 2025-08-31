@@ -15,18 +15,18 @@ namespace JitHub.Models.PRConversation
     public class ReviewCommentNode : ConversationNode
     {
         private ICommand _quoteReplyCommand;
-        public int? InReplyToId { get; set; }
+        public long? InReplyToId { get; set; }
         public ReactionSummary Reactions { get; set; }
         public string PullRequestUrl { get; set; }
         public string HtmlUrl { get; set; }
         public string CommitId { get; set; }
-        public int? PullRequestReviewId { get; set; }
+        public long? PullRequestReviewId { get; set; }
         public int? OriginalPosition { get; set; }
         public int? Position { get; set; }
         public string Path { get; set; }
         public string DiffHunk { get; set; }
         public string NodeId { get; set; }
-        public int Id { get; set; }
+        public long Id { get; set; }
         public string Url { get; set; }
         public string OriginalCommitId { get; set; }
         public string Body { get; set; }

@@ -9,7 +9,7 @@ namespace JitHub.Models.PRConversation
 {
     public class IssueCommentNode : ConversationNode
     {
-        public int Id { get; set; }
+        public long Id { get; set; }
         public string NodeId { get; set; }
         public string Url { get; set; }
         public string Body { get; set; }

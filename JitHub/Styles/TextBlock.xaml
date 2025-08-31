@@ -1,11 +1,11 @@
 ﻿<ResourceDictionary
-    xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation" 
+    xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
     xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
     xmlns:local="using:JitHub.Styles">
     <Style x:Key="TitleStyle" TargetType="TextBlock">
-        <Setter Property="FontSize" Value="18"/>
-        <Setter Property="FontWeight" Value="SemiBold"/>
-        <Setter Property="Foreground" Value="#005eff"/>
+        <Setter Property="FontSize" Value="18" />
+        <Setter Property="FontWeight" Value="SemiBold" />
+        <Setter Property="Foreground" Value="#005eff" />
     </Style>
-    <Style x:Key="RichTextBlockStyle1" TargetType="RichTextBlock"/>
+    <Style x:Key="RichTextBlockStyle1" TargetType="RichTextBlock" />
 </ResourceDictionary>

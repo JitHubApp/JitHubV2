@@ -13,8 +13,8 @@ namespace JitHub.Services
         User AuthenticatedUser { get; set; }
         Task Authenticate();
         Task<bool> Authorize(string response);
-        string GetToken(int userId);
-        bool CheckAuth(int userId);
+        string GetToken(long userId);
+        bool CheckAuth(long userId);
         void SignOut();
     }
 }
