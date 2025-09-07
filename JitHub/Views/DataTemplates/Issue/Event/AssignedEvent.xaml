@@ -1,39 +1,32 @@
 <ResourceDictionary
-    xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation" 
+    xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
     xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
     xmlns:common="using:JitHub.Views.Controls.Common">
-    <DataTemplate
-        x:Key="AssignedEventTemplate">
+    <DataTemplate x:Key="AssignedEventTemplate">
         <Grid>
             <Grid.ColumnDefinitions>
-                <ColumnDefinition Width="48"/>
-                <ColumnDefinition Width="*"/>
+                <ColumnDefinition Width="48" />
+                <ColumnDefinition Width="*" />
             </Grid.ColumnDefinitions>
             <common:Avatar
                 Grid.Column="0"
                 HorizontalAlignment="Center"
                 VerticalAlignment="Center"
-                Url="{Binding Actor.AvatarUrl, Mode=OneWay}"
-                Login="{Binding Actor.Login, Mode=OneWay}"/>
+                Login="{Binding Actor.Login, Mode=OneWay}"
+                Url="{Binding Actor.AvatarUrl, Mode=OneWay}" />
             <StackPanel
                 Grid.Column="1"
-                Orientation="Horizontal"
                 VerticalAlignment="Center"
+                Orientation="Horizontal"
                 Spacing="4">
-                <TextBlock
-                    VerticalAlignment="Center"
-                    Text="{Binding Actor.Login, Mode=OneWay}"/>
-                <TextBlock
-                    VerticalAlignment="Center"
-                    Text="assigned this to"/>
+                <TextBlock VerticalAlignment="Center" Text="{Binding Actor.Login, Mode=OneWay}" />
+                <TextBlock VerticalAlignment="Center" Text="assigned this to" />
                 <common:Avatar
                     VerticalAlignment="Center"
-                    Url="{Binding Assignee.AvatarUrl, Mode=OneWay}"
                     Login="{Binding Assignee.Login, Mode=OneWay}"
-                    ShowLogin="True"/>
-                <TextBlock
-                    VerticalAlignment="Center"
-                    Text="{Binding CreatedAt, Converter={StaticResource TimeAgoConverter}, ConverterParameter='', Mode=OneWay}"/>
+                    ShowLogin="True"
+                    Url="{Binding Assignee.AvatarUrl, Mode=OneWay}" />
+                <TextBlock VerticalAlignment="Center" Text="{Binding CreatedAt, Converter={StaticResource TimeAgoConverter}, ConverterParameter='', Mode=OneWay}" />
             </StackPanel>
         </Grid>
     </DataTemplate>

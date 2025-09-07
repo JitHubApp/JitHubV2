@@ -1,7 +1,7 @@
-﻿using CommunityToolkit.Mvvm.ComponentModel;
+﻿using CommunityToolkit.Labs.WinUI.MarkdownTextBlock;
+using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.DependencyInjection;
 using JitHub.Services;
-using Markdig.UWP;
 using Microsoft.UI.Xaml.Controls;
 using System.Windows.Input;
 
@@ -27,7 +27,7 @@ namespace JitHub.ViewModels
             set
             {
                 SetProperty(ref _text, value);
-                SetProperty(ref _markdownConfig, _gitHubService.GetMarkdownConfig(value));
+                SetProperty(ref _markdownConfig, _gitHubService.GetMarkdownConfig());
             }
         }
 

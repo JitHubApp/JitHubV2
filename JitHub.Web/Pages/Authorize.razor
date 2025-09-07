@@ -67,7 +67,7 @@
     {
         try
         {
-            string code = ProcessRequest();
+            string? code = ProcessRequest();
 
             if (String.IsNullOrWhiteSpace(code))
             {
@@ -75,7 +75,7 @@
                 return;
             }
 
-            await ExchangeToken(code);
+            await ExchangeToken(code!);
             RedirectJitHub();
         }
         catch
@@ -102,7 +102,10 @@
     {
         try
         {
-            var response = await Http.GetAsync($"/api/GithubCodeToToken?tempCode={code}");
+            // Use relative URL so HttpClient.BaseAddress determines the host/port.
+            // BaseAddress is configured in Program.cs from appsettings (API_Prefix) in Development,
+            // and falls back to same-origin in other environments.
+            var response = await Http.GetAsync($"api/GithubCodeToToken?tempCode={Uri.EscapeDataString(code)}");
 
             if (response.IsSuccessStatusCode)
             {
@@ -129,7 +132,7 @@
         }
     }
 
-    private string ProcessRequest()
+    private string? ProcessRequest()
     {
         try
         {

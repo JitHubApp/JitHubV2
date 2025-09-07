@@ -3,7 +3,6 @@
     xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
     xmlns:activity="using:JitHub.Views.Controls.Activity">
     <DataTemplate x:Key="DeleteEventTemplate">
-        <activity:DeleteActivity
-            ViewModel="{Binding Item, Mode=OneWay}"/>
+        <activity:DeleteActivity ViewModel="{Binding Item, Mode=OneWay}" />
     </DataTemplate>
 </ResourceDictionary>

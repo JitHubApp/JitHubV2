@@ -1,5 +1,5 @@
-﻿using JitHub.ViewModels.Base;
-using Markdig.UWP;
+﻿using CommunityToolkit.Labs.WinUI.MarkdownTextBlock;
+using JitHub.ViewModels.Base;
 using Octokit;
 using System;
 
@@ -14,11 +14,17 @@ namespace JitHub.ViewModels.ActivityViewModels
         private DateTimeOffset _createdAt;
         private string _id;
         private MarkdownConfig _markdownConfig;
+        private string _markdownText;
 
         public MarkdownConfig MarkdownConfig
         {
             get => _markdownConfig;
             set => SetProperty(ref _markdownConfig, value);
+        }
+        public string MarkdownText
+        {
+            get => _markdownText;
+            set => SetProperty(ref _markdownText, value);
         }
         public User Sender
         {

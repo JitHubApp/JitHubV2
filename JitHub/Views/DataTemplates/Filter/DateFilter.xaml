@@ -1,24 +1,28 @@
 ﻿<ResourceDictionary
     xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
-    xmlns:animations="using:Microsoft.Toolkit.Uwp.UI.Animations"
-    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml">
-    <DataTemplate
-        x:Key="DateFilter">
+    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+    xmlns:animations="using:Microsoft.Toolkit.Uwp.UI.Animations">
+    <DataTemplate x:Key="DateFilter">
         <Grid>
             <animations:Implicit.ShowAnimations>
-                <animations:TranslationAnimation EasingType="Cubic" Duration="0:0:0.5" From="0, -100, 0" To="0"/>
-                <animations:OpacityAnimation Duration="0:0:0.5" From="0.5" To="1"/>
+                <animations:TranslationAnimation
+                    EasingType="Cubic"
+                    From="0, -100, 0"
+                    To="0"
+                    Duration="0:0:0.5" />
+                <animations:OpacityAnimation
+                    From="0.5"
+                    To="1"
+                    Duration="0:0:0.5" />
             </animations:Implicit.ShowAnimations>
             <CalendarDatePicker
                 x:Name="SinceDatePicker"
-                Date="{Binding StartDate, Mode=TwoWay}"
                 MinWidth="150"
+                Date="{Binding StartDate, Mode=TwoWay}"
                 PlaceholderText="{Binding Placeholder, Mode=OneWay}">
                 <CalendarDatePicker.HeaderTemplate>
                     <DataTemplate>
-                        <TextBlock
-                            FontWeight="SemiBold"
-                            Text="{Binding Title, Mode=OneWay}"/>
+                        <TextBlock FontWeight="SemiBold" Text="{Binding Title, Mode=OneWay}" />
                     </DataTemplate>
                 </CalendarDatePicker.HeaderTemplate>
             </CalendarDatePicker>

@@ -15,7 +15,7 @@
             _settings.Save(userIdKey, string.Empty);
         }
 
-        public void SaveUser(int userId)
+        public void SaveUser(long userId)
         {
             _settings.Save(userIdKey, userId);
             _settings.Save(doNotWarnDeleteRepoKey, false);

@@ -2,239 +2,156 @@
     x:Class="JitHub.App"
     xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
     xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+    xmlns:activitiesconverters="using:JitHub.Converters.Activities"
+    xmlns:code="using:JitHub.Converters.Code"
+    xmlns:commonconverters="using:JitHub.Converters.Common"
+    xmlns:converters="using:JitHub.Converters"
     xmlns:issuesconverters="using:JitHub.Converters.Issues"
     xmlns:pullrequestsconverters="using:JitHub.Converters.PullRequests"
-    xmlns:activitiesconverters="using:JitHub.Converters.Activities"
-    xmlns:converters="using:JitHub.Converters"
-    xmlns:winui="using:Microsoft.UI.Xaml.Controls"
-    xmlns:commonconverters="using:JitHub.Converters.Common"
     xmlns:utils="using:Utilities.Common"
-    xmlns:code="using:JitHub.Converters.Code">
+    xmlns:winui="using:Microsoft.UI.Xaml.Controls">
     <Application.Resources>
         <ResourceDictionary>
             <ResourceDictionary.MergedDictionaries>
-                <winui:XamlControlsResources ControlsResourcesVersion="Version2"/>
+                <winui:XamlControlsResources ControlsResourcesVersion="Version2" />
 
-                <!-- Styles -->
-                <ResourceDictionary Source="/Styles/Color.xaml"/>
-                <ResourceDictionary Source="/Styles/Theme.xaml"/>
-                <ResourceDictionary Source="/Styles/Buttons.xaml"/>
-                <ResourceDictionary Source="/Styles/ComboBox.xaml"/>
-                <ResourceDictionary Source="/Styles/DatePicker.xaml"/>
-                <ResourceDictionary Source="/Styles/CalendarDatePicker.xaml"/>
-                <ResourceDictionary Source="/Styles/TextBlock.xaml"/>
-                <ResourceDictionary Source="/Styles/CustomListDetailView.xaml"/>
-                <ResourceDictionary Source="/Styles/NavigationView.xaml"/>
-                <ResourceDictionary Source="/Styles/Container.xaml"/>
-                <ResourceDictionary Source="/Styles/TabView.xaml"/>
+                <!--  Styles  -->
+                <ResourceDictionary Source="/Styles/Color.xaml" />
+                <ResourceDictionary Source="/Styles/Theme.xaml" />
+                <ResourceDictionary Source="/Styles/Buttons.xaml" />
+                <ResourceDictionary Source="/Styles/ComboBox.xaml" />
+                <ResourceDictionary Source="/Styles/DatePicker.xaml" />
+                <ResourceDictionary Source="/Styles/CalendarDatePicker.xaml" />
+                <ResourceDictionary Source="/Styles/TextBlock.xaml" />
+                <ResourceDictionary Source="/Styles/CustomListDetailView.xaml" />
+                <ResourceDictionary Source="/Styles/NavigationView.xaml" />
+                <ResourceDictionary Source="/Styles/Container.xaml" />
+                <ResourceDictionary Source="/Styles/TabView.xaml" />
 
-                <!-- Data Templates -->
-                <ResourceDictionary Source="/Views/DataTemplates/RepoListItem.xaml"/>
-                <ResourceDictionary Source="/Views/DataTemplates/IssueLabel.xaml"/>
-                <ResourceDictionary Source="/Views/DataTemplates/IssueListItem.xaml"/>
-                <ResourceDictionary Source="/Views/DataTemplates/Issue/Event/ClosedEvent.xaml"/>
-                <ResourceDictionary Source="/Views/DataTemplates/Issue/Event/ReopenedEvent.xaml"/>
-                <ResourceDictionary Source="/Views/DataTemplates/Issue/Event/SubscribedEvent.xaml"/>
-                <ResourceDictionary Source="/Views/DataTemplates/Issue/Event/MergedEvent.xaml"/>
-                <ResourceDictionary Source="/Views/DataTemplates/Issue/Event/ReferencedEvent.xaml"/>
-                <ResourceDictionary Source="/Views/DataTemplates/Issue/Event/MentionedEvent.xaml"/>
-                <ResourceDictionary Source="/Views/DataTemplates/Issue/Event/AssignedEvent.xaml"/>
-                <ResourceDictionary Source="/Views/DataTemplates/Issue/Event/UnassignedEvent.xaml"/>
-                <ResourceDictionary Source="/Views/DataTemplates/Issue/Event/LabeledEvent.xaml"/>
-                <ResourceDictionary Source="/Views/DataTemplates/Issue/Event/UnlabeledEvent.xaml"/>
-                <ResourceDictionary Source="/Views/DataTemplates/Issue/Event/MilestonedEvent.xaml"/>
-                <ResourceDictionary Source="/Views/DataTemplates/Issue/Event/DemilestonedEvent.xaml"/>
-                <ResourceDictionary Source="/Views/DataTemplates/Issue/Event/RenamedEvent.xaml"/>
-                <ResourceDictionary Source="/Views/DataTemplates/Issue/Event/LockedEvent.xaml"/>
-                <ResourceDictionary Source="/Views/DataTemplates/Issue/Event/UnlockedEvent.xaml"/>
-                <ResourceDictionary Source="/Views/DataTemplates/Issue/Event/HeadRefDeletedEvent.xaml"/>
-                <ResourceDictionary Source="/Views/DataTemplates/Issue/Event/HeadRefRestoredEvent.xaml"/>
-                <ResourceDictionary Source="/Views/DataTemplates/Issue/Event/HeadRefForcePushedEvent.xaml"/>
-                <ResourceDictionary Source="/Views/DataTemplates/Issue/Event/ReadyForReviewEvent.xaml"/>
-                <ResourceDictionary Source="/Views/DataTemplates/Issue/Event/ReviewDismissedEvent.xaml"/>
-                <ResourceDictionary Source="/Views/DataTemplates/Issue/Event/ReviewRequestedEvent.xaml"/>
-                <ResourceDictionary Source="/Views/DataTemplates/Issue/Event/ReviewRequestRemovedEvent.xaml"/>
-                <ResourceDictionary Source="/Views/DataTemplates/Issue/Event/AddedToProjectEvent.xaml"/>
-                <ResourceDictionary Source="/Views/DataTemplates/Issue/Event/MovedColumnsInProjectEvent.xaml"/>
-                <ResourceDictionary Source="/Views/DataTemplates/Issue/Event/RemovedFromProjectEvent.xaml"/>
-                <ResourceDictionary Source="/Views/DataTemplates/Issue/Event/ConvertedNoteToIssueEvent.xaml"/>
-                <ResourceDictionary Source="/Views/DataTemplates/Issue/Event/UnsubscribedEvent.xaml"/>
-                <ResourceDictionary Source="/Views/DataTemplates/Issue/Event/CommentedEvent.xaml"/>
-                <ResourceDictionary Source="/Views/DataTemplates/Issue/Event/CommittedEvent.xaml"/>
-                <ResourceDictionary Source="/Views/DataTemplates/Issue/Event/BaseRefChangedEvent.xaml"/>
-                <ResourceDictionary Source="/Views/DataTemplates/Issue/Event/CrossreferencedEvent.xaml"/>
-                <ResourceDictionary Source="/Views/DataTemplates/Issue/Event/ReviewedEvent.xaml"/>
-                <ResourceDictionary Source="/Views/DataTemplates/Issue/Event/LineCommentedEvent.xaml"/>
-                <ResourceDictionary Source="/Views/DataTemplates/Issue/Event/CommitCommentedEvent.xaml"/>
-                <ResourceDictionary Source="/Views/DataTemplates/Issue/Event/MarkedAsDuplicateEvent.xaml"/>
-                <ResourceDictionary Source="/Views/DataTemplates/Issue/Event/UnmarkedAsDuplicateEvent.xaml"/>
-                <ResourceDictionary Source="/Views/DataTemplates/Issue/Event/CommentDeletedEvent.xaml"/>
-                <ResourceDictionary Source="/Views/DataTemplates/Issue/Event/TransferredEvent.xaml"/>
-                <ResourceDictionary Source="/Views/DataTemplates/Issue/Event/ConnectedEvent.xaml"/>
-                <ResourceDictionary Source="/Views/DataTemplates/Issue/Event/PinnedEvent.xaml"/>
-                <ResourceDictionary Source="/Views/DataTemplates/Issue/Event/UnpinnedEvent.xaml"/>
-                <ResourceDictionary Source="/Views/DataTemplates/Issue/Event/DefaultIssueEvent.xaml"/>
-                <ResourceDictionary Source="/Views/DataTemplates/PullRequestListItem.xaml"/>
-                <ResourceDictionary Source="/Views/DataTemplates/ActivityListItem.xaml"/>
-                <ResourceDictionary Source="/Views/DataTemplates/Activity/CommitCommentEventTemplate.xaml"/>
-                <ResourceDictionary Source="/Views/DataTemplates/Activity/CreateEventTemplate.xaml"/>
-                <ResourceDictionary Source="/Views/DataTemplates/Activity/DefaultTemplate.xaml"/>
-                <ResourceDictionary Source="/Views/DataTemplates/Activity/DeleteEventTemplate.xaml"/>
-                <ResourceDictionary Source="/Views/DataTemplates/Activity/ForkEventTemplate.xaml"/>
-                <ResourceDictionary Source="/Views/DataTemplates/Activity/GollumEventTemplate.xaml"/>
-                <ResourceDictionary Source="/Views/DataTemplates/Activity/IssueCommentEventTemplate.xaml"/>
-                <ResourceDictionary Source="/Views/DataTemplates/Activity/IssuesEventTemplate.xaml"/>
-                <ResourceDictionary Source="/Views/DataTemplates/Activity/MemberEventTemplate.xaml"/>
-                <ResourceDictionary Source="/Views/DataTemplates/Activity/PublicEventTemplate.xaml"/>
-                <ResourceDictionary Source="/Views/DataTemplates/Activity/PullRequestEventTemplate.xaml"/>
-                <ResourceDictionary Source="/Views/DataTemplates/Activity/PullRequestReviewCommentEventTemplate.xaml"/>
-                <ResourceDictionary Source="/Views/DataTemplates/Activity/PushEventTemplate.xaml"/>
-                <ResourceDictionary Source="/Views/DataTemplates/Activity/ReleaseEventTemplate.xaml"/>
-                <ResourceDictionary Source="/Views/DataTemplates/Activity/SponsorshipEventTemplate.xaml"/>
-                <ResourceDictionary Source="/Views/DataTemplates/Activity/WatchEventTemplate.xaml"/>
-                <ResourceDictionary Source="/Views/DataTemplates/PullRequest/ConversationPlainComment.xaml"/>
-                <ResourceDictionary Source="/Views/DataTemplates/PullRequest/ConversationReview.xaml"/>
-                <ResourceDictionary Source="/Views/DataTemplates/PullRequest/ConversationCommit.xaml"/>
-                <ResourceDictionary Source="/Views/DataTemplates/PullRequest/ConversationEvent.xaml"/>
-                <ResourceDictionary Source="/Views/DataTemplates/Filter/DateFilter.xaml"/>
-                <ResourceDictionary Source="/Views/DataTemplates/Filter/DropdownFilter.xaml"/>
-                <ResourceDictionary Source="/Views/DataTemplates/Filter/TextFilter.xaml"/>
-                <ResourceDictionary Source="/Views/DataTemplates/SelectableItem/SelectableUser.xaml"/>
-                <ResourceDictionary Source="/Views/DataTemplates/SelectableItem/SelectableLabel.xaml"/>
-                <ResourceDictionary Source="/Views/DataTemplates/Repository/ForkRepo.xaml"/>
-                <ResourceDictionary Source="/Views/DataTemplates/Repository/PrivateRepo.xaml"/>
-                <ResourceDictionary Source="/Views/DataTemplates/Repository/PublicRepo.xaml"/>
+                <!--  Data Templates  -->
+                <ResourceDictionary Source="/Views/DataTemplates/RepoListItem.xaml" />
+                <ResourceDictionary Source="/Views/DataTemplates/IssueLabel.xaml" />
+                <ResourceDictionary Source="/Views/DataTemplates/IssueListItem.xaml" />
+                <ResourceDictionary Source="/Views/DataTemplates/Issue/Event/ClosedEvent.xaml" />
+                <ResourceDictionary Source="/Views/DataTemplates/Issue/Event/ReopenedEvent.xaml" />
+                <ResourceDictionary Source="/Views/DataTemplates/Issue/Event/SubscribedEvent.xaml" />
+                <ResourceDictionary Source="/Views/DataTemplates/Issue/Event/MergedEvent.xaml" />
+                <ResourceDictionary Source="/Views/DataTemplates/Issue/Event/ReferencedEvent.xaml" />
+                <ResourceDictionary Source="/Views/DataTemplates/Issue/Event/MentionedEvent.xaml" />
+                <ResourceDictionary Source="/Views/DataTemplates/Issue/Event/AssignedEvent.xaml" />
+                <ResourceDictionary Source="/Views/DataTemplates/Issue/Event/UnassignedEvent.xaml" />
+                <ResourceDictionary Source="/Views/DataTemplates/Issue/Event/LabeledEvent.xaml" />
+                <ResourceDictionary Source="/Views/DataTemplates/Issue/Event/UnlabeledEvent.xaml" />
+                <ResourceDictionary Source="/Views/DataTemplates/Issue/Event/MilestonedEvent.xaml" />
+                <ResourceDictionary Source="/Views/DataTemplates/Issue/Event/DemilestonedEvent.xaml" />
+                <ResourceDictionary Source="/Views/DataTemplates/Issue/Event/RenamedEvent.xaml" />
+                <ResourceDictionary Source="/Views/DataTemplates/Issue/Event/LockedEvent.xaml" />
+                <ResourceDictionary Source="/Views/DataTemplates/Issue/Event/UnlockedEvent.xaml" />
+                <ResourceDictionary Source="/Views/DataTemplates/Issue/Event/HeadRefDeletedEvent.xaml" />
+                <ResourceDictionary Source="/Views/DataTemplates/Issue/Event/HeadRefRestoredEvent.xaml" />
+                <ResourceDictionary Source="/Views/DataTemplates/Issue/Event/HeadRefForcePushedEvent.xaml" />
+                <ResourceDictionary Source="/Views/DataTemplates/Issue/Event/ReadyForReviewEvent.xaml" />
+                <ResourceDictionary Source="/Views/DataTemplates/Issue/Event/ReviewDismissedEvent.xaml" />
+                <ResourceDictionary Source="/Views/DataTemplates/Issue/Event/ReviewRequestedEvent.xaml" />
+                <ResourceDictionary Source="/Views/DataTemplates/Issue/Event/ReviewRequestRemovedEvent.xaml" />
+                <ResourceDictionary Source="/Views/DataTemplates/Issue/Event/AddedToProjectEvent.xaml" />
+                <ResourceDictionary Source="/Views/DataTemplates/Issue/Event/MovedColumnsInProjectEvent.xaml" />
+                <ResourceDictionary Source="/Views/DataTemplates/Issue/Event/RemovedFromProjectEvent.xaml" />
+                <ResourceDictionary Source="/Views/DataTemplates/Issue/Event/ConvertedNoteToIssueEvent.xaml" />
+                <ResourceDictionary Source="/Views/DataTemplates/Issue/Event/UnsubscribedEvent.xaml" />
+                <ResourceDictionary Source="/Views/DataTemplates/Issue/Event/CommentedEvent.xaml" />
+                <ResourceDictionary Source="/Views/DataTemplates/Issue/Event/CommittedEvent.xaml" />
+                <ResourceDictionary Source="/Views/DataTemplates/Issue/Event/BaseRefChangedEvent.xaml" />
+                <ResourceDictionary Source="/Views/DataTemplates/Issue/Event/CrossreferencedEvent.xaml" />
+                <ResourceDictionary Source="/Views/DataTemplates/Issue/Event/ReviewedEvent.xaml" />
+                <ResourceDictionary Source="/Views/DataTemplates/Issue/Event/LineCommentedEvent.xaml" />
+                <ResourceDictionary Source="/Views/DataTemplates/Issue/Event/CommitCommentedEvent.xaml" />
+                <ResourceDictionary Source="/Views/DataTemplates/Issue/Event/MarkedAsDuplicateEvent.xaml" />
+                <ResourceDictionary Source="/Views/DataTemplates/Issue/Event/UnmarkedAsDuplicateEvent.xaml" />
+                <ResourceDictionary Source="/Views/DataTemplates/Issue/Event/CommentDeletedEvent.xaml" />
+                <ResourceDictionary Source="/Views/DataTemplates/Issue/Event/TransferredEvent.xaml" />
+                <ResourceDictionary Source="/Views/DataTemplates/Issue/Event/ConnectedEvent.xaml" />
+                <ResourceDictionary Source="/Views/DataTemplates/Issue/Event/PinnedEvent.xaml" />
+                <ResourceDictionary Source="/Views/DataTemplates/Issue/Event/UnpinnedEvent.xaml" />
+                <ResourceDictionary Source="/Views/DataTemplates/Issue/Event/DefaultIssueEvent.xaml" />
+                <ResourceDictionary Source="/Views/DataTemplates/PullRequestListItem.xaml" />
+                <ResourceDictionary Source="/Views/DataTemplates/ActivityListItem.xaml" />
+                <ResourceDictionary Source="/Views/DataTemplates/Activity/CommitCommentEventTemplate.xaml" />
+                <ResourceDictionary Source="/Views/DataTemplates/Activity/CreateEventTemplate.xaml" />
+                <ResourceDictionary Source="/Views/DataTemplates/Activity/DefaultTemplate.xaml" />
+                <ResourceDictionary Source="/Views/DataTemplates/Activity/DeleteEventTemplate.xaml" />
+                <ResourceDictionary Source="/Views/DataTemplates/Activity/ForkEventTemplate.xaml" />
+                <ResourceDictionary Source="/Views/DataTemplates/Activity/GollumEventTemplate.xaml" />
+                <ResourceDictionary Source="/Views/DataTemplates/Activity/IssueCommentEventTemplate.xaml" />
+                <ResourceDictionary Source="/Views/DataTemplates/Activity/IssuesEventTemplate.xaml" />
+                <ResourceDictionary Source="/Views/DataTemplates/Activity/MemberEventTemplate.xaml" />
+                <ResourceDictionary Source="/Views/DataTemplates/Activity/PublicEventTemplate.xaml" />
+                <ResourceDictionary Source="/Views/DataTemplates/Activity/PullRequestEventTemplate.xaml" />
+                <ResourceDictionary Source="/Views/DataTemplates/Activity/PullRequestReviewCommentEventTemplate.xaml" />
+                <ResourceDictionary Source="/Views/DataTemplates/Activity/PushEventTemplate.xaml" />
+                <ResourceDictionary Source="/Views/DataTemplates/Activity/ReleaseEventTemplate.xaml" />
+                <ResourceDictionary Source="/Views/DataTemplates/Activity/SponsorshipEventTemplate.xaml" />
+                <ResourceDictionary Source="/Views/DataTemplates/Activity/WatchEventTemplate.xaml" />
+                <ResourceDictionary Source="/Views/DataTemplates/PullRequest/ConversationPlainComment.xaml" />
+                <ResourceDictionary Source="/Views/DataTemplates/PullRequest/ConversationReview.xaml" />
+                <ResourceDictionary Source="/Views/DataTemplates/PullRequest/ConversationCommit.xaml" />
+                <ResourceDictionary Source="/Views/DataTemplates/PullRequest/ConversationEvent.xaml" />
+                <ResourceDictionary Source="/Views/DataTemplates/Filter/DateFilter.xaml" />
+                <ResourceDictionary Source="/Views/DataTemplates/Filter/DropdownFilter.xaml" />
+                <ResourceDictionary Source="/Views/DataTemplates/Filter/TextFilter.xaml" />
+                <ResourceDictionary Source="/Views/DataTemplates/SelectableItem/SelectableUser.xaml" />
+                <ResourceDictionary Source="/Views/DataTemplates/SelectableItem/SelectableLabel.xaml" />
+                <ResourceDictionary Source="/Views/DataTemplates/Repository/ForkRepo.xaml" />
+                <ResourceDictionary Source="/Views/DataTemplates/Repository/PrivateRepo.xaml" />
+                <ResourceDictionary Source="/Views/DataTemplates/Repository/PublicRepo.xaml" />
             </ResourceDictionary.MergedDictionaries>
 
-            <!-- Converters -->
-            <commonconverters:ListToShorterListConverter
-                x:Key="ListToShorterListConverter"/>
-            <commonconverters:BoolToAccentColorConverter
-                x:Key="BoolToAccentColorConverter"/>
-            <commonconverters:SizeToLengthConverter
-                x:Name="SizeToLengthConverter"
-                x:Key="SizeToLengthConverter"/>
-            <commonconverters:NumberToKizedStringConverter
-                x:Name="NumberToKizedStringConverter"
-                x:Key="NumberToKizedStringConverter"/>
-            <commonconverters:StringToImageSourceConverter
-                x:Name="StringToImageSourceConverter"
-                x:Key="StringToImageSourceConverter"/>
-            <commonconverters:DiffToMarkdownConverter
-                x:Name="DiffToMarkdownConverter"
-                x:Key="DiffToMarkdownConverter"/>
-            <commonconverters:StringToSvgSourceConverter
-                x:Name="StringToSvgSourceConverter"
-                x:Key="StringToSvgSourceConverter"/>
-            <commonconverters:UseGradientToForegroundConverter
-                x:Name="UseGradientToForegroundConverter"
-                x:Key="UseGradientToForegroundConverter"/>
-            <commonconverters:ColorToSolidBrushConverter
-                x:Name="ColorToSolidBrushConverter"
-                x:Key="ColorToSolidBrushConverter"/>
-            <commonconverters:ObjToVisibilityConverter
-                x:Key="ObjToVisibilityConverter"
-                x:Name="ObjToVisibilityConverter"/>
-            <commonconverters:ReactionTypeToEmojiConverter
-                x:Key="ReactionTypeToEmojiConverter"
-                x:Name="ReactionTypeToEmojiConverter"/>
-            <commonconverters:MarkdownToMarkdownConfigConverter
-                x:Key="MarkdownToMarkdownConfigConverter"
-                x:Name="MarkdownToMarkdownConfigConverter"/>
-            <converters:BoolToVisibilityConverter
-                x:Key="BoolToVisibilityConverter"
-                x:Name="BoolToVisibilityConverter"/>
-            <converters:BoolToVisibilityReverseConverter
-                x:Key="BoolToVisibilityReverseConverter"
-                x:Name="BoolToVisibilityReverseConverter"/>
-            <converters:HexColorToColorStringConverter
-                x:Key="HexColorToColorStringConverter"
-                x:Name="HexColorToColorStringConverter"/>
-            <converters:HexColorToForegroundConverter
-                x:Key="HexColorToForegroundConverter"
-                x:Name="HexColorToForegroundConverter"/>
-            <converters:LanguageToVisibilityConverter
-                x:Key="LanguageToVisibilityConverter"
-                x:Name="LanguageToVisibilityConverter"/>
-            <converters:OpenStatusToColorConverter
-                x:Key="OpenStatusToColorConverter"
-                x:Name="OpenStatusToColorConverter"/>
-            <converters:RepoContentNodeToMarkDownConverter
-                x:Key="RepoContentNodeToMarkDownConverter"
-                x:Name="RepoContentNodeToMarkDownConverter"/>
-            <converters:TimeAgoConverter
-                x:Key="TimeAgoConverter"
-                x:Name="TimeAgoConverter"/>
-            <converters:StringToEnabledConverter
-                x:Key="StringToEnabledConverter"
-                x:Name="StringToEnabledConverter"/>
-            <converters:RepoStatusIconConverter
-                x:Key="RepoStatusIconConverter"
-                x:Name="RepoStatusIconConverter"/>
+            <!--  Converters  -->
+            <commonconverters:ListToShorterListConverter x:Key="ListToShorterListConverter" />
+            <commonconverters:BoolToAccentColorConverter x:Key="BoolToAccentColorConverter" />
+            <commonconverters:SizeToLengthConverter x:Key="SizeToLengthConverter" x:Name="SizeToLengthConverter" />
+            <commonconverters:NumberToKizedStringConverter x:Key="NumberToKizedStringConverter" x:Name="NumberToKizedStringConverter" />
+            <commonconverters:StringToImageSourceConverter x:Key="StringToImageSourceConverter" x:Name="StringToImageSourceConverter" />
+            <commonconverters:DiffToMarkdownConverter x:Key="DiffToMarkdownConverter" x:Name="DiffToMarkdownConverter" />
+            <commonconverters:StringToSvgSourceConverter x:Key="StringToSvgSourceConverter" x:Name="StringToSvgSourceConverter" />
+            <commonconverters:UseGradientToForegroundConverter x:Key="UseGradientToForegroundConverter" x:Name="UseGradientToForegroundConverter" />
+            <commonconverters:ColorToSolidBrushConverter x:Key="ColorToSolidBrushConverter" x:Name="ColorToSolidBrushConverter" />
+            <commonconverters:ObjToVisibilityConverter x:Key="ObjToVisibilityConverter" x:Name="ObjToVisibilityConverter" />
+            <commonconverters:ReactionTypeToEmojiConverter x:Key="ReactionTypeToEmojiConverter" x:Name="ReactionTypeToEmojiConverter" />
+            <converters:BoolToVisibilityConverter x:Key="BoolToVisibilityConverter" x:Name="BoolToVisibilityConverter" />
+            <converters:BoolToVisibilityReverseConverter x:Key="BoolToVisibilityReverseConverter" x:Name="BoolToVisibilityReverseConverter" />
+            <converters:HexColorToColorStringConverter x:Key="HexColorToColorStringConverter" x:Name="HexColorToColorStringConverter" />
+            <converters:HexColorToForegroundConverter x:Key="HexColorToForegroundConverter" x:Name="HexColorToForegroundConverter" />
+            <converters:LanguageToVisibilityConverter x:Key="LanguageToVisibilityConverter" x:Name="LanguageToVisibilityConverter" />
+            <converters:OpenStatusToColorConverter x:Key="OpenStatusToColorConverter" x:Name="OpenStatusToColorConverter" />
+            <converters:RepoContentNodeToMarkDownConverter x:Key="RepoContentNodeToMarkDownConverter" x:Name="RepoContentNodeToMarkDownConverter" />
+            <converters:TimeAgoConverter x:Key="TimeAgoConverter" x:Name="TimeAgoConverter" />
+            <converters:StringToEnabledConverter x:Key="StringToEnabledConverter" x:Name="StringToEnabledConverter" />
+            <converters:RepoStatusIconConverter x:Key="RepoStatusIconConverter" x:Name="RepoStatusIconConverter" />
 
-            <issuesconverters:CommentDateBodyConverter
-                x:Key="CommentDateBodyConverter"
-                x:Name="CommentDateBodyConverter"/>
-            <issuesconverters:NumberOfCommentsToDescriptionDetailConverter
-                x:Key="NumberOfCommentsToDescriptionDetailConverter"
-                x:Name="NumberOfCommentsToDescriptionDetailConverter"/>
-            <issuesconverters:NumberToHashTaggedStringConverter
-                x:Key="NumberToHashTaggedStringConverter"
-                x:Name="NumberToHashTaggedStringConverter"/>
-            <issuesconverters:OpenDateToStringConverter
-                x:Key="OpenDateToStringConverter"
-                x:Name="OpenDateToStringConverter"/>
-            <issuesconverters:OpenDateToStringForDetailConverter
-                x:Key="OpenDateToStringForDetailConverter"
-                x:Name="OpenDateToStringForDetailConverter"/>
-            <issuesconverters:UserToDiscriptionStringConverter
-                x:Key="UserToDiscriptionStringConverter"
-                x:Name="UserToDiscriptionStringConverter"/>
-            <issuesconverters:IssueModelToIssueDetailViewModelConverter
-                x:Key="IssueModelToIssueDetailViewModelConverter"
-                x:Name="IssueModelToIssueDetailViewModelConverter"/>
-            <issuesconverters:StringToVisibilityConverter
-                x:Key="StringToVisibilityConverter"
-                x:Name="StringToVisibilityConverter"/>
-            <issuesconverters:ReactionDictionaryToUserNameListConverter
-                x:Key="ReactionDictionaryToUserNameListConverter"
-                x:Name="ReactionDictionaryToUserNameListConverter"/>
-            <issuesconverters:ReactionVotesMapToBoolConverter
-                x:Key="ReactionVotesMapToBoolConverter"
-                x:Name="ReactionVotesMapToBoolConverter"/>
+            <issuesconverters:CommentDateBodyConverter x:Key="CommentDateBodyConverter" x:Name="CommentDateBodyConverter" />
+            <issuesconverters:NumberOfCommentsToDescriptionDetailConverter x:Key="NumberOfCommentsToDescriptionDetailConverter" x:Name="NumberOfCommentsToDescriptionDetailConverter" />
+            <issuesconverters:NumberToHashTaggedStringConverter x:Key="NumberToHashTaggedStringConverter" x:Name="NumberToHashTaggedStringConverter" />
+            <issuesconverters:OpenDateToStringConverter x:Key="OpenDateToStringConverter" x:Name="OpenDateToStringConverter" />
+            <issuesconverters:OpenDateToStringForDetailConverter x:Key="OpenDateToStringForDetailConverter" x:Name="OpenDateToStringForDetailConverter" />
+            <issuesconverters:UserToDiscriptionStringConverter x:Key="UserToDiscriptionStringConverter" x:Name="UserToDiscriptionStringConverter" />
+            <issuesconverters:IssueModelToIssueDetailViewModelConverter x:Key="IssueModelToIssueDetailViewModelConverter" x:Name="IssueModelToIssueDetailViewModelConverter" />
+            <issuesconverters:StringToVisibilityConverter x:Key="StringToVisibilityConverter" x:Name="StringToVisibilityConverter" />
+            <issuesconverters:ReactionDictionaryToUserNameListConverter x:Key="ReactionDictionaryToUserNameListConverter" x:Name="ReactionDictionaryToUserNameListConverter" />
+            <issuesconverters:ReactionVotesMapToBoolConverter x:Key="ReactionVotesMapToBoolConverter" x:Name="ReactionVotesMapToBoolConverter" />
 
-            <pullrequestsconverters:PullRequestModelToPullRequestDetailViewModelConverter
-                x:Key="PullRequestModelToPullRequestDetailViewModelConverter"
-                x:Name="PullRequestModelToPullRequestDetailViewModelConverter"/>
-            <pullrequestsconverters:MergeStateToStringConverter
-                x:Key="MergeStateToStringConverter"
-                x:Name="MergeStateToStringConverter"/>
-            <pullrequestsconverters:ReviewNodeToViewModelConverter
-                x:Key="ReviewNodeToViewModelConverter"
-                x:Name="ReviewNodeToViewModelConverter"/>
-            <pullrequestsconverters:IssueCommentNodeToUserCommentBlockViewModelConverter
-                x:Key="IssueCommentNodeToUserCommentBlockViewModelConverter"
-                x:Name="IssueCommentNodeToUserCommentBlockViewModelConverter"/>
+            <pullrequestsconverters:PullRequestModelToPullRequestDetailViewModelConverter x:Key="PullRequestModelToPullRequestDetailViewModelConverter" x:Name="PullRequestModelToPullRequestDetailViewModelConverter" />
+            <pullrequestsconverters:MergeStateToStringConverter x:Key="MergeStateToStringConverter" x:Name="MergeStateToStringConverter" />
+            <pullrequestsconverters:ReviewNodeToViewModelConverter x:Key="ReviewNodeToViewModelConverter" x:Name="ReviewNodeToViewModelConverter" />
+            <pullrequestsconverters:IssueCommentNodeToUserCommentBlockViewModelConverter x:Key="IssueCommentNodeToUserCommentBlockViewModelConverter" x:Name="IssueCommentNodeToUserCommentBlockViewModelConverter" />
 
-            <activitiesconverters:PushEventPayloadToCommitStringConverter
-                x:Key="PushEventPayloadToCommitStringConverter"
-                x:Name="PushEventPayloadToCommitStringConverter"/>
-            <activitiesconverters:RefFullStringToBranchConverter
-                x:Key="RefFullStringToBranchConverter"
-                x:Name="RefFullStringToBranchConverter"/>
-            <activitiesconverters:CommitShaToShortConverter
-                x:Key="CommitShaToShortConverter"
-                x:Name="CommitShaToShortConverter"/>
-            <code:IsExpandToFolderOutlineIconConverter
-                x:Key="IsExpandToFolderOutlineIconConverter"
-                x:Name="IsExpandToFolderOutlineIconConverter"/>
-            <code:IsExpandToFolderFilledIconConverter
-                x:Key="IsExpandToFolderFilledIconConverter"
-                x:Name="IsExpandToFolderFilledIconConverter"/>
+            <activitiesconverters:PushEventPayloadToCommitStringConverter x:Key="PushEventPayloadToCommitStringConverter" x:Name="PushEventPayloadToCommitStringConverter" />
+            <activitiesconverters:RefFullStringToBranchConverter x:Key="RefFullStringToBranchConverter" x:Name="RefFullStringToBranchConverter" />
+            <activitiesconverters:CommitShaToShortConverter x:Key="CommitShaToShortConverter" x:Name="CommitShaToShortConverter" />
+            <code:IsExpandToFolderOutlineIconConverter x:Key="IsExpandToFolderOutlineIconConverter" x:Name="IsExpandToFolderOutlineIconConverter" />
+            <code:IsExpandToFolderFilledIconConverter x:Key="IsExpandToFolderFilledIconConverter" x:Name="IsExpandToFolderFilledIconConverter" />
 
-            <utils:NumberToVisibilityConverter
-                x:Key="NumberToVisibilityConverter"
-                x:Name="NumberToVisibilityConverter"/>
+            <utils:NumberToVisibilityConverter x:Key="NumberToVisibilityConverter" x:Name="NumberToVisibilityConverter" />
 
             <FontFamily x:Key="SegoeFluentIcons">/Assets/Fonts/FluentIcons.ttf#Segoe Fluent Icons</FontFamily>
         </ResourceDictionary>

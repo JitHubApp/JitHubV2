@@ -207,7 +207,7 @@ namespace JitHub.Services
             return newPr;
         }
         
-        public async Task<ReviewCommentNode> ReplyToReview(Repository repo, int number, string replyText, int inReplyToId)
+        public async Task<ReviewCommentNode> ReplyToReview(Repository repo, int number, string replyText, long inReplyToId)
         {
             try
             {
@@ -241,7 +241,7 @@ namespace JitHub.Services
             await GitHubClient.Issue.Labels.RemoveFromIssue(owner, name, num, label);
         }
 
-        public async Task DeleteIssueCommentReaction(string owner, string repoName, int commentId, int reactionId)
+        public async Task DeleteIssueCommentReaction(string owner, string repoName, long commentId, long reactionId)
         {
             try
             {
@@ -253,7 +253,7 @@ namespace JitHub.Services
             }
         }
 
-        public async Task DeleteIssueCommentReaction(long repoId, int commentId, int reactionId)
+        public async Task DeleteIssueCommentReaction(long repoId, long commentId, long reactionId)
         {
             try
             {
@@ -265,7 +265,7 @@ namespace JitHub.Services
             }
         }
 
-        public async Task DeleteReviewCommentReaction(string owner, string repoName, int commentId, int reactionId)
+        public async Task DeleteReviewCommentReaction(string owner, string repoName, long commentId, long reactionId)
         {
             try
             {
@@ -277,7 +277,7 @@ namespace JitHub.Services
             }
         }
 
-        public async Task DeleteReviewCommentReaction(long repoId, int commentId, int reactionId)
+        public async Task DeleteReviewCommentReaction(long repoId, long commentId, long reactionId)
         {
             try
             {
@@ -289,7 +289,7 @@ namespace JitHub.Services
             }
         }
 
-        public async Task DeleteIssueReaction(string owner, string name, int num, int id)
+        public async Task DeleteIssueReaction(string owner, string name, int num, long id)
         {
             try
             {
@@ -314,7 +314,7 @@ namespace JitHub.Services
             }
         }
 
-        public async Task ReactToIssueComment(long repoId, int commentId, ReactionType type)
+        public async Task ReactToIssueComment(long repoId, long commentId, ReactionType type)
         {
             try
             {
@@ -326,7 +326,7 @@ namespace JitHub.Services
             }
         }
 
-        public async Task ReactToReviewComment(long repoId, int reviewCommentId, ReactionType type)
+        public async Task ReactToReviewComment(long repoId, long reviewCommentId, ReactionType type)
         {
             try
             {
