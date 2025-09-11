@@ -29,8 +29,21 @@ public partial class UserIssueListViewModel : ObservableObject
 
     [ObservableProperty]
     private ICollection<Issue> _issues;
+
     [ObservableProperty]
-    private ICollection<Issue> _pullRequests;
+    private string _title;
+
+    private IssueListType _listType = IssueListType.Issues;
+
+    public IssueListType ListType
+    {
+        get => _listType;
+        set
+        {
+            SetProperty(ref _listType, value);
+            Title = value == IssueListType.Issues ? "Issue" : "Pull Request";
+        }
+    }
 
     private bool _createdSelected;
 
@@ -42,13 +55,11 @@ public partial class UserIssueListViewModel : ObservableObject
             SetProperty(ref _createdSelected, value);
             if (value)
             {
-                Issues = CreatedIssues;
-                PullRequests = CreatedPullRequests;
+                Issues = ListType == IssueListType.Issues ? CreatedIssues : CreatedPullRequests;
             }
             else
             {
-                Issues = AssignedIssues;
-                PullRequests = AssignedPullRequests;
+                Issues = ListType == IssueListType.Issues ? AssignedIssues : AssignedPullRequests;
             }
         }
     }
@@ -90,4 +101,16 @@ public partial class UserIssueListViewModel : ObservableObject
         CreatedPullRequests = created.Where((issue) => issue.PullRequest != null).ToList();
         CreatedSelected = false;
     }
+}
+
+public enum IssueListSelectionType
+{
+    Assigned,
+    Created
+}
+
+public enum  IssueListType
+{
+    Issues,
+    PullRequests
 }

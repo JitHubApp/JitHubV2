@@ -495,6 +495,7 @@
     <Compile Include="Views\Controls\Widgets\Registrations\ActivityListReg.cs" />
     <Compile Include="Views\Controls\Widgets\Registrations\RepoSideBarReg.cs" />
     <Compile Include="Views\Controls\Widgets\Registrations\UserIssueListReg.cs" />
+    <Compile Include="Views\Controls\Widgets\Registrations\UserPullRequestListReg.cs" />
     <Compile Include="Views\Controls\Widgets\WidgetContainer.xaml.cs">
       <DependentUpon>WidgetContainer.xaml</DependentUpon>
     </Compile>
@@ -1324,14 +1325,8 @@
     </Page>
   </ItemGroup>
   <ItemGroup>
-  	<PackageReference Include="CommunityToolkit.Labs.Uwp.Controls.MarkdownTextBlock">
+    <PackageReference Include="CommunityToolkit.Labs.Uwp.Controls.MarkdownTextBlock">
       <Version>0.1.250811-build.2202</Version>
-
-
-
-
-
-
     </PackageReference>
     <PackageReference Include="CommunityToolkit.Common">
       <Version>8.2.0</Version>

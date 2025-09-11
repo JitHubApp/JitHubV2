@@ -5,10 +5,10 @@ using Windows.UI.Xaml;
 
 namespace JitHub.Views.Controls.Widgets.Registrations;
 
-internal class UserIssueListReg : WidgetBase
+internal class UserPullRequestListReg : WidgetBase
 {
-    public string Type { get => WidgetType.UserIssuesList; }
-    public const string Name = "Issues";
+    public string Type { get => WidgetType.UserPullRequestsList; }
+    public const string Name = "Pull Requests";
 
     public Widget Create()
     {
@@ -24,7 +24,7 @@ internal class UserIssueListReg : WidgetBase
 
     public UIElement GetElement(string id)
     {
-        return new UserIssueList(id, ViewModels.IssueViewModels.IssueListType.Issues);
+        return new UserIssueList(id, ViewModels.IssueViewModels.IssueListType.PullRequests);
     }
 
     public string GetName()

@@ -138,6 +138,7 @@ namespace JitHub
                     _widgetService.Register(new RepoSideBarReg());
                     _widgetService.Register(new ActivityListReg());
                     _widgetService.Register(new UserIssueListReg());
+                    _widgetService.Register(new UserPullRequestListReg());
 
                     // auth
                     var _authService = Ioc.Default.GetService<IAuthService>();

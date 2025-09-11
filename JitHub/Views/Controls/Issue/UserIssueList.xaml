@@ -30,7 +30,7 @@
                 Grid.Column="0"
                 VerticalAlignment="Center"
                 FontSize="20"
-                Text="Issues"/>
+                Text="{x:Bind ViewModel.Title, Mode=OneWay}"/>
             <controls:Segmented
                 HorizontalAlignment="Right"
                 Grid.Column="1"
