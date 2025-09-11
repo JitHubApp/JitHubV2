@@ -18,7 +18,7 @@ namespace JitHub.Services
         Task<ICollection<PullRequest>> GetPullRequests(string owner, string name, PullRequestRequest requestParam, ApiOptions apiOptions);
         Task<PullRequest> GetPullRequest(string owner, string name, int num);
         Task<ICollection<Activity>> GetActivities(string user, ApiOptions options);
-        Task<ICollection<Issue>> GetIssuesAssignedToAuthenticatedUser();
+        Task<ICollection<Issue>> GetIssuesForAuthenticatedUser(IssueRequest request);
         Task<ICollection<Issue>> GetFilteredIssues(string owner, string name, RepositoryIssueRequest repoIssueRequest, ApiOptions apiOptions);
         Task<Issue> GetIssue(string owner, string name, int number);
         Task<Issue> GetIssue(long repositoryId, int number);

@@ -7,30 +7,48 @@
     xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
     xmlns:issueviewmodels="using:JitHub.ViewModels.IssueViewModels"
     xmlns:controls="using:CommunityToolkit.WinUI.Controls"
+    xmlns:winui="using:Microsoft.UI.Xaml.Controls"
     mc:Ignorable="d"
     d:DesignHeight="300"
     d:DesignWidth="400">
 
+    <UserControl.DataContext>
+        <issueviewmodels:UserIssueListViewModel x:Name="ViewModel"/>
+    </UserControl.DataContext>
+
     <Grid>
-        <StackPanel>
+        <Grid.RowDefinitions>
+            <RowDefinition Height="auto"/>
+            <RowDefinition Height="*"/>
+        </Grid.RowDefinitions>
+        <Grid Grid.Row="0">
+            <Grid.ColumnDefinitions>
+                <ColumnDefinition Width="auto"/>
+                <ColumnDefinition Width="*"/>
+            </Grid.ColumnDefinitions>
             <TextBlock
+                Grid.Column="0"
+                VerticalAlignment="Center"
                 FontSize="20"
-                Text="Issues"
-                Margin="0 0 0 12"/>
-            <controls:Segmented>
-                <controls:SegmentedItem Content="Created"/>
-                <controls:SegmentedItem Content="Assigned"/>
+                Text="Issues"/>
+            <controls:Segmented
+                HorizontalAlignment="Right"
+                Grid.Column="1"
+                SelectionChanged="{x:Bind ViewModel.SegmentedSelectionChanged, Mode=OneWay}">
+                <controls:SegmentedItem Content="Assigned" Tag="Assigned" IsSelected="True"/>
+                <controls:SegmentedItem Content="Created" Tag="Created"/>
             </controls:Segmented>
-            <ListView
-                ItemsSource="{x:Bind ViewModel.Issues, Mode=OneWay}">
-                <ListView.ItemTemplate>
-                    <DataTemplate>
-                        <Grid>
-                            <TextBlock Text="{Binding Title, Mode=OneWay}"/>
-                        </Grid>
-                    </DataTemplate>
-                </ListView.ItemTemplate>
-            </ListView>
-        </StackPanel>
+        </Grid>
+        <ListView
+            Grid.Row="1"
+            ItemsSource="{x:Bind ViewModel.Issues, Mode=OneWay}">
+            <ListView.ItemTemplate>
+                <DataTemplate>
+                    <Grid>
+                        <TextBlock Text="{Binding Title, Mode=OneWay}"/>
+                    </Grid>
+                </DataTemplate>
+            </ListView.ItemTemplate>
+        </ListView>
     </Grid>
 </UserControl>

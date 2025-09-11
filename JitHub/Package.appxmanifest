@@ -10,9 +10,9 @@
   <Identity
     Name="54742Neromarah.JitHub"
     Publisher="CN=E1994DBD-BBFE-40D0-AC99-9271E31610E9"
-    Version="1.6.2.0" />
+    Version="1.6.5.0" />
 
-  <mp:PhoneIdentity PhoneProductId="ac961a7e-34a0-4a8b-8b7b-8379271bd0ce" PhonePublisherId="00000000-0000-0000-0000-000000000000"/>
+  <mp:PhoneIdentity PhoneProductId="0fc94efc-04b3-45ee-93df-4eaeeb6cbfe8" PhonePublisherId="242ECCC6-1ED8-41FA-B625-53CADFC4951A"/>
 
   <Properties>
     <DisplayName>JitHub</DisplayName>

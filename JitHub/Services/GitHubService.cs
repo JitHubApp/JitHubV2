@@ -469,9 +469,9 @@ namespace JitHub.Services
             return SVGRenderer.SvgToImage(svgString);
         }
 
-        public async Task<ICollection<Issue>> GetIssuesAssignedToAuthenticatedUser()
+        public async Task<ICollection<Issue>> GetIssuesForAuthenticatedUser(IssueRequest request)
         {
-            var issues = await GitHubClient.Issue.GetAllForCurrent(new IssueRequest());
+            var issues = await GitHubClient.Issue.GetAllForCurrent(request);
             return issues.ToList();
         }
     }
