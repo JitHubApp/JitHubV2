@@ -1,0 +1,58 @@
+﻿<Page
+    x:Class="JitHub.WidgetLayout.Client.MainPage"
+    xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+    xmlns:local="using:JitHub.WidgetLayout.Client"
+    xmlns:muxc="using:Microsoft.UI.Xaml.Controls"
+    xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+    xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+    mc:Ignorable="d"
+    Background="{ThemeResource ApplicationPageBackgroundThemeBrush}">
+
+    <Grid Padding="16" ColumnSpacing="12" RowSpacing="12">
+        <Grid.RowDefinitions>
+            <RowDefinition Height="Auto"/>
+            <RowDefinition Height="*"/>
+        </Grid.RowDefinitions>
+        <StackPanel Orientation="Horizontal" Spacing="8">
+            <ToggleButton x:Name="EditToggle" Content="Edit Mode"/>
+            <Button Content="Shuffle" Click="Shuffle_Click"/>
+            <Button Content="Add" Click="Add_Click"/>
+            <Button Content="Remove Last" Click="Remove_Click"/>
+        </StackPanel>
+
+        <ScrollViewer Grid.Row="1" HorizontalScrollBarVisibility="Disabled" VerticalScrollBarVisibility="Auto">
+            <muxc:ItemsRepeater x:Name="Repeater">
+                <muxc:ItemsRepeater.Layout>
+                    <local:WidgetLayout x:Name="LayoutRef"
+                                        EnableDiagnostics="True"
+                                        Columns="4"
+                                        ColumnWidth="120"
+                                        RowHeight="120"
+                                        Spacing="12"/>
+                </muxc:ItemsRepeater.Layout>
+                <muxc:ItemsRepeater.ItemTemplate>
+                    <DataTemplate>
+                        <Border x:Name="Root"
+                                Background="{Binding Color}"
+                                CornerRadius="12"
+                                Width="Auto" Height="Auto"
+                                Padding="8"
+                                ManipulationMode="TranslateX,TranslateY"
+                                PointerPressed="Widget_PointerPressed"
+                                PointerMoved="Widget_PointerMoved"
+                                PointerReleased="Widget_PointerReleased"
+                                PointerCanceled="Widget_PointerReleased"
+                                PointerCaptureLost="Widget_PointerReleased"
+                                KeyDown="Widget_KeyDown">
+                            <StackPanel>
+                                <TextBlock Text="{Binding Title}" FontWeight="SemiBold"/>
+                                <TextBlock Text="Drag me" FontSize="12" Opacity="0.7"/>
+                            </StackPanel>
+                        </Border>
+                    </DataTemplate>
+                </muxc:ItemsRepeater.ItemTemplate>
+            </muxc:ItemsRepeater>
+        </ScrollViewer>
+    </Grid>
+</Page>
