@@ -14,11 +14,25 @@
             <RowDefinition Height="Auto"/>
             <RowDefinition Height="*"/>
         </Grid.RowDefinitions>
-        <StackPanel Orientation="Horizontal" Spacing="8">
+        <StackPanel Orientation="Horizontal" Spacing="8" VerticalAlignment="Center">
             <ToggleButton x:Name="EditToggle" Content="Edit Mode"/>
             <Button Content="Shuffle" Click="Shuffle_Click"/>
             <Button Content="Add" Click="Add_Click"/>
             <Button Content="Remove Last" Click="Remove_Click"/>
+            <!-- Alignment selector -->
+            <TextBlock Text="Align:" VerticalAlignment="Center" Margin="24,0,4,0"/>
+            <ComboBox Width="100"
+                      SelectedValuePath="Tag"
+                      SelectedValue="{x:Bind LayoutRef.HorizontalMode, Mode=TwoWay}">
+                <ComboBoxItem Content="Left" Tag="Left"/>
+                <ComboBoxItem Content="Center" Tag="Center"/>
+                <ComboBoxItem Content="Right" Tag="Right"/>
+            </ComboBox>
+            <!-- Column controls -->
+            <TextBlock Text="MinCols:" VerticalAlignment="Center" Margin="16,0,4,0"/>
+            <muxc:NumberBox Width="60" Value="{x:Bind LayoutRef.MinColumns, Mode=TwoWay}" Minimum="1" Maximum="20" SpinButtonPlacementMode="Compact"/>
+            <TextBlock Text="MaxCols:" VerticalAlignment="Center" Margin="16,0,4,0"/>
+            <muxc:NumberBox Width="60" Value="{x:Bind LayoutRef.Columns, Mode=TwoWay}" Minimum="1" Maximum="50" SpinButtonPlacementMode="Compact"/>
         </StackPanel>
 
         <ScrollViewer Grid.Row="1" HorizontalScrollBarVisibility="Disabled" VerticalScrollBarVisibility="Auto">
@@ -27,9 +41,13 @@
                     <local:WidgetLayout x:Name="LayoutRef"
                                         EnableDiagnostics="True"
                                         Columns="4"
+                                        MinColumns="1"
+                                        HorizontalMode="Center"
                                         ColumnWidth="120"
                                         RowHeight="120"
-                                        Spacing="12"/>
+                                        Spacing="12"
+                                        ReflowAnimationDuration="450"
+                                        StandardAnimationDuration="180"/>
                 </muxc:ItemsRepeater.Layout>
                 <muxc:ItemsRepeater.ItemTemplate>
                     <DataTemplate>

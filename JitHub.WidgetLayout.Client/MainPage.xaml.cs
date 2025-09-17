@@ -1,4 +1,5 @@
-﻿using System;
+﻿using Microsoft.UI.Xaml.Controls; // ItemsRepeater
+using System;
 using System.Collections.ObjectModel;
 using System.Linq;
 using Windows.Foundation; // Point
@@ -9,7 +10,6 @@ using Windows.UI.Xaml.Controls;
 using Windows.UI.Xaml.Controls.Primitives; // ToggleButton
 using Windows.UI.Xaml.Input;
 using Windows.UI.Xaml.Media;
-using Microsoft.UI.Xaml.Controls; // ItemsRepeater
 
 namespace JitHub.WidgetLayout.Client
 {

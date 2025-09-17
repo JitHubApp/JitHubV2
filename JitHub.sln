@@ -1,11 +1,9 @@
 ﻿
 Microsoft Visual Studio Solution File, Format Version 12.00
-# Visual Studio Version 17
-VisualStudioVersion = 17.2.32630.192
+# Visual Studio Version 18
+VisualStudioVersion = 18.0.11010.61 d18.0
 MinimumVisualStudioVersion = 10.0.40219.1
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "JitHub", "JitHub\JitHub.csproj", "{452E051F-938D-4F26-9D54-4598A97F8BEF}"
-EndProject
-Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "System.Text.Json.Viewer", "System.Text.Json.Viewer\System.Text.Json.Viewer.csproj", "{77FEF6A4-49A6-46D9-9144-97D876B4130C}"
 EndProject
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "JitHub.Services.GitHub.Contributions", "JitHub.Services.GitHub.Contributions\JitHub.Services.GitHub.Contributions.csproj", "{F178EB94-CB1E-4F0A-9C61-82FD5C1B6624}"
 EndProject
@@ -59,26 +57,6 @@ Global
 		{452E051F-938D-4F26-9D54-4598A97F8BEF}.Release|x86.ActiveCfg = Release|x86
 		{452E051F-938D-4F26-9D54-4598A97F8BEF}.Release|x86.Build.0 = Release|x86
 		{452E051F-938D-4F26-9D54-4598A97F8BEF}.Release|x86.Deploy.0 = Release|x86
-		{77FEF6A4-49A6-46D9-9144-97D876B4130C}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
-		{77FEF6A4-49A6-46D9-9144-97D876B4130C}.Debug|Any CPU.Build.0 = Debug|Any CPU
-		{77FEF6A4-49A6-46D9-9144-97D876B4130C}.Debug|ARM.ActiveCfg = Debug|ARM
-		{77FEF6A4-49A6-46D9-9144-97D876B4130C}.Debug|ARM.Build.0 = Debug|ARM
-		{77FEF6A4-49A6-46D9-9144-97D876B4130C}.Debug|ARM64.ActiveCfg = Debug|ARM64
-		{77FEF6A4-49A6-46D9-9144-97D876B4130C}.Debug|ARM64.Build.0 = Debug|ARM64
-		{77FEF6A4-49A6-46D9-9144-97D876B4130C}.Debug|x64.ActiveCfg = Debug|x64
-		{77FEF6A4-49A6-46D9-9144-97D876B4130C}.Debug|x64.Build.0 = Debug|x64
-		{77FEF6A4-49A6-46D9-9144-97D876B4130C}.Debug|x86.ActiveCfg = Debug|x86
-		{77FEF6A4-49A6-46D9-9144-97D876B4130C}.Debug|x86.Build.0 = Debug|x86
-		{77FEF6A4-49A6-46D9-9144-97D876B4130C}.Release|Any CPU.ActiveCfg = Release|Any CPU
-		{77FEF6A4-49A6-46D9-9144-97D876B4130C}.Release|Any CPU.Build.0 = Release|Any CPU
-		{77FEF6A4-49A6-46D9-9144-97D876B4130C}.Release|ARM.ActiveCfg = Release|ARM
-		{77FEF6A4-49A6-46D9-9144-97D876B4130C}.Release|ARM.Build.0 = Release|ARM
-		{77FEF6A4-49A6-46D9-9144-97D876B4130C}.Release|ARM64.ActiveCfg = Release|ARM64
-		{77FEF6A4-49A6-46D9-9144-97D876B4130C}.Release|ARM64.Build.0 = Release|ARM64
-		{77FEF6A4-49A6-46D9-9144-97D876B4130C}.Release|x64.ActiveCfg = Release|x64
-		{77FEF6A4-49A6-46D9-9144-97D876B4130C}.Release|x64.Build.0 = Release|x64
-		{77FEF6A4-49A6-46D9-9144-97D876B4130C}.Release|x86.ActiveCfg = Release|x86
-		{77FEF6A4-49A6-46D9-9144-97D876B4130C}.Release|x86.Build.0 = Release|x86
 		{F178EB94-CB1E-4F0A-9C61-82FD5C1B6624}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
 		{F178EB94-CB1E-4F0A-9C61-82FD5C1B6624}.Debug|Any CPU.Build.0 = Debug|Any CPU
 		{F178EB94-CB1E-4F0A-9C61-82FD5C1B6624}.Debug|ARM.ActiveCfg = Debug|ARM
