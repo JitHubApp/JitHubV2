@@ -57,9 +57,17 @@ namespace JitHub.WidgetLayout.Client
 
         private void BeginDrag(FrameworkElement fe, PointerRoutedEventArgs e)
         {
-            if (!IsEditMode || _repeater == null || _layout == null) return;
+            if (!IsEditMode || _repeater == null || _layout == null)
+            {
+                return;
+            }
+
             _dragIndex = _repeater.GetElementIndex(fe);
-            if (_dragIndex < 0) return;
+            if (_dragIndex < 0)
+            {
+                return;
+            }
+
             _dragging = true;
             _dragStartPoint = e.GetCurrentPoint(_repeater).Position;
             _layout.BeginDrag(_dragIndex);
@@ -69,7 +77,11 @@ namespace JitHub.WidgetLayout.Client
 
         private void UpdateDrag(FrameworkElement fe, PointerRoutedEventArgs e)
         {
-            if (!_dragging || _repeater == null || _layout == null) return;
+            if (!_dragging || _repeater == null || _layout == null)
+            {
+                return;
+            }
+
             var p = e.GetCurrentPoint(_repeater).Position;
             // Update pointer for smooth translation of dragged item
             _layout.UpdateDragPointer(p);
@@ -78,19 +90,31 @@ namespace JitHub.WidgetLayout.Client
             var rowHeight = _layout.RowHeight + _layout.Spacing;
             int col = (int)Math.Max(0, Math.Floor(p.X / colWidth));
             int row = (int)Math.Max(0, Math.Floor(p.Y / rowHeight));
-            int targetIndex = row * _layout.Columns + col;
-            if (targetIndex >= _items.Count) targetIndex = _items.Count - 1;
+            int targetIndex = (row * _layout.Columns) + col;
+            if (targetIndex >= _items.Count)
+            {
+                targetIndex = _items.Count - 1;
+            }
+
             _layout.UpdateDragTarget(targetIndex);
             e.Handled = true;
         }
 
         private void EndDrag(FrameworkElement fe, PointerRoutedEventArgs e)
         {
-            if (!_dragging || _layout == null) return;
+            if (!_dragging || _layout == null)
+            {
+                return;
+            }
+
             fe.ReleasePointerCapture(e.Pointer);
             _layout.CompleteDrag((oldIdx, newIdx) =>
             {
-                if (oldIdx == newIdx) return;
+                if (oldIdx == newIdx)
+                {
+                    return;
+                }
+
                 var item = _items[oldIdx];
                 _items.RemoveAt(oldIdx);
                 _items.Insert(newIdx, item);
@@ -103,29 +127,72 @@ namespace JitHub.WidgetLayout.Client
         // Event handlers wired in XAML
         private void Widget_PointerPressed(object sender, PointerRoutedEventArgs e)
         {
-            var fe = sender as FrameworkElement; if (fe == null) return; BeginDrag(fe, e);
+            var fe = sender as FrameworkElement;
+            if (fe == null)
+            {
+                return;
+            }
+
+            BeginDrag(fe, e);
         }
         private void Widget_PointerMoved(object sender, PointerRoutedEventArgs e)
         {
-            var fe = sender as FrameworkElement; if (fe == null) return; if (_dragging) UpdateDrag(fe, e);
+            var fe = sender as FrameworkElement;
+            if (fe == null)
+            {
+                return;
+            }
+
+            if (_dragging)
+            {
+                UpdateDrag(fe, e);
+            }
         }
         private void Widget_PointerReleased(object sender, PointerRoutedEventArgs e)
         {
-            var fe = sender as FrameworkElement; if (fe == null) return; EndDrag(fe, e);
+            var fe = sender as FrameworkElement;
+            if (fe == null)
+            {
+                return;
+            }
+
+            EndDrag(fe, e);
         }
 
         private void Widget_KeyDown(object sender, KeyRoutedEventArgs e)
         {
-            if (!IsEditMode || _repeater == null || _layout == null) return;
-            var fe = sender as FrameworkElement; if (fe == null) return;
-            int idx = _repeater.GetElementIndex(fe); if (idx < 0) return;
+            if (!IsEditMode || _repeater == null || _layout == null)
+            {
+                return;
+            }
+
+            var fe = sender as FrameworkElement;
+            if (fe == null)
+            {
+                return;
+            }
+
+            int idx = _repeater.GetElementIndex(fe);
+            if (idx < 0)
+            {
+                return;
+            }
+
             int target = -1;
             switch (e.Key)
             {
-                case VirtualKey.Left: target = Math.Max(0, idx - 1); break;
-                case VirtualKey.Right: target = Math.Min(_items.Count - 1, idx + 1); break;
-                case VirtualKey.Up: target = Math.Max(0, idx - _layout.Columns); break;
-                case VirtualKey.Down: target = Math.Min(_items.Count - 1, idx + _layout.Columns); break;
+                case VirtualKey.Left:
+                    target = Math.Max(0, idx - 1);
+                    break;
+                case VirtualKey.Right:
+                    target = Math.Min(_items.Count - 1, idx + 1);
+                    break;
+                case VirtualKey.Up:
+                    target = Math.Max(0, idx - _layout.Columns);
+                    break;
+                case VirtualKey.Down:
+                    target = Math.Min(_items.Count - 1, idx + _layout.Columns);
+                    break;
             }
             if (target >= 0 && target != idx)
             {
@@ -141,7 +208,10 @@ namespace JitHub.WidgetLayout.Client
             var rnd = new Random();
             var shuffled = _items.OrderBy(_ => rnd.Next()).ToList();
             _items.Clear();
-            foreach (var it in shuffled) _items.Add(it);
+            foreach (var it in shuffled)
+            {
+                _items.Add(it);
+            }
         }
 
         private void Add_Click(object sender, RoutedEventArgs e)
@@ -165,7 +235,13 @@ namespace JitHub.WidgetLayout.Client
 
     public class WidgetItem
     {
-        public string Title { get; set; }
-        public Brush Color { get; set; }
+        public string Title
+        {
+            get; set;
+        }
+        public Brush Color
+        {
+            get; set;
+        }
     }
 }
