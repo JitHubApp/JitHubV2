@@ -10,10 +10,7 @@
     using Windows.UI.Xaml;
     using Windows.UI.Xaml.Hosting;
 
-    /// <summary>
-    /// Defines the <see cref="WidgetLayout" />
-    /// </summary>
-    public class WidgetLayout : VirtualizingLayout
+    public partial class WidgetLayout : VirtualizingLayout
     {
         /// <summary>
         /// Gets or sets the Columns
@@ -266,6 +263,52 @@
             new PropertyMetadata(200));
 
         /// <summary>
+        /// Gets or sets the DragHoverCommitDelay
+        /// </summary>
+        public double DragHoverCommitDelay
+        {
+            get
+            {
+                return (double)GetValue(DragHoverCommitDelayProperty);
+            }
+
+            set
+            {
+                SetValue(DragHoverCommitDelayProperty, value);
+            }
+        }
+
+        /// <summary>
+        /// Defines the DragHoverCommitDelayProperty
+        /// </summary>
+        public static readonly DependencyProperty DragHoverCommitDelayProperty = DependencyProperty.Register(
+            nameof(DragHoverCommitDelay), typeof(double), typeof(WidgetLayout), new PropertyMetadata(200d));
+
+
+        /// <summary>
+        /// Gets or sets the DragActivationDistance
+        /// </summary>
+        public double DragActivationDistance
+        {
+            get
+            {
+                return (double)GetValue(DragActivationDistanceProperty);
+            }
+
+            set
+            {
+                SetValue(DragActivationDistanceProperty, value);
+            }
+        }
+
+        /// <summary>
+        /// Defines the DragActivationDistanceProperty
+        /// </summary>
+        public static readonly DependencyProperty DragActivationDistanceProperty = DependencyProperty.Register(
+            nameof(DragActivationDistance), typeof(double), typeof(WidgetLayout), new PropertyMetadata(4d));
+
+
+        /// <summary>
         /// The GetColumnSpan
         /// </summary>
         /// <param name="obj">The obj<see cref="DependencyObject"/></param>
@@ -341,8 +384,14 @@
         {
             _isDragging = true;
             DraggedIndex = index;
-            DragTargetIndex = index;
+            DragTargetIndex = index; // Keep original target until activation / commit
+            _originalDragTargetIndex = index; // track original
             _dragPointer = new Point(-1, -1);
+            _dragStartPointer = new Point(-1, -1);
+            _dragMovementActivated = false;
+            _needsHoverReset = true;
+            _reorderSuppressed = true; // suppress mapping until a hover commit occurs
+            _hoverCommitted = false; // reset commit state
             InvalidateArrange();
         }
 
@@ -354,6 +403,16 @@
         {
             if (DraggedIndex < 0)
             {
+                return;
+            }
+
+            // Prevent premature reordering: ignore external target updates until drag movement activated
+            if (!_dragMovementActivated)
+            {
+                if (EnableDiagnostics)
+                {
+                    Debug.WriteLine($"[WidgetLayout] Ignoring UpdateDragTarget({targetIndex}) before activation threshold reached.");
+                }
                 return;
             }
 
@@ -373,11 +432,26 @@
         /// <param name="p">The p<see cref="Point"/></param>
         public void UpdateDragPointer(Point p)
         {
-            if (_isDragging)
+            if (!_isDragging)
             {
-                _dragPointer = p;
-                InvalidateArrange();
+                return;
             }
+
+            if (_dragStartPointer.X < 0 && _dragStartPointer.Y < 0)
+            {
+                _dragStartPointer = p;
+            }
+            _dragPointer = p;
+            if (!_dragMovementActivated)
+            {
+                var dx = _dragPointer.X - _dragStartPointer.X;
+                var dy = _dragPointer.Y - _dragStartPointer.Y;
+                if (Math.Abs(dx) >= DragActivationDistance || Math.Abs(dy) >= DragActivationDistance)
+                {
+                    _dragMovementActivated = true; // do NOT unsuppress reorder yet; wait for hover commit
+                }
+            }
+            InvalidateArrange();
         }
 
         /// <summary>
@@ -386,11 +460,32 @@
         /// <param name="commitMove">The commitMove<see cref="Action{int,int}"/></param>
         public void CompleteDrag(Action<int, int> commitMove)
         {
+            // If we still have a pending hover candidate adopt it before committing (only if we already allowed reorder)
+            if (_isDragging && !_reorderSuppressed && _dragMovementActivated && _layoutStateRef is LayoutState ls)
+            {
+                if (ls.HoverCandidateIndex >= 0 && ls.HoverCandidateIndex != DragTargetIndex)
+                {
+                    DragTargetIndex = ls.HoverCandidateIndex;
+                }
+            }
+            // Adopt pending hover candidate if timer hasn't fired yet but intent is clear
+            if (_isDragging && _dragMovementActivated && _layoutStateRef is LayoutState ls2 && _reorderSuppressed)
+            {
+                if (ls2.HoverCandidateIndex >= 0 && ls2.HoverCandidateIndex != DragTargetIndex)
+                {
+                    DragTargetIndex = ls2.HoverCandidateIndex;
+                    _reorderSuppressed = false; // allow commit
+                }
+            }
+            // If no commit occurred (still suppressed) treat as no-op
+            if (_reorderSuppressed || !_dragMovementActivated || !_hoverCommitted)
+            {
+                DragTargetIndex = DraggedIndex;
+            }
             if (DraggedIndex >= 0 && DragTargetIndex >= 0 && DraggedIndex != DragTargetIndex)
             {
                 commitMove?.Invoke(DraggedIndex, DragTargetIndex);
             }
-
             CancelDrag();
         }
 
@@ -403,6 +498,11 @@
             DraggedIndex = -1;
             DragTargetIndex = -1;
             _dragPointer = new Point(-1, -1);
+            _dragStartPointer = new Point(-1, -1);
+            _dragMovementActivated = false;
+            _needsHoverReset = true;
+            _hoverCommitted = false;
+            _reorderSuppressed = false; // reset
             InvalidateArrange();
         }
 
@@ -485,6 +585,10 @@
             /// Defines the ColumnsChanged
             /// </summary>
             public bool ColumnsChanged;
+
+            // Hover commit delay state
+            public int HoverCandidateIndex = -1;
+            public DispatcherTimer HoverTimer;
         }
 
         /// <summary>
@@ -503,9 +607,32 @@
         private Point _dragPointer = new Point(-1, -1);
 
         /// <summary>
+        /// Defines the _dragStartPointer
+        /// </summary>
+        private Point _dragStartPointer = new Point(-1, -1);
+
+        /// <summary>
+        /// Defines the _dragMovementActivated
+        /// </summary>
+        private bool _dragMovementActivated; // has user moved past activation threshold
+
+        /// <summary>
+        /// Defines the _needsHoverReset
+        /// </summary>
+        private bool _needsHoverReset; // flag to reset hover timers next arrange
+
+        /// <summary>
         /// Defines the _lastHorizontalOffset
         /// </summary>
         private double _lastHorizontalOffset;
+
+        /// <summary>
+        /// Defines the _reorderSuppressed
+        /// </summary>
+        private bool _reorderSuppressed; // stops mapping before activation
+        private int _originalDragTargetIndex = -1;
+        private LayoutState _layoutStateRef; // reference to current layout state for CompleteDrag
+        private bool _hoverCommitted; // indicates at least one hover-based commit occurred during drag
 
         /// <summary>
         /// The InitializeForContextCore
@@ -713,6 +840,7 @@
         protected override Size ArrangeOverride(VirtualizingLayoutContext context, Size finalSize)
         {
             var state = (LayoutState)context.LayoutState;
+            _layoutStateRef = state;
             if (state.Arranging)
             {
                 return finalSize;
@@ -721,14 +849,31 @@
             state.Arranging = true;
             try
             {
+                if (_needsHoverReset)
+                {
+                    StopHoverTimer(state);
+                    state.HoverCandidateIndex = -1;
+                    _needsHoverReset = false;
+                }
                 EnsureImplicitAnimations(state, context);
                 if (state.ColumnsChanged)
                 {
                     RecreateImplicitAnimations(state, context, true);
                     state.ColumnsChanged = false;
                 }
-                // NEW: determine target index based on pointer vs centers of other widgets
-                if (_isDragging && DraggedIndex >= 0 && state.IndexToRect.Count > 0 && _dragPointer.X >= 0 && _dragPointer.Y >= 0)
+
+                // If activation occurred earlier in UpdateDragPointer we don't need to re-check here, but keep fallback
+                if (_isDragging && _reorderSuppressed && !_dragMovementActivated && _dragPointer.X >= 0 && _dragPointer.Y >= 0 && _dragStartPointer.X >= 0)
+                {
+                    var dx = _dragPointer.X - _dragStartPointer.X;
+                    var dy = _dragPointer.Y - _dragStartPointer.Y;
+                    if (Math.Abs(dx) >= DragActivationDistance || Math.Abs(dy) >= DragActivationDistance)
+                    {
+                        _dragMovementActivated = true; /* keep _reorderSuppressed until hover commit */
+                    }
+                }
+
+                if (_isDragging && _dragMovementActivated /* allow even when suppressed so we can gather hover intent */ && DraggedIndex >= 0 && state.IndexToRect.Count > 0 && _dragPointer.X >= 0 && _dragPointer.Y >= 0)
                 {
                     int proposed = DraggedIndex;
                     foreach (var kv in state.IndexToRect)
@@ -740,34 +885,51 @@
                         }
 
                         var rect = kv.Value;
-                        if (_dragPointer.X >= rect.X && _dragPointer.X <= rect.X + rect.Width &&
-                           _dragPointer.Y >= rect.Y && _dragPointer.Y <= rect.Y + rect.Height)
+                        if (_dragPointer.X >= rect.X && _dragPointer.X <= rect.Right && _dragPointer.Y >= rect.Y && _dragPointer.Y <= rect.Bottom)
                         {
                             double centerX = rect.X + (rect.Width / 2.0);
                             double centerY = rect.Y + (rect.Height / 2.0);
-                            if (DraggedIndex < idx)
+                            bool after = idx > DraggedIndex;
+                            bool before = idx < DraggedIndex;
+                            if (after && _dragPointer.X > centerX)
                             {
-                                // moving forward; cross center to adopt this position
-                                if (_dragPointer.X >= centerX || _dragPointer.Y >= centerY)
+                                proposed = idx;
+                            }
+                            else if (before && _dragPointer.X < centerX)
+                            {
+                                proposed = idx;
+                            }
+                            else
+                            {
+                                if (after && _dragPointer.Y > centerY && Math.Abs(_dragPointer.X - centerX) < rect.Width * 0.5)
                                 {
                                     proposed = idx;
                                 }
-                            }
-                            else if (DraggedIndex > idx)
-                            {
-                                // moving backward; cross center going upward/left
-                                if (_dragPointer.X <= centerX || _dragPointer.Y <= centerY)
+                                else if (before && _dragPointer.Y < centerY && Math.Abs(_dragPointer.X - centerX) < rect.Width * 0.5)
                                 {
                                     proposed = idx;
                                 }
                             }
                         }
                     }
-                    if (proposed != DragTargetIndex)
+                    if (proposed == DraggedIndex)
                     {
-                        DragTargetIndex = proposed;
-                        // no need to InvalidateArrange again inside arrange pass
+                        StopHoverTimer(state);
+                        state.HoverCandidateIndex = -1;
                     }
+                    else if (proposed != DragTargetIndex)
+                    {
+                        if (state.HoverCandidateIndex != proposed)
+                        {
+                            state.HoverCandidateIndex = proposed;
+                            RestartHoverTimer(state);
+                        }
+                    }
+                }
+                else if (!_isDragging)
+                {
+                    StopHoverTimer(state);
+                    state.HoverCandidateIndex = -1;
                 }
 
                 int count = context.ItemCount;
@@ -778,37 +940,155 @@
                     {
                         Debug.WriteLine("[WidgetLayout] Arrange guard triggered");
                     }
+
                     state.ImplicitAnimations = null;
                     state.AnimationAssigned.Clear();
                 }
-                bool hasMapping = false;
-                Func<int, int> map = i => i;
-                if (DraggedIndex >= 0 && DragTargetIndex >= 0 && DraggedIndex != DragTargetIndex && DragTargetIndex < count)
+
+                // Reorder logic: if dragging and target valid -> simulate layout to determine new positions
+                bool reorderActive = !_reorderSuppressed && _isDragging && _dragMovementActivated && DraggedIndex >= 0 && DragTargetIndex >= 0 && DragTargetIndex != DraggedIndex && DragTargetIndex < count;
+                Dictionary<int, Rect> newRects = null; // maps original item index -> new rect when reordering
+                Rect placeholderRect = new Rect();
+                bool havePlaceholder = false;
+                if (reorderActive)
                 {
-                    hasMapping = true;
-                    map = i =>
+                    try
                     {
-                        if (i == DraggedIndex)
+                        newRects = new Dictionary<int, Rect>(count - 1);
+                        int columns = state.EffectiveColumns;
+                        double colW = ColumnWidth;
+                        double rowH = RowHeight;
+                        double spacing = Spacing;
+                        double horizontalOffset = state.HorizontalOffset;
+                        // Determine dragged spans (fallback to 1x1 if element not realized yet)
+                        int dragColSpan = 1, dragRowSpan = 1;
+                        FrameworkElement draggedEl = null;
+                        try
                         {
-                            return DragTargetIndex;
+                            draggedEl = context.GetOrCreateElementAt(DraggedIndex) as FrameworkElement;
                         }
+                        catch { }
+                        if (draggedEl != null)
+                        {
+                            dragColSpan = Math.Min(Math.Max(1, GetColumnSpan(draggedEl)), columns);
+                            dragRowSpan = Math.Max(1, GetRowSpan(draggedEl));
+                        }
+                        // Determine adjusted target index factoring removal shift so placeholder appears at hovered item
+                        int adjustedTarget = DragTargetIndex;
                         if (DraggedIndex < DragTargetIndex)
                         {
-                            if (i > DraggedIndex && i <= DragTargetIndex)
-                            {
-                                return i - 1;
-                            }
+                            adjustedTarget--;
                         }
-                        else
+                        bool placeholderInserted = false;
+                        const int PLACEHOLDER = -1;
+
+                        // Build order representing final layout if drop committed now (placeholder stands in for dragged item)
+                        var order = new List<int>(count);
+                        for (int i = 0; i < count; i++)
                         {
-                            if (i >= DragTargetIndex && i < DraggedIndex)
+                            if (i == DraggedIndex)
                             {
-                                return i + 1;
+                                continue; // skip dragged element
+                            }
+
+                            if (!placeholderInserted && adjustedTarget == order.Count) // if placeholder position matches logical insertion spot before adding next item
+                            {
+                                order.Add(PLACEHOLDER);
+                                placeholderInserted = true;
+                            }
+                            order.Add(i);
+                        }
+                        if (!placeholderInserted)
+                        {
+                            // Inserting at end
+                            order.Add(PLACEHOLDER);
+                            placeholderInserted = true;
+                        }
+
+                        // Occupancy solver (same strategy as Measure)
+                        var occupied = new HashSet<(int c, int r)>();
+                        int maxRow = -1;
+                        foreach (var idx in order)
+                        {
+                            int colSpan = 1, rowSpan = 1;
+                            if (idx == PLACEHOLDER)
+                            {
+                                colSpan = dragColSpan;
+                                rowSpan = dragRowSpan;
+                            }
+                            else
+                            {
+                                FrameworkElement el = null;
+                                try
+                                {
+                                    if (idx < MaxMeasureRealizationCount)
+                                    {
+                                        el = context.GetOrCreateElementAt(idx) as FrameworkElement;
+                                    }
+                                }
+                                catch { }
+                                if (el != null)
+                                {
+                                    colSpan = Math.Min(Math.Max(1, GetColumnSpan(el)), columns);
+                                    rowSpan = Math.Max(1, GetRowSpan(el));
+                                }
+                            }
+                            int placedCol = 0, placedRow = 0;
+                            bool found = false;
+                            for (int r = 0; !found; r++)
+                            {
+                                for (int c = 0; c < columns; c++)
+                                {
+                                    if (CanPlace(c, r, colSpan, rowSpan, occupied, columns))
+                                    {
+                                        placedCol = c;
+                                        placedRow = r;
+                                        found = true;
+                                        break;
+                                    }
+                                }
+                            }
+                            for (int r = placedRow; r < placedRow + rowSpan; r++)
+                            {
+                                for (int c = placedCol; c < placedCol + colSpan; c++)
+                                {
+                                    occupied.Add((c, r));
+                                }
+                            }
+
+                            maxRow = Math.Max(maxRow, placedRow + rowSpan - 1);
+                            double width = (colSpan * colW) + ((colSpan - 1) * spacing);
+                            double height = (rowSpan * rowH) + ((rowSpan - 1) * spacing);
+                            var rect = new Rect(horizontalOffset + (placedCol * (colW + spacing)), placedRow * (rowH + spacing), width, height);
+                            if (idx == PLACEHOLDER)
+                            {
+                                placeholderRect = rect;
+                                havePlaceholder = true;
+                            }
+                            else
+                            {
+                                newRects[idx] = rect;
                             }
                         }
-                        return i;
-                    };
+                        if (EnableDiagnostics)
+                        {
+                            Debug.WriteLine($"[WidgetLayout] Reflow Simulation Drag={DraggedIndex} -> {DragTargetIndex} AdjTarget={adjustedTarget} Placeholder={(havePlaceholder ? placeholderRect.ToString() : "none")}");
+                        }
+                    }
+                    catch (Exception simEx)
+                    {
+                        if (EnableDiagnostics)
+                        {
+                            Debug.WriteLine("[WidgetLayout] Reflow simulation error: " + simEx.Message);
+                        }
+
+                        newRects = null;
+                        reorderActive = false; // fallback to index mapping approach (disabled)
+                    }
                 }
+
+                // (Legacy) mapping removed; we now rely on spatial recomputation newRects when reorderActive
+
                 foreach (var kvp in state.IndexToRect)
                 {
                     int logicalIndex = kvp.Key;
@@ -830,13 +1110,9 @@
                     }
 
                     Rect baseRect = kvp.Value;
-                    if (hasMapping && logicalIndex != DraggedIndex)
+                    if (reorderActive && logicalIndex != DraggedIndex && newRects != null && newRects.TryGetValue(logicalIndex, out var nr))
                     {
-                        int mapped = map(logicalIndex);
-                        if (state.IndexToRect.ContainsKey(mapped))
-                        {
-                            baseRect = state.IndexToRect[mapped];
-                        }
+                        baseRect = nr;
                     }
                     element.Arrange(new Rect(0, 0, baseRect.Width, baseRect.Height));
                     var visual = ElementCompositionPreview.GetElementVisual(element);
@@ -844,6 +1120,7 @@
                     {
                         if (_dragPointer.X >= 0 && _dragPointer.Y >= 0)
                         {
+                            // If we have a simulated placeholder, clamp within its bounds plane for nicer feel (optional)
                             double desiredX = _dragPointer.X - (baseRect.Width / 2.0);
                             double desiredY = _dragPointer.Y - (baseRect.Height / 2.0);
                             double maxX = Math.Max(0, state.TotalWidth - baseRect.Width) + (state.HorizontalOffset * 2);
@@ -865,6 +1142,7 @@
                         {
                             visual.Offset = target;
                         }
+
                         if (state.ImplicitAnimations != null && !state.AnimationAssigned.Contains(element))
                         {
                             visual.ImplicitAnimations = state.ImplicitAnimations;
@@ -872,21 +1150,48 @@
                         }
                     }
                 }
-                if (EnableDiagnostics)
+                // Optionally draw placeholder diagnostics
+                if (EnableDiagnostics && reorderActive && havePlaceholder)
                 {
-                    Debug.WriteLine($"[WidgetLayout] Arrange Realized={state.IndexToRect.Count} Drag=({DraggedIndex}->{DragTargetIndex}) Offset={state.HorizontalOffset} Cols={state.EffectiveColumns}");
+                    Debug.WriteLine($"[WidgetLayout] PlaceholderRect={placeholderRect}");
                 }
-
                 return finalSize;
             }
             finally { state.Arranging = false; }
         }
 
-        /// <summary>
-        /// The EnsureImplicitAnimations
-        /// </summary>
-        /// <param name="state">The state<see cref="LayoutState"/></param>
-        /// <param name="context">The context<see cref="VirtualizingLayoutContext"/></param>
+        private void RestartHoverTimer(LayoutState state)
+        {
+            StopHoverTimer(state);
+            if (state.HoverCandidateIndex < 0)
+            {
+                return;
+            }
+
+            if (state.HoverTimer == null)
+            {
+                state.HoverTimer = new DispatcherTimer();
+                state.HoverTimer.Tick += (s, e) =>
+                {
+                    state.HoverTimer.Stop();
+                    if (_isDragging && _dragMovementActivated && state.HoverCandidateIndex >= 0 && state.HoverCandidateIndex != DragTargetIndex)
+                    {
+                        DragTargetIndex = state.HoverCandidateIndex;
+                        _reorderSuppressed = false; // allow mapping now
+                        _hoverCommitted = true;
+                        InvalidateArrange();
+                    }
+                };
+            }
+            state.HoverTimer.Interval = TimeSpan.FromMilliseconds(DragHoverCommitDelay);
+            state.HoverTimer.Start();
+        }
+
+        private void StopHoverTimer(LayoutState state)
+        {
+            state.HoverTimer?.Stop();
+        }
+
         private void EnsureImplicitAnimations(LayoutState state, VirtualizingLayoutContext context)
         {
             if (state.ImplicitAnimations != null)
@@ -897,12 +1202,6 @@
             RecreateImplicitAnimations(state, context, false);
         }
 
-        /// <summary>
-        /// The RecreateImplicitAnimations
-        /// </summary>
-        /// <param name="state">The state<see cref="LayoutState"/></param>
-        /// <param name="context">The context<see cref="VirtualizingLayoutContext"/></param>
-        /// <param name="isReflow">The isReflow<see cref="bool"/></param>
         private void RecreateImplicitAnimations(LayoutState state, VirtualizingLayoutContext context, bool isReflow)
         {
             if (context.ItemCount == 0)
@@ -912,9 +1211,10 @@
 
             var element = context.GetOrCreateElementAt(0);
             var compositor = ElementCompositionPreview.GetElementVisual(element).Compositor;
+            var easing = compositor.CreateCubicBezierEasingFunction(new System.Numerics.Vector2(0.4f, 0.0f), new System.Numerics.Vector2(0.2f, 1.0f));
             var offsetAnimation = compositor.CreateVector3KeyFrameAnimation();
             offsetAnimation.Target = "Offset";
-            offsetAnimation.InsertExpressionKeyFrame(1f, "this.FinalValue");
+            offsetAnimation.InsertExpressionKeyFrame(1f, "this.FinalValue", easing);
             offsetAnimation.Duration = TimeSpan.FromMilliseconds(isReflow ? ReflowAnimationDuration : StandardAnimationDuration);
             var collection = compositor.CreateImplicitAnimationCollection();
             collection["Offset"] = offsetAnimation;
