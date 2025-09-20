@@ -406,6 +406,12 @@
                 return;
             }
 
+            // Ignore external targets during active drag unless explicitly enabled
+            if (!UseExternalTargetUpdatesDuringDrag && _isDragging)
+            {
+                return;
+            }
+
             // Prevent premature reordering: ignore external target updates until drag movement activated
             if (!_dragMovementActivated)
             {
@@ -633,6 +639,13 @@
         private int _originalDragTargetIndex = -1;
         private LayoutState _layoutStateRef; // reference to current layout state for CompleteDrag
         private bool _hoverCommitted; // indicates at least one hover-based commit occurred during drag
+        // Diagnostics throttling
+        private double _lastLoggedAvailWidth = -1;
+        private double _lastLoggedOffset = double.NaN;
+        private int _lastLoggedItemCount = -1;
+        private int _lastLoggedDragIndex = -1;
+        private int _lastLoggedTargetIndex = -1;
+        private Windows.Foundation.Rect _lastLoggedPlaceholderRect = Windows.Foundation.Rect.Empty;
 
         /// <summary>
         /// The InitializeForContextCore
@@ -792,7 +805,18 @@
                 state.TotalHeight = totalHeight;
                 if (EnableDiagnostics)
                 {
-                    Debug.WriteLine($"[WidgetLayout] Measure Items={count} AvailW={availableSize.Width} UsedW={usedWidth} Offset={horizontalOffset} Cols={columns} Changed={state.ColumnsChanged}");
+                    bool log = false;
+                    if (_lastLoggedAvailWidth != availableSize.Width || _lastLoggedOffset != horizontalOffset || _lastLoggedItemCount != count)
+                    {
+                        log = true;
+                        _lastLoggedAvailWidth = availableSize.Width;
+                        _lastLoggedOffset = horizontalOffset;
+                        _lastLoggedItemCount = count;
+                    }
+                    if (log)
+                    {
+                        Debug.WriteLine($"[WidgetLayout] Measure Summary Items={count} AvailW={availableSize.Width:F1} UsedW={usedWidth:F1} Offset={horizontalOffset:F1} Cols={columns} Changed={state.ColumnsChanged}");
+                    }
                 }
 
                 double reportedWidth = finiteWidth ? availableSize.Width : usedWidth;
@@ -960,7 +984,6 @@
                         double rowH = RowHeight;
                         double spacing = Spacing;
                         double horizontalOffset = state.HorizontalOffset;
-                        // Determine dragged spans (fallback to 1x1 if element not realized yet)
                         int dragColSpan = 1, dragRowSpan = 1;
                         FrameworkElement draggedEl = null;
                         try
@@ -973,39 +996,30 @@
                             dragColSpan = Math.Min(Math.Max(1, GetColumnSpan(draggedEl)), columns);
                             dragRowSpan = Math.Max(1, GetRowSpan(draggedEl));
                         }
-                        // Determine adjusted target index factoring removal shift so placeholder appears at hovered item
-                        int adjustedTarget = DragTargetIndex;
-                        if (DraggedIndex < DragTargetIndex)
+                        int insertionIndex = DragTargetIndex;
+                        if (insertionIndex < 0)
                         {
-                            adjustedTarget--;
+                            insertionIndex = 0;
                         }
-                        bool placeholderInserted = false;
-                        const int PLACEHOLDER = -1;
 
-                        // Build order representing final layout if drop committed now (placeholder stands in for dragged item)
+                        int remainingCount = count - 1;
+                        if (insertionIndex > remainingCount)
+                        {
+                            insertionIndex = remainingCount;
+                        }
+
+                        const int PLACEHOLDER = -1;
                         var order = new List<int>(count);
                         for (int i = 0; i < count; i++)
                         {
                             if (i == DraggedIndex)
                             {
-                                continue; // skip dragged element
+                                continue;
                             }
 
-                            if (!placeholderInserted && adjustedTarget == order.Count) // if placeholder position matches logical insertion spot before adding next item
-                            {
-                                order.Add(PLACEHOLDER);
-                                placeholderInserted = true;
-                            }
                             order.Add(i);
                         }
-                        if (!placeholderInserted)
-                        {
-                            // Inserting at end
-                            order.Add(PLACEHOLDER);
-                            placeholderInserted = true;
-                        }
-
-                        // Occupancy solver (same strategy as Measure)
+                        order.Insert(insertionIndex, PLACEHOLDER);
                         var occupied = new HashSet<(int c, int r)>();
                         int maxRow = -1;
                         foreach (var idx in order)
@@ -1070,9 +1084,22 @@
                                 newRects[idx] = rect;
                             }
                         }
+                        // Update live hit-test map while dragging so internal target inference matches simulated positions
+                        state.IndexToRect.Clear();
+                        int running = 0;
+                        for (int i = 0; i < order.Count; i++)
+                        {
+                            if (order[i] == PLACEHOLDER)
+                            {
+                                continue;
+                            }
+
+                            state.IndexToRect[order[i]] = newRects[order[i]]; // align hit test map with simulated space
+                            running++;
+                        }
                         if (EnableDiagnostics)
                         {
-                            Debug.WriteLine($"[WidgetLayout] Reflow Simulation Drag={DraggedIndex} -> {DragTargetIndex} AdjTarget={adjustedTarget} Placeholder={(havePlaceholder ? placeholderRect.ToString() : "none")}");
+                            Debug.WriteLine($"[WidgetLayout] Reflow Simulation Drag={DraggedIndex} -> {DragTargetIndex} InsertIndex={insertionIndex} Placeholder={(havePlaceholder ? placeholderRect.ToString() : "none")} Order=[{string.Join(",", order)}]");
                         }
                     }
                     catch (Exception simEx)
@@ -1081,9 +1108,8 @@
                         {
                             Debug.WriteLine("[WidgetLayout] Reflow simulation error: " + simEx.Message);
                         }
-
                         newRects = null;
-                        reorderActive = false; // fallback to index mapping approach (disabled)
+                        reorderActive = false;
                     }
                 }
 
@@ -1155,6 +1181,15 @@
                 {
                     Debug.WriteLine($"[WidgetLayout] PlaceholderRect={placeholderRect}");
                 }
+                if (EnableDiagnostics && _isDragging)
+                {
+                    if (_lastLoggedDragIndex != DraggedIndex || _lastLoggedTargetIndex != DragTargetIndex || state.HoverCandidateIndex >= 0)
+                    {
+                        Debug.WriteLine($"[WidgetLayout] DragState Dragged={DraggedIndex} Target={DragTargetIndex} HoverCand={state.HoverCandidateIndex} Suppressed={_reorderSuppressed} Activated={_dragMovementActivated}");
+                        _lastLoggedDragIndex = DraggedIndex;
+                        _lastLoggedTargetIndex = DragTargetIndex;
+                    }
+                }
                 return finalSize;
             }
             finally { state.Arranging = false; }
@@ -1221,6 +1256,23 @@
             state.ImplicitAnimations = collection;
             state.AnimationAssigned.Clear();
         }
+
+        /// <summary>
+        /// Gets or sets a value indicating whether external UpdateDragTarget calls are honored during drag
+        /// </summary>
+        public bool UseExternalTargetUpdatesDuringDrag
+        {
+            get
+            {
+                return (bool)GetValue(UseExternalTargetUpdatesDuringDragProperty);
+            }
+            set
+            {
+                SetValue(UseExternalTargetUpdatesDuringDragProperty, value);
+            }
+        }
+        public static readonly DependencyProperty UseExternalTargetUpdatesDuringDragProperty = DependencyProperty.Register(
+            nameof(UseExternalTargetUpdatesDuringDrag), typeof(bool), typeof(WidgetLayout), new PropertyMetadata(false));
     }
 
     /// <summary>
@@ -1228,23 +1280,8 @@
     /// </summary>
     public enum HorizontalLayoutMode
     {
-        ///<summary>
-        /// Defines the Left
-        /// </summary>
-
-        /// <summary>
-        /// Defines the Left
-        /// </summary>
         Left,
-
-        /// <summary>
-        /// Defines the Center
-        /// </summary>
         Center,
-
-        /// <summary>
-        /// Defines the Right
-        /// </summary>
         Right
     }
 }
