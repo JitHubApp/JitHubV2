@@ -521,8 +521,15 @@
             {
                 try
                 {
-                    commitMove?.Invoke(DraggedIndex, DragTargetIndex);
+                    if (commitMove != null)
+                    {
+                        commitMove(DraggedIndex, DragTargetIndex);
+                    }
                     committed = true;
+                    if (ReorderRequested != null)
+                    {
+                        ReorderRequested(this, new WidgetReorderEventArgs(DraggedIndex, DragTargetIndex));
+                    }
                     _dragCommittedThisCycle = true;
                     _forceRemapAfterDrag = true; // ensure we rebuild layout mapping next arrange
                     _lastCommitFrom = DraggedIndex;
@@ -1625,6 +1632,61 @@
         /// </summary>
         public static readonly DependencyProperty RevertHoverHitMarginProperty = DependencyProperty.Register(
             nameof(RevertHoverHitMargin), typeof(double), typeof(WidgetLayout), new PropertyMetadata(4d));
+
+        /// <summary>
+        /// Gets or sets a value indicating whether IsEditing
+        /// </summary>
+        public bool IsEditing
+        {
+            get
+            {
+                return (bool)GetValue(IsEditingProperty);
+            }
+            set
+            {
+                SetValue(IsEditingProperty, value);
+            }
+        }
+        public static readonly DependencyProperty IsEditingProperty = DependencyProperty.Register(
+            nameof(IsEditing), typeof(bool), typeof(WidgetLayout), new PropertyMetadata(false));
+
+        /// <summary>
+        /// Occurs when a reorder is requested
+        /// </summary>
+        public event EventHandler<WidgetReorderEventArgs> ReorderRequested;
+
+        /// <summary>
+        /// Provides data for the ReorderRequested event
+        /// </summary>
+        public class WidgetReorderEventArgs : EventArgs
+        {
+            /// <summary>
+            /// Initializes a new instance of the WidgetReorderEventArgs class
+            /// </summary>
+            /// <param name="oldIndex">The old index</param>
+            /// <param name="newIndex">The new index</param>
+            public WidgetReorderEventArgs(int oldIndex, int newIndex)
+            {
+                OldIndex = oldIndex;
+                NewIndex = newIndex;
+            }
+
+            /// <summary>
+            /// Gets the old index
+            /// </summary>
+            public int OldIndex
+            {
+                get; private set;
+            }
+
+            /// <summary>
+            /// Gets the new index
+            /// </summary>
+            public int NewIndex
+            {
+                get; private set;
+            }
+        }
     }
 
     /// <summary>

@@ -3,6 +3,7 @@
     xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
     xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
     xmlns:local="using:JitHub.WidgetLayout.Client"
+    xmlns:widget="using:JitHub.Widget"
     xmlns:muxc="using:Microsoft.UI.Xaml.Controls"
     xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
     xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
@@ -15,7 +16,7 @@
             <RowDefinition Height="*"/>
         </Grid.RowDefinitions>
         <StackPanel Orientation="Horizontal" Spacing="8" VerticalAlignment="Center">
-            <ToggleButton x:Name="EditToggle" Content="Edit Mode"/>
+            <ToggleButton x:Name="EditToggle" Content="Edit Mode" IsChecked="{Binding IsEditing, ElementName=LayoutRef, Mode=TwoWay}"/>
             <Button Content="Shuffle" Click="Shuffle_Click"/>
             <Button Content="Add" Click="Add_Click"/>
             <Button Content="Remove Last" Click="Remove_Click"/>
@@ -23,51 +24,42 @@
             <TextBlock Text="Align:" VerticalAlignment="Center" Margin="24,0,4,0"/>
             <ComboBox Width="100"
                       SelectedValuePath="Tag"
-                      SelectedValue="{x:Bind LayoutRef.HorizontalMode, Mode=TwoWay}">
+                      SelectedValue="{Binding HorizontalMode, ElementName=LayoutRef, Mode=TwoWay}">
                 <ComboBoxItem Content="Left" Tag="Left"/>
                 <ComboBoxItem Content="Center" Tag="Center"/>
                 <ComboBoxItem Content="Right" Tag="Right"/>
             </ComboBox>
             <!-- Column controls -->
             <TextBlock Text="MinCols:" VerticalAlignment="Center" Margin="16,0,4,0"/>
-            <muxc:NumberBox Width="60" Value="{x:Bind LayoutRef.MinColumns, Mode=TwoWay}" Minimum="1" Maximum="20" SpinButtonPlacementMode="Compact"/>
+            <muxc:NumberBox Width="60" Value="{Binding MinColumns, ElementName=LayoutRef, Mode=TwoWay}" Minimum="1" Maximum="20" SpinButtonPlacementMode="Compact"/>
             <TextBlock Text="MaxCols:" VerticalAlignment="Center" Margin="16,0,4,0"/>
-            <muxc:NumberBox Width="60" Value="{x:Bind LayoutRef.Columns, Mode=TwoWay}" Minimum="1" Maximum="50" SpinButtonPlacementMode="Compact"/>
+            <muxc:NumberBox Width="60" Value="{Binding Columns, ElementName=LayoutRef, Mode=TwoWay}" Minimum="1" Maximum="50" SpinButtonPlacementMode="Compact"/>
         </StackPanel>
 
         <ScrollViewer Grid.Row="1" HorizontalScrollBarVisibility="Disabled" VerticalScrollBarVisibility="Auto">
             <muxc:ItemsRepeater x:Name="Repeater">
                 <muxc:ItemsRepeater.Layout>
-                    <local:WidgetLayout x:Name="LayoutRef"
-                                        EnableDiagnostics="True"
-                                        Columns="4"
-                                        MinColumns="1"
-                                        HorizontalMode="Center"
-                                        ColumnWidth="120"
-                                        RowHeight="120"
-                                        Spacing="12"
-                                        ReflowAnimationDuration="450"
-                                        StandardAnimationDuration="180"/>
+                    <widget:WidgetLayout x:Name="LayoutRef"
+                                         EnableDiagnostics="True"
+                                         Columns="4"
+                                         MinColumns="1"
+                                         HorizontalMode="Center"
+                                         ColumnWidth="120"
+                                         RowHeight="120"
+                                         Spacing="12"
+                                         ReflowAnimationDuration="450"
+                                         StandardAnimationDuration="180"/>
                 </muxc:ItemsRepeater.Layout>
                 <muxc:ItemsRepeater.ItemTemplate>
-                    <DataTemplate>
-                        <Border x:Name="Root"
-                                Background="{Binding Color}"
-                                CornerRadius="12"
-                                Width="Auto" Height="Auto"
-                                Padding="8"
-                                ManipulationMode="TranslateX,TranslateY"
-                                PointerPressed="Widget_PointerPressed"
-                                PointerMoved="Widget_PointerMoved"
-                                PointerReleased="Widget_PointerReleased"
-                                PointerCanceled="Widget_PointerReleased"
-                                PointerCaptureLost="Widget_PointerReleased"
-                                KeyDown="Widget_KeyDown">
+                    <DataTemplate x:DataType="local:WidgetItem">
+                        <widget:WidgetContainer Layout="{Binding ElementName=LayoutRef}"
+                                                 IsEditing="{Binding IsEditing, ElementName=LayoutRef}"
+                                                 Background="{x:Bind Color}">
                             <StackPanel>
-                                <TextBlock Text="{Binding Title}" FontWeight="SemiBold"/>
-                                <TextBlock Text="Drag me" FontSize="12" Opacity="0.7"/>
+                                <TextBlock Text="{x:Bind Title}" FontWeight="SemiBold"/>
+                                <TextBlock Text="Drag via header" FontSize="12" Opacity="0.6"/>
                             </StackPanel>
-                        </Border>
+                        </widget:WidgetContainer>
                     </DataTemplate>
                 </muxc:ItemsRepeater.ItemTemplate>
             </muxc:ItemsRepeater>

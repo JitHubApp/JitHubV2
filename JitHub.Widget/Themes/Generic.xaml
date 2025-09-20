@@ -4,6 +4,7 @@
     xmlns:local="using:JitHub.Widget">
 
     <Style TargetType="local:WidgetContainer" >
+        <Setter Property="IsTabStop" Value="False"/>
         <Setter Property="Template">
             <Setter.Value>
                 <ControlTemplate TargetType="local:WidgetContainer">
@@ -15,40 +16,32 @@
                         Width="Auto"
                         Height="Auto"
                         Padding="12"
-                        CornerRadius="8"
-                        ManipulationMode="TranslateX,TranslateY">
+                        CornerRadius="8">
                         <Grid>
                             <Grid.RowDefinitions>
                                 <RowDefinition Height="Auto"/>
                                 <RowDefinition Height="*"/>
                             </Grid.RowDefinitions>
-                            <Grid
-                                x:Name="Header"
-                                Grid.Row="0">
-                                <Rectangle
-                                    Width="32"
-                                    Height="4"
-                                    Fill="White"
-                                    HorizontalAlignment="Center"
-                                    VerticalAlignment="Center"/>
-                                <Button
-                                    HorizontalAlignment="Right"
-                                    Background="Transparent"
-                                    BorderThickness="0">
-                                    <FontIcon FontFamily="{StaticResource SegoeFluentIcons}" Glyph="&#xE712;"/>
-                                    <Button.Flyout>
-                                        <MenuFlyout
-                                            Placement="BottomEdgeAlignedLeft">
-                                            <MenuFlyoutItem
-                                                Text="Large"/>
-                                            <MenuFlyoutItem
-                                                Text="Small"/>
-                                            <MenuFlyoutItem
-                                                Text="Delete"/>
-                                        </MenuFlyout>
-                                    </Button.Flyout>
-                                </Button>
+                            <!-- Header (drag surface). Expanded height and full width so user can easily grab it. -->
+                            <Grid x:Name="Header"
+                                  Grid.Row="0"
+                                  Background="Transparent"
+                                  Opacity="0"
+                                  IsHitTestVisible="False"
+                                  Height="32">
+                                <StackPanel Orientation="Horizontal" VerticalAlignment="Center" HorizontalAlignment="Left" Spacing="8">
+                                    <Rectangle x:Name="DragHandle"
+                                               Width="32"
+                                               Height="6"
+                                               RadiusX="3" RadiusY="3"
+                                               Fill="Gray"
+                                               Opacity="0.8"/>
+                                    <!-- Optional label shown only during editing (so user sees drag affordance). We bind to Tag (if any) for minimal impact. -->
+                                    <TextBlock Text="Drag" Foreground="Gray" FontSize="12" Opacity="0.7"/>
+                                </StackPanel>
                             </Grid>
+                            <!-- Single ContentPresenter hosting the control's Content -->
+                            <ContentPresenter Grid.Row="1" Content="{TemplateBinding Content}"/>
                         </Grid>
                     </Border>
                 </ControlTemplate>
