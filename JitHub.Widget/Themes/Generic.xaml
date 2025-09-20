@@ -28,8 +28,12 @@
                                   Background="Transparent"
                                   Opacity="0"
                                   IsHitTestVisible="False"
-                                  Height="32">
-                                <StackPanel Orientation="Horizontal" VerticalAlignment="Center" HorizontalAlignment="Left" Spacing="8">
+                                  Height="16">
+                                <StackPanel
+                                    Orientation="Horizontal"
+                                    VerticalAlignment="Center"
+                                    HorizontalAlignment="Center"
+                                    Spacing="8">
                                     <Rectangle x:Name="DragHandle"
                                                Width="32"
                                                Height="6"
@@ -37,7 +41,6 @@
                                                Fill="Gray"
                                                Opacity="0.8"/>
                                     <!-- Optional label shown only during editing (so user sees drag affordance). We bind to Tag (if any) for minimal impact. -->
-                                    <TextBlock Text="Drag" Foreground="Gray" FontSize="12" Opacity="0.7"/>
                                 </StackPanel>
                             </Grid>
                             <!-- Single ContentPresenter hosting the control's Content -->

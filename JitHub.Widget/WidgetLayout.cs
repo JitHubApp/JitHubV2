@@ -388,6 +388,8 @@
             _originalDragTargetIndex = index; // track original
             _dragPointer = new Point(-1, -1);
             _dragStartPointer = new Point(-1, -1);
+            _dragPointerOffsetX = double.NaN; // reset capture offsets
+            _dragPointerOffsetY = double.NaN;
             _dragMovementActivated = false;
             _needsHoverReset = true;
             _reorderSuppressed = true; // suppress mapping until a hover commit occurs
@@ -462,6 +464,20 @@
                 _dragStartPointer = p;
             }
             _dragPointer = p;
+            // Capture pointer offset inside dragged element once
+            if (DraggedIndex >= 0 && double.IsNaN(_dragPointerOffsetX))
+            {
+                Rect r;
+                if ((_preDragRects != null && _preDragRects.TryGetValue(DraggedIndex, out r)) || (_layoutStateRef != null && _layoutStateRef.IndexToRect.TryGetValue(DraggedIndex, out r)))
+                {
+                    _dragPointerOffsetX = _dragPointer.X - r.X;
+                    _dragPointerOffsetY = _dragPointer.Y - r.Y;
+                    if (EnableDiagnostics)
+                    {
+                        Debug.WriteLine($"[WidgetLayout] Captured drag offset dx={_dragPointerOffsetX:F1} dy={_dragPointerOffsetY:F1} index={DraggedIndex}");
+                    }
+                }
+            }
             if (!_dragMovementActivated)
             {
                 var dx = _dragPointer.X - _dragStartPointer.X;
@@ -580,6 +596,8 @@
             DragTargetIndex = -1;
             _dragPointer = new Point(-1, -1);
             _dragStartPointer = new Point(-1, -1);
+            _dragPointerOffsetX = double.NaN;
+            _dragPointerOffsetY = double.NaN;
             _dragMovementActivated = false;
             _needsHoverReset = true;
             _hoverCommitted = false;
@@ -697,6 +715,9 @@
         /// Defines the _isDragging
         /// </summary>
         private bool _isDragging;
+        // Added: pointer offset within dragged item so we keep grab point under cursor
+        private double _dragPointerOffsetX = double.NaN;
+        private double _dragPointerOffsetY = double.NaN;
 
         /// <summary>
         /// Defines the ArrangePassGuardThreshold
@@ -1355,9 +1376,19 @@
                     {
                         if (_dragPointer.X >= 0 && _dragPointer.Y >= 0)
                         {
-                            // If we have a simulated placeholder, clamp within its bounds plane for nicer feel (optional)
-                            double desiredX = _dragPointer.X - (baseRect.Width / 2.0);
-                            double desiredY = _dragPointer.Y - (baseRect.Height / 2.0);
+                            // Use captured pointer offset if available; fallback to center
+                            double desiredX;
+                            double desiredY;
+                            if (!double.IsNaN(_dragPointerOffsetX) && !double.IsNaN(_dragPointerOffsetY))
+                            {
+                                desiredX = _dragPointer.X - _dragPointerOffsetX;
+                                desiredY = _dragPointer.Y - _dragPointerOffsetY;
+                            }
+                            else
+                            {
+                                desiredX = _dragPointer.X - (baseRect.Width / 2.0);
+                                desiredY = _dragPointer.Y - (baseRect.Height / 2.0);
+                            }
                             double maxX = Math.Max(0, state.TotalWidth - baseRect.Width) + (state.HorizontalOffset * 2);
                             double maxY = Math.Max(0, state.TotalHeight - baseRect.Height);
                             double clampedX = Math.Min(Math.Max(0, desiredX), maxX);
