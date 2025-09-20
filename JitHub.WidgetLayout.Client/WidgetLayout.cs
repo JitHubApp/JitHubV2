@@ -392,6 +392,20 @@
             _needsHoverReset = true;
             _reorderSuppressed = true; // suppress mapping until a hover commit occurs
             _hoverCommitted = false; // reset commit state
+            _dragCommittedThisCycle = false;
+            // Capture a snapshot of current layout rects immediately (if available) so we can revert on cancel
+            if (_layoutStateRef != null && _layoutStateRef.IndexToRect.Count > 0)
+            {
+                _preDragRects = new Dictionary<int, Rect>(_layoutStateRef.IndexToRect);
+                if (EnableDiagnostics)
+                {
+                    Debug.WriteLine($"[WidgetLayout] BeginDrag captured snapshot count={_preDragRects.Count}");
+                }
+            }
+            else
+            {
+                _preDragRects = null; // will capture later on first arrange if not present yet
+            }
             InvalidateArrange();
         }
 
@@ -466,6 +480,21 @@
         /// <param name="commitMove">The commitMove<see cref="Action{int,int}"/></param>
         public void CompleteDrag(Action<int, int> commitMove)
         {
+            bool committed = false;
+            int originalDragged = DraggedIndex;
+            int originalTarget = DragTargetIndex;
+            bool couldCommit = !_reorderSuppressed && _dragMovementActivated && _hoverCommitted && DraggedIndex >= 0;
+
+            // If user reverted hover (DragTargetIndex == DraggedIndex) but previously hovered a different spot, use that
+            if (couldCommit && DragTargetIndex == DraggedIndex && _lastHoverCommittedTarget >= 0 && _lastHoverCommittedTarget != DraggedIndex)
+            {
+                DragTargetIndex = _lastHoverCommittedTarget;
+                if (EnableDiagnostics)
+                {
+                    Debug.WriteLine($"[WidgetLayout] CompleteDrag using lastHoverCommittedTarget={_lastHoverCommittedTarget}");
+                }
+            }
+
             // If we still have a pending hover candidate adopt it before committing (only if we already allowed reorder)
             if (_isDragging && !_reorderSuppressed && _dragMovementActivated && _layoutStateRef is LayoutState ls)
             {
@@ -490,9 +519,44 @@
             }
             if (DraggedIndex >= 0 && DragTargetIndex >= 0 && DraggedIndex != DragTargetIndex)
             {
-                commitMove?.Invoke(DraggedIndex, DragTargetIndex);
+                try
+                {
+                    commitMove?.Invoke(DraggedIndex, DragTargetIndex);
+                    committed = true;
+                    _dragCommittedThisCycle = true;
+                    _forceRemapAfterDrag = true; // ensure we rebuild layout mapping next arrange
+                    _lastCommitFrom = DraggedIndex;
+                    _lastCommitTo = DragTargetIndex;
+                    _pendingPostCommitFix = true;
+                    _pendingCommitFinalize = true; // trigger finalize pass
+                    _pendingCommitFrom = DraggedIndex;
+                    _pendingCommitTo = DragTargetIndex;
+                }
+                catch (Exception ex)
+                {
+                    if (EnableDiagnostics)
+                    {
+                        Debug.WriteLine($"[WidgetLayout] commitMove exception: {ex.Message}");
+                    }
+                }
+            }
+            if (EnableDiagnostics)
+            {
+                Debug.WriteLine($"[WidgetLayout] CompleteDrag Dragged={originalDragged} FinalTarget={DragTargetIndex} Committed={committed} ReorderSuppressed={_reorderSuppressed} Activated={_dragMovementActivated} HoverCommitted={_hoverCommitted}");
             }
             CancelDrag();
+            if (committed)
+            {
+                if (EnableDiagnostics)
+                {
+                    Debug.WriteLine($"[WidgetLayout] CompleteDrag committed -> scheduling remap; Dragged={originalDragged} -> {DragTargetIndex}");
+                }
+                InvalidateMeasure();
+            }
+            else
+            {
+                InvalidateArrange();
+            }
         }
 
         /// <summary>
@@ -500,6 +564,10 @@
         /// </summary>
         public void CancelDrag()
         {
+            // If we will need the snapshot for cancel, keep a local reference before nulling
+            bool hadSnapshot = _preDragRects != null;
+            var snapshot = _preDragRects; // local copy
+
             _isDragging = false;
             DraggedIndex = -1;
             DragTargetIndex = -1;
@@ -509,6 +577,27 @@
             _needsHoverReset = true;
             _hoverCommitted = false;
             _reorderSuppressed = false; // reset
+            _lastHoverCommittedTarget = -1;
+
+            // Do NOT null _preDragRects until after potential restore
+
+            if (!_dragCommittedThisCycle && hadSnapshot && snapshot != null)
+            {
+                if (EnableDiagnostics)
+                {
+                    Debug.WriteLine($"[WidgetLayout] CancelDrag restoring pre-drag rect snapshot count={snapshot.Count}");
+                }
+                if (_layoutStateRef is LayoutState lsRestore)
+                {
+                    lsRestore.IndexToRect.Clear();
+                    foreach (var kv in snapshot)
+                    {
+                        lsRestore.IndexToRect[kv.Key] = kv.Value;
+                    }
+                }
+            }
+
+            _preDragRects = null; // release snapshot finally
             InvalidateArrange();
         }
 
@@ -646,6 +735,22 @@
         private int _lastLoggedDragIndex = -1;
         private int _lastLoggedTargetIndex = -1;
         private Windows.Foundation.Rect _lastLoggedPlaceholderRect = Windows.Foundation.Rect.Empty;
+        private Dictionary<int, Rect> _preDragRects; // snapshot of layout at drag start for immediate revert
+        private int _lastLoggedHoverCandidate = -1;
+        private bool _forceRemapAfterDrag; // triggers a fresh measure right after a committed reorder
+
+        // Post-commit correction state
+        private bool _pendingPostCommitFix;
+        private int _lastCommitFrom = -1;
+        private int _lastCommitTo = -1;
+        // Commit finalize animation tracking
+        private bool _pendingCommitFinalize;
+        private int _pendingCommitFrom = -1;
+        private int _pendingCommitTo = -1;
+        // Track whether last drag resulted in a committed reorder
+        private bool _dragCommittedThisCycle;
+        // Track last successful non-revert hover commit target (so we can still commit even if target visually reverts)
+        private int _lastHoverCommittedTarget = -1;
 
         /// <summary>
         /// The InitializeForContextCore
@@ -803,6 +908,23 @@
                 double totalHeight = ((maxRow + 1) * rowH) + (Math.Max(0, maxRow) * spacing);
                 state.TotalWidth = usedWidth;
                 state.TotalHeight = totalHeight;
+
+                // Diagnostics: verify index map completeness
+                if (EnableDiagnostics)
+                {
+                    int missing = 0;
+                    for (int idxCheck = 0; idxCheck < count; idxCheck++)
+                    {
+                        if (!state.IndexToRect.ContainsKey(idxCheck))
+                        {
+                            missing++;
+                        }
+                    }
+                    if (missing > 0)
+                    {
+                        Debug.WriteLine($"[WidgetLayout] MeasureIntegrity MissingRects={missing} FromCount={count}");
+                    }
+                }
                 if (EnableDiagnostics)
                 {
                     bool log = false;
@@ -886,6 +1008,21 @@
                     state.ColumnsChanged = false;
                 }
 
+                // Early remap after a committed reorder (do this before any drag handling so stale simulated map isn't used)
+                if (_forceRemapAfterDrag)
+                {
+                    if (EnableDiagnostics)
+                    {
+                        Debug.WriteLine("[WidgetLayout] ForceRemapAfterDrag -> clearing rect map and re-measuring");
+                    }
+                    _forceRemapAfterDrag = false;
+                    // Instead of clearing map (causes jump back), keep current map so we can animate delta.
+                    // Just invalidate measure to recompute target rects; keep existing offsets.
+                    state.Arranging = false;
+                    InvalidateMeasure();
+                    return finalSize;
+                }
+
                 // If activation occurred earlier in UpdateDragPointer we don't need to re-check here, but keep fallback
                 if (_isDragging && _reorderSuppressed && !_dragMovementActivated && _dragPointer.X >= 0 && _dragPointer.Y >= 0 && _dragStartPointer.X >= 0)
                 {
@@ -900,6 +1037,16 @@
                 if (_isDragging && _dragMovementActivated /* allow even when suppressed so we can gather hover intent */ && DraggedIndex >= 0 && state.IndexToRect.Count > 0 && _dragPointer.X >= 0 && _dragPointer.Y >= 0)
                 {
                     int proposed = DraggedIndex;
+                    Rect draggedOriginalRect = Rect.Empty;
+                    if (_preDragRects != null && _preDragRects.TryGetValue(DraggedIndex, out var pr))
+                    {
+                        draggedOriginalRect = pr;
+                    }
+                    else if (state.IndexToRect.TryGetValue(DraggedIndex, out var cr))
+                    {
+                        draggedOriginalRect = cr;
+                    }
+                    // Determine target strictly by pointer inside bounds of another item's rect
                     foreach (var kv in state.IndexToRect)
                     {
                         int idx = kv.Key;
@@ -907,39 +1054,43 @@
                         {
                             continue;
                         }
-
                         var rect = kv.Value;
                         if (_dragPointer.X >= rect.X && _dragPointer.X <= rect.Right && _dragPointer.Y >= rect.Y && _dragPointer.Y <= rect.Bottom)
                         {
-                            double centerX = rect.X + (rect.Width / 2.0);
-                            double centerY = rect.Y + (rect.Height / 2.0);
-                            bool after = idx > DraggedIndex;
-                            bool before = idx < DraggedIndex;
-                            if (after && _dragPointer.X > centerX)
+                            proposed = idx;
+                            break; // first hit wins (stable)
+                        }
+                    }
+                    bool pointerInsideOriginal = false;
+                    if (!draggedOriginalRect.IsEmpty)
+                    {
+                        var m = RevertHoverHitMargin;
+                        var expanded = new Rect(draggedOriginalRect.X - m, draggedOriginalRect.Y - m, draggedOriginalRect.Width + (2 * m), draggedOriginalRect.Height + (2 * m));
+                        pointerInsideOriginal = _dragPointer.X >= expanded.X && _dragPointer.X <= expanded.Right && _dragPointer.Y >= expanded.Y && _dragPointer.Y <= expanded.Bottom;
+                    }
+                    if (proposed == DraggedIndex || pointerInsideOriginal)
+                    {
+                        // Only schedule revert if we have an active different target and pointer returned within original rect (with margin)
+                        if (!_reorderSuppressed && DragTargetIndex != DraggedIndex && pointerInsideOriginal)
+                        {
+                            if (state.HoverCandidateIndex != DraggedIndex)
                             {
-                                proposed = idx;
-                            }
-                            else if (before && _dragPointer.X < centerX)
-                            {
-                                proposed = idx;
-                            }
-                            else
-                            {
-                                if (after && _dragPointer.Y > centerY && Math.Abs(_dragPointer.X - centerX) < rect.Width * 0.5)
+                                state.HoverCandidateIndex = DraggedIndex;
+                                RestartHoverTimer(state);
+                                if (EnableDiagnostics)
                                 {
-                                    proposed = idx;
-                                }
-                                else if (before && _dragPointer.Y < centerY && Math.Abs(_dragPointer.X - centerX) < rect.Width * 0.5)
-                                {
-                                    proposed = idx;
+                                    Debug.WriteLine($"[WidgetLayout] Schedule revert hover (strict) Drag={DraggedIndex} CurrentTarget={DragTargetIndex} Pointer={_dragPointer}");
                                 }
                             }
                         }
-                    }
-                    if (proposed == DraggedIndex)
-                    {
-                        StopHoverTimer(state);
-                        state.HoverCandidateIndex = -1;
+                        else
+                        {
+                            if (state.HoverCandidateIndex != -1)
+                            {
+                                StopHoverTimer(state);
+                                state.HoverCandidateIndex = -1;
+                            }
+                        }
                     }
                     else if (proposed != DragTargetIndex)
                     {
@@ -947,6 +1098,10 @@
                         {
                             state.HoverCandidateIndex = proposed;
                             RestartHoverTimer(state);
+                            if (EnableDiagnostics)
+                            {
+                                Debug.WriteLine($"[WidgetLayout] Schedule commit hover (strict) Drag={DraggedIndex} Proposed={proposed} Pointer={_dragPointer}");
+                            }
                         }
                     }
                 }
@@ -1092,7 +1247,10 @@
                         for (int i = 0; i < order.Count; i++)
                         {
                             var oi = order[i];
-                            if (oi == PLACEHOLDER) continue;
+                            if (oi == PLACEHOLDER)
+                            {
+                                continue;
+                            }
                             // Only add non-dragged items here; dragged item added after to ensure it remains present
                             if (oi != DraggedIndex)
                             {
@@ -1123,6 +1281,37 @@
                         }
                         newRects = null;
                         reorderActive = false;
+                    }
+                }
+
+                // If after simulation some indices are missing (should not) patch them using previous layout snapshot
+                if (reorderActive && EnableDiagnostics)
+                {
+                    int missingPostSim = 0;
+                    for (int iCheck = 0; iCheck < count; iCheck++)
+                    {
+                        if (!state.IndexToRect.ContainsKey(iCheck))
+                        {
+                            missingPostSim++;
+                        }
+                    }
+                    if (missingPostSim > 0)
+                    {
+                        Debug.WriteLine($"[WidgetLayout] PostSimMissing count={missingPostSim}; attempting patch from preDrag snapshot");
+                        if (_preDragRects != null)
+                        {
+                            foreach (var kv in _preDragRects)
+                            {
+                                if (!state.IndexToRect.ContainsKey(kv.Key))
+                                {
+                                    state.IndexToRect[kv.Key] = kv.Value; // fallback
+                                    if (EnableDiagnostics)
+                                    {
+                                        Debug.WriteLine($"[WidgetLayout] Patched rect for index {kv.Key} from pre-drag snapshot");
+                                    }
+                                }
+                            }
+                        }
                     }
                 }
 
@@ -1196,13 +1385,103 @@
                 }
                 if (EnableDiagnostics && _isDragging)
                 {
-                    if (_lastLoggedDragIndex != DraggedIndex || _lastLoggedTargetIndex != DragTargetIndex || state.HoverCandidateIndex >= 0)
+                    if (_lastLoggedDragIndex != DraggedIndex || _lastLoggedTargetIndex != DragTargetIndex || _lastLoggedHoverCandidate != state.HoverCandidateIndex)
                     {
                         Debug.WriteLine($"[WidgetLayout] DragState Dragged={DraggedIndex} Target={DragTargetIndex} HoverCand={state.HoverCandidateIndex} Suppressed={_reorderSuppressed} Activated={_dragMovementActivated}");
                         _lastLoggedDragIndex = DraggedIndex;
                         _lastLoggedTargetIndex = DragTargetIndex;
+                        _lastLoggedHoverCandidate = state.HoverCandidateIndex;
                     }
                 }
+
+                // If a previous drag committed a reorder, force a clean remap by invalidating measure once.
+                if (_forceRemapAfterDrag)
+                {
+                    _forceRemapAfterDrag = false;
+                    // Clear any stale rects and re-measure immediately to repopulate real layout order.
+                    state.IndexToRect.Clear();
+                    state.Arranging = false; // release flag so InvalidateMeasure can proceed
+                    InvalidateMeasure();
+                    return finalSize; // skip this arrange; new measure+arrange cycle will follow
+                }
+
+                // Post-commit position fix: after a committed move and fresh measure, validate target rect occupancy
+                if (_pendingPostCommitFix && !_isDragging)
+                {
+                    _pendingPostCommitFix = false; // run once
+                    if (_lastCommitFrom >= 0 && _lastCommitTo >= 0 && state.IndexToRect.Count > 0)
+                    {
+                        if (EnableDiagnostics)
+                        {
+                            Debug.WriteLine($"[WidgetLayout] PostCommitFix From={_lastCommitFrom} To={_lastCommitTo}");
+                        }
+                        // Validate that every logical index 0..ItemCount-1 has a rect (otherwise we may have lost one)
+                        int missing = 0;
+                        for (int i = 0; i < context.ItemCount; i++)
+                        {
+                            if (!state.IndexToRect.ContainsKey(i))
+                            {
+                                missing++;
+                            }
+                        }
+
+                        if (missing > 0 && EnableDiagnostics)
+                        {
+                            Debug.WriteLine($"[WidgetLayout] PostCommitFix MissingRects={missing}; forcing full remeasure");
+                            state.IndexToRect.Clear();
+                            state.Arranging = false;
+                            InvalidateMeasure();
+                            return finalSize;
+                        }
+                        // Extra overlap detection (simple O(n^2) for diagnostics only)
+                        if (EnableDiagnostics)
+                        {
+                            int overlaps = 0;
+                            var keys = new List<int>(state.IndexToRect.Keys);
+                            for (int a = 0; a < keys.Count; a++)
+                            {
+                                for (int b = a + 1; b < keys.Count; b++)
+                                {
+                                    var ra = state.IndexToRect[keys[a]];
+                                    var rb = state.IndexToRect[keys[b]];
+                                    bool inter = ra.X < rb.X + rb.Width && ra.X + ra.Width > rb.X && ra.Y < rb.Y + rb.Height && ra.Y + ra.Height > rb.Y;
+                                    if (inter && !(ra.Width == 0 || ra.Height == 0 || rb.Width == 0 || rb.Height == 0))
+                                    {
+                                        overlaps++;
+                                    }
+                                }
+                            }
+                            if (overlaps > 0)
+                            {
+                                Debug.WriteLine($"[WidgetLayout] PostCommitFix OverlapPairs={overlaps}");
+                            }
+                        }
+                    }
+                }
+                if (_pendingCommitFinalize && !_isDragging)
+                {
+                    // After measure with new order, we want affected item to animate from old (cached) offset to new rect.
+                    _pendingCommitFinalize = false;
+                    if (EnableDiagnostics)
+                    {
+                        Debug.WriteLine($"[WidgetLayout] CommitFinalize From={_pendingCommitFrom} To={_pendingCommitTo}");
+                    }
+                    // Ensure implicit animations exist
+                    EnsureImplicitAnimations(state, context);
+                    // Mark both indices to reassign animation if still realized
+                    if (_pendingCommitFrom >= 0)
+                    {
+                        state.AnimationAssigned.Remove(context.GetOrCreateElementAt(_pendingCommitFrom));
+                    }
+
+                    if (_pendingCommitTo >= 0)
+                    {
+                        state.AnimationAssigned.Remove(context.GetOrCreateElementAt(_pendingCommitTo));
+                    }
+
+                    _lastHoverCommittedTarget = -1; // clear after finalize
+                }
+
                 return finalSize;
             }
             finally { state.Arranging = false; }
@@ -1224,10 +1503,49 @@
                     state.HoverTimer.Stop();
                     if (_isDragging && _dragMovementActivated && state.HoverCandidateIndex >= 0 && state.HoverCandidateIndex != DragTargetIndex)
                     {
-                        DragTargetIndex = state.HoverCandidateIndex;
+                        var candidate = state.HoverCandidateIndex;
+                        bool wasForwardBefore = DragTargetIndex != DraggedIndex && DragTargetIndex >= 0;
+                        bool isRevert = candidate == DraggedIndex; // returning to original slot
+                        int previousTarget = DragTargetIndex;
+                        DragTargetIndex = candidate;
                         _reorderSuppressed = false; // allow mapping now
                         _hoverCommitted = true;
+                        if (!isRevert && DragTargetIndex != DraggedIndex)
+                        {
+                            _lastHoverCommittedTarget = DragTargetIndex; // remember last forward commit target
+                        }
+                        if (_preDragRects == null)
+                        {
+                            _preDragRects = new Dictionary<int, Rect>(state.IndexToRect);
+                        }
+                        // If this is a revert (back to original index) restore the original snapshot so subsequent forward hovers work again
+                        if (isRevert && _preDragRects != null)
+                        {
+                            state.IndexToRect.Clear();
+                            foreach (var kv in _preDragRects)
+                            {
+                                state.IndexToRect[kv.Key] = kv.Value;
+                            }
+                            // Clear last forward commit so we can commit again later
+                            _lastHoverCommittedTarget = -1;
+                            if (EnableDiagnostics)
+                            {
+                                Debug.WriteLine($"[WidgetLayout] HoverRevert Drag={DraggedIndex} PrevTarget={previousTarget} -> RestoredSnapshot({state.IndexToRect.Count})");
+                            }
+                        }
+                        else if (EnableDiagnostics)
+                        {
+                            Debug.WriteLine($"[WidgetLayout] HoverCommit Drag={DraggedIndex} -> Target={DragTargetIndex} (PrevTarget={previousTarget} ForwardBefore={wasForwardBefore} IsRevert={isRevert})");
+                        }
                         InvalidateArrange();
+                    }
+                    else if (_isDragging && _dragMovementActivated && state.HoverCandidateIndex >= 0)
+                    {
+                        // Timer fired but no change; log why
+                        if (EnableDiagnostics)
+                        {
+                            Debug.WriteLine($"[WidgetLayout] HoverTimerNoOp Drag={DraggedIndex} Cand={state.HoverCandidateIndex} CurrentTarget={DragTargetIndex} Suppressed={_reorderSuppressed} Activated={_dragMovementActivated}");
+                        }
                     }
                 };
             }
@@ -1286,6 +1604,27 @@
         }
         public static readonly DependencyProperty UseExternalTargetUpdatesDuringDragProperty = DependencyProperty.Register(
             nameof(UseExternalTargetUpdatesDuringDrag), typeof(bool), typeof(WidgetLayout), new PropertyMetadata(false));
+
+        /// <summary>
+        /// Gets or sets the RevertHoverHitMargin
+        /// </summary>
+        public double RevertHoverHitMargin
+        {
+            get
+            {
+                return (double)GetValue(RevertHoverHitMarginProperty);
+            }
+            set
+            {
+                SetValue(RevertHoverHitMarginProperty, value);
+            }
+        }
+
+        /// <summary>
+        /// Defines the RevertHoverHitMarginProperty
+        /// </summary>
+        public static readonly DependencyProperty RevertHoverHitMarginProperty = DependencyProperty.Register(
+            nameof(RevertHoverHitMargin), typeof(double), typeof(WidgetLayout), new PropertyMetadata(4d));
     }
 
     /// <summary>
