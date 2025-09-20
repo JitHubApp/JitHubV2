@@ -1,0 +1,58 @@
+<ResourceDictionary
+    xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+    xmlns:local="using:JitHub.Widget">
+
+    <Style TargetType="local:WidgetContainer" >
+        <Setter Property="Template">
+            <Setter.Value>
+                <ControlTemplate TargetType="local:WidgetContainer">
+                    <Border
+                        x:Name="ContainerBorder"
+                        Background="{TemplateBinding Background}"
+                        BorderBrush="{TemplateBinding BorderBrush}"
+                        BorderThickness="1"
+                        Width="Auto"
+                        Height="Auto"
+                        Padding="12"
+                        CornerRadius="8"
+                        ManipulationMode="TranslateX,TranslateY">
+                        <Grid>
+                            <Grid.RowDefinitions>
+                                <RowDefinition Height="Auto"/>
+                                <RowDefinition Height="*"/>
+                            </Grid.RowDefinitions>
+                            <Grid
+                                x:Name="Header"
+                                Grid.Row="0">
+                                <Rectangle
+                                    Width="32"
+                                    Height="4"
+                                    Fill="White"
+                                    HorizontalAlignment="Center"
+                                    VerticalAlignment="Center"/>
+                                <Button
+                                    HorizontalAlignment="Right"
+                                    Background="Transparent"
+                                    BorderThickness="0">
+                                    <FontIcon FontFamily="{StaticResource SegoeFluentIcons}" Glyph="&#xE712;"/>
+                                    <Button.Flyout>
+                                        <MenuFlyout
+                                            Placement="BottomEdgeAlignedLeft">
+                                            <MenuFlyoutItem
+                                                Text="Large"/>
+                                            <MenuFlyoutItem
+                                                Text="Small"/>
+                                            <MenuFlyoutItem
+                                                Text="Delete"/>
+                                        </MenuFlyout>
+                                    </Button.Flyout>
+                                </Button>
+                            </Grid>
+                        </Grid>
+                    </Border>
+                </ControlTemplate>
+            </Setter.Value>
+        </Setter>
+    </Style>
+</ResourceDictionary>

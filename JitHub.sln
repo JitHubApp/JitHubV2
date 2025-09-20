@@ -1,7 +1,7 @@
 ﻿
 Microsoft Visual Studio Solution File, Format Version 12.00
 # Visual Studio Version 18
-VisualStudioVersion = 18.0.11010.61 d18.0
+VisualStudioVersion = 18.0.11010.61
 MinimumVisualStudioVersion = 10.0.40219.1
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "JitHub", "JitHub\JitHub.csproj", "{452E051F-938D-4F26-9D54-4598A97F8BEF}"
 EndProject
@@ -16,6 +16,8 @@ EndProject
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "JitHub.Auth", "JitHub.Auth\JitHub.Auth.csproj", "{2E4915B9-5BD3-4A50-87EF-068E37140213}"
 EndProject
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "JitHub.WidgetLayout.Client", "JitHub.WidgetLayout.Client\JitHub.WidgetLayout.Client.csproj", "{FBEE5427-1CC0-4FE8-A577-CE978922CDCC}"
+EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "JitHub.Widget", "JitHub.Widget\JitHub.Widget.csproj", "{D48EDA4E-83D7-4A50-91C3-35A3A52ADA6C}"
 EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
@@ -187,6 +189,26 @@ Global
 		{FBEE5427-1CC0-4FE8-A577-CE978922CDCC}.Release|x86.ActiveCfg = Release|x86
 		{FBEE5427-1CC0-4FE8-A577-CE978922CDCC}.Release|x86.Build.0 = Release|x86
 		{FBEE5427-1CC0-4FE8-A577-CE978922CDCC}.Release|x86.Deploy.0 = Release|x86
+		{D48EDA4E-83D7-4A50-91C3-35A3A52ADA6C}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{D48EDA4E-83D7-4A50-91C3-35A3A52ADA6C}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{D48EDA4E-83D7-4A50-91C3-35A3A52ADA6C}.Debug|ARM.ActiveCfg = Debug|ARM
+		{D48EDA4E-83D7-4A50-91C3-35A3A52ADA6C}.Debug|ARM.Build.0 = Debug|ARM
+		{D48EDA4E-83D7-4A50-91C3-35A3A52ADA6C}.Debug|ARM64.ActiveCfg = Debug|ARM64
+		{D48EDA4E-83D7-4A50-91C3-35A3A52ADA6C}.Debug|ARM64.Build.0 = Debug|ARM64
+		{D48EDA4E-83D7-4A50-91C3-35A3A52ADA6C}.Debug|x64.ActiveCfg = Debug|x64
+		{D48EDA4E-83D7-4A50-91C3-35A3A52ADA6C}.Debug|x64.Build.0 = Debug|x64
+		{D48EDA4E-83D7-4A50-91C3-35A3A52ADA6C}.Debug|x86.ActiveCfg = Debug|x86
+		{D48EDA4E-83D7-4A50-91C3-35A3A52ADA6C}.Debug|x86.Build.0 = Debug|x86
+		{D48EDA4E-83D7-4A50-91C3-35A3A52ADA6C}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{D48EDA4E-83D7-4A50-91C3-35A3A52ADA6C}.Release|Any CPU.Build.0 = Release|Any CPU
+		{D48EDA4E-83D7-4A50-91C3-35A3A52ADA6C}.Release|ARM.ActiveCfg = Release|ARM
+		{D48EDA4E-83D7-4A50-91C3-35A3A52ADA6C}.Release|ARM.Build.0 = Release|ARM
+		{D48EDA4E-83D7-4A50-91C3-35A3A52ADA6C}.Release|ARM64.ActiveCfg = Release|ARM64
+		{D48EDA4E-83D7-4A50-91C3-35A3A52ADA6C}.Release|ARM64.Build.0 = Release|ARM64
+		{D48EDA4E-83D7-4A50-91C3-35A3A52ADA6C}.Release|x64.ActiveCfg = Release|x64
+		{D48EDA4E-83D7-4A50-91C3-35A3A52ADA6C}.Release|x64.Build.0 = Release|x64
+		{D48EDA4E-83D7-4A50-91C3-35A3A52ADA6C}.Release|x86.ActiveCfg = Release|x86
+		{D48EDA4E-83D7-4A50-91C3-35A3A52ADA6C}.Release|x86.Build.0 = Release|x86
 	EndGlobalSection
 	GlobalSection(SolutionProperties) = preSolution
 		HideSolutionNode = FALSE
