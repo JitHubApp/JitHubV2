@@ -978,6 +978,9 @@
                 {
                     try
                     {
+                        // Preserve previous dragged rect so we can keep updating its visual during drag
+                        Rect previousDraggedRect = default(Rect);
+                        bool hadDraggedRect = state.IndexToRect.TryGetValue(DraggedIndex, out previousDraggedRect);
                         newRects = new Dictionary<int, Rect>(count - 1);
                         int columns = state.EffectiveColumns;
                         double colW = ColumnWidth;
@@ -1086,20 +1089,30 @@
                         }
                         // Update live hit-test map while dragging so internal target inference matches simulated positions
                         state.IndexToRect.Clear();
-                        int running = 0;
                         for (int i = 0; i < order.Count; i++)
                         {
-                            if (order[i] == PLACEHOLDER)
+                            var oi = order[i];
+                            if (oi == PLACEHOLDER) continue;
+                            // Only add non-dragged items here; dragged item added after to ensure it remains present
+                            if (oi != DraggedIndex)
                             {
-                                continue;
+                                state.IndexToRect[oi] = newRects[oi];
                             }
-
-                            state.IndexToRect[order[i]] = newRects[order[i]]; // align hit test map with simulated space
-                            running++;
+                        }
+                        // Re-add dragged index so Arrange loop still updates its visual continuously
+                        if (hadDraggedRect)
+                        {
+                            state.IndexToRect[DraggedIndex] = previousDraggedRect;
+                        }
+                        else if (draggedEl != null)
+                        {
+                            // Fallback size using measured/arranged size
+                            var size = draggedEl.RenderSize;
+                            state.IndexToRect[DraggedIndex] = new Rect(previousDraggedRect.X, previousDraggedRect.Y, size.Width > 0 ? size.Width : (dragColSpan * colW), size.Height > 0 ? size.Height : (dragRowSpan * rowH));
                         }
                         if (EnableDiagnostics)
                         {
-                            Debug.WriteLine($"[WidgetLayout] Reflow Simulation Drag={DraggedIndex} -> {DragTargetIndex} InsertIndex={insertionIndex} Placeholder={(havePlaceholder ? placeholderRect.ToString() : "none")} Order=[{string.Join(",", order)}]");
+                            Debug.WriteLine($"[WidgetLayout] Reflow Simulation Drag={DraggedIndex} -> {DragTargetIndex} InsertIndex={insertionIndex} Placeholder={(havePlaceholder ? placeholderRect.ToString() : "none")} Order=[{string.Join(",", order)}] (DraggedRectRetained={hadDraggedRect})");
                         }
                     }
                     catch (Exception simEx)
