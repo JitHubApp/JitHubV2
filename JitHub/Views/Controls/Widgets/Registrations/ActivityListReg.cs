@@ -6,13 +6,13 @@ namespace JitHub.Views.Controls.Widgets.Registrations;
 
 internal class ActivityListReg : WidgetBase
 {
-    public string Type { get => WidgetType.ActivityList; }
+    public string Type => WidgetType.ActivityList;
     public const string Name = "Activities";
 
-    public Widget Create()
+    public WidgetData Create()
     {
         var guid = Guid.NewGuid();
-        return new Widget
+        return new WidgetData
         {
             ID = guid.ToString(),
             Type = Type,

@@ -16,4 +16,9 @@ public sealed partial class DashboardPage : Page
         base.OnNavigatedTo(e);
         ViewModel.Initialize(MenuContainer);
     }
+
+    private void WidgetLayoutRef_ReorderRequested(object sender, Widget.WidgetLayout.WidgetReorderEventArgs e)
+    {
+
+    }
 }

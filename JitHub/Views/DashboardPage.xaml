@@ -6,6 +6,7 @@
     xmlns:viewmodels="using:JitHub.ViewModels"
     xmlns:uc="using:JitHub.Views.Controls"
     xmlns:controls="using:Microsoft.Toolkit.Uwp.UI.Controls"
+    xmlns:widget="using:JitHub.Widget"
     xmlns:winui="using:Microsoft.UI.Xaml.Controls"
     xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
     xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
@@ -46,16 +47,28 @@
                     x:Name="WidgetsHost"
                     ItemsSource="{x:Bind ViewModel.Widgets, Mode=OneWay}">
                     <winui:ItemsRepeater.Layout>
-                        <controls:StaggeredLayout
-                            DesiredColumnWidth="320"
-                            ColumnSpacing="8"
-                            RowSpacing="8"/>
+                        <widget:WidgetLayout
+                            x:Name="WidgetLayoutRef"
+                            EnableDiagnostics="False"
+                            Columns="3"
+                            MinColumns="1"
+                            HorizontalMode="Center"
+                            ColumnWidth="320"
+                            RowHeight="480"
+                            Spacing="12"
+                            ReflowAnimationDuration="450"
+                            StandardAnimationDuration="180"
+                            ReorderRequested="{x:Bind ViewModel.WidgetsReorderRequested, Mode=OneWay}"/>
                     </winui:ItemsRepeater.Layout>
                     <winui:ItemsRepeater.ItemTemplate>
                         <DataTemplate>
                             <Grid>
-                                <widgets:WidgetContainer 
-                                    Widget="{Binding Self, Mode=OneWay}"/>
+                                <widget:WidgetContainer
+                                    Layout="{Binding ElementName=WidgetLayoutRef}"
+                                    Style="{ThemeResource PlainContainer}">
+                                    <widgets:WidgetPresenter
+                                        Data="{Binding Self, Mode=OneWay}"/>
+                                </widget:WidgetContainer>
                             </Grid>
                         </DataTemplate>
                     </winui:ItemsRepeater.ItemTemplate>

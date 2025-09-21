@@ -1,14 +1,10 @@
 ﻿using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.DependencyInjection;
-using System.Collections.Generic;
-using JitHub.Services;
-using JitHub.Models.Widgets;
-using System.Collections.ObjectModel;
-using Windows.UI.Xaml;
-using Windows.UI.Xaml.Controls;
 using CommunityToolkit.Mvvm.Input;
-using System.ComponentModel;
-using System.Xml.Linq;
+using JitHub.Models.Widgets;
+using JitHub.Services;
+using System.Collections.ObjectModel;
+using Windows.UI.Xaml.Controls;
 
 namespace JitHub.ViewModels;
 
@@ -17,7 +13,7 @@ public partial class DashboardViewModel : ObservableObject
     private IWidgetService _widgetService;
     private MenuFlyout _container;
 
-    public ObservableCollection<Widget> Widgets = new ObservableCollection<Widget>();
+    public ObservableCollection<WidgetData> Widgets = new ObservableCollection<WidgetData>();
 
     public DashboardViewModel()
     {
@@ -68,5 +64,16 @@ public partial class DashboardViewModel : ObservableObject
     {
         _widgetService.Delete(id);
         LoadInstalledWidgets();
+    }
+
+    public void WidgetsReorderRequested(object sender, Widget.WidgetLayout.WidgetReorderEventArgs e)
+    {
+        if (e.OldIndex == e.NewIndex || e.OldIndex < 0 || e.NewIndex < 0 || e.OldIndex >= Widgets.Count || e.NewIndex >= Widgets.Count)
+        {
+            return;
+        }
+        var item = Widgets[e.OldIndex];
+        Widgets.RemoveAt(e.OldIndex);
+        Widgets.Insert(e.NewIndex, item);
     }
 }

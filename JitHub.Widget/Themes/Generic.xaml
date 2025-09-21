@@ -10,8 +10,9 @@
                 <ControlTemplate TargetType="local:WidgetContainer">
                     <Border
                         x:Name="ContainerBorder"
-                        Background="{TemplateBinding Background}"
-                        BorderBrush="{TemplateBinding BorderBrush}"
+                        Style="{TemplateBinding Style}"
+                        Background="{ThemeResource ExpanderContentBackground}"
+                        BorderBrush="{ThemeResource AppBorderBrush}"
                         BorderThickness="1"
                         Width="Auto"
                         Height="Auto"

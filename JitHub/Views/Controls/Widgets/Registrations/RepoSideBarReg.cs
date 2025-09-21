@@ -6,20 +6,20 @@ namespace JitHub.Views.Controls.Widgets.Registrations;
 
 internal class RepoSideBarReg : WidgetBase
 {
-    public string Type { get => WidgetType.RepoSideBar; }
+    public string Type => WidgetType.RepoSideBar;
     public const string Name = "Repositories";
 
-    public Widget Create()
+    public WidgetData Create()
     {
         var guid = Guid.NewGuid();
-        return new Widget
+        return new WidgetData
         {
             ID = guid.ToString(),
             Type = Type,
             Name = Name,
             Size = WidgetSize.Small,
         };
-    } 
+    }
 
     public UIElement GetElement(string id)
     {

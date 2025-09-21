@@ -7,13 +7,13 @@ namespace JitHub.Views.Controls.Widgets.Registrations;
 
 internal class UserIssueListReg : WidgetBase
 {
-    public string Type { get => WidgetType.UserIssuesList; }
+    public string Type => WidgetType.UserIssuesList;
     public const string Name = "Issues";
 
-    public Widget Create()
+    public WidgetData Create()
     {
         var guid = Guid.NewGuid();
-        return new Widget
+        return new WidgetData
         {
             ID = guid.ToString(),
             Type = Type,

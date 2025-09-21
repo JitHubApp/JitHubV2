@@ -13,7 +13,7 @@ public class WidgetService : IWidgetService
     private bool _initialized;
     private const string WIDGET_CACHE_KEY = "WIDGET_CACHE_KEY";
     private Dictionary<string, WidgetBase> _widgetRegs = new Dictionary<string, WidgetBase>();
-    private Dictionary<string, Widget> _widgetCache = new Dictionary<string, Widget>(); 
+    private Dictionary<string, WidgetData> _widgetCache = new Dictionary<string, WidgetData>();
     private ApplicationDataStorageHelper _storage;
 
     public WidgetService()
@@ -24,7 +24,7 @@ public class WidgetService : IWidgetService
     }
 
     // create and save to local storage
-    public Widget Create(string type)
+    public WidgetData Create(string type)
     {
         var success = _widgetRegs.TryGetValue(type, out var widgetReg);
         if (success)
@@ -45,14 +45,10 @@ public class WidgetService : IWidgetService
             throw new Exception($"No widget found: {id}");
         }
         success = _widgetRegs.TryGetValue(widget.Type, out var widgetReg);
-        if (!success)
-        {
-            throw new Exception($"No widget regidtered: {widget.Type}");
-        }
-        return widgetReg.GetElement(id);
+        return !success ? throw new Exception($"No widget regidtered: {widget.Type}") : widgetReg.GetElement(id);
     }
 
-    public ICollection<Widget> GetAll()
+    public ICollection<WidgetData> GetAll()
     {
         return _widgetCache.Values.ToList();
     }
@@ -61,7 +57,7 @@ public class WidgetService : IWidgetService
     {
         if (!_initialized)
         {
-            var cache = _storage.Read<Dictionary<string, Widget>>(WIDGET_CACHE_KEY);
+            var cache = _storage.Read<Dictionary<string, WidgetData>>(WIDGET_CACHE_KEY);
             if (cache != null)
             {
                 foreach (var (key, value) in cache)

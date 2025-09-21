@@ -6,31 +6,37 @@ using Windows.UI.Xaml.Controls;
 
 namespace JitHub.Views.Controls.Widgets;
 
-public sealed partial class WidgetContainer : UserControl
+public sealed partial class WidgetPresenter : UserControl
 {
     private IWidgetService _widgetService;
 
     public static DependencyProperty WidgetProperty = DependencyProperty.Register(
-        nameof(Widget),
-        typeof(Widget),
-        typeof(WidgetContainer),
+        nameof(Data),
+        typeof(WidgetData),
+        typeof(WidgetPresenter),
         new PropertyMetadata(null, OnWidgetChange));
 
     private static void OnWidgetChange(DependencyObject d, DependencyPropertyChangedEventArgs e)
     {
-        if (d is WidgetContainer self && e.NewValue != null)
+        if (d is WidgetPresenter self && e.NewValue != null)
         {
             self.Load();
         }
     }
 
-    public Widget Widget
+    public WidgetData Data
     {
-        get { return (Widget)GetValue(WidgetProperty);}
-        set { SetValue(WidgetProperty, value); }
+        get
+        {
+            return (WidgetData)GetValue(WidgetProperty);
+        }
+        set
+        {
+            SetValue(WidgetProperty, value);
+        }
     }
 
-    public WidgetContainer()
+    public WidgetPresenter()
     {
         this.InitializeComponent();
         _widgetService = Ioc.Default.GetService<IWidgetService>();
@@ -38,18 +44,18 @@ public sealed partial class WidgetContainer : UserControl
 
     private void Load()
     {
-        if (Widget.ID != null)
+        if (Data.ID != null)
         {
-            var widgetUI = _widgetService.Get(Widget.ID);
+            var widgetUI = _widgetService.Get(Data.ID);
             Container.Children.Add(widgetUI);
         }
     }
 
     private void MenuFlyoutItem_Click(object sender, RoutedEventArgs e)
     {
-        if (Widget.Delete != null && Widget.Delete.CanExecute(Widget.ID))
+        if (Data.Delete != null && Data.Delete.CanExecute(Data.ID))
         {
-            Widget.Delete.Execute(Widget.ID);
+            Data.Delete.Execute(Data.ID);
         }
     }
 }

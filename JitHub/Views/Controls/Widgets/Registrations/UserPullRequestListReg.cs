@@ -7,13 +7,13 @@ namespace JitHub.Views.Controls.Widgets.Registrations;
 
 internal class UserPullRequestListReg : WidgetBase
 {
-    public string Type { get => WidgetType.UserPullRequestsList; }
+    public string Type => WidgetType.UserPullRequestsList;
     public const string Name = "Pull Requests";
 
-    public Widget Create()
+    public WidgetData Create()
     {
         var guid = Guid.NewGuid();
-        return new Widget
+        return new WidgetData
         {
             ID = guid.ToString(),
             Type = Type,

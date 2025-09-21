@@ -231,7 +231,7 @@
     <Compile Include="Models\UISize.cs" />
     <Compile Include="Models\Widgets\WidgetBase.cs" />
     <Compile Include="Models\Widgets\WidgetConfig.cs" />
-    <Compile Include="Models\Widgets\WidgetContainer.cs" />
+    <Compile Include="Models\Widgets\WidgetData.cs" />
     <Compile Include="Models\Widgets\WidgetSize.cs" />
     <Compile Include="Models\Widgets\WidgetType.cs" />
     <Compile Include="Properties\AssemblyInfo.cs" />
@@ -496,8 +496,8 @@
     <Compile Include="Views\Controls\Widgets\Registrations\RepoSideBarReg.cs" />
     <Compile Include="Views\Controls\Widgets\Registrations\UserIssueListReg.cs" />
     <Compile Include="Views\Controls\Widgets\Registrations\UserPullRequestListReg.cs" />
-    <Compile Include="Views\Controls\Widgets\WidgetContainer.xaml.cs">
-      <DependentUpon>WidgetContainer.xaml</DependentUpon>
+    <Compile Include="Views\Controls\Widgets\WidgetPresenter.xaml.cs">
+      <DependentUpon>WidgetPresenter.xaml</DependentUpon>
     </Compile>
     <Compile Include="Views\DashboardPage.xaml.cs">
       <DependentUpon>DashboardPage.xaml</DependentUpon>
@@ -935,7 +935,7 @@
       <SubType>Designer</SubType>
       <Generator>MSBuild:Compile</Generator>
     </Page>
-    <Page Include="Views\Controls\Widgets\WidgetContainer.xaml">
+    <Page Include="Views\Controls\Widgets\WidgetPresenter.xaml">
       <SubType>Designer</SubType>
       <Generator>MSBuild:Compile</Generator>
     </Page>
@@ -1390,6 +1390,10 @@
     <ProjectReference Include="..\JitHub.Utilities.SVG\JitHub.Utilities.SVG.csproj">
       <Project>{ace52ff0-0a75-4b14-8d0f-464c9b09b85f}</Project>
       <Name>JitHub.Utilities.SVG</Name>
+    </ProjectReference>
+    <ProjectReference Include="..\JitHub.Widget\JitHub.Widget.csproj">
+      <Project>{d48eda4e-83d7-4a50-91c3-35a3a52ada6c}</Project>
+      <Name>JitHub.Widget</Name>
     </ProjectReference>
     <ProjectReference Include="..\Utilities.Common\Utilities.Common.csproj">
       <Project>{001482e8-d779-442f-8920-276d0c3ef45d}</Project>
