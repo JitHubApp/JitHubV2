@@ -1,31 +1,39 @@
 ﻿using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.DependencyInjection;
 using CommunityToolkit.Mvvm.Input;
+using CommunityToolkit.Mvvm.Messaging;
+using JitHub.Events;
 using JitHub.Models.Widgets;
 using JitHub.Services;
 using System.Collections.ObjectModel;
-using Windows.UI.Xaml.Controls;
 
 namespace JitHub.ViewModels;
 
 public partial class DashboardViewModel : ObservableObject
 {
     private IWidgetService _widgetService;
-    private MenuFlyout _container;
+
+    [ObservableProperty]
+    private bool _isWidgetEditMode;
 
     public ObservableCollection<WidgetData> Widgets = new ObservableCollection<WidgetData>();
 
     public DashboardViewModel()
     {
         _widgetService = Ioc.Default.GetService<IWidgetService>();
+        WeakReferenceMessenger.Default.Register<WidgetEditEvent>(this, (obj, evt) =>
+        {
+            IsWidgetEditMode = evt.Value;
+        });
+        WeakReferenceMessenger.Default.Register<WidgetCreationEvent>(this, (obj, evt) =>
+        {
+            Widgets.Add(evt.Value);
+        });
     }
 
-    public void Initialize(MenuFlyout container)
+    public void Initialize()
     {
-        _container = container;
-
         LoadInstalledWidgets();
-        LoadWidgetLists();
     }
 
     private void LoadInstalledWidgets()
@@ -40,26 +48,6 @@ public partial class DashboardViewModel : ObservableObject
         }
     }
 
-    private void LoadWidgetLists()
-    {
-        var widgetRegs = _widgetService.GetAllRegs();
-        foreach (var widgetReg in widgetRegs)
-        {
-            var menuItem = new MenuFlyoutItem()
-            {
-                Text = widgetReg.GetName(),
-                Command = new RelayCommand<WidgetBase>(AddWidget),
-                CommandParameter = widgetReg
-            };
-            _container.Items.Add(menuItem);
-        }
-    }
-
-    public void AddWidget(WidgetBase widgetBase)
-    {
-        Widgets.Add(_widgetService.Create(widgetBase.Type));
-    }
-
     private void DeleteWidget(string id)
     {
         _widgetService.Delete(id);
@@ -72,8 +60,6 @@ public partial class DashboardViewModel : ObservableObject
         {
             return;
         }
-        var item = Widgets[e.OldIndex];
-        Widgets.RemoveAt(e.OldIndex);
-        Widgets.Insert(e.NewIndex, item);
+        Widgets.Move(e.OldIndex, e.NewIndex); // single move notification
     }
 }

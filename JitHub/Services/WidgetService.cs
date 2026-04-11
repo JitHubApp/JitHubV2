@@ -1,4 +1,6 @@
-﻿using JitHub.Helpers;
+﻿using CommunityToolkit.Mvvm.Messaging;
+using JitHub.Events;
+using JitHub.Helpers;
 using JitHub.Models.Widgets;
 using Microsoft.Toolkit.Uwp.Helpers;
 using System;
@@ -11,6 +13,7 @@ namespace JitHub.Services;
 public class WidgetService : IWidgetService
 {
     private bool _initialized;
+    private bool _isInEditMode;
     private const string WIDGET_CACHE_KEY = "WIDGET_CACHE_KEY";
     private Dictionary<string, WidgetBase> _widgetRegs = new Dictionary<string, WidgetBase>();
     private Dictionary<string, WidgetData> _widgetCache = new Dictionary<string, WidgetData>();
@@ -24,7 +27,7 @@ public class WidgetService : IWidgetService
     }
 
     // create and save to local storage
-    public WidgetData Create(string type)
+    public void Create(string type)
     {
         var success = _widgetRegs.TryGetValue(type, out var widgetReg);
         if (success)
@@ -32,7 +35,7 @@ public class WidgetService : IWidgetService
             var widget = widgetReg.Create();
             _widgetCache.Add(widget.ID, widget);
             _storage.Save(WIDGET_CACHE_KEY, _widgetCache);
-            return widget;
+            WeakReferenceMessenger.Default.Send(new WidgetCreationEvent(widget));
         }
         throw new Exception($"No such widget found: {type}");
     }
@@ -82,5 +85,11 @@ public class WidgetService : IWidgetService
     {
         _widgetCache.Remove(id);
         _storage.Save(WIDGET_CACHE_KEY, _widgetCache);
+    }
+
+    public void ToggleEditMode()
+    {
+        _isInEditMode = !_isInEditMode;
+        WeakReferenceMessenger.Default.Send(new WidgetEditEvent(_isInEditMode));
     }
 }

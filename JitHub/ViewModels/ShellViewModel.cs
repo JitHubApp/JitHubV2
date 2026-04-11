@@ -1,33 +1,36 @@
-﻿using JitHub.Models.NavArgs;
-using JitHub.Services;
-using JitHub.Views;
-using JitHub.Views.Pages;
-using CommunityToolkit.Mvvm.ComponentModel;
+﻿using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.DependencyInjection;
 using CommunityToolkit.Mvvm.Input;
+using CommunityToolkit.Mvvm.Messaging;
+using JitHub.Events;
+using JitHub.Models;
+using JitHub.Models.NavArgs;
+using JitHub.Models.Widgets;
+using JitHub.Services;
+using JitHub.Views;
+using JitHub.Views.Controls.Common;
+using JitHub.Views.Pages;
 using Microsoft.UI.Xaml.Controls;
 using Octokit;
 using System;
 using System.Collections.Generic;
 using System.Collections.ObjectModel;
 using System.Linq;
+using System.Reactive.Linq;
 using System.Threading.Tasks;
 using System.Windows.Input;
+using Windows.ApplicationModel.Core;
+using Windows.ApplicationModel.DataTransfer;
+using Windows.Foundation;
 using Windows.System;
+using Windows.UI.Core;
 using Windows.UI.Xaml;
 using Windows.UI.Xaml.Controls;
-using Windows.ApplicationModel.Core;
-using JitHub.Views.Controls.Common;
-using JitHub.Models;
-using Windows.ApplicationModel.DataTransfer;
 using Windows.UI.Xaml.Media.Animation;
-using System.Reactive.Linq;
-using Windows.Foundation;
-using Windows.UI.Core;
 
 namespace JitHub.ViewModels
 {
-    public class ShellViewModel : ObservableObject
+    public partial class ShellViewModel : ObservableObject
     {
         private const string StorePage = "https://www.microsoft.com/store/apps/9MXRBJBB552V";
         private DispatcherQueueTimer _timer;
@@ -36,6 +39,7 @@ namespace JitHub.ViewModels
         private IGitHubService _gitHubSerivce;
         private IAuthService _authService;
         private ModalService _modalService;
+        private IWidgetService _widgetService;
         private FrameworkElement _content;
         private string _title;
         private bool _useHeader;
@@ -45,55 +49,147 @@ namespace JitHub.ViewModels
         private int _slideUpPanelHeight;
         private bool _searching;
 
+        [ObservableProperty]
+        private bool _isWidgetEditMode;
+
         public int SlideUpPanelHeight
         {
-            get => _slideUpPanelHeight;
-            set => SetProperty(ref _slideUpPanelHeight, value);
+            get
+            {
+                return _slideUpPanelHeight;
+            }
+
+            set
+            {
+                SetProperty(ref _slideUpPanelHeight, value);
+            }
         }
         public FrameworkElement Content
         {
-            get => _content;
-            set => SetProperty(ref _content, value);
+            get
+            {
+                return _content;
+            }
+
+            set
+            {
+                SetProperty(ref _content, value);
+            }
         }
         public string Title
         {
-            get => _title;
-            set => SetProperty(ref _title, value);
+            get
+            {
+                return _title;
+            }
+
+            set
+            {
+                SetProperty(ref _title, value);
+            }
         }
         public bool UseHeader
         {
-            get => _useHeader;
-            set => SetProperty(ref _useHeader, value);
+            get
+            {
+                return _useHeader;
+            }
+
+            set
+            {
+                SetProperty(ref _useHeader, value);
+            }
         }
         public ObservableCollection<TabViewItem> Pages
         {
-            get => _pages;
-            set => SetProperty(ref _pages, value);
+            get
+            {
+                return _pages;
+            }
+
+            set
+            {
+                SetProperty(ref _pages, value);
+            }
         }
         public TabViewItem SelectedTab
         {
-            get => _selectedTab;
-            set => SetProperty(ref _selectedTab, value);
+            get
+            {
+                return _selectedTab;
+            }
+
+            set
+            {
+                SetProperty(ref _selectedTab, value);
+            }
         }
         public ICollection<Repository> SearchResults
         {
-            get => _searchResults;
-            set => SetProperty(ref _searchResults, value);
+            get
+            {
+                return _searchResults;
+            }
+
+            set
+            {
+                SetProperty(ref _searchResults, value);
+            }
         }
         public bool Searching
         {
-            get => _searching;
-            set => SetProperty(ref _searching, value);
+            get
+            {
+                return _searching;
+            }
+
+            set
+            {
+                SetProperty(ref _searching, value);
+            }
         }
 
-        public GlobalViewModel GlobalViewModel { get; }
+        public GlobalViewModel GlobalViewModel
+        {
+            get;
+        }
         public ICommand GoHomeCommand;
-        public ICommand OpenModalCommand { get; set; }
-        public ICommand CloseModalCommand { get; set; }
-        public ICommand OpenModalWithControlCommand { get; set; }
-        public ICommand CloseModalWithControlCommand { get; set; }
-        public ICommand InLineModalClodeCommand { get; set; }
-        public ICommand GoToProfilePageCommand { get; set; }
+        public ICommand OpenModalCommand
+        {
+            get;
+            set;
+        }
+        public ICommand CloseModalCommand
+        {
+            get;
+            set;
+        }
+        public ICommand OpenModalWithControlCommand
+        {
+            get;
+            set;
+        }
+        public ICommand CloseModalWithControlCommand
+        {
+            get;
+            set;
+        }
+        public ICommand InLineModalClodeCommand
+        {
+            get;
+            set;
+        }
+        public ICommand GoToProfilePageCommand
+        {
+            get;
+            set;
+        }
+
+        public ICommand EditModeCommand
+        {
+            get;
+            set;
+        }
 
         public FeatureService FeatureService;
         public ShellViewModel()
@@ -104,6 +200,7 @@ namespace JitHub.ViewModels
             FeatureService = Ioc.Default.GetService<FeatureService>();
             GlobalViewModel = Ioc.Default.GetService<GlobalViewModel>();
             _modalService = Ioc.Default.GetService<ModalService>();
+            _widgetService = Ioc.Default.GetService<IWidgetService>();
             GoHomeCommand = new RelayCommand(GoHome);
             GoToProfilePageCommand = new RelayCommand(GoToProfilePage);
             _navigationService.RegisterTabTitleChangeEvent(new RelayCommand<string>(ChangeTabTitle));
@@ -112,6 +209,11 @@ namespace JitHub.ViewModels
             _timer = _queue.CreateTimer();
             var dt = DataTransferManager.GetForCurrentView();
             dt.DataRequested += OnDataRequested;
+            EditModeCommand = new RelayCommand(EditWidget);
+            WeakReferenceMessenger.Default.Register<WidgetEditEvent>(this, (r, m) =>
+            {
+                IsWidgetEditMode = m.Value;
+            });
         }
 
         private void OnDataRequested(DataTransferManager sender, DataRequestedEventArgs args)
@@ -139,6 +241,31 @@ namespace JitHub.ViewModels
             {
                 OpenTab("Home", typeof(DashboardPage));
             }
+        }
+
+        public void InitializeWidgets(MenuFlyoutSubItem menuFlyout)
+        {
+            var widgetRegs = _widgetService.GetAllRegs();
+            foreach (var widgetReg in widgetRegs)
+            {
+                var menuItem = new MenuFlyoutItem()
+                {
+                    Text = widgetReg.GetName(),
+                    Command = new RelayCommand<WidgetBase>(AddWidget),
+                    CommandParameter = widgetReg
+                };
+                menuFlyout.Items.Add(menuItem);
+            }
+        }
+
+        private void AddWidget(WidgetBase widgetBase)
+        {
+            _widgetService.Create(widgetBase.Type);
+        }
+
+        private void EditWidget()
+        {
+            _widgetService.ToggleEditMode();
         }
 
         private void ChangeTabTitle(string title)

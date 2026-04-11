@@ -1,6 +1,6 @@
-﻿using JitHub.Services;
-using CommunityToolkit.Mvvm.DependencyInjection;
+﻿using CommunityToolkit.Mvvm.DependencyInjection;
 using CommunityToolkit.Mvvm.Input;
+using JitHub.Services;
 using Windows.UI;
 using Windows.UI.Xaml;
 using Windows.UI.Xaml.Controls;
@@ -17,12 +17,12 @@ public sealed partial class ShellPage : Page
     {
         this.InitializeComponent();
         // Set XAML element as a draggable region.
-        
+
         Window.Current.SetTitleBar(TitleBar);
         ViewModel.LoadApplication(new RelayCommand(OpenModal), new RelayCommand(CloseModal));
         var notificationService = Ioc.Default.GetService<INotificationService>();
         notificationService.Register(new RelayCommand<string>(PushNotification));
-        
+
     }
 
     protected override void OnNavigatedTo(NavigationEventArgs e)
@@ -60,7 +60,7 @@ public sealed partial class ShellPage : Page
 
     private void PushNotification(string message)
     {
-        InAppNotification.Show(message, 3000);   
+        InAppNotification.Show(message, 3000);
     }
 
     private void Page_SizeChanged(object sender, Windows.UI.Xaml.SizeChangedEventArgs e)
@@ -72,6 +72,14 @@ public sealed partial class ShellPage : Page
         else
         {
             VisualStateManager.GoToState(this, "NarrowLayout", false);
+        }
+    }
+
+    private void WidgetMenu_Loaded(object sender, RoutedEventArgs e)
+    {
+        if (sender is MenuFlyoutSubItem menuFlyout)
+        {
+            ViewModel.InitializeWidgets(menuFlyout);
         }
     }
 }

@@ -18,30 +18,7 @@
     </Page.DataContext>
     <Grid
         Padding="20">
-        <Grid.RowDefinitions>
-            <RowDefinition Height="auto"/>
-            <RowDefinition Height="*"/>
-        </Grid.RowDefinitions>
-        <Grid
-            Grid.Row="0"
-            Margin="0 0 0 12">
-            <TextBlock
-                FontWeight="SemiBold"
-                Text="Widgets"/>
-            <winui:DropDownButton
-                Content="Add"
-                Style="{ThemeResource AccentButtonStyle}"
-                HorizontalAlignment="Right">
-                <winui:DropDownButton.Flyout>
-                    <MenuFlyout
-                        x:Name="MenuContainer"
-                        Placement="Bottom">
-                    </MenuFlyout>
-                </winui:DropDownButton.Flyout>
-            </winui:DropDownButton>
-        </Grid>
-        
-        <winui:ItemsRepeaterScrollHost Grid.Row="1">
+        <winui:ItemsRepeaterScrollHost>
             <ScrollViewer>
                 <winui:ItemsRepeater
                     x:Name="WidgetsHost"
@@ -49,7 +26,7 @@
                     <winui:ItemsRepeater.Layout>
                         <widget:WidgetLayout
                             x:Name="WidgetLayoutRef"
-                            EnableDiagnostics="False"
+                            EnableDiagnostics="True"
                             Columns="3"
                             MinColumns="1"
                             HorizontalMode="Center"
@@ -58,18 +35,18 @@
                             Spacing="12"
                             ReflowAnimationDuration="450"
                             StandardAnimationDuration="180"
+                            IsEditing="{x:Bind ViewModel.IsWidgetEditMode, Mode=OneWay}"
                             ReorderRequested="{x:Bind ViewModel.WidgetsReorderRequested, Mode=OneWay}"/>
                     </winui:ItemsRepeater.Layout>
                     <winui:ItemsRepeater.ItemTemplate>
                         <DataTemplate>
-                            <Grid>
-                                <widget:WidgetContainer
-                                    Layout="{Binding ElementName=WidgetLayoutRef}"
-                                    Style="{ThemeResource PlainContainer}">
-                                    <widgets:WidgetPresenter
-                                        Data="{Binding Self, Mode=OneWay}"/>
-                                </widget:WidgetContainer>
-                            </Grid>
+                            <!-- Root changed to WidgetContainer so GetElementIndex works for drag -->
+                            <widget:WidgetContainer
+                                Layout="{Binding ElementName=WidgetLayoutRef}"
+                                Style="{ThemeResource PlainContainer}">
+                                <widgets:WidgetPresenter
+                                    Data="{Binding Self, Mode=OneWay}"/>
+                            </widget:WidgetContainer>
                         </DataTemplate>
                     </winui:ItemsRepeater.ItemTemplate>
                 </winui:ItemsRepeater>

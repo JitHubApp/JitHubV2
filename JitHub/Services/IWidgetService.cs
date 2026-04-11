@@ -8,9 +8,11 @@ internal interface IWidgetService
 {
     UIElement Get(string id);
     ICollection<WidgetData> GetAll();
-    WidgetData Create(string type);
+    void Create(string type);
     void Delete(string id);
     void Register(WidgetBase widget);
     ICollection<WidgetBase> GetAllRegs();
     void Initialize();
+
+    void ToggleEditMode();
 }

@@ -227,6 +227,30 @@
                     <FontIcon FontFamily="{StaticResource SegoeFluentIcons}" Glyph="&#xE80F;"/>
                 </Button>
             </muxc:TabView.TabStripHeader>
+            <muxc:TabView.TabStripFooter>
+                <Button
+                    Background="Transparent"
+                    BorderThickness="0"
+                    Margin="0 0 8 0">
+                    <FontIcon
+                        FontFamily="{StaticResource SegoeFluentIcons}"
+                        Glyph="&#xE712;"/>
+                    <Button.Flyout>
+                        <MenuFlyout
+                            Placement="BottomEdgeAlignedRight">
+                            <ToggleMenuFlyoutItem
+                                Text="Edit"
+                                Command="{x:Bind ViewModel.EditModeCommand, Mode=OneWay}"
+                                IsChecked="{x:Bind ViewModel.IsWidgetEditMode, Mode=OneWay}"/>
+                            <MenuFlyoutSeparator/>
+                            <MenuFlyoutSubItem
+                                Text="Add Widget"
+                                x:Name="WidgetMenu"
+                                Loaded="WidgetMenu_Loaded"/>
+                        </MenuFlyout>
+                    </Button.Flyout>
+                </Button>
+            </muxc:TabView.TabStripFooter>
         </muxc:TabView>
         <Grid
             Grid.Row="1"

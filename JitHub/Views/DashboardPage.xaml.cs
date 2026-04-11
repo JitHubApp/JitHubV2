@@ -14,11 +14,6 @@ public sealed partial class DashboardPage : Page
     protected override void OnNavigatedTo(NavigationEventArgs e)
     {
         base.OnNavigatedTo(e);
-        ViewModel.Initialize(MenuContainer);
-    }
-
-    private void WidgetLayoutRef_ReorderRequested(object sender, Widget.WidgetLayout.WidgetReorderEventArgs e)
-    {
-
+        ViewModel.Initialize();
     }
 }
