@@ -1,0 +1,178 @@
+name: Publish JitHub to Microsoft Store
+
+on:
+  workflow_dispatch:
+    inputs:
+      release_version:
+        description: Four-part Store package version (for example 1.6.5.0)
+        required: true
+        type: string
+      use_signing_certificate:
+        description: Sign the package with the configured PFX before Store upload
+        required: false
+        default: false
+        type: boolean
+
+permissions:
+  contents: read
+
+jobs:
+  publish-store:
+    name: Build and publish to Store
+    runs-on: windows-latest
+    timeout-minutes: 90
+    environment: microsoft-store
+    env:
+      PROJECT_PATH: 'JitHub\JitHub.csproj'
+      PROJECT_ROOT: JitHub
+      MANIFEST_PATH: 'JitHub\Package.appxmanifest'
+      APP_PACKAGES_DIR: '${{ github.workspace }}\artifacts\AppPackages\'
+      APP_DISPLAY_NAME: ${{ vars.STORE_APP_DISPLAY_NAME }}
+      BUNDLE_PLATFORMS: ${{ vars.JITHUB_STORE_BUNDLE_PLATFORMS }}
+      PUBLISHER_DISPLAY_NAME: ${{ vars.STORE_PUBLISHER_DISPLAY_NAME }}
+      STORE_CLIENT_ID: ${{ secrets.STORE_CLIENT_ID }}
+      STORE_CLIENT_SECRET: ${{ secrets.STORE_CLIENT_SECRET }}
+      STORE_PACKAGE_CERTIFICATE_BASE64: ${{ secrets.STORE_PACKAGE_CERTIFICATE_BASE64 }}
+      STORE_PACKAGE_CERTIFICATE_PASSWORD: ${{ secrets.STORE_PACKAGE_CERTIFICATE_PASSWORD }}
+      STORE_PACKAGE_CERTIFICATE_THUMBPRINT: ${{ secrets.STORE_PACKAGE_CERTIFICATE_THUMBPRINT }}
+      STORE_PACKAGE_IDENTITY_NAME: ${{ secrets.STORE_PACKAGE_IDENTITY_NAME }}
+      STORE_PACKAGE_PUBLISHER: ${{ secrets.STORE_PACKAGE_PUBLISHER }}
+      STORE_PHONE_PRODUCT_ID: ${{ secrets.STORE_PHONE_PRODUCT_ID }}
+      STORE_PHONE_PUBLISHER_ID: ${{ secrets.STORE_PHONE_PUBLISHER_ID }}
+      STORE_PRODUCT_ID: ${{ secrets.STORE_PRODUCT_ID }}
+      STORE_SELLER_ID: ${{ secrets.STORE_SELLER_ID }}
+      STORE_TENANT_ID: ${{ secrets.STORE_TENANT_ID }}
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up MSBuild
+        uses: microsoft/setup-msbuild@v2
+
+      - name: Set up Microsoft Store CLI
+        uses: microsoft/microsoft-store-apppublisher@v1.2
+
+      - name: Patch Store manifest values
+        shell: pwsh
+        run: >
+          .\eng\Prepare-JitHubStoreRelease.ps1
+          -ManifestPath "${{ env.MANIFEST_PATH }}"
+          -Version "${{ inputs.release_version }}"
+          -PackageIdentityName "$env:STORE_PACKAGE_IDENTITY_NAME"
+          -PackagePublisher "$env:STORE_PACKAGE_PUBLISHER"
+          -PublisherDisplayName "$env:PUBLISHER_DISPLAY_NAME"
+          -AppDisplayName "$env:APP_DISPLAY_NAME"
+          -PhoneProductId "$env:STORE_PHONE_PRODUCT_ID"
+          -PhonePublisherId "$env:STORE_PHONE_PUBLISHER_ID"
+
+      - name: Build Store upload package
+        id: build-package
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+
+          $msbuild = & "${env:ProgramFiles(x86)}\Microsoft Visual Studio\Installer\vswhere.exe" -latest -products * -requires Microsoft.Component.MSBuild -find MSBuild\**\Bin\MSBuild.exe | Select-Object -First 1
+          if (-not $msbuild) {
+            throw 'MSBuild.exe was not found.'
+          }
+
+          $bundlePlatforms = if ([string]::IsNullOrWhiteSpace($env:BUNDLE_PLATFORMS)) { 'x86|x64|arm64' } else { $env:BUNDLE_PLATFORMS }
+          $projectPath = Join-Path $env:GITHUB_WORKSPACE $env:PROJECT_PATH
+          $packageDir = $env:APP_PACKAGES_DIR
+
+          New-Item -ItemType Directory -Path $packageDir -Force | Out-Null
+
+          $buildArguments = @(
+            $projectPath
+            '/restore'
+            '/m'
+            '/p:Configuration=Release'
+            '/p:Platform=x86'
+            '/p:UapAppxPackageBuildMode=StoreUpload'
+            '/p:AppxBundle=Always'
+            "/p:AppxBundlePlatforms=$bundlePlatforms"
+            '/p:GenerateAppInstallerFile=False'
+            '/p:AppxAutoIncrementPackageRevision=False'
+            '/p:HoursBetweenUpdateChecks=0'
+            "/p:AppxPackageDir=$packageDir"
+          )
+
+          if ("${{ inputs.use_signing_certificate }}" -eq 'true') {
+            if ([string]::IsNullOrWhiteSpace($env:STORE_PACKAGE_CERTIFICATE_BASE64)) {
+              throw 'STORE_PACKAGE_CERTIFICATE_BASE64 is required when use_signing_certificate is true.'
+            }
+
+            if ([string]::IsNullOrWhiteSpace($env:STORE_PACKAGE_CERTIFICATE_PASSWORD)) {
+              throw 'STORE_PACKAGE_CERTIFICATE_PASSWORD is required when use_signing_certificate is true.'
+            }
+
+            $certificatePath = Join-Path $env:RUNNER_TEMP 'JitHub-StoreRelease.pfx'
+            [System.IO.File]::WriteAllBytes($certificatePath, [Convert]::FromBase64String($env:STORE_PACKAGE_CERTIFICATE_BASE64))
+            "STORE_RELEASE_CERTIFICATE_PATH=$certificatePath" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
+
+            $buildArguments += '/p:AppxPackageSigningEnabled=True'
+            $buildArguments += '/p:GenerateTemporaryStoreCertificate=False'
+            $buildArguments += "/p:PackageCertificateKeyFile=$certificatePath"
+            $buildArguments += "/p:PackageCertificatePassword=$env:STORE_PACKAGE_CERTIFICATE_PASSWORD"
+
+            if (-not [string]::IsNullOrWhiteSpace($env:STORE_PACKAGE_CERTIFICATE_THUMBPRINT)) {
+              $buildArguments += "/p:PackageCertificateThumbprint=$env:STORE_PACKAGE_CERTIFICATE_THUMBPRINT"
+            }
+          }
+          else {
+            $buildArguments += '/p:AppxPackageSigningEnabled=False'
+            $buildArguments += '/p:GenerateTemporaryStoreCertificate=True'
+          }
+
+          & $msbuild @buildArguments
+          if ($LASTEXITCODE -ne 0) {
+            exit $LASTEXITCODE
+          }
+
+      - name: Find Store upload package
+        id: package
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+
+          $package = Get-ChildItem -Path $env:APP_PACKAGES_DIR -Recurse -File |
+            Where-Object { $_.Extension -in '.appxupload', '.msixupload' } |
+            Sort-Object LastWriteTime -Descending |
+            Select-Object -First 1
+
+          if (-not $package) {
+            throw "No .appxupload or .msixupload file was found under $env:APP_PACKAGES_DIR"
+          }
+
+          "upload_package=$($package.FullName)" | Out-File -FilePath $env:GITHUB_OUTPUT -Encoding utf8 -Append
+
+      - name: Upload release artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: jithub-store-package-${{ inputs.release_version }}
+          path: ${{ env.APP_PACKAGES_DIR }}
+          if-no-files-found: error
+
+      - name: Configure Store credentials
+        shell: pwsh
+        run: >
+          msstore reconfigure
+          --tenantId "$env:STORE_TENANT_ID"
+          --sellerId "$env:STORE_SELLER_ID"
+          --clientId "$env:STORE_CLIENT_ID"
+          --clientSecret "$env:STORE_CLIENT_SECRET"
+
+      - name: Publish package to Microsoft Store
+        shell: pwsh
+        run: >
+          msstore publish "${{ github.workspace }}\${{ env.PROJECT_ROOT }}"
+          --inputFile "${{ steps.package.outputs.upload_package }}"
+          --appId "$env:STORE_PRODUCT_ID"
+
+      - name: Remove transient signing certificate
+        if: always()
+        shell: pwsh
+        run: |
+          if (-not [string]::IsNullOrWhiteSpace($env:STORE_RELEASE_CERTIFICATE_PATH) -and (Test-Path -LiteralPath $env:STORE_RELEASE_CERTIFICATE_PATH)) {
+            Remove-Item -LiteralPath $env:STORE_RELEASE_CERTIFICATE_PATH -Force
+          }
