@@ -1,4 +1,4 @@
-﻿using CommunityToolkit.Labs.WinUI.MarkdownTextBlock;
+using CommunityToolkit.WinUI.Controls;
 using JitHub.ViewModels.Base;
 using Octokit;
 using System;

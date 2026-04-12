@@ -1,4 +1,4 @@
-﻿using CommunityToolkit.Labs.WinUI.MarkdownTextBlock;
+using CommunityToolkit.WinUI.Controls;
 using Windows.UI.Xaml;
 using Windows.UI.Xaml.Controls;
 

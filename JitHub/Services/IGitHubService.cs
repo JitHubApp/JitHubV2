@@ -1,4 +1,4 @@
-﻿using CommunityToolkit.Labs.WinUI.MarkdownTextBlock;
+using CommunityToolkit.WinUI.Controls;
 using JitHub.Models;
 using JitHub.Models.Base;
 using JitHub.Models.PRConversation;
