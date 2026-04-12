@@ -65,7 +65,7 @@ Then, you need to create a file named `appsettings.json` in the `JitHub` project
 
 Finally, set environment variable `JithubAppSecret` to your GitHub seret and `JitHubClientId` to your GitHub client ID.
 
-Now you need to download the built vs code files. Run `.\download-vscode.ps1` in PowerShell. This script will download the latest release of vs code from [jithub-vs-code](https://github.com/nerocui/jithub-vs-code) and unzip it to the `JitHub/Assets/dist` folder. No additional action needs to be performed.
+Now you need to build the editor assets from [jithub-vs-code](https://github.com/nerocui/jithub-vs-code). Run `.\sync-vscode-assets.ps1` in PowerShell. The script looks for a local `jithub-vs-code` clone (including `E:\jithub-vs-code`), runs `yarn --frozen-lockfile` and `yarn build`, and then copies the generated `dist` output into `JitHub\Assets\dist`.
 
 After that, you can open the `JitHub.sln` file in Visual Studio and run the app.
 
@@ -99,7 +99,9 @@ Optional environment variables:
 - `STORE_PUBLISHER_DISPLAY_NAME`
 - `JITHUB_STORE_BUNDLE_PLATFORMS` (defaults to `x86|x64|arm64`)
 
-Run the **Publish JitHub to Microsoft Store** workflow manually and provide a four-part `release_version` such as `1.6.5.0`. The workflow patches `JitHub\Package.appxmanifest` at runtime from the configured environment values, builds a Store upload package, uploads the build artifacts, and then publishes the generated `.appxupload` or `.msixupload` to the Microsoft Store.
+Run the **Publish JitHub to Microsoft Store** workflow manually and provide a four-part `release_version` such as `1.6.5.0`. The workflow first checks out `nerocui/jithub-vs-code`, builds the editor assets into `JitHub\Assets\dist`, patches `JitHub\Package.appxmanifest` at runtime from the configured environment values, builds a Store upload package, uploads the build artifacts, and then publishes the generated `.appxupload` or `.msixupload` to the Microsoft Store.
+
+The workflow currently accepts an `editor_assets_ref` input so you can point it at a specific `jithub-vs-code` branch while the Windows-build support change is under review. After that PR merges, use `master`.
 
 If the publish step fails with Partner Center authorization errors, the remaining fix is not in GitHub Actions itself: the linked Microsoft Entra application still needs the correct Partner Center access for the individual developer account.
 
