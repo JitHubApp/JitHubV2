@@ -7,8 +7,13 @@ on:
         description: Four-part Store package version (for example 1.6.5.0)
         required: true
         type: string
+      editor_assets_ref:
+        description: jithub-vs-code ref to build for Assets\dist (use master after nerocui/jithub-vs-code PR #1 merges)
+        required: false
+        default: feature/windows-build-support
+        type: string
       use_signing_certificate:
-        description: Sign the package with the configured PFX before Store upload
+        description: Sign the package with the configured PFX before Store upload; leave false unless STORE_PACKAGE_CERTIFICATE_BASE64 and STORE_PACKAGE_CERTIFICATE_PASSWORD are set
         required: false
         default: false
         type: boolean
@@ -46,11 +51,32 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@v4
 
+      - name: Checkout jithub-vs-code
+        uses: actions/checkout@v4
+        with:
+          repository: nerocui/jithub-vs-code
+          ref: ${{ inputs.editor_assets_ref }}
+          path: editor-assets
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 18
+          cache: yarn
+          cache-dependency-path: editor-assets/yarn.lock
+
       - name: Set up MSBuild
         uses: microsoft/setup-msbuild@v2
 
       - name: Set up Microsoft Store CLI
         uses: microsoft/microsoft-store-apppublisher@v1.2
+
+      - name: Build editor assets
+        shell: pwsh
+        run: >
+          .\eng\Sync-JitHubVsCodeAssets.ps1
+          -VsCodeRepoPath "${{ github.workspace }}\editor-assets"
+          -DestinationPath "${{ github.workspace }}\JitHub\Assets\dist"
 
       - name: Patch Store manifest values
         shell: pwsh
