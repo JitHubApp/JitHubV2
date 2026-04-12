@@ -433,5 +433,6 @@ $RECYCLE.BIN/
 !.vscode/extensions.json
 appsettings.json
 appsettings.development.json
+!JitHub/appsettings.json
 **/dist
 **/output

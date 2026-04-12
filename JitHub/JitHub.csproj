@@ -616,7 +616,7 @@
     <Content Include="Assets\StoreLogo.scale-200.png" />
     <Content Include="Assets\StoreLogo.scale-400.png" />
     <Content Include="Assets\Fonts\FluentIcons.ttf" />
-    <Content Include="appsettings.development.json">
+    <Content Include="appsettings.development.json" Condition="Exists('appsettings.development.json')">
       <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
     </Content>
     <Content Include="appsettings.json">
