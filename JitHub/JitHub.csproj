@@ -1308,10 +1308,7 @@
   </ItemGroup>
   <ItemGroup>
     <PackageReference Include="CommunityToolkit.Labs.Uwp.Controls.MarkdownTextBlock">
-      <Version>0.1.250811-build.2202</Version>
-    </PackageReference>
-    <PackageReference Include="CommunityToolkit.Labs.Uwp.Shimmer">
-      <Version>0.1.250811-build.2202</Version>
+      <Version>0.1.260319-build.2547</Version>
     </PackageReference>
     <PackageReference Include="CommunityToolkit.Mvvm">
       <Version>8.4.0</Version>
