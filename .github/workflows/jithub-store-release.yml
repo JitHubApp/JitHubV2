@@ -65,6 +65,11 @@ jobs:
           cache: yarn
           cache-dependency-path: editor-assets/yarn.lock
 
+      - name: Install editor asset dependencies
+        working-directory: editor-assets
+        shell: pwsh
+        run: yarn --frozen-lockfile
+
       - name: Set up MSBuild
         uses: microsoft/setup-msbuild@v2
 
@@ -77,6 +82,7 @@ jobs:
           .\eng\Sync-JitHubVsCodeAssets.ps1
           -VsCodeRepoPath "${{ github.workspace }}\editor-assets"
           -DestinationPath "${{ github.workspace }}\JitHub\Assets\dist"
+          -SkipInstall
 
       - name: Patch Store manifest values
         shell: pwsh
