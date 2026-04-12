@@ -190,6 +190,7 @@ jobs:
           }
 
           "upload_package=$($package.FullName)" | Out-File -FilePath $env:GITHUB_OUTPUT -Encoding utf8 -Append
+          "upload_package_dir=$($package.DirectoryName)" | Out-File -FilePath $env:GITHUB_OUTPUT -Encoding utf8 -Append
 
       - name: Upload release artifacts
         uses: actions/upload-artifact@v4
@@ -211,7 +212,7 @@ jobs:
         shell: pwsh
         run: >
           msstore publish "${{ github.workspace }}\${{ env.PROJECT_ROOT }}"
-          --inputFile "${{ steps.package.outputs.upload_package }}"
+          --inputDirectory "${{ steps.package.outputs.upload_package_dir }}"
           --appId "$env:STORE_PRODUCT_ID"
 
       - name: Remove transient signing certificate
