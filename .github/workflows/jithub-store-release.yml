@@ -8,7 +8,7 @@ on:
         required: true
         type: string
       use_signing_certificate:
-        description: Sign the package with the configured PFX before Store upload
+        description: Sign with the configured PFX before Store upload; leave false unless STORE_PACKAGE_CERTIFICATE_BASE64 and STORE_PACKAGE_CERTIFICATE_PASSWORD are set
         required: false
         default: false
         type: boolean

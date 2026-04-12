@@ -99,7 +99,7 @@ Optional environment variables:
 - `STORE_PUBLISHER_DISPLAY_NAME`
 - `JITHUB_STORE_BUNDLE_PLATFORMS` (defaults to `x86|x64|arm64`)
 
-Run the **Publish JitHub to Microsoft Store** workflow manually and provide a four-part `release_version` such as `1.6.5.0`. The workflow patches `JitHub\Package.appxmanifest` at runtime from the configured environment values, builds a Store upload package, uploads the build artifacts, and then publishes the generated `.appxupload` or `.msixupload` to the Microsoft Store.
+Run the **Publish JitHub to Microsoft Store** workflow manually and provide a four-part `release_version` such as `1.6.5.0`. Leave `use_signing_certificate` set to `false` unless `STORE_PACKAGE_CERTIFICATE_BASE64` and `STORE_PACKAGE_CERTIFICATE_PASSWORD` are configured in the `microsoft-store` environment. The workflow patches `JitHub\Package.appxmanifest` at runtime from the configured environment values, builds a Store upload package, uploads the build artifacts, and then publishes the generated `.appxupload` or `.msixupload` to the Microsoft Store.
 
 If the publish step fails with Partner Center authorization errors, the remaining fix is not in GitHub Actions itself: the linked Microsoft Entra application still needs the correct Partner Center access for the individual developer account.
 
