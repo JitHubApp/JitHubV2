@@ -69,6 +69,40 @@ Now you need to download the built vs code files. Run `.\download-vscode.ps1` in
 
 After that, you can open the `JitHub.sln` file in Visual Studio and run the app.
 
+### Microsoft Store release workflow
+
+The repository now includes a manual GitHub Actions workflow at `.github/workflows/jithub-store-release.yml` for building a Store upload package and publishing it to Partner Center in one run.
+
+JitHub is currently published from an **individual** Partner Center account. Full automation is still possible, but Microsoft Store publishing uses the same Microsoft Entra application flow that organization accounts use. That means the GitHub environment must contain the Partner Center product identity values **and** a working Entra tenant/app registration that has been granted access in Partner Center.
+
+Set up a protected GitHub environment named `microsoft-store` and configure these secrets there:
+
+- `STORE_PRODUCT_ID`
+- `STORE_SELLER_ID`
+- `STORE_TENANT_ID`
+- `STORE_CLIENT_ID`
+- `STORE_CLIENT_SECRET`
+- `STORE_PACKAGE_IDENTITY_NAME`
+- `STORE_PACKAGE_PUBLISHER`
+
+Optional secrets:
+
+- `STORE_PHONE_PRODUCT_ID`
+- `STORE_PHONE_PUBLISHER_ID`
+- `STORE_PACKAGE_CERTIFICATE_BASE64`
+- `STORE_PACKAGE_CERTIFICATE_PASSWORD`
+- `STORE_PACKAGE_CERTIFICATE_THUMBPRINT`
+
+Optional environment variables:
+
+- `STORE_APP_DISPLAY_NAME`
+- `STORE_PUBLISHER_DISPLAY_NAME`
+- `JITHUB_STORE_BUNDLE_PLATFORMS` (defaults to `x86|x64|arm64`)
+
+Run the **Publish JitHub to Microsoft Store** workflow manually and provide a four-part `release_version` such as `1.6.5.0`. The workflow patches `JitHub\Package.appxmanifest` at runtime from the configured environment values, builds a Store upload package, uploads the build artifacts, and then publishes the generated `.appxupload` or `.msixupload` to the Microsoft Store.
+
+If the publish step fails with Partner Center authorization errors, the remaining fix is not in GitHub Actions itself: the linked Microsoft Entra application still needs the correct Partner Center access for the individual developer account.
+
 ## Contributing 🙌
 
 JitHub is an open source project and welcomes contributions from anyone. If you want to contribute, please follow these steps:
