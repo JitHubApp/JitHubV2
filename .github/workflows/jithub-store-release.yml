@@ -8,9 +8,9 @@ on:
         required: true
         type: string
       editor_assets_ref:
-        description: jithub-vs-code ref to build for Assets\dist (use master after nerocui/jithub-vs-code PR #1 merges)
+        description: jithub-vs-code ref to build for Assets\dist
         required: false
-        default: feature/windows-build-support
+        default: master
         type: string
       use_signing_certificate:
         description: Sign the package with the configured PFX before Store upload; leave false unless STORE_PACKAGE_CERTIFICATE_BASE64 and STORE_PACKAGE_CERTIFICATE_PASSWORD are set
@@ -35,6 +35,7 @@ jobs:
       APP_DISPLAY_NAME: ${{ vars.STORE_APP_DISPLAY_NAME }}
       BUNDLE_PLATFORMS: ${{ vars.JITHUB_STORE_BUNDLE_PLATFORMS }}
       PUBLISHER_DISPLAY_NAME: ${{ vars.STORE_PUBLISHER_DISPLAY_NAME }}
+      TARGET_PLATFORM_VERSION: 10.0.26100.0
       STORE_CLIENT_ID: ${{ secrets.STORE_CLIENT_ID }}
       STORE_CLIENT_SECRET: ${{ secrets.STORE_CLIENT_SECRET }}
       STORE_PACKAGE_CERTIFICATE_BASE64: ${{ secrets.STORE_PACKAGE_CERTIFICATE_BASE64 }}
@@ -97,6 +98,18 @@ jobs:
           -PhoneProductId "$env:STORE_PHONE_PRODUCT_ID"
           -PhonePublisherId "$env:STORE_PHONE_PUBLISHER_ID"
 
+      - name: Verify Windows SDK availability
+        shell: pwsh
+        run: |
+          $sdkPath = Join-Path "${env:ProgramFiles(x86)}\Windows Kits\10\Include" $env:TARGET_PLATFORM_VERSION
+          if (-not (Test-Path -LiteralPath $sdkPath)) {
+            $availableSdks = Get-ChildItem -Path "${env:ProgramFiles(x86)}\Windows Kits\10\Include" -Directory |
+              Sort-Object Name |
+              Select-Object -ExpandProperty Name
+
+            throw "Required Windows SDK $env:TARGET_PLATFORM_VERSION was not found. Available SDKs: $($availableSdks -join ', ')"
+          }
+
       - name: Build Store upload package
         id: build-package
         shell: pwsh
@@ -120,6 +133,7 @@ jobs:
             '/m'
             '/p:Configuration=Release'
             '/p:Platform=x86'
+            "/p:TargetPlatformVersion=$env:TARGET_PLATFORM_VERSION"
             '/p:UapAppxPackageBuildMode=StoreUpload'
             '/p:AppxBundle=Always'
             "/p:AppxBundlePlatforms=$bundlePlatforms"
