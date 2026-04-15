@@ -434,9 +434,7 @@ $RECYCLE.BIN/
 !.vscode/extensions.json
 appsettings.json
 appsettings.development.json
-!JitHub.Auth/appsettings.json
 !JitHub.WinUI/appsettings.json
-!JitHub.Web/wwwroot/appsettings.json
 **/dist
 artifacts/EditorAssets/dist/
 !artifacts/EditorAssets/README.md

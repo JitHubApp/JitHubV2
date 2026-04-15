@@ -1,50 +1,32 @@
 using System.Text.Json;
 using System.Text.Json.Serialization;
 
-namespace JitHub.Auth;
+namespace JitHub.Web.Services;
 
-public sealed class ErrorMessage
-{
-    public string Message { get; set; } = string.Empty;
-}
-
-public sealed class GitHubTokenResponse
-{
-    [JsonPropertyName("access_token")]
-    public string? AccessToken { get; set; }
-
-    [JsonPropertyName("error")]
-    public string? Error { get; set; }
-
-    [JsonPropertyName("error_description")]
-    public string? ErrorDescription { get; set; }
-}
-
-public sealed class GithubAuth
+internal sealed class GithubAuthService
 {
     private readonly HttpClient _httpClient;
-    private readonly ILogger<GithubAuth> _logger;
+    private readonly ILogger<GithubAuthService> _logger;
 
-    public GithubAuth(HttpClient httpClient, ILogger<GithubAuth> logger)
+    public GithubAuthService(HttpClient httpClient, ILogger<GithubAuthService> logger)
     {
         _httpClient = httpClient;
         _logger = logger;
     }
 
-    public async Task<string> DetokenizeAsync(string? code, CancellationToken cancellationToken)
+    public async Task<string> ExchangeCodeForTokenAsync(string? code, CancellationToken cancellationToken)
     {
         if (string.IsNullOrWhiteSpace(code))
         {
-            throw new InvalidOperationException("Missing temporary code");
+            throw new InvalidOperationException("Missing temporary code.");
         }
 
         string clientId = GetRequiredEnvironmentVariable(
             "JitHubClientId",
-            "Missing client information",
+            "Missing client information.",
             "JithubClientId");
-        string appSecret = GetRequiredEnvironmentVariable("JithubAppSecret", "Missing app secret");
+        string appSecret = GetRequiredEnvironmentVariable("JithubAppSecret", "Missing app secret.");
 
-        GitHubTokenResponse? token;
         using HttpRequestMessage request = new(HttpMethod.Post, "login/oauth/access_token")
         {
             Content = new FormUrlEncodedContent(new Dictionary<string, string>
@@ -55,20 +37,20 @@ public sealed class GithubAuth
             })
         };
 
+        GitHubTokenResponse? token;
+
         try
         {
             using HttpResponseMessage response = await _httpClient.SendAsync(request, cancellationToken);
+
             if (!response.IsSuccessStatusCode)
             {
                 _logger.LogWarning("GitHub OAuth token exchange returned HTTP {StatusCode}.", response.StatusCode);
-                throw new InvalidOperationException("Github request error");
+                throw new InvalidOperationException("GitHub request error.");
             }
 
             await using Stream responseStream = await response.Content.ReadAsStreamAsync(cancellationToken);
-            token = await JsonSerializer.DeserializeAsync(
-                responseStream,
-                JitHubAuthJsonSerializerContext.Default.GitHubTokenResponse,
-                cancellationToken);
+            token = await JsonSerializer.DeserializeAsync<GitHubTokenResponse>(responseStream, cancellationToken: cancellationToken);
         }
         catch (InvalidOperationException)
         {
@@ -81,7 +63,7 @@ public sealed class GithubAuth
         catch (Exception ex)
         {
             _logger.LogError(ex, "GitHub OAuth token exchange failed.");
-            throw new InvalidOperationException("Github request error", ex);
+            throw new InvalidOperationException("GitHub request error.", ex);
         }
 
         if (token is null || string.IsNullOrWhiteSpace(token.AccessToken) || !string.IsNullOrWhiteSpace(token.Error))
@@ -90,7 +72,7 @@ public sealed class GithubAuth
                 "GitHub OAuth token response was invalid. Error: {Error}; Description: {Description}",
                 token?.Error,
                 token?.ErrorDescription);
-            throw new InvalidOperationException("Github returned missing token information");
+            throw new InvalidOperationException("GitHub returned missing token information.");
         }
 
         return token.AccessToken;
@@ -121,5 +103,17 @@ public sealed class GithubAuth
                 yield return fallbackName;
             }
         }
+    }
+
+    private sealed class GitHubTokenResponse
+    {
+        [JsonPropertyName("access_token")]
+        public string? AccessToken { get; set; }
+
+        [JsonPropertyName("error")]
+        public string? Error { get; set; }
+
+        [JsonPropertyName("error_description")]
+        public string? ErrorDescription { get; set; }
     }
 }

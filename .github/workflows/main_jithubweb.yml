@@ -1,0 +1,74 @@
+name: Build and deploy JitHub website
+
+on:
+  push:
+    branches:
+      - main
+    paths:
+      - '.github/workflows/main_jithubweb.yml'
+      - 'JitHub.Web/**'
+      - 'global.json'
+      - 'README.md'
+  pull_request:
+    branches:
+      - main
+    paths:
+      - '.github/workflows/main_jithubweb.yml'
+      - 'JitHub.Web/**'
+      - 'global.json'
+      - 'README.md'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+env:
+  AZURE_WEBAPP_NAME: jithubauth
+  WEBSITE_PROJECT: JitHub.Web/JitHub.Web.csproj
+
+jobs:
+  build:
+    name: Build website
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up .NET SDK
+        uses: actions/setup-dotnet@v4
+        with:
+          global-json-file: ./global.json
+
+      - name: Restore website dependencies
+        run: dotnet restore ./${{ env.WEBSITE_PROJECT }}
+
+      - name: Publish website
+        run: dotnet publish ./${{ env.WEBSITE_PROJECT }} --configuration Release --output ./publish
+
+      - name: Upload published website
+        uses: actions/upload-artifact@v4
+        with:
+          name: jithub-web-publish
+          path: ./publish
+          if-no-files-found: error
+
+  deploy:
+    name: Deploy website
+    if: github.event_name != 'pull_request'
+    needs: build
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Download published website
+        uses: actions/download-artifact@v4
+        with:
+          name: jithub-web-publish
+          path: ./publish
+
+      - name: Deploy to Azure Web App
+        uses: azure/webapps-deploy@v3
+        with:
+          app-name: ${{ env.AZURE_WEBAPP_NAME }}
+          package: ./publish
+          publish-profile: ${{ secrets.AZUREAPPSERVICE_PUBLISHPROFILE_9634DB30B22840AC94FBE0D1DB96FEAF }}

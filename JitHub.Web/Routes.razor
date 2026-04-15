@@ -1,0 +1,21 @@
+<Router AppAssembly="@typeof(App).Assembly">
+    <Found Context="routeData">
+        <RouteView RouteData="@routeData" DefaultLayout="@typeof(MainLayout)" />
+    </Found>
+    <NotFound>
+        <PageTitle>Not Found | JitHub</PageTitle>
+        <LayoutView Layout="@typeof(MainLayout)">
+            <section class="not-found-shell">
+                <div class="not-found-card surface-card">
+                    <p class="eyebrow">Not Found</p>
+                    <h1>This page does not exist.</h1>
+                    <p>The route may have moved during the website rebuild, but the main entry points are still right where they should be.</p>
+                    <div class="button-row">
+                        <a class="button button--primary" href="/">Back to JitHub</a>
+                        <a class="button button--ghost" href="/authorize">Open authorize page</a>
+                    </div>
+                </div>
+            </section>
+        </LayoutView>
+    </NotFound>
+</Router>

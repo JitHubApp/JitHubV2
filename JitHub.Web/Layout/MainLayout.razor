@@ -1,0 +1,46 @@
+@inherits LayoutComponentBase
+@inject NavigationManager Navigation
+
+@{
+    string currentPath = Navigation.ToBaseRelativePath(Navigation.Uri);
+    bool isAuthorizePage = currentPath.StartsWith("authorize", StringComparison.OrdinalIgnoreCase);
+}
+
+<div class="site-shell @(isAuthorizePage ? "site-shell--auth" : string.Empty)">
+    <header class="site-header">
+        <a class="brand-lockup" href="/" aria-label="JitHub home">
+            <img class="brand-lockup__mark" src="JitHubLogo.png" alt="" />
+            <span class="brand-lockup__copy">
+                <span class="brand-lockup__wordmark">JitHub</span>
+                <span class="brand-lockup__subline">GitHub, native to Windows</span>
+            </span>
+        </a>
+
+        <nav class="site-header__actions" aria-label="Primary">
+            <a class="button button--ghost button--compact" href="https://github.com/JitHubApp/JitHubV2" target="_blank" rel="noopener noreferrer">
+                Source
+            </a>
+            <a class="button button--primary button--compact" href="https://apps.microsoft.com/store/detail/jithub/9MXRBJBB552V" target="_blank" rel="noopener noreferrer">
+                Get JitHub
+            </a>
+        </nav>
+    </header>
+
+    <main class="site-main">
+        @Body
+    </main>
+
+    <footer class="site-footer">
+        <div class="site-footer__meta">
+            <p class="site-footer__eyebrow">JitHub</p>
+            <p class="site-footer__body">
+                An open source GitHub client for Windows, built for repositories, pull requests, issues, and code.
+            </p>
+        </div>
+
+        <div class="site-footer__links">
+            <a href="https://github.com/JitHubApp/JitHubV2" target="_blank" rel="noopener noreferrer">GitHub</a>
+            <a href="https://apps.microsoft.com/store/detail/jithub/9MXRBJBB552V" target="_blank" rel="noopener noreferrer">Microsoft Store</a>
+        </div>
+    </footer>
+</div>
