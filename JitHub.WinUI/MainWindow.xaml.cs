@@ -1,4 +1,5 @@
 using System;
+using System.IO;
 using System.Linq;
 using System.Runtime.InteropServices;
 using JitHub.Services;
@@ -42,7 +43,11 @@ public sealed partial class MainWindow : Window
         SetTitleBar(AppTitleBar);
         _nonClientPointerSource = InputNonClientPointerSource.GetForWindowId(AppWindow.Id);
 
-        AppWindow.SetIcon("Assets/AppIcon.ico");
+        string iconPath = Path.Combine(AppContext.BaseDirectory, "Assets", "AppIcon.ico");
+        if (File.Exists(iconPath))
+        {
+            AppWindow.SetIcon(iconPath);
+        }
         _uiSettings.ColorValuesChanged += OnColorValuesChanged;
     }
 
