@@ -1,0 +1,24 @@
+<ResourceDictionary
+    xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+    >
+    <DataTemplate x:Key="DropdownFilter">
+        <Grid>
+            <ComboBox
+                MinWidth="150"
+                DisplayMemberPath="DisplayMember"
+                ItemsSource="{Binding Selections, Mode=OneWay}"
+                SelectedItem="{Binding Selected, Mode=TwoWay}"
+                SelectedValuePath="SelectedValue">
+                <ComboBox.HeaderTemplate>
+                    <DataTemplate>
+                        <TextBlock FontWeight="SemiBold" Text="{Binding Title, Mode=OneWay}" />
+                    </DataTemplate>
+                </ComboBox.HeaderTemplate>
+            </ComboBox>
+        </Grid>
+    </DataTemplate>
+</ResourceDictionary>
+
+
+

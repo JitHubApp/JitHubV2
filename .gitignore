@@ -57,7 +57,8 @@ BenchmarkDotNet.Artifacts/
 # .NET Core
 project.lock.json
 project.fragment.lock.json
-artifacts/
+artifacts/*
+!artifacts/EditorAssets/
 
 # StyleCop
 StyleCopReport.xml
@@ -433,6 +434,13 @@ $RECYCLE.BIN/
 !.vscode/extensions.json
 appsettings.json
 appsettings.development.json
-!JitHub/appsettings.json
+!JitHub.Auth/appsettings.json
+!JitHub.WinUI/appsettings.json
+!JitHub.Web/wwwroot/appsettings.json
 **/dist
+artifacts/EditorAssets/dist/
+!artifacts/EditorAssets/README.md
 **/output
+JitHub.WinUI/artifacts/
+JitHub.WinUI/EditorAssets/
+JitHub.WinUI/JitHub.WinUI/

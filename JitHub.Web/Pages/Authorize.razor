@@ -30,6 +30,7 @@
 
 
 @code {
+    private const string WinUiProtocolV2StatePrefix = "WINUI3V2_";
 
     enum State
     {
@@ -41,6 +42,7 @@
     private State AuthStatus = State.Loading;
 
     private string? TokenString;
+    private string? StateString;
 
     RenderFragment Loading()
     {
@@ -68,8 +70,9 @@
         try
         {
             string? code = ProcessRequest();
+            StateString = ProcessState();
 
-            if (String.IsNullOrWhiteSpace(code))
+            if (String.IsNullOrWhiteSpace(code) || String.IsNullOrWhiteSpace(StateString))
             {
                 OnAuthFail();
                 return;
@@ -90,21 +93,34 @@
     {
         if (String.IsNullOrWhiteSpace(TokenString))
         {
-            Navigation.NavigateTo($"jithub://");
+            Navigation.NavigateTo("jithub://", forceLoad: true);
         }
         else
         {
-            Navigation.NavigateTo($"jithub://auth?token={TokenString}");
+            string escapedToken = Uri.EscapeDataString(TokenString);
+            string escapedState = Uri.EscapeDataString(StateString!);
+            string protocolUri = SupportsProtocolV2(StateString)
+                ? $"jithub://auth/v2?token={escapedToken}&state={escapedState}"
+                : $"jithub://auth/?token={escapedToken}&state={escapedState}#state={escapedState}";
+
+            Navigation.NavigateTo(
+                protocolUri,
+                forceLoad: true);
         }
+    }
+
+    private static bool SupportsProtocolV2(string? state)
+    {
+        return !string.IsNullOrWhiteSpace(state)
+            && state.StartsWith(WinUiProtocolV2StatePrefix, StringComparison.Ordinal);
     }
 
     private async Task<string> ExchangeToken(string code)
     {
         try
         {
-            // Use relative URL so HttpClient.BaseAddress determines the host/port.
-            // BaseAddress is configured in Program.cs from appsettings (API_Prefix) in Development,
-            // and falls back to same-origin in other environments.
+            // Use a relative URL so HttpClient.BaseAddress determines the host/port.
+            // API_Prefix comes from appsettings.Development.json locally and appsettings.json in production.
             var response = await Http.GetAsync($"api/GithubCodeToToken?tempCode={Uri.EscapeDataString(code)}");
 
             if (response.IsSuccessStatusCode)
@@ -140,6 +156,21 @@
             var query = Microsoft.AspNetCore.WebUtilities.QueryHelpers.ParseQuery(uri.Query);
             var code = query.TryGetValue("code", out var valueFromQueryString) ? valueFromQueryString.First() : null;
             return code;
+        }
+        catch (Exception ex)
+        {
+            throw new InvalidOperationException("Method failed", ex);
+        }
+    }
+
+    private string? ProcessState()
+    {
+        try
+        {
+            var uri = NavigationManager.ToAbsoluteUri(NavigationManager.Uri);
+            var query = Microsoft.AspNetCore.WebUtilities.QueryHelpers.ParseQuery(uri.Query);
+            var state = query.TryGetValue("state", out var valueFromQueryString) ? valueFromQueryString.First() : null;
+            return state;
         }
         catch (Exception ex)
         {

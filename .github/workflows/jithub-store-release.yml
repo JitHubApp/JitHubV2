@@ -8,14 +8,19 @@ on:
         required: true
         type: string
       editor_assets_ref:
-        description: jithub-vs-code ref to build for Assets\dist
+        description: jithub-vs-code ref to build for artifacts\EditorAssets\dist
         required: false
         default: master
         type: string
-      use_signing_certificate:
-        description: Sign the package with the configured PFX before Store upload; leave false unless STORE_PACKAGE_CERTIFICATE_BASE64 and STORE_PACKAGE_CERTIFICATE_PASSWORD are set
+      allow_winui_store_release:
+        description: Temporary override for the in-progress WinUI migration. Leave false until WinUI reaches full feature parity.
         required: false
         default: false
+        type: boolean
+      use_signing_certificate:
+        description: Sign the package with the configured PFX before Store upload. This must stay enabled for Microsoft Store submissions.
+        required: false
+        default: true
         type: boolean
 
 permissions:
@@ -28,9 +33,9 @@ jobs:
     timeout-minutes: 90
     environment: microsoft-store
     env:
-      PROJECT_PATH: 'JitHub\JitHub.csproj'
-      PROJECT_ROOT: JitHub
-      MANIFEST_PATH: 'JitHub\Package.appxmanifest'
+      PROJECT_PATH: 'JitHub.WinUI\JitHub.WinUI.csproj'
+      PROJECT_ROOT: JitHub.WinUI
+      MANIFEST_PATH: 'JitHub.WinUI\Package.appxmanifest'
       APP_PACKAGES_DIR: '${{ github.workspace }}\artifacts\AppPackages\'
       APP_DISPLAY_NAME: ${{ vars.STORE_APP_DISPLAY_NAME }}
       BUNDLE_PLATFORMS: ${{ vars.JITHUB_STORE_BUNDLE_PLATFORMS }}
@@ -66,13 +71,15 @@ jobs:
           cache: yarn
           cache-dependency-path: editor-assets/yarn.lock
 
+      - name: Set up .NET SDK
+        uses: actions/setup-dotnet@v4
+        with:
+          global-json-file: ./global.json
+
       - name: Install editor asset dependencies
         working-directory: editor-assets
         shell: pwsh
         run: yarn --frozen-lockfile
-
-      - name: Set up MSBuild
-        uses: microsoft/setup-msbuild@v2
 
       - name: Set up Microsoft Store CLI
         uses: microsoft/microsoft-store-apppublisher@v1.2
@@ -82,7 +89,7 @@ jobs:
         run: >
           .\eng\Sync-JitHubVsCodeAssets.ps1
           -VsCodeRepoPath "${{ github.workspace }}\editor-assets"
-          -DestinationPath "${{ github.workspace }}\JitHub\Assets\dist"
+          -DestinationPath "${{ github.workspace }}\artifacts\EditorAssets\dist"
           -SkipInstall
 
       - name: Patch Store manifest values
@@ -110,68 +117,56 @@ jobs:
             throw "Required Windows SDK $env:TARGET_PLATFORM_VERSION was not found. Available SDKs: $($availableSdks -join ', ')"
           }
 
+      - name: Block WinUI Store publish until migration exit conditions are met
+        if: ${{ !inputs.allow_winui_store_release }}
+        shell: pwsh
+        run: |
+          throw "WinUI Store publishing is intentionally blocked until the migration reaches full feature parity. Leave allow_winui_store_release=false until that exit condition is met."
+
+      - name: Require signed Store packages
+        if: ${{ !inputs.use_signing_certificate }}
+        shell: pwsh
+        run: |
+          throw "Microsoft Store submissions must use a signing certificate. Re-run this workflow with use_signing_certificate=true and provide STORE_PACKAGE_CERTIFICATE_BASE64 / STORE_PACKAGE_CERTIFICATE_PASSWORD."
+
       - name: Build Store upload package
         id: build-package
         shell: pwsh
         run: |
           $ErrorActionPreference = 'Stop'
-
-          $msbuild = & "${env:ProgramFiles(x86)}\Microsoft Visual Studio\Installer\vswhere.exe" -latest -products * -requires Microsoft.Component.MSBuild -find MSBuild\**\Bin\MSBuild.exe | Select-Object -First 1
-          if (-not $msbuild) {
-            throw 'MSBuild.exe was not found.'
-          }
-
-          $bundlePlatforms = if ([string]::IsNullOrWhiteSpace($env:BUNDLE_PLATFORMS)) { 'x86|x64|arm64' } else { $env:BUNDLE_PLATFORMS }
           $projectPath = Join-Path $env:GITHUB_WORKSPACE $env:PROJECT_PATH
           $packageDir = $env:APP_PACKAGES_DIR
+          $bundlePlatforms = if ([string]::IsNullOrWhiteSpace($env:BUNDLE_PLATFORMS)) { 'x86|x64|ARM64' } else { $env:BUNDLE_PLATFORMS }
 
-          New-Item -ItemType Directory -Path $packageDir -Force | Out-Null
+          .\eng\Build-JitHubWinUIStorePackage.ps1 `
+            -ProjectPath $projectPath `
+            -OutputDirectory $packageDir `
+            -BundlePlatforms $bundlePlatforms `
+            -TargetPlatformVersion $env:TARGET_PLATFORM_VERSION `
+            -UseSigningCertificate:("${{ inputs.use_signing_certificate }}" -eq 'true') `
+            -PackageCertificateBase64 $env:STORE_PACKAGE_CERTIFICATE_BASE64 `
+            -PackageCertificatePassword $env:STORE_PACKAGE_CERTIFICATE_PASSWORD `
+            -PackageCertificateThumbprint $env:STORE_PACKAGE_CERTIFICATE_THUMBPRINT
 
-          $buildArguments = @(
-            $projectPath
-            '/restore'
-            '/m'
-            '/p:Configuration=Release'
-            '/p:Platform=x86'
-            "/p:TargetPlatformVersion=$env:TARGET_PLATFORM_VERSION"
-            '/p:UapAppxPackageBuildMode=StoreUpload'
-            '/p:AppxBundle=Always'
-            "/p:AppxBundlePlatforms=$bundlePlatforms"
-            '/p:GenerateAppInstallerFile=False'
-            '/p:AppxAutoIncrementPackageRevision=False'
-            '/p:HoursBetweenUpdateChecks=0'
-            "/p:AppxPackageDir=$packageDir"
-          )
-
-          if ("${{ inputs.use_signing_certificate }}" -eq 'true') {
-            if ([string]::IsNullOrWhiteSpace($env:STORE_PACKAGE_CERTIFICATE_BASE64)) {
-              throw 'STORE_PACKAGE_CERTIFICATE_BASE64 is required when use_signing_certificate is true.'
-            }
-
-            if ([string]::IsNullOrWhiteSpace($env:STORE_PACKAGE_CERTIFICATE_PASSWORD)) {
-              throw 'STORE_PACKAGE_CERTIFICATE_PASSWORD is required when use_signing_certificate is true.'
-            }
-
-            $certificatePath = Join-Path $env:RUNNER_TEMP 'JitHub-StoreRelease.pfx'
-            [System.IO.File]::WriteAllBytes($certificatePath, [Convert]::FromBase64String($env:STORE_PACKAGE_CERTIFICATE_BASE64))
-
-            $buildArguments += '/p:AppxPackageSigningEnabled=True'
-            $buildArguments += '/p:GenerateTemporaryStoreCertificate=False'
-            $buildArguments += "/p:PackageCertificateKeyFile=$certificatePath"
-            $buildArguments += "/p:PackageCertificatePassword=$env:STORE_PACKAGE_CERTIFICATE_PASSWORD"
-
-            if (-not [string]::IsNullOrWhiteSpace($env:STORE_PACKAGE_CERTIFICATE_THUMBPRINT)) {
-              $buildArguments += "/p:PackageCertificateThumbprint=$env:STORE_PACKAGE_CERTIFICATE_THUMBPRINT"
-            }
-          }
-          else {
-            $buildArguments += '/p:AppxPackageSigningEnabled=False'
-            $buildArguments += '/p:GenerateTemporaryStoreCertificate=True'
+      - name: Remove transient signing certificate
+        if: always()
+        shell: pwsh
+        run: |
+          $candidatePaths = @()
+          if (-not [string]::IsNullOrWhiteSpace($env:RUNNER_TEMP)) {
+            $candidatePaths += Join-Path $env:RUNNER_TEMP 'JitHub-WinUI-StorePackage.pfx'
           }
 
-          & $msbuild @buildArguments
-          if ($LASTEXITCODE -ne 0) {
-            exit $LASTEXITCODE
+          if (-not [string]::IsNullOrWhiteSpace($env:TEMP)) {
+            $candidatePaths += Join-Path $env:TEMP 'JitHub-WinUI-StorePackage.pfx'
+          }
+
+          $candidatePaths = $candidatePaths | Select-Object -Unique
+
+          foreach ($candidatePath in $candidatePaths) {
+            if (Test-Path -LiteralPath $candidatePath) {
+              Remove-Item -LiteralPath $candidatePath -Force
+            }
           }
 
       - name: Find Store upload package
@@ -215,11 +210,3 @@ jobs:
           --inputDirectory "${{ steps.package.outputs.upload_package_dir }}"
           --appId "$env:STORE_PRODUCT_ID"
 
-      - name: Remove transient signing certificate
-        if: always()
-        shell: pwsh
-        run: |
-          $certificatePath = Join-Path $env:RUNNER_TEMP 'JitHub-StoreRelease.pfx'
-          if (Test-Path -LiteralPath $certificatePath) {
-            Remove-Item -LiteralPath $certificatePath -Force
-          }

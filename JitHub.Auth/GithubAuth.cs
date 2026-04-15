@@ -1,128 +1,125 @@
-using Microsoft.Azure.Functions.Worker;
-using Microsoft.Azure.Functions.Worker.Http;
-using Microsoft.Extensions.Logging;
-using Octokit;
-using System.Net;
+using System.Text.Json;
+using System.Text.Json.Serialization;
 
 namespace JitHub.Auth;
 
-class ErrorMessage
+public sealed class ErrorMessage
 {
-    public string Message { get; set; }
+    public string Message { get; set; } = string.Empty;
 }
 
-public class GithubAuth
+public sealed class GitHubTokenResponse
 {
-    private readonly ILogger _logger;
+    [JsonPropertyName("access_token")]
+    public string? AccessToken { get; set; }
 
-    public GithubAuth(ILoggerFactory loggerFactory)
+    [JsonPropertyName("error")]
+    public string? Error { get; set; }
+
+    [JsonPropertyName("error_description")]
+    public string? ErrorDescription { get; set; }
+}
+
+public sealed class GithubAuth
+{
+    private readonly HttpClient _httpClient;
+    private readonly ILogger<GithubAuth> _logger;
+
+    public GithubAuth(HttpClient httpClient, ILogger<GithubAuth> logger)
     {
-        _logger = loggerFactory.CreateLogger<GithubAuth>();
+        _httpClient = httpClient;
+        _logger = logger;
     }
 
-    public async Task<OauthToken> Detokenize(string code)
+    public async Task<string> DetokenizeAsync(string? code, CancellationToken cancellationToken)
     {
-        string clientId = Environment.GetEnvironmentVariable("JithubClientId");
-        string appSecret = Environment.GetEnvironmentVariable("JithubAppSecret");
-
-        if (clientId == null)
+        if (string.IsNullOrWhiteSpace(code))
         {
-            throw new Exception("Missing client information");
+            throw new InvalidOperationException("Missing temporary code");
         }
 
-        if (appSecret == null)
+        string clientId = GetRequiredEnvironmentVariable(
+            "JitHubClientId",
+            "Missing client information",
+            "JithubClientId");
+        string appSecret = GetRequiredEnvironmentVariable("JithubAppSecret", "Missing app secret");
+
+        GitHubTokenResponse? token;
+        using HttpRequestMessage request = new(HttpMethod.Post, "login/oauth/access_token")
         {
-            throw new Exception("Missing app secret");
-        }
-
-        _logger.LogInformation("Processed secrets from env variables");
-
-        OauthToken token;
-        try
-        {
-            var request = new OauthTokenRequest(clientId, appSecret, code);
-            _logger.LogInformation("Github request created");
-
-            var gitHubClient = new GitHubClient(new ProductHeaderValue("JitHub"));
-            _logger.LogInformation("Github client created");
-
-            token = await gitHubClient.Oauth.CreateAccessToken(request);
-            _logger.LogInformation("request made from token");
-
-        }
-        catch (Exception ex)
-        {
-            _logger.LogInformation($"{ex}");
-            throw new Exception("Github request error");
-        }
-
-        if (token == null || string.IsNullOrWhiteSpace(token.AccessToken) || !string.IsNullOrWhiteSpace(token.Error))
-        {
-            _logger.LogInformation($"token missing information error: {token.Error}, error description: {token.ErrorDescription}");
-            throw new Exception($"Github returned missing token information");
-        }
-
-        return token;
-    }
-
-
-    public string ProcessRequest(HttpRequestData req)
-    {
-        var queries = System.Web.HttpUtility.ParseQueryString(req.Url.Query);
-        var temporaryCode = queries["tempCode"];
-        _logger.LogInformation($"processed a request with tempCode:{temporaryCode}");
-
-        if (String.IsNullOrWhiteSpace(temporaryCode))
-        {
-            throw new Exception("Missing temporary code");
-        }
-        return temporaryCode;
-    }
-
-    [Function("GithubCodeToToken")]
-    public async Task<HttpResponseData> Run([HttpTrigger(AuthorizationLevel.Anonymous, "get", "options")] HttpRequestData req)
-    {
-        // Handle CORS preflight in dev
-#if DEBUG
-        if (string.Equals(req.Method, "OPTIONS", StringComparison.OrdinalIgnoreCase))
-        {
-            var preflight = req.CreateResponse(HttpStatusCode.NoContent);
-            AddDevCorsHeaders(preflight, req);
-            return preflight;
-        }
-#endif
+            Content = new FormUrlEncodedContent(new Dictionary<string, string>
+            {
+                ["client_id"] = clientId,
+                ["client_secret"] = appSecret,
+                ["code"] = code
+            })
+        };
 
         try
         {
-            string code = ProcessRequest(req);
-            var token = await Detokenize(code);
-            var response = req.CreateResponse(HttpStatusCode.OK);
-            await response.WriteStringAsync(token.AccessToken);
-#if DEBUG
-            AddDevCorsHeaders(response, req);
-#endif
-            return response;
+            using HttpResponseMessage response = await _httpClient.SendAsync(request, cancellationToken);
+            if (!response.IsSuccessStatusCode)
+            {
+                _logger.LogWarning("GitHub OAuth token exchange returned HTTP {StatusCode}.", response.StatusCode);
+                throw new InvalidOperationException("Github request error");
+            }
+
+            await using Stream responseStream = await response.Content.ReadAsStreamAsync(cancellationToken);
+            token = await JsonSerializer.DeserializeAsync(
+                responseStream,
+                JitHubAuthJsonSerializerContext.Default.GitHubTokenResponse,
+                cancellationToken);
+        }
+        catch (InvalidOperationException)
+        {
+            throw;
+        }
+        catch (OperationCanceledException)
+        {
+            throw;
         }
         catch (Exception ex)
         {
-            var response = req.CreateResponse(HttpStatusCode.BadRequest);
-            await response.WriteAsJsonAsync(new ErrorMessage { Message = ex.Message});
-#if DEBUG
-            AddDevCorsHeaders(response, req);
-#endif
-            return response;
+            _logger.LogError(ex, "GitHub OAuth token exchange failed.");
+            throw new InvalidOperationException("Github request error", ex);
         }
+
+        if (token is null || string.IsNullOrWhiteSpace(token.AccessToken) || !string.IsNullOrWhiteSpace(token.Error))
+        {
+            _logger.LogWarning(
+                "GitHub OAuth token response was invalid. Error: {Error}; Description: {Description}",
+                token?.Error,
+                token?.ErrorDescription);
+            throw new InvalidOperationException("Github returned missing token information");
+        }
+
+        return token.AccessToken;
     }
 
-#if DEBUG
-    private static void AddDevCorsHeaders(HttpResponseData response, HttpRequestData req)
+    private static string GetRequiredEnvironmentVariable(string name, string errorMessage, params string[] fallbackNames)
     {
-        var origin = req.Headers.TryGetValues("Origin", out var values) ? values.FirstOrDefault() : "*";
-        response.Headers.Add("Access-Control-Allow-Origin", string.IsNullOrEmpty(origin) || origin == "null" ? "*" : origin);
-        response.Headers.Add("Vary", "Origin");
-        response.Headers.Add("Access-Control-Allow-Methods", "GET, OPTIONS");
-        response.Headers.Add("Access-Control-Allow-Headers", "*, Authorization, Content-Type");
-        response.Headers.Add("Access-Control-Max-Age", "86400");
+        foreach (string candidate in EnumerateEnvironmentVariableNames(name, fallbackNames))
+        {
+            string? value = Environment.GetEnvironmentVariable(candidate);
+            if (!string.IsNullOrWhiteSpace(value))
+            {
+                return value;
+            }
+        }
+
+        throw new InvalidOperationException(errorMessage);
     }
-#endif
+
+    private static IEnumerable<string> EnumerateEnvironmentVariableNames(string primaryName, IEnumerable<string> fallbackNames)
+    {
+        yield return primaryName;
+
+        foreach (string fallbackName in fallbackNames)
+        {
+            if (!string.Equals(fallbackName, primaryName, StringComparison.Ordinal))
+            {
+                yield return fallbackName;
+            }
+        }
+    }
 }

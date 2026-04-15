@@ -1,0 +1,72 @@
+<?xml version="1.0" encoding="utf-8"?>
+<Page
+    x:Class="JitHub.WinUI.Views.Pages.DashboardPage"
+    xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+    xmlns:controls="using:JitHub.WinUI.Views.Controls.Common"
+    xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+    xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+    xmlns:repo="using:JitHub.WinUI.Views.Controls"
+    xmlns:viewmodels="using:JitHub.WinUI.ViewModels.Pages"
+    x:DataType="viewmodels:DashboardPageViewModel"
+    Background="Transparent"
+    mc:Ignorable="d">
+    <Grid Padding="12">
+        <Grid.ColumnDefinitions>
+            <ColumnDefinition Width="320" />
+            <ColumnDefinition Width="*" />
+        </Grid.ColumnDefinitions>
+
+        <repo:RepoSideBar
+            Grid.Column="0"
+            Margin="0,0,12,0" />
+
+        <Border
+            Grid.Column="1"
+            Padding="12,12,0,0"
+            Background="{ThemeResource ExpanderHeaderBackground}"
+            CornerRadius="8">
+            <Grid>
+                <Grid.RowDefinitions>
+                    <RowDefinition Height="Auto" />
+                    <RowDefinition Height="*" />
+                </Grid.RowDefinitions>
+
+                <TextBlock
+                    Margin="0,0,0,20"
+                    FontSize="20"
+                    Text="All Activities" />
+
+                <ProgressRing
+                    Grid.Row="1"
+                    Width="50"
+                    Height="50"
+                    HorizontalAlignment="Center"
+                    VerticalAlignment="Center"
+                    IsActive="{Binding IsActivityLoading}"
+                    Visibility="{Binding IsActivityLoading, Converter={StaticResource BoolToVisibilityConverter}}" />
+
+                <controls:EmptyStateView
+                    Grid.Row="1"
+                    Description="{Binding RecentActivityEmptyStateDescription}"
+                    Title="{Binding RecentActivityEmptyStateTitle}"
+                    Visibility="{Binding IsActivityEmptyStateVisible, Converter={StaticResource BoolToVisibilityConverter}}" />
+
+                <ListView
+                    Grid.Row="1"
+                    IsItemClickEnabled="False"
+                    ItemTemplate="{StaticResource GitHubActivityEventListItemTemplate}"
+                    ItemsSource="{Binding RecentActivity}"
+                    SelectionMode="None"
+                    Visibility="{Binding AreActivityItemsVisible, Converter={StaticResource BoolToVisibilityConverter}}">
+                    <ListView.ItemContainerStyle>
+                        <Style TargetType="ListViewItem">
+                            <Setter Property="HorizontalContentAlignment" Value="Stretch" />
+                            <Setter Property="Margin" Value="0,0,0,12" />
+                        </Style>
+                    </ListView.ItemContainerStyle>
+                </ListView>
+            </Grid>
+        </Border>
+    </Grid>
+</Page>

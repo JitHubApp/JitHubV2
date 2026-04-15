@@ -1,0 +1,12 @@
+<ResourceDictionary
+    xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+    xmlns:controls="using:JitHub.WinUI.Views.Controls.PullRequest">
+    <DataTemplate x:Key="GitHubPullRequestListItemTemplate">
+        <controls:PullRequestListItemControl />
+    </DataTemplate>
+
+    <DataTemplate x:Key="GitHubPullRequestCommitListItemTemplate">
+        <controls:PullRequestCommitListItemControl />
+    </DataTemplate>
+</ResourceDictionary>

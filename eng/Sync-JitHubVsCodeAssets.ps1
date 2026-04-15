@@ -1,7 +1,7 @@
 [CmdletBinding()]
 param(
     [string]$VsCodeRepoPath,
-    [string]$DestinationPath = (Join-Path (Split-Path -Parent $PSScriptRoot) 'JitHub\Assets\dist'),
+    [string]$DestinationPath = (Join-Path (Split-Path -Parent $PSScriptRoot) 'artifacts\EditorAssets\dist'),
     [switch]$SkipInstall
 )
 

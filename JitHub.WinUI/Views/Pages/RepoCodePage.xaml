@@ -1,0 +1,51 @@
+<Page
+    x:Class="JitHub.WinUI.Views.Pages.RepoCodePage"
+    xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+    xmlns:local="using:JitHub.WinUI.Views.Pages"
+    xmlns:ui="using:CommunityToolkit.WinUI.UI"
+    xmlns:muxc="using:Microsoft.UI.Xaml.Controls"
+    xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+    xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+    xmlns:controls="using:Microsoft.UI.Xaml.Controls"
+    mc:Ignorable="d"
+    Background="Transparent">
+    <Grid
+        MinHeight="700">
+        <muxc:ProgressRing
+            x:Name="LoadingIndicator"
+            Visibility="Visible"
+            IsActive="True"
+            Width="50"
+            Height="50"
+            HorizontalAlignment="Center"
+            VerticalAlignment="Center"/>
+        <StackPanel
+            x:Name="ErrorState"
+            MaxWidth="520"
+            Spacing="12"
+            HorizontalAlignment="Center"
+            VerticalAlignment="Center"
+            Visibility="Collapsed">
+            <TextBlock
+                HorizontalAlignment="Center"
+                FontSize="20"
+                FontWeight="SemiBold"
+                Text="Unable to load the embedded editor." />
+            <TextBlock
+                x:Name="ErrorText"
+                TextWrapping="WrapWholeWords"
+                TextAlignment="Center" />
+        </StackPanel>
+        <Grid
+            x:Name="WebViewContainer"
+            HorizontalAlignment="Stretch"
+            VerticalAlignment="Stretch"
+            Visibility="Collapsed"
+            ui:VisualExtensions.NormalizedCenterPoint="0.5">
+            <muxc:WebView2
+                x:Name="ShellWebView" />
+        </Grid>
+    </Grid>
+</Page>
+

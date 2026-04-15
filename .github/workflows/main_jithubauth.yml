@@ -1,9 +1,6 @@
-# This workflow will build and deploy a C# .NET6 Azure function to Azure
-# The code is in a folder called "JitHub.AuthFunction"
-# The workflow will run whenever there's a push on the main branch
-# The Azure function's name is "jithubauth"
+# This workflow builds and deploys the Native AOT auth host.
 
-name: Build and deploy Azure function
+name: Build and deploy JitHub auth app
 
 on:
   push:
@@ -11,34 +8,37 @@ on:
       - main
 
 env:
-  AZURE_FUNCTIONAPP_NAME: jithubauth # set this to your Azure function app name
-  AZURE_FUNCTIONAPP_PACKAGE_PATH: JitHub.Auth # set this to the path of your function app project folder
-  DOTNET_VERSION: '7.0.x' # set this to the dotnet version to use
+  AZURE_WEBAPP_NAME: jithubauth
+  AZURE_WEBAPP_PACKAGE_PATH: JitHub.Auth
+  DOTNET_RUNTIME: 'linux-x64'
 
 jobs:
   build-and-deploy:
-    runs-on: windows-latest # change this to windows-latest
+    runs-on: ubuntu-latest
     steps:
     - name: Checkout
-      uses: actions/checkout@v2
+      uses: actions/checkout@v4
 
-    - name: Setup .NET Core SDK ${{ env.DOTNET_VERSION }}
-      uses: actions/setup-dotnet@v1
+    - name: Setup .NET SDK
+      uses: actions/setup-dotnet@v4
       with:
-        dotnet-version: ${{ env.DOTNET_VERSION }}
+        global-json-file: ./global.json
 
-    - name: Build and test
+    - name: Install Native AOT prerequisites
       run: |
-        dotnet build --configuration Release ${{ env.AZURE_FUNCTIONAPP_PACKAGE_PATH }}
+        sudo apt-get update
+        sudo apt-get install --yes clang zlib1g-dev
 
-    - name: Publish
+    - name: Publish Native AOT auth app
       run: |
-        dotnet publish -o ./publish ${{ env.AZURE_FUNCTIONAPP_PACKAGE_PATH }}
+        dotnet publish ./${{ env.AZURE_WEBAPP_PACKAGE_PATH }}/JitHub.Auth.csproj \
+          --configuration Release \
+          --runtime ${{ env.DOTNET_RUNTIME }} \
+          --output ./publish
 
-    - name: Deploy to Azure Function App
-      uses: Azure/functions-action@v1
-      id: fa
+    - name: Deploy to Azure Web App for Linux
+      uses: azure/webapps-deploy@v3
       with:
-        app-name: ${{ env.AZURE_FUNCTIONAPP_NAME }}
+        app-name: ${{ env.AZURE_WEBAPP_NAME }}
         package: ./publish
         publish-profile: ${{ secrets.AZUREAPPSERVICE_PUBLISHPROFILE_9634DB30B22840AC94FBE0D1DB96FEAF }}

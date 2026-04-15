@@ -1,0 +1,33 @@
+<UserControl
+    x:Class="JitHub.WinUI.Views.Controls.Commit.CommitFileItemControl"
+    xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+    xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+    xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+    mc:Ignorable="d">
+    <Expander Margin="0,4,0,0">
+        <Expander.Header>
+            <StackPanel Spacing="2">
+                <TextBlock
+                    Style="{StaticResource ListItemTitleTextBlockStyle}"
+                    Text="{Binding HeaderText}" />
+                <TextBlock
+                    Style="{StaticResource SectionSecondaryTextBlockStyle}"
+                    Text="{Binding MetadataText}" />
+            </StackPanel>
+        </Expander.Header>
+        <ScrollViewer
+            HorizontalScrollBarVisibility="Auto"
+            HorizontalScrollMode="Enabled"
+            VerticalScrollBarVisibility="Disabled"
+            ZoomMode="Disabled">
+            <TextBlock
+                FontFamily="Consolas"
+                IsTextSelectionEnabled="True"
+                Text="{Binding PatchDisplayText}"
+                TextWrapping="NoWrap" />
+        </ScrollViewer>
+    </Expander>
+</UserControl>
+
+

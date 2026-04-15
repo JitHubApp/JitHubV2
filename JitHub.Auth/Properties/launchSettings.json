@@ -2,8 +2,12 @@
   "profiles": {
     "JitHub.Auth": {
       "commandName": "Project",
-      "commandLineArgs": "--port 7003",
-      "launchBrowser": false
+      "dotnetRunMessages": true,
+      "launchBrowser": false,
+      "applicationUrl": "http://localhost:7003",
+      "environmentVariables": {
+        "ASPNETCORE_ENVIRONMENT": "Development"
+      }
     }
   }
 }
