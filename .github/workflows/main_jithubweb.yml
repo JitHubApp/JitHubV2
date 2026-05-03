@@ -23,7 +23,7 @@ permissions:
   contents: read
 
 env:
-  AZURE_WEBAPP_NAME: ${{ vars.JITHUB_WEBAPP_NAME || 'jithubauth' }}
+  AZURE_WEBAPP_NAME: ${{ vars.JITHUB_WEBAPP_NAME || 'jithub-web-prod' }}
   WEBSITE_PROJECT: JitHub.Web/JitHub.Web.csproj
 
 jobs:

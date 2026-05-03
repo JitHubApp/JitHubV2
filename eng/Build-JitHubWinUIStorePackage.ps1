@@ -68,6 +68,95 @@ function Get-PrimaryPlatform {
     return $Platforms[0]
 }
 
+function Get-WindowsPackageUploadFiles {
+    param(
+        [Parameter(Mandatory = $true)]
+        [string]$Path
+    )
+
+    return Get-ChildItem -Path $Path -Recurse -File |
+        Where-Object { $_.Extension -in '.appxupload', '.msixupload' } |
+        Sort-Object FullName
+}
+
+function New-MultiArchitectureUploadPackage {
+    param(
+        [Parameter(Mandatory = $true)]
+        [string]$PackageOutputDirectory,
+
+        [Parameter(Mandatory = $true)]
+        [string[]]$Platforms
+    )
+
+    Add-Type -AssemblyName System.IO.Compression.FileSystem
+
+    $singleArchitectureUploads = Get-WindowsPackageUploadFiles -Path $PackageOutputDirectory
+    if ($singleArchitectureUploads.Count -lt $Platforms.Count) {
+        $expected = $Platforms -join ', '
+        $actual = $singleArchitectureUploads | ForEach-Object { $_.Name }
+        throw "Expected single-architecture upload packages for $expected, but only found: $($actual -join ', ')"
+    }
+
+    $uploadStageDirectory = Join-Path $PackageOutputDirectory 'upload-stage'
+    if (Test-Path -LiteralPath $uploadStageDirectory) {
+        Remove-Item -LiteralPath $uploadStageDirectory -Recurse -Force
+    }
+
+    New-Item -ItemType Directory -Path $uploadStageDirectory -Force | Out-Null
+
+    foreach ($singleArchitectureUpload in $singleArchitectureUploads) {
+        $archive = [System.IO.Compression.ZipFile]::OpenRead($singleArchitectureUpload.FullName)
+        try {
+            $entriesToExtract = $archive.Entries |
+                Where-Object {
+                    $extension = [System.IO.Path]::GetExtension($_.FullName)
+                    $extension -in '.appx', '.msix', '.appxsym'
+                }
+
+            foreach ($entry in $entriesToExtract) {
+                $fileName = [System.IO.Path]::GetFileName($entry.FullName)
+                if ([string]::IsNullOrWhiteSpace($fileName)) {
+                    continue
+                }
+
+                $destinationPath = Join-Path $uploadStageDirectory $fileName
+                [System.IO.Compression.ZipFileExtensions]::ExtractToFile($entry, $destinationPath, $true)
+            }
+        }
+        finally {
+            $archive.Dispose()
+        }
+    }
+
+    $architecturePackages = Get-ChildItem -Path $uploadStageDirectory -File |
+        Where-Object { $_.Extension -in '.appx', '.msix' } |
+        Sort-Object Name
+
+    if ($architecturePackages.Count -lt $Platforms.Count) {
+        $expected = $Platforms -join ', '
+        $actual = $architecturePackages | ForEach-Object { $_.Name }
+        throw "Expected architecture packages for $expected, but only staged: $($actual -join ', ')"
+    }
+
+    $firstPackageName = $architecturePackages[0].BaseName
+    $packagePrefix = $firstPackageName -replace '_(x86|x64|arm|arm64)$', ''
+    $platformLabel = ($Platforms | ForEach-Object { $_.Trim() }) -join '_'
+    $uploadExtension = $singleArchitectureUploads[0].Extension
+    $combinedUploadPath = Join-Path $PackageOutputDirectory "$packagePrefix`_$platformLabel$uploadExtension"
+
+    if (Test-Path -LiteralPath $combinedUploadPath) {
+        Remove-Item -LiteralPath $combinedUploadPath -Force
+    }
+
+    [System.IO.Compression.ZipFile]::CreateFromDirectory($uploadStageDirectory, $combinedUploadPath)
+
+    foreach ($singleArchitectureUpload in $singleArchitectureUploads) {
+        Remove-Item -LiteralPath $singleArchitectureUpload.FullName -Force
+    }
+
+    return Get-Item -LiteralPath $combinedUploadPath
+}
+
 function Invoke-StoreUploadBuild {
     param(
         [Parameter(Mandatory = $true)]
@@ -137,15 +226,6 @@ if (-not (Test-Path -LiteralPath $resolvedProjectPath)) {
 
 $resolvedOutputDirectory = Resolve-AbsolutePath -Path $OutputDirectory
 $platforms = Get-BuildPlatforms -Value $BundlePlatforms
-if ($platforms.Count -gt 1) {
-    throw @"
-Multi-platform Store bundles are currently blocked while editor assets are packaged as direct files.
-
-Each individual platform package builds successfully, but the bundle resource-indexing step treats parts of the VS Code asset tree as Windows resource qualifiers and fails before producing the .msixupload.
-
-Use a single platform such as x64 for the current Store workflow. To restore x86/x64/ARM64 in one Store submission, add a generated editor-asset archive/package path so makepri does not index the raw node_modules/dist tree.
-"@
-}
 
 if (Test-Path -LiteralPath $resolvedOutputDirectory) {
     Remove-Item -LiteralPath $resolvedOutputDirectory -Recurse -Force
@@ -179,32 +259,46 @@ try {
         }
     }
 
-    $buildParameters = @{
-        ResolvedProjectPath = $resolvedProjectPath
-        Platforms = $platforms
-        PackageOutputDirectory = $resolvedOutputDirectory
-        ResolvedTargetPlatformVersion = $TargetPlatformVersion
+    foreach ($platform in $platforms) {
+        Write-Host "Building Store upload package for $platform."
+
+        $buildParameters = @{
+            ResolvedProjectPath = $resolvedProjectPath
+            Platforms = @($platform)
+            PackageOutputDirectory = $resolvedOutputDirectory
+            ResolvedTargetPlatformVersion = $TargetPlatformVersion
+        }
+
+        if ($UseSigningCertificate) {
+            $buildParameters.SignPackage = $true
+            $buildParameters.CertificatePath = $certificatePath
+            $buildParameters.CertificatePasswordValue = $effectiveCertificatePassword
+            $buildParameters.CertificateThumbprintValue = $effectiveCertificateThumbprint
+        }
+
+        Invoke-StoreUploadBuild @buildParameters
     }
 
-    if ($UseSigningCertificate) {
-        $buildParameters.SignPackage = $true
-        $buildParameters.CertificatePath = $certificatePath
-        $buildParameters.CertificatePasswordValue = $effectiveCertificatePassword
-        $buildParameters.CertificateThumbprintValue = $effectiveCertificateThumbprint
+    if ($platforms.Count -gt 1) {
+        Write-Host "Creating multi-architecture Store upload package for $($platforms -join ', ')."
+        $null = New-MultiArchitectureUploadPackage -PackageOutputDirectory $resolvedOutputDirectory -Platforms $platforms
     }
 
-    Invoke-StoreUploadBuild @buildParameters
+    $uploadPackages = Get-WindowsPackageUploadFiles -Path $resolvedOutputDirectory
 
-    $uploadPackage = Get-ChildItem -Path $resolvedOutputDirectory -Recurse -File |
-        Where-Object { $_.Extension -in '.appxupload', '.msixupload' } |
-        Sort-Object LastWriteTime -Descending |
-        Select-Object -First 1
-
-    if (-not $uploadPackage) {
+    if (-not $uploadPackages) {
         throw "No .appxupload or .msixupload file was created under $resolvedOutputDirectory."
     }
 
-    Write-Host "Created Store upload package: $($uploadPackage.FullName)"
+    if ($platforms.Count -gt 1 -and $uploadPackages.Count -ne 1) {
+        $actual = $uploadPackages | ForEach-Object { $_.Name }
+        throw "Expected exactly one combined Store upload package, but found: $($actual -join ', ')"
+    }
+
+    Write-Host 'Created Store upload packages:'
+    foreach ($uploadPackage in $uploadPackages) {
+        Write-Host "  $($uploadPackage.FullName)"
+    }
 }
 finally {
     if ($certificatePath -and (Test-Path -LiteralPath $certificatePath)) {

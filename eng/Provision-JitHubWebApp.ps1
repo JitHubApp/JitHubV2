@@ -2,7 +2,7 @@ param(
     [string]$ResourceGroup = 'JitHub',
     [string]$Location = 'westus',
     [string]$PlanName = 'ASP-JitHub-Web',
-    [string]$WebAppName = 'jithubauth',
+    [string]$WebAppName = 'jithub-web-prod',
     [string]$Sku = 'B1',
     [string]$Runtime = 'dotnet:10'
 )
@@ -41,8 +41,31 @@ function Invoke-AzJson {
         [string[]]$Arguments
     )
 
-    $json = & $script:AzPath @Arguments --output json 2>$null
-    if ($LASTEXITCODE -ne 0 -or [string]::IsNullOrWhiteSpace($json)) {
+    $previousErrorActionPreference = $ErrorActionPreference
+    $previousNativeCommandPreference = $null
+    $hasNativeCommandPreference = Get-Variable -Name PSNativeCommandUseErrorActionPreference -Scope Global -ErrorAction SilentlyContinue
+
+    if ($hasNativeCommandPreference) {
+        $previousNativeCommandPreference = $global:PSNativeCommandUseErrorActionPreference
+    }
+
+    try {
+        $ErrorActionPreference = 'Continue'
+        if ($hasNativeCommandPreference) {
+            $global:PSNativeCommandUseErrorActionPreference = $false
+        }
+
+        $json = & $script:AzPath @Arguments --output json 2>$null
+        $exitCode = $LASTEXITCODE
+    }
+    finally {
+        $ErrorActionPreference = $previousErrorActionPreference
+        if ($hasNativeCommandPreference) {
+            $global:PSNativeCommandUseErrorActionPreference = $previousNativeCommandPreference
+        }
+    }
+
+    if ($exitCode -ne 0 -or [string]::IsNullOrWhiteSpace($json)) {
         return $null
     }
 
@@ -152,10 +175,12 @@ Invoke-Az -Arguments @(
 
 Write-Host ''
 Write-Host 'Provisioning complete. Next steps:'
-Write-Host "1. Download the publish profile:"
+Write-Host '1. Configure app settings for the GitHub OAuth app:'
+Write-Host "   az webapp config appsettings set -g $ResourceGroup -n $WebAppName --settings JitHubClientId=<client-id> JithubAppSecret=<client-secret>"
+Write-Host '2. Download the publish profile:'
 Write-Host "   az webapp deployment list-publishing-profiles -g $ResourceGroup -n $WebAppName --xml > jithub-webapp.PublishSettings"
-Write-Host '2. Save it as the GitHub secret JITHUB_WEBAPP_PUBLISH_PROFILE:'
+Write-Host '3. Save it as the GitHub secret JITHUB_WEBAPP_PUBLISH_PROFILE:'
 Write-Host '   gh secret set JITHUB_WEBAPP_PUBLISH_PROFILE --repo JitHubApp/JitHubV2 < jithub-webapp.PublishSettings'
-Write-Host '3. Save the target app name as a GitHub Actions variable:'
+Write-Host '4. Save the target app name as a GitHub Actions variable:'
 Write-Host "   gh variable set JITHUB_WEBAPP_NAME --repo JitHubApp/JitHubV2 --body $WebAppName"
-Write-Host '4. Move custom domains/OAuth callback hosts after the new Web App passes a smoke test.'
+Write-Host '5. Move custom domains/OAuth callback hosts after the new Web App passes a smoke test.'

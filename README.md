@@ -146,15 +146,16 @@ The workflow is:
 
 - `.github/workflows/main_jithubweb.yml`
 
-It builds `JitHub.Web` in Release mode and deploys the published output to the Web App named by the `JITHUB_WEBAPP_NAME` repository variable. If the variable is not set, the workflow defaults to `jithubauth`.
+It builds `JitHub.Web` in Release mode and deploys the published output to the Web App named by the `JITHUB_WEBAPP_NAME` repository variable. If the variable is not set, the workflow defaults to `jithub-web-prod`.
 
 Before enabling deployment:
 
 1. Provision a regular Windows App Service Web App with .NET 10. Use `.\eng\Provision-JitHubWebApp.ps1` for the safe setup path.
 2. If `jithubauth.azurewebsites.net` must remain the compatibility callback host, retire the old Function App first so the new Web App can reuse the `jithubauth` name.
-3. Download the Web App publish profile and save it as the GitHub secret `JITHUB_WEBAPP_PUBLISH_PROFILE`.
-4. Save the target app name as the GitHub variable `JITHUB_WEBAPP_NAME`.
-5. Move `jithub.zhuowencui.com` from the old Static Web App to the new Web App after the new host passes a smoke test.
+3. Configure the Web App settings `JitHubClientId` and `JithubAppSecret` from the GitHub OAuth app used by the existing callback host.
+4. Download the Web App publish profile and save it as the GitHub secret `JITHUB_WEBAPP_PUBLISH_PROFILE`.
+5. Save the target app name as the GitHub variable `JITHUB_WEBAPP_NAME`.
+6. Move `jithub.zhuowencui.com` from the old Static Web App to the new Web App after the new host passes a smoke test.
 
 ## Microsoft Store release workflow
 
@@ -184,9 +185,9 @@ Optional environment variables:
 
 - `STORE_APP_DISPLAY_NAME`
 - `STORE_PUBLISHER_DISPLAY_NAME`
-- `JITHUB_STORE_BUNDLE_PLATFORMS` (defaults to `x64`)
+- `JITHUB_STORE_BUNDLE_PLATFORMS` (defaults to `x64|ARM64`)
 
-The current WinUI Store workflow is validated for single-architecture Store upload packages. `x86`, `x64`, and `ARM64` each package successfully on their own, but the raw editor asset tree currently blocks a combined `x86|x64|ARM64` bundle during Windows PRI resource indexing. Keep the first WinUI submission as `x64` or implement a generated editor-asset archive/package path before making an all-architecture public release.
+The WinUI Store workflow now targets `x64|ARM64` by default. The script builds each architecture as a separate Store package and then creates one `.msixupload` containing both architecture packages, which keeps the submission on the documented Microsoft Store CLI `--inputFile` path without asking MSBuild to resource-index the raw editor asset tree as a multi-platform bundle. `x86` is intentionally not included.
 
 Run the **Publish JitHub to Microsoft Store** workflow manually and provide a four-part `release_version` such as `1.6.5.0`. The workflow checks out `nerocui/jithub-vs-code`, builds the editor assets into `artifacts/EditorAssets/dist`, patches `JitHub.WinUI/Package.appxmanifest` at runtime from the configured environment values, builds a Store upload package, uploads the build artifacts, and then publishes the generated `.appxupload` or `.msixupload` to the Microsoft Store.
 

@@ -151,7 +151,7 @@ jobs:
           $ErrorActionPreference = 'Stop'
           $projectPath = Join-Path $env:GITHUB_WORKSPACE $env:PROJECT_PATH
           $packageDir = $env:APP_PACKAGES_DIR
-          $bundlePlatforms = if ([string]::IsNullOrWhiteSpace($env:BUNDLE_PLATFORMS)) { 'x64' } else { $env:BUNDLE_PLATFORMS }
+          $bundlePlatforms = if ([string]::IsNullOrWhiteSpace($env:BUNDLE_PLATFORMS)) { 'x64|ARM64' } else { $env:BUNDLE_PLATFORMS }
 
           .\eng\Build-JitHubWinUIStorePackage.ps1 `
             -ProjectPath $projectPath `
