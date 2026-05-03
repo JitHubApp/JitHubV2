@@ -119,6 +119,8 @@ It now uses the Microsoft Store Developer CLI as the release control plane:
 - `microsoft/microsoft-store-apppublisher@v1.3` installs `msstore` on the runner.
 - `msstore reconfigure` authenticates with the protected `microsoft-store` GitHub environment secrets.
 - `msstore publish` receives the exact `.appxupload` or `.msixupload` file produced by `eng/Build-JitHubWinUIStorePackage.ps1` through `--inputFile`.
+- `use_signing_certificate` is optional. Leave it `false` to match the existing UWP Store-upload flow where Partner Center accepts and re-signs the submitted package; enable it only when `STORE_PACKAGE_CERTIFICATE_BASE64` and `STORE_PACKAGE_CERTIFICATE_PASSWORD` are configured.
+- `JITHUB_STORE_BUNDLE_PLATFORMS` should stay on a single architecture, normally `x64`, until editor assets are packaged in a generated archive form. Direct `Assets/dist` files build for individual architectures but fail the multi-platform bundle resource-indexing step.
 - `store_submission_mode` controls whether the run publishes publicly, keeps a draft, or targets a flight.
 - `store_flight_id` is required when `store_submission_mode` is `flight`.
 - `package_rollout_percentage` can stage rollout from `0` to `100`.

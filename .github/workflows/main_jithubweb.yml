@@ -23,7 +23,7 @@ permissions:
   contents: read
 
 env:
-  AZURE_WEBAPP_NAME: jithubauth
+  AZURE_WEBAPP_NAME: ${{ vars.JITHUB_WEBAPP_NAME || 'jithubauth' }}
   WEBSITE_PROJECT: JitHub.Web/JitHub.Web.csproj
 
 jobs:
@@ -66,9 +66,24 @@ jobs:
           name: jithub-web-publish
           path: ./publish
 
+      - name: Validate Azure Web App deployment configuration
+        shell: bash
+        env:
+          JITHUB_WEBAPP_PUBLISH_PROFILE: ${{ secrets.JITHUB_WEBAPP_PUBLISH_PROFILE }}
+        run: |
+          if [ -z "${AZURE_WEBAPP_NAME}" ]; then
+            echo "JITHUB_WEBAPP_NAME is empty. Configure the repository variable or set AZURE_WEBAPP_NAME in the workflow."
+            exit 1
+          fi
+
+          if [ -z "${JITHUB_WEBAPP_PUBLISH_PROFILE}" ]; then
+            echo "JITHUB_WEBAPP_PUBLISH_PROFILE is required. Create a regular Azure App Service Web App, download its publish profile, and save it as this GitHub secret."
+            exit 1
+          fi
+
       - name: Deploy to Azure Web App
         uses: azure/webapps-deploy@v3
         with:
           app-name: ${{ env.AZURE_WEBAPP_NAME }}
           package: ./publish
-          publish-profile: ${{ secrets.AZUREAPPSERVICE_PUBLISHPROFILE_9634DB30B22840AC94FBE0D1DB96FEAF }}
+          publish-profile: ${{ secrets.JITHUB_WEBAPP_PUBLISH_PROFILE }}

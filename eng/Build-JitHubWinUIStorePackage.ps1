@@ -68,29 +68,6 @@ function Get-PrimaryPlatform {
     return $Platforms[0]
 }
 
-function Get-PackagePublisherIdentity {
-    param(
-        [Parameter(Mandatory = $true)]
-        [string]$ResolvedProjectPath
-    )
-
-    $projectDirectory = Split-Path -Parent $ResolvedProjectPath
-    $manifestPath = Join-Path $projectDirectory 'Package.appxmanifest'
-    if (-not (Test-Path -LiteralPath $manifestPath)) {
-        throw "Package manifest not found next to project: $manifestPath"
-    }
-
-    [xml]$manifest = Get-Content -LiteralPath $manifestPath
-    $namespaceManager = [System.Xml.XmlNamespaceManager]::new($manifest.NameTable)
-    $namespaceManager.AddNamespace('appx', 'http://schemas.microsoft.com/appx/manifest/foundation/windows10')
-    $identityNode = $manifest.SelectSingleNode('/appx:Package/appx:Identity', $namespaceManager)
-    if ($null -eq $identityNode -or [string]::IsNullOrWhiteSpace($identityNode.Publisher)) {
-        throw "Publisher identity was not found in $manifestPath"
-    }
-
-    return $identityNode.Publisher
-}
-
 function Invoke-StoreUploadBuild {
     param(
         [Parameter(Mandatory = $true)]
@@ -132,10 +109,6 @@ function Invoke-StoreUploadBuild {
         "/p:AppxPackageDir=$PackageOutputDirectory\"
     )
 
-    if ($Platforms.Count -gt 1) {
-        $buildArguments += "/p:AppxBundlePlatforms=$($Platforms -join '|')"
-    }
-
     if ($SignPackage) {
         $buildArguments += '/p:AppxPackageSigningEnabled=True'
         $buildArguments += '/p:GenerateTemporaryStoreCertificate=False'
@@ -147,8 +120,8 @@ function Invoke-StoreUploadBuild {
         }
     }
     else {
-        $buildArguments += '/p:AppxPackageSigningEnabled=True'
-        $buildArguments += '/p:GenerateTemporaryStoreCertificate=True'
+        $buildArguments += '/p:AppxPackageSigningEnabled=False'
+        $buildArguments += '/p:GenerateTemporaryStoreCertificate=False'
     }
 
     & dotnet @buildArguments
@@ -164,6 +137,15 @@ if (-not (Test-Path -LiteralPath $resolvedProjectPath)) {
 
 $resolvedOutputDirectory = Resolve-AbsolutePath -Path $OutputDirectory
 $platforms = Get-BuildPlatforms -Value $BundlePlatforms
+if ($platforms.Count -gt 1) {
+    throw @"
+Multi-platform Store bundles are currently blocked while editor assets are packaged as direct files.
+
+Each individual platform package builds successfully, but the bundle resource-indexing step treats parts of the VS Code asset tree as Windows resource qualifiers and fails before producing the .msixupload.
+
+Use a single platform such as x64 for the current Store workflow. To restore x86/x64/ARM64 in one Store submission, add a generated editor-asset archive/package path so makepri does not index the raw node_modules/dist tree.
+"@
+}
 
 if (Test-Path -LiteralPath $resolvedOutputDirectory) {
     Remove-Item -LiteralPath $resolvedOutputDirectory -Recurse -Force
@@ -174,8 +156,6 @@ New-Item -ItemType Directory -Path $resolvedOutputDirectory -Force | Out-Null
 $certificatePath = $null
 $effectiveCertificatePassword = $PackageCertificatePassword
 $effectiveCertificateThumbprint = $PackageCertificateThumbprint
-$generatedCertificateThumbprint = $null
-$packagePublisherIdentity = Get-PackagePublisherIdentity -ResolvedProjectPath $resolvedProjectPath
 try {
     if ($UseSigningCertificate) {
         if ([string]::IsNullOrWhiteSpace($PackageCertificateBase64)) {
@@ -198,32 +178,22 @@ try {
             $packageCertificate.Dispose()
         }
     }
-    else {
-        $temporaryPasswordText = [Guid]::NewGuid().ToString('N')
-        $temporaryPassword = ConvertTo-SecureString -String $temporaryPasswordText -AsPlainText -Force
-        $temporaryCertificate = New-SelfSignedCertificate `
-            -Type CodeSigningCert `
-            -Subject $packagePublisherIdentity `
-            -CertStoreLocation 'Cert:\CurrentUser\My' `
-            -FriendlyName 'JitHub Temporary Store Package'
 
-        $certificatePath = Join-Path (Get-TransientTempPath) 'JitHub-WinUI-TemporaryStorePackage.pfx'
-        Export-PfxCertificate -Cert $temporaryCertificate -FilePath $certificatePath -Password $temporaryPassword | Out-Null
-
-        $effectiveCertificatePassword = $temporaryPasswordText
-        $effectiveCertificateThumbprint = $temporaryCertificate.Thumbprint
-        $generatedCertificateThumbprint = $temporaryCertificate.Thumbprint
+    $buildParameters = @{
+        ResolvedProjectPath = $resolvedProjectPath
+        Platforms = $platforms
+        PackageOutputDirectory = $resolvedOutputDirectory
+        ResolvedTargetPlatformVersion = $TargetPlatformVersion
     }
 
-    Invoke-StoreUploadBuild `
-        -ResolvedProjectPath $resolvedProjectPath `
-        -Platforms $platforms `
-        -PackageOutputDirectory $resolvedOutputDirectory `
-        -ResolvedTargetPlatformVersion $TargetPlatformVersion `
-        -SignPackage `
-        -CertificatePath $certificatePath `
-        -CertificatePasswordValue $effectiveCertificatePassword `
-        -CertificateThumbprintValue $effectiveCertificateThumbprint
+    if ($UseSigningCertificate) {
+        $buildParameters.SignPackage = $true
+        $buildParameters.CertificatePath = $certificatePath
+        $buildParameters.CertificatePasswordValue = $effectiveCertificatePassword
+        $buildParameters.CertificateThumbprintValue = $effectiveCertificateThumbprint
+    }
+
+    Invoke-StoreUploadBuild @buildParameters
 
     $uploadPackage = Get-ChildItem -Path $resolvedOutputDirectory -Recurse -File |
         Where-Object { $_.Extension -in '.appxupload', '.msixupload' } |
@@ -237,11 +207,6 @@ try {
     Write-Host "Created Store upload package: $($uploadPackage.FullName)"
 }
 finally {
-    if ($generatedCertificateThumbprint) {
-        Get-ChildItem -LiteralPath "Cert:\CurrentUser\My\$generatedCertificateThumbprint" -ErrorAction SilentlyContinue |
-            Remove-Item -Force -ErrorAction SilentlyContinue
-    }
-
     if ($certificatePath -and (Test-Path -LiteralPath $certificatePath)) {
         Remove-Item -LiteralPath $certificatePath -Force
     }

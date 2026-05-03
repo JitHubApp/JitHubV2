@@ -18,9 +18,9 @@ on:
         default: false
         type: boolean
       use_signing_certificate:
-        description: Sign the package with the configured PFX before Store upload. This must stay enabled for Microsoft Store submissions.
+        description: Sign the package with the configured PFX before Store upload. Leave false to match the existing Store-upload flow where Partner Center re-signs the submitted package.
         required: false
-        default: true
+        default: false
         type: boolean
       store_submission_mode:
         description: Whether msstore should publish publicly, keep a draft submission, or publish to a flight.
@@ -144,12 +144,6 @@ jobs:
         run: |
           throw "WinUI Store publishing is intentionally blocked until the migration reaches full feature parity. Leave allow_winui_store_release=false until that exit condition is met."
 
-      - name: Require signed Store packages
-        if: ${{ !inputs.use_signing_certificate }}
-        shell: pwsh
-        run: |
-          throw "Microsoft Store submissions must use a signing certificate. Re-run this workflow with use_signing_certificate=true and provide STORE_PACKAGE_CERTIFICATE_BASE64 / STORE_PACKAGE_CERTIFICATE_PASSWORD."
-
       - name: Build Store upload package
         id: build-package
         shell: pwsh
@@ -157,7 +151,7 @@ jobs:
           $ErrorActionPreference = 'Stop'
           $projectPath = Join-Path $env:GITHUB_WORKSPACE $env:PROJECT_PATH
           $packageDir = $env:APP_PACKAGES_DIR
-          $bundlePlatforms = if ([string]::IsNullOrWhiteSpace($env:BUNDLE_PLATFORMS)) { 'x86|x64|ARM64' } else { $env:BUNDLE_PLATFORMS }
+          $bundlePlatforms = if ([string]::IsNullOrWhiteSpace($env:BUNDLE_PLATFORMS)) { 'x64' } else { $env:BUNDLE_PLATFORMS }
 
           .\eng\Build-JitHubWinUIStorePackage.ps1 `
             -ProjectPath $projectPath `

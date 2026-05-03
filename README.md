@@ -140,15 +140,21 @@ The capture script builds `JitHub.WinUI`, launches scenario-specific pages with 
 
 ## Web deployment
 
-`JitHub.Web` now deploys to the existing Azure App Service behind `jithubauth.azurewebsites.net`, which keeps the existing OAuth callback compatibility route alive while also serving the public website.
+`JitHub.Web` deploys as a normal ASP.NET Core App Service Web App. The old production `jithubauth.azurewebsites.net` host was an Azure Function App, so the unified website needs a real Web App provisioned before the first production deployment.
 
 The workflow is:
 
 - `.github/workflows/main_jithubweb.yml`
 
-It builds `JitHub.Web` in Release mode and deploys the published output to the `jithubauth` App Service with the existing publish profile secret.
+It builds `JitHub.Web` in Release mode and deploys the published output to the Web App named by the `JITHUB_WEBAPP_NAME` repository variable. If the variable is not set, the workflow defaults to `jithubauth`.
 
-If the App Service still has the old custom startup command from the retired Native AOT auth host, remove that startup command in Azure so the default ASP.NET Core startup behavior can take over.
+Before enabling deployment:
+
+1. Provision a regular Windows App Service Web App with .NET 10. Use `.\eng\Provision-JitHubWebApp.ps1` for the safe setup path.
+2. If `jithubauth.azurewebsites.net` must remain the compatibility callback host, retire the old Function App first so the new Web App can reuse the `jithubauth` name.
+3. Download the Web App publish profile and save it as the GitHub secret `JITHUB_WEBAPP_PUBLISH_PROFILE`.
+4. Save the target app name as the GitHub variable `JITHUB_WEBAPP_NAME`.
+5. Move `jithub.zhuowencui.com` from the old Static Web App to the new Web App after the new host passes a smoke test.
 
 ## Microsoft Store release workflow
 
@@ -165,20 +171,22 @@ Set up a protected GitHub environment named `microsoft-store` and configure thes
 - `STORE_CLIENT_SECRET`
 - `STORE_PACKAGE_IDENTITY_NAME`
 - `STORE_PACKAGE_PUBLISHER`
-- `STORE_PACKAGE_CERTIFICATE_BASE64`
-- `STORE_PACKAGE_CERTIFICATE_PASSWORD`
 
 Optional secrets:
 
 - `STORE_PHONE_PRODUCT_ID`
 - `STORE_PHONE_PUBLISHER_ID`
+- `STORE_PACKAGE_CERTIFICATE_BASE64`
+- `STORE_PACKAGE_CERTIFICATE_PASSWORD`
 - `STORE_PACKAGE_CERTIFICATE_THUMBPRINT`
 
 Optional environment variables:
 
 - `STORE_APP_DISPLAY_NAME`
 - `STORE_PUBLISHER_DISPLAY_NAME`
-- `JITHUB_STORE_BUNDLE_PLATFORMS` (defaults to `x86|x64|arm64`)
+- `JITHUB_STORE_BUNDLE_PLATFORMS` (defaults to `x64`)
+
+The current WinUI Store workflow is validated for single-architecture Store upload packages. `x86`, `x64`, and `ARM64` each package successfully on their own, but the raw editor asset tree currently blocks a combined `x86|x64|ARM64` bundle during Windows PRI resource indexing. Keep the first WinUI submission as `x64` or implement a generated editor-asset archive/package path before making an all-architecture public release.
 
 Run the **Publish JitHub to Microsoft Store** workflow manually and provide a four-part `release_version` such as `1.6.5.0`. The workflow checks out `nerocui/jithub-vs-code`, builds the editor assets into `artifacts/EditorAssets/dist`, patches `JitHub.WinUI/Package.appxmanifest` at runtime from the configured environment values, builds a Store upload package, uploads the build artifacts, and then publishes the generated `.appxupload` or `.msixupload` to the Microsoft Store.
 
