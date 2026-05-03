@@ -2,9 +2,9 @@ using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.DependencyInjection;
 using JitHub.Models.GitHub;
 using JitHub.Services;
-using IssueFilter = Octokit.IssueFilter;
-using IssueRequest = Octokit.IssueRequest;
-using ItemStateFilter = Octokit.ItemStateFilter;
+using IssueFilter = JitHub.Models.LegacyGitHub.IssueFilter;
+using IssueRequest = JitHub.Models.LegacyGitHub.IssueRequest;
+using ItemStateFilter = JitHub.Models.LegacyGitHub.ItemStateFilter;
 using System;
 using System.Collections.Generic;
 using System.Linq;
@@ -61,6 +61,10 @@ public partial class UserIssueListViewModel : ObservableObject
             CreatedIssues = created.ToList();
             AssignedIssues = assigned.ToList();
             MentionedIssues = mentioned.ToList();
+        }
+        catch (Exception ex)
+        {
+            System.Diagnostics.Debug.WriteLine($"Failed to load user issues: {ex}");
         }
         finally
         {

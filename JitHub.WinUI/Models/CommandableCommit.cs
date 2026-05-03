@@ -1,5 +1,5 @@
-﻿using JitHub.Models.Base;
-using Octokit;
+using JitHub.Models.Base;
+using JitHub.Models.LegacyGitHub;
 using System;
 using System.Collections.Generic;
 using System.Linq;

@@ -1,7 +1,7 @@
 using System;
 using System.Collections.Generic;
 
-namespace Octokit;
+namespace JitHub.Models.LegacyGitHub;
 
 public class ApiOptions
 {
@@ -167,7 +167,7 @@ public class IssueUpdate
 
     public int? Milestone { get; set; }
 
-    public global::Octokit.ItemState? State { get; set; }
+    public global::JitHub.Models.LegacyGitHub.ItemState? State { get; set; }
 }
 
 public class NewPullRequest
@@ -215,5 +215,5 @@ public class PullRequestUpdate
 
     public bool? MaintainerCanModify { get; set; }
 
-    public global::Octokit.ItemState? State { get; set; }
+    public global::JitHub.Models.LegacyGitHub.ItemState? State { get; set; }
 }

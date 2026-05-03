@@ -38,7 +38,7 @@
                 Margin="10 0 0 10"
                 VerticalAlignment="Bottom"
                 Command="{x:Bind ViewModel.NewPRCommand, Mode=OneWay}"
-                Style="{ThemeResource AccentButtonStyle}">
+                Style="{StaticResource AppAccentButtonStyle}">
                 New Pull Request
             </Button>
         </Grid>
@@ -50,19 +50,11 @@
             Height="50"
             Visibility="{x:Bind ViewModel.Loading, Converter={StaticResource BoolToVisibilityConverter}, Mode=OneWay}"
             IsActive="{x:Bind ViewModel.Loading, Mode=OneWay}"/>
-        <StackPanel
+        <common:EmptyStateView
             Grid.Row="1"
-            Visibility="{x:Bind ViewModel.IsEmpty, Converter={StaticResource BoolToVisibilityConverter}, Mode=OneWay}"
-            HorizontalAlignment="Center"
-            VerticalAlignment="Center"
-            Spacing="8">
-            <Image
-                Width="320"
-                Source="ms-appx:///Assets/Icons/no_result.png"/>
-            <TextBlock
-                HorizontalAlignment="Center"
-                Text="No Pull Request in this repository"/>
-        </StackPanel>
+            Title="No pull requests yet"
+            Description="This repository doesn’t have any pull requests in the current filter."
+            Visibility="{x:Bind ViewModel.IsEmpty, Converter={StaticResource BoolToVisibilityConverter}, Mode=OneWay}" />
         <controls:ListDetailsView
             Grid.Row="1"
             x:Name="PullRequestPageMasterDetail"
@@ -85,18 +77,9 @@
                     <Grid
                         VerticalAlignment="Stretch"
                         HorizontalAlignment="Stretch">
-                        <StackPanel
-                            VerticalAlignment="Center"
-                            HorizontalAlignment="Center"
-                            Spacing="8">
-                            <Image
-                                Width="320"
-                                Source="ms-appx:///Assets/Icons/select_one.png"/>
-                            <TextBlock
-                                HorizontalAlignment="Center"
-                                FontSize="16"
-                                Text="Select a Pull Request to view"/>
-                        </StackPanel>
+                        <common:EmptyStateView
+                            Title="Select a pull request"
+                            Description="Choose a pull request from the list to review the discussion and commits." />
                     </Grid>
                 </DataTemplate>
             </controls:ListDetailsView.NoSelectionContentTemplate>

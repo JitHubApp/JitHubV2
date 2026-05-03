@@ -1,4 +1,4 @@
-using Octokit;
+using JitHub.Models.LegacyGitHub;
 using System;
 using Microsoft.UI.Xaml.Data;
 

@@ -1,5 +1,5 @@
 using JitHub.Models.GitHub;
-using Octokit;
+using JitHub.Models.LegacyGitHub;
 
 namespace JitHub.Models.NavArgs;
 

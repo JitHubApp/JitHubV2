@@ -8,6 +8,7 @@
     xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
     xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
     xmlns:controls="using:JitHub.WinUI.Views.Controls"
+    xmlns:appcontrols="using:JitHub.WinUI.Views.Controls.App"
     mc:Ignorable="d"
     SizeChanged="Page_SizeChanged"
     Background="Transparent">
@@ -55,15 +56,14 @@
                 <TextBlock
                     VerticalAlignment="Top"
                     Grid.Column="0"
-                    FontSize="20"
-                    FontWeight="SemiBold"
+                    Style="{StaticResource SectionTitleTextBlockStyle}"
                     IsTextSelectionEnabled="True"
                     d:Text="New Bug Title"
                     TextWrapping="Wrap">
                     <Run
                         Text="{x:Bind ViewModel.Issue.Title, Mode=OneWay}"/>
                     <Run
-                        Foreground="Gray"
+                        Foreground="{ThemeResource AppInkMutedBrush}"
                         Text="{x:Bind ViewModel.Issue.Number, Converter={StaticResource NumberToHashTaggedStringConverter}, Mode=OneWay}"/>
                 </TextBlock>
                 <Button
@@ -71,6 +71,7 @@
                     VerticalAlignment="Top"
                     HorizontalAlignment="Right"
                     Grid.Column="1"
+                    Style="{StaticResource AppToolbarButtonStyle}"
                     Command="{x:Bind ViewModel.EditCommand, Mode=OneWay}">
                     Edit
                 </Button>
@@ -78,33 +79,31 @@
             <Grid
                 Padding="0 0 0 4"
                 Grid.Row="1"
-                BorderBrush="#d4d4d4"
+                BorderBrush="{ThemeResource AppOutlineBrush}"
                 BorderThickness="0 0 0 1">
                 <StackPanel
                     Orientation="Horizontal"
                     Spacing="4">
                     <Border
-                        CornerRadius="4"
-                        Padding="4 0"
+                        CornerRadius="{ThemeResource AppRadiusSmall}"
+                        Height="24"
+                        MinWidth="48"
+                        Padding="8 0"
+                        VerticalAlignment="Center"
                         Width="auto"
                         d:Background="#4cd134"
-                        BorderBrush="{ThemeResource BorderGray}"
-                        BorderThickness="1"
+                        BorderThickness="0"
                         Background="{x:Bind GetStateBackgroundBrush(ViewModel.Issue.State), Mode=OneWay}">
                         <TextBlock
-                            Foreground="White"
-                            FontWeight="SemiBold"
-                            FontSize="14"
-                            VerticalAlignment="Center"
-                            Padding="0 0 0 4"
+                            Style="{StaticResource AppStatusPillTextBlockStyle}"
                             d:Text="Open"
                             Text="{x:Bind ViewModel.Issue.State.StringValue, Mode=OneWay}"/>
                     </Border>
                     <TextBlock
                         VerticalAlignment="Center"
-                        FontSize="16"
+                        Style="{StaticResource SectionSecondaryTextBlockStyle}"
                         TextWrapping="Wrap"
-                        Foreground="{ThemeResource SystemColorGrayTextBrush}">
+                        Foreground="{ThemeResource AppInkMutedBrush}">
                         <Run
                             FontWeight="SemiBold"
                             d:Text="nerocui"
@@ -159,7 +158,8 @@
                             </DataTemplate>
                         </muxc:ItemsRepeater.ItemTemplate>
                     </muxc:ItemsRepeater>
-                    <Grid>
+                    <Grid
+                        MaxWidth="{Binding ActualWidth, ElementName=CommentsPane}">
                         <Grid.ColumnDefinitions>
                             <ColumnDefinition Width="auto"/>
                             <ColumnDefinition Width="*"/>
@@ -173,6 +173,7 @@
                             Url="{x:Bind ViewModel.User.AvatarUrl, Mode=OneWay}"/>
                         <common:MarkdownForm
                             Grid.Column="1"
+                            HorizontalAlignment="Stretch"
                             Text="{x:Bind ViewModel.Text, Mode=TwoWay}">
                             <common:MarkdownForm.ActionContent>
                                 <StackPanel
@@ -180,10 +181,11 @@
                                     <Button
                                         Command="{x:Bind ViewModel.CloseCommand, Mode=OneWay}"
                                         Content="{x:Bind ViewModel.CloseButtonText, Mode=OneWay}"
+                                        Style="{StaticResource AppDangerOutlineButtonStyle}"
                                         Visibility="{x:Bind ViewModel.IsUserCollaborator, Converter={StaticResource BoolToVisibilityConverter}, Mode=OneWay}"/>
                                     <Button
                                         Command="{x:Bind ViewModel.CommentCommand, Mode=OneWay}"
-                                        Style="{ThemeResource AccentButtonStyle}"
+                                        Style="{StaticResource AppAccentButtonStyle}"
                                         Content="Comment"/>
                                 </StackPanel>
                             </common:MarkdownForm.ActionContent>

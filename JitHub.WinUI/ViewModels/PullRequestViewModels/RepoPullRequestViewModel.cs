@@ -8,11 +8,11 @@ using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.DependencyInjection;
 using CommunityToolkit.Mvvm.Input;
 using CommunityToolkit.WinUI;
-using Octokit;
-using ItemStateFilter = Octokit.ItemStateFilter;
-using PullRequestRequest = Octokit.PullRequestRequest;
-using PullRequestSort = Octokit.PullRequestSort;
-using SortDirection = Octokit.SortDirection;
+using JitHub.Models.LegacyGitHub;
+using ItemStateFilter = JitHub.Models.LegacyGitHub.ItemStateFilter;
+using PullRequestRequest = JitHub.Models.LegacyGitHub.PullRequestRequest;
+using PullRequestSort = JitHub.Models.LegacyGitHub.PullRequestSort;
+using SortDirection = JitHub.Models.LegacyGitHub.SortDirection;
 using System;
 using System.Linq;
 using System.Threading.Tasks;
@@ -60,21 +60,28 @@ namespace JitHub.WinUI.ViewModels.PullRequestViewModels
 
         public async void Init(PullRequestPageNavArg arg)
         {
-            Repo = await GitHubService.GetRepository(arg.Repo.Id);
-            RepoSelectableItemModel<PullRequest>? selectedPullRequest = null;
-            if (!arg.NoDetail)
+            try
             {
-                var pullRequest = await GitHubService.GetPullRequest(Repo.Owner.Login, Repo.Name, arg.PullRequestId);
-                selectedPullRequest = new RepoSelectableItemModel<PullRequest>() { Model = pullRequest, Repository = Repo };
+                Repo = await GitHubService.GetRepository(arg.Repo.Id);
+                RepoSelectableItemModel<PullRequest>? selectedPullRequest = null;
+                if (!arg.NoDetail)
+                {
+                    var pullRequest = await GitHubService.GetPullRequest(Repo.Owner.Login, Repo.Name, arg.PullRequestId);
+                    selectedPullRequest = new RepoSelectableItemModel<PullRequest>() { Model = pullRequest, Repository = Repo };
+                }
+                var prParams = new PullRequestRequest
+                {
+                    State = ItemStateFilter.Open,
+                    SortProperty = PullRequestSort.Created,
+                    SortDirection = SortDirection.Descending
+                };
+                var pullRequestSource = new PullRequestSource(Repo, prParams);
+                SetIncrementalCollection(pullRequestSource, selectedPullRequest);
             }
-            var prParams = new PullRequestRequest
+            catch (Exception ex)
             {
-                State = ItemStateFilter.Open,
-                SortProperty = PullRequestSort.Created,
-                SortDirection = SortDirection.Descending
-            };
-            var pullRequestSource = new PullRequestSource(Repo, prParams);
-            SetIncrementalCollection(pullRequestSource, selectedPullRequest);
+                System.Diagnostics.Debug.WriteLine($"Failed to initialize repository pull requests: {ex}");
+            }
         }
 
         private void SetIncrementalCollection(PullRequestSource prSource, RepoSelectableItemModel<PullRequest>? selectedPullRequest)

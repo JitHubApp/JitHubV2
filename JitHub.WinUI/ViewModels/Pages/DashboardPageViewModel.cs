@@ -1,12 +1,19 @@
 using System;
 using System.Collections.Generic;
 using System.Collections.ObjectModel;
+using System.Linq;
 using System.Net.Http;
+using System.Threading;
 using System.Threading.Tasks;
+using CommunityToolkit.Mvvm.Input;
 using CommunityToolkit.Mvvm.ComponentModel;
 using JitHub.Models;
+using JitHub.Models.Activities;
 using JitHub.Models.GitHub;
+using JitHub.Models.NavArgs;
 using JitHub.Services;
+using JitHub.WinUI.ViewModels.Activities;
+using JitHub.WinUI.Views.Pages;
 using Microsoft.UI.Xaml.Data;
 
 namespace JitHub.WinUI.ViewModels.Pages;
@@ -16,26 +23,27 @@ public sealed partial class DashboardPageViewModel : ViewModelBase
 {
     private readonly IAuthService _authService;
     private readonly IAccountService _accountService;
-    private readonly FeatureService _featureService;
     private readonly IGitHubClientService _gitHubClientService;
+    private readonly NavigationService _navigationService;
 
     public DashboardPageViewModel()
     {
         _authService = GetService<IAuthService>();
         _accountService = GetService<IAccountService>();
-        _featureService = GetService<FeatureService>();
         _gitHubClientService = GetService<IGitHubClientService>();
+        _navigationService = GetService<NavigationService>();
+        NavigateActivityTargetCommand = new RelayCommand<ActivityNavigationTarget>(NavigateActivityTarget);
 
         UserStatusText = GetString("Dashboard.UserStatusUnavailable", "GitHub profile details are not available yet.");
     }
 
     public ObservableCollection<GitHubRepository> RecentRepositories { get; } = [];
 
-    public ObservableCollection<GitHubActivityEvent> RecentActivity { get; } = [];
+    public ObservableCollection<ActivityCardViewModel> RecentActivity { get; } = [];
+
+    public RelayCommand<ActivityNavigationTarget> NavigateActivityTargetCommand { get; }
 
     public string SignedInTitle => GetString("Dashboard.SignedInTitle", "Signed in");
-
-    public string UnlockProButtonText => GetString("Dashboard.UnlockProButton", "Unlock Pro");
 
     public string RefreshButtonText => GetString("refreshAppBarButton.Label", "Refresh");
 
@@ -59,7 +67,7 @@ public sealed partial class DashboardPageViewModel : ViewModelBase
 
     public string RecentActivityDescription => GetString(
         "Dashboard.RecentActivityDescription",
-        "Track the latest activity GitHub sends to your account.");
+        "Track your latest GitHub activity and events from repositories you follow.");
 
     public string RecentActivityEmptyStateTitle => GetString(
         "Dashboard.RecentActivityEmptyStateTitle",
@@ -73,19 +81,10 @@ public sealed partial class DashboardPageViewModel : ViewModelBase
     public partial string UserStatusText { get; set; } = string.Empty;
 
     [ObservableProperty]
-    public partial string LicenseStatusText { get; set; } = string.Empty;
-
-    [ObservableProperty]
     public partial string RepositoryStatusText { get; set; } = string.Empty;
 
     [ObservableProperty]
     public partial string ActivityStatusText { get; set; } = string.Empty;
-
-    [ObservableProperty]
-    public partial bool IsBuyProVisible { get; set; }
-
-    [ObservableProperty]
-    public partial bool IsBuyProEnabled { get; set; } = true;
 
     [ObservableProperty]
     public partial bool IsRepositoryLoading { get; set; }
@@ -108,40 +107,8 @@ public sealed partial class DashboardPageViewModel : ViewModelBase
     public async Task RefreshDashboardAsync()
     {
         await RefreshUserStatusAsync();
-        await RefreshLicenseStatusAsync();
         await RefreshRecentRepositoriesAsync();
         await RefreshActivityAsync();
-    }
-
-    public async Task PurchaseProAsync()
-    {
-        IsBuyProEnabled = false;
-
-        try
-        {
-            FeaturePurchaseState purchaseState = await _featureService.BuyProFeature();
-            await RefreshLicenseStatusAsync();
-
-            LicenseStatusText = purchaseState switch
-            {
-                FeaturePurchaseState.Success => GetString(
-                    "Dashboard.ProPurchaseSuccess",
-                    "JitHub Pro is now active for this account."),
-                FeaturePurchaseState.AlreadyOwn => GetString(
-                    "Dashboard.ProPurchaseAlreadyOwned",
-                    "JitHub Pro is already active for this account."),
-                FeaturePurchaseState.Cancel => GetString(
-                    "Dashboard.ProPurchaseCanceled",
-                    "The Pro purchase was canceled."),
-                _ => GetString(
-                    "Dashboard.ProPurchaseFailed",
-                    "JitHub Pro could not be activated.")
-            };
-        }
-        finally
-        {
-            IsBuyProEnabled = true;
-        }
     }
 
     public void SignOut()
@@ -236,11 +203,30 @@ public sealed partial class DashboardPageViewModel : ViewModelBase
 
         try
         {
-            IReadOnlyList<GitHubActivityEvent> events = await _gitHubClientService.GetReceivedEventsAsync(token, user.Login, 20);
+            Task<IReadOnlyList<GitHubActivityEvent>> userEventsTask =
+                _gitHubClientService.GetUserEventsAsync(token, user.Login, 20);
+            Task<IReadOnlyList<GitHubActivityEvent>> receivedEventsTask =
+                _gitHubClientService.GetReceivedEventsAsync(token, user.Login, 20);
+
+            await Task.WhenAll(userEventsTask, receivedEventsTask);
+
+            IReadOnlyList<GitHubActivityEvent> userEvents = await userEventsTask;
+            IReadOnlyList<GitHubActivityEvent> receivedEvents = await receivedEventsTask;
+
+            IReadOnlyList<GitHubActivityEvent> events = userEvents
+                .Concat(receivedEvents)
+                .GroupBy(static activityEvent => activityEvent.Id)
+                .Select(static group => group.First())
+                .OrderByDescending(static activityEvent => activityEvent.CreatedAt ?? DateTimeOffset.MinValue)
+                .Take(20)
+                .ToList();
+
+            await EnrichActivityEventsAsync(token, events);
+
             RecentActivity.Clear();
             foreach (GitHubActivityEvent activityEvent in events)
             {
-                RecentActivity.Add(activityEvent);
+                RecentActivity.Add(ActivityCardViewModelFactory.Create(activityEvent, NavigateActivityTargetCommand));
             }
 
             AreActivityItemsVisible = RecentActivity.Count > 0;
@@ -290,23 +276,169 @@ public sealed partial class DashboardPageViewModel : ViewModelBase
             : FormatString("Dashboard.UserStatusNameAndLogin", "Signed in as {0} (@{1}).", user.Name, user.Login);
     }
 
-    private async Task RefreshLicenseStatusAsync()
-    {
-        await _featureService.SetLicenseStatus();
-        if (_featureService.ProLicense)
-        {
-            LicenseStatusText = GetString("Dashboard.ProActive", "JitHub Pro is active.");
-            IsBuyProVisible = false;
-            return;
-        }
-
-        LicenseStatusText = GetString("Dashboard.ProInactive", "JitHub Pro is not active yet.");
-        IsBuyProVisible = true;
-    }
-
     private string? GetActiveToken()
     {
         long userId = _authService.AuthenticatedUser?.Id ?? _accountService.GetUser();
         return _authService.GetToken(userId);
+    }
+
+    private async Task EnrichActivityEventsAsync(string token, IReadOnlyList<GitHubActivityEvent> events)
+    {
+        using var gate = new SemaphoreSlim(4);
+        Task[] enrichTasks = events
+            .Where(static activityEvent => string.Equals(activityEvent.Type, "PushEvent", StringComparison.Ordinal))
+            .Select(activityEvent => EnrichPushEventAsync(token, activityEvent, gate))
+            .ToArray();
+
+        await Task.WhenAll(enrichTasks);
+    }
+
+    private async Task EnrichPushEventAsync(
+        string token,
+        GitHubActivityEvent activityEvent,
+        SemaphoreSlim gate)
+    {
+        if (activityEvent.TypedPayload is not PushEventPayload payload
+            || (payload.Commits?.Length ?? 0) > 0
+            || !IsComparableSha(payload.Before)
+            || !IsComparableSha(payload.Head)
+            || !TrySplitRepository(activityEvent.Repo.Name, out string owner, out string name))
+        {
+            return;
+        }
+
+        await gate.WaitAsync();
+        try
+        {
+            GitHubCompareResult compare = await _gitHubClientService.CompareCommitsAsync(
+                token,
+                owner,
+                name,
+                payload.Before!,
+                payload.Head!);
+
+            GitHubActivityPushCommit[] commits = compare.Commits
+                .Select(static commit => new GitHubActivityPushCommit
+                {
+                    Sha = commit.Sha,
+                    Message = commit.Commit.Message,
+                    Url = commit.HtmlUrl,
+                    Distinct = true,
+                    Author = new GitHubActivityCommitAuthor
+                    {
+                        Name = commit.Commit.Author.Name,
+                        Email = commit.Commit.Author.Email
+                    }
+                })
+                .ToArray();
+
+            activityEvent.EnrichedPayload = new PushEventPayload
+            {
+                RepositoryId = payload.RepositoryId,
+                PushId = payload.PushId,
+                Ref = payload.Ref,
+                Head = payload.Head,
+                Before = payload.Before,
+                Size = payload.Size,
+                DistinctSize = payload.DistinctSize,
+                EnrichedCommitCount = compare.TotalCommits > 0 ? compare.TotalCommits : commits.Length,
+                Commits = commits
+            };
+        }
+        catch (GitHubApiException)
+        {
+            // Push payloads are still useful without compare details; do not fail the whole feed.
+        }
+        catch (HttpRequestException)
+        {
+            // Keep the activity card visible when commit enrichment is temporarily unavailable.
+        }
+        finally
+        {
+            gate.Release();
+        }
+    }
+
+    private static bool TrySplitRepository(string? repositoryFullName, out string owner, out string name)
+    {
+        owner = string.Empty;
+        name = string.Empty;
+        if (string.IsNullOrWhiteSpace(repositoryFullName))
+        {
+            return false;
+        }
+
+        string[] parts = repositoryFullName.Split('/', 2, StringSplitOptions.TrimEntries);
+        if (parts.Length != 2 || string.IsNullOrWhiteSpace(parts[0]) || string.IsNullOrWhiteSpace(parts[1]))
+        {
+            return false;
+        }
+
+        owner = parts[0];
+        name = parts[1];
+        return true;
+    }
+
+    private static bool IsComparableSha(string? sha)
+    {
+        return !string.IsNullOrWhiteSpace(sha)
+            && sha.Length >= 7
+            && sha.Any(static c => c != '0');
+    }
+
+    private void NavigateActivityTarget(ActivityNavigationTarget? target)
+    {
+        if (target is null
+            || target.Kind == ActivityNavigationTargetKind.UnsupportedTodo
+            || string.IsNullOrWhiteSpace(target.RepositoryFullName))
+        {
+            return;
+        }
+
+        GitHubRepository repository = CreateRepository(target);
+        PageNavArg pageArg = target.Kind switch
+        {
+            ActivityNavigationTargetKind.Issue => new IssueNavArg(repository, target.Number),
+            ActivityNavigationTargetKind.PullRequest => new PullRequestPageNavArg(repository, target.Number),
+            ActivityNavigationTargetKind.Commit => CommitPageNavArg.CreateWithGitRef(repository, target.Sha),
+            _ => CodeViewerNavArg.CreateWithBranch(repository, target.Branch)
+        };
+
+        RepoPageType page = target.Kind switch
+        {
+            ActivityNavigationTargetKind.Issue => RepoPageType.IssuePage,
+            ActivityNavigationTargetKind.PullRequest => RepoPageType.PullRequestPage,
+            ActivityNavigationTargetKind.Commit => RepoPageType.CommitPage,
+            _ => RepoPageType.CodePage
+        };
+
+        _navigationService.NavigateTo(
+            repository.FullName,
+            typeof(RepoDetailPage),
+            new RepoDetailPageArgs(page, pageArg, repository.FullName));
+    }
+
+    private static GitHubRepository CreateRepository(ActivityNavigationTarget target)
+    {
+        if (target.Repository is { FullName: { Length: > 0 } } repository)
+        {
+            return repository;
+        }
+
+        string[] parts = target.RepositoryFullName.Split('/', 2, StringSplitOptions.TrimEntries);
+        string owner = parts.Length == 2 ? parts[0] : string.Empty;
+        string name = parts.Length == 2 ? parts[1] : target.RepositoryFullName;
+
+        return new GitHubRepository
+        {
+            Name = name,
+            FullName = target.RepositoryFullName,
+            HtmlUrl = $"https://github.com/{target.RepositoryFullName}",
+            Owner = new GitHubRepositoryOwner
+            {
+                Login = owner,
+                HtmlUrl = string.IsNullOrWhiteSpace(owner) ? null : $"https://github.com/{owner}"
+            }
+        };
     }
 }

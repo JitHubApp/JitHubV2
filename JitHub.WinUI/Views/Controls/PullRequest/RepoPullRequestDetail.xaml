@@ -31,20 +31,20 @@
                 <TextBlock
                     Grid.Column="0"
                     VerticalAlignment="Center"
-                    FontSize="20"
+                    Style="{StaticResource SectionTitleTextBlockStyle}"
                     IsTextSelectionEnabled="True"
                     TextWrapping="Wrap">
                     <Run
-                        FontWeight="SemiBold"
                         Text="{x:Bind ViewModel.PullRequest.Title, Mode=OneWay}"/>
                     <Run
-                        Foreground="{ThemeResource SystemColorGrayTextBrush}"
+                        Foreground="{ThemeResource AppInkMutedBrush}"
                         Text="{x:Bind ViewModel.PullRequest.Number, Converter={StaticResource NumberToHashTaggedStringConverter}, Mode=OneWay}"/>
                 </TextBlock>
                 <Button
                     Grid.Column="1"
                     HorizontalAlignment="Right"
                     VerticalAlignment="Top"
+                    Style="{StaticResource AppToolbarButtonStyle}"
                     Command="{x:Bind ViewModel.EditCommand, Mode=OneWay}"
                     Visibility="{x:Bind ViewModel.IsAuthor, Converter={StaticResource BoolToVisibilityConverter}, Mode=OneWay}">
                     Edit
@@ -53,31 +53,29 @@
             <Grid
                 Grid.Row="1"
                 Padding="0 0 0 4"
-                BorderBrush="{ThemeResource BorderGray}"
+                BorderBrush="{ThemeResource AppOutlineBrush}"
                 BorderThickness="0 0 0 1">
                 <StackPanel
                     Orientation="Horizontal"
                     Spacing="4">
                     <Border
                         Margin="0 0 4 0"
-                        CornerRadius="4"
-                        Padding="4 0"
-                        BorderBrush="{ThemeResource BorderGray}"
-                        BorderThickness="1"
+                        CornerRadius="{ThemeResource AppRadiusSmall}"
+                        Height="24"
+                        MinWidth="48"
+                        Padding="8 0"
+                        VerticalAlignment="Center"
+                        BorderThickness="0"
                         Background="{x:Bind GetStateBackgroundBrush(ViewModel.PullRequest.State), Mode=OneWay}">
                         <TextBlock
-                            Foreground="White"
-                            FontWeight="SemiBold"
-                            FontSize="14"
-                            VerticalAlignment="Center"
-                            Padding="0 0 0 4"
+                            Style="{StaticResource AppStatusPillTextBlockStyle}"
                             Text="{x:Bind ViewModel.PullRequest.State.StringValue, Mode=OneWay}"/>
                     </Border>
                     <TextBlock
                         VerticalAlignment="Center"
-                        FontSize="16"
+                        Style="{StaticResource SectionSecondaryTextBlockStyle}"
                         TextWrapping="Wrap"
-                        Foreground="{ThemeResource SystemColorGrayTextBrush}">
+                        Foreground="{ThemeResource AppInkMutedBrush}">
                         <Run
                             Text="{x:Bind ViewModel.PullRequest.User.Login, Mode=OneWay}"/>
                         <Run

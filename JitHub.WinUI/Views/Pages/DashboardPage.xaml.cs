@@ -1,12 +1,10 @@
 using System;
-using JitHub.Models;
 using JitHub.Models.GitHub;
 using JitHub.Models.NavArgs;
 using JitHub.Services;
 using JitHub.WinUI.ViewModels.Pages;
 using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Controls;
-using Windows.System;
 
 namespace JitHub.WinUI.Views.Pages;
 
@@ -27,33 +25,56 @@ public sealed partial class DashboardPage : Page
 
     private async void OnLoaded(object sender, RoutedEventArgs e)
     {
-        if (_initialized)
+        try
         {
-            return;
-        }
+            if (_initialized)
+            {
+                return;
+            }
 
-        _initialized = true;
-        await ViewModel.RefreshActivityAsync();
+            _initialized = true;
+            await ViewModel.RefreshActivityAsync();
+        }
+        catch (Exception ex)
+        {
+            System.Diagnostics.Debug.WriteLine($"Failed to load dashboard: {ex}");
+        }
     }
 
     private async void RefreshProfileButton_Click(object sender, RoutedEventArgs e)
     {
-        await ViewModel.RefreshDashboardAsync();
+        try
+        {
+            await ViewModel.RefreshDashboardAsync();
+        }
+        catch (Exception ex)
+        {
+            System.Diagnostics.Debug.WriteLine($"Failed to refresh dashboard profile: {ex}");
+        }
     }
 
     private async void ReloadRepositoriesButton_Click(object sender, RoutedEventArgs e)
     {
-        await ViewModel.RefreshRecentRepositoriesAsync();
+        try
+        {
+            await ViewModel.RefreshRecentRepositoriesAsync();
+        }
+        catch (Exception ex)
+        {
+            System.Diagnostics.Debug.WriteLine($"Failed to reload dashboard repositories: {ex}");
+        }
     }
 
     private async void ReloadActivityButton_Click(object sender, RoutedEventArgs e)
     {
-        await ViewModel.RefreshActivityAsync();
-    }
-
-    private async void BuyProButton_Click(object sender, RoutedEventArgs e)
-    {
-        await ViewModel.PurchaseProAsync();
+        try
+        {
+            await ViewModel.RefreshActivityAsync();
+        }
+        catch (Exception ex)
+        {
+            System.Diagnostics.Debug.WriteLine($"Failed to reload dashboard activity: {ex}");
+        }
     }
 
     private void SignOutButton_Click(object sender, RoutedEventArgs e)
@@ -70,17 +91,5 @@ public sealed partial class DashboardPage : Page
                 typeof(RepoDetailPage),
                 new RepoDetailPageArgs(RepoPageType.CodePage, repository));
         }
-    }
-
-    private async void RecentActivityList_ItemClick(object sender, ItemClickEventArgs e)
-    {
-        if (e.ClickedItem is not GitHubActivityEvent activity
-            || string.IsNullOrWhiteSpace(activity.TargetUrl)
-            || !Uri.TryCreate(activity.TargetUrl, UriKind.Absolute, out Uri? targetUri))
-        {
-            return;
-        }
-
-        await Launcher.LaunchUriAsync(targetUri);
     }
 }

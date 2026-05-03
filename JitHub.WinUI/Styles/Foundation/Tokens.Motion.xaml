@@ -1,0 +1,7 @@
+<ResourceDictionary
+    xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml">
+    <Duration x:Key="AppFastDuration">0:0:0.08</Duration>
+    <Duration x:Key="AppMediumDuration">0:0:0.18</Duration>
+    <TransitionCollection x:Key="AppNoTransitions" />
+</ResourceDictionary>

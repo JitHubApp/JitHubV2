@@ -4,7 +4,7 @@ using JitHub.Models.PRConversation;
 using JitHub.WinUI.ViewModels.Base;
 using JitHub.WinUI.ViewModels.EmojiViewModels;
 using CommunityToolkit.Mvvm.Input;
-using Octokit;
+using JitHub.Models.LegacyGitHub;
 using System;
 using System.Collections.Generic;
 using System.Linq;

@@ -6,13 +6,14 @@
         <Grid>
             <StackPanel Spacing="4">
                 <TextBox
+                    Style="{StaticResource AppTextBoxStyle}"
                     MinWidth="150"
                     Header="{Binding Title, Mode=OneWay}"
-                    PlaceholderText="Enter base to filter"
+                    PlaceholderText="Type to filter"
                     Text="{Binding Text, Mode=TwoWay}">
                     <TextBox.HeaderTemplate>
                         <DataTemplate>
-                            <TextBlock FontWeight="SemiBold" Text="{Binding Mode=OneWay}" />
+                            <TextBlock Style="{StaticResource SectionSecondaryTextBlockStyle}" Text="{Binding Mode=OneWay}" />
                         </DataTemplate>
                     </TextBox.HeaderTemplate>
                 </TextBox>

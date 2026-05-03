@@ -1,7 +1,7 @@
 using JitHub.Models;
 using JitHub.Models.Base;
 using JitHub.WinUI.ViewModels.IssueViewModels;
-using Octokit;
+using JitHub.Models.LegacyGitHub;
 using System;
 using System.Collections.Generic;
 using System.Linq;

@@ -1,5 +1,5 @@
-using Octokit;
-using IssueModel = Octokit.Issue;
+using JitHub.Models.LegacyGitHub;
+using IssueModel = JitHub.Models.LegacyGitHub.Issue;
 using System.Windows.Input;
 using Microsoft.UI.Xaml.Controls;
 

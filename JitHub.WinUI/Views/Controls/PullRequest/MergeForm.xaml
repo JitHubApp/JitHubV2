@@ -46,7 +46,7 @@
                             HorizontalAlignment="Stretch">
                         <Button
                                 Click="{x:Bind ViewModel.Merge, Mode=OneWay}"
-                                Style="{ThemeResource AccentButtonStyle}"
+                                Style="{ThemeResource AppAccentButtonStyle}"
                                 HorizontalAlignment="Right"
                                 VerticalContentAlignment="Center"
                                 Content="Merge pull request"/>

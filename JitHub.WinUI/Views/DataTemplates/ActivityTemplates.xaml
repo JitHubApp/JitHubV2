@@ -1,46 +1,43 @@
 <ResourceDictionary
     xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
     xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
-    xmlns:common="using:JitHub.WinUI.Views.Controls.Common">
+    xmlns:appcontrols="using:JitHub.WinUI.Views.Controls.App"
+    xmlns:helpers="using:JitHub.WinUI.Helpers">
+
+    <DataTemplate x:Key="GitHubActivityDefaultCardTemplate">
+        <appcontrols:ActivityCard />
+    </DataTemplate>
+
+    <DataTemplate x:Key="GitHubActivityPushCardTemplate">
+        <appcontrols:ActivityCard />
+    </DataTemplate>
+
+    <DataTemplate x:Key="GitHubActivityIssueCardTemplate">
+        <appcontrols:ActivityCard />
+    </DataTemplate>
+
+    <DataTemplate x:Key="GitHubActivityPullRequestCardTemplate">
+        <appcontrols:ActivityCard />
+    </DataTemplate>
+
+    <DataTemplate x:Key="GitHubActivityCommitCardTemplate">
+        <appcontrols:ActivityCard />
+    </DataTemplate>
+
+    <DataTemplate x:Key="GitHubActivityRepositoryCardTemplate">
+        <appcontrols:ActivityCard />
+    </DataTemplate>
+
+    <helpers:ActivityCardTemplateSelector
+        x:Key="GitHubActivityCardTemplateSelector"
+        CommitTemplate="{StaticResource GitHubActivityCommitCardTemplate}"
+        DefaultTemplate="{StaticResource GitHubActivityDefaultCardTemplate}"
+        IssueTemplate="{StaticResource GitHubActivityIssueCardTemplate}"
+        PullRequestTemplate="{StaticResource GitHubActivityPullRequestCardTemplate}"
+        PushTemplate="{StaticResource GitHubActivityPushCardTemplate}"
+        RepositoryTemplate="{StaticResource GitHubActivityRepositoryCardTemplate}" />
+
     <DataTemplate x:Key="GitHubActivityEventListItemTemplate">
-        <Grid
-            Margin="0,0,0,12"
-            Style="{StaticResource ActivityContainer}">
-            <Grid.ColumnDefinitions>
-                <ColumnDefinition Width="Auto" />
-                <ColumnDefinition Width="*" />
-                <ColumnDefinition Width="Auto" />
-            </Grid.ColumnDefinitions>
-
-            <common:Avatar
-                Grid.Column="0"
-                Login="{Binding Actor.Login, Mode=OneWay}"
-                ShowLogin="False"
-                Size="MEDIUM"
-                Url="{Binding Actor.AvatarUrl, Mode=OneWay}" />
-
-            <StackPanel
-                Grid.Column="1"
-                Margin="12,0,0,0"
-                Spacing="4"
-                VerticalAlignment="Center">
-                <TextBlock
-                    Style="{StaticResource SectionBodyTextBlockStyle}"
-                    FontWeight="SemiBold"
-                    Text="{Binding Summary, Mode=OneWay}" />
-                <TextBlock
-                    Style="{StaticResource SectionSecondaryTextBlockStyle}"
-                    Text="{Binding MetaText, Mode=OneWay}"
-                    TextWrapping="WrapWholeWords" />
-            </StackPanel>
-
-            <FontIcon
-                Grid.Column="2"
-                Margin="12,0,0,0"
-                VerticalAlignment="Center"
-                FontFamily="{StaticResource SegoeFluentIcons}"
-                Foreground="{ThemeResource TextFillColorSecondaryBrush}"
-                Glyph="&#xE8A7;" />
-        </Grid>
+        <appcontrols:ActivityCard />
     </DataTemplate>
 </ResourceDictionary>

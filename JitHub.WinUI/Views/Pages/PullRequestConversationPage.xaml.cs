@@ -24,11 +24,18 @@ namespace JitHub.WinUI.Views.Pages
         protected override async void OnNavigatedTo(NavigationEventArgs e)
         {
             base.OnNavigatedTo(e);
-            if (e.Parameter is PullRequestConvPageNavArg arg)
+            try
             {
-                ViewModel = new PullRequestConversationViewModel(arg.Repository, arg.PullRequest, arg.RefreshCommand, ScrollToBottom, new RelayCommand<UIElement?>(ScrollToElement));
-                DataContext = ViewModel;
-                await ViewModel.OnNavigatedTo();
+                if (e.Parameter is PullRequestConvPageNavArg arg)
+                {
+                    ViewModel = new PullRequestConversationViewModel(arg.Repository, arg.PullRequest, arg.RefreshCommand, ScrollToBottom, new RelayCommand<UIElement?>(ScrollToElement));
+                    DataContext = ViewModel;
+                    await ViewModel.OnNavigatedTo();
+                }
+            }
+            catch (System.Exception ex)
+            {
+                System.Diagnostics.Debug.WriteLine($"Failed to open pull request conversation: {ex}");
             }
 
         }
@@ -46,7 +53,10 @@ namespace JitHub.WinUI.Views.Pages
                     VisualStateManager.GoToState(this, "NarrowLayout", false);
                 }
             }
-            catch { }
+            catch (System.InvalidOperationException ex)
+            {
+                System.Diagnostics.Debug.WriteLine($"Failed to update pull request conversation layout state: {ex}");
+            }
         }
 
         private void ScrollToBottom()

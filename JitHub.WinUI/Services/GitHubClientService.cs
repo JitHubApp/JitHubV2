@@ -376,6 +376,28 @@ public sealed class GitHubClientService : IGitHubClientService
         return repositories;
     }
 
+    public async Task<IReadOnlyList<GitHubActivityEvent>> GetUserEventsAsync(
+        string token,
+        string userName,
+        int pageSize,
+        int pageNumber = 1,
+        CancellationToken cancellationToken = default)
+    {
+        string path =
+            $"users/{Uri.EscapeDataString(userName)}/events?per_page={pageSize}&page={pageNumber}";
+        using HttpRequestMessage request = CreateAuthenticatedRequest(HttpMethod.Get, path, token);
+        using HttpResponseMessage response =
+            await _httpClient.SendAsync(request, HttpCompletionOption.ResponseHeadersRead, cancellationToken);
+        await EnsureSuccessAsync(response, cancellationToken);
+
+        GitHubActivityEvent[] events = await ReadResponseAsync(
+            response,
+            GitHubJsonSerializerContext.Default.GitHubActivityEventArray,
+            "user event list",
+            cancellationToken);
+        return events;
+    }
+
     public async Task<IReadOnlyList<GitHubActivityEvent>> GetReceivedEventsAsync(
         string token,
         string userName,

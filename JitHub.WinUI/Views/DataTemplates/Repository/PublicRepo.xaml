@@ -1,11 +1,13 @@
 <ResourceDictionary
     xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
     xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+    xmlns:appcontrols="using:JitHub.WinUI.Views.Controls.App"
     xmlns:common="using:JitHub.WinUI.Views.Controls.Common"
     xmlns:models="using:JitHub.Models">
     <DataTemplate x:Key="PublicRepo">
         <Button
             Margin="0,0,4,0"
+            Style="{StaticResource AppQuietButtonStyle}"
             HorizontalAlignment="Stretch"
             HorizontalContentAlignment="Stretch"
             Background="Transparent"
@@ -13,11 +15,11 @@
             Command="{Binding DetailNavigationCommand}">
             <Grid>
                 <StackPanel Orientation="Horizontal" Spacing="4">
-                    <FontIcon
+                    <appcontrols:AppIcon
                         VerticalAlignment="Center"
-                        FontFamily="{StaticResource SegoeFluentIcons}"
-                        FontSize="16"
-                        Glyph="&#xe7c3;" />
+                        IconBrush="{ThemeResource AppInkMutedBrush}"
+                        IconKind="PublicRepository"
+                        IconSize="16" />
                     <TextBlock VerticalAlignment="Center" Text="{Binding Repository.Name}" />
                 </StackPanel>
             </Grid>
@@ -25,6 +27,7 @@
     </DataTemplate>
     <DataTemplate x:Key="PublicRepoSearchResult">
         <Button
+            Style="{StaticResource AppQuietButtonStyle}"
             HorizontalAlignment="Stretch"
             HorizontalContentAlignment="Left"
             Command="{Binding DetailNavigationCommand, Mode=OneWay}">
@@ -33,13 +36,13 @@
                     <ColumnDefinition Width="auto" />
                     <ColumnDefinition Width="*" />
                 </Grid.ColumnDefinitions>
-                <FontIcon
+                <appcontrols:AppIcon
                     Grid.Column="0"
                     Margin="0,5,5,0"
                     VerticalAlignment="Top"
-                    FontFamily="{StaticResource SegoeFluentIcons}"
-                    FontSize="16"
-                    Glyph="&#xe7c3;" />
+                    IconBrush="{ThemeResource AppInkMutedBrush}"
+                    IconKind="PublicRepository"
+                    IconSize="16" />
                 <StackPanel Grid.Column="1">
                     <TextBlock
                         FontSize="16"
@@ -47,11 +50,11 @@
                         Text="{Binding Repository.FullName, Mode=OneWay}" />
                     <TextBlock Text="{Binding Repository.Description, Mode=OneWay}" TextWrapping="Wrap" />
                     <StackPanel Orientation="Horizontal" Spacing="5">
-                        <FontIcon
+                        <appcontrols:AppIcon
                             VerticalAlignment="Center"
-                            FontFamily="{StaticResource SegoeFluentIcons}"
-                            FontSize="12"
-                            Glyph="&#xE735;" />
+                            IconBrush="{ThemeResource AppWarmAccentBrush}"
+                            IconKind="Star"
+                            IconSize="13" />
                         <TextBlock VerticalAlignment="Bottom" Text="{Binding Repository.StargazersCount, Converter={StaticResource NumberToKizedStringConverter}, Mode=OneWay}" />
                     </StackPanel>
                 </StackPanel>
@@ -66,21 +69,21 @@
                         <ColumnDefinition Width="auto" />
                         <ColumnDefinition Width="*" />
                     </Grid.ColumnDefinitions>
-                    <FontIcon
+                    <appcontrols:AppIcon
                         Grid.Column="0"
                         Margin="0,5,5,0"
                         VerticalAlignment="Top"
-                        FontFamily="{StaticResource SegoeFluentIcons}"
-                        FontSize="16"
-                        Glyph="&#xe7c3;" />
+                        IconBrush="{ThemeResource AppInkMutedBrush}"
+                        IconKind="PublicRepository"
+                        IconSize="16" />
                     <StackPanel Grid.Column="1">
                         <TextBlock Text="{Binding Repo.Repository.FullName, Mode=OneWay}" />
                         <TextBlock Text="{Binding Repo.Repository.Description, Mode=OneWay}" TextWrapping="Wrap" />
                         <StackPanel Orientation="Horizontal" Spacing="4">
-                            <FontIcon
-                                FontFamily="{StaticResource SegoeFluentIcons}"
-                                FontSize="16"
-                                Glyph="&#xE735;" />
+                            <appcontrols:AppIcon
+                                IconBrush="{ThemeResource AppWarmAccentBrush}"
+                                IconKind="Star"
+                                IconSize="14" />
                             <TextBlock Text="{Binding Repo.Repository.StargazersCount, Converter={StaticResource NumberToKizedStringConverter}, Mode=OneWay}" />
                         </StackPanel>
                     </StackPanel>

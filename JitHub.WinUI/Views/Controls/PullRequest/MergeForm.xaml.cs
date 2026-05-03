@@ -1,7 +1,7 @@
-using Octokit;
-using PullRequestMergeMethod = Octokit.PullRequestMergeMethod;
-using PullRequestModel = Octokit.PullRequest;
-using RepositoryModel = Octokit.Repository;
+using JitHub.Models.LegacyGitHub;
+using PullRequestMergeMethod = JitHub.Models.LegacyGitHub.PullRequestMergeMethod;
+using PullRequestModel = JitHub.Models.LegacyGitHub.PullRequest;
+using RepositoryModel = JitHub.Models.LegacyGitHub.Repository;
 using System.Windows.Input;
 using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Controls;

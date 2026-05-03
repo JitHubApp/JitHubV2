@@ -7,7 +7,7 @@
     xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
     xmlns:muxc="using:Microsoft.UI.Xaml.Controls"
     mc:Ignorable="d"
-    Background="{ThemeResource ApplicationPageBackgroundThemeBrush}"
+    Background="{ThemeResource AppCanvasBrush}"
     Loaded="Page_Loaded">
     <Grid>
         <Grid>
@@ -36,7 +36,7 @@
                     Margin="5 0"
                     x:Name="SearchBoxClearButton"
                     HorizontalAlignment="Center"
-                    Style="{StaticResource ButtonRevealStyle}"
+                    Style="{StaticResource AppOutlineButtonStyle}"
                     IsEnabled="{x:Bind ViewModel.SearchTerm, Converter={StaticResource StringToEnabledConverter}, Mode=OneWay}"
                     Command="{x:Bind ViewModel.ClearCommand}">
                     Clear
@@ -45,7 +45,7 @@
                     Grid.Column="2"
                     x:Name="SearchBoxSubmitButton"
                     HorizontalAlignment="Center"
-                    Style="{StaticResource ButtonRevealStyle}"
+                    Style="{StaticResource AppOutlineButtonStyle}"
                     Command="{x:Bind ViewModel.SearchCommand}">
                     Search
                 </Button>

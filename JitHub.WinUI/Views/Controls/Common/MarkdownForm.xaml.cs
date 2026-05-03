@@ -2,8 +2,6 @@ using CommunityToolkit.WinUI.Controls;
 using CommunityToolkit.Mvvm.DependencyInjection;
 using JitHub.Services;
 using System;
-using System.ComponentModel;
-using System.Windows.Input;
 using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Controls;
 
@@ -18,9 +16,9 @@ namespace JitHub.WinUI.Views.Controls.Common
 
         public static DependencyProperty ActionContentProperty = DependencyProperty.Register(
             nameof(ActionContent),
-            typeof(FrameworkElement),
+            typeof(object),
             typeof(MarkdownForm),
-            new PropertyMetadata(default(FrameworkElement), null));
+            new PropertyMetadata(null, OnActionContentChanged));
 
         public static DependencyProperty TextProperty = DependencyProperty.Register(
             nameof(Text),
@@ -32,6 +30,11 @@ namespace JitHub.WinUI.Views.Controls.Common
             typeof(Thickness),
             typeof(MarkdownForm),
             new PropertyMetadata(new Thickness(0), null));
+        public static DependencyProperty EditorHeightProperty = DependencyProperty.Register(
+            nameof(EditorHeight),
+            typeof(double),
+            typeof(MarkdownForm),
+            new PropertyMetadata(220d, null));
 
         public string? Text
         {
@@ -42,9 +45,9 @@ namespace JitHub.WinUI.Views.Controls.Common
             }
         }
 
-        public FrameworkElement? ActionContent
+        public object? ActionContent
         {
-            get => (FrameworkElement?)GetValue(ActionContentProperty);
+            get => GetValue(ActionContentProperty);
             set
             {
                 SetValue(ActionContentProperty, value);
@@ -57,6 +60,12 @@ namespace JitHub.WinUI.Views.Controls.Common
             set => SetValue(FormPaddingProperty, value);
         }
 
+        public double EditorHeight
+        {
+            get => (double)GetValue(EditorHeightProperty);
+            set => SetValue(EditorHeightProperty, value);
+        }
+
         public MarkdownConfig Config => _gitHubService.GetMarkdownConfig();
 
         public MarkdownForm()
@@ -66,9 +75,29 @@ namespace JitHub.WinUI.Views.Controls.Common
                 ?? throw new InvalidOperationException("IGitHubService is not registered.");
         }
 
+        private static void OnActionContentChanged(DependencyObject dependencyObject, DependencyPropertyChangedEventArgs args)
+        {
+            if (dependencyObject is MarkdownForm form)
+            {
+                form.ActionContentPresenter.Content = args.NewValue;
+            }
+        }
+
         private void TextBox_TextChanged(object sender, TextChangedEventArgs e)
         {
-            ViewModel.Text = Text ?? string.Empty;
+            ViewModel.Text = sender is TextBox textBox
+                ? textBox.Text
+                : Text ?? string.Empty;
+        }
+
+        private void BodyModeSegmented_SelectionChanged(object sender, SelectionChangedEventArgs e)
+        {
+            if (sender is not Segmented segmented)
+            {
+                return;
+            }
+
+            ViewModel.SelectedBodyView = segmented.SelectedIndex == 1 ? "Preview" : "Write";
         }
     }
 }

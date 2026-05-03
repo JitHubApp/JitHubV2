@@ -33,7 +33,7 @@ public sealed partial class LoginPageViewModel : ViewModelBase
 
     public string SignInDescription => GetString(
         "Login.SignInDescription",
-        "JitHub opens GitHub in your browser and completes sign-in through the registered jithub:// protocol.");
+        "JitHub opens GitHub in your browser.");
 
     public string ContinueWithGitHubButtonText => GetString("Login.ContinueWithGitHubButton", "Continue with GitHub");
 

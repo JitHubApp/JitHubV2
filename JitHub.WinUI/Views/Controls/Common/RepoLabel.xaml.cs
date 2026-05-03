@@ -1,7 +1,7 @@
 using System;
 using JitHub.Models;
 using JitHub.Models.Base;
-using Octokit;
+using JitHub.Models.LegacyGitHub;
 using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Controls;
 using Microsoft.UI.Xaml.Media;

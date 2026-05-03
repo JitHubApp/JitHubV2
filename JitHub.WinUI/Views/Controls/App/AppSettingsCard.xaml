@@ -1,0 +1,44 @@
+<UserControl
+    x:Class="JitHub.WinUI.Views.Controls.App.AppSettingsCard"
+    x:Name="Root"
+    xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+    xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+    xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+    mc:Ignorable="d">
+    <Border
+        Background="{ThemeResource AppSurfaceBrush}"
+        BorderBrush="{ThemeResource AppOutlineBrush}"
+        BorderThickness="1"
+        CornerRadius="{ThemeResource AppRadiusLarge}"
+        Padding="16">
+        <Grid
+            ColumnSpacing="16"
+            RowSpacing="12">
+            <Grid.ColumnDefinitions>
+                <ColumnDefinition Width="Auto" />
+                <ColumnDefinition Width="*" />
+            </Grid.ColumnDefinitions>
+            <Grid.RowDefinitions>
+                <RowDefinition Height="Auto" />
+                <RowDefinition Height="Auto" />
+            </Grid.RowDefinitions>
+            <ContentPresenter
+                Grid.Column="0"
+                Grid.RowSpan="2"
+                VerticalAlignment="Top"
+                Content="{Binding HeaderIcon, ElementName=Root}" />
+            <StackPanel
+                Grid.Column="1"
+                Spacing="4">
+                <TextBlock Style="{StaticResource ListItemTitleTextBlockStyle}" Text="{Binding Header, ElementName=Root}" />
+                <TextBlock Style="{StaticResource SectionSecondaryTextBlockStyle}" Text="{Binding Description, ElementName=Root}" />
+            </StackPanel>
+            <ContentPresenter
+                Grid.Row="1"
+                Grid.Column="1"
+                HorizontalAlignment="Left"
+                Content="{Binding ActionContent, ElementName=Root}" />
+        </Grid>
+    </Border>
+</UserControl>

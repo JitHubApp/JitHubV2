@@ -33,6 +33,13 @@ public sealed partial class LoginPage : Page
 
     private async void LoginButton_Click(object sender, RoutedEventArgs e)
     {
-        await ViewModel.StartLoginAsync();
+        try
+        {
+            await ViewModel.StartLoginAsync();
+        }
+        catch (Exception ex)
+        {
+            System.Diagnostics.Debug.WriteLine($"Failed to start login: {ex}");
+        }
     }
 }

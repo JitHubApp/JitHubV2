@@ -1,12 +1,12 @@
 using JitHub.Models;
 using JitHub.Models.Filter;
 using CommunityToolkit.Mvvm.Input;
-using Octokit;
-using IssueFilter = Octokit.IssueFilter;
-using IssueSort = Octokit.IssueSort;
-using ItemStateFilter = Octokit.ItemStateFilter;
-using RepositoryIssueRequest = Octokit.RepositoryIssueRequest;
-using SortDirection = Octokit.SortDirection;
+using JitHub.Models.LegacyGitHub;
+using IssueFilter = JitHub.Models.LegacyGitHub.IssueFilter;
+using IssueSort = JitHub.Models.LegacyGitHub.IssueSort;
+using ItemStateFilter = JitHub.Models.LegacyGitHub.ItemStateFilter;
+using RepositoryIssueRequest = JitHub.Models.LegacyGitHub.RepositoryIssueRequest;
+using SortDirection = JitHub.Models.LegacyGitHub.SortDirection;
 using System.Collections.Generic;
 using System.Threading.Tasks;
 using System.Windows.Input;

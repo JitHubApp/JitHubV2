@@ -26,7 +26,7 @@ namespace JitHub.WinUI.Views
         private void OnLoaded(object sender, RoutedEventArgs e)
         {
             App app = (App)Application.Current;
-            app.CurrentMainWindow.SetPageTitleBar(TitleBar);
+            app.CurrentMainWindow.SetPageTitleBar(TitleBarArea);
 
             IAuthService authService = app.GetService<IAuthService>();
             IAccountService accountService = app.GetService<IAccountService>();

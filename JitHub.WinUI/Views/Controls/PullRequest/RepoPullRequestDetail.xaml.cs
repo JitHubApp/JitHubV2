@@ -1,5 +1,5 @@
 using JitHub.WinUI.ViewModels.PullRequestViewModels;
-using Octokit;
+using JitHub.Models.LegacyGitHub;
 using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Controls;
 using Microsoft.UI.Xaml.Media;
@@ -11,8 +11,8 @@ namespace JitHub.WinUI.Views.Controls.PullRequest
 {
     public sealed partial class RepoPullRequestDetail : UserControl
     {
-        private static readonly Brush OpenStateBrush = new SolidColorBrush(Color.FromArgb(0xFF, 0x4C, 0xD1, 0x34));
-        private static readonly Brush ClosedStateBrush = new SolidColorBrush(Color.FromArgb(0xFF, 0xD6, 0x56, 0x4D));
+        private static readonly Brush OpenStateBrush = new SolidColorBrush(Color.FromArgb(0xFF, 0x3E, 0x7B, 0x64));
+        private static readonly Brush ClosedStateBrush = new SolidColorBrush(Color.FromArgb(0xFF, 0xA2, 0x4E, 0x3C));
 
         public static DependencyProperty ViewModelProperty = DependencyProperty.Register(
             "ViewModel",
@@ -51,7 +51,15 @@ namespace JitHub.WinUI.Views.Controls.PullRequest
                 _ => ItemState.Open
             };
 
-            return state == ItemState.Open ? OpenStateBrush : ClosedStateBrush;
+            return GetAppBrush(state == ItemState.Open ? "AppSuccessBrush" : "AppDangerBrush")
+                ?? (state == ItemState.Open ? OpenStateBrush : ClosedStateBrush);
+        }
+
+        private static Brush? GetAppBrush(string resourceKey)
+        {
+            return Application.Current.Resources.TryGetValue(resourceKey, out object value) && value is Brush brush
+                ? brush
+                : null;
         }
     }
 }

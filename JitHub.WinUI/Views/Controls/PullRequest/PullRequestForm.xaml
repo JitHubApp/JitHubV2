@@ -67,14 +67,15 @@
             Visibility="{x:Bind ViewModel.Selected, Converter={StaticResource BoolToVisibilityConverter}, Mode=OneWay}">
             <StackPanel
                 Spacing="12">
-                <Grid
+                <Border
                     Style="{StaticResource Container}">
-                    <Grid.RowDefinitions>
-                        <RowDefinition Height="auto"/>
-                        <RowDefinition Height="*"/>
-                        <RowDefinition Height="auto"/>
-                        <RowDefinition Height="auto"/>
-                    </Grid.RowDefinitions>
+                    <Grid>
+                        <Grid.RowDefinitions>
+                            <RowDefinition Height="auto"/>
+                            <RowDefinition Height="*"/>
+                            <RowDefinition Height="auto"/>
+                            <RowDefinition Height="auto"/>
+                        </Grid.RowDefinitions>
 
                     <TextBox
                         Grid.Row="0"
@@ -93,7 +94,7 @@
                         Content="Create Pull Request"
                         VerticalAlignment="Bottom"
                         Command="{x:Bind ViewModel.CreateCommand, Mode=OneWay}"
-                        Style="{ThemeResource AccentButtonStyle}"/>
+                        Style="{ThemeResource AppAccentButtonStyle}"/>
                     <!--<common:MarkdownForm
                         Grid.Row="1"
                         Text="{x:Bind ViewModel.Body, Mode=TwoWay}">
@@ -186,7 +187,8 @@
                         </StackPanel>
 
                     </Grid>
-                </Grid>
+                    </Grid>
+                </Border>
                 <muxc:ItemsRepeater
                     ItemsSource="{x:Bind ViewModel.CompareResult.Files, Mode=OneWay}">
                     <muxc:ItemsRepeater.ItemTemplate>

@@ -5,8 +5,8 @@ using JitHub.WinUI.ViewModels.Base;
 using JitHub.WinUI.Views.Pages;
 using CommunityToolkit.Mvvm.DependencyInjection;
 using CommunityToolkit.Mvvm.Input;
-using Octokit;
-using NewRepositoryFork = Octokit.NewRepositoryFork;
+using JitHub.Models.LegacyGitHub;
+using NewRepositoryFork = JitHub.Models.LegacyGitHub.NewRepositoryFork;
 using System;
 using System.Collections.Generic;
 using System.Threading;
@@ -227,10 +227,20 @@ namespace JitHub.WinUI.ViewModels.RepositoryViewModels
 
         public async void OnNavigatedTo(NavigationEventArgs e)
         {
-            Loading = true;
-            var args = (RepoDetailPageArgs)e.Parameter;
-            await HandleNavigatedTo(args);
-            Loading = false;
+            try
+            {
+                Loading = true;
+                var args = (RepoDetailPageArgs)e.Parameter;
+                await HandleNavigatedTo(args);
+            }
+            catch (Exception ex)
+            {
+                System.Diagnostics.Debug.WriteLine($"Failed to navigate repository detail: {ex}");
+            }
+            finally
+            {
+                Loading = false;
+            }
         }
 
         // This is only for code view
@@ -318,7 +328,7 @@ namespace JitHub.WinUI.ViewModels.RepositoryViewModels
             {
                 _updatingBranchSelection = true;
                 Branches = await branchesTask;
-                SelectedBranch = ResolveSelectedBranch(args.Repo?.DefaultBranch);
+                SelectedBranch = ResolveSelectedBranch(args);
             }
             catch (Exception)
             {
@@ -370,9 +380,13 @@ namespace JitHub.WinUI.ViewModels.RepositoryViewModels
             return CodeViewerNavArg.CreateWithBranch(Model, targetBranch);
         }
 
-        private Branch? ResolveSelectedBranch(string? fallbackDefaultBranch)
+        private Branch? ResolveSelectedBranch(RepoDetailPageArgs args)
         {
-            return Branches.FirstOrDefault(branch => string.Equals(branch.Name, Model.DefaultBranch, StringComparison.Ordinal))
+            string? requestedBranch = GetRequestedCodeBranch(args);
+            string? fallbackDefaultBranch = args.Repo?.DefaultBranch;
+
+            return Branches.FirstOrDefault(branch => string.Equals(branch.Name, requestedBranch, StringComparison.Ordinal))
+                ?? Branches.FirstOrDefault(branch => string.Equals(branch.Name, Model.DefaultBranch, StringComparison.Ordinal))
                 ?? Branches.FirstOrDefault(branch => string.Equals(branch.Name, fallbackDefaultBranch, StringComparison.Ordinal))
                 ?? Branches.FirstOrDefault(branch => string.Equals(branch.Name, "master", StringComparison.Ordinal))
                 ?? Branches.FirstOrDefault(branch => string.Equals(branch.Name, "main", StringComparison.Ordinal))
@@ -399,7 +413,6 @@ namespace JitHub.WinUI.ViewModels.RepositoryViewModels
             string requestedDefaultBranch = args.Repo?.DefaultBranch ?? string.Empty;
             bool isDefaultBranchNavigation =
                 string.IsNullOrWhiteSpace(incomingBranch) ||
-                string.IsNullOrWhiteSpace(requestedDefaultBranch) ||
                 string.Equals(incomingBranch, requestedDefaultBranch, StringComparison.OrdinalIgnoreCase);
 
             if (!isDefaultBranchNavigation ||
@@ -409,6 +422,18 @@ namespace JitHub.WinUI.ViewModels.RepositoryViewModels
             }
 
             GoToCodePage(CodeViewerNavArg.CreateWithBranch(Model, resolvedBranch));
+        }
+
+        private static string? GetRequestedCodeBranch(RepoDetailPageArgs args)
+        {
+            if (args.Page != RepoPageType.CodePage ||
+                args.Ref is not CodeViewerNavArg { IsBranch: true } codeArg ||
+                string.IsNullOrWhiteSpace(codeArg.Branch))
+            {
+                return null;
+            }
+
+            return codeArg.Branch;
         }
 
         public void RepoDetailNav_ItemInvoked(Microsoft.UI.Xaml.Controls.NavigationView sender, Microsoft.UI.Xaml.Controls.NavigationViewItemInvokedEventArgs args)

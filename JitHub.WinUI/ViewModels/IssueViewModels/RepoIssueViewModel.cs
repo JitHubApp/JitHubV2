@@ -10,7 +10,7 @@ using CommunityToolkit.Mvvm.DependencyInjection;
 using CommunityToolkit.Mvvm.Input;
 using CommunityToolkit.WinUI;
 using CommunityToolkit.WinUI.UI.Controls;
-using Octokit;
+using JitHub.Models.LegacyGitHub;
 using System;
 using System.Collections.Generic;
 using System.Collections.ObjectModel;
@@ -60,16 +60,23 @@ namespace JitHub.WinUI.ViewModels.IssueViewModels
 
         public async void Init(IssueNavArg arg)
         {
-            Repo = await GitHubService.GetRepository(arg.Repo.Id);
-            RepoSelectableItemModel<Issue>? selectedIssue = null;
-            if (!arg.NoDetail)
+            try
             {
-                var issue = await GitHubService.GetIssue(Repo.Id, arg.IssueId);
-                selectedIssue = new RepoSelectableItemModel<Issue>() { Model = issue, Repository = Repo };
+                Repo = await GitHubService.GetRepository(arg.Repo.Id);
+                RepoSelectableItemModel<Issue>? selectedIssue = null;
+                if (!arg.NoDetail)
+                {
+                    var issue = await GitHubService.GetIssue(Repo.Id, arg.IssueId);
+                    selectedIssue = new RepoSelectableItemModel<Issue>() { Model = issue, Repository = Repo };
+                }
+                var issueSource = new IssueSource(Repo, RepoIssueRequest);
+                SetIncrementalCollection(issueSource, selectedIssue);
+                await GetFilterParams();
             }
-            var issueSource = new IssueSource(Repo, RepoIssueRequest);
-            SetIncrementalCollection(issueSource, selectedIssue);
-            await GetFilterParams();
+            catch (Exception ex)
+            {
+                System.Diagnostics.Debug.WriteLine($"Failed to initialize repository issues: {ex}");
+            }
         }
 
         private void SetIncrementalCollection(IssueSource issueSource, RepoSelectableItemModel<Issue>? selectedIssue)

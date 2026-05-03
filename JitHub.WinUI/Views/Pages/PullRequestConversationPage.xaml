@@ -62,7 +62,7 @@
             ConnectedTemplate="{StaticResource ConnectedEventTemplate}"
             PinnedTemplate="{StaticResource PinnedEventTemplate}"
             UnpinnedTemplate="{StaticResource UnpinnedEventTemplate}"
-            DefaultIssueEventTemplate="{StaticResource DefaultIssueEventTemplate}"/>
+            DefaultIssueEventTemplate="{StaticResource PRConversationEventDataTemplate}"/>
     </Page.Resources>
     <Grid
         Padding="8 0">
@@ -119,41 +119,46 @@
                                 Spacing="8"/>
                         </muxc:ItemsRepeater.Layout>
                     </muxc:ItemsRepeater>
-                    <Grid
+                    <Border
                         Style="{StaticResource Container}"
                         HorizontalAlignment="Stretch"
                         Visibility="{x:Bind ViewModel.UserIsCollaborator, Converter={StaticResource BoolToVisibilityConverter}, Mode=OneWay}">
-                        <Grid.ColumnDefinitions>
-                            <ColumnDefinition Width="*"/>
-                            <ColumnDefinition Width="*"/>
-                        </Grid.ColumnDefinitions>
-                        <TextBlock
-                            Grid.Column="0"
-                            VerticalAlignment="Center"
-                            HorizontalAlignment="Left"
-                            Text="{x:Bind ViewModel.PullRequest.MergeableState, Converter={StaticResource MergeStateToStringConverter}, Mode=OneWay}"/>
-                        <muxc:DropDownButton
-                            Content="Merge pull request"
-                            Grid.Column="1"
-                            VerticalAlignment="Center"
-                            HorizontalAlignment="Right"
-                            IsEnabled="{x:Bind ViewModel.CanMerge, Mode=OneWay}">
-                            <muxc:DropDownButton.Flyout>
-                                <MenuFlyout Placement="Bottom">
-                                    <MenuFlyoutItem
-                                        Text="Create a merge commit"
-                                        Click="{x:Bind ViewModel.HandleMergeCommit, Mode=OneWay}"/>
-                                    <MenuFlyoutItem
-                                        Text="Squash and merge"
-                                        Click="{x:Bind ViewModel.HandleSquashMerge, Mode=OneWay}"/>
-                                    <MenuFlyoutItem
-                                        Text="Rebase and merge"
-                                        Click="{x:Bind ViewModel.HandleRebaseMerge, Mode=OneWay}"/>
-                                </MenuFlyout>
-                            </muxc:DropDownButton.Flyout>
-                        </muxc:DropDownButton>
-                    </Grid>
+                        <Grid>
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="*"/>
+                                <ColumnDefinition Width="*"/>
+                            </Grid.ColumnDefinitions>
+                            <TextBlock
+                                Grid.Column="0"
+                                VerticalAlignment="Center"
+                                HorizontalAlignment="Left"
+                                Text="{x:Bind ViewModel.PullRequest.MergeableState, Converter={StaticResource MergeStateToStringConverter}, Mode=OneWay}"/>
+                            <muxc:DropDownButton
+                                Content="Merge pull request"
+                                Grid.Column="1"
+                                Style="{StaticResource AppDropDownButtonStyle}"
+                                VerticalAlignment="Center"
+                                HorizontalAlignment="Right"
+                                IsEnabled="{x:Bind ViewModel.CanMerge, Mode=OneWay}">
+                                <muxc:DropDownButton.Flyout>
+                                    <MenuFlyout Placement="Bottom">
+                                        <MenuFlyoutItem
+                                            Text="Create a merge commit"
+                                            Click="{x:Bind ViewModel.HandleMergeCommit, Mode=OneWay}"/>
+                                        <MenuFlyoutItem
+                                            Text="Squash and merge"
+                                            Click="{x:Bind ViewModel.HandleSquashMerge, Mode=OneWay}"/>
+                                        <MenuFlyoutItem
+                                            Text="Rebase and merge"
+                                            Click="{x:Bind ViewModel.HandleRebaseMerge, Mode=OneWay}"/>
+                                    </MenuFlyout>
+                                </muxc:DropDownButton.Flyout>
+                            </muxc:DropDownButton>
+                        </Grid>
+                    </Border>
                     <common:MarkdownForm
+                            HorizontalAlignment="Stretch"
+                            MaxWidth="{Binding ActualWidth, ElementName=CommentsPane}"
                             Text="{x:Bind ViewModel.CommentText, Mode=TwoWay}">
                         <common:MarkdownForm.ActionContent>
                             <StackPanel
@@ -161,9 +166,11 @@
                                 <Button
                                     Visibility="{x:Bind ViewModel.UserIsCollaborator, Converter={StaticResource BoolToVisibilityConverter}, Mode=OneWay}"
                                     Content="{x:Bind ViewModel.CloseButtonText, Mode=OneWay}"
+                                    Style="{StaticResource AppDangerOutlineButtonStyle}"
                                     Click="{x:Bind ViewModel.ClosePullRequest, Mode=OneWay}"/>
                                 <Button
                                     Content="Comment"
+                                    Style="{StaticResource AppAccentButtonStyle}"
                                     Click="{x:Bind ViewModel.HandleComment, Mode=OneWay}"/>
                             </StackPanel>
                         </common:MarkdownForm.ActionContent>

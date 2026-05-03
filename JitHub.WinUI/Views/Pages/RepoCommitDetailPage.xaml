@@ -71,6 +71,7 @@
                             VerticalAlignment="Center"
                             CornerRadius="8"
                             Padding="6"
+                            Style="{StaticResource AppToolbarButtonStyle}"
                             Command="{x:Bind ViewModel.CommandableCommit.Copy, Mode=OneWay}"
                             CommandParameter="{x:Bind ViewModel.CommandableCommit.Sha, Mode=OneWay}"
                             Background="Transparent"
@@ -86,6 +87,7 @@
                         Grid.Column="1"
                         Margin="0 8 0 0"
                         HorizontalAlignment="Right"
+                        Style="{StaticResource AppOutlineButtonStyle}"
                         Command="{x:Bind ViewModel.CommandableCommit.ViewCode, Mode=OneWay}"
                         CommandParameter="{x:Bind ViewModel.CommandableCommit.Sha, Mode=OneWay}"
                         Content="View Files"/>

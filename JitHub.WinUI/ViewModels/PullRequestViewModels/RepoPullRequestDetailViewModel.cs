@@ -6,7 +6,7 @@ using JitHub.WinUI.Views.Controls.PullRequest;
 using JitHub.WinUI.Views.Pages;
 using CommunityToolkit.Mvvm.DependencyInjection;
 using CommunityToolkit.Mvvm.Input;
-using Octokit;
+using JitHub.Models.LegacyGitHub;
 using System;
 using System.Threading.Tasks;
 using System.Windows.Input;

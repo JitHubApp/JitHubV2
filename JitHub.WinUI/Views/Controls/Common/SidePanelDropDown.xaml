@@ -11,7 +11,10 @@
     d:DesignWidth="400">
 
     <Grid>
-        <Button>
+        <Button
+            Style="{StaticResource AppOutlineButtonStyle}"
+            HorizontalAlignment="Stretch"
+            HorizontalContentAlignment="Stretch">
             <Grid>
                 <Grid.ColumnDefinitions>
                     <ColumnDefinition Width="*"/>

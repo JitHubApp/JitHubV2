@@ -1,6 +1,6 @@
 using CommunityToolkit.Mvvm.ComponentModel;
 using JitHub.Models.GitHub;
-using Octokit;
+using JitHub.Models.LegacyGitHub;
 using System;
 using System.Collections.Generic;
 
@@ -16,7 +16,7 @@ namespace JitHub.Models
         private bool _isDir;
         private string _sha = string.Empty;
         private string _path = string.Empty;
-        private StringEnum<EncodingType> _encodingType = Octokit.EncodingType.Utf8;
+        private StringEnum<EncodingType> _encodingType = JitHub.Models.LegacyGitHub.EncodingType.Utf8;
 
         public string Content
         {
@@ -75,7 +75,7 @@ namespace JitHub.Models
             EncodedContent = repoContent?.Content ?? string.Empty;
             Path = repoContent?.Path ?? string.Empty;
             EncodingType = string.IsNullOrWhiteSpace(repoContent?.Encoding)
-                ? Octokit.EncodingType.Utf8
+                ? JitHub.Models.LegacyGitHub.EncodingType.Utf8
                 : new StringEnum<EncodingType>(repoContent.Encoding);
         }
 

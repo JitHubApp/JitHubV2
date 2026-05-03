@@ -22,6 +22,23 @@ on:
         required: false
         default: true
         type: boolean
+      store_submission_mode:
+        description: Whether msstore should publish publicly, keep a draft submission, or publish to a flight.
+        required: false
+        default: public
+        type: choice
+        options:
+          - public
+          - draft
+          - flight
+      store_flight_id:
+        description: Partner Center flight ID. Required when store_submission_mode is flight.
+        required: false
+        type: string
+      package_rollout_percentage:
+        description: Optional staged rollout percentage from 0 to 100.
+        required: false
+        type: string
 
 permissions:
   contents: read
@@ -82,7 +99,11 @@ jobs:
         run: yarn --frozen-lockfile
 
       - name: Set up Microsoft Store CLI
-        uses: microsoft/microsoft-store-apppublisher@v1.2
+        uses: microsoft/microsoft-store-apppublisher@v1.3
+
+      - name: Verify Microsoft Store CLI
+        shell: pwsh
+        run: msstore --help
 
       - name: Build editor assets
         shell: pwsh
@@ -205,8 +226,47 @@ jobs:
 
       - name: Publish package to Microsoft Store
         shell: pwsh
-        run: >
-          msstore publish "${{ github.workspace }}\${{ env.PROJECT_ROOT }}"
-          --inputDirectory "${{ steps.package.outputs.upload_package_dir }}"
-          --appId "$env:STORE_PRODUCT_ID"
+        run: |
+          $ErrorActionPreference = 'Stop'
+
+          $submissionMode = '${{ inputs.store_submission_mode }}'
+          $flightId = '${{ inputs.store_flight_id }}'
+          $rolloutPercentage = '${{ inputs.package_rollout_percentage }}'
+
+          if ($submissionMode -eq 'flight' -and [string]::IsNullOrWhiteSpace($flightId)) {
+            throw 'store_flight_id is required when store_submission_mode is flight.'
+          }
+
+          $publishArgs = @(
+            'publish',
+            "${{ github.workspace }}\${{ env.PROJECT_ROOT }}",
+            '--inputFile',
+            '${{ steps.package.outputs.upload_package }}',
+            '--appId',
+            "$env:STORE_PRODUCT_ID"
+          )
+
+          if ($submissionMode -eq 'draft') {
+            $publishArgs += '--noCommit'
+          }
+
+          if ($submissionMode -eq 'flight') {
+            $publishArgs += '--flightId'
+            $publishArgs += $flightId
+          }
+
+          if (-not [string]::IsNullOrWhiteSpace($rolloutPercentage)) {
+            $parsedRolloutPercentage = 0
+            if (-not [int]::TryParse($rolloutPercentage, [ref]$parsedRolloutPercentage) -or $parsedRolloutPercentage -lt 0 -or $parsedRolloutPercentage -gt 100) {
+              throw 'package_rollout_percentage must be an integer from 0 to 100.'
+            }
+
+            $publishArgs += '--packageRolloutPercentage'
+            $publishArgs += $parsedRolloutPercentage.ToString()
+          }
+
+          & msstore @publishArgs
+          if ($LASTEXITCODE -ne 0) {
+            throw 'msstore publish failed.'
+          }
 

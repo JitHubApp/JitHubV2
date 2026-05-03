@@ -1,5 +1,5 @@
 using JitHub.Models.NavArgs;
-using Octokit;
+using JitHub.Models.LegacyGitHub;
 using Microsoft.UI.Xaml.Navigation;
 using Page = Microsoft.UI.Xaml.Controls.Page;
 

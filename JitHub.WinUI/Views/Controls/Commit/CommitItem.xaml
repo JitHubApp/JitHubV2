@@ -122,12 +122,12 @@
                             Spacing="4">
                             <common:Avatar
                                 ShowLogin="True"
-                                Foreground="Gray"
+                                Foreground="{ThemeResource AppInkSubtleBrush}"
                                 Url="{x:Bind ViewModel.AvatarUrl, Mode=OneWay}"
                                 Login="{x:Bind ViewModel.Login, Mode=OneWay}"/>
                             <TextBlock
                                 VerticalAlignment="Center"
-                                Foreground="Gray"
+                                Foreground="{ThemeResource AppInkSubtleBrush}"
                                 Text="{x:Bind ViewModel.Date, Converter={StaticResource TimeAgoConverter}, ConverterParameter=committed, Mode=OneWay}"/>
                         </StackPanel>
                     </Grid>
@@ -144,6 +144,7 @@
                             Height="40"
                             Width="40"
                             Padding="4"
+                            Style="{StaticResource AppToolbarButtonStyle}"
                             Command="{x:Bind ViewModel.Copy, Mode=OneWay}"
                             CommandParameter="{x:Bind ViewModel.Sha, Mode=OneWay}"
                             CornerRadius="8 0 0 8">
@@ -157,6 +158,7 @@
                             Height="40"
                             Width="40"
                             Padding="4"
+                            Style="{StaticResource AppToolbarButtonStyle}"
                             Command="{x:Bind ViewModel.ViewCode, Mode=OneWay}"
                             CommandParameter="{x:Bind ViewModel.Sha, Mode=OneWay}"
                             CornerRadius="0 8 8 0">

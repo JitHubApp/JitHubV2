@@ -10,15 +10,24 @@
     d:DesignWidth="400">
 
     <Border
-        CornerRadius="4"
-        Padding="4 0"
-        BorderBrush="{ThemeResource BorderGray}"
+        CornerRadius="{ThemeResource AppRadiusSmall}"
+        Padding="8,0"
+        Height="22"
+        VerticalAlignment="Center"
+        BorderBrush="{ThemeResource AppOutlineBrush}"
         BorderThickness="1"
         Width="auto"
         Background="{x:Bind GetBackgroundBrush(Label), Mode=OneWay}"
         ToolTipService.ToolTip="{x:Bind GetDescription(Label), Mode=OneWay}">
         <TextBlock
             VerticalAlignment="Center"
+            Style="{StaticResource ListItemSecondaryTextBlockStyle}"
+            Height="16"
+            FontSize="12"
+            LineHeight="16"
+            LineStackingStrategy="BlockLineHeight"
+            TextAlignment="Center"
+            Margin="0"
             Text="{x:Bind GetName(Label), Mode=OneWay}"
             Foreground="{x:Bind GetForegroundBrush(Label), Mode=OneWay}"/>
     </Border>

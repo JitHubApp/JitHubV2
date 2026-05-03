@@ -1,5 +1,5 @@
-using Octokit;
-using RepositoryModel = Octokit.Repository;
+using JitHub.Models.LegacyGitHub;
+using RepositoryModel = JitHub.Models.LegacyGitHub.Repository;
 using System.Linq;
 using System.Windows.Input;
 using Windows.UI;

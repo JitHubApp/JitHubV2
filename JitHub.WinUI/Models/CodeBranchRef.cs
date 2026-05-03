@@ -1,4 +1,4 @@
-﻿using Octokit;
+using JitHub.Models.LegacyGitHub;
 
 namespace JitHub.Models
 {

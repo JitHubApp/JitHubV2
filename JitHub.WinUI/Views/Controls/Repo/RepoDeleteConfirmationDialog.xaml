@@ -43,10 +43,11 @@
                 Spacing="8">
                 <Button
                     Content="Confirm"
-                    Style="{ThemeResource AccentButtonStyle}"
+                    Style="{ThemeResource AppAccentButtonStyle}"
                     Command="{x:Bind ConfirmCommand, Mode=OneWay}"/>
                 <Button
                     Content="Cancel"
+                    Style="{StaticResource AppOutlineButtonStyle}"
                     Command="{x:Bind CancelCommand, Mode=OneWay}"/>
             </StackPanel>
         </Grid>

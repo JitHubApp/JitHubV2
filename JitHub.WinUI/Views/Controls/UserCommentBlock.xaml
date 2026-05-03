@@ -34,7 +34,8 @@
                     <TextBlock
                         Grid.Column="0"
                         VerticalAlignment="Center"
-                        Foreground="{ThemeResource SystemRevealChromeGrayColor}">
+                        Style="{StaticResource SectionSecondaryTextBlockStyle}"
+                        Foreground="{ThemeResource AppInkMutedBrush}">
                         <Run FontWeight="SemiBold" Text="{x:Bind ViewModel.Commenter.Login, Mode=OneWay}" />
                         <Run Text="{x:Bind ViewModel.CreatedAt, Mode=OneWay}" />
                     </TextBlock>
@@ -47,22 +48,21 @@
                         <Button
                             Grid.Column="1"
                             Margin="0"
-                            Padding="4,2">
+                            Padding="4,2"
+                            Style="{StaticResource AppToolbarButtonStyle}">
                             <FontIcon FontFamily="{StaticResource SegoeFluentIcons}" Glyph="&#xE712;" />
                             <Button.Flyout>
-                                <muxc:CommandBarFlyout AreOpenCloseAnimationsEnabled="True" Placement="BottomEdgeAlignedLeft">
-                                    <muxc:CommandBarFlyout.SecondaryCommands>
-                                        <AppBarButton
-                                            x:Name="CopyLink"
-                                            Command="{x:Bind ViewModel.CopyLinkMenuItem.Command, Mode=OneWay}"
-                                            Label="{x:Bind ViewModel.CopyLinkMenuItem.Text, Mode=OneWay}" />
-                                        <AppBarButton
-                                            x:Name="QuoteReply"
-                                            Command="{x:Bind ViewModel.QuoteReplyMenuItem.Command, Mode=OneWay}"
-                                            CommandParameter="{x:Bind ViewModel.QuoteReplyMenuItem.Parameter, Mode=OneWay}"
-                                            Label="{x:Bind ViewModel.QuoteReplyMenuItem.Text, Mode=OneWay}" />
-                                    </muxc:CommandBarFlyout.SecondaryCommands>
-                                </muxc:CommandBarFlyout>
+                                <MenuFlyout Placement="BottomEdgeAlignedLeft">
+                                    <MenuFlyoutItem
+                                        x:Name="CopyLink"
+                                        Command="{x:Bind ViewModel.CopyLinkMenuItem.Command, Mode=OneWay}"
+                                        Text="{x:Bind ViewModel.CopyLinkMenuItem.Text, Mode=OneWay}" />
+                                    <MenuFlyoutItem
+                                        x:Name="QuoteReply"
+                                        Command="{x:Bind ViewModel.QuoteReplyMenuItem.Command, Mode=OneWay}"
+                                        CommandParameter="{x:Bind ViewModel.QuoteReplyMenuItem.Parameter, Mode=OneWay}"
+                                        Text="{x:Bind ViewModel.QuoteReplyMenuItem.Text, Mode=OneWay}" />
+                                </MenuFlyout>
                             </Button.Flyout>
                         </Button>
                     </Grid>

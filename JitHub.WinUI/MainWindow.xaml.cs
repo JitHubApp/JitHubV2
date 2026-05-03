@@ -2,6 +2,7 @@ using System;
 using System.IO;
 using System.Linq;
 using System.Runtime.InteropServices;
+using JitHub.Models;
 using JitHub.Services;
 using Microsoft.UI.Input;
 using Microsoft.UI.Xaml.Controls;
@@ -18,9 +19,22 @@ namespace JitHub.WinUI;
 
 public sealed partial class MainWindow : Window
 {
+    private const uint ImageIcon = 1;
+    private const uint LrLoadFromFile = 0x00000010;
+    private const uint WmSetIcon = 0x0080;
+    private const int IconSmall = 0;
+    private const int IconBig = 1;
+    private const int IconSmall2 = 2;
+    private const int SmCxIcon = 11;
+    private const int SmCyIcon = 12;
+    private const int SmCxSmIcon = 49;
+    private const int SmCySmIcon = 50;
     private const int SwRestore = 9;
     private readonly UISettings _uiSettings = new();
     private readonly InputNonClientPointerSource _nonClientPointerSource;
+    private nint _largeIconHandle;
+    private nint _smallIconHandle;
+    private string _configuredTheme = ThemeConst.System;
     private bool _followSystemTheme;
 
     [LibraryImport("user32.dll", SetLastError = true)]
@@ -35,6 +49,19 @@ public sealed partial class MainWindow : Window
     [return: MarshalAs(UnmanagedType.Bool)]
     private static partial bool IsIconic(nint hWnd);
 
+    [LibraryImport("user32.dll", EntryPoint = "LoadImageW", SetLastError = true, StringMarshalling = StringMarshalling.Utf16)]
+    private static partial nint LoadImage(nint hInstance, string name, uint type, int desiredWidth, int desiredHeight, uint loadFlags);
+
+    [LibraryImport("user32.dll", EntryPoint = "SendMessageW", SetLastError = true)]
+    private static partial nint SendMessage(nint hWnd, uint message, nint wParam, nint lParam);
+
+    [LibraryImport("user32.dll", SetLastError = true)]
+    [return: MarshalAs(UnmanagedType.Bool)]
+    private static partial bool DestroyIcon(nint hIcon);
+
+    [LibraryImport("user32.dll")]
+    private static partial int GetSystemMetrics(int index);
+
     public MainWindow()
     {
         InitializeComponent();
@@ -43,12 +70,9 @@ public sealed partial class MainWindow : Window
         SetTitleBar(AppTitleBar);
         _nonClientPointerSource = InputNonClientPointerSource.GetForWindowId(AppWindow.Id);
 
-        string iconPath = Path.Combine(AppContext.BaseDirectory, "Assets", "AppIcon.ico");
-        if (File.Exists(iconPath))
-        {
-            AppWindow.SetIcon(iconPath);
-        }
+        ConfigureWindowIcon();
         _uiSettings.ColorValuesChanged += OnColorValuesChanged;
+        Closed += (_, _) => ReleaseWindowIcons();
     }
 
     public void ProcessActivation()
@@ -64,12 +88,11 @@ public sealed partial class MainWindow : Window
         ActivationStatusHost.Visibility = Visibility.Visible;
     }
 
-    public void ConfigureTheme(bool followSystemTheme)
+    public void ConfigureTheme(string? theme)
     {
-        _followSystemTheme = followSystemTheme;
-        RootLayout.RequestedTheme = followSystemTheme
-            ? GetCurrentSystemTheme()
-            : ElementTheme.Default;
+        _configuredTheme = string.IsNullOrWhiteSpace(theme) ? ThemeConst.System : theme;
+        _followSystemTheme = string.Equals(_configuredTheme, ThemeConst.System, StringComparison.OrdinalIgnoreCase);
+        RootLayout.RequestedTheme = ResolveElementTheme(_configuredTheme);
     }
 
     public Frame ContentFrameHost => ContentFrame;
@@ -114,6 +137,52 @@ public sealed partial class MainWindow : Window
         _ = SetForegroundWindow(hwnd);
     }
 
+    private void ConfigureWindowIcon()
+    {
+        string iconPath = Path.Combine(AppContext.BaseDirectory, "Assets", "AppIcon.ico");
+        if (!File.Exists(iconPath))
+        {
+            return;
+        }
+
+        AppWindow.SetIcon(iconPath);
+
+        nint hwnd = WindowNative.GetWindowHandle(this);
+        int smallIconWidth = Math.Max(16, GetSystemMetrics(SmCxSmIcon));
+        int smallIconHeight = Math.Max(16, GetSystemMetrics(SmCySmIcon));
+        int largeIconWidth = Math.Max(32, GetSystemMetrics(SmCxIcon));
+        int largeIconHeight = Math.Max(32, GetSystemMetrics(SmCyIcon));
+
+        _smallIconHandle = LoadImage(nint.Zero, iconPath, ImageIcon, smallIconWidth, smallIconHeight, LrLoadFromFile);
+        _largeIconHandle = LoadImage(nint.Zero, iconPath, ImageIcon, largeIconWidth, largeIconHeight, LrLoadFromFile);
+
+        if (_smallIconHandle != nint.Zero)
+        {
+            _ = SendMessage(hwnd, WmSetIcon, IconSmall, _smallIconHandle);
+            _ = SendMessage(hwnd, WmSetIcon, IconSmall2, _smallIconHandle);
+        }
+
+        if (_largeIconHandle != nint.Zero)
+        {
+            _ = SendMessage(hwnd, WmSetIcon, IconBig, _largeIconHandle);
+        }
+    }
+
+    private void ReleaseWindowIcons()
+    {
+        if (_smallIconHandle != nint.Zero)
+        {
+            _ = DestroyIcon(_smallIconHandle);
+            _smallIconHandle = nint.Zero;
+        }
+
+        if (_largeIconHandle != nint.Zero)
+        {
+            _ = DestroyIcon(_largeIconHandle);
+            _largeIconHandle = nint.Zero;
+        }
+    }
+
     private void OnColorValuesChanged(UISettings sender, object args)
     {
         if (!_followSystemTheme)
@@ -121,12 +190,24 @@ public sealed partial class MainWindow : Window
             return;
         }
 
-        _ = DispatcherQueue.TryEnqueue(() => RootLayout.RequestedTheme = GetCurrentSystemTheme());
+        _ = DispatcherQueue.TryEnqueue(() => RootLayout.RequestedTheme = ResolveElementTheme(_configuredTheme));
     }
 
     private static ElementTheme GetCurrentSystemTheme()
     {
         return ThemeService.GetSystemThemeStatic() == ApplicationTheme.Dark
+            ? ElementTheme.Dark
+            : ElementTheme.Light;
+    }
+
+    private static ElementTheme ResolveElementTheme(string? theme)
+    {
+        if (string.IsNullOrWhiteSpace(theme) || string.Equals(theme, ThemeConst.System, StringComparison.OrdinalIgnoreCase))
+        {
+            return GetCurrentSystemTheme();
+        }
+
+        return string.Equals(theme, ThemeConst.Dark, StringComparison.OrdinalIgnoreCase)
             ? ElementTheme.Dark
             : ElementTheme.Light;
     }

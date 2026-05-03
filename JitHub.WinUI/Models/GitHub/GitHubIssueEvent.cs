@@ -33,11 +33,17 @@ public sealed class GitHubIssueEvent
     [JsonPropertyName("requested_reviewer")]
     public GitHubActor? RequestedReviewer { get; set; }
 
+    [JsonPropertyName("review_requester")]
+    public GitHubActor? ReviewRequester { get; set; }
+
     [JsonPropertyName("requested_team")]
     public GitHubIssueEventRequestedTeam? RequestedTeam { get; set; }
 
     [JsonPropertyName("label")]
     public GitHubLabel? Label { get; set; }
+
+    [JsonPropertyName("milestone")]
+    public GitHubMilestone? Milestone { get; set; }
 
     [JsonPropertyName("commit_id")]
     public string? CommitId { get; set; }
@@ -47,6 +53,9 @@ public sealed class GitHubIssueEvent
 
     [JsonPropertyName("dismissed_review")]
     public GitHubIssueEventDismissedReview? DismissedReview { get; set; }
+
+    [JsonPropertyName("lock_reason")]
+    public string? LockReason { get; set; }
 
     [JsonIgnore]
     public string Summary => BuildSummary();
@@ -129,6 +138,9 @@ public sealed class GitHubIssueEventRequestedTeam
 {
     [JsonPropertyName("name")]
     public string Name { get; set; } = string.Empty;
+
+    [JsonPropertyName("slug")]
+    public string Slug { get; set; } = string.Empty;
 }
 
 public sealed class GitHubIssueEventRename

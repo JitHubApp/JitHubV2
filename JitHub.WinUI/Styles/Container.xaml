@@ -1,35 +1,36 @@
 <ResourceDictionary xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation" xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml">
-    <ResourceDictionary.MergedDictionaries>
-        <XamlControlsResources xmlns="using:Microsoft.UI.Xaml.Controls" />
-        <ResourceDictionary Source="ms-appx:///Styles/Color.xaml" />
-        <ResourceDictionary Source="ms-appx:///Styles/Theme.xaml" />
-    </ResourceDictionary.MergedDictionaries>
-    <Style x:Key="Container" TargetType="Grid">
-        <Setter Property="Padding" Value="8" />
-        <Setter Property="CornerRadius" Value="4" />
-        <Setter Property="Background" Value="{ThemeResource ExpanderHeaderBackground}" />
+    <Style x:Key="Container" TargetType="Border">
+        <Setter Property="Padding" Value="{ThemeResource AppCardPadding}" />
+        <Setter Property="CornerRadius" Value="{ThemeResource AppRadiusMedium}" />
+        <Setter Property="Background" Value="{ThemeResource AppCanvasRaisedBrush}" />
+        <Setter Property="BorderBrush" Value="{ThemeResource AppOutlineBrush}" />
+        <Setter Property="BorderThickness" Value="1" />
     </Style>
-    <Style x:Key="PlainContainer" TargetType="Grid">
-        <Setter Property="CornerRadius" Value="4" />
-        <Setter Property="Background" Value="{ThemeResource ExpanderContentBackground}" />
+    <Style x:Key="PlainContainer" TargetType="Border">
+        <Setter Property="Padding" Value="{ThemeResource AppCardPadding}" />
+        <Setter Property="CornerRadius" Value="{ThemeResource AppRadiusMedium}" />
+        <Setter Property="Background" Value="{ThemeResource AppSurfaceBrush}" />
+        <Setter Property="BorderBrush" Value="{ThemeResource AppOutlineBrush}" />
+        <Setter Property="BorderThickness" Value="1" />
     </Style>
     <Style x:Key="ActionPanel" TargetType="StackPanel">
-        <Setter Property="Margin" Value="0,4,0,0" />
+        <Setter Property="Margin" Value="0,8,0,0" />
         <Setter Property="Spacing" Value="8" />
         <Setter Property="HorizontalAlignment" Value="Right" />
         <Setter Property="Orientation" Value="Horizontal" />
     </Style>
-    <Style x:Key="ActivityContainer" TargetType="Grid">
-        <Setter Property="Padding" Value="8" />
-        <Setter Property="CornerRadius" Value="4" />
-        <Setter Property="BorderBrush" Value="{ThemeResource AppBorderBrush}" />
-        <Setter Property="BorderThickness" Value="0.5" />
-        <Setter Property="Background" Value="{ThemeResource ExpanderContentBackground}" />
+    <Style x:Key="ActivityContainer" TargetType="Border">
+        <Setter Property="Padding" Value="12" />
+        <Setter Property="CornerRadius" Value="{ThemeResource AppRadiusMedium}" />
+        <Setter Property="BorderBrush" Value="{ThemeResource AppOutlineBrush}" />
+        <Setter Property="BorderThickness" Value="1" />
+        <Setter Property="Background" Value="{ThemeResource AppSurfaceBrush}" />
     </Style>
     <Style x:Key="SectionCardBorderStyle" TargetType="Border">
-        <Setter Property="Background" Value="{ThemeResource CardBackgroundFillColorDefaultBrush}" />
-        <Setter Property="BorderBrush" Value="{ThemeResource CardStrokeColorDefaultBrush}" />
+        <Setter Property="Padding" Value="{ThemeResource AppCardPadding}" />
+        <Setter Property="Background" Value="{ThemeResource AppSurfaceBrush}" />
+        <Setter Property="BorderBrush" Value="{ThemeResource AppOutlineBrush}" />
         <Setter Property="BorderThickness" Value="1" />
+        <Setter Property="CornerRadius" Value="{ThemeResource AppRadiusLarge}" />
     </Style>
 </ResourceDictionary>
-

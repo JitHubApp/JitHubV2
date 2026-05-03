@@ -1,6 +1,6 @@
-using Octokit;
-using PullRequestModel = Octokit.PullRequest;
-using RepositoryModel = Octokit.Repository;
+using JitHub.Models.LegacyGitHub;
+using PullRequestModel = JitHub.Models.LegacyGitHub.PullRequest;
+using RepositoryModel = JitHub.Models.LegacyGitHub.Repository;
 using System.Windows.Input;
 using Microsoft.UI.Xaml.Controls;
 

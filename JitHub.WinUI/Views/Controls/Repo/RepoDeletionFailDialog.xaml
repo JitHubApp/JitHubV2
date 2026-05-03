@@ -63,6 +63,7 @@
                 Spacing="8">
                 <Button
                     Content="Ok"
+                    Style="{StaticResource AppAccentButtonStyle}"
                     Command="{x:Bind CancelCommand, Mode=OneWay}"/>
             </StackPanel>
         </Grid>

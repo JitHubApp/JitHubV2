@@ -10,7 +10,7 @@
     xmlns:animations="using:CommunityToolkit.WinUI.Animations"
     mc:Ignorable="d"
     SizeChanged="Page_SizeChanged"
-    Background="{ThemeResource ApplicationPageBackgroundThemeBrush}">
+    Background="{ThemeResource AppCanvasBrush}">
     <Page.DataContext>
         <viewmodels:LoginViewModel x:Name="ViewModel"/>
     </Page.DataContext>
@@ -50,7 +50,7 @@
             Grid.ColumnSpan="2"
             HorizontalAlignment="Stretch"
             VerticalAlignment="Top"
-            x:Name="TitleBar"/>
+            x:Name="TitleBarArea"/>
         <Image
             Grid.ColumnSpan="2"
             MinWidth="300"
@@ -85,7 +85,7 @@
                     FontSize="24"
                     Text="Welcome to JitHub!"/>
                     <TextBlock
-                    Foreground="{ThemeResource SystemControlForegroundChromeGrayBrush}"
+                    Foreground="{ThemeResource AppInkMutedBrush}"
                     Text="To use all these great features and more, you need to log in first."/>
                     <Grid>
                         <Grid.ColumnDefinitions>
@@ -118,7 +118,7 @@
                                 &#8226; View code across different branches and commits the way they are meant to
                             </Paragraph>
                             <Paragraph>
-                                &#8226; View and manage Issues like a Pro!
+                                &#8226; View and manage issues without leaving the app
                             </Paragraph>
                             <Paragraph>
                                 &#8226; Merging a pull request has never been so elegent
@@ -207,7 +207,7 @@
             HorizontalAlignment="Right"
             VerticalAlignment="Bottom"
             Margin="16"
-            Style="{ThemeResource AccentButtonStyle}"
+            Style="{ThemeResource AppAccentButtonStyle}"
             Command="{x:Bind ViewModel.LoginCommand, Mode=OneWay}">
             <StackPanel
                 Orientation="Horizontal"

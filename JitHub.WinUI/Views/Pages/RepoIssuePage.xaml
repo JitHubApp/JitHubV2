@@ -9,6 +9,7 @@
     xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
     xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
     xmlns:common="using:JitHub.WinUI.Views.Controls.Common"
+    xmlns:appcontrols="using:JitHub.WinUI.Views.Controls.App"
     xmlns:issue="using:JitHub.WinUI.Views.Controls.Issue"
     mc:Ignorable="d"
     Background="Transparent">
@@ -36,7 +37,7 @@
             <Button
                 Grid.Column="1"
                 Margin="10 0 0 10"
-                Style="{ThemeResource AccentButtonStyle}"
+                Style="{StaticResource AppAccentButtonStyle}"
                 Command="{x:Bind ViewModel.NewIssueCommand, Mode=OneWay}"
                 VerticalAlignment="Bottom">
                 New Issue
@@ -50,19 +51,11 @@
             Height="50"
             Visibility="{x:Bind ViewModel.Loading, Converter={StaticResource BoolToVisibilityConverter}, Mode=OneWay}"
             IsActive="{x:Bind ViewModel.Loading, Mode=OneWay}"/>
-        <StackPanel
+        <common:EmptyStateView
             Grid.Row="1"
-            Visibility="{x:Bind ViewModel.IsEmpty, Converter={StaticResource BoolToVisibilityConverter}, Mode=OneWay}"
-            HorizontalAlignment="Center"
-            VerticalAlignment="Center"
-            Spacing="8">
-            <Image
-                Width="320"
-                Source="ms-appx:///Assets/Icons/no_result.png"/>
-            <TextBlock
-                HorizontalAlignment="Center"
-                Text="No Issue in this repository"/>
-        </StackPanel>
+            Title="No issues yet"
+            Description="This repository doesn’t have any issues in the current filter."
+            Visibility="{x:Bind ViewModel.IsEmpty, Converter={StaticResource BoolToVisibilityConverter}, Mode=OneWay}" />
         <controls:ListDetailsView
             x:Name="IssuePageMasterDetail"
             BackButtonBehavior="Automatic"
@@ -87,18 +80,9 @@
                     <Grid
                         VerticalAlignment="Stretch"
                         HorizontalAlignment="Stretch">
-                        <StackPanel
-                            VerticalAlignment="Center"
-                            HorizontalAlignment="Center"
-                            Spacing="8">
-                            <Image
-                                Width="320"
-                                Source="ms-appx:///Assets/Icons/select_one.png"/>
-                            <TextBlock
-                                HorizontalAlignment="Center"
-                                FontSize="16"
-                                Text="Select an Issue to view"/>
-                        </StackPanel>
+                        <common:EmptyStateView
+                            Title="Select an issue"
+                            Description="Choose an issue from the list to read the conversation and details." />
                     </Grid>
                 </DataTemplate>
             </controls:ListDetailsView.NoSelectionContentTemplate>

@@ -1,0 +1,33 @@
+<ResourceDictionary
+    xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml">
+    <SolidColorBrush x:Key="AppCanvasBrush" Color="{ThemeResource AppCanvasColor}" />
+    <SolidColorBrush x:Key="AppCanvasRaisedBrush" Color="{ThemeResource AppCanvasRaisedColor}" />
+    <SolidColorBrush x:Key="AppCanvasInsetBrush" Color="{ThemeResource AppCanvasInsetColor}" />
+    <SolidColorBrush x:Key="AppSurfaceBrush" Color="{ThemeResource AppSurfaceColor}" />
+    <SolidColorBrush x:Key="AppSurfaceSubtleBrush" Color="{ThemeResource AppSurfaceSubtleColor}" />
+    <SolidColorBrush x:Key="AppOverlayBrush" Color="{ThemeResource AppOverlayColor}" />
+    <SolidColorBrush x:Key="AppInkBrush" Color="{ThemeResource AppInkColor}" />
+    <SolidColorBrush x:Key="AppInkMutedBrush" Color="{ThemeResource AppInkMutedColor}" />
+    <SolidColorBrush x:Key="AppInkSubtleBrush" Color="{ThemeResource AppInkSubtleColor}" />
+    <SolidColorBrush x:Key="AppInkInverseBrush" Color="{ThemeResource AppInkInverseColor}" />
+    <SolidColorBrush x:Key="AppOutlineBrush" Color="{ThemeResource AppOutlineColor}" />
+    <SolidColorBrush x:Key="AppOutlineStrongBrush" Color="{ThemeResource AppOutlineStrongColor}" />
+    <SolidColorBrush x:Key="AppHairlineBrush" Color="{ThemeResource AppHairlineColor}" />
+    <SolidColorBrush x:Key="AppAccentBrush" Color="{ThemeResource AppAccentColor}" />
+    <SolidColorBrush x:Key="AppAccentHoverBrush" Color="{ThemeResource AppAccentHoverColor}" />
+    <SolidColorBrush x:Key="AppAccentPressedBrush" Color="{ThemeResource AppAccentPressedColor}" />
+    <SolidColorBrush x:Key="AppAccentForegroundBrush" Color="{ThemeResource AppAccentForegroundColor}" />
+    <SolidColorBrush x:Key="AppWarmAccentBrush" Color="{ThemeResource AppWarmAccentColor}" />
+    <SolidColorBrush x:Key="AppWarmAccentForegroundBrush" Color="{ThemeResource AppWarmAccentForegroundColor}" />
+    <SolidColorBrush x:Key="AppDangerBrush" Color="{ThemeResource AppDangerColor}" />
+    <SolidColorBrush x:Key="AppSuccessBrush" Color="{ThemeResource AppSuccessColor}" />
+    <SolidColorBrush x:Key="AppShadowBrush" Color="{ThemeResource AppShadowColor}" />
+
+    <AcrylicBrush
+        x:Key="AppTransientOverlayBrush"
+        TintColor="{ThemeResource AppOverlayColor}"
+        TintOpacity="0.2"
+        TintLuminosityOpacity="0.85"
+        FallbackColor="{ThemeResource AppOverlayColor}" />
+</ResourceDictionary>

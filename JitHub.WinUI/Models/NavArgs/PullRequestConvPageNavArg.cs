@@ -1,4 +1,4 @@
-using Octokit;
+using JitHub.Models.LegacyGitHub;
 using System.Windows.Input;
 
 namespace JitHub.Models.NavArgs;

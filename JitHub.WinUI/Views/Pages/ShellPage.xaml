@@ -1,5 +1,6 @@
 <Page
     x:Class="JitHub.WinUI.Views.Pages.ShellPage"
+    x:Name="Root"
     xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
     xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
     xmlns:local="using:JitHub.WinUI.Views.Pages"
@@ -13,8 +14,11 @@
     xmlns:animatedvisuals="using:Microsoft.UI.Xaml.Controls.AnimatedVisuals"
     xmlns:user="using:JitHub.WinUI.Views.Controls.Profile"
     SizeChanged="Page_SizeChanged"
-    Background="Transparent">
-    <Grid>
+    Background="Transparent"
+    PointerPressed="Page_PointerPressed">
+    <Grid
+        x:Name="ShellRoot"
+        Background="{ThemeResource AppCanvasBrush}">
         <Grid.RowDefinitions>
             <RowDefinition Height="auto"/>
             <RowDefinition Height="*"/>
@@ -38,8 +42,10 @@
             </VisualStateGroup>
         </VisualStateManager.VisualStateGroups>
         <Grid
+            Grid.Row="0"
             x:Name="TitleBarHost"
-            MinHeight="48">
+            MinHeight="60"
+            Background="{ThemeResource AppCanvasRaisedBrush}">
             <Grid.ColumnDefinitions>
                 <ColumnDefinition Width="auto"/>
                 <ColumnDefinition Width="*"/>
@@ -48,7 +54,7 @@
             </Grid.ColumnDefinitions>
             <StackPanel
                 Spacing="12"
-                Margin="12"
+                Margin="20,14"
                 Grid.Column="0"
                 Orientation="Horizontal"
                 HorizontalAlignment="Left"
@@ -56,83 +62,136 @@
                 <Image
                     x:Name="AppLogoShellPage"
                     VerticalAlignment="Center"
-                    Width="20"
-                    Height="20"
-                    Source="ms-appx:///Assets/JitHubLogo.png"/>
+                    Width="28"
+                    Height="28"
+                    Source="ms-appx:///Assets/JitHubLogoTitleBar.png"/>
                 <StackPanel
                     Orientation="Horizontal"
                     VerticalAlignment="Center">
                     <TextBlock
                         VerticalAlignment="Center"
+                        Style="{StaticResource ListItemTitleTextBlockStyle}"
                         Text="JitHub"/>
-                    <Border
-                        Background="{ThemeResource AccentFillColorDefaultBrush}"
-                        Padding="4 0"
-                        Margin="4 0 0 0"
-                        Visibility="{x:Bind ViewModel.FeatureService.ProLicense, Converter={StaticResource BoolToVisibilityConverter}, Mode=OneWay}"
-                        CornerRadius="4">
-                        <TextBlock
-                            VerticalAlignment="Center"
-                            Foreground="{ThemeResource RegionBrush}"
-                            Text="Pro">
-                            <animations:Implicit.ShowAnimations>
-                                <animations:ScaleAnimation Duration="0:0:0.5" From="0" To="1"/>
-                            </animations:Implicit.ShowAnimations>
-                        </TextBlock>
-                    </Border>
                 </StackPanel>
             </StackPanel>
             <Grid
+                x:Name="SearchRegion"
                 Margin="0"
                 Grid.Column="1"
                 VerticalAlignment="Center"
                 HorizontalAlignment="Stretch">
-                <Grid
-                    x:Name="SearchBoxContainer">
-                    <Grid.ColumnDefinitions>
-                        <ColumnDefinition Width="20"/>
-                        <ColumnDefinition Width="*"/>
-                    </Grid.ColumnDefinitions>
-                    <muxc:ProgressRing
-                        Grid.Column="0"
-                        Width="12"
-                        Height="12"
-                        Margin="0 0 4 0"
-                        VerticalAlignment="Center"
-                        IsActive="{x:Bind ViewModel.Searching, Mode=OneWay}"
-                        Visibility="{x:Bind ViewModel.Searching, Converter={StaticResource BoolToVisibilityConverter}, Mode=OneWay}"/>
-                    <AutoSuggestBox
-                        Grid.Column="1"
-                        x:Name="SearchBox"
-                        VerticalAlignment="Center"
-                        ItemsSource="{x:Bind ViewModel.SearchResults, Mode=OneWay}"
-                        QuerySubmitted="{x:Bind ViewModel.OpenRepo, Mode=OneWay}"
-                        UpdateTextOnSelect="False"
-                        PlaceholderText="Type to search for repository...">
-                        <animations:Implicit.ShowAnimations>
-                            <animations:TranslationAnimation EasingType="Cubic" Duration="0:0:1" From="0, -200, 0" To="0"/>
-                        </animations:Implicit.ShowAnimations>
-                        <AutoSuggestBox.ItemTemplate>
-                            <DataTemplate x:DataType="models:GitHubRepository">
-                                <TextBlock Text="{x:Bind FullName, Mode=OneWay}"/>
-                            </DataTemplate>
-                        </AutoSuggestBox.ItemTemplate>
-                        <AutoSuggestBox.QueryIcon>
-                            <muxc:AnimatedIcon x:Name="FindAnimatedIcon">
-                                <muxc:AnimatedIcon.Source>
-                                    <animatedvisuals:AnimatedFindVisualSource/>
-                                </muxc:AnimatedIcon.Source>
-                                <muxc:AnimatedIcon.FallbackIconSource>
-                                    <muxc:SymbolIconSource Symbol="Find"/>
-                                </muxc:AnimatedIcon.FallbackIconSource>
-                            </muxc:AnimatedIcon>
-                        </AutoSuggestBox.QueryIcon>
-                    </AutoSuggestBox>
-                </Grid>
+                <Border
+                    x:Name="SearchBoxContainer"
+                    Padding="10,4"
+                    Background="{ThemeResource AppSurfaceBrush}"
+                    BorderBrush="{ThemeResource AppOutlineBrush}"
+                    BorderThickness="1"
+                    CornerRadius="{ThemeResource AppRadiusPill}"
+                    AutomationProperties.AutomationId="ShellSearchBoxContainer">
+                    <Grid ColumnSpacing="6">
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="16"/>
+                            <ColumnDefinition Width="*"/>
+                            <ColumnDefinition Width="auto"/>
+                        </Grid.ColumnDefinitions>
+                        <muxc:ProgressRing
+                            Grid.Column="0"
+                            Width="12"
+                            Height="12"
+                            VerticalAlignment="Center"
+                            IsActive="{x:Bind ViewModel.Searching, Mode=OneWay}"
+                            Visibility="{x:Bind ViewModel.Searching, Converter={StaticResource BoolToVisibilityConverter}, Mode=OneWay}"/>
+                        <TextBox
+                            Grid.Column="1"
+                            x:Name="SearchTextBox"
+                            AutomationProperties.AutomationId="ShellSearchTextBox"
+                            Style="{StaticResource ShellSearchTextBoxStyle}"
+                            Loaded="SearchTextBox_Loaded"
+                            GotFocus="SearchTextBox_GotFocus"
+                            ContextRequested="SearchTextBox_ContextRequested"
+                            PointerPressed="SearchTextBox_PointerPressed"
+                            TextChanged="SearchTextBox_TextChanged"
+                            KeyDown="SearchTextBox_KeyDown"
+                            PlaceholderText="Search repos by owner/name or keyword">
+                            <TextBox.ContextFlyout>
+                                <MenuFlyout
+                                    x:Name="SearchTextContextFlyout"
+                                    Opening="SearchTextContextFlyout_Opening">
+                                    <MenuFlyoutItem
+                                        x:Name="SearchUndoMenuItem"
+                                        Text="Undo"
+                                        Click="SearchUndoMenuItem_Click" />
+                                    <MenuFlyoutItem
+                                        x:Name="SearchRedoMenuItem"
+                                        Text="Redo"
+                                        Click="SearchRedoMenuItem_Click" />
+                                    <MenuFlyoutSeparator />
+                                    <MenuFlyoutItem
+                                        x:Name="SearchCutMenuItem"
+                                        Text="Cut"
+                                        Click="SearchCutMenuItem_Click" />
+                                    <MenuFlyoutItem
+                                        x:Name="SearchCopyMenuItem"
+                                        Text="Copy"
+                                        Click="SearchCopyMenuItem_Click" />
+                                    <MenuFlyoutItem
+                                        x:Name="SearchPasteMenuItem"
+                                        Text="Paste"
+                                        Click="SearchPasteMenuItem_Click" />
+                                    <MenuFlyoutSeparator />
+                                    <MenuFlyoutItem
+                                        x:Name="SearchSelectAllMenuItem"
+                                        Text="Select all"
+                                        Click="SearchSelectAllMenuItem_Click" />
+                                </MenuFlyout>
+                            </TextBox.ContextFlyout>
+                            <TextBox.Resources>
+                                <SolidColorBrush x:Key="TextControlBackground" Color="Transparent" />
+                                <SolidColorBrush x:Key="TextControlBackgroundPointerOver" Color="Transparent" />
+                                <SolidColorBrush x:Key="TextControlBackgroundFocused" Color="Transparent" />
+                                <SolidColorBrush x:Key="TextControlBackgroundDisabled" Color="Transparent" />
+                                <SolidColorBrush x:Key="TextControlBorderBrush" Color="Transparent" />
+                                <SolidColorBrush x:Key="TextControlBorderBrushPointerOver" Color="Transparent" />
+                                <SolidColorBrush x:Key="TextControlBorderBrushFocused" Color="Transparent" />
+                                <SolidColorBrush x:Key="TextControlBorderBrushDisabled" Color="Transparent" />
+                                <Thickness x:Key="TextControlBorderThemeThickness">0</Thickness>
+                                <Thickness x:Key="TextControlBorderThemeThicknessPointerOver">0</Thickness>
+                                <Thickness x:Key="TextControlBorderThemeThicknessFocused">0</Thickness>
+                                <Thickness x:Key="TextControlBorderThemeThicknessDisabled">0</Thickness>
+                                <SolidColorBrush x:Key="TextControlForeground" Color="{ThemeResource AppInkColor}" />
+                                <SolidColorBrush x:Key="TextControlForegroundPointerOver" Color="{ThemeResource AppInkColor}" />
+                                <SolidColorBrush x:Key="TextControlForegroundFocused" Color="{ThemeResource AppInkColor}" />
+                                <SolidColorBrush x:Key="TextControlForegroundDisabled" Color="{ThemeResource AppInkSubtleColor}" />
+                                <SolidColorBrush x:Key="TextControlPlaceholderForeground" Color="{ThemeResource AppInkSubtleColor}" />
+                                <SolidColorBrush x:Key="TextControlPlaceholderForegroundPointerOver" Color="{ThemeResource AppInkMutedColor}" />
+                                <SolidColorBrush x:Key="TextControlPlaceholderForegroundFocused" Color="{ThemeResource AppInkMutedColor}" />
+                                <SolidColorBrush x:Key="TextControlPlaceholderForegroundDisabled" Color="{ThemeResource AppInkSubtleColor}" />
+                                <SolidColorBrush x:Key="TextControlButtonBackground" Color="Transparent" />
+                                <SolidColorBrush x:Key="TextControlButtonBackgroundPointerOver" Color="Transparent" />
+                                <SolidColorBrush x:Key="TextControlButtonBackgroundPressed" Color="Transparent" />
+                                <SolidColorBrush x:Key="TextControlButtonForeground" Color="{ThemeResource AppInkMutedColor}" />
+                                <SolidColorBrush x:Key="TextControlButtonForegroundPointerOver" Color="{ThemeResource AppInkColor}" />
+                                <SolidColorBrush x:Key="TextControlButtonForegroundPressed" Color="{ThemeResource AppInkColor}" />
+                                <SolidColorBrush x:Key="TextControlButtonBorderBrush" Color="Transparent" />
+                                <SolidColorBrush x:Key="TextControlButtonBorderBrushPointerOver" Color="Transparent" />
+                                <SolidColorBrush x:Key="TextControlButtonBorderBrushPressed" Color="Transparent" />
+                            </TextBox.Resources>
+                        </TextBox>
+                        <Button
+                            Grid.Column="2"
+                            x:Name="SearchSubmitButton"
+                            AutomationProperties.AutomationId="ShellSearchSubmitButton"
+                            Style="{StaticResource AppToolbarButtonStyle}"
+                            GotFocus="SearchSubmitButton_GotFocus"
+                            Click="SearchSubmitButton_Click">
+                            <FontIcon FontFamily="{StaticResource SegoeFluentIcons}" Glyph="&#xE721;"/>
+                        </Button>
+                    </Grid>
+                </Border>
             </Grid>
             <StackPanel
                 Spacing="12"
-                Margin="0 4"
+                Margin="0 4 20 4"
                 Grid.Column="2"
                 Orientation="Horizontal"
                 HorizontalAlignment="Right"
@@ -140,8 +199,9 @@
                 <!--<user:ProfileButton OnClickCommand="{x:Bind ViewModel.GoToProfilePageCommand}"/>-->
                 <Button
                     x:Name="ShellMenuButton"
-                    Background="Transparent"
-                    BorderThickness="0">
+                    AutomationProperties.AutomationId="ShellMenuButton"
+                    Style="{StaticResource AppToolbarButtonStyle}"
+                    GotFocus="ShellMenuButton_GotFocus">
                     <FontIcon FontFamily="{StaticResource SegoeFluentIcons}" Glyph="&#xE712;"/>
                     <Button.Flyout>
                         <MenuFlyout Placement="BottomEdgeAlignedLeft">
@@ -182,6 +242,14 @@
                                     <FontIcon FontFamily="{StaticResource SegoeFluentIcons}" Glyph="&#xEC7A;"/>
                                 </MenuFlyoutItem.Icon>
                             </MenuFlyoutItem>
+                            <MenuFlyoutItem
+                                Text="Design Lab"
+                                Visibility="{x:Bind ViewModel.GlobalViewModel.DevMode, Converter={StaticResource BoolToVisibilityConverter}, Mode=OneWay}"
+                                Click="{x:Bind ViewModel.GoToDesignLabPage, Mode=OneWay}">
+                                <MenuFlyoutItem.Icon>
+                                    <FontIcon FontFamily="{StaticResource SegoeFluentIcons}" Glyph="&#xF158;"/>
+                                </MenuFlyoutItem.Icon>
+                            </MenuFlyoutItem>
                         </MenuFlyout>
                     </Button.Flyout>
                 </Button>
@@ -190,6 +258,7 @@
         <muxc:TabView
             Grid.Row="1"
             Style="{StaticResource JitTabViewStyle}"
+            Background="{ThemeResource TabViewBackground}"
             TabItemsSource="{x:Bind ViewModel.Pages, Mode=OneWay}"
             SelectedItem="{x:Bind ViewModel.SelectedTab, Mode=TwoWay}"
             AddTabButtonClick="TabView_AddTabButtonClick"
@@ -200,15 +269,70 @@
             <muxc:TabView.TabStripHeader>
                 <Button
                     Command="{x:Bind ViewModel.GoHomeCommand}"
-                    Background="Transparent"
                     Margin="8 0 0 0"
-                    BorderThickness="0"
+                    Style="{StaticResource AppToolbarButtonStyle}"
                     HorizontalContentAlignment="Left"
                     VerticalAlignment="Bottom">
                     <FontIcon FontFamily="{StaticResource SegoeFluentIcons}" Glyph="&#xE80F;"/>
                 </Button>
             </muxc:TabView.TabStripHeader>
         </muxc:TabView>
+        <Canvas
+            x:Name="SearchSuggestionsLayer"
+            Grid.Row="0"
+            Grid.RowSpan="2"
+            HorizontalAlignment="Stretch"
+            VerticalAlignment="Stretch">
+            <Border
+                x:Name="SearchSuggestionsHost"
+                Visibility="Collapsed"
+                Background="{ThemeResource AppSurfaceSubtleBrush}"
+                BorderBrush="{ThemeResource AppOutlineStrongBrush}"
+                BorderThickness="1"
+                CornerRadius="{ThemeResource AppRadiusLarge}">
+                <ListView
+                    x:Name="SearchSuggestionsList"
+                    AutomationProperties.AutomationId="ShellSearchSuggestionsList"
+                    Background="Transparent"
+                    BorderThickness="0"
+                    IsTabStop="False"
+                    IsItemClickEnabled="True"
+                    ItemClick="SearchSuggestionsList_ItemClick"
+                    PointerReleased="SearchSuggestionsList_PointerReleased"
+                    SelectionChanged="SearchSuggestionsList_SelectionChanged"
+                    SelectionMode="Single"
+                    Tapped="SearchSuggestionsList_Tapped"
+                    ItemsSource="{x:Bind ViewModel.SearchResults, Mode=OneWay}">
+                    <ListView.ItemContainerStyle>
+                        <Style TargetType="ListViewItem">
+                            <Setter Property="Padding" Value="16,12" />
+                            <Setter Property="MinHeight" Value="44" />
+                            <Setter Property="CornerRadius" Value="{ThemeResource AppRadiusMedium}" />
+                            <Setter Property="FontFamily" Value="{StaticResource AppUiFontFamily}" />
+                            <Setter Property="FontSize" Value="{StaticResource AppBodyFontSize}" />
+                            <Setter Property="Foreground" Value="{ThemeResource AppInkBrush}" />
+                            <Setter Property="HorizontalContentAlignment" Value="Stretch" />
+                        </Style>
+                    </ListView.ItemContainerStyle>
+                    <ListView.ItemTemplate>
+                        <DataTemplate x:DataType="models:GitHubRepository">
+                            <Button
+                                AutomationProperties.Name="{x:Bind FullName, Mode=OneWay}"
+                                Click="SearchSuggestionButton_Click"
+                                IsTabStop="False"
+                                Style="{StaticResource AppSearchSuggestionButtonStyle}">
+                                <TextBlock
+                                    VerticalAlignment="Center"
+                                    FontFamily="{StaticResource AppUiFontFamily}"
+                                    FontSize="{StaticResource AppBodyFontSize}"
+                                    Text="{x:Bind FullName, Mode=OneWay}"
+                                    TextTrimming="CharacterEllipsis"/>
+                            </Button>
+                        </DataTemplate>
+                    </ListView.ItemTemplate>
+                </ListView>
+            </Border>
+        </Canvas>
         <Grid
             Grid.Row="0"
             Grid.RowSpan="2"
@@ -221,10 +345,10 @@
                 x:Name="ModalContent"
                 HorizontalAlignment="Center"
                 VerticalAlignment="Center"
-                BorderBrush="{ThemeResource LayerOnAcrylicFillColorDefaultBrush}"
+                BorderBrush="{ThemeResource AppOutlineBrush}"
                 BorderThickness="1"
-                Background="{ThemeResource ModalBrush}"
-                CornerRadius="8">
+                Background="{ThemeResource AppOverlayBrush}"
+                CornerRadius="{ThemeResource AppRadiusLarge}">
                 <animations:Implicit.ShowAnimations>
                     <animations:OpacityAnimation Duration="0:0:0.5" From="0" To="1.0"/>
                     <animations:TranslationAnimation EasingType="Cubic" Duration="0:0:0.5" From="0, 200, 0" To="0"/>
@@ -243,20 +367,18 @@
                             HorizontalAlignment="Left"
                             VerticalAlignment="Center"
                             Margin="16 0 0 0"
-                            FontWeight="SemiBold"
-                            FontSize="20"
+                            Style="{StaticResource SectionTitleTextBlockStyle}"
                             Text="{x:Bind ViewModel.Title, Mode=OneWay}"/>
                         <Button
                             Padding="0"
                             Margin="16"
                             FontFamily="Segoe MDL2 Assets"
                             Content="&#xE711;"
-                            CornerRadius="8"
+                            CornerRadius="{ThemeResource AppRadiusSmall}"
                             Width="32"
                             Height="32"
                             BorderThickness="0"
-                            FontWeight="SemiBold"
-                            Background="Transparent"
+                            Style="{StaticResource AppToolbarButtonStyle}"
                             Command="{x:Bind ViewModel.InLineModalClodeCommand, Mode=OneWay}"
                             HorizontalContentAlignment="Center"
                             VerticalAlignment="Center"
@@ -280,5 +402,3 @@
             Margin="16"/>
     </Grid>
 </Page>
-
-

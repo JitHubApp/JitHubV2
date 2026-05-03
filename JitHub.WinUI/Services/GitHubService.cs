@@ -5,18 +5,18 @@ using JitHub.Models.Base;
 using JitHub.Models.PRConversation;
 using JitHub.Utilities.SVG;
 using JitHub.WinUI.Helpers;
-using Octokit;
-using ApiOptions = Octokit.ApiOptions;
-using CommitRequest = Octokit.CommitRequest;
-using IssueFilter = Octokit.IssueFilter;
-using IssueRequest = Octokit.IssueRequest;
-using IssueSort = Octokit.IssueSort;
-using ItemStateFilter = Octokit.ItemStateFilter;
-using PullRequestRequest = Octokit.PullRequestRequest;
-using PullRequestSort = Octokit.PullRequestSort;
-using RepositoryIssueRequest = Octokit.RepositoryIssueRequest;
-using SearchRepositoriesRequest = Octokit.SearchRepositoriesRequest;
-using SortDirection = Octokit.SortDirection;
+using JitHub.Models.LegacyGitHub;
+using ApiOptions = JitHub.Models.LegacyGitHub.ApiOptions;
+using CommitRequest = JitHub.Models.LegacyGitHub.CommitRequest;
+using IssueFilter = JitHub.Models.LegacyGitHub.IssueFilter;
+using IssueRequest = JitHub.Models.LegacyGitHub.IssueRequest;
+using IssueSort = JitHub.Models.LegacyGitHub.IssueSort;
+using ItemStateFilter = JitHub.Models.LegacyGitHub.ItemStateFilter;
+using PullRequestRequest = JitHub.Models.LegacyGitHub.PullRequestRequest;
+using PullRequestSort = JitHub.Models.LegacyGitHub.PullRequestSort;
+using RepositoryIssueRequest = JitHub.Models.LegacyGitHub.RepositoryIssueRequest;
+using SearchRepositoriesRequest = JitHub.Models.LegacyGitHub.SearchRepositoriesRequest;
+using SortDirection = JitHub.Models.LegacyGitHub.SortDirection;
 using System;
 using System.Collections.Generic;
 using System.IO;
@@ -842,15 +842,21 @@ namespace JitHub.Services
                 parsedEvent.Value,
                 issueEvent.CommitId ?? string.Empty,
                 issueEvent.CreatedAt,
-                null,
+                issueEvent.DismissedReview,
                 string.Empty,
                 issueEvent.Rename is null ? null : new RenameInfo(issueEvent.Rename.From, issueEvent.Rename.To),
-                null,
-                null,
+                issueEvent.RequestedTeam is null
+                    ? null
+                    : new Team
+                    {
+                        Name = issueEvent.RequestedTeam.Name,
+                        Slug = issueEvent.RequestedTeam.Slug
+                    },
+                issueEvent.ReviewRequester is null ? null : AdaptUser(issueEvent.ReviewRequester),
                 issueEvent.RequestedReviewer is null ? null : AdaptUser(issueEvent.RequestedReviewer),
                 issueEvent.Assigner is null ? null : AdaptUser(issueEvent.Assigner),
-                default,
-                null,
+                issueEvent.LockReason ?? string.Empty,
+                issueEvent.Milestone is null ? null : AdaptMilestone(issueEvent.Milestone),
                 null);
         }
 
@@ -1512,62 +1518,46 @@ namespace JitHub.Services
         public async Task<Image> GetImage(string url)
         {
             Image image = new Image();
-            // Split the URL by slashes and get the segments
-            string[] segments = url.Split('/');
-            // Check if the URL has at least six segments
-            if (segments.Length >= 6)
+            if (!TryGetRepositoryImageReference(url, out var owner, out var repo, out var branch, out var filePath))
             {
-                // Get the owner name, repository name, branch name and file path from the segments
-                string owner = segments[3];
-                string repo = segments[4];
-                string branch = segments[6];
-                string filePath = string.Join('/', segments.Skip(7));
+                return image;
+            }
 
-                // Get the file content
-                try
+            try
+            {
+                string token = GetAccessTokenOrThrow();
+                RestGitHubRepositoryContent file = await _gitHubClientService.GetRepositoryContentAsync(token, owner, repo, filePath, branch);
+                byte[] fileBytes = DecodeGitHubContent(file.Content, file.Encoding);
+
+                if (fileBytes.Length == 0 && !string.IsNullOrWhiteSpace(file.Sha))
                 {
-                    string token = GetAccessTokenOrThrow();
-                    RestGitHubRepositoryContent file = await _gitHubClientService.GetRepositoryContentAsync(token, owner, repo, filePath, branch);
-                    byte[] fileBytes = DecodeGitHubContent(file.Content, file.Encoding);
-
-                    if (fileBytes.Length == 0 && !string.IsNullOrWhiteSpace(file.Sha))
-                    {
-                        RestGitHubBlob blob = await _gitHubClientService.GetBlobAsync(token, owner, repo, file.Sha);
-                        fileBytes = DecodeGitHubContent(blob.Content, blob.Encoding);
-                    }
-
-                    var isSvg = filePath.EndsWith(".svg");
-
-                    if (isSvg)
-                    {
-                        string svgString = Encoding.UTF8.GetString(fileBytes);
-                        image = await SVGRenderer.SvgToImage(svgString);
-                    }
-                    else
-                    {
-                        // Create a BitmapImage for other supported formats
-                        BitmapImage bitmap = new BitmapImage();
-                        using (InMemoryRandomAccessStream stream = new InMemoryRandomAccessStream())
-                        {
-                            // Write the data to the stream
-                            await stream.WriteAsync(fileBytes.AsBuffer());
-                            stream.Seek(0);
-
-                            // Set the source of the BitmapImage
-                            await bitmap.SetSourceAsync(stream);
-                        }
-                        image.Source = bitmap;
-                    }
+                    RestGitHubBlob blob = await _gitHubClientService.GetBlobAsync(token, owner, repo, file.Sha);
+                    fileBytes = DecodeGitHubContent(blob.Content, blob.Encoding);
                 }
-                catch (Exception ex)
+
+                var isSvg = filePath.EndsWith(".svg", StringComparison.OrdinalIgnoreCase);
+
+                if (isSvg)
                 {
-                    Console.WriteLine(ex.Message);
+                    string svgString = Encoding.UTF8.GetString(fileBytes);
+                    image = await SVGRenderer.SvgToImage(svgString);
+                }
+                else
+                {
+                    BitmapImage bitmap = new BitmapImage();
+                    using (InMemoryRandomAccessStream stream = new InMemoryRandomAccessStream())
+                    {
+                        await stream.WriteAsync(fileBytes.AsBuffer());
+                        stream.Seek(0);
+
+                        await bitmap.SetSourceAsync(stream);
+                    }
+                    image.Source = bitmap;
                 }
             }
-            else
+            catch (Exception ex)
             {
-                // The URL is not a valid GitHub file content URL
-                throw new Exception("Invalid GitHub file content URL");
+                Console.WriteLine($"Failed to load GitHub markdown image '{url}': {ex.Message}");
             }
 
             return image;
@@ -1575,7 +1565,65 @@ namespace JitHub.Services
 
         public bool ShouldUseThisProvider(string url)
         {
-            return Uri.IsWellFormedUriString(url, UriKind.Absolute) && url.StartsWith(_baseUrl);
+            return TryGetRepositoryImageReference(url, out _, out _, out _, out _);
+        }
+
+        private static bool TryGetRepositoryImageReference(
+            string url,
+            out string owner,
+            out string repo,
+            out string branch,
+            out string filePath)
+        {
+            owner = string.Empty;
+            repo = string.Empty;
+            branch = string.Empty;
+            filePath = string.Empty;
+
+            if (!Uri.TryCreate(url, UriKind.Absolute, out Uri? uri))
+            {
+                return false;
+            }
+
+            string[] segments = uri.AbsolutePath
+                .Split('/', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
+
+            if (uri.Host.Equals("github.com", StringComparison.OrdinalIgnoreCase))
+            {
+                if (segments.Length < 5 ||
+                    !segments[2].Equals("blob", StringComparison.OrdinalIgnoreCase) ||
+                    string.IsNullOrWhiteSpace(segments[0]) ||
+                    string.IsNullOrWhiteSpace(segments[1]) ||
+                    string.IsNullOrWhiteSpace(segments[3]))
+                {
+                    return false;
+                }
+
+                owner = Uri.UnescapeDataString(segments[0]);
+                repo = Uri.UnescapeDataString(segments[1]);
+                branch = Uri.UnescapeDataString(segments[3]);
+                filePath = string.Join('/', segments.Skip(4).Select(Uri.UnescapeDataString));
+                return !string.IsNullOrWhiteSpace(filePath);
+            }
+
+            if (uri.Host.Equals("raw.githubusercontent.com", StringComparison.OrdinalIgnoreCase))
+            {
+                if (segments.Length < 4 ||
+                    string.IsNullOrWhiteSpace(segments[0]) ||
+                    string.IsNullOrWhiteSpace(segments[1]) ||
+                    string.IsNullOrWhiteSpace(segments[2]))
+                {
+                    return false;
+                }
+
+                owner = Uri.UnescapeDataString(segments[0]);
+                repo = Uri.UnescapeDataString(segments[1]);
+                branch = Uri.UnescapeDataString(segments[2]);
+                filePath = string.Join('/', segments.Skip(3).Select(Uri.UnescapeDataString));
+                return !string.IsNullOrWhiteSpace(filePath);
+            }
+
+            return false;
         }
 
         public MarkdownConfig GetMarkdownConfig()

@@ -1,11 +1,11 @@
 using JitHub.Models;
 using JitHub.Models.Filter;
 using CommunityToolkit.Mvvm.Input;
-using Octokit;
-using ItemStateFilter = Octokit.ItemStateFilter;
-using PullRequestRequest = Octokit.PullRequestRequest;
-using PullRequestSort = Octokit.PullRequestSort;
-using SortDirection = Octokit.SortDirection;
+using JitHub.Models.LegacyGitHub;
+using ItemStateFilter = JitHub.Models.LegacyGitHub.ItemStateFilter;
+using PullRequestRequest = JitHub.Models.LegacyGitHub.PullRequestRequest;
+using PullRequestSort = JitHub.Models.LegacyGitHub.PullRequestSort;
+using SortDirection = JitHub.Models.LegacyGitHub.SortDirection;
 using System.Collections.Generic;
 using System.Windows.Input;
 

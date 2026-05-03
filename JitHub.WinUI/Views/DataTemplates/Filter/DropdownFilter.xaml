@@ -5,14 +5,18 @@
     <DataTemplate x:Key="DropdownFilter">
         <Grid>
             <ComboBox
-                MinWidth="150"
+                Style="{StaticResource ComboBox}"
+                Width="172"
+                MinWidth="172"
+                HorizontalAlignment="Left"
+                Header="{Binding Title, Mode=OneWay}"
                 DisplayMemberPath="DisplayMember"
                 ItemsSource="{Binding Selections, Mode=OneWay}"
                 SelectedItem="{Binding Selected, Mode=TwoWay}"
                 SelectedValuePath="SelectedValue">
                 <ComboBox.HeaderTemplate>
                     <DataTemplate>
-                        <TextBlock FontWeight="SemiBold" Text="{Binding Title, Mode=OneWay}" />
+                        <TextBlock Style="{StaticResource SectionSecondaryTextBlockStyle}" Text="{Binding Mode=OneWay}" />
                     </DataTemplate>
                 </ComboBox.HeaderTemplate>
             </ComboBox>

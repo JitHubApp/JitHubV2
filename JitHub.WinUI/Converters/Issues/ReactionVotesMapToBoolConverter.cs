@@ -1,5 +1,5 @@
 using JitHub.WinUI.Helpers;
-using Octokit;
+using JitHub.Models.LegacyGitHub;
 using System;
 using System.Collections.Generic;
 using Microsoft.UI.Xaml.Data;

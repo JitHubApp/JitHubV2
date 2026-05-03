@@ -8,6 +8,7 @@
     mc:Ignorable="d"
     xmlns:repoviewmodels="using:JitHub.WinUI.ViewModels.RepositoryViewModels"
     xmlns:muxc="using:Microsoft.UI.Xaml.Controls"
+    xmlns:appcontrols="using:JitHub.WinUI.Views.Controls.App"
     Background="Transparent">
     <Page.DataContext>
         <repoviewmodels:RepoDetailViewModel x:Name="ViewModel"/>
@@ -44,100 +45,36 @@
                             Width="16"
                             Visibility="{x:Bind ViewModel.Loading, Converter={StaticResource BoolToVisibilityConverter}, Mode=OneWay}"/>
                         <ComboBox
+                            Style="{StaticResource ComboBox}"
                             Visibility="{x:Bind ViewModel.BranchVisible, Mode=OneWay}"
                             MinWidth="150"
+                            AutomationProperties.AutomationId="RepoDetailBranchPicker"
                             ItemsSource="{x:Bind ViewModel.Branches, Mode=OneWay}"
                             DisplayMemberPath="Name"
                             SelectionChanged="{x:Bind ViewModel.BranchSelectionChanged, Mode=OneWay}"
                             SelectedItem="{x:Bind ViewModel.SelectedBranch, Mode=OneWay}" />
-                        <Button
-                            Padding="8 2"
-                            Command="{x:Bind ViewModel.ToggleWatchCommand, Mode=OneWay}">
-                            <Grid>
-                                <Grid.ColumnDefinitions>
-                                    <ColumnDefinition Width="auto"/>
-                                    <ColumnDefinition Width="auto"/>
-                                </Grid.ColumnDefinitions>
-                                <Grid
-                                    Grid.Column="0">
-                                    <FontIcon
-                                        FontSize="16"
-                                        FontFamily="{StaticResource SegoeFluentIcons}"
-                                        Glyph="&#xe7b3;"/>
-                                    <FontIcon
-                                        Visibility="{x:Bind ViewModel.IsWatching, Converter={StaticResource BoolToVisibilityConverter}, Mode=OneWay}"
-                                        FontSize="16"
-                                        FontFamily="{StaticResource SegoeFluentIcons}"
-                                        Foreground="{ThemeResource PrivateRepoBrush}"
-                                        Glyph="&#xe7b3;"/>
-                                </Grid>
-                                <TextBlock
-                                    Grid.Column="1"
-                                    Margin="8 0 0 2"
-                                    FontSize="16"
-                                    VerticalAlignment="Center"
-                                    Text="{x:Bind ViewModel.Model.SubscribersCount, Converter={StaticResource NumberToKizedStringConverter}, Mode=OneWay}"/>
-                            </Grid>
-                        </Button>
-                        <Button
-                            Padding="8 2"
-                            Command="{x:Bind ViewModel.ToggleStarCommand, Mode=OneWay}">
-                            <Grid>
-                                <Grid.ColumnDefinitions>
-                                    <ColumnDefinition Width="auto"/>
-                                    <ColumnDefinition Width="auto"/>
-                                </Grid.ColumnDefinitions>
-                                <Grid
-                                    Grid.Column="0">
-                                    <FontIcon
-                                        FontSize="16"
-                                        FontFamily="{StaticResource SegoeFluentIcons}"
-                                        Glyph="&#xe734;"/>
-                                    <FontIcon
-                                        Visibility="{x:Bind ViewModel.IsStarred, Converter={StaticResource BoolToVisibilityConverter}, Mode=OneWay}"
-                                        FontSize="16"
-                                        FontFamily="{StaticResource SegoeFluentIcons}"
-                                        Foreground="{ThemeResource PrivateRepoBrush}"
-                                        Glyph="&#xe735;"/>
-                                </Grid>
-                                <TextBlock
-                                    Grid.Column="1"
-                                    Margin="8 0 0 2"
-                                    FontSize="16"
-                                    VerticalAlignment="Center"
-                                    Text="{x:Bind ViewModel.Model.StargazersCount, Converter={StaticResource NumberToKizedStringConverter}, Mode=OneWay}"/>
-                            </Grid>
-                        </Button>
-                        <Button
-                            Padding="8 2"
-                            Command="{x:Bind ViewModel.ForkCommand, Mode=OneWay}">
-                            <Grid>
-                                <Grid.ColumnDefinitions>
-                                    <ColumnDefinition Width="auto"/>
-                                    <ColumnDefinition Width="auto"/>
-                                </Grid.ColumnDefinitions>
-                                <Grid
-                                    Grid.Column="0">
-                                    <FontIcon
-                                        FontSize="16"
-                                        FontFamily="{StaticResource SegoeFluentIcons}"
-                                        Glyph="&#xF003;">
-                                        <FontIcon.RenderTransform>
-                                            <TransformGroup>
-                                                <RotateTransform Angle="270"/>
-                                                <TranslateTransform Y="20"/>
-                                            </TransformGroup>
-                                        </FontIcon.RenderTransform>
-                                    </FontIcon>
-                                </Grid>
-                                <TextBlock
-                                    Grid.Column="1"
-                                    Margin="8 0 0 2"
-                                    FontSize="16"
-                                    VerticalAlignment="Center"
-                                    Text="{x:Bind ViewModel.Model.ForksCount, Converter={StaticResource NumberToKizedStringConverter}, Mode=OneWay}"/>
-                            </Grid>
-                        </Button>
+                        <appcontrols:AppStatButton
+                            AutomationId="RepoDetailWatchButton"
+                            Command="{x:Bind ViewModel.ToggleWatchCommand, Mode=OneWay}"
+                            IconKind="Watch"
+                            IconForeground="{ThemeResource AppInkMutedBrush}"
+                            IsSelected="{x:Bind ViewModel.IsWatching, Mode=OneWay}"
+                            SelectedIconForeground="{ThemeResource AppAccentBrush}"
+                            ValueText="{x:Bind ViewModel.Model.SubscribersCount, Converter={StaticResource NumberToKizedStringConverter}, Mode=OneWay}" />
+                        <appcontrols:AppStatButton
+                            AutomationId="RepoDetailStarButton"
+                            Command="{x:Bind ViewModel.ToggleStarCommand, Mode=OneWay}"
+                            IconKind="Star"
+                            IconForeground="{ThemeResource AppInkMutedBrush}"
+                            IsSelected="{x:Bind ViewModel.IsStarred, Mode=OneWay}"
+                            SelectedIconForeground="{ThemeResource AppWarmAccentBrush}"
+                            ValueText="{x:Bind ViewModel.Model.StargazersCount, Converter={StaticResource NumberToKizedStringConverter}, Mode=OneWay}" />
+                        <appcontrols:AppStatButton
+                            AutomationId="RepoDetailForkButton"
+                            Command="{x:Bind ViewModel.ForkCommand, Mode=OneWay}"
+                            IconKind="Fork"
+                            IconForeground="{ThemeResource AppInkMutedBrush}"
+                            ValueText="{x:Bind ViewModel.Model.ForksCount, Converter={StaticResource NumberToKizedStringConverter}, Mode=OneWay}" />
                     </StackPanel>
                 </Grid>
             </muxc:NavigationView.PaneCustomContent>

@@ -1,4 +1,7 @@
-<ResourceDictionary xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation" xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml">
+<ResourceDictionary
+    xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+    xmlns:appcontrols="using:JitHub.WinUI.Views.Controls.App">
     <DataTemplate x:Key="RepoListItem">
         <Button
             HorizontalAlignment="Stretch"
@@ -7,7 +10,7 @@
             Background="Transparent"
             BorderThickness="0"
             Command="{Binding DetailNavigationCommand}"
-            Style="{StaticResource ButtonRevealStyle}">
+            Style="{StaticResource AppQuietButtonStyle}">
             <Grid
                 Margin="10,0"
                 Padding="10"
@@ -43,12 +46,12 @@
                             <ColumnDefinition Width="*" />
                             <ColumnDefinition Width="*" />
                         </Grid.ColumnDefinitions>
-                        <FontIcon
+                        <appcontrols:AppIcon
                             Grid.Column="0"
                             Margin="0,0,5,0"
-                            FontFamily="{StaticResource SegoeFluentIcons}"
-                            FontSize="10"
-                            Glyph="&#xE735;" />
+                            IconBrush="{ThemeResource AppWarmAccentBrush}"
+                            IconKind="Star"
+                            IconSize="12" />
                         <TextBlock
                             Grid.Column="1"
                             FontSize="14"
@@ -58,7 +61,7 @@
                 </Grid>
                 <TextBlock
                     Grid.Row="1"
-                    Foreground="Gray"
+                    Foreground="{ThemeResource AppInkSubtleBrush}"
                     Text="{Binding Repository.Description}" />
                 <StackPanel
                     Grid.Row="2"

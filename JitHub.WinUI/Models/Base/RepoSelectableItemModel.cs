@@ -1,6 +1,6 @@
 using JitHub.WinUI.Helpers;
 using CommunityToolkit.Mvvm.ComponentModel;
-using Octokit;
+using JitHub.Models.LegacyGitHub;
 
 namespace JitHub.Models.Base
 {

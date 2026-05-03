@@ -18,6 +18,7 @@
         <Button
             Padding="0"
             CornerRadius="100"
+            Style="{StaticResource AppQuietButtonStyle}"
             PointerEntered="Button_PointerEntered"
             PointerExited="Button_PointerExited"
             PointerPressed="Button_PointerPressed"

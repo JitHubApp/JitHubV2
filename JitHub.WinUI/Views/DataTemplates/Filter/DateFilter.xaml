@@ -6,12 +6,14 @@
         <Grid>
             <CalendarDatePicker
                 x:Name="SinceDatePicker"
+                Style="{StaticResource CalendarDatePicker}"
                 MinWidth="150"
+                Header="{Binding Title, Mode=OneWay}"
                 Date="{Binding StartDate, Mode=TwoWay}"
                 PlaceholderText="{Binding Placeholder, Mode=OneWay}">
                 <CalendarDatePicker.HeaderTemplate>
                     <DataTemplate>
-                        <TextBlock FontWeight="SemiBold" Text="{Binding Title, Mode=OneWay}" />
+                        <TextBlock Style="{StaticResource SectionSecondaryTextBlockStyle}" Text="{Binding Mode=OneWay}" />
                     </DataTemplate>
                 </CalendarDatePicker.HeaderTemplate>
             </CalendarDatePicker>

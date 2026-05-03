@@ -14,7 +14,21 @@
             <ResourceDictionary.MergedDictionaries>
                 <winui:XamlControlsResources />
 
-                <!--  Styles  -->
+                <!--  Foundation  -->
+                <ResourceDictionary Source="ms-appx:///Styles/Foundation/Tokens.Colors.xaml" />
+                <ResourceDictionary Source="ms-appx:///Styles/Foundation/Tokens.Brushes.xaml" />
+                <ResourceDictionary Source="ms-appx:///Styles/Foundation/Tokens.Typography.xaml" />
+                <ResourceDictionary Source="ms-appx:///Styles/Foundation/Tokens.Spacing.xaml" />
+                <ResourceDictionary Source="ms-appx:///Styles/Foundation/Tokens.Corners.xaml" />
+                <ResourceDictionary Source="ms-appx:///Styles/Foundation/Tokens.Motion.xaml" />
+
+                <!--  Primitives  -->
+                <ResourceDictionary Source="ms-appx:///Styles/Primitives/SurfacePrimitives.xaml" />
+                <ResourceDictionary Source="ms-appx:///Styles/Primitives/NavigationPrimitives.xaml" />
+                <ResourceDictionary Source="ms-appx:///Styles/Primitives/ListPrimitives.xaml" />
+                <ResourceDictionary Source="ms-appx:///Styles/Primitives/InteractionPrimitives.xaml" />
+
+                <!--  Compatibility + Styles  -->
                 <ResourceDictionary Source="ms-appx:///Styles/Color.xaml" />
                 <ResourceDictionary Source="ms-appx:///Styles/Theme.xaml" />
                 <ResourceDictionary Source="ms-appx:///Styles/Buttons.xaml" />
@@ -89,6 +103,49 @@
                 <ResourceDictionary Source="ms-appx:///Views/DataTemplates/Repository/PublicRepo.xaml" />
             </ResourceDictionary.MergedDictionaries>
 
+            <SolidColorBrush x:Key="AccentButtonBackground" Color="{ThemeResource AppAccentColor}" />
+            <SolidColorBrush x:Key="AccentButtonBackgroundPointerOver" Color="{ThemeResource AppAccentHoverColor}" />
+            <SolidColorBrush x:Key="AccentButtonBackgroundPressed" Color="{ThemeResource AppAccentPressedColor}" />
+            <SolidColorBrush x:Key="AccentButtonBackgroundDisabled" Color="{ThemeResource AppCanvasInsetColor}" />
+            <SolidColorBrush x:Key="AccentButtonForeground" Color="{ThemeResource AppAccentForegroundColor}" />
+            <SolidColorBrush x:Key="AccentButtonForegroundPointerOver" Color="{ThemeResource AppAccentForegroundColor}" />
+            <SolidColorBrush x:Key="AccentButtonForegroundPressed" Color="{ThemeResource AppAccentForegroundColor}" />
+            <SolidColorBrush x:Key="AccentButtonForegroundDisabled" Color="{ThemeResource AppInkSubtleColor}" />
+            <SolidColorBrush x:Key="NavigationViewSelectionIndicatorForeground" Color="{ThemeResource AppAccentColor}" />
+
+            <SolidColorBrush x:Key="ToggleSwitchContentForeground" Color="{ThemeResource AppInkColor}" />
+            <SolidColorBrush x:Key="ToggleSwitchContentForegroundDisabled" Color="{ThemeResource AppInkSubtleColor}" />
+            <SolidColorBrush x:Key="ToggleSwitchHeaderForeground" Color="{ThemeResource AppInkColor}" />
+            <SolidColorBrush x:Key="ToggleSwitchHeaderForegroundDisabled" Color="{ThemeResource AppInkSubtleColor}" />
+            <SolidColorBrush x:Key="ToggleSwitchContainerBackground" Color="Transparent" />
+            <SolidColorBrush x:Key="ToggleSwitchContainerBackgroundPointerOver" Color="Transparent" />
+            <SolidColorBrush x:Key="ToggleSwitchContainerBackgroundPressed" Color="Transparent" />
+            <SolidColorBrush x:Key="ToggleSwitchContainerBackgroundDisabled" Color="Transparent" />
+            <SolidColorBrush x:Key="ToggleSwitchFillOff" Color="{ThemeResource AppSurfaceSubtleColor}" />
+            <SolidColorBrush x:Key="ToggleSwitchFillOffPointerOver" Color="{ThemeResource AppCanvasRaisedColor}" />
+            <SolidColorBrush x:Key="ToggleSwitchFillOffPressed" Color="{ThemeResource AppCanvasInsetColor}" />
+            <SolidColorBrush x:Key="ToggleSwitchFillOffDisabled" Color="{ThemeResource AppCanvasInsetColor}" />
+            <SolidColorBrush x:Key="ToggleSwitchStrokeOff" Color="{ThemeResource AppOutlineStrongColor}" />
+            <SolidColorBrush x:Key="ToggleSwitchStrokeOffPointerOver" Color="{ThemeResource AppOutlineStrongColor}" />
+            <SolidColorBrush x:Key="ToggleSwitchStrokeOffPressed" Color="{ThemeResource AppOutlineStrongColor}" />
+            <SolidColorBrush x:Key="ToggleSwitchStrokeOffDisabled" Color="{ThemeResource AppHairlineColor}" />
+            <SolidColorBrush x:Key="ToggleSwitchFillOn" Color="{ThemeResource AppAccentColor}" />
+            <SolidColorBrush x:Key="ToggleSwitchFillOnPointerOver" Color="{ThemeResource AppAccentHoverColor}" />
+            <SolidColorBrush x:Key="ToggleSwitchFillOnPressed" Color="{ThemeResource AppAccentPressedColor}" />
+            <SolidColorBrush x:Key="ToggleSwitchFillOnDisabled" Color="{ThemeResource AppCanvasInsetColor}" />
+            <SolidColorBrush x:Key="ToggleSwitchStrokeOn" Color="{ThemeResource AppAccentColor}" />
+            <SolidColorBrush x:Key="ToggleSwitchStrokeOnPointerOver" Color="{ThemeResource AppAccentHoverColor}" />
+            <SolidColorBrush x:Key="ToggleSwitchStrokeOnPressed" Color="{ThemeResource AppAccentPressedColor}" />
+            <SolidColorBrush x:Key="ToggleSwitchStrokeOnDisabled" Color="{ThemeResource AppHairlineColor}" />
+            <SolidColorBrush x:Key="ToggleSwitchKnobFillOff" Color="{ThemeResource AppInkMutedColor}" />
+            <SolidColorBrush x:Key="ToggleSwitchKnobFillOffPointerOver" Color="{ThemeResource AppInkColor}" />
+            <SolidColorBrush x:Key="ToggleSwitchKnobFillOffPressed" Color="{ThemeResource AppInkColor}" />
+            <SolidColorBrush x:Key="ToggleSwitchKnobFillOffDisabled" Color="{ThemeResource AppInkSubtleColor}" />
+            <SolidColorBrush x:Key="ToggleSwitchKnobFillOn" Color="{ThemeResource AppAccentForegroundColor}" />
+            <SolidColorBrush x:Key="ToggleSwitchKnobFillOnPointerOver" Color="{ThemeResource AppAccentForegroundColor}" />
+            <SolidColorBrush x:Key="ToggleSwitchKnobFillOnPressed" Color="{ThemeResource AppAccentForegroundColor}" />
+            <SolidColorBrush x:Key="ToggleSwitchKnobFillOnDisabled" Color="{ThemeResource AppInkSubtleColor}" />
+
             <!--  Converters  -->
             <commonconverters:ListToShorterListConverter x:Key="ListToShorterListConverter" />
             <commonconverters:BoolToAccentColorConverter x:Key="BoolToAccentColorConverter" />
@@ -130,6 +187,7 @@
 
             <activitiesconverters:RefFullStringToBranchConverter x:Key="RefFullStringToBranchConverter" x:Name="RefFullStringToBranchConverter" />
             <activitiesconverters:CommitShaToShortConverter x:Key="CommitShaToShortConverter" x:Name="CommitShaToShortConverter" />
+            <activitiesconverters:ActivityToneToBrushConverter x:Key="ActivityToneToBrushConverter" x:Name="ActivityToneToBrushConverter" />
             <code:IsExpandToFolderOutlineIconConverter x:Key="IsExpandToFolderOutlineIconConverter" x:Name="IsExpandToFolderOutlineIconConverter" />
             <code:IsExpandToFolderFilledIconConverter x:Key="IsExpandToFolderFilledIconConverter" x:Name="IsExpandToFolderFilledIconConverter" />
 

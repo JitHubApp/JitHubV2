@@ -3,7 +3,7 @@ using System.Collections.Generic;
 using System.Linq;
 using System.Net;
 
-namespace Octokit;
+namespace JitHub.Models.LegacyGitHub;
 
 internal static class CompatValueReader
 {
@@ -469,6 +469,9 @@ public enum StarredSort
 
 public sealed class Team
 {
+    public string Name { get; set; } = string.Empty;
+
+    public string Slug { get; set; } = string.Empty;
 }
 
 public sealed class CollaboratorPermissions

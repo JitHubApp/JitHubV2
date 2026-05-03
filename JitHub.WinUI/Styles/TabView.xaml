@@ -9,6 +9,8 @@
         <Setter Property="Padding" Value="{ThemeResource TabViewHeaderPadding}" />
         <Setter Property="IsTabStop" Value="False" />
         <Setter Property="Background" Value="{ThemeResource TabViewBackground}" />
+        <Setter Property="BorderBrush" Value="Transparent" />
+        <Setter Property="BorderThickness" Value="0" />
         <Setter Property="KeyboardAcceleratorPlacementMode" Value="Hidden" />
         <Setter Property="Template">
             <Setter.Value>
@@ -34,7 +36,8 @@
                                 Height="1"
                                 VerticalAlignment="Bottom"
                                 BorderBrush="{ThemeResource TabViewBorderBrush}"
-                                BorderThickness="1" />
+                                BorderThickness="1"
+                                Visibility="Collapsed" />
                             <ContentPresenter
                                 x:Name="LeftContentPresenter"
                                 Grid.Column="0"
@@ -76,6 +79,7 @@
                         <ContentPresenter
                             x:Name="TabContentPresenter"
                             Grid.Row="1"
+                            Background="{ThemeResource AppCanvasBrush}"
                             BorderBrush="{TemplateBinding BorderBrush}"
                             BorderThickness="{TemplateBinding BorderThickness}"
                             CornerRadius="{TemplateBinding CornerRadius}"
@@ -120,7 +124,7 @@
                         Background="{TemplateBinding Background}"
                         BorderBrush="{TemplateBinding BorderBrush}"
                         BorderThickness="{TemplateBinding BorderThickness}"
-                        CornerRadius="{ThemeResource ControlCornerRadius}">
+                        CornerRadius="{ThemeResource AppRadiusMedium}">
                         <ScrollViewer
                             x:Name="ScrollViewer"
                             Grid.Column="1"
@@ -206,7 +210,7 @@
         <Setter Property="VerticalContentAlignment" Value="Center" />
         <Setter Property="FontFamily" Value="{ThemeResource SymbolThemeFontFamily}" />
         <Setter Property="FontSize" Value="{ThemeResource TabViewItemHeaderCloseFontSize}" />
-        <Setter Property="CornerRadius" Value="{ThemeResource ControlCornerRadius}" />
+        <Setter Property="CornerRadius" Value="{ThemeResource AppRadiusSmall}" />
         <Setter Property="UseSystemFocusVisuals" Value="{StaticResource UseSystemFocusVisuals}" />
         <Setter Property="Width" Value="{ThemeResource TabViewItemHeaderCloseButtonWidth}" />
         <Setter Property="Height" Value="{ThemeResource TabViewItemHeaderCloseButtonHeight}" />
@@ -274,7 +278,7 @@
         <Setter Property="FontFamily" Value="{ThemeResource SymbolThemeFontFamily}" />
         <Setter Property="Width" Value="{ThemeResource TabViewItemAddButtonWidth}" />
         <Setter Property="Height" Value="{ThemeResource TabViewItemAddButtonHeight}" />
-        <Setter Property="CornerRadius" Value="{ThemeResource ControlCornerRadius}" />
+        <Setter Property="CornerRadius" Value="{ThemeResource AppRadiusMedium}" />
         <Setter Property="BorderThickness" Value="{ThemeResource TabViewButtonBorderThickness}" />
         <Setter Property="BorderBrush" Value="{ThemeResource TabViewButtonBorderBrush}" />
         <Setter Property="FocusVisualMargin" Value="-3" />
@@ -351,7 +355,7 @@
         <Setter Property="HorizontalContentAlignment" Value="Left" />
         <Setter Property="UseSystemFocusVisuals" Value="{StaticResource UseSystemFocusVisuals}" />
         <Setter Property="MinHeight" Value="{ThemeResource TabViewItemMinHeight}" />
-        <Setter Property="CornerRadius" Value="{ThemeResource OverlayCornerRadius}" />
+        <Setter Property="CornerRadius" Value="{ThemeResource AppRadiusMedium}" />
         <Setter Property="BorderThickness" Value="{ThemeResource TabViewItemBorderThickness}" />
         <Setter Property="BorderBrush" Value="{ThemeResource TabViewItemBorderBrush}" />
         <Setter Property="Template">
@@ -374,7 +378,7 @@
                             VerticalAlignment="Bottom"
                             x:Load="False"
                             Data="M4 0C4 1.19469 3.47624 2.26706 2.64582 3H0C1.65685 3 3 1.65685 3 0H4Z"
-                            Fill="{ThemeResource CardStrokeColorDefault}"
+                            Fill="{ThemeResource TabViewSelectedItemBorderBrush}"
                             Visibility="Collapsed" />
                         <Path
                             x:Name="LeftRadiusRenderTriangle"
@@ -393,7 +397,7 @@
                             VerticalAlignment="Bottom"
                             x:Load="False"
                             Data="M0 0C0 1.19469 0.523755 2.26706 1.35418 3H4C2.34315 3 1 1.65685 1 0H0Z"
-                            Fill="{ThemeResource CardStrokeColorDefault}"
+                            Fill="{ThemeResource TabViewSelectedItemBorderBrush}"
                             Visibility="Collapsed" />
                         <Path
                             x:Name="RightRadiusRenderTriangle"
@@ -697,7 +701,7 @@
         <Setter Property="FontFamily" Value="{ThemeResource SymbolThemeFontFamily}" />
         <Setter Property="Width" Value="{ThemeResource TabViewItemScrollButtonWidth}" />
         <Setter Property="Height" Value="{ThemeResource TabViewItemScrollButtonHeight}" />
-        <Setter Property="CornerRadius" Value="{ThemeResource ControlCornerRadius}" />
+        <Setter Property="CornerRadius" Value="{ThemeResource AppRadiusSmall}" />
         <Setter Property="BorderThickness" Value="{ThemeResource TabViewButtonBorderThickness}" />
         <Setter Property="BorderBrush" Value="{ThemeResource TabViewScrollButtonBorderBrush}" />
         <Setter Property="FocusVisualMargin" Value="-3" />

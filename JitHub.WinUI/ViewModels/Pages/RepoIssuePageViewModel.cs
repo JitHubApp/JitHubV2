@@ -366,9 +366,9 @@ public sealed partial class RepoIssuePageViewModel : ViewModelBase
             StatusText = previousStatusText;
 
             return new IssueMetadataDialogData(
-                assigneesTask.Result,
-                labelsTask.Result,
-                milestonesTask.Result);
+                await assigneesTask,
+                await labelsTask,
+                await milestonesTask);
         }
         catch (GitHubAuthenticationException)
         {

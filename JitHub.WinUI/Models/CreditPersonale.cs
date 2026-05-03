@@ -41,6 +41,7 @@ namespace JitHub.Models
         public static string LinkedInLogo = "ms-appx:///Assets/LinkLogos/LinkedIn.png";
         public static string TwitterLogo = "ms-appx:///Assets/LinkLogos/Twitter.png";
         public static string GitHubLogo = "ms-appx:///Assets/LinkLogos/GitHub.png";
+        public static string GoogleScholarLogo = "ms-appx:///Assets/LinkLogos/GoogleScholar.png";
 
         public PersonalLink(string link, string logoPath)
         {

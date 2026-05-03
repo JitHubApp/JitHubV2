@@ -1,4 +1,4 @@
-﻿using Octokit;
+using JitHub.Models.LegacyGitHub;
 using System;
 
 namespace JitHub.Models.PRConversation

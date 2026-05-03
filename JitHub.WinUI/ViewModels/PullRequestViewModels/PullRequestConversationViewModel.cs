@@ -6,10 +6,10 @@ using JitHub.WinUI.ViewModels.UserViewModel;
 using JitHub.WinUI.Views.Controls.PullRequest;
 using CommunityToolkit.Mvvm.DependencyInjection;
 using CommunityToolkit.Mvvm.Input;
-using Octokit;
-using MergePullRequest = Octokit.MergePullRequest;
-using PullRequestMergeMethod = Octokit.PullRequestMergeMethod;
-using PullRequestUpdate = Octokit.PullRequestUpdate;
+using JitHub.Models.LegacyGitHub;
+using MergePullRequest = JitHub.Models.LegacyGitHub.MergePullRequest;
+using PullRequestMergeMethod = JitHub.Models.LegacyGitHub.PullRequestMergeMethod;
+using PullRequestUpdate = JitHub.Models.LegacyGitHub.PullRequestUpdate;
 using System;
 using System.Collections.Generic;
 using System.Text;
@@ -220,36 +220,53 @@ namespace JitHub.WinUI.ViewModels.PullRequestViewModels
 
         public async void Merge()
         {
-            var mergeRequest = new MergePullRequest()
+            try
             {
-                CommitTitle = MergeTitle,
-                CommitMessage = MergeMessage,
-                MergeMethod = MergeMethod,
-            };
-            var res = await GitHubService.MergePullRequest(Repo.Id, PullRequest.Number, mergeRequest);
+                var mergeRequest = new MergePullRequest()
+                {
+                    CommitTitle = MergeTitle,
+                    CommitMessage = MergeMessage,
+                    MergeMethod = MergeMethod,
+                };
+                _ = await GitHubService.MergePullRequest(Repo.Id, PullRequest.Number, mergeRequest);
+            }
+            catch (Exception ex)
+            {
+                System.Diagnostics.Debug.WriteLine($"Failed to merge pull request: {ex}");
+            }
         }
 
         public async void ClosePullRequest()
         {
-            if (UserIsCollaborator)
+            try
             {
-                await Comment();
-                var updateRequest = new PullRequestUpdate()
+                if (UserIsCollaborator)
                 {
-                    Title = PullRequest.Title,
-                    State = PullRequest.State == ItemState.Closed ? ItemState.Open : ItemState.Closed,
-                };
-                try
-                {
-                    await GitHubService.UpdatePullRequest(Repo.Id, PullRequest.Number, updateRequest);
+                    await Comment();
+                    var updateRequest = new PullRequestUpdate()
+                    {
+                        Title = PullRequest.Title,
+                        State = PullRequest.State == ItemState.Closed ? ItemState.Open : ItemState.Closed,
+                    };
+                    try
+                    {
+                        await GitHubService.UpdatePullRequest(Repo.Id, PullRequest.Number, updateRequest);
 
+                    }
+                    catch (Exception ex)
+                    {
+                        System.Diagnostics.Debug.WriteLine($"Failed to update pull request state: {ex}");
+                    }
+                    if (_refreshCommand != null && _refreshCommand.CanExecute(null))
+                    {
+                        _refreshCommand.Execute(null);
+                    }
+                    await Load();
                 }
-                catch { }
-                if (_refreshCommand != null && _refreshCommand.CanExecute(null))
-                {
-                    _refreshCommand.Execute(null);
-                }
-                await Load();
+            }
+            catch (Exception ex)
+            {
+                System.Diagnostics.Debug.WriteLine($"Failed to close pull request: {ex}");
             }
         }
 
@@ -265,8 +282,15 @@ namespace JitHub.WinUI.ViewModels.PullRequestViewModels
 
         public async void HandleComment()
         {
-            await Comment();
-            await Load();
+            try
+            {
+                await Comment();
+                await Load();
+            }
+            catch (Exception ex)
+            {
+                System.Diagnostics.Debug.WriteLine($"Failed to submit pull request comment: {ex}");
+            }
         }
 
         private async Task HandleRefresh()

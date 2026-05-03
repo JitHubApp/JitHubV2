@@ -1,6 +1,5 @@
 using System;
 using System.Collections.Generic;
-using System.ComponentModel;
 using System.Net.Http;
 using System.Threading.Tasks;
 using CommunityToolkit.Mvvm.ComponentModel;
@@ -18,7 +17,6 @@ public sealed partial class ShellPageViewModel : ViewModelBase
     private int _searchRequestId;
     private readonly IAuthService _authService;
     private readonly IAccountService _accountService;
-    private readonly FeatureService _featureService;
     private readonly IGitHubClientService _gitHubClientService;
     private bool _isStarted;
 
@@ -26,7 +24,6 @@ public sealed partial class ShellPageViewModel : ViewModelBase
     {
         _authService = GetService<IAuthService>();
         _accountService = GetService<IAccountService>();
-        _featureService = GetService<FeatureService>();
         _gitHubClientService = GetService<IGitHubClientService>();
         NotificationMessage = DefaultNotificationMessage;
     }
@@ -39,13 +36,9 @@ public sealed partial class ShellPageViewModel : ViewModelBase
 
     public string DefaultTabTitle => AppTitle;
 
-    public string ProBadgeText => GetString("Shell.ProBadge", "Pro");
-
     public string SearchPlaceholderText => GetString(
         "Shell.SearchPlaceholder",
         "Type to search for repository...");
-
-    public string UnlockProButtonText => GetString("Shell.UnlockProButton", "Unlock Pro");
 
     public string MoreButtonText => GetString("Shell.MoreButton", "More");
 
@@ -63,23 +56,13 @@ public sealed partial class ShellPageViewModel : ViewModelBase
 
     public string SignOutMenuText => GetString("signOut.Text", "Sign out");
 
-    public string MultiTabLicenseMessage => GetString(
-        "Shell.MultiTabLicenseMessage",
-        "JitHub Pro unlocks multiple tabs.");
-
-    public bool CanOpenMultipleTabs => _featureService.ProLicense;
+    public bool CanOpenMultipleTabs => true;
 
     [ObservableProperty]
     public partial bool IsSearchLoading { get; set; }
 
     [ObservableProperty]
     public partial bool IsNotificationOpen { get; set; }
-
-    [ObservableProperty]
-    public partial bool IsUnlockProEnabled { get; set; } = true;
-
-    [ObservableProperty]
-    public partial bool IsProLicensed { get; set; }
 
     [ObservableProperty]
     public partial string NotificationMessage { get; set; } = string.Empty;
@@ -90,9 +73,6 @@ public sealed partial class ShellPageViewModel : ViewModelBase
         {
             return;
         }
-
-        _featureService.PropertyChanged += OnFeatureServicePropertyChanged;
-        RefreshProState();
         _isStarted = true;
     }
 
@@ -102,8 +82,6 @@ public sealed partial class ShellPageViewModel : ViewModelBase
         {
             return;
         }
-
-        _featureService.PropertyChanged -= OnFeatureServicePropertyChanged;
         _isStarted = false;
     }
 
@@ -178,36 +156,6 @@ public sealed partial class ShellPageViewModel : ViewModelBase
         return FormatString("Shell.SearchTabHeaderFormat", "Search: {0}", query);
     }
 
-    public async Task UnlockProAsync()
-    {
-        IsUnlockProEnabled = false;
-
-        try
-        {
-            FeaturePurchaseState purchaseState = await _featureService.BuyProFeature();
-            ShowNotification(purchaseState switch
-            {
-                FeaturePurchaseState.Success => GetString(
-                    "Shell.ProPurchaseSuccess",
-                    "JitHub Pro is now active for this account."),
-                FeaturePurchaseState.AlreadyOwn => GetString(
-                    "Shell.ProPurchaseAlreadyOwned",
-                    "JitHub Pro is already active for this account."),
-                FeaturePurchaseState.Cancel => GetString(
-                    "Shell.ProPurchaseCancelled",
-                    "The Pro purchase was canceled."),
-                _ => GetString(
-                    "Shell.ProPurchaseFailed",
-                    "JitHub Pro could not be activated.")
-            });
-        }
-        finally
-        {
-            IsUnlockProEnabled = true;
-            RefreshProState();
-        }
-    }
-
     public async Task<RepoDetailPageArgs?> GetFeedbackNavigationArgsAsync()
     {
         string? token = GetActiveToken();
@@ -251,19 +199,6 @@ public sealed partial class ShellPageViewModel : ViewModelBase
     private string DefaultNotificationMessage => GetString(
         "Shell.DefaultNotification",
         "JitHub has an update.");
-
-    private void RefreshProState()
-    {
-        IsProLicensed = _featureService.ProLicense;
-    }
-
-    private void OnFeatureServicePropertyChanged(object? sender, PropertyChangedEventArgs e)
-    {
-        if (e.PropertyName == nameof(FeatureService.ProLicense))
-        {
-            RefreshProState();
-        }
-    }
 
     private string? GetActiveToken()
     {

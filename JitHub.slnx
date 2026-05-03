@@ -7,6 +7,7 @@
     <Platform Name="x86" />
   </Configurations>
   <Project Path="JitHub.Web/JitHub.Web.csproj" />
+  <Project Path="JitHub.WinUI.Automation/JitHub.WinUI.Automation.csproj" />
   <Project Path="JitHub.WinUI/JitHub.WinUI.csproj">
     <Platform Solution="*|ARM" Project="x86" />
     <Platform Solution="*|ARM64" Project="ARM64" />

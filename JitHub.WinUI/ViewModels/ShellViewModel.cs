@@ -4,6 +4,7 @@ using JitHub.WinUI.Helpers;
 using JitHub.WinUI.Views;
 using JitHub.WinUI.Views.Controls.Common;
 using JitHub.WinUI.Views.Pages;
+using JitHub.WinUI.Views.Pages.Design;
 using DashboardPageType = JitHub.WinUI.Views.Pages.DashboardPage;
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.DependencyInjection;
@@ -16,6 +17,7 @@ using System.Collections.Generic;
 using System.Collections.ObjectModel;
 using System.Linq;
 using System.Reactive.Linq;
+using System.Threading;
 using System.Threading.Tasks;
 using System.Windows.Input;
 using JitHub.Models;
@@ -45,6 +47,8 @@ namespace JitHub.WinUI.ViewModels
         private int _slideUpPanelHeight;
         private bool _searching;
         private IDisposable? _searchSubscription;
+        private int _searchRequestVersion;
+        private CancellationTokenSource? _searchCancellationTokenSource;
 
         public int SlideUpPanelHeight
         {
@@ -96,7 +100,6 @@ namespace JitHub.WinUI.ViewModels
         public ICommand? InLineModalClodeCommand { get; private set; }
         public ICommand GoToProfilePageCommand { get; }
 
-        public FeatureService FeatureService { get; }
         public ShellViewModel()
         {
             _navigationService = Ioc.Default.GetService<NavigationService>()
@@ -107,8 +110,6 @@ namespace JitHub.WinUI.ViewModels
                 ?? throw new InvalidOperationException("IAccountService is not registered.");
             _authService = Ioc.Default.GetService<IAuthService>()
                 ?? throw new InvalidOperationException("IAuthService is not registered.");
-            FeatureService = Ioc.Default.GetService<FeatureService>()
-                ?? throw new InvalidOperationException("FeatureService is not registered.");
             GlobalViewModel = Ioc.Default.GetService<GlobalViewModel>()
                 ?? throw new InvalidOperationException("GlobalViewModel is not registered.");
             _modalService = Ioc.Default.GetService<ModalService>()
@@ -193,35 +194,7 @@ namespace JitHub.WinUI.ViewModels
 
         public void OnAddTab(TabView sender, object args)
         {
-            if (FeatureService.ProLicense || Pages.Count == 0)
-            {
-                OpenTab("Home", typeof(DashboardPageType));
-            }
-            else
-            {
-                var buyCommand = new AsyncRelayCommand(BuyProFeature);
-                var cancelCommand = new RelayCommand(CloseModal);
-                _modalService.Open(new FeaturePurchaseDialog(buyCommand, cancelCommand));
-            }
-        }
-
-        private async Task BuyProFeature()
-        {
-            var res = await FeatureService.BuyProFeature();
-            _modalService.Close();
-            switch (res)
-            {
-                // TODO: Add reactions to all these cases
-                case FeaturePurchaseState.Success:
-                    _modalService.Open("Thank you!", new ProLicensePurchaseSuccessDialog(new RelayCommand(CloseModal)));
-                    break;
-                case FeaturePurchaseState.Failure:
-                    break;
-                case FeaturePurchaseState.AlreadyOwn:
-                    break;
-                default:
-                    break;
-            }
+            OpenTab("Home", typeof(DashboardPageType));
         }
 
         public void OnShareJitHub(object sender, RoutedEventArgs e)
@@ -247,18 +220,9 @@ namespace JitHub.WinUI.ViewModels
 
         public void OnTabClose(TabView sender, TabViewTabCloseRequestedEventArgs args)
         {
-            if (FeatureService.ProLicense || Pages.Count == 1)
+            if (args.Item is TabViewItem item)
             {
-                if (args.Item is TabViewItem item)
-                {
-                    Pages.Remove(item);
-                }
-            }
-            else
-            {
-                var buyCommand = new AsyncRelayCommand(BuyProFeature);
-                var cancelCommand = new RelayCommand(CloseModal);
-                _modalService.Open(new FeaturePurchaseDialog(buyCommand, cancelCommand));
+                Pages.Remove(item);
             }
         }
 
@@ -273,44 +237,30 @@ namespace JitHub.WinUI.ViewModels
 
         private void OpenTab(string header, Type pageSource)
         {
-            if (FeatureService.ProLicense || Pages.Count == 0)
+            var frame = new Frame();
+            frame.ContentTransitions = null;
+            var tab = new TabViewItem()
             {
-                var frame = new Frame();
-                frame.ContentTransitions = null;
-                var tab = new TabViewItem()
-                {
-                    Header = header,
-                    Content = frame
-                };
-                frame.Navigate(pageSource, null, new SuppressNavigationTransitionInfo());
-                Pages.Add(tab);
-                SelectedTab = tab;
-            }
-            else
-            {
-                _navigationService.NavigateTo(header, pageSource);
-            }
+                Header = header,
+                Content = frame
+            };
+            frame.Navigate(pageSource, null, new SuppressNavigationTransitionInfo());
+            Pages.Add(tab);
+            SelectedTab = tab;
         }
 
         private void OpenTab(string header, Type pageSource, object? param)
         {
-            if (FeatureService.ProLicense || Pages.Count == 0)
+            var frame = new Frame();
+            frame.ContentTransitions = null;
+            var tab = new TabViewItem()
             {
-                var frame = new Frame();
-                frame.ContentTransitions = null;
-                var tab = new TabViewItem()
-                {
-                    Header = header,
-                    Content = frame
-                };
-                frame.Navigate(pageSource, param, new SuppressNavigationTransitionInfo());
-                Pages.Add(tab);
-                SelectedTab = tab;
-            }
-            else
-            {
-                _navigationService.NavigateTo(header, pageSource, param);
-            }
+                Header = header,
+                Content = frame
+            };
+            frame.Navigate(pageSource, param, new SuppressNavigationTransitionInfo());
+            Pages.Add(tab);
+            SelectedTab = tab;
         }
 
         public void GoHome()
@@ -339,6 +289,19 @@ namespace JitHub.WinUI.ViewModels
             if (existing == null)
             {
                 OpenTab("Settings", typeof(SettingsPage));
+            }
+            else
+            {
+                SelectedTab = existing;
+            }
+        }
+
+        public void GoToDesignLabPage()
+        {
+            var existing = Pages.FirstOrDefault(page => string.Equals(page.Header as string, "Design Lab", StringComparison.Ordinal));
+            if (existing == null)
+            {
+                OpenTab("Design Lab", typeof(DesignLabPage));
             }
             else
             {
@@ -440,45 +403,122 @@ namespace JitHub.WinUI.ViewModels
             });
         }
 
+        public void RegisterSearchDebounce(TextBox searchTextBox)
+        {
+            ArgumentNullException.ThrowIfNull(searchTextBox);
+
+            var dispatcherQueue = searchTextBox.DispatcherQueue;
+            _searchSubscription?.Dispose();
+            _searchSubscription = Observable
+                .FromEventPattern<TextChangedEventHandler, TextChangedEventArgs>
+                (
+                    s => searchTextBox.TextChanged += s,
+                    s => searchTextBox.TextChanged -= s
+                )
+                .Select(_ => searchTextBox.Text ?? string.Empty)
+                .Throttle(TimeSpan.FromMilliseconds(400))
+                .DistinctUntilChanged()
+                .Subscribe(text =>
+                {
+                    if (dispatcherQueue.HasThreadAccess)
+                    {
+                        _ = SearchAsync(text);
+                        return;
+                    }
+
+                    _ = dispatcherQueue.TryEnqueue(() => _ = SearchAsync(text));
+                });
+        }
+
         private async Task SearchAsync(string text)
         {
             var term = text.Trim();
+            int requestVersion = Interlocked.Increment(ref _searchRequestVersion);
+            _searchCancellationTokenSource?.Cancel();
+            _searchCancellationTokenSource?.Dispose();
+            _searchCancellationTokenSource = null;
+
             if (string.IsNullOrWhiteSpace(term))
             {
+                if (requestVersion != _searchRequestVersion)
+                {
+                    return;
+                }
+
                 SearchResults = [];
+                Searching = false;
                 return;
             }
 
             string? token = _authService.GetToken(_accountService.GetUser());
             if (string.IsNullOrWhiteSpace(token))
             {
-                SearchResults = [];
-                Searching = false;
+                if (requestVersion == _searchRequestVersion)
+                {
+                    SearchResults = [];
+                    Searching = false;
+                }
+
                 _authService.SignOut();
                 return;
             }
 
+            CancellationTokenSource cancellationTokenSource = new();
+            _searchCancellationTokenSource = cancellationTokenSource;
+            CancellationToken cancellationToken = cancellationTokenSource.Token;
             Searching = true;
             try
             {
-                SearchResults = (await _gitHubClientService.SearchRepositoriesAsync(token, term, 8)).ToList();
+                List<GitHubRepository> results = (await _gitHubClientService.SearchRepositoriesAsync(
+                    token,
+                    term,
+                    8,
+                    cancellationToken: cancellationToken)).ToList();
+                if (requestVersion != _searchRequestVersion)
+                {
+                    return;
+                }
+
+                SearchResults = results;
+            }
+            catch (OperationCanceledException) when (requestVersion != _searchRequestVersion)
+            {
             }
             catch (GitHubAuthenticationException)
             {
-                SearchResults = [];
+                if (requestVersion == _searchRequestVersion)
+                {
+                    SearchResults = [];
+                }
+
                 _authService.SignOut();
             }
             catch (GitHubApiException)
             {
-                SearchResults = [];
+                if (requestVersion == _searchRequestVersion)
+                {
+                    SearchResults = [];
+                }
             }
             catch (System.Net.Http.HttpRequestException)
             {
-                SearchResults = [];
+                if (requestVersion == _searchRequestVersion)
+                {
+                    SearchResults = [];
+                }
             }
             finally
             {
-                Searching = false;
+                if (ReferenceEquals(_searchCancellationTokenSource, cancellationTokenSource))
+                {
+                    _searchCancellationTokenSource = null;
+                }
+
+                cancellationTokenSource.Dispose();
+                if (requestVersion == _searchRequestVersion)
+                {
+                    Searching = false;
+                }
             }
         }
 
@@ -490,10 +530,36 @@ namespace JitHub.WinUI.ViewModels
             }
         }
 
-        public async Task OnNavigatedTo()
+        public void OpenRepository(GitHubRepository? repo)
         {
-            await FeatureService.SetLicenseStatus();
+            if (repo is null)
+            {
+                return;
+            }
+
+            var header = string.IsNullOrWhiteSpace(repo.FullName) ? repo.Name : repo.FullName;
+            var param = new RepoDetailPageArgs(RepoPageType.CodePage, repo);
+            OpenTab(header, typeof(RepoDetailPage), param);
         }
+
+        public void OpenSearchQuery(string? queryText)
+        {
+            string term = queryText?.Trim() ?? string.Empty;
+            if (string.IsNullOrWhiteSpace(term))
+            {
+                return;
+            }
+
+            OpenTab($"Search results for {term}", typeof(RepoSearchResultPage), term);
+        }
+
+        public void ClearSearchResults()
+        {
+            SearchResults = [];
+            Searching = false;
+        }
+
+        public Task OnNavigatedTo() => Task.CompletedTask;
     }
 }
 

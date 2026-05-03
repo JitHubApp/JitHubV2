@@ -48,6 +48,7 @@
             HorizontalAlignment="Right">
             <Button
                 x:Name="DeleteButton"
+                Style="{StaticResource AppDangerOutlineButtonStyle}"
                 Command="{x:Bind ViewModel.DeleteCommand, Mode=OneWay}">
                 <FontIcon
                     FontFamily="{StaticResource SegoeFluentIcons}"
@@ -55,6 +56,7 @@
             </Button>
             <Button
                 x:Name="CancelButton"
+                Style="{StaticResource AppToolbarButtonStyle}"
                 Click="{x:Bind ViewModel.DeselectAll, Mode=OneWay}">
                 <FontIcon
                     FontFamily="{StaticResource SegoeFluentIcons}"
@@ -62,6 +64,7 @@
             </Button>
             <Button
                 x:Name="RefreshButton"
+                Style="{StaticResource AppToolbarButtonStyle}"
                 Command="{x:Bind ViewModel.LoadCommand, Mode=OneWay}">
                 <FontIcon
                     FontFamily="{StaticResource SegoeFluentIcons}"

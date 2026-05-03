@@ -1,5 +1,5 @@
 using JitHub.WinUI.ViewModels.Base;
-using Octokit;
+using JitHub.Models.LegacyGitHub;
 using System;
 
 namespace JitHub.WinUI.ViewModels

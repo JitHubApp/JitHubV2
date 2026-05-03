@@ -1,5 +1,5 @@
 using CommunityToolkit.Mvvm.ComponentModel;
-using Octokit;
+using JitHub.Models.LegacyGitHub;
 using System.Collections.Generic;
 using System.Windows.Input;
 

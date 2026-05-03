@@ -1,6 +1,6 @@
-﻿using JitHub.Models.Base;
+using JitHub.Models.Base;
 using CommunityToolkit.Mvvm.ComponentModel;
-using Octokit;
+using JitHub.Models.LegacyGitHub;
 using System.Collections.Generic;
 
 namespace JitHub.Models

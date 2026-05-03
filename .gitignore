@@ -432,6 +432,7 @@ $RECYCLE.BIN/
 !.vscode/tasks.json
 !.vscode/launch.json
 !.vscode/extensions.json
+.codex/
 appsettings.json
 appsettings.development.json
 !JitHub.WinUI/appsettings.json
@@ -442,3 +443,4 @@ artifacts/EditorAssets/dist/
 JitHub.WinUI/artifacts/
 JitHub.WinUI/EditorAssets/
 JitHub.WinUI/JitHub.WinUI/
+*.backup.png

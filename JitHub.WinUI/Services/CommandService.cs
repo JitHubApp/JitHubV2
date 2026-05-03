@@ -1,7 +1,7 @@
 using JitHub.Models;
 using JitHub.Models.CommandArgs;
 using CommunityToolkit.Mvvm.Input;
-using IssueUpdateModel = Octokit.IssueUpdate;
+using IssueUpdateModel = JitHub.Models.LegacyGitHub.IssueUpdate;
 using System;
 using System.Collections.Generic;
 using System.Threading.Tasks;

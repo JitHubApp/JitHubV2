@@ -107,6 +107,13 @@ public interface IGitHubClientService
         string? direction = null,
         CancellationToken cancellationToken = default);
 
+    Task<IReadOnlyList<GitHubActivityEvent>> GetUserEventsAsync(
+        string token,
+        string userName,
+        int pageSize,
+        int pageNumber = 1,
+        CancellationToken cancellationToken = default);
+
     Task<IReadOnlyList<GitHubActivityEvent>> GetReceivedEventsAsync(
         string token,
         string userName,

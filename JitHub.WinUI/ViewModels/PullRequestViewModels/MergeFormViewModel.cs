@@ -1,9 +1,9 @@
 using JitHub.Services;
 using JitHub.WinUI.ViewModels.Base;
 using CommunityToolkit.Mvvm.DependencyInjection;
-using Octokit;
-using MergePullRequest = Octokit.MergePullRequest;
-using PullRequestMergeMethod = Octokit.PullRequestMergeMethod;
+using JitHub.Models.LegacyGitHub;
+using MergePullRequest = JitHub.Models.LegacyGitHub.MergePullRequest;
+using PullRequestMergeMethod = JitHub.Models.LegacyGitHub.PullRequestMergeMethod;
 using System;
 using System.Collections.Generic;
 using System.Linq;
@@ -83,9 +83,9 @@ namespace JitHub.WinUI.ViewModels.PullRequestViewModels
                     _callback.Execute(null);
                 }
             }
-            catch (Exception)
+            catch (Exception ex)
             {
-
+                System.Diagnostics.Debug.WriteLine($"Failed to merge pull request from merge form: {ex}");
             }
             _modalService.Close();
         }

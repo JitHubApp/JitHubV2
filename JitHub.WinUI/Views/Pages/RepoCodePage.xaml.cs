@@ -124,17 +124,24 @@ namespace JitHub.WinUI.Views.Pages
 
         private async void OnNavigationCompleted(object sender, CoreWebView2NavigationCompletedEventArgs args)
         {
-            if (!args.IsSuccess)
+            try
             {
-                ShowError($"The embedded editor failed to load ({args.WebErrorStatus}).");
-                return;
-            }
+                if (!args.IsSuccess)
+                {
+                    ShowError($"The embedded editor failed to load ({args.WebErrorStatus}).");
+                    return;
+                }
 
-            await Task.Delay(200);
-            LoadingIndicator.Visibility = Visibility.Collapsed;
-            LoadingIndicator.IsActive = false;
-            ErrorState.Visibility = Visibility.Collapsed;
-            WebViewContainer.Visibility = Visibility.Visible;
+                await Task.Delay(200);
+                LoadingIndicator.Visibility = Visibility.Collapsed;
+                LoadingIndicator.IsActive = false;
+                ErrorState.Visibility = Visibility.Collapsed;
+                WebViewContainer.Visibility = Visibility.Visible;
+            }
+            catch (Exception ex)
+            {
+                ShowError(ex.Message);
+            }
         }
 
         private void SetLoadingState()
@@ -157,19 +164,26 @@ namespace JitHub.WinUI.Views.Pages
 
         private async void OnNavigationStarting(Microsoft.UI.Xaml.Controls.WebView2 sender, CoreWebView2NavigationStartingEventArgs args)
         {
-            if (!Uri.TryCreate(args.Uri, UriKind.Absolute, out Uri? uri))
+            try
             {
-                return;
-            }
+                if (!Uri.TryCreate(args.Uri, UriKind.Absolute, out Uri? uri))
+                {
+                    return;
+                }
 
-            if (string.Equals(uri.Scheme, Uri.UriSchemeHttps, StringComparison.OrdinalIgnoreCase) &&
-                string.Equals(uri.Host, "jithub.local", StringComparison.OrdinalIgnoreCase))
+                if (string.Equals(uri.Scheme, Uri.UriSchemeHttps, StringComparison.OrdinalIgnoreCase) &&
+                    string.Equals(uri.Host, "jithub.local", StringComparison.OrdinalIgnoreCase))
+                {
+                    return;
+                }
+
+                args.Cancel = true;
+                await Windows.System.Launcher.LaunchUriAsync(uri);
+            }
+            catch (Exception ex)
             {
-                return;
+                ShowError(ex.Message);
             }
-
-            args.Cancel = true;
-            await Windows.System.Launcher.LaunchUriAsync(uri);
         }
 
         private void EnsureGitHubRequestBridge()
@@ -241,13 +255,14 @@ namespace JitHub.WinUI.Views.Pages
             string query = uri.Query.TrimStart('?');
             foreach (string queryPart in query.Split('&', StringSplitOptions.RemoveEmptyEntries))
             {
-                string[] keyValue = queryPart.Split('=', 2);
-                if (!string.Equals(keyValue[0], "token", StringComparison.OrdinalIgnoreCase))
+                int separatorIndex = queryPart.IndexOf('=');
+                string key = separatorIndex >= 0 ? queryPart[..separatorIndex] : queryPart;
+                if (!string.Equals(key, "token", StringComparison.OrdinalIgnoreCase))
                 {
                     continue;
                 }
 
-                return keyValue.Length > 1 ? Uri.UnescapeDataString(keyValue[1]) : string.Empty;
+                return separatorIndex >= 0 ? Uri.UnescapeDataString(queryPart[(separatorIndex + 1)..]) : string.Empty;
             }
 
             return null;

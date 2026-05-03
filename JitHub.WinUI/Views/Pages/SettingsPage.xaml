@@ -5,136 +5,119 @@
     xmlns:local="using:JitHub.WinUI.Views.Pages"
     xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
     xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
-    xmlns:controls="using:Microsoft.UI.Xaml.Controls"
     xmlns:viewmodels="using:JitHub.WinUI.ViewModels"
-    xmlns:toolkit="using:CommunityToolkit.WinUI.Controls"
     xmlns:common="using:JitHub.WinUI.Views.Controls.Common"
+    xmlns:appcontrols="using:JitHub.WinUI.Views.Controls.App"
     mc:Ignorable="d"
     Background="Transparent">
     <Page.DataContext>
         <viewmodels:SettingsViewModel x:Name="ViewModel"/>
     </Page.DataContext>
     <Grid
-        Padding="12">
+        Padding="{ThemeResource AppPagePadding}"
+        AutomationProperties.AutomationId="SettingsRoot">
         <ScrollViewer>
-            <StackPanel
-                Spacing="4">
-                <Grid
-                    Height="56">
-                    <Grid.ColumnDefinitions>
-                        <ColumnDefinition Width="auto"/>
-                        <ColumnDefinition Width="*"/>
-                    </Grid.ColumnDefinitions>
-                    <TextBlock
-                        Grid.Column="0"
-                        VerticalAlignment="Center"
-                        FontSize="20"
-                        FontWeight="SemiBold"
-                        Text="Settings"/>
-                    <Button
-                        Grid.Column="1"
-                        HorizontalAlignment="Right"
-                        VerticalAlignment="Center"
-                        Content="Restart"
-                        Click="{x:Bind ViewModel.Restart, Mode=OneWay}"
-                        Visibility="{x:Bind ViewModel.RestartRequired, Converter={StaticResource BoolToVisibilityConverter}, Mode=OneWay}"/>
-                </Grid>
-                <toolkit:SettingsCard
-                    Description="Set app theme to light, dark or follow Windows system theme."
-                    Header="Theme">
-                    <toolkit:SettingsCard.HeaderIcon>
+            <Grid
+                MaxWidth="{ThemeResource AppReadablePageMaxWidth}"
+                HorizontalAlignment="Center">
+                <StackPanel Spacing="16">
+                <appcontrols:AppSectionHeader
+                    Eyebrow="PREFERENCES"
+                    Title="Settings"
+                    Description="Quiet defaults, practical controls, and a cleaner reading rhythm across the app." />
+
+                <appcontrols:AppSettingsCard
+                    Header="Theme"
+                    Description="Set app theme to light, dark or follow Windows system theme.">
+                    <appcontrols:AppSettingsCard.HeaderIcon>
                         <FontIcon Glyph="&#xE790;" />
-                    </toolkit:SettingsCard.HeaderIcon>
-                    <ComboBox
-                        Grid.Column="1"
-                        Width="120"
-                        SelectionChanged="{x:Bind ViewModel.SelectionChanged, Mode=OneWay}"
-                        SelectedItem="{x:Bind ViewModel.SelectedTheme, Mode=TwoWay}"
-                        ItemsSource="{x:Bind ViewModel.Themes, Mode=OneWay}"/>
-                </toolkit:SettingsCard>
-                <toolkit:SettingsCard
+                    </appcontrols:AppSettingsCard.HeaderIcon>
+                    <appcontrols:AppSettingsCard.ActionContent>
+                        <ComboBox
+                            AutomationProperties.AutomationId="SettingsThemeComboBox"
+                            Style="{StaticResource ComboBox}"
+                            Width="160"
+                            SelectionChanged="{x:Bind ViewModel.SelectionChanged, Mode=OneWay}"
+                            SelectedItem="{x:Bind ViewModel.SelectedTheme, Mode=TwoWay}"
+                            ItemsSource="{x:Bind ViewModel.Themes, Mode=OneWay}" />
+                    </appcontrols:AppSettingsCard.ActionContent>
+                </appcontrols:AppSettingsCard>
+
+                <appcontrols:AppSettingsCard
                     Header="Developer Mode"
                     Description="This will enable developer mode where some debug features are turned on.">
-                    <toolkit:SettingsCard.HeaderIcon>
+                    <appcontrols:AppSettingsCard.HeaderIcon>
                         <FontIcon Glyph="&#xEC7A;" />
-                    </toolkit:SettingsCard.HeaderIcon>
-                    <ToggleSwitch
-                        IsOn="{x:Bind ViewModel.GlobalViewModel.DevMode, Mode=TwoWay}"/>
-                </toolkit:SettingsCard>
-                <toolkit:SettingsCard
+                    </appcontrols:AppSettingsCard.HeaderIcon>
+                    <appcontrols:AppSettingsCard.ActionContent>
+                        <ToggleSwitch IsOn="{x:Bind ViewModel.GlobalViewModel.DevMode, Mode=TwoWay}" />
+                    </appcontrols:AppSettingsCard.ActionContent>
+                </appcontrols:AppSettingsCard>
+
+                <appcontrols:AppSettingsCard
                     Header="JitHub Version"
                     Description="{x:Bind ViewModel.Version, Mode=OneWay}">
-                    <toolkit:SettingsCard.HeaderIcon>
-                        <BitmapIcon ShowAsMonochrome="False"
-                            UriSource="ms-appx:///Assets/JitHubLogo.png" />
-                    </toolkit:SettingsCard.HeaderIcon>
-                    <Button
-                        Click="{x:Bind ViewModel.ViewJitHubCode, Mode=OneWay}"
-                        Style="{StaticResource AccentButtonStyle}">
-                        <StackPanel
-                            Orientation="Horizontal"
-                            Spacing="8">
-                            <common:ThemeImage
-                                IconWidth="24"
-                                IconHeight="24"
-                                DarkSource="ms-appx:///Assets/Icons/github_logo_dark.png"
-                                LightSource="ms-appx:///Assets/Icons/github_logo_light.png"/>
-                            <TextBlock
-                                VerticalAlignment="Center"
-                                Text="View Source Code"/>
+                    <appcontrols:AppSettingsCard.HeaderIcon>
+                        <Image
+                            Width="20"
+                            Height="20"
+                            Stretch="Uniform"
+                            Source="ms-appx:///Assets/JitHubLogo.png" />
+                    </appcontrols:AppSettingsCard.HeaderIcon>
+                    <appcontrols:AppSettingsCard.ActionContent>
+                        <Button
+                            Click="{x:Bind ViewModel.ViewJitHubCode, Mode=OneWay}"
+                            Style="{StaticResource AppAccentButtonStyle}">
+                            <StackPanel Orientation="Horizontal" Spacing="8">
+                                <common:ThemeImage
+                                    IconWidth="24"
+                                    IconHeight="24"
+                                    DarkSource="ms-appx:///Assets/Icons/github_logo_dark.png"
+                                    LightSource="ms-appx:///Assets/Icons/github_logo_light.png" />
+                                <TextBlock
+                                    VerticalAlignment="Center"
+                                    Text="View Source Code" />
+                            </StackPanel>
+                        </Button>
+                    </appcontrols:AppSettingsCard.ActionContent>
+                </appcontrols:AppSettingsCard>
+
+                <appcontrols:AppSectionHeader
+                    Eyebrow="PEOPLE"
+                    Title="Credits"
+                    Description="Designed and built with a small crew and a lot of care." />
+
+                <appcontrols:AppSurfaceCard CardPadding="20">
+                    <appcontrols:AppSurfaceCard.Child>
+                        <StackPanel Spacing="16">
+                            <appcontrols:AppSectionHeader
+                                Title="Developers"
+                                Description="Core app, migration, and infrastructure work." />
+                            <StackPanel Orientation="Horizontal" HorizontalAlignment="Left" Spacing="12">
+                                <common:CreditPersonaleButton Person="{x:Bind ViewModel.Nero, Mode=OneWay}" />
+                                <common:CreditPersonaleButton Person="{x:Bind ViewModel.Get, Mode=OneWay}" />
+                                <common:CreditPersonaleButton Person="{x:Bind ViewModel.ZyC, Mode=OneWay}" />
+                                <common:CreditPersonaleButton Person="{x:Bind ViewModel.Xueyang, Mode=OneWay}" />
+                            </StackPanel>
                         </StackPanel>
-                    </Button>
-                </toolkit:SettingsCard>
-                <StackPanel
-                    Spacing="12">
-                    <TextBlock
-                        Text="Credits"
-                        FontSize="20"
-                        FontWeight="SemiBold"/>
-                    <Grid>
-                        <Grid.RowDefinitions>
-                            <RowDefinition Height="auto"/>
-                            <RowDefinition Height="auto"/>
-                        </Grid.RowDefinitions>
-                        <TextBlock
-                            Grid.Row="0"
-                            FontWeight="SemiBold"
-                            Text="Developers"
-                            Margin="0 0 0 12"/>
-                        <StackPanel
-                            Grid.Row="1"
-                            Orientation="Horizontal"
-                            Spacing="12">
-                            <common:CreditPersonaleButton
-                                Person="{x:Bind ViewModel.Nero, Mode=OneWay}"/>
-                            <common:CreditPersonaleButton
-                                Person="{x:Bind ViewModel.Get, Mode=OneWay}"/>
-                            <common:CreditPersonaleButton
-                                Person="{x:Bind ViewModel.ZyC, Mode=OneWay}"/>
+                    </appcontrols:AppSurfaceCard.Child>
+                </appcontrols:AppSurfaceCard>
+
+                <appcontrols:AppSurfaceCard CardPadding="20">
+                    <appcontrols:AppSurfaceCard.Child>
+                        <StackPanel Spacing="16">
+                            <appcontrols:AppSectionHeader
+                                Title="Designers"
+                                Description="Interface thinking, icon direction, and polish." />
+                            <StackPanel Orientation="Horizontal" HorizontalAlignment="Left" Spacing="12">
+                                <common:CreditPersonaleButton Person="{x:Bind ViewModel.Keira, Mode=OneWay}" />
+                                <common:CreditPersonaleButton Person="{x:Bind ViewModel.Jakub, Mode=OneWay}" />
+                            </StackPanel>
                         </StackPanel>
-                    </Grid>
-                    <Grid>
-                        <Grid.RowDefinitions>
-                            <RowDefinition Height="auto"/>
-                            <RowDefinition Height="auto"/>
-                        </Grid.RowDefinitions>
-                        <TextBlock
-                            Grid.Row="0"
-                            FontWeight="SemiBold"
-                            Text="Designers"
-                            Margin="0 0 0 12"/>
-                        <StackPanel
-                            Grid.Row="1"
-                            Orientation="Horizontal"
-                            Spacing="12">
-                            <common:CreditPersonaleButton
-                                Person="{x:Bind ViewModel.Keira, Mode=OneWay}"/>
-                            <common:CreditPersonaleButton
-                                Person="{x:Bind ViewModel.Jakub, Mode=OneWay}"/>
-                        </StackPanel>
-                    </Grid>
+                    </appcontrols:AppSurfaceCard.Child>
+                </appcontrols:AppSurfaceCard>
                 </StackPanel>
-            </StackPanel>
+            </Grid>
         </ScrollViewer>
     </Grid>
 </Page>

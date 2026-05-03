@@ -6,67 +6,74 @@
     xmlns:controls="using:JitHub.WinUI.Views.Controls.Common"
     xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
     xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+    xmlns:appcontrols="using:JitHub.WinUI.Views.Controls.App"
     xmlns:repo="using:JitHub.WinUI.Views.Controls"
     xmlns:viewmodels="using:JitHub.WinUI.ViewModels.Pages"
     x:DataType="viewmodels:DashboardPageViewModel"
     Background="Transparent"
     mc:Ignorable="d">
-    <Grid Padding="12">
-        <Grid.ColumnDefinitions>
-            <ColumnDefinition Width="320" />
-            <ColumnDefinition Width="*" />
-        </Grid.ColumnDefinitions>
+    <Grid Padding="{ThemeResource AppPagePadding}">
+        <Grid HorizontalAlignment="Stretch">
+            <Grid.ColumnDefinitions>
+                <ColumnDefinition Width="308" />
+                <ColumnDefinition Width="24" />
+                <ColumnDefinition Width="*" />
+            </Grid.ColumnDefinitions>
 
-        <repo:RepoSideBar
-            Grid.Column="0"
-            Margin="0,0,12,0" />
+            <repo:RepoSideBar Grid.Column="0" />
 
-        <Border
-            Grid.Column="1"
-            Padding="12,12,0,0"
-            Background="{ThemeResource ExpanderHeaderBackground}"
-            CornerRadius="8">
-            <Grid>
-                <Grid.RowDefinitions>
-                    <RowDefinition Height="Auto" />
-                    <RowDefinition Height="*" />
-                </Grid.RowDefinitions>
+            <appcontrols:AppSurfaceCard
+                Grid.Column="2"
+                CardPadding="20">
+                <appcontrols:AppSurfaceCard.Child>
+                    <Grid>
+                        <Grid.RowDefinitions>
+                            <RowDefinition Height="Auto" />
+                            <RowDefinition Height="*" />
+                        </Grid.RowDefinitions>
 
-                <TextBlock
-                    Margin="0,0,0,20"
-                    FontSize="20"
-                    Text="All Activities" />
+                        <appcontrols:AppSectionHeader
+                            Margin="0,0,0,16"
+                            Eyebrow="RECENT"
+                            Title="All Activities"
+                            Description="The latest activity across the repositories you care about." />
 
-                <ProgressRing
-                    Grid.Row="1"
-                    Width="50"
-                    Height="50"
-                    HorizontalAlignment="Center"
-                    VerticalAlignment="Center"
-                    IsActive="{Binding IsActivityLoading}"
-                    Visibility="{Binding IsActivityLoading, Converter={StaticResource BoolToVisibilityConverter}}" />
+                        <ProgressRing
+                            Grid.Row="1"
+                            Width="50"
+                            Height="50"
+                            HorizontalAlignment="Center"
+                            VerticalAlignment="Center"
+                            IsActive="{Binding IsActivityLoading}"
+                            Visibility="{Binding IsActivityLoading, Converter={StaticResource BoolToVisibilityConverter}}" />
 
-                <controls:EmptyStateView
-                    Grid.Row="1"
-                    Description="{Binding RecentActivityEmptyStateDescription}"
-                    Title="{Binding RecentActivityEmptyStateTitle}"
-                    Visibility="{Binding IsActivityEmptyStateVisible, Converter={StaticResource BoolToVisibilityConverter}}" />
+                        <controls:EmptyStateView
+                            Grid.Row="1"
+                            Description="{Binding RecentActivityEmptyStateDescription}"
+                            Title="{Binding RecentActivityEmptyStateTitle}"
+                            Visibility="{Binding IsActivityEmptyStateVisible, Converter={StaticResource BoolToVisibilityConverter}}" />
 
-                <ListView
-                    Grid.Row="1"
-                    IsItemClickEnabled="False"
-                    ItemTemplate="{StaticResource GitHubActivityEventListItemTemplate}"
-                    ItemsSource="{Binding RecentActivity}"
-                    SelectionMode="None"
-                    Visibility="{Binding AreActivityItemsVisible, Converter={StaticResource BoolToVisibilityConverter}}">
-                    <ListView.ItemContainerStyle>
-                        <Style TargetType="ListViewItem">
-                            <Setter Property="HorizontalContentAlignment" Value="Stretch" />
-                            <Setter Property="Margin" Value="0,0,0,12" />
-                        </Style>
-                    </ListView.ItemContainerStyle>
-                </ListView>
-            </Grid>
-        </Border>
+                        <ListView
+                            Grid.Row="1"
+                            MaxWidth="960"
+                            HorizontalAlignment="Center"
+                            IsItemClickEnabled="False"
+                            ItemTemplateSelector="{StaticResource GitHubActivityCardTemplateSelector}"
+                            ItemsSource="{Binding RecentActivity}"
+                            SelectionMode="None"
+                            Visibility="{Binding AreActivityItemsVisible, Converter={StaticResource BoolToVisibilityConverter}}">
+                            <ListView.ItemContainerStyle>
+                                <Style TargetType="ListViewItem">
+                                    <Setter Property="HorizontalContentAlignment" Value="Stretch" />
+                                    <Setter Property="Padding" Value="0" />
+                                    <Setter Property="Margin" Value="0" />
+                                    <Setter Property="Background" Value="Transparent" />
+                                </Style>
+                            </ListView.ItemContainerStyle>
+                        </ListView>
+                    </Grid>
+                </appcontrols:AppSurfaceCard.Child>
+            </appcontrols:AppSurfaceCard>
+        </Grid>
     </Grid>
 </Page>

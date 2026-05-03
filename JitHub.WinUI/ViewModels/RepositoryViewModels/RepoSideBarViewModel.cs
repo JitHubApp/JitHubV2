@@ -26,16 +26,12 @@ public partial class RepoSideBarViewModel : RepoListViewModel<RepoModel>
 
     [ObservableProperty]
     public partial RepoType RepositoryPublicity { get; set; }
-
-    public FeatureService FeatureService { get; }
     public RepoSideBarViewModel()
     {
         _modalService = Ioc.Default.GetService<ModalService>()
             ?? throw new InvalidOperationException("ModalService is not registered.");
         _navigationService = Ioc.Default.GetService<NavigationService>()
             ?? throw new InvalidOperationException("NavigationService is not registered.");
-        FeatureService = Ioc.Default.GetService<FeatureService>()
-            ?? throw new InvalidOperationException("FeatureService is not registered.");
     }
 
     public override async Task<ICollection<RepoModel>> GetRepos()
@@ -52,42 +48,9 @@ public partial class RepoSideBarViewModel : RepoListViewModel<RepoModel>
         _modalService.Open("New Repository", new RepoForm(new AsyncRelayCommand(LoadRepos)));
     }
 
-    private void CloseModal()
-    {
-        _modalService.Close();
-    }
-
-    public async Task BuyProFeature()
-    {
-        var res = await FeatureService.BuyProFeature();
-        _modalService.Close();
-        switch (res)
-        {
-            // TODO: Add reactions to all these cases
-            case FeaturePurchaseState.Success:
-                _modalService.Open("Thank you!", new ProLicensePurchaseSuccessDialog(new RelayCommand(CloseModal)));
-                break;
-            case FeaturePurchaseState.Failure:
-                break;
-            case FeaturePurchaseState.AlreadyOwn:
-                break;
-            default:
-                break;
-        }
-    }
-
     public void OnManageRepo()
     {
-        if (FeatureService.ProLicense)
-        {
-            _navigationService.NavigateTo("Manage Repository", typeof(RepoManagePage));
-        }
-        else
-        {
-            var buyCommand = new AsyncRelayCommand(BuyProFeature);
-            var cancelCommand = new RelayCommand(CloseModal);
-            _modalService.Open(new FeaturePurchaseDialog(buyCommand, cancelCommand));
-        }
+        _navigationService.NavigateTo("Manage Repository", typeof(RepoManagePage));
     }
 
     public void SegmentedSelectionChanged(object sender, SelectionChangedEventArgs e)

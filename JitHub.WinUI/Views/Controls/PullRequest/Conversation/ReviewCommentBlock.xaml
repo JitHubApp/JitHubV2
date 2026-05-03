@@ -61,6 +61,7 @@
                                 Style="{StaticResource ActionPanel}">
                                 <Button
                                     Content="Comment"
+                                    Style="{StaticResource AppAccentButtonStyle}"
                                     Command="{x:Bind ViewModel.ReplyCommand, Mode=OneWay}"/>
                             </StackPanel>
                         </common:MarkdownForm.ActionContent>

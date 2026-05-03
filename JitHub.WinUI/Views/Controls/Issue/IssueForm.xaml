@@ -18,6 +18,7 @@
         <StackPanel
              Spacing="8">
             <TextBox
+                Style="{StaticResource AppTextBoxStyle}"
                 PlaceholderText="Title"
                 Margin="16 0"
                 Text="{x:Bind ViewModel.Title, Mode=TwoWay}"/>
@@ -32,7 +33,7 @@
                         HorizontalAlignment="Stretch">
                         <Button
                             Click="{x:Bind ViewModel.OnSubmit, Mode=OneWay}"
-                            Style="{ThemeResource AccentButtonStyle}"
+                            Style="{ThemeResource AppAccentButtonStyle}"
                             HorizontalAlignment="Right"
                             VerticalContentAlignment="Center"
                             Content="Post Issue"/>

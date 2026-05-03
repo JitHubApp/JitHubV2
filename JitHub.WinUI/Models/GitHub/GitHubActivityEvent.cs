@@ -28,6 +28,12 @@ public sealed class GitHubActivityEvent
     public JsonElement Payload { get; set; }
 
     [JsonIgnore]
+    public IGitHubActivityPayload? EnrichedPayload { get; set; }
+
+    [JsonIgnore]
+    public IGitHubActivityPayload TypedPayload => EnrichedPayload ?? GitHubActivityPayloadFactory.Create(Type, Payload);
+
+    [JsonIgnore]
     public string ActorDisplayName => string.IsNullOrWhiteSpace(Actor.Login) ? "Someone" : Actor.Login;
 
     [JsonIgnore]
@@ -296,6 +302,9 @@ public sealed class GitHubActivityEvent
 
 public sealed class GitHubActivityRepository
 {
+    [JsonPropertyName("id")]
+    public long Id { get; set; }
+
     [JsonPropertyName("name")]
     public string Name { get; set; } = string.Empty;
 

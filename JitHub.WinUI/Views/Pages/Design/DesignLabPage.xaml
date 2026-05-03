@@ -1,0 +1,406 @@
+<Page
+    x:Class="JitHub.WinUI.Views.Pages.Design.DesignLabPage"
+    xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+    xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+    xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+    xmlns:appcontrols="using:JitHub.WinUI.Views.Controls.App"
+    xmlns:common="using:JitHub.WinUI.Views.Controls.Common"
+    xmlns:conversation="using:JitHub.WinUI.Views.Controls.PullRequest.Conversation"
+    xmlns:helpers="using:JitHub.WinUI.Helpers"
+    xmlns:muxc="using:Microsoft.UI.Xaml.Controls"
+    xmlns:toolkit="using:CommunityToolkit.WinUI.Controls"
+    mc:Ignorable="d"
+    Background="Transparent">
+    <ScrollViewer AutomationProperties.AutomationId="DesignLabRoot">
+        <StackPanel Padding="20" Spacing="20">
+            <appcontrols:AppSectionHeader
+                Eyebrow="DESIGN SYSTEM"
+                Title="WinUI Design Lab"
+                Description="Deterministic states and reference surfaces for screenshot proof across themes and control families." />
+
+            <appcontrols:AppSurfaceCard x:Name="ButtonsScenarioCard" AutomationProperties.AutomationId="ScenarioButtons">
+                <appcontrols:AppSurfaceCard.Child>
+                    <StackPanel
+                        AutomationProperties.AutomationId="ScenarioButtons"
+                        Spacing="16">
+                        <appcontrols:AppSectionHeader Title="Buttons" Description="Primary, quiet, stat, pressed, hover, and disabled states." />
+                        <Grid ColumnSpacing="12" RowSpacing="12">
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="Auto" />
+                                <ColumnDefinition Width="Auto" />
+                                <ColumnDefinition Width="Auto" />
+                                <ColumnDefinition Width="Auto" />
+                            </Grid.ColumnDefinitions>
+                            <Grid.RowDefinitions>
+                                <RowDefinition Height="Auto" />
+                                <RowDefinition Height="Auto" />
+                            </Grid.RowDefinitions>
+
+                            <Button Grid.Row="0" Grid.Column="0" Content="Primary" Style="{StaticResource AppAccentButtonStyle}" />
+                            <Button Grid.Row="0" Grid.Column="1" helpers:PreviewStateHelper.VisualState="PointerOver" Content="Hover" Style="{StaticResource AppAccentButtonStyle}" />
+                            <Button Grid.Row="0" Grid.Column="2" helpers:PreviewStateHelper.VisualState="Pressed" Content="Pressed" Style="{StaticResource AppAccentButtonStyle}" />
+                            <Button Grid.Row="1" Grid.Column="0" helpers:PreviewStateHelper.VisualState="Disabled" Content="Disabled" Style="{StaticResource AppAccentButtonStyle}" />
+                            <Button Grid.Row="1" Grid.Column="1" Content="Quiet" Style="{StaticResource AppQuietButtonStyle}" />
+                            <appcontrols:AppStatButton Grid.Row="1" Grid.Column="2" IconKind="Star" IconForeground="{ThemeResource AppInkMutedBrush}" SelectedIconForeground="{ThemeResource AppWarmAccentBrush}" IsSelected="True" ValueText="12.5k" />
+                            <Button Grid.Row="0" Grid.Column="3" Content="Close issue" Style="{StaticResource AppDangerOutlineButtonStyle}" />
+                            <Button Grid.Row="1" Grid.Column="3" Style="{StaticResource AppToolbarButtonStyle}">
+                                <FontIcon FontFamily="{StaticResource SegoeFluentIcons}" Glyph="&#xE711;" />
+                            </Button>
+                        </Grid>
+                    </StackPanel>
+                </appcontrols:AppSurfaceCard.Child>
+            </appcontrols:AppSurfaceCard>
+
+            <appcontrols:AppSurfaceCard x:Name="InputsScenarioCard" AutomationProperties.AutomationId="ScenarioInputs">
+                <appcontrols:AppSurfaceCard.Child>
+                    <StackPanel
+                        AutomationProperties.AutomationId="ScenarioInputs"
+                        Spacing="16">
+                        <appcontrols:AppSectionHeader Title="Inputs" Description="Search, text, combo, date, and toggle surfaces." />
+                        <AutoSuggestBox PlaceholderText="Search repositories" Style="{StaticResource AppAutoSuggestBoxStyle}" Text="flutter/flutter" />
+                        <TextBox Text="issue triage" Header="Text" Style="{StaticResource AppTextBoxStyle}" />
+                        <ComboBox SelectedIndex="0" Style="{StaticResource ComboBox}">
+                            <x:String>Open</x:String>
+                            <x:String>Closed</x:String>
+                            <x:String>Merged</x:String>
+                        </ComboBox>
+                        <DatePicker Style="{StaticResource DatePicker}" />
+                        <ToggleSwitch Header="Developer mode" IsOn="True" />
+                    </StackPanel>
+                </appcontrols:AppSurfaceCard.Child>
+            </appcontrols:AppSurfaceCard>
+
+            <appcontrols:AppSurfaceCard x:Name="SegmentsScenarioCard" AutomationProperties.AutomationId="ScenarioSegments">
+                <appcontrols:AppSurfaceCard.Child>
+                    <StackPanel
+                        AutomationProperties.AutomationId="ScenarioSegments"
+                        Spacing="16">
+                        <appcontrols:AppSectionHeader Title="Segmented and action controls" Description="Repo filters, dropdown actions, and stat buttons with stable state geometry." />
+
+                        <Grid ColumnSpacing="20" RowSpacing="14">
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="Auto" />
+                                <ColumnDefinition Width="Auto" />
+                            </Grid.ColumnDefinitions>
+                            <Grid.RowDefinitions>
+                                <RowDefinition Height="Auto" />
+                                <RowDefinition Height="Auto" />
+                            </Grid.RowDefinitions>
+
+                            <StackPanel Grid.Row="0" Grid.Column="0" Spacing="8">
+                                <TextBlock Style="{StaticResource SectionSecondaryTextBlockStyle}" Text="Repository filters" />
+                                <toolkit:Segmented
+                                    Width="300"
+                                    AutomationProperties.AutomationId="DesignLabRepoSegmented"
+                                    SelectedIndex="1"
+                                    SelectionMode="Single">
+                                    <toolkit:SegmentedItem helpers:PreviewStateHelper.VisualState="PointerOver" Content="Public" />
+                                    <toolkit:SegmentedItem Content="Private" />
+                                    <toolkit:SegmentedItem Content="Forked" />
+                                </toolkit:Segmented>
+                            </StackPanel>
+
+                            <StackPanel Grid.Row="0" Grid.Column="1" Spacing="8">
+                                <TextBlock Style="{StaticResource SectionSecondaryTextBlockStyle}" Text="Issue filters" />
+                                <StackPanel Orientation="Horizontal" Spacing="8">
+                                    <muxc:DropDownButton Content="Open" Style="{StaticResource AppDropDownButtonStyle}">
+                                        <muxc:DropDownButton.Flyout>
+                                            <MenuFlyout>
+                                                <MenuFlyoutItem Text="Open" />
+                                                <MenuFlyoutItem Text="Closed" />
+                                                <MenuFlyoutItem Text="Merged" />
+                                            </MenuFlyout>
+                                        </muxc:DropDownButton.Flyout>
+                                    </muxc:DropDownButton>
+                                    <Button Content="Filter" Style="{StaticResource AppOutlineButtonStyle}" />
+                                    <Button Content="Clear" Style="{StaticResource AppQuietButtonStyle}" />
+                                </StackPanel>
+                            </StackPanel>
+
+                            <StackPanel Grid.Row="1" Grid.Column="0" Grid.ColumnSpan="2" Spacing="8">
+                                <TextBlock Style="{StaticResource SectionSecondaryTextBlockStyle}" Text="Repository actions" />
+                                <StackPanel Orientation="Horizontal" Spacing="8">
+                                    <muxc:DropDownButton Width="160" Content="main" Style="{StaticResource AppDropDownButtonStyle}" />
+                                    <appcontrols:AppStatButton IconKind="Watch" IconForeground="{ThemeResource AppInkMutedBrush}" SelectedIconForeground="{ThemeResource AppAccentBrush}" IsSelected="True" ValueText="2.8k" />
+                                    <appcontrols:AppStatButton IconKind="Star" IconForeground="{ThemeResource AppInkMutedBrush}" SelectedIconForeground="{ThemeResource AppWarmAccentBrush}" IsSelected="True" ValueText="170k" />
+                                    <appcontrols:AppStatButton IconKind="Fork" IconForeground="{ThemeResource AppInkMutedBrush}" ValueText="28k" />
+                                </StackPanel>
+                            </StackPanel>
+                        </Grid>
+                    </StackPanel>
+                </appcontrols:AppSurfaceCard.Child>
+            </appcontrols:AppSurfaceCard>
+
+            <appcontrols:AppSurfaceCard x:Name="NavigationScenarioCard" AutomationProperties.AutomationId="ScenarioNavigation">
+                <appcontrols:AppSurfaceCard.Child>
+                    <StackPanel
+                        AutomationProperties.AutomationId="ScenarioNavigation"
+                        Spacing="16">
+                        <appcontrols:AppSectionHeader Title="Navigation and shell chrome" Description="Search rail, toolbar actions, and tabs rendered with the new shell language." />
+                        <Border
+                            Padding="16"
+                            Background="{ThemeResource AppCanvasRaisedBrush}"
+                            BorderBrush="{ThemeResource AppOutlineBrush}"
+                            BorderThickness="1"
+                            CornerRadius="{ThemeResource AppRadiusLarge}">
+                            <Grid RowSpacing="12">
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="Auto" />
+                                    <ColumnDefinition Width="*" />
+                                    <ColumnDefinition Width="Auto" />
+                                </Grid.ColumnDefinitions>
+                                <StackPanel Orientation="Horizontal" Spacing="8" VerticalAlignment="Center">
+                                    <Image Width="28" Height="28" Source="ms-appx:///Assets/JitHubLogoTitleBar.png" />
+                                    <TextBlock Style="{StaticResource ListItemTitleTextBlockStyle}" Text="JitHub" />
+                                </StackPanel>
+                                <Border
+                                    Grid.Column="1"
+                                    Height="42"
+                                    Padding="14,0"
+                                    Background="{ThemeResource AppSurfaceBrush}"
+                                    BorderBrush="{ThemeResource AppOutlineBrush}"
+                                    BorderThickness="1"
+                                    CornerRadius="{ThemeResource AppRadiusMedium}">
+                                    <Grid ColumnSpacing="10">
+                                        <Grid.ColumnDefinitions>
+                                            <ColumnDefinition Width="*" />
+                                            <ColumnDefinition Width="Auto" />
+                                        </Grid.ColumnDefinitions>
+                                        <TextBlock
+                                            VerticalAlignment="Center"
+                                            FontFamily="{ThemeResource AppUiFontFamily}"
+                                            Foreground="{ThemeResource AppInkBrush}"
+                                            Text="flutter/flutter" />
+                                        <FontIcon
+                                            Grid.Column="1"
+                                            VerticalAlignment="Center"
+                                            FontFamily="{StaticResource SegoeFluentIcons}"
+                                            Foreground="{ThemeResource AppInkMutedBrush}"
+                                            Glyph="&#xE721;" />
+                                    </Grid>
+                                </Border>
+                                <Button Grid.Column="2" Style="{StaticResource AppToolbarButtonStyle}">
+                                    <FontIcon FontFamily="{StaticResource SegoeFluentIcons}" Glyph="&#xE712;" />
+                                </Button>
+                            </Grid>
+                        </Border>
+                        <muxc:TabView Style="{StaticResource JitTabViewStyle}">
+                            <muxc:TabViewItem Header="Home"><TextBlock Text="Home content" /></muxc:TabViewItem>
+                            <muxc:TabViewItem Header="Issues"><TextBlock Text="Issue content" /></muxc:TabViewItem>
+                        </muxc:TabView>
+                    </StackPanel>
+                </appcontrols:AppSurfaceCard.Child>
+            </appcontrols:AppSurfaceCard>
+
+            <appcontrols:AppSurfaceCard x:Name="SettingsScenarioCard" AutomationProperties.AutomationId="ScenarioSettings">
+                <appcontrols:AppSurfaceCard.Child>
+                    <StackPanel
+                        AutomationProperties.AutomationId="ScenarioSettings"
+                        Spacing="16">
+                        <appcontrols:AppSectionHeader Title="Settings reference" Description="App-owned settings cards and credit cards." />
+                        <appcontrols:AppSettingsCard Header="Theme" Description="Set app theme to light, dark or follow Windows system theme.">
+                            <appcontrols:AppSettingsCard.HeaderIcon>
+                                <FontIcon Glyph="&#xE790;" />
+                            </appcontrols:AppSettingsCard.HeaderIcon>
+                            <appcontrols:AppSettingsCard.ActionContent>
+                                <ComboBox Width="140" SelectedIndex="0">
+                                    <x:String>System</x:String>
+                                    <x:String>Light</x:String>
+                                    <x:String>Dark</x:String>
+                                </ComboBox>
+                            </appcontrols:AppSettingsCard.ActionContent>
+                        </appcontrols:AppSettingsCard>
+                        <appcontrols:AppSettingsCard Header="Version" Description="0.0.0-designlab">
+                            <appcontrols:AppSettingsCard.HeaderIcon>
+                                <BitmapIcon UriSource="ms-appx:///Assets/JitHubLogo.png" ShowAsMonochrome="False" />
+                            </appcontrols:AppSettingsCard.HeaderIcon>
+                            <appcontrols:AppSettingsCard.ActionContent>
+                                <Button Content="View Source" Style="{StaticResource AppAccentButtonStyle}" />
+                            </appcontrols:AppSettingsCard.ActionContent>
+                        </appcontrols:AppSettingsCard>
+                    </StackPanel>
+                </appcontrols:AppSurfaceCard.Child>
+            </appcontrols:AppSurfaceCard>
+
+            <appcontrols:AppSurfaceCard x:Name="RepoScenarioCard" AutomationProperties.AutomationId="ScenarioRepoReference">
+                <appcontrols:AppSurfaceCard.Child>
+                    <StackPanel
+                        AutomationProperties.AutomationId="ScenarioRepoReference"
+                        Spacing="16">
+                        <appcontrols:AppSectionHeader Title="Repository reference" Description="Repo header, branch picker, and stat buttons." />
+                        <StackPanel Orientation="Horizontal" Spacing="8">
+                            <ComboBox MinWidth="160" SelectedIndex="0">
+                                <x:String>master</x:String>
+                                <x:String>stable</x:String>
+                            </ComboBox>
+                            <appcontrols:AppStatButton IconKind="Watch" IconForeground="{ThemeResource AppInkMutedBrush}" SelectedIconForeground="{ThemeResource AppAccentBrush}" IsSelected="True" ValueText="2.8k" />
+                            <appcontrols:AppStatButton IconKind="Star" IconForeground="{ThemeResource AppInkMutedBrush}" SelectedIconForeground="{ThemeResource AppWarmAccentBrush}" IsSelected="True" ValueText="170k" />
+                            <appcontrols:AppStatButton IconKind="Fork" IconForeground="{ThemeResource AppInkMutedBrush}" ValueText="28k" />
+                        </StackPanel>
+                    </StackPanel>
+                </appcontrols:AppSurfaceCard.Child>
+            </appcontrols:AppSurfaceCard>
+
+            <appcontrols:AppSurfaceCard x:Name="ActivitiesScenarioCard" AutomationProperties.AutomationId="ScenarioActivities">
+                <appcontrols:AppSurfaceCard.Child>
+                    <StackPanel
+                        AutomationProperties.AutomationId="ScenarioActivities"
+                        Spacing="16">
+                        <appcontrols:AppSectionHeader
+                            Title="Activity cards"
+                            Description="Every documented GitHub Events API type rendered with typed details and in-app action chips." />
+                        <Grid
+                            HorizontalAlignment="Left"
+                            ColumnSpacing="16">
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="760" />
+                                <ColumnDefinition Width="380" />
+                            </Grid.ColumnDefinitions>
+                            <StackPanel Spacing="8">
+                                <TextBlock Style="{StaticResource SectionSecondaryTextBlockStyle}" Text="Roomy dashboard width" />
+                                <ItemsControl
+                                    ItemTemplateSelector="{StaticResource GitHubActivityCardTemplateSelector}"
+                                    ItemsSource="{x:Bind ActivityCards, Mode=OneWay}" />
+                            </StackPanel>
+                            <StackPanel Grid.Column="1" Spacing="8">
+                                <TextBlock Style="{StaticResource SectionSecondaryTextBlockStyle}" Text="Dense sidebar width" />
+                                <ItemsControl
+                                    ItemTemplateSelector="{StaticResource GitHubActivityCardTemplateSelector}"
+                                    ItemsSource="{x:Bind ActivityCards, Mode=OneWay}" />
+                            </StackPanel>
+                        </Grid>
+                    </StackPanel>
+                </appcontrols:AppSurfaceCard.Child>
+            </appcontrols:AppSurfaceCard>
+
+            <appcontrols:AppSurfaceCard x:Name="ConversationScenarioCard" AutomationProperties.AutomationId="ScenarioConversation">
+                <appcontrols:AppSurfaceCard.Child>
+                    <StackPanel
+                        AutomationProperties.AutomationId="ScenarioConversation"
+                        Spacing="16">
+                        <appcontrols:AppSectionHeader Title="Conversation reference" Description="Comment surfaces, labels, and reactions." />
+                        <common:MarkdownForm
+                            AutomationProperties.AutomationId="DesignLabMarkdownComposer"
+                            EditorHeight="120"
+                            HorizontalAlignment="Left"
+                            Width="920"
+                            Text="Thanks for the detailed report. I can reproduce this on the current build.">
+                            <common:MarkdownForm.ActionContent>
+                                <StackPanel Style="{StaticResource ActionPanel}">
+                                    <Button Content="Close issue" Style="{StaticResource AppDangerOutlineButtonStyle}" />
+                                    <Button Content="Comment" Style="{StaticResource AppAccentButtonStyle}" />
+                                </StackPanel>
+                            </common:MarkdownForm.ActionContent>
+                        </common:MarkdownForm>
+                        <common:CommentBlock>
+                            <common:CommentBlock.HeaderContent>
+                                <Grid>
+                                    <TextBlock Style="{StaticResource SectionSecondaryTextBlockStyle}">
+                                        <Run FontWeight="SemiBold" Text="nerocui" />
+                                        <Run Text=" commented 3h ago" />
+                                    </TextBlock>
+                                </Grid>
+                            </common:CommentBlock.HeaderContent>
+                            <common:CommentBlock.BodyContent>
+                                <StackPanel Padding="12" Spacing="12">
+                                    <TextBlock Text="This is a reference conversation block for screenshot proof." />
+                                    <StackPanel Orientation="Horizontal" Spacing="6">
+                                        <common:RepoLabel Label="{x:Bind BugLabel, Mode=OneWay}" />
+                                        <common:RepoLabel Label="{x:Bind AccessibilityLabel, Mode=OneWay}" />
+                                        <common:RepoLabel Label="{x:Bind NeedsTriageLabel, Mode=OneWay}" />
+                                    </StackPanel>
+                                    <StackPanel Orientation="Horizontal" Spacing="8">
+                                        <Border
+                                            Height="24"
+                                            MinWidth="48"
+                                            Padding="8,0"
+                                            Background="{ThemeResource AppSuccessBrush}"
+                                            CornerRadius="{ThemeResource AppRadiusSmall}">
+                                            <TextBlock Style="{StaticResource AppStatusPillTextBlockStyle}" Text="Open" />
+                                        </Border>
+                                        <Border
+                                            Height="24"
+                                            MinWidth="56"
+                                            Padding="8,0"
+                                            Background="{ThemeResource AppDangerBrush}"
+                                            CornerRadius="{ThemeResource AppRadiusSmall}">
+                                            <TextBlock Style="{StaticResource AppStatusPillTextBlockStyle}" Text="Closed" />
+                                        </Border>
+                                    </StackPanel>
+                                    <StackPanel Orientation="Horizontal" Spacing="8">
+                                        <common:EmojiButton Reaction="Plus1" ReactionCount="12" ShowReactionCount="True" Voted="True" />
+                                        <common:EmojiButton Reaction="Heart" ReactionCount="4" ShowReactionCount="True" />
+                                        <common:EmojiButton Reaction="Hooray" />
+                                        <common:EmojiButton Reaction="Eyes" />
+                                        <common:EmojiPanelButton ViewModel="{x:Bind DemoEmojiPanelViewModel}" />
+                                    </StackPanel>
+                                </StackPanel>
+                            </common:CommentBlock.BodyContent>
+                        </common:CommentBlock>
+                    </StackPanel>
+                </appcontrols:AppSurfaceCard.Child>
+            </appcontrols:AppSurfaceCard>
+
+            <appcontrols:AppSurfaceCard x:Name="PullRequestTimelineScenarioCard" AutomationProperties.AutomationId="ScenarioPullRequestTimeline">
+                <appcontrols:AppSurfaceCard.Child>
+                    <StackPanel
+                        AutomationProperties.AutomationId="ScenarioPullRequestTimeline"
+                        Spacing="16">
+                        <appcontrols:AppSectionHeader
+                            Title="Pull request timeline"
+                            Description="Commit and PR update rows rendered as inline timeline sentences, using the same link/tone tokens as activity cards." />
+                        <Grid
+                            HorizontalAlignment="Left"
+                            ColumnSpacing="16">
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="760" />
+                                <ColumnDefinition Width="380" />
+                            </Grid.ColumnDefinitions>
+                            <StackPanel Spacing="8">
+                                <TextBlock Style="{StaticResource SectionSecondaryTextBlockStyle}" Text="Roomy conversation width" />
+                                <ItemsControl ItemsSource="{x:Bind PullRequestTimelineItems, Mode=OneWay}">
+                                    <ItemsControl.ItemTemplate>
+                                        <DataTemplate>
+                                            <conversation:PullRequestTimelineItem Node="{Binding}" />
+                                        </DataTemplate>
+                                    </ItemsControl.ItemTemplate>
+                                    <ItemsControl.ItemsPanel>
+                                        <ItemsPanelTemplate>
+                                            <StackPanel Spacing="8" />
+                                        </ItemsPanelTemplate>
+                                    </ItemsControl.ItemsPanel>
+                                </ItemsControl>
+                            </StackPanel>
+                            <StackPanel Grid.Column="1" Spacing="8">
+                                <TextBlock Style="{StaticResource SectionSecondaryTextBlockStyle}" Text="Dense conversation width" />
+                                <ItemsControl ItemsSource="{x:Bind PullRequestTimelineItems, Mode=OneWay}">
+                                    <ItemsControl.ItemTemplate>
+                                        <DataTemplate>
+                                            <conversation:PullRequestTimelineItem Node="{Binding}" />
+                                        </DataTemplate>
+                                    </ItemsControl.ItemTemplate>
+                                    <ItemsControl.ItemsPanel>
+                                        <ItemsPanelTemplate>
+                                            <StackPanel Spacing="8" />
+                                        </ItemsPanelTemplate>
+                                    </ItemsControl.ItemsPanel>
+                                </ItemsControl>
+                            </StackPanel>
+                        </Grid>
+                    </StackPanel>
+                </appcontrols:AppSurfaceCard.Child>
+            </appcontrols:AppSurfaceCard>
+
+            <appcontrols:AppSurfaceCard x:Name="EmptyScenarioCard" AutomationProperties.AutomationId="ScenarioEmptyState">
+                <appcontrols:AppSurfaceCard.Child>
+                    <common:EmptyStateView
+                        AutomationProperties.AutomationId="ScenarioEmptyState"
+                        Title="Nothing here yet"
+                        Description="Use this surface to verify quiet empty states in both themes." />
+                </appcontrols:AppSurfaceCard.Child>
+            </appcontrols:AppSurfaceCard>
+        </StackPanel>
+    </ScrollViewer>
+</Page>
+

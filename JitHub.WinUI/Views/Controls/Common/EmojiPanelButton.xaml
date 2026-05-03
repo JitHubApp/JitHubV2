@@ -12,29 +12,47 @@
     <Button
         Grid.Column="0"
         Margin="0 0 4 0"
-        Padding="4 2"
-        Content="🙂">
+        AutomationProperties.AutomationId="EmojiPanelLauncherButton"
+        Style="{StaticResource AppEmojiLauncherButtonStyle}">
+        <Grid
+            Width="24"
+            Height="24"
+            HorizontalAlignment="Center"
+            VerticalAlignment="Center">
+            <TextBlock
+                HorizontalAlignment="Center"
+                VerticalAlignment="Center"
+                FontFamily="Segoe UI Emoji"
+                FontSize="16"
+                LineHeight="24"
+                LineStackingStrategy="BlockLineHeight"
+                Text="🙂"
+                TextAlignment="Center"
+                Translation="0,0,0" />
+        </Grid>
         <Button.Flyout>
             <Flyout>
                 <Flyout.FlyoutPresenterStyle>
                     <Style TargetType="FlyoutPresenter">
-                        <Setter Property="Padding" Value="8"/>
-                        <Setter Property="CornerRadius" Value="8"/>
-                        <Setter Property="Background" Value="{ThemeResource SystemControlAcrylicElementMediumHighBrush}"/>
+                        <Setter Property="Padding" Value="10"/>
+                        <Setter Property="CornerRadius" Value="{ThemeResource AppRadiusLarge}"/>
+                        <Setter Property="Background" Value="{ThemeResource AppOverlayBrush}"/>
+                        <Setter Property="BorderBrush" Value="{ThemeResource AppHairlineBrush}"/>
+                        <Setter Property="BorderThickness" Value="1"/>
                     </Style>
                 </Flyout.FlyoutPresenterStyle>
                 <Grid
-                    ColumnSpacing="4"
-                    RowSpacing="4">
+                    ColumnSpacing="6"
+                    RowSpacing="6">
                     <Grid.ColumnDefinitions>
-                        <ColumnDefinition Width="*"/>
-                        <ColumnDefinition Width="*"/>
-                        <ColumnDefinition Width="*"/>
-                        <ColumnDefinition Width="*"/>
+                        <ColumnDefinition Width="32"/>
+                        <ColumnDefinition Width="32"/>
+                        <ColumnDefinition Width="32"/>
+                        <ColumnDefinition Width="32"/>
                     </Grid.ColumnDefinitions>
                     <Grid.RowDefinitions>
-                        <RowDefinition Height="*"/>
-                        <RowDefinition Height="*"/>
+                        <RowDefinition Height="32"/>
+                        <RowDefinition Height="32"/>
                     </Grid.RowDefinitions>
                     <local:EmojiButton
                         Grid.Column="0"

@@ -2,7 +2,7 @@ using JitHub.Models.GitHub;
 using JitHub.Services;
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.DependencyInjection;
-using Octokit;
+using JitHub.Models.LegacyGitHub;
 using System;
 
 namespace JitHub.WinUI.ViewModels.Base

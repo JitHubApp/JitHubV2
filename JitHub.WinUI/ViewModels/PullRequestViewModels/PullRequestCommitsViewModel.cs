@@ -3,7 +3,7 @@ using JitHub.Services;
 using JitHub.WinUI.ViewModels.Base;
 using CommunityToolkit.Mvvm.DependencyInjection;
 using CommunityToolkit.Mvvm.Input;
-using Octokit;
+using JitHub.Models.LegacyGitHub;
 using System;
 using System.Collections.Generic;
 using System.Linq;

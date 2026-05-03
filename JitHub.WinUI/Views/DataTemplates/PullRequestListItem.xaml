@@ -17,7 +17,7 @@
                     </muxc:ItemsRepeater.Layout>
                 </muxc:ItemsRepeater>
                 <StackPanel Orientation="Horizontal" Spacing="4">
-                    <TextBlock Foreground="Gray">
+                    <TextBlock Foreground="{ThemeResource AppInkSubtleBrush}">
                         <Run Text="{Binding Model.Number, Converter={StaticResource NumberToHashTaggedStringConverter}, Mode=OneWay}" />
                         <Run Text="{Binding Model.CreatedAt, Converter={StaticResource OpenDateToStringConverter}, Mode=OneWay}" />
                         <Run Text="{Binding Model.User, Converter={StaticResource UserToDiscriptionStringConverter}, Mode=OneWay}" />

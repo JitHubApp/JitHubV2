@@ -1,8 +1,8 @@
 using JitHub.Models;
 using JitHub.WinUI.ViewModels.Base;
 using CommunityToolkit.Mvvm.Input;
-using Octokit;
-using SearchRepositoriesRequest = Octokit.SearchRepositoriesRequest;
+using JitHub.Models.LegacyGitHub;
+using SearchRepositoriesRequest = JitHub.Models.LegacyGitHub.SearchRepositoriesRequest;
 using System;
 using System.Collections.ObjectModel;
 using System.Threading.Tasks;

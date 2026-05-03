@@ -19,23 +19,23 @@ namespace JitHub.WinUI.ViewModels
     {
         private ICollection<string> _themes = [];
         private string _selectedTheme = ThemeConst.System;
+        private bool _restartRequired;
         private readonly IThemeService _themeService;
         private readonly ISettingService _settingService;
         private readonly NavigationService _navigationService;
         private readonly IGitHubService _githubService;
-        private bool _restartRequired;
         private string _version = string.Empty;
         private int _clickedTime;
 
-        public bool RestartRequired
-        {
-            get => _restartRequired;
-            set => SetProperty(ref _restartRequired, value);
-        }
         public ICollection<string> Themes
         {
             get => _themes;
             set => SetProperty(ref _themes, value);
+        }
+        public bool RestartRequired
+        {
+            get => _restartRequired;
+            set => SetProperty(ref _restartRequired, value);
         }
         public string SelectedTheme
         {
@@ -58,6 +58,7 @@ namespace JitHub.WinUI.ViewModels
         public CreditPersonale Keira { get; }
         public CreditPersonale Jakub { get; }
         public CreditPersonale ZyC { get; }
+        public CreditPersonale Xueyang { get; }
         public SettingsViewModel()
         {
             _themeService = Ioc.Default.GetService<IThemeService>()
@@ -149,50 +150,61 @@ namespace JitHub.WinUI.ViewModels
                     new PersonalLink("https://github.com/billzyc", PersonalLink.GitHubLogo),
                 }
             );
+            Xueyang = new CreditPersonale(
+                "ms-appx:///Assets/ContributorsProfilePhotos/XueyangProfile.png",
+                "Xueyang Song",
+                "ML + Battery Researcher",
+                "Xueyang is an ML and battery researcher whose publications are widely referenced across academic institutions and industry, connecting data-driven methods with practical energy research.",
+                Color.FromArgb(255, 176, 161, 132),
+                new List<PersonalLink>()
+                {
+                    new PersonalLink("https://www.linkedin.com/in/xueyang-song-b79bb9192/", PersonalLink.LinkedInLogo),
+                    new PersonalLink("https://scholar.google.com/citations?user=4FvfgxkAAAAJ&hl=en", PersonalLink.GoogleScholarLogo),
+                }
+            );
         }
 
         public void Restart()
         {
-            AppInstance.Restart(SelectedTheme);
+            if (Application.Current is App app)
+            {
+                app.ApplyTheme(SelectedTheme);
+            }
+
+            RestartRequired = false;
         }
 
         public async void ViewJitHubCode()
         {
-            var jithub = await _githubService.GetRepository("JitHubApp", "JitHubV2");
-            if (jithub is not null)
+            try
             {
-                _navigationService.NavigateTo("JitHub", typeof(RepoDetailPage), new RepoDetailPageArgs(RepoPageType.CodePage, jithub));
+                var jithub = await _githubService.GetRepository("JitHubApp", "JitHubV2");
+                if (jithub is not null)
+                {
+                    _navigationService.NavigateTo("JitHub", typeof(RepoDetailPage), new RepoDetailPageArgs(RepoPageType.CodePage, jithub));
+                }
+            }
+            catch (Exception ex)
+            {
+                System.Diagnostics.Debug.WriteLine($"Failed to open JitHub source repository: {ex}");
             }
         }
 
         public void SelectionChanged(object sender, SelectionChangedEventArgs e)
         {
-            var currentTheme = _themeService.GetTheme();
-            if (e.AddedItems.OfType<string>().FirstOrDefault() is string added &&
-                e.RemovedItems.OfType<string>().FirstOrDefault() is string removed &&
-                added == removed &&
-                added == currentTheme)
+            if (e.AddedItems.OfType<string>().FirstOrDefault() is not string added)
             {
-                RestartRequired = false;
                 return;
             }
 
-            _themeService.SetTheme(SelectedTheme);
-            if (SelectedTheme == ThemeConst.System)
+            SelectedTheme = added;
+            if (Application.Current is App app)
             {
-                RestartRequired = currentTheme != SelectedTheme;
+                app.ApplyTheme(SelectedTheme);
             }
             else
             {
-                var currentApplicationTheme = App.Current.RequestedTheme;
-                if (SelectedTheme == ThemeConst.Light)
-                {
-                    RestartRequired = currentApplicationTheme == ApplicationTheme.Dark;
-                }
-                else
-                {
-                    RestartRequired = currentApplicationTheme == ApplicationTheme.Light;
-                }
+                _themeService.SetTheme(SelectedTheme);
             }
         }
     }

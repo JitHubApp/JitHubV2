@@ -3,7 +3,7 @@ using NavigationView = Microsoft.UI.Xaml.Controls.NavigationView;
 using NavigationViewItemInvokedEventArgs = Microsoft.UI.Xaml.Controls.NavigationViewItemInvokedEventArgs;
 using System.Windows.Input;
 using JitHub.Models.CommandArgs;
-using Octokit;
+using JitHub.Models.LegacyGitHub;
 
 namespace JitHub.WinUI.ViewModels.IssueViewModels
 {

@@ -50,6 +50,19 @@ You also need:
 - Node.js
 - Yarn
 
+Optional Windows CLI tools are documented in `docs/windows-cli-workflow.md`:
+
+- `winapp` for packaged app launch, debug identity, UI automation, and screenshot smoke checks
+- `msstore` for Microsoft Store Partner Center publishing, drafts, flights, rollout, and future metadata automation
+- `store` for user-facing Store listing, search, install, and update smoke checks
+
+Check or install the tools with:
+
+```powershell
+.\eng\Ensure-WindowsCliTools.ps1
+.\eng\Ensure-WindowsCliTools.ps1 -InstallMissing
+```
+
 ### Desktop app setup
 
 Create `JitHub.WinUI/appsettings.json` with your GitHub OAuth client ID. This file is gitignored and must never be committed.
@@ -90,6 +103,40 @@ The website does not require `wasm-tools`. The landing page is static SSR, and t
 ### Running the app locally
 
 After editor assets are present, open `JitHub.slnx` in Visual Studio and run the packaged `JitHub.WinUI` project.
+
+To build Debug, apply a debug package identity with the Windows App CLI, and launch the app from the terminal, run:
+
+```powershell
+.\eng\Start-JitHubWinUIDebug.ps1
+```
+
+This builds `JitHub.WinUI` as `Debug|x64`, runs `winapp create-debug-identity` against the built executable, and launches `JitHub.WinUI.exe`.
+
+To launch a different platform or pass app arguments:
+
+```powershell
+.\eng\Start-JitHubWinUIDebug.ps1 -Platform ARM64
+.\eng\Start-JitHubWinUIDebug.ps1 -AppArguments '--page=design-lab', '--theme=dark'
+```
+
+### Design lab and screenshot proof
+
+The desktop app now includes a dev-only `DesignLabPage` plus a small UI automation harness for screenshot proof.
+
+Generate the current light/dark screenshot matrix with:
+
+```powershell
+.\capture-winui-design.ps1
+```
+
+Artifacts are written to:
+
+- `artifacts/screenshots/winui/index.html`
+- `artifacts/screenshots/winui/*.png`
+
+The capture script builds `JitHub.WinUI`, launches scenario-specific pages with launch arguments such as `--page=design-lab`, `--scenario=buttons`, and `--theme=dark`, and then uses the `JitHub.WinUI.Automation` project to capture deterministic UI states through FlaUI.
+
+`winapp ui` is also available as a lightweight command-line proof path. Use `.\eng\Invoke-WinAppCliSmoke.ps1` for quick launch/wait/screenshot validation; keep the FlaUI design-lab harness for the full deterministic matrix.
 
 ## Web deployment
 
@@ -134,6 +181,22 @@ Optional environment variables:
 - `JITHUB_STORE_BUNDLE_PLATFORMS` (defaults to `x86|x64|arm64`)
 
 Run the **Publish JitHub to Microsoft Store** workflow manually and provide a four-part `release_version` such as `1.6.5.0`. The workflow checks out `nerocui/jithub-vs-code`, builds the editor assets into `artifacts/EditorAssets/dist`, patches `JitHub.WinUI/Package.appxmanifest` at runtime from the configured environment values, builds a Store upload package, uploads the build artifacts, and then publishes the generated `.appxupload` or `.msixupload` to the Microsoft Store.
+
+The workflow uses the Microsoft Store Developer CLI (`msstore`) as the Store control plane. The `store_submission_mode` input controls the submission target:
+
+- `draft`: upload the package but keep the Partner Center submission uncommitted
+- `flight`: publish to the configured `store_flight_id`
+- `public`: submit the package publicly
+
+Use `package_rollout_percentage` for staged rollout when Partner Center should release the package gradually.
+
+After a release, verify the public Store listing from a Windows machine with:
+
+```powershell
+.\eng\Test-StoreListing.ps1
+```
+
+For the detailed CLI policy and command reference, see `docs/windows-cli-workflow.md`.
 
 ## Contributing
 

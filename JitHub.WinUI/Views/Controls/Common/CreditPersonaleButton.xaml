@@ -10,24 +10,50 @@
     d:DesignWidth="400">
 
     <Button
+        Width="172"
+        Height="204"
+        Padding="0"
+        Style="{StaticResource AppQuietButtonStyle}"
+        HorizontalContentAlignment="Stretch"
+        VerticalContentAlignment="Stretch"
         Background="Transparent"
         BorderThickness="0"
         Click="{x:Bind OnClick, Mode=OneWay}">
-        <StackPanel
-            HorizontalAlignment="Center">
-            <PersonPicture
-                ProfilePicture="{x:Bind Person.ImageSource, Mode=OneWay}"
-                Width="86"
-                Margin="0 0 0 8"
-                HorizontalAlignment="Center"/>
-            <TextBlock
+        <Border
+            Width="172"
+            Height="204"
+            Padding="16"
+            Background="{ThemeResource AppSurfaceBrush}"
+            BorderBrush="{ThemeResource AppOutlineBrush}"
+            BorderThickness="1"
+            CornerRadius="{ThemeResource AppRadiusLarge}">
+            <StackPanel
+                Width="140"
                 HorizontalAlignment="Center"
-                Text="{x:Bind Person.PersonaleName, Mode=OneWay}"/>
-            <TextBlock
-                HorizontalAlignment="Center"
-                Foreground="{ThemeResource SystemControlForegroundChromeGrayBrush}"
-                Text="{x:Bind Person.Role, Mode=OneWay}"/>
-        </StackPanel>
+                VerticalAlignment="Center"
+                Spacing="6">
+                <PersonPicture
+                    ProfilePicture="{x:Bind Person.ImageSource, Mode=OneWay}"
+                    Width="86"
+                    Margin="0 0 0 6"
+                    HorizontalAlignment="Center"/>
+                <TextBlock
+                    HorizontalAlignment="Center"
+                    MaxLines="1"
+                    Style="{StaticResource ListItemTitleTextBlockStyle}"
+                    Text="{x:Bind Person.PersonaleName, Mode=OneWay}"
+                    TextAlignment="Center"
+                    TextTrimming="CharacterEllipsis"/>
+                <TextBlock
+                    HorizontalAlignment="Center"
+                    MaxLines="2"
+                    Style="{StaticResource ListItemSecondaryTextBlockStyle}"
+                    Text="{x:Bind Person.Role, Mode=OneWay}"
+                    TextAlignment="Center"
+                    TextTrimming="CharacterEllipsis"
+                    TextWrapping="WrapWholeWords"/>
+            </StackPanel>
+        </Border>
     </Button>
 </UserControl>
 

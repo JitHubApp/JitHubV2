@@ -360,8 +360,8 @@ public sealed partial class RepoDetailPageViewModel : ViewModelBase
         Task<bool> starredTask = _gitHubClientService.IsRepositoryStarredAsync(token, _repository.Owner.Login, _repository.Name);
         Task<bool> watchedTask = _gitHubClientService.IsRepositoryWatchedAsync(token, _repository.Owner.Login, _repository.Name);
         await Task.WhenAll(starredTask, watchedTask);
-        _isStarred = starredTask.Result;
-        _isWatching = watchedTask.Result;
+        _isStarred = await starredTask;
+        _isWatching = await watchedTask;
         ApplyRepositoryActionState();
     }
 

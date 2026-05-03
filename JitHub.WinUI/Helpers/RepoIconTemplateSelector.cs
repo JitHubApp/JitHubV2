@@ -1,5 +1,5 @@
 using JitHub.Models;
-using Octokit;
+using JitHub.Models.LegacyGitHub;
 using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Controls;
 

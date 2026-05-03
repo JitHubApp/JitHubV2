@@ -47,6 +47,7 @@
                 Margin="16"
                 FontFamily="Segoe MDL2 Assets"
                 Content="&#xE711;"
+                Style="{StaticResource AppToolbarButtonStyle}"
                 CornerRadius="8"
                 Width="32"
                 Height="32"

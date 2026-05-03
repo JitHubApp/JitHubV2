@@ -5,7 +5,7 @@ using JitHub.WinUI.ViewModels.Base;
 using JitHub.WinUI.ViewModels.IssueViewModels;
 using JitHub.WinUI.ViewModels.UserViewModel;
 using CommunityToolkit.Mvvm.Input;
-using Octokit;
+using JitHub.Models.LegacyGitHub;
 using System.Collections.Generic;
 using System.Collections.ObjectModel;
 using System.Linq;
@@ -103,7 +103,10 @@ namespace JitHub.WinUI.ViewModels.PullRequestViewModels.ConversationViewModels
                 var replyVM = new UserCommentBlockViewModel(reply, _quoteReplyCommand);
                 Replies.Add(replyVM);
             }
-            catch { }
+            catch (System.Exception ex)
+            {
+                System.Diagnostics.Debug.WriteLine($"Failed to reply to review comment: {ex}");
+            }
         }
 
         private void ExpandReplyBox()

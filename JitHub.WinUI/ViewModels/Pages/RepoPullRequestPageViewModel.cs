@@ -519,10 +519,10 @@ public sealed partial class RepoPullRequestPageViewModel : ViewModelBase
             StatusText = previousStatusText;
 
             return new PullRequestMetadataDialogData(
-                reviewersTask.Result,
-                assigneesTask.Result,
-                labelsTask.Result,
-                milestonesTask.Result);
+                await reviewersTask,
+                await assigneesTask,
+                await labelsTask,
+                await milestonesTask);
         }
         catch (GitHubAuthenticationException)
         {
@@ -1379,13 +1379,13 @@ public sealed partial class RepoPullRequestPageViewModel : ViewModelBase
                 pullRequest.Number);
             await Task.WhenAll(pullRequestTask, issueTask, commentsTask, eventsTask, reviewsTask, reviewCommentsTask, commitsTask);
 
-            GitHubPullRequest latestPullRequest = pullRequestTask.Result;
-            GitHubIssue latestIssue = issueTask.Result;
-            IReadOnlyList<GitHubIssueComment> comments = commentsTask.Result;
-            IReadOnlyList<GitHubIssueEvent> timelineEvents = eventsTask.Result;
-            IReadOnlyList<GitHubPullRequestReview> reviews = reviewsTask.Result;
-            IReadOnlyList<GitHubPullRequestReviewComment> reviewComments = reviewCommentsTask.Result;
-            IReadOnlyList<GitHubCommit> commits = commitsTask.Result;
+            GitHubPullRequest latestPullRequest = await pullRequestTask;
+            GitHubIssue latestIssue = await issueTask;
+            IReadOnlyList<GitHubIssueComment> comments = await commentsTask;
+            IReadOnlyList<GitHubIssueEvent> timelineEvents = await eventsTask;
+            IReadOnlyList<GitHubPullRequestReview> reviews = await reviewsTask;
+            IReadOnlyList<GitHubPullRequestReviewComment> reviewComments = await reviewCommentsTask;
+            IReadOnlyList<GitHubCommit> commits = await commitsTask;
 
             if (requestId != _detailRequestId)
             {

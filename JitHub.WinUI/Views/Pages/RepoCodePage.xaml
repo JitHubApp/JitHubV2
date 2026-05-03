@@ -20,23 +20,29 @@
             Height="50"
             HorizontalAlignment="Center"
             VerticalAlignment="Center"/>
-        <StackPanel
+        <Border
             x:Name="ErrorState"
             MaxWidth="520"
-            Spacing="12"
+            Padding="20"
             HorizontalAlignment="Center"
             VerticalAlignment="Center"
+            Background="{ThemeResource AppSurfaceBrush}"
+            BorderBrush="{ThemeResource AppOutlineBrush}"
+            BorderThickness="1"
+            CornerRadius="{ThemeResource AppRadiusLarge}"
             Visibility="Collapsed">
-            <TextBlock
-                HorizontalAlignment="Center"
-                FontSize="20"
-                FontWeight="SemiBold"
-                Text="Unable to load the embedded editor." />
-            <TextBlock
-                x:Name="ErrorText"
-                TextWrapping="WrapWholeWords"
-                TextAlignment="Center" />
-        </StackPanel>
+            <StackPanel Spacing="12">
+                <TextBlock
+                    HorizontalAlignment="Center"
+                    Style="{StaticResource SectionTitleTextBlockStyle}"
+                    Text="Unable to load the embedded editor." />
+                <TextBlock
+                    x:Name="ErrorText"
+                    Style="{StaticResource SectionSecondaryTextBlockStyle}"
+                    TextWrapping="WrapWholeWords"
+                    TextAlignment="Center" />
+            </StackPanel>
+        </Border>
         <Grid
             x:Name="WebViewContainer"
             HorizontalAlignment="Stretch"

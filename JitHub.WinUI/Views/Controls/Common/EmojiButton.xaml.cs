@@ -1,4 +1,4 @@
-using Octokit;
+using JitHub.Models.LegacyGitHub;
 using System.Collections;
 using System.Collections.Generic;
 using System.Linq;
@@ -6,7 +6,6 @@ using System.Windows.Input;
 using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Controls;
 using Microsoft.UI.Xaml.Media;
-using Windows.UI.ViewManagement;
 
 // The User Control item template is documented at https://go.microsoft.com/fwlink/?LinkId=234236
 
@@ -96,27 +95,31 @@ namespace JitHub.WinUI.Views.Controls.Common
 
         public Thickness GetPadding(bool showReactionCount)
         {
-            Thickness padding;
-            if (showReactionCount)
-            {
-                padding = new Thickness(4, 2, 4, 2);
-            }
-            else
-            {
-                padding = new Thickness(4);
-            }
-            return padding;
+            return showReactionCount
+                ? new Thickness(8, 0, 8, 0)
+                : new Thickness(0);
+        }
+
+        public string GetAutomationId(ReactionType reaction)
+        {
+            return $"EmojiReactionButton_{reaction}";
         }
 
         public Brush? GetBackgroundBrush(bool voted)
         {
-            if (!voted)
-            {
-                return null;
-            }
+            return GetAppBrush(voted ? "AppAccentBrush" : "AppSurfaceSubtleBrush");
+        }
 
-            var accentColor = new UISettings().GetColorValue(UIColorType.Accent);
-            return new SolidColorBrush(accentColor);
+        public Brush? GetForegroundBrush(bool voted)
+        {
+            return GetAppBrush(voted ? "AppAccentForegroundBrush" : "AppInkBrush");
+        }
+
+        private static Brush? GetAppBrush(string resourceKey)
+        {
+            return Application.Current.Resources.TryGetValue(resourceKey, out object value) && value is Brush brush
+                ? brush
+                : null;
         }
     }
 }

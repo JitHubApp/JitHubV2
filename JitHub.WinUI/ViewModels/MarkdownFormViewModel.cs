@@ -2,7 +2,6 @@ using CommunityToolkit.WinUI.Controls;
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.DependencyInjection;
 using JitHub.Services;
-using Microsoft.UI.Xaml.Controls;
 using System;
 using System.Windows.Input;
 
@@ -41,11 +40,6 @@ namespace JitHub.WinUI.ViewModels
         { 
             get => _submitCommand;
             set => SetProperty(ref _submitCommand, value);
-        }
-
-        public void OnNavChange(NavigationView sender, NavigationViewItemInvokedEventArgs args)
-        {
-            SelectedBodyView = args.InvokedItem as string ?? SelectedBodyView;
         }
 
         public void OnSubmit()

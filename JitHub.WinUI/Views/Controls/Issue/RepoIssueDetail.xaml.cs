@@ -1,7 +1,7 @@
 using JitHub.Models.Base;
 using JitHub.WinUI.ViewModels.IssueViewModels;
 using JitHub.WinUI.Views.Pages.IssuePage;
-using IssueModel = Octokit.Issue;
+using IssueModel = JitHub.Models.LegacyGitHub.Issue;
 using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Controls;
 
