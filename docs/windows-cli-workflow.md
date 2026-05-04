@@ -131,7 +131,7 @@ Recommended modes:
 - `flight`: use for internal/beta validation while the WinUI app is still hardening.
 - `public`: use only when the build is release-ready and the `microsoft-store` environment approval has been reviewed.
 
-The workflow remains manually triggered and guarded by `allow_winui_store_release` until the WinUI migration reaches full feature parity.
+The workflow remains manually triggered and should normally be run as `draft` first, then rerun as `public` after the Partner Center submission details are reviewed.
 
 ## Store client CLI usage
 
