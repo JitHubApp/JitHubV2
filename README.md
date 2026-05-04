@@ -161,8 +161,6 @@ Before enabling deployment:
 
 The repository includes a manual GitHub Actions workflow at `.github/workflows/jithub-store-release.yml` for building a Store upload package and publishing it to Partner Center in one run.
 
-The workflow is intentionally guarded during the WinUI migration. It fails unless `allow_winui_store_release` is explicitly set to `true`, because Store publishing should stay blocked until the WinUI app reaches full feature parity.
-
 Set up a protected GitHub environment named `microsoft-store` and configure these secrets there:
 
 - `STORE_PRODUCT_ID`

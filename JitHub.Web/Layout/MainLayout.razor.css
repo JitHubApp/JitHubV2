@@ -63,6 +63,67 @@
     gap: 0.65rem;
 }
 
+.theme-toggle {
+    display: inline-grid;
+    grid-template-columns: 1rem auto;
+    align-items: center;
+    gap: 0.45rem;
+    min-height: 2.3rem;
+    padding: 0.54rem 0.78rem;
+    border: 1px solid var(--border-soft);
+    border-radius: var(--radius-md);
+    color: var(--text-strong);
+    background: color-mix(in oklch, var(--surface) 88%, white 12%);
+    font: 600 0.76rem/1 var(--font-mono);
+    letter-spacing: 0.04em;
+    cursor: pointer;
+    transition: border-color 160ms ease, background-color 160ms ease, box-shadow 160ms ease, color 160ms ease;
+}
+
+.theme-toggle:hover {
+    border-color: color-mix(in oklch, var(--brand-jade) 36%, var(--border-soft));
+    background: color-mix(in oklch, var(--surface-strong) 88%, var(--brand-jade) 12%);
+    box-shadow: 0 8px 18px var(--shadow-soft);
+}
+
+.theme-toggle:focus-visible {
+    outline: 2px solid color-mix(in oklch, var(--brand-jade) 70%, transparent);
+    outline-offset: 3px;
+}
+
+.theme-toggle__icon {
+    grid-column: 1;
+    grid-row: 1;
+    width: 1rem;
+    height: 1rem;
+    transition: opacity 160ms ease, transform 160ms ease;
+}
+
+.theme-toggle__icon--light {
+    border-radius: 999px;
+    background:
+        radial-gradient(circle, var(--brand-gold) 0 39%, transparent 40%),
+        conic-gradient(from 0deg, transparent 0 8%, var(--brand-gold) 8% 13%, transparent 13% 20%, var(--brand-gold) 20% 25%, transparent 25% 33%, var(--brand-gold) 33% 38%, transparent 38% 45%, var(--brand-gold) 45% 50%, transparent 50% 58%, var(--brand-gold) 58% 63%, transparent 63% 70%, var(--brand-gold) 70% 75%, transparent 75% 83%, var(--brand-gold) 83% 88%, transparent 88%);
+}
+
+.theme-toggle__icon--dark {
+    border-radius: 999px;
+    background: var(--brand-jade);
+    box-shadow: inset -0.28rem -0.12rem 0 0 var(--surface-strong);
+    opacity: 0;
+    transform: rotate(-30deg) scale(0.82);
+}
+
+:root[data-theme="dark"] .theme-toggle__icon--light {
+    opacity: 0;
+    transform: rotate(30deg) scale(0.82);
+}
+
+:root[data-theme="dark"] .theme-toggle__icon--dark {
+    opacity: 1;
+    transform: rotate(0deg) scale(1);
+}
+
 .site-main {
     flex: 1;
 }

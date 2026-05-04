@@ -55,6 +55,7 @@
 }
 
 :root {
+    color-scheme: light;
     --paper: oklch(0.97 0.02 90);
     --paper-deep: oklch(0.958 0.02 90);
     --surface: oklch(0.98 0.015 90 / 0.96);
@@ -77,6 +78,42 @@
     --radius-xl: 1rem;
 }
 
+:root[data-theme="dark"] {
+    color-scheme: dark;
+    --paper: oklch(0.19 0.019 145);
+    --paper-deep: oklch(0.155 0.018 145);
+    --surface: oklch(0.205 0.019 145 / 0.96);
+    --surface-strong: oklch(0.235 0.02 145 / 0.98);
+    --text: oklch(0.84 0.026 105);
+    --text-strong: oklch(0.93 0.022 100);
+    --text-muted: oklch(0.69 0.025 115);
+    --brand-jade: oklch(0.72 0.1 153);
+    --brand-jade-deep: oklch(0.79 0.09 153);
+    --brand-gold: oklch(0.78 0.11 88);
+    --brand-violet: oklch(0.72 0.09 315);
+    --border-soft: oklch(0.39 0.035 145 / 0.86);
+    --shadow-soft: oklch(0.04 0.01 145 / 0.38);
+}
+
+@media (prefers-color-scheme: dark) {
+    :root:not([data-theme]) {
+        color-scheme: dark;
+        --paper: oklch(0.19 0.019 145);
+        --paper-deep: oklch(0.155 0.018 145);
+        --surface: oklch(0.205 0.019 145 / 0.96);
+        --surface-strong: oklch(0.235 0.02 145 / 0.98);
+        --text: oklch(0.84 0.026 105);
+        --text-strong: oklch(0.93 0.022 100);
+        --text-muted: oklch(0.69 0.025 115);
+        --brand-jade: oklch(0.72 0.1 153);
+        --brand-jade-deep: oklch(0.79 0.09 153);
+        --brand-gold: oklch(0.78 0.11 88);
+        --brand-violet: oklch(0.72 0.09 315);
+        --border-soft: oklch(0.39 0.035 145 / 0.86);
+        --shadow-soft: oklch(0.04 0.01 145 / 0.38);
+    }
+}
+
 *,
 *::before,
 *::after {
@@ -85,6 +122,7 @@
 
 html {
     min-height: 100%;
+    color-scheme: light dark;
     background:
         radial-gradient(circle at top left, color-mix(in oklch, var(--brand-gold) 8%, transparent) 0%, transparent 34%),
         radial-gradient(circle at top right, color-mix(in oklch, var(--brand-jade) 3%, transparent) 0%, transparent 28%),
