@@ -1,0 +1,10 @@
+{
+  "profiles": {
+    "JitHub.WinUI (Package)": {
+      "commandName": "MsixPackage"
+    },
+    "JitHub.WinUI (Unpackaged)": {
+      "commandName": "Project"
+    }
+  }
+}

@@ -1,0 +1,89 @@
+name: Build and deploy JitHub website
+
+on:
+  push:
+    branches:
+      - main
+    paths:
+      - '.github/workflows/main_jithubweb.yml'
+      - 'JitHub.Web/**'
+      - 'global.json'
+      - 'README.md'
+  pull_request:
+    branches:
+      - main
+    paths:
+      - '.github/workflows/main_jithubweb.yml'
+      - 'JitHub.Web/**'
+      - 'global.json'
+      - 'README.md'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+env:
+  AZURE_WEBAPP_NAME: ${{ vars.JITHUB_WEBAPP_NAME || 'jithub-web-prod' }}
+  WEBSITE_PROJECT: JitHub.Web/JitHub.Web.csproj
+
+jobs:
+  build:
+    name: Build website
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up .NET SDK
+        uses: actions/setup-dotnet@v4
+        with:
+          global-json-file: ./global.json
+
+      - name: Restore website dependencies
+        run: dotnet restore ./${{ env.WEBSITE_PROJECT }}
+
+      - name: Publish website
+        run: dotnet publish ./${{ env.WEBSITE_PROJECT }} --configuration Release --output ./publish
+
+      - name: Upload published website
+        uses: actions/upload-artifact@v4
+        with:
+          name: jithub-web-publish
+          path: ./publish
+          if-no-files-found: error
+
+  deploy:
+    name: Deploy website
+    if: github.event_name != 'pull_request'
+    needs: build
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Download published website
+        uses: actions/download-artifact@v4
+        with:
+          name: jithub-web-publish
+          path: ./publish
+
+      - name: Validate Azure Web App deployment configuration
+        shell: bash
+        env:
+          JITHUB_WEBAPP_PUBLISH_PROFILE: ${{ secrets.JITHUB_WEBAPP_PUBLISH_PROFILE }}
+        run: |
+          if [ -z "${AZURE_WEBAPP_NAME}" ]; then
+            echo "JITHUB_WEBAPP_NAME is empty. Configure the repository variable or set AZURE_WEBAPP_NAME in the workflow."
+            exit 1
+          fi
+
+          if [ -z "${JITHUB_WEBAPP_PUBLISH_PROFILE}" ]; then
+            echo "JITHUB_WEBAPP_PUBLISH_PROFILE is required. Create a regular Azure App Service Web App, download its publish profile, and save it as this GitHub secret."
+            exit 1
+          fi
+
+      - name: Deploy to Azure Web App
+        uses: azure/webapps-deploy@v3
+        with:
+          app-name: ${{ env.AZURE_WEBAPP_NAME }}
+          package: ./publish
+          publish-profile: ${{ secrets.JITHUB_WEBAPP_PUBLISH_PROFILE }}

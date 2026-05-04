@@ -1,0 +1,28 @@
+<UserControl
+    x:Class="JitHub.WinUI.Views.Controls.App.AppIcon"
+    x:Name="Root"
+    xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+    xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+    xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+    mc:Ignorable="d">
+    <Viewbox
+        Width="{Binding IconSize, ElementName=Root}"
+        Height="{Binding IconSize, ElementName=Root}"
+        Stretch="Uniform">
+        <Canvas Width="20" Height="20">
+            <Path
+                x:Name="PrimaryPath"
+                Fill="Transparent"
+                StrokeEndLineCap="Round"
+                StrokeLineJoin="Round"
+                StrokeStartLineCap="Round" />
+            <Path
+                x:Name="SecondaryPath"
+                Fill="Transparent"
+                StrokeEndLineCap="Round"
+                StrokeLineJoin="Round"
+                StrokeStartLineCap="Round" />
+        </Canvas>
+    </Viewbox>
+</UserControl>

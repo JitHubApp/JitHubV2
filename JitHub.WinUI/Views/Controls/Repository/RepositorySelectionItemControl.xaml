@@ -1,0 +1,42 @@
+<UserControl
+    x:Class="JitHub.WinUI.Views.Controls.Repository.RepositorySelectionItemControl"
+    xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+    xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+    xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+    mc:Ignorable="d">
+    <Border
+        Margin="0,0,0,8"
+        Style="{StaticResource InsetCardBorderStyle}">
+        <Grid ColumnSpacing="12">
+            <Grid.ColumnDefinitions>
+                <ColumnDefinition Width="Auto" />
+                <ColumnDefinition Width="*" />
+            </Grid.ColumnDefinitions>
+            <CheckBox
+                VerticalAlignment="Top"
+                IsChecked="{Binding Selected, Mode=TwoWay}" />
+            <StackPanel
+                Grid.Column="1"
+                Spacing="4">
+                <TextBlock
+                    Style="{StaticResource ListItemTitleTextBlockStyle}"
+                    Text="{Binding Repository.FullName}" />
+                <TextBlock
+                    Style="{StaticResource SectionSecondaryTextBlockStyle}"
+                    Text="{Binding Repository.Description}" />
+                <TextBlock
+                    Style="{StaticResource SectionSecondaryTextBlockStyle}">
+                    <Run Text="{Binding Repository.StargazersCount}" />
+                    <Run Text=" stars  •  " />
+                    <Run Text="{Binding Repository.ForksCount}" />
+                    <Run Text=" forks  •  " />
+                    <Run Text="{Binding Repository.OpenIssuesCount}" />
+                    <Run Text=" open issues" />
+                </TextBlock>
+            </StackPanel>
+        </Grid>
+    </Border>
+</UserControl>
+
+

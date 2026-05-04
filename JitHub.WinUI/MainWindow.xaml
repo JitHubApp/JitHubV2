@@ -1,0 +1,42 @@
+<?xml version="1.0" encoding="utf-8" ?>
+<Window
+    x:Class="JitHub.WinUI.MainWindow"
+    xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+    xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+    xmlns:local="using:JitHub.WinUI"
+    xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+    Title="JitHub"
+    mc:Ignorable="d">
+    <Window.SystemBackdrop>
+        <MicaBackdrop />
+    </Window.SystemBackdrop>
+
+    <Grid
+        x:Name="RootLayout"
+        Background="{ThemeResource AppCanvasBrush}">
+        <Border
+            x:Name="AppTitleBar"
+            Height="40"
+            VerticalAlignment="Top"
+            Background="Transparent" />
+        <Frame x:Name="ContentFrame" />
+        <Border
+            x:Name="ActivationStatusHost"
+            Margin="12"
+            HorizontalAlignment="Left"
+            VerticalAlignment="Bottom"
+            Background="{ThemeResource AppSurfaceBrush}"
+            BorderBrush="{ThemeResource AppOutlineBrush}"
+            BorderThickness="1"
+            CornerRadius="{ThemeResource AppRadiusMedium}"
+            Padding="10"
+            Visibility="Collapsed">
+            <TextBlock
+                x:Name="ActivationStatusText"
+                Foreground="{ThemeResource AppInkBrush}"
+                Text="Waiting for activation."
+                TextWrapping="WrapWholeWords" />
+        </Border>
+    </Grid>
+</Window>

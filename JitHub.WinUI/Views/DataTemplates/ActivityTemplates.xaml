@@ -1,0 +1,43 @@
+<ResourceDictionary
+    xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+    xmlns:appcontrols="using:JitHub.WinUI.Views.Controls.App"
+    xmlns:helpers="using:JitHub.WinUI.Helpers">
+
+    <DataTemplate x:Key="GitHubActivityDefaultCardTemplate">
+        <appcontrols:ActivityCard />
+    </DataTemplate>
+
+    <DataTemplate x:Key="GitHubActivityPushCardTemplate">
+        <appcontrols:ActivityCard />
+    </DataTemplate>
+
+    <DataTemplate x:Key="GitHubActivityIssueCardTemplate">
+        <appcontrols:ActivityCard />
+    </DataTemplate>
+
+    <DataTemplate x:Key="GitHubActivityPullRequestCardTemplate">
+        <appcontrols:ActivityCard />
+    </DataTemplate>
+
+    <DataTemplate x:Key="GitHubActivityCommitCardTemplate">
+        <appcontrols:ActivityCard />
+    </DataTemplate>
+
+    <DataTemplate x:Key="GitHubActivityRepositoryCardTemplate">
+        <appcontrols:ActivityCard />
+    </DataTemplate>
+
+    <helpers:ActivityCardTemplateSelector
+        x:Key="GitHubActivityCardTemplateSelector"
+        CommitTemplate="{StaticResource GitHubActivityCommitCardTemplate}"
+        DefaultTemplate="{StaticResource GitHubActivityDefaultCardTemplate}"
+        IssueTemplate="{StaticResource GitHubActivityIssueCardTemplate}"
+        PullRequestTemplate="{StaticResource GitHubActivityPullRequestCardTemplate}"
+        PushTemplate="{StaticResource GitHubActivityPushCardTemplate}"
+        RepositoryTemplate="{StaticResource GitHubActivityRepositoryCardTemplate}" />
+
+    <DataTemplate x:Key="GitHubActivityEventListItemTemplate">
+        <appcontrols:ActivityCard />
+    </DataTemplate>
+</ResourceDictionary>

@@ -1,0 +1,310 @@
+<ResourceDictionary
+    xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+    xmlns:controls="using:Microsoft.UI.Xaml.Controls">
+    <Thickness x:Key="ButtonRevealBorderThemeThickness">1</Thickness>
+
+    <SolidColorBrush x:Key="ButtonBackground" Color="{ThemeResource AppSurfaceColor}" />
+    <SolidColorBrush x:Key="ButtonBackgroundPointerOver" Color="{ThemeResource AppCanvasRaisedColor}" />
+    <SolidColorBrush x:Key="ButtonBackgroundPressed" Color="{ThemeResource AppCanvasInsetColor}" />
+    <SolidColorBrush x:Key="ButtonBackgroundDisabled" Color="{ThemeResource AppCanvasInsetColor}" />
+    <SolidColorBrush x:Key="ButtonBorderBrush" Color="{ThemeResource AppOutlineColor}" />
+    <SolidColorBrush x:Key="ButtonBorderBrushPointerOver" Color="{ThemeResource AppOutlineStrongColor}" />
+    <SolidColorBrush x:Key="ButtonBorderBrushPressed" Color="{ThemeResource AppOutlineStrongColor}" />
+    <SolidColorBrush x:Key="ButtonBorderBrushDisabled" Color="{ThemeResource AppHairlineColor}" />
+    <SolidColorBrush x:Key="ButtonForeground" Color="{ThemeResource AppInkColor}" />
+    <SolidColorBrush x:Key="ButtonForegroundPointerOver" Color="{ThemeResource AppInkColor}" />
+    <SolidColorBrush x:Key="ButtonForegroundPressed" Color="{ThemeResource AppInkColor}" />
+    <SolidColorBrush x:Key="ButtonForegroundDisabled" Color="{ThemeResource AppInkSubtleColor}" />
+    <SolidColorBrush x:Key="DropDownButtonForegroundSecondary" Color="{ThemeResource AppInkMutedColor}" />
+    <SolidColorBrush x:Key="DropDownButtonForegroundSecondaryPointerOver" Color="{ThemeResource AppInkColor}" />
+    <SolidColorBrush x:Key="DropDownButtonForegroundSecondaryPressed" Color="{ThemeResource AppInkColor}" />
+
+    <SolidColorBrush x:Key="AccentButtonBackground" Color="{ThemeResource AppAccentColor}" />
+    <SolidColorBrush x:Key="AccentButtonBackgroundPointerOver" Color="{ThemeResource AppAccentHoverColor}" />
+    <SolidColorBrush x:Key="AccentButtonBackgroundPressed" Color="{ThemeResource AppAccentPressedColor}" />
+    <SolidColorBrush x:Key="AccentButtonBackgroundDisabled" Color="{ThemeResource AppCanvasInsetColor}" />
+    <SolidColorBrush x:Key="AccentButtonBorderBrush" Color="{ThemeResource AppAccentColor}" />
+    <SolidColorBrush x:Key="AccentButtonBorderBrushPointerOver" Color="{ThemeResource AppAccentHoverColor}" />
+    <SolidColorBrush x:Key="AccentButtonBorderBrushPressed" Color="{ThemeResource AppAccentPressedColor}" />
+    <SolidColorBrush x:Key="AccentButtonBorderBrushDisabled" Color="{ThemeResource AppHairlineColor}" />
+    <SolidColorBrush x:Key="AccentButtonForeground" Color="{ThemeResource AppAccentForegroundColor}" />
+    <SolidColorBrush x:Key="AccentButtonForegroundPointerOver" Color="{ThemeResource AppAccentForegroundColor}" />
+    <SolidColorBrush x:Key="AccentButtonForegroundPressed" Color="{ThemeResource AppAccentForegroundColor}" />
+    <SolidColorBrush x:Key="AccentButtonForegroundDisabled" Color="{ThemeResource AppInkSubtleColor}" />
+
+    <Style x:Key="AppStableButtonBaseStyle" TargetType="Button">
+        <Setter Property="FontFamily" Value="{ThemeResource AppUiFontFamily}" />
+        <Setter Property="FontSize" Value="13" />
+        <Setter Property="CornerRadius" Value="{ThemeResource AppRadiusMedium}" />
+        <Setter Property="Padding" Value="14,8" />
+        <Setter Property="MinHeight" Value="36" />
+        <Setter Property="Background" Value="{ThemeResource AppSurfaceBrush}" />
+        <Setter Property="BorderBrush" Value="{ThemeResource AppOutlineBrush}" />
+        <Setter Property="BorderThickness" Value="1" />
+        <Setter Property="Foreground" Value="{ThemeResource AppInkBrush}" />
+        <Setter Property="HorizontalContentAlignment" Value="Center" />
+        <Setter Property="VerticalContentAlignment" Value="Center" />
+        <Setter Property="Template">
+            <Setter.Value>
+                <ControlTemplate TargetType="Button">
+                    <Grid>
+                        <VisualStateManager.VisualStateGroups>
+                            <VisualStateGroup x:Name="CommonStates">
+                                <VisualState x:Name="Normal" />
+                                <VisualState x:Name="PointerOver">
+                                    <VisualState.Setters>
+                                        <Setter Target="HoverOverlay.Opacity" Value="0.12" />
+                                    </VisualState.Setters>
+                                </VisualState>
+                                <VisualState x:Name="Pressed">
+                                    <VisualState.Setters>
+                                        <Setter Target="HoverOverlay.Opacity" Value="0.18" />
+                                    </VisualState.Setters>
+                                </VisualState>
+                                <VisualState x:Name="Disabled">
+                                    <VisualState.Setters>
+                                        <Setter Target="Root.Opacity" Value="0.45" />
+                                    </VisualState.Setters>
+                                </VisualState>
+                            </VisualStateGroup>
+                            <VisualStateGroup x:Name="FocusStates">
+                                <VisualState x:Name="Unfocused" />
+                                <VisualState x:Name="PointerFocused" />
+                                <VisualState x:Name="Focused">
+                                    <VisualState.Setters>
+                                        <Setter Target="FocusVisual.Opacity" Value="1" />
+                                    </VisualState.Setters>
+                                </VisualState>
+                            </VisualStateGroup>
+                        </VisualStateManager.VisualStateGroups>
+                        <Border
+                            x:Name="Root"
+                            Background="{TemplateBinding Background}"
+                            BorderBrush="{TemplateBinding BorderBrush}"
+                            BorderThickness="{TemplateBinding BorderThickness}"
+                            CornerRadius="{TemplateBinding CornerRadius}">
+                            <Grid>
+                                <ContentPresenter
+                                    Padding="{TemplateBinding Padding}"
+                                    Content="{TemplateBinding Content}"
+                                    ContentTemplate="{TemplateBinding ContentTemplate}"
+                                    ContentTransitions="{TemplateBinding ContentTransitions}"
+                                    HorizontalContentAlignment="{TemplateBinding HorizontalContentAlignment}"
+                                    VerticalContentAlignment="{TemplateBinding VerticalContentAlignment}" />
+                                <Border
+                                    x:Name="HoverOverlay"
+                                    Background="{ThemeResource AppInkBrush}"
+                                    CornerRadius="{TemplateBinding CornerRadius}"
+                                    IsHitTestVisible="False"
+                                    Opacity="0" />
+                            </Grid>
+                        </Border>
+                        <Border
+                            x:Name="FocusVisual"
+                            Margin="1"
+                            BorderBrush="{ThemeResource AppAccentBrush}"
+                            BorderThickness="1"
+                            CornerRadius="{TemplateBinding CornerRadius}"
+                            IsHitTestVisible="False"
+                            Opacity="0" />
+                    </Grid>
+                </ControlTemplate>
+            </Setter.Value>
+        </Setter>
+    </Style>
+
+    <SolidColorBrush x:Key="AccentFillColorDefaultBrush" Color="{ThemeResource AppAccentColor}" />
+    <SolidColorBrush x:Key="AccentFillColorSecondaryBrush" Color="{ThemeResource AppAccentHoverColor}" />
+    <SolidColorBrush x:Key="AccentFillColorTertiaryBrush" Color="{ThemeResource AppAccentPressedColor}" />
+    <SolidColorBrush x:Key="AccentFillColorDisabledBrush" Color="{ThemeResource AppCanvasInsetColor}" />
+    <SolidColorBrush x:Key="TextOnAccentFillColorPrimaryBrush" Color="{ThemeResource AppAccentForegroundColor}" />
+    <SolidColorBrush x:Key="TextOnAccentFillColorSecondaryBrush" Color="{ThemeResource AppAccentForegroundColor}" Opacity="0.9" />
+    <SolidColorBrush x:Key="TextOnAccentFillColorDisabledBrush" Color="{ThemeResource AppInkSubtleColor}" />
+    <SolidColorBrush x:Key="ControlStrokeColorOnAccentDefaultBrush" Color="{ThemeResource AppAccentColor}" />
+    <SolidColorBrush x:Key="ControlStrokeColorOnAccentSecondaryBrush" Color="{ThemeResource AppAccentHoverColor}" />
+    <SolidColorBrush x:Key="ControlStrokeColorOnAccentTertiaryBrush" Color="{ThemeResource AppAccentPressedColor}" />
+    <SolidColorBrush x:Key="ControlStrokeColorOnAccentDisabledBrush" Color="{ThemeResource AppHairlineColor}" />
+
+    <SolidColorBrush x:Key="ToggleSwitchContentForeground" Color="{ThemeResource AppInkColor}" />
+    <SolidColorBrush x:Key="ToggleSwitchContentForegroundDisabled" Color="{ThemeResource AppInkSubtleColor}" />
+    <SolidColorBrush x:Key="ToggleSwitchHeaderForeground" Color="{ThemeResource AppInkColor}" />
+    <SolidColorBrush x:Key="ToggleSwitchHeaderForegroundDisabled" Color="{ThemeResource AppInkSubtleColor}" />
+    <SolidColorBrush x:Key="ToggleSwitchContainerBackground" Color="Transparent" />
+    <SolidColorBrush x:Key="ToggleSwitchContainerBackgroundPointerOver" Color="Transparent" />
+    <SolidColorBrush x:Key="ToggleSwitchContainerBackgroundPressed" Color="Transparent" />
+    <SolidColorBrush x:Key="ToggleSwitchContainerBackgroundDisabled" Color="Transparent" />
+    <SolidColorBrush x:Key="ToggleSwitchFillOff" Color="{ThemeResource AppSurfaceSubtleColor}" />
+    <SolidColorBrush x:Key="ToggleSwitchFillOffPointerOver" Color="{ThemeResource AppCanvasRaisedColor}" />
+    <SolidColorBrush x:Key="ToggleSwitchFillOffPressed" Color="{ThemeResource AppCanvasInsetColor}" />
+    <SolidColorBrush x:Key="ToggleSwitchFillOffDisabled" Color="{ThemeResource AppCanvasInsetColor}" />
+    <SolidColorBrush x:Key="ToggleSwitchStrokeOff" Color="{ThemeResource AppOutlineStrongColor}" />
+    <SolidColorBrush x:Key="ToggleSwitchStrokeOffPointerOver" Color="{ThemeResource AppOutlineStrongColor}" />
+    <SolidColorBrush x:Key="ToggleSwitchStrokeOffPressed" Color="{ThemeResource AppOutlineStrongColor}" />
+    <SolidColorBrush x:Key="ToggleSwitchStrokeOffDisabled" Color="{ThemeResource AppHairlineColor}" />
+    <SolidColorBrush x:Key="ToggleSwitchFillOn" Color="{ThemeResource AppAccentColor}" />
+    <SolidColorBrush x:Key="ToggleSwitchFillOnPointerOver" Color="{ThemeResource AppAccentHoverColor}" />
+    <SolidColorBrush x:Key="ToggleSwitchFillOnPressed" Color="{ThemeResource AppAccentPressedColor}" />
+    <SolidColorBrush x:Key="ToggleSwitchFillOnDisabled" Color="{ThemeResource AppCanvasInsetColor}" />
+    <SolidColorBrush x:Key="ToggleSwitchStrokeOn" Color="{ThemeResource AppAccentColor}" />
+    <SolidColorBrush x:Key="ToggleSwitchStrokeOnPointerOver" Color="{ThemeResource AppAccentHoverColor}" />
+    <SolidColorBrush x:Key="ToggleSwitchStrokeOnPressed" Color="{ThemeResource AppAccentPressedColor}" />
+    <SolidColorBrush x:Key="ToggleSwitchStrokeOnDisabled" Color="{ThemeResource AppHairlineColor}" />
+    <SolidColorBrush x:Key="ToggleSwitchKnobFillOff" Color="{ThemeResource AppInkMutedColor}" />
+    <SolidColorBrush x:Key="ToggleSwitchKnobFillOffPointerOver" Color="{ThemeResource AppInkColor}" />
+    <SolidColorBrush x:Key="ToggleSwitchKnobFillOffPressed" Color="{ThemeResource AppInkColor}" />
+    <SolidColorBrush x:Key="ToggleSwitchKnobFillOffDisabled" Color="{ThemeResource AppInkSubtleColor}" />
+    <SolidColorBrush x:Key="ToggleSwitchKnobFillOn" Color="{ThemeResource AppAccentForegroundColor}" />
+    <SolidColorBrush x:Key="ToggleSwitchKnobFillOnPointerOver" Color="{ThemeResource AppAccentForegroundColor}" />
+    <SolidColorBrush x:Key="ToggleSwitchKnobFillOnPressed" Color="{ThemeResource AppAccentForegroundColor}" />
+    <SolidColorBrush x:Key="ToggleSwitchKnobFillOnDisabled" Color="{ThemeResource AppInkSubtleColor}" />
+
+    <Style TargetType="Button" BasedOn="{StaticResource AppStableButtonBaseStyle}">
+        <Setter Property="FontFamily" Value="{ThemeResource AppUiFontFamily}" />
+        <Setter Property="FontSize" Value="13" />
+        <Setter Property="CornerRadius" Value="{ThemeResource AppRadiusMedium}" />
+        <Setter Property="Padding" Value="14,8" />
+        <Setter Property="MinHeight" Value="36" />
+        <Setter Property="HorizontalContentAlignment" Value="Center" />
+        <Setter Property="VerticalContentAlignment" Value="Center" />
+    </Style>
+
+    <Style x:Key="AppAccentButtonStyle" TargetType="Button" BasedOn="{StaticResource AppStableButtonBaseStyle}">
+        <Setter Property="FontFamily" Value="{ThemeResource AppUiFontFamily}" />
+        <Setter Property="FontSize" Value="13" />
+        <Setter Property="CornerRadius" Value="{ThemeResource AppRadiusMedium}" />
+        <Setter Property="Padding" Value="14,8" />
+        <Setter Property="MinHeight" Value="36" />
+        <Setter Property="Background" Value="{ThemeResource AppAccentBrush}" />
+        <Setter Property="BorderBrush" Value="{ThemeResource AppAccentBrush}" />
+        <Setter Property="Foreground" Value="{ThemeResource AppAccentForegroundBrush}" />
+        <Setter Property="HorizontalContentAlignment" Value="Center" />
+        <Setter Property="VerticalContentAlignment" Value="Center" />
+    </Style>
+
+    <Style x:Key="AppQuietButtonStyle" TargetType="Button" BasedOn="{StaticResource AppStableButtonBaseStyle}">
+        <Setter Property="FontFamily" Value="{ThemeResource AppUiFontFamily}" />
+        <Setter Property="Background" Value="Transparent" />
+        <Setter Property="BorderThickness" Value="0" />
+        <Setter Property="Foreground" Value="{ThemeResource AppInkMutedBrush}" />
+        <Setter Property="Padding" Value="8,6" />
+        <Setter Property="CornerRadius" Value="{ThemeResource AppRadiusSmall}" />
+        <Setter Property="MinHeight" Value="36" />
+        <Setter Property="HorizontalContentAlignment" Value="Center" />
+        <Setter Property="VerticalContentAlignment" Value="Center" />
+    </Style>
+
+    <Style x:Key="AppToolbarButtonStyle" TargetType="Button" BasedOn="{StaticResource AppQuietButtonStyle}">
+        <Setter Property="Padding" Value="10,8" />
+        <Setter Property="Foreground" Value="{ThemeResource AppInkBrush}" />
+    </Style>
+
+    <Style x:Key="AppEmojiLauncherButtonStyle" TargetType="Button" BasedOn="{StaticResource AppQuietButtonStyle}">
+        <Setter Property="Width" Value="32" />
+        <Setter Property="Height" Value="32" />
+        <Setter Property="MinWidth" Value="0" />
+        <Setter Property="MinHeight" Value="0" />
+        <Setter Property="Padding" Value="0" />
+        <Setter Property="CornerRadius" Value="{ThemeResource AppRadiusSmall}" />
+        <Setter Property="Background" Value="{ThemeResource AppSurfaceSubtleBrush}" />
+        <Setter Property="Foreground" Value="{ThemeResource AppInkBrush}" />
+        <Setter Property="BorderThickness" Value="0" />
+        <Setter Property="HorizontalContentAlignment" Value="Center" />
+        <Setter Property="VerticalContentAlignment" Value="Center" />
+    </Style>
+
+    <Style x:Key="AppEmojiReactionButtonStyle" TargetType="Button" BasedOn="{StaticResource AppStableButtonBaseStyle}">
+        <Setter Property="MinWidth" Value="32" />
+        <Setter Property="MinHeight" Value="32" />
+        <Setter Property="Height" Value="32" />
+        <Setter Property="Padding" Value="0" />
+        <Setter Property="CornerRadius" Value="{ThemeResource AppRadiusSmall}" />
+        <Setter Property="Background" Value="{ThemeResource AppSurfaceSubtleBrush}" />
+        <Setter Property="BorderBrush" Value="Transparent" />
+        <Setter Property="BorderThickness" Value="0" />
+        <Setter Property="HorizontalContentAlignment" Value="Center" />
+        <Setter Property="VerticalContentAlignment" Value="Center" />
+    </Style>
+
+    <Style x:Key="AppSearchSuggestionButtonStyle" TargetType="Button" BasedOn="{StaticResource AppQuietButtonStyle}">
+        <Setter Property="Padding" Value="0" />
+        <Setter Property="MinHeight" Value="44" />
+        <Setter Property="Background" Value="Transparent" />
+        <Setter Property="BorderBrush" Value="Transparent" />
+        <Setter Property="Foreground" Value="{ThemeResource AppInkBrush}" />
+        <Setter Property="HorizontalAlignment" Value="Stretch" />
+        <Setter Property="HorizontalContentAlignment" Value="Stretch" />
+        <Setter Property="VerticalContentAlignment" Value="Center" />
+    </Style>
+
+    <Style x:Key="AppOutlineButtonStyle" TargetType="Button" BasedOn="{StaticResource AppStableButtonBaseStyle}">
+        <Setter Property="FontFamily" Value="{ThemeResource AppUiFontFamily}" />
+        <Setter Property="FontSize" Value="13" />
+        <Setter Property="MinHeight" Value="36" />
+        <Setter Property="Padding" Value="12,8" />
+        <Setter Property="CornerRadius" Value="{ThemeResource AppRadiusMedium}" />
+        <Setter Property="Background" Value="{ThemeResource AppSurfaceBrush}" />
+        <Setter Property="BorderBrush" Value="{ThemeResource AppOutlineBrush}" />
+        <Setter Property="Foreground" Value="{ThemeResource AppInkBrush}" />
+        <Setter Property="HorizontalContentAlignment" Value="Center" />
+        <Setter Property="VerticalContentAlignment" Value="Center" />
+    </Style>
+
+    <Style x:Key="AppDangerOutlineButtonStyle" TargetType="Button" BasedOn="{StaticResource AppOutlineButtonStyle}">
+        <Setter Property="Foreground" Value="{ThemeResource AppDangerBrush}" />
+        <Setter Property="BorderBrush" Value="{ThemeResource AppDangerBrush}" />
+        <Setter Property="Background" Value="{ThemeResource AppSurfaceBrush}" />
+    </Style>
+
+    <Style x:Key="AppStatButtonStyle" TargetType="Button" BasedOn="{StaticResource AppStableButtonBaseStyle}">
+        <Setter Property="FontFamily" Value="{ThemeResource AppUiFontFamily}" />
+        <Setter Property="Padding" Value="10,8" />
+        <Setter Property="Background" Value="{ThemeResource AppSurfaceBrush}" />
+        <Setter Property="BorderBrush" Value="{ThemeResource AppOutlineBrush}" />
+        <Setter Property="CornerRadius" Value="{ThemeResource AppRadiusMedium}" />
+        <Setter Property="MinHeight" Value="36" />
+        <Setter Property="HorizontalContentAlignment" Value="Center" />
+        <Setter Property="VerticalContentAlignment" Value="Center" />
+    </Style>
+
+    <Style x:Key="AppDropDownButtonStyle" TargetType="controls:DropDownButton">
+        <Setter Property="FontFamily" Value="{ThemeResource AppUiFontFamily}" />
+        <Setter Property="FontSize" Value="13" />
+        <Setter Property="Padding" Value="12,8" />
+        <Setter Property="Background" Value="{ThemeResource AppSurfaceBrush}" />
+        <Setter Property="BorderBrush" Value="{ThemeResource AppOutlineBrush}" />
+        <Setter Property="Foreground" Value="{ThemeResource AppInkBrush}" />
+        <Setter Property="CornerRadius" Value="{ThemeResource AppRadiusMedium}" />
+        <Setter Property="MinHeight" Value="36" />
+        <Setter Property="BorderThickness" Value="1" />
+        <Setter Property="HorizontalContentAlignment" Value="Center" />
+        <Setter Property="VerticalContentAlignment" Value="Center" />
+        <Setter Property="VerticalAlignment" Value="Center" />
+    </Style>
+
+    <Style x:Key="AppDestructiveButtonStyle" TargetType="Button" BasedOn="{StaticResource AppStableButtonBaseStyle}">
+        <Setter Property="Background" Value="{ThemeResource AppDangerBrush}" />
+        <Setter Property="Foreground" Value="{ThemeResource AppInkInverseBrush}" />
+        <Setter Property="BorderBrush" Value="{ThemeResource AppDangerBrush}" />
+        <Setter Property="HorizontalContentAlignment" Value="Center" />
+        <Setter Property="VerticalContentAlignment" Value="Center" />
+    </Style>
+
+    <Style x:Key="NewButtonStyle" TargetType="Button" BasedOn="{StaticResource AppAccentButtonStyle}">
+        <Setter Property="Padding" Value="15,8" />
+        <Setter Property="FontSize" Value="14" />
+    </Style>
+
+    <Style x:Key="PrimaryButton" TargetType="Button" BasedOn="{StaticResource AppAccentButtonStyle}" />
+
+    <Style x:Key="PrimaryActionButtonStyle" TargetType="Button" BasedOn="{StaticResource AppAccentButtonStyle}">
+        <Setter Property="HorizontalAlignment" Value="Stretch" />
+        <Setter Property="HorizontalContentAlignment" Value="Center" />
+        <Setter Property="MinHeight" Value="44" />
+    </Style>
+
+    <Style TargetType="ToggleSwitch" BasedOn="{StaticResource DefaultToggleSwitchStyle}">
+        <Setter Property="FontFamily" Value="{ThemeResource AppUiFontFamily}" />
+        <Setter Property="Foreground" Value="{ThemeResource AppInkBrush}" />
+    </Style>
+</ResourceDictionary>

@@ -1,0 +1,34 @@
+<ResourceDictionary
+    xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml">
+    <SolidColorBrush x:Key="TitleBorderBrush" Color="{ThemeResource AppOutlineColor}" />
+    <SolidColorBrush x:Key="RegionBrush" Color="{ThemeResource AppCanvasColor}" />
+    <SolidColorBrush x:Key="AppSolidPrimaryRush" Color="{ThemeResource AppSurfaceColor}" />
+    <SolidColorBrush x:Key="AppSolidSecondaryRush" Color="{ThemeResource AppSurfaceSubtleColor}" />
+    <SolidColorBrush x:Key="AppBorderBrush" Color="{ThemeResource AppOutlineColor}" />
+    <SolidColorBrush x:Key="PrivateRepoBrush" Color="{ThemeResource AppWarmAccentColor}" />
+    <SolidColorBrush x:Key="RegionColorBrush" Color="{ThemeResource AppCanvasColor}" />
+    <SolidColorBrush x:Key="AppPaperBrush" Color="{ThemeResource AppCanvasColor}" />
+    <SolidColorBrush x:Key="AppPaperRaisedBrush" Color="{ThemeResource AppCanvasRaisedColor}" />
+
+    <StaticResource x:Key="RegionColor" ResourceKey="AppCanvasColor" />
+    <StaticResource x:Key="TitleBorderColor" ResourceKey="AppOutlineColor" />
+    <StaticResource x:Key="TitleBackgroundColor" ResourceKey="AppCanvasRaisedColor" />
+    <StaticResource x:Key="AppPrimaryBackgroundColor" ResourceKey="AppCanvasColor" />
+    <StaticResource x:Key="TitleBarColor" ResourceKey="AppCanvasRaisedColor" />
+    <StaticResource x:Key="AppSolidPrimaryColor" ResourceKey="AppSurfaceColor" />
+    <StaticResource x:Key="AppSolidSecondaryColor" ResourceKey="AppSurfaceSubtleColor" />
+    <StaticResource x:Key="AppBorderColor" ResourceKey="AppOutlineColor" />
+    <StaticResource x:Key="PrivateRepoColor" ResourceKey="AppWarmAccentColor" />
+
+    <SolidColorBrush x:Key="AppTitleGradientBrush" Color="{ThemeResource AppInkColor}" />
+    <SolidColorBrush x:Key="BrandDiagonalGradientBrush" Color="{ThemeResource AppAccentColor}" />
+    <SolidColorBrush x:Key="TitleBarBrush" Color="{ThemeResource AppCanvasRaisedColor}" />
+    <SolidColorBrush x:Key="AppPrimaryBackgroundBrush" Color="{ThemeResource AppCanvasColor}" />
+    <SolidColorBrush x:Key="ModalBrush" Color="{ThemeResource AppOverlayColor}" />
+
+    <Border
+        x:Key="AppHighContrastBorder"
+        BorderBrush="{ThemeResource AppOutlineBrush}"
+        BorderThickness="1" />
+</ResourceDictionary>

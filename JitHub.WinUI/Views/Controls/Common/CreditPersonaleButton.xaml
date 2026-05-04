@@ -1,0 +1,59 @@
+<UserControl
+    x:Class="JitHub.WinUI.Views.Controls.Common.CreditPersonaleButton"
+    xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+    xmlns:local="using:JitHub.WinUI.Views.Controls.Common"
+    xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+    xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+    mc:Ignorable="d"
+    d:DesignHeight="300"
+    d:DesignWidth="400">
+
+    <Button
+        Width="172"
+        Height="204"
+        Padding="0"
+        Style="{StaticResource AppQuietButtonStyle}"
+        HorizontalContentAlignment="Stretch"
+        VerticalContentAlignment="Stretch"
+        Background="Transparent"
+        BorderThickness="0"
+        Click="{x:Bind OnClick, Mode=OneWay}">
+        <Border
+            Width="172"
+            Height="204"
+            Padding="16"
+            Background="{ThemeResource AppSurfaceBrush}"
+            BorderBrush="{ThemeResource AppOutlineBrush}"
+            BorderThickness="1"
+            CornerRadius="{ThemeResource AppRadiusLarge}">
+            <StackPanel
+                Width="140"
+                HorizontalAlignment="Center"
+                VerticalAlignment="Center"
+                Spacing="6">
+                <PersonPicture
+                    ProfilePicture="{x:Bind Person.ImageSource, Mode=OneWay}"
+                    Width="86"
+                    Margin="0 0 0 6"
+                    HorizontalAlignment="Center"/>
+                <TextBlock
+                    HorizontalAlignment="Center"
+                    MaxLines="1"
+                    Style="{StaticResource ListItemTitleTextBlockStyle}"
+                    Text="{x:Bind Person.PersonaleName, Mode=OneWay}"
+                    TextAlignment="Center"
+                    TextTrimming="CharacterEllipsis"/>
+                <TextBlock
+                    HorizontalAlignment="Center"
+                    MaxLines="2"
+                    Style="{StaticResource ListItemSecondaryTextBlockStyle}"
+                    Text="{x:Bind Person.Role, Mode=OneWay}"
+                    TextAlignment="Center"
+                    TextTrimming="CharacterEllipsis"
+                    TextWrapping="WrapWholeWords"/>
+            </StackPanel>
+        </Border>
+    </Button>
+</UserControl>
+

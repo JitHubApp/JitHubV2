@@ -1,0 +1,150 @@
+<UserControl
+    x:Class="JitHub.WinUI.Views.Controls.App.ActivityCard"
+    xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+    xmlns:common="using:JitHub.WinUI.Views.Controls.Common"
+    xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+    xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+    HorizontalAlignment="Stretch"
+    MaxWidth="920"
+    mc:Ignorable="d">
+    <UserControl.Resources>
+        <SolidColorBrush x:Key="HyperlinkForeground" Color="{ThemeResource AppAccentColor}" />
+        <SolidColorBrush x:Key="HyperlinkForegroundPointerOver" Color="{ThemeResource AppAccentHoverColor}" />
+        <SolidColorBrush x:Key="HyperlinkForegroundPressed" Color="{ThemeResource AppAccentPressedColor}" />
+        <SolidColorBrush x:Key="SystemControlHyperlinkTextBrush" Color="{ThemeResource AppAccentColor}" />
+        <SolidColorBrush x:Key="SystemControlHyperlinkBaseMediumBrush" Color="{ThemeResource AppAccentHoverColor}" />
+        <SolidColorBrush x:Key="SystemControlHighlightBaseMediumLowBrush" Color="{ThemeResource AppAccentPressedColor}" />
+        <SolidColorBrush x:Key="ActivityInlineLinkForegroundBrush" Color="{ThemeResource AppAccentColor}" />
+        <SolidColorBrush x:Key="ActivityInlineLinkForegroundPointerOverBrush" Color="{ThemeResource AppAccentHoverColor}" />
+        <SolidColorBrush x:Key="ActivityInlineLinkForegroundPressedBrush" Color="{ThemeResource AppAccentPressedColor}" />
+
+        <Style
+            x:Key="ActivityInlineButtonStyle"
+            BasedOn="{StaticResource AppQuietButtonStyle}"
+            TargetType="Button">
+            <Setter Property="MinWidth" Value="0" />
+            <Setter Property="MinHeight" Value="0" />
+            <Setter Property="Padding" Value="7,3" />
+            <Setter Property="Margin" Value="2,0" />
+            <Setter Property="CornerRadius" Value="{ThemeResource AppRadiusSmall}" />
+            <Setter Property="Background" Value="{ThemeResource AppSurfaceSubtleBrush}" />
+            <Setter Property="BorderBrush" Value="{ThemeResource AppHairlineBrush}" />
+            <Setter Property="BorderThickness" Value="1" />
+            <Setter Property="Foreground" Value="{ThemeResource AppInkBrush}" />
+            <Setter Property="VerticalAlignment" Value="Center" />
+        </Style>
+    </UserControl.Resources>
+
+    <Border
+        Margin="0,0,0,12"
+        Padding="16"
+        HorizontalAlignment="Stretch"
+        Background="{ThemeResource AppSurfaceBrush}"
+        BorderBrush="{Binding Tone, Converter={StaticResource ActivityToneToBrushConverter}, ConverterParameter=Border}"
+        BorderThickness="1"
+        CornerRadius="{ThemeResource AppRadiusLarge}">
+        <Grid ColumnSpacing="12">
+            <Grid.ColumnDefinitions>
+                <ColumnDefinition Width="Auto" />
+                <ColumnDefinition Width="*" />
+            </Grid.ColumnDefinitions>
+
+            <common:Avatar
+                Margin="0,3,0,0"
+                VerticalAlignment="Top"
+                Login="{Binding ActorLogin, Mode=OneWay}"
+                ShowLogin="False"
+                Size="SMALL"
+                Url="{Binding ActorAvatarUrl, Mode=OneWay}" />
+
+            <StackPanel
+                Grid.Column="1"
+                Spacing="10">
+                <Grid ColumnSpacing="8">
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="Auto" />
+                        <ColumnDefinition Width="*" />
+                    </Grid.ColumnDefinitions>
+
+                    <Border
+                        Width="26"
+                        Height="26"
+                        Margin="0,1,0,0"
+                        VerticalAlignment="Top"
+                        Background="{ThemeResource AppSurfaceSubtleBrush}"
+                        BorderBrush="{Binding Tone, Converter={StaticResource ActivityToneToBrushConverter}, ConverterParameter=Border}"
+                        BorderThickness="1"
+                        CornerRadius="{ThemeResource AppRadiusSmall}">
+                        <FontIcon
+                            FontFamily="{StaticResource SegoeFluentIcons}"
+                            FontSize="13"
+                            Foreground="{Binding Tone, Converter={StaticResource ActivityToneToBrushConverter}}"
+                            Glyph="{Binding Glyph}" />
+                    </Border>
+
+                    <RichTextBlock
+                        x:Name="SentenceRichTextBlock"
+                        Grid.Column="1"
+                        FontFamily="{ThemeResource AppUiFontFamily}"
+                        FontSize="15"
+                        Foreground="{ThemeResource AppInkBrush}"
+                        IsTextSelectionEnabled="False"
+                        LineHeight="25"
+                        TextWrapping="WrapWholeWords">
+                        <RichTextBlock.Resources>
+                            <SolidColorBrush x:Key="HyperlinkForeground" Color="{ThemeResource AppAccentColor}" />
+                            <SolidColorBrush x:Key="HyperlinkForegroundPointerOver" Color="{ThemeResource AppAccentHoverColor}" />
+                            <SolidColorBrush x:Key="HyperlinkForegroundPressed" Color="{ThemeResource AppAccentPressedColor}" />
+                            <SolidColorBrush x:Key="SystemControlHyperlinkTextBrush" Color="{ThemeResource AppAccentColor}" />
+                            <SolidColorBrush x:Key="SystemControlHyperlinkBaseMediumBrush" Color="{ThemeResource AppAccentHoverColor}" />
+                            <SolidColorBrush x:Key="SystemControlHighlightBaseMediumLowBrush" Color="{ThemeResource AppAccentPressedColor}" />
+                        </RichTextBlock.Resources>
+                    </RichTextBlock>
+                </Grid>
+
+                <TextBlock
+                    Margin="34,-4,0,0"
+                    Style="{StaticResource SectionSecondaryTextBlockStyle}"
+                    Text="{Binding TimestampText, Mode=OneWay}" />
+
+                <Border
+                    Padding="12,0,0,0"
+                    BorderBrush="{Binding Tone, Converter={StaticResource ActivityToneToBrushConverter}, ConverterParameter=Border}"
+                    BorderThickness="2,0,0,0"
+                    Visibility="{Binding HasDetails, Converter={StaticResource BoolToVisibilityConverter}}">
+                    <ItemsControl ItemsSource="{Binding Details}">
+                        <ItemsControl.ItemsPanel>
+                            <ItemsPanelTemplate>
+                                <StackPanel Spacing="4" />
+                            </ItemsPanelTemplate>
+                        </ItemsControl.ItemsPanel>
+                        <ItemsControl.ItemTemplate>
+                            <DataTemplate>
+                                <Grid ColumnSpacing="8">
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition Width="Auto" />
+                                        <ColumnDefinition Width="*" />
+                                    </Grid.ColumnDefinitions>
+                                    <FontIcon
+                                        Margin="0,2,0,0"
+                                        VerticalAlignment="Top"
+                                        FontFamily="{StaticResource SegoeFluentIcons}"
+                                        FontSize="11"
+                                        Foreground="{ThemeResource AppInkMutedBrush}"
+                                        Glyph="{Binding Glyph}" />
+                                    <TextBlock
+                                        Grid.Column="1"
+                                        Style="{StaticResource SectionSecondaryTextBlockStyle}"
+                                        Text="{Binding Text}"
+                                        TextTrimming="CharacterEllipsis"
+                                        TextWrapping="NoWrap" />
+                                </Grid>
+                            </DataTemplate>
+                        </ItemsControl.ItemTemplate>
+                    </ItemsControl>
+                </Border>
+            </StackPanel>
+        </Grid>
+    </Border>
+</UserControl>
