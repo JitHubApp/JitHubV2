@@ -3,8 +3,28 @@
 <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <meta name="theme-color" content="#eef1e7" />
+    <meta name="theme-color" content="#eef1e7" data-theme-color />
     <base href="/" />
+    <script>
+        (() => {
+            const storageKey = "jithub-web-theme";
+            const root = document.documentElement;
+            let theme = "";
+
+            try {
+                theme = localStorage.getItem(storageKey) || "";
+            } catch {
+                theme = "";
+            }
+
+            if (theme !== "light" && theme !== "dark") {
+                theme = window.matchMedia("(prefers-color-scheme: dark)").matches ? "dark" : "light";
+            }
+
+            root.dataset.theme = theme;
+            root.style.colorScheme = theme;
+        })();
+    </script>
     <link rel="icon" type="image/png" href="favicon.png" />
     <link rel="preload" href="fonts/instrument-serif-regular.ttf" as="font" type="font/ttf" crossorigin />
     <link rel="preload" href="fonts/cormorant-garamond-latin.woff2" as="font" type="font/woff2" crossorigin />
@@ -12,6 +32,7 @@
     <link rel="preload" href="fonts/ibm-plex-mono-regular-latin.woff2" as="font" type="font/woff2" crossorigin />
     <link rel="stylesheet" href="app.css" />
     <link rel="stylesheet" href="JitHub.Web.styles.css" />
+    <script src="js/theme.js" defer></script>
     <HeadOutlet />
 </head>
 <body>
