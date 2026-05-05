@@ -18,6 +18,8 @@
     PointerPressed="Page_PointerPressed">
     <Grid
         x:Name="ShellRoot"
+        AutomationProperties.AutomationId="ShellRoot"
+        AutomationProperties.AccessibilityView="Control"
         Background="{ThemeResource AppCanvasBrush}">
         <Grid.RowDefinitions>
             <RowDefinition Height="auto"/>

@@ -59,7 +59,22 @@ public sealed partial class ShellPage : Page
             ViewModel.RegisterSearchDebounce(SearchTextBox);
         }
 
+        if (Program.CurrentLaunchOptions.IsRepositoryPageOverride)
+        {
+            _ = OpenLaunchRepositoryPageAsync();
+        }
+
         _ = ViewModel.OnNavigatedTo();
+    }
+
+    private async Task OpenLaunchRepositoryPageAsync()
+    {
+        await Task.Delay(350);
+        _ = DispatcherQueue.TryEnqueue(() =>
+            ViewModel.OpenRepositoryPage(
+                Program.CurrentLaunchOptions.RepositoryFullName,
+                Program.CurrentLaunchOptions.Page,
+                Program.CurrentLaunchOptions.Branch));
     }
 
     protected override void OnNavigatingFrom(NavigatingCancelEventArgs e)

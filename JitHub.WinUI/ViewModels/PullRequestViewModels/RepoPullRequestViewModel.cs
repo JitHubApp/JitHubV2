@@ -62,12 +62,39 @@ namespace JitHub.WinUI.ViewModels.PullRequestViewModels
         {
             try
             {
-                Repo = await GitHubService.GetRepository(arg.Repo.Id);
+                Repo = await ResolveRepositoryAsync(arg);
+                if (Repo is null)
+                {
+                    return;
+                }
+
                 RepoSelectableItemModel<PullRequest>? selectedPullRequest = null;
                 if (!arg.NoDetail)
                 {
                     var pullRequest = await GitHubService.GetPullRequest(Repo.Owner.Login, Repo.Name, arg.PullRequestId);
                     selectedPullRequest = new RepoSelectableItemModel<PullRequest>() { Model = pullRequest, Repository = Repo };
+                }
+                else if (JitHub.WinUI.Program.CurrentLaunchOptions.IsPublicPreviewOverride)
+                {
+                    var previewPullRequests = await GitHubService.GetPullRequests(
+                        Repo.Owner.Login,
+                        Repo.Name,
+                        new PullRequestRequest
+                        {
+                            State = ItemStateFilter.Open,
+                            SortProperty = PullRequestSort.Created,
+                            SortDirection = SortDirection.Descending
+                        },
+                        new ApiOptions { StartPage = 1, PageCount = 1, PageSize = 1 });
+                    if (previewPullRequests.FirstOrDefault() is PullRequest firstPullRequest)
+                    {
+                        selectedPullRequest = new RepoSelectableItemModel<PullRequest>
+                        {
+                            Model = firstPullRequest,
+                            Repository = Repo,
+                            Selected = true
+                        };
+                    }
                 }
                 var prParams = new PullRequestRequest
                 {
@@ -84,9 +111,61 @@ namespace JitHub.WinUI.ViewModels.PullRequestViewModels
             }
         }
 
+        private async Task<Repository> ResolveRepositoryAsync(PullRequestPageNavArg arg)
+        {
+            if (arg.Repo.Id > 0)
+            {
+                return await GitHubService.GetRepository(arg.Repo.Id);
+            }
+
+            if (!string.IsNullOrWhiteSpace(arg.Repo.Owner?.Login) &&
+                !string.IsNullOrWhiteSpace(arg.Repo.Name))
+            {
+                return await GitHubService.GetRepository(arg.Repo.Owner.Login, arg.Repo.Name);
+            }
+
+            if (!string.IsNullOrWhiteSpace(arg.Repo.FullName))
+            {
+                string[] parts = arg.Repo.FullName.Split('/', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
+                if (parts.Length >= 2)
+                {
+                    return await GitHubService.GetRepository(parts[0], parts[1]);
+                }
+            }
+
+            if (JitHub.WinUI.Program.CurrentLaunchOptions.IsPublicPreviewOverride)
+            {
+                string[] parts = JitHub.WinUI.Program.CurrentLaunchOptions.RepositoryFullName.Split(
+                    '/',
+                    StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
+                if (parts.Length >= 2)
+                {
+                    return await GitHubService.GetRepository(parts[0], parts[1]);
+                }
+            }
+
+            return null!;
+        }
+
         private void SetIncrementalCollection(PullRequestSource prSource, RepoSelectableItemModel<PullRequest>? selectedPullRequest)
         {
             PullRequests = new IncrementalLoadingCollection<PullRequestSource, RepoSelectableItemModel<PullRequest>>(prSource, _perPage);
+            PullRequests.OnStartLoading += () =>
+            {
+                Loading = true;
+            };
+            PullRequests.OnEndLoading += () =>
+            {
+                Loading = false;
+                IsEmpty = PullRequests.Count == 0;
+                if (JitHub.WinUI.Program.CurrentLaunchOptions.IsPublicPreviewOverride &&
+                    SelectedPullRequest is null &&
+                    PullRequests.FirstOrDefault() is RepoSelectableItemModel<PullRequest> firstPullRequest)
+                {
+                    SelectedPullRequest = firstPullRequest;
+                    firstPullRequest.Selected = true;
+                }
+            };
             if (selectedPullRequest != null)
             {
                 PullRequests.Add(selectedPullRequest);
@@ -96,15 +175,6 @@ namespace JitHub.WinUI.ViewModels.PullRequestViewModels
             {
                 _ = PullRequests.RefreshAsync();
             }
-            PullRequests.OnStartLoading += () =>
-            {
-                Loading = true;
-            };
-            PullRequests.OnEndLoading += () =>
-            {
-                Loading = false;
-                IsEmpty = PullRequests.Count == 0;
-            };
         }
 
         private void OpenNewPRDialog()

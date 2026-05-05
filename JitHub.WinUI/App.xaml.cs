@@ -94,7 +94,7 @@ public partial class App : Application
         IAuthService authService = GetService<IAuthService>();
         IAccountService accountService = GetService<IAccountService>();
 
-        if (activationRequest.Kind != ExtendedActivationKind.Protocol && TryHandleLaunchPageOverride())
+        if (TryHandleLaunchPageOverride())
         {
             return;
         }
@@ -556,6 +556,16 @@ public partial class App : Application
         if (!Program.CurrentLaunchOptions.HasPageOverride)
         {
             return false;
+        }
+
+        if (Program.CurrentLaunchOptions.IsPublicPreviewOverride)
+        {
+            GetService<IGitHubService>().SetAccessToken(GitHubClientService.PublicAccessToken);
+            GetOrCreateMainWindow().ContentFrameHost.Navigate(
+                typeof(ShellPage),
+                null,
+                new SuppressNavigationTransitionInfo());
+            return true;
         }
 
         Type? targetPage = Program.CurrentLaunchOptions.Page?.ToLowerInvariant() switch
