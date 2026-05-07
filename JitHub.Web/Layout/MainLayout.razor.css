@@ -12,13 +12,13 @@
     align-items: center;
     justify-content: space-between;
     gap: 1rem;
-    width: min(1200px, calc(100% - 2rem));
+    width: min(var(--site-frame-width), calc(100% - 2rem));
     margin: 0.75rem auto 0;
     padding: 0.7rem 0.9rem;
     border: 1px solid var(--border-soft);
     border-radius: var(--radius-lg);
-    background: color-mix(in oklch, var(--paper) 96%, white 4%);
-    box-shadow: 0 1px 0 color-mix(in oklch, white 70%, transparent);
+    background: linear-gradient(180deg, color-mix(in oklch, var(--surface) 94%, var(--surface-tint) 6%), var(--surface));
+    box-shadow: inset 0 1px 0 var(--surface-inner-highlight), 0 8px 18px var(--shadow-soft);
     backdrop-filter: blur(10px);
 }
 
@@ -129,7 +129,7 @@
 }
 
 .site-footer {
-    width: min(1200px, calc(100% - 2rem));
+    width: min(var(--site-frame-width), calc(100% - 2rem));
     margin: 1rem auto 2rem;
     padding: 0.9rem 0.2rem 0;
     border-top: 1px solid var(--border-soft);

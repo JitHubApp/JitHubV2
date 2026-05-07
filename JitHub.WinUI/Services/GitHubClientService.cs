@@ -30,13 +30,18 @@ public sealed class GitHubClientService : IGitHubClientService
         _httpClient.DefaultRequestHeaders.Add("X-GitHub-Api-Version", "2022-11-28");
     }
 
-    public Uri CreateLoginUri(string clientId, string? state = null)
+    public Uri CreateLoginUri(string clientId, string? state = null, string? redirectUri = null)
     {
         List<string> queryParts =
         [
             $"client_id={Uri.EscapeDataString(clientId)}",
             $"scope={Uri.EscapeDataString("user repo delete_repo")}"
         ];
+
+        if (!string.IsNullOrWhiteSpace(redirectUri))
+        {
+            queryParts.Add($"redirect_uri={Uri.EscapeDataString(redirectUri)}");
+        }
 
         if (!string.IsNullOrWhiteSpace(state))
         {

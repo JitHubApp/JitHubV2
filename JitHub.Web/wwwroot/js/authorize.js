@@ -13,6 +13,24 @@ if (authRoot) {
         }
     };
 
+    const readErrorMessage = async (response) => {
+        const fallback = `Token exchange failed with status ${response.status}.`;
+        try {
+            const contentType = response.headers.get("content-type") ?? "";
+            if (contentType.includes("application/json")) {
+                const payload = await response.json();
+                return payload?.message || payload?.Message || fallback;
+            }
+
+            const text = (await response.text()).trim();
+            return text || fallback;
+        } catch {
+            return fallback;
+        }
+    };
+
+    const genericFailureMessage = "We could not complete sign-in. Please return to JitHub and start sign-in again.";
+
     const fail = (message) => {
         if (errorText && message) {
             errorText.textContent = message;
@@ -29,19 +47,20 @@ if (authRoot) {
         const state = params.get("state");
 
         if (!code || !state) {
-            fail("The GitHub callback is missing the temporary code or state value.");
+            fail(genericFailureMessage);
             return;
         }
 
         try {
-            const response = await fetch(`${tokenEndpoint}?tempCode=${encodeURIComponent(code)}`, {
+            const redirectUri = `${window.location.origin}${window.location.pathname}`;
+            const response = await fetch(`${tokenEndpoint}?tempCode=${encodeURIComponent(code)}&redirectUri=${encodeURIComponent(redirectUri)}`, {
                 headers: {
                     "Accept": "text/plain"
                 }
             });
 
             if (!response.ok) {
-                throw new Error(`Token exchange failed with status ${response.status}.`);
+                throw new Error(await readErrorMessage(response));
             }
 
             const token = (await response.text()).trim();
@@ -65,8 +84,7 @@ if (authRoot) {
                 window.location.assign(protocolUri);
             }, 120);
         } catch (error) {
-            console.error("Failed to complete JitHub authorization.", error);
-            fail("GitHub approved the request, but the site could not complete the handoff back to JitHub.");
+            fail(genericFailureMessage);
         }
     };
 

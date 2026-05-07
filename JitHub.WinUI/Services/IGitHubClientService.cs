@@ -8,7 +8,7 @@ namespace JitHub.Services;
 
 public interface IGitHubClientService
 {
-    Uri CreateLoginUri(string clientId, string? state = null);
+    Uri CreateLoginUri(string clientId, string? state = null, string? redirectUri = null);
 
     Task<GitHubUser> GetCurrentUserAsync(string token, CancellationToken cancellationToken = default);
 

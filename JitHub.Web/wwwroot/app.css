@@ -68,10 +68,13 @@
     --brand-gold: oklch(0.6 0.12 90);
     --brand-violet: oklch(0.55 0.07 315);
     --border-soft: oklch(0.88 0.03 95 / 0.96);
+    --surface-tint: white;
+    --surface-inner-highlight: oklch(1 0 0 / 0.62);
     --shadow-soft: oklch(0.25 0.02 140 / 0.08);
     --font-body: "IBM Plex Mono", ui-monospace, monospace;
     --font-display: "Instrument Serif", Georgia, serif;
     --font-mono: "IBM Plex Mono", ui-monospace, monospace;
+    --site-frame-width: 1240px;
     --radius-sm: 0.5rem;
     --radius-md: 0.625rem;
     --radius-lg: 0.875rem;
@@ -92,6 +95,8 @@
     --brand-gold: oklch(0.78 0.11 88);
     --brand-violet: oklch(0.72 0.09 315);
     --border-soft: oklch(0.39 0.035 145 / 0.86);
+    --surface-tint: oklch(0.3 0.024 145);
+    --surface-inner-highlight: oklch(0.48 0.036 145 / 0.22);
     --shadow-soft: oklch(0.04 0.01 145 / 0.38);
 }
 
@@ -110,6 +115,8 @@
         --brand-gold: oklch(0.78 0.11 88);
         --brand-violet: oklch(0.72 0.09 315);
         --border-soft: oklch(0.39 0.035 145 / 0.86);
+        --surface-tint: oklch(0.3 0.024 145);
+        --surface-inner-highlight: oklch(0.48 0.036 145 / 0.22);
         --shadow-soft: oklch(0.04 0.01 145 / 0.38);
     }
 }
@@ -157,8 +164,8 @@ a {
 
 .surface-card {
     border: 1px solid var(--border-soft);
-    background: linear-gradient(180deg, color-mix(in oklch, var(--surface) 94%, white 6%), var(--surface));
-    box-shadow: 0 1px 0 color-mix(in oklch, white 65%, transparent), 0 8px 18px var(--shadow-soft);
+    background: linear-gradient(180deg, color-mix(in oklch, var(--surface) 94%, var(--surface-tint) 6%), var(--surface));
+    box-shadow: inset 0 1px 0 var(--surface-inner-highlight), 0 8px 18px var(--shadow-soft);
 }
 
 .eyebrow {
@@ -221,7 +228,7 @@ a {
 .page-frame,
 .auth-page,
 .not-found-shell {
-    width: min(1240px, calc(100% - 2rem));
+    width: min(var(--site-frame-width), calc(100% - 2rem));
     margin: 1.4rem auto 0;
 }
 
@@ -402,7 +409,7 @@ a {
     overflow: hidden;
     border-radius: 0.95rem;
     border: 1px solid color-mix(in oklch, var(--brand-violet) 7%, var(--border-soft));
-    box-shadow: inset 0 1px 0 color-mix(in oklch, white 60%, transparent);
+    box-shadow: inset 0 1px 0 var(--surface-inner-highlight);
 }
 
 .showcase-card__frame img {

@@ -3,6 +3,7 @@ using System.Net;
 using System.Net.Http;
 using System.Security.Cryptography;
 using System.Threading.Tasks;
+using JitHub.Models;
 using JitHub.Models.GitHub;
 using JitHub.WinUI;
 using Windows.Security.Credentials;
@@ -62,7 +63,11 @@ public sealed class AuthService : IAuthService
 
         SavePendingAuthState(authState);
 
-        Uri oauthLoginUrl = _gitHubClientService.CreateLoginUri(_appConfigService.Credential.ClientId, authState);
+        Credential credential = _appConfigService.Credential;
+        Uri oauthLoginUrl = _gitHubClientService.CreateLoginUri(
+            credential.ClientId,
+            authState,
+            credential.AuthorizationCallbackUrl);
         bool launched = await Windows.System.Launcher.LaunchUriAsync(oauthLoginUrl);
         if (!launched)
         {
