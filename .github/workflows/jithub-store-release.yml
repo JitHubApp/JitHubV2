@@ -232,7 +232,7 @@ jobs:
             "$env:STORE_PRODUCT_ID"
           )
 
-          if ($submissionMode -eq 'draft') {
+          if ($submissionMode -in @('draft', 'public')) {
             $publishArgs += '--noCommit'
           }
 
@@ -254,5 +254,25 @@ jobs:
           & msstore @publishArgs
           if ($LASTEXITCODE -ne 0) {
             throw 'msstore publish failed.'
+          }
+
+          if ($submissionMode -ne 'flight') {
+            .\eng\Normalize-JitHubStoreSubmissionDeviceFamilies.ps1 `
+              -ProductId "$env:STORE_PRODUCT_ID" `
+              -TenantId "$env:STORE_TENANT_ID" `
+              -ClientId "$env:STORE_CLIENT_ID" `
+              -ClientSecret "$env:STORE_CLIENT_SECRET"
+          }
+
+          if ($submissionMode -eq 'public') {
+            & msstore submission publish "$env:STORE_PRODUCT_ID"
+            if ($LASTEXITCODE -ne 0) {
+              throw 'msstore submission publish failed.'
+            }
+
+            & msstore submission poll "$env:STORE_PRODUCT_ID"
+            if ($LASTEXITCODE -ne 0) {
+              throw 'msstore submission poll failed.'
+            }
           }
 
