@@ -220,11 +220,14 @@ jobs:
             throw 'store_flight_id is required when store_submission_mode is flight.'
           }
 
+          $uploadPackage = '${{ steps.package.outputs.upload_package }}'
+          if ([string]::IsNullOrWhiteSpace($uploadPackage) -or -not (Test-Path -LiteralPath $uploadPackage)) {
+            throw "Store upload package was not found: $uploadPackage"
+          }
+
           $publishArgs = @(
             'publish',
-            "${{ github.workspace }}\${{ env.PROJECT_ROOT }}",
-            '--inputDirectory',
-            '${{ steps.package.outputs.upload_package_dir }}',
+            $uploadPackage,
             '--appId',
             "$env:STORE_PRODUCT_ID"
           )
