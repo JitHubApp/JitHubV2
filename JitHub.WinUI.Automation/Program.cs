@@ -1,4 +1,6 @@
 using System.Diagnostics;
+using System.Drawing;
+using System.Drawing.Imaging;
 using System.Runtime.InteropServices;
 using System.Text;
 using FlaUI.Core;
@@ -66,7 +68,10 @@ foreach (string theme in options.Themes)
 {
     foreach (CaptureTarget target in options.Targets)
     {
-        using var app = LaunchApplication(options.AppPath, BuildLaunchArguments(target, theme));
+        KillExistingApplicationInstances(options.AppPath);
+        string[] launchArguments = BuildLaunchArguments(target, theme, options.RepositoryFullName);
+        Console.WriteLine($"Launching {target.Name}: {string.Join(' ', launchArguments)}");
+        using var app = LaunchApplication(options.AppPath, launchArguments);
         using var automation = new UIA3Automation();
 
         try
@@ -85,7 +90,8 @@ foreach (string theme in options.Themes)
             window.Move(80, 80);
             window.SetForeground();
             window.FocusNative();
-            Thread.Sleep(900);
+            Thread.Sleep(GetSettleDelay(target));
+            PrepareTargetForCapture(window, target);
 
             AutomationElement element = window;
             if (!string.IsNullOrWhiteSpace(target.AutomationId))
@@ -114,13 +120,21 @@ foreach (string theme in options.Themes)
             AutomationElement captureTarget = string.Equals(target.Page, "design-lab", StringComparison.OrdinalIgnoreCase)
                 ? window
                 : element;
-            using var capture = captureTarget.Capture();
-            capture.Save(filePath);
+            using (var capture = captureTarget.Capture())
+            {
+                capture.Save(filePath);
+            }
+
+            if (IsAppPreviewTarget(target))
+            {
+                TrimAppPreviewCapture(filePath);
+            }
             captures.Add(new CaptureResult(theme, target.Name, fileName));
         }
         finally
         {
             TryClose(app);
+            KillExistingApplicationInstances(options.AppPath);
         }
     }
 }
@@ -746,10 +760,42 @@ static Application LaunchApplication(string appPath, params string[] arguments)
         processStartInfo.ArgumentList.Add(argument);
     }
 
+    AddPreviewEnvironment(processStartInfo, arguments);
     return Application.Launch(processStartInfo);
 }
 
-static string[] BuildLaunchArguments(CaptureTarget target, string theme)
+static void AddPreviewEnvironment(ProcessStartInfo processStartInfo, IEnumerable<string> arguments)
+{
+    foreach (string argument in arguments)
+    {
+        if (argument.StartsWith("--page=", StringComparison.OrdinalIgnoreCase))
+        {
+            processStartInfo.Environment["JITHUB_PREVIEW_PAGE"] = argument[7..];
+        }
+        else if (argument.StartsWith("--scenario=", StringComparison.OrdinalIgnoreCase))
+        {
+            processStartInfo.Environment["JITHUB_PREVIEW_SCENARIO"] = argument[11..];
+        }
+        else if (argument.StartsWith("--theme=", StringComparison.OrdinalIgnoreCase))
+        {
+            processStartInfo.Environment["JITHUB_PREVIEW_THEME"] = argument[8..];
+        }
+        else if (argument.StartsWith("--repo=", StringComparison.OrdinalIgnoreCase))
+        {
+            processStartInfo.Environment["JITHUB_PREVIEW_REPOSITORY"] = argument[7..];
+        }
+        else if (argument.StartsWith("--repository=", StringComparison.OrdinalIgnoreCase))
+        {
+            processStartInfo.Environment["JITHUB_PREVIEW_REPOSITORY"] = argument[13..];
+        }
+        else if (argument.StartsWith("--branch=", StringComparison.OrdinalIgnoreCase))
+        {
+            processStartInfo.Environment["JITHUB_PREVIEW_BRANCH"] = argument[9..];
+        }
+    }
+}
+
+static string[] BuildLaunchArguments(CaptureTarget target, string theme, string repoFullName)
 {
     var arguments = new List<string>
     {
@@ -762,7 +808,95 @@ static string[] BuildLaunchArguments(CaptureTarget target, string theme)
         arguments.Add($"--scenario={target.Scenario}");
     }
 
+    if (target.Page.StartsWith("repo", StringComparison.OrdinalIgnoreCase))
+    {
+        arguments.Add($"--repo={repoFullName}");
+    }
+
     return arguments.ToArray();
+}
+
+static void PrepareTargetForCapture(Window window, CaptureTarget target)
+{
+    if (IsRepoCodeTarget(target))
+    {
+        ClickReadmeByCoordinates(window);
+        Thread.Sleep(4000);
+        return;
+    }
+
+    if (!IsPullRequestTarget(target))
+    {
+        return;
+    }
+
+    Thread.Sleep(5000);
+}
+
+static bool ClickReadmeByCoordinates(Window window)
+{
+    var windowBounds = window.BoundingRectangle;
+    double dpiScale = GetDpiScale(window);
+    Mouse.DoubleClick(new System.Drawing.Point(
+        (int)Math.Round((windowBounds.X + 220) * dpiScale),
+        (int)Math.Round((windowBounds.Y + 430) * dpiScale)));
+    return true;
+}
+
+static int GetSettleDelay(CaptureTarget target)
+{
+    if (string.Equals(target.Page, "repo-code", StringComparison.OrdinalIgnoreCase))
+    {
+        return 11500;
+    }
+
+    if (IsPullRequestTarget(target))
+    {
+        return 11500;
+    }
+
+    if (target.Page.StartsWith("repo", StringComparison.OrdinalIgnoreCase))
+    {
+        return 6500;
+    }
+
+    if (string.Equals(target.Page, "home", StringComparison.OrdinalIgnoreCase))
+    {
+        return 2500;
+    }
+
+    return 900;
+}
+
+static bool IsPullRequestTarget(CaptureTarget target) =>
+    string.Equals(target.Page, "repo-pulls", StringComparison.OrdinalIgnoreCase) ||
+    string.Equals(target.Page, "repo-pull-requests", StringComparison.OrdinalIgnoreCase);
+
+static bool IsRepoCodeTarget(CaptureTarget target) =>
+    string.Equals(target.Page, "repo-code", StringComparison.OrdinalIgnoreCase);
+
+static bool IsAppPreviewTarget(CaptureTarget target) =>
+    target.Page.StartsWith("repo", StringComparison.OrdinalIgnoreCase) ||
+    string.Equals(target.Page, "home", StringComparison.OrdinalIgnoreCase);
+
+static void TrimAppPreviewCapture(string filePath)
+{
+    const int left = 49;
+    const int top = 42;
+
+    byte[] sourceBytes = File.ReadAllBytes(filePath);
+    using var sourceStream = new MemoryStream(sourceBytes);
+    using var image = new Bitmap(sourceStream);
+    if (image.Width <= left || image.Height <= top)
+    {
+        return;
+    }
+
+    var crop = new Rectangle(left, top, image.Width - left, image.Height - top);
+    using Bitmap cropped = image.Clone(crop, image.PixelFormat);
+    using MemoryStream output = new();
+    cropped.Save(output, ImageFormat.Png);
+    File.WriteAllBytes(filePath, output.ToArray());
 }
 
 static void TryClose(Application app)
@@ -788,6 +922,33 @@ static void TryClose(Application app)
         {
         }
     }
+}
+
+static void KillExistingApplicationInstances(string appPath)
+{
+    string processName = Path.GetFileNameWithoutExtension(appPath);
+    if (string.IsNullOrWhiteSpace(processName))
+    {
+        return;
+    }
+
+    foreach (Process process in Process.GetProcessesByName(processName))
+    {
+        try
+        {
+            process.Kill(entireProcessTree: true);
+            process.WaitForExit(5000);
+        }
+        catch
+        {
+        }
+        finally
+        {
+            process.Dispose();
+        }
+    }
+
+    Thread.Sleep(1000);
 }
 
 static void WriteManifest(string outputDirectory, IReadOnlyList<CaptureResult> captures)
@@ -829,6 +990,7 @@ internal sealed class CaptureOptions
     public required string OutputDirectory { get; init; }
     public required IReadOnlyList<string> Themes { get; init; }
     public required IReadOnlyList<CaptureTarget> Targets { get; init; }
+    public required string RepositoryFullName { get; init; }
     public string? Probe { get; init; }
     public string? AttachProcess { get; init; }
 
@@ -838,6 +1000,7 @@ internal sealed class CaptureOptions
         string? appPath = null;
         string? probe = null;
         string? attachProcess = null;
+        string repoFullName = "JitHubApp/JitHubV2";
         string[] themes = ["light", "dark"];
         string[] targetNames = ["buttons", "inputs", "segments", "navigation", "settings", "repo", "conversation", "pr-timeline", "empty", "login", "settings-page"];
 
@@ -867,6 +1030,10 @@ internal sealed class CaptureOptions
             {
                 attachProcess = arg[17..].Trim();
             }
+            else if (arg.StartsWith("--repo=", StringComparison.OrdinalIgnoreCase))
+            {
+                repoFullName = arg[7..].Trim();
+            }
         }
 
         appPath ??= GuessAppPath();
@@ -890,7 +1057,14 @@ internal sealed class CaptureOptions
             ["pr-timeline"] = new CaptureTarget("pr-timeline", "design-lab", "pr-timeline", "ScenarioPullRequestTimeline"),
             ["pull-request-timeline"] = new CaptureTarget("pr-timeline", "design-lab", "pr-timeline", "ScenarioPullRequestTimeline"),
             ["timeline"] = new CaptureTarget("pr-timeline", "design-lab", "pr-timeline", "ScenarioPullRequestTimeline"),
+            ["home"] = new CaptureTarget("home", "home", null, null),
             ["shell"] = new CaptureTarget("shell", "shell", null, null),
+            ["repo-code"] = new CaptureTarget("repo-code", "repo-code", null, null),
+            ["real-repo"] = new CaptureTarget("repo-code", "repo-code", null, null),
+            ["repo-issues"] = new CaptureTarget("repo-issues", "repo-issues", null, null),
+            ["repo-pulls"] = new CaptureTarget("repo-pulls", "repo-pulls", null, null),
+            ["repo-pull-requests"] = new CaptureTarget("repo-pulls", "repo-pull-requests", null, null),
+            ["repo-commits"] = new CaptureTarget("repo-commits", "repo-commits", null, null),
             ["empty"] = new CaptureTarget("empty", "design-lab", "empty", "ScenarioEmptyState"),
             ["login"] = new CaptureTarget("login", "login", null, null),
             ["settings-page"] = new CaptureTarget("settings-page", "settings", null, null)
@@ -902,6 +1076,7 @@ internal sealed class CaptureOptions
             OutputDirectory = outputDirectory,
             Themes = themes,
             Targets = targetNames.Select(name => allTargets[name]).ToList(),
+            RepositoryFullName = string.IsNullOrWhiteSpace(repoFullName) ? "JitHubApp/JitHubV2" : repoFullName,
             Probe = probe,
             AttachProcess = attachProcess
         };

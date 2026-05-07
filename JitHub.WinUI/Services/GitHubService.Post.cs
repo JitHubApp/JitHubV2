@@ -97,6 +97,11 @@ namespace JitHub.Services
 
         public async Task<bool> IsRepoStarredByCurrentUser(string owner, string name)
         {
+            if (IsPublicPreviewRepository(owner, name))
+            {
+                return false;
+            }
+
             try
             {
                 return await _gitHubClientService.IsRepositoryStarredAsync(
@@ -163,6 +168,11 @@ namespace JitHub.Services
 
         public async Task<bool> IsCurrentUserWatchingRepo(long repoId)
         {
+            if (IsPublicPreviewToken() && repoId == PublicPreviewRepositoryId)
+            {
+                return false;
+            }
+
             string token = GetAccessTokenOrThrow();
             (string owner, string name) = await GetRepositoryIdentityAsync(token, repoId);
             return await _gitHubClientService.IsRepositoryWatchedAsync(token, owner, name);

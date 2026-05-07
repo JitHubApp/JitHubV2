@@ -53,6 +53,11 @@ namespace JitHub.Services
     public partial class GitHubService : IGitHubService, IImageProvider, ISVGRenderer
     {
         private const string _baseUrl = "https://github.com";
+        private const long PublicPreviewRepositoryId = 623352671;
+        private const long PublicPreviewOwnerId = 170190931;
+        private const string PublicPreviewOwner = "JitHubApp";
+        private const string PublicPreviewRepositoryName = "JitHubV2";
+        private const string PublicPreviewDefaultBranch = "main";
         private readonly IGitHubClientService _gitHubClientService;
         private INotificationService _notificationService = null!;
         private MarkdownConfig _markdownConfig;
@@ -91,8 +96,250 @@ namespace JitHub.Services
                 : _accessToken;
         }
 
+        private bool IsPublicPreviewToken()
+        {
+            return GitHubClientService.IsPublicAccessToken(_accessToken);
+        }
+
+        private bool IsPublicPreviewRepository(string owner, string name)
+        {
+            return IsPublicPreviewToken() && IsPublicPreviewRepositoryName(owner, name);
+        }
+
+        private bool IsPublicPreviewRepository(Repository repository)
+        {
+            return IsPublicPreviewToken() &&
+                repository.Id == PublicPreviewRepositoryId &&
+                IsPublicPreviewRepositoryName(repository.Owner.Login, repository.Name);
+        }
+
+        private static bool IsPublicPreviewRepositoryName(string owner, string name)
+        {
+            return string.Equals(owner, PublicPreviewOwner, StringComparison.OrdinalIgnoreCase) &&
+                string.Equals(name, PublicPreviewRepositoryName, StringComparison.OrdinalIgnoreCase);
+        }
+
+        private static User CreatePublicPreviewOwner()
+        {
+            return new User
+            {
+                Id = PublicPreviewOwnerId,
+                Login = PublicPreviewOwner,
+                Name = "JitHub",
+                HtmlUrl = $"https://github.com/{PublicPreviewOwner}",
+                AvatarUrl = "https://avatars.githubusercontent.com/u/170190931?v=4"
+            };
+        }
+
+        private static Repository CreatePublicPreviewRepository()
+        {
+            return new Repository
+            {
+                Url = $"https://api.github.com/repos/{PublicPreviewOwner}/{PublicPreviewRepositoryName}",
+                HtmlUrl = $"https://github.com/{PublicPreviewOwner}/{PublicPreviewRepositoryName}",
+                CloneUrl = $"https://github.com/{PublicPreviewOwner}/{PublicPreviewRepositoryName}.git",
+                GitUrl = $"git://github.com/{PublicPreviewOwner}/{PublicPreviewRepositoryName}.git",
+                SshUrl = $"git@github.com:{PublicPreviewOwner}/{PublicPreviewRepositoryName}.git",
+                SvnUrl = $"https://github.com/{PublicPreviewOwner}/{PublicPreviewRepositoryName}",
+                Id = PublicPreviewRepositoryId,
+                NodeId = "R_kgDOJTgCXw",
+                Owner = CreatePublicPreviewOwner(),
+                Name = PublicPreviewRepositoryName,
+                FullName = $"{PublicPreviewOwner}/{PublicPreviewRepositoryName}",
+                Description = "GitHub WinUI Client",
+                Language = "C#",
+                Private = false,
+                Fork = false,
+                ForksCount = 15,
+                StargazersCount = 146,
+                DefaultBranch = PublicPreviewDefaultBranch,
+                OpenIssuesCount = 8,
+                CreatedAt = new DateTimeOffset(2023, 4, 3, 0, 0, 0, TimeSpan.Zero),
+                UpdatedAt = new DateTimeOffset(2026, 5, 4, 0, 0, 0, TimeSpan.Zero),
+                WatchersCount = 146,
+                SubscribersCount = 15,
+                Visibility = RepositoryVisibility.Public,
+                Topics = new[] { "github", "winui", "windows", "client" }
+            };
+        }
+
+        private static Branch CreatePublicPreviewBranch()
+        {
+            return new Branch
+            {
+                Name = PublicPreviewDefaultBranch,
+                Commit = new GitReference
+                {
+                    Ref = PublicPreviewDefaultBranch,
+                    Sha = "preview-main-sha",
+                    Repository = CreatePublicPreviewRepository()
+                },
+                Protected = false
+            };
+        }
+
+        private static IReadOnlyList<Label> CreatePublicPreviewLabels()
+        {
+            return
+            [
+                new Label
+                {
+                    Id = 1,
+                    Name = "enhancement",
+                    Color = "a2eeef",
+                    Description = "New feature or request"
+                },
+                new Label
+                {
+                    Id = 2,
+                    Name = "website",
+                    Color = "7057ff",
+                    Description = "Website and marketing updates"
+                },
+                new Label
+                {
+                    Id = 3,
+                    Name = "dependencies",
+                    Color = "0366d6",
+                    Description = "Dependency updates"
+                }
+            ];
+        }
+
+        private static IReadOnlyList<PullRequest> CreatePublicPreviewPullRequests()
+        {
+            return
+            [
+                CreatePublicPreviewPullRequest(
+                    72,
+                    "Add website dark mode and unblock Store release",
+                    "Refreshes the website screenshots, adds theme-aware image handling, and keeps the Store release page aligned with the WinUI app.",
+                    new DateTimeOffset(2026, 5, 4, 13, 20, 0, TimeSpan.Zero),
+                    new DateTimeOffset(2026, 5, 4, 17, 10, 0, TimeSpan.Zero),
+                    "website-dark-mode",
+                    4,
+                    [CreatePublicPreviewLabels()[0], CreatePublicPreviewLabels()[1]]),
+                CreatePublicPreviewPullRequest(
+                    62,
+                    "GitHub: Improve developer experience",
+                    "Improves repository navigation, issue composition, and developer-facing GitHub workflows in the desktop client.",
+                    new DateTimeOffset(2024, 10, 20, 9, 30, 0, TimeSpan.Zero),
+                    new DateTimeOffset(2024, 10, 22, 15, 45, 0, TimeSpan.Zero),
+                    "github-developer-experience",
+                    2,
+                    [CreatePublicPreviewLabels()[0]]),
+                CreatePublicPreviewPullRequest(
+                    59,
+                    "Bump SkiaSharp from 2.88.3 to 2.88.6 in /JitHub.Utilities.SVG",
+                    "Updates SkiaSharp packages used by SVG rendering.",
+                    new DateTimeOffset(2023, 9, 21, 16, 5, 0, TimeSpan.Zero),
+                    new DateTimeOffset(2023, 9, 22, 11, 35, 0, TimeSpan.Zero),
+                    "dependabot/nuget/JitHub.Utilities.SVG/SkiaSharp-2.88.6",
+                    1,
+                    [CreatePublicPreviewLabels()[2]])
+            ];
+        }
+
+        private static PullRequest CreatePublicPreviewPullRequest(
+            int number,
+            string title,
+            string body,
+            DateTimeOffset createdAt,
+            DateTimeOffset updatedAt,
+            string headRef,
+            int comments,
+            IReadOnlyList<Label> labels)
+        {
+            Repository repository = CreatePublicPreviewRepository();
+            User owner = CreatePublicPreviewOwner();
+            return new PullRequest
+            {
+                Id = 100000 + number,
+                Url = $"https://api.github.com/repos/{PublicPreviewOwner}/{PublicPreviewRepositoryName}/pulls/{number}",
+                HtmlUrl = $"https://github.com/{PublicPreviewOwner}/{PublicPreviewRepositoryName}/pull/{number}",
+                DiffUrl = $"https://github.com/{PublicPreviewOwner}/{PublicPreviewRepositoryName}/pull/{number}.diff",
+                PatchUrl = $"https://github.com/{PublicPreviewOwner}/{PublicPreviewRepositoryName}/pull/{number}.patch",
+                IssueUrl = $"https://api.github.com/repos/{PublicPreviewOwner}/{PublicPreviewRepositoryName}/issues/{number}",
+                CommitsUrl = $"https://api.github.com/repos/{PublicPreviewOwner}/{PublicPreviewRepositoryName}/pulls/{number}/commits",
+                ReviewCommentsUrl = $"https://api.github.com/repos/{PublicPreviewOwner}/{PublicPreviewRepositoryName}/pulls/{number}/comments",
+                Number = number,
+                State = ItemState.Open,
+                Title = title,
+                Body = body,
+                CreatedAt = createdAt,
+                UpdatedAt = updatedAt,
+                Head = new GitReference
+                {
+                    Label = $"{PublicPreviewOwner}:{headRef}",
+                    Ref = headRef,
+                    Sha = $"preview-pr-{number}-head",
+                    User = owner,
+                    Repository = repository
+                },
+                Base = new GitReference
+                {
+                    Label = $"{PublicPreviewOwner}:{PublicPreviewDefaultBranch}",
+                    Ref = PublicPreviewDefaultBranch,
+                    Sha = "preview-main-sha",
+                    User = owner,
+                    Repository = repository
+                },
+                User = owner,
+                Draft = false,
+                Mergeable = true,
+                MergeableState = MergeableState.Clean,
+                Comments = comments,
+                Commits = Math.Max(1, comments),
+                Additions = 420 + number,
+                Deletions = 120,
+                ChangedFiles = 12,
+                Labels = labels,
+                Reactions = new ReactionSummary()
+            };
+        }
+
+        private static PullRequest CreatePublicPreviewPullRequest(int number)
+        {
+            return CreatePublicPreviewPullRequests().FirstOrDefault(pullRequest => pullRequest.Number == number)
+                ?? CreatePublicPreviewPullRequests()[0];
+        }
+
+        private static Issue CreatePublicPreviewIssue(int number)
+        {
+            PullRequest pullRequest = CreatePublicPreviewPullRequest(number);
+            return new Issue
+            {
+                Url = pullRequest.IssueUrl,
+                HtmlUrl = pullRequest.HtmlUrl,
+                CommentsUrl = $"{pullRequest.IssueUrl}/comments",
+                EventsUrl = $"{pullRequest.IssueUrl}/events",
+                Number = pullRequest.Number,
+                State = ItemState.Open,
+                Title = pullRequest.Title,
+                Body = pullRequest.Body,
+                User = pullRequest.User,
+                Labels = pullRequest.Labels,
+                Assignees = Array.Empty<User>(),
+                Comments = pullRequest.Comments,
+                PullRequest = pullRequest,
+                CreatedAt = pullRequest.CreatedAt,
+                UpdatedAt = pullRequest.UpdatedAt,
+                Id = pullRequest.Id,
+                NodeId = $"preview-issue-{number}",
+                Locked = false,
+                Repository = CreatePublicPreviewRepository(),
+                Reactions = new ReactionSummary(),
+                AuthorAssociation = AuthorAssociation.Member
+            };
+        }
+
         private async Task<(string Owner, string Name)> GetRepositoryIdentityAsync(string token, long repositoryId)
         {
+            if (GitHubClientService.IsPublicAccessToken(token) && repositoryId == PublicPreviewRepositoryId)
+            {
+                return (PublicPreviewOwner, PublicPreviewRepositoryName);
+            }
+
             RestGitHubRepository repository = await _gitHubClientService.GetRepositoryAsync(token, repositoryId);
             return (repository.Owner.Login, repository.Name);
         }
@@ -867,6 +1114,11 @@ namespace JitHub.Services
 
         public async Task<Repository> GetRepository(string owner, string name)
         {
+            if (IsPublicPreviewRepository(owner, name))
+            {
+                return CreatePublicPreviewRepository();
+            }
+
             try
             {
                 return AdaptRepository(await _gitHubClientService.GetRepositoryAsync(GetAccessTokenOrThrow(), owner, name));
@@ -879,6 +1131,11 @@ namespace JitHub.Services
 
         public async Task<Repository> GetRepository(long id)
         {
+            if (IsPublicPreviewToken() && id == PublicPreviewRepositoryId)
+            {
+                return CreatePublicPreviewRepository();
+            }
+
             try
             {
                 return AdaptRepository(await _gitHubClientService.GetRepositoryAsync(GetAccessTokenOrThrow(), id));
@@ -891,6 +1148,11 @@ namespace JitHub.Services
 
         public async Task<ICollection<ConversationNode>> GetPRConversationNodesAsync(Repository repo, PullRequest pr)
         {
+            if (IsPublicPreviewRepository(repo))
+            {
+                return [];
+            }
+
             var nodes = new List<ConversationNode>();
             const int pageSize = 100;
             string token = GetAccessTokenOrThrow();
@@ -1026,6 +1288,11 @@ namespace JitHub.Services
 
         public async Task<ICollection<PullRequest>> GetPullRequests(string owner, string name, PullRequestRequest requestParam, ApiOptions apiOptions)
         {
+            if (IsPublicPreviewRepository(owner, name))
+            {
+                return CreatePublicPreviewPullRequests().ToList();
+            }
+
             int pageSize = apiOptions?.PageSize ?? 100;
             int startPage = apiOptions?.StartPage ?? 1;
             int pageCount = apiOptions?.PageCount ?? 1;
@@ -1059,6 +1326,11 @@ namespace JitHub.Services
 
         public async Task<PullRequest> GetPullRequest(string owner, string name, int num)
         {
+            if (IsPublicPreviewRepository(owner, name))
+            {
+                return CreatePublicPreviewPullRequest(num);
+            }
+
             return AdaptPullRequest(await _gitHubClientService.GetPullRequestAsync(GetAccessTokenOrThrow(), owner, name, num));
         }
 
@@ -1104,11 +1376,21 @@ namespace JitHub.Services
 
         public async Task<Issue> GetIssue(string owner, string name, int number)
         {
+            if (IsPublicPreviewRepository(owner, name))
+            {
+                return CreatePublicPreviewIssue(number);
+            }
+
             return AdaptIssue(await _gitHubClientService.GetIssueAsync(GetAccessTokenOrThrow(), owner, name, number));
         }
         
         public async Task<Issue> GetIssue(long repositoryId, int number)
         {
+            if (IsPublicPreviewToken() && repositoryId == PublicPreviewRepositoryId)
+            {
+                return CreatePublicPreviewIssue(number);
+            }
+
             string token = GetAccessTokenOrThrow();
             (string owner, string name) = await GetRepositoryIdentityAsync(token, repositoryId);
             return AdaptIssue(await _gitHubClientService.GetIssueAsync(token, owner, name, number));
@@ -1259,6 +1541,11 @@ namespace JitHub.Services
 
         public async Task<ICollection<Branch>> GetRepoBranches(string owner, string name)
         {
+            if (IsPublicPreviewRepository(owner, name))
+            {
+                return [CreatePublicPreviewBranch()];
+            }
+
             const int pageSize = 100;
             string token = GetAccessTokenOrThrow();
             List<Branch> branches = [];
@@ -1284,6 +1571,12 @@ namespace JitHub.Services
 
         public async Task<Branch> GetBranch(string owner, string name, string branch)
         {
+            if (IsPublicPreviewRepository(owner, name) &&
+                string.Equals(branch, PublicPreviewDefaultBranch, StringComparison.OrdinalIgnoreCase))
+            {
+                return CreatePublicPreviewBranch();
+            }
+
             const int pageSize = 100;
             string token = GetAccessTokenOrThrow();
 
@@ -1429,12 +1722,22 @@ namespace JitHub.Services
 
         public async Task<ICollection<Label>> GetLabelsFromRepository(string owner, string name)
         {
+            if (IsPublicPreviewRepository(owner, name))
+            {
+                return CreatePublicPreviewLabels().ToList();
+            }
+
             IReadOnlyList<RestGitHubLabel> labels = await _gitHubClientService.GetLabelsAsync(GetAccessTokenOrThrow(), owner, name);
             return labels.Select(AdaptLabel).ToList();
         }
 
         public async Task<ICollection<Label>> GetLabelsFromRepository(long repoId)
         {
+            if (IsPublicPreviewToken() && repoId == PublicPreviewRepositoryId)
+            {
+                return CreatePublicPreviewLabels().ToList();
+            }
+
             string token = GetAccessTokenOrThrow();
             (string owner, string name) = await GetRepositoryIdentityAsync(token, repoId);
             IReadOnlyList<RestGitHubLabel> labels = await _gitHubClientService.GetLabelsAsync(token, owner, name);

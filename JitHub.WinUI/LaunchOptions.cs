@@ -1,18 +1,43 @@
 namespace JitHub.WinUI;
 
-internal sealed record LaunchOptions(string? Page = null, string? Scenario = null, string? Theme = null)
+internal sealed record LaunchOptions(
+    string? Page = null,
+    string? Scenario = null,
+    string? Theme = null,
+    string? Repository = null,
+    string? Branch = null)
 {
+    private const string DefaultRepository = "JitHubApp/JitHubV2";
+
     public bool HasPageOverride => !string.IsNullOrWhiteSpace(Page);
+
+    public bool IsRepositoryPageOverride =>
+        Page is not null &&
+        (Page.Equals("repo", System.StringComparison.OrdinalIgnoreCase) ||
+         Page.Equals("repo-code", System.StringComparison.OrdinalIgnoreCase) ||
+         Page.Equals("repo-issues", System.StringComparison.OrdinalIgnoreCase) ||
+         Page.Equals("repo-pulls", System.StringComparison.OrdinalIgnoreCase) ||
+         Page.Equals("repo-pull-requests", System.StringComparison.OrdinalIgnoreCase) ||
+         Page.Equals("repo-commits", System.StringComparison.OrdinalIgnoreCase));
+
+    public bool IsPublicPreviewOverride =>
+        IsRepositoryPageOverride ||
+        (Page is not null && Page.Equals("home", System.StringComparison.OrdinalIgnoreCase));
+
+    public string RepositoryFullName =>
+        string.IsNullOrWhiteSpace(Repository) ? DefaultRepository : Repository.Trim();
 
     public static LaunchOptions Parse(string[]? args)
     {
         string? page = null;
         string? scenario = null;
         string? theme = null;
+        string? repository = null;
+        string? branch = null;
 
         if (args is null)
         {
-            return new LaunchOptions();
+            args = [];
         }
 
         foreach (string rawArg in args)
@@ -44,9 +69,33 @@ internal sealed record LaunchOptions(string? Page = null, string? Scenario = nul
             if (arg.StartsWith("--theme=", System.StringComparison.OrdinalIgnoreCase))
             {
                 theme = arg[8..].Trim();
+                continue;
+            }
+
+            if (arg.StartsWith("--repo=", System.StringComparison.OrdinalIgnoreCase))
+            {
+                repository = arg[7..].Trim();
+                continue;
+            }
+
+            if (arg.StartsWith("--repository=", System.StringComparison.OrdinalIgnoreCase))
+            {
+                repository = arg[13..].Trim();
+                continue;
+            }
+
+            if (arg.StartsWith("--branch=", System.StringComparison.OrdinalIgnoreCase))
+            {
+                branch = arg[9..].Trim();
             }
         }
 
-        return new LaunchOptions(page, scenario, theme);
+        page ??= System.Environment.GetEnvironmentVariable("JITHUB_PREVIEW_PAGE");
+        scenario ??= System.Environment.GetEnvironmentVariable("JITHUB_PREVIEW_SCENARIO");
+        theme ??= System.Environment.GetEnvironmentVariable("JITHUB_PREVIEW_THEME");
+        repository ??= System.Environment.GetEnvironmentVariable("JITHUB_PREVIEW_REPOSITORY");
+        branch ??= System.Environment.GetEnvironmentVariable("JITHUB_PREVIEW_BRANCH");
+
+        return new LaunchOptions(page, scenario, theme, repository, branch);
     }
 }

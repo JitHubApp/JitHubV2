@@ -4,6 +4,7 @@ using System.Net.Http;
 using System.Security.Cryptography;
 using System.Threading.Tasks;
 using JitHub.Models.GitHub;
+using JitHub.WinUI;
 using Windows.Security.Credentials;
 
 namespace JitHub.Services;
@@ -163,6 +164,15 @@ public sealed class AuthService : IAuthService
         try
         {
             _gitHubService.SetAccessToken(token);
+
+            if (Program.CurrentLaunchOptions.IsPublicPreviewOverride && GitHubClientService.IsPublicAccessToken(token))
+            {
+                GitHubUser previewUser = CreatePublicPreviewUser();
+                AuthenticatedUser = previewUser;
+                Authenticated = true;
+                return previewUser;
+            }
+
             GitHubUser user = await _gitHubClientService.GetCurrentUserAsync(token);
             SaveToken(token, user.Id);
             _accountService.SaveUser(user.Id);
@@ -185,8 +195,23 @@ public sealed class AuthService : IAuthService
         }
     }
 
+    private static GitHubUser CreatePublicPreviewUser() => new()
+    {
+        Id = 4_042_024,
+        Login = "JitHubApp",
+        Name = "JitHub",
+        AvatarUrl = "https://avatars.githubusercontent.com/u/170190931",
+        HtmlUrl = "https://github.com/JitHubApp",
+        PublicRepos = 4
+    };
+
     public string? GetToken(long userId)
     {
+        if (Program.CurrentLaunchOptions.IsPublicPreviewOverride)
+        {
+            return GitHubClientService.PublicAccessToken;
+        }
+
         if (userId <= 0)
         {
             return GetPendingToken();

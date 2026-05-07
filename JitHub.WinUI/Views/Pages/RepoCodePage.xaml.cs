@@ -1,6 +1,11 @@
 using System;
+using System.Collections.Generic;
+using System.IO;
+using System.Linq;
 using System.Runtime.InteropServices;
+using System.Text;
 using System.Text.Encodings.Web;
+using System.Text.Json;
 using System.Threading.Tasks;
 using JitHub.Models.NavArgs;
 using JitHub.Services;
@@ -15,6 +20,90 @@ namespace JitHub.WinUI.Views.Pages
     {
         private const string HostGitHubTokenMarker = "__jithub_host_token__";
         private const int HeaderNotFoundHResult = unchecked((int)0x80070490);
+        private const string PublicPreviewOwner = "JitHubApp";
+        private const string PublicPreviewRepository = "JitHubV2";
+        private const string PublicPreviewBranch = "main";
+        private const long PublicPreviewRepositoryId = 623352671;
+        private static readonly IReadOnlyDictionary<string, string> PublicPreviewFiles = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase)
+        {
+            ["README.md"] = """
+                # JitHubV2
+
+                JitHub is a native WinUI GitHub client for Windows. The preview capture uses this public repository to show the real code experience without relying on GitHub API rate limits.
+
+                ## Highlights
+
+                - Multiple repository tabs
+                - Pull request conversations
+                - Embedded code browsing
+                - Light and dark theme support
+                """,
+            ["JitHub.WinUI/App.xaml.cs"] = """
+                using Microsoft.UI.Xaml;
+
+                namespace JitHub.WinUI;
+
+                public partial class App : Application
+                {
+                    public App()
+                    {
+                        InitializeComponent();
+                    }
+                }
+                """,
+            ["JitHub.WinUI/Views/Pages/ShellPage.xaml.cs"] = """
+                using Microsoft.UI.Xaml.Controls;
+
+                namespace JitHub.WinUI.Views.Pages;
+
+                public sealed partial class ShellPage : Page
+                {
+                    public ShellPage()
+                    {
+                        InitializeComponent();
+                    }
+                }
+                """,
+            ["JitHub.Web/Pages/Home.razor"] = """
+                @page "/"
+
+                <section class="hero">
+                    <img src="ss1.png" alt="JitHub app home" />
+                    <h1>JitHub</h1>
+                    <p>A native GitHub client for Windows.</p>
+                </section>
+                """,
+            ["JitHub.Web/wwwroot/css/site.css"] = """
+                :root {
+                    color-scheme: light dark;
+                    --accent: #2563eb;
+                }
+
+                .hero {
+                    min-height: 100vh;
+                    display: grid;
+                    place-items: center;
+                }
+                """,
+            ["JitHub.WinUI/JitHub.WinUI.csproj"] = """
+                <Project Sdk="Microsoft.NET.Sdk">
+                  <PropertyGroup>
+                    <TargetFramework>net10.0-windows10.0.26100.0</TargetFramework>
+                    <UseWinUI>true</UseWinUI>
+                  </PropertyGroup>
+                </Project>
+                """
+        };
+        private static readonly string[] PublicPreviewDirectories =
+        [
+            "JitHub.WinUI",
+            "JitHub.WinUI/Views",
+            "JitHub.WinUI/Views/Pages",
+            "JitHub.Web",
+            "JitHub.Web/Pages",
+            "JitHub.Web/wwwroot",
+            "JitHub.Web/wwwroot/css"
+        ];
         private readonly App _app = (App)Application.Current;
         private readonly ThemeListener _themeListener = new();
         private readonly GlobalViewModel _globalViewModel;
@@ -25,6 +114,7 @@ namespace JitHub.WinUI.Views.Pages
         private string? _editorBootstrapScriptId;
         private bool _gitHubRequestBridgeInitialized;
         private string? _editorAccessToken;
+        private readonly Queue<MemoryStream> _previewResponseStreams = new();
 
         public RepoCodePage()
         {
@@ -213,9 +303,30 @@ namespace JitHub.WinUI.Views.Pages
                 return;
             }
 
+            if (GitHubClientService.IsPublicAccessToken(_editorAccessToken))
+            {
+                if (string.Equals(args.Request.Method, "OPTIONS", StringComparison.OrdinalIgnoreCase))
+                {
+                    args.Response = CreateTextResponse(string.Empty, "text/plain", 204, "No Content");
+                    return;
+                }
+
+                if (TryCreatePublicPreviewResponse(uri, out string responseBody, out string contentType))
+                {
+                    args.Response = CreateTextResponse(responseBody, contentType);
+                    return;
+                }
+            }
+
             string authorizationHeader = GetRequestHeader(args.Request.Headers, "Authorization");
             if (authorizationHeader.Contains(HostGitHubTokenMarker, StringComparison.Ordinal))
             {
+                if (GitHubClientService.IsPublicAccessToken(_editorAccessToken))
+                {
+                    args.Request.Headers.RemoveHeader("Authorization");
+                    return;
+                }
+
                 args.Request.Headers.SetHeader(
                     "Authorization",
                     authorizationHeader.Replace(HostGitHubTokenMarker, _editorAccessToken, StringComparison.Ordinal));
@@ -225,8 +336,394 @@ namespace JitHub.WinUI.Views.Pages
             string? markerToken = GetTokenQueryParameter(uri);
             if (string.Equals(markerToken, HostGitHubTokenMarker, StringComparison.Ordinal))
             {
+                if (GitHubClientService.IsPublicAccessToken(_editorAccessToken))
+                {
+                    return;
+                }
+
                 args.Request.Headers.SetHeader("Authorization", $"token {_editorAccessToken}");
             }
+        }
+
+        private CoreWebView2WebResourceResponse CreateTextResponse(
+            string body,
+            string contentType,
+            int statusCode = 200,
+            string reasonPhrase = "OK")
+        {
+            var stream = new MemoryStream(Encoding.UTF8.GetBytes(body));
+            _previewResponseStreams.Enqueue(stream);
+            while (_previewResponseStreams.Count > 40)
+            {
+                _previewResponseStreams.Dequeue().Dispose();
+            }
+
+            return ShellWebView.CoreWebView2.Environment.CreateWebResourceResponse(
+                stream.AsRandomAccessStream(),
+                statusCode,
+                reasonPhrase,
+                $"Content-Type: {contentType}; charset=utf-8\r\n" +
+                "Access-Control-Allow-Origin: *\r\n" +
+                "Access-Control-Allow-Methods: GET, OPTIONS\r\n" +
+                "Access-Control-Allow-Headers: authorization, content-type, accept, x-github-api-version\r\n" +
+                "Cache-Control: no-store\r\n");
+        }
+
+        private static bool TryCreatePublicPreviewResponse(Uri uri, out string responseBody, out string contentType)
+        {
+            responseBody = string.Empty;
+            contentType = "application/json";
+
+            string[] pathSegments = Uri.UnescapeDataString(uri.AbsolutePath)
+                .Trim('/')
+                .Split('/', StringSplitOptions.RemoveEmptyEntries);
+
+            if (string.Equals(uri.Host, "raw.githubusercontent.com", StringComparison.OrdinalIgnoreCase))
+            {
+                if (pathSegments.Length >= 4 &&
+                    IsPublicPreviewRepository(pathSegments[0], pathSegments[1]))
+                {
+                    string filePath = string.Join('/', pathSegments[3..]);
+                    responseBody = GetPublicPreviewFileContent(filePath);
+                    contentType = GetContentType(filePath);
+                    return true;
+                }
+
+                return false;
+            }
+
+            if (pathSegments.Length < 3 ||
+                !string.Equals(pathSegments[0], "repos", StringComparison.OrdinalIgnoreCase) ||
+                !IsPublicPreviewRepository(pathSegments[1], pathSegments[2]))
+            {
+                return false;
+            }
+
+            if (pathSegments.Length == 3)
+            {
+                responseBody = SerializePublicPreviewRepository();
+                return true;
+            }
+
+            if (pathSegments.Length >= 5 &&
+                string.Equals(pathSegments[3], "branches", StringComparison.OrdinalIgnoreCase) &&
+                string.Equals(pathSegments[4], PublicPreviewBranch, StringComparison.OrdinalIgnoreCase))
+            {
+                responseBody = JsonSerializer.Serialize(new
+                {
+                    name = PublicPreviewBranch,
+                    commit = new
+                    {
+                        sha = "preview-main-sha",
+                        url = $"https://api.github.com/repos/{PublicPreviewOwner}/{PublicPreviewRepository}/commits/preview-main-sha"
+                    },
+                    protected_branch = false
+                });
+                return true;
+            }
+
+            if (pathSegments.Length >= 7 &&
+                string.Equals(pathSegments[3], "git", StringComparison.OrdinalIgnoreCase) &&
+                (string.Equals(pathSegments[4], "ref", StringComparison.OrdinalIgnoreCase) ||
+                    string.Equals(pathSegments[4], "refs", StringComparison.OrdinalIgnoreCase)) &&
+                string.Equals(pathSegments[5], "heads", StringComparison.OrdinalIgnoreCase) &&
+                string.Equals(pathSegments[6], PublicPreviewBranch, StringComparison.OrdinalIgnoreCase))
+            {
+                responseBody = JsonSerializer.Serialize(new
+                {
+                    @ref = $"refs/heads/{PublicPreviewBranch}",
+                    node_id = "preview-ref-main",
+                    url = $"https://api.github.com/repos/{PublicPreviewOwner}/{PublicPreviewRepository}/git/ref/heads/{PublicPreviewBranch}",
+                    @object = new
+                    {
+                        sha = "preview-main-sha",
+                        type = "commit",
+                        url = $"https://api.github.com/repos/{PublicPreviewOwner}/{PublicPreviewRepository}/git/commits/preview-main-sha"
+                    }
+                });
+                return true;
+            }
+
+            if (pathSegments.Length >= 6 &&
+                string.Equals(pathSegments[3], "git", StringComparison.OrdinalIgnoreCase) &&
+                string.Equals(pathSegments[4], "matching-refs", StringComparison.OrdinalIgnoreCase))
+            {
+                responseBody = JsonSerializer.Serialize(new[]
+                {
+                    new
+                    {
+                        @ref = $"refs/heads/{PublicPreviewBranch}",
+                        node_id = "preview-matching-ref-main",
+                        url = $"https://api.github.com/repos/{PublicPreviewOwner}/{PublicPreviewRepository}/git/ref/heads/{PublicPreviewBranch}",
+                        @object = new
+                        {
+                            sha = "preview-main-sha",
+                            type = "commit",
+                            url = $"https://api.github.com/repos/{PublicPreviewOwner}/{PublicPreviewRepository}/git/commits/preview-main-sha"
+                        }
+                    }
+                });
+                return true;
+            }
+
+            if (pathSegments.Length >= 6 &&
+                string.Equals(pathSegments[3], "git", StringComparison.OrdinalIgnoreCase) &&
+                string.Equals(pathSegments[4], "trees", StringComparison.OrdinalIgnoreCase))
+            {
+                responseBody = SerializePublicPreviewTree(GetTreePath(pathSegments), IsRecursiveTreeRequest(uri));
+                return true;
+            }
+
+            if (pathSegments.Length >= 5 &&
+                string.Equals(pathSegments[3], "contents", StringComparison.OrdinalIgnoreCase))
+            {
+                string contentPath = string.Join('/', pathSegments[4..]);
+                responseBody = SerializePublicPreviewContents(contentPath);
+                return true;
+            }
+
+            if (pathSegments.Length >= 4 &&
+                string.Equals(pathSegments[3], "readme", StringComparison.OrdinalIgnoreCase))
+            {
+                responseBody = SerializePublicPreviewFile("README.md");
+                return true;
+            }
+
+            if (pathSegments.Length >= 5 &&
+                string.Equals(pathSegments[3], "commits", StringComparison.OrdinalIgnoreCase))
+            {
+                responseBody = JsonSerializer.Serialize(new
+                {
+                    sha = "preview-main-sha",
+                    html_url = $"https://github.com/{PublicPreviewOwner}/{PublicPreviewRepository}/commit/preview-main-sha",
+                    commit = new
+                    {
+                        message = "Refresh website screenshots",
+                        author = new { name = "JitHub", date = "2026-05-04T17:10:00Z" }
+                    }
+                });
+                return true;
+            }
+
+            return false;
+        }
+
+        private static bool IsPublicPreviewRepository(string owner, string repo)
+        {
+            return string.Equals(owner, PublicPreviewOwner, StringComparison.OrdinalIgnoreCase) &&
+                string.Equals(repo, PublicPreviewRepository, StringComparison.OrdinalIgnoreCase);
+        }
+
+        private static string SerializePublicPreviewRepository()
+        {
+            return JsonSerializer.Serialize(new
+            {
+                id = PublicPreviewRepositoryId,
+                node_id = "R_kgDOJTgCXw",
+                name = PublicPreviewRepository,
+                full_name = $"{PublicPreviewOwner}/{PublicPreviewRepository}",
+                @private = false,
+                html_url = $"https://github.com/{PublicPreviewOwner}/{PublicPreviewRepository}",
+                description = "GitHub WinUI Client",
+                fork = false,
+                language = "C#",
+                stargazers_count = 146,
+                watchers_count = 146,
+                forks_count = 15,
+                open_issues_count = 8,
+                default_branch = PublicPreviewBranch,
+                owner = new
+                {
+                    login = PublicPreviewOwner,
+                    id = 170190931,
+                    avatar_url = "https://avatars.githubusercontent.com/u/170190931?v=4",
+                    html_url = $"https://github.com/{PublicPreviewOwner}"
+                }
+            });
+        }
+
+        private static string SerializePublicPreviewTree(string requestedPath, bool recursive)
+        {
+            var treeEntries = CreatePublicPreviewTreeEntries(requestedPath, recursive).ToList();
+
+            return JsonSerializer.Serialize(new
+            {
+                sha = string.IsNullOrWhiteSpace(requestedPath) ? "preview-root-tree" : $"preview-tree-{requestedPath.GetHashCode():x}",
+                url = $"https://api.github.com/repos/{PublicPreviewOwner}/{PublicPreviewRepository}/git/trees/preview-root-tree",
+                tree = treeEntries,
+                truncated = false
+            });
+        }
+
+        private static IEnumerable<object> CreatePublicPreviewTreeEntries(string requestedPath, bool recursive)
+        {
+            string normalizedPath = requestedPath.Trim('/');
+            string prefix = string.IsNullOrWhiteSpace(normalizedPath) ? string.Empty : normalizedPath + "/";
+            var allPaths = PublicPreviewDirectories
+                .Select(path => (Path: path, Type: "tree"))
+                .Concat(PublicPreviewFiles.Keys.Select(path => (Path: path, Type: "blob")))
+                .Where(item => string.IsNullOrWhiteSpace(prefix) ||
+                    item.Path.StartsWith(prefix, StringComparison.OrdinalIgnoreCase));
+
+            if (!recursive)
+            {
+                allPaths = allPaths
+                    .Select(item => (Path: string.IsNullOrWhiteSpace(prefix) ? item.Path : item.Path[prefix.Length..], item.Type))
+                    .Where(item => item.Path.Length > 0 && !item.Path.Contains('/'))
+                    .Select(item => (Path: string.IsNullOrWhiteSpace(prefix) ? item.Path : prefix + item.Path, item.Type));
+            }
+
+            foreach ((string path, string type) in allPaths)
+            {
+                string responsePath = string.IsNullOrWhiteSpace(prefix) ? path : path[prefix.Length..];
+                if (string.IsNullOrWhiteSpace(responsePath))
+                {
+                    continue;
+                }
+
+                yield return new
+                {
+                    path = responsePath,
+                    mode = type == "tree" ? "040000" : "100644",
+                    type,
+                    sha = type == "tree" ? $"preview-tree-{path.GetHashCode():x}" : $"preview-blob-{path.GetHashCode():x}",
+                    size = type == "blob" ? Encoding.UTF8.GetByteCount(GetPublicPreviewFileContent(path)) : (int?)null,
+                    url = type == "tree"
+                        ? $"https://api.github.com/repos/{PublicPreviewOwner}/{PublicPreviewRepository}/git/trees/preview-tree"
+                        : $"https://api.github.com/repos/{PublicPreviewOwner}/{PublicPreviewRepository}/git/blobs/preview-blob"
+                };
+            }
+        }
+
+        private static string GetTreePath(string[] pathSegments)
+        {
+            if (pathSegments.Length < 6)
+            {
+                return string.Empty;
+            }
+
+            string treeSpecifier = string.Join('/', pathSegments[5..]);
+            int separatorIndex = treeSpecifier.IndexOf(':');
+            return separatorIndex >= 0 && separatorIndex < treeSpecifier.Length - 1
+                ? treeSpecifier[(separatorIndex + 1)..].Trim('/')
+                : string.Empty;
+        }
+
+        private static bool IsRecursiveTreeRequest(Uri uri) =>
+            uri.Query.Contains("recursive=true", StringComparison.OrdinalIgnoreCase) ||
+            uri.Query.Contains("recursive=1", StringComparison.OrdinalIgnoreCase);
+
+        private static string SerializePublicPreviewContents(string path)
+        {
+            if (string.IsNullOrWhiteSpace(path))
+            {
+                return JsonSerializer.Serialize(PublicPreviewDirectories
+                    .Where(directory => !directory.Contains('/'))
+                    .Select(CreateDirectoryContentItem)
+                    .Concat(PublicPreviewFiles.Keys
+                        .Where(filePath => !filePath.Contains('/'))
+                        .Select(CreateFileContentItem)));
+            }
+
+            if (PublicPreviewFiles.ContainsKey(path))
+            {
+                return SerializePublicPreviewFile(path);
+            }
+
+            string prefix = path.TrimEnd('/') + "/";
+            var children = PublicPreviewDirectories
+                .Where(directory => directory.StartsWith(prefix, StringComparison.OrdinalIgnoreCase))
+                .Select(directory => directory[prefix.Length..])
+                .Where(rest => rest.Length > 0 && !rest.Contains('/'))
+                .Select(child => CreateDirectoryContentItem(prefix + child))
+                .Concat(PublicPreviewFiles.Keys
+                    .Where(filePath => filePath.StartsWith(prefix, StringComparison.OrdinalIgnoreCase))
+                    .Select(filePath => filePath[prefix.Length..])
+                    .Where(rest => rest.Length > 0 && !rest.Contains('/'))
+                    .Select(child => CreateFileContentItem(prefix + child)))
+                .ToList();
+
+            return JsonSerializer.Serialize(children);
+        }
+
+        private static object CreateDirectoryContentItem(string path)
+        {
+            string name = path.Split('/').Last();
+            return new
+            {
+                type = "dir",
+                name,
+                path,
+                sha = $"preview-tree-{path.GetHashCode():x}",
+                url = $"https://api.github.com/repos/{PublicPreviewOwner}/{PublicPreviewRepository}/contents/{Uri.EscapeDataString(path)}?ref={PublicPreviewBranch}",
+                html_url = $"https://github.com/{PublicPreviewOwner}/{PublicPreviewRepository}/tree/{PublicPreviewBranch}/{path}",
+                git_url = $"https://api.github.com/repos/{PublicPreviewOwner}/{PublicPreviewRepository}/git/trees/preview-tree"
+            };
+        }
+
+        private static object CreateFileContentItem(string path)
+        {
+            string name = path.Split('/').Last();
+            return new
+            {
+                type = "file",
+                name,
+                path,
+                sha = $"preview-blob-{path.GetHashCode():x}",
+                size = Encoding.UTF8.GetByteCount(GetPublicPreviewFileContent(path)),
+                url = $"https://api.github.com/repos/{PublicPreviewOwner}/{PublicPreviewRepository}/contents/{Uri.EscapeDataString(path)}?ref={PublicPreviewBranch}",
+                html_url = $"https://github.com/{PublicPreviewOwner}/{PublicPreviewRepository}/blob/{PublicPreviewBranch}/{path}",
+                git_url = $"https://api.github.com/repos/{PublicPreviewOwner}/{PublicPreviewRepository}/git/blobs/preview-blob",
+                download_url = $"https://raw.githubusercontent.com/{PublicPreviewOwner}/{PublicPreviewRepository}/{PublicPreviewBranch}/{path}"
+            };
+        }
+
+        private static string SerializePublicPreviewFile(string path)
+        {
+            string content = GetPublicPreviewFileContent(path);
+            string encodedContent = Convert.ToBase64String(Encoding.UTF8.GetBytes(content));
+            string name = path.Split('/').Last();
+            return JsonSerializer.Serialize(new
+            {
+                type = "file",
+                encoding = "base64",
+                size = Encoding.UTF8.GetByteCount(content),
+                name,
+                path,
+                content = encodedContent,
+                sha = $"preview-blob-{path.GetHashCode():x}",
+                url = $"https://api.github.com/repos/{PublicPreviewOwner}/{PublicPreviewRepository}/contents/{Uri.EscapeDataString(path)}?ref={PublicPreviewBranch}",
+                html_url = $"https://github.com/{PublicPreviewOwner}/{PublicPreviewRepository}/blob/{PublicPreviewBranch}/{path}",
+                git_url = $"https://api.github.com/repos/{PublicPreviewOwner}/{PublicPreviewRepository}/git/blobs/preview-blob",
+                download_url = $"https://raw.githubusercontent.com/{PublicPreviewOwner}/{PublicPreviewRepository}/{PublicPreviewBranch}/{path}"
+            });
+        }
+
+        private static string GetPublicPreviewFileContent(string path)
+        {
+            return PublicPreviewFiles.TryGetValue(path.TrimStart('/'), out string? content)
+                ? content
+                : "namespace JitHub.Preview;\n\npublic static class Placeholder\n{\n    public const string Message = \"Preview file loaded.\";\n}\n";
+        }
+
+        private static string GetContentType(string filePath)
+        {
+            if (filePath.EndsWith(".md", StringComparison.OrdinalIgnoreCase))
+            {
+                return "text/markdown";
+            }
+
+            if (filePath.EndsWith(".css", StringComparison.OrdinalIgnoreCase))
+            {
+                return "text/css";
+            }
+
+            if (filePath.EndsWith(".json", StringComparison.OrdinalIgnoreCase))
+            {
+                return "application/json";
+            }
+
+            return "text/plain";
         }
 
         private static string GetRequestHeader(CoreWebView2HttpRequestHeaders headers, string name)

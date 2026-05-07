@@ -283,6 +283,35 @@ namespace JitHub.WinUI.ViewModels
             OpenTab(repoName, typeof(RepoDetailPage), param);
         }
 
+        public void OpenRepositoryPage(string fullName, string? page, string? branch)
+        {
+            if (string.IsNullOrWhiteSpace(fullName))
+            {
+                return;
+            }
+
+            RepoPageType pageType = ResolveRepositoryPageType(page);
+            PageNavArg pageArg = pageType switch
+            {
+                RepoPageType.IssuePage => new IssueNavArg((GitHubRepository?)null, 0),
+                RepoPageType.PullRequestPage => new PullRequestPageNavArg((GitHubRepository?)null, 0),
+                RepoPageType.CommitPage => CommitPageNavArg.CreateWithBranch((GitHubRepository?)null, branch),
+                _ => CodeViewerNavArg.CreateWithBranch((GitHubRepository?)null, branch)
+            };
+
+            OpenTab(fullName, typeof(RepoDetailPage), new RepoDetailPageArgs(pageType, pageArg, fullName));
+        }
+
+        private static RepoPageType ResolveRepositoryPageType(string? page) =>
+            page?.ToLowerInvariant() switch
+            {
+                "repo-issues" => RepoPageType.IssuePage,
+                "repo-pulls" => RepoPageType.PullRequestPage,
+                "repo-pull-requests" => RepoPageType.PullRequestPage,
+                "repo-commits" => RepoPageType.CommitPage,
+                _ => RepoPageType.CodePage
+            };
+
         public void GoToSettingsPage()
         {
             var existing = Pages.FirstOrDefault(page => string.Equals(page.Header as string, "Settings", StringComparison.Ordinal));

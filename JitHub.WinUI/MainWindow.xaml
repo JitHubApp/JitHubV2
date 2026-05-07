@@ -20,7 +20,10 @@
             Height="40"
             VerticalAlignment="Top"
             Background="Transparent" />
-        <Frame x:Name="ContentFrame" />
+        <Frame
+            x:Name="ContentFrame"
+            AutomationProperties.AutomationId="MainContentFrame"
+            AutomationProperties.AccessibilityView="Control" />
         <Border
             x:Name="ActivationStatusHost"
             Margin="12"

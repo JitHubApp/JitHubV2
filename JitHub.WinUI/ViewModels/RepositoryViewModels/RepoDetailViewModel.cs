@@ -316,6 +316,10 @@ namespace JitHub.WinUI.ViewModels.RepositoryViewModels
                     break;
                 case RepoPageType.PullRequestPage:
                     GoToPullRequestPage((PullRequestPageNavArg)args.Ref);
+                    if (JitHub.WinUI.Program.CurrentLaunchOptions.IsPublicPreviewOverride)
+                    {
+                        _ = EnsurePreviewPullRequestPageAsync((PullRequestPageNavArg)args.Ref);
+                    }
                     break;
                 case RepoPageType.CommitPage:
                     GoToCommitsPage((CommitPageNavArg)args.Ref);
@@ -359,6 +363,19 @@ namespace JitHub.WinUI.ViewModels.RepositoryViewModels
             {
                 IsWatching = false;
             }
+
+            if (JitHub.WinUI.Program.CurrentLaunchOptions.IsPublicPreviewOverride &&
+                args.Page == RepoPageType.PullRequestPage &&
+                args.Ref is PullRequestPageNavArg pullRequestPageArg)
+            {
+                GoToPullRequestPage(pullRequestPageArg);
+            }
+        }
+
+        private async Task EnsurePreviewPullRequestPageAsync(PullRequestPageNavArg arg)
+        {
+            await Task.Delay(800);
+            GoToPullRequestPage(arg);
         }
 
         private CodeViewerNavArg ResolveInitialCodeViewerArg(CodeViewerNavArg arg)

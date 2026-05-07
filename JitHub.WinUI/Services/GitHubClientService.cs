@@ -15,6 +15,8 @@ namespace JitHub.Services;
 
 public sealed class GitHubClientService : IGitHubClientService
 {
+    public const string PublicAccessToken = "__JITHUB_PUBLIC__";
+
     private readonly HttpClient _httpClient;
 
     public GitHubClientService()
@@ -289,7 +291,9 @@ public sealed class GitHubClientService : IGitHubClientService
         int pageNumber = 1,
         CancellationToken cancellationToken = default)
     {
-        string path = $"user/repos?sort=updated&direction=desc&per_page={pageSize}&page={pageNumber}";
+        string path = IsPublicAccessToken(token)
+            ? $"users/JitHubApp/repos?sort=updated&direction=desc&per_page={pageSize}&page={pageNumber}"
+            : $"user/repos?sort=updated&direction=desc&per_page={pageSize}&page={pageNumber}";
         using HttpRequestMessage request = CreateAuthenticatedRequest(HttpMethod.Get, path, token);
         using HttpResponseMessage response =
             await _httpClient.SendAsync(request, HttpCompletionOption.ResponseHeadersRead, cancellationToken);
@@ -1614,9 +1618,16 @@ public sealed class GitHubClientService : IGitHubClientService
     private static HttpRequestMessage CreateAuthenticatedRequest(HttpMethod method, string relativePath, string token)
     {
         HttpRequestMessage request = new(method, relativePath);
-        request.Headers.Authorization = new AuthenticationHeaderValue("Bearer", token);
+        if (!IsPublicAccessToken(token))
+        {
+            request.Headers.Authorization = new AuthenticationHeaderValue("Bearer", token);
+        }
+
         return request;
     }
+
+    public static bool IsPublicAccessToken(string? token) =>
+        string.Equals(token, PublicAccessToken, StringComparison.Ordinal);
 
     private static HttpRequestMessage CreateJsonRequest<T>(
         HttpMethod method,

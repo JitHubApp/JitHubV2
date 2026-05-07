@@ -28,7 +28,10 @@ internal static class Program
             CurrentLaunchOptions = LaunchOptions.Parse(args);
 
             AppActivationArguments activationArguments = AppInstance.GetCurrent().GetActivatedEventArgs();
-            AppInstance keyInstance = AppInstance.FindOrRegisterForKey(AppInstanceKey);
+            string appInstanceKey = CurrentLaunchOptions.HasPageOverride
+                ? $"{AppInstanceKey}-{Environment.ProcessId}"
+                : AppInstanceKey;
+            AppInstance keyInstance = AppInstance.FindOrRegisterForKey(appInstanceKey);
 
             if (!keyInstance.IsCurrent)
             {

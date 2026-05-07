@@ -223,8 +223,8 @@ jobs:
           $publishArgs = @(
             'publish',
             "${{ github.workspace }}\${{ env.PROJECT_ROOT }}",
-            '--inputFile',
-            '${{ steps.package.outputs.upload_package }}',
+            '--inputDirectory',
+            '${{ steps.package.outputs.upload_package_dir }}',
             '--appId',
             "$env:STORE_PRODUCT_ID"
           )
