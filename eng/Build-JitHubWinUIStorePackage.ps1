@@ -79,13 +79,123 @@ function Get-WindowsPackageUploadFiles {
         Sort-Object FullName
 }
 
-function New-MultiArchitectureUploadPackage {
+function Get-MakeAppxPath {
+    param(
+        [Parameter(Mandatory = $true)]
+        [string]$TargetPlatformVersion
+    )
+
+    $windowsKitRoots = @(
+        "${env:ProgramFiles(x86)}\Windows Kits\10\bin",
+        "${env:ProgramFiles}\Windows Kits\10\bin"
+    ) | Where-Object { -not [string]::IsNullOrWhiteSpace($_) -and (Test-Path -LiteralPath $_) }
+
+    $candidatePaths = foreach ($windowsKitRoot in $windowsKitRoots) {
+        Join-Path $windowsKitRoot "$TargetPlatformVersion\x64\makeappx.exe"
+        Join-Path $windowsKitRoot "$TargetPlatformVersion\x86\makeappx.exe"
+    }
+
+    foreach ($candidatePath in $candidatePaths) {
+        if (Test-Path -LiteralPath $candidatePath) {
+            return $candidatePath
+        }
+    }
+
+    $availableVersions = foreach ($windowsKitRoot in $windowsKitRoots) {
+        Get-ChildItem -Path $windowsKitRoot -Directory -ErrorAction SilentlyContinue |
+            Where-Object { Test-Path -LiteralPath (Join-Path $_.FullName 'x64\makeappx.exe') } |
+            Select-Object -ExpandProperty Name
+    }
+
+    throw "makeappx.exe for Windows SDK $TargetPlatformVersion was not found. Available SDK versions: $($availableVersions -join ', ')"
+}
+
+function Get-PackageIdentityVersion {
+    param(
+        [Parameter(Mandatory = $true)]
+        [string]$PackagePath
+    )
+
+    Add-Type -AssemblyName System.IO.Compression.FileSystem
+
+    $archive = [System.IO.Compression.ZipFile]::OpenRead($PackagePath)
+    try {
+        $manifestEntry = $archive.Entries | Where-Object { $_.FullName -eq 'AppxManifest.xml' } | Select-Object -First 1
+        if (-not $manifestEntry) {
+            throw "Package does not contain AppxManifest.xml: $PackagePath"
+        }
+
+        $manifestStream = $manifestEntry.Open()
+        try {
+            $reader = [System.IO.StreamReader]::new($manifestStream)
+            try {
+                [xml]$manifest = $reader.ReadToEnd()
+                $version = $manifest.Package.Identity.Version
+                if ([string]::IsNullOrWhiteSpace($version)) {
+                    throw "Package manifest does not contain an Identity Version: $PackagePath"
+                }
+
+                return $version
+            }
+            finally {
+                $reader.Dispose()
+            }
+        }
+        finally {
+            $manifestStream.Dispose()
+        }
+    }
+    finally {
+        $archive.Dispose()
+    }
+}
+
+function Assert-StoreUploadPackageContainsBundle {
+    param(
+        [Parameter(Mandatory = $true)]
+        [string]$PackagePath
+    )
+
+    Add-Type -AssemblyName System.IO.Compression.FileSystem
+
+    $archive = [System.IO.Compression.ZipFile]::OpenRead($PackagePath)
+    try {
+        $rootEntries = $archive.Entries |
+            Where-Object { [string]::IsNullOrWhiteSpace([System.IO.Path]::GetDirectoryName($_.FullName)) }
+
+        $bundleEntries = $rootEntries |
+            Where-Object { [System.IO.Path]::GetExtension($_.FullName) -in '.appxbundle', '.msixbundle' }
+
+        if (-not $bundleEntries) {
+            $entries = $archive.Entries | ForEach-Object { $_.FullName }
+            throw "Store upload package must contain a root .appxbundle or .msixbundle because this Store app previously shipped as a bundle. Package '$PackagePath' only contains: $($entries -join ', ')"
+        }
+
+        $looseArchitecturePackages = $rootEntries |
+            Where-Object { [System.IO.Path]::GetExtension($_.FullName) -in '.appx', '.msix' }
+
+        if ($looseArchitecturePackages) {
+            $loosePackageNames = $looseArchitecturePackages | ForEach-Object { $_.FullName }
+            throw "Store upload package contains loose architecture packages instead of a bundle: $($loosePackageNames -join ', ')"
+        }
+
+        Write-Host "Verified Store upload package contains bundle: $($bundleEntries[0].FullName)"
+    }
+    finally {
+        $archive.Dispose()
+    }
+}
+
+function New-BundledStoreUploadPackage {
     param(
         [Parameter(Mandatory = $true)]
         [string]$PackageOutputDirectory,
 
         [Parameter(Mandatory = $true)]
-        [string[]]$Platforms
+        [string[]]$Platforms,
+
+        [Parameter(Mandatory = $true)]
+        [string]$TargetPlatformVersion
     )
 
     Add-Type -AssemblyName System.IO.Compression.FileSystem
@@ -98,11 +208,16 @@ function New-MultiArchitectureUploadPackage {
     }
 
     $uploadStageDirectory = Join-Path $PackageOutputDirectory 'upload-stage'
-    if (Test-Path -LiteralPath $uploadStageDirectory) {
-        Remove-Item -LiteralPath $uploadStageDirectory -Recurse -Force
-    }
+    $bundleInputDirectory = Join-Path $PackageOutputDirectory 'bundle-input'
+    $combinedUploadStageDirectory = Join-Path $PackageOutputDirectory 'combined-upload-stage'
 
-    New-Item -ItemType Directory -Path $uploadStageDirectory -Force | Out-Null
+    foreach ($stageDirectory in @($uploadStageDirectory, $bundleInputDirectory, $combinedUploadStageDirectory)) {
+        if (Test-Path -LiteralPath $stageDirectory) {
+            Remove-Item -LiteralPath $stageDirectory -Recurse -Force
+        }
+
+        New-Item -ItemType Directory -Path $stageDirectory -Force | Out-Null
+    }
 
     foreach ($singleArchitectureUpload in $singleArchitectureUploads) {
         $archive = [System.IO.Compression.ZipFile]::OpenRead($singleArchitectureUpload.FullName)
@@ -138,21 +253,69 @@ function New-MultiArchitectureUploadPackage {
         throw "Expected architecture packages for $expected, but only staged: $($actual -join ', ')"
     }
 
+    foreach ($architecturePackage in $architecturePackages) {
+        Copy-Item -LiteralPath $architecturePackage.FullName -Destination $bundleInputDirectory -Force
+    }
+
     $firstPackageName = $architecturePackages[0].BaseName
     $packagePrefix = $firstPackageName -replace '_(x86|x64|arm|arm64)$', ''
     $platformLabel = ($Platforms | ForEach-Object { $_.Trim() }) -join '_'
     $uploadExtension = $singleArchitectureUploads[0].Extension
-    $combinedUploadPath = Join-Path $PackageOutputDirectory "$packagePrefix`_$platformLabel$uploadExtension"
+    $combinedBundlePath = Join-Path $PackageOutputDirectory "$packagePrefix`_$platformLabel.msixbundle"
+    $combinedUploadPath = Join-Path $PackageOutputDirectory "$packagePrefix`_$platformLabel`_bundle$uploadExtension"
 
-    if (Test-Path -LiteralPath $combinedUploadPath) {
-        Remove-Item -LiteralPath $combinedUploadPath -Force
+    foreach ($outputPath in @($combinedBundlePath, $combinedUploadPath)) {
+        if (Test-Path -LiteralPath $outputPath) {
+            Remove-Item -LiteralPath $outputPath -Force
+        }
     }
 
-    [System.IO.Compression.ZipFile]::CreateFromDirectory($uploadStageDirectory, $combinedUploadPath)
+    $bundleVersion = Get-PackageIdentityVersion -PackagePath $architecturePackages[0].FullName
+    $makeAppxPath = Get-MakeAppxPath -TargetPlatformVersion $TargetPlatformVersion
+    $makeAppxArguments = @(
+        'bundle'
+        '/d'
+        $bundleInputDirectory
+        '/p'
+        $combinedBundlePath
+        '/o'
+        '/bv'
+        $bundleVersion
+    )
+
+    Write-Host "Creating Store app bundle with $makeAppxPath."
+    & $makeAppxPath @makeAppxArguments
+    if ($LASTEXITCODE -ne 0) {
+        throw 'makeappx bundle failed.'
+    }
+
+    Copy-Item -LiteralPath $combinedBundlePath -Destination $combinedUploadStageDirectory -Force
+
+    $symbolPackages = Get-ChildItem -Path $uploadStageDirectory -File |
+        Where-Object { $_.Extension -eq '.appxsym' } |
+        Sort-Object Name
+
+    foreach ($symbolPackage in $symbolPackages) {
+        Copy-Item -LiteralPath $symbolPackage.FullName -Destination $combinedUploadStageDirectory -Force
+    }
+
+    [System.IO.Compression.ZipFile]::CreateFromDirectory($combinedUploadStageDirectory, $combinedUploadPath)
+
+    if (Test-Path -LiteralPath $combinedBundlePath) {
+        Remove-Item -LiteralPath $combinedBundlePath -Force
+    }
 
     foreach ($singleArchitectureUpload in $singleArchitectureUploads) {
         Remove-Item -LiteralPath $singleArchitectureUpload.FullName -Force
     }
+
+    foreach ($stageDirectory in @($uploadStageDirectory, $bundleInputDirectory, $combinedUploadStageDirectory)) {
+        if (Test-Path -LiteralPath $stageDirectory) {
+            Remove-Item -LiteralPath $stageDirectory -Recurse -Force
+        }
+    }
+
+    Assert-StoreUploadPackageContainsBundle -PackagePath $combinedUploadPath
 
     return Get-Item -LiteralPath $combinedUploadPath
 }
@@ -279,10 +442,8 @@ try {
         Invoke-StoreUploadBuild @buildParameters
     }
 
-    if ($platforms.Count -gt 1) {
-        Write-Host "Creating multi-architecture Store upload package for $($platforms -join ', ')."
-        $null = New-MultiArchitectureUploadPackage -PackageOutputDirectory $resolvedOutputDirectory -Platforms $platforms
-    }
+    Write-Host "Creating bundled Store upload package for $($platforms -join ', ')."
+    $null = New-BundledStoreUploadPackage -PackageOutputDirectory $resolvedOutputDirectory -Platforms $platforms -TargetPlatformVersion $TargetPlatformVersion
 
     $uploadPackages = Get-WindowsPackageUploadFiles -Path $resolvedOutputDirectory
 
@@ -290,9 +451,13 @@ try {
         throw "No .appxupload or .msixupload file was created under $resolvedOutputDirectory."
     }
 
-    if ($platforms.Count -gt 1 -and $uploadPackages.Count -ne 1) {
+    if ($uploadPackages.Count -ne 1) {
         $actual = $uploadPackages | ForEach-Object { $_.Name }
-        throw "Expected exactly one combined Store upload package, but found: $($actual -join ', ')"
+        throw "Expected exactly one bundled Store upload package, but found: $($actual -join ', ')"
+    }
+
+    foreach ($uploadPackage in $uploadPackages) {
+        Assert-StoreUploadPackageContainsBundle -PackagePath $uploadPackage.FullName
     }
 
     Write-Host 'Created Store upload packages:'
