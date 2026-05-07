@@ -225,7 +225,7 @@ Optional environment variables:
 - `STORE_PUBLISHER_DISPLAY_NAME`
 - `JITHUB_STORE_BUNDLE_PLATFORMS` (defaults to `x64|ARM64`)
 
-The WinUI Store workflow now targets `x64|ARM64` by default. The script builds each architecture as a separate Store package and then creates one `.msixupload` containing both architecture packages, which keeps the submission on the documented Microsoft Store CLI `--inputFile` path without asking MSBuild to resource-index the raw editor asset tree as a multi-platform bundle. `x86` is intentionally not included.
+The WinUI Store workflow now targets `x64|ARM64` by default. The script builds each architecture as a separate Store package and then creates one `.msixupload` containing both architecture packages. The Store submission passes that `.msixupload` directly as the `msstore publish` input so the Store CLI uses its MSIX publisher path instead of reopening the WinUI project and restoring packages. `x86` is intentionally not included.
 
 Run the **Publish JitHub to Microsoft Store** workflow manually and provide a four-part `release_version` such as `1.6.5.0`. The workflow checks out `nerocui/jithub-vs-code`, builds the editor assets into `artifacts/EditorAssets/dist`, patches `JitHub.WinUI/Package.appxmanifest` at runtime from the configured environment values, builds a Store upload package, uploads the build artifacts, and then publishes the generated `.appxupload` or `.msixupload` to the Microsoft Store.
 
