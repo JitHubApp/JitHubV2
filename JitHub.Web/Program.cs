@@ -60,19 +60,23 @@ RouteGroupBuilder api = app.MapGroup("/api")
 
 api.MapGet("/GithubCodeToToken", async Task<IResult> (
     string? tempCode,
+    string? redirectUri,
+    HttpContext httpContext,
     GithubAuthService githubAuth,
     ILogger<Program> logger,
     CancellationToken cancellationToken) =>
 {
     try
     {
-        string token = await githubAuth.ExchangeCodeForTokenAsync(tempCode, cancellationToken);
+        string? effectiveRedirectUri = ResolveOAuthRedirectUri(redirectUri, httpContext);
+        string token = await githubAuth.ExchangeCodeForTokenAsync(tempCode, effectiveRedirectUri, cancellationToken);
         return TypedResults.Text(token, "text/plain");
     }
     catch (InvalidOperationException ex)
     {
+        logger.LogWarning(ex, "GitHub OAuth token exchange failed.");
         return TypedResults.Json(
-            new WebErrorMessage { Message = ex.Message },
+            new WebErrorMessage { Message = "We could not complete sign-in. Please try again." },
             statusCode: StatusCodes.Status400BadRequest);
     }
     catch (OperationCanceledException) when (!cancellationToken.IsCancellationRequested)
@@ -102,6 +106,61 @@ static string ResolveCallerIdentity(HttpContext httpContext)
     }
 
     return "unknown";
+}
+
+static string? ResolveOAuthRedirectUri(string? redirectUri, HttpContext httpContext)
+{
+    if (TryNormalizeOAuthRedirectUri(redirectUri, out string normalizedRedirectUri))
+    {
+        return normalizedRedirectUri;
+    }
+
+    string? referer = httpContext.Request.Headers.Referer.FirstOrDefault();
+    if (TryNormalizeOAuthRedirectUri(referer, out normalizedRedirectUri))
+    {
+        return normalizedRedirectUri;
+    }
+
+    HostString host = httpContext.Request.Host;
+    if (!host.HasValue)
+    {
+        return null;
+    }
+
+    PathString pathBase = httpContext.Request.PathBase;
+    string inferredRedirectUri = $"{httpContext.Request.Scheme}://{host}{pathBase}/authorize";
+    return TryNormalizeOAuthRedirectUri(inferredRedirectUri, out normalizedRedirectUri)
+        ? normalizedRedirectUri
+        : null;
+}
+
+static bool TryNormalizeOAuthRedirectUri(string? redirectUri, out string normalizedRedirectUri)
+{
+    normalizedRedirectUri = string.Empty;
+    if (string.IsNullOrWhiteSpace(redirectUri))
+    {
+        return false;
+    }
+
+    if (!Uri.TryCreate(redirectUri, UriKind.Absolute, out Uri? uri))
+    {
+        return false;
+    }
+
+    if (!string.Equals(uri.Scheme, Uri.UriSchemeHttps, StringComparison.OrdinalIgnoreCase) &&
+        !string.Equals(uri.Scheme, Uri.UriSchemeHttp, StringComparison.OrdinalIgnoreCase))
+    {
+        return false;
+    }
+
+    string path = uri.AbsolutePath.TrimEnd('/');
+    if (!path.EndsWith("/authorize", StringComparison.OrdinalIgnoreCase))
+    {
+        return false;
+    }
+
+    normalizedRedirectUri = uri.GetLeftPart(UriPartial.Path);
+    return true;
 }
 
 static void AddAzurePrivateProxyNetwork(ForwardedHeadersOptions options, string address, int prefixLength, int mappedPrefixLength)

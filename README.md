@@ -4,7 +4,7 @@
 </p>
 
 <p align="center">
-  JitHub is a packaged WinAppSDK / WinUI 3 app for GitHub lovers. It lets you browse repositories, issues, pull requests, and code from a Windows-native shell that stays smooth, touch-friendly, and fast.
+  JitHub is a packaged Windows App SDK / WinUI 3 GitHub client for Windows. It brings repositories, issues, pull requests, activity, and code browsing into a quieter native desktop app.
 </p>
 
 <p align="center">
@@ -13,27 +13,47 @@
   </a>
 </p>
 
-## Features
+## What JitHub Does
 
-- Browse GitHub repositories by topics, languages, or keywords
-- View repository details, files, commits, issues, pull requests, and actions
-- Star, fork, watch, or clone repositories
-- Create, edit, or close issues and pull requests
-- Comment on issues and pull requests with Markdown support
-- Manage your notifications and profile
-- Browse code in an embedded VS Code-based surface
+- Browse public, private, and forked repositories from a native Windows shell
+- Search GitHub repositories and open exact `owner/name` matches quickly
+- Read repository activity, issues, pull requests, comments, reactions, labels, and timelines
+- Star, fork, watch, create, edit, close, merge, and react without leaving the app
+- Browse files, branches, commits, and repository content in an embedded VS Code-based surface
+- Use a calm app-owned design system with light and dark themes, design-lab coverage, and screenshot automation
 
 ## Screenshots
 
-<img src="https://github.com/JitHubApp/JitHubV2/blob/main/ScreenShots/screenshot1.png" width="640" />
-<img src="https://github.com/JitHubApp/JitHubV2/blob/main/ScreenShots/screenshot2.png" width="640" />
-<img src="https://github.com/JitHubApp/JitHubV2/blob/main/ScreenShots/screenshot3.png" width="640" />
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="JitHub.Web/wwwroot/ss1-dark.png">
+  <img src="JitHub.Web/wwwroot/ss1.png" alt="JitHub home dashboard and repository workspace." width="900">
+</picture>
 
-## Repository layout
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="JitHub.Web/wwwroot/ss2-dark.png">
+  <img src="JitHub.Web/wwwroot/ss2.png" alt="JitHub code page with the embedded VS Code experience." width="900">
+</picture>
 
-- `JitHub.WinUI`: the desktop app
-- `JitHub.Web`: the server-rendered public website and GitHub OAuth callback bridge
-- `artifacts/EditorAssets/dist`: generated editor assets copied from `jithub-vs-code` during development and CI
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="JitHub.Web/wwwroot/ss3-dark.png">
+  <img src="JitHub.Web/wwwroot/ss3.png" alt="JitHub pull request and issue management surfaces." width="900">
+</picture>
+
+## Current Architecture
+
+- `JitHub.WinUI`: the desktop app, built with .NET 10, Windows App SDK, WinUI 3, packaged MSIX identity, and Native AOT-friendly service/model patterns
+- `JitHub.Web`: the unified ASP.NET Core website, landing page, OAuth callback page, and `/api/GithubCodeToToken` token-exchange API
+- `JitHub.WinUI.Automation`: the FlaUI-based screenshot and smoke-test harness used with the in-app design lab
+- `artifacts/EditorAssets/dist`: generated editor assets copied from `jithub-vs-code` during development and CI; these files are not checked in
+- `eng`: repeatable local and CI scripts for Windows App CLI, Microsoft Store CLI, App Service provisioning, editor asset sync, and release packaging
+
+## Runtime Shape
+
+- The desktop app authenticates through a browser-based GitHub OAuth flow, then receives the token through the `jithub://auth/v2` protocol callback.
+- The public website is static server-rendered by default. The `/authorize` route uses a tiny JavaScript bridge only for OAuth handoff; it does not ship Blazor WebAssembly.
+- The web project is deployed as a normal Azure App Service Web App. It replaces the old split Static Web App plus Function App shape.
+- The desktop release workflow builds Store packages for `x64` and `ARM64`, prepares editor assets from `jithub-vs-code`, and publishes through Microsoft Store Developer CLI.
+- The app UI is driven by semantic WinUI resource dictionaries and reusable app-owned controls, with design-lab screenshot proof for light and dark themes.
 
 `global.json` pins the repo to .NET SDK `10.0.202`.
 
@@ -65,20 +85,26 @@ Check or install the tools with:
 
 ### Desktop app setup
 
-Create `JitHub.WinUI/appsettings.json` with your GitHub OAuth client ID. This file is gitignored and must never be committed.
+`JitHub.WinUI/appsettings.json` is checked in with public OAuth client IDs only. GitHub OAuth client IDs are not secrets; client secrets must stay in user secrets, environment variables, Azure App Service settings, or GitHub Actions secrets.
 
 ```json
 {
   "Credential": {
-    "ClientId": "<your client ID>"
+    "ClientId": "<production client ID>",
+    "DevelopmentClientId": "Ov23libqduSlPx5TcCne",
+    "DevelopmentAuthorizationCallbackUrl": "https://localhost:7284/authorize"
   }
 }
 ```
 
-Set these environment variables for the web callback token exchange:
+Debug builds use `DevelopmentClientId` and `DevelopmentAuthorizationCallbackUrl` automatically so local app launches authenticate against the development GitHub OAuth app. Release builds keep using `ClientId`. To force the development app in a non-Debug local run, set `JITHUB_USE_DEV_OAUTH_APP=true`; to override either path with a specific OAuth app, set `JITHUB_OAUTH_CLIENT_ID` and optionally `JITHUB_OAUTH_CALLBACK_URL`.
 
-- `JitHubClientId` or legacy fallback `JithubClientId`
-- `JithubAppSecret`
+Set these settings for the web callback token exchange:
+
+- Local Development uses the development GitHub OAuth app automatically and ignores production-style `JitHubClientId` / `JithubAppSecret` environment variables.
+- Set the development app secret with `dotnet user-secrets set JITHUB_DEV_OAUTH_CLIENT_SECRET "<secret>" --project .\JitHub.Web\JitHub.Web.csproj`.
+- Production uses `JitHubClientId` or legacy fallback `JithubClientId`, plus `JithubAppSecret` or `GitHubOAuth__ClientSecret`.
+- To intentionally test the production OAuth app from a local Development web host, set `JITHUB_WEB_USE_PRODUCTION_OAUTH=true`.
 
 ### Editor assets
 
@@ -95,7 +121,21 @@ The public website is now an ASP.NET Core server app. It serves the landing page
 Run it locally with:
 
 ```powershell
-dotnet run --project .\JitHub.Web\JitHub.Web.csproj
+dotnet run --project .\JitHub.Web\JitHub.Web.csproj --launch-profile https
+```
+
+For the development GitHub OAuth app, set the callback URL to:
+
+```text
+https://localhost:7284/authorize
+```
+
+The callback route is `/authorize`, not `/auth/callback`. The authorize page calls the same-origin `/api/GithubCodeToToken` endpoint to exchange the temporary GitHub code, then launches the app through the `jithub://` protocol callback.
+
+The local callback host needs the development OAuth app secret before sign-in can complete:
+
+```powershell
+dotnet user-secrets set JITHUB_DEV_OAUTH_CLIENT_SECRET "<secret>" --project .\JitHub.Web\JitHub.Web.csproj
 ```
 
 The website does not require `wasm-tools`. The landing page is static SSR, and the authorize flow uses a tiny JavaScript bridge instead of Blazor WebAssembly.
