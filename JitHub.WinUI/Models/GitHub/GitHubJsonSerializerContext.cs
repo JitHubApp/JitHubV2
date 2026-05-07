@@ -77,6 +77,9 @@ namespace JitHub.Models.GitHub;
 [JsonSerializable(typeof(GitHubRepositorySubscriptionRequest))]
 [JsonSerializable(typeof(GitHubRepositorySearchResponse))]
 [JsonSerializable(typeof(GitHubApiError))]
+[JsonSerializable(typeof(GitHubTree))]
+[JsonSerializable(typeof(GitHubTreeEntry))]
+[JsonSerializable(typeof(GitHubTreeEntry[]))]
 internal partial class GitHubJsonSerializerContext : JsonSerializerContext
 {
 }

@@ -164,7 +164,6 @@
             <converters:HexColorToForegroundConverter x:Key="HexColorToForegroundConverter" x:Name="HexColorToForegroundConverter" />
             <converters:LanguageToVisibilityConverter x:Key="LanguageToVisibilityConverter" x:Name="LanguageToVisibilityConverter" />
             <converters:OpenStatusToColorConverter x:Key="OpenStatusToColorConverter" x:Name="OpenStatusToColorConverter" />
-            <converters:RepoContentNodeToMarkDownConverter x:Key="RepoContentNodeToMarkDownConverter" x:Name="RepoContentNodeToMarkDownConverter" />
             <converters:TimeAgoConverter x:Key="TimeAgoConverter" x:Name="TimeAgoConverter" />
             <converters:StringToEnabledConverter x:Key="StringToEnabledConverter" x:Name="StringToEnabledConverter" />
             <converters:RepoStatusIconConverter x:Key="RepoStatusIconConverter" x:Name="RepoStatusIconConverter" />

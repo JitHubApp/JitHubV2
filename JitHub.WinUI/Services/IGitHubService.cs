@@ -17,6 +17,7 @@ using PullRequestUpdate = JitHub.Models.LegacyGitHub.PullRequestUpdate;
 using RepositoryIssueRequest = JitHub.Models.LegacyGitHub.RepositoryIssueRequest;
 using SearchRepositoriesRequest = JitHub.Models.LegacyGitHub.SearchRepositoriesRequest;
 using System.Collections.Generic;
+using System.Threading;
 using System.Threading.Tasks;
 
 namespace JitHub.Services
@@ -41,6 +42,7 @@ namespace JitHub.Services
         Task<RepoContentNode> GetFileContent(string owner, string name, string path, string _ref);
         Task<Blob> GetBlocFromGit(string owner, string name, string _ref);
         Task<ICollection<RepoContentNode>> GetRepoContents(string owner, string name, string path, string _ref);
+        Task<JitHub.Models.CodeViewer.RepoTree> GetRepoTreeAsync(string owner, string name, string refOrSha, CancellationToken ct);
         Task<CompareResult> CompareCommits(string owner, string name, string @base, string head);
         Task<ICollection<Branch>> GetRepoBranches(string owner, string name);
         Task<Branch> GetBranch(string owner, string name, string branch);

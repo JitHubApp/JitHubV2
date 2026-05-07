@@ -1,0 +1,104 @@
+<UserControl
+    x:Class="JitHub.WinUI.Views.Controls.CodeViewer.RepoFileTreeView"
+    xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+    xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+    xmlns:local="using:JitHub.WinUI.Views.Controls.CodeViewer"
+    xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+    xmlns:viewmodels="using:JitHub.WinUI.ViewModels.CodeViewer"
+    d:DesignHeight="600"
+    d:DesignWidth="280"
+    mc:Ignorable="d">
+
+    <Grid
+        Background="{ThemeResource AppCanvasBrush}"
+        BorderBrush="{ThemeResource AppOutlineBrush}"
+        BorderThickness="1"
+        CornerRadius="{ThemeResource AppRadiusMedium}">
+
+        <Grid.RowDefinitions>
+            <RowDefinition Height="Auto" />
+            <RowDefinition Height="Auto" />
+            <RowDefinition Height="*" />
+        </Grid.RowDefinitions>
+
+        <!--  Truncated-tree banner  -->
+        <Border
+            Grid.Row="0"
+            Margin="8,8,8,0"
+            Padding="12,6"
+            Background="{ThemeResource AppSurfaceBrush}"
+            CornerRadius="{ThemeResource AppRadiusSmall}"
+            Visibility="{x:Bind BoolToVis(ViewModel.IsTruncated), Mode=OneWay}">
+            <TextBlock
+                Style="{StaticResource SectionSecondaryTextBlockStyle}"
+                Text="Repository tree is large; some folders will load on expand."
+                TextWrapping="Wrap" />
+        </Border>
+
+        <!--  Filter TextBox  -->
+        <TextBox
+            Grid.Row="1"
+            Margin="8,8,8,4"
+            PlaceholderText="Filter files…"
+            Text="{x:Bind ViewModel.FilterText, Mode=TwoWay}" />
+
+        <!--  Tree + loading overlay  -->
+        <Grid Grid.Row="2">
+
+        <TreeView
+            x:Name="FileTreeView"
+            CanDragItems="False"
+            Collapsed="OnCollapsed"
+            Expanding="OnExpanding"
+            ItemInvoked="OnItemInvoked"
+            SelectionMode="Single">
+            <TreeView.ItemTemplate>
+                <DataTemplate x:DataType="viewmodels:RepoTreeNodeViewModel">
+                    <Grid ColumnSpacing="6">
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="Auto" />
+                            <ColumnDefinition Width="*" />
+                        </Grid.ColumnDefinitions>
+
+                        <!--  Folder – open (&#xE188; = FolderOpen in Segoe Fluent Icons)  -->
+                        <FontIcon
+                            Grid.Column="0"
+                            FontSize="14"
+                            Glyph="&#xE188;"
+                            Visibility="{x:Bind local:RepoFileTreeView.FolderOpenVis(IsDirectory, IsExpanded), Mode=OneWay}" />
+
+                        <!--  Folder – closed (&#xE8B7; = Folder)  -->
+                        <FontIcon
+                            Grid.Column="0"
+                            FontSize="14"
+                            Glyph="&#xE8B7;"
+                            Visibility="{x:Bind local:RepoFileTreeView.FolderClosedVis(IsDirectory, IsExpanded), Mode=OneWay}" />
+
+                        <!--  File (&#xE8A5; = Document)  -->
+                        <FontIcon
+                            Grid.Column="0"
+                            FontSize="14"
+                            Glyph="&#xE8A5;"
+                            Visibility="{x:Bind local:RepoFileTreeView.FileVis(IsDirectory), Mode=OneWay}" />
+
+                        <TextBlock
+                            Grid.Column="1"
+                            VerticalAlignment="Center"
+                            Text="{x:Bind Name}" />
+                    </Grid>
+                </DataTemplate>
+            </TreeView.ItemTemplate>
+        </TreeView>
+
+            <!--  Loading overlay  -->
+            <ProgressRing
+                Width="40"
+                Height="40"
+                HorizontalAlignment="Center"
+                VerticalAlignment="Center"
+                IsActive="{x:Bind ViewModel.IsLoading, Mode=OneWay}"
+                Visibility="{x:Bind BoolToVis(ViewModel.IsLoading), Mode=OneWay}" />
+        </Grid>
+    </Grid>
+</UserControl>

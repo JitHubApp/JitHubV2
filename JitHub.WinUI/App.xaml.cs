@@ -6,6 +6,8 @@ using System.Threading.Tasks;
 using CommunityToolkit.Mvvm.DependencyInjection;
 using JitHub.Models;
 using JitHub.Services;
+using JitHub.Services.CodeViewer;
+using JitHub.WinUI.ViewModels.CodeViewer;
 using JitHub.WinUI.ViewModels.Pages;
 using JitHub.WinUI.Views.Pages;
 using JitHub.WinUI.Views.Pages.Design;
@@ -158,7 +160,10 @@ public partial class App : Application
         services.AddSingleton<IAuthService, AuthService>();
         services.AddSingleton<IThemeService, ThemeService>();
         services.AddSingleton<LocalizationService>();
-        services.AddSingleton<EditorAssetService>();
+        services.AddSingleton<IRepoFileCacheService, RepoFileCacheService>();
+        services.AddSingleton<ILanguageIdResolver, LanguageIdResolver>();
+        services.AddSingleton<IFilePreviewResolver, FilePreviewResolver>();
+        services.AddSingleton<JitHub.Services.CodeViewer.IRepoTreeService, JitHub.Services.CodeViewer.RepoTreeService>();
         services.AddSingleton<GlobalViewModel>();
         services.AddTransient<DashboardPageViewModel>();
         services.AddTransient<LoginPageViewModel>();
@@ -171,6 +176,7 @@ public partial class App : Application
         services.AddTransient<RepoCommitsPageViewModel>();
         services.AddTransient<SettingsPageViewModel>();
         services.AddTransient<ShellPageViewModel>();
+        services.AddTransient<RepoCodePageViewModel>();
 
         IServiceProvider serviceProvider = services.BuildServiceProvider();
         Ioc.Default.ConfigureServices(serviceProvider);
