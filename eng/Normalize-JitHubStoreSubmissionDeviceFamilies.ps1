@@ -119,13 +119,15 @@ if ([string]::IsNullOrWhiteSpace($submissionId)) {
 
 $submission = Invoke-DevCenterJson -Method GET -Path "/v1.0/my/applications/$ProductId/submissions/$submissionId" -Headers $headers
 
+# The Dev Center write API only accepts the Windows10DeviceFamily enum values
+# below. Partner Center validation can mention inherited Team/Core availability,
+# but sending those strings back makes the PUT fail before it can replace the
+# inherited availability dictionary.
 $desktopOnlyDeviceFamilies = [ordered]@{
     Desktop = $true
     Mobile = $false
     Holographic = $false
     Xbox = $false
-    Team = $false
-    Core = $false
 }
 
 $submission | Add-Member -NotePropertyName 'AllowMicrosoftDecideAppAvailabilityToFutureDeviceFamilies' -NotePropertyValue $false -Force
