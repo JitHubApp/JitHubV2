@@ -1,4 +1,5 @@
 using System;
+using System.Collections.Generic;
 using System.Threading;
 using System.Threading.Tasks;
 using Microsoft.Graphics.Canvas;
@@ -41,6 +42,18 @@ public sealed partial class MarkdownRendererControl : UserControl
     private SizeChangedEventHandler? _sizeChangedHandler;
     private readonly SelectionController _selection = new();
     private DocumentPosition? _selectionAnchor;
+
+    // Cache of inline-embed rectangles (in canvas/document coordinates) plus
+    // the InlineRun + owning InlineContainerBox.  Built during PlaceEmbeds
+    // and consulted from pointer handlers so we can:
+    //   (a) suppress our own ProtectedCursor / link-hover work over an embed
+    //       so the embedded XAML element's own cursor (Hand for Button, IBeam
+    //       for TextBox, …) wins;
+    //   (b) avoid starting a selection on PointerPressed inside an embed so
+    //       that click routes to the embed normally;
+    //   (c) snap drag-through positions atomically to the run start or end,
+    //       so an embed is included or excluded as a single unit.
+    private readonly List<(Layout.Boxes.InlineContainerBox Box, InlineEmbedRun Run, Rect Rect)> _embedRects = new();
 
     // ---- Dependency properties ----
 
@@ -295,6 +308,7 @@ public sealed partial class MarkdownRendererControl : UserControl
 
         // UI thread: realize hosted FrameworkElements + image LoadCompleted hooks.
         _overlay.Children.Clear();
+        _embedRects.Clear();
         foreach (var b in snapshot.Blocks) PlaceEmbeds(b);
 
         _canvas.Invalidate();
@@ -341,6 +355,7 @@ public sealed partial class MarkdownRendererControl : UserControl
                         Canvas.SetLeft(fe, rect.X);
                         Canvas.SetTop(fe, rect.Y);
                         _overlay!.Children.Add(fe);
+                        _embedRects.Add((icb, run, rect));
                     }
                     catch (Exception ex)
                     {
@@ -417,8 +432,27 @@ public sealed partial class MarkdownRendererControl : UserControl
     private void OnPointerPressed(object sender, PointerRoutedEventArgs e)
     {
         if (!IsSelectionEnabled || _snapshot is null || _canvas is null) return;
-        Focus(FocusState.Pointer);
         var pt = e.GetCurrentPoint(_canvas).Position;
+
+        // Pressing *on* a hosted inline embed must NOT start a selection.
+        // The embed is a real WinUI element layered above the canvas — its
+        // own pointer-pressed handler must run (Button click, TextBox focus,
+        // …).  Returning here without setting _selectionAnchor or capturing
+        // the pointer lets XAML's normal pointer routing deliver the event
+        // to the embedded element.
+        if (IsPointOverEmbed(pt))
+        {
+            // Clear any prior selection so the user gets visual feedback that
+            // the click isn't a new selection start.
+            if (!_selection.Range.IsEmpty)
+            {
+                _selection.Clear();
+                _canvas.Invalidate();
+            }
+            return;
+        }
+
+        Focus(FocusState.Pointer);
         if (_snapshot.HitTest(pt, out var pos))
         {
             _selectionAnchor = pos;
@@ -444,7 +478,22 @@ public sealed partial class MarkdownRendererControl : UserControl
         // Drag-select.
         if (_selectionAnchor is not null)
         {
-            if (_snapshot.HitTest(pt, out var pos))
+            // Atomic embed inclusion: when the pointer is inside an inline
+            // embed rect during a drag, snap the position to either the
+            // start or end of the InlineEmbedRun (whichever side the pointer
+            // is closer to).  This treats the embed as a single, indivisible
+            // unit of selectable content — the user can never have a
+            // selection that ends *halfway through* an embedded button or
+            // textbox, which matches how browsers handle <input> /
+            // <textarea> inside contenteditable text.
+            if (TryHitTestEmbed(pt, out var embedPos))
+            {
+                MarkdownRenderer.Diagnostics.ShakeLogger.Log("ptr-move-drag-embed",
+                    $"px={pt.X:F4} py={pt.Y:F4} pos=blk{embedPos.BlockIndex}/inl{embedPos.InlineIndex}/c{embedPos.CharacterOffset}");
+                _selection.ExtendTo(embedPos);
+                _canvas.Invalidate();
+            }
+            else if (_snapshot.HitTest(pt, out var pos))
             {
                 MarkdownRenderer.Diagnostics.ShakeLogger.Log("ptr-move-drag",
                     $"px={pt.X:F4} py={pt.Y:F4} pos=blk{pos.BlockIndex}/inl{pos.InlineIndex}/c{pos.CharacterOffset}");
@@ -462,6 +511,25 @@ public sealed partial class MarkdownRendererControl : UserControl
             // hovered-run identity flips.  Suppressing the toggle here
             // costs nothing because the IBeam cursor and link-hover color
             // aren't relevant while the user is mid-drag selecting.
+            return;
+        }
+
+        // Pointer hovering an inline embed: do nothing.  The embed is its
+        // own pointer-event target and its ProtectedCursor (Hand / IBeam /
+        // arrow / …) takes effect via XAML's normal pointer routing.  We
+        // explicitly avoid touching ProtectedCursor on this control so we
+        // don't fight the embed's cursor.  We also avoid running link-hover
+        // logic because the pointer isn't over our text at all.
+        if (IsPointOverEmbed(pt))
+        {
+            // Clear our own link-hover so when the pointer leaves the embed
+            // the previous hovered link doesn't appear stuck-on.
+            if (_lastHoveredRun is not null)
+            {
+                foreach (var b in _snapshot.Blocks) ClearHover(b);
+                _lastHoveredRun = null;
+                _canvas.Invalidate();
+            }
             return;
         }
 
@@ -564,6 +632,47 @@ public sealed partial class MarkdownRendererControl : UserControl
                 foreach (var c in sb.Children) ClearHover(c);
                 break;
         }
+    }
+
+    /// <summary>
+    /// True when the given point in canvas coordinates is inside the
+    /// rectangle of any realised inline embed.
+    /// </summary>
+    private bool IsPointOverEmbed(Point pt)
+    {
+        for (int i = 0; i < _embedRects.Count; i++)
+        {
+            var r = _embedRects[i].Rect;
+            if (pt.X >= r.X && pt.X <= r.X + r.Width &&
+                pt.Y >= r.Y && pt.Y <= r.Y + r.Height)
+                return true;
+        }
+        return false;
+    }
+
+    /// <summary>
+    /// If the point is inside an inline embed's rectangle, returns a
+    /// DocumentPosition that snaps to the start (left half) or end (right
+    /// half) of the embed run — making the embed an atomic, indivisible
+    /// unit of selection.  Returns false when the point is not over any
+    /// embed.
+    /// </summary>
+    private bool TryHitTestEmbed(Point pt, out DocumentPosition position)
+    {
+        for (int i = 0; i < _embedRects.Count; i++)
+        {
+            var (box, run, r) = _embedRects[i];
+            if (pt.X >= r.X && pt.X <= r.X + r.Width &&
+                pt.Y >= r.Y && pt.Y <= r.Y + r.Height)
+            {
+                bool rightHalf = pt.X >= r.X + r.Width / 2.0;
+                int charOffset = rightHalf ? run.Text.Length : 0;
+                position = new DocumentPosition(box.BlockIndex, run.InlineIndex, charOffset);
+                return true;
+            }
+        }
+        position = default;
+        return false;
     }
 
     private void OnPointerExited(object sender, PointerRoutedEventArgs e)
