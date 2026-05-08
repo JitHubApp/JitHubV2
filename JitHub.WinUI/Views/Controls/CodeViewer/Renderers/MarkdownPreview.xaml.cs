@@ -1,8 +1,10 @@
 using System;
 using JitHub.WinUI.ViewModels.CodeViewer;
+using Microsoft.UI;
 using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Controls;
 using Microsoft.UI.Xaml.Media;
+using Windows.UI;
 
 namespace JitHub.WinUI.Views.Controls.CodeViewer.Renderers;
 
@@ -16,9 +18,9 @@ public sealed partial class MarkdownPreview : UserControl
     {
         InitializeComponent();
         DataContextChanged += OnDataContextChanged;
-        // Re-walk every time the MarkdownTextBlock finishes a layout pass.
-        // Images are rendered asynchronously, so SizeChanged alone fires too early.
         RichMarkdown.LayoutUpdated += OnMarkdownLayoutUpdated;
+        ActualThemeChanged += (_, _) => UpdateThemeColors();
+        Loaded += (_, _) => UpdateThemeColors();
     }
 
     private RepoFilePreviewViewModel? ViewModel => DataContext as RepoFilePreviewViewModel;
@@ -52,6 +54,38 @@ public sealed partial class MarkdownPreview : UserControl
         SyncPanels();
     }
 
+    // ── Imperative theme resource injection ────────────────────────────────────
+    // ThemeDictionaries are unreliable for CT MarkdownTextBlock because the
+    // control may resolve resources from its own scope. We set values directly
+    // in UserControl.Resources so they sit exactly at the right lookup scope,
+    // and we refresh them whenever the actual theme changes.
+
+    private void UpdateThemeColors()
+    {
+        bool dark = ActualTheme == ElementTheme.Dark;
+        SetBrush("InlineCodeBackground",     dark ? "#303830" : "#E8E3D8");
+        SetBrush("InlineCodeForeground",     dark ? "#C7CDBF" : "#223127");
+        SetBrush("CodeBlockBackground",      dark ? "#1C221C" : "#EDE8DD");
+        SetBrush("CodeBlockForeground",      dark ? "#C7CDBF" : "#223127");
+        SetBrush("HyperlinkButtonForeground", dark ? "#77B59A" : "#3E7B64");
+    }
+
+    private void SetBrush(string key, string hex)
+    {
+        Resources[key] = new SolidColorBrush(ParseHex(hex));
+    }
+
+    private static Color ParseHex(string hex)
+    {
+        hex = hex.TrimStart('#');
+        return Color.FromArgb(0xFF,
+            Convert.ToByte(hex[0..2], 16),
+            Convert.ToByte(hex[2..4], 16),
+            Convert.ToByte(hex[4..6], 16));
+    }
+
+    // ── Image constraint ───────────────────────────────────────────────────────
+
     private void RichPanel_SizeChanged(object sender, SizeChangedEventArgs e)
     {
         ApplyImageConstraints();
@@ -59,7 +93,6 @@ public sealed partial class MarkdownPreview : UserControl
 
     private void OnMarkdownLayoutUpdated(object? sender, object e)
     {
-        // Called after every layout pass — catches images that load after SizeChanged.
         ApplyImageConstraints();
     }
 
@@ -78,17 +111,13 @@ public sealed partial class MarkdownPreview : UserControl
             if (child is Image img)
             {
                 img.MaxWidth = maxWidth;
-                // Clear any explicit Height set by the renderer so height reflows
-                // naturally from the constrained width (no top/bottom empty space).
                 img.Height = double.NaN;
                 img.MaxHeight = double.PositiveInfinity;
                 img.Stretch = Stretch.Uniform;
             }
-            else if (child is FrameworkElement fe && fe.ActualHeight > 0)
+            else if (child is FrameworkElement fe && ContainsImage(child))
             {
-                // Also clear explicit heights on direct wrappers around images.
-                if (ContainsImage(child))
-                    fe.Height = double.NaN;
+                fe.Height = double.NaN;
             }
             ConstrainImagesInVisualTree(child, maxWidth);
         }

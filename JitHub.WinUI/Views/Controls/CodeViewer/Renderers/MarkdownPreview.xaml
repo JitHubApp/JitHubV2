@@ -12,33 +12,7 @@
     mc:Ignorable="d">
 
     <UserControl.Resources>
-        <ResourceDictionary>
-            <ResourceDictionary.ThemeDictionaries>
-                <!--  Light theme  -->
-                <ResourceDictionary x:Key="Light">
-                    <SolidColorBrush x:Key="InlineCodeBackground" Color="#E8E3D8" />
-                    <SolidColorBrush x:Key="InlineCodeForeground" Color="#223127" />
-                    <SolidColorBrush x:Key="CodeBlockBackground" Color="#EDE8DD" />
-                    <SolidColorBrush x:Key="CodeBlockForeground" Color="#223127" />
-                    <SolidColorBrush x:Key="HyperlinkButtonForeground" Color="#3E7B64" />
-                </ResourceDictionary>
-                <!--  Dark theme (also applied as Default for dark-mode fallback)  -->
-                <ResourceDictionary x:Key="Dark">
-                    <SolidColorBrush x:Key="InlineCodeBackground" Color="#303830" />
-                    <SolidColorBrush x:Key="InlineCodeForeground" Color="#C7CDBF" />
-                    <SolidColorBrush x:Key="CodeBlockBackground" Color="#1C221C" />
-                    <SolidColorBrush x:Key="CodeBlockForeground" Color="#C7CDBF" />
-                    <SolidColorBrush x:Key="HyperlinkButtonForeground" Color="#77B59A" />
-                </ResourceDictionary>
-                <ResourceDictionary x:Key="Default">
-                    <SolidColorBrush x:Key="InlineCodeBackground" Color="#303830" />
-                    <SolidColorBrush x:Key="InlineCodeForeground" Color="#C7CDBF" />
-                    <SolidColorBrush x:Key="CodeBlockBackground" Color="#1C221C" />
-                    <SolidColorBrush x:Key="CodeBlockForeground" Color="#C7CDBF" />
-                    <SolidColorBrush x:Key="HyperlinkButtonForeground" Color="#77B59A" />
-                </ResourceDictionary>
-            </ResourceDictionary.ThemeDictionaries>
-        </ResourceDictionary>
+        <!--  Populated imperatively in code-behind based on ActualTheme  -->
     </UserControl.Resources>
 
     <Grid>
