@@ -1,7 +1,6 @@
 using System;
 using System.Collections.Generic;
 using Microsoft.Graphics.Canvas;
-using Microsoft.Graphics.Canvas.Geometry;
 using Microsoft.Graphics.Canvas.Text;
 using Microsoft.UI.Xaml;
 using Windows.Foundation;
@@ -25,6 +24,9 @@ public sealed class InlineContainerBox : BlockBox
     private float _lastWidth;
     private readonly MarkdownLayoutContext _context;
 
+    /// <summary>Run currently being hovered by the pointer (for link hover effect).</summary>
+    public InlineRun? HoveredRun { get; set; }
+
     public IReadOnlyList<InlineRun> Runs => _runs;
     public string ElementKey => _elementKey;
 
@@ -39,7 +41,6 @@ public sealed class InlineContainerBox : BlockBox
     {
         run.InlineIndex = _runs.Count;
         _runs.Add(run);
-        // Source map registration for this inline run.
         _context.SourceMap.Add(BlockIndex, run.InlineIndex, run.RenderedLength, run.SourceSpan);
     }
 
@@ -58,9 +59,6 @@ public sealed class InlineContainerBox : BlockBox
                 FontWeight = style.FontWeight,
                 FontStyle = style.FontStyle,
                 WordWrapping = CanvasWordWrapping.Wrap,
-                // Use font-native line spacing so GetCharacterRegions returns true glyph
-                // bounds rather than inflated proportional bounds. This fixes underline/
-                // strikethrough positioning and inline-code background height.
                 LineSpacingMode = CanvasLineSpacingMode.Default,
                 Direction = _context.FlowDirection == FlowDirection.RightToLeft
                     ? CanvasTextDirection.RightToLeftThenTopToBottom
@@ -73,7 +71,10 @@ public sealed class InlineContainerBox : BlockBox
                 format,
                 Math.Max(1f, availableWidth - horizontalPadding),
                 float.MaxValue);
+            // Enable DirectWrite color font path (Segoe UI Emoji / COLR-CPAL glyphs).
+            _layout.Options = CanvasDrawTextOptions.EnableColorFont;
             ApplyRunStyles(_layout);
+            ApplyEmbedSpacing(_layout);
             _lastWidth = availableWidth;
         }
 
@@ -102,10 +103,10 @@ public sealed class InlineContainerBox : BlockBox
 
         float x = (float)(Bounds.X + style.Margin.Left + style.Padding.Left);
         float y = (float)(Bounds.Y + style.Margin.Top + style.Padding.Top);
+
+        ApplyHoverColor(_layout);
         ds.DrawTextLayout(_layout, x, y, style.Foreground);
 
-        // Decorations: underline / strikethrough per run not natively supported on
-        // CanvasTextLayout style ranges — drawn manually.
         DrawDecorations(ds, x, y);
     }
 
@@ -128,7 +129,6 @@ public sealed class InlineContainerBox : BlockBox
         _layout.HitTest((float)point.X - x, (float)point.Y - y, out var hit);
         int charIndex = (int)hit.CharacterIndex;
 
-        // Map buffer index back to (inline run, char offset).
         int cumulative = 0;
         foreach (var run in _runs)
         {
@@ -144,10 +144,6 @@ public sealed class InlineContainerBox : BlockBox
         return true;
     }
 
-    /// <summary>
-    /// Returns axis-aligned rectangles in document coordinates for the part of
-    /// this block intersecting the given range. Used for selection highlighting.
-    /// </summary>
     public IEnumerable<Rect> GetRangeRects(DocumentRange range)
     {
         if (_layout is null) yield break;
@@ -164,6 +160,63 @@ public sealed class InlineContainerBox : BlockBox
             yield return new Rect(baseX + r.LayoutBounds.X, baseY + r.LayoutBounds.Y,
                                   r.LayoutBounds.Width, r.LayoutBounds.Height);
         }
+    }
+
+    /// <summary>
+    /// For each <see cref="InlineEmbedRun"/>, returns the rectangle in document
+    /// coordinates where its hosted WinUI element should be placed on the
+    /// overlay canvas.
+    /// </summary>
+    public IEnumerable<(InlineEmbedRun Run, Rect Rect)> EnumerateEmbedRects()
+    {
+        if (_layout is null) yield break;
+        var style = _context.ThemeSnapshot.GetStyle(_elementKey);
+        float baseX = (float)(Bounds.X + style.Margin.Left + style.Padding.Left);
+        float baseY = (float)(Bounds.Y + style.Margin.Top + style.Padding.Top);
+
+        int cumulative = 0;
+        foreach (var run in _runs)
+        {
+            int len = run.Text.Length;
+            if (run is InlineEmbedRun emb && len > 0)
+            {
+                var regions = _layout.GetCharacterRegions(cumulative, len);
+                foreach (var r in regions)
+                {
+                    var lb = r.LayoutBounds;
+                    double cellY = lb.Y + (lb.Height - emb.DesiredHeight) / 2.0;
+                    if (cellY < lb.Y) cellY = lb.Y;
+                    var rect = new Rect(baseX + lb.X, baseY + cellY,
+                        Math.Min(emb.DesiredWidth, lb.Width), emb.DesiredHeight);
+                    yield return (emb, rect);
+                    break;
+                }
+            }
+            cumulative += len;
+        }
+    }
+
+    /// <summary>
+    /// Returns the run hovered for the given document-coordinate point, or
+    /// null if no run is hovered. Used by the control to drive link hover.
+    /// </summary>
+    public InlineRun? RunAt(Point point)
+    {
+        if (_layout is null) return null;
+        if (!Bounds.Contains(point)) return null;
+        var style = _context.ThemeSnapshot.GetStyle(_elementKey);
+        float x = (float)(Bounds.X + style.Margin.Left + style.Padding.Left);
+        float y = (float)(Bounds.Y + style.Margin.Top + style.Padding.Top);
+        _layout.HitTest((float)point.X - x, (float)point.Y - y, out var hitRegion);
+        int charIndex = (int)hitRegion.CharacterIndex;
+        int cumulative = 0;
+        foreach (var run in _runs)
+        {
+            int len = run.Text.Length;
+            if (charIndex < cumulative + len) return run;
+            cumulative += len;
+        }
+        return null;
     }
 
     private int ToBufferIndex(DocumentPosition pos)
@@ -195,12 +248,9 @@ public sealed class InlineContainerBox : BlockBox
         {
             int len = run.Text.Length;
             if (len == 0) continue;
-            // Empty ElementKey = inherit container style — nothing to override.
             if (!string.IsNullOrEmpty(run.ElementKey) && run.ElementKey != _elementKey)
             {
                 var rs = _context.ThemeSnapshot.GetStyle(run.ElementKey);
-                // Apply only DELTA properties. Never override font size — runs inside
-                // headings must keep the heading's font size, not revert to 14px.
                 if (rs.FontFamily != containerStyle.FontFamily)
                     layout.SetFontFamily(cumulative, len, rs.FontFamily);
                 if (rs.FontWeight.Weight != containerStyle.FontWeight.Weight)
@@ -214,22 +264,69 @@ public sealed class InlineContainerBox : BlockBox
         }
     }
 
+    private void ApplyEmbedSpacing(CanvasTextLayout layout)
+    {
+        int cumulative = 0;
+        foreach (var run in _runs)
+        {
+            int len = run.Text.Length;
+            if (run is InlineEmbedRun emb && len > 0)
+            {
+                try
+                {
+                    layout.SetCharacterSpacing(cumulative, len, 0, 0, emb.DesiredWidth);
+                }
+                catch (Exception ex)
+                {
+                    System.Diagnostics.Debug.WriteLine($"[InlineContainerBox] SetCharacterSpacing failed: {ex.Message}");
+                }
+                layout.SetColor(cumulative, len, Color.FromArgb(0, 0, 0, 0));
+            }
+            cumulative += len;
+        }
+    }
+
+    private void ApplyHoverColor(CanvasTextLayout layout)
+    {
+        var hover = HoveredRun;
+        if (hover is null) return;
+        if (hover is not LinkRun) return;
+        int cumulative = 0;
+        foreach (var run in _runs)
+        {
+            int len = run.Text.Length;
+            if (len == 0) continue;
+            if (ReferenceEquals(run, hover))
+            {
+                var rs = _context.ThemeSnapshot.GetStyle(run.ElementKey);
+                var c = rs.Foreground;
+                var hot = Color.FromArgb(c.A,
+                    (byte)Math.Min(255, c.R + 40),
+                    (byte)Math.Min(255, c.G + 40),
+                    (byte)Math.Min(255, c.B + 40));
+                layout.SetColor(cumulative, len, hot);
+                break;
+            }
+            cumulative += len;
+        }
+    }
+
     private void DrawDecorations(CanvasDrawingSession ds, float baseX, float baseY)
     {
         if (_layout is null) return;
+        var lineMetrics = _layout.LineMetrics;
+
         int cumulative = 0;
         foreach (var run in _runs)
         {
             int len = run.Text.Length;
             if (len == 0) { continue; }
-            // Empty ElementKey = inherit container style.
+            if (run is InlineEmbedRun) { cumulative += len; continue; }
+
             var rs = string.IsNullOrEmpty(run.ElementKey)
                 ? _context.ThemeSnapshot.GetStyle(_elementKey)
                 : _context.ThemeSnapshot.GetStyle(run.ElementKey);
 
-            // Only draw a per-run background when the run's style DIFFERS from the
-            // container (e.g. CodeInline inside a Body paragraph). Container-level
-            // backgrounds are already painted in Paint() and must not be doubled.
             bool drawRunBg = rs.Background is not null
                 && !string.IsNullOrEmpty(run.ElementKey)
                 && run.ElementKey != _elementKey;
@@ -248,19 +345,41 @@ public sealed class InlineContainerBox : BlockBox
                             new Rect(baseX + lb.X - 2, baseY + bgTop, lb.Width + 4, bgH),
                             3, 3, bg);
                     }
+
+                    var lm = FindLineMetrics(lineMetrics, r);
+                    // CanvasLineMetrics has Baseline (distance from line top to baseline).
+                    // x-height ≈ 50% of baseline. Place strikethrough at baseline - xHeight/2.
+                    float baselineFromTop = lm.Baseline > 0 ? lm.Baseline : (float)lb.Height * 0.80f;
+                    float xHeight = baselineFromTop * 0.50f;
+                    float strikeY = (float)(baseY + lb.Y + (baselineFromTop - xHeight * 0.5f));
+                    float underlineY = (float)(baseY + lb.Y + baselineFromTop + 1.5f);
+
                     if (rs.Underline)
                     {
-                        float yLine = (float)(baseY + lb.Y + lb.Height * 0.82f);
-                        ds.DrawLine((float)(baseX + lb.X), yLine, (float)(baseX + lb.X + lb.Width), yLine, rs.Foreground, 1.0f);
+                        ds.DrawLine((float)(baseX + lb.X), underlineY, (float)(baseX + lb.X + lb.Width),
+                            underlineY, rs.Foreground, 1.0f);
                     }
                     if (rs.Strikethrough)
                     {
-                        float yLine = (float)(baseY + lb.Y + lb.Height * 0.45f);
-                        ds.DrawLine((float)(baseX + lb.X), yLine, (float)(baseX + lb.X + lb.Width), yLine, rs.Foreground, 1.0f);
+                        ds.DrawLine((float)(baseX + lb.X), strikeY, (float)(baseX + lb.X + lb.Width),
+                            strikeY, rs.Foreground, 1.0f);
                     }
                 }
             }
             cumulative += len;
         }
+    }
+
+    private static CanvasLineMetrics FindLineMetrics(CanvasLineMetrics[] metrics, CanvasTextLayoutRegion region)
+    {
+        int idx = (int)region.CharacterIndex;
+        int run = 0;
+        foreach (var m in metrics)
+        {
+            int next = run + m.CharacterCount;
+            if (idx < next) return m;
+            run = next;
+        }
+        return metrics.Length > 0 ? metrics[metrics.Length - 1] : default;
     }
 }

@@ -24,6 +24,8 @@ public sealed partial class MainWindow : Window
         ["Tables"]     = TablesSample,
         ["Code"]       = CodeSample,
         ["GFM Alerts"] = AlertsSample,
+        ["Images"]     = ImagesSample,
+        ["Embeds"]     = EmbedsSample,
         ["Selection"]  = SelectionSample,
         ["Full Demo"]  = FullDemoSample,
     };
@@ -103,6 +105,7 @@ public sealed partial class MainWindow : Window
             Markdown = FullDemoSample,
             ExtensionRegistry = registry,
             Theme = new MarkdownTheme(),
+            EmbedFactory = new SampleEmbedFactory(),
             Margin = new Thickness(0),
         };
         _renderer.LinkClick += (_, e) =>
@@ -462,5 +465,96 @@ public sealed partial class MainWindow : Window
 
         *Select any text above and press **Ctrl+C** to copy the exact source markdown.*
         """;
+
+    private const string ImagesSample = """
+        # Images
+
+        Inline images load asynchronously via Win2D `CanvasBitmap.LoadAsync`. Each
+        is decoded on the GPU and re-laid-out once dimensions are known.
+
+        ## GitHub avatar
+
+        ![octocat](https://avatars.githubusercontent.com/u/583231?v=4)
+
+        ## A wider banner
+
+        ![banner](https://github.githubassets.com/images/modules/site/home/hero-glow.svg)
+
+        ## Broken image (graceful failure)
+
+        ![missing](https://example.invalid/does-not-exist.png)
+
+        Captions can wrap around the layout normally.
+        """;
+
+    private const string EmbedsSample = """
+        # Hosted WinUI Embeds
+
+        The renderer hosts native WinUI controls via `IMarkdownEmbedFactory`.
+        This sample registers a factory that intercepts fenced code blocks of
+        the form ```` ```button:Label ```` and replaces them with a real
+        `Microsoft.UI.Xaml.Controls.Button`.
+
+        Try it:
+
+        ```button:Click me
+        ```
+
+        ```button:Another action
+        ```
+
+        Anything else (paragraphs, tables, lists) renders normally — the
+        factory only opts in for blocks it recognizes.
+
+        ## Task lists also use real CheckBox controls
+
+        - [x] Markdig integration
+        - [x] Flow layout
+        - [ ] You can't toggle these because they're disabled — but they're
+              still real WinUI CheckBoxes hosted on the overlay
+        """;
+}
+
+/// <summary>
+/// Demonstrates <see cref="IMarkdownEmbedFactory"/> by intercepting fenced
+/// code blocks whose info-string starts with <c>button:</c> and rendering them
+/// as native WinUI <see cref="Button"/>s.
+/// </summary>
+internal sealed class SampleEmbedFactory : MarkdownRenderer.Hosting.IMarkdownEmbedFactory
+{
+    public bool CanCreate(Markdig.Syntax.Block block)
+    {
+        return block is Markdig.Syntax.FencedCodeBlock fc
+            && (fc.Info?.StartsWith("button:", StringComparison.Ordinal) ?? false);
+    }
+
+    public float MeasureHeight(Markdig.Syntax.Block block, float availableWidth)
+    {
+        // Simple Button at default WinUI metrics is ~32px tall.
+        return 36f;
+    }
+
+    public Microsoft.UI.Xaml.FrameworkElement CreateBlock(Markdig.Syntax.Block block)
+    {
+        var fc = (Markdig.Syntax.FencedCodeBlock)block;
+        string label = fc.Info!.Substring("button:".Length);
+        var btn = new Button
+        {
+            Content = label,
+            Padding = new Thickness(12, 4, 12, 4),
+        };
+        btn.Click += (_, _) =>
+        {
+            var dlg = new ContentDialog
+            {
+                Title = "Embed clicked",
+                Content = $"Hello from “{label}”! This is a real WinUI Button hosted by the markdown renderer.",
+                CloseButtonText = "OK",
+                XamlRoot = btn.XamlRoot,
+            };
+            _ = dlg.ShowAsync();
+        };
+        return btn;
+    }
 }
 

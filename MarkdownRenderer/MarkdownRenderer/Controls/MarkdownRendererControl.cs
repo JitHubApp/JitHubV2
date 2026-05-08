@@ -202,7 +202,7 @@ public sealed partial class MarkdownRendererControl : UserControl
         // passing _canvas directly would crash if layout runs before first draw.
         var device = CanvasDevice.GetSharedDevice();
         var ctx = new MarkdownLayoutContext(device, themeSnapshot, sourceMap, registry, FlowDirection);
-        var builder = new LayoutBuilder(ctx);
+        var builder = new LayoutBuilder(ctx, EmbedFactory);
 
         LayoutSnapshot snapshot;
         try
@@ -220,7 +220,88 @@ public sealed partial class MarkdownRendererControl : UserControl
         _root.Height = _canvas.Height;
         _overlay!.Width = width;
         _overlay.Height = _canvas.Height;
+
+        // UI thread: realize hosted FrameworkElements + image LoadCompleted hooks.
+        _overlay.Children.Clear();
+        foreach (var b in snapshot.Blocks) PlaceEmbeds(b);
+
         _canvas.Invalidate();
+    }
+
+    private void PlaceEmbeds(Layout.BlockBox box)
+    {
+        switch (box)
+        {
+            case Layout.Boxes.EmbedBox eb:
+            {
+                try
+                {
+                    var fe = eb.Factory.CreateBlock(eb.SourceBlock);
+                    eb.RealizedElement = fe;
+                    fe.Width = eb.Bounds.Width - eb.Margin.Left - eb.Margin.Right;
+                    fe.Height = eb.Bounds.Height - eb.Margin.Top - eb.Margin.Bottom;
+                    Canvas.SetLeft(fe, eb.Bounds.X + eb.Margin.Left);
+                    Canvas.SetTop(fe, eb.Bounds.Y + eb.Margin.Top);
+                    _overlay!.Children.Add(fe);
+                }
+                catch (Exception ex)
+                {
+                    System.Diagnostics.Debug.WriteLine($"[MarkdownRendererControl] EmbedBox factory threw: {ex.Message}");
+                }
+                break;
+            }
+            case Layout.Boxes.ImageBox ib:
+            {
+                ib.LoadCompleted -= OnImageLoadCompleted;
+                ib.LoadCompleted += OnImageLoadCompleted;
+                break;
+            }
+            case Layout.Boxes.InlineContainerBox icb:
+            {
+                foreach (var (run, rect) in icb.EnumerateEmbedRects())
+                {
+                    try
+                    {
+                        var fe = run.ElementFactory();
+                        run.RealizedElement = fe;
+                        fe.Width = rect.Width;
+                        fe.Height = rect.Height;
+                        Canvas.SetLeft(fe, rect.X);
+                        Canvas.SetTop(fe, rect.Y);
+                        _overlay!.Children.Add(fe);
+                    }
+                    catch (Exception ex)
+                    {
+                        System.Diagnostics.Debug.WriteLine($"[MarkdownRendererControl] inline embed factory threw: {ex.Message}");
+                    }
+                }
+                break;
+            }
+            case Layout.Boxes.ListItemBox lib:
+                PlaceEmbeds(lib.Marker);
+                PlaceEmbeds(lib.Content);
+                break;
+            case Layout.Boxes.TableBox tb:
+                foreach (var cell in tb.GetCellBoxes()) PlaceEmbeds(cell);
+                break;
+            case Layout.Boxes.StackBox sb:
+                foreach (var c in sb.Children) PlaceEmbeds(c);
+                break;
+        }
+    }
+
+    private void OnImageLoadCompleted(object? sender, EventArgs e)
+    {
+        // Image dimensions just became known; re-run layout so blocks below
+        // shift. Run on UI thread; cheap because parsed AST + bitmap are cached.
+        if (DispatcherQueue is { } dq)
+        {
+            dq.TryEnqueue(() => RequestRebuild());
+        }
+        else
+        {
+            RequestRebuild();
+        }
     }
 
     private void OnRegionsInvalidated(CanvasVirtualControl sender, CanvasRegionsInvalidatedEventArgs args)
@@ -259,14 +340,102 @@ public sealed partial class MarkdownRendererControl : UserControl
         }
     }
 
+    private InlineRun? _lastHoveredRun;
+
     private void OnPointerMoved(object sender, PointerRoutedEventArgs e)
     {
-        if (_selectionAnchor is null || _snapshot is null || _canvas is null) return;
+        if (_snapshot is null || _canvas is null) return;
         var pt = e.GetCurrentPoint(_canvas).Position;
-        if (_snapshot.HitTest(pt, out var pos))
+
+        // Drag-select.
+        if (_selectionAnchor is not null)
         {
-            _selection.ExtendTo(pos);
+            if (_snapshot.HitTest(pt, out var pos))
+            {
+                _selection.ExtendTo(pos);
+                _canvas.Invalidate();
+            }
+        }
+
+        // Hover effect for links + cursor change.
+        InlineRun? hovered = null;
+        Layout.Boxes.InlineContainerBox? hoveredBox = null;
+        foreach (var b in _snapshot.Blocks)
+        {
+            if (FindInlineHover(b, pt) is var h && h.Run is not null)
+            {
+                hovered = h.Run;
+                hoveredBox = h.Box;
+                break;
+            }
+        }
+
+        bool changed = !ReferenceEquals(hovered, _lastHoveredRun);
+        if (changed)
+        {
+            // Clear previous hover state on every InlineContainerBox.
+            foreach (var b in _snapshot.Blocks) ClearHover(b);
+            if (hoveredBox is not null && hovered is LinkRun)
+                hoveredBox.HoveredRun = hovered;
+            _lastHoveredRun = hovered;
             _canvas.Invalidate();
+        }
+
+        try
+        {
+            ProtectedCursor = hovered is LinkRun
+                ? Microsoft.UI.Input.InputSystemCursor.Create(Microsoft.UI.Input.InputSystemCursorShape.Hand)
+                : Microsoft.UI.Input.InputSystemCursor.Create(Microsoft.UI.Input.InputSystemCursorShape.IBeam);
+        }
+        catch { /* ProtectedCursor isn't always settable */ }
+    }
+
+    private static (Layout.Boxes.InlineContainerBox? Box, InlineRun? Run) FindInlineHover(Layout.BlockBox box, Point pt)
+    {
+        switch (box)
+        {
+            case Layout.Boxes.InlineContainerBox icb:
+                var r = icb.RunAt(pt);
+                return r is not null ? (icb, r) : (null, null);
+            case Layout.Boxes.ListItemBox lib:
+                var m = FindInlineHover(lib.Marker, pt);
+                if (m.Run is not null) return m;
+                return FindInlineHover(lib.Content, pt);
+            case Layout.Boxes.TableBox tb:
+                foreach (var cell in tb.GetCellBoxes())
+                {
+                    var c = FindInlineHover(cell, pt);
+                    if (c.Run is not null) return c;
+                }
+                return (null, null);
+            case Layout.Boxes.StackBox sb:
+                foreach (var ch in sb.Children)
+                {
+                    var c = FindInlineHover(ch, pt);
+                    if (c.Run is not null) return c;
+                }
+                return (null, null);
+        }
+        return (null, null);
+    }
+
+    private static void ClearHover(Layout.BlockBox box)
+    {
+        switch (box)
+        {
+            case Layout.Boxes.InlineContainerBox icb:
+                icb.HoveredRun = null;
+                break;
+            case Layout.Boxes.ListItemBox lib:
+                ClearHover(lib.Marker);
+                ClearHover(lib.Content);
+                break;
+            case Layout.Boxes.TableBox tb:
+                foreach (var cell in tb.GetCellBoxes()) ClearHover(cell);
+                break;
+            case Layout.Boxes.StackBox sb:
+                foreach (var c in sb.Children) ClearHover(c);
+                break;
         }
     }
 
@@ -362,3 +531,4 @@ public sealed class MarkdownLinkClickEventArgs : EventArgs
     public string Url { get; }
     public string? Title { get; }
 }
+

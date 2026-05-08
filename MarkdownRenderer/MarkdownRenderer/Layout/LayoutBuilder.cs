@@ -3,6 +3,7 @@ using System.Collections.Generic;
 using Markdig.Syntax;
 using Markdig.Syntax.Inlines;
 using MarkdownRenderer.Document;
+using MarkdownRenderer.Hosting;
 using MarkdownRenderer.Layout.Boxes;
 using MarkdownRenderer.Parsing;
 using MarkdownRenderer.Theming;
@@ -12,10 +13,12 @@ namespace MarkdownRenderer.Layout;
 public sealed class LayoutBuilder
 {
     private readonly MarkdownLayoutContext _context;
+    private readonly IMarkdownEmbedFactory? _embedFactory;
 
-    public LayoutBuilder(MarkdownLayoutContext context)
+    public LayoutBuilder(MarkdownLayoutContext context, IMarkdownEmbedFactory? embedFactory = null)
     {
         _context = context;
+        _embedFactory = embedFactory;
     }
 
     public LayoutSnapshot Build(MarkdownDocument document, float availableWidth)
@@ -40,6 +43,13 @@ public sealed class LayoutBuilder
 
     private BlockBox? BuildBlock(Block block)
     {
+        if (_embedFactory is { } ef && ef.CanCreate(block))
+        {
+            var eb = new EmbedBox(block, ef);
+            eb.BlockIndex = _context.NextBlockIndex();
+            return eb;
+        }
+
         if (_context.Registry.TryGetRenderer(block.GetType(), out var renderer) && renderer is not null)
         {
             var custom = renderer.BuildBlock(block, _context);
@@ -53,7 +63,7 @@ public sealed class LayoutBuilder
         return block switch
         {
             HeadingBlock h => BuildHeading(h),
-            ParagraphBlock p => BuildParagraph(p),
+            ParagraphBlock p => BuildParagraphOrImage(p),
             FencedCodeBlock fc => BuildCodeBlock(fc, fc.Lines.ToString()),
             CodeBlock cb => BuildCodeBlock(cb, cb.Lines.ToString()),
             QuoteBlock qb => BuildQuote(qb),
@@ -62,6 +72,38 @@ public sealed class LayoutBuilder
             ContainerBlock cb => BuildGenericContainer(cb),
             _ => null
         };
+    }
+
+    private BlockBox BuildParagraphOrImage(ParagraphBlock p)
+    {
+        // If the paragraph contains only a single image link (optionally wrapped
+        // in a single ContainerInline), promote to an ImageBox.
+        var inline = p.Inline;
+        if (inline is not null)
+        {
+            LinkInline? onlyImage = null;
+            int count = 0;
+            foreach (var node in inline)
+            {
+                count++;
+                if (count > 1) { onlyImage = null; break; }
+                if (node is LinkInline li && li.IsImage) onlyImage = li;
+                else { onlyImage = null; break; }
+            }
+            if (onlyImage is not null)
+            {
+                string url = onlyImage.Url ?? string.Empty;
+                string alt = string.Empty;
+                foreach (var c in onlyImage)
+                {
+                    if (c is LiteralInline lit) alt += lit.Content.ToString();
+                }
+                var img = new ImageBox(_context, url, alt);
+                img.BlockIndex = _context.NextBlockIndex();
+                return img;
+            }
+        }
+        return BuildParagraph(p);
     }
 
     private BlockBox MakeThematicBreak()
