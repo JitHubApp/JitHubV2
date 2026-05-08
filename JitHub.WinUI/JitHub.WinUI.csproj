@@ -115,4 +115,27 @@
     <PublishAot Condition="'$(Configuration)' != 'Debug'">True</PublishAot>
     <SelfContained Condition="'$(Configuration)' != 'Debug'">True</SelfContained>
   </PropertyGroup>
+
+  <!--
+    WinUIEditorCsWinRT.dll (net8.0) and CommunityToolkit DataGrid (net5.0) were not built for AOT
+    or IL trimming. Preserve them entirely so the trimmer/AOT compiler doesn't remove types that
+    WinUI XAML resolves at runtime via XamlTypeInfo.
+  -->
+  <ItemGroup>
+    <TrimmerRootAssembly Include="WinUIEditorCsWinRT" />
+    <TrimmerRootAssembly Include="CommunityToolkit.WinUI.UI.Controls.DataGrid" />
+  </ItemGroup>
+
+  <!--
+    WinUIEdit uses build\native\*.targets which is not imported for managed .NET projects, so the
+    MSIX tooling never auto-generates activatable class entries for WinUIEditor.dll. We add the
+    WinMD reference explicitly so the MSIX tooling generates the required <Extension
+    Category="windows.activatableClass.inProcessServer"> entries. Without these entries, the
+    runtime cannot find WinUIEditor's activation factory and the app crashes at launch with
+    STATUS_STOWED_EXCEPTION (0xC000027B) in Microsoft.UI.Xaml.dll.
+  -->
+  <ItemGroup>
+    <WindowsMetadataReference Include="$(NuGetPackageRoot)\winuiedit\0.0.4-prerelease\lib\uap10.0\WinUIEditor.winmd"
+                              Implementation="WinUIEditor.dll" />
+  </ItemGroup>
 </Project>
