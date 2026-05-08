@@ -102,6 +102,24 @@ public sealed class InlineContainerBox : BlockBox
         return height;
     }
 
+    /// <summary>
+    /// Returns the integer-pixel-snapped origin of the text layout in
+    /// document coordinates.  Snapping eliminates fractional sub-pixel
+    /// positioning that otherwise causes DirectWrite glyphs straddling
+    /// CanvasVirtualControl tile / dirty-rect boundaries to be re-rasterised
+    /// at slightly different sub-pixel offsets when the dirty rect changes
+    /// shape (e.g. as a selection-drag extends a highlight rect across the
+    /// text), which reads as visible "shake" of the rendered glyphs.
+    /// All paint / hit-test / selection-rect / embed-rect computations use
+    /// this single snapped origin so they stay in agreement.
+    /// </summary>
+    private (float X, float Y) GetSnappedOrigin(Theming.ElementStyle style)
+    {
+        float x = MathF.Round((float)(Bounds.X + style.Margin.Left + style.Padding.Left));
+        float y = MathF.Round((float)(Bounds.Y + style.Margin.Top + style.Padding.Top));
+        return (x, y);
+    }
+
     public override void Paint(CanvasDrawingSession ds, Rect viewport)
     {
         if (_layout is null) return;
@@ -117,9 +135,6 @@ public sealed class InlineContainerBox : BlockBox
             ds.FillRoundedRectangle(rect, 4, 4, bg);
         }
 
-        float x = (float)(Bounds.X + style.Margin.Left + style.Padding.Left);
-        float y = (float)(Bounds.Y + style.Margin.Top + style.Padding.Top);
-
         // Only mutate the CanvasTextLayout when hover state has changed.
         // Calling SetColor on every frame (even with the same value) forces
         // DirectWrite to invalidate cached glyph-run metrics which causes the
@@ -129,16 +144,20 @@ public sealed class InlineContainerBox : BlockBox
             ApplyHoverColor(_layout);
             _hoverColorsDirty = false;
         }
+        // Snap to integer pixels at the draw site.  See GetSnappedOrigin
+        // for the rationale; the same snapped origin is used for hit-test,
+        // selection rects and embed placement so they stay in sync.
+        var (sx, sy) = GetSnappedOrigin(style);
         MarkdownRenderer.Diagnostics.ShakeLogger.LogPaint(
             "inline-paint",
             BlockIndex,
-            x,
-            y,
+            sx,
+            sy,
             _layout.LayoutBounds.Width,
             _layout.LayoutBounds.Height);
-        ds.DrawTextLayout(_layout, x, y, style.Foreground);
+        ds.DrawTextLayout(_layout, sx, sy, style.Foreground);
 
-        DrawDecorations(ds, x, y);
+        DrawDecorations(ds, sx, sy);
     }
 
     public override bool HitTest(Point point, out DocumentPosition position)
@@ -155,8 +174,7 @@ public sealed class InlineContainerBox : BlockBox
         }
 
         var style = _context.ThemeSnapshot.GetStyle(_elementKey);
-        float x = (float)(Bounds.X + style.Margin.Left + style.Padding.Left);
-        float y = (float)(Bounds.Y + style.Margin.Top + style.Padding.Top);
+        var (x, y) = GetSnappedOrigin(style);
         _layout.HitTest((float)point.X - x, (float)point.Y - y, out var hit);
         int charIndex = (int)hit.CharacterIndex;
 
@@ -192,8 +210,7 @@ public sealed class InlineContainerBox : BlockBox
     {
         if (_layout is null) yield break;
         var style = _context.ThemeSnapshot.GetStyle(_elementKey);
-        float baseX = (float)(Bounds.X + style.Margin.Left + style.Padding.Left);
-        float baseY = (float)(Bounds.Y + style.Margin.Top + style.Padding.Top);
+        var (baseX, baseY) = GetSnappedOrigin(style);
 
         int from = ToBufferIndex(range.Start);
         int to = ToBufferIndex(range.End);
@@ -224,8 +241,7 @@ public sealed class InlineContainerBox : BlockBox
     {
         if (_layout is null) yield break;
         var style = _context.ThemeSnapshot.GetStyle(_elementKey);
-        float baseX = (float)(Bounds.X + style.Margin.Left + style.Padding.Left);
-        float baseY = (float)(Bounds.Y + style.Margin.Top + style.Padding.Top);
+        var (baseX, baseY) = GetSnappedOrigin(style);
 
         int cumulative = 0;
         foreach (var run in _runs)
@@ -258,8 +274,7 @@ public sealed class InlineContainerBox : BlockBox
         if (_layout is null) return null;
         if (!Bounds.Contains(point)) return null;
         var style = _context.ThemeSnapshot.GetStyle(_elementKey);
-        float x = (float)(Bounds.X + style.Margin.Left + style.Padding.Left);
-        float y = (float)(Bounds.Y + style.Margin.Top + style.Padding.Top);
+        var (x, y) = GetSnappedOrigin(style);
         _layout.HitTest((float)point.X - x, (float)point.Y - y, out var hitRegion);
         int charIndex = (int)hitRegion.CharacterIndex;
         int cumulative = 0;
