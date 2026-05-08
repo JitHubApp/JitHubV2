@@ -13,6 +13,9 @@ public partial class App : Application
 
     protected override void OnLaunched(LaunchActivatedEventArgs args)
     {
+        // Enable async shake diagnostic logging — drains via Debug.WriteLine
+        // on a background task so it doesn't perturb selection-drag perf.
+        MarkdownRenderer.Diagnostics.ShakeLogger.Enabled = true;
         _window = new MainWindow();
         _window.Activate();
     }

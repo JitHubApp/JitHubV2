@@ -384,13 +384,20 @@ public sealed partial class MarkdownRendererControl : UserControl
         var theme = Theme ?? _defaultTheme;
         var hl = theme.AccentColor ?? Color.FromArgb(0x66, 0x00, 0x67, 0xC0);
         hl = Color.FromArgb(0x55, hl.R, hl.G, hl.B);
+        var frame = MarkdownRenderer.Diagnostics.ShakeLogger.NextFrame();
+        int regionCount = 0;
         foreach (var region in args.InvalidatedRegions)
         {
+            regionCount++;
+            MarkdownRenderer.Diagnostics.ShakeLogger.LogPaint(
+                "region", regionCount, region.X, region.Y, region.Width, region.Height);
             using var ds = sender.CreateDrawingSession(region);
             // Selection beneath text.
             _selection.PaintHighlight(ds, _snapshot, hl);
             _snapshot.Paint(ds, region);
         }
+        MarkdownRenderer.Diagnostics.ShakeLogger.Log("frame-end",
+            $"frame={frame} regions={regionCount} hovered={(_lastHoveredRun is null ? "null" : _lastHoveredRun.GetType().Name)} dragging={_selectionAnchor is not null}");
     }
 
     // ---- Input ----
@@ -426,6 +433,8 @@ public sealed partial class MarkdownRendererControl : UserControl
         {
             if (_snapshot.HitTest(pt, out var pos))
             {
+                MarkdownRenderer.Diagnostics.ShakeLogger.Log("ptr-move-drag",
+                    $"px={pt.X:F4} py={pt.Y:F4} pos=blk{pos.BlockIndex}/inl{pos.InlineIndex}/c{pos.CharacterOffset}");
                 _selection.ExtendTo(pos);
                 _canvas.Invalidate();
             }

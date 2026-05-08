@@ -129,6 +129,13 @@ public sealed class InlineContainerBox : BlockBox
             ApplyHoverColor(_layout);
             _hoverColorsDirty = false;
         }
+        MarkdownRenderer.Diagnostics.ShakeLogger.LogPaint(
+            "inline-paint",
+            BlockIndex,
+            x,
+            y,
+            _layout.LayoutBounds.Width,
+            _layout.LayoutBounds.Height);
         ds.DrawTextLayout(_layout, x, y, style.Foreground);
 
         DrawDecorations(ds, x, y);

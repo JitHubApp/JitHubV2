@@ -78,8 +78,15 @@ public sealed class SelectionController
 
     public void PaintHighlight(CanvasDrawingSession ds, LayoutSnapshot snapshot, Color color)
     {
+        bool first = true;
         foreach (var rect in GetHighlightRects(snapshot))
         {
+            if (first)
+            {
+                MarkdownRenderer.Diagnostics.ShakeLogger.LogPaint(
+                    "sel-rect-first", -1, rect.X, rect.Y, rect.Width, rect.Height);
+                first = false;
+            }
             ds.FillRoundedRectangle(rect, 2, 2, color);
         }
     }
