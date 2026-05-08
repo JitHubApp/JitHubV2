@@ -56,6 +56,11 @@ public sealed class SelectionController
         {
             foreach (var r in icb.GetRangeRects(range)) yield return r;
         }
+        else if (box is ListItemBox lib)
+        {
+            foreach (var r in EnumerateBlockRects(lib.Marker, range)) yield return r;
+            foreach (var r in EnumerateBlockRects(lib.Content, range)) yield return r;
+        }
         else if (box is StackBox sb)
         {
             foreach (var c in sb.Children)

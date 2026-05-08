@@ -79,7 +79,7 @@ internal static class GfmChildBuilder
     {
         LiteralInline lit => new TextRun(lit.Content.ToString())
         {
-            ElementKey = MarkdownElementKeys.Body,
+            // No ElementKey = inherit container's style (fixes headings inside GFM blocks).
             SourceSpan = new MarkdownRenderer.SourceSpan(lit.Span.Start, lit.Span.Length)
         },
         CodeInline ci => new CodeInlineRun(ci.Content)
@@ -100,6 +100,8 @@ internal static class GfmChildBuilder
         var sb = new StringBuilder();
         FlattenInlines(emph, sb);
         var span = new MarkdownRenderer.SourceSpan(emph.Span.Start, emph.Span.Length);
+        if (emph.DelimiterChar == '~')
+            return new StrikethroughRun(sb.ToString()) { SourceSpan = span };
         return emph.DelimiterCount >= 2
             ? new StrongRun(sb.ToString()) { SourceSpan = span }
             : new EmphasisRun(sb.ToString()) { SourceSpan = span };
@@ -111,7 +113,7 @@ internal static class GfmChildBuilder
         FlattenInlines(ci, sb);
         return new TextRun(sb.ToString())
         {
-            ElementKey = MarkdownElementKeys.Body,
+            // No ElementKey = inherit container's style.
             SourceSpan = new MarkdownRenderer.SourceSpan(ci.Span.Start, ci.Span.Length)
         };
     }

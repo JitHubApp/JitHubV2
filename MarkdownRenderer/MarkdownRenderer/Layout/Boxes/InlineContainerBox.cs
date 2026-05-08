@@ -58,8 +58,10 @@ public sealed class InlineContainerBox : BlockBox
                 FontWeight = style.FontWeight,
                 FontStyle = style.FontStyle,
                 WordWrapping = CanvasWordWrapping.Wrap,
-                LineSpacingMode = CanvasLineSpacingMode.Proportional,
-                LineSpacing = style.LineHeightMultiplier,
+                // Use font-native line spacing so GetCharacterRegions returns true glyph
+                // bounds rather than inflated proportional bounds. This fixes underline/
+                // strikethrough positioning and inline-code background height.
+                LineSpacingMode = CanvasLineSpacingMode.Default,
                 Direction = _context.FlowDirection == FlowDirection.RightToLeft
                     ? CanvasTextDirection.RightToLeftThenTopToBottom
                     : CanvasTextDirection.LeftToRightThenTopToBottom,
@@ -187,19 +189,26 @@ public sealed class InlineContainerBox : BlockBox
 
     private void ApplyRunStyles(CanvasTextLayout layout)
     {
+        var containerStyle = _context.ThemeSnapshot.GetStyle(_elementKey);
         int cumulative = 0;
         foreach (var run in _runs)
         {
             int len = run.Text.Length;
             if (len == 0) continue;
-            if (run.ElementKey != _elementKey)
+            // Empty ElementKey = inherit container style — nothing to override.
+            if (!string.IsNullOrEmpty(run.ElementKey) && run.ElementKey != _elementKey)
             {
                 var rs = _context.ThemeSnapshot.GetStyle(run.ElementKey);
-                layout.SetFontFamily(cumulative, len, rs.FontFamily);
-                layout.SetFontSize(cumulative, len, rs.FontSize);
-                layout.SetFontWeight(cumulative, len, rs.FontWeight);
-                layout.SetFontStyle(cumulative, len, rs.FontStyle);
-                layout.SetColor(cumulative, len, rs.Foreground);
+                // Apply only DELTA properties. Never override font size — runs inside
+                // headings must keep the heading's font size, not revert to 14px.
+                if (rs.FontFamily != containerStyle.FontFamily)
+                    layout.SetFontFamily(cumulative, len, rs.FontFamily);
+                if (rs.FontWeight.Weight != containerStyle.FontWeight.Weight)
+                    layout.SetFontWeight(cumulative, len, rs.FontWeight);
+                if (rs.FontStyle != containerStyle.FontStyle)
+                    layout.SetFontStyle(cumulative, len, rs.FontStyle);
+                if (rs.Foreground != containerStyle.Foreground)
+                    layout.SetColor(cumulative, len, rs.Foreground);
             }
             cumulative += len;
         }
@@ -213,7 +222,10 @@ public sealed class InlineContainerBox : BlockBox
         {
             int len = run.Text.Length;
             if (len == 0) { continue; }
-            var rs = _context.ThemeSnapshot.GetStyle(run.ElementKey);
+            // Empty ElementKey = inherit container style.
+            var rs = string.IsNullOrEmpty(run.ElementKey)
+                ? _context.ThemeSnapshot.GetStyle(_elementKey)
+                : _context.ThemeSnapshot.GetStyle(run.ElementKey);
             if (rs.Underline || rs.Strikethrough || rs.Background is not null)
             {
                 var regions = _layout.GetCharacterRegions(cumulative, len);
@@ -222,18 +234,24 @@ public sealed class InlineContainerBox : BlockBox
                     var lb = r.LayoutBounds;
                     if (rs.Background is { } bg)
                     {
+                        // Use 90% of the line height to avoid the background touching
+                        // adjacent lines; top-align with a small 5% indent.
+                        double bgTop = lb.Y + lb.Height * 0.05;
+                        double bgH = lb.Height * 0.90;
                         ds.FillRoundedRectangle(
-                            new Rect(baseX + lb.X - 2, baseY + lb.Y, lb.Width + 4, lb.Height),
+                            new Rect(baseX + lb.X - 2, baseY + bgTop, lb.Width + 4, bgH),
                             3, 3, bg);
                     }
                     if (rs.Underline)
                     {
-                        float yLine = (float)(baseY + lb.Y + lb.Height - 1.5f);
+                        // Baseline ≈ 78% of natural line height for Segoe UI Variable.
+                        float yLine = (float)(baseY + lb.Y + lb.Height * 0.82f);
                         ds.DrawLine((float)(baseX + lb.X), yLine, (float)(baseX + lb.X + lb.Width), yLine, rs.Foreground, 1.0f);
                     }
                     if (rs.Strikethrough)
                     {
-                        float yLine = (float)(baseY + lb.Y + lb.Height * 0.55f);
+                        // x-height ≈ 45% of natural line height.
+                        float yLine = (float)(baseY + lb.Y + lb.Height * 0.45f);
                         ds.DrawLine((float)(baseX + lb.X), yLine, (float)(baseX + lb.X + lb.Width), yLine, rs.Foreground, 1.0f);
                     }
                 }

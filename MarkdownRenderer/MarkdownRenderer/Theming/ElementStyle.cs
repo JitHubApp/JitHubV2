@@ -41,7 +41,10 @@ public static class MarkdownElementKeys
 
 public sealed class ElementStyle
 {
-    public string FontFamily { get; init; } = "Segoe UI Variable";
+    /// <summary>
+    /// DirectWrite font fallback chain. Include Segoe UI Emoji for emoji support.
+    /// </summary>
+    public string FontFamily { get; init; } = "Segoe UI Variable, Segoe UI Emoji, Segoe UI Symbol";
     public float FontSize { get; init; } = 14f;
     public Windows.UI.Text.FontWeight FontWeight { get; init; } = Microsoft.UI.Text.FontWeights.Normal;
     public Windows.UI.Text.FontStyle FontStyle { get; init; } = Windows.UI.Text.FontStyle.Normal;

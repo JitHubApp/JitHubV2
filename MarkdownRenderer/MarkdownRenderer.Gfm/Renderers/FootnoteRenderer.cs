@@ -10,8 +10,7 @@ namespace MarkdownRenderer.Gfm.Renderers;
 
 /// <summary>
 /// Renders the footnote definitions section (<see cref="FootnoteGroup"/>) at the bottom
-/// of the document. Each footnote is rendered as a superscript index followed by its
-/// text content.
+/// of the document. Each footnote is a <see cref="ListItemBox"/> with a superscript marker.
 /// </summary>
 public sealed class FootnoteRenderer : MarkdownNodeRenderer<FootnoteGroup>
 {
@@ -26,25 +25,23 @@ public sealed class FootnoteRenderer : MarkdownNodeRenderer<FootnoteGroup>
         {
             if (item is not Footnote footnote) continue;
 
-            var itemBox = new StackBox
-            {
-                ContentPadding = new Thickness(20, 0, 0, 0),
-            };
-
-            // Superscript index marker
+            // Superscript index marker — no explicit ElementKey so it inherits Body style.
             string superscript = ToSuperscript(footnote.Order > 0 ? footnote.Order : 1);
             var marker = new InlineContainerBox(context, MarkdownElementKeys.ListMarker);
             marker.BlockIndex = context.NextBlockIndex();
-            marker.Add(new TextRun($"{superscript} ")
+            marker.Add(new TextRun(superscript + " ")
             {
-                ElementKey = MarkdownElementKeys.ListMarker,
                 SourceSpan = new MarkdownRenderer.SourceSpan(footnote.Span.Start, 0)
             });
-            itemBox.Add(marker);
 
-            GfmChildBuilder.PopulateChildren(itemBox, footnote, context);
+            // Content area.
+            var content = new StackBox();
+            content.BlockIndex = context.NextBlockIndex();
+            GfmChildBuilder.PopulateChildren(content, footnote, context);
 
-            stack.Add(itemBox);
+            var listItem = new ListItemBox(marker, content, markerWidth: 22f);
+            listItem.BlockIndex = context.NextBlockIndex();
+            stack.Add(listItem);
         }
 
         return stack;

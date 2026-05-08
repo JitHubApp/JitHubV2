@@ -170,8 +170,8 @@ public sealed class LayoutBuilder
             if (cb is not null) content.Add(cb);
         }
 
-        // markerWidth gives enough room for "99." in the default body font.
-        return new ListItemBox(marker, content, markerWidth: 28f);
+        // markerWidth: enough room for "99." in 14px body font (~20px), plus small gap.
+        return new ListItemBox(marker, content, markerWidth: 22f);
     }
 
     private StackBox BuildGenericContainer(ContainerBlock cb)
@@ -220,6 +220,12 @@ public sealed class LayoutBuilder
                 return new LinkRun(al.Url, al.Url) { SourceSpan = new SourceSpan(al.Span.Start, al.Span.Length) };
             case HtmlInline html:
                 return new TextRun(html.Tag) { SourceSpan = new SourceSpan(html.Span.Start, html.Span.Length) };
+            case Markdig.Extensions.Footnotes.FootnoteLink fl when !fl.IsBackLink:
+                // Render footnote forward-references as superscript numbers.
+                return new TextRun(ToSuperscript(fl.Index))
+                {
+                    SourceSpan = new SourceSpan(fl.Span.Start, fl.Span.Length)
+                };
             case ContainerInline ci2:
                 {
                     var sb = new System.Text.StringBuilder();
@@ -235,6 +241,9 @@ public sealed class LayoutBuilder
         var sb = new System.Text.StringBuilder();
         FlattenContainer(emph, sb);
         var span = new SourceSpan(emph.Span.Start, emph.Span.Length);
+        // Strikethrough uses '~' delimiter (~~text~~); bold uses '*' or '_' with count ≥ 2.
+        if (emph.DelimiterChar == '~')
+            return new StrikethroughRun(sb.ToString()) { SourceSpan = span };
         return emph.DelimiterCount >= 2
             ? new StrongRun(sb.ToString()) { SourceSpan = span }
             : new EmphasisRun(sb.ToString()) { SourceSpan = span };
@@ -242,6 +251,14 @@ public sealed class LayoutBuilder
 
     private InlineRun BuildLink(LinkInline link)
     {
+        if (link.IsImage)
+        {
+            // Images are not yet natively rendered; show alt text as plain text.
+            var alt = new System.Text.StringBuilder();
+            FlattenContainer(link, alt);
+            string altText = alt.Length > 0 ? alt.ToString() : "image";
+            return new TextRun(altText) { SourceSpan = new SourceSpan(link.Span.Start, link.Span.Length) };
+        }
         var sb = new System.Text.StringBuilder();
         FlattenContainer(link, sb);
         return new LinkRun(sb.ToString(), link.Url ?? string.Empty, link.Title)
@@ -263,5 +280,14 @@ public sealed class LayoutBuilder
                 default: break;
             }
         }
+    }
+
+    private static string ToSuperscript(int n)
+    {
+        const string digits = "\u2070\u00B9\u00B2\u00B3\u2074\u2075\u2076\u2077\u2078\u2079";
+        var sb = new System.Text.StringBuilder();
+        foreach (char c in n.ToString())
+            sb.Append(c >= '0' && c <= '9' ? digits[c - '0'] : c);
+        return sb.ToString();
     }
 }

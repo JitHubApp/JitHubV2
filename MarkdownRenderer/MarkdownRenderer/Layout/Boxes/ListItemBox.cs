@@ -15,6 +15,11 @@ public sealed class ListItemBox : BlockBox
     private readonly StackBox _content;
     private readonly float _markerWidth;
 
+    /// <summary>The marker (bullet or number) box on the left.</summary>
+    public InlineContainerBox Marker => _marker;
+    /// <summary>The content (rest of list item) StackBox on the right.</summary>
+    public StackBox Content => _content;
+
     public ListItemBox(InlineContainerBox marker, StackBox content, float markerWidth)
     {
         _marker = marker;

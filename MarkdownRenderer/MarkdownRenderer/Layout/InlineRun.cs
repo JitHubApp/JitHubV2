@@ -12,7 +12,11 @@ public abstract class InlineRun
     public int InlineIndex { get; internal set; }
     public int RenderedLength { get; protected set; }
     public SourceSpan SourceSpan { get; init; }
-    public string ElementKey { get; init; } = MarkdownElementKeys.Body;
+    /// <summary>
+    /// Empty string means "inherit container's style". Set to a specific key
+    /// (e.g. <see cref="MarkdownElementKeys.Strong"/>) to apply a delta override.
+    /// </summary>
+    public string ElementKey { get; init; } = string.Empty;
 
     /// <summary>The text contributed by this run to the inline buffer.</summary>
     public abstract string Text { get; }
