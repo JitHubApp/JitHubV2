@@ -100,9 +100,11 @@ public sealed class LayoutBuilder
     {
         var box = new InlineContainerBox(_context, MarkdownElementKeys.CodeBlock);
         box.BlockIndex = _context.NextBlockIndex();
+        // No ElementKey on the run — it inherits the container's CodeBlock style.
+        // Setting ElementKey = CodeBlock would cause DrawDecorations to draw a
+        // per-run background on top of the container-level background (double bg).
         var run = new TextRun(text)
         {
-            ElementKey = MarkdownElementKeys.CodeBlock,
             SourceSpan = new SourceSpan(block.Span.Start, block.Span.Length)
         };
         box.Add(run);

@@ -226,16 +226,22 @@ public sealed class InlineContainerBox : BlockBox
             var rs = string.IsNullOrEmpty(run.ElementKey)
                 ? _context.ThemeSnapshot.GetStyle(_elementKey)
                 : _context.ThemeSnapshot.GetStyle(run.ElementKey);
-            if (rs.Underline || rs.Strikethrough || rs.Background is not null)
+
+            // Only draw a per-run background when the run's style DIFFERS from the
+            // container (e.g. CodeInline inside a Body paragraph). Container-level
+            // backgrounds are already painted in Paint() and must not be doubled.
+            bool drawRunBg = rs.Background is not null
+                && !string.IsNullOrEmpty(run.ElementKey)
+                && run.ElementKey != _elementKey;
+
+            if (drawRunBg || rs.Underline || rs.Strikethrough)
             {
                 var regions = _layout.GetCharacterRegions(cumulative, len);
                 foreach (var r in regions)
                 {
                     var lb = r.LayoutBounds;
-                    if (rs.Background is { } bg)
+                    if (drawRunBg && rs.Background is { } bg)
                     {
-                        // Use 90% of the line height to avoid the background touching
-                        // adjacent lines; top-align with a small 5% indent.
                         double bgTop = lb.Y + lb.Height * 0.05;
                         double bgH = lb.Height * 0.90;
                         ds.FillRoundedRectangle(
@@ -244,13 +250,11 @@ public sealed class InlineContainerBox : BlockBox
                     }
                     if (rs.Underline)
                     {
-                        // Baseline ≈ 78% of natural line height for Segoe UI Variable.
                         float yLine = (float)(baseY + lb.Y + lb.Height * 0.82f);
                         ds.DrawLine((float)(baseX + lb.X), yLine, (float)(baseX + lb.X + lb.Width), yLine, rs.Foreground, 1.0f);
                     }
                     if (rs.Strikethrough)
                     {
-                        // x-height ≈ 45% of natural line height.
                         float yLine = (float)(baseY + lb.Y + lb.Height * 0.45f);
                         ds.DrawLine((float)(baseX + lb.X), yLine, (float)(baseX + lb.X + lb.Width), yLine, rs.Foreground, 1.0f);
                     }

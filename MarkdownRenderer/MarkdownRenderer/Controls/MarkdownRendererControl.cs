@@ -335,6 +335,12 @@ public sealed partial class MarkdownRendererControl : UserControl
             case Layout.Boxes.ListItemBox lib:
                 if (FindLinkInBlock(lib.Marker, pos) is { } lm) return lm;
                 return FindLinkInBlock(lib.Content, pos);
+            case Layout.Boxes.TableBox tb:
+                foreach (var cell in tb.GetCellBoxes())
+                {
+                    if (FindLinkInBlock(cell, pos) is { } tf) return tf;
+                }
+                return null;
             case Layout.Boxes.StackBox sb:
                 foreach (var c in sb.Children)
                 {
