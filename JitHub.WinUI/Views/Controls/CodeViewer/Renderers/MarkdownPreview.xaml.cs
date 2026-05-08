@@ -16,6 +16,9 @@ public sealed partial class MarkdownPreview : UserControl
     {
         InitializeComponent();
         DataContextChanged += OnDataContextChanged;
+        // Re-walk every time the MarkdownTextBlock finishes a layout pass.
+        // Images are rendered asynchronously, so SizeChanged alone fires too early.
+        RichMarkdown.LayoutUpdated += OnMarkdownLayoutUpdated;
     }
 
     private RepoFilePreviewViewModel? ViewModel => DataContext as RepoFilePreviewViewModel;
@@ -51,8 +54,18 @@ public sealed partial class MarkdownPreview : UserControl
 
     private void RichPanel_SizeChanged(object sender, SizeChangedEventArgs e)
     {
-        // Cap images at the viewport width (minus padding), never exceeding the reading max-width.
-        double maxW = Math.Max(0, Math.Min(e.NewSize.Width - 32, 860));
+        ApplyImageConstraints();
+    }
+
+    private void OnMarkdownLayoutUpdated(object? sender, object e)
+    {
+        // Called after every layout pass — catches images that load after SizeChanged.
+        ApplyImageConstraints();
+    }
+
+    private void ApplyImageConstraints()
+    {
+        double maxW = Math.Max(0, Math.Min(RichPanel.ActualWidth - 32, 860));
         ConstrainImagesInVisualTree(RichMarkdown, maxW);
     }
 
@@ -65,12 +78,31 @@ public sealed partial class MarkdownPreview : UserControl
             if (child is Image img)
             {
                 img.MaxWidth = maxWidth;
-                // Clear any explicit Height set by the renderer so the image height
-                // reflows based on the constrained width (no letterboxing).
+                // Clear any explicit Height set by the renderer so height reflows
+                // naturally from the constrained width (no top/bottom empty space).
                 img.Height = double.NaN;
+                img.MaxHeight = double.PositiveInfinity;
                 img.Stretch = Stretch.Uniform;
+            }
+            else if (child is FrameworkElement fe && fe.ActualHeight > 0)
+            {
+                // Also clear explicit heights on direct wrappers around images.
+                if (ContainsImage(child))
+                    fe.Height = double.NaN;
             }
             ConstrainImagesInVisualTree(child, maxWidth);
         }
+    }
+
+    private static bool ContainsImage(DependencyObject parent)
+    {
+        int count = VisualTreeHelper.GetChildrenCount(parent);
+        for (int i = 0; i < count; i++)
+        {
+            var child = VisualTreeHelper.GetChild(parent, i);
+            if (child is Image) return true;
+            if (ContainsImage(child)) return true;
+        }
+        return false;
     }
 }
