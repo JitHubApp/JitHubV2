@@ -202,6 +202,12 @@ public sealed class InlineContainerBox : BlockBox
     public override IEnumerable<Rect> GetSelectionRects(DocumentRange range)
         => GetRangeRects(range);
 
+    public override void Dispose()
+    {
+        _layout?.Dispose();
+        _layout = null;
+    }
+
     /// <summary>
     /// For each <see cref="InlineEmbedRun"/>, returns the rectangle in document
     /// coordinates where its hosted WinUI element should be placed on the

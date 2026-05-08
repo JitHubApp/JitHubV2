@@ -111,6 +111,14 @@ public sealed class ImageBox : BlockBox
         return Bounds.Contains(point);
     }
 
+    public override void Dispose()
+    {
+        // Do NOT dispose the cached CanvasBitmap — it is shared via the
+        // process-global cache and may be in use by other ImageBox instances.
+        _placeholder?.Dispose();
+        _placeholder = null;
+    }
+
     private void StartLoad()
     {
         _loadStarted = true;

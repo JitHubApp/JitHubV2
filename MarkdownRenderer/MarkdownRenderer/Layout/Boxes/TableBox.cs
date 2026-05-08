@@ -179,5 +179,10 @@ public sealed class TableBox : BlockBox
         position = new DocumentPosition(BlockIndex, 0, 0);
         return true;
     }
+
+    public override void Dispose()
+    {
+        foreach (var cell in GetCellBoxes()) cell.Dispose();
+    }
 }
 

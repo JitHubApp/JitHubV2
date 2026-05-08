@@ -164,6 +164,13 @@ public sealed partial class MarkdownRendererControl : UserControl
         _pipelineCts?.Cancel();
         _pipelineCts?.Dispose();
         _pipelineCts = null;
+        // Release native resources & hosted embeds so re-attaching the
+        // control to a new visual parent doesn't leak DirectWrite layouts
+        // or keep stale FrameworkElements alive.
+        _overlay?.Children.Clear();
+        var snap = _snapshot;
+        _snapshot = null;
+        snap?.Dispose();
     }
 
     private void OnThemeChanged()
@@ -236,7 +243,11 @@ public sealed partial class MarkdownRendererControl : UserControl
         var snapshot = await Task.Run(() => builder.Build(parsed.Document, width), ct).ConfigureAwait(true);
         ct.ThrowIfCancellationRequested();
 
+        // Atomically swap snapshots, then dispose the old one so its
+        // CanvasTextLayout / placeholder handles are released.
+        var old = _snapshot;
         _snapshot = snapshot;
+        old?.Dispose();
         _canvas.Width = width;
         _canvas.Height = Math.Max(1, snapshot.Size.Height);
         _root!.Width = width;

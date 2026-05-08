@@ -74,4 +74,10 @@ public sealed class ListItemBox : BlockBox
         position = new DocumentPosition(BlockIndex, 0, 0);
         return Bounds.Contains(point);
     }
+
+    public override void Dispose()
+    {
+        _marker.Dispose();
+        _content.Dispose();
+    }
 }

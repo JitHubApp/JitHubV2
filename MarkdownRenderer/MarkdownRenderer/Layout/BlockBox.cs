@@ -62,4 +62,11 @@ public abstract class BlockBox
             yield return Bounds;
         }
     }
+
+    /// <summary>
+    /// Releases native resources held by this box (e.g. <c>CanvasTextLayout</c>
+    /// handles).  Containers must recurse into their children.  Called when
+    /// a snapshot is replaced or the control unloads.
+    /// </summary>
+    public virtual void Dispose() { }
 }

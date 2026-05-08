@@ -80,4 +80,9 @@ public class StackBox : BlockBox
         position = new DocumentPosition(BlockIndex, 0, 0);
         return false;
     }
+
+    public override void Dispose()
+    {
+        foreach (var c in _children) c.Dispose();
+    }
 }

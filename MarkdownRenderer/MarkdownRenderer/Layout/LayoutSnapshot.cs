@@ -10,7 +10,7 @@ namespace MarkdownRenderer.Layout;
 /// Holds the laid-out block tree for a single markdown source. Computed off the
 /// UI thread; published atomically to <see cref="MarkdownRenderer.Controls.MarkdownRendererControl"/>.
 /// </summary>
-public sealed class LayoutSnapshot
+public sealed class LayoutSnapshot : System.IDisposable
 {
     public LayoutSnapshot(IReadOnlyList<BlockBox> blocks, MarkdownSourceMap sourceMap, float width, float height)
     {
@@ -22,6 +22,11 @@ public sealed class LayoutSnapshot
     public IReadOnlyList<BlockBox> Blocks { get; }
     public MarkdownSourceMap SourceMap { get; }
     public Size Size { get; }
+
+    public void Dispose()
+    {
+        foreach (var b in Blocks) b.Dispose();
+    }
 
     public void Paint(CanvasDrawingSession ds, Rect viewport)
     {
