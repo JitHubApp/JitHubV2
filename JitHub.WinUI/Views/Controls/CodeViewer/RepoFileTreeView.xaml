@@ -40,7 +40,7 @@
             Grid.Row="1"
             Margin="8,8,8,4"
             PlaceholderText="Filter files…"
-            Text="{x:Bind ViewModel.FilterText, Mode=TwoWay}" />
+            Text="{x:Bind ViewModel.FilterText, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" />
 
         <!--  Tree + loading overlay  -->
         <Grid Grid.Row="2">
