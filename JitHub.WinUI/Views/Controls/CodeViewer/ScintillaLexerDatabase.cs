@@ -100,7 +100,10 @@ internal static class ScintillaLexerDatabase
         string LexerName,
         string? Keywords0,
         string? Keywords1,
-        (int StyleId, TokenKind Kind)[]? StyleMap);
+        (int StyleId, TokenKind Kind)[]? StyleMap)
+    {
+        public string? Keywords2 { get; init; }
+    }
 
     // ── Tier 1: map our IDs to WinUIEdit HighlightingLanguage strings ──────────
     // WinUIEdit supports: cpp, csharp, javascript, json, html, xml, yaml, plaintext
@@ -143,9 +146,8 @@ internal static class ScintillaLexerDatabase
             ["odin"]        = "cpp",
             ["carbon"]      = "cpp",
 
-            // JavaScript-like
-            ["jsx"]         = "javascript",
-            ["tsx"]         = "javascript",
+            // JavaScript-like — handled via Lexilla cpp lexer with rich keywords
+            // (jsx/tsx removed from WinUIEditMap so they fall through to LexillaMap)
             ["vue"]         = "html",
             ["svelte"]      = "html",
             ["handlebars"]  = "html",
@@ -704,6 +706,458 @@ internal static class ScintillaLexerDatabase
                     (9,  TokenKind.Keyword2),    // SCE_CMAKE_COMMANDS_DEPRECATED
                     (12, TokenKind.Variable),    // SCE_CMAKE_VARIABLE2
                 }),
+
+            // ═════════════════════════════════════════════════════════════════
+            // Additional broad language coverage (top GitHub languages)
+            // ═════════════════════════════════════════════════════════════════
+
+            // ── JavaScript: WinUIEdit uses cpp lexer; this entry feeds rich keywords via override ──
+            ["javascript"] = new("cpp",
+                Keywords0: "abstract arguments async await boolean break byte case catch char class const " +
+                           "continue debugger default delete do double else enum eval export extends " +
+                           "false final finally float for from function get goto if implements import in " +
+                           "instanceof int interface let long native new null of package private protected " +
+                           "public return set short static super switch synchronized this throw throws " +
+                           "transient true try typeof undefined var void volatile while with yield",
+                Keywords1: "Array ArrayBuffer Boolean Date Error Function Infinity JSON Map Math NaN Number " +
+                           "Object Promise Proxy Reflect RegExp Set String Symbol WeakMap WeakSet console " +
+                           "document window globalThis Intl URL URLSearchParams fetch require module exports",
+                StyleMap: null),
+
+            // ── JSX/TSX ──────────────────────────────────────────────────────
+            ["jsx"] = new("cpp",
+                Keywords0: "as async await break case catch class const continue debugger default delete " +
+                           "do else enum export extends false finally for from function get if import " +
+                           "in instanceof let new null of package private protected public return set " +
+                           "static super switch this throw true try typeof undefined var void while with yield",
+                Keywords1: "React Component Fragment useState useEffect useContext useReducer useCallback " +
+                           "useMemo useRef useImperativeHandle useLayoutEffect useDebugValue useId " +
+                           "useTransition useDeferredValue Array Object String Number Boolean Promise Map Set",
+                StyleMap: null),
+            ["tsx"] = new("cpp",
+                Keywords0: "abstract any as asserts async await bigint boolean break case catch class const " +
+                           "constructor continue debugger declare default delete do else enum export extends " +
+                           "false finally for from function get if implements import in infer instanceof " +
+                           "interface is keyof let module namespace never new null number object of override " +
+                           "package private protected public readonly require return satisfies set static " +
+                           "string super switch symbol this throw true try type typeof undefined unique " +
+                           "unknown var void while with yield",
+                Keywords1: "React Component Fragment useState useEffect useContext useReducer useCallback " +
+                           "useMemo useRef Array Object String Number Boolean Promise Map Set Record Partial " +
+                           "Required Readonly Pick Omit Exclude Extract NonNullable Parameters ReturnType",
+                StyleMap: null),
+
+            // ── HTML / XML keyword override (handled by WinUIEdit but we keep here for reference) ──
+
+            // ── ASM / x86 / MASM / GAS / NASM ─────────────────────────────────
+            ["asm"] = new("asm",
+                Keywords0: "aaa aad aam aas adc add and call cbw clc cld cli cmc cmp cmpsb cmpsw cwd " +
+                           "daa das dec div esc hlt idiv imul in inc int into iret ja jae jb jbe jc " +
+                           "jcxz je jg jge jl jle jmp jna jnae jnb jnbe jnc jne jng jnge jnl jnle jno " +
+                           "jnp jns jnz jo jp jpe jpo js jz lahf lds lea les lock lodsb lodsw loop " +
+                           "loope loopne loopnz loopz mov movsb movsw mul neg nop not or out pop popf " +
+                           "push pushf rcl rcr ret retf retn rol ror sahf sal sar sbb scasb scasw shl " +
+                           "shr stc std sti stosb stosw sub test wait xchg xlat xor mov add sub mul div " +
+                           "movzx movsx lea cdq cqo syscall ret leave int3",
+                Keywords1: "ah al ax bh bl bp bx ch cl cs cx dh di dl ds dx es ip si sp ss " +
+                           "eax ebx ecx edx ebp esp esi edi rax rbx rcx rdx rbp rsp rsi rdi r8 r9 " +
+                           "r10 r11 r12 r13 r14 r15 xmm0 xmm1 xmm2 xmm3 xmm4 xmm5 xmm6 xmm7 ymm0 zmm0",
+                StyleMap: new[]
+                {
+                    (1, TokenKind.Comment),
+                    (2, TokenKind.Number),
+                    (3, TokenKind.String),
+                    (4, TokenKind.Operator),
+                    (5, TokenKind.Variable),     // SCE_ASM_IDENTIFIER
+                    (6, TokenKind.Keyword),      // SCE_ASM_CPUINSTRUCTION
+                    (7, TokenKind.Keyword2),     // SCE_ASM_MATHINSTRUCTION
+                    (8, TokenKind.Type),         // SCE_ASM_REGISTER
+                    (9, TokenKind.Preprocessor), // SCE_ASM_DIRECTIVE
+                    (10, TokenKind.Preprocessor),// SCE_ASM_DIRECTIVEOPERAND
+                    (11, TokenKind.Comment),     // SCE_ASM_COMMENTBLOCK
+                    (12, TokenKind.String),      // SCE_ASM_CHARACTER
+                    (13, TokenKind.String),      // SCE_ASM_STRINGEOL
+                    (14, TokenKind.Type),        // SCE_ASM_EXTINSTRUCTION
+                })
+                {
+                    Keywords2 = "section text data bss global extern db dw dd dq resb resw resd resq " +
+                                "equ times byte word dword qword ptr offset"
+                },
+
+            // ── Tcl ───────────────────────────────────────────────────────────
+            ["tcl"] = new("tcl",
+                Keywords0: "after append apply array auto_execok auto_import auto_load auto_mkindex " +
+                           "auto_qualify auto_reset bgerror binary break case catch cd chan clock close " +
+                           "concat continue coroutine dde dict encoding eof error eval exec exit expr " +
+                           "fblocked fconfigure fcopy file fileevent flush for foreach format gets glob " +
+                           "global history if incr info interp join lappend lassign lindex linsert list " +
+                           "llength lmap load lpop lrange lremove lrepeat lreplace lreverse lsearch lset " +
+                           "lsort namespace next nextto open package parray pid proc puts pwd read regexp " +
+                           "regsub rename return scan seek set socket source split string subst switch " +
+                           "tailcall tcl_endOfWord tell throw time timerate trace try unknown unload " +
+                           "unset update uplevel upvar variable vwait while yield yieldto zlib",
+                Keywords1: null,
+                StyleMap: new[]
+                {
+                    (1, TokenKind.Comment),
+                    (2, TokenKind.Comment),
+                    (3, TokenKind.Comment),
+                    (4, TokenKind.Number),
+                    (5, TokenKind.Keyword),
+                    (6, TokenKind.String),
+                    (7, TokenKind.String),
+                    (8, TokenKind.String),
+                    (9, TokenKind.Operator),
+                    (10, TokenKind.Variable),
+                    (11, TokenKind.Variable),
+                }),
+
+            // ── LaTeX ─────────────────────────────────────────────────────────
+            ["latex"] = new("latex",
+                Keywords0: null,
+                Keywords1: null,
+                StyleMap: new[]
+                {
+                    (1, TokenKind.Keyword),    // SCE_L_COMMAND
+                    (2, TokenKind.Type),       // SCE_L_TAG
+                    (3, TokenKind.Operator),   // SCE_L_MATH
+                    (4, TokenKind.Comment),    // SCE_L_COMMENT
+                    (5, TokenKind.Type),       // SCE_L_TAG2
+                    (6, TokenKind.String),     // SCE_L_MATH2
+                    (7, TokenKind.Comment),    // SCE_L_COMMENT2
+                    (8, TokenKind.String),     // SCE_L_VERBATIM
+                    (9, TokenKind.Number),     // SCE_L_SHORTCMD
+                    (10, TokenKind.Operator),  // SCE_L_SPECIAL
+                    (11, TokenKind.Code),      // SCE_L_CMDOPT
+                    (12, TokenKind.String),    // SCE_L_ERROR
+                }),
+
+            // ── Vim script ────────────────────────────────────────────────────
+            ["vim"] = new("vim",
+                Keywords0: "if elseif else endif while endwhile for endfor function endfunction return " +
+                           "let unlet const final lockvar unlockvar try catch finally endtry throw " +
+                           "set setlocal setglobal map nmap vmap imap omap xmap smap cmap tmap " +
+                           "noremap nnoremap vnoremap inoremap onoremap xnoremap snoremap cnoremap " +
+                           "tnoremap autocmd augroup syntax highlight command call execute echo echom " +
+                           "echoerr echohl source runtime packadd silent verbose redir delfunction " +
+                           "abort range dict closure",
+                Keywords1: null,
+                StyleMap: null),
+
+            // ── Pascal / Delphi ──────────────────────────────────────────────
+            ["pascal"] = new("pascal",
+                Keywords0: "absolute abstract and array as asm assembler at automated begin case cdecl " +
+                           "class const constructor contains default deprecated destructor dispid " +
+                           "dispinterface div do downto dynamic else end except export exports external " +
+                           "far file final finalization finally for forward function generic goto if " +
+                           "implementation implements in index inherited initialization inline interface " +
+                           "is label library local message mod name near nil nodefault not object of on " +
+                           "operator or out overload override package packed pascal platform private " +
+                           "procedure program property protected public published raise read readonly " +
+                           "record register reintroduce repeat requires resourcestring safecall sealed " +
+                           "set shl shr static stdcall stored strict string then threadvar to try type " +
+                           "unit unsafe until uses var varargs virtual while with write writeonly xor",
+                Keywords1: null,
+                StyleMap: new[]
+                {
+                    (1, TokenKind.Comment),
+                    (2, TokenKind.Comment),
+                    (3, TokenKind.Comment),
+                    (4, TokenKind.Preprocessor),
+                    (5, TokenKind.Number),
+                    (6, TokenKind.Number),
+                    (7, TokenKind.Keyword),
+                    (8, TokenKind.String),
+                    (9, TokenKind.String),
+                    (10, TokenKind.Operator),
+                    (11, TokenKind.Variable),
+                    (13, TokenKind.String),
+                }),
+
+            // ── Erlang ───────────────────────────────────────────────────────
+            ["erlang"] = new("erlang",
+                Keywords0: "after and andalso band begin bnot bor bsl bsr bxor case catch cond div end " +
+                           "fun if let not of or orelse query receive rem try when xor",
+                Keywords1: "atom binary boolean byte char float function integer iodata iolist list map " +
+                           "maybe_improper_list mfa module no_return non_neg_integer none nonempty_list " +
+                           "number pid port pos_integer reference string term timeout tuple",
+                StyleMap: null),
+
+            // ── Lisp / Clojure / Scheme / Racket ─────────────────────────────
+            ["lisp"] = new("lisp",
+                Keywords0: "and append apply assoc atom car case cdr cond cons defmacro defun defvar " +
+                           "defparameter defconstant defstruct defclass defmethod defgeneric do dolist " +
+                           "dotimes eq eql equal error eval flet funcall function if labels lambda let " +
+                           "let* list loop macroexpand mapcar member multiple-value-bind nil not nth " +
+                           "or otherwise package position progn quote return setf setq t the typecase " +
+                           "unless unwind-protect values when",
+                Keywords1: null,
+                StyleMap: new[]
+                {
+                    (1, TokenKind.Comment),
+                    (2, TokenKind.Comment),
+                    (3, TokenKind.Number),
+                    (4, TokenKind.Keyword),
+                    (5, TokenKind.Keyword2),
+                    (6, TokenKind.String),
+                    (7, TokenKind.String),
+                    (10, TokenKind.Operator),
+                    (11, TokenKind.Variable),
+                }),
+            ["clojure"] = new("lisp",
+                Keywords0: "def defn defmacro defmulti defmethod defprotocol defrecord deftype let " +
+                           "letfn fn if when when-not when-let if-let if-not cond condp case do " +
+                           "doseq dotimes for loop recur try catch finally throw quote ns require " +
+                           "import use refer in-ns and or not nil true false",
+                Keywords1: null,
+                StyleMap: new[]
+                {
+                    (1, TokenKind.Comment),
+                    (2, TokenKind.Comment),
+                    (3, TokenKind.Number),
+                    (4, TokenKind.Keyword),
+                    (5, TokenKind.Keyword2),
+                    (6, TokenKind.String),
+                    (10, TokenKind.Operator),
+                }),
+            ["scheme"] = new("lisp",
+                Keywords0: "and begin case cond define define-syntax delay do else if lambda let let* " +
+                           "letrec or quasiquote quote set! syntax-rules unquote unquote-splicing when " +
+                           "unless => library export import",
+                Keywords1: null,
+                StyleMap: new[]
+                {
+                    (1, TokenKind.Comment),
+                    (2, TokenKind.Comment),
+                    (3, TokenKind.Number),
+                    (4, TokenKind.Keyword),
+                    (6, TokenKind.String),
+                    (10, TokenKind.Operator),
+                }),
+
+            // ── Julia (use cpp lexer for tokenisation, override keywords) ────
+            ["julia"] = new("cpp",
+                Keywords0: "abstract baremodule begin break catch ccall const continue do else elseif " +
+                           "end export false finally for function global if import in isa let local " +
+                           "macro module mutable primitive quote return struct true try type typealias " +
+                           "using where while",
+                Keywords1: "Int Int8 Int16 Int32 Int64 Int128 UInt UInt8 UInt16 UInt32 UInt64 UInt128 " +
+                           "Float16 Float32 Float64 Bool Char String Symbol Array Vector Matrix Tuple " +
+                           "NamedTuple Dict Set Nothing Missing Number Real Integer Signed Unsigned Any",
+                StyleMap: null),
+
+            // ── Nim ───────────────────────────────────────────────────────────
+            ["nim"] = new("cpp",
+                Keywords0: "addr and as asm bind block break case cast concept const continue converter " +
+                           "defer discard distinct div do elif else end enum except export finally for " +
+                           "from func generic if import in include interface is isnot iterator let " +
+                           "macro method mixin mod nil not notin object of or out proc ptr raise ref " +
+                           "return shl shr static template try tuple type using var when while xor yield",
+                Keywords1: "int int8 int16 int32 int64 uint uint8 uint16 uint32 uint64 float float32 " +
+                           "float64 bool char string cstring byte natural Positive seq array",
+                StyleMap: null),
+
+            // ── Crystal (Ruby-like) ──────────────────────────────────────────
+            ["crystal"] = new("ruby",
+                Keywords0: "abstract alias as asm begin break case class def do else elsif end ensure " +
+                           "enum extend false for fun if in include instance_sizeof is_a lib macro " +
+                           "module next nil of out pointerof private protected require rescue return " +
+                           "select self sizeof struct super then true type typeof union unless until " +
+                           "verbatim when while with yield",
+                Keywords1: null,
+                StyleMap: null),
+
+            // ── Solidity (cpp-ish) ───────────────────────────────────────────
+            ["solidity"] = new("cpp",
+                Keywords0: "abstract address after alias anonymous apply as assembly assert auto break " +
+                           "calldata case catch constant constructor continue contract copyof default " +
+                           "define delete do else emit enum error event experimental external fallback " +
+                           "false final for function hex if immutable implements import in indexed " +
+                           "inline interface internal is let library macro mapping match memory " +
+                           "modifier modifies new null of override partial payable pragma private " +
+                           "promise public pure receive reference relocatable return returns sealed " +
+                           "sizeof static storage struct super switch this throw true try type typedef " +
+                           "typeof ufixed unchecked using var view virtual while",
+                Keywords1: "address bool byte bytes bytes1 bytes2 bytes4 bytes8 bytes16 bytes32 fixed " +
+                           "int int8 int16 int32 int64 int128 int256 string uint uint8 uint16 uint32 " +
+                           "uint64 uint128 uint256 wei gwei ether",
+                StyleMap: null),
+
+            // ── GraphQL ───────────────────────────────────────────────────────
+            ["graphql"] = new("cpp",
+                Keywords0: "type interface union enum schema scalar directive input fragment query " +
+                           "mutation subscription on extend implements true false null",
+                Keywords1: "Int Float String Boolean ID",
+                StyleMap: null),
+
+            // ── Protobuf ──────────────────────────────────────────────────────
+            ["protobuf"] = new("cpp",
+                Keywords0: "syntax import option package message service rpc stream returns enum " +
+                           "extend extensions oneof reserved repeated optional required map true false",
+                Keywords1: "double float int32 int64 uint32 uint64 sint32 sint64 fixed32 fixed64 " +
+                           "sfixed32 sfixed64 bool string bytes",
+                StyleMap: null),
+
+            // ── HCL / Terraform ──────────────────────────────────────────────
+            ["hcl"] = new("cpp",
+                Keywords0: "resource provider variable data output module locals terraform required_providers " +
+                           "required_version backend provisioner connection lifecycle dynamic count for_each " +
+                           "depends_on if else true false null",
+                Keywords1: "string number bool list map set object tuple any",
+                StyleMap: null),
+
+            // ── Ada ───────────────────────────────────────────────────────────
+            ["ada"] = new("ada",
+                Keywords0: "abort abs abstract accept access aliased all and array at begin body case " +
+                           "constant declare delay delta digits do else elsif end entry exception exit " +
+                           "for function generic goto if in interface is limited loop mod new not null " +
+                           "of or others out overriding package pragma private procedure protected " +
+                           "raise range record rem renames requeue return reverse select separate some " +
+                           "subtype synchronized tagged task terminate then type until use when while " +
+                           "with xor",
+                Keywords1: null,
+                StyleMap: null),
+
+            // ── Fortran ──────────────────────────────────────────────────────
+            ["fortran"] = new("fortran",
+                Keywords0: "allocatable allocate assign assignment associate asynchronous backspace " +
+                           "block blockdata call case class close codimension common contains continue " +
+                           "critical cycle data deallocate deferred dimension do double doubleprecision " +
+                           "elemental else elseif elsewhere end endassociate endblock endblockdata enddo " +
+                           "endenum endfile endforall endfunction endif endinterface endmodule " +
+                           "endprogram endselect endsubmodule endsubroutine endtype endwhere entry enum " +
+                           "enumerator equivalence error exit extends external final flush forall " +
+                           "format function generic go goto if implicit import impure include inquire " +
+                           "intent interface intrinsic kind len lock module namelist non_overridable " +
+                           "none nopass nullify only open operator optional parameter pass pause " +
+                           "pointer print private procedure program protected public pure read recursive " +
+                           "result return rewind rewrite save select sequence stop submodule subroutine " +
+                           "sync target then type unlock use value volatile wait where while write",
+                Keywords1: "integer real complex logical character double precision",
+                StyleMap: null),
+
+            // ── OCaml ─────────────────────────────────────────────────────────
+            ["caml"] = new("caml",
+                Keywords0: "and as assert asr begin class constraint do done downto else end exception " +
+                           "external false for fun function functor if in include inherit initializer " +
+                           "land lazy let lor lsl lsr lxor match method mod module mutable new nonrec " +
+                           "object of open or private rec sig struct then to true try type val virtual " +
+                           "when while with",
+                Keywords1: null,
+                StyleMap: null),
+
+            // ── Octave / Matlab ──────────────────────────────────────────────
+            ["matlab"] = new("matlab",
+                Keywords0: "break case catch classdef continue do else elseif end endfor endfunction " +
+                           "endif endparfor endswitch endwhile error for function global if methods " +
+                           "otherwise parfor persistent properties return spmd switch try while",
+                Keywords1: null,
+                StyleMap: null),
+            ["octave"] = new("octave",
+                Keywords0: "break case catch continue do else elseif end endfor endfunction endif " +
+                           "endparfor endswitch endwhile error for function global if otherwise parfor " +
+                           "persistent return switch try until while",
+                Keywords1: null,
+                StyleMap: null),
+
+            // ── Smalltalk ─────────────────────────────────────────────────────
+            ["smalltalk"] = new("smalltalk",
+                Keywords0: "self super nil true false thisContext",
+                Keywords1: null,
+                StyleMap: null),
+
+            // ── Verilog / SystemVerilog ──────────────────────────────────────
+            ["verilog"] = new("verilog",
+                Keywords0: "always and assign automatic begin buf bufif0 bufif1 case casex casez cell " +
+                           "cmos config deassign default defparam design disable edge else end endcase " +
+                           "endconfig endfunction endgenerate endmodule endprimitive endspecify endtable " +
+                           "endtask event for force forever fork function generate genvar highz0 highz1 " +
+                           "if ifnone incdir include initial inout input instance integer join large " +
+                           "liblist library localparam macromodule medium module nand negedge nmos nor " +
+                           "noshowcancelled not notif0 notif1 or output parameter pmos posedge primitive " +
+                           "pull0 pull1 pulldown pullup pulsestyle_onevent pulsestyle_ondetect rcmos " +
+                           "real realtime reg release repeat rnmos rpmos rtran rtranif0 rtranif1 scalared " +
+                           "showcancelled signed small specify specparam strong0 strong1 supply0 supply1 " +
+                           "table task time tran tranif0 tranif1 tri tri0 tri1 triand trior trireg unsigned " +
+                           "use vectored wait wand weak0 weak1 while wire wor xnor xor",
+                Keywords1: null,
+                StyleMap: null),
+
+            // ── VHDL ─────────────────────────────────────────────────────────
+            ["vhdl"] = new("vhdl",
+                Keywords0: "abs access after alias all and architecture array assert attribute begin " +
+                           "block body buffer bus case component configuration constant disconnect " +
+                           "downto else elsif end entity exit file for function generate generic group " +
+                           "guarded if impure in inertial inout is label library linkage literal loop " +
+                           "map mod nand new next nor not null of on open or others out package port " +
+                           "postponed procedure process pure range record register reject rem report " +
+                           "return rol ror select severity shared signal sla sll sra srl subtype then " +
+                           "to transport type unaffected units until use variable wait when while with " +
+                           "xnor xor",
+                Keywords1: null,
+                StyleMap: null),
+
+            // ── Markdown duplicate alias path covered by aliases ──
+
+            // ── Nginx config ──────────────────────────────────────────────────
+            ["nginx"] = new("nginx",
+                Keywords0: "http server location upstream events worker_processes worker_connections " +
+                           "listen server_name root index include proxy_pass proxy_set_header " +
+                           "fastcgi_pass try_files return rewrite if set ssl_certificate " +
+                           "ssl_certificate_key error_log access_log gzip add_header expires",
+                Keywords1: null,
+                StyleMap: null),
+
+            // ── ABAP ──────────────────────────────────────────────────────────
+            ["abap"] = new("abap",
+                Keywords0: null,
+                Keywords1: null,
+                StyleMap: null),
+
+            // ── COBOL ─────────────────────────────────────────────────────────
+            ["cobol"] = new("cobol",
+                Keywords0: null,
+                Keywords1: null,
+                StyleMap: null),
+
+            // ── ActionScript ──────────────────────────────────────────────────
+            ["actionscript"] = new("cpp",
+                Keywords0: "as break case catch class const continue default delete do dynamic else " +
+                           "extends false final finally for function get if implements import in " +
+                           "instanceof interface internal is namespace native new null override " +
+                           "package private protected public return set static super switch this " +
+                           "throw true try typeof use var void while with",
+                Keywords1: null,
+                StyleMap: null),
+
+            // ── Groovy ────────────────────────────────────────────────────────
+            ["groovy"] = new("cpp",
+                Keywords0: "abstract as assert boolean break byte case catch char class const continue " +
+                           "def default do double else enum extends false final finally float for " +
+                           "goto if implements import in instanceof int interface long native new " +
+                           "null package private protected public return short static strictfp super " +
+                           "switch synchronized this throw throws trait transient true try void " +
+                           "volatile while",
+                Keywords1: null,
+                StyleMap: null),
+
+            // ── Gradle (groovy-based) ────────────────────────────────────────
+            ["gradle"] = new("cpp",
+                Keywords0: "apply plugins dependencies repositories implementation api compile " +
+                           "testImplementation runtimeOnly compileOnly classpath buildscript task " +
+                           "ext allprojects subprojects android sourceSets",
+                Keywords1: null,
+                StyleMap: null),
+
+            // ── Razor / cshtml (use cpp for code blocks) ─────────────────────
+            ["razor"] = new("cpp",
+                Keywords0: "model using inject inherits page layout section RenderBody RenderSection " +
+                           "Html ViewBag ViewData if else for foreach while switch case break continue " +
+                           "return new var await async true false null",
+                Keywords1: null,
+                StyleMap: null),
+
+            // ── Markdown reference is via WinUIEdit-style; covered above in markdown entry ──
         };
 
     // ── Aliases ───────────────────────────────────────────────────────────────
@@ -711,26 +1165,96 @@ internal static class ScintillaLexerDatabase
     private static readonly Dictionary<string, string> LexillaAliases =
         new(StringComparer.OrdinalIgnoreCase)
         {
-            ["sh"]         = "bash",
-            ["zsh"]        = "bash",
-            ["ksh"]        = "bash",
-            ["fish"]       = "bash",
-            ["shellscript"]= "bash",
-            ["shell"]      = "bash",
-            ["scss"]       = "css",
-            ["less"]       = "css",
-            ["sass"]       = "css",
-            ["vb"]         = "vbnet",
-            ["visualbasic"]= "vbnet",
-            ["patch"]      = "diff",
-            ["properties"] = "ini",
-            ["cfg"]        = "ini",
-            ["conf"]       = "ini",
-            ["env"]        = "ini",
-            ["cmd"]        = "batch",
-            ["latex"]      = "cpp",   // close enough for tex
-            ["tex"]        = "cpp",
-            ["tsx"]        = "typescript",
+            ["sh"]            = "bash",
+            ["zsh"]           = "bash",
+            ["ksh"]           = "bash",
+            ["fish"]          = "bash",
+            ["shellscript"]   = "bash",
+            ["shell"]         = "bash",
+            ["scss"]          = "css",
+            ["less"]          = "css",
+            ["sass"]          = "css",
+            ["vb"]            = "vbnet",
+            ["visualbasic"]   = "vbnet",
+            ["patch"]         = "diff",
+            ["properties"]    = "ini",
+            ["cfg"]           = "ini",
+            ["conf"]          = "ini",
+            ["env"]           = "ini",
+            ["dotenv"]        = "ini",
+            ["editorconfig"]  = "ini",
+            ["gitconfig"]     = "ini",
+            ["cmd"]           = "batch",
+            ["bat"]           = "batch",
+            ["tex"]           = "latex",
+            ["bibtex"]        = "latex",
+            ["delphi"]        = "pascal",
+            ["objectpascal"]  = "pascal",
+            ["common-lisp"]   = "lisp",
+            ["commonlisp"]    = "lisp",
+            ["elisp"]         = "lisp",
+            ["emacs-lisp"]    = "lisp",
+            ["racket"]        = "scheme",
+            ["clj"]           = "clojure",
+            ["cljs"]          = "clojure",
+            ["cljc"]          = "clojure",
+            ["edn"]           = "clojure",
+            ["systemverilog"] = "verilog",
+            ["sv"]            = "verilog",
+            ["matlab-octave"] = "octave",
+            ["m"]             = "matlab",
+            ["pl"]            = "perl",
+            ["pm"]            = "perl",
+            ["ps1"]           = "powershell",
+            ["psm1"]          = "powershell",
+            ["psd1"]          = "powershell",
+            ["nu"]            = "bash",          // Nushell: closest available
+            ["dockerfile"]    = "dockerfile",
+            ["containerfile"] = "dockerfile",
+            ["mk"]            = "makefile",
+            ["gnumake"]       = "makefile",
+            ["bazel"]         = "cmake",         // close enough for Starlark
+            ["starlark"]      = "cmake",
+            ["bzl"]           = "cmake",
+            ["build"]         = "cmake",
+            ["workspace"]     = "cmake",
+            ["terraform"]     = "hcl",
+            ["tf"]            = "hcl",
+            ["tfvars"]        = "hcl",
+            ["proto"]         = "protobuf",
+            ["proto3"]        = "protobuf",
+            ["proto2"]        = "protobuf",
+            ["gql"]           = "graphql",
+            ["sol"]           = "solidity",
+            ["mat"]           = "matlab",
+            ["nim"]           = "nim",
+            ["zig"]           = "cpp",           // map zig → cpp lexer (close enough)
+            ["odin"]          = "cpp",
+            ["v"]             = "cpp",
+            ["jl"]            = "julia",
+            ["cr"]            = "crystal",
+            ["ex"]            = "elixir",
+            ["exs"]           = "elixir",
+            ["erl"]           = "erlang",
+            ["hrl"]           = "erlang",
+            ["hs"]            = "haskell",
+            ["lhs"]           = "haskell",
+            ["ml"]            = "caml",
+            ["mli"]           = "caml",
+            ["fs"]            = "fsharp",
+            ["fsi"]           = "fsharp",
+            ["fsx"]           = "fsharp",
+            ["nginxconf"]     = "nginx",
+            ["razorcs"]       = "razor",
+            ["cshtml"]        = "razor",
+            ["vbhtml"]        = "razor",
+            ["mips"]          = "asm",
+            ["nasm"]          = "asm",
+            ["gas"]           = "asm",
+            ["masm"]          = "asm",
+            ["x86asm"]        = "asm",
+            ["assembly"]      = "asm",
+            ["s"]             = "asm",
         };
 
     // ── Public API ────────────────────────────────────────────────────────────

@@ -236,32 +236,40 @@ public sealed partial class CodeEditorControl : UserControl
             ScintillaLexerDatabase.LexillaConfig? lexilla = ScintillaLexerDatabase.GetLexillaConfig(langId);
             bool isDark = ActualTheme == ElementTheme.Dark;
 
-            if (winuiId != null)
+            // Strategy:
+            //   1. If language has a Lexilla config that uses a non-cpp/native lexer,
+            //      load the lexer directly via CreateLexer + SetILexer for accurate
+            //      tokenization (PowerShell, Bash, SQL, Python, etc.)
+            //   2. If language maps to one of WinUIEdit's 8 native languages
+            //      (cpp, csharp, javascript, json, html, xml, yaml, plaintext),
+            //      use HighlightingLanguage for VS Code-equivalent built-in colors,
+            //      then optionally override keywords for cpp-mapped languages
+            //      (Java, Go, Rust, TypeScript, etc.).
+
+            if (lexilla != null && winuiId == null)
+            {
+                // Lexilla-direct path
+                InnerEditor.HighlightingLanguage = "plaintext";
+                if (TryLoadLexilla(lexilla.LexerName))
+                {
+                    if (lexilla.Keywords0 != null) InnerEditor.Editor.SetKeyWords(0, lexilla.Keywords0);
+                    if (lexilla.Keywords1 != null) InnerEditor.Editor.SetKeyWords(1, lexilla.Keywords1);
+                    if (lexilla.Keywords2 != null) InnerEditor.Editor.SetKeyWords(2, lexilla.Keywords2);
+                    if (lexilla.StyleMap != null) ApplyLexillaTokenColors(lexilla, isDark);
+                }
+            }
+            else if (winuiId != null)
             {
                 // WinUIEdit native: sets up lexer + VS Code token colors internally.
                 InnerEditor.HighlightingLanguage = winuiId;
 
-                // Apply custom keywords for languages mapped to "cpp" (Java, Go, Rust, etc.)
+                // Apply custom keywords for cpp-mapped languages (Java, Go, Rust, TypeScript, etc.).
                 var kw = ScintillaLexerDatabase.GetKeywordOverride(langId);
                 if (kw != null)
                 {
-                    if (kw.Value.Keywords0 != null) SendKeywords(0, kw.Value.Keywords0);
-                    if (kw.Value.Keywords1 != null) SendKeywords(1, kw.Value.Keywords1);
+                    if (kw.Value.Keywords0 != null) InnerEditor.Editor.SetKeyWords(0, kw.Value.Keywords0);
+                    if (kw.Value.Keywords1 != null) InnerEditor.Editor.SetKeyWords(1, kw.Value.Keywords1);
                 }
-
-                // Apply extra token colors for cpp-mapped Lexilla configs where relevant
-                if (lexilla?.StyleMap != null)
-                    ApplyLexillaTokenColors(lexilla, isDark);
-            }
-            else if (lexilla != null)
-            {
-                // Lexilla-direct: reset to plaintext first (clears any prior lexer),
-                // then switch to the Lexilla lexer and apply our own token colors.
-                InnerEditor.HighlightingLanguage = "plaintext";
-                SendLexerLanguage(lexilla.LexerName);
-                if (lexilla.Keywords0 != null) SendKeywords(0, lexilla.Keywords0);
-                if (lexilla.Keywords1 != null) SendKeywords(1, lexilla.Keywords1);
-                if (lexilla.StyleMap != null) ApplyLexillaTokenColors(lexilla, isDark);
             }
             else
             {
@@ -374,38 +382,44 @@ public sealed partial class CodeEditorControl : UserControl
     }
 
     // ──────────────────────────────────────────────────────────────────
-    // Lexilla via SendMessage
+    // Lexilla integration via P/Invoke into WinUIEditor.dll
+    //
+    // WinUIEditor.dll exports the Lexilla C API (CreateLexer, GetLexerCount,
+    // GetLexerName, etc.) since Lexilla is statically linked into it.
+    // We P/Invoke CreateLexer to obtain an ILexer5* pointer and pass it to
+    // Editor.SetILexer (Scintilla message 4033). This is the same path
+    // WinUIEdit's C++ code uses internally for its 8 built-in languages,
+    // unlocking the full ~120 Lexilla lexers for our app.
+    //
+    // The deprecated SCI_SETLEXERLANGUAGE (4006) is NOT supported by modern
+    // Scintilla and was a no-op — that bug is what caused PowerShell, Bash,
+    // Batch, etc. to render as plain text in earlier iterations.
     // ──────────────────────────────────────────────────────────────────
 
-    private void SendLexerLanguage(string lexerName)
-    {
-        IntPtr ptr = Marshal.StringToHGlobalAnsi(lexerName);
-        try
-        {
-            InnerEditor.SendMessage(
-                (WinUIEditor.ScintillaMessage)ScintillaLexerDatabase.SciSetLexerLanguage,
-                0,
-                ptr.ToInt64());
-        }
-        finally
-        {
-            Marshal.FreeHGlobal(ptr);
-        }
-    }
+    [DllImport("WinUIEditor.dll", CallingConvention = CallingConvention.Cdecl, CharSet = CharSet.Ansi, BestFitMapping = false, ThrowOnUnmappableChar = true)]
+    private static extern IntPtr CreateLexer([MarshalAs(UnmanagedType.LPStr)] string name);
 
-    private void SendKeywords(int set, string keywords)
+    private bool TryLoadLexilla(string lexerName)
     {
-        IntPtr ptr = Marshal.StringToHGlobalAnsi(keywords);
         try
         {
-            InnerEditor.SendMessage(
-                (WinUIEditor.ScintillaMessage)ScintillaLexerDatabase.SciSetKeyWords,
-                (ulong)set,
-                ptr.ToInt64());
+            IntPtr ptr = CreateLexer(lexerName);
+            if (ptr == IntPtr.Zero)
+            {
+                Debug.WriteLine($"[CodeEditorControl] Lexilla CreateLexer('{lexerName}') returned null.");
+                return false;
+            }
+
+            InnerEditor.Editor.ClearDocumentStyle();
+            // Editor.SetILexer corresponds to SCI_SETILEXER (4033) — wParam ignored,
+            // lParam is an ILexer5* cast to UInt64.
+            InnerEditor.Editor.SetILexer((ulong)ptr.ToInt64());
+            return true;
         }
-        finally
+        catch (Exception ex)
         {
-            Marshal.FreeHGlobal(ptr);
+            Debug.WriteLine($"[CodeEditorControl] TryLoadLexilla('{lexerName}') failed: {ex.Message}");
+            return false;
         }
     }
 
