@@ -81,13 +81,22 @@ public sealed class SelectionController
         bool first = true;
         foreach (var rect in GetHighlightRects(snapshot))
         {
+            // Snap to integer DIPs and use square corners. Sub-pixel rect edges
+            // (especially with rounded corners) cause neighbouring glyph dirty
+            // rects to vary frame-to-frame during a drag, which manifests as
+            // text "shake". Browser-style square selection avoids corner AA.
+            double x = System.Math.Floor(rect.X);
+            double y = System.Math.Floor(rect.Y);
+            double w = System.Math.Ceiling(rect.X + rect.Width) - x;
+            double h = System.Math.Ceiling(rect.Y + rect.Height) - y;
+            var snapped = new Rect(x, y, w, h);
             if (first)
             {
                 MarkdownRenderer.Diagnostics.ShakeLogger.LogPaint(
-                    "sel-rect-first", -1, rect.X, rect.Y, rect.Width, rect.Height);
+                    "sel-rect-first", -1, snapped.X, snapped.Y, snapped.Width, snapped.Height);
                 first = false;
             }
-            ds.FillRoundedRectangle(rect, 2, 2, color);
+            ds.FillRectangle(snapped, color);
         }
     }
 }
