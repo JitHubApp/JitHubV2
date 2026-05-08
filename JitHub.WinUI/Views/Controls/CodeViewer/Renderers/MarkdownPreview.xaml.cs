@@ -63,7 +63,13 @@ public sealed partial class MarkdownPreview : UserControl
         {
             var child = VisualTreeHelper.GetChild(parent, i);
             if (child is Image img)
+            {
                 img.MaxWidth = maxWidth;
+                // Clear any explicit Height set by the renderer so the image height
+                // reflows based on the constrained width (no letterboxing).
+                img.Height = double.NaN;
+                img.Stretch = Stretch.Uniform;
+            }
             ConstrainImagesInVisualTree(child, maxWidth);
         }
     }
