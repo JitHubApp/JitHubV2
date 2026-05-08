@@ -8,7 +8,7 @@ namespace MarkdownRenderer.Layout;
 
 /// <summary>
 /// Holds the laid-out block tree for a single markdown source. Computed off the
-/// UI thread; published atomically via <see cref="LayoutSnapshot.PublishAsync"/>.
+/// UI thread; published atomically to <see cref="MarkdownRenderer.Controls.MarkdownRendererControl"/>.
 /// </summary>
 public sealed class LayoutSnapshot
 {

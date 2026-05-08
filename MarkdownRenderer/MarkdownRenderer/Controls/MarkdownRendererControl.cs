@@ -197,11 +197,13 @@ public sealed partial class MarkdownRendererControl : UserControl
         var sourceMap = new MarkdownSourceMap(parsed.SourceText);
         var theme = Theme ?? _defaultTheme;
         var themeSnapshot = new ThemeResolver(this, theme).CreateSnapshot();
-        var ctx = new MarkdownLayoutContext(_canvas, themeSnapshot, sourceMap, registry, FlowDirection);
+        // Use the shared CanvasDevice (always available, no visual-tree required).
+        // CanvasVirtualControl only has a device after CreateResources fires, so
+        // passing _canvas directly would crash if layout runs before first draw.
+        var device = CanvasDevice.GetSharedDevice();
+        var ctx = new MarkdownLayoutContext(device, themeSnapshot, sourceMap, registry, FlowDirection);
         var builder = new LayoutBuilder(ctx);
 
-        // Layout on a background task. We pass ICanvasResourceCreator from
-        // CanvasVirtualControl which is thread-safe for text layout creation.
         LayoutSnapshot snapshot;
         try
         {
