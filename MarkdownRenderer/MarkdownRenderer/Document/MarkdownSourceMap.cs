@@ -25,8 +25,17 @@ public sealed class MarkdownSourceMap
         range = range.Normalized();
         if (range.IsEmpty) return string.Empty;
 
-        var sb = new System.Text.StringBuilder();
-        int? lastBlock = null;
+        // Find the first and last entries that overlap the selection, then
+        // slice the original source verbatim between them.  This preserves
+        // delimiters that exist in the source (e.g. `|` between table cells,
+        // `\n` between list items, `> ` quote markers) without us having to
+        // synthesize them from rendered structure — fixing the bug where
+        // selections that crossed a row of table cells produced "\n\n"
+        // separators because each cell has its own BlockIndex.
+        Entry? firstHit = null;
+        Entry? lastHit = null;
+        int firstFromOffset = 0;
+        int lastToOffset = 0;
 
         foreach (var e in _entries)
         {
@@ -36,41 +45,41 @@ public sealed class MarkdownSourceMap
             if (endPos <= range.Start) continue;
             if (startPos >= range.End) break;
 
-            if (lastBlock is int lb && lb != e.BlockIndex)
-            {
-                sb.Append("\n\n");
-            }
-            lastBlock = e.BlockIndex;
-
             int from = 0;
             int to = e.RenderedLength;
             if (range.Start.BlockIndex == e.BlockIndex && range.Start.InlineIndex == e.InlineIndex)
                 from = Math.Max(0, range.Start.CharacterOffset);
             if (range.End.BlockIndex == e.BlockIndex && range.End.InlineIndex == e.InlineIndex)
                 to = Math.Min(e.RenderedLength, range.End.CharacterOffset);
-
             if (to <= from) continue;
 
-            if (e.RenderedLength == e.Span.Length)
+            if (firstHit is null)
             {
-                sb.Append(_sourceText, e.Span.Start + from, to - from);
+                firstHit = e;
+                firstFromOffset = ProjectOffset(e, from);
             }
-            else if (from == 0 && to == e.RenderedLength)
-            {
-                sb.Append(_sourceText, e.Span.Start, e.Span.Length);
-            }
-            else
-            {
-                double scale = (double)e.Span.Length / Math.Max(1, e.RenderedLength);
-                int s = e.Span.Start + (int)(from * scale);
-                int n = (int)((to - from) * scale);
-                s = Math.Clamp(s, 0, _sourceText.Length);
-                n = Math.Clamp(n, 0, _sourceText.Length - s);
-                sb.Append(_sourceText, s, n);
-            }
+            lastHit = e;
+            lastToOffset = ProjectOffset(e, to);
         }
 
-        return sb.ToString();
+        if (firstHit is null || lastHit is null) return string.Empty;
+
+        int s = Math.Clamp(firstHit.Value.Span.Start + firstFromOffset, 0, _sourceText.Length);
+        int eAbs = Math.Clamp(lastHit.Value.Span.Start + lastToOffset, s, _sourceText.Length);
+        return _sourceText.Substring(s, eAbs - s);
+    }
+
+    /// <summary>
+    /// Maps a rendered-text offset within an entry to a byte offset within the
+    /// entry's source span. Exact when render-length matches span-length;
+    /// otherwise proportional.
+    /// </summary>
+    private static int ProjectOffset(Entry e, int renderedOffset)
+    {
+        if (e.RenderedLength <= 0) return 0;
+        if (e.RenderedLength == e.Span.Length) return renderedOffset;
+        double scale = (double)e.Span.Length / Math.Max(1, e.RenderedLength);
+        return (int)Math.Round(renderedOffset * scale);
     }
 
     internal IReadOnlyList<Entry> Entries => _entries;
