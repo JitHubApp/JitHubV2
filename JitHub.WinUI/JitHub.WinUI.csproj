@@ -99,7 +99,6 @@
     <PackageReference Include="SkiaSharp.Views.WinUI" Version="3.119.2" />
     <PackageReference Include="Svg.Skia" Version="4.6.0" />
     <PackageReference Include="CsvHelper" Version="33.1.0" />
-    <PackageReference Include="YamlDotNet" Version="17.1.0" />
     <PackageReference Include="CommunityToolkit.WinUI.UI.Controls.DataGrid" Version="7.1.2" />
     <PackageReference Include="CommunityToolkit.WinUI.Controls.Sizers" Version="8.2.250402" />
   </ItemGroup>
