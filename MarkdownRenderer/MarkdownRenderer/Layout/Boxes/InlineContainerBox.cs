@@ -25,7 +25,22 @@ public sealed class InlineContainerBox : BlockBox
     private readonly MarkdownLayoutContext _context;
 
     /// <summary>Run currently being hovered by the pointer (for link hover effect).</summary>
-    public InlineRun? HoveredRun { get; set; }
+    public InlineRun? HoveredRun
+    {
+        get => _hoveredRun;
+        set
+        {
+            if (!ReferenceEquals(_hoveredRun, value))
+            {
+                _hoveredRun = value;
+                _hoverColorsDirty = true;
+            }
+        }
+    }
+    private InlineRun? _hoveredRun;
+    // True whenever hover state changed since last ApplyHoverColor call.
+    // Starts true so the first paint bakes link colors correctly.
+    private bool _hoverColorsDirty = true;
 
     public IReadOnlyList<InlineRun> Runs => _runs;
     public string ElementKey => _elementKey;
@@ -75,6 +90,7 @@ public sealed class InlineContainerBox : BlockBox
             _layout.Options = CanvasDrawTextOptions.EnableColorFont;
             ApplyRunStyles(_layout);
             ApplyEmbedSpacing(_layout);
+            _hoverColorsDirty = true; // new layout needs hover colors re-applied
             _lastWidth = availableWidth;
         }
 
@@ -104,7 +120,15 @@ public sealed class InlineContainerBox : BlockBox
         float x = (float)(Bounds.X + style.Margin.Left + style.Padding.Left);
         float y = (float)(Bounds.Y + style.Margin.Top + style.Padding.Top);
 
-        ApplyHoverColor(_layout);
+        // Only mutate the CanvasTextLayout when hover state has changed.
+        // Calling SetColor on every frame (even with the same value) forces
+        // DirectWrite to invalidate cached glyph-run metrics which causes the
+        // character regions to shift slightly, producing visible text vibration.
+        if (_hoverColorsDirty)
+        {
+            ApplyHoverColor(_layout);
+            _hoverColorsDirty = false;
+        }
         ds.DrawTextLayout(_layout, x, y, style.Foreground);
 
         DrawDecorations(ds, x, y);
