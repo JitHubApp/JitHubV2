@@ -1,4 +1,5 @@
 using System;
+using CommunityToolkit.WinUI.Controls;
 using JitHub.WinUI.ViewModels.CodeViewer;
 using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Controls;
@@ -16,9 +17,8 @@ public sealed partial class MarkdownPreview : UserControl
     public MarkdownPreview()
     {
         InitializeComponent();
-        InjectThemeDictionaries();
         DataContextChanged += OnDataContextChanged;
-        RichMarkdown.LayoutUpdated += OnMarkdownLayoutUpdated;
+        ActualThemeChanged += (_, _) => ApplyMarkdown();
     }
 
     private RepoFilePreviewViewModel? ViewModel => DataContext as RepoFilePreviewViewModel;
@@ -27,6 +27,7 @@ public sealed partial class MarkdownPreview : UserControl
     {
         SyncSegmented();
         SyncPanels();
+        ApplyMarkdown();
         Bindings.Update();
     }
 
@@ -52,39 +53,73 @@ public sealed partial class MarkdownPreview : UserControl
         SyncPanels();
     }
 
-    // ── Theme resource injection ────────────────────────────────────────────────
-    // CT MarkdownTextBlock resolves colors via {ThemeResource}, so overrides must
-    // live in Resources.ThemeDictionaries["Light"] / ["Dark"] / ["Default"].
-    // Writing to Resources[key] directly is a non-theme bag that ThemeResource ignores.
+    // ── Markdown config & color theming ──────────────────────────────────────
+    // CT MarkdownTextBlock reads colors from MarkdownConfig.Themes (a C# object
+    // with direct Brush properties — not XAML resource keys).  We build a fresh
+    // MarkdownConfig for the current theme and set it BEFORE assigning Text so
+    // the very first render already uses the correct colors.
 
-    private void InjectThemeDictionaries()
+    private void ApplyMarkdown()
     {
-        var light = new ResourceDictionary();
-        light["InlineCodeBackground"]      = Brush("#E8E3D8");
-        light["InlineCodeForeground"]      = Brush("#223127");
-        light["CodeBlockBackground"]       = Brush("#EDE8DD");
-        light["CodeBlockForeground"]       = Brush("#223127");
-        light["HyperlinkButtonForeground"] = Brush("#3E7B64");
+        RichMarkdown.Config = BuildConfig();
 
-        var dark = new ResourceDictionary();
-        dark["InlineCodeBackground"]      = Brush("#303830");
-        dark["InlineCodeForeground"]      = Brush("#C7CDBF");
-        dark["CodeBlockBackground"]       = Brush("#1C221C");
-        dark["CodeBlockForeground"]       = Brush("#C7CDBF");
-        dark["HyperlinkButtonForeground"] = Brush("#77B59A");
+        // Force a full re-render by clearing Text first (setting null! skips the
+        // render path in OnTextChanged which requires NewValue != null; then
+        // restoring the real text triggers a full re-render with the new config).
+        RichMarkdown.Text = null!;
+        RichMarkdown.Text = ViewModel?.Text ?? string.Empty;
+    }
 
-        // "Default" must be a separate instance — a ResourceDictionary can only
-        // have one parent; sharing the same instance between two keys throws.
-        var defaultDict = new ResourceDictionary();
-        defaultDict["InlineCodeBackground"]      = Brush("#303830");
-        defaultDict["InlineCodeForeground"]      = Brush("#C7CDBF");
-        defaultDict["CodeBlockBackground"]       = Brush("#1C221C");
-        defaultDict["CodeBlockForeground"]       = Brush("#C7CDBF");
-        defaultDict["HyperlinkButtonForeground"] = Brush("#77B59A");
+    private MarkdownConfig BuildConfig()
+    {
+        bool dark = ActualTheme == ElementTheme.Dark;
 
-        Resources.ThemeDictionaries["Light"]   = light;
-        Resources.ThemeDictionaries["Dark"]    = dark;
-        Resources.ThemeDictionaries["Default"] = defaultDict;
+        var ink    = dark ? "#F0F2EA" : "#223127";
+        var accent = dark ? "#77B59A" : "#3E7B64";
+        var subtle = dark ? "#99A294" : "#6D7A70";
+        var border = dark ? "#3C463E" : "#D5CBB7";
+        var inlineBg    = dark ? "#303830" : "#E8E3D8";
+        var codeBlockBg = dark ? "#1C221C" : "#EDE8DD";
+        var tableHead   = dark ? "#252B25" : "#F7F0E1";
+
+        return new MarkdownConfig
+        {
+            Themes = new MarkdownThemes
+            {
+                // Headers — use app ink color so they're always legible
+                H1Foreground = Brush(ink),
+                H2Foreground = Brush(ink),
+                H3Foreground = Brush(ink),
+                H4Foreground = Brush(ink),
+                H5Foreground = Brush(ink),
+                H6Foreground = Brush(ink),
+
+                // Inline code
+                InlineCodeBackground = Brush(inlineBg),
+                InlineCodeForeground = Brush(ink),
+
+                // Fenced code block
+                CodeBlockBackground = Brush(codeBlockBg),
+                CodeBlockForeground = Brush(ink),
+
+                // Links
+                LinkForeground = Brush(accent),
+
+                // Quotes, tables, rules
+                QuoteForeground       = Brush(subtle),
+                QuoteBorderBrush      = Brush(accent),
+                BorderBrush           = Brush(border),
+                TableBorderBrush      = Brush(border),
+                TableHeadingBackground = Brush(tableHead),
+                HorizontalRuleBrush   = Brush(border),
+
+                // Images — let MarkdownThemes handle sizing natively;
+                // no visual-tree walk needed.
+                ImageMaxWidth  = 860,
+                ImageMaxHeight = 0,   // 0 = no height cap; height flows naturally
+                ImageStretch   = Stretch.Uniform,
+            },
+        };
     }
 
     private static SolidColorBrush Brush(string hex)
@@ -94,56 +129,5 @@ public sealed partial class MarkdownPreview : UserControl
             Convert.ToByte(hex[0..2], 16),
             Convert.ToByte(hex[2..4], 16),
             Convert.ToByte(hex[4..6], 16)));
-    }
-
-    // ── Image constraint ───────────────────────────────────────────────────────
-
-    private void RichPanel_SizeChanged(object sender, SizeChangedEventArgs e)
-    {
-        ApplyImageConstraints();
-    }
-
-    private void OnMarkdownLayoutUpdated(object? sender, object e)
-    {
-        ApplyImageConstraints();
-    }
-
-    private void ApplyImageConstraints()
-    {
-        double maxW = Math.Max(0, Math.Min(RichPanel.ActualWidth - 32, 860));
-        ConstrainImagesInVisualTree(RichMarkdown, maxW);
-    }
-
-    private static void ConstrainImagesInVisualTree(DependencyObject parent, double maxWidth)
-    {
-        int count = VisualTreeHelper.GetChildrenCount(parent);
-        for (int i = 0; i < count; i++)
-        {
-            var child = VisualTreeHelper.GetChild(parent, i);
-            if (child is Image img)
-            {
-                img.MaxWidth = maxWidth;
-                img.Height = double.NaN;
-                img.MaxHeight = double.PositiveInfinity;
-                img.Stretch = Stretch.Uniform;
-            }
-            else if (child is FrameworkElement fe && ContainsImage(child))
-            {
-                fe.Height = double.NaN;
-            }
-            ConstrainImagesInVisualTree(child, maxWidth);
-        }
-    }
-
-    private static bool ContainsImage(DependencyObject parent)
-    {
-        int count = VisualTreeHelper.GetChildrenCount(parent);
-        for (int i = 0; i < count; i++)
-        {
-            var child = VisualTreeHelper.GetChild(parent, i);
-            if (child is Image) return true;
-            if (ContainsImage(child)) return true;
-        }
-        return false;
     }
 }
