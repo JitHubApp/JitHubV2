@@ -12,7 +12,7 @@
     mc:Ignorable="d">
 
     <UserControl.Resources>
-        <!--  Populated imperatively in code-behind based on ActualTheme  -->
+        <!--  ThemeDictionaries populated from code-behind  -->
     </UserControl.Resources>
 
     <Grid>

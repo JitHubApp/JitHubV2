@@ -1,6 +1,5 @@
 using System;
 using JitHub.WinUI.ViewModels.CodeViewer;
-using Microsoft.UI;
 using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Controls;
 using Microsoft.UI.Xaml.Media;
@@ -17,10 +16,9 @@ public sealed partial class MarkdownPreview : UserControl
     public MarkdownPreview()
     {
         InitializeComponent();
+        InjectThemeDictionaries();
         DataContextChanged += OnDataContextChanged;
         RichMarkdown.LayoutUpdated += OnMarkdownLayoutUpdated;
-        ActualThemeChanged += (_, _) => UpdateThemeColors();
-        Loaded += (_, _) => UpdateThemeColors();
     }
 
     private RepoFilePreviewViewModel? ViewModel => DataContext as RepoFilePreviewViewModel;
@@ -54,34 +52,39 @@ public sealed partial class MarkdownPreview : UserControl
         SyncPanels();
     }
 
-    // ── Imperative theme resource injection ────────────────────────────────────
-    // ThemeDictionaries are unreliable for CT MarkdownTextBlock because the
-    // control may resolve resources from its own scope. We set values directly
-    // in UserControl.Resources so they sit exactly at the right lookup scope,
-    // and we refresh them whenever the actual theme changes.
+    // ── Theme resource injection ────────────────────────────────────────────────
+    // CT MarkdownTextBlock resolves colors via {ThemeResource}, so overrides must
+    // live in Resources.ThemeDictionaries["Light"] / ["Dark"] / ["Default"].
+    // Writing to Resources[key] directly is a non-theme bag that ThemeResource ignores.
 
-    private void UpdateThemeColors()
+    private void InjectThemeDictionaries()
     {
-        bool dark = ActualTheme == ElementTheme.Dark;
-        SetBrush("InlineCodeBackground",     dark ? "#303830" : "#E8E3D8");
-        SetBrush("InlineCodeForeground",     dark ? "#C7CDBF" : "#223127");
-        SetBrush("CodeBlockBackground",      dark ? "#1C221C" : "#EDE8DD");
-        SetBrush("CodeBlockForeground",      dark ? "#C7CDBF" : "#223127");
-        SetBrush("HyperlinkButtonForeground", dark ? "#77B59A" : "#3E7B64");
+        var light = new ResourceDictionary();
+        light["InlineCodeBackground"]      = Brush("#E8E3D8");
+        light["InlineCodeForeground"]      = Brush("#223127");
+        light["CodeBlockBackground"]       = Brush("#EDE8DD");
+        light["CodeBlockForeground"]       = Brush("#223127");
+        light["HyperlinkButtonForeground"] = Brush("#3E7B64");
+
+        var dark = new ResourceDictionary();
+        dark["InlineCodeBackground"]      = Brush("#303830");
+        dark["InlineCodeForeground"]      = Brush("#C7CDBF");
+        dark["CodeBlockBackground"]       = Brush("#1C221C");
+        dark["CodeBlockForeground"]       = Brush("#C7CDBF");
+        dark["HyperlinkButtonForeground"] = Brush("#77B59A");
+
+        Resources.ThemeDictionaries["Light"]   = light;
+        Resources.ThemeDictionaries["Dark"]    = dark;
+        Resources.ThemeDictionaries["Default"] = dark; // dark is the safe fallback
     }
 
-    private void SetBrush(string key, string hex)
-    {
-        Resources[key] = new SolidColorBrush(ParseHex(hex));
-    }
-
-    private static Color ParseHex(string hex)
+    private static SolidColorBrush Brush(string hex)
     {
         hex = hex.TrimStart('#');
-        return Color.FromArgb(0xFF,
+        return new SolidColorBrush(Color.FromArgb(0xFF,
             Convert.ToByte(hex[0..2], 16),
             Convert.ToByte(hex[2..4], 16),
-            Convert.ToByte(hex[4..6], 16));
+            Convert.ToByte(hex[4..6], 16)));
     }
 
     // ── Image constraint ───────────────────────────────────────────────────────
