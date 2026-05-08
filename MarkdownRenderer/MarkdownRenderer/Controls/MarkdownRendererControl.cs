@@ -434,6 +434,7 @@ public sealed partial class MarkdownRendererControl : UserControl
     }
 
     private InlineRun? _lastHoveredRun;
+    private bool _cursorIsHand;
 
     private void OnPointerMoved(object sender, PointerRoutedEventArgs e)
     {
@@ -465,6 +466,16 @@ public sealed partial class MarkdownRendererControl : UserControl
         }
 
         // Hover effect for links + cursor change.
+        // Only respond to transitions that *actually affect rendering or the
+        // cursor shape*.  Earlier this method invalidated the canvas and
+        // re-set ProtectedCursor on every transition between any two runs
+        // (including TextRun → TextRun within the same paragraph as the
+        // pointer moved character-by-character).  That produced visible
+        // text "shake" on plain hover because ProtectedCursor reassignment
+        // and a full Canvas.Invalidate per pointer-move event nudges the
+        // visual tree by a sub-pixel.  Now we only react when the link
+        // we're hovering changes (which mutates run color → must repaint)
+        // or when the cursor shape needs to flip Hand↔IBeam.
         InlineRun? hovered = null;
         Layout.Boxes.InlineContainerBox? hoveredBox = null;
         foreach (var b in _snapshot.Blocks)
@@ -477,21 +488,30 @@ public sealed partial class MarkdownRendererControl : UserControl
             }
         }
 
-        bool changed = !ReferenceEquals(hovered, _lastHoveredRun);
-        if (changed)
+        var hoveredLink = hovered as LinkRun;
+        var lastLink = _lastHoveredRun as LinkRun;
+        bool linkChanged = !ReferenceEquals(hoveredLink, lastLink);
+        bool wantHandCursor = hoveredLink is not null;
+        bool cursorShapeChanged = wantHandCursor != _cursorIsHand;
+
+        if (linkChanged)
         {
             // Clear previous hover state on every InlineContainerBox.
             foreach (var b in _snapshot.Blocks) ClearHover(b);
-            if (hoveredBox is not null && hovered is LinkRun)
-                hoveredBox.HoveredRun = hovered;
-            _lastHoveredRun = hovered;
+            if (hoveredBox is not null && hoveredLink is not null)
+                hoveredBox.HoveredRun = hoveredLink;
             _canvas.Invalidate();
+        }
+        _lastHoveredRun = hovered;
 
+        if (cursorShapeChanged)
+        {
             try
             {
-                ProtectedCursor = hovered is LinkRun
+                ProtectedCursor = wantHandCursor
                     ? Microsoft.UI.Input.InputSystemCursor.Create(Microsoft.UI.Input.InputSystemCursorShape.Hand)
                     : Microsoft.UI.Input.InputSystemCursor.Create(Microsoft.UI.Input.InputSystemCursorShape.IBeam);
+                _cursorIsHand = wantHandCursor;
             }
             catch { /* ProtectedCursor isn't always settable */ }
         }
@@ -560,6 +580,7 @@ public sealed partial class MarkdownRendererControl : UserControl
         {
             ProtectedCursor = Microsoft.UI.Input.InputSystemCursor
                 .Create(Microsoft.UI.Input.InputSystemCursorShape.IBeam);
+            _cursorIsHand = false;
         }
         catch { }
     }
