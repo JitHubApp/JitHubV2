@@ -73,9 +73,18 @@ public sealed partial class MarkdownPreview : UserControl
         dark["CodeBlockForeground"]       = Brush("#C7CDBF");
         dark["HyperlinkButtonForeground"] = Brush("#77B59A");
 
+        // "Default" must be a separate instance — a ResourceDictionary can only
+        // have one parent; sharing the same instance between two keys throws.
+        var defaultDict = new ResourceDictionary();
+        defaultDict["InlineCodeBackground"]      = Brush("#303830");
+        defaultDict["InlineCodeForeground"]      = Brush("#C7CDBF");
+        defaultDict["CodeBlockBackground"]       = Brush("#1C221C");
+        defaultDict["CodeBlockForeground"]       = Brush("#C7CDBF");
+        defaultDict["HyperlinkButtonForeground"] = Brush("#77B59A");
+
         Resources.ThemeDictionaries["Light"]   = light;
         Resources.ThemeDictionaries["Dark"]    = dark;
-        Resources.ThemeDictionaries["Default"] = dark; // dark is the safe fallback
+        Resources.ThemeDictionaries["Default"] = defaultDict;
     }
 
     private static SolidColorBrush Brush(string hex)
