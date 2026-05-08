@@ -5,7 +5,6 @@ using MarkdownRenderer.Layout;
 using MarkdownRenderer.Layout.Boxes;
 using MarkdownRenderer.Parsing;
 using MarkdownRenderer.Theming;
-using Microsoft.UI.Xaml;
 
 namespace MarkdownRenderer.Gfm.Renderers;
 
@@ -21,12 +20,7 @@ public sealed class TaskListItemRenderer : MarkdownNodeRenderer<ListItemBlock>
         var taskList = listItem.GetData(typeof(TaskList)) as TaskList;
         if (taskList is null) return null;
 
-        string checkboxChar = taskList.Checked ? "\u2611 " : "\u2610 ";
-
-        var itemBox = new StackBox
-        {
-            ContentPadding = new Thickness(20, 0, 0, 0),
-        };
+        string checkboxChar = taskList.Checked ? "\u2611" : "\u2610";
 
         var marker = new InlineContainerBox(context, MarkdownElementKeys.ListMarker);
         marker.BlockIndex = context.NextBlockIndex();
@@ -35,7 +29,9 @@ public sealed class TaskListItemRenderer : MarkdownNodeRenderer<ListItemBlock>
             ElementKey = MarkdownElementKeys.ListMarker,
             SourceSpan = new MarkdownRenderer.SourceSpan(listItem.Span.Start, 0)
         });
-        itemBox.Add(marker);
+
+        var content = new StackBox();
+        content.BlockIndex = context.NextBlockIndex();
 
         foreach (var child in listItem)
         {
@@ -44,15 +40,15 @@ public sealed class TaskListItemRenderer : MarkdownNodeRenderer<ListItemBlock>
                 var contentBox = new InlineContainerBox(context, MarkdownElementKeys.Body);
                 contentBox.BlockIndex = context.NextBlockIndex();
                 GfmChildBuilder.AddInlines(contentBox, p.Inline);
-                itemBox.Add(contentBox);
+                content.Add(contentBox);
             }
             else
             {
                 var box = GfmChildBuilder.TryBuildBlock(child, context);
-                if (box is not null) itemBox.Add(box);
+                if (box is not null) content.Add(box);
             }
         }
 
-        return itemBox;
+        return new ListItemBox(marker, content, markerWidth: 28f);
     }
 }

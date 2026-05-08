@@ -149,30 +149,29 @@ public sealed class LayoutBuilder
         return stack;
     }
 
-    private StackBox BuildDefaultListItem(ListItemBlock li, bool isOrdered, int index)
+    private ListItemBox BuildDefaultListItem(ListItemBlock li, bool isOrdered, int index)
     {
-        var itemBox = new StackBox
-        {
-            ContentPadding = new Microsoft.UI.Xaml.Thickness(20, 0, 0, 0),
-        };
-        itemBox.BlockIndex = _context.NextBlockIndex();
-
+        // Marker gutter — fixed width, right-aligned bullet/number.
         var marker = new InlineContainerBox(_context, MarkdownElementKeys.ListMarker);
         marker.BlockIndex = _context.NextBlockIndex();
-        string markerText = isOrdered ? $"{index}. " : "• ";
+        string markerText = isOrdered ? $"{index}." : "•";
         marker.Add(new TextRun(markerText)
         {
             ElementKey = MarkdownElementKeys.ListMarker,
             SourceSpan = new SourceSpan(li.Span.Start, 0)
         });
-        itemBox.Add(marker);
 
+        // Content area — all child blocks of the list item.
+        var content = new StackBox();
+        content.BlockIndex = _context.NextBlockIndex();
         foreach (var child in li)
         {
             var cb = BuildBlock(child);
-            if (cb is not null) itemBox.Add(cb);
+            if (cb is not null) content.Add(cb);
         }
-        return itemBox;
+
+        // markerWidth gives enough room for "99." in the default body font.
+        return new ListItemBox(marker, content, markerWidth: 28f);
     }
 
     private StackBox BuildGenericContainer(ContainerBlock cb)
