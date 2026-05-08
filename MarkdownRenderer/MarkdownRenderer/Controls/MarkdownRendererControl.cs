@@ -9,6 +9,7 @@ using Microsoft.UI.Xaml.Automation.Peers;
 using Microsoft.UI.Xaml.Controls;
 using Microsoft.UI.Xaml.Input;
 using Microsoft.UI.Xaml.Media;
+using Microsoft.UI.Xaml.Shapes;
 using Windows.Foundation;
 using Windows.System;
 using Windows.UI;
@@ -42,6 +43,11 @@ public sealed partial class MarkdownRendererControl : UserControl
     private SizeChangedEventHandler? _sizeChangedHandler;
     private readonly SelectionController _selection = new();
     private DocumentPosition? _selectionAnchor;
+
+    // XAML Rectangle elements drawn on _overlay to show the selection highlight.
+    // Keeping selection on the XAML layer means the DirectWrite canvas tiles are
+    // never invalidated during a drag — eliminating tile-offset-driven glyph shake.
+    private readonly List<Rectangle> _selectionOverlayRects = new();
 
     // Cache of inline-embed rectangles (in canvas/document coordinates) plus
     // the InlineRun + owning InlineContainerBox.  Built during PlaceEmbeds
@@ -120,6 +126,9 @@ public sealed partial class MarkdownRendererControl : UserControl
         Loaded += (_, _) => OnLoadedInternal();
         Unloaded += (_, _) => OnUnloaded();
         ActualThemeChanged += (_, _) => OnThemeChanged();
+        // Selection changes update the XAML overlay (not the DirectWrite canvas),
+        // so tiles are never invalidated during a drag.
+        _selection.Changed += (_, _) => UpdateSelectionOverlay();
         BuildVisualTree();
     }
 
@@ -309,6 +318,8 @@ public sealed partial class MarkdownRendererControl : UserControl
         // UI thread: realize hosted FrameworkElements + image LoadCompleted hooks.
         _overlay.Children.Clear();
         _embedRects.Clear();
+        _selectionOverlayRects.Clear(); // overlay was just cleared above
+        _selection.Clear();             // stale selection no longer valid after re-layout
         foreach (var b in snapshot.Blocks) PlaceEmbeds(b);
 
         _canvas.Invalidate();
@@ -396,9 +407,6 @@ public sealed partial class MarkdownRendererControl : UserControl
     private void OnRegionsInvalidated(CanvasVirtualControl sender, CanvasRegionsInvalidatedEventArgs args)
     {
         if (_snapshot is null) return;
-        var theme = Theme ?? _defaultTheme;
-        var hl = theme.AccentColor ?? Color.FromArgb(0x66, 0x00, 0x67, 0xC0);
-        hl = Color.FromArgb(0x55, hl.R, hl.G, hl.B);
         var frame = MarkdownRenderer.Diagnostics.ShakeLogger.NextFrame();
         int regionCount = 0;
         foreach (var region in args.InvalidatedRegions)
@@ -410,17 +418,11 @@ public sealed partial class MarkdownRendererControl : UserControl
             // Force grayscale text anti-aliasing.  ClearType is *colour-aware*:
             // the same glyph rendered onto a white background versus an
             // alpha-blended selection-tinted background produces subtly
-            // different sub-pixel RGB values.  As a selection-drag sweeps the
-            // selection edge across a glyph, the background under that glyph
-            // re-tints every frame and ClearType re-tunes the glyph, which
-            // reads to the eye as visible "vibration" or "shake" of the text.
-            // Switching to grayscale anti-aliasing makes glyph edges
-            // background-independent — paint coordinates were already proven
-            // pixel-stable via Diagnostics.ShakeLogger, so this single line
-            // eliminates the perceived shake without any layout change.
+            // different sub-pixel RGB values.  Switching to grayscale makes
+            // glyph edges background-independent.
             ds.TextAntialiasing = Microsoft.Graphics.Canvas.Text.CanvasTextAntialiasing.Grayscale;
-            // Selection beneath text.
-            _selection.PaintHighlight(ds, _snapshot, hl);
+            // Selection is rendered on the XAML overlay (Rectangle elements),
+            // not here — canvas tiles are never dirtied during drag.
             _snapshot.Paint(ds, region);
         }
         MarkdownRenderer.Diagnostics.ShakeLogger.Log("frame-end",
@@ -447,7 +449,7 @@ public sealed partial class MarkdownRendererControl : UserControl
             if (!_selection.Range.IsEmpty)
             {
                 _selection.Clear();
-                _canvas.Invalidate();
+                // No _canvas.Invalidate() needed — overlay cleared by Changed handler.
             }
             return;
         }
@@ -457,6 +459,7 @@ public sealed partial class MarkdownRendererControl : UserControl
         {
             _selectionAnchor = pos;
             _selection.SetAnchor(pos);
+            // Invalidate to repaint link-hover state (hover suppressed during drag).
             _canvas.Invalidate();
             _canvas.CapturePointer(e.Pointer);
         }
@@ -501,14 +504,14 @@ public sealed partial class MarkdownRendererControl : UserControl
                 MarkdownRenderer.Diagnostics.ShakeLogger.Log("ptr-move-drag-embed",
                     $"px={pt.X:F4} py={pt.Y:F4} pos=blk{embedPos.BlockIndex}/inl{embedPos.InlineIndex}/c{embedPos.CharacterOffset}");
                 _selection.ExtendTo(embedPos);
-                _canvas.Invalidate();
+                // No _canvas.Invalidate(): selection is on the XAML overlay.
             }
             else if (_snapshot.HitTest(pt, out var pos))
             {
                 MarkdownRenderer.Diagnostics.ShakeLogger.Log("ptr-move-drag",
                     $"px={pt.X:F4} py={pt.Y:F4} pos=blk{pos.BlockIndex}/inl{pos.InlineIndex}/c{pos.CharacterOffset}");
                 _selection.ExtendTo(pos);
-                _canvas.Invalidate();
+                // No _canvas.Invalidate(): selection is on the XAML overlay.
             }
             // Do NOT update hover state during an active selection drag.
             // Calling SetColor on the CanvasTextLayout (which ApplyHoverColor
@@ -701,6 +704,52 @@ public sealed partial class MarkdownRendererControl : UserControl
         return false;
     }
 
+    /// <summary>
+    /// Syncs the selection highlight to the XAML _overlay using Rectangle elements.
+    /// Called whenever _selection.Changed fires (SetAnchor / ExtendTo / Clear).
+    /// By keeping selection on the XAML layer the DirectWrite canvas tiles are
+    /// never dirtied during a drag, which eliminates tile-offset glyph shake.
+    /// </summary>
+    private void UpdateSelectionOverlay()
+    {
+        if (_overlay is null) return;
+
+        // Remove previous selection rectangles.
+        foreach (var r in _selectionOverlayRects)
+            _overlay.Children.Remove(r);
+        _selectionOverlayRects.Clear();
+
+        var snapshot = _snapshot;
+        if (snapshot is null || !_selection.IsActive) return;
+
+        var theme = Theme ?? _defaultTheme;
+        var accentBase = theme.AccentColor ?? Color.FromArgb(0x66, 0x00, 0x67, 0xC0);
+        var hl = Color.FromArgb(0x55, accentBase.R, accentBase.G, accentBase.B);
+        var brush = new SolidColorBrush(hl);
+
+        foreach (var rect in _selection.GetHighlightRects(snapshot))
+        {
+            // Integer-pixel snap (same as SelectionController.PaintHighlight).
+            double x = Math.Floor(rect.X);
+            double y = Math.Floor(rect.Y);
+            double w = Math.Ceiling(rect.X + rect.Width) - x;
+            double h = Math.Ceiling(rect.Y + rect.Height) - y;
+
+            var r = new Rectangle
+            {
+                Fill = brush,
+                Width = w,
+                Height = h,
+                IsHitTestVisible = false,
+            };
+            Canvas.SetLeft(r, x);
+            Canvas.SetTop(r, y);
+            // Insert at index 0 so selection is behind embedded controls.
+            _overlay.Children.Insert(0, r);
+            _selectionOverlayRects.Add(r);
+        }
+    }
+
     private void OnPointerExited(object sender, PointerRoutedEventArgs e)
     {
         // Clear hover state when the pointer leaves the canvas (or capture is
@@ -761,7 +810,7 @@ public sealed partial class MarkdownRendererControl : UserControl
         {
             _selection.SetAnchor(DocumentPosition.Zero);
             _selection.ExtendTo(new DocumentPosition(int.MaxValue, int.MaxValue, int.MaxValue));
-            _canvas?.Invalidate();
+            // No _canvas.Invalidate() — overlay handles selection display.
             e.Handled = true;
         }
     }
