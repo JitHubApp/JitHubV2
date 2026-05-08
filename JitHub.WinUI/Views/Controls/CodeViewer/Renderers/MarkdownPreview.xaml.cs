@@ -145,14 +145,24 @@ public sealed partial class MarkdownPreview : UserControl
             var child = VisualTreeHelper.GetChild(parent, i);
             if (child is Image img)
             {
-                // Clamp to container width. Keep the smaller of the two so we
-                // never upscale beyond the image's natural size.
-                img.MaxWidth = (img.MaxWidth > 0 && img.MaxWidth < maxW) ? img.MaxWidth : maxW;
-                img.Height   = double.NaN;  // clear any fixed height to prevent letterboxing
+                // Save the renderer's natural MaxWidth the first time we visit this
+                // image, so we can always recompute min(natural, container) correctly.
+                // Without this, shrinking would overwrite MaxWidth and growing could
+                // never restore it.
+                if (img.Tag is not double naturalMax)
+                {
+                    naturalMax = (img.MaxWidth > 0 && !double.IsInfinity(img.MaxWidth))
+                        ? img.MaxWidth
+                        : double.PositiveInfinity;
+                    img.Tag = naturalMax;
+                }
+
+                img.MaxWidth = double.IsInfinity(naturalMax) ? maxW : Math.Min(naturalMax, maxW);
+                img.Height   = double.NaN;
             }
             else if (child is FrameworkElement fe && ContainsImage(child))
             {
-                fe.Height = double.NaN;     // clear fixed height on image wrapper elements too
+                fe.Height = double.NaN;
             }
             ConstrainImages(child, maxW);
         }
