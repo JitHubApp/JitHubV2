@@ -54,39 +54,50 @@
             ItemInvoked="OnItemInvoked"
             SelectionMode="Single">
             <TreeView.ItemTemplate>
-                <DataTemplate x:DataType="viewmodels:RepoTreeNodeViewModel">
-                    <Grid ColumnSpacing="6">
-                        <Grid.ColumnDefinitions>
-                            <ColumnDefinition Width="Auto" />
-                            <ColumnDefinition Width="*" />
-                        </Grid.ColumnDefinitions>
+                <!--
+                    In TreeViewNode mode the outer DataContext is a TreeViewNode, not our VM.
+                    We use a ContentControl to bridge: its Content is bound (non-compiled) to
+                    TreeViewNode.Content, and the typed inner DataTemplate gets our VM directly.
+                -->
+                <DataTemplate>
+                    <ContentControl Content="{Binding Content}">
+                        <ContentControl.ContentTemplate>
+                            <DataTemplate x:DataType="viewmodels:RepoTreeNodeViewModel">
+                                <Grid ColumnSpacing="6">
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition Width="Auto" />
+                                        <ColumnDefinition Width="*" />
+                                    </Grid.ColumnDefinitions>
 
-                        <!--  Folder – open (&#xE188; = FolderOpen in Segoe Fluent Icons)  -->
-                        <FontIcon
-                            Grid.Column="0"
-                            FontSize="14"
-                            Glyph="&#xE188;"
-                            Visibility="{x:Bind local:RepoFileTreeView.FolderOpenVis(IsDirectory, IsExpanded), Mode=OneWay}" />
+                                    <!--  Folder – open (&#xE188; = FolderOpen in Segoe Fluent Icons)  -->
+                                    <FontIcon
+                                        Grid.Column="0"
+                                        FontSize="14"
+                                        Glyph="&#xE188;"
+                                        Visibility="{x:Bind local:RepoFileTreeView.FolderOpenVis(IsDirectory, IsExpanded), Mode=OneWay}" />
 
-                        <!--  Folder – closed (&#xE8B7; = Folder)  -->
-                        <FontIcon
-                            Grid.Column="0"
-                            FontSize="14"
-                            Glyph="&#xE8B7;"
-                            Visibility="{x:Bind local:RepoFileTreeView.FolderClosedVis(IsDirectory, IsExpanded), Mode=OneWay}" />
+                                    <!--  Folder – closed (&#xE8B7; = Folder)  -->
+                                    <FontIcon
+                                        Grid.Column="0"
+                                        FontSize="14"
+                                        Glyph="&#xE8B7;"
+                                        Visibility="{x:Bind local:RepoFileTreeView.FolderClosedVis(IsDirectory, IsExpanded), Mode=OneWay}" />
 
-                        <!--  File (&#xE8A5; = Document)  -->
-                        <FontIcon
-                            Grid.Column="0"
-                            FontSize="14"
-                            Glyph="&#xE8A5;"
-                            Visibility="{x:Bind local:RepoFileTreeView.FileVis(IsDirectory), Mode=OneWay}" />
+                                    <!--  File (&#xE8A5; = Document)  -->
+                                    <FontIcon
+                                        Grid.Column="0"
+                                        FontSize="14"
+                                        Glyph="&#xE8A5;"
+                                        Visibility="{x:Bind local:RepoFileTreeView.FileVis(IsDirectory), Mode=OneWay}" />
 
-                        <TextBlock
-                            Grid.Column="1"
-                            VerticalAlignment="Center"
-                            Text="{x:Bind Name}" />
-                    </Grid>
+                                    <TextBlock
+                                        Grid.Column="1"
+                                        VerticalAlignment="Center"
+                                        Text="{x:Bind Name}" />
+                                </Grid>
+                            </DataTemplate>
+                        </ContentControl.ContentTemplate>
+                    </ContentControl>
                 </DataTemplate>
             </TreeView.ItemTemplate>
         </TreeView>
