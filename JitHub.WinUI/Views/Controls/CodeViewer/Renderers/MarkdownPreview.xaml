@@ -72,7 +72,8 @@
                     x:Name="RichMarkdown"
                     Text="{x:Bind ViewModel.Text, Mode=OneWay}"
                     Foreground="{ThemeResource AppInkBrush}"
-                    HorizontalAlignment="Stretch" />
+                    MaxWidth="860"
+                    HorizontalAlignment="Center" />
             </ScrollViewer>
 
             <!--  Plain: raw code editor  -->

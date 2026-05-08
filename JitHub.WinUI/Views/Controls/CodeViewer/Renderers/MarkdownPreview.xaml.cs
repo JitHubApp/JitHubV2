@@ -51,10 +51,8 @@ public sealed partial class MarkdownPreview : UserControl
 
     private void RichPanel_SizeChanged(object sender, SizeChangedEventArgs e)
     {
-        // Constrain MarkdownTextBlock to viewport width (minus 16px padding each side).
-        double maxW = Math.Max(0, e.NewSize.Width - 32);
-        RichMarkdown.MaxWidth = maxW;
-        // Also walk the visual tree to constrain Image elements rendered by the markdown renderer.
+        // Cap images at the viewport width (minus padding), never exceeding the reading max-width.
+        double maxW = Math.Max(0, Math.Min(e.NewSize.Width - 32, 860));
         ConstrainImagesInVisualTree(RichMarkdown, maxW);
     }
 
@@ -65,10 +63,7 @@ public sealed partial class MarkdownPreview : UserControl
         {
             var child = VisualTreeHelper.GetChild(parent, i);
             if (child is Image img)
-            {
                 img.MaxWidth = maxWidth;
-                img.Stretch = Stretch.Uniform;
-            }
             ConstrainImagesInVisualTree(child, maxWidth);
         }
     }
