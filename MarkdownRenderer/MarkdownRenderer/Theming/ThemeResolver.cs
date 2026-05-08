@@ -34,18 +34,20 @@ public sealed class ThemeResolver
             return new ElementStyle
             {
                 FontFamily = ov.FontFamily ?? defaults.FontFamily,
-                FontSize = ov.FontSize > 0 ? ov.FontSize : defaults.FontSize,
-                FontWeight = ov.FontWeight.Weight > 0 ? ov.FontWeight : defaults.FontWeight,
-                // Known limitation: cannot explicitly override FontStyle back to Normal via theme overrides.
-                FontStyle = ov.FontStyle != Windows.UI.Text.FontStyle.Normal ? ov.FontStyle : defaults.FontStyle,
-                Foreground = ov.Foreground.A == 0 ? defaults.Foreground : ov.Foreground,
+                FontSize = ov.FontSize ?? defaults.FontSize,
+                FontWeight = ov.FontWeight ?? defaults.FontWeight,
+                FontStyle = ov.FontStyle ?? defaults.FontStyle,
+                Foreground = ov.Foreground ?? defaults.Foreground,
+                // Background/AccentBar are nullable Colors on both sides; '??' resolves
+                // to the override value if set, else to the default value (which itself
+                // may be null and therefore have no fill / no bar).
                 Background = ov.Background ?? defaults.Background,
                 AccentBar = ov.AccentBar ?? defaults.AccentBar,
-                Underline = ov.Underline || defaults.Underline,
-                Strikethrough = ov.Strikethrough || defaults.Strikethrough,
-                Margin = ov.Margin,
-                Padding = ov.Padding,
-                LineHeightMultiplier = ov.LineHeightMultiplier > 0 ? ov.LineHeightMultiplier : defaults.LineHeightMultiplier
+                Underline = ov.Underline ?? defaults.Underline,
+                Strikethrough = ov.Strikethrough ?? defaults.Strikethrough,
+                Margin = ov.Margin ?? defaults.Margin,
+                Padding = ov.Padding ?? defaults.Padding,
+                LineHeightMultiplier = ov.LineHeightMultiplier ?? defaults.LineHeightMultiplier
             };
         }
         return defaults;

@@ -25,8 +25,10 @@ public sealed partial class MarkdownTheme : DependencyObject
 
     /// <summary>
     /// Per-element overrides keyed by <see cref="MarkdownElementKeys"/>.
+    /// Each override may set any subset of style fields; unset fields fall
+    /// through to the resolver's Win11 defaults.
     /// </summary>
-    public IDictionary<string, ElementStyle> Overrides { get; } = new Dictionary<string, ElementStyle>();
+    public IDictionary<string, ElementStyleOverride> Overrides { get; } = new Dictionary<string, ElementStyleOverride>();
 
     /// <summary>
     /// Bumped whenever the theme changes (overrides assigned, system theme switch).

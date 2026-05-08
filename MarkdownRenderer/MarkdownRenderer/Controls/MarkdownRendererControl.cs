@@ -56,7 +56,7 @@ public sealed partial class MarkdownRendererControl : UserControl
 
     public static readonly DependencyProperty ThemeProperty =
         DependencyProperty.Register(nameof(Theme), typeof(MarkdownTheme), typeof(MarkdownRendererControl),
-            new PropertyMetadata(null, (d, _) => ((MarkdownRendererControl)d).OnThemeChanged()));
+            new PropertyMetadata(null, (d, e) => ((MarkdownRendererControl)d).OnThemeDpChanged(e)));
 
     public MarkdownTheme? Theme
     {
@@ -77,7 +77,8 @@ public sealed partial class MarkdownRendererControl : UserControl
 
     public static readonly DependencyProperty EmbedFactoryProperty =
         DependencyProperty.Register(nameof(EmbedFactory), typeof(IMarkdownEmbedFactory),
-            typeof(MarkdownRendererControl), new PropertyMetadata(null));
+            typeof(MarkdownRendererControl),
+            new PropertyMetadata(null, (d, _) => ((MarkdownRendererControl)d).RequestRebuild()));
 
     public IMarkdownEmbedFactory? EmbedFactory
     {
@@ -161,6 +162,10 @@ public sealed partial class MarkdownRendererControl : UserControl
             SizeChanged -= _sizeChangedHandler;
             _sizeChangedHandler = null;
         }
+        if (Theme is { } t)
+        {
+            t.Changed -= OnThemeRevisionChanged;
+        }
         _pipelineCts?.Cancel();
         _pipelineCts?.Dispose();
         _pipelineCts = null;
@@ -176,6 +181,28 @@ public sealed partial class MarkdownRendererControl : UserControl
     private void OnThemeChanged()
     {
         if (Theme is { } t) t.Invalidate();
+        RequestRebuild();
+    }
+
+    private void OnThemeDpChanged(DependencyPropertyChangedEventArgs e)
+    {
+        // Unsubscribe from the previous theme's Changed event so we don't leak
+        // a reference to it (DependencyObjects don't auto-unsubscribe).
+        if (e.OldValue is MarkdownTheme old)
+        {
+            old.Changed -= OnThemeRevisionChanged;
+        }
+        if (e.NewValue is MarkdownTheme @new)
+        {
+            @new.Changed += OnThemeRevisionChanged;
+        }
+        OnThemeChanged();
+    }
+
+    private void OnThemeRevisionChanged(object? sender, EventArgs e)
+    {
+        // Theme.Invalidate() was called externally (consumer mutated overrides).
+        // Rebuild — but do NOT call Theme.Invalidate again, that would loop.
         RequestRebuild();
     }
 

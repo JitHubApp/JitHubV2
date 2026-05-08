@@ -57,3 +57,27 @@ public sealed class ElementStyle
     public Thickness Padding { get; init; }
     public float LineHeightMultiplier { get; init; } = 1.4f;
 }
+
+/// <summary>
+/// Partial overrides applied on top of the resolver's defaults. Every property
+/// is nullable so callers can selectively override individual fields without
+/// disturbing the others — for example, set <see cref="Underline"/> to
+/// <c>false</c> to remove the default underline from links, or set
+/// <see cref="Margin"/> to <see cref="Thickness"/>.zero to collapse spacing
+/// while keeping all other defaults intact.
+/// </summary>
+public sealed class ElementStyleOverride
+{
+    public string? FontFamily { get; init; }
+    public float? FontSize { get; init; }
+    public Windows.UI.Text.FontWeight? FontWeight { get; init; }
+    public Windows.UI.Text.FontStyle? FontStyle { get; init; }
+    public Color? Foreground { get; init; }
+    public Color? Background { get; init; }
+    public Color? AccentBar { get; init; }
+    public bool? Underline { get; init; }
+    public bool? Strikethrough { get; init; }
+    public Thickness? Margin { get; init; }
+    public Thickness? Padding { get; init; }
+    public float? LineHeightMultiplier { get; init; }
+}
