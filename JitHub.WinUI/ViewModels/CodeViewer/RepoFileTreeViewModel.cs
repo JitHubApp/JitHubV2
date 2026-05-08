@@ -37,11 +37,14 @@ public sealed partial class RepoFileTreeViewModel : ObservableObject
 
     /// <summary>
     /// Filtered view of RootNodes by FilterText (case-insensitive substring match on Path).
-    /// Updated whenever FilterText changes.
+    /// Updated asynchronously (debounced + off-thread) whenever FilterText changes.
     /// </summary>
     public IEnumerable<RepoTreeNodeViewModel> FilteredRootNodes => _filteredRootNodes;
 
-    private ObservableCollection<RepoTreeNodeViewModel> _filteredRootNodes = [];
+    private IEnumerable<RepoTreeNodeViewModel> _filteredRootNodes = [];
+
+    // Each new keystroke creates a fresh CTS; the previous in-flight filter is cancelled.
+    private CancellationTokenSource _filterCts = new();
 
     // Callback wired by page VM so SelectNodeCommand routes to it.
     public Func<RepoTreeNodeViewModel, CancellationToken, Task>? OnSelectNode { get; set; }
@@ -54,7 +57,50 @@ public sealed partial class RepoFileTreeViewModel : ObservableObject
 
     partial void OnFilterTextChanged(string value)
     {
-        RebuildFilter();
+        _ = RebuildFilterAsync(value);
+    }
+
+    private async Task RebuildFilterAsync(string filterText)
+    {
+        // Cancel any previous in-flight search and start a new one.
+        var cts = new CancellationTokenSource();
+        var old = Interlocked.Exchange(ref _filterCts, cts);
+        old.Cancel();
+        old.Dispose();
+
+        try
+        {
+            // Debounce: wait for typing to pause before doing any work.
+            await Task.Delay(150, cts.Token);
+
+            string filter = filterText?.Trim() ?? string.Empty;
+
+            IEnumerable<RepoTreeNodeViewModel> result;
+            if (string.IsNullOrEmpty(filter))
+            {
+                result = RootNodes;
+            }
+            else
+            {
+                // Snapshot the node list on the UI thread before going off-thread.
+                var snapshot = RootNodes.ToList();
+                var flat = await Task.Run(
+                    () => FlattenLeaves(snapshot, filter).ToList(),
+                    cts.Token);
+
+                cts.Token.ThrowIfCancellationRequested();
+                result = flat;
+            }
+
+            // Continuations after 'await' resume on the UI SynchronizationContext,
+            // so this PropertyChanged notification is safe to fire directly.
+            _filteredRootNodes = result;
+            OnPropertyChanged(nameof(FilteredRootNodes));
+        }
+        catch (OperationCanceledException)
+        {
+            // A newer filter superseded this one — nothing to do.
+        }
     }
 
     [RelayCommand]
@@ -102,7 +148,9 @@ public sealed partial class RepoFileTreeViewModel : ObservableObject
         }
 
         IsTruncated = tree.Truncated;
-        RebuildFilter();
+
+        // Trigger a filter rebuild with current FilterText (typically empty on first load).
+        _ = RebuildFilterAsync(FilterText);
     }
 
     /// <summary>Truncated-tree fallback: load children of a directory node via the REST API.</summary>
@@ -145,23 +193,6 @@ public sealed partial class RepoFileTreeViewModel : ObservableObject
         }
         vm.ChildrenLoaded = model.Children.Count > 0 || !model.IsDirectory;
         return vm;
-    }
-
-    private void RebuildFilter()
-    {
-        string filter = FilterText?.Trim() ?? string.Empty;
-
-        if (string.IsNullOrEmpty(filter))
-        {
-            _filteredRootNodes = RootNodes;
-        }
-        else
-        {
-            var flat = FlattenLeaves(RootNodes, filter);
-            _filteredRootNodes = new ObservableCollection<RepoTreeNodeViewModel>(flat);
-        }
-
-        OnPropertyChanged(nameof(FilteredRootNodes));
     }
 
     private static IEnumerable<RepoTreeNodeViewModel> FlattenLeaves(
