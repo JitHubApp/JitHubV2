@@ -38,11 +38,13 @@ public sealed class ImageBox : BlockBox
         _url = url ?? string.Empty;
         _alt = string.IsNullOrEmpty(alt) ? "image" : alt;
         Margin = new Thickness(0, 6, 0, 6);
-        if (!string.IsNullOrEmpty(_url) && _cache.TryGetValue(_url, out var cached))
+        // Only honour positive cache entries.  A `null` cache entry would mean
+        // a previous load failed; silently keeping it forever would prevent
+        // any retry after transient network/auth failure.  We just re-attempt.
+        if (!string.IsNullOrEmpty(_url) && _cache.TryGetValue(_url, out var cached) && cached is not null)
         {
             _bitmap = cached;
             _loadStarted = true;
-            if (cached is null) _loadFailed = true;
         }
     }
 
@@ -130,7 +132,8 @@ public sealed class ImageBox : BlockBox
         {
             System.Diagnostics.Debug.WriteLine($"[ImageBox] load failed for {uri}: {ex.Message}");
             _loadFailed = true;
-            _cache[_url] = null;
+            // Do NOT cache failures — let the next ImageBox for this URL retry
+            // (e.g. after the user reconnects / re-authenticates).
         }
         finally
         {

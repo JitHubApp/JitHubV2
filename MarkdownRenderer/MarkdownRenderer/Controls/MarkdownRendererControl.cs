@@ -136,6 +136,9 @@ public sealed partial class MarkdownRendererControl : UserControl
         _canvas.PointerPressed += OnPointerPressed;
         _canvas.PointerMoved += OnPointerMoved;
         _canvas.PointerReleased += OnPointerReleased;
+        _canvas.PointerExited += OnPointerExited;
+        _canvas.PointerCanceled += OnPointerExited;
+        _canvas.PointerCaptureLost += OnPointerExited;
         KeyDown += OnKeyDown;
 
         Content = _scroll;
@@ -312,16 +315,18 @@ public sealed partial class MarkdownRendererControl : UserControl
 
     private void OnImageLoadCompleted(object? sender, EventArgs e)
     {
-        // Image dimensions just became known; re-run layout so blocks below
-        // shift. Run on UI thread; cheap because parsed AST + bitmap are cached.
-        if (DispatcherQueue is { } dq)
+        // CanvasBitmap.LoadAsync continues on a thread-pool thread.  Always
+        // marshal to the UI thread — RequestRebuild manipulates the canvas
+        // and CTS state, both of which require thread-affinity.  Drop the
+        // event silently if we have no dispatcher (control already unloaded).
+        var dq = DispatcherQueue;
+        if (dq is null) return;
+        dq.TryEnqueue(() =>
         {
-            dq.TryEnqueue(() => RequestRebuild());
-        }
-        else
-        {
+            // Coalesce image-load storms by debouncing through the existing
+            // RequestRebuild path: subsequent calls cancel the prior CTS.
             RequestRebuild();
-        }
+        });
     }
 
     private void OnRegionsInvalidated(CanvasVirtualControl sender, CanvasRegionsInvalidatedEventArgs args)
@@ -457,6 +462,24 @@ public sealed partial class MarkdownRendererControl : UserControl
                 foreach (var c in sb.Children) ClearHover(c);
                 break;
         }
+    }
+
+    private void OnPointerExited(object sender, PointerRoutedEventArgs e)
+    {
+        // Clear hover state when the pointer leaves the canvas (or capture is
+        // lost).  Without this, a link's hover colour and the hand cursor
+        // persist even when the pointer is no longer over the control.
+        if (_snapshot is null || _canvas is null) return;
+        if (_lastHoveredRun is null) return;
+        foreach (var b in _snapshot.Blocks) ClearHover(b);
+        _lastHoveredRun = null;
+        _canvas.Invalidate();
+        try
+        {
+            ProtectedCursor = Microsoft.UI.Input.InputSystemCursor
+                .Create(Microsoft.UI.Input.InputSystemCursorShape.IBeam);
+        }
+        catch { }
     }
 
     private void OnPointerReleased(object sender, PointerRoutedEventArgs e)

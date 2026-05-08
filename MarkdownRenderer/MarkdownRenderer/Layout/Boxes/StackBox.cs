@@ -74,7 +74,10 @@ public class StackBox : BlockBox
         {
             if (c.HitTest(point, out position)) return true;
         }
+        // Padding-area hits return false — the StackBox itself has no source-map
+        // entry, so reporting (BlockIndex, 0, 0) for these would produce
+        // incorrect copy ranges in MarkdownSourceMap.Slice.
         position = new DocumentPosition(BlockIndex, 0, 0);
-        return Bounds.Contains(point);
+        return false;
     }
 }

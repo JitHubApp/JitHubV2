@@ -47,6 +47,13 @@ public sealed class LayoutBuilder
         {
             var eb = new EmbedBox(block, ef);
             eb.BlockIndex = _context.NextBlockIndex();
+            // Register the source span so Ctrl+C across an embed copies the
+            // original markdown that produced it.
+            if (block.Span.Length > 0)
+            {
+                var span = new MarkdownRenderer.SourceSpan(block.Span.Start, block.Span.Length);
+                _context.SourceMap.Add(eb.BlockIndex, 0, 1, span);
+            }
             return eb;
         }
 
@@ -178,7 +185,15 @@ public sealed class LayoutBuilder
     {
         var stack = new StackBox();
         stack.BlockIndex = _context.NextBlockIndex();
+        // Honour the ordered-list start number from the source (e.g. `5.`).
+        // Markdig stores this as a string on ListBlock.OrderedStart.
         int index = 1;
+        if (list.IsOrdered && !string.IsNullOrEmpty(list.OrderedStart)
+            && int.TryParse(list.OrderedStart, System.Globalization.NumberStyles.Integer,
+                System.Globalization.CultureInfo.InvariantCulture, out var parsed))
+        {
+            index = parsed;
+        }
         foreach (var item in list)
         {
             if (item is not ListItemBlock li) continue;

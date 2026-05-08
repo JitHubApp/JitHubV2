@@ -37,7 +37,11 @@ public sealed class LayoutSnapshot
     {
         foreach (var b in Blocks)
         {
-            if (b.Bounds.Top - 4 > point.Y) break;
+            // Use `continue` rather than `break` so we don't skip a hit just
+            // because a preceding block has Bounds.Top below the hit Y.  Custom
+            // renderers, footnote groups, and any future virtualisation may
+            // produce out-of-vertical-order blocks; iterating all is cheap.
+            if (b.Bounds.Top - 4 > point.Y) continue;
             if (b.HitTest(point, out position)) return true;
         }
         position = DocumentPosition.Zero;

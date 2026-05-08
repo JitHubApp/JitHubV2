@@ -157,14 +157,27 @@ public sealed class InlineContainerBox : BlockBox
         foreach (var run in _runs)
         {
             int len = run.Text.Length;
-            if (charIndex <= cumulative + len)
+            // Use strict '<' to match RunAt: character at index `cumulative+len`
+            // belongs to the *next* run, not this one.  Prior `<=` pulled boundary
+            // hits backward into the wrong run, leaving HitTest and RunAt
+            // disagreeing about which run owns the boundary character.
+            if (charIndex < cumulative + len)
             {
                 position = new DocumentPosition(BlockIndex, run.InlineIndex, charIndex - cumulative);
                 return true;
             }
             cumulative += len;
         }
-        position = new DocumentPosition(BlockIndex, _runs.Count, 0);
+        // Past last char: position at end of last run (or block end if empty).
+        if (_runs.Count > 0)
+        {
+            var last = _runs[_runs.Count - 1];
+            position = new DocumentPosition(BlockIndex, last.InlineIndex, last.Text.Length);
+        }
+        else
+        {
+            position = new DocumentPosition(BlockIndex, 0, 0);
+        }
         return true;
     }
 

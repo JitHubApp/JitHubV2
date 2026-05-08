@@ -84,12 +84,38 @@ public sealed class AlertRenderer : MarkdownNodeRenderer<QuoteBlock>
                     string remaining = firstParaText.Substring(alert.Tag.Length).TrimStart('\n', '\r', ' ');
                     if (!string.IsNullOrWhiteSpace(remaining))
                     {
+                        // Compute a source span that excludes the [!TAG] prefix
+                        // so partial selections of the alert body copy the
+                        // correct markdown.  Walk forward in the original
+                        // source from the paragraph start, skipping the tag
+                        // text and any following whitespace.
+                        var sourceText = context.SourceMap.SourceText;
+                        int bodyStart = fp.Span.Start;
+                        int paraEnd = fp.Span.Start + fp.Span.Length;
+                        // Find the closing ']' of the [!TAG] marker.
+                        int close = -1;
+                        if (bodyStart >= 0 && bodyStart < sourceText.Length)
+                        {
+                            close = sourceText.IndexOf(']', bodyStart, Math.Max(0, paraEnd - bodyStart));
+                        }
+                        if (close >= 0)
+                        {
+                            bodyStart = close + 1;
+                            while (bodyStart < paraEnd && bodyStart < sourceText.Length
+                                && (sourceText[bodyStart] == ' ' || sourceText[bodyStart] == '\t'
+                                    || sourceText[bodyStart] == '\n' || sourceText[bodyStart] == '\r'))
+                            {
+                                bodyStart++;
+                            }
+                        }
+                        int bodyLen = Math.Max(0, paraEnd - bodyStart);
+
                         var contentBox = new InlineContainerBox(context, MarkdownElementKeys.Body);
                         contentBox.BlockIndex = context.NextBlockIndex();
                         contentBox.Add(new TextRun(remaining)
                         {
                             ElementKey = MarkdownElementKeys.Body,
-                            SourceSpan = new MarkdownRenderer.SourceSpan(fp.Span.Start, fp.Span.Length)
+                            SourceSpan = new MarkdownRenderer.SourceSpan(bodyStart, bodyLen)
                         });
                         stack.Add(contentBox);
                     }
