@@ -61,6 +61,12 @@ public sealed partial class MarkdownRendererControl : UserControl
     //       so an embed is included or excluded as a single unit.
     private readonly List<(Layout.Boxes.InlineContainerBox Box, InlineEmbedRun Run, Rect Rect)> _embedRects = new();
 
+    // Cache of block-embed bounding rects (in document coordinates).
+    // Mirrors _embedRects but for EmbedBox block elements (e.g. hosted Buttons).
+    // Used by IsPointOverEmbed so that hovering a block-embed button correctly
+    // suppresses link-hover and IBeam-cursor work, just like inline embeds.
+    private readonly List<Rect> _blockEmbedRects = new();
+
     // ---- Dependency properties ----
 
     public static readonly DependencyProperty MarkdownProperty =
@@ -318,6 +324,7 @@ public sealed partial class MarkdownRendererControl : UserControl
         // UI thread: realize hosted FrameworkElements + image LoadCompleted hooks.
         _overlay.Children.Clear();
         _embedRects.Clear();
+        _blockEmbedRects.Clear();
         _selectionOverlayRects.Clear(); // overlay was just cleared above
         _selection.Clear();             // stale selection no longer valid after re-layout
         foreach (var b in snapshot.Blocks) PlaceEmbeds(b);
@@ -335,11 +342,20 @@ public sealed partial class MarkdownRendererControl : UserControl
                 {
                     var fe = eb.Factory.CreateBlock(eb.SourceBlock);
                     eb.RealizedElement = fe;
-                    fe.Width = eb.Bounds.Width - eb.Margin.Left - eb.Margin.Right;
-                    fe.Height = eb.Bounds.Height - eb.Margin.Top - eb.Margin.Bottom;
-                    Canvas.SetLeft(fe, eb.Bounds.X + eb.Margin.Left);
-                    Canvas.SetTop(fe, eb.Bounds.Y + eb.Margin.Top);
+                    fe.Width  = Math.Round(eb.Bounds.Width  - eb.Margin.Left - eb.Margin.Right);
+                    fe.Height = Math.Round(eb.Bounds.Height - eb.Margin.Top  - eb.Margin.Bottom);
+                    // Integer-pixel placement prevents sub-pixel border anti-aliasing
+                    // differences between hover/normal states from looking like a
+                    // size change (which would visually "push" surrounding text).
+                    double left = Math.Round(eb.Bounds.X + eb.Margin.Left);
+                    double top  = Math.Round(eb.Bounds.Y + eb.Margin.Top);
+                    Canvas.SetLeft(fe, left);
+                    Canvas.SetTop(fe, top);
                     _overlay!.Children.Add(fe);
+                    // Track the block-embed rect so IsPointOverEmbed returns true
+                    // when the pointer is over a block-embed button, suppressing
+                    // link-hover and IBeam-cursor work for that area.
+                    _blockEmbedRects.Add(new Rect(left, top, fe.Width, fe.Height));
                 }
                 catch (Exception ex)
                 {
@@ -361,12 +377,18 @@ public sealed partial class MarkdownRendererControl : UserControl
                     {
                         var fe = run.ElementFactory();
                         run.RealizedElement = fe;
-                        fe.Width = rect.Width;
-                        fe.Height = rect.Height;
-                        Canvas.SetLeft(fe, rect.X);
-                        Canvas.SetTop(fe, rect.Y);
+                        double iLeft = Math.Round(rect.X);
+                        double iTop  = Math.Round(rect.Y);
+                        double iW    = Math.Round(rect.X + rect.Width)  - iLeft;
+                        double iH    = Math.Round(rect.Y + rect.Height) - iTop;
+                        fe.Width  = iW;
+                        fe.Height = iH;
+                        Canvas.SetLeft(fe, iLeft);
+                        Canvas.SetTop(fe, iTop);
                         _overlay!.Children.Add(fe);
-                        _embedRects.Add((icb, run, rect));
+                        // Store the snapped rect so hit-testing uses integer bounds.
+                        var snappedRect = new Rect(iLeft, iTop, iW, iH);
+                        _embedRects.Add((icb, run, snappedRect));
                     }
                     catch (Exception ex)
                     {
@@ -471,6 +493,7 @@ public sealed partial class MarkdownRendererControl : UserControl
     }
 
     private InlineRun? _lastHoveredRun;
+    private Layout.Boxes.InlineContainerBox? _lastHoveredBox; // box that contains _lastHoveredRun; used for targeted canvas invalidation
     // Tracks the ProtectedCursor shape we last set, or null when we have
     // reset to the system default.  Three states:
     //   null            → ProtectedCursor was reset; system default (Arrow) shows.
@@ -541,9 +564,11 @@ public sealed partial class MarkdownRendererControl : UserControl
             // the previous hovered link doesn't appear stuck-on.
             if (_lastHoveredRun is not null)
             {
+                var boxToInvalidate = _lastHoveredBox;
                 foreach (var b in _snapshot.Blocks) ClearHover(b);
                 _lastHoveredRun = null;
-                _canvas.Invalidate();
+                _lastHoveredBox = null;
+                InvalidateLinkHoverRegion(boxToInvalidate, null);
             }
             SetCursorShape(null);
             return;
@@ -585,11 +610,34 @@ public sealed partial class MarkdownRendererControl : UserControl
             foreach (var b in _snapshot.Blocks) ClearHover(b);
             if (hoveredBox is not null && hoveredLink is not null)
                 hoveredBox.HoveredRun = hoveredLink;
-            _canvas.Invalidate();
+            // Use targeted invalidation: only repaint the boxes whose link-hover
+            // color actually changed.  This limits the repainted tile region,
+            // reducing tile-boundary sub-pixel variance that causes glyph shake.
+            InvalidateLinkHoverRegion(_lastHoveredBox, hoveredBox);
         }
         _lastHoveredRun = hovered;
+        _lastHoveredBox = hoveredBox;
 
         SetCursorShape(wantedShape);
+    }
+
+    /// <summary>
+    /// Invalidates the canvas regions that cover <paramref name="prev"/> and/or
+    /// <paramref name="next"/> (the boxes whose link-hover color just changed).
+    /// Falls back to a full invalidate only when neither box is known.
+    /// </summary>
+    private void InvalidateLinkHoverRegion(
+        Layout.Boxes.InlineContainerBox? prev,
+        Layout.Boxes.InlineContainerBox? next)
+    {
+        if (_canvas is null) return;
+        if (prev is null && next is null)
+        {
+            _canvas.Invalidate();
+            return;
+        }
+        if (prev is not null) _canvas.Invalidate(prev.Bounds);
+        if (next is not null && !ReferenceEquals(prev, next)) _canvas.Invalidate(next.Bounds);
     }
 
     /// <summary>
@@ -665,13 +713,20 @@ public sealed partial class MarkdownRendererControl : UserControl
 
     /// <summary>
     /// True when the given point in canvas coordinates is inside the
-    /// rectangle of any realised inline embed.
+    /// rectangle of any realised inline or block embed.
     /// </summary>
     private bool IsPointOverEmbed(Point pt)
     {
         for (int i = 0; i < _embedRects.Count; i++)
         {
             var r = _embedRects[i].Rect;
+            if (pt.X >= r.X && pt.X <= r.X + r.Width &&
+                pt.Y >= r.Y && pt.Y <= r.Y + r.Height)
+                return true;
+        }
+        for (int i = 0; i < _blockEmbedRects.Count; i++)
+        {
+            var r = _blockEmbedRects[i];
             if (pt.X >= r.X && pt.X <= r.X + r.Width &&
                 pt.Y >= r.Y && pt.Y <= r.Y + r.Height)
                 return true;
@@ -759,9 +814,15 @@ public sealed partial class MarkdownRendererControl : UserControl
         bool hadHover = _lastHoveredRun is not null;
         if (hadHover)
         {
+            var boxToInvalidate = _lastHoveredBox;
             foreach (var b in _snapshot.Blocks) ClearHover(b);
             _lastHoveredRun = null;
-            _canvas.Invalidate();
+            _lastHoveredBox = null;
+            // Use targeted invalidation so only the paragraph with the link is
+            // repainted.  This fires whenever the pointer leaves the canvas into
+            // an embed (button, checkbox) — a full Invalidate() here would
+            // repaint all visible tiles and trigger tile-offset glyph shake.
+            InvalidateLinkHoverRegion(boxToInvalidate, null);
         }
         // Always reset cursor to null (system default) on exit — not just
         // when a link was hovered.  PointerExited fires whenever the pointer
