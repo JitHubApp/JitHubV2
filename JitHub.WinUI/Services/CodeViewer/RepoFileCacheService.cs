@@ -56,6 +56,21 @@ public sealed class RepoFileCacheService : IRepoFileCacheService
         _ = Task.Run(() => PurgeAsync(CancellationToken.None));
     }
 
+    internal RepoFileCacheService(
+        int memMaxEntries,
+        long memMaxBytes,
+        long diskMaxBytes,
+        TimeSpan ttl,
+        string diskRoot)
+    {
+        _memMaxEntries = memMaxEntries;
+        _memMaxBytes = memMaxBytes;
+        _diskMaxBytes = diskMaxBytes;
+        _ttl = ttl;
+        _diskRoot = diskRoot;
+        Directory.CreateDirectory(_diskRoot);
+    }
+
     // ── Public API ───────────────────────────────────────────────────────────
 
     public bool TryGet(RepoFileCacheKey key, out RepoFileCacheEntry entry)

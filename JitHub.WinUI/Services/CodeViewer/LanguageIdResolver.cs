@@ -39,6 +39,16 @@ public sealed class LanguageIdResolver : ILanguageIdResolver
         _interpreterMap = BuildCaseInsensitive(data?.Interpreters);
     }
 
+    internal LanguageIdResolver(
+        Dictionary<string, string>? extensions,
+        Dictionary<string, string>? filenames,
+        Dictionary<string, string>? interpreters)
+    {
+        _extensionMap = BuildCaseInsensitive(extensions);
+        _filenameMap = BuildCaseInsensitive(filenames);
+        _interpreterMap = BuildCaseInsensitive(interpreters);
+    }
+
     /// <inheritdoc/>
     public string Resolve(string fileName, ReadOnlySpan<byte> contentSniff = default)
     {

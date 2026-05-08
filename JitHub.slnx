@@ -20,4 +20,5 @@
     <Deploy Solution="*|x86" />
     <Deploy Solution="Debug|Any CPU" />
   </Project>
+  <Project Path="JitHub.WinUI.Tests/JitHub.WinUI.Tests.csproj" />
 </Solution>
