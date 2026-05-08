@@ -429,6 +429,18 @@ public sealed partial class MarkdownRendererControl : UserControl
                 _selection.ExtendTo(pos);
                 _canvas.Invalidate();
             }
+            // Do NOT update hover state during an active selection drag.
+            // Calling SetColor on the CanvasTextLayout (which ApplyHoverColor
+            // does whenever HoveredRun changes) causes DirectWrite to
+            // invalidate cached glyph metrics, which in turn produces
+            // sub-pixel vertical jitter ("selection shake") whenever the
+            // pointer crosses run boundaries — most visibly on body text
+            // that contains links, because every time the pointer moves
+            // between the link run and the surrounding body run the
+            // hovered-run identity flips.  Suppressing the toggle here
+            // costs nothing because the IBeam cursor and link-hover color
+            // aren't relevant while the user is mid-drag selecting.
+            return;
         }
 
         // Hover effect for links + cursor change.
