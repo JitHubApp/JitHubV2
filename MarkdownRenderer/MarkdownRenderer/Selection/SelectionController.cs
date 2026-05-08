@@ -52,28 +52,28 @@ public sealed class SelectionController
 
     private static IEnumerable<Rect> EnumerateBlockRects(BlockBox box, DocumentRange range)
     {
-        if (box is InlineContainerBox icb)
-        {
-            foreach (var r in icb.GetRangeRects(range)) yield return r;
-        }
-        else if (box is ListItemBox lib)
+        // Containers recurse; leaves return their own rects via the virtual.
+        if (box is ListItemBox lib)
         {
             foreach (var r in EnumerateBlockRects(lib.Marker, range)) yield return r;
             foreach (var r in EnumerateBlockRects(lib.Content, range)) yield return r;
+            yield break;
         }
-        else if (box is TableBox tb)
+        if (box is TableBox tb)
         {
             foreach (var cell in tb.GetCellBoxes())
-                foreach (var r in cell.GetRangeRects(range))
+                foreach (var r in EnumerateBlockRects(cell, range))
                     yield return r;
+            yield break;
         }
-        else if (box is StackBox sb)
+        if (box is StackBox sb)
         {
             foreach (var c in sb.Children)
-            {
-                foreach (var r in EnumerateBlockRects(c, range)) yield return r;
-            }
+                foreach (var r in EnumerateBlockRects(c, range))
+                    yield return r;
+            yield break;
         }
+        foreach (var r in box.GetSelectionRects(range)) yield return r;
     }
 
     public void PaintHighlight(CanvasDrawingSession ds, LayoutSnapshot snapshot, Color color)

@@ -100,6 +100,9 @@ public sealed class LayoutBuilder
                 }
                 var img = new ImageBox(_context, url, alt);
                 img.BlockIndex = _context.NextBlockIndex();
+                // Register the source span so Ctrl+C copies the original ![alt](url).
+                var span = new MarkdownRenderer.SourceSpan(p.Span.Start, p.Span.Length);
+                _context.SourceMap.Add(img.BlockIndex, 0, 1, span);
                 return img;
             }
         }

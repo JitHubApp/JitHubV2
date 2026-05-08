@@ -43,4 +43,23 @@ public abstract class BlockBox
         position = new Document.DocumentPosition(BlockIndex, 0, 0);
         return Bounds.Contains(point);
     }
+
+    /// <summary>
+    /// Returns rectangles to highlight when this block participates in a
+    /// document selection. Default implementation returns the entire bounds
+    /// when the block index falls inside the (normalized) range; leaf
+    /// containers like <c>InlineContainerBox</c> override this to return
+    /// per-character regions.
+    /// </summary>
+    public virtual System.Collections.Generic.IEnumerable<Rect> GetSelectionRects(Document.DocumentRange range)
+    {
+        var n = range.Normalized();
+        if (BlockIndex >= n.Start.BlockIndex && BlockIndex <= n.End.BlockIndex
+            && !(n.Start.BlockIndex == n.End.BlockIndex
+                 && n.Start.InlineIndex == n.End.InlineIndex
+                 && n.Start.CharacterOffset == n.End.CharacterOffset))
+        {
+            yield return Bounds;
+        }
+    }
 }

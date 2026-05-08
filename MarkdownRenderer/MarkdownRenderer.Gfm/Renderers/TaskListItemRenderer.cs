@@ -19,8 +19,24 @@ public sealed class TaskListItemRenderer : MarkdownNodeRenderer<ListItemBlock>
 {
     public override BlockBox? BuildBlock(ListItemBlock listItem, MarkdownLayoutContext context)
     {
-        var taskList = listItem.GetData(typeof(TaskList)) as TaskList;
-        if (taskList is null) return null;
+        // GFM TaskList is a LeafInline injected as the first inline of the
+        // first ParagraphBlock child — NOT data on the ListItemBlock itself.
+        TaskList? taskList = null;
+        ParagraphBlock? firstParagraph = null;
+        foreach (var child in listItem)
+        {
+            if (child is ParagraphBlock pb && pb.Inline is not null)
+            {
+                firstParagraph = pb;
+                foreach (var inl in pb.Inline)
+                {
+                    if (inl is TaskList tl) { taskList = tl; break; }
+                    break; // only the first inline can be TaskList
+                }
+                break;
+            }
+        }
+        if (taskList is null || firstParagraph is null) return null;
 
         bool isChecked = taskList.Checked;
 
@@ -34,7 +50,6 @@ public sealed class TaskListItemRenderer : MarkdownNodeRenderer<ListItemBlock>
             MinHeight = 20,
             Padding = new Thickness(0),
             Margin = new Thickness(0),
-            // CheckBox has a glyph + content area; suppress content insets.
             HorizontalContentAlignment = HorizontalAlignment.Left,
             VerticalContentAlignment = VerticalAlignment.Center,
         })
@@ -52,8 +67,9 @@ public sealed class TaskListItemRenderer : MarkdownNodeRenderer<ListItemBlock>
             {
                 var contentBox = new InlineContainerBox(context, MarkdownElementKeys.Body);
                 contentBox.BlockIndex = context.NextBlockIndex();
-                GfmChildBuilder.AddInlines(contentBox, p.Inline);
-                content.Add(contentBox);
+                // Skip the TaskList inline — it's the marker, not body content.
+                GfmChildBuilder.AddInlines(contentBox, p.Inline, skipFirstIf: i => i is TaskList);
+            content.Add(contentBox);
             }
             else
             {

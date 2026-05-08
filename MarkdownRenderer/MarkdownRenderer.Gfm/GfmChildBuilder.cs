@@ -66,10 +66,16 @@ internal static class GfmChildBuilder
         return stack;
     }
 
-    internal static void AddInlines(InlineContainerBox box, ContainerInline inlines)
+    internal static void AddInlines(InlineContainerBox box, ContainerInline inlines, System.Func<Inline, bool>? skipFirstIf = null)
     {
+        bool skippedFirst = skipFirstIf is null;
         foreach (var i in inlines)
         {
+            if (!skippedFirst)
+            {
+                skippedFirst = true;
+                if (skipFirstIf!(i)) continue;
+            }
             var run = BuildInline(i);
             if (run is not null) box.Add(run);
         }

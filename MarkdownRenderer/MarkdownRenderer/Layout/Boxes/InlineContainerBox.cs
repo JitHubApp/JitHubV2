@@ -162,6 +162,9 @@ public sealed class InlineContainerBox : BlockBox
         }
     }
 
+    public override IEnumerable<Rect> GetSelectionRects(DocumentRange range)
+        => GetRangeRects(range);
+
     /// <summary>
     /// For each <see cref="InlineEmbedRun"/>, returns the rectangle in document
     /// coordinates where its hosted WinUI element should be placed on the
@@ -289,9 +292,23 @@ public sealed class InlineContainerBox : BlockBox
     private void ApplyHoverColor(CanvasTextLayout layout)
     {
         var hover = HoveredRun;
-        if (hover is null) return;
-        if (hover is not LinkRun) return;
+        // First: reset every LinkRun back to its theme foreground so that an
+        // unhover event restores the original color. SetColor must be called
+        // even when not hovering because a previous frame may have brightened it.
         int cumulative = 0;
+        foreach (var run in _runs)
+        {
+            int len = run.Text.Length;
+            if (len > 0 && run is LinkRun)
+            {
+                var rs = _context.ThemeSnapshot.GetStyle(run.ElementKey);
+                layout.SetColor(cumulative, len, rs.Foreground);
+            }
+            cumulative += len;
+        }
+
+        if (hover is not LinkRun) return;
+        cumulative = 0;
         foreach (var run in _runs)
         {
             int len = run.Text.Length;

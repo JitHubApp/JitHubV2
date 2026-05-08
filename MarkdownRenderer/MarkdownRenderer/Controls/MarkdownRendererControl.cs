@@ -379,15 +379,15 @@ public sealed partial class MarkdownRendererControl : UserControl
                 hoveredBox.HoveredRun = hovered;
             _lastHoveredRun = hovered;
             _canvas.Invalidate();
-        }
 
-        try
-        {
-            ProtectedCursor = hovered is LinkRun
-                ? Microsoft.UI.Input.InputSystemCursor.Create(Microsoft.UI.Input.InputSystemCursorShape.Hand)
-                : Microsoft.UI.Input.InputSystemCursor.Create(Microsoft.UI.Input.InputSystemCursorShape.IBeam);
+            try
+            {
+                ProtectedCursor = hovered is LinkRun
+                    ? Microsoft.UI.Input.InputSystemCursor.Create(Microsoft.UI.Input.InputSystemCursorShape.Hand)
+                    : Microsoft.UI.Input.InputSystemCursor.Create(Microsoft.UI.Input.InputSystemCursorShape.IBeam);
+            }
+            catch { /* ProtectedCursor isn't always settable */ }
         }
-        catch { /* ProtectedCursor isn't always settable */ }
     }
 
     private static (Layout.Boxes.InlineContainerBox? Box, InlineRun? Run) FindInlineHover(Layout.BlockBox box, Point pt)
