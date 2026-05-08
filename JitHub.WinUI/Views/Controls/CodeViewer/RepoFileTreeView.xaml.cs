@@ -55,8 +55,13 @@ public sealed partial class RepoFileTreeView : UserControl
 
     private void OnViewModelPropertyChanged(object? sender, PropertyChangedEventArgs e)
     {
-        if (e.PropertyName == nameof(RepoFileTreeViewModel.IsLoading) &&
-            sender is RepoFileTreeViewModel vm && !vm.IsLoading)
+        if (sender is not RepoFileTreeViewModel vm) return;
+
+        if (e.PropertyName == nameof(RepoFileTreeViewModel.IsLoading) && !vm.IsLoading)
+        {
+            RebuildTreeView(vm);
+        }
+        else if (e.PropertyName == nameof(RepoFileTreeViewModel.FilteredRootNodes))
         {
             RebuildTreeView(vm);
         }
@@ -65,14 +70,33 @@ public sealed partial class RepoFileTreeView : UserControl
     // ── TreeViewNode construction ─────────────────────────────────────
 
     /// <summary>
-    /// Clears and rebuilds the TreeView root nodes from the VM's RootNodes.
+    /// Clears and rebuilds the TreeView root nodes from the VM's nodes.
+    /// When a filter is active, shows a flat list of matching files.
+    /// When no filter, shows the full hierarchical tree.
     /// Runs on the UI thread. Nodes are created lazily (children populated on expand).
     /// </summary>
     private void RebuildTreeView(RepoFileTreeViewModel vm)
     {
         FileTreeView.RootNodes.Clear();
-        foreach (RepoTreeNodeViewModel rootVm in vm.RootNodes)
-            FileTreeView.RootNodes.Add(CreateTreeViewNode(rootVm));
+
+        bool hasFilter = !string.IsNullOrWhiteSpace(vm.FilterText);
+        if (hasFilter)
+        {
+            // Flat filtered results — no expand chevron needed.
+            foreach (RepoTreeNodeViewModel nodeVm in vm.FilteredRootNodes)
+            {
+                FileTreeView.RootNodes.Add(new TreeViewNode
+                {
+                    Content = nodeVm,
+                    HasUnrealizedChildren = false,
+                });
+            }
+        }
+        else
+        {
+            foreach (RepoTreeNodeViewModel rootVm in vm.RootNodes)
+                FileTreeView.RootNodes.Add(CreateTreeViewNode(rootVm));
+        }
     }
 
     private static TreeViewNode CreateTreeViewNode(RepoTreeNodeViewModel nodeVm)

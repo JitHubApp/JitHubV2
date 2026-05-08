@@ -12,8 +12,7 @@
     <Grid
         Background="{ThemeResource AppCanvasBrush}"
         BorderBrush="{ThemeResource AppOutlineBrush}"
-        BorderThickness="1"
-        CornerRadius="{ThemeResource AppRadiusMedium}">
+        BorderThickness="1">
         <editor:CodeEditorControl
             x:Name="InnerEditor"
             MinHeight="200"

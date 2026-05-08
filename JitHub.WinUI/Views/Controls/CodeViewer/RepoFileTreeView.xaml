@@ -13,8 +13,7 @@
     <Grid
         Background="{ThemeResource AppCanvasBrush}"
         BorderBrush="{ThemeResource AppOutlineBrush}"
-        BorderThickness="1"
-        CornerRadius="{ThemeResource AppRadiusMedium}">
+        BorderThickness="1">
 
         <Grid.RowDefinitions>
             <RowDefinition Height="Auto" />
@@ -52,7 +51,9 @@
             Collapsed="OnCollapsed"
             Expanding="OnExpanding"
             ItemInvoked="OnItemInvoked"
-            SelectionMode="Single">
+            SelectionMode="Single"
+            ScrollViewer.HorizontalScrollBarVisibility="Auto"
+            ScrollViewer.HorizontalScrollMode="Enabled">
             <TreeView.ItemTemplate>
                 <!--
                     In TreeViewNode mode the outer DataContext is a TreeViewNode, not our VM.
@@ -63,7 +64,7 @@
                     <ContentControl Content="{Binding Content}">
                         <ContentControl.ContentTemplate>
                             <DataTemplate x:DataType="viewmodels:RepoTreeNodeViewModel">
-                                <Grid ColumnSpacing="6">
+                                <Grid ColumnSpacing="6" HorizontalAlignment="Left">
                                     <Grid.ColumnDefinitions>
                                         <ColumnDefinition Width="Auto" />
                                         <ColumnDefinition Width="*" />

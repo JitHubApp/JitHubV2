@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.Linq;
 using System.Text;
 using System.Threading;
 using System.Threading.Tasks;
@@ -117,6 +118,8 @@ public sealed partial class RepoCodePageViewModel : ObservableObject
                 Tree.IsTruncated = tree.Truncated;
                 Tree.IsLoading = false;
                 IsLoading = false;
+                // Auto-open README after tree is populated.
+                _ = TryOpenReadmeAsync(CancellationToken.None);
             });
         }
         catch (OperationCanceledException)
@@ -326,6 +329,22 @@ public sealed partial class RepoCodePageViewModel : ObservableObject
                 Preview.ErrorMessage = ex.Message;
             });
         }
+    }
+
+    private async Task TryOpenReadmeAsync(CancellationToken ct)
+    {
+        static bool IsReadme(string name) =>
+            name.Equals("README.md", StringComparison.OrdinalIgnoreCase) ||
+            name.Equals("README.rst", StringComparison.OrdinalIgnoreCase) ||
+            name.Equals("README.txt", StringComparison.OrdinalIgnoreCase) ||
+            name.Equals("README.adoc", StringComparison.OrdinalIgnoreCase) ||
+            name.Equals("README", StringComparison.OrdinalIgnoreCase);
+
+        RepoTreeNodeViewModel? readmeNode = Tree.RootNodes
+            .FirstOrDefault(n => !n.IsDirectory && IsReadme(n.Name));
+
+        if (readmeNode is not null)
+            await SelectFileAsync(ToModelNode(readmeNode), ct);
     }
 
     private void RunOnUi(Action action)

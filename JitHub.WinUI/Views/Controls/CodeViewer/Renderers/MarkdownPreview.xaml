@@ -11,6 +11,23 @@
     d:DesignWidth="800"
     mc:Ignorable="d">
 
+    <UserControl.Resources>
+        <ResourceDictionary>
+            <ResourceDictionary.ThemeDictionaries>
+                <!--  Light theme: fix inline code block colors  -->
+                <ResourceDictionary x:Key="Light">
+                    <SolidColorBrush x:Key="MarkdownInlineCodeBackground" Color="#EDEDED" />
+                    <SolidColorBrush x:Key="MarkdownInlineCodeForeground" Color="#1A1A1A" />
+                </ResourceDictionary>
+                <!--  Dark theme: fix hyperlink/link foreground  -->
+                <ResourceDictionary x:Key="Dark">
+                    <SolidColorBrush x:Key="HyperlinkForeground" Color="#60CDFF" />
+                    <SolidColorBrush x:Key="HyperlinkPointerOverForeground" Color="#9BDBF5" />
+                </ResourceDictionary>
+            </ResourceDictionary.ThemeDictionaries>
+        </ResourceDictionary>
+    </UserControl.Resources>
+
     <Grid>
         <Grid.RowDefinitions>
             <RowDefinition Height="Auto" />
@@ -41,8 +58,12 @@
             <ScrollViewer
                 x:Name="RichPanel"
                 Padding="16"
+                HorizontalScrollBarVisibility="Disabled"
+                HorizontalScrollMode="Disabled"
                 Visibility="Visible">
-                <controls:MarkdownTextBlock Text="{x:Bind ViewModel.Text, Mode=OneWay}" />
+                <controls:MarkdownTextBlock
+                    Text="{x:Bind ViewModel.Text, Mode=OneWay}"
+                    HorizontalAlignment="Stretch" />
             </ScrollViewer>
 
             <!--  Plain: raw code editor  -->

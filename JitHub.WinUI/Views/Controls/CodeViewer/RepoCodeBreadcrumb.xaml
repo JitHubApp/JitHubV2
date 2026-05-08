@@ -93,13 +93,13 @@
                 Command="{x:Bind ViewModel.CopyPathCommand, Mode=OneWay}"
                 Style="{StaticResource AppToolbarButtonStyle}"
                 ToolTipService.ToolTip="Copy path">
-                <FontIcon FontSize="16" Glyph="&#xE8C8;" />
+                <FontIcon FontSize="16" Glyph="{x:Bind local:RepoCodeBreadcrumb.CopyPathGlyph(ViewModel.IsCopyPathDone), Mode=OneWay}" />
             </Button>
             <Button
                 Command="{x:Bind ViewModel.CopyRawUrlCommand, Mode=OneWay}"
                 Style="{StaticResource AppToolbarButtonStyle}"
                 ToolTipService.ToolTip="Copy raw URL">
-                <FontIcon FontSize="16" Glyph="&#xE71B;" />
+                <FontIcon FontSize="16" Glyph="{x:Bind local:RepoCodeBreadcrumb.CopyRawUrlGlyph(ViewModel.IsCopyRawUrlDone), Mode=OneWay}" />
             </Button>
             <Button
                 Command="{x:Bind ViewModel.OpenOnGitHubCommand, Mode=OneWay}"

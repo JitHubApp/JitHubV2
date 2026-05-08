@@ -72,10 +72,33 @@ public sealed partial class RepoCodeBreadcrumb : UserControl
     // Private is fine — x:Bind generates code in the same partial class.
     private RepoCodeBreadcrumbViewModel? ViewModel => DataContext as RepoCodeBreadcrumbViewModel;
 
+    private RepoCodeBreadcrumbViewModel? _subscribedViewModel;
+
     private void OnDataContextChanged(FrameworkElement sender, DataContextChangedEventArgs args)
     {
+        if (_subscribedViewModel is not null)
+        {
+            _subscribedViewModel.PropertyChanged -= OnViewModelPropertyChanged;
+            _subscribedViewModel = null;
+        }
+
+        if (ViewModel is { } vm)
+        {
+            _subscribedViewModel = vm;
+            vm.PropertyChanged += OnViewModelPropertyChanged;
+        }
+
         // Re-evaluate all x:Bind expressions whenever the DataContext is replaced.
         Bindings.Update();
+    }
+
+    private void OnViewModelPropertyChanged(object? sender, System.ComponentModel.PropertyChangedEventArgs e)
+    {
+        if (e.PropertyName is nameof(RepoCodeBreadcrumbViewModel.IsCopyPathDone)
+            or nameof(RepoCodeBreadcrumbViewModel.IsCopyRawUrlDone))
+        {
+            Bindings.Update();
+        }
     }
 
     // ── Static helper for DataTemplate x:Bind expressions ────────────────
@@ -86,4 +109,10 @@ public sealed partial class RepoCodeBreadcrumb : UserControl
     /// </summary>
     public static Visibility NotRootVis(bool isRoot)
         => isRoot ? Visibility.Collapsed : Visibility.Visible;
+
+    /// <summary>Returns checkmark glyph when done, copy glyph otherwise.</summary>
+    public static string CopyPathGlyph(bool done) => done ? "\uE10B" : "\uE8C8";
+
+    /// <summary>Returns checkmark glyph when done, link glyph otherwise.</summary>
+    public static string CopyRawUrlGlyph(bool done) => done ? "\uE10B" : "\uE71B";
 }

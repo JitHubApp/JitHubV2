@@ -17,6 +17,12 @@ public sealed partial class RepoCodeBreadcrumbViewModel : ObservableObject
     [ObservableProperty]
     public partial string? CurrentGitHubUrl { get; set; }
 
+    [ObservableProperty]
+    public partial bool IsCopyPathDone { get; set; }
+
+    [ObservableProperty]
+    public partial bool IsCopyRawUrlDone { get; set; }
+
     /// <summary>
     /// Optional callback invoked when the user taps a breadcrumb segment.
     /// The page VM wires this to expand the tree to that folder.
@@ -34,7 +40,7 @@ public sealed partial class RepoCodeBreadcrumbViewModel : ObservableObject
     }
 
     [RelayCommand]
-    private async System.Threading.Tasks.Task CopyPathAsync()
+    private async System.Threading.Tasks.Task CopyPathAsync(System.Threading.CancellationToken ct)
     {
         string? path = GetCurrentFilePath();
         if (path is null) return;
@@ -42,18 +48,24 @@ public sealed partial class RepoCodeBreadcrumbViewModel : ObservableObject
         var dp = new DataPackage();
         dp.SetText(path);
         Clipboard.SetContent(dp);
-        await System.Threading.Tasks.Task.CompletedTask;
+
+        IsCopyPathDone = true;
+        try { await System.Threading.Tasks.Task.Delay(1500, ct); } catch (OperationCanceledException) { }
+        finally { IsCopyPathDone = false; }
     }
 
     [RelayCommand]
-    private async System.Threading.Tasks.Task CopyRawUrlAsync()
+    private async System.Threading.Tasks.Task CopyRawUrlAsync(System.Threading.CancellationToken ct)
     {
         if (CurrentRawUrl is null) return;
 
         var dp = new DataPackage();
         dp.SetText(CurrentRawUrl);
         Clipboard.SetContent(dp);
-        await System.Threading.Tasks.Task.CompletedTask;
+
+        IsCopyRawUrlDone = true;
+        try { await System.Threading.Tasks.Task.Delay(1500, ct); } catch (OperationCanceledException) { }
+        finally { IsCopyRawUrlDone = false; }
     }
 
     [RelayCommand]

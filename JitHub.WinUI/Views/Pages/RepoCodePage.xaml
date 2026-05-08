@@ -4,6 +4,7 @@
     xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
     xmlns:muxc="using:Microsoft.UI.Xaml.Controls"
     xmlns:cv="using:JitHub.WinUI.Views.Controls.CodeViewer"
+    xmlns:sizers="using:CommunityToolkit.WinUI.Controls"
     xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
     xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
     mc:Ignorable="d"
@@ -11,8 +12,9 @@
 
     <Grid x:Name="RootGrid" MinHeight="700">
         <Grid.ColumnDefinitions>
-            <ColumnDefinition Width="320" />
-            <ColumnDefinition Width="*" />
+            <ColumnDefinition Width="280" MinWidth="160" />
+            <ColumnDefinition Width="Auto" />
+            <ColumnDefinition Width="*" MinWidth="200" />
         </Grid.ColumnDefinitions>
 
         <Border Grid.Column="0"
@@ -23,7 +25,17 @@
                                  DataContext="{x:Bind ViewModel.Tree, Mode=OneWay}" />
         </Border>
 
-        <Grid Grid.Column="1">
+        <!--  Resizable splitter between tree panel and code panel  -->
+        <sizers:GridSplitter
+            Grid.Column="1"
+            Width="6"
+            HorizontalAlignment="Stretch"
+            ResizeDirection="Columns"
+            ResizeBehavior="BasedOnAlignment"
+            Background="{ThemeResource AppOutlineBrush}"
+            Opacity="0.5" />
+
+        <Grid Grid.Column="2">
             <Grid.RowDefinitions>
                 <RowDefinition Height="Auto" />
                 <RowDefinition Height="*" />
@@ -43,7 +55,7 @@
         </Grid>
 
         <muxc:ProgressRing x:Name="LoadingIndicator"
-                           Grid.ColumnSpan="2"
+                           Grid.ColumnSpan="3"
                            IsActive="{x:Bind ViewModel.IsLoading, Mode=OneWay}"
                            Visibility="{x:Bind ViewModel.IsLoading, Mode=OneWay}"
                            Width="50"
@@ -52,7 +64,7 @@
                            VerticalAlignment="Center" />
 
         <Border x:Name="ErrorBanner"
-                Grid.ColumnSpan="2"
+                Grid.ColumnSpan="3"
                 MaxWidth="520"
                 Padding="20"
                 HorizontalAlignment="Center"
