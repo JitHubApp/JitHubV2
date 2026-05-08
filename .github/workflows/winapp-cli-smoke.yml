@@ -4,15 +4,10 @@ on:
   workflow_dispatch:
     inputs:
       verify_debug_build:
-        description: Build JitHub.WinUI after installing winapp. This also builds editor assets from jithub-vs-code.
+        description: Build JitHub.WinUI after installing winapp.
         required: false
         default: false
         type: boolean
-      editor_assets_ref:
-        description: jithub-vs-code ref to build when verify_debug_build is true.
-        required: false
-        default: master
-        type: string
 
 permissions:
   contents: read
@@ -40,37 +35,6 @@ jobs:
           winapp --help
           winapp create-debug-identity --help
           winapp ui --help
-
-      - name: Checkout jithub-vs-code
-        if: ${{ inputs.verify_debug_build }}
-        uses: actions/checkout@v4
-        with:
-          repository: nerocui/jithub-vs-code
-          ref: ${{ inputs.editor_assets_ref }}
-          path: editor-assets
-
-      - name: Set up Node.js
-        if: ${{ inputs.verify_debug_build }}
-        uses: actions/setup-node@v4
-        with:
-          node-version: 22
-          cache: yarn
-          cache-dependency-path: editor-assets/yarn.lock
-
-      - name: Install editor asset dependencies
-        if: ${{ inputs.verify_debug_build }}
-        working-directory: editor-assets
-        shell: pwsh
-        run: yarn --frozen-lockfile
-
-      - name: Build editor assets
-        if: ${{ inputs.verify_debug_build }}
-        shell: pwsh
-        run: >
-          .\eng\Sync-JitHubVsCodeAssets.ps1
-          -VsCodeRepoPath "${{ github.workspace }}\editor-assets"
-          -DestinationPath "${{ github.workspace }}\artifacts\EditorAssets\dist"
-          -SkipInstall
 
       - name: Build WinUI debug app
         if: ${{ inputs.verify_debug_build }}

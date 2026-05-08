@@ -1,0 +1,113 @@
+<UserControl
+    x:Class="JitHub.WinUI.Views.Controls.CodeViewer.RepoCodeBreadcrumb"
+    xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+    xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+    xmlns:local="using:JitHub.WinUI.Views.Controls.CodeViewer"
+    xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+    xmlns:viewmodels="using:JitHub.WinUI.ViewModels.CodeViewer"
+    x:Name="Root"
+    d:DesignHeight="44"
+    d:DesignWidth="900"
+    mc:Ignorable="d">
+
+    <Grid
+        Background="{ThemeResource AppSurfaceBrush}"
+        BorderBrush="{ThemeResource AppOutlineBrush}"
+        BorderThickness="0,0,0,1"
+        Padding="8,6">
+
+        <Grid.ColumnDefinitions>
+            <ColumnDefinition Width="Auto" />
+            <ColumnDefinition Width="*" />
+            <ColumnDefinition Width="Auto" />
+        </Grid.ColumnDefinitions>
+
+        <!--  Back / Forward navigation  -->
+        <StackPanel
+            Grid.Column="0"
+            Margin="0,0,4,0"
+            Orientation="Horizontal"
+            Spacing="2"
+            VerticalAlignment="Center">
+            <Button
+                Command="{Binding ElementName=Root, Path=GoBackCommand}"
+                IsEnabled="{Binding ElementName=Root, Path=CanGoBack}"
+                Style="{StaticResource AppToolbarButtonStyle}"
+                ToolTipService.ToolTip="Go back">
+                <FontIcon FontSize="16" Glyph="&#xE72B;" />
+            </Button>
+            <Button
+                Command="{Binding ElementName=Root, Path=GoForwardCommand}"
+                IsEnabled="{Binding ElementName=Root, Path=CanGoForward}"
+                Style="{StaticResource AppToolbarButtonStyle}"
+                ToolTipService.ToolTip="Go forward">
+                <FontIcon FontSize="16" Glyph="&#xE72A;" />
+            </Button>
+        </StackPanel>
+
+        <!--  Path segments — scrollable horizontally  -->
+        <ScrollViewer
+            Grid.Column="1"
+            HorizontalScrollBarVisibility="Hidden"
+            HorizontalScrollMode="Auto"
+            VerticalScrollBarVisibility="Disabled"
+            VerticalScrollMode="Disabled">
+            <ItemsControl
+                VerticalAlignment="Center"
+                ItemsSource="{x:Bind ViewModel.Segments, Mode=OneWay}">
+                <ItemsControl.ItemsPanel>
+                    <ItemsPanelTemplate>
+                        <StackPanel Orientation="Horizontal" VerticalAlignment="Center" />
+                    </ItemsPanelTemplate>
+                </ItemsControl.ItemsPanel>
+                        <ItemsControl.ItemTemplate>
+                            <DataTemplate x:DataType="viewmodels:BreadcrumbSegment">
+                                <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
+                                    <!--  "›" separator — hidden for the root segment  -->
+                                    <TextBlock
+                                        Margin="2,0"
+                                        VerticalAlignment="Center"
+                                        Foreground="{ThemeResource AppInkMutedBrush}"
+                                        Text="›"
+                                        Visibility="{x:Bind local:RepoCodeBreadcrumb.NotRootVis(IsRoot)}" />
+                                    <TextBlock
+                                        Padding="4,2"
+                                        VerticalAlignment="Center"
+                                        Foreground="{ThemeResource AppInkBrush}"
+                                        Text="{x:Bind Label}" />
+                                </StackPanel>
+                            </DataTemplate>
+                        </ItemsControl.ItemTemplate>
+            </ItemsControl>
+        </ScrollViewer>
+
+        <!--  Action buttons: Copy path, Copy raw URL, Open on GitHub  -->
+        <StackPanel
+            Grid.Column="2"
+            Margin="4,0,0,0"
+            Orientation="Horizontal"
+            Spacing="2"
+            VerticalAlignment="Center">
+            <Button
+                Command="{x:Bind ViewModel.CopyPathCommand, Mode=OneWay}"
+                Style="{StaticResource AppToolbarButtonStyle}"
+                ToolTipService.ToolTip="Copy path">
+                <FontIcon FontSize="16" Glyph="{x:Bind local:RepoCodeBreadcrumb.CopyPathGlyph(ViewModel.IsCopyPathDone), Mode=OneWay}" />
+            </Button>
+            <Button
+                Command="{x:Bind ViewModel.CopyRawUrlCommand, Mode=OneWay}"
+                Style="{StaticResource AppToolbarButtonStyle}"
+                ToolTipService.ToolTip="Copy raw URL">
+                <FontIcon FontSize="16" Glyph="{x:Bind local:RepoCodeBreadcrumb.CopyRawUrlGlyph(ViewModel.IsCopyRawUrlDone), Mode=OneWay}" />
+            </Button>
+            <Button
+                Command="{x:Bind ViewModel.OpenOnGitHubCommand, Mode=OneWay}"
+                Style="{StaticResource AppToolbarButtonStyle}"
+                ToolTipService.ToolTip="Open on GitHub">
+                <FontIcon FontSize="16" Glyph="&#xE8A7;" />
+            </Button>
+        </StackPanel>
+
+    </Grid>
+</UserControl>

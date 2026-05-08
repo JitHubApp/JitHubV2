@@ -1,0 +1,62 @@
+<UserControl
+    x:Class="JitHub.WinUI.Views.Controls.CodeViewer.Renderers.UnsupportedPreview"
+    xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+    xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+    xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+    Background="{ThemeResource AppCanvasBrush}"
+    d:DesignHeight="400"
+    d:DesignWidth="600"
+    mc:Ignorable="d">
+
+    <Grid HorizontalAlignment="Center" VerticalAlignment="Center" MaxWidth="480" Padding="24">
+        <StackPanel Spacing="12">
+
+            <FontIcon
+                FontSize="48"
+                Foreground="{ThemeResource AppInkMutedBrush}"
+                Glyph="&#xE7BA;" />
+
+            <TextBlock
+                Style="{StaticResource SectionTitleTextBlockStyle}"
+                Text="Preview not available"
+                TextAlignment="Center" />
+
+            <TextBlock
+                x:Name="BodyText"
+                Foreground="{ThemeResource AppInkMutedBrush}"
+                Style="{StaticResource SectionSecondaryTextBlockStyle}"
+                TextAlignment="Center"
+                TextWrapping="Wrap" />
+
+            <StackPanel
+                HorizontalAlignment="Center"
+                Orientation="Horizontal"
+                Spacing="8">
+                <TextBlock
+                    x:Name="MetaText"
+                    Foreground="{ThemeResource AppInkMutedBrush}"
+                    Style="{StaticResource SectionSecondaryTextBlockStyle}" />
+            </StackPanel>
+
+            <StackPanel
+                HorizontalAlignment="Center"
+                Margin="0,8,0,0"
+                Orientation="Horizontal"
+                Spacing="8">
+                <Button
+                    x:Name="OpenOnGitHubButton"
+                    Click="OpenOnGitHub_Click"
+                    Content="Open on github.com"
+                    Style="{StaticResource AppAccentButtonStyle}" />
+                <Button
+                    x:Name="CopyUrlButton"
+                    Click="CopyUrl_Click"
+                    Content="Copy raw URL"
+                    Style="{StaticResource AppQuietButtonStyle}" />
+            </StackPanel>
+
+        </StackPanel>
+    </Grid>
+
+</UserControl>

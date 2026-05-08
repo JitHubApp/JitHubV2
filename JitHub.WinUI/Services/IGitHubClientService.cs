@@ -492,4 +492,12 @@ public interface IGitHubClientService
         int pageSize,
         int pageNumber = 1,
         CancellationToken cancellationToken = default);
+
+    Task<GitHubTree> GetTreeAsync(
+        string token,
+        string owner,
+        string name,
+        string treeSha,
+        bool recursive,
+        CancellationToken cancellationToken = default);
 }

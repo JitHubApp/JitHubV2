@@ -1,0 +1,52 @@
+name: Code Viewer Unit Tests
+
+on:
+  push:
+    branches:
+      - 'agents/native-code-viewer-integration'
+      - 'main'
+  pull_request:
+    branches:
+      - 'main'
+
+permissions:
+  contents: read
+
+jobs:
+  unit-tests:
+    name: Run code viewer unit tests
+    runs-on: windows-latest
+    timeout-minutes: 15
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up .NET SDK
+        uses: actions/setup-dotnet@v4
+        with:
+          global-json-file: ./global.json
+
+      - name: Restore dependencies
+        run: dotnet restore JitHub.WinUI.Tests/JitHub.WinUI.Tests.csproj -p:Platform=x64
+
+      - name: Build test project
+        run: dotnet build JitHub.WinUI.Tests/JitHub.WinUI.Tests.csproj -c Debug -p:Platform=x64 --no-restore
+
+      - name: Run unit tests
+        run: >
+          dotnet test JitHub.WinUI.Tests/JitHub.WinUI.Tests.csproj
+          -c Debug
+          -p:Platform=x64
+          --no-build
+          --logger "trx;LogFileName=test-results.trx"
+          --collect:"XPlat Code Coverage"
+
+      - name: Upload test results
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: test-results
+          path: |
+            **/*.trx
+            **/coverage.cobertura.xml

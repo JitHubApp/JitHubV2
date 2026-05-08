@@ -1,0 +1,40 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <TargetFramework>net10.0-windows10.0.19041.0</TargetFramework>
+    <Nullable>enable</Nullable>
+    <IsPackable>false</IsPackable>
+    <IsTestProject>true</IsTestProject>
+    <Platform Condition="'$(Platform)' == ''">x64</Platform>
+    <Platforms>x86;x64;ARM64</Platforms>
+    <RuntimeIdentifier Condition="'$(RuntimeIdentifier)' == '' and '$(Platform)' == 'x86'">win-x86</RuntimeIdentifier>
+    <RuntimeIdentifier Condition="'$(RuntimeIdentifier)' == '' and '$(Platform)' == 'x64'">win-x64</RuntimeIdentifier>
+    <RuntimeIdentifier Condition="'$(RuntimeIdentifier)' == '' and '$(Platform)' == 'ARM64'">win-arm64</RuntimeIdentifier>
+    <!-- Suppress warnings about Windows-specific APIs in test context -->
+    <NoWarn>$(NoWarn);CA1416</NoWarn>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <!-- Link pure C# service/model source files from JitHub.WinUI (no WinUI/XAML deps) -->
+    <Compile Include="..\JitHub.WinUI\Models\CodeViewer\*.cs" Link="Models\%(Filename)%(Extension)" />
+    <Compile Include="..\JitHub.WinUI\Services\CodeViewer\IFilePreviewResolver.cs" Link="Services\%(Filename)%(Extension)" />
+    <Compile Include="..\JitHub.WinUI\Services\CodeViewer\ILanguageIdResolver.cs" Link="Services\%(Filename)%(Extension)" />
+    <Compile Include="..\JitHub.WinUI\Services\CodeViewer\IRepoFileCacheService.cs" Link="Services\%(Filename)%(Extension)" />
+    <Compile Include="..\JitHub.WinUI\Services\CodeViewer\FilePreviewResolver.cs" Link="Services\%(Filename)%(Extension)" />
+    <Compile Include="..\JitHub.WinUI\Services\CodeViewer\LanguageIdResolver.cs" Link="Services\%(Filename)%(Extension)" />
+    <Compile Include="..\JitHub.WinUI\Services\CodeViewer\RepoFileCacheService.cs" Link="Services\%(Filename)%(Extension)" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <PackageReference Include="xunit" Version="2.9.2" />
+    <PackageReference Include="xunit.runner.visualstudio" Version="2.8.2">
+      <IncludeAssets>runtime; build; native; contentfiles; analyzers; buildtransitive</IncludeAssets>
+      <PrivateAssets>all</PrivateAssets>
+    </PackageReference>
+    <PackageReference Include="Microsoft.NET.Test.Sdk" Version="17.12.0" />
+    <PackageReference Include="NSubstitute" Version="5.3.0" />
+    <PackageReference Include="coverlet.collector" Version="6.0.2">
+      <IncludeAssets>runtime; build; native; contentfiles; analyzers; buildtransitive</IncludeAssets>
+      <PrivateAssets>all</PrivateAssets>
+    </PackageReference>
+  </ItemGroup>
+</Project>

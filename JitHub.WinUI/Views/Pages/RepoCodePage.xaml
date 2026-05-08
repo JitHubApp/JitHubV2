@@ -2,56 +2,84 @@
     x:Class="JitHub.WinUI.Views.Pages.RepoCodePage"
     xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
     xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
-    xmlns:local="using:JitHub.WinUI.Views.Pages"
-    xmlns:ui="using:CommunityToolkit.WinUI.UI"
     xmlns:muxc="using:Microsoft.UI.Xaml.Controls"
+    xmlns:cv="using:JitHub.WinUI.Views.Controls.CodeViewer"
+    xmlns:sizers="using:CommunityToolkit.WinUI.Controls"
     xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
     xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
-    xmlns:controls="using:Microsoft.UI.Xaml.Controls"
     mc:Ignorable="d"
     Background="Transparent">
-    <Grid
-        MinHeight="700">
-        <muxc:ProgressRing
-            x:Name="LoadingIndicator"
-            Visibility="Visible"
-            IsActive="True"
-            Width="50"
-            Height="50"
-            HorizontalAlignment="Center"
-            VerticalAlignment="Center"/>
-        <Border
-            x:Name="ErrorState"
-            MaxWidth="520"
-            Padding="20"
-            HorizontalAlignment="Center"
-            VerticalAlignment="Center"
-            Background="{ThemeResource AppSurfaceBrush}"
-            BorderBrush="{ThemeResource AppOutlineBrush}"
-            BorderThickness="1"
-            CornerRadius="{ThemeResource AppRadiusLarge}"
-            Visibility="Collapsed">
-            <StackPanel Spacing="12">
-                <TextBlock
-                    HorizontalAlignment="Center"
-                    Style="{StaticResource SectionTitleTextBlockStyle}"
-                    Text="Unable to load the embedded editor." />
-                <TextBlock
-                    x:Name="ErrorText"
-                    Style="{StaticResource SectionSecondaryTextBlockStyle}"
-                    TextWrapping="WrapWholeWords"
-                    TextAlignment="Center" />
+
+    <Grid x:Name="RootGrid" MinHeight="700">
+        <Grid.ColumnDefinitions>
+            <ColumnDefinition Width="280" MinWidth="160" />
+            <ColumnDefinition Width="4" />
+            <ColumnDefinition Width="*" MinWidth="200" />
+        </Grid.ColumnDefinitions>
+
+        <Border Grid.Column="0"
+                Background="{ThemeResource AppSurfaceBrush}"
+                BorderBrush="{ThemeResource AppOutlineBrush}"
+                BorderThickness="0,0,1,0">
+            <cv:RepoFileTreeView x:Name="FileTree"
+                                 DataContext="{x:Bind ViewModel.Tree, Mode=OneWay}" />
+        </Border>
+
+        <!--  Resizable splitter between tree panel and code panel  -->
+        <!--  Visual divider comes from the tree Border's right border; splitter is a transparent drag target  -->
+        <sizers:GridSplitter
+            Grid.Column="1"
+            HorizontalAlignment="Stretch"
+            ResizeDirection="Columns"
+            ResizeBehavior="PreviousAndNext"
+            Background="Transparent" />
+
+        <Grid Grid.Column="2">
+            <Grid.RowDefinitions>
+                <RowDefinition Height="Auto" />
+                <RowDefinition Height="*" />
+            </Grid.RowDefinitions>
+
+            <cv:RepoCodeBreadcrumb x:Name="Breadcrumb"
+                                   Grid.Row="0"
+                                   DataContext="{x:Bind ViewModel.Breadcrumb, Mode=OneWay}"
+                                   GoBackCommand="{x:Bind ViewModel.GoBackCommand, Mode=OneWay}"
+                                   GoForwardCommand="{x:Bind ViewModel.GoForwardCommand, Mode=OneWay}"
+                                   CanGoBack="{x:Bind ViewModel.CanGoBack, Mode=OneWay}"
+                                   CanGoForward="{x:Bind ViewModel.CanGoForward, Mode=OneWay}" />
+
+            <cv:FilePreviewHost x:Name="PreviewHost"
+                                Grid.Row="1"
+                                DataContext="{x:Bind ViewModel.Preview, Mode=OneWay}" />
+        </Grid>
+
+        <muxc:ProgressRing x:Name="LoadingIndicator"
+                           Grid.ColumnSpan="3"
+                           IsActive="{x:Bind ViewModel.IsLoading, Mode=OneWay}"
+                           Visibility="{x:Bind ViewModel.IsLoading, Mode=OneWay}"
+                           Width="50"
+                           Height="50"
+                           HorizontalAlignment="Center"
+                           VerticalAlignment="Center" />
+
+        <Border x:Name="ErrorBanner"
+                Grid.ColumnSpan="3"
+                MaxWidth="520"
+                Padding="20"
+                HorizontalAlignment="Center"
+                VerticalAlignment="Center"
+                Background="{ThemeResource AppSurfaceBrush}"
+                BorderBrush="{ThemeResource AppOutlineBrush}"
+                BorderThickness="1"
+                CornerRadius="{ThemeResource AppRadiusLarge}"
+                Visibility="Collapsed">
+            <StackPanel Spacing="8">
+                <TextBlock Style="{StaticResource SectionTitleTextBlockStyle}"
+                           Text="Couldn't load this repository's code." />
+                <TextBlock x:Name="ErrorMessageText"
+                           Style="{StaticResource SectionSecondaryTextBlockStyle}"
+                           TextWrapping="WrapWholeWords" />
             </StackPanel>
         </Border>
-        <Grid
-            x:Name="WebViewContainer"
-            HorizontalAlignment="Stretch"
-            VerticalAlignment="Stretch"
-            Visibility="Collapsed"
-            ui:VisualExtensions.NormalizedCenterPoint="0.5">
-            <muxc:WebView2
-                x:Name="ShellWebView" />
-        </Grid>
     </Grid>
 </Page>
-

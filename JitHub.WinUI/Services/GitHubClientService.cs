@@ -1620,6 +1620,33 @@ public sealed class GitHubClientService : IGitHubClientService
             .ToList();
     }
 
+    public async Task<GitHubTree> GetTreeAsync(
+        string token,
+        string owner,
+        string name,
+        string treeSha,
+        bool recursive,
+        CancellationToken cancellationToken = default)
+    {
+        string path =
+            $"repos/{Uri.EscapeDataString(owner)}/{Uri.EscapeDataString(name)}/git/trees/{Uri.EscapeDataString(treeSha)}";
+        if (recursive)
+        {
+            path += "?recursive=1";
+        }
+
+        using HttpRequestMessage request = CreateAuthenticatedRequest(HttpMethod.Get, path, token);
+        using HttpResponseMessage response =
+            await _httpClient.SendAsync(request, HttpCompletionOption.ResponseHeadersRead, cancellationToken);
+        await EnsureSuccessAsync(response, cancellationToken);
+
+        return await ReadResponseAsync(
+            response,
+            GitHubJsonSerializerContext.Default.GitHubTree,
+            "git tree",
+            cancellationToken);
+    }
+
     private static HttpRequestMessage CreateAuthenticatedRequest(HttpMethod method, string relativePath, string token)
     {
         HttpRequestMessage request = new(method, relativePath);

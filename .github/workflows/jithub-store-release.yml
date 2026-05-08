@@ -7,11 +7,6 @@ on:
         description: Four-part Store package version (for example 1.6.5.0)
         required: true
         type: string
-      editor_assets_ref:
-        description: jithub-vs-code ref to build for artifacts\EditorAssets\dist
-        required: false
-        default: master
-        type: string
       use_signing_certificate:
         description: Sign the package with the configured PFX before Store upload. Leave false to match the existing Store-upload flow where Partner Center re-signs the submitted package.
         required: false
@@ -69,29 +64,10 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@v4
 
-      - name: Checkout jithub-vs-code
-        uses: actions/checkout@v4
-        with:
-          repository: nerocui/jithub-vs-code
-          ref: ${{ inputs.editor_assets_ref }}
-          path: editor-assets
-
-      - name: Set up Node.js
-        uses: actions/setup-node@v4
-        with:
-          node-version: 22
-          cache: yarn
-          cache-dependency-path: editor-assets/yarn.lock
-
       - name: Set up .NET SDK
         uses: actions/setup-dotnet@v4
         with:
           global-json-file: ./global.json
-
-      - name: Install editor asset dependencies
-        working-directory: editor-assets
-        shell: pwsh
-        run: yarn --frozen-lockfile
 
       - name: Set up Microsoft Store CLI
         uses: microsoft/microsoft-store-apppublisher@v1.3
@@ -99,14 +75,6 @@ jobs:
       - name: Verify Microsoft Store CLI
         shell: pwsh
         run: msstore --help
-
-      - name: Build editor assets
-        shell: pwsh
-        run: >
-          .\eng\Sync-JitHubVsCodeAssets.ps1
-          -VsCodeRepoPath "${{ github.workspace }}\editor-assets"
-          -DestinationPath "${{ github.workspace }}\artifacts\EditorAssets\dist"
-          -SkipInstall
 
       - name: Patch Store manifest values
         shell: pwsh

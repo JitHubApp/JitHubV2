@@ -1,0 +1,35 @@
+<UserControl
+    x:Class="JitHub.WinUI.Views.Controls.CodeViewer.Renderers.SvgPreview"
+    xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+    xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+    xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+    xmlns:skia="using:SkiaSharp.Views.Windows"
+    Background="{ThemeResource AppCanvasBrush}"
+    d:DesignHeight="500"
+    d:DesignWidth="700"
+    mc:Ignorable="d">
+
+    <ScrollViewer
+        HorizontalScrollBarVisibility="Auto"
+        MaxZoomFactor="8"
+        MinZoomFactor="0.1"
+        VerticalScrollBarVisibility="Auto"
+        ZoomMode="Enabled">
+        <Grid Padding="16">
+            <skia:SKXamlCanvas
+                x:Name="SvgCanvas"
+                HorizontalAlignment="Stretch"
+                VerticalAlignment="Stretch"
+                PaintSurface="SvgCanvas_PaintSurface" />
+            <TextBlock
+                x:Name="ErrorText"
+                HorizontalAlignment="Center"
+                VerticalAlignment="Center"
+                Foreground="{ThemeResource AppInkMutedBrush}"
+                Text="Unable to render this SVG."
+                Visibility="Collapsed" />
+        </Grid>
+    </ScrollViewer>
+
+</UserControl>

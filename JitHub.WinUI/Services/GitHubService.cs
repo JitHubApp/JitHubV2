@@ -23,6 +23,7 @@ using System.IO;
 using System.Linq;
 using System.Runtime.InteropServices.WindowsRuntime;
 using System.Text;
+using System.Threading;
 using System.Threading.Tasks;
 using Windows.Storage.Streams;
 using Microsoft.UI.Xaml.Controls;
@@ -1532,6 +1533,102 @@ namespace JitHub.Services
             nodes.AddRange(files);
             
             return nodes;
+        }
+
+        public async Task<JitHub.Models.CodeViewer.RepoTree> GetRepoTreeAsync(string owner, string name, string refOrSha, CancellationToken ct)
+        {
+            Models.GitHub.GitHubTree gitTree = await _gitHubClientService.GetTreeAsync(
+                GetAccessTokenOrThrow(),
+                owner,
+                name,
+                refOrSha,
+                recursive: true,
+                ct);
+            return BuildRepoTree(gitTree);
+        }
+
+        private static JitHub.Models.CodeViewer.RepoTree BuildRepoTree(Models.GitHub.GitHubTree gitTree)
+        {
+            var root = new JitHub.Models.CodeViewer.RepoTreeNode
+            {
+                Name = string.Empty,
+                Path = string.Empty,
+                IsDirectory = true,
+                ParentPath = null,
+            };
+
+            // index of path -> node for fast lookup while building tree
+            var nodeMap = new Dictionary<string, JitHub.Models.CodeViewer.RepoTreeNode>(StringComparer.Ordinal)
+            {
+                [string.Empty] = root
+            };
+
+            if (gitTree.Tree is not null)
+            {
+                foreach (var entry in gitTree.Tree)
+                {
+                    if (string.IsNullOrEmpty(entry.Path))
+                        continue;
+
+                    EnsurePath(entry.Path, entry, nodeMap);
+                }
+            }
+
+            // Sort each directory's children: directories first, then files, each group alphabetical
+            SortChildren(root);
+
+            return new JitHub.Models.CodeViewer.RepoTree
+            {
+                Sha = gitTree.Sha,
+                Truncated = gitTree.Truncated,
+                Root = root,
+            };
+        }
+
+        private static JitHub.Models.CodeViewer.RepoTreeNode EnsurePath(
+            string path,
+            Models.GitHub.GitHubTreeEntry? entry,
+            Dictionary<string, JitHub.Models.CodeViewer.RepoTreeNode> nodeMap)
+        {
+            if (nodeMap.TryGetValue(path, out var existing))
+                return existing;
+
+            int slashIndex = path.LastIndexOf('/');
+            string parentPath = slashIndex < 0 ? string.Empty : path[..slashIndex];
+            string name = slashIndex < 0 ? path : path[(slashIndex + 1)..];
+
+            JitHub.Models.CodeViewer.RepoTreeNode parent = EnsurePath(parentPath, null, nodeMap);
+
+            bool isDir = entry is null || string.Equals(entry.Type, "tree", StringComparison.Ordinal);
+            var node = new JitHub.Models.CodeViewer.RepoTreeNode
+            {
+                Name = name,
+                Path = path,
+                Sha = entry?.Sha,
+                Size = entry?.Size,
+                IsDirectory = isDir,
+                ParentPath = parentPath,
+            };
+
+            nodeMap[path] = node;
+            ((List<JitHub.Models.CodeViewer.RepoTreeNode>)parent.Children).Add(node);
+            return node;
+        }
+
+        private static void SortChildren(JitHub.Models.CodeViewer.RepoTreeNode node)
+        {
+            var list = (List<JitHub.Models.CodeViewer.RepoTreeNode>)node.Children;
+            list.Sort(static (a, b) =>
+            {
+                if (a.IsDirectory != b.IsDirectory)
+                    return a.IsDirectory ? -1 : 1;
+                return string.Compare(a.Name, b.Name, StringComparison.OrdinalIgnoreCase);
+            });
+            foreach (var child in list)
+            {
+                if (child.IsDirectory)
+                    SortChildren(child);
+            }
         }
 
         public async Task<CompareResult> CompareCommits(string owner, string name, string @base, string head)

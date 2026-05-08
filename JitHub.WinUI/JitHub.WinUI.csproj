@@ -29,8 +29,6 @@
     <SuppressXamlWarnings>1506;1510</SuppressXamlWarnings>
     <EnableXBindDiagnostics>false</EnableXBindDiagnostics>
     <EnableBindingDiagnostics>false</EnableBindingDiagnostics>
-    <EditorAssetsSourcePath>$(MSBuildProjectDirectory)\..\artifacts\EditorAssets\dist</EditorAssetsSourcePath>
-    <EditorAssetsIndexPath>$(EditorAssetsSourcePath)\index.html</EditorAssetsIndexPath>
   </PropertyGroup>
 
   <ItemGroup>
@@ -46,6 +44,7 @@
     <Content Include="Assets\Wide310x150Logo*.png" CopyToOutputDirectory="PreserveNewest" CopyToPublishDirectory="PreserveNewest" />
     <Content Include="Assets\StoreLogo.png" CopyToOutputDirectory="PreserveNewest" CopyToPublishDirectory="PreserveNewest" />
     <Content Include="Assets\StoreLogo.scale-*.png" CopyToOutputDirectory="PreserveNewest" CopyToPublishDirectory="PreserveNewest" />
+    <Content Include="Assets\CodeViewer\**\*" CopyToOutputDirectory="PreserveNewest" CopyToPublishDirectory="PreserveNewest" />
   </ItemGroup>
 
   <ItemGroup>
@@ -69,12 +68,6 @@
       <Link>Assets\LinkLogos\%(RecursiveDir)%(Filename)%(Extension)</Link>
       <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
       <CopyToPublishDirectory>PreserveNewest</CopyToPublishDirectory>
-    </None>
-    <None Include="$(EditorAssetsSourcePath)\**\*">
-      <Link>Assets\dist\%(RecursiveDir)%(Filename)%(Extension)</Link>
-      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
-      <CopyToPublishDirectory>PreserveNewest</CopyToPublishDirectory>
-      <Visible>false</Visible>
     </None>
   </ItemGroup>
 
@@ -101,6 +94,13 @@
     <PackageReference Include="Microsoft.Windows.SDK.BuildTools" Version="10.0.28000.1721" />
     <PackageReference Include="Microsoft.WindowsAppSDK" Version="1.8.260317003" />
     <PackageReference Include="System.Reactive.Linq" Version="5.0.0" />
+    <PackageReference Include="WinUIEdit" Version="0.0.4-prerelease" />
+    <PackageReference Include="SkiaSharp" Version="3.119.2" />
+    <PackageReference Include="SkiaSharp.Views.WinUI" Version="3.119.2" />
+    <PackageReference Include="Svg.Skia" Version="4.6.0" />
+    <PackageReference Include="CsvHelper" Version="33.1.0" />
+    <PackageReference Include="CommunityToolkit.WinUI.UI.Controls.DataGrid" Version="7.1.2" />
+    <PackageReference Include="CommunityToolkit.WinUI.Controls.Sizers" Version="8.2.250402" />
   </ItemGroup>
 
   <PropertyGroup Condition="'$(DisableHasPackageAndPublishMenuAddedByProject)'!='true' and '$(EnableMsixTooling)'=='true'">
@@ -115,8 +115,4 @@
     <PublishAot Condition="'$(Configuration)' != 'Debug'">True</PublishAot>
     <SelfContained Condition="'$(Configuration)' != 'Debug'">True</SelfContained>
   </PropertyGroup>
-
-  <Target Name="EnsureEditorAssetsPresent" BeforeTargets="PrepareForBuild;GetCopyToPublishDirectoryItems" Condition="'$(DesignTimeBuild)' != 'true'">
-    <Error Condition="!Exists('$(EditorAssetsIndexPath)')" Text="Embedded editor assets are missing at '$(EditorAssetsIndexPath)'. Run .\sync-vscode-assets.ps1 before building, publishing, or packaging JitHub.WinUI." />
-  </Target>
 </Project>
