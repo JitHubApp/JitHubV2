@@ -392,6 +392,18 @@ public sealed partial class MarkdownRendererControl : UserControl
             MarkdownRenderer.Diagnostics.ShakeLogger.LogPaint(
                 "region", regionCount, region.X, region.Y, region.Width, region.Height);
             using var ds = sender.CreateDrawingSession(region);
+            // Force grayscale text anti-aliasing.  ClearType is *colour-aware*:
+            // the same glyph rendered onto a white background versus an
+            // alpha-blended selection-tinted background produces subtly
+            // different sub-pixel RGB values.  As a selection-drag sweeps the
+            // selection edge across a glyph, the background under that glyph
+            // re-tints every frame and ClearType re-tunes the glyph, which
+            // reads to the eye as visible "vibration" or "shake" of the text.
+            // Switching to grayscale anti-aliasing makes glyph edges
+            // background-independent — paint coordinates were already proven
+            // pixel-stable via Diagnostics.ShakeLogger, so this single line
+            // eliminates the perceived shake without any layout change.
+            ds.TextAntialiasing = Microsoft.Graphics.Canvas.Text.CanvasTextAntialiasing.Grayscale;
             // Selection beneath text.
             _selection.PaintHighlight(ds, _snapshot, hl);
             _snapshot.Paint(ds, region);
