@@ -468,7 +468,17 @@ public sealed partial class MarkdownRendererControl : UserControl
     }
 
     private InlineRun? _lastHoveredRun;
-    private bool _cursorIsHand;
+    // Tracks the ProtectedCursor shape we last set, or null when we have
+    // reset to the system default.  Three states:
+    //   null            → ProtectedCursor was reset; system default (Arrow) shows.
+    //                     Occurs when pointer exits the canvas or is over an embed.
+    //   IBeam           → pointer is over selectable text (not a link).
+    //   Hand            → pointer is over a link run.
+    // We only call ProtectedCursor setter when the desired state changes, but
+    // the "null" state is critical: setting ProtectedCursor = null on *this*
+    // UserControl means child elements (embeds) can use their own cursors
+    // without a parent IBeam overriding them.
+    private Microsoft.UI.Input.InputSystemCursorShape? _currentCursorShape;
 
     private void OnPointerMoved(object sender, PointerRoutedEventArgs e)
     {
@@ -517,9 +527,11 @@ public sealed partial class MarkdownRendererControl : UserControl
         // Pointer hovering an inline embed: do nothing.  The embed is its
         // own pointer-event target and its ProtectedCursor (Hand / IBeam /
         // arrow / …) takes effect via XAML's normal pointer routing.  We
-        // explicitly avoid touching ProtectedCursor on this control so we
-        // don't fight the embed's cursor.  We also avoid running link-hover
-        // logic because the pointer isn't over our text at all.
+        // reset our own ProtectedCursor to null so child elements are not
+        // overridden by an IBeam that this UserControl last set.  null
+        // means "no cursor override" — XAML walks up the tree and finds
+        // nothing, so the system default (Arrow) applies, allowing each
+        // embed to set its own cursor if desired.
         if (IsPointOverEmbed(pt))
         {
             // Clear our own link-hover so when the pointer leaves the embed
@@ -530,6 +542,7 @@ public sealed partial class MarkdownRendererControl : UserControl
                 _lastHoveredRun = null;
                 _canvas.Invalidate();
             }
+            SetCursorShape(null);
             return;
         }
 
@@ -559,8 +572,9 @@ public sealed partial class MarkdownRendererControl : UserControl
         var hoveredLink = hovered as LinkRun;
         var lastLink = _lastHoveredRun as LinkRun;
         bool linkChanged = !ReferenceEquals(hoveredLink, lastLink);
-        bool wantHandCursor = hoveredLink is not null;
-        bool cursorShapeChanged = wantHandCursor != _cursorIsHand;
+        var wantedShape = hoveredLink is not null
+            ? Microsoft.UI.Input.InputSystemCursorShape.Hand
+            : Microsoft.UI.Input.InputSystemCursorShape.IBeam;
 
         if (linkChanged)
         {
@@ -572,17 +586,29 @@ public sealed partial class MarkdownRendererControl : UserControl
         }
         _lastHoveredRun = hovered;
 
-        if (cursorShapeChanged)
+        SetCursorShape(wantedShape);
+    }
+
+    /// <summary>
+    /// Sets the cursor shape to <paramref name="shape"/> if it
+    /// differs from the last-set shape, or resets it to <c>null</c> (system
+    /// default — Arrow) when <paramref name="shape"/> is <c>null</c>.
+    /// Resetting to null is essential when the pointer leaves text areas and
+    /// enters overlay embeds: with null, XAML walks up the tree and finds no
+    /// cursor override, so child elements (Button, CheckBox, …) can show their
+    /// own cursors instead of inheriting IBeam from this UserControl.
+    /// </summary>
+    private void SetCursorShape(Microsoft.UI.Input.InputSystemCursorShape? shape)
+    {
+        if (shape == _currentCursorShape) return;
+        try
         {
-            try
-            {
-                ProtectedCursor = wantHandCursor
-                    ? Microsoft.UI.Input.InputSystemCursor.Create(Microsoft.UI.Input.InputSystemCursorShape.Hand)
-                    : Microsoft.UI.Input.InputSystemCursor.Create(Microsoft.UI.Input.InputSystemCursorShape.IBeam);
-                _cursorIsHand = wantHandCursor;
-            }
-            catch { /* ProtectedCursor isn't always settable */ }
+            ProtectedCursor = shape is { } s
+                ? Microsoft.UI.Input.InputSystemCursor.Create(s)
+                : null;
+            _currentCursorShape = shape;
         }
+        catch { /* ProtectedCursor isn't always settable */ }
     }
 
     private static (Layout.Boxes.InlineContainerBox? Box, InlineRun? Run) FindInlineHover(Layout.BlockBox box, Point pt)
@@ -681,17 +707,21 @@ public sealed partial class MarkdownRendererControl : UserControl
         // lost).  Without this, a link's hover colour and the hand cursor
         // persist even when the pointer is no longer over the control.
         if (_snapshot is null || _canvas is null) return;
-        if (_lastHoveredRun is null) return;
-        foreach (var b in _snapshot.Blocks) ClearHover(b);
-        _lastHoveredRun = null;
-        _canvas.Invalidate();
-        try
+        bool hadHover = _lastHoveredRun is not null;
+        if (hadHover)
         {
-            ProtectedCursor = Microsoft.UI.Input.InputSystemCursor
-                .Create(Microsoft.UI.Input.InputSystemCursorShape.IBeam);
-            _cursorIsHand = false;
+            foreach (var b in _snapshot.Blocks) ClearHover(b);
+            _lastHoveredRun = null;
+            _canvas.Invalidate();
         }
-        catch { }
+        // Always reset cursor to null (system default) on exit — not just
+        // when a link was hovered.  PointerExited fires whenever the pointer
+        // moves from the canvas to any sibling element — most importantly the
+        // overlay that hosts embedded WinUI elements.  With ProtectedCursor =
+        // null on this UserControl, XAML finds no cursor override anywhere in
+        // the tree above the embed, so the embed (Button, CheckBox, …) can
+        // show its own cursor instead of inheriting IBeam from us.
+        SetCursorShape(null);
     }
 
     private void OnPointerReleased(object sender, PointerRoutedEventArgs e)
