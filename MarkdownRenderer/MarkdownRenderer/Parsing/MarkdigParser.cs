@@ -17,9 +17,21 @@ public sealed class MarkdigParser
 
     public Task<ParsedMarkdown> ParseAsync(string source, CancellationToken ct = default)
     {
+        // Fast-path early cancellation without throwing inside Task.Run — that
+        // path produced noisy first-chance OperationCanceledExceptions on the
+        // thread-pool stack (visible in the debugger's exception window even
+        // though RebuildAsync correctly catches them downstream).
+        if (ct.IsCancellationRequested)
+            return Task.FromCanceled<ParsedMarkdown>(ct);
+
         return Task.Run(() =>
         {
-            ct.ThrowIfCancellationRequested();
+            // Markdown.Parse is synchronous and not cancellation-aware; we just
+            // observe the token cooperatively before paying the parse cost.
+            // Use IsCancellationRequested + return rather than ThrowIfCancellationRequested
+            // so we don't generate an exception object on the cancelled path.
+            if (ct.IsCancellationRequested)
+                return null!;
             var document = Markdown.Parse(source ?? string.Empty, _pipeline);
             return new ParsedMarkdown(source ?? string.Empty, document);
         }, ct);
