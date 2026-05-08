@@ -152,6 +152,17 @@ public sealed partial class MarkdownRendererControl : UserControl
             if (Math.Abs(_lastWidth - (float)e.NewSize.Width) > 0.5f) RequestRebuild();
         };
         SizeChanged += _sizeChangedHandler;
+        // Re-subscribe to Theme.Changed: OnUnloaded unhooks the handler, and
+        // a Load→Unload→Load cycle (TabView reuse, navigation hide/show)
+        // does not necessarily reassign the Theme DP, so without this the
+        // control would silently stop reacting to theme.Invalidate() after
+        // re-attach.  Unsubscribe first to avoid a duplicate handler if
+        // Loaded fires before any Unload has occurred.
+        if (Theme is { } t)
+        {
+            t.Changed -= OnThemeRevisionChanged;
+            t.Changed += OnThemeRevisionChanged;
+        }
         RequestRebuild();
     }
 
