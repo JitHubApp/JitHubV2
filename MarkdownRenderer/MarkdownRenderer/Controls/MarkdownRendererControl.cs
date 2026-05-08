@@ -159,6 +159,8 @@ public sealed partial class MarkdownRendererControl : UserControl
             _sizeChangedHandler = null;
         }
         _pipelineCts?.Cancel();
+        _pipelineCts?.Dispose();
+        _pipelineCts = null;
     }
 
     private void OnThemeChanged()
@@ -170,13 +172,38 @@ public sealed partial class MarkdownRendererControl : UserControl
     /// <summary>Kicks off (or re-kicks) the parse + layout pipeline.</summary>
     public void RequestRebuild()
     {
+        // Cancel the in-flight build (if any) but do NOT dispose the CTS here:
+        // the background task still holds a reference to the token and accessing
+        // IsCancellationRequested / ThrowIfCancellationRequested on a disposed
+        // token can throw ObjectDisposedException, which escapes our OCE catches
+        // and becomes an unobserved task exception.  Let the GC collect the old CTS.
         _pipelineCts?.Cancel();
-        _pipelineCts?.Dispose();
         _pipelineCts = new CancellationTokenSource();
-        _ = RebuildAsync(_pipelineCts.Token);
+        var cts = _pipelineCts;
+        _ = RebuildAsync(cts.Token).ContinueWith(t =>
+        {
+            if (t.IsFaulted)
+                System.Diagnostics.Debug.WriteLine($"[MarkdownRendererControl] Rebuild faulted: {t.Exception}");
+            // Dispose the CTS only after the task it was attached to has finished.
+            if (ReferenceEquals(_pipelineCts, cts)) { /* still current — let it live */ }
+            else cts.Dispose();
+        }, TaskScheduler.Default);
     }
 
     private async Task RebuildAsync(CancellationToken ct)
+    {
+        try
+        {
+            await RebuildInternalAsync(ct).ConfigureAwait(true);
+        }
+        catch (OperationCanceledException) { /* expected – a new build was requested */ }
+        catch (Exception ex)
+        {
+            System.Diagnostics.Debug.WriteLine($"[MarkdownRendererControl] Rebuild failed: {ex}");
+        }
+    }
+
+    private async Task RebuildInternalAsync(CancellationToken ct)
     {
         if (_canvas is null) return;
         var width = (float)Math.Max(50, ActualWidth);
@@ -188,11 +215,9 @@ public sealed partial class MarkdownRendererControl : UserControl
         var parser = new MarkdigParser(pipeline);
         var source = Markdown ?? string.Empty;
 
-        ParsedMarkdown parsed;
-        try { parsed = await parser.ParseAsync(source, ct).ConfigureAwait(true); }
-        catch (OperationCanceledException) { return; }
-
-        if (ct.IsCancellationRequested) return;
+        ct.ThrowIfCancellationRequested();
+        var parsed = await parser.ParseAsync(source, ct).ConfigureAwait(true);
+        ct.ThrowIfCancellationRequested();
 
         var sourceMap = new MarkdownSourceMap(parsed.SourceText);
         var theme = Theme ?? _defaultTheme;
@@ -204,14 +229,9 @@ public sealed partial class MarkdownRendererControl : UserControl
         var ctx = new MarkdownLayoutContext(device, themeSnapshot, sourceMap, registry, FlowDirection);
         var builder = new LayoutBuilder(ctx, EmbedFactory);
 
-        LayoutSnapshot snapshot;
-        try
-        {
-            snapshot = await Task.Run(() => builder.Build(parsed.Document, width), ct).ConfigureAwait(true);
-        }
-        catch (OperationCanceledException) { return; }
-
-        if (ct.IsCancellationRequested) return;
+        ct.ThrowIfCancellationRequested();
+        var snapshot = await Task.Run(() => builder.Build(parsed.Document, width), ct).ConfigureAwait(true);
+        ct.ThrowIfCancellationRequested();
 
         _snapshot = snapshot;
         _canvas.Width = width;
