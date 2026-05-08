@@ -13,7 +13,7 @@
     <Grid x:Name="RootGrid" MinHeight="700">
         <Grid.ColumnDefinitions>
             <ColumnDefinition Width="280" MinWidth="160" />
-            <ColumnDefinition Width="Auto" />
+            <ColumnDefinition Width="4" />
             <ColumnDefinition Width="*" MinWidth="200" />
         </Grid.ColumnDefinitions>
 
@@ -26,14 +26,13 @@
         </Border>
 
         <!--  Resizable splitter between tree panel and code panel  -->
+        <!--  Visual divider comes from the tree Border's right border; splitter is a transparent drag target  -->
         <sizers:GridSplitter
             Grid.Column="1"
-            Width="6"
             HorizontalAlignment="Stretch"
             ResizeDirection="Columns"
-            ResizeBehavior="BasedOnAlignment"
-            Background="{ThemeResource AppOutlineBrush}"
-            Opacity="0.5" />
+            ResizeBehavior="PreviousAndNext"
+            Background="Transparent" />
 
         <Grid Grid.Column="2">
             <Grid.RowDefinitions>

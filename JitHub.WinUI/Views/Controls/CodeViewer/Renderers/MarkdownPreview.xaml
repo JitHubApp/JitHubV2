@@ -14,15 +14,21 @@
     <UserControl.Resources>
         <ResourceDictionary>
             <ResourceDictionary.ThemeDictionaries>
-                <!--  Light theme: fix inline code block colors  -->
+                <!--  Light theme: fix inline/code block colors and link colors  -->
                 <ResourceDictionary x:Key="Light">
-                    <SolidColorBrush x:Key="MarkdownInlineCodeBackground" Color="#EDEDED" />
-                    <SolidColorBrush x:Key="MarkdownInlineCodeForeground" Color="#1A1A1A" />
+                    <SolidColorBrush x:Key="InlineCodeBackground" Color="#E8E3D8" />
+                    <SolidColorBrush x:Key="InlineCodeForeground" Color="#223127" />
+                    <SolidColorBrush x:Key="CodeBlockBackground" Color="#EDE8DD" />
+                    <SolidColorBrush x:Key="CodeBlockForeground" Color="#223127" />
+                    <SolidColorBrush x:Key="HyperlinkButtonForeground" Color="#3E7B64" />
                 </ResourceDictionary>
-                <!--  Dark theme: fix hyperlink/link foreground  -->
+                <!--  Dark theme: fix link foreground and code block colors  -->
                 <ResourceDictionary x:Key="Dark">
-                    <SolidColorBrush x:Key="HyperlinkForeground" Color="#60CDFF" />
-                    <SolidColorBrush x:Key="HyperlinkPointerOverForeground" Color="#9BDBF5" />
+                    <SolidColorBrush x:Key="InlineCodeBackground" Color="#2A312B" />
+                    <SolidColorBrush x:Key="InlineCodeForeground" Color="#C7CDBF" />
+                    <SolidColorBrush x:Key="CodeBlockBackground" Color="#1C211C" />
+                    <SolidColorBrush x:Key="CodeBlockForeground" Color="#C7CDBF" />
+                    <SolidColorBrush x:Key="HyperlinkButtonForeground" Color="#77B59A" />
                 </ResourceDictionary>
             </ResourceDictionary.ThemeDictionaries>
         </ResourceDictionary>
@@ -60,9 +66,12 @@
                 Padding="16"
                 HorizontalScrollBarVisibility="Disabled"
                 HorizontalScrollMode="Disabled"
+                SizeChanged="RichPanel_SizeChanged"
                 Visibility="Visible">
                 <controls:MarkdownTextBlock
+                    x:Name="RichMarkdown"
                     Text="{x:Bind ViewModel.Text, Mode=OneWay}"
+                    Foreground="{ThemeResource AppInkBrush}"
                     HorizontalAlignment="Stretch" />
             </ScrollViewer>
 

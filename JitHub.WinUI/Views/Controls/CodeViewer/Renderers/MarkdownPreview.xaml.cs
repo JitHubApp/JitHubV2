@@ -1,6 +1,8 @@
+using System;
 using JitHub.WinUI.ViewModels.CodeViewer;
 using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Controls;
+using Microsoft.UI.Xaml.Media;
 
 namespace JitHub.WinUI.Views.Controls.CodeViewer.Renderers;
 
@@ -45,5 +47,29 @@ public sealed partial class MarkdownPreview : UserControl
         if (vm.ShowRichPreview != wantsRich)
             vm.ShowRichPreview = wantsRich;
         SyncPanels();
+    }
+
+    private void RichPanel_SizeChanged(object sender, SizeChangedEventArgs e)
+    {
+        // Constrain MarkdownTextBlock to viewport width (minus 16px padding each side).
+        double maxW = Math.Max(0, e.NewSize.Width - 32);
+        RichMarkdown.MaxWidth = maxW;
+        // Also walk the visual tree to constrain Image elements rendered by the markdown renderer.
+        ConstrainImagesInVisualTree(RichMarkdown, maxW);
+    }
+
+    private static void ConstrainImagesInVisualTree(DependencyObject parent, double maxWidth)
+    {
+        int count = VisualTreeHelper.GetChildrenCount(parent);
+        for (int i = 0; i < count; i++)
+        {
+            var child = VisualTreeHelper.GetChild(parent, i);
+            if (child is Image img)
+            {
+                img.MaxWidth = maxWidth;
+                img.Stretch = Stretch.Uniform;
+            }
+            ConstrainImagesInVisualTree(child, maxWidth);
+        }
     }
 }
