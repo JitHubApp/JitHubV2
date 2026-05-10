@@ -62,25 +62,44 @@ public partial class App : Application
 
     internal void HandleActivation(AppActivationArguments activationArguments)
     {
+        try
+        {
+            TraceActivation($"HandleActivation START Kind={activationArguments.Kind} Data={(activationArguments.Data is IProtocolActivatedEventArgs p ? p.Uri?.OriginalString : "null")}");
+        }
+        catch { }
+
         ActivationRequest activationRequest = CreateActivationRequest(activationArguments);
 
         if (_dispatcherQueue.HasThreadAccess)
         {
             _ = HandleActivationAsync(activationRequest);
+            try { TraceActivation("HandleActivation dispatched synchronously."); } catch { }
             return;
         }
 
-        _ = _dispatcherQueue.TryEnqueue(() => _ = HandleActivationAsync(activationRequest));
+        _ = _dispatcherQueue.TryEnqueue(() =>
+        {
+            try { TraceActivation("HandleActivation enqueued to dispatcher."); } catch { }
+            _ = HandleActivationAsync(activationRequest);
+        });
     }
 
     private async Task HandleActivationAsync(ActivationRequest activationRequest)
     {
         try
         {
+            TraceActivation($"HandleActivationAsync START Kind={activationRequest.Kind} Uri={activationRequest.ProtocolUri}");
+        }
+        catch { }
+
+        try
+        {
             await ActivateCoreAsync(activationRequest);
+            try { TraceActivation("ActivateCoreAsync completed successfully."); } catch { }
         }
         catch (Exception ex)
         {
+            try { TraceActivation($"HandleActivationAsync EXCEPTION: {ex}"); } catch { }
             MainWindow mainWindow = GetOrCreateMainWindow();
             LogActivationError(ex);
             mainWindow.ShowActivationError(FormatActivationError(ex));
@@ -89,10 +108,20 @@ public partial class App : Application
 
     private async Task ActivateCoreAsync(ActivationRequest activationRequest)
     {
+        try { TraceActivation($"ActivateCoreAsync START Kind={activationRequest.Kind} Uri={activationRequest.ProtocolUri}"); } catch { }
+
         MainWindow mainWindow = GetOrCreateMainWindow();
+        try { TraceActivation("MainWindow acquired"); } catch { }
+
         _services ??= BuildServices();
+        try { TraceActivation("_services built/initialized"); } catch { }
+
         InitializeNavigationTargets();
+        try { TraceActivation("Navigation targets initialized"); } catch { }
+
         mainWindow.ProcessActivation();
+        try { TraceActivation("MainWindow.ProcessActivation called"); } catch { }
+
         IAuthService authService = GetService<IAuthService>();
         IAccountService accountService = GetService<IAccountService>();
 
@@ -550,6 +579,19 @@ public partial class App : Application
             string logPath = Path.Combine(GetLogDirectoryPath(), "activation-error.log");
             string entry =
                 $"[{DateTimeOffset.Now:O}]{Environment.NewLine}{ex}{Environment.NewLine}{new string('-', 80)}{Environment.NewLine}";
+            File.AppendAllText(logPath, entry);
+        }
+        catch
+        {
+        }
+    }
+
+    internal static void TraceActivation(string message)
+    {
+        try
+        {
+            string logPath = Path.Combine(GetLogDirectoryPath(), "activation-trace.log");
+            string entry = $"[{DateTimeOffset.Now:O}] {message}{Environment.NewLine}";
             File.AppendAllText(logPath, entry);
         }
         catch

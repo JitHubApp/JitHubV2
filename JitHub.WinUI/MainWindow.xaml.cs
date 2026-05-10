@@ -126,15 +126,53 @@ public sealed partial class MainWindow : Window
 
     private void ActivateAndForeground()
     {
-        Activate();
+        try { App.TraceActivation("ActivateAndForeground START"); } catch { }
 
-        nint hwnd = WindowNative.GetWindowHandle(this);
-        if (IsIconic(hwnd))
+        try
         {
-            _ = ShowWindow(hwnd, SwRestore);
+            Activate();
+        }
+        catch (Exception ex)
+        {
+            try { App.TraceActivation($"Activate() exception: {ex}"); } catch { }
         }
 
-        _ = SetForegroundWindow(hwnd);
+        nint hwnd = nint.Zero;
+        try
+        {
+            hwnd = WindowNative.GetWindowHandle(this);
+            try { App.TraceActivation($"Got hwnd: {hwnd}"); } catch { }
+        }
+        catch (Exception ex)
+        {
+            try { App.TraceActivation($"GetWindowHandle exception: {ex}"); } catch { }
+        }
+
+        try
+        {
+            if (hwnd != nint.Zero && IsIconic(hwnd))
+            {
+                _ = ShowWindow(hwnd, SwRestore);
+                try { App.TraceActivation("ShowWindow called to restore."); } catch { }
+            }
+        }
+        catch (Exception ex)
+        {
+            try { App.TraceActivation($"ShowWindow exception: {ex}"); } catch { }
+        }
+
+        try
+        {
+            if (hwnd != nint.Zero)
+            {
+                _ = SetForegroundWindow(hwnd);
+                try { App.TraceActivation("SetForegroundWindow called."); } catch { }
+            }
+        }
+        catch (Exception ex)
+        {
+            try { App.TraceActivation($"SetForegroundWindow exception: {ex}"); } catch { }
+        }
     }
 
     private void ConfigureWindowIcon()
