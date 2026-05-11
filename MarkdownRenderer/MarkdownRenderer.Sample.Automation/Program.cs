@@ -307,7 +307,7 @@ internal static class Program
         Mouse.MoveTo(cx, cy);
         Thread.Sleep(100);
         // Use a small inter-click delay well below the system double-click time.
-        // 80 ms is safely under the 200 ms minimum double-click window; the control
+        // 60 ms is safely under the 200 ms minimum double-click window; the control
         // reads GetDoubleClickTime() which is typically 500 ms by default.
         Mouse.Click(FlaUI.Core.Input.MouseButton.Left);
         Thread.Sleep(60);

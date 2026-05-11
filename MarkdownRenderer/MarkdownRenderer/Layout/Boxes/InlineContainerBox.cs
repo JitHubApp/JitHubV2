@@ -560,6 +560,7 @@ public sealed class InlineContainerBox : BlockBox
             if (drawRunBg || rs.Underline || rs.Strikethrough)
             {
                 var regions = _layout.GetCharacterRegions(cumulative, len);
+                if (regions is null) { cumulative += len; continue; } // Win2D can return null on DirectWrite errors
                 foreach (var r in regions)
                 {
                     var lb = r.LayoutBounds;

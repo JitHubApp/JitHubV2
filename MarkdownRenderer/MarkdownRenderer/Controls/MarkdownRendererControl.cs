@@ -508,13 +508,14 @@ public sealed partial class MarkdownRendererControl : UserControl
         {
             t.Changed -= OnThemeRevisionChanged;
         }
-        _pipelineCts?.Cancel();
-        // Do NOT dispose here — the in-flight task holds ct by value; disposing
-        // the source while the continuation is suspended at an await point causes
-        // ct.ThrowIfCancellationRequested() to throw ObjectDisposedException instead
-        // of OperationCanceledException on resumption.  Let the ContinueWith
-        // handler in RequestRebuild dispose it after the task finishes.
+        // Cancel + dispose the CTS. Cancelling first ensures the token's
+        // IsCancellationRequested flag is set before disposal; ThrowIfCancellationRequested
+        // in the in-flight task reads that flag and is safe to call on a disposed-but-
+        // cancelled token. Registering new callbacks post-dispose is not done anywhere.
+        var oldCts = _pipelineCts;
+        oldCts?.Cancel();
         _pipelineCts = null;
+        oldCts?.Dispose();
         // Unsubscribe scroll handler so scroll-inertia events after visual-tree
         // removal don't fire OnScrollViewChanged on a partially-torn-down control.
         if (_scroll is not null) _scroll.ViewChanged -= OnScrollViewChanged;
@@ -701,9 +702,9 @@ public sealed partial class MarkdownRendererControl : UserControl
                     break;
                 }
             }
-            if (newY is { } targetOffset && targetOffset >= 0)
+            if (newY is { } targetOffset)
             {
-                scrollRestore.ChangeView(null, targetOffset, null, disableAnimation: true);
+                scrollRestore.ChangeView(null, Math.Max(0, targetOffset), null, disableAnimation: true);
             }
         }
 
@@ -1948,8 +1949,10 @@ public sealed partial class MarkdownRendererControl : UserControl
         menu.Items.Add(copyItem);
 
         var selectAllItem = new MenuFlyoutItem { Text = "Select All" };
+        selectAllItem.IsEnabled = IsSelectionEnabled;
         selectAllItem.Click += (_, _) =>
         {
+            if (!IsSelectionEnabled) return;
             _selection.SetAnchor(DocumentPosition.Zero);
             _selection.ExtendTo(new DocumentPosition(int.MaxValue, int.MaxValue, int.MaxValue));
         };
