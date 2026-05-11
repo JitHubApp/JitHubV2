@@ -86,6 +86,9 @@ public sealed partial class MarkdownRendererControl : UserControl
     private long _lastPressTickMs;
     private Point _lastPressPoint;
     private int _consecutiveClickCount;
+    // Set when the pointer is captured for a left-button press; cleared in OnPointerReleased.
+    // Guards the link-click path against right-button releases.
+    private bool _leftPointerCaptured;
     // System double-click time; read from the Win32 API at first use.
     private static readonly int _doubleClickTimeMs = GetSystemDoubleClickTimeMs();
 
@@ -918,6 +921,9 @@ public sealed partial class MarkdownRendererControl : UserControl
     private void OnPointerPressed(object sender, PointerRoutedEventArgs e)
     {
         if (!IsSelectionEnabled || _snapshot is null || _canvas is null) return;
+        // Only process left (primary) button presses; right-clicks are handled by
+        // OnRightTapped and must not affect the multi-click counter or selection anchor.
+        if (!e.GetCurrentPoint(_canvas).Properties.IsLeftButtonPressed) return;
         var pt = e.GetCurrentPoint(_canvas).Position;
 
         // Pressing *on* a hosted inline embed must NOT start a selection.
@@ -963,6 +969,7 @@ public sealed partial class MarkdownRendererControl : UserControl
         _lastPressPoint  = pt;
 
         Focus(FocusState.Pointer);
+        _leftPointerCaptured = true; // cleared in OnPointerReleased
         if (_snapshot.HitTest(pt, out var pos))
         {
             // Always arm the anchor first: this suppresses hover processing
@@ -1381,7 +1388,15 @@ public sealed partial class MarkdownRendererControl : UserControl
     {
         if (_canvas is null) return;
         _canvas.ReleasePointerCapture(e.Pointer);
+
+        // Only process left (primary) button releases for link-click and anchor clear.
+        // Right-button releases are handled by OnRightTapped; letting them through
+        // would fire LinkClick on a right-click-over-link.
+        // We detect this via _leftPointerCaptured which is set only for left-button presses.
+        bool wasLeft = _leftPointerCaptured;
+        _leftPointerCaptured = false;
         _selectionAnchor = null;
+        if (!wasLeft) return;
 
         // Click handling for links: if no real selection occurred, raise LinkClick
         // when the click lands on a LinkRun.
