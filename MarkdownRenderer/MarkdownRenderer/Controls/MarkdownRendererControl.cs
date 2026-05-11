@@ -496,6 +496,7 @@ public sealed partial class MarkdownRendererControl : UserControl
         // cycle (Unload → Load) starts with a clean pool.
         _selectionOverlayRects.Clear();
         _selectionBrush = null;
+        _focusRing = null; // evicted from overlay above; lazily re-created on re-attach
         var snap = _snapshot;
         _snapshot = null;
         snap?.Dispose();
@@ -665,6 +666,7 @@ public sealed partial class MarkdownRendererControl : UserControl
         _selectionOverlayRects.Clear(); // overlay was just cleared above
         _selection.Clear();             // stale selection no longer valid after re-layout
         _focusedItemIndex = -1;         // selection/focus stale after re-layout
+        _focusRing = null;              // evicted from overlay; will be lazily re-created on next Tab
         _focusableItems = snapshot.CollectFocusableItems();
         foreach (var b in snapshot.Blocks) CollectEmbedPlans(b);
         if (_scroll is not null)
@@ -1360,14 +1362,38 @@ public sealed partial class MarkdownRendererControl : UserControl
         if (_scroll is null || _snapshot is null) return;
         foreach (var b in _snapshot.Blocks)
         {
-            if (b.BlockIndex == blockIndex)
+            double? y = FindBlockY(b, blockIndex);
+            if (y is { } top)
             {
-                // Offset slightly above the block so it has visual context.
-                double targetY = Math.Max(0, b.Bounds.Top - 24);
+                double targetY = Math.Max(0, top - 24);
                 _scroll.ChangeView(null, targetY, null, disableAnimation: false);
                 return;
             }
         }
+    }
+
+    private static double? FindBlockY(BlockBox box, int blockIndex)
+    {
+        if (box.BlockIndex == blockIndex) return box.Bounds.Top;
+        if (box is Layout.Boxes.ListItemBox lib)
+        {
+            return FindBlockY(lib.Marker, blockIndex) ?? FindBlockY(lib.Content, blockIndex);
+        }
+        if (box is Layout.Boxes.StackBox sb)
+        {
+            foreach (var c in sb.Children)
+            {
+                if (FindBlockY(c, blockIndex) is { } y) return y;
+            }
+        }
+        if (box is Layout.Boxes.TableBox tb)
+        {
+            foreach (var cell in tb.GetCellBoxes())
+            {
+                if (FindBlockY(cell, blockIndex) is { } y) return y;
+            }
+        }
+        return null;
     }
 
     /// <summary>
@@ -1454,13 +1480,22 @@ public sealed partial class MarkdownRendererControl : UserControl
 
         if (_focusedItemIndex < 0)
         {
+            // No item is focused yet — enter focus cycling at the boundary.
             _focusedItemIndex = reverse ? items.Count - 1 : 0;
         }
         else
         {
-            _focusedItemIndex = reverse
-                ? (_focusedItemIndex - 1 + items.Count) % items.Count
-                : (_focusedItemIndex + 1) % items.Count;
+            // Already focused — check if we're at the exit boundary.
+            bool atEnd   = !reverse && _focusedItemIndex == items.Count - 1;
+            bool atStart = reverse  && _focusedItemIndex == 0;
+            if (atEnd || atStart)
+            {
+                // Let Tab/Shift+Tab leave the control to the next focusable element.
+                _focusedItemIndex = -1;
+                UpdateFocusRing();
+                return false;
+            }
+            _focusedItemIndex = reverse ? _focusedItemIndex - 1 : _focusedItemIndex + 1;
         }
         UpdateFocusRing();
         ScrollFocusedItemIntoView();
@@ -1521,7 +1556,7 @@ public sealed partial class MarkdownRendererControl : UserControl
 
         var item = items[_focusedItemIndex];
         var rect = GetFocusableItemRect(item);
-        if (rect.IsEmpty || rect.Width < 1 || rect.Height < 1)
+        if (rect is not { Width: > 0, Height: > 0 } r)
         {
             _focusRing.Visibility = Visibility.Collapsed;
             return;
@@ -1533,63 +1568,41 @@ public sealed partial class MarkdownRendererControl : UserControl
         _focusRing.BorderBrush = new SolidColorBrush(accent);
 
         const double pad = 2.0;
-        Canvas.SetLeft(_focusRing, rect.X - pad);
-        Canvas.SetTop(_focusRing, rect.Y - pad);
-        _focusRing.Width  = rect.Width  + pad * 2;
-        _focusRing.Height = rect.Height + pad * 2;
+        Canvas.SetLeft(_focusRing, r.X - pad);
+        Canvas.SetTop(_focusRing, r.Y - pad);
+        _focusRing.Width  = r.Width  + pad * 2;
+        _focusRing.Height = r.Height + pad * 2;
         _focusRing.Visibility = Visibility.Visible;
     }
 
-    private Rect GetFocusableItemRect(Layout.FocusableItem item)
+    private Rect? GetFocusableItemRect(Layout.FocusableItem item)
     {
-        if (_snapshot is null) return default;
+        if (_snapshot is null) return null;
         foreach (var b in _snapshot.Blocks)
         {
             if (b is Layout.Boxes.InlineContainerBox icb && icb.BlockIndex == item.BlockIndex)
                 return icb.GetRunRect(item.InlineIndex);
-            if (b is Layout.Boxes.ListItemBox lib)
-            {
-                var r = GetFocusableItemRectFromBlock(lib.Marker, item);
-                if (!r.IsEmpty) return r;
-                r = GetFocusableItemRectFromBlock(lib.Content, item);
-                if (!r.IsEmpty) return r;
-            }
-            else if (b is Layout.Boxes.StackBox sb)
-            {
-                foreach (var c in sb.Children)
-                {
-                    var r = GetFocusableItemRectFromBlock(c, item);
-                    if (!r.IsEmpty) return r;
-                }
-            }
-            else if (b is Layout.Boxes.TableBox tb)
-            {
-                foreach (var cell in tb.GetCellBoxes())
-                {
-                    var r = GetFocusableItemRectFromBlock(cell, item);
-                    if (!r.IsEmpty) return r;
-                }
-            }
+            var nested = GetFocusableItemRectFromBlock(b, item);
+            if (nested is not null) return nested;
         }
-        return default;
+        return null;
     }
 
-    private static Rect GetFocusableItemRectFromBlock(BlockBox box, Layout.FocusableItem item)
+    private static Rect? GetFocusableItemRectFromBlock(BlockBox box, Layout.FocusableItem item)
     {
         if (box is Layout.Boxes.InlineContainerBox icb && icb.BlockIndex == item.BlockIndex)
             return icb.GetRunRect(item.InlineIndex);
         if (box is Layout.Boxes.ListItemBox lib)
         {
-            var r = GetFocusableItemRectFromBlock(lib.Marker, item);
-            if (!r.IsEmpty) return r;
-            return GetFocusableItemRectFromBlock(lib.Content, item);
+            return GetFocusableItemRectFromBlock(lib.Marker, item)
+                ?? GetFocusableItemRectFromBlock(lib.Content, item);
         }
         if (box is Layout.Boxes.StackBox sb)
         {
             foreach (var c in sb.Children)
             {
                 var r = GetFocusableItemRectFromBlock(c, item);
-                if (!r.IsEmpty) return r;
+                if (r is not null) return r;
             }
         }
         if (box is Layout.Boxes.TableBox tb)
@@ -1597,10 +1610,10 @@ public sealed partial class MarkdownRendererControl : UserControl
             foreach (var cell in tb.GetCellBoxes())
             {
                 var r = GetFocusableItemRectFromBlock(cell, item);
-                if (!r.IsEmpty) return r;
+                if (r is not null) return r;
             }
         }
-        return default;
+        return null;
     }
 
     /// <summary>Scrolls the focused item into view if it's outside the current viewport.</summary>
@@ -1609,8 +1622,7 @@ public sealed partial class MarkdownRendererControl : UserControl
         var items = _focusableItems;
         if (items is null || _focusedItemIndex < 0 || _scroll is null) return;
         var item = items[_focusedItemIndex];
-        var rect = GetFocusableItemRect(item);
-        if (rect.IsEmpty) return;
+        if (GetFocusableItemRect(item) is not { } rect) return;
 
         double top    = _scroll.VerticalOffset;
         double bottom = top + _scroll.ViewportHeight;
