@@ -50,7 +50,7 @@ public sealed class FootnoteRenderer : MarkdownNodeRenderer<FootnoteGroup>
             {
                 SourceSpan = new MarkdownRenderer.SourceSpan(footnote.Span.Start, 0),
             };
-            if (!TryAppendToLastInlineBox(content, backLinkRun, context))
+            if (!TryAppendToLastInlineBox(content, backLinkRun))
             {
                 // Fallback: create a new InlineContainerBox for the back-link.
                 var backLinkBox = new InlineContainerBox(context, MarkdownElementKeys.Body);
@@ -76,7 +76,7 @@ public sealed class FootnoteRenderer : MarkdownNodeRenderer<FootnoteGroup>
     /// <see cref="StackBox"/> tree and appends a space + the given run to it.
     /// Returns false if no eligible container was found.
     /// </summary>
-    private static bool TryAppendToLastInlineBox(StackBox stack, LinkRun run, MarkdownLayoutContext context)
+    private static bool TryAppendToLastInlineBox(StackBox stack, LinkRun run)
     {
         // Walk children in reverse to find the last InlineContainerBox.
         for (int i = stack.Children.Count - 1; i >= 0; i--)
@@ -89,10 +89,10 @@ public sealed class FootnoteRenderer : MarkdownNodeRenderer<FootnoteGroup>
                 icb.Add(run);
                 return true;
             }
-            if (child is StackBox nested && TryAppendToLastInlineBox(nested, run, context))
+            if (child is StackBox nested && TryAppendToLastInlineBox(nested, run))
                 return true;
             // ListItemBox.Content is a StackBox — recurse into it.
-            if (child is ListItemBox lib && TryAppendToLastInlineBox(lib.Content, run, context))
+            if (child is ListItemBox lib && TryAppendToLastInlineBox(lib.Content, run))
                 return true;
         }
         return false;

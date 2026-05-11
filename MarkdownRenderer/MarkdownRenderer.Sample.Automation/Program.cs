@@ -429,7 +429,7 @@ internal static class Program
         string targetName = Path.GetFileNameWithoutExtension(appPath);
         foreach (var p in Process.GetProcessesByName(targetName))
         {
-            try { p.Kill(); p.WaitForExit(2000); } catch { }
+            using (p) { try { p.Kill(); p.WaitForExit(2000); } catch { } }
         }
     }
 }

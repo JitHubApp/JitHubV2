@@ -1020,6 +1020,10 @@ public sealed partial class MarkdownRendererControl : UserControl
         }
         else
         {
+            // HitTest missed (pointer landed on a gap or embed area).
+            // Reset the click counter so this miss isn't counted toward a
+            // future double/triple-click on a text run at the same spot.
+            _consecutiveClickCount = 0;
             _selection.Clear();
             _canvas.Invalidate();
         }
@@ -1426,6 +1430,7 @@ public sealed partial class MarkdownRendererControl : UserControl
         // the button.
         _leftPointerCaptured = false;
         _selectionAnchor = null;
+        _clickMode = ClickMode.Single; // reset so no stale word/block mode on next press
 
         // Clear hover state when the pointer leaves the canvas (or capture is
         // lost).  Without this, a link's hover colour and the hand cursor
