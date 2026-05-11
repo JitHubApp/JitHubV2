@@ -61,6 +61,14 @@ public sealed partial class MarkdownRendererControl : UserControl
     private SolidColorBrush? _selectionBrush;
     private Windows.UI.Color _selectionBrushColor;
 
+    // Background color used to clear each canvas tile before painting.  Captured
+    // from ActualTheme at rebuild time so that OnRegionsInvalidated (UI thread,
+    // but outside the rebuild flow) always uses the correct theme-aware color.
+    // Relying on ds.Clear(Colors.Transparent) doesn't work reliably because
+    // CanvasVirtualControl may not alpha-composite with the XAML compositor
+    // depending on the platform's DirectX swap-chain configuration.
+    private Windows.UI.Color _canvasBackground = Windows.UI.Color.FromArgb(0xFF, 0xFF, 0xFF, 0xFF);
+
     // Cache of inline-embed rectangles (in canvas/document coordinates) plus
     // the InlineRun + owning InlineContainerBox.  Built during PlaceEmbeds
     // and consulted from pointer handlers so we can:
@@ -547,6 +555,12 @@ public sealed partial class MarkdownRendererControl : UserControl
         var sourceMap = new MarkdownSourceMap(parsed.SourceText);
         var theme = Theme ?? _defaultTheme;
         var themeSnapshot = new ThemeResolver(this, theme).CreateSnapshot();
+        // Capture background color on the UI thread now — ActualTheme is correct
+        // at this point (ActualThemeChanged fires before we call RequestRebuild).
+        // Win11 surface colors: dark = #202020, light = white.
+        _canvasBackground = ActualTheme == ElementTheme.Dark
+            ? Windows.UI.Color.FromArgb(0xFF, 0x20, 0x20, 0x20)
+            : Windows.UI.Color.FromArgb(0xFF, 0xFF, 0xFF, 0xFF);
         // Use the shared CanvasDevice (always available, no visual-tree required).
         // CanvasVirtualControl only has a device after CreateResources fires, so
         // passing _canvas directly would crash if layout runs before first draw.
@@ -778,13 +792,14 @@ public sealed partial class MarkdownRendererControl : UserControl
             MarkdownRenderer.Diagnostics.ShakeLogger.LogPaint(
                 "region", regionCount, region.X, region.Y, region.Width, region.Height);
             using var ds = sender.CreateDrawingSession(region);
-            // CanvasVirtualControl does NOT auto-clear each region (unlike
-            // CanvasControl which clears to ClearColor on every Draw).  Without
-            // an explicit Clear the previous tile content persists, so switching
-            // between light and dark themes leaves stale-colored glyphs visible
-            // beneath newly painted content.  Transparent lets the underlying
-            // XAML background (theme-aware) show through.
-            ds.Clear(Microsoft.UI.Colors.Transparent);
+            // Clear to the theme-appropriate background color so that switching between
+            // light and dark mode (or any theme change) fully overwrites old tile content.
+            // We use an opaque theme color rather than Colors.Transparent because
+            // CanvasVirtualControl may not alpha-composite with the XAML compositor
+            // depending on the DirectX swap-chain configuration of the platform; on
+            // such configurations transparent pixels show as black rather than letting
+            // the XAML background show through.
+            ds.Clear(_canvasBackground);
             // Force grayscale text anti-aliasing.  ClearType is *colour-aware*:
             // the same glyph rendered onto a white background versus an
             // alpha-blended selection-tinted background produces subtly

@@ -61,6 +61,7 @@ public sealed class AlertRenderer : MarkdownNodeRenderer<QuoteBlock>
             AccentBar = alert.AccentColor,
             ContentPadding = new Thickness(16, 4, 8, 4),
             Margin = new Thickness(0, 4, 0, 4),
+            FlowDirection = context.FlowDirection,
         };
 
         // Title row: icon + alert type name
