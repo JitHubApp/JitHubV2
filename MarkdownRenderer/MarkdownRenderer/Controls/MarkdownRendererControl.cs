@@ -965,6 +965,11 @@ public sealed partial class MarkdownRendererControl : UserControl
         Focus(FocusState.Pointer);
         if (_snapshot.HitTest(pt, out var pos))
         {
+            // Always arm the anchor first: this suppresses hover processing
+            // in OnPointerMoved during any captured drag (single, double, or triple-click)
+            // and prevents a stale anchor from an earlier interaction being reused.
+            _selectionAnchor = pos;
+
             if (_consecutiveClickCount == 3)
             {
                 // Triple-click: select the entire block (line).
@@ -979,7 +984,6 @@ public sealed partial class MarkdownRendererControl : UserControl
                 _canvas.CapturePointer(e.Pointer);
                 return;
             }
-            _selectionAnchor = pos;
             _selection.SetAnchor(pos);
             // Invalidate to repaint link-hover state (hover suppressed during drag).
             _canvas.Invalidate();
@@ -1711,7 +1715,6 @@ public sealed partial class MarkdownRendererControl : UserControl
         var (start, end) = icb.GetWordBoundaries(pos);
         _selection.SetAnchor(start);
         _selection.ExtendTo(end);
-        _selectionAnchor = null; // prevent drag from continuing as single-click drag
         _canvas?.Invalidate();
     }
 
@@ -1726,7 +1729,6 @@ public sealed partial class MarkdownRendererControl : UserControl
         var (start, end) = icb.GetBlockBoundaries();
         _selection.SetAnchor(start);
         _selection.ExtendTo(end);
-        _selectionAnchor = null;
         _canvas?.Invalidate();
     }
 
