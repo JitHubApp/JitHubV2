@@ -41,14 +41,22 @@ public static class TextBoundaryHelper
         while (start > 0 && !char.IsWhiteSpace(buffer[start - 1]))
             start--;
         // Snap backward past a low surrogate to avoid splitting a surrogate pair.
-        if (start > 0 && char.IsLowSurrogate(buffer[start])) start--;
+        // Only snap when the preceding character is a matching high surrogate;
+        // an orphaned low surrogate (after whitespace) must NOT drag start into whitespace.
+        if (start > 0 && char.IsLowSurrogate(buffer[start])
+                      && char.IsHighSurrogate(buffer[start - 1]))
+            start--;
 
         // Walk right to the end of the word.
         int end = idx;
         while (end < buffer.Length && !char.IsWhiteSpace(buffer[end]))
             end++;
         // Snap forward past a high surrogate to avoid splitting a surrogate pair.
-        if (end < buffer.Length && char.IsHighSurrogate(buffer[end - 1])) end++;
+        // Only snap when the next character is the matching low surrogate;
+        // an orphaned high surrogate (before whitespace) must NOT drag end into whitespace.
+        if (end < buffer.Length && char.IsHighSurrogate(buffer[end - 1])
+                                && char.IsLowSurrogate(buffer[end]))
+            end++;
 
         return (start, end);
     }

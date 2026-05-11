@@ -515,6 +515,14 @@ public sealed partial class MarkdownRendererControl : UserControl
         // of OperationCanceledException on resumption.  Let the ContinueWith
         // handler in RequestRebuild dispose it after the task finishes.
         _pipelineCts = null;
+        // Unsubscribe scroll handler so scroll-inertia events after visual-tree
+        // removal don't fire OnScrollViewChanged on a partially-torn-down control.
+        if (_scroll is not null) _scroll.ViewChanged -= OnScrollViewChanged;
+        // Unsubscribe all in-flight image load handlers before clearing the plan
+        // list; otherwise an async load completing after unload fires
+        // OnImageLoadCompleted → RequestRebuild on a torn-down control, causing a
+        // zombie rebuild cycle that re-subscribes handlers indefinitely.
+        foreach (var img in _imagePlans) img.LoadCompleted -= OnImageLoadCompleted;
         // Tear down embed plans before clearing the overlay so block embed
         // factories get RecycleBlock callbacks and inline embeds release
         // their Run.RealizedElement references — otherwise hosted controls

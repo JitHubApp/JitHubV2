@@ -454,7 +454,14 @@ internal static class Program
                             StringComparison.OrdinalIgnoreCase))
                     { p.Kill(); p.WaitForExit(2000); }
                 }
-                catch { }
+                catch (Exception ex) when (ex is System.ComponentModel.Win32Exception
+                                               or InvalidOperationException)
+                {
+                    // MainModule access can fail for elevated or cross-bitness processes;
+                    // log a warning rather than silently skipping.
+                    Console.Error.WriteLine($"[automation] warn: could not inspect PID {p.Id}: {ex.Message}");
+                }
+                catch { /* unexpected — ignore */ }
             }
         }
     }
