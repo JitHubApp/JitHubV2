@@ -33,10 +33,16 @@ public class StackBox : BlockBox
     {
         float innerWidth = availableWidth - (float)(ContentPadding.Left + ContentPadding.Right) - (float)(Margin.Left + Margin.Right);
         float y = (float)(Margin.Top + ContentPadding.Top);
+        // In RTL, the accent bar is on the right edge, so indent content from the
+        // RIGHT (ContentPadding.Left is the bar-side indent). Use ContentPadding.Right
+        // as the child's left-edge offset, leaving ContentPadding.Left space on the right.
+        float childStartX = FlowDirection == FlowDirection.RightToLeft
+            ? (float)(Margin.Left + ContentPadding.Right)
+            : (float)(Margin.Left + ContentPadding.Left);
         foreach (var child in _children)
         {
             float h = child.Measure(innerWidth);
-            child.Arrange((float)(Margin.Left + ContentPadding.Left), y, innerWidth);
+            child.Arrange(childStartX, y, innerWidth);
             y += h;
         }
         y += (float)(ContentPadding.Bottom + Margin.Bottom);

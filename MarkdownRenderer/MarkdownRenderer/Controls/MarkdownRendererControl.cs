@@ -47,7 +47,19 @@ public sealed partial class MarkdownRendererControl : UserControl
     // XAML Rectangle elements drawn on _overlay to show the selection highlight.
     // Keeping selection on the XAML layer means the DirectWrite canvas tiles are
     // never invalidated during a drag — eliminating tile-offset-driven glyph shake.
+    // The list acts as a pool: Rectangles are never removed from _overlay.Children
+    // during a drag update — only their Width/Height/Canvas.Left/Top/Visibility are
+    // mutated.  Inserting/removing Canvas children triggers a XAML layout pass on
+    // every pointer-move event and causes sub-pixel visual jitter of surrounding
+    // XAML elements (embedded buttons, etc.).  With the pool we pay the one-time
+    // Insert cost when a new stripe is first needed and zero tree-modification cost
+    // on subsequent updates.  The pool is invalidated (Cleared) whenever
+    // _overlay.Children.Clear() fires (on rebuild/unload).
     private readonly List<Rectangle> _selectionOverlayRects = new();
+    // Brush cache: reuse the same SolidColorBrush across drag frames so we don't
+    // allocate a new brush object on every pointer-move event.
+    private SolidColorBrush? _selectionBrush;
+    private Windows.UI.Color _selectionBrushColor;
 
     // Cache of inline-embed rectangles (in canvas/document coordinates) plus
     // the InlineRun + owning InlineContainerBox.  Built during PlaceEmbeds
@@ -443,6 +455,12 @@ public sealed partial class MarkdownRendererControl : UserControl
         // control to a new visual parent doesn't leak DirectWrite layouts
         // or keep stale FrameworkElements alive.
         _overlay?.Children.Clear();
+        // Clear the selection-rect pool: after the overlay is wiped the pooled
+        // Rectangles are no longer in _overlay.Children, so the pool references
+        // are stale.  CommitSnapshot does the same; mirror it here so a re-attach
+        // cycle (Unload → Load) starts with a clean pool.
+        _selectionOverlayRects.Clear();
+        _selectionBrush = null;
         var snap = _snapshot;
         _snapshot = null;
         snap?.Dispose();
@@ -760,6 +778,13 @@ public sealed partial class MarkdownRendererControl : UserControl
             MarkdownRenderer.Diagnostics.ShakeLogger.LogPaint(
                 "region", regionCount, region.X, region.Y, region.Width, region.Height);
             using var ds = sender.CreateDrawingSession(region);
+            // CanvasVirtualControl does NOT auto-clear each region (unlike
+            // CanvasControl which clears to ClearColor on every Draw).  Without
+            // an explicit Clear the previous tile content persists, so switching
+            // between light and dark themes leaves stale-colored glyphs visible
+            // beneath newly painted content.  Transparent lets the underlying
+            // XAML background (theme-aware) show through.
+            ds.Clear(Microsoft.UI.Colors.Transparent);
             // Force grayscale text anti-aliasing.  ClearType is *colour-aware*:
             // the same glyph rendered onto a white background versus an
             // alpha-blended selection-tinted background produces subtly
@@ -1094,45 +1119,77 @@ public sealed partial class MarkdownRendererControl : UserControl
     /// Called whenever _selection.Changed fires (SetAnchor / ExtendTo / Clear).
     /// By keeping selection on the XAML layer the DirectWrite canvas tiles are
     /// never dirtied during a drag, which eliminates tile-offset glyph shake.
+    ///
+    /// Pool pattern: Rectangles are never removed from _overlay.Children during a
+    /// drag update.  Only their geometry properties (Width/Height/Canvas.Left/Top)
+    /// and Visibility are mutated.  This avoids the XAML visual-tree mutation
+    /// (Children.Remove / Children.Insert) that was triggering a layout/render pass
+    /// on every pointer-move event and causing sub-pixel vertical jitter of nearby
+    /// XAML elements (embedded buttons, etc.).
     /// </summary>
     private void UpdateSelectionOverlay()
     {
         if (_overlay is null) return;
 
-        // Remove previous selection rectangles.
-        foreach (var r in _selectionOverlayRects)
-            _overlay.Children.Remove(r);
-        _selectionOverlayRects.Clear();
-
         var snapshot = _snapshot;
-        if (snapshot is null || !_selection.IsActive) return;
+        if (snapshot is null || !_selection.IsActive)
+        {
+            // Hide all pooled rectangles — don't remove them (cheaper).
+            foreach (var r in _selectionOverlayRects)
+                r.Visibility = Visibility.Collapsed;
+            return;
+        }
 
+        // Compute the desired selection highlight color.
         var theme = Theme ?? _defaultTheme;
         var accentBase = theme.AccentColor ?? Color.FromArgb(0x66, 0x00, 0x67, 0xC0);
         var hl = Color.FromArgb(0x55, accentBase.R, accentBase.G, accentBase.B);
-        var brush = new SolidColorBrush(hl);
 
+        // Reuse the cached brush when the color hasn't changed (common case during
+        // a drag: the highlight color is constant throughout the gesture).
+        if (_selectionBrush is null || _selectionBrushColor != hl)
+        {
+            _selectionBrush = new SolidColorBrush(hl);
+            _selectionBrushColor = hl;
+        }
+
+        int poolIdx = 0;
         foreach (var rect in _selection.GetHighlightRects(snapshot))
         {
-            // Integer-pixel snap (same as SelectionController.PaintHighlight).
+            // Integer-pixel snap.
             double x = Math.Floor(rect.X);
             double y = Math.Floor(rect.Y);
             double w = Math.Ceiling(rect.X + rect.Width) - x;
             double h = Math.Ceiling(rect.Y + rect.Height) - y;
 
-            var r = new Rectangle
+            Rectangle r;
+            if (poolIdx < _selectionOverlayRects.Count)
             {
-                Fill = brush,
-                Width = w,
-                Height = h,
-                IsHitTestVisible = false,
-            };
+                // Reuse existing pooled rectangle — no Children mutation.
+                r = _selectionOverlayRects[poolIdx];
+            }
+            else
+            {
+                // Pool exhausted: allocate a new rectangle and add it once.
+                r = new Rectangle { IsHitTestVisible = false };
+                // ZIndex -1 places it behind embedded controls (default ZIndex 0).
+                Canvas.SetZIndex(r, -1);
+                _overlay.Children.Add(r);
+                _selectionOverlayRects.Add(r);
+            }
+
+            r.Fill = _selectionBrush;
+            r.Width = w;
+            r.Height = h;
             Canvas.SetLeft(r, x);
             Canvas.SetTop(r, y);
-            // Insert at index 0 so selection is behind embedded controls.
-            _overlay.Children.Insert(0, r);
-            _selectionOverlayRects.Add(r);
+            r.Visibility = Visibility.Visible;
+            poolIdx++;
         }
+
+        // Hide any remaining pooled rectangles beyond the current stripe count.
+        for (int i = poolIdx; i < _selectionOverlayRects.Count; i++)
+            _selectionOverlayRects[i].Visibility = Visibility.Collapsed;
     }
 
     private void OnPointerExited(object sender, PointerRoutedEventArgs e)
