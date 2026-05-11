@@ -90,6 +90,8 @@ public sealed partial class MarkdownRendererControl : UserControl
     // Set when the pointer is captured for a left-button press; cleared in OnPointerReleased.
     // Guards the link-click path against right-button releases.
     private bool _leftPointerCaptured;
+    // Set in OnUnloaded; checked in dispatcher lambdas to guard against post-unload execution.
+    private bool _isUnloaded;
     // System double-click time; read from the Win32 API at first use.
     private static readonly int _doubleClickTimeMs = GetSystemDoubleClickTimeMs();
 
@@ -499,6 +501,10 @@ public sealed partial class MarkdownRendererControl : UserControl
 
     private void OnUnloaded()
     {
+        // Set before any unsubscription so dispatcher-queued lambdas
+        // (e.g. from OnImageLoadCompleted) that are already in-flight know
+        // not to call RequestRebuild after we've torn down.
+        _isUnloaded = true;
         if (_sizeChangedHandler is not null)
         {
             SizeChanged -= _sizeChangedHandler;
@@ -590,8 +596,8 @@ public sealed partial class MarkdownRendererControl : UserControl
         // Accessing DependencyObject members off the UI thread throws RPC_E_WRONG_THREAD.
         var dq = DispatcherQueue;
         if (dq is null) return;
-        if (dq.HasThreadAccess) { RequestRebuild(); return; }
-        dq.TryEnqueue(RequestRebuild);
+        if (dq.HasThreadAccess) { if (!_isUnloaded) RequestRebuild(); return; }
+        dq.TryEnqueue(() => { if (!_isUnloaded) RequestRebuild(); });
     }
 
     /// <summary>Kicks off (or re-kicks) the parse + layout pipeline.</summary>
@@ -933,6 +939,9 @@ public sealed partial class MarkdownRendererControl : UserControl
         bool layoutInvalidated = e?.LayoutInvalidated ?? true;
         dq.TryEnqueue(() =>
         {
+            // Guard against the TOCTOU window where this lambda was already
+            // dispatched before OnUnloaded ran its unsubscription.
+            if (_isUnloaded) return;
             if (layoutInvalidated)
             {
                 // Initial load / intrinsic-size change → coalesce through the
