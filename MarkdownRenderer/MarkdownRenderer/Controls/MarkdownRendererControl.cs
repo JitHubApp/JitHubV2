@@ -508,14 +508,14 @@ public sealed partial class MarkdownRendererControl : UserControl
         {
             t.Changed -= OnThemeRevisionChanged;
         }
-        // Cancel + dispose the CTS. Cancelling first ensures the token's
-        // IsCancellationRequested flag is set before disposal; ThrowIfCancellationRequested
-        // in the in-flight task reads that flag and is safe to call on a disposed-but-
-        // cancelled token. Registering new callbacks post-dispose is not done anywhere.
+        // Cancel but do not dispose the CTS here. The ContinueWith in RequestRebuild
+        // disposes it uniformly after the task finishes, whether it completes normally
+        // or via OperationCanceledException. Disposing here + in ContinueWith creates
+        // a non-atomic double-dispose race (CancellationTokenSource.Dispose is not
+        // thread-safe for concurrent calls from UI thread + ThreadPool).
         var oldCts = _pipelineCts;
         oldCts?.Cancel();
         _pipelineCts = null;
-        oldCts?.Dispose();
         // Unsubscribe scroll handler so scroll-inertia events after visual-tree
         // removal don't fire OnScrollViewChanged on a partially-torn-down control.
         if (_scroll is not null) _scroll.ViewChanged -= OnScrollViewChanged;
@@ -677,11 +677,17 @@ public sealed partial class MarkdownRendererControl : UserControl
             }
         }
 
+        ct.ThrowIfCancellationRequested();
+
         // Atomically swap snapshots, then dispose the old one so its
         // CanvasTextLayout / placeholder handles are released.
         var old = _snapshot;
         _snapshot = snapshot;
         old?.Dispose();
+        // Clear stale hover references so OnPointerExited/OnPointerMoved after the
+        // rebuild don't use Bounds from the now-disposed old snapshot for invalidation.
+        _lastHoveredRun = null;
+        _lastHoveredBox = null;
         _canvas.Width = width;
         _canvas.Height = Math.Max(1, snapshot.Size.Height);
         _root!.Width = width;
@@ -1218,7 +1224,9 @@ public sealed partial class MarkdownRendererControl : UserControl
         bool linkChanged = !ReferenceEquals(hoveredLink, lastLink);
         var wantedShape = hoveredLink is not null
             ? Microsoft.UI.Input.InputSystemCursorShape.Hand
-            : Microsoft.UI.Input.InputSystemCursorShape.IBeam;
+            : IsSelectionEnabled
+                ? Microsoft.UI.Input.InputSystemCursorShape.IBeam
+                : (Microsoft.UI.Input.InputSystemCursorShape?)null; // Arrow when selection is off
 
         if (linkChanged)
         {
