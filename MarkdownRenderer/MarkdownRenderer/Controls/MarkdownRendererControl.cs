@@ -503,8 +503,8 @@ public sealed partial class MarkdownRendererControl : UserControl
         {
             double pTop = plan.Rect.Top;
             double pBottom = plan.Rect.Bottom;
-            bool inRealize = pBottom >= realizeTop && pTop <= realizeBottom;
-            bool inDerealize = pBottom >= derealizeTop && pTop <= derealizeBottom;
+            bool inRealize = EmbedVisibility.IsInRealizeBand(pTop, pBottom, top, bottom, EmbedVirtualizationOverscanPx);
+            bool inDerealize = EmbedVisibility.IsInDerealizeBand(pTop, pBottom, top, bottom, EmbedVirtualizationDerealizeOverscanPx);
             if (inRealize)
             {
                 plan.Realize(this);

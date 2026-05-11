@@ -37,6 +37,11 @@
     <Platform Solution="Debug|Any CPU" Project="x64" />
     <Platform Solution="Release|Any CPU" Project="x86" />
   </Project>
+  <Project Path="MarkdownRenderer/MarkdownRenderer.Sample.Automation/MarkdownRenderer.Sample.Automation.csproj">
+    <Platform Solution="*|x64" Project="x64" />
+    <Platform Solution="Debug|Any CPU" Project="x64" />
+    <Platform Solution="Release|Any CPU" Project="x64" />
+  </Project>
   <Project Path="JitHub.WinUI/JitHub.WinUI.csproj">
     <Platform Solution="*|ARM" Project="x86" />
     <Platform Solution="*|ARM64" Project="ARM64" />

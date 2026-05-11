@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using Microsoft.UI.Xaml;
+using Microsoft.UI.Xaml.Automation;
 using Microsoft.UI.Xaml.Controls;
 using Microsoft.UI.Xaml.Controls.Primitives;
 using Microsoft.UI.Xaml.Media;
@@ -56,6 +57,8 @@ public sealed partial class MainWindow : Window
                 Tag = label,
                 Padding = new Thickness(10, 4, 10, 4),
             };
+            AutomationProperties.SetAutomationId(btn, "SampleButton_" + label.Replace(' ', '_'));
+            AutomationProperties.SetName(btn, label);
             btn.Click += OnSampleButtonClick;
             toolbar.Children.Add(btn);
         }
@@ -66,6 +69,8 @@ public sealed partial class MainWindow : Window
             Margin = new Thickness(16, 0, 0, 0),
             Padding = new Thickness(10, 4, 10, 4),
         };
+        AutomationProperties.SetAutomationId(themeToggle, "ThemeToggle");
+        AutomationProperties.SetName(themeToggle, "Theme");
         themeToggle.Checked   += (_, _) => SetTheme(ElementTheme.Dark);
         themeToggle.Unchecked += (_, _) => SetTheme(ElementTheme.Light);
         toolbar.Children.Add(themeToggle);
@@ -77,6 +82,8 @@ public sealed partial class MainWindow : Window
             Padding = new Thickness(10, 4, 10, 4),
             Name = "RtlToggle",
         };
+        AutomationProperties.SetAutomationId(rtlToggle, "RtlToggle");
+        AutomationProperties.SetName(rtlToggle, "RTL");
         rtlToggle.Checked   += (_, _) => { if (_renderer is not null) _renderer.FlowDirection = FlowDirection.RightToLeft; };
         rtlToggle.Unchecked += (_, _) => { if (_renderer is not null) _renderer.FlowDirection = FlowDirection.LeftToRight; };
         toolbar.Children.Add(rtlToggle);
@@ -121,6 +128,8 @@ public sealed partial class MainWindow : Window
             EmbedFactory = new SampleEmbedFactory(),
             Margin = new Thickness(0),
         };
+        AutomationProperties.SetAutomationId(_renderer, "MarkdownRenderer");
+        AutomationProperties.SetName(_renderer, "Markdown Renderer");
         _renderer.LinkClick += (_, e) =>
         {
             try { _ = Windows.System.Launcher.LaunchUriAsync(new Uri(e.Url)); } catch { }

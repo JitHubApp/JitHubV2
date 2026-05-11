@@ -55,7 +55,7 @@ public sealed class ImageBox : BlockBox
         _context = context;
         _url = url ?? string.Empty;
         _alt = alt ?? string.Empty;
-        _isSvg = LooksLikeSvg(_url);
+        _isSvg = SvgIntrinsics.LooksLikeSvg(_url);
         Margin = new Thickness(0, 6, 0, 6);
         if (!string.IsNullOrEmpty(_url))
         {
@@ -87,15 +87,7 @@ public sealed class ImageBox : BlockBox
     /// <summary>Test-only: height of the caption area at last measure (excludes margins).</summary>
     public float MeasuredCaptionHeight => _captionHeight;
 
-    private static bool LooksLikeSvg(string url)
-    {
-        if (string.IsNullOrEmpty(url)) return false;
-        // Strip query/hash before extension test.
-        int q = url.IndexOfAny(new[] { '?', '#' });
-        string path = q >= 0 ? url.Substring(0, q) : url;
-        return path.EndsWith(".svg", StringComparison.OrdinalIgnoreCase)
-               || url.StartsWith("data:image/svg+xml", StringComparison.OrdinalIgnoreCase);
-    }
+    private static bool LooksLikeSvg(string url) => SvgIntrinsics.LooksLikeSvg(url);
 
     public override float Measure(float availableWidth)
     {
@@ -337,59 +329,7 @@ public sealed class ImageBox : BlockBox
 
     internal static Size ExtractSvgIntrinsicSize(byte[] svgBytes)
     {
-        try
-        {
-            string xml = System.Text.Encoding.UTF8.GetString(svgBytes);
-            int rootStart = xml.IndexOf("<svg", StringComparison.OrdinalIgnoreCase);
-            if (rootStart < 0) return default;
-            int rootEnd = xml.IndexOf('>', rootStart);
-            if (rootEnd < 0) return default;
-            string opening = xml.Substring(rootStart, rootEnd - rootStart);
-
-            double width = ParseAttribute(opening, "width");
-            double height = ParseAttribute(opening, "height");
-            if (width > 0 && height > 0) return new Size(width, height);
-
-            // Fall back to viewBox="min-x min-y w h"
-            string? vb = ParseStringAttribute(opening, "viewBox");
-            if (vb is not null)
-            {
-                var parts = vb.Split(new[] { ' ', ',' }, StringSplitOptions.RemoveEmptyEntries);
-                if (parts.Length == 4
-                    && double.TryParse(parts[2], System.Globalization.NumberStyles.Float, System.Globalization.CultureInfo.InvariantCulture, out var vw)
-                    && double.TryParse(parts[3], System.Globalization.NumberStyles.Float, System.Globalization.CultureInfo.InvariantCulture, out var vh)
-                    && vw > 0 && vh > 0)
-                    return new Size(vw, vh);
-            }
-            return default;
-        }
-        catch { return default; }
-    }
-
-    private static double ParseAttribute(string element, string attr)
-    {
-        var s = ParseStringAttribute(element, attr);
-        if (s is null) return 0;
-        // Strip trailing units (px, pt, %, …).
-        int len = 0;
-        while (len < s.Length && (char.IsDigit(s[len]) || s[len] == '.' || s[len] == '-')) len++;
-        if (len == 0) return 0;
-        return double.TryParse(s.Substring(0, len), System.Globalization.NumberStyles.Float,
-            System.Globalization.CultureInfo.InvariantCulture, out var v) ? v : 0;
-    }
-
-    private static string? ParseStringAttribute(string element, string attr)
-    {
-        int idx = element.IndexOf(' ' + attr + '=', StringComparison.OrdinalIgnoreCase);
-        if (idx < 0) idx = element.IndexOf('\t' + attr + '=', StringComparison.OrdinalIgnoreCase);
-        if (idx < 0) idx = element.IndexOf('\n' + attr + '=', StringComparison.OrdinalIgnoreCase);
-        if (idx < 0) return null;
-        int eq = element.IndexOf('=', idx);
-        if (eq < 0) return null;
-        int start = eq + 1;
-        while (start < element.Length && (element[start] == ' ' || element[start] == '"' || element[start] == '\'')) start++;
-        int end = start;
-        while (end < element.Length && element[end] != '"' && element[end] != '\'' && element[end] != ' ' && element[end] != '>') end++;
-        return end > start ? element.Substring(start, end - start) : null;
+        var (w, h) = SvgIntrinsics.TryExtractIntrinsicSize(svgBytes);
+        return (w > 0 && h > 0) ? new Size(w, h) : default;
     }
 }
