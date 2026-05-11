@@ -49,7 +49,7 @@ public sealed class ImageBox : BlockBox
     private bool _loadFailed;
     private bool _svgReparseStarted;
     private int _svgReparseFailures;
-    private bool _disposed;
+    private volatile bool _disposed;
     private const int MaxSvgReparseAttempts = 2;
     private float _availableWidth;
     private float _imageHeight;
@@ -382,26 +382,28 @@ public sealed class ImageBox : BlockBox
             System.Diagnostics.Debug.WriteLine($"[ImageBox] bitmap load failed for {uri}: {ex.Message}");
             failed = true;
         }
-        // If we were disposed while the load was in flight, drop the freshly
-        // loaded resource and bail without raising LoadCompleted — the host
-        // already moved on to a new snapshot and the event would race against
-        // a freshly-built box.
-        if (_disposed)
+        PublishOnUiThread(() =>
         {
-            try { bmp?.Dispose(); } catch { }
-            return;
-        }
-        if (failed)
-        {
-            _loadFailed = true;
-            if (!string.IsNullOrEmpty(_url)) _failedUrls.TryAdd(_url, 0);
-        }
-        else if (bmp is not null)
-        {
-            _bitmap = bmp;
-            _bitmapCache[_url] = bmp;
-        }
-        LoadCompleted?.Invoke(this, new LoadCompletedEventArgs(layoutInvalidated: true));
+            // _disposed re-checked on the UI thread under happens-before with
+            // Dispose(); if we lost the race, drop the freshly-loaded native
+            // resource and bail without raising LoadCompleted.
+            if (_disposed) { try { bmp?.Dispose(); } catch { } return; }
+            if (failed)
+            {
+                _loadFailed = true;
+                // Register the URL so a layout rebuild triggered by the
+                // failure LoadCompleted doesn't restart the network fetch in
+                // a fresh ImageBox — avoids retry storm on persistent
+                // network/codec failures. Tests can call ResetFailureLatch().
+                if (!string.IsNullOrEmpty(_url)) _failedUrls.TryAdd(_url, 0);
+            }
+            else if (bmp is not null)
+            {
+                _bitmap = bmp;
+                _bitmapCache[_url] = bmp;
+            }
+            LoadCompleted?.Invoke(this, new LoadCompletedEventArgs(layoutInvalidated: true));
+        });
     }
 
     private async Task LoadSvgAsync(Uri uri)
@@ -429,7 +431,10 @@ public sealed class ImageBox : BlockBox
             else
             {
                 // HttpClient.Timeout (30s) already bounds this call; no
-                // per-call CTS needed.
+                // per-call CTS needed. ConfigureAwait(false) puts the
+                // continuation on the thread pool — we marshal back to the
+                // UI dispatcher below before touching instance state or
+                // raising LoadCompleted.
                 bytes = await _http.Value.GetByteArrayAsync(uri).ConfigureAwait(false);
             }
 
@@ -466,28 +471,46 @@ public sealed class ImageBox : BlockBox
             failed = true;
         }
 
-        // Disposal race: if the snapshot was replaced before the awaits
-        // completed, drop the freshly-parsed document so we don't leak native
-        // resources, and don't raise LoadCompleted on an obsolete box.
-        if (_disposed)
+        PublishOnUiThread(() =>
         {
-            try { doc?.Dispose(); } catch { }
-            return;
-        }
-        if (failed)
-        {
-            _loadFailed = true;
-            if (!string.IsNullOrEmpty(_url)) _failedUrls.TryAdd(_url, 0);
-        }
-        else if (bytes is not null)
-        {
-            _svgIntrinsicSize = intrinsic;
-            _svgBytes = bytes;
-            _svgBytesCache[_url] = (bytes, intrinsic);
-            if (doc is not null) _svg = doc;
-        }
-        LoadCompleted?.Invoke(this, new LoadCompletedEventArgs(layoutInvalidated: true));
+            // _disposed re-checked here on the UI thread (serialized with
+            // Dispose()), eliminating the TOCTOU window that existed when the
+            // check ran on the threadpool continuation. If lost, drop the
+            // freshly-parsed CanvasSvgDocument.
+            if (_disposed) { try { doc?.Dispose(); } catch { } return; }
+            if (failed)
+            {
+                _loadFailed = true;
+                if (!string.IsNullOrEmpty(_url)) _failedUrls.TryAdd(_url, 0);
+            }
+            else if (bytes is not null)
+            {
+                _svgIntrinsicSize = intrinsic;
+                _svgBytes = bytes;
+                _svgBytesCache[_url] = (bytes, intrinsic);
+                if (doc is not null) _svg = doc;
+            }
+            LoadCompleted?.Invoke(this, new LoadCompletedEventArgs(layoutInvalidated: true));
+        });
     }
+
+    // Runs `publish` on the UI dispatcher when one is configured and we are
+    // off-thread; otherwise inline. Matches the dispatch contract used by
+    // the paint-thread reparse Publish() path so that all field writes +
+    // LoadCompleted invocations happen on the UI thread under
+    // happens-before with Dispose().
+    private void PublishOnUiThread(Action publish)
+    {
+        var dispatcher = _context.Dispatcher;
+        if (dispatcher is not null && !dispatcher.HasThreadAccess)
+            dispatcher.TryEnqueue(() => publish());
+        else
+            publish();
+    }
+
+    /// <summary>Test hook: clears the static failed-URL latch so tests don't
+    /// pollute each other. Not part of the supported public surface.</summary>
+    internal static void ResetFailureLatchForTests() => _failedUrls.Clear();
 
     internal static Size ExtractSvgIntrinsicSize(byte[] svgBytes)
     {
