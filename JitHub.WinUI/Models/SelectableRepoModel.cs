@@ -1,4 +1,4 @@
-﻿using JitHub.Models.Base;
+using JitHub.Models.Base;
 using System;
 using System.Collections.Generic;
 using System.Linq;
@@ -8,7 +8,8 @@ using System.Windows.Input;
 
 namespace JitHub.Models
 {
-    public class SelectableRepoModel : SelectableItem
+    [WinRT.GeneratedBindableCustomProperty]
+    public partial class SelectableRepoModel : SelectableItem
     {
         private RepoModel _repo = null!;
         public RepoModel Repo
@@ -16,6 +17,9 @@ namespace JitHub.Models
             get => _repo;
             set => SetProperty(ref _repo, value);
         }
+        public string FullName => Repo.FullName;
+        public string Description => Repo.Description;
+        public int StargazersCount => Repo.StargazersCount;
 
         public SelectableRepoModel(RepoModel repo)
         {

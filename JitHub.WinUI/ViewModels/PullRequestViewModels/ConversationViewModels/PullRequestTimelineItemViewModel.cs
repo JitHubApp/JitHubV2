@@ -16,7 +16,8 @@ public enum PullRequestTimelineInlineKind
     Label
 }
 
-public sealed class PullRequestTimelineInlinePartViewModel
+[WinRT.GeneratedBindableCustomProperty]
+public sealed partial class PullRequestTimelineInlinePartViewModel
 {
     public PullRequestTimelineInlineKind Kind { get; init; }
 
@@ -35,7 +36,8 @@ public sealed class PullRequestTimelineInlinePartViewModel
         && Command?.CanExecute(Target) == true;
 }
 
-public sealed class PullRequestTimelineItemViewModel
+[WinRT.GeneratedBindableCustomProperty]
+public sealed partial class PullRequestTimelineItemViewModel
 {
     public string ActorLogin { get; init; } = string.Empty;
 
@@ -47,9 +49,9 @@ public sealed class PullRequestTimelineItemViewModel
 
     public ActivityCardTone Tone { get; init; }
 
-    public IReadOnlyList<PullRequestTimelineInlinePartViewModel> SentenceParts { get; init; } = [];
+    public List<PullRequestTimelineInlinePartViewModel> SentenceParts { get; init; } = [];
 
-    public IReadOnlyList<ActivityCardDetailViewModel> Details { get; init; } = [];
+    public List<ActivityCardDetailViewModel> Details { get; init; } = [];
 
     public bool HasDetails => Details.Count > 0;
 }
@@ -97,7 +99,7 @@ public static class PullRequestTimelineItemViewModelFactory
         string? assigner = UserName(node.Assigner);
         string? milestone = node.Milestone?.Title;
 
-        IReadOnlyList<PullRequestTimelineInlinePartViewModel> sentence = state switch
+        List<PullRequestTimelineInlinePartViewModel> sentence = state switch
         {
             EventInfoState.Closed => Sentence(Strong(actor), Text(" closed this pull request")),
             EventInfoState.Reopened => Sentence(Strong(actor), Text(" reopened this pull request")),
@@ -215,7 +217,7 @@ public static class PullRequestTimelineItemViewModelFactory
         };
     }
 
-    private static IReadOnlyList<ActivityCardDetailViewModel> DetailsFor(EventNode node)
+    private static List<ActivityCardDetailViewModel> DetailsFor(EventNode node)
     {
         List<ActivityCardDetailViewModel> details = [];
         if (!string.IsNullOrWhiteSpace(node.CommitId)
@@ -398,7 +400,7 @@ public static class PullRequestTimelineItemViewModelFactory
         };
     }
 
-    private static IReadOnlyList<PullRequestTimelineInlinePartViewModel> Sentence(
+    private static List<PullRequestTimelineInlinePartViewModel> Sentence(
         params PullRequestTimelineInlinePartViewModel?[] parts)
     {
         return parts
@@ -407,7 +409,7 @@ public static class PullRequestTimelineItemViewModelFactory
             .ToList();
     }
 
-    private static IReadOnlyList<ActivityCardDetailViewModel> DetailList(params (string Glyph, string? Text)[] values)
+    private static List<ActivityCardDetailViewModel> DetailList(params (string Glyph, string? Text)[] values)
     {
         return values
             .Where(value => !string.IsNullOrWhiteSpace(value.Text))

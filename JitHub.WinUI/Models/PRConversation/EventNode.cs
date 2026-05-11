@@ -2,7 +2,8 @@ using JitHub.Models.LegacyGitHub;
 
 namespace JitHub.Models.PRConversation
 {
-    public class EventNode : ConversationNode
+    [WinRT.GeneratedBindableCustomProperty]
+    public partial class EventNode : ConversationNode
     {
         public long Id { get; set; }
         public string NodeId { get; set; } = string.Empty;

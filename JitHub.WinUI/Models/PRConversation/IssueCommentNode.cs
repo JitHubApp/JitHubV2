@@ -7,7 +7,8 @@ using Windows.ApplicationModel.DataTransfer;
 
 namespace JitHub.Models.PRConversation
 {
-    public class IssueCommentNode : ConversationNode
+    [WinRT.GeneratedBindableCustomProperty]
+    public partial class IssueCommentNode : ConversationNode
     {
         public long Id { get; set; }
         public string NodeId { get; set; } = string.Empty;

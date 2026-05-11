@@ -3,7 +3,8 @@ using System.Text.Json.Serialization;
 
 namespace JitHub.Models.GitHub;
 
-public sealed class GitHubRepository
+[WinRT.GeneratedBindableCustomProperty]
+public sealed partial class GitHubRepository
 {
     [JsonPropertyName("id")]
     public long Id { get; set; }
@@ -51,7 +52,8 @@ public sealed class GitHubRepository
     public GitHubRepositoryOwner Owner { get; set; } = new();
 }
 
-public sealed class GitHubRepositoryOwner
+[WinRT.GeneratedBindableCustomProperty]
+public sealed partial class GitHubRepositoryOwner
 {
     [JsonPropertyName("login")]
     public string Login { get; set; } = string.Empty;

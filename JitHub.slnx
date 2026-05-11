@@ -9,16 +9,15 @@
   <Project Path="JitHub.Web/JitHub.Web.csproj" />
   <Project Path="JitHub.WinUI.Automation/JitHub.WinUI.Automation.csproj" />
   <Project Path="JitHub.WinUI/JitHub.WinUI.csproj">
+    <Platform Solution="*|Any CPU" Project="x64" />
     <Platform Solution="*|ARM" Project="x86" />
     <Platform Solution="*|ARM64" Project="ARM64" />
     <Platform Solution="*|x64" Project="x64" />
     <Platform Solution="*|x86" Project="x86" />
-    <Platform Solution="Debug|Any CPU" Project="x64" />
-    <Platform Solution="Release|Any CPU" Project="x86" />
+    <Deploy Solution="*|Any CPU" />
     <Deploy Solution="*|ARM64" />
     <Deploy Solution="*|x64" />
     <Deploy Solution="*|x86" />
-    <Deploy Solution="Debug|Any CPU" />
   </Project>
   <Project Path="JitHub.WinUI.Tests/JitHub.WinUI.Tests.csproj">
     <Platform Solution="*|ARM" Project="x86" />

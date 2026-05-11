@@ -22,7 +22,7 @@ namespace JitHub.WinUI.Views.Controls.PullRequest
             nameof(PullRequest),
             typeof(PullRequestModel),
             typeof(PullRequestButton),
-            new PropertyMetadata(default(PullRequestModel), null)
+            new PropertyMetadata(default(PullRequestModel), OnPullRequestChanged)
         );
 
         public static DependencyProperty RepoProperty = DependencyProperty.Register(
@@ -47,6 +47,14 @@ namespace JitHub.WinUI.Views.Controls.PullRequest
             this.InitializeComponent();
             _navigationService = Ioc.Default.GetService<NavigationService>()
                 ?? throw new InvalidOperationException("NavigationService is not registered.");
+        }
+
+        private static void OnPullRequestChanged(DependencyObject d, DependencyPropertyChangedEventArgs e)
+        {
+            if (d is PullRequestButton self)
+            {
+                self.Bindings.Update();
+            }
         }
 
         private void OnClick(object sender, RoutedEventArgs args)

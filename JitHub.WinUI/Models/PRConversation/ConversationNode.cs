@@ -3,7 +3,8 @@ using System;
 
 namespace JitHub.Models.PRConversation
 {
-    public class ConversationNode
+    [WinRT.GeneratedBindableCustomProperty]
+    public partial class ConversationNode
     {
         public Repository Repo { get; set; }
         // issue number or pr number

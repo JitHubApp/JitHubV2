@@ -3,7 +3,8 @@ using System.Text.Json.Serialization;
 
 namespace JitHub.Models.GitHub;
 
-public sealed class GitHubCheckRun
+[WinRT.GeneratedBindableCustomProperty]
+public sealed partial class GitHubCheckRun
 {
     [JsonPropertyName("id")]
     public long Id { get; set; }
@@ -39,7 +40,8 @@ public sealed class GitHubCheckRun
     public GitHubCheckRunApp? App { get; set; }
 }
 
-public sealed class GitHubCheckRunApp
+[WinRT.GeneratedBindableCustomProperty]
+public sealed partial class GitHubCheckRunApp
 {
     [JsonPropertyName("name")]
     public string? Name { get; set; }

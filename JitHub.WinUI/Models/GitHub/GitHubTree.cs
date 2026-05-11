@@ -2,7 +2,8 @@ using System.Text.Json.Serialization;
 
 namespace JitHub.Models.GitHub;
 
-public sealed class GitHubTree
+[WinRT.GeneratedBindableCustomProperty]
+public sealed partial class GitHubTree
 {
     [JsonPropertyName("sha")]
     public string? Sha { get; init; }

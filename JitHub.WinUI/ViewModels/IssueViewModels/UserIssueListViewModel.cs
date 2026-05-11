@@ -20,13 +20,13 @@ public partial class UserIssueListViewModel : ObservableObject
     private readonly IAuthService _authService;
 
     [ObservableProperty]
-    public partial ICollection<GitHubIssue> CreatedIssues { get; set; } = [];
+    public partial List<GitHubIssue> CreatedIssues { get; set; } = [];
 
     [ObservableProperty]
-    public partial ICollection<GitHubIssue> AssignedIssues { get; set; } = [];
+    public partial List<GitHubIssue> AssignedIssues { get; set; } = [];
 
     [ObservableProperty]
-    public partial ICollection<GitHubIssue> MentionedIssues { get; set; } = [];
+    public partial List<GitHubIssue> MentionedIssues { get; set; } = [];
 
     public GitHubUser? User => _authService.AuthenticatedUser;
     

@@ -12,7 +12,8 @@ using Windows.ApplicationModel.DataTransfer;
 
 namespace JitHub.Models.PRConversation
 {
-    public class ReviewCommentNode : ConversationNode
+    [WinRT.GeneratedBindableCustomProperty]
+    public partial class ReviewCommentNode : ConversationNode
     {
         public long? InReplyToId { get; set; }
         public ReactionSummary Reactions { get; set; } = new();

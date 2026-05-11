@@ -12,6 +12,7 @@ using JitHub.Services;
 
 namespace JitHub.WinUI.ViewModels.Pages;
 
+[WinRT.GeneratedBindableCustomProperty]
 public sealed partial class RepoPullRequestPageViewModel : ViewModelBase
 {
     private static readonly TimeSpan SelectionLoadDebounce = TimeSpan.FromMilliseconds(150);
@@ -72,11 +73,11 @@ public sealed partial class RepoPullRequestPageViewModel : ViewModelBase
 
     public ObservableCollection<GitHubIssueEvent> PullRequestTimelineEvents { get; } = [];
 
-    public IReadOnlyList<QueryOption> StateOptions { get; }
+    public List<QueryOption> StateOptions { get; }
 
-    public IReadOnlyList<QueryOption> SortOptions { get; }
+    public List<QueryOption> SortOptions { get; }
 
-    public IReadOnlyList<QueryOption> DirectionOptions { get; }
+    public List<QueryOption> DirectionOptions { get; }
 
     public string AuthenticatedLogin => _authService.AuthenticatedUser?.Login ?? string.Empty;
 
@@ -1592,10 +1593,10 @@ public sealed partial class RepoPullRequestPageViewModel : ViewModelBase
             IsPullRequestCommitsEmptyVisible,
             IsPullRequestReviewsEmptyVisible,
             IsPullRequestTimelineEmptyVisible,
-            [.. PullRequestComments],
-            [.. PullRequestCommits],
-            [.. PullRequestReviews],
-            [.. PullRequestTimelineEvents]);
+            PullRequestComments.ToArray(),
+            PullRequestCommits.ToArray(),
+            PullRequestReviews.ToArray(),
+            PullRequestTimelineEvents.ToArray());
     }
 
     private bool TryRestorePendingPullRequestSelectionState(int pullRequestNumber)
@@ -2383,7 +2384,8 @@ public sealed partial class RepoPullRequestPageViewModel : ViewModelBase
         ReviewComment
     }
 
-    public sealed class PullRequestReviewItem
+    [WinRT.GeneratedBindableCustomProperty]
+    public sealed partial class PullRequestReviewItem
     {
         public PullRequestReviewItem(
             GitHubPullRequestReview review,
@@ -2442,6 +2444,7 @@ public sealed partial class RepoPullRequestPageViewModel : ViewModelBase
         }
     }
 
+    [WinRT.GeneratedBindableCustomProperty]
     public sealed partial class PullRequestReviewThreadItem : ObservableObject
     {
         public PullRequestReviewThreadItem(
@@ -2523,7 +2526,8 @@ public sealed partial class RepoPullRequestPageViewModel : ViewModelBase
         }
     }
 
-    public sealed class PullRequestReviewReplyItem
+    [WinRT.GeneratedBindableCustomProperty]
+    public sealed partial class PullRequestReviewReplyItem
     {
         public PullRequestReviewReplyItem(
             GitHubPullRequestReviewComment comment,

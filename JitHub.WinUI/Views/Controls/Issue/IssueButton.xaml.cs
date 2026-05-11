@@ -22,7 +22,7 @@ namespace JitHub.WinUI.Views.Controls.Issue
             nameof(Issue),
             typeof(IssueModel),
             typeof(IssueButton),
-            new PropertyMetadata(default(IssueModel), null)
+            new PropertyMetadata(default(IssueModel), OnIssueChanged)
         );
 
         public static DependencyProperty RepoProperty = DependencyProperty.Register(
@@ -47,6 +47,14 @@ namespace JitHub.WinUI.Views.Controls.Issue
             this.InitializeComponent();
             _navigationService = Ioc.Default.GetService<NavigationService>()
                 ?? throw new InvalidOperationException("NavigationService is not registered.");
+        }
+
+        private static void OnIssueChanged(DependencyObject d, DependencyPropertyChangedEventArgs e)
+        {
+            if (d is IssueButton self)
+            {
+                self.Bindings.Update();
+            }
         }
 
         private void OnClick(object sender, RoutedEventArgs args)

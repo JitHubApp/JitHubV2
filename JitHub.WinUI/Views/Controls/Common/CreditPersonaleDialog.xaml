@@ -3,6 +3,7 @@
     xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
     xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
     xmlns:local="using:JitHub.WinUI.Views.Controls.Common"
+    xmlns:models="using:JitHub.Models"
     xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
     xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
     xmlns:muxc="using:Microsoft.UI.Xaml.Controls"
@@ -80,14 +81,14 @@
                     <muxc:StackLayout Orientation="Horizontal" Spacing="8"/>
                 </muxc:ItemsRepeater.Layout>
                 <muxc:ItemsRepeater.ItemTemplate>
-                    <DataTemplate>
+                    <DataTemplate x:DataType="models:PersonalLink">
                         <Grid>
                             <HyperlinkButton
                                 Padding="0"
-                                NavigateUri="{Binding Link, Mode=OneWay}">
+                                NavigateUri="{x:Bind Link, Mode=OneWay}">
                                 <Image
                                     Width="32"
-                                    Source="{Binding LogoSource, Mode=OneWay}"/>
+                                    Source="{x:Bind LogoSource, Mode=OneWay}"/>
                             </HyperlinkButton>
                         </Grid>
                     </DataTemplate>

@@ -114,6 +114,14 @@
     <PublishTrimmed Condition="'$(Configuration)' != 'Debug'">True</PublishTrimmed>
     <PublishAot Condition="'$(Configuration)' != 'Debug'">True</PublishAot>
     <SelfContained Condition="'$(Configuration)' != 'Debug'">True</SelfContained>
+    <GenerateAppInstallerFile>False</GenerateAppInstallerFile>
+    <AppxPackageSigningEnabled>True</AppxPackageSigningEnabled>
+    <PackageCertificateKeyFile>JitHub.WinUI_TemporaryKey.pfx</PackageCertificateKeyFile>
+    <AppxPackageSigningTimestampDigestAlgorithm>SHA256</AppxPackageSigningTimestampDigestAlgorithm>
+    <AppxAutoIncrementPackageRevision>False</AppxAutoIncrementPackageRevision>
+    <GenerateTestArtifacts>False</GenerateTestArtifacts>
+    <AppxBundle>Never</AppxBundle>
+    <HoursBetweenUpdateChecks>0</HoursBetweenUpdateChecks>
   </PropertyGroup>
 
   <!--
@@ -135,7 +143,6 @@
     STATUS_STOWED_EXCEPTION (0xC000027B) in Microsoft.UI.Xaml.dll.
   -->
   <ItemGroup>
-    <WindowsMetadataReference Include="$(NuGetPackageRoot)\winuiedit\0.0.4-prerelease\lib\uap10.0\WinUIEditor.winmd"
-                              Implementation="WinUIEditor.dll" />
+    <WindowsMetadataReference Include="$(NuGetPackageRoot)\winuiedit\0.0.4-prerelease\lib\uap10.0\WinUIEditor.winmd" Implementation="WinUIEditor.dll" />
   </ItemGroup>
 </Project>

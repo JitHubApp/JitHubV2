@@ -5,7 +5,8 @@ using System.Windows.Input;
 
 namespace JitHub.Models.PRConversation
 {
-    public class ReviewNode : ConversationNode
+    [WinRT.GeneratedBindableCustomProperty]
+    public partial class ReviewNode : ConversationNode
     {
         public long Id { get; set; }
         public string NodeId { get; set; } = string.Empty;

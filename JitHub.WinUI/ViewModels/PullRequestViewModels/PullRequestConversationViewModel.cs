@@ -23,7 +23,7 @@ namespace JitHub.WinUI.ViewModels.PullRequestViewModels
         private readonly ModalService _modalService;
         private Issue _asIssue = null!;
         private PullRequest _pullRequest = null!;
-        private ICollection<ConversationNode> _comments = [];
+        private List<ConversationNode> _comments = [];
         private bool _isCollaborator;
         private IssueSideBarViewModel _prModel = null!;
         private readonly ICommand _refreshCommand;
@@ -69,7 +69,7 @@ namespace JitHub.WinUI.ViewModels.PullRequestViewModels
                 CanMerge = value.Mergeable ?? false;
             }
         }
-        public ICollection<ConversationNode> Comments
+        public List<ConversationNode> Comments
         {
             get => _comments;
             set => SetProperty(ref _comments, value);

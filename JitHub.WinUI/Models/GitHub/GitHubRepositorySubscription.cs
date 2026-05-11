@@ -2,7 +2,8 @@ using System.Text.Json.Serialization;
 
 namespace JitHub.Models.GitHub;
 
-public sealed class GitHubRepositorySubscription
+[WinRT.GeneratedBindableCustomProperty]
+public sealed partial class GitHubRepositorySubscription
 {
     [JsonPropertyName("subscribed")]
     public bool Subscribed { get; set; }

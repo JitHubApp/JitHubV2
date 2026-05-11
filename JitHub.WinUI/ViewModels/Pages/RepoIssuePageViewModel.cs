@@ -63,11 +63,11 @@ public sealed partial class RepoIssuePageViewModel : ViewModelBase
 
     public ObservableCollection<GitHubIssueComment> IssueComments { get; } = [];
 
-    public IReadOnlyList<QueryOption> StateOptions { get; }
+    public List<QueryOption> StateOptions { get; }
 
-    public IReadOnlyList<QueryOption> SortOptions { get; }
+    public List<QueryOption> SortOptions { get; }
 
-    public IReadOnlyList<QueryOption> DirectionOptions { get; }
+    public List<QueryOption> DirectionOptions { get; }
 
     public string AuthenticatedLogin => _authService.AuthenticatedUser?.Login ?? string.Empty;
 
@@ -1112,7 +1112,7 @@ public sealed partial class RepoIssuePageViewModel : ViewModelBase
             AreIssueActionsEnabled,
             IsAddCommentEnabled,
             IsIssueCommentsEmptyVisible,
-            [.. IssueComments]);
+            IssueComments.ToArray());
     }
 
     private bool TryRestorePendingIssueSelectionState(int issueNumber)

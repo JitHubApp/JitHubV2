@@ -1,24 +1,9 @@
 <ResourceDictionary
     xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
     xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
-    >
+    xmlns:filtercontrols="using:JitHub.WinUI.Views.Controls.Filter">
     <DataTemplate x:Key="TextFilter">
-        <Grid>
-            <StackPanel Spacing="4">
-                <TextBox
-                    Style="{StaticResource AppTextBoxStyle}"
-                    MinWidth="150"
-                    Header="{Binding Title, Mode=OneWay}"
-                    PlaceholderText="Type to filter"
-                    Text="{Binding Text, Mode=TwoWay}">
-                    <TextBox.HeaderTemplate>
-                        <DataTemplate>
-                            <TextBlock Style="{StaticResource SectionSecondaryTextBlockStyle}" Text="{Binding Mode=OneWay}" />
-                        </DataTemplate>
-                    </TextBox.HeaderTemplate>
-                </TextBox>
-            </StackPanel>
-        </Grid>
+        <filtercontrols:TextFilterPresenter Filter="{Binding Mode=OneWay}" />
     </DataTemplate>
 </ResourceDictionary>
 

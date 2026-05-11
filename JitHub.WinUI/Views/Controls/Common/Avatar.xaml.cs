@@ -15,7 +15,7 @@ namespace JitHub.WinUI.Views.Controls.Common
             "Size",
             typeof(UISize),
             typeof(Avatar),
-            new PropertyMetadata(default(UISize), null));
+            new PropertyMetadata(default(UISize), OnBindablePropertyChanged));
         public static DependencyProperty UrlProperty = DependencyProperty.Register(
             "Url",
             typeof(string),
@@ -25,12 +25,12 @@ namespace JitHub.WinUI.Views.Controls.Common
             "Login",
             typeof(string),
             typeof(Avatar),
-            new PropertyMetadata(default(string), null));
+            new PropertyMetadata(default(string), OnBindablePropertyChanged));
         public static DependencyProperty ShowLoginProperty = DependencyProperty.Register(
             "ShowLogin",
             typeof(bool),
             typeof(Avatar),
-            new PropertyMetadata(default(string), null));
+            new PropertyMetadata(default(bool), OnBindablePropertyChanged));
 
         private static void OnUrlChanged(DependencyObject d, DependencyPropertyChangedEventArgs e)
         {
@@ -45,6 +45,16 @@ namespace JitHub.WinUI.Views.Controls.Common
                 {
                     self.ProfilePic.Source = new BitmapImage(new Uri("ms-appx:///Assets/Octocat.png"));
                 }
+
+                self.Bindings.Update();
+            }
+        }
+
+        private static void OnBindablePropertyChanged(DependencyObject d, DependencyPropertyChangedEventArgs e)
+        {
+            if (d is Avatar self)
+            {
+                self.Bindings.Update();
             }
         }
 

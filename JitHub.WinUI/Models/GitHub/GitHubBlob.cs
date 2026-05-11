@@ -2,7 +2,8 @@ using System.Text.Json.Serialization;
 
 namespace JitHub.Models.GitHub;
 
-public sealed class GitHubBlob
+[WinRT.GeneratedBindableCustomProperty]
+public sealed partial class GitHubBlob
 {
     [JsonPropertyName("node_id")]
     public string? NodeId { get; set; }

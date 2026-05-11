@@ -18,7 +18,7 @@ namespace JitHub.WinUI.ViewModels.PullRequestViewModels
     public class PullRequestCommitsViewModel : RepoViewModel
     {
         private PullRequest _pullRequest = null!;
-        private ICollection<CommandableCommit> _commits = [];
+        private List<CommandableCommit> _commits = [];
         private readonly DataPackage _dataPackage;
 
         public PullRequest PullRequest
@@ -26,7 +26,7 @@ namespace JitHub.WinUI.ViewModels.PullRequestViewModels
             get => _pullRequest;
             set => SetProperty(ref _pullRequest, value);
         }
-        public ICollection<CommandableCommit> Commits
+        public List<CommandableCommit> Commits
         {
             get => _commits;
             set => SetProperty(ref _commits, value);

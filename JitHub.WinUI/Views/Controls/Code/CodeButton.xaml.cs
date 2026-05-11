@@ -27,13 +27,13 @@ namespace JitHub.WinUI.Views.Controls.Code
             nameof(Ref),
             typeof(string),
             typeof(CodeButton),
-            new PropertyMetadata(default(string), null)
+            new PropertyMetadata(default(string), OnBindablePropertyChanged)
         );
         public static DependencyProperty TextProperty = DependencyProperty.Register(
             nameof(Text),
             typeof(string),
             typeof(CodeButton),
-            new PropertyMetadata(default(string), null)
+            new PropertyMetadata(default(string), OnBindablePropertyChanged)
         );
 
         public RepositoryModel? Repo
@@ -56,6 +56,14 @@ namespace JitHub.WinUI.Views.Controls.Code
             this.InitializeComponent();
             _navigationService = Ioc.Default.GetService<NavigationService>()
                 ?? throw new InvalidOperationException("NavigationService is not registered.");
+        }
+
+        private static void OnBindablePropertyChanged(DependencyObject d, DependencyPropertyChangedEventArgs e)
+        {
+            if (d is CodeButton self)
+            {
+                self.Bindings.Update();
+            }
         }
 
         private void OnClick(object sender, RoutedEventArgs args)

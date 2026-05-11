@@ -95,27 +95,36 @@ namespace JitHub.WinUI.ViewModels.PullRequestViewModels
 
         private void SetFilterParam(Dictionary<string, FilterUnit> filters)
         {
-            if (filters["State"] is DropdownFilter stateFilter &&
+            PullRequestRequest = new PullRequestRequest();
+
+            if (filters.TryGetValue("State", out FilterUnit? stateUnit) &&
+                stateUnit is DropdownFilter stateFilter &&
                 !stateFilter.DefaultSelected &&
                 stateFilter.Selected.Value is ItemStateFilter selectedState)
             {
                 PullRequestRequest.State = selectedState;
             }
-            if (filters["Head"] is TextFilter headFilter && !headFilter.DefaultSelected)
+            if (filters.TryGetValue("Head", out FilterUnit? headUnit) &&
+                headUnit is TextFilter headFilter &&
+                !headFilter.DefaultSelected)
             {
                 PullRequestRequest.Head = headFilter.Text;
             }
-            if (filters["Base"] is TextFilter baseFilter && !baseFilter.DefaultSelected)
+            if (filters.TryGetValue("Base", out FilterUnit? baseUnit) &&
+                baseUnit is TextFilter baseFilter &&
+                !baseFilter.DefaultSelected)
             {
                 PullRequestRequest.Base = baseFilter.Text;
             }
-            if (filters["Sort Property"] is DropdownFilter sortPropertyFilter &&
+            if (filters.TryGetValue("Sort Property", out FilterUnit? sortPropertyUnit) &&
+                sortPropertyUnit is DropdownFilter sortPropertyFilter &&
                 !sortPropertyFilter.DefaultSelected &&
                 sortPropertyFilter.Selected.Value is PullRequestSort sortProperty)
             {
                 PullRequestRequest.SortProperty = sortProperty;
             }
-            if (filters["Direction"] is DropdownFilter directionFilter &&
+            if (filters.TryGetValue("Direction", out FilterUnit? directionUnit) &&
+                directionUnit is DropdownFilter directionFilter &&
                 !directionFilter.DefaultSelected &&
                 directionFilter.Selected.Value is SortDirection direction)
             {

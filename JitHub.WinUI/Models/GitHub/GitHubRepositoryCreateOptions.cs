@@ -1,6 +1,7 @@
 namespace JitHub.Models.GitHub;
 
-public sealed class GitHubRepositoryCreateOptions
+[WinRT.GeneratedBindableCustomProperty]
+public sealed partial class GitHubRepositoryCreateOptions
 {
     public string Name { get; set; } = string.Empty;
 

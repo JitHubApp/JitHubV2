@@ -22,13 +22,13 @@ namespace JitHub.WinUI.ViewModels.CommitViewModels
     public class RepoCommitsViewModel : RepoViewModel
     {
         private readonly NavigationService _navigationService;
-        private ICollection<Branch> _branches = [];
+        private List<Branch> _branches = [];
         private Branch? _selectedBranch;
         private IncrementalLoadingCollection<CommitsSource, CommandableCommit> _commits = null!;
         private CommandableCommit? _selectedCommit;
         private readonly CommitPageNavArg _navArgs;
         
-        public ICollection<Branch> Branches
+        public List<Branch> Branches
         {
             get => _branches;
             set => SetProperty(ref _branches, value);
@@ -145,7 +145,7 @@ namespace JitHub.WinUI.ViewModels.CommitViewModels
         {
             Loading = true;
             Repo = await GitHubService.GetRepository(_navArgs.Repo.Id);
-            Branches = await GitHubService.GetRepoBranches(Repo.Owner.Login, Repo.Name);
+            Branches = (await GitHubService.GetRepoBranches(Repo.Owner.Login, Repo.Name)).ToList();
             if (!_navArgs.NoBranch)
             {
                 SelectedBranch = Branches.FirstOrDefault(branch => branch.Name == _navArgs.Branch);

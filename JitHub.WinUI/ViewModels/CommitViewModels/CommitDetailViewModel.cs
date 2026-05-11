@@ -13,11 +13,11 @@ namespace JitHub.WinUI.ViewModels.CommitViewModels
 {
     public class CommitDetailViewModel : RepoViewModel
     {
-        private ICollection<FileDiffViewModel> _files = [];
+        private List<FileDiffViewModel> _files = [];
         private CommandableCommit _commandableCommit = null!;
 
         public ICommand LoadCommand { get; }
-        public ICollection<FileDiffViewModel> Files
+        public List<FileDiffViewModel> Files
         {
             get => _files;
             set => SetProperty(ref _files, value);

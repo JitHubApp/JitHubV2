@@ -4,7 +4,8 @@ using System;
 
 namespace JitHub.WinUI.ViewModels
 {
-    public class FileDiffViewModel : RepoViewModel
+    [WinRT.GeneratedBindableCustomProperty]
+    public partial class FileDiffViewModel : RepoViewModel
     {
         private string _sha = string.Empty;
         private GitHubCommitFile _file = null!;

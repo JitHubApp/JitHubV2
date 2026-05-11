@@ -5,7 +5,7 @@
     <DataTemplate x:Key="PRConversationReviewDataTemplate" x:Name="PRConversationReviewDataTemplate">
         <!--  For multiple blocks of comments in a single review  -->
         <Grid>
-            <conversation:ReviewBlock ViewModel="{Binding Item, Converter={StaticResource ReviewNodeToViewModelConverter}, Mode=OneWay}" />
+            <conversation:ReviewBlock ViewModel="{Binding Converter={StaticResource ReviewNodeToViewModelConverter}, Mode=OneWay}" />
         </Grid>
     </DataTemplate>
 </ResourceDictionary>

@@ -4,7 +4,8 @@ using JitHub.Models.LegacyGitHub;
 
 namespace JitHub.Models.Base
 {
-    public class RepoSelectableItemModel<T> : ObservableObject
+    [WinRT.GeneratedBindableCustomProperty]
+    public partial class RepoSelectableItemModel<T> : ObservableObject
     {
         private T _model = default!;
         private Repository _repo = null!;

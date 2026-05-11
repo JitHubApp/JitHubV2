@@ -1,0 +1,36 @@
+<UserControl
+    x:Class="JitHub.WinUI.Views.Controls.PullRequest.PullRequestListItemPresenter"
+    xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+    xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+    xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+    xmlns:muxc="using:Microsoft.UI.Xaml.Controls"
+    mc:Ignorable="d"
+    d:DesignHeight="96"
+    d:DesignWidth="420">
+    <Grid Padding="4,8">
+        <StackPanel Margin="4,0,0,0" Spacing="4">
+            <TextBlock
+                FontSize="16"
+                FontWeight="SemiBold"
+                Text="{x:Bind Title, Mode=OneWay}"
+                TextWrapping="Wrap" />
+
+            <muxc:ItemsRepeater
+                ItemTemplate="{StaticResource IssueLabel}"
+                ItemsSource="{x:Bind Labels, Converter={StaticResource ListToShorterListConverter}, ConverterParameter='3', Mode=OneWay}">
+                <muxc:ItemsRepeater.Layout>
+                    <muxc:StackLayout Orientation="Horizontal" Spacing="4" />
+                </muxc:ItemsRepeater.Layout>
+            </muxc:ItemsRepeater>
+
+            <StackPanel Orientation="Horizontal" Spacing="4">
+                <TextBlock Foreground="{ThemeResource AppInkSubtleBrush}">
+                    <Run Text="{x:Bind NumberText, Mode=OneWay}" />
+                    <Run Text="{x:Bind CreatedAtText, Mode=OneWay}" />
+                    <Run Text="{x:Bind UserText, Mode=OneWay}" />
+                </TextBlock>
+            </StackPanel>
+        </StackPanel>
+    </Grid>
+</UserControl>

@@ -8,11 +8,11 @@ namespace JitHub.WinUI.Views.Pages;
 
 public sealed partial class RepoCommitDetailPage : Page
 {
-    public CommitDetailViewModel ViewModel { get; private set; }
+    public CommitDetailViewModel ViewModel { get; } = new();
+
     public RepoCommitDetailPage()
     {
         this.InitializeComponent();
-        ViewModel = new CommitDetailViewModel();
         DataContext = ViewModel;
     }
 

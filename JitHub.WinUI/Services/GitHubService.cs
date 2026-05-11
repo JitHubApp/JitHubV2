@@ -160,7 +160,7 @@ namespace JitHub.Services
                 WatchersCount = 146,
                 SubscribersCount = 15,
                 Visibility = RepositoryVisibility.Public,
-                Topics = new[] { "github", "winui", "windows", "client" }
+                Topics = ["github", "winui", "windows", "client"]
             };
         }
 
@@ -179,7 +179,7 @@ namespace JitHub.Services
             };
         }
 
-        private static IReadOnlyList<Label> CreatePublicPreviewLabels()
+        private static List<Label> CreatePublicPreviewLabels()
         {
             return
             [
@@ -209,8 +209,10 @@ namespace JitHub.Services
 
         private static IReadOnlyList<PullRequest> CreatePublicPreviewPullRequests()
         {
-            return
-            [
+            List<Label> labels = CreatePublicPreviewLabels();
+
+            return new[]
+            {
                 CreatePublicPreviewPullRequest(
                     72,
                     "Add website dark mode and unblock Store release",
@@ -219,7 +221,7 @@ namespace JitHub.Services
                     new DateTimeOffset(2026, 5, 4, 17, 10, 0, TimeSpan.Zero),
                     "website-dark-mode",
                     4,
-                    [CreatePublicPreviewLabels()[0], CreatePublicPreviewLabels()[1]]),
+                    new[] { labels[0], labels[1] }),
                 CreatePublicPreviewPullRequest(
                     62,
                     "GitHub: Improve developer experience",
@@ -228,7 +230,7 @@ namespace JitHub.Services
                     new DateTimeOffset(2024, 10, 22, 15, 45, 0, TimeSpan.Zero),
                     "github-developer-experience",
                     2,
-                    [CreatePublicPreviewLabels()[0]]),
+                    new[] { labels[0] }),
                 CreatePublicPreviewPullRequest(
                     59,
                     "Bump SkiaSharp from 2.88.3 to 2.88.6 in /JitHub.Utilities.SVG",
@@ -237,8 +239,8 @@ namespace JitHub.Services
                     new DateTimeOffset(2023, 9, 22, 11, 35, 0, TimeSpan.Zero),
                     "dependabot/nuget/JitHub.Utilities.SVG/SkiaSharp-2.88.6",
                     1,
-                    [CreatePublicPreviewLabels()[2]])
-            ];
+                    new[] { labels[2] })
+            };
         }
 
         private static PullRequest CreatePublicPreviewPullRequest(
@@ -294,7 +296,7 @@ namespace JitHub.Services
                 Additions = 420 + number,
                 Deletions = 120,
                 ChangedFiles = 12,
-                Labels = labels,
+                Labels = labels.ToList(),
                 Reactions = new ReactionSummary()
             };
         }
@@ -319,8 +321,8 @@ namespace JitHub.Services
                 Title = pullRequest.Title,
                 Body = pullRequest.Body,
                 User = pullRequest.User,
-                Labels = pullRequest.Labels,
-                Assignees = Array.Empty<User>(),
+                Labels = pullRequest.Labels.ToList(),
+                Assignees = [],
                 Comments = pullRequest.Comments,
                 PullRequest = pullRequest,
                 CreatedAt = pullRequest.CreatedAt,
@@ -769,7 +771,7 @@ namespace JitHub.Services
 
         private static Issue AdaptIssue(RestGitHubIssue issue, Repository? repository = null)
         {
-            IReadOnlyList<User> assignees = issue.Assignees.Select(AdaptUser).ToList();
+            List<User> assignees = issue.Assignees.Select(AdaptUser).ToList();
             return new Issue(
                 issue.HtmlUrl,
                 issue.HtmlUrl,
@@ -1289,17 +1291,17 @@ namespace JitHub.Services
 
         public async Task<ICollection<PullRequest>> GetPullRequests(string owner, string name, PullRequestRequest requestParam, ApiOptions apiOptions)
         {
-            if (IsPublicPreviewRepository(owner, name))
-            {
-                return CreatePublicPreviewPullRequests().ToList();
-            }
-
             int pageSize = apiOptions?.PageSize ?? 100;
             int startPage = apiOptions?.StartPage ?? 1;
             int pageCount = apiOptions?.PageCount ?? 1;
             pageSize = pageSize > 0 ? pageSize : 100;
             startPage = startPage > 0 ? startPage : 1;
             pageCount = pageCount > 0 ? pageCount : 1;
+
+            if (IsPublicPreviewRepository(owner, name))
+            {
+                return FilterPublicPreviewPullRequests(requestParam, pageSize, startPage, pageCount);
+            }
 
             string token = GetAccessTokenOrThrow();
             List<PullRequest> pullRequests = [];
@@ -1325,6 +1327,53 @@ namespace JitHub.Services
             return pullRequests;
         }
 
+        private static ICollection<PullRequest> FilterPublicPreviewPullRequests(
+            PullRequestRequest request,
+            int pageSize,
+            int startPage,
+            int pageCount)
+        {
+            IEnumerable<PullRequest> query = CreatePublicPreviewPullRequests();
+
+            query = request.State switch
+            {
+                ItemStateFilter.Open => query.Where(pullRequest => pullRequest.State.Value == ItemState.Open),
+                ItemStateFilter.Closed => query.Where(pullRequest => pullRequest.State.Value == ItemState.Closed),
+                _ => query
+            };
+
+            if (!string.IsNullOrWhiteSpace(request.Head))
+            {
+                query = query.Where(pullRequest =>
+                    string.Equals(pullRequest.Head.Ref, request.Head, StringComparison.OrdinalIgnoreCase) ||
+                    string.Equals(pullRequest.Head.Label, request.Head, StringComparison.OrdinalIgnoreCase));
+            }
+
+            if (!string.IsNullOrWhiteSpace(request.Base))
+            {
+                query = query.Where(pullRequest =>
+                    string.Equals(pullRequest.Base.Ref, request.Base, StringComparison.OrdinalIgnoreCase) ||
+                    string.Equals(pullRequest.Base.Label, request.Base, StringComparison.OrdinalIgnoreCase));
+            }
+
+            query = request.SortProperty switch
+            {
+                PullRequestSort.Updated => query.OrderBy(pullRequest => pullRequest.UpdatedAt),
+                PullRequestSort.Popularity => query.OrderBy(pullRequest => pullRequest.Comments),
+                PullRequestSort.LongRunning => query.OrderBy(pullRequest => pullRequest.CreatedAt),
+                _ => query.OrderBy(pullRequest => pullRequest.CreatedAt)
+            };
+
+            if (request.SortDirection != SortDirection.Ascending)
+            {
+                query = query.Reverse();
+            }
+
+            int skip = Math.Max(0, startPage - 1) * pageSize;
+            int take = Math.Max(0, pageSize * pageCount);
+            return query.Skip(skip).Take(take).ToList();
+        }
+
         public async Task<PullRequest> GetPullRequest(string owner, string name, int num)
         {
             if (IsPublicPreviewRepository(owner, name))
@@ -1345,6 +1394,12 @@ namespace JitHub.Services
                 pageSize = pageSize > 0 ? pageSize : 100;
                 startPage = startPage > 0 ? startPage : 1;
                 pageCount = pageCount > 0 ? pageCount : 1;
+
+                if (IsPublicPreviewRepository(owner, name))
+                {
+                    return FilterPublicPreviewIssues(repoIssueRequest, pageSize, startPage, pageCount);
+                }
+
                 string token = GetAccessTokenOrThrow();
                 List<Issue> issues = [];
 
@@ -1373,6 +1428,50 @@ namespace JitHub.Services
                 NotificationService.Push(e.Message);
                 throw new Exception(e.Message);
             }
+        }
+
+        private static ICollection<Issue> FilterPublicPreviewIssues(
+            RepositoryIssueRequest request,
+            int pageSize,
+            int startPage,
+            int pageCount)
+        {
+            IEnumerable<Issue> query = CreatePublicPreviewPullRequests()
+                .Select(pullRequest => CreatePublicPreviewIssue(pullRequest.Number));
+
+            query = request.State switch
+            {
+                ItemStateFilter.Open => query.Where(issue => issue.State.Value == ItemState.Open),
+                ItemStateFilter.Closed => query.Where(issue => issue.State.Value == ItemState.Closed),
+                _ => query
+            };
+
+            if (request.Labels.Count > 0)
+            {
+                HashSet<string> labels = request.Labels.ToHashSet(StringComparer.OrdinalIgnoreCase);
+                query = query.Where(issue => issue.Labels.Any(label => labels.Contains(label.Name)));
+            }
+
+            if (request.Since is DateTimeOffset since)
+            {
+                query = query.Where(issue => issue.UpdatedAt >= since);
+            }
+
+            query = request.SortProperty switch
+            {
+                IssueSort.Comments => query.OrderBy(issue => issue.Comments),
+                IssueSort.Updated => query.OrderBy(issue => issue.UpdatedAt),
+                _ => query.OrderBy(issue => issue.CreatedAt)
+            };
+
+            if (request.SortDirection != SortDirection.Ascending)
+            {
+                query = query.Reverse();
+            }
+
+            int skip = Math.Max(0, startPage - 1) * pageSize;
+            int take = Math.Max(0, pageSize * pageCount);
+            return query.Skip(skip).Take(take).ToList();
         }
 
         public async Task<Issue> GetIssue(string owner, string name, int number)
@@ -1843,6 +1942,11 @@ namespace JitHub.Services
 
         public async Task<ICollection<Milestone>> GetMilestonesFromRepository(long repoId)
         {
+            if (IsPublicPreviewToken() && repoId == PublicPreviewRepositoryId)
+            {
+                return [];
+            }
+
             string token = GetAccessTokenOrThrow();
             (string owner, string name) = await GetRepositoryIdentityAsync(token, repoId);
             IReadOnlyList<RestGitHubMilestone> milestones = await _gitHubClientService.GetMilestonesAsync(token, owner, name);

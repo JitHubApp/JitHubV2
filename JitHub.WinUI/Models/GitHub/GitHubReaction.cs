@@ -4,7 +4,8 @@ using JitHub.WinUI.Helpers;
 
 namespace JitHub.Models.GitHub;
 
-public sealed class GitHubReaction
+[WinRT.GeneratedBindableCustomProperty]
+public sealed partial class GitHubReaction
 {
     [JsonPropertyName("id")]
     public long Id { get; set; }
@@ -16,7 +17,8 @@ public sealed class GitHubReaction
     public GitHubActor User { get; set; } = new();
 }
 
-public sealed class GitHubReactionSummary
+[WinRT.GeneratedBindableCustomProperty]
+public sealed partial class GitHubReactionSummary
 {
     [JsonPropertyName("total_count")]
     public int TotalCount { get; set; }

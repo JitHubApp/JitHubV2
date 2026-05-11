@@ -11,14 +11,14 @@ namespace JitHub.WinUI.Views.Controls.Common
             nameof(HeaderContent),
             typeof(FrameworkElement),
             typeof(CommentBlock),
-            new PropertyMetadata(default(FrameworkElement), null)
+            new PropertyMetadata(default(FrameworkElement), OnBindablePropertyChanged)
             );
 
         public static DependencyProperty BodyContentProperty = DependencyProperty.Register(
             nameof(BodyContent),
             typeof(FrameworkElement),
             typeof(CommentBlock),
-            new PropertyMetadata(default(FrameworkElement), null)
+            new PropertyMetadata(default(FrameworkElement), OnBindablePropertyChanged)
             );
 
         public FrameworkElement HeaderContent
@@ -42,6 +42,14 @@ namespace JitHub.WinUI.Views.Controls.Common
         public CommentBlock()
         {
             this.InitializeComponent();
+        }
+
+        private static void OnBindablePropertyChanged(DependencyObject d, DependencyPropertyChangedEventArgs e)
+        {
+            if (d is CommentBlock self)
+            {
+                self.Bindings.Update();
+            }
         }
     }
 }

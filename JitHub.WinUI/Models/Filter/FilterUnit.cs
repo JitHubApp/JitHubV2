@@ -1,4 +1,4 @@
-﻿using CommunityToolkit.Mvvm.ComponentModel;
+using CommunityToolkit.Mvvm.ComponentModel;
 using System;
 using System.Collections.Generic;
 using System.Linq;
@@ -7,7 +7,8 @@ using System.Threading.Tasks;
 
 namespace JitHub.Models.Filter
 {
-    public abstract class FilterUnit : ObservableObject
+    [WinRT.GeneratedBindableCustomProperty]
+    public abstract partial class FilterUnit : ObservableObject
     {
         private string _name = string.Empty;
         public string Name

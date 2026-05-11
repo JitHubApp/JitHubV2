@@ -1,6 +1,7 @@
 namespace JitHub.Models.CodeViewer;
 
-public sealed class RepoTree
+[WinRT.GeneratedBindableCustomProperty]
+public sealed partial class RepoTree
 {
     public string? Sha { get; init; }
     public bool Truncated { get; init; }

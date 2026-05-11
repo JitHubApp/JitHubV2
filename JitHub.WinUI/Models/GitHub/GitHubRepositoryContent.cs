@@ -2,7 +2,8 @@ using System.Text.Json.Serialization;
 
 namespace JitHub.Models.GitHub;
 
-public sealed class GitHubRepositoryContent
+[WinRT.GeneratedBindableCustomProperty]
+public sealed partial class GitHubRepositoryContent
 {
     [JsonPropertyName("type")]
     public string Type { get; set; } = string.Empty;

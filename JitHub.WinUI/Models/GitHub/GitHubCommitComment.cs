@@ -3,7 +3,8 @@ using System.Text.Json.Serialization;
 
 namespace JitHub.Models.GitHub;
 
-public sealed class GitHubCommitComment
+[WinRT.GeneratedBindableCustomProperty]
+public sealed partial class GitHubCommitComment
 {
     [JsonPropertyName("node_id")]
     public string? NodeId { get; set; }

@@ -30,7 +30,9 @@ namespace JitHub.WinUI.Views.Pages
                 {
                     ViewModel = new PullRequestConversationViewModel(arg.Repository, arg.PullRequest, arg.RefreshCommand, ScrollToBottom, new RelayCommand<UIElement?>(ScrollToElement));
                     DataContext = ViewModel;
+                    Bindings.Update();
                     await ViewModel.OnNavigatedTo();
+                    Bindings.Update();
                 }
             }
             catch (System.Exception ex)

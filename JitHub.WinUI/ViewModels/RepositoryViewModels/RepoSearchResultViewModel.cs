@@ -13,13 +13,13 @@ namespace JitHub.WinUI.ViewModels.RepositoryViewModels
 {
     public class RepoSearchResultViewModel : LoadableViewModel<string>
     {
-        private ICollection<RepoModel> _items = [];
+        private List<RepoModel> _items = [];
         public string Term
         {
             get => Model;
             set => Model = value;
         }
-        public ICollection<RepoModel> Items
+        public List<RepoModel> Items
         {
             get => _items;
             set => SetProperty(ref _items, value);

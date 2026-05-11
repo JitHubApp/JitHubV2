@@ -5,6 +5,7 @@
     xmlns:local="using:JitHub.WinUI.Views.Controls.Issue"
     xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
     xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+    xmlns:githubmodels="using:JitHub.Models.GitHub"
     xmlns:issueviewmodels="using:JitHub.WinUI.ViewModels.IssueViewModels"
     xmlns:controls="using:CommunityToolkit.WinUI.Controls"
     mc:Ignorable="d"
@@ -24,9 +25,9 @@
             <ListView
                 ItemsSource="{x:Bind ViewModel.CreatedIssues}">
                 <ListView.ItemTemplate>
-                    <DataTemplate>
+                    <DataTemplate x:DataType="githubmodels:GitHubIssue">
                         <Grid>
-                            <TextBlock Text="{Binding Title, Mode=OneWay}"/>
+                            <TextBlock Text="{x:Bind Title, Mode=OneWay}"/>
                         </Grid>
                     </DataTemplate>
                 </ListView.ItemTemplate>

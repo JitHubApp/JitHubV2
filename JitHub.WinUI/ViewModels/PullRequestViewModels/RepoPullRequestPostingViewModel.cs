@@ -15,8 +15,8 @@ namespace JitHub.WinUI.ViewModels.PullRequestViewModels
 {
     public class RepoPullRequestPostingViewModel : RepoViewModel
     {
-        private ICollection<Branch> _branches = [];
-        private ICollection<Branch> _headBranches = [];
+        private List<Branch> _branches = [];
+        private List<Branch> _headBranches = [];
         private Branch? _selectedBase;
         private Branch? _selectedHead;
         private string _title = string.Empty;
@@ -28,12 +28,12 @@ namespace JitHub.WinUI.ViewModels.PullRequestViewModels
         private string _commentsCount = string.Empty;
         private string _authorsCount = string.Empty;
 
-        public ICollection<Branch> Branches
+        public List<Branch> Branches
         {
             get => _branches;
             set => SetProperty(ref _branches, value);
         }
-        public ICollection<Branch> HeadBranches
+        public List<Branch> HeadBranches
         {
             get => _headBranches;
             set => SetProperty(ref _headBranches, value);
@@ -105,8 +105,8 @@ namespace JitHub.WinUI.ViewModels.PullRequestViewModels
             Loading = true;
             (string owner, string name) = GetRepoRoute();
             var branches = await GitHubService.GetRepoBranches(owner, name);
-            Branches = branches;
-            HeadBranches = branches;
+            Branches = branches.ToList();
+            HeadBranches = branches.ToList();
             SelectedBase = Branches.FirstOrDefault(branch => branch.Name == Repo.DefaultBranch)
                 ?? Branches.FirstOrDefault();
             SelectedHead = SelectedBase;

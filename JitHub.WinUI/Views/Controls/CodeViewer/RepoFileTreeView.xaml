@@ -5,6 +5,7 @@
     xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
     xmlns:local="using:JitHub.WinUI.Views.Controls.CodeViewer"
     xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+    xmlns:muxc="using:Microsoft.UI.Xaml.Controls"
     xmlns:viewmodels="using:JitHub.WinUI.ViewModels.CodeViewer"
     d:DesignHeight="600"
     d:DesignWidth="280"
@@ -60,8 +61,8 @@
                     We use a ContentControl to bridge: its Content is bound (non-compiled) to
                     TreeViewNode.Content, and the typed inner DataTemplate gets our VM directly.
                 -->
-                <DataTemplate>
-                    <ContentControl Content="{Binding Content}">
+                <DataTemplate x:DataType="muxc:TreeViewNode">
+                    <ContentControl Content="{x:Bind Content, Mode=OneWay}">
                         <ContentControl.ContentTemplate>
                             <DataTemplate x:DataType="viewmodels:RepoTreeNodeViewModel">
                                 <Grid ColumnSpacing="6" HorizontalAlignment="Left">

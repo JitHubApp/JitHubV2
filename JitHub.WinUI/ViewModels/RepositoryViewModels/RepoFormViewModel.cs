@@ -22,10 +22,10 @@ namespace JitHub.WinUI.ViewModels.RepositoryViewModels
         private string _name = string.Empty;
         private string _error = string.Empty;
         private string _description = string.Empty;
-        private ICollection<RepositoryVisibility> _visibilities = [];
+        private List<RepositoryVisibility> _visibilities = [];
         private RepositoryVisibility _selectedVisibility;
         private bool _createReadme;
-        private ICollection<Models.License> _licenses = [];
+        private List<Models.License> _licenses = [];
         private Models.License? _selectedLicense;
         private ICommand? _refreshCommand;
 
@@ -44,7 +44,7 @@ namespace JitHub.WinUI.ViewModels.RepositoryViewModels
             get => _description;
             set => SetProperty(ref _description, value);
         }
-        public ICollection<RepositoryVisibility> Visibilities
+        public List<RepositoryVisibility> Visibilities
         {
             get => _visibilities;
             set => SetProperty(ref _visibilities, value);
@@ -59,7 +59,7 @@ namespace JitHub.WinUI.ViewModels.RepositoryViewModels
             get => _createReadme;
             set => SetProperty(ref _createReadme, value);
         }
-        public ICollection<Models.License> Licenses
+        public List<Models.License> Licenses
         {
             get => _licenses;
             set => SetProperty(ref _licenses, value);
@@ -73,7 +73,7 @@ namespace JitHub.WinUI.ViewModels.RepositoryViewModels
 
         public RepoFormViewModel()
         {
-            Licenses = Models.License.GetLicenses();
+            Licenses = Models.License.GetLicenses().ToList();
             Visibilities = new List<RepositoryVisibility>()
             {
                 RepositoryVisibility.Internal,

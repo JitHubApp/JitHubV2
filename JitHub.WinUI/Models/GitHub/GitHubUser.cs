@@ -2,7 +2,8 @@ using System.Text.Json.Serialization;
 
 namespace JitHub.Models.GitHub;
 
-public sealed class GitHubUser
+[WinRT.GeneratedBindableCustomProperty]
+public sealed partial class GitHubUser
 {
     [JsonPropertyName("id")]
     public long Id { get; init; }

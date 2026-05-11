@@ -3,6 +3,7 @@ using Microsoft.UI.Xaml.Controls;
 
 namespace JitHub.WinUI.Views.Controls.Common;
 
+[WinRT.GeneratedBindableCustomProperty]
 public sealed partial class EmptyStateView : UserControl
 {
     public static readonly DependencyProperty TitleProperty = DependencyProperty.Register(

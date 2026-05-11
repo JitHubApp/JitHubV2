@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Text;
@@ -6,7 +6,8 @@ using System.Threading.Tasks;
 
 namespace JitHub.Models
 {
-    public class License
+    [WinRT.GeneratedBindableCustomProperty]
+    public partial class License
     {
         public string Name { get; set; } = string.Empty;
         public string DiaplayName { get; set; } = string.Empty;

@@ -3,6 +3,7 @@ using Microsoft.UI.Xaml.Controls;
 
 namespace JitHub.WinUI.Views.Controls.App;
 
+[WinRT.GeneratedBindableCustomProperty]
 public sealed partial class AppSettingsCard : UserControl
 {
     public static readonly DependencyProperty HeaderProperty = DependencyProperty.Register(nameof(Header), typeof(string), typeof(AppSettingsCard), new PropertyMetadata(string.Empty));

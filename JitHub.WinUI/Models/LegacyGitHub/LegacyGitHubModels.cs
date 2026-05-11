@@ -84,16 +84,16 @@ internal static class CompatValueReader
         return index < values.Length ? values[index] as T : null;
     }
 
-    public static IReadOnlyList<T> ListAt<T>(object?[] values, int index)
+    public static List<T> ListAt<T>(object?[] values, int index)
     {
         if (index >= values.Length || values[index] is null)
         {
-            return Array.Empty<T>();
+            return [];
         }
 
         if (values[index] is IReadOnlyList<T> typedReadOnlyList)
         {
-            return typedReadOnlyList;
+            return typedReadOnlyList.ToList();
         }
 
         if (values[index] is ICollection<T> typedCollection)
@@ -106,7 +106,7 @@ internal static class CompatValueReader
             return typedEnumerable.ToList();
         }
 
-        return Array.Empty<T>();
+        return [];
     }
 
     public static StringEnum<TEnum> StringEnumAt<TEnum>(object?[] values, int index)
@@ -467,7 +467,8 @@ public enum StarredSort
     Updated
 }
 
-public sealed class Team
+[WinRT.GeneratedBindableCustomProperty]
+public sealed partial class Team
 {
     public string Name { get; set; } = string.Empty;
 
@@ -478,11 +479,13 @@ public sealed class CollaboratorPermissions
 {
 }
 
-public sealed class ActivityPayload
+[WinRT.GeneratedBindableCustomProperty]
+public sealed partial class ActivityPayload
 {
 }
 
-public sealed class RenameInfo
+[WinRT.GeneratedBindableCustomProperty]
+public sealed partial class RenameInfo
 {
     public RenameInfo()
     {
@@ -499,14 +502,16 @@ public sealed class RenameInfo
     public string To { get; set; } = string.Empty;
 }
 
-public class Account
+[WinRT.GeneratedBindableCustomProperty]
+public partial class Account
 {
     public Account()
     {
     }
 }
 
-public class User : Account
+[WinRT.GeneratedBindableCustomProperty]
+public partial class User : Account
 {
     public User()
     : this([])
@@ -624,7 +629,8 @@ public class Collaborator : User
     public string Type { get; set; } = string.Empty;
 }
 
-public class RepositoryContributor : User
+[WinRT.GeneratedBindableCustomProperty]
+public partial class RepositoryContributor : User
 {
     public RepositoryContributor()
     : this([])
@@ -637,7 +643,8 @@ public class RepositoryContributor : User
     }
 }
 
-public class Reaction
+[WinRT.GeneratedBindableCustomProperty]
+public partial class Reaction
 {
     public Reaction()
     : this([])
@@ -658,7 +665,8 @@ public class Reaction
     public StringEnum<ReactionType> Content { get; set; } = new();
 }
 
-public class ReactionSummary
+[WinRT.GeneratedBindableCustomProperty]
+public partial class ReactionSummary
 {
     public ReactionSummary()
     : this([])
@@ -691,7 +699,8 @@ public class ReactionSummary
     public string Url { get; set; } = string.Empty;
 }
 
-public class Label
+[WinRT.GeneratedBindableCustomProperty]
+public partial class Label
 {
     public Label()
     : this([])
@@ -718,7 +727,8 @@ public class Label
     public bool Default { get; set; }
 }
 
-public class Milestone
+[WinRT.GeneratedBindableCustomProperty]
+public partial class Milestone
 {
     public Milestone()
     : this([])
@@ -761,7 +771,8 @@ public class Milestone
     public DateTimeOffset? UpdatedAt { get; set; }
 }
 
-public class GitReference
+[WinRT.GeneratedBindableCustomProperty]
+public partial class GitReference
 {
     public GitReference()
     : this([])
@@ -788,7 +799,8 @@ public class GitReference
     public Repository Repository { get; set; } = new();
 }
 
-public class Branch
+[WinRT.GeneratedBindableCustomProperty]
+public partial class Branch
 {
     public Branch()
     : this([])
@@ -807,7 +819,8 @@ public class Branch
     public bool Protected { get; set; }
 }
 
-public class Blob
+[WinRT.GeneratedBindableCustomProperty]
+public partial class Blob
 {
     public Blob()
     : this([])
@@ -830,7 +843,8 @@ public class Blob
     public int Size { get; set; }
 }
 
-public class Repository
+[WinRT.GeneratedBindableCustomProperty]
+public partial class Repository
 {
     public Repository()
     : this([])
@@ -896,10 +910,11 @@ public class Repository
     public int WatchersCount { get; set; }
     public int SubscribersCount { get; set; }
     public RepositoryVisibility Visibility { get; set; }
-    public IReadOnlyList<string> Topics { get; set; } = Array.Empty<string>();
+    public List<string> Topics { get; set; } = [];
 }
 
-public class PullRequest
+[WinRT.GeneratedBindableCustomProperty]
+public partial class PullRequest
 {
     public PullRequest()
     : this([])
@@ -974,7 +989,7 @@ public class PullRequest
     public GitReference Base { get; set; } = new();
     public User User { get; set; } = new();
     public User? Assignee { get; set; }
-    public IReadOnlyList<User> Assignees { get; set; } = Array.Empty<User>();
+    public List<User> Assignees { get; set; } = [];
     public bool Draft { get; set; }
     public bool? Mergeable { get; set; }
     public StringEnum<MergeableState> MergeableState { get; set; } = new();
@@ -988,13 +1003,14 @@ public class PullRequest
     public Milestone? Milestone { get; set; }
     public bool Locked { get; set; }
     public User? ClosedBy { get; set; }
-    public IReadOnlyList<User> RequestedReviewers { get; set; } = Array.Empty<User>();
-    public IReadOnlyList<Team> RequestedTeams { get; set; } = Array.Empty<Team>();
-    public IReadOnlyList<Label> Labels { get; set; } = Array.Empty<Label>();
+    public List<User> RequestedReviewers { get; set; } = [];
+    public List<Team> RequestedTeams { get; set; } = [];
+    public List<Label> Labels { get; set; } = [];
     public ReactionSummary Reactions { get; set; } = new();
 }
 
-public class PullRequestMerge
+[WinRT.GeneratedBindableCustomProperty]
+public partial class PullRequestMerge
 {
     public PullRequestMerge()
     : this([])
@@ -1013,7 +1029,8 @@ public class PullRequestMerge
     public string Message { get; set; } = string.Empty;
 }
 
-public class Issue
+[WinRT.GeneratedBindableCustomProperty]
+public partial class Issue
 {
     public Issue()
     : this([])
@@ -1060,9 +1077,9 @@ public class Issue
     public string Body { get; set; } = string.Empty;
     public User? ClosedBy { get; set; }
     public User User { get; set; } = new();
-    public IReadOnlyList<Label> Labels { get; set; } = Array.Empty<Label>();
+    public List<Label> Labels { get; set; } = [];
     public User? Assignee { get; set; }
-    public IReadOnlyList<User> Assignees { get; set; } = Array.Empty<User>();
+    public List<User> Assignees { get; set; } = [];
     public Milestone? Milestone { get; set; }
     public int Comments { get; set; }
     public PullRequest? PullRequest { get; set; }
@@ -1078,7 +1095,8 @@ public class Issue
     public StringEnum<AuthorAssociation> AuthorAssociation { get; set; } = new();
 }
 
-public class IssueComment
+[WinRT.GeneratedBindableCustomProperty]
+public partial class IssueComment
 {
     public IssueComment()
     : this([])
@@ -1111,7 +1129,8 @@ public class IssueComment
     public StringEnum<AuthorAssociation> AuthorAssociation { get; set; } = new();
 }
 
-public class PullRequestReviewComment
+[WinRT.GeneratedBindableCustomProperty]
+public partial class PullRequestReviewComment
 {
     public PullRequestReviewComment()
     : this([])
@@ -1162,7 +1181,8 @@ public class PullRequestReviewComment
     public StringEnum<AuthorAssociation> AuthorAssociation { get; set; } = new();
 }
 
-public class PullRequestReview
+[WinRT.GeneratedBindableCustomProperty]
+public partial class PullRequestReview
 {
     public PullRequestReview()
     : this([])
@@ -1195,7 +1215,8 @@ public class PullRequestReview
     public DateTimeOffset SubmittedAt { get; set; }
 }
 
-public class Author
+[WinRT.GeneratedBindableCustomProperty]
+public partial class Author
 {
     public Author()
     : this([])
@@ -1242,7 +1263,8 @@ public class Author
     public bool SiteAdmin { get; set; }
 }
 
-public class Committer
+[WinRT.GeneratedBindableCustomProperty]
+public partial class Committer
 {
     public Committer()
     : this([])
@@ -1261,7 +1283,8 @@ public class Committer
     public DateTimeOffset Date { get; set; }
 }
 
-public class Commit
+[WinRT.GeneratedBindableCustomProperty]
+public partial class Commit
 {
     public Commit()
     : this([])
@@ -1297,12 +1320,13 @@ public class Commit
     public Committer Author { get; set; } = new();
     public Committer Committer { get; set; } = new();
     public GitReference Tree { get; set; } = new();
-    public IReadOnlyList<GitReference> Parents { get; set; } = Array.Empty<GitReference>();
+    public List<GitReference> Parents { get; set; } = [];
     public int CommentCount { get; set; }
     public object? Verification { get; set; }
 }
 
-public class GitHubCommitFile
+[WinRT.GeneratedBindableCustomProperty]
+public partial class GitHubCommitFile
 {
     public GitHubCommitFile()
     : this([])
@@ -1335,9 +1359,14 @@ public class GitHubCommitFile
     public string Sha { get; set; } = string.Empty;
     public string Patch { get; set; } = string.Empty;
     public string PreviousFilename { get; set; } = string.Empty;
+    public string PatchDisplayText => string.IsNullOrWhiteSpace(Patch) ? "Binary file or diff unavailable for this file." : Patch;
+    public bool HasPreviousFilename => !string.IsNullOrWhiteSpace(PreviousFilename);
+    public string PreviousFilenameDisplayText => HasPreviousFilename ? $"Renamed from {PreviousFilename}" : string.Empty;
+    public string HeaderText => HasPreviousFilename ? $"{Filename} (from {PreviousFilename})" : Filename;
 }
 
-public class GitHubCommitStats
+[WinRT.GeneratedBindableCustomProperty]
+public partial class GitHubCommitStats
 {
     public GitHubCommitStats()
     : this([])
@@ -1356,7 +1385,8 @@ public class GitHubCommitStats
     public int Total { get; set; }
 }
 
-public class GitHubCommit
+[WinRT.GeneratedBindableCustomProperty]
+public partial class GitHubCommit
 {
     public GitHubCommit()
     : this([])
@@ -1395,11 +1425,12 @@ public class GitHubCommit
     public Author? CommitAuthor { get; set; }
     public string CommitUrl { get; set; } = string.Empty;
     public GitHubCommitStats? Stats { get; set; }
-    public IReadOnlyList<GitReference> Parents { get; set; } = Array.Empty<GitReference>();
-    public IReadOnlyList<GitHubCommitFile> Files { get; set; } = Array.Empty<GitHubCommitFile>();
+    public List<GitReference> Parents { get; set; } = [];
+    public List<GitHubCommitFile> Files { get; set; } = [];
 }
 
-public class PullRequestCommit
+[WinRT.GeneratedBindableCustomProperty]
+public partial class PullRequestCommit
 {
     public PullRequestCommit()
     : this([])
@@ -1425,12 +1456,13 @@ public class PullRequestCommit
     public Commit Commit { get; set; } = new();
     public User Committer { get; set; } = new();
     public string HtmlUrl { get; set; } = string.Empty;
-    public IReadOnlyList<GitReference> Parents { get; set; } = Array.Empty<GitReference>();
+    public List<GitReference> Parents { get; set; } = [];
     public string Sha { get; set; } = string.Empty;
     public string CommitUrl { get; set; } = string.Empty;
 }
 
-public class CommitComment
+[WinRT.GeneratedBindableCustomProperty]
+public partial class CommitComment
 {
     public CommitComment()
     : this([])
@@ -1469,7 +1501,8 @@ public class CommitComment
     public ReactionSummary Reactions { get; set; } = new();
 }
 
-public class CompareResult
+[WinRT.GeneratedBindableCustomProperty]
+public partial class CompareResult
 {
     public CompareResult()
     : this([])
@@ -1504,11 +1537,12 @@ public class CompareResult
     public int AheadBy { get; set; }
     public int BehindBy { get; set; }
     public int TotalCommits { get; set; }
-    public IReadOnlyList<GitHubCommit> Commits { get; set; } = Array.Empty<GitHubCommit>();
-    public IReadOnlyList<GitHubCommitFile> Files { get; set; } = Array.Empty<GitHubCommitFile>();
+    public List<GitHubCommit> Commits { get; set; } = [];
+    public List<GitHubCommitFile> Files { get; set; } = [];
 }
 
-public class Subscription
+[WinRT.GeneratedBindableCustomProperty]
+public partial class Subscription
 {
     public Subscription()
     {
@@ -1532,7 +1566,8 @@ public class Subscription
     public string RepositoryUrl { get; set; } = string.Empty;
 }
 
-public class IssueEvent
+[WinRT.GeneratedBindableCustomProperty]
+public partial class IssueEvent
 {
     public IssueEvent()
     : this([])

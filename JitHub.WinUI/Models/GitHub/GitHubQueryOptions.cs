@@ -2,7 +2,8 @@ using System;
 
 namespace JitHub.Models.GitHub;
 
-public sealed class GitHubIssueQueryOptions
+[WinRT.GeneratedBindableCustomProperty]
+public sealed partial class GitHubIssueQueryOptions
 {
     public string State { get; set; } = "open";
 
@@ -25,7 +26,8 @@ public sealed class GitHubIssueQueryOptions
     public string? Filter { get; set; }
 }
 
-public sealed class GitHubPullRequestQueryOptions
+[WinRT.GeneratedBindableCustomProperty]
+public sealed partial class GitHubPullRequestQueryOptions
 {
     public string State { get; set; } = "open";
 

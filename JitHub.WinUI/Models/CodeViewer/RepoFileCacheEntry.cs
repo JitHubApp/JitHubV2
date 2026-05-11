@@ -2,7 +2,8 @@ using System;
 
 namespace JitHub.Models.CodeViewer;
 
-public sealed class RepoFileCacheEntry
+[WinRT.GeneratedBindableCustomProperty]
+public sealed partial class RepoFileCacheEntry
 {
     public required string Sha { get; init; }
     public required long ByteLength { get; init; }

@@ -2,7 +2,8 @@ using CommunityToolkit.Mvvm.ComponentModel;
 
 namespace JitHub.Models.GitHub;
 
-public class GitHubRepositorySelectionItem : ObservableObject
+[WinRT.GeneratedBindableCustomProperty]
+public partial class GitHubRepositorySelectionItem : ObservableObject
 {
     private bool _selected;
 

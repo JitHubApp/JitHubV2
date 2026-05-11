@@ -1,8 +1,9 @@
-﻿using System.Windows.Input;
+using System.Windows.Input;
 
 namespace JitHub.Models
 {
-    public class MenuItem
+    [WinRT.GeneratedBindableCustomProperty]
+    public partial class MenuItem
     {
         public string Text { get; set; } = string.Empty;
         public ICommand Command { get; set; }

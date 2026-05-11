@@ -20,7 +20,7 @@
                         IconBrush="{ThemeResource AppInkMutedBrush}"
                         IconKind="PublicRepository"
                         IconSize="16" />
-                    <TextBlock VerticalAlignment="Center" Text="{Binding Repository.Name}" />
+                    <TextBlock VerticalAlignment="Center" Text="{Binding Name}" />
                 </StackPanel>
             </Grid>
         </Button>
@@ -47,15 +47,15 @@
                     <TextBlock
                         FontSize="16"
                         FontWeight="SemiBold"
-                        Text="{Binding Repository.FullName, Mode=OneWay}" />
-                    <TextBlock Text="{Binding Repository.Description, Mode=OneWay}" TextWrapping="Wrap" />
+                        Text="{Binding FullName, Mode=OneWay}" />
+                    <TextBlock Text="{Binding Description, Mode=OneWay}" TextWrapping="Wrap" />
                     <StackPanel Orientation="Horizontal" Spacing="5">
                         <appcontrols:AppIcon
                             VerticalAlignment="Center"
                             IconBrush="{ThemeResource AppWarmAccentBrush}"
                             IconKind="Star"
                             IconSize="13" />
-                        <TextBlock VerticalAlignment="Bottom" Text="{Binding Repository.StargazersCount, Converter={StaticResource NumberToKizedStringConverter}, Mode=OneWay}" />
+                        <TextBlock VerticalAlignment="Bottom" Text="{Binding StargazersCount, Converter={StaticResource NumberToKizedStringConverter}, Mode=OneWay}" />
                     </StackPanel>
                 </StackPanel>
             </Grid>
@@ -77,14 +77,14 @@
                         IconKind="PublicRepository"
                         IconSize="16" />
                     <StackPanel Grid.Column="1">
-                        <TextBlock Text="{Binding Repo.Repository.FullName, Mode=OneWay}" />
-                        <TextBlock Text="{Binding Repo.Repository.Description, Mode=OneWay}" TextWrapping="Wrap" />
+                        <TextBlock Text="{Binding FullName, Mode=OneWay}" />
+                        <TextBlock Text="{Binding Description, Mode=OneWay}" TextWrapping="Wrap" />
                         <StackPanel Orientation="Horizontal" Spacing="4">
                             <appcontrols:AppIcon
                                 IconBrush="{ThemeResource AppWarmAccentBrush}"
                                 IconKind="Star"
                                 IconSize="14" />
-                            <TextBlock Text="{Binding Repo.Repository.StargazersCount, Converter={StaticResource NumberToKizedStringConverter}, Mode=OneWay}" />
+                            <TextBlock Text="{Binding StargazersCount, Converter={StaticResource NumberToKizedStringConverter}, Mode=OneWay}" />
                         </StackPanel>
                     </StackPanel>
                 </Grid>

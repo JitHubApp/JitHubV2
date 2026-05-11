@@ -4,7 +4,8 @@ using JitHub.WinUI.Helpers;
 
 namespace JitHub.Models.GitHub;
 
-public sealed class GitHubIssueEvent
+[WinRT.GeneratedBindableCustomProperty]
+public sealed partial class GitHubIssueEvent
 {
     [JsonPropertyName("node_id")]
     public string? NodeId { get; set; }
@@ -134,7 +135,8 @@ public sealed class GitHubIssueEvent
     }
 }
 
-public sealed class GitHubIssueEventRequestedTeam
+[WinRT.GeneratedBindableCustomProperty]
+public sealed partial class GitHubIssueEventRequestedTeam
 {
     [JsonPropertyName("name")]
     public string Name { get; set; } = string.Empty;
@@ -143,7 +145,8 @@ public sealed class GitHubIssueEventRequestedTeam
     public string Slug { get; set; } = string.Empty;
 }
 
-public sealed class GitHubIssueEventRename
+[WinRT.GeneratedBindableCustomProperty]
+public sealed partial class GitHubIssueEventRename
 {
     [JsonPropertyName("from")]
     public string From { get; set; } = string.Empty;
@@ -152,7 +155,8 @@ public sealed class GitHubIssueEventRename
     public string To { get; set; } = string.Empty;
 }
 
-public sealed class GitHubIssueEventDismissedReview
+[WinRT.GeneratedBindableCustomProperty]
+public sealed partial class GitHubIssueEventDismissedReview
 {
     [JsonPropertyName("dismissal_message")]
     public string? DismissalMessage { get; set; }

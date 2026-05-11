@@ -14,7 +14,7 @@ namespace JitHub.WinUI.Converters.Common
             var arr = value as IEnumerable<object> ?? Array.Empty<object>();
             int amount = 0;
             _ = int.TryParse(parameter?.ToString(), out amount);
-            return arr.Take(amount);
+            return amount <= 0 ? new List<object>() : arr.Take(amount).ToList();
         }
 
         public object ConvertBack(object value, Type targetType, object parameter, string language)

@@ -21,7 +21,7 @@ namespace JitHub.WinUI.Views.Controls.Common
             nameof(Label),
             typeof(object),
             typeof(RepoLabel),
-            new PropertyMetadata(default(object), null));
+            new PropertyMetadata(default(object), OnLabelChanged));
         
         public object? Label
         {
@@ -32,6 +32,14 @@ namespace JitHub.WinUI.Views.Controls.Common
         public RepoLabel()
         {
             this.InitializeComponent();
+        }
+
+        private static void OnLabelChanged(DependencyObject d, DependencyPropertyChangedEventArgs e)
+        {
+            if (d is RepoLabel self)
+            {
+                self.Bindings.Update();
+            }
         }
 
         public string GetName(object? label)

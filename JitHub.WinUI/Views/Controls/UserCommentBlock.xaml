@@ -8,6 +8,7 @@
     xmlns:markdowntextblock="using:CommunityToolkit.WinUI.Controls"
     xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
     xmlns:muxc="using:Microsoft.UI.Xaml.Controls"
+    xmlns:userviewmodels="using:JitHub.WinUI.ViewModels.UserViewModel"
     d:DesignHeight="300"
     d:DesignWidth="400"
     Loaded="UserCommentBlock_Loaded"
@@ -79,15 +80,15 @@
                             <common:EmojiPanelButton ViewModel="{x:Bind ViewModel.EmojiPanelViewModel, Mode=OneWay}" />
                             <muxc:ItemsRepeater ItemsSource="{x:Bind ViewModel.ReactionWithUsers, Mode=OneWay}">
                                 <muxc:ItemsRepeater.ItemTemplate>
-                                    <DataTemplate>
+                                    <DataTemplate x:DataType="userviewmodels:ReactionWithUsers">
                                         <Grid>
                                             <common:EmojiButton
-                                                Reaction="{Binding Type, Mode=OneWay}"
-                                                ReactionCommand="{Binding ReactionCommand, Mode=OneWay}"
-                                                ReactionCount="{Binding Users.Count, Mode=OneWay}"
+                                                Reaction="{x:Bind Type, Mode=OneWay}"
+                                                ReactionCommand="{x:Bind ReactionCommand, Mode=OneWay}"
+                                                ReactionCount="{x:Bind Users.Count, Mode=OneWay}"
                                                 ShowReactionCount="True"
-                                                Users="{Binding Users, Mode=OneWay}"
-                                                Voted="{Binding Voted, Mode=OneWay}" />
+                                                Users="{x:Bind Users, Mode=OneWay}"
+                                                Voted="{x:Bind Voted, Mode=OneWay}" />
                                         </Grid>
                                     </DataTemplate>
                                 </muxc:ItemsRepeater.ItemTemplate>

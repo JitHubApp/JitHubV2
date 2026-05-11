@@ -18,8 +18,8 @@ public sealed partial class DesignLabPage : Page
     public Label BugLabel { get; } = new(1, string.Empty, "bug", string.Empty, "F2C94C", "Something is not behaving correctly.", false);
     public Label AccessibilityLabel { get; } = new(2, string.Empty, "accessibility", string.Empty, "7BB99C", "Accessibility and keyboard polish.", false);
     public Label NeedsTriageLabel { get; } = new(3, string.Empty, "needs triage", string.Empty, "D7C39B", "Needs owner review.", false);
-    public IReadOnlyList<ActivityCardViewModel> ActivityCards { get; } = ActivityMockData.CreateCards();
-    public IReadOnlyList<ConversationNode> PullRequestTimelineItems { get; } = CreatePullRequestTimelineItems();
+    public List<ActivityCardViewModel> ActivityCards { get; } = ActivityMockData.CreateCards();
+    public List<ConversationNode> PullRequestTimelineItems { get; } = CreatePullRequestTimelineItems();
     public EmojiPanelViewModel DemoEmojiPanelViewModel { get; } = new()
     {
         VotesMap = new Dictionary<ReactionType, Reaction>
@@ -83,7 +83,7 @@ public sealed partial class DesignLabPage : Page
         }
     }
 
-    private static IReadOnlyList<ConversationNode> CreatePullRequestTimelineItems()
+    private static List<ConversationNode> CreatePullRequestTimelineItems()
     {
         Repository repo = CreateRepo();
         User actor = CreateUser("cdacamar", "https://avatars.githubusercontent.com/u/1755071?v=4");

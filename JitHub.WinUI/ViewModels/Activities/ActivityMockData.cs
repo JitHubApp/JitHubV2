@@ -13,7 +13,7 @@ public static class ActivityMockData
 {
     private static readonly ICommand NoOpCommand = new RelayCommand<ActivityNavigationTarget>(_ => { });
 
-    public static IReadOnlyList<ActivityCardViewModel> CreateCards(ICommand? command = null)
+    public static List<ActivityCardViewModel> CreateCards(ICommand? command = null)
     {
         command ??= NoOpCommand;
         List<GitHubActivityEvent> events =

@@ -12,6 +12,7 @@ namespace JitHub.WinUI.Views.Controls.CodeViewer;
 /// <see cref="CanGoBack"/>, and <see cref="CanGoForward"/> from
 /// <c>RepoCodePageViewModel</c> in the page.
 /// </summary>
+[WinRT.GeneratedBindableCustomProperty]
 public sealed partial class RepoCodeBreadcrumb : UserControl
 {
     // ── Dependency Properties ─────────────────────────────────────────────

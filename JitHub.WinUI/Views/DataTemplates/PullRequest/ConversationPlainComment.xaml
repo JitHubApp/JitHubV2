@@ -6,7 +6,7 @@
     <DataTemplate x:Key="PRConversationPlainCommentDataTemplate">
         <!--  For issue style comments  -->
         <Grid>
-            <usercontrols:UserCommentBlock ViewModel="{Binding Item, Converter={StaticResource IssueCommentNodeToUserCommentBlockViewModelConverter}, Mode=OneWay}" />
+            <usercontrols:UserCommentBlock ViewModel="{Binding Converter={StaticResource IssueCommentNodeToUserCommentBlockViewModelConverter}, Mode=OneWay}" />
         </Grid>
     </DataTemplate>
 </ResourceDictionary>

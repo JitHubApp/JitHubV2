@@ -196,52 +196,73 @@ namespace JitHub.WinUI.ViewModels.IssueViewModels
 
         private void SetFilterParam(Dictionary<string, FilterUnit> filters)
         {
-            if (filters["Milestone"] is DropdownFilter milestoneFilter &&
+            RepoIssueRequest = new RepositoryIssueRequest();
+
+            if (filters.TryGetValue("Labels", out FilterUnit? labelsUnit) &&
+                labelsUnit is DropdownFilter labelsFilter &&
+                !labelsFilter.DefaultSelected &&
+                labelsFilter.Selected.SelectedValue is { Length: > 0 } label)
+            {
+                RepoIssueRequest.Labels = [label];
+            }
+            if (filters.TryGetValue("Milestone", out FilterUnit? milestoneUnit) &&
+                milestoneUnit is DropdownFilter milestoneFilter &&
                 !milestoneFilter.DefaultSelected &&
-                milestoneFilter.Selected.Value is string milestone)
+                milestoneFilter.Selected.SelectedValue is { Length: > 0 } milestone)
             {
                 RepoIssueRequest.Milestone = milestone;
             }
             if (_isCollabotor)
             {
-                if (filters["Assignee"] is DropdownFilter assigneeFilter && !assigneeFilter.DefaultSelected)
+                if (filters.TryGetValue("Assignee", out FilterUnit? assigneeUnit) &&
+                    assigneeUnit is DropdownFilter assigneeFilter &&
+                    !assigneeFilter.DefaultSelected)
                 {
                     RepoIssueRequest.Assignee = assigneeFilter.Selected.SelectedValue;
                 }
-                if (filters["Creator"] is DropdownFilter creatorFilter && !creatorFilter.DefaultSelected)
+                if (filters.TryGetValue("Creator", out FilterUnit? creatorUnit) &&
+                    creatorUnit is DropdownFilter creatorFilter &&
+                    !creatorFilter.DefaultSelected)
                 {
                     RepoIssueRequest.Creator = creatorFilter.Selected.SelectedValue;
                 }
-                if (filters["Mentioned"] is DropdownFilter mentionedFilter && !mentionedFilter.DefaultSelected)
+                if (filters.TryGetValue("Mentioned", out FilterUnit? mentionedUnit) &&
+                    mentionedUnit is DropdownFilter mentionedFilter &&
+                    !mentionedFilter.DefaultSelected)
                 {
                     RepoIssueRequest.Mentioned = mentionedFilter.Selected.SelectedValue;
                 }
             }
-            if (filters["Issue Filter"] is DropdownFilter issueFilter &&
+            if (filters.TryGetValue("Issue Filter", out FilterUnit? issueFilterUnit) &&
+                issueFilterUnit is DropdownFilter issueFilter &&
                 !issueFilter.DefaultSelected &&
                 issueFilter.Selected.Value is IssueFilter selectedIssueFilter)
             {
                 RepoIssueRequest.Filter = selectedIssueFilter;
             }
-            if (filters["State"] is DropdownFilter stateFilter &&
+            if (filters.TryGetValue("State", out FilterUnit? stateUnit) &&
+                stateUnit is DropdownFilter stateFilter &&
                 !stateFilter.DefaultSelected &&
                 stateFilter.Selected.Value is ItemStateFilter selectedState)
             {
                 RepoIssueRequest.State = selectedState;
             }
-            if (filters["Sort"] is DropdownFilter sortFilter &&
+            if (filters.TryGetValue("Sort", out FilterUnit? sortUnit) &&
+                sortUnit is DropdownFilter sortFilter &&
                 !sortFilter.DefaultSelected &&
                 sortFilter.Selected.Value is IssueSort selectedSort)
             {
                 RepoIssueRequest.SortProperty = selectedSort;
             }
-            if (filters["Direction"] is DropdownFilter directionFilter &&
+            if (filters.TryGetValue("Direction", out FilterUnit? directionUnit) &&
+                directionUnit is DropdownFilter directionFilter &&
                 !directionFilter.DefaultSelected &&
                 directionFilter.Selected.Value is SortDirection selectedDirection)
             {
                 RepoIssueRequest.SortDirection = selectedDirection;
             }
-            if (filters["Date"] is DateFilter dateFilter)
+            if (filters.TryGetValue("Date", out FilterUnit? dateUnit) &&
+                dateUnit is DateFilter dateFilter)
             {
                 RepoIssueRequest.Since = dateFilter.StartDate;
             }

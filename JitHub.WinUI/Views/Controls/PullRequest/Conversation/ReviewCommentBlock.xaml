@@ -9,6 +9,7 @@
     xmlns:pullrequest="using:JitHub.WinUI.Views.Controls.PullRequest"
     xmlns:controls="using:JitHub.WinUI.Views.Controls"
     xmlns:muxc="using:Microsoft.UI.Xaml.Controls"
+    xmlns:userviewmodels="using:JitHub.WinUI.ViewModels.UserViewModel"
     mc:Ignorable="d"
     d:DesignHeight="300"
     d:DesignWidth="400">
@@ -32,11 +33,11 @@
             <muxc:ItemsRepeater
                 ItemsSource="{x:Bind ViewModel.Replies, Mode=OneWay}">
                 <muxc:ItemsRepeater.ItemTemplate>
-                    <DataTemplate>
+                    <DataTemplate x:DataType="userviewmodels:UserCommentBlockViewModel">
                         <Grid>
                             <controls:UserCommentBlock
                                 Size="MEDIUM"
-                                ViewModel="{Binding Item, Mode=OneWay}"/>
+                                ViewModel="{x:Bind Mode=OneWay}"/>
                         </Grid>
                     </DataTemplate>
                 </muxc:ItemsRepeater.ItemTemplate>

@@ -2,7 +2,8 @@ using System.Text.Json.Serialization;
 
 namespace JitHub.Models.GitHub;
 
-public sealed class GitHubTreeEntry
+[WinRT.GeneratedBindableCustomProperty]
+public sealed partial class GitHubTreeEntry
 {
     [JsonPropertyName("path")]
     public string? Path { get; init; }

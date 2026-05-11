@@ -1,4 +1,4 @@
-<?xml version="1.0" encoding="utf-8"?>
+﻿<?xml version="1.0" encoding="utf-8"?>
 
 <Package
   xmlns="http://schemas.microsoft.com/appx/manifest/foundation/windows10"
@@ -10,8 +10,8 @@
 
   <Identity
     Name="54742Neromarah.JitHub"
-    Publisher="CN=E1994DBD-BBFE-40D0-AC99-9271E31610E9"
-    Version="1.6.2.0" />
+    Publisher="CN=neroc"
+    Version="1.7.2.0" />
 
   <mp:PhoneIdentity PhoneProductId="ac961a7e-34a0-4a8b-8b7b-8379271bd0ce" PhonePublisherId="00000000-0000-0000-0000-000000000000"/>
 

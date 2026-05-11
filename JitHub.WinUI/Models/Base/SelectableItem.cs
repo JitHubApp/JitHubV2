@@ -1,9 +1,10 @@
-﻿using CommunityToolkit.Mvvm.ComponentModel;
+using CommunityToolkit.Mvvm.ComponentModel;
 using System.Windows.Input;
 
 namespace JitHub.Models.Base
 {
-    public class SelectableItem : ObservableObject
+    [WinRT.GeneratedBindableCustomProperty]
+    public partial class SelectableItem : ObservableObject
     {
         private bool _selected;
         private bool _selectable = true;
