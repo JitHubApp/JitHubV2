@@ -508,14 +508,13 @@ public sealed partial class MarkdownRendererControl : UserControl
         {
             t.Changed -= OnThemeRevisionChanged;
         }
-        // Cancel but do not dispose the CTS here. The ContinueWith in RequestRebuild
-        // disposes it uniformly after the task finishes, whether it completes normally
-        // or via OperationCanceledException. Disposing here + in ContinueWith creates
-        // a non-atomic double-dispose race (CancellationTokenSource.Dispose is not
-        // thread-safe for concurrent calls from UI thread + ThreadPool).
+        // Cancel and dispose the CTS. At unload no new RequestRebuild can be called
+        // (the control is being torn down), so there is no concurrent ContinueWith
+        // disposal race. Disposing explicitly avoids leaking the WaitHandle until GC.
         var oldCts = _pipelineCts;
-        oldCts?.Cancel();
         _pipelineCts = null;
+        oldCts?.Cancel();
+        oldCts?.Dispose();
         // Unsubscribe scroll handler so scroll-inertia events after visual-tree
         // removal don't fire OnScrollViewChanged on a partially-torn-down control.
         if (_scroll is not null) _scroll.ViewChanged -= OnScrollViewChanged;
@@ -592,21 +591,21 @@ public sealed partial class MarkdownRendererControl : UserControl
     /// <summary>Kicks off (or re-kicks) the parse + layout pipeline.</summary>
     public void RequestRebuild()
     {
-        // Cancel the in-flight build (if any) but do NOT dispose the CTS here:
-        // the background task still holds a reference to the token and accessing
-        // IsCancellationRequested / ThrowIfCancellationRequested on a disposed
-        // token can throw ObjectDisposedException, which escapes our OCE catches
-        // and becomes an unobserved task exception.  Let the GC collect the old CTS.
-        _pipelineCts?.Cancel();
+        // Cancel and dispose the superseded CTS now — safe because the token is
+        // cancelled before the new CTS is created, so the in-flight task will observe
+        // IsCancellationRequested=true and throw OCE before it accesses the WaitHandle.
+        // (ThrowIfCancellationRequested on a cancelled-then-disposed token is safe.)
+        var oldCts = _pipelineCts;
+        oldCts?.Cancel();
+        oldCts?.Dispose();
         _pipelineCts = new CancellationTokenSource();
         var cts = _pipelineCts;
         _ = RebuildAsync(cts.Token).ContinueWith(t =>
         {
             if (t.IsFaulted)
                 System.Diagnostics.Debug.WriteLine($"[MarkdownRendererControl] Rebuild faulted: {t.Exception}");
-            // Dispose the CTS only after the task it was attached to has finished.
-            if (ReferenceEquals(_pipelineCts, cts)) { /* still current — let it live */ }
-            else cts.Dispose();
+            // Disposal is handled: superseded CTSes are disposed in RequestRebuild above;
+            // the final CTS is disposed in OnUnloaded. Nothing to do here.
         }, TaskScheduler.Default);
     }
 
@@ -1870,13 +1869,13 @@ public sealed partial class MarkdownRendererControl : UserControl
             // always have a valid anchor; this makes the selection empty (start==end)
             // while allowing drag to extend from this point.
             _selection.SetAnchor(pos);
-            _canvas?.Invalidate();
+            // No _canvas.Invalidate(): selection is rendered on the XAML overlay only.
             return (pos, pos);
         }
         var (start, end) = icb.GetWordBoundaries(pos);
         _selection.SetAnchor(start);
         _selection.ExtendTo(end);
-        _canvas?.Invalidate();
+        // No _canvas.Invalidate(): selection is rendered on the XAML overlay only.
         return (start, end);
     }
 
@@ -1895,13 +1894,13 @@ public sealed partial class MarkdownRendererControl : UserControl
             // always have a valid anchor; this makes the selection empty (start==end)
             // while allowing drag to extend from this point.
             _selection.SetAnchor(pos);
-            _canvas?.Invalidate();
+            // No _canvas.Invalidate(): selection is rendered on the XAML overlay only.
             return (pos, pos);
         }
         var (start, end) = icb.GetBlockBoundaries();
         _selection.SetAnchor(start);
         _selection.ExtendTo(end);
-        _canvas?.Invalidate();
+        // No _canvas.Invalidate(): selection is rendered on the XAML overlay only.
         return (start, end);
     }
 

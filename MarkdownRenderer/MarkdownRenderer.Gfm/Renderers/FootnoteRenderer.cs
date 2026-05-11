@@ -113,6 +113,10 @@ public sealed class FootnoteRenderer : MarkdownNodeRenderer<FootnoteGroup>
             // ListItemBox.Content is a StackBox — recurse into it.
             if (child is ListItemBox lib && TryAppendToLastInlineBox(lib.Content, run))
                 return true;
+            // Any other block type (EmbedBox, CodeBlockBox, …) terminates the reverse
+            // search: do NOT skip past it, that would place ↩ before the block visually.
+            // Let the caller's fallback create a new InlineContainerBox after the block.
+            return false;
         }
         return false;
     }

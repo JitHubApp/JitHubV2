@@ -452,7 +452,7 @@ internal static class Program
                     // killing unrelated apps that share the same process name.
                     if (string.Equals(p.MainModule?.FileName, appPath,
                             StringComparison.OrdinalIgnoreCase))
-                    { p.Kill(); p.WaitForExit(2000); }
+                    { p.Kill(); if (!p.WaitForExit(2000)) Console.Error.WriteLine($"[automation] warn: PID {p.Id} did not exit within 2 s after Kill() — tests may be unreliable"); }
                 }
                 catch (Exception ex) when (ex is System.ComponentModel.Win32Exception
                                                or InvalidOperationException)
