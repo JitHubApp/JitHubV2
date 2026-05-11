@@ -24,6 +24,10 @@ public sealed class ImageBox : BlockBox
 {
     private static readonly ConcurrentDictionary<string, CanvasBitmap?> _bitmapCache = new();
     private static readonly ConcurrentDictionary<string, (byte[] Bytes, Size Intrinsic)> _svgBytesCache = new();
+    // URLs that have permanently failed to load/parse. New ImageBox instances
+    // for the same URL start in _loadFailed=true so the fatal state survives
+    // the layout rebuild triggered by the original failure.
+    private static readonly System.Collections.Concurrent.ConcurrentDictionary<string, byte> _failedUrls = new();
     private static readonly Lazy<HttpClient> _http = new(() =>
     {
         var c = new HttpClient { Timeout = TimeSpan.FromSeconds(30) };
@@ -67,7 +71,14 @@ public sealed class ImageBox : BlockBox
         Margin = new Thickness(0, 6, 0, 6);
         if (!string.IsNullOrEmpty(_url))
         {
-            if (!_isSvg && _bitmapCache.TryGetValue(_url, out var cached) && cached is not null)
+            if (_failedUrls.ContainsKey(_url))
+            {
+                // Preserve fatal failure latch across rebuilds: skip loading,
+                // render the alt-text placeholder.
+                _loadFailed = true;
+                _loadStarted = true;
+            }
+            else if (!_isSvg && _bitmapCache.TryGetValue(_url, out var cached) && cached is not null)
             {
                 _bitmap = cached;
                 _loadStarted = true;
@@ -240,12 +251,14 @@ public sealed class ImageBox : BlockBox
                             if (_svgReparseFailures >= MaxSvgReparseAttempts)
                             {
                                 // Latch fatal: stop retrying and fall back to
-                                // the alt-text placeholder. Future device-lost
-                                // recovery would require an explicit reset
-                                // (e.g. CanvasDevice.DeviceLost handler) which
-                                // is out of scope here.
+                                // the alt-text placeholder. Record the URL in
+                                // the failed set so subsequent ImageBox
+                                // instances (e.g. after layout rebuild) start
+                                // already failed instead of restarting the
+                                // retry cycle from the bytes cache.
                                 _loadFailed = true;
                                 _svgBytes = null;
+                                if (!string.IsNullOrEmpty(_url)) _failedUrls.TryAdd(_url, 0);
                             }
                             else
                             {
@@ -292,6 +305,7 @@ public sealed class ImageBox : BlockBox
                     {
                         _loadFailed = true;
                         _svgBytes = null;
+                        if (!string.IsNullOrEmpty(_url)) _failedUrls.TryAdd(_url, 0);
                     }
                     else
                     {
@@ -357,38 +371,60 @@ public sealed class ImageBox : BlockBox
 
     private async Task LoadBitmapAsync(Uri uri)
     {
+        CanvasBitmap? bmp = null;
+        bool failed = false;
         try
         {
-            var bmp = await CanvasBitmap.LoadAsync(_context.ResourceCreator, uri);
-            _bitmap = bmp;
-            _bitmapCache[_url] = bmp;
+            bmp = await CanvasBitmap.LoadAsync(_context.ResourceCreator, uri);
         }
         catch (Exception ex)
         {
             System.Diagnostics.Debug.WriteLine($"[ImageBox] bitmap load failed for {uri}: {ex.Message}");
-            _loadFailed = true;
+            failed = true;
         }
-        finally
+        // If we were disposed while the load was in flight, drop the freshly
+        // loaded resource and bail without raising LoadCompleted — the host
+        // already moved on to a new snapshot and the event would race against
+        // a freshly-built box.
+        if (_disposed)
         {
-            LoadCompleted?.Invoke(this, new LoadCompletedEventArgs(layoutInvalidated: true));
+            try { bmp?.Dispose(); } catch { }
+            return;
         }
+        if (failed)
+        {
+            _loadFailed = true;
+            if (!string.IsNullOrEmpty(_url)) _failedUrls.TryAdd(_url, 0);
+        }
+        else if (bmp is not null)
+        {
+            _bitmap = bmp;
+            _bitmapCache[_url] = bmp;
+        }
+        LoadCompleted?.Invoke(this, new LoadCompletedEventArgs(layoutInvalidated: true));
     }
 
     private async Task LoadSvgAsync(Uri uri)
     {
+        byte[]? bytes = null;
+        CanvasSvgDocument? doc = null;
+        Size intrinsic = default;
+        bool failed = false;
         try
         {
-            byte[] bytes;
             if (uri.Scheme == "data")
             {
                 // data:image/svg+xml;base64,XXXX  or  data:image/svg+xml,<svg…>
                 string raw = uri.ToString();
                 int comma = raw.IndexOf(',');
-                if (comma < 0) { _loadFailed = true; return; }
-                string payload = raw.Substring(comma + 1);
-                bytes = raw.IndexOf(";base64", 0, comma, StringComparison.OrdinalIgnoreCase) >= 0
-                    ? Convert.FromBase64String(payload)
-                    : System.Text.Encoding.UTF8.GetBytes(Uri.UnescapeDataString(payload));
+                if (comma < 0) { failed = true; }
+                else
+                {
+                    string payload = raw.Substring(comma + 1);
+                    bytes = raw.IndexOf(";base64", 0, comma, StringComparison.OrdinalIgnoreCase) >= 0
+                        ? Convert.FromBase64String(payload)
+                        : System.Text.Encoding.UTF8.GetBytes(Uri.UnescapeDataString(payload));
+                }
             }
             else
             {
@@ -397,43 +433,60 @@ public sealed class ImageBox : BlockBox
                 bytes = await _http.Value.GetByteArrayAsync(uri).ConfigureAwait(false);
             }
 
-            // Parse intrinsic size from <svg width="…" height="…" viewBox="…">
-            _svgIntrinsicSize = ExtractSvgIntrinsicSize(bytes);
-            _svgBytes = bytes;
-            _svgBytesCache[_url] = (bytes, _svgIntrinsicSize);
+            if (bytes is not null)
+            {
+                intrinsic = ExtractSvgIntrinsicSize(bytes);
 
-            // Pre-parse the SVG document off the UI thread so the first Paint
-            // doesn't sync-block on LoadAsync. Tied to the shared device; the
-            // paint path falls back to re-parsing on device loss.
-            try
-            {
-                using var ms = new InMemoryRandomAccessStream();
-                using (var writer = new DataWriter(ms))
+                // Pre-parse the SVG document off the UI thread so the first Paint
+                // doesn't sync-block on LoadAsync. Tied to the shared device; the
+                // paint path falls back to re-parsing on device loss.
+                try
                 {
-                    writer.WriteBytes(bytes);
-                    await writer.StoreAsync();
-                    writer.DetachStream();
+                    using var ms = new InMemoryRandomAccessStream();
+                    using (var writer = new DataWriter(ms))
+                    {
+                        writer.WriteBytes(bytes);
+                        await writer.StoreAsync();
+                        writer.DetachStream();
+                    }
+                    ms.Seek(0);
+                    doc = await CanvasSvgDocument.LoadAsync(
+                        Microsoft.Graphics.Canvas.CanvasDevice.GetSharedDevice(), ms);
                 }
-                ms.Seek(0);
-                var doc = await CanvasSvgDocument.LoadAsync(
-                    Microsoft.Graphics.Canvas.CanvasDevice.GetSharedDevice(), ms);
-                _svg = doc;
-            }
-            catch (Exception ex)
-            {
-                System.Diagnostics.Debug.WriteLine($"[ImageBox] SVG pre-parse failed for {uri}: {ex.Message}");
-                // _svgBytes retained — Paint will re-parse against ds.Device as fallback.
+                catch (Exception ex)
+                {
+                    System.Diagnostics.Debug.WriteLine($"[ImageBox] SVG pre-parse failed for {uri}: {ex.Message}");
+                    // bytes retained — Paint will re-parse against ds.Device as fallback.
+                }
             }
         }
         catch (Exception ex)
         {
             System.Diagnostics.Debug.WriteLine($"[ImageBox] svg load failed for {uri}: {ex.Message}");
-            _loadFailed = true;
+            failed = true;
         }
-        finally
+
+        // Disposal race: if the snapshot was replaced before the awaits
+        // completed, drop the freshly-parsed document so we don't leak native
+        // resources, and don't raise LoadCompleted on an obsolete box.
+        if (_disposed)
         {
-            LoadCompleted?.Invoke(this, new LoadCompletedEventArgs(layoutInvalidated: true));
+            try { doc?.Dispose(); } catch { }
+            return;
         }
+        if (failed)
+        {
+            _loadFailed = true;
+            if (!string.IsNullOrEmpty(_url)) _failedUrls.TryAdd(_url, 0);
+        }
+        else if (bytes is not null)
+        {
+            _svgIntrinsicSize = intrinsic;
+            _svgBytes = bytes;
+            _svgBytesCache[_url] = (bytes, intrinsic);
+            if (doc is not null) _svg = doc;
+        }
+        LoadCompleted?.Invoke(this, new LoadCompletedEventArgs(layoutInvalidated: true));
     }
 
     internal static Size ExtractSvgIntrinsicSize(byte[] svgBytes)
