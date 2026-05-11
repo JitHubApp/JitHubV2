@@ -21,6 +21,7 @@ public sealed class InlineContainerBox : BlockBox
     private readonly string _elementKey;
     private CanvasTextLayout? _layout;
     private string _buffer = string.Empty;
+    private bool _bufferDirty;
     private float _lastWidth;
     private readonly MarkdownLayoutContext _context;
 
@@ -57,6 +58,7 @@ public sealed class InlineContainerBox : BlockBox
         run.InlineIndex = _runs.Count;
         _runs.Add(run);
         _context.SourceMap.Add(BlockIndex, run.InlineIndex, run.RenderedLength, run.SourceSpan);
+        _bufferDirty = true; // buffer is stale until next BuildBuffer()
     }
 
     /// <summary>
@@ -100,7 +102,7 @@ public sealed class InlineContainerBox : BlockBox
 
     private void EnsureBuffer()
     {
-        if (_buffer.Length == 0 && _runs.Count > 0) BuildBuffer();
+        if ((_bufferDirty || _buffer.Length == 0) && _runs.Count > 0) BuildBuffer();
     }
 
     /// <summary>
@@ -420,6 +422,7 @@ public sealed class InlineContainerBox : BlockBox
         var sb = new System.Text.StringBuilder();
         foreach (var run in _runs) sb.Append(run.Text);
         _buffer = sb.ToString();
+        _bufferDirty = false;
     }
 
     private void ApplyRunStyles(CanvasTextLayout layout)

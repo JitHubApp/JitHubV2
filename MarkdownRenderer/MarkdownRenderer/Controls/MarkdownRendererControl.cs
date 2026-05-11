@@ -1357,6 +1357,14 @@ public sealed partial class MarkdownRendererControl : UserControl
 
     private void OnPointerExited(object sender, PointerRoutedEventArgs e)
     {
+        // PointerExited is also wired for PointerCanceled and PointerCaptureLost.
+        // Clear drag state so a canceled/interrupted gesture doesn't leave a stale
+        // anchor that causes ghost-selection on the next PointerMoved, or a stale
+        // _leftPointerCaptured that causes the next PointerReleased to misidentify
+        // the button.
+        _leftPointerCaptured = false;
+        _selectionAnchor = null;
+
         // Clear hover state when the pointer leaves the canvas (or capture is
         // lost).  Without this, a link's hover colour and the hand cursor
         // persist even when the pointer is no longer over the control.
