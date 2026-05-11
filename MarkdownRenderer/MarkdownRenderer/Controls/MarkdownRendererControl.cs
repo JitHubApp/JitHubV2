@@ -86,8 +86,16 @@ public sealed partial class MarkdownRendererControl : UserControl
     private long _lastPressTickMs;
     private Point _lastPressPoint;
     private int _consecutiveClickCount;
-    // System double-click time; cached once from interop.
-    private static readonly int _doubleClickTimeMs = 500;
+    // System double-click time; read from the Win32 API at first use.
+    private static readonly int _doubleClickTimeMs = GetSystemDoubleClickTimeMs();
+
+    [System.Runtime.InteropServices.DllImport("user32.dll")]
+    private static extern uint GetDoubleClickTime();
+
+    private static int GetSystemDoubleClickTimeMs()
+    {
+        try { return (int)GetDoubleClickTime(); } catch { return 500; }
+    }
 
     // Cache of inline-embed rectangles (in canvas/document coordinates) plus
     // the InlineRun + owning InlineContainerBox.  Built during PlaceEmbeds
@@ -945,7 +953,10 @@ public sealed partial class MarkdownRendererControl : UserControl
         bool sameSpot = dx * dx + dy * dy < 16; // 4px radius
         bool withinTime = (nowMs - _lastPressTickMs) <= _doubleClickTimeMs;
         if (sameSpot && withinTime)
+        {
             _consecutiveClickCount++;
+            if (_consecutiveClickCount > 3) _consecutiveClickCount = 3; // cap: 4+ repeats = line-select
+        }
         else
             _consecutiveClickCount = 1;
         _lastPressTickMs = nowMs;

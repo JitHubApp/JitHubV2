@@ -87,11 +87,12 @@ public sealed class InlineContainerBox : BlockBox
         for (int i = 0; i < _runs.Count; i++)
         {
             int len = _runs[i].Text.Length;
-            if (bufOffset <= offset + len)
-                return new DocumentPosition(BlockIndex, i, Math.Min(bufOffset - offset, len));
+            if (bufOffset < offset + len)
+                return new DocumentPosition(BlockIndex, i, bufOffset - offset);
+            // At exact run boundary: prefer start of next run (continue loop).
             offset += len;
         }
-        // Clamp to end of last run.
+        // bufOffset >= total length: clamp to end of last run.
         if (_runs.Count == 0) return new DocumentPosition(BlockIndex, 0, 0);
         int last = _runs.Count - 1;
         return new DocumentPosition(BlockIndex, last, _runs[last].Text.Length);
