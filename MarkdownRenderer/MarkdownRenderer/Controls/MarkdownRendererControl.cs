@@ -69,6 +69,19 @@ public sealed partial class MarkdownRendererControl : UserControl
     // depending on the platform's DirectX swap-chain configuration.
     private Windows.UI.Color _canvasBackground = Windows.UI.Color.FromArgb(0xFF, 0xFF, 0xFF, 0xFF);
 
+    // Last committed theme snapshot. Used by UI operations (focus ring, etc.)
+    // that need theme colors after the rebuild is complete.
+    private Theming.ThemeSnapshot? _themeSnapshot;
+
+    // ---- Keyboard navigation ----
+    // Ordered list of focusable items (LinkRuns + InlineEmbedRuns) in the current
+    // snapshot.  Rebuilt after each snapshot commit.  -1 means "nothing focused".
+    private System.Collections.Generic.IReadOnlyList<Layout.FocusableItem>? _focusableItems;
+    private int _focusedItemIndex = -1;
+    // XAML Border element used to show a focus ring around the focused item.
+    // Lives on _overlay at ZIndex 1 (above selection at -1, below embeds at 0).
+    private Microsoft.UI.Xaml.Controls.Border? _focusRing;
+
     // Cache of inline-embed rectangles (in canvas/document coordinates) plus
     // the InlineRun + owning InlineContainerBox.  Built during PlaceEmbeds
     // and consulted from pointer handlers so we can:
@@ -181,6 +194,19 @@ public sealed partial class MarkdownRendererControl : UserControl
         }
     }
     private readonly List<EmbedPlan> _embedPlans = new();
+
+    // Lazy-load queue: all ImageBox instances in the current snapshot.
+    // EnsureLoading() is called for each when its bounds enter the
+    // viewport + LazyImageOverscanPx band.  Images already in the
+    // in-memory cache start loading (no-op) immediately after build.
+    private readonly List<Layout.Boxes.ImageBox> _imagePlans = new();
+
+    /// <summary>
+    /// Overscan band (pixels, each direction) within which off-screen images
+    /// are preemptively loaded.  Wider than the embed virtualisation overscan
+    /// so images appear before they scroll into view.
+    /// </summary>
+    public const double LazyImageOverscanPx = 800;
 
     // Stable per-LinkRun automation peer cache. UIA traversals re-request the
     // children of a block frequently; returning fresh peers each time loses
@@ -457,6 +483,7 @@ public sealed partial class MarkdownRendererControl : UserControl
         // and their event handlers would leak past detach.
         DerealizeAllEmbeds();
         _embedPlans.Clear();
+        _imagePlans.Clear();
         _embedRects.Clear();
         _blockEmbedRects.Clear();
         // Release native resources & hosted embeds so re-attaching the
@@ -566,11 +593,30 @@ public sealed partial class MarkdownRendererControl : UserControl
         // passing _canvas directly would crash if layout runs before first draw.
         var device = CanvasDevice.GetSharedDevice();
         var ctx = new MarkdownLayoutContext(device, themeSnapshot, sourceMap, registry, FlowDirection, DispatcherQueue);
+        _themeSnapshot = themeSnapshot;
         var builder = new LayoutBuilder(ctx, EmbedFactory);
 
         ct.ThrowIfCancellationRequested();
         var snapshot = await Task.Run(() => builder.Build(parsed.Document, width), ct).ConfigureAwait(true);
         ct.ThrowIfCancellationRequested();
+
+        // Scroll anchoring: capture the current read position before the canvas
+        // height changes.  If the user has scrolled down, we identify the first
+        // visible block (its top edge closest to viewport top) and how far it is
+        // from the viewport top.  After committing the new layout we restore the
+        // same offset so content above the fold shifting (e.g. an image loading)
+        // doesn't jump the reader's position.
+        (int BlockIndex, double OffsetFromTop)? scrollAnchor = null;
+        if (_scroll is { VerticalOffset: > 0 } scrollSnap && _snapshot is { } prevSnap)
+        {
+            double vTop = scrollSnap.VerticalOffset;
+            foreach (var b in prevSnap.Blocks)
+            {
+                if (b.Bounds.Bottom < vTop) continue;
+                scrollAnchor = (b.BlockIndex, b.Bounds.Top - vTop);
+                break;
+            }
+        }
 
         // Atomically swap snapshots, then dispose the old one so its
         // CanvasTextLayout / placeholder handles are released.
@@ -584,6 +630,25 @@ public sealed partial class MarkdownRendererControl : UserControl
         _overlay!.Width = width;
         _overlay.Height = _canvas.Height;
 
+        // Restore scroll anchor: find the anchor block's new Y in the new layout
+        // and adjust the scroll offset so the user's read position is unchanged.
+        if (scrollAnchor is { } anchor && _scroll is { } scrollRestore)
+        {
+            double? newY = null;
+            foreach (var b in snapshot.Blocks)
+            {
+                if (b.BlockIndex == anchor.BlockIndex)
+                {
+                    newY = b.Bounds.Top - anchor.OffsetFromTop;
+                    break;
+                }
+            }
+            if (newY is { } targetOffset && targetOffset >= 0)
+            {
+                scrollRestore.ChangeView(null, targetOffset, null, disableAnimation: true);
+            }
+        }
+
         // UI thread: collect embed plans (don't realise yet), hook image
         // LoadCompleted, then realise only embeds that fall in the current
         // viewport. Hooking _scroll.ViewChanged drives subsequent realisation
@@ -593,11 +658,14 @@ public sealed partial class MarkdownRendererControl : UserControl
         _embedRects.Clear();
         _blockEmbedRects.Clear();
         _embedPlans.Clear();
+        _imagePlans.Clear();
         // Identities change across rebuild even when the count happens to
         // match — reset so the first post-rebuild realisation always fires.
         _lastFiredRealizedCount = -1;
         _selectionOverlayRects.Clear(); // overlay was just cleared above
         _selection.Clear();             // stale selection no longer valid after re-layout
+        _focusedItemIndex = -1;         // selection/focus stale after re-layout
+        _focusableItems = snapshot.CollectFocusableItems();
         foreach (var b in snapshot.Blocks) CollectEmbedPlans(b);
         if (_scroll is not null)
         {
@@ -634,6 +702,20 @@ public sealed partial class MarkdownRendererControl : UserControl
     internal void RealizeVisibleEmbeds()
     {
         if (_scroll is null) return;
+        double top = _scroll.VerticalOffset;
+        double bottom = top + _scroll.ViewportHeight;
+
+        // Lazy image loading: trigger EnsureLoading for images within the
+        // viewport + LazyImageOverscanPx band.  Images already started (cached
+        // or previously triggered) are silently skipped by EnsureLoading().
+        double imgLoadTop    = top    - LazyImageOverscanPx;
+        double imgLoadBottom = bottom + LazyImageOverscanPx;
+        foreach (var img in _imagePlans)
+        {
+            if (img.Bounds.Bottom >= imgLoadTop && img.Bounds.Top <= imgLoadBottom)
+                img.EnsureLoading();
+        }
+
         if (_embedPlans.Count == 0)
         {
             // No embeds: still emit a transition-to-zero event so subscribers
@@ -647,8 +729,6 @@ public sealed partial class MarkdownRendererControl : UserControl
             }
             return;
         }
-        double top = _scroll.VerticalOffset;
-        double bottom = top + _scroll.ViewportHeight;
         double realizeTop = top - EmbedVirtualizationOverscanPx;
         double realizeBottom = bottom + EmbedVirtualizationOverscanPx;
         double derealizeTop = top - EmbedVirtualizationDerealizeOverscanPx;
@@ -731,6 +811,7 @@ public sealed partial class MarkdownRendererControl : UserControl
             {
                 ib.LoadCompleted -= OnImageLoadCompleted;
                 ib.LoadCompleted += OnImageLoadCompleted;
+                _imagePlans.Add(ib);
                 break;
             }
             case Layout.Boxes.InlineContainerBox icb:
@@ -1254,8 +1335,68 @@ public sealed partial class MarkdownRendererControl : UserControl
         if (_snapshot.HitTest(pt, out var pos))
         {
             var link = FindLinkAt(pos);
-            if (link is not null) LinkClick?.Invoke(this, new MarkdownLinkClickEventArgs(link.Url, link.Title));
+            if (link is not null)
+            {
+                // Intercept internal fragment anchors (e.g. footnote back/forward
+                // links) and scroll without surfacing them to external subscribers.
+                if (link.Url.StartsWith("#footnote-", StringComparison.OrdinalIgnoreCase))
+                {
+                    HandleInternalAnchor(link.Url);
+                }
+                else
+                {
+                    LinkClick?.Invoke(this, new MarkdownLinkClickEventArgs(link.Url, link.Title));
+                }
+            }
         }
+    }
+
+    /// <summary>
+    /// Scrolls the document so the block with <paramref name="blockIndex"/>
+    /// is near the top of the viewport.
+    /// </summary>
+    public void ScrollToBlock(int blockIndex)
+    {
+        if (_scroll is null || _snapshot is null) return;
+        foreach (var b in _snapshot.Blocks)
+        {
+            if (b.BlockIndex == blockIndex)
+            {
+                // Offset slightly above the block so it has visual context.
+                double targetY = Math.Max(0, b.Bounds.Top - 24);
+                _scroll.ChangeView(null, targetY, null, disableAnimation: false);
+                return;
+            }
+        }
+    }
+
+    /// <summary>
+    /// Handles internal fragment navigation URLs (e.g. <c>#footnote-def-1</c>,
+    /// <c>#footnote-ref-1</c>) by scrolling to the target block directly.
+    /// </summary>
+    private void HandleInternalAnchor(string url)
+    {
+        if (_snapshot is null) return;
+        // Resolve block index from footnote registry stored on the layout context.
+        // The registry is embedded in the LayoutSnapshot's block tree; walk to find
+        // the first InlineContainerBox whose block carries the matching footnote tag.
+        // We look for a special metadata property set by FootnoteRenderer.
+        //   #footnote-def-{order}  → scroll to the definition box
+        //   #footnote-ref-{order}  → scroll to the inline citation box
+        const string defPrefix = "#footnote-def-";
+        const string refPrefix = "#footnote-ref-";
+        bool isDef = url.StartsWith(defPrefix, StringComparison.OrdinalIgnoreCase);
+        bool isRef = url.StartsWith(refPrefix, StringComparison.OrdinalIgnoreCase);
+        if (!isDef && !isRef) return;
+        string orderStr = isDef ? url.Substring(defPrefix.Length) : url.Substring(refPrefix.Length);
+        if (!int.TryParse(orderStr, out int order)) return;
+
+        // Walk blocks looking for the tagged block index stored in the
+        // footnote index dictionary on the snapshot.
+        int? targetIndex = isDef
+            ? _snapshot.FootnoteDefBlock(order)
+            : _snapshot.FootnoteRefBlock(order);
+        if (targetIndex is { } idx) ScrollToBlock(idx);
     }
 
     private void OnKeyDown(object sender, KeyRoutedEventArgs e)
@@ -1264,18 +1405,221 @@ public sealed partial class MarkdownRendererControl : UserControl
         bool ctrl = (Microsoft.UI.Input.InputKeyboardSource
             .GetKeyStateForCurrentThread(VirtualKey.Control) & Windows.UI.Core.CoreVirtualKeyStates.Down)
             == Windows.UI.Core.CoreVirtualKeyStates.Down;
-        if (ctrl && e.Key == VirtualKey.C && _selection.IsActive)
+        bool shift = (Microsoft.UI.Input.InputKeyboardSource
+            .GetKeyStateForCurrentThread(VirtualKey.Shift) & Windows.UI.Core.CoreVirtualKeyStates.Down)
+            == Windows.UI.Core.CoreVirtualKeyStates.Down;
+
+        switch (e.Key)
         {
-            MarkdownClipboardWriter.Copy(_snapshot.SourceMap, _selection.Range);
-            e.Handled = true;
+            case VirtualKey.C when ctrl && _selection.IsActive:
+                MarkdownClipboardWriter.Copy(_snapshot.SourceMap, _selection.Range);
+                e.Handled = true;
+                return;
+            case VirtualKey.A when ctrl:
+                _selection.SetAnchor(DocumentPosition.Zero);
+                _selection.ExtendTo(new DocumentPosition(int.MaxValue, int.MaxValue, int.MaxValue));
+                e.Handled = true;
+                return;
+            case VirtualKey.Tab:
+                e.Handled = MoveFocus(reverse: shift);
+                return;
+            case VirtualKey.Enter:
+            case VirtualKey.Space when _focusedItemIndex >= 0:
+                e.Handled = ActivateFocusedItem();
+                return;
+            case VirtualKey.Escape:
+                if (_focusedItemIndex >= 0)
+                {
+                    _focusedItemIndex = -1;
+                    UpdateFocusRing();
+                    e.Handled = true;
+                }
+                else if (_selection.IsActive)
+                {
+                    _selection.Clear();
+                    e.Handled = true;
+                }
+                return;
         }
-        else if (ctrl && e.Key == VirtualKey.A)
+    }
+
+    /// <summary>
+    /// Advances (or reverses) keyboard focus through the focusable items list.
+    /// Returns true when focus is successfully moved (prevents Tab from leaving the control).
+    /// </summary>
+    private bool MoveFocus(bool reverse)
+    {
+        var items = _focusableItems;
+        if (items is null || items.Count == 0) return false;
+
+        if (_focusedItemIndex < 0)
         {
-            _selection.SetAnchor(DocumentPosition.Zero);
-            _selection.ExtendTo(new DocumentPosition(int.MaxValue, int.MaxValue, int.MaxValue));
-            // No _canvas.Invalidate() — overlay handles selection display.
-            e.Handled = true;
+            _focusedItemIndex = reverse ? items.Count - 1 : 0;
         }
+        else
+        {
+            _focusedItemIndex = reverse
+                ? (_focusedItemIndex - 1 + items.Count) % items.Count
+                : (_focusedItemIndex + 1) % items.Count;
+        }
+        UpdateFocusRing();
+        ScrollFocusedItemIntoView();
+        return true;
+    }
+
+    /// <summary>Fires LinkClick or simulates click on an inline embed for the currently focused item.</summary>
+    private bool ActivateFocusedItem()
+    {
+        var items = _focusableItems;
+        if (items is null || _focusedItemIndex < 0 || _focusedItemIndex >= items.Count)
+            return false;
+
+        var item = items[_focusedItemIndex];
+        if (!item.IsLink) return false;
+
+        // Find the LinkRun in the snapshot and fire LinkClick.
+        if (_snapshot is null) return false;
+        var pos = new DocumentPosition(item.BlockIndex, item.InlineIndex, 0);
+        if (FindLinkAt(pos) is { } lr)
+        {
+            if (lr.Url.StartsWith("#footnote-", StringComparison.Ordinal))
+                HandleInternalAnchor(lr.Url);
+            else
+                LinkClick?.Invoke(this, new MarkdownLinkClickEventArgs(lr.Url, lr.Title));
+            return true;
+        }
+        return false;
+    }
+
+    /// <summary>
+    /// Places or moves the focus-ring <see cref="Border"/> on the overlay to
+    /// surround the currently focused item. Hides the ring if nothing is focused.
+    /// </summary>
+    private void UpdateFocusRing()
+    {
+        if (_overlay is null) return;
+
+        // Lazily create the focus ring element.
+        if (_focusRing is null)
+        {
+            _focusRing = new Microsoft.UI.Xaml.Controls.Border
+            {
+                BorderThickness = new Thickness(2),
+                CornerRadius = new CornerRadius(3),
+                IsHitTestVisible = false,
+            };
+            Canvas.SetZIndex(_focusRing, 1);
+            _overlay.Children.Add(_focusRing);
+        }
+
+        var items = _focusableItems;
+        if (items is null || _focusedItemIndex < 0 || _focusedItemIndex >= items.Count)
+        {
+            _focusRing.Visibility = Visibility.Collapsed;
+            return;
+        }
+
+        var item = items[_focusedItemIndex];
+        var rect = GetFocusableItemRect(item);
+        if (rect.IsEmpty || rect.Width < 1 || rect.Height < 1)
+        {
+            _focusRing.Visibility = Visibility.Collapsed;
+            return;
+        }
+
+        // Style with accent color (use the link foreground, which is the accent).
+        var accent = _themeSnapshot?.GetStyle(MarkdownElementKeys.Link).Foreground
+                     ?? Windows.UI.Color.FromArgb(0xFF, 0x00, 0x78, 0xD4);
+        _focusRing.BorderBrush = new SolidColorBrush(accent);
+
+        const double pad = 2.0;
+        Canvas.SetLeft(_focusRing, rect.X - pad);
+        Canvas.SetTop(_focusRing, rect.Y - pad);
+        _focusRing.Width  = rect.Width  + pad * 2;
+        _focusRing.Height = rect.Height + pad * 2;
+        _focusRing.Visibility = Visibility.Visible;
+    }
+
+    private Rect GetFocusableItemRect(Layout.FocusableItem item)
+    {
+        if (_snapshot is null) return default;
+        foreach (var b in _snapshot.Blocks)
+        {
+            if (b is Layout.Boxes.InlineContainerBox icb && icb.BlockIndex == item.BlockIndex)
+                return icb.GetRunRect(item.InlineIndex);
+            if (b is Layout.Boxes.ListItemBox lib)
+            {
+                var r = GetFocusableItemRectFromBlock(lib.Marker, item);
+                if (!r.IsEmpty) return r;
+                r = GetFocusableItemRectFromBlock(lib.Content, item);
+                if (!r.IsEmpty) return r;
+            }
+            else if (b is Layout.Boxes.StackBox sb)
+            {
+                foreach (var c in sb.Children)
+                {
+                    var r = GetFocusableItemRectFromBlock(c, item);
+                    if (!r.IsEmpty) return r;
+                }
+            }
+            else if (b is Layout.Boxes.TableBox tb)
+            {
+                foreach (var cell in tb.GetCellBoxes())
+                {
+                    var r = GetFocusableItemRectFromBlock(cell, item);
+                    if (!r.IsEmpty) return r;
+                }
+            }
+        }
+        return default;
+    }
+
+    private static Rect GetFocusableItemRectFromBlock(BlockBox box, Layout.FocusableItem item)
+    {
+        if (box is Layout.Boxes.InlineContainerBox icb && icb.BlockIndex == item.BlockIndex)
+            return icb.GetRunRect(item.InlineIndex);
+        if (box is Layout.Boxes.ListItemBox lib)
+        {
+            var r = GetFocusableItemRectFromBlock(lib.Marker, item);
+            if (!r.IsEmpty) return r;
+            return GetFocusableItemRectFromBlock(lib.Content, item);
+        }
+        if (box is Layout.Boxes.StackBox sb)
+        {
+            foreach (var c in sb.Children)
+            {
+                var r = GetFocusableItemRectFromBlock(c, item);
+                if (!r.IsEmpty) return r;
+            }
+        }
+        if (box is Layout.Boxes.TableBox tb)
+        {
+            foreach (var cell in tb.GetCellBoxes())
+            {
+                var r = GetFocusableItemRectFromBlock(cell, item);
+                if (!r.IsEmpty) return r;
+            }
+        }
+        return default;
+    }
+
+    /// <summary>Scrolls the focused item into view if it's outside the current viewport.</summary>
+    private void ScrollFocusedItemIntoView()
+    {
+        var items = _focusableItems;
+        if (items is null || _focusedItemIndex < 0 || _scroll is null) return;
+        var item = items[_focusedItemIndex];
+        var rect = GetFocusableItemRect(item);
+        if (rect.IsEmpty) return;
+
+        double top    = _scroll.VerticalOffset;
+        double bottom = top + _scroll.ViewportHeight;
+        const double margin = 24.0;
+
+        if (rect.Top < top + margin)
+            _scroll.ChangeView(null, Math.Max(0, rect.Top - margin), null, disableAnimation: false);
+        else if (rect.Bottom > bottom - margin)
+            _scroll.ChangeView(null, rect.Bottom - _scroll.ViewportHeight + margin, null, disableAnimation: false);
     }
 
     private LinkRun? FindLinkAt(DocumentPosition pos)

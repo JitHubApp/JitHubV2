@@ -38,7 +38,8 @@ public sealed class LayoutBuilder
             y += h;
         }
 
-        return new LayoutSnapshot(blocks, _context.SourceMap, availableWidth, y);
+        var (defs, refs) = _context.SnapshotFootnoteRegistry();
+        return new LayoutSnapshot(blocks, _context.SourceMap, availableWidth, y, defs, refs);
     }
 
     private BlockBox? BuildBlock(Block block)
@@ -255,12 +256,12 @@ public sealed class LayoutBuilder
         if (inline is null) return;
         foreach (var i in inline)
         {
-            var run = BuildInline(i);
+            var run = BuildInline(i, box.BlockIndex);
             if (run is not null) box.Add(run);
         }
     }
 
-    private InlineRun? BuildInline(Inline inline)
+    private InlineRun? BuildInline(Inline inline, int parentBlockIndex = -1)
     {
         switch (inline)
         {
@@ -285,11 +286,21 @@ public sealed class LayoutBuilder
             case HtmlInline html:
                 return new TextRun(html.Tag) { SourceSpan = new SourceSpan(html.Span.Start, html.Span.Length) };
             case Markdig.Extensions.Footnotes.FootnoteLink fl when !fl.IsBackLink:
-                // Render footnote forward-references as superscript numbers.
-                return new TextRun(ToSuperscript(fl.Index))
+            {
+                // Render footnote forward-references as clickable superscript links.
+                // URL uses the internal fragment scheme "#footnote-def-{order}" which
+                // MarkdownRendererControl intercepts to scroll to the definition.
+                int order = fl.Index > 0 ? fl.Index : 1;
+                var run = new LinkRun(ToSuperscript(order), $"#footnote-def-{order}")
                 {
-                    SourceSpan = new SourceSpan(fl.Span.Start, fl.Span.Length)
+                    SourceSpan = new SourceSpan(fl.Span.Start, fl.Span.Length),
+                    IsSuperscript = true,
                 };
+                // Record the containing paragraph as the "ref" block so the
+                // footnote definition's ↩ link can scroll back to the citation.
+                if (parentBlockIndex >= 0) _context.RegisterFootnoteRef(order, parentBlockIndex);
+                return run;
+            }
             case ContainerInline ci2:
                 {
                     var sb = new System.Text.StringBuilder();

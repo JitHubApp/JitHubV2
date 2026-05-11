@@ -32,6 +32,10 @@ public sealed partial class MainWindow : Window
         ["RTL"]        = RtlSample,
         ["Virtualization"] = "", // generated lazily in OnSampleButtonClick
         ["Selection"]  = SelectionSample,
+        ["Lazy Images"]   = LazyImagesSample,
+        ["Scroll Anchor"] = ScrollAnchorSample,
+        ["Footnotes"]     = FootnotesSample,
+        ["Keyboard Nav"]  = KeyboardNavSample,
         ["Full Demo"]  = FullDemoSample,
     };
 
@@ -646,6 +650,192 @@ public sealed partial class MainWindow : Window
         - [x] Flow layout
         - [ ] You can't toggle these because they're disabled — but they're
               still real WinUI CheckBoxes hosted on the overlay
+        """;
+
+    // ── New feature sample pages ───────────────────────────────────────────────
+
+    private static readonly string LazyImagesSample = """
+        # Lazy Image Loading
+
+        Images are only fetched when they are within **800 px** of the current
+        viewport (the "overscan band"). Images far off-screen are not loaded
+        until the user scrolls close to them.
+
+        **How to observe this:**
+        1. Open DevTools / Fiddler and watch HTTP traffic.
+        2. When you first load this page, only the top few images will fire
+           requests. Scroll down to trigger additional loads.
+        3. Images already in the cache (`BitmapCache`) always appear instantly —
+           they bypass the lazy-load gate entirely.
+
+        ---
+
+        ## Images below fold
+
+        Scroll down to see each image load as you approach it.
+
+        ![GitHub Octocat](https://github.githubassets.com/images/icons/emoji/octocat.png)
+
+        Lorem ipsum dolor sit amet, consectetur adipiscing elit. Sed do eiusmod
+        tempor incididunt ut labore et dolore magna aliqua. Ut enim ad minim
+        veniam, quis nostrud exercitation ullamco laboris.
+
+        ![GitHub Logo](https://github.githubassets.com/assets/GitHub-Mark-ea2971cee799.png)
+
+        Duis aute irure dolor in reprehenderit in voluptate velit esse cillum
+        dolore eu fugiat nulla pariatur. Excepteur sint occaecat cupidatat non
+        proident, sunt in culpa qui officia deserunt mollit anim id est laborum.
+
+        ![Copilot Icon](https://github.githubassets.com/assets/copilot-5a9b7f3d5c64.png)
+
+        Curabitur pretium tincidunt lacus. Nulla gravida orci a odio. Nullam
+        varius, turpis molestie dictum semper, arcu felis fermentum metus.
+
+        ![Primer Octicons](https://github.githubassets.com/assets/primer-octicons.svg)
+
+        Aliquam erat volutpat. Nam dui ligula, fringilla a, euismod sodales,
+        sollicitudin vel, wisi. Morbi auctor lorem non justo.
+
+        > **Tip:** Use the **Scroll Anchor** sample to see how the layout
+        > re-stabilises after lazy images load and change the document height.
+
+        """;
+
+    private const string ScrollAnchorSample = """
+        # Scroll Anchoring
+
+        When a lazy image finishes loading, the document height may change.
+        Without scroll anchoring, the reading position would jump. With it,
+        the renderer captures the first visible block before re-laying-out
+        and restores the scroll offset so the user's reading position is
+        preserved.
+
+        **How to observe this:**
+        1. Switch to the **Lazy Images** sample and scroll part-way down.
+        2. The images above the fold finish loading and expand the document.
+        3. Your reading position stays stable — the text you were reading
+           doesn't move, even though the document height changed.
+
+        ---
+
+        ## Implementation details
+
+        The anchor is captured in `RebuildInternalAsync` just before the
+        old snapshot is disposed:
+
+        ```csharp
+        // Before snapshot swap
+        if (scroll.VerticalOffset > 0)
+        {
+            foreach (var b in prevSnapshot.Blocks)
+            {
+                if (b.Bounds.Bottom >= scroll.VerticalOffset)
+                {
+                    anchor = (b.BlockIndex, b.Bounds.Top - scroll.VerticalOffset);
+                    break;
+                }
+            }
+        }
+        ```
+
+        After the new snapshot is committed and `_canvas.Height` updated,
+        the corresponding block is located in the new layout and the offset
+        restored with `ScrollViewer.ChangeView(disableAnimation: true)`.
+
+        The animation is disabled so there is **no visual flash** — the
+        viewport jumps instantly to the correct position before the next
+        frame is painted.
+
+        ---
+
+        This sample intentionally has no images. Use **Lazy Images** to see
+        anchoring in action.
+        """;
+
+    private const string FootnotesSample = """
+        # Footnote Back-links
+
+        Footnotes are rendered with clickable superscript markers that scroll
+        to the footnote definition. Each definition also has a **↩** back-link
+        that scrolls back to the inline citation.
+
+        ---
+
+        Here is a sentence with a footnote.[^1]
+
+        And here is another with two more.[^2][^3]
+
+        A longer paragraph that contains a reference to the first footnote
+        again.[^1] And ends with a reference to the fourth.[^4]
+
+        ---
+
+        ## More content below footnotes
+
+        This paragraph exists to push the footnote section further down the
+        page so that clicking ↩ demonstrates scrolling back upward.
+
+        Lorem ipsum dolor sit amet, consectetur adipiscing elit. Sed do eiusmod
+        tempor incididunt ut labore et dolore magna aliqua. Ut enim ad minim
+        veniam, quis nostrud exercitation ullamco laboris nisi ut aliquip ex
+        ea commodo consequat.
+
+        Duis aute irure dolor in reprehenderit in voluptate velit esse cillum
+        dolore eu fugiat nulla pariatur. Excepteur sint occaecat cupidatat non
+        proident, sunt in culpa qui officia deserunt mollit anim id est laborum.
+
+        ---
+
+        [^1]: This is the **first** footnote. Click ↩ to return to the text.
+        [^2]: Second footnote with `inline code`. Click ↩ to go back.
+        [^3]: Third footnote — [a link](https://github.com). Click ↩ to return.
+        [^4]: The fourth footnote contains a longer explanation that wraps onto
+              multiple lines to demonstrate that the back-link renders correctly
+              even in multi-line footnote definitions. Click ↩ to return.
+        """;
+
+    private const string KeyboardNavSample = """
+        # Keyboard Navigation
+
+        The renderer supports full keyboard navigation without a mouse:
+
+        | Key | Action |
+        |-----|--------|
+        | **Tab** | Move focus to the next link or embedded control |
+        | **Shift+Tab** | Move focus to the previous link or embedded control |
+        | **Enter** or **Space** | Activate the focused link (fires `LinkClick`) |
+        | **Escape** | Clear the keyboard focus ring (or text selection) |
+        | **Ctrl+A** | Select all text |
+        | **Ctrl+C** | Copy selected text as markdown |
+
+        ---
+
+        ## Links to navigate with Tab
+
+        Click in the renderer below to give it keyboard focus, then press
+        **Tab** to cycle through the links and **Enter** to follow one.
+
+        1. [GitHub](https://github.com) — open source home
+        2. [Microsoft](https://microsoft.com) — WinUI and Win2D
+        3. [Markdig](https://github.com/xoofx/markdig) — the markdown parser
+        4. [Win2D](https://github.com/microsoft/Win2D) — DirectWrite canvas
+
+        ---
+
+        > **Tip:** A focus ring (accent-colored border) appears around the
+        > currently focused link. Pressing Escape clears it and returns focus
+        > traversal to the start.
+
+        ---
+
+        ## Footnotes are also keyboard-accessible[^kn1][^kn2]
+
+        Use Tab to reach the superscript ¹ or ² markers and press Enter to
+        jump to the corresponding footnote definition. From the definition,
+        Tab to the ↩ link and press Enter to return.
+
+        [^kn1]: First keyboard-nav footnote.
+        [^kn2]: Second keyboard-nav footnote. Press Enter on ↩ to return.
         """;
 }
 

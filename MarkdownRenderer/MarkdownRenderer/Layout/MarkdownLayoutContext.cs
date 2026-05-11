@@ -1,4 +1,5 @@
 using System;
+using System.Collections.Concurrent;
 using System.Collections.Generic;
 using Microsoft.Graphics.Canvas;
 using Microsoft.Graphics.Canvas.Text;
@@ -44,4 +45,30 @@ public sealed class MarkdownLayoutContext
 
     public int NextBlockIndex() => _blockIndex++;
     private int _blockIndex;
+
+    // ---- Footnote registry ----
+    // Records the block indices of each footnote's definition and inline
+    // reference so the control can scroll to either end of a back/forward link.
+    // Key = footnote order (1-based); value = (defBlockIndex, refBlockIndex).
+    // Written by FootnoteRenderer (def) and LayoutBuilder (ref) during build;
+    // read by MarkdownRendererControl via LayoutSnapshot after build completes.
+    // Concurrent because LayoutBuilder runs on a background thread.
+    private readonly ConcurrentDictionary<int, int> _footnoteDefBlocks = new();
+    private readonly ConcurrentDictionary<int, int> _footnoteRefBlocks = new();
+
+    /// <summary>Records the block index of the definition for footnote <paramref name="order"/>.</summary>
+    public void RegisterFootnoteDef(int order, int blockIndex) => _footnoteDefBlocks[order] = blockIndex;
+
+    /// <summary>Records the block index of the paragraph containing the inline citation for footnote <paramref name="order"/>.</summary>
+    public void RegisterFootnoteRef(int order, int blockIndex) => _footnoteRefBlocks[order] = blockIndex;
+
+    /// <summary>Returns block index of the footnote definition, or null.</summary>
+    public int? GetFootnoteDefBlock(int order) => _footnoteDefBlocks.TryGetValue(order, out var v) ? v : null;
+
+    /// <summary>Returns block index of the inline citation paragraph, or null.</summary>
+    public int? GetFootnoteRefBlock(int order) => _footnoteRefBlocks.TryGetValue(order, out var v) ? v : null;
+
+    /// <summary>Snapshots the registry into plain dictionaries (safe to read off the build thread).</summary>
+    public (IReadOnlyDictionary<int,int> Defs, IReadOnlyDictionary<int,int> Refs) SnapshotFootnoteRegistry()
+        => (new Dictionary<int, int>(_footnoteDefBlocks), new Dictionary<int, int>(_footnoteRefBlocks));
 }

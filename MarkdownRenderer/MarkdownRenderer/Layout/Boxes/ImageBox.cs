@@ -109,10 +109,29 @@ public sealed class ImageBox : BlockBox
 
     private static bool LooksLikeSvg(string url) => SvgIntrinsics.LooksLikeSvg(url);
 
+    /// <summary>
+    /// Triggers the network/disk load for this image if it has not already started.
+    /// For images already in the in-memory cache the load is effectively a no-op
+    /// (the constructor set <c>_loadStarted = true</c>).  For un-cached images the
+    /// first call kicks the HTTP / SVG pipeline; subsequent calls are no-ops.
+    ///
+    /// Called by <see cref="MarkdownRenderer.Controls.MarkdownRendererControl"/>
+    /// from <c>RealizeVisibleEmbeds</c> when the image's bounds enter the
+    /// viewport + overscan band, implementing lazy / prioritised loading.
+    /// </summary>
+    public void EnsureLoading()
+    {
+        if (!_loadStarted) StartLoad();
+    }
+
     public override float Measure(float availableWidth)
     {
         _availableWidth = availableWidth;
-        if (!_loadStarted) StartLoad();
+        // Do NOT auto-start the load here.  Loads are deferred until
+        // EnsureLoading() is called by MarkdownRendererControl once the image
+        // enters the viewport + overscan band (lazy loading).  Images already
+        // in the in-memory cache set _loadStarted = true in the constructor so
+        // they are unaffected — their bitmaps are available immediately.
 
         float maxW = Math.Max(1f, availableWidth - (float)(Margin.Left + Margin.Right));
         float h;

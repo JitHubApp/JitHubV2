@@ -38,6 +38,10 @@ internal static class Program
             RunProbe("sample-buttons-discoverable", () => ProbeSampleButtons(window));
             RunProbe("virtualization-bounded-realization", () => ProbeVirtualization(window));
             RunProbe("images-sample-loads", () => ProbeImagesSample(window));
+            RunProbe("lazy-images-sample-loads", () => ProbeLazyImagesSample(window));
+            RunProbe("scroll-anchor-sample-loads", () => ProbeScrollAnchorSample(window));
+            RunProbe("footnotes-sample-loads", () => ProbeFootnotesSample(window));
+            RunProbe("keyboard-nav-tab-traversal", () => ProbeKeyboardNav(window));
 
             window.Close();
         }
@@ -97,7 +101,9 @@ internal static class Program
         string[] expected =
         {
             "Typography", "Lists", "Tables", "Code", "GFM_Alerts",
-            "Images", "Embeds", "RTL", "Virtualization", "Selection", "Full_Demo",
+            "Images", "Embeds", "RTL", "Virtualization", "Selection",
+            "Lazy_Images", "Scroll_Anchor", "Footnotes", "Keyboard_Nav",
+            "Full_Demo",
         };
         foreach (var label in expected)
         {
@@ -138,6 +144,91 @@ internal static class Program
         var renderer = FindRenderer(window);
         var name = renderer.Name ?? string.Empty;
         Assert(name.Length > 0, "Images sample renderer name must not be empty");
+    }
+
+    private static void ProbeLazyImagesSample(Window window)
+    {
+        var btn = window.FindFirstDescendant(cf => cf.ByAutomationId("SampleButton_Lazy_Images"))?.AsButton()
+                  ?? throw new InvalidOperationException("Lazy_Images sample button not found");
+        btn.Invoke();
+        Thread.Sleep(1500);
+        var renderer = FindRenderer(window);
+        var name = renderer.Name ?? string.Empty;
+        Assert(name.Length > 0, "Lazy Images sample renderer name must not be empty");
+        // Verify renderer has children (block peers in UIA tree)
+        var descendants = renderer.FindAllDescendants();
+        Assert(descendants.Length > 0, "Lazy Images renderer must expose block peers as descendants");
+    }
+
+    private static void ProbeScrollAnchorSample(Window window)
+    {
+        var btn = window.FindFirstDescendant(cf => cf.ByAutomationId("SampleButton_Scroll_Anchor"))?.AsButton()
+                  ?? throw new InvalidOperationException("Scroll_Anchor sample button not found");
+        btn.Invoke();
+        Thread.Sleep(1000);
+        var renderer = FindRenderer(window);
+        var name = renderer.Name ?? string.Empty;
+        Assert(name.Length > 0, "Scroll Anchor sample renderer name must not be empty");
+        // Scroll down and verify content is still available
+        renderer.Focus();
+        Keyboard.Press(VirtualKeyShort.NEXT); // Page Down
+        Thread.Sleep(300);
+        Keyboard.Press(VirtualKeyShort.PRIOR); // Page Up
+        Thread.Sleep(300);
+        var nameAfterScroll = renderer.Name ?? string.Empty;
+        Assert(nameAfterScroll.Length > 0, "Scroll Anchor renderer name must remain non-empty after scroll");
+    }
+
+    private static void ProbeFootnotesSample(Window window)
+    {
+        var btn = window.FindFirstDescendant(cf => cf.ByAutomationId("SampleButton_Footnotes"))?.AsButton()
+                  ?? throw new InvalidOperationException("Footnotes sample button not found");
+        btn.Invoke();
+        Thread.Sleep(1200);
+        var renderer = FindRenderer(window);
+        var name = renderer.Name ?? string.Empty;
+        Assert(name.Length > 0, "Footnotes sample renderer name must not be empty");
+        // Verify the rendered text contains footnote markers (superscripts / back-arrows)
+        // The renderer aggregates all text into its Name for UIA, so we verify the
+        // footnote-bearing text is included.
+        bool hasFootnoteContent = name.Contains("sentence with a footnote", StringComparison.OrdinalIgnoreCase)
+                                  || name.Contains("footnote", StringComparison.OrdinalIgnoreCase);
+        Assert(hasFootnoteContent, $"Footnotes renderer content must mention 'footnote', got: {name[..Math.Min(120, name.Length)]}");
+    }
+
+    private static void ProbeKeyboardNav(Window window)
+    {
+        var btn = window.FindFirstDescendant(cf => cf.ByAutomationId("SampleButton_Keyboard_Nav"))?.AsButton()
+                  ?? throw new InvalidOperationException("Keyboard_Nav sample button not found");
+        btn.Invoke();
+        Thread.Sleep(1200);
+
+        var renderer = FindRenderer(window);
+        renderer.Focus();
+        Thread.Sleep(200);
+
+        // Press Tab multiple times to cycle through links; renderer must stay alive and not throw
+        for (int i = 0; i < 6; i++)
+        {
+            Keyboard.Press(VirtualKeyShort.TAB);
+            Thread.Sleep(120);
+        }
+
+        // Press Escape to clear focus ring
+        Keyboard.Press(VirtualKeyShort.ESCAPE);
+        Thread.Sleep(200);
+
+        // Verify renderer is still responsive by checking its UIA Name
+        var nameAfter = renderer.Name ?? string.Empty;
+        Assert(nameAfter.Length > 0, "Keyboard Nav renderer must remain responsive after Tab/Escape traversal");
+
+        // Shift+Tab should also work without throwing
+        Keyboard.TypeSimultaneously(VirtualKeyShort.SHIFT, VirtualKeyShort.TAB);
+        Thread.Sleep(200);
+        Keyboard.TypeSimultaneously(VirtualKeyShort.SHIFT, VirtualKeyShort.TAB);
+        Thread.Sleep(200);
+        Keyboard.Press(VirtualKeyShort.ESCAPE);
+        Thread.Sleep(200);
     }
 
     private static AutomationElement FindRenderer(Window window)

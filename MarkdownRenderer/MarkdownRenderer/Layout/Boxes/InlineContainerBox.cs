@@ -226,10 +226,43 @@ public sealed class InlineContainerBox : BlockBox
     public override IEnumerable<Rect> GetSelectionRects(DocumentRange range)
         => GetRangeRects(range);
 
-    public override void Dispose()
+    /// <summary>
+    /// Returns the bounding rectangle in document coordinates for the run at
+    /// <paramref name="inlineIndex"/>. Used to position the keyboard-focus ring.
+    /// Returns an empty rect if the run is not found or the layout is not built.
+    /// </summary>
+    public Rect GetRunRect(int inlineIndex)
     {
-        _layout?.Dispose();
-        _layout = null;
+        if (_layout is null) return default;
+        var style = _context.ThemeSnapshot.GetStyle(_elementKey);
+        var (baseX, baseY) = GetSnappedOrigin(style);
+        int cumulative = 0;
+        foreach (var run in _runs)
+        {
+            int len = run.Text.Length;
+            if (run.InlineIndex == inlineIndex && len > 0)
+            {
+                var regions = _layout.GetCharacterRegions(cumulative, len);
+                if (regions is not null && regions.Length > 0)
+                {
+                    // Union all regions for multi-line runs.
+                    double x1 = double.MaxValue, y1 = double.MaxValue;
+                    double x2 = double.MinValue, y2 = double.MinValue;
+                    foreach (var r in regions)
+                    {
+                        var lb = r.LayoutBounds;
+                        if (lb.X < x1) x1 = lb.X;
+                        if (lb.Y < y1) y1 = lb.Y;
+                        if (lb.X + lb.Width  > x2) x2 = lb.X + lb.Width;
+                        if (lb.Y + lb.Height > y2) y2 = lb.Y + lb.Height;
+                    }
+                    return new Rect(baseX + x1, baseY + y1, x2 - x1, y2 - y1);
+                }
+                return default;
+            }
+            cumulative += len;
+        }
+        return default;
     }
 
     /// <summary>
@@ -299,6 +332,12 @@ public sealed class InlineContainerBox : BlockBox
             cumulative += run.Text.Length;
         }
         return _buffer.Length;
+    }
+
+    public override void Dispose()
+    {
+        _layout?.Dispose();
+        _layout = null;
     }
 
     private void BuildBuffer()

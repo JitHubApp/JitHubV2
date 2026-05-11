@@ -10,7 +10,8 @@ namespace MarkdownRenderer.Gfm.Renderers;
 
 /// <summary>
 /// Renders the footnote definitions section (<see cref="FootnoteGroup"/>) at the bottom
-/// of the document. Each footnote is a <see cref="ListItemBox"/> with a superscript marker.
+/// of the document. Each footnote is a <see cref="ListItemBox"/> with a superscript marker
+/// and a ↩ back-link that scrolls to the inline citation.
 /// </summary>
 public sealed class FootnoteRenderer : MarkdownNodeRenderer<FootnoteGroup>
 {
@@ -25,8 +26,10 @@ public sealed class FootnoteRenderer : MarkdownNodeRenderer<FootnoteGroup>
         {
             if (item is not Footnote footnote) continue;
 
+            int order = footnote.Order > 0 ? footnote.Order : 1;
+
             // Superscript index marker — no explicit ElementKey so it inherits Body style.
-            string superscript = ToSuperscript(footnote.Order > 0 ? footnote.Order : 1);
+            string superscript = ToSuperscript(order);
             var marker = new InlineContainerBox(context, MarkdownElementKeys.ListMarker);
             marker.BlockIndex = context.NextBlockIndex();
             marker.Add(new TextRun(superscript + " ")
@@ -39,9 +42,26 @@ public sealed class FootnoteRenderer : MarkdownNodeRenderer<FootnoteGroup>
             content.BlockIndex = context.NextBlockIndex();
             GfmChildBuilder.PopulateChildren(content, footnote, context);
 
+            // Back-link: append a ↩ link after the content that scrolls back to
+            // the inline citation (e.g. the [^1] in the body text).
+            // Use an internal fragment URL "#footnote-ref-{order}" which
+            // MarkdownRendererControl intercepts to call ScrollToBlock without
+            // firing the public LinkClick event.
+            var backLinkBox = new InlineContainerBox(context, MarkdownElementKeys.Body);
+            backLinkBox.BlockIndex = context.NextBlockIndex();
+            backLinkBox.Add(new LinkRun("↩", $"#footnote-ref-{order}")
+            {
+                SourceSpan = new MarkdownRenderer.SourceSpan(footnote.Span.Start, 0),
+            });
+            content.Add(backLinkBox);
+
             var listItem = new ListItemBox(marker, content, markerWidth: 22f);
             listItem.BlockIndex = context.NextBlockIndex();
             stack.Add(listItem);
+
+            // Register the marker's block index as the definition target so
+            // clicking [^1] in the body scrolls to the top of this list item.
+            context.RegisterFootnoteDef(order, marker.BlockIndex);
         }
 
         return stack;

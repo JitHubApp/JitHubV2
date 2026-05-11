@@ -82,6 +82,11 @@ public sealed class LinkRun : InlineRun
     private readonly string _text;
     public string Url { get; }
     public string? Title { get; }
+    /// <summary>
+    /// When true, the run is rendered at a reduced size and raised baseline
+    /// (like a superscript). Used for footnote citation markers [^1].
+    /// </summary>
+    public bool IsSuperscript { get; init; }
     public LinkRun(string text, string url, string? title = null)
     {
         _text = text ?? string.Empty;
