@@ -343,12 +343,14 @@ internal static class Program
         var menuItems = root.FindAllDescendants(cf => cf.ByControlType(ControlType.MenuItem));
         // MenuFlyout items may not always appear in the UIA tree on all systems,
         // so we treat them as a bonus — but the renderer must survive the click.
-        var nameAfter = renderer.Name ?? string.Empty;
-        Assert(nameAfter.Length > 0, "Renderer must remain responsive after right-click context menu");
 
-        // Dismiss any open menu via Escape.
+        // Dismiss the menu BEFORE querying renderer properties so an open flyout
+        // cannot intercept the UIA focus and cause the Name query to stale/block.
         Keyboard.Press(VirtualKeyShort.ESCAPE);
         Thread.Sleep(200);
+
+        var nameAfter = renderer.Name ?? string.Empty;
+        Assert(nameAfter.Length > 0, "Renderer must remain responsive after right-click context menu");
     }
 
     private static AutomationElement FindRenderer(Window window)

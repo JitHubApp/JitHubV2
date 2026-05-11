@@ -26,8 +26,13 @@ public static class TextBoundaryHelper
                 idx--;  // prefer the word just to the left
             else
             {
-                while (idx < buffer.Length && char.IsWhiteSpace(buffer[idx]))
-                    idx++;
+                int fwd = idx;
+                while (fwd < buffer.Length && char.IsWhiteSpace(buffer[fwd]))
+                    fwd++;
+                if (fwd < buffer.Length)
+                    idx = fwd; // there is a word to the right — snap to it
+                else
+                    return (charIndex, charIndex); // entire buffer is whitespace — empty range at click site
             }
         }
 

@@ -522,12 +522,15 @@ public sealed partial class MarkdownRendererControl : UserControl
         // control to a new visual parent doesn't leak DirectWrite layouts
         // or keep stale FrameworkElements alive.
         _overlay?.Children.Clear();
+        // Release ProtectedCursor before disposing the native cursor objects so the
+        // XAML compositor doesn't access a dangling handle during the same render frame.
+        ProtectedCursor = null;
+        _currentCursorShape = null;
         // Dispose cached cursor objects; they will be lazily re-created on next use.
         _cursorHand?.Dispose();
         _cursorIBeam?.Dispose();
         _cursorHand = null;
         _cursorIBeam = null;
-        _currentCursorShape = null;
         // Clear the selection-rect pool: after the overlay is wiped the pooled
         // Rectangles are no longer in _overlay.Children, so the pool references
         // are stale.  CommitSnapshot does the same; mirror it here so a re-attach
@@ -988,13 +991,13 @@ public sealed partial class MarkdownRendererControl : UserControl
         _lastPressPoint  = pt;
 
         Focus(FocusState.Pointer);
-        _leftPointerCaptured = true; // cleared in OnPointerReleased
         if (_snapshot.HitTest(pt, out var pos))
         {
             // Always arm the anchor first: this suppresses hover processing
             // in OnPointerMoved during any captured drag (single, double, or triple-click)
             // and prevents a stale anchor from an earlier interaction being reused.
             _selectionAnchor = pos;
+            _leftPointerCaptured = true; // set only on HitTest success so release events don't misfire
 
             if (_consecutiveClickCount == 3)
             {
@@ -1476,11 +1479,7 @@ public sealed partial class MarkdownRendererControl : UserControl
         // Click handling for links: if no real selection occurred, raise LinkClick
         // when the click lands on a LinkRun.
         if (_snapshot is null) return;
-        if (!_selection.Range.Normalized().IsEmpty
-            && !_selection.Range.Start.Equals(_selection.Range.End))
-        {
-            return;
-        }
+        if (!_selection.Range.Normalized().IsEmpty) return; // text was dragged — not a click
         var pt = e.GetCurrentPoint(_canvas).Position;
         if (_snapshot.HitTest(pt, out var pos))
         {
@@ -1802,7 +1801,14 @@ public sealed partial class MarkdownRendererControl : UserControl
     private (DocumentPosition Start, DocumentPosition End) ExpandSelectionToWord(LayoutSnapshot snapshot, DocumentPosition pos)
     {
         var icb = FindInlineContainerAt(snapshot, pos.BlockIndex);
-        if (icb is null) return (pos, pos);
+        if (icb is null)
+        {
+            // Block has no inline container (code block, embed row, etc.).
+            // Clear any lingering selection to avoid stale visual.
+            _selection.Clear();
+            _canvas?.Invalidate();
+            return (pos, pos);
+        }
         var (start, end) = icb.GetWordBoundaries(pos);
         _selection.SetAnchor(start);
         _selection.ExtendTo(end);
@@ -1818,7 +1824,14 @@ public sealed partial class MarkdownRendererControl : UserControl
     private (DocumentPosition Start, DocumentPosition End) ExpandSelectionToBlock(LayoutSnapshot snapshot, DocumentPosition pos)
     {
         var icb = FindInlineContainerAt(snapshot, pos.BlockIndex);
-        if (icb is null) return (pos, pos);
+        if (icb is null)
+        {
+            // Block has no inline container (code block, embed row, etc.).
+            // Clear any lingering selection to avoid stale visual.
+            _selection.Clear();
+            _canvas?.Invalidate();
+            return (pos, pos);
+        }
         var (start, end) = icb.GetBlockBoundaries();
         _selection.SetAnchor(start);
         _selection.ExtendTo(end);

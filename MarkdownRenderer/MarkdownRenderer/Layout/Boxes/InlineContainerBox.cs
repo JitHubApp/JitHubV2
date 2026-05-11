@@ -103,7 +103,10 @@ public sealed class InlineContainerBox : BlockBox
     private void EnsureBuffer()
     {
         if (_runs.Count == 0) { _buffer = string.Empty; _bufferDirty = false; return; }
-        if (_bufferDirty || _buffer.Length == 0) BuildBuffer();
+        // Rely solely on _bufferDirty (set by Add()) — the _buffer.Length == 0 fallback
+        // would cause repeated BuildBuffer() calls for boxes whose runs all produce empty
+        // text (e.g. embed-placeholder runs), burning CPU without changing anything.
+        if (_bufferDirty) BuildBuffer();
     }
 
     /// <summary>

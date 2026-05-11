@@ -22,11 +22,15 @@ public sealed class FootnoteRenderer : MarkdownNodeRenderer<FootnoteGroup>
             Margin = new Thickness(0, 8, 0, 8),
         };
 
+        int fallbackOrder = 0;
         foreach (var item in group)
         {
             if (item is not Footnote footnote) continue;
 
-            int order = footnote.Order > 0 ? footnote.Order : 1;
+            fallbackOrder++;
+            // footnote.Order is 1-based when Markdig assigns it; fall back to loop index
+            // so each footnote gets a unique order even when Markdig leaves Order at 0.
+            int order = footnote.Order > 0 ? footnote.Order : fallbackOrder;
 
             // Superscript index marker — no explicit ElementKey so it inherits Body style.
             string superscript = ToSuperscript(order);
