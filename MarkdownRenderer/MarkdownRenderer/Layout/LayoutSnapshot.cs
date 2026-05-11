@@ -53,7 +53,10 @@ public sealed class LayoutSnapshot : System.IDisposable
         foreach (var b in Blocks)
         {
             if (b.Bounds.Bottom < viewport.Top) continue;
-            if (b.Bounds.Top > viewport.Bottom) break;
+            // Use `continue` rather than `break` to avoid skipping a visible block
+            // that follows an out-of-order block (custom renderers, footnote groups,
+            // and future virtualization may produce non-monotone Bounds.Top values).
+            if (b.Bounds.Top > viewport.Bottom) continue;
             b.Paint(ds, viewport);
         }
     }
