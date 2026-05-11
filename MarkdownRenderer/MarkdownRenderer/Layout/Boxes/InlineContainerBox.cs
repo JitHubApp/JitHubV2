@@ -140,7 +140,7 @@ public sealed class InlineContainerBox : BlockBox
     {
         var style = _context.ThemeSnapshot.GetStyle(_elementKey);
 
-        if (_layout is null || Math.Abs(_lastWidth - availableWidth) > 0.5f)
+        if (_layout is null || _bufferDirty || Math.Abs(_lastWidth - availableWidth) > 0.5f)
         {
             BuildBuffer();
             _layout?.Dispose();

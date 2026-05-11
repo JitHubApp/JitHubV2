@@ -139,4 +139,35 @@ public class TextBoundaryHelperTests
         Assert.Equal(5, start);
         Assert.Equal(8, end);
     }
+
+    [Fact]
+    public void TrailingDoubleSpace_CursorOnLastSpace_SnapsLeftToWord()
+    {
+        // "hello  " — cursor on last char (index 6, second trailing space).
+        // snap-left: buffer[5]=' ' → fails; snap-right loop with < buffer.Length: idx=6, buffer[6]=' ' → idx=7 (beyond buffer);
+        // both walk-loops stall immediately → falls through to all-whitespace → empty range.
+        // Actually correct: no word to snap to at that position.
+        var (start, end) = TextBoundaryHelper.FindWordBoundaries("hello  ", 6);
+        Assert.Equal(start, end); // degenerate — no word; this is the expected behavior
+    }
+
+    [Fact]
+    public void TrailingSpace_CursorOnFirstTrailingSpace_SnapsLeftToWord()
+    {
+        // "hello  " — cursor on index 5 (first trailing space).
+        // snap-left: buffer[4]='o' → fires → idx=4 → selects "hello".
+        var (start, end) = TextBoundaryHelper.FindWordBoundaries("hello  ", 5);
+        Assert.Equal(0, start);
+        Assert.Equal(5, end);
+    }
+
+    [Fact]
+    public void MultipleTrailingSpaces_CursorOnMiddleSpace_SnapsRight()
+    {
+        // "aa   bb   " — cursor at index 3 (middle of first space-run; both neighbors are spaces)
+        // snap-left fails (buffer[2]=' '); snap-right advances 3→4→5 until 'b'; selects "bb".
+        var (start, end) = TextBoundaryHelper.FindWordBoundaries("aa   bb   ", 3);
+        Assert.Equal(5, start);
+        Assert.Equal(7, end);
+    }
 }

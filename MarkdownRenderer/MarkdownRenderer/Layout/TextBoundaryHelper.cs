@@ -26,7 +26,7 @@ public static class TextBoundaryHelper
                 idx--;  // prefer the word just to the left
             else
             {
-                while (idx < buffer.Length - 1 && char.IsWhiteSpace(buffer[idx]))
+                while (idx < buffer.Length && char.IsWhiteSpace(buffer[idx]))
                     idx++;
             }
         }
