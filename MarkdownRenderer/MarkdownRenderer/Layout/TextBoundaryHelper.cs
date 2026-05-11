@@ -40,11 +40,15 @@ public static class TextBoundaryHelper
         int start = idx;
         while (start > 0 && !char.IsWhiteSpace(buffer[start - 1]))
             start--;
+        // Snap backward past a low surrogate to avoid splitting a surrogate pair.
+        if (start > 0 && char.IsLowSurrogate(buffer[start])) start--;
 
         // Walk right to the end of the word.
         int end = idx;
         while (end < buffer.Length && !char.IsWhiteSpace(buffer[end]))
             end++;
+        // Snap forward past a high surrogate to avoid splitting a surrogate pair.
+        if (end < buffer.Length && char.IsHighSurrogate(buffer[end - 1])) end++;
 
         return (start, end);
     }

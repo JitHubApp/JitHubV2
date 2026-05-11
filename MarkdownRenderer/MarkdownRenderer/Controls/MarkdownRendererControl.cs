@@ -81,6 +81,7 @@ public sealed partial class MarkdownRendererControl : UserControl
     // XAML Border element used to show a focus ring around the focused item.
     // Lives on _overlay at ZIndex 1 (above selection at -1, below embeds at 0).
     private Microsoft.UI.Xaml.Controls.Border? _focusRing;
+    private Windows.UI.Color _focusRingBrushColor; // cached to avoid per-keystroke SolidColorBrush allocations
 
     // ---- Multi-click tracking (double/triple click selection) ----
     private long _lastPressTickMs;
@@ -462,6 +463,7 @@ public sealed partial class MarkdownRendererControl : UserControl
         _scroll.Content = _root;
 
         _canvas.RegionsInvalidated += OnRegionsInvalidated;
+        _canvas.CreateResources += (_, _) => RequestRebuild(); // rebuild layouts after GPU device loss/recreation
         _canvas.PointerPressed += OnPointerPressed;
         _canvas.PointerMoved += OnPointerMoved;
         _canvas.PointerReleased += OnPointerReleased;
@@ -507,7 +509,11 @@ public sealed partial class MarkdownRendererControl : UserControl
             t.Changed -= OnThemeRevisionChanged;
         }
         _pipelineCts?.Cancel();
-        _pipelineCts?.Dispose();
+        // Do NOT dispose here — the in-flight task holds ct by value; disposing
+        // the source while the continuation is suspended at an await point causes
+        // ct.ThrowIfCancellationRequested() to throw ObjectDisposedException instead
+        // of OperationCanceledException on resumption.  Let the ContinueWith
+        // handler in RequestRebuild dispose it after the task finishes.
         _pipelineCts = null;
         // Tear down embed plans before clearing the overlay so block embed
         // factories get RecycleBlock callbacks and inline embeds release
@@ -545,8 +551,11 @@ public sealed partial class MarkdownRendererControl : UserControl
 
     private void OnThemeChanged()
     {
+        // t.Invalidate() fires Theme.Changed → OnThemeRevisionChanged → RequestRebuild.
+        // Do NOT call RequestRebuild() here again — that would start two simultaneous
+        // builds and immediately cancel the first one on every theme change.
         if (Theme is { } t) t.Invalidate();
-        RequestRebuild();
+        else RequestRebuild(); // no Theme object: must trigger rebuild directly
     }
 
     private void OnThemeDpChanged(DependencyPropertyChangedEventArgs e)
@@ -1742,7 +1751,13 @@ public sealed partial class MarkdownRendererControl : UserControl
         // Style with accent color (use the link foreground, which is the accent).
         var accent = _themeSnapshot?.GetStyle(MarkdownElementKeys.Link).Foreground
                      ?? Windows.UI.Color.FromArgb(0xFF, 0x00, 0x78, 0xD4);
-        _focusRing.BorderBrush = new SolidColorBrush(accent);
+        // Allocate a new SolidColorBrush only when the accent color actually changes;
+        // avoid per-keystroke GC pressure during Tab traversal.
+        if (_focusRing.BorderBrush is null || accent != _focusRingBrushColor)
+        {
+            _focusRingBrushColor = accent;
+            _focusRing.BorderBrush = new SolidColorBrush(accent);
+        }
 
         const double pad = 2.0;
         Canvas.SetLeft(_focusRing, r.X - pad);

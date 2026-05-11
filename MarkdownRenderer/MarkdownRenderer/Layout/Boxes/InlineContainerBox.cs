@@ -71,7 +71,7 @@ public sealed class InlineContainerBox : BlockBox
         int offset = 0;
         for (int i = 0; i < _runs.Count; i++)
         {
-            if (i == pos.InlineIndex) return offset + pos.CharacterOffset;
+            if (i == pos.InlineIndex) return offset + Math.Clamp(pos.CharacterOffset, 0, _runs[i].Text.Length);
             offset += _runs[i].Text.Length;
         }
         return offset;
@@ -170,10 +170,19 @@ public sealed class InlineContainerBox : BlockBox
                 format,
                 Math.Max(1f, availableWidth - horizontalPadding),
                 float.MaxValue);
-            // Enable DirectWrite color font path (Segoe UI Emoji / COLR-CPAL glyphs).
-            _layout.Options = CanvasDrawTextOptions.EnableColorFont;
-            ApplyRunStyles(_layout);
-            ApplyEmbedSpacing(_layout);
+            try
+            {
+                // Enable DirectWrite color font path (Segoe UI Emoji / COLR-CPAL glyphs).
+                _layout.Options = CanvasDrawTextOptions.EnableColorFont;
+                ApplyRunStyles(_layout);
+                ApplyEmbedSpacing(_layout);
+            }
+            catch
+            {
+                _layout.Dispose();
+                _layout = null;
+                throw;
+            }
             _hoverColorsDirty = true; // new layout needs hover colors re-applied
             _lastWidth = availableWidth;
         }
