@@ -656,6 +656,11 @@ public sealed partial class MarkdownRendererControl : UserControl
 
         ct.ThrowIfCancellationRequested();
         var snapshot = await Task.Run(() => builder.Build(parsed.Document, width), ct).ConfigureAwait(true);
+
+        // From this point the snapshot holds GPU-side CanvasTextLayout objects.
+        // If we are cancelled before committing, dispose it to avoid a native-memory leak.
+        try
+        {
         ct.ThrowIfCancellationRequested();
 
         // Scroll anchoring: capture the current read position before the canvas
@@ -740,6 +745,12 @@ public sealed partial class MarkdownRendererControl : UserControl
         RealizeVisibleEmbeds();
 
         _canvas.Invalidate();
+        } // end of snapshot try-block
+        catch
+        {
+            snapshot.Dispose();
+            throw;
+        }
     }
 
     private void OnScrollViewChanged(object? sender, ScrollViewerViewChangedEventArgs e)
@@ -1046,6 +1057,8 @@ public sealed partial class MarkdownRendererControl : UserControl
                 // Triple-click: select the entire block (line).
                 _clickMode = ClickMode.Block;
                 (_dragAnchorStart, _dragAnchorEnd) = ExpandSelectionToBlock(_snapshot, pos);
+                // Invalidate to repaint link-hover state (hover suppressed during drag).
+                _canvas.Invalidate();
                 if (!_canvas.CapturePointer(e.Pointer)) _leftPointerCaptured = false;
                 return;
             }
@@ -1054,6 +1067,8 @@ public sealed partial class MarkdownRendererControl : UserControl
                 // Double-click: select the word under the cursor.
                 _clickMode = ClickMode.Word;
                 (_dragAnchorStart, _dragAnchorEnd) = ExpandSelectionToWord(_snapshot, pos);
+                // Invalidate to repaint link-hover state (hover suppressed during drag).
+                _canvas.Invalidate();
                 if (!_canvas.CapturePointer(e.Pointer)) _leftPointerCaptured = false;
                 return;
             }

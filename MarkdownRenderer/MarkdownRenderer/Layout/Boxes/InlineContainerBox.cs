@@ -309,6 +309,7 @@ public sealed class InlineContainerBox : BlockBox
         int to = ToBufferIndex(range.End);
         if (to <= from) yield break;
         var regions = _layout.GetCharacterRegions(from, to - from);
+        if (regions is null) yield break;
         foreach (var r in regions)
         {
             yield return new Rect(baseX + r.LayoutBounds.X, baseY + r.LayoutBounds.Y,
@@ -376,6 +377,7 @@ public sealed class InlineContainerBox : BlockBox
             if (run is InlineEmbedRun emb && len > 0)
             {
                 var regions = _layout.GetCharacterRegions(cumulative, len);
+                if (regions is null) { cumulative += len; continue; }
                 foreach (var r in regions)
                 {
                     var lb = r.LayoutBounds;
@@ -462,6 +464,8 @@ public sealed class InlineContainerBox : BlockBox
                     layout.SetFontWeight(cumulative, len, rs.FontWeight);
                 if (rs.FontStyle != containerStyle.FontStyle)
                     layout.SetFontStyle(cumulative, len, rs.FontStyle);
+                if (rs.FontSize != containerStyle.FontSize)
+                    layout.SetFontSize(cumulative, len, rs.FontSize);
                 if (rs.Foreground != containerStyle.Foreground)
                     layout.SetColor(cumulative, len, rs.Foreground);
             }
