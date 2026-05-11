@@ -956,6 +956,11 @@ public sealed partial class MarkdownRendererControl : UserControl
         // to the embedded element.
         if (IsPointOverEmbed(pt))
         {
+            // A press on an embedded control breaks any ongoing double/triple-click
+            // sequence; reset timing state so the next text press starts fresh.
+            _consecutiveClickCount = 0;
+            _lastPressTickMs = 0;
+            _lastPressPoint  = default;
             // Clear any prior selection so the user gets visual feedback that
             // the click isn't a new selection start.
             if (!_selection.Range.IsEmpty)
@@ -1001,6 +1006,10 @@ public sealed partial class MarkdownRendererControl : UserControl
             {
                 // Selection is disabled but links must still work: capture the pointer
                 // so OnPointerReleased fires and can raise LinkClick.
+                // Also ensure _clickMode is reset so the link-click guard in
+                // OnPointerReleased is not stale from a previous double/triple-click
+                // sequence made while IsSelectionEnabled was true.
+                _clickMode = ClickMode.Single;
                 if (!_canvas.CapturePointer(e.Pointer)) _leftPointerCaptured = false;
                 return;
             }

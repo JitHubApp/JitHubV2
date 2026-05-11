@@ -51,7 +51,9 @@ internal static class Program
         }
         finally
         {
-            try { app.Close(); } catch { }
+            // app.Close() already called above; Kill() as safety net only.
+            // Do not call app.Close() again here — the using statement will
+            // Dispose the wrapper and a second Close() can throw ObjectDisposedException.
             try { if (!app.HasExited) app.Kill(); } catch { }
         }
 
@@ -439,7 +441,18 @@ internal static class Program
         string targetName = Path.GetFileNameWithoutExtension(appPath);
         foreach (var p in Process.GetProcessesByName(targetName))
         {
-            using (p) { try { p.Kill(); p.WaitForExit(2000); } catch { } }
+            using (p)
+            {
+                try
+                {
+                    // Only kill processes whose exe path matches exactly to avoid
+                    // killing unrelated apps that share the same process name.
+                    if (string.Equals(p.MainModule?.FileName, appPath,
+                            StringComparison.OrdinalIgnoreCase))
+                    { p.Kill(); p.WaitForExit(2000); }
+                }
+                catch { }
+            }
         }
     }
 }
