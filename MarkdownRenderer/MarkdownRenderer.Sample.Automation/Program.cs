@@ -47,7 +47,7 @@ internal static class Program
             RunProbe("triple-click-selects-line",  () => ProbeTripleClickSelectsLine(window));
             RunProbe("context-menu-appears",       () => ProbeContextMenu(window));
 
-            window.Close();
+            try { window.Close(); } catch { /* window may already be gone */ }
         }
         finally
         {

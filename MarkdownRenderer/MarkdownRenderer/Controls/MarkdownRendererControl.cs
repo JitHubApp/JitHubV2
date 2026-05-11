@@ -585,7 +585,13 @@ public sealed partial class MarkdownRendererControl : UserControl
     {
         // Theme.Invalidate() was called externally (consumer mutated overrides).
         // Rebuild — but do NOT call Theme.Invalidate again, that would loop.
-        RequestRebuild();
+        // Guard against cross-thread calls: MarkdownTheme.Changed is a plain
+        // .NET event and a consumer may call Invalidate() from a background thread.
+        // Accessing DependencyObject members off the UI thread throws RPC_E_WRONG_THREAD.
+        var dq = DispatcherQueue;
+        if (dq is null) return;
+        if (dq.HasThreadAccess) { RequestRebuild(); return; }
+        dq.TryEnqueue(RequestRebuild);
     }
 
     /// <summary>Kicks off (or re-kicks) the parse + layout pipeline.</summary>
@@ -651,7 +657,6 @@ public sealed partial class MarkdownRendererControl : UserControl
         // passing _canvas directly would crash if layout runs before first draw.
         var device = CanvasDevice.GetSharedDevice();
         var ctx = new MarkdownLayoutContext(device, themeSnapshot, sourceMap, registry, FlowDirection, DispatcherQueue);
-        _themeSnapshot = themeSnapshot;
         var builder = new LayoutBuilder(ctx, EmbedFactory);
 
         ct.ThrowIfCancellationRequested();
@@ -691,6 +696,10 @@ public sealed partial class MarkdownRendererControl : UserControl
         var old = _snapshot;
         _snapshot = snapshot;
         committed = true;
+        // Update _themeSnapshot after commit so it always reflects the committed
+        // theme. Updating before the await yields the UI thread where UpdateFocusRing
+        // reads _themeSnapshot against stale _snapshot/_focusableItems from the old build.
+        _themeSnapshot = themeSnapshot;
         old?.Dispose();
         // Clear stale hover references so OnPointerExited/OnPointerMoved after the
         // rebuild don't use Bounds from the now-disposed old snapshot for invalidation.
@@ -811,10 +820,6 @@ public sealed partial class MarkdownRendererControl : UserControl
             }
             return;
         }
-        double realizeTop = top - EmbedVirtualizationOverscanPx;
-        double realizeBottom = bottom + EmbedVirtualizationOverscanPx;
-        double derealizeTop = top - EmbedVirtualizationDerealizeOverscanPx;
-        double derealizeBottom = bottom + EmbedVirtualizationDerealizeOverscanPx;
 
         // Drop old realisation-side caches; they'll be repopulated as embeds realise.
         // We do NOT clear them when only some embeds change state mid-scroll —
@@ -1065,7 +1070,7 @@ public sealed partial class MarkdownRendererControl : UserControl
                 (_dragAnchorStart, _dragAnchorEnd) = ExpandSelectionToBlock(_snapshot, pos);
                 // Invalidate to repaint link-hover state (hover suppressed during drag).
                 _canvas.Invalidate();
-                if (!_canvas.CapturePointer(e.Pointer)) _leftPointerCaptured = false;
+                if (!_canvas.CapturePointer(e.Pointer)) { _leftPointerCaptured = false; _selectionAnchor = null; }
                 return;
             }
             if (_consecutiveClickCount == 2)
@@ -1075,14 +1080,14 @@ public sealed partial class MarkdownRendererControl : UserControl
                 (_dragAnchorStart, _dragAnchorEnd) = ExpandSelectionToWord(_snapshot, pos);
                 // Invalidate to repaint link-hover state (hover suppressed during drag).
                 _canvas.Invalidate();
-                if (!_canvas.CapturePointer(e.Pointer)) _leftPointerCaptured = false;
+                if (!_canvas.CapturePointer(e.Pointer)) { _leftPointerCaptured = false; _selectionAnchor = null; }
                 return;
             }
             _clickMode = ClickMode.Single;
             _selection.SetAnchor(pos);
             // Invalidate to repaint link-hover state (hover suppressed during drag).
             _canvas.Invalidate();
-            if (!_canvas.CapturePointer(e.Pointer)) _leftPointerCaptured = false;
+            if (!_canvas.CapturePointer(e.Pointer)) { _leftPointerCaptured = false; _selectionAnchor = null; }
         }
         else
         {
@@ -1376,15 +1381,15 @@ public sealed partial class MarkdownRendererControl : UserControl
         for (int i = 0; i < _embedRects.Count; i++)
         {
             var r = _embedRects[i].Rect;
-            if (pt.X >= r.X && pt.X <= r.X + r.Width &&
-                pt.Y >= r.Y && pt.Y <= r.Y + r.Height)
+            if (pt.X >= r.X && pt.X < r.X + r.Width &&
+                pt.Y >= r.Y && pt.Y < r.Y + r.Height)
                 return true;
         }
         for (int i = 0; i < _blockEmbedRects.Count; i++)
         {
             var r = _blockEmbedRects[i];
-            if (pt.X >= r.X && pt.X <= r.X + r.Width &&
-                pt.Y >= r.Y && pt.Y <= r.Y + r.Height)
+            if (pt.X >= r.X && pt.X < r.X + r.Width &&
+                pt.Y >= r.Y && pt.Y < r.Y + r.Height)
                 return true;
         }
         return false;
@@ -1402,8 +1407,8 @@ public sealed partial class MarkdownRendererControl : UserControl
         for (int i = 0; i < _embedRects.Count; i++)
         {
             var (box, run, r) = _embedRects[i];
-            if (pt.X >= r.X && pt.X <= r.X + r.Width &&
-                pt.Y >= r.Y && pt.Y <= r.Y + r.Height)
+            if (pt.X >= r.X && pt.X < r.X + r.Width &&
+                pt.Y >= r.Y && pt.Y < r.Y + r.Height)
             {
                 bool rightHalf = pt.X >= r.X + r.Width / 2.0;
                 // In RTL flow the logical start of a run is visually on the

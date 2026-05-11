@@ -55,7 +55,7 @@ public sealed class InlineContainerBox : BlockBox
 
     public void Add(InlineRun run)
     {
-        System.Diagnostics.Debug.Assert(BlockIndex != 0 || _runs.Count == 0,
+        System.Diagnostics.Debug.Assert(BlockIndex != 0,
             "BlockIndex must be assigned before calling Add(); source-map entries will be registered under block 0 otherwise.");
         run.InlineIndex = _runs.Count;
         _runs.Add(run);
