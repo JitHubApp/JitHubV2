@@ -290,7 +290,11 @@ public sealed class LayoutBuilder
                 // Render footnote forward-references as clickable superscript links.
                 // URL uses the internal fragment scheme "#footnote-def-{order}" which
                 // MarkdownRendererControl intercepts to scroll to the definition.
-                int order = fl.Index > 0 ? fl.Index : 1;
+                // Use fl.Footnote.Order (the footnote's 1-based sequence number), NOT
+                // fl.Index (which is a global sequential counter across all citations
+                // of all footnotes and differs from Order when a footnote is cited
+                // more than once).
+                int order = fl.Footnote?.Order is > 0 ? fl.Footnote.Order : (fl.Index > 0 ? fl.Index : 1);
                 var run = new LinkRun(ToSuperscript(order), $"#footnote-def-{order}")
                 {
                     SourceSpan = new SourceSpan(fl.Span.Start, fl.Span.Length),

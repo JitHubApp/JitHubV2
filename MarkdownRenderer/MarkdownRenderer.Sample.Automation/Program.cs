@@ -207,28 +207,28 @@ internal static class Program
         renderer.Focus();
         Thread.Sleep(200);
 
-        // Press Tab multiple times to cycle through links; renderer must stay alive and not throw
-        for (int i = 0; i < 6; i++)
+        // Tab through links repeatedly; the renderer must survive all presses without
+        // throwing or becoming unresponsive. With the boundary-exit fix, Tab at the
+        // last link exits the control; further presses may or may not re-enter it.
+        for (int i = 0; i < 15; i++)
         {
             Keyboard.Press(VirtualKeyShort.TAB);
-            Thread.Sleep(120);
+            Thread.Sleep(150);
         }
 
-        // Press Escape to clear focus ring
+        // Re-focus the renderer and verify Shift+Tab and Escape both work.
+        renderer.Focus();
+        Thread.Sleep(200);
+        Keyboard.TypeSimultaneously(VirtualKeyShort.SHIFT, VirtualKeyShort.TAB);
+        Thread.Sleep(200);
+        Keyboard.TypeSimultaneously(VirtualKeyShort.SHIFT, VirtualKeyShort.TAB);
+        Thread.Sleep(200);
         Keyboard.Press(VirtualKeyShort.ESCAPE);
         Thread.Sleep(200);
 
-        // Verify renderer is still responsive by checking its UIA Name
+        // Verify renderer is still responsive
         var nameAfter = renderer.Name ?? string.Empty;
         Assert(nameAfter.Length > 0, "Keyboard Nav renderer must remain responsive after Tab/Escape traversal");
-
-        // Shift+Tab should also work without throwing
-        Keyboard.TypeSimultaneously(VirtualKeyShort.SHIFT, VirtualKeyShort.TAB);
-        Thread.Sleep(200);
-        Keyboard.TypeSimultaneously(VirtualKeyShort.SHIFT, VirtualKeyShort.TAB);
-        Thread.Sleep(200);
-        Keyboard.Press(VirtualKeyShort.ESCAPE);
-        Thread.Sleep(200);
     }
 
     private static AutomationElement FindRenderer(Window window)
