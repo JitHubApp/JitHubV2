@@ -102,7 +102,8 @@ public sealed class InlineContainerBox : BlockBox
 
     private void EnsureBuffer()
     {
-        if ((_bufferDirty || _buffer.Length == 0) && _runs.Count > 0) BuildBuffer();
+        if (_runs.Count == 0) { _buffer = string.Empty; _bufferDirty = false; return; }
+        if (_bufferDirty || _buffer.Length == 0) BuildBuffer();
     }
 
     /// <summary>

@@ -100,6 +100,14 @@ public sealed partial class MarkdownRendererControl : UserControl
         try { return (int)GetDoubleClickTime(); } catch { return 500; }
     }
 
+    // Click mode for the current press; governs drag-extension behaviour.
+    private enum ClickMode { Single, Word, Block }
+    private ClickMode _clickMode;
+
+    // Cached cursor instances (created once, reused; disposed on Unload).
+    private Microsoft.UI.Input.InputSystemCursor? _cursorHand;
+    private Microsoft.UI.Input.InputSystemCursor? _cursorIBeam;
+
     // Cache of inline-embed rectangles (in canvas/document coordinates) plus
     // the InlineRun + owning InlineContainerBox.  Built during PlaceEmbeds
     // and consulted from pointer handlers so we can:
@@ -509,6 +517,12 @@ public sealed partial class MarkdownRendererControl : UserControl
         // control to a new visual parent doesn't leak DirectWrite layouts
         // or keep stale FrameworkElements alive.
         _overlay?.Children.Clear();
+        // Dispose cached cursor objects; they will be lazily re-created on next use.
+        _cursorHand?.Dispose();
+        _cursorIBeam?.Dispose();
+        _cursorHand = null;
+        _cursorIBeam = null;
+        _currentCursorShape = null;
         // Clear the selection-rect pool: after the overlay is wiped the pooled
         // Rectangles are no longer in _overlay.Children, so the pool references
         // are stale.  CommitSnapshot does the same; mirror it here so a re-attach
@@ -980,6 +994,7 @@ public sealed partial class MarkdownRendererControl : UserControl
             if (_consecutiveClickCount == 3)
             {
                 // Triple-click: select the entire block (line).
+                _clickMode = ClickMode.Block;
                 ExpandSelectionToBlock(_snapshot, pos);
                 _canvas.CapturePointer(e.Pointer);
                 return;
@@ -987,10 +1002,12 @@ public sealed partial class MarkdownRendererControl : UserControl
             if (_consecutiveClickCount == 2)
             {
                 // Double-click: select the word under the cursor.
+                _clickMode = ClickMode.Word;
                 ExpandSelectionToWord(_snapshot, pos);
                 _canvas.CapturePointer(e.Pointer);
                 return;
             }
+            _clickMode = ClickMode.Single;
             _selection.SetAnchor(pos);
             // Invalidate to repaint link-hover state (hover suppressed during drag).
             _canvas.Invalidate();
@@ -1044,7 +1061,16 @@ public sealed partial class MarkdownRendererControl : UserControl
             {
                 MarkdownRenderer.Diagnostics.ShakeLogger.Log("ptr-move-drag",
                     $"px={pt.X:F4} py={pt.Y:F4} pos=blk{pos.BlockIndex}/inl{pos.InlineIndex}/c{pos.CharacterOffset}");
-                _selection.ExtendTo(pos);
+                // For word/block click modes extend selection snapped to the
+                // appropriate boundary so dragging after double/triple-click
+                // produces word-by-word or block-by-block selection, matching
+                // browser / native text editor behaviour.
+                if (_clickMode == ClickMode.Word)
+                    _selection.ExtendTo(GetWordEndAt(_snapshot, pos));
+                else if (_clickMode == ClickMode.Block)
+                    _selection.ExtendTo(GetBlockEndAt(_snapshot, pos));
+                else
+                    _selection.ExtendTo(pos);
                 // No _canvas.Invalidate(): selection is on the XAML overlay.
             }
             // Do NOT update hover state during an active selection drag.
@@ -1159,15 +1185,24 @@ public sealed partial class MarkdownRendererControl : UserControl
     /// enters overlay embeds: with null, XAML walks up the tree and finds no
     /// cursor override, so child elements (Button, CheckBox, …) can show their
     /// own cursors instead of inheriting IBeam from this UserControl.
+    /// Cursors are cached as fields to avoid creating a new IDisposable on every
+    /// Hand↔IBeam transition.
     /// </summary>
     private void SetCursorShape(Microsoft.UI.Input.InputSystemCursorShape? shape)
     {
         if (shape == _currentCursorShape) return;
         try
         {
-            ProtectedCursor = shape is { } s
-                ? Microsoft.UI.Input.InputSystemCursor.Create(s)
-                : null;
+            ProtectedCursor = shape switch
+            {
+                Microsoft.UI.Input.InputSystemCursorShape.Hand =>
+                    _cursorHand ??= Microsoft.UI.Input.InputSystemCursor.Create(
+                        Microsoft.UI.Input.InputSystemCursorShape.Hand),
+                Microsoft.UI.Input.InputSystemCursorShape.IBeam =>
+                    _cursorIBeam ??= Microsoft.UI.Input.InputSystemCursor.Create(
+                        Microsoft.UI.Input.InputSystemCursorShape.IBeam),
+                _ => null
+            };
             _currentCursorShape = shape;
         }
         catch { /* ProtectedCursor isn't always settable */ }
@@ -1739,6 +1774,30 @@ public sealed partial class MarkdownRendererControl : UserControl
         _selection.SetAnchor(start);
         _selection.ExtendTo(end);
         _canvas?.Invalidate();
+    }
+
+    /// <summary>
+    /// Returns the end <see cref="DocumentPosition"/> of the word that contains
+    /// <paramref name="pos"/>, for use when extending a word-drag.
+    /// </summary>
+    private DocumentPosition GetWordEndAt(LayoutSnapshot snapshot, DocumentPosition pos)
+    {
+        var icb = FindInlineContainerAt(snapshot, pos.BlockIndex);
+        if (icb is null) return pos;
+        var (_, end) = icb.GetWordBoundaries(pos);
+        return end;
+    }
+
+    /// <summary>
+    /// Returns the end <see cref="DocumentPosition"/> of the block/line that contains
+    /// <paramref name="pos"/>, for use when extending a block-drag.
+    /// </summary>
+    private DocumentPosition GetBlockEndAt(LayoutSnapshot snapshot, DocumentPosition pos)
+    {
+        var icb = FindInlineContainerAt(snapshot, pos.BlockIndex);
+        if (icb is null) return pos;
+        var (_, end) = icb.GetBlockBoundaries();
+        return end;
     }
 
     /// <summary>
