@@ -103,6 +103,11 @@ public sealed partial class MarkdownRendererControl : UserControl
     // Click mode for the current press; governs drag-extension behaviour.
     private enum ClickMode { Single, Word, Block }
     private ClickMode _clickMode;
+    // When _clickMode is Word or Block, these hold the start/end of the initially
+    // selected word/block so that backward drag can correctly extend to the
+    // start of the word/block under the pointer rather than always to the end.
+    private DocumentPosition _dragAnchorStart;
+    private DocumentPosition _dragAnchorEnd;
 
     // Cached cursor instances (created once, reused; disposed on Unload).
     private Microsoft.UI.Input.InputSystemCursor? _cursorHand;
@@ -995,7 +1000,7 @@ public sealed partial class MarkdownRendererControl : UserControl
             {
                 // Triple-click: select the entire block (line).
                 _clickMode = ClickMode.Block;
-                ExpandSelectionToBlock(_snapshot, pos);
+                (_dragAnchorStart, _dragAnchorEnd) = ExpandSelectionToBlock(_snapshot, pos);
                 _canvas.CapturePointer(e.Pointer);
                 return;
             }
@@ -1003,7 +1008,7 @@ public sealed partial class MarkdownRendererControl : UserControl
             {
                 // Double-click: select the word under the cursor.
                 _clickMode = ClickMode.Word;
-                ExpandSelectionToWord(_snapshot, pos);
+                (_dragAnchorStart, _dragAnchorEnd) = ExpandSelectionToWord(_snapshot, pos);
                 _canvas.CapturePointer(e.Pointer);
                 return;
             }
@@ -1066,9 +1071,31 @@ public sealed partial class MarkdownRendererControl : UserControl
                 // produces word-by-word or block-by-block selection, matching
                 // browser / native text editor behaviour.
                 if (_clickMode == ClickMode.Word)
-                    _selection.ExtendTo(GetWordEndAt(_snapshot, pos));
+                {
+                    var icb = FindInlineContainerAt(_snapshot, pos.BlockIndex);
+                    if (icb is not null)
+                    {
+                        var (ws, we) = icb.GetWordBoundaries(pos);
+                        // Backward drag: anchor at initial-word end, extend to current-word start.
+                        // Forward drag: anchor at initial-word start, extend to current-word end.
+                        if (pos.CompareTo(_dragAnchorStart) < 0)
+                        { _selection.SetAnchor(_dragAnchorEnd); _selection.ExtendTo(ws); }
+                        else
+                        { _selection.SetAnchor(_dragAnchorStart); _selection.ExtendTo(we); }
+                    }
+                }
                 else if (_clickMode == ClickMode.Block)
-                    _selection.ExtendTo(GetBlockEndAt(_snapshot, pos));
+                {
+                    var icb = FindInlineContainerAt(_snapshot, pos.BlockIndex);
+                    if (icb is not null)
+                    {
+                        var (bs, be) = icb.GetBlockBoundaries();
+                        if (pos.CompareTo(_dragAnchorStart) < 0)
+                        { _selection.SetAnchor(_dragAnchorEnd); _selection.ExtendTo(bs); }
+                        else
+                        { _selection.SetAnchor(_dragAnchorStart); _selection.ExtendTo(be); }
+                    }
+                }
                 else
                     _selection.ExtendTo(pos);
                 // No _canvas.Invalidate(): selection is on the XAML overlay.
@@ -1765,53 +1792,33 @@ public sealed partial class MarkdownRendererControl : UserControl
     /// <summary>
     /// Expands selection to the word (maximal non-whitespace run) that contains
     /// <paramref name="pos"/> in its inline container.
+    /// Returns the (start, end) document positions of the selected word.
     /// </summary>
-    private void ExpandSelectionToWord(LayoutSnapshot snapshot, DocumentPosition pos)
+    private (DocumentPosition Start, DocumentPosition End) ExpandSelectionToWord(LayoutSnapshot snapshot, DocumentPosition pos)
     {
         var icb = FindInlineContainerAt(snapshot, pos.BlockIndex);
-        if (icb is null) return;
+        if (icb is null) return (pos, pos);
         var (start, end) = icb.GetWordBoundaries(pos);
         _selection.SetAnchor(start);
         _selection.ExtendTo(end);
         _canvas?.Invalidate();
-    }
-
-    /// <summary>
-    /// Returns the end <see cref="DocumentPosition"/> of the word that contains
-    /// <paramref name="pos"/>, for use when extending a word-drag.
-    /// </summary>
-    private DocumentPosition GetWordEndAt(LayoutSnapshot snapshot, DocumentPosition pos)
-    {
-        var icb = FindInlineContainerAt(snapshot, pos.BlockIndex);
-        if (icb is null) return pos;
-        var (_, end) = icb.GetWordBoundaries(pos);
-        return end;
-    }
-
-    /// <summary>
-    /// Returns the end <see cref="DocumentPosition"/> of the block/line that contains
-    /// <paramref name="pos"/>, for use when extending a block-drag.
-    /// </summary>
-    private DocumentPosition GetBlockEndAt(LayoutSnapshot snapshot, DocumentPosition pos)
-    {
-        var icb = FindInlineContainerAt(snapshot, pos.BlockIndex);
-        if (icb is null) return pos;
-        var (_, end) = icb.GetBlockBoundaries();
-        return end;
+        return (start, end);
     }
 
     /// <summary>
     /// Expands selection to the entire inline container (paragraph/heading line)
     /// that contains <paramref name="pos"/>.
+    /// Returns the (start, end) document positions of the selected block.
     /// </summary>
-    private void ExpandSelectionToBlock(LayoutSnapshot snapshot, DocumentPosition pos)
+    private (DocumentPosition Start, DocumentPosition End) ExpandSelectionToBlock(LayoutSnapshot snapshot, DocumentPosition pos)
     {
         var icb = FindInlineContainerAt(snapshot, pos.BlockIndex);
-        if (icb is null) return;
+        if (icb is null) return (pos, pos);
         var (start, end) = icb.GetBlockBoundaries();
         _selection.SetAnchor(start);
         _selection.ExtendTo(end);
         _canvas?.Invalidate();
+        return (start, end);
     }
 
     private static Layout.Boxes.InlineContainerBox? FindInlineContainerAt(LayoutSnapshot snapshot, int blockIndex)
