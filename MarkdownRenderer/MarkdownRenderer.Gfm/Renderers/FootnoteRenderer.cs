@@ -22,6 +22,7 @@ public sealed class FootnoteRenderer : MarkdownNodeRenderer<FootnoteGroup>
         {
             Margin = new Thickness(0, 8, 0, 8),
         };
+        stack.BlockIndex = context.NextBlockIndex();
 
         // Collect all Markdig-assigned orders so fallback values never collide with them.
         var assignedOrders = new System.Collections.Generic.HashSet<int>(
@@ -101,7 +102,9 @@ public sealed class FootnoteRenderer : MarkdownNodeRenderer<FootnoteGroup>
             if (child is InlineContainerBox icb)
             {
                 // Append a non-breaking space + the back-link run.
-                icb.Add(new TextRun("\u00A0"));
+                // Use the back-link run's SourceSpan for the synthetic space so the
+                // source map maps it to the footnote definition site, not document start.
+                icb.Add(new TextRun("\u00A0") { SourceSpan = run.SourceSpan });
                 icb.Add(run);
                 return true;
             }

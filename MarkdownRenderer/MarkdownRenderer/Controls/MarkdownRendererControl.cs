@@ -37,7 +37,7 @@ public sealed partial class MarkdownRendererControl : UserControl
     private Grid? _root;
 
     private volatile LayoutSnapshot? _snapshot;
-    private CancellationTokenSource? _pipelineCts;
+    private volatile CancellationTokenSource? _pipelineCts;
     private float _lastWidth;
     private static readonly MarkdownTheme _defaultTheme = new();
     private SizeChangedEventHandler? _sizeChangedHandler;
@@ -609,7 +609,6 @@ public sealed partial class MarkdownRendererControl : UserControl
     {
         if (_canvas is null) return;
         var width = (float)Math.Max(50, ActualWidth);
-        if (width <= 0) return;
         _lastWidth = width;
 
         var registry = ExtensionRegistry ?? new MarkdownExtensionRegistry();
@@ -1253,6 +1252,10 @@ public sealed partial class MarkdownRendererControl : UserControl
     private void SetCursorShape(Microsoft.UI.Input.InputSystemCursorShape? shape)
     {
         if (shape == _currentCursorShape) return;
+        // Update tracked state first so repeated failures don't cause a per-frame
+        // exception storm: if ProtectedCursor throws, we still record the intent
+        // and skip the setter on the next move event.
+        _currentCursorShape = shape;
         try
         {
             ProtectedCursor = shape switch
@@ -1265,7 +1268,6 @@ public sealed partial class MarkdownRendererControl : UserControl
                         Microsoft.UI.Input.InputSystemCursorShape.IBeam),
                 _ => null
             };
-            _currentCursorShape = shape;
         }
         catch { /* ProtectedCursor isn't always settable */ }
     }
@@ -1692,7 +1694,7 @@ public sealed partial class MarkdownRendererControl : UserControl
         var pos = new DocumentPosition(item.BlockIndex, item.InlineIndex, 0);
         if (FindLinkAt(pos) is { } lr)
         {
-            if (lr.Url.StartsWith("#footnote-", StringComparison.Ordinal))
+            if (lr.Url.StartsWith("#footnote-", StringComparison.OrdinalIgnoreCase))
                 HandleInternalAnchor(lr.Url);
             else
                 LinkClick?.Invoke(this, new MarkdownLinkClickEventArgs(lr.Url, lr.Title));
