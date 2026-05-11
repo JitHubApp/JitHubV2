@@ -108,17 +108,13 @@ public sealed class FootnoteRenderer : MarkdownNodeRenderer<FootnoteGroup>
                 icb.Add(run);
                 return true;
             }
-            if (child is StackBox nested)
-            {
-                if (TryAppendToLastInlineBox(nested, run)) return true;
-                continue; // nested stack has no trailing inline — check sibling
-            }
+            // Recurse into nested containers. If recursion fails it means the nested
+            // container ends with a non-container block (code block, embed, …).
+            // We must return false — not continue — because continuing would place ↩
+            // in an earlier sibling that is visually BEFORE the blocking element.
+            if (child is StackBox nested) return TryAppendToLastInlineBox(nested, run);
             // ListItemBox.Content is a StackBox — recurse into it.
-            if (child is ListItemBox lib)
-            {
-                if (TryAppendToLastInlineBox(lib.Content, run)) return true;
-                continue; // list item has no trailing inline — check sibling
-            }
+            if (child is ListItemBox lib) return TryAppendToLastInlineBox(lib.Content, run);
             // Any other non-container block (EmbedBox, CodeBlockBox, …) terminates
             // the search: do NOT skip past it — that would place ↩ before the block.
             return false;
