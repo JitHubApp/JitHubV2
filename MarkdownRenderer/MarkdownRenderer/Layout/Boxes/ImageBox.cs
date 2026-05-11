@@ -48,8 +48,12 @@ public sealed class ImageBox : BlockBox
     private float _imageHeight;
     private float _captionHeight;
 
-    /// <summary>Raised when the asset finishes loading and a repaint is required.</summary>
-    public event EventHandler? LoadCompleted;
+    /// <summary>Raised when the asset finishes loading and a repaint is required.
+    /// The event arg's <see cref="LoadCompletedEventArgs.LayoutInvalidated"/>
+    /// indicates whether the host must re-run layout (intrinsic size may have
+    /// changed) or merely repaint (e.g. a device-specific SVG re-parse). Always
+    /// raised on the UI thread.</summary>
+    public event EventHandler<LoadCompletedEventArgs>? LoadCompleted;
 
     public ImageBox(MarkdownLayoutContext context, string url, string alt)
     {
@@ -192,8 +196,11 @@ public sealed class ImageBox : BlockBox
                 _svgReparseStarted = true;
                 var bytes = _svgBytes;
                 var device = ds.Device;
+                var dispatcher = _context.Dispatcher;
                 _ = System.Threading.Tasks.Task.Run(async () =>
                 {
+                    CanvasSvgDocument? doc = null;
+                    bool failed = false;
                     try
                     {
                         using var ms = new InMemoryRandomAccessStream();
@@ -204,19 +211,37 @@ public sealed class ImageBox : BlockBox
                             writer.DetachStream();
                         }
                         ms.Seek(0);
-                        var doc = await CanvasSvgDocument.LoadAsync(device, ms);
-                        _svg = doc;
+                        doc = await CanvasSvgDocument.LoadAsync(device, ms);
                     }
                     catch (Exception ex)
                     {
                         System.Diagnostics.Debug.WriteLine($"[ImageBox] SVG reparse failed: {ex.Message}");
-                        _loadFailed = true;
-                        _svgBytes = null;
+                        failed = true;
                     }
-                    finally
+                    // Marshal back to UI thread so field writes happen-before any
+                    // subsequent Paint, and LoadCompleted handlers run on the
+                    // dispatcher (consistent threading contract for subscribers).
+                    void Publish()
                     {
-                        LoadCompleted?.Invoke(this, EventArgs.Empty);
+                        if (failed)
+                        {
+                            // Allow a later retry (e.g. after device-changed) by
+                            // resetting the guard. Don't null out _svgBytes: the
+                            // bytes are still good for a future attempt against
+                            // a recovered device.
+                            _svgReparseStarted = false;
+                        }
+                        else
+                        {
+                            _svg = doc;
+                        }
+                        // Repaint-only — intrinsic size already known, no relayout.
+                        LoadCompleted?.Invoke(this, new LoadCompletedEventArgs(layoutInvalidated: false));
                     }
+                    if (dispatcher is not null && !dispatcher.HasThreadAccess)
+                        dispatcher.TryEnqueue(Publish);
+                    else
+                        Publish();
                 });
             }
             if (_svg is not null)
@@ -231,6 +256,11 @@ public sealed class ImageBox : BlockBox
                 catch (Exception ex)
                 {
                     System.Diagnostics.Debug.WriteLine($"[ImageBox] DrawSvg failed: {ex.Message}");
+                    // Likely device-lost. Drop the parsed doc and unlatch the
+                    // guard so the next paint re-parses against the new device.
+                    try { _svg?.Dispose(); } catch { }
+                    _svg = null;
+                    _svgReparseStarted = false;
                 }
             }
         }
@@ -303,7 +333,7 @@ public sealed class ImageBox : BlockBox
         }
         finally
         {
-            LoadCompleted?.Invoke(this, EventArgs.Empty);
+            LoadCompleted?.Invoke(this, new LoadCompletedEventArgs(layoutInvalidated: true));
         }
     }
 
@@ -365,7 +395,7 @@ public sealed class ImageBox : BlockBox
         }
         finally
         {
-            LoadCompleted?.Invoke(this, EventArgs.Empty);
+            LoadCompleted?.Invoke(this, new LoadCompletedEventArgs(layoutInvalidated: true));
         }
     }
 

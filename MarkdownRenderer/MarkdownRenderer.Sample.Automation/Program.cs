@@ -159,9 +159,6 @@ internal static class Program
     {
         try
         {
-            var window = renderer.FrameworkAutomationElement.PropertyIdLibrary is null
-                ? null
-                : renderer;
             // Find the status TextBlock anywhere in the window tree.
             var root = renderer;
             while (root.Parent is not null) root = root.Parent;

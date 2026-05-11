@@ -162,6 +162,16 @@ public sealed partial class MarkdownRendererControl : UserControl
     }
     private readonly List<EmbedPlan> _embedPlans = new();
 
+    // Stable per-LinkRun automation peer cache. UIA traversals re-request the
+    // children of a block frequently; returning fresh peers each time loses
+    // identity tracking (Narrator focus, "where am I"). Tied to the LinkRun
+    // weakly so peers are released alongside the layout snapshot.
+    private readonly System.Runtime.CompilerServices.ConditionalWeakTable<LinkRun, MarkdownLinkPeer> _linkPeerCache = new();
+
+    // Previous realised embed count — used to suppress redundant
+    // EmbedsRealizationChanged fires on every scroll tick (UIA-friendly).
+    private int _lastFiredRealizedCount = -1;
+
     /// <summary>
     /// Viewport over-scan band, in pixels, in either direction. Embeds whose
     /// bounds intersect [viewport.Top - Overscan, viewport.Bottom + Overscan]
@@ -227,6 +237,22 @@ public sealed partial class MarkdownRendererControl : UserControl
     {
         get => (bool)GetValue(IsSelectionEnabledProperty);
         set => SetValue(IsSelectionEnabledProperty, value);
+    }
+
+    internal MarkdownLinkPeer GetOrCreateLinkPeer(MarkdownBlockPeer parent, LinkRun run)
+    {
+        if (_linkPeerCache.TryGetValue(run, out var peer)) return peer;
+        peer = new MarkdownLinkPeer(this, parent, run);
+        _linkPeerCache.Add(run, peer);
+        return peer;
+    }
+
+    /// <summary>Invoked by <see cref="MarkdownLinkPeer.Invoke"/> so UIA clients
+    /// can activate a link the same way as pointer interaction.</summary>
+    internal void RaiseLinkClickFromAutomation(LinkRun run)
+    {
+        if (run is null) return;
+        LinkClick?.Invoke(this, new MarkdownLinkClickEventArgs(run.Url, run.Title));
     }
 
     public event EventHandler<MarkdownLinkClickEventArgs>? LinkClick;
@@ -494,7 +520,7 @@ public sealed partial class MarkdownRendererControl : UserControl
         // CanvasVirtualControl only has a device after CreateResources fires, so
         // passing _canvas directly would crash if layout runs before first draw.
         var device = CanvasDevice.GetSharedDevice();
-        var ctx = new MarkdownLayoutContext(device, themeSnapshot, sourceMap, registry, FlowDirection);
+        var ctx = new MarkdownLayoutContext(device, themeSnapshot, sourceMap, registry, FlowDirection, DispatcherQueue);
         var builder = new LayoutBuilder(ctx, EmbedFactory);
 
         ct.ThrowIfCancellationRequested();
@@ -559,7 +585,20 @@ public sealed partial class MarkdownRendererControl : UserControl
     /// </summary>
     internal void RealizeVisibleEmbeds()
     {
-        if (_scroll is null || _embedPlans.Count == 0) return;
+        if (_scroll is null) return;
+        if (_embedPlans.Count == 0)
+        {
+            // No embeds: still emit a transition-to-zero event so subscribers
+            // that mirror the count (e.g. UI-automation) don't go stale after
+            // a rebuild that dropped all embeds.
+            if (_lastFiredRealizedCount != 0)
+            {
+                _lastFiredRealizedCount = 0;
+                try { EmbedsRealizationChanged?.Invoke(this, EventArgs.Empty); }
+                catch { /* swallow */ }
+            }
+            return;
+        }
         double top = _scroll.VerticalOffset;
         double bottom = top + _scroll.ViewportHeight;
         double realizeTop = top - EmbedVirtualizationOverscanPx;
@@ -613,12 +652,18 @@ public sealed partial class MarkdownRendererControl : UserControl
         }
 
         // Surface the realised count to subscribers (e.g. sample app exposing
-        // it via a hidden TextBlock for UI-automation tests). We deliberately
-        // do NOT write to AutomationProperties.HelpText on this control,
-        // because HelpText is read aloud by screen readers and raises a
-        // property-change event for every UIA listener on every scroll tick.
-        try { EmbedsRealizationChanged?.Invoke(this, EventArgs.Empty); }
-        catch { /* subscriber threw — swallow to keep scroll pipeline alive. */ }
+        // it via a hidden TextBlock for UI-automation tests) — but only when
+        // the count actually changed. Firing on every scroll tick causes a
+        // property-change event storm for any UIA listener bound to a Name
+        // property mirror in the subscriber's UI.
+        int realised = 0;
+        foreach (var p in _embedPlans) if (p.Realized is not null) realised++;
+        if (realised != _lastFiredRealizedCount)
+        {
+            _lastFiredRealizedCount = realised;
+            try { EmbedsRealizationChanged?.Invoke(this, EventArgs.Empty); }
+            catch { /* subscriber threw — swallow to keep scroll pipeline alive. */ }
+        }
     }
 
     private void CollectEmbedPlans(Layout.BlockBox box)
@@ -661,7 +706,7 @@ public sealed partial class MarkdownRendererControl : UserControl
         }
     }
 
-    private void OnImageLoadCompleted(object? sender, EventArgs e)
+    private void OnImageLoadCompleted(object? sender, Layout.Boxes.LoadCompletedEventArgs e)
     {
         // CanvasBitmap.LoadAsync continues on a thread-pool thread.  Always
         // marshal to the UI thread — RequestRebuild manipulates the canvas
@@ -669,11 +714,22 @@ public sealed partial class MarkdownRendererControl : UserControl
         // event silently if we have no dispatcher (control already unloaded).
         var dq = DispatcherQueue;
         if (dq is null) return;
+        bool layoutInvalidated = e?.LayoutInvalidated ?? true;
         dq.TryEnqueue(() =>
         {
-            // Coalesce image-load storms by debouncing through the existing
-            // RequestRebuild path: subsequent calls cancel the prior CTS.
-            RequestRebuild();
+            if (layoutInvalidated)
+            {
+                // Initial load / intrinsic-size change → coalesce through the
+                // rebuild path. Subsequent calls cancel the prior CTS.
+                RequestRebuild();
+            }
+            else
+            {
+                // Paint-only (e.g. SVG re-parsed against current device). Don't
+                // rebuild: doing so would dispose the freshly-parsed _svg and
+                // start the reparse cycle over again.
+                _canvas?.Invalidate();
+            }
         });
     }
 

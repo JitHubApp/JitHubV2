@@ -30,10 +30,12 @@ internal sealed partial class MarkdownBlockPeer : FrameworkElementAutomationPeer
     {
         // Surface inline links so screen readers can navigate hyperlinks
         // within a paragraph/heading independent of the surrounding text.
+        // Link peers are cached per LinkRun on the owner so peer identity is
+        // stable across repeated UIA traversals.
         var list = new System.Collections.Generic.List<AutomationPeer>();
         foreach (var run in _box.Runs)
         {
-            if (run is LinkRun lr) list.Add(new MarkdownLinkPeer(_owner, lr));
+            if (run is LinkRun lr) list.Add(_owner.GetOrCreateLinkPeer(this, lr));
         }
         return list;
     }
@@ -86,10 +88,28 @@ internal sealed partial class MarkdownBlockPeer : FrameworkElementAutomationPeer
         double scale = _owner.XamlRoot?.RasterizationScale ?? 1.0;
         double relX = _box.Bounds.X;
         double relY = _box.Bounds.Y - scrollY;
-        double x = ownerScreen.X + relX * scale;
-        double y = ownerScreen.Y + relY * scale;
         double w = _box.Bounds.Width * scale;
         double h = _box.Bounds.Height * scale;
+        double x;
+        if (_owner.FlowDirection == Microsoft.UI.Xaml.FlowDirection.RightToLeft)
+        {
+            // In RTL, layout coordinates remain LTR but the visual is mirrored
+            // about the renderer's right edge. Reflect x within the owner's
+            // screen rect so screen readers get the visually-correct rect.
+            x = ownerScreen.X + ownerScreen.Width - (relX * scale) - w;
+        }
+        else
+        {
+            x = ownerScreen.X + relX * scale;
+        }
+        double y = ownerScreen.Y + relY * scale;
         return new Windows.Foundation.Rect(x, y, w, h);
     }
+
+    internal MarkdownRendererControl OwnerControl => _owner;
+    internal InlineContainerBox Box => _box;
+    /// <summary>Internal accessor that exposes the computed bounding rect so
+    /// child link peers can compose against the same screen-space math without
+    /// duplicating it.</summary>
+    internal Windows.Foundation.Rect GetBoundingRectangleCoreInternal() => GetBoundingRectangleCore();
 }
