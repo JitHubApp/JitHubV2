@@ -90,18 +90,13 @@ internal sealed partial class MarkdownBlockPeer : FrameworkElementAutomationPeer
         double relY = _box.Bounds.Y - scrollY;
         double w = _box.Bounds.Width * scale;
         double h = _box.Bounds.Height * scale;
-        double x;
-        if (_owner.FlowDirection == Microsoft.UI.Xaml.FlowDirection.RightToLeft)
-        {
-            // In RTL, layout coordinates remain LTR but the visual is mirrored
-            // about the renderer's right edge. Reflect x within the owner's
-            // screen rect so screen readers get the visually-correct rect.
-            x = ownerScreen.X + ownerScreen.Width - (relX * scale) - w;
-        }
-        else
-        {
-            x = ownerScreen.X + relX * scale;
-        }
+        // Layout coordinates are authored RTL-aware (ListItemBox places its
+        // marker at content-width when RightToLeft, TableBox arranges cells
+        // similarly), so reporting `ownerScreen.X + relX * scale` matches
+        // the rendered visual without an extra reflection. We intentionally
+        // do NOT mirror here — applying a blanket reflect-about-right-edge
+        // would double-mirror children that are already placed in RTL.
+        double x = ownerScreen.X + relX * scale;
         double y = ownerScreen.Y + relY * scale;
         return new Windows.Foundation.Rect(x, y, w, h);
     }

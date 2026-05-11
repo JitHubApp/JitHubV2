@@ -44,6 +44,9 @@ public sealed class ImageBox : BlockBox
     private bool _loadStarted;
     private bool _loadFailed;
     private bool _svgReparseStarted;
+    private int _svgReparseFailures;
+    private bool _disposed;
+    private const int MaxSvgReparseAttempts = 2;
     private float _availableWidth;
     private float _imageHeight;
     private float _captionHeight;
@@ -191,7 +194,7 @@ public sealed class ImageBox : BlockBox
             // skip drawing this frame. LoadCompleted will trigger a repaint
             // once the document is ready. Never block the paint thread on
             // CanvasSvgDocument.LoadAsync.
-            if (_svg is null && !_svgReparseStarted)
+            if (_svg is null && !_svgReparseStarted && !_loadFailed)
             {
                 _svgReparseStarted = true;
                 var bytes = _svgBytes;
@@ -223,20 +226,42 @@ public sealed class ImageBox : BlockBox
                     // dispatcher (consistent threading contract for subscribers).
                     void Publish()
                     {
+                        if (_disposed)
+                        {
+                            // Box was torn down while the reparse was in flight.
+                            // Dispose the freshly-parsed document and bail — do
+                            // not raise LoadCompleted, do not resurrect state.
+                            try { doc?.Dispose(); } catch { }
+                            return;
+                        }
                         if (failed)
                         {
-                            // Allow a later retry (e.g. after device-changed) by
-                            // resetting the guard. Don't null out _svgBytes: the
-                            // bytes are still good for a future attempt against
-                            // a recovered device.
-                            _svgReparseStarted = false;
+                            _svgReparseFailures++;
+                            if (_svgReparseFailures >= MaxSvgReparseAttempts)
+                            {
+                                // Latch fatal: stop retrying and fall back to
+                                // the alt-text placeholder. Future device-lost
+                                // recovery would require an explicit reset
+                                // (e.g. CanvasDevice.DeviceLost handler) which
+                                // is out of scope here.
+                                _loadFailed = true;
+                                _svgBytes = null;
+                            }
+                            else
+                            {
+                                // Allow a single bounded retry (e.g. transient
+                                // device contention). Guard is reset; next
+                                // paint may try again.
+                                _svgReparseStarted = false;
+                            }
                         }
                         else
                         {
+                            _svgReparseFailures = 0;
                             _svg = doc;
                         }
                         // Repaint-only — intrinsic size already known, no relayout.
-                        LoadCompleted?.Invoke(this, new LoadCompletedEventArgs(layoutInvalidated: false));
+                        LoadCompleted?.Invoke(this, new LoadCompletedEventArgs(layoutInvalidated: failed && _loadFailed));
                     }
                     if (dispatcher is not null && !dispatcher.HasThreadAccess)
                         dispatcher.TryEnqueue(Publish);
@@ -256,11 +281,22 @@ public sealed class ImageBox : BlockBox
                 catch (Exception ex)
                 {
                     System.Diagnostics.Debug.WriteLine($"[ImageBox] DrawSvg failed: {ex.Message}");
-                    // Likely device-lost. Drop the parsed doc and unlatch the
-                    // guard so the next paint re-parses against the new device.
+                    // Likely device-lost or codec failure. Drop the parsed doc.
+                    // Count this as a reparse failure so we don't loop forever
+                    // re-parsing on a broken device — if we've already failed
+                    // once, latch fatal here.
                     try { _svg?.Dispose(); } catch { }
                     _svg = null;
-                    _svgReparseStarted = false;
+                    _svgReparseFailures++;
+                    if (_svgReparseFailures >= MaxSvgReparseAttempts)
+                    {
+                        _loadFailed = true;
+                        _svgBytes = null;
+                    }
+                    else
+                    {
+                        _svgReparseStarted = false;
+                    }
                 }
             }
         }
@@ -298,6 +334,7 @@ public sealed class ImageBox : BlockBox
 
     public override void Dispose()
     {
+        _disposed = true;
         _placeholder?.Dispose();
         _placeholder = null;
         _caption?.Dispose();

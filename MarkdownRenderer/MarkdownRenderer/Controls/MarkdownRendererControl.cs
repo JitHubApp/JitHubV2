@@ -241,18 +241,31 @@ public sealed partial class MarkdownRendererControl : UserControl
 
     internal MarkdownLinkPeer GetOrCreateLinkPeer(MarkdownBlockPeer parent, LinkRun run)
     {
-        if (_linkPeerCache.TryGetValue(run, out var peer)) return peer;
-        peer = new MarkdownLinkPeer(this, parent, run);
-        _linkPeerCache.Add(run, peer);
-        return peer;
+        // GetValue is atomic for concurrent UIA callers and avoids the
+        // TryGetValue+Add race. The factory captures the *current* parent
+        // peer; this is acceptable because the parent peer's bounding-rect
+        // computation only reads through to the live owner control + box,
+        // so a "stale" parent reference still resolves to the right rect.
+        return _linkPeerCache.GetValue(run, r => new MarkdownLinkPeer(this, parent, r));
     }
 
     /// <summary>Invoked by <see cref="MarkdownLinkPeer.Invoke"/> so UIA clients
-    /// can activate a link the same way as pointer interaction.</summary>
+    /// can activate a link the same way as pointer interaction. UIA callers
+    /// can arrive on the RPC thread, so marshal back to the UI dispatcher
+    /// before raising the public event.</summary>
     internal void RaiseLinkClickFromAutomation(LinkRun run)
     {
         if (run is null) return;
-        LinkClick?.Invoke(this, new MarkdownLinkClickEventArgs(run.Url, run.Title));
+        var args = new MarkdownLinkClickEventArgs(run.Url, run.Title);
+        var dispatcher = DispatcherQueue;
+        if (dispatcher is not null && !dispatcher.HasThreadAccess)
+        {
+            dispatcher.TryEnqueue(() => LinkClick?.Invoke(this, args));
+        }
+        else
+        {
+            LinkClick?.Invoke(this, args);
+        }
     }
 
     public event EventHandler<MarkdownLinkClickEventArgs>? LinkClick;
@@ -548,6 +561,9 @@ public sealed partial class MarkdownRendererControl : UserControl
         _embedRects.Clear();
         _blockEmbedRects.Clear();
         _embedPlans.Clear();
+        // Identities change across rebuild even when the count happens to
+        // match — reset so the first post-rebuild realisation always fires.
+        _lastFiredRealizedCount = -1;
         _selectionOverlayRects.Clear(); // overlay was just cleared above
         _selection.Clear();             // stale selection no longer valid after re-layout
         foreach (var b in snapshot.Blocks) CollectEmbedPlans(b);
