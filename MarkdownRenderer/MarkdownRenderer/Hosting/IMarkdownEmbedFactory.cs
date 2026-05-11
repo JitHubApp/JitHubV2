@@ -41,4 +41,14 @@ public interface IMarkdownEmbedFactory
     /// <c>Width</c> and uses <c>Canvas.SetLeft/SetTop</c> to position it.
     /// </summary>
     FrameworkElement CreateBlock(Block block);
+
+    /// <summary>
+    /// UI-thread only: optional hook invoked when a previously-realised embed
+    /// is about to be removed from the visual tree because it has scrolled
+    /// off-screen and the renderer is virtualising embeds. Factories may
+    /// disconnect handlers, dispose resources, or simply do nothing. The
+    /// element will not be reused — a future <see cref="CreateBlock"/> call
+    /// will produce a fresh instance when needed.
+    /// </summary>
+    void RecycleBlock(Block block, FrameworkElement element) { }
 }

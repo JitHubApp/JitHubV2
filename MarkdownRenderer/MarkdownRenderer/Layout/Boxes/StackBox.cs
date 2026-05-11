@@ -20,6 +20,13 @@ public class StackBox : BlockBox
     public Windows.UI.Color? Background { get; set; }
     public float CornerRadius { get; set; } = 0;
 
+    /// <summary>
+    /// Flow direction for this stack. When RightToLeft, the accent bar (used
+    /// for blockquotes / GFM alerts) is drawn on the right edge instead of
+    /// the left, matching RTL reading order.
+    /// </summary>
+    public FlowDirection FlowDirection { get; set; } = FlowDirection.LeftToRight;
+
     public void Add(BlockBox child) => _children.Add(child);
 
     public override float Measure(float availableWidth)
@@ -57,7 +64,10 @@ public class StackBox : BlockBox
         }
         if (AccentBar is { } bar)
         {
-            var rect = new Rect(Bounds.X + Margin.Left, Bounds.Y + Margin.Top,
+            double barX = FlowDirection == FlowDirection.RightToLeft
+                ? Bounds.X + Bounds.Width - Margin.Right - 3
+                : Bounds.X + Margin.Left;
+            var rect = new Rect(barX, Bounds.Y + Margin.Top,
                                 3, Bounds.Height - Margin.Top - Margin.Bottom);
             ds.FillRectangle(rect, bar);
         }

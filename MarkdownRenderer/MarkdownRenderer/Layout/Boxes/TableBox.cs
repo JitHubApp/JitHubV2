@@ -89,26 +89,28 @@ public sealed class TableBox : BlockBox
 
         float colWidth = _colWidths[0];
         float rowY = y + (float)Margin.Top;
+        bool rtl = _context.FlowDirection == FlowDirection.RightToLeft;
+        float innerW = (float)(width - Margin.Left - Margin.Right);
 
         for (int r = 0; r < _headerCells.Length; r++)
         {
             float rh = _rowHeights[r];
-            float colX = x + (float)Margin.Left;
             for (int c = 0; c < _headerCells[r].Length; c++)
             {
+                int visCol = rtl ? (_headerCells[r].Length - 1 - c) : c;
+                float colX = x + (float)Margin.Left + visCol * colWidth;
                 _headerCells[r][c].Arrange(colX + CellPadH, rowY + CellPadV, colWidth - CellPadH * 2);
-                colX += colWidth;
             }
             rowY += rh;
         }
         for (int r = 0; r < _bodyCells.Length; r++)
         {
             float rh = _rowHeights[_headerCells.Length + r];
-            float colX = x + (float)Margin.Left;
             for (int c = 0; c < _bodyCells[r].Length; c++)
             {
+                int visCol = rtl ? (_bodyCells[r].Length - 1 - c) : c;
+                float colX = x + (float)Margin.Left + visCol * colWidth;
                 _bodyCells[r][c].Arrange(colX + CellPadH, rowY + CellPadV, colWidth - CellPadH * 2);
-                colX += colWidth;
             }
             rowY += rh;
         }

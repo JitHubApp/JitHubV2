@@ -70,6 +70,7 @@ public sealed class ThemeResolver
             MarkdownElementKeys.Link,     MarkdownElementKeys.Strong,
             MarkdownElementKeys.Emphasis, MarkdownElementKeys.Strikethrough,
             MarkdownElementKeys.ListMarker, MarkdownElementKeys.ThematicBreak,
+            MarkdownElementKeys.ImageCaption,
             MarkdownElementKeys.TableHeader, MarkdownElementKeys.TableCell,
             MarkdownElementKeys.AlertNote, MarkdownElementKeys.AlertTip,
             MarkdownElementKeys.AlertImportant, MarkdownElementKeys.AlertWarning,
@@ -119,6 +120,7 @@ public sealed class ThemeResolver
             MarkdownElementKeys.Strikethrough => new ElementStyle { FontFamily = font, FontSize = 14, Strikethrough = true, Foreground = fgSecondary },
             MarkdownElementKeys.ListMarker => new ElementStyle { FontFamily = font, FontSize = 14, Foreground = fgSecondary },
             MarkdownElementKeys.ThematicBreak => new ElementStyle { FontFamily = font, Foreground = quoteBar, Margin = new Thickness(0, 12, 0, 12) },
+            MarkdownElementKeys.ImageCaption => new ElementStyle { FontFamily = font, FontSize = 12, FontStyle = FontStyle.Italic, Foreground = fgSecondary, Margin = new Thickness(0, 2, 0, 8) },
             // Table styles: no Background — TableBox draws header row bg directly.
             MarkdownElementKeys.TableHeader => new ElementStyle { FontFamily = font, FontSize = 14, FontWeight = FontWeights.SemiBold, Foreground = fg },
             MarkdownElementKeys.TableCell => new ElementStyle { FontFamily = font, FontSize = 14, Foreground = fg },

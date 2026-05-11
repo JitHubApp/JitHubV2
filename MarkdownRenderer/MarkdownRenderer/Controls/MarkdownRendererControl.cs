@@ -67,6 +67,109 @@ public sealed partial class MarkdownRendererControl : UserControl
     // suppresses link-hover and IBeam-cursor work, just like inline embeds.
     private readonly List<Rect> _blockEmbedRects = new();
 
+    // Embed virtualisation. Plans capture each embed's position + factory
+    // delegate up front; realisation happens lazily as scrolling brings them
+    // into the viewport (plus an overscan band). Off-screen embeds beyond a
+    // wider derealisation band are removed from the visual tree and their
+    // factory's RecycleBlock hook is called. This keeps memory usage bounded
+    // for very long documents with many hosted controls.
+    private abstract class EmbedPlan
+    {
+        public Rect Rect;
+        public FrameworkElement? Realized;
+        public abstract void Realize(MarkdownRendererControl owner);
+        public abstract void Derealize(MarkdownRendererControl owner);
+    }
+    private sealed class BlockEmbedPlan : EmbedPlan
+    {
+        public Layout.Boxes.EmbedBox Box = null!;
+        public override void Realize(MarkdownRendererControl owner)
+        {
+            if (Realized is not null) return;
+            try
+            {
+                var fe = Box.Factory.CreateBlock(Box.SourceBlock);
+                Realized = fe;
+                Box.RealizedElement = fe;
+                double w = Math.Round(Box.Bounds.Width  - Box.Margin.Left - Box.Margin.Right);
+                double h = Math.Round(Box.Bounds.Height - Box.Margin.Top  - Box.Margin.Bottom);
+                fe.Width  = w;
+                fe.Height = h;
+                double left = Math.Round(Box.Bounds.X + Box.Margin.Left);
+                double top  = Math.Round(Box.Bounds.Y + Box.Margin.Top);
+                Canvas.SetLeft(fe, left);
+                Canvas.SetTop(fe, top);
+                owner._overlay!.Children.Add(fe);
+                // _blockEmbedRects rebuilt in RealizeVisibleEmbeds.
+            }
+            catch (Exception ex)
+            {
+                System.Diagnostics.Debug.WriteLine($"[MarkdownRendererControl] EmbedBox factory threw: {ex.Message}");
+            }
+        }
+        public override void Derealize(MarkdownRendererControl owner)
+        {
+            if (Realized is null) return;
+            var fe = Realized;
+            try { owner._overlay!.Children.Remove(fe); } catch { }
+            try { Box.Factory.RecycleBlock(Box.SourceBlock, fe); } catch { }
+            Box.RealizedElement = null;
+            Realized = null;
+            // Refresh _blockEmbedRects defensively (rebuilt fully each Realize cycle from realised plans).
+        }
+    }
+    private sealed class InlineEmbedPlan : EmbedPlan
+    {
+        public Layout.Boxes.InlineContainerBox Icb = null!;
+        public InlineEmbedRun Run = null!;
+        public override void Realize(MarkdownRendererControl owner)
+        {
+            if (Realized is not null) return;
+            try
+            {
+                var fe = Run.ElementFactory();
+                Realized = fe;
+                Run.RealizedElement = fe;
+                double iLeft = Math.Round(Rect.X);
+                double iTop  = Math.Round(Rect.Y);
+                double iW    = Math.Round(Rect.X + Rect.Width)  - iLeft;
+                double iH    = Math.Round(Rect.Y + Rect.Height) - iTop;
+                fe.Width  = iW;
+                fe.Height = iH;
+                Canvas.SetLeft(fe, iLeft);
+                Canvas.SetTop(fe, iTop);
+                owner._overlay!.Children.Add(fe);
+                // _embedRects rebuilt in RealizeVisibleEmbeds.
+            }
+            catch (Exception ex)
+            {
+                System.Diagnostics.Debug.WriteLine($"[MarkdownRendererControl] inline embed factory threw: {ex.Message}");
+            }
+        }
+        public override void Derealize(MarkdownRendererControl owner)
+        {
+            if (Realized is null) return;
+            var fe = Realized;
+            try { owner._overlay!.Children.Remove(fe); } catch { }
+            Run.RealizedElement = null;
+            Realized = null;
+        }
+    }
+    private readonly List<EmbedPlan> _embedPlans = new();
+
+    /// <summary>
+    /// Viewport over-scan band, in pixels, in either direction. Embeds whose
+    /// bounds intersect [viewport.Top - Overscan, viewport.Bottom + Overscan]
+    /// stay realised; everything else is virtualised away.
+    /// </summary>
+    public const double EmbedVirtualizationOverscanPx = 400;
+    /// <summary>
+    /// Wider band beyond which a realised embed is derealised. The gap between
+    /// realisation and derealisation prevents rapid create/destroy thrash when
+    /// the user scrolls along the edge of an embed.
+    /// </summary>
+    public const double EmbedVirtualizationDerealizeOverscanPx = 1200;
+
     // ---- Dependency properties ----
 
     public static readonly DependencyProperty MarkdownProperty =
@@ -124,6 +227,20 @@ public sealed partial class MarkdownRendererControl : UserControl
     public event EventHandler<MarkdownLinkClickEventArgs>? LinkClick;
 
     protected override AutomationPeer OnCreateAutomationPeer() => new MarkdownAutomationPeer(this);
+
+    /// <summary>
+    /// Internal accessor for the current layout snapshot. Used by the
+    /// automation peer to walk the document structure (headings, links, etc.).
+    /// May be null before the first layout completes.
+    /// </summary>
+    internal LayoutSnapshot? CurrentSnapshot => _snapshot;
+
+    /// <summary>
+    /// The raw markdown source the renderer was last given. Useful for
+    /// assistive technologies that want a flat textual representation when
+    /// structural traversal isn't available.
+    /// </summary>
+    internal string CurrentMarkdownSource => Markdown ?? string.Empty;
 
     public MarkdownRendererControl()
     {
@@ -321,46 +438,117 @@ public sealed partial class MarkdownRendererControl : UserControl
         _overlay!.Width = width;
         _overlay.Height = _canvas.Height;
 
-        // UI thread: realize hosted FrameworkElements + image LoadCompleted hooks.
+        // UI thread: collect embed plans (don't realise yet), hook image
+        // LoadCompleted, then realise only embeds that fall in the current
+        // viewport. Hooking _scroll.ViewChanged drives subsequent realisation
+        // as the user scrolls.
+        DerealizeAllEmbeds();
         _overlay.Children.Clear();
         _embedRects.Clear();
         _blockEmbedRects.Clear();
+        _embedPlans.Clear();
         _selectionOverlayRects.Clear(); // overlay was just cleared above
         _selection.Clear();             // stale selection no longer valid after re-layout
-        foreach (var b in snapshot.Blocks) PlaceEmbeds(b);
+        foreach (var b in snapshot.Blocks) CollectEmbedPlans(b);
+        if (_scroll is not null)
+        {
+            _scroll.ViewChanged -= OnScrollViewChanged;
+            _scroll.ViewChanged += OnScrollViewChanged;
+        }
+        RealizeVisibleEmbeds();
 
         _canvas.Invalidate();
     }
 
-    private void PlaceEmbeds(Layout.BlockBox box)
+    private void OnScrollViewChanged(object? sender, ScrollViewerViewChangedEventArgs e)
+    {
+        // Run a final realisation pass after intermediate-view bursts settle
+        // so we don't thrash during fling/inertia. ViewChanged with
+        // IsIntermediate=false fires at the end of inertia; we also realise on
+        // intermediate ticks to keep the visual current.
+        RealizeVisibleEmbeds();
+    }
+
+    private void DerealizeAllEmbeds()
+    {
+        foreach (var plan in _embedPlans)
+        {
+            if (plan.Realized is not null) plan.Derealize(this);
+        }
+    }
+
+    /// <summary>
+    /// Realise embeds whose rect intersects the realisation band (viewport +
+    /// overscan) and derealise embeds that have left the wider derealisation
+    /// band. Called from snapshot commit, scroll, and resize.
+    /// </summary>
+    internal void RealizeVisibleEmbeds()
+    {
+        if (_scroll is null || _embedPlans.Count == 0) return;
+        double top = _scroll.VerticalOffset;
+        double bottom = top + _scroll.ViewportHeight;
+        double realizeTop = top - EmbedVirtualizationOverscanPx;
+        double realizeBottom = bottom + EmbedVirtualizationOverscanPx;
+        double derealizeTop = top - EmbedVirtualizationDerealizeOverscanPx;
+        double derealizeBottom = bottom + EmbedVirtualizationDerealizeOverscanPx;
+
+        // Drop old realisation-side caches; they'll be repopulated as embeds realise.
+        // We do NOT clear them when only some embeds change state mid-scroll —
+        // because removing a single fe from _overlay.Children doesn't shift
+        // others' indices. Tracking realised plans gives us authoritative cache rebuilds.
+        _embedRects.Clear();
+        _blockEmbedRects.Clear();
+
+        foreach (var plan in _embedPlans)
+        {
+            double pTop = plan.Rect.Top;
+            double pBottom = plan.Rect.Bottom;
+            bool inRealize = pBottom >= realizeTop && pTop <= realizeBottom;
+            bool inDerealize = pBottom >= derealizeTop && pTop <= derealizeBottom;
+            if (inRealize)
+            {
+                plan.Realize(this);
+            }
+            else if (!inDerealize)
+            {
+                plan.Derealize(this);
+            }
+            // else: outside realise band but inside derealise band → keep current state (hysteresis).
+
+            // Rebuild hit-rect caches from realised plans.
+            if (plan.Realized is not null)
+            {
+                if (plan is BlockEmbedPlan bp)
+                {
+                    double left = Math.Round(bp.Box.Bounds.X + bp.Box.Margin.Left);
+                    double t = Math.Round(bp.Box.Bounds.Y + bp.Box.Margin.Top);
+                    double w = Math.Round(bp.Box.Bounds.Width  - bp.Box.Margin.Left - bp.Box.Margin.Right);
+                    double h = Math.Round(bp.Box.Bounds.Height - bp.Box.Margin.Top  - bp.Box.Margin.Bottom);
+                    _blockEmbedRects.Add(new Rect(left, t, w, h));
+                }
+                else if (plan is InlineEmbedPlan ip)
+                {
+                    double iLeft = Math.Round(ip.Rect.X);
+                    double iTop  = Math.Round(ip.Rect.Y);
+                    double iW    = Math.Round(ip.Rect.X + ip.Rect.Width)  - iLeft;
+                    double iH    = Math.Round(ip.Rect.Y + ip.Rect.Height) - iTop;
+                    _embedRects.Add((ip.Icb, ip.Run, new Rect(iLeft, iTop, iW, iH)));
+                }
+            }
+        }
+    }
+
+    private void CollectEmbedPlans(Layout.BlockBox box)
     {
         switch (box)
         {
             case Layout.Boxes.EmbedBox eb:
             {
-                try
-                {
-                    var fe = eb.Factory.CreateBlock(eb.SourceBlock);
-                    eb.RealizedElement = fe;
-                    fe.Width  = Math.Round(eb.Bounds.Width  - eb.Margin.Left - eb.Margin.Right);
-                    fe.Height = Math.Round(eb.Bounds.Height - eb.Margin.Top  - eb.Margin.Bottom);
-                    // Integer-pixel placement prevents sub-pixel border anti-aliasing
-                    // differences between hover/normal states from looking like a
-                    // size change (which would visually "push" surrounding text).
-                    double left = Math.Round(eb.Bounds.X + eb.Margin.Left);
-                    double top  = Math.Round(eb.Bounds.Y + eb.Margin.Top);
-                    Canvas.SetLeft(fe, left);
-                    Canvas.SetTop(fe, top);
-                    _overlay!.Children.Add(fe);
-                    // Track the block-embed rect so IsPointOverEmbed returns true
-                    // when the pointer is over a block-embed button, suppressing
-                    // link-hover and IBeam-cursor work for that area.
-                    _blockEmbedRects.Add(new Rect(left, top, fe.Width, fe.Height));
-                }
-                catch (Exception ex)
-                {
-                    System.Diagnostics.Debug.WriteLine($"[MarkdownRendererControl] EmbedBox factory threw: {ex.Message}");
-                }
+                double left = eb.Bounds.X + eb.Margin.Left;
+                double top  = eb.Bounds.Y + eb.Margin.Top;
+                double w = eb.Bounds.Width  - eb.Margin.Left - eb.Margin.Right;
+                double h = eb.Bounds.Height - eb.Margin.Top  - eb.Margin.Bottom;
+                _embedPlans.Add(new BlockEmbedPlan { Box = eb, Rect = new Rect(left, top, w, h) });
                 break;
             }
             case Layout.Boxes.ImageBox ib:
@@ -373,39 +561,19 @@ public sealed partial class MarkdownRendererControl : UserControl
             {
                 foreach (var (run, rect) in icb.EnumerateEmbedRects())
                 {
-                    try
-                    {
-                        var fe = run.ElementFactory();
-                        run.RealizedElement = fe;
-                        double iLeft = Math.Round(rect.X);
-                        double iTop  = Math.Round(rect.Y);
-                        double iW    = Math.Round(rect.X + rect.Width)  - iLeft;
-                        double iH    = Math.Round(rect.Y + rect.Height) - iTop;
-                        fe.Width  = iW;
-                        fe.Height = iH;
-                        Canvas.SetLeft(fe, iLeft);
-                        Canvas.SetTop(fe, iTop);
-                        _overlay!.Children.Add(fe);
-                        // Store the snapped rect so hit-testing uses integer bounds.
-                        var snappedRect = new Rect(iLeft, iTop, iW, iH);
-                        _embedRects.Add((icb, run, snappedRect));
-                    }
-                    catch (Exception ex)
-                    {
-                        System.Diagnostics.Debug.WriteLine($"[MarkdownRendererControl] inline embed factory threw: {ex.Message}");
-                    }
+                    _embedPlans.Add(new InlineEmbedPlan { Icb = icb, Run = run, Rect = rect });
                 }
                 break;
             }
             case Layout.Boxes.ListItemBox lib:
-                PlaceEmbeds(lib.Marker);
-                PlaceEmbeds(lib.Content);
+                CollectEmbedPlans(lib.Marker);
+                CollectEmbedPlans(lib.Content);
                 break;
             case Layout.Boxes.TableBox tb:
-                foreach (var cell in tb.GetCellBoxes()) PlaceEmbeds(cell);
+                foreach (var cell in tb.GetCellBoxes()) CollectEmbedPlans(cell);
                 break;
             case Layout.Boxes.StackBox sb:
-                foreach (var c in sb.Children) PlaceEmbeds(c);
+                foreach (var c in sb.Children) CollectEmbedPlans(c);
                 break;
         }
     }

@@ -171,6 +171,7 @@ public sealed class LayoutBuilder
             ContentPadding = style.Padding,
             AccentBar = style.AccentBar,
             Margin = style.Margin,
+            FlowDirection = _context.FlowDirection,
         };
         stack.BlockIndex = _context.NextBlockIndex();
         foreach (var child in qb)
@@ -233,7 +234,10 @@ public sealed class LayoutBuilder
         }
 
         // markerWidth: enough room for "99." in 14px body font (~20px), plus small gap.
-        return new ListItemBox(marker, content, markerWidth: 22f);
+        return new ListItemBox(marker, content, markerWidth: 22f)
+        {
+            FlowDirection = _context.FlowDirection,
+        };
     }
 
     private StackBox BuildGenericContainer(ContainerBlock cb)

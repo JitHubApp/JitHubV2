@@ -28,6 +28,7 @@ public static class MarkdownElementKeys
     public const string Strikethrough = "Strikethrough";
     public const string ListMarker = "ListMarker";
     public const string ThematicBreak = "ThematicBreak";
+    public const string ImageCaption = "ImageCaption";
 
     // GFM extension keys
     public const string TableHeader = "TableHeader";

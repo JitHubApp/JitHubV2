@@ -26,6 +26,8 @@ public sealed partial class MainWindow : Window
         ["GFM Alerts"] = AlertsSample,
         ["Images"]     = ImagesSample,
         ["Embeds"]     = EmbedsSample,
+        ["RTL"]        = RtlSample,
+        ["Virtualization"] = "", // generated lazily in OnSampleButtonClick
         ["Selection"]  = SelectionSample,
         ["Full Demo"]  = FullDemoSample,
     };
@@ -67,6 +69,17 @@ public sealed partial class MainWindow : Window
         themeToggle.Checked   += (_, _) => SetTheme(ElementTheme.Dark);
         themeToggle.Unchecked += (_, _) => SetTheme(ElementTheme.Light);
         toolbar.Children.Add(themeToggle);
+
+        var rtlToggle = new ToggleButton
+        {
+            Content = "↔ RTL",
+            Margin = new Thickness(8, 0, 0, 0),
+            Padding = new Thickness(10, 4, 10, 4),
+            Name = "RtlToggle",
+        };
+        rtlToggle.Checked   += (_, _) => { if (_renderer is not null) _renderer.FlowDirection = FlowDirection.RightToLeft; };
+        rtlToggle.Unchecked += (_, _) => { if (_renderer is not null) _renderer.FlowDirection = FlowDirection.LeftToRight; };
+        toolbar.Children.Add(rtlToggle);
 
         Grid.SetRow(toolbar, 0);
         rootGrid.Children.Add(toolbar);
@@ -136,9 +149,16 @@ public sealed partial class MainWindow : Window
 
     private void OnSampleButtonClick(object sender, RoutedEventArgs e)
     {
-        if (sender is Button btn && btn.Tag is string label && Samples.TryGetValue(label, out var md))
+        if (sender is Button btn && btn.Tag is string label)
         {
-            _editor.Text = md;
+            // VirtualizationSample is a static readonly built via runtime
+            // concatenation, so it can't live in a const-string dict.
+            string? md = label switch
+            {
+                "Virtualization" => VirtualizationSample,
+                _ => Samples.TryGetValue(label, out var v) ? v : null,
+            };
+            if (md is not null) _editor.Text = md;
         }
     }
 
@@ -467,25 +487,86 @@ public sealed partial class MainWindow : Window
         """;
 
     private const string ImagesSample = """
-        # Images
+        # Images, captions, and SVG
 
-        Inline images load asynchronously via Win2D `CanvasBitmap.LoadAsync`. Each
-        is decoded on the GPU and re-laid-out once dimensions are known.
+        Inline images load asynchronously via Win2D `CanvasBitmap.LoadAsync`.
+        Each is decoded on the GPU and re-laid-out once dimensions are known.
+        **Alt-text becomes a caption** rendered under the image so screen
+        readers and sighted readers see the same description.
 
-        ## GitHub avatar
+        ## GitHub avatar (PNG, with caption)
 
-        ![octocat](https://avatars.githubusercontent.com/u/583231?v=4)
+        ![The GitHub Octocat — square avatar PNG, 460×460](https://avatars.githubusercontent.com/u/583231?v=4)
 
-        ## A wider banner
+        ## Inline SVG (data: URI)
 
-        ![banner](https://github.githubassets.com/images/modules/site/home/hero-glow.svg)
+        ![A blue 64×64 circle drawn entirely in SVG](data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='64' height='64' viewBox='0 0 64 64'><circle cx='32' cy='32' r='28' fill='%230078D4'/></svg>)
+
+        ## Remote SVG (HTTP)
+
+        ![GitHub site hero glow — a wide SVG decoration from github.com](https://github.githubassets.com/images/modules/site/home/hero-glow.svg)
 
         ## Broken image (graceful failure)
 
-        ![missing](https://example.invalid/does-not-exist.png)
+        ![A 1×1 placeholder showing a friendly error icon](https://example.invalid/does-not-exist.png)
 
-        Captions can wrap around the layout normally.
+        Captions wrap normally and respect the document's flow direction.
         """;
+
+    private const string RtlSample = """
+        # دعم الكتابة من اليمين إلى اليسار
+
+        This page demonstrates **right-to-left (RTL)** layout. Toggle the **↔ RTL**
+        button in the toolbar to flip the document's flow direction. Notice how:
+
+        - The accent bar of blockquotes flips to the right edge.
+        - List bullets and numbers move to the right side of the line.
+        - Table columns reverse order so the first column reads first.
+        - Inline mixed-bidi text shapes correctly (Arabic + English).
+
+        > هذا اقتباس باللغة العربية. The quote bar should appear on the right
+        > side when RTL is active, and on the left otherwise.
+
+        ## قائمة (List)
+
+        1. العنصر الأول — مع نص إنجليزي *italic* and **bold**
+        2. العنصر الثاني — with `inline code`
+        3. العنصر الثالث — and a [hyperlink to github.com](https://github.com)
+
+        ## جدول (Table)
+
+        | الاسم  | العمر | المدينة |
+        | ------ | ----- | ------- |
+        | أحمد   | 32    | القاهرة |
+        | فاطمة  | 28    | دبي     |
+        | سارة   | 41    | الرياض  |
+        """;
+
+    private static readonly string VirtualizationSample = """
+        # Embed virtualization
+
+        This sample renders a long document with many hosted WinUI button
+        embeds (300 below). Only the embeds in the visible viewport are
+        instantiated; off-screen ones are torn down and recreated when they
+        scroll back into view. Watch the memory usage stay flat while
+        scrolling — the renderer caps realised embeds to a bounded set.
+
+        Tip: the realisation band extends ±400 px around the viewport, and
+        the de-realisation band ±1200 px, providing hysteresis so embeds
+        near the edge don't thrash.
+
+        """ + GenerateVirtualizationButtons(300);
+
+    private static string GenerateVirtualizationButtons(int count)
+    {
+        var sb = new System.Text.StringBuilder();
+        for (int i = 1; i <= count; i++)
+        {
+            sb.Append("```button:Button #").Append(i).Append("\n```\n\n");
+            if (i % 25 == 0) sb.Append("## Section ").Append(i / 25).Append("\n\n");
+        }
+        return sb.ToString();
+    }
 
     private const string EmbedsSample = """
         # Hosted WinUI Embeds

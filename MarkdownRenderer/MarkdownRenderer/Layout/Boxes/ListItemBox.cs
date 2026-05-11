@@ -1,5 +1,6 @@
 using System;
 using Microsoft.Graphics.Canvas;
+using Microsoft.UI.Xaml;
 using Windows.Foundation;
 using MarkdownRenderer.Document;
 
@@ -20,6 +21,9 @@ public sealed class ListItemBox : BlockBox
     /// <summary>The content (rest of list item) StackBox on the right.</summary>
     public StackBox Content => _content;
 
+    /// <summary>Flow direction for this list item. When RightToLeft, the marker is placed on the right and content on the left.</summary>
+    public FlowDirection FlowDirection { get; set; } = FlowDirection.LeftToRight;
+
     public ListItemBox(InlineContainerBox marker, StackBox content, float markerWidth)
     {
         _marker = marker;
@@ -32,10 +36,19 @@ public sealed class ListItemBox : BlockBox
         float contentWidth = Math.Max(1f, availableWidth - _markerWidth - (float)(Margin.Left + Margin.Right));
 
         _marker.Measure(_markerWidth);
-        _marker.Arrange(0, 0, _markerWidth);
-
         float contentHeight = _content.Measure(contentWidth);
-        _content.Arrange(_markerWidth, 0, contentWidth);
+
+        bool rtl = FlowDirection == FlowDirection.RightToLeft;
+        if (rtl)
+        {
+            _marker.Arrange(contentWidth, 0, _markerWidth);
+            _content.Arrange(0, 0, contentWidth);
+        }
+        else
+        {
+            _marker.Arrange(0, 0, _markerWidth);
+            _content.Arrange(_markerWidth, 0, contentWidth);
+        }
 
         float height = Math.Max((float)_marker.Bounds.Height, contentHeight)
                        + (float)(Margin.Top + Margin.Bottom);
