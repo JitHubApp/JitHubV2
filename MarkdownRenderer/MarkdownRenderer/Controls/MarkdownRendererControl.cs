@@ -231,6 +231,17 @@ public sealed partial class MarkdownRendererControl : UserControl
 
     public event EventHandler<MarkdownLinkClickEventArgs>? LinkClick;
 
+    /// <summary>
+    /// Raised after every embed realisation pass (initial layout commit,
+    /// scroll, resize). Subscribers can use it to surface
+    /// <see cref="RealizedEmbedCount"/> for diagnostics or UI-automation
+    /// tests without polluting the control's UIA surface.
+    /// </summary>
+    public event EventHandler? EmbedsRealizationChanged;
+
+    /// <summary>Current vertical scroll offset of the host scroll viewer.</summary>
+    internal double CurrentScrollOffsetY => _scroll?.VerticalOffset ?? 0;
+
     protected override AutomationPeer OnCreateAutomationPeer() => new MarkdownAutomationPeer(this);
 
     /// <summary>
@@ -601,17 +612,13 @@ public sealed partial class MarkdownRendererControl : UserControl
             }
         }
 
-        // Surface the realised count to UI automation so external test
-        // harnesses can verify virtualisation directly instead of relying on
-        // descendant-button heuristics, which are sensitive to UIA peer
-        // caching behaviour.
-        try
-        {
-            int realised = 0;
-            foreach (var pl in _embedPlans) if (pl.Realized is not null) realised++;
-            Microsoft.UI.Xaml.Automation.AutomationProperties.SetHelpText(this, $"realized:{realised}");
-        }
-        catch { /* AutomationProperties not yet attached — ignore. */ }
+        // Surface the realised count to subscribers (e.g. sample app exposing
+        // it via a hidden TextBlock for UI-automation tests). We deliberately
+        // do NOT write to AutomationProperties.HelpText on this control,
+        // because HelpText is read aloud by screen readers and raises a
+        // property-change event for every UIA listener on every scroll tick.
+        try { EmbedsRealizationChanged?.Invoke(this, EventArgs.Empty); }
+        catch { /* subscriber threw — swallow to keep scroll pipeline alive. */ }
     }
 
     private void CollectEmbedPlans(Layout.BlockBox box)
@@ -994,7 +1001,14 @@ public sealed partial class MarkdownRendererControl : UserControl
                 pt.Y >= r.Y && pt.Y <= r.Y + r.Height)
             {
                 bool rightHalf = pt.X >= r.X + r.Width / 2.0;
-                int charOffset = rightHalf ? run.Text.Length : 0;
+                // In RTL flow the logical start of a run is visually on the
+                // right, so the right half maps to charOffset 0 and the left
+                // half maps to charOffset Text.Length. In LTR it's the
+                // opposite.
+                bool isRtl = FlowDirection == Microsoft.UI.Xaml.FlowDirection.RightToLeft;
+                int charOffset = isRtl
+                    ? (rightHalf ? 0 : run.Text.Length)
+                    : (rightHalf ? run.Text.Length : 0);
                 position = new DocumentPosition(box.BlockIndex, run.InlineIndex, charOffset);
                 return true;
             }

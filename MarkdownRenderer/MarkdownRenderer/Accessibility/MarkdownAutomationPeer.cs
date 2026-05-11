@@ -105,6 +105,9 @@ public sealed partial class MarkdownAutomationPeer : FrameworkElementAutomationP
             case StackBox stack:
                 foreach (var c in stack.Children) AppendText(c, sb);
                 break;
+            case ImageBox ib:
+                if (!string.IsNullOrEmpty(ib.Alt)) { sb.Append(ib.Alt); sb.Append('\n'); }
+                break;
         }
     }
 }

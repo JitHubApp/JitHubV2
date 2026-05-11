@@ -16,6 +16,8 @@ public sealed partial class MainWindow : Window
 {
     private readonly MarkdownRendererControl _renderer;
     private readonly TextBox _editor;
+    private TextBlock? _realizedCountStatus;
+    private TextBlock? _flowDirectionStatus;
 
     // Mapping from tab label → sample markdown for each feature
     private static readonly Dictionary<string, string> Samples = new()
@@ -84,8 +86,8 @@ public sealed partial class MainWindow : Window
         };
         AutomationProperties.SetAutomationId(rtlToggle, "RtlToggle");
         AutomationProperties.SetName(rtlToggle, "RTL");
-        rtlToggle.Checked   += (_, _) => { if (_renderer is not null) _renderer.FlowDirection = FlowDirection.RightToLeft; };
-        rtlToggle.Unchecked += (_, _) => { if (_renderer is not null) _renderer.FlowDirection = FlowDirection.LeftToRight; };
+        rtlToggle.Checked   += (_, _) => { if (_renderer is not null) { _renderer.FlowDirection = FlowDirection.RightToLeft; UpdateFlowDirectionStatus(); } };
+        rtlToggle.Unchecked += (_, _) => { if (_renderer is not null) { _renderer.FlowDirection = FlowDirection.LeftToRight; UpdateFlowDirectionStatus(); } };
         toolbar.Children.Add(rtlToggle);
 
         Grid.SetRow(toolbar, 0);
@@ -135,6 +137,38 @@ public sealed partial class MainWindow : Window
             try { _ = Windows.System.Launcher.LaunchUriAsync(new Uri(e.Url)); } catch { }
         };
 
+        // Hidden status TextBlock that mirrors RealizedEmbedCount so UI
+        // automation tests can verify virtualisation without polluting the
+        // renderer's own UIA surface (HelpText is read aloud by Narrator).
+        _realizedCountStatus = new TextBlock
+        {
+            Text = "realized:0",
+            Opacity = 0,
+            IsHitTestVisible = false,
+            Width = 1,
+            Height = 1,
+        };
+        AutomationProperties.SetAutomationId(_realizedCountStatus, "RealizedEmbedCount");
+        AutomationProperties.SetName(_realizedCountStatus, "realized:0");
+        _renderer.EmbedsRealizationChanged += (_, _) =>
+        {
+            int n = _renderer.RealizedEmbedCount;
+            string s = "realized:" + n.ToString(System.Globalization.CultureInfo.InvariantCulture);
+            _realizedCountStatus.Text = s;
+            AutomationProperties.SetName(_realizedCountStatus, s);
+        };
+
+        _flowDirectionStatus = new TextBlock
+        {
+            Text = "flow:ltr",
+            Opacity = 0,
+            IsHitTestVisible = false,
+            Width = 1,
+            Height = 1,
+        };
+        AutomationProperties.SetAutomationId(_flowDirectionStatus, "FlowDirectionStatus");
+        AutomationProperties.SetName(_flowDirectionStatus, "flow:ltr");
+
         var rendererScroll = new ScrollViewer
         {
             Content = _renderer,
@@ -152,8 +186,18 @@ public sealed partial class MainWindow : Window
 
         Grid.SetRow(contentGrid, 1);
         rootGrid.Children.Add(contentGrid);
+        rootGrid.Children.Add(_realizedCountStatus);
+        rootGrid.Children.Add(_flowDirectionStatus);
 
         Content = rootGrid;
+    }
+
+    private void UpdateFlowDirectionStatus()
+    {
+        if (_flowDirectionStatus is null || _renderer is null) return;
+        string s = _renderer.FlowDirection == FlowDirection.RightToLeft ? "flow:rtl" : "flow:ltr";
+        _flowDirectionStatus.Text = s;
+        AutomationProperties.SetName(_flowDirectionStatus, s);
     }
 
     private void OnSampleButtonClick(object sender, RoutedEventArgs e)

@@ -69,12 +69,27 @@ internal static class Program
         var rtl = window.FindFirstDescendant(cf => cf.ByAutomationId("RtlToggle"))?.AsToggleButton()
                   ?? throw new InvalidOperationException("RtlToggle not found");
         Assert(rtl.ToggleState == ToggleState.Off, "RTL must start OFF");
+        Assert(ReadFlowDirection(window) == "ltr", "renderer must start LTR");
+
         rtl.Toggle();
-        Thread.Sleep(250);
+        Thread.Sleep(350);
         Assert(rtl.ToggleState == ToggleState.On, "RTL must report ON after toggling");
+        Assert(ReadFlowDirection(window) == "rtl", "renderer FlowDirection mirror must be 'rtl' after toggle");
+
         rtl.Toggle();
-        Thread.Sleep(250);
+        Thread.Sleep(350);
         Assert(rtl.ToggleState == ToggleState.Off, "RTL must return to OFF after re-toggling");
+        Assert(ReadFlowDirection(window) == "ltr", "renderer FlowDirection mirror must be 'ltr' after re-toggle");
+    }
+
+    private static string ReadFlowDirection(Window window)
+    {
+        var el = window.FindFirstDescendant(cf => cf.ByAutomationId("FlowDirectionStatus"));
+        string? text = el?.Name ?? el?.Properties.Name.ValueOrDefault;
+        if (string.IsNullOrEmpty(text)) return string.Empty;
+        const string prefix = "flow:";
+        int idx = text.IndexOf(prefix, StringComparison.Ordinal);
+        return idx < 0 ? string.Empty : text.Substring(idx + prefix.Length).Trim();
     }
 
     private static void ProbeSampleButtons(Window window)
@@ -133,19 +148,30 @@ internal static class Program
         => renderer.FindAllDescendants(cf => cf.ByControlType(ControlType.Button)).Length;
 
     /// <summary>
-    /// Reads the realised embed count published by MarkdownRendererControl via
-    /// the HelpText automation property ("realized:N"). Falls back to 0 when
-    /// the property has not been set yet.
+    /// Reads the realised embed count published by the sample app's hidden
+    /// status TextBlock ("realized:N"), which mirrors
+    /// MarkdownRendererControl.RealizedEmbedCount via the
+    /// EmbedsRealizationChanged event. We intentionally do not read this
+    /// from the renderer's own UIA properties to avoid Narrator announcing
+    /// it on every scroll.
     /// </summary>
     private static int ReadRealizedEmbedCount(AutomationElement renderer)
     {
         try
         {
-            var help = renderer.Properties.HelpText.ValueOrDefault ?? string.Empty;
+            var window = renderer.FrameworkAutomationElement.PropertyIdLibrary is null
+                ? null
+                : renderer;
+            // Find the status TextBlock anywhere in the window tree.
+            var root = renderer;
+            while (root.Parent is not null) root = root.Parent;
+            var status = root.FindFirstDescendant(cf => cf.ByAutomationId("RealizedEmbedCount"));
+            string? text = status?.Name ?? status?.Properties.Name.ValueOrDefault;
+            if (string.IsNullOrEmpty(text)) return 0;
             const string prefix = "realized:";
-            int idx = help.IndexOf(prefix, StringComparison.Ordinal);
+            int idx = text.IndexOf(prefix, StringComparison.Ordinal);
             if (idx < 0) return 0;
-            return int.TryParse(help.AsSpan(idx + prefix.Length), out var n) ? n : 0;
+            return int.TryParse(text.AsSpan(idx + prefix.Length), out var n) ? n : 0;
         }
         catch { return 0; }
     }

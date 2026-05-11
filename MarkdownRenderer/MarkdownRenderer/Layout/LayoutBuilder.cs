@@ -100,11 +100,9 @@ public sealed class LayoutBuilder
             if (onlyImage is not null)
             {
                 string url = onlyImage.Url ?? string.Empty;
-                string alt = string.Empty;
-                foreach (var c in onlyImage)
-                {
-                    if (c is LiteralInline lit) alt += lit.Content.ToString();
-                }
+                var altSb = new System.Text.StringBuilder();
+                FlattenContainer(onlyImage, altSb);
+                string alt = altSb.ToString();
                 var img = new ImageBox(_context, url, alt);
                 img.BlockIndex = _context.NextBlockIndex();
                 // Register the source span so Ctrl+C copies the original ![alt](url).

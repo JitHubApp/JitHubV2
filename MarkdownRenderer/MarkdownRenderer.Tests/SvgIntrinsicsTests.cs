@@ -114,5 +114,17 @@ public class SvgIntrinsicsTests
         Assert.Equal(64, h);
     }
 
+    [Fact]
+    public void ExtractIntrinsicSize_CrlfWhitespaceBeforeAttribute()
+    {
+        // Round-2 regression: CRLF line endings (common from Windows tools)
+        // put '\r' before the attribute name. The parser must treat '\r' as
+        // a valid attribute separator.
+        var bytes = Bytes("<svg xmlns=\"http://www.w3.org/2000/svg\"\r\nwidth=\"42\"\r\nheight=\"24\"\r\n></svg>");
+        var (w, h) = SvgIntrinsics.TryExtractIntrinsicSize(bytes);
+        Assert.Equal(42, w);
+        Assert.Equal(24, h);
+    }
+
     private static byte[] Bytes(string s) => Encoding.UTF8.GetBytes(s);
 }

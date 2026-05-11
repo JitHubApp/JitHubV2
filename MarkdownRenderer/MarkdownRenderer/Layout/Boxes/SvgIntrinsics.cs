@@ -77,11 +77,12 @@ public static class SvgIntrinsics
 
     private static string? ParseStringAttribute(string element, string attr)
     {
-        // Match " attr=", "\tattr=" or "\nattr=" so we don't pick up the
-        // attribute name inside another value (e.g. " stroke-width=").
+        // Match any XML-whitespace before the attribute name so we don't pick
+        // up an attribute substring inside another value (e.g. " stroke-width=").
         int idx = element.IndexOf(' ' + attr + '=', StringComparison.OrdinalIgnoreCase);
         if (idx < 0) idx = element.IndexOf('\t' + attr + '=', StringComparison.OrdinalIgnoreCase);
         if (idx < 0) idx = element.IndexOf('\n' + attr + '=', StringComparison.OrdinalIgnoreCase);
+        if (idx < 0) idx = element.IndexOf('\r' + attr + '=', StringComparison.OrdinalIgnoreCase);
         if (idx < 0) return null;
         int eq = element.IndexOf('=', idx);
         if (eq < 0) return null;

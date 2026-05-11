@@ -43,6 +43,7 @@ public sealed class ImageBox : BlockBox
     private CanvasTextLayout? _caption;
     private bool _loadStarted;
     private bool _loadFailed;
+    private bool _svgReparseStarted;
     private float _availableWidth;
     private float _imageHeight;
     private float _captionHeight;
@@ -180,28 +181,43 @@ public sealed class ImageBox : BlockBox
         }
         else if (_svgBytes is not null)
         {
-            // Lazy-parse the SVG against the drawing session's device.
-            if (_svg is null)
+            // Pre-parse should have populated _svg off the UI thread. If it
+            // didn't (e.g. shared-device parse failed and we deferred to a
+            // device-specific reparse), kick a one-shot async re-parse and
+            // skip drawing this frame. LoadCompleted will trigger a repaint
+            // once the document is ready. Never block the paint thread on
+            // CanvasSvgDocument.LoadAsync.
+            if (_svg is null && !_svgReparseStarted)
             {
-                try
+                _svgReparseStarted = true;
+                var bytes = _svgBytes;
+                var device = ds.Device;
+                _ = System.Threading.Tasks.Task.Run(async () =>
                 {
-                    using var ms = new InMemoryRandomAccessStream();
-                    using (var writer = new DataWriter(ms))
+                    try
                     {
-                        writer.WriteBytes(_svgBytes);
-                        _ = writer.StoreAsync().GetAwaiter().GetResult();
-                        writer.DetachStream();
+                        using var ms = new InMemoryRandomAccessStream();
+                        using (var writer = new DataWriter(ms))
+                        {
+                            writer.WriteBytes(bytes);
+                            await writer.StoreAsync();
+                            writer.DetachStream();
+                        }
+                        ms.Seek(0);
+                        var doc = await CanvasSvgDocument.LoadAsync(device, ms);
+                        _svg = doc;
                     }
-                    ms.Seek(0);
-                    var t = CanvasSvgDocument.LoadAsync(ds.Device, ms).AsTask();
-                    _svg = t.GetAwaiter().GetResult();
-                }
-                catch (Exception ex)
-                {
-                    System.Diagnostics.Debug.WriteLine($"[ImageBox] SVG parse failed: {ex.Message}");
-                    _loadFailed = true;
-                    _svgBytes = null;
-                }
+                    catch (Exception ex)
+                    {
+                        System.Diagnostics.Debug.WriteLine($"[ImageBox] SVG reparse failed: {ex.Message}");
+                        _loadFailed = true;
+                        _svgBytes = null;
+                    }
+                    finally
+                    {
+                        LoadCompleted?.Invoke(this, EventArgs.Empty);
+                    }
+                });
             }
             if (_svg is not null)
             {
@@ -309,8 +325,9 @@ public sealed class ImageBox : BlockBox
             }
             else
             {
-                using var cts = new System.Threading.CancellationTokenSource(TimeSpan.FromSeconds(30));
-                bytes = await _http.Value.GetByteArrayAsync(uri, cts.Token).ConfigureAwait(false);
+                // HttpClient.Timeout (30s) already bounds this call; no
+                // per-call CTS needed.
+                bytes = await _http.Value.GetByteArrayAsync(uri).ConfigureAwait(false);
             }
 
             // Parse intrinsic size from <svg width="…" height="…" viewBox="…">
