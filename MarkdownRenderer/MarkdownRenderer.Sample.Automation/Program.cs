@@ -125,7 +125,7 @@ internal static class Program
 
         var renderer = FindRenderer(window);
         int realised = ReadRealizedEmbedCount(renderer);
-        Assert(realised < 100, $"virtualization expected ≪300 realised embeds, found {realised}");
+        Assert(realised < 100, $"virtualization expected ≪100 realised embeds, found {realised}");
         Assert(realised > 0, $"virtualization expected some realised embeds, found {realised}");
 
         renderer.Focus();
@@ -136,7 +136,7 @@ internal static class Program
         }
         Thread.Sleep(400);
         int afterScroll = ReadRealizedEmbedCount(renderer);
-        Assert(afterScroll < 100, $"virtualization after scroll expected ≪300 realised embeds, found {afterScroll}");
+        Assert(afterScroll < 100, $"virtualization after scroll expected ≪100 realised embeds, found {afterScroll}");
     }
 
     private static void ProbeImagesSample(Window window)

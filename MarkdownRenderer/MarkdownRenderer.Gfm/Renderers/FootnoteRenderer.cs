@@ -91,6 +91,9 @@ public sealed class FootnoteRenderer : MarkdownNodeRenderer<FootnoteGroup>
             }
             if (child is StackBox nested && TryAppendToLastInlineBox(nested, run, context))
                 return true;
+            // ListItemBox.Content is a StackBox — recurse into it.
+            if (child is ListItemBox lib && TryAppendToLastInlineBox(lib.Content, run, context))
+                return true;
         }
         return false;
     }
