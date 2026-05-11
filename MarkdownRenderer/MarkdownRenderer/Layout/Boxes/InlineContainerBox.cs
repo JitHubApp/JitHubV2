@@ -150,6 +150,7 @@ public sealed class InlineContainerBox : BlockBox
             // width-change reflow so repeated window resizes don't re-allocate.
             if (_bufferDirty) BuildBuffer();
             _layout?.Dispose();
+            _layout = null; // null immediately so a layout-creation exception leaves _layout=null (safe for next Measure)
             using var format = new CanvasTextFormat
             {
                 FontFamily = style.FontFamily,

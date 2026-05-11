@@ -376,9 +376,13 @@ internal static class Program
     {
         try
         {
-            // Find the status TextBlock anywhere in the window tree.
+            // Find the status TextBlock within the application window tree only.
+            // Stop at ControlType.Window so we never search the entire desktop and
+            // cannot accidentally read a count from a different application.
             var root = renderer;
-            while (root.Parent is not null) root = root.Parent;
+            while (root.Parent is not null
+                   && root.ControlType != FlaUI.Core.Definitions.ControlType.Window)
+                root = root.Parent;
             var status = root.FindFirstDescendant(cf => cf.ByAutomationId("RealizedEmbedCount"));
             string? text = status?.Name ?? status?.Properties.Name.ValueOrDefault;
             if (string.IsNullOrEmpty(text)) return 0;

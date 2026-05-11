@@ -1006,7 +1006,7 @@ public sealed partial class MarkdownRendererControl : UserControl
                 // Triple-click: select the entire block (line).
                 _clickMode = ClickMode.Block;
                 (_dragAnchorStart, _dragAnchorEnd) = ExpandSelectionToBlock(_snapshot, pos);
-                _canvas.CapturePointer(e.Pointer);
+                if (!_canvas.CapturePointer(e.Pointer)) _leftPointerCaptured = false;
                 return;
             }
             if (_consecutiveClickCount == 2)
@@ -1014,14 +1014,14 @@ public sealed partial class MarkdownRendererControl : UserControl
                 // Double-click: select the word under the cursor.
                 _clickMode = ClickMode.Word;
                 (_dragAnchorStart, _dragAnchorEnd) = ExpandSelectionToWord(_snapshot, pos);
-                _canvas.CapturePointer(e.Pointer);
+                if (!_canvas.CapturePointer(e.Pointer)) _leftPointerCaptured = false;
                 return;
             }
             _clickMode = ClickMode.Single;
             _selection.SetAnchor(pos);
             // Invalidate to repaint link-hover state (hover suppressed during drag).
             _canvas.Invalidate();
-            _canvas.CapturePointer(e.Pointer);
+            if (!_canvas.CapturePointer(e.Pointer)) _leftPointerCaptured = false;
         }
         else
         {
@@ -1813,8 +1813,10 @@ public sealed partial class MarkdownRendererControl : UserControl
         if (icb is null)
         {
             // Block has no inline container (code block, embed row, etc.).
-            // Clear any lingering selection to avoid stale visual.
-            _selection.Clear();
+            // Set anchor at the click position so subsequent drag ExtendTo calls
+            // always have a valid anchor; this makes the selection empty (start==end)
+            // while allowing drag to extend from this point.
+            _selection.SetAnchor(pos);
             _canvas?.Invalidate();
             return (pos, pos);
         }
@@ -1836,8 +1838,10 @@ public sealed partial class MarkdownRendererControl : UserControl
         if (icb is null)
         {
             // Block has no inline container (code block, embed row, etc.).
-            // Clear any lingering selection to avoid stale visual.
-            _selection.Clear();
+            // Set anchor at the click position so subsequent drag ExtendTo calls
+            // always have a valid anchor; this makes the selection empty (start==end)
+            // while allowing drag to extend from this point.
+            _selection.SetAnchor(pos);
             _canvas?.Invalidate();
             return (pos, pos);
         }
