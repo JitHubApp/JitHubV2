@@ -9,6 +9,7 @@ using Microsoft.UI.Xaml.Controls;
 
 namespace JitHub.WinUI.Views.Controls.Common
 {
+    [WinRT.GeneratedBindableCustomProperty]
     public sealed partial class MarkdownForm : UserControl
     {
 
@@ -24,17 +25,17 @@ namespace JitHub.WinUI.Views.Controls.Common
             nameof(Text),
             typeof(string),
             typeof(MarkdownForm),
-            new PropertyMetadata(default(string), null));
+            new PropertyMetadata(default(string), OnBindablePropertyChanged));
         public static DependencyProperty FormPaddingProperty = DependencyProperty.Register(
             nameof(FormPadding),
             typeof(Thickness),
             typeof(MarkdownForm),
-            new PropertyMetadata(new Thickness(0), null));
+            new PropertyMetadata(new Thickness(0), OnBindablePropertyChanged));
         public static DependencyProperty EditorHeightProperty = DependencyProperty.Register(
             nameof(EditorHeight),
             typeof(double),
             typeof(MarkdownForm),
-            new PropertyMetadata(220d, null));
+            new PropertyMetadata(220d, OnBindablePropertyChanged));
 
         public string? Text
         {
@@ -70,9 +71,9 @@ namespace JitHub.WinUI.Views.Controls.Common
 
         public MarkdownForm()
         {
-            this.InitializeComponent();
             _gitHubService = Ioc.Default.GetService<IGitHubService>()
                 ?? throw new InvalidOperationException("IGitHubService is not registered.");
+            this.InitializeComponent();
         }
 
         private static void OnActionContentChanged(DependencyObject dependencyObject, DependencyPropertyChangedEventArgs args)
@@ -80,6 +81,14 @@ namespace JitHub.WinUI.Views.Controls.Common
             if (dependencyObject is MarkdownForm form)
             {
                 form.ActionContentPresenter.Content = args.NewValue;
+            }
+        }
+
+        private static void OnBindablePropertyChanged(DependencyObject d, DependencyPropertyChangedEventArgs e)
+        {
+            if (d is MarkdownForm self)
+            {
+                self.Bindings.Update();
             }
         }
 

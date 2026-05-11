@@ -4,7 +4,8 @@ using System.Text.Json.Serialization;
 
 namespace JitHub.Models.GitHub;
 
-public sealed class GitHubActivityEvent
+[WinRT.GeneratedBindableCustomProperty]
+public sealed partial class GitHubActivityEvent
 {
     [JsonPropertyName("id")]
     public string Id { get; set; } = string.Empty;
@@ -300,7 +301,8 @@ public sealed class GitHubActivityEvent
     }
 }
 
-public sealed class GitHubActivityRepository
+[WinRT.GeneratedBindableCustomProperty]
+public sealed partial class GitHubActivityRepository
 {
     [JsonPropertyName("id")]
     public long Id { get; set; }

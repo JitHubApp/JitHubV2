@@ -3,7 +3,8 @@ using System.Text.Json.Serialization;
 
 namespace JitHub.Models.GitHub;
 
-public sealed class GitHubCommit
+[WinRT.GeneratedBindableCustomProperty]
+public sealed partial class GitHubCommit
 {
     [JsonPropertyName("node_id")]
     public string? NodeId { get; set; }
@@ -56,7 +57,8 @@ public sealed class GitHubCommit
     public string ShortSha => Sha[..Math.Min(7, Sha.Length)];
 }
 
-public sealed class GitHubCommitInfo
+[WinRT.GeneratedBindableCustomProperty]
+public sealed partial class GitHubCommitInfo
 {
     [JsonPropertyName("message")]
     public string Message { get; set; } = string.Empty;
@@ -71,7 +73,8 @@ public sealed class GitHubCommitInfo
     public GitHubCommitSignature Committer { get; set; } = new();
 }
 
-public sealed class GitHubCommitSignature
+[WinRT.GeneratedBindableCustomProperty]
+public sealed partial class GitHubCommitSignature
 {
     [JsonPropertyName("name")]
     public string? Name { get; set; }
@@ -83,7 +86,8 @@ public sealed class GitHubCommitSignature
     public DateTimeOffset? Date { get; set; }
 }
 
-public sealed class GitHubCommitStats
+[WinRT.GeneratedBindableCustomProperty]
+public sealed partial class GitHubCommitStats
 {
     [JsonPropertyName("total")]
     public int Total { get; set; }
@@ -98,7 +102,8 @@ public sealed class GitHubCommitStats
     public string SummaryText => $"+{Additions}  -{Deletions}  ({Total} changes)";
 }
 
-public sealed class GitHubCommitFile
+[WinRT.GeneratedBindableCustomProperty]
+public sealed partial class GitHubCommitFile
 {
     [JsonPropertyName("sha")]
     public string? Sha { get; set; }

@@ -9,14 +9,16 @@ public interface IGitHubActivityPayload
 {
 }
 
-public sealed class UnknownActivityPayload : IGitHubActivityPayload
+[WinRT.GeneratedBindableCustomProperty]
+public sealed partial class UnknownActivityPayload : IGitHubActivityPayload
 {
     public string EventType { get; set; } = string.Empty;
 
     public JsonElement RawPayload { get; set; }
 }
 
-public sealed class CommitCommentEventPayload : IGitHubActivityPayload
+[WinRT.GeneratedBindableCustomProperty]
+public sealed partial class CommitCommentEventPayload : IGitHubActivityPayload
 {
     [JsonPropertyName("action")]
     public string? Action { get; set; }
@@ -25,7 +27,8 @@ public sealed class CommitCommentEventPayload : IGitHubActivityPayload
     public GitHubCommitComment? Comment { get; set; }
 }
 
-public sealed class CreateEventPayload : IGitHubActivityPayload
+[WinRT.GeneratedBindableCustomProperty]
+public sealed partial class CreateEventPayload : IGitHubActivityPayload
 {
     [JsonPropertyName("ref")]
     public string? Ref { get; set; }
@@ -46,7 +49,8 @@ public sealed class CreateEventPayload : IGitHubActivityPayload
     public string? PusherType { get; set; }
 }
 
-public sealed class DeleteEventPayload : IGitHubActivityPayload
+[WinRT.GeneratedBindableCustomProperty]
+public sealed partial class DeleteEventPayload : IGitHubActivityPayload
 {
     [JsonPropertyName("ref")]
     public string? Ref { get; set; }
@@ -61,7 +65,8 @@ public sealed class DeleteEventPayload : IGitHubActivityPayload
     public string? PusherType { get; set; }
 }
 
-public sealed class DiscussionEventPayload : IGitHubActivityPayload
+[WinRT.GeneratedBindableCustomProperty]
+public sealed partial class DiscussionEventPayload : IGitHubActivityPayload
 {
     [JsonPropertyName("action")]
     public string? Action { get; set; }
@@ -70,7 +75,8 @@ public sealed class DiscussionEventPayload : IGitHubActivityPayload
     public GitHubActivityDiscussion? Discussion { get; set; }
 }
 
-public sealed class ForkEventPayload : IGitHubActivityPayload
+[WinRT.GeneratedBindableCustomProperty]
+public sealed partial class ForkEventPayload : IGitHubActivityPayload
 {
     [JsonPropertyName("action")]
     public string? Action { get; set; }
@@ -79,13 +85,15 @@ public sealed class ForkEventPayload : IGitHubActivityPayload
     public GitHubRepository? Forkee { get; set; }
 }
 
-public sealed class GollumEventPayload : IGitHubActivityPayload
+[WinRT.GeneratedBindableCustomProperty]
+public sealed partial class GollumEventPayload : IGitHubActivityPayload
 {
     [JsonPropertyName("pages")]
     public GitHubActivityWikiPage[] Pages { get; set; } = [];
 }
 
-public sealed class IssueCommentEventPayload : IGitHubActivityPayload
+[WinRT.GeneratedBindableCustomProperty]
+public sealed partial class IssueCommentEventPayload : IGitHubActivityPayload
 {
     [JsonPropertyName("action")]
     public string? Action { get; set; }
@@ -97,7 +105,8 @@ public sealed class IssueCommentEventPayload : IGitHubActivityPayload
     public GitHubIssueComment? Comment { get; set; }
 }
 
-public sealed class IssuesEventPayload : IGitHubActivityPayload
+[WinRT.GeneratedBindableCustomProperty]
+public sealed partial class IssuesEventPayload : IGitHubActivityPayload
 {
     [JsonPropertyName("action")]
     public string? Action { get; set; }
@@ -118,7 +127,8 @@ public sealed class IssuesEventPayload : IGitHubActivityPayload
     public GitHubLabel[] Labels { get; set; } = [];
 }
 
-public sealed class MemberEventPayload : IGitHubActivityPayload
+[WinRT.GeneratedBindableCustomProperty]
+public sealed partial class MemberEventPayload : IGitHubActivityPayload
 {
     [JsonPropertyName("action")]
     public string? Action { get; set; }
@@ -127,11 +137,13 @@ public sealed class MemberEventPayload : IGitHubActivityPayload
     public GitHubActor? Member { get; set; }
 }
 
-public sealed class PublicEventPayload : IGitHubActivityPayload
+[WinRT.GeneratedBindableCustomProperty]
+public sealed partial class PublicEventPayload : IGitHubActivityPayload
 {
 }
 
-public sealed class PullRequestEventPayload : IGitHubActivityPayload
+[WinRT.GeneratedBindableCustomProperty]
+public sealed partial class PullRequestEventPayload : IGitHubActivityPayload
 {
     [JsonPropertyName("action")]
     public string? Action { get; set; }
@@ -155,7 +167,8 @@ public sealed class PullRequestEventPayload : IGitHubActivityPayload
     public GitHubLabel[] Labels { get; set; } = [];
 }
 
-public sealed class PullRequestReviewEventPayload : IGitHubActivityPayload
+[WinRT.GeneratedBindableCustomProperty]
+public sealed partial class PullRequestReviewEventPayload : IGitHubActivityPayload
 {
     [JsonPropertyName("action")]
     public string? Action { get; set; }
@@ -167,7 +180,8 @@ public sealed class PullRequestReviewEventPayload : IGitHubActivityPayload
     public GitHubPullRequestReview? Review { get; set; }
 }
 
-public sealed class PullRequestReviewCommentEventPayload : IGitHubActivityPayload
+[WinRT.GeneratedBindableCustomProperty]
+public sealed partial class PullRequestReviewCommentEventPayload : IGitHubActivityPayload
 {
     [JsonPropertyName("action")]
     public string? Action { get; set; }
@@ -179,7 +193,8 @@ public sealed class PullRequestReviewCommentEventPayload : IGitHubActivityPayloa
     public GitHubPullRequestReviewComment? Comment { get; set; }
 }
 
-public sealed class PushEventPayload : IGitHubActivityPayload
+[WinRT.GeneratedBindableCustomProperty]
+public sealed partial class PushEventPayload : IGitHubActivityPayload
 {
     [JsonPropertyName("repository_id")]
     public long RepositoryId { get; set; }
@@ -217,7 +232,8 @@ public sealed class PushEventPayload : IGitHubActivityPayload
     private static int? PositiveOrNull(int? value) => value.GetValueOrDefault() > 0 ? value : null;
 }
 
-public sealed class ReleaseEventPayload : IGitHubActivityPayload
+[WinRT.GeneratedBindableCustomProperty]
+public sealed partial class ReleaseEventPayload : IGitHubActivityPayload
 {
     [JsonPropertyName("action")]
     public string? Action { get; set; }
@@ -226,13 +242,15 @@ public sealed class ReleaseEventPayload : IGitHubActivityPayload
     public GitHubActivityRelease? Release { get; set; }
 }
 
-public sealed class WatchEventPayload : IGitHubActivityPayload
+[WinRT.GeneratedBindableCustomProperty]
+public sealed partial class WatchEventPayload : IGitHubActivityPayload
 {
     [JsonPropertyName("action")]
     public string? Action { get; set; }
 }
 
-public sealed class GitHubActivityDiscussion
+[WinRT.GeneratedBindableCustomProperty]
+public sealed partial class GitHubActivityDiscussion
 {
     [JsonPropertyName("number")]
     public int? Number { get; set; }
@@ -244,7 +262,8 @@ public sealed class GitHubActivityDiscussion
     public string? HtmlUrl { get; set; }
 }
 
-public sealed class GitHubActivityWikiPage
+[WinRT.GeneratedBindableCustomProperty]
+public sealed partial class GitHubActivityWikiPage
 {
     [JsonPropertyName("page_name")]
     public string? PageName { get; set; }
@@ -265,7 +284,8 @@ public sealed class GitHubActivityWikiPage
     public string? HtmlUrl { get; set; }
 }
 
-public sealed class GitHubActivityPushCommit
+[WinRT.GeneratedBindableCustomProperty]
+public sealed partial class GitHubActivityPushCommit
 {
     [JsonPropertyName("sha")]
     public string? Sha { get; set; }
@@ -283,7 +303,8 @@ public sealed class GitHubActivityPushCommit
     public GitHubActivityCommitAuthor? Author { get; set; }
 }
 
-public sealed class GitHubActivityCommitAuthor
+[WinRT.GeneratedBindableCustomProperty]
+public sealed partial class GitHubActivityCommitAuthor
 {
     [JsonPropertyName("name")]
     public string? Name { get; set; }
@@ -292,7 +313,8 @@ public sealed class GitHubActivityCommitAuthor
     public string? Email { get; set; }
 }
 
-public sealed class GitHubActivityRelease
+[WinRT.GeneratedBindableCustomProperty]
+public sealed partial class GitHubActivityRelease
 {
     [JsonPropertyName("id")]
     public long Id { get; set; }

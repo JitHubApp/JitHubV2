@@ -72,7 +72,7 @@
             <controls:ListDetailsView.DetailsTemplate>
                 <DataTemplate>
                     <issue:RepoIssueDetail
-                        Issue="{Binding Item, Mode=OneWay}"/>
+                        Issue="{Binding Mode=OneWay}"/>
                 </DataTemplate>
             </controls:ListDetailsView.DetailsTemplate>
             <controls:ListDetailsView.NoSelectionContentTemplate>

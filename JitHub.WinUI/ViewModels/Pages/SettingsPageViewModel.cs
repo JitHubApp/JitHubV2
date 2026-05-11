@@ -26,7 +26,7 @@ public sealed partial class SettingsPageViewModel : ViewModelBase
         ];
     }
 
-    public IReadOnlyList<ThemeOption> ThemeOptions { get; }
+    public List<ThemeOption> ThemeOptions { get; }
 
     public Uri SourceCodeUri { get; } = new("https://github.com/JitHubApp/JitHubV2");
 

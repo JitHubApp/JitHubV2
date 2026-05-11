@@ -8,7 +8,7 @@ namespace JitHub.Models
     public class EventfulCollection<T>
     {
         public Action<T>? Action;
-        public ICollection<T> Instance { get; set; }
+        public ObservableCollection<T> Instance { get; set; }
 
         public EventfulCollection()
         {

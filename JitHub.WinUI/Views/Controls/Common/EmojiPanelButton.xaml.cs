@@ -17,6 +17,7 @@ namespace JitHub.WinUI.Views.Controls.Common
             if (d is EmojiPanelButton self && args.NewValue != null)
             {
                 self.DataContext = self.ViewModel;
+                self.Bindings.Update();
             }
         }
 

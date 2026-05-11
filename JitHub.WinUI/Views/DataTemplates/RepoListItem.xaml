@@ -34,7 +34,7 @@
                     <TextBlock
                         Grid.Column="0"
                         Style="{StaticResource TitleStyle}"
-                        Text="{Binding Repository.Name}" />
+                        Text="{Binding Name}" />
                     <Grid
                         Grid.Column="1"
                         Padding="5,2"
@@ -55,14 +55,14 @@
                         <TextBlock
                             Grid.Column="1"
                             FontSize="14"
-                            Text="{Binding Repository.StargazersCount}" />
+                            Text="{Binding StargazersCount}" />
                     </Grid>
 
                 </Grid>
                 <TextBlock
                     Grid.Row="1"
                     Foreground="{ThemeResource AppInkSubtleBrush}"
-                    Text="{Binding Repository.Description}" />
+                    Text="{Binding Description}" />
                 <StackPanel
                     Grid.Row="2"
                     HorizontalAlignment="Stretch"
@@ -70,9 +70,9 @@
                     Orientation="Horizontal">
                     <TextBlock
                         Margin="0,0,15,0"
-                        Text="{Binding Repository.Language}"
-                        Visibility="{Binding Repository.Language, Converter={StaticResource LanguageToVisibilityConverter}, Mode=OneWay}" />
-                    <TextBlock Text="{Binding Repository.UpdatedAt, Converter={StaticResource TimeAgoConverter}, Mode=OneWay}" />
+                        Text="{Binding Language}"
+                        Visibility="{Binding Language, Converter={StaticResource LanguageToVisibilityConverter}, Mode=OneWay}" />
+                    <TextBlock Text="{Binding UpdatedAt, Converter={StaticResource TimeAgoConverter}, Mode=OneWay}" />
                 </StackPanel>
             </Grid>
         </Button>

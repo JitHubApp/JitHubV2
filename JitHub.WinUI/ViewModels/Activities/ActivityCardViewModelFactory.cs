@@ -54,7 +54,7 @@ public static class ActivityCardViewModelFactory
         };
     }
 
-    public static IReadOnlyList<ActivityCardViewModel> CreateMany(
+    public static List<ActivityCardViewModel> CreateMany(
         IEnumerable<GitHubActivityEvent> events,
         ICommand? actionCommand = null)
     {
@@ -85,7 +85,7 @@ public static class ActivityCardViewModelFactory
         ActivityCardActionViewModel? commitAction = commitCount > 0
             ? CommitAction(activityEvent, command, payload.Head)
             : null;
-        IReadOnlyList<ActivitySentencePartViewModel> sentenceParts = commitCount > 0
+        List<ActivitySentencePartViewModel> sentenceParts = commitCount > 0
             ? Sentence(
                 Strong(Actor(activityEvent)),
                 Text(" pushed "),
@@ -637,7 +637,7 @@ public static class ActivityCardViewModelFactory
                 ? ActivityCardTone.Danger
                 : ActivityCardTone.Accent;
 
-    private static IReadOnlyList<ActivityCardDetailViewModel> DetailList(params (string Glyph, string? Text)[] values)
+    private static List<ActivityCardDetailViewModel> DetailList(params (string Glyph, string? Text)[] values)
     {
         return values
             .Where(value => !string.IsNullOrWhiteSpace(value.Text))
@@ -645,10 +645,10 @@ public static class ActivityCardViewModelFactory
             .ToList();
     }
 
-    private static IReadOnlyList<ActivityCardActionViewModel> Combine(params ActivityCardActionViewModel?[] actions) =>
+    private static List<ActivityCardActionViewModel> Combine(params ActivityCardActionViewModel?[] actions) =>
         actions.Where(action => action is not null).Cast<ActivityCardActionViewModel>().ToList();
 
-    private static IReadOnlyList<ActivitySentencePartViewModel> Sentence(params ActivitySentencePartViewModel?[] parts) =>
+    private static List<ActivitySentencePartViewModel> Sentence(params ActivitySentencePartViewModel?[] parts) =>
         parts.Where(part => part is not null && !string.IsNullOrEmpty(part.Text))
             .Cast<ActivitySentencePartViewModel>()
             .ToList();
@@ -803,7 +803,7 @@ public static class ActivityCardViewModelFactory
         };
     }
 
-    private static IReadOnlyList<ActivityNavigationTarget> Unsupported(GitHubActivityEvent activityEvent, string reason)
+    private static List<ActivityNavigationTarget> Unsupported(GitHubActivityEvent activityEvent, string reason)
     {
         return
         [
@@ -853,12 +853,12 @@ public static class ActivityCardViewModelFactory
 
         public ActivityCardTone Tone { get; init; }
 
-        public IReadOnlyList<ActivitySentencePartViewModel> SentenceParts { get; init; } = [];
+        public List<ActivitySentencePartViewModel> SentenceParts { get; init; } = [];
 
-        public IReadOnlyList<ActivityCardDetailViewModel> Details { get; init; } = [];
+        public List<ActivityCardDetailViewModel> Details { get; init; } = [];
 
-        public IReadOnlyList<ActivityCardActionViewModel> Actions { get; init; } = [];
+        public List<ActivityCardActionViewModel> Actions { get; init; } = [];
 
-        public IReadOnlyList<ActivityNavigationTarget> UnsupportedTodos { get; init; } = [];
+        public List<ActivityNavigationTarget> UnsupportedTodos { get; init; } = [];
     }
 }

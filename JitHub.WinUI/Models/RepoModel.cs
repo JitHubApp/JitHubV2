@@ -12,7 +12,8 @@ using System.Windows.Input;
 
 namespace JitHub.Models
 {
-    public class RepoModel : ObservableObject
+    [WinRT.GeneratedBindableCustomProperty]
+    public partial class RepoModel : ObservableObject
     {
         private Repository _repository = null!;
         private readonly NavigationService _navigationService;
@@ -20,6 +21,12 @@ namespace JitHub.Models
 
         public Repository Repository { get => _repository; set => SetProperty(ref _repository, value); }
         public ICommand DetailNavigationCommand { get => _detailNavigationCommand; set => SetProperty(ref _detailNavigationCommand, value); }
+        public string Name => Repository.Name;
+        public string FullName => Repository.FullName;
+        public string Description => Repository.Description;
+        public int StargazersCount => Repository.StargazersCount;
+        public string Language => Repository.Language;
+        public DateTimeOffset UpdatedAt => Repository.UpdatedAt;
 
         public RepoModel(Repository repo)
         {

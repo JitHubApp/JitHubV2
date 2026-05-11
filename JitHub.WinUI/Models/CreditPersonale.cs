@@ -1,22 +1,23 @@
 using System;
-using System.Collections;
 using System.Collections.Generic;
+using System.Linq;
 using Windows.UI;
 using Microsoft.UI.Xaml.Media;
 using Microsoft.UI.Xaml.Media.Imaging;
 
 namespace JitHub.Models
 {
-    public class CreditPersonale
+    [WinRT.GeneratedBindableCustomProperty]
+    public partial class CreditPersonale
     {
-        public ImageSource ImageSource { get; set; }
-        public ICollection<PersonalLink> Links { get; set; }
-        public string PersonaleName { get; set; }
-        public string Role { get; set; }
-        public string Description { get; set; }
-        public Brush BackgroundBrush { get; set; }
+        public ImageSource ImageSource { get; set; } = new BitmapImage(new Uri("ms-appx:///Assets/Octocat.png"));
+        public List<PersonalLink> Links { get; set; } = new();
+        public string PersonaleName { get; set; } = string.Empty;
+        public string Role { get; set; } = string.Empty;
+        public string Description { get; set; } = string.Empty;
+        public Brush BackgroundBrush { get; set; } = new SolidColorBrush(Microsoft.UI.Colors.Transparent);
 
-        public CreditPersonale(string url, string name, string role, string description, Color color, ICollection<PersonalLink> links)
+        public CreditPersonale(string url, string name, string role, string description, Color color, IEnumerable<PersonalLink> links)
         {
             try
             {
@@ -30,18 +31,19 @@ namespace JitHub.Models
             Role = role;
             Description = description;
             BackgroundBrush = new SolidColorBrush(color);
-            Links = links;
+            Links = links.ToList();
         }
     }
 
-    public class PersonalLink
+    [WinRT.GeneratedBindableCustomProperty]
+    public partial class PersonalLink
     {
-        public string Link { get; set; }
-        public ImageSource LogoSource { get; set; }
-        public static string LinkedInLogo = "ms-appx:///Assets/LinkLogos/LinkedIn.png";
-        public static string TwitterLogo = "ms-appx:///Assets/LinkLogos/Twitter.png";
-        public static string GitHubLogo = "ms-appx:///Assets/LinkLogos/GitHub.png";
-        public static string GoogleScholarLogo = "ms-appx:///Assets/LinkLogos/GoogleScholar.png";
+        public string Link { get; set; } = string.Empty;
+        public ImageSource LogoSource { get; set; } = new BitmapImage(new Uri("ms-appx:///Assets/Octocat.png"));
+        public const string LinkedInLogo = "ms-appx:///Assets/LinkLogos/LinkedIn.png";
+        public const string TwitterLogo = "ms-appx:///Assets/LinkLogos/Twitter.png";
+        public const string GitHubLogo = "ms-appx:///Assets/LinkLogos/GitHub.png";
+        public const string GoogleScholarLogo = "ms-appx:///Assets/LinkLogos/GoogleScholar.png";
 
         public PersonalLink(string link, string logoPath)
         {

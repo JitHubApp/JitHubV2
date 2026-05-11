@@ -105,7 +105,7 @@
                 <muxc:ItemsRepeater.ItemTemplate>
                     <DataTemplate>
                         <Grid>
-                            <commit:FileDiff ViewModel="{Binding Item, Mode=OneWay}"/>
+                            <commit:FileDiff ViewModel="{Binding Mode=OneWay}"/>
                         </Grid>
                     </DataTemplate>
                 </muxc:ItemsRepeater.ItemTemplate>

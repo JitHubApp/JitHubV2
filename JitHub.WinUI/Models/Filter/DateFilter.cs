@@ -1,8 +1,9 @@
-﻿using System;
+using System;
 
 namespace JitHub.Models.Filter
 {
-    public class DateFilter : FilterUnit
+    [WinRT.GeneratedBindableCustomProperty]
+    public partial class DateFilter : FilterUnit
     {
         private DateTimeOffset _startDate;
         private DateTimeOffset _defaultDate;

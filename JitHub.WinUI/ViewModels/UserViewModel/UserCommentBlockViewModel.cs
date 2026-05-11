@@ -15,23 +15,25 @@ using CommunityToolkit.WinUI.Controls;
 
 namespace JitHub.WinUI.ViewModels.UserViewModel
 {
-    public class ReactionWithUsers
+    [WinRT.GeneratedBindableCustomProperty]
+    public partial class ReactionWithUsers
     {
         public ReactionType Type { get; set; }
-        public ICollection<string> Users { get; set; } = [];
+        public List<string> Users { get; set; } = [];
         public bool Voted { get; set; }
         public ICommand ReactionCommand { get; set; } = null!;
 
-        public ReactionWithUsers(ReactionType type, ICollection<string> users, bool voted, ICommand reactionCommand)
+        public ReactionWithUsers(ReactionType type, IEnumerable<string> users, bool voted, ICommand reactionCommand)
         {
             Type = type;
-            Users = users;
+            Users = users.ToList();
             Voted = voted;
             ReactionCommand = reactionCommand;
         }
     }
 
-    public class UserCommentBlockViewModel : RepoViewModel
+    [WinRT.GeneratedBindableCustomProperty]
+    public partial class UserCommentBlockViewModel : RepoViewModel
     {
         private string _body = string.Empty;
         private MarkdownConfig _markdownConfig = null!;
@@ -48,7 +50,7 @@ namespace JitHub.WinUI.ViewModels.UserViewModel
         private MenuItem _quoteReplyMenuItem = null!;
         private EmojiPanelViewModel? _emojiPanelViewModel;
         private Dictionary<ReactionType, Reaction> _votesMap = [];
-        private ICollection<ReactionWithUsers> _reactionWithUsers = [];
+        private List<ReactionWithUsers> _reactionWithUsers = [];
 
         public string Body
         {
@@ -111,7 +113,7 @@ namespace JitHub.WinUI.ViewModels.UserViewModel
             set => SetProperty(ref _emojiPanelViewModel, value);
         }
 
-        public ICollection<ReactionWithUsers> ReactionWithUsers
+        public List<ReactionWithUsers> ReactionWithUsers
         {
             get => _reactionWithUsers;
             set => SetProperty(ref _reactionWithUsers, value);

@@ -10,6 +10,8 @@ namespace JitHub.WinUI.Views.Controls.App;
 
 public sealed partial class ActivityCard : UserControl
 {
+    public ActivityCardViewModel? ViewModel { get; private set; }
+
     public ActivityCard()
     {
         InitializeComponent();
@@ -18,6 +20,8 @@ public sealed partial class ActivityCard : UserControl
 
     private void OnDataContextChanged(FrameworkElement sender, DataContextChangedEventArgs args)
     {
+        ViewModel = args.NewValue as ActivityCardViewModel;
+        Bindings.Update();
         RenderSentence();
     }
 
@@ -29,15 +33,18 @@ public sealed partial class ActivityCard : UserControl
         }
 
         SentenceRichTextBlock.Blocks.Clear();
-        if (DataContext is not ActivityCardViewModel activity)
+        if (ViewModel is not ActivityCardViewModel activity)
         {
             return;
         }
 
         var paragraph = new Paragraph();
-        IReadOnlyList<ActivitySentencePartViewModel> parts = activity.SentenceParts.Count > 0
+        List<ActivitySentencePartViewModel> parts = activity.SentenceParts.Count > 0
             ? activity.SentenceParts
-            : [new ActivitySentencePartViewModel { Text = activity.Title, IsEmphasized = true }];
+            :
+            [
+                new ActivitySentencePartViewModel { Text = activity.Title, IsEmphasized = true }
+            ];
 
         foreach (ActivitySentencePartViewModel part in parts)
         {

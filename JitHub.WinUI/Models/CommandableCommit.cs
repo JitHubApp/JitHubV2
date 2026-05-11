@@ -7,7 +7,8 @@ using System.Windows.Input;
 
 namespace JitHub.Models
 {
-    public class CommandableCommit : RepoSelectableItemModel<Commit>
+    [WinRT.GeneratedBindableCustomProperty]
+    public partial class CommandableCommit : RepoSelectableItemModel<Commit>
     {
         private ICommand _copy = null!;
         private ICommand _viewCode = null!;

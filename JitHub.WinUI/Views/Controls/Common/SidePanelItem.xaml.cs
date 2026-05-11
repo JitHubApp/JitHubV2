@@ -11,14 +11,14 @@ namespace JitHub.WinUI.Views.Controls.Common
             nameof(Header),
             typeof(FrameworkElement),
             typeof(SidePanelItem),
-            new PropertyMetadata(default(FrameworkElement), null)
+            new PropertyMetadata(default(FrameworkElement), OnBindablePropertyChanged)
         );
 
         public static DependencyProperty BodyProperty = DependencyProperty.Register(
             nameof(Body),
             typeof(FrameworkElement),
             typeof(SidePanelItem),
-            new PropertyMetadata(default(FrameworkElement), null)
+            new PropertyMetadata(default(FrameworkElement), OnBindablePropertyChanged)
         );
 
         public FrameworkElement Header
@@ -36,6 +36,14 @@ namespace JitHub.WinUI.Views.Controls.Common
         public SidePanelItem()
         {
             this.InitializeComponent();
+        }
+
+        private static void OnBindablePropertyChanged(DependencyObject d, DependencyPropertyChangedEventArgs e)
+        {
+            if (d is SidePanelItem self)
+            {
+                self.Bindings.Update();
+            }
         }
     }
 }

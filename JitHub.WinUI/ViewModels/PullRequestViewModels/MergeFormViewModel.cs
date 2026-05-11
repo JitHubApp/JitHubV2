@@ -15,7 +15,7 @@ namespace JitHub.WinUI.ViewModels.PullRequestViewModels
     {
         private string _title = string.Empty;
         private string _body = string.Empty;
-        private ICollection<PullRequestMergeMethod> _items = [];
+        private List<PullRequestMergeMethod> _items = [];
         private PullRequestMergeMethod _selectedItem;
         private PullRequest _pullRequest = null!;
         private ICommand? _callback;
@@ -31,7 +31,7 @@ namespace JitHub.WinUI.ViewModels.PullRequestViewModels
             get => _body;
             set => SetProperty(ref _body, value);
         }
-        public ICollection<PullRequestMergeMethod> Items
+        public List<PullRequestMergeMethod> Items
         {
             get => _items;
             set => SetProperty(ref _items, value);

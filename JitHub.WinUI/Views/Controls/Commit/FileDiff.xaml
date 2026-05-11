@@ -15,11 +15,11 @@
         <common:CommentBlock
             Margin="0 10 0 0">
             <common:CommentBlock.HeaderContent>
-                <TextBlock Text="{x:Bind ViewModel.File.Filename, Mode=OneWay}"/>
+                <TextBlock Text="{x:Bind ViewModel.File.HeaderText, Mode=OneWay}"/>
             </common:CommentBlock.HeaderContent>
             <common:CommentBlock.BodyContent>
                 <pullrequest:DiffTextBlock
-                    Patch="{x:Bind ViewModel.File.Patch, Mode=OneWay}"/>
+                    Patch="{x:Bind ViewModel.File.PatchDisplayText, Mode=OneWay}"/>
             </common:CommentBlock.BodyContent>
         </common:CommentBlock>
     </Grid>

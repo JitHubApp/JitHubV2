@@ -10,7 +10,7 @@ namespace JitHub.WinUI.Views.Controls.Common
             nameof(Config),
             typeof(MarkdownConfig),
             typeof(MarkdownViewer),
-            null
+            new PropertyMetadata(null, OnConfigChanged)
         );
 
         public MarkdownConfig Config
@@ -22,6 +22,14 @@ namespace JitHub.WinUI.Views.Controls.Common
         public MarkdownViewer()
         {
             this.InitializeComponent();
+        }
+
+        private static void OnConfigChanged(DependencyObject d, DependencyPropertyChangedEventArgs e)
+        {
+            if (d is MarkdownViewer self)
+            {
+                self.Bindings.Update();
+            }
         }
     }
 }

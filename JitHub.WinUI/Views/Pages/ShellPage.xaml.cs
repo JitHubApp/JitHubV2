@@ -1,4 +1,5 @@
 using System;
+using System.Collections.Generic;
 using System.ComponentModel;
 using System.Threading;
 using System.Threading.Tasks;
@@ -546,8 +547,9 @@ public sealed partial class ShellPage : Page
         return false;
     }
 
-    private static GitHubRepository[] CreateAutomationSearchResults() =>
-    [
+    private static List<GitHubRepository> CreateAutomationSearchResults() =>
+    new()
+    {
         CreateAutomationRepository(1, "flutter", "flutter", "Flutter makes it easy and fast to build beautiful apps."),
         CreateAutomationRepository(2, "flutter", "plugins", "Plugins for Flutter maintained by the Flutter team."),
         CreateAutomationRepository(3, "iampawan", "FlutterExampleApps", "Example Flutter apps for UI and architecture testing."),
@@ -556,7 +558,7 @@ public sealed partial class ShellPage : Page
         CreateAutomationRepository(6, "kaina404", "FlutterDouBan", "DouBan client written in Flutter."),
         CreateAutomationRepository(7, "toly1994328", "FlutterUnit", "Flutter samples and widgets."),
         CreateAutomationRepository(8, "flutter", "engine", "The Flutter engine.")
-    ];
+    };
 
     private static GitHubRepository CreateAutomationRepository(long id, string owner, string name, string description) =>
         new()

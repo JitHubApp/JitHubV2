@@ -5,6 +5,7 @@ using Microsoft.UI.Xaml.Media;
 
 namespace JitHub.WinUI.Views.Controls.App;
 
+[WinRT.GeneratedBindableCustomProperty]
 public sealed partial class AppStatButton : UserControl
 {
     public static readonly DependencyProperty IconGlyphProperty = DependencyProperty.Register(nameof(IconGlyph), typeof(string), typeof(AppStatButton), new PropertyMetadata(string.Empty));

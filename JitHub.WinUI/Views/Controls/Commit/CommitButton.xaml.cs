@@ -21,14 +21,14 @@ namespace JitHub.WinUI.Views.Controls.Commit
             nameof(CommitId),
             typeof(string),
             typeof(CommitButton),
-            new PropertyMetadata(default(string), null)
+            new PropertyMetadata(default(string), OnBindablePropertyChanged)
         );
 
         public static DependencyProperty TextProperty = DependencyProperty.Register(
             nameof(Text),
             typeof(string),
             typeof(CommitButton),
-            new PropertyMetadata(default(string), null)
+            new PropertyMetadata(default(string), OnBindablePropertyChanged)
         );
 
         public static DependencyProperty RepoProperty = DependencyProperty.Register(
@@ -58,6 +58,14 @@ namespace JitHub.WinUI.Views.Controls.Commit
             this.InitializeComponent();
             _navigationService = Ioc.Default.GetService<NavigationService>()
                 ?? throw new InvalidOperationException("NavigationService is not registered.");
+        }
+
+        private static void OnBindablePropertyChanged(DependencyObject d, DependencyPropertyChangedEventArgs e)
+        {
+            if (d is CommitButton self)
+            {
+                self.Bindings.Update();
+            }
         }
 
         private void OnClick(object sender, RoutedEventArgs e)

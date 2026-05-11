@@ -85,7 +85,7 @@ public partial class RepoSideBarViewModel : RepoListViewModel<RepoModel>
         return !repo.Repository.Private;
     }
 
-    public override ICollection<RepoModel> NewRepoList()
+    public override List<RepoModel> NewRepoList()
     {
         return new List<RepoModel>();
     }

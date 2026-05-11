@@ -1,4 +1,6 @@
 using System;
+using System.IO;
+using System.Text;
 using System.Text.Json;
 using System.Threading.Tasks;
 using JitHub.WinUI.ViewModels.CodeViewer;
@@ -67,8 +69,13 @@ public sealed partial class JsonPreview : UserControl
             try
             {
                 using var doc = JsonDocument.Parse(text);
-                pretty = JsonSerializer.Serialize(doc.RootElement,
-                    new JsonSerializerOptions { WriteIndented = true });
+                using var stream = new MemoryStream();
+                using (var writer = new Utf8JsonWriter(stream, new JsonWriterOptions { Indented = true }))
+                {
+                    doc.RootElement.WriteTo(writer);
+                }
+
+                pretty = Encoding.UTF8.GetString(stream.ToArray());
             }
             catch
             {

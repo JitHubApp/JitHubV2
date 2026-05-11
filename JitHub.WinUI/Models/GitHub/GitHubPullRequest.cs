@@ -3,7 +3,8 @@ using System.Text.Json.Serialization;
 
 namespace JitHub.Models.GitHub;
 
-public sealed class GitHubPullRequest
+[WinRT.GeneratedBindableCustomProperty]
+public sealed partial class GitHubPullRequest
 {
     [JsonPropertyName("id")]
     public long Id { get; set; }
@@ -57,7 +58,8 @@ public sealed class GitHubPullRequest
     public GitHubActor[] RequestedReviewers { get; set; } = [];
 }
 
-public sealed class GitHubPullRequestBranch
+[WinRT.GeneratedBindableCustomProperty]
+public sealed partial class GitHubPullRequestBranch
 {
     [JsonPropertyName("label")]
     public string Label { get; set; } = string.Empty;

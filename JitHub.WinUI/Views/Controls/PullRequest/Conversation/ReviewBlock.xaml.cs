@@ -19,6 +19,7 @@ namespace JitHub.WinUI.Views.Controls.PullRequest.Conversation
             if (d is ReviewBlock self && e.NewValue != null)
             {
                 self.DataContext = self.ViewModel;
+                self.Bindings.Update();
             }
         }
 

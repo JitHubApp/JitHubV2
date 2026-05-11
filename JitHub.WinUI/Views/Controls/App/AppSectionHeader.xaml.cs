@@ -3,6 +3,7 @@ using Microsoft.UI.Xaml.Controls;
 
 namespace JitHub.WinUI.Views.Controls.App;
 
+[WinRT.GeneratedBindableCustomProperty]
 public sealed partial class AppSectionHeader : UserControl
 {
     public static readonly DependencyProperty EyebrowProperty = DependencyProperty.Register(nameof(Eyebrow), typeof(string), typeof(AppSectionHeader), new PropertyMetadata(string.Empty));

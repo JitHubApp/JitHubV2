@@ -20,6 +20,7 @@ namespace JitHub.WinUI.Views.Controls.Commit
             if (d is FileDiff self && e.NewValue != null)
             {
                 self.DataContext = (FileDiffViewModel)e.NewValue;
+                self.Bindings.Update();
             }
         }
 

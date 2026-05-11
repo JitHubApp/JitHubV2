@@ -17,38 +17,38 @@ namespace JitHub.WinUI.Views.Controls.Common
             nameof(Reaction),
             typeof(ReactionType),
             typeof(EmojiButton),
-            new PropertyMetadata(default(ReactionType), null)
+            new PropertyMetadata(default(ReactionType), OnBindablePropertyChanged)
         );
 
         public static DependencyProperty ReactionCommandProperty = DependencyProperty.Register(
             nameof(ReactionCommand),
             typeof(ICommand),
             typeof(EmojiButton),
-            new PropertyMetadata(null));
+            new PropertyMetadata(null, OnBindablePropertyChanged));
 
         public static DependencyProperty ReactionCountProperty = DependencyProperty.Register(
             nameof(ReactionCount),
             typeof(int),
             typeof(EmojiButton),
-            new PropertyMetadata(default(int), null));
+            new PropertyMetadata(default(int), OnBindablePropertyChanged));
 
         public static DependencyProperty ShowReactionCountProperty = DependencyProperty.Register(
             nameof(ShowReactionCount),
             typeof(bool),
             typeof(EmojiButton),
-            new PropertyMetadata((bool)false, null));
+            new PropertyMetadata(false, OnBindablePropertyChanged));
 
         public static DependencyProperty VotedProperty = DependencyProperty.Register(
             nameof(Voted),
             typeof(bool),
             typeof (EmojiButton),
-            new PropertyMetadata(default(bool), null));
+            new PropertyMetadata(default(bool), OnBindablePropertyChanged));
 
         public static DependencyProperty UsersProperty = DependencyProperty.Register(
             nameof(Users),
             typeof(object),
             typeof(EmojiButton),
-            new PropertyMetadata(null));
+            new PropertyMetadata(null, OnBindablePropertyChanged));
 
 
 
@@ -91,6 +91,14 @@ namespace JitHub.WinUI.Views.Controls.Common
         public EmojiButton()
         {
             this.InitializeComponent();
+        }
+
+        private static void OnBindablePropertyChanged(DependencyObject d, DependencyPropertyChangedEventArgs e)
+        {
+            if (d is EmojiButton self)
+            {
+                self.Bindings.Update();
+            }
         }
 
         public Thickness GetPadding(bool showReactionCount)

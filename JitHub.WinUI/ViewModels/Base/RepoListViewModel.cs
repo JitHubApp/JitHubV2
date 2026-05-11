@@ -1,6 +1,7 @@
 using System;
 using CommunityToolkit.Mvvm.Input;
 using System.Collections.Generic;
+using System.Linq;
 using System.Threading.Tasks;
 using System.Windows.Input;
 using CommunityToolkit.Mvvm.ComponentModel;
@@ -9,18 +10,18 @@ namespace JitHub.WinUI.ViewModels.Base;
 
 public abstract partial class RepoListViewModel<T> : LoadableViewModel<string>
 {
-    private ICollection<T> _repos = [];
+    private List<T> _repos = [];
     [ObservableProperty]
-    public partial ICollection<T> PrivateRepos { get; set; } = [];
+    public partial List<T> PrivateRepos { get; set; } = [];
 
     [ObservableProperty]
-    public partial ICollection<T> PublicRepos { get; set; } = [];
+    public partial List<T> PublicRepos { get; set; } = [];
 
     [ObservableProperty]
-    public partial ICollection<T> ForkedRepos { get; set; } = [];
+    public partial List<T> ForkedRepos { get; set; } = [];
     private bool _isEmpty;
 
-    public ICollection<T> Repos
+    public List<T> Repos
     {
         get => _repos;
         set
@@ -54,7 +55,7 @@ public abstract partial class RepoListViewModel<T> : LoadableViewModel<string>
     abstract public bool IsPrivate(T repo);
     abstract public bool IsPublic(T repo);
 
-    abstract public ICollection<T> NewRepoList();
+    abstract public List<T> NewRepoList();
 
     // Override this to get different list of repos
     virtual public async Task LoadRepos()
@@ -62,7 +63,7 @@ public abstract partial class RepoListViewModel<T> : LoadableViewModel<string>
         Load(true);
         try
         {
-            Repos = await GetRepos();
+            Repos = (await GetRepos()).ToList();
         }
         catch (InvalidOperationException ex) when (string.Equals(ex.Message, "GitHub access token is not available.", StringComparison.Ordinal))
         {

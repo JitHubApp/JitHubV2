@@ -1,5 +1,6 @@
 using JitHub.Models;
 using System.Collections.Generic;
+using System.Linq;
 using System.Windows.Input;
 using Microsoft.UI.Xaml.Controls;
 
@@ -9,13 +10,13 @@ namespace JitHub.WinUI.Views.Controls.Repo
 {
     public sealed partial class RepoDeletionFailDialog : UserControl
     {
-        public ICollection<FailedRepo> FailedRepos { get; }
+        public List<FailedRepo> FailedRepos { get; }
         public ICommand CancelCommand { get; }
-        public RepoDeletionFailDialog(ICollection<FailedRepo> repos, ICommand cancel)
+        public RepoDeletionFailDialog(IEnumerable<FailedRepo> repos, ICommand cancel)
         {
-            this.InitializeComponent();
-            FailedRepos = repos;
+            FailedRepos = repos.ToList();
             CancelCommand = cancel;
+            this.InitializeComponent();
         }
     }
 }

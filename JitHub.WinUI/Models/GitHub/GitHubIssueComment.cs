@@ -4,7 +4,8 @@ using JitHub.WinUI.Helpers;
 
 namespace JitHub.Models.GitHub;
 
-public sealed class GitHubIssueComment
+[WinRT.GeneratedBindableCustomProperty]
+public sealed partial class GitHubIssueComment
 {
     [JsonPropertyName("node_id")]
     public string? NodeId { get; set; }

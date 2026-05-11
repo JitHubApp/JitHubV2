@@ -14,6 +14,7 @@ public enum AppIconKind
     PrivateRepository
 }
 
+[WinRT.GeneratedBindableCustomProperty]
 public sealed partial class AppIcon : UserControl
 {
     public static readonly DependencyProperty IconKindProperty = DependencyProperty.Register(

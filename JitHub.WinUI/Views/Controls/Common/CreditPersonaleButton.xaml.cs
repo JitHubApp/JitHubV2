@@ -16,7 +16,7 @@ namespace JitHub.WinUI.Views.Controls.Common
             nameof(Person),
             typeof(CreditPersonale),
             typeof(CreditPersonaleButton),
-            new PropertyMetadata(default(CreditPersonale), null)
+            new PropertyMetadata(default(CreditPersonale), OnPersonChanged)
         );
 
         private readonly ModalService _modalService;
@@ -31,6 +31,14 @@ namespace JitHub.WinUI.Views.Controls.Common
             this.InitializeComponent();
             _modalService = Ioc.Default.GetService<ModalService>()
                 ?? throw new InvalidOperationException("ModalService is not registered.");
+        }
+
+        private static void OnPersonChanged(DependencyObject d, DependencyPropertyChangedEventArgs e)
+        {
+            if (d is CreditPersonaleButton self)
+            {
+                self.Bindings.Update();
+            }
         }
 
         private void OnClose()

@@ -32,8 +32,8 @@ namespace JitHub.WinUI.ViewModels.RepositoryViewModels
         private Microsoft.UI.Xaml.Controls.NavigationViewItem _commitsMenuItem = null!;
         private Microsoft.UI.Xaml.Controls.NavigationViewItem? _projectsMenuItem;
         private Microsoft.UI.Xaml.Controls.NavigationViewItem? _selectedItem;
-        private ICollection<Microsoft.UI.Xaml.Controls.NavigationViewItem> _menuItems = [];
-        private ICollection<Branch> _branches = [];
+        private List<Microsoft.UI.Xaml.Controls.NavigationViewItem> _menuItems = [];
+        private List<Branch> _branches = [];
         private Branch? _selectedBranch;
         private Visibility _branchVisible;
         private bool _updatingBranchSelection;
@@ -44,7 +44,7 @@ namespace JitHub.WinUI.ViewModels.RepositoryViewModels
             set => SetProperty(ref _branchVisible, value);
         }
 
-        public ICollection<Branch> Branches
+        public List<Branch> Branches
         {
             get => _branches;
             set => SetProperty(ref _branches, value);
@@ -115,7 +115,7 @@ namespace JitHub.WinUI.ViewModels.RepositoryViewModels
             }
         }
 
-        public ICollection<Microsoft.UI.Xaml.Controls.NavigationViewItem> MenuItems
+        public List<Microsoft.UI.Xaml.Controls.NavigationViewItem> MenuItems
         {
             get => _menuItems;
             set => SetProperty(ref _menuItems, value);
@@ -331,7 +331,7 @@ namespace JitHub.WinUI.ViewModels.RepositoryViewModels
             try
             {
                 _updatingBranchSelection = true;
-                Branches = await branchesTask;
+                Branches = (await branchesTask).ToList();
                 SelectedBranch = ResolveSelectedBranch(args);
             }
             catch (Exception)

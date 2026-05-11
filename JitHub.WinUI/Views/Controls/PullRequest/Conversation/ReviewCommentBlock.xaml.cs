@@ -31,9 +31,10 @@ namespace JitHub.WinUI.Views.Controls.PullRequest.Conversation
         {
             if (d is ReviewCommentBlock self && args.NewValue != null)
             {
-                self.ViewModel = (ReviewCommentViewModel)args.NewValue;
-                self.DataContext = self.ViewModel;
-                self.ViewModel.ReplyBox = self.ReplyBox;
+                var viewModel = (ReviewCommentViewModel)args.NewValue;
+                self.DataContext = viewModel;
+                viewModel.ReplyBox = self.ReplyBox;
+                self.Bindings.Update();
             }
         }
 

@@ -158,7 +158,7 @@ namespace JitHub.WinUI.ViewModels.RepositoryViewModels
             return !repo.Repo.Repository.Private;
         }
 
-        public override ICollection<SelectableRepoModel> NewRepoList()
+        public override List<SelectableRepoModel> NewRepoList()
         {
             return new List<SelectableRepoModel>();
         }

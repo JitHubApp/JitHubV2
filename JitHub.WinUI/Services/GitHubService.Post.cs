@@ -361,7 +361,7 @@ namespace JitHub.Services
                 num,
                 issue => (
                     GetAssigneeLogins(issue),
-                    RemoveValues(issue.Labels.Select(currentLabel => currentLabel.Name), [label])));
+                    RemoveValues(issue.Labels.Select(currentLabel => currentLabel.Name), new[] { label })));
         }
 
         private static string? ToGitHubIssueState(ItemState? state)

@@ -31,6 +31,7 @@ namespace JitHub.WinUI.Views.Pages.IssuePage
             {
                 ViewModel = viewModel;
                 DataContext = viewModel;
+                Bindings.Update();
                 if (viewModel.LoadCommand.CanExecute(null))
                 {
                     viewModel.LoadCommand.Execute(null);

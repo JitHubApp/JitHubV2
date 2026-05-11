@@ -5,7 +5,8 @@ using System.Collections.Generic;
 
 namespace JitHub.Models
 {
-    public class SettingsDisplayItem
+    [WinRT.GeneratedBindableCustomProperty]
+    public partial class SettingsDisplayItem
     {
         public string DisplayText { get; set; } = string.Empty;
         public object Model { get; set; }
@@ -22,7 +23,8 @@ namespace JitHub.Models
         string GetItemType();
     }
 
-    public class SettingsItem<T> : RepoSelectableItemModel<T>, SettingsItemType
+    [WinRT.GeneratedBindableCustomProperty]
+    public partial class SettingsItem<T> : RepoSelectableItemModel<T>, SettingsItemType
     {
         private string _label = string.Empty;
         private string _type = string.Empty;

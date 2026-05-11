@@ -30,14 +30,14 @@ namespace JitHub.WinUI.Views.Controls.Common
             nameof(IconHeight),
             typeof(double),
             typeof(ThemeImage),
-            new PropertyMetadata(default(double), null)
+            new PropertyMetadata(default(double), OnBindablePropertyChanged)
         );
 
         public static DependencyProperty IconWidthProperty = DependencyProperty.Register(
             nameof(IconWidth),
             typeof(double),
             typeof(ThemeImage),
-            new PropertyMetadata(default(double), null)
+            new PropertyMetadata(default(double), OnBindablePropertyChanged)
         );
 
         public static void OnDarkSourceChange(DependencyObject d, DependencyPropertyChangedEventArgs e)
@@ -49,6 +49,8 @@ namespace JitHub.WinUI.Views.Controls.Common
                 {
                     self.IconImage.Source = new BitmapImage(new Uri(source));
                 }
+
+                self.Bindings.Update();
             }
         }
 
@@ -61,6 +63,8 @@ namespace JitHub.WinUI.Views.Controls.Common
                 {
                     self.IconImage.Source = new BitmapImage(new Uri(source));
                 }
+
+                self.Bindings.Update();
             }
         }
 
@@ -76,8 +80,8 @@ namespace JitHub.WinUI.Views.Controls.Common
         }
         public double IconHeight
         {
-            get => (double)GetValue(HeightProperty);
-            set => SetValue(HeightProperty, value);
+            get => (double)GetValue(IconHeightProperty);
+            set => SetValue(IconHeightProperty, value);
         }
         public double IconWidth
         {
@@ -90,6 +94,14 @@ namespace JitHub.WinUI.Views.Controls.Common
         {
             this.InitializeComponent();
             _themeListener.ThemeChanged += ListenerThemeChanged;
+        }
+
+        private static void OnBindablePropertyChanged(DependencyObject d, DependencyPropertyChangedEventArgs e)
+        {
+            if (d is ThemeImage self)
+            {
+                self.Bindings.Update();
+            }
         }
 
         private void ListenerThemeChanged(ThemeListener sender)

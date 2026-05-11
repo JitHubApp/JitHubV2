@@ -18,13 +18,13 @@ namespace JitHub.WinUI.ViewModels.IssueViewModels
         private Issue _issue = null!;
         private bool _isPr;
         private bool _isCollaborator;
-        private ICollection<IssueSidePanelItem> _items = [];
+        private List<IssueSidePanelItem> _items = [];
 
         #region reviewers
         private readonly Dictionary<string, User> _requestedReviewers = [];
-        private ICollection<SelectableItem> _selectableReviewers = [];
+        private List<SelectableItem> _selectableReviewers = [];
 
-        public ICollection<SelectableItem> SelectableReviewers
+        public List<SelectableItem> SelectableReviewers
         {
             get => _selectableReviewers;
             set => SetProperty(ref _selectableReviewers, value);
@@ -33,8 +33,8 @@ namespace JitHub.WinUI.ViewModels.IssueViewModels
 
         #region assignee
         private readonly Dictionary<string, User> _assignees = [];
-        private ICollection<SelectableItem> _selectableAssignees = [];
-        public ICollection<SelectableItem> SelectableAssignees
+        private List<SelectableItem> _selectableAssignees = [];
+        public List<SelectableItem> SelectableAssignees
         {
             get => _selectableAssignees;
             set => SetProperty(ref _selectableAssignees, value);
@@ -43,15 +43,15 @@ namespace JitHub.WinUI.ViewModels.IssueViewModels
 
         #region label
         private readonly Dictionary<long, Label> _labels = [];
-        private ICollection<SelectableItem> _selectableLabels = [];
-        public ICollection<SelectableItem> SelectableLabels
+        private List<SelectableItem> _selectableLabels = [];
+        public List<SelectableItem> SelectableLabels
         {
             get => _selectableLabels;
             set => SetProperty(ref _selectableLabels, value);
         }
         #endregion
 
-        public ICollection<IssueSidePanelItem> Items
+        public List<IssueSidePanelItem> Items
         {
             get => _items;
             set => SetProperty(ref _items, value);

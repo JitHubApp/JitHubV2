@@ -16,11 +16,11 @@ namespace JitHub.WinUI.Converters.Issues
         {
             if (value is not Dictionary<ReactionType, ICollection<string>> userReactions || parameter is not string reactionName)
             {
-                return Array.Empty<string>();
+                return new List<string>();
             }
 
             var type = reactionName.ToReactionType();
-            return userReactions.GetValueOrDefault(type) ?? Array.Empty<string>();
+            return userReactions.GetValueOrDefault(type)?.ToList() ?? new List<string>();
         }
 
         public object ConvertBack(object value, Type targetType, object parameter, string language)

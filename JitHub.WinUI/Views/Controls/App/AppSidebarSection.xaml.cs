@@ -3,6 +3,7 @@ using Microsoft.UI.Xaml.Controls;
 
 namespace JitHub.WinUI.Views.Controls.App;
 
+[WinRT.GeneratedBindableCustomProperty]
 public sealed partial class AppSidebarSection : UserControl
 {
     public static readonly DependencyProperty TitleProperty = DependencyProperty.Register(nameof(Title), typeof(string), typeof(AppSidebarSection), new PropertyMetadata(string.Empty));

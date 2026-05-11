@@ -15,9 +15,10 @@ using JitHub.WinUI.Views.Pages;
 
 namespace JitHub.WinUI.ViewModels
 {
-    public class SettingsViewModel : ObservableObject
+    [WinRT.GeneratedBindableCustomProperty]
+    public partial class SettingsViewModel : ObservableObject
     {
-        private ICollection<string> _themes = [];
+        private IList<string> _themes = new List<string>();
         private string _selectedTheme = ThemeConst.System;
         private bool _restartRequired;
         private readonly IThemeService _themeService;
@@ -27,7 +28,7 @@ namespace JitHub.WinUI.ViewModels
         private string _version = string.Empty;
         private int _clickedTime;
 
-        public ICollection<string> Themes
+        public IList<string> Themes
         {
             get => _themes;
             set => SetProperty(ref _themes, value);

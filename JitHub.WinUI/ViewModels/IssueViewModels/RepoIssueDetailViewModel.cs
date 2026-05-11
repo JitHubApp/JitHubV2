@@ -26,13 +26,13 @@ namespace JitHub.WinUI.ViewModels.IssueViewModels
         private readonly NavigationService _navigationService;
         private readonly ModalService _modalService;
         private readonly ICommandService _commandService;
-        private ICollection<UserCommentBlockViewModel> _comments = [];
+        private List<UserCommentBlockViewModel> _comments = [];
         private IssueSideBarViewModel _sideBarViewModel = null!;
         private string _text = string.Empty;
         private string _closeButtonText = string.Empty;
         private bool _userIsCollaborator;
 
-        public ICollection<UserCommentBlockViewModel> Comments
+        public List<UserCommentBlockViewModel> Comments
         {
             get => _comments;
             set => SetProperty(ref _comments, value);

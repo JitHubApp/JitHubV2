@@ -27,6 +27,7 @@ namespace JitHub.WinUI.Views.Controls.PullRequest
                 self.DataContext = self.ViewModel;
                 self.ViewModel.Frame = self.RepoPullRequestDetailFrame;
                 self.ViewModel.GoToConversationPage();
+                self.Bindings.Update();
                 //loading things
             }
         }

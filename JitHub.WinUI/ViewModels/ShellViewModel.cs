@@ -43,7 +43,7 @@ namespace JitHub.WinUI.ViewModels
         private bool _useHeader;
         private ObservableCollection<TabViewItem> _pages = [];
         private TabViewItem? _selectedTab;
-        private ICollection<GitHubRepository> _searchResults = [];
+        private List<GitHubRepository> _searchResults = [];
         private int _slideUpPanelHeight;
         private bool _searching;
         private IDisposable? _searchSubscription;
@@ -80,7 +80,7 @@ namespace JitHub.WinUI.ViewModels
             get => _selectedTab;
             set => SetProperty(ref _selectedTab, value);
         }
-        public ICollection<GitHubRepository> SearchResults
+        public List<GitHubRepository> SearchResults
         {
             get => _searchResults;
             set => SetProperty(ref _searchResults, value);

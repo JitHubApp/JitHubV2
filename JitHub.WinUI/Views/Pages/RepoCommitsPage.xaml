@@ -45,10 +45,7 @@
             SelectionChanged="{x:Bind ViewModel.SelectionChanged, Mode=OneWay}">
             <controls:ListDetailsView.ItemTemplate>
                 <DataTemplate>
-                    <Grid>
-                        <commit:CommitItem
-                            ViewModel="{Binding Item, Mode=OneWay}"/>
-                    </Grid>
+                    <commit:CommitListDetailsItemPresenter Item="{Binding Mode=OneWay}"/>
                 </DataTemplate>
             </controls:ListDetailsView.ItemTemplate>
             <controls:ListDetailsView.NoSelectionContentTemplate>
@@ -73,11 +70,7 @@
             </controls:ListDetailsView.NoSelectionContentTemplate>
             <controls:ListDetailsView.DetailsTemplate>
                 <DataTemplate>
-                    <Grid
-                        Padding="4">
-                        <commit:CommitDetail
-                            Commit="{Binding Item, Mode=OneWay}"/>
-                    </Grid>
+                    <commit:CommitListDetailsDetailPresenter Item="{Binding Mode=OneWay}"/>
                 </DataTemplate>
             </controls:ListDetailsView.DetailsTemplate>
         </controls:ListDetailsView>

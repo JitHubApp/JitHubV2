@@ -16,9 +16,8 @@ public sealed partial class CommitDetail : UserControl
 
     private static void OnCommitChanged(DependencyObject d, DependencyPropertyChangedEventArgs e)
     {
-        if (d is CommitDetail self && e.NewValue != null)
+        if (d is CommitDetail self && e.NewValue is CommandableCommit commit)
         {
-            var commit = self.DataContext as CommandableCommit;
             self.DetailPageFrame.Navigate(typeof(RepoCommitDetailPage), commit);
         }
     }

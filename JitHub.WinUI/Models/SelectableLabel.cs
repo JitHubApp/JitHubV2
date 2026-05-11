@@ -4,7 +4,8 @@ using System.Windows.Input;
 
 namespace JitHub.Models
 {
-    public class SelectableLabel : SelectableItem
+    [WinRT.GeneratedBindableCustomProperty]
+    public partial class SelectableLabel : SelectableItem
     {
         private Label _label = null!;
 

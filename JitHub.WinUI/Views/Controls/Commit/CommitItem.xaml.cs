@@ -27,6 +27,7 @@ namespace JitHub.WinUI.Views.Controls.Commit
             if (d is CommitItem self && e.NewValue != null)
             {
                 self.DataContext = e.NewValue;
+                self.Bindings.Update();
             }
         }
 

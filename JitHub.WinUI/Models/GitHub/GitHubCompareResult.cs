@@ -2,7 +2,8 @@ using System.Text.Json.Serialization;
 
 namespace JitHub.Models.GitHub;
 
-public sealed class GitHubCompareResult
+[WinRT.GeneratedBindableCustomProperty]
+public sealed partial class GitHubCompareResult
 {
     [JsonPropertyName("status")]
     public string? Status { get; set; }

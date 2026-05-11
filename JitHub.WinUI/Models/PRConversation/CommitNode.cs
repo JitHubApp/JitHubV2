@@ -2,7 +2,8 @@ using JitHub.Models.LegacyGitHub;
 
 namespace JitHub.Models.PRConversation
 {
-    public class CommitNode : ConversationNode
+    [WinRT.GeneratedBindableCustomProperty]
+    public partial class CommitNode : ConversationNode
     {
         public string NodeId { get; set; }
         public User Author { get; set; }

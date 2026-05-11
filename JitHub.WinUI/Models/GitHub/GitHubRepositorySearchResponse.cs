@@ -2,7 +2,8 @@ using System.Text.Json.Serialization;
 
 namespace JitHub.Models.GitHub;
 
-public sealed class GitHubRepositorySearchResponse
+[WinRT.GeneratedBindableCustomProperty]
+public sealed partial class GitHubRepositorySearchResponse
 {
     [JsonPropertyName("items")]
     public GitHubRepository[] Items { get; init; } = [];

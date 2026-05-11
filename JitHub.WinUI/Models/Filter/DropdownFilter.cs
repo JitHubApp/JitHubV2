@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 using System.Collections.Generic;
 using System.Collections.ObjectModel;
 using System.Linq;
@@ -7,10 +7,11 @@ using System.Threading.Tasks;
 
 namespace JitHub.Models.Filter
 {
-    public class DropdownFilter : FilterUnit
+    [WinRT.GeneratedBindableCustomProperty]
+    public partial class DropdownFilter : FilterUnit
     {
         private bool _editable;
-        private ICollection<Selection> _selections = new ObservableCollection<Selection>();
+        private ObservableCollection<Selection> _selections = new();
         private Selection _selected = null!;
         private Selection _defaultSelection = null!;
         public bool Editable
@@ -18,7 +19,7 @@ namespace JitHub.Models.Filter
             get => _editable;
             set => SetProperty(ref _editable, value);
         }
-        public ICollection<Selection> Selections
+        public ObservableCollection<Selection> Selections
         {
             get => _selections;
             set => SetProperty(ref _selections, value);

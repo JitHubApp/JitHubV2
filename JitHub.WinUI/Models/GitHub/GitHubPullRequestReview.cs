@@ -3,7 +3,8 @@ using System.Text.Json.Serialization;
 
 namespace JitHub.Models.GitHub;
 
-public sealed class GitHubPullRequestReview
+[WinRT.GeneratedBindableCustomProperty]
+public sealed partial class GitHubPullRequestReview
 {
     [JsonPropertyName("node_id")]
     public string? NodeId { get; set; }
@@ -39,7 +40,8 @@ public sealed class GitHubPullRequestReview
     public GitHubReactionSummary Reactions { get; set; } = new();
 }
 
-public sealed class GitHubPullRequestReviewComment
+[WinRT.GeneratedBindableCustomProperty]
+public sealed partial class GitHubPullRequestReviewComment
 {
     [JsonPropertyName("node_id")]
     public string? NodeId { get; set; }

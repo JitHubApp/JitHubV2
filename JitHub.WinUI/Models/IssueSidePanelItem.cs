@@ -1,18 +1,20 @@
-﻿using JitHub.Models.Base;
+using JitHub.Models.Base;
 using System.Collections.Generic;
+using System.Linq;
 
 namespace JitHub.Models
 {
-    public class IssueSidePanelItem
+    [WinRT.GeneratedBindableCustomProperty]
+    public partial class IssueSidePanelItem
     {
         public string Header { get; }
-        public ICollection<SelectableItem> Items { get; }
+        public List<SelectableItem> Items { get; }
         public bool Show { get; }
 
-        public IssueSidePanelItem(string header, ICollection<SelectableItem> items)
+        public IssueSidePanelItem(string header, IEnumerable<SelectableItem> items)
         {
             Header = header;
-            Items = items ?? [];
+            Items = items?.ToList() ?? new List<SelectableItem>();
             Show = Items.Count > 0;
         }
     }

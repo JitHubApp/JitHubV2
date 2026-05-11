@@ -3,7 +3,8 @@ using System.Text.Json.Serialization;
 
 namespace JitHub.Models.GitHub;
 
-public sealed class GitHubIssue
+[WinRT.GeneratedBindableCustomProperty]
+public sealed partial class GitHubIssue
 {
     [JsonPropertyName("id")]
     public long Id { get; set; }
@@ -56,13 +57,15 @@ public sealed class GitHubIssue
     public bool IsPullRequest => PullRequest is not null;
 }
 
-public sealed class GitHubIssuePullRequestMarker
+[WinRT.GeneratedBindableCustomProperty]
+public sealed partial class GitHubIssuePullRequestMarker
 {
     [JsonPropertyName("html_url")]
     public string? HtmlUrl { get; set; }
 }
 
-public sealed class GitHubLabel
+[WinRT.GeneratedBindableCustomProperty]
+public sealed partial class GitHubLabel
 {
     [JsonPropertyName("id")]
     public long Id { get; set; }
@@ -77,7 +80,8 @@ public sealed class GitHubLabel
     public string? Description { get; set; }
 }
 
-public sealed class GitHubMilestone
+[WinRT.GeneratedBindableCustomProperty]
+public sealed partial class GitHubMilestone
 {
     [JsonPropertyName("number")]
     public int Number { get; set; }

@@ -1,23 +1,9 @@
 <ResourceDictionary
     xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
     xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
-    >
+    xmlns:filtercontrols="using:JitHub.WinUI.Views.Controls.Filter">
     <DataTemplate x:Key="DateFilter">
-        <Grid>
-            <CalendarDatePicker
-                x:Name="SinceDatePicker"
-                Style="{StaticResource CalendarDatePicker}"
-                MinWidth="150"
-                Header="{Binding Title, Mode=OneWay}"
-                Date="{Binding StartDate, Mode=TwoWay}"
-                PlaceholderText="{Binding Placeholder, Mode=OneWay}">
-                <CalendarDatePicker.HeaderTemplate>
-                    <DataTemplate>
-                        <TextBlock Style="{StaticResource SectionSecondaryTextBlockStyle}" Text="{Binding Mode=OneWay}" />
-                    </DataTemplate>
-                </CalendarDatePicker.HeaderTemplate>
-            </CalendarDatePicker>
-        </Grid>
+        <filtercontrols:DateFilterPresenter Filter="{Binding Mode=OneWay}" />
     </DataTemplate>
 </ResourceDictionary>
 

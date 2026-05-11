@@ -3,6 +3,7 @@
     xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
     xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
     xmlns:local="using:JitHub.WinUI.Views.Controls.PullRequest"
+    xmlns:legacy="using:JitHub.Models.LegacyGitHub"
     xmlns:prviewmodels="using:JitHub.WinUI.ViewModels.PullRequestViewModels"
     xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
     xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
@@ -192,15 +193,15 @@
                 <muxc:ItemsRepeater
                     ItemsSource="{x:Bind ViewModel.CompareResult.Files, Mode=OneWay}">
                     <muxc:ItemsRepeater.ItemTemplate>
-                        <DataTemplate>
+                        <DataTemplate x:DataType="legacy:GitHubCommitFile">
                             <Grid>
                                 <common:CommentBlock>
                                     <common:CommentBlock.HeaderContent>
-                                        <TextBlock Text="{Binding Filename, Mode=OneWay}"/>
+                                        <TextBlock Text="{x:Bind Filename, Mode=OneWay}"/>
                                     </common:CommentBlock.HeaderContent>
                                     <common:CommentBlock.BodyContent>
                                         <local:DiffTextBlock
-                                        Patch="{Binding Patch, Mode=OneWay}"/>
+                                        Patch="{x:Bind Patch, Mode=OneWay}"/>
                                     </common:CommentBlock.BodyContent>
                                 </common:CommentBlock>
                             </Grid>

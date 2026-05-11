@@ -13,7 +13,7 @@ namespace JitHub.WinUI.Views.Controls
             "Size",
             typeof(UISize),
             typeof(UserCommentBlock),
-            new PropertyMetadata(UISize.BIG, null));
+            new PropertyMetadata(UISize.BIG, OnSizeChanged));
 
         public static DependencyProperty ViewModelProperty = DependencyProperty.Register(
             nameof(ViewModel),
@@ -30,6 +30,16 @@ namespace JitHub.WinUI.Views.Controls
                 {
                     self._loadedViewModel = null;
                 }
+
+                self.Bindings.Update();
+            }
+        }
+
+        private static void OnSizeChanged(DependencyObject d, DependencyPropertyChangedEventArgs e)
+        {
+            if (d is UserCommentBlock self)
+            {
+                self.Bindings.Update();
             }
         }
         

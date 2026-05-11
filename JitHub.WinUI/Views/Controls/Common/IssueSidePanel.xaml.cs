@@ -27,6 +27,8 @@ namespace JitHub.WinUI.Views.Controls.Common
                 {
                     self._loadedViewModel = null;
                 }
+
+                self.Bindings.Update();
             }
         }
 

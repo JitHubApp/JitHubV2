@@ -4,7 +4,8 @@ using System.Windows.Input;
 
 namespace JitHub.Models
 {
-    public class SelectableUser : SelectableItem
+    [WinRT.GeneratedBindableCustomProperty]
+    public partial class SelectableUser : SelectableItem
     {
         public string Login { get; set; } = string.Empty;
         public string AvatarUrl { get; set; } = string.Empty;

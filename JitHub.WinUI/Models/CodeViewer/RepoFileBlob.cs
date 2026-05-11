@@ -1,6 +1,7 @@
 namespace JitHub.Models.CodeViewer;
 
-public sealed class RepoFileBlob
+[WinRT.GeneratedBindableCustomProperty]
+public sealed partial class RepoFileBlob
 {
     public string? Sha { get; init; }
     public string? Encoding { get; init; }

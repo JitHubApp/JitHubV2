@@ -14,14 +14,14 @@ namespace JitHub.WinUI.Views.Controls.Common
             nameof(TextContent),
             typeof(string),
             typeof(SidePanelDropDown),
-            new PropertyMetadata(default(string), null)
+            new PropertyMetadata(default(string), OnBindablePropertyChanged)
         );
 
         public static DependencyProperty FlyoutProperty = DependencyProperty.Register(
             nameof(Flyout),
             typeof(FrameworkElement),
             typeof(SidePanelDropDown),
-            new PropertyMetadata(default(FrameworkElement), null)
+            new PropertyMetadata(default(FrameworkElement), OnBindablePropertyChanged)
         );
 
         public string TextContent
@@ -39,6 +39,14 @@ namespace JitHub.WinUI.Views.Controls.Common
         public SidePanelDropDown()
         {
             this.InitializeComponent();
+        }
+
+        private static void OnBindablePropertyChanged(DependencyObject d, DependencyPropertyChangedEventArgs e)
+        {
+            if (d is SidePanelDropDown self)
+            {
+                self.Bindings.Update();
+            }
         }
     }
 }

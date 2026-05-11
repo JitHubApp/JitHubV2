@@ -1,3 +1,4 @@
+using System;
 using System.Collections.Generic;
 using System.Windows.Input;
 using JitHub.Models.GitHub;
@@ -24,7 +25,8 @@ public enum ActivityCardTone
     Purple
 }
 
-public sealed class ActivityNavigationTarget
+[WinRT.GeneratedBindableCustomProperty]
+public sealed partial class ActivityNavigationTarget
 {
     public ActivityNavigationTargetKind Kind { get; set; }
 
@@ -43,7 +45,8 @@ public sealed class ActivityNavigationTarget
     public GitHubRepository? Repository { get; set; }
 }
 
-public sealed class ActivityCardActionViewModel
+[WinRT.GeneratedBindableCustomProperty]
+public sealed partial class ActivityCardActionViewModel
 {
     public string Label { get; set; } = string.Empty;
 
@@ -54,7 +57,8 @@ public sealed class ActivityCardActionViewModel
     public ICommand? Command { get; set; }
 }
 
-public sealed class ActivityCardDetailViewModel
+[WinRT.GeneratedBindableCustomProperty]
+public sealed partial class ActivityCardDetailViewModel
 {
     public string Text { get; set; } = string.Empty;
 
@@ -63,7 +67,8 @@ public sealed class ActivityCardDetailViewModel
     public bool IsEmphasized { get; set; }
 }
 
-public sealed class ActivitySentencePartViewModel
+[WinRT.GeneratedBindableCustomProperty]
+public sealed partial class ActivitySentencePartViewModel
 {
     public string Text { get; set; } = string.Empty;
 
@@ -80,7 +85,8 @@ public sealed class ActivitySentencePartViewModel
         && Command is not null;
 }
 
-public sealed class ActivityCardViewModel
+[WinRT.GeneratedBindableCustomProperty]
+public sealed partial class ActivityCardViewModel
 {
     public string EventId { get; set; } = string.Empty;
 
@@ -102,13 +108,13 @@ public sealed class ActivityCardViewModel
 
     public ActivityCardTone Tone { get; set; }
 
-    public IReadOnlyList<ActivitySentencePartViewModel> SentenceParts { get; set; } = [];
+    public List<ActivitySentencePartViewModel> SentenceParts { get; set; } = [];
 
-    public IReadOnlyList<ActivityCardDetailViewModel> Details { get; set; } = [];
+    public List<ActivityCardDetailViewModel> Details { get; set; } = [];
 
-    public IReadOnlyList<ActivityCardActionViewModel> Actions { get; set; } = [];
+    public List<ActivityCardActionViewModel> Actions { get; set; } = [];
 
-    public IReadOnlyList<ActivityNavigationTarget> UnsupportedTodos { get; set; } = [];
+    public List<ActivityNavigationTarget> UnsupportedTodos { get; set; } = [];
 
     public bool HasDetails => Details.Count > 0;
 

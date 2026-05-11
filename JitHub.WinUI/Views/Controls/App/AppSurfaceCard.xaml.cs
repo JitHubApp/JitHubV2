@@ -4,6 +4,7 @@ using Microsoft.UI.Xaml.Controls;
 
 namespace JitHub.WinUI.Views.Controls.App;
 
+[WinRT.GeneratedBindableCustomProperty]
 public sealed partial class AppSurfaceCard : UserControl
 {
     public static readonly DependencyProperty ChildProperty = DependencyProperty.Register(

@@ -6,6 +6,7 @@
     xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
     xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
     xmlns:muxc="using:Microsoft.UI.Xaml.Controls" xmlns:pullrequest="using:JitHub.WinUI.Views.Controls.PullRequest" xmlns:controls="using:JitHub.WinUI.Views.Controls" xmlns:common="using:JitHub.WinUI.Views.Controls.Common"
+    xmlns:viewmodels="using:JitHub.WinUI.ViewModels.PullRequestViewModels.ConversationViewModels"
     mc:Ignorable="d"
     d:DesignHeight="300"
     d:DesignWidth="400">
@@ -38,9 +39,9 @@
                 <muxc:ItemsRepeater
                     ItemsSource="{x:Bind ViewModel.Blocks, Mode=OneWay}">
                     <muxc:ItemsRepeater.ItemTemplate>
-                        <DataTemplate>
+                        <DataTemplate x:DataType="viewmodels:ReviewCommentViewModel">
                             <Grid>
-                                <local:ReviewCommentBlock ViewModel="{Binding Item, Mode=OneWay}"/>
+                                <local:ReviewCommentBlock ViewModel="{x:Bind Mode=OneWay}"/>
                             </Grid>
                         </DataTemplate>
                     </muxc:ItemsRepeater.ItemTemplate>

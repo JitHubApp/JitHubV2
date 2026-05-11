@@ -28,10 +28,10 @@ namespace JitHub.WinUI.Views.Controls.Repo
         public ICommand CancelCommand { get; }
         public RepoDeleteConfirmationDialog(int number, ICommand confirmCommand, ICommand cancelCommand)
         {
-            this.InitializeComponent();
             Number = number;
             ConfirmCommand = confirmCommand;
             CancelCommand = cancelCommand;
+            this.InitializeComponent();
             _settings = Ioc.Default.GetService<ISettingService>()
                 ?? throw new InvalidOperationException("ISettingService is not registered.");
         }

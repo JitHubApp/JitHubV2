@@ -1,9 +1,10 @@
-﻿namespace JitHub.Models
+namespace JitHub.Models
 {
-    public class FailedRepo
+    [WinRT.GeneratedBindableCustomProperty]
+    public partial class FailedRepo
     {
         public RepoModel Repo { get; set; }
-        public string Reason { get; set; }
+        public string Reason { get; set; } = string.Empty;
         public FailedRepo(RepoModel repo, string reason)
         {
             Repo = repo;

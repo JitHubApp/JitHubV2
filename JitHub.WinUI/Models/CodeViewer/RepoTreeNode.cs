@@ -2,7 +2,8 @@ using System.Collections.Generic;
 
 namespace JitHub.Models.CodeViewer;
 
-public sealed class RepoTreeNode
+[WinRT.GeneratedBindableCustomProperty]
+public sealed partial class RepoTreeNode
 {
     public string Name { get; init; } = string.Empty;
     public string Path { get; init; } = string.Empty;

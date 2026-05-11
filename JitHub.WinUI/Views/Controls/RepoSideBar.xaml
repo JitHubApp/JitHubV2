@@ -8,6 +8,7 @@
     xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
     xmlns:enum="using:JitHub.Models.Base"
     xmlns:helpers="using:JitHub.WinUI.Helpers"
+    xmlns:models="using:JitHub.Models"
     xmlns:appcontrols="using:JitHub.WinUI.Views.Controls.App"
     xmlns:local="using:JitHub.WinUI.Views"
     xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
@@ -23,11 +24,74 @@
         <repoviewmodels:RepoSideBarViewModel x:Name="ViewModel" />
     </UserControl.DataContext>
     <UserControl.Resources>
+        <DataTemplate
+            x:Key="SideBarPublicRepoTemplate"
+            x:DataType="models:RepoModel">
+            <Button
+                Margin="0,0,4,0"
+                HorizontalAlignment="Stretch"
+                HorizontalContentAlignment="Stretch"
+                Background="Transparent"
+                BorderThickness="0"
+                Command="{x:Bind DetailNavigationCommand, Mode=OneWay}"
+                Style="{StaticResource AppQuietButtonStyle}">
+                <StackPanel Orientation="Horizontal" Spacing="4">
+                    <appcontrols:AppIcon
+                        VerticalAlignment="Center"
+                        IconBrush="{ThemeResource AppInkMutedBrush}"
+                        IconKind="PublicRepository"
+                        IconSize="16" />
+                    <TextBlock VerticalAlignment="Center" Text="{x:Bind Name, Mode=OneWay}" />
+                </StackPanel>
+            </Button>
+        </DataTemplate>
+        <DataTemplate
+            x:Key="SideBarPrivateRepoTemplate"
+            x:DataType="models:RepoModel">
+            <Button
+                Margin="0,0,4,0"
+                HorizontalAlignment="Stretch"
+                HorizontalContentAlignment="Stretch"
+                Background="Transparent"
+                BorderThickness="0"
+                Command="{x:Bind DetailNavigationCommand, Mode=OneWay}"
+                Style="{StaticResource AppQuietButtonStyle}">
+                <StackPanel Orientation="Horizontal" Spacing="4">
+                    <appcontrols:AppIcon
+                        VerticalAlignment="Center"
+                        IconBrush="{ThemeResource PrivateRepoBrush}"
+                        IconKind="PrivateRepository"
+                        IconSize="16" />
+                    <TextBlock VerticalAlignment="Center" Text="{x:Bind Name, Mode=OneWay}" />
+                </StackPanel>
+            </Button>
+        </DataTemplate>
+        <DataTemplate
+            x:Key="SideBarForkRepoTemplate"
+            x:DataType="models:RepoModel">
+            <Button
+                Margin="0,0,4,0"
+                HorizontalAlignment="Stretch"
+                HorizontalContentAlignment="Stretch"
+                Background="Transparent"
+                BorderThickness="0"
+                Command="{x:Bind DetailNavigationCommand, Mode=OneWay}"
+                Style="{StaticResource AppQuietButtonStyle}">
+                <StackPanel Orientation="Horizontal" Spacing="4">
+                    <appcontrols:AppIcon
+                        VerticalAlignment="Center"
+                        IconBrush="{ThemeResource AppInkMutedBrush}"
+                        IconKind="Fork"
+                        IconSize="16" />
+                    <TextBlock VerticalAlignment="Center" Text="{x:Bind Name, Mode=OneWay}" />
+                </StackPanel>
+            </Button>
+        </DataTemplate>
         <helpers:RepoIconTemplateSelector
             x:Key="SimpleRepoTemplate"
-            ForkTemplate="{StaticResource ForkRepo}"
-            PrivateTemplate="{StaticResource PrivateRepo}"
-            PublicTemplate="{StaticResource PublicRepo}" />
+            ForkTemplate="{StaticResource SideBarForkRepoTemplate}"
+            PrivateTemplate="{StaticResource SideBarPrivateRepoTemplate}"
+            PublicTemplate="{StaticResource SideBarPublicRepoTemplate}" />
     </UserControl.Resources>
     <appcontrols:AppSidebarSection
         HorizontalAlignment="Stretch"
