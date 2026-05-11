@@ -942,7 +942,7 @@ public sealed partial class MarkdownRendererControl : UserControl
 
     private void OnPointerPressed(object sender, PointerRoutedEventArgs e)
     {
-        if (!IsSelectionEnabled || _snapshot is null || _canvas is null) return;
+        if (_snapshot is null || _canvas is null) return;
         // Only process left (primary) button presses; right-clicks are handled by
         // OnRightTapped and must not affect the multi-click counter or selection anchor.
         if (!e.GetCurrentPoint(_canvas).Properties.IsLeftButtonPressed) return;
@@ -995,11 +995,20 @@ public sealed partial class MarkdownRendererControl : UserControl
             // same spot doesn't corrupt the double/triple-click timing window.
             _lastPressTickMs = nowMs;
             _lastPressPoint  = pt;
+            _leftPointerCaptured = true; // set only on HitTest success so release events don't misfire
+
+            if (!IsSelectionEnabled)
+            {
+                // Selection is disabled but links must still work: capture the pointer
+                // so OnPointerReleased fires and can raise LinkClick.
+                if (!_canvas.CapturePointer(e.Pointer)) _leftPointerCaptured = false;
+                return;
+            }
+
             // Always arm the anchor first: this suppresses hover processing
             // in OnPointerMoved during any captured drag (single, double, or triple-click)
             // and prevents a stale anchor from an earlier interaction being reused.
             _selectionAnchor = pos;
-            _leftPointerCaptured = true; // set only on HitTest success so release events don't misfire
 
             if (_consecutiveClickCount == 3)
             {
@@ -1488,6 +1497,7 @@ public sealed partial class MarkdownRendererControl : UserControl
         // Click handling for links: if no real selection occurred, raise LinkClick
         // when the click lands on a LinkRun.
         if (_snapshot is null) return;
+        if (_clickMode != ClickMode.Single) return; // double/triple-click: selection intent, not link-click
         if (!_selection.Range.Normalized().IsEmpty) return; // text was dragged — not a click
         var pt = e.GetCurrentPoint(_canvas).Position;
         if (_snapshot.HitTest(pt, out var pos))

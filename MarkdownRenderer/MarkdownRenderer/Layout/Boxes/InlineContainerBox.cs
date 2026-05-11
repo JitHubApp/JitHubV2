@@ -90,7 +90,7 @@ public sealed class InlineContainerBox : BlockBox
         {
             int len = _runs[i].Text.Length;
             if (bufOffset < offset + len)
-                return new DocumentPosition(BlockIndex, i, bufOffset - offset);
+                return new DocumentPosition(BlockIndex, _runs[i].InlineIndex, bufOffset - offset);
             // At exact run boundary: prefer start of next run (continue loop).
             offset += len;
         }
@@ -401,6 +401,10 @@ public sealed class InlineContainerBox : BlockBox
             if (charIndex < cumulative + len) return run;
             cumulative += len;
         }
+        // charIndex >= total buffer length (trailing-edge of last run): return last run
+        // so hover-cursor and highlight match the hit-test behaviour that maps this
+        // position to the last run's DocumentPosition.
+        if (_runs.Count > 0) return _runs[_runs.Count - 1];
         return null;
     }
 
