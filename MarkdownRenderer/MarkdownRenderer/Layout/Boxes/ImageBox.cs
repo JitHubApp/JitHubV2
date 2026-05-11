@@ -277,7 +277,14 @@ public sealed class ImageBox : BlockBox
                         LoadCompleted?.Invoke(this, new LoadCompletedEventArgs(layoutInvalidated: failed && _loadFailed));
                     }
                     if (dispatcher is not null && !dispatcher.HasThreadAccess)
-                        dispatcher.TryEnqueue(Publish);
+                    {
+                        if (!dispatcher.TryEnqueue(Publish))
+                        {
+                            // Dispatcher shutting down; release the freshly-
+                            // parsed document so it doesn't leak.
+                            try { doc?.Dispose(); } catch { }
+                        }
+                    }
                     else
                         Publish();
                 });
@@ -403,7 +410,8 @@ public sealed class ImageBox : BlockBox
                 _bitmapCache[_url] = bmp;
             }
             LoadCompleted?.Invoke(this, new LoadCompletedEventArgs(layoutInvalidated: true));
-        });
+        },
+        onDropped: () => { try { bmp?.Dispose(); } catch { } });
     }
 
     private async Task LoadSvgAsync(Uri uri)
@@ -491,7 +499,8 @@ public sealed class ImageBox : BlockBox
                 if (doc is not null) _svg = doc;
             }
             LoadCompleted?.Invoke(this, new LoadCompletedEventArgs(layoutInvalidated: true));
-        });
+        },
+        onDropped: () => { try { doc?.Dispose(); } catch { } });
     }
 
     // Runs `publish` on the UI dispatcher when one is configured and we are
@@ -499,13 +508,21 @@ public sealed class ImageBox : BlockBox
     // the paint-thread reparse Publish() path so that all field writes +
     // LoadCompleted invocations happen on the UI thread under
     // happens-before with Dispose().
-    private void PublishOnUiThread(Action publish)
+    private void PublishOnUiThread(Action publish, Action? onDropped = null)
     {
         var dispatcher = _context.Dispatcher;
         if (dispatcher is not null && !dispatcher.HasThreadAccess)
-            dispatcher.TryEnqueue(() => publish());
+        {
+            // TryEnqueue returns false during dispatcher shutdown. Invoke
+            // onDropped so the caller can dispose any freshly-allocated
+            // native resources captured by the publish closure.
+            if (!dispatcher.TryEnqueue(() => publish()))
+                onDropped?.Invoke();
+        }
         else
+        {
             publish();
+        }
     }
 
     /// <summary>Test hook: clears the static failed-URL latch so tests don't
