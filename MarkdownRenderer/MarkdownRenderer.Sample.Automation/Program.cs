@@ -336,11 +336,15 @@ internal static class Program
         Thread.Sleep(600);
 
         // The context menu is a flyout; look for it in the UIA tree as a child of
-        // the window (not the renderer itself).
-        var root = renderer;
-        while (root.Parent is not null) root = root.Parent;
+        // the window (not the renderer itself). Stop at the window boundary — not the
+        // desktop root — to avoid searching the entire desktop for MenuItems, which is
+        // slow and can return false positives from unrelated open menus.
+        var winRoot = renderer;
+        while (winRoot.Parent is not null
+               && winRoot.ControlType != FlaUI.Core.Definitions.ControlType.Window)
+            winRoot = winRoot.Parent;
 
-        var menuItems = root.FindAllDescendants(cf => cf.ByControlType(ControlType.MenuItem));
+        var menuItems = winRoot.FindAllDescendants(cf => cf.ByControlType(ControlType.MenuItem));
         // MenuFlyout items may not always appear in the UIA tree on all systems,
         // so we treat them as a bonus — but the renderer must survive the click.
 

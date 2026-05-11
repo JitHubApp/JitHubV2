@@ -1,3 +1,4 @@
+using System.Linq;
 using System.Text;
 using Markdig.Extensions.Footnotes;
 using MarkdownRenderer.Layout;
@@ -22,15 +23,26 @@ public sealed class FootnoteRenderer : MarkdownNodeRenderer<FootnoteGroup>
             Margin = new Thickness(0, 8, 0, 8),
         };
 
+        // Collect all Markdig-assigned orders so fallback values never collide with them.
+        var assignedOrders = new System.Collections.Generic.HashSet<int>(
+            group.OfType<Footnote>().Where(f => f.Order > 0).Select(f => f.Order));
         int fallbackOrder = 0;
         foreach (var item in group)
         {
             if (item is not Footnote footnote) continue;
 
-            fallbackOrder++;
-            // footnote.Order is 1-based when Markdig assigns it; fall back to loop index
-            // so each footnote gets a unique order even when Markdig leaves Order at 0.
-            int order = footnote.Order > 0 ? footnote.Order : fallbackOrder;
+            int order;
+            if (footnote.Order > 0)
+            {
+                order = footnote.Order;
+            }
+            else
+            {
+                // Footnote has no Markdig-assigned order; derive a unique fallback
+                // value by skipping any integer already used by assigned footnotes.
+                do { fallbackOrder++; } while (assignedOrders.Contains(fallbackOrder));
+                order = fallbackOrder;
+            }
 
             // Superscript index marker — no explicit ElementKey so it inherits Body style.
             string superscript = ToSuperscript(order);

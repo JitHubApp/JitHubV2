@@ -987,12 +987,14 @@ public sealed partial class MarkdownRendererControl : UserControl
         }
         else
             _consecutiveClickCount = 1;
-        _lastPressTickMs = nowMs;
-        _lastPressPoint  = pt;
 
         Focus(FocusState.Pointer);
         if (_snapshot.HitTest(pt, out var pos))
         {
+            // Advance clock/position only on successful text hits so a miss in the
+            // same spot doesn't corrupt the double/triple-click timing window.
+            _lastPressTickMs = nowMs;
+            _lastPressPoint  = pt;
             // Always arm the anchor first: this suppresses hover processing
             // in OnPointerMoved during any captured drag (single, double, or triple-click)
             // and prevents a stale anchor from an earlier interaction being reused.
@@ -1024,9 +1026,13 @@ public sealed partial class MarkdownRendererControl : UserControl
         else
         {
             // HitTest missed (pointer landed on a gap or embed area).
-            // Reset the click counter so this miss isn't counted toward a
-            // future double/triple-click on a text run at the same spot.
+            // Reset click state so this miss isn't counted toward a future
+            // double/triple-click; also reset timing so a miss→text sequence
+            // never misclassifies as a double-click.
             _consecutiveClickCount = 0;
+            _lastPressTickMs = 0;
+            _lastPressPoint  = default;
+            _selectionAnchor = null; // defensive: clear any stale anchor from a prior capture loss
             _selection.Clear();
             _canvas.Invalidate();
         }
@@ -1090,6 +1096,8 @@ public sealed partial class MarkdownRendererControl : UserControl
                         else
                         { _selection.SetAnchor(_dragAnchorStart); _selection.ExtendTo(we); }
                     }
+                    else
+                        _selection.ExtendTo(pos); // no ICB (code block/embed) — fall back to char selection
                 }
                 else if (_clickMode == ClickMode.Block)
                 {
@@ -1102,6 +1110,8 @@ public sealed partial class MarkdownRendererControl : UserControl
                         else
                         { _selection.SetAnchor(_dragAnchorStart); _selection.ExtendTo(be); }
                     }
+                    else
+                        _selection.ExtendTo(pos); // no ICB — fall back to char selection
                 }
                 else
                     _selection.ExtendTo(pos);
@@ -1465,15 +1475,14 @@ public sealed partial class MarkdownRendererControl : UserControl
     private void OnPointerReleased(object sender, PointerRoutedEventArgs e)
     {
         if (_canvas is null) return;
-        _canvas.ReleasePointerCapture(e.Pointer);
 
-        // Only process left (primary) button releases for link-click and anchor clear.
-        // Right-button releases are handled by OnRightTapped; letting them through
-        // would fire LinkClick on a right-click-over-link.
-        // We detect this via _leftPointerCaptured which is set only for left-button presses.
+        // Snapshot BEFORE releasing capture: ReleasePointerCapture can dispatch
+        // PointerCaptureLost synchronously (which calls OnPointerExited and sets
+        // _leftPointerCaptured = false), so we must read the flag first.
         bool wasLeft = _leftPointerCaptured;
         _leftPointerCaptured = false;
         _selectionAnchor = null;
+        _canvas.ReleasePointerCapture(e.Pointer);
         if (!wasLeft) return;
 
         // Click handling for links: if no real selection occurred, raise LinkClick

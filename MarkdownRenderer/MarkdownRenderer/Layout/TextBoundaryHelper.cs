@@ -32,7 +32,7 @@ public static class TextBoundaryHelper
                 if (fwd < buffer.Length)
                     idx = fwd; // there is a word to the right — snap to it
                 else
-                    return (charIndex, charIndex); // entire buffer is whitespace — empty range at click site
+                    return (idx, idx); // entire buffer is whitespace — empty range at clamped position
             }
         }
 

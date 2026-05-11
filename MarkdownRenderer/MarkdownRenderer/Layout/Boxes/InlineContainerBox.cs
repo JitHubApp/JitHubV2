@@ -146,7 +146,9 @@ public sealed class InlineContainerBox : BlockBox
 
         if (_layout is null || _bufferDirty || Math.Abs(_lastWidth - availableWidth) > 0.5f)
         {
-            BuildBuffer();
+            // Only rebuild the run-content string when runs changed; skip on pure
+            // width-change reflow so repeated window resizes don't re-allocate.
+            if (_bufferDirty) BuildBuffer();
             _layout?.Dispose();
             using var format = new CanvasTextFormat
             {
