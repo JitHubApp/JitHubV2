@@ -351,7 +351,9 @@ internal static class Program
 
         var menuItems = winRoot.FindAllDescendants(cf => cf.ByControlType(ControlType.MenuItem));
         // MenuFlyout items may not always appear in the UIA tree on all systems,
-        // so we treat them as a bonus — but the renderer must survive the click.
+        // so we treat them as informational, not a hard failure.
+        if (menuItems.Length == 0)
+            Console.Error.WriteLine("[automation] warn: context-menu probe: no MenuItem elements found in UIA tree — flyout may not be UIA-exposed on this system");
 
         // Dismiss the menu BEFORE querying renderer properties so an open flyout
         // cannot intercept the UIA focus and cause the Name query to stale/block.

@@ -98,7 +98,7 @@ public sealed partial class MarkdownRendererControl : UserControl
 
     private static int GetSystemDoubleClickTimeMs()
     {
-        try { return (int)GetDoubleClickTime(); } catch { return 500; }
+        try { return (int)Math.Min(GetDoubleClickTime(), (uint)int.MaxValue); } catch { return 500; }
     }
 
     // Click mode for the current press; governs drag-extension behaviour.
@@ -591,21 +591,21 @@ public sealed partial class MarkdownRendererControl : UserControl
     /// <summary>Kicks off (or re-kicks) the parse + layout pipeline.</summary>
     public void RequestRebuild()
     {
-        // Cancel and dispose the superseded CTS now — safe because the token is
-        // cancelled before the new CTS is created, so the in-flight task will observe
-        // IsCancellationRequested=true and throw OCE before it accesses the WaitHandle.
-        // (ThrowIfCancellationRequested on a cancelled-then-disposed token is safe.)
+        // Cancel the in-flight build. Dispose is deferred to ContinueWith so the
+        // in-flight task (which may still be executing ct.Register() callbacks
+        // inside Task.Run/TaskScheduler internals) doesn't encounter a disposed
+        // CancellationTokenSource mid-flight.
         var oldCts = _pipelineCts;
         oldCts?.Cancel();
-        oldCts?.Dispose();
         _pipelineCts = new CancellationTokenSource();
         var cts = _pipelineCts;
         _ = RebuildAsync(cts.Token).ContinueWith(t =>
         {
+            // Dispose the superseded CTS now that its task has fully completed:
+            // no more ct.Register() calls can fire on it.
+            oldCts?.Dispose();
             if (t.IsFaulted)
                 System.Diagnostics.Debug.WriteLine($"[MarkdownRendererControl] Rebuild faulted: {t.Exception}");
-            // Disposal is handled: superseded CTSes are disposed in RequestRebuild above;
-            // the final CTS is disposed in OnUnloaded. Nothing to do here.
         }, TaskScheduler.Default);
     }
 
@@ -659,6 +659,9 @@ public sealed partial class MarkdownRendererControl : UserControl
 
         // From this point the snapshot holds GPU-side CanvasTextLayout objects.
         // If we are cancelled before committing, dispose it to avoid a native-memory leak.
+        // `committed` tracks whether the snapshot was written to _snapshot; the catch
+        // block must only dispose it if not yet committed (post-commit _snapshot owns it).
+        bool committed = false;
         try
         {
         ct.ThrowIfCancellationRequested();
@@ -687,6 +690,7 @@ public sealed partial class MarkdownRendererControl : UserControl
         // CanvasTextLayout / placeholder handles are released.
         var old = _snapshot;
         _snapshot = snapshot;
+        committed = true;
         old?.Dispose();
         // Clear stale hover references so OnPointerExited/OnPointerMoved after the
         // rebuild don't use Bounds from the now-disposed old snapshot for invalidation.
@@ -748,7 +752,9 @@ public sealed partial class MarkdownRendererControl : UserControl
         } // end of snapshot try-block
         catch
         {
-            snapshot.Dispose();
+            // Only dispose if we never committed snapshot to _snapshot.
+            // After commit, _snapshot owns it; disposing here would use-after-free.
+            if (!committed) snapshot.Dispose();
             throw;
         }
     }

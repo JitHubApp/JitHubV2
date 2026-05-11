@@ -55,6 +55,8 @@ public sealed class InlineContainerBox : BlockBox
 
     public void Add(InlineRun run)
     {
+        System.Diagnostics.Debug.Assert(BlockIndex != 0 || _runs.Count == 0,
+            "BlockIndex must be assigned before calling Add(); source-map entries will be registered under block 0 otherwise.");
         run.InlineIndex = _runs.Count;
         _runs.Add(run);
         _context.SourceMap.Add(BlockIndex, run.InlineIndex, run.RenderedLength, run.SourceSpan);
@@ -302,6 +304,7 @@ public sealed class InlineContainerBox : BlockBox
     public IEnumerable<Rect> GetRangeRects(DocumentRange range)
     {
         if (_layout is null) yield break;
+        EnsureBuffer(); // buffer must be current for ToBufferIndex to return correct offsets
         var style = _context.ThemeSnapshot.GetStyle(_elementKey);
         var (baseX, baseY) = GetSnappedOrigin(style);
 
