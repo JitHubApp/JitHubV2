@@ -25,6 +25,16 @@ public sealed class InlineEmbedRun : InlineRun
     public Func<FrameworkElement> ElementFactory { get; }
 
     /// <summary>
+    /// Optional UI-thread hook invoked when a previously-realised inline
+    /// embed is being recycled because it has scrolled outside the
+    /// virtualization derealize band. Mirrors
+    /// <c>IMarkdownEmbedFactory.RecycleBlock</c> for block embeds and is the
+    /// only way to release resources held by closures captured by
+    /// <see cref="ElementFactory"/> (event handlers, timers, native handles).
+    /// </summary>
+    public Action<FrameworkElement>? Recycle { get; set; }
+
+    /// <summary>
     /// Set by <see cref="MarkdownRenderer.Layout.Boxes.InlineContainerBox"/>
     /// once the element is realized on the UI thread.
     /// </summary>

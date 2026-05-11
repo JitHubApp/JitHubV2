@@ -92,5 +92,27 @@ public class SvgIntrinsicsTests
         Assert.Equal(0, h);
     }
 
+    [Fact]
+    public void ExtractIntrinsicSize_PercentageDimsFallBackToViewBox()
+    {
+        // Round-1 regression: width="100%" used to parse as 100, hiding the
+        // viewBox fallback. We now reject % units in ParseAttribute.
+        var bytes = Bytes("<svg width=\"100%\" height=\"100%\" viewBox=\"0 0 800 600\"></svg>");
+        var (w, h) = SvgIntrinsics.TryExtractIntrinsicSize(bytes);
+        Assert.Equal(800, w);
+        Assert.Equal(600, h);
+    }
+
+    [Fact]
+    public void ExtractIntrinsicSize_ViewBoxWithCommasAndExtraWhitespace()
+    {
+        // The previous quote-unaware parse stopped at spaces, so multi-token
+        // viewBox values like "0, 0, 256, 64" used to return zero.
+        var bytes = Bytes("<svg viewBox=\"0, 0, 256, 64\"></svg>");
+        var (w, h) = SvgIntrinsics.TryExtractIntrinsicSize(bytes);
+        Assert.Equal(256, w);
+        Assert.Equal(64, h);
+    }
+
     private static byte[] Bytes(string s) => Encoding.UTF8.GetBytes(s);
 }

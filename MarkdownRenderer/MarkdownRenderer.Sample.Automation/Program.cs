@@ -99,7 +99,7 @@ internal static class Program
         Thread.Sleep(1500);
 
         var renderer = FindRenderer(window);
-        int realised = CountEmbedButtons(renderer);
+        int realised = ReadRealizedEmbedCount(renderer);
         Assert(realised < 100, $"virtualization expected ≪300 realised embeds, found {realised}");
         Assert(realised > 0, $"virtualization expected some realised embeds, found {realised}");
 
@@ -110,7 +110,7 @@ internal static class Program
             Thread.Sleep(120);
         }
         Thread.Sleep(400);
-        int afterScroll = CountEmbedButtons(renderer);
+        int afterScroll = ReadRealizedEmbedCount(renderer);
         Assert(afterScroll < 100, $"virtualization after scroll expected ≪300 realised embeds, found {afterScroll}");
     }
 
@@ -131,6 +131,24 @@ internal static class Program
 
     private static int CountEmbedButtons(AutomationElement renderer)
         => renderer.FindAllDescendants(cf => cf.ByControlType(ControlType.Button)).Length;
+
+    /// <summary>
+    /// Reads the realised embed count published by MarkdownRendererControl via
+    /// the HelpText automation property ("realized:N"). Falls back to 0 when
+    /// the property has not been set yet.
+    /// </summary>
+    private static int ReadRealizedEmbedCount(AutomationElement renderer)
+    {
+        try
+        {
+            var help = renderer.Properties.HelpText.ValueOrDefault ?? string.Empty;
+            const string prefix = "realized:";
+            int idx = help.IndexOf(prefix, StringComparison.Ordinal);
+            if (idx < 0) return 0;
+            return int.TryParse(help.AsSpan(idx + prefix.Length), out var n) ? n : 0;
+        }
+        catch { return 0; }
+    }
 
     private static void RunProbe(string name, Action probe)
     {

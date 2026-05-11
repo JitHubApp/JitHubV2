@@ -68,6 +68,9 @@ public static class SvgIntrinsics
         int len = 0;
         while (len < s.Length && (char.IsDigit(s[len]) || s[len] == '.' || s[len] == '-')) len++;
         if (len == 0) return 0;
+        // Reject relative units — percentages on the root <svg> are not intrinsic
+        // dimensions and should defer to viewBox per the SVG sizing spec.
+        if (len < s.Length && s[len] == '%') return 0;
         return double.TryParse(s.Substring(0, len), System.Globalization.NumberStyles.Float,
             System.Globalization.CultureInfo.InvariantCulture, out var v) ? v : 0;
     }

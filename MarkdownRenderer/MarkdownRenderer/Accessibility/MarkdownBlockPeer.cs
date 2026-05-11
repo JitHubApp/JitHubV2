@@ -57,4 +57,13 @@ internal sealed partial class MarkdownBlockPeer : FrameworkElementAutomationPeer
         foreach (var run in _box.Runs) sb.Append(run.Text);
         return sb.ToString();
     }
+
+    protected override Windows.Foundation.Rect GetBoundingRectangleCore()
+    {
+        // Default FrameworkElementAutomationPeer reports the owning control's
+        // bounding rect, which means every block claims the same rectangle —
+        // breaking Narrator's per-block scan navigation. Override to report
+        // this block's own bounds in screen coordinates.
+        return _owner.GetScreenRectForBox(_box.Bounds);
+    }
 }

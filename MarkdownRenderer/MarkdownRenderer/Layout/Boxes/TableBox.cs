@@ -95,10 +95,17 @@ public sealed class TableBox : BlockBox
         for (int r = 0; r < _headerCells.Length; r++)
         {
             float rh = _rowHeights[r];
-            for (int c = 0; c < _headerCells[r].Length; c++)
+            int nCols = _headerCells[r].Length;
+            for (int c = 0; c < nCols; c++)
             {
-                int visCol = rtl ? (_headerCells[r].Length - 1 - c) : c;
-                float colX = x + (float)Margin.Left + visCol * colWidth;
+                int visCol = rtl ? (nCols - 1 - c) : c;
+                // In RTL, anchor the table to the right edge so the rightmost
+                // logical column sits flush with innerW when the total column
+                // span is narrower than innerW. Otherwise the table appears
+                // flush-left, which is incorrect for RTL.
+                float colX = rtl
+                    ? x + (float)Margin.Left + innerW - (nCols - visCol) * colWidth
+                    : x + (float)Margin.Left + visCol * colWidth;
                 _headerCells[r][c].Arrange(colX + CellPadH, rowY + CellPadV, colWidth - CellPadH * 2);
             }
             rowY += rh;
@@ -106,10 +113,13 @@ public sealed class TableBox : BlockBox
         for (int r = 0; r < _bodyCells.Length; r++)
         {
             float rh = _rowHeights[_headerCells.Length + r];
-            for (int c = 0; c < _bodyCells[r].Length; c++)
+            int nCols = _bodyCells[r].Length;
+            for (int c = 0; c < nCols; c++)
             {
-                int visCol = rtl ? (_bodyCells[r].Length - 1 - c) : c;
-                float colX = x + (float)Margin.Left + visCol * colWidth;
+                int visCol = rtl ? (nCols - 1 - c) : c;
+                float colX = rtl
+                    ? x + (float)Margin.Left + innerW - (nCols - visCol) * colWidth
+                    : x + (float)Margin.Left + visCol * colWidth;
                 _bodyCells[r][c].Arrange(colX + CellPadH, rowY + CellPadV, colWidth - CellPadH * 2);
             }
             rowY += rh;

@@ -23,10 +23,10 @@ namespace MarkdownRenderer.Layout.Boxes;
 public sealed class ImageBox : BlockBox
 {
     private static readonly ConcurrentDictionary<string, CanvasBitmap?> _bitmapCache = new();
-    private static readonly ConcurrentDictionary<string, byte[]?> _svgBytesCache = new();
+    private static readonly ConcurrentDictionary<string, (byte[] Bytes, Size Intrinsic)> _svgBytesCache = new();
     private static readonly Lazy<HttpClient> _http = new(() =>
     {
-        var c = new HttpClient();
+        var c = new HttpClient { Timeout = TimeSpan.FromSeconds(30) };
         c.DefaultRequestHeaders.UserAgent.ParseAdd("MarkdownRenderer/1.0");
         return c;
     });
@@ -64,9 +64,10 @@ public sealed class ImageBox : BlockBox
                 _bitmap = cached;
                 _loadStarted = true;
             }
-            else if (_isSvg && _svgBytesCache.TryGetValue(_url, out var bytes) && bytes is not null)
+            else if (_isSvg && _svgBytesCache.TryGetValue(_url, out var entry) && entry.Bytes is not null)
             {
-                _svgBytes = bytes;
+                _svgBytes = entry.Bytes;
+                _svgIntrinsicSize = entry.Intrinsic;
                 _loadStarted = true;
             }
         }
@@ -308,13 +309,37 @@ public sealed class ImageBox : BlockBox
             }
             else
             {
-                bytes = await _http.Value.GetByteArrayAsync(uri).ConfigureAwait(false);
+                using var cts = new System.Threading.CancellationTokenSource(TimeSpan.FromSeconds(30));
+                bytes = await _http.Value.GetByteArrayAsync(uri, cts.Token).ConfigureAwait(false);
             }
 
             // Parse intrinsic size from <svg width="…" height="…" viewBox="…">
             _svgIntrinsicSize = ExtractSvgIntrinsicSize(bytes);
             _svgBytes = bytes;
-            _svgBytesCache[_url] = bytes;
+            _svgBytesCache[_url] = (bytes, _svgIntrinsicSize);
+
+            // Pre-parse the SVG document off the UI thread so the first Paint
+            // doesn't sync-block on LoadAsync. Tied to the shared device; the
+            // paint path falls back to re-parsing on device loss.
+            try
+            {
+                using var ms = new InMemoryRandomAccessStream();
+                using (var writer = new DataWriter(ms))
+                {
+                    writer.WriteBytes(bytes);
+                    await writer.StoreAsync();
+                    writer.DetachStream();
+                }
+                ms.Seek(0);
+                var doc = await CanvasSvgDocument.LoadAsync(
+                    Microsoft.Graphics.Canvas.CanvasDevice.GetSharedDevice(), ms);
+                _svg = doc;
+            }
+            catch (Exception ex)
+            {
+                System.Diagnostics.Debug.WriteLine($"[ImageBox] SVG pre-parse failed for {uri}: {ex.Message}");
+                // _svgBytes retained — Paint will re-parse against ds.Device as fallback.
+            }
         }
         catch (Exception ex)
         {

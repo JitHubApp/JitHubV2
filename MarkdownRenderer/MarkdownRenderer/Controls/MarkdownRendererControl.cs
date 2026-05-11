@@ -151,6 +151,11 @@ public sealed partial class MarkdownRendererControl : UserControl
             if (Realized is null) return;
             var fe = Realized;
             try { owner._overlay!.Children.Remove(fe); } catch { }
+            try { Run.Recycle?.Invoke(fe); }
+            catch (Exception ex)
+            {
+                System.Diagnostics.Debug.WriteLine($"[MarkdownRendererControl] inline embed Recycle threw: {ex.Message}");
+            }
             Run.RealizedElement = null;
             Realized = null;
         }
@@ -236,6 +241,46 @@ public sealed partial class MarkdownRendererControl : UserControl
     internal LayoutSnapshot? CurrentSnapshot => _snapshot;
 
     /// <summary>
+    /// Number of currently-realised hosted embed elements (block + inline).
+    /// Exposed for UI-automation tests that want to validate virtualisation
+    /// without relying on heuristic descendant counts.
+    /// </summary>
+    public int RealizedEmbedCount
+    {
+        get
+        {
+            int n = 0;
+            foreach (var p in _embedPlans) if (p.Realized is not null) n++;
+            return n;
+        }
+    }
+
+    /// <summary>
+    /// Map a document-local box rectangle into screen coordinates. Used by
+    /// per-block automation peers to report accurate bounding rectangles so
+    /// Narrator's "scan by element" gestures move focus to the correct spot
+    /// on screen, including after scrolling.
+    /// </summary>
+    internal Windows.Foundation.Rect GetScreenRectForBox(Windows.Foundation.Rect docRect)
+    {
+        try
+        {
+            double yOffset = _scroll?.VerticalOffset ?? 0;
+            var local = new Windows.Foundation.Point(docRect.X, docRect.Y - yOffset);
+            var transform = TransformToVisual(null);
+            var topLeft = transform.TransformPoint(local);
+            return new Windows.Foundation.Rect(topLeft.X, topLeft.Y, docRect.Width, docRect.Height);
+        }
+        catch
+        {
+            // Element may not be in a tree yet (e.g. peer requested before
+            // first layout pass). Fall back to a zero-rect; UIA will treat
+            // it as "no bounding rect" and skip it.
+            return default;
+        }
+    }
+
+    /// <summary>
     /// The raw markdown source the renderer was last given. Useful for
     /// assistive technologies that want a flat textual representation when
     /// structural traversal isn't available.
@@ -252,6 +297,17 @@ public sealed partial class MarkdownRendererControl : UserControl
         // Selection changes update the XAML overlay (not the DirectWrite canvas),
         // so tiles are never invalidated during a drag.
         _selection.Changed += (_, _) => UpdateSelectionOverlay();
+        // FlowDirection has no DP-changed callback we can register at the
+        // class level (it's defined by FrameworkElement). Listen for live
+        // changes via the dependency-property-changed callback API so RTL
+        // toggling at runtime rebuilds the layout instead of leaving stale
+        // CanvasTextLayouts in the previous direction. Gate on IsLoaded so
+        // the inheritance pass during initial visual-tree attach doesn't
+        // race against the Loaded handler's own RequestRebuild.
+        RegisterPropertyChangedCallback(FlowDirectionProperty, (_, _) =>
+        {
+            if (IsLoaded) RequestRebuild();
+        });
         BuildVisualTree();
     }
 
@@ -325,6 +381,14 @@ public sealed partial class MarkdownRendererControl : UserControl
         _pipelineCts?.Cancel();
         _pipelineCts?.Dispose();
         _pipelineCts = null;
+        // Tear down embed plans before clearing the overlay so block embed
+        // factories get RecycleBlock callbacks and inline embeds release
+        // their Run.RealizedElement references — otherwise hosted controls
+        // and their event handlers would leak past detach.
+        DerealizeAllEmbeds();
+        _embedPlans.Clear();
+        _embedRects.Clear();
+        _blockEmbedRects.Clear();
         // Release native resources & hosted embeds so re-attaching the
         // control to a new visual parent doesn't leak DirectWrite layouts
         // or keep stale FrameworkElements alive.
@@ -536,6 +600,18 @@ public sealed partial class MarkdownRendererControl : UserControl
                 }
             }
         }
+
+        // Surface the realised count to UI automation so external test
+        // harnesses can verify virtualisation directly instead of relying on
+        // descendant-button heuristics, which are sensitive to UIA peer
+        // caching behaviour.
+        try
+        {
+            int realised = 0;
+            foreach (var pl in _embedPlans) if (pl.Realized is not null) realised++;
+            Microsoft.UI.Xaml.Automation.AutomationProperties.SetHelpText(this, $"realized:{realised}");
+        }
+        catch { /* AutomationProperties not yet attached — ignore. */ }
     }
 
     private void CollectEmbedPlans(Layout.BlockBox box)

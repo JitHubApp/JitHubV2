@@ -18,6 +18,15 @@ namespace MarkdownRenderer.Accessibility;
 public sealed partial class MarkdownAutomationPeer : FrameworkElementAutomationPeer
 {
     private readonly MarkdownRendererControl _owner;
+    // Reusable per-block peer cache keyed on the underlying box's identity.
+    // We don't cache the children *list* itself because returning the same
+    // List<AutomationPeer> across UIA traversals affects how XAML's UIA
+    // tree-walker enumerates descendants and ends up double-counting
+    // realised embed buttons under both this peer and the underlying
+    // visual tree. Caching just the individual MarkdownBlockPeer instances
+    // preserves identity-based focus tracking (Narrator's "where am I"
+    // remains stable) without disturbing the broader tree shape.
+    private readonly System.Runtime.CompilerServices.ConditionalWeakTable<InlineContainerBox, MarkdownBlockPeer> _peerCache = new();
 
     public MarkdownAutomationPeer(MarkdownRendererControl owner) : base(owner)
     {
@@ -56,7 +65,12 @@ public sealed partial class MarkdownAutomationPeer : FrameworkElementAutomationP
         switch (box)
         {
             case InlineContainerBox icb:
-                sink.Add(new MarkdownBlockPeer(_owner, icb));
+                if (!_peerCache.TryGetValue(icb, out var peer))
+                {
+                    peer = new MarkdownBlockPeer(_owner, icb);
+                    _peerCache.Add(icb, peer);
+                }
+                sink.Add(peer);
                 break;
             case ListItemBox lib:
                 CollectChildren(lib.Marker, sink);
