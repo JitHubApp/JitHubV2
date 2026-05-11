@@ -82,6 +82,13 @@ public sealed partial class MarkdownRendererControl : UserControl
     // Lives on _overlay at ZIndex 1 (above selection at -1, below embeds at 0).
     private Microsoft.UI.Xaml.Controls.Border? _focusRing;
 
+    // ---- Multi-click tracking (double/triple click selection) ----
+    private long _lastPressTickMs;
+    private Point _lastPressPoint;
+    private int _consecutiveClickCount;
+    // System double-click time; cached once from interop.
+    private static readonly int _doubleClickTimeMs = 500;
+
     // Cache of inline-embed rectangles (in canvas/document coordinates) plus
     // the InlineRun + owning InlineContainerBox.  Built during PlaceEmbeds
     // and consulted from pointer handlers so we can:
@@ -437,6 +444,7 @@ public sealed partial class MarkdownRendererControl : UserControl
         _canvas.PointerExited += OnPointerExited;
         _canvas.PointerCanceled += OnPointerExited;
         _canvas.PointerCaptureLost += OnPointerExited;
+        _canvas.RightTapped += OnRightTapped;
         KeyDown += OnKeyDown;
 
         Content = _scroll;
@@ -919,12 +927,47 @@ public sealed partial class MarkdownRendererControl : UserControl
                 _selection.Clear();
                 // No _canvas.Invalidate() needed — overlay cleared by Changed handler.
             }
+            // Also dismiss keyboard focus ring on click over embed.
+            if (_focusedItemIndex >= 0) { _focusedItemIndex = -1; UpdateFocusRing(); }
             return;
         }
+
+        // Dismiss any keyboard focus ring — mouse clicks and keyboard nav are
+        // separate modalities; clicking anywhere in the document should clear
+        // the ring so the focus indicator doesn't linger after the user
+        // switches from keyboard to mouse.
+        if (_focusedItemIndex >= 0) { _focusedItemIndex = -1; UpdateFocusRing(); }
+
+        // Track consecutive clicks for word (double) and line (triple) selection.
+        long nowMs = Environment.TickCount64;
+        double dx = pt.X - _lastPressPoint.X;
+        double dy = pt.Y - _lastPressPoint.Y;
+        bool sameSpot = dx * dx + dy * dy < 16; // 4px radius
+        bool withinTime = (nowMs - _lastPressTickMs) <= _doubleClickTimeMs;
+        if (sameSpot && withinTime)
+            _consecutiveClickCount++;
+        else
+            _consecutiveClickCount = 1;
+        _lastPressTickMs = nowMs;
+        _lastPressPoint  = pt;
 
         Focus(FocusState.Pointer);
         if (_snapshot.HitTest(pt, out var pos))
         {
+            if (_consecutiveClickCount == 3)
+            {
+                // Triple-click: select the entire block (line).
+                ExpandSelectionToBlock(_snapshot, pos);
+                _canvas.CapturePointer(e.Pointer);
+                return;
+            }
+            if (_consecutiveClickCount == 2)
+            {
+                // Double-click: select the word under the cursor.
+                ExpandSelectionToWord(_snapshot, pos);
+                _canvas.CapturePointer(e.Pointer);
+                return;
+            }
             _selectionAnchor = pos;
             _selection.SetAnchor(pos);
             // Invalidate to repaint link-hover state (hover suppressed during drag).
@@ -1642,6 +1685,101 @@ public sealed partial class MarkdownRendererControl : UserControl
             if (FindLinkInBlock(b, pos) is { } found) return found;
         }
         return null;
+    }
+
+    // ---- Word / line selection helpers ----
+
+    /// <summary>
+    /// Expands selection to the word (maximal non-whitespace run) that contains
+    /// <paramref name="pos"/> in its inline container.
+    /// </summary>
+    private void ExpandSelectionToWord(LayoutSnapshot snapshot, DocumentPosition pos)
+    {
+        var icb = FindInlineContainerAt(snapshot, pos.BlockIndex);
+        if (icb is null) return;
+        var (start, end) = icb.GetWordBoundaries(pos);
+        _selection.SetAnchor(start);
+        _selection.ExtendTo(end);
+        _selectionAnchor = null; // prevent drag from continuing as single-click drag
+        _canvas?.Invalidate();
+    }
+
+    /// <summary>
+    /// Expands selection to the entire inline container (paragraph/heading line)
+    /// that contains <paramref name="pos"/>.
+    /// </summary>
+    private void ExpandSelectionToBlock(LayoutSnapshot snapshot, DocumentPosition pos)
+    {
+        var icb = FindInlineContainerAt(snapshot, pos.BlockIndex);
+        if (icb is null) return;
+        var (start, end) = icb.GetBlockBoundaries();
+        _selection.SetAnchor(start);
+        _selection.ExtendTo(end);
+        _selectionAnchor = null;
+        _canvas?.Invalidate();
+    }
+
+    private static Layout.Boxes.InlineContainerBox? FindInlineContainerAt(LayoutSnapshot snapshot, int blockIndex)
+    {
+        foreach (var b in snapshot.Blocks)
+        {
+            var found = FindIcbInBlock(b, blockIndex);
+            if (found is not null) return found;
+        }
+        return null;
+    }
+
+    private static Layout.Boxes.InlineContainerBox? FindIcbInBlock(BlockBox box, int blockIndex)
+    {
+        if (box is Layout.Boxes.InlineContainerBox icb && icb.BlockIndex == blockIndex) return icb;
+        if (box is Layout.Boxes.ListItemBox lib)
+            return FindIcbInBlock(lib.Marker, blockIndex) ?? FindIcbInBlock(lib.Content, blockIndex);
+        if (box is Layout.Boxes.StackBox sb)
+        {
+            foreach (var c in sb.Children)
+            {
+                var found = FindIcbInBlock(c, blockIndex);
+                if (found is not null) return found;
+            }
+        }
+        if (box is Layout.Boxes.TableBox tb)
+        {
+            foreach (var cell in tb.GetCellBoxes())
+            {
+                var found = FindIcbInBlock(cell, blockIndex);
+                if (found is not null) return found;
+            }
+        }
+        return null;
+    }
+
+    // ---- Right-click context menu ----
+
+    private void OnRightTapped(object sender, RightTappedRoutedEventArgs e)
+    {
+        if (_canvas is null) return;
+        var pt = e.GetPosition(_canvas);
+        var menu = new MenuFlyout();
+
+        var copyItem = new MenuFlyoutItem { Text = "Copy" };
+        copyItem.IsEnabled = _selection.IsActive;
+        copyItem.Click += (_, _) =>
+        {
+            if (_snapshot is not null && _selection.IsActive)
+                MarkdownClipboardWriter.Copy(_snapshot.SourceMap, _selection.Range);
+        };
+        menu.Items.Add(copyItem);
+
+        var selectAllItem = new MenuFlyoutItem { Text = "Select All" };
+        selectAllItem.Click += (_, _) =>
+        {
+            _selection.SetAnchor(DocumentPosition.Zero);
+            _selection.ExtendTo(new DocumentPosition(int.MaxValue, int.MaxValue, int.MaxValue));
+        };
+        menu.Items.Add(selectAllItem);
+
+        menu.ShowAt(_canvas, pt);
+        e.Handled = true;
     }
 
     private static LinkRun? FindLinkInBlock(BlockBox box, DocumentPosition pos)

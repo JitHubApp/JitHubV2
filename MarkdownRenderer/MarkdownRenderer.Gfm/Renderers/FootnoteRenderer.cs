@@ -42,18 +42,22 @@ public sealed class FootnoteRenderer : MarkdownNodeRenderer<FootnoteGroup>
             content.BlockIndex = context.NextBlockIndex();
             GfmChildBuilder.PopulateChildren(content, footnote, context);
 
-            // Back-link: append a ↩ link after the content that scrolls back to
-            // the inline citation (e.g. the [^1] in the body text).
-            // Use an internal fragment URL "#footnote-ref-{order}" which
-            // MarkdownRendererControl intercepts to call ScrollToBlock without
-            // firing the public LinkClick event.
-            var backLinkBox = new InlineContainerBox(context, MarkdownElementKeys.Body);
-            backLinkBox.BlockIndex = context.NextBlockIndex();
-            backLinkBox.Add(new LinkRun("↩", $"#footnote-ref-{order}")
+            // Back-link: append a ↩ link INLINE at the end of the last paragraph
+            // in the footnote content, so it appears on the same line rather than
+            // on its own line. We look for the last InlineContainerBox child
+            // (recursively through nested StackBoxes) and append a space + ↩ run.
+            var backLinkRun = new LinkRun("↩", $"#footnote-ref-{order}")
             {
                 SourceSpan = new MarkdownRenderer.SourceSpan(footnote.Span.Start, 0),
-            });
-            content.Add(backLinkBox);
+            };
+            if (!TryAppendToLastInlineBox(content, backLinkRun, context))
+            {
+                // Fallback: create a new InlineContainerBox for the back-link.
+                var backLinkBox = new InlineContainerBox(context, MarkdownElementKeys.Body);
+                backLinkBox.BlockIndex = context.NextBlockIndex();
+                backLinkBox.Add(backLinkRun);
+                content.Add(backLinkBox);
+            }
 
             var listItem = new ListItemBox(marker, content, markerWidth: 22f);
             listItem.BlockIndex = context.NextBlockIndex();
@@ -65,6 +69,30 @@ public sealed class FootnoteRenderer : MarkdownNodeRenderer<FootnoteGroup>
         }
 
         return stack;
+    }
+
+    /// <summary>
+    /// Recursively finds the last <see cref="InlineContainerBox"/> in a
+    /// <see cref="StackBox"/> tree and appends a space + the given run to it.
+    /// Returns false if no eligible container was found.
+    /// </summary>
+    private static bool TryAppendToLastInlineBox(StackBox stack, LinkRun run, MarkdownLayoutContext context)
+    {
+        // Walk children in reverse to find the last InlineContainerBox.
+        for (int i = stack.Children.Count - 1; i >= 0; i--)
+        {
+            var child = stack.Children[i];
+            if (child is InlineContainerBox icb)
+            {
+                // Append a non-breaking space + the back-link run.
+                icb.Add(new TextRun("\u00A0"));
+                icb.Add(run);
+                return true;
+            }
+            if (child is StackBox nested && TryAppendToLastInlineBox(nested, run, context))
+                return true;
+        }
+        return false;
     }
 
     private static string ToSuperscript(int n)

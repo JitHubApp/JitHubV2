@@ -173,20 +173,13 @@ public sealed partial class MainWindow : Window
         AutomationProperties.SetAutomationId(_flowDirectionStatus, "FlowDirectionStatus");
         AutomationProperties.SetName(_flowDirectionStatus, "flow:ltr");
 
-        var rendererScroll = new ScrollViewer
-        {
-            Content = _renderer,
-            VerticalScrollBarVisibility = ScrollBarVisibility.Auto,
-            HorizontalScrollBarVisibility = ScrollBarVisibility.Disabled,
-            Padding = new Thickness(12, 8, 12, 8),
-        };
-
         Grid.SetColumn(_editor, 0);
         Grid.SetColumn(splitter, 1);
-        Grid.SetColumn(rendererScroll, 2);
+        Grid.SetColumn(_renderer, 2);
+        _renderer.Padding = new Thickness(12, 8, 12, 8);
         contentGrid.Children.Add(_editor);
         contentGrid.Children.Add(splitter);
-        contentGrid.Children.Add(rendererScroll);
+        contentGrid.Children.Add(_renderer);
 
         Grid.SetRow(contentGrid, 1);
         rootGrid.Children.Add(contentGrid);

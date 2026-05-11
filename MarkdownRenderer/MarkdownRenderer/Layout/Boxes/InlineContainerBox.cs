@@ -59,6 +59,80 @@ public sealed class InlineContainerBox : BlockBox
         _context.SourceMap.Add(BlockIndex, run.InlineIndex, run.RenderedLength, run.SourceSpan);
     }
 
+    /// <summary>
+    /// Converts a <see cref="DocumentPosition"/> (which must target this box) to an
+    /// absolute character index within the concatenated inline buffer.
+    /// </summary>
+    public int GetBufferCharOffset(DocumentPosition pos)
+    {
+        EnsureBuffer();
+        int offset = 0;
+        for (int i = 0; i < _runs.Count; i++)
+        {
+            if (i == pos.InlineIndex) return offset + pos.CharacterOffset;
+            offset += _runs[i].Text.Length;
+        }
+        return offset;
+    }
+
+    /// <summary>
+    /// Converts an absolute character index within the buffer back to a
+    /// <see cref="DocumentPosition"/> targeting this box.
+    /// </summary>
+    public DocumentPosition GetPositionFromBufferOffset(int bufOffset)
+    {
+        EnsureBuffer();
+        bufOffset = Math.Max(0, bufOffset);
+        int offset = 0;
+        for (int i = 0; i < _runs.Count; i++)
+        {
+            int len = _runs[i].Text.Length;
+            if (bufOffset <= offset + len)
+                return new DocumentPosition(BlockIndex, i, Math.Min(bufOffset - offset, len));
+            offset += len;
+        }
+        // Clamp to end of last run.
+        if (_runs.Count == 0) return new DocumentPosition(BlockIndex, 0, 0);
+        int last = _runs.Count - 1;
+        return new DocumentPosition(BlockIndex, last, _runs[last].Text.Length);
+    }
+
+    private void EnsureBuffer()
+    {
+        if (_buffer.Length == 0 && _runs.Count > 0) BuildBuffer();
+    }
+
+    /// <summary>
+    /// Returns the start and end positions that span the word containing
+    /// <paramref name="pos"/>.  A "word" is a maximal sequence of non-whitespace
+    /// characters in the buffer.
+    /// </summary>
+    public (DocumentPosition Start, DocumentPosition End) GetWordBoundaries(DocumentPosition pos)
+    {
+        EnsureBuffer();
+        if (_buffer.Length == 0) return (pos, pos);
+        int idx = Math.Clamp(GetBufferCharOffset(pos), 0, Math.Max(0, _buffer.Length - 1));
+        var (start, end) = TextBoundaryHelper.FindWordBoundaries(_buffer, idx);
+        return (GetPositionFromBufferOffset(start), GetPositionFromBufferOffset(end));
+    }
+
+    /// <summary>Returns positions for the very start and end of this inline container.</summary>
+    public (DocumentPosition Start, DocumentPosition End) GetBlockBoundaries()
+    {
+        var start = new DocumentPosition(BlockIndex, 0, 0);
+        DocumentPosition end;
+        if (_runs.Count == 0)
+        {
+            end = start;
+        }
+        else
+        {
+            int last = _runs.Count - 1;
+            end = new DocumentPosition(BlockIndex, last, _runs[last].Text.Length);
+        }
+        return (start, end);
+    }
+
     public override float Measure(float availableWidth)
     {
         var style = _context.ThemeSnapshot.GetStyle(_elementKey);
@@ -443,6 +517,13 @@ public sealed class InlineContainerBox : BlockBox
             int len = run.Text.Length;
             if (len == 0) { continue; }
             if (run is InlineEmbedRun) { cumulative += len; continue; }
+            // Superscript link runs (footnote citation markers ¹²³…) should not
+            // have an underline drawn at the normal line baseline — the small
+            // Unicode glyphs sit high in the line and the baseline underline ends
+            // up drawn ~10 px below them, looking completely detached.  Skip
+            // decorations for these runs entirely; their link appearance is already
+            // communicated by the accent foreground color.
+            if (run is LinkRun { IsSuperscript: true }) { cumulative += len; continue; }
 
             var rs = string.IsNullOrEmpty(run.ElementKey)
                 ? _context.ThemeSnapshot.GetStyle(_elementKey)
