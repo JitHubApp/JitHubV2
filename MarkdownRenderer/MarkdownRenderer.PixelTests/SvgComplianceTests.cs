@@ -59,7 +59,7 @@ public sealed class SvgComplianceTests
         }
     }
 
-    [Theory]
+    [SkippableTheory]
     [MemberData(nameof(Fixtures))]
     public void Rasterize_Fixture_MatchesBrowser(string fixtureRelPath)
     {
@@ -98,9 +98,12 @@ public sealed class SvgComplianceTests
             File.WriteAllText(Path.Combine(artifactsDir, "skipped.txt"),
                 "No headless Edge/Chrome found; browser comparison skipped.\n" +
                 "ThorVG render produced " + oursRgba.Length + " bytes.\n");
-            // Mark as inconclusive by relying on the ThorVG success above —
-            // the test still validates rasterizer didn't crash/return null.
-            return;
+            // Use xunit.skippablefact Skip.If so CI dashboards show "skipped"
+            // rather than a silent green pass — making it clear the pixel
+            // comparison did not run on this machine.
+            Skip.If(true,
+                "No headless Edge/Chrome installed; browser comparison requires " +
+                "msedge or google-chrome to be on PATH or in well-known locations.");
         }
 
         string? browserPng = HeadlessBrowserRasterizer.Rasterize(svg, w, h);

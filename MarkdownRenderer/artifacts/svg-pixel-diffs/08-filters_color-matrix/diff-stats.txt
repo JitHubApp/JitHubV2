@@ -1,0 +1,5 @@
+100x100
+maxChannelDelta=97
+meanChannelDelta=53.250
+differingPixelFraction=1.0000
+knownGap=true (pixel comparison skipped)

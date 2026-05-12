@@ -1,0 +1,4 @@
+64x64
+maxChannelDelta=25
+meanChannelDelta=0.180
+differingPixelFraction=0.0234
