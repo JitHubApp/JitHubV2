@@ -32,6 +32,14 @@ public static class HeadlessBrowserRasterizer
         return null;
     }
 
+    // Chromium's --screenshot path produces incorrect output when --user-data-dir
+    // points to a freshly-created profile (first-run UI consumes pixels in the
+    // captured PNG even in headless=new mode). The robust workaround is to omit
+    // --user-data-dir entirely, but multiple concurrent instances then share the
+    // default profile and corrupt each other's output. Serializing browser calls
+    // through this lock gives us correct screenshots without that race.
+    private static readonly object BrowserLock = new();
+
     /// <summary>
     /// Renders <paramref name="svgBytes"/> with a Chromium headless browser
     /// at <paramref name="widthPx"/> × <paramref name="heightPx"/> pixels and
@@ -45,45 +53,37 @@ public static class HeadlessBrowserRasterizer
         var browser = TryFindBrowser();
         if (browser is null) return null;
 
-        // Write the SVG to a temp HTML shim — base64-embed so we don't
-        // need a second file and there are no path-escaping concerns.
-        // The body has no padding/margin and the SVG is set to the exact
-        // pixel size; the screenshot then crops to those exact bounds.
-        string b64 = Convert.ToBase64String(svgBytes);
-        string html =
-            "<!doctype html><html><head><meta charset=\"utf-8\"><style>" +
-            "html,body{margin:0;padding:0;background:transparent;}" +
-            $"img{{display:block;width:{widthPx}px;height:{heightPx}px;}}" +
-            "</style></head><body>" +
-            $"<img src=\"data:image/svg+xml;base64,{b64}\"/>" +
-            "</body></html>";
-
         var dir = Path.Combine(Path.GetTempPath(), "mdr-pixel-" + Guid.NewGuid().ToString("N"));
         Directory.CreateDirectory(dir);
-        string htmlPath = Path.Combine(dir, "shim.html");
+        string svgPath = Path.Combine(dir, "fixture.svg");
         string pngPath = Path.Combine(dir, "out.png");
-        File.WriteAllText(htmlPath, html);
+
+        // Chromium will render the SVG directly when given a file:// URL to
+        // a .svg file — no HTML wrapper, no <img>, no data URI. This avoids
+        // both (a) data-URI security restrictions that strip url(#...)
+        // references from <defs> and (b) HTML5 parsing differences that
+        // miscompute the SVG's intrinsic size. The browser sizes the SVG to
+        // the window using its native width/height attributes, so we set
+        // --window-size to the requested pixel box.
+        File.WriteAllBytes(svgPath, svgBytes);
 
         var args = new System.Collections.Generic.List<string>
         {
             "--headless=new",
             "--disable-gpu",
             "--no-sandbox",
+            "--no-first-run",
+            "--no-default-browser-check",
+            "--disable-search-engine-choice-screen",
             "--hide-scrollbars",
             "--default-background-color=00000000",
-            // Singleton-process lock can race with the user's own browser
-            // session; isolate to a per-invocation profile.
-            $"--user-data-dir=\"{Path.Combine(dir, "udd")}\"",
-            // Without a virtual-time budget, headless Chromium tears down
-            // before sub-resources (the data-URI <img>) are decoded, and
-            // no PNG ever lands on disk.
-            "--virtual-time-budget=2000",
+            "--virtual-time-budget=5000",
             $"--screenshot=\"{pngPath}\"",
             $"--window-size={widthPx},{heightPx}",
             "--force-device-scale-factor=1",
         };
         if (extraArgs is not null) args.AddRange(extraArgs);
-        args.Add("\"file:///" + htmlPath.Replace('\\', '/') + "\"");
+        args.Add("\"file:///" + svgPath.Replace('\\', '/') + "\"");
 
         var psi = new ProcessStartInfo
         {
@@ -98,6 +98,7 @@ public static class HeadlessBrowserRasterizer
 
         Process? proc = null;
         bool success = false;
+        lock (BrowserLock)
         try
         {
             proc = Process.Start(psi);
@@ -106,15 +107,29 @@ public static class HeadlessBrowserRasterizer
             // real browser process continues to work in the background, so
             // WaitForExit on the launcher PID is unreliable. Wait for the PNG
             // file to materialize on disk instead, with a hard wall-clock cap.
-            var deadline = DateTime.UtcNow.AddSeconds(20);
+            // Wait for the PNG to materialize *and* stabilize. Chromium writes
+            // the screenshot file in stages — the first few bytes can appear
+            // before the SVG's <defs>/url(#...) references resolve, so reading
+            // too early yields a near-blank capture (radial gradients, filters,
+            // patterns all hit this). We poll until the file size is the same
+            // for several consecutive reads, which means the writer is done.
+            var deadline = DateTime.UtcNow.AddSeconds(30);
+            long lastSize = -1;
+            int stableCount = 0;
+            const int requiredStable = 5; // ~500ms of no change
             while (DateTime.UtcNow < deadline)
             {
-                if (File.Exists(pngPath) && new FileInfo(pngPath).Length > 0) break;
+                if (File.Exists(pngPath))
+                {
+                    long sz = new FileInfo(pngPath).Length;
+                    if (sz > 0 && sz == lastSize) { stableCount++; if (stableCount >= requiredStable) break; }
+                    else { stableCount = 0; lastSize = sz; }
+                }
                 System.Threading.Thread.Sleep(100);
             }
-            if (!File.Exists(pngPath)) return null;
-            // Tiny grace period for the browser to finish flushing the PNG.
-            System.Threading.Thread.Sleep(150);
+            if (!File.Exists(pngPath) || new FileInfo(pngPath).Length == 0) return null;
+            // Extra grace so any final flush completes.
+            System.Threading.Thread.Sleep(250);
             success = true;
             return pngPath;
         }
@@ -135,4 +150,5 @@ public static class HeadlessBrowserRasterizer
             }
         }
     }
+
 }
