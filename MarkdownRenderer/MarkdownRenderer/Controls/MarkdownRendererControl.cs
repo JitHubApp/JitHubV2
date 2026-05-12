@@ -470,8 +470,8 @@ public sealed partial class MarkdownRendererControl : UserControl
         _canvas.PointerMoved += OnPointerMoved;
         _canvas.PointerReleased += OnPointerReleased;
         _canvas.PointerExited += OnPointerExited;
-        _canvas.PointerCanceled += OnPointerExited;
-        _canvas.PointerCaptureLost += OnPointerExited;
+        _canvas.PointerCanceled += OnPointerCanceledOrCaptureLost;
+        _canvas.PointerCaptureLost += OnPointerCanceledOrCaptureLost;
         _canvas.RightTapped += OnRightTapped;
         KeyDown += OnKeyDown;
 
@@ -1514,16 +1514,28 @@ public sealed partial class MarkdownRendererControl : UserControl
             _selectionOverlayRects[i].Visibility = Visibility.Collapsed;
     }
 
-    private void OnPointerExited(object sender, PointerRoutedEventArgs e)
+    private void OnPointerCanceledOrCaptureLost(object sender, PointerRoutedEventArgs e)
     {
-        // PointerExited is also wired for PointerCanceled and PointerCaptureLost.
-        // Clear drag state so a canceled/interrupted gesture doesn't leave a stale
-        // anchor that causes ghost-selection on the next PointerMoved, or a stale
-        // _leftPointerCaptured that causes the next PointerReleased to misidentify
-        // the button.
+        // True interruption (system-level cancel or capture taken by another element):
+        // tear down drag state so a phantom anchor doesn't survive into the next gesture.
+        // We deliberately do NOT do this on plain PointerExited — with capture, the
+        // pointer can briefly leave canvas bounds during a normal drag, and clearing
+        // the anchor there would kill drag-select on the very first vertical move
+        // when the pointer crosses into a sibling overlay region (e.g. over a hosted
+        // inline embed). PointerReleased handles the normal end-of-drag cleanup.
         _leftPointerCaptured = false;
         _selectionAnchor = null;
-        _clickMode = ClickMode.Single; // reset so no stale word/block mode on next press
+        _clickMode = ClickMode.Single;
+        OnPointerExited(sender, e);
+    }
+
+    private void OnPointerExited(object sender, PointerRoutedEventArgs e)
+    {
+        // PointerExited fires when the pointer leaves canvas bounds. During an
+        // active captured drag this is expected (drag through hosted embeds /
+        // adjacent areas) so we MUST NOT clear _selectionAnchor here — that
+        // killed drag-select on the embeds page. Capture-loss / cancel are
+        // routed to OnPointerCanceledOrCaptureLost which does the real cleanup.
 
         // Clear hover state when the pointer leaves the canvas (or capture is
         // lost).  Without this, a link's hover colour and the hand cursor
