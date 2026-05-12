@@ -97,9 +97,19 @@ public static class SvgTitleExtractor
             }
             // Skip the entire subtree (handles nested same-name containers).
             string n = HiddenContainers[hidden];
+            int openTagEnd = text.IndexOf('>', lt);
+            if (openTagEnd < 0) { i = text.Length; break; }
+            // Self-closing initial container (e.g. <defs/>) has no children
+            // to skip — advance past the tag and continue scanning at the
+            // sibling level so a following root <title>/<desc> is still
+            // visible.
+            if (openTagEnd > 0 && text[openTagEnd - 1] == '/')
+            {
+                i = openTagEnd + 1;
+                continue;
+            }
             int depth = 1;
-            int j = text.IndexOf('>', lt) + 1;
-            if (j <= 0) { i = text.Length; break; }
+            int j = openTagEnd + 1;
             while (j < text.Length && depth > 0)
             {
                 int next = text.IndexOf('<', j);

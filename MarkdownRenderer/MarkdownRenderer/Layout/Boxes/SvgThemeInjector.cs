@@ -143,6 +143,9 @@ public static class SvgThemeInjector
             // Skip whitespace between attributes.
             while (i < tagBody.Length && (tagBody[i] == ' ' || tagBody[i] == '\t' || tagBody[i] == '\r' || tagBody[i] == '\n')) i++;
             if (i >= tagBody.Length) break;
+            // Stop at tag terminators — a trailing '/' (self-closing root
+            // <svg/>) or '>' (defensive; FindTagEnd should have stripped it).
+            if (tagBody[i] == '/' || tagBody[i] == '>') break;
 
             // Read an attribute name up to '=' or whitespace.
             int nameStart = i;

@@ -101,4 +101,15 @@ public class SvgTitleExtractorTests
         var meta = SvgTitleExtractor.Extract(bytes);
         Assert.Null(meta.Desc);
     }
+
+    [Fact]
+    public void Extract_HandlesSelfClosingDefs_BeforeRootTitle()
+    {
+        // Regression: ExtractRootScope used to enter "skip subtree" mode on
+        // a self-closing <defs/> looking for </defs>, which never came, and
+        // ate the rest of the document including the root <title>.
+        var bytes = Encoding.UTF8.GetBytes("<svg><defs/><title>Visible</title></svg>");
+        var meta = SvgTitleExtractor.Extract(bytes);
+        Assert.Equal("Visible", meta.Title);
+    }
 }

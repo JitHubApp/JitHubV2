@@ -103,4 +103,16 @@ public class SvgThemeInjectorTests
         Assert.Contains("color=\"#445566\"", s);
         Assert.Contains("background-color: red", s);
     }
+
+    [Fact]
+    public void Inject_HandlesSelfClosingRoot_NoHang()
+    {
+        // Regression: HasColorAttribute used to infinite-loop on the
+        // trailing '/' of a self-closing root <svg/> with no color attr.
+        var bytes = Encoding.UTF8.GetBytes("<svg width=\"24\" height=\"24\"/>");
+        var task = System.Threading.Tasks.Task.Run(() => SvgThemeInjector.Inject(bytes, 0xAA, 0xBB, 0xCC));
+        Assert.True(task.Wait(System.TimeSpan.FromSeconds(2)), "Inject hung on self-closing root <svg/>");
+        var s = Encoding.UTF8.GetString(task.Result);
+        Assert.Contains("color=\"#AABBCC\"", s);
+    }
 }
