@@ -1233,11 +1233,18 @@ public sealed partial class MarkdownRendererControl : UserControl
             // the previous hovered link doesn't appear stuck-on.
             if (_lastHoveredRun is not null)
             {
+                // Only the LinkRun case actually mutates visible state (link
+                // foreground color); plain TextRun hover changes nothing.
+                // Issuing a _canvas.Invalidate for a TextRun→null transition
+                // causes a partial tile repaint, and CanvasVirtualControl
+                // partial-tile repaints reveal DirectWrite glyph-position
+                // variance at tile boundaries → visible text shake.
+                bool wasLink = _lastHoveredRun is LinkRun;
                 var boxToInvalidate = _lastHoveredBox;
                 foreach (var b in _snapshot.Blocks) ClearHover(b);
                 _lastHoveredRun = null;
                 _lastHoveredBox = null;
-                InvalidateLinkHoverRegion(boxToInvalidate, null);
+                if (wasLink) InvalidateLinkHoverRegion(boxToInvalidate, null);
             }
             SetCursorShape(null);
             return;
@@ -1638,15 +1645,20 @@ public sealed partial class MarkdownRendererControl : UserControl
         bool hadHover = _lastHoveredRun is not null;
         if (hadHover)
         {
+            // Only LinkRun hovers produce a visible color change. Plain TextRun
+            // hover state is purely cursor/IBeam tracking and has no painted
+            // representation. Calling _canvas.Invalidate for a TextRun→null
+            // transition causes a partial-tile repaint, and CanvasVirtualControl
+            // partial repaints expose DirectWrite sub-pixel glyph-position
+            // variance at tile boundaries — i.e. the text-shake the user sees
+            // on click-to-dismiss (capture-loss routes through here with
+            // _selectionAnchor already nulled by OnPointerCanceledOrCaptureLost).
+            bool wasLink = _lastHoveredRun is LinkRun;
             var boxToInvalidate = _lastHoveredBox;
             foreach (var b in _snapshot.Blocks) ClearHover(b);
             _lastHoveredRun = null;
             _lastHoveredBox = null;
-            // Use targeted invalidation so only the paragraph with the link is
-            // repainted.  This fires whenever the pointer leaves the canvas into
-            // an embed (button, checkbox) — a full Invalidate() here would
-            // repaint all visible tiles and trigger tile-offset glyph shake.
-            InvalidateLinkHoverRegion(boxToInvalidate, null);
+            if (wasLink) InvalidateLinkHoverRegion(boxToInvalidate, null);
         }
         // Always reset cursor to null (system default) on exit — not just
         // when a link was hovered.  PointerExited fires whenever the pointer
