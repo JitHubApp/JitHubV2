@@ -13,9 +13,11 @@ public partial class App : Application
 
     protected override void OnLaunched(LaunchActivatedEventArgs args)
     {
-        // ShakeLogger is opt-in: flip Enabled=true here to capture per-frame
-        // paint coordinates while reproducing the selection vibration bug.
-        // MarkdownRenderer.Diagnostics.ShakeLogger.Enabled = true;
+        // Enable diagnostic logger by default in the sample app so any
+        // reproduction of the selection-shake bug captures per-frame paint
+        // coordinates to text_shaking2.log next to the repo root.
+        // Flip to false to silence.
+        MarkdownRenderer.Diagnostics.ShakeLogger.Enabled = true;
         _window = new MainWindow();
         _window.Activate();
     }

@@ -23,12 +23,17 @@ public sealed class SelectionController
     public void SetAnchor(DocumentPosition anchor)
     {
         Range = new DocumentRange(anchor, anchor);
+        MarkdownRenderer.Diagnostics.ShakeLogger.Log("sel-anchor",
+            $"blk={anchor.BlockIndex} inl={anchor.InlineIndex} c={anchor.CharacterOffset}");
         Changed?.Invoke(this, System.EventArgs.Empty);
     }
 
     public void ExtendTo(DocumentPosition position)
     {
         Range = new DocumentRange(Range.Start, position);
+        MarkdownRenderer.Diagnostics.ShakeLogger.Log("sel-extend",
+            $"start=blk{Range.Start.BlockIndex}/c{Range.Start.CharacterOffset} " +
+            $"end=blk{position.BlockIndex}/c{position.CharacterOffset}");
         Changed?.Invoke(this, System.EventArgs.Empty);
     }
 

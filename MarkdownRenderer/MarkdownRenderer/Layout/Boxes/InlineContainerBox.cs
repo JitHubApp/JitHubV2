@@ -210,8 +210,20 @@ public sealed class InlineContainerBox : BlockBox
     /// </summary>
     private (float X, float Y) GetSnappedOrigin(Theming.ElementStyle style)
     {
-        float x = MathF.Round((float)(Bounds.X + style.Margin.Left + style.Padding.Left));
-        float y = MathF.Round((float)(Bounds.Y + style.Margin.Top + style.Padding.Top));
+        // Snap to *device pixels*, not DIPs. At a non-1x rasterization scale
+        // (e.g., 1.25x / 1.5x / 2x), snapping only to integer DIPs still leaves
+        // glyph origins at fractional device-pixel positions. When the canvas
+        // dirty-rect shape changes between frames (as it does whenever the
+        // selection drag grows / shrinks adjacent tiles), DirectWrite's pixel
+        // snapping can resolve to a slightly different device-pixel column,
+        // which manifests as the "selection shake" the user reports —
+        // visually amplified on large heading glyphs.
+        float scale = (float)_context.RasterizationScale;
+        if (scale <= 0f) scale = 1f;
+        float xDip = (float)(Bounds.X + style.Margin.Left + style.Padding.Left);
+        float yDip = (float)(Bounds.Y + style.Margin.Top + style.Padding.Top);
+        float x = MathF.Round(xDip * scale) / scale;
+        float y = MathF.Round(yDip * scale) / scale;
         return (x, y);
     }
 
@@ -270,8 +282,15 @@ public sealed class InlineContainerBox : BlockBox
 
         var style = _context.ThemeSnapshot.GetStyle(_elementKey);
         var (x, y) = GetSnappedOrigin(style);
-        _layout.HitTest((float)point.X - x, (float)point.Y - y, out var hit);
+        _layout.HitTest((float)point.X - x, (float)point.Y - y, out var hit, out bool trailingSide);
         int charIndex = (int)hit.CharacterIndex;
+        // When the pointer is on the trailing (right for LTR) half of a glyph,
+        // DirectWrite returns the glyph's character index + trailingSide=true.
+        // For selection we want the CARET position, which is one past that index.
+        // Without this adjustment, dragging past the last character of a run never
+        // produces an offset that includes the final character — the selection
+        // stops one char short and the last char is never visually highlighted.
+        if (trailingSide) charIndex++;
 
         int cumulative = 0;
         foreach (var run in _runs)
@@ -406,8 +425,9 @@ public sealed class InlineContainerBox : BlockBox
         if (!Bounds.Contains(point)) return null;
         var style = _context.ThemeSnapshot.GetStyle(_elementKey);
         var (x, y) = GetSnappedOrigin(style);
-        _layout.HitTest((float)point.X - x, (float)point.Y - y, out var hitRegion);
+        _layout.HitTest((float)point.X - x, (float)point.Y - y, out var hitRegion, out bool trailingSide);
         int charIndex = (int)hitRegion.CharacterIndex;
+        if (trailingSide) charIndex++;
         int cumulative = 0;
         foreach (var run in _runs)
         {

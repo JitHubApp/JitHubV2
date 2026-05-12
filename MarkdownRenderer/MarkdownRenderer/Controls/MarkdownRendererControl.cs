@@ -1505,6 +1505,13 @@ public sealed partial class MarkdownRendererControl : UserControl
                 Canvas.SetZIndex(r, -1);
                 _overlay.Children.Add(r);
                 _selectionOverlayRects.Add(r);
+                // Log every pool-grow because Children.Add invalidates the
+                // overlay Canvas's measure, which in turn can ripple into a
+                // CanvasVirtualControl re-layout. If we see pool-grow events
+                // during a steady-state drag (not just the first stripe), the
+                // pool isn't being pre-warmed adequately.
+                MarkdownRenderer.Diagnostics.ShakeLogger.Log("sel-pool-grow",
+                    $"poolSize={_selectionOverlayRects.Count}");
             }
 
             r.Fill = _selectionBrush;
