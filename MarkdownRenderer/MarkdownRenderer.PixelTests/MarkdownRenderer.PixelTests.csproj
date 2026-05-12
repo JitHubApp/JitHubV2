@@ -34,7 +34,7 @@
     <Compile Include="..\MarkdownRenderer\Layout\Boxes\SvgTitleExtractor.cs" Link="Core\SvgTitleExtractor.cs" />
   </ItemGroup>
   <ItemGroup>
-    <Content Include="..\MarkdownRenderer\native\win-x64\thorvg.dll" Condition="'$(Platform)' == 'x64'">
+    <Content Include="..\MarkdownRenderer\native\win-x64\thorvg.dll">
       <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
       <Link>thorvg.dll</Link>
     </Content>

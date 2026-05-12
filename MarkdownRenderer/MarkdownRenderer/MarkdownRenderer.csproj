@@ -38,7 +38,7 @@
       Output renamed from thorvg-1.dll to thorvg.dll so [LibraryImport("thorvg")]
       resolves on default DLL search rules. See native\THORVG_LICENSE.
     -->
-    <Content Include="native\win-x64\thorvg.dll" Condition="'$(Platform)' == 'x64'">
+    <Content Include="native\win-x64\thorvg.dll">
       <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
       <Link>thorvg.dll</Link>
     </Content>
