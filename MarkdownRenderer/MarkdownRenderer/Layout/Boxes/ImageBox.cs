@@ -429,59 +429,37 @@ public sealed class ImageBox : BlockBox
         bool failed = false;
         try
         {
-            if (uri.Scheme == "data")
+            // Guard against huge responses before allocating. 4 MB is well
+            // above any reasonable SVG icon/illustration in a markdown doc
+            // and prevents a malicious host from OOM-ing the process.
+            // Note: data: URIs are routed to LoadSvgDataUriAsync before this
+            // method is called, so uri.Scheme is always http/https/file here.
+            const int MaxSvgBytes = 4 * 1024 * 1024;
+            using var response = await _http.Value.GetAsync(uri, HttpCompletionOption.ResponseHeadersRead)
+                .ConfigureAwait(false);
+            response.EnsureSuccessStatusCode();
+            if (response.Content.Headers.ContentLength > MaxSvgBytes)
             {
-                string raw = uri.ToString();
-                int comma = raw.IndexOf(',');
-                if (comma < 0) { failed = true; }
-                else
-                {
-                    const int MaxSvgBytes = 4 * 1024 * 1024;
-                    string payload = raw.Substring(comma + 1);
-                    rawBytes = raw.IndexOf(";base64", 0, comma, StringComparison.OrdinalIgnoreCase) >= 0
-                        ? Convert.FromBase64String(payload)
-                        : System.Text.Encoding.UTF8.GetBytes(Uri.UnescapeDataString(payload));
-                    if (rawBytes.Length > MaxSvgBytes)
-                    {
-                        System.Diagnostics.Debug.WriteLine(
-                            $"[ImageBox] SVG data URI exceeds {MaxSvgBytes} bytes; skipping.");
-                        rawBytes = null;
-                        failed = true;
-                    }
-                }
+                System.Diagnostics.Debug.WriteLine(
+                    $"[ImageBox] SVG at {uri} Content-Length={response.Content.Headers.ContentLength} exceeds {MaxSvgBytes} bytes; skipping.");
+                failed = true;
             }
             else
             {
-                // Guard against huge responses before allocating. 4 MB is well
-                // above any reasonable SVG icon/illustration in a markdown doc
-                // and prevents a malicious host from OOM-ing the process.
-                const int MaxSvgBytes = 4 * 1024 * 1024;
-                using var response = await _http.Value.GetAsync(uri, HttpCompletionOption.ResponseHeadersRead)
-                    .ConfigureAwait(false);
-                response.EnsureSuccessStatusCode();
-                if (response.Content.Headers.ContentLength > MaxSvgBytes)
+                using var stream = await response.Content.ReadAsStreamAsync().ConfigureAwait(false);
+                var buf = new byte[MaxSvgBytes + 1];
+                int read = 0, chunk;
+                while (read <= MaxSvgBytes && (chunk = await stream.ReadAsync(buf, read, buf.Length - read).ConfigureAwait(false)) > 0)
+                    read += chunk;
+                if (read > MaxSvgBytes)
                 {
                     System.Diagnostics.Debug.WriteLine(
-                        $"[ImageBox] SVG at {uri} Content-Length={response.Content.Headers.ContentLength} exceeds {MaxSvgBytes} bytes; skipping.");
+                        $"[ImageBox] SVG at {uri} exceeded {MaxSvgBytes} bytes mid-stream; skipping.");
                     failed = true;
                 }
                 else
                 {
-                    using var stream = await response.Content.ReadAsStreamAsync().ConfigureAwait(false);
-                    var buf = new byte[MaxSvgBytes + 1];
-                    int read = 0, chunk;
-                    while (read <= MaxSvgBytes && (chunk = await stream.ReadAsync(buf, read, buf.Length - read).ConfigureAwait(false)) > 0)
-                        read += chunk;
-                    if (read > MaxSvgBytes)
-                    {
-                        System.Diagnostics.Debug.WriteLine(
-                            $"[ImageBox] SVG at {uri} exceeded {MaxSvgBytes} bytes mid-stream; skipping.");
-                        failed = true;
-                    }
-                    else
-                    {
-                        rawBytes = buf[..read];
-                    }
+                    rawBytes = buf[..read];
                 }
             }
         }
@@ -516,10 +494,18 @@ public sealed class ImageBox : BlockBox
             if (comma < 0) { failed = true; }
             else
             {
+                const int MaxSvgBytes = 4 * 1024 * 1024;
                 string payload = rawDataUri.Substring(comma + 1);
                 rawBytes = rawDataUri.IndexOf(";base64", 0, comma, StringComparison.OrdinalIgnoreCase) >= 0
                     ? Convert.FromBase64String(payload)
                     : System.Text.Encoding.UTF8.GetBytes(Uri.UnescapeDataString(payload));
+                if (rawBytes.Length > MaxSvgBytes)
+                {
+                    System.Diagnostics.Debug.WriteLine(
+                        $"[ImageBox] SVG data URI exceeds {MaxSvgBytes} bytes; skipping.");
+                    rawBytes = null;
+                    failed = true;
+                }
             }
         }
         catch (Exception ex)
