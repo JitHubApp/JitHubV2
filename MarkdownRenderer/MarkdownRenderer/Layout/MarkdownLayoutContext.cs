@@ -43,6 +43,16 @@ public sealed class MarkdownLayoutContext
     /// to the thread that owns the canvas. May be null in unit tests.</summary>
     public DispatcherQueue? Dispatcher { get; }
 
+    /// <summary>
+    /// Effective rasterization scale of the host control (matches
+    /// <c>XamlRoot.RasterizationScale</c>: 1.0 at 100%, 1.5 at 150%, 2.0
+    /// at 200%, etc.). Used by raster-fallback image paths (e.g.
+    /// <c>SvgSkiaRasterizer</c>) to render at device-pixel resolution so
+    /// the result is crisp on high-DPI displays. Defaults to 1.0 — paint
+    /// is unchanged at the standard scale and in unit tests.
+    /// </summary>
+    public double RasterizationScale { get; init; } = 1.0;
+
     public int NextBlockIndex() => ++_blockIndex;
     private int _blockIndex;
 

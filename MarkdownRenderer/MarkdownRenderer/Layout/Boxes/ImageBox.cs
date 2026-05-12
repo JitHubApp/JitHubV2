@@ -60,6 +60,11 @@ public sealed class ImageBox : BlockBox
     private float _imageWidth;
     private float _imageHeight;
     private float _captionHeight;
+    // Accessibility metadata extracted from the SVG root, set on the UI
+    // thread after a successful load. Null when the SVG is missing
+    // <title>/<desc>, the asset is a bitmap, or extraction failed.
+    private string? _svgTitle;
+    private string? _svgDesc;
 
     /// <summary>Raised when the asset finishes loading and a repaint is required.
     /// The event arg's <see cref="LoadCompletedEventArgs.LayoutInvalidated"/>
@@ -100,6 +105,14 @@ public sealed class ImageBox : BlockBox
 
     /// <summary>The alt text supplied for this image (empty if none).</summary>
     public string Alt => _alt;
+
+    /// <summary>SVG &lt;title&gt; element value, or null. Used by the
+    /// automation peer as the accessible name when richer than alt.</summary>
+    public string? SvgTitle => _svgTitle;
+
+    /// <summary>SVG &lt;desc&gt; element value, or null. Used by the
+    /// automation peer as <c>HelpText</c> for screen-reader description.</summary>
+    public string? SvgDesc => _svgDesc;
 
     /// <summary>True if the URL has an .svg extension or contains image/svg+xml.</summary>
     public bool IsSvg => _isSvg;
@@ -356,7 +369,7 @@ public sealed class ImageBox : BlockBox
                     // Attempt an inline Skia rasterization with the bytes we
                     // already have so the user sees the image on the very
                     // next frame rather than waiting for a reload pass.
-                    var raster = TryRasterize(_svgBytes!, _svgIntrinsicSize);
+                    var raster = TryRasterize(_svgBytes!, _svgIntrinsicSize, _context.RasterizationScale);
                     if (raster is { } r)
                     {
                         _bitmap = CanvasBitmap.CreateFromBytes(
@@ -519,6 +532,7 @@ public sealed class ImageBox : BlockBox
 
             if (bytes is not null)
             {
+                bytes = PreprocessSvgBytes(bytes);
                 intrinsic = ExtractSvgIntrinsicSize(bytes);
 
                 // Tier classifier — features Win2D's CanvasSvgDocument doesn't
@@ -530,7 +544,7 @@ public sealed class ImageBox : BlockBox
                                || SvgFeatureScanner.Classify(bytes) == SvgRenderTier.Skia;
                 if (useSkia)
                 {
-                    rasterized = TryRasterize(bytes, intrinsic);
+                    rasterized = TryRasterize(bytes, intrinsic, _context.RasterizationScale);
                     if (rasterized is null)
                     {
                         // Skia couldn't parse it either. Fall through to the
@@ -566,7 +580,7 @@ public sealed class ImageBox : BlockBox
                         // retained and Paint will retry the Win2D parse once
                         // more before latching the failure.
                         _skiaTierUrls.TryAdd(_url, 0);
-                        rasterized = TryRasterize(bytes, intrinsic);
+                        rasterized = TryRasterize(bytes, intrinsic, _context.RasterizationScale);
                     }
                 }
             }
@@ -643,13 +657,14 @@ public sealed class ImageBox : BlockBox
 
             if (bytes is not null)
             {
+                bytes = PreprocessSvgBytes(bytes);
                 intrinsic = ExtractSvgIntrinsicSize(bytes);
 
                 bool useSkia = _skiaTierUrls.ContainsKey(_url)
                                || SvgFeatureScanner.Classify(bytes) == SvgRenderTier.Skia;
                 if (useSkia)
                 {
-                    rasterized = TryRasterize(bytes, intrinsic);
+                    rasterized = TryRasterize(bytes, intrinsic, _context.RasterizationScale);
                     if (rasterized is null) useSkia = false;
                 }
 
@@ -672,7 +687,7 @@ public sealed class ImageBox : BlockBox
                     {
                         System.Diagnostics.Debug.WriteLine($"[ImageBox] SVG data URI pre-parse failed: {ex.Message}");
                         _skiaTierUrls.TryAdd(_url, 0);
-                        rasterized = TryRasterize(bytes, intrinsic);
+                        rasterized = TryRasterize(bytes, intrinsic, _context.RasterizationScale);
                     }
                 }
             }
@@ -762,12 +777,22 @@ public sealed class ImageBox : BlockBox
     /// later down-/up-scaled by <c>ds.DrawImage</c> to the layout-computed
     /// display rect, so a slightly smaller raster than display size is OK.
     /// Defaults to 256×256 when the SVG has no intrinsic dimensions.
+    /// The <paramref name="rasterScale"/> multiplier (typically the host
+    /// XamlRoot's RasterizationScale, e.g. 1.5 / 2.0) over-samples the
+    /// raster so the image stays crisp on high-DPI displays.
     /// </summary>
     private const int MaxRasterDimension = 2048;
-    private static SvgSkiaRasterizer.Raster? TryRasterize(byte[] bytes, Size intrinsic)
+    private static SvgSkiaRasterizer.Raster? TryRasterize(byte[] bytes, Size intrinsic, double rasterScale = 1.0)
     {
-        int w = intrinsic.Width > 0 ? (int)Math.Round(intrinsic.Width) : 256;
-        int h = intrinsic.Height > 0 ? (int)Math.Round(intrinsic.Height) : 256;
+        double scale = rasterScale > 0 ? rasterScale : 1.0;
+        // Cap effective DPI scale at 4x — beyond that the cost outweighs
+        // perceptible sharpness, and very small SVGs rasterized at 8x can
+        // blow past MaxRasterDimension which then forces a downscale that
+        // throws away the over-sampling we just paid for.
+        if (scale > 4.0) scale = 4.0;
+
+        int w = intrinsic.Width > 0 ? (int)Math.Round(intrinsic.Width * scale) : (int)Math.Round(256 * scale);
+        int h = intrinsic.Height > 0 ? (int)Math.Round(intrinsic.Height * scale) : (int)Math.Round(256 * scale);
         if (w > MaxRasterDimension || h > MaxRasterDimension)
         {
             double s = Math.Min((double)MaxRasterDimension / w, (double)MaxRasterDimension / h);
@@ -775,5 +800,44 @@ public sealed class ImageBox : BlockBox
             h = Math.Max(1, (int)Math.Round(h * s));
         }
         return SvgSkiaRasterizer.Rasterize(bytes, w, h);
+    }
+
+    /// <summary>
+    /// Pre-processes raw SVG bytes prior to backend dispatch:
+    /// <list type="bullet">
+    ///   <item>Injects a <c>color="#RRGGBB"</c> attribute on the root
+    ///         &lt;svg&gt; element using the current theme's body
+    ///         foreground so <c>currentColor</c> tokens (Octicons /
+    ///         status-badge style) resolve to the theme color.</item>
+    ///   <item>Extracts <c>&lt;title&gt;</c> and <c>&lt;desc&gt;</c>
+    ///         text and stores them on the box for the automation peer.</item>
+    /// </list>
+    /// Both transforms are best-effort and never throw; failure leaves
+    /// the original bytes / null metadata in place.
+    /// </summary>
+    private byte[] PreprocessSvgBytes(byte[] bytes)
+    {
+        try
+        {
+            var meta = SvgTitleExtractor.Extract(bytes);
+            _svgTitle = meta.Title;
+            _svgDesc = meta.Desc;
+        }
+        catch (Exception ex)
+        {
+            System.Diagnostics.Debug.WriteLine($"[ImageBox] title/desc extract failed: {ex.Message}");
+        }
+
+        try
+        {
+            var bodyStyle = _context.ThemeSnapshot.GetStyle(MarkdownElementKeys.Body);
+            var fg = bodyStyle.Foreground;
+            return SvgThemeInjector.Inject(bytes, fg.R, fg.G, fg.B);
+        }
+        catch (Exception ex)
+        {
+            System.Diagnostics.Debug.WriteLine($"[ImageBox] currentColor inject failed: {ex.Message}");
+            return bytes;
+        }
     }
 }

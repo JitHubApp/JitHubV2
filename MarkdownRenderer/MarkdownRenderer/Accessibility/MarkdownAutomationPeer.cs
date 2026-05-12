@@ -106,7 +106,12 @@ public sealed partial class MarkdownAutomationPeer : FrameworkElementAutomationP
                 foreach (var c in stack.Children) AppendText(c, sb);
                 break;
             case ImageBox ib:
+                // Prefer the explicit alt text. When the SVG provides
+                // <title>/<desc> and alt is empty, fall back to those so
+                // assistive tech still has a meaningful name.
                 if (!string.IsNullOrEmpty(ib.Alt)) { sb.Append(ib.Alt); sb.Append('\n'); }
+                else if (!string.IsNullOrEmpty(ib.SvgTitle)) { sb.Append(ib.SvgTitle); sb.Append('\n'); }
+                if (!string.IsNullOrEmpty(ib.SvgDesc)) { sb.Append(ib.SvgDesc); sb.Append('\n'); }
                 break;
         }
     }

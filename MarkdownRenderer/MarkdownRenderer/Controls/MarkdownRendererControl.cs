@@ -662,7 +662,14 @@ public sealed partial class MarkdownRendererControl : UserControl
         // CanvasVirtualControl only has a device after CreateResources fires, so
         // passing _canvas directly would crash if layout runs before first draw.
         var device = CanvasDevice.GetSharedDevice();
-        var ctx = new MarkdownLayoutContext(device, themeSnapshot, sourceMap, registry, FlowDirection, DispatcherQueue);
+        // Capture the host's rasterization scale so raster-fallback image
+        // paths (e.g. SvgSkiaRasterizer) render at device-pixel resolution.
+        // XamlRoot is null until the control is loaded; default to 1.0.
+        double rasterScale = XamlRoot?.RasterizationScale ?? 1.0;
+        var ctx = new MarkdownLayoutContext(device, themeSnapshot, sourceMap, registry, FlowDirection, DispatcherQueue)
+        {
+            RasterizationScale = rasterScale,
+        };
         var builder = new LayoutBuilder(ctx, EmbedFactory);
 
         ct.ThrowIfCancellationRequested();

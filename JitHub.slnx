@@ -29,6 +29,11 @@
     <Platform Solution="Debug|Any CPU" Project="x64" />
     <Platform Solution="Release|Any CPU" Project="x64" />
   </Project>
+  <Project Path="MarkdownRenderer/MarkdownRenderer.PixelTests/MarkdownRenderer.PixelTests.csproj">
+    <Platform Solution="*|x64" Project="x64" />
+    <Platform Solution="Debug|Any CPU" Project="x64" />
+    <Platform Solution="Release|Any CPU" Project="x64" />
+  </Project>
   <Project Path="MarkdownRenderer/MarkdownRenderer.Sample/MarkdownRenderer.Sample.csproj">
     <Platform Solution="*|ARM" Project="x86" />
     <Platform Solution="*|ARM64" Project="ARM64" />

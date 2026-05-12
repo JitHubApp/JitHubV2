@@ -1,15 +1,20 @@
 <Project Sdk="Microsoft.NET.Sdk">
   <PropertyGroup>
+    <!--
+      Pure netcoreapp test project — no WinUI / Win2D, only SkiaSharp +
+      Svg.Skia + System.Drawing for raster comparison. Headless Edge /
+      Chrome is invoked as a subprocess for ground-truth rasters; if no
+      browser is found the dependent tests skip themselves.
+    -->
     <TargetFramework>net10.0-windows10.0.26100.0</TargetFramework>
     <Nullable>enable</Nullable>
     <ImplicitUsings>enable</ImplicitUsings>
     <IsTestProject>true</IsTestProject>
     <IsPackable>false</IsPackable>
-    <RootNamespace>MarkdownRenderer.Tests</RootNamespace>
+    <RootNamespace>MarkdownRenderer.PixelTests</RootNamespace>
     <Platforms>x64</Platforms>
-    <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
-    <!-- Avoid pulling in WinUI and Win2D for pure-logic tests -->
     <UseWinUI>false</UseWinUI>
+    <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
   </PropertyGroup>
   <ItemGroup>
     <PackageReference Include="xunit" Version="2.9.3" />
@@ -18,25 +23,22 @@
       <IncludeAssets>runtime; build; native; contentfiles; analyzers</IncludeAssets>
     </PackageReference>
     <PackageReference Include="Microsoft.NET.Test.Sdk" Version="17.13.0" />
-    <PackageReference Include="Markdig" Version="0.42.0" />
     <PackageReference Include="SkiaSharp" Version="3.116.1" />
     <PackageReference Include="SkiaSharp.NativeAssets.Win32" Version="3.116.1" />
     <PackageReference Include="Svg.Skia" Version="3.0.4" />
+    <PackageReference Include="System.Drawing.Common" Version="9.0.0" />
   </ItemGroup>
-  <!-- Include only the source files that have no WinUI / Win2D dependencies -->
+  <!-- Cherry-pick rasterizer source so PixelTests doesn't pull WinUI -->
   <ItemGroup>
-    <Compile Include="..\MarkdownRenderer\SourceSpan.cs" Link="Core\SourceSpan.cs" />
-    <Compile Include="..\MarkdownRenderer\Document\DocumentPosition.cs" Link="Core\DocumentPosition.cs" />
-    <Compile Include="..\MarkdownRenderer\Document\MarkdownSourceMap.cs" Link="Core\MarkdownSourceMap.cs" />
-    <Compile Include="..\MarkdownRenderer\Parsing\MarkdigParser.cs" Link="Core\MarkdigParser.cs" />
+    <Compile Include="..\MarkdownRenderer\Layout\Boxes\SvgSkiaRasterizer.cs" Link="Core\SvgSkiaRasterizer.cs" />
     <Compile Include="..\MarkdownRenderer\Layout\Boxes\SvgIntrinsics.cs" Link="Core\SvgIntrinsics.cs" />
     <Compile Include="..\MarkdownRenderer\Layout\Boxes\SvgFeatureScanner.cs" Link="Core\SvgFeatureScanner.cs" />
-    <Compile Include="..\MarkdownRenderer\Layout\Boxes\SvgSkiaRasterizer.cs" Link="Core\SvgSkiaRasterizer.cs" />
     <Compile Include="..\MarkdownRenderer\Layout\Boxes\SvgThemeInjector.cs" Link="Core\SvgThemeInjector.cs" />
     <Compile Include="..\MarkdownRenderer\Layout\Boxes\SvgTitleExtractor.cs" Link="Core\SvgTitleExtractor.cs" />
-    <Compile Include="..\MarkdownRenderer\Layout\Boxes\LoadCompletedEventArgs.cs" Link="Core\LoadCompletedEventArgs.cs" />
-    <Compile Include="..\MarkdownRenderer\Controls\EmbedVisibility.cs" Link="Core\EmbedVisibility.cs" />
-    <Compile Include="..\MarkdownRenderer\Layout\TextBoundaryHelper.cs" Link="Core\TextBoundaryHelper.cs" />
-    <Compile Include="..\MarkdownRenderer\Layout\FocusableItem.cs" Link="Core\FocusableItem.cs" />
+  </ItemGroup>
+  <ItemGroup>
+    <None Update="Fixtures\**\*">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </None>
   </ItemGroup>
 </Project>
