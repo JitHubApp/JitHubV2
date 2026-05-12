@@ -25,23 +25,19 @@ public sealed class InlineContainerBox : BlockBox
     private float _lastWidth;
     private readonly MarkdownLayoutContext _context;
 
-    /// <summary>Run currently being hovered by the pointer (for link hover effect).</summary>
-    public InlineRun? HoveredRun
-    {
-        get => _hoveredRun;
-        set
-        {
-            if (!ReferenceEquals(_hoveredRun, value))
-            {
-                _hoveredRun = value;
-                _hoverColorsDirty = true;
-            }
-        }
-    }
-    private InlineRun? _hoveredRun;
-    // True whenever hover state changed since last ApplyHoverColor call.
-    // Starts true so the first paint bakes link colors correctly.
-    private bool _hoverColorsDirty = true;
+    /// <summary>
+    /// Run currently being hovered by the pointer.  Retained for hit-test /
+    /// click routing diagnostics only; we deliberately do NOT mutate any
+    /// CanvasTextLayout state in response to hover changes because calling
+    /// <c>CanvasTextLayout.SetColor</c> on every hover transition invalidates
+    /// DirectWrite's cached glyph-run metrics, which causes visible glyph shake
+    /// when the cursor moves over text or links.  Link hover affordance is
+    /// communicated by the cursor shape (Hand) only — matching Win11 Settings,
+    /// Notepad, Word, etc.  A future enhancement may render an underline
+    /// accent on a XAML overlay (no canvas invalidation) for stronger
+    /// affordance without re-introducing shake.
+    /// </summary>
+    public InlineRun? HoveredRun { get; set; }
 
     public IReadOnlyList<InlineRun> Runs => _runs;
     public string ElementKey => _elementKey;
@@ -185,7 +181,6 @@ public sealed class InlineContainerBox : BlockBox
                 _layout = null;
                 throw;
             }
-            _hoverColorsDirty = true; // new layout needs hover colors re-applied
             _lastWidth = availableWidth;
         }
 
@@ -242,15 +237,9 @@ public sealed class InlineContainerBox : BlockBox
             ds.FillRoundedRectangle(rect, 4, 4, bg);
         }
 
-        // Only mutate the CanvasTextLayout when hover state has changed.
-        // Calling SetColor on every frame (even with the same value) forces
-        // DirectWrite to invalidate cached glyph-run metrics which causes the
-        // character regions to shift slightly, producing visible text vibration.
-        if (_hoverColorsDirty)
-        {
-            ApplyHoverColor(_layout);
-            _hoverColorsDirty = false;
-        }
+        // Hover state is intentionally NOT applied to the text layout —
+        // see HoveredRun docs for why.  Link hover affordance is conveyed by
+        // the cursor shape change in MarkdownRendererControl.OnPointerMoved.
         // Snap to integer pixels at the draw site.  See GetSnappedOrigin
         // for the rationale; the same snapped origin is used for hit-test,
         // selection rects and embed placement so they stay in sync.
@@ -513,45 +502,6 @@ public sealed class InlineContainerBox : BlockBox
                     System.Diagnostics.Debug.WriteLine($"[InlineContainerBox] SetCharacterSpacing failed: {ex.Message}");
                 }
                 layout.SetColor(cumulative, len, Color.FromArgb(0, 0, 0, 0));
-            }
-            cumulative += len;
-        }
-    }
-
-    private void ApplyHoverColor(CanvasTextLayout layout)
-    {
-        var hover = HoveredRun;
-        // First: reset every LinkRun back to its theme foreground so that an
-        // unhover event restores the original color. SetColor must be called
-        // even when not hovering because a previous frame may have brightened it.
-        int cumulative = 0;
-        foreach (var run in _runs)
-        {
-            int len = run.Text.Length;
-            if (len > 0 && run is LinkRun)
-            {
-                var rs = _context.ThemeSnapshot.GetStyle(run.ElementKey);
-                layout.SetColor(cumulative, len, rs.Foreground);
-            }
-            cumulative += len;
-        }
-
-        if (hover is not LinkRun) return;
-        cumulative = 0;
-        foreach (var run in _runs)
-        {
-            int len = run.Text.Length;
-            if (len == 0) continue;
-            if (ReferenceEquals(run, hover))
-            {
-                var rs = _context.ThemeSnapshot.GetStyle(run.ElementKey);
-                var c = rs.Foreground;
-                var hot = Color.FromArgb(c.A,
-                    (byte)Math.Min(255, c.R + 40),
-                    (byte)Math.Min(255, c.G + 40),
-                    (byte)Math.Min(255, c.B + 40));
-                layout.SetColor(cumulative, len, hot);
-                break;
             }
             cumulative += len;
         }

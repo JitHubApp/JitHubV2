@@ -46,6 +46,7 @@ internal static class Program
             RunProbe("double-click-selects-word",  () => ProbeDoubleClickSelectsWord(window));
             RunProbe("triple-click-selects-line",  () => ProbeTripleClickSelectsLine(window));
             RunProbe("context-menu-appears",       () => ProbeContextMenu(window));
+            RunProbe("hover-does-not-shake",       () => ProbeHoverDoesNotShake(window));
 
             try { window.Close(); } catch { /* window may already be gone */ }
         }
@@ -363,6 +364,101 @@ internal static class Program
         var nameAfter = renderer.Name ?? string.Empty;
         Assert(nameAfter.Length > 0, "Renderer must remain responsive after right-click context menu");
     }
+
+    /// <summary>
+    /// Regression probe for the long-standing "text shake" bug: moving the
+    /// pointer over body text (hover only, no clicks) must not trigger any
+    /// canvas paint events.  Earlier code partial-invalidated the canvas on
+    /// every hover transition to apply a link hover-color tweak; that
+    /// re-rasterised glyphs at slightly different sub-pixel positions,
+    /// producing visible jitter.  We now do not invalidate at all on hover.
+    /// This probe drives mouse motion across the canvas and asserts the
+    /// ShakeLogger recorded zero paint events between mouse-down boundaries.
+    /// </summary>
+    private static void ProbeHoverDoesNotShake(Window window)
+    {
+        // Pick a sample with mixed text + links so hover crosses link/text
+        // boundaries (the original repro condition).
+        var btn = window.FindFirstDescendant(cf => cf.ByAutomationId("SampleButton_Typography"))?.AsButton()
+                  ?? throw new InvalidOperationException("Typography sample button not found");
+        btn.Invoke();
+        Thread.Sleep(1200);
+
+        var renderer = FindRenderer(window);
+        var bounds = renderer.BoundingRectangle;
+
+        // Move the cursor away from the canvas first, then read the current
+        // log size as our baseline.  Any paint events fired after this point
+        // are attributable to our hover motion.
+        Mouse.MoveTo((int)bounds.X - 100, (int)bounds.Y - 100);
+        Thread.Sleep(400);
+
+        string logPath = FindShakeLog()
+            ?? throw new InvalidOperationException("text_shaking2.log not found — sample may not have ShakeLogger enabled");
+        long baseline = new FileInfo(logPath).Length;
+
+        // Drive a slow hover sweep across the top portion of the renderer,
+        // which is where body text lives.  No mouse buttons pressed.
+        int y = (int)(bounds.Y + 60);
+        int xStart = (int)(bounds.X + 20);
+        int xEnd = (int)(bounds.X + bounds.Width * 0.7);
+        for (int x = xStart; x < xEnd; x += 8)
+        {
+            Mouse.MoveTo(x, y);
+            Thread.Sleep(15);
+        }
+        Thread.Sleep(400);
+
+        // Read everything appended after baseline.
+        string appended;
+        using (var fs = new FileStream(logPath, FileMode.Open, FileAccess.Read, FileShare.ReadWrite))
+        using (var sr = new StreamReader(fs))
+        {
+            fs.Seek(baseline, SeekOrigin.Begin);
+            appended = sr.ReadToEnd();
+        }
+
+        // During pure hover (no mouse-down), there must be NO inline-paint
+        // events AND no region events.  The presence of EITHER means we are
+        // re-painting on hover, which is the shake source.
+        int paintEvents = CountOccurrences(appended, "inline-paint");
+        int regionEvents = CountOccurrences(appended, " region ");
+        Assert(paintEvents == 0,
+            $"hover-shake regression: {paintEvents} inline-paint event(s) fired during pure hover. " +
+            $"Recent log excerpt: {Truncate(appended, 400)}");
+        Assert(regionEvents == 0,
+            $"hover-shake regression: {regionEvents} canvas region event(s) fired during pure hover. " +
+            $"Recent log excerpt: {Truncate(appended, 400)}");
+    }
+
+    private static string? FindShakeLog()
+    {
+        // Walk up from the running automation exe to find text_shaking2.log
+        // produced by ShakeLogger; it lands next to the repo root.
+        var dir = AppContext.BaseDirectory;
+        for (int i = 0; i < 10 && dir is not null; i++)
+        {
+            string candidate = Path.Combine(dir, "text_shaking2.log");
+            if (File.Exists(candidate)) return candidate;
+            dir = Directory.GetParent(dir)?.FullName;
+        }
+        return null;
+    }
+
+    private static int CountOccurrences(string s, string needle)
+    {
+        if (string.IsNullOrEmpty(s) || string.IsNullOrEmpty(needle)) return 0;
+        int count = 0, i = 0;
+        while ((i = s.IndexOf(needle, i, StringComparison.Ordinal)) >= 0)
+        {
+            count++;
+            i += needle.Length;
+        }
+        return count;
+    }
+
+    private static string Truncate(string s, int max)
+        => s.Length <= max ? s : s.Substring(0, max) + "…";
 
     private static AutomationElement FindRenderer(Window window)
         => window.FindFirstDescendant(cf => cf.ByAutomationId("MarkdownRenderer"))

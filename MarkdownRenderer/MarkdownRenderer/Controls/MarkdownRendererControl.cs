@@ -1244,7 +1244,10 @@ public sealed partial class MarkdownRendererControl : UserControl
                 foreach (var b in _snapshot.Blocks) ClearHover(b);
                 _lastHoveredRun = null;
                 _lastHoveredBox = null;
-                if (wasLink) InvalidateLinkHoverRegion(boxToInvalidate, null);
+                // No canvas invalidate: hover transitions no longer mutate
+                // the text layout, so the link→null transition has no painted
+                // representation either.
+                _ = wasLink; _ = boxToInvalidate;
             }
             SetCursorShape(null);
             return;
@@ -1284,38 +1287,21 @@ public sealed partial class MarkdownRendererControl : UserControl
 
         if (linkChanged)
         {
-            // Clear previous hover state on every InlineContainerBox.
+            // Update hover bookkeeping for click routing, but do NOT invalidate
+            // the canvas — hover causes no visual change to the text any more
+            // (see InlineContainerBox.HoveredRun docs).  Eliminating these
+            // partial-region invalidates is what finally killed the long-
+            // standing text-shake bug: even with grayscale AA + device-pixel
+            // origin snapping, repainting a partial canvas region forced
+            // DirectWrite to re-tile glyphs at sub-pixel-different positions.
             foreach (var b in _snapshot.Blocks) ClearHover(b);
             if (hoveredBox is not null && hoveredLink is not null)
                 hoveredBox.HoveredRun = hoveredLink;
-            // Use targeted invalidation: only repaint the boxes whose link-hover
-            // color actually changed.  This limits the repainted tile region,
-            // reducing tile-boundary sub-pixel variance that causes glyph shake.
-            InvalidateLinkHoverRegion(_lastHoveredBox, hoveredBox);
         }
         _lastHoveredRun = hovered;
         _lastHoveredBox = hoveredBox;
 
         SetCursorShape(wantedShape);
-    }
-
-    /// <summary>
-    /// Invalidates the canvas regions that cover <paramref name="prev"/> and/or
-    /// <paramref name="next"/> (the boxes whose link-hover color just changed).
-    /// Falls back to a full invalidate only when neither box is known.
-    /// </summary>
-    private void InvalidateLinkHoverRegion(
-        Layout.Boxes.InlineContainerBox? prev,
-        Layout.Boxes.InlineContainerBox? next)
-    {
-        if (_canvas is null) return;
-        if (prev is null && next is null)
-        {
-            _canvas.Invalidate();
-            return;
-        }
-        if (prev is not null) _canvas.Invalidate(prev.Bounds);
-        if (next is not null && !ReferenceEquals(prev, next)) _canvas.Invalidate(next.Bounds);
     }
 
     /// <summary>
@@ -1658,7 +1644,9 @@ public sealed partial class MarkdownRendererControl : UserControl
             foreach (var b in _snapshot.Blocks) ClearHover(b);
             _lastHoveredRun = null;
             _lastHoveredBox = null;
-            if (wasLink) InvalidateLinkHoverRegion(boxToInvalidate, null);
+            // No canvas invalidate: hover transitions no longer mutate the
+            // text layout (see InlineContainerBox.HoveredRun docs).
+            _ = wasLink; _ = boxToInvalidate;
         }
         // Always reset cursor to null (system default) on exit — not just
         // when a link was hovered.  PointerExited fires whenever the pointer
