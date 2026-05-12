@@ -29,6 +29,7 @@
     <Compile Include="..\MarkdownRenderer\Document\DocumentPosition.cs" Link="Core\DocumentPosition.cs" />
     <Compile Include="..\MarkdownRenderer\Document\MarkdownSourceMap.cs" Link="Core\MarkdownSourceMap.cs" />
     <Compile Include="..\MarkdownRenderer\Parsing\MarkdigParser.cs" Link="Core\MarkdigParser.cs" />
+    <Compile Include="..\MarkdownRenderer\Parsing\ForgivingDataUriFixer.cs" Link="Core\ForgivingDataUriFixer.cs" />
     <Compile Include="..\MarkdownRenderer\Layout\Boxes\SvgIntrinsics.cs" Link="Core\SvgIntrinsics.cs" />
     <Compile Include="..\MarkdownRenderer\Layout\Boxes\SvgFeatureScanner.cs" Link="Core\SvgFeatureScanner.cs" />
     <Compile Include="..\MarkdownRenderer\Layout\Boxes\SvgSkiaRasterizer.cs" Link="Core\SvgSkiaRasterizer.cs" />

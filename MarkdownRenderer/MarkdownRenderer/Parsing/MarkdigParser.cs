@@ -32,15 +32,17 @@ public sealed class MarkdigParser
             // so we don't generate an exception object on the cancelled path.
             if (ct.IsCancellationRequested)
                 return null!;
-            var document = Markdown.Parse(source ?? string.Empty, _pipeline);
-            return new ParsedMarkdown(source ?? string.Empty, document);
+            var fixedSource = ForgivingDataUriFixer.Fix(source ?? string.Empty);
+            var document = Markdown.Parse(fixedSource, _pipeline);
+            return new ParsedMarkdown(fixedSource, document);
         }, ct);
     }
 
     public ParsedMarkdown Parse(string source)
     {
-        var document = Markdown.Parse(source ?? string.Empty, _pipeline);
-        return new ParsedMarkdown(source ?? string.Empty, document);
+        var fixedSource = ForgivingDataUriFixer.Fix(source ?? string.Empty);
+        var document = Markdown.Parse(fixedSource, _pipeline);
+        return new ParsedMarkdown(fixedSource, document);
     }
 }
 
