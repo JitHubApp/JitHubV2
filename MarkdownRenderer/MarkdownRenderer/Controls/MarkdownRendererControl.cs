@@ -758,7 +758,12 @@ public sealed partial class MarkdownRendererControl : UserControl
         // match — reset so the first post-rebuild realisation always fires.
         _lastFiredRealizedCount = -1;
         _selectionOverlayRects.Clear(); // overlay was just cleared above
-        PreWarmSelectionPool();         // pre-populate so first drag has no pool-grow overhead
+        // Pre-populate enough stripes to cover a full-document selection without
+        // any Children.Add() calls during the first drag.  Each block can produce
+        // at most ~3 line-stripes (partial first line, full interior lines, partial
+        // last line) so blocks×3 is a conservative upper bound.  Floor at 32 so
+        // tiny documents still get a sensible pool.
+        PreWarmSelectionPool(Math.Max(32, snapshot.Blocks.Count * 3));
         _selection.Clear();             // stale selection no longer valid after re-layout
         _focusedItemIndex = -1;         // selection/focus stale after re-layout
         _focusRing = null;              // evicted from overlay; will be lazily re-created on next Tab
@@ -1562,8 +1567,8 @@ public sealed partial class MarkdownRendererControl : UserControl
     /// Pre-populates the selection-highlight rectangle pool up to
     /// <paramref name="count"/> stripes so the first drag gesture after a
     /// document rebuild doesn't incur <c>Children.Add</c> overhead during
-    /// pointer-move events.  8 stripes covers most real-world selections
-    /// (heading line + 6 body lines + overflow guard).
+    /// pointer-move events.  Callers should pass <c>blocks × 3</c> for a
+    /// full-document upper bound; 8 is kept as a safe default.
     /// </summary>
     private void PreWarmSelectionPool(int count = 8)
     {
@@ -1604,6 +1609,27 @@ public sealed partial class MarkdownRendererControl : UserControl
         // adjacent areas) so we MUST NOT clear _selectionAnchor here — that
         // killed drag-select on the embeds page. Capture-loss / cancel are
         // routed to OnPointerCanceledOrCaptureLost which does the real cleanup.
+
+        // ROOT-CAUSE FIX for text-selection shake:
+        // During an active drag (_selectionAnchor != null), PointerExited fires
+        // whenever the captured pointer physically leaves the canvas bounds (e.g.
+        // the user drags toward the window edge). Calling InvalidateLinkHoverRegion
+        // here issues a partial _canvas.Invalidate(), which triggers a tile repaint
+        // that calls InlineContainerBox.Paint() → ApplyHoverColor() → CanvasTextLayout
+        // .SetColor() → DirectWrite invalidates cached glyph-run metrics → character
+        // region coordinates shift by sub-pixel amounts → visible text shake on every
+        // drag frame. The canvas was already fully invalidated at drag-start
+        // (OnPointerPressed) so no intermediate repaint is needed during the drag.
+        // OnPointerCanceledOrCaptureLost clears _selectionAnchor *before* calling us,
+        // so real cleanup (cancel / capture-loss) still runs normally here.
+        if (_selectionAnchor is not null)
+        {
+            // Cursor reset is still safe and needed: if the pointer crosses from
+            // the canvas into a hosted embed during drag, the embed must see the
+            // default cursor (not an inherited IBeam).
+            SetCursorShape(null);
+            return;
+        }
 
         // Clear hover state when the pointer leaves the canvas (or capture is
         // lost).  Without this, a link's hover colour and the hand cursor
