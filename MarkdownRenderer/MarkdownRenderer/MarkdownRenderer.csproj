@@ -28,8 +28,19 @@
     <PackageReference Include="Microsoft.Graphics.Win2D" Version="1.4.0" />
     <PackageReference Include="Microsoft.WindowsAppSDK" Version="1.8.260317003" />
     <PackageReference Include="Microsoft.Windows.SDK.BuildTools" Version="10.0.28000.1721" />
-    <PackageReference Include="SkiaSharp" Version="3.116.1" />
-    <PackageReference Include="SkiaSharp.NativeAssets.Win32" Version="3.116.1" />
-    <PackageReference Include="Svg.Skia" Version="3.0.4" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <!--
+      ThorVG native SVG rasterizer. Built from thorvg v1.0.4 with:
+        meson setup builddir -Dloaders=svg -Dengines=cpu -Dbindings=capi
+                             -Dthreads=true -Dstatic=false -Dtools= -Dextra=
+      Output renamed from thorvg-1.dll to thorvg.dll so [LibraryImport("thorvg")]
+      resolves on default DLL search rules. See native\THORVG_LICENSE.
+    -->
+    <Content Include="native\win-x64\thorvg.dll" Condition="'$(Platform)' == 'x64'">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+      <Link>thorvg.dll</Link>
+    </Content>
   </ItemGroup>
 </Project>

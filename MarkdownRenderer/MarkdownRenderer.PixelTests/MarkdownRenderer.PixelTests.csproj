@@ -1,10 +1,10 @@
 <Project Sdk="Microsoft.NET.Sdk">
   <PropertyGroup>
     <!--
-      Pure netcoreapp test project — no WinUI / Win2D, only SkiaSharp +
-      Svg.Skia + System.Drawing for raster comparison. Headless Edge /
-      Chrome is invoked as a subprocess for ground-truth rasters; if no
-      browser is found the dependent tests skip themselves.
+      Pure netcoreapp test project — no WinUI / Win2D. ThorVG native is
+      cherry-picked in via Content from the core project's native folder.
+      Headless Edge / Chrome is invoked as a subprocess for ground-truth
+      rasters; if no browser is found the dependent tests skip themselves.
     -->
     <TargetFramework>net10.0-windows10.0.26100.0</TargetFramework>
     <Nullable>enable</Nullable>
@@ -23,18 +23,21 @@
       <IncludeAssets>runtime; build; native; contentfiles; analyzers</IncludeAssets>
     </PackageReference>
     <PackageReference Include="Microsoft.NET.Test.Sdk" Version="17.13.0" />
-    <PackageReference Include="SkiaSharp" Version="3.116.1" />
-    <PackageReference Include="SkiaSharp.NativeAssets.Win32" Version="3.116.1" />
-    <PackageReference Include="Svg.Skia" Version="3.0.4" />
     <PackageReference Include="System.Drawing.Common" Version="9.0.0" />
   </ItemGroup>
   <!-- Cherry-pick rasterizer source so PixelTests doesn't pull WinUI -->
   <ItemGroup>
-    <Compile Include="..\MarkdownRenderer\Layout\Boxes\SvgSkiaRasterizer.cs" Link="Core\SvgSkiaRasterizer.cs" />
+    <Compile Include="..\MarkdownRenderer\Layout\Boxes\ThorVgNative.cs" Link="Core\ThorVgNative.cs" />
+    <Compile Include="..\MarkdownRenderer\Layout\Boxes\ThorVgRasterizer.cs" Link="Core\ThorVgRasterizer.cs" />
     <Compile Include="..\MarkdownRenderer\Layout\Boxes\SvgIntrinsics.cs" Link="Core\SvgIntrinsics.cs" />
-    <Compile Include="..\MarkdownRenderer\Layout\Boxes\SvgFeatureScanner.cs" Link="Core\SvgFeatureScanner.cs" />
     <Compile Include="..\MarkdownRenderer\Layout\Boxes\SvgThemeInjector.cs" Link="Core\SvgThemeInjector.cs" />
     <Compile Include="..\MarkdownRenderer\Layout\Boxes\SvgTitleExtractor.cs" Link="Core\SvgTitleExtractor.cs" />
+  </ItemGroup>
+  <ItemGroup>
+    <Content Include="..\MarkdownRenderer\native\win-x64\thorvg.dll" Condition="'$(Platform)' == 'x64'">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+      <Link>thorvg.dll</Link>
+    </Content>
   </ItemGroup>
   <ItemGroup>
     <None Update="Fixtures\**\*">

@@ -12,7 +12,7 @@ namespace MarkdownRenderer.Layout.Boxes;
 /// (e.g. on <c>&lt;g&gt;</c>) are intentionally ignored to match assistive-
 /// technology expectations and to avoid leaking decorative metadata into
 /// the accessible name.
-/// Public for unit-test access (mirrors <see cref="SvgFeatureScanner"/>).
+/// Public for unit-test access.
 /// </summary>
 public static class SvgTitleExtractor
 {
