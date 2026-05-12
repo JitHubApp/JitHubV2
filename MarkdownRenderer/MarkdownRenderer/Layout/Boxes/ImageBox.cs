@@ -313,9 +313,18 @@ public sealed class ImageBox : BlockBox
                 float bw = _svgIntrinsicSize.Width > 0 ? (float)_svgIntrinsicSize.Width : w;
                 float bh = _svgIntrinsicSize.Height > 0 ? (float)_svgIntrinsicSize.Height : _imageHeight;
                 float scale = bw > 0 ? Math.Min(1f, w / bw) : 1f;
+                float renderW = bw * scale;
+                float renderH = bh * scale;
                 try
                 {
-                    ds.DrawSvg(_svg, new Size(bw * scale, bh * scale), x, y);
+                    // Clip to the allocated image rect so SVG filter effects (e.g.
+                    // Gaussian blur in decorative SVGs) don't visually bleed below
+                    // the image bounds and overlap the caption text.
+                    var clipRect = new Rect(x, y, renderW, renderH);
+                    using (ds.CreateLayer(1.0f, clipRect))
+                    {
+                        ds.DrawSvg(_svg, new Size(renderW, renderH), x, y);
+                    }
                 }
                 catch (Exception ex)
                 {
@@ -387,6 +396,16 @@ public sealed class ImageBox : BlockBox
     {
         _loadStarted = true;
         if (string.IsNullOrEmpty(_url)) { _loadFailed = true; return; }
+
+        // SVG data URIs (data:image/svg+xml,...) may contain raw < > characters
+        // that are illegal in RFC 3986, which causes Uri.TryCreate to return false.
+        // Parse them directly from the raw URL string to avoid that failure.
+        if (_isSvg && _url.StartsWith("data:", StringComparison.OrdinalIgnoreCase))
+        {
+            _ = LoadSvgDataUriAsync(_url);
+            return;
+        }
+
         if (!Uri.TryCreate(_url, UriKind.RelativeOrAbsolute, out var uri)) { _loadFailed = true; return; }
 
         if (_isSvg)
@@ -504,6 +523,82 @@ public sealed class ImageBox : BlockBox
             // Dispose()), eliminating the TOCTOU window that existed when the
             // check ran on the threadpool continuation. If lost, drop the
             // freshly-parsed CanvasSvgDocument.
+            if (_disposed) { try { doc?.Dispose(); } catch { } return; }
+            if (failed)
+            {
+                _loadFailed = true;
+                if (!string.IsNullOrEmpty(_url)) _failedUrls.TryAdd(_url, 0);
+            }
+            else if (bytes is not null)
+            {
+                _svgIntrinsicSize = intrinsic;
+                _svgBytes = bytes;
+                _svgBytesCache[_url] = (bytes, intrinsic);
+                if (doc is not null) _svg = doc;
+            }
+            LoadCompleted?.Invoke(this, new LoadCompletedEventArgs(layoutInvalidated: true));
+        },
+        onDropped: () => { try { doc?.Dispose(); } catch { } });
+    }
+
+    /// <summary>
+    /// Handles <c>data:image/svg+xml</c> URIs directly from the raw URL string.
+    /// <see cref="Uri"/> rejects SVG data URIs that contain unescaped
+    /// angle-bracket characters (<c>&lt;</c>, <c>&gt;</c>) which are invalid per
+    /// RFC 3986 but commonly appear in hand-authored SVG data URIs.
+    /// </summary>
+    private async Task LoadSvgDataUriAsync(string rawDataUri)
+    {
+        byte[]? bytes = null;
+        CanvasSvgDocument? doc = null;
+        Size intrinsic = default;
+        bool failed = false;
+        try
+        {
+            int comma = rawDataUri.IndexOf(',');
+            if (comma < 0)
+            {
+                failed = true;
+            }
+            else
+            {
+                string payload = rawDataUri.Substring(comma + 1);
+                bytes = rawDataUri.IndexOf(";base64", 0, comma, StringComparison.OrdinalIgnoreCase) >= 0
+                    ? Convert.FromBase64String(payload)
+                    : System.Text.Encoding.UTF8.GetBytes(Uri.UnescapeDataString(payload));
+            }
+
+            if (bytes is not null)
+            {
+                intrinsic = ExtractSvgIntrinsicSize(bytes);
+                try
+                {
+                    using var ms = new InMemoryRandomAccessStream();
+                    using (var writer = new DataWriter(ms))
+                    {
+                        writer.WriteBytes(bytes);
+                        await writer.StoreAsync();
+                        writer.DetachStream();
+                    }
+                    ms.Seek(0);
+                    doc = await CanvasSvgDocument.LoadAsync(
+                        Microsoft.Graphics.Canvas.CanvasDevice.GetSharedDevice(), ms);
+                }
+                catch (Exception ex)
+                {
+                    System.Diagnostics.Debug.WriteLine($"[ImageBox] SVG data URI pre-parse failed: {ex.Message}");
+                    // bytes retained — Paint will re-parse against ds.Device as fallback.
+                }
+            }
+        }
+        catch (Exception ex)
+        {
+            System.Diagnostics.Debug.WriteLine($"[ImageBox] SVG data URI load failed: {ex.Message}");
+            failed = true;
+        }
+
+        PublishOnUiThread(() =>
+        {
             if (_disposed) { try { doc?.Dispose(); } catch { } return; }
             if (failed)
             {
