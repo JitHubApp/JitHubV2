@@ -45,9 +45,94 @@ public static class SvgTitleExtractor
         try { text = Encoding.UTF8.GetString(svgBytes); }
         catch { return default; }
 
-        string? title = MatchOrNull(text, TitleRx);
-        string? desc = MatchOrNull(text, DescRx);
+        // Restrict the search to the root <svg>'s direct child territory,
+        // skipping any <defs>/<symbol>/<mask>/<clipPath>/<pattern> subtrees
+        // — titles inside those describe sub-resources, not the document.
+        string scope = ExtractRootScope(text);
+        string? title = MatchOrNull(scope, TitleRx);
+        string? desc = MatchOrNull(scope, DescRx);
         return new Metadata(title, desc);
+    }
+
+    private static readonly string[] HiddenContainers =
+        { "defs", "symbol", "mask", "clippath", "pattern" };
+
+    /// <summary>
+    /// Returns a copy of <paramref name="text"/> with hidden-container
+    /// subtrees blanked out so a regex can find the first
+    /// <c>&lt;title&gt;</c>/<c>&lt;desc&gt;</c> at the root level without
+    /// matching nested ones inside <c>&lt;defs&gt;</c> etc.
+    /// </summary>
+    private static string ExtractRootScope(string text)
+    {
+        var sb = new StringBuilder(text.Length);
+        int i = 0;
+        while (i < text.Length)
+        {
+            int lt = text.IndexOf('<', i);
+            if (lt < 0)
+            {
+                sb.Append(text, i, text.Length - i);
+                break;
+            }
+            sb.Append(text, i, lt - i);
+            // Detect <containerName ...> opening of a hidden container.
+            int hidden = -1;
+            for (int k = 0; k < HiddenContainers.Length; k++)
+            {
+                var name = HiddenContainers[k];
+                if (lt + 1 + name.Length < text.Length
+                    && string.Compare(text, lt + 1, name, 0, name.Length, StringComparison.OrdinalIgnoreCase) == 0)
+                {
+                    char nx = text[lt + 1 + name.Length];
+                    if (nx == ' ' || nx == '\t' || nx == '\r' || nx == '\n' || nx == '>' || nx == '/')
+                    { hidden = k; break; }
+                }
+            }
+            if (hidden < 0)
+            {
+                sb.Append('<');
+                i = lt + 1;
+                continue;
+            }
+            // Skip the entire subtree (handles nested same-name containers).
+            string n = HiddenContainers[hidden];
+            int depth = 1;
+            int j = text.IndexOf('>', lt) + 1;
+            if (j <= 0) { i = text.Length; break; }
+            while (j < text.Length && depth > 0)
+            {
+                int next = text.IndexOf('<', j);
+                if (next < 0) { j = text.Length; break; }
+                if (next + 1 < text.Length && text[next + 1] == '/'
+                    && next + 2 + n.Length <= text.Length
+                    && string.Compare(text, next + 2, n, 0, n.Length, StringComparison.OrdinalIgnoreCase) == 0)
+                {
+                    depth--;
+                    int gt = text.IndexOf('>', next);
+                    if (gt < 0) { j = text.Length; break; }
+                    j = gt + 1;
+                    if (depth == 0) break;
+                }
+                else if (next + 1 + n.Length <= text.Length
+                    && string.Compare(text, next + 1, n, 0, n.Length, StringComparison.OrdinalIgnoreCase) == 0)
+                {
+                    char nx = text[next + 1 + n.Length];
+                    if (nx == ' ' || nx == '\t' || nx == '\r' || nx == '\n' || nx == '>' || nx == '/')
+                    {
+                        // Self-closing? <defs ... />
+                        int gt = text.IndexOf('>', next);
+                        if (gt < 0) { j = text.Length; break; }
+                        if (gt > 0 && text[gt - 1] != '/') depth++;
+                        j = gt + 1;
+                    }
+                    else j = next + 1;
+                }
+                else j = next + 1;
+            }
+            i = j;
+        }
+        return sb.ToString();
     }
 
     private static string? MatchOrNull(string text, Regex rx)

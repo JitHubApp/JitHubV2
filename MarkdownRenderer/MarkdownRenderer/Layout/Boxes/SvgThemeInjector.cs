@@ -43,7 +43,7 @@ public static class SvgThemeInjector
         try { text = Encoding.UTF8.GetString(svgBytes); }
         catch { return svgBytes; }
 
-        int openIdx = IndexOfIgnoreCase(text, "<svg", 0);
+        int openIdx = FindRootSvgOpen(text);
         if (openIdx < 0) return svgBytes;
 
         // Find the end of the opening tag — first '>' after openIdx that
@@ -66,8 +66,51 @@ public static class SvgThemeInjector
         return Encoding.UTF8.GetBytes(sb.ToString());
     }
 
-    private static int IndexOfIgnoreCase(string s, string token, int start)
-        => s.IndexOf(token, start, StringComparison.OrdinalIgnoreCase);
+    /// <summary>Locates the root <c>&lt;svg</c> opening, skipping XML
+    /// declarations (<c>&lt;?xml ?&gt;</c>), comments
+    /// (<c>&lt;!-- --&gt;</c>), and DOCTYPEs (<c>&lt;!DOCTYPE ...&gt;</c>)
+    /// that may appear before it. Returns -1 if no root svg is found.</summary>
+    private static int FindRootSvgOpen(string s)
+    {
+        int i = 0;
+        while (i < s.Length)
+        {
+            int lt = s.IndexOf('<', i);
+            if (lt < 0) return -1;
+            if (lt + 4 <= s.Length && string.Compare(s, lt, "<svg", 0, 4, StringComparison.OrdinalIgnoreCase) == 0
+                && (lt + 4 == s.Length || s[lt + 4] == ' ' || s[lt + 4] == '\t' || s[lt + 4] == '\r' || s[lt + 4] == '\n' || s[lt + 4] == '>' || s[lt + 4] == '/'))
+            {
+                return lt;
+            }
+            // Skip <!-- ... -->
+            if (lt + 4 <= s.Length && s[lt + 1] == '!' && s[lt + 2] == '-' && s[lt + 3] == '-')
+            {
+                int end = s.IndexOf("-->", lt + 4, StringComparison.Ordinal);
+                if (end < 0) return -1;
+                i = end + 3;
+                continue;
+            }
+            // Skip <?xml ... ?>
+            if (lt + 1 < s.Length && s[lt + 1] == '?')
+            {
+                int end = s.IndexOf("?>", lt + 2, StringComparison.Ordinal);
+                if (end < 0) return -1;
+                i = end + 2;
+                continue;
+            }
+            // Skip <!DOCTYPE ...> (no quoted-content edge cases needed for SVG)
+            if (lt + 1 < s.Length && s[lt + 1] == '!')
+            {
+                int end = s.IndexOf('>', lt + 2);
+                if (end < 0) return -1;
+                i = end + 1;
+                continue;
+            }
+            // Some other element before <svg> — bail out, malformed SVG.
+            return -1;
+        }
+        return -1;
+    }
 
     private static int FindTagEnd(string s, int from)
     {
@@ -91,28 +134,46 @@ public static class SvgThemeInjector
 
     private static bool HasColorAttribute(string tagBody)
     {
-        // Match only "color=" (whole word), not "stroke-color=" / "fill-color=".
-        int idx = 0;
-        while (true)
+        // Walk attributes name-only, skipping over any quoted values. This
+        // avoids false positives for the substring "color=" appearing inside
+        // an attribute value (e.g. inline style="background-color:red").
+        int i = 0;
+        while (i < tagBody.Length)
         {
-            idx = tagBody.IndexOf("color", idx, StringComparison.OrdinalIgnoreCase);
-            if (idx < 0) return false;
-            // Must be preceded by whitespace or start-of-tag.
-            if (idx == 0)
+            // Skip whitespace between attributes.
+            while (i < tagBody.Length && (tagBody[i] == ' ' || tagBody[i] == '\t' || tagBody[i] == '\r' || tagBody[i] == '\n')) i++;
+            if (i >= tagBody.Length) break;
+
+            // Read an attribute name up to '=' or whitespace.
+            int nameStart = i;
+            while (i < tagBody.Length && tagBody[i] != '=' && tagBody[i] != ' ' && tagBody[i] != '\t' && tagBody[i] != '\r' && tagBody[i] != '\n' && tagBody[i] != '/' && tagBody[i] != '>')
+                i++;
+            int nameLen = i - nameStart;
+            if (nameLen == 5 && string.Compare(tagBody, nameStart, "color", 0, 5, StringComparison.OrdinalIgnoreCase) == 0)
             {
-                idx += 5;
-                continue;
+                int j = i;
+                while (j < tagBody.Length && (tagBody[j] == ' ' || tagBody[j] == '\t')) j++;
+                if (j < tagBody.Length && tagBody[j] == '=') return true;
             }
-            char prev = tagBody[idx - 1];
-            int afterIdx = idx + 5;
-            // Must be followed by '=' (allow optional whitespace around it).
-            int j = afterIdx;
-            while (j < tagBody.Length && char.IsWhiteSpace(tagBody[j])) j++;
-            bool isAttr = (prev == ' ' || prev == '\t' || prev == '\r' || prev == '\n')
-                          && j < tagBody.Length
-                          && tagBody[j] == '=';
-            if (isAttr) return true;
-            idx = afterIdx;
+
+            // Skip optional '=' and quoted value to advance past this attribute.
+            while (i < tagBody.Length && (tagBody[i] == ' ' || tagBody[i] == '\t')) i++;
+            if (i < tagBody.Length && tagBody[i] == '=')
+            {
+                i++;
+                while (i < tagBody.Length && (tagBody[i] == ' ' || tagBody[i] == '\t')) i++;
+                if (i < tagBody.Length && (tagBody[i] == '"' || tagBody[i] == '\''))
+                {
+                    char q = tagBody[i++];
+                    while (i < tagBody.Length && tagBody[i] != q) i++;
+                    if (i < tagBody.Length) i++; // skip closing quote
+                }
+                else
+                {
+                    while (i < tagBody.Length && tagBody[i] != ' ' && tagBody[i] != '\t' && tagBody[i] != '\r' && tagBody[i] != '\n' && tagBody[i] != '/' && tagBody[i] != '>') i++;
+                }
+            }
         }
+        return false;
     }
 }

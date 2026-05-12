@@ -23,7 +23,15 @@ namespace MarkdownRenderer.Layout.Boxes;
 public sealed class ImageBox : BlockBox
 {
     private static readonly ConcurrentDictionary<string, CanvasBitmap?> _bitmapCache = new();
-    private static readonly ConcurrentDictionary<string, (byte[] Bytes, Size Intrinsic)> _svgBytesCache = new();
+    /// <summary>
+    /// Cached raw SVG bytes plus extracted metadata. The bytes are stored
+    /// pre-theme-injection so a theme switch can re-tint without
+    /// re-fetching, and <see cref="Title"/>/<see cref="Desc"/> are restored
+    /// to new <see cref="ImageBox"/> instances on cache hit so accessibility
+    /// metadata survives layout rebuilds (which create a fresh box per URL).
+    /// </summary>
+    private readonly record struct SvgCacheEntry(byte[] RawBytes, Size Intrinsic, string? Title, string? Desc);
+    private static readonly ConcurrentDictionary<string, SvgCacheEntry> _svgBytesCache = new();
     // URLs that have permanently failed to load/parse. New ImageBox instances
     // for the same URL start in _loadFailed=true so the fatal state survives
     // the layout rebuild triggered by the original failure.
@@ -46,7 +54,8 @@ public sealed class ImageBox : BlockBox
     private readonly bool _isSvg;
     private CanvasBitmap? _bitmap;
     private CanvasSvgDocument? _svg;
-    private byte[]? _svgBytes; // raw bytes — re-parsed against the drawing session's device to avoid cross-device issues
+    private byte[]? _svgBytes; // theme-injected bytes — re-parsed against the drawing session's device to avoid cross-device issues
+    private byte[]? _svgRawBytes; // pre-injection bytes; cached so theme switches re-tint without refetching
     private Size _svgIntrinsicSize;
     private CanvasTextLayout? _placeholder;
     private CanvasTextLayout? _caption;
@@ -94,11 +103,16 @@ public sealed class ImageBox : BlockBox
                 _bitmap = cached;
                 _loadStarted = true;
             }
-            else if (_isSvg && _svgBytesCache.TryGetValue(_url, out var entry) && entry.Bytes is not null)
+            else if (_isSvg && _svgBytesCache.TryGetValue(_url, out var entry) && entry.RawBytes is not null)
             {
-                _svgBytes = entry.Bytes;
+                // Restore raw bytes + intrinsic + a11y metadata. Leave
+                // _loadStarted=false so EnsureLoading triggers the cached
+                // re-process path (theme inject + tier classify) which
+                // populates _bitmap or _svgBytes for paint.
+                _svgRawBytes = entry.RawBytes;
                 _svgIntrinsicSize = entry.Intrinsic;
-                _loadStarted = true;
+                _svgTitle = entry.Title;
+                _svgDesc = entry.Desc;
             }
         }
     }
@@ -442,6 +456,16 @@ public sealed class ImageBox : BlockBox
         _loadStarted = true;
         if (string.IsNullOrEmpty(_url)) { _loadFailed = true; return; }
 
+        // Cache hit from a prior layout's load: skip the network/data-URI
+        // fetch and re-process the cached raw bytes against the live theme.
+        // This restores _bitmap / _svgBytes for the new box instance and
+        // ensures Skia-tier SVGs don't re-rasterize until paint.
+        if (_isSvg && _svgRawBytes is not null)
+        {
+            _ = ProcessCachedSvgAsync(_svgRawBytes);
+            return;
+        }
+
         // SVG data URIs (data:image/svg+xml,...) may contain raw < > characters
         // that are illegal in RFC 3986, which causes Uri.TryCreate to return false.
         // Parse them directly from the raw URL string to avoid that failure.
@@ -457,6 +481,89 @@ public sealed class ImageBox : BlockBox
             _ = LoadSvgAsync(uri);
         else
             _ = LoadBitmapAsync(uri);
+    }
+
+    /// <summary>
+    /// Re-materializes a Skia bitmap or Win2D <see cref="CanvasSvgDocument"/>
+    /// from already-cached raw SVG bytes. Theme color is re-injected so
+    /// <c>currentColor</c> picks up the live theme, then the same tier
+    /// classifier as the fresh-load path decides between Skia rasterization
+    /// and Win2D parse.
+    /// </summary>
+    private async Task ProcessCachedSvgAsync(byte[] rawBytes)
+    {
+        byte[]? bytes = null;
+        CanvasSvgDocument? doc = null;
+        Size intrinsic = _svgIntrinsicSize;
+        SvgSkiaRasterizer.Raster? rasterized = null;
+        bool failed = false;
+        try
+        {
+            bytes = await Task.Run(() => InjectThemeColor(rawBytes)).ConfigureAwait(false);
+            if (intrinsic.Width <= 0 || intrinsic.Height <= 0)
+                intrinsic = ExtractSvgIntrinsicSize(bytes);
+
+            bool useSkia = _skiaTierUrls.ContainsKey(_url)
+                           || SvgFeatureScanner.Classify(bytes) == SvgRenderTier.Skia;
+            if (useSkia)
+            {
+                rasterized = TryRasterize(bytes, intrinsic, _context.RasterizationScale);
+                if (rasterized is null) useSkia = false;
+            }
+
+            if (!useSkia)
+            {
+                try
+                {
+                    using var ms = new InMemoryRandomAccessStream();
+                    using (var writer = new DataWriter(ms))
+                    {
+                        writer.WriteBytes(bytes);
+                        await writer.StoreAsync();
+                        writer.DetachStream();
+                    }
+                    ms.Seek(0);
+                    doc = await CanvasSvgDocument.LoadAsync(
+                        Microsoft.Graphics.Canvas.CanvasDevice.GetSharedDevice(), ms);
+                }
+                catch (Exception ex)
+                {
+                    System.Diagnostics.Debug.WriteLine($"[ImageBox] cached SVG re-parse failed: {ex.Message}");
+                    _skiaTierUrls.TryAdd(_url, 0);
+                    rasterized = TryRasterize(bytes, intrinsic, _context.RasterizationScale);
+                }
+            }
+        }
+        catch (Exception ex)
+        {
+            System.Diagnostics.Debug.WriteLine($"[ImageBox] cached SVG processing failed: {ex.Message}");
+            failed = true;
+        }
+
+        PublishOnUiThread(() =>
+        {
+            if (_disposed) { try { doc?.Dispose(); } catch { } return; }
+            if (failed)
+            {
+                _loadFailed = true;
+            }
+            else if (rasterized is { } r)
+            {
+                var bmp = CanvasBitmap.CreateFromBytes(
+                    _context.ResourceCreator, r.Bgra, r.WidthPx, r.HeightPx,
+                    Windows.Graphics.DirectX.DirectXPixelFormat.B8G8R8A8UIntNormalized);
+                _bitmap = bmp;
+                _svgIntrinsicSize = intrinsic;
+            }
+            else if (bytes is not null)
+            {
+                _svgIntrinsicSize = intrinsic;
+                _svgBytes = bytes;
+                if (doc is not null) _svg = doc;
+            }
+            LoadCompleted?.Invoke(this, new LoadCompletedEventArgs(layoutInvalidated: true));
+        },
+        onDropped: () => { try { doc?.Dispose(); } catch { } });
     }
 
     private async Task LoadBitmapAsync(Uri uri)
@@ -500,6 +607,7 @@ public sealed class ImageBox : BlockBox
     private async Task LoadSvgAsync(Uri uri)
     {
         byte[]? bytes = null;
+        byte[]? rawBytes = null;
         CanvasSvgDocument? doc = null;
         Size intrinsic = default;
         SvgSkiaRasterizer.Raster? rasterized = null;
@@ -532,7 +640,9 @@ public sealed class ImageBox : BlockBox
 
             if (bytes is not null)
             {
-                bytes = PreprocessSvgBytes(bytes);
+                rawBytes = bytes;
+                ExtractMetadata(rawBytes);
+                bytes = InjectThemeColor(rawBytes);
                 intrinsic = ExtractSvgIntrinsicSize(bytes);
 
                 // Tier classifier — features Win2D's CanvasSvgDocument doesn't
@@ -614,12 +724,16 @@ public sealed class ImageBox : BlockBox
                     Windows.Graphics.DirectX.DirectXPixelFormat.B8G8R8A8UIntNormalized);
                 _bitmap = bmp;
                 _svgIntrinsicSize = intrinsic;
+                if (rawBytes is not null && !string.IsNullOrEmpty(_url))
+                    _svgBytesCache[_url] = new SvgCacheEntry(rawBytes, intrinsic, _svgTitle, _svgDesc);
             }
             else if (bytes is not null)
             {
                 _svgIntrinsicSize = intrinsic;
                 _svgBytes = bytes;
-                _svgBytesCache[_url] = (bytes, intrinsic);
+                _svgRawBytes = rawBytes;
+                if (rawBytes is not null && !string.IsNullOrEmpty(_url))
+                    _svgBytesCache[_url] = new SvgCacheEntry(rawBytes, intrinsic, _svgTitle, _svgDesc);
                 if (doc is not null) _svg = doc;
             }
             LoadCompleted?.Invoke(this, new LoadCompletedEventArgs(layoutInvalidated: true));
@@ -636,6 +750,7 @@ public sealed class ImageBox : BlockBox
     private async Task LoadSvgDataUriAsync(string rawDataUri)
     {
         byte[]? bytes = null;
+        byte[]? rawBytes = null;
         CanvasSvgDocument? doc = null;
         Size intrinsic = default;
         SvgSkiaRasterizer.Raster? rasterized = null;
@@ -657,7 +772,9 @@ public sealed class ImageBox : BlockBox
 
             if (bytes is not null)
             {
-                bytes = PreprocessSvgBytes(bytes);
+                rawBytes = bytes;
+                ExtractMetadata(rawBytes);
+                bytes = InjectThemeColor(rawBytes);
                 intrinsic = ExtractSvgIntrinsicSize(bytes);
 
                 bool useSkia = _skiaTierUrls.ContainsKey(_url)
@@ -713,12 +830,16 @@ public sealed class ImageBox : BlockBox
                     Windows.Graphics.DirectX.DirectXPixelFormat.B8G8R8A8UIntNormalized);
                 _bitmap = bmp;
                 _svgIntrinsicSize = intrinsic;
+                if (rawBytes is not null && !string.IsNullOrEmpty(_url))
+                    _svgBytesCache[_url] = new SvgCacheEntry(rawBytes, intrinsic, _svgTitle, _svgDesc);
             }
             else if (bytes is not null)
             {
                 _svgIntrinsicSize = intrinsic;
                 _svgBytes = bytes;
-                _svgBytesCache[_url] = (bytes, intrinsic);
+                _svgRawBytes = rawBytes;
+                if (rawBytes is not null && !string.IsNullOrEmpty(_url))
+                    _svgBytesCache[_url] = new SvgCacheEntry(rawBytes, intrinsic, _svgTitle, _svgDesc);
                 if (doc is not null) _svg = doc;
             }
             LoadCompleted?.Invoke(this, new LoadCompletedEventArgs(layoutInvalidated: true));
@@ -815,7 +936,21 @@ public sealed class ImageBox : BlockBox
     /// Both transforms are best-effort and never throw; failure leaves
     /// the original bytes / null metadata in place.
     /// </summary>
+    /// <summary>
+    /// Best-effort SVG pre-processing: extracts <c>&lt;title&gt;</c>/
+    /// <c>&lt;desc&gt;</c> for accessibility, then injects the theme's
+    /// foreground color onto the root so <c>currentColor</c> resolves to
+    /// the live theme. Failure on either pass is non-fatal.
+    /// </summary>
     private byte[] PreprocessSvgBytes(byte[] bytes)
+    {
+        ExtractMetadata(bytes);
+        return InjectThemeColor(bytes);
+    }
+
+    /// <summary>Pulls SVG <c>&lt;title&gt;</c>/<c>&lt;desc&gt;</c> into the
+    /// box's accessibility fields. Idempotent and safe to re-run.</summary>
+    private void ExtractMetadata(byte[] bytes)
     {
         try
         {
@@ -827,7 +962,14 @@ public sealed class ImageBox : BlockBox
         {
             System.Diagnostics.Debug.WriteLine($"[ImageBox] title/desc extract failed: {ex.Message}");
         }
+    }
 
+    /// <summary>Returns the SVG bytes with the active theme's foreground
+    /// color injected as the root's <c>color</c> attribute, so
+    /// <c>currentColor</c> in inner shapes resolves to the live theme.
+    /// Returns the input untouched on failure.</summary>
+    private byte[] InjectThemeColor(byte[] bytes)
+    {
         try
         {
             var bodyStyle = _context.ThemeSnapshot.GetStyle(MarkdownElementKeys.Body);

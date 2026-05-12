@@ -96,21 +96,43 @@ public static class HeadlessBrowserRasterizer
             WorkingDirectory = dir,
         };
 
-        using var proc = Process.Start(psi);
-        if (proc is null) return null;
-        // Edge/Chrome stub launchers commonly exit immediately while the
-        // real browser process continues to work in the background, so
-        // WaitForExit on the launcher PID is unreliable. Wait for the PNG
-        // file to materialize on disk instead, with a hard wall-clock cap.
-        var deadline = DateTime.UtcNow.AddSeconds(20);
-        while (DateTime.UtcNow < deadline)
+        Process? proc = null;
+        bool success = false;
+        try
         {
-            if (File.Exists(pngPath) && new FileInfo(pngPath).Length > 0) break;
-            System.Threading.Thread.Sleep(100);
+            proc = Process.Start(psi);
+            if (proc is null) return null;
+            // Edge/Chrome stub launchers commonly exit immediately while the
+            // real browser process continues to work in the background, so
+            // WaitForExit on the launcher PID is unreliable. Wait for the PNG
+            // file to materialize on disk instead, with a hard wall-clock cap.
+            var deadline = DateTime.UtcNow.AddSeconds(20);
+            while (DateTime.UtcNow < deadline)
+            {
+                if (File.Exists(pngPath) && new FileInfo(pngPath).Length > 0) break;
+                System.Threading.Thread.Sleep(100);
+            }
+            if (!File.Exists(pngPath)) return null;
+            // Tiny grace period for the browser to finish flushing the PNG.
+            System.Threading.Thread.Sleep(150);
+            success = true;
+            return pngPath;
         }
-        if (!File.Exists(pngPath)) return null;
-        // Tiny grace period for the browser to finish flushing the PNG.
-        System.Threading.Thread.Sleep(150);
-        return pngPath;
+        finally
+        {
+            // Always tear down the launcher; on timeout the entire process
+            // tree (real browser child) needs killing or it leaks.
+            if (proc is not null)
+            {
+                try { if (!proc.HasExited) proc.Kill(entireProcessTree: true); } catch { }
+                try { proc.Dispose(); } catch { }
+            }
+            if (!success)
+            {
+                // Best-effort cleanup of the temp profile + shim files when
+                // we didn't produce a PNG (caller handles dir on success).
+                try { Directory.Delete(dir, recursive: true); } catch { }
+            }
+        }
     }
 }

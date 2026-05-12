@@ -64,4 +64,43 @@ public class SvgThemeInjectorTests
         Assert.Contains("height=\"24\"", s);
         Assert.Contains("viewBox=\"0 0 24 24\"", s);
     }
+
+    [Fact]
+    public void Inject_SkipsXmlComment_BeforeSvg()
+    {
+        // A literal "<svg" inside an XML comment must not be mistaken for
+        // the root element.
+        var bytes = Encoding.UTF8.GetBytes("<!-- example: <svg fake='x'/> --><svg xmlns='http://www.w3.org/2000/svg'><path/></svg>");
+        var result = SvgThemeInjector.Inject(bytes, 0x11, 0x22, 0x33);
+        var s = Encoding.UTF8.GetString(result);
+        Assert.Contains("color=\"#112233\"", s);
+        // The injected color attribute must land on the real <svg, not the
+        // commented one — the comment text should be untouched.
+        Assert.Contains("<!-- example: <svg fake='x'/> -->", s);
+        // Exactly one occurrence of the color attribute we added.
+        Assert.Equal(1, System.Text.RegularExpressions.Regex.Matches(s, "color=\"#112233\"").Count);
+    }
+
+    [Fact]
+    public void Inject_SkipsXmlDeclaration_BeforeSvg()
+    {
+        var bytes = Encoding.UTF8.GetBytes("<?xml version=\"1.0\"?><svg><path/></svg>");
+        var result = SvgThemeInjector.Inject(bytes, 0x10, 0x20, 0x30);
+        var s = Encoding.UTF8.GetString(result);
+        Assert.Contains("color=\"#102030\"", s);
+        Assert.StartsWith("<?xml", s);
+    }
+
+    [Fact]
+    public void Inject_DoesNotFalsePositive_OnColorInsideAttributeValue()
+    {
+        // "color=" appearing inside a style="..." attribute value must not
+        // be treated as a real color attribute. The injector should still
+        // add color="#RRGGBB".
+        var bytes = Encoding.UTF8.GetBytes("<svg style=\"background-color: red\"><path/></svg>");
+        var result = SvgThemeInjector.Inject(bytes, 0x44, 0x55, 0x66);
+        var s = Encoding.UTF8.GetString(result);
+        Assert.Contains("color=\"#445566\"", s);
+        Assert.Contains("background-color: red", s);
+    }
 }

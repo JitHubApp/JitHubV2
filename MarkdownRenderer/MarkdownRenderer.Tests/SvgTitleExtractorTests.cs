@@ -72,4 +72,33 @@ public class SvgTitleExtractorTests
         var meta = SvgTitleExtractor.Extract(bytes);
         Assert.Null(meta.Title);
     }
+
+    [Fact]
+    public void Extract_IgnoresTitleInsideDefs()
+    {
+        // <title> inside <defs> describes a sub-resource, not the SVG.
+        // Without the root <title>, the result is null (not the defs one).
+        var bytes = Encoding.UTF8.GetBytes(
+            "<svg><defs><symbol id='a'><title>Hidden</title></symbol></defs><path/></svg>");
+        var meta = SvgTitleExtractor.Extract(bytes);
+        Assert.Null(meta.Title);
+    }
+
+    [Fact]
+    public void Extract_PrefersRootTitle_OverDefsTitle()
+    {
+        var bytes = Encoding.UTF8.GetBytes(
+            "<svg><defs><symbol id='a'><title>Hidden</title></symbol></defs><title>Visible</title></svg>");
+        var meta = SvgTitleExtractor.Extract(bytes);
+        Assert.Equal("Visible", meta.Title);
+    }
+
+    [Fact]
+    public void Extract_IgnoresDescInsideClipPath()
+    {
+        var bytes = Encoding.UTF8.GetBytes(
+            "<svg><clipPath id='c'><desc>Hidden</desc></clipPath></svg>");
+        var meta = SvgTitleExtractor.Extract(bytes);
+        Assert.Null(meta.Desc);
+    }
 }
