@@ -52,6 +52,7 @@ public sealed class ImageBox : BlockBox
     private volatile bool _disposed;
     private const int MaxSvgReparseAttempts = 2;
     private float _availableWidth;
+    private float _imageWidth;
     private float _imageHeight;
     private float _captionHeight;
 
@@ -101,8 +102,12 @@ public sealed class ImageBox : BlockBox
     /// <summary>Test-only: returns the cached bitmap, if any.</summary>
     public CanvasBitmap? Bitmap => _bitmap;
 
-    /// <summary>Test-only: width of the image content area at last measure (excludes margins).</summary>
+    /// <summary>Test-only: height of the image content area at last measure (excludes margins).</summary>
     public float MeasuredImageHeight => _imageHeight;
+
+    /// <summary>Test-only: width of the image content area at last measure (excludes margins).
+    /// May be smaller than the available column width when the image's intrinsic size fits.</summary>
+    public float MeasuredImageWidth => _imageWidth;
 
     /// <summary>Test-only: height of the caption area at last measure (excludes margins).</summary>
     public float MeasuredCaptionHeight => _captionHeight;
@@ -134,25 +139,34 @@ public sealed class ImageBox : BlockBox
         // they are unaffected — their bitmaps are available immediately.
 
         float maxW = Math.Max(1f, availableWidth - (float)(Margin.Left + Margin.Right));
-        float h;
+        float w, h;
         if (_bitmap is { } bmp)
         {
+            // Intrinsic-first sizing: render at the bitmap's natural size and
+            // only downscale (preserving aspect) when the intrinsic width
+            // exceeds the available column.
             float bw = (float)bmp.Size.Width;
             float bh = (float)bmp.Size.Height;
             float scale = bw > 0 ? Math.Min(1f, maxW / bw) : 1f;
+            w = bw * scale;
             h = bh * scale;
         }
         else if (_svgBytes is not null)
         {
-            // Use intrinsic SVG size if we have it, else default to a band.
+            // Same intrinsic-first rule for SVGs. When the SVG has no intrinsic
+            // dimensions (e.g. only a viewBox without width/height), fall back
+            // to filling the column width with a 16:9-ish band rather than
+            // claiming a fixed 200px height — matches what most HTML engines do.
             float bw = _svgIntrinsicSize.Width > 0 ? (float)_svgIntrinsicSize.Width : maxW;
             float bh = _svgIntrinsicSize.Height > 0 ? (float)_svgIntrinsicSize.Height : 200f;
             float scale = bw > 0 ? Math.Min(1f, maxW / bw) : 1f;
+            w = bw * scale;
             h = bh * scale;
         }
         else
         {
-            // Placeholder height = 32px alt-text band.
+            // Placeholder height = 32px alt-text band, stretched to column.
+            w = maxW;
             h = 32f;
             _placeholder?.Dispose();
             using var fmt = new CanvasTextFormat
@@ -168,6 +182,7 @@ public sealed class ImageBox : BlockBox
                 placeholderText, fmt, maxW, float.MaxValue);
         }
 
+        _imageWidth = w;
         _imageHeight = h;
 
         // Caption layout — only when alt text is non-empty.
@@ -206,14 +221,13 @@ public sealed class ImageBox : BlockBox
     {
         float x = (float)(Bounds.X + Margin.Left);
         float y = (float)(Bounds.Y + Margin.Top);
-        float w = (float)(Bounds.Width - Margin.Left - Margin.Right);
 
         if (_bitmap is { } bmp)
         {
-            float bw = (float)bmp.Size.Width;
-            float bh = (float)bmp.Size.Height;
-            float scale = bw > 0 ? Math.Min(1f, w / bw) : 1f;
-            var dest = new Rect(x, y, bw * scale, bh * scale);
+            // Use the cached image dimensions from Measure() so paint matches
+            // the layout that was rendered. This guarantees we don't accidentally
+            // re-stretch the image to the full column width during repaint.
+            var dest = new Rect(x, y, _imageWidth, _imageHeight);
             ds.DrawImage(bmp, dest);
         }
         else if (_svgBytes is not null)
@@ -310,16 +324,14 @@ public sealed class ImageBox : BlockBox
             }
             if (_svg is not null)
             {
-                float bw = _svgIntrinsicSize.Width > 0 ? (float)_svgIntrinsicSize.Width : w;
-                float bh = _svgIntrinsicSize.Height > 0 ? (float)_svgIntrinsicSize.Height : _imageHeight;
-                float scale = bw > 0 ? Math.Min(1f, w / bw) : 1f;
-                float renderW = bw * scale;
-                float renderH = bh * scale;
+                // Use cached image dimensions from Measure() so paint matches
+                // the layout exactly. Clip to the image rect so SVG filter
+                // effects (e.g. Gaussian blur in decorative SVGs) don't bleed
+                // below the image bounds and overlap the caption text.
+                float renderW = _imageWidth;
+                float renderH = _imageHeight;
                 try
                 {
-                    // Clip to the allocated image rect so SVG filter effects (e.g.
-                    // Gaussian blur in decorative SVGs) don't visually bleed below
-                    // the image bounds and overlap the caption text.
                     var clipRect = new Rect(x, y, renderW, renderH);
                     using (ds.CreateLayer(1.0f, clipRect))
                     {

@@ -548,9 +548,13 @@ public sealed partial class MainWindow : Window
 
         ![The GitHub Octocat — square avatar PNG, 460×460](https://avatars.githubusercontent.com/u/583231?v=4)
 
-        ## Inline SVG (data: URI)
+        ## Inline SVG (data: URI, base64)
 
-        ![A blue 64×64 circle drawn entirely in SVG](data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='64' height='64' viewBox='0 0 64 64'><circle cx='32' cy='32' r='28' fill='%230078D4'/></svg>)
+        ![A blue 64×64 circle drawn entirely in SVG](data:image/svg+xml;base64,PHN2ZyB4bWxucz0naHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmcnIHdpZHRoPSc2NCcgaGVpZ2h0PSc2NCcgdmlld0JveD0nMCAwIDY0IDY0Jz48Y2lyY2xlIGN4PSczMicgY3k9JzMyJyByPScyOCcgZmlsbD0nIzAwNzhENCcvPjwvc3ZnPg==)
+
+        ## Inline SVG (data: URI, percent-encoded)
+
+        ![A red 48×48 square drawn entirely in SVG](data:image/svg+xml;utf8,%3Csvg%20xmlns%3D%27http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg%27%20width%3D%2748%27%20height%3D%2748%27%20viewBox%3D%270%200%2048%2048%27%3E%3Crect%20width%3D%2748%27%20height%3D%2748%27%20fill%3D%27%23D13438%27%2F%3E%3C%2Fsvg%3E)
 
         ## Remote SVG (HTTP)
 
