@@ -36,20 +36,24 @@ public sealed class ImageBox : BlockBox
     // (potentially several MB at high DPI), so a tighter cap is warranted there.
     private const int MaxBitmapCacheEntries = 256;
     private const int MaxSvgCacheEntries = 128;
+    private const int MaxFailedUrlEntries = 512;
 
     private static void TrimCache<TValue>(ConcurrentDictionary<string, TValue> cache, int maxEntries)
     {
+        // NOTE: We intentionally do NOT dispose evicted values here, even when
+        // TValue is IDisposable. CanvasBitmap entries in _bitmapCache are
+        // shared by reference with live ImageBox instances (cache-hit boxes
+        // alias the cached handle into _bitmap). Disposing under eviction
+        // would yank the GPU resource out from under any box still painting
+        // that URL. Releasing the dictionary slot is enough — once no live
+        // ImageBox holds the reference, the GC + finalizer reclaim the
+        // underlying handle. SVG entries are records with no native
+        // resources so this is a non-issue for _svgCache either way.
         while (cache.Count > maxEntries)
         {
-            // Evict an arbitrary entry. Not strictly LRU — keeping a separate
-            // ordered structure under contention is more code than the
-            // memory saved here justifies — but it bounds the working set.
             var victim = cache.Keys.FirstOrDefault();
             if (victim is null) break;
-            if (cache.TryRemove(victim, out var v) && v is IDisposable d)
-            {
-                try { d.Dispose(); } catch { }
-            }
+            cache.TryRemove(victim, out _);
         }
     }
 
@@ -406,7 +410,7 @@ public sealed class ImageBox : BlockBox
             if (failed)
             {
                 _loadFailed = true;
-                if (!string.IsNullOrEmpty(_url)) _failedUrls.TryAdd(_url, 0);
+                if (!string.IsNullOrEmpty(_url)) { _failedUrls.TryAdd(_url, 0); TrimCache(_failedUrls, MaxFailedUrlEntries); }
             }
             else if (bmp is not null)
             {
@@ -455,7 +459,7 @@ public sealed class ImageBox : BlockBox
             {
                 if (_disposed) return;
                 _loadFailed = true;
-                if (!string.IsNullOrEmpty(_url)) _failedUrls.TryAdd(_url, 0);
+                if (!string.IsNullOrEmpty(_url)) { _failedUrls.TryAdd(_url, 0); TrimCache(_failedUrls, MaxFailedUrlEntries); }
                 LoadCompleted?.Invoke(this, new LoadCompletedEventArgs(layoutInvalidated: true));
             });
             return;
@@ -492,7 +496,7 @@ public sealed class ImageBox : BlockBox
             {
                 if (_disposed) return;
                 _loadFailed = true;
-                if (!string.IsNullOrEmpty(_url)) _failedUrls.TryAdd(_url, 0);
+                if (!string.IsNullOrEmpty(_url)) { _failedUrls.TryAdd(_url, 0); TrimCache(_failedUrls, MaxFailedUrlEntries); }
                 LoadCompleted?.Invoke(this, new LoadCompletedEventArgs(layoutInvalidated: true));
             });
             return;
@@ -582,7 +586,7 @@ public sealed class ImageBox : BlockBox
                     System.Diagnostics.Debug.WriteLine(
                         $"[ImageBox] CanvasBitmap.CreateFromBytes failed: {ex.Message}");
                     _loadFailed = true;
-                    if (!string.IsNullOrEmpty(_url)) _failedUrls.TryAdd(_url, 0);
+                    if (!string.IsNullOrEmpty(_url)) { _failedUrls.TryAdd(_url, 0); TrimCache(_failedUrls, MaxFailedUrlEntries); }
                 }
             }
             else if (isFreshLoad)
@@ -592,7 +596,7 @@ public sealed class ImageBox : BlockBox
                 // not invalidate the cached bitmap (we'll keep showing the
                 // last good render).
                 _loadFailed = true;
-                if (!string.IsNullOrEmpty(_url)) _failedUrls.TryAdd(_url, 0);
+                if (!string.IsNullOrEmpty(_url)) { _failedUrls.TryAdd(_url, 0); TrimCache(_failedUrls, MaxFailedUrlEntries); }
             }
 
             LoadCompleted?.Invoke(this, new LoadCompletedEventArgs(layoutInvalidated: true));

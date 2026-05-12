@@ -39,12 +39,17 @@
       resolves on default DLL search rules. See native\THORVG_LICENSE.
     -->
     <!--
-      Only the x64 native DLL exists today. x86 / ARM64 builds intentionally
-      do not include thorvg.dll; ThorVgRasterizer.EnsureEngine() catches the
-      resulting DllNotFoundException and SVGs fall back to the alt-text
-      placeholder. Adding cross-arch builds is tracked as future work.
+      Only the x64 native DLL exists today. The condition allows the file
+      through for any "x64-like" platform value (default/empty, AnyCPU, x64) so
+      a plain `dotnet build` — which evaluates Platform as AnyCPU even when
+      the project's <Platform> default would otherwise normalize to x64 — still
+      ships the DLL. Explicit x86 / ARM64 builds skip it; ThorVgRasterizer
+      .EnsureEngine() catches the resulting DllNotFoundException and SVGs fall
+      back to the alt-text placeholder. Adding cross-arch builds is tracked as
+      future work.
     -->
-    <Content Include="native\win-x64\thorvg.dll" Condition="'$(Platform)' == 'x64'">
+    <Content Include="native\win-x64\thorvg.dll"
+             Condition=" '$(Platform)' == '' or '$(Platform)' == 'AnyCPU' or '$(Platform)' == 'Any CPU' or '$(Platform)' == 'x64' ">
       <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
       <Link>thorvg.dll</Link>
     </Content>
