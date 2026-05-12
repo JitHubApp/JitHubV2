@@ -43,7 +43,7 @@ public sealed class MarkdownLayoutContext
     /// to the thread that owns the canvas. May be null in unit tests.</summary>
     public DispatcherQueue? Dispatcher { get; }
 
-    public int NextBlockIndex() => _blockIndex++;
+    public int NextBlockIndex() => ++_blockIndex;
     private int _blockIndex;
 
     // ---- Footnote registry ----
