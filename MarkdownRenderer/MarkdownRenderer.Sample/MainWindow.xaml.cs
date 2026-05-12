@@ -556,6 +556,10 @@ public sealed partial class MainWindow : Window
 
         ![A red 48×48 square drawn entirely in SVG](data:image/svg+xml;utf8,%3Csvg%20xmlns%3D%27http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg%27%20width%3D%2748%27%20height%3D%2748%27%20viewBox%3D%270%200%2048%2048%27%3E%3Crect%20width%3D%2748%27%20height%3D%2748%27%20fill%3D%27%23D13438%27%2F%3E%3C%2Fsvg%3E)
 
+        ## Inline SVG with filter (data: URI, base64 — Skia tier)
+
+        ![A blurred green diamond — uses `<feGaussianBlur>`, which forces the Skia rasterization tier](data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHdpZHRoPSI4MCIgaGVpZ2h0PSI4MCIgdmlld0JveD0iMCAwIDgwIDgwIj48ZGVmcz48ZmlsdGVyIGlkPSJiIj48ZmVHYXVzc2lhbkJsdXIgc3RkRGV2aWF0aW9uPSIzIi8+PC9maWx0ZXI+PC9kZWZzPjxyZWN0IHg9IjE1IiB5PSIxNSIgd2lkdGg9IjUwIiBoZWlnaHQ9IjUwIiB0cmFuc2Zvcm09InJvdGF0ZSg0NSA0MCA0MCkiIGZpbGw9IiMxMDdDMTAiIGZpbHRlcj0idXJsKCNiKSIvPjwvc3ZnPg==)
+
         ## Remote SVG (HTTP)
 
         ![GitHub site hero glow — a wide SVG decoration from github.com](https://github.githubassets.com/images/modules/site/home/hero-glow.svg)

@@ -19,6 +19,9 @@
     </PackageReference>
     <PackageReference Include="Microsoft.NET.Test.Sdk" Version="17.13.0" />
     <PackageReference Include="Markdig" Version="0.42.0" />
+    <PackageReference Include="SkiaSharp" Version="3.116.1" />
+    <PackageReference Include="SkiaSharp.NativeAssets.Win32" Version="3.116.1" />
+    <PackageReference Include="Svg.Skia" Version="3.0.4" />
   </ItemGroup>
   <!-- Include only the source files that have no WinUI / Win2D dependencies -->
   <ItemGroup>
@@ -27,6 +30,8 @@
     <Compile Include="..\MarkdownRenderer\Document\MarkdownSourceMap.cs" Link="Core\MarkdownSourceMap.cs" />
     <Compile Include="..\MarkdownRenderer\Parsing\MarkdigParser.cs" Link="Core\MarkdigParser.cs" />
     <Compile Include="..\MarkdownRenderer\Layout\Boxes\SvgIntrinsics.cs" Link="Core\SvgIntrinsics.cs" />
+    <Compile Include="..\MarkdownRenderer\Layout\Boxes\SvgFeatureScanner.cs" Link="Core\SvgFeatureScanner.cs" />
+    <Compile Include="..\MarkdownRenderer\Layout\Boxes\SvgSkiaRasterizer.cs" Link="Core\SvgSkiaRasterizer.cs" />
     <Compile Include="..\MarkdownRenderer\Layout\Boxes\LoadCompletedEventArgs.cs" Link="Core\LoadCompletedEventArgs.cs" />
     <Compile Include="..\MarkdownRenderer\Controls\EmbedVisibility.cs" Link="Core\EmbedVisibility.cs" />
     <Compile Include="..\MarkdownRenderer\Layout\TextBoundaryHelper.cs" Link="Core\TextBoundaryHelper.cs" />

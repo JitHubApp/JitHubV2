@@ -28,6 +28,11 @@ public sealed class ImageBox : BlockBox
     // for the same URL start in _loadFailed=true so the fatal state survives
     // the layout rebuild triggered by the original failure.
     private static readonly System.Collections.Concurrent.ConcurrentDictionary<string, byte> _failedUrls = new();
+    // URLs that have been promoted to the Skia rasterization tier — either by
+    // the feature scanner up front or by the runtime safety net after Win2D
+    // failed at parse / draw time. Survives layout rebuilds so the same URL
+    // doesn't re-enter the Win2D path only to fail again.
+    private static readonly System.Collections.Concurrent.ConcurrentDictionary<string, byte> _skiaTierUrls = new();
     private static readonly Lazy<HttpClient> _http = new(() =>
     {
         var c = new HttpClient { Timeout = TimeSpan.FromSeconds(30) };
@@ -341,22 +346,37 @@ public sealed class ImageBox : BlockBox
                 catch (Exception ex)
                 {
                     System.Diagnostics.Debug.WriteLine($"[ImageBox] DrawSvg failed: {ex.Message}");
-                    // Likely device-lost or codec failure. Drop the parsed doc.
-                    // Count this as a reparse failure so we don't loop forever
-                    // re-parsing on a broken device — if we've already failed
-                    // once, latch fatal here.
+                    // Likely a Win2D codec gap (filter / mask / etc.) or a
+                    // device-lost. Drop the parsed doc and promote this URL
+                    // to the Skia tier so the next load uses the rasterizer.
                     try { _svg?.Dispose(); } catch { }
                     _svg = null;
-                    _svgReparseFailures++;
-                    if (_svgReparseFailures >= MaxSvgReparseAttempts)
+                    if (!string.IsNullOrEmpty(_url)) _skiaTierUrls.TryAdd(_url, 0);
+
+                    // Attempt an inline Skia rasterization with the bytes we
+                    // already have so the user sees the image on the very
+                    // next frame rather than waiting for a reload pass.
+                    var raster = TryRasterize(_svgBytes!, _svgIntrinsicSize);
+                    if (raster is { } r)
                     {
-                        _loadFailed = true;
+                        _bitmap = CanvasBitmap.CreateFromBytes(
+                            _context.ResourceCreator, r.Bgra, r.WidthPx, r.HeightPx,
+                            Windows.Graphics.DirectX.DirectXPixelFormat.B8G8R8A8UIntNormalized);
                         _svgBytes = null;
-                        if (!string.IsNullOrEmpty(_url)) _failedUrls.TryAdd(_url, 0);
                     }
                     else
                     {
-                        _svgReparseStarted = false;
+                        _svgReparseFailures++;
+                        if (_svgReparseFailures >= MaxSvgReparseAttempts)
+                        {
+                            _loadFailed = true;
+                            _svgBytes = null;
+                            if (!string.IsNullOrEmpty(_url)) _failedUrls.TryAdd(_url, 0);
+                        }
+                        else
+                        {
+                            _svgReparseStarted = false;
+                        }
                     }
                 }
             }
@@ -469,6 +489,7 @@ public sealed class ImageBox : BlockBox
         byte[]? bytes = null;
         CanvasSvgDocument? doc = null;
         Size intrinsic = default;
+        SvgSkiaRasterizer.Raster? rasterized = null;
         bool failed = false;
         try
         {
@@ -500,26 +521,53 @@ public sealed class ImageBox : BlockBox
             {
                 intrinsic = ExtractSvgIntrinsicSize(bytes);
 
-                // Pre-parse the SVG document off the UI thread so the first Paint
-                // doesn't sync-block on LoadAsync. Tied to the shared device; the
-                // paint path falls back to re-parsing on device loss.
-                try
+                // Tier classifier — features Win2D's CanvasSvgDocument doesn't
+                // implement (filters, masks, clip paths, foreign objects, CSS,
+                // animations) route to the Skia rasterization fallback. URLs
+                // already promoted to tier B by the runtime safety net also
+                // skip the Win2D parse to avoid the known-failing path.
+                bool useSkia = _skiaTierUrls.ContainsKey(_url)
+                               || SvgFeatureScanner.Classify(bytes) == SvgRenderTier.Skia;
+                if (useSkia)
                 {
-                    using var ms = new InMemoryRandomAccessStream();
-                    using (var writer = new DataWriter(ms))
+                    rasterized = TryRasterize(bytes, intrinsic);
+                    if (rasterized is null)
                     {
-                        writer.WriteBytes(bytes);
-                        await writer.StoreAsync();
-                        writer.DetachStream();
+                        // Skia couldn't parse it either. Fall through to the
+                        // Win2D path as a last resort; if that also fails the
+                        // alt-text placeholder takes over.
+                        useSkia = false;
                     }
-                    ms.Seek(0);
-                    doc = await CanvasSvgDocument.LoadAsync(
-                        Microsoft.Graphics.Canvas.CanvasDevice.GetSharedDevice(), ms);
                 }
-                catch (Exception ex)
+
+                if (!useSkia)
                 {
-                    System.Diagnostics.Debug.WriteLine($"[ImageBox] SVG pre-parse failed for {uri}: {ex.Message}");
-                    // bytes retained — Paint will re-parse against ds.Device as fallback.
+                    // Pre-parse the SVG document off the UI thread so the first Paint
+                    // doesn't sync-block on LoadAsync. Tied to the shared device; the
+                    // paint path falls back to re-parsing on device loss.
+                    try
+                    {
+                        using var ms = new InMemoryRandomAccessStream();
+                        using (var writer = new DataWriter(ms))
+                        {
+                            writer.WriteBytes(bytes);
+                            await writer.StoreAsync();
+                            writer.DetachStream();
+                        }
+                        ms.Seek(0);
+                        doc = await CanvasSvgDocument.LoadAsync(
+                            Microsoft.Graphics.Canvas.CanvasDevice.GetSharedDevice(), ms);
+                    }
+                    catch (Exception ex)
+                    {
+                        System.Diagnostics.Debug.WriteLine($"[ImageBox] SVG pre-parse failed for {uri}: {ex.Message}");
+                        // Promote to Skia tier and rasterize as a safety net.
+                        // If the Skia rasterize also fails the bytes are
+                        // retained and Paint will retry the Win2D parse once
+                        // more before latching the failure.
+                        _skiaTierUrls.TryAdd(_url, 0);
+                        rasterized = TryRasterize(bytes, intrinsic);
+                    }
                 }
             }
         }
@@ -540,6 +588,18 @@ public sealed class ImageBox : BlockBox
             {
                 _loadFailed = true;
                 if (!string.IsNullOrEmpty(_url)) _failedUrls.TryAdd(_url, 0);
+            }
+            else if (rasterized is { } r)
+            {
+                // Skia path produced a BGRA buffer — wrap it as a CanvasBitmap
+                // and join the existing bitmap render flow. _bitmap takes
+                // precedence over _svg in Paint, so no Win2D draw will occur
+                // for this URL even if _svg is also set elsewhere.
+                var bmp = CanvasBitmap.CreateFromBytes(
+                    _context.ResourceCreator, r.Bgra, r.WidthPx, r.HeightPx,
+                    Windows.Graphics.DirectX.DirectXPixelFormat.B8G8R8A8UIntNormalized);
+                _bitmap = bmp;
+                _svgIntrinsicSize = intrinsic;
             }
             else if (bytes is not null)
             {
@@ -564,6 +624,7 @@ public sealed class ImageBox : BlockBox
         byte[]? bytes = null;
         CanvasSvgDocument? doc = null;
         Size intrinsic = default;
+        SvgSkiaRasterizer.Raster? rasterized = null;
         bool failed = false;
         try
         {
@@ -583,23 +644,36 @@ public sealed class ImageBox : BlockBox
             if (bytes is not null)
             {
                 intrinsic = ExtractSvgIntrinsicSize(bytes);
-                try
+
+                bool useSkia = _skiaTierUrls.ContainsKey(_url)
+                               || SvgFeatureScanner.Classify(bytes) == SvgRenderTier.Skia;
+                if (useSkia)
                 {
-                    using var ms = new InMemoryRandomAccessStream();
-                    using (var writer = new DataWriter(ms))
-                    {
-                        writer.WriteBytes(bytes);
-                        await writer.StoreAsync();
-                        writer.DetachStream();
-                    }
-                    ms.Seek(0);
-                    doc = await CanvasSvgDocument.LoadAsync(
-                        Microsoft.Graphics.Canvas.CanvasDevice.GetSharedDevice(), ms);
+                    rasterized = TryRasterize(bytes, intrinsic);
+                    if (rasterized is null) useSkia = false;
                 }
-                catch (Exception ex)
+
+                if (!useSkia)
                 {
-                    System.Diagnostics.Debug.WriteLine($"[ImageBox] SVG data URI pre-parse failed: {ex.Message}");
-                    // bytes retained — Paint will re-parse against ds.Device as fallback.
+                    try
+                    {
+                        using var ms = new InMemoryRandomAccessStream();
+                        using (var writer = new DataWriter(ms))
+                        {
+                            writer.WriteBytes(bytes);
+                            await writer.StoreAsync();
+                            writer.DetachStream();
+                        }
+                        ms.Seek(0);
+                        doc = await CanvasSvgDocument.LoadAsync(
+                            Microsoft.Graphics.Canvas.CanvasDevice.GetSharedDevice(), ms);
+                    }
+                    catch (Exception ex)
+                    {
+                        System.Diagnostics.Debug.WriteLine($"[ImageBox] SVG data URI pre-parse failed: {ex.Message}");
+                        _skiaTierUrls.TryAdd(_url, 0);
+                        rasterized = TryRasterize(bytes, intrinsic);
+                    }
                 }
             }
         }
@@ -616,6 +690,14 @@ public sealed class ImageBox : BlockBox
             {
                 _loadFailed = true;
                 if (!string.IsNullOrEmpty(_url)) _failedUrls.TryAdd(_url, 0);
+            }
+            else if (rasterized is { } r)
+            {
+                var bmp = CanvasBitmap.CreateFromBytes(
+                    _context.ResourceCreator, r.Bgra, r.WidthPx, r.HeightPx,
+                    Windows.Graphics.DirectX.DirectXPixelFormat.B8G8R8A8UIntNormalized);
+                _bitmap = bmp;
+                _svgIntrinsicSize = intrinsic;
             }
             else if (bytes is not null)
             {
@@ -653,11 +735,45 @@ public sealed class ImageBox : BlockBox
 
     /// <summary>Test hook: clears the static failed-URL latch so tests don't
     /// pollute each other. Not part of the supported public surface.</summary>
-    internal static void ResetFailureLatchForTests() => _failedUrls.Clear();
+    internal static void ResetFailureLatchForTests()
+    {
+        _failedUrls.Clear();
+        _skiaTierUrls.Clear();
+    }
+
+    /// <summary>Test hook: returns whether <paramref name="url"/> has been
+    /// promoted to the Skia rasterization tier. Used by tier-routing tests.</summary>
+    internal static bool IsSkiaTierForTests(string url) => _skiaTierUrls.ContainsKey(url);
+
+    /// <summary>Test hook: forces <paramref name="url"/> into the Skia tier
+    /// without going through the runtime safety net. Used by tier-routing tests.</summary>
+    internal static void ForceSkiaTierForTests(string url) => _skiaTierUrls.TryAdd(url, 0);
 
     internal static Size ExtractSvgIntrinsicSize(byte[] svgBytes)
     {
         var (w, h) = SvgIntrinsics.TryExtractIntrinsicSize(svgBytes);
         return (w > 0 && h > 0) ? new Size(w, h) : default;
+    }
+
+    /// <summary>
+    /// Chooses a sensible rasterization target size and invokes
+    /// <see cref="SvgSkiaRasterizer.Rasterize"/>. Caps the dimensions at
+    /// <c>MaxRasterDimension</c> to bound peak bitmap memory; the result is
+    /// later down-/up-scaled by <c>ds.DrawImage</c> to the layout-computed
+    /// display rect, so a slightly smaller raster than display size is OK.
+    /// Defaults to 256×256 when the SVG has no intrinsic dimensions.
+    /// </summary>
+    private const int MaxRasterDimension = 2048;
+    private static SvgSkiaRasterizer.Raster? TryRasterize(byte[] bytes, Size intrinsic)
+    {
+        int w = intrinsic.Width > 0 ? (int)Math.Round(intrinsic.Width) : 256;
+        int h = intrinsic.Height > 0 ? (int)Math.Round(intrinsic.Height) : 256;
+        if (w > MaxRasterDimension || h > MaxRasterDimension)
+        {
+            double s = Math.Min((double)MaxRasterDimension / w, (double)MaxRasterDimension / h);
+            w = Math.Max(1, (int)Math.Round(w * s));
+            h = Math.Max(1, (int)Math.Round(h * s));
+        }
+        return SvgSkiaRasterizer.Rasterize(bytes, w, h);
     }
 }
