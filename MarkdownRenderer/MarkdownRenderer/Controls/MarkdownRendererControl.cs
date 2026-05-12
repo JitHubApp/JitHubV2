@@ -758,6 +758,7 @@ public sealed partial class MarkdownRendererControl : UserControl
         // match — reset so the first post-rebuild realisation always fires.
         _lastFiredRealizedCount = -1;
         _selectionOverlayRects.Clear(); // overlay was just cleared above
+        PreWarmSelectionPool();         // pre-populate so first drag has no pool-grow overhead
         _selection.Clear();             // stale selection no longer valid after re-layout
         _focusedItemIndex = -1;         // selection/focus stale after re-layout
         _focusRing = null;              // evicted from overlay; will be lazily re-created on next Tab
@@ -1482,14 +1483,31 @@ public sealed partial class MarkdownRendererControl : UserControl
             _selectionBrushColor = hl;
         }
 
+        // Snap to *physical pixels*, not DIPs. At fractional DPI (125%, 150%)
+        // an integer-DIP edge lands at a fractional physical pixel, so XAML's
+        // own anti-aliased rasterization fans the rect edges across two
+        // physical rows.  As GetCharacterRegions returns *slightly* different
+        // float Y values frame-to-frame during a drag, Math.Floor on a value
+        // hovering near an integer can flip ±1 — that's the visible vertical
+        // shake the user perceives over heading text at 125/150%.
+        //   Snap formula: pick the physical pixel boundary (Floor for the
+        // leading edge, Ceiling for trailing) so the rect always lands on
+        // exact device pixels regardless of the floating-point noise.
+        double scale = XamlRoot?.RasterizationScale ?? 1.0;
+        if (scale <= 0) scale = 1.0;
+
         int poolIdx = 0;
         foreach (var rect in _selection.GetHighlightRects(snapshot))
         {
-            // Integer-pixel snap.
-            double x = Math.Floor(rect.X);
-            double y = Math.Floor(rect.Y);
-            double w = Math.Ceiling(rect.X + rect.Width) - x;
-            double h = Math.Ceiling(rect.Y + rect.Height) - y;
+            // Snap to physical pixel boundaries: convert to phys-px, snap, convert back.
+            double pxX = Math.Floor(rect.X * scale);
+            double pxY = Math.Floor(rect.Y * scale);
+            double pxR = Math.Ceiling((rect.X + rect.Width) * scale);
+            double pxB = Math.Ceiling((rect.Y + rect.Height) * scale);
+            double x = pxX / scale;
+            double y = pxY / scale;
+            double w = (pxR - pxX) / scale;
+            double h = (pxB - pxY) / scale;
 
             Rectangle r;
             if (poolIdx < _selectionOverlayRects.Count)
@@ -1500,7 +1518,10 @@ public sealed partial class MarkdownRendererControl : UserControl
             else
             {
                 // Pool exhausted: allocate a new rectangle and add it once.
-                r = new Rectangle { IsHitTestVisible = false };
+                // UseLayoutRounding=true makes XAML itself snap the rect's
+                // final on-screen position to physical pixels as a belt-and-
+                // braces guard against any residual fractional offset.
+                r = new Rectangle { IsHitTestVisible = false, UseLayoutRounding = true };
                 // ZIndex -1 places it behind embedded controls (default ZIndex 0).
                 Canvas.SetZIndex(r, -1);
                 _overlay.Children.Add(r);
@@ -1520,12 +1541,45 @@ public sealed partial class MarkdownRendererControl : UserControl
             Canvas.SetLeft(r, x);
             Canvas.SetTop(r, y);
             r.Visibility = Visibility.Visible;
+            // Diagnostic: log the *physical-pixel* coords for the first stripe
+            // so we can verify they stay rock-stable across drag frames at
+            // fractional DPI. If shake reappears these numbers will jitter.
+            if (poolIdx == 0)
+            {
+                MarkdownRenderer.Diagnostics.ShakeLogger.LogPaint(
+                    "sel-rect-phys", -1, (float)(x * scale), (float)(y * scale),
+                    (float)(w * scale), (float)(h * scale));
+            }
             poolIdx++;
         }
 
         // Hide any remaining pooled rectangles beyond the current stripe count.
         for (int i = poolIdx; i < _selectionOverlayRects.Count; i++)
             _selectionOverlayRects[i].Visibility = Visibility.Collapsed;
+    }
+
+    /// <summary>
+    /// Pre-populates the selection-highlight rectangle pool up to
+    /// <paramref name="count"/> stripes so the first drag gesture after a
+    /// document rebuild doesn't incur <c>Children.Add</c> overhead during
+    /// pointer-move events.  8 stripes covers most real-world selections
+    /// (heading line + 6 body lines + overflow guard).
+    /// </summary>
+    private void PreWarmSelectionPool(int count = 8)
+    {
+        if (_overlay is null) return;
+        for (int i = _selectionOverlayRects.Count; i < count; i++)
+        {
+            var r = new Rectangle
+            {
+                IsHitTestVisible = false,
+                UseLayoutRounding = true,
+                Visibility = Visibility.Collapsed,
+            };
+            Canvas.SetZIndex(r, -1);
+            _overlay.Children.Add(r);
+            _selectionOverlayRects.Add(r);
+        }
     }
 
     private void OnPointerCanceledOrCaptureLost(object sender, PointerRoutedEventArgs e)
