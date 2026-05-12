@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Concurrent;
+using System.Linq;
 using System.Net.Http;
 using System.Threading.Tasks;
 using Microsoft.Graphics.Canvas;
@@ -27,6 +28,30 @@ namespace MarkdownRenderer.Layout.Boxes;
 public sealed class ImageBox : BlockBox
 {
     private static readonly ConcurrentDictionary<string, CanvasBitmap?> _bitmapCache = new();
+
+    // Hard caps on the static URL caches so a long-lived process viewing many
+    // markdown docs with unique image URLs can't grow memory without bound.
+    // The per-entry payload is small for raster bitmaps (a CanvasBitmap handle
+    // bound to the GPU) but for SVGs each entry pins the rasterized BGRA buffer
+    // (potentially several MB at high DPI), so a tighter cap is warranted there.
+    private const int MaxBitmapCacheEntries = 256;
+    private const int MaxSvgCacheEntries = 128;
+
+    private static void TrimCache<TValue>(ConcurrentDictionary<string, TValue> cache, int maxEntries)
+    {
+        while (cache.Count > maxEntries)
+        {
+            // Evict an arbitrary entry. Not strictly LRU — keeping a separate
+            // ordered structure under contention is more code than the
+            // memory saved here justifies — but it bounds the working set.
+            var victim = cache.Keys.FirstOrDefault();
+            if (victim is null) break;
+            if (cache.TryRemove(victim, out var v) && v is IDisposable d)
+            {
+                try { d.Dispose(); } catch { }
+            }
+        }
+    }
 
     /// <summary>
     /// Cached SVG state for an URL. <see cref="RawBytes"/> is the
@@ -387,6 +412,7 @@ public sealed class ImageBox : BlockBox
             {
                 _bitmap = bmp;
                 _bitmapCache[_url] = bmp;
+                TrimCache(_bitmapCache, MaxBitmapCacheEntries);
             }
             LoadCompleted?.Invoke(this, new LoadCompletedEventArgs(layoutInvalidated: true));
         },
@@ -548,6 +574,7 @@ public sealed class ImageBox : BlockBox
                         _svgCache[_url] = new SvgCacheEntry(
                             rawBytes, work.intrinsic, work.title, work.desc,
                             r.Bgra, r.WidthPx, r.HeightPx, themeColor, scale);
+                        TrimCache(_svgCache, MaxSvgCacheEntries);
                     }
                 }
                 catch (Exception ex)

@@ -106,11 +106,15 @@ public sealed class SvgComplianceTests
         string? browserPng = HeadlessBrowserRasterizer.Rasterize(svg, w, h);
         if (browserPng is null)
         {
-            // Headless launch failed (transient browser flake). Don't fail
-            // the entire suite for one fixture; record and continue.
+            // A working browser was located but the screenshot pipeline
+            // produced nothing — that's a real regression in our test
+            // harness, not a "skip". Surface it as a test failure so the
+            // suite can't silently degrade into rasterize-only checks.
             File.WriteAllText(Path.Combine(artifactsDir, "browser-failed.txt"),
-                "Headless browser failed to produce a PNG for this fixture.\n");
-            return;
+                "Headless browser failed to produce a PNG for this fixture.\n" +
+                "Browser executable: " + browserBin + "\n");
+            Assert.Fail($"Headless browser produced no PNG for fixture '{fixtureRelPath}' " +
+                        $"(executable: {browserBin}). Inspect {artifactsDir} for diagnostics.");
         }
 
         try

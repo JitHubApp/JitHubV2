@@ -89,13 +89,19 @@ public static class ThorVgRasterizer
     {
         if (svgBytes is null || svgBytes.Length == 0) return null;
         if (targetWidthPx <= 0 || targetHeightPx <= 0) return null;
+        // Guard against int32 overflow in the allocation below. A single
+        // raster larger than ~64 MB (4096x4096 BGRA) is well beyond any
+        // sensible markdown image and almost certainly a corrupt or
+        // adversarial intrinsic-size; reject before we wrap.
+        long byteCount = (long)targetWidthPx * targetHeightPx * 4L;
+        if (byteCount <= 0 || byteCount > 64L * 1024L * 1024L) return null;
         if (!EnsureEngine()) return null;
 
         IntPtr canvas = IntPtr.Zero;
         IntPtr picture = IntPtr.Zero;
         bool pictureOwnedByCanvas = false;
         // Output buffer is uint32 per pixel — width*height 32-bit cells.
-        var bgra = new byte[targetWidthPx * targetHeightPx * 4];
+        var bgra = new byte[(int)byteCount];
 
         try
         {

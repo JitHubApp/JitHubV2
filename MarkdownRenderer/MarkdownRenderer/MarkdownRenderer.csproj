@@ -38,7 +38,13 @@
       Output renamed from thorvg-1.dll to thorvg.dll so [LibraryImport("thorvg")]
       resolves on default DLL search rules. See native\THORVG_LICENSE.
     -->
-    <Content Include="native\win-x64\thorvg.dll">
+    <!--
+      Only the x64 native DLL exists today. x86 / ARM64 builds intentionally
+      do not include thorvg.dll; ThorVgRasterizer.EnsureEngine() catches the
+      resulting DllNotFoundException and SVGs fall back to the alt-text
+      placeholder. Adding cross-arch builds is tracked as future work.
+    -->
+    <Content Include="native\win-x64\thorvg.dll" Condition="'$(Platform)' == 'x64'">
       <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
       <Link>thorvg.dll</Link>
     </Content>
