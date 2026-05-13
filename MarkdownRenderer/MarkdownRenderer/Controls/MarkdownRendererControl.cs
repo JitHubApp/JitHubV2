@@ -1090,8 +1090,9 @@ public sealed partial class MarkdownRendererControl : UserControl
                 // Triple-click: select the entire block (line).
                 _clickMode = ClickMode.Block;
                 (_dragAnchorStart, _dragAnchorEnd) = ExpandSelectionToBlock(_snapshot, pos);
-                // Invalidate to repaint link-hover state (hover suppressed during drag).
-                _canvas.Invalidate();
+                // Selection is rendered by the XAML overlay; do not dirty canvas
+                // text during mouse-down. Repainting DirectWrite text here causes
+                // visible shake on selection starts, especially on the embeds page.
                 if (!_canvas.CapturePointer(e.Pointer)) { _leftPointerCaptured = false; _selectionAnchor = null; }
                 return;
             }
@@ -1100,15 +1101,15 @@ public sealed partial class MarkdownRendererControl : UserControl
                 // Double-click: select the word under the cursor.
                 _clickMode = ClickMode.Word;
                 (_dragAnchorStart, _dragAnchorEnd) = ExpandSelectionToWord(_snapshot, pos);
-                // Invalidate to repaint link-hover state (hover suppressed during drag).
-                _canvas.Invalidate();
+                // Selection is rendered by the XAML overlay; do not dirty canvas
+                // text during mouse-down.
                 if (!_canvas.CapturePointer(e.Pointer)) { _leftPointerCaptured = false; _selectionAnchor = null; }
                 return;
             }
             _clickMode = ClickMode.Single;
             _selection.SetAnchor(pos);
-            // Invalidate to repaint link-hover state (hover suppressed during drag).
-            _canvas.Invalidate();
+            // Selection is rendered by the XAML overlay; do not dirty canvas text
+            // for the empty anchor state.
             if (!_canvas.CapturePointer(e.Pointer)) { _leftPointerCaptured = false; _selectionAnchor = null; }
         }
         else
@@ -1122,7 +1123,7 @@ public sealed partial class MarkdownRendererControl : UserControl
             _lastPressPoint  = default;
             _selectionAnchor = null; // defensive: clear any stale anchor from a prior capture loss
             _selection.Clear();
-            _canvas.Invalidate();
+            // No canvas invalidate: selection clear is overlay-only.
         }
     }
 

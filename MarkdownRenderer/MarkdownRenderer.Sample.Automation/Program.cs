@@ -47,6 +47,7 @@ internal static class Program
             RunProbe("triple-click-selects-line",  () => ProbeTripleClickSelectsLine(window));
             RunProbe("context-menu-appears",       () => ProbeContextMenu(window));
             RunProbe("hover-does-not-shake",       () => ProbeHoverDoesNotShake(window));
+            RunProbe("embeds-selection-does-not-shake", () => ProbeEmbedsSelectionDoesNotShake(window));
 
             try { window.Close(); } catch { /* window may already be gone */ }
         }
@@ -431,6 +432,100 @@ internal static class Program
             $"Recent log excerpt: {Truncate(appended, 400)}");
     }
 
+    /// <summary>
+    /// Regression probe for the embeds-page shake reported from manual testing:
+    /// a text-selection drag on the hosted-embeds sample must not repaint the
+    /// DirectWrite canvas. Selection rectangles live on the XAML overlay; any
+    /// appended canvas region/inline-paint event after the drag starts means
+    /// mouse-down or drag still dirtied text and can visibly jitter at 150% DPI.
+    /// </summary>
+    private static void ProbeEmbedsSelectionDoesNotShake(Window window)
+    {
+        var btn = window.FindFirstDescendant(cf => cf.ByAutomationId("SampleButton_Embeds"))?.AsButton()
+                  ?? throw new InvalidOperationException("Embeds sample button not found");
+        btn.Invoke();
+        Thread.Sleep(1500);
+
+        var renderer = FindRenderer(window);
+        var bounds = renderer.BoundingRectangle;
+
+        Mouse.MoveTo((int)bounds.X - 100, (int)bounds.Y - 100);
+        Thread.Sleep(400);
+
+        string logPath = FindShakeLog()
+            ?? throw new InvalidOperationException("text_shaking2.log not found — sample may not have ShakeLogger enabled");
+
+        var start = FindSelectablePointOnEmbedsPage(logPath, bounds);
+        Thread.Sleep(900); // reset multi-click timing after discovery clicks
+
+        int endX = (int)(bounds.X + 390);
+        int endY = (int)(bounds.Y + 415);
+        if (Math.Abs(endX - start.X) + Math.Abs(endY - start.Y) < 120)
+        {
+            endX = (int)(bounds.X + 80);
+            endY = (int)(bounds.Y + 90);
+        }
+
+        long baseline = new FileInfo(logPath).Length;
+
+        Mouse.MoveTo(start.X, start.Y);
+        Thread.Sleep(100);
+        Mouse.Drag(
+            start,
+            new System.Drawing.Point(endX, endY),
+            FlaUI.Core.Input.MouseButton.Left);
+        Thread.Sleep(500);
+
+        string appended = ReadShakeLogFrom(logPath, baseline);
+        int anchorEvents = CountOccurrences(appended, "sel-anchor");
+        int dragEvents = CountOccurrences(appended, "ptr-move-drag");
+        int paintEvents = CountOccurrences(appended, "inline-paint");
+        int regionEvents = CountOccurrences(appended, " region ");
+
+        Assert(anchorEvents > 0,
+            $"embed selection-shake probe did not start a text selection. " +
+            $"Recent log excerpt: {Truncate(appended, 600)}");
+        Assert(dragEvents > 0,
+            $"embed selection-shake probe did not produce drag movement inside the renderer. " +
+            $"Recent log excerpt: {Truncate(appended, 600)}");
+        Assert(paintEvents == 0,
+            $"embed selection-shake regression: {paintEvents} inline-paint event(s) fired during embeds-page drag. " +
+            $"Recent log excerpt: {Truncate(appended, 600)}");
+        Assert(regionEvents == 0,
+            $"embed selection-shake regression: {regionEvents} canvas region event(s) fired during embeds-page drag. " +
+            $"Recent log excerpt: {Truncate(appended, 600)}");
+    }
+
+    private static System.Drawing.Point FindSelectablePointOnEmbedsPage(
+        string logPath,
+        System.Drawing.Rectangle bounds)
+    {
+        var candidates = new[]
+        {
+            new System.Drawing.Point((int)(bounds.X + 42),  (int)(bounds.Y + 42)),
+            new System.Drawing.Point((int)(bounds.X + 120), (int)(bounds.Y + 85)),
+            new System.Drawing.Point((int)(bounds.X + 240), (int)(bounds.Y + 120)),
+            new System.Drawing.Point((int)(bounds.X + 180), (int)(bounds.Y + 190)),
+            new System.Drawing.Point((int)(bounds.X + 340), (int)(bounds.Y + 330)),
+            new System.Drawing.Point((int)(bounds.X + 360), (int)(bounds.Y + 420)),
+        };
+
+        foreach (var point in candidates)
+        {
+            long baseline = new FileInfo(logPath).Length;
+            Mouse.MoveTo(point);
+            Thread.Sleep(60);
+            Mouse.Click(FlaUI.Core.Input.MouseButton.Left);
+            Thread.Sleep(180);
+            string appended = ReadShakeLogFrom(logPath, baseline);
+            if (CountOccurrences(appended, "sel-anchor") > 0)
+                return point;
+            Thread.Sleep(650);
+        }
+
+        throw new InvalidOperationException("Could not find a selectable text point on the Embeds sample");
+    }
+
     private static string? FindShakeLog()
     {
         // Walk up from the running automation exe to find text_shaking2.log
@@ -455,6 +550,14 @@ internal static class Program
             i += needle.Length;
         }
         return count;
+    }
+
+    private static string ReadShakeLogFrom(string logPath, long baseline)
+    {
+        using var fs = new FileStream(logPath, FileMode.Open, FileAccess.Read, FileShare.ReadWrite);
+        using var sr = new StreamReader(fs);
+        fs.Seek(baseline, SeekOrigin.Begin);
+        return sr.ReadToEnd();
     }
 
     private static string Truncate(string s, int max)
