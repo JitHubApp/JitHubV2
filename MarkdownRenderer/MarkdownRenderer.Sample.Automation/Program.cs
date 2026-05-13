@@ -276,20 +276,22 @@ internal static class Program
         Thread.Sleep(1200);
 
         var renderer = FindRenderer(window);
-        var bounds = renderer.BoundingRectangle;
+        string logPath = FindShakeLog()
+            ?? throw new InvalidOperationException("text_shaking2.log not found — sample may not have ShakeLogger enabled");
+        var point = FindSelectablePointInRenderer(logPath, renderer.BoundingRectangle, "double-click word probe");
+        Thread.Sleep(900);
+        long baseline = new FileInfo(logPath).Length;
 
-        // Double-click near the upper-left area of the document where text lives.
-        int cx = (int)(bounds.X + bounds.Width * 0.25);
-        int cy = (int)(bounds.Y + 40);
-        Mouse.MoveTo(cx, cy);
-        Thread.Sleep(100);
-        Mouse.DoubleClick(FlaUI.Core.Input.MouseButton.Left);
-        Thread.Sleep(400);
+        Mouse.DoubleClick(point, FlaUI.Core.Input.MouseButton.Left);
+        Thread.Sleep(700);
 
-        // Selection page text readout is exposed via automation; we just verify
-        // the control remains responsive (didn't crash or freeze).
-        var nameAfter = renderer.Name ?? string.Empty;
-        Assert(nameAfter.Length > 0, "Renderer must remain responsive after double-click word selection");
+        string appended = ReadShakeLogFrom(logPath, baseline);
+        Assert(CountOccurrences(appended, "sel-anchor") > 0,
+            $"double-click probe did not start selection. Recent log excerpt: {Truncate(appended, 600)}");
+        Assert(CountOccurrences(appended, "sel-extend") > 0,
+            $"double-click probe did not expand to a word selection. Recent log excerpt: {Truncate(appended, 600)}");
+        Assert(CountOccurrences(appended, "sel-rect-phys") > 0,
+            $"double-click probe did not draw a selection rectangle. Recent log excerpt: {Truncate(appended, 600)}");
     }
 
     private static void ProbeTripleClickSelectsLine(Window window)
@@ -301,26 +303,27 @@ internal static class Program
         Thread.Sleep(1200);
 
         var renderer = FindRenderer(window);
-        var bounds = renderer.BoundingRectangle;
+        string logPath = FindShakeLog()
+            ?? throw new InvalidOperationException("text_shaking2.log not found — sample may not have ShakeLogger enabled");
+        var point = FindSelectablePointInRenderer(logPath, renderer.BoundingRectangle, "triple-click line probe");
+        Thread.Sleep(900);
+        long baseline = new FileInfo(logPath).Length;
 
-        // Triple-click = three clicks in rapid succession on same spot.
-        int cx = (int)(bounds.X + bounds.Width * 0.3);
-        int cy = (int)(bounds.Y + 40);
-        Mouse.MoveTo(cx, cy);
-        Thread.Sleep(100);
-        // Use a small inter-click delay well below the system double-click time.
-        // 60 ms is safely under the 200 ms minimum double-click window; the control
-        // reads GetDoubleClickTime() which is typically 500 ms by default.
-        Mouse.Click(FlaUI.Core.Input.MouseButton.Left);
+        // Triple-click = double-click plus one more click in rapid succession on
+        // the same real text point. Use point-targeted helpers so the click is not
+        // dependent on whatever position the previous probe left the cursor at.
+        Mouse.DoubleClick(point, FlaUI.Core.Input.MouseButton.Left);
         Thread.Sleep(60);
-        Mouse.Click(FlaUI.Core.Input.MouseButton.Left);
-        Thread.Sleep(60);
-        Mouse.Click(FlaUI.Core.Input.MouseButton.Left);
-        Thread.Sleep(400);
+        Mouse.Click(point, FlaUI.Core.Input.MouseButton.Left);
+        Thread.Sleep(700);
 
-        // Verify control is still alive.
-        var nameAfter = renderer.Name ?? string.Empty;
-        Assert(nameAfter.Length > 0, "Renderer must remain responsive after triple-click line selection");
+        string appended = ReadShakeLogFrom(logPath, baseline);
+        Assert(CountOccurrences(appended, "sel-anchor") > 0,
+            $"triple-click probe did not start selection. Recent log excerpt: {Truncate(appended, 600)}");
+        Assert(CountOccurrences(appended, "sel-extend") > 0,
+            $"triple-click probe did not expand to a line selection. Recent log excerpt: {Truncate(appended, 600)}");
+        Assert(CountOccurrences(appended, "sel-rect-phys") > 0,
+            $"triple-click probe did not draw a selection rectangle. Recent log excerpt: {Truncate(appended, 600)}");
     }
 
     private static void ProbeContextMenu(Window window)
@@ -449,36 +452,32 @@ internal static class Program
         var renderer = FindRenderer(window);
         var bounds = renderer.BoundingRectangle;
 
-        Mouse.MoveTo((int)bounds.X - 100, (int)bounds.Y - 100);
+        Mouse.MoveTo(bounds.X - 100, bounds.Y - 100);
         Thread.Sleep(400);
 
         string logPath = FindShakeLog()
             ?? throw new InvalidOperationException("text_shaking2.log not found — sample may not have ShakeLogger enabled");
 
-        var start = FindSelectablePointOnEmbedsPage(logPath, bounds);
-        Thread.Sleep(900); // reset multi-click timing after discovery clicks
-
-        int endX = (int)(bounds.X + 390);
-        int endY = (int)(bounds.Y + 415);
-        if (Math.Abs(endX - start.X) + Math.Abs(endY - start.Y) < 120)
-        {
-            endX = (int)(bounds.X + 80);
-            endY = (int)(bounds.Y + 90);
-        }
+        var start = FindSelectablePointInRenderer(logPath, bounds, "embeds drag start");
+        var end = FindSelectablePointInRenderer(
+            logPath,
+            bounds,
+            "embeds drag end",
+            p => Math.Abs(p.X - start.X) + Math.Abs(p.Y - start.Y) >= 160);
+        Assert(Math.Abs(end.X - start.X) + Math.Abs(end.Y - start.Y) >= 80,
+            $"embeds selection probe did not find a meaningful in-text drag range: start={start}, end={end}");
+        Thread.Sleep(900);
 
         long baseline = new FileInfo(logPath).Length;
 
-        Mouse.MoveTo(start.X, start.Y);
-        Thread.Sleep(100);
-        Mouse.Drag(
-            start,
-            new System.Drawing.Point(endX, endY),
-            FlaUI.Core.Input.MouseButton.Left);
-        Thread.Sleep(500);
+        DragMouseThrough(start, end);
+        Thread.Sleep(700);
 
         string appended = ReadShakeLogFrom(logPath, baseline);
         int anchorEvents = CountOccurrences(appended, "sel-anchor");
         int dragEvents = CountOccurrences(appended, "ptr-move-drag");
+        int extendEvents = CountOccurrences(appended, "sel-extend");
+        int selectionRectEvents = CountOccurrences(appended, "sel-rect-phys");
         int paintEvents = CountOccurrences(appended, "inline-paint");
         int regionEvents = CountOccurrences(appended, " region ");
 
@@ -488,6 +487,12 @@ internal static class Program
         Assert(dragEvents > 0,
             $"embed selection-shake probe did not produce drag movement inside the renderer. " +
             $"Recent log excerpt: {Truncate(appended, 600)}");
+        Assert(extendEvents > 0,
+            $"embed selection-shake probe did not extend a text selection. " +
+            $"Recent log excerpt: {Truncate(appended, 600)}");
+        Assert(selectionRectEvents > 0,
+            $"embed selection-shake probe did not render selection overlay rectangles. " +
+            $"Recent log excerpt: {Truncate(appended, 600)}");
         Assert(paintEvents == 0,
             $"embed selection-shake regression: {paintEvents} inline-paint event(s) fired during embeds-page drag. " +
             $"Recent log excerpt: {Truncate(appended, 600)}");
@@ -496,35 +501,166 @@ internal static class Program
             $"Recent log excerpt: {Truncate(appended, 600)}");
     }
 
-    private static System.Drawing.Point FindSelectablePointOnEmbedsPage(
+    private static System.Drawing.Point FindSelectablePointInRenderer(
         string logPath,
-        System.Drawing.Rectangle bounds)
+        System.Drawing.Rectangle bounds,
+        string description,
+        Func<System.Drawing.Point, bool>? predicate = null)
     {
-        var candidates = new[]
-        {
-            new System.Drawing.Point((int)(bounds.X + 42),  (int)(bounds.Y + 42)),
-            new System.Drawing.Point((int)(bounds.X + 120), (int)(bounds.Y + 85)),
-            new System.Drawing.Point((int)(bounds.X + 240), (int)(bounds.Y + 120)),
-            new System.Drawing.Point((int)(bounds.X + 180), (int)(bounds.Y + 190)),
-            new System.Drawing.Point((int)(bounds.X + 340), (int)(bounds.Y + 330)),
-            new System.Drawing.Point((int)(bounds.X + 360), (int)(bounds.Y + 420)),
-        };
+        var candidates = EnumerateRendererCandidatePoints(bounds)
+            .Where(p => predicate?.Invoke(p) ?? true)
+            .Distinct()
+            .ToArray();
 
         foreach (var point in candidates)
         {
             long baseline = new FileInfo(logPath).Length;
-            Mouse.MoveTo(point);
-            Thread.Sleep(60);
-            Mouse.Click(FlaUI.Core.Input.MouseButton.Left);
-            Thread.Sleep(180);
+            Mouse.Click(point, FlaUI.Core.Input.MouseButton.Left);
+            Thread.Sleep(250);
             string appended = ReadShakeLogFrom(logPath, baseline);
             if (CountOccurrences(appended, "sel-anchor") > 0)
+            {
+                Console.WriteLine($"[automation] {description}: validated selectable point {point} inside renderer bounds {FormatRect(bounds)}");
                 return point;
+            }
             Thread.Sleep(650);
         }
 
-        throw new InvalidOperationException("Could not find a selectable text point on the Embeds sample");
+        throw new InvalidOperationException(
+            $"Could not find a real selectable text point for {description} inside renderer bounds {FormatRect(bounds)}. " +
+            "Every candidate failed to produce a sel-anchor log entry.");
     }
+
+    private static IEnumerable<System.Drawing.Point> EnumerateRendererCandidatePoints(System.Drawing.Rectangle bounds)
+    {
+        int[] xOffsets = { 42, 90, 150, 240, 340, 460, 600 };
+        int[] yOffsets = { 42, 70, 100, 140, 180, 240, 320, 420, 560, 720 };
+        foreach (int y in yOffsets)
+        foreach (int x in xOffsets)
+        {
+            if (x >= bounds.Width - 8 || y >= bounds.Height - 8) continue;
+            yield return new System.Drawing.Point(bounds.X + x, bounds.Y + y);
+        }
+
+        double[] xFractions = { 0.2, 0.35, 0.5, 0.65, 0.8 };
+        double[] yFractions = { 0.18, 0.28, 0.38, 0.5, 0.62, 0.75 };
+        foreach (double y in yFractions)
+        foreach (double x in xFractions)
+        {
+            yield return new System.Drawing.Point(
+                (int)Math.Round(bounds.X + bounds.Width * x),
+                (int)Math.Round(bounds.Y + bounds.Height * y));
+        }
+    }
+
+    private static string FormatRect(System.Drawing.Rectangle rect)
+        => $"x={rect.X},y={rect.Y},w={rect.Width},h={rect.Height}";
+
+    private static void DragMouseThrough(System.Drawing.Point start, System.Drawing.Point end)
+    {
+        const int steps = 24;
+        SendMouseMove(start);
+        Thread.Sleep(100);
+        SendMouseButton(MouseEventFlags.LeftDown);
+        try
+        {
+            Thread.Sleep(80);
+            for (int i = 1; i <= steps; i++)
+            {
+                double t = i / (double)steps;
+                var point = new System.Drawing.Point(
+                    (int)Math.Round(start.X + (end.X - start.X) * t),
+                    (int)Math.Round(start.Y + (end.Y - start.Y) * t));
+                SendMouseMove(point);
+                Thread.Sleep(25);
+            }
+        }
+        finally
+        {
+            SendMouseButton(MouseEventFlags.LeftUp);
+        }
+    }
+
+    private static void SendMouseMove(System.Drawing.Point point)
+    {
+        int vx = GetSystemMetrics(SystemMetricVirtualScreenX);
+        int vy = GetSystemMetrics(SystemMetricVirtualScreenY);
+        int vw = Math.Max(1, GetSystemMetrics(SystemMetricVirtualScreenWidth));
+        int vh = Math.Max(1, GetSystemMetrics(SystemMetricVirtualScreenHeight));
+        int absoluteX = (int)Math.Round((point.X - vx) * 65535.0 / (vw - 1));
+        int absoluteY = (int)Math.Round((point.Y - vy) * 65535.0 / (vh - 1));
+        SendMouseInput(MouseEventFlags.Move | MouseEventFlags.Absolute | MouseEventFlags.VirtualDesk, absoluteX, absoluteY);
+    }
+
+    private static void SendMouseButton(MouseEventFlags flags)
+        => SendMouseInput(flags, 0, 0);
+
+    private static void SendMouseInput(MouseEventFlags flags, int dx, int dy)
+    {
+        var input = new Input
+        {
+            Type = InputMouse,
+            MouseInput = new MouseInput
+            {
+                Dx = dx,
+                Dy = dy,
+                MouseData = 0,
+                Flags = flags,
+                Time = 0,
+                ExtraInfo = UIntPtr.Zero,
+            },
+        };
+        uint sent = SendInput(1, new[] { input }, System.Runtime.InteropServices.Marshal.SizeOf<Input>());
+        if (sent != 1)
+        {
+            throw new System.ComponentModel.Win32Exception(
+                System.Runtime.InteropServices.Marshal.GetLastWin32Error(),
+                $"SendInput failed for mouse flags {flags}");
+        }
+    }
+
+    private const uint InputMouse = 0;
+    private const int SystemMetricVirtualScreenX = 76;
+    private const int SystemMetricVirtualScreenY = 77;
+    private const int SystemMetricVirtualScreenWidth = 78;
+    private const int SystemMetricVirtualScreenHeight = 79;
+
+    [Flags]
+    private enum MouseEventFlags : uint
+    {
+        Move = 0x0001,
+        LeftDown = 0x0002,
+        LeftUp = 0x0004,
+        Absolute = 0x8000,
+        VirtualDesk = 0x4000,
+    }
+
+    [System.Runtime.InteropServices.StructLayout(System.Runtime.InteropServices.LayoutKind.Sequential)]
+    private struct Input
+    {
+        public uint Type;
+        public MouseInput MouseInput;
+    }
+
+    [System.Runtime.InteropServices.StructLayout(System.Runtime.InteropServices.LayoutKind.Sequential)]
+    private struct MouseInput
+    {
+        public int Dx;
+        public int Dy;
+        public uint MouseData;
+        public MouseEventFlags Flags;
+        public uint Time;
+        public UIntPtr ExtraInfo;
+    }
+
+    [System.Runtime.InteropServices.DllImport("user32.dll", SetLastError = true)]
+    private static extern uint SendInput(
+        uint inputCount,
+        [System.Runtime.InteropServices.MarshalAs(System.Runtime.InteropServices.UnmanagedType.LPArray), System.Runtime.InteropServices.In] Input[] inputs,
+        int inputSize);
+
+    [System.Runtime.InteropServices.DllImport("user32.dll")]
+    private static extern int GetSystemMetrics(int index);
 
     private static string? FindShakeLog()
     {
