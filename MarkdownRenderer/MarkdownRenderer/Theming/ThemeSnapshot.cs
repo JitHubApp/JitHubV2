@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using Windows.UI;
 
 namespace MarkdownRenderer.Theming;
 
@@ -12,10 +13,27 @@ public sealed class ThemeSnapshot
 {
     private readonly IReadOnlyDictionary<string, ElementStyle> _styles;
 
-    internal ThemeSnapshot(IReadOnlyDictionary<string, ElementStyle> styles)
+    internal ThemeSnapshot(
+        IReadOnlyDictionary<string, ElementStyle> styles,
+        Color surfaceColor,
+        Color selectionHighlightColor,
+        Color selectionForegroundColor,
+        Color focusVisualColor,
+        bool isHighContrast)
     {
         _styles = styles ?? throw new ArgumentNullException(nameof(styles));
+        SurfaceColor = surfaceColor;
+        SelectionHighlightColor = selectionHighlightColor;
+        SelectionForegroundColor = selectionForegroundColor;
+        FocusVisualColor = focusVisualColor;
+        IsHighContrast = isHighContrast;
     }
+
+    public Color SurfaceColor { get; }
+    public Color SelectionHighlightColor { get; }
+    public Color SelectionForegroundColor { get; }
+    public Color FocusVisualColor { get; }
+    public bool IsHighContrast { get; }
 
     public ElementStyle GetStyle(string elementKey)
     {

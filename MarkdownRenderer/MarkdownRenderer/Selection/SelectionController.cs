@@ -2,6 +2,7 @@ using System.Collections.Generic;
 using Microsoft.Graphics.Canvas;
 using Windows.Foundation;
 using Windows.UI;
+using MarkdownRenderer.Diagnostics;
 using MarkdownRenderer.Document;
 using MarkdownRenderer.Layout;
 using MarkdownRenderer.Layout.Boxes;
@@ -23,17 +24,19 @@ public sealed class SelectionController
     public void SetAnchor(DocumentPosition anchor)
     {
         Range = new DocumentRange(anchor, anchor);
-        MarkdownRenderer.Diagnostics.ShakeLogger.Log("sel-anchor",
-            $"blk={anchor.BlockIndex} inl={anchor.InlineIndex} c={anchor.CharacterOffset}");
+        if (ShakeLogger.IsEnabled)
+            ShakeLogger.Log("sel-anchor",
+                $"blk={anchor.BlockIndex} inl={anchor.InlineIndex} c={anchor.CharacterOffset}");
         Changed?.Invoke(this, System.EventArgs.Empty);
     }
 
     public void ExtendTo(DocumentPosition position)
     {
         Range = new DocumentRange(Range.Start, position);
-        MarkdownRenderer.Diagnostics.ShakeLogger.Log("sel-extend",
-            $"start=blk{Range.Start.BlockIndex}/c{Range.Start.CharacterOffset} " +
-            $"end=blk{position.BlockIndex}/c{position.CharacterOffset}");
+        if (ShakeLogger.IsEnabled)
+            ShakeLogger.Log("sel-extend",
+                $"start=blk{Range.Start.BlockIndex}/c{Range.Start.CharacterOffset} " +
+                $"end=blk{position.BlockIndex}/c{position.CharacterOffset}");
         Changed?.Invoke(this, System.EventArgs.Empty);
     }
 
@@ -97,8 +100,9 @@ public sealed class SelectionController
             var snapped = new Rect(x, y, w, h);
             if (first)
             {
-                MarkdownRenderer.Diagnostics.ShakeLogger.LogPaint(
-                    "sel-rect-first", -1, snapped.X, snapped.Y, snapped.Width, snapped.Height);
+                if (ShakeLogger.IsEnabled)
+                    ShakeLogger.LogPaint(
+                        "sel-rect-first", -1, snapped.X, snapped.Y, snapped.Width, snapped.Height);
                 first = false;
             }
             ds.FillRectangle(snapped, color);

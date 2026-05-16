@@ -15,6 +15,7 @@
 using System;
 using System.Runtime.InteropServices;
 using System.Threading;
+using MarkdownRenderer.Diagnostics;
 using static MarkdownRenderer.Layout.Boxes.ThorVgNative;
 
 namespace MarkdownRenderer.Layout.Boxes;
@@ -51,7 +52,7 @@ public static class ThorVgRasterizer
                 var r = tvg_engine_init(0);
                 if (r != Tvg_Result.Success)
                 {
-                    System.Diagnostics.Debug.WriteLine(
+                    MarkdownDiagnostics.WriteLine(
                         $"[ThorVgRasterizer] tvg_engine_init failed: {r}");
                     return false;
                 }
@@ -60,13 +61,13 @@ public static class ThorVgRasterizer
             }
             catch (DllNotFoundException ex)
             {
-                System.Diagnostics.Debug.WriteLine(
+                MarkdownDiagnostics.WriteLine(
                     $"[ThorVgRasterizer] thorvg.dll not found: {ex.Message}");
                 return false;
             }
             catch (Exception ex)
             {
-                System.Diagnostics.Debug.WriteLine(
+                MarkdownDiagnostics.WriteLine(
                     $"[ThorVgRasterizer] engine init threw: {ex}");
                 return false;
             }
@@ -108,7 +109,7 @@ public static class ThorVgRasterizer
             canvas = tvg_swcanvas_create(Tvg_Engine_Option.Default);
             if (canvas == IntPtr.Zero)
             {
-                System.Diagnostics.Debug.WriteLine("[ThorVgRasterizer] swcanvas_create returned null");
+                MarkdownDiagnostics.WriteLine("[ThorVgRasterizer] swcanvas_create returned null");
                 return null;
             }
 
@@ -127,14 +128,14 @@ public static class ThorVgRasterizer
                     Tvg_Colorspace.Argb8888);
                 if (st != Tvg_Result.Success)
                 {
-                    System.Diagnostics.Debug.WriteLine($"[ThorVgRasterizer] set_target failed: {st}");
+                    MarkdownDiagnostics.WriteLine($"[ThorVgRasterizer] set_target failed: {st}");
                     return null;
                 }
 
                 picture = tvg_picture_new();
                 if (picture == IntPtr.Zero)
                 {
-                    System.Diagnostics.Debug.WriteLine("[ThorVgRasterizer] picture_new returned null");
+                    MarkdownDiagnostics.WriteLine("[ThorVgRasterizer] picture_new returned null");
                     return null;
                 }
 
@@ -147,7 +148,7 @@ public static class ThorVgRasterizer
                         mimetype: "svg", rpath: null, copy: true);
                     if (lr != Tvg_Result.Success)
                     {
-                        System.Diagnostics.Debug.WriteLine($"[ThorVgRasterizer] picture_load_data failed: {lr}");
+                        MarkdownDiagnostics.WriteLine($"[ThorVgRasterizer] picture_load_data failed: {lr}");
                         return null;
                     }
                 }
@@ -161,7 +162,7 @@ public static class ThorVgRasterizer
                 var ar = tvg_canvas_add(canvas, picture);
                 if (ar != Tvg_Result.Success)
                 {
-                    System.Diagnostics.Debug.WriteLine($"[ThorVgRasterizer] canvas_add failed: {ar}");
+                    MarkdownDiagnostics.WriteLine($"[ThorVgRasterizer] canvas_add failed: {ar}");
                     return null;
                 }
                 pictureOwnedByCanvas = true;
@@ -169,14 +170,14 @@ public static class ThorVgRasterizer
                 var ur = tvg_canvas_update(canvas);
                 if (ur != Tvg_Result.Success && ur != Tvg_Result.InsufficientCondition)
                 {
-                    System.Diagnostics.Debug.WriteLine($"[ThorVgRasterizer] canvas_update returned: {ur}");
+                    MarkdownDiagnostics.WriteLine($"[ThorVgRasterizer] canvas_update returned: {ur}");
                     // Continue — InsufficientCondition can mean "nothing to update".
                 }
 
                 var dr = tvg_canvas_draw(canvas, clear: true);
                 if (dr != Tvg_Result.Success)
                 {
-                    System.Diagnostics.Debug.WriteLine($"[ThorVgRasterizer] canvas_draw failed: {dr}");
+                    MarkdownDiagnostics.WriteLine($"[ThorVgRasterizer] canvas_draw failed: {dr}");
                     return null;
                 }
 
@@ -186,7 +187,7 @@ public static class ThorVgRasterizer
                 var sr = tvg_canvas_sync(canvas);
                 if (sr != Tvg_Result.Success)
                 {
-                    System.Diagnostics.Debug.WriteLine($"[ThorVgRasterizer] canvas_sync failed: {sr}");
+                    MarkdownDiagnostics.WriteLine($"[ThorVgRasterizer] canvas_sync failed: {sr}");
                     return null;
                 }
             }
@@ -199,7 +200,7 @@ public static class ThorVgRasterizer
         }
         catch (Exception ex)
         {
-            System.Diagnostics.Debug.WriteLine($"[ThorVgRasterizer] rasterize threw: {ex}");
+            MarkdownDiagnostics.WriteLine($"[ThorVgRasterizer] rasterize threw: {ex}");
             return null;
         }
         finally

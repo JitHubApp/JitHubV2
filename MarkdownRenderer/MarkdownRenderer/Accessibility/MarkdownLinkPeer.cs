@@ -30,9 +30,15 @@ internal sealed partial class MarkdownLinkPeer : FrameworkElementAutomationPeer,
 
     protected override string GetClassNameCore() => "MarkdownLink";
     protected override AutomationControlType GetAutomationControlTypeCore() => AutomationControlType.Hyperlink;
-    protected override string GetLocalizedControlTypeCore() => "hyperlink";
     protected override string GetNameCore() => _run.Text;
     protected override string GetHelpTextCore() => _run.Url;
+    protected override bool IsKeyboardFocusableCore() => true;
+    protected override bool HasKeyboardFocusCore() => _owner.IsKeyboardFocusOnLink(_run);
+
+    protected override void SetFocusCore()
+    {
+        _owner.FocusLinkFromAutomation(_run);
+    }
 
     protected override object GetPatternCore(PatternInterface patternInterface)
     {
@@ -49,11 +55,24 @@ internal sealed partial class MarkdownLinkPeer : FrameworkElementAutomationPeer,
 
     protected override Windows.Foundation.Rect GetBoundingRectangleCore()
     {
-        // Fall back to the parent block's rect: it's a much tighter bound than
-        // the whole renderer and gives spatial UIA navigation (touch-explore,
-        // Narrator scan-mode) the correct hit region for the paragraph/heading
-        // that contains this link.
-        return _parent.GetBoundingRectangleCoreInternal();
+        var docRect = _parent.Box.GetRunRect(_run.InlineIndex);
+        if (docRect.Width <= 0 || docRect.Height <= 0)
+            return _parent.GetBoundingRectangleCoreInternal();
+
+        var ownerScreen = base.GetBoundingRectangleCore();
+        if (ownerScreen.Width <= 0 || ownerScreen.Height <= 0)
+            return _parent.GetBoundingRectangleCoreInternal();
+
+        double scale = _owner.XamlRoot?.RasterizationScale ?? 1.0;
+        return new Windows.Foundation.Rect(
+            ownerScreen.X + docRect.X * scale,
+            ownerScreen.Y + (_owner.CurrentContentOffsetY + docRect.Y - _owner.CurrentScrollOffsetY) * scale,
+            docRect.Width * scale,
+            docRect.Height * scale);
+    }
+
+    internal void RaiseAutomationFocusChanged()
+    {
+        RaiseAutomationEvent(AutomationEvents.AutomationFocusChanged);
     }
 }
-

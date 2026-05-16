@@ -98,6 +98,24 @@ public sealed class LinkRun : InlineRun
     public override string Text => _text;
 }
 
+public sealed class InlineImageRun : InlineRun
+{
+    private readonly string _text;
+    public string Url { get; }
+    public string? Title { get; }
+    public string AltText => _text;
+
+    public InlineImageRun(string altText, string url, string? title = null)
+    {
+        _text = altText ?? string.Empty;
+        Url = url ?? string.Empty;
+        Title = title;
+        RenderedLength = _text.Length;
+    }
+
+    public override string Text => _text;
+}
+
 public sealed class LineBreakRun : InlineRun
 {
     public LineBreakRun() { RenderedLength = 1; }

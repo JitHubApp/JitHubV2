@@ -149,7 +149,10 @@ public sealed class LayoutBuilder
 
     private InlineContainerBox BuildCodeBlock(LeafBlock block, string text)
     {
-        var box = new InlineContainerBox(_context, MarkdownElementKeys.CodeBlock);
+        var box = new InlineContainerBox(_context, MarkdownElementKeys.CodeBlock)
+        {
+            CodeLanguage = NormalizeCodeLanguage(block)
+        };
         box.BlockIndex = _context.NextBlockIndex();
         // No ElementKey on the run — it inherits the container's CodeBlock style.
         // Setting ElementKey = CodeBlock would cause DrawDecorations to draw a
@@ -160,6 +163,15 @@ public sealed class LayoutBuilder
         };
         box.Add(run);
         return box;
+    }
+
+    private static string? NormalizeCodeLanguage(LeafBlock block)
+    {
+        if (block is not FencedCodeBlock fenced) return null;
+        var text = fenced.Info?.ToString().Trim() ?? string.Empty;
+        if (text.Length == 0) return null;
+        var firstSpace = text.IndexOfAny(new[] { ' ', '\t', '\r', '\n' });
+        return firstSpace > 0 ? text.Substring(0, firstSpace) : text;
     }
 
     private StackBox BuildQuote(QuoteBlock qb)
@@ -183,7 +195,10 @@ public sealed class LayoutBuilder
 
     private StackBox BuildList(ListBlock list)
     {
-        var stack = new StackBox();
+        var stack = new StackBox
+        {
+            FlowDirection = _context.FlowDirection,
+        };
         stack.BlockIndex = _context.NextBlockIndex();
         // Honour the ordered-list start number from the source (e.g. `5.`).
         // Markdig stores this as a string on ListBlock.OrderedStart.
@@ -224,7 +239,10 @@ public sealed class LayoutBuilder
         });
 
         // Content area — all child blocks of the list item.
-        var content = new StackBox();
+        var content = new StackBox
+        {
+            FlowDirection = _context.FlowDirection,
+        };
         content.BlockIndex = _context.NextBlockIndex();
         foreach (var child in li)
         {
@@ -241,7 +259,10 @@ public sealed class LayoutBuilder
 
     private StackBox BuildGenericContainer(ContainerBlock cb)
     {
-        var stack = new StackBox();
+        var stack = new StackBox
+        {
+            FlowDirection = _context.FlowDirection,
+        };
         stack.BlockIndex = _context.NextBlockIndex();
         foreach (var child in cb)
         {
@@ -332,11 +353,16 @@ public sealed class LayoutBuilder
     {
         if (link.IsImage)
         {
-            // Images are not yet natively rendered; show alt text as plain text.
+            // Inline images are painted as their alt text for now, but keep a
+            // distinct run type so UIA can expose image semantics instead of
+            // flattening them into anonymous paragraph text.
             var alt = new System.Text.StringBuilder();
             FlattenContainer(link, alt);
             string altText = alt.Length > 0 ? alt.ToString() : "image";
-            return new TextRun(altText) { SourceSpan = new SourceSpan(link.Span.Start, link.Span.Length) };
+            return new InlineImageRun(altText, link.Url ?? string.Empty, link.Title)
+            {
+                SourceSpan = new SourceSpan(link.Span.Start, link.Span.Length)
+            };
         }
         var sb = new System.Text.StringBuilder();
         FlattenContainer(link, sb);

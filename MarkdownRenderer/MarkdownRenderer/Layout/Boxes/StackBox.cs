@@ -84,6 +84,19 @@ public class StackBox : BlockBox
         }
     }
 
+    public override void PaintSelectionForeground(
+        CanvasDrawingSession ds,
+        DocumentRange range,
+        Windows.UI.Color color,
+        Rect viewport)
+    {
+        foreach (var c in _children)
+        {
+            if (c.Bounds.Bottom < viewport.Top || c.Bounds.Top > viewport.Bottom) continue;
+            c.PaintSelectionForeground(ds, range, color, viewport);
+        }
+    }
+
     public override bool HitTest(Point point, out DocumentPosition position)
     {
         foreach (var c in _children)

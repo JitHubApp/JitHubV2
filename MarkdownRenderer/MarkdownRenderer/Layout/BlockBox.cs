@@ -64,6 +64,19 @@ public abstract class BlockBox
     }
 
     /// <summary>
+    /// Repaints foreground chrome that would otherwise be covered by the
+    /// opaque native selection fill. Text containers repaint glyphs; visual
+    /// blocks such as thematic breaks repaint their separator line.
+    /// </summary>
+    public virtual void PaintSelectionForeground(
+        CanvasDrawingSession ds,
+        Document.DocumentRange range,
+        Windows.UI.Color color,
+        Rect viewport)
+    {
+    }
+
+    /// <summary>
     /// Releases native resources held by this box (e.g. <c>CanvasTextLayout</c>
     /// handles).  Containers must recurse into their children.  Called when
     /// a snapshot is replaced or the control unloads.

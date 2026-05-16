@@ -11,6 +11,8 @@ namespace MarkdownRenderer.Sample.Automation;
 
 internal static class Program
 {
+    private const string DiagnosticsEnvironmentVariable = "MARKDOWN_RENDERER_DIAGNOSTICS";
+
     private static readonly List<string> Failures = new();
     private static readonly List<string> Passes = new();
 
@@ -21,21 +23,35 @@ internal static class Program
             ?? throw new InvalidOperationException(
                 "Cannot locate MarkdownRenderer.Sample.exe. Pass --app-path <exe>.");
 
+        if (args.Contains("--narrator-smoke", StringComparer.OrdinalIgnoreCase))
+            return RunNarratorSmoke(appPath);
+
         Console.WriteLine($"[automation] launching {appPath}");
         KillExistingApplicationInstances(appPath);
-        using var app = Application.Launch(new ProcessStartInfo(appPath) { UseShellExecute = false });
+        using var app = LaunchSample(appPath, enableDiagnostics: true);
         using var automation = new UIA3Automation();
         try
         {
-            var window = Retry.WhileNull(() => app.GetMainWindow(automation),
+            var window = Retry.WhileNull(() =>
+                {
+                    try { return app.GetMainWindow(automation); }
+                    catch { return null; }
+                },
                 timeout: TimeSpan.FromSeconds(30), interval: TimeSpan.FromMilliseconds(250)).Result
                 ?? throw new InvalidOperationException("Main window did not appear.");
-            window.Focus();
+            WaitForSampleContent(window, app);
+            TryFocus(window, "main window");
             Thread.Sleep(750);
 
             RunProbe("automation-tree-shape", () => ProbeAutomationTreeShape(window));
             RunProbe("rtl-toggle-flips-flow",  () => ProbeRtlToggle(window));
             RunProbe("sample-buttons-discoverable", () => ProbeSampleButtons(window));
+            RunProbe("accessibility-lab-text-pattern", () => ProbeAccessibilityLabTextPattern(window));
+            RunProbe("accessibility-lab-semantic-roles", () => ProbeAccessibilityLabSemanticRoles(window));
+            RunProbe("accessibility-lab-text-attributes", () => ProbeAccessibilityLabTextAttributes(window));
+            RunProbe("accessibility-lab-forced-high-contrast", () => ProbeAccessibilityLabForcedHighContrast(window));
+            RunProbe("accessibility-lab-keyboard-order", () => ProbeAccessibilityLabKeyboardOrder(window));
+            RunProbe("accessibility-lab-pointer-resume", () => ProbeAccessibilityLabPointerResume(window));
             RunProbe("virtualization-bounded-realization", () => ProbeVirtualization(window));
             RunProbe("images-sample-loads", () => ProbeImagesSample(window));
             RunProbe("lazy-images-sample-loads", () => ProbeLazyImagesSample(window));
@@ -43,6 +59,11 @@ internal static class Program
             RunProbe("footnotes-sample-loads", () => ProbeFootnotesSample(window));
             RunProbe("keyboard-nav-tab-traversal", () => ProbeKeyboardNav(window));
             RunProbe("click-dismisses-focus-ring", () => ProbeClickDismissesFocus(window));
+            RunProbe("selection-dismisses-on-external-pointer", () => ProbeSelectionDismissesOnExternalPointer(window));
+            RunProbe("selection-dismisses-on-hosted-control-pointer", () => ProbeSelectionDismissesOnHostedControlPointer(window));
+            RunProbe("selection-persists-after-pointer-release", () => ProbeSelectionPersistsAfterPointerRelease(window));
+            RunProbe("ctrl-c-copies-pointer-selection", () => ProbeCtrlCCopiesPointerSelection(window));
+            RunProbe("table-selection-row-border-is-stable", () => ProbeTableSelectionRowBorderIsStable(window));
             RunProbe("double-click-selects-word",  () => ProbeDoubleClickSelectsWord(window));
             RunProbe("triple-click-selects-line",  () => ProbeTripleClickSelectsLine(window));
             RunProbe("context-menu-appears",       () => ProbeContextMenu(window));
@@ -67,11 +88,167 @@ internal static class Program
         return Failures.Count == 0 ? 0 : 1;
     }
 
+    private static int RunNarratorSmoke(string appPath)
+    {
+        Console.WriteLine($"[narrator-smoke] launching {appPath}");
+        KillExistingApplicationInstances(appPath);
+        bool narratorWasRunning = Process.GetProcessesByName("Narrator").Any();
+        using var app = LaunchSample(appPath, enableDiagnostics: false);
+        using var automation = new UIA3Automation();
+        Process? narrator = null;
+
+        try
+        {
+            var window = Retry.WhileNull(() =>
+                {
+                    try { return app.GetMainWindow(automation); }
+                    catch { return null; }
+                },
+                timeout: TimeSpan.FromSeconds(30), interval: TimeSpan.FromMilliseconds(250)).Result
+                ?? throw new InvalidOperationException("Main window did not appear.");
+            WaitForSampleContent(window, app);
+
+            ClickSample(window, "Accessibility_Lab");
+            Thread.Sleep(1500);
+
+            var renderer = FindRenderer(window);
+            renderer.Focus();
+            Thread.Sleep(500);
+
+            var textPattern = renderer.Patterns.Text.PatternOrDefault
+                              ?? throw new InvalidOperationException("Renderer does not expose TextPattern");
+            var quick = textPattern.DocumentRange.FindText("quick", backward: false, ignoreCase: true)
+                        ?? throw new InvalidOperationException("Could not find 'quick' via TextPattern");
+            quick.ExpandToEnclosingUnit(TextUnit.Word);
+            var quickRects = quick.GetBoundingRectangles();
+            Console.WriteLine($"[narrator-smoke] renderer name: {renderer.Name}");
+            Console.WriteLine($"[narrator-smoke] quick rects: {string.Join("; ", quickRects.Select(FormatRect))}");
+            Console.WriteLine($"[narrator-smoke] renderer bounds: {FormatRect(renderer.BoundingRectangle)}");
+
+            if (!narratorWasRunning)
+            {
+                var narratorPath = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.Windows), "System32", "Narrator.exe");
+                narrator = Process.Start(new ProcessStartInfo(narratorPath) { UseShellExecute = true });
+                Thread.Sleep(3500);
+            }
+            MinimizeNarratorHome(automation);
+
+            string artifactDir = Path.Combine(Path.GetFullPath("."), "MarkdownRenderer", "artifacts");
+            Directory.CreateDirectory(artifactDir);
+
+            renderer.Focus();
+            Thread.Sleep(700);
+
+            string beforePath = Path.Combine(artifactDir, "narrator-before-read.png");
+            using (var image = FlaUI.Core.Capturing.Capture.ScreensWithElement(renderer, new FlaUI.Core.Capturing.CaptureSettings()))
+                image.ToFile(beforePath);
+            Console.WriteLine($"[narrator-smoke] before screenshot: {beforePath}");
+
+            Keyboard.TypeSimultaneously(VirtualKeyShort.INSERT, VirtualKeyShort.DOWN);
+            Thread.Sleep(1700);
+
+            string afterPath = Path.Combine(artifactDir, "narrator-after-read.png");
+            using (var image = FlaUI.Core.Capturing.Capture.ScreensWithElement(renderer, new FlaUI.Core.Capturing.CaptureSettings()))
+                image.ToFile(afterPath);
+            Console.WriteLine($"[narrator-smoke] after screenshot: {afterPath}");
+
+            Thread.Sleep(1200);
+            string laterPath = Path.Combine(artifactDir, "narrator-later-read.png");
+            using (var image = FlaUI.Core.Capturing.Capture.ScreensWithElement(renderer, new FlaUI.Core.Capturing.CaptureSettings()))
+                image.ToFile(laterPath);
+            Console.WriteLine($"[narrator-smoke] later screenshot: {laterPath}");
+
+            var tabFocus = TabIntoRendererFromSampleList(window, renderer);
+            Console.WriteLine($"[narrator-smoke] tab-entry focus event: {DescribeFocus(tabFocus)}");
+            Thread.Sleep(1200);
+            string tabEntryPath = Path.Combine(artifactDir, "narrator-tab-entry.png");
+            using (var image = FlaUI.Core.Capturing.Capture.ScreensWithElement(renderer, new FlaUI.Core.Capturing.CaptureSettings()))
+                image.ToFile(tabEntryPath);
+            Console.WriteLine($"[narrator-smoke] tab-entry screenshot: {tabEntryPath}");
+
+            try { window.Close(); } catch { }
+            return 0;
+        }
+        finally
+        {
+            if (!narratorWasRunning)
+            {
+                foreach (var process in Process.GetProcessesByName("Narrator"))
+                {
+                    try { process.Kill(); } catch { }
+                }
+            }
+
+            try { if (!app.HasExited) app.Kill(); } catch { }
+        }
+    }
+
+    private static void MinimizeNarratorHome(UIA3Automation automation)
+    {
+        for (int attempt = 0; attempt < 12; attempt++)
+        {
+            try
+            {
+                var desktop = automation.GetDesktop();
+                var narratorWindow = desktop.FindAllChildren(cf => cf.ByControlType(ControlType.Window))
+                    .FirstOrDefault(w => (w.Name ?? string.Empty).Contains("Narrator", StringComparison.OrdinalIgnoreCase));
+                if (narratorWindow is null)
+                {
+                    Thread.Sleep(250);
+                    continue;
+                }
+
+                var minimizeButton = narratorWindow.FindAllDescendants(cf => cf.ByControlType(ControlType.Button))
+                    .FirstOrDefault(b =>
+                    {
+                        var name = b.Name ?? string.Empty;
+                        return name.Equals("Minimise", StringComparison.OrdinalIgnoreCase) ||
+                               name.Equals("Minimize", StringComparison.OrdinalIgnoreCase);
+                    });
+                if (minimizeButton is not null)
+                {
+                    minimizeButton.AsButton().Invoke();
+                    Thread.Sleep(600);
+                    return;
+                }
+
+                var windowPattern = narratorWindow.Patterns.Window.PatternOrDefault;
+                if (windowPattern is not null)
+                {
+                    windowPattern.SetWindowVisualState(WindowVisualState.Minimized);
+                    Thread.Sleep(600);
+                    return;
+                }
+            }
+            catch
+            {
+            }
+
+            Thread.Sleep(250);
+        }
+    }
+
     private static void ProbeAutomationTreeShape(Window window)
     {
         var renderer = FindRenderer(window);
         var name = renderer.Name ?? string.Empty;
-        Assert(name.Length > 0, "renderer.Name must aggregate document text but was empty");
+        Assert(!string.IsNullOrWhiteSpace(name), "renderer.Name must expose a short document label");
+        Assert(name.Length <= 120, $"renderer.Name must stay short so Narrator reads content through TextPattern, got length {name.Length}");
+        try
+        {
+            var landmarkType = renderer.Properties.LandmarkType.ValueOrDefault;
+            Assert(!string.Equals(landmarkType.ToString(), "Custom", StringComparison.OrdinalIgnoreCase),
+                $"renderer must not expose itself as a custom landmark, got LandmarkType={landmarkType}");
+        }
+        catch (NotSupportedException)
+        {
+            // UIA providers may omit LandmarkType entirely; that is acceptable
+            // and preferable to exposing this document as a custom landmark.
+        }
+        Assert(renderer.Properties.IsControlElement.ValueOrDefault,
+            "renderer must be present in the UIA control view");
+        Assert(renderer.Properties.IsContentElement.ValueOrDefault,
+            "renderer must be present in the UIA content view");
         var descendants = renderer.FindAllDescendants();
         Assert(descendants.Length > 0, "renderer must expose block peers as descendants");
     }
@@ -111,6 +288,7 @@ internal static class Program
             "Typography", "Lists", "Tables", "Code", "GFM_Alerts",
             "Images", "Embeds", "RTL", "Virtualization", "Selection",
             "Lazy_Images", "Scroll_Anchor", "Footnotes", "Keyboard_Nav",
+            "Accessibility_Lab",
             "Full_Demo",
         };
         foreach (var label in expected)
@@ -118,6 +296,465 @@ internal static class Program
             var btn = window.FindFirstDescendant(cf => cf.ByAutomationId("SampleButton_" + label));
             Assert(btn is not null, $"SampleButton_{label} not found in automation tree");
         }
+    }
+
+    private static void ProbeAccessibilityLabTextPattern(Window window)
+    {
+        ClickSample(window, "Accessibility_Lab");
+        Thread.Sleep(1200);
+
+        var renderer = FindRenderer(window);
+        var textPattern = renderer.Patterns.Text.PatternOrDefault
+                          ?? throw new InvalidOperationException("MarkdownRenderer must expose UIA TextPattern");
+        string text = textPattern.DocumentRange.GetText(-1);
+        Assert(text.Contains("Accessibility Lab", StringComparison.Ordinal),
+            "TextPattern document text must include the lab heading");
+        Assert(text.Contains("quick brown fox", StringComparison.OrdinalIgnoreCase),
+            "TextPattern document text must include paragraph content");
+        Assert(text.Contains("Console.WriteLine", StringComparison.Ordinal),
+            "TextPattern document text must include fenced code content");
+
+        var word = textPattern.DocumentRange.FindText("quick", backward: false, ignoreCase: true)
+                   ?? throw new InvalidOperationException("TextPattern FindText('quick') returned null");
+        word.ExpandToEnclosingUnit(TextUnit.Word);
+        var rects = word.GetBoundingRectangles();
+        Assert(rects.Length > 0, "TextPattern word range must expose at least one bounding rectangle");
+        Assert(rects.All(r => r.Width < renderer.BoundingRectangle.Width / 3 &&
+                              r.Height < renderer.BoundingRectangle.Height / 3),
+            "TextPattern word bounding rectangles must be glyph/line-sized, not renderer-sized");
+
+        var endpointRange = textPattern.DocumentRange.Clone();
+        endpointRange.MoveEndpointByRange(TextPatternRangeEndpoint.Start, word, TextPatternRangeEndpoint.Start);
+        endpointRange.MoveEndpointByRange(TextPatternRangeEndpoint.End, word, TextPatternRangeEndpoint.Start);
+        int endpointMoved = endpointRange.MoveEndpointByUnit(TextPatternRangeEndpoint.Start, TextUnit.Word, 1);
+        Assert(endpointMoved == 1, $"MoveEndpointByUnit(Start, Word, 1) from a collapsed range should move one word, moved={endpointMoved}");
+        Assert(endpointRange.CompareEndpoints(TextPatternRangeEndpoint.Start, endpointRange, TextPatternRangeEndpoint.End) == 0,
+            "MoveEndpointByUnit must keep the range valid by collapsing the opposite endpoint when Start crosses End");
+
+        var blockTextPeer = renderer.FindAllDescendants(cf => cf.ByControlType(ControlType.Text))
+            .FirstOrDefault(e => (e.Name ?? string.Empty).Contains("quick brown fox", StringComparison.OrdinalIgnoreCase))
+            ?? throw new InvalidOperationException("Accessibility lab paragraph text peer not found");
+        var blockTextPattern = blockTextPeer.Patterns.Text.PatternOrDefault
+                               ?? throw new InvalidOperationException("Paragraph text peer must expose TextPattern for Narrator word highlighting");
+        var blockWord = blockTextPattern.DocumentRange.FindText("quick", backward: false, ignoreCase: true)
+                        ?? throw new InvalidOperationException("Paragraph TextPattern FindText('quick') returned null");
+        blockWord.ExpandToEnclosingUnit(TextUnit.Word);
+        var blockWordRects = blockWord.GetBoundingRectangles();
+        Assert(blockWordRects.Length > 0, "Paragraph TextPattern word range must expose bounding rectangles");
+        Assert(blockWordRects.All(r => r.Width < blockTextPeer.BoundingRectangle.Width / 2 &&
+                                       r.Height < blockTextPeer.BoundingRectangle.Height),
+            "Paragraph TextPattern word rectangles must be smaller than the paragraph peer rectangle");
+
+        var movedWord = textPattern.DocumentRange.Clone();
+        int moved = movedWord.Move(TextUnit.Word, 1);
+        Assert(moved == 1, $"TextPattern Move(Word, 1) should move by one word, moved={moved}");
+        string movedWordText = movedWord.GetText(-1).Trim();
+        Assert(!string.IsNullOrWhiteSpace(movedWordText) &&
+               movedWordText.Length <= 32 &&
+               !movedWordText.Contains('\n'),
+            $"TextPattern Move(Word, 1) must produce a word-sized range, got '{movedWordText}'");
+        var movedWordRects = movedWord.GetBoundingRectangles();
+        Assert(movedWordRects.Length > 0, "Moved word range must expose bounding rectangles");
+        Assert(movedWordRects.Sum(r => r.Width) < renderer.BoundingRectangle.Width / 2,
+            "Moved word range bounding rectangles must be word-sized, not whole-document-sized");
+
+        var visible = textPattern.GetVisibleRanges();
+        Assert(visible.Length > 0, "TextPattern must expose visible ranges");
+        Assert(visible[0].GetText(200).Length > 0, "Visible TextPattern range must contain text");
+
+        var offscreen = textPattern.DocumentRange.FindText("Paragraph 5", backward: false, ignoreCase: false)
+                        ?? throw new InvalidOperationException("offscreen paragraph range not found");
+        offscreen.ScrollIntoView(alignToTop: false);
+        Thread.Sleep(500);
+        var offscreenRects = offscreen.GetBoundingRectangles();
+        Assert(offscreenRects.Any(r => r.Width > 0 && r.Height > 0 && renderer.BoundingRectangle.IntersectsWith(r)),
+            "TextPattern.ScrollIntoView must bring the requested offscreen range into the renderer viewport");
+
+        var descendants = renderer.FindAllDescendants();
+        Assert(descendants.Any(e => e.ControlType == ControlType.Hyperlink),
+            "Accessibility lab must expose hyperlink descendants for TextPattern clients");
+    }
+
+    private static void ProbeAccessibilityLabSemanticRoles(Window window)
+    {
+        ClickSample(window, "Accessibility_Lab");
+        Thread.Sleep(1200);
+
+        var renderer = FindRenderer(window);
+        var descendants = renderer.FindAllDescendants();
+        Assert(descendants.Any(e => e.ControlType == ControlType.Header), "Accessibility lab must expose heading/header peers");
+        Assert(descendants.Any(e => e.ControlType == ControlType.Hyperlink), "Accessibility lab must expose hyperlink peers");
+        Assert(descendants.Any(e => e.ControlType == ControlType.List), "Accessibility lab must expose list peer");
+        Assert(descendants.Any(e => e.ControlType == ControlType.ListItem), "Accessibility lab must expose list item peers");
+        Assert(descendants.Any(e => e.ControlType == ControlType.Table), "Accessibility lab must expose table peer");
+        Assert(descendants.Any(e => e.ControlType == ControlType.DataItem), "Accessibility lab must expose table cell peers");
+        Assert(descendants.Count(e => e.ControlType == ControlType.Image) >= 2,
+            "Accessibility lab must expose both block and inline image peers");
+        Assert(descendants.Any(e => e.ControlType == ControlType.Image &&
+                                    (e.Name ?? string.Empty).Contains("Inline accessibility icon", StringComparison.Ordinal)),
+            "Inline markdown image must expose an image peer instead of flattening to plain paragraph text");
+        Assert(descendants.Any(e => e.ControlType == ControlType.Button && (e.Name ?? string.Empty).Contains("Native action", StringComparison.Ordinal)),
+            "Accessibility lab must expose hosted native button");
+        Assert(descendants.Any(e => e.ControlType == ControlType.CheckBox), "Accessibility lab must expose hosted task checkbox");
+
+        var table = descendants.First(e => e.ControlType == ControlType.Table);
+        var grid = table.Patterns.Grid.PatternOrDefault
+                   ?? throw new InvalidOperationException("Table peer must expose GridPattern");
+        Assert(grid.RowCount.Value >= 4, "GridPattern RowCount must include header and body rows");
+        Assert(grid.ColumnCount.Value == 3, "GridPattern ColumnCount must be 3 for the lab table");
+        Assert(grid.GetItem(0, 0) is not null, "GridPattern.GetItem(0, 0) must return a cell");
+    }
+
+    private static void ProbeAccessibilityLabTextAttributes(Window window)
+    {
+        ClickSample(window, "Accessibility_Lab");
+        Thread.Sleep(1200);
+
+        var renderer = FindRenderer(window);
+        var textPattern = renderer.Patterns.Text.PatternOrDefault
+                          ?? throw new InvalidOperationException("MarkdownRenderer must expose UIA TextPattern");
+        var attributes = renderer.Automation.TextAttributeLibrary;
+        var descendants = renderer.FindAllDescendants();
+
+        var hyperlink = descendants.First(e => e.ControlType == ControlType.Hyperlink);
+        var hyperlinkRange = textPattern.RangeFromChild(hyperlink);
+        Assert(hyperlinkRange.GetText(-1).Contains(hyperlink.Name ?? string.Empty, StringComparison.Ordinal),
+            "TextPattern.RangeFromChild(hyperlink) must return the hyperlink text range");
+
+        var image = descendants.First(e => e.ControlType == ControlType.Image &&
+                                           (e.Name ?? string.Empty).Contains("Accessibility lab blue square", StringComparison.Ordinal));
+        var imageRange = textPattern.RangeFromChild(image);
+        Assert(imageRange.GetText(-1).Contains("Accessibility lab blue square", StringComparison.Ordinal),
+            "TextPattern.RangeFromChild(image) must return image alt text");
+
+        var hostedButton = descendants.First(e => e.ControlType == ControlType.Button &&
+            (e.Name ?? string.Empty).Contains("Native action", StringComparison.Ordinal));
+        var hostedButtonRange = textPattern.RangeFromChild(hostedButton);
+        Assert(hostedButtonRange.GetText(-1).Length > 0,
+            "TextPattern.RangeFromChild(hosted native button) must return its embedded-object placeholder range");
+
+        var paintedLinkRange = textPattern.DocumentRange.FindText("painted link", backward: false, ignoreCase: false)
+                               ?? throw new InvalidOperationException("painted link range not found");
+        var underline = paintedLinkRange.GetAttributeValue(attributes.UnderlineStyle);
+        Assert(IsNonNoneTextDecoration(underline),
+            $"painted link must expose a non-None UnderlineStyle text attribute, got {DescribeAttributeValue(underline)}");
+        Assert((paintedLinkRange.GetAttributeValue(attributes.StyleName)?.ToString() ?? string.Empty)
+               .Contains("Link", StringComparison.Ordinal),
+            "painted link must expose StyleName=Link");
+
+        var codeRange = textPattern.DocumentRange.FindText("Console.WriteLine", backward: false, ignoreCase: false)
+                        ?? throw new InvalidOperationException("code range not found");
+        string fontName = codeRange.GetAttributeValue(attributes.FontName)?.ToString() ?? string.Empty;
+        Assert(fontName.Contains("Consolas", StringComparison.OrdinalIgnoreCase),
+            $"code range must expose monospace FontName, got {fontName}");
+
+        var quickRange = textPattern.DocumentRange.FindText("quick", backward: false, ignoreCase: true)
+                         ?? throw new InvalidOperationException("quick range not found");
+        Assert(IsTrueAttribute(quickRange.GetAttributeValue(attributes.IsReadOnly)),
+            "TextPattern ranges must expose IsReadOnly=true");
+
+        var findUnderline = textPattern.DocumentRange.FindAttribute(attributes.UnderlineStyle, underline, backward: false)
+                            ?? throw new InvalidOperationException("FindAttribute(UnderlineStyle) returned null");
+        Assert(findUnderline.GetText(-1).Contains("painted link", StringComparison.Ordinal) ||
+               findUnderline.GetText(-1).Contains("second painted link", StringComparison.Ordinal),
+            "FindAttribute(UnderlineStyle) must return an underlined markdown link range");
+    }
+
+    private static void ProbeAccessibilityLabForcedHighContrast(Window window)
+    {
+        var toggle = window.FindFirstDescendant(cf => cf.ByAutomationId("ForcedHighContrastToggle"))?.AsToggleButton()
+                     ?? throw new InvalidOperationException("ForcedHighContrastToggle not found");
+
+        try
+        {
+            if (toggle.ToggleState != ToggleState.On)
+            {
+                toggle.Toggle();
+                Thread.Sleep(1200);
+            }
+
+            ClickSample(window, "Accessibility_Lab");
+            Thread.Sleep(1200);
+
+            var status = window.FindFirstDescendant(cf => cf.ByAutomationId("HighContrastStatus"));
+            var statusText = status?.Name ?? status?.Properties.Name.ValueOrDefault ?? string.Empty;
+            Assert(statusText.Contains("hc:on", StringComparison.Ordinal),
+                $"forced high contrast status must be on, got '{statusText}'");
+
+            var renderer = FindRenderer(window);
+            var textPattern = renderer.Patterns.Text.PatternOrDefault
+                              ?? throw new InvalidOperationException("MarkdownRenderer must expose UIA TextPattern");
+            var attributes = renderer.Automation.TextAttributeLibrary;
+
+            var bodyRange = textPattern.DocumentRange.FindText("quick", backward: false, ignoreCase: true)
+                            ?? throw new InvalidOperationException("quick range not found");
+            Assert(ToColorRefValue(bodyRange.GetAttributeValue(attributes.ForegroundColor)) == ColorRef(0xFF, 0xFF, 0xFF),
+                "forced high contrast body foreground must resolve to WindowText");
+            Assert(ToColorRefValue(bodyRange.GetAttributeValue(attributes.BackgroundColor)) == ColorRef(0x00, 0x00, 0x00),
+                "forced high contrast body background must resolve to Window");
+
+            var linkRange = textPattern.DocumentRange.FindText("painted link", backward: false, ignoreCase: false)
+                            ?? throw new InvalidOperationException("painted link range not found");
+            Assert(ToColorRefValue(linkRange.GetAttributeValue(attributes.ForegroundColor)) == ColorRef(0x00, 0xFF, 0xFF),
+                "forced high contrast link foreground must resolve to Hotlight");
+
+            var inlineCodeRange = textPattern.DocumentRange.FindText("inline-code-token", backward: false, ignoreCase: false)
+                                  ?? throw new InvalidOperationException("inline code range not found");
+            Assert(ToColorRefValue(inlineCodeRange.GetAttributeValue(attributes.ForegroundColor)) == ColorRef(0xFF, 0xFF, 0xFF),
+                "forced high contrast inline code foreground must resolve to WindowText");
+            Assert(ToColorRefValue(inlineCodeRange.GetAttributeValue(attributes.BackgroundColor)) == ColorRef(0x00, 0x00, 0x00),
+                "forced high contrast inline code background must resolve to Window");
+
+            var tableHeaderRange = textPattern.DocumentRange.FindText("Feature", backward: false, ignoreCase: false)
+                                   ?? throw new InvalidOperationException("table header range not found");
+            Assert(ToColorRefValue(tableHeaderRange.GetAttributeValue(attributes.ForegroundColor)) == ColorRef(0x00, 0x00, 0x00),
+                "forced high contrast table header foreground must resolve to HighlightText");
+            Assert(ToColorRefValue(tableHeaderRange.GetAttributeValue(attributes.BackgroundColor)) == ColorRef(0xFF, 0xFF, 0x00),
+                "forced high contrast table header background must resolve to Highlight");
+        }
+        finally
+        {
+            if (toggle.ToggleState == ToggleState.On)
+            {
+                toggle.Toggle();
+                Thread.Sleep(800);
+            }
+        }
+    }
+
+    private static void ProbeAccessibilityLabKeyboardOrder(Window window)
+    {
+        ClickSample(window, "Accessibility_Lab");
+        Thread.Sleep(1200);
+
+        var renderer = FindRenderer(window);
+
+        var focusedPaintedLink = TabIntoRendererFromSampleList(window, renderer);
+        Assert(IsPaintedLinkFocus(focusedPaintedLink),
+            $"Tab entry should promote renderer root focus to the first painted hyperlink, focused={DescribeFocus(focusedPaintedLink)}");
+
+        Keyboard.Press(VirtualKeyShort.TAB); // hosted button
+        Thread.Sleep(250);
+        var focusedButton = renderer.Automation.FocusedElement();
+        Assert(IsNativeActionButton(focusedButton),
+            $"Second Tab should land on hosted native button, focused={DescribeFocus(focusedButton)}");
+
+        Keyboard.Press(VirtualKeyShort.TAB); // first focusable descendant in composite embed
+        Thread.Sleep(250);
+        var focusedCompositeTextBox = renderer.Automation.FocusedElement();
+        Assert(IsCompositeValueTextBox(focusedCompositeTextBox),
+            $"Third Tab should land inside the composite hosted embed text box, focused={DescribeFocus(focusedCompositeTextBox)}");
+
+        Keyboard.Press(VirtualKeyShort.TAB); // second focusable descendant in composite embed
+        Thread.Sleep(250);
+        var focusedCompositeButton = renderer.Automation.FocusedElement();
+        Assert(IsCompositeActionButton(focusedCompositeButton),
+            $"Fourth Tab should stay inside the composite hosted embed and land on its button, focused={DescribeFocus(focusedCompositeButton)}");
+
+        Keyboard.Press(VirtualKeyShort.TAB); // hosted checkbox
+        Thread.Sleep(250);
+        var focusedCheckbox = renderer.Automation.FocusedElement();
+        Assert(focusedCheckbox.ControlType == ControlType.CheckBox,
+            $"Fifth Tab should land on hosted task checkbox, focused={DescribeFocus(focusedCheckbox)}");
+
+        var focusedSecondPaintedLink = PressTabExpectPaintedLink(renderer, "Sixth Tab");
+        Assert(IsPaintedLinkFocus(focusedSecondPaintedLink),
+            $"Sixth Tab should land on second painted hyperlink, focused={DescribeFocus(focusedSecondPaintedLink)}");
+
+        Keyboard.Press(VirtualKeyShort.TAB); // leave markdown
+        Thread.Sleep(300);
+        var focusedAfterExit = renderer.Automation.FocusedElement();
+        Assert(!IsAccessibilityLabInternalFocus(focusedAfterExit),
+            $"Tab at the last markdown item must leave the renderer instead of looping into embeds, focused={DescribeFocus(focusedAfterExit)}");
+        TryFocus(window, "main window after markdown keyboard boundary probe");
+        Thread.Sleep(250);
+    }
+
+    private static AutomationElement TabIntoRendererFromSampleList(Window window, AutomationElement renderer)
+    {
+        AutomationElement? observedPaintedLink = null;
+        var observed = new List<string>();
+        using var paintedLinkFocused = new ManualResetEventSlim(false);
+        var focusHandler = renderer.Automation.RegisterFocusChangedEvent(element =>
+        {
+            string description;
+            try { description = DescribeFocus(element); }
+            catch (Exception ex) { description = $"<unreadable focus event: {ex.Message}>"; }
+
+            lock (observed) observed.Add(description);
+            if (IsPaintedLinkFocus(element))
+            {
+                observedPaintedLink = element;
+                paintedLinkFocused.Set();
+            }
+        });
+
+        var source = window.FindFirstDescendant(cf => cf.ByAutomationId("SampleButton_Accessibility_Lab"))?.AsButton()
+                     ?? throw new InvalidOperationException("Accessibility Lab sample button not found");
+        try
+        {
+            source.Focus();
+            Thread.Sleep(250);
+
+            for (int i = 0; i < 80; i++)
+            {
+                Keyboard.Press(VirtualKeyShort.TAB);
+                if (paintedLinkFocused.Wait(TimeSpan.FromMilliseconds(500)) && observedPaintedLink is not null)
+                    return observedPaintedLink;
+
+                var focused = renderer.Automation.FocusedElement();
+                if (IsAccessibilityLabInternalFocus(focused))
+                {
+                    if (paintedLinkFocused.Wait(TimeSpan.FromMilliseconds(750)) && observedPaintedLink is not null)
+                        return observedPaintedLink;
+
+                    lock (observed)
+                    {
+                        throw new InvalidOperationException(
+                            $"Tab reached markdown without a virtual hyperlink focus event. Current focus={DescribeFocus(focused)}; events={string.Join(" | ", observed)}");
+                    }
+                }
+            }
+
+            lock (observed)
+            {
+                throw new InvalidOperationException(
+                    $"Tab did not reach the Accessibility Lab renderer within 80 stops; events={string.Join(" | ", observed)}");
+            }
+        }
+        finally
+        {
+            renderer.Automation.UnregisterFocusChangedEvent(focusHandler);
+        }
+    }
+
+    private static AutomationElement PressTabExpectPaintedLink(AutomationElement renderer, string stepName)
+    {
+        AutomationElement? observedPaintedLink = null;
+        var observed = new List<string>();
+        using var paintedLinkFocused = new ManualResetEventSlim(false);
+        var focusHandler = renderer.Automation.RegisterFocusChangedEvent(element =>
+        {
+            string description;
+            try { description = DescribeFocus(element); }
+            catch (Exception ex) { description = $"<unreadable focus event: {ex.Message}>"; }
+
+            lock (observed) observed.Add(description);
+            if (IsPaintedLinkFocus(element))
+            {
+                observedPaintedLink = element;
+                paintedLinkFocused.Set();
+            }
+        });
+
+        try
+        {
+            Keyboard.Press(VirtualKeyShort.TAB);
+            if (paintedLinkFocused.Wait(TimeSpan.FromMilliseconds(1000)) && observedPaintedLink is not null)
+                return observedPaintedLink;
+
+            var focused = renderer.Automation.FocusedElement();
+            lock (observed)
+            {
+                throw new InvalidOperationException(
+                    $"{stepName} did not raise virtual hyperlink focus. Current focus={DescribeFocus(focused)}; events={string.Join(" | ", observed)}");
+            }
+        }
+        finally
+        {
+            renderer.Automation.UnregisterFocusChangedEvent(focusHandler);
+        }
+    }
+
+    private static bool IsPaintedLinkFocus(AutomationElement focused)
+    {
+        return focused.ControlType == ControlType.Hyperlink &&
+               !string.IsNullOrWhiteSpace(NameOrEmpty(focused));
+    }
+
+    private static bool IsRendererOrDocumentFocus(AutomationElement focused)
+    {
+        return AutomationIdOrEmpty(focused) == "MarkdownRenderer" ||
+               focused.ControlType == ControlType.Document;
+    }
+
+    private static bool IsNativeActionButton(AutomationElement focused)
+    {
+        return focused.ControlType == ControlType.Button &&
+               NameOrEmpty(focused).Contains("Native action", StringComparison.Ordinal);
+    }
+
+    private static bool IsCompositeValueTextBox(AutomationElement focused)
+    {
+        return focused.ControlType == ControlType.Edit &&
+               (AutomationIdOrEmpty(focused) == "CompositeValueTextBox" ||
+                NameOrEmpty(focused).Contains("Composite value", StringComparison.Ordinal));
+    }
+
+    private static bool IsCompositeActionButton(AutomationElement focused)
+    {
+        return focused.ControlType == ControlType.Button &&
+               (AutomationIdOrEmpty(focused) == "CompositeActionButton" ||
+                NameOrEmpty(focused).Contains("Composite action", StringComparison.Ordinal));
+    }
+
+    private static bool IsAccessibilityLabInternalFocus(AutomationElement focused)
+    {
+        return IsPaintedLinkFocus(focused) ||
+               IsRendererOrDocumentFocus(focused) ||
+               IsNativeActionButton(focused) ||
+               IsCompositeValueTextBox(focused) ||
+               IsCompositeActionButton(focused) ||
+               focused.ControlType == ControlType.CheckBox;
+    }
+
+    private static string DescribeFocus(AutomationElement focused)
+        => $"{focused.ControlType}/{NameOrEmpty(focused)}/AutomationId={AutomationIdOrEmpty(focused)}";
+
+    private static string NameOrEmpty(AutomationElement element)
+    {
+        try { return element.Name ?? string.Empty; }
+        catch { return element.Properties.Name.ValueOrDefault ?? string.Empty; }
+    }
+
+    private static string AutomationIdOrEmpty(AutomationElement element)
+    {
+        try { return element.AutomationId ?? string.Empty; }
+        catch { return element.Properties.AutomationId.ValueOrDefault ?? string.Empty; }
+    }
+
+    private static void ProbeAccessibilityLabPointerResume(Window window)
+    {
+        ClickSample(window, "Accessibility_Lab");
+        Thread.Sleep(1200);
+
+        var renderer = FindRenderer(window);
+        var button = renderer.FindAllDescendants(cf => cf.ByControlType(ControlType.Button))
+            .FirstOrDefault(e => (e.Name ?? string.Empty).Contains("Native action", StringComparison.Ordinal))
+            ?? throw new InvalidOperationException("Hosted Native action button not found");
+
+        var buttonBounds = button.BoundingRectangle;
+        var rendererBounds = renderer.BoundingRectangle;
+        var nearbyDocumentPoint = new System.Drawing.Point(
+            buttonBounds.Left + buttonBounds.Width / 2,
+            Math.Max(rendererBounds.Top + 4, buttonBounds.Top - 12));
+        Mouse.Click(nearbyDocumentPoint, FlaUI.Core.Input.MouseButton.Left);
+        Thread.Sleep(300);
+
+        Keyboard.Press(VirtualKeyShort.TAB);
+        Thread.Sleep(300);
+
+        var focused = renderer.Automation.FocusedElement();
+        if (focused.ControlType == ControlType.Button &&
+            (focused.Name ?? string.Empty).Contains("Native action", StringComparison.Ordinal))
+        {
+            Keyboard.Press(VirtualKeyShort.TAB);
+            Thread.Sleep(300);
+            focused = renderer.Automation.FocusedElement();
+        }
+
+        Assert(IsCompositeValueTextBox(focused) || IsCompositeActionButton(focused) || focused.ControlType == ControlType.CheckBox,
+            $"Tab after pointer dismissal near hosted controls should resume within markdown focus order, focused={DescribeFocus(focused)}");
     }
 
     private static void ProbeVirtualization(Window window)
@@ -150,8 +787,8 @@ internal static class Program
         btn.Invoke();
         Thread.Sleep(1500);
         var renderer = FindRenderer(window);
-        var name = renderer.Name ?? string.Empty;
-        Assert(name.Length > 0, "Images sample renderer name must not be empty");
+        var text = GetRendererDocumentText(renderer);
+        Assert(text.Length > 0, "Images sample renderer document text must not be empty");
     }
 
     private static void ProbeLazyImagesSample(Window window)
@@ -161,8 +798,8 @@ internal static class Program
         btn.Invoke();
         Thread.Sleep(1500);
         var renderer = FindRenderer(window);
-        var name = renderer.Name ?? string.Empty;
-        Assert(name.Length > 0, "Lazy Images sample renderer name must not be empty");
+        var text = GetRendererDocumentText(renderer);
+        Assert(text.Length > 0, "Lazy Images sample renderer document text must not be empty");
         // Verify renderer has children (block peers in UIA tree)
         var descendants = renderer.FindAllDescendants();
         Assert(descendants.Length > 0, "Lazy Images renderer must expose block peers as descendants");
@@ -175,16 +812,16 @@ internal static class Program
         btn.Invoke();
         Thread.Sleep(1000);
         var renderer = FindRenderer(window);
-        var name = renderer.Name ?? string.Empty;
-        Assert(name.Length > 0, "Scroll Anchor sample renderer name must not be empty");
+        var text = GetRendererDocumentText(renderer);
+        Assert(text.Length > 0, "Scroll Anchor sample renderer document text must not be empty");
         // Scroll down and verify content is still available
         renderer.Focus();
         Keyboard.Press(VirtualKeyShort.NEXT); // Page Down
         Thread.Sleep(300);
         Keyboard.Press(VirtualKeyShort.PRIOR); // Page Up
         Thread.Sleep(300);
-        var nameAfterScroll = renderer.Name ?? string.Empty;
-        Assert(nameAfterScroll.Length > 0, "Scroll Anchor renderer name must remain non-empty after scroll");
+        var textAfterScroll = GetRendererDocumentText(renderer);
+        Assert(textAfterScroll.Length > 0, "Scroll Anchor renderer document text must remain non-empty after scroll");
     }
 
     private static void ProbeFootnotesSample(Window window)
@@ -194,14 +831,14 @@ internal static class Program
         btn.Invoke();
         Thread.Sleep(1200);
         var renderer = FindRenderer(window);
-        var name = renderer.Name ?? string.Empty;
-        Assert(name.Length > 0, "Footnotes sample renderer name must not be empty");
+        var text = GetRendererDocumentText(renderer);
+        Assert(text.Length > 0, "Footnotes sample renderer document text must not be empty");
         // Verify the rendered text contains footnote markers (superscripts / back-arrows)
-        // The renderer aggregates all text into its Name for UIA, so we verify the
-        // footnote-bearing text is included.
-        bool hasFootnoteContent = name.Contains("sentence with a footnote", StringComparison.OrdinalIgnoreCase)
-                                  || name.Contains("footnote", StringComparison.OrdinalIgnoreCase);
-        Assert(hasFootnoteContent, $"Footnotes renderer content must mention 'footnote', got: {name[..Math.Min(120, name.Length)]}");
+        // The renderer exposes document text through TextPattern so Narrator can
+        // use text ranges instead of reading the root element Name.
+        bool hasFootnoteContent = text.Contains("sentence with a footnote", StringComparison.OrdinalIgnoreCase)
+                                  || text.Contains("footnote", StringComparison.OrdinalIgnoreCase);
+        Assert(hasFootnoteContent, $"Footnotes renderer content must mention 'footnote', got: {text[..Math.Min(120, text.Length)]}");
     }
 
     private static void ProbeKeyboardNav(Window window)
@@ -235,8 +872,8 @@ internal static class Program
         Thread.Sleep(200);
 
         // Verify renderer is still responsive
-        var nameAfter = renderer.Name ?? string.Empty;
-        Assert(nameAfter.Length > 0, "Keyboard Nav renderer must remain responsive after Tab/Escape traversal");
+        var textAfter = GetRendererDocumentText(renderer);
+        Assert(textAfter.Length > 0, "Keyboard Nav renderer must remain responsive after Tab/Escape traversal");
     }
 
     private static void ProbeClickDismissesFocus(Window window)
@@ -263,8 +900,150 @@ internal static class Program
         Thread.Sleep(300);
 
         // The renderer must still be responsive after the click.
-        var nameAfter = renderer.Name ?? string.Empty;
-        Assert(nameAfter.Length > 0, "Renderer must remain responsive after click-dismisses-focus");
+        var textAfter = GetRendererDocumentText(renderer);
+        Assert(textAfter.Length > 0, "Renderer must remain responsive after click-dismisses-focus");
+    }
+
+    private static void ProbeSelectionDismissesOnExternalPointer(Window window)
+    {
+        ClickSample(window, "Selection");
+        Thread.Sleep(1200);
+
+        var renderer = FindRenderer(window);
+        var textPattern = renderer.Patterns.Text.PatternOrDefault
+                          ?? throw new InvalidOperationException("MarkdownRenderer must expose UIA TextPattern");
+        var selectionRange = textPattern.DocumentRange.FindText("Click", backward: false, ignoreCase: true)
+                             ?? throw new InvalidOperationException("Selection external-dismiss probe could not find text");
+        selectionRange.ExpandToEnclosingUnit(TextUnit.Word);
+        selectionRange.Select();
+        Thread.Sleep(500);
+        Assert(!string.IsNullOrWhiteSpace(GetRendererSelectionText(renderer)),
+            "TextPattern.Select must create a UIA-visible selection before dismissal");
+
+        var editor = window.FindFirstDescendant(cf => cf.ByAutomationId("MarkdownEditor"))
+                     ?? throw new InvalidOperationException("Markdown source editor not found");
+        var bounds = editor.BoundingRectangle;
+        Mouse.Click(new System.Drawing.Point(bounds.Left + 20, bounds.Top + 20), FlaUI.Core.Input.MouseButton.Left);
+        Thread.Sleep(500);
+
+        Assert(string.IsNullOrEmpty(GetRendererSelectionText(renderer)),
+            "clicking another app control must dismiss the markdown selection");
+    }
+
+    private static void ProbeSelectionDismissesOnHostedControlPointer(Window window)
+    {
+        ClickSample(window, "Accessibility_Lab");
+        Thread.Sleep(1200);
+
+        var renderer = FindRenderer(window);
+        var point = FindTextPatternPoint(renderer, "quick", "selection hosted-control-dismiss probe");
+        Mouse.DoubleClick(point, FlaUI.Core.Input.MouseButton.Left);
+        Thread.Sleep(500);
+        Assert(!string.IsNullOrWhiteSpace(GetRendererSelectionText(renderer)),
+            "double-clicking renderer text must create a UIA-visible selection before hosted-control dismissal");
+
+        var hostedTextBox = window.FindFirstDescendant(cf => cf.ByAutomationId("CompositeValueTextBox"))
+                            ?? throw new InvalidOperationException("Composite hosted TextBox not found");
+        var bounds = hostedTextBox.BoundingRectangle;
+        Mouse.Click(new System.Drawing.Point(bounds.Left + bounds.Width / 2, bounds.Top + bounds.Height / 2), FlaUI.Core.Input.MouseButton.Left);
+        Thread.Sleep(500);
+
+        Assert(string.IsNullOrEmpty(GetRendererSelectionText(renderer)),
+            "clicking a hosted WinUI control inside the markdown renderer must dismiss the markdown selection");
+    }
+
+    private static void ProbeSelectionPersistsAfterPointerRelease(Window window)
+    {
+        var cases = new[]
+        {
+            (Sample: "Typography", Start: "Heading 6", End: "Regular paragraph text", Expected: "quick brown fox"),
+            (Sample: "Selection", Start: "Click and drag", End: "The selection spans", Expected: "select"),
+            (Sample: "Code", Start: "C# example", End: "public sealed class", Expected: "public"),
+        };
+
+        foreach (var c in cases)
+        {
+            ClickSample(window, c.Sample);
+            Thread.Sleep(1200);
+
+            var renderer = FindRenderer(window);
+            var start = FindTextPatternPoint(renderer, c.Start, $"{c.Sample} selection persist start");
+            var end = FindTextPatternPoint(renderer, c.End, $"{c.Sample} selection persist end");
+            Assert(Math.Abs(end.X - start.X) + Math.Abs(end.Y - start.Y) >= 24,
+                $"{c.Sample} selection persist probe did not find a meaningful drag range: start={start}, end={end}");
+
+            DragMouseThrough(start, end);
+            Thread.Sleep(700);
+
+            string selected = GetRendererSelectionText(renderer);
+            Assert(!string.IsNullOrWhiteSpace(selected),
+                $"{c.Sample} selection must remain active after mouse release");
+            Assert(selected.Contains(c.Expected, StringComparison.OrdinalIgnoreCase),
+                $"{c.Sample} selection after release should include dragged text, got: {Truncate(selected, 160)}");
+        }
+    }
+
+    private static void ProbeCtrlCCopiesPointerSelection(Window window)
+    {
+        ClickSample(window, "Selection");
+        Thread.Sleep(1200);
+
+        var renderer = FindRenderer(window);
+        var start = FindTextPatternPoint(renderer, "Click and drag", "ctrl-c copy drag start");
+        var end = FindTextPatternPoint(renderer, "The selection spans", "ctrl-c copy drag end");
+        DragMouseThrough(start, end);
+        Thread.Sleep(500);
+
+        string selected = GetRendererSelectionText(renderer);
+        Assert(!string.IsNullOrWhiteSpace(selected),
+            "ctrl-c copy probe must have an active pointer selection before copying");
+
+        const string sentinel = "markdown-renderer-clipboard-sentinel";
+        SetClipboardText(sentinel);
+        Keyboard.TypeSimultaneously(VirtualKeyShort.CONTROL, VirtualKeyShort.KEY_C);
+        Thread.Sleep(700);
+
+        string copied = GetClipboardText();
+        Assert(!string.Equals(copied, sentinel, StringComparison.Ordinal),
+            "Ctrl+C left the clipboard unchanged; renderer likely did not handle the key event");
+        Assert(copied.Contains("select any text", StringComparison.OrdinalIgnoreCase) ||
+               copied.Contains("selection spans", StringComparison.OrdinalIgnoreCase),
+            $"Ctrl+C should copy selected markdown source, got: {Truncate(copied, 240)}");
+    }
+
+    private static void ProbeTableSelectionRowBorderIsStable(Window window)
+    {
+        ClickSample(window, "Tables");
+        Thread.Sleep(1200);
+
+        var renderer = FindRenderer(window);
+        var anchorRect = FindTextPatternRect(renderer, "Selection + Copy", "table row-border drag anchor");
+        var previousRowRect = FindTextPatternRect(renderer, "Links", "table row-border drag previous row");
+        var start = new System.Drawing.Point(anchorRect.Left + anchorRect.Width / 2, anchorRect.Top + anchorRect.Height / 2);
+        var border = new System.Drawing.Point(
+            anchorRect.Left + anchorRect.Width / 2,
+            previousRowRect.Bottom + Math.Max(1, (anchorRect.Top - previousRowRect.Bottom) / 2));
+
+        SendMouseMove(start);
+        Thread.Sleep(100);
+        SendMouseButton(MouseEventFlags.LeftDown);
+        try
+        {
+            Thread.Sleep(120);
+            SendMouseMove(border);
+            Thread.Sleep(500);
+
+            string selected = GetRendererSelectionText(renderer);
+            Assert(!string.IsNullOrWhiteSpace(selected),
+                $"table row-border drag should keep a non-empty selection at border point {border}");
+            Assert(!selected.Contains("AOT compatibility", StringComparison.OrdinalIgnoreCase) &&
+                   !selected.Contains("Live theme switch", StringComparison.OrdinalIgnoreCase),
+                $"table row-border drag must not jump to rows after the anchor, got: {Truncate(selected, 240)}");
+        }
+        finally
+        {
+            SendMouseButton(MouseEventFlags.LeftUp);
+        }
     }
 
     private static void ProbeDoubleClickSelectsWord(Window window)
@@ -278,7 +1057,7 @@ internal static class Program
         var renderer = FindRenderer(window);
         string logPath = FindShakeLog()
             ?? throw new InvalidOperationException("text_shaking2.log not found — sample may not have ShakeLogger enabled");
-        var point = FindSelectablePointInRenderer(logPath, renderer.BoundingRectangle, "double-click word probe");
+        var point = FindSelectableTextPatternPoint(logPath, renderer, "Lorem", "double-click word probe");
         Thread.Sleep(900);
         long baseline = new FileInfo(logPath).Length;
 
@@ -305,7 +1084,7 @@ internal static class Program
         var renderer = FindRenderer(window);
         string logPath = FindShakeLog()
             ?? throw new InvalidOperationException("text_shaking2.log not found — sample may not have ShakeLogger enabled");
-        var point = FindSelectablePointInRenderer(logPath, renderer.BoundingRectangle, "triple-click line probe");
+        var point = FindSelectableTextPatternPoint(logPath, renderer, "Click and drag", "triple-click line probe");
         Thread.Sleep(900);
         long baseline = new FileInfo(logPath).Length;
 
@@ -361,12 +1140,12 @@ internal static class Program
             Console.Error.WriteLine("[automation] warn: context-menu probe: no MenuItem elements found in UIA tree — flyout may not be UIA-exposed on this system");
 
         // Dismiss the menu BEFORE querying renderer properties so an open flyout
-        // cannot intercept the UIA focus and cause the Name query to stale/block.
+        // cannot intercept the UIA focus and cause the TextPattern query to stale/block.
         Keyboard.Press(VirtualKeyShort.ESCAPE);
         Thread.Sleep(200);
 
-        var nameAfter = renderer.Name ?? string.Empty;
-        Assert(nameAfter.Length > 0, "Renderer must remain responsive after right-click context menu");
+        var textAfter = GetRendererDocumentText(renderer);
+        Assert(textAfter.Length > 0, "Renderer must remain responsive after right-click context menu");
     }
 
     /// <summary>
@@ -438,9 +1217,10 @@ internal static class Program
     /// <summary>
     /// Regression probe for the embeds-page shake reported from manual testing:
     /// a text-selection drag on the hosted-embeds sample must not repaint the
-    /// DirectWrite canvas. Selection rectangles live on the XAML overlay; any
-    /// appended canvas region/inline-paint event after the drag starts means
-    /// mouse-down or drag still dirtied text and can visibly jitter at 150% DPI.
+    /// DirectWrite canvas. Selection pixels live on a single Win2D adorner;
+    /// any appended canvas region/inline-paint event after the drag starts means
+    /// mouse-down or drag still dirtied document text and can visibly jitter at
+    /// 150% DPI.
     /// </summary>
     private static void ProbeEmbedsSelectionDoesNotShake(Window window)
     {
@@ -458,12 +1238,8 @@ internal static class Program
         string logPath = FindShakeLog()
             ?? throw new InvalidOperationException("text_shaking2.log not found — sample may not have ShakeLogger enabled");
 
-        var start = FindSelectablePointInRenderer(logPath, bounds, "embeds drag start");
-        var end = FindSelectablePointInRenderer(
-            logPath,
-            bounds,
-            "embeds drag end",
-            p => Math.Abs(p.X - start.X) + Math.Abs(p.Y - start.Y) >= 160);
+        var start = FindSelectableTextPatternPoint(logPath, renderer, "The renderer hosts", "embeds drag start");
+        var end = FindSelectableTextPatternPoint(logPath, renderer, "Anything else", "embeds drag end");
         Assert(Math.Abs(end.X - start.X) + Math.Abs(end.Y - start.Y) >= 80,
             $"embeds selection probe did not find a meaningful in-text drag range: start={start}, end={end}");
         Thread.Sleep(900);
@@ -478,6 +1254,7 @@ internal static class Program
         int dragEvents = CountOccurrences(appended, "ptr-move-drag");
         int extendEvents = CountOccurrences(appended, "sel-extend");
         int selectionRectEvents = CountOccurrences(appended, "sel-rect-phys");
+        int adornerDrawEvents = CountOccurrences(appended, "sel-adorner-draw");
         int paintEvents = CountOccurrences(appended, "inline-paint");
         int regionEvents = CountOccurrences(appended, " region ");
 
@@ -493,6 +1270,9 @@ internal static class Program
         Assert(selectionRectEvents > 0,
             $"embed selection-shake probe did not render selection overlay rectangles. " +
             $"Recent log excerpt: {Truncate(appended, 600)}");
+        Assert(adornerDrawEvents > 0,
+            $"embed selection-shake probe did not draw the selection adorner. " +
+            $"Recent log excerpt: {Truncate(appended, 600)}");
         Assert(paintEvents == 0,
             $"embed selection-shake regression: {paintEvents} inline-paint event(s) fired during embeds-page drag. " +
             $"Recent log excerpt: {Truncate(appended, 600)}");
@@ -501,60 +1281,123 @@ internal static class Program
             $"Recent log excerpt: {Truncate(appended, 600)}");
     }
 
-    private static System.Drawing.Point FindSelectablePointInRenderer(
-        string logPath,
-        System.Drawing.Rectangle bounds,
-        string description,
-        Func<System.Drawing.Point, bool>? predicate = null)
+    private static System.Drawing.Point FindTextPatternPoint(AutomationElement renderer, string text, string description)
     {
-        var candidates = EnumerateRendererCandidatePoints(bounds)
-            .Where(p => predicate?.Invoke(p) ?? true)
-            .Distinct()
-            .ToArray();
+        var rect = FindTextPatternRect(renderer, text, description);
+        var center = new System.Drawing.Point(rect.Left + rect.Width / 2, rect.Top + rect.Height / 2);
+        Console.WriteLine($"[automation] {description}: using TextPattern point {center} from '{text}' in rect {FormatRect(rect)}");
+        return center;
+    }
 
-        foreach (var point in candidates)
+    private static System.Drawing.Rectangle FindTextPatternRect(AutomationElement renderer, string text, string description)
+    {
+        var textPattern = renderer.Patterns.Text.PatternOrDefault
+                          ?? throw new InvalidOperationException($"{description}: renderer does not expose TextPattern");
+        var range = textPattern.DocumentRange.FindText(text, backward: false, ignoreCase: true)
+                    ?? throw new InvalidOperationException($"{description}: TextPattern could not find '{text}'");
+
+        var rendererBounds = renderer.BoundingRectangle;
+        foreach (var rect in range.GetBoundingRectangles())
         {
-            long baseline = new FileInfo(logPath).Length;
-            Mouse.Click(point, FlaUI.Core.Input.MouseButton.Left);
-            Thread.Sleep(250);
-            string appended = ReadShakeLogFrom(logPath, baseline);
-            if (CountOccurrences(appended, "sel-anchor") > 0)
+            if (rect.Width <= 1 || rect.Height <= 1) continue;
+            var center = new System.Drawing.Point(rect.Left + rect.Width / 2, rect.Top + rect.Height / 2);
+            if (rendererBounds.Contains(center))
             {
-                Console.WriteLine($"[automation] {description}: validated selectable point {point} inside renderer bounds {FormatRect(bounds)}");
-                return point;
+                return rect;
             }
-            Thread.Sleep(650);
         }
 
         throw new InvalidOperationException(
-            $"Could not find a real selectable text point for {description} inside renderer bounds {FormatRect(bounds)}. " +
-            "Every candidate failed to produce a sel-anchor log entry.");
+            $"{description}: TextPattern found '{text}' but returned no usable bounding rectangle inside renderer bounds {FormatRect(rendererBounds)}");
     }
 
-    private static IEnumerable<System.Drawing.Point> EnumerateRendererCandidatePoints(System.Drawing.Rectangle bounds)
+    private static System.Drawing.Point FindSelectableTextPatternPoint(
+        string logPath,
+        AutomationElement renderer,
+        string text,
+        string description)
     {
-        int[] xOffsets = { 42, 90, 150, 240, 340, 460, 600 };
-        int[] yOffsets = { 42, 70, 100, 140, 180, 240, 320, 420, 560, 720 };
-        foreach (int y in yOffsets)
-        foreach (int x in xOffsets)
-        {
-            if (x >= bounds.Width - 8 || y >= bounds.Height - 8) continue;
-            yield return new System.Drawing.Point(bounds.X + x, bounds.Y + y);
-        }
+        var point = FindTextPatternPoint(renderer, text, description);
+        long baseline = new FileInfo(logPath).Length;
+        Mouse.MoveTo(point);
+        Thread.Sleep(100);
+        Mouse.Click(point, FlaUI.Core.Input.MouseButton.Left);
+        Thread.Sleep(350);
 
-        double[] xFractions = { 0.2, 0.35, 0.5, 0.65, 0.8 };
-        double[] yFractions = { 0.18, 0.28, 0.38, 0.5, 0.62, 0.75 };
-        foreach (double y in yFractions)
-        foreach (double x in xFractions)
-        {
-            yield return new System.Drawing.Point(
-                (int)Math.Round(bounds.X + bounds.Width * x),
-                (int)Math.Round(bounds.Y + bounds.Height * y));
-        }
+        string appended = ReadShakeLogFrom(logPath, baseline);
+        Assert(CountOccurrences(appended, "sel-anchor") > 0,
+            $"{description}: TextPattern point {point} from '{text}' was not selectable. Recent log excerpt: {Truncate(appended, 600)}");
+
+        Thread.Sleep(750);
+        return point;
     }
 
     private static string FormatRect(System.Drawing.Rectangle rect)
         => $"x={rect.X},y={rect.Y},w={rect.Width},h={rect.Height}";
+
+    private static bool IsNonNoneTextDecoration(object? value)
+    {
+        if (value is null) return false;
+        string s = value.ToString() ?? string.Empty;
+        if (string.Equals(s, "None", StringComparison.OrdinalIgnoreCase)) return false;
+        return !TryAttributeNumber(value, out var number) || Math.Abs(number) > 0.001;
+    }
+
+    private static bool IsTrueAttribute(object? value) =>
+        value is bool b
+            ? b
+            : bool.TryParse(value?.ToString(), out var parsed) && parsed;
+
+    private static int ToColorRefValue(object? value)
+    {
+        if (value is null)
+            throw new InvalidOperationException("Color attribute returned null");
+
+        if (value is int i) return i;
+        if (value is uint u) return unchecked((int)u);
+        if (TryAttributeNumber(value, out var number)) return (int)Math.Round(number);
+
+        throw new InvalidOperationException($"Cannot interpret color attribute value {DescribeAttributeValue(value)}");
+    }
+
+    private static int ColorRef(byte r, byte g, byte b) => r | (g << 8) | (b << 16);
+
+    private static bool TryAttributeNumber(object value, out double number)
+    {
+        try
+        {
+            var type = Nullable.GetUnderlyingType(value.GetType()) ?? value.GetType();
+            if (type.IsEnum)
+            {
+                number = Convert.ToDouble(value, System.Globalization.CultureInfo.InvariantCulture);
+                return true;
+            }
+
+            switch (Type.GetTypeCode(type))
+            {
+                case TypeCode.Byte:
+                case TypeCode.SByte:
+                case TypeCode.Int16:
+                case TypeCode.UInt16:
+                case TypeCode.Int32:
+                case TypeCode.UInt32:
+                case TypeCode.Int64:
+                case TypeCode.UInt64:
+                case TypeCode.Single:
+                case TypeCode.Double:
+                case TypeCode.Decimal:
+                    number = Convert.ToDouble(value, System.Globalization.CultureInfo.InvariantCulture);
+                    return true;
+            }
+        }
+        catch { }
+
+        number = 0;
+        return false;
+    }
+
+    private static string DescribeAttributeValue(object? value) =>
+        value is null ? "<null>" : $"{value} ({value.GetType().FullName})";
 
     private static void DragMouseThrough(System.Drawing.Point start, System.Drawing.Point end)
     {
@@ -619,7 +1462,97 @@ internal static class Program
         }
     }
 
+    private static void SetClipboardText(string text)
+    {
+        WithOpenClipboard(() =>
+        {
+            if (!EmptyClipboard())
+                throw new System.ComponentModel.Win32Exception(System.Runtime.InteropServices.Marshal.GetLastWin32Error());
+
+            int byteCount = checked((text.Length + 1) * 2);
+            IntPtr handle = GlobalAlloc(GlobalMemoryMoveable | GlobalMemoryZeroInit, (UIntPtr)byteCount);
+            if (handle == IntPtr.Zero)
+                throw new System.ComponentModel.Win32Exception(System.Runtime.InteropServices.Marshal.GetLastWin32Error());
+
+            bool transferred = false;
+            try
+            {
+                IntPtr locked = GlobalLock(handle);
+                if (locked == IntPtr.Zero)
+                    throw new System.ComponentModel.Win32Exception(System.Runtime.InteropServices.Marshal.GetLastWin32Error());
+                try
+                {
+                    if (text.Length > 0)
+                        System.Runtime.InteropServices.Marshal.Copy(text.ToCharArray(), 0, locked, text.Length);
+                    System.Runtime.InteropServices.Marshal.WriteInt16(locked, text.Length * 2, 0);
+                }
+                finally
+                {
+                    GlobalUnlock(handle);
+                }
+
+                if (SetClipboardData(ClipboardFormatUnicodeText, handle) == IntPtr.Zero)
+                    throw new System.ComponentModel.Win32Exception(System.Runtime.InteropServices.Marshal.GetLastWin32Error());
+                transferred = true;
+            }
+            finally
+            {
+                if (!transferred)
+                    GlobalFree(handle);
+            }
+        });
+    }
+
+    private static string GetClipboardText()
+    {
+        return WithOpenClipboard(() =>
+        {
+            IntPtr handle = GetClipboardData(ClipboardFormatUnicodeText);
+            if (handle == IntPtr.Zero)
+                return string.Empty;
+
+            IntPtr locked = GlobalLock(handle);
+            if (locked == IntPtr.Zero)
+                return string.Empty;
+            try
+            {
+                return System.Runtime.InteropServices.Marshal.PtrToStringUni(locked) ?? string.Empty;
+            }
+            finally
+            {
+                GlobalUnlock(handle);
+            }
+        });
+    }
+
+    private static void WithOpenClipboard(Action action) => WithOpenClipboard<object?>(() =>
+    {
+        action();
+        return null;
+    });
+
+    private static T WithOpenClipboard<T>(Func<T> action)
+    {
+        Exception? last = null;
+        for (int attempt = 0; attempt < 20; attempt++)
+        {
+            if (OpenClipboard(IntPtr.Zero))
+            {
+                try { return action(); }
+                finally { CloseClipboard(); }
+            }
+
+            last = new System.ComponentModel.Win32Exception(System.Runtime.InteropServices.Marshal.GetLastWin32Error());
+            Thread.Sleep(50);
+        }
+
+        throw new InvalidOperationException("Could not open clipboard for automation probe", last);
+    }
+
     private const uint InputMouse = 0;
+    private const uint ClipboardFormatUnicodeText = 13;
+    private const uint GlobalMemoryMoveable = 0x0002;
+    private const uint GlobalMemoryZeroInit = 0x0040;
     private const int SystemMetricVirtualScreenX = 76;
     private const int SystemMetricVirtualScreenY = 77;
     private const int SystemMetricVirtualScreenWidth = 78;
@@ -662,6 +1595,33 @@ internal static class Program
     [System.Runtime.InteropServices.DllImport("user32.dll")]
     private static extern int GetSystemMetrics(int index);
 
+    [System.Runtime.InteropServices.DllImport("user32.dll", SetLastError = true)]
+    private static extern bool OpenClipboard(IntPtr newOwner);
+
+    [System.Runtime.InteropServices.DllImport("user32.dll", SetLastError = true)]
+    private static extern bool CloseClipboard();
+
+    [System.Runtime.InteropServices.DllImport("user32.dll", SetLastError = true)]
+    private static extern bool EmptyClipboard();
+
+    [System.Runtime.InteropServices.DllImport("user32.dll", SetLastError = true)]
+    private static extern IntPtr GetClipboardData(uint format);
+
+    [System.Runtime.InteropServices.DllImport("user32.dll", SetLastError = true)]
+    private static extern IntPtr SetClipboardData(uint format, IntPtr handle);
+
+    [System.Runtime.InteropServices.DllImport("kernel32.dll", SetLastError = true)]
+    private static extern IntPtr GlobalAlloc(uint flags, UIntPtr bytes);
+
+    [System.Runtime.InteropServices.DllImport("kernel32.dll", SetLastError = true)]
+    private static extern IntPtr GlobalLock(IntPtr handle);
+
+    [System.Runtime.InteropServices.DllImport("kernel32.dll", SetLastError = true)]
+    private static extern bool GlobalUnlock(IntPtr handle);
+
+    [System.Runtime.InteropServices.DllImport("kernel32.dll", SetLastError = true)]
+    private static extern IntPtr GlobalFree(IntPtr handle);
+
     private static string? FindShakeLog()
     {
         // Walk up from the running automation exe to find text_shaking2.log
@@ -702,6 +1662,27 @@ internal static class Program
     private static AutomationElement FindRenderer(Window window)
         => window.FindFirstDescendant(cf => cf.ByAutomationId("MarkdownRenderer"))
            ?? throw new InvalidOperationException("MarkdownRenderer not found in automation tree");
+
+    private static string GetRendererDocumentText(AutomationElement renderer)
+    {
+        var textPattern = renderer.Patterns.Text.PatternOrDefault
+                          ?? throw new InvalidOperationException("MarkdownRenderer must expose UIA TextPattern");
+        return textPattern.DocumentRange.GetText(-1);
+    }
+
+    private static string GetRendererSelectionText(AutomationElement renderer)
+    {
+        var textPattern = renderer.Patterns.Text.PatternOrDefault
+                          ?? throw new InvalidOperationException("MarkdownRenderer must expose UIA TextPattern");
+        return string.Concat(textPattern.GetSelection().Select(range => range.GetText(-1)));
+    }
+
+    private static void ClickSample(Window window, string automationIdSuffix)
+    {
+        var btn = window.FindFirstDescendant(cf => cf.ByAutomationId("SampleButton_" + automationIdSuffix))?.AsButton()
+                  ?? throw new InvalidOperationException($"{automationIdSuffix} sample button not found");
+        btn.Invoke();
+    }
 
     private static int CountEmbedButtons(AutomationElement renderer)
         => renderer.FindAllDescendants(cf => cf.ByControlType(ControlType.Button)).Length;
@@ -756,11 +1737,55 @@ internal static class Program
         if (!condition) throw new InvalidOperationException(message);
     }
 
+    private static void TryFocus(AutomationElement element, string description)
+    {
+        try { element.Focus(); }
+        catch (Exception ex)
+        {
+            Console.Error.WriteLine($"[automation] warn: could not focus {description}: {ex.Message}");
+        }
+    }
+
+    private static void WaitForSampleContent(Window window, Application app)
+    {
+        var ready = Retry.WhileFalse(() =>
+            {
+                if (app.HasExited) return true;
+                try
+                {
+                    return window.FindFirstDescendant(cf => cf.ByAutomationId("MarkdownRenderer")) is not null ||
+                           window.FindFirstDescendant(cf => cf.ByAutomationId("SampleButton_Typography")) is not null;
+                }
+                catch { return false; }
+            },
+            timeout: TimeSpan.FromSeconds(20),
+            interval: TimeSpan.FromMilliseconds(250)).Result;
+
+        if (app.HasExited)
+            throw new InvalidOperationException("Sample app exited before UIA content became available.");
+        if (!ready)
+            throw new InvalidOperationException("Sample app did not expose MarkdownRenderer or sample buttons within 20 seconds.");
+    }
+
     private static string? ParseAppPath(string[] args)
     {
         for (int i = 0; i < args.Length - 1; i++)
             if (args[i] == "--app-path") return args[i + 1];
         return null;
+    }
+
+    private static Application LaunchSample(string appPath, bool enableDiagnostics)
+    {
+        var startInfo = new ProcessStartInfo(appPath)
+        {
+            UseShellExecute = false,
+            WorkingDirectory = Path.GetDirectoryName(appPath) ?? Environment.CurrentDirectory,
+        };
+
+        if (enableDiagnostics)
+            startInfo.Environment[DiagnosticsEnvironmentVariable] = "1";
+
+        return Application.Launch(startInfo);
     }
 
     private static string? FindDefaultAppPath()
