@@ -15,6 +15,8 @@ namespace MarkdownRenderer.Layout.Boxes;
 /// </summary>
 public sealed class TableBox : BlockBox
 {
+    public readonly record struct CellInfo(InlineContainerBox Box, int Row, int Column, bool IsHeader);
+
     private readonly MarkdownLayoutContext _context;
     private readonly InlineContainerBox[][] _headerCells;  // [row][col]
     private readonly InlineContainerBox[][] _bodyCells;    // [row][col]
@@ -39,11 +41,33 @@ public sealed class TableBox : BlockBox
             _colCount = _bodyCells[0].Length;
     }
 
+    public int HeaderRowCount => _headerCells.Length;
+    public int BodyRowCount => _bodyCells.Length;
+    public int RowCount => _headerCells.Length + _bodyCells.Length;
+    public int ColumnCount => _colCount;
+
     /// <summary>All cell boxes (header rows first, then body rows), left-to-right within each row.</summary>
     public IEnumerable<InlineContainerBox> GetCellBoxes()
     {
         foreach (var row in _headerCells) foreach (var c in row) yield return c;
         foreach (var row in _bodyCells) foreach (var c in row) yield return c;
+    }
+
+    /// <summary>All cell boxes with their logical row/column coordinates.</summary>
+    public IEnumerable<CellInfo> GetCellInfos()
+    {
+        for (int r = 0; r < _headerCells.Length; r++)
+        {
+            for (int c = 0; c < _headerCells[r].Length; c++)
+                yield return new CellInfo(_headerCells[r][c], r, c, IsHeader: true);
+        }
+
+        for (int r = 0; r < _bodyCells.Length; r++)
+        {
+            int logicalRow = _headerCells.Length + r;
+            for (int c = 0; c < _bodyCells[r].Length; c++)
+                yield return new CellInfo(_bodyCells[r][c], logicalRow, c, IsHeader: false);
+        }
     }
 
     public override float Measure(float availableWidth)
@@ -132,7 +156,8 @@ public sealed class TableBox : BlockBox
 
         var headerStyle = _context.ThemeSnapshot.GetStyle(MarkdownElementKeys.TableHeader);
         var bodyStyle = _context.ThemeSnapshot.GetStyle(MarkdownElementKeys.TableCell);
-        var codeBgColor = _context.ThemeSnapshot.GetStyle(MarkdownElementKeys.CodeBlock).Background;
+        var headerBgColor = headerStyle.Background
+            ?? _context.ThemeSnapshot.GetStyle(MarkdownElementKeys.CodeBlock).Background;
 
         float startX = (float)(Bounds.X + Margin.Left);
         float innerWidth = (float)(Bounds.Width - Margin.Left - Margin.Right);
@@ -142,7 +167,7 @@ public sealed class TableBox : BlockBox
         // Full-width header row background (uses code-block bg as a subtle tint).
         float headerTotalH = 0;
         for (int i = 0; i < _headerCells.Length; i++) headerTotalH += _rowHeights[i];
-        if (_headerCells.Length > 0 && codeBgColor is { } hBg)
+        if (_headerCells.Length > 0 && headerBgColor is { } hBg)
             ds.FillRectangle(new Rect(startX, headerStartY, innerWidth, headerTotalH), hBg);
 
         // Paint all cell text layouts.
@@ -177,6 +202,19 @@ public sealed class TableBox : BlockBox
         }
     }
 
+    public override void PaintSelectionForeground(
+        CanvasDrawingSession ds,
+        DocumentRange range,
+        Color color,
+        Rect viewport)
+    {
+        foreach (var cell in GetCellBoxes())
+        {
+            if (cell.Bounds.Bottom < viewport.Top || cell.Bounds.Top > viewport.Bottom) continue;
+            cell.PaintSelectionForeground(ds, range, color, viewport);
+        }
+    }
+
     public override bool HitTest(Point point, out DocumentPosition position)
     {
         if (!Bounds.Contains(point))
@@ -188,8 +226,73 @@ public sealed class TableBox : BlockBox
         {
             if (cell.HitTest(point, out position)) return true;
         }
+
+        if (TryHitTestNearestCell(point, out position))
+            return true;
+
         position = new DocumentPosition(BlockIndex, 0, 0);
-        return true;
+        return false;
+    }
+
+    private bool TryHitTestNearestCell(Point point, out DocumentPosition position)
+    {
+        InlineContainerBox? nearest = null;
+        double nearestDistance = double.PositiveInfinity;
+
+        foreach (var cell in GetCellBoxes())
+        {
+            var r = cell.Bounds;
+            if (r.Width <= 0 || r.Height <= 0)
+                continue;
+
+            double x = Clamp(point.X, r.Left, r.Right);
+            double y = Clamp(point.Y, r.Top, r.Bottom);
+            double dx = point.X - x;
+            double dy = point.Y - y;
+            double distance = dx * dx + dy * dy;
+            if (distance < nearestDistance)
+            {
+                nearest = cell;
+                nearestDistance = distance;
+            }
+        }
+
+        if (nearest is null)
+        {
+            position = default;
+            return false;
+        }
+
+        var bounds = nearest.Bounds;
+        const double edgeInset = 0.5;
+        double left = bounds.Left;
+        double right = bounds.Right;
+        double top = bounds.Top;
+        double bottom = bounds.Bottom;
+
+        if (bounds.Width > edgeInset * 2)
+        {
+            left += edgeInset;
+            right -= edgeInset;
+        }
+
+        if (bounds.Height > edgeInset * 2)
+        {
+            top += edgeInset;
+            bottom -= edgeInset;
+        }
+
+        var clampedPoint = new Point(
+            Clamp(point.X, left, right),
+            Clamp(point.Y, top, bottom));
+        return nearest.HitTest(clampedPoint, out position);
+    }
+
+    private static double Clamp(double value, double min, double max)
+    {
+        if (min > max)
+            return (min + max) / 2.0;
+        return Math.Max(min, Math.Min(max, value));
     }
 
     public override void Dispose()

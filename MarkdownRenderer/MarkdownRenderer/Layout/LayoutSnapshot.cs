@@ -61,6 +61,20 @@ public sealed class LayoutSnapshot : System.IDisposable
         }
     }
 
+    public void PaintSelectionForeground(CanvasDrawingSession ds, DocumentRange range, Windows.UI.Color color, Rect viewport)
+    {
+        foreach (var b in Blocks)
+        {
+            if (b.Bounds.Bottom < viewport.Top || b.Bounds.Top > viewport.Bottom) continue;
+            PaintSelectionForeground(b, ds, range, color, viewport);
+        }
+    }
+
+    private static void PaintSelectionForeground(BlockBox box, CanvasDrawingSession ds, DocumentRange range, Windows.UI.Color color, Rect viewport)
+    {
+        box.PaintSelectionForeground(ds, range, color, viewport);
+    }
+
     public bool HitTest(Point point, out DocumentPosition position)
     {
         foreach (var b in Blocks)
@@ -97,10 +111,13 @@ public sealed class LayoutSnapshot : System.IDisposable
                 foreach (var run in icb.Runs)
                 {
                     if (run is LinkRun)
-                        list.Add(new FocusableItem(icb.BlockIndex, run.InlineIndex, isLink: true));
+                        list.Add(new FocusableItem(icb.BlockIndex, run.InlineIndex, FocusableItemKind.Link));
                     else if (run is InlineEmbedRun)
-                        list.Add(new FocusableItem(icb.BlockIndex, run.InlineIndex, isLink: false));
+                        list.Add(new FocusableItem(icb.BlockIndex, run.InlineIndex, FocusableItemKind.InlineEmbed));
                 }
+                break;
+            case EmbedBox eb:
+                list.Add(new FocusableItem(eb.BlockIndex, 0, FocusableItemKind.BlockEmbed));
                 break;
             case ListItemBox lib:
                 WalkForFocusable(lib.Marker, list);

@@ -61,7 +61,16 @@ Implemented:
 - selection across text blocks;
 - word and block expansion;
 - source-accurate copy;
-- overlay highlight rectangles;
+- selection adorner fill rectangles derived from WinUI's native
+  `TextControlSelectionHighlightColor` resource, pre-composited over the
+  renderer surface when the native brush is translucent so previously painted
+  glyphs do not show through;
+- selected glyph foreground overpainted from WinUI's native selected-text
+  foreground resource on the same single viewport-sized Win2D adorner surface;
+- no per-drag XAML child creation/resizing and no document-canvas invalidation
+  while dragging selection;
+- app-wide dismissal: pointer/focus movement outside the renderer clears the
+  selection, and active selections are coordinated across renderer instances;
 - selection automation that verifies real `sel-anchor`, `sel-extend`, and
   `sel-rect-phys` diagnostics;
 - no canvas repaint during selection drag on Embeds sample.

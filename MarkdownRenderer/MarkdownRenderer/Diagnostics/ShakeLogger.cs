@@ -11,23 +11,41 @@ namespace MarkdownRenderer.Diagnostics;
 /// Ultra-low-overhead diagnostic logger used to investigate the "selection
 /// shake" bug. Producers enqueue value tuples on the UI thread; a single
 /// background drain task flushes them to a file and via Debug.WriteLine.
-/// Disabled by default — enable via <see cref="Enabled"/> from the sample app.
+/// Disabled by default. Enable via <see cref="Enabled"/> or the
+/// MARKDOWN_RENDERER_DIAGNOSTICS / MARKDOWN_RENDERER_SHAKE_LOG environment
+/// variables when collecting diagnostics.
 /// </summary>
 public static class ShakeLogger
 {
     private static readonly ConcurrentQueue<string> _queue = new();
     private static int _started;
     private static long _frame;
+    private static volatile bool _enabled = IsEnabledFromEnvironment();
+
+    public const string DiagnosticsEnvironmentVariable = "MARKDOWN_RENDERER_DIAGNOSTICS";
+    public const string ShakeLogEnvironmentVariable = "MARKDOWN_RENDERER_SHAKE_LOG";
 
     // Log file written to the repo root next to text_shaking.log
     private static readonly string LogPath = Path.Combine(
         AppContext.BaseDirectory,
         @"..\..\..\..\..\..\..\text_shaking2.log");
 
-    public static volatile bool Enabled;
+    public static bool Enabled
+    {
+        get => _enabled;
+        set => _enabled = value;
+    }
 
-    public static long NextFrame() => Interlocked.Increment(ref _frame);
+    public static bool IsEnabled => _enabled;
+
+    public static long NextFrame() => IsEnabled ? Interlocked.Increment(ref _frame) : 0;
     public static long CurrentFrame => Interlocked.Read(ref _frame);
+
+    public static bool ConfigureFromEnvironment()
+    {
+        Enabled = IsEnabledFromEnvironment();
+        return Enabled;
+    }
 
     public static void Log(string tag, string payload)
     {
@@ -49,6 +67,20 @@ public static class ShakeLogger
     {
         if (Interlocked.Exchange(ref _started, 1) == 1) return;
         Task.Run(DrainLoopAsync);
+    }
+
+    private static bool IsEnabledFromEnvironment()
+        => IsTruthy(Environment.GetEnvironmentVariable(DiagnosticsEnvironmentVariable))
+           || IsTruthy(Environment.GetEnvironmentVariable(ShakeLogEnvironmentVariable));
+
+    private static bool IsTruthy(string? value)
+    {
+        if (string.IsNullOrWhiteSpace(value)) return false;
+        return value.Trim().ToLowerInvariant() switch
+        {
+            "1" or "true" or "yes" or "on" => true,
+            _ => false,
+        };
     }
 
     private static async Task DrainLoopAsync()

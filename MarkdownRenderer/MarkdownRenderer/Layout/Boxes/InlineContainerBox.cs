@@ -5,6 +5,7 @@ using Microsoft.Graphics.Canvas.Text;
 using Microsoft.UI.Xaml;
 using Windows.Foundation;
 using Windows.UI;
+using MarkdownRenderer.Diagnostics;
 using MarkdownRenderer.Document;
 using MarkdownRenderer.Theming;
 
@@ -20,6 +21,9 @@ public sealed class InlineContainerBox : BlockBox
     private readonly List<InlineRun> _runs = new();
     private readonly string _elementKey;
     private CanvasTextLayout? _layout;
+    private CanvasTextLayout? _selectionLayout;
+    private Color _selectionLayoutColor;
+    private float _selectionLayoutWidth;
     private string _buffer = string.Empty;
     private bool _bufferDirty;
     private float _lastWidth;
@@ -41,6 +45,7 @@ public sealed class InlineContainerBox : BlockBox
 
     public IReadOnlyList<InlineRun> Runs => _runs;
     public string ElementKey => _elementKey;
+    public string? CodeLanguage { get; init; }
 
     public InlineContainerBox(MarkdownLayoutContext context, string elementKey)
     {
@@ -149,6 +154,8 @@ public sealed class InlineContainerBox : BlockBox
             if (_bufferDirty) BuildBuffer();
             _layout?.Dispose();
             _layout = null; // null immediately so a layout-creation exception leaves _layout=null (safe for next Measure)
+            _selectionLayout?.Dispose();
+            _selectionLayout = null;
             using var format = new CanvasTextFormat
             {
                 FontFamily = style.FontFamily,
@@ -172,7 +179,7 @@ public sealed class InlineContainerBox : BlockBox
             {
                 // Enable DirectWrite color font path (Segoe UI Emoji / COLR-CPAL glyphs).
                 _layout.Options = CanvasDrawTextOptions.EnableColorFont;
-                ApplyRunStyles(_layout);
+                ApplyRunStyles(_layout, applyColors: true);
                 ApplyEmbedSpacing(_layout);
             }
             catch
@@ -244,13 +251,15 @@ public sealed class InlineContainerBox : BlockBox
         // for the rationale; the same snapped origin is used for hit-test,
         // selection rects and embed placement so they stay in sync.
         var (sx, sy) = GetSnappedOrigin(style);
-        MarkdownRenderer.Diagnostics.ShakeLogger.LogPaint(
-            "inline-paint",
-            BlockIndex,
-            sx,
-            sy,
-            _layout.LayoutBounds.Width,
-            _layout.LayoutBounds.Height);
+        if (ShakeLogger.IsEnabled)
+            ShakeLogger.LogPaint(
+                "inline-paint",
+                BlockIndex,
+                sx,
+                sy,
+                _layout.LayoutBounds.Width,
+                _layout.LayoutBounds.Height);
+        DrawRunBackgrounds(ds, sx, sy);
         ds.DrawTextLayout(_layout, sx, sy, style.Foreground);
 
         DrawDecorations(ds, sx, sy);
@@ -330,6 +339,32 @@ public sealed class InlineContainerBox : BlockBox
 
     public override IEnumerable<Rect> GetSelectionRects(DocumentRange range)
         => GetRangeRects(range);
+
+    public override void PaintSelectionForeground(CanvasDrawingSession ds, DocumentRange range, Color color, Rect viewport)
+    {
+        if (_layout is null) return;
+
+        bool intersectsSelection = false;
+        foreach (var rect in GetRangeRects(range))
+        {
+            if (rect.Right < viewport.Left || rect.Left > viewport.Right ||
+                rect.Bottom < viewport.Top || rect.Top > viewport.Bottom)
+            {
+                continue;
+            }
+
+            intersectsSelection = true;
+            break;
+        }
+
+        if (!intersectsSelection) return;
+
+        var style = _context.ThemeSnapshot.GetStyle(_elementKey);
+        var (sx, sy) = GetSnappedOrigin(style);
+        var layout = EnsureSelectionLayout(color, style);
+        ds.DrawTextLayout(layout, sx, sy, color);
+        DrawDecorations(ds, sx, sy, color);
+    }
 
     /// <summary>
     /// Returns the bounding rectangle in document coordinates for the run at
@@ -449,6 +484,8 @@ public sealed class InlineContainerBox : BlockBox
     {
         _layout?.Dispose();
         _layout = null;
+        _selectionLayout?.Dispose();
+        _selectionLayout = null;
     }
 
     private void BuildBuffer()
@@ -459,7 +496,7 @@ public sealed class InlineContainerBox : BlockBox
         _bufferDirty = false;
     }
 
-    private void ApplyRunStyles(CanvasTextLayout layout)
+    private void ApplyRunStyles(CanvasTextLayout layout, bool applyColors)
     {
         var containerStyle = _context.ThemeSnapshot.GetStyle(_elementKey);
         int cumulative = 0;
@@ -478,11 +515,53 @@ public sealed class InlineContainerBox : BlockBox
                     layout.SetFontStyle(cumulative, len, rs.FontStyle);
                 if (rs.FontSize != containerStyle.FontSize)
                     layout.SetFontSize(cumulative, len, rs.FontSize);
-                if (rs.Foreground != containerStyle.Foreground)
+                if (applyColors && rs.Foreground != containerStyle.Foreground)
                     layout.SetColor(cumulative, len, rs.Foreground);
             }
             cumulative += len;
         }
+    }
+
+    private CanvasTextLayout EnsureSelectionLayout(Color color, ElementStyle style)
+    {
+        EnsureBuffer();
+        if (_selectionLayout is not null &&
+            _selectionLayoutColor == color &&
+            Math.Abs(_selectionLayoutWidth - _lastWidth) <= 0.5f)
+        {
+            return _selectionLayout;
+        }
+
+        _selectionLayout?.Dispose();
+        _selectionLayout = null;
+
+        using var format = new CanvasTextFormat
+        {
+            FontFamily = style.FontFamily,
+            FontSize = style.FontSize,
+            FontWeight = style.FontWeight,
+            FontStyle = style.FontStyle,
+            WordWrapping = CanvasWordWrapping.Wrap,
+            LineSpacingMode = CanvasLineSpacingMode.Default,
+            Direction = _context.FlowDirection == FlowDirection.RightToLeft
+                ? CanvasTextDirection.RightToLeftThenTopToBottom
+                : CanvasTextDirection.LeftToRightThenTopToBottom,
+        };
+        float horizontalPadding = (float)(style.Padding.Left + style.Padding.Right);
+        _selectionLayout = new CanvasTextLayout(
+            _context.ResourceCreator,
+            _buffer,
+            format,
+            Math.Max(1f, _lastWidth - horizontalPadding),
+            float.MaxValue);
+        _selectionLayout.Options = CanvasDrawTextOptions.EnableColorFont;
+        ApplyRunStyles(_selectionLayout, applyColors: false);
+        if (_buffer.Length > 0)
+            _selectionLayout.SetColor(0, _buffer.Length, color);
+        ApplyEmbedSpacing(_selectionLayout);
+        _selectionLayoutColor = color;
+        _selectionLayoutWidth = _lastWidth;
+        return _selectionLayout;
     }
 
     private void ApplyEmbedSpacing(CanvasTextLayout layout)
@@ -499,7 +578,7 @@ public sealed class InlineContainerBox : BlockBox
                 }
                 catch (Exception ex)
                 {
-                    System.Diagnostics.Debug.WriteLine($"[InlineContainerBox] SetCharacterSpacing failed: {ex.Message}");
+                    MarkdownDiagnostics.WriteLine($"[InlineContainerBox] SetCharacterSpacing failed: {ex.Message}");
                 }
                 layout.SetColor(cumulative, len, Color.FromArgb(0, 0, 0, 0));
             }
@@ -508,6 +587,9 @@ public sealed class InlineContainerBox : BlockBox
     }
 
     private void DrawDecorations(CanvasDrawingSession ds, float baseX, float baseY)
+        => DrawDecorations(ds, baseX, baseY, null);
+
+    private void DrawDecorations(CanvasDrawingSession ds, float baseX, float baseY, Color? overrideColor)
     {
         if (_layout is null) return;
         var lineMetrics = _layout.LineMetrics;
@@ -529,27 +611,15 @@ public sealed class InlineContainerBox : BlockBox
             var rs = string.IsNullOrEmpty(run.ElementKey)
                 ? _context.ThemeSnapshot.GetStyle(_elementKey)
                 : _context.ThemeSnapshot.GetStyle(run.ElementKey);
+            var decorationColor = overrideColor ?? rs.Foreground;
 
-            bool drawRunBg = rs.Background is not null
-                && !string.IsNullOrEmpty(run.ElementKey)
-                && run.ElementKey != _elementKey;
-
-            if (drawRunBg || rs.Underline || rs.Strikethrough)
+            if (rs.Underline || rs.Strikethrough)
             {
                 var regions = _layout.GetCharacterRegions(cumulative, len);
                 if (regions is null) { cumulative += len; continue; } // Win2D can return null on DirectWrite errors
                 foreach (var r in regions)
                 {
                     var lb = r.LayoutBounds;
-                    if (drawRunBg && rs.Background is { } bg)
-                    {
-                        double bgTop = lb.Y + lb.Height * 0.05;
-                        double bgH = lb.Height * 0.90;
-                        ds.FillRoundedRectangle(
-                            new Rect(baseX + lb.X - 2, baseY + bgTop, lb.Width + 4, bgH),
-                            3, 3, bg);
-                    }
-
                     var lm = FindLineMetrics(lineMetrics, r);
                     // CanvasLineMetrics has Baseline (distance from line top to baseline).
                     // x-height ≈ 50% of baseline. Place strikethrough at baseline - xHeight/2.
@@ -561,15 +631,49 @@ public sealed class InlineContainerBox : BlockBox
                     if (rs.Underline)
                     {
                         ds.DrawLine((float)(baseX + lb.X), underlineY, (float)(baseX + lb.X + lb.Width),
-                            underlineY, rs.Foreground, 1.0f);
+                            underlineY, decorationColor, 1.0f);
                     }
                     if (rs.Strikethrough)
                     {
                         ds.DrawLine((float)(baseX + lb.X), strikeY, (float)(baseX + lb.X + lb.Width),
-                            strikeY, rs.Foreground, 1.0f);
+                            strikeY, decorationColor, 1.0f);
                     }
                 }
             }
+            cumulative += len;
+        }
+    }
+
+    private void DrawRunBackgrounds(CanvasDrawingSession ds, float baseX, float baseY)
+    {
+        if (_layout is null) return;
+
+        int cumulative = 0;
+        foreach (var run in _runs)
+        {
+            int len = run.Text.Length;
+            if (len == 0) { continue; }
+            if (run is InlineEmbedRun) { cumulative += len; continue; }
+
+            bool drawRunBg = !string.IsNullOrEmpty(run.ElementKey)
+                && run.ElementKey != _elementKey
+                && _context.ThemeSnapshot.GetStyle(run.ElementKey).Background is { };
+            if (!drawRunBg) { cumulative += len; continue; }
+
+            var rs = _context.ThemeSnapshot.GetStyle(run.ElementKey);
+            var regions = _layout.GetCharacterRegions(cumulative, len);
+            if (regions is null) { cumulative += len; continue; }
+
+            foreach (var r in regions)
+            {
+                var lb = r.LayoutBounds;
+                double bgTop = lb.Y + lb.Height * 0.05;
+                double bgH = lb.Height * 0.90;
+                ds.FillRoundedRectangle(
+                    new Rect(baseX + lb.X - 2, baseY + bgTop, lb.Width + 4, bgH),
+                    3, 3, rs.Background!.Value);
+            }
+
             cumulative += len;
         }
     }

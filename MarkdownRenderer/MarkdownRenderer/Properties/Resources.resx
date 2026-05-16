@@ -1,0 +1,90 @@
+<?xml version="1.0" encoding="utf-8"?>
+<root>
+  <resheader name="resmimetype">
+    <value>text/microsoft-resx</value>
+  </resheader>
+  <resheader name="version">
+    <value>2.0</value>
+  </resheader>
+  <resheader name="reader">
+    <value>System.Resources.ResXResourceReader, System.Windows.Forms, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089</value>
+  </resheader>
+  <resheader name="writer">
+    <value>System.Resources.ResXResourceWriter, System.Windows.Forms, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089</value>
+  </resheader>
+  <data name="MarkdownDocumentName" xml:space="preserve">
+    <value>Markdown document</value>
+  </data>
+  <data name="ImageName" xml:space="preserve">
+    <value>Image</value>
+  </data>
+  <data name="TableName" xml:space="preserve">
+    <value>Table</value>
+  </data>
+  <data name="ListName" xml:space="preserve">
+    <value>List</value>
+  </data>
+  <data name="EmbeddedContentName" xml:space="preserve">
+    <value>Embedded content</value>
+  </data>
+  <data name="CodeLanguageHelpFormat" xml:space="preserve">
+    <value>Language: {0}</value>
+  </data>
+  <data name="StyleBody" xml:space="preserve">
+    <value>Body</value>
+  </data>
+  <data name="StyleHeading1" xml:space="preserve">
+    <value>Heading 1</value>
+  </data>
+  <data name="StyleHeading2" xml:space="preserve">
+    <value>Heading 2</value>
+  </data>
+  <data name="StyleHeading3" xml:space="preserve">
+    <value>Heading 3</value>
+  </data>
+  <data name="StyleHeading4" xml:space="preserve">
+    <value>Heading 4</value>
+  </data>
+  <data name="StyleHeading5" xml:space="preserve">
+    <value>Heading 5</value>
+  </data>
+  <data name="StyleHeading6" xml:space="preserve">
+    <value>Heading 6</value>
+  </data>
+  <data name="StyleCodeBlock" xml:space="preserve">
+    <value>Code block</value>
+  </data>
+  <data name="StyleInlineCode" xml:space="preserve">
+    <value>Inline code</value>
+  </data>
+  <data name="StyleQuote" xml:space="preserve">
+    <value>Quote</value>
+  </data>
+  <data name="StyleLink" xml:space="preserve">
+    <value>Link</value>
+  </data>
+  <data name="StyleStrong" xml:space="preserve">
+    <value>Strong</value>
+  </data>
+  <data name="StyleEmphasis" xml:space="preserve">
+    <value>Emphasis</value>
+  </data>
+  <data name="StyleStrikethrough" xml:space="preserve">
+    <value>Strikethrough</value>
+  </data>
+  <data name="StyleListMarker" xml:space="preserve">
+    <value>List marker</value>
+  </data>
+  <data name="StyleTableHeader" xml:space="preserve">
+    <value>Table header</value>
+  </data>
+  <data name="StyleTableCell" xml:space="preserve">
+    <value>Table cell</value>
+  </data>
+  <data name="ContextMenuCopy" xml:space="preserve">
+    <value>Copy</value>
+  </data>
+  <data name="ContextMenuSelectAll" xml:space="preserve">
+    <value>Select All</value>
+  </data>
+</root>

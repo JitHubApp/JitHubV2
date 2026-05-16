@@ -2,7 +2,7 @@
 
 The renderer uses a native object model for styling rather than CSS. Consumers
 provide a `MarkdownTheme`, and the renderer resolves it against Windows 11
-defaults and the current WinUI `ActualTheme`.
+defaults, the current WinUI `ActualTheme`, and Windows high contrast settings.
 
 ## Main types
 
@@ -11,8 +11,8 @@ defaults and the current WinUI `ActualTheme`.
 | `MarkdownTheme` | Consumer-owned theme object with `AccentColor`, `Overrides`, `Revision`, and `Changed`. |
 | `ElementStyle` | Fully resolved immutable-ish style used by layout and paint. |
 | `ElementStyleOverride` | Nullable partial style override supplied by consumers. |
-| `ThemeResolver` | Merges Win11 defaults, current light/dark theme, accent color, and overrides. |
-| `ThemeSnapshot` | Resolved style set captured for a layout pass. |
+| `ThemeResolver` | Merges Win11 defaults, current light/dark theme, high contrast system colors, accent color, and overrides. |
+| `ThemeSnapshot` | Resolved style set and surface color captured for a layout pass. |
 | `MarkdownElementKeys` | Built-in style keys for markdown element categories. |
 
 ## Built-in element keys
@@ -94,9 +94,24 @@ The control listens to `ActualThemeChanged`. If a `MarkdownTheme` is assigned,
 the control calls `theme.Invalidate()`, which raises `Theme.Changed` and triggers
 a rebuild. If no custom theme is assigned, it rebuilds directly.
 
-Current behavior is correct but coarse: theme changes re-run parse and layout.
+The control also listens to `Microsoft.UI.System.ThemeSettings.Changed` for the
+current window. When Windows enters or leaves a contrast theme, the renderer
+rebuilds against system colors such as Window, WindowText, Hotlight, Highlight,
+and HighlightText. The canvas clear color comes from `ThemeSnapshot.SurfaceColor`
+so high contrast does not leave a light/dark hardcoded background behind.
+
+High contrast defaults avoid scheme-name-specific palettes. The role mapping
+lives in `MarkdownHighContrastDefaults` and is unit-tested with deterministic
+roles; the sample automation also forces a fake high-contrast palette and checks
+the resulting UIA text attributes. Consumer `MarkdownTheme` overrides are still
+honored as explicit overrides, so app authors remain responsible for ensuring
+custom colors meet contrast requirements.
+
+Current behavior is intentionally coarse: theme changes re-run parse and layout.
 Future work should add a restyle-only path that reuses the parsed AST and only
-rebuilds text metrics and colors.
+rebuilds text metrics and colors. Real Windows contrast-theme smoke still needs
+to cover every built-in theme plus customized palettes because those OS settings
+are intrusive and environment-dependent.
 
 ## Important current limitation
 

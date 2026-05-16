@@ -1,5 +1,6 @@
 using Microsoft.Graphics.Canvas;
 using Windows.Foundation;
+using MarkdownRenderer.Document;
 using MarkdownRenderer.Theming;
 
 namespace MarkdownRenderer.Layout.Boxes;
@@ -29,5 +30,25 @@ public sealed class ThematicBreakBox : BlockBox
             (float)(Bounds.X + Margin.Left), y,
             (float)(Bounds.X + Bounds.Width - Margin.Right), y,
             style.Foreground, 1f);
+    }
+
+    public override void PaintSelectionForeground(
+        CanvasDrawingSession ds,
+        DocumentRange range,
+        Windows.UI.Color color,
+        Rect viewport)
+    {
+        var n = range.Normalized();
+        if (BlockIndex < n.Start.BlockIndex || BlockIndex > n.End.BlockIndex)
+            return;
+
+        float y = (float)(Bounds.Y + Margin.Top);
+        if (y < viewport.Top || y > viewport.Bottom)
+            return;
+
+        ds.DrawLine(
+            (float)(Bounds.X + Margin.Left), y,
+            (float)(Bounds.X + Bounds.Width - Margin.Right), y,
+            color, 1f);
     }
 }

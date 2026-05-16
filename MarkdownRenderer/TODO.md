@@ -10,30 +10,48 @@ Legend: 🔴 blocks release · 🟠 must fix before 1.0 · 🟡 v1.1 candidate
 
 ## Accessibility
 
-> The biggest gap — currently ~60% complete. Screen reader support is non-negotiable
-> for a production control.
+> The foundational UIA surface is now implemented. Remaining accessibility work
+> is deeper OS/Narrator smoke coverage, keyboard edge cases, and broader real
+> Windows contrast-theme / system-language validation.
 
-- 🔴 **Implement `ITextProvider` / `ITextRangeProvider`**
+- ✅ **Implement `ITextProvider` / `ITextRangeProvider`**
   Narrator and other AT cannot query text by character offset, expand selection
   by word/line/paragraph, or drive Ctrl+F search. Add the UIA Text pattern to
   `MarkdownAutomationPeer`. (`Accessibility/MarkdownAutomationPeer.cs`)
 
-- 🔴 **Expose heading levels in `MarkdownBlockPeer`**
+- ✅ **Implement `ITextProvider.RangeFromChild`**
+  Child peers now map back to text ranges through WinUI peer/provider identity,
+  with deterministic UI automation coverage for hyperlinks, images, and hosted
+  WinUI embedded controls.
+
+- ✅ **Expose core `ITextRangeProvider` text attributes**
+  Ranges now expose read-only/hidden/active/culture/flow attributes plus
+  font family, font size, font weight, foreground/background color, underline,
+  strikethrough, style id/name, and superscript. UI automation verifies link,
+  code, body, and high-contrast color attributes.
+
+- ✅ **Expose heading levels in `MarkdownBlockPeer`**
   Override `GetHeadingLevelCore()` so Narrator announces "Heading 2" instead of
   treating H1–H6 identically to paragraphs. (`Accessibility/MarkdownBlockPeer.cs`)
 
-- 🔴 **Implement `ITableProvider` / `ITableItemProvider` for tables**
+- ✅ **Implement `ITableProvider` / `ITableItemProvider` for tables**
   Table cells have no UIA table role. Screen readers cannot navigate rows/columns
   or understand header relationships. Add table peers with row/column/header
   associations. (`Accessibility/`)
 
-- 🟠 **Add List / ListItem UIA control types**
+- ✅ **Add List / ListItem UIA control types**
   List blocks are plain text to UIA. Narrator cannot announce "list with N items".
   Add UIA `List` and `ListItem` control types to the list/list-item block peers.
 
-- 🟡 **Expose code block language hint in UIA**
+- ✅ **Expose code block language hint in UIA**
   The fenced code info string (e.g. `typescript`) is available from Markdig but
   discarded at render time. Expose it as a UIA `HelpText` or custom property.
+
+- 🟠 **Manual Narrator + real Windows theme smoke**
+  CI now covers forced RTL and forced high-contrast palettes deterministically,
+  but a release-quality pass still needs manual/optional smoke across Narrator,
+  every built-in Windows contrast theme, a customized contrast theme, and real
+  system language changes.
 
 ---
 

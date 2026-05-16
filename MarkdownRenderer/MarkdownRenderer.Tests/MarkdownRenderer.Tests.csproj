@@ -27,6 +27,8 @@
     <Compile Include="..\MarkdownRenderer\Document\MarkdownSourceMap.cs" Link="Core\MarkdownSourceMap.cs" />
     <Compile Include="..\MarkdownRenderer\Parsing\MarkdigParser.cs" Link="Core\MarkdigParser.cs" />
     <Compile Include="..\MarkdownRenderer\Parsing\ForgivingDataUriFixer.cs" Link="Core\ForgivingDataUriFixer.cs" />
+    <Compile Include="..\MarkdownRenderer\Diagnostics\ShakeLogger.cs" Link="Core\ShakeLogger.cs" />
+    <Compile Include="..\MarkdownRenderer\Diagnostics\MarkdownDiagnostics.cs" Link="Core\MarkdownDiagnostics.cs" />
     <Compile Include="..\MarkdownRenderer\Layout\Boxes\SvgIntrinsics.cs" Link="Core\SvgIntrinsics.cs" />
     <Compile Include="..\MarkdownRenderer\Layout\Boxes\SvgThemeInjector.cs" Link="Core\SvgThemeInjector.cs" />
     <Compile Include="..\MarkdownRenderer\Layout\Boxes\SvgTitleExtractor.cs" Link="Core\SvgTitleExtractor.cs" />
@@ -36,6 +38,8 @@
     <Compile Include="..\MarkdownRenderer\Controls\EmbedVisibility.cs" Link="Core\EmbedVisibility.cs" />
     <Compile Include="..\MarkdownRenderer\Layout\TextBoundaryHelper.cs" Link="Core\TextBoundaryHelper.cs" />
     <Compile Include="..\MarkdownRenderer\Layout\FocusableItem.cs" Link="Core\FocusableItem.cs" />
+    <Compile Include="..\MarkdownRenderer\Layout\FocusNavigationHelper.cs" Link="Core\FocusNavigationHelper.cs" />
+    <Compile Include="..\MarkdownRenderer\Theming\MarkdownHighContrastDefaults.cs" Link="Core\MarkdownHighContrastDefaults.cs" />
   </ItemGroup>
   <ItemGroup>
     <Content Include="..\MarkdownRenderer\native\win-x64\thorvg.dll">

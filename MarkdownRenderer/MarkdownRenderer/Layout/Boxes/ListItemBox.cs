@@ -80,6 +80,18 @@ public sealed class ListItemBox : BlockBox
             _content.Paint(ds, viewport);
     }
 
+    public override void PaintSelectionForeground(
+        CanvasDrawingSession ds,
+        DocumentRange range,
+        Windows.UI.Color color,
+        Rect viewport)
+    {
+        if (_marker.Bounds.Bottom >= viewport.Top && _marker.Bounds.Top <= viewport.Bottom)
+            _marker.PaintSelectionForeground(ds, range, color, viewport);
+        if (_content.Bounds.Bottom >= viewport.Top && _content.Bounds.Top <= viewport.Bottom)
+            _content.PaintSelectionForeground(ds, range, color, viewport);
+    }
+
     public override bool HitTest(Point point, out DocumentPosition position)
     {
         if (_marker.HitTest(point, out position)) return true;

@@ -1,5 +1,9 @@
+using System.Collections.Generic;
 using System.Text;
+using Microsoft.UI.Xaml.Automation;
+using Microsoft.UI.Xaml.Automation.Provider;
 using Microsoft.UI.Xaml.Automation.Peers;
+using Microsoft.UI.Xaml.Automation.Text;
 using MarkdownRenderer.Controls;
 using MarkdownRenderer.Layout;
 using MarkdownRenderer.Layout.Boxes;
@@ -13,31 +17,42 @@ namespace MarkdownRenderer.Accessibility;
 /// as the accessible name and maps headings/links to the appropriate
 /// AutomationControlType so screen readers can announce structure.
 /// </summary>
-internal sealed partial class MarkdownBlockPeer : FrameworkElementAutomationPeer
+internal sealed partial class MarkdownBlockPeer : FrameworkElementAutomationPeer, ITextProvider, ITextProvider2
 {
     private readonly MarkdownRendererControl _owner;
+    private readonly MarkdownAutomationPeer _root;
     private readonly InlineContainerBox _box;
 
-    public MarkdownBlockPeer(MarkdownRendererControl owner, InlineContainerBox box) : base(owner)
+    public MarkdownBlockPeer(MarkdownRendererControl owner, MarkdownAutomationPeer root, InlineContainerBox box) : base(owner)
     {
         _owner = owner;
+        _root = root;
         _box = box;
     }
 
+    public ITextRangeProvider DocumentRange
+    {
+        get
+        {
+            var (start, end) = GetTextRange();
+            return new MarkdownTextRangeProvider(_root, start, end);
+        }
+    }
+
+    public SupportedTextSelection SupportedTextSelection => _root.SupportedTextSelection;
+
     protected override string GetClassNameCore() => "MarkdownBlock";
+    protected override bool IsControlElementCore() => true;
+    protected override bool IsContentElementCore() => true;
+    protected override bool IsKeyboardFocusableCore() => false;
 
     protected override System.Collections.Generic.IList<AutomationPeer> GetChildrenCore()
     {
         // Surface inline links so screen readers can navigate hyperlinks
-        // within a paragraph/heading independent of the surrounding text.
-        // Link peers are cached per LinkRun on the owner so peer identity is
-        // stable across repeated UIA traversals.
-        var list = new System.Collections.Generic.List<AutomationPeer>();
-        foreach (var run in _box.Runs)
-        {
-            if (run is LinkRun lr) list.Add(_owner.GetOrCreateLinkPeer(this, lr));
-        }
-        return list;
+        // within a paragraph/heading independent of the surrounding text, and
+        // keep inline images/embeds as real semantic children instead of
+        // flattening them into the paragraph text peer.
+        return _root.GetInlineChildPeers(_box);
     }
 
     protected override AutomationControlType GetAutomationControlTypeCore()
@@ -73,6 +88,72 @@ internal sealed partial class MarkdownBlockPeer : FrameworkElementAutomationPeer
         return sb.ToString();
     }
 
+    protected override string GetHelpTextCore()
+    {
+        return _box.ElementKey == MarkdownElementKeys.CodeBlock && !string.IsNullOrWhiteSpace(_box.CodeLanguage)
+            ? MarkdownLocalizedStrings.CodeLanguageHelp(_box.CodeLanguage)
+            : string.Empty;
+    }
+
+    protected override object GetPatternCore(PatternInterface patternInterface)
+    {
+        if (patternInterface == PatternInterface.Text || patternInterface == PatternInterface.Text2) return this;
+        return base.GetPatternCore(patternInterface);
+    }
+
+    public ITextRangeProvider[] GetSelection()
+    {
+        var (blockStart, blockEnd) = GetTextRange();
+        var selection = _root.GetSelection();
+        var clipped = new List<ITextRangeProvider>();
+        foreach (var range in selection)
+        {
+            if (range is not MarkdownTextRangeProvider markdownRange)
+                continue;
+
+            int start = System.Math.Max(blockStart, markdownRange.Start);
+            int end = System.Math.Min(blockEnd, markdownRange.End);
+            if (end >= start)
+                clipped.Add(new MarkdownTextRangeProvider(_root, start, end));
+        }
+
+        return clipped.Count > 0
+            ? clipped.ToArray()
+            : new ITextRangeProvider[] { new MarkdownTextRangeProvider(_root, blockStart, blockStart) };
+    }
+
+    public ITextRangeProvider[] GetVisibleRanges()
+    {
+        var (blockStart, blockEnd) = GetTextRange();
+        return new ITextRangeProvider[] { new MarkdownTextRangeProvider(_root, blockStart, blockEnd) };
+    }
+
+    public ITextRangeProvider RangeFromChild(IRawElementProviderSimple childElement) =>
+        _root.RangeFromChild(childElement);
+
+    public ITextRangeProvider RangeFromPoint(Windows.Foundation.Point screenLocation)
+    {
+        var range = _root.RangeFromPoint(screenLocation);
+        if (range is not MarkdownTextRangeProvider markdownRange)
+            return range;
+
+        var (blockStart, blockEnd) = GetTextRange();
+        int offset = System.Math.Clamp(markdownRange.Start, blockStart, blockEnd);
+        return new MarkdownTextRangeProvider(_root, offset, offset);
+    }
+
+    public ITextRangeProvider RangeFromAnnotation(IRawElementProviderSimple annotationElement) =>
+        new MarkdownTextRangeProvider(_root, GetTextRange().Start, GetTextRange().Start);
+
+    public ITextRangeProvider GetCaretRange(out bool isActive)
+    {
+        isActive = _owner.FocusState != Microsoft.UI.Xaml.FocusState.Unfocused;
+        var selection = GetSelection();
+        return selection.Length > 0
+            ? selection[0]
+            : new MarkdownTextRangeProvider(_root, GetTextRange().Start, GetTextRange().Start);
+    }
+
     protected override Windows.Foundation.Rect GetBoundingRectangleCore()
     {
         // Default FrameworkElementAutomationPeer reports the owning control's
@@ -85,6 +166,7 @@ internal sealed partial class MarkdownBlockPeer : FrameworkElementAutomationPeer
         if (ownerScreen.Width <= 0 || ownerScreen.Height <= 0) return ownerScreen;
 
         double scrollY = _owner.CurrentScrollOffsetY;
+        double contentOffsetY = _owner.CurrentContentOffsetY;
         double scale = _owner.XamlRoot?.RasterizationScale ?? 1.0;
         double relX = _box.Bounds.X;
         double relY = _box.Bounds.Y - scrollY;
@@ -97,7 +179,7 @@ internal sealed partial class MarkdownBlockPeer : FrameworkElementAutomationPeer
         // do NOT mirror here — applying a blanket reflect-about-right-edge
         // would double-mirror children that are already placed in RTL.
         double x = ownerScreen.X + relX * scale;
-        double y = ownerScreen.Y + relY * scale;
+        double y = ownerScreen.Y + (contentOffsetY + relY) * scale;
         return new Windows.Foundation.Rect(x, y, w, h);
     }
 
@@ -107,4 +189,11 @@ internal sealed partial class MarkdownBlockPeer : FrameworkElementAutomationPeer
     /// child link peers can compose against the same screen-space math without
     /// duplicating it.</summary>
     internal Windows.Foundation.Rect GetBoundingRectangleCoreInternal() => GetBoundingRectangleCore();
+
+    private (int Start, int End) GetTextRange()
+    {
+        return _root.TryGetTextRangeForInlineBox(_box, out int start, out int end)
+            ? (start, end)
+            : (0, 0);
+    }
 }

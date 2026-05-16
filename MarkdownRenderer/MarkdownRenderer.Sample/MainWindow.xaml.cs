@@ -18,6 +18,7 @@ public sealed partial class MainWindow : Window
     private readonly TextBox _editor;
     private TextBlock? _realizedCountStatus;
     private TextBlock? _flowDirectionStatus;
+    private TextBlock? _highContrastStatus;
 
     // Mapping from tab label → sample markdown for each feature
     private static readonly Dictionary<string, string> Samples = new()
@@ -36,6 +37,7 @@ public sealed partial class MainWindow : Window
         ["Scroll Anchor"] = ScrollAnchorSample,
         ["Footnotes"]     = FootnotesSample,
         ["Keyboard Nav"]  = KeyboardNavSample,
+        ["Accessibility Lab"] = AccessibilityLabSample,
         ["Full Demo"]  = FullDemoSample,
     };
 
@@ -44,6 +46,7 @@ public sealed partial class MainWindow : Window
         Title = "MarkdownRenderer — Feature Showcase";
 
         var rootGrid = new Grid();
+        MarkdownSystemIntegration.SetUseSystemFlowDirection(rootGrid, true);
         rootGrid.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });  // toolbar
         rootGrid.RowDefinitions.Add(new RowDefinition { Height = new GridLength(1, GridUnitType.Star) }); // content
 
@@ -94,6 +97,41 @@ public sealed partial class MainWindow : Window
         rtlToggle.Unchecked += (_, _) => { if (_renderer is not null) { _renderer.FlowDirection = FlowDirection.LeftToRight; UpdateFlowDirectionStatus(); } };
         toolbar.Children.Add(rtlToggle);
 
+        var forcedHighContrastToggle = new ToggleButton
+        {
+            Content = "Forced HC",
+            Margin = new Thickness(8, 0, 0, 0),
+            Padding = new Thickness(10, 4, 10, 4),
+            Name = "ForcedHighContrastToggle",
+        };
+        AutomationProperties.SetAutomationId(forcedHighContrastToggle, "ForcedHighContrastToggle");
+        AutomationProperties.SetName(forcedHighContrastToggle, "Forced high contrast");
+        forcedHighContrastToggle.Checked += (_, _) =>
+        {
+            ThemeResolver.SystemThemeProviderOverride = new ForcedMarkdownSystemThemeProvider
+            {
+                IsHighContrast = true,
+                WindowTextColor = Windows.UI.Color.FromArgb(0xFF, 0xFF, 0xFF, 0xFF),
+                WindowColor = Windows.UI.Color.FromArgb(0xFF, 0x00, 0x00, 0x00),
+                HotlightColor = Windows.UI.Color.FromArgb(0xFF, 0x00, 0xFF, 0xFF),
+                HighlightColor = Windows.UI.Color.FromArgb(0xFF, 0xFF, 0xFF, 0x00),
+                HighlightTextColor = Windows.UI.Color.FromArgb(0xFF, 0x00, 0x00, 0x00),
+            };
+            if (_renderer?.Theme is { } theme)
+                theme.AccentColor = Windows.UI.Color.FromArgb(0xFF, 0x80, 0x00, 0x80);
+            UpdateHighContrastStatus(true);
+            _renderer?.RequestRebuild();
+        };
+        forcedHighContrastToggle.Unchecked += (_, _) =>
+        {
+            ThemeResolver.SystemThemeProviderOverride = null;
+            if (_renderer?.Theme is { } theme)
+                theme.AccentColor = null;
+            UpdateHighContrastStatus(false);
+            _renderer?.RequestRebuild();
+        };
+        toolbar.Children.Add(forcedHighContrastToggle);
+
         Grid.SetRow(toolbar, 0);
         rootGrid.Children.Add(toolbar);
 
@@ -112,6 +150,8 @@ public sealed partial class MainWindow : Window
             Padding = new Thickness(8),
             Text = FullDemoSample,
         };
+        AutomationProperties.SetAutomationId(_editor, "MarkdownEditor");
+        AutomationProperties.SetName(_editor, "Markdown source editor");
         ScrollViewer.SetHorizontalScrollBarVisibility(_editor, ScrollBarVisibility.Auto);
         ScrollViewer.SetVerticalScrollBarVisibility(_editor, ScrollBarVisibility.Auto);
         _editor.TextChanged += (_, _) =>
@@ -135,7 +175,6 @@ public sealed partial class MainWindow : Window
             Margin = new Thickness(0),
         };
         AutomationProperties.SetAutomationId(_renderer, "MarkdownRenderer");
-        AutomationProperties.SetName(_renderer, "Markdown Renderer");
         _renderer.LinkClick += (_, e) =>
         {
             try { _ = Windows.System.Launcher.LaunchUriAsync(new Uri(e.Url)); } catch { }
@@ -173,6 +212,17 @@ public sealed partial class MainWindow : Window
         AutomationProperties.SetAutomationId(_flowDirectionStatus, "FlowDirectionStatus");
         AutomationProperties.SetName(_flowDirectionStatus, "flow:ltr");
 
+        _highContrastStatus = new TextBlock
+        {
+            Text = "hc:off",
+            Opacity = 0,
+            IsHitTestVisible = false,
+            Width = 1,
+            Height = 1,
+        };
+        AutomationProperties.SetAutomationId(_highContrastStatus, "HighContrastStatus");
+        AutomationProperties.SetName(_highContrastStatus, "hc:off");
+
         Grid.SetColumn(_editor, 0);
         Grid.SetColumn(splitter, 1);
         Grid.SetColumn(_renderer, 2);
@@ -185,8 +235,19 @@ public sealed partial class MainWindow : Window
         rootGrid.Children.Add(contentGrid);
         rootGrid.Children.Add(_realizedCountStatus);
         rootGrid.Children.Add(_flowDirectionStatus);
+        rootGrid.Children.Add(_highContrastStatus);
 
         Content = rootGrid;
+    }
+
+    private void UpdateHighContrastStatus(bool enabled)
+    {
+        if (_highContrastStatus is null) return;
+        string s = enabled
+            ? "hc:on;fg:#FFFFFF;bg:#000000;hotlight:#00FFFF;highlight:#FFFF00;highlightText:#000000"
+            : "hc:off";
+        _highContrastStatus.Text = s;
+        AutomationProperties.SetName(_highContrastStatus, s);
     }
 
     private void UpdateFlowDirectionStatus()
@@ -276,7 +337,7 @@ public sealed partial class MainWindow : Window
         - [x] Design the layout engine
         - [x] Implement Win2D painter
         - [x] Threading safety with ThemeSnapshot
-        - [ ] Full ITextProvider accessibility
+        - [x] Full ITextProvider accessibility
         - [ ] Performance profiling on real documents
 
         ## Mixed content in list items
@@ -503,7 +564,7 @@ public sealed partial class MainWindow : Window
         - [x] AOT-safe renderer dispatch
         - [x] GFM: tables, task lists, alerts, footnotes
         - [x] ListItemBox — bullet and text side by side
-        - [ ] Full ITextProvider accessibility peer
+        - [x] Full ITextProvider accessibility peer
         - [ ] Per-language syntax highlighting
 
         ## Table
@@ -649,13 +710,12 @@ public sealed partial class MainWindow : Window
 
         - [x] Markdig integration
         - [x] Flow layout
-        - [ ] You can't toggle these because they're disabled — but they're
-              still real WinUI CheckBoxes hosted on the overlay
+        - [ ] These are focusable read-only WinUI CheckBoxes hosted on the overlay
         """;
 
     // ── New feature sample pages ───────────────────────────────────────────────
 
-    private static readonly string LazyImagesSample = """
+    private const string LazyImagesSample = """
         # Lazy Image Loading
 
         Images are only fetched when they are within **800 px** of the current
@@ -838,31 +898,102 @@ public sealed partial class MainWindow : Window
         [^kn1]: First keyboard-nav footnote.
         [^kn2]: Second keyboard-nav footnote. Press Enter on ↩ to return.
         """;
+
+    private const string AccessibilityLabSample = """
+        # Accessibility Lab
+
+        This stable page is intentionally dense: it contains the roles,
+        text ranges, hosted controls, and bidi cases that UI automation probes
+        use for accessibility verification.
+
+        ## Text Pattern
+
+        The quick brown fox jumps over the lazy dog. Narrator should read this
+        paragraph as document text, and UIA TextPattern ranges should return
+        word bounding rectangles for each word.
+
+        Inline `inline-code-token` text must remain visible in high contrast.
+
+        Inline image ![Inline accessibility icon](data:image/svg+xml;utf8,%3Csvg%20xmlns%3D%27http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg%27%20width%3D%2716%27%20height%3D%2716%27%20viewBox%3D%270%200%2016%2016%27%3E%3Ctitle%3EInline%20icon%3C%2Ftitle%3E%3Ccircle%20cx%3D%278%27%20cy%3D%278%27%20r%3D%276%27%20fill%3D%27%230078D4%27%2F%3E%3C%2Fsvg%3E) should expose image semantics inside paragraph text.
+
+        A [painted link](https://example.com/accessibility) appears before a
+        hosted WinUI button.
+
+        ```button:Native action
+        ```
+
+        ```panel:Composite action
+        ```
+
+        - [ ] Hosted task checkbox after the button
+        - A regular list item with a [second painted link](https://example.com/second)
+        - Mixed bidi text: English אבגדה Arabic مرحبا 12345
+
+        ## Semantic Table
+
+        | Feature | Expected UIA Role | Detail |
+        |---------|-------------------|--------|
+        | Table | Table/Grid | Exposes row and column counts |
+        | Header cells | DataItem with headers | Header row is discoverable |
+        | Body cells | DataItem | Cell coordinates are stable |
+
+        ## Image
+
+        ![Accessibility lab blue square](data:image/svg+xml;utf8,%3Csvg%20xmlns%3D%27http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg%27%20width%3D%2748%27%20height%3D%2748%27%20viewBox%3D%270%200%2048%2048%27%3E%3Ctitle%3EBlue%20square%3C%2Ftitle%3E%3Cdesc%3EUsed%20for%20accessibility%20automation%3C%2Fdesc%3E%3Crect%20width%3D%2748%27%20height%3D%2748%27%20fill%3D%27%230078D4%27%2F%3E%3C%2Fsvg%3E)
+
+        ## Code
+
+        ```csharp
+        Console.WriteLine("code language is exposed as help text");
+        ```
+
+        ## Offscreen Content
+
+        ScrollIntoView should bring this later content into view through UIA.
+
+        Paragraph 1. More stable text for range movement.
+
+        Paragraph 2. More stable text for range movement.
+
+        Paragraph 3. More stable text for range movement.
+
+        Paragraph 4. More stable text for range movement.
+
+        Paragraph 5. More stable text for range movement.
+        """;
 }
 
 /// <summary>
 /// Demonstrates <see cref="IMarkdownEmbedFactory"/> by intercepting fenced
-/// code blocks whose info-string starts with <c>button:</c> and rendering them
-/// as native WinUI <see cref="Button"/>s.
+/// code blocks whose info-string starts with <c>button:</c> or <c>panel:</c>
+/// and rendering them as native WinUI controls.
 /// </summary>
 internal sealed class SampleEmbedFactory : MarkdownRenderer.Hosting.IMarkdownEmbedFactory
 {
     public bool CanCreate(Markdig.Syntax.Block block)
     {
         return block is Markdig.Syntax.FencedCodeBlock fc
-            && (fc.Info?.StartsWith("button:", StringComparison.Ordinal) ?? false);
+            && ((fc.Info?.StartsWith("button:", StringComparison.Ordinal) ?? false) ||
+                (fc.Info?.StartsWith("panel:", StringComparison.Ordinal) ?? false));
     }
 
     public float MeasureHeight(Markdig.Syntax.Block block, float availableWidth)
     {
-        // Simple Button at default WinUI metrics is ~32px tall.
-        return 36f;
+        var fc = (Markdig.Syntax.FencedCodeBlock)block;
+        return fc.Info?.StartsWith("panel:", StringComparison.Ordinal) == true
+            ? 84f
+            : 36f;
     }
 
     public Microsoft.UI.Xaml.FrameworkElement CreateBlock(Markdig.Syntax.Block block)
     {
         var fc = (Markdig.Syntax.FencedCodeBlock)block;
+        if (fc.Info?.StartsWith("panel:", StringComparison.Ordinal) == true)
+            return CreateCompositePanel(fc);
+
         string label = fc.Info!.Substring("button:".Length);
+        if (!string.IsNullOrWhiteSpace(fc.Arguments))
+            label = $"{label} {fc.Arguments}";
         var btn = new Button
         {
             Content = label,
@@ -880,6 +1011,44 @@ internal sealed class SampleEmbedFactory : MarkdownRenderer.Hosting.IMarkdownEmb
             _ = dlg.ShowAsync();
         };
         return btn;
+    }
+
+    private static Microsoft.UI.Xaml.FrameworkElement CreateCompositePanel(Markdig.Syntax.FencedCodeBlock fc)
+    {
+        string label = fc.Info!.Substring("panel:".Length);
+        if (!string.IsNullOrWhiteSpace(fc.Arguments))
+            label = $"{label} {fc.Arguments}";
+
+        var panel = new StackPanel
+        {
+            Orientation = Orientation.Horizontal,
+            Spacing = 8,
+            VerticalAlignment = VerticalAlignment.Center,
+        };
+        AutomationProperties.SetName(panel, label);
+
+        var textBox = new TextBox
+        {
+            Text = "Composite value",
+            Width = 180,
+            MinWidth = 120,
+            VerticalAlignment = VerticalAlignment.Center,
+        };
+        AutomationProperties.SetName(textBox, "Composite value");
+        AutomationProperties.SetAutomationId(textBox, "CompositeValueTextBox");
+
+        var button = new Button
+        {
+            Content = "Composite action",
+            Padding = new Thickness(12, 4, 12, 4),
+            VerticalAlignment = VerticalAlignment.Center,
+        };
+        AutomationProperties.SetName(button, "Composite action");
+        AutomationProperties.SetAutomationId(button, "CompositeActionButton");
+
+        panel.Children.Add(textBox);
+        panel.Children.Add(button);
+        return panel;
     }
 }
 

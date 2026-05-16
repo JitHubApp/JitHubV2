@@ -1,19 +1,21 @@
 using System;
 using System.Collections.Generic;
+using System.Numerics;
 using System.Threading;
 using System.Threading.Tasks;
 using Microsoft.Graphics.Canvas;
 using Microsoft.Graphics.Canvas.UI.Xaml;
+using Microsoft.UI.System;
 using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Automation.Peers;
 using Microsoft.UI.Xaml.Controls;
 using Microsoft.UI.Xaml.Input;
 using Microsoft.UI.Xaml.Media;
-using Microsoft.UI.Xaml.Shapes;
 using Windows.Foundation;
 using Windows.System;
 using Windows.UI;
 using MarkdownRenderer.Accessibility;
+using MarkdownRenderer.Diagnostics;
 using MarkdownRenderer.Document;
 using MarkdownRenderer.Hosting;
 using MarkdownRenderer.Layout;
@@ -44,22 +46,14 @@ public sealed partial class MarkdownRendererControl : UserControl
     private readonly SelectionController _selection = new();
     private DocumentPosition? _selectionAnchor;
 
-    // XAML Rectangle elements drawn on _overlay to show the selection highlight.
-    // Keeping selection on the XAML layer means the DirectWrite canvas tiles are
-    // never invalidated during a drag — eliminating tile-offset-driven glyph shake.
-    // The list acts as a pool: Rectangles are never removed from _overlay.Children
-    // during a drag update — only their Width/Height/Canvas.Left/Top/Visibility are
-    // mutated.  Inserting/removing Canvas children triggers a XAML layout pass on
-    // every pointer-move event and causes sub-pixel visual jitter of surrounding
-    // XAML elements (embedded buttons, etc.).  With the pool we pay the one-time
-    // Insert cost when a new stripe is first needed and zero tree-modification cost
-    // on subsequent updates.  The pool is invalidated (Cleared) whenever
-    // _overlay.Children.Clear() fires (on rebuild/unload).
-    private readonly List<Rectangle> _selectionOverlayRects = new();
-    // Brush cache: reuse the same SolidColorBrush across drag frames so we don't
-    // allocate a new brush object on every pointer-move event.
-    private SolidColorBrush? _selectionBrush;
-    private Windows.UI.Color _selectionBrushColor;
+    // Single Win2D adorner for text selection. It draws both the native
+    // selection background and selected glyph foreground above the already
+    // painted document, while the base CanvasVirtualControl remains untouched
+    // during selection drag. Keeping this to one stable XAML child avoids the
+    // measure/compositor churn that caused the historical text-shake bug.
+    private readonly List<Rect> _selectionAdornerRects = new();
+    private CanvasControl? _selectionAdorner;
+    private double _selectionAdornerOffsetY;
 
     // Background color used to clear each canvas tile before painting.  Captured
     // from ActualTheme at rebuild time so that OnRegionsInvalidated (UI thread,
@@ -72,12 +66,14 @@ public sealed partial class MarkdownRendererControl : UserControl
     // Last committed theme snapshot. Used by UI operations (focus ring, etc.)
     // that need theme colors after the rebuild is complete.
     private Theming.ThemeSnapshot? _themeSnapshot;
+    private ThemeSettings? _themeSettings;
 
     // ---- Keyboard navigation ----
     // Ordered list of focusable items (LinkRuns + InlineEmbedRuns) in the current
     // snapshot.  Rebuilt after each snapshot commit.  -1 means "nothing focused".
     private System.Collections.Generic.IReadOnlyList<Layout.FocusableItem>? _focusableItems;
     private int _focusedItemIndex = -1;
+    private int _focusResumeItemIndex = -1;
     // XAML Border element used to show a focus ring around the focused item.
     // Lives on _overlay at ZIndex 1 (above selection at -1, below embeds at 0).
     private Microsoft.UI.Xaml.Controls.Border? _focusRing;
@@ -166,18 +162,21 @@ public sealed partial class MarkdownRendererControl : UserControl
                 double top  = Math.Round(Box.Bounds.Y + Box.Margin.Top);
                 Canvas.SetLeft(fe, left);
                 Canvas.SetTop(fe, top);
+                Canvas.SetZIndex(fe, 2);
+                fe.KeyDown += owner.OnHostedEmbedKeyDown;
                 owner._overlay!.Children.Add(fe);
                 // _blockEmbedRects rebuilt in RealizeVisibleEmbeds.
             }
             catch (Exception ex)
             {
-                System.Diagnostics.Debug.WriteLine($"[MarkdownRendererControl] EmbedBox factory threw: {ex.Message}");
+                MarkdownDiagnostics.WriteLine($"[MarkdownRendererControl] EmbedBox factory threw: {ex.Message}");
             }
         }
         public override void Derealize(MarkdownRendererControl owner)
         {
             if (Realized is null) return;
             var fe = Realized;
+            fe.KeyDown -= owner.OnHostedEmbedKeyDown;
             try { owner._overlay!.Children.Remove(fe); } catch { }
             try { Box.Factory.RecycleBlock(Box.SourceBlock, fe); } catch { }
             Box.RealizedElement = null;
@@ -205,29 +204,41 @@ public sealed partial class MarkdownRendererControl : UserControl
                 fe.Height = iH;
                 Canvas.SetLeft(fe, iLeft);
                 Canvas.SetTop(fe, iTop);
+                Canvas.SetZIndex(fe, 2);
+                fe.KeyDown += owner.OnHostedEmbedKeyDown;
                 owner._overlay!.Children.Add(fe);
                 // _embedRects rebuilt in RealizeVisibleEmbeds.
             }
             catch (Exception ex)
             {
-                System.Diagnostics.Debug.WriteLine($"[MarkdownRendererControl] inline embed factory threw: {ex.Message}");
+                MarkdownDiagnostics.WriteLine($"[MarkdownRendererControl] inline embed factory threw: {ex.Message}");
             }
         }
         public override void Derealize(MarkdownRendererControl owner)
         {
             if (Realized is null) return;
             var fe = Realized;
+            fe.KeyDown -= owner.OnHostedEmbedKeyDown;
             try { owner._overlay!.Children.Remove(fe); } catch { }
             try { Run.Recycle?.Invoke(fe); }
             catch (Exception ex)
             {
-                System.Diagnostics.Debug.WriteLine($"[MarkdownRendererControl] inline embed Recycle threw: {ex.Message}");
+                MarkdownDiagnostics.WriteLine($"[MarkdownRendererControl] inline embed Recycle threw: {ex.Message}");
             }
             Run.RealizedElement = null;
             Realized = null;
         }
     }
     private readonly List<EmbedPlan> _embedPlans = new();
+    private bool _promotingKeyboardFocusEntry;
+    private bool _lastFocusEntryWasKeyboardTraversal;
+    private bool _lastFocusEntryWasKeyboardInput;
+    private bool _lastFocusEntryWasReverse;
+    private bool _suppressNextFocusPromotion;
+    private bool _contextMenuOpen;
+    private UIElement? _selectionDismissalRoot;
+    private PointerEventHandler? _selectionDismissalPointerPressedHandler;
+    private KeyEventHandler? _selectionCopyKeyDownHandler;
 
     // Lazy-load queue: all ImageBox instances in the current snapshot.
     // EnsureLoading() is called for each when its bounds enter the
@@ -329,6 +340,41 @@ public sealed partial class MarkdownRendererControl : UserControl
         return _linkPeerCache.GetValue(run, r => new MarkdownLinkPeer(this, parent, r));
     }
 
+    internal bool IsKeyboardFocusOnLink(LinkRun run)
+    {
+        return TryGetFocusedLink(out _, out var focusedRun) &&
+               ReferenceEquals(focusedRun, run);
+    }
+
+    internal bool HasKeyboardFocusOnPaintedLink => TryGetFocusedLink(out _, out _);
+
+    internal bool FocusLinkFromAutomation(LinkRun run)
+    {
+        if (!TryGetFocusableIndexForLink(run, out var index))
+            return Focus(FocusState.Programmatic);
+
+        _focusedItemIndex = index;
+        _focusResumeItemIndex = -1;
+        ScrollFocusedItemIntoView();
+        bool focused = Focus(FocusState.Programmatic);
+        UpdateFocusRing();
+        NotifyFocusedItemAutomation();
+        return focused;
+    }
+
+    internal bool FocusDocumentFromAutomation()
+    {
+        _suppressNextFocusPromotion = true;
+        _focusedItemIndex = -1;
+        UpdateFocusRing();
+        bool focused = Focus(FocusState.Programmatic);
+        if (!focused)
+            _suppressNextFocusPromotion = false;
+        else
+            DispatcherQueue.TryEnqueue(() => _suppressNextFocusPromotion = false);
+        return focused;
+    }
+
     /// <summary>Invoked by <see cref="MarkdownLinkPeer.Invoke"/> so UIA clients
     /// can activate a link the same way as pointer interaction. UIA callers
     /// can arrive on the RPC thread, so marshal back to the UI dispatcher
@@ -361,6 +407,23 @@ public sealed partial class MarkdownRendererControl : UserControl
     /// <summary>Current vertical scroll offset of the host scroll viewer.</summary>
     internal double CurrentScrollOffsetY => _scroll?.VerticalOffset ?? 0;
 
+    /// <summary>
+    /// Offset applied by ScrollViewer when short content is centered inside the
+    /// viewport. UIA screen rectangles must include this or range-from-text
+    /// probe points land in the blank band above the canvas content.
+    /// </summary>
+    internal double CurrentContentOffsetY
+    {
+        get
+        {
+            if (_scroll is null || _root is null) return 0;
+            double viewportHeight = _scroll.ViewportHeight;
+            double contentHeight = _root.ActualHeight > 0 ? _root.ActualHeight : _root.Height;
+            if (viewportHeight <= 0 || contentHeight <= 0 || contentHeight >= viewportHeight) return 0;
+            return (viewportHeight - contentHeight) / 2.0;
+        }
+    }
+
     protected override AutomationPeer OnCreateAutomationPeer() => new MarkdownAutomationPeer(this);
 
     /// <summary>
@@ -369,6 +432,12 @@ public sealed partial class MarkdownRendererControl : UserControl
     /// May be null before the first layout completes.
     /// </summary>
     internal LayoutSnapshot? CurrentSnapshot => _snapshot;
+
+    /// <summary>
+    /// Last committed theme snapshot. Used by automation peers to expose UIA
+    /// text attributes that match the pixels currently painted on the canvas.
+    /// </summary>
+    internal Theming.ThemeSnapshot? CurrentThemeSnapshot => _themeSnapshot;
 
     /// <summary>
     /// Number of currently-realised hosted embed elements (block + inline).
@@ -385,28 +454,33 @@ public sealed partial class MarkdownRendererControl : UserControl
         }
     }
 
-    /// <summary>
-    /// Map a document-local box rectangle into screen coordinates. Used by
-    /// per-block automation peers to report accurate bounding rectangles so
-    /// Narrator's "scan by element" gestures move focus to the correct spot
-    /// on screen, including after scrolling.
-    /// </summary>
-    internal Windows.Foundation.Rect GetScreenRectForBox(Windows.Foundation.Rect docRect)
+    private void OnHostedEmbedKeyDown(object sender, KeyRoutedEventArgs e)
     {
-        try
+        if (sender is not FrameworkElement element)
+            return;
+
+        bool shift = (Microsoft.UI.Input.InputKeyboardSource
+            .GetKeyStateForCurrentThread(VirtualKey.Shift) & Windows.UI.Core.CoreVirtualKeyStates.Down)
+            == Windows.UI.Core.CoreVirtualKeyStates.Down;
+
+        if (!TrySetFocusedItemForHostedElement(element)) return;
+
+        if (e.Key == VirtualKey.Tab)
         {
-            double yOffset = _scroll?.VerticalOffset ?? 0;
-            var local = new Windows.Foundation.Point(docRect.X, docRect.Y - yOffset);
-            var transform = TransformToVisual(null);
-            var topLeft = transform.TransformPoint(local);
-            return new Windows.Foundation.Rect(topLeft.X, topLeft.Y, docRect.Width, docRect.Height);
+            if (TryMoveFocusWithinHostedEmbed(element, e.OriginalSource, shift))
+            {
+                e.Handled = true;
+                return;
+            }
+
+            e.Handled = MoveFocus(reverse: shift);
+            return;
         }
-        catch
+
+        if (e.Key is VirtualKey.Left or VirtualKey.Right or VirtualKey.Up or VirtualKey.Down &&
+            element is not TextBox)
         {
-            // Element may not be in a tree yet (e.g. peer requested before
-            // first layout pass). Fall back to a zero-rect; UIA will treat
-            // it as "no bounding rect" and skip it.
-            return default;
+            e.Handled = MoveFocusSpatial(e.Key);
         }
     }
 
@@ -417,6 +491,44 @@ public sealed partial class MarkdownRendererControl : UserControl
     /// </summary>
     internal string CurrentMarkdownSource => Markdown ?? string.Empty;
 
+    internal DocumentRange CurrentSelectionRange => _selection.Range;
+
+    internal void SelectAutomationRange(DocumentRange range)
+    {
+        if (!IsSelectionEnabled) return;
+        var normalized = range.Normalized();
+        _selection.SetAnchor(normalized.Start);
+        _selection.ExtendTo(normalized.End);
+    }
+
+    internal void ClearAutomationSelection() => _selection.Clear();
+
+    internal bool TryGetVisibleDocumentRect(out Windows.Foundation.Rect rect)
+    {
+        if (_scroll is null)
+        {
+            rect = default;
+            return false;
+        }
+
+        rect = new Windows.Foundation.Rect(0, _scroll.VerticalOffset, ActualWidth, _scroll.ViewportHeight);
+        return true;
+    }
+
+    internal void ScrollDocumentRectIntoView(Windows.Foundation.Rect rect, bool alignToTop)
+    {
+        if (_scroll is null) return;
+        const double margin = 24.0;
+        double target = alignToTop
+            ? rect.Top
+            : rect.Top < _scroll.VerticalOffset + margin
+                ? rect.Top - margin
+                : rect.Bottom > _scroll.VerticalOffset + _scroll.ViewportHeight - margin
+                    ? rect.Bottom - _scroll.ViewportHeight + margin
+                    : _scroll.VerticalOffset;
+        _scroll.ChangeView(null, Math.Max(0, target), null, disableAnimation: false);
+    }
+
     public MarkdownRendererControl()
     {
         IsTabStop = true;
@@ -426,7 +538,7 @@ public sealed partial class MarkdownRendererControl : UserControl
         ActualThemeChanged += (_, _) => OnThemeChanged();
         // Selection changes update the XAML overlay (not the DirectWrite canvas),
         // so tiles are never invalidated during a drag.
-        _selection.Changed += (_, _) => UpdateSelectionOverlay();
+        _selection.Changed += (_, _) => OnSelectionChanged();
         // FlowDirection has no DP-changed callback we can register at the
         // class level (it's defined by FrameworkElement). Listen for live
         // changes via the dependency-property-changed callback API so RTL
@@ -473,13 +585,239 @@ public sealed partial class MarkdownRendererControl : UserControl
         _canvas.PointerCanceled += OnPointerCanceledOrCaptureLost;
         _canvas.PointerCaptureLost += OnPointerCanceledOrCaptureLost;
         _canvas.RightTapped += OnRightTapped;
+        GettingFocus += OnGettingFocus;
+        GotFocus += OnGotFocus;
+        LosingFocus += OnLosingFocus;
         KeyDown += OnKeyDown;
 
         Content = _scroll;
     }
 
+    private void OnGettingFocus(UIElement sender, GettingFocusEventArgs e)
+    {
+        if (!ReferenceEquals(e.NewFocusedElement, this))
+            return;
+
+        var direction = e.Direction;
+        _lastFocusEntryWasKeyboardInput = e.InputDevice == FocusInputDeviceKind.Keyboard;
+        _lastFocusEntryWasKeyboardTraversal =
+            direction is Microsoft.UI.Xaml.Input.FocusNavigationDirection.Next
+                      or Microsoft.UI.Xaml.Input.FocusNavigationDirection.Previous;
+        _lastFocusEntryWasReverse = direction == Microsoft.UI.Xaml.Input.FocusNavigationDirection.Previous;
+    }
+
+    private void OnGotFocus(object sender, RoutedEventArgs e)
+    {
+        if (_promotingKeyboardFocusEntry || _isUnloaded)
+            return;
+
+        if (!ReferenceEquals(e.OriginalSource, this) || FocusState == FocusState.Pointer)
+            return;
+
+        if (_suppressNextFocusPromotion)
+        {
+            _suppressNextFocusPromotion = false;
+            _lastFocusEntryWasKeyboardTraversal = false;
+            _lastFocusEntryWasKeyboardInput = false;
+            return;
+        }
+
+        if (!_lastFocusEntryWasKeyboardTraversal &&
+            !_lastFocusEntryWasKeyboardInput &&
+            FocusState != FocusState.Keyboard)
+            return;
+
+        if (_focusedItemIndex >= 0)
+        {
+            UpdateFocusRing();
+            NotifyFocusedItemAutomation();
+            return;
+        }
+
+        _promotingKeyboardFocusEntry = true;
+        try
+        {
+            MoveFocus(_lastFocusEntryWasReverse);
+        }
+        finally
+        {
+            _promotingKeyboardFocusEntry = false;
+            _lastFocusEntryWasKeyboardTraversal = false;
+            _lastFocusEntryWasKeyboardInput = false;
+        }
+    }
+
+    private void OnLosingFocus(UIElement sender, LosingFocusEventArgs e)
+    {
+        _suppressNextFocusPromotion = false;
+
+        if (e.NewFocusedElement is DependencyObject next && IsElementWithinRenderer(next))
+            return;
+
+        _focusedItemIndex = -1;
+        UpdateFocusRing();
+        if (!_contextMenuOpen)
+        {
+            _selectionAnchor = null;
+            _clickMode = ClickMode.Single;
+        }
+    }
+
+    private bool IsElementWithinRenderer(DependencyObject element)
+    {
+        for (DependencyObject? current = element; current is not null;)
+        {
+            if (ReferenceEquals(current, this))
+                return true;
+
+            try { current = VisualTreeHelper.GetParent(current); }
+            catch { return false; }
+        }
+
+        return false;
+    }
+
+    private void RegisterSelectionDismissalHook()
+    {
+        if (_selectionDismissalRoot is not null)
+            return;
+
+        var root = XamlRoot?.Content as UIElement;
+        if (root is null)
+            return;
+
+        _selectionDismissalPointerPressedHandler = OnAppRootPointerPressed;
+        root.AddHandler(UIElement.PointerPressedEvent, _selectionDismissalPointerPressedHandler, handledEventsToo: true);
+        _selectionCopyKeyDownHandler = OnAppRootKeyDown;
+        root.AddHandler(UIElement.KeyDownEvent, _selectionCopyKeyDownHandler, handledEventsToo: true);
+        _selectionDismissalRoot = root;
+    }
+
+    private void UnregisterSelectionDismissalHook()
+    {
+        if (_selectionDismissalRoot is not null && _selectionDismissalPointerPressedHandler is not null)
+        {
+            try { _selectionDismissalRoot.RemoveHandler(UIElement.PointerPressedEvent, _selectionDismissalPointerPressedHandler); }
+            catch { }
+        }
+
+        if (_selectionDismissalRoot is not null && _selectionCopyKeyDownHandler is not null)
+        {
+            try { _selectionDismissalRoot.RemoveHandler(UIElement.KeyDownEvent, _selectionCopyKeyDownHandler); }
+            catch { }
+        }
+
+        _selectionDismissalRoot = null;
+        _selectionDismissalPointerPressedHandler = null;
+        _selectionCopyKeyDownHandler = null;
+    }
+
+    private void OnAppRootPointerPressed(object sender, PointerRoutedEventArgs e)
+    {
+        if (_isUnloaded)
+            return;
+
+        var point = e.GetCurrentPoint(sender as UIElement ?? this);
+        var properties = point.Properties;
+        if (properties.IsRightButtonPressed || properties.IsMiddleButtonPressed || properties.IsXButton1Pressed || properties.IsXButton2Pressed)
+            return;
+
+        if (e.OriginalSource is DependencyObject source && IsElementWithinRenderer(source))
+        {
+            MarkdownSelectionCoordinator.ClearSelectionsExcept(this);
+            if (!IsPointerOverCanvasTextSurface(e, out var canvasPoint) || IsPointOverEmbed(canvasPoint))
+                ClearSelectionForExternalInteraction();
+            return;
+        }
+
+        ClearSelectionForExternalInteraction();
+    }
+
+    private void OnAppRootKeyDown(object sender, KeyRoutedEventArgs e)
+    {
+        if (_isUnloaded || _snapshot is null || !_selection.IsActive)
+            return;
+
+        bool ctrl = (Microsoft.UI.Input.InputKeyboardSource
+            .GetKeyStateForCurrentThread(VirtualKey.Control) & Windows.UI.Core.CoreVirtualKeyStates.Down)
+            == Windows.UI.Core.CoreVirtualKeyStates.Down;
+        if (!ctrl || e.Key != VirtualKey.C)
+            return;
+
+        if (CopySelectionToClipboard())
+            e.Handled = true;
+    }
+
+    private bool CopySelectionToClipboard()
+    {
+        var snapshot = _snapshot;
+        if (snapshot is null || !_selection.IsActive)
+            return false;
+
+        return MarkdownClipboardWriter.Copy(snapshot.SourceMap, _selection.Range);
+    }
+
+    internal void ClearSelectionFromCoordinator()
+    {
+        ClearSelectionForExternalInteraction();
+    }
+
+    private void ClearSelectionForExternalInteraction(bool resetClickTracking = true)
+    {
+        _selectionAnchor = null;
+        _clickMode = ClickMode.Single;
+        if (resetClickTracking)
+        {
+            _consecutiveClickCount = 0;
+            _lastPressTickMs = 0;
+            _lastPressPoint = default;
+        }
+
+        if (_selection.IsActive || !_selection.Range.IsEmpty)
+            _selection.Clear();
+
+        if (_focusedItemIndex >= 0)
+        {
+            _focusedItemIndex = -1;
+            UpdateFocusRing();
+        }
+    }
+
+    private bool IsPointerOverCanvasTextSurface(PointerRoutedEventArgs e, out Point canvasPoint)
+    {
+        canvasPoint = default;
+        if (_canvas is null)
+            return false;
+
+        try
+        {
+            canvasPoint = e.GetCurrentPoint(_canvas).Position;
+            return canvasPoint.X >= 0 &&
+                   canvasPoint.Y >= 0 &&
+                   canvasPoint.X <= _canvas.ActualWidth &&
+                   canvasPoint.Y <= _canvas.ActualHeight;
+        }
+        catch
+        {
+            canvasPoint = default;
+            return false;
+        }
+    }
+
+    private void OnSelectionChanged()
+    {
+        if (_selection.IsActive)
+            MarkdownSelectionCoordinator.ClearSelectionsExcept(this);
+
+        UpdateSelectionOverlay();
+    }
+
     private void OnLoadedInternal()
     {
+        _isUnloaded = false;
+        MarkdownSelectionCoordinator.Register(this);
+        RegisterSelectionDismissalHook();
+        EnsureThemeSettingsSubscription();
         _sizeChangedHandler = (_, e) =>
         {
             if (Math.Abs(_lastWidth - (float)e.NewSize.Width) > 0.5f) RequestRebuild();
@@ -514,6 +852,13 @@ public sealed partial class MarkdownRendererControl : UserControl
         {
             t.Changed -= OnThemeRevisionChanged;
         }
+        if (_themeSettings is not null)
+        {
+            _themeSettings.Changed -= OnThemeSettingsChanged;
+            _themeSettings = null;
+        }
+        UnregisterSelectionDismissalHook();
+        MarkdownSelectionCoordinator.Unregister(this);
         // Cancel and dispose the CTS. At unload no new RequestRebuild can be called
         // (the control is being torn down), so there is no concurrent ContinueWith
         // disposal race. Disposing explicitly avoids leaking the WaitHandle until GC.
@@ -551,12 +896,12 @@ public sealed partial class MarkdownRendererControl : UserControl
         _cursorIBeam?.Dispose();
         _cursorHand = null;
         _cursorIBeam = null;
-        // Clear the selection-rect pool: after the overlay is wiped the pooled
-        // Rectangles are no longer in _overlay.Children, so the pool references
-        // are stale.  CommitSnapshot does the same; mirror it here so a re-attach
-        // cycle (Unload → Load) starts with a clean pool.
-        _selectionOverlayRects.Clear();
-        _selectionBrush = null;
+        _selectionAdornerRects.Clear();
+        if (_selectionAdorner is not null)
+        {
+            _selectionAdorner.Draw -= OnSelectionAdornerDraw;
+            _selectionAdorner = null;
+        }
         _focusRing = null; // evicted from overlay above; lazily re-created on re-attach
         var snap = _snapshot;
         _snapshot = null;
@@ -570,6 +915,34 @@ public sealed partial class MarkdownRendererControl : UserControl
         // builds and immediately cancel the first one on every theme change.
         if (Theme is { } t) t.Invalidate();
         else RequestRebuild(); // no Theme object: must trigger rebuild directly
+    }
+
+    private void OnThemeSettingsChanged(ThemeSettings sender, object args)
+    {
+        var dq = DispatcherQueue;
+        if (dq is null) return;
+        if (dq.HasThreadAccess)
+        {
+            if (IsLoaded) OnThemeChanged();
+            return;
+        }
+
+        dq.TryEnqueue(() =>
+        {
+            if (IsLoaded) OnThemeChanged();
+        });
+    }
+
+    private void EnsureThemeSettingsSubscription()
+    {
+        if (_themeSettings is not null) return;
+        try
+        {
+            if (XamlRoot?.ContentIslandEnvironment is null) return;
+            _themeSettings = ThemeSettings.CreateForWindowId(XamlRoot.ContentIslandEnvironment.AppWindowId);
+            _themeSettings.Changed += OnThemeSettingsChanged;
+        }
+        catch { }
     }
 
     private void OnThemeDpChanged(DependencyPropertyChangedEventArgs e)
@@ -617,7 +990,7 @@ public sealed partial class MarkdownRendererControl : UserControl
             // no more ct.Register() calls can fire on it.
             oldCts?.Dispose();
             if (t.IsFaulted)
-                System.Diagnostics.Debug.WriteLine($"[MarkdownRendererControl] Rebuild faulted: {t.Exception}");
+                MarkdownDiagnostics.WriteLine($"[MarkdownRendererControl] Rebuild faulted: {t.Exception}");
         }, TaskScheduler.Default);
     }
 
@@ -630,7 +1003,7 @@ public sealed partial class MarkdownRendererControl : UserControl
         catch (OperationCanceledException) { /* expected – a new build was requested */ }
         catch (Exception ex)
         {
-            System.Diagnostics.Debug.WriteLine($"[MarkdownRendererControl] Rebuild failed: {ex}");
+            MarkdownDiagnostics.WriteLine($"[MarkdownRendererControl] Rebuild failed: {ex}");
         }
     }
 
@@ -652,12 +1025,9 @@ public sealed partial class MarkdownRendererControl : UserControl
         var sourceMap = new MarkdownSourceMap(parsed.SourceText);
         var theme = Theme ?? _defaultTheme;
         var themeSnapshot = new ThemeResolver(this, theme).CreateSnapshot();
-        // Capture background color on the UI thread now — ActualTheme is correct
-        // at this point (ActualThemeChanged fires before we call RequestRebuild).
-        // Win11 surface colors: dark = #202020, light = white.
-        _canvasBackground = ActualTheme == ElementTheme.Dark
-            ? Windows.UI.Color.FromArgb(0xFF, 0x20, 0x20, 0x20)
-            : Windows.UI.Color.FromArgb(0xFF, 0xFF, 0xFF, 0xFF);
+        // Capture the resolved surface color on the UI thread. In high
+        // contrast this is the native Window color, not a light/dark token.
+        _canvasBackground = themeSnapshot.SurfaceColor;
         // Use the shared CanvasDevice (always available, no visual-tree required).
         // CanvasVirtualControl only has a device after CreateResources fires, so
         // passing _canvas directly would crash if layout runs before first draw.
@@ -757,15 +1127,11 @@ public sealed partial class MarkdownRendererControl : UserControl
         // Identities change across rebuild even when the count happens to
         // match — reset so the first post-rebuild realisation always fires.
         _lastFiredRealizedCount = -1;
-        _selectionOverlayRects.Clear(); // overlay was just cleared above
-        // Pre-populate enough stripes to cover a full-document selection without
-        // any Children.Add() calls during the first drag.  Each block can produce
-        // at most ~3 line-stripes (partial first line, full interior lines, partial
-        // last line) so blocks×3 is a conservative upper bound.  Floor at 32 so
-        // tiny documents still get a sensible pool.
-        PreWarmSelectionPool(Math.Max(32, snapshot.Blocks.Count * 3));
+        _selectionAdornerRects.Clear();
+        EnsureSelectionAdorner();
         _selection.Clear();             // stale selection no longer valid after re-layout
         _focusedItemIndex = -1;         // selection/focus stale after re-layout
+        _focusResumeItemIndex = -1;
         _focusRing = null;              // evicted from overlay; will be lazily re-created on next Tab
         _focusableItems = snapshot.CollectFocusableItems();
         foreach (var b in snapshot.Blocks) CollectEmbedPlans(b);
@@ -775,6 +1141,7 @@ public sealed partial class MarkdownRendererControl : UserControl
             _scroll.ViewChanged += OnScrollViewChanged;
         }
         RealizeVisibleEmbeds();
+        UpdateSelectionAdornerViewport();
 
         _canvas.Invalidate();
         } // end of snapshot try-block
@@ -789,6 +1156,8 @@ public sealed partial class MarkdownRendererControl : UserControl
 
     private void OnScrollViewChanged(object? sender, ScrollViewerViewChangedEventArgs e)
     {
+        UpdateSelectionAdornerViewport();
+        _selectionAdorner?.Invalidate();
         // Run a final realisation pass after intermediate-view bursts settle
         // so we don't thrash during fling/inertia. ViewChanged with
         // IsIntermediate=false fires at the end of inertia; we also realise on
@@ -974,13 +1343,14 @@ public sealed partial class MarkdownRendererControl : UserControl
     private void OnRegionsInvalidated(CanvasVirtualControl sender, CanvasRegionsInvalidatedEventArgs args)
     {
         if (_snapshot is null) return;
-        var frame = MarkdownRenderer.Diagnostics.ShakeLogger.NextFrame();
+        var frame = ShakeLogger.NextFrame();
         int regionCount = 0;
         foreach (var region in args.InvalidatedRegions)
         {
             regionCount++;
-            MarkdownRenderer.Diagnostics.ShakeLogger.LogPaint(
-                "region", regionCount, region.X, region.Y, region.Width, region.Height);
+            if (ShakeLogger.IsEnabled)
+                ShakeLogger.LogPaint(
+                    "region", regionCount, region.X, region.Y, region.Width, region.Height);
             using var ds = sender.CreateDrawingSession(region);
             // Clear to the theme-appropriate background color so that switching between
             // light and dark mode (or any theme change) fully overwrites old tile content.
@@ -996,12 +1366,13 @@ public sealed partial class MarkdownRendererControl : UserControl
             // different sub-pixel RGB values.  Switching to grayscale makes
             // glyph edges background-independent.
             ds.TextAntialiasing = Microsoft.Graphics.Canvas.Text.CanvasTextAntialiasing.Grayscale;
-            // Selection is rendered on the XAML overlay (Rectangle elements),
-            // not here — canvas tiles are never dirtied during drag.
+            // Selection is rendered by the separate Win2D adorner, not here;
+            // base document tiles are never dirtied during a drag.
             _snapshot.Paint(ds, region);
         }
-        MarkdownRenderer.Diagnostics.ShakeLogger.Log("frame-end",
-            $"frame={frame} regions={regionCount} hovered={(_lastHoveredRun is null ? "null" : _lastHoveredRun.GetType().Name)} dragging={_selectionAnchor is not null}");
+        if (ShakeLogger.IsEnabled)
+            ShakeLogger.Log("frame-end",
+                $"frame={frame} regions={regionCount} hovered={(_lastHoveredRun is null ? "null" : _lastHoveredRun.GetType().Name)} dragging={_selectionAnchor is not null}");
     }
 
     // ---- Input ----
@@ -1013,6 +1384,7 @@ public sealed partial class MarkdownRendererControl : UserControl
         // OnRightTapped and must not affect the multi-click counter or selection anchor.
         if (!e.GetCurrentPoint(_canvas).Properties.IsLeftButtonPressed) return;
         var pt = e.GetCurrentPoint(_canvas).Position;
+        RememberFocusResumePoint(pt);
 
         // Pressing *on* a hosted inline embed must NOT start a selection.
         // The embed is a real WinUI element layered above the canvas — its
@@ -1059,7 +1431,7 @@ public sealed partial class MarkdownRendererControl : UserControl
         else
             _consecutiveClickCount = 1;
 
-        Focus(FocusState.Pointer);
+        FocusRendererForPointerInteraction();
         if (_snapshot.HitTest(pt, out var pos))
         {
             // Advance clock/position only on successful text hits so a miss in the
@@ -1127,6 +1499,19 @@ public sealed partial class MarkdownRendererControl : UserControl
         }
     }
 
+    private void FocusRendererForPointerInteraction()
+    {
+        _suppressNextFocusPromotion = true;
+        bool focused = Focus(FocusState.Programmatic);
+        if (!focused)
+        {
+            _suppressNextFocusPromotion = false;
+            return;
+        }
+
+        DispatcherQueue.TryEnqueue(() => _suppressNextFocusPromotion = false);
+    }
+
     private InlineRun? _lastHoveredRun;
     private Layout.Boxes.InlineContainerBox? _lastHoveredBox; // box that contains _lastHoveredRun; used for targeted canvas invalidation
     // Tracks the ProtectedCursor shape we last set, or null when we have
@@ -1159,15 +1544,17 @@ public sealed partial class MarkdownRendererControl : UserControl
             // <textarea> inside contenteditable text.
             if (TryHitTestEmbed(pt, out var embedPos))
             {
-                MarkdownRenderer.Diagnostics.ShakeLogger.Log("ptr-move-drag-embed",
-                    $"px={pt.X:F4} py={pt.Y:F4} pos=blk{embedPos.BlockIndex}/inl{embedPos.InlineIndex}/c{embedPos.CharacterOffset}");
+                if (ShakeLogger.IsEnabled)
+                    ShakeLogger.Log("ptr-move-drag-embed",
+                        $"px={pt.X:F4} py={pt.Y:F4} pos=blk{embedPos.BlockIndex}/inl{embedPos.InlineIndex}/c{embedPos.CharacterOffset}");
                 _selection.ExtendTo(embedPos);
                 // No _canvas.Invalidate(): selection is on the XAML overlay.
             }
             else if (_snapshot.HitTest(pt, out var pos))
             {
-                MarkdownRenderer.Diagnostics.ShakeLogger.Log("ptr-move-drag",
-                    $"px={pt.X:F4} py={pt.Y:F4} pos=blk{pos.BlockIndex}/inl{pos.InlineIndex}/c{pos.CharacterOffset}");
+                if (ShakeLogger.IsEnabled)
+                    ShakeLogger.Log("ptr-move-drag",
+                        $"px={pt.X:F4} py={pt.Y:F4} pos=blk{pos.BlockIndex}/inl{pos.InlineIndex}/c{pos.CharacterOffset}");
                 // For word/block click modes extend selection snapped to the
                 // appropriate boundary so dragging after double/triple-click
                 // produces word-by-word or block-by-block selection, matching
@@ -1444,17 +1831,11 @@ public sealed partial class MarkdownRendererControl : UserControl
     }
 
     /// <summary>
-    /// Syncs the selection highlight to the XAML _overlay using Rectangle elements.
-    /// Called whenever _selection.Changed fires (SetAnchor / ExtendTo / Clear).
-    /// By keeping selection on the XAML layer the DirectWrite canvas tiles are
-    /// never dirtied during a drag, which eliminates tile-offset glyph shake.
-    ///
-    /// Pool pattern: Rectangles are never removed from _overlay.Children during a
-    /// drag update.  Only their geometry properties (Width/Height/Canvas.Left/Top)
-    /// and Visibility are mutated.  This avoids the XAML visual-tree mutation
-    /// (Children.Remove / Children.Insert) that was triggering a layout/render pass
-    /// on every pointer-move event and causing sub-pixel vertical jitter of nearby
-    /// XAML elements (embedded buttons, etc.).
+    /// Syncs the selection adorner geometry. The adorner is a single stable
+    /// Win2D child layered above the document text and below hosted controls.
+    /// Selection changes only mutate this in-memory rect list and invalidate
+    /// the adorner; they never invalidate the base document canvas or mutate
+    /// the XAML child tree during a drag.
     /// </summary>
     private void UpdateSelectionOverlay()
     {
@@ -1463,42 +1844,21 @@ public sealed partial class MarkdownRendererControl : UserControl
         var snapshot = _snapshot;
         if (snapshot is null || !_selection.IsActive)
         {
-            // Hide all pooled rectangles — don't remove them (cheaper).
-            foreach (var r in _selectionOverlayRects)
-                r.Visibility = Visibility.Collapsed;
+            _selectionAdornerRects.Clear();
+            _selectionAdorner?.Invalidate();
             return;
         }
 
-        // Compute the desired selection highlight color.
-        var theme = Theme ?? _defaultTheme;
-        var accentBase = theme.AccentColor ?? Color.FromArgb(0x66, 0x00, 0x67, 0xC0);
-        var hl = Color.FromArgb(0x55, accentBase.R, accentBase.G, accentBase.B);
-
-        // Reuse the cached brush when the color hasn't changed (common case during
-        // a drag: the highlight color is constant throughout the gesture).
-        if (_selectionBrush is null || _selectionBrushColor != hl)
-        {
-            _selectionBrush = new SolidColorBrush(hl);
-            _selectionBrushColor = hl;
-        }
-
         // Snap to *physical pixels*, not DIPs. At fractional DPI (125%, 150%)
-        // an integer-DIP edge lands at a fractional physical pixel, so XAML's
-        // own anti-aliased rasterization fans the rect edges across two
-        // physical rows.  As GetCharacterRegions returns *slightly* different
-        // float Y values frame-to-frame during a drag, Math.Floor on a value
-        // hovering near an integer can flip ±1 — that's the visible vertical
-        // shake the user perceives over heading text at 125/150%.
-        //   Snap formula: pick the physical pixel boundary (Floor for the
-        // leading edge, Ceiling for trailing) so the rect always lands on
-        // exact device pixels regardless of the floating-point noise.
+        // a DIP edge lands at a fractional physical pixel. The adorner uses the
+        // same snapped rectangles for background fill, clipping, diagnostics,
+        // and foreground overpaint so all selection pixels move together.
         double scale = XamlRoot?.RasterizationScale ?? 1.0;
         if (scale <= 0) scale = 1.0;
 
-        int poolIdx = 0;
+        _selectionAdornerRects.Clear();
         foreach (var rect in _selection.GetHighlightRects(snapshot))
         {
-            // Snap to physical pixel boundaries: convert to phys-px, snap, convert back.
             double pxX = Math.Floor(rect.X * scale);
             double pxY = Math.Floor(rect.Y * scale);
             double pxR = Math.Ceiling((rect.X + rect.Width) * scale);
@@ -1507,78 +1867,123 @@ public sealed partial class MarkdownRendererControl : UserControl
             double y = pxY / scale;
             double w = (pxR - pxX) / scale;
             double h = (pxB - pxY) / scale;
+            if (w <= 0 || h <= 0)
+                continue;
 
-            Rectangle r;
-            if (poolIdx < _selectionOverlayRects.Count)
-            {
-                // Reuse existing pooled rectangle — no Children mutation.
-                r = _selectionOverlayRects[poolIdx];
-            }
-            else
-            {
-                // Pool exhausted: allocate a new rectangle and add it once.
-                // UseLayoutRounding=true makes XAML itself snap the rect's
-                // final on-screen position to physical pixels as a belt-and-
-                // braces guard against any residual fractional offset.
-                r = new Rectangle { IsHitTestVisible = false, UseLayoutRounding = true };
-                // ZIndex -1 places it behind embedded controls (default ZIndex 0).
-                Canvas.SetZIndex(r, -1);
-                _overlay.Children.Add(r);
-                _selectionOverlayRects.Add(r);
-                // Log every pool-grow because Children.Add invalidates the
-                // overlay Canvas's measure, which in turn can ripple into a
-                // CanvasVirtualControl re-layout. If we see pool-grow events
-                // during a steady-state drag (not just the first stripe), the
-                // pool isn't being pre-warmed adequately.
-                MarkdownRenderer.Diagnostics.ShakeLogger.Log("sel-pool-grow",
-                    $"poolSize={_selectionOverlayRects.Count}");
-            }
+            _selectionAdornerRects.Add(new Rect(x, y, w, h));
 
-            r.Fill = _selectionBrush;
-            r.Width = w;
-            r.Height = h;
-            Canvas.SetLeft(r, x);
-            Canvas.SetTop(r, y);
-            r.Visibility = Visibility.Visible;
             // Diagnostic: log the *physical-pixel* coords for the first stripe
             // so we can verify they stay rock-stable across drag frames at
             // fractional DPI. If shake reappears these numbers will jitter.
-            if (poolIdx == 0)
+            if (_selectionAdornerRects.Count == 1)
             {
-                MarkdownRenderer.Diagnostics.ShakeLogger.LogPaint(
-                    "sel-rect-phys", -1, (float)(x * scale), (float)(y * scale),
-                    (float)(w * scale), (float)(h * scale));
+                if (ShakeLogger.IsEnabled)
+                    ShakeLogger.LogPaint(
+                        "sel-rect-phys", -1, (float)(x * scale), (float)(y * scale),
+                        (float)(w * scale), (float)(h * scale));
             }
-            poolIdx++;
         }
 
-        // Hide any remaining pooled rectangles beyond the current stripe count.
-        for (int i = poolIdx; i < _selectionOverlayRects.Count; i++)
-            _selectionOverlayRects[i].Visibility = Visibility.Collapsed;
+        EnsureSelectionAdorner();
+        UpdateSelectionAdornerViewport();
+        _selectionAdorner?.Invalidate();
     }
 
-    /// <summary>
-    /// Pre-populates the selection-highlight rectangle pool up to
-    /// <paramref name="count"/> stripes so the first drag gesture after a
-    /// document rebuild doesn't incur <c>Children.Add</c> overhead during
-    /// pointer-move events.  Callers should pass <c>blocks × 3</c> for a
-    /// full-document upper bound; 8 is kept as a safe default.
-    /// </summary>
-    private void PreWarmSelectionPool(int count = 8)
+    private void EnsureSelectionAdorner()
     {
-        if (_overlay is null) return;
-        for (int i = _selectionOverlayRects.Count; i < count; i++)
+        if (_overlay is null)
+            return;
+
+        if (_selectionAdorner is null)
         {
-            var r = new Rectangle
+            _selectionAdorner = new CanvasControl
             {
                 IsHitTestVisible = false,
                 UseLayoutRounding = true,
-                Visibility = Visibility.Collapsed,
             };
-            Canvas.SetZIndex(r, -1);
-            _overlay.Children.Add(r);
-            _selectionOverlayRects.Add(r);
+            _selectionAdorner.Draw += OnSelectionAdornerDraw;
+            Canvas.SetZIndex(_selectionAdorner, 0);
         }
+
+        if (VisualTreeHelper.GetParent(_selectionAdorner) is null)
+            _overlay.Children.Add(_selectionAdorner);
+    }
+
+    private void UpdateSelectionAdornerViewport()
+    {
+        if (_selectionAdorner is null)
+            return;
+
+        double width = Math.Max(1.0, _scroll?.ViewportWidth > 0 ? _scroll.ViewportWidth : ActualWidth);
+        double height = Math.Max(1.0, _scroll?.ViewportHeight > 0 ? _scroll.ViewportHeight : ActualHeight);
+        double top = _scroll?.VerticalOffset ?? 0.0;
+
+        if (double.IsNaN(_selectionAdorner.Width) || Math.Abs(_selectionAdorner.Width - width) > 0.5)
+            _selectionAdorner.Width = width;
+        if (double.IsNaN(_selectionAdorner.Height) || Math.Abs(_selectionAdorner.Height - height) > 0.5)
+            _selectionAdorner.Height = height;
+
+        double currentLeft = Canvas.GetLeft(_selectionAdorner);
+        if (double.IsNaN(currentLeft) || Math.Abs(currentLeft) > 0.1)
+            Canvas.SetLeft(_selectionAdorner, 0);
+
+        double currentTop = Canvas.GetTop(_selectionAdorner);
+        if (double.IsNaN(currentTop) || Math.Abs(currentTop - top) > 0.1)
+            Canvas.SetTop(_selectionAdorner, top);
+
+        _selectionAdornerOffsetY = top;
+    }
+
+    private void OnSelectionAdornerDraw(CanvasControl sender, CanvasDrawEventArgs args)
+    {
+        args.DrawingSession.Clear(Color.FromArgb(0, 0, 0, 0));
+
+        var snapshot = _snapshot;
+        if (snapshot is null || !_selection.IsActive || _selectionAdornerRects.Count == 0)
+            return;
+
+        if (ShakeLogger.IsEnabled)
+            ShakeLogger.Log("sel-adorner-draw",
+                $"rects={_selectionAdornerRects.Count} actual={sender.ActualWidth:0.####}x{sender.ActualHeight:0.####} size={sender.Width:0.####}x{sender.Height:0.####}");
+
+        var selectedBackground = _themeSnapshot?.SelectionHighlightColor
+                                 ?? Color.FromArgb(0xFF, 0x66, 0xAA, 0xE8);
+        var selectedForeground = _themeSnapshot?.SelectionForegroundColor
+                                 ?? Color.FromArgb(0xFF, 0xFF, 0xFF, 0xFF);
+        var range = _selection.Range.Normalized();
+        double yOffset = _selectionAdornerOffsetY;
+        var viewport = new Rect(0, yOffset, sender.ActualWidth, sender.ActualHeight);
+
+        args.DrawingSession.TextAntialiasing = Microsoft.Graphics.Canvas.Text.CanvasTextAntialiasing.Grayscale;
+        args.DrawingSession.Transform = Matrix3x2.CreateTranslation(0, (float)-yOffset);
+
+        // Native text controls effectively cover the old glyph pixels with the
+        // selection fill and then draw selected glyphs on top. Doing both in this
+        // adorner gives the same visual ordering without repainting document text.
+        foreach (var rect in _selectionAdornerRects)
+        {
+            if (rect.Right < viewport.Left || rect.Left > viewport.Right ||
+                rect.Bottom < viewport.Top || rect.Top > viewport.Bottom)
+            {
+                continue;
+            }
+
+            args.DrawingSession.FillRectangle(rect, selectedBackground);
+        }
+
+        foreach (var rect in _selectionAdornerRects)
+        {
+            if (rect.Right < viewport.Left || rect.Left > viewport.Right ||
+                rect.Bottom < viewport.Top || rect.Top > viewport.Bottom)
+            {
+                continue;
+            }
+
+            using var layer = args.DrawingSession.CreateLayer(1.0f, rect);
+            snapshot.PaintSelectionForeground(args.DrawingSession, range, selectedForeground, rect);
+        }
+
+        args.DrawingSession.Transform = Matrix3x2.Identity;
     }
 
     private void OnPointerCanceledOrCaptureLost(object sender, PointerRoutedEventArgs e)
@@ -1671,6 +2076,12 @@ public sealed partial class MarkdownRendererControl : UserControl
         _selectionAnchor = null;
         _canvas.ReleasePointerCapture(e.Pointer);
         if (!wasLeft) return;
+
+        if (!_selection.Range.Normalized().IsEmpty)
+        {
+            UpdateSelectionAdornerViewport();
+            _selectionAdorner?.Invalidate();
+        }
 
         // Click handling for links: if no real selection occurred, raise LinkClick
         // when the click lands on a LinkRun.
@@ -1782,8 +2193,7 @@ public sealed partial class MarkdownRendererControl : UserControl
         switch (e.Key)
         {
             case VirtualKey.C when ctrl && _selection.IsActive:
-                MarkdownClipboardWriter.Copy(_snapshot.SourceMap, _selection.Range);
-                e.Handled = true;
+                e.Handled = CopySelectionToClipboard();
                 return;
             case VirtualKey.A when ctrl:
                 _selection.SetAnchor(DocumentPosition.Zero);
@@ -1792,6 +2202,12 @@ public sealed partial class MarkdownRendererControl : UserControl
                 return;
             case VirtualKey.Tab:
                 e.Handled = MoveFocus(reverse: shift);
+                return;
+            case VirtualKey.Left:
+            case VirtualKey.Right:
+            case VirtualKey.Up:
+            case VirtualKey.Down:
+                e.Handled = MoveFocusSpatial(e.Key);
                 return;
             case VirtualKey.Enter:
             case VirtualKey.Space when _focusedItemIndex >= 0:
@@ -1822,31 +2238,123 @@ public sealed partial class MarkdownRendererControl : UserControl
         var items = _focusableItems;
         if (items is null || items.Count == 0) return false;
 
+        int nextIndex = FocusNavigationHelper.MoveTab(items.Count, _focusedItemIndex, _focusResumeItemIndex, reverse);
+        if (nextIndex < 0)
+        {
+            // Let Tab/Shift+Tab leave the control to the next focusable element.
+            _focusedItemIndex = -1;
+            _focusResumeItemIndex = -1;
+            UpdateFocusRing();
+            SuppressHostedTabStopsForNativeTab();
+            return false;
+        }
+
+        _focusedItemIndex = nextIndex;
+        _focusResumeItemIndex = -1;
+        return CommitFocusedItem(reverse);
+    }
+
+    private void SuppressHostedTabStopsForNativeTab()
+    {
+        var suppressed = new List<(Control Control, bool IsTabStop)>();
+        var seen = new HashSet<Control>();
+        foreach (var plan in _embedPlans)
+        {
+            if (plan.Realized is { } realized)
+                SuppressHostedTabStops(realized, suppressed, seen);
+        }
+
+        if (suppressed.Count == 0)
+            return;
+
+        DispatcherQueue.TryEnqueue(() =>
+        {
+            foreach (var (control, isTabStop) in suppressed)
+                control.IsTabStop = isTabStop;
+        });
+    }
+
+    private static void SuppressHostedTabStops(
+        DependencyObject root,
+        List<(Control Control, bool IsTabStop)> suppressed,
+        HashSet<Control> seen)
+    {
+        if (root is Control control && seen.Add(control))
+        {
+            suppressed.Add((control, control.IsTabStop));
+            control.IsTabStop = false;
+        }
+
+        int childCount = VisualTreeHelper.GetChildrenCount(root);
+        for (int i = 0; i < childCount; i++)
+        {
+            SuppressHostedTabStops(VisualTreeHelper.GetChild(root, i), suppressed, seen);
+        }
+    }
+
+    private bool MoveFocusSpatial(VirtualKey key)
+    {
+        var items = _focusableItems;
+        if (items is null || items.Count == 0) return false;
+
         if (_focusedItemIndex < 0)
         {
-            // No item is focused yet — enter focus cycling at the boundary.
-            _focusedItemIndex = reverse ? items.Count - 1 : 0;
+            if (_focusResumeItemIndex < 0) return false;
+            _focusedItemIndex = Math.Clamp(_focusResumeItemIndex, 0, items.Count - 1);
+            _focusResumeItemIndex = -1;
+            return CommitFocusedItem(reverse: false);
         }
-        else
+
+        var map = BuildFocusableRectMap();
+        int currentLocalIndex = -1;
+        for (int i = 0; i < map.Count; i++)
         {
-            // Already focused — check if we're at the exit boundary.
-            bool atEnd   = !reverse && _focusedItemIndex == items.Count - 1;
-            bool atStart = reverse  && _focusedItemIndex == 0;
-            if (atEnd || atStart)
+            if (map[i].Index == _focusedItemIndex)
             {
-                // Let Tab/Shift+Tab leave the control to the next focusable element.
-                _focusedItemIndex = -1;
-                UpdateFocusRing();
-                return false;
+                currentLocalIndex = i;
+                break;
             }
-            _focusedItemIndex = reverse ? _focusedItemIndex - 1 : _focusedItemIndex + 1;
         }
-        UpdateFocusRing();
-        ScrollFocusedItemIntoView();
+
+        if (currentLocalIndex < 0) return false;
+
+        var rects = new List<Rect>(map.Count);
+        foreach (var entry in map) rects.Add(entry.Rect);
+
+        var direction = key switch
+        {
+            VirtualKey.Left => Layout.FocusNavigationDirection.Left,
+            VirtualKey.Right => Layout.FocusNavigationDirection.Right,
+            VirtualKey.Up => Layout.FocusNavigationDirection.Up,
+            VirtualKey.Down => Layout.FocusNavigationDirection.Down,
+            _ => Layout.FocusNavigationDirection.Down,
+        };
+
+        int nextLocalIndex = FocusNavigationHelper.MoveSpatial(rects, currentLocalIndex, direction);
+        if (nextLocalIndex < 0) return false;
+
+        _focusedItemIndex = map[nextLocalIndex].Index;
+        _focusResumeItemIndex = -1;
+        return CommitFocusedItem(reverse: false);
+    }
+
+    private bool CommitFocusedItem(bool reverse)
+    {
+        bool scrolled = ScrollFocusedItemIntoView();
+        FocusCurrentItem(reverse);
+        if (scrolled)
+        {
+            DispatcherQueue.TryEnqueue(() =>
+            {
+                if (_isUnloaded) return;
+                RealizeVisibleEmbeds();
+                FocusCurrentItem(reverse);
+            });
+        }
         return true;
     }
 
-    /// <summary>Fires LinkClick or simulates click on an inline embed for the currently focused item.</summary>
+    /// <summary>Fires LinkClick for the currently focused painted link.</summary>
     private bool ActivateFocusedItem()
     {
         var items = _focusableItems;
@@ -1854,7 +2362,10 @@ public sealed partial class MarkdownRendererControl : UserControl
             return false;
 
         var item = items[_focusedItemIndex];
-        if (!item.IsLink) return false;
+        if (!item.IsLink)
+        {
+            return TryFocusHostedElement(item, reverse: false);
+        }
 
         // Find the LinkRun in the snapshot and fire LinkClick.
         if (_snapshot is null) return false;
@@ -1868,6 +2379,49 @@ public sealed partial class MarkdownRendererControl : UserControl
             return true;
         }
         return false;
+    }
+
+    private void FocusCurrentItem(bool reverse = false)
+    {
+        var items = _focusableItems;
+        if (items is null || _focusedItemIndex < 0 || _focusedItemIndex >= items.Count)
+        {
+            UpdateFocusRing();
+            return;
+        }
+
+        var item = items[_focusedItemIndex];
+        if (!item.IsLink && TryFocusHostedElement(item, reverse))
+        {
+            if (_focusRing is not null) _focusRing.Visibility = Visibility.Collapsed;
+            return;
+        }
+
+        Focus(FocusState.Keyboard);
+        UpdateFocusRing();
+        NotifyFocusedItemAutomation();
+    }
+
+    private void NotifyFocusedItemAutomation()
+    {
+        if (!TryGetFocusedLink(out var inline, out var link))
+            return;
+
+        void Raise()
+        {
+            var peer = FrameworkElementAutomationPeer.FromElement(this) as MarkdownAutomationPeer
+                       ?? FrameworkElementAutomationPeer.CreatePeerForElement(this) as MarkdownAutomationPeer;
+            peer?.RaiseFocusForLink(inline, link);
+        }
+
+        // Let WinUI finish the real focus transition to the renderer first,
+        // then publish the virtual hyperlink focus event. If we raise inside
+        // GotFocus, Narrator can observe the root document focus event last and
+        // announce the whole renderer instead of the focused painted link.
+        if (DispatcherQueue is { } dispatcher)
+            dispatcher.TryEnqueue(Raise);
+        else
+            Raise();
     }
 
     /// <summary>
@@ -1899,6 +2453,12 @@ public sealed partial class MarkdownRendererControl : UserControl
         }
 
         var item = items[_focusedItemIndex];
+        if (!item.IsLink)
+        {
+            _focusRing.Visibility = Visibility.Collapsed;
+            return;
+        }
+
         var rect = GetFocusableItemRect(item);
         if (rect is not { Width: > 0, Height: > 0 } r)
         {
@@ -1906,15 +2466,14 @@ public sealed partial class MarkdownRendererControl : UserControl
             return;
         }
 
-        // Style with accent color (use the link foreground, which is the accent).
-        var accent = _themeSnapshot?.GetStyle(MarkdownElementKeys.Link).Foreground
-                     ?? Windows.UI.Color.FromArgb(0xFF, 0x00, 0x78, 0xD4);
-        // Allocate a new SolidColorBrush only when the accent color actually changes;
+        var focusVisual = _themeSnapshot?.FocusVisualColor
+                          ?? Windows.UI.Color.FromArgb(0xFF, 0x00, 0x78, 0xD4);
+        // Allocate a new SolidColorBrush only when the focus color actually changes;
         // avoid per-keystroke GC pressure during Tab traversal.
-        if (_focusRing.BorderBrush is null || accent != _focusRingBrushColor)
+        if (_focusRing.BorderBrush is null || focusVisual != _focusRingBrushColor)
         {
-            _focusRingBrushColor = accent;
-            _focusRing.BorderBrush = new SolidColorBrush(accent);
+            _focusRingBrushColor = focusVisual;
+            _focusRing.BorderBrush = new SolidColorBrush(focusVisual);
         }
 
         const double pad = 2.0;
@@ -1938,8 +2497,47 @@ public sealed partial class MarkdownRendererControl : UserControl
         return null;
     }
 
+    private void RememberFocusResumePoint(Point documentPoint)
+    {
+        var map = BuildFocusableRectMap();
+        if (map.Count == 0)
+        {
+            _focusResumeItemIndex = -1;
+            return;
+        }
+
+        var rects = new List<Rect>(map.Count);
+        foreach (var entry in map) rects.Add(entry.Rect);
+
+        int nearest = FocusNavigationHelper.FindNearestIndex(rects, documentPoint);
+        _focusResumeItemIndex = nearest >= 0 ? map[nearest].Index : -1;
+    }
+
+    private List<(int Index, Rect Rect)> BuildFocusableRectMap()
+    {
+        var result = new List<(int Index, Rect Rect)>();
+        var items = _focusableItems;
+        if (items is null) return result;
+
+        for (int i = 0; i < items.Count; i++)
+        {
+            if (GetFocusableItemRect(items[i]) is { Width: > 0, Height: > 0 } rect)
+                result.Add((i, rect));
+        }
+
+        return result;
+    }
+
     private static Rect? GetFocusableItemRectFromBlock(BlockBox box, Layout.FocusableItem item)
     {
+        if (box is Layout.Boxes.EmbedBox eb && eb.BlockIndex == item.BlockIndex)
+        {
+            return new Rect(
+                eb.Bounds.X + eb.Margin.Left,
+                eb.Bounds.Y + eb.Margin.Top,
+                eb.Bounds.Width - eb.Margin.Left - eb.Margin.Right,
+                eb.Bounds.Height - eb.Margin.Top - eb.Margin.Bottom);
+        }
         if (box is Layout.Boxes.InlineContainerBox icb && icb.BlockIndex == item.BlockIndex)
             return icb.GetRunRect(item.InlineIndex);
         if (box is Layout.Boxes.ListItemBox lib)
@@ -1967,21 +2565,211 @@ public sealed partial class MarkdownRendererControl : UserControl
     }
 
     /// <summary>Scrolls the focused item into view if it's outside the current viewport.</summary>
-    private void ScrollFocusedItemIntoView()
+    private bool ScrollFocusedItemIntoView()
     {
         var items = _focusableItems;
-        if (items is null || _focusedItemIndex < 0 || _scroll is null) return;
+        if (items is null || _focusedItemIndex < 0 || _scroll is null) return false;
         var item = items[_focusedItemIndex];
-        if (GetFocusableItemRect(item) is not { } rect) return;
+        if (GetFocusableItemRect(item) is not { } rect) return false;
 
         double top    = _scroll.VerticalOffset;
         double bottom = top + _scroll.ViewportHeight;
         const double margin = 24.0;
 
         if (rect.Top < top + margin)
-            _scroll.ChangeView(null, Math.Max(0, rect.Top - margin), null, disableAnimation: false);
+            return _scroll.ChangeView(null, Math.Max(0, rect.Top - margin), null, disableAnimation: false);
         else if (rect.Bottom > bottom - margin)
-            _scroll.ChangeView(null, rect.Bottom - _scroll.ViewportHeight + margin, null, disableAnimation: false);
+            return _scroll.ChangeView(null, rect.Bottom - _scroll.ViewportHeight + margin, null, disableAnimation: false);
+
+        return false;
+    }
+
+    private bool TryFocusHostedElement(Layout.FocusableItem item, bool reverse)
+    {
+        if (FindHostedElementForFocusable(item) is not { } element)
+            return false;
+
+        if (TryFocusHostedDescendant(element, reverse))
+            return true;
+
+        return element.Focus(FocusState.Keyboard);
+    }
+
+    private static bool TryMoveFocusWithinHostedEmbed(FrameworkElement host, object originalSource, bool reverse)
+    {
+        var focusables = CollectHostedFocusableControls(host);
+        if (focusables.Count <= 1)
+            return false;
+
+        var current = FindCurrentHostedFocusable(host, originalSource, focusables);
+        if (current is null)
+            return false;
+
+        int index = focusables.IndexOf(current);
+        if (index < 0)
+            return false;
+
+        int next = reverse ? index - 1 : index + 1;
+        if (next < 0 || next >= focusables.Count)
+            return false;
+
+        return focusables[next].Focus(FocusState.Keyboard);
+    }
+
+    private static bool TryFocusHostedDescendant(FrameworkElement host, bool reverse)
+    {
+        var focusables = CollectHostedFocusableControls(host);
+        if (focusables.Count == 0)
+            return false;
+
+        var target = reverse ? focusables[^1] : focusables[0];
+        return target.Focus(FocusState.Keyboard);
+    }
+
+    private static Control? FindCurrentHostedFocusable(
+        FrameworkElement host,
+        object originalSource,
+        IReadOnlyList<Control> focusables)
+    {
+        DependencyObject? focused = null;
+        try
+        {
+            if (host.XamlRoot is not null)
+                focused = FocusManager.GetFocusedElement(host.XamlRoot) as DependencyObject;
+        }
+        catch
+        {
+        }
+
+        var current = FindFocusableAncestorWithin(host, focused);
+        if (current is not null && ContainsHostedFocusable(focusables, current))
+            return current;
+
+        current = FindFocusableAncestorWithin(host, originalSource as DependencyObject);
+        return current is not null && ContainsHostedFocusable(focusables, current) ? current : null;
+    }
+
+    private static bool ContainsHostedFocusable(IReadOnlyList<Control> focusables, Control control)
+    {
+        for (int i = 0; i < focusables.Count; i++)
+        {
+            if (ReferenceEquals(focusables[i], control))
+                return true;
+        }
+
+        return false;
+    }
+
+    private static Control? FindFocusableAncestorWithin(FrameworkElement host, DependencyObject? node)
+    {
+        while (node is not null)
+        {
+            if (ReferenceEquals(node, host))
+                return node is Control hostControl && IsHostedFocusableControl(hostControl) ? hostControl : null;
+
+            if (node is Control control && IsHostedFocusableControl(control))
+                return control;
+
+            DependencyObject? parent = null;
+            try { parent = VisualTreeHelper.GetParent(node); }
+            catch { }
+            node = parent;
+        }
+
+        return null;
+    }
+
+    private static List<Control> CollectHostedFocusableControls(DependencyObject root)
+    {
+        var result = new List<Control>();
+        CollectHostedFocusableControls(root, result);
+        return result;
+    }
+
+    private static void CollectHostedFocusableControls(DependencyObject node, List<Control> result)
+    {
+        if (node is Control control && IsHostedFocusableControl(control))
+            result.Add(control);
+
+        int childCount;
+        try { childCount = VisualTreeHelper.GetChildrenCount(node); }
+        catch { return; }
+
+        for (int i = 0; i < childCount; i++)
+        {
+            DependencyObject child;
+            try { child = VisualTreeHelper.GetChild(node, i); }
+            catch { continue; }
+            CollectHostedFocusableControls(child, result);
+        }
+    }
+
+    private static bool IsHostedFocusableControl(Control control) =>
+        control.Visibility == Visibility.Visible &&
+        control.IsEnabled &&
+        control.IsTabStop;
+
+    private FrameworkElement? FindHostedElementForFocusable(Layout.FocusableItem item)
+    {
+        if (_snapshot is null) return null;
+        foreach (var block in _snapshot.Blocks)
+        {
+            var found = FindHostedElementForFocusable(block, item);
+            if (found is not null) return found;
+        }
+
+        return null;
+    }
+
+    private bool TrySetFocusedItemForHostedElement(FrameworkElement element)
+    {
+        var items = _focusableItems;
+        if (items is null) return false;
+        for (int i = 0; i < items.Count; i++)
+        {
+            if (ReferenceEquals(FindHostedElementForFocusable(items[i]), element))
+            {
+                _focusedItemIndex = i;
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    private static FrameworkElement? FindHostedElementForFocusable(BlockBox box, Layout.FocusableItem item)
+    {
+        switch (box)
+        {
+            case Layout.Boxes.EmbedBox eb when item.IsBlockEmbed && eb.BlockIndex == item.BlockIndex:
+                return eb.RealizedElement;
+            case Layout.Boxes.InlineContainerBox icb when item.IsInlineEmbed && icb.BlockIndex == item.BlockIndex:
+                foreach (var run in icb.Runs)
+                {
+                    if (run.InlineIndex == item.InlineIndex && run is InlineEmbedRun embed)
+                        return embed.RealizedElement;
+                }
+                return null;
+            case Layout.Boxes.ListItemBox lib:
+                return FindHostedElementForFocusable(lib.Marker, item)
+                       ?? FindHostedElementForFocusable(lib.Content, item);
+            case Layout.Boxes.TableBox tb:
+                foreach (var cell in tb.GetCellBoxes())
+                {
+                    var found = FindHostedElementForFocusable(cell, item);
+                    if (found is not null) return found;
+                }
+                return null;
+            case Layout.Boxes.StackBox sb:
+                foreach (var child in sb.Children)
+                {
+                    var found = FindHostedElementForFocusable(child, item);
+                    if (found is not null) return found;
+                }
+                return null;
+            default:
+                return null;
+        }
     }
 
     private LinkRun? FindLinkAt(DocumentPosition pos)
@@ -1992,6 +2780,100 @@ public sealed partial class MarkdownRendererControl : UserControl
             if (FindLinkInBlock(b, pos) is { } found) return found;
         }
         return null;
+    }
+
+    private bool TryGetFocusedLink(out Layout.Boxes.InlineContainerBox inline, out LinkRun link)
+    {
+        inline = null!;
+        link = null!;
+
+        var items = _focusableItems;
+        if (items is null || _focusedItemIndex < 0 || _focusedItemIndex >= items.Count)
+            return false;
+
+        return TryGetLinkForFocusable(items[_focusedItemIndex], out inline, out link);
+    }
+
+    private bool TryGetFocusableIndexForLink(LinkRun run, out int index)
+    {
+        index = -1;
+        var items = _focusableItems;
+        if (items is null) return false;
+
+        for (int i = 0; i < items.Count; i++)
+        {
+            if (!items[i].IsLink)
+                continue;
+
+            if (TryGetLinkForFocusable(items[i], out _, out var link) &&
+                ReferenceEquals(link, run))
+            {
+                index = i;
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    private bool TryGetLinkForFocusable(Layout.FocusableItem item, out Layout.Boxes.InlineContainerBox inline, out LinkRun link)
+    {
+        inline = null!;
+        link = null!;
+        if (!item.IsLink || _snapshot is null)
+            return false;
+
+        foreach (var b in _snapshot.Blocks)
+        {
+            if (TryGetLinkForFocusable(b, item, out inline, out link))
+                return true;
+        }
+
+        return false;
+    }
+
+    private static bool TryGetLinkForFocusable(
+        BlockBox box,
+        Layout.FocusableItem item,
+        out Layout.Boxes.InlineContainerBox inline,
+        out LinkRun link)
+    {
+        inline = null!;
+        link = null!;
+
+        switch (box)
+        {
+            case Layout.Boxes.InlineContainerBox icb when icb.BlockIndex == item.BlockIndex:
+                foreach (var r in icb.Runs)
+                {
+                    if (r.InlineIndex == item.InlineIndex && r is LinkRun lr)
+                    {
+                        inline = icb;
+                        link = lr;
+                        return true;
+                    }
+                }
+                return false;
+            case Layout.Boxes.ListItemBox lib:
+                return TryGetLinkForFocusable(lib.Marker, item, out inline, out link)
+                       || TryGetLinkForFocusable(lib.Content, item, out inline, out link);
+            case Layout.Boxes.TableBox tb:
+                foreach (var cell in tb.GetCellBoxes())
+                {
+                    if (TryGetLinkForFocusable(cell, item, out inline, out link))
+                        return true;
+                }
+                return false;
+            case Layout.Boxes.StackBox sb:
+                foreach (var c in sb.Children)
+                {
+                    if (TryGetLinkForFocusable(c, item, out inline, out link))
+                        return true;
+                }
+                return false;
+            default:
+                return false;
+        }
     }
 
     // ---- Word / line selection helpers ----
@@ -2087,17 +2969,18 @@ public sealed partial class MarkdownRendererControl : UserControl
         if (_canvas is null) return;
         var pt = e.GetPosition(_canvas);
         var menu = new MenuFlyout();
+        _contextMenuOpen = true;
+        menu.Closed += (_, _) => _contextMenuOpen = false;
 
-        var copyItem = new MenuFlyoutItem { Text = "Copy" };
+        var copyItem = new MenuFlyoutItem { Text = MarkdownLocalizedStrings.ContextMenuCopy };
         copyItem.IsEnabled = _selection.IsActive;
         copyItem.Click += (_, _) =>
         {
-            if (_snapshot is not null && _selection.IsActive)
-                MarkdownClipboardWriter.Copy(_snapshot.SourceMap, _selection.Range);
+            CopySelectionToClipboard();
         };
         menu.Items.Add(copyItem);
 
-        var selectAllItem = new MenuFlyoutItem { Text = "Select All" };
+        var selectAllItem = new MenuFlyoutItem { Text = MarkdownLocalizedStrings.ContextMenuSelectAll };
         selectAllItem.IsEnabled = IsSelectionEnabled;
         selectAllItem.Click += (_, _) =>
         {

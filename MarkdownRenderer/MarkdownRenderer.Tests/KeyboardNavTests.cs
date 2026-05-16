@@ -1,4 +1,5 @@
 using MarkdownRenderer.Layout;
+using Windows.Foundation;
 using Xunit;
 
 namespace MarkdownRenderer.Tests;
@@ -58,5 +59,59 @@ public class KeyboardNavTests
         Assert.Equal(int.MaxValue, item.BlockIndex);
         Assert.Equal(int.MaxValue, item.InlineIndex);
         Assert.False(item.IsLink);
+    }
+
+    [Theory]
+    [InlineData(false, 0)]
+    [InlineData(true, 3)]
+    public void MoveTab_EntersAtBoundary_WhenNoResume(bool reverse, int expected)
+    {
+        Assert.Equal(expected, FocusNavigationHelper.MoveTab(4, currentIndex: -1, resumeIndex: -1, reverse));
+    }
+
+    [Fact]
+    public void MoveTab_UsesPointerResumeIndex()
+    {
+        Assert.Equal(2, FocusNavigationHelper.MoveTab(4, currentIndex: -1, resumeIndex: 2, reverse: false));
+        Assert.Equal(1, FocusNavigationHelper.MoveTab(4, currentIndex: -1, resumeIndex: 2, reverse: true));
+    }
+
+    [Fact]
+    public void MoveTab_ReturnsMinusOne_WhenTraversalShouldExitControl()
+    {
+        Assert.Equal(-1, FocusNavigationHelper.MoveTab(3, currentIndex: 2, resumeIndex: -1, reverse: false));
+        Assert.Equal(-1, FocusNavigationHelper.MoveTab(3, currentIndex: 0, resumeIndex: -1, reverse: true));
+    }
+
+    [Fact]
+    public void FindNearestIndex_ChoosesContainingOrClosestRect()
+    {
+        var rects = new[]
+        {
+            new Rect(10, 10, 20, 20),
+            new Rect(90, 10, 20, 20),
+            new Rect(10, 90, 20, 20),
+        };
+
+        Assert.Equal(0, FocusNavigationHelper.FindNearestIndex(rects, new Point(15, 15)));
+        Assert.Equal(1, FocusNavigationHelper.FindNearestIndex(rects, new Point(75, 20)));
+        Assert.Equal(2, FocusNavigationHelper.FindNearestIndex(rects, new Point(20, 75)));
+    }
+
+    [Fact]
+    public void MoveSpatial_UsesVisualDirection()
+    {
+        var rects = new[]
+        {
+            new Rect(50, 50, 20, 20),
+            new Rect(100, 52, 20, 20),
+            new Rect(52, 110, 20, 20),
+            new Rect(100, 110, 20, 20),
+        };
+
+        Assert.Equal(1, FocusNavigationHelper.MoveSpatial(rects, 0, FocusNavigationDirection.Right));
+        Assert.Equal(2, FocusNavigationHelper.MoveSpatial(rects, 0, FocusNavigationDirection.Down));
+        Assert.Equal(-1, FocusNavigationHelper.MoveSpatial(rects, 0, FocusNavigationDirection.Left));
+        Assert.Equal(3, FocusNavigationHelper.MoveSpatial(rects, 1, FocusNavigationDirection.Down));
     }
 }

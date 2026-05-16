@@ -141,6 +141,29 @@ public class TextBoundaryHelperTests
     }
 
     [Fact]
+    public void Punctuation_SeparatesWords()
+    {
+        var (start, end) = TextBoundaryHelper.FindWordBoundaries("hello,world", 6);
+        Assert.Equal(6, start);
+        Assert.Equal(11, end);
+    }
+
+    [Fact]
+    public void CombiningMark_StaysWithBaseCharacter()
+    {
+        var (start, end) = TextBoundaryHelper.FindWordBoundaries("cafe\u0301 noir", 4);
+        Assert.Equal(0, start);
+        Assert.Equal(5, end);
+    }
+
+    [Fact]
+    public void WordMovement_SkipsPunctuation()
+    {
+        Assert.Equal(7, TextBoundaryHelper.FindNextWordStart("hello, world", 0));
+        Assert.Equal(0, TextBoundaryHelper.FindPreviousWordStart("hello, world", 7));
+    }
+
+    [Fact]
     public void TrailingDoubleSpace_CursorOnLastSpace_SnapsLeftToWord()
     {
         // "hello  " — cursor on last char (index 6, second trailing space).

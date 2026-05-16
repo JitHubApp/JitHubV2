@@ -7,6 +7,7 @@ using Microsoft.Graphics.Canvas;
 using Microsoft.Graphics.Canvas.Text;
 using Microsoft.UI.Xaml;
 using Windows.Foundation;
+using MarkdownRenderer.Diagnostics;
 using MarkdownRenderer.Document;
 using MarkdownRenderer.Theming;
 
@@ -173,7 +174,7 @@ public sealed class ImageBox : BlockBox
                 catch (Exception ex)
                 {
                     // Device-lost or similar — fall through to async re-rasterize.
-                    System.Diagnostics.Debug.WriteLine(
+                    MarkdownDiagnostics.WriteLine(
                         $"[ImageBox] cache-hit CanvasBitmap.CreateFromBytes failed: {ex.Message}");
                 }
             }
@@ -401,7 +402,7 @@ public sealed class ImageBox : BlockBox
         }
         catch (Exception ex)
         {
-            System.Diagnostics.Debug.WriteLine($"[ImageBox] bitmap load failed for {uri}: {ex.Message}");
+            MarkdownDiagnostics.WriteLine($"[ImageBox] bitmap load failed for {uri}: {ex.Message}");
             failed = true;
         }
         PublishOnUiThread(() =>
@@ -440,7 +441,7 @@ public sealed class ImageBox : BlockBox
             response.EnsureSuccessStatusCode();
             if (response.Content.Headers.ContentLength > MaxSvgBytes)
             {
-                System.Diagnostics.Debug.WriteLine(
+                MarkdownDiagnostics.WriteLine(
                     $"[ImageBox] SVG at {uri} Content-Length={response.Content.Headers.ContentLength} exceeds {MaxSvgBytes} bytes; skipping.");
                 failed = true;
             }
@@ -453,7 +454,7 @@ public sealed class ImageBox : BlockBox
                     read += chunk;
                 if (read > MaxSvgBytes)
                 {
-                    System.Diagnostics.Debug.WriteLine(
+                    MarkdownDiagnostics.WriteLine(
                         $"[ImageBox] SVG at {uri} exceeded {MaxSvgBytes} bytes mid-stream; skipping.");
                     failed = true;
                 }
@@ -465,7 +466,7 @@ public sealed class ImageBox : BlockBox
         }
         catch (Exception ex)
         {
-            System.Diagnostics.Debug.WriteLine($"[ImageBox] svg fetch failed for {uri}: {ex.Message}");
+            MarkdownDiagnostics.WriteLine($"[ImageBox] svg fetch failed for {uri}: {ex.Message}");
             failed = true;
         }
 
@@ -501,7 +502,7 @@ public sealed class ImageBox : BlockBox
                     : System.Text.Encoding.UTF8.GetBytes(Uri.UnescapeDataString(payload));
                 if (rawBytes.Length > MaxSvgBytes)
                 {
-                    System.Diagnostics.Debug.WriteLine(
+                    MarkdownDiagnostics.WriteLine(
                         $"[ImageBox] SVG data URI exceeds {MaxSvgBytes} bytes; skipping.");
                     rawBytes = null;
                     failed = true;
@@ -510,7 +511,7 @@ public sealed class ImageBox : BlockBox
         }
         catch (Exception ex)
         {
-            System.Diagnostics.Debug.WriteLine($"[ImageBox] svg data uri decode failed: {ex.Message}");
+            MarkdownDiagnostics.WriteLine($"[ImageBox] svg data uri decode failed: {ex.Message}");
             failed = true;
         }
 
@@ -607,7 +608,7 @@ public sealed class ImageBox : BlockBox
                 }
                 catch (Exception ex)
                 {
-                    System.Diagnostics.Debug.WriteLine(
+                    MarkdownDiagnostics.WriteLine(
                         $"[ImageBox] CanvasBitmap.CreateFromBytes failed: {ex.Message}");
                     _loadFailed = true;
                     if (!string.IsNullOrEmpty(_url)) { _failedUrls.TryAdd(_url, 0); TrimCache(_failedUrls, MaxFailedUrlEntries); }
