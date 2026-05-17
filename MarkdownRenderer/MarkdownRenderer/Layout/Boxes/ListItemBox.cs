@@ -8,9 +8,9 @@ namespace MarkdownRenderer.Layout.Boxes;
 
 /// <summary>
 /// Lays out a list item as two side-by-side columns: a fixed-width marker gutter
-/// on the left (bullet or number) and a variable-width content area on the right.
+/// on the left (bullet or number) and a varnable-width content area on the right.
 /// </summary>
-public sealed class ListItemBox : BlockBox
+internal sealed class ListItemBox : BlockBox
 {
     private readonly InlineContainerBox _marker;
     private readonly StackBox _content;
@@ -20,6 +20,7 @@ public sealed class ListItemBox : BlockBox
     public InlineContainerBox Marker => _marker;
     /// <summary>The content (rest of list item) StackBox on the right.</summary>
     public StackBox Content => _content;
+    public float MarkerWidth => _markerWidth;
 
     /// <summary>Flow direction for this list item. When RightToLeft, the marker is placed on the right and content on the left.</summary>
     public FlowDirection FlowDirection { get; set; } = FlowDirection.LeftToRight;

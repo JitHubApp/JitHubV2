@@ -3,23 +3,30 @@ using System.Collections.Generic;
 
 namespace MarkdownRenderer.Document;
 
+/// <summary>
+/// Maps rendered document positions back to exact markdown source spans.
+/// </summary>
 public sealed class MarkdownSourceMap
 {
     private readonly List<Entry> _entries = new();
     private readonly string _sourceText;
 
+    /// <summary>Initializes a source map for the supplied markdown source.</summary>
     public MarkdownSourceMap(string sourceText)
     {
         _sourceText = sourceText ?? string.Empty;
     }
 
+    /// <summary>Gets the markdown source text associated with this map.</summary>
     public string SourceText => _sourceText;
 
+    /// <summary>Adds a mapping from a rendered inline run to a source span.</summary>
     public void Add(int blockIndex, int inlineIndex, int renderedLength, SourceSpan span)
     {
         _entries.Add(new Entry(blockIndex, inlineIndex, renderedLength, span));
     }
 
+    /// <summary>Returns the exact markdown source slice covered by a rendered document range.</summary>
     public string Slice(DocumentRange range)
     {
         range = range.Normalized();

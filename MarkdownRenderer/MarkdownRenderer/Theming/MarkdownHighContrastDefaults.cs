@@ -41,6 +41,14 @@ internal static class MarkdownHighContrastDefaults
             MarkdownHighContrastColorRole.WindowText,
             Strikethrough: true),
 
+        "Inserted" or "Abbreviation" => new(
+            MarkdownHighContrastColorRole.WindowText,
+            Underline: true),
+
+        "Marked" or "DefinitionDescription" or "Figure" or "FigureCaption" or "Diagram" => new(
+            MarkdownHighContrastColorRole.WindowText,
+            MarkdownHighContrastColorRole.Window),
+
         "TableHeader" => new(
             MarkdownHighContrastColorRole.HighlightText,
             MarkdownHighContrastColorRole.Highlight),

@@ -1,0 +1,17 @@
+<Project>
+  <PropertyGroup>
+    <_MarkdownRendererThorVgArch Condition="'$(Platform)' == '' or '$(Platform)' == 'AnyCPU' or '$(Platform)' == 'Any CPU'">x64</_MarkdownRendererThorVgArch>
+    <_MarkdownRendererThorVgArch Condition="'$(_MarkdownRendererThorVgArch)' == '' and ('$(Platform)' == 'x86' or '$(PlatformTarget)' == 'x86' or '$(RuntimeIdentifier)' == 'win-x86')">x86</_MarkdownRendererThorVgArch>
+    <_MarkdownRendererThorVgArch Condition="'$(_MarkdownRendererThorVgArch)' == '' and ('$(Platform)' == 'x64' or '$(PlatformTarget)' == 'x64' or '$(RuntimeIdentifier)' == 'win-x64')">x64</_MarkdownRendererThorVgArch>
+    <_MarkdownRendererThorVgArch Condition="'$(_MarkdownRendererThorVgArch)' == '' and ('$(Platform)' == 'ARM64' or '$(Platform)' == 'arm64' or '$(PlatformTarget)' == 'ARM64' or '$(PlatformTarget)' == 'arm64' or '$(RuntimeIdentifier)' == 'win-arm64')">arm64</_MarkdownRendererThorVgArch>
+    <_MarkdownRendererThorVgSource>$(MSBuildThisFileDirectory)MarkdownRenderer\native\win-$(_MarkdownRendererThorVgArch)\thorvg.dll</_MarkdownRendererThorVgSource>
+  </PropertyGroup>
+
+  <Target Name="CopyMarkdownRendererThorVgNativeAssetToOutputRoot"
+          AfterTargets="Build"
+          Condition="'$(_MarkdownRendererThorVgArch)' != '' and Exists('$(_MarkdownRendererThorVgSource)') and '$(OutDir)' != ''">
+    <Copy SourceFiles="$(_MarkdownRendererThorVgSource)"
+          DestinationFiles="$(OutDir)thorvg.dll"
+          SkipUnchangedFiles="true" />
+  </Target>
+</Project>

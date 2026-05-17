@@ -1,13 +1,15 @@
 # Packaging and distribution
 
-The project is structured like a library but is not fully NuGet-ready yet.
+The renderer is packaged as two NuGet packages: `MarkdownRenderer` for the core
+control and `MarkdownRenderer.Gfm` for GitHub-flavored markdown helpers and
+renderers.
 
 ## Current project structure
 
 ```text
 MarkdownRenderer/
   MarkdownRenderer/                  core control
-  MarkdownRenderer.Gfm/              GFM extension package candidate
+  MarkdownRenderer.Gfm/              GFM extension package
   MarkdownRenderer.Sample/           WinUI sample app
   MarkdownRenderer.Sample.Automation/ UI automation
   MarkdownRenderer.Tests/            unit tests
@@ -37,10 +39,17 @@ APIs.
 
 ## Native assets
 
-The core project includes `native\win-x64\thorvg.dll` as content for x64-like
-builds. Explicit x86 and ARM64 builds do not include a native ThorVG binary.
+The core project includes ThorVG native SVG rasterizer assets for:
 
-This is acceptable for current development but incomplete for a production NuGet.
+- `native\win-x86\thorvg.dll`;
+- `native\win-x64\thorvg.dll`;
+- `native\win-arm64\thorvg.dll`.
+
+The default repo build copies the selected architecture's `thorvg.dll` to the
+output root, including app outputs that reference the renderer project. The core
+project packs all three binaries under `runtimes\win-x86\native`,
+`runtimes\win-x64\native`, and `runtimes\win-arm64\native`. Builds fail if a
+selected architecture's native asset is missing.
 
 ## AOT and trimming
 
@@ -55,26 +64,13 @@ The projects enable:
 
 Custom renderer dispatch is designed to avoid reflection-heavy discovery.
 
-## NuGet readiness gaps
+## Package metadata
 
-Before packaging:
+Both packages include package IDs, descriptions, author metadata, MIT license
+expression, repository/project URLs, tags, README, and the existing repository
+icon. XML documentation is generated with `CS1591` enabled.
 
-- add `PackageId`;
-- add `Description`;
-- add `Authors`;
-- add `PackageTags`;
-- add `PackageLicenseExpression`;
-- add `RepositoryUrl`;
-- add `PackageProjectUrl`;
-- add package icon;
-- decide whether `MarkdownRenderer.Gfm` ships as a separate package;
-- ship native SVG assets for x64, ARM64, and x86 or document unsupported
-  architectures clearly;
-- remove or justify `CS1591` suppression after XML docs are added;
-- create a versioning and breaking-change policy;
-- include samples and extension-author docs.
-
-## Suggested package split
+## Package split
 
 | Package | Contents |
 | --- | --- |
@@ -85,6 +81,44 @@ Before packaging:
 Keeping GFM separate lets the core remain minimal while still making GFM easy to
 opt into.
 
+## Quick-start APIs
+
+Core CommonMark:
+
+```csharp
+var control = MarkdownRendererControl.CreateDefault(markdownSource);
+```
+
+Recommended GFM:
+
+```csharp
+var control = GfmMarkdownRenderer.CreateDefault(markdownSource);
+```
+
+Fluent configuration:
+
+```csharp
+var control = new MarkdownRendererControlBuilder()
+    .UseGitHubFlavoredMarkdown()
+    .UseMarkdownExtra()
+    .WithMarkdown(markdownSource)
+    .WithTheme(theme)
+    .WithEmbedFactory(embedFactory)
+    .WithSelectionEnabled(true)
+    .Build();
+```
+
+The committed parsed-document facade is available through `control.Document`
+with `GetHeadings()`, `GetLinks()`, `GetCodeBlocks()`, `GetImages()`,
+`GetFootnotes()`, `GetDefinitionItems()`, `GetAbbreviations()`, and
+`GetFragments()`.
+
+## Versioning policy
+
+Before 1.0, source-breaking cleanup is allowed when it removes accidental public
+internals or stabilizes the extension-author boundary. Starting at 1.0, public
+APIs follow semantic versioning.
+
 ## Bundle size considerations
 
 Primary bundle-size contributors:
@@ -92,9 +126,7 @@ Primary bundle-size contributors:
 - Windows App SDK dependencies;
 - Win2D;
 - Markdig;
-- ThorVG native DLL;
-- future native binaries for ARM64/x86 if added.
+- ThorVG native DLLs for x86, x64, and ARM64.
 
 The control should avoid adding broad general-purpose dependencies. New features
 should prefer small, optional packages or extension points.
-

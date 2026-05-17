@@ -2,6 +2,7 @@ using Markdig;
 using Markdig.Extensions.Footnotes;
 using Markdig.Extensions.Tables;
 using Markdig.Extensions.TaskLists;
+using Markdig.Renderers.Html;
 using Markdig.Syntax;
 using Markdig.Syntax.Inlines;
 using Xunit;
@@ -73,6 +74,18 @@ public class GfmIntegrationTests
         var table = Assert.Single(doc.OfType<Table>());
         var dataRow = table.OfType<TableRow>().Last();
         Assert.False(dataRow.IsHeader);
+    }
+
+    [Fact]
+    public void Table_ColumnDefinitions_PreserveAlignment()
+    {
+        var md = "| Left | Center | Right |\n|:---|:---:|---:|\n| a | b | c |";
+        var doc = Parse(md);
+        var table = Assert.Single(doc.OfType<Table>());
+
+        Assert.Equal(TableColumnAlign.Left, table.ColumnDefinitions[0].Alignment);
+        Assert.Equal(TableColumnAlign.Center, table.ColumnDefinitions[1].Alignment);
+        Assert.Equal(TableColumnAlign.Right, table.ColumnDefinitions[2].Alignment);
     }
 
     // 3. Task list — checked and unchecked
@@ -226,6 +239,25 @@ public class GfmIntegrationTests
         var innerList = outerItem.OfType<ListBlock>().FirstOrDefault();
         Assert.NotNull(innerList);
         Assert.False(innerList.IsOrdered);
+    }
+
+    [Fact]
+    public void GenericAttributes_AttachClassesAndIdsToMarkdownObjects()
+    {
+        var md = "## Heading {#intro .warning .wide}\n\nParagraph with [link](https://example.com){.cta}.";
+        var doc = Parse(md);
+
+        var heading = Assert.Single(doc.OfType<HeadingBlock>());
+        var headingAttrs = HtmlAttributesExtensions.TryGetAttributes(heading);
+        Assert.NotNull(headingAttrs);
+        Assert.Equal("intro", headingAttrs!.Id);
+        Assert.Equal(new[] { "warning", "wide" }, headingAttrs.Classes);
+
+        var paragraph = Assert.Single(doc.OfType<ParagraphBlock>());
+        var link = paragraph.Inline!.Descendants().OfType<LinkInline>().Single();
+        var linkAttrs = HtmlAttributesExtensions.TryGetAttributes(link);
+        Assert.NotNull(linkAttrs);
+        Assert.Equal(new[] { "cta" }, linkAttrs!.Classes);
     }
 
     // 10. Fenced code block language tag

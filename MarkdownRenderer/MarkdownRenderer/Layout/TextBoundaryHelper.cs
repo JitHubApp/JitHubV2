@@ -8,7 +8,7 @@ namespace MarkdownRenderer.Layout;
 /// Extracted as a static class so the algorithm can be unit-tested independently
 /// of Win2D / WinUI infrastructure.
 /// </summary>
-public static class TextBoundaryHelper
+internal static class TextBoundaryHelper
 {
     /// <summary>
     /// Returns the [start, end) char offsets of the word that contains (or is nearest to)

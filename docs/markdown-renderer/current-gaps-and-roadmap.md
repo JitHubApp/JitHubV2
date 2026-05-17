@@ -1,66 +1,52 @@
-# Current gaps and roadmap
+# Roadmap
 
-This document summarizes what remains between the current implementation and a
-production-mature open-source control.
+This document summarizes release-readiness work and deferred feature tracks.
 
 ## Maturity snapshot
 
-| Area | Estimated maturity | Main gaps |
+| Area | Status | Release note |
 | --- | --- | --- |
-| Rendering | 85 percent | Inline images, HTML, definition lists, math, generic attributes. |
-| Selection | 80 percent | Embedded controls, auto-scroll, copy-as-HTML. |
-| Theming | 75 percent | Incremental restyle, auto-invalidation, state variants. |
-| Accessibility | 60 percent | Text pattern, table pattern, list roles, heading levels. |
-| Performance | 85 percent | Lazy layout, restyle-only rebuild, allocation reduction. |
-| Packaging/API | 70 percent | XML docs, NuGet metadata, API facade, cross-arch native assets. |
+| Rendering | 1.0-ready except excluded areas | Raw HTML and LaTeX/math are intentionally tracked separately. |
+| Selection | 1.0-ready | Manual clipboard smoke across target apps remains. |
+| Theming | Implementation complete | Manual contrast-theme smoke and consumer presets remain as release validation. |
+| Accessibility | Implementation complete | Manual Narrator, contrast-theme, and language smoke remain. |
+| Performance | 1.0-ready | Manual long-document/device-reset stress remains. |
+| Packaging/API | Complete | Release validation and NuGet publishing remain. |
 
 ## Release-blocking items
 
-- Implement `ITextProvider` / `ITextRangeProvider`.
-- Expose heading levels through UIA.
-- Implement table UIA patterns.
-- Fix inline image rendering.
-- Add XML documentation for all public API surface.
+- Run the manual 1.0 smoke matrix: Narrator, every built-in Windows contrast
+  theme, one custom contrast theme, RTL/system-language behavior, monitor or
+  graphics-device reset, and x86/x64/ARM64 sample launch.
+- Inspect Release packages for metadata, XML docs, README/icon/license, symbols,
+  and all ThorVG native assets.
 
 ## Before 1.0
 
-- Incremental theme invalidation without markdown re-parse.
-- Auto-invalidate `MarkdownTheme.Overrides` mutations.
-- Make embedded WinUI elements participatory in selection.
-- Add drag-outside-viewport auto-scroll.
-- Add lazy/viewport-relative layout for large documents.
-- Document and guard `IMarkdownEmbedFactory` thread safety.
-- Add quick-start builder/factory APIs.
-- Add ARM64/x86 SVG fallback visibility or native binaries.
-- Stabilize public API surface.
+- Publish signed NuGet packages after release validation.
+- Keep raw HTML and LaTeX/math documented as out of scope for this release.
 
 ## v1.1 candidates
 
-- Definition list renderer.
 - Math/LaTeX support.
-- Abbreviations.
-- Generic attribute styling and fragment targeting.
-- Copy-as-HTML.
-- List UIA roles.
-- Code language hints.
-- Style composition/context variants.
-- Object pooling for layout allocations.
+- Safe raw HTML policy and renderer.
+- Optional richer diagram package built on the embed API.
+- Targeted recycling for additional proven pure managed helper allocations.
 
-## Known technical debt
+## Deferred feature tracks
 
-- Theme override dictionary mutation is silent until `Invalidate()` is called.
-- Footnote order fallback is heuristic when Markdig does not assign order.
-- Scroll anchoring can lose position if all visible blocks scroll off.
-- Pointer-capture state has subtle interactions with hosted controls.
-- Raw HTML policy is undecided.
-- SVG is x64-only today.
+- Raw HTML rendering needs a sanitizer and native rendering policy before it can
+  be enabled safely.
+- LaTeX/math rendering is intentionally deferred.
+
+## Release validation debt
+
+- Manual release smoke is still required because UIA, contrast themes,
+  language/RTL behavior, and graphics-device reset cannot be trusted from unit
+  tests alone.
 
 ## Source of truth for work tracking
 
-The repository also contains:
-
-- `MarkdownRenderer\TODO.md` for a checklist-style maturity backlog;
-- session SQL todos for task execution within agent sessions.
-
-When adding new maturity work, update this roadmap and the TODO file together.
-
+The repository also contains `MarkdownRenderer\TODO.md` for checklist-style
+engineering work. When adding new maturity work, update this roadmap and that
+backlog together.

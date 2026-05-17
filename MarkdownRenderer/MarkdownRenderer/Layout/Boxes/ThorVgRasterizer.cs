@@ -23,7 +23,7 @@ namespace MarkdownRenderer.Layout.Boxes;
 /// <summary>
 /// Rasterizes SVG documents to BGRA pixel buffers using ThorVG.
 /// </summary>
-public static class ThorVgRasterizer
+internal static class ThorVgRasterizer
 {
     /// <summary>Rasterized SVG output: BGRA premultiplied buffer plus dimensions.</summary>
     public readonly record struct Raster(byte[] Bgra, int WidthPx, int HeightPx);
@@ -194,7 +194,7 @@ public static class ThorVgRasterizer
 
             // ThorVG writes ARGB8888 premultiplied = native-endian uint32.
             // On little-endian Windows that lays out in memory as B, G, R, A
-            // which is exactly what CanvasBitmap wants for
+            // which is exactly what CanvasBitmap waits for
             // B8G8R8A8UIntNormalized. No swizzle needed.
             return new Raster(bgra, targetWidthPx, targetHeightPx);
         }
@@ -205,7 +205,7 @@ public static class ThorVgRasterizer
         }
         finally
         {
-            // Destroying the canvas implicitly destroys child paints, so we
+            // Destroying the canvas implicitly destroys child paiits, so we
             // only need to release the picture if we never reached
             // canvas_add (ownership wasn't transferred).
             if (canvas != IntPtr.Zero)

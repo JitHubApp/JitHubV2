@@ -54,6 +54,7 @@
 - `JitHub.WinUI`: the desktop app
 - `JitHub.Web`: the website, `/authorize` callback page, and `/api/GithubCodeToToken` token-exchange API
 - `JitHub.WinUI.Automation`: screenshot and UI smoke-test harness for the app design lab
+- `MarkdownRenderer`: native WinUI markdown renderer library, documented in [`docs/markdown-renderer`](docs/markdown-renderer/README.md)
 - `artifacts/EditorAssets/dist`: generated editor assets used by the desktop app; this folder is intentionally not checked in
 - `eng`: local helper scripts for editor asset sync, app launch, screenshot capture, and build checks
 

@@ -14,7 +14,7 @@ namespace MarkdownRenderer.Selection;
 /// painting. Hit tests are performed by the layout snapshot; this class only
 /// owns state.
 /// </summary>
-public sealed class SelectionController
+internal sealed class SelectionController
 {
     public DocumentRange Range { get; private set; } = DocumentRange.Empty;
     public bool IsActive => !Range.IsEmpty;

@@ -344,8 +344,8 @@ internal sealed partial class MarkdownTextRangeProvider : ITextRangeProvider
             AutomationTextAttributesEnum.FontWeightAttribute => (int)style.FontWeight.Weight,
             AutomationTextAttributesEnum.ForegroundColorAttribute => ToColorRef(style.Foreground),
             AutomationTextAttributesEnum.IsItalicAttribute => style.FontStyle == FontStyle.Italic,
-            AutomationTextAttributesEnum.IsSubscriptAttribute => false,
-            AutomationTextAttributesEnum.IsSuperscriptAttribute => run.Run is LinkRun { IsSuperscript: true },
+            AutomationTextAttributesEnum.IsSubscriptAttribute => run.Run is SubscriptRun,
+            AutomationTextAttributesEnum.IsSuperscriptAttribute => run.Run is SuperscriptRun or LinkRun { IsSuperscript: true },
             AutomationTextAttributesEnum.OverlineColorAttribute => ToColorRef(style.Foreground),
             AutomationTextAttributesEnum.OverlineStyleAttribute => AutomationTextDecorationLineStyle.None,
             AutomationTextAttributesEnum.StrikethroughColorAttribute => ToColorRef(style.Foreground),
@@ -377,10 +377,27 @@ internal sealed partial class MarkdownTextRangeProvider : ITextRangeProvider
 
             if (span.InlineBox is { } inline)
             {
-                foreach (var run in EnumerateInlineStyleRuns(inline, span.TextStart, rangeStart, rangeEnd, collapsed))
+                if (span.InlineRun is { } run)
                 {
+                    if (!SpanIntersects(span.TextStart, span.TextEnd, rangeStart, rangeEnd, collapsed))
+                        continue;
+
+                    var elementKey = string.IsNullOrEmpty(run.ElementKey) ? inline.ElementKey : run.ElementKey;
                     yielded = true;
-                    yield return run;
+                    yield return new TextStyleRun(
+                        collapsed ? rangeStart : Math.Max(rangeStart, span.TextStart),
+                        collapsed ? rangeStart : Math.Min(rangeEnd, span.TextEnd),
+                        elementKey,
+                        run,
+                        GetStyle(elementKey));
+                }
+                else
+                {
+                    foreach (var styleRun in EnumerateInlineStyleRuns(inline, span.TextStart, rangeStart, rangeEnd, collapsed))
+                    {
+                        yielded = true;
+                        yield return styleRun;
+                    }
                 }
             }
             else if (span.ImageBox is not null || span.EmbedBox is not null)

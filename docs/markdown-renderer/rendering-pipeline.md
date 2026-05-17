@@ -10,11 +10,17 @@ those boxes through Win2D.
 3. `MarkdownExtensionRegistry.BuildPipeline()` creates a Markdig pipeline.
 4. `MarkdigParser` fixes forgiving data URIs and parses the markdown.
 5. `LayoutBuilder` walks the Markdig AST and builds `BlockBox` objects.
-6. Each block measures itself for the available width.
+6. Small documents measure every block; large documents measure only the initial
+   viewport band and keep estimates for the rest.
 7. Blocks are arranged vertically into a `LayoutSnapshot`.
 8. The snapshot is committed on the UI thread.
 9. `CanvasVirtualControl` paints invalidated regions.
 10. The XAML overlay hosts embeds, selection rectangles, and focus visuals.
+
+Large-document snapshots extend measured bands on scroll. The source map and
+cheap block tree are complete from the start, while native text layouts and
+inline image/embed geometry are created as their top-level blocks approach the
+viewport.
 
 ## Core markdown support
 
@@ -30,11 +36,13 @@ Implemented in the core project:
 - inline literal text;
 - inline code;
 - emphasis and strong emphasis;
-- strikethrough through emphasis extras;
+- emphasis extras: strikethrough, subscript, superscript, inserted text, and
+  marked text when the pipeline enables them;
 - links;
 - autolinks;
 - line breaks;
 - standalone image paragraphs;
+- inline image cells;
 - footnote forward links when GFM footnotes are enabled.
 
 ## GitHub-flavored markdown support
@@ -59,6 +67,11 @@ var registry = new MarkdownExtensionRegistry()
 renderer.ExtensionRegistry = registry;
 ```
 
+`MarkdownRenderer.Gfm` also provides `UseMarkdownExtra()` for opt-in non-GFM
+Markdig extras: definition lists, abbreviations, and figures. It registers
+native renderers for definition lists and figures while keeping the strict GFM
+helper unchanged.
+
 ## Block dispatch
 
 `LayoutBuilder.BuildBlock` handles built-in Markdig block types first through
@@ -66,7 +79,8 @@ custom extensions, then core node types:
 
 - `HeadingBlock` -> `InlineContainerBox` with heading element key;
 - `ParagraphBlock` -> paragraph or promoted `ImageBox`;
-- `FencedCodeBlock` / `CodeBlock` -> code `InlineContainerBox`;
+- `FencedCodeBlock` / `CodeBlock` -> code `InlineContainerBox`, or a segmented
+  `StackBox` when the block is too large for one monolithic text layout;
 - `QuoteBlock` -> `StackBox` with quote styling;
 - `ListBlock` -> `StackBox` containing `ListItemBox` children;
 - `ThematicBreakBlock` -> `ThematicBreakBox`;
@@ -79,23 +93,23 @@ The inline builder handles:
 
 - `LiteralInline` -> `TextRun`;
 - `CodeInline` -> `CodeInlineRun`;
-- `EmphasisInline` -> `EmphasisRun`, `StrongRun`, or `StrikethroughRun`;
-- `LinkInline` -> `LinkRun` or alt-text fallback for inline images;
+- `EmphasisInline` -> `EmphasisRun`, `StrongRun`, `StrikethroughRun`,
+  `SubscriptRun`, `SuperscriptRun`, `InsertedRun`, or `MarkedRun`;
+- `LinkInline` -> `LinkRun` or atomic inline image cell;
 - `LineBreakInline` -> `LineBreakRun`;
 - `AutolinkInline` -> `LinkRun`;
 - `HtmlInline` -> raw tag text fallback;
+- `AbbreviationInline` -> `AbbreviationRun` with accessible expansion text;
 - GFM footnote links -> superscript internal `LinkRun`;
 - unknown container inline -> flattened text fallback.
 
 ## Known rendering limitations
 
-- Inline images inside text currently render as alt text, not images.
 - Raw HTML is not rendered as HTML.
-- HTML blocks are dropped by fallback behavior.
-- Definition lists, math, abbreviations, subscript/superscript, and diagrams need
-  future extensions.
-- Generic attributes are parsed by GFM setup but not applied to layout or styles.
-- Table alignment is not fully reflected in layout/styling yet.
+- HTML blocks are intentionally outside the native renderer's 1.0 support scope.
+- LaTeX/math is intentionally out of scope for the 1.0 non-HTML/non-LaTeX plan.
+- Mermaid/diagram support is sample/documentation only through
+  `IMarkdownEmbedFactory`; no built-in diagram engine is shipped.
 
 ## Painting
 
@@ -116,4 +130,3 @@ text placeholder. When load completes:
 - otherwise it repaints the affected region.
 
 Images are lazy-loaded when their bounds enter the viewport plus an overscan band.
-

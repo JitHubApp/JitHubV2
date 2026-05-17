@@ -15,6 +15,8 @@
     <Platforms>x64</Platforms>
     <UseWinUI>false</UseWinUI>
     <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
+    <MarkdownRendererNativeArch Condition="'$(Platform)' == '' or '$(Platform)' == 'AnyCPU' or '$(Platform)' == 'Any CPU' or '$(Platform)' == 'x64'">x64</MarkdownRendererNativeArch>
+    <MarkdownRendererNativeArch Condition="'$(MarkdownRendererNativeArch)' == '' and ('$(Platform)' == 'ARM64' or '$(Platform)' == 'arm64')">arm64</MarkdownRendererNativeArch>
   </PropertyGroup>
   <ItemGroup>
     <PackageReference Include="xunit" Version="2.9.3" />
@@ -28,6 +30,9 @@
   </ItemGroup>
   <!-- Cherry-pick rasterizer source so PixelTests doesn't pull WinUI -->
   <ItemGroup>
+    <Compile Include="..\MarkdownRenderer\Diagnostics\GraphicsDeviceErrors.cs" Link="Core\GraphicsDeviceErrors.cs" />
+    <Compile Include="..\MarkdownRenderer\Diagnostics\MarkdownDiagnostics.cs" Link="Core\MarkdownDiagnostics.cs" />
+    <Compile Include="..\MarkdownRenderer\Diagnostics\ShakeLogger.cs" Link="Core\ShakeLogger.cs" />
     <Compile Include="..\MarkdownRenderer\Layout\Boxes\ThorVgNative.cs" Link="Core\ThorVgNative.cs" />
     <Compile Include="..\MarkdownRenderer\Layout\Boxes\ThorVgRasterizer.cs" Link="Core\ThorVgRasterizer.cs" />
     <Compile Include="..\MarkdownRenderer\Layout\Boxes\SvgIntrinsics.cs" Link="Core\SvgIntrinsics.cs" />
@@ -35,8 +40,10 @@
     <Compile Include="..\MarkdownRenderer\Layout\Boxes\SvgTitleExtractor.cs" Link="Core\SvgTitleExtractor.cs" />
   </ItemGroup>
   <ItemGroup>
-    <Content Include="..\MarkdownRenderer\native\win-x64\thorvg.dll">
+    <Content Include="..\MarkdownRenderer\native\win-$(MarkdownRendererNativeArch)\thorvg.dll"
+             Condition="'$(MarkdownRendererNativeArch)' != '' and Exists('..\MarkdownRenderer\native\win-$(MarkdownRendererNativeArch)\thorvg.dll')">
       <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+      <TargetPath>thorvg.dll</TargetPath>
       <Link>thorvg.dll</Link>
     </Content>
   </ItemGroup>

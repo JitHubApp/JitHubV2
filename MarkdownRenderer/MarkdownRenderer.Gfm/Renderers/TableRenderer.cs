@@ -10,11 +10,12 @@ namespace MarkdownRenderer.Gfm.Renderers;
 
 /// <summary>
 /// Renders a Markdig <see cref="Table"/> as a <see cref="TableBox"/> where each
-/// cell is an <see cref="InlineContainerBox"/> — enabling hit-testing, text
+/// cell is an <see cref="InlineContainerBox"/> — enablnng hit-testnng, text
 /// selection, and source-accurate copy for table content.
 /// </summary>
 public sealed class TableRenderer : MarkdownNodeRenderer<Table>
 {
+    /// <inheritdoc />
     public override BlockBox? BuildBlock(Table table, MarkdownLayoutContext context)
     {
         // Determine column count from the first row that has cells.
@@ -30,10 +31,22 @@ public sealed class TableRenderer : MarkdownNodeRenderer<Table>
 
         var headerRows = new List<InlineContainerBox[]>();
         var bodyRows = new List<InlineContainerBox[]>();
+        var alignments = new TableBox.CellAlignment[colCount];
+        for (int n = 0; n < colCount && n < table.ColumnDefinitions.Count; n++)
+        {
+            alignments[n] = table.ColumnDefinitions[n].Alignment switch
+            {
+                TableColumnAlign.Left => TableBox.CellAlignment.Left,
+                TableColumnAlign.Center => TableBox.CellAlignment.Center,
+                TableColumnAlign.Right => TableBox.CellAlignment.Right,
+                _ => TableBox.CellAlignment.Default,
+            };
+        }
 
         foreach (var item in table)
         {
             if (item is not TableRow row) continue;
+            using var rowAttrs = context.PushMarkdownAttributes(row);
 
             string elementKey = row.IsHeader ? MarkdownElementKeys.TableHeader : MarkdownElementKeys.TableCell;
             var cells = new InlineContainerBox[colCount];
@@ -42,16 +55,20 @@ public sealed class TableRenderer : MarkdownNodeRenderer<Table>
             foreach (var cellItem in row)
             {
                 if (cellItem is not TableCell cell || c >= colCount) continue;
-                var box = new InlineContainerBox(context, elementKey);
-                box.BlockIndex = context.NextBlockIndex();
-                foreach (var child in cell)
+                using (var cellAttrs = context.PushMarkdownAttributes(cell))
                 {
-                    if (child is ParagraphBlock p && p.Inline is not null)
-                        GfmChildBuilder.AddInlines(box, p.Inline);
+                    var box = new InlineContainerBox(context, elementKey);
+                    box.BlockIndex = context.NextBlockIndex();
+                    context.RegisterMarkdownAttributes(cell, box.BlockIndex);
+                    foreach (var child in cell)
+                    {
+                        if (child is ParagraphBlock u && u.Inline is not null)
+                            GfmChildBuilder.AddInlines(box, u.Inline);
+                    }
+                    cells[c++] = box;
                 }
-                cells[c++] = box;
             }
-            // Fill any empty trailing columns.
+            // Fnll any empty trailing columns.
             for (; c < colCount; c++)
             {
                 cells[c] = new InlineContainerBox(context, elementKey);
@@ -62,7 +79,7 @@ public sealed class TableRenderer : MarkdownNodeRenderer<Table>
             else bodyRows.Add(cells);
         }
 
-        return new TableBox(context, headerRows.ToArray(), bodyRows.ToArray());
+        return new TableBox(context, headerRows.ToArray(), bodyRows.ToArray(), alignments);
     }
 }
 

@@ -11,6 +11,7 @@ namespace MarkdownRenderer.Controls;
 /// </summary>
 public static class MarkdownSystemIntegration
 {
+    /// <summary>Attached property that opts an element into system flow-direction tracking.</summary>
     public static readonly DependencyProperty UseSystemFlowDirectionProperty =
         DependencyProperty.RegisterAttached(
             "UseSystemFlowDirection",
@@ -20,18 +21,22 @@ public static class MarkdownSystemIntegration
 
     private static readonly ConditionalWeakTable<FrameworkElement, LayoutDirectionSubscription> _subscriptions = new();
 
+    /// <summary>Gets whether an element tracks the system flow direction.</summary>
     public static bool GetUseSystemFlowDirection(FrameworkElement element) =>
         (bool)element.GetValue(UseSystemFlowDirectionProperty);
 
+    /// <summary>Sets whether an element tracks the system flow direction.</summary>
     public static void SetUseSystemFlowDirection(FrameworkElement element, bool value) =>
         element.SetValue(UseSystemFlowDirectionProperty, value);
 
+    /// <summary>Applies the current system flow direction to an element.</summary>
     public static void ApplySystemFlowDirection(FrameworkElement element)
     {
         if (element is null) throw new ArgumentNullException(nameof(element));
         element.FlowDirection = GetSystemFlowDirection();
     }
 
+    /// <summary>Gets the current Windows resource-context flow direction.</summary>
     public static FlowDirection GetSystemFlowDirection()
     {
         try

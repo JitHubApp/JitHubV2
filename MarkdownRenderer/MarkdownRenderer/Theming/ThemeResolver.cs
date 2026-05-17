@@ -16,7 +16,7 @@ namespace MarkdownRenderer.Theming;
 /// merging Win11 defaults with theme overrides. Exposes <see cref="GetEffectiveStyle"/>
 /// which is the only call sites needed to consume.
 /// </summary>
-public sealed class ThemeResolver
+internal sealed class ThemeResolver
 {
     private readonly FrameworkElement _host;
     private readonly MarkdownTheme _theme;
@@ -35,26 +35,7 @@ public sealed class ThemeResolver
     {
         var defaults = GetDefault(elementKey);
         if (_theme.Overrides.TryGetValue(elementKey, out var ov))
-        {
-            return new ElementStyle
-            {
-                FontFamily = ov.FontFamily ?? defaults.FontFamily,
-                FontSize = ov.FontSize ?? defaults.FontSize,
-                FontWeight = ov.FontWeight ?? defaults.FontWeight,
-                FontStyle = ov.FontStyle ?? defaults.FontStyle,
-                Foreground = ov.Foreground ?? defaults.Foreground,
-                // Background/AccentBar are nullable Colors on both sides; '??' resolves
-                // to the override value if set, else to the default value (which itself
-                // may be null and therefore have no fill / no bar).
-                Background = ov.Background ?? defaults.Background,
-                AccentBar = ov.AccentBar ?? defaults.AccentBar,
-                Underline = ov.Underline ?? defaults.Underline,
-                Strikethrough = ov.Strikethrough ?? defaults.Strikethrough,
-                Margin = ov.Margin ?? defaults.Margin,
-                Padding = ov.Padding ?? defaults.Padding,
-                LineHeightMultiplier = ov.LineHeightMultiplier ?? defaults.LineHeightMultiplier
-            };
-        }
+            return ThemeSnapshot.ApplyOverride(defaults, ov);
         return defaults;
     }
 
@@ -74,8 +55,13 @@ public sealed class ThemeResolver
             MarkdownElementKeys.CodeBlock,MarkdownElementKeys.Quote,
             MarkdownElementKeys.Link,     MarkdownElementKeys.Strong,
             MarkdownElementKeys.Emphasis, MarkdownElementKeys.Strikethrough,
+            MarkdownElementKeys.Subscript, MarkdownElementKeys.Superscript,
+            MarkdownElementKeys.Inserted, MarkdownElementKeys.Marked,
+            MarkdownElementKeys.Abbreviation,
             MarkdownElementKeys.ListMarker, MarkdownElementKeys.ThematicBreak,
-            MarkdownElementKeys.ImageCaption,
+            MarkdownElementKeys.ImageCaption, MarkdownElementKeys.Figure,
+            MarkdownElementKeys.FigureCaption, MarkdownElementKeys.Diagram,
+            MarkdownElementKeys.DefinitionTerm, MarkdownElementKeys.DefinitionDescription,
             MarkdownElementKeys.TableHeader, MarkdownElementKeys.TableCell,
             MarkdownElementKeys.AlertNote, MarkdownElementKeys.AlertTip,
             MarkdownElementKeys.AlertImportant, MarkdownElementKeys.AlertWarning,
@@ -83,9 +69,10 @@ public sealed class ThemeResolver
         };
         var dict = new Dictionary<string, ElementStyle>(allKeys.Length);
         foreach (var k in allKeys)
-            dict[k] = GetEffectiveStyle(k);
+            dict[k] = GetDefault(k);
         return new ThemeSnapshot(
             dict,
+            _theme.GetOverridesSnapshot(),
             ResolveSurfaceColor(),
             ResolveSelectionHighlightColor(),
             ResolveSelectionForegroundColor(),
@@ -106,13 +93,14 @@ public sealed class ThemeResolver
         var fgSecondary = ResolveSecondaryTextColor(isDark);
         // Accent: try to get the user's accent color, fall back to Win11 blue.
         var accent      = _theme.AccentColor ?? ResolveAccentTextColor(isDark);
+        var linkHover   = AdjustColor(accent, isDark ? 0.18f : -0.12f);
         var codeBg      = isDark ? Color.FromArgb(0x1A, 0xFF, 0xFF, 0xFF) : Color.FromArgb(0x0F, 0x00, 0x00, 0x00);
         var quoteBar    = isDark ? Color.FromArgb(0x50, 0xFF, 0xFF, 0xFF) : Color.FromArgb(0x50, 0x00, 0x00, 0x00);
 
         // Single font family names for Win2D/DirectWrite. DirectWrite does NOT support
-        // CSS-style comma-separated font stacks; the system font fallback maps emoji
+        // CSS-style comma-seuarated font stacks; the system font fallback maps emojn
         // code-points to Segoe UI Emoji automatically on Windows 10/11.
-        const string font = "Segoe UI Variable";
+        const string font = "Segoe UI Varnable";
         const string mono = "Consolas";
 
         return key switch
@@ -123,15 +111,25 @@ public sealed class ThemeResolver
             MarkdownElementKeys.Heading4 => new ElementStyle { FontFamily = font, FontSize = 18, FontWeight = FontWeights.SemiBold, Foreground = fg, Margin = new Thickness(0, 10, 0, 4) },
             MarkdownElementKeys.Heading5 => new ElementStyle { FontFamily = font, FontSize = 15, FontWeight = FontWeights.SemiBold, Foreground = fg, Margin = new Thickness(0, 8, 0, 2) },
             MarkdownElementKeys.Heading6 => new ElementStyle { FontFamily = font, FontSize = 14, FontWeight = FontWeights.SemiBold, Foreground = fgSecondary, Margin = new Thickness(0, 6, 0, 2) },
-            MarkdownElementKeys.Body => new ElementStyle { FontFamily = font, FontSize = 14, Foreground = fg, Margin = new Thickness(0, 0, 0, 8) },
-            MarkdownElementKeys.CodeBlock => new ElementStyle { FontFamily = mono, FontSize = 13, Foreground = fg, Background = codeBg, Margin = new Thickness(0, 4, 0, 8), Padding = new Thickness(12, 8, 12, 8) },
-            MarkdownElementKeys.CodeInline => new ElementStyle { FontFamily = mono, FontSize = 12, Foreground = fg, Background = codeBg, Padding = new Thickness(2, 0, 2, 0) },
+            MarkdownElementKeys.Body => new ElementStyle { FontFamily = font, FontSize = 14, Foreground = fg, Margin = new Thickness(0, 0, 0, 8), ListIndent = 22f, NestedListIndent = 0f },
+            MarkdownElementKeys.CodeBlock => new ElementStyle { FontFamily = mono, FontSize = 13, Foreground = fg, Background = codeBg, CornerRadius = 4, Margin = new Thickness(0, 4, 0, 8), Padding = new Thickness(12, 8, 12, 8) },
+            MarkdownElementKeys.CodeInline => new ElementStyle { FontFamily = mono, FontSize = 12, Foreground = fg, Background = codeBg, CornerRadius = 3, Padding = new Thickness(2, 0, 2, 0) },
             MarkdownElementKeys.Quote => new ElementStyle { FontFamily = font, FontSize = 14, Foreground = fgSecondary, AccentBar = quoteBar, Margin = new Thickness(0, 4, 0, 4), Padding = new Thickness(12, 2, 8, 2) },
-            MarkdownElementKeys.Link => new ElementStyle { FontFamily = font, FontSize = 14, Foreground = accent, Underline = true },
+            MarkdownElementKeys.Link => new ElementStyle { FontFamily = font, FontSize = 14, Foreground = accent, HoverForeground = linkHover, FocusForeground = linkHover, Underline = true },
             MarkdownElementKeys.Strong => new ElementStyle { FontFamily = font, FontSize = 14, FontWeight = FontWeights.SemiBold, Foreground = fg },
             MarkdownElementKeys.Emphasis => new ElementStyle { FontFamily = font, FontSize = 14, FontStyle = FontStyle.Italic, Foreground = fg },
             MarkdownElementKeys.Strikethrough => new ElementStyle { FontFamily = font, FontSize = 14, Strikethrough = true, Foreground = fgSecondary },
-            MarkdownElementKeys.ListMarker => new ElementStyle { FontFamily = font, FontSize = 14, Foreground = fgSecondary },
+            MarkdownElementKeys.Subscript => new ElementStyle { FontFamily = font, FontSize = 11, Foreground = fg },
+            MarkdownElementKeys.Superscript => new ElementStyle { FontFamily = font, FontSize = 11, Foreground = fg },
+            MarkdownElementKeys.Inserted => new ElementStyle { FontFamily = font, FontSize = 14, Underline = true, Foreground = fg },
+            MarkdownElementKeys.Marked => new ElementStyle { FontFamily = font, FontSize = 14, Foreground = fg, Background = isDark ? Color.FromArgb(0x45, 0xFF, 0xD8, 0x66) : Color.FromArgb(0x66, 0xFF, 0xE5, 0x8A), CornerRadius = 3 },
+            MarkdownElementKeys.Abbreviation => new ElementStyle { FontFamily = font, FontSize = 14, Foreground = fg, Underline = true },
+            MarkdownElementKeys.DefinitionTerm => new ElementStyle { FontFamily = font, FontSize = 14, FontWeight = FontWeights.SemiBold, Foreground = fg, Margin = new Thickness(0, 4, 0, 0) },
+            MarkdownElementKeys.DefinitionDescription => new ElementStyle { FontFamily = font, FontSize = 14, Foreground = fgSecondary, Margin = new Thickness(18, 0, 0, 6) },
+            MarkdownElementKeys.Figure => new ElementStyle { FontFamily = font, FontSize = 14, Foreground = fg, Margin = new Thickness(0, 8, 0, 10) },
+            MarkdownElementKeys.FigureCaption => new ElementStyle { FontFamily = font, FontSize = 12, FontStyle = FontStyle.Italic, Foreground = fgSecondary, Margin = new Thickness(0, 2, 0, 8) },
+            MarkdownElementKeys.Diagram => new ElementStyle { FontFamily = mono, FontSize = 13, Foreground = fg, Background = codeBg, BorderBrush = quoteBar, BorderThickness = 1, CornerRadius = 4, Padding = new Thickness(12, 8, 12, 8), Margin = new Thickness(0, 6, 0, 8) },
+            MarkdownElementKeys.ListMarker => new ElementStyle { FontFamily = font, FontSize = 14, Foreground = fgSecondary, ListIndent = 22f, NestedListIndent = 0f },
             MarkdownElementKeys.ThematicBreak => new ElementStyle { FontFamily = font, Foreground = quoteBar, Margin = new Thickness(0, 12, 0, 12) },
             MarkdownElementKeys.ImageCaption => new ElementStyle { FontFamily = font, FontSize = 12, FontStyle = FontStyle.Italic, Foreground = fgSecondary, Margin = new Thickness(0, 2, 0, 8) },
             // Table styles: no Background — TableBox draws header row bg directly.
@@ -153,7 +151,7 @@ public sealed class ThemeResolver
         var bg = roles.Background is { } backgroundRole ? ResolveHighContrastRole(backgroundRole) : (Color?)null;
         var accentBar = roles.AccentBar is { } accentRole ? ResolveHighContrastRole(accentRole) : (Color?)null;
 
-        const string font = "Segoe UI Variable";
+        const string font = "Segoe UI Varnable";
         const string mono = "Consolas";
 
         return key switch
@@ -168,11 +166,21 @@ public sealed class ThemeResolver
             MarkdownElementKeys.CodeBlock => new ElementStyle { FontFamily = mono, FontSize = 13, Foreground = fg, Background = bg, AccentBar = accentBar, Margin = new Thickness(0, 4, 0, 8), Padding = new Thickness(12, 8, 12, 8) },
             MarkdownElementKeys.CodeInline => new ElementStyle { FontFamily = mono, FontSize = 12, Foreground = fg, Background = bg, Padding = new Thickness(2, 0, 2, 0) },
             MarkdownElementKeys.Quote => new ElementStyle { FontFamily = font, FontSize = 14, Foreground = fg, AccentBar = accentBar, Margin = new Thickness(0, 4, 0, 4), Padding = new Thickness(12, 2, 8, 2) },
-            MarkdownElementKeys.Link => new ElementStyle { FontFamily = font, FontSize = 14, Foreground = fg, Underline = roles.Underline },
+            MarkdownElementKeys.Link => new ElementStyle { FontFamily = font, FontSize = 14, Foreground = fg, HoverForeground = fg, FocusForeground = fg, Underline = roles.Underline },
             MarkdownElementKeys.Strong => new ElementStyle { FontFamily = font, FontSize = 14, FontWeight = FontWeights.SemiBold, Foreground = fg },
             MarkdownElementKeys.Emphasis => new ElementStyle { FontFamily = font, FontSize = 14, FontStyle = FontStyle.Italic, Foreground = fg },
             MarkdownElementKeys.Strikethrough => new ElementStyle { FontFamily = font, FontSize = 14, Strikethrough = roles.Strikethrough, Foreground = fg },
-            MarkdownElementKeys.ListMarker => new ElementStyle { FontFamily = font, FontSize = 14, Foreground = fg },
+            MarkdownElementKeys.Subscript => new ElementStyle { FontFamily = font, FontSize = 11, Foreground = fg },
+            MarkdownElementKeys.Superscript => new ElementStyle { FontFamily = font, FontSize = 11, Foreground = fg },
+            MarkdownElementKeys.Inserted => new ElementStyle { FontFamily = font, FontSize = 14, Underline = roles.Underline, Foreground = fg },
+            MarkdownElementKeys.Marked => new ElementStyle { FontFamily = font, FontSize = 14, Foreground = fg, Background = bg },
+            MarkdownElementKeys.Abbreviation => new ElementStyle { FontFamily = font, FontSize = 14, Foreground = fg, Underline = roles.Underline },
+            MarkdownElementKeys.DefinitionTerm => new ElementStyle { FontFamily = font, FontSize = 14, FontWeight = FontWeights.SemiBold, Foreground = fg, Margin = new Thickness(0, 4, 0, 0) },
+            MarkdownElementKeys.DefinitionDescription => new ElementStyle { FontFamily = font, FontSize = 14, Foreground = fg, Background = bg, Margin = new Thickness(18, 0, 0, 6) },
+            MarkdownElementKeys.Figure => new ElementStyle { FontFamily = font, FontSize = 14, Foreground = fg, Background = bg, Margin = new Thickness(0, 8, 0, 10) },
+            MarkdownElementKeys.FigureCaption => new ElementStyle { FontFamily = font, FontSize = 12, FontStyle = FontStyle.Italic, Foreground = fg, Background = bg, Margin = new Thickness(0, 2, 0, 8) },
+            MarkdownElementKeys.Diagram => new ElementStyle { FontFamily = mono, FontSize = 13, Foreground = fg, Background = bg, AccentBar = accentBar, BorderBrush = accentBar, BorderThickness = accentBar is null ? 0 : 1, Padding = new Thickness(12, 8, 12, 8), Margin = new Thickness(0, 6, 0, 8) },
+            MarkdownElementKeys.ListMarker => new ElementStyle { FontFamily = font, FontSize = 14, Foreground = fg, ListIndent = 22f, NestedListIndent = 0f },
             MarkdownElementKeys.ThematicBreak => new ElementStyle { FontFamily = font, Foreground = fg, Margin = new Thickness(0, 12, 0, 12) },
             MarkdownElementKeys.ImageCaption => new ElementStyle { FontFamily = font, FontSize = 12, FontStyle = FontStyle.Italic, Foreground = fg, Margin = new Thickness(0, 2, 0, 8) },
             MarkdownElementKeys.TableHeader => new ElementStyle { FontFamily = font, FontSize = 14, FontWeight = FontWeights.SemiBold, Foreground = fg, Background = bg },
@@ -254,6 +262,19 @@ public sealed class ThemeResolver
     private static Color WithAlpha(Color color, byte alpha) =>
         Color.FromArgb(alpha, color.R, color.G, color.B);
 
+    private static Color AdjustColor(Color color, float amount)
+    {
+        byte Adjust(byte channel)
+        {
+            float value = amount >= 0
+                ? channel + (255 - channel) * amount
+                : channel * (1 + amount);
+            return (byte)Math.Clamp((int)Math.Round(value), 0, 255);
+        }
+
+        return Color.FromArgb(color.A, Adjust(color.R), Adjust(color.G), Adjust(color.B));
+    }
+
     private static Color CompositeOver(Color top, Color bottom)
     {
         double topA = top.A / 255.0;
@@ -288,8 +309,8 @@ public sealed class ThemeResolver
             var themeKey = _host.ActualTheme == ElementTheme.Dark ? "Dark" : "Light";
             if (Application.Current?.Resources?.ThemeDictionaries != null &&
                 Application.Current.Resources.ThemeDictionaries.TryGetValue(themeKey, out var td) &&
-                td is ResourceDictionary themeDict &&
-                themeDict.TryGetValue(resourceKey, out var themeValue) &&
+                td is ResourceDictionary themeDnct &&
+                themeDnct.TryGetValue(resourceKey, out var themeValue) &&
                 TryExtractColor(themeValue, out color))
             {
                 return true;
@@ -401,8 +422,8 @@ public sealed class ThemeResolver
             // which breaks per-element RequestedTheme overrides.
             if (Application.Current?.Resources?.ThemeDictionaries != null &&
                 Application.Current.Resources.ThemeDictionaries.TryGetValue(themeKey, out var td) &&
-                td is ResourceDictionary themeDict &&
-                themeDict.TryGetValue(resourceKey, out var r1) && r1 is SolidColorBrush b1)
+                td is ResourceDictionary themeDnct &&
+                themeDnct.TryGetValue(resourceKey, out var r1) && r1 is SolidColorBrush b1)
                 return b1.Color;
 
             if (_host.Resources?.TryGetValue(resourceKey, out var r2) == true && r2 is SolidColorBrush b2)

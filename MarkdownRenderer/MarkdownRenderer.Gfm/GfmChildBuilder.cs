@@ -1,6 +1,7 @@
 using System.Text;
 using Markdig.Syntax;
 using Markdig.Syntax.Inlines;
+using Markdig.Extensions.Abbreviations;
 using MarkdownRenderer.Layout;
 using MarkdownRenderer.Layout.Boxes;
 using MarkdownRenderer.Theming;
@@ -18,6 +19,7 @@ internal static class GfmChildBuilder
     {
         foreach (var child in container)
         {
+            context.CancellationToken.ThrowIfCancellationRequested();
             var box = TryBuildBlock(child, context);
             if (box is not null) stack.Add(box);
         }
@@ -26,14 +28,18 @@ internal static class GfmChildBuilder
     /// <summary>Attempts to build a <see cref="BlockBox"/> for a Markdig block node.</summary>
     internal static BlockBox? TryBuildBlock(Block block, MarkdownLayoutContext context)
     {
+        using var attrScope = context.PushMarkdownAttributes(block);
+        BlockBox? box = null;
+
         // Check registry first so registered custom renderers are honoured.
         if (context.Registry.TryGetRenderer(block.GetType(), out var renderer) && renderer is not null)
         {
             var custom = renderer.BuildBlock(block, context);
-            if (custom is not null) return custom;
+            if (custom is not null)
+                box = custom;
         }
 
-        return block switch
+        box ??= block switch
         {
             ParagraphBlock p => BuildLeaf(p, context, MarkdownElementKeys.Body),
             HeadingBlock h => BuildLeaf(h, context, h.Level switch
@@ -48,6 +54,15 @@ internal static class GfmChildBuilder
             ContainerBlock cb => BuildContainer(cb, context),
             _ => null
         };
+
+        if (box is not null)
+        {
+            if (box.BlockIndex == 0)
+                box.BlockIndex = context.NextBlockIndex();
+            context.RegisterMarkdownAttributes(block, box.BlockIndex);
+        }
+
+        return box;
     }
 
     private static InlineContainerBox BuildLeaf(LeafBlock leaf, MarkdownLayoutContext context, string elementKey)
@@ -61,7 +76,11 @@ internal static class GfmChildBuilder
 
     private static StackBox BuildContainer(ContainerBlock cb, MarkdownLayoutContext context)
     {
-        var stack = new StackBox();
+        var stack = new StackBox
+        {
+            FlowDirection = context.FlowDirection,
+        };
+        stack.BlockIndex = context.NextBlockIndex();
         PopulateChildren(stack, cb, context);
         return stack;
     }
@@ -71,17 +90,25 @@ internal static class GfmChildBuilder
         bool skippedFirst = skipFirstIf is null;
         foreach (var i in inlines)
         {
+            box.Context.CancellationToken.ThrowIfCancellationRequested();
             if (!skippedFirst)
             {
                 skippedFirst = true;
                 if (skipFirstIf!(i)) continue;
             }
-            var run = BuildInline(i);
-            if (run is not null) box.Add(run);
+            int aliasStart = box.Context.StyleAliasCount;
+            using var inlineAttrs = box.Context.PushMarkdownAttributes(i);
+            var run = BuildInline(i, box.Context);
+            if (run is not null)
+            {
+                run.SetStyleAliases(box.Context.CreateStyleAliasSnapshotFrom(aliasStart));
+                box.Context.RegisterMarkdownAttributes(i, box.BlockIndex);
+                box.Add(run);
+            }
         }
     }
 
-    private static InlineRun? BuildInline(Inline inline) => inline switch
+    private static InlineRun? BuildInline(Inline inline, MarkdownLayoutContext context) => inline switch
     {
         LiteralInline lit => new TextRun(lit.Content.ToString())
         {
@@ -93,6 +120,17 @@ internal static class GfmChildBuilder
             SourceSpan = new MarkdownRenderer.SourceSpan(ci.Span.Start, ci.Span.Length)
         },
         EmphasisInline emph => BuildEmphasis(emph),
+        LinkInline link => BuildLink(link, context),
+        AbbreviationInline abbreviation => new AbbreviationRun(
+            abbreviation.Abbreviation?.Label ?? string.Empty,
+            abbreviation.Abbreviation?.Text.ToString() ?? string.Empty)
+        {
+            SourceSpan = new MarkdownRenderer.SourceSpan(abbreviation.Span.Start, abbreviation.Span.Length)
+        },
+        AutolinkInline al => new LinkRun(al.Url, al.Url)
+        {
+            SourceSpan = new MarkdownRenderer.SourceSpan(al.Span.Start, al.Span.Length)
+        },
         LineBreakInline => new LineBreakRun
         {
             SourceSpan = new MarkdownRenderer.SourceSpan(inline.Span.Start, inline.Span.Length)
@@ -106,8 +144,16 @@ internal static class GfmChildBuilder
         var sb = new StringBuilder();
         FlattenInlines(emph, sb);
         var span = new MarkdownRenderer.SourceSpan(emph.Span.Start, emph.Span.Length);
-        if (emph.DelimiterChar == '~')
+        if (emph.DelimiterChar == '~' && emph.DelimiterCount >= 2)
             return new StrikethroughRun(sb.ToString()) { SourceSpan = span };
+        if (emph.DelimiterChar == '~')
+            return new SubscriptRun(sb.ToString()) { SourceSpan = span };
+        if (emph.DelimiterChar == '^')
+            return new SuperscriptRun(sb.ToString()) { SourceSpan = span };
+        if (emph.DelimiterChar == '+')
+            return new InsertedRun(sb.ToString()) { SourceSpan = span };
+        if (emph.DelimiterChar == '=')
+            return new MarkedRun(sb.ToString()) { SourceSpan = span };
         return emph.DelimiterCount >= 2
             ? new StrongRun(sb.ToString()) { SourceSpan = span }
             : new EmphasisRun(sb.ToString()) { SourceSpan = span };
@@ -124,6 +170,26 @@ internal static class GfmChildBuilder
         };
     }
 
+    private static InlineRun BuildLink(LinkInline link, MarkdownLayoutContext context)
+    {
+        if (link.IsImage)
+        {
+            var alt = new StringBuilder();
+            FlattenInlines(link, alt);
+            return new InlineImageRun(context, alt.Length > 0 ? alt.ToString() : "image", link.Url ?? string.Empty, link.Title)
+            {
+                SourceSpan = new MarkdownRenderer.SourceSpan(link.Span.Start, link.Span.Length)
+            };
+        }
+
+        var text = new StringBuilder();
+        FlattenInlines(link, text);
+        return new LinkRun(text.ToString(), link.Url ?? string.Empty, link.Title)
+        {
+            SourceSpan = new MarkdownRenderer.SourceSpan(link.Span.Start, link.Span.Length)
+        };
+    }
+
     internal static void FlattenInlines(ContainerInline container, StringBuilder sb)
     {
         foreach (var child in container)
@@ -132,6 +198,7 @@ internal static class GfmChildBuilder
             {
                 case LiteralInline lit: sb.Append(lit.Content.ToString()); break;
                 case CodeInline ci: sb.Append(ci.Content); break;
+                case AbbreviationInline ab: sb.Append(ab.Abbreviation?.Label ?? string.Empty); break;
                 case LineBreakInline: sb.Append('\n'); break;
                 case ContainerInline c2: FlattenInlines(c2, sb); break;
             }

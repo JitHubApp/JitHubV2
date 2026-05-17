@@ -14,7 +14,7 @@ namespace MarkdownRenderer.Layout.Boxes;
 /// the accessible name.
 /// Public for unit-test access.
 /// </summary>
-public static class SvgTitleExtractor
+internal static class SvgTitleExtractor
 {
     private static readonly Regex TitleRx = new(
         @"<title\b[^>]*>(?<v>[\s\S]*?)</title>",

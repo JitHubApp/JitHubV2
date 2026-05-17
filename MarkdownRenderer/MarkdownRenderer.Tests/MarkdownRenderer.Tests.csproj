@@ -10,6 +10,8 @@
     <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
     <!-- Avoid pulling in WinUI and Win2D for pure-logic tests -->
     <UseWinUI>false</UseWinUI>
+    <MarkdownRendererNativeArch Condition="'$(Platform)' == '' or '$(Platform)' == 'AnyCPU' or '$(Platform)' == 'Any CPU' or '$(Platform)' == 'x64'">x64</MarkdownRendererNativeArch>
+    <MarkdownRendererNativeArch Condition="'$(MarkdownRendererNativeArch)' == '' and ('$(Platform)' == 'ARM64' or '$(Platform)' == 'arm64')">arm64</MarkdownRendererNativeArch>
   </PropertyGroup>
   <ItemGroup>
     <PackageReference Include="xunit" Version="2.9.3" />
@@ -24,26 +26,35 @@
   <ItemGroup>
     <Compile Include="..\MarkdownRenderer\SourceSpan.cs" Link="Core\SourceSpan.cs" />
     <Compile Include="..\MarkdownRenderer\Document\DocumentPosition.cs" Link="Core\DocumentPosition.cs" />
+    <Compile Include="..\MarkdownRenderer\Document\MarkdownDocument.cs" Link="Core\MarkdownDocument.cs" />
     <Compile Include="..\MarkdownRenderer\Document\MarkdownSourceMap.cs" Link="Core\MarkdownSourceMap.cs" />
     <Compile Include="..\MarkdownRenderer\Parsing\MarkdigParser.cs" Link="Core\MarkdigParser.cs" />
     <Compile Include="..\MarkdownRenderer\Parsing\ForgivingDataUriFixer.cs" Link="Core\ForgivingDataUriFixer.cs" />
     <Compile Include="..\MarkdownRenderer\Diagnostics\ShakeLogger.cs" Link="Core\ShakeLogger.cs" />
     <Compile Include="..\MarkdownRenderer\Diagnostics\MarkdownDiagnostics.cs" Link="Core\MarkdownDiagnostics.cs" />
+    <Compile Include="..\MarkdownRenderer\Diagnostics\GraphicsDeviceErrors.cs" Link="Core\GraphicsDeviceErrors.cs" />
     <Compile Include="..\MarkdownRenderer\Layout\Boxes\SvgIntrinsics.cs" Link="Core\SvgIntrinsics.cs" />
     <Compile Include="..\MarkdownRenderer\Layout\Boxes\SvgThemeInjector.cs" Link="Core\SvgThemeInjector.cs" />
     <Compile Include="..\MarkdownRenderer\Layout\Boxes\SvgTitleExtractor.cs" Link="Core\SvgTitleExtractor.cs" />
     <Compile Include="..\MarkdownRenderer\Layout\Boxes\ThorVgNative.cs" Link="Core\ThorVgNative.cs" />
     <Compile Include="..\MarkdownRenderer\Layout\Boxes\ThorVgRasterizer.cs" Link="Core\ThorVgRasterizer.cs" />
     <Compile Include="..\MarkdownRenderer\Layout\Boxes\LoadCompletedEventArgs.cs" Link="Core\LoadCompletedEventArgs.cs" />
+    <Compile Include="..\MarkdownRenderer\Layout\LazyLayoutBand.cs" Link="Core\LazyLayoutBand.cs" />
     <Compile Include="..\MarkdownRenderer\Controls\EmbedVisibility.cs" Link="Core\EmbedVisibility.cs" />
+    <Compile Include="..\MarkdownRenderer\Controls\SelectionAutoScroll.cs" Link="Core\SelectionAutoScroll.cs" />
+    <Compile Include="..\MarkdownRenderer\Selection\MarkdownCopyOptions.cs" Link="Core\MarkdownCopyOptions.cs" />
+    <Compile Include="..\MarkdownRenderer\Selection\MarkdownClipboardWriter.cs" Link="Core\MarkdownClipboardWriter.cs" />
     <Compile Include="..\MarkdownRenderer\Layout\TextBoundaryHelper.cs" Link="Core\TextBoundaryHelper.cs" />
     <Compile Include="..\MarkdownRenderer\Layout\FocusableItem.cs" Link="Core\FocusableItem.cs" />
     <Compile Include="..\MarkdownRenderer\Layout\FocusNavigationHelper.cs" Link="Core\FocusNavigationHelper.cs" />
     <Compile Include="..\MarkdownRenderer\Theming\MarkdownHighContrastDefaults.cs" Link="Core\MarkdownHighContrastDefaults.cs" />
+    <Compile Include="..\MarkdownRenderer\Utilities\StringBuilderPool.cs" Link="Core\StringBuilderPool.cs" />
   </ItemGroup>
   <ItemGroup>
-    <Content Include="..\MarkdownRenderer\native\win-x64\thorvg.dll">
+    <Content Include="..\MarkdownRenderer\native\win-$(MarkdownRendererNativeArch)\thorvg.dll"
+             Condition="'$(MarkdownRendererNativeArch)' != '' and Exists('..\MarkdownRenderer\native\win-$(MarkdownRendererNativeArch)\thorvg.dll')">
       <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+      <TargetPath>thorvg.dll</TargetPath>
       <Link>thorvg.dll</Link>
     </Content>
   </ItemGroup>

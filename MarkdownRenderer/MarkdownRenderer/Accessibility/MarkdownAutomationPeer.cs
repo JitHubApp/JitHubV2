@@ -15,7 +15,7 @@ namespace MarkdownRenderer.Accessibility;
 /// semantic child peers for structure, plus TextPattern ranges for Narrator
 /// word/line navigation and highlight rectangles.
 /// </summary>
-public sealed partial class MarkdownAutomationPeer : FrameworkElementAutomationPeer, ITextProvider, ITextProvider2
+internal sealed partial class MarkdownAutomationPeer : FrameworkElementAutomationPeer, ITextProvider, ITextProvider2
 {
     private readonly MarkdownRendererControl _owner;
     private readonly System.Runtime.CompilerServices.ConditionalWeakTable<InlineContainerBox, MarkdownBlockPeer> _peerCache = new();
@@ -77,10 +77,10 @@ public sealed partial class MarkdownAutomationPeer : FrameworkElementAutomationP
         return doc is null ? new List<AutomationPeer>() : GetChildPeersForSemanticNode(doc.Root);
     }
 
-    protected override object GetPatternCore(PatternInterface patternInterface)
+    protected override object GetPatternCore(PatternInterface patternIinterface)
     {
-        if (patternInterface == PatternInterface.Text || patternInterface == PatternInterface.Text2) return this;
-        return base.GetPatternCore(patternInterface);
+        if (patternIinterface == PatternInterface.Text || patternIinterface == PatternInterface.Text2) return this;
+        return base.GetPatternCore(patternIinterface);
     }
 
     public ITextRangeProvider[] GetSelection()

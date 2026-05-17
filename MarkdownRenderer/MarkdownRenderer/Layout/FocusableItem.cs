@@ -1,7 +1,7 @@
 namespace MarkdownRenderer.Layout;
 
 /// <summary>The kind of keyboard-focusable element represented by <see cref="FocusableItem"/>.</summary>
-public enum FocusableItemKind
+internal enum FocusableItemKind
 {
     Link,
     InlineEmbed,
@@ -9,7 +9,7 @@ public enum FocusableItemKind
 }
 
 /// <summary>Represents a keyboard-focusable element in the document.</summary>
-public readonly struct FocusableItem
+internal readonly struct FocusableItem
 {
     public FocusableItem(int blockIndex, int inlineIndex, bool isLink) =>
         (BlockIndex, InlineIndex, Kind) = (blockIndex, inlineIndex, isLink ? FocusableItemKind.Link : FocusableItemKind.InlineEmbed);

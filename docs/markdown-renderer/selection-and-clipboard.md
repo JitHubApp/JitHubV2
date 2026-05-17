@@ -12,7 +12,8 @@ copy the markdown source that produced that rendered range.
 | `DocumentRange` | Start/end pair with normalization support. |
 | `SelectionController` | Owns the active range and produces highlight rectangles. |
 | `MarkdownSourceMap` | Maps rendered ranges back to source spans. |
-| `MarkdownClipboardWriter` | Writes the selected source markdown to the system clipboard. |
+| `MarkdownClipboardWriter` | Writes selected source markdown plus an HTML clipboard format. |
+| `MarkdownCopyOptions` | Lets callers opt into rendered plain-text copy while preserving the default source-markdown behavior. |
 
 ## Interaction model
 
@@ -51,7 +52,21 @@ Copied markdown:       **bold word**
 ```
 
 This is implemented by recording `SourceSpan` values while building runs and then
-using `MarkdownSourceMap.Slice(range)` in `MarkdownClipboardWriter`.
+using `MarkdownSourceMap.Slice(range)` in `MarkdownClipboardWriter`. The same
+copy operation also places a `CF_HTML` payload on the clipboard for paste targets
+that prefer formatted content.
+
+Callers that need semantic rendered text can opt in through the public copy API:
+
+```csharp
+MarkdownView.CopySelectionToClipboard(new MarkdownCopyOptions
+{
+    PlainTextMode = MarkdownPlainTextCopyMode.RenderedText,
+});
+```
+
+`IncludeHtml` defaults to `true` and can be disabled for consumers that need a
+plain-text-only clipboard operation.
 
 ## Current coverage
 
@@ -60,7 +75,8 @@ Implemented:
 - text hit-testing through `CanvasTextLayout` metrics;
 - selection across text blocks;
 - word and block expansion;
-- source-accurate copy;
+- source-accurate plain-text copy plus formatted HTML clipboard data;
+- opt-in rendered plain-text copy through `MarkdownCopyOptions`;
 - selection adorner fill rectangles derived from WinUI's native
   `TextControlSelectionHighlightColor` resource, pre-composited over the
   renderer surface when the native brush is translucent so previously painted
@@ -77,8 +93,8 @@ Implemented:
 
 ## Embedded WinUI controls and selection
 
-Hosted WinUI controls currently participate visually and interactively, but they
-are not fully part of text selection. The intended design is:
+Hosted WinUI controls participate visually, interactively, and as atomic
+selection slots:
 
 1. treat each embed as an atomic document slot;
 2. make `EmbedBox.HitTest()` return a real `DocumentPosition`;
@@ -90,11 +106,8 @@ are not fully part of text selection. The intended design is:
 Normal click behavior should continue to go to the hosted control. The drag
 shield should only activate after a selection drag starts.
 
-## Selection gaps
+## Manual smoke
 
-- Embedded WinUI controls are not fully selectable yet.
-- Dragging beyond the viewport does not auto-scroll.
-- Copy-as-HTML and rendered plain-text copy are not implemented.
-- Inline images are represented as text fallback, so image selection is not
-  semantically correct yet.
-
+Before a release, verify source text, rendered text, and HTML clipboard formats
+in Notepad, Word, Outlook, browser text fields, and any host app that consumes
+the control.

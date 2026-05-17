@@ -5,6 +5,7 @@ using Microsoft.UI.Xaml;
 using Windows.Foundation;
 using MarkdownRenderer.Document;
 using MarkdownRenderer.Hosting;
+using MarkdownRenderer.Layout;
 
 namespace MarkdownRenderer.Layout.Boxes;
 
@@ -15,8 +16,10 @@ namespace MarkdownRenderer.Layout.Boxes;
 /// completes; this box only carries the source AST node, the desired height,
 /// and a reference to the factory that owns it.
 /// </summary>
-public sealed class EmbedBox : BlockBox
+internal sealed class EmbedBox : BlockBox
 {
+    private readonly MarkdownLayoutContext? _context;
+
     public Block SourceBlock { get; }
     public IMarkdownEmbedFactory Factory { get; }
 
@@ -24,15 +27,23 @@ public sealed class EmbedBox : BlockBox
     public FrameworkElement? RealizedElement { get; set; }
 
     public EmbedBox(Block sourceBlock, IMarkdownEmbedFactory factory, Thickness margin = default)
+        : this(sourceBlock, factory, context: null, margin)
+    {
+    }
+
+    internal EmbedBox(Block sourceBlock, IMarkdownEmbedFactory factory, MarkdownLayoutContext? context, Thickness margin = default)
     {
         SourceBlock = sourceBlock ?? throw new ArgumentNullException(nameof(sourceBlock));
         Factory = factory ?? throw new ArgumentNullException(nameof(factory));
+        _context = context;
         Margin = margin;
     }
 
     public override float Measure(float availableWidth)
     {
+        ThrowIfCancellationRequested();
         float innerWidth = Math.Max(1f, availableWidth - (float)(Margin.Left + Margin.Right));
+        _context?.ThrowIfEmbedLayoutCallbackIsOnUiThread(nameof(IMarkdownEmbedFactory.MeasureHeight));
         float h = Factory.MeasureHeight(SourceBlock, innerWidth);
         if (h < 0) h = 0;
         float total = h + (float)(Margin.Top + Margin.Bottom);
@@ -48,10 +59,19 @@ public sealed class EmbedBox : BlockBox
 
     public override bool HitTest(Point point, out DocumentPosition position)
     {
-        // Pointer events go to the hosted XAML element directly via the
-        // overlay; the canvas-level hit test should treat the embed area as
-        // non-selectable text.
-        position = new DocumentPosition(BlockIndex, 0, 0);
-        return false;
+        if (!Bounds.Contains(point))
+        {
+            position = new DocumentPosition(BlockIndex, 0, 0);
+            return false;
+        }
+
+        position = new DocumentPosition(
+            BlockIndex,
+            0,
+            point.Y >= Bounds.Y + Bounds.Height / 2.0 ? 1 : 0);
+        return true;
     }
+
+    internal override void ThrowIfCancellationRequested()
+        => _context?.CancellationToken.ThrowIfCancellationRequested();
 }
