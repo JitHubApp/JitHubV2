@@ -785,6 +785,51 @@ internal sealed class InlineContainerBox : BlockBox
         return false;
     }
 
+    internal bool IsPointInsideRunBounds(InlineRun run, Point point)
+    {
+        if (_layout is null || !Bounds.Contains(point))
+            return false;
+
+        EnsureBuffer();
+
+        int cumulative = 0;
+        foreach (var candidate in _runs)
+        {
+            int len = candidate.Text.Length;
+            if (!ReferenceEquals(candidate, run))
+            {
+                cumulative += len;
+                continue;
+            }
+
+            if (len <= 0)
+                return false;
+
+            var regions = _layout.GetCharacterRegions(cumulative, len);
+            if (regions is null || regions.Length == 0)
+                return false;
+
+            var style = GetContainerStyle();
+            var (baseX, baseY) = GetSnappedOrigin(style);
+            foreach (var region in regions)
+            {
+                var lb = region.LayoutBounds;
+                var rect = new Rect(
+                    baseX + lb.X,
+                    baseY + lb.Y,
+                    lb.Width,
+                    lb.Height);
+
+                if (rect.Contains(point))
+                    return true;
+            }
+
+            return false;
+        }
+
+        return false;
+    }
+
     private int ToBufferIndex(DocumentPosition pos)
     {
         if (pos.BlockIndex < BlockIndex) return 0;
@@ -828,8 +873,7 @@ internal sealed class InlineContainerBox : BlockBox
             _context.CancellationToken.ThrowIfCancellationRequested();
             int len = run.Text.Length;
             if (len == 0) continue;
-            if ((!string.IsNullOrEmpty(run.ElementKey) && run.ElementKey != _elementKey) ||
-                run.StyleAliases.Count > 0)
+            if (ShouldApplyRunTextStyle(run))
             {
                 var rs = GetRunStyle(run);
                 if (rs.FontFamily != containerStyle.FontFamily)
@@ -1173,9 +1217,7 @@ internal sealed class InlineContainerBox : BlockBox
             if (run is InlineEmbedRun or InlineImageRun) { cumulative += len; continue; }
 
             var rs = GetRunStyle(run);
-            bool hasRunSpecificStyle =
-                (!string.IsNullOrEmpty(run.ElementKey) && run.ElementKey != _elementKey) ||
-                run.StyleAliases.Count > 0;
+            bool hasRunSpecificStyle = HasRunSpecificStyle(run);
             bool drawRunBg = hasRunSpecificStyle && rs.Background is { };
             if (!drawRunBg) { cumulative += len; continue; }
 
@@ -1210,4 +1252,26 @@ internal sealed class InlineContainerBox : BlockBox
         }
         return metrics.Length > 0 ? metrics[metrics.Length - 1] : default;
     }
+
+    private bool ShouldApplyRunTextStyle(InlineRun run)
+    {
+        if (run.ElementKey == MarkdownElementKeys.CodeInline && IsHeadingElement(_elementKey))
+            return false;
+
+        return HasRunSpecificStyle(run);
+    }
+
+    private bool HasRunSpecificStyle(InlineRun run)
+    {
+        return (!string.IsNullOrEmpty(run.ElementKey) && run.ElementKey != _elementKey) ||
+            run.StyleAliases.Count > 0;
+    }
+
+    private static bool IsHeadingElement(string elementKey)
+        => elementKey is MarkdownElementKeys.Heading1
+            or MarkdownElementKeys.Heading2
+            or MarkdownElementKeys.Heading3
+            or MarkdownElementKeys.Heading4
+            or MarkdownElementKeys.Heading5
+            or MarkdownElementKeys.Heading6;
 }

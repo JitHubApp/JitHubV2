@@ -26,6 +26,7 @@ namespace JitHub.WinUI.ViewModels.CommitViewModels
         private Branch? _selectedBranch;
         private IncrementalLoadingCollection<CommitsSource, CommandableCommit> _commits = null!;
         private CommandableCommit? _selectedCommit;
+        private bool _isIncrementalLoading;
         private readonly CommitPageNavArg _navArgs;
         
         public List<Branch> Branches
@@ -48,6 +49,13 @@ namespace JitHub.WinUI.ViewModels.CommitViewModels
             get => _selectedCommit;
             set => SetProperty(ref _selectedCommit, value);
         }
+
+        public bool IsIncrementalLoading
+        {
+            get => _isIncrementalLoading;
+            set => SetProperty(ref _isIncrementalLoading, value);
+        }
+
         public ICommand LoadCommand { get; }
         public ICommand CopyCommand { get; }
         public ICommand ViewCodeCommand { get; }
@@ -79,7 +87,7 @@ namespace JitHub.WinUI.ViewModels.CommitViewModels
             SelectedCommit = null;
         }
 
-        public void BranchSelectionChanged(object sender, Microsoft.UI.Xaml.Controls.SelectionChangedEventArgs e)
+        public async void BranchSelectionChanged(object sender, Microsoft.UI.Xaml.Controls.SelectionChangedEventArgs e)
         {
             if (e.AddedItems.FirstOrDefault() is Branch addedBranch &&
                 e.RemovedItems.FirstOrDefault() is Branch removedBranch &&
@@ -88,7 +96,15 @@ namespace JitHub.WinUI.ViewModels.CommitViewModels
                 return;
             }
 
-            Reload();
+            try
+            {
+                await ReloadAsync();
+            }
+            catch (Exception ex)
+            {
+                System.Diagnostics.Debug.WriteLine($"Failed to reload commits: {ex}");
+                Loading = false;
+            }
         }
 
         private async Task<CommandableCommit?> GetCommandableCommit(string? gitRef)
@@ -125,20 +141,37 @@ namespace JitHub.WinUI.ViewModels.CommitViewModels
             _navigationService.RepoNagivateTo(typeof(RepoCodePage), CodeViewerNavArg.CreateWithGitRef(Repo, gitRef));
         }
 
-        private void Reload()
+        private Task ReloadAsync()
         {
             if (SelectedBranch is null)
             {
-                Commits = new IncrementalLoadingCollection<CommitsSource, CommandableCommit>(
-                    new CommitsSource(Repo, new CommitRequest(), CopyCommand, ViewCodeCommand), 50);
-                return;
+                return SetIncrementalCollection(new CommitsSource(Repo, new CommitRequest(), CopyCommand, ViewCodeCommand));
             }
 
-            Loading = true;
             var commitsSource = new CommitsSource(Repo, new CommitRequest { Sha = SelectedBranch.Name }, CopyCommand, ViewCodeCommand);
+            return SetIncrementalCollection(commitsSource);
+        }
+
+        private Task SetIncrementalCollection(CommitsSource commitsSource)
+        {
             Commits = new IncrementalLoadingCollection<CommitsSource, CommandableCommit>(commitsSource, 50);
-            _ = Commits.RefreshAsync();
-            Loading = false;
+            Commits.OnStartLoading += () =>
+            {
+                if (Commits.Count == 0)
+                {
+                    Loading = true;
+                }
+                else
+                {
+                    IsIncrementalLoading = true;
+                }
+            };
+            Commits.OnEndLoading += () =>
+            {
+                Loading = false;
+                IsIncrementalLoading = false;
+            };
+            return Commits.RefreshAsync();
         }
 
         public async Task Load()
@@ -155,7 +188,7 @@ namespace JitHub.WinUI.ViewModels.CommitViewModels
                 SelectedBranch = Branches.FirstOrDefault(branch => branch.Name == Repo.DefaultBranch);
             }
 
-            Reload();
+            await ReloadAsync();
             if (!_navArgs.NoRef)
             {
                 if (SelectedCommit == null && Commits != null)

@@ -26,6 +26,7 @@ namespace JitHub.WinUI.ViewModels.IssueViewModels
         #region Fields
         private bool _filterLoading;
         private bool _isEmpty;
+        private bool _isIncrementalLoading;
         private readonly ModalService _modalSerivce;
         private readonly ICommandService _commandService;
         private IncrementalLoadingCollection<IssueSource, RepoSelectableItemModel<Issue>> _issues = null!;
@@ -35,6 +36,12 @@ namespace JitHub.WinUI.ViewModels.IssueViewModels
         #region Properties
         public ICommand NewIssueCommand { get; }
         public bool IsEmpty { get => _isEmpty; set => SetProperty(ref _isEmpty, value); }
+
+        public bool IsIncrementalLoading
+        {
+            get => _isIncrementalLoading;
+            set => SetProperty(ref _isIncrementalLoading, value);
+        }
         
         public IncrementalLoadingCollection<IssueSource, RepoSelectableItemModel<Issue>> Issues
         {
@@ -82,6 +89,23 @@ namespace JitHub.WinUI.ViewModels.IssueViewModels
         private void SetIncrementalCollection(IssueSource issueSource, RepoSelectableItemModel<Issue>? selectedIssue)
         {
             Issues = new IncrementalLoadingCollection<IssueSource, RepoSelectableItemModel<Issue>>(issueSource, _perPage);
+            Issues.OnStartLoading += () =>
+            {
+                if (Issues.Count == 0)
+                {
+                    Loading = true;
+                }
+                else
+                {
+                    IsIncrementalLoading = true;
+                }
+            };
+            Issues.OnEndLoading += () =>
+            {
+                Loading = false;
+                IsIncrementalLoading = false;
+                IsEmpty = Issues.Count == 0;
+            };
             if (selectedIssue != null)
             {
                 Issues.Add(selectedIssue);
@@ -91,15 +115,6 @@ namespace JitHub.WinUI.ViewModels.IssueViewModels
             {
                 _ = Issues.RefreshAsync();
             }
-            Issues.OnStartLoading += () =>
-            {
-                Loading = true;
-            };
-            Issues.OnEndLoading += () =>
-            {
-                Loading = false;
-                IsEmpty = Issues.Count == 0;
-            };
         }
 
         private void OpenNewIssueDialog()

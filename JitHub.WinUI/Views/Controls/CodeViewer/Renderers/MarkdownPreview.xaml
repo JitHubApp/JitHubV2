@@ -3,6 +3,7 @@
     xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
     xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
     xmlns:codeviewer="using:JitHub.WinUI.Views.Controls.CodeViewer"
+    xmlns:common="using:JitHub.WinUI.Views.Controls.Common"
     xmlns:controls="using:CommunityToolkit.WinUI.Controls"
     xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
     xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
@@ -39,19 +40,19 @@
         <!--  Body  -->
         <Grid Grid.Row="1">
 
-            <!--  Rich: MarkdownTextBlock  -->
-            <ScrollViewer
+            <!--  Rich: native markdown renderer  -->
+            <common:MarkdownViewer
                 x:Name="RichPanel"
-                Padding="16"
-                HorizontalScrollBarVisibility="Disabled"
-                HorizontalScrollMode="Disabled"
-                Visibility="Visible">
-                <controls:MarkdownTextBlock
-                    x:Name="RichMarkdown"
-                    MaxWidth="860"
-                    HorizontalAlignment="Center"
-                    Foreground="{ThemeResource AppInkBrush}" />
-            </ScrollViewer>
+                BaseUrl="{x:Bind CurrentBaseUrl, Mode=OneWay}"
+                ContentHorizontalAlignment="Center"
+                ContentMaxWidth="860"
+                ContentPadding="16"
+                DocumentPath="{x:Bind CurrentDocumentPath, Mode=OneWay}"
+                HorizontalAlignment="Stretch"
+                SurfaceColorToken="AppCanvas"
+                Text="{x:Bind ViewModel.Text, Mode=OneWay}"
+                VerticalAlignment="Stretch"
+                Visibility="Visible" />
 
             <!--  Plain: raw code editor  -->
             <codeviewer:CodeEditorControl

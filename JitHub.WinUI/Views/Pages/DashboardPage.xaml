@@ -4,6 +4,7 @@
     xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
     xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
     xmlns:controls="using:JitHub.WinUI.Views.Controls.Common"
+    xmlns:behaviors="using:JitHub.WinUI.Behaviors"
     xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
     xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
     xmlns:appcontrols="using:JitHub.WinUI.Views.Controls.App"
@@ -60,6 +61,10 @@
                             IsItemClickEnabled="False"
                             ItemTemplateSelector="{StaticResource GitHubActivityCardTemplateSelector}"
                             ItemsSource="{Binding RecentActivity}"
+                            behaviors:IncrementalLoadingBehavior.IsEnabled="True"
+                            behaviors:IncrementalLoadingBehavior.PageSize="20"
+                            behaviors:IncrementalLoadingBehavior.Source="{Binding RecentActivity}"
+                            behaviors:IncrementalLoadingBehavior.Threshold="1200"
                             SelectionMode="None"
                             Visibility="{Binding AreActivityItemsVisible, Converter={StaticResource BoolToVisibilityConverter}}">
                             <ListView.ItemContainerStyle>
@@ -71,6 +76,18 @@
                                 </Style>
                             </ListView.ItemContainerStyle>
                         </ListView>
+
+                        <ProgressBar
+                            Grid.Row="1"
+                            Width="220"
+                            Height="2"
+                            Margin="0,0,0,4"
+                            HorizontalAlignment="Center"
+                            VerticalAlignment="Bottom"
+                            Background="{ThemeResource AppSurfaceSubtleBrush}"
+                            Foreground="{ThemeResource AppAccentBrush}"
+                            IsIndeterminate="True"
+                            Visibility="{Binding IsActivityIncrementalLoading, Converter={StaticResource BoolToVisibilityConverter}}" />
                     </Grid>
                 </appcontrols:AppSurfaceCard.Child>
             </appcontrols:AppSurfaceCard>

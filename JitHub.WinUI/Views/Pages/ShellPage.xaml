@@ -13,6 +13,7 @@
     xmlns:muxc="using:Microsoft.UI.Xaml.Controls"
     xmlns:animatedvisuals="using:Microsoft.UI.Xaml.Controls.AnimatedVisuals"
     xmlns:user="using:JitHub.WinUI.Views.Controls.Profile"
+    Loaded="Page_Loaded"
     SizeChanged="Page_SizeChanged"
     Background="Transparent"
     PointerPressed="Page_PointerPressed">
@@ -20,29 +21,70 @@
         x:Name="ShellRoot"
         AutomationProperties.AutomationId="ShellRoot"
         AutomationProperties.AccessibilityView="Control"
-        Background="{ThemeResource AppCanvasBrush}">
+        Background="{ThemeResource AppCanvasBrush}"
+        KeyboardAcceleratorPlacementMode="Hidden">
         <Grid.RowDefinitions>
             <RowDefinition Height="auto"/>
             <RowDefinition Height="*"/>
         </Grid.RowDefinitions>
+        <Grid.KeyboardAccelerators>
+            <KeyboardAccelerator
+                Key="K"
+                Modifiers="Control"
+                Invoked="SearchKeyboardAccelerator_Invoked" />
+        </Grid.KeyboardAccelerators>
         <VisualStateManager.VisualStateGroups>
-            <VisualStateGroup>
+            <VisualStateGroup x:Name="LayoutStates">
                 <VisualState x:Name="WideLayout">
                     <VisualState.Setters>
                         <Setter Target="ModalContent.Width" Value="768"/>
                         <Setter Target="ModalContent.HorizontalAlignment" Value="Center"/>
-                        <Setter Target="SearchBoxContainer.Width" Value="440"/>
-                        <Setter Target="SearchBoxContainer.HorizontalAlignment" Value="Center"/>
+                        <Setter Target="SearchBoxFrame.Width" Value="440"/>
+                        <Setter Target="SearchBoxFrame.HorizontalAlignment" Value="Center"/>
                     </VisualState.Setters>
                 </VisualState>
                 <VisualState x:Name="NarrowLayout">
                     <VisualState.Setters>
                         <Setter Target="ModalContent.HorizontalAlignment" Value="Stretch"/>
-                        <Setter Target="SearchBoxContainer.HorizontalAlignment" Value="Stretch"/>
+                        <Setter Target="SearchBoxFrame.HorizontalAlignment" Value="Stretch"/>
+                    </VisualState.Setters>
+                </VisualState>
+            </VisualStateGroup>
+            <VisualStateGroup x:Name="SearchFocusStates">
+                <VisualState x:Name="SearchUnfocused">
+                    <VisualState.Setters>
+                        <Setter Target="SearchFocusGlow.Opacity" Value="0" />
+                        <Setter Target="SearchFocusRing.Opacity" Value="0" />
+                        <Setter Target="SearchBoxContainer.BorderBrush" Value="{ThemeResource AppOutlineBrush}" />
+                        <Setter Target="SearchShortcutBadge.Visibility" Value="Visible" />
+                    </VisualState.Setters>
+                </VisualState>
+                <VisualState x:Name="SearchFocused">
+                    <VisualState.Setters>
+                        <Setter Target="SearchFocusGlow.Opacity" Value="0.18" />
+                        <Setter Target="SearchFocusRing.Opacity" Value="1" />
+                        <Setter Target="SearchBoxContainer.BorderBrush" Value="{ThemeResource AppAccentBrush}" />
+                        <Setter Target="SearchShortcutBadge.Visibility" Value="Collapsed" />
                     </VisualState.Setters>
                 </VisualState>
             </VisualStateGroup>
         </VisualStateManager.VisualStateGroups>
+        <Button
+            Grid.Row="0"
+            x:Name="SearchFocusSink"
+            Width="1"
+            Height="1"
+            Padding="0"
+            HorizontalAlignment="Left"
+            VerticalAlignment="Top"
+            Background="Transparent"
+            BorderThickness="0"
+            IsTabStop="True"
+            Opacity="0"
+            TabIndex="-1"
+            UseSystemFocusVisuals="False"
+            AutomationProperties.AutomationId="ShellSearchFocusSink"
+            AutomationProperties.AccessibilityView="Raw" />
         <Grid
             Grid.Row="0"
             x:Name="TitleBarHost"
@@ -82,18 +124,35 @@
                 Grid.Column="1"
                 VerticalAlignment="Center"
                 HorizontalAlignment="Stretch">
-                <Border
-                    x:Name="SearchBoxContainer"
-                    Padding="10,4"
-                    Background="{ThemeResource AppSurfaceBrush}"
-                    BorderBrush="{ThemeResource AppOutlineBrush}"
-                    BorderThickness="1"
-                    CornerRadius="{ThemeResource AppRadiusPill}"
-                    AutomationProperties.AutomationId="ShellSearchBoxContainer">
+                <Grid x:Name="SearchBoxFrame">
+                    <Border
+                        x:Name="SearchFocusGlow"
+                        Margin="-3"
+                        Background="{ThemeResource AppAccentBrush}"
+                        CornerRadius="{ThemeResource AppRadiusPill}"
+                        IsHitTestVisible="False"
+                        Opacity="0" />
+                    <Border
+                        x:Name="SearchFocusRing"
+                        Margin="-1"
+                        BorderBrush="{ThemeResource AppAccentBrush}"
+                        BorderThickness="1"
+                        CornerRadius="{ThemeResource AppRadiusPill}"
+                        IsHitTestVisible="False"
+                        Opacity="0" />
+                    <Border
+                        x:Name="SearchBoxContainer"
+                        Padding="10,4"
+                        Background="{ThemeResource AppSurfaceBrush}"
+                        BorderBrush="{ThemeResource AppOutlineBrush}"
+                        BorderThickness="1"
+                        CornerRadius="{ThemeResource AppRadiusPill}"
+                        AutomationProperties.AutomationId="ShellSearchBoxContainer">
                     <Grid ColumnSpacing="6">
                         <Grid.ColumnDefinitions>
                             <ColumnDefinition Width="16"/>
                             <ColumnDefinition Width="*"/>
+                            <ColumnDefinition Width="auto"/>
                             <ColumnDefinition Width="auto"/>
                         </Grid.ColumnDefinitions>
                         <muxc:ProgressRing
@@ -110,11 +169,12 @@
                             Style="{StaticResource ShellSearchTextBoxStyle}"
                             Loaded="SearchTextBox_Loaded"
                             GotFocus="SearchTextBox_GotFocus"
+                            LostFocus="SearchControl_LostFocus"
                             ContextRequested="SearchTextBox_ContextRequested"
                             PointerPressed="SearchTextBox_PointerPressed"
                             TextChanged="SearchTextBox_TextChanged"
                             KeyDown="SearchTextBox_KeyDown"
-                            PlaceholderText="Search repos by owner/name or keyword">
+                            PlaceholderText="Search repos">
                             <TextBox.ContextFlyout>
                                 <MenuFlyout
                                     x:Name="SearchTextContextFlyout"
@@ -179,17 +239,61 @@
                                 <SolidColorBrush x:Key="TextControlButtonBorderBrushPressed" Color="Transparent" />
                             </TextBox.Resources>
                         </TextBox>
-                        <Button
+                        <StackPanel
                             Grid.Column="2"
+                            x:Name="SearchShortcutBadge"
+                            AutomationProperties.AutomationId="ShellSearchShortcutBadge"
+                            AutomationProperties.Name="Ctrl K shortcut"
+                            Spacing="4"
+                            Orientation="Horizontal"
+                            VerticalAlignment="Center"
+                            IsHitTestVisible="False"
+                            AutomationProperties.AccessibilityView="Control">
+                            <Border
+                                Padding="7,2"
+                                MinHeight="22"
+                                Background="{ThemeResource AppCanvasInsetBrush}"
+                                BorderBrush="{ThemeResource AppOutlineBrush}"
+                                BorderThickness="1"
+                                CornerRadius="{ThemeResource AppRadiusSmall}">
+                                <TextBlock
+                                    VerticalAlignment="Center"
+                                    FontFamily="{StaticResource AppUiFontFamily}"
+                                    FontSize="11"
+                                    FontWeight="SemiBold"
+                                    Foreground="{ThemeResource AppInkSubtleBrush}"
+                                    Text="Ctrl" />
+                            </Border>
+                            <Border
+                                Padding="7,2"
+                                MinHeight="22"
+                                Background="{ThemeResource AppCanvasInsetBrush}"
+                                BorderBrush="{ThemeResource AppOutlineBrush}"
+                                BorderThickness="1"
+                                CornerRadius="{ThemeResource AppRadiusSmall}">
+                                <TextBlock
+                                    VerticalAlignment="Center"
+                                    FontFamily="{StaticResource AppUiFontFamily}"
+                                    FontSize="11"
+                                    FontWeight="SemiBold"
+                                    Foreground="{ThemeResource AppInkSubtleBrush}"
+                                    Text="K" />
+                            </Border>
+                        </StackPanel>
+                        <Button
+                            Grid.Column="3"
                             x:Name="SearchSubmitButton"
                             AutomationProperties.AutomationId="ShellSearchSubmitButton"
                             Style="{StaticResource AppToolbarButtonStyle}"
                             GotFocus="SearchSubmitButton_GotFocus"
+                            LostFocus="SearchControl_LostFocus"
+                            KeyDown="SearchControl_KeyDown"
                             Click="SearchSubmitButton_Click">
                             <FontIcon FontFamily="{StaticResource SegoeFluentIcons}" Glyph="&#xE721;"/>
                         </Button>
                     </Grid>
-                </Border>
+                    </Border>
+                </Grid>
             </Grid>
             <StackPanel
                 Spacing="12"
@@ -318,18 +422,16 @@
                     </ListView.ItemContainerStyle>
                     <ListView.ItemTemplate>
                         <DataTemplate x:DataType="models:GitHubRepository">
-                            <Button
+                            <Grid
                                 AutomationProperties.Name="{x:Bind FullName, Mode=OneWay}"
-                                Click="SearchSuggestionButton_Click"
-                                IsTabStop="False"
-                                Style="{StaticResource AppSearchSuggestionButtonStyle}">
+                                Background="Transparent">
                                 <TextBlock
                                     VerticalAlignment="Center"
                                     FontFamily="{StaticResource AppUiFontFamily}"
                                     FontSize="{StaticResource AppBodyFontSize}"
                                     Text="{x:Bind FullName, Mode=OneWay}"
                                     TextTrimming="CharacterEllipsis"/>
-                            </Button>
+                            </Grid>
                         </DataTemplate>
                     </ListView.ItemTemplate>
                 </ListView>

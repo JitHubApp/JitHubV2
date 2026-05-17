@@ -99,13 +99,14 @@ public sealed class TextMateCodeBlockSyntaxHighlighterTests
     }
 
     [Fact]
-    public async Task HighlightAsync_AlreadyCanceled_Throws()
+    public async Task HighlightAsync_AlreadyCanceled_ReturnsNull()
     {
         using var cts = new CancellationTokenSource();
         await cts.CancelAsync();
         var highlighter = new TextMateCodeBlockSyntaxHighlighter();
         var request = new CodeBlockHighlightRequest("csharp", "public class Demo { }", CodeBlockThemeVariant.Dark, cts.Token);
 
-        await Assert.ThrowsAsync<OperationCanceledException>(async () => await highlighter.HighlightAsync(request));
+        var result = await highlighter.HighlightAsync(request);
+        Assert.Null(result);
     }
 }

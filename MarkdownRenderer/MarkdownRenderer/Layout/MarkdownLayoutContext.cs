@@ -11,6 +11,7 @@ using Markdig.Renderers.Html;
 using Markdig.Syntax;
 using MarkdownRenderer.Document;
 using MarkdownRenderer.CodeBlocks;
+using MarkdownRenderer.Images;
 using MarkdownRenderer.Parsing;
 using MarkdownRenderer.Theming;
 
@@ -79,6 +80,15 @@ public sealed class MarkdownLayoutContext
 
     /// <summary>Line-number policy for code blocks.</summary>
     public CodeBlockLineNumberMode CodeBlockLineNumberMode { get; init; } = CodeBlockLineNumberMode.AutoMultiline;
+
+    /// <summary>Optional host-specific image resolver used before public URI loading.</summary>
+    public IMarkdownImageResolver? ImageResolver { get; init; }
+
+    /// <summary>Optional base URI used to resolve relative image sources.</summary>
+    public Uri? ImageBaseUri { get; init; }
+
+    /// <summary>Optional source document path used by host image resolvers.</summary>
+    public string? ImageDocumentPath { get; init; }
 
     /// <summary>Returns the next one-based block index for a custom block.</summary>
     public int NextBlockIndex() => ++_blockIndex;

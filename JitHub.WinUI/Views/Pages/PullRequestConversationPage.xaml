@@ -86,15 +86,7 @@
                 </VisualState>
             </VisualStateGroup>
         </VisualStateManager.VisualStateGroups>
-        <muxc:ProgressRing
-            IsActive="True"
-            Visibility="{x:Bind ViewModel.Loading, Converter={StaticResource BoolToVisibilityConverter}, Mode=OneWay}"
-            Height="50"
-            Width="50"
-            VerticalAlignment="Center"
-            HorizontalAlignment="Center"/>
-        <Grid
-            Visibility="{x:Bind ViewModel.Loading, Converter={StaticResource BoolToVisibilityReverseConverter}, Mode=OneWay}">
+        <Grid>
             <Grid.ColumnDefinitions>
                 <ColumnDefinition Width="*"/>
                 <ColumnDefinition Width="auto"/>
@@ -110,6 +102,13 @@
                     Spacing="8">
                     <usercontrols:UserCommentBlock
                         ViewModel="{x:Bind ViewModel.BodyViewModel, Mode=OneWay}"/>
+                    <muxc:ProgressBar
+                        Height="2"
+                        Margin="56,0,0,0"
+                        Background="{ThemeResource AppSurfaceSubtleBrush}"
+                        Foreground="{ThemeResource AppAccentBrush}"
+                        IsIndeterminate="True"
+                        Visibility="{x:Bind ViewModel.IsCommentsLoading, Converter={StaticResource BoolToVisibilityConverter}, Mode=OneWay}" />
                     <muxc:ItemsRepeater
                         ItemsSource="{x:Bind ViewModel.Comments, Mode=OneWay}"
                         ItemTemplate="{StaticResource ConversationItemSelector}">

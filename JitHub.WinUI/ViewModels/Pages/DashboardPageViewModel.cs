@@ -5,6 +5,8 @@ using System.Linq;
 using System.Net.Http;
 using System.Threading;
 using System.Threading.Tasks;
+using CommunityToolkit.Common.Collections;
+using CommunityToolkit.WinUI;
 using CommunityToolkit.Mvvm.Input;
 using CommunityToolkit.Mvvm.ComponentModel;
 using JitHub.Models;
@@ -21,10 +23,12 @@ namespace JitHub.WinUI.ViewModels.Pages;
 [Bindable]
 public sealed partial class DashboardPageViewModel : ViewModelBase
 {
+    private const int ActivityPageSize = 20;
     private readonly IAuthService _authService;
     private readonly IAccountService _accountService;
     private readonly IGitHubClientService _gitHubClientService;
     private readonly NavigationService _navigationService;
+    private IncrementalLoadingCollection<DashboardActivitySource, ActivityCardViewModel>? _recentActivity;
 
     public DashboardPageViewModel()
     {
@@ -39,7 +43,11 @@ public sealed partial class DashboardPageViewModel : ViewModelBase
 
     public ObservableCollection<GitHubRepository> RecentRepositories { get; } = [];
 
-    public ObservableCollection<ActivityCardViewModel> RecentActivity { get; } = [];
+    public IncrementalLoadingCollection<DashboardActivitySource, ActivityCardViewModel>? RecentActivity
+    {
+        get => _recentActivity;
+        private set => SetProperty(ref _recentActivity, value);
+    }
 
     public RelayCommand<ActivityNavigationTarget> NavigateActivityTargetCommand { get; }
 
@@ -97,6 +105,9 @@ public sealed partial class DashboardPageViewModel : ViewModelBase
 
     [ObservableProperty]
     public partial bool IsActivityLoading { get; set; }
+
+    [ObservableProperty]
+    public partial bool IsActivityIncrementalLoading { get; set; }
 
     [ObservableProperty]
     public partial bool AreActivityItemsVisible { get; set; }
@@ -183,6 +194,10 @@ public sealed partial class DashboardPageViewModel : ViewModelBase
             ActivityStatusText = GetString(
                 "Common.AuthUnavailable",
                 "GitHub authentication is no longer available. Please sign in again.");
+            RecentActivity = null;
+            IsActivityIncrementalLoading = false;
+            AreActivityItemsVisible = false;
+            IsActivityEmptyStateVisible = false;
             _authService.SignOut();
             return;
         }
@@ -191,52 +206,48 @@ public sealed partial class DashboardPageViewModel : ViewModelBase
         if (user is null || string.IsNullOrWhiteSpace(user.Login))
         {
             ActivityStatusText = GetString("Dashboard.UserStatusUnavailable", "GitHub profile details are not available yet.");
+            RecentActivity = null;
+            IsActivityIncrementalLoading = false;
             AreActivityItemsVisible = false;
             IsActivityEmptyStateVisible = false;
             return;
         }
 
         IsActivityLoading = true;
+        IsActivityIncrementalLoading = false;
         AreActivityItemsVisible = false;
         IsActivityEmptyStateVisible = false;
+        RecentActivity = null;
         ActivityStatusText = GetString("Dashboard.LoadingActivity", "Loading recent activity...");
 
         try
         {
-            Task<IReadOnlyList<GitHubActivityEvent>> userEventsTask =
-                _gitHubClientService.GetUserEventsAsync(token, user.Login, 20);
-            Task<IReadOnlyList<GitHubActivityEvent>> receivedEventsTask =
-                _gitHubClientService.GetReceivedEventsAsync(token, user.Login, 20);
-
-            await Task.WhenAll(userEventsTask, receivedEventsTask);
-
-            IReadOnlyList<GitHubActivityEvent> userEvents = await userEventsTask;
-            IReadOnlyList<GitHubActivityEvent> receivedEvents = await receivedEventsTask;
-
-            IReadOnlyList<GitHubActivityEvent> events = userEvents
-                .Concat(receivedEvents)
-                .GroupBy(static activityEvent => activityEvent.Id)
-                .Select(static group => group.First())
-                .OrderByDescending(static activityEvent => activityEvent.CreatedAt ?? DateTimeOffset.MinValue)
-                .Take(20)
-                .ToList();
-
-            await EnrichActivityEventsAsync(token, events);
-
-            RecentActivity.Clear();
-            foreach (GitHubActivityEvent activityEvent in events)
+            var source = new DashboardActivitySource(this, token, user.Login);
+            var activity = new IncrementalLoadingCollection<DashboardActivitySource, ActivityCardViewModel>(
+                source,
+                ActivityPageSize);
+            activity.OnStartLoading += () =>
             {
-                RecentActivity.Add(ActivityCardViewModelFactory.Create(activityEvent, NavigateActivityTargetCommand));
-            }
+                if (activity.Count == 0)
+                {
+                    IsActivityLoading = true;
+                }
+                else
+                {
+                    IsActivityIncrementalLoading = true;
+                }
 
-            AreActivityItemsVisible = RecentActivity.Count > 0;
-            IsActivityEmptyStateVisible = RecentActivity.Count == 0;
-            ActivityStatusText = RecentActivity.Count == 0
-                ? GetString("Dashboard.NoActivityStatus", "No recent activity is available for this account.")
-                : FormatString("Dashboard.ActivityCountStatus", "Showing {0} recent activity events.", RecentActivity.Count);
+                IsActivityEmptyStateVisible = false;
+            };
+            activity.OnEndLoading += () => UpdateActivityState(activity);
+            RecentActivity = activity;
+            await activity.RefreshAsync();
         }
         catch (GitHubAuthenticationException)
         {
+            RecentActivity = null;
+            AreActivityItemsVisible = false;
+            IsActivityEmptyStateVisible = false;
             ActivityStatusText = GetString(
                 "Common.AuthInvalid",
                 "GitHub authentication is no longer valid. Please sign in again.");
@@ -244,12 +255,14 @@ public sealed partial class DashboardPageViewModel : ViewModelBase
         }
         catch (GitHubApiException ex)
         {
+            RecentActivity = null;
             AreActivityItemsVisible = false;
             IsActivityEmptyStateVisible = true;
             ActivityStatusText = ex.Message;
         }
         catch (HttpRequestException)
         {
+            RecentActivity = null;
             AreActivityItemsVisible = false;
             IsActivityEmptyStateVisible = true;
             ActivityStatusText = GetString(
@@ -259,7 +272,19 @@ public sealed partial class DashboardPageViewModel : ViewModelBase
         finally
         {
             IsActivityLoading = false;
+            IsActivityIncrementalLoading = false;
         }
+    }
+
+    private void UpdateActivityState(IncrementalLoadingCollection<DashboardActivitySource, ActivityCardViewModel> activity)
+    {
+        IsActivityLoading = false;
+        IsActivityIncrementalLoading = false;
+        AreActivityItemsVisible = activity.Count > 0;
+        IsActivityEmptyStateVisible = activity.Count == 0 && !activity.HasMoreItems;
+        ActivityStatusText = activity.Count == 0
+            ? GetString("Dashboard.NoActivityStatus", "No recent activity is available for this account.")
+            : FormatString("Dashboard.ActivityCountStatus", "Showing {0} recent activity events.", activity.Count);
     }
 
     private async Task RefreshUserStatusAsync()
@@ -440,5 +465,104 @@ public sealed partial class DashboardPageViewModel : ViewModelBase
                 HtmlUrl = string.IsNullOrWhiteSpace(owner) ? null : $"https://github.com/{owner}"
             }
         };
+    }
+
+    public sealed class DashboardActivitySource : IIncrementalSource<ActivityCardViewModel>
+    {
+        private const int MaxFetchesPerPage = 8;
+        private readonly DashboardPageViewModel _owner;
+        private readonly string _token;
+        private readonly string _userLogin;
+        private readonly HashSet<string> _seenIds = new(StringComparer.Ordinal);
+        private int _nextPage = 1;
+        private bool _userEventsExhausted;
+        private bool _receivedEventsExhausted;
+
+        internal DashboardActivitySource(DashboardPageViewModel owner, string token, string userLogin)
+        {
+            _owner = owner;
+            _token = token;
+            _userLogin = userLogin;
+        }
+
+        public async Task<IEnumerable<ActivityCardViewModel>> GetPagedItemsAsync(
+            int pageIndex,
+            int pageSize,
+            CancellationToken cancellationToken = default)
+        {
+            if (pageIndex == 0)
+            {
+                _seenIds.Clear();
+                _nextPage = 1;
+                _userEventsExhausted = false;
+                _receivedEventsExhausted = false;
+            }
+
+            var events = new List<GitHubActivityEvent>();
+            int fetchCount = 0;
+
+            while (events.Count < pageSize &&
+                fetchCount < MaxFetchesPerPage &&
+                (!_userEventsExhausted || !_receivedEventsExhausted))
+            {
+                cancellationToken.ThrowIfCancellationRequested();
+                int currentPage = _nextPage++;
+                fetchCount++;
+
+                Task<IReadOnlyList<GitHubActivityEvent>> userEventsTask = _userEventsExhausted
+                    ? Task.FromResult<IReadOnlyList<GitHubActivityEvent>>(Array.Empty<GitHubActivityEvent>())
+                    : _owner._gitHubClientService.GetUserEventsAsync(
+                        _token,
+                        _userLogin,
+                        pageSize,
+                        currentPage,
+                        cancellationToken);
+                Task<IReadOnlyList<GitHubActivityEvent>> receivedEventsTask = _receivedEventsExhausted
+                    ? Task.FromResult<IReadOnlyList<GitHubActivityEvent>>(Array.Empty<GitHubActivityEvent>())
+                    : _owner._gitHubClientService.GetReceivedEventsAsync(
+                        _token,
+                        _userLogin,
+                        pageSize,
+                        currentPage,
+                        cancellationToken);
+
+                await Task.WhenAll(userEventsTask, receivedEventsTask);
+
+                IReadOnlyList<GitHubActivityEvent> userEvents = await userEventsTask;
+                IReadOnlyList<GitHubActivityEvent> receivedEvents = await receivedEventsTask;
+                _userEventsExhausted = userEvents.Count < pageSize;
+                _receivedEventsExhausted = receivedEvents.Count < pageSize;
+
+                foreach (GitHubActivityEvent activityEvent in userEvents
+                    .Concat(receivedEvents)
+                    .OrderByDescending(static item => item.CreatedAt ?? DateTimeOffset.MinValue))
+                {
+                    if (_seenIds.Add(CreateStableActivityId(activityEvent)))
+                        events.Add(activityEvent);
+                }
+            }
+
+            await _owner.EnrichActivityEventsAsync(_token, events);
+
+            return events
+                .OrderByDescending(static item => item.CreatedAt ?? DateTimeOffset.MinValue)
+                .Select(activityEvent => ActivityCardViewModelFactory.Create(
+                    activityEvent,
+                    _owner.NavigateActivityTargetCommand))
+                .ToList();
+        }
+
+        private static string CreateStableActivityId(GitHubActivityEvent activityEvent)
+        {
+            if (!string.IsNullOrWhiteSpace(activityEvent.Id))
+                return activityEvent.Id;
+
+            return string.Join(
+                ':',
+                activityEvent.Type,
+                activityEvent.Repo.Name,
+                activityEvent.Actor.Id,
+                activityEvent.CreatedAt?.ToUnixTimeMilliseconds() ?? 0);
+        }
     }
 }

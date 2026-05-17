@@ -32,6 +32,7 @@ namespace JitHub.WinUI.ViewModels.PullRequestViewModels
         private string _closeButtonText = string.Empty;
         private UserCommentBlockViewModel _bodyViewModel = null!;
         private readonly Action _scrollToBottom;
+        private bool _isCommentsLoading;
         #region merge
         private string _mergeTitle = string.Empty;
         private string _mergeMessage = string.Empty;
@@ -104,6 +105,11 @@ namespace JitHub.WinUI.ViewModels.PullRequestViewModels
             get => _bodyViewModel;
             set => SetProperty(ref _bodyViewModel, value);
         }
+        public bool IsCommentsLoading
+        {
+            get => _isCommentsLoading;
+            set => SetProperty(ref _isCommentsLoading, value);
+        }
         public ICommand LoadCommand { get; }
         public ICommand ReloadPullRequestCommand { get; }
         public ICommand QuoteReplyCommand { get; }
@@ -147,11 +153,29 @@ namespace JitHub.WinUI.ViewModels.PullRequestViewModels
         public async Task OnNavigatedTo()
         {
             Loading = true;
-            _asIssue = await GitHubService.GetIssue(Repo.Id, PullRequest.Number);
-            BodyViewModel = new UserCommentBlockViewModel(Repo, _asIssue, QuoteReplyCommand);
+            IsCommentsLoading = true;
             PRModel = new IssueSideBarViewModel(Repo, PullRequest);
-            await PRModel.Load();
-            await Load();
+            Task<Issue> issueTask = GitHubService.GetIssue(Repo.Id, PullRequest.Number);
+            Task sideBarTask = PRModel.Load();
+            Task loadTask = Load(manageCommentsLoading: false);
+
+            try
+            {
+                _asIssue = await issueTask;
+                BodyViewModel = new UserCommentBlockViewModel(Repo, _asIssue, QuoteReplyCommand);
+            }
+            finally
+            {
+                try
+                {
+                    await Task.WhenAll(sideBarTask, loadTask);
+                }
+                finally
+                {
+                    IsCommentsLoading = false;
+                    Loading = false;
+                }
+            }
         }
 
         private void SetCloseButtonText()
@@ -177,37 +201,68 @@ namespace JitHub.WinUI.ViewModels.PullRequestViewModels
         }
 
         public async Task Load()
+            => await Load(manageCommentsLoading: true);
+
+        private async Task Load(bool manageCommentsLoading)
         {
             Loading = true;
+            if (manageCommentsLoading)
+            {
+                IsCommentsLoading = true;
+            }
             (string ownerLogin, string repoName) = GetRepoRoute();
-            PullRequest = await GitHubService.GetPullRequest(ownerLogin, repoName, PullRequest.Number);
             try
             {
-                var branch = await GitHubService.GetBranch(ownerLogin, repoName, PullRequest.Head.Ref);
-                BranchExist = branch != null;
+                Task<PullRequest> pullRequestTask = GitHubService.GetPullRequest(ownerLogin, repoName, PullRequest.Number);
+                Task<bool> branchExistsTask = CheckBranchExists(ownerLogin, repoName, PullRequest.Head.Ref);
+                Task<bool> collaboratorTask = base.IsCollaborator();
+                Task<ICollection<ConversationNode>> commentsTask = GitHubService.GetPRConversationNodesAsync(Repo, PullRequest);
+
+                PullRequest = await pullRequestTask;
+                BranchExist = await branchExistsTask;
+                UserIsCollaborator = (await collaboratorTask ||
+                    string.Equals(User?.Login, PullRequest.User?.Login, StringComparison.Ordinal)) &&
+                    BranchExist;
+
+                var comments = await commentsTask;
+                var commentList = new List<ConversationNode>();
+                foreach (var comment in comments)
+                {
+                    if (comment is IssueCommentNode issueComment)
+                    {
+                        issueComment.QuoteReplyCommand = QuoteReplyCommand;
+                    }
+                    else if (comment is ReviewNode review)
+                    {
+                        review.ScrollToElementCommand = ScrollToElementCommand;
+                    }
+                    commentList.Add(comment);
+                }
+
+                Comments = commentList;
+                SetCloseButtonText();
+            }
+            finally
+            {
+                if (manageCommentsLoading)
+                {
+                    IsCommentsLoading = false;
+                }
+                Loading = false;
+            }
+        }
+
+        private async Task<bool> CheckBranchExists(string ownerLogin, string repoName, string branchName)
+        {
+            try
+            {
+                var branch = await GitHubService.GetBranch(ownerLogin, repoName, branchName);
+                return branch != null;
             }
             catch (Exception)
             {
-                BranchExist = false;
+                return false;
             }
-            UserIsCollaborator = await IsCollaborator();
-            var comments = await GitHubService.GetPRConversationNodesAsync(Repo, PullRequest);
-            var commentList = new List<ConversationNode>();
-            foreach (var comment in comments)
-            {
-                if (comment is IssueCommentNode issueComment)
-                {
-                    issueComment.QuoteReplyCommand = QuoteReplyCommand;
-                }
-                else if (comment is ReviewNode review)
-                {
-                    review.ScrollToElementCommand = ScrollToElementCommand;
-                }
-                commentList.Add(comment);
-            }
-            Comments = commentList;
-            SetCloseButtonText();
-            Loading = false;
         }
 
         override public async Task<bool> IsCollaborator()

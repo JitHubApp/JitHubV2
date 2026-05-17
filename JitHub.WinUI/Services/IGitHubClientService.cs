@@ -175,6 +175,7 @@ public interface IGitHubClientService
         int pageSize,
         int pageNumber = 1,
         GitHubIssueQueryOptions? queryOptions = null,
+        bool includePullRequests = false,
         CancellationToken cancellationToken = default);
 
     Task<IReadOnlyList<GitHubIssue>> GetCurrentUserIssuesAsync(

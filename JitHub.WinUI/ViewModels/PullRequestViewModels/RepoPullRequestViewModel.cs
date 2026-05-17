@@ -24,6 +24,7 @@ namespace JitHub.WinUI.ViewModels.PullRequestViewModels
     public partial class RepoPullRequestViewModel : RepoViewModel
     {
         private bool _isEmpty;
+        private bool _isIncrementalLoading;
         private readonly ModalService _modalService;
         private RepoSelectableItemModel<PullRequest>? _selectedPullRequest;
         private IncrementalLoadingCollection<PullRequestSource, RepoSelectableItemModel<PullRequest>> _pullRequests = null!;
@@ -39,6 +40,13 @@ namespace JitHub.WinUI.ViewModels.PullRequestViewModels
             get => _isEmpty;
             set => SetProperty(ref _isEmpty, value);
         }
+
+        public bool IsIncrementalLoading
+        {
+            get => _isIncrementalLoading;
+            set => SetProperty(ref _isIncrementalLoading, value);
+        }
+
         public ICommand NewPRCommand { get; }
         public ContentDialog? NewPRDialog { get; set; }
         public ICommand CreationCallBackCommand { get; }
@@ -152,11 +160,19 @@ namespace JitHub.WinUI.ViewModels.PullRequestViewModels
             PullRequests = new IncrementalLoadingCollection<PullRequestSource, RepoSelectableItemModel<PullRequest>>(prSource, _perPage);
             PullRequests.OnStartLoading += () =>
             {
-                Loading = true;
+                if (PullRequests.Count == 0)
+                {
+                    Loading = true;
+                }
+                else
+                {
+                    IsIncrementalLoading = true;
+                }
             };
             PullRequests.OnEndLoading += () =>
             {
                 Loading = false;
+                IsIncrementalLoading = false;
                 IsEmpty = PullRequests.Count == 0;
                 if (JitHub.WinUI.Program.CurrentLaunchOptions.IsPublicPreviewOverride &&
                     SelectedPullRequest is null &&

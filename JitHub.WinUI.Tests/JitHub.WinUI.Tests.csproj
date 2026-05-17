@@ -22,6 +22,8 @@
     <Compile Include="..\JitHub.WinUI\Services\CodeViewer\FilePreviewResolver.cs" Link="Services\%(Filename)%(Extension)" />
     <Compile Include="..\JitHub.WinUI\Services\CodeViewer\LanguageIdResolver.cs" Link="Services\%(Filename)%(Extension)" />
     <Compile Include="..\JitHub.WinUI\Services\CodeViewer\RepoFileCacheService.cs" Link="Services\%(Filename)%(Extension)" />
+    <Compile Include="..\JitHub.WinUI\Services\Markdown\GitHubMarkdownImageReference.cs" Link="Services\Markdown\%(Filename)%(Extension)" />
+    <Compile Include="..\JitHub.WinUI\Services\Markdown\GitHubMarkdownImageUrlResolver.cs" Link="Services\Markdown\%(Filename)%(Extension)" />
   </ItemGroup>
 
   <ItemGroup>

@@ -23,6 +23,7 @@ using MarkdownRenderer.CodeBlocks;
 using MarkdownRenderer.Diagnostics;
 using MarkdownRenderer.Document;
 using MarkdownRenderer.Hosting;
+using MarkdownRenderer.Images;
 using MarkdownRenderer.Layout;
 using MarkdownRenderer.Parsing;
 using MarkdownRenderer.Selection;
@@ -45,6 +46,9 @@ public sealed partial class MarkdownRendererControl : UserControl
 
     private volatile LayoutSnapshot? _snapshot;
     private volatile CancellationTokenSource? _pipelineCts;
+    private bool _rebuildQueued;
+    private bool _hasPendingRebuild;
+    private RebuildReason _pendingRebuildReason = RebuildReason.Restyle;
     private float _lastWidth;
     private static readonly MarkdownTheme _defaultTheme = new();
     private static readonly MarkdownExtensionRegistry _defaultRegistry = new();
@@ -521,6 +525,45 @@ public sealed partial class MarkdownRendererControl : UserControl
         set => SetValue(EmbedFactoryProperty, value);
     }
 
+    /// <summary>Dependency property backing <see cref="ImageResolver"/>.</summary>
+    public static readonly DependencyProperty ImageResolverProperty =
+        DependencyProperty.Register(nameof(ImageResolver), typeof(IMarkdownImageResolver),
+            typeof(MarkdownRendererControl),
+            new PropertyMetadata(null, (d, _) => ((MarkdownRendererControl)d).RequestRebuild()));
+
+    /// <summary>Gets or sets the host-specific resolver consulted before public image loading.</summary>
+    public IMarkdownImageResolver? ImageResolver
+    {
+        get => (IMarkdownImageResolver?)GetValue(ImageResolverProperty);
+        set => SetValue(ImageResolverProperty, value);
+    }
+
+    /// <summary>Dependency property backing <see cref="ImageBaseUri"/>.</summary>
+    public static readonly DependencyProperty ImageBaseUriProperty =
+        DependencyProperty.Register(nameof(ImageBaseUri), typeof(Uri),
+            typeof(MarkdownRendererControl),
+            new PropertyMetadata(null, (d, _) => ((MarkdownRendererControl)d).RequestRebuild()));
+
+    /// <summary>Gets or sets the base URI used to resolve relative image sources.</summary>
+    public Uri? ImageBaseUri
+    {
+        get => (Uri?)GetValue(ImageBaseUriProperty);
+        set => SetValue(ImageBaseUriProperty, value);
+    }
+
+    /// <summary>Dependency property backing <see cref="ImageDocumentPath"/>.</summary>
+    public static readonly DependencyProperty ImageDocumentPathProperty =
+        DependencyProperty.Register(nameof(ImageDocumentPath), typeof(string),
+            typeof(MarkdownRendererControl),
+            new PropertyMetadata(null, (d, _) => ((MarkdownRendererControl)d).RequestRebuild()));
+
+    /// <summary>Gets or sets the source document path used by host image resolvers.</summary>
+    public string? ImageDocumentPath
+    {
+        get => (string?)GetValue(ImageDocumentPathProperty);
+        set => SetValue(ImageDocumentPathProperty, value);
+    }
+
     /// <summary>Dependency property backing <see cref="IsSelectionEnabled"/>.</summary>
     public static readonly DependencyProperty IsSelectionEnabledProperty =
         DependencyProperty.Register(nameof(IsSelectionEnabled), typeof(bool),
@@ -628,6 +671,9 @@ public sealed partial class MarkdownRendererControl : UserControl
     /// <param name="codeBlockSyntaxHighlighter">Optional code-block syntax-highlighting provider.</param>
     /// <param name="codeBlockCopyButtonLabel">Accessible label and tooltip for code-block copy buttons, or null for the localized default.</param>
     /// <param name="codeBlockCopiedButtonLabel">Accessible label and tooltip after copy succeeds, or null for the localized default.</param>
+    /// <param name="imageResolver">Optional host-specific image resolver used before public URI loading.</param>
+    /// <param name="imageBaseUri">Optional base URI used to resolve relative image sources.</param>
+    /// <param name="imageDocumentPath">Optional source document path used by host image resolvers.</param>
     /// <returns>A new configured renderer control.</returns>
     public static MarkdownRendererControl CreateDefault(
         string? markdown = null,
@@ -638,12 +684,18 @@ public sealed partial class MarkdownRendererControl : UserControl
         bool isCodeBlockCopyEnabled = true,
         ICodeBlockSyntaxHighlighter? codeBlockSyntaxHighlighter = null,
         string? codeBlockCopyButtonLabel = null,
-        string? codeBlockCopiedButtonLabel = null)
+        string? codeBlockCopiedButtonLabel = null,
+        IMarkdownImageResolver? imageResolver = null,
+        Uri? imageBaseUri = null,
+        string? imageDocumentPath = null)
         => new MarkdownRendererControlBuilder()
             .WithMarkdown(markdown)
             .WithTheme(theme)
             .WithExtensionRegistry(extensionRegistry)
             .WithEmbedFactory(embedFactory)
+            .WithImageResolver(imageResolver)
+            .WithImageBaseUri(imageBaseUri)
+            .WithImageDocumentPath(imageDocumentPath)
             .WithSelectionEnabled(isSelectionEnabled)
             .WithCodeBlockCopyEnabled(isCodeBlockCopyEnabled)
             .WithCodeBlockCopyButtonLabel(codeBlockCopyButtonLabel)
@@ -730,21 +782,11 @@ public sealed partial class MarkdownRendererControl : UserControl
     internal double CurrentScrollOffsetY => _scroll?.VerticalOffset ?? 0;
 
     /// <summary>
-    /// Offset applied by ScrollViewer when short content is centered inside the
-    /// viewport. UIA screen rectangles must include this or range-from-text
-    /// probe points land in the blank band above the canvas content.
+    /// Offset applied between the scroll viewport and document content. The
+    /// renderer pins short documents to the top of the viewport, so this is
+    /// normally zero.
     /// </summary>
-    internal double CurrentContentOffsetY
-    {
-        get
-        {
-            if (_scroll is null || _root is null) return 0;
-            double viewportHeight = _scroll.ViewportHeight;
-            double contentHeight = _root.ActualHeight > 0 ? _root.ActualHeight : _root.Height;
-            if (viewportHeight <= 0 || contentHeight <= 0 || contentHeight >= viewportHeight) return 0;
-            return (viewportHeight - contentHeight) / 2.0;
-        }
-    }
+    internal double CurrentContentOffsetY => 0;
 
     /// <inheritdoc />
     protected override AutomationPeer OnCreateAutomationPeer() => new MarkdownAutomationPeer(this);
@@ -944,20 +986,34 @@ public sealed partial class MarkdownRendererControl : UserControl
     {
         _scroll = new ScrollViewer
         {
+            HorizontalAlignment = HorizontalAlignment.Stretch,
             HorizontalScrollMode = ScrollMode.Disabled,
             HorizontalScrollBarVisibility = ScrollBarVisibility.Disabled,
+            HorizontalContentAlignment = HorizontalAlignment.Stretch,
+            VerticalAlignment = VerticalAlignment.Stretch,
             VerticalScrollMode = ScrollMode.Auto,
             VerticalScrollBarVisibility = ScrollBarVisibility.Auto,
+            VerticalContentAlignment = VerticalAlignment.Top,
             ZoomMode = ZoomMode.Disabled,
         };
-        _root = new Grid();
-        _canvas = new CanvasVirtualControl();
+        _root = new Grid
+        {
+            HorizontalAlignment = HorizontalAlignment.Stretch,
+            VerticalAlignment = VerticalAlignment.Top,
+        };
+        _canvas = new CanvasVirtualControl
+        {
+            HorizontalAlignment = HorizontalAlignment.Stretch,
+            VerticalAlignment = VerticalAlignment.Top,
+        };
         _overlay = new Canvas
         {
             // Background null so the empty overlay doesn't capture pointer
             // events. Hosted embeds are individually hit-testable.
             Background = null,
+            HorizontalAlignment = HorizontalAlignment.Stretch,
             IsHitTestVisible = true,
+            VerticalAlignment = VerticalAlignment.Top,
         };
         _root.Children.Add(_canvas);
         _root.Children.Add(_overlay);
@@ -1308,6 +1364,9 @@ public sealed partial class MarkdownRendererControl : UserControl
         _pipelineCts = null;
         oldCts?.Cancel();
         oldCts?.Dispose();
+        _rebuildQueued = false;
+        _hasPendingRebuild = false;
+        _pendingRebuildReason = RebuildReason.Restyle;
         var oldHighlightCts = _codeBlockHighlightCts;
         _codeBlockHighlightCts = null;
         oldHighlightCts?.Cancel();
@@ -1429,6 +1488,53 @@ public sealed partial class MarkdownRendererControl : UserControl
 
     private void RequestRebuild(RebuildReason reason)
     {
+        var dispatcher = DispatcherQueue;
+        if (dispatcher is not null && !dispatcher.HasThreadAccess)
+        {
+            dispatcher.TryEnqueue(() => RequestRebuild(reason));
+            return;
+        }
+
+        if (_isUnloaded)
+            return;
+
+        _pendingRebuildReason = MergeRebuildReason(_pendingRebuildReason, reason);
+        _hasPendingRebuild = true;
+
+        if (!IsLoaded || _canvas is null || _overlay is null || _root is null)
+            return;
+
+        if (_rebuildQueued)
+            return;
+
+        _rebuildQueued = true;
+        if (dispatcher is null)
+        {
+            ProcessQueuedRebuild();
+            return;
+        }
+
+        if (!dispatcher.TryEnqueue(Microsoft.UI.Dispatching.DispatcherQueuePriority.Low, ProcessQueuedRebuild))
+        {
+            _rebuildQueued = false;
+        }
+    }
+
+    private static RebuildReason MergeRebuildReason(RebuildReason current, RebuildReason incoming)
+        => current == RebuildReason.Full || incoming == RebuildReason.Full
+            ? RebuildReason.Full
+            : RebuildReason.Restyle;
+
+    private void ProcessQueuedRebuild()
+    {
+        _rebuildQueued = false;
+        if (_isUnloaded || !IsLoaded || !_hasPendingRebuild)
+            return;
+
+        var reason = _pendingRebuildReason;
+        _pendingRebuildReason = RebuildReason.Restyle;
+        _hasPendingRebuild = false;
+
         ResetTransientInteractionState(clearSelection: true);
 
         // Cancel the in-flight build. Dispose is deferred to ContinueWith so the
@@ -1495,7 +1601,7 @@ public sealed partial class MarkdownRendererControl : UserControl
         }
     }
 
-    private async Task<ParsedMarkdown> GetParsedMarkdownAsync(
+    private async Task<ParsedMarkdown?> GetParsedMarkdownAsync(
         string source,
         MarkdownExtensionRegistry registry,
         CancellationToken ct)
@@ -1513,11 +1619,14 @@ public sealed partial class MarkdownRendererControl : UserControl
             }
         }
 
-        ct.ThrowIfCancellationRequested();
+        if (ct.IsCancellationRequested)
+            return null;
+
         var pipeline = registry.BuildPipeline();
         var parser = new MarkdigParser(pipeline);
         var parsed = await parser.ParseAsync(normalizedSource, ct).ConfigureAwait(true);
-        ct.ThrowIfCancellationRequested();
+        if (parsed is null || ct.IsCancellationRequested)
+            return null;
 
         lock (_parseCacheGate)
         {
@@ -1539,9 +1648,12 @@ public sealed partial class MarkdownRendererControl : UserControl
         var registry = ExtensionRegistry ?? _defaultRegistry;
         var source = Markdown ?? string.Empty;
 
-        ct.ThrowIfCancellationRequested();
+        if (ct.IsCancellationRequested)
+            return;
+
         var parsed = await GetParsedMarkdownAsync(source, registry, ct).ConfigureAwait(true);
-        ct.ThrowIfCancellationRequested();
+        if (parsed is null || ct.IsCancellationRequested)
+            return;
 
         var sourceMap = new MarkdownSourceMap(parsed.SourceText);
         var theme = Theme ?? _defaultTheme;
@@ -1560,13 +1672,23 @@ public sealed partial class MarkdownRendererControl : UserControl
         var ctx = new MarkdownLayoutContext(device, themeSnapshot, sourceMap, registry, FlowDirection, DispatcherQueue)
         {
             RasterizationScale = rasterScale,
-            CancellationToken = ct,
+            // Layout runs off the UI thread and its result is checked against
+            // the rebuild token before commit. Keep the layout context itself
+            // non-canceling so superseded navigations don't flood the debugger
+            // with first-chance OperationCanceledException/TaskCanceledException
+            // noise from every nested block and image.
+            CancellationToken = CancellationToken.None,
             IsCodeBlockCopyEnabled = IsCodeBlockCopyEnabled,
             CodeBlockLineNumberMode = CodeBlockLineNumberMode,
+            ImageResolver = ImageResolver,
+            ImageBaseUri = ImageBaseUri,
+            ImageDocumentPath = ImageDocumentPath,
         };
         var builder = new LayoutBuilder(ctx, EmbedFactory);
 
-        ct.ThrowIfCancellationRequested();
+        if (ct.IsCancellationRequested)
+            return;
+
         double viewportTop = _scroll?.VerticalOffset ?? 0;
         double viewportHeight = _scroll?.ViewportHeight > 0
             ? _scroll.ViewportHeight
@@ -1584,7 +1706,7 @@ public sealed partial class MarkdownRendererControl : UserControl
                 viewportTop,
                 viewportHeight,
                 useLazyLayout,
-                ct),
+                CancellationToken.None),
             CancellationToken.None).ConfigureAwait(true);
         if (snapshot is null || ct.IsCancellationRequested)
         {
@@ -1599,7 +1721,8 @@ public sealed partial class MarkdownRendererControl : UserControl
         bool committed = false;
         try
         {
-        ct.ThrowIfCancellationRequested();
+        if (ct.IsCancellationRequested)
+            return;
 
         // Scroll anchoring: capture the current read position before the canvas
         // height changes.  If the user has scrolled down, we identify the first
@@ -1620,7 +1743,8 @@ public sealed partial class MarkdownRendererControl : UserControl
             }
         }
 
-        ct.ThrowIfCancellationRequested();
+        if (ct.IsCancellationRequested)
+            return;
 
         // Atomically swap snapshots, then dispose the old one so its
         // CanvasTextLayout / placeholder handles are released.
@@ -1828,16 +1952,25 @@ public sealed partial class MarkdownRendererControl : UserControl
         int generation,
         CancellationToken token)
     {
+        if (token.IsCancellationRequested)
+        {
+            DispatcherQueue.TryEnqueue(() => RemoveCodeBlockHighlightInFlight(key, generation));
+            return;
+        }
+
         try
         {
-            await _codeBlockHighlightSemaphore.WaitAsync(token).ConfigureAwait(false);
+            await _codeBlockHighlightSemaphore.WaitAsync().ConfigureAwait(false);
             try
             {
-                token.ThrowIfCancellationRequested();
+                if (token.IsCancellationRequested)
+                    return;
+
                 var request = new CodeBlockHighlightRequest(block.CodeLanguage, block.CodeText, variant, token);
                 var result = await highlighter.HighlightAsync(request).ConfigureAwait(false)
                     ?? CodeBlockHighlightResult.Empty;
-                token.ThrowIfCancellationRequested();
+                if (token.IsCancellationRequested)
+                    return;
 
                 DispatcherQueue.TryEnqueue(() =>
                 {
@@ -1855,7 +1988,7 @@ public sealed partial class MarkdownRendererControl : UserControl
                 _codeBlockHighlightSemaphore.Release();
             }
         }
-        catch (OperationCanceledException)
+        catch (OperationCanceledException) when (token.IsCancellationRequested)
         {
             DispatcherQueue.TryEnqueue(() => RemoveCodeBlockHighlightInFlight(key, generation));
         }
@@ -2152,14 +2285,12 @@ public sealed partial class MarkdownRendererControl : UserControl
 
         foreach (var plan in _codeBlockActionPlans)
         {
-            double pTop = plan.Rect.Top;
-            double pBottom = plan.Rect.Bottom;
-            bool inRealize = EmbedVisibility.IsInRealizeBand(pTop, pBottom, top, bottom, EmbedVirtualizationOverscanPx);
-            bool inDerealize = EmbedVisibility.IsInDerealizeBand(pTop, pBottom, top, bottom, EmbedVirtualizationDerealizeOverscanPx);
-            if (inRealize)
-                plan.Realize(this);
-            else if (!inDerealize)
-                plan.Derealize(this);
+            // Copy buttons are tiny and expected on every code block. Do not
+            // virtualize them with hosted embeds: markdown controls often size
+            // naturally inside an outer page ScrollViewer, so their internal
+            // ScrollViewer may never produce ViewChanged events for lower code
+            // blocks.
+            plan.Realize(this);
 
             if (plan.Realized is not null)
             {
@@ -2732,10 +2863,16 @@ public sealed partial class MarkdownRendererControl : UserControl
             }
         }
 
-        var hoveredLink = hovered as LinkRun;
-        var lastLink = _lastHoveredRun as LinkRun;
-        bool linkChanged = !ReferenceEquals(hoveredLink, lastLink);
-        var wantedShape = hoveredLink is not null
+        if (IsLinkedRun(hovered) && hoveredBox?.IsPointInsideRunBounds(hovered!, pt) != true)
+        {
+            hovered = null;
+            hoveredBox = null;
+        }
+
+        var hoveredLinkedRun = IsLinkedRun(hovered) ? hovered : null;
+        var lastLinkedRun = IsLinkedRun(_lastHoveredRun) ? _lastHoveredRun : null;
+        bool linkChanged = !ReferenceEquals(hoveredLinkedRun, lastLinkedRun);
+        var wantedShape = hoveredLinkedRun is not null
             ? Microsoft.UI.Input.InputSystemCursorShape.Hand
             : IsSelectionEnabled
                 ? Microsoft.UI.Input.InputSystemCursorShape.IBeam
@@ -2751,7 +2888,7 @@ public sealed partial class MarkdownRendererControl : UserControl
             // origin snapping, repainting a partial canvas region forced
             // DirectWrite to re-tile glyphs at sub-pixel-different positions.
             foreach (var b in _snapshot.Blocks) ClearHover(b);
-            if (hoveredBox is not null && hoveredLink is not null)
+            if (hoveredBox is not null && hoveredLinkedRun is LinkRun hoveredLink)
                 hoveredBox.HoveredRun = hoveredLink;
             InvalidateInteractiveTextAdorner();
         }
@@ -3493,14 +3630,14 @@ public sealed partial class MarkdownRendererControl : UserControl
         var pt = e.GetCurrentPoint(_canvas).Position;
         if (_snapshot.HitTest(pt, out var pos))
         {
-            var link = FindLinkAt(pos);
+            var link = FindLinkTargetAt(pos, pt);
             if (link is not null)
             {
                 // Intercept internal fragment anchors (e.g. footnote back/forward
                 // links) and scroll without surfacing them to external subscribers.
-                if (!link.Url.StartsWith("#", StringComparison.Ordinal) || !HandleInternalAnchor(link.Url))
+                if (!link.Value.Url.StartsWith("#", StringComparison.Ordinal) || !HandleInternalAnchor(link.Value.Url))
                 {
-                    LinkClick?.Invoke(this, new MarkdownLinkClickEventArgs(link.Url, link.Title));
+                    LinkClick?.Invoke(this, new MarkdownLinkClickEventArgs(link.Value.Url, link.Value.Title));
                 }
             }
         }
@@ -3867,62 +4004,89 @@ public sealed partial class MarkdownRendererControl : UserControl
     /// </summary>
     private void UpdateFocusRing()
     {
-        if (_overlay is null) return;
-
-        // Lazily create the focus ring element.
-        if (_focusRing is null)
-        {
-            _focusRing = new Microsoft.UI.Xaml.Controls.Border
-            {
-                BorderThickness = new Thickness(2),
-                CornerRadius = new CornerRadius(3),
-                IsHitTestVisible = false,
-            };
-            Canvas.SetZIndex(_focusRing, 1);
-            _overlay.Children.Add(_focusRing);
-        }
-
         var items = _focusableItems;
         if (items is null || _focusedItemIndex < 0 || _focusedItemIndex >= items.Count)
         {
-            _focusRing.Visibility = Visibility.Collapsed;
-            InvalidateInteractiveTextAdorner();
+            HideFocusRing();
             return;
         }
 
         var item = items[_focusedItemIndex];
         if (!item.IsLink)
         {
-            _focusRing.Visibility = Visibility.Collapsed;
-            InvalidateInteractiveTextAdorner();
+            HideFocusRing();
             return;
         }
 
         var rect = GetFocusableItemRect(item);
         if (rect is not { Width: > 0, Height: > 0 } r)
         {
-            _focusRing.Visibility = Visibility.Collapsed;
+            HideFocusRing();
+            return;
+        }
+
+        if (!EnsureFocusRing())
+        {
             InvalidateInteractiveTextAdorner();
             return;
         }
+        var focusRing = _focusRing!;
 
         var focusVisual = _themeSnapshot?.FocusVisualColor
                           ?? Windows.UI.Color.FromArgb(0xFF, 0x00, 0x78, 0xD4);
         // Allocate a new SolidColorBrush only when the focus color actually changes;
         // avoid per-keystroke GC pressure during Tab traversal.
-        if (_focusRing.BorderBrush is null || focusVisual != _focusRingBrushColor)
+        if (focusRing.BorderBrush is null || focusVisual != _focusRingBrushColor)
         {
             _focusRingBrushColor = focusVisual;
-            _focusRing.BorderBrush = new SolidColorBrush(focusVisual);
+            focusRing.BorderBrush = new SolidColorBrush(focusVisual);
         }
 
         const double pad = 2.0;
-        Canvas.SetLeft(_focusRing, r.X - pad);
-        Canvas.SetTop(_focusRing, r.Y - pad);
-        _focusRing.Width  = r.Width  + pad * 2;
-        _focusRing.Height = r.Height + pad * 2;
-        _focusRing.Visibility = Visibility.Visible;
+        Canvas.SetLeft(focusRing, r.X - pad);
+        Canvas.SetTop(focusRing, r.Y - pad);
+        focusRing.Width  = r.Width  + pad * 2;
+        focusRing.Height = r.Height + pad * 2;
+        focusRing.Visibility = Visibility.Visible;
         InvalidateInteractiveTextAdorner();
+    }
+
+    private void HideFocusRing()
+    {
+        if (_focusRing is not null)
+            _focusRing.Visibility = Visibility.Collapsed;
+
+        InvalidateInteractiveTextAdorner();
+    }
+
+    private bool EnsureFocusRing()
+    {
+        if (_focusRing is not null)
+            return true;
+
+        if (_overlay is null || _isUnloaded || XamlRoot is null)
+            return false;
+
+        var focusRing = new Microsoft.UI.Xaml.Controls.Border
+        {
+            BorderThickness = new Thickness(2),
+            CornerRadius = new CornerRadius(3),
+            IsHitTestVisible = false,
+        };
+        Canvas.SetZIndex(focusRing, 1);
+
+        try
+        {
+            _overlay.Children.Add(focusRing);
+        }
+        catch (System.Runtime.InteropServices.COMException ex)
+        {
+            MarkdownDiagnostics.WriteLine($"[MarkdownRendererControl] focus ring attach failed: {ex.Message}");
+            return false;
+        }
+
+        _focusRing = focusRing;
+        return true;
     }
 
     private Rect? GetFocusableItemRect(Layout.FocusableItem item)
@@ -4232,6 +4396,16 @@ public sealed partial class MarkdownRendererControl : UserControl
         return null;
     }
 
+    private LinkTarget? FindLinkTargetAt(DocumentPosition pos, Point? point = null)
+    {
+        if (_snapshot is null) return null;
+        foreach (var b in _snapshot.Blocks)
+        {
+            if (FindLinkTargetInBlock(b, pos, point) is { } found) return found;
+        }
+        return null;
+    }
+
     private bool TryGetFocusedLink(out Layout.Boxes.InlineContainerBox inline, out LinkRun link)
     {
         inline = null!;
@@ -4479,6 +4653,50 @@ public sealed partial class MarkdownRendererControl : UserControl
         }
         return null;
     }
+
+    private static LinkTarget? FindLinkTargetInBlock(BlockBox box, DocumentPosition pos, Point? point)
+    {
+        switch (box)
+        {
+            case Layout.Boxes.InlineContainerBox icb when icb.BlockIndex == pos.BlockIndex:
+                foreach (var r in icb.Runs)
+                {
+                    if (r.InlineIndex != pos.InlineIndex)
+                        continue;
+
+                    if (point is { } p && !icb.IsPointInsideRunBounds(r, p))
+                        return null;
+
+                    if (r is LinkRun lr)
+                        return new LinkTarget(lr.Url, lr.Title);
+
+                    if (r is InlineImageRun { IsLinked: true } image)
+                        return new LinkTarget(image.LinkUrl!, image.LinkTitle);
+                }
+                return null;
+            case Layout.Boxes.ListItemBox lib:
+                if (FindLinkTargetInBlock(lib.Marker, pos, point) is { } lm) return lm;
+                return FindLinkTargetInBlock(lib.Content, pos, point);
+            case Layout.Boxes.TableBox tb:
+                foreach (var cell in tb.GetCellBoxes())
+                {
+                    if (FindLinkTargetInBlock(cell, pos, point) is { } tf) return tf;
+                }
+                return null;
+            case Layout.Boxes.StackBox sb:
+                foreach (var c in sb.Children)
+                {
+                    if (FindLinkTargetInBlock(c, pos, point) is { } f) return f;
+                }
+                return null;
+        }
+        return null;
+    }
+
+    private static bool IsLinkedRun(InlineRun? run)
+        => run is LinkRun or InlineImageRun { IsLinked: true };
+
+    private readonly record struct LinkTarget(string Url, string? Title);
 }
 
 /// <summary>Event data for markdown link activation.</summary>

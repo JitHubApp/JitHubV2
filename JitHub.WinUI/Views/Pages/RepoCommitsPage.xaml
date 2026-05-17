@@ -8,6 +8,7 @@
     xmlns:muxc="using:Microsoft.UI.Xaml.Controls"
     xmlns:controls="using:CommunityToolkit.WinUI.UI.Controls"
     xmlns:commit="using:JitHub.WinUI.Views.Controls.Commit"
+    xmlns:behaviors="using:JitHub.WinUI.Behaviors"
     mc:Ignorable="d"
     Background="Transparent">
     <Grid>
@@ -39,10 +40,23 @@
             x:Name="CommitListDetail"
             BackButtonBehavior="Automatic"
             ItemsSource="{x:Bind ViewModel.Commits, Mode=OneWay}"
+            behaviors:IncrementalLoadingBehavior.IsEnabled="True"
+            behaviors:IncrementalLoadingBehavior.PageSize="50"
+            behaviors:IncrementalLoadingBehavior.Source="{x:Bind ViewModel.Commits, Mode=OneWay}"
+            behaviors:IncrementalLoadingBehavior.Threshold="1200"
             SelectedItem="{x:Bind ViewModel.SelectedCommit, Mode=TwoWay}"
             NoSelectionContent="Select a commit to view"
             CompactModeThresholdWidth="960"
             SelectionChanged="{x:Bind ViewModel.SelectionChanged, Mode=OneWay}">
+            <controls:ListDetailsView.ListFooter>
+                <muxc:ProgressBar
+                    Height="2"
+                    Margin="12,6,12,8"
+                    Background="{ThemeResource AppSurfaceSubtleBrush}"
+                    Foreground="{ThemeResource AppAccentBrush}"
+                    IsIndeterminate="True"
+                    Visibility="{x:Bind ViewModel.IsIncrementalLoading, Converter={StaticResource BoolToVisibilityConverter}, Mode=OneWay}" />
+            </controls:ListDetailsView.ListFooter>
             <controls:ListDetailsView.ItemTemplate>
                 <DataTemplate>
                     <commit:CommitListDetailsItemPresenter Item="{Binding Mode=OneWay}"/>

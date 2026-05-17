@@ -11,6 +11,7 @@
     xmlns:common="using:JitHub.WinUI.Views.Controls.Common"
     xmlns:appcontrols="using:JitHub.WinUI.Views.Controls.App"
     xmlns:issue="using:JitHub.WinUI.Views.Controls.Issue"
+    xmlns:behaviors="using:JitHub.WinUI.Behaviors"
     mc:Ignorable="d"
     Background="Transparent">
     <Page.DataContext>
@@ -61,6 +62,10 @@
             BackButtonBehavior="Automatic"
             Background="Transparent"
             ItemsSource="{x:Bind ViewModel.Issues, Mode=OneWay}"
+            behaviors:IncrementalLoadingBehavior.IsEnabled="True"
+            behaviors:IncrementalLoadingBehavior.PageSize="50"
+            behaviors:IncrementalLoadingBehavior.Source="{x:Bind ViewModel.Issues, Mode=OneWay}"
+            behaviors:IncrementalLoadingBehavior.Threshold="1200"
             SelectedItem="{x:Bind ViewModel.SelectedIssue, Mode=TwoWay}"
             ItemTemplate="{StaticResource IssueListItem}"
             CompactModeThresholdWidth="960"
@@ -69,6 +74,15 @@
             HorizontalAlignment="Stretch"
             VerticalAlignment="Stretch"
             Grid.Row="1">
+            <controls:ListDetailsView.ListFooter>
+                <muxc:ProgressBar
+                    Height="2"
+                    Margin="12,6,12,8"
+                    Background="{ThemeResource AppSurfaceSubtleBrush}"
+                    Foreground="{ThemeResource AppAccentBrush}"
+                    IsIndeterminate="True"
+                    Visibility="{x:Bind ViewModel.IsIncrementalLoading, Converter={StaticResource BoolToVisibilityConverter}, Mode=OneWay}" />
+            </controls:ListDetailsView.ListFooter>
             <controls:ListDetailsView.DetailsTemplate>
                 <DataTemplate>
                     <issue:RepoIssueDetail

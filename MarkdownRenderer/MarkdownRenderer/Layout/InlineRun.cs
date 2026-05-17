@@ -186,16 +186,27 @@ internal sealed class InlineImageRun : InlineRun
 {
     public string Url { get; }
     public string? Title { get; }
+    public string? LinkUrl { get; }
+    public string? LinkTitle { get; }
+    public bool IsLinked => !string.IsNullOrWhiteSpace(LinkUrl);
     public string AltText { get; }
     public Boxes.ImageBox Image { get; }
     internal float DesiredWidth { get; private set; }
     internal float DesiredHeight { get; private set; }
 
-    public InlineImageRun(MarkdownLayoutContext context, string altText, string url, string? title = null)
+    public InlineImageRun(
+        MarkdownLayoutContext context,
+        string altText,
+        string url,
+        string? title = null,
+        string? linkUrl = null,
+        string? linkTitle = null)
     {
         AltText = altText ?? string.Empty;
         Url = url ?? string.Empty;
         Title = title;
+        LinkUrl = linkUrl;
+        LinkTitle = linkTitle;
         Image = new Boxes.ImageBox(context, Url, AltText)
         {
             Margin = default
@@ -219,6 +230,13 @@ internal sealed class InlineImageRun : InlineRun
 
 internal sealed class LineBreakRun : InlineRun
 {
-    public LineBreakRun() { RenderedLength = 1; }
-    public override string Text => "\n";
+    private readonly string _text;
+
+    public LineBreakRun(bool isHard)
+    {
+        _text = isHard ? "\n" : " ";
+        RenderedLength = 1;
+    }
+
+    public override string Text => _text;
 }

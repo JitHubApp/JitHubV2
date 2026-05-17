@@ -72,10 +72,11 @@ internal sealed class ThemeResolver
         var dict = new Dictionary<string, ElementStyle>(allKeys.Length);
         foreach (var k in allKeys)
             dict[k] = GetDefault(k);
+        Color surfaceColor = ResolveDocumentSurfaceColor();
         return new ThemeSnapshot(
             dict,
             _theme.GetOverridesSnapshot(),
-            ResolveSurfaceColor(),
+            surfaceColor,
             ResolveSelectionHighlightColor(),
             ResolveSelectionForegroundColor(),
             ResolveFocusVisualColor(),
@@ -230,7 +231,7 @@ internal sealed class ThemeResolver
         // native resource but pre-composite translucent brushes over the
         // markdown surface. The resulting opaque color matches the native
         // visual while preventing old dark glyphs from bleeding through.
-        return CompositeOver(nativeSelection, ResolveSurfaceColor());
+        return CompositeOver(nativeSelection, ResolveDocumentSurfaceColor());
     }
 
     private Color ResolveNativeSelectionHighlightColor()
@@ -379,6 +380,14 @@ internal sealed class ThemeResolver
         return _host.ActualTheme == ElementTheme.Dark
             ? Color.FromArgb(0xFF, 0x20, 0x20, 0x20)
             : Color.FromArgb(0xFF, 0xFF, 0xFF, 0xFF);
+    }
+
+    private Color ResolveDocumentSurfaceColor()
+    {
+        if (_systemTheme.IsHighContrast)
+            return ResolveSurfaceColor();
+
+        return _theme.SurfaceColor ?? ResolveSurfaceColor();
     }
 
     private Color ResolvePrimaryTextColor(bool isDark)

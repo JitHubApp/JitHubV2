@@ -46,6 +46,11 @@
             </StackPanel>
         </Grid>
 
-        <ContentPresenter x:Name="RendererHost" />
+        <ContentPresenter
+            x:Name="RendererHost"
+            HorizontalAlignment="Stretch"
+            HorizontalContentAlignment="Stretch"
+            VerticalAlignment="Stretch"
+            VerticalContentAlignment="Stretch" />
     </Grid>
 </UserControl>

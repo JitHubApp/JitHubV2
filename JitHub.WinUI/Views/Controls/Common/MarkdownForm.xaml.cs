@@ -1,7 +1,4 @@
 using CommunityToolkit.WinUI.Controls;
-using CommunityToolkit.Mvvm.DependencyInjection;
-using JitHub.Services;
-using System;
 using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Controls;
 
@@ -12,9 +9,6 @@ namespace JitHub.WinUI.Views.Controls.Common
     [WinRT.GeneratedBindableCustomProperty]
     public sealed partial class MarkdownForm : UserControl
     {
-
-        private readonly IGitHubService _gitHubService;
-
         public static DependencyProperty ActionContentProperty = DependencyProperty.Register(
             nameof(ActionContent),
             typeof(object),
@@ -67,12 +61,8 @@ namespace JitHub.WinUI.Views.Controls.Common
             set => SetValue(EditorHeightProperty, value);
         }
 
-        public MarkdownConfig Config => _gitHubService.GetMarkdownConfig();
-
         public MarkdownForm()
         {
-            _gitHubService = Ioc.Default.GetService<IGitHubService>()
-                ?? throw new InvalidOperationException("IGitHubService is not registered.");
             this.InitializeComponent();
         }
 
