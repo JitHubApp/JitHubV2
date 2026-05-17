@@ -75,6 +75,9 @@
   <data name="StyleListMarker" xml:space="preserve">
     <value>List marker</value>
   </data>
+  <data name="StyleTable" xml:space="preserve">
+    <value>Table</value>
+  </data>
   <data name="StyleTableHeader" xml:space="preserve">
     <value>Table header</value>
   </data>
@@ -86,5 +89,14 @@
   </data>
   <data name="ContextMenuSelectAll" xml:space="preserve">
     <value>Select All</value>
+  </data>
+  <data name="CodeBlockCopy" xml:space="preserve">
+    <value>Copy</value>
+  </data>
+  <data name="CodeBlockCopied" xml:space="preserve">
+    <value>Copied</value>
+  </data>
+  <data name="CodeBlockCopyAutomationName" xml:space="preserve">
+    <value>Copy code</value>
   </data>
 </root>

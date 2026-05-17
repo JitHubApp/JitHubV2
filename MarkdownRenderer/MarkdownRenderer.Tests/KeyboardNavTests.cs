@@ -53,6 +53,19 @@ public class KeyboardNavTests
     }
 
     [Fact]
+    public void FocusableItem_CodeBlockCopy_RoundTripsKind()
+    {
+        var item = new FocusableItem(12, 0, FocusableItemKind.CodeBlockCopy);
+
+        Assert.Equal(12, item.BlockIndex);
+        Assert.False(item.IsLink);
+        Assert.False(item.IsInlineEmbed);
+        Assert.False(item.IsBlockEmbed);
+        Assert.True(item.IsCodeBlockCopy);
+        Assert.True(item.IsCodeBlockAction);
+    }
+
+    [Fact]
     public void FocusableItem_LargeValues_Preserved()
     {
         var item = new FocusableItem(int.MaxValue, int.MaxValue, isLink: false);

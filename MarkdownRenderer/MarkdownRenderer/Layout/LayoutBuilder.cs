@@ -5,6 +5,7 @@ using Markdig.Syntax;
 using Markdig.Syntax.Inlines;
 using Markdig.Extensions.Abbreviations;
 using Markdig.Extensions.Footnotes;
+using MarkdownRenderer.CodeBlocks;
 using MarkdownRenderer.Hosting;
 using MarkdownRenderer.Layout.Boxes;
 using MarkdownRenderer.Parsing;
@@ -187,6 +188,8 @@ internal sealed class LayoutBuilder
         var box = new InlineContainerBox(_context, key);
         box.BlockIndex = _context.NextBlockIndex();
         AddInlines(box, h.Inline);
+        if (h.Span.Start >= 0 && h.Span.Length > 0)
+            _context.SourceMap.AddSourceAffixesToBlock(box.BlockIndex, h.Span.Start, h.Span.Start + h.Span.Length);
         return box;
     }
 
@@ -200,14 +203,30 @@ internal sealed class LayoutBuilder
 
     private BlockBox BuildCodeBlock(LeafBlock block, string text)
     {
-        if (text.Length <= MaxMonolithicTextLayoutLength)
-            return BuildCodeBlockChunk(block, text, 0, text.Length);
-
-        var stack = new StackBox
+        text = CodeBlockMetadata.NormalizeCodeLineEndings(text);
+        var metadata = CodeBlockMetadata.FromBlock(block, text);
+        int lineCount = CountLogicalLines(text);
+        bool showLineNumbers = metadata.ShowLineNumbers ?? _context.CodeBlockLineNumberMode switch
         {
-            FlowDirection = _context.FlowDirection,
+            CodeBlockLineNumberMode.Always => true,
+            CodeBlockLineNumberMode.Never => false,
+            _ => lineCount > 1,
         };
-        stack.BlockIndex = _context.NextBlockIndex();
+        var codeBox = new CodeBlockBox(
+            _context,
+            metadata,
+            text,
+            _context.IsCodeBlockCopyEnabled,
+            showLineNumbers)
+        {
+            BlockIndex = _context.NextBlockIndex(),
+        };
+
+        if (text.Length <= MaxMonolithicTextLayoutLength)
+        {
+            codeBox.AddChunk(BuildCodeBlockChunk(block, metadata, text, 0, text.Length));
+            return codeBox;
+        }
 
         int offset = 0;
         while (offset < text.Length)
@@ -221,18 +240,25 @@ internal sealed class LayoutBuilder
                     length = newline - offset + 1;
             }
 
-            stack.Add(BuildCodeBlockChunk(block, text.Substring(offset, length), offset, text.Length));
+            codeBox.AddChunk(BuildCodeBlockChunk(block, metadata, text.Substring(offset, length), offset, text.Length));
             offset += length;
         }
 
-        return stack;
+        return codeBox;
     }
 
-    private InlineContainerBox BuildCodeBlockChunk(LeafBlock block, string text, int textOffset, int totalTextLength)
+    private InlineContainerBox BuildCodeBlockChunk(
+        LeafBlock block,
+        CodeBlockMetadata metadata,
+        string text,
+        int textOffset,
+        int totalTextLength)
     {
         var box = new InlineContainerBox(_context, MarkdownElementKeys.CodeBlock)
         {
-            CodeLanguage = NormalizeCodeLanguage(block)
+            CodeLanguage = metadata.Language,
+            CodeBlockTextOffset = textOffset,
+            CodeBlockTextLength = text.Length,
         };
         box.BlockIndex = _context.NextBlockIndex();
         // No ElementKey on the run: it inherits the container's CodeBlock style.
@@ -246,6 +272,21 @@ internal sealed class LayoutBuilder
         return box;
     }
 
+    private static int CountLogicalLines(string text)
+    {
+        if (string.IsNullOrEmpty(text))
+            return 1;
+
+        int lines = 1;
+        foreach (char ch in text)
+        {
+            if (ch == '\n')
+                lines++;
+        }
+
+        return text.EndsWith("\n", StringComparison.Ordinal) && lines > 1 ? lines - 1 : lines;
+    }
+
     private static SourceSpan SliceSourceSpan(LeafBlock block, int textOffset, int textLength, int totalTextLength)
     {
         if (block.Span.Start < 0 || block.Span.Length <= 0 || totalTextLength <= 0)
@@ -255,15 +296,6 @@ internal sealed class LayoutBuilder
         int start = block.Span.Start + (int)Math.Round(textOffset * scale);
         int end = block.Span.Start + (int)Math.Round((textOffset + textLength) * scale);
         return new SourceSpan(start, Math.Max(0, end - start));
-    }
-
-    private static string? NormalizeCodeLanguage(LeafBlock block)
-    {
-        if (block is not FencedCodeBlock fenced) return null;
-        var text = fenced.Info?.ToString().Trim() ?? string.Empty;
-        if (text.Length == 0) return null;
-        var firstSpace = text.IndexOfAny(new[] { ' ', '\t', '\r', '\n' });
-        return firstSpace > 0 ? text.Substring(0, firstSpace) : text;
     }
 
     private StackBox BuildQuote(QuoteBlock qb)
@@ -386,7 +418,7 @@ internal sealed class LayoutBuilder
         return stack;
     }
 
-    private void AddInlines(InlineContainerBox box, ContainerInline? inline)
+    private void AddInlines(InlineContainerBox box, ContainerInline? inline, int inheritedAliasStart = -1)
     {
         if (inline is null) return;
         foreach (var n in inline)
@@ -397,9 +429,16 @@ internal sealed class LayoutBuilder
             var run = BuildInline(n, box.BlockIndex);
             if (run is not null)
             {
-                run.StyleAliases = _context.CreateStyleAliasSnapshotFrom(aliasStart);
+                int effectiveAliasStart = inheritedAliasStart >= 0 ? inheritedAliasStart : aliasStart;
+                run.StyleAliases = _context.CreateStyleAliasSnapshotFrom(effectiveAliasStart);
                 _context.RegisterMarkdownAttributes(n, box.BlockIndex);
                 box.Add(run);
+            }
+            else if (n is ContainerInline nested)
+            {
+                _context.RegisterMarkdownAttributes(n, box.BlockIndex);
+                int effectiveAliasStart = inheritedAliasStart >= 0 ? inheritedAliasStart : aliasStart;
+                AddInlines(box, nested, effectiveAliasStart);
             }
         }
     }
@@ -457,12 +496,6 @@ internal sealed class LayoutBuilder
                 if (parentBlockIndex >= 0) _context.RegisterFootnoteRef(order, parentBlockIndex);
                 return run;
             }
-            case ContainerInline cn2:
-                {
-                    var sb = new System.Text.StringBuilder();
-                    FlattenContainer(cn2, sb);
-                    return new TextRun(sb.ToString()) { SourceSpan = new SourceSpan(cn2.Span.Start, cn2.Span.Length) };
-                }
         }
         return null;
     }

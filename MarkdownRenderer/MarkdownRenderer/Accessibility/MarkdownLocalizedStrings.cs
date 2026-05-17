@@ -16,6 +16,9 @@ internal static class MarkdownLocalizedStrings
     public static string EmbeddedContentName => Get("EmbeddedContentName", "Embedded content");
     public static string ContextMenuCopy => Get("ContextMenuCopy", "Copy");
     public static string ContextMenuSelectAll => Get("ContextMenuSelectAll", "Select All");
+    public static string CodeBlockCopy => Get("CodeBlockCopy", "Copy");
+    public static string CodeBlockCopied => Get("CodeBlockCopied", "Copied");
+    public static string CodeBlockCopyAutomationName => Get("CodeBlockCopyAutomationName", "Copy code");
 
     public static string CodeLanguageHelp(string language) =>
         string.Format(CultureInfo.CurrentUICulture, Get("CodeLanguageHelpFormat", "Language: {0}"), language);
@@ -47,6 +50,7 @@ internal static class MarkdownLocalizedStrings
         Theming.MarkdownElementKeys.FigureCaption => Get("StyleFigureCaption", "Figure caption"),
         Theming.MarkdownElementKeys.Diagram => Get("StyleDiagram", "Diagram"),
         Theming.MarkdownElementKeys.ListMarker => Get("StyleListMarker", "List marker"),
+        Theming.MarkdownElementKeys.Table => Get("StyleTable", "Table"),
         Theming.MarkdownElementKeys.TableHeader => Get("StyleTableHeader", "Table header"),
         Theming.MarkdownElementKeys.TableCell => Get("StyleTableCell", "Table cell"),
         _ => elementKey,

@@ -22,12 +22,29 @@ use Markdig's HTML renderer.
 | ATX headings H1-H6 | Core | Exposes heading levels through UI Automation and document queries. |
 | Emphasis and strong emphasis | Core | Participates in selection, clipboard HTML, and text attributes. |
 | Inline code | Core | Uses code style keys and source-accurate copy. |
-| Fenced and indented code blocks | Core | Fenced language info is exposed through the document facade and UIA help text. Huge code blocks are segmented. |
+| Fenced and indented code blocks | Core | Rendered as native code surfaces with header metadata, copy action, always-wrapped text, multiline line numbers, highlighted-line metadata, diff markers, and huge-code segmentation. Syntax highlighting is provider-based and optional. |
 | Block quotes | Core | Styled through theme background, padding, border, radius, and accent fields. |
 | Ordered and unordered lists | Core | Preserves ordered-list start numbers and depth-aware indent styling. |
 | Thematic breaks | Core | Native painted rule. |
 | Links and autolinks | Core | Pointer, keyboard, UIA Invoke, hover/focus overlay styling, and fragment navigation. |
 | Images | Core | Standalone and inline images share bitmap/SVG loading, lazy load, source maps, selection, and UIA alt text. |
+
+## Optional syntax highlighting
+
+Broad code-block syntax highlighting is available from
+`MarkdownRenderer.SyntaxHighlighting.TextMate`:
+
+```csharp
+var control = new MarkdownRendererControlBuilder()
+    .UseTextMateSyntaxHighlighting()
+    .WithMarkdown(markdown)
+    .Build();
+```
+
+Fence metadata supports Shiki/Nextra-style options such as
+`filename="app.ts"`, `title="Example"`, `{1,3-5}`, `showLineNumbers`,
+`noLineNumbers`, `startLine=10`, and `diff`.
+Unsupported languages fall back to plain code.
 
 ## GitHub-flavored markdown
 
@@ -66,7 +83,7 @@ var control = new MarkdownRendererControlBuilder()
 | Syntax | Status | Notes |
 | --- | --- | --- |
 | Definition lists | Extra | Native term/description rendering, style keys, selection, UIA, and document queries. |
-| Abbreviations | Extra | Renders abbreviation text with accessible expansion metadata and document queries. |
+| Abbreviations | Extra | Renders abbreviation text with hover expansion tooltips, accessible expansion metadata, and document queries. |
 | Figures and captions | Extra | Rendered only where Markdig produces figure nodes; ordinary images keep normal behavior. |
 | Subscript and superscript | Extra/GFM helper | Uses baseline-aware inline runs and UIA text attributes. |
 | Inserted and marked text | Extra/GFM helper | Uses dedicated style keys, source maps, and clipboard HTML. |

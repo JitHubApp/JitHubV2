@@ -8,6 +8,7 @@ using Microsoft.UI.Xaml.Media;
 using MarkdownRenderer.Controls;
 using MarkdownRenderer.Gfm;
 using MarkdownRenderer.Parsing;
+using MarkdownRenderer.SyntaxHighlighting.TextMate;
 using MarkdownRenderer.Theming;
 
 namespace MarkdownRenderer.Sample;
@@ -170,6 +171,7 @@ public sealed partial class MainWindow : Window
         _renderer = new MarkdownRendererControlBuilder()
             .UseGitHubFlavoredMarkdown()
             .UseMarkdownExtra()
+            .UseTextMateSyntaxHighlighting()
             .WithMarkdown(FullDemoSample)
             .WithTheme(new MarkdownTheme())
             .WithEmbedFactory(new SampleEmbedFactory())
@@ -394,9 +396,9 @@ public sealed partial class MainWindow : Window
     private const string CodeSample = """
         ## Fenced Code Blocks
 
-        C# example:
+        C# with a filename, line numbers, and highlighted lines:
 
-        ```csharp
+        ```csharp filename="MarkdownRendererControl.cs" {3,8-10} startLine=120
         public sealed class MarkdownRendererControl : UserControl
         {
             private volatile LayoutSnapshot? _snapshot;
@@ -417,9 +419,20 @@ public sealed partial class MainWindow : Window
         }
         ```
 
-        Python example:
+        TypeScript with a title:
 
-        ```python
+        ```ts title="Async preview model"
+        type RenderState = "idle" | "loading" | "ready";
+
+        export async function renderMarkdown(source: string): Promise<RenderState> {
+            const response = await fetch("/api/markdown", { method: "POST", body: source });
+            return response.ok ? "ready" : "idle";
+        }
+        ```
+
+        Python example without line numbers:
+
+        ```python noLineNumbers
         import asyncio
 
         async def render_markdown(text: str) -> LayoutSnapshot:
@@ -428,18 +441,44 @@ public sealed partial class MainWindow : Window
             return await asyncio.to_thread(layout_builder.build, document)
         ```
 
+        PowerShell example:
+
+        ```powershell filename="build.ps1"
+        dotnet test .\MarkdownRenderer\MarkdownRenderer.Tests\MarkdownRenderer.Tests.csproj -p:Platform=x64
+        dotnet build .\MarkdownRenderer\MarkdownRenderer.Sample\MarkdownRenderer.Sample.csproj -p:Platform=x64
+        ```
+
+        JSON example:
+
+        ```json
+        {
+          "renderer": "MarkdownRenderer",
+          "codeBlockVersion": 2,
+          "syntaxHighlighting": true
+        }
+        ```
+
+        Diff example:
+
+        ```diff
+        - plain shaded text box
+        + native code surface
+        + syntax highlighting
+        + copy actions
+        ```
+
+        Long line that wraps:
+
+        ```js filename="long-line.js"
+        export const message = "This deliberately long line demonstrates that code blocks always wrap instead of requiring horizontal scrolling.";
+        ```
+
         Indented code block (4 spaces):
 
             var x = 42;
             Console.WriteLine($"The answer is {x}");
 
         Inline `code` uses a background highlight.
-
-        ## Language tags
-
-        The renderer stores the `FencedCodeBlock.Info` property (e.g. `"csharp"`)
-        on the source map entry — a future syntax-highlighting pass can use this
-        to apply per-token colors via `CanvasTextLayout.SetColor`.
         """;
 
     private const string AlertsSample = """

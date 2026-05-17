@@ -27,6 +27,7 @@ internal sealed partial class MarkdownNodePeer : FrameworkElementAutomationPeer,
         MarkdownSemanticRole.TableCell => "MarkdownTableCell",
         MarkdownSemanticRole.Image => "MarkdownImage",
         MarkdownSemanticRole.Embed => "MarkdownEmbed",
+        MarkdownSemanticRole.Abbreviation => "MarkdownAbbreviation",
         _ => "MarkdownGroup",
     };
 
@@ -42,6 +43,7 @@ internal sealed partial class MarkdownNodePeer : FrameworkElementAutomationPeer,
         MarkdownSemanticRole.TableCell => AutomationControlType.DataItem,
         MarkdownSemanticRole.Image => AutomationControlType.Image,
         MarkdownSemanticRole.Embed => AutomationControlType.Custom,
+        MarkdownSemanticRole.Abbreviation => AutomationControlType.Text,
         _ => AutomationControlType.Group,
     };
 

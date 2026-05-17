@@ -31,6 +31,8 @@ This document summarizes release-readiness work and deferred feature tracks.
 - Math/LaTeX support.
 - Safe raw HTML policy and renderer.
 - Optional richer diagram package built on the embed API.
+- Extend the internal rich block chrome pattern to diagrams, figures, tables,
+  alerts/quotes, and future code refinements.
 - Targeted recycling for additional proven pure managed helper allocations.
 
 ## Deferred feature tracks

@@ -52,7 +52,9 @@ internal sealed class ThemeResolver
             MarkdownElementKeys.Heading3, MarkdownElementKeys.Heading4,
             MarkdownElementKeys.Heading5, MarkdownElementKeys.Heading6,
             MarkdownElementKeys.Body,     MarkdownElementKeys.CodeInline,
-            MarkdownElementKeys.CodeBlock,MarkdownElementKeys.Quote,
+            MarkdownElementKeys.CodeBlock, MarkdownElementKeys.CodeBlockHeader,
+            MarkdownElementKeys.CodeBlockLanguage, MarkdownElementKeys.CodeBlockGutter,
+            MarkdownElementKeys.CodeBlockLineNumber, MarkdownElementKeys.Quote,
             MarkdownElementKeys.Link,     MarkdownElementKeys.Strong,
             MarkdownElementKeys.Emphasis, MarkdownElementKeys.Strikethrough,
             MarkdownElementKeys.Subscript, MarkdownElementKeys.Superscript,
@@ -62,7 +64,7 @@ internal sealed class ThemeResolver
             MarkdownElementKeys.ImageCaption, MarkdownElementKeys.Figure,
             MarkdownElementKeys.FigureCaption, MarkdownElementKeys.Diagram,
             MarkdownElementKeys.DefinitionTerm, MarkdownElementKeys.DefinitionDescription,
-            MarkdownElementKeys.TableHeader, MarkdownElementKeys.TableCell,
+            MarkdownElementKeys.Table, MarkdownElementKeys.TableHeader, MarkdownElementKeys.TableCell,
             MarkdownElementKeys.AlertNote, MarkdownElementKeys.AlertTip,
             MarkdownElementKeys.AlertImportant, MarkdownElementKeys.AlertWarning,
             MarkdownElementKeys.AlertCaution,
@@ -94,7 +96,13 @@ internal sealed class ThemeResolver
         // Accent: try to get the user's accent color, fall back to Win11 blue.
         var accent      = _theme.AccentColor ?? ResolveAccentTextColor(isDark);
         var linkHover   = AdjustColor(accent, isDark ? 0.18f : -0.12f);
-        var codeBg      = isDark ? Color.FromArgb(0x1A, 0xFF, 0xFF, 0xFF) : Color.FromArgb(0x0F, 0x00, 0x00, 0x00);
+        var codeBg      = isDark ? Color.FromArgb(0xFF, 0x1E, 0x1E, 0x1E) : Color.FromArgb(0xFF, 0xF6, 0xF8, 0xFA);
+        var codeHeaderBg = isDark ? Color.FromArgb(0xFF, 0x25, 0x25, 0x26) : Color.FromArgb(0xFF, 0xF0, 0xF2, 0xF5);
+        var codeBorder = isDark ? Color.FromArgb(0xFF, 0x3A, 0x3A, 0x3C) : Color.FromArgb(0xFF, 0xD0, 0xD7, 0xDE);
+        var codeMuted = isDark ? Color.FromArgb(0xFF, 0x85, 0x85, 0x85) : Color.FromArgb(0xFF, 0x6E, 0x77, 0x81);
+        var tableBg = isDark ? Color.FromArgb(0xFF, 0x25, 0x25, 0x25) : Color.FromArgb(0xFF, 0xFF, 0xFF, 0xFF);
+        var tableHeaderBg = isDark ? Color.FromArgb(0xFF, 0x2D, 0x2D, 0x30) : Color.FromArgb(0xFF, 0xF7, 0xF8, 0xFA);
+        var tableBorder = isDark ? Color.FromArgb(0xFF, 0x3D, 0x3D, 0x40) : Color.FromArgb(0xFF, 0xD8, 0xDC, 0xE0);
         var quoteBar    = isDark ? Color.FromArgb(0x50, 0xFF, 0xFF, 0xFF) : Color.FromArgb(0x50, 0x00, 0x00, 0x00);
 
         // Single font family names for Win2D/DirectWrite. DirectWrite does NOT support
@@ -112,7 +120,11 @@ internal sealed class ThemeResolver
             MarkdownElementKeys.Heading5 => new ElementStyle { FontFamily = font, FontSize = 15, FontWeight = FontWeights.SemiBold, Foreground = fg, Margin = new Thickness(0, 8, 0, 2) },
             MarkdownElementKeys.Heading6 => new ElementStyle { FontFamily = font, FontSize = 14, FontWeight = FontWeights.SemiBold, Foreground = fgSecondary, Margin = new Thickness(0, 6, 0, 2) },
             MarkdownElementKeys.Body => new ElementStyle { FontFamily = font, FontSize = 14, Foreground = fg, Margin = new Thickness(0, 0, 0, 8), ListIndent = 22f, NestedListIndent = 0f },
-            MarkdownElementKeys.CodeBlock => new ElementStyle { FontFamily = mono, FontSize = 13, Foreground = fg, Background = codeBg, CornerRadius = 4, Margin = new Thickness(0, 4, 0, 8), Padding = new Thickness(12, 8, 12, 8) },
+            MarkdownElementKeys.CodeBlock => new ElementStyle { FontFamily = mono, FontSize = 13, Foreground = fg, Background = codeBg, BorderBrush = codeBorder, BorderThickness = 1, CornerRadius = 6, Margin = new Thickness(0, 4, 0, 8), Padding = new Thickness(12, 10, 12, 10) },
+            MarkdownElementKeys.CodeBlockHeader => new ElementStyle { FontFamily = font, FontSize = 12, Foreground = codeMuted, Background = codeHeaderBg, BorderBrush = codeBorder },
+            MarkdownElementKeys.CodeBlockLanguage => new ElementStyle { FontFamily = font, FontSize = 12, FontWeight = FontWeights.SemiBold, Foreground = codeMuted },
+            MarkdownElementKeys.CodeBlockGutter => new ElementStyle { FontFamily = mono, FontSize = 12, Foreground = codeMuted, Background = codeHeaderBg },
+            MarkdownElementKeys.CodeBlockLineNumber => new ElementStyle { FontFamily = mono, FontSize = 12, Foreground = codeMuted },
             MarkdownElementKeys.CodeInline => new ElementStyle { FontFamily = mono, FontSize = 12, Foreground = fg, Background = codeBg, CornerRadius = 3, Padding = new Thickness(2, 0, 2, 0) },
             MarkdownElementKeys.Quote => new ElementStyle { FontFamily = font, FontSize = 14, Foreground = fgSecondary, AccentBar = quoteBar, Margin = new Thickness(0, 4, 0, 4), Padding = new Thickness(12, 2, 8, 2) },
             MarkdownElementKeys.Link => new ElementStyle { FontFamily = font, FontSize = 14, Foreground = accent, HoverForeground = linkHover, FocusForeground = linkHover, Underline = true },
@@ -123,7 +135,7 @@ internal sealed class ThemeResolver
             MarkdownElementKeys.Superscript => new ElementStyle { FontFamily = font, FontSize = 11, Foreground = fg },
             MarkdownElementKeys.Inserted => new ElementStyle { FontFamily = font, FontSize = 14, Underline = true, Foreground = fg },
             MarkdownElementKeys.Marked => new ElementStyle { FontFamily = font, FontSize = 14, Foreground = fg, Background = isDark ? Color.FromArgb(0x45, 0xFF, 0xD8, 0x66) : Color.FromArgb(0x66, 0xFF, 0xE5, 0x8A), CornerRadius = 3 },
-            MarkdownElementKeys.Abbreviation => new ElementStyle { FontFamily = font, FontSize = 14, Foreground = fg, Underline = true },
+            MarkdownElementKeys.Abbreviation => new ElementStyle { FontFamily = font, FontSize = 14, Foreground = fg, AccentBar = accent, Underline = true },
             MarkdownElementKeys.DefinitionTerm => new ElementStyle { FontFamily = font, FontSize = 14, FontWeight = FontWeights.SemiBold, Foreground = fg, Margin = new Thickness(0, 4, 0, 0) },
             MarkdownElementKeys.DefinitionDescription => new ElementStyle { FontFamily = font, FontSize = 14, Foreground = fgSecondary, Margin = new Thickness(18, 0, 0, 6) },
             MarkdownElementKeys.Figure => new ElementStyle { FontFamily = font, FontSize = 14, Foreground = fg, Margin = new Thickness(0, 8, 0, 10) },
@@ -132,9 +144,9 @@ internal sealed class ThemeResolver
             MarkdownElementKeys.ListMarker => new ElementStyle { FontFamily = font, FontSize = 14, Foreground = fgSecondary, ListIndent = 22f, NestedListIndent = 0f },
             MarkdownElementKeys.ThematicBreak => new ElementStyle { FontFamily = font, Foreground = quoteBar, Margin = new Thickness(0, 12, 0, 12) },
             MarkdownElementKeys.ImageCaption => new ElementStyle { FontFamily = font, FontSize = 12, FontStyle = FontStyle.Italic, Foreground = fgSecondary, Margin = new Thickness(0, 2, 0, 8) },
-            // Table styles: no Background — TableBox draws header row bg directly.
-            MarkdownElementKeys.TableHeader => new ElementStyle { FontFamily = font, FontSize = 14, FontWeight = FontWeights.SemiBold, Foreground = fg },
-            MarkdownElementKeys.TableCell => new ElementStyle { FontFamily = font, FontSize = 14, Foreground = fg },
+            MarkdownElementKeys.Table => new ElementStyle { FontFamily = font, FontSize = 14, Foreground = fg, Background = tableBg, BorderBrush = tableBorder, BorderThickness = 1, CornerRadius = 6, Margin = new Thickness(0, 8, 0, 12) },
+            MarkdownElementKeys.TableHeader => new ElementStyle { FontFamily = font, FontSize = 14, FontWeight = FontWeights.SemiBold, Foreground = fg, Background = tableHeaderBg, BorderBrush = tableBorder, Padding = new Thickness(12, 9, 12, 9) },
+            MarkdownElementKeys.TableCell => new ElementStyle { FontFamily = font, FontSize = 14, Foreground = fg, Background = tableBg, BorderBrush = tableBorder, Padding = new Thickness(12, 9, 12, 9) },
             MarkdownElementKeys.AlertNote => new ElementStyle { FontFamily = font, FontSize = 14, Foreground = fg, AccentBar = Color.FromArgb(0xFF, 0x0E, 0xA5, 0xE9), Padding = new Thickness(12, 2, 8, 2), Margin = new Thickness(0, 4, 0, 8) },
             MarkdownElementKeys.AlertTip => new ElementStyle { FontFamily = font, FontSize = 14, Foreground = fg, AccentBar = Color.FromArgb(0xFF, 0x22, 0xC5, 0x5E), Padding = new Thickness(12, 2, 8, 2), Margin = new Thickness(0, 4, 0, 8) },
             MarkdownElementKeys.AlertImportant => new ElementStyle { FontFamily = font, FontSize = 14, Foreground = fg, AccentBar = Color.FromArgb(0xFF, 0xA8, 0x55, 0xF7), Padding = new Thickness(12, 2, 8, 2), Margin = new Thickness(0, 4, 0, 8) },
@@ -163,7 +175,11 @@ internal sealed class ThemeResolver
             MarkdownElementKeys.Heading5 => new ElementStyle { FontFamily = font, FontSize = 15, FontWeight = FontWeights.SemiBold, Foreground = fg, Margin = new Thickness(0, 8, 0, 2) },
             MarkdownElementKeys.Heading6 => new ElementStyle { FontFamily = font, FontSize = 14, FontWeight = FontWeights.SemiBold, Foreground = fg, Margin = new Thickness(0, 6, 0, 2) },
             MarkdownElementKeys.Body => new ElementStyle { FontFamily = font, FontSize = 14, Foreground = fg, Background = bg, Margin = new Thickness(0, 0, 0, 8) },
-            MarkdownElementKeys.CodeBlock => new ElementStyle { FontFamily = mono, FontSize = 13, Foreground = fg, Background = bg, AccentBar = accentBar, Margin = new Thickness(0, 4, 0, 8), Padding = new Thickness(12, 8, 12, 8) },
+            MarkdownElementKeys.CodeBlock => new ElementStyle { FontFamily = mono, FontSize = 13, Foreground = fg, Background = bg, AccentBar = accentBar, BorderBrush = accentBar, BorderThickness = accentBar is null ? 0 : 1, CornerRadius = 0, Margin = new Thickness(0, 4, 0, 8), Padding = new Thickness(12, 10, 12, 10) },
+            MarkdownElementKeys.CodeBlockHeader => new ElementStyle { FontFamily = font, FontSize = 12, Foreground = fg, Background = bg, BorderBrush = accentBar },
+            MarkdownElementKeys.CodeBlockLanguage => new ElementStyle { FontFamily = font, FontSize = 12, FontWeight = FontWeights.SemiBold, Foreground = fg },
+            MarkdownElementKeys.CodeBlockGutter => new ElementStyle { FontFamily = mono, FontSize = 12, Foreground = fg, Background = bg, BorderBrush = accentBar },
+            MarkdownElementKeys.CodeBlockLineNumber => new ElementStyle { FontFamily = mono, FontSize = 12, Foreground = fg },
             MarkdownElementKeys.CodeInline => new ElementStyle { FontFamily = mono, FontSize = 12, Foreground = fg, Background = bg, Padding = new Thickness(2, 0, 2, 0) },
             MarkdownElementKeys.Quote => new ElementStyle { FontFamily = font, FontSize = 14, Foreground = fg, AccentBar = accentBar, Margin = new Thickness(0, 4, 0, 4), Padding = new Thickness(12, 2, 8, 2) },
             MarkdownElementKeys.Link => new ElementStyle { FontFamily = font, FontSize = 14, Foreground = fg, HoverForeground = fg, FocusForeground = fg, Underline = roles.Underline },
@@ -174,7 +190,7 @@ internal sealed class ThemeResolver
             MarkdownElementKeys.Superscript => new ElementStyle { FontFamily = font, FontSize = 11, Foreground = fg },
             MarkdownElementKeys.Inserted => new ElementStyle { FontFamily = font, FontSize = 14, Underline = roles.Underline, Foreground = fg },
             MarkdownElementKeys.Marked => new ElementStyle { FontFamily = font, FontSize = 14, Foreground = fg, Background = bg },
-            MarkdownElementKeys.Abbreviation => new ElementStyle { FontFamily = font, FontSize = 14, Foreground = fg, Underline = roles.Underline },
+            MarkdownElementKeys.Abbreviation => new ElementStyle { FontFamily = font, FontSize = 14, Foreground = fg, AccentBar = accentBar, Underline = roles.Underline },
             MarkdownElementKeys.DefinitionTerm => new ElementStyle { FontFamily = font, FontSize = 14, FontWeight = FontWeights.SemiBold, Foreground = fg, Margin = new Thickness(0, 4, 0, 0) },
             MarkdownElementKeys.DefinitionDescription => new ElementStyle { FontFamily = font, FontSize = 14, Foreground = fg, Background = bg, Margin = new Thickness(18, 0, 0, 6) },
             MarkdownElementKeys.Figure => new ElementStyle { FontFamily = font, FontSize = 14, Foreground = fg, Background = bg, Margin = new Thickness(0, 8, 0, 10) },
@@ -183,8 +199,9 @@ internal sealed class ThemeResolver
             MarkdownElementKeys.ListMarker => new ElementStyle { FontFamily = font, FontSize = 14, Foreground = fg, ListIndent = 22f, NestedListIndent = 0f },
             MarkdownElementKeys.ThematicBreak => new ElementStyle { FontFamily = font, Foreground = fg, Margin = new Thickness(0, 12, 0, 12) },
             MarkdownElementKeys.ImageCaption => new ElementStyle { FontFamily = font, FontSize = 12, FontStyle = FontStyle.Italic, Foreground = fg, Margin = new Thickness(0, 2, 0, 8) },
-            MarkdownElementKeys.TableHeader => new ElementStyle { FontFamily = font, FontSize = 14, FontWeight = FontWeights.SemiBold, Foreground = fg, Background = bg },
-            MarkdownElementKeys.TableCell => new ElementStyle { FontFamily = font, FontSize = 14, Foreground = fg, Background = bg },
+            MarkdownElementKeys.Table => new ElementStyle { FontFamily = font, FontSize = 14, Foreground = fg, Background = bg, BorderBrush = accentBar, BorderThickness = accentBar is null ? 0 : 1, Margin = new Thickness(0, 8, 0, 12) },
+            MarkdownElementKeys.TableHeader => new ElementStyle { FontFamily = font, FontSize = 14, FontWeight = FontWeights.SemiBold, Foreground = fg, Background = bg, BorderBrush = accentBar, Padding = new Thickness(12, 9, 12, 9) },
+            MarkdownElementKeys.TableCell => new ElementStyle { FontFamily = font, FontSize = 14, Foreground = fg, Background = bg, BorderBrush = accentBar, Padding = new Thickness(12, 9, 12, 9) },
             MarkdownElementKeys.AlertNote or MarkdownElementKeys.AlertTip or MarkdownElementKeys.AlertImportant or
             MarkdownElementKeys.AlertWarning or MarkdownElementKeys.AlertCaution => new ElementStyle { FontFamily = font, FontSize = 14, Foreground = fg, AccentBar = accentBar, Padding = new Thickness(12, 2, 8, 2), Margin = new Thickness(0, 4, 0, 8) },
             _ => new ElementStyle { FontFamily = font, FontSize = 14, Foreground = fg, Background = bg, Margin = new Thickness(0, 0, 0, 4) }
@@ -350,11 +367,9 @@ internal sealed class ThemeResolver
         if (_systemTheme.IsHighContrast)
             return _systemTheme.WindowColor;
 
-        if (TryResolveResourceColor("TextControlBackgroundFocused", out var color) ||
-            TryResolveResourceColor("TextControlBackground", out color) ||
-            TryResolveResourceColor("LayerFillColorDefaultBrush", out color) ||
+        if (TryResolveResourceColor("ApplicationPageBackgroundThemeBrush", out var color) ||
             TryResolveResourceColor("SolidBackgroundFillColorBaseBrush", out color) ||
-            TryResolveResourceColor("ApplicationPageBackgroundThemeBrush", out color))
+            TryResolveResourceColor("LayerFillColorDefaultBrush", out color))
         {
             return CompositeOver(color, _host.ActualTheme == ElementTheme.Dark
                 ? Color.FromArgb(0xFF, 0x20, 0x20, 0x20)

@@ -1,4 +1,5 @@
 using System;
+using MarkdownRenderer.CodeBlocks;
 using MarkdownRenderer.Hosting;
 using MarkdownRenderer.Parsing;
 using MarkdownRenderer.Theming;
@@ -15,6 +16,12 @@ public sealed class MarkdownRendererControlBuilder
     private MarkdownExtensionRegistry? _registry;
     private IMarkdownEmbedFactory? _embedFactory;
     private bool _isSelectionEnabled = true;
+    private bool _isCodeBlockCopyEnabled = true;
+    private string? _codeBlockCopyButtonLabel;
+    private string? _codeBlockCopiedButtonLabel;
+    private bool _isCodeBlockSyntaxHighlightingEnabled = true;
+    private ICodeBlockSyntaxHighlighter? _codeBlockSyntaxHighlighter;
+    private CodeBlockLineNumberMode _codeBlockLineNumberMode = CodeBlockLineNumberMode.AutoMultiline;
 
     /// <summary>Sets the markdown source shown by the control.</summary>
     /// <param name="markdown">Markdown source text. A null value is treated as an empty string.</param>
@@ -72,6 +79,54 @@ public sealed class MarkdownRendererControlBuilder
         return this;
     }
 
+    /// <summary>Sets whether code block copy buttons are shown.</summary>
+    /// <param name="enabled">True to show copy buttons on code blocks; false to hide them.</param>
+    /// <returns>The current builder.</returns>
+    public MarkdownRendererControlBuilder WithCodeBlockCopyEnabled(bool enabled = true)
+    {
+        _isCodeBlockCopyEnabled = enabled;
+        return this;
+    }
+
+    /// <summary>Sets the accessible label and tooltip used for code-block copy buttons.</summary>
+    /// <param name="label">Accessible label and tooltip text, or null to use the renderer default.</param>
+    /// <returns>The current builder.</returns>
+    public MarkdownRendererControlBuilder WithCodeBlockCopyButtonLabel(string? label)
+    {
+        _codeBlockCopyButtonLabel = label;
+        return this;
+    }
+
+    /// <summary>Sets the accessible label and tooltip shown after a code-block copy succeeds.</summary>
+    /// <param name="label">Accessible label and tooltip text, or null to use the renderer default.</param>
+    /// <returns>The current builder.</returns>
+    public MarkdownRendererControlBuilder WithCodeBlockCopiedButtonLabel(string? label)
+    {
+        _codeBlockCopiedButtonLabel = label;
+        return this;
+    }
+
+    /// <summary>Sets whether configured syntax highlighters may color code blocks.</summary>
+    public MarkdownRendererControlBuilder WithCodeBlockSyntaxHighlightingEnabled(bool enabled = true)
+    {
+        _isCodeBlockSyntaxHighlightingEnabled = enabled;
+        return this;
+    }
+
+    /// <summary>Sets the optional syntax highlighter used for code blocks.</summary>
+    public MarkdownRendererControlBuilder WithCodeBlockSyntaxHighlighter(ICodeBlockSyntaxHighlighter? highlighter)
+    {
+        _codeBlockSyntaxHighlighter = highlighter;
+        return this;
+    }
+
+    /// <summary>Sets when code blocks show line numbers.</summary>
+    public MarkdownRendererControlBuilder WithCodeBlockLineNumberMode(CodeBlockLineNumberMode mode)
+    {
+        _codeBlockLineNumberMode = mode;
+        return this;
+    }
+
     /// <summary>Creates the configured markdown renderer control.</summary>
     /// <returns>A new <see cref="MarkdownRendererControl"/> instance.</returns>
     public MarkdownRendererControl Build()
@@ -83,6 +138,12 @@ public sealed class MarkdownRendererControlBuilder
             ExtensionRegistry = _registry,
             EmbedFactory = _embedFactory,
             IsSelectionEnabled = _isSelectionEnabled,
+            IsCodeBlockCopyEnabled = _isCodeBlockCopyEnabled,
+            CodeBlockCopyButtonLabel = _codeBlockCopyButtonLabel,
+            CodeBlockCopiedButtonLabel = _codeBlockCopiedButtonLabel,
+            IsCodeBlockSyntaxHighlightingEnabled = _isCodeBlockSyntaxHighlightingEnabled,
+            CodeBlockSyntaxHighlighter = _codeBlockSyntaxHighlighter,
+            CodeBlockLineNumberMode = _codeBlockLineNumberMode,
         };
     }
 }

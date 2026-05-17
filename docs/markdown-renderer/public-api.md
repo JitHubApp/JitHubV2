@@ -9,6 +9,7 @@ painting, and source-map internals are intentionally not the consumer path.
 | --- | --- |
 | `MarkdownRenderer` | Core WinUI control, CommonMark rendering, theming, selection, accessibility, images/SVG, hosted-control support, and document queries. |
 | `MarkdownRenderer.Gfm` | GitHub-flavored markdown helpers and renderers, plus opt-in Markdown Extra helpers. |
+| `MarkdownRenderer.SyntaxHighlighting.TextMate` | Optional TextMate grammar provider for broad code-block syntax highlighting. |
 
 ## Core namespaces
 
@@ -21,6 +22,8 @@ painting, and source-map internals are intentionally not the consumer path.
 | `MarkdownRenderer.Selection` | `MarkdownCopyOptions` and plain-text copy mode. |
 | `MarkdownRenderer.Theming` | `MarkdownTheme`, `ElementStyle`, `ElementStyleOverride`, and `MarkdownElementKeys`. |
 | `MarkdownRenderer.Gfm` | GFM factory and builder extension methods. |
+| `MarkdownRenderer.CodeBlocks` | Code-block syntax-highlighting provider contracts and line-number options. |
+| `MarkdownRenderer.SyntaxHighlighting.TextMate` | TextMate highlighter and builder/control extension methods. |
 
 ## Creating controls
 
@@ -44,15 +47,22 @@ Fluent setup:
 
 ```csharp
 using MarkdownRenderer.Controls;
+using MarkdownRenderer.CodeBlocks;
 using MarkdownRenderer.Gfm;
+using MarkdownRenderer.SyntaxHighlighting.TextMate;
 
 var control = new MarkdownRendererControlBuilder()
     .UseGitHubFlavoredMarkdown()
     .UseMarkdownExtra()
+    .UseTextMateSyntaxHighlighting()
     .WithMarkdown(markdownSource)
     .WithTheme(theme)
     .WithEmbedFactory(embedFactory)
     .WithSelectionEnabled(true)
+    .WithCodeBlockCopyEnabled(true)
+    .WithCodeBlockCopyButtonLabel("Copy code")
+    .WithCodeBlockCopiedButtonLabel("Copied")
+    .WithCodeBlockLineNumberMode(CodeBlockLineNumberMode.AutoMultiline)
     .Build();
 ```
 
@@ -70,6 +80,12 @@ Common consumer properties and methods:
 | `ExtensionRegistry` | Optional parser/renderer registry. Null uses core CommonMark behavior. |
 | `EmbedFactory` | Optional block-level hosted WinUI control factory. |
 | `IsSelectionEnabled` | Enables pointer/keyboard text selection. |
+| `IsCodeBlockCopyEnabled` | Shows always-visible native copy buttons on fenced and indented code blocks. Defaults to true. |
+| `CodeBlockCopyButtonLabel` | Accessible name and tooltip for icon-only code-block copy buttons. Null uses the localized default. |
+| `CodeBlockCopiedButtonLabel` | Accessible name and tooltip used briefly after a successful code-block copy. Null uses the localized default. |
+| `IsCodeBlockSyntaxHighlightingEnabled` | Allows a configured highlighter provider to color code blocks. Defaults to true. |
+| `CodeBlockSyntaxHighlighter` | Optional syntax-highlighting provider. Null keeps code plain. |
+| `CodeBlockLineNumberMode` | Controls line-number defaults. Defaults to `AutoMultiline`. |
 | `Document` | Immutable public parsed-document snapshot for queries. |
 | `RequestRebuild()` | Explicitly schedules a rebuild when an advanced integration changes external state. |
 | `CopySelectionToClipboard(MarkdownCopyOptions? options = null)` | Copies the current selection with source-markdown defaults and optional rendered text. |

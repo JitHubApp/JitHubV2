@@ -24,6 +24,14 @@
     <Platform Solution="Debug|Any CPU" Project="x64" />
     <Platform Solution="Release|Any CPU" Project="x86" />
   </Project>
+  <Project Path="MarkdownRenderer/MarkdownRenderer.SyntaxHighlighting.TextMate/MarkdownRenderer.SyntaxHighlighting.TextMate.csproj">
+    <Platform Solution="*|ARM" Project="x86" />
+    <Platform Solution="*|ARM64" Project="ARM64" />
+    <Platform Solution="*|x64" Project="x64" />
+    <Platform Solution="*|x86" Project="x86" />
+    <Platform Solution="Debug|Any CPU" Project="x64" />
+    <Platform Solution="Release|Any CPU" Project="x86" />
+  </Project>
   <Project Path="MarkdownRenderer/MarkdownRenderer.Tests/MarkdownRenderer.Tests.csproj">
     <Platform Solution="*|x64" Project="x64" />
     <Platform Solution="Debug|Any CPU" Project="x64" />
