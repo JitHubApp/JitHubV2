@@ -1,5 +1,6 @@
 using Xunit;
 using Markdig;
+using Markdig.Extensions.Abbreviations;
 using Markdig.Syntax;
 using Markdig.Syntax.Inlines;
 using Markdig.Extensions.Tables;
@@ -184,6 +185,42 @@ public class MarkdigParserTests
         Assert.Equal("https://github.com", link.Url);
     }
 
+    [Fact]
+    public void Parse_AbbreviationOccurrences_CanBeNestedInsideGenericContainerInline()
+    {
+        const string md = """
+            HTML and SVG expansions should expose abbreviation runs.
+
+            *[HTML]: Hyper Text Markup Language
+            *[SVG]: Scalable Vector Graphics
+            """;
+
+        var pipeline = new MarkdownPipelineBuilder()
+            .UseAbbreviations()
+            .Build();
+        var doc = new MarkdigParser(pipeline).Parse(md).Document;
+        var para = Assert.Single(doc.OfType<ParagraphBlock>());
+
+        Assert.DoesNotContain(para.Inline!, inline => inline is AbbreviationInline);
+
+        var abbreviations = DescendantInlines(para.Inline!)
+            .OfType<AbbreviationInline>()
+            .ToArray();
+
+        Assert.Collection(
+            abbreviations,
+            abbreviation =>
+            {
+                Assert.Equal("HTML", abbreviation.Abbreviation?.Label);
+                Assert.Equal("Hyper Text Markup Language", abbreviation.Abbreviation?.Text.ToString());
+            },
+            abbreviation =>
+            {
+                Assert.Equal("SVG", abbreviation.Abbreviation?.Label);
+                Assert.Equal("Scalable Vector Graphics", abbreviation.Abbreviation?.Text.ToString());
+            });
+    }
+
     // ── GFM extensions ───────────────────────────────────────────────────────
 
     [Fact]
@@ -241,5 +278,18 @@ public class MarkdigParserTests
         Assert.Equal(1, doc.OfType<ParagraphBlock>().Count());
         Assert.Equal(1, doc.OfType<QuoteBlock>().Count());
         Assert.Equal(1, doc.OfType<ListBlock>().Count());
+    }
+
+    private static IEnumerable<Inline> DescendantInlines(ContainerInline container)
+    {
+        foreach (var inline in container)
+        {
+            yield return inline;
+            if (inline is not ContainerInline nested)
+                continue;
+
+            foreach (var descendant in DescendantInlines(nested))
+                yield return descendant;
+        }
     }
 }

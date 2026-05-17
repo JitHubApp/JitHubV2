@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using Microsoft.Graphics.Canvas;
+using Microsoft.Graphics.Canvas.Geometry;
 using Microsoft.UI.Xaml;
 using Windows.Foundation;
 using Windows.UI;
@@ -34,9 +35,6 @@ internal sealed class TableBox : BlockBox
     private float[]? _colWidths;
     private float[]? _rowHeights;  // header rows first, then body rows
 
-    private const float CellPadH = 8f;
-    private const float CellPadV = 6f;
-
     public TableBox(
         MarkdownLayoutContext context,
         InlineContainerBox[][] headerCells,
@@ -47,7 +45,15 @@ internal sealed class TableBox : BlockBox
         _headerCells = headerCells ?? Array.Empty<InlineContainerBox[]>();
         _bodyCells = bodyCells ?? Array.Empty<InlineContainerBox[]>();
         _columnAlignments = columnAlignments is null ? Array.Empty<CellAlignment>() : [.. columnAlignments];
-        Margin = new Thickness(0, 6, 0, 6);
+        Margin = GetTableStyle().Margin;
+
+        foreach (var cell in GetCellBoxes())
+        {
+            cell.DrawContainerChrome = false;
+            cell.UseContainerPadding = false;
+            cell.UseContainerMargin = false;
+            cell.Margin = default;
+        }
 
         if (_headerCells.Length > 0 && _headerCells[0].Length > 0)
             _colCount = _headerCells[0].Length;
@@ -89,13 +95,21 @@ internal sealed class TableBox : BlockBox
         ThrowIfCancellationRequested();
         if (_colCount == 0) { Bounds = new Rect(0, 0, availableWidth, 0); return 0; }
 
+        var tableStyle = GetTableStyle();
+        var headerStyle = GetHeaderStyle();
+        var bodyStyle = GetBodyStyle();
+        var headerPadding = EffectiveCellPadding(headerStyle);
+        var bodyPadding = EffectiveCellPadding(bodyStyle);
+        Margin = tableStyle.Margin;
+
         float innerWidth = availableWidth - (float)(Margin.Left + Margin.Right);
         float colWidth = Math.Max(1f, innerWidth / _colCount);
 
         _colWidths = new float[_colCount];
         for (int i = 0; i < _colCount; i++) _colWidths[i] = colWidth;
 
-        float cellMeasureWidth = Math.Max(1f, colWidth - CellPadH * 2);
+        float headerCellMeasureWidth = Math.Max(1f, colWidth - (float)(headerPadding.Left + headerPadding.Right));
+        float bodyCellMeasureWidth = Math.Max(1f, colWidth - (float)(bodyPadding.Left + bodyPadding.Right));
         int totalRows = _headerCells.Length + _bodyCells.Length;
         _rowHeights = new float[totalRows];
 
@@ -107,9 +121,9 @@ internal sealed class TableBox : BlockBox
             {
                 _context.CancellationToken.ThrowIfCancellationRequested();
                 _headerCells[r][c].TextAlignment = ToCanvasAlignment(GetColumnAlignment(c), _context.FlowDirection == FlowDirection.RightToLeft);
-                maxH = Math.Max(maxH, _headerCells[r][c].Measure(cellMeasureWidth));
+                maxH = Math.Max(maxH, _headerCells[r][c].Measure(headerCellMeasureWidth));
             }
-            _rowHeights[r] = maxH + CellPadV * 2;
+            _rowHeights[r] = maxH + (float)(headerPadding.Top + headerPadding.Bottom);
         }
         for (int r = 0; r < _bodyCells.Length; r++)
         {
@@ -119,9 +133,9 @@ internal sealed class TableBox : BlockBox
             {
                 _context.CancellationToken.ThrowIfCancellationRequested();
                 _bodyCells[r][c].TextAlignment = ToCanvasAlignment(GetColumnAlignment(c), _context.FlowDirection == FlowDirection.RightToLeft);
-                maxH = Math.Max(maxH, _bodyCells[r][c].Measure(cellMeasureWidth));
+                maxH = Math.Max(maxH, _bodyCells[r][c].Measure(bodyCellMeasureWidth));
             }
-            _rowHeights[_headerCells.Length + r] = maxH + CellPadV * 2;
+            _rowHeights[_headerCells.Length + r] = maxH + (float)(bodyPadding.Top + bodyPadding.Bottom);
         }
 
         float totalHeight = (float)(Margin.Top + Margin.Bottom);
@@ -136,6 +150,8 @@ internal sealed class TableBox : BlockBox
         base.Arrange(x, y, width);
         if (_colWidths is null || _rowHeights is null) return;
 
+        var headerPadding = EffectiveCellPadding(GetHeaderStyle());
+        var bodyPadding = EffectiveCellPadding(GetBodyStyle());
         float colWidth = _colWidths[0];
         float rowY = y + (float)Margin.Top;
         bool rtl = _context.FlowDirection == FlowDirection.RightToLeft;
@@ -156,7 +172,10 @@ internal sealed class TableBox : BlockBox
                     ? x + (float)Margin.Left + innerW - (nCols - visCol) * colWidth
                     : x + (float)Margin.Left + visCol * colWidth;
                 _headerCells[r][c].TextAlignment = ToCanvasAlignment(GetColumnAlignment(c), rtl);
-                _headerCells[r][c].Arrange(colX + CellPadH, rowY + CellPadV, colWidth - CellPadH * 2);
+                _headerCells[r][c].Arrange(
+                    colX + (float)headerPadding.Left,
+                    rowY + (float)headerPadding.Top,
+                    Math.Max(1f, colWidth - (float)(headerPadding.Left + headerPadding.Right)));
             }
             rowY += rh;
         }
@@ -171,7 +190,10 @@ internal sealed class TableBox : BlockBox
                     ? x + (float)Margin.Left + innerW - (nCols - visCol) * colWidth
                     : x + (float)Margin.Left + visCol * colWidth;
                 _bodyCells[r][c].TextAlignment = ToCanvasAlignment(GetColumnAlignment(c), rtl);
-                _bodyCells[r][c].Arrange(colX + CellPadH, rowY + CellPadV, colWidth - CellPadH * 2);
+                _bodyCells[r][c].Arrange(
+                    colX + (float)bodyPadding.Left,
+                    rowY + (float)bodyPadding.Top,
+                    Math.Max(1f, colWidth - (float)(bodyPadding.Left + bodyPadding.Right)));
             }
             rowY += rh;
         }
@@ -181,21 +203,38 @@ internal sealed class TableBox : BlockBox
     {
         if (_colWidths is null || _rowHeights is null) return;
 
-        var headerStyle = _context.ThemeSnapshot.GetStyle(MarkdownElementKeys.TableHeader);
-        var bodyStyle = _context.ThemeSnapshot.GetStyle(MarkdownElementKeys.TableCell);
-        var headerBgColor = headerStyle.Background
-            ?? _context.ThemeSnapshot.GetStyle(MarkdownElementKeys.CodeBlock).Background;
+        var tableStyle = GetTableStyle();
+        var headerStyle = GetHeaderStyle();
+        var bodyStyle = GetBodyStyle();
+        var bodyBgColor = bodyStyle.Background ?? tableStyle.Background ?? _context.ThemeSnapshot.SurfaceColor;
+        var headerBgColor = headerStyle.Background ?? bodyBgColor;
+        var borderColor = tableStyle.BorderBrush
+            ?? bodyStyle.BorderBrush
+            ?? headerStyle.BorderBrush
+            ?? WithAlpha(bodyStyle.Foreground, _context.ThemeSnapshot.IsHighContrast ? (byte)0xFF : (byte)0x30);
+        float borderThickness = tableStyle.BorderThickness > 0 ? tableStyle.BorderThickness : 1f;
+        float radius = Math.Max(0, tableStyle.CornerRadius);
 
         float startX = (float)(Bounds.X + Margin.Left);
         float innerWidth = (float)(Bounds.Width - Margin.Left - Margin.Right);
         float colWidth = _colWidths[0];
         float headerStartY = (float)(Bounds.Y + Margin.Top);
+        float tableH = (float)(Bounds.Height - Margin.Top - Margin.Bottom);
+        var tableRect = new Rect(startX, headerStartY, innerWidth, tableH);
 
-        // Full-width header row background (uses code-block bg as a subtle tint).
         float headerTotalH = 0;
         for (int i = 0; i < _headerCells.Length; i++) headerTotalH += _rowHeights[i];
-        if (_headerCells.Length > 0 && headerBgColor is { } hBg)
-            ds.FillRectangle(new Rect(startX, headerStartY, innerWidth, headerTotalH), hBg);
+
+        if (radius > 0)
+        {
+            using var clip = CanvasGeometry.CreateRoundedRectangle(_context.ResourceCreator, tableRect, radius, radius);
+            using (ds.CreateLayer(1.0f, clip))
+                PaintTableSurfaces(ds, tableRect, bodyBgColor, headerBgColor, headerTotalH);
+        }
+        else
+        {
+            PaintTableSurfaces(ds, tableRect, bodyBgColor, headerBgColor, headerTotalH);
+        }
 
         // Paint all cell text layouts.
         foreach (var cell in GetCellBoxes())
@@ -205,7 +244,7 @@ internal sealed class TableBox : BlockBox
         float sepY = headerStartY + headerTotalH;
         if (_headerCells.Length > 0)
         {
-            var sep = Color.FromArgb(100, bodyStyle.Foreground.R, bodyStyle.Foreground.G, bodyStyle.Foreground.B);
+            var sep = _context.ThemeSnapshot.IsHighContrast ? borderColor : WithAlpha(borderColor, 0xC0);
             ds.DrawLine(startX, sepY, startX + innerWidth, sepY, sep, 1f);
         }
 
@@ -214,18 +253,58 @@ internal sealed class TableBox : BlockBox
         for (int r = 0; r < _bodyCells.Length; r++)
         {
             rowY += _rowHeights[_headerCells.Length + r];
-            var rowSep = Color.FromArgb(30, bodyStyle.Foreground.R, bodyStyle.Foreground.G, bodyStyle.Foreground.B);
+            var rowSep = _context.ThemeSnapshot.IsHighContrast ? borderColor : WithAlpha(borderColor, 0x70);
             ds.DrawLine(startX, rowY, startX + innerWidth, rowY, rowSep, 0.5f);
         }
 
         // Column separators.
-        float tableH = (float)(Bounds.Height - Margin.Top - Margin.Bottom);
-        var colSep = Color.FromArgb(30, bodyStyle.Foreground.R, bodyStyle.Foreground.G, bodyStyle.Foreground.B);
+        var colSep = _context.ThemeSnapshot.IsHighContrast ? borderColor : WithAlpha(borderColor, 0x40);
         float colSepX = startX;
         for (int c = 1; c < _colCount; c++)
         {
             colSepX += colWidth;
             ds.DrawLine(colSepX, headerStartY, colSepX, headerStartY + tableH, colSep, 0.5f);
+        }
+
+        if (borderThickness > 0)
+        {
+            float inset = borderThickness / 2f;
+            ds.DrawRoundedRectangle(
+                new Rect(
+                    tableRect.X + inset,
+                    tableRect.Y + inset,
+                    Math.Max(0, tableRect.Width - borderThickness),
+                    Math.Max(0, tableRect.Height - borderThickness)),
+                radius,
+                radius,
+                borderColor,
+                borderThickness);
+        }
+    }
+
+    private void PaintTableSurfaces(
+        CanvasDrawingSession ds,
+        Rect tableRect,
+        Color bodyBgColor,
+        Color headerBgColor,
+        float headerTotalH)
+    {
+        ds.FillRectangle(tableRect, bodyBgColor);
+
+        if (_headerCells.Length > 0 && headerTotalH > 0)
+            ds.FillRectangle(new Rect(tableRect.X, tableRect.Y, tableRect.Width, headerTotalH), headerBgColor);
+
+        if (_context.ThemeSnapshot.IsHighContrast)
+            return;
+
+        float rowY = (float)(tableRect.Y + headerTotalH);
+        var stripe = WithAlpha(GetBodyStyle().Foreground, 0x08);
+        for (int r = 0; r < _bodyCells.Length; r++)
+        {
+            float rowH = _rowHeights![_headerCells.Length + r];
+            if (r % 2 == 1)
+                ds.FillRectangle(new Rect(tableRect.X, rowY, tableRect.Width, rowH), stripe);
+            rowY += rowH;
         }
     }
 
@@ -324,6 +403,27 @@ internal sealed class TableBox : BlockBox
 
     internal override void ThrowIfCancellationRequested()
         => _context.CancellationToken.ThrowIfCancellationRequested();
+
+    private ElementStyle GetTableStyle()
+        => _context.ThemeSnapshot.GetStyle(MarkdownElementKeys.Table);
+
+    private ElementStyle GetHeaderStyle()
+        => _context.ThemeSnapshot.GetStyle(MarkdownElementKeys.TableHeader);
+
+    private ElementStyle GetBodyStyle()
+        => _context.ThemeSnapshot.GetStyle(MarkdownElementKeys.TableCell);
+
+    private static Thickness EffectiveCellPadding(ElementStyle style)
+        => IsZero(style.Padding) ? new Thickness(12, 9, 12, 9) : style.Padding;
+
+    private static bool IsZero(Thickness thickness)
+        => thickness.Left == 0 &&
+           thickness.Top == 0 &&
+           thickness.Right == 0 &&
+           thickness.Bottom == 0;
+
+    private static Color WithAlpha(Color color, byte alpha)
+        => Color.FromArgb(alpha, color.R, color.G, color.B);
 
     private CellAlignment GetColumnAlignment(int column)
         => column >= 0 && column < _columnAlignments.Length

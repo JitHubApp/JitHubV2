@@ -29,6 +29,19 @@ internal static class MarkdownHighContrastDefaults
             MarkdownHighContrastColorRole.Window,
             MarkdownHighContrastColorRole.WindowText),
 
+        "CodeBlockHeader" => new(
+            MarkdownHighContrastColorRole.WindowText,
+            MarkdownHighContrastColorRole.Window,
+            MarkdownHighContrastColorRole.WindowText),
+
+        "CodeBlockLanguage" or "CodeBlockLineNumber" => new(
+            MarkdownHighContrastColorRole.WindowText),
+
+        "CodeBlockGutter" => new(
+            MarkdownHighContrastColorRole.WindowText,
+            MarkdownHighContrastColorRole.Window,
+            MarkdownHighContrastColorRole.WindowText),
+
         "CodeInline" => new(
             MarkdownHighContrastColorRole.WindowText,
             MarkdownHighContrastColorRole.Window),
@@ -41,13 +54,23 @@ internal static class MarkdownHighContrastDefaults
             MarkdownHighContrastColorRole.WindowText,
             Strikethrough: true),
 
-        "Inserted" or "Abbreviation" => new(
+        "Inserted" => new(
             MarkdownHighContrastColorRole.WindowText,
+            Underline: true),
+
+        "Abbreviation" => new(
+            MarkdownHighContrastColorRole.WindowText,
+            AccentBar: MarkdownHighContrastColorRole.WindowText,
             Underline: true),
 
         "Marked" or "DefinitionDescription" or "Figure" or "FigureCaption" or "Diagram" => new(
             MarkdownHighContrastColorRole.WindowText,
             MarkdownHighContrastColorRole.Window),
+
+        "Table" => new(
+            MarkdownHighContrastColorRole.WindowText,
+            MarkdownHighContrastColorRole.Window,
+            MarkdownHighContrastColorRole.WindowText),
 
         "TableHeader" => new(
             MarkdownHighContrastColorRole.HighlightText,

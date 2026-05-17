@@ -23,6 +23,7 @@ internal enum MarkdownSemanticRole
     TableCell,
     Image,
     Embed,
+    Abbreviation,
 }
 
 internal sealed class MarkdownSemanticNode
@@ -272,7 +273,7 @@ internal sealed class MarkdownSemanticDocument
         {
             if (node == Root) continue;
             if (node.TextEnd < textStart || node.TextStart > textEnd) continue;
-            if (node.Role is MarkdownSemanticRole.Link or MarkdownSemanticRole.Image or MarkdownSemanticRole.Embed or
+            if (node.Role is MarkdownSemanticRole.Link or MarkdownSemanticRole.Image or MarkdownSemanticRole.Embed or MarkdownSemanticRole.Abbreviation or
                 MarkdownSemanticRole.Table or MarkdownSemanticRole.TableCell or MarkdownSemanticRole.List or MarkdownSemanticRole.ListItem)
             {
                 yield return node;
@@ -366,6 +367,7 @@ internal sealed class MarkdownSemanticDocument
             return box switch
             {
                 InlineContainerBox inline => BuildInline(inline),
+                CodeBlockBox codeBlock => BuildCodeBlock(codeBlock),
                 ImageBox image => BuildImage(image),
                 EmbedBox embed => BuildEmbed(embed),
                 ListItemBox listItem => BuildListItem(listItem),
@@ -438,8 +440,47 @@ internal sealed class MarkdownSemanticDocument
                         HelpText = !string.IsNullOrWhiteSpace(imageRun.Title) ? imageRun.Title : imageRun.Url,
                     });
                 }
+                else if (run is AbbreviationRun abbreviationRun)
+                {
+                    node.Add(new MarkdownSemanticNode(MarkdownSemanticRole.Abbreviation, inline)
+                    {
+                        InlineBox = inline,
+                        InlineRun = abbreviationRun,
+                        TextStart = runSpan.Start,
+                        TextEnd = runSpan.End,
+                        HelpText = abbreviationRun.Expansion,
+                    });
+                }
             }
 
+            AppendBlockSeparator();
+            return node;
+        }
+
+        private MarkdownSemanticNode BuildCodeBlock(CodeBlockBox codeBlock)
+        {
+            var hasLanguage = !string.IsNullOrWhiteSpace(codeBlock.CodeLanguage);
+            var node = new MarkdownSemanticNode(MarkdownSemanticRole.CodeBlock, codeBlock)
+            {
+                TextStart = _text.Length,
+                CodeLanguage = hasLanguage ? codeBlock.LanguageDisplay : null,
+                HelpText = hasLanguage
+                    ? MarkdownLocalizedStrings.CodeLanguageHelp(codeBlock.LanguageDisplay)
+                    : null,
+            };
+
+            foreach (var chunk in codeBlock.Chunks)
+            {
+                foreach (var run in chunk.Runs)
+                {
+                    int runStart = _text.Length;
+                    _text.Append(run.AccessibleText);
+                    int runEnd = _text.Length;
+                    _spans.Add(new MarkdownTextSpan(runStart, runEnd, chunk, run, null, null));
+                }
+            }
+
+            node.TextEnd = _text.Length;
             AppendBlockSeparator();
             return node;
         }

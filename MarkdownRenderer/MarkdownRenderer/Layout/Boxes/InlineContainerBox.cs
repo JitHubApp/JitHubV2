@@ -5,6 +5,7 @@ using Microsoft.Graphics.Canvas.Text;
 using Microsoft.UI.Xaml;
 using Windows.Foundation;
 using Windows.UI;
+using MarkdownRenderer.CodeBlocks;
 using MarkdownRenderer.Diagnostics;
 using MarkdownRenderer.Document;
 using MarkdownRenderer.Theming;
@@ -31,6 +32,7 @@ internal sealed class InlineContainerBox : BlockBox
     private readonly MarkdownLayoutContext _context;
     private readonly IReadOnlyList<string> _styleContextKeys;
     private readonly IReadOnlyList<string> _styleAliasKeys;
+    private IReadOnlyList<CodeBlockHighlightSpan> _foregroundSpans = Array.Empty<CodeBlockHighlightSpan>();
 
     /// <summary>
     /// Run currently being hovered by the pointer.  Retained for hit-test /
@@ -50,8 +52,14 @@ internal sealed class InlineContainerBox : BlockBox
     public string ElementKey => _elementKey;
     public MarkdownLayoutContext Context => _context;
     public string? CodeLanguage { get; init; }
+    internal int CodeBlockTextOffset { get; init; }
+    internal int CodeBlockTextLength { get; init; }
     public CanvasHorizontalAlignment TextAlignment { get; set; } = CanvasHorizontalAlignment.Left;
     internal bool HasMeasuredLayout => _layout is not null;
+    internal float ContentWidth => _layout is null ? (float)Bounds.Width : (float)Math.Max(_layout.LayoutBounds.Width, _layout.DrawBounds.Width);
+    internal bool DrawContainerChrome { get; set; } = true;
+    internal bool UseContainerPadding { get; set; } = true;
+    internal bool UseContainerMargin { get; set; } = true;
 
     public InlineContainerBox(MarkdownLayoutContext context, string elementKey)
     {
@@ -70,6 +78,13 @@ internal sealed class InlineContainerBox : BlockBox
         _runs.Add(run);
         _context.SourceMap.Add(BlockIndex, run.InlineIndex, run.RenderedLength, run.SourceSpan);
         _bufferDirty = true; // buffer is stale untnl next BuildBuffer()
+    }
+
+    internal void SetForegroundSpans(IReadOnlyList<CodeBlockHighlightSpan>? spans)
+    {
+        _foregroundSpans = spans ?? Array.Empty<CodeBlockHighlightSpan>();
+        if (_layout is not null)
+            ApplyForegroundSpans(_layout);
     }
 
     /// <summary>
@@ -155,7 +170,10 @@ internal sealed class InlineContainerBox : BlockBox
     {
         ThrowIfCancellationRequested();
         var style = GetContainerStyle();
-        float horizontalPadding = (float)(style.Padding.Left + style.Padding.Right);
+        var padding = GetEffectivePadding(style);
+        var margin = GetEffectiveMargin(style);
+        Margin = margin;
+        float horizontalPadding = (float)(padding.Left + padding.Right);
         float layoutWidth = Math.Max(1f, availableWidth - horizontalPadding);
         if (MeasureAtomncInlineRuns(layoutWidth, style.FontSize))
         {
@@ -198,6 +216,7 @@ internal sealed class InlineContainerBox : BlockBox
                 // Enable DirectWrite color font path (Segoe UI Emoji / COLR-CPAL glyphs).
                 _layout.Options = CanvasDrawTextOptions.EnableColorFont;
                 ApplyRunStyles(_layout, applyColors: true);
+                ApplyForegroundSpans(_layout);
                 ApplyEmbedSpacing(_layout);
             }
             catch
@@ -210,8 +229,8 @@ internal sealed class InlineContainerBox : BlockBox
         }
 
         var bounds = _layout!.LayoutBounds;
-        float top = (float)(style.Margin.Top + style.Padding.Top);
-        float bottom = (float)(style.Margin.Bottom + style.Padding.Bottom);
+        float top = (float)(margin.Top + padding.Top);
+        float bottom = (float)(margin.Bottom + padding.Bottom);
         float height = (float)bounds.Height + top + bottom;
         Bounds = new Rect(0, 0, availableWidth, height);
         return height;
@@ -226,6 +245,12 @@ internal sealed class InlineContainerBox : BlockBox
         var aliases = GetRunAliases(run);
         return _context.ThemeSnapshot.GetStyle(key, _styleContextKeys, aliases);
     }
+
+    private Thickness GetEffectivePadding(ElementStyle style)
+        => UseContainerPadding ? style.Padding : default;
+
+    private Thickness GetEffectiveMargin(ElementStyle style)
+        => UseContainerMargin ? style.Margin : Margin;
 
     internal override void ThrowIfCancellationRequested()
         => _context.CancellationToken.ThrowIfCancellationRequested();
@@ -268,8 +293,10 @@ internal sealed class InlineContainerBox : BlockBox
         // visually amplified on large heading glyphs.
         float scale = (float)_context.RasterizationScale;
         if (scale <= 0f) scale = 1f;
-        float xDnu = (float)(Bounds.X + style.Margin.Left + style.Padding.Left);
-        float yDnu = (float)(Bounds.Y + style.Margin.Top + style.Padding.Top);
+        var margin = GetEffectiveMargin(style);
+        var padding = GetEffectivePadding(style);
+        float xDnu = (float)(Bounds.X + margin.Left + padding.Left);
+        float yDnu = (float)(Bounds.Y + margin.Top + padding.Top);
         float x = MathF.Round(xDnu * scale) / scale;
         float y = MathF.Round(yDnu * scale) / scale;
         return (x, y);
@@ -280,23 +307,25 @@ internal sealed class InlineContainerBox : BlockBox
         if (_layout is null) return;
         var style = GetContainerStyle();
 
-        if (style.Background is { } bg)
+        if (DrawContainerChrome && style.Background is { } bg)
         {
+            var margin = GetEffectiveMargin(style);
             var rect = new Rect(
-                Bounds.X + style.Margin.Left,
-                Bounds.Y + style.Margin.Top,
-                Bounds.Width - style.Margin.Left - style.Margin.Right,
-                Bounds.Height - style.Margin.Top - style.Margin.Bottom);
+                Bounds.X + margin.Left,
+                Bounds.Y + margin.Top,
+                Bounds.Width - margin.Left - margin.Right,
+                Bounds.Height - margin.Top - margin.Bottom);
             ds.FillRoundedRectangle(rect, style.CornerRadius, style.CornerRadius, bg);
         }
 
-        if (style.BorderBrush is { } border && style.BorderThickness > 0)
+        if (DrawContainerChrome && style.BorderBrush is { } border && style.BorderThickness > 0)
         {
+            var margin = GetEffectiveMargin(style);
             var rect = new Rect(
-                Bounds.X + style.Margin.Left,
-                Bounds.Y + style.Margin.Top,
-                Bounds.Width - style.Margin.Left - style.Margin.Right,
-                Bounds.Height - style.Margin.Top - style.Margin.Bottom);
+                Bounds.X + margin.Left,
+                Bounds.Y + margin.Top,
+                Bounds.Width - margin.Left - margin.Right,
+                Bounds.Height - margin.Top - margin.Bottom);
             float nnset = style.BorderThickness / 2f;
             ds.DrawRoundedRectangle(
                 new Rect(
@@ -401,6 +430,75 @@ internal sealed class InlineContainerBox : BlockBox
         {
             yield return new Rect(baseX + r.LayoutBounds.X, baseY + r.LayoutBounds.Y,
                                   r.LayoutBounds.Width, r.LayoutBounds.Height);
+        }
+    }
+
+    internal IEnumerable<Rect> GetBufferRangeRects(int from, int length)
+    {
+        if (_layout is null)
+            yield break;
+
+        EnsureBuffer();
+        if (_buffer.Length == 0)
+            yield break;
+
+        from = Math.Clamp(from, 0, _buffer.Length);
+        length = Math.Clamp(length, 0, _buffer.Length - from);
+        if (length <= 0)
+            length = from < _buffer.Length ? 1 : 0;
+        if (length <= 0)
+            yield break;
+
+        var style = GetContainerStyle();
+        var (baseX, baseY) = GetSnappedOrigin(style);
+        var regions = _layout.GetCharacterRegions(from, length);
+        if (regions is null)
+            yield break;
+
+        foreach (var r in regions)
+        {
+            yield return new Rect(
+                baseX + r.LayoutBounds.X,
+                baseY + r.LayoutBounds.Y,
+                r.LayoutBounds.Width,
+                r.LayoutBounds.Height);
+        }
+    }
+
+    internal IEnumerable<Rect> GetBufferRangeLineRects(int from, int length)
+    {
+        if (_layout is null)
+            yield break;
+
+        EnsureBuffer();
+        from = Math.Clamp(from, 0, _buffer.Length);
+        length = Math.Clamp(length, 0, _buffer.Length - from);
+        if (length <= 0)
+            length = from < _buffer.Length ? 1 : 0;
+        if (length <= 0)
+            yield break;
+
+        var style = GetContainerStyle();
+        var (baseX, baseY) = GetSnappedOrigin(style);
+        int rangeEnd = from + length;
+        int lineStart = 0;
+        double y = 0;
+        foreach (var metric in _layout.LineMetrics)
+        {
+            int charCount = Math.Max(0, metric.CharacterCount);
+            int lineEnd = lineStart + charCount;
+            bool intersects = lineEnd > from && lineStart < rangeEnd;
+            if (intersects)
+            {
+                yield return new Rect(
+                    baseX,
+                    baseY + y,
+                    Math.Max(1, _layout.LayoutBounds.Width),
+                    Math.Max(1, metric.Height));
+            }
+
+            y += metric.Height;
+            lineStart = lineEnd;
         }
     }
 
@@ -621,6 +719,72 @@ internal sealed class InlineContainerBox : BlockBox
         return null;
     }
 
+    internal bool TryGetRunBounds(InlineRun run, Point preferredPoint, out Rect bounds)
+    {
+        bounds = default;
+        if (_layout is null)
+            return false;
+
+        EnsureBuffer();
+
+        int cumulative = 0;
+        foreach (var candidate in _runs)
+        {
+            int len = candidate.Text.Length;
+            if (!ReferenceEquals(candidate, run))
+            {
+                cumulative += len;
+                continue;
+            }
+
+            if (len <= 0)
+                return false;
+
+            var regions = _layout.GetCharacterRegions(cumulative, len);
+            if (regions is null || regions.Length == 0)
+                return false;
+
+            var style = GetContainerStyle();
+            var (baseX, baseY) = GetSnappedOrigin(style);
+            Rect? first = null;
+            Rect? closest = null;
+            double closestDistance = double.MaxValue;
+
+            foreach (var region in regions)
+            {
+                var lb = region.LayoutBounds;
+                var rect = new Rect(
+                    baseX + lb.X,
+                    baseY + lb.Y,
+                    lb.Width,
+                    lb.Height);
+
+                first ??= rect;
+                if (rect.Contains(preferredPoint))
+                {
+                    bounds = rect;
+                    return true;
+                }
+
+                double centerX = rect.X + rect.Width / 2.0;
+                double centerY = rect.Y + rect.Height / 2.0;
+                double dx = centerX - preferredPoint.X;
+                double dy = centerY - preferredPoint.Y;
+                double distance = dx * dx + dy * dy;
+                if (distance < closestDistance)
+                {
+                    closestDistance = distance;
+                    closest = rect;
+                }
+            }
+
+            bounds = closest ?? first.GetValueOrDefault();
+            return bounds.Width > 0 && bounds.Height > 0;
+        }
+
+        return false;
+    }
+
     private int ToBufferIndex(DocumentPosition pos)
     {
         if (pos.BlockIndex < BlockIndex) return 0;
@@ -684,6 +848,21 @@ internal sealed class InlineContainerBox : BlockBox
         }
     }
 
+    private void ApplyForegroundSpans(CanvasTextLayout layout)
+    {
+        if (_foregroundSpans.Count == 0)
+            return;
+
+        EnsureBuffer();
+        foreach (var span in _foregroundSpans)
+        {
+            int start = Math.Clamp(span.Start, 0, _buffer.Length);
+            int length = Math.Clamp(span.Length, 0, _buffer.Length - start);
+            if (length > 0)
+                layout.SetColor(start, length, span.Foreground);
+        }
+    }
+
     private static void ApplyBaselineStyle(CanvasTextLayout layout, int start, int length, InlineRun run)
     {
         if (length <= 0)
@@ -742,7 +921,8 @@ internal sealed class InlineContainerBox : BlockBox
                 : CanvasTextDirection.LeftToRightThenTopToBottom,
             HorizontalAlignment = TextAlignment,
         };
-        float horizontalPadding = (float)(style.Padding.Left + style.Padding.Right);
+        var padding = GetEffectivePadding(style);
+        float horizontalPadding = (float)(padding.Left + padding.Right);
         _selectionLayout = new CanvasTextLayout(
             _context.ResourceCreator,
             _buffer,
@@ -956,14 +1136,28 @@ internal sealed class InlineContainerBox : BlockBox
 
         if (style.Underline)
         {
-            ds.DrawLine((float)(baseX + lb.X), underlineY, (float)(baseX + lb.X + lb.Width),
-                underlineY, color, 1.0f);
+            if (run is AbbreviationRun)
+                DrawDottedUnderline(ds, (float)(baseX + lb.X), (float)(baseX + lb.X + lb.Width), underlineY, style.AccentBar ?? color);
+            else
+                ds.DrawLine((float)(baseX + lb.X), underlineY, (float)(baseX + lb.X + lb.Width),
+                    underlineY, color, 1.0f);
         }
 
         if (style.Strikethrough)
         {
             ds.DrawLine((float)(baseX + lb.X), strnkeY, (float)(baseX + lb.X + lb.Width),
                 strnkeY, color, 1.0f);
+        }
+    }
+
+    private static void DrawDottedUnderline(CanvasDrawingSession ds, float startX, float endX, float y, Color color)
+    {
+        const float dot = 1.25f;
+        const float gap = 2.25f;
+        for (float x = startX; x < endX; x += dot + gap)
+        {
+            float x2 = MathF.Min(x + dot, endX);
+            ds.DrawLine(x, y, x2, y, color, 1.0f);
         }
     }
 

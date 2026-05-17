@@ -1,20 +1,25 @@
 using System;
 using System.Collections.Generic;
 using System.Numerics;
+using System.Runtime.CompilerServices;
 using System.Threading;
 using System.Threading.Tasks;
 using Microsoft.Graphics.Canvas;
 using Microsoft.Graphics.Canvas.UI.Xaml;
 using Microsoft.UI.System;
 using Microsoft.UI.Xaml;
+using Microsoft.UI.Xaml.Automation;
 using Microsoft.UI.Xaml.Automation.Peers;
 using Microsoft.UI.Xaml.Controls;
+using Microsoft.UI.Xaml.Controls.Primitives;
 using Microsoft.UI.Xaml.Input;
 using Microsoft.UI.Xaml.Media;
 using Windows.Foundation;
 using Windows.System;
+using Windows.ApplicationModel.DataTransfer;
 using Windows.UI;
 using MarkdownRenderer.Accessibility;
+using MarkdownRenderer.CodeBlocks;
 using MarkdownRenderer.Diagnostics;
 using MarkdownRenderer.Document;
 using MarkdownRenderer.Hosting;
@@ -146,6 +151,16 @@ public sealed partial class MarkdownRendererControl : UserControl
     // suppresses link-hover and IBeam-cursor work, just like inline embeds.
     private readonly List<(Layout.Boxes.EmbedBox Box, Rect Rect)> _blockEmbedRects = new();
 
+    // Code block copy buttons are overlay-hosted native controls, but they are
+    // renderer chrome rather than user-authored embeds. Keep them on a separate
+    // realization track so RealizedEmbedCount remains embed-only.
+    private enum CodeBlockHostedElementKind
+    {
+        Copy,
+    }
+
+    private readonly List<(Layout.Boxes.CodeBlockBox Box, Rect Rect, CodeBlockHostedElementKind Kind)> _codeBlockActionRects = new();
+
     // Embed virtualisation. Plans capture each embed's position + factory
     // delegate up front; realisation happens lazily as scrolling brings them
     // into the viewport (plus an overscan band). Off-screen embeds beyond a
@@ -266,6 +281,123 @@ public sealed partial class MarkdownRendererControl : UserControl
         }
     }
     private readonly List<EmbedPlan> _embedPlans = new();
+    private sealed class CodeBlockActionPlan
+    {
+        public Layout.Boxes.CodeBlockBox Box = null!;
+        public Rect Rect;
+        public CodeBlockHostedElementKind Kind;
+        public FrameworkElement? Realized;
+        private RoutedEventHandler? _clickHandler;
+        private int _feedbackVersion;
+
+        public void Realize(MarkdownRendererControl owner)
+        {
+            if (Realized is not null) return;
+
+            var button = owner.CreateCodeBlockCopyButton();
+            AttachHandlers(button, owner);
+            button.KeyDown += owner.OnHostedEmbedKeyDown;
+            Realized = button;
+            Box.RealizedCopyButton = button;
+            UpdatePlacement();
+            owner._overlay!.Children.Add(button);
+        }
+
+        public void Derealize(MarkdownRendererControl owner)
+        {
+            if (Realized is null) return;
+            var fe = Realized;
+            if (fe is Button button)
+            {
+                if (_clickHandler is not null)
+                    button.Click -= _clickHandler;
+                button.KeyDown -= owner.OnHostedEmbedKeyDown;
+            }
+
+            try { owner._overlay!.Children.Remove(fe); } catch { }
+            Box.RealizedCopyButton = null;
+            Realized = null;
+            _clickHandler = null;
+            _feedbackVersion++;
+        }
+
+        public void AdoptRealizedFrom(CodeBlockActionPlan oldPlan, MarkdownRendererControl owner)
+        {
+            if (oldPlan.Realized is null) return;
+
+            var fe = oldPlan.Realized;
+            if (fe is Button button)
+            {
+                if (oldPlan._clickHandler is not null)
+                    button.Click -= oldPlan._clickHandler;
+                button.KeyDown -= owner.OnHostedEmbedKeyDown;
+                AttachHandlers(button, owner);
+                button.KeyDown += owner.OnHostedEmbedKeyDown;
+                owner.SetCodeBlockCopyButtonState(button, copied: false);
+            }
+
+            oldPlan._clickHandler = null;
+            oldPlan._feedbackVersion++;
+            oldPlan.Box.RealizedCopyButton = null;
+            oldPlan.Realized = null;
+
+            Realized = fe;
+            Box.RealizedCopyButton = fe;
+            UpdatePlacement();
+        }
+
+        private void AttachHandlers(Button button, MarkdownRendererControl owner)
+        {
+            _clickHandler = (_, _) => owner.CopyCodeBlockToClipboard(this);
+            button.Click += _clickHandler;
+        }
+
+        public bool IsSameLogicalAction(CodeBlockActionPlan other)
+            => ReferenceEquals(Box, other.Box) && Kind == other.Kind;
+
+        public void UpdatePlacement()
+        {
+            if (Realized is null) return;
+            double left = Math.Round(Rect.X);
+            double top = Math.Round(Rect.Y);
+            double width = Math.Round(Rect.X + Rect.Width) - left;
+            double height = Math.Round(Rect.Y + Rect.Height) - top;
+            Realized.Width = width;
+            Realized.Height = height;
+            Canvas.SetLeft(Realized, left);
+            Canvas.SetTop(Realized, top);
+            Canvas.SetZIndex(Realized, 2);
+        }
+
+        public void ShowCopiedFeedback(MarkdownRendererControl owner)
+        {
+            if (Realized is not Button button)
+                return;
+
+            int version = ++_feedbackVersion;
+            owner.SetCodeBlockCopyButtonState(button, copied: true);
+            _ = Task.Run(async () =>
+            {
+                try { await Task.Delay(1500).ConfigureAwait(false); }
+                catch { return; }
+
+                owner.DispatcherQueue.TryEnqueue(() =>
+                {
+                    if (owner._isUnloaded || _feedbackVersion != version)
+                        return;
+                    if (Realized is Button realizedButton)
+                        owner.SetCodeBlockCopyButtonState(realizedButton, copied: false);
+                });
+            });
+        }
+    }
+
+    private readonly List<CodeBlockActionPlan> _codeBlockActionPlans = new();
+    private readonly BoundedCodeBlockHighlightCache<CodeBlockHighlightCacheKey> _codeBlockHighlightCache = new(CodeBlockHighlightCacheMaxEntries);
+    private readonly HashSet<CodeBlockHighlightCacheKey> _codeBlockHighlightInFlight = new();
+    private readonly SemaphoreSlim _codeBlockHighlightSemaphore = new(2, 2);
+    private CancellationTokenSource? _codeBlockHighlightCts;
+    private int _codeBlockHighlightGeneration;
     private bool _promotingKeyboardFocusEntry;
     private bool _lastFocusEntryWasKeyboardTraversal;
     private bool _lastFocusEntryWasKeyboardInput;
@@ -281,6 +413,17 @@ public sealed partial class MarkdownRendererControl : UserControl
     // viewport + LazyImageOverscanPx band.  Images already in the
     // in-memory cache start loading (no-op) immediately after build.
     private readonly List<Layout.Boxes.ImageBox> _imagePlans = new();
+
+    private readonly record struct CodeBlockHighlightCacheKey(
+        string? Language,
+        ulong CodeHash,
+        int CodeLength,
+        CodeBlockThemeVariant ThemeVariant,
+        int ProviderIdentity,
+        int ProviderRevision);
+
+    private const int CodeBlockHighlightCacheMaxEntries = 128;
+    private const double CodeBlockHighlightOverscanPx = 1600;
 
     /// <summary>
     /// Overscan band (pixels, each direction) within which off-screen images
@@ -331,7 +474,7 @@ public sealed partial class MarkdownRendererControl : UserControl
     /// <summary>Dependency property backing <see cref="Markdown"/>.</summary>
     public static readonly DependencyProperty MarkdownProperty =
         DependencyProperty.Register(nameof(Markdown), typeof(string), typeof(MarkdownRendererControl),
-            new PropertyMetadata(string.Empty, (d, _) => ((MarkdownRendererControl)d).RequestRebuild()));
+            new PropertyMetadata(string.Empty, (d, _) => ((MarkdownRendererControl)d).OnMarkdownChanged()));
 
     /// <summary>Gets or sets the markdown source text to render.</summary>
     public string Markdown
@@ -390,6 +533,84 @@ public sealed partial class MarkdownRendererControl : UserControl
         set => SetValue(IsSelectionEnabledProperty, value);
     }
 
+    /// <summary>Dependency property backing <see cref="IsCodeBlockCopyEnabled"/>.</summary>
+    public static readonly DependencyProperty IsCodeBlockCopyEnabledProperty =
+        DependencyProperty.Register(nameof(IsCodeBlockCopyEnabled), typeof(bool),
+            typeof(MarkdownRendererControl), new PropertyMetadata(true, (d, _) => ((MarkdownRendererControl)d).RequestRebuild()));
+
+    /// <summary>Gets or sets whether code blocks include an always-visible copy button.</summary>
+    public bool IsCodeBlockCopyEnabled
+    {
+        get => (bool)GetValue(IsCodeBlockCopyEnabledProperty);
+        set => SetValue(IsCodeBlockCopyEnabledProperty, value);
+    }
+
+    /// <summary>Dependency property backing <see cref="CodeBlockCopyButtonLabel"/>.</summary>
+    public static readonly DependencyProperty CodeBlockCopyButtonLabelProperty =
+        DependencyProperty.Register(nameof(CodeBlockCopyButtonLabel), typeof(string),
+            typeof(MarkdownRendererControl), new PropertyMetadata(null, (d, _) => ((MarkdownRendererControl)d).UpdateCodeBlockCopyButtonLabels()));
+
+    /// <summary>
+    /// Gets or sets the accessible label and tooltip text used for code-block copy buttons.
+    /// A null or whitespace value uses the renderer's localized default.
+    /// </summary>
+    public string? CodeBlockCopyButtonLabel
+    {
+        get => (string?)GetValue(CodeBlockCopyButtonLabelProperty);
+        set => SetValue(CodeBlockCopyButtonLabelProperty, value);
+    }
+
+    /// <summary>Dependency property backing <see cref="CodeBlockCopiedButtonLabel"/>.</summary>
+    public static readonly DependencyProperty CodeBlockCopiedButtonLabelProperty =
+        DependencyProperty.Register(nameof(CodeBlockCopiedButtonLabel), typeof(string),
+            typeof(MarkdownRendererControl), new PropertyMetadata(null, (d, _) => ((MarkdownRendererControl)d).UpdateCodeBlockCopyButtonLabels()));
+
+    /// <summary>
+    /// Gets or sets the accessible label and tooltip text announced briefly after a code block is copied.
+    /// A null or whitespace value uses the renderer's localized default.
+    /// </summary>
+    public string? CodeBlockCopiedButtonLabel
+    {
+        get => (string?)GetValue(CodeBlockCopiedButtonLabelProperty);
+        set => SetValue(CodeBlockCopiedButtonLabelProperty, value);
+    }
+
+    /// <summary>Dependency property backing <see cref="IsCodeBlockSyntaxHighlightingEnabled"/>.</summary>
+    public static readonly DependencyProperty IsCodeBlockSyntaxHighlightingEnabledProperty =
+        DependencyProperty.Register(nameof(IsCodeBlockSyntaxHighlightingEnabled), typeof(bool),
+            typeof(MarkdownRendererControl), new PropertyMetadata(true, (d, _) => ((MarkdownRendererControl)d).RequestRebuild()));
+
+    /// <summary>Gets or sets whether code blocks may request syntax highlighting from a configured provider.</summary>
+    public bool IsCodeBlockSyntaxHighlightingEnabled
+    {
+        get => (bool)GetValue(IsCodeBlockSyntaxHighlightingEnabledProperty);
+        set => SetValue(IsCodeBlockSyntaxHighlightingEnabledProperty, value);
+    }
+
+    /// <summary>Dependency property backing <see cref="CodeBlockSyntaxHighlighter"/>.</summary>
+    public static readonly DependencyProperty CodeBlockSyntaxHighlighterProperty =
+        DependencyProperty.Register(nameof(CodeBlockSyntaxHighlighter), typeof(ICodeBlockSyntaxHighlighter),
+            typeof(MarkdownRendererControl), new PropertyMetadata(null, (d, _) => ((MarkdownRendererControl)d).OnCodeBlockSyntaxHighlighterChanged()));
+
+    /// <summary>Gets or sets the optional code-block syntax-highlighting provider.</summary>
+    public ICodeBlockSyntaxHighlighter? CodeBlockSyntaxHighlighter
+    {
+        get => (ICodeBlockSyntaxHighlighter?)GetValue(CodeBlockSyntaxHighlighterProperty);
+        set => SetValue(CodeBlockSyntaxHighlighterProperty, value);
+    }
+
+    /// <summary>Dependency property backing <see cref="CodeBlockLineNumberMode"/>.</summary>
+    public static readonly DependencyProperty CodeBlockLineNumberModeProperty =
+        DependencyProperty.Register(nameof(CodeBlockLineNumberMode), typeof(CodeBlockLineNumberMode),
+            typeof(MarkdownRendererControl), new PropertyMetadata(CodeBlockLineNumberMode.AutoMultiline, (d, _) => ((MarkdownRendererControl)d).RequestRebuild()));
+
+    /// <summary>Gets or sets when code blocks show line numbers.</summary>
+    public CodeBlockLineNumberMode CodeBlockLineNumberMode
+    {
+        get => (CodeBlockLineNumberMode)GetValue(CodeBlockLineNumberModeProperty);
+        set => SetValue(CodeBlockLineNumberModeProperty, value);
+    }
+
     /// <summary>
     /// Gets the latest parsed document facade committed by the renderer.
     /// </summary>
@@ -403,19 +624,31 @@ public sealed partial class MarkdownRendererControl : UserControl
     /// <param name="extensionRegistry">Extension registry to assign, or null to use the renderer default.</param>
     /// <param name="embedFactory">Embed factory to assign, or null to disable hosted block embeds.</param>
     /// <param name="isSelectionEnabled">True to enable text selection.</param>
+    /// <param name="isCodeBlockCopyEnabled">True to show copy buttons on code blocks.</param>
+    /// <param name="codeBlockSyntaxHighlighter">Optional code-block syntax-highlighting provider.</param>
+    /// <param name="codeBlockCopyButtonLabel">Accessible label and tooltip for code-block copy buttons, or null for the localized default.</param>
+    /// <param name="codeBlockCopiedButtonLabel">Accessible label and tooltip after copy succeeds, or null for the localized default.</param>
     /// <returns>A new configured renderer control.</returns>
     public static MarkdownRendererControl CreateDefault(
         string? markdown = null,
         MarkdownTheme? theme = null,
         MarkdownExtensionRegistry? extensionRegistry = null,
         IMarkdownEmbedFactory? embedFactory = null,
-        bool isSelectionEnabled = true)
+        bool isSelectionEnabled = true,
+        bool isCodeBlockCopyEnabled = true,
+        ICodeBlockSyntaxHighlighter? codeBlockSyntaxHighlighter = null,
+        string? codeBlockCopyButtonLabel = null,
+        string? codeBlockCopiedButtonLabel = null)
         => new MarkdownRendererControlBuilder()
             .WithMarkdown(markdown)
             .WithTheme(theme)
             .WithExtensionRegistry(extensionRegistry)
             .WithEmbedFactory(embedFactory)
             .WithSelectionEnabled(isSelectionEnabled)
+            .WithCodeBlockCopyEnabled(isCodeBlockCopyEnabled)
+            .WithCodeBlockCopyButtonLabel(codeBlockCopyButtonLabel)
+            .WithCodeBlockCopiedButtonLabel(codeBlockCopiedButtonLabel)
+            .WithCodeBlockSyntaxHighlighter(codeBlockSyntaxHighlighter)
             .Build();
 
     internal MarkdownLinkPeer GetOrCreateLinkPeer(MarkdownBlockPeer parent, LinkRun run)
@@ -541,6 +774,69 @@ public sealed partial class MarkdownRendererControl : UserControl
             int n = 0;
             foreach (var p in _embedPlans) if (p.Realized is not null) n++;
             return n;
+        }
+    }
+
+    private Button CreateCodeBlockCopyButton()
+    {
+        var button = new Button
+        {
+            Content = new SymbolIcon(Symbol.Copy),
+            Padding = new Thickness(0),
+            MinWidth = 0,
+            MinHeight = 0,
+            IsTabStop = true,
+            HorizontalAlignment = HorizontalAlignment.Stretch,
+            VerticalAlignment = VerticalAlignment.Stretch,
+        };
+        AutomationProperties.SetAutomationId(button, "MarkdownCodeBlockCopyButton");
+        SetCodeBlockCopyButtonState(button, copied: false);
+        return button;
+    }
+
+    private string ResolvedCodeBlockCopyButtonLabel =>
+        string.IsNullOrWhiteSpace(CodeBlockCopyButtonLabel)
+            ? MarkdownLocalizedStrings.CodeBlockCopyAutomationName
+            : CodeBlockCopyButtonLabel!;
+
+    private string ResolvedCodeBlockCopiedButtonLabel =>
+        string.IsNullOrWhiteSpace(CodeBlockCopiedButtonLabel)
+            ? MarkdownLocalizedStrings.CodeBlockCopied
+            : CodeBlockCopiedButtonLabel!;
+
+    private void SetCodeBlockCopyButtonState(Button button, bool copied)
+    {
+        string label = copied ? ResolvedCodeBlockCopiedButtonLabel : ResolvedCodeBlockCopyButtonLabel;
+        if (button.Content is SymbolIcon icon)
+            icon.Symbol = copied ? Symbol.Accept : Symbol.Copy;
+        else
+            button.Content = new SymbolIcon(copied ? Symbol.Accept : Symbol.Copy);
+
+        AutomationProperties.SetName(button, label);
+        ToolTipService.SetToolTip(button, label);
+    }
+
+    private void UpdateCodeBlockCopyButtonLabels()
+    {
+        foreach (var plan in _codeBlockActionPlans)
+        {
+            if (plan.Realized is Button button)
+                SetCodeBlockCopyButtonState(button, copied: false);
+        }
+    }
+
+    private void CopyCodeBlockToClipboard(CodeBlockActionPlan plan)
+    {
+        try
+        {
+            var package = new DataPackage();
+            package.SetText(plan.Box.CodeText);
+            Clipboard.SetContent(package);
+            plan.ShowCopiedFeedback(this);
+        }
+        catch (Exception ex)
+        {
+            MarkdownDiagnostics.WriteLine($"[MarkdownRendererControl] Code block copy failed: {ex.Message}");
         }
     }
 
@@ -754,11 +1050,37 @@ public sealed partial class MarkdownRendererControl : UserControl
         }
     }
 
+    private void OnMarkdownChanged()
+    {
+        ClearCodeBlockHighlightCache();
+        RequestRebuild();
+    }
+
+    private void OnCodeBlockSyntaxHighlighterChanged()
+    {
+        ClearCodeBlockHighlightCache();
+        RequestRebuild();
+    }
+
     private bool IsElementWithinRenderer(DependencyObject element)
+        => IsElementWithin(element, this);
+
+    private bool IsElementWithinCodeBlockAction(DependencyObject element)
+    {
+        foreach (var plan in _codeBlockActionPlans)
+        {
+            if (plan.Realized is DependencyObject realized && IsElementWithin(element, realized))
+                return true;
+        }
+
+        return false;
+    }
+
+    private static bool IsElementWithin(DependencyObject element, DependencyObject ancestor)
     {
         for (DependencyObject? current = element; current is not null;)
         {
-            if (ReferenceEquals(current, this))
+            if (ReferenceEquals(current, ancestor))
                 return true;
 
             try { current = VisualTreeHelper.GetParent(current); }
@@ -816,6 +1138,9 @@ public sealed partial class MarkdownRendererControl : UserControl
         if (e.OriginalSource is DependencyObject source && IsElementWithinRenderer(source))
         {
             MarkdownSelectionCoordinator.ClearSelectionsExcept(this);
+            if (IsElementWithinCodeBlockAction(source))
+                return;
+
             if (!IsPointerOverCanvasTextSurface(e, out var canvasPoint) || IsPointOverEmbed(canvasPoint))
                 ClearSelectionForExternalInteraction();
             return;
@@ -958,6 +1283,8 @@ public sealed partial class MarkdownRendererControl : UserControl
         // (e.g. from OnImageLoadCompleted) that are already in-flight know
         // not to call RequestRebuild after we've torn down.
         _isUnloaded = true;
+        HideAbbreviationTooltip();
+        ReleaseAbbreviationTooltipTimers();
         if (_sizeChangedHandler is not null)
         {
             SizeChanged -= _sizeChangedHandler;
@@ -981,6 +1308,12 @@ public sealed partial class MarkdownRendererControl : UserControl
         _pipelineCts = null;
         oldCts?.Cancel();
         oldCts?.Dispose();
+        var oldHighlightCts = _codeBlockHighlightCts;
+        _codeBlockHighlightCts = null;
+        oldHighlightCts?.Cancel();
+        oldHighlightCts?.Dispose();
+        _codeBlockHighlightGeneration++;
+        _codeBlockHighlightInFlight.Clear();
         // Unsubscribe scroll handler so scroll-inertia events after visual-tree
         // removal don't fire OnScrollViewChanged on a partially-torn-down control.
         if (_scroll is not null) _scroll.ViewChanged -= OnScrollViewChanged;
@@ -995,6 +1328,7 @@ public sealed partial class MarkdownRendererControl : UserControl
         // and their event handlers would leak past detach.
         DerealizeAllEmbeds();
         _embedPlans.Clear();
+        _codeBlockActionPlans.Clear();
         _imagePlans.Clear();
         _embedRects.Clear();
         _blockEmbedRects.Clear();
@@ -1095,6 +1429,8 @@ public sealed partial class MarkdownRendererControl : UserControl
 
     private void RequestRebuild(RebuildReason reason)
     {
+        ResetTransientInteractionState(clearSelection: true);
+
         // Cancel the in-flight build. Dispose is deferred to ContinueWith so the
         // in-flight task (which may still be executing ct.Register() callbacks
         // inside Task.Run/TaskScheduler internals) doesn't encounter a disposed
@@ -1111,6 +1447,39 @@ public sealed partial class MarkdownRendererControl : UserControl
             if (t.IsFaulted)
                 MarkdownDiagnostics.WriteLine($"[MarkdownRendererControl] Rebuild faulted: {t.Exception}");
         }, TaskScheduler.Default);
+    }
+
+    private void ResetTransientInteractionState(bool clearSelection)
+    {
+        _pointerSession = default;
+        _selectionAnchor = null;
+        _clickMode = ClickMode.Single;
+        _dragAnchorStart = default;
+        _dragAnchorEnd = default;
+        _consecutiveClickCount = 0;
+        _lastPressTickMs = 0;
+        _lastPressPoint = default;
+        SetSelectionDragShieldActive(false);
+        HideAbbreviationTooltip();
+
+        if (_snapshot is { } snapshot)
+        {
+            foreach (var block in snapshot.Blocks)
+                ClearHover(block);
+        }
+
+        _lastHoveredRun = null;
+        _lastHoveredBox = null;
+        SetCursorShape(null);
+
+        try { _canvas?.ReleasePointerCaptures(); } catch { }
+
+        if (!clearSelection)
+            return;
+
+        _selection.Clear();
+        _selectionAdornerRects.Clear();
+        try { _selectionAdorner?.Invalidate(); } catch { }
     }
 
     private async Task RebuildAsync(CancellationToken ct, RebuildReason reason)
@@ -1192,6 +1561,8 @@ public sealed partial class MarkdownRendererControl : UserControl
         {
             RasterizationScale = rasterScale,
             CancellationToken = ct,
+            IsCodeBlockCopyEnabled = IsCodeBlockCopyEnabled,
+            CodeBlockLineNumberMode = CodeBlockLineNumberMode,
         };
         var builder = new LayoutBuilder(ctx, EmbedFactory);
 
@@ -1313,7 +1684,9 @@ public sealed partial class MarkdownRendererControl : UserControl
         _overlay.Children.Clear();
         _embedRects.Clear();
         _blockEmbedRects.Clear();
+        _codeBlockActionRects.Clear();
         _embedPlans.Clear();
+        _codeBlockActionPlans.Clear();
         foreach (var img in _imagePlans) img.LoadCompleted -= OnImageLoadCompleted;
         _imagePlans.Clear();
         // Identities change across rebuild even when the count happens to
@@ -1333,6 +1706,8 @@ public sealed partial class MarkdownRendererControl : UserControl
             _scroll.ViewChanged += OnScrollViewChanged;
         }
         RealizeVisibleEmbeds();
+        RestartCodeBlockHighlighting();
+        ScheduleVisibleCodeBlockHighlighting();
         UpdateSelectionAdornerViewport();
 
         _canvas.Invalidate();
@@ -1380,6 +1755,205 @@ public sealed partial class MarkdownRendererControl : UserControl
         // IsIntermediate=false fires at the end of inertia; we also realise on
         // intermediate ticks to keep the visual current.
         RealizeVisibleEmbeds();
+        ScheduleVisibleCodeBlockHighlighting();
+    }
+
+    private void RestartCodeBlockHighlighting()
+    {
+        var old = _codeBlockHighlightCts;
+        old?.Cancel();
+        old?.Dispose();
+        _codeBlockHighlightCts = new CancellationTokenSource();
+        _codeBlockHighlightGeneration++;
+        _codeBlockHighlightInFlight.Clear();
+    }
+
+    private void ScheduleVisibleCodeBlockHighlighting()
+    {
+        if (!IsCodeBlockSyntaxHighlightingEnabled ||
+            CodeBlockSyntaxHighlighter is not { } highlighter ||
+            _snapshot is not { } snapshot ||
+            _scroll is null ||
+            _themeSnapshot is not { } theme ||
+            theme.IsHighContrast)
+        {
+            return;
+        }
+
+        var cts = _codeBlockHighlightCts;
+        if (cts is null || cts.IsCancellationRequested)
+            return;
+
+        var variant = ResolveCodeBlockThemeVariant(theme);
+        int generation = _codeBlockHighlightGeneration;
+        int providerIdentity = RuntimeHelpers.GetHashCode(highlighter);
+        int providerRevision = highlighter.Revision;
+        bool appliedCached = false;
+        double highlightTop = _scroll.VerticalOffset - CodeBlockHighlightOverscanPx;
+        double highlightBottom = _scroll.VerticalOffset + _scroll.ViewportHeight + CodeBlockHighlightOverscanPx;
+        foreach (var block in EnumerateCodeBlocks(snapshot))
+        {
+            if (!IsCodeBlockInHighlightBand(block, highlightTop, highlightBottom))
+                continue;
+
+            if (block.CodeText.Length > 200_000 || block.LineCount > 5_000)
+                continue;
+
+            var key = CreateHighlightCacheKey(block, variant, providerIdentity, providerRevision);
+            if (_codeBlockHighlightCache.TryGetValue(key, out var cached))
+            {
+                block.ApplySyntaxHighlighting(cached.Spans);
+                appliedCached = true;
+                continue;
+            }
+
+            if (!_codeBlockHighlightInFlight.Add(key))
+                continue;
+
+            _ = HighlightCodeBlockAsync(snapshot, block, key, variant, highlighter, providerIdentity, providerRevision, generation, cts.Token);
+        }
+
+        if (appliedCached)
+            _canvas?.Invalidate();
+    }
+
+    private async Task HighlightCodeBlockAsync(
+        LayoutSnapshot snapshot,
+        Layout.Boxes.CodeBlockBox block,
+        CodeBlockHighlightCacheKey key,
+        CodeBlockThemeVariant variant,
+        ICodeBlockSyntaxHighlighter highlighter,
+        int providerIdentity,
+        int providerRevision,
+        int generation,
+        CancellationToken token)
+    {
+        try
+        {
+            await _codeBlockHighlightSemaphore.WaitAsync(token).ConfigureAwait(false);
+            try
+            {
+                token.ThrowIfCancellationRequested();
+                var request = new CodeBlockHighlightRequest(block.CodeLanguage, block.CodeText, variant, token);
+                var result = await highlighter.HighlightAsync(request).ConfigureAwait(false)
+                    ?? CodeBlockHighlightResult.Empty;
+                token.ThrowIfCancellationRequested();
+
+                DispatcherQueue.TryEnqueue(() =>
+                {
+                    if (_isUnloaded || token.IsCancellationRequested || !ReferenceEquals(_snapshot, snapshot))
+                        return;
+                    _codeBlockHighlightCache.Set(key, result);
+                    RemoveCodeBlockHighlightInFlight(key, generation);
+                    ApplyCodeBlockHighlightResult(snapshot, key, variant, providerIdentity, providerRevision, result);
+                    _canvas?.Invalidate();
+                    ScheduleVisibleCodeBlockHighlighting();
+                });
+            }
+            finally
+            {
+                _codeBlockHighlightSemaphore.Release();
+            }
+        }
+        catch (OperationCanceledException)
+        {
+            DispatcherQueue.TryEnqueue(() => RemoveCodeBlockHighlightInFlight(key, generation));
+        }
+        catch (Exception ex)
+        {
+            MarkdownDiagnostics.WriteLine($"[MarkdownRendererControl] Code block highlighting failed: {ex.Message}");
+            DispatcherQueue.TryEnqueue(() => RemoveCodeBlockHighlightInFlight(key, generation));
+        }
+    }
+
+    private void RemoveCodeBlockHighlightInFlight(CodeBlockHighlightCacheKey key, int generation)
+    {
+        if (generation == _codeBlockHighlightGeneration)
+            _codeBlockHighlightInFlight.Remove(key);
+    }
+
+    private void ApplyCodeBlockHighlightResult(
+        LayoutSnapshot snapshot,
+        CodeBlockHighlightCacheKey key,
+        CodeBlockThemeVariant variant,
+        int providerIdentity,
+        int providerRevision,
+        CodeBlockHighlightResult result)
+    {
+        foreach (var candidate in EnumerateCodeBlocks(snapshot))
+        {
+            if (CreateHighlightCacheKey(candidate, variant, providerIdentity, providerRevision).Equals(key))
+                candidate.ApplySyntaxHighlighting(result.Spans);
+        }
+    }
+
+    private static bool IsCodeBlockInHighlightBand(Layout.Boxes.CodeBlockBox block, double top, double bottom)
+        => block.Bounds.Bottom >= top && block.Bounds.Top <= bottom;
+
+    private static IEnumerable<Layout.Boxes.CodeBlockBox> EnumerateCodeBlocks(LayoutSnapshot snapshot)
+    {
+        foreach (var block in snapshot.GetMeasuredTopLevelBlocks())
+        {
+            foreach (var codeBlock in EnumerateCodeBlocks(block))
+                yield return codeBlock;
+        }
+    }
+
+    private static IEnumerable<Layout.Boxes.CodeBlockBox> EnumerateCodeBlocks(BlockBox block)
+    {
+        switch (block)
+        {
+            case Layout.Boxes.CodeBlockBox codeBlock:
+                yield return codeBlock;
+                break;
+            case Layout.Boxes.ListItemBox listItem:
+                foreach (var item in EnumerateCodeBlocks(listItem.Marker))
+                    yield return item;
+                foreach (var item in EnumerateCodeBlocks(listItem.Content))
+                    yield return item;
+                break;
+            case Layout.Boxes.StackBox stack:
+                foreach (var child in stack.Children)
+                {
+                    foreach (var item in EnumerateCodeBlocks(child))
+                        yield return item;
+                }
+                break;
+        }
+    }
+
+    private CodeBlockHighlightCacheKey CreateHighlightCacheKey(
+        Layout.Boxes.CodeBlockBox block,
+        CodeBlockThemeVariant variant,
+        int providerIdentity,
+        int providerRevision)
+        => new(block.CodeLanguage, Fnv1A64(block.CodeText), block.CodeText.Length, variant, providerIdentity, providerRevision);
+
+    private void ClearCodeBlockHighlightCache()
+        => _codeBlockHighlightCache.Clear();
+
+    private static CodeBlockThemeVariant ResolveCodeBlockThemeVariant(Theming.ThemeSnapshot theme)
+    {
+        if (theme.IsHighContrast)
+            return CodeBlockThemeVariant.HighContrast;
+
+        var bg = theme.SurfaceColor;
+        double luminance = (0.2126 * bg.R + 0.7152 * bg.G + 0.0722 * bg.B) / 255.0;
+        return luminance < 0.5 ? CodeBlockThemeVariant.Dark : CodeBlockThemeVariant.Light;
+    }
+
+    private static ulong Fnv1A64(string value)
+    {
+        const ulong offset = 14695981039346656037UL;
+        const ulong prime = 1099511628211UL;
+        ulong hash = offset;
+        foreach (var ch in value)
+        {
+            hash ^= ch;
+            hash *= prime;
+        }
+
+        return hash;
     }
 
     private void ApplySnapshotSize(LayoutSnapshot snapshot)
@@ -1457,18 +2031,25 @@ public sealed partial class MarkdownRendererControl : UserControl
         {
             if (plan.Realized is not null) plan.Derealize(this);
         }
+        foreach (var plan in _codeBlockActionPlans)
+        {
+            if (plan.Realized is not null) plan.Derealize(this);
+        }
     }
 
     private void RebuildRealizationPlans(LayoutSnapshot snapshot, bool preserveRealized)
     {
         var oldPlans = preserveRealized ? _embedPlans.ToArray() : Array.Empty<EmbedPlan>();
+        var oldActionPlans = preserveRealized ? _codeBlockActionPlans.ToArray() : Array.Empty<CodeBlockActionPlan>();
 
         foreach (var img in _imagePlans)
             img.LoadCompleted -= OnImageLoadCompleted;
         _imagePlans.Clear();
         _embedRects.Clear();
         _blockEmbedRects.Clear();
+        _codeBlockActionRects.Clear();
         _embedPlans.Clear();
+        _codeBlockActionPlans.Clear();
 
         foreach (var b in snapshot.GetMeasuredTopLevelBlocks())
             CollectEmbedPlans(b);
@@ -1495,6 +2076,31 @@ public sealed partial class MarkdownRendererControl : UserControl
             }
 
             foreach (var oldPlan in oldPlans)
+            {
+                if (oldPlan.Realized is not null)
+                    oldPlan.Derealize(this);
+            }
+        }
+
+        if (oldActionPlans.Length > 0)
+        {
+            var adopted = new HashSet<CodeBlockActionPlan>();
+            foreach (var newPlan in _codeBlockActionPlans)
+            {
+                foreach (var oldPlan in oldActionPlans)
+                {
+                    if (adopted.Contains(oldPlan) || oldPlan.Realized is null)
+                        continue;
+                    if (!newPlan.IsSameLogicalAction(oldPlan))
+                        continue;
+
+                    newPlan.AdoptRealizedFrom(oldPlan, this);
+                    adopted.Add(oldPlan);
+                    break;
+                }
+            }
+
+            foreach (var oldPlan in oldActionPlans)
             {
                 if (oldPlan.Realized is not null)
                     oldPlan.Derealize(this);
@@ -1539,6 +2145,32 @@ public sealed partial class MarkdownRendererControl : UserControl
                 img.EnsureLoading();
         }
 
+        // Drop old realisation-side caches; they'll be repopulated from realised plans.
+        _embedRects.Clear();
+        _blockEmbedRects.Clear();
+        _codeBlockActionRects.Clear();
+
+        foreach (var plan in _codeBlockActionPlans)
+        {
+            double pTop = plan.Rect.Top;
+            double pBottom = plan.Rect.Bottom;
+            bool inRealize = EmbedVisibility.IsInRealizeBand(pTop, pBottom, top, bottom, EmbedVirtualizationOverscanPx);
+            bool inDerealize = EmbedVisibility.IsInDerealizeBand(pTop, pBottom, top, bottom, EmbedVirtualizationDerealizeOverscanPx);
+            if (inRealize)
+                plan.Realize(this);
+            else if (!inDerealize)
+                plan.Derealize(this);
+
+            if (plan.Realized is not null)
+            {
+                double left = Math.Round(plan.Rect.X);
+                double t = Math.Round(plan.Rect.Y);
+                double w = Math.Round(plan.Rect.X + plan.Rect.Width) - left;
+                double h = Math.Round(plan.Rect.Y + plan.Rect.Height) - t;
+                _codeBlockActionRects.Add((plan.Box, new Rect(left, t, w, h), plan.Kind));
+            }
+        }
+
         if (_embedPlans.Count == 0)
         {
             // No embeds: still emit a transition-to-zero event so subscribers
@@ -1552,13 +2184,6 @@ public sealed partial class MarkdownRendererControl : UserControl
             }
             return;
         }
-
-        // Drop old realisation-side caches; they'll be repopulated as embeds realise.
-        // We do NOT clear them when only some embeds change state mid-scroll —
-        // because removing a single fe from _overlay.Children doesn't shift
-        // others' indices. Tracking realised plans gives us authoritative cache rebuilds.
-        _embedRects.Clear();
-        _blockEmbedRects.Clear();
 
         foreach (var plan in _embedPlans)
         {
@@ -1641,6 +2266,12 @@ public sealed partial class MarkdownRendererControl : UserControl
                 {
                     AddImagePlan(run.Image);
                 }
+                break;
+            }
+            case Layout.Boxes.CodeBlockBox codeBlock:
+            {
+                if (codeBlock.IsCopyButtonEnabled && codeBlock.CopyButtonBounds.Width > 0 && codeBlock.CopyButtonBounds.Height > 0)
+                    _codeBlockActionPlans.Add(new CodeBlockActionPlan { Box = codeBlock, Rect = codeBlock.CopyButtonBounds, Kind = CodeBlockHostedElementKind.Copy });
                 break;
             }
             case Layout.Boxes.ListItemBox lib:
@@ -1795,6 +2426,18 @@ public sealed partial class MarkdownRendererControl : UserControl
         var pt = e.GetCurrentPoint(_canvas).Position;
         RememberFocusResumePoint(pt);
 
+        // Pressing renderer chrome (code-copy action) must not create or clear
+        // selection; let the native button handle the click.
+        if (IsPointOverCodeBlockAction(pt))
+        {
+            _consecutiveClickCount = 0;
+            _lastPressTickMs = 0;
+            _lastPressPoint = default;
+            return;
+        }
+
+        HideAbbreviationTooltip();
+
         // Pressing *on* a hosted inline embed must NOT start a selection.
         // The embed is a real WinUI element layered above the canvas — its
         // own pointer-pressed handler must run (Button click, TextBox focus,
@@ -1926,6 +2569,14 @@ public sealed partial class MarkdownRendererControl : UserControl
 
     private InlineRun? _lastHoveredRun;
     private Layout.Boxes.InlineContainerBox? _lastHoveredBox; // box that contains _lastHoveredRun; used for targeted canvas invalidation
+    private AbbreviationRun? _lastHoveredAbbreviation;
+    private ToolTip? _abbreviationToolTip;
+    private Microsoft.UI.Dispatching.DispatcherQueueTimer? _abbreviationTooltipShowTimer;
+    private Microsoft.UI.Dispatching.DispatcherQueueTimer? _abbreviationTooltipHideTimer;
+    private AbbreviationRun? _pendingAbbreviationTooltipRun;
+    private Rect _pendingAbbreviationTooltipPlacementRect;
+    private static readonly TimeSpan AbbreviationTooltipShowDelay = TimeSpan.FromMilliseconds(250);
+    private static readonly TimeSpan AbbreviationTooltipHideDelay = TimeSpan.FromMilliseconds(200);
     // Tracks the ProtectedCursor shape we last set, or null when we have
     // reset to the system default.  Three states:
     //   null            → ProtectedCursor was reset; system default (Arrow) shows.
@@ -1946,6 +2597,7 @@ public sealed partial class MarkdownRendererControl : UserControl
         // Drag-select.
         if (_selectionAnchor is not null)
         {
+            HideAbbreviationTooltip();
             var dragPoint = PrepareSelectionDragPoint(pt);
             // Atomic embed inclusion: when the pointer is inside an inline
             // embed rect during a drag, snap the position to either the
@@ -2030,6 +2682,7 @@ public sealed partial class MarkdownRendererControl : UserControl
         // embed to set its own cursor if desired.
         if (IsPointOverEmbed(pt))
         {
+            HideAbbreviationTooltip();
             // Clear our own link-hover so when the pointer leaves the embed
             // the previous hovered link doesn't appear stuck-on.
             if (_lastHoveredRun is not null)
@@ -2105,7 +2758,187 @@ public sealed partial class MarkdownRendererControl : UserControl
         _lastHoveredRun = hovered;
         _lastHoveredBox = hoveredBox;
 
+        UpdateAbbreviationTooltip(hovered, hoveredBox, pt);
         SetCursorShape(wantedShape);
+    }
+
+    private void UpdateAbbreviationTooltip(
+        InlineRun? hoveredRun,
+        Layout.Boxes.InlineContainerBox? hoveredBox,
+        Point pointerPoint)
+    {
+        var abbreviation = hoveredRun as AbbreviationRun;
+        if (abbreviation is null ||
+            string.IsNullOrWhiteSpace(abbreviation.Expansion) ||
+            _canvas is null ||
+            hoveredBox is null ||
+            !hoveredBox.TryGetRunBounds(abbreviation, pointerPoint, out var placementRect))
+        {
+            ScheduleAbbreviationTooltipHide();
+            return;
+        }
+
+        CancelAbbreviationTooltipHide();
+        if (ReferenceEquals(abbreviation, _lastHoveredAbbreviation))
+        {
+            CancelAbbreviationTooltipShow();
+            return;
+        }
+
+        if (ReferenceEquals(abbreviation, _pendingAbbreviationTooltipRun))
+        {
+            _pendingAbbreviationTooltipPlacementRect = placementRect;
+            return;
+        }
+
+        if (_lastHoveredAbbreviation is not null)
+            HideAbbreviationTooltip();
+
+        ScheduleAbbreviationTooltipShow(abbreviation, placementRect);
+    }
+
+    private void ScheduleAbbreviationTooltipShow(AbbreviationRun abbreviation, Rect placementRect)
+    {
+        CancelAbbreviationTooltipHide();
+        _pendingAbbreviationTooltipRun = abbreviation;
+        _pendingAbbreviationTooltipPlacementRect = placementRect;
+
+        var timer = EnsureAbbreviationTooltipShowTimer();
+        if (timer is null)
+        {
+            ShowAbbreviationTooltip(abbreviation, placementRect);
+            return;
+        }
+
+        timer.Stop();
+        timer.Interval = AbbreviationTooltipShowDelay;
+        timer.Start();
+    }
+
+    private void ShowPendingAbbreviationTooltip()
+    {
+        _abbreviationTooltipShowTimer?.Stop();
+        var abbreviation = _pendingAbbreviationTooltipRun;
+        var placementRect = _pendingAbbreviationTooltipPlacementRect;
+        _pendingAbbreviationTooltipRun = null;
+
+        if (_isUnloaded ||
+            abbreviation is null ||
+            !ReferenceEquals(abbreviation, _lastHoveredRun as AbbreviationRun))
+        {
+            return;
+        }
+
+        ShowAbbreviationTooltip(abbreviation, placementRect);
+    }
+
+    private void ShowAbbreviationTooltip(AbbreviationRun abbreviation, Rect placementRect)
+    {
+        if (_isUnloaded || _canvas is null || string.IsNullOrWhiteSpace(abbreviation.Expansion))
+            return;
+
+        CloseAbbreviationTooltip();
+        _lastHoveredAbbreviation = abbreviation;
+        _abbreviationToolTip = new ToolTip
+        {
+            Content = abbreviation.Expansion,
+            IsHitTestVisible = false,
+            Placement = PlacementMode.Top,
+            PlacementTarget = _canvas,
+            PlacementRect = placementRect,
+            VerticalOffset = -4,
+        };
+        ToolTipService.SetToolTip(_canvas, _abbreviationToolTip);
+        _abbreviationToolTip.IsOpen = true;
+    }
+
+    private void ScheduleAbbreviationTooltipHide()
+    {
+        CancelAbbreviationTooltipShow();
+        _pendingAbbreviationTooltipRun = null;
+
+        if (_abbreviationToolTip is null)
+        {
+            _lastHoveredAbbreviation = null;
+            return;
+        }
+
+        var timer = EnsureAbbreviationTooltipHideTimer();
+        if (timer is null)
+        {
+            HideAbbreviationTooltip();
+            return;
+        }
+
+        timer.Stop();
+        timer.Interval = AbbreviationTooltipHideDelay;
+        timer.Start();
+    }
+
+    private void HideAbbreviationTooltip()
+    {
+        CancelAbbreviationTooltipShow();
+        CancelAbbreviationTooltipHide();
+        _pendingAbbreviationTooltipRun = null;
+        CloseAbbreviationTooltip();
+        _lastHoveredAbbreviation = null;
+    }
+
+    private void CloseAbbreviationTooltip()
+    {
+        if (_abbreviationToolTip is not null)
+        {
+            try { _abbreviationToolTip.IsOpen = false; } catch { }
+            if (_canvas is not null)
+                ToolTipService.SetToolTip(_canvas, null);
+            _abbreviationToolTip = null;
+        }
+    }
+
+    private void CancelAbbreviationTooltipShow()
+    {
+        _abbreviationTooltipShowTimer?.Stop();
+    }
+
+    private void CancelAbbreviationTooltipHide()
+    {
+        _abbreviationTooltipHideTimer?.Stop();
+    }
+
+    private void ReleaseAbbreviationTooltipTimers()
+    {
+        _abbreviationTooltipShowTimer?.Stop();
+        _abbreviationTooltipHideTimer?.Stop();
+        _abbreviationTooltipShowTimer = null;
+        _abbreviationTooltipHideTimer = null;
+    }
+
+    private Microsoft.UI.Dispatching.DispatcherQueueTimer? EnsureAbbreviationTooltipShowTimer()
+    {
+        if (_abbreviationTooltipShowTimer is not null)
+            return _abbreviationTooltipShowTimer;
+
+        var dispatcher = DispatcherQueue ?? _canvas?.DispatcherQueue;
+        if (dispatcher is null)
+            return null;
+
+        _abbreviationTooltipShowTimer = dispatcher.CreateTimer();
+        _abbreviationTooltipShowTimer.Tick += (_, _) => ShowPendingAbbreviationTooltip();
+        return _abbreviationTooltipShowTimer;
+    }
+
+    private Microsoft.UI.Dispatching.DispatcherQueueTimer? EnsureAbbreviationTooltipHideTimer()
+    {
+        if (_abbreviationTooltipHideTimer is not null)
+            return _abbreviationTooltipHideTimer;
+
+        var dispatcher = DispatcherQueue ?? _canvas?.DispatcherQueue;
+        if (dispatcher is null)
+            return null;
+
+        _abbreviationTooltipHideTimer = dispatcher.CreateTimer();
+        _abbreviationTooltipHideTimer.Tick += (_, _) => HideAbbreviationTooltip();
+        return _abbreviationTooltipHideTimer;
     }
 
     private void InvalidateInteractiveTextAdorner()
@@ -2190,6 +3023,13 @@ public sealed partial class MarkdownRendererControl : UserControl
             case Layout.Boxes.InlineContainerBox icb:
                 var r = icb.RunAt(pt);
                 return r is not null ? (icb, r) : (null, null);
+            case Layout.Boxes.CodeBlockBox codeBlock:
+                foreach (var chunk in codeBlock.Chunks)
+                {
+                    var c = FindInlineHover(chunk, pt);
+                    if (c.Run is not null) return c;
+                }
+                return (null, null);
             case Layout.Boxes.ListItemBox lib:
                 var m = FindInlineHover(lib.Marker, pt);
                 if (m.Run is not null) return m;
@@ -2219,6 +3059,9 @@ public sealed partial class MarkdownRendererControl : UserControl
             case Layout.Boxes.InlineContainerBox icb:
                 icb.HoveredRun = null;
                 break;
+            case Layout.Boxes.CodeBlockBox codeBlock:
+                foreach (var chunk in codeBlock.Chunks) ClearHover(chunk);
+                break;
             case Layout.Boxes.ListItemBox lib:
                 ClearHover(lib.Marker);
                 ClearHover(lib.Content);
@@ -2238,6 +3081,9 @@ public sealed partial class MarkdownRendererControl : UserControl
     /// </summary>
     private bool IsPointOverEmbed(Point pt)
     {
+        if (IsPointOverCodeBlockAction(pt))
+            return true;
+
         for (int i = 0; i < _embedRects.Count; i++)
         {
             var r = _embedRects[i].Rect;
@@ -2252,6 +3098,19 @@ public sealed partial class MarkdownRendererControl : UserControl
                 pt.Y >= r.Y && pt.Y < r.Y + r.Height)
                 return true;
         }
+        return false;
+    }
+
+    private bool IsPointOverCodeBlockAction(Point pt)
+    {
+        for (int i = 0; i < _codeBlockActionRects.Count; i++)
+        {
+            var r = _codeBlockActionRects[i].Rect;
+            if (pt.X >= r.X && pt.X < r.X + r.Width &&
+                pt.Y >= r.Y && pt.Y < r.Y + r.Height)
+                return true;
+        }
+
         return false;
     }
 
@@ -2540,6 +3399,8 @@ public sealed partial class MarkdownRendererControl : UserControl
 
     private void OnPointerExited(object sender, PointerRoutedEventArgs e)
     {
+        ScheduleAbbreviationTooltipHide();
+
         // PointerExited fires when the pointer leaves canvas bounds. During an
         // active captured drag this is expected (drag through hosted embeds /
         // adjacent areas) so we MUST NOT clear _selectionAnchor here — that
@@ -2836,6 +3697,11 @@ public sealed partial class MarkdownRendererControl : UserControl
             if (plan.Realized is { } realized)
                 SuppressHostedTabStops(realized, suppressed, seen);
         }
+        foreach (var plan in _codeBlockActionPlans)
+        {
+            if (plan.Realized is { } realized)
+                SuppressHostedTabStops(realized, suppressed, seen);
+        }
 
         if (suppressed.Count == 0)
             return;
@@ -3113,6 +3979,11 @@ public sealed partial class MarkdownRendererControl : UserControl
                 eb.Bounds.Width - eb.Margin.Left - eb.Margin.Right,
                 eb.Bounds.Height - eb.Margin.Top - eb.Margin.Bottom);
         }
+        if (box is Layout.Boxes.CodeBlockBox codeBlock && codeBlock.BlockIndex == item.BlockIndex)
+        {
+            if (item.IsCodeBlockCopy)
+                return codeBlock.CopyButtonBounds;
+        }
         if (box is Layout.Boxes.InlineContainerBox icb && icb.BlockIndex == item.BlockIndex)
             return icb.GetRunRect(item.InlineIndex);
         if (box is Layout.Boxes.ListItemBox lib)
@@ -3318,6 +4189,10 @@ public sealed partial class MarkdownRendererControl : UserControl
         {
             case Layout.Boxes.EmbedBox eb when item.IsBlockEmbed && eb.BlockIndex == item.BlockIndex:
                 return eb.RealizedElement;
+            case Layout.Boxes.CodeBlockBox codeBlock when codeBlock.BlockIndex == item.BlockIndex:
+                if (item.IsCodeBlockCopy)
+                    return codeBlock.RealizedCopyButton;
+                return null;
             case Layout.Boxes.InlineContainerBox icb when item.IsInlineEmbed && icb.BlockIndex == item.BlockIndex:
                 foreach (var run in icb.Runs)
                 {
@@ -3516,6 +4391,13 @@ public sealed partial class MarkdownRendererControl : UserControl
     private static Layout.Boxes.InlineContainerBox? FindIcbInBlock(BlockBox box, int blockIndex)
     {
         if (box is Layout.Boxes.InlineContainerBox icb && icb.BlockIndex == blockIndex) return icb;
+        if (box is Layout.Boxes.CodeBlockBox codeBlock)
+        {
+            foreach (var chunk in codeBlock.Chunks)
+            {
+                if (chunk.BlockIndex == blockIndex) return chunk;
+            }
+        }
         if (box is Layout.Boxes.ListItemBox lib)
             return FindIcbInBlock(lib.Marker, blockIndex) ?? FindIcbInBlock(lib.Content, blockIndex);
         if (box is Layout.Boxes.StackBox sb)

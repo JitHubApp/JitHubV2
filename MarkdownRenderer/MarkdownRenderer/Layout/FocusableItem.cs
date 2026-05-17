@@ -6,6 +6,7 @@ internal enum FocusableItemKind
     Link,
     InlineEmbed,
     BlockEmbed,
+    CodeBlockCopy,
 }
 
 /// <summary>Represents a keyboard-focusable element in the document.</summary>
@@ -23,4 +24,6 @@ internal readonly struct FocusableItem
     public bool IsLink => Kind == FocusableItemKind.Link;
     public bool IsInlineEmbed => Kind == FocusableItemKind.InlineEmbed;
     public bool IsBlockEmbed => Kind == FocusableItemKind.BlockEmbed;
+    public bool IsCodeBlockCopy => Kind == FocusableItemKind.CodeBlockCopy;
+    public bool IsCodeBlockAction => IsCodeBlockCopy;
 }

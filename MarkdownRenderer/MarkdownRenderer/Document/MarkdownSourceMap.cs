@@ -23,7 +23,56 @@ public sealed class MarkdownSourceMap
     /// <summary>Adds a mapping from a rendered inline run to a source span.</summary>
     public void Add(int blockIndex, int inlineIndex, int renderedLength, SourceSpan span)
     {
-        _entries.Add(new Entry(blockIndex, inlineIndex, renderedLength, span));
+        _entries.Add(new Entry(blockIndex, inlineIndex, renderedLength, span, SourcePrefixLength: 0, SourceSuffixLength: 0));
+    }
+
+    /// <summary>
+    /// Expands the first/last source-map entries for a block to include source-only
+    /// prefix/suffix characters such as heading markers.
+    /// </summary>
+    internal void AddSourceAffixesToBlock(int blockIndex, int sourceStart, int sourceEnd)
+    {
+        int first = -1;
+        int last = -1;
+        for (int i = 0; i < _entries.Count; i++)
+        {
+            if (_entries[i].BlockIndex != blockIndex || _entries[i].Span.IsEmpty)
+                continue;
+
+            if (first < 0)
+                first = i;
+            last = i;
+        }
+
+        if (first < 0 || last < 0)
+            return;
+
+        sourceStart = Math.Clamp(sourceStart, 0, _sourceText.Length);
+        sourceEnd = Math.Clamp(sourceEnd, sourceStart, _sourceText.Length);
+
+        var firstEntry = _entries[first];
+        int prefixLength = Math.Max(0, firstEntry.Span.Start - sourceStart);
+        if (prefixLength > 0)
+        {
+            firstEntry = firstEntry with
+            {
+                Span = new SourceSpan(sourceStart, firstEntry.Span.Length + prefixLength),
+                SourcePrefixLength = firstEntry.SourcePrefixLength + prefixLength,
+            };
+            _entries[first] = firstEntry;
+        }
+
+        var lastEntry = _entries[last];
+        int suffixLength = Math.Max(0, sourceEnd - lastEntry.Span.End);
+        if (suffixLength > 0)
+        {
+            lastEntry = lastEntry with
+            {
+                Span = new SourceSpan(lastEntry.Span.Start, lastEntry.Span.Length + suffixLength),
+                SourceSuffixLength = lastEntry.SourceSuffixLength + suffixLength,
+            };
+            _entries[last] = lastEntry;
+        }
     }
 
     /// <summary>Returns the exact markdown source slice covered by a rendered document range.</summary>
@@ -63,10 +112,10 @@ public sealed class MarkdownSourceMap
             if (firstHit is null)
             {
                 firstHit = e;
-                firstFromOffset = ProjectOffset(e, from);
+                firstFromOffset = ProjectStartOffset(e, from);
             }
             lastHit = e;
-            lastToOffset = ProjectOffset(e, to);
+            lastToOffset = ProjectEndOffset(e, to);
         }
 
         if (firstHit is null || lastHit is null) return string.Empty;
@@ -81,6 +130,42 @@ public sealed class MarkdownSourceMap
     /// entry's source span. Exact when render-length matches span-length;
     /// otherwise proportional.
     /// </summary>
+    private static int ProjectStartOffset(Entry e, int renderedOffset)
+    {
+        if (e.SourcePrefixLength == 0 && e.SourceSuffixLength == 0)
+            return ProjectOffset(e, renderedOffset);
+
+        if (renderedOffset <= 0)
+            return 0;
+
+        return ProjectAffixedContentOffset(e, renderedOffset);
+    }
+
+    private static int ProjectEndOffset(Entry e, int renderedOffset)
+    {
+        if (e.SourcePrefixLength == 0 && e.SourceSuffixLength == 0)
+            return ProjectOffset(e, renderedOffset);
+
+        if (renderedOffset >= e.RenderedLength)
+            return e.Span.Length;
+
+        return ProjectAffixedContentOffset(e, renderedOffset);
+    }
+
+    private static int ProjectAffixedContentOffset(Entry e, int renderedOffset)
+    {
+        int prefixLength = Math.Clamp(e.SourcePrefixLength, 0, e.Span.Length);
+        int suffixLength = Math.Clamp(e.SourceSuffixLength, 0, e.Span.Length - prefixLength);
+        int contentLength = Math.Max(0, e.Span.Length - prefixLength - suffixLength);
+        if (e.RenderedLength <= 0)
+            return prefixLength;
+
+        int contentOffset = e.RenderedLength == contentLength
+            ? renderedOffset
+            : (int)Math.Round(renderedOffset * (double)contentLength / Math.Max(1, e.RenderedLength));
+        return prefixLength + Math.Clamp(contentOffset, 0, contentLength);
+    }
+
     private static int ProjectOffset(Entry e, int renderedOffset)
     {
         if (e.RenderedLength <= 0) return 0;
@@ -91,5 +176,11 @@ public sealed class MarkdownSourceMap
 
     internal IReadOnlyList<Entry> Entries => _entries;
 
-    internal readonly record struct Entry(int BlockIndex, int InlineIndex, int RenderedLength, SourceSpan Span);
+    internal readonly record struct Entry(
+        int BlockIndex,
+        int InlineIndex,
+        int RenderedLength,
+        SourceSpan Span,
+        int SourcePrefixLength,
+        int SourceSuffixLength);
 }

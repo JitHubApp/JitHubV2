@@ -10,6 +10,7 @@ using Markdig.Extensions.Footnotes;
 using Markdig.Renderers.Html;
 using Markdig.Syntax;
 using MarkdownRenderer.Document;
+using MarkdownRenderer.CodeBlocks;
 using MarkdownRenderer.Parsing;
 using MarkdownRenderer.Theming;
 
@@ -72,6 +73,12 @@ public sealed class MarkdownLayoutContext
 
     /// <summary>Cancellation token for the current background layout pass.</summary>
     public CancellationToken CancellationToken { get; init; }
+
+    /// <summary>True when code block copy buttons should be included in layout metadata.</summary>
+    public bool IsCodeBlockCopyEnabled { get; init; } = true;
+
+    /// <summary>Line-number policy for code blocks.</summary>
+    public CodeBlockLineNumberMode CodeBlockLineNumberMode { get; init; } = CodeBlockLineNumberMode.AutoMultiline;
 
     /// <summary>Returns the next one-based block index for a custom block.</summary>
     public int NextBlockIndex() => ++_blockIndex;

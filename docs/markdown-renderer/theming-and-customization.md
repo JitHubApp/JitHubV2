@@ -23,6 +23,10 @@ Core keys:
 - `Heading1` through `Heading6`
 - `CodeInline`
 - `CodeBlock`
+- `CodeBlockHeader`
+- `CodeBlockLanguage`
+- `CodeBlockGutter`
+- `CodeBlockLineNumber`
 - `Quote`
 - `Link`
 - `Strong`
@@ -44,6 +48,7 @@ Core keys:
 
 GFM keys:
 
+- `Table`
 - `TableHeader`
 - `TableCell`
 - `AlertNote`
@@ -93,6 +98,21 @@ theme.Overrides[MarkdownElementKeys.CodeBlock] = new ElementStyleOverride
 {
     Background = Color.FromArgb(0x22, 0x80, 0x80, 0x80),
     Padding = new Thickness(12),
+};
+
+theme.Overrides[MarkdownElementKeys.CodeBlockHeader] = new ElementStyleOverride
+{
+    Background = Color.FromArgb(0x10, 0x80, 0x80, 0x80),
+};
+
+theme.Overrides[MarkdownElementKeys.CodeBlockLanguage] = new ElementStyleOverride
+{
+    Foreground = Colors.Gray,
+};
+
+theme.Overrides[MarkdownElementKeys.CodeBlockLineNumber] = new ElementStyleOverride
+{
+    Foreground = Colors.DimGray,
 };
 
 theme.Overrides[MarkdownElementKeys.Link] = new ElementStyleOverride

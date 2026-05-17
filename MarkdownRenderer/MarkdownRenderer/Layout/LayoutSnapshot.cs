@@ -226,6 +226,7 @@ internal sealed class LayoutSnapshot : System.IDisposable
         {
             ImageBox => Math.Max(160f, margin + 120f),
             EmbedBox => Math.Max(64f, margin + 48f),
+            CodeBlockBox => Math.Max(72f, margin + 64f),
             TableBox table => Math.Clamp(36f + table.RowCount * 34f + margin, 72f, 360f),
             ListItemBox => Math.Max(36f, margin + 32f),
             StackBox stack => Math.Clamp(32f + stack.Children.Count * 28f + margin, 48f, 420f),
@@ -328,6 +329,10 @@ internal sealed class LayoutSnapshot : System.IDisposable
                 break;
             case EmbedBox eb:
                 list.Add(new FocusableItem(eb.BlockIndex, 0, FocusableItemKind.BlockEmbed));
+                break;
+            case CodeBlockBox cb:
+                if (cb.IsCopyButtonEnabled)
+                    list.Add(new FocusableItem(cb.BlockIndex, 0, FocusableItemKind.CodeBlockCopy));
                 break;
             case ListItemBox lnb:
                 WalkForFocusable(lnb.Marker, list);

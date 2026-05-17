@@ -30,6 +30,14 @@ public static class MarkdownElementKeys
     public const string CodeInline = "CodeInline";
     /// <summary>Fenced or indented code block text.</summary>
     public const string CodeBlock = "CodeBlock";
+    /// <summary>Fenced or indented code block header surface.</summary>
+    public const string CodeBlockHeader = "CodeBlockHeader";
+    /// <summary>Fenced or indented code block language label.</summary>
+    public const string CodeBlockLanguage = "CodeBlockLanguage";
+    /// <summary>Fenced or indented code block gutter surface.</summary>
+    public const string CodeBlockGutter = "CodeBlockGutter";
+    /// <summary>Fenced or indented code block line-number text.</summary>
+    public const string CodeBlockLineNumber = "CodeBlockLineNumber";
     /// <summary>Block quote container.</summary>
     public const string Quote = "Quote";
     /// <summary>Inline link text.</summary>
@@ -68,6 +76,8 @@ public static class MarkdownElementKeys
     public const string ImageCaption = "ImageCaption";
 
     // GFM extension keys
+    /// <summary>GitHub-flavored markdown table container.</summary>
+    public const string Table = "Table";
     /// <summary>GitHub-flavored markdown table header cell.</summary>
     public const string TableHeader = "TableHeader";
     /// <summary>GitHub-flavored markdown table body cell.</summary>

@@ -74,6 +74,62 @@ public class MarkdownSourceMapTests
     }
 
     [Fact]
+    public void Slice_HeadingStart_IncludesSourceMarkerPrefix()
+    {
+        const string source = "# Heading";
+        var map = BuildMap(source, (1, 0, 7, 2, 7));
+        map.AddSourceAffixesToBlock(1, 0, source.Length);
+
+        var slice = map.Slice(new DocumentRange(
+            new DocumentPosition(1, 0, 0),
+            new DocumentPosition(1, 0, 7)));
+
+        Assert.Equal("# Heading", slice);
+    }
+
+    [Fact]
+    public void Slice_HeadingPartialStart_IncludesSourceMarkerPrefix()
+    {
+        const string source = "## Heading ##";
+        var map = BuildMap(source, (1, 0, 7, 3, 7));
+        map.AddSourceAffixesToBlock(1, 0, source.Length);
+
+        var slice = map.Slice(new DocumentRange(
+            new DocumentPosition(1, 0, 0),
+            new DocumentPosition(1, 0, 2)));
+
+        Assert.Equal("## He", slice);
+    }
+
+    [Fact]
+    public void Slice_HeadingMidText_DoesNotIncludeSourceMarkerPrefix()
+    {
+        const string source = "# Heading";
+        var map = BuildMap(source, (1, 0, 7, 2, 7));
+        map.AddSourceAffixesToBlock(1, 0, source.Length);
+
+        var slice = map.Slice(new DocumentRange(
+            new DocumentPosition(1, 0, 1),
+            new DocumentPosition(1, 0, 4)));
+
+        Assert.Equal("ead", slice);
+    }
+
+    [Fact]
+    public void Slice_HeadingEnd_IncludesSourceMarkerSuffix()
+    {
+        const string source = "## Heading ##";
+        var map = BuildMap(source, (1, 0, 7, 3, 7));
+        map.AddSourceAffixesToBlock(1, 0, source.Length);
+
+        var slice = map.Slice(new DocumentRange(
+            new DocumentPosition(1, 0, 0),
+            new DocumentPosition(1, 0, 7)));
+
+        Assert.Equal("## Heading ##", slice);
+    }
+
+    [Fact]
     public void Slice_AtomicInlineImageSlot_ReturnsFullMarkdownImage()
     {
         const string source = "before ![alt](image.png) after";

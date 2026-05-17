@@ -21,6 +21,7 @@
     </PackageReference>
     <PackageReference Include="Microsoft.NET.Test.Sdk" Version="17.13.0" />
     <PackageReference Include="Markdig" Version="0.42.0" />
+    <PackageReference Include="TextMateSharp.Grammars" Version="2.0.3" />
   </ItemGroup>
   <!-- Include only the source files that have no WinUI / Win2D dependencies -->
   <ItemGroup>
@@ -45,10 +46,19 @@
     <Compile Include="..\MarkdownRenderer\Selection\MarkdownCopyOptions.cs" Link="Core\MarkdownCopyOptions.cs" />
     <Compile Include="..\MarkdownRenderer\Selection\MarkdownClipboardWriter.cs" Link="Core\MarkdownClipboardWriter.cs" />
     <Compile Include="..\MarkdownRenderer\Layout\TextBoundaryHelper.cs" Link="Core\TextBoundaryHelper.cs" />
+    <Compile Include="..\MarkdownRenderer\CodeBlocks\CodeBlockHighlightRequest.cs" Link="Core\CodeBlockHighlightRequest.cs" />
+    <Compile Include="..\MarkdownRenderer\CodeBlocks\CodeBlockHighlightResult.cs" Link="Core\CodeBlockHighlightResult.cs" />
+    <Compile Include="..\MarkdownRenderer\CodeBlocks\CodeBlockHighlightSpan.cs" Link="Core\CodeBlockHighlightSpan.cs" />
+    <Compile Include="..\MarkdownRenderer\CodeBlocks\BoundedCodeBlockHighlightCache.cs" Link="Core\BoundedCodeBlockHighlightCache.cs" />
+    <Compile Include="..\MarkdownRenderer\CodeBlocks\CodeBlockLineNumberMode.cs" Link="Core\CodeBlockLineNumberMode.cs" />
+    <Compile Include="..\MarkdownRenderer\CodeBlocks\CodeBlockThemeVariant.cs" Link="Core\CodeBlockThemeVariant.cs" />
+    <Compile Include="..\MarkdownRenderer\CodeBlocks\ICodeBlockSyntaxHighlighter.cs" Link="Core\ICodeBlockSyntaxHighlighter.cs" />
+    <Compile Include="..\MarkdownRenderer\Layout\CodeBlockMetadata.cs" Link="Core\CodeBlockMetadata.cs" />
     <Compile Include="..\MarkdownRenderer\Layout\FocusableItem.cs" Link="Core\FocusableItem.cs" />
     <Compile Include="..\MarkdownRenderer\Layout\FocusNavigationHelper.cs" Link="Core\FocusNavigationHelper.cs" />
     <Compile Include="..\MarkdownRenderer\Theming\MarkdownHighContrastDefaults.cs" Link="Core\MarkdownHighContrastDefaults.cs" />
     <Compile Include="..\MarkdownRenderer\Utilities\StringBuilderPool.cs" Link="Core\StringBuilderPool.cs" />
+    <Compile Include="..\MarkdownRenderer.SyntaxHighlighting.TextMate\TextMateCodeBlockSyntaxHighlighter.cs" Link="TextMate\TextMateCodeBlockSyntaxHighlighter.cs" />
   </ItemGroup>
   <ItemGroup>
     <Content Include="..\MarkdownRenderer\native\win-$(MarkdownRendererNativeArch)\thorvg.dll"

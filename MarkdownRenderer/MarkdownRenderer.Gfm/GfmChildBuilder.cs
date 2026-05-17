@@ -85,7 +85,11 @@ internal static class GfmChildBuilder
         return stack;
     }
 
-    internal static void AddInlines(InlineContainerBox box, ContainerInline inlines, System.Func<Inline, bool>? skipFirstIf = null)
+    internal static void AddInlines(
+        InlineContainerBox box,
+        ContainerInline inlines,
+        System.Func<Inline, bool>? skipFirstIf = null,
+        int inheritedAliasStart = -1)
     {
         bool skippedFirst = skipFirstIf is null;
         foreach (var i in inlines)
@@ -101,9 +105,16 @@ internal static class GfmChildBuilder
             var run = BuildInline(i, box.Context);
             if (run is not null)
             {
-                run.SetStyleAliases(box.Context.CreateStyleAliasSnapshotFrom(aliasStart));
+                int effectiveAliasStart = inheritedAliasStart >= 0 ? inheritedAliasStart : aliasStart;
+                run.SetStyleAliases(box.Context.CreateStyleAliasSnapshotFrom(effectiveAliasStart));
                 box.Context.RegisterMarkdownAttributes(i, box.BlockIndex);
                 box.Add(run);
+            }
+            else if (i is ContainerInline nested)
+            {
+                box.Context.RegisterMarkdownAttributes(i, box.BlockIndex);
+                int effectiveAliasStart = inheritedAliasStart >= 0 ? inheritedAliasStart : aliasStart;
+                AddInlines(box, nested, inheritedAliasStart: effectiveAliasStart);
             }
         }
     }
@@ -135,7 +146,6 @@ internal static class GfmChildBuilder
         {
             SourceSpan = new MarkdownRenderer.SourceSpan(inline.Span.Start, inline.Span.Length)
         },
-        ContainerInline ci2 => FlattenAsTextRun(ci2),
         _ => null
     };
 
