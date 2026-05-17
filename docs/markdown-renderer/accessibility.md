@@ -17,7 +17,7 @@ Implemented:
 - `ITextRangeProvider.GetAttributeValue` and `FindAttribute` expose common
   native text attributes: read-only/hidden/active/culture/flow direction, font
   family/size/weight, foreground/background color, underline, strikethrough,
-  style id/name, and superscript;
+  style id/name, subscript, and superscript;
 - document text is built from a semantic model over the committed layout
   snapshot and is also aggregated into the root peer name with a length cap;
 - `MarkdownBlockPeer` exposes inline-container blocks such as paragraphs,
@@ -31,6 +31,9 @@ Implemented:
   patterns with row/column/header metadata;
 - image peers expose alt text / SVG title as name and SVG description as help text;
 - fenced code block language info is exposed as help text;
+- abbreviations expose their expanded form in semantic text;
+- definition lists, figures/captions, and extra emphasis variants participate in
+  TextPattern ranges and source-mapped selection;
 - keyboard focus ordering coordinates painted links and hosted WinUI embeds;
 - hosted WinUI embeds expose their normal XAML UIA peers through the visual tree.
 
@@ -47,6 +50,7 @@ MarkdownAutomationPeer (Document)
     MarkdownNodePeer (TableCell: GridItem + TableItem)
       MarkdownBlockPeer (...)
   MarkdownNodePeer (Image)
+  MarkdownNodePeer (DefinitionList/Figure where applicable)
   Hosted WinUI element peers through XAML visual tree and TextRange children
 ```
 
@@ -55,10 +59,10 @@ The root peer builds a semantic accessibility model from the committed
 link peers by `LinkRun` identity; semantic node peers are cached for the current
 snapshot.
 
-## Remaining gaps
+## Release validation and advanced edge cases
 
-The foundational UIA surface is now in place. Remaining work is depth and
-real-world validation:
+The foundational UIA surface is in place. Release validation should still cover
+assistive-technology behavior that cannot be trusted from unit tests alone:
 
 - manual Narrator smoke across Windows contrast themes and system languages;
 - deeper `ITextRangeProvider` attribute coverage for advanced attributes not
@@ -66,7 +70,7 @@ real-world validation:
   margins, and paragraph spacing;
 - arrow-key spatial navigation and pointer-resume semantics that match native
   controls in more edge cases;
-- richer row-header modeling for future table syntaxes that support row headers;
+- richer row-header modeling if a later table syntax supports row headers;
 - broader verification around virtualized embeds and offscreen text ranges.
 
 ## Accessibility testing
@@ -77,4 +81,3 @@ roles, table dimensions, hosted button focus order, keyboard traversal, focus
 dismissal, deterministic forced high contrast, and selection reliability. Manual
 smoke should still cover Narrator phrasing and all built-in/custom Windows
 contrast themes because those are OS-environment dependent.
-

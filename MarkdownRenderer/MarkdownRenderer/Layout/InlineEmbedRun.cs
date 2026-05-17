@@ -10,7 +10,7 @@ namespace MarkdownRenderer.Layout;
 /// character whose advance width is forced by
 /// <c>CanvasTextLayout.SetCharacterSpacing</c>.
 /// </summary>
-public sealed class InlineEmbedRun : InlineRun
+internal sealed class InlineEmbedRun : InlineRun
 {
     public const string PlaceholderChar = "\uFFFC";
 

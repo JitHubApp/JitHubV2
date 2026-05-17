@@ -15,7 +15,7 @@ namespace MarkdownRenderer.Diagnostics;
 /// MARKDOWN_RENDERER_DIAGNOSTICS / MARKDOWN_RENDERER_SHAKE_LOG environment
 /// variables when collecting diagnostics.
 /// </summary>
-public static class ShakeLogger
+internal static class ShakeLogger
 {
     private static readonly ConcurrentQueue<string> _queue = new();
     private static int _started;

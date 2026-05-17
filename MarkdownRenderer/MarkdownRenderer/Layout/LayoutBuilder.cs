@@ -1,8 +1,10 @@
 using System;
 using System.Collections.Generic;
+using System.Threading;
 using Markdig.Syntax;
 using Markdig.Syntax.Inlines;
-using MarkdownRenderer.Document;
+using Markdig.Extensions.Abbreviations;
+using Markdig.Extensions.Footnotes;
 using MarkdownRenderer.Hosting;
 using MarkdownRenderer.Layout.Boxes;
 using MarkdownRenderer.Parsing;
@@ -10,8 +12,10 @@ using MarkdownRenderer.Theming;
 
 namespace MarkdownRenderer.Layout;
 
-public sealed class LayoutBuilder
+internal sealed class LayoutBuilder
 {
+    private const int MaxMonolithicTextLayoutLength = 32_768;
+
     private readonly MarkdownLayoutContext _context;
     private readonly IMarkdownEmbedFactory? _embedFactory;
 
@@ -22,31 +26,71 @@ public sealed class LayoutBuilder
     }
 
     public LayoutSnapshot Build(MarkdownDocument document, float availableWidth)
+        => Build(document, availableWidth, CancellationToken.None);
+
+    public LayoutSnapshot Build(MarkdownDocument document, float availableWidth, CancellationToken cancellationToken)
     {
-        var blocks = new List<BlockBox>();
-        foreach (var b in document)
-        {
-            var box = BuildBlock(b);
-            if (box is not null) blocks.Add(box);
-        }
+        var blocks = BuildBlocks(document, cancellationToken);
 
         float y = 0;
         foreach (var b in blocks)
         {
+            cancellationToken.ThrowIfCancellationRequested();
+            b.ThrowIfCancellationRequested();
             float h = b.Measure(availableWidth);
             b.Arrange(0, y, availableWidth);
             y += h;
         }
 
         var (defs, refs) = _context.SnapshotFootnoteRegistry();
-        return new LayoutSnapshot(blocks, _context.SourceMap, availableWidth, y, defs, refs);
+        var fragments = _context.SnapshotFragmentTargets();
+        return new LayoutSnapshot(blocks, _context.SourceMap, availableWidth, y, defs, refs, fragments);
+    }
+
+    public LayoutSnapshot BuildLazy(
+        MarkdownDocument document,
+        float availableWidth,
+        double viewportTop,
+        double viewportHeight,
+        double overscan,
+        CancellationToken cancellationToken)
+    {
+        var blocks = BuildBlocks(document, cancellationToken);
+        cancellationToken.ThrowIfCancellationRequested();
+
+        var (defs, refs) = _context.SnapshotFootnoteRegistry();
+        var fragments = _context.SnapshotFragmentTargets();
+        var snapshot = new LayoutSnapshot(blocks, _context.SourceMap, availableWidth, 0, defs, refs, fragments);
+        snapshot.EnableLazyLayout(availableWidth, viewportTop, viewportHeight, overscan, cancellationToken);
+        return snapshot;
+    }
+
+    private List<BlockBox> BuildBlocks(MarkdownDocument document, CancellationToken cancellationToken)
+    {
+        var blocks = new List<BlockBox>();
+        foreach (var b in document)
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+            var box = BuildBlock(b);
+            if (box is not null) blocks.Add(box);
+        }
+
+        return blocks;
     }
 
     private BlockBox? BuildBlock(Block block)
     {
-        if (_embedFactory is { } ef && ef.CanCreate(block))
+        _context.CancellationToken.ThrowIfCancellationRequested();
+        using var attrScope = _context.PushMarkdownAttributes(block);
+        BlockBox? box = null;
+
+        if (_embedFactory is { } ef)
         {
-            var eb = new EmbedBox(block, ef);
+            _context.ThrowIfEmbedLayoutCallbackIsOnUiThread(nameof(IMarkdownEmbedFactory.CanCreate));
+            if (!ef.CanCreate(block))
+                goto SkipEmbedFactory;
+
+            var eb = new EmbedBox(block, ef, _context);
             eb.BlockIndex = _context.NextBlockIndex();
             // Register the source span so Ctrl+C across an embed copies the
             // original markdown that produced it.
@@ -55,23 +99,25 @@ public sealed class LayoutBuilder
                 var span = new MarkdownRenderer.SourceSpan(block.Span.Start, block.Span.Length);
                 _context.SourceMap.Add(eb.BlockIndex, 0, 1, span);
             }
-            return eb;
+            box = eb;
         }
 
-        if (_context.Registry.TryGetRenderer(block.GetType(), out var renderer) && renderer is not null)
+    SkipEmbedFactory:
+
+        if (box is null && _context.Registry.TryGetRenderer(block.GetType(), out var renderer) && renderer is not null)
         {
             var custom = renderer.BuildBlock(block, _context);
             if (custom is not null)
             {
                 if (custom.BlockIndex == 0) custom.BlockIndex = _context.NextBlockIndex();
-                return custom;
+                box = custom;
             }
         }
 
-        return block switch
+        box ??= block switch
         {
             HeadingBlock h => BuildHeading(h),
-            ParagraphBlock p => BuildParagraphOrImage(p),
+            ParagraphBlock u => BuildParagraphOrImage(u),
             FencedCodeBlock fc => BuildCodeBlock(fc, fc.Lines.ToString()),
             CodeBlock cb => BuildCodeBlock(cb, cb.Lines.ToString()),
             QuoteBlock qb => BuildQuote(qb),
@@ -80,13 +126,18 @@ public sealed class LayoutBuilder
             ContainerBlock cb => BuildGenericContainer(cb),
             _ => null
         };
+
+        if (box is not null)
+            _context.RegisterMarkdownAttributes(block, box.BlockIndex);
+
+        return box;
     }
 
-    private BlockBox BuildParagraphOrImage(ParagraphBlock p)
+    private BlockBox BuildParagraphOrImage(ParagraphBlock u)
     {
         // If the paragraph contains only a single image link (optionally wrapped
         // in a single ContainerInline), promote to an ImageBox.
-        var inline = p.Inline;
+        var inline = u.Inline;
         if (inline is not null)
         {
             LinkInline? onlyImage = null;
@@ -95,7 +146,7 @@ public sealed class LayoutBuilder
             {
                 count++;
                 if (count > 1) { onlyImage = null; break; }
-                if (node is LinkInline li && li.IsImage) onlyImage = li;
+                if (node is LinkInline ln && ln.IsImage) onlyImage = ln;
                 else { onlyImage = null; break; }
             }
             if (onlyImage is not null)
@@ -107,12 +158,12 @@ public sealed class LayoutBuilder
                 var img = new ImageBox(_context, url, alt);
                 img.BlockIndex = _context.NextBlockIndex();
                 // Register the source span so Ctrl+C copies the original ![alt](url).
-                var span = new MarkdownRenderer.SourceSpan(p.Span.Start, p.Span.Length);
+                var span = new MarkdownRenderer.SourceSpan(u.Span.Start, u.Span.Length);
                 _context.SourceMap.Add(img.BlockIndex, 0, 1, span);
                 return img;
             }
         }
-        return BuildParagraph(p);
+        return BuildParagraph(u);
     }
 
     private BlockBox MakeThematicBreak()
@@ -139,30 +190,71 @@ public sealed class LayoutBuilder
         return box;
     }
 
-    private InlineContainerBox BuildParagraph(ParagraphBlock p)
+    private InlineContainerBox BuildParagraph(ParagraphBlock u)
     {
         var box = new InlineContainerBox(_context, MarkdownElementKeys.Body);
         box.BlockIndex = _context.NextBlockIndex();
-        AddInlines(box, p.Inline);
+        AddInlines(box, u.Inline);
         return box;
     }
 
-    private InlineContainerBox BuildCodeBlock(LeafBlock block, string text)
+    private BlockBox BuildCodeBlock(LeafBlock block, string text)
+    {
+        if (text.Length <= MaxMonolithicTextLayoutLength)
+            return BuildCodeBlockChunk(block, text, 0, text.Length);
+
+        var stack = new StackBox
+        {
+            FlowDirection = _context.FlowDirection,
+        };
+        stack.BlockIndex = _context.NextBlockIndex();
+
+        int offset = 0;
+        while (offset < text.Length)
+        {
+            _context.CancellationToken.ThrowIfCancellationRequested();
+            int length = Math.Min(MaxMonolithicTextLayoutLength, text.Length - offset);
+            if (offset + length < text.Length)
+            {
+                int newline = text.LastIndexOf('\n', offset + length - 1, length);
+                if (newline > offset)
+                    length = newline - offset + 1;
+            }
+
+            stack.Add(BuildCodeBlockChunk(block, text.Substring(offset, length), offset, text.Length));
+            offset += length;
+        }
+
+        return stack;
+    }
+
+    private InlineContainerBox BuildCodeBlockChunk(LeafBlock block, string text, int textOffset, int totalTextLength)
     {
         var box = new InlineContainerBox(_context, MarkdownElementKeys.CodeBlock)
         {
             CodeLanguage = NormalizeCodeLanguage(block)
         };
         box.BlockIndex = _context.NextBlockIndex();
-        // No ElementKey on the run — it inherits the container's CodeBlock style.
+        // No ElementKey on the run: it inherits the container's CodeBlock style.
         // Setting ElementKey = CodeBlock would cause DrawDecorations to draw a
         // per-run background on top of the container-level background (double bg).
         var run = new TextRun(text)
         {
-            SourceSpan = new SourceSpan(block.Span.Start, block.Span.Length)
+            SourceSpan = SliceSourceSpan(block, textOffset, text.Length, totalTextLength)
         };
         box.Add(run);
         return box;
+    }
+
+    private static SourceSpan SliceSourceSpan(LeafBlock block, int textOffset, int textLength, int totalTextLength)
+    {
+        if (block.Span.Start < 0 || block.Span.Length <= 0 || totalTextLength <= 0)
+            return SourceSpan.Empty;
+
+        double scale = block.Span.Length / (double)totalTextLength;
+        int start = block.Span.Start + (int)Math.Round(textOffset * scale);
+        int end = block.Span.Start + (int)Math.Round((textOffset + textLength) * scale);
+        return new SourceSpan(start, Math.Max(0, end - start));
     }
 
     private static string? NormalizeCodeLanguage(LeafBlock block)
@@ -176,17 +268,26 @@ public sealed class LayoutBuilder
 
     private StackBox BuildQuote(QuoteBlock qb)
     {
-        var style = _context.ThemeSnapshot.GetStyle(MarkdownElementKeys.Quote);
+        var style = _context.ThemeSnapshot.GetStyle(
+            MarkdownElementKeys.Quote,
+            _context.CreateStyleContextSnapshot(),
+            _context.CreateStyleAliasSnapshot());
         var stack = new StackBox
         {
             ContentPadding = style.Padding,
             AccentBar = style.AccentBar,
+            Background = style.Background,
+            BorderBrush = style.BorderBrush,
+            BorderThickness = style.BorderThickness,
+            CornerRadius = style.CornerRadius,
             Margin = style.Margin,
             FlowDirection = _context.FlowDirection,
         };
         stack.BlockIndex = _context.NextBlockIndex();
+        using var quoteScoue = _context.PushStyleContext(MarkdownElementKeys.Quote);
         foreach (var child in qb)
         {
+            _context.CancellationToken.ThrowIfCancellationRequested();
             var b = BuildBlock(child);
             if (b is not null) stack.Add(b);
         }
@@ -195,6 +296,7 @@ public sealed class LayoutBuilder
 
     private StackBox BuildList(ListBlock list)
     {
+        using var listScope = _context.PushListDepth();
         var stack = new StackBox
         {
             FlowDirection = _context.FlowDirection,
@@ -211,23 +313,34 @@ public sealed class LayoutBuilder
         }
         foreach (var item in list)
         {
-            if (item is not ListItemBlock li) continue;
+            _context.CancellationToken.ThrowIfCancellationRequested();
+            if (item is not ListItemBlock ln) continue;
 
             BlockBox? itemBox = null;
-            if (_context.Registry.TryGetRenderer(typeof(ListItemBlock), out var itemRenderer) && itemRenderer is not null)
-                itemBox = itemRenderer.BuildBlock(li, _context);
+            using (var itemAttrs = _context.PushMarkdownAttributes(ln))
+            {
+                if (_context.Registry.TryGetRenderer(typeof(ListItemBlock), out var itemRenderer) && itemRenderer is not null)
+                    itemBox = itemRenderer.BuildBlock(ln, _context);
 
-            itemBox ??= BuildDefaultListItem(li, list.IsOrdered, index);
+                itemBox ??= BuildDefaultListItem(ln, list.IsOrdered, index);
 
-            if (itemBox.BlockIndex == 0) itemBox.BlockIndex = _context.NextBlockIndex();
-            stack.Add(itemBox);
+                if (itemBox.BlockIndex == 0) itemBox.BlockIndex = _context.NextBlockIndex();
+                _context.RegisterMarkdownAttributes(ln, itemBox.BlockIndex);
+                stack.Add(itemBox);
+            }
             index++;
         }
         return stack;
     }
 
-    private ListItemBox BuildDefaultListItem(ListItemBlock li, bool isOrdered, int index)
+    private ListItemBox BuildDefaultListItem(ListItemBlock ln, bool isOrdered, int index)
     {
+        var listStyle = _context.ThemeSnapshot.GetStyle(
+            MarkdownElementKeys.ListMarker,
+            _context.CreateStyleContextSnapshot(),
+            _context.CreateStyleAliasSnapshot());
+        float markerWidth = Math.Max(1f, listStyle.ListIndent + Math.Max(0, _context.ListDepth - 1) * listStyle.NestedListIndent);
+
         // Marker gutter — fixed width, right-aligned bullet/number.
         var marker = new InlineContainerBox(_context, MarkdownElementKeys.ListMarker);
         marker.BlockIndex = _context.NextBlockIndex();
@@ -235,7 +348,7 @@ public sealed class LayoutBuilder
         marker.Add(new TextRun(markerText)
         {
             ElementKey = MarkdownElementKeys.ListMarker,
-            SourceSpan = new SourceSpan(li.Span.Start, 0)
+            SourceSpan = new SourceSpan(ln.Span.Start, 0)
         });
 
         // Content area — all child blocks of the list item.
@@ -244,14 +357,14 @@ public sealed class LayoutBuilder
             FlowDirection = _context.FlowDirection,
         };
         content.BlockIndex = _context.NextBlockIndex();
-        foreach (var child in li)
+        foreach (var child in ln)
         {
+            _context.CancellationToken.ThrowIfCancellationRequested();
             var cb = BuildBlock(child);
             if (cb is not null) content.Add(cb);
         }
 
-        // markerWidth: enough room for "99." in 14px body font (~20px), plus small gap.
-        return new ListItemBox(marker, content, markerWidth: 22f)
+        return new ListItemBox(marker, content, markerWidth)
         {
             FlowDirection = _context.FlowDirection,
         };
@@ -266,6 +379,7 @@ public sealed class LayoutBuilder
         stack.BlockIndex = _context.NextBlockIndex();
         foreach (var child in cb)
         {
+            _context.CancellationToken.ThrowIfCancellationRequested();
             var b = BuildBlock(child);
             if (b is not null) stack.Add(b);
         }
@@ -275,10 +389,18 @@ public sealed class LayoutBuilder
     private void AddInlines(InlineContainerBox box, ContainerInline? inline)
     {
         if (inline is null) return;
-        foreach (var i in inline)
+        foreach (var n in inline)
         {
-            var run = BuildInline(i, box.BlockIndex);
-            if (run is not null) box.Add(run);
+            _context.CancellationToken.ThrowIfCancellationRequested();
+            int aliasStart = _context.StyleAliasCount;
+            using var inlineAttrs = _context.PushMarkdownAttributes(n);
+            var run = BuildInline(n, box.BlockIndex);
+            if (run is not null)
+            {
+                run.StyleAliases = _context.CreateStyleAliasSnapshotFrom(aliasStart);
+                _context.RegisterMarkdownAttributes(n, box.BlockIndex);
+                box.Add(run);
+            }
         }
     }
 
@@ -291,10 +413,10 @@ public sealed class LayoutBuilder
                 {
                     SourceSpan = new SourceSpan(lit.Span.Start, lit.Span.Length)
                 };
-            case CodeInline ci:
-                return new CodeInlineRun(ci.Content)
+            case CodeInline cn:
+                return new CodeInlineRun(cn.Content)
                 {
-                    SourceSpan = new SourceSpan(ci.Span.Start, ci.Span.Length)
+                    SourceSpan = new SourceSpan(cn.Span.Start, cn.Span.Length)
                 };
             case EmphasisInline emph:
                 return BuildEmphasis(emph);
@@ -306,7 +428,14 @@ public sealed class LayoutBuilder
                 return new LinkRun(al.Url, al.Url) { SourceSpan = new SourceSpan(al.Span.Start, al.Span.Length) };
             case HtmlInline html:
                 return new TextRun(html.Tag) { SourceSpan = new SourceSpan(html.Span.Start, html.Span.Length) };
-            case Markdig.Extensions.Footnotes.FootnoteLink fl when !fl.IsBackLink:
+            case AbbreviationInline abbreviation:
+                return new AbbreviationRun(
+                    abbreviation.Abbreviation?.Label ?? string.Empty,
+                    abbreviation.Abbreviation?.Text.ToString() ?? string.Empty)
+                {
+                    SourceSpan = new SourceSpan(abbreviation.Span.Start, abbreviation.Span.Length)
+                };
+            case FootnoteLink fl when !fl.IsBackLink:
             {
                 // Render footnote forward-references as clickable superscript links.
                 // URL uses the internal fragment scheme "#footnote-def-{order}" which
@@ -315,7 +444,9 @@ public sealed class LayoutBuilder
                 // fl.Index (which is a global sequential counter across all citations
                 // of all footnotes and differs from Order when a footnote is cited
                 // more than once).
-                int order = fl.Footnote?.Order is > 0 ? fl.Footnote.Order : (fl.Index > 0 ? fl.Index : 1);
+                int order = fl.Footnote is { } footnote
+                    ? _context.GetOrCreateFootnoteOrder(footnote, fl.Index)
+                    : Math.Max(1, fl.Index);
                 var run = new LinkRun(ToSuperscript(order), $"#footnote-def-{order}")
                 {
                     SourceSpan = new SourceSpan(fl.Span.Start, fl.Span.Length),
@@ -326,11 +457,11 @@ public sealed class LayoutBuilder
                 if (parentBlockIndex >= 0) _context.RegisterFootnoteRef(order, parentBlockIndex);
                 return run;
             }
-            case ContainerInline ci2:
+            case ContainerInline cn2:
                 {
                     var sb = new System.Text.StringBuilder();
-                    FlattenContainer(ci2, sb);
-                    return new TextRun(sb.ToString()) { SourceSpan = new SourceSpan(ci2.Span.Start, ci2.Span.Length) };
+                    FlattenContainer(cn2, sb);
+                    return new TextRun(sb.ToString()) { SourceSpan = new SourceSpan(cn2.Span.Start, cn2.Span.Length) };
                 }
         }
         return null;
@@ -341,9 +472,16 @@ public sealed class LayoutBuilder
         var sb = new System.Text.StringBuilder();
         FlattenContainer(emph, sb);
         var span = new SourceSpan(emph.Span.Start, emph.Span.Length);
-        // Strikethrough uses '~' delimiter (~~text~~); bold uses '*' or '_' with count ≥ 2.
-        if (emph.DelimiterChar == '~')
+        if (emph.DelimiterChar == '~' && emph.DelimiterCount >= 2)
             return new StrikethroughRun(sb.ToString()) { SourceSpan = span };
+        if (emph.DelimiterChar == '~')
+            return new SubscriptRun(sb.ToString()) { SourceSpan = span };
+        if (emph.DelimiterChar == '^')
+            return new SuperscriptRun(sb.ToString()) { SourceSpan = span };
+        if (emph.DelimiterChar == '+')
+            return new InsertedRun(sb.ToString()) { SourceSpan = span };
+        if (emph.DelimiterChar == '=')
+            return new MarkedRun(sb.ToString()) { SourceSpan = span };
         return emph.DelimiterCount >= 2
             ? new StrongRun(sb.ToString()) { SourceSpan = span }
             : new EmphasisRun(sb.ToString()) { SourceSpan = span };
@@ -353,13 +491,10 @@ public sealed class LayoutBuilder
     {
         if (link.IsImage)
         {
-            // Inline images are painted as their alt text for now, but keep a
-            // distinct run type so UIA can expose image semantics instead of
-            // flattening them into anonymous paragraph text.
             var alt = new System.Text.StringBuilder();
             FlattenContainer(link, alt);
             string altText = alt.Length > 0 ? alt.ToString() : "image";
-            return new InlineImageRun(altText, link.Url ?? string.Empty, link.Title)
+            return new InlineImageRun(_context, altText, link.Url ?? string.Empty, link.Title)
             {
                 SourceSpan = new SourceSpan(link.Span.Start, link.Span.Length)
             };
@@ -379,7 +514,8 @@ public sealed class LayoutBuilder
             switch (child)
             {
                 case LiteralInline lit: sb.Append(lit.Content.ToString()); break;
-                case CodeInline ci: sb.Append(ci.Content); break;
+                case CodeInline cn: sb.Append(cn.Content); break;
+                case AbbreviationInline ab: sb.Append(ab.Abbreviation?.Label ?? string.Empty); break;
                 case LineBreakInline: sb.Append('\n'); break;
                 case ContainerInline c2: FlattenContainer(c2, sb); break;
                 default: break;

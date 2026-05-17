@@ -33,6 +33,9 @@ public sealed class MyBlockRenderer : MarkdownNodeRenderer<MyBlock>
 
 Custom renderers produce native layout boxes. They are responsible for source
 mapping, block indices, styles, and accessibility implications when applicable.
+This is an advanced extension-author API: `BuildBlock` runs during background
+layout, so renderer implementations must not touch WinUI objects or dispatcher
+affine state.
 
 ## Pipeline customization
 
@@ -47,11 +50,21 @@ registry.ConfigurePipeline(p =>
 });
 ```
 
-The GFM project provides a convenience extension:
+The GFM package provides convenience helpers:
 
 ```csharp
-registry.UseGitHubFlavoredMarkdown();
+var control = GfmMarkdownRenderer.CreateDefault(markdownSource);
+
+var control2 = new MarkdownRendererControlBuilder()
+    .UseGitHubFlavoredMarkdown()
+    .UseMarkdownExtra()
+    .WithMarkdown(markdownSource)
+    .Build();
 ```
+
+`UseGitHubFlavoredMarkdown()` intentionally stays strict to GFM. Add
+`UseMarkdownExtra()` when an app also wants definition lists, abbreviations, and
+figures. Raw HTML and LaTeX/math are not enabled by either helper.
 
 ## Embed factories
 
@@ -73,6 +86,33 @@ Not a good fit:
 - static icons that can be painted;
 - controls that require expensive measurement on the UI thread.
 
+## Mermaid and diagram samples
+
+The 1.0 renderer does not bundle a diagram engine or JavaScript sandbox. Use the
+embed API to wire the renderer your app already trusts:
+
+```csharp
+public sealed class MermaidEmbedFactory : IMarkdownEmbedFactory
+{
+    public bool CanCreate(Block block)
+        => block is FencedCodeBlock fenced &&
+           string.Equals(fenced.Info, "mermaid", StringComparison.OrdinalIgnoreCase);
+
+    public float MeasureHeight(Block block, float availableWidth) => 240;
+
+    public FrameworkElement CreateBlock(Block block)
+    {
+        var fenced = (FencedCodeBlock)block;
+        var source = fenced.Lines.ToString();
+        return new TextBlock { Text = source, TextWrapping = TextWrapping.Wrap };
+    }
+}
+```
+
+Keep parsing and measurement cheap and WinUI-free. Do expensive rendering or
+control creation from `CreateBlock`, which runs on the UI thread and participates
+in viewport realization.
+
 ## Choosing renderer vs embed
 
 | Need | Prefer |
@@ -83,12 +123,9 @@ Not a good fit:
 | UIA peer already exists in WinUI | Hosted control |
 | Thousands of repeated lightweight visuals | Painted box, not hosted controls |
 
-## Extension maturity gaps
+## Versioning
 
-- Public XML docs are incomplete.
-- `MarkdownLayoutContext` and layout boxes are low-level for third-party authors.
-- There is no high-level builder/facade yet.
-- Custom renderer samples need to be added.
-- Extension versioning and compatibility policy need to be defined before NuGet
-  publication.
-
+The package is pre-1.0, so source-breaking cleanup is allowed when it removes
+accidental public internals or stabilizes the extension boundary. At 1.0 and
+later, public APIs follow semantic versioning and breaking changes require a
+major version.

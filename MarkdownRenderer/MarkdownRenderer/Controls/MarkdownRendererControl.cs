@@ -42,6 +42,13 @@ public sealed partial class MarkdownRendererControl : UserControl
     private volatile CancellationTokenSource? _pipelineCts;
     private float _lastWidth;
     private static readonly MarkdownTheme _defaultTheme = new();
+    private static readonly MarkdownExtensionRegistry _defaultRegistry = new();
+    private readonly object _parseCacheGate = new();
+    private ParsedMarkdown? _parseCache;
+    private string? _parseCacheSource;
+    private MarkdownExtensionRegistry? _parseCacheRegistry;
+    private int _parseCacheRegistryRevision = -1;
+    private MarkdownRenderer.Document.MarkdownDocument _document = MarkdownRenderer.Document.MarkdownDocument.Empty;
     private SizeChangedEventHandler? _sizeChangedHandler;
     private readonly SelectionController _selection = new();
     private DocumentPosition? _selectionAnchor;
@@ -54,6 +61,7 @@ public sealed partial class MarkdownRendererControl : UserControl
     private readonly List<Rect> _selectionAdornerRects = new();
     private CanvasControl? _selectionAdorner;
     private double _selectionAdornerOffsetY;
+    private Border? _selectionDragShield;
 
     // Background color used to clear each canvas tile before painting.  Captured
     // from ActualTheme at rebuild time so that OnRegionsInvalidated (UI thread,
@@ -67,6 +75,8 @@ public sealed partial class MarkdownRendererControl : UserControl
     // that need theme colors after the rebuild is complete.
     private Theming.ThemeSnapshot? _themeSnapshot;
     private ThemeSettings? _themeSettings;
+    private bool _canvasDeviceRecoveryQueued;
+    private int _canvasDeviceRecoveryAttempt;
 
     // ---- Keyboard navigation ----
     // Ordered list of focusable items (LinkRuns + InlineEmbedRuns) in the current
@@ -83,9 +93,10 @@ public sealed partial class MarkdownRendererControl : UserControl
     private long _lastPressTickMs;
     private Point _lastPressPoint;
     private int _consecutiveClickCount;
-    // Set when the pointer is captured for a left-button press; cleared in OnPointerReleased.
-    // Guards the link-click path against right-button releases.
-    private bool _leftPointerCaptured;
+    // Tracks the currently captured primary-pointer gesture. Keeping the pointer
+    // id with the state makes release/cancel/capture-lost handling idempotent
+    // when events arrive out of order or are routed through the drag shield.
+    private PointerSession _pointerSession;
     // Set in OnUnloaded; checked in dispatcher lambdas to guard against post-unload execution.
     private bool _isUnloaded;
     // System double-click time; read from the Win32 API at first use.
@@ -102,6 +113,11 @@ public sealed partial class MarkdownRendererControl : UserControl
     // Click mode for the current press; governs drag-extension behaviour.
     private enum ClickMode { Single, Word, Block }
     private ClickMode _clickMode;
+    private enum RebuildReason { Full, Restyle }
+    private readonly record struct PointerSession(uint PointerId, bool IsPrimary)
+    {
+        public bool IsActive => PointerId != 0;
+    }
     // When _clickMode is Word or Block, these hold the start/end of the initially
     // selected word/block so that backward drag can correctly extend to the
     // start of the word/block under the pointer rather than always to the end.
@@ -128,7 +144,7 @@ public sealed partial class MarkdownRendererControl : UserControl
     // Mirrors _embedRects but for EmbedBox block elements (e.g. hosted Buttons).
     // Used by IsPointOverEmbed so that hovering a block-embed button correctly
     // suppresses link-hover and IBeam-cursor work, just like inline embeds.
-    private readonly List<Rect> _blockEmbedRects = new();
+    private readonly List<(Layout.Boxes.EmbedBox Box, Rect Rect)> _blockEmbedRects = new();
 
     // Embed virtualisation. Plans capture each embed's position + factory
     // delegate up front; realisation happens lazily as scrolling brings them
@@ -142,6 +158,8 @@ public sealed partial class MarkdownRendererControl : UserControl
         public FrameworkElement? Realized;
         public abstract void Realize(MarkdownRendererControl owner);
         public abstract void Derealize(MarkdownRendererControl owner);
+        public abstract bool IsSameLogicalEmbed(EmbedPlan other);
+        public abstract void UpdatePlacement();
     }
     private sealed class BlockEmbedPlan : EmbedPlan
     {
@@ -154,15 +172,7 @@ public sealed partial class MarkdownRendererControl : UserControl
                 var fe = Box.Factory.CreateBlock(Box.SourceBlock);
                 Realized = fe;
                 Box.RealizedElement = fe;
-                double w = Math.Round(Box.Bounds.Width  - Box.Margin.Left - Box.Margin.Right);
-                double h = Math.Round(Box.Bounds.Height - Box.Margin.Top  - Box.Margin.Bottom);
-                fe.Width  = w;
-                fe.Height = h;
-                double left = Math.Round(Box.Bounds.X + Box.Margin.Left);
-                double top  = Math.Round(Box.Bounds.Y + Box.Margin.Top);
-                Canvas.SetLeft(fe, left);
-                Canvas.SetTop(fe, top);
-                Canvas.SetZIndex(fe, 2);
+                UpdatePlacement();
                 fe.KeyDown += owner.OnHostedEmbedKeyDown;
                 owner._overlay!.Children.Add(fe);
                 // _blockEmbedRects rebuilt in RealizeVisibleEmbeds.
@@ -183,6 +193,21 @@ public sealed partial class MarkdownRendererControl : UserControl
             Realized = null;
             // Refresh _blockEmbedRects defensively (rebuilt fully each Realize cycle from realised plans).
         }
+
+        public override bool IsSameLogicalEmbed(EmbedPlan other)
+            => other is BlockEmbedPlan block && ReferenceEquals(Box, block.Box);
+
+        public override void UpdatePlacement()
+        {
+            if (Realized is null) return;
+            double w = Math.Round(Box.Bounds.Width  - Box.Margin.Left - Box.Margin.Right);
+            double h = Math.Round(Box.Bounds.Height - Box.Margin.Top  - Box.Margin.Bottom);
+            Realized.Width = w;
+            Realized.Height = h;
+            Canvas.SetLeft(Realized, Math.Round(Box.Bounds.X + Box.Margin.Left));
+            Canvas.SetTop(Realized, Math.Round(Box.Bounds.Y + Box.Margin.Top));
+            Canvas.SetZIndex(Realized, 2);
+        }
     }
     private sealed class InlineEmbedPlan : EmbedPlan
     {
@@ -196,15 +221,7 @@ public sealed partial class MarkdownRendererControl : UserControl
                 var fe = Run.ElementFactory();
                 Realized = fe;
                 Run.RealizedElement = fe;
-                double iLeft = Math.Round(Rect.X);
-                double iTop  = Math.Round(Rect.Y);
-                double iW    = Math.Round(Rect.X + Rect.Width)  - iLeft;
-                double iH    = Math.Round(Rect.Y + Rect.Height) - iTop;
-                fe.Width  = iW;
-                fe.Height = iH;
-                Canvas.SetLeft(fe, iLeft);
-                Canvas.SetTop(fe, iTop);
-                Canvas.SetZIndex(fe, 2);
+                UpdatePlacement();
                 fe.KeyDown += owner.OnHostedEmbedKeyDown;
                 owner._overlay!.Children.Add(fe);
                 // _embedRects rebuilt in RealizeVisibleEmbeds.
@@ -227,6 +244,25 @@ public sealed partial class MarkdownRendererControl : UserControl
             }
             Run.RealizedElement = null;
             Realized = null;
+        }
+
+        public override bool IsSameLogicalEmbed(EmbedPlan other)
+            => other is InlineEmbedPlan inline &&
+               ReferenceEquals(Icb, inline.Icb) &&
+               ReferenceEquals(Run, inline.Run);
+
+        public override void UpdatePlacement()
+        {
+            if (Realized is null) return;
+            double iLeft = Math.Round(Rect.X);
+            double iTop  = Math.Round(Rect.Y);
+            double iW    = Math.Round(Rect.X + Rect.Width)  - iLeft;
+            double iH    = Math.Round(Rect.Y + Rect.Height) - iTop;
+            Realized.Width = iW;
+            Realized.Height = iH;
+            Canvas.SetLeft(Realized, iLeft);
+            Canvas.SetTop(Realized, iTop);
+            Canvas.SetZIndex(Realized, 2);
         }
     }
     private readonly List<EmbedPlan> _embedPlans = new();
@@ -276,59 +312,111 @@ public sealed partial class MarkdownRendererControl : UserControl
     /// </summary>
     public const double EmbedVirtualizationDerealizeOverscanPx = 1200;
 
+    /// <summary>
+    /// Documents at or above this top-level block count use viewport-relative
+    /// layout so first paint does not wait for every paragraph/table/code block
+    /// to create native text layouts.
+    /// </summary>
+    internal const int LazyLayoutBlockThreshold = 500;
+
+    /// <summary>
+    /// Extra document pixels measured around the viewport in lazy layout mode.
+    /// Wider than embed realization so text, inline image geometry, and
+    /// accessibility ranges are ready before the user reaches them.
+    /// </summary>
+    internal const double LazyLayoutOverscanPx = 2400;
+
     // ---- Dependency properties ----
 
+    /// <summary>Dependency property backing <see cref="Markdown"/>.</summary>
     public static readonly DependencyProperty MarkdownProperty =
         DependencyProperty.Register(nameof(Markdown), typeof(string), typeof(MarkdownRendererControl),
             new PropertyMetadata(string.Empty, (d, _) => ((MarkdownRendererControl)d).RequestRebuild()));
 
+    /// <summary>Gets or sets the markdown source text to render.</summary>
     public string Markdown
     {
         get => (string)GetValue(MarkdownProperty);
         set => SetValue(MarkdownProperty, value);
     }
 
+    /// <summary>Dependency property backing <see cref="Theme"/>.</summary>
     public static readonly DependencyProperty ThemeProperty =
         DependencyProperty.Register(nameof(Theme), typeof(MarkdownTheme), typeof(MarkdownRendererControl),
             new PropertyMetadata(null, (d, e) => ((MarkdownRendererControl)d).OnThemeDpChanged(e)));
 
+    /// <summary>Gets or sets the renderer theme.</summary>
     public MarkdownTheme? Theme
     {
         get => (MarkdownTheme?)GetValue(ThemeProperty);
         set => SetValue(ThemeProperty, value);
     }
 
+    /// <summary>Dependency property backing <see cref="ExtensionRegistry"/>.</summary>
     public static readonly DependencyProperty ExtensionRegistryProperty =
         DependencyProperty.Register(nameof(ExtensionRegistry), typeof(MarkdownExtensionRegistry),
             typeof(MarkdownRendererControl),
             new PropertyMetadata(null, (d, _) => ((MarkdownRendererControl)d).RequestRebuild()));
 
+    /// <summary>Gets or sets the markdown extension registry.</summary>
     public MarkdownExtensionRegistry? ExtensionRegistry
     {
         get => (MarkdownExtensionRegistry?)GetValue(ExtensionRegistryProperty);
         set => SetValue(ExtensionRegistryProperty, value);
     }
 
+    /// <summary>Dependency property backing <see cref="EmbedFactory"/>.</summary>
     public static readonly DependencyProperty EmbedFactoryProperty =
         DependencyProperty.Register(nameof(EmbedFactory), typeof(IMarkdownEmbedFactory),
             typeof(MarkdownRendererControl),
             new PropertyMetadata(null, (d, _) => ((MarkdownRendererControl)d).RequestRebuild()));
 
+    /// <summary>Gets or sets the block embed factory.</summary>
     public IMarkdownEmbedFactory? EmbedFactory
     {
         get => (IMarkdownEmbedFactory?)GetValue(EmbedFactoryProperty);
         set => SetValue(EmbedFactoryProperty, value);
     }
 
+    /// <summary>Dependency property backing <see cref="IsSelectionEnabled"/>.</summary>
     public static readonly DependencyProperty IsSelectionEnabledProperty =
         DependencyProperty.Register(nameof(IsSelectionEnabled), typeof(bool),
             typeof(MarkdownRendererControl), new PropertyMetadata(true));
 
+    /// <summary>Gets or sets whether text selection gestures are enabled.</summary>
     public bool IsSelectionEnabled
     {
         get => (bool)GetValue(IsSelectionEnabledProperty);
         set => SetValue(IsSelectionEnabledProperty, value);
     }
+
+    /// <summary>
+    /// Gets the latest parsed document facade committed by the renderer.
+    /// </summary>
+    public MarkdownRenderer.Document.MarkdownDocument Document => _document;
+
+    /// <summary>
+    /// Creates a renderer configured for the core CommonMark feature set.
+    /// </summary>
+    /// <param name="markdown">Initial markdown source text.</param>
+    /// <param name="theme">Theme to assign, or null to use the renderer default.</param>
+    /// <param name="extensionRegistry">Extension registry to assign, or null to use the renderer default.</param>
+    /// <param name="embedFactory">Embed factory to assign, or null to disable hosted block embeds.</param>
+    /// <param name="isSelectionEnabled">True to enable text selection.</param>
+    /// <returns>A new configured renderer control.</returns>
+    public static MarkdownRendererControl CreateDefault(
+        string? markdown = null,
+        MarkdownTheme? theme = null,
+        MarkdownExtensionRegistry? extensionRegistry = null,
+        IMarkdownEmbedFactory? embedFactory = null,
+        bool isSelectionEnabled = true)
+        => new MarkdownRendererControlBuilder()
+            .WithMarkdown(markdown)
+            .WithTheme(theme)
+            .WithExtensionRegistry(extensionRegistry)
+            .WithEmbedFactory(embedFactory)
+            .WithSelectionEnabled(isSelectionEnabled)
+            .Build();
 
     internal MarkdownLinkPeer GetOrCreateLinkPeer(MarkdownBlockPeer parent, LinkRun run)
     {
@@ -394,6 +482,7 @@ public sealed partial class MarkdownRendererControl : UserControl
         }
     }
 
+    /// <summary>Raised when the user activates a non-internal markdown link.</summary>
     public event EventHandler<MarkdownLinkClickEventArgs>? LinkClick;
 
     /// <summary>
@@ -424,6 +513,7 @@ public sealed partial class MarkdownRendererControl : UserControl
         }
     }
 
+    /// <inheritdoc />
     protected override AutomationPeer OnCreateAutomationPeer() => new MarkdownAutomationPeer(this);
 
     /// <summary>
@@ -442,7 +532,7 @@ public sealed partial class MarkdownRendererControl : UserControl
     /// <summary>
     /// Number of currently-realised hosted embed elements (block + inline).
     /// Exposed for UI-automation tests that want to validate virtualisation
-    /// without relying on heuristic descendant counts.
+    /// without relying on heuristic descendant couits.
     /// </summary>
     public int RealizedEmbedCount
     {
@@ -529,6 +619,7 @@ public sealed partial class MarkdownRendererControl : UserControl
         _scroll.ChangeView(null, Math.Max(0, target), null, disableAnimation: false);
     }
 
+    /// <summary>Initializes a new markdown renderer control.</summary>
     public MarkdownRendererControl()
     {
         IsTabStop = true;
@@ -748,13 +839,36 @@ public sealed partial class MarkdownRendererControl : UserControl
             e.Handled = true;
     }
 
-    private bool CopySelectionToClipboard()
+    /// <summary>
+    /// Copies the active selection to the clipboard.
+    /// </summary>
+    /// <param name="options">Optional copy format options. Defaults preserve exact markdown source as plain text and add HTML.</param>
+    /// <returns>True when a selection was copied successfully.</returns>
+    public bool CopySelectionToClipboard(MarkdownCopyOptions? options = null)
     {
         var snapshot = _snapshot;
         if (snapshot is null || !_selection.IsActive)
             return false;
 
-        return MarkdownClipboardWriter.Copy(snapshot.SourceMap, _selection.Range);
+        string? renderedText = null;
+        if ((options ?? MarkdownCopyOptions.Default).PlainTextMode == MarkdownPlainTextCopyMode.RenderedText)
+            renderedText = GetRenderedSelectionText(snapshot, _selection.Range);
+
+        return MarkdownClipboardWriter.Copy(snapshot.SourceMap, _selection.Range, options, renderedText);
+    }
+
+    private static string GetRenderedSelectionText(LayoutSnapshot snapshot, DocumentRange range)
+    {
+        var semantic = MarkdownSemanticDocument.Build(snapshot);
+        var normalized = range.Normalized();
+        int start = semantic.TextOffsetFromDocumentPosition(normalized.Start);
+        int end = semantic.TextOffsetFromDocumentPosition(normalized.End);
+        if (end < start)
+            (start, end) = (end, start);
+
+        start = Math.Clamp(start, 0, semantic.Text.Length);
+        end = Math.Clamp(end, start, semantic.Text.Length);
+        return semantic.Text.Substring(start, end - start);
     }
 
     internal void ClearSelectionFromCoordinator()
@@ -766,6 +880,7 @@ public sealed partial class MarkdownRendererControl : UserControl
     {
         _selectionAnchor = null;
         _clickMode = ClickMode.Single;
+        SetSelectionDragShieldActive(false);
         if (resetClickTracking)
         {
             _consecutiveClickCount = 0;
@@ -820,7 +935,7 @@ public sealed partial class MarkdownRendererControl : UserControl
         EnsureThemeSettingsSubscription();
         _sizeChangedHandler = (_, e) =>
         {
-            if (Math.Abs(_lastWidth - (float)e.NewSize.Width) > 0.5f) RequestRebuild();
+            if (Math.Abs(_lastWidth - (float)e.NewSize.Width) > 0.5f) RequestRebuild(RebuildReason.Restyle);
         };
         SizeChanged += _sizeChangedHandler;
         // Re-subscribe to Theme.Changed: OnUnloaded unhooks the handler, and
@@ -883,6 +998,7 @@ public sealed partial class MarkdownRendererControl : UserControl
         _imagePlans.Clear();
         _embedRects.Clear();
         _blockEmbedRects.Clear();
+        SetSelectionDragShieldActive(false);
         // Release native resources & hosted embeds so re-attaching the
         // control to a new visual parent doesn't leak DirectWrite layouts
         // or keep stale FrameworkElements alive.
@@ -914,7 +1030,7 @@ public sealed partial class MarkdownRendererControl : UserControl
         // Do NOT call RequestRebuild() here again — that would start two simultaneous
         // builds and immediately cancel the first one on every theme change.
         if (Theme is { } t) t.Invalidate();
-        else RequestRebuild(); // no Theme object: must trigger rebuild directly
+        else RequestRebuild(RebuildReason.Restyle); // no Theme object: must trigger rebuild directly
     }
 
     private void OnThemeSettingsChanged(ThemeSettings sender, object args)
@@ -969,12 +1085,15 @@ public sealed partial class MarkdownRendererControl : UserControl
         // Accessing DependencyObject members off the UI thread throws RPC_E_WRONG_THREAD.
         var dq = DispatcherQueue;
         if (dq is null) return;
-        if (dq.HasThreadAccess) { if (!_isUnloaded) RequestRebuild(); return; }
-        dq.TryEnqueue(() => { if (!_isUnloaded) RequestRebuild(); });
+        if (dq.HasThreadAccess) { if (!_isUnloaded) RequestRebuild(RebuildReason.Restyle); return; }
+        dq.TryEnqueue(() => { if (!_isUnloaded) RequestRebuild(RebuildReason.Restyle); });
     }
 
     /// <summary>Kicks off (or re-kicks) the parse + layout pipeline.</summary>
     public void RequestRebuild()
+        => RequestRebuild(RebuildReason.Full);
+
+    private void RequestRebuild(RebuildReason reason)
     {
         // Cancel the in-flight build. Dispose is deferred to ContinueWith so the
         // in-flight task (which may still be executing ct.Register() callbacks
@@ -984,7 +1103,7 @@ public sealed partial class MarkdownRendererControl : UserControl
         oldCts?.Cancel();
         _pipelineCts = new CancellationTokenSource();
         var cts = _pipelineCts;
-        _ = RebuildAsync(cts.Token).ContinueWith(t =>
+        _ = RebuildAsync(cts.Token, reason).ContinueWith(t =>
         {
             // Dispose the superseded CTS now that its task has fully completed:
             // no more ct.Register() calls can fire on it.
@@ -994,11 +1113,11 @@ public sealed partial class MarkdownRendererControl : UserControl
         }, TaskScheduler.Default);
     }
 
-    private async Task RebuildAsync(CancellationToken ct)
+    private async Task RebuildAsync(CancellationToken ct, RebuildReason reason)
     {
         try
         {
-            await RebuildInternalAsync(ct).ConfigureAwait(true);
+            await RebuildInternalAsync(ct, reason).ConfigureAwait(true);
         }
         catch (OperationCanceledException) { /* expected – a new build was requested */ }
         catch (Exception ex)
@@ -1007,19 +1126,52 @@ public sealed partial class MarkdownRendererControl : UserControl
         }
     }
 
-    private async Task RebuildInternalAsync(CancellationToken ct)
+    private async Task<ParsedMarkdown> GetParsedMarkdownAsync(
+        string source,
+        MarkdownExtensionRegistry registry,
+        CancellationToken ct)
     {
-        if (_canvas is null) return;
+        var normalizedSource = ForgivingDataUriFixer.Fix(source ?? string.Empty);
+        int registryRevision = registry.Revision;
+        lock (_parseCacheGate)
+        {
+            if (_parseCache is not null &&
+                ReferenceEquals(_parseCacheRegistry, registry) &&
+                _parseCacheRegistryRevision == registryRevision &&
+                string.Equals(_parseCacheSource, normalizedSource, StringComparison.Ordinal))
+            {
+                return _parseCache;
+            }
+        }
+
+        ct.ThrowIfCancellationRequested();
+        var pipeline = registry.BuildPipeline();
+        var parser = new MarkdigParser(pipeline);
+        var parsed = await parser.ParseAsync(normalizedSource, ct).ConfigureAwait(true);
+        ct.ThrowIfCancellationRequested();
+
+        lock (_parseCacheGate)
+        {
+            _parseCache = parsed;
+            _parseCacheSource = parsed.SourceText;
+            _parseCacheRegistry = registry;
+            _parseCacheRegistryRevision = registryRevision;
+        }
+
+        return parsed;
+    }
+
+    private async Task RebuildInternalAsync(CancellationToken ct, RebuildReason reason)
+    {
+        if (_canvas is null || _overlay is null || _root is null) return;
         var width = (float)Math.Max(50, ActualWidth);
         _lastWidth = width;
 
-        var registry = ExtensionRegistry ?? new MarkdownExtensionRegistry();
-        var pipeline = registry.BuildPipeline();
-        var parser = new MarkdigParser(pipeline);
+        var registry = ExtensionRegistry ?? _defaultRegistry;
         var source = Markdown ?? string.Empty;
 
         ct.ThrowIfCancellationRequested();
-        var parsed = await parser.ParseAsync(source, ct).ConfigureAwait(true);
+        var parsed = await GetParsedMarkdownAsync(source, registry, ct).ConfigureAwait(true);
         ct.ThrowIfCancellationRequested();
 
         var sourceMap = new MarkdownSourceMap(parsed.SourceText);
@@ -1039,11 +1191,35 @@ public sealed partial class MarkdownRendererControl : UserControl
         var ctx = new MarkdownLayoutContext(device, themeSnapshot, sourceMap, registry, FlowDirection, DispatcherQueue)
         {
             RasterizationScale = rasterScale,
+            CancellationToken = ct,
         };
         var builder = new LayoutBuilder(ctx, EmbedFactory);
 
         ct.ThrowIfCancellationRequested();
-        var snapshot = await Task.Run(() => builder.Build(parsed.Document, width), ct).ConfigureAwait(true);
+        double viewportTop = _scroll?.VerticalOffset ?? 0;
+        double viewportHeight = _scroll?.ViewportHeight > 0
+            ? _scroll.ViewportHeight
+            : Math.Max(ActualHeight, 600);
+        // Lazy band extension currently runs synchronously from scroll/paint
+        // events. Keep custom block embed measurement on the background build
+        // path so IMarkdownEmbedFactory.MeasureHeight never runs on the UI
+        // dispatcher thread.
+        bool useLazyLayout = EmbedFactory is null && parsed.Document.Count >= LazyLayoutBlockThreshold;
+        var snapshot = await Task.Run(
+            () => BuildSnapshotOrNullOnCancellation(
+                builder,
+                parsed.Document,
+                width,
+                viewportTop,
+                viewportHeight,
+                useLazyLayout,
+                ct),
+            CancellationToken.None).ConfigureAwait(true);
+        if (snapshot is null || ct.IsCancellationRequested)
+        {
+            snapshot?.Dispose();
+            return;
+        }
 
         // From this point the snapshot holds GPU-side CanvasTextLayout objects.
         // If we are cancelled before committing, dispose it to avoid a native-memory leak.
@@ -1060,14 +1236,15 @@ public sealed partial class MarkdownRendererControl : UserControl
         // from the viewport top.  After committing the new layout we restore the
         // same offset so content above the fold shifting (e.g. an image loading)
         // doesn't jump the reader's position.
-        (int BlockIndex, double OffsetFromTop)? scrollAnchor = null;
+        (int? BlockIndex, double OffsetFromTop, double OldOffset, double OldHeight)? scrollAnchor = null;
         if (_scroll is { VerticalOffset: > 0 } scrollSnap && _snapshot is { } prevSnap)
         {
             double vTop = scrollSnap.VerticalOffset;
+            scrollAnchor = (null, 0, vTop, prevSnap.Size.Height);
             foreach (var b in prevSnap.Blocks)
             {
                 if (b.Bounds.Bottom < vTop) continue;
-                scrollAnchor = (b.BlockIndex, b.Bounds.Top - vTop);
+                scrollAnchor = (b.BlockIndex, b.Bounds.Top - vTop, vTop, prevSnap.Size.Height);
                 break;
             }
         }
@@ -1079,6 +1256,7 @@ public sealed partial class MarkdownRendererControl : UserControl
         var old = _snapshot;
         _snapshot = snapshot;
         committed = true;
+        _document = MarkdownRenderer.Document.MarkdownDocument.FromParsed(parsed.SourceText, parsed.Document);
         // Update _themeSnapshot after commit so it always reflects the committed
         // theme. Updating before the await yields the UI thread where UpdateFocusRing
         // reads _themeSnapshot against stale _snapshot/_focusableItems from the old build.
@@ -1088,29 +1266,41 @@ public sealed partial class MarkdownRendererControl : UserControl
         // rebuild don't use Bounds from the now-disposed old snapshot for invalidation.
         _lastHoveredRun = null;
         _lastHoveredBox = null;
-        _canvas.Width = width;
-        _canvas.Height = Math.Max(1, snapshot.Size.Height);
-        _root!.Width = width;
-        _root.Height = _canvas.Height;
-        _overlay!.Width = width;
-        _overlay.Height = _canvas.Height;
+        ApplySnapshotSize(snapshot);
 
         // Restore scroll anchor: find the anchor block's new Y in the new layout
         // and adjust the scroll offset so the user's read position is unchanged.
         if (scrollAnchor is { } anchor && _scroll is { } scrollRestore)
         {
             double? newY = null;
-            foreach (var b in snapshot.Blocks)
+            if (anchor.BlockIndex is { } anchorBlock)
             {
-                if (b.BlockIndex == anchor.BlockIndex)
+                foreach (var b in snapshot.Blocks)
                 {
-                    newY = b.Bounds.Top - anchor.OffsetFromTop;
-                    break;
+                    if (b.BlockIndex == anchorBlock)
+                    {
+                        newY = b.Bounds.Top - anchor.OffsetFromTop;
+                        break;
+                    }
                 }
+
+                newY ??= FindNearestScrollAnchor(snapshot, anchorBlock, anchor.OffsetFromTop);
             }
+
+            if (newY is null)
+            {
+                double ratio = anchor.OldHeight > 0
+                    ? anchor.OldOffset / anchor.OldHeight
+                    : 0;
+                newY = ratio > 0
+                    ? ratio * snapshot.Size.Height
+                    : anchor.OldOffset;
+            }
+
             if (newY is { } targetOffset)
             {
-                scrollRestore.ChangeView(null, Math.Max(0, targetOffset), null, disableAnimation: true);
+                double maxOffset = Math.Max(0, snapshot.Size.Height - scrollRestore.ViewportHeight);
+                scrollRestore.ChangeView(null, Math.Clamp(targetOffset, 0, maxOffset), null, disableAnimation: true);
             }
         }
 
@@ -1119,10 +1309,12 @@ public sealed partial class MarkdownRendererControl : UserControl
         // viewport. Hooking _scroll.ViewChanged drives subsequent realisation
         // as the user scrolls.
         DerealizeAllEmbeds();
+        SetSelectionDragShieldActive(false);
         _overlay.Children.Clear();
         _embedRects.Clear();
         _blockEmbedRects.Clear();
         _embedPlans.Clear();
+        foreach (var img in _imagePlans) img.LoadCompleted -= OnImageLoadCompleted;
         _imagePlans.Clear();
         // Identities change across rebuild even when the count happens to
         // match — reset so the first post-rebuild realisation always fires.
@@ -1134,7 +1326,7 @@ public sealed partial class MarkdownRendererControl : UserControl
         _focusResumeItemIndex = -1;
         _focusRing = null;              // evicted from overlay; will be lazily re-created on next Tab
         _focusableItems = snapshot.CollectFocusableItems();
-        foreach (var b in snapshot.Blocks) CollectEmbedPlans(b);
+        RebuildRealizationPlans(snapshot, preserveRealized: false);
         if (_scroll is not null)
         {
             _scroll.ViewChanged -= OnScrollViewChanged;
@@ -1154,8 +1346,33 @@ public sealed partial class MarkdownRendererControl : UserControl
         }
     }
 
+    private static LayoutSnapshot? BuildSnapshotOrNullOnCancellation(
+        LayoutBuilder builder,
+        Markdig.Syntax.MarkdownDocument document,
+        float width,
+        double viewportTop,
+        double viewportHeight,
+        bool useLazyLayout,
+        CancellationToken ct)
+    {
+        if (ct.IsCancellationRequested)
+            return null;
+
+        try
+        {
+            return useLazyLayout
+                ? builder.BuildLazy(document, width, viewportTop, viewportHeight, LazyLayoutOverscanPx, ct)
+                : builder.Build(document, width, ct);
+        }
+        catch (OperationCanceledException) when (ct.IsCancellationRequested)
+        {
+            return null;
+        }
+    }
+
     private void OnScrollViewChanged(object? sender, ScrollViewerViewChangedEventArgs e)
     {
+        EnsureLazyLayoutForViewport();
         UpdateSelectionAdornerViewport();
         _selectionAdorner?.Invalidate();
         // Run a final realisation pass after intermediate-view bursts settle
@@ -1165,11 +1382,138 @@ public sealed partial class MarkdownRendererControl : UserControl
         RealizeVisibleEmbeds();
     }
 
+    private void ApplySnapshotSize(LayoutSnapshot snapshot)
+    {
+        if (_canvas is null || _root is null || _overlay is null) return;
+        _canvas.Width = Math.Max(1, snapshot.Size.Width);
+        _canvas.Height = Math.Max(1, snapshot.Size.Height);
+        _root.Width = _canvas.Width;
+        _root.Height = _canvas.Height;
+        _overlay.Width = _canvas.Width;
+        _overlay.Height = _canvas.Height;
+        SetSelectionDragShieldActive(_selectionAnchor is not null);
+    }
+
+    private static (int BlockIndex, double OffsetFromTop)? CaptureScrollAnchor(LayoutSnapshot snapshot, double verticalOffset)
+    {
+        if (verticalOffset <= 0)
+            return null;
+
+        foreach (var b in snapshot.Blocks)
+        {
+            if (b.Bounds.Bottom < verticalOffset) continue;
+            return (b.BlockIndex, b.Bounds.Top - verticalOffset);
+        }
+
+        return null;
+    }
+
+    private void RestoreScrollAnchor(LayoutSnapshot snapshot, (int BlockIndex, double OffsetFromTop)? anchor)
+    {
+        if (anchor is not { } value || _scroll is null)
+            return;
+
+        foreach (var b in snapshot.Blocks)
+        {
+            if (b.BlockIndex != value.BlockIndex)
+                continue;
+
+            double target = Math.Max(0, b.Bounds.Top - value.OffsetFromTop);
+            if (Math.Abs(target - _scroll.VerticalOffset) >= 0.5)
+                _scroll.ChangeView(null, target, null, disableAnimation: true);
+            return;
+        }
+    }
+
+    private bool EnsureLazyLayoutForViewport()
+    {
+        var snapshot = _snapshot;
+        if (snapshot is null || !snapshot.IsLazyLayoutEnabled || _scroll is null)
+            return false;
+
+        var anchor = CaptureScrollAnchor(snapshot, _scroll.VerticalOffset);
+        var commit = snapshot.EnsureMeasuredViewport(
+            _scroll.VerticalOffset,
+            _scroll.ViewportHeight > 0 ? _scroll.ViewportHeight : Math.Max(ActualHeight, 600),
+            LazyLayoutOverscanPx,
+            CancellationToken.None);
+
+        if (!commit.Changed)
+            return false;
+
+        ApplySnapshotSize(snapshot);
+        RestoreScrollAnchor(snapshot, anchor);
+        RebuildRealizationPlans(snapshot, preserveRealized: true);
+        _focusableItems = snapshot.CollectFocusableItems();
+        UpdateSelectionAdornerViewport();
+        UpdateFocusRing();
+        _canvas?.Invalidate();
+        return true;
+    }
+
     private void DerealizeAllEmbeds()
     {
         foreach (var plan in _embedPlans)
         {
             if (plan.Realized is not null) plan.Derealize(this);
+        }
+    }
+
+    private void RebuildRealizationPlans(LayoutSnapshot snapshot, bool preserveRealized)
+    {
+        var oldPlans = preserveRealized ? _embedPlans.ToArray() : Array.Empty<EmbedPlan>();
+
+        foreach (var img in _imagePlans)
+            img.LoadCompleted -= OnImageLoadCompleted;
+        _imagePlans.Clear();
+        _embedRects.Clear();
+        _blockEmbedRects.Clear();
+        _embedPlans.Clear();
+
+        foreach (var b in snapshot.GetMeasuredTopLevelBlocks())
+            CollectEmbedPlans(b);
+
+        if (oldPlans.Length > 0)
+        {
+            var adopted = new HashSet<EmbedPlan>();
+            foreach (var newPlan in _embedPlans)
+            {
+                foreach (var oldPlan in oldPlans)
+                {
+                    if (adopted.Contains(oldPlan) || oldPlan.Realized is null)
+                        continue;
+                    if (!newPlan.IsSameLogicalEmbed(oldPlan))
+                        continue;
+
+                    newPlan.Realized = oldPlan.Realized;
+                    oldPlan.Realized = null;
+                    AttachRealizedElement(newPlan);
+                    newPlan.UpdatePlacement();
+                    adopted.Add(oldPlan);
+                    break;
+                }
+            }
+
+            foreach (var oldPlan in oldPlans)
+            {
+                if (oldPlan.Realized is not null)
+                    oldPlan.Derealize(this);
+            }
+        }
+
+        _lastFiredRealizedCount = -1;
+    }
+
+    private static void AttachRealizedElement(EmbedPlan plan)
+    {
+        switch (plan)
+        {
+            case BlockEmbedPlan block:
+                block.Box.RealizedElement = block.Realized;
+                break;
+            case InlineEmbedPlan inline:
+                inline.Run.RealizedElement = inline.Realized;
+                break;
         }
     }
 
@@ -1241,7 +1585,7 @@ public sealed partial class MarkdownRendererControl : UserControl
                     double t = Math.Round(bp.Box.Bounds.Y + bp.Box.Margin.Top);
                     double w = Math.Round(bp.Box.Bounds.Width  - bp.Box.Margin.Left - bp.Box.Margin.Right);
                     double h = Math.Round(bp.Box.Bounds.Height - bp.Box.Margin.Top  - bp.Box.Margin.Bottom);
-                    _blockEmbedRects.Add(new Rect(left, t, w, h));
+                    _blockEmbedRects.Add((bp.Box, new Rect(left, t, w, h)));
                 }
                 else if (plan is InlineEmbedPlan ip)
                 {
@@ -1284,9 +1628,7 @@ public sealed partial class MarkdownRendererControl : UserControl
             }
             case Layout.Boxes.ImageBox ib:
             {
-                ib.LoadCompleted -= OnImageLoadCompleted;
-                ib.LoadCompleted += OnImageLoadCompleted;
-                _imagePlans.Add(ib);
+                AddImagePlan(ib);
                 break;
             }
             case Layout.Boxes.InlineContainerBox icb:
@@ -1294,6 +1636,10 @@ public sealed partial class MarkdownRendererControl : UserControl
                 foreach (var (run, rect) in icb.EnumerateEmbedRects())
                 {
                     _embedPlans.Add(new InlineEmbedPlan { Icb = icb, Run = run, Rect = rect });
+                }
+                foreach (var (run, _) in icb.EnumerateInlineImageRects())
+                {
+                    AddImagePlan(run.Image);
                 }
                 break;
             }
@@ -1310,6 +1656,16 @@ public sealed partial class MarkdownRendererControl : UserControl
         }
     }
 
+    private void AddImagePlan(Layout.Boxes.ImageBox image)
+    {
+        if (_imagePlans.Contains(image))
+            return;
+
+        image.LoadCompleted -= OnImageLoadCompleted;
+        image.LoadCompleted += OnImageLoadCompleted;
+        _imagePlans.Add(image);
+    }
+
     private void OnImageLoadCompleted(object? sender, Layout.Boxes.LoadCompletedEventArgs e)
     {
         // CanvasBitmap.LoadAsync continues on a thread-pool thread.  Always
@@ -1324,6 +1680,7 @@ public sealed partial class MarkdownRendererControl : UserControl
             // Guard against the TOCTOU window where this lambda was already
             // dispatched before OnUnloaded ran its unsubscription.
             if (_isUnloaded) return;
+            if (sender is Layout.Boxes.ImageBox image && !_imagePlans.Contains(image)) return;
             if (layoutInvalidated)
             {
                 // Initial load / intrinsic-size change → coalesce through the
@@ -1342,6 +1699,16 @@ public sealed partial class MarkdownRendererControl : UserControl
 
     private void OnRegionsInvalidated(CanvasVirtualControl sender, CanvasRegionsInvalidatedEventArgs args)
     {
+        try
+        {
+            EnsureLazyLayoutForViewport();
+        }
+        catch (Exception ex) when (GraphicsDeviceErrors.IsDeviceLost(ex))
+        {
+            HandleCanvasDeviceLost(ex);
+            return;
+        }
+
         if (_snapshot is null) return;
         var frame = ShakeLogger.NextFrame();
         int regionCount = 0;
@@ -1351,28 +1718,70 @@ public sealed partial class MarkdownRendererControl : UserControl
             if (ShakeLogger.IsEnabled)
                 ShakeLogger.LogPaint(
                     "region", regionCount, region.X, region.Y, region.Width, region.Height);
-            using var ds = sender.CreateDrawingSession(region);
-            // Clear to the theme-appropriate background color so that switching between
-            // light and dark mode (or any theme change) fully overwrites old tile content.
-            // We use an opaque theme color rather than Colors.Transparent because
-            // CanvasVirtualControl may not alpha-composite with the XAML compositor
-            // depending on the DirectX swap-chain configuration of the platform; on
-            // such configurations transparent pixels show as black rather than letting
-            // the XAML background show through.
-            ds.Clear(_canvasBackground);
-            // Force grayscale text anti-aliasing.  ClearType is *colour-aware*:
-            // the same glyph rendered onto a white background versus an
-            // alpha-blended selection-tinted background produces subtly
-            // different sub-pixel RGB values.  Switching to grayscale makes
-            // glyph edges background-independent.
-            ds.TextAntialiasing = Microsoft.Graphics.Canvas.Text.CanvasTextAntialiasing.Grayscale;
-            // Selection is rendered by the separate Win2D adorner, not here;
-            // base document tiles are never dirtied during a drag.
-            _snapshot.Paint(ds, region);
+            try
+            {
+                using var ds = sender.CreateDrawingSession(region);
+                // Clear to the theme-appropriate background color so that switching between
+                // light and dark mode (or any theme change) fully overwrites old tile content.
+                // We use an opaque theme color rather than Colors.Transparent because
+                // CanvasVirtualControl may not alpha-composite with the XAML compositor
+                // depending on the DirectX swap-chain configuration of the platform; on
+                // such configurations transparent pixels show as black rather than letting
+                // the XAML background show through.
+                ds.Clear(_canvasBackground);
+                // Force grayscale text anti-aliasing.  ClearType is *colour-aware*:
+                // the same glyph rendered onto a white background versus an
+                // alpha-blended selection-tinted background produces subtly
+                // different sub-pixel RGB values.  Switching to grayscale makes
+                // glyph edges background-independent.
+                ds.TextAntialiasing = Microsoft.Graphics.Canvas.Text.CanvasTextAntialiasing.Grayscale;
+                // Selection is rendered by the separate Win2D adorner, not here;
+                // base document tiles are never dirtied during a drag.
+                _snapshot.Paint(ds, region);
+            }
+            catch (Exception ex) when (GraphicsDeviceErrors.IsDeviceLost(ex))
+            {
+                HandleCanvasDeviceLost(ex);
+                return;
+            }
         }
+        _canvasDeviceRecoveryAttempt = 0;
+        _canvasDeviceRecoveryQueued = false;
         if (ShakeLogger.IsEnabled)
             ShakeLogger.Log("frame-end",
                 $"frame={frame} regions={regionCount} hovered={(_lastHoveredRun is null ? "null" : _lastHoveredRun.GetType().Name)} dragging={_selectionAnchor is not null}");
+    }
+
+    private void HandleCanvasDeviceLost(Exception exception)
+    {
+        if (_canvasDeviceRecoveryQueued || _isUnloaded)
+            return;
+
+        _canvasDeviceRecoveryQueued = true;
+        _canvasDeviceRecoveryAttempt = Math.Min(_canvasDeviceRecoveryAttempt + 1, 6);
+        int delayMs = Math.Min(5000, 250 << (_canvasDeviceRecoveryAttempt - 1));
+
+        MarkdownDiagnostics.WriteLine(
+            "[MarkdownRendererControl] Win2D device lost while painting; " +
+            $"HRESULT={GraphicsDeviceErrors.FormatHResult(exception.HResult)}. " +
+            $"Retrying canvas rebuild in {delayMs}ms.");
+
+        var dispatcher = DispatcherQueue;
+        _ = Task.Run(async () =>
+        {
+            try { await Task.Delay(delayMs).ConfigureAwait(false); }
+            catch { return; }
+
+            dispatcher?.TryEnqueue(() =>
+            {
+                if (_isUnloaded) return;
+
+                _canvasDeviceRecoveryQueued = false;
+                RequestRebuild();
+                try { _canvas?.Invalidate(); } catch (Exception ex) when (GraphicsDeviceErrors.IsDeviceLost(ex)) { }
+                try { _selectionAdorner?.Invalidate(); } catch (Exception ex) when (GraphicsDeviceErrors.IsDeviceLost(ex)) { }
+            });
+        });
     }
 
     // ---- Input ----
@@ -1438,7 +1847,7 @@ public sealed partial class MarkdownRendererControl : UserControl
             // same spot doesn't corrupt the double/triple-click timing window.
             _lastPressTickMs = nowMs;
             _lastPressPoint  = pt;
-            _leftPointerCaptured = true; // set only on HitTest success so release events don't misfire
+            _pointerSession = new PointerSession(e.Pointer.PointerId, IsPrimary: true);
 
             if (!IsSelectionEnabled)
             {
@@ -1448,7 +1857,7 @@ public sealed partial class MarkdownRendererControl : UserControl
                 // OnPointerReleased is not stale from a previous double/triple-click
                 // sequence made while IsSelectionEnabled was true.
                 _clickMode = ClickMode.Single;
-                if (!_canvas.CapturePointer(e.Pointer)) _leftPointerCaptured = false;
+                if (!_canvas.CapturePointer(e.Pointer)) _pointerSession = default;
                 return;
             }
 
@@ -1465,7 +1874,8 @@ public sealed partial class MarkdownRendererControl : UserControl
                 // Selection is rendered by the XAML overlay; do not dirty canvas
                 // text during mouse-down. Repainting DirectWrite text here causes
                 // visible shake on selection starts, especially on the embeds page.
-                if (!_canvas.CapturePointer(e.Pointer)) { _leftPointerCaptured = false; _selectionAnchor = null; }
+                if (!_canvas.CapturePointer(e.Pointer)) { _pointerSession = default; _selectionAnchor = null; }
+                else SetSelectionDragShieldActive(true);
                 return;
             }
             if (_consecutiveClickCount == 2)
@@ -1475,14 +1885,16 @@ public sealed partial class MarkdownRendererControl : UserControl
                 (_dragAnchorStart, _dragAnchorEnd) = ExpandSelectionToWord(_snapshot, pos);
                 // Selection is rendered by the XAML overlay; do not dirty canvas
                 // text during mouse-down.
-                if (!_canvas.CapturePointer(e.Pointer)) { _leftPointerCaptured = false; _selectionAnchor = null; }
+                if (!_canvas.CapturePointer(e.Pointer)) { _pointerSession = default; _selectionAnchor = null; }
+                else SetSelectionDragShieldActive(true);
                 return;
             }
             _clickMode = ClickMode.Single;
             _selection.SetAnchor(pos);
             // Selection is rendered by the XAML overlay; do not dirty canvas text
             // for the empty anchor state.
-            if (!_canvas.CapturePointer(e.Pointer)) { _leftPointerCaptured = false; _selectionAnchor = null; }
+            if (!_canvas.CapturePointer(e.Pointer)) { _pointerSession = default; _selectionAnchor = null; }
+            else SetSelectionDragShieldActive(true);
         }
         else
         {
@@ -1534,6 +1946,7 @@ public sealed partial class MarkdownRendererControl : UserControl
         // Drag-select.
         if (_selectionAnchor is not null)
         {
+            var dragPoint = PrepareSelectionDragPoint(pt);
             // Atomic embed inclusion: when the pointer is inside an inline
             // embed rect during a drag, snap the position to either the
             // start or end of the InlineEmbedRun (whichever side the pointer
@@ -1542,19 +1955,19 @@ public sealed partial class MarkdownRendererControl : UserControl
             // selection that ends *halfway through* an embedded button or
             // textbox, which matches how browsers handle <input> /
             // <textarea> inside contenteditable text.
-            if (TryHitTestEmbed(pt, out var embedPos))
+            if (TryHitTestEmbed(dragPoint, out var embedPos))
             {
                 if (ShakeLogger.IsEnabled)
                     ShakeLogger.Log("ptr-move-drag-embed",
-                        $"px={pt.X:F4} py={pt.Y:F4} pos=blk{embedPos.BlockIndex}/inl{embedPos.InlineIndex}/c{embedPos.CharacterOffset}");
+                        $"px={dragPoint.X:F4} py={dragPoint.Y:F4} pos=blk{embedPos.BlockIndex}/inl{embedPos.InlineIndex}/c{embedPos.CharacterOffset}");
                 _selection.ExtendTo(embedPos);
                 // No _canvas.Invalidate(): selection is on the XAML overlay.
             }
-            else if (_snapshot.HitTest(pt, out var pos))
+            else if (_snapshot.HitTest(dragPoint, out var pos))
             {
                 if (ShakeLogger.IsEnabled)
                     ShakeLogger.Log("ptr-move-drag",
-                        $"px={pt.X:F4} py={pt.Y:F4} pos=blk{pos.BlockIndex}/inl{pos.InlineIndex}/c{pos.CharacterOffset}");
+                        $"px={dragPoint.X:F4} py={dragPoint.Y:F4} pos=blk{pos.BlockIndex}/inl{pos.InlineIndex}/c{pos.CharacterOffset}");
                 // For word/block click modes extend selection snapped to the
                 // appropriate boundary so dragging after double/triple-click
                 // produces word-by-word or block-by-block selection, matching
@@ -1625,7 +2038,7 @@ public sealed partial class MarkdownRendererControl : UserControl
                 // foreground color); plain TextRun hover changes nothing.
                 // Issuing a _canvas.Invalidate for a TextRun→null transition
                 // causes a partial tile repaint, and CanvasVirtualControl
-                // partial-tile repaints reveal DirectWrite glyph-position
+                // partial-tile repaiits reveal DirectWrite glyph-position
                 // variance at tile boundaries → visible text shake.
                 bool wasLink = _lastHoveredRun is LinkRun;
                 var boxToInvalidate = _lastHoveredBox;
@@ -1636,6 +2049,8 @@ public sealed partial class MarkdownRendererControl : UserControl
                 // the text layout, so the link→null transition has no painted
                 // representation either.
                 _ = wasLink; _ = boxToInvalidate;
+                if (wasLink)
+                    InvalidateInteractiveTextAdorner();
             }
             SetCursorShape(null);
             return;
@@ -1685,11 +2100,53 @@ public sealed partial class MarkdownRendererControl : UserControl
             foreach (var b in _snapshot.Blocks) ClearHover(b);
             if (hoveredBox is not null && hoveredLink is not null)
                 hoveredBox.HoveredRun = hoveredLink;
+            InvalidateInteractiveTextAdorner();
         }
         _lastHoveredRun = hovered;
         _lastHoveredBox = hoveredBox;
 
         SetCursorShape(wantedShape);
+    }
+
+    private void InvalidateInteractiveTextAdorner()
+    {
+        if (_overlay is null)
+            return;
+
+        EnsureSelectionAdorner();
+        UpdateSelectionAdornerViewport();
+        try
+        {
+            _selectionAdorner?.Invalidate();
+        }
+        catch (Exception ex) when (GraphicsDeviceErrors.IsDeviceLost(ex))
+        {
+            HandleCanvasDeviceLost(ex);
+        }
+    }
+
+    private Point PrepareSelectionDragPoint(Point point)
+    {
+        if (_scroll is null || _canvas is null)
+            return point;
+
+        double viewportTop = _scroll.VerticalOffset;
+        double viewportHeight = _scroll.ViewportHeight;
+        double delta = SelectionAutoScroll.ComputeDelta(point.Y, viewportTop, viewportHeight);
+        if (Math.Abs(delta) >= 0.5)
+        {
+            double maxOffset = Math.Max(0, _canvas.ActualHeight - viewportHeight);
+            double target = Math.Clamp(viewportTop + delta, 0, maxOffset);
+            if (Math.Abs(target - viewportTop) >= 0.5)
+            {
+                _scroll.ChangeView(null, target, null, disableAnimation: true);
+                viewportTop = target;
+            }
+        }
+
+        double x = Math.Clamp(point.X, 0, Math.Max(0, _canvas.ActualWidth - 1));
+        double y = SelectionAutoScroll.ClampPointToViewport(point.Y, viewportTop, viewportHeight);
+        return new Point(x, y);
     }
 
     /// <summary>
@@ -1790,7 +2247,7 @@ public sealed partial class MarkdownRendererControl : UserControl
         }
         for (int i = 0; i < _blockEmbedRects.Count; i++)
         {
-            var r = _blockEmbedRects[i];
+            var r = _blockEmbedRects[i].Rect;
             if (pt.X >= r.X && pt.X < r.X + r.Width &&
                 pt.Y >= r.Y && pt.Y < r.Y + r.Height)
                 return true;
@@ -1826,6 +2283,19 @@ public sealed partial class MarkdownRendererControl : UserControl
                 return true;
             }
         }
+
+        for (int i = 0; i < _blockEmbedRects.Count; i++)
+        {
+            var (box, r) = _blockEmbedRects[i];
+            if (pt.X >= r.X && pt.X < r.X + r.Width &&
+                pt.Y >= r.Y && pt.Y < r.Y + r.Height)
+            {
+                bool afterMidpoint = pt.Y >= r.Y + r.Height / 2.0;
+                position = new DocumentPosition(box.BlockIndex, 0, afterMidpoint ? 1 : 0);
+                return true;
+            }
+        }
+
         position = default;
         return false;
     }
@@ -1909,6 +2379,41 @@ public sealed partial class MarkdownRendererControl : UserControl
             _overlay.Children.Add(_selectionAdorner);
     }
 
+    private void SetSelectionDragShieldActive(bool active)
+    {
+        if (_overlay is null)
+            return;
+
+        if (!active)
+        {
+            if (_selectionDragShield is not null)
+                _selectionDragShield.Visibility = Visibility.Collapsed;
+            return;
+        }
+
+        if (_selectionDragShield is null)
+        {
+            _selectionDragShield = new Border
+            {
+                Background = new SolidColorBrush(Color.FromArgb(1, 0, 0, 0)),
+                IsHitTestVisible = true,
+            };
+            _selectionDragShield.PointerMoved += OnPointerMoved;
+            _selectionDragShield.PointerReleased += OnPointerReleased;
+            _selectionDragShield.PointerCanceled += OnPointerCanceledOrCaptureLost;
+            _selectionDragShield.PointerCaptureLost += OnPointerCanceledOrCaptureLost;
+            Canvas.SetLeft(_selectionDragShield, 0);
+            Canvas.SetTop(_selectionDragShield, 0);
+            Canvas.SetZIndex(_selectionDragShield, 4);
+        }
+
+        _selectionDragShield.Width = Math.Max(1, _overlay.Width);
+        _selectionDragShield.Height = Math.Max(1, _overlay.Height);
+        if (VisualTreeHelper.GetParent(_selectionDragShield) is null)
+            _overlay.Children.Add(_selectionDragShield);
+        _selectionDragShield.Visibility = Visibility.Visible;
+    }
+
     private void UpdateSelectionAdornerViewport()
     {
         if (_selectionAdorner is null)
@@ -1939,7 +2444,13 @@ public sealed partial class MarkdownRendererControl : UserControl
         args.DrawingSession.Clear(Color.FromArgb(0, 0, 0, 0));
 
         var snapshot = _snapshot;
-        if (snapshot is null || !_selection.IsActive || _selectionAdornerRects.Count == 0)
+        if (snapshot is null)
+            return;
+
+        bool hasSelection = _selection.IsActive && _selectionAdornerRects.Count > 0;
+        bool hasHoveredLink = _lastHoveredRun is LinkRun && _lastHoveredBox is not null;
+        bool hasFocusedLink = TryGetFocusedLink(out _, out _);
+        if (!hasSelection && !hasHoveredLink && !hasFocusedLink)
             return;
 
         if (ShakeLogger.IsEnabled)
@@ -1960,30 +2471,55 @@ public sealed partial class MarkdownRendererControl : UserControl
         // Native text controls effectively cover the old glyph pixels with the
         // selection fill and then draw selected glyphs on top. Doing both in this
         // adorner gives the same visual ordering without repainting document text.
-        foreach (var rect in _selectionAdornerRects)
+        if (hasSelection)
         {
-            if (rect.Right < viewport.Left || rect.Left > viewport.Right ||
-                rect.Bottom < viewport.Top || rect.Top > viewport.Bottom)
+            foreach (var rect in _selectionAdornerRects)
             {
-                continue;
+                if (rect.Right < viewport.Left || rect.Left > viewport.Right ||
+                    rect.Bottom < viewport.Top || rect.Top > viewport.Bottom)
+                {
+                    continue;
+                }
+
+                args.DrawingSession.FillRectangle(rect, selectedBackground);
             }
 
-            args.DrawingSession.FillRectangle(rect, selectedBackground);
-        }
-
-        foreach (var rect in _selectionAdornerRects)
-        {
-            if (rect.Right < viewport.Left || rect.Left > viewport.Right ||
-                rect.Bottom < viewport.Top || rect.Top > viewport.Bottom)
+            foreach (var rect in _selectionAdornerRects)
             {
-                continue;
-            }
+                if (rect.Right < viewport.Left || rect.Left > viewport.Right ||
+                    rect.Bottom < viewport.Top || rect.Top > viewport.Bottom)
+                {
+                    continue;
+                }
 
-            using var layer = args.DrawingSession.CreateLayer(1.0f, rect);
-            snapshot.PaintSelectionForeground(args.DrawingSession, range, selectedForeground, rect);
+                using var layer = args.DrawingSession.CreateLayer(1.0f, rect);
+                snapshot.PaintSelectionForeground(args.DrawingSession, range, selectedForeground, rect);
+            }
         }
+
+        PaintLinkStateOverlay(args.DrawingSession, viewport);
 
         args.DrawingSession.Transform = Matrix3x2.Identity;
+    }
+
+    private void PaintLinkStateOverlay(CanvasDrawingSession drawingSession, Rect viewport)
+    {
+        LinkRun? hoveredLink = null;
+        if (_lastHoveredRun is LinkRun hover && _lastHoveredBox is { } hoverBox)
+        {
+            hoveredLink = hover;
+            hoverBox.PaintLinkStateForeground(drawingSession, hover, focused: false, viewport);
+        }
+
+        if (TryGetFocusedLink(out var focusedBox, out var focusedLink) &&
+            !ReferenceEquals(focusedLink, hoveredLink))
+        {
+            focusedBox.PaintLinkStateForeground(drawingSession, focusedLink, focused: true, viewport);
+        }
+        else if (TryGetFocusedLink(out focusedBox, out focusedLink))
+        {
+            focusedBox.PaintLinkStateForeground(drawingSession, focusedLink, focused: true, viewport);
+        }
     }
 
     private void OnPointerCanceledOrCaptureLost(object sender, PointerRoutedEventArgs e)
@@ -1995,9 +2531,10 @@ public sealed partial class MarkdownRendererControl : UserControl
         // the anchor there would kill drag-select on the very first vertical move
         // when the pointer crosses into a sibling overlay region (e.g. over a hosted
         // inline embed). PointerReleased handles the normal end-of-drag cleanup.
-        _leftPointerCaptured = false;
+        _pointerSession = default;
         _selectionAnchor = null;
         _clickMode = ClickMode.Single;
+        SetSelectionDragShieldActive(false);
         OnPointerExited(sender, e);
     }
 
@@ -2016,7 +2553,7 @@ public sealed partial class MarkdownRendererControl : UserControl
         // here issues a partial _canvas.Invalidate(), which triggers a tile repaint
         // that calls InlineContainerBox.Paint() → ApplyHoverColor() → CanvasTextLayout
         // .SetColor() → DirectWrite invalidates cached glyph-run metrics → character
-        // region coordinates shift by sub-pixel amounts → visible text shake on every
+        // region coordinates shift by sub-pixel amouits → visible text shake on every
         // drag frame. The canvas was already fully invalidated at drag-start
         // (OnPointerPressed) so no intermediate repaint is needed during the drag.
         // OnPointerCanceledOrCaptureLost clears _selectionAnchor *before* calling us,
@@ -2041,7 +2578,7 @@ public sealed partial class MarkdownRendererControl : UserControl
             // hover state is purely cursor/IBeam tracking and has no painted
             // representation. Calling _canvas.Invalidate for a TextRun→null
             // transition causes a partial-tile repaint, and CanvasVirtualControl
-            // partial repaints expose DirectWrite sub-pixel glyph-position
+            // partial repaiits expose DirectWrite sub-pixel glyph-position
             // variance at tile boundaries — i.e. the text-shake the user sees
             // on click-to-dismiss (capture-loss routes through here with
             // _selectionAnchor already nulled by OnPointerCanceledOrCaptureLost).
@@ -2053,6 +2590,8 @@ public sealed partial class MarkdownRendererControl : UserControl
             // No canvas invalidate: hover transitions no longer mutate the
             // text layout (see InlineContainerBox.HoveredRun docs).
             _ = wasLink; _ = boxToInvalidate;
+            if (wasLink)
+                InvalidateInteractiveTextAdorner();
         }
         // Always reset cursor to null (system default) on exit — not just
         // when a link was hovered.  PointerExited fires whenever the pointer
@@ -2069,11 +2608,13 @@ public sealed partial class MarkdownRendererControl : UserControl
         if (_canvas is null) return;
 
         // Snapshot BEFORE releasing capture: ReleasePointerCapture can dispatch
-        // PointerCaptureLost synchronously (which calls OnPointerExited and sets
-        // _leftPointerCaptured = false), so we must read the flag first.
-        bool wasLeft = _leftPointerCaptured;
-        _leftPointerCaptured = false;
+        // PointerCaptureLost synchronously, so read and clear the pointer session first.
+        bool wasLeft = _pointerSession.IsActive &&
+            _pointerSession.PointerId == e.Pointer.PointerId &&
+            _pointerSession.IsPrimary;
+        _pointerSession = default;
         _selectionAnchor = null;
+        SetSelectionDragShieldActive(false);
         _canvas.ReleasePointerCapture(e.Pointer);
         if (!wasLeft) return;
 
@@ -2096,11 +2637,7 @@ public sealed partial class MarkdownRendererControl : UserControl
             {
                 // Intercept internal fragment anchors (e.g. footnote back/forward
                 // links) and scroll without surfacing them to external subscribers.
-                if (link.Url.StartsWith("#footnote-", StringComparison.OrdinalIgnoreCase))
-                {
-                    HandleInternalAnchor(link.Url);
-                }
-                else
+                if (!link.Url.StartsWith("#", StringComparison.Ordinal) || !HandleInternalAnchor(link.Url))
                 {
                     LinkClick?.Invoke(this, new MarkdownLinkClickEventArgs(link.Url, link.Title));
                 }
@@ -2125,6 +2662,23 @@ public sealed partial class MarkdownRendererControl : UserControl
                 return;
             }
         }
+    }
+
+    private static double? FindNearestScrollAnchor(LayoutSnapshot snapshot, int blockIndex, double offsetFromTop)
+    {
+        BlockBox? nearest = null;
+        int bestDistance = int.MaxValue;
+        foreach (var block in snapshot.Blocks)
+        {
+            int distance = Math.Abs(block.BlockIndex - blockIndex);
+            if (distance >= bestDistance)
+                continue;
+
+            nearest = block;
+            bestDistance = distance;
+        }
+
+        return nearest is null ? null : nearest.Bounds.Top - offsetFromTop;
     }
 
     private static double? FindBlockY(BlockBox box, int blockIndex)
@@ -2155,9 +2709,9 @@ public sealed partial class MarkdownRendererControl : UserControl
     /// Handles internal fragment navigation URLs (e.g. <c>#footnote-def-1</c>,
     /// <c>#footnote-ref-1</c>) by scrolling to the target block directly.
     /// </summary>
-    private void HandleInternalAnchor(string url)
+    private bool HandleInternalAnchor(string url)
     {
-        if (_snapshot is null) return;
+        if (_snapshot is null) return false;
         // Resolve block index from footnote registry stored on the layout context.
         // The registry is embedded in the LayoutSnapshot's block tree; walk to find
         // the first InlineContainerBox whose block carries the matching footnote tag.
@@ -2168,16 +2722,35 @@ public sealed partial class MarkdownRendererControl : UserControl
         const string refPrefix = "#footnote-ref-";
         bool isDef = url.StartsWith(defPrefix, StringComparison.OrdinalIgnoreCase);
         bool isRef = url.StartsWith(refPrefix, StringComparison.OrdinalIgnoreCase);
-        if (!isDef && !isRef) return;
-        string orderStr = isDef ? url.Substring(defPrefix.Length) : url.Substring(refPrefix.Length);
-        if (!int.TryParse(orderStr, out int order)) return;
+        if (isDef || isRef)
+        {
+            string orderStr = isDef ? url.Substring(defPrefix.Length) : url.Substring(refPrefix.Length);
+            if (!int.TryParse(orderStr, out int order)) return false;
 
-        // Walk blocks looking for the tagged block index stored in the
-        // footnote index dictionary on the snapshot.
-        int? targetIndex = isDef
-            ? _snapshot.FootnoteDefBlock(order)
-            : _snapshot.FootnoteRefBlock(order);
-        if (targetIndex is { } idx) ScrollToBlock(idx);
+            // Walk blocks looking for the tagged block index stored in the
+            // footnote index dictionary on the snapshot.
+            int? targetIndex = isDef
+                ? _snapshot.FootnoteDefBlock(order)
+                : _snapshot.FootnoteRefBlock(order);
+            if (targetIndex is { } idx)
+            {
+                ScrollToBlock(idx);
+                return true;
+            }
+            return false;
+        }
+
+        if (url.StartsWith("#", StringComparison.Ordinal))
+        {
+            var id = Uri.UnescapeDataString(url.Substring(1));
+            if (_snapshot.FragmentTargetBlock(id) is { } idx)
+            {
+                ScrollToBlock(idx);
+                return true;
+            }
+        }
+
+        return false;
     }
 
     private void OnKeyDown(object sender, KeyRoutedEventArgs e)
@@ -2372,9 +2945,7 @@ public sealed partial class MarkdownRendererControl : UserControl
         var pos = new DocumentPosition(item.BlockIndex, item.InlineIndex, 0);
         if (FindLinkAt(pos) is { } lr)
         {
-            if (lr.Url.StartsWith("#footnote-", StringComparison.OrdinalIgnoreCase))
-                HandleInternalAnchor(lr.Url);
-            else
+            if (!lr.Url.StartsWith("#", StringComparison.Ordinal) || !HandleInternalAnchor(lr.Url))
                 LinkClick?.Invoke(this, new MarkdownLinkClickEventArgs(lr.Url, lr.Title));
             return true;
         }
@@ -2449,6 +3020,7 @@ public sealed partial class MarkdownRendererControl : UserControl
         if (items is null || _focusedItemIndex < 0 || _focusedItemIndex >= items.Count)
         {
             _focusRing.Visibility = Visibility.Collapsed;
+            InvalidateInteractiveTextAdorner();
             return;
         }
 
@@ -2456,6 +3028,7 @@ public sealed partial class MarkdownRendererControl : UserControl
         if (!item.IsLink)
         {
             _focusRing.Visibility = Visibility.Collapsed;
+            InvalidateInteractiveTextAdorner();
             return;
         }
 
@@ -2463,6 +3036,7 @@ public sealed partial class MarkdownRendererControl : UserControl
         if (rect is not { Width: > 0, Height: > 0 } r)
         {
             _focusRing.Visibility = Visibility.Collapsed;
+            InvalidateInteractiveTextAdorner();
             return;
         }
 
@@ -2482,6 +3056,7 @@ public sealed partial class MarkdownRendererControl : UserControl
         _focusRing.Width  = r.Width  + pad * 2;
         _focusRing.Height = r.Height + pad * 2;
         _focusRing.Visibility = Visibility.Visible;
+        InvalidateInteractiveTextAdorner();
     }
 
     private Rect? GetFocusableItemRect(Layout.FocusableItem item)
@@ -3024,14 +3599,19 @@ public sealed partial class MarkdownRendererControl : UserControl
     }
 }
 
+/// <summary>Event data for markdown link activation.</summary>
 public sealed class MarkdownLinkClickEventArgs : EventArgs
 {
+    /// <summary>Initializes link activation event data.</summary>
     public MarkdownLinkClickEventArgs(string url, string? title)
     {
         Url = url;
         Title = title;
     }
+    /// <summary>Gets the link URL.</summary>
     public string Url { get; }
+
+    /// <summary>Gets the optional link title.</summary>
     public string? Title { get; }
 }
 

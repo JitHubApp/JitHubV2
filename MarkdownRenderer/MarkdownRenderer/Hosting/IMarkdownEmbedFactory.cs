@@ -10,8 +10,10 @@ namespace MarkdownRenderer.Hosting;
 /// </summary>
 /// <remarks>
 /// <para>
-/// Layout (<c>Measure</c>) runs on a background thread. Implementations of
-/// <see cref="CanCreate"/> must be thread-safe and free of WinUI dependencies.
+/// Layout runs on a background thread. Implementations of <see cref="CanCreate"/>
+/// and <see cref="MeasureHeight"/> must be deterministic, thread-safe, and free
+/// of WinUI dependencies. The renderer throws if these callbacks are reached on
+/// the UI dispatcher thread so thread-affine bugs fail early during development.
 /// </para>
 /// <para>
 /// <see cref="CreateBlock"/> is invoked on the UI thread after layout completes.
@@ -22,16 +24,19 @@ namespace MarkdownRenderer.Hosting;
 public interface IMarkdownEmbedFactory
 {
     /// <summary>
-    /// Background-thread safe: returns true if this factory wants to replace
-    /// the given AST node with a hosted WinUI element. The renderer reserves
-    /// space for it during layout and instantiates it on the UI thread later.
+    /// Background-thread only: returns true if this factory wants to replace
+    /// the given AST node with a hosted WinUI element. This method must not
+    /// read or create any WinUI object, access dependency properties, or block
+    /// on UI-thread work.
     /// </summary>
     bool CanCreate(Block block);
 
     /// <summary>
     /// Returns the desired height (px) for the embed at the given content
-    /// width. Called on the background layout thread, so this must NOT touch
-    /// any WinUI APIs. Return a fixed number based on the block content.
+    /// width. Called on the background layout thread, so this must not touch
+    /// any WinUI APIs, dependency properties, dispatcher-bound services, or
+    /// UI-thread locks. Return a deterministic number based only on the block
+    /// content and available width.
     /// </summary>
     float MeasureHeight(Block block, float availableWidth);
 

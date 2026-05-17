@@ -1,3 +1,4 @@
+using System;
 using Microsoft.Graphics.Canvas;
 using Microsoft.UI.Xaml;
 using Windows.Foundation;
@@ -9,9 +10,16 @@ namespace MarkdownRenderer.Layout;
 /// </summary>
 public abstract class BlockBox
 {
+    /// <summary>Gets or sets the logical block index assigned during layout.</summary>
     public int BlockIndex { get; set; }
+
+    /// <summary>Gets the arranged document-space bounds.</summary>
     public Rect Bounds { get; protected set; }
+
+    /// <summary>Gets or sets the outer margin.</summary>
     public Thickness Margin { get; set; }
+
+    /// <summary>Gets whether this block has estimated or stale layout state.</summary>
     public bool IsDirty { get; internal set; } = true;
 
     /// <summary>
@@ -20,12 +28,28 @@ public abstract class BlockBox
     public abstract float Measure(float availableWidth);
 
     /// <summary>
+    /// Throws when the current layout pass has been cancelled.
+    /// </summary>
+    internal virtual void ThrowIfCancellationRequested() { }
+
+    /// <summary>
     /// Place the box at the given top-left and finalise <see cref="Bounds"/>.
     /// </summary>
     public virtual void Arrange(float x, float y, float width)
     {
         Bounds = new Rect(x, y, width, Bounds.Height);
         IsDirty = false;
+    }
+
+    /// <summary>
+    /// Assigns temporary bounds for a lazily measured block. The block remains
+    /// dirty so consumers know its children/native layouts have not been
+    /// realized yet.
+    /// </summary>
+    internal void ArrangeEstimated(float x, float y, float width, float height)
+    {
+        Bounds = new Rect(x, y, width, Math.Max(0, height));
+        IsDirty = true;
     }
 
     /// <summary>
@@ -64,7 +88,7 @@ public abstract class BlockBox
     }
 
     /// <summary>
-    /// Repaints foreground chrome that would otherwise be covered by the
+    /// Repaiits foreground chrome that would otherwise be covered by the
     /// opaque native selection fill. Text containers repaint glyphs; visual
     /// blocks such as thematic breaks repaint their separator line.
     /// </summary>

@@ -1,12 +1,19 @@
 # Quick start
 
-This page shows the expected consumer shape. Some packaging and helper APIs are
-still maturing, so examples reflect the current project API.
+This page shows the recommended consumer shape for the packaged renderer. For a
+complete feature matrix, see [Supported markdown](supported-markdown.md).
 
 ## Add the project
 
-Reference the core renderer and, if GitHub-flavored markdown is needed, the GFM
-extension project:
+Install the core package and, for the recommended GitHub-flavored markdown path,
+the GFM package:
+
+```powershell
+dotnet add package MarkdownRenderer
+dotnet add package MarkdownRenderer.Gfm
+```
+
+When developing from this repository, reference the projects directly:
 
 ```xml
 <ProjectReference Include="..\MarkdownRenderer\MarkdownRenderer.csproj" />
@@ -34,18 +41,14 @@ The library targets:
 </Page>
 ```
 
-## Enable GitHub-flavored markdown
+## Create a GFM renderer
 
 ```csharp
 using MarkdownRenderer.Controls;
 using MarkdownRenderer.Gfm;
-using MarkdownRenderer.Parsing;
+using MarkdownRenderer.Theming;
 
-var registry = new MarkdownExtensionRegistry()
-    .UseGitHubFlavoredMarkdown();
-
-MarkdownView.ExtensionRegistry = registry;
-MarkdownView.Markdown = """
+var view = GfmMarkdownRenderer.CreateDefault("""
 # Hello MarkdownRenderer
 
 - [x] Task lists
@@ -53,7 +56,63 @@ MarkdownView.Markdown = """
 - Footnotes[^1]
 
 [^1]: Footnote definitions are rendered and linked.
-""";
+""");
+```
+
+The fluent builder exposes the same setup path:
+
+```csharp
+var view = new MarkdownRendererControlBuilder()
+    .UseGitHubFlavoredMarkdown()
+    .UseMarkdownExtra()
+    .WithMarkdown(markdownSource)
+    .WithTheme(new MarkdownTheme())
+    .WithSelectionEnabled(true)
+    .Build();
+```
+
+Core CommonMark-only setup stays in the core package:
+
+```csharp
+var view = MarkdownRendererControl.CreateDefault(markdownSource);
+```
+
+## Query the parsed document
+
+```csharp
+foreach (var heading in view.Document.GetHeadings())
+{
+    var level = heading.Level;
+    var text = heading.DisplayText;
+    var sourceSpan = heading.SourceSpan;
+}
+
+var links = view.Document.GetLinks();
+var codeBlocks = view.Document.GetCodeBlocks();
+var images = view.Document.GetImages();
+var footnotes = view.Document.GetFootnotes();
+var definitions = view.Document.GetDefinitionItems();
+var abbreviations = view.Document.GetAbbreviations();
+var fragments = view.Document.GetFragments();
+```
+
+`UseGitHubFlavoredMarkdown()` stays strict to GFM. Call `UseMarkdownExtra()`
+when you also want definition lists, abbreviations, and figure/caption nodes.
+Raw HTML and LaTeX/math are not enabled by these helpers.
+
+## Copy selection
+
+Keyboard and context-menu copy preserve the markdown source as the plain-text
+clipboard payload and add an HTML payload for formatted paste targets. Apps that
+want rendered semantic plain text can opt in explicitly:
+
+```csharp
+using MarkdownRenderer.Selection;
+
+MarkdownView.CopySelectionToClipboard(new MarkdownCopyOptions
+{
+    PlainTextMode = MarkdownPlainTextCopyMode.RenderedText,
+});
 ```
 
 ## Handle links
@@ -93,9 +152,7 @@ theme.Overrides[MarkdownElementKeys.Heading1] = new ElementStyleOverride
 
 MarkdownView.Theme = theme;
 
-// Required today when mutating Overrides after assignment. A future API should
-// make this automatic.
-theme.Invalidate();
+// Direct override mutations invalidate the assigned theme automatically.
 ```
 
 ## Host a WinUI control for a markdown block
@@ -124,3 +181,17 @@ MarkdownView.EmbedFactory = new DemoEmbedFactory();
 Important: `CanCreate` and `MeasureHeight` run on the background layout thread.
 They must not touch WinUI objects. `CreateBlock` runs on the UI thread.
 
+This is also the recommended shape for Mermaid or diagram support: recognize a
+fenced code block whose info string is `mermaid` in `CanCreate`, return a cheap
+measured height in `MeasureHeight`, and host your chosen renderer from
+`CreateBlock`.
+
+## Next steps
+
+- [Public API](public-api.md) for the full consumer surface.
+- [Theming and customization](theming-and-customization.md) for style keys and
+  override composition.
+- [Extensibility API](extensibility-api.md) for custom renderers and hosted
+  controls.
+- [Troubleshooting](troubleshooting.md) for SVG, clipboard, graphics-device, and
+  embed-threading issues.

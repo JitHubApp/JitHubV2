@@ -13,13 +13,22 @@ namespace MarkdownRenderer.Layout.Boxes;
 /// Renders a GFM pipe table. Each cell is an <see cref="InlineContainerBox"/>
 /// so hit-testing, selection, and source-accurate copy all work out of the box.
 /// </summary>
-public sealed class TableBox : BlockBox
+internal sealed class TableBox : BlockBox
 {
-    public readonly record struct CellInfo(InlineContainerBox Box, int Row, int Column, bool IsHeader);
+    internal enum CellAlignment
+    {
+        Default,
+        Left,
+        Center,
+        Right,
+    }
+
+    internal readonly record struct CellInfo(InlineContainerBox Box, int Row, int Column, bool IsHeader);
 
     private readonly MarkdownLayoutContext _context;
     private readonly InlineContainerBox[][] _headerCells;  // [row][col]
     private readonly InlineContainerBox[][] _bodyCells;    // [row][col]
+    private readonly CellAlignment[] _columnAlignments;
     private readonly int _colCount;
 
     private float[]? _colWidths;
@@ -28,11 +37,16 @@ public sealed class TableBox : BlockBox
     private const float CellPadH = 8f;
     private const float CellPadV = 6f;
 
-    public TableBox(MarkdownLayoutContext context, InlineContainerBox[][] headerCells, InlineContainerBox[][] bodyCells)
+    public TableBox(
+        MarkdownLayoutContext context,
+        InlineContainerBox[][] headerCells,
+        InlineContainerBox[][] bodyCells,
+        IReadOnlyList<CellAlignment>? columnAlignments = null)
     {
         _context = context ?? throw new ArgumentNullException(nameof(context));
         _headerCells = headerCells ?? Array.Empty<InlineContainerBox[]>();
         _bodyCells = bodyCells ?? Array.Empty<InlineContainerBox[]>();
+        _columnAlignments = columnAlignments is null ? Array.Empty<CellAlignment>() : [.. columnAlignments];
         Margin = new Thickness(0, 6, 0, 6);
 
         if (_headerCells.Length > 0 && _headerCells[0].Length > 0)
@@ -72,6 +86,7 @@ public sealed class TableBox : BlockBox
 
     public override float Measure(float availableWidth)
     {
+        ThrowIfCancellationRequested();
         if (_colCount == 0) { Bounds = new Rect(0, 0, availableWidth, 0); return 0; }
 
         float innerWidth = availableWidth - (float)(Margin.Left + Margin.Right);
@@ -86,16 +101,26 @@ public sealed class TableBox : BlockBox
 
         for (int r = 0; r < _headerCells.Length; r++)
         {
+            _context.CancellationToken.ThrowIfCancellationRequested();
             float maxH = 0;
-            foreach (var cell in _headerCells[r])
-                maxH = Math.Max(maxH, cell.Measure(cellMeasureWidth));
+            for (int c = 0; c < _headerCells[r].Length; c++)
+            {
+                _context.CancellationToken.ThrowIfCancellationRequested();
+                _headerCells[r][c].TextAlignment = ToCanvasAlignment(GetColumnAlignment(c), _context.FlowDirection == FlowDirection.RightToLeft);
+                maxH = Math.Max(maxH, _headerCells[r][c].Measure(cellMeasureWidth));
+            }
             _rowHeights[r] = maxH + CellPadV * 2;
         }
         for (int r = 0; r < _bodyCells.Length; r++)
         {
+            _context.CancellationToken.ThrowIfCancellationRequested();
             float maxH = 0;
-            foreach (var cell in _bodyCells[r])
-                maxH = Math.Max(maxH, cell.Measure(cellMeasureWidth));
+            for (int c = 0; c < _bodyCells[r].Length; c++)
+            {
+                _context.CancellationToken.ThrowIfCancellationRequested();
+                _bodyCells[r][c].TextAlignment = ToCanvasAlignment(GetColumnAlignment(c), _context.FlowDirection == FlowDirection.RightToLeft);
+                maxH = Math.Max(maxH, _bodyCells[r][c].Measure(cellMeasureWidth));
+            }
             _rowHeights[_headerCells.Length + r] = maxH + CellPadV * 2;
         }
 
@@ -130,6 +155,7 @@ public sealed class TableBox : BlockBox
                 float colX = rtl
                     ? x + (float)Margin.Left + innerW - (nCols - visCol) * colWidth
                     : x + (float)Margin.Left + visCol * colWidth;
+                _headerCells[r][c].TextAlignment = ToCanvasAlignment(GetColumnAlignment(c), rtl);
                 _headerCells[r][c].Arrange(colX + CellPadH, rowY + CellPadV, colWidth - CellPadH * 2);
             }
             rowY += rh;
@@ -144,6 +170,7 @@ public sealed class TableBox : BlockBox
                 float colX = rtl
                     ? x + (float)Margin.Left + innerW - (nCols - visCol) * colWidth
                     : x + (float)Margin.Left + visCol * colWidth;
+                _bodyCells[r][c].TextAlignment = ToCanvasAlignment(GetColumnAlignment(c), rtl);
                 _bodyCells[r][c].Arrange(colX + CellPadH, rowY + CellPadV, colWidth - CellPadH * 2);
             }
             rowY += rh;
@@ -294,6 +321,25 @@ public sealed class TableBox : BlockBox
             return (min + max) / 2.0;
         return Math.Max(min, Math.Min(max, value));
     }
+
+    internal override void ThrowIfCancellationRequested()
+        => _context.CancellationToken.ThrowIfCancellationRequested();
+
+    private CellAlignment GetColumnAlignment(int column)
+        => column >= 0 && column < _columnAlignments.Length
+            ? _columnAlignments[column]
+            : CellAlignment.Default;
+
+    private static Microsoft.Graphics.Canvas.Text.CanvasHorizontalAlignment ToCanvasAlignment(CellAlignment alignment, bool rtl)
+        => alignment switch
+        {
+            CellAlignment.Left => Microsoft.Graphics.Canvas.Text.CanvasHorizontalAlignment.Left,
+            CellAlignment.Center => Microsoft.Graphics.Canvas.Text.CanvasHorizontalAlignment.Center,
+            CellAlignment.Right => Microsoft.Graphics.Canvas.Text.CanvasHorizontalAlignment.Right,
+            _ => rtl
+                ? Microsoft.Graphics.Canvas.Text.CanvasHorizontalAlignment.Right
+                : Microsoft.Graphics.Canvas.Text.CanvasHorizontalAlignment.Left,
+        };
 
     public override void Dispose()
     {

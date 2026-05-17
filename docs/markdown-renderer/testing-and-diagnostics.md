@@ -57,6 +57,9 @@ Current automation checks include:
 - lazy image sample load;
 - scroll anchoring sample load;
 - footnotes sample load;
+- Markdown Extra sample load;
+- diagram embed sample load;
+- long-document stress sample load;
 - keyboard Tab traversal;
 - focus-ring dismissal on click;
 - double-click word selection;
@@ -103,16 +106,18 @@ The UI automation harness enables diagnostics for the probes that read this log.
 Normal sample and app runs stay quiet so paint and pointer paths do not pay the
 logging cost.
 
-## Test gaps
+## Release smoke checklist
 
-Needed before maturity:
+Run these before declaring a 1.0 package ready:
 
-- more exhaustive mixed RTL/LTR documents;
-- real Narrator smoke across built-in and customized Windows contrast themes;
-- optional system language / MRT layout-direction smoke;
-- 10K-line and 100K-word stress documents;
-- rapid theme switching;
-- concurrent scroll + selection + theme changes;
-- hosted embed selection participation;
-- x86/ARM64 SVG fallback behavior.
-
+- Narrator phrasing for headings, tables, lists, links, images, embeds,
+  footnotes, definitions, abbreviations, subscript/superscript, figures, and
+  fragments;
+- every built-in Windows contrast theme plus one customized contrast theme;
+- system language / RTL smoke, including mixed LTR/RTL paragraphs;
+- rapid theme switching during scroll, image/SVG load completion, and selection;
+- concurrent scroll + selection + hosted-control drag-through;
+- monitor disconnect/reconnect or graphics-device reset smoke;
+- x86, x64, and ARM64 sample launch with SVG rendering;
+- package inspection for XML docs, README, icon, license metadata, source docs,
+  and all native ThorVG runtime assets.

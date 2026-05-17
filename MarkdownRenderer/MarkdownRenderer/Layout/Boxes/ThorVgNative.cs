@@ -21,6 +21,9 @@
 //    NativeAOT compatibility.
 
 using System;
+using System.Collections.Generic;
+using System.IO;
+using System.Reflection;
 using System.Runtime.InteropServices;
 
 namespace MarkdownRenderer.Layout.Boxes;
@@ -28,6 +31,46 @@ namespace MarkdownRenderer.Layout.Boxes;
 internal static partial class ThorVgNative
 {
     private const string DllName = "thorvg";
+
+    static ThorVgNative()
+    {
+        NativeLibrary.SetDllImportResolver(typeof(ThorVgNative).Assembly, ResolveThorVg);
+    }
+
+    private static IntPtr ResolveThorVg(string libraryName, Assembly assembly, DllImportSearchPath? searchPath)
+    {
+        if (!string.Equals(libraryName, DllName, StringComparison.OrdinalIgnoreCase))
+            return IntPtr.Zero;
+
+        foreach (var candidate in EnumerateNativeCandidates())
+        {
+            if (File.Exists(candidate) && NativeLibrary.TryLoad(candidate, out var handle))
+                return handle;
+        }
+
+        return IntPtr.Zero;
+    }
+
+    private static IEnumerable<string> EnumerateNativeCandidates()
+    {
+        string rid = RuntimeInformation.ProcessArchitecture switch
+        {
+            Architecture.X64 => "win-x64",
+            Architecture.Arm64 => "win-arm64",
+            Architecture.X86 => "win-x86",
+            _ => string.Empty,
+        };
+
+        string baseDir = AppContext.BaseDirectory;
+        yield return Path.Combine(baseDir, "thorvg.dll");
+        yield return Path.Combine(baseDir, "MarkdownRenderer", "thorvg.dll");
+
+        if (!string.IsNullOrEmpty(rid))
+        {
+            yield return Path.Combine(baseDir, "runtimes", rid, "native", "thorvg.dll");
+            yield return Path.Combine(baseDir, "native", rid, "thorvg.dll");
+        }
+    }
 
     public enum Tvg_Result : int
     {

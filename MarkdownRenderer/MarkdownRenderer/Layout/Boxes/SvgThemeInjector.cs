@@ -25,7 +25,7 @@ namespace MarkdownRenderer.Layout.Boxes;
 /// </list>
 /// Public so unit tests can assert the byte-level contract directly.
 /// </summary>
-public static class SvgThemeInjector
+internal static class SvgThemeInjector
 {
     /// <summary>
     /// Injects <c>color="#RRGGBB"</c> on the root <c>&lt;svg&gt;</c> tag

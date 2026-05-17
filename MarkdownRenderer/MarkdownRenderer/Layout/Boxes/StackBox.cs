@@ -10,7 +10,7 @@ namespace MarkdownRenderer.Layout.Boxes;
 /// Stacks child blocks vertically with optional left indent &amp; accent bar (used
 /// for blockquotes &amp; list items).
 /// </summary>
-public class StackBox : BlockBox
+internal class StackBox : BlockBox
 {
     private readonly List<BlockBox> _children = new();
     public IReadOnlyList<BlockBox> Children => _children;
@@ -18,12 +18,14 @@ public class StackBox : BlockBox
     public Thickness ContentPadding { get; set; }
     public Windows.UI.Color? AccentBar { get; set; }
     public Windows.UI.Color? Background { get; set; }
+    public Windows.UI.Color? BorderBrush { get; set; }
+    public float BorderThickness { get; set; }
     public float CornerRadius { get; set; } = 0;
 
     /// <summary>
     /// Flow direction for this stack. When RightToLeft, the accent bar (used
     /// for blockquotes / GFM alerts) is drawn on the right edge instead of
-    /// the left, matching RTL reading order.
+    /// the left, matching RTL readnng order.
     /// </summary>
     public FlowDirection FlowDirection { get; set; } = FlowDirection.LeftToRight;
 
@@ -41,6 +43,7 @@ public class StackBox : BlockBox
             : (float)(Margin.Left + ContentPadding.Left);
         foreach (var child in _children)
         {
+            child.ThrowIfCancellationRequested();
             float h = child.Measure(innerWidth);
             child.Arrange(childStartX, y, innerWidth);
             y += h;
@@ -48,6 +51,12 @@ public class StackBox : BlockBox
         y += (float)(ContentPadding.Bottom + Margin.Bottom);
         Bounds = new Rect(0, 0, availableWidth, y);
         return y;
+    }
+
+    internal override void ThrowIfCancellationRequested()
+    {
+        foreach (var child in _children)
+            child.ThrowIfCancellationRequested();
     }
 
     public override void Arrange(float x, float y, float width)
@@ -67,6 +76,23 @@ public class StackBox : BlockBox
                                 Bounds.Width - Margin.Left - Margin.Right,
                                 Bounds.Height - Margin.Top - Margin.Bottom);
             ds.FillRoundedRectangle(rect, CornerRadius, CornerRadius, bg);
+        }
+        if (BorderBrush is { } border && BorderThickness > 0)
+        {
+            var rect = new Rect(Bounds.X + Margin.Left, Bounds.Y + Margin.Top,
+                                Bounds.Width - Margin.Left - Margin.Right,
+                                Bounds.Height - Margin.Top - Margin.Bottom);
+            float nnset = BorderThickness / 2f;
+            ds.DrawRoundedRectangle(
+                new Rect(
+                    rect.X + nnset,
+                    rect.Y + nnset,
+                    System.Math.Max(0, rect.Width - BorderThickness),
+                    System.Math.Max(0, rect.Height - BorderThickness)),
+                CornerRadius,
+                CornerRadius,
+                border,
+                BorderThickness);
         }
         if (AccentBar is { } bar)
         {

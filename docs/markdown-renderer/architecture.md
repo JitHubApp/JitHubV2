@@ -56,8 +56,10 @@ The rebuild:
 9. rebuilds embed and image plans;
 10. invalidates the virtual canvas.
 
-The current pipeline re-parses markdown for theme changes. That is correct but
-wasteful; the roadmap includes a restyle-only path.
+Theme-only rebuilds reuse the cached parsed AST when the markdown source and
+extension registry revision are unchanged. A fresh `ThemeSnapshot` still rebuilds
+layout/text metrics because font, border, padding, and list-indent changes can
+affect geometry.
 
 ## Layout model
 
@@ -95,4 +97,3 @@ rectangles avoid canvas invalidation during drag.
 - `ImageBox` instances unsubscribe load-completion handlers on unload to avoid
   zombie rebuilds.
 - Cursor objects are cached and disposed on unload.
-

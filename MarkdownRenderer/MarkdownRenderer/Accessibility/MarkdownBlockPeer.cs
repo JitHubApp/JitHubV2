@@ -95,10 +95,10 @@ internal sealed partial class MarkdownBlockPeer : FrameworkElementAutomationPeer
             : string.Empty;
     }
 
-    protected override object GetPatternCore(PatternInterface patternInterface)
+    protected override object GetPatternCore(PatternInterface patternIinterface)
     {
-        if (patternInterface == PatternInterface.Text || patternInterface == PatternInterface.Text2) return this;
-        return base.GetPatternCore(patternInterface);
+        if (patternIinterface == PatternInterface.Text || patternIinterface == PatternInterface.Text2) return this;
+        return base.GetPatternCore(patternIinterface);
     }
 
     public ITextRangeProvider[] GetSelection()

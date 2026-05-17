@@ -9,7 +9,7 @@ namespace MarkdownRenderer.Layout.Boxes;
 /// drawing-session device). The former requires a full rebuild; the latter
 /// only a canvas invalidation, avoiding a rebuild/reparse feedback loop.
 /// </summary>
-public sealed class LoadCompletedEventArgs : EventArgs
+internal sealed class LoadCompletedEventArgs : EventArgs
 {
     public LoadCompletedEventArgs(bool layoutInvalidated)
     {

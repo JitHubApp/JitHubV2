@@ -5,7 +5,7 @@ using MarkdownRenderer.Theming;
 
 namespace MarkdownRenderer.Layout.Boxes;
 
-public sealed class ThematicBreakBox : BlockBox
+internal sealed class ThematicBreakBox : BlockBox
 {
     private readonly MarkdownLayoutContext _context;
 

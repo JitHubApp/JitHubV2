@@ -6,7 +6,7 @@ using Markdig.Syntax;
 
 namespace MarkdownRenderer.Parsing;
 
-public sealed class MarkdigParser
+internal sealed class MarkdigParser
 {
     private readonly MarkdownPipeline _pipeline;
 
@@ -46,4 +46,4 @@ public sealed class MarkdigParser
     }
 }
 
-public sealed record ParsedMarkdown(string SourceText, MarkdownDocument Document);
+internal sealed record ParsedMarkdown(string SourceText, MarkdownDocument Document);

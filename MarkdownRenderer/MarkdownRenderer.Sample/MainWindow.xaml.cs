@@ -30,8 +30,11 @@ public sealed partial class MainWindow : Window
         ["GFM Alerts"] = AlertsSample,
         ["Images"]     = ImagesSample,
         ["Embeds"]     = EmbedsSample,
+        ["Markdown Extra"] = MarkdownExtraSample,
+        ["Diagrams"]   = DiagramEmbedSample,
         ["RTL"]        = RtlSample,
         ["Virtualization"] = "", // generated lazily in OnSampleButtonClick
+        ["Stress"]     = "", // generated lazily in OnSampleButtonClick
         ["Selection"]  = SelectionSample,
         ["Lazy Images"]   = LazyImagesSample,
         ["Scroll Anchor"] = ScrollAnchorSample,
@@ -164,16 +167,14 @@ public sealed partial class MainWindow : Window
             Background = (Brush)Application.Current.Resources["CardStrokeColorDefaultBrush"],
         };
 
-        var registry = new MarkdownExtensionRegistry().UseGitHubFlavoredMarkdown();
-
-        _renderer = new MarkdownRendererControl
-        {
-            Markdown = FullDemoSample,
-            ExtensionRegistry = registry,
-            Theme = new MarkdownTheme(),
-            EmbedFactory = new SampleEmbedFactory(),
-            Margin = new Thickness(0),
-        };
+        _renderer = new MarkdownRendererControlBuilder()
+            .UseGitHubFlavoredMarkdown()
+            .UseMarkdownExtra()
+            .WithMarkdown(FullDemoSample)
+            .WithTheme(new MarkdownTheme())
+            .WithEmbedFactory(new SampleEmbedFactory())
+            .Build();
+        _renderer.Margin = new Thickness(0);
         AutomationProperties.SetAutomationId(_renderer, "MarkdownRenderer");
         _renderer.LinkClick += (_, e) =>
         {
@@ -267,6 +268,7 @@ public sealed partial class MainWindow : Window
             string? md = label switch
             {
                 "Virtualization" => VirtualizationSample,
+                "Stress" => StressSample,
                 _ => Samples.TryGetValue(label, out var v) ? v : null,
             };
             if (md is not null) _editor.Text = md;
@@ -525,6 +527,8 @@ public sealed partial class MainWindow : Window
           `Ctrl+C` to copy the *exact original markdown source*
         - **GFM extensions** — tables, task lists, alerts, footnotes via the
           `MarkdownRenderer.Gfm` package
+        - **Markdown Extra opt-ins** — definition lists, abbreviations, figures,
+          subscript, superscript, inserted text, and marked text
         - **AOT compatible** — no reflection, all dispatch through virtual calls
 
         ---
@@ -563,6 +567,7 @@ public sealed partial class MainWindow : Window
         - [x] ThemeSnapshot threading safety
         - [x] AOT-safe renderer dispatch
         - [x] GFM: tables, task lists, alerts, footnotes
+        - [x] Markdown Extra: definition lists, abbreviations, figures
         - [x] ListItemBox — bullet and text side by side
         - [x] Full ITextProvider accessibility peer
         - [ ] Per-language syntax highlighting
@@ -582,7 +587,8 @@ public sealed partial class MainWindow : Window
         ```csharp
         // Register GFM extensions and create the control
         var registry = new MarkdownExtensionRegistry()
-            .UseGitHubFlavoredMarkdown();
+            .UseGitHubFlavoredMarkdown()
+            .UseMarkdownExtra();
 
         var control = new MarkdownRendererControl
         {
@@ -687,6 +693,65 @@ public sealed partial class MainWindow : Window
         return sb.ToString();
     }
 
+    private static readonly string StressSample = GenerateStressSample();
+
+    private static string GenerateStressSample()
+    {
+        var sb = new System.Text.StringBuilder(800_000);
+        sb.AppendLine("# Long Document Stress");
+        sb.AppendLine();
+        sb.AppendLine("This page mixes headings, paragraphs, lists, tables, code, footnotes, images, and embeds so scroll, selection, theme switching, and lazy realization can be exercised together.");
+        sb.AppendLine();
+        for (int i = 1; i <= 1_200; i++)
+        {
+            if (i % 40 == 1)
+            {
+                sb.Append("## Section ").Append((i / 40) + 1).AppendLine();
+                sb.AppendLine();
+            }
+
+            sb.Append("Paragraph ").Append(i).Append(": ");
+            sb.AppendLine("The quick brown fox jumps over the lazy dog with **bold**, *italic*, `code`, [a link](https://example.com), H~2~O, E = mc^2^, ++inserted++, and ==marked== text for layout stress.");
+            sb.AppendLine();
+
+            if (i % 7 == 0)
+            {
+                sb.Append("- [").Append(i % 14 == 0 ? "x" : " ").Append("] Task item ").Append(i).AppendLine();
+                sb.Append("  - Nested child ").Append(i).AppendLine();
+                sb.AppendLine();
+            }
+
+            if (i % 25 == 0)
+            {
+                sb.AppendLine("| Left | Center | Right |");
+                sb.AppendLine("|:---|:---:|---:|");
+                for (int row = 0; row < 5; row++)
+                    sb.Append("| L").Append(i).Append('-').Append(row).Append(" | C | R |").AppendLine();
+                sb.AppendLine();
+            }
+
+            if (i % 60 == 0)
+            {
+                sb.AppendLine("```csharp");
+                sb.Append("Console.WriteLine(\"stress ").Append(i).AppendLine("\");");
+                sb.AppendLine("```");
+                sb.AppendLine();
+            }
+
+            if (i % 90 == 0)
+            {
+                sb.Append("```button:Stress action ").Append(i).AppendLine();
+                sb.AppendLine("```");
+                sb.AppendLine();
+            }
+        }
+
+        sb.AppendLine("Footnote check[^stress].");
+        sb.AppendLine();
+        sb.AppendLine("[^stress]: End-of-document footnote for navigation and selection stress.");
+        return sb.ToString();
+    }
+
     private const string EmbedsSample = """
         # Hosted WinUI Embeds
 
@@ -711,6 +776,64 @@ public sealed partial class MainWindow : Window
         - [x] Markdig integration
         - [x] Flow layout
         - [ ] These are focusable read-only WinUI CheckBoxes hosted on the overlay
+        """;
+
+    private const string MarkdownExtraSample = """
+        # Markdown Extra
+
+        This page exercises opt-in syntax that is intentionally separate from
+        strict GitHub-flavored markdown.
+
+        ## Emphasis Extras
+
+        Water is H~2~O, energy is E = mc^2^, ++inserted text++ can show edits,
+        and ==marked text== can call out a search hit.
+
+        ## Abbreviations
+
+        HTML and SVG expansions are exposed to accessibility and document queries.
+
+        *[HTML]: Hyper Text Markup Language
+        *[SVG]: Scalable Vector Graphics
+
+        ## Definition Lists
+
+        Renderer
+        :   A native WinUI control that parses markdown, lays it out off the UI
+          thread, and paints it with Win2D.
+
+        Extension
+        :   A Markdig parser feature plus an optional renderer registered through
+          `MarkdownExtensionRegistry`.
+
+        ## Figure Candidate
+
+        ![A small blue circle figure sample](data:image/svg+xml;utf8,%3Csvg%20xmlns%3D%27http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg%27%20width%3D%2764%27%20height%3D%2764%27%20viewBox%3D%270%200%2064%2064%27%3E%3Ccircle%20cx%3D%2732%27%20cy%3D%2732%27%20r%3D%2724%27%20fill%3D%27%230078D4%27%2F%3E%3C%2Fsvg%3E "Blue circle")
+
+        Figure: A caption rendered only when Markdig produces a `Figure` node.
+        """;
+
+    private const string DiagramEmbedSample = """
+        # Mermaid Diagram Extension Sample
+
+        The renderer does not ship a built-in diagram engine. This sample shows
+        how an app can recognize fenced code and host its own diagram surface
+        through `IMarkdownEmbedFactory`.
+
+        ```mermaid
+        flowchart LR
+            Parse[Markdig parse] --> Plan[Block plan]
+            Plan --> Layout[Off-thread layout]
+            Layout --> Paint[Win2D paint]
+            Paint --> UIA[TextPattern and fragments]
+        ```
+
+        ```diagram:sequence
+        participant App
+        participant MarkdownRenderer
+        App->>MarkdownRenderer: ConfigureExtensions(...)
+        MarkdownRenderer->>App: IMarkdownEmbedFactory.CreateBlock
+        ```
         """;
 
     // ── New feature sample pages ───────────────────────────────────────────────
@@ -974,12 +1097,16 @@ internal sealed class SampleEmbedFactory : MarkdownRenderer.Hosting.IMarkdownEmb
     {
         return block is Markdig.Syntax.FencedCodeBlock fc
             && ((fc.Info?.StartsWith("button:", StringComparison.Ordinal) ?? false) ||
-                (fc.Info?.StartsWith("panel:", StringComparison.Ordinal) ?? false));
+                (fc.Info?.StartsWith("panel:", StringComparison.Ordinal) ?? false) ||
+                IsDiagramBlock(fc));
     }
 
     public float MeasureHeight(Markdig.Syntax.Block block, float availableWidth)
     {
         var fc = (Markdig.Syntax.FencedCodeBlock)block;
+        if (IsDiagramBlock(fc))
+            return 180f;
+
         return fc.Info?.StartsWith("panel:", StringComparison.Ordinal) == true
             ? 84f
             : 36f;
@@ -988,6 +1115,9 @@ internal sealed class SampleEmbedFactory : MarkdownRenderer.Hosting.IMarkdownEmb
     public Microsoft.UI.Xaml.FrameworkElement CreateBlock(Markdig.Syntax.Block block)
     {
         var fc = (Markdig.Syntax.FencedCodeBlock)block;
+        if (IsDiagramBlock(fc))
+            return CreateDiagramPanel(fc);
+
         if (fc.Info?.StartsWith("panel:", StringComparison.Ordinal) == true)
             return CreateCompositePanel(fc);
 
@@ -1011,6 +1141,51 @@ internal sealed class SampleEmbedFactory : MarkdownRenderer.Hosting.IMarkdownEmb
             _ = dlg.ShowAsync();
         };
         return btn;
+    }
+
+    private static bool IsDiagramBlock(Markdig.Syntax.FencedCodeBlock fc)
+        => string.Equals(fc.Info, "mermaid", StringComparison.OrdinalIgnoreCase) ||
+           (fc.Info?.StartsWith("diagram:", StringComparison.OrdinalIgnoreCase) ?? false);
+
+    private static Microsoft.UI.Xaml.FrameworkElement CreateDiagramPanel(Markdig.Syntax.FencedCodeBlock fc)
+    {
+        string kind = string.Equals(fc.Info, "mermaid", StringComparison.OrdinalIgnoreCase)
+            ? "Mermaid"
+            : fc.Info?["diagram:".Length..] ?? "Diagram";
+        string source = fc.Lines.ToString();
+
+        var panel = new StackPanel
+        {
+            Spacing = 8,
+        };
+
+        var title = new TextBlock
+        {
+            Text = kind,
+            FontWeight = Microsoft.UI.Text.FontWeights.SemiBold,
+        };
+        var body = new TextBlock
+        {
+            Text = source,
+            FontFamily = new FontFamily("Cascadia Mono, Consolas"),
+            FontSize = 12,
+            TextWrapping = TextWrapping.Wrap,
+        };
+        panel.Children.Add(title);
+        panel.Children.Add(body);
+
+        var border = new Border
+        {
+            Padding = new Thickness(12),
+            CornerRadius = new CornerRadius(6),
+            BorderThickness = new Thickness(1),
+            BorderBrush = (Brush)Application.Current.Resources["CardStrokeColorDefaultBrush"],
+            Background = (Brush)Application.Current.Resources["CardBackgroundFillColorSecondaryBrush"],
+            Child = panel,
+        };
+        AutomationProperties.SetName(border, $"{kind} diagram sample");
+        AutomationProperties.SetAutomationId(border, "DiagramEmbedSample");
+        return border;
     }
 
     private static Microsoft.UI.Xaml.FrameworkElement CreateCompositePanel(Markdig.Syntax.FencedCodeBlock fc)

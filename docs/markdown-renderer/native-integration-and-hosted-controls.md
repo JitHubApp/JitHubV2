@@ -25,6 +25,10 @@ Threading contract:
 - `CreateBlock` runs on the UI thread.
 - `RecycleBlock` runs when a realized embed is removed from the overlay.
 
+The renderer guards `CanCreate` and `MeasureHeight`: if either callback is
+reached on the UI dispatcher thread, layout throws with guidance to move
+thread-affine work to `CreateBlock` / `RecycleBlock`.
+
 ## Inline embeds
 
 The core layout also has `InlineEmbedRun` support. Inline embeds are placed into
@@ -60,25 +64,26 @@ Normal clicks on hosted controls should go to the hosted controls. The renderer
 suppresses its own cursor and link-hover behavior when the pointer is over an
 embed so the embedded element can show its own cursor and handle input.
 
-Selection drag is a special case. Mature behavior requires a temporary drag shield
-above embeds so pointer movement remains with the markdown selection system while
-the drag is active. The shield should be disabled immediately on release so
-normal control interaction resumes.
+Selection drag is a special case. During an active markdown selection drag, the
+renderer enables a temporary transparent drag shield above embeds so pointer
+movement remains with the markdown selection system. The shield is disabled on
+release/cancel so normal control interaction resumes.
 
 ## Accessibility
 
-Hosted controls expose their own UIA peers through XAML. The hard part is
-semantic bridging: screen readers should experience a coherent document where
-painted markdown and hosted controls share a predictable reading and focus order.
-This is partially implemented through focus traversal and visual-tree peers but
-needs further work.
+Hosted controls expose their own UIA peers through XAML. The renderer bridges
+them into the markdown document by keeping focus order, selection source spans,
+and `RangeFromChild` mappings coherent with the painted document. Manual release
+smoke should still cover complex custom controls because app-authored peers can
+vary.
 
 ## Design rules for embed authors
 
 - Never touch WinUI APIs from `CanCreate` or `MeasureHeight`.
+- Treat `CanCreate` and `MeasureHeight` as background-thread callbacks; compute
+  from Markdig block data and primitive values only.
 - Make `MeasureHeight` deterministic for a given block and width.
 - Keep hosted controls lightweight; many embeds can exist in long documents.
 - Use `RecycleBlock` to detach event handlers or dispose expensive resources.
 - Do not assume the same `FrameworkElement` instance will be reused.
 - Treat embed realization as viewport-dependent.
-

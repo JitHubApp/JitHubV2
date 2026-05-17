@@ -63,21 +63,21 @@ internal sealed partial class MarkdownNodePeer : FrameworkElementAutomationPeer,
 
     protected override IList<AutomationPeer> GetChildrenCore() => _root.GetChildPeersForSemanticNode(_node);
 
-    protected override object GetPatternCore(PatternInterface patternInterface)
+    protected override object GetPatternCore(PatternInterface patternIinterface)
     {
         if (_node.Role == MarkdownSemanticRole.Table &&
-            (patternInterface == PatternInterface.Grid || patternInterface == PatternInterface.Table))
+            (patternIinterface == PatternInterface.Grid || patternIinterface == PatternInterface.Table))
         {
             return this;
         }
 
         if (_node.Role == MarkdownSemanticRole.TableCell &&
-            (patternInterface == PatternInterface.GridItem || patternInterface == PatternInterface.TableItem))
+            (patternIinterface == PatternInterface.GridItem || patternIinterface == PatternInterface.TableItem))
         {
             return this;
         }
 
-        return base.GetPatternCore(patternInterface);
+        return base.GetPatternCore(patternIinterface);
     }
 
     protected override Windows.Foundation.Rect GetBoundingRectangleCore()

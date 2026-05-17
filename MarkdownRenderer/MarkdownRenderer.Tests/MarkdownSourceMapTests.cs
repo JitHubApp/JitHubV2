@@ -74,6 +74,20 @@ public class MarkdownSourceMapTests
     }
 
     [Fact]
+    public void Slice_AtomicInlineImageSlot_ReturnsFullMarkdownImage()
+    {
+        const string source = "before ![alt](image.png) after";
+        int imageStart = source.IndexOf("![", System.StringComparison.Ordinal);
+        var map = BuildMap(source, (0, 1, 1, imageStart, "![alt](image.png)".Length));
+
+        var slice = map.Slice(new DocumentRange(
+            new DocumentPosition(0, 1, 0),
+            new DocumentPosition(0, 1, 1)));
+
+        Assert.Equal("![alt](image.png)", slice);
+    }
+
+    [Fact]
     public void Slice_ReversedRange_NormalizesFirst()
     {
         var map = BuildMap("hello", (0, 0, 5, 0, 5));

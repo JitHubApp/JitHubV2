@@ -53,17 +53,20 @@ owns their layout slot and virtualization lifecycle.
 
 ### Accessibility is part of the architecture, not an afterthought
 
-The current implementation exposes a UIA `Document` peer, block peers, link invoke
-peers, accessible image text, and keyboard navigation. Full maturity still needs
-Text pattern, table pattern, list roles, heading-level exposure, and richer range
-navigation.
+The current implementation exposes a UIA `Document` peer, TextPattern ranges,
+RangeFromChild for links/images/embeds, table/list roles, heading levels,
+accessible image text, and keyboard navigation. Release validation still needs
+manual Narrator and contrast-theme smoke because assistive technology behavior
+can vary across Windows configurations.
 
 ## Non-goals
 
-- A full HTML engine. Raw HTML is not currently rendered as HTML and should be
-  treated as a future feature requiring a clear sanitization policy.
+- A full HTML engine. Raw HTML is not currently rendered as HTML and belongs on
+  a separate track with a clear sanitization policy.
+- A built-in LaTeX/math engine for 1.0.
+- A bundled diagram renderer. Apps can add Mermaid or other diagram support via
+  `IMarkdownEmbedFactory`.
 - Cross-platform rendering. The library is Windows/WinUI-specific.
 - CSS compatibility. The theme model is native and object-based, not CSS.
 - Browser-perfect markdown behavior at the cost of native behavior. GitHub
   compatibility is important, but native app behavior wins when tradeoffs exist.
-

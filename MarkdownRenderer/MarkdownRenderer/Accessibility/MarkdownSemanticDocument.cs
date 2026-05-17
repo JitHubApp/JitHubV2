@@ -83,6 +83,7 @@ internal sealed record MarkdownTextSpan(
     int TextStart,
     int TextEnd,
     InlineContainerBox? InlineBox,
+    InlineRun? InlineRun,
     ImageBox? ImageBox,
     EmbedBox? EmbedBox);
 
@@ -118,6 +119,19 @@ internal sealed class MarkdownSemanticDocument
         {
             if (span.InlineBox is { } icb && icb.BlockIndex == position.BlockIndex)
             {
+                if (span.InlineRun is { } run)
+                {
+                    if (position.InlineIndex < run.InlineIndex)
+                        return span.TextStart;
+                    if (position.InlineIndex > run.InlineIndex)
+                        continue;
+
+                    return Math.Clamp(
+                        span.TextStart + ProjectRenderedOffsetToText(run, position.CharacterOffset, span.TextEnd - span.TextStart),
+                        span.TextStart,
+                        span.TextEnd);
+                }
+
                 return Math.Clamp(span.TextStart + icb.GetBufferCharOffset(position), span.TextStart, span.TextEnd);
             }
         }
@@ -159,6 +173,13 @@ internal sealed class MarkdownSemanticDocument
             {
                 if (span.InlineBox is { } icb)
                 {
+                    if (span.InlineRun is { } run)
+                    {
+                        int accessibleOffset = Math.Clamp(textOffset - span.TextStart, 0, Math.Max(0, span.TextEnd - span.TextStart));
+                        int renderedOffset = ProjectTextOffsetToRendered(run, accessibleOffset, span.TextEnd - span.TextStart);
+                        return new DocumentPosition(icb.BlockIndex, run.InlineIndex, renderedOffset);
+                    }
+
                     int bufferOffset = Math.Clamp(textOffset - span.TextStart, 0, Math.Max(0, span.TextEnd - span.TextStart));
                     return icb.GetPositionFromBufferOffset(bufferOffset);
                 }
@@ -200,10 +221,37 @@ internal sealed class MarkdownSemanticDocument
 
             if (span.InlineBox is { } icb)
             {
-                var startPos = icb.GetPositionFromBufferOffset(start - span.TextStart);
-                var endPos = icb.GetPositionFromBufferOffset(end - span.TextStart);
+                DocumentPosition startPos;
+                DocumentPosition endPos;
+                if (span.InlineRun is { } run)
+                {
+                    int textLength = span.TextEnd - span.TextStart;
+                    startPos = new DocumentPosition(
+                        icb.BlockIndex,
+                        run.InlineIndex,
+                        ProjectTextOffsetToRendered(run, start - span.TextStart, textLength));
+                    endPos = new DocumentPosition(
+                        icb.BlockIndex,
+                        run.InlineIndex,
+                        ProjectTextOffsetToRendered(run, end - span.TextStart, textLength));
+                    if (end > start && endPos.CharacterOffset == startPos.CharacterOffset && run.RenderedLength > 0)
+                        endPos = endPos with { CharacterOffset = run.RenderedLength };
+                }
+                else
+                {
+                    startPos = icb.GetPositionFromBufferOffset(start - span.TextStart);
+                    endPos = icb.GetPositionFromBufferOffset(end - span.TextStart);
+                }
+
+                bool yielded = false;
                 foreach (var rect in icb.GetRangeRects(new DocumentRange(startPos, endPos)))
+                {
+                    yielded = true;
                     yield return rect;
+                }
+
+                if (!yielded && !icb.HasMeasuredLayout && icb.Bounds.Width > 0 && icb.Bounds.Height > 0)
+                    yield return icb.Bounds;
             }
             else if (span.ImageBox is { } image)
             {
@@ -245,12 +293,49 @@ internal sealed class MarkdownSemanticDocument
     private static DocumentPosition PositionFromSpanEnd(MarkdownTextSpan span)
     {
         if (span.InlineBox is { } icb)
+        {
+            if (span.InlineRun is { } run)
+                return new DocumentPosition(icb.BlockIndex, run.InlineIndex, run.RenderedLength);
             return icb.GetPositionFromBufferOffset(span.TextEnd - span.TextStart);
+        }
         if (span.ImageBox is { } image)
             return new DocumentPosition(image.BlockIndex, 0, 1);
         if (span.EmbedBox is { } embed)
             return new DocumentPosition(embed.BlockIndex, 0, 1);
         return DocumentPosition.Zero;
+    }
+
+    private static int ProjectRenderedOffsetToText(InlineRun run, int renderedOffset, int textLength)
+    {
+        if (textLength <= 0 || run.RenderedLength <= 0)
+            return 0;
+
+        renderedOffset = Math.Clamp(renderedOffset, 0, run.RenderedLength);
+        if (run is InlineImageRun or InlineEmbedRun)
+            return renderedOffset <= 0 ? 0 : textLength;
+
+        if (run.RenderedLength == textLength)
+            return renderedOffset;
+
+        return Math.Clamp((int)Math.Round(renderedOffset * (double)textLength / run.RenderedLength), 0, textLength);
+    }
+
+    private static int ProjectTextOffsetToRendered(InlineRun run, int textOffset, int textLength)
+    {
+        if (run.RenderedLength <= 0)
+            return 0;
+
+        textOffset = Math.Clamp(textOffset, 0, Math.Max(0, textLength));
+        if (run is InlineImageRun or InlineEmbedRun)
+            return textOffset <= 0 ? 0 : run.RenderedLength;
+
+        if (run.RenderedLength == textLength)
+            return textOffset;
+
+        if (textLength <= 0)
+            return 0;
+
+        return Math.Clamp((int)Math.Round(textOffset * (double)run.RenderedLength / textLength), 0, run.RenderedLength);
     }
 
     private sealed class Builder
@@ -309,23 +394,26 @@ internal sealed class MarkdownSemanticDocument
                     : null,
             };
 
-            int spanStart = _text.Length;
             foreach (var run in inline.Runs)
-                _text.Append(run.Text);
-            int spanEnd = _text.Length;
-            _spans.Add(new MarkdownTextSpan(spanStart, spanEnd, inline, null, null));
+            {
+                int runStart = _text.Length;
+                _text.Append(run.AccessibleText);
+                int runEnd = _text.Length;
+                _spans.Add(new MarkdownTextSpan(runStart, runEnd, inline, run, null, null));
+            }
             node.TextEnd = _text.Length;
 
             foreach (var run in inline.Runs)
             {
+                var runSpan = FindRunTextSpan(inline, run);
                 if (run is LinkRun link)
                 {
                     node.Add(new MarkdownSemanticNode(MarkdownSemanticRole.Link, inline)
                     {
                         InlineBox = inline,
                         InlineRun = link,
-                        TextStart = spanStart + inline.GetBufferCharOffset(new DocumentPosition(inline.BlockIndex, run.InlineIndex, 0)),
-                        TextEnd = spanStart + inline.GetBufferCharOffset(new DocumentPosition(inline.BlockIndex, run.InlineIndex, run.Text.Length)),
+                        TextStart = runSpan.Start,
+                        TextEnd = runSpan.End,
                         HelpText = link.Url,
                     });
                 }
@@ -335,8 +423,8 @@ internal sealed class MarkdownSemanticDocument
                     {
                         InlineBox = inline,
                         InlineRun = embedRun,
-                        TextStart = spanStart + inline.GetBufferCharOffset(new DocumentPosition(inline.BlockIndex, run.InlineIndex, 0)),
-                        TextEnd = spanStart + inline.GetBufferCharOffset(new DocumentPosition(inline.BlockIndex, run.InlineIndex, run.Text.Length)),
+                        TextStart = runSpan.Start,
+                        TextEnd = runSpan.End,
                     });
                 }
                 else if (run is InlineImageRun imageRun)
@@ -345,8 +433,8 @@ internal sealed class MarkdownSemanticDocument
                     {
                         InlineBox = inline,
                         InlineRun = imageRun,
-                        TextStart = spanStart + inline.GetBufferCharOffset(new DocumentPosition(inline.BlockIndex, run.InlineIndex, 0)),
-                        TextEnd = spanStart + inline.GetBufferCharOffset(new DocumentPosition(inline.BlockIndex, run.InlineIndex, run.Text.Length)),
+                        TextStart = runSpan.Start,
+                        TextEnd = runSpan.End,
                         HelpText = !string.IsNullOrWhiteSpace(imageRun.Title) ? imageRun.Title : imageRun.Url,
                     });
                 }
@@ -354,6 +442,17 @@ internal sealed class MarkdownSemanticDocument
 
             AppendBlockSeparator();
             return node;
+        }
+
+        private (int Start, int End) FindRunTextSpan(InlineContainerBox inline, InlineRun run)
+        {
+            foreach (var span in _spans)
+            {
+                if (ReferenceEquals(span.InlineBox, inline) && ReferenceEquals(span.InlineRun, run))
+                    return (span.TextStart, span.TextEnd);
+            }
+
+            return (_text.Length, _text.Length);
         }
 
         private MarkdownSemanticNode BuildImage(ImageBox image)
@@ -373,7 +472,7 @@ internal sealed class MarkdownSemanticDocument
             int start = _text.Length;
             _text.Append(name);
             int end = _text.Length;
-            _spans.Add(new MarkdownTextSpan(start, end, null, image, null));
+            _spans.Add(new MarkdownTextSpan(start, end, null, null, image, null));
             node.TextEnd = _text.Length;
             AppendBlockSeparator();
             return node;
@@ -389,7 +488,7 @@ internal sealed class MarkdownSemanticDocument
             int start = _text.Length;
             _text.Append(InlineEmbedRun.PlaceholderChar);
             int end = _text.Length;
-            _spans.Add(new MarkdownTextSpan(start, end, null, null, embed));
+            _spans.Add(new MarkdownTextSpan(start, end, null, null, null, embed));
             node.TextEnd = _text.Length;
             AppendBlockSeparator();
             return node;

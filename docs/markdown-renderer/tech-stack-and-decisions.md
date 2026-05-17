@@ -77,9 +77,9 @@ Benefits:
 - cached raster output for theme/DPI combinations;
 - no runtime tier classifier.
 
-Current limitation: only the x64 native DLL is shipped. Explicit x86/ARM64 builds
-skip the DLL, and SVG falls back to the alt-text placeholder. Cross-architecture
-native builds are a packaging maturity item.
+The core package ships ThorVG native DLLs for x86, x64, and ARM64. Repo builds
+copy the selected architecture's DLL to the output root, and NuGet packages place
+all three assets under RID-native runtime folders.
 
 ## AOT and trimming posture
 
@@ -87,7 +87,6 @@ The projects enable trim, single-file, and AOT analyzers. Reflection-heavy plugi
 discovery is avoided. `MarkdownExtensionRegistry` dispatches custom renderers by
 concrete Markdig AST node type using a dictionary.
 
-This does not mean the library is fully production-NuGet-ready yet. Public XML
-docs, metadata, versioning policy, and cross-architecture native asset packaging
-are still gaps.
-
+Public XML docs, package metadata, versioning policy, and cross-architecture
+native asset packaging are part of the package contract and are validated during
+release.

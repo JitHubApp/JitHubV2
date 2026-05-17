@@ -9,7 +9,7 @@ namespace MarkdownRenderer.Layout.Boxes;
 /// exposed publicly so the test suite can exercise them without requiring
 /// a WinUI / Win2D test host.
 /// </summary>
-public static class SvgIntrinsics
+internal static class SvgIntrinsics
 {
     /// <summary>
     /// Returns true if the URL appears to refer to an SVG resource — either

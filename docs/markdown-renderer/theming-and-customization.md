@@ -31,6 +31,16 @@ Core keys:
 - `ListMarker`
 - `ThematicBreak`
 - `ImageCaption`
+- `Subscript`
+- `Superscript`
+- `Inserted`
+- `Marked`
+- `Abbreviation`
+- `DefinitionTerm`
+- `DefinitionDescription`
+- `Figure`
+- `FigureCaption`
+- `Diagram`
 
 GFM keys:
 
@@ -57,6 +67,13 @@ Custom extensions may use any string key.
 - optional accent bar color;
 - underline;
 - strikethrough;
+- hover foreground;
+- focus foreground;
+- border brush;
+- border thickness;
+- corner radius;
+- list indent;
+- nested list indent;
 - margin;
 - padding;
 - line-height multiplier.
@@ -85,7 +102,6 @@ theme.Overrides[MarkdownElementKeys.Link] = new ElementStyleOverride
 };
 
 renderer.Theme = theme;
-theme.Invalidate();
 ```
 
 ## Dynamic theme switching
@@ -107,16 +123,17 @@ the resulting UIA text attributes. Consumer `MarkdownTheme` overrides are still
 honored as explicit overrides, so app authors remain responsible for ensuring
 custom colors meet contrast requirements.
 
-Current behavior is intentionally coarse: theme changes re-run parse and layout.
-Future work should add a restyle-only path that reuses the parsed AST and only
-rebuilds text metrics and colors. Real Windows contrast-theme smoke still needs
-to cover every built-in theme plus customized palettes because those OS settings
-are intrusive and environment-dependent.
+Theme changes reuse the cached parsed AST when the markdown source and extension
+registry revision are unchanged. Layout/text metrics and colors are rebuilt from
+a fresh `ThemeSnapshot`. Real Windows contrast-theme smoke still needs to cover
+every built-in theme plus customized palettes because those OS settings are
+intrusive and environment-dependent.
 
-## Important current limitation
+## Override mutation
 
-`MarkdownTheme.Overrides` is a plain dictionary. Mutating it does not raise a
-change notification automatically:
+`MarkdownTheme.Overrides` is dictionary-shaped for source compatibility, but its
+backing store is observable. Direct mutations raise `Changed` and trigger theme
+rebuilds:
 
 ```csharp
 theme.Overrides[MarkdownElementKeys.Link] = new ElementStyleOverride
@@ -124,22 +141,15 @@ theme.Overrides[MarkdownElementKeys.Link] = new ElementStyleOverride
     Underline = false,
 };
 
-theme.Invalidate(); // required today
+// No explicit Invalidate call is required for normal mutations.
 ```
 
-A mature API should replace this with an observable collection or setter methods
-that invalidate automatically.
+`MarkdownTheme.Invalidate()` remains available as an explicit escape hatch for
+advanced callers.
 
-## Styling gaps
+## Styling non-goals
 
-The current theme model does not yet cover:
+The current theme model intentionally does not cover:
 
-- link hover and focus variants;
-- table alignment styling;
-- list nesting depth styling;
 - code syntax highlighting tokens;
-- code block borders and radius;
-- context-aware variants such as "Link inside Quote";
-- CSS-like cascading or style composition;
 - text shadow, letter spacing, and text transform.
-

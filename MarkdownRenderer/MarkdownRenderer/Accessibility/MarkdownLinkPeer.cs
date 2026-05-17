@@ -40,10 +40,10 @@ internal sealed partial class MarkdownLinkPeer : FrameworkElementAutomationPeer,
         _owner.FocusLinkFromAutomation(_run);
     }
 
-    protected override object GetPatternCore(PatternInterface patternInterface)
+    protected override object GetPatternCore(PatternInterface patternIinterface)
     {
-        if (patternInterface == PatternInterface.Invoke) return this;
-        return base.GetPatternCore(patternInterface);
+        if (patternIinterface == PatternInterface.Invoke) return this;
+        return base.GetPatternCore(patternIinterface);
     }
 
     public void Invoke()
