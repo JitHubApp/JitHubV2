@@ -26,7 +26,8 @@ public sealed class TextMateCodeBlockSyntaxHighlighter : ICodeBlockSyntaxHighlig
     public ValueTask<CodeBlockHighlightResult?> HighlightAsync(CodeBlockHighlightRequest request)
     {
         if (request is null) throw new ArgumentNullException(nameof(request));
-        request.CancellationToken.ThrowIfCancellationRequested();
+        if (request.CancellationToken.IsCancellationRequested)
+            return ValueTask.FromResult<CodeBlockHighlightResult?>(null);
 
         if (request.ThemeVariant == CodeBlockThemeVariant.HighContrast)
             return ValueTask.FromResult<CodeBlockHighlightResult?>(CodeBlockHighlightResult.Empty);
@@ -37,7 +38,9 @@ public sealed class TextMateCodeBlockSyntaxHighlighter : ICodeBlockSyntaxHighlig
 
         lock (_gate)
         {
-            request.CancellationToken.ThrowIfCancellationRequested();
+            if (request.CancellationToken.IsCancellationRequested)
+                return ValueTask.FromResult<CodeBlockHighlightResult?>(null);
+
             var state = GetState(request.ThemeVariant);
             var scope = ResolveScope(state.Options, languageId);
             if (string.IsNullOrWhiteSpace(scope))
@@ -76,7 +79,9 @@ public sealed class TextMateCodeBlockSyntaxHighlighter : ICodeBlockSyntaxHighlig
 
         foreach (var line in EnumerateLines(code))
         {
-            cancellationToken.ThrowIfCancellationRequested();
+            if (cancellationToken.IsCancellationRequested)
+                return Array.Empty<CodeBlockHighlightSpan>();
+
             var result = state is null
                 ? grammar.TokenizeLine(line.Text)
                 : grammar.TokenizeLine(line.Text, state, TimeSpan.FromMilliseconds(200));

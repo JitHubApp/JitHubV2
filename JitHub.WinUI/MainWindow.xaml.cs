@@ -22,6 +22,10 @@ public sealed partial class MainWindow : Window
     private const uint ImageIcon = 1;
     private const uint LrLoadFromFile = 0x00000010;
     private const uint WmSetIcon = 0x0080;
+    private const uint WmKeyDown = 0x0100;
+    private const uint WmSysKeyDown = 0x0104;
+    private const int VkControl = 0x11;
+    private const int VkK = 0x4B;
     private const int IconSmall = 0;
     private const int IconBig = 1;
     private const int IconSmall2 = 2;
@@ -30,12 +34,17 @@ public sealed partial class MainWindow : Window
     private const int SmCxSmIcon = 49;
     private const int SmCySmIcon = 50;
     private const int SwRestore = 9;
+    private static readonly nuint KeyboardSubclassId = 0x4A484B31;
     private readonly UISettings _uiSettings = new();
     private readonly InputNonClientPointerSource _nonClientPointerSource;
+    private readonly SubclassProc _keyboardSubclassProc;
+    private readonly nint _hwnd;
     private nint _largeIconHandle;
     private nint _smallIconHandle;
     private string _configuredTheme = ThemeConst.System;
     private bool _followSystemTheme;
+
+    private delegate nint SubclassProc(nint hWnd, uint message, nint wParam, nint lParam, nuint subclassId, nuint refData);
 
     [LibraryImport("user32.dll", SetLastError = true)]
     [return: MarshalAs(UnmanagedType.Bool)]
@@ -62,6 +71,22 @@ public sealed partial class MainWindow : Window
     [LibraryImport("user32.dll")]
     private static partial int GetSystemMetrics(int index);
 
+    [LibraryImport("user32.dll")]
+    private static partial short GetKeyState(int virtualKey);
+
+    [DllImport("comctl32.dll", SetLastError = true)]
+    [return: MarshalAs(UnmanagedType.Bool)]
+    private static extern bool SetWindowSubclass(nint hWnd, SubclassProc subclassProc, nuint subclassId, nuint refData);
+
+    [DllImport("comctl32.dll", SetLastError = true)]
+    [return: MarshalAs(UnmanagedType.Bool)]
+    private static extern bool RemoveWindowSubclass(nint hWnd, SubclassProc subclassProc, nuint subclassId);
+
+    [DllImport("comctl32.dll")]
+    private static extern nint DefSubclassProc(nint hWnd, uint message, nint wParam, nint lParam);
+
+    public event EventHandler? SearchShortcutRequested;
+
     public MainWindow()
     {
         InitializeComponent();
@@ -69,10 +94,17 @@ public sealed partial class MainWindow : Window
         ExtendsContentIntoTitleBar = true;
         SetTitleBar(AppTitleBar);
         _nonClientPointerSource = InputNonClientPointerSource.GetForWindowId(AppWindow.Id);
+        _hwnd = WindowNative.GetWindowHandle(this);
+        _keyboardSubclassProc = KeyboardSubclassProc;
+        _ = SetWindowSubclass(_hwnd, _keyboardSubclassProc, KeyboardSubclassId, 0);
 
         ConfigureWindowIcon();
         _uiSettings.ColorValuesChanged += OnColorValuesChanged;
-        Closed += (_, _) => ReleaseWindowIcons();
+        Closed += (_, _) =>
+        {
+            _ = RemoveWindowSubclass(_hwnd, _keyboardSubclassProc, KeyboardSubclassId);
+            ReleaseWindowIcons();
+        };
     }
 
     public void ProcessActivation()
@@ -181,6 +213,24 @@ public sealed partial class MainWindow : Window
             _ = DestroyIcon(_largeIconHandle);
             _largeIconHandle = nint.Zero;
         }
+    }
+
+    private nint KeyboardSubclassProc(nint hWnd, uint message, nint wParam, nint lParam, nuint subclassId, nuint refData)
+    {
+        if ((message == WmKeyDown || message == WmSysKeyDown)
+            && wParam == VkK
+            && IsControlKeyPressed())
+        {
+            _ = DispatcherQueue.TryEnqueue(() => SearchShortcutRequested?.Invoke(this, EventArgs.Empty));
+            return 0;
+        }
+
+        return DefSubclassProc(hWnd, message, wParam, lParam);
+    }
+
+    private static bool IsControlKeyPressed()
+    {
+        return (GetKeyState(VkControl) & 0x8000) != 0;
     }
 
     private void OnColorValuesChanged(UISettings sender, object args)

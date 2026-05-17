@@ -14,6 +14,9 @@ namespace MarkdownRenderer.Theming;
 /// </summary>
 public sealed partial class MarkdownTheme : DependencyObject
 {
+    private int _updateDepth;
+    private bool _hasDeferredChange;
+
     /// <summary>Dependency property backing <see cref="AccentColor"/>.</summary>
     public static readonly DependencyProperty AccentColorProperty =
         DependencyProperty.Register(nameof(AccentColor), typeof(Color?), typeof(MarkdownTheme),
@@ -24,6 +27,21 @@ public sealed partial class MarkdownTheme : DependencyObject
     {
         get => (Color?)GetValue(AccentColorProperty);
         set => SetValue(AccentColorProperty, value);
+    }
+
+    /// <summary>Dependency property backing <see cref="SurfaceColor"/>.</summary>
+    public static readonly DependencyProperty SurfaceColorProperty =
+        DependencyProperty.Register(nameof(SurfaceColor), typeof(Color?), typeof(MarkdownTheme),
+            new PropertyMetadata(null, (d, _) => ((MarkdownTheme)d).Invalidate()));
+
+    /// <summary>
+    /// Optional document surface color used to clear the markdown canvas.
+    /// High-contrast themes continue to use the system window color.
+    /// </summary>
+    public Color? SurfaceColor
+    {
+        get => (Color?)GetValue(SurfaceColorProperty);
+        set => SetValue(SurfaceColorProperty, value);
     }
 
     /// <summary>
@@ -52,13 +70,61 @@ public sealed partial class MarkdownTheme : DependencyObject
     public void Invalidate()
         => NotifyChanged();
 
+    /// <summary>
+    /// Defers change notifications until a group of theme mutations is complete.
+    /// </summary>
+    public IDisposable BeginUpdate()
+    {
+        _updateDepth++;
+        return new UpdateScope(this);
+    }
+
     internal IReadOnlyDictionary<string, ElementStyleOverride> GetOverridesSnapshot()
         => ((OverrideCollection)Overrides).Snapshot();
 
     private void NotifyChanged()
     {
+        if (_updateDepth > 0)
+        {
+            _hasDeferredChange = true;
+            return;
+        }
+
         Revision++;
         Changed?.Invoke(this, EventArgs.Empty);
+    }
+
+    private void EndUpdate()
+    {
+        if (_updateDepth <= 0)
+            return;
+
+        _updateDepth--;
+        if (_updateDepth == 0 && _hasDeferredChange)
+        {
+            _hasDeferredChange = false;
+            NotifyChanged();
+        }
+    }
+
+    private sealed class UpdateScope : IDisposable
+    {
+        private MarkdownTheme? _owner;
+
+        public UpdateScope(MarkdownTheme owner)
+        {
+            _owner = owner;
+        }
+
+        public void Dispose()
+        {
+            var owner = _owner;
+            if (owner is null)
+                return;
+
+            _owner = null;
+            owner.EndUpdate();
+        }
     }
 
     private sealed class OverrideCollection : IDictionary<string, ElementStyleOverride>

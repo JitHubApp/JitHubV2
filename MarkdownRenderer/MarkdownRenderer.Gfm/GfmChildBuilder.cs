@@ -2,6 +2,7 @@ using System.Text;
 using Markdig.Syntax;
 using Markdig.Syntax.Inlines;
 using Markdig.Extensions.Abbreviations;
+using MarkdownRenderer.CodeBlocks;
 using MarkdownRenderer.Layout;
 using MarkdownRenderer.Layout.Boxes;
 using MarkdownRenderer.Theming;
@@ -14,6 +15,8 @@ namespace MarkdownRenderer.Gfm;
 /// </summary>
 internal static class GfmChildBuilder
 {
+    private const int MaxMonolithicTextLayoutLength = 32_768;
+
     /// <summary>Builds child blocks from <paramref name="container"/> and adds them to <paramref name="stack"/>.</summary>
     internal static void PopulateChildren(StackBox stack, ContainerBlock container, MarkdownLayoutContext context)
     {
@@ -51,6 +54,8 @@ internal static class GfmChildBuilder
                 5 => MarkdownElementKeys.Heading5,
                 _ => MarkdownElementKeys.Heading6
             }),
+            FencedCodeBlock fenced => BuildCodeBlock(fenced, fenced.Lines.ToString(), context),
+            CodeBlock code => BuildCodeBlock(code, code.Lines.ToString(), context),
             ContainerBlock cb => BuildContainer(cb, context),
             _ => null
         };
@@ -83,6 +88,103 @@ internal static class GfmChildBuilder
         stack.BlockIndex = context.NextBlockIndex();
         PopulateChildren(stack, cb, context);
         return stack;
+    }
+
+    private static CodeBlockBox BuildCodeBlock(LeafBlock block, string text, MarkdownLayoutContext context)
+    {
+        text = CodeBlockMetadata.NormalizeCodeLineEndings(text);
+        var metadata = CodeBlockMetadata.FromBlock(block, text);
+        int lineCount = CountLogicalLines(text);
+        bool showLineNumbers = metadata.ShowLineNumbers ?? context.CodeBlockLineNumberMode switch
+        {
+            CodeBlockLineNumberMode.Always => true,
+            CodeBlockLineNumberMode.Never => false,
+            _ => lineCount > 1,
+        };
+        var codeBox = new CodeBlockBox(
+            context,
+            metadata,
+            text,
+            context.IsCodeBlockCopyEnabled,
+            showLineNumbers)
+        {
+            BlockIndex = context.NextBlockIndex(),
+        };
+
+        if (text.Length <= MaxMonolithicTextLayoutLength)
+        {
+            codeBox.AddChunk(BuildCodeBlockChunk(block, metadata, text, 0, text.Length, context));
+            return codeBox;
+        }
+
+        int offset = 0;
+        while (offset < text.Length)
+        {
+            int length = System.Math.Min(MaxMonolithicTextLayoutLength, text.Length - offset);
+            if (offset + length < text.Length)
+            {
+                int newline = text.LastIndexOf('\n', offset + length - 1, length);
+                if (newline > offset)
+                    length = newline - offset + 1;
+            }
+
+            codeBox.AddChunk(BuildCodeBlockChunk(block, metadata, text.Substring(offset, length), offset, text.Length, context));
+            offset += length;
+        }
+
+        return codeBox;
+    }
+
+    private static InlineContainerBox BuildCodeBlockChunk(
+        LeafBlock block,
+        CodeBlockMetadata metadata,
+        string text,
+        int textOffset,
+        int totalTextLength,
+        MarkdownLayoutContext context)
+    {
+        var box = new InlineContainerBox(context, MarkdownElementKeys.CodeBlock)
+        {
+            CodeLanguage = metadata.Language,
+            CodeBlockTextOffset = textOffset,
+            CodeBlockTextLength = text.Length,
+        };
+        box.BlockIndex = context.NextBlockIndex();
+        box.Add(new TextRun(text)
+        {
+            SourceSpan = SliceSourceSpan(block, textOffset, text.Length, totalTextLength)
+        });
+        return box;
+    }
+
+    private static int CountLogicalLines(string text)
+    {
+        if (string.IsNullOrEmpty(text))
+            return 1;
+
+        int lines = 1;
+        foreach (char ch in text)
+        {
+            if (ch == '\n')
+                lines++;
+        }
+
+        return text.EndsWith("\n", System.StringComparison.Ordinal) && lines > 1 ? lines - 1 : lines;
+    }
+
+    private static MarkdownRenderer.SourceSpan SliceSourceSpan(
+        LeafBlock block,
+        int textOffset,
+        int textLength,
+        int totalTextLength)
+    {
+        if (block.Span.Start < 0 || block.Span.Length <= 0 || totalTextLength <= 0)
+            return MarkdownRenderer.SourceSpan.Empty;
+
+        double scale = block.Span.Length / (double)totalTextLength;
+        int start = block.Span.Start + (int)System.Math.Round(textOffset * scale);
+        int end = block.Span.Start + (int)System.Math.Round((textOffset + textLength) * scale);
+        return new MarkdownRenderer.SourceSpan(start, System.Math.Max(0, end - start));
     }
 
     internal static void AddInlines(
@@ -142,7 +244,7 @@ internal static class GfmChildBuilder
         {
             SourceSpan = new MarkdownRenderer.SourceSpan(al.Span.Start, al.Span.Length)
         },
-        LineBreakInline => new LineBreakRun
+        LineBreakInline lineBreak => new LineBreakRun(lineBreak.IsHard)
         {
             SourceSpan = new MarkdownRenderer.SourceSpan(inline.Span.Start, inline.Span.Length)
         },
@@ -184,12 +286,12 @@ internal static class GfmChildBuilder
     {
         if (link.IsImage)
         {
-            var alt = new StringBuilder();
-            FlattenInlines(link, alt);
-            return new InlineImageRun(context, alt.Length > 0 ? alt.ToString() : "image", link.Url ?? string.Empty, link.Title)
-            {
-                SourceSpan = new MarkdownRenderer.SourceSpan(link.Span.Start, link.Span.Length)
-            };
+            return BuildImageRun(link, context, linkUrl: null, linkTitle: null, link.Span.Start, link.Span.Length);
+        }
+
+        if (TryGetOnlyImageChild(link, out var imageLink))
+        {
+            return BuildImageRun(imageLink, context, link.Url, link.Title, link.Span.Start, link.Span.Length);
         }
 
         var text = new StringBuilder();
@@ -198,6 +300,54 @@ internal static class GfmChildBuilder
         {
             SourceSpan = new MarkdownRenderer.SourceSpan(link.Span.Start, link.Span.Length)
         };
+    }
+
+    private static InlineImageRun BuildImageRun(
+        LinkInline imageLink,
+        MarkdownLayoutContext context,
+        string? linkUrl,
+        string? linkTitle,
+        int sourceStart,
+        int sourceLength)
+    {
+        var alt = new StringBuilder();
+        FlattenInlines(imageLink, alt);
+        return new InlineImageRun(
+            context,
+            alt.Length > 0 ? alt.ToString() : "image",
+            imageLink.Url ?? string.Empty,
+            imageLink.Title,
+            linkUrl,
+            linkTitle)
+        {
+            SourceSpan = new MarkdownRenderer.SourceSpan(sourceStart, sourceLength)
+        };
+    }
+
+    private static bool TryGetOnlyImageChild(ContainerInline container, out LinkInline imageLink)
+    {
+        imageLink = null!;
+        int count = 0;
+        foreach (var child in container)
+        {
+            count++;
+            if (count > 1)
+            {
+                imageLink = null!;
+                return false;
+            }
+
+            if (child is LinkInline { IsImage: true } image)
+            {
+                imageLink = image;
+                continue;
+            }
+
+            imageLink = null!;
+            return false;
+        }
+
+        return imageLink is not null;
     }
 
     internal static void FlattenInlines(ContainerInline container, StringBuilder sb)
@@ -209,7 +359,8 @@ internal static class GfmChildBuilder
                 case LiteralInline lit: sb.Append(lit.Content.ToString()); break;
                 case CodeInline ci: sb.Append(ci.Content); break;
                 case AbbreviationInline ab: sb.Append(ab.Abbreviation?.Label ?? string.Empty); break;
-                case LineBreakInline: sb.Append('\n'); break;
+                case LineBreakInline lineBreak: sb.Append(lineBreak.IsHard ? '\n' : ' '); break;
+                case LinkInline { IsImage: true } image: FlattenInlines(image, sb); break;
                 case ContainerInline c2: FlattenInlines(c2, sb); break;
             }
         }

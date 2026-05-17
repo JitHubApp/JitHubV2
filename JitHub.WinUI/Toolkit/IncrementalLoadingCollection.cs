@@ -11,6 +11,11 @@ using Windows.Foundation;
 
 namespace CommunityToolkit.WinUI;
 
+public interface IIncrementalLoadingSourceState
+{
+    bool HasMoreItems { get; }
+}
+
 public partial class IncrementalLoadingCollection<TSource, TItem> : ObservableCollection<TItem>, ISupportIncrementalLoading
     where TSource : IIncrementalSource<TItem>
 {
@@ -27,6 +32,8 @@ public partial class IncrementalLoadingCollection<TSource, TItem> : ObservableCo
     }
 
     public bool HasMoreItems { get; private set; }
+
+    public bool IsLoading => _isLoading;
 
     public event Action? OnStartLoading;
 
@@ -74,7 +81,11 @@ public partial class IncrementalLoadingCollection<TSource, TItem> : ObservableCo
             }
 
             _pageIndex++;
-            if (pageItems.Count < pageSize)
+            if (_source is IIncrementalLoadingSourceState sourceState)
+            {
+                HasMoreItems = sourceState.HasMoreItems;
+            }
+            else if (pageItems.Count < pageSize)
             {
                 HasMoreItems = false;
             }

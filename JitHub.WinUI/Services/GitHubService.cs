@@ -1,11 +1,10 @@
-using CommunityToolkit.WinUI.Controls;
-using CommunityToolkit.Mvvm.DependencyInjection;
 using JitHub.Models;
 using JitHub.Models.Base;
 using JitHub.Models.PRConversation;
-using JitHub.Utilities.SVG;
 using JitHub.WinUI.Helpers;
 using JitHub.Models.LegacyGitHub;
+using JitHub.Services.Markdown;
+using MarkdownRenderer.Images;
 using ApiOptions = JitHub.Models.LegacyGitHub.ApiOptions;
 using CommitRequest = JitHub.Models.LegacyGitHub.CommitRequest;
 using IssueFilter = JitHub.Models.LegacyGitHub.IssueFilter;
@@ -19,15 +18,10 @@ using SearchRepositoriesRequest = JitHub.Models.LegacyGitHub.SearchRepositoriesR
 using SortDirection = JitHub.Models.LegacyGitHub.SortDirection;
 using System;
 using System.Collections.Generic;
-using System.IO;
 using System.Linq;
-using System.Runtime.InteropServices.WindowsRuntime;
 using System.Text;
 using System.Threading;
 using System.Threading.Tasks;
-using Windows.Storage.Streams;
-using Microsoft.UI.Xaml.Controls;
-using Microsoft.UI.Xaml.Media.Imaging;
 using RestGitHubActor = JitHub.Models.GitHub.GitHubActor;
 using RestGitHubBlob = JitHub.Models.GitHub.GitHubBlob;
 using RestGitHubBranch = JitHub.Models.GitHub.GitHubBranch;
@@ -51,9 +45,8 @@ using RestGitHubUser = JitHub.Models.GitHub.GitHubUser;
 
 namespace JitHub.Services
 {
-    public partial class GitHubService : IGitHubService, IImageProvider, ISVGRenderer
+    public partial class GitHubService : IGitHubService, IMarkdownImageResolver
     {
-        private const string _baseUrl = "https://github.com";
         private const long PublicPreviewRepositoryId = 623352671;
         private const long PublicPreviewOwnerId = 170190931;
         private const string PublicPreviewOwner = "JitHubApp";
@@ -61,7 +54,6 @@ namespace JitHub.Services
         private const string PublicPreviewDefaultBranch = "main";
         private readonly IGitHubClientService _gitHubClientService;
         private INotificationService _notificationService = null!;
-        private MarkdownConfig _markdownConfig;
         private string? _accessToken;
 
         public INotificationService NotificationService
@@ -77,12 +69,6 @@ namespace JitHub.Services
         {
             _gitHubClientService = gitHubClientService;
             NotificationService = notificationService;
-            _markdownConfig = new MarkdownConfig()
-            {
-                BaseUrl = _baseUrl,
-                ImageProvider = this,
-                SVGRenderer = this
-            };
         }
 
         public void SetAccessToken(string? token)
@@ -1386,6 +1372,16 @@ namespace JitHub.Services
 
         public async Task<ICollection<Issue>> GetFilteredIssues(string owner, string name, RepositoryIssueRequest repoIssueRequest, ApiOptions apiOptions)
         {
+            PagedGitHubItems<Issue> page = await GetFilteredIssuesPage(owner, name, repoIssueRequest, apiOptions);
+            return page.Items.ToList();
+        }
+
+        public async Task<PagedGitHubItems<Issue>> GetFilteredIssuesPage(
+            string owner,
+            string name,
+            RepositoryIssueRequest repoIssueRequest,
+            ApiOptions apiOptions)
+        {
             try
             {
                 int pageSize = apiOptions?.PageSize ?? 100;
@@ -1397,11 +1393,13 @@ namespace JitHub.Services
 
                 if (IsPublicPreviewRepository(owner, name))
                 {
-                    return FilterPublicPreviewIssues(repoIssueRequest, pageSize, startPage, pageCount);
+                    List<Issue> previewIssues = FilterPublicPreviewIssues(repoIssueRequest, pageSize, startPage, pageCount).ToList();
+                    return new PagedGitHubItems<Issue>(previewIssues, previewIssues.Count >= pageSize * pageCount);
                 }
 
                 string token = GetAccessTokenOrThrow();
                 List<Issue> issues = [];
+                bool hasMoreItems = false;
 
                 for (int offset = 0; offset < pageCount; offset++)
                 {
@@ -1412,16 +1410,20 @@ namespace JitHub.Services
                         name,
                         pageSize,
                         pageNumber,
-                        AdaptIssueQueryOptions(repoIssueRequest));
-                    issues.AddRange(page.Select(issue => AdaptIssue(issue)));
+                        AdaptIssueQueryOptions(repoIssueRequest),
+                        includePullRequests: true);
+                    issues.AddRange(page
+                        .Where(static issue => !issue.IsPullRequest)
+                        .Select(issue => AdaptIssue(issue)));
 
-                    if (page.Count < pageSize)
+                    hasMoreItems = page.Count >= pageSize;
+                    if (!hasMoreItems)
                     {
                         break;
                     }
                 }
 
-                return issues;
+                return new PagedGitHubItems<Issue>(issues, hasMoreItems);
             }
             catch (Exception e)
             {
@@ -2019,125 +2021,76 @@ namespace JitHub.Services
             }
         }
 
-        public async Task<Image> GetImage(string url)
+        public async ValueTask<MarkdownImageAsset?> ResolveAsync(
+            string source,
+            MarkdownImageResolveContext context,
+            CancellationToken cancellationToken)
         {
-            Image image = new Image();
-            if (!TryGetRepositoryImageReference(url, out var owner, out var repo, out var branch, out var filePath))
+            if (!GitHubMarkdownImageUrlResolver.TryResolve(
+                    source,
+                    context.BaseUri,
+                    context.DocumentPath,
+                    out GitHubMarkdownImageReference imageReference))
             {
-                return image;
+                return null;
             }
 
             try
             {
                 string token = GetAccessTokenOrThrow();
-                RestGitHubRepositoryContent file = await _gitHubClientService.GetRepositoryContentAsync(token, owner, repo, filePath, branch);
+                RestGitHubRepositoryContent file = await _gitHubClientService.GetRepositoryContentAsync(
+                    token,
+                    imageReference.Owner,
+                    imageReference.Repository,
+                    imageReference.Path,
+                    imageReference.Ref,
+                    cancellationToken);
                 byte[] fileBytes = DecodeGitHubContent(file.Content, file.Encoding);
 
                 if (fileBytes.Length == 0 && !string.IsNullOrWhiteSpace(file.Sha))
                 {
-                    RestGitHubBlob blob = await _gitHubClientService.GetBlobAsync(token, owner, repo, file.Sha);
+                    RestGitHubBlob blob = await _gitHubClientService.GetBlobAsync(
+                        token,
+                        imageReference.Owner,
+                        imageReference.Repository,
+                        file.Sha,
+                        cancellationToken);
                     fileBytes = DecodeGitHubContent(blob.Content, blob.Encoding);
                 }
 
-                var isSvg = filePath.EndsWith(".svg", StringComparison.OrdinalIgnoreCase);
-
-                if (isSvg)
-                {
-                    string svgString = Encoding.UTF8.GetString(fileBytes);
-                    image = await SVGRenderer.SvgToImage(svgString);
-                }
-                else
-                {
-                    BitmapImage bitmap = new BitmapImage();
-                    using (InMemoryRandomAccessStream stream = new InMemoryRandomAccessStream())
-                    {
-                        await stream.WriteAsync(fileBytes.AsBuffer());
-                        stream.Seek(0);
-
-                        await bitmap.SetSourceAsync(stream);
-                    }
-                    image.Source = bitmap;
-                }
+                return fileBytes.Length == 0
+                    ? null
+                    : new MarkdownImageAsset(
+                        fileBytes,
+                        GuessImageContentType(imageReference.Path),
+                        GitHubMarkdownImageUrlResolver.CreateRawUri(imageReference));
+            }
+            catch (OperationCanceledException)
+            {
+                throw;
             }
             catch (Exception ex)
             {
-                Console.WriteLine($"Failed to load GitHub markdown image '{url}': {ex.Message}");
+                Console.WriteLine($"Failed to load GitHub markdown image '{source}': {ex.Message}");
+                return null;
             }
-
-            return image;
         }
 
-        public bool ShouldUseThisProvider(string url)
+        private static string? GuessImageContentType(string path)
         {
-            return TryGetRepositoryImageReference(url, out _, out _, out _, out _);
-        }
-
-        private static bool TryGetRepositoryImageReference(
-            string url,
-            out string owner,
-            out string repo,
-            out string branch,
-            out string filePath)
-        {
-            owner = string.Empty;
-            repo = string.Empty;
-            branch = string.Empty;
-            filePath = string.Empty;
-
-            if (!Uri.TryCreate(url, UriKind.Absolute, out Uri? uri))
+            string extension = System.IO.Path.GetExtension(path);
+            return extension.ToLowerInvariant() switch
             {
-                return false;
-            }
-
-            string[] segments = uri.AbsolutePath
-                .Split('/', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
-
-            if (uri.Host.Equals("github.com", StringComparison.OrdinalIgnoreCase))
-            {
-                if (segments.Length < 5 ||
-                    !segments[2].Equals("blob", StringComparison.OrdinalIgnoreCase) ||
-                    string.IsNullOrWhiteSpace(segments[0]) ||
-                    string.IsNullOrWhiteSpace(segments[1]) ||
-                    string.IsNullOrWhiteSpace(segments[3]))
-                {
-                    return false;
-                }
-
-                owner = Uri.UnescapeDataString(segments[0]);
-                repo = Uri.UnescapeDataString(segments[1]);
-                branch = Uri.UnescapeDataString(segments[3]);
-                filePath = string.Join('/', segments.Skip(4).Select(Uri.UnescapeDataString));
-                return !string.IsNullOrWhiteSpace(filePath);
-            }
-
-            if (uri.Host.Equals("raw.githubusercontent.com", StringComparison.OrdinalIgnoreCase))
-            {
-                if (segments.Length < 4 ||
-                    string.IsNullOrWhiteSpace(segments[0]) ||
-                    string.IsNullOrWhiteSpace(segments[1]) ||
-                    string.IsNullOrWhiteSpace(segments[2]))
-                {
-                    return false;
-                }
-
-                owner = Uri.UnescapeDataString(segments[0]);
-                repo = Uri.UnescapeDataString(segments[1]);
-                branch = Uri.UnescapeDataString(segments[2]);
-                filePath = string.Join('/', segments.Skip(3).Select(Uri.UnescapeDataString));
-                return !string.IsNullOrWhiteSpace(filePath);
-            }
-
-            return false;
-        }
-
-        public MarkdownConfig GetMarkdownConfig()
-        {
-            return _markdownConfig;
-        }
-
-        public Task<Image> SvgToImage(string svgString)
-        {
-            return SVGRenderer.SvgToImage(svgString);
+                ".svg" => "image/svg+xml",
+                ".png" => "image/png",
+                ".jpg" or ".jpeg" => "image/jpeg",
+                ".gif" => "image/gif",
+                ".bmp" => "image/bmp",
+                ".webp" => "image/webp",
+                ".ico" => "image/x-icon",
+                ".tif" or ".tiff" => "image/tiff",
+                _ => null,
+            };
         }
     }
 }

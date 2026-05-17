@@ -7,6 +7,7 @@ using CommunityToolkit.Mvvm.Input;
 using JitHub.Models.GitHub;
 using JitHub.Services;
 using JitHub.WinUI.ViewModels;
+using Microsoft.UI.Input;
 using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Controls;
 using Microsoft.UI.Xaml.Input;
@@ -15,6 +16,7 @@ using Microsoft.UI.Xaml.Media;
 using Microsoft.UI.Xaml.Navigation;
 using Windows.ApplicationModel.DataTransfer;
 using Windows.Foundation;
+using Windows.UI.Core;
 using Windows.System;
 
 namespace JitHub.WinUI.Views.Pages;
@@ -25,6 +27,8 @@ public sealed partial class ShellPage : Page
     private const string SearchSuggestionsScenario = "search-suggestions";
     private CancellationTokenSource? _notificationLifetime;
     private bool _suppressSearchSuggestionsUntilTextChanges;
+    private bool _clearingInitialSearchFocus;
+    private bool _searchFocusRequestedByUser;
     private bool _updatingSearchSelectionFromKeyboard;
     public ShellViewModel ViewModel { get; } = new();
 
@@ -32,6 +36,7 @@ public sealed partial class ShellPage : Page
     {
         InitializeComponent();
         DataContext = ViewModel;
+        ShellRoot.AddHandler(KeyDownEvent, new KeyEventHandler(ShellRoot_KeyDown), true);
         ViewModel.PropertyChanged += ViewModel_PropertyChanged;
         ViewModel.LoadApplication(new RelayCommand(OpenModal), new RelayCommand(CloseModal));
         ViewModel.InitializeDesktopIntegration(((App)Application.Current).CurrentMainWindow);
@@ -44,6 +49,8 @@ public sealed partial class ShellPage : Page
         base.OnNavigatedTo(e);
 
         MainWindow mainWindow = ((App)Application.Current).CurrentMainWindow;
+        mainWindow.SearchShortcutRequested -= MainWindow_SearchShortcutRequested;
+        mainWindow.SearchShortcutRequested += MainWindow_SearchShortcutRequested;
         mainWindow.SetPageTitleBar(TitleBarHost);
         QueueTitleBarPassthroughUpdate(mainWindow);
 
@@ -81,7 +88,9 @@ public sealed partial class ShellPage : Page
     protected override void OnNavigatingFrom(NavigatingCancelEventArgs e)
     {
         base.OnNavigatingFrom(e);
-        ((App)Application.Current).CurrentMainWindow.ClearTitleBarPassthroughRegions();
+        MainWindow mainWindow = ((App)Application.Current).CurrentMainWindow;
+        mainWindow.SearchShortcutRequested -= MainWindow_SearchShortcutRequested;
+        mainWindow.ClearTitleBarPassthroughRegions();
         ConnectedAnimationService.GetForCurrentView().PrepareToAnimate("AppLogoLogoutAnimation", AppLogoShellPage);
         ViewModel.PropertyChanged -= ViewModel_PropertyChanged;
     }
@@ -148,6 +157,45 @@ public sealed partial class ShellPage : Page
         }
     }
 
+    private void Page_Loaded(object sender, RoutedEventArgs e)
+    {
+        _ = ClearInitialSearchFocusAsync();
+    }
+
+    private async Task ClearInitialSearchFocusAsync()
+    {
+        _clearingInitialSearchFocus = true;
+
+        foreach (int delay in new[] { 0, 50, 150, 350, 750, 1250, 2000, 3500 })
+        {
+            if (delay > 0)
+            {
+                await Task.Delay(delay);
+            }
+            else
+            {
+                await Task.Yield();
+            }
+
+            ClearInitialSearchFocusIfNeeded();
+        }
+
+        _clearingInitialSearchFocus = false;
+    }
+
+    private void ClearInitialSearchFocusIfNeeded()
+    {
+        _ = DispatcherQueue.TryEnqueue(() =>
+        {
+            if (!_searchFocusRequestedByUser)
+            {
+                MoveFocusToSearchSink();
+            }
+
+            SetSearchFocusVisual(IsFocusWithinSearchBox());
+        });
+    }
+
     private async Task CloseNotificationAsync(CancellationToken cancellationToken)
     {
         try
@@ -179,8 +227,20 @@ public sealed partial class ShellPage : Page
 
     private void SearchTextBox_GotFocus(object sender, RoutedEventArgs e)
     {
+        if (_clearingInitialSearchFocus && !_searchFocusRequestedByUser)
+        {
+            _ = DispatcherQueue.TryEnqueue(DismissSearchFocus);
+            return;
+        }
+
+        SetSearchFocusVisual(true);
         UpdateSearchTextAlignment();
         UpdateSearchSuggestionsState();
+    }
+
+    private void SearchControl_LostFocus(object sender, RoutedEventArgs e)
+    {
+        _ = DispatcherQueue.TryEnqueue(() => SetSearchFocusVisual(IsFocusWithinSearchBox()));
     }
 
     private void SearchTextBox_PointerPressed(object sender, PointerRoutedEventArgs e)
@@ -189,6 +249,8 @@ public sealed partial class ShellPage : Page
         {
             return;
         }
+
+        _searchFocusRequestedByUser = true;
 
         if (SearchSuggestionsHost.Visibility == Visibility.Visible)
         {
@@ -291,7 +353,7 @@ public sealed partial class ShellPage : Page
 
         if (e.Key == VirtualKey.Escape)
         {
-            HideSearchSuggestions();
+            DismissSearchFocus();
             e.Handled = true;
         }
     }
@@ -303,13 +365,73 @@ public sealed partial class ShellPage : Page
 
     private void SearchSubmitButton_GotFocus(object sender, RoutedEventArgs e)
     {
+        SetSearchFocusVisual(true);
         SearchSuggestionsList.SelectedItem = null;
         HideSearchSuggestions();
     }
 
+    private void SearchControl_KeyDown(object sender, KeyRoutedEventArgs e)
+    {
+        if (e.Key != VirtualKey.Escape)
+        {
+            return;
+        }
+
+        DismissSearchFocus();
+        e.Handled = true;
+    }
+
     private void ShellMenuButton_GotFocus(object sender, RoutedEventArgs e)
     {
+        SetSearchFocusVisual(false);
         HideSearchSuggestions();
+    }
+
+    private void ShellRoot_KeyDown(object sender, KeyRoutedEventArgs e)
+    {
+        if (e.Key == VirtualKey.K && IsControlKeyDown())
+        {
+            FocusSearchBox();
+            e.Handled = true;
+            return;
+        }
+
+        if (e.Key == VirtualKey.Escape && IsFocusWithinSearchBox())
+        {
+            DismissSearchFocus();
+            e.Handled = true;
+        }
+    }
+
+    private void SearchKeyboardAccelerator_Invoked(KeyboardAccelerator sender, KeyboardAcceleratorInvokedEventArgs args)
+    {
+        FocusSearchBox();
+        args.Handled = true;
+    }
+
+    private void MainWindow_SearchShortcutRequested(object? sender, EventArgs e)
+    {
+        FocusSearchBox();
+    }
+
+    private void FocusSearchBox()
+    {
+        if (!SearchTextBox.IsEnabled)
+        {
+            return;
+        }
+
+        _searchFocusRequestedByUser = true;
+        SearchTextBox.Focus(FocusState.Keyboard);
+        SearchTextBox.SelectAll();
+        UpdateSearchTextAlignment();
+        UpdateSearchSuggestionsState();
+    }
+
+    private static bool IsControlKeyDown()
+    {
+        CoreVirtualKeyStates controlState = InputKeyboardSource.GetKeyStateForCurrentThread(VirtualKey.Control);
+        return (controlState & CoreVirtualKeyStates.Down) == CoreVirtualKeyStates.Down;
     }
 
     private void SearchSuggestionsList_ItemClick(object sender, ItemClickEventArgs e)
@@ -509,6 +631,35 @@ public sealed partial class ShellPage : Page
     {
         SearchSuggestionsHost.Visibility = Visibility.Collapsed;
         SearchSuggestionsList.SelectedItem = null;
+    }
+
+    private void DismissSearchFocus()
+    {
+        _searchFocusRequestedByUser = false;
+        HideSearchSuggestions();
+        MoveFocusToSearchSink();
+        SetSearchFocusVisual(IsFocusWithinSearchBox());
+        _ = DispatcherQueue.TryEnqueue(() =>
+        {
+            MoveFocusToSearchSink();
+            SetSearchFocusVisual(IsFocusWithinSearchBox());
+        });
+    }
+
+    private void MoveFocusToSearchSink()
+    {
+        _ = SearchFocusSink.Focus(FocusState.Programmatic);
+    }
+
+    private void SetSearchFocusVisual(bool focused)
+    {
+        VisualStateManager.GoToState(this, focused ? "SearchFocused" : "SearchUnfocused", true);
+    }
+
+    private bool IsFocusWithinSearchBox()
+    {
+        DependencyObject? focusedElement = FocusManager.GetFocusedElement(XamlRoot) as DependencyObject;
+        return IsWithin(focusedElement, SearchBoxContainer);
     }
 
     private void Page_PointerPressed(object sender, PointerRoutedEventArgs e)

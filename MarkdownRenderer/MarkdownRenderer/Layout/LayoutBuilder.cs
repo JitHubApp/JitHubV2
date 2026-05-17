@@ -461,8 +461,8 @@ internal sealed class LayoutBuilder
                 return BuildEmphasis(emph);
             case LinkInline link:
                 return BuildLink(link);
-            case LineBreakInline:
-                return new LineBreakRun { SourceSpan = new SourceSpan(inline.Span.Start, inline.Span.Length) };
+            case LineBreakInline lineBreak:
+                return new LineBreakRun(lineBreak.IsHard) { SourceSpan = new SourceSpan(inline.Span.Start, inline.Span.Length) };
             case AutolinkInline al:
                 return new LinkRun(al.Url, al.Url) { SourceSpan = new SourceSpan(al.Span.Start, al.Span.Length) };
             case HtmlInline html:
@@ -524,20 +524,62 @@ internal sealed class LayoutBuilder
     {
         if (link.IsImage)
         {
-            var alt = new System.Text.StringBuilder();
-            FlattenContainer(link, alt);
-            string altText = alt.Length > 0 ? alt.ToString() : "image";
-            return new InlineImageRun(_context, altText, link.Url ?? string.Empty, link.Title)
-            {
-                SourceSpan = new SourceSpan(link.Span.Start, link.Span.Length)
-            };
+            return BuildImageRun(link, linkUrl: null, linkTitle: null, link.Span.Start, link.Span.Length);
         }
+
+        if (TryGetOnlyImageChild(link, out var imageLink))
+        {
+            return BuildImageRun(imageLink, link.Url, link.Title, link.Span.Start, link.Span.Length);
+        }
+
         var sb = new System.Text.StringBuilder();
         FlattenContainer(link, sb);
         return new LinkRun(sb.ToString(), link.Url ?? string.Empty, link.Title)
         {
             SourceSpan = new SourceSpan(link.Span.Start, link.Span.Length)
         };
+    }
+
+    private InlineImageRun BuildImageRun(
+        LinkInline imageLink,
+        string? linkUrl,
+        string? linkTitle,
+        int sourceStart,
+        int sourceLength)
+    {
+        var alt = new System.Text.StringBuilder();
+        FlattenContainer(imageLink, alt);
+        string altText = alt.Length > 0 ? alt.ToString() : "image";
+        return new InlineImageRun(_context, altText, imageLink.Url ?? string.Empty, imageLink.Title, linkUrl, linkTitle)
+        {
+            SourceSpan = new SourceSpan(sourceStart, sourceLength)
+        };
+    }
+
+    private static bool TryGetOnlyImageChild(ContainerInline container, out LinkInline imageLink)
+    {
+        imageLink = null!;
+        int count = 0;
+        foreach (var child in container)
+        {
+            count++;
+            if (count > 1)
+            {
+                imageLink = null!;
+                return false;
+            }
+
+            if (child is LinkInline { IsImage: true } image)
+            {
+                imageLink = image;
+                continue;
+            }
+
+            imageLink = null!;
+            return false;
+        }
+
+        return imageLink is not null;
     }
 
     private static void FlattenContainer(ContainerInline container, System.Text.StringBuilder sb)
@@ -549,7 +591,8 @@ internal sealed class LayoutBuilder
                 case LiteralInline lit: sb.Append(lit.Content.ToString()); break;
                 case CodeInline cn: sb.Append(cn.Content); break;
                 case AbbreviationInline ab: sb.Append(ab.Abbreviation?.Label ?? string.Empty); break;
-                case LineBreakInline: sb.Append('\n'); break;
+                case LineBreakInline lineBreak: sb.Append(lineBreak.IsHard ? '\n' : ' '); break;
+                case LinkInline { IsImage: true } image: FlattenContainer(image, sb); break;
                 case ContainerInline c2: FlattenContainer(c2, sb); break;
                 default: break;
             }

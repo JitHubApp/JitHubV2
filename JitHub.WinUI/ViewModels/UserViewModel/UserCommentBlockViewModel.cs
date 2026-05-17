@@ -11,7 +11,6 @@ using System.Linq;
 using System.Threading.Tasks;
 using System.Windows.Input;
 using Windows.ApplicationModel.DataTransfer;
-using CommunityToolkit.WinUI.Controls;
 
 namespace JitHub.WinUI.ViewModels.UserViewModel
 {
@@ -36,7 +35,6 @@ namespace JitHub.WinUI.ViewModels.UserViewModel
     public partial class UserCommentBlockViewModel : RepoViewModel
     {
         private string _body = string.Empty;
-        private MarkdownConfig _markdownConfig = null!;
         private bool _hasReaction;
         private DateTimeOffset _createdAt;
         private bool _showPic = true;
@@ -59,12 +57,6 @@ namespace JitHub.WinUI.ViewModels.UserViewModel
             {
                 SetProperty(ref _body, value);
             }
-        }
-
-        public MarkdownConfig MarkdownConfig
-        {
-            get => _markdownConfig;
-            set => SetProperty(ref _markdownConfig, value);
         }
 
         public bool HasReaction
@@ -132,7 +124,6 @@ namespace JitHub.WinUI.ViewModels.UserViewModel
             QuoteReplyMenuItem = new MenuItem("Quote Reply", quoteReplyCommand);
             ReactionCommand = new AsyncRelayCommand<ReactionType>(async type => await ReactToIssue(type, Repo.Id, _number));
             LoadCommand = new AsyncRelayCommand(LoadFromIssue);
-            _markdownConfig = GitHubService.GetMarkdownConfig();
         }
 
         public UserCommentBlockViewModel(IssueCommentNode comment)
@@ -150,7 +141,6 @@ namespace JitHub.WinUI.ViewModels.UserViewModel
             ReactionCommand = new AsyncRelayCommand<ReactionType>(async type => await ReactToIssueComment(type, Repo.Id, comment.Id));
             Commenter = comment.User!;
             LoadCommand = new AsyncRelayCommand(LoadFromIssueComment);
-            _markdownConfig = GitHubService.GetMarkdownConfig();
         }
 
         public UserCommentBlockViewModel(ReviewCommentNode comment, ICommand quoteReplyCommand)
@@ -166,7 +156,6 @@ namespace JitHub.WinUI.ViewModels.UserViewModel
             QuoteReplyMenuItem = new MenuItem("Quote Reply", quoteReplyCommand, comment.Body ?? string.Empty);
             ReactionCommand = new RelayCommand<ReactionType>(async type => await ReactToReviewComment(type, Repo.Id, comment.Id));
             LoadCommand = new AsyncRelayCommand(LoadFromReviewComment);
-            _markdownConfig = GitHubService.GetMarkdownConfig();
         }
 
         private async Task ReactToIssue(ReactionType type, long repoId, int number)

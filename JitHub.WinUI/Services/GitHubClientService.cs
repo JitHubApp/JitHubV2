@@ -582,6 +582,7 @@ public sealed class GitHubClientService : IGitHubClientService
         int pageSize,
         int pageNumber = 1,
         GitHubIssueQueryOptions? queryOptions = null,
+        bool includePullRequests = false,
         CancellationToken cancellationToken = default)
     {
         GitHubIssueQueryOptions query = queryOptions ?? new GitHubIssueQueryOptions();
@@ -614,7 +615,9 @@ public sealed class GitHubClientService : IGitHubClientService
             GitHubJsonSerializerContext.Default.GitHubIssueArray,
             "issue list",
             cancellationToken);
-        return issues.Where(static issue => !issue.IsPullRequest).ToArray();
+        return includePullRequests
+            ? issues
+            : issues.Where(static issue => !issue.IsPullRequest).ToArray();
     }
 
     public async Task<IReadOnlyList<GitHubIssue>> GetCurrentUserIssuesAsync(

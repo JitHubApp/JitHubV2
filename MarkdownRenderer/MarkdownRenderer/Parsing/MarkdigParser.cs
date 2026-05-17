@@ -15,14 +15,13 @@ internal sealed class MarkdigParser
         _pipeline = pipeline ?? throw new ArgumentNullException(nameof(pipeline));
     }
 
-    public Task<ParsedMarkdown> ParseAsync(string source, CancellationToken ct = default)
+    public Task<ParsedMarkdown?> ParseAsync(string source, CancellationToken ct = default)
     {
-        // Fast-path early cancellation without throwing inside Task.Run — that
-        // path produced noisy first-chance OperationCanceledExceptions on the
-        // thread-pool stack (visible in the debugger's exception window even
-        // though RebuildAsync correctly catches them downstream).
+        // Fast-path early cancellation without producing a canceled Task. The
+        // renderer treats null as cooperative cancellation, avoiding noisy
+        // first-chance OperationCanceledException/TaskCanceledException output.
         if (ct.IsCancellationRequested)
-            return Task.FromCanceled<ParsedMarkdown>(ct);
+            return Task.FromResult<ParsedMarkdown?>(null);
 
         return Task.Run(() =>
         {
@@ -31,11 +30,11 @@ internal sealed class MarkdigParser
             // Use IsCancellationRequested + return rather than ThrowIfCancellationRequested
             // so we don't generate an exception object on the cancelled path.
             if (ct.IsCancellationRequested)
-                return null!;
+                return null;
             var fixedSource = ForgivingDataUriFixer.Fix(source ?? string.Empty);
             var document = Markdown.Parse(fixedSource, _pipeline);
-            return new ParsedMarkdown(fixedSource, document);
-        }, ct);
+            return (ParsedMarkdown?)new ParsedMarkdown(fixedSource, document);
+        }, CancellationToken.None);
     }
 
     public ParsedMarkdown Parse(string source)

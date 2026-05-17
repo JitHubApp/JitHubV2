@@ -31,6 +31,7 @@
                                         <RowDefinition Height="Auto" />
                                         <RowDefinition Height="*" />
                                         <RowDefinition Height="Auto" />
+                                        <RowDefinition Height="Auto" />
                                     </Grid.RowDefinitions>
                                     <ContentPresenter
                                         x:Name="HeaderContentPresenter"
@@ -120,7 +121,13 @@
                                             </Style>
                                         </ListView.ItemContainerStyle>
                                     </ListView>
-                                    <Grid x:Name="ListCommandBar" Grid.Row="2" />
+                                    <ContentPresenter
+                                        x:Name="ListFooterPresenter"
+                                        Grid.Row="2"
+                                        Content="{TemplateBinding ListFooter}"
+                                        ContentTemplate="{TemplateBinding ListFooterTemplate}"
+                                        Visibility="Collapsed" />
+                                    <Grid x:Name="ListCommandBar" Grid.Row="3" />
                                     <Grid.RenderTransform>
                                         <TranslateTransform x:Name="ListPresenterTransform" />
                                     </Grid.RenderTransform>

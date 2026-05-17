@@ -107,6 +107,8 @@ public sealed partial class FilePreviewHost : UserControl
             RepoFilePreviewKind.TooLarge => new UnsupportedPreview(),
             _ => new UnsupportedPreview(),
         };
+        renderer.HorizontalAlignment = HorizontalAlignment.Stretch;
+        renderer.VerticalAlignment = VerticalAlignment.Stretch;
         renderer.DataContext = vm;
         return renderer;
     }

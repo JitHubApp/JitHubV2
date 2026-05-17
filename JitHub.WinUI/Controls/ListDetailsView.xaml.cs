@@ -14,6 +14,7 @@ namespace CommunityToolkit.WinUI.UI.Controls;
 [TemplatePart(Name = "MainList", Type = typeof(ListView))]
 [TemplatePart(Name = "ListDetailsBackButton", Type = typeof(Button))]
 [TemplatePart(Name = "HeaderContentPresenter", Type = typeof(ContentPresenter))]
+[TemplatePart(Name = "ListFooterPresenter", Type = typeof(ContentPresenter))]
 public sealed partial class ListDetailsView : ItemsControl
 {
     private INotifyCollectionChanged? _observedCollection;
@@ -22,6 +23,7 @@ public sealed partial class ListDetailsView : ItemsControl
     private Grid? _listPanel;
     private ContentPresenter? _detailsPresenter;
     private ContentPresenter? _listHeaderPresenter;
+    private ContentPresenter? _listFooterPresenter;
     private Grid? _listCommandBarHost;
     private Grid? _detailsCommandBarHost;
     private ListView? _mainList;
@@ -90,6 +92,20 @@ public sealed partial class ListDetailsView : ItemsControl
             typeof(DataTemplate),
             typeof(ListDetailsView),
             new PropertyMetadata(null, OnListHeaderChanged));
+
+    public static readonly DependencyProperty ListFooterProperty =
+        DependencyProperty.Register(
+            nameof(ListFooter),
+            typeof(object),
+            typeof(ListDetailsView),
+            new PropertyMetadata(null, OnListFooterChanged));
+
+    public static readonly DependencyProperty ListFooterTemplateProperty =
+        DependencyProperty.Register(
+            nameof(ListFooterTemplate),
+            typeof(DataTemplate),
+            typeof(ListDetailsView),
+            new PropertyMetadata(null, OnListFooterChanged));
 
     public static readonly DependencyProperty ListPaneEmptyContentProperty =
         DependencyProperty.Register(
@@ -240,6 +256,18 @@ public sealed partial class ListDetailsView : ItemsControl
         set => SetValue(ListHeaderTemplateProperty, value);
     }
 
+    public object? ListFooter
+    {
+        get => GetValue(ListFooterProperty);
+        set => SetValue(ListFooterProperty, value);
+    }
+
+    public DataTemplate? ListFooterTemplate
+    {
+        get => (DataTemplate?)GetValue(ListFooterTemplateProperty);
+        set => SetValue(ListFooterTemplateProperty, value);
+    }
+
     public object? ListPaneEmptyContent
     {
         get => GetValue(ListPaneEmptyContentProperty);
@@ -336,6 +364,7 @@ public sealed partial class ListDetailsView : ItemsControl
         _listPanel = GetTemplateChild("ListPanel") as Grid;
         _detailsPresenter = GetTemplateChild("DetailsPresenter") as ContentPresenter;
         _listHeaderPresenter = GetTemplateChild("HeaderContentPresenter") as ContentPresenter;
+        _listFooterPresenter = GetTemplateChild("ListFooterPresenter") as ContentPresenter;
         _listCommandBarHost = GetTemplateChild("ListCommandBar") as Grid;
         _detailsCommandBarHost = GetTemplateChild("DetailsCommandBar") as Grid;
         _mainList = GetTemplateChild("MainList") as ListView;
@@ -352,6 +381,7 @@ public sealed partial class ListDetailsView : ItemsControl
         }
 
         ApplyListHeaderVisibility();
+        ApplyListFooterVisibility();
         ApplyListPaneWidth();
         ApplyCommandBar(_listCommandBarHost, ListCommandBar);
         ApplyCommandBar(_detailsCommandBarHost, DetailsCommandBar);
@@ -423,6 +453,11 @@ public sealed partial class ListDetailsView : ItemsControl
     private static void OnListHeaderChanged(DependencyObject d, DependencyPropertyChangedEventArgs e)
     {
         ((ListDetailsView)d).ApplyListHeaderVisibility();
+    }
+
+    private static void OnListFooterChanged(DependencyObject d, DependencyPropertyChangedEventArgs e)
+    {
+        ((ListDetailsView)d).ApplyListFooterVisibility();
     }
 
     private static void OnListPaneWidthChanged(DependencyObject d, DependencyPropertyChangedEventArgs e)
@@ -672,6 +707,19 @@ public sealed partial class ListDetailsView : ItemsControl
 
         _listHeaderPresenter.Visibility =
             ListHeader is null && ListHeaderTemplate is null
+                ? Visibility.Collapsed
+                : Visibility.Visible;
+    }
+
+    private void ApplyListFooterVisibility()
+    {
+        if (_listFooterPresenter is null)
+        {
+            return;
+        }
+
+        _listFooterPresenter.Visibility =
+            ListFooter is null && ListFooterTemplate is null
                 ? Visibility.Collapsed
                 : Visibility.Visible;
     }

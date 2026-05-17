@@ -39,6 +39,12 @@ if (string.Equals(options.Probe, "search-select-dismiss", StringComparison.Ordin
     return;
 }
 
+if (string.Equals(options.Probe, "search-focus-contract", StringComparison.OrdinalIgnoreCase))
+{
+    RunSearchFocusContractProbe(options);
+    return;
+}
+
 if (string.Equals(options.Probe, "emoji-panel", StringComparison.OrdinalIgnoreCase))
 {
     RunEmojiPanelProbe(options);
@@ -445,6 +451,110 @@ static void RunSearchSelectDismissProbe(CaptureOptions options)
     }
 }
 
+static void RunSearchFocusContractProbe(CaptureOptions options)
+{
+    string[] requirements =
+    [
+        "Startup leaves no visible or real keyboard focus inside the search text box.",
+        "The Ctrl and K shortcut badge is visible while search is unfocused and does not cover the placeholder.",
+        "Hovering empty titlebar space does not show a Ctrl+K tooltip.",
+        "Ctrl+K focuses the real search text box, selects it as the active input, and hides the shortcut badge.",
+        "Esc from search dismisses suggestions, removes the light ring state, and moves real keyboard focus away from search.",
+        "Esc must not move visible focus to the titlebar menu button.",
+        "Typing after Esc must not modify search text, proving the caret is gone from the text field."
+    ];
+
+    Console.WriteLine("search-focus-contract requirements:");
+    foreach (string requirement in requirements)
+    {
+        Console.WriteLine($" - {requirement}");
+    }
+
+    using var app = string.IsNullOrWhiteSpace(options.AttachProcess)
+        ? LaunchApplication(options.AppPath, "--page=shell", "--scenario=search-suggestions", "--theme=dark")
+        : CreateProbeApplication(options);
+    using var automation = new UIA3Automation();
+
+    try
+    {
+        Window window = GetReadyWindow(app, automation, "search-focus-contract probe");
+        AutomationElement searchBox = WaitForElement(
+            "ShellSearchTextBox",
+            () => FindShellSearchTextBox(window),
+            TimeSpan.FromSeconds(10));
+        AutomationElement? searchBadge = window.FindFirstDescendant(cf => cf.ByAutomationId("ShellSearchShortcutBadge"));
+        AutomationElement? shellMenuButton = window.FindFirstDescendant(cf => cf.ByAutomationId("ShellMenuButton"));
+
+        WaitUntil(
+            "startup search focus is cleared",
+            () => !IsSearchActuallyFocused(automation, searchBox),
+            TimeSpan.FromSeconds(6));
+        AssertProbe(!IsSearchActuallyFocused(automation, searchBox), "Startup left keyboard focus inside the search box.");
+        AssertProbe(!IsElementFocused(shellMenuButton), "Startup moved visible keyboard focus to the titlebar menu button.");
+        AssertProbe(IsVisible(searchBadge), "Shortcut badge was not visible while search was unfocused.");
+
+        MoveMouseToEmptyTitleBar(window, searchBox);
+        Thread.Sleep(1200);
+        AssertProbe(!HasCtrlKTooltip(automation), "Hovering empty titlebar space displayed a Ctrl+K tooltip.");
+
+        window.SetForeground();
+        window.FocusNative();
+        Thread.Sleep(150);
+        PressCtrlK();
+        WaitUntil(
+            "Ctrl+K focuses search",
+            () => IsSearchActuallyFocused(automation, searchBox),
+            TimeSpan.FromSeconds(3));
+        AssertProbe(IsSearchActuallyFocused(automation, searchBox), "Ctrl+K did not put real keyboard focus in the search box.");
+        AssertProbe(!IsVisible(window.FindFirstDescendant(cf => cf.ByAutomationId("ShellSearchShortcutBadge"))), "Shortcut badge stayed visible while search was focused.");
+
+        TextBox textBox = searchBox.AsTextBox();
+        textBox.Text = string.Empty;
+        Keyboard.Type("focusprobe");
+        WaitUntil(
+            "search text accepted typed input",
+            () => string.Equals(GetTextBoxText(searchBox), "focusprobe", StringComparison.Ordinal),
+            TimeSpan.FromSeconds(3));
+
+        Keyboard.Press(VirtualKeyShort.ESCAPE);
+        WaitUntil(
+            "Esc removes search focus",
+            () => !IsSearchActuallyFocused(automation, searchBox),
+            TimeSpan.FromSeconds(3));
+        AssertProbe(!IsSearchActuallyFocused(automation, searchBox), "Esc left real keyboard focus in the search text box.");
+        AssertProbe(!IsElementFocused(shellMenuButton), "Esc moved visible keyboard focus to the titlebar menu button.");
+        AssertProbe(IsVisible(window.FindFirstDescendant(cf => cf.ByAutomationId("ShellSearchShortcutBadge"))), "Shortcut badge did not return after Esc dismissed search focus.");
+
+        string textAfterEscape = GetTextBoxText(searchBox);
+        Keyboard.Type("x");
+        Thread.Sleep(400);
+        AssertProbe(
+            string.Equals(GetTextBoxText(searchBox), textAfterEscape, StringComparison.Ordinal),
+            "Typing after Esc changed the search text, so the caret was still in the search box.");
+
+        MoveMouseToEmptyTitleBar(window, searchBox);
+        Thread.Sleep(1200);
+        AssertProbe(!HasCtrlKTooltip(automation), "Ctrl+K tooltip appeared over empty titlebar space after Esc.");
+
+        string filePath = Path.Combine(options.OutputDirectory, "probe-search-focus-contract.png");
+        using (var capture = Capture.MainScreen(new CaptureSettings()))
+        {
+            capture.ToFile(filePath);
+        }
+
+        string focusedId = GetFocusedAutomationId(automation);
+        Console.WriteLine($"search-focus-contract probe: passed, focusedAutomationId='{focusedId}', screenshot={filePath}");
+    }
+    finally
+    {
+        if (string.IsNullOrWhiteSpace(options.AttachProcess))
+        {
+            TryClose(app);
+            KillExistingApplicationInstances(options.AppPath);
+        }
+    }
+}
+
 static void RunEmojiPanelProbe(CaptureOptions options)
 {
     using var app = string.IsNullOrWhiteSpace(options.AttachProcess)
@@ -698,6 +808,169 @@ static string GetElementName(AutomationElement element)
     {
         return string.Empty;
     }
+}
+
+static string GetAutomationId(AutomationElement element)
+{
+    try
+    {
+        return element.Properties.AutomationId.ValueOrDefault ?? string.Empty;
+    }
+    catch
+    {
+        return string.Empty;
+    }
+}
+
+static string GetFocusedAutomationId(UIA3Automation automation)
+{
+    try
+    {
+        return GetAutomationId(automation.FocusedElement());
+    }
+    catch
+    {
+        return string.Empty;
+    }
+}
+
+static string GetTextBoxText(AutomationElement searchBox)
+{
+    try
+    {
+        return searchBox.AsTextBox().Text ?? string.Empty;
+    }
+    catch
+    {
+        return string.Empty;
+    }
+}
+
+static bool IsElementFocused(AutomationElement? element)
+{
+    if (element is null)
+    {
+        return false;
+    }
+
+    try
+    {
+        return element.Properties.HasKeyboardFocus.ValueOrDefault;
+    }
+    catch
+    {
+        return false;
+    }
+}
+
+static bool IsSearchActuallyFocused(UIA3Automation automation, AutomationElement searchBox)
+{
+    if (IsElementFocused(searchBox))
+    {
+        return true;
+    }
+
+    try
+    {
+        AutomationElement focused = automation.FocusedElement();
+        return string.Equals(GetAutomationId(focused), "ShellSearchTextBox", StringComparison.Ordinal);
+    }
+    catch
+    {
+        return false;
+    }
+}
+
+static AutomationElement WaitForElement(string name, Func<AutomationElement?> findElement, TimeSpan timeout)
+{
+    Stopwatch stopwatch = Stopwatch.StartNew();
+    AutomationElement? element;
+    do
+    {
+        element = findElement();
+        if (element is not null)
+        {
+            return element;
+        }
+
+        Thread.Sleep(100);
+    }
+    while (stopwatch.Elapsed < timeout);
+
+    throw new InvalidOperationException($"Timed out waiting for {name}.");
+}
+
+static void WaitUntil(string name, Func<bool> predicate, TimeSpan timeout)
+{
+    Stopwatch stopwatch = Stopwatch.StartNew();
+    do
+    {
+        if (predicate())
+        {
+            return;
+        }
+
+        Thread.Sleep(100);
+    }
+    while (stopwatch.Elapsed < timeout);
+
+    throw new InvalidOperationException($"Timed out waiting for {name}.");
+}
+
+static void AssertProbe(bool condition, string message)
+{
+    if (!condition)
+    {
+        throw new InvalidOperationException(message);
+    }
+}
+
+static void MoveMouseToEmptyTitleBar(Window window, AutomationElement searchBox)
+{
+    var windowBounds = window.BoundingRectangle;
+    var searchBounds = searchBox.BoundingRectangle;
+    double dpiScale = GetDpiScale(window);
+    double logicalX = Math.Min(windowBounds.X + windowBounds.Width - 340, searchBounds.X + searchBounds.Width + 160);
+    logicalX = Math.Max(logicalX, searchBounds.X + searchBounds.Width + 80);
+    logicalX = Math.Min(logicalX, windowBounds.X + windowBounds.Width - 260);
+    double logicalY = windowBounds.Y + 30;
+
+    Mouse.MoveTo(new System.Drawing.Point(
+        (int)Math.Round(logicalX * dpiScale),
+        (int)Math.Round(logicalY * dpiScale)));
+}
+
+static void PressCtrlK()
+{
+    using (Keyboard.Pressing(VirtualKeyShort.LCONTROL))
+    {
+        Thread.Sleep(100);
+        Keyboard.Press(VirtualKeyShort.KEY_K);
+        Thread.Sleep(100);
+    }
+}
+
+static bool HasCtrlKTooltip(UIA3Automation automation)
+{
+    AutomationElement[] tooltips = automation.GetDesktop().FindAllDescendants(cf => cf.ByControlType(ControlType.ToolTip));
+    foreach (AutomationElement tooltip in tooltips)
+    {
+        var text = new StringBuilder(GetElementName(tooltip));
+        foreach (AutomationElement childText in tooltip.FindAllDescendants(cf => cf.ByControlType(ControlType.Text)))
+        {
+            text.Append(' ');
+            text.Append(GetElementName(childText));
+        }
+
+        string tooltipText = text.ToString();
+        if (tooltipText.Contains("Ctrl", StringComparison.OrdinalIgnoreCase)
+            && tooltipText.Contains("K", StringComparison.OrdinalIgnoreCase))
+        {
+            return true;
+        }
+    }
+
+    return false;
 }
 
 static double GetDpiScale(Window window)

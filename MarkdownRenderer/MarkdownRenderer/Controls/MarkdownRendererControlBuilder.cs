@@ -1,8 +1,9 @@
-using System;
 using MarkdownRenderer.CodeBlocks;
 using MarkdownRenderer.Hosting;
+using MarkdownRenderer.Images;
 using MarkdownRenderer.Parsing;
 using MarkdownRenderer.Theming;
+using System;
 
 namespace MarkdownRenderer.Controls;
 
@@ -15,6 +16,9 @@ public sealed class MarkdownRendererControlBuilder
     private MarkdownTheme? _theme;
     private MarkdownExtensionRegistry? _registry;
     private IMarkdownEmbedFactory? _embedFactory;
+    private IMarkdownImageResolver? _imageResolver;
+    private Uri? _imageBaseUri;
+    private string? _imageDocumentPath;
     private bool _isSelectionEnabled = true;
     private bool _isCodeBlockCopyEnabled = true;
     private string? _codeBlockCopyButtonLabel;
@@ -67,6 +71,33 @@ public sealed class MarkdownRendererControlBuilder
     public MarkdownRendererControlBuilder WithEmbedFactory(IMarkdownEmbedFactory? embedFactory)
     {
         _embedFactory = embedFactory;
+        return this;
+    }
+
+    /// <summary>Sets the optional resolver used before built-in image loading.</summary>
+    /// <param name="imageResolver">Image resolver to assign, or null to use built-in public loading only.</param>
+    /// <returns>The current builder.</returns>
+    public MarkdownRendererControlBuilder WithImageResolver(IMarkdownImageResolver? imageResolver)
+    {
+        _imageResolver = imageResolver;
+        return this;
+    }
+
+    /// <summary>Sets the base URI used to resolve relative image sources.</summary>
+    /// <param name="baseUri">Document base URI, or null when relative image resolution is not needed.</param>
+    /// <returns>The current builder.</returns>
+    public MarkdownRendererControlBuilder WithImageBaseUri(Uri? baseUri)
+    {
+        _imageBaseUri = baseUri;
+        return this;
+    }
+
+    /// <summary>Sets the source document path used by host image resolvers.</summary>
+    /// <param name="documentPath">Source document path, or null when unavailable.</param>
+    /// <returns>The current builder.</returns>
+    public MarkdownRendererControlBuilder WithImageDocumentPath(string? documentPath)
+    {
+        _imageDocumentPath = documentPath;
         return this;
     }
 
@@ -137,6 +168,9 @@ public sealed class MarkdownRendererControlBuilder
             Theme = _theme,
             ExtensionRegistry = _registry,
             EmbedFactory = _embedFactory,
+            ImageResolver = _imageResolver,
+            ImageBaseUri = _imageBaseUri,
+            ImageDocumentPath = _imageDocumentPath,
             IsSelectionEnabled = _isSelectionEnabled,
             IsCodeBlockCopyEnabled = _isCodeBlockCopyEnabled,
             CodeBlockCopyButtonLabel = _codeBlockCopyButtonLabel,

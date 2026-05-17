@@ -70,16 +70,17 @@ public class MarkdigParserTests
     public async Task ParseAsync_NullSource_TreatedAsEmpty()
     {
         var result = await DefaultParser().ParseAsync(null!);
+        Assert.NotNull(result);
         Assert.Equal(string.Empty, result.SourceText);
     }
 
     [Fact]
-    public async Task ParseAsync_CancellationToken_Throws()
+    public async Task ParseAsync_CancellationToken_ReturnsNull()
     {
         var cts = new CancellationTokenSource();
         cts.Cancel();
-        await Assert.ThrowsAnyAsync<OperationCanceledException>(
-            () => DefaultParser().ParseAsync("# Hello", cts.Token));
+        var result = await DefaultParser().ParseAsync("# Hello", cts.Token);
+        Assert.Null(result);
     }
 
     // ── Block structure ──────────────────────────────────────────────────────

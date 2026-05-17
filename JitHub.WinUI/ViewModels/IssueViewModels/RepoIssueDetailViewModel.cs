@@ -31,6 +31,7 @@ namespace JitHub.WinUI.ViewModels.IssueViewModels
         private string _text = string.Empty;
         private string _closeButtonText = string.Empty;
         private bool _userIsCollaborator;
+        private bool _isCommentsLoading;
 
         public List<UserCommentBlockViewModel> Comments
         {
@@ -76,6 +77,11 @@ namespace JitHub.WinUI.ViewModels.IssueViewModels
             get => _userIsCollaborator;
             set => SetProperty(ref _userIsCollaborator, value);
         }
+        public bool IsCommentsLoading
+        {
+            get => _isCommentsLoading;
+            set => SetProperty(ref _isCommentsLoading, value);
+        }
 
         public RepoIssueDetailViewModel()
         {
@@ -118,12 +124,25 @@ namespace JitHub.WinUI.ViewModels.IssueViewModels
         private async Task Load()
         {
             Loading = true;
-            await LoadComments();
-            Issue = await GitHubService.GetIssue(Repo.Id, Issue.Number);
-            //SetBody(Issue);
-            await SideBarViewModel.Load();
-            IsUserCollaborator = await IsCollaborator();
-            Loading = false;
+            IsCommentsLoading = true;
+            try
+            {
+                Task commentsTask = LoadComments();
+                Task<Issue> issueTask = GitHubService.GetIssue(Repo.Id, Issue.Number);
+                Task sideBarTask = SideBarViewModel.Load();
+                Task<bool> collaboratorTask = IsCollaborator();
+
+                await Task.WhenAll(commentsTask, issueTask, sideBarTask, collaboratorTask);
+
+                Issue = await issueTask;
+                SetBody(Issue);
+                IsUserCollaborator = await collaboratorTask;
+            }
+            finally
+            {
+                IsCommentsLoading = false;
+                Loading = false;
+            }
         }
 
         private void UpdateCloseButtonText()

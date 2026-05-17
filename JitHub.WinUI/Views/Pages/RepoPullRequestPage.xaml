@@ -10,6 +10,7 @@
     xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
     xmlns:pr="using:JitHub.WinUI.Views.Controls.PullRequest"
     xmlns:common="using:JitHub.WinUI.Views.Controls.Common"
+    xmlns:behaviors="using:JitHub.WinUI.Behaviors"
     mc:Ignorable="d"
     Background="Transparent">
     <Page.DataContext>
@@ -61,12 +62,25 @@
             BackButtonBehavior="Automatic"
             Background="Transparent"
             ItemsSource="{x:Bind ViewModel.PullRequests, Mode=OneWay}"
+            behaviors:IncrementalLoadingBehavior.IsEnabled="True"
+            behaviors:IncrementalLoadingBehavior.PageSize="50"
+            behaviors:IncrementalLoadingBehavior.Source="{x:Bind ViewModel.PullRequests, Mode=OneWay}"
+            behaviors:IncrementalLoadingBehavior.Threshold="1200"
             SelectedItem="{x:Bind ViewModel.SelectedPullRequest, Mode=TwoWay}"
             ItemTemplate="{StaticResource PullRequestListItem}"
             SelectionChanged="{x:Bind ViewModel.PullRequestPageMasterDetail_SelectionChanged}"
             NoSelectionContent="Select an pull request to view"
             CompactModeThresholdWidth="960"
             Visibility="{x:Bind ViewModel.IsEmpty, Converter={StaticResource BoolToVisibilityReverseConverter}, Mode=OneWay}">
+            <controls:ListDetailsView.ListFooter>
+                <muxc:ProgressBar
+                    Height="2"
+                    Margin="12,6,12,8"
+                    Background="{ThemeResource AppSurfaceSubtleBrush}"
+                    Foreground="{ThemeResource AppAccentBrush}"
+                    IsIndeterminate="True"
+                    Visibility="{x:Bind ViewModel.IsIncrementalLoading, Converter={StaticResource BoolToVisibilityConverter}, Mode=OneWay}" />
+            </controls:ListDetailsView.ListFooter>
             <controls:ListDetailsView.DetailsTemplate>
                 <DataTemplate>
                     <pr:RepoPullRequestDetail ViewModel="{Binding Path=SelectedItem, ElementName=PullRequestPageMasterDetail, Converter={StaticResource PullRequestModelToPullRequestDetailViewModelConverter}, Mode=OneWay}"/>

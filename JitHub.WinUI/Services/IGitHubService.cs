@@ -1,4 +1,3 @@
-using CommunityToolkit.WinUI.Controls;
 using JitHub.Models;
 using JitHub.Models.Base;
 using JitHub.Models.PRConversation;
@@ -32,6 +31,7 @@ namespace JitHub.Services
         Task<ICollection<PullRequest>> GetPullRequests(string owner, string name, PullRequestRequest requestParam, ApiOptions apiOptions);
         Task<PullRequest> GetPullRequest(string owner, string name, int num);
         Task<ICollection<Issue>> GetFilteredIssues(string owner, string name, RepositoryIssueRequest repoIssueRequest, ApiOptions apiOptions);
+        Task<PagedGitHubItems<Issue>> GetFilteredIssuesPage(string owner, string name, RepositoryIssueRequest repoIssueRequest, ApiOptions apiOptions);
         Task<Issue> GetIssue(string owner, string name, int number);
         Task<Issue> GetIssue(long repositoryId, int number);
         Task<ICollection<GitHubIssueModel>> GetCurrentUserIssues(IssueRequest issueRequest);
@@ -97,7 +97,6 @@ namespace JitHub.Services
         Task<ICollection<Reaction>> GetReactionFromIssueAsync(long repoId, int number);
         Task<ICollection<Reaction>> GetReactionFromIssueComment(long repoId, long commentId);
         Task<ICollection<Reaction>> GetReactionFromReviewComment(long repoId, long commentId);
-        MarkdownConfig GetMarkdownConfig();
     }
 }
 
