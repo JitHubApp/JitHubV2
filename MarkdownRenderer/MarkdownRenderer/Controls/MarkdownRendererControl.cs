@@ -2138,24 +2138,57 @@ public sealed partial class MarkdownRendererControl : UserControl
         if (snapshot is null || !snapshot.IsLazyLayoutEnabled || _scroll is null)
             return false;
 
-        var anchor = CaptureScrollAnchor(snapshot, _scroll.VerticalOffset);
-        var commit = snapshot.EnsureMeasuredViewport(
+        var band = LazyLayoutBand.FromViewport(
             _scroll.VerticalOffset,
             _scroll.ViewportHeight > 0 ? _scroll.ViewportHeight : Math.Max(ActualHeight, 600),
-            LazyLayoutOverscanPx,
-            CancellationToken.None);
+            LazyLayoutOverscanPx);
 
+        return EnsureLazyLayoutForBand(snapshot, band, preserveScrollAnchor: true, invalidateCanvas: true);
+    }
+
+    private bool EnsureLazyLayoutForPaintRegion(Rect region)
+    {
+        var snapshot = _snapshot;
+        if (snapshot is null || !snapshot.IsLazyLayoutEnabled)
+            return false;
+
+        var band = LazyLayoutBand.FromViewport(region.Top, region.Height, LazyLayoutOverscanPx);
+        return EnsureLazyLayoutForBand(snapshot, band, preserveScrollAnchor: _scroll is not null, invalidateCanvas: false);
+    }
+
+    private bool EnsureLazyLayoutForBand(
+        LayoutSnapshot snapshot,
+        LazyLayoutBand band,
+        bool preserveScrollAnchor,
+        bool invalidateCanvas)
+    {
+        (int BlockIndex, double OffsetFromTop)? anchor = null;
+        if (preserveScrollAnchor && _scroll is not null)
+            anchor = CaptureScrollAnchor(snapshot, _scroll.VerticalOffset);
+
+        var commit = snapshot.EnsureMeasuredBand(band, CancellationToken.None);
         if (!commit.Changed)
             return false;
 
+        ApplyLazyLayoutCommit(snapshot, anchor, invalidateCanvas);
+        return true;
+    }
+
+    private void ApplyLazyLayoutCommit(
+        LayoutSnapshot snapshot,
+        (int BlockIndex, double OffsetFromTop)? scrollAnchor,
+        bool invalidateCanvas)
+    {
         ApplySnapshotSize(snapshot);
-        RestoreScrollAnchor(snapshot, anchor);
+        RestoreScrollAnchor(snapshot, scrollAnchor);
         RebuildRealizationPlans(snapshot, preserveRealized: true);
         _focusableItems = snapshot.CollectFocusableItems();
+        RealizeVisibleEmbeds();
+        ScheduleVisibleCodeBlockHighlighting();
         UpdateSelectionAdornerViewport();
         UpdateFocusRing();
-        _canvas?.Invalidate();
-        return true;
+        if (invalidateCanvas)
+            _canvas?.Invalidate();
     }
 
     private void DerealizeAllEmbeds()
@@ -2482,6 +2515,9 @@ public sealed partial class MarkdownRendererControl : UserControl
                     "region", regionCount, region.X, region.Y, region.Width, region.Height);
             try
             {
+                // The tile itself is the authoritative paint band; the ScrollViewer
+                // viewport can lag behind CanvasVirtualControl's region requests.
+                EnsureLazyLayoutForPaintRegion(region);
                 using var ds = sender.CreateDrawingSession(region);
                 // Clear to the theme-appropriate background color so that switching between
                 // light and dark mode (or any theme change) fully overwrites old tile content.
