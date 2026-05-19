@@ -483,7 +483,15 @@ internal sealed class InlineContainerBox : BlockBox
         int rangeEnd = from + length;
         int lineStart = 0;
         double y = 0;
-        foreach (var metric in _layout.LineMetrics)
+        var lineMetrics = TryGetLineMetrics();
+        if (lineMetrics is null)
+        {
+            foreach (var rect in GetBufferRangeRects(from, length))
+                yield return rect;
+            yield break;
+        }
+
+        foreach (var metric in lineMetrics)
         {
             int charCount = Math.Max(0, metric.CharacterCount);
             int lineEnd = lineStart + charCount;
@@ -557,7 +565,7 @@ internal sealed class InlineContainerBox : BlockBox
             if (regions is null)
                 return;
 
-            var lineMetrics = _layout.LineMetrics;
+            var lineMetrics = TryGetLineMetrics();
             foreach (var r in regions)
             {
                 var rect = new Rect(
@@ -1124,9 +1132,10 @@ internal sealed class InlineContainerBox : BlockBox
     private void DrawDecorations(CanvasDrawingSession ds, float baseX, float baseY, Color? overrideColor)
     {
         if (_layout is null) return;
-        var lineMetrics = _layout.LineMetrics;
 
         int cumulative = 0;
+        CanvasLineMetrics[]? lineMetrics = null;
+        bool lineMetricsAttempted = false;
         foreach (var run in _runs)
         {
             int len = run.Text.Length;
@@ -1145,6 +1154,11 @@ internal sealed class InlineContainerBox : BlockBox
 
             if (rs.Underline || rs.Strikethrough)
             {
+                if (!lineMetricsAttempted)
+                {
+                    lineMetrics = TryGetLineMetrics();
+                    lineMetricsAttempted = true;
+                }
                 var regions = _layout.GetCharacterRegions(cumulative, len);
                 if (regions is null) { cumulative += len; continue; } // Win2D can return null on DirectWrite errors
                 foreach (var r in regions)
@@ -1160,7 +1174,7 @@ internal sealed class InlineContainerBox : BlockBox
         CanvasDrawingSession ds,
         float baseX,
         float baseY,
-        CanvasLineMetrics[] lineMetrics,
+        CanvasLineMetrics[]? lineMetrics,
         CanvasTextLayoutRegion region,
         InlineRun run,
         ElementStyle style,
@@ -1240,8 +1254,25 @@ internal sealed class InlineContainerBox : BlockBox
         }
     }
 
-    private static CanvasLineMetrics FindLineMetrics(CanvasLineMetrics[] metrics, CanvasTextLayoutRegion region)
+    private CanvasLineMetrics[]? TryGetLineMetrics()
     {
+        try
+        {
+            return _layout?.LineMetrics;
+        }
+        catch (NotSupportedException)
+        {
+            // Some WinRT/Release projections cannot marshal CanvasLineMetrics.
+            // Text still renders; decoration placement can use region bounds.
+            return null;
+        }
+    }
+
+    private static CanvasLineMetrics FindLineMetrics(CanvasLineMetrics[]? metrics, CanvasTextLayoutRegion region)
+    {
+        if (metrics is null || metrics.Length == 0)
+            return default;
+
         int idx = (int)region.CharacterIndex;
         int run = 0;
         foreach (var m in metrics)

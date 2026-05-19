@@ -49,7 +49,7 @@ public sealed class RepoFileCacheService : IRepoFileCacheService
         _diskMaxBytes = diskMaxBytes;
         _ttl = ttl;
 
-        _diskRoot = Path.Combine(ApplicationData.Current.LocalCacheFolder.Path, "RepoFileCache");
+        _diskRoot = GetDefaultDiskRoot();
         Directory.CreateDirectory(_diskRoot);
 
         // Background startup purge — do not block the constructor.
@@ -72,6 +72,22 @@ public sealed class RepoFileCacheService : IRepoFileCacheService
     }
 
     // ── Public API ───────────────────────────────────────────────────────────
+
+    private static string GetDefaultDiskRoot()
+    {
+        try
+        {
+            return Path.Combine(ApplicationData.Current.LocalCacheFolder.Path, "RepoFileCache");
+        }
+        catch (InvalidOperationException)
+        {
+            string localAppData = Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData);
+            if (string.IsNullOrWhiteSpace(localAppData))
+                localAppData = Path.GetTempPath();
+
+            return Path.Combine(localAppData, "JitHub", "RepoFileCache");
+        }
+    }
 
     public bool TryGet(RepoFileCacheKey key, out RepoFileCacheEntry entry)
     {
