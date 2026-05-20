@@ -1,47 +1,125 @@
 using System;
 using System.Collections.Generic;
-using System.IO;
-using System.Linq;
-using System.Runtime.InteropServices.WindowsRuntime;
-using Windows.Foundation;
-using Windows.Foundation.Collections;
+using System.Threading.Tasks;
+using JitHub.Models.GitHub;
+using JitHub.WinUI.ViewModels.Pages;
 using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Controls;
-using Microsoft.UI.Xaml.Controls.Primitives;
-using Microsoft.UI.Xaml.Data;
-using Microsoft.UI.Xaml.Input;
-using Microsoft.UI.Xaml.Media;
-using Microsoft.UI.Xaml.Navigation;
 
-// The Blank Page item template is documented at https://go.microsoft.com/fwlink/?LinkId=234238
+namespace JitHub.WinUI.Views.Pages;
 
-namespace JitHub.WinUI.Views.Pages
+public sealed partial class RepoManagePage : Page
 {
-    /// <summary>
-    /// An empty page that can be used on its own or navigated to within a Frame.
-    /// </summary>
-    public sealed partial class RepoManagePage : Page
-    {
-        private bool _initialized;
+    private bool _initialized;
 
-        public RepoManagePage()
+    public RepoManagePageViewModel ViewModel { get; }
+
+    public RepoManagePage()
+    {
+        ViewModel = ((App)Application.Current).GetService<RepoManagePageViewModel>();
+        InitializeComponent();
+        DataContext = ViewModel;
+    }
+
+    private async void Page_Loaded(object sender, RoutedEventArgs e)
+    {
+        if (_initialized)
         {
-            this.InitializeComponent();
+            return;
         }
 
-        private void Page_Loaded(object sender, RoutedEventArgs e)
+        _initialized = true;
+        await LoadRepositoriesSafelyAsync();
+    }
+
+    private async void ReloadButton_Click(object sender, RoutedEventArgs e)
+    {
+        await LoadRepositoriesSafelyAsync();
+    }
+
+    private void ClearSelectionButton_Click(object sender, RoutedEventArgs e)
+    {
+        ViewModel.ClearSelection();
+    }
+
+    private async void DeleteSelectedButton_Click(object sender, RoutedEventArgs e)
+    {
+        try
         {
-            if (_initialized)
+            IReadOnlyList<GitHubRepositorySelectionItem> selectedRepositories = ViewModel.GetSelectedRepositories();
+            if (selectedRepositories.Count == 0)
             {
                 return;
             }
 
-            _initialized = true;
-            if (ViewModel.LoadCommand.CanExecute(null))
+            ContentDialogResult dialogResult = await ShowDeleteConfirmationAsync(selectedRepositories.Count);
+            if (dialogResult != ContentDialogResult.Primary)
             {
-                ViewModel.LoadCommand.Execute(null);
+                return;
+            }
+
+            RepositoryDeletionResult? deletionResult = await ViewModel.DeleteSelectedAsync(selectedRepositories);
+            if (deletionResult?.HasFailures == true)
+            {
+                await ShowDeleteFailuresAsync(deletionResult.Failures);
             }
         }
+        catch (Exception ex)
+        {
+            ViewModel.ShowUnexpectedError(ex);
+        }
+    }
+
+    private async Task LoadRepositoriesSafelyAsync()
+    {
+        try
+        {
+            await ViewModel.LoadRepositoriesAsync();
+        }
+        catch (Exception ex)
+        {
+            ViewModel.ShowUnexpectedError(ex);
+        }
+    }
+
+    private async Task<ContentDialogResult> ShowDeleteConfirmationAsync(int selectedRepositoryCount)
+    {
+        ContentDialog dialog = new()
+        {
+            XamlRoot = XamlRoot,
+            Title = ViewModel.DeleteDialogTitle,
+            Content = new TextBlock
+            {
+                Text = ViewModel.FormatDeleteDialogContent(selectedRepositoryCount),
+                TextWrapping = TextWrapping.Wrap
+            },
+            PrimaryButtonText = ViewModel.DeleteDialogConfirmButtonText,
+            CloseButtonText = ViewModel.DeleteDialogCloseButtonText,
+            DefaultButton = ContentDialogButton.Close
+        };
+
+        return await dialog.ShowAsync();
+    }
+
+    private async Task ShowDeleteFailuresAsync(IReadOnlyList<string> failures)
+    {
+        ContentDialog dialog = new()
+        {
+            XamlRoot = XamlRoot,
+            Title = ViewModel.DeleteFailureDialogTitle,
+            Content = new ScrollViewer
+            {
+                MaxHeight = 320,
+                Content = new TextBlock
+                {
+                    Text = string.Join(Environment.NewLine, failures),
+                    TextWrapping = TextWrapping.Wrap
+                }
+            },
+            CloseButtonText = ViewModel.CloseButtonText,
+            DefaultButton = ContentDialogButton.Close
+        };
+
+        await dialog.ShowAsync();
     }
 }
-

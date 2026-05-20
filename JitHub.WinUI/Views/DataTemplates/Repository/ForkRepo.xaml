@@ -58,7 +58,7 @@
         </Button>
     </DataTemplate>
     <DataTemplate x:Key="SelectableForkRepo">
-        <Grid Style="{ThemeResource Container}">
+        <Border Style="{ThemeResource Container}">
             <CheckBox IsChecked="{Binding Selected, Mode=TwoWay}">
                 <Grid Margin="16,0,0,0">
                     <Grid.ColumnDefinitions>
@@ -85,7 +85,7 @@
                     </StackPanel>
                 </Grid>
             </CheckBox>
-        </Grid>
+        </Border>
     </DataTemplate>
 </ResourceDictionary>
 
