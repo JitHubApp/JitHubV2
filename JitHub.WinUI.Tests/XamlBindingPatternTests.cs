@@ -77,6 +77,41 @@ public sealed class XamlBindingPatternTests
             string.Join(Environment.NewLine, violations));
     }
 
+    [Fact]
+    public void ContainerStyleIsOnlyAppliedToBorders()
+    {
+        string winuiRoot = FindWinUIProjectRoot();
+        List<string> violations = [];
+
+        foreach (string path in Directory.EnumerateFiles(winuiRoot, "*.xaml", SearchOption.AllDirectories).Order())
+        {
+            string relativePath = Path.GetRelativePath(winuiRoot, path);
+            string text = File.ReadAllText(path);
+
+            foreach (Match match in Regex.Matches(
+                text,
+                "<(?<element>[\\w:]+)\\b(?<attrs>[^>]*\\bStyle\\s*=\\s*\"\\{(?:ThemeResource|StaticResource)\\s+Container\\}\"[^>]*)>",
+                RegexOptions.Singleline))
+            {
+                string element = match.Groups["element"].Value;
+                if (string.Equals(element, "Border", StringComparison.Ordinal) ||
+                    element.EndsWith(":Border", StringComparison.Ordinal))
+                {
+                    continue;
+                }
+
+                int line = GetLineNumber(text, match.Index);
+                violations.Add($"{relativePath}:{line}: {element}");
+            }
+        }
+
+        Assert.True(
+            violations.Count == 0,
+            "The shared Container style targets Border and crashes XAML parsing when applied to another element:" +
+            Environment.NewLine +
+            string.Join(Environment.NewLine, violations));
+    }
+
     private static bool IsWholeObjectOrFrameworkBinding(string expression)
     {
         if (string.IsNullOrWhiteSpace(expression))

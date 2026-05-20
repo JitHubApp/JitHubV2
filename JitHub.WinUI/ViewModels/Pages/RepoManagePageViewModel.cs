@@ -7,9 +7,11 @@ using System.Threading.Tasks;
 using CommunityToolkit.Mvvm.ComponentModel;
 using JitHub.Models.GitHub;
 using JitHub.Services;
+using Microsoft.UI.Xaml.Data;
 
 namespace JitHub.WinUI.ViewModels.Pages;
 
+[Bindable]
 public sealed partial class RepoManagePageViewModel : ViewModelBase
 {
     private readonly IAuthService _authService;
@@ -29,6 +31,12 @@ public sealed partial class RepoManagePageViewModel : ViewModelBase
     }
 
     public ObservableCollection<GitHubRepositorySelectionItem> Repositories { get; } = [];
+
+    public string PageTitle => GetString("RepoManage.PageTitle", "Manage repositories");
+
+    public string PageDescription => GetString(
+        "RepoManage.PageDescription",
+        "Review and delete repositories from your GitHub account.");
 
     public string DeleteSelectedButtonText => GetString("RepoManage.DeleteSelectedButton", "Delete selected");
 
@@ -65,6 +73,9 @@ public sealed partial class RepoManagePageViewModel : ViewModelBase
     public partial bool IsDeletionProgressVisible { get; set; }
 
     [ObservableProperty]
+    public partial bool IsLoadingRepositories { get; set; }
+
+    [ObservableProperty]
     public partial double DeletionProgressValue { get; set; }
 
     [ObservableProperty]
@@ -82,6 +93,7 @@ public sealed partial class RepoManagePageViewModel : ViewModelBase
 
         try
         {
+            IsLoadingRepositories = true;
             StatusText = GetString("RepoManage.LoadingRepositories", "Loading repositories...");
             Repositories.Clear();
             AreRepositoriesVisible = false;
@@ -134,6 +146,19 @@ public sealed partial class RepoManagePageViewModel : ViewModelBase
             StatusText = GetString(
                 "Dashboard.RepositoriesNetworkError",
                 "JitHub could not reach GitHub to load your repositories.");
+        }
+        catch (Exception ex)
+        {
+            AreRepositoriesVisible = false;
+            IsEmptyStateVisible = true;
+            StatusText = FormatString(
+                "RepoManage.LoadFailureStatus",
+                "JitHub could not load repositories: {0}",
+                ex.Message);
+        }
+        finally
+        {
+            IsLoadingRepositories = false;
         }
     }
 
@@ -203,6 +228,10 @@ public sealed partial class RepoManagePageViewModel : ViewModelBase
                 {
                     failures.Add($"{repositoryItem.Repository.FullName}: {GetString("RepoManage.DeleteFailureNetworkErrorShort", "network error")}");
                 }
+                catch (Exception ex)
+                {
+                    failures.Add($"{repositoryItem.Repository.FullName}: {ex.Message}");
+                }
             }
 
             await LoadRepositoriesAsync();
@@ -231,9 +260,32 @@ public sealed partial class RepoManagePageViewModel : ViewModelBase
             selectedRepositoryCount);
     }
 
+    public void ShowUnexpectedError(Exception exception)
+    {
+        AreRepositoriesVisible = Repositories.Count > 0;
+        IsEmptyStateVisible = Repositories.Count == 0;
+        StatusText = FormatString(
+            "RepoManage.UnexpectedErrorStatus",
+            "JitHub could not manage repositories: {0}",
+            exception.Message);
+        IsInteractionEnabled = true;
+        IsDeletionProgressVisible = false;
+        IsLoadingRepositories = false;
+    }
+
     private bool TryGetActiveToken(out string token)
     {
-        token = GetActiveToken() ?? string.Empty;
+        try
+        {
+            token = GetActiveToken() ?? string.Empty;
+        }
+        catch (Exception ex)
+        {
+            token = string.Empty;
+            ShowUnexpectedError(ex);
+            return false;
+        }
+
         if (!string.IsNullOrWhiteSpace(token))
         {
             return true;
