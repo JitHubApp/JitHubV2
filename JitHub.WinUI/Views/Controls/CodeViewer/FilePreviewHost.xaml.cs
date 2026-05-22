@@ -11,6 +11,7 @@ namespace JitHub.WinUI.Views.Controls.CodeViewer;
 public sealed partial class FilePreviewHost : UserControl
 {
     private RepoFilePreviewViewModel? _viewModel;
+    private RepoFilePreviewKind? _currentRendererKind;
 
     public FilePreviewHost()
     {
@@ -54,7 +55,7 @@ public sealed partial class FilePreviewHost : UserControl
             EmptyState.Visibility = Visibility.Visible;
             LoadingState.Visibility = Visibility.Collapsed;
             ErrorState.Visibility = Visibility.Collapsed;
-            RendererHost.Content = null;
+            ClearRenderer();
             return;
         }
 
@@ -73,7 +74,7 @@ public sealed partial class FilePreviewHost : UserControl
             EmptyState.Visibility = Visibility.Collapsed;
             ErrorMessageText.Text = vm.ErrorMessage;
             ErrorState.Visibility = Visibility.Visible;
-            RendererHost.Content = null;
+            ClearRenderer();
             return;
         }
 
@@ -82,17 +83,44 @@ public sealed partial class FilePreviewHost : UserControl
         if (vm.CurrentFile is null)
         {
             EmptyState.Visibility = Visibility.Visible;
-            RendererHost.Content = null;
+            ClearRenderer();
             return;
         }
 
         EmptyState.Visibility = Visibility.Collapsed;
-        RendererHost.Content = CreateRenderer(vm);
+        EnsureRenderer(vm);
     }
 
-    private static FrameworkElement CreateRenderer(RepoFilePreviewViewModel vm)
+    private void EnsureRenderer(RepoFilePreviewViewModel vm)
     {
-        FrameworkElement renderer = vm.Kind switch
+        // Keep the renderer instance stable while the preview kind is unchanged.
+        // Markdown selection owns pointer capture; replacing the control during a
+        // queued preview refresh drops that capture in packaged builds.
+        if (RendererHost.Content is FrameworkElement existing &&
+            _currentRendererKind == vm.Kind)
+        {
+            if (!ReferenceEquals(existing.DataContext, vm))
+                existing.DataContext = vm;
+            return;
+        }
+
+        var renderer = CreateRenderer(vm.Kind);
+        renderer.HorizontalAlignment = HorizontalAlignment.Stretch;
+        renderer.VerticalAlignment = VerticalAlignment.Stretch;
+        renderer.DataContext = vm;
+        RendererHost.Content = renderer;
+        _currentRendererKind = vm.Kind;
+    }
+
+    private void ClearRenderer()
+    {
+        RendererHost.Content = null;
+        _currentRendererKind = null;
+    }
+
+    private static FrameworkElement CreateRenderer(RepoFilePreviewKind kind)
+    {
+        return kind switch
         {
             RepoFilePreviewKind.Code => new CodePreview(),
             RepoFilePreviewKind.Markdown => new MarkdownPreview(),
@@ -107,9 +135,5 @@ public sealed partial class FilePreviewHost : UserControl
             RepoFilePreviewKind.TooLarge => new UnsupportedPreview(),
             _ => new UnsupportedPreview(),
         };
-        renderer.HorizontalAlignment = HorizontalAlignment.Stretch;
-        renderer.VerticalAlignment = VerticalAlignment.Stretch;
-        renderer.DataContext = vm;
-        return renderer;
     }
 }

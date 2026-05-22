@@ -1017,10 +1017,12 @@ public sealed partial class MarkdownRendererControl : UserControl
         };
         _root.Children.Add(_canvas);
         _root.Children.Add(_overlay);
+        _overlay.Children.Add(CreateSelectionAdorner());
+        _overlay.Children.Add(CreateSelectionDragShield());
         _scroll.Content = _root;
 
         _canvas.RegionsInvalidated += OnRegionsInvalidated;
-        _canvas.CreateResources += (_, _) => RequestRebuild(); // rebuild layouts after GPU device loss/recreation
+        _canvas.CreateResources += OnCanvasCreateResources;
         _canvas.PointerPressed += OnPointerPressed;
         _canvas.PointerMoved += OnPointerMoved;
         _canvas.PointerReleased += OnPointerReleased;
@@ -1585,7 +1587,7 @@ public sealed partial class MarkdownRendererControl : UserControl
 
         _selection.Clear();
         _selectionAdornerRects.Clear();
-        try { _selectionAdorner?.Invalidate(); } catch { }
+        InvalidateSelectionAdorner();
     }
 
     private async Task RebuildAsync(CancellationToken ct, RebuildReason reason)
@@ -1818,6 +1820,7 @@ public sealed partial class MarkdownRendererControl : UserControl
         _lastFiredRealizedCount = -1;
         _selectionAdornerRects.Clear();
         EnsureSelectionAdorner();
+        EnsureSelectionDragShield();
         _selection.Clear();             // stale selection no longer valid after re-layout
         _focusedItemIndex = -1;         // selection/focus stale after re-layout
         _focusResumeItemIndex = -1;
@@ -1873,7 +1876,7 @@ public sealed partial class MarkdownRendererControl : UserControl
     {
         EnsureLazyLayoutForViewport();
         UpdateSelectionAdornerViewport();
-        _selectionAdorner?.Invalidate();
+        InvalidateSelectionAdorner();
         // Run a final realisation pass after intermediate-view bursts settle
         // so we don't thrash during fling/inertia. ViewChanged with
         // IsIntermediate=false fires at the end of inertia; we also realise on
@@ -2577,19 +2580,47 @@ public sealed partial class MarkdownRendererControl : UserControl
                 _canvasDeviceRecoveryQueued = false;
                 RequestRebuild();
                 try { _canvas?.Invalidate(); } catch (Exception ex) when (GraphicsDeviceErrors.IsDeviceLost(ex)) { }
-                try { _selectionAdorner?.Invalidate(); } catch (Exception ex) when (GraphicsDeviceErrors.IsDeviceLost(ex)) { }
+                InvalidateSelectionAdorner();
             });
         });
     }
 
+    private void OnCanvasCreateResources(
+        CanvasVirtualControl sender,
+        Microsoft.Graphics.Canvas.UI.CanvasCreateResourcesEventArgs args)
+    {
+        // Initial resource creation can be deferred until the first input frame in
+        // packaged WinUI. Rebuilding there resets pointer capture and selection
+        // state, which makes the first click/drag flash and get swallowed. Layout
+        // uses CanvasDevice.GetSharedDevice(), so initial creation needs no rebuild.
+        // Later resource creation means device/DPI changed, so rebuild layouts.
+        if (args.Reason != Microsoft.Graphics.Canvas.UI.CanvasCreateResourcesReason.FirstTime)
+            RequestRebuild();
+    }
+
     // ---- Input ----
+
+    private static bool IsPrecisePointer(PointerRoutedEventArgs e)
+    {
+        var type = e.Pointer.PointerDeviceType;
+        return type == Microsoft.UI.Input.PointerDeviceType.Mouse ||
+               type == Microsoft.UI.Input.PointerDeviceType.Pen;
+    }
+
+    private bool IsActivePointerSessionEvent(PointerRoutedEventArgs e)
+        => _pointerSession.IsActive && _pointerSession.PointerId == e.Pointer.PointerId;
 
     private void OnPointerPressed(object sender, PointerRoutedEventArgs e)
     {
-        if (_snapshot is null || _canvas is null) return;
+        if (_snapshot is null || _canvas is null)
+            return;
+        if (!IsPrecisePointer(e))
+            return;
+
         // Only process left (primary) button presses; right-clicks are handled by
         // OnRightTapped and must not affect the multi-click counter or selection anchor.
-        if (!e.GetCurrentPoint(_canvas).Properties.IsLeftButtonPressed) return;
+        if (!e.GetCurrentPoint(_canvas).Properties.IsLeftButtonPressed)
+            return;
         var pt = e.GetCurrentPoint(_canvas).Position;
         RememberFocusResumePoint(pt);
 
@@ -2764,6 +2795,9 @@ public sealed partial class MarkdownRendererControl : UserControl
         // Drag-select.
         if (_selectionAnchor is not null)
         {
+            if (!IsActivePointerSessionEvent(e))
+                return;
+
             HideAbbreviationTooltip();
             var dragPoint = PrepareSelectionDragPoint(pt);
             // Atomic embed inclusion: when the pointer is inside an inline
@@ -2836,6 +2870,16 @@ public sealed partial class MarkdownRendererControl : UserControl
             // hovered-run identity flips.  Suppressing the toggle here
             // costs nothing because the IBeam cursor and link-hover color
             // aren't relevant while the user is mid-drag selecting.
+            return;
+        }
+
+        // Touch contacts should pan the containing ScrollViewer. Treating touch
+        // like a mouse press can capture the pointer, start text selection, and
+        // drive the Win2D selection overlay at touch-scroll frequency.
+        if (!IsPrecisePointer(e))
+        {
+            HideAbbreviationTooltip();
+            SetCursorShape(null);
             return;
         }
 
@@ -3119,8 +3163,18 @@ public sealed partial class MarkdownRendererControl : UserControl
         if (_overlay is null)
             return;
 
-        EnsureSelectionAdorner();
+        if (_selectionAdorner is null && !HasInteractiveTextAdornerContent())
+            return;
+
+        if (!EnsureSelectionAdorner())
+            return;
+
         UpdateSelectionAdornerViewport();
+        InvalidateSelectionAdorner();
+    }
+
+    private void InvalidateSelectionAdorner()
+    {
         try
         {
             _selectionAdorner?.Invalidate();
@@ -3128,6 +3182,10 @@ public sealed partial class MarkdownRendererControl : UserControl
         catch (Exception ex) when (GraphicsDeviceErrors.IsDeviceLost(ex))
         {
             HandleCanvasDeviceLost(ex);
+        }
+        catch (System.Runtime.InteropServices.COMException ex)
+        {
+            MarkdownDiagnostics.WriteLine($"[MarkdownRendererControl] selection adorner invalidate failed: {ex.Message}");
         }
     }
 
@@ -3347,7 +3405,7 @@ public sealed partial class MarkdownRendererControl : UserControl
         if (snapshot is null || !_selection.IsActive)
         {
             _selectionAdornerRects.Clear();
-            _selectionAdorner?.Invalidate();
+            InvalidateSelectionAdorner();
             return;
         }
 
@@ -3386,29 +3444,51 @@ public sealed partial class MarkdownRendererControl : UserControl
             }
         }
 
-        EnsureSelectionAdorner();
-        UpdateSelectionAdornerViewport();
-        _selectionAdorner?.Invalidate();
-    }
-
-    private void EnsureSelectionAdorner()
-    {
-        if (_overlay is null)
+        if (!EnsureSelectionAdorner())
             return;
 
-        if (_selectionAdorner is null)
+        UpdateSelectionAdornerViewport();
+        InvalidateSelectionAdorner();
+    }
+
+    private bool HasInteractiveTextAdornerContent()
+        => (_selection.IsActive && _selectionAdornerRects.Count > 0) ||
+           (_lastHoveredRun is LinkRun && _lastHoveredBox is not null) ||
+           TryGetFocusedLink(out _, out _);
+
+    private CanvasControl CreateSelectionAdorner()
+    {
+        var adorner = new CanvasControl
         {
-            _selectionAdorner = new CanvasControl
-            {
-                IsHitTestVisible = false,
-                UseLayoutRounding = true,
-            };
-            _selectionAdorner.Draw += OnSelectionAdornerDraw;
-            Canvas.SetZIndex(_selectionAdorner, 0);
+            IsHitTestVisible = false,
+            UseLayoutRounding = true,
+        };
+        adorner.Draw += OnSelectionAdornerDraw;
+        Canvas.SetZIndex(adorner, 0);
+        _selectionAdorner = adorner;
+        return adorner;
+    }
+
+    private bool EnsureSelectionAdorner()
+    {
+        if (_overlay is null)
+            return false;
+
+        if (_selectionAdorner is null)
+            CreateSelectionAdorner();
+
+        try
+        {
+            if (VisualTreeHelper.GetParent(_selectionAdorner) is null)
+                _overlay.Children.Add(_selectionAdorner);
+        }
+        catch (System.Runtime.InteropServices.COMException ex)
+        {
+            MarkdownDiagnostics.WriteLine($"[MarkdownRendererControl] selection adorner attach failed: {ex.Message}");
+            return false;
         }
 
-        if (VisualTreeHelper.GetParent(_selectionAdorner) is null)
-            _overlay.Children.Add(_selectionAdorner);
+        return true;
     }
 
     private void SetSelectionDragShieldActive(bool active)
@@ -3423,27 +3503,65 @@ public sealed partial class MarkdownRendererControl : UserControl
             return;
         }
 
-        if (_selectionDragShield is null)
+        if (!EnsureSelectionDragShield())
+            return;
+
+        _selectionDragShield!.Width = GetSelectionOverlayWidth();
+        _selectionDragShield.Height = GetSelectionOverlayHeight();
+        _selectionDragShield.Visibility = Visibility.Visible;
+    }
+
+    private Border CreateSelectionDragShield()
+    {
+        var shield = new Border
         {
-            _selectionDragShield = new Border
-            {
-                Background = new SolidColorBrush(Color.FromArgb(1, 0, 0, 0)),
-                IsHitTestVisible = true,
-            };
-            _selectionDragShield.PointerMoved += OnPointerMoved;
-            _selectionDragShield.PointerReleased += OnPointerReleased;
-            _selectionDragShield.PointerCanceled += OnPointerCanceledOrCaptureLost;
-            _selectionDragShield.PointerCaptureLost += OnPointerCanceledOrCaptureLost;
-            Canvas.SetLeft(_selectionDragShield, 0);
-            Canvas.SetTop(_selectionDragShield, 0);
-            Canvas.SetZIndex(_selectionDragShield, 4);
+            Background = new SolidColorBrush(Color.FromArgb(0, 0, 0, 0)),
+            IsHitTestVisible = true,
+            Visibility = Visibility.Collapsed,
+        };
+        shield.PointerMoved += OnPointerMoved;
+        shield.PointerReleased += OnPointerReleased;
+        shield.PointerCanceled += OnPointerCanceledOrCaptureLost;
+        shield.PointerCaptureLost += OnPointerCanceledOrCaptureLost;
+        Canvas.SetLeft(shield, 0);
+        Canvas.SetTop(shield, 0);
+        Canvas.SetZIndex(shield, 4);
+        _selectionDragShield = shield;
+        return shield;
+    }
+
+    private bool EnsureSelectionDragShield()
+    {
+        if (_overlay is null)
+            return false;
+
+        if (_selectionDragShield is null)
+            CreateSelectionDragShield();
+
+        try
+        {
+            if (VisualTreeHelper.GetParent(_selectionDragShield) is null)
+                _overlay.Children.Add(_selectionDragShield);
+        }
+        catch (System.Runtime.InteropServices.COMException ex)
+        {
+            MarkdownDiagnostics.WriteLine($"[MarkdownRendererControl] selection drag shield attach failed: {ex.Message}");
+            return false;
         }
 
-        _selectionDragShield.Width = Math.Max(1, _overlay.Width);
-        _selectionDragShield.Height = Math.Max(1, _overlay.Height);
-        if (VisualTreeHelper.GetParent(_selectionDragShield) is null)
-            _overlay.Children.Add(_selectionDragShield);
-        _selectionDragShield.Visibility = Visibility.Visible;
+        return true;
+    }
+
+    private double GetSelectionOverlayWidth()
+    {
+        double width = _scroll?.ViewportWidth > 0 ? _scroll.ViewportWidth : ActualWidth;
+        return double.IsFinite(width) && width > 0 ? width : 1.0;
+    }
+
+    private double GetSelectionOverlayHeight()
+    {
+        double height = _scroll?.ViewportHeight > 0 ? _scroll.ViewportHeight : ActualHeight;
+        return double.IsFinite(height) && height > 0 ? height : 1.0;
     }
 
     private void UpdateSelectionAdornerViewport()
@@ -3451,8 +3569,8 @@ public sealed partial class MarkdownRendererControl : UserControl
         if (_selectionAdorner is null)
             return;
 
-        double width = Math.Max(1.0, _scroll?.ViewportWidth > 0 ? _scroll.ViewportWidth : ActualWidth);
-        double height = Math.Max(1.0, _scroll?.ViewportHeight > 0 ? _scroll.ViewportHeight : ActualHeight);
+        double width = GetSelectionOverlayWidth();
+        double height = GetSelectionOverlayHeight();
         double top = _scroll?.VerticalOffset ?? 0.0;
 
         if (double.IsNaN(_selectionAdorner.Width) || Math.Abs(_selectionAdorner.Width - width) > 0.5)
@@ -3516,17 +3634,11 @@ public sealed partial class MarkdownRendererControl : UserControl
                 args.DrawingSession.FillRectangle(rect, selectedBackground);
             }
 
-            foreach (var rect in _selectionAdornerRects)
-            {
-                if (rect.Right < viewport.Left || rect.Left > viewport.Right ||
-                    rect.Bottom < viewport.Top || rect.Top > viewport.Bottom)
-                {
-                    continue;
-                }
-
-                using var layer = args.DrawingSession.CreateLayer(1.0f, rect);
-                snapshot.PaintSelectionForeground(args.DrawingSession, range, selectedForeground, rect);
-            }
+            // Selected text uses a masked foreground layout, so it can be drawn
+            // once for the visible viewport after the opaque highlight fill.
+            // This preserves the native text-selection look without creating a
+            // clipped Win2D layer for every selection stripe during drag/scroll.
+            snapshot.PaintSelectionForeground(args.DrawingSession, range, selectedForeground, viewport);
         }
 
         PaintLinkStateOverlay(args.DrawingSession, viewport);
@@ -3556,6 +3668,9 @@ public sealed partial class MarkdownRendererControl : UserControl
 
     private void OnPointerCanceledOrCaptureLost(object sender, PointerRoutedEventArgs e)
     {
+        if (!IsActivePointerSessionEvent(e))
+            return;
+
         // True interruption (system-level cancel or capture taken by another element):
         // tear down drag state so a phantom anchor doesn't survive into the next gesture.
         // We deliberately do NOT do this on plain PointerExited — with capture, the
@@ -3567,6 +3682,8 @@ public sealed partial class MarkdownRendererControl : UserControl
         _selectionAnchor = null;
         _clickMode = ClickMode.Single;
         SetSelectionDragShieldActive(false);
+        if (!_selection.Range.Normalized().IsEmpty)
+            InvalidateSelectionAdorner();
         OnPointerExited(sender, e);
     }
 
@@ -3640,6 +3757,8 @@ public sealed partial class MarkdownRendererControl : UserControl
     private void OnPointerReleased(object sender, PointerRoutedEventArgs e)
     {
         if (_canvas is null) return;
+        if (!IsActivePointerSessionEvent(e))
+            return;
 
         // Snapshot BEFORE releasing capture: ReleasePointerCapture can dispatch
         // PointerCaptureLost synchronously, so read and clear the pointer session first.
@@ -3655,7 +3774,7 @@ public sealed partial class MarkdownRendererControl : UserControl
         if (!_selection.Range.Normalized().IsEmpty)
         {
             UpdateSelectionAdornerViewport();
-            _selectionAdorner?.Invalidate();
+            InvalidateSelectionAdorner();
         }
 
         // Click handling for links: if no real selection occurred, raise LinkClick
