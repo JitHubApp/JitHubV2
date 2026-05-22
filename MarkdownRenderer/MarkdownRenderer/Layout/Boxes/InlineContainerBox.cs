@@ -26,6 +26,8 @@ internal sealed class InlineContainerBox : BlockBox
     private CanvasTextLayout? _selectionLayout;
     private Color _selectionLayoutColor;
     private float _selectionLayoutWidth;
+    private int _selectionLayoutStart = -1;
+    private int _selectionLayoutLength = -1;
     private string _buffer = string.Empty;
     private bool _bufferDirty;
     private float _lastWidth;
@@ -517,8 +519,15 @@ internal sealed class InlineContainerBox : BlockBox
     {
         if (_layout is null) return;
 
+        var normalized = range.Normalized();
+        EnsureBuffer();
+        int from = ToBufferIndex(normalized.Start);
+        int to = ToBufferIndex(normalized.End);
+        if (to <= from)
+            return;
+
         bool intersectsSelection = false;
-        foreach (var rect in GetRangeRects(range))
+        foreach (var rect in GetRangeRects(normalized))
         {
             if (rect.Right < viewport.Left || rect.Left > viewport.Right ||
                 rect.Bottom < viewport.Top || rect.Top > viewport.Bottom)
@@ -534,10 +543,10 @@ internal sealed class InlineContainerBox : BlockBox
 
         var style = GetContainerStyle();
         var (sx, sy) = GetSnappedOrigin(style);
-        var layout = EnsureSelectionLayout(color, style);
+        var layout = EnsureSelectionLayout(color, style, from, to - from);
         ds.DrawTextLayout(layout, sx, sy, color);
-        DrawDecorations(ds, sx, sy, color);
-        DrawSelectedInlineImages(ds, sx, sy, viewport, range.Normalized(), color);
+        DrawSelectedDecorations(ds, sx, sy, color, from, to - from);
+        DrawSelectedInlineImages(ds, sx, sy, viewport, normalized, color);
     }
 
     public void PaintLinkStateForeground(CanvasDrawingSession ds, LinkRun link, bool focused, Rect viewport)
@@ -947,12 +956,16 @@ internal sealed class InlineContainerBox : BlockBox
         }
     }
 
-    private CanvasTextLayout EnsureSelectionLayout(Color color, ElementStyle style)
+    private CanvasTextLayout EnsureSelectionLayout(Color color, ElementStyle style, int selectedStart, int selectedLength)
     {
         EnsureBuffer();
+        selectedStart = Math.Clamp(selectedStart, 0, _buffer.Length);
+        selectedLength = Math.Clamp(selectedLength, 0, _buffer.Length - selectedStart);
         if (_selectionLayout is not null &&
             _selectionLayoutColor == color &&
-            Math.Abs(_selectionLayoutWidth - _lastWidth) <= 0.5f)
+            Math.Abs(_selectionLayoutWidth - _lastWidth) <= 0.5f &&
+            _selectionLayoutStart == selectedStart &&
+            _selectionLayoutLength == selectedLength)
         {
             return _selectionLayout;
         }
@@ -984,10 +997,16 @@ internal sealed class InlineContainerBox : BlockBox
         _selectionLayout.Options = CanvasDrawTextOptions.EnableColorFont;
         ApplyRunStyles(_selectionLayout, applyColors: false);
         if (_buffer.Length > 0)
-            _selectionLayout.SetColor(0, _buffer.Length, color);
+        {
+            _selectionLayout.SetColor(0, _buffer.Length, Color.FromArgb(0, 0, 0, 0));
+            if (selectedLength > 0)
+                _selectionLayout.SetColor(selectedStart, selectedLength, color);
+        }
         ApplyEmbedSpacing(_selectionLayout);
         _selectionLayoutColor = color;
         _selectionLayoutWidth = _lastWidth;
+        _selectionLayoutStart = selectedStart;
+        _selectionLayoutLength = selectedLength;
         return _selectionLayout;
     }
 
@@ -1167,6 +1186,53 @@ internal sealed class InlineContainerBox : BlockBox
                 }
             }
             cumulative += len;
+        }
+    }
+
+    private void DrawSelectedDecorations(CanvasDrawingSession ds, float baseX, float baseY, Color color, int selectedStart, int selectedLength)
+    {
+        if (_layout is null || selectedLength <= 0)
+            return;
+
+        int selectedEnd = selectedStart + selectedLength;
+        int cumulative = 0;
+        CanvasLineMetrics[]? lineMetrics = null;
+        bool lineMetricsAttempted = false;
+        foreach (var run in _runs)
+        {
+            int len = run.Text.Length;
+            if (len == 0)
+                continue;
+
+            int runStart = cumulative;
+            int runEnd = cumulative + len;
+            cumulative = runEnd;
+
+            if (runEnd <= selectedStart || runStart >= selectedEnd)
+                continue;
+            if (run is InlineEmbedRun or InlineImageRun)
+                continue;
+            if (run is LinkRun { IsSuperscript: true })
+                continue;
+
+            var rs = GetRunStyle(run);
+            if (!rs.Underline && !rs.Strikethrough)
+                continue;
+
+            if (!lineMetricsAttempted)
+            {
+                lineMetrics = TryGetLineMetrics();
+                lineMetricsAttempted = true;
+            }
+
+            int segmentStart = Math.Max(runStart, selectedStart);
+            int segmentLength = Math.Min(runEnd, selectedEnd) - segmentStart;
+            var regions = _layout.GetCharacterRegions(segmentStart, segmentLength);
+            if (regions is null)
+                continue;
+
+            foreach (var r in regions)
+                DrawRunDecorations(ds, baseX, baseY, lineMetrics, r, run, rs, color);
         }
     }
 

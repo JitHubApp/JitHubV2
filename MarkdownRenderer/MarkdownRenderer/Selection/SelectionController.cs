@@ -23,11 +23,13 @@ internal sealed class SelectionController
 
     public void SetAnchor(DocumentPosition anchor)
     {
+        bool hadSelection = !Range.IsEmpty;
         Range = new DocumentRange(anchor, anchor);
         if (ShakeLogger.IsEnabled)
             ShakeLogger.Log("sel-anchor",
                 $"blk={anchor.BlockIndex} inl={anchor.InlineIndex} c={anchor.CharacterOffset}");
-        Changed?.Invoke(this, System.EventArgs.Empty);
+        if (hadSelection)
+            Changed?.Invoke(this, System.EventArgs.Empty);
     }
 
     public void ExtendTo(DocumentPosition position)
