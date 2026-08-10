@@ -11,6 +11,9 @@ using System.Linq;
 using System.Threading.Tasks;
 using System.Windows.Input;
 using Windows.ApplicationModel.DataTransfer;
+using JitHub.Services.Markdown;
+using JitHub.Services;
+using MarkdownRenderer.Images;
 
 namespace JitHub.WinUI.ViewModels.UserViewModel
 {
@@ -21,13 +24,20 @@ namespace JitHub.WinUI.ViewModels.UserViewModel
         public List<string> Users { get; set; } = [];
         public bool Voted { get; set; }
         public ICommand ReactionCommand { get; set; } = null!;
+        public string AutomationInstanceId { get; set; } = string.Empty;
 
-        public ReactionWithUsers(ReactionType type, IEnumerable<string> users, bool voted, ICommand reactionCommand)
+        public ReactionWithUsers(
+            ReactionType type,
+            IEnumerable<string> users,
+            bool voted,
+            ICommand reactionCommand,
+            string automationInstanceId)
         {
             Type = type;
             Users = users.ToList();
             Voted = voted;
             ReactionCommand = reactionCommand;
+            AutomationInstanceId = automationInstanceId;
         }
     }
 
@@ -80,12 +90,54 @@ namespace JitHub.WinUI.ViewModels.UserViewModel
         public User Commenter
         {
             get => _commenter;
-            set => SetProperty(ref _commenter, value);
+            set
+            {
+                if (!SetProperty(ref _commenter, value))
+                    return;
+
+                OnPropertyChanged(nameof(CommenterDisplayName));
+                OnPropertyChanged(nameof(AuthenticatedCommenterLogin));
+                OnPropertyChanged(nameof(CommenterAvatarUrl));
+            }
         }
+
+        public string CommenterDisplayName => string.IsNullOrWhiteSpace(Commenter?.Login)
+            ? LocalizedResourceText.GetString("Common.UnknownUser", "unknown")
+            : Commenter.Login;
+
+        public string? AuthenticatedCommenterLogin =>
+            UserIdentityNavigationPolicy.GetRoutableLogin(Commenter?.Login);
+
+        public string CommenterAvatarUrl => Commenter?.AvatarUrl ?? string.Empty;
+
+        public string CommenterAvatarAutomationId => $"{MarkdownAutomationId}_Author";
 
         public ICommand LoadCommand { get; }
 
-        public ICommand ReactionCommand { get; }
+        public string MarkdownAutomationId => $"LegacyComment_{_commentId}";
+
+        public string HeaderReactionAutomationId => $"{MarkdownAutomationId}_HeaderReactions";
+
+        public string SummaryReactionAutomationId => $"{MarkdownAutomationId}_SummaryReactions";
+
+        public string OverflowAutomationId => $"{MarkdownAutomationId}_Actions";
+
+        public string CopyLinkAutomationId => $"{MarkdownAutomationId}_CopyLink";
+
+        public string QuoteReplyAutomationId => $"{MarkdownAutomationId}_QuoteReply";
+
+        public MarkdownDocumentSource? MarkdownSource => Repo?.Owner?.Login is string owner &&
+            !string.IsNullOrWhiteSpace(owner) &&
+            !string.IsNullOrWhiteSpace(Repo.Name)
+                ? MarkdownDocumentSourceFactory.CreateRepositoryDocument(
+                    "legacy-comment",
+                    _commentId.ToString(),
+                    owner,
+                    Repo.Name,
+                    Repo.DefaultBranch)
+                : null;
+
+        public IAsyncRelayCommand<ReactionType> ReactionCommand { get; }
         public ICommand? RemoveReactionCommand { get; }
 
         public MenuItem CopyLinkMenuItem
@@ -118,11 +170,17 @@ namespace JitHub.WinUI.ViewModels.UserViewModel
             CreatedAt = issue.CreatedAt;
             _number = issue.Number;
             _commentId = issue.Id;
-            Commenter = issue.User!;
+            Commenter = issue.User ?? new User();
             var copyLinkCommand  = new RelayCommand(() => CopyLink(issue.HtmlUrl, issue.Id.ToString()));
-            CopyLinkMenuItem = new MenuItem("Copy Link", copyLinkCommand);
-            QuoteReplyMenuItem = new MenuItem("Quote Reply", quoteReplyCommand);
-            ReactionCommand = new AsyncRelayCommand<ReactionType>(async type => await ReactToIssue(type, Repo.Id, _number));
+            CopyLinkMenuItem = new MenuItem(
+                LocalizedResourceText.GetString("Comment.Menu.CopyLink", "Copy Link"),
+                copyLinkCommand);
+            QuoteReplyMenuItem = new MenuItem(
+                LocalizedResourceText.GetString("Comment.Menu.QuoteReply", "Quote Reply"),
+                quoteReplyCommand);
+            ReactionCommand = new AsyncRelayCommand<ReactionType>(
+                type => ReactToIssue(type, Repo.Id, _number),
+                AsyncRelayCommandOptions.None);
             LoadCommand = new AsyncRelayCommand(LoadFromIssue);
         }
 
@@ -133,13 +191,17 @@ namespace JitHub.WinUI.ViewModels.UserViewModel
             CreatedAt = comment.CreatedAt;
             _number = comment.Number;
             _commentId = comment.Id;
-            CopyLinkMenuItem = new MenuItem("Copy Link", comment.CopyLinkCommand);
+            CopyLinkMenuItem = new MenuItem(
+                LocalizedResourceText.GetString("Comment.Menu.CopyLink", "Copy Link"),
+                comment.CopyLinkCommand);
             QuoteReplyMenuItem = new MenuItem(
-                "Quote Reply",
+                LocalizedResourceText.GetString("Comment.Menu.QuoteReply", "Quote Reply"),
                 comment.QuoteReplyCommand ?? new RelayCommand<string?>(_ => { }),
                 comment.Body ?? string.Empty);
-            ReactionCommand = new AsyncRelayCommand<ReactionType>(async type => await ReactToIssueComment(type, Repo.Id, comment.Id));
-            Commenter = comment.User!;
+            ReactionCommand = new AsyncRelayCommand<ReactionType>(
+                type => ReactToIssueComment(type, Repo.Id, comment.Id),
+                AsyncRelayCommandOptions.None);
+            Commenter = comment.User ?? new User();
             LoadCommand = new AsyncRelayCommand(LoadFromIssueComment);
         }
 
@@ -150,11 +212,18 @@ namespace JitHub.WinUI.ViewModels.UserViewModel
             _number = comment.Number;
             _commentId = comment.Id;
             CreatedAt = comment.CreatedAt;
-            Commenter = comment.User!;
+            Commenter = comment.User ?? new User();
             var copyCommand = new RelayCommand(() => PlatformHelper.CopyString(comment.HtmlUrl));
-            CopyLinkMenuItem = new MenuItem("Copy Link", copyCommand);
-            QuoteReplyMenuItem = new MenuItem("Quote Reply", quoteReplyCommand, comment.Body ?? string.Empty);
-            ReactionCommand = new RelayCommand<ReactionType>(async type => await ReactToReviewComment(type, Repo.Id, comment.Id));
+            CopyLinkMenuItem = new MenuItem(
+                LocalizedResourceText.GetString("Comment.Menu.CopyLink", "Copy Link"),
+                copyCommand);
+            QuoteReplyMenuItem = new MenuItem(
+                LocalizedResourceText.GetString("Comment.Menu.QuoteReply", "Quote Reply"),
+                quoteReplyCommand,
+                comment.Body ?? string.Empty);
+            ReactionCommand = new AsyncRelayCommand<ReactionType>(
+                type => ReactToReviewComment(type, Repo.Id, comment.Id),
+                AsyncRelayCommandOptions.None);
             LoadCommand = new AsyncRelayCommand(LoadFromReviewComment);
         }
 
@@ -171,7 +240,7 @@ namespace JitHub.WinUI.ViewModels.UserViewModel
                 await GitHubService.DeleteIssueReaction(ownerLogin, repoName, number, reaction.Id);
             }
 
-            LoadCommand.Execute(null);
+            await LoadFromIssue();
         }
 
         private async Task ReactToIssueComment(ReactionType type, long repoId, long commentId)
@@ -185,7 +254,7 @@ namespace JitHub.WinUI.ViewModels.UserViewModel
                 var reaction = _votesMap[type];
                 await GitHubService.DeleteIssueCommentReaction(repoId, commentId, reaction.Id);
             }
-            LoadCommand.Execute(null);
+            await LoadFromIssueComment();
         }
 
         private async Task ReactToReviewComment(ReactionType type, long repoId, long commentId)
@@ -199,7 +268,7 @@ namespace JitHub.WinUI.ViewModels.UserViewModel
                 var reaction = _votesMap[type];
                 await GitHubService.DeleteReviewCommentReaction(repoId, commentId, reaction.Id);
             }
-            LoadCommand.Execute(null);
+            await LoadFromReviewComment();
         }
 
         private async Task LoadFromIssueComment()
@@ -271,7 +340,8 @@ namespace JitHub.WinUI.ViewModels.UserViewModel
                     userReaction.Key,
                     userReaction.Value,
                     votesMap.ContainsKey(userReaction.Key),
-                    ReactionCommand)
+                    ReactionCommand,
+                    SummaryReactionAutomationId)
                 )
                 .ToList();
             

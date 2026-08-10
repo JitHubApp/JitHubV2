@@ -54,7 +54,6 @@ public class LazyImageLoadingTests
     public void LazyLoadBand_ExcludesPoint_WhenFarBelow()
     {
         const double overscan = 800.0;
-        double viewportTop = 0.0;
         double viewportBottom = 600.0;
         double bandBottom = viewportBottom + overscan;
 

@@ -12,7 +12,7 @@
         <TextBlock
             Style="{StaticResource ListItemSecondaryTextBlockStyle}">
             <Run Text="{Binding ShortSha}" />
-            <Run Text=" by " />
+            <Run x:Uid="ControlsCommitCommitListItemControlRunBy" Text=" by " />
             <Run Text="{Binding AuthorDisplayName}" />
         </TextBlock>
     </StackPanel>

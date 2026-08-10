@@ -2,123 +2,1312 @@
     x:Class="JitHub.WinUI.Views.Pages.SettingsPage"
     xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
     xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
-    xmlns:local="using:JitHub.WinUI.Views.Pages"
+    xmlns:appcontrols="using:JitHub.WinUI.Views.Controls.App"
     xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
     xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
-    xmlns:viewmodels="using:JitHub.WinUI.ViewModels"
-    xmlns:common="using:JitHub.WinUI.Views.Controls.Common"
-    xmlns:appcontrols="using:JitHub.WinUI.Views.Controls.App"
+    xmlns:models="using:JitHub.Models"
+    xmlns:pageViewModels="using:JitHub.WinUI.ViewModels.Pages"
     mc:Ignorable="d"
-    Background="Transparent">
-    <Page.DataContext>
-        <viewmodels:SettingsViewModel x:Name="ViewModel"/>
-    </Page.DataContext>
+    Background="Transparent"
+    SizeChanged="SettingsPage_SizeChanged">
+
+    <Page.Resources>
+        <Style x:Key="SettingsThemeCardRadioButtonStyle" TargetType="RadioButton">
+            <Setter Property="Background" Value="Transparent" />
+            <Setter Property="BorderThickness" Value="0" />
+            <Setter Property="FocusVisualMargin" Value="-2" />
+            <Setter Property="HorizontalContentAlignment" Value="Stretch" />
+            <Setter Property="Padding" Value="0" />
+            <Setter Property="UseSystemFocusVisuals" Value="True" />
+            <Setter Property="VerticalContentAlignment" Value="Stretch" />
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="RadioButton">
+                        <Grid
+                            x:Name="ThemeCardRoot"
+                            Background="{TemplateBinding Background}"
+                            CornerRadius="{ThemeResource AppRadiusMedium}">
+                            <VisualStateManager.VisualStateGroups>
+                                <VisualStateGroup x:Name="CommonStates">
+                                    <VisualState x:Name="Normal" />
+                                    <VisualState x:Name="PointerOver">
+                                        <VisualState.Setters>
+                                            <Setter Target="ThemeCardRoot.Background" Value="{ThemeResource ButtonBackgroundPointerOver}" />
+                                        </VisualState.Setters>
+                                    </VisualState>
+                                    <VisualState x:Name="Pressed">
+                                        <VisualState.Setters>
+                                            <Setter Target="ThemeCardRoot.Background" Value="{ThemeResource ButtonBackgroundPressed}" />
+                                        </VisualState.Setters>
+                                    </VisualState>
+                                    <VisualState x:Name="Disabled">
+                                        <VisualState.Setters>
+                                            <Setter Target="ThemeCardRoot.Opacity" Value="0.55" />
+                                        </VisualState.Setters>
+                                    </VisualState>
+                                </VisualStateGroup>
+                                <VisualStateGroup x:Name="CheckStates">
+                                    <VisualState x:Name="Checked" />
+                                    <VisualState x:Name="Unchecked" />
+                                    <VisualState x:Name="Indeterminate" />
+                                </VisualStateGroup>
+                            </VisualStateManager.VisualStateGroups>
+                            <ContentPresenter
+                                HorizontalContentAlignment="{TemplateBinding HorizontalContentAlignment}"
+                                VerticalContentAlignment="{TemplateBinding VerticalContentAlignment}"
+                                Content="{TemplateBinding Content}"
+                                ContentTemplate="{TemplateBinding ContentTemplate}"
+                                Padding="{TemplateBinding Padding}" />
+                        </Grid>
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
+        </Style>
+    </Page.Resources>
+
     <Grid
+        x:Name="SettingsRootGrid"
         Padding="{ThemeResource AppPagePadding}"
         AutomationProperties.AutomationId="SettingsRoot">
-        <ScrollViewer>
+        <VisualStateManager.VisualStateGroups>
+            <VisualStateGroup x:Name="SettingsWidthStates">
+                <VisualState x:Name="WideSettingsState" />
+                <VisualState x:Name="CompactSettingsState">
+                    <VisualState.Setters>
+                        <Setter Target="SettingsSectionRail.Visibility" Value="Collapsed" />
+                        <Setter Target="CompactSectionPicker.Visibility" Value="Visible" />
+                        <Setter Target="CompactSectionPicker.MinWidth" Value="0" />
+                        <Setter Target="CompactSectionPicker.MaxWidth" Value="1000" />
+                        <Setter Target="CompactSectionPicker.HorizontalAlignment" Value="Stretch" />
+                        <Setter Target="CompactSectionPicker.(Grid.Row)" Value="1" />
+                        <Setter Target="CompactSectionPicker.(Grid.Column)" Value="0" />
+                        <Setter Target="CompactSectionPicker.(Grid.ColumnSpan)" Value="2" />
+                        <Setter Target="SettingsWorkspace.ColumnSpacing" Value="0" />
+                        <Setter Target="SettingsContentPanel.(Grid.Column)" Value="0" />
+                        <Setter Target="SettingsContentPanel.(Grid.ColumnSpan)" Value="2" />
+                    </VisualState.Setters>
+                </VisualState>
+                <VisualState x:Name="NarrowSettingsState">
+                    <VisualState.Setters>
+                        <Setter Target="SettingsRootGrid.Padding" Value="12" />
+                        <Setter Target="SettingsLayout.RowSpacing" Value="10" />
+                        <Setter Target="SettingsHeader.RowSpacing" Value="10" />
+                        <Setter Target="SettingsSectionRail.Visibility" Value="Collapsed" />
+                        <Setter Target="CompactSectionPicker.Visibility" Value="Visible" />
+                        <Setter Target="CompactSectionPicker.MinWidth" Value="0" />
+                        <Setter Target="CompactSectionPicker.MaxWidth" Value="1000" />
+                        <Setter Target="CompactSectionPicker.HorizontalAlignment" Value="Stretch" />
+                        <Setter Target="CompactSectionPicker.(Grid.Row)" Value="1" />
+                        <Setter Target="CompactSectionPicker.(Grid.Column)" Value="0" />
+                        <Setter Target="CompactSectionPicker.(Grid.ColumnSpan)" Value="2" />
+                        <Setter Target="SettingsWorkspace.ColumnSpacing" Value="0" />
+                        <Setter Target="SettingsContentPanel.(Grid.Column)" Value="0" />
+                        <Setter Target="SettingsContentPanel.(Grid.ColumnSpan)" Value="2" />
+                        <Setter Target="SettingsContentScrollViewer.Padding" Value="12" />
+                        <Setter Target="ThemeOptionsGrid.ColumnSpacing" Value="0" />
+                        <Setter Target="ThemeOptionsGrid.RowSpacing" Value="10" />
+                        <Setter Target="SystemThemeButton.(Grid.Column)" Value="0" />
+                        <Setter Target="SystemThemeButton.(Grid.Row)" Value="0" />
+                        <Setter Target="LightThemeButton.(Grid.Column)" Value="0" />
+                        <Setter Target="LightThemeButton.(Grid.Row)" Value="1" />
+                        <Setter Target="DarkThemeButton.(Grid.Column)" Value="0" />
+                        <Setter Target="DarkThemeButton.(Grid.Row)" Value="2" />
+                        <Setter Target="SettingsDeveloperModeRow.RowSpacing" Value="10" />
+                        <Setter Target="SettingsDeveloperModeToggle.(Grid.Row)" Value="1" />
+                        <Setter Target="SettingsDeveloperModeToggle.(Grid.Column)" Value="0" />
+                        <Setter Target="SettingsDeveloperModeToggle.HorizontalAlignment" Value="Left" />
+                        <Setter Target="SettingsSignOutRow.RowSpacing" Value="10" />
+                        <Setter Target="SettingsSignOutButton.(Grid.Row)" Value="1" />
+                        <Setter Target="SettingsSignOutButton.(Grid.Column)" Value="0" />
+                        <Setter Target="SettingsSignOutButton.HorizontalAlignment" Value="Left" />
+                        <Setter Target="SettingsDiagnosticsRow.RowSpacing" Value="10" />
+                        <Setter Target="SettingsDiagnosticsToggle.(Grid.Row)" Value="1" />
+                        <Setter Target="SettingsDiagnosticsToggle.(Grid.Column)" Value="0" />
+                        <Setter Target="SettingsDiagnosticsToggle.HorizontalAlignment" Value="Left" />
+                        <Setter Target="SettingsStoreTelemetryRow.RowSpacing" Value="10" />
+                        <Setter Target="SettingsStoreTelemetryToggle.(Grid.Row)" Value="1" />
+                        <Setter Target="SettingsStoreTelemetryToggle.(Grid.Column)" Value="0" />
+                        <Setter Target="SettingsStoreTelemetryToggle.HorizontalAlignment" Value="Left" />
+                        <Setter Target="SettingsClearQueryCacheRow.RowSpacing" Value="10" />
+                        <Setter Target="SettingsClearQueryCacheButton.(Grid.Row)" Value="1" />
+                        <Setter Target="SettingsClearQueryCacheButton.(Grid.Column)" Value="0" />
+                        <Setter Target="SettingsClearQueryCacheButton.HorizontalAlignment" Value="Left" />
+                        <Setter Target="SettingsClearStarLibraryRow.RowSpacing" Value="10" />
+                        <Setter Target="SettingsClearStarLibraryButton.(Grid.Row)" Value="1" />
+                        <Setter Target="SettingsClearStarLibraryButton.(Grid.Column)" Value="0" />
+                        <Setter Target="SettingsClearStarLibraryButton.HorizontalAlignment" Value="Left" />
+                        <Setter Target="SettingsClearImageCacheRow.RowSpacing" Value="10" />
+                        <Setter Target="SettingsClearImageCacheButton.(Grid.Row)" Value="1" />
+                        <Setter Target="SettingsClearImageCacheButton.(Grid.Column)" Value="0" />
+                        <Setter Target="SettingsClearImageCacheButton.HorizontalAlignment" Value="Left" />
+                        <Setter Target="SettingsClearRepoFileCacheRow.RowSpacing" Value="10" />
+                        <Setter Target="SettingsClearRepoFileCacheButton.(Grid.Row)" Value="1" />
+                        <Setter Target="SettingsClearRepoFileCacheButton.(Grid.Column)" Value="0" />
+                        <Setter Target="SettingsClearRepoFileCacheButton.HorizontalAlignment" Value="Left" />
+                        <Setter Target="SettingsClearAllCacheRow.RowSpacing" Value="10" />
+                        <Setter Target="SettingsClearAllCacheButton.(Grid.Row)" Value="1" />
+                        <Setter Target="SettingsClearAllCacheButton.(Grid.Column)" Value="0" />
+                        <Setter Target="SettingsClearAllCacheButton.HorizontalAlignment" Value="Left" />
+                        <Setter Target="SettingsAboutVersionRow.RowSpacing" Value="10" />
+                        <Setter Target="SettingsViewSourceButton.(Grid.Row)" Value="1" />
+                        <Setter Target="SettingsViewSourceButton.(Grid.Column)" Value="0" />
+                        <Setter Target="SettingsViewSourceButton.HorizontalAlignment" Value="Left" />
+                    </VisualState.Setters>
+                </VisualState>
+            </VisualStateGroup>
+        </VisualStateManager.VisualStateGroups>
+        <Grid
+            x:Name="SettingsLayout"
+            MaxWidth="1080"
+            HorizontalAlignment="Stretch"
+            RowSpacing="14">
+            <Grid.RowDefinitions>
+                <RowDefinition Height="Auto" />
+                <RowDefinition Height="Auto" />
+                <RowDefinition Height="*" />
+            </Grid.RowDefinitions>
+
             <Grid
-                MaxWidth="{ThemeResource AppReadablePageMaxWidth}"
-                HorizontalAlignment="Center">
-                <StackPanel Spacing="16">
-                <appcontrols:AppSectionHeader
-                    Eyebrow="PREFERENCES"
-                    Title="Settings"
-                    Description="Quiet defaults, practical controls, and a cleaner reading rhythm across the app." />
-
-                <appcontrols:AppSettingsCard
-                    Header="Theme"
-                    Description="Set app theme to light, dark or follow Windows system theme.">
-                    <appcontrols:AppSettingsCard.HeaderIcon>
-                        <FontIcon Glyph="&#xE790;" />
-                    </appcontrols:AppSettingsCard.HeaderIcon>
-                    <appcontrols:AppSettingsCard.ActionContent>
-                        <ComboBox
-                            AutomationProperties.AutomationId="SettingsThemeComboBox"
-                            Style="{StaticResource ComboBox}"
-                            Width="160"
-                            SelectionChanged="{x:Bind ViewModel.SelectionChanged, Mode=OneWay}"
-                            SelectedItem="{x:Bind ViewModel.SelectedTheme, Mode=TwoWay}"
-                            ItemsSource="{x:Bind ViewModel.Themes, Mode=OneWay}" />
-                    </appcontrols:AppSettingsCard.ActionContent>
-                </appcontrols:AppSettingsCard>
-
-                <appcontrols:AppSettingsCard
-                    Header="Developer Mode"
-                    Description="This will enable developer mode where some debug features are turned on.">
-                    <appcontrols:AppSettingsCard.HeaderIcon>
-                        <FontIcon Glyph="&#xEC7A;" />
-                    </appcontrols:AppSettingsCard.HeaderIcon>
-                    <appcontrols:AppSettingsCard.ActionContent>
-                        <ToggleSwitch IsOn="{x:Bind ViewModel.GlobalViewModel.DevMode, Mode=TwoWay}" />
-                    </appcontrols:AppSettingsCard.ActionContent>
-                </appcontrols:AppSettingsCard>
-
-                <appcontrols:AppSettingsCard
-                    Header="JitHub Version"
-                    Description="{x:Bind ViewModel.Version, Mode=OneWay}">
-                    <appcontrols:AppSettingsCard.HeaderIcon>
-                        <Image
-                            Width="20"
-                            Height="20"
-                            Stretch="Uniform"
-                            Source="ms-appx:///Assets/JitHubLogo.png" />
-                    </appcontrols:AppSettingsCard.HeaderIcon>
-                    <appcontrols:AppSettingsCard.ActionContent>
-                        <Button
-                            Click="{x:Bind ViewModel.ViewJitHubCode, Mode=OneWay}"
-                            Style="{StaticResource AppAccentButtonStyle}">
-                            <StackPanel Orientation="Horizontal" Spacing="8">
-                                <common:ThemeImage
-                                    IconWidth="24"
-                                    IconHeight="24"
-                                    DarkSource="ms-appx:///Assets/Icons/github_logo_dark.png"
-                                    LightSource="ms-appx:///Assets/Icons/github_logo_light.png" />
+                x:Name="SettingsHeader"
+                ColumnSpacing="16"
+                Style="{StaticResource AppWorkspaceHeaderStyle}">
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="*" />
+                    <ColumnDefinition Width="Auto" />
+                </Grid.ColumnDefinitions>
+                <Grid.RowDefinitions>
+                    <RowDefinition Height="Auto" />
+                    <RowDefinition Height="Auto" />
+                </Grid.RowDefinitions>
+                <TextBlock
+                    x:Uid="PagesSettingsPageSettingsPageTitle" AutomationProperties.AutomationId="SettingsPageTitle"
+                    VerticalAlignment="Center"
+                    Style="{StaticResource PageTitleTextBlockStyle}"
+                    Text="{x:Bind ViewModel.SettingsTitle, Mode=OneWay}" />
+                <ComboBox
+                    x:Uid="PagesSettingsPageSettingsCompactSectionPicker" x:Name="CompactSectionPicker"
+                    Grid.Column="1"
+                    MinWidth="220"
+                    MaxWidth="280"
+                    HorizontalAlignment="Right"
+                    AutomationProperties.AutomationId="SettingsCompactSectionPicker"
+                    AutomationProperties.Name="{x:Bind ViewModel.SectionPickerAutomationName, Mode=OneWay}"
+                    DropDownOpened="CompactSectionPicker_DropDownOpened"
+                    ItemsSource="{x:Bind ViewModel.SettingsSections, Mode=OneWay}"
+                    SelectedItem="{x:Bind ViewModel.SelectedSection, Mode=TwoWay}"
+                    SelectionChanged="SettingsSectionSelectionChanged"
+                    Style="{StaticResource AppCompactComboBoxStyle}"
+                    Visibility="Collapsed">
+                    <ComboBox.ItemTemplate>
+                        <DataTemplate x:DataType="pageViewModels:SettingsSectionItem">
+                            <Grid
+                                MinHeight="36"
+                                ColumnSpacing="10">
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="20" />
+                                    <ColumnDefinition Width="*" />
+                                </Grid.ColumnDefinitions>
+                                <FontIcon
+                                    FontSize="14"
+                                    Foreground="{ThemeResource AppInkMutedBrush}"
+                                    Glyph="{x:Bind Glyph, Mode=OneWay}" />
                                 <TextBlock
+                                    Grid.Column="1"
                                     VerticalAlignment="Center"
-                                    Text="View Source Code" />
-                            </StackPanel>
-                        </Button>
-                    </appcontrols:AppSettingsCard.ActionContent>
-                </appcontrols:AppSettingsCard>
-
-                <appcontrols:AppSectionHeader
-                    Eyebrow="PEOPLE"
-                    Title="Credits"
-                    Description="Designed and built with a small crew and a lot of care." />
-
-                <appcontrols:AppSurfaceCard CardPadding="20">
-                    <appcontrols:AppSurfaceCard.Child>
-                        <StackPanel Spacing="16">
-                            <appcontrols:AppSectionHeader
-                                Title="Developers"
-                                Description="Core app, migration, and infrastructure work." />
-                            <StackPanel Orientation="Horizontal" HorizontalAlignment="Left" Spacing="12">
-                                <common:CreditPersonaleButton Person="{x:Bind ViewModel.Nero, Mode=OneWay}" />
-                                <common:CreditPersonaleButton Person="{x:Bind ViewModel.Get, Mode=OneWay}" />
-                                <common:CreditPersonaleButton Person="{x:Bind ViewModel.ZyC, Mode=OneWay}" />
-                                <common:CreditPersonaleButton Person="{x:Bind ViewModel.Xueyang, Mode=OneWay}" />
-                            </StackPanel>
-                        </StackPanel>
-                    </appcontrols:AppSurfaceCard.Child>
-                </appcontrols:AppSurfaceCard>
-
-                <appcontrols:AppSurfaceCard CardPadding="20">
-                    <appcontrols:AppSurfaceCard.Child>
-                        <StackPanel Spacing="16">
-                            <appcontrols:AppSectionHeader
-                                Title="Designers"
-                                Description="Interface thinking, icon direction, and polish." />
-                            <StackPanel Orientation="Horizontal" HorizontalAlignment="Left" Spacing="12">
-                                <common:CreditPersonaleButton Person="{x:Bind ViewModel.Keira, Mode=OneWay}" />
-                                <common:CreditPersonaleButton Person="{x:Bind ViewModel.Jakub, Mode=OneWay}" />
-                            </StackPanel>
-                        </StackPanel>
-                    </appcontrols:AppSurfaceCard.Child>
-                </appcontrols:AppSurfaceCard>
-                </StackPanel>
+                                    MaxLines="2"
+                                    Style="{StaticResource ListItemTitleTextBlockStyle}"
+                                    Text="{x:Bind Title, Mode=OneWay}"
+                                    TextWrapping="WrapWholeWords" />
+                            </Grid>
+                        </DataTemplate>
+                    </ComboBox.ItemTemplate>
+                </ComboBox>
             </Grid>
-        </ScrollViewer>
+
+            <InfoBar
+                Grid.Row="1"
+                Margin="0,10,0,0"
+                AutomationProperties.AutomationId="SettingsErrorBar"
+                IsClosable="False"
+                IsOpen="{x:Bind ViewModel.HasStatusError, Mode=OneWay}"
+                Message="{x:Bind ViewModel.StatusText, Mode=OneWay}"
+                Severity="Error"
+                Style="{StaticResource AppErrorInfoBarStyle}">
+                <InfoBar.ActionButton>
+                    <Button
+                        x:Uid="PagesSettingsPageSettingsRetryButton" AutomationProperties.AutomationId="SettingsRetryButton"
+                        AutomationProperties.Name="Retry loading settings data"
+                        Click="RetryDiagnosticsButton_Click"
+                        Content="Retry" />
+                </InfoBar.ActionButton>
+            </InfoBar>
+
+            <Grid
+                x:Name="SettingsWorkspace"
+                Grid.Row="2"
+                Margin="0,14,0,0"
+                MinHeight="0"
+                ColumnSpacing="16">
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="220" />
+                    <ColumnDefinition Width="*" />
+                </Grid.ColumnDefinitions>
+
+                <Border
+                    x:Name="SettingsSectionRail"
+                    Background="{ThemeResource AppSurfaceBrush}"
+                    BorderBrush="{ThemeResource AppOutlineBrush}"
+                    BorderThickness="1"
+                    CornerRadius="{ThemeResource AppRadiusMedium}"
+                    Padding="8">
+                        <ListView
+                            x:Uid="PagesSettingsPageSettingsSectionList" AutomationProperties.AutomationId="SettingsSectionList"
+                            AutomationProperties.Name="Settings sections"
+                        ContainerContentChanging="SettingsSectionList_ContainerContentChanging"
+                        ItemContainerStyle="{StaticResource AppCompactNavigationRowStyle}"
+                        ItemsSource="{x:Bind ViewModel.SettingsSections, Mode=OneWay}"
+                        ScrollViewer.HorizontalScrollBarVisibility="Disabled"
+                        ScrollViewer.HorizontalScrollMode="Disabled"
+                        ScrollViewer.VerticalScrollBarVisibility="Disabled"
+                        ScrollViewer.VerticalScrollMode="Disabled"
+                        SelectedItem="{x:Bind ViewModel.SelectedSection, Mode=TwoWay}"
+                        SelectionChanged="SettingsSectionSelectionChanged"
+                        SelectionMode="Single">
+                        <ListView.ItemTemplate>
+                            <DataTemplate x:DataType="pageViewModels:SettingsSectionItem">
+                                <Grid
+                                    MinHeight="42"
+                                    ColumnSpacing="10"
+                                    Padding="8,6">
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition Width="24" />
+                                        <ColumnDefinition Width="*" />
+                                    </Grid.ColumnDefinitions>
+                                    <FontIcon
+                                        Grid.Column="0"
+                                        FontSize="15"
+                                        Glyph="{x:Bind Glyph, Mode=OneWay}" />
+                                    <TextBlock
+                                        Grid.Column="1"
+                                        MaxLines="3"
+                                        VerticalAlignment="Center"
+                                        Style="{StaticResource ListItemTitleTextBlockStyle}"
+                                        Text="{x:Bind Title, Mode=OneWay}"
+                                        TextWrapping="WrapWholeWords" />
+                                </Grid>
+                            </DataTemplate>
+                        </ListView.ItemTemplate>
+                    </ListView>
+                </Border>
+
+                <Border
+                    x:Name="SettingsContentPanel"
+                    Grid.Column="1"
+                    Background="{ThemeResource AppCanvasInsetBrush}"
+                    BorderBrush="{ThemeResource AppOutlineBrush}"
+                    BorderThickness="1"
+                    CornerRadius="{ThemeResource AppRadiusMedium}">
+                    <ScrollViewer
+                        x:Name="SettingsContentScrollViewer"
+                        Padding="18"
+                        AutomationProperties.AutomationId="SettingsContentScrollViewer"
+                        HorizontalScrollBarVisibility="Disabled"
+                        HorizontalScrollMode="Disabled"
+                        VerticalScrollBarVisibility="Auto"
+                        VerticalScrollMode="Enabled">
+                        <Grid>
+                            <StackPanel
+                                AutomationProperties.AutomationId="SettingsAppearanceSection"
+                                Spacing="14"
+                                Visibility="{x:Bind ViewModel.IsAppearanceSelected, Converter={StaticResource BoolToVisibilityConverter}, Mode=OneWay}">
+                                <appcontrols:AppSectionHeader x:Uid="PagesSettingsPageAppSectionHeaderAppearance" Title="Appearance" />
+                                <Border
+                                    Background="{ThemeResource AppSurfaceBrush}"
+                                    BorderBrush="{ThemeResource AppOutlineBrush}"
+                                    BorderThickness="1"
+                                    CornerRadius="{ThemeResource AppRadiusMedium}"
+                                    Padding="16">
+                                    <StackPanel Spacing="16">
+                                        <TextBlock
+                                            x:Uid="PagesSettingsPageTextBlockTheme" Style="{StaticResource ListItemTitleTextBlockStyle}"
+                                            AutomationProperties.AutomationId="SettingsThemeHeading"
+                                            Text="Theme" />
+                                        <Grid
+                                            x:Name="ThemeOptionsGrid"
+                                            ColumnSpacing="12">
+                                            <Grid.ColumnDefinitions>
+                                                <ColumnDefinition Width="*" />
+                                                <ColumnDefinition Width="*" />
+                                                <ColumnDefinition Width="*" />
+                                            </Grid.ColumnDefinitions>
+                                            <Grid.RowDefinitions>
+                                                <RowDefinition Height="Auto" />
+                                                <RowDefinition Height="Auto" />
+                                                <RowDefinition Height="Auto" />
+                                            </Grid.RowDefinitions>
+
+                                            <RadioButton
+                                                x:Uid="PagesSettingsPageSettingsThemeSystem" x:Name="SystemThemeButton"
+                                                AutomationProperties.AutomationId="SettingsThemeSystem"
+                                                AutomationProperties.Name="Use system theme"
+                                                Checked="SystemThemeButton_Checked"
+                                                GroupName="SettingsTheme"
+                                                HorizontalAlignment="Stretch"
+                                                MinWidth="0"
+                                                Style="{StaticResource SettingsThemeCardRadioButtonStyle}">
+                                                <Border
+                                                    Height="140"
+                                                    HorizontalAlignment="Stretch"
+                                                    Background="{ThemeResource AppSurfaceSubtleBrush}"
+                                                    BorderBrush="{ThemeResource AppOutlineBrush}"
+                                                    BorderThickness="1"
+                                                    CornerRadius="{ThemeResource AppRadiusMedium}"
+                                                    Padding="16">
+                                                    <Grid>
+                                                        <Border
+                                                            Background="{ThemeResource AppAccentBrush}"
+                                                            CornerRadius="{ThemeResource AppRadiusMedium}"
+                                                            Margin="-16"
+                                                            Opacity="0.08"
+                                                            Visibility="{x:Bind ViewModel.IsSystemThemeSelected, Converter={StaticResource BoolToVisibilityConverter}, Mode=OneWay}" />
+                                                        <Border
+                                                            BorderBrush="{ThemeResource AppAccentBrush}"
+                                                            BorderThickness="2"
+                                                            CornerRadius="{ThemeResource AppRadiusMedium}"
+                                                            Margin="-16"
+                                                            Visibility="{x:Bind ViewModel.IsSystemThemeSelected, Converter={StaticResource BoolToVisibilityConverter}, Mode=OneWay}" />
+                                                        <Grid RowSpacing="10">
+                                                            <Grid.RowDefinitions>
+                                                                <RowDefinition Height="Auto" />
+                                                                <RowDefinition Height="*" />
+                                                                <RowDefinition Height="Auto" />
+                                                            </Grid.RowDefinitions>
+                                                            <FontIcon
+                                                                HorizontalAlignment="Left"
+                                                                FontSize="24"
+                                                                Foreground="{ThemeResource AppAccentBrush}"
+                                                                Glyph="&#xE770;" />
+                                                            <StackPanel
+                                                                Grid.Row="1"
+                                                                VerticalAlignment="Center"
+                                                                Spacing="4">
+                                                                <TextBlock
+                                                                    x:Uid="PagesSettingsPageTextBlockSystem" FontSize="15"
+                                                                    AutomationProperties.AutomationId="SettingsThemeSystemLabel"
+                                                                    Style="{StaticResource ListItemTitleTextBlockStyle}"
+                                                                    MaxLines="2"
+                                                                    TextWrapping="Wrap"
+                                                                    Text="System" />
+                                                            </StackPanel>
+                                                            <Grid Grid.Row="2">
+                                                                <Ellipse
+                                                                    Width="16"
+                                                                    Height="16"
+                                                                    HorizontalAlignment="Left"
+                                                                    Stroke="{ThemeResource AppOutlineStrongBrush}"
+                                                                    StrokeThickness="1.4" />
+                                                                <Ellipse
+                                                                    Width="8"
+                                                                    Height="8"
+                                                                    HorizontalAlignment="Left"
+                                                                    Fill="{ThemeResource AppAccentBrush}"
+                                                                    Margin="4,0,0,0"
+                                                                    Visibility="{x:Bind ViewModel.IsSystemThemeSelected, Converter={StaticResource BoolToVisibilityConverter}, Mode=OneWay}" />
+                                                            </Grid>
+                                                        </Grid>
+                                                    </Grid>
+                                                </Border>
+                                            </RadioButton>
+
+                                            <RadioButton
+                                                x:Uid="PagesSettingsPageSettingsThemeLight" x:Name="LightThemeButton"
+                                                Grid.Column="1"
+                                                AutomationProperties.AutomationId="SettingsThemeLight"
+                                                AutomationProperties.Name="Use light theme"
+                                                Checked="LightThemeButton_Checked"
+                                                GroupName="SettingsTheme"
+                                                HorizontalAlignment="Stretch"
+                                                MinWidth="0"
+                                                Style="{StaticResource SettingsThemeCardRadioButtonStyle}">
+                                                <Border
+                                                    Height="140"
+                                                    HorizontalAlignment="Stretch"
+                                                    Background="{ThemeResource AppSurfaceSubtleBrush}"
+                                                    BorderBrush="{ThemeResource AppOutlineBrush}"
+                                                    BorderThickness="1"
+                                                    CornerRadius="{ThemeResource AppRadiusMedium}"
+                                                    Padding="16">
+                                                    <Grid>
+                                                        <Border
+                                                            Background="{ThemeResource AppAccentBrush}"
+                                                            CornerRadius="{ThemeResource AppRadiusMedium}"
+                                                            Margin="-16"
+                                                            Opacity="0.08"
+                                                            Visibility="{x:Bind ViewModel.IsLightThemeSelected, Converter={StaticResource BoolToVisibilityConverter}, Mode=OneWay}" />
+                                                        <Border
+                                                            BorderBrush="{ThemeResource AppAccentBrush}"
+                                                            BorderThickness="2"
+                                                            CornerRadius="{ThemeResource AppRadiusMedium}"
+                                                            Margin="-16"
+                                                            Visibility="{x:Bind ViewModel.IsLightThemeSelected, Converter={StaticResource BoolToVisibilityConverter}, Mode=OneWay}" />
+                                                        <Grid RowSpacing="10">
+                                                            <Grid.RowDefinitions>
+                                                                <RowDefinition Height="Auto" />
+                                                                <RowDefinition Height="*" />
+                                                                <RowDefinition Height="Auto" />
+                                                            </Grid.RowDefinitions>
+                                                            <FontIcon
+                                                                HorizontalAlignment="Left"
+                                                                FontSize="24"
+                                                                Foreground="{ThemeResource AppAccentBrush}"
+                                                                Glyph="&#xE706;" />
+                                                            <StackPanel
+                                                                Grid.Row="1"
+                                                                VerticalAlignment="Center"
+                                                                Spacing="4">
+                                                                <TextBlock
+                                                                    x:Uid="PagesSettingsPageTextBlockLight" FontSize="15"
+                                                                    AutomationProperties.AutomationId="SettingsThemeLightLabel"
+                                                                    Style="{StaticResource ListItemTitleTextBlockStyle}"
+                                                                    MaxLines="2"
+                                                                    TextWrapping="Wrap"
+                                                                    Text="Light" />
+                                                            </StackPanel>
+                                                            <Grid Grid.Row="2">
+                                                                <Ellipse
+                                                                    Width="16"
+                                                                    Height="16"
+                                                                    HorizontalAlignment="Left"
+                                                                    Stroke="{ThemeResource AppOutlineStrongBrush}"
+                                                                    StrokeThickness="1.4" />
+                                                                <Ellipse
+                                                                    Width="8"
+                                                                    Height="8"
+                                                                    HorizontalAlignment="Left"
+                                                                    Fill="{ThemeResource AppAccentBrush}"
+                                                                    Margin="4,0,0,0"
+                                                                    Visibility="{x:Bind ViewModel.IsLightThemeSelected, Converter={StaticResource BoolToVisibilityConverter}, Mode=OneWay}" />
+                                                            </Grid>
+                                                        </Grid>
+                                                    </Grid>
+                                                </Border>
+                                            </RadioButton>
+
+                                            <RadioButton
+                                                x:Uid="PagesSettingsPageSettingsThemeDark" x:Name="DarkThemeButton"
+                                                Grid.Column="2"
+                                                AutomationProperties.AutomationId="SettingsThemeDark"
+                                                AutomationProperties.Name="Use dark theme"
+                                                Checked="DarkThemeButton_Checked"
+                                                GroupName="SettingsTheme"
+                                                HorizontalAlignment="Stretch"
+                                                MinWidth="0"
+                                                Style="{StaticResource SettingsThemeCardRadioButtonStyle}">
+                                                <Border
+                                                    Height="140"
+                                                    HorizontalAlignment="Stretch"
+                                                    Background="{ThemeResource AppSurfaceSubtleBrush}"
+                                                    BorderBrush="{ThemeResource AppOutlineBrush}"
+                                                    BorderThickness="1"
+                                                    CornerRadius="{ThemeResource AppRadiusMedium}"
+                                                    Padding="16">
+                                                    <Grid>
+                                                        <Border
+                                                            Background="{ThemeResource AppAccentBrush}"
+                                                            CornerRadius="{ThemeResource AppRadiusMedium}"
+                                                            Margin="-16"
+                                                            Opacity="0.08"
+                                                            Visibility="{x:Bind ViewModel.IsDarkThemeSelected, Converter={StaticResource BoolToVisibilityConverter}, Mode=OneWay}" />
+                                                        <Border
+                                                            BorderBrush="{ThemeResource AppAccentBrush}"
+                                                            BorderThickness="2"
+                                                            CornerRadius="{ThemeResource AppRadiusMedium}"
+                                                            Margin="-16"
+                                                            Visibility="{x:Bind ViewModel.IsDarkThemeSelected, Converter={StaticResource BoolToVisibilityConverter}, Mode=OneWay}" />
+                                                        <Grid RowSpacing="10">
+                                                            <Grid.RowDefinitions>
+                                                                <RowDefinition Height="Auto" />
+                                                                <RowDefinition Height="*" />
+                                                                <RowDefinition Height="Auto" />
+                                                            </Grid.RowDefinitions>
+                                                            <FontIcon
+                                                                HorizontalAlignment="Left"
+                                                                FontSize="24"
+                                                                Foreground="{ThemeResource AppAccentBrush}"
+                                                                Glyph="&#xE708;" />
+                                                            <StackPanel
+                                                                Grid.Row="1"
+                                                                VerticalAlignment="Center"
+                                                                Spacing="4">
+                                                                <TextBlock
+                                                                    x:Uid="PagesSettingsPageTextBlockDark" FontSize="15"
+                                                                    AutomationProperties.AutomationId="SettingsThemeDarkLabel"
+                                                                    Style="{StaticResource ListItemTitleTextBlockStyle}"
+                                                                    MaxLines="2"
+                                                                    TextWrapping="Wrap"
+                                                                    Text="Dark" />
+                                                            </StackPanel>
+                                                            <Grid Grid.Row="2">
+                                                                <Ellipse
+                                                                    Width="16"
+                                                                    Height="16"
+                                                                    HorizontalAlignment="Left"
+                                                                    Stroke="{ThemeResource AppOutlineStrongBrush}"
+                                                                    StrokeThickness="1.4" />
+                                                                <Ellipse
+                                                                    Width="8"
+                                                                    Height="8"
+                                                                    HorizontalAlignment="Left"
+                                                                    Fill="{ThemeResource AppAccentBrush}"
+                                                                    Margin="4,0,0,0"
+                                                                    Visibility="{x:Bind ViewModel.IsDarkThemeSelected, Converter={StaticResource BoolToVisibilityConverter}, Mode=OneWay}" />
+                                                            </Grid>
+                                                        </Grid>
+                                                    </Grid>
+                                                </Border>
+                                            </RadioButton>
+                                        </Grid>
+                                    </StackPanel>
+                                </Border>
+                            </StackPanel>
+
+                            <StackPanel
+                                AutomationProperties.AutomationId="SettingsGeneralSection"
+                                Spacing="14"
+                                Visibility="{x:Bind ViewModel.IsGeneralSelected, Converter={StaticResource BoolToVisibilityConverter}, Mode=OneWay}">
+                                <appcontrols:AppSectionHeader x:Uid="PagesSettingsPageAppSectionHeaderGeneral" Title="General" />
+                                <Border
+                                    Background="{ThemeResource AppSurfaceBrush}"
+                                    BorderBrush="{ThemeResource AppOutlineBrush}"
+                                    BorderThickness="1"
+                                    CornerRadius="{ThemeResource AppRadiusMedium}"
+                                    Padding="16">
+                                    <Grid
+                                        x:Name="SettingsDeveloperModeRow"
+                                        ColumnSpacing="16">
+                                        <Grid.ColumnDefinitions>
+                                            <ColumnDefinition Width="*" />
+                                            <ColumnDefinition Width="Auto" />
+                                        </Grid.ColumnDefinitions>
+                                        <Grid.RowDefinitions>
+                                            <RowDefinition Height="Auto" />
+                                            <RowDefinition Height="Auto" />
+                                        </Grid.RowDefinitions>
+                                        <StackPanel Spacing="4">
+                                            <TextBlock
+                                                x:Uid="PagesSettingsPageTextBlockDeveloperMode" Style="{StaticResource ListItemTitleTextBlockStyle}"
+                                                Text="Developer mode" />
+                                            <TextBlock
+                                                x:Uid="PagesSettingsPageTextBlockEnableDebugFacingAffordancesTh" Style="{StaticResource SectionSecondaryTextBlockStyle}"
+                                                Text="Enable debug-facing affordances that are useful while building and validating JitHub."
+                                                TextWrapping="WrapWholeWords" />
+                                        </StackPanel>
+                                        <ToggleSwitch
+                                            x:Uid="PagesSettingsPageSettingsDeveloperModeToggle" x:Name="SettingsDeveloperModeToggle"
+                                            Grid.Column="1"
+                                            AutomationProperties.AutomationId="SettingsDeveloperModeToggle"
+                                            AutomationProperties.Name="Developer mode"
+                                            IsOn="{x:Bind ViewModel.IsDeveloperMode, Mode=TwoWay}" />
+                                    </Grid>
+                                </Border>
+                                <Border
+                                    Background="{ThemeResource AppSurfaceBrush}"
+                                    BorderBrush="{ThemeResource AppOutlineBrush}"
+                                    BorderThickness="1"
+                                    CornerRadius="{ThemeResource AppRadiusMedium}"
+                                    Padding="16">
+                                    <Grid
+                                        x:Name="SettingsSignOutRow"
+                                        ColumnSpacing="16">
+                                        <Grid.ColumnDefinitions>
+                                            <ColumnDefinition Width="*" />
+                                            <ColumnDefinition Width="Auto" />
+                                        </Grid.ColumnDefinitions>
+                                        <Grid.RowDefinitions>
+                                            <RowDefinition Height="Auto" />
+                                            <RowDefinition Height="Auto" />
+                                        </Grid.RowDefinitions>
+                                        <StackPanel Spacing="4">
+                                            <TextBlock
+                                                x:Uid="PagesSettingsPageTextBlockSignOut" Style="{StaticResource ListItemTitleTextBlockStyle}"
+                                                Text="Sign out" />
+                                            <TextBlock
+                                                x:Uid="PagesSettingsPageTextBlockRemoveTheActiveGitHubSessionFr" Style="{StaticResource SectionSecondaryTextBlockStyle}"
+                                                Text="Remove the active GitHub session from this app instance."
+                                                TextWrapping="WrapWholeWords" />
+                                        </StackPanel>
+                                        <Button
+                                            x:Uid="PagesSettingsPageSettingsSignOutButton" x:Name="SettingsSignOutButton"
+                                            Grid.Column="1"
+                                            AutomationProperties.AutomationId="SettingsSignOutButton"
+                                            AutomationProperties.Name="Sign out of JitHub"
+                                            Click="SignOutButton_Click"
+                                            Content="Sign out" />
+                                    </Grid>
+                                </Border>
+                            </StackPanel>
+
+                            <StackPanel
+                                AutomationProperties.AutomationId="SettingsPrivacySection"
+                                Spacing="14"
+                                Visibility="{x:Bind ViewModel.IsPrivacySelected, Converter={StaticResource BoolToVisibilityConverter}, Mode=OneWay}">
+                                <appcontrols:AppSectionHeader x:Uid="PagesSettingsPageAppSectionHeaderPrivacy" Title="Privacy" />
+                                <Border
+                                    Background="{ThemeResource AppSurfaceBrush}"
+                                    BorderBrush="{ThemeResource AppOutlineBrush}"
+                                    BorderThickness="1"
+                                    CornerRadius="{ThemeResource AppRadiusMedium}"
+                                    Padding="16">
+                                    <StackPanel Spacing="16">
+                                        <Grid
+                                            x:Name="SettingsDiagnosticsRow"
+                                            ColumnSpacing="16">
+                                            <Grid.ColumnDefinitions>
+                                                <ColumnDefinition Width="*" />
+                                                <ColumnDefinition Width="Auto" />
+                                            </Grid.ColumnDefinitions>
+                                            <Grid.RowDefinitions>
+                                                <RowDefinition Height="Auto" />
+                                                <RowDefinition Height="Auto" />
+                                            </Grid.RowDefinitions>
+                                            <StackPanel Spacing="4">
+                                                <TextBlock
+                                                    x:Uid="PagesSettingsPageTextBlockLocalDiagnostics" Style="{StaticResource ListItemTitleTextBlockStyle}"
+                                                    Text="Local diagnostics" />
+                                                <TextBlock
+                                                    x:Uid="PagesSettingsPageTextBlockWriteSanitizedEventsAndPerform" Style="{StaticResource SectionSecondaryTextBlockStyle}"
+                                                    Text="Write sanitized events and performance timings to a local NDJSON file."
+                                                    TextWrapping="WrapWholeWords" />
+                                            </StackPanel>
+                                            <ToggleSwitch
+                                                x:Uid="PagesSettingsPageSettingsDiagnosticsToggle" x:Name="SettingsDiagnosticsToggle"
+                                                Grid.Column="1"
+                                                AutomationProperties.AutomationId="SettingsDiagnosticsToggle"
+                                                AutomationProperties.Name="Local diagnostics"
+                                                IsOn="{x:Bind ViewModel.DiagnosticsEnabled, Mode=TwoWay}" />
+                                        </Grid>
+
+                                        <Rectangle Height="1" Fill="{ThemeResource AppHairlineBrush}" />
+
+                                        <Grid
+                                            x:Name="SettingsStoreTelemetryRow"
+                                            ColumnSpacing="16">
+                                            <Grid.ColumnDefinitions>
+                                                <ColumnDefinition Width="*" />
+                                                <ColumnDefinition Width="Auto" />
+                                            </Grid.ColumnDefinitions>
+                                            <Grid.RowDefinitions>
+                                                <RowDefinition Height="Auto" />
+                                                <RowDefinition Height="Auto" />
+                                            </Grid.RowDefinitions>
+                                            <StackPanel Spacing="4">
+                                                <TextBlock
+                                                    x:Uid="PagesSettingsPageTextBlockMicrosoftStoreCustomEvents" Style="{StaticResource ListItemTitleTextBlockStyle}"
+                                                    Text="Microsoft Store custom events" />
+                                                <TextBlock
+                                                    Style="{StaticResource SectionSecondaryTextBlockStyle}"
+                                                    Text="{x:Bind ViewModel.StoreTelemetryAvailabilityText, Mode=OneWay}"
+                                                    TextWrapping="WrapWholeWords" />
+                                            </StackPanel>
+                                            <ToggleSwitch
+                                                x:Uid="PagesSettingsPageSettingsStoreTelemetryToggle" x:Name="SettingsStoreTelemetryToggle"
+                                                Grid.Column="1"
+                                                AutomationProperties.AutomationId="SettingsStoreTelemetryToggle"
+                                                AutomationProperties.Name="Microsoft Store custom events"
+                                                IsEnabled="{x:Bind ViewModel.CanUseStoreTelemetry, Mode=OneWay}"
+                                                IsOn="{x:Bind ViewModel.StoreTelemetryEnabled, Mode=TwoWay}" />
+                                        </Grid>
+
+                                    </StackPanel>
+                                </Border>
+                            </StackPanel>
+
+                            <StackPanel
+                                AutomationProperties.AutomationId="SettingsDataCacheSection"
+                                Spacing="14"
+                                Visibility="{x:Bind ViewModel.IsDataCacheSelected, Converter={StaticResource BoolToVisibilityConverter}, Mode=OneWay}">
+                                <appcontrols:AppSectionHeader x:Uid="PagesSettingsPageAppSectionHeaderDataAmpCache" Title="Data &amp; Cache" />
+                                <Border
+                                    Background="{ThemeResource AppSurfaceBrush}"
+                                    BorderBrush="{ThemeResource AppOutlineBrush}"
+                                    BorderThickness="1"
+                                    CornerRadius="{ThemeResource AppRadiusMedium}"
+                                    Padding="16">
+                                    <StackPanel Spacing="14">
+                                        <Grid ColumnSpacing="16">
+                                            <Grid.ColumnDefinitions>
+                                                <ColumnDefinition Width="*" />
+                                                <ColumnDefinition Width="Auto" />
+                                            </Grid.ColumnDefinitions>
+                                            <TextBlock
+                                                x:Uid="PagesSettingsPageTextBlockCacheTotal" Style="{StaticResource SectionSecondaryTextBlockStyle}"
+                                                Text="Cache total" />
+                                            <TextBlock
+                                                Grid.Column="1"
+                                                Style="{StaticResource ListItemTitleTextBlockStyle}"
+                                                Text="{x:Bind ViewModel.TotalCacheSizeText, Mode=OneWay}" />
+                                        </Grid>
+                                        <Grid ColumnSpacing="16">
+                                            <Grid.ColumnDefinitions>
+                                                <ColumnDefinition Width="*" />
+                                                <ColumnDefinition Width="Auto" />
+                                            </Grid.ColumnDefinitions>
+                                            <TextBlock
+                                                x:Uid="PagesSettingsPageTextBlockSQLiteFilesDatabaseWALSharedMe" Style="{StaticResource SectionSecondaryTextBlockStyle}"
+                                                Text="SQLite files (database, WAL, shared memory)" />
+                                            <TextBlock
+                                                Grid.Column="1"
+                                                Style="{StaticResource ListItemTitleTextBlockStyle}"
+                                                Text="{x:Bind ViewModel.MetadataSizeText, Mode=OneWay}" />
+                                        </Grid>
+                                        <Grid ColumnSpacing="16">
+                                            <Grid.ColumnDefinitions>
+                                                <ColumnDefinition Width="*" />
+                                                <ColumnDefinition Width="Auto" />
+                                            </Grid.ColumnDefinitions>
+                                            <TextBlock
+                                                x:Uid="PagesSettingsPageTextBlockExternalJSONBlobDiffPayloadFil" Style="{StaticResource SectionSecondaryTextBlockStyle}"
+                                                Text="External JSON/blob/diff payload files" />
+                                            <TextBlock
+                                                Grid.Column="1"
+                                                Style="{StaticResource ListItemTitleTextBlockStyle}"
+                                                Text="{x:Bind ViewModel.PayloadSizeText, Mode=OneWay}" />
+                                        </Grid>
+                                        <Grid ColumnSpacing="16">
+                                            <Grid.ColumnDefinitions>
+                                                <ColumnDefinition Width="*" />
+                                                <ColumnDefinition Width="Auto" />
+                                            </Grid.ColumnDefinitions>
+                                            <TextBlock
+                                                x:Uid="PagesSettingsPageTextBlockAvatarAndImages" Style="{StaticResource SectionSecondaryTextBlockStyle}"
+                                                Text="Avatar and images" />
+                                            <TextBlock
+                                                Grid.Column="1"
+                                                Style="{StaticResource ListItemTitleTextBlockStyle}"
+                                                Text="{x:Bind ViewModel.ImageSizeText, Mode=OneWay}" />
+                                        </Grid>
+                                        <Grid ColumnSpacing="16">
+                                            <Grid.ColumnDefinitions>
+                                                <ColumnDefinition Width="*" />
+                                                <ColumnDefinition Width="Auto" />
+                                            </Grid.ColumnDefinitions>
+                                            <TextBlock
+                                                x:Uid="PagesSettingsPageTextBlockRepositoryFilePreviews" Style="{StaticResource SectionSecondaryTextBlockStyle}"
+                                                Text="Repository file previews" />
+                                            <TextBlock
+                                                Grid.Column="1"
+                                                Style="{StaticResource ListItemTitleTextBlockStyle}"
+                                                Text="{x:Bind ViewModel.RepoFileCacheSizeText, Mode=OneWay}" />
+                                        </Grid>
+                                        <Grid ColumnSpacing="16">
+                                            <Grid.ColumnDefinitions>
+                                                <ColumnDefinition Width="*" />
+                                                <ColumnDefinition Width="Auto" />
+                                            </Grid.ColumnDefinitions>
+                                            <TextBlock
+                                                x:Uid="PagesSettingsPageTextBlockStarsLibrary" Style="{StaticResource SectionSecondaryTextBlockStyle}"
+                                                Text="Stars library" />
+                                            <TextBlock
+                                                Grid.Column="1"
+                                                Style="{StaticResource ListItemTitleTextBlockStyle}"
+                                                Text="{x:Bind ViewModel.StarLibrarySizeText, Mode=OneWay}" />
+                                        </Grid>
+                                    </StackPanel>
+                                </Border>
+
+                                <Border
+                                    Background="{ThemeResource AppSurfaceBrush}"
+                                    BorderBrush="{ThemeResource AppOutlineBrush}"
+                                    BorderThickness="1"
+                                    CornerRadius="{ThemeResource AppRadiusMedium}"
+                                    Padding="16">
+                                    <StackPanel Spacing="14">
+                                        <Grid
+                                            x:Name="SettingsClearQueryCacheRow"
+                                            ColumnSpacing="16">
+                                            <Grid.ColumnDefinitions>
+                                                <ColumnDefinition Width="*" />
+                                                <ColumnDefinition Width="Auto" />
+                                            </Grid.ColumnDefinitions>
+                                            <Grid.RowDefinitions>
+                                                <RowDefinition Height="Auto" />
+                                                <RowDefinition Height="Auto" />
+                                            </Grid.RowDefinitions>
+                                            <StackPanel Spacing="4">
+                                                <TextBlock
+                                                    x:Uid="PagesSettingsPageTextBlockGitHubQueryCache" Style="{StaticResource ListItemTitleTextBlockStyle}"
+                                                    Text="GitHub query cache" />
+                                                <TextBlock
+                                                    MaxLines="2"
+                                                    TextTrimming="CharacterEllipsis"
+                                                    Style="{StaticResource SectionSecondaryTextBlockStyle}"
+                                                    Text="{x:Bind ViewModel.PayloadPath, Mode=OneWay}"
+                                                    TextWrapping="WrapWholeWords" />
+                                            </StackPanel>
+                                            <Button
+                                                x:Uid="PagesSettingsPageSettingsClearQueryCacheButton" x:Name="SettingsClearQueryCacheButton"
+                                                Grid.Column="1"
+                                                AutomationProperties.AutomationId="SettingsClearQueryCacheButton"
+                                                AutomationProperties.Name="Clear GitHub query cache"
+                                                Click="ClearQueryCacheButton_Click"
+                                                Content="Clear" />
+                                        </Grid>
+                                        <Rectangle Height="1" Fill="{ThemeResource AppHairlineBrush}" />
+                                        <Grid
+                                            x:Name="SettingsClearStarLibraryRow"
+                                            ColumnSpacing="16">
+                                            <Grid.ColumnDefinitions>
+                                                <ColumnDefinition Width="*" />
+                                                <ColumnDefinition Width="Auto" />
+                                            </Grid.ColumnDefinitions>
+                                            <Grid.RowDefinitions>
+                                                <RowDefinition Height="Auto" />
+                                                <RowDefinition Height="Auto" />
+                                            </Grid.RowDefinitions>
+                                            <StackPanel Spacing="4">
+                                                <TextBlock
+                                                    x:Uid="PagesSettingsPageTextBlockStarsLibraryAndCategories" Style="{StaticResource ListItemTitleTextBlockStyle}"
+                                                    Text="Stars library and categories" />
+                                                <TextBlock
+                                                    MaxLines="2"
+                                                    TextTrimming="CharacterEllipsis"
+                                                    Style="{StaticResource SectionSecondaryTextBlockStyle}"
+                                                    Text="{x:Bind ViewModel.StarLibraryPath, Mode=OneWay}"
+                                                    TextWrapping="WrapWholeWords" />
+                                            </StackPanel>
+                                            <Button
+                                                x:Uid="PagesSettingsPageSettingsClearStarLibraryButton" x:Name="SettingsClearStarLibraryButton"
+                                                Grid.Column="1"
+                                                AutomationProperties.AutomationId="SettingsClearStarLibraryButton"
+                                                AutomationProperties.Name="Clear Stars library and categories"
+                                                Click="ClearStarLibraryButton_Click"
+                                                Content="Clear" />
+                                        </Grid>
+                                        <Rectangle Height="1" Fill="{ThemeResource AppHairlineBrush}" />
+                                        <Grid
+                                            x:Name="SettingsClearImageCacheRow"
+                                            ColumnSpacing="16">
+                                            <Grid.ColumnDefinitions>
+                                                <ColumnDefinition Width="*" />
+                                                <ColumnDefinition Width="Auto" />
+                                            </Grid.ColumnDefinitions>
+                                            <Grid.RowDefinitions>
+                                                <RowDefinition Height="Auto" />
+                                                <RowDefinition Height="Auto" />
+                                            </Grid.RowDefinitions>
+                                            <StackPanel Spacing="4">
+                                                <TextBlock
+                                                    x:Uid="PagesSettingsPageTextBlockAvatarAndImageCache" Style="{StaticResource ListItemTitleTextBlockStyle}"
+                                                    Text="Avatar and image cache" />
+                                                <TextBlock
+                                                    MaxLines="2"
+                                                    TextTrimming="CharacterEllipsis"
+                                                    Style="{StaticResource SectionSecondaryTextBlockStyle}"
+                                                    Text="{x:Bind ViewModel.ImagePath, Mode=OneWay}"
+                                                    TextWrapping="WrapWholeWords" />
+                                            </StackPanel>
+                                            <Button
+                                                x:Uid="PagesSettingsPageSettingsClearImageCacheButton" x:Name="SettingsClearImageCacheButton"
+                                                Grid.Column="1"
+                                                AutomationProperties.AutomationId="SettingsClearImageCacheButton"
+                                                AutomationProperties.Name="Clear avatar and image cache"
+                                                Click="ClearImageCacheButton_Click"
+                                                Content="Clear" />
+                                        </Grid>
+                                        <Rectangle Height="1" Fill="{ThemeResource AppHairlineBrush}" />
+                                        <Grid
+                                            x:Name="SettingsClearRepoFileCacheRow"
+                                            ColumnSpacing="16">
+                                            <Grid.ColumnDefinitions>
+                                                <ColumnDefinition Width="*" />
+                                                <ColumnDefinition Width="Auto" />
+                                            </Grid.ColumnDefinitions>
+                                            <Grid.RowDefinitions>
+                                                <RowDefinition Height="Auto" />
+                                                <RowDefinition Height="Auto" />
+                                            </Grid.RowDefinitions>
+                                            <StackPanel Spacing="4">
+                                                <TextBlock
+                                                    x:Uid="PagesSettingsPageTextBlockRepositoryFileCache" Style="{StaticResource ListItemTitleTextBlockStyle}"
+                                                    Text="Repository file cache" />
+                                                <TextBlock
+                                                    MaxLines="2"
+                                                    TextTrimming="CharacterEllipsis"
+                                                    Style="{StaticResource SectionSecondaryTextBlockStyle}"
+                                                    Text="{x:Bind ViewModel.RepoFileCachePath, Mode=OneWay}"
+                                                    TextWrapping="WrapWholeWords" />
+                                            </StackPanel>
+                                            <Button
+                                                x:Uid="PagesSettingsPageSettingsClearRepoFileCacheButton" x:Name="SettingsClearRepoFileCacheButton"
+                                                Grid.Column="1"
+                                                AutomationProperties.AutomationId="SettingsClearRepoFileCacheButton"
+                                                AutomationProperties.Name="Clear repository file cache"
+                                                Click="ClearRepoFileCacheButton_Click"
+                                                Content="Clear" />
+                                        </Grid>
+                                        <Rectangle Height="1" Fill="{ThemeResource AppHairlineBrush}" />
+                                        <Grid
+                                            x:Name="SettingsClearAllCacheRow"
+                                            ColumnSpacing="16">
+                                            <Grid.ColumnDefinitions>
+                                                <ColumnDefinition Width="*" />
+                                                <ColumnDefinition Width="Auto" />
+                                            </Grid.ColumnDefinitions>
+                                            <Grid.RowDefinitions>
+                                                <RowDefinition Height="Auto" />
+                                                <RowDefinition Height="Auto" />
+                                            </Grid.RowDefinitions>
+                                            <StackPanel Spacing="4">
+                                                <TextBlock
+                                                    x:Uid="PagesSettingsPageTextBlockAllPhase0CacheData" Style="{StaticResource ListItemTitleTextBlockStyle}"
+                                                    Text="All Phase 0 cache data" />
+                                                <TextBlock
+                                                    x:Uid="PagesSettingsPageTextBlockClearQueryMetadataPayloadsAvat" Style="{StaticResource SectionSecondaryTextBlockStyle}"
+                                                    Text="Clear query metadata, payloads, avatars, images, and repository file previews."
+                                                    TextWrapping="WrapWholeWords" />
+                                            </StackPanel>
+                                            <Button
+                                                x:Uid="PagesSettingsPageSettingsClearAllCacheButton" x:Name="SettingsClearAllCacheButton"
+                                                Grid.Column="1"
+                                                AutomationProperties.AutomationId="SettingsClearAllCacheButton"
+                                                AutomationProperties.Name="Clear all cache data"
+                                                Click="ClearAllCacheButton_Click"
+                                                Content="Clear all" />
+                                        </Grid>
+                                    </StackPanel>
+                                </Border>
+
+                                <Border
+                                    AutomationProperties.AutomationId="SettingsCacheOwnerHealth"
+                                    Background="{ThemeResource AppSurfaceBrush}"
+                                    BorderBrush="{ThemeResource AppOutlineBrush}"
+                                    BorderThickness="1"
+                                    CornerRadius="{ThemeResource AppRadiusMedium}"
+                                    Padding="12">
+                                    <StackPanel Spacing="4">
+                                        <TextBlock
+                                            x:Uid="PagesSettingsPageTextBlockCacheOwnerHealth" Style="{StaticResource ListItemTitleTextBlockStyle}"
+                                            Text="Cache owner health" />
+                                        <ItemsControl ItemsSource="{x:Bind ViewModel.CacheOwners, Mode=OneWay}">
+                                            <ItemsControl.ItemTemplate>
+                                                <DataTemplate x:DataType="pageViewModels:SettingsCacheOwnerItem">
+                                                    <Border
+                                                        Padding="0,6"
+                                                        BorderBrush="{ThemeResource AppHairlineBrush}"
+                                                        BorderThickness="0,0,0,1">
+                                                        <Grid ColumnSpacing="16" RowSpacing="2">
+                                                            <Grid.ColumnDefinitions>
+                                                                <ColumnDefinition Width="*" />
+                                                                <ColumnDefinition Width="Auto" />
+                                                            </Grid.ColumnDefinitions>
+                                                            <Grid.RowDefinitions>
+                                                                <RowDefinition Height="Auto" />
+                                                                <RowDefinition Height="Auto" />
+                                                                <RowDefinition Height="Auto" />
+                                                                <RowDefinition Height="Auto" />
+                                                            </Grid.RowDefinitions>
+                                                            <TextBlock
+                                                                AutomationProperties.HelpText="{x:Bind Policy}"
+                                                                AutomationProperties.Name="{x:Bind DisplayName}"
+                                                                Style="{StaticResource ListItemTitleTextBlockStyle}"
+                                                                Text="{x:Bind DisplayName}" />
+                                                            <TextBlock
+                                                                Grid.Column="1"
+                                                                Style="{StaticResource SectionSecondaryTextBlockStyle}"
+                                                                Text="{x:Bind Health}" />
+                                                            <TextBlock
+                                                                Grid.Row="1"
+                                                                Grid.Column="1"
+                                                                HorizontalAlignment="Right"
+                                                                Style="{StaticResource SectionSecondaryTextBlockStyle}"
+                                                                Text="{x:Bind Size}" />
+                                                            <TextBlock
+                                                                Grid.Row="2"
+                                                                Grid.ColumnSpan="2"
+                                                                MaxWidth="720"
+                                                                MaxLines="1"
+                                                                Style="{StaticResource SectionSecondaryTextBlockStyle}"
+                                                                Text="{x:Bind Policy}"
+                                                                TextTrimming="CharacterEllipsis"
+                                                                TextWrapping="NoWrap"
+                                                                ToolTipService.ToolTip="{x:Bind Policy}" />
+                                                            <TextBlock
+                                                                Grid.Row="3"
+                                                                Grid.ColumnSpan="2"
+                                                                MaxWidth="720"
+                                                                Foreground="{ThemeResource SystemFillColorCriticalBrush}"
+                                                                Text="{x:Bind HealthDetail}"
+                                                                TextWrapping="WrapWholeWords" />
+                                                        </Grid>
+                                                    </Border>
+                                                </DataTemplate>
+                                            </ItemsControl.ItemTemplate>
+                                        </ItemsControl>
+                                    </StackPanel>
+                                </Border>
+                            </StackPanel>
+
+                            <StackPanel
+                                AutomationProperties.AutomationId="SettingsDiagnosticsSection"
+                                Spacing="14"
+                                Visibility="{x:Bind ViewModel.IsDiagnosticsSelected, Converter={StaticResource BoolToVisibilityConverter}, Mode=OneWay}">
+                                <appcontrols:AppSectionHeader x:Uid="PagesSettingsPageAppSectionHeaderDiagnostics" Title="Diagnostics" />
+                                <Border
+                                    Background="{ThemeResource AppSurfaceBrush}"
+                                    BorderBrush="{ThemeResource AppOutlineBrush}"
+                                    BorderThickness="1"
+                                    CornerRadius="{ThemeResource AppRadiusMedium}"
+                                    Padding="16">
+                                    <StackPanel Spacing="14">
+                                        <Grid ColumnSpacing="16">
+                                            <Grid.ColumnDefinitions>
+                                                <ColumnDefinition Width="*" />
+                                                <ColumnDefinition Width="Auto" />
+                                            </Grid.ColumnDefinitions>
+                                            <TextBlock
+                                                x:Uid="PagesSettingsPageTextBlockDiagnosticsSize" Style="{StaticResource SectionSecondaryTextBlockStyle}"
+                                                Text="Diagnostics size" />
+                                            <TextBlock
+                                                Grid.Column="1"
+                                                Style="{StaticResource ListItemTitleTextBlockStyle}"
+                                                Text="{x:Bind ViewModel.DiagnosticsSizeText, Mode=OneWay}" />
+                                        </Grid>
+                                        <StackPanel Spacing="4">
+                                            <TextBlock
+                                                x:Uid="PagesSettingsPageTextBlockDiagnosticsFile" Style="{StaticResource ListItemTitleTextBlockStyle}"
+                                                Text="Diagnostics file" />
+                                            <TextBlock
+                                                IsTextSelectionEnabled="True"
+                                                MaxLines="2"
+                                                TextTrimming="CharacterEllipsis"
+                                                Style="{StaticResource SectionSecondaryTextBlockStyle}"
+                                                Text="{x:Bind ViewModel.DiagnosticsPath, Mode=OneWay}" />
+                                        </StackPanel>
+                                        <StackPanel Orientation="Horizontal" Spacing="10">
+                                            <Button
+                                                x:Uid="PagesSettingsPageSettingsExportDiagnosticsButton" x:Name="SettingsExportDiagnosticsButton"
+                                                AutomationProperties.AutomationId="SettingsExportDiagnosticsButton"
+                                                AutomationProperties.Name="Export diagnostics"
+                                                Click="ExportDiagnosticsButton_Click"
+                                                Content="Export" />
+                                            <Button
+                                                x:Uid="PagesSettingsPageSettingsClearDiagnosticsButton" x:Name="SettingsClearDiagnosticsButton"
+                                                AutomationProperties.AutomationId="SettingsClearDiagnosticsButton"
+                                                AutomationProperties.Name="Clear diagnostics"
+                                                Click="ClearDiagnosticsButton_Click"
+                                                Content="Clear" />
+                                        </StackPanel>
+                                    </StackPanel>
+                                </Border>
+                            </StackPanel>
+
+                            <StackPanel
+                                AutomationProperties.AutomationId="SettingsAboutSection"
+                                Spacing="14"
+                                Visibility="{x:Bind ViewModel.IsAboutSelected, Converter={StaticResource BoolToVisibilityConverter}, Mode=OneWay}">
+                                <appcontrols:AppSectionHeader x:Uid="PagesSettingsPageAppSectionHeaderAbout" Title="About" />
+                                <Border
+                                    Background="{ThemeResource AppSurfaceBrush}"
+                                    BorderBrush="{ThemeResource AppOutlineBrush}"
+                                    BorderThickness="1"
+                                    CornerRadius="{ThemeResource AppRadiusMedium}"
+                                    Padding="16">
+                                    <Grid
+                                        x:Name="SettingsAboutVersionRow"
+                                        ColumnSpacing="16">
+                                        <Grid.ColumnDefinitions>
+                                            <ColumnDefinition Width="*" />
+                                            <ColumnDefinition Width="Auto" />
+                                        </Grid.ColumnDefinitions>
+                                        <Grid.RowDefinitions>
+                                            <RowDefinition Height="Auto" />
+                                            <RowDefinition Height="Auto" />
+                                        </Grid.RowDefinitions>
+                                        <StackPanel Spacing="4">
+                                            <TextBlock
+                                                Style="{StaticResource ListItemTitleTextBlockStyle}"
+                                                Text="{x:Bind ViewModel.VersionText, Mode=OneWay}" />
+                                            <TextBlock
+                                                x:Uid="PagesSettingsPageTextBlockNativeWindowsGitHubClientWithV" Style="{StaticResource SectionSecondaryTextBlockStyle}"
+                                                Text="Native Windows GitHub client with vNext foundations."
+                                                TextWrapping="WrapWholeWords" />
+                                        </StackPanel>
+                                        <Button
+                                            x:Uid="PagesSettingsPageSettingsViewSourceButton" x:Name="SettingsViewSourceButton"
+                                            Grid.Column="1"
+                                            AutomationProperties.AutomationId="SettingsViewSourceButton"
+                                            AutomationProperties.Name="View JitHub source"
+                                            Click="ViewSourceButton_Click"
+                                            Content="View source" />
+                                    </Grid>
+                                </Border>
+
+                                <appcontrols:AppSectionHeader x:Uid="PagesSettingsPageAppSectionHeaderContributors" Title="Contributors" />
+
+                                <Border
+                                    Background="{ThemeResource AppSurfaceBrush}"
+                                    BorderBrush="{ThemeResource AppOutlineBrush}"
+                                    BorderThickness="1"
+                                    CornerRadius="{ThemeResource AppRadiusMedium}"
+                                    Padding="16">
+                                    <StackPanel Spacing="12">
+                                        <TextBlock
+                                            x:Uid="PagesSettingsPageTextBlockDevelopers" Style="{StaticResource ListItemTitleTextBlockStyle}"
+                                            Text="Developers" />
+                                        <ItemsControl ItemsSource="{x:Bind Developers, Mode=OneWay}">
+                                            <ItemsControl.ItemTemplate>
+                                                <DataTemplate x:DataType="models:CreditPersonale">
+                                                    <Border
+                                                        Margin="0,0,0,10"
+                                                        Background="{ThemeResource AppSurfaceSubtleBrush}"
+                                                        BorderBrush="{ThemeResource AppHairlineBrush}"
+                                                        BorderThickness="1"
+                                                        CornerRadius="{ThemeResource AppRadiusSmall}"
+                                                        Padding="12">
+                                                        <Grid ColumnSpacing="14">
+                                                            <Grid.ColumnDefinitions>
+                                                                <ColumnDefinition Width="76" />
+                                                                <ColumnDefinition Width="*" />
+                                                            </Grid.ColumnDefinitions>
+                                                            <PersonPicture
+                                                                Width="64"
+                                                                Height="64"
+                                                                AutomationProperties.Name="{x:Bind PersonaleName, Mode=OneWay}"
+                                                                ProfilePicture="{x:Bind ImageSource, Mode=OneWay}" />
+                                                            <StackPanel
+                                                                Grid.Column="1"
+                                                                Spacing="4">
+                                                                <TextBlock
+                                                                    Style="{StaticResource ListItemTitleTextBlockStyle}"
+                                                                    Text="{x:Bind PersonaleName, Mode=OneWay}" />
+                                                                <TextBlock
+                                                                    Style="{StaticResource ListItemSecondaryTextBlockStyle}"
+                                                                    Text="{x:Bind Role, Mode=OneWay}" />
+                                                                <TextBlock
+                                                                    MaxWidth="620"
+                                                                    Style="{StaticResource SectionSecondaryTextBlockStyle}"
+                                                                    TextWrapping="WrapWholeWords"
+                                                                    Text="{x:Bind Description, Mode=OneWay}" />
+                                                                <ItemsControl ItemsSource="{x:Bind Links, Mode=OneWay}">
+                                                                    <ItemsControl.ItemsPanel>
+                                                                        <ItemsPanelTemplate>
+                                                                            <StackPanel Orientation="Horizontal" />
+                                                                        </ItemsPanelTemplate>
+                                                                    </ItemsControl.ItemsPanel>
+                                                                    <ItemsControl.ItemTemplate>
+                                                                        <DataTemplate x:DataType="models:PersonalLink">
+                                                                            <HyperlinkButton
+                                                                                Margin="0,2,8,0"
+                                                                                Padding="0"
+                                                                                AutomationProperties.AutomationId="{x:Bind AutomationId, Mode=OneWay}"
+                                                                                AutomationProperties.Name="{x:Bind AccessibleName, Mode=OneWay}"
+                                                                                NavigateUri="{x:Bind Link, Mode=OneWay}">
+                                                                                <Border
+                                                                                    Padding="2"
+                                                                                    Background="{x:Bind LogoBackgroundBrush, Mode=OneWay}"
+                                                                                    CornerRadius="2">
+                                                                                    <Image
+                                                                                        Width="18"
+                                                                                        Height="18"
+                                                                                        Source="{x:Bind LogoSource, Mode=OneWay}" />
+                                                                                </Border>
+                                                                            </HyperlinkButton>
+                                                                        </DataTemplate>
+                                                                    </ItemsControl.ItemTemplate>
+                                                                </ItemsControl>
+                                                            </StackPanel>
+                                                        </Grid>
+                                                    </Border>
+                                                </DataTemplate>
+                                            </ItemsControl.ItemTemplate>
+                                        </ItemsControl>
+                                    </StackPanel>
+                                </Border>
+
+                                <Border
+                                    Background="{ThemeResource AppSurfaceBrush}"
+                                    BorderBrush="{ThemeResource AppOutlineBrush}"
+                                    BorderThickness="1"
+                                    CornerRadius="{ThemeResource AppRadiusMedium}"
+                                    Padding="16">
+                                    <StackPanel Spacing="12">
+                                        <TextBlock
+                                            x:Uid="PagesSettingsPageTextBlockDesigners" Style="{StaticResource ListItemTitleTextBlockStyle}"
+                                            Text="Designers" />
+                                        <ItemsControl ItemsSource="{x:Bind Designers, Mode=OneWay}">
+                                            <ItemsControl.ItemTemplate>
+                                                <DataTemplate x:DataType="models:CreditPersonale">
+                                                    <Border
+                                                        Margin="0,0,0,10"
+                                                        Background="{ThemeResource AppSurfaceSubtleBrush}"
+                                                        BorderBrush="{ThemeResource AppHairlineBrush}"
+                                                        BorderThickness="1"
+                                                        CornerRadius="{ThemeResource AppRadiusSmall}"
+                                                        Padding="12">
+                                                        <Grid ColumnSpacing="14">
+                                                            <Grid.ColumnDefinitions>
+                                                                <ColumnDefinition Width="76" />
+                                                                <ColumnDefinition Width="*" />
+                                                            </Grid.ColumnDefinitions>
+                                                            <PersonPicture
+                                                                Width="64"
+                                                                Height="64"
+                                                                AutomationProperties.Name="{x:Bind PersonaleName, Mode=OneWay}"
+                                                                ProfilePicture="{x:Bind ImageSource, Mode=OneWay}" />
+                                                            <StackPanel
+                                                                Grid.Column="1"
+                                                                Spacing="4">
+                                                                <TextBlock
+                                                                    Style="{StaticResource ListItemTitleTextBlockStyle}"
+                                                                    Text="{x:Bind PersonaleName, Mode=OneWay}" />
+                                                                <TextBlock
+                                                                    Style="{StaticResource ListItemSecondaryTextBlockStyle}"
+                                                                    Text="{x:Bind Role, Mode=OneWay}" />
+                                                                <TextBlock
+                                                                    MaxWidth="620"
+                                                                    Style="{StaticResource SectionSecondaryTextBlockStyle}"
+                                                                    TextWrapping="WrapWholeWords"
+                                                                    Text="{x:Bind Description, Mode=OneWay}" />
+                                                                <ItemsControl ItemsSource="{x:Bind Links, Mode=OneWay}">
+                                                                    <ItemsControl.ItemsPanel>
+                                                                        <ItemsPanelTemplate>
+                                                                            <StackPanel Orientation="Horizontal" />
+                                                                        </ItemsPanelTemplate>
+                                                                    </ItemsControl.ItemsPanel>
+                                                                    <ItemsControl.ItemTemplate>
+                                                                        <DataTemplate x:DataType="models:PersonalLink">
+                                                                            <HyperlinkButton
+                                                                                Margin="0,2,8,0"
+                                                                                Padding="0"
+                                                                                AutomationProperties.AutomationId="{x:Bind AutomationId, Mode=OneWay}"
+                                                                                AutomationProperties.Name="{x:Bind AccessibleName, Mode=OneWay}"
+                                                                                NavigateUri="{x:Bind Link, Mode=OneWay}">
+                                                                                <Border
+                                                                                    Padding="2"
+                                                                                    Background="{x:Bind LogoBackgroundBrush, Mode=OneWay}"
+                                                                                    CornerRadius="2">
+                                                                                    <Image
+                                                                                        Width="18"
+                                                                                        Height="18"
+                                                                                        Source="{x:Bind LogoSource, Mode=OneWay}" />
+                                                                                </Border>
+                                                                            </HyperlinkButton>
+                                                                        </DataTemplate>
+                                                                    </ItemsControl.ItemTemplate>
+                                                                </ItemsControl>
+                                                            </StackPanel>
+                                                        </Grid>
+                                                    </Border>
+                                                </DataTemplate>
+                                            </ItemsControl.ItemTemplate>
+                                        </ItemsControl>
+                                    </StackPanel>
+                                </Border>
+                            </StackPanel>
+                        </Grid>
+                    </ScrollViewer>
+                </Border>
+            </Grid>
+        </Grid>
     </Grid>
 </Page>
-

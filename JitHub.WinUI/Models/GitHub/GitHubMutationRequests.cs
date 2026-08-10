@@ -143,6 +143,16 @@ internal sealed class GitHubPullRequestReviewersUpdateRequest
     public IReadOnlyList<string> Reviewers { get; set; } = Array.Empty<string>();
 }
 
+internal sealed class GitHubPullRequestReviewCreateRequest
+{
+    [JsonPropertyName("body")]
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+    public string? Body { get; set; }
+
+    [JsonPropertyName("event")]
+    public string Event { get; set; } = string.Empty;
+}
+
 internal sealed class GitHubReactionCreateRequest
 {
     [JsonPropertyName("content")]

@@ -37,6 +37,40 @@ internal static class SelectionAutoScroll
         return 0;
     }
 
+    public static double ComputeDirectionalDelta(
+        double pointerY,
+        double viewportTop,
+        double viewportHeight,
+        double previousPointerViewportY,
+        double edgeThreshold = EdgeThresholdPx,
+        double maxStep = MaxStepPx)
+    {
+        double delta = ComputeDelta(
+            pointerY,
+            viewportTop,
+            viewportHeight,
+            edgeThreshold,
+            maxStep);
+        if (delta == 0 || double.IsNaN(previousPointerViewportY))
+            return 0;
+
+        double pointerViewportY = pointerY - viewportTop;
+        double movement = pointerViewportY - previousPointerViewportY;
+        bool outsideTop = pointerViewportY < 0;
+        bool outsideBottom = pointerViewportY >= viewportHeight;
+
+        // Edge bands can overlap in very short editor previews. Only scroll
+        // toward an edge while the pointer is moving toward (or already beyond)
+        // that edge; a downward selection that starts near the top must not
+        // walk the document backward under the pointer.
+        if (delta < 0 && !outsideTop && movement >= 0)
+            return 0;
+        if (delta > 0 && !outsideBottom && movement <= 0)
+            return 0;
+
+        return delta;
+    }
+
     public static double ClampPointToViewport(double pointerY, double viewportTop, double viewportHeight)
     {
         if (viewportHeight <= 0)

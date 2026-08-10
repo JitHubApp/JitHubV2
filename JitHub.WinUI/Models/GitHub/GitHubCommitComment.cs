@@ -1,5 +1,8 @@
 using System;
 using System.Text.Json.Serialization;
+using JitHub.Services.Markdown;
+using JitHub.Services;
+using MarkdownRenderer.Images;
 
 namespace JitHub.Models.GitHub;
 
@@ -44,4 +47,32 @@ public sealed partial class GitHubCommitComment
 
     [JsonPropertyName("reactions")]
     public GitHubReactionSummary Reactions { get; set; } = new();
+
+    [JsonIgnore]
+    public string MarkdownAutomationId => $"CommitComment_{Id}";
+
+    [JsonIgnore]
+    public string AvatarAutomationId => Id > 0
+        ? $"CommitComment_{Id}"
+        : $"CommitComment_{NodeId ?? HtmlUrl ?? CommitId}_{CreatedAt:O}";
+
+    [JsonIgnore]
+    public string AuthorDisplayName => UserIdentityNavigationPolicy.CreatePresentation(
+        User?.Login,
+        displayName: null,
+        "unknown").DisplayName;
+
+    [JsonIgnore]
+    public string? AuthorProfileLogin => UserIdentityNavigationPolicy.GetRoutableLogin(User?.Login);
+
+    [JsonIgnore]
+    public string AuthorAvatarUrl => User?.AvatarUrl ?? string.Empty;
+
+    [JsonIgnore]
+    public MarkdownDocumentSource? MarkdownSource =>
+        MarkdownDocumentSourceFactory.TryCreateFromGitHubUrl(
+            "commit-comment",
+            Id > 0 ? Id.ToString() : NodeId ?? HtmlUrl ?? string.Empty,
+            HtmlUrl,
+            CommitId);
 }

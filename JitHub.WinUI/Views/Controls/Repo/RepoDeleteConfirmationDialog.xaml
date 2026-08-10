@@ -22,11 +22,13 @@
                 VerticalAlignment="Center"
                 Spacing="8">
                 <TextBlock>
-                    <Run Text="You are about to delete "/>
+                    <Run x:Uid="ControlsRepoRepoDeleteConfirmationDialogRunYouAreAboutTo" Text="You are about to delete "/>
                     <Run Text="{x:Bind Number, Mode=OneWay}"/>
-                    <Run Text=" repositories."/>
+                    <Run x:Uid="ControlsRepoRepoDeleteConfirmationDialogRunRepositories" Text=" repositories."/>
                 </TextBlock>
                 <CheckBox
+                    x:Uid="ControlsRepoRepoDeleteConfirmationDialogRepoDeleteDoNotS" AutomationProperties.AutomationId="RepoDeleteDoNotShowAgainCheckBox"
+                    AutomationProperties.Name="Do not show this confirmation again"
                     Content="Don't show this again."
                     Unchecked="CheckBox_Checked"
                     Checked="CheckBox_Checked"/>
@@ -42,10 +44,14 @@
                 HorizontalAlignment="Right"
                 Spacing="8">
                 <Button
+                    x:Uid="ControlsRepoRepoDeleteConfirmationDialogRepoDeleteConfir" AutomationProperties.AutomationId="RepoDeleteConfirmButton"
+                    AutomationProperties.Name="Confirm repository deletion"
                     Content="Confirm"
                     Style="{ThemeResource AppAccentButtonStyle}"
                     Command="{x:Bind ConfirmCommand, Mode=OneWay}"/>
                 <Button
+                    x:Uid="ControlsRepoRepoDeleteConfirmationDialogRepoDeleteCancel" AutomationProperties.AutomationId="RepoDeleteCancelButton"
+                    AutomationProperties.Name="Cancel repository deletion"
                     Content="Cancel"
                     Style="{StaticResource AppOutlineButtonStyle}"
                     Command="{x:Bind CancelCommand, Mode=OneWay}"/>

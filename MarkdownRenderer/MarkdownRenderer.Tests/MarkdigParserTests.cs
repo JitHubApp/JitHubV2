@@ -275,10 +275,10 @@ public class MarkdigParserTests
     {
         var md = "# Title\n\nParagraph one.\n\n> A quote\n\n- item";
         var doc = DefaultParser().Parse(md).Document;
-        Assert.Equal(1, doc.OfType<HeadingBlock>().Count());
-        Assert.Equal(1, doc.OfType<ParagraphBlock>().Count());
-        Assert.Equal(1, doc.OfType<QuoteBlock>().Count());
-        Assert.Equal(1, doc.OfType<ListBlock>().Count());
+        Assert.Single(doc.OfType<HeadingBlock>());
+        Assert.Single(doc.OfType<ParagraphBlock>());
+        Assert.Single(doc.OfType<QuoteBlock>());
+        Assert.Single(doc.OfType<ListBlock>());
     }
 
     private static IEnumerable<Inline> DescendantInlines(ContainerInline container)

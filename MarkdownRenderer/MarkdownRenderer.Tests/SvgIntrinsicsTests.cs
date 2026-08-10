@@ -126,5 +126,25 @@ public class SvgIntrinsicsTests
         Assert.Equal(24, h);
     }
 
+    [Fact]
+    public void ExtractRootGeometry_DependabotBadge_KeepsViewportAndViewBoxSeparate()
+    {
+        var bytes = Bytes(
+            "<svg xmlns=\"http://www.w3.org/2000/svg\" width=\"154.1\" height=\"20\" viewBox=\"0 0 1541 200\">" +
+            "<g fill=\"#fff\" text-anchor=\"start\" font-family=\"Verdana\" font-size=\"110\">" +
+            "<text x=\"190\" y=\"148\">compatibility</text>" +
+            "<text x=\"80%\" y=\"138\" text-anchor=\"middle\">unknown</text>" +
+            "</g></svg>");
+
+        var geometry = SvgIntrinsics.TryExtractRootGeometry(bytes);
+
+        Assert.Equal(154.1, geometry.IntrinsicWidth, precision: 1);
+        Assert.Equal(20, geometry.IntrinsicHeight);
+        Assert.Equal(1541, geometry.ViewBoxWidth);
+        Assert.Equal(200, geometry.ViewBoxHeight);
+        Assert.Equal(0.1, geometry.UserUnitToViewportScaleX, precision: 3);
+        Assert.Equal(0.1, geometry.UserUnitToViewportScaleY, precision: 3);
+    }
+
     private static byte[] Bytes(string s) => Encoding.UTF8.GetBytes(s);
 }

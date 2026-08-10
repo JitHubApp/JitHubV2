@@ -17,6 +17,10 @@ namespace JitHub.Models
         public string Description { get; set; } = string.Empty;
         public Brush BackgroundBrush { get; set; } = new SolidColorBrush(Microsoft.UI.Colors.Transparent);
 
+        public string AutomationId => $"Contributor_{new string(PersonaleName.Where(char.IsLetterOrDigit).ToArray())}";
+
+        public string AccessibleName => $"View contributor {PersonaleName}, {Role}";
+
         public CreditPersonale(string url, string name, string role, string description, Color color, IEnumerable<PersonalLink> links)
         {
             try
@@ -40,6 +44,9 @@ namespace JitHub.Models
     {
         public string Link { get; set; } = string.Empty;
         public ImageSource LogoSource { get; set; } = new BitmapImage(new Uri("ms-appx:///Assets/Octocat.png"));
+        public string AccessibleName { get; }
+        public string AutomationId { get; }
+        public Brush LogoBackgroundBrush { get; }
         public const string LinkedInLogo = "ms-appx:///Assets/LinkLogos/LinkedIn.png";
         public const string TwitterLogo = "ms-appx:///Assets/LinkLogos/Twitter.png";
         public const string GitHubLogo = "ms-appx:///Assets/LinkLogos/GitHub.png";
@@ -56,6 +63,21 @@ namespace JitHub.Models
                 LogoSource = new BitmapImage(new Uri("ms-appx:///Assets/Octocat.png"));
             }
             Link = link;
+
+            string serviceName = logoPath switch
+            {
+                LinkedInLogo => "LinkedIn",
+                TwitterLogo => "Twitter",
+                GitHubLogo => "GitHub",
+                GoogleScholarLogo => "Google Scholar",
+                _ => "social"
+            };
+            AccessibleName = $"Open {serviceName} profile";
+            LogoBackgroundBrush = new SolidColorBrush(
+                logoPath == GitHubLogo ? Microsoft.UI.Colors.White : Microsoft.UI.Colors.Transparent);
+
+            string identity = new(link.Where(char.IsLetterOrDigit).TakeLast(32).ToArray());
+            AutomationId = $"ContributorLink_{serviceName.Replace(" ", string.Empty)}_{identity}";
         }
     }
 }

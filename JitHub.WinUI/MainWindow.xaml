@@ -14,6 +14,9 @@
 
     <Grid
         x:Name="RootLayout"
+        AutomationProperties.AccessibilityView="Control"
+        AutomationProperties.AutomationId="JitHubMainWindowRoot"
+        AutomationProperties.Name="JitHub application window"
         Background="{ThemeResource AppCanvasBrush}">
         <Border
             x:Name="AppTitleBar"
@@ -24,8 +27,27 @@
             x:Name="ContentFrame"
             AutomationProperties.AutomationId="MainContentFrame"
             AutomationProperties.AccessibilityView="Control" />
+        <Grid
+            x:Name="ContentDialogHost"
+            AutomationProperties.AccessibilityView="Raw"
+            Background="{ThemeResource SmokeFillColorDefaultBrush}"
+            IsHitTestVisible="False"
+            TabFocusNavigation="Cycle"
+            Visibility="Collapsed">
+            <Button
+                x:Name="DialogFocusSentinel"
+                Width="1"
+                Height="1"
+                HorizontalAlignment="Center"
+                VerticalAlignment="Center"
+                AutomationProperties.AccessibilityView="Raw"
+                IsTabStop="False"
+                Opacity="0" />
+        </Grid>
         <Border
             x:Name="ActivationStatusHost"
+            AutomationProperties.AutomationId="AppStatusHost"
+            AutomationProperties.Name="Application status"
             Margin="12"
             HorizontalAlignment="Left"
             VerticalAlignment="Bottom"
@@ -37,6 +59,8 @@
             Visibility="Collapsed">
             <TextBlock
                 x:Name="ActivationStatusText"
+                AutomationProperties.AutomationId="AppStatusText"
+                AutomationProperties.LiveSetting="Polite"
                 Foreground="{ThemeResource AppInkBrush}"
                 Text="Waiting for activation."
                 TextWrapping="WrapWholeWords" />

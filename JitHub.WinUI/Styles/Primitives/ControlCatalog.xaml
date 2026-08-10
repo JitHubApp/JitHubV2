@@ -1,0 +1,255 @@
+<ResourceDictionary
+    xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+    xmlns:muxc="using:Microsoft.UI.Xaml.Controls">
+
+    <SolidColorBrush x:Key="CheckBoxBackgroundUnchecked" Color="{ThemeResource AppInputColor}" />
+    <SolidColorBrush x:Key="CheckBoxBackgroundUncheckedPointerOver" Color="{ThemeResource AppInputHoverColor}" />
+    <SolidColorBrush x:Key="CheckBoxBackgroundUncheckedPressed" Color="{ThemeResource AppRowPressedColor}" />
+    <SolidColorBrush x:Key="CheckBoxBackgroundUncheckedDisabled" Color="{ThemeResource AppCanvasInsetColor}" />
+    <SolidColorBrush x:Key="CheckBoxBackgroundChecked" Color="{ThemeResource AppAccentColor}" />
+    <SolidColorBrush x:Key="CheckBoxBackgroundCheckedPointerOver" Color="{ThemeResource AppAccentHoverColor}" />
+    <SolidColorBrush x:Key="CheckBoxBackgroundCheckedPressed" Color="{ThemeResource AppAccentPressedColor}" />
+    <SolidColorBrush x:Key="CheckBoxBackgroundCheckedDisabled" Color="{ThemeResource AppCanvasInsetColor}" />
+    <SolidColorBrush x:Key="CheckBoxBorderBrushUnchecked" Color="{ThemeResource AppOutlineStrongColor}" />
+    <SolidColorBrush x:Key="CheckBoxBorderBrushUncheckedPointerOver" Color="{ThemeResource AppAccentColor}" />
+    <SolidColorBrush x:Key="CheckBoxBorderBrushUncheckedPressed" Color="{ThemeResource AppAccentPressedColor}" />
+    <SolidColorBrush x:Key="CheckBoxBorderBrushUncheckedDisabled" Color="{ThemeResource AppHairlineColor}" />
+    <SolidColorBrush x:Key="CheckBoxBorderBrushChecked" Color="{ThemeResource AppAccentColor}" />
+    <SolidColorBrush x:Key="CheckBoxBorderBrushCheckedPointerOver" Color="{ThemeResource AppAccentHoverColor}" />
+    <SolidColorBrush x:Key="CheckBoxBorderBrushCheckedPressed" Color="{ThemeResource AppAccentPressedColor}" />
+    <SolidColorBrush x:Key="CheckBoxBorderBrushCheckedDisabled" Color="{ThemeResource AppHairlineColor}" />
+    <SolidColorBrush x:Key="CheckBoxCheckGlyphForegroundChecked" Color="{ThemeResource AppAccentForegroundColor}" />
+    <SolidColorBrush x:Key="CheckBoxCheckGlyphForegroundCheckedPointerOver" Color="{ThemeResource AppAccentForegroundColor}" />
+    <SolidColorBrush x:Key="CheckBoxCheckGlyphForegroundCheckedPressed" Color="{ThemeResource AppAccentForegroundColor}" />
+    <SolidColorBrush x:Key="CheckBoxCheckGlyphForegroundCheckedDisabled" Color="{ThemeResource AppInkSubtleColor}" />
+
+    <Style x:Key="AppCommandTextBoxStyle" TargetType="TextBox" BasedOn="{StaticResource AppTextBoxStyle}">
+        <Setter Property="Height" Value="36" />
+        <Setter Property="MinHeight" Value="36" />
+        <Setter Property="VerticalAlignment" Value="Center" />
+        <Setter Property="VerticalContentAlignment" Value="Center" />
+    </Style>
+
+    <Style x:Key="AppCommandSearchTextBoxStyle" TargetType="TextBox" BasedOn="{StaticResource AppCommandTextBoxStyle}">
+        <Setter Property="Padding" Value="36,7,12,7" />
+    </Style>
+
+    <Style x:Key="AppCompactComboBoxStyle" TargetType="ComboBox" BasedOn="{StaticResource ComboBox}">
+        <Setter Property="Height" Value="36" />
+        <Setter Property="MinHeight" Value="36" />
+        <Setter Property="VerticalAlignment" Value="Center" />
+        <Setter Property="VerticalContentAlignment" Value="Center" />
+    </Style>
+
+    <Style x:Key="AppCompactCalendarDatePickerStyle" TargetType="CalendarDatePicker" BasedOn="{StaticResource CalendarDatePicker}">
+        <Setter Property="Height" Value="36" />
+        <Setter Property="MinHeight" Value="36" />
+        <Setter Property="VerticalAlignment" Value="Center" />
+        <Setter Property="VerticalContentAlignment" Value="Center" />
+    </Style>
+
+    <Style x:Key="AppCommandButtonStyle" TargetType="Button" BasedOn="{StaticResource AppStableButtonBaseStyle}">
+        <Setter Property="Height" Value="36" />
+        <Setter Property="MinWidth" Value="36" />
+        <Setter Property="MinHeight" Value="36" />
+        <Setter Property="Padding" Value="10,6" />
+        <Setter Property="VerticalAlignment" Value="Center" />
+    </Style>
+
+    <Style x:Key="AppSelectionCheckBoxStyle" TargetType="CheckBox" BasedOn="{StaticResource DefaultCheckBoxStyle}">
+        <Setter Property="Width" Value="20" />
+        <Setter Property="Height" Value="20" />
+        <Setter Property="MinWidth" Value="20" />
+        <Setter Property="MinHeight" Value="20" />
+        <Setter Property="Padding" Value="0" />
+        <Setter Property="HorizontalAlignment" Value="Center" />
+        <Setter Property="VerticalAlignment" Value="Top" />
+    </Style>
+
+    <Style x:Key="AppDenseListRowStyle" TargetType="ListViewItem" BasedOn="{StaticResource DefaultListViewItemStyle}">
+        <Setter Property="MinHeight" Value="68" />
+        <Setter Property="Margin" Value="0" />
+        <Setter Property="Padding" Value="0" />
+        <Setter Property="Background" Value="{ThemeResource AppRowBrush}" />
+        <Setter Property="HorizontalContentAlignment" Value="Stretch" />
+        <Setter Property="VerticalContentAlignment" Value="Stretch" />
+        <Setter Property="CornerRadius" Value="{ThemeResource AppRadiusSmall}" />
+        <Setter Property="UseSystemFocusVisuals" Value="True" />
+    </Style>
+
+    <Style x:Key="AppDenseFlatListRowStyle" TargetType="ListViewItem" BasedOn="{StaticResource AppDenseListRowStyle}">
+        <Setter Property="Margin" Value="0,0,0,2" />
+    </Style>
+
+    <Style x:Key="AppContentListRowStyle" TargetType="ListViewItem" BasedOn="{StaticResource DefaultListViewItemStyle}">
+        <Setter Property="MinHeight" Value="0" />
+        <Setter Property="Margin" Value="0" />
+        <Setter Property="Padding" Value="0" />
+        <Setter Property="Background" Value="Transparent" />
+        <Setter Property="HorizontalContentAlignment" Value="Stretch" />
+        <Setter Property="VerticalContentAlignment" Value="Stretch" />
+        <Setter Property="IsTabStop" Value="False" />
+    </Style>
+
+    <Style x:Key="AppWorkspaceCardListRowStyle" TargetType="ListViewItem" BasedOn="{StaticResource AppDenseListRowStyle}">
+        <Setter Property="Margin" Value="0,0,0,8" />
+        <Setter Property="Template">
+            <Setter.Value>
+                <ControlTemplate TargetType="ListViewItem">
+                    <Border
+                        x:Name="CardRoot"
+                        MinHeight="76"
+                        Padding="12"
+                        Background="{ThemeResource AppCardBrush}"
+                        BorderBrush="{ThemeResource AppHairlineBrush}"
+                        BorderThickness="1"
+                        CornerRadius="{ThemeResource AppRadiusSmall}">
+                        <VisualStateManager.VisualStateGroups>
+                            <VisualStateGroup x:Name="CommonStates">
+                                <VisualState x:Name="Normal" />
+                                <VisualState x:Name="PointerOver">
+                                    <VisualState.Setters>
+                                        <Setter Target="CardRoot.Background" Value="{ThemeResource AppRowHoverBrush}" />
+                                        <Setter Target="CardRoot.BorderBrush" Value="{ThemeResource AppOutlineStrongBrush}" />
+                                    </VisualState.Setters>
+                                </VisualState>
+                                <VisualState x:Name="Pressed">
+                                    <VisualState.Setters>
+                                        <Setter Target="CardRoot.Background" Value="{ThemeResource AppRowPressedBrush}" />
+                                        <Setter Target="CardRoot.BorderBrush" Value="{ThemeResource AppAccentBrush}" />
+                                    </VisualState.Setters>
+                                </VisualState>
+                                <VisualState x:Name="Selected">
+                                    <VisualState.Setters>
+                                        <Setter Target="CardRoot.Background" Value="{ThemeResource AppRowSelectedBrush}" />
+                                        <Setter Target="CardRoot.BorderBrush" Value="{ThemeResource AppAccentBrush}" />
+                                    </VisualState.Setters>
+                                </VisualState>
+                                <VisualState x:Name="PointerOverSelected">
+                                    <VisualState.Setters>
+                                        <Setter Target="CardRoot.Background" Value="{ThemeResource AppRowSelectedBrush}" />
+                                        <Setter Target="CardRoot.BorderBrush" Value="{ThemeResource AppAccentBrush}" />
+                                    </VisualState.Setters>
+                                </VisualState>
+                                <VisualState x:Name="PressedSelected">
+                                    <VisualState.Setters>
+                                        <Setter Target="CardRoot.Background" Value="{ThemeResource AppRowPressedBrush}" />
+                                        <Setter Target="CardRoot.BorderBrush" Value="{ThemeResource AppAccentBrush}" />
+                                    </VisualState.Setters>
+                                </VisualState>
+                                <VisualState x:Name="SelectedUnfocused">
+                                    <VisualState.Setters>
+                                        <Setter Target="CardRoot.Background" Value="{ThemeResource AppRowSelectedBrush}" />
+                                        <Setter Target="CardRoot.BorderBrush" Value="{ThemeResource AppAccentBrush}" />
+                                    </VisualState.Setters>
+                                </VisualState>
+                                <VisualState x:Name="Disabled">
+                                    <VisualState.Setters>
+                                        <Setter Target="CardRoot.Opacity" Value="0.55" />
+                                    </VisualState.Setters>
+                                </VisualState>
+                            </VisualStateGroup>
+                        </VisualStateManager.VisualStateGroups>
+                        <ContentPresenter
+                            HorizontalAlignment="{TemplateBinding HorizontalContentAlignment}"
+                            VerticalAlignment="{TemplateBinding VerticalContentAlignment}"
+                            Content="{TemplateBinding Content}"
+                            ContentTemplate="{TemplateBinding ContentTemplate}"
+                            ContentTemplateSelector="{TemplateBinding ContentTemplateSelector}" />
+                    </Border>
+                </ControlTemplate>
+            </Setter.Value>
+        </Setter>
+    </Style>
+
+    <Style x:Key="AppCompactNavigationRowStyle" TargetType="ListViewItem" BasedOn="{StaticResource AppDenseListRowStyle}">
+        <Setter Property="MinHeight" Value="38" />
+        <Setter Property="Margin" Value="4,1" />
+        <Setter Property="Padding" Value="10,0" />
+    </Style>
+
+    <Style x:Key="AppRepositoryListRowStyle" TargetType="ListViewItem" BasedOn="{StaticResource AppDenseListRowStyle}">
+        <Setter Property="MinHeight" Value="82" />
+    </Style>
+
+    <Style x:Key="AppSearchResultRowStyle" TargetType="ListViewItem" BasedOn="{StaticResource AppDenseListRowStyle}">
+        <Setter Property="MinHeight" Value="92" />
+        <Setter Property="CornerRadius" Value="0" />
+    </Style>
+
+    <Style x:Key="AppWorkspaceHeaderStyle" TargetType="Grid">
+        <Setter Property="MinHeight" Value="48" />
+        <Setter Property="ColumnSpacing" Value="12" />
+        <Setter Property="RowSpacing" Value="8" />
+        <Setter Property="HorizontalAlignment" Value="Stretch" />
+        <Setter Property="VerticalAlignment" Value="Center" />
+    </Style>
+
+    <Style x:Key="AppWorkspaceTitleTextBlockStyle" TargetType="TextBlock">
+        <Setter Property="VerticalAlignment" Value="Center" />
+        <Setter Property="FontFamily" Value="{ThemeResource AppDisplayFontFamily}" />
+        <Setter Property="FontSize" Value="28" />
+        <Setter Property="Foreground" Value="{ThemeResource AppInkBrush}" />
+        <Setter Property="TextTrimming" Value="CharacterEllipsis" />
+    </Style>
+
+    <Style x:Key="AppWorkspaceHeaderIconStyle" TargetType="FontIcon">
+        <Setter Property="VerticalAlignment" Value="Center" />
+        <Setter Property="FontFamily" Value="{StaticResource SegoeFluentIcons}" />
+        <Setter Property="FontSize" Value="22" />
+        <Setter Property="Foreground" Value="{ThemeResource AppAccentBrush}" />
+    </Style>
+
+    <Style x:Key="AppWorkspaceHeaderContextTextBlockStyle" TargetType="TextBlock" BasedOn="{StaticResource SectionSecondaryTextBlockStyle}">
+        <Setter Property="VerticalAlignment" Value="Center" />
+        <Setter Property="TextTrimming" Value="CharacterEllipsis" />
+    </Style>
+
+    <Style x:Key="AppWorkspaceHeaderActionsStyle" TargetType="StackPanel">
+        <Setter Property="Orientation" Value="Horizontal" />
+        <Setter Property="Spacing" Value="8" />
+        <Setter Property="HorizontalAlignment" Value="Right" />
+        <Setter Property="VerticalAlignment" Value="Center" />
+    </Style>
+
+    <Style x:Key="AppEmptyStatePanelStyle" TargetType="StackPanel">
+        <Setter Property="HorizontalAlignment" Value="Center" />
+        <Setter Property="VerticalAlignment" Value="Center" />
+        <Setter Property="MaxWidth" Value="420" />
+        <Setter Property="Spacing" Value="8" />
+    </Style>
+
+    <Style x:Key="AppInlineEmptyStatePanelStyle" TargetType="StackPanel" BasedOn="{StaticResource AppEmptyStatePanelStyle}">
+        <Setter Property="HorizontalAlignment" Value="Left" />
+        <Setter Property="VerticalAlignment" Value="Top" />
+        <Setter Property="Spacing" Value="6" />
+    </Style>
+
+    <Style x:Key="AppStatusInfoBarStyle" TargetType="muxc:InfoBar">
+        <Setter Property="IsClosable" Value="True" />
+        <Setter Property="HorizontalAlignment" Value="Stretch" />
+    </Style>
+
+    <Style x:Key="AppErrorInfoBarStyle" TargetType="muxc:InfoBar" BasedOn="{StaticResource AppStatusInfoBarStyle}">
+        <Setter Property="Severity" Value="Error" />
+    </Style>
+
+    <Style x:Key="AppDialogContentStyle" TargetType="StackPanel">
+        <Setter Property="MinWidth" Value="280" />
+        <Setter Property="MaxWidth" Value="840" />
+        <Setter Property="Spacing" Value="12" />
+    </Style>
+
+    <Style x:Key="AppContentDialogStyle" TargetType="ContentDialog" BasedOn="{StaticResource DefaultContentDialogStyle}">
+        <Setter Property="HorizontalAlignment" Value="Center" />
+        <Setter Property="VerticalAlignment" Value="Center" />
+        <Setter Property="Background" Value="{ThemeResource AppOverlayBrush}" />
+        <Setter Property="Foreground" Value="{ThemeResource AppInkBrush}" />
+        <Setter Property="BorderBrush" Value="{ThemeResource AppOutlineBrush}" />
+        <Setter Property="BorderThickness" Value="1" />
+        <Setter Property="CornerRadius" Value="{ThemeResource AppRadiusLarge}" />
+        <Setter Property="MaxWidth" Value="880" />
+        <Setter Property="MaxHeight" Value="720" />
+    </Style>
+</ResourceDictionary>

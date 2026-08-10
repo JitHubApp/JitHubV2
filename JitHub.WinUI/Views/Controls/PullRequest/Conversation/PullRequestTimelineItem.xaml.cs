@@ -16,6 +16,7 @@ using Microsoft.UI.Xaml.Controls;
 using Microsoft.UI.Xaml.Documents;
 using Microsoft.UI.Xaml.Data;
 using Microsoft.UI.Xaml.Media;
+using System.Linq;
 
 namespace JitHub.WinUI.Views.Controls.PullRequest.Conversation;
 
@@ -82,7 +83,8 @@ public sealed partial class PullRequestTimelineItem : UserControl
         Brush toneBrush = ToneBrush(viewModel.Tone);
         Brush borderBrush = ToneBrush(viewModel.Tone, border: true);
 
-        ActorAvatar.Login = viewModel.ActorLogin;
+        ActorAvatar.Login = viewModel.ActorLogin ?? string.Empty;
+        ActorAvatar.AutomationInstanceId = viewModel.AvatarAutomationId;
         ActorAvatar.Url = viewModel.ActorAvatarUrl ?? string.Empty;
         IconGlyph.Glyph = viewModel.Glyph;
         IconGlyph.Foreground = toneBrush;
@@ -98,12 +100,13 @@ public sealed partial class PullRequestTimelineItem : UserControl
         SentenceRichTextBlock.Blocks.Clear();
 
         var paragraph = new Paragraph();
+        int actionIndex = 0;
         foreach (PullRequestTimelineInlinePartViewModel part in viewModel.SentenceParts)
         {
             switch (part.Kind)
             {
                 case PullRequestTimelineInlineKind.Action:
-                    paragraph.Inlines.Add(CreateInlineAction(part));
+                    paragraph.Inlines.Add(CreateInlineAction(part, actionIndex++));
                     break;
                 case PullRequestTimelineInlineKind.Label:
                     paragraph.Inlines.Add(CreateInlineLabel(part));
@@ -129,25 +132,20 @@ public sealed partial class PullRequestTimelineItem : UserControl
         };
     }
 
-    private InlineUIContainer CreateInlineAction(PullRequestTimelineInlinePartViewModel part)
+    private Inline CreateInlineAction(PullRequestTimelineInlinePartViewModel part, int actionIndex)
     {
-        var linkText = new TextBlock
+        var hyperlink = new Hyperlink
         {
-            FontFamily = Resource<FontFamily>("AppUiFontFamily"),
-            FontSize = 15,
-            FontWeight = FontWeights.SemiBold,
             Foreground = Resource<Brush>("PullRequestTimelineInlineLinkForegroundBrush"),
-            TextDecorations = Windows.UI.Text.TextDecorations.Underline,
-            VerticalAlignment = VerticalAlignment.Center,
-            Margin = new Thickness(1, -1, 1, 0)
         };
-
-        AutomationProperties.SetName(linkText, part.Text);
-        linkText.PointerEntered += (_, _) => linkText.Foreground = Resource<Brush>("PullRequestTimelineInlineLinkForegroundPointerOverBrush");
-        linkText.PointerExited += (_, _) => linkText.Foreground = Resource<Brush>("PullRequestTimelineInlineLinkForegroundBrush");
-        linkText.PointerPressed += (_, _) => linkText.Foreground = Resource<Brush>("PullRequestTimelineInlineLinkForegroundPressedBrush");
-        linkText.PointerReleased += (_, _) => linkText.Foreground = Resource<Brush>("PullRequestTimelineInlineLinkForegroundPointerOverBrush");
-        linkText.Tapped += (_, _) =>
+        AutomationProperties.SetAutomationId(
+            hyperlink,
+            AutomationIdentity.CreateScopedId(
+                "PullRequestTimelineInlineAction",
+                DataContext is PullRequestTimelineItemViewModel item ? item.AutomationScope : "unknown",
+                $"{actionIndex}_{AutomationToken(part.Text)}"));
+        AutomationProperties.SetName(hyperlink, part.Text);
+        hyperlink.Click += (_, _) =>
         {
             if (part.Command?.CanExecute(part.Target) == true)
             {
@@ -157,7 +155,7 @@ public sealed partial class PullRequestTimelineItem : UserControl
 
         if (!string.IsNullOrWhiteSpace(part.Glyph))
         {
-            linkText.Inlines.Add(new Run
+            hyperlink.Inlines.Add(new Run
             {
                 Text = $"{part.Glyph} ",
                 FontFamily = Resource<FontFamily>("SegoeFluentIcons"),
@@ -166,7 +164,7 @@ public sealed partial class PullRequestTimelineItem : UserControl
             });
         }
 
-        linkText.Inlines.Add(new Run
+        hyperlink.Inlines.Add(new Run
         {
             Text = part.Text,
             FontFamily = Resource<FontFamily>("AppUiFontFamily"),
@@ -174,10 +172,13 @@ public sealed partial class PullRequestTimelineItem : UserControl
             FontWeight = FontWeights.SemiBold
         });
 
-        return new InlineUIContainer
-        {
-            Child = linkText
-        };
+        return hyperlink;
+    }
+
+    private static string AutomationToken(string value)
+    {
+        string token = string.Concat(value.Where(char.IsLetterOrDigit).Take(40));
+        return string.IsNullOrEmpty(token) ? "Action" : token;
     }
 
     private static InlineUIContainer CreateInlineLabel(PullRequestTimelineInlinePartViewModel part)

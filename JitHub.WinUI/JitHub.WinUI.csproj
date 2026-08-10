@@ -13,7 +13,6 @@
     <RuntimeIdentifier Condition="'$(RuntimeIdentifier)' == '' and '$(Platform)' == 'x64'">win-x64</RuntimeIdentifier>
     <RuntimeIdentifier Condition="'$(RuntimeIdentifier)' == '' and '$(Platform)' == 'ARM64'">win-arm64</RuntimeIdentifier>
     <RuntimeIdentifiers>win-x86;win-x64;win-arm64</RuntimeIdentifiers>
-    <PublishProfile>win-$(Platform).pubxml</PublishProfile>
     <UseWinUI>true</UseWinUI>
     <WinUISDKReferences>false</WinUISDKReferences>
     <EnableMsixTooling>true</EnableMsixTooling>
@@ -24,12 +23,22 @@
     <Nullable>enable</Nullable>
     <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
     <DefineConstants>$(DefineConstants);DISABLE_XAML_GENERATED_MAIN</DefineConstants>
-    <DefaultItemExcludes>$(DefaultItemExcludes);$(MSBuildProjectDirectory)\obj\**;$(MSBuildProjectDirectory)\bin\**;$(MSBuildProjectDirectory)\artifacts\**</DefaultItemExcludes>
+    <DefaultItemExcludes>$(DefaultItemExcludes);$(MSBuildProjectDirectory)\obj*\**;$(MSBuildProjectDirectory)\bin*\**;$(MSBuildProjectDirectory)\artifacts\**</DefaultItemExcludes>
     <NoWarn>$(NoWarn);WMC1506;WMC1510</NoWarn>
     <SuppressXamlWarnings>1506;1510</SuppressXamlWarnings>
     <EnableXBindDiagnostics>false</EnableXBindDiagnostics>
     <EnableBindingDiagnostics>false</EnableBindingDiagnostics>
+    <DefaultLanguage>en-US</DefaultLanguage>
   </PropertyGroup>
+
+  <ItemGroup>
+    <AppxManifest Include="Package.Debug.appxmanifest" Condition="'$(Configuration)' == 'Debug'">
+      <SubType>Designer</SubType>
+    </AppxManifest>
+    <AppxManifest Include="Package.appxmanifest" Condition="'$(Configuration)' != 'Debug'">
+      <SubType>Designer</SubType>
+    </AppxManifest>
+  </ItemGroup>
 
   <ItemGroup>
     <Content Include="Assets\AppIcon.ico" CopyToOutputDirectory="PreserveNewest" CopyToPublishDirectory="PreserveNewest" />
@@ -89,10 +98,12 @@
     <PackageReference Include="Microsoft.Extensions.Configuration.Json" Version="10.0.0" />
     <PackageReference Include="Microsoft.Extensions.DependencyInjection" Version="10.0.0" />
     <PackageReference Include="Microsoft.Graphics.Win2D" Version="1.4.0" />
+    <PackageReference Include="Microsoft.Data.Sqlite" Version="10.0.8" />
+    <PackageReference Include="SQLitePCLRaw.bundle_e_sqlite3" Version="3.0.3" />
+    <PackageReference Include="Microsoft.Services.Store.SDK" Version="10.1705.16001" />
     <PackageReference Include="Microsoft.Xaml.Behaviors.WinUI.Managed" Version="3.0.1" />
     <PackageReference Include="Microsoft.Windows.SDK.BuildTools" Version="10.0.28000.1721" />
     <PackageReference Include="Microsoft.WindowsAppSDK" Version="1.8.260317003" />
-    <PackageReference Include="System.Reactive.Linq" Version="5.0.0" />
     <PackageReference Include="WinUIEdit" Version="0.0.4-prerelease" />
     <PackageReference Include="SkiaSharp" Version="3.119.2" />
     <PackageReference Include="SkiaSharp.Views.WinUI" Version="3.119.2" />
@@ -103,9 +114,9 @@
   </ItemGroup>
 
   <ItemGroup>
+    <Compile Include="..\Shared\OAuthHandoffProtocol.cs" Link="Security\OAuthHandoffProtocol.cs" />
     <ProjectReference Include="..\MarkdownRenderer\MarkdownRenderer\MarkdownRenderer.csproj" />
     <ProjectReference Include="..\MarkdownRenderer\MarkdownRenderer.Gfm\MarkdownRenderer.Gfm.csproj" />
-    <ProjectReference Include="..\MarkdownRenderer\MarkdownRenderer.SyntaxHighlighting.TextMate\MarkdownRenderer.SyntaxHighlighting.TextMate.csproj" />
   </ItemGroup>
 
   <PropertyGroup Condition="'$(DisableHasPackageAndPublishMenuAddedByProject)'!='true' and '$(EnableMsixTooling)'=='true'">
@@ -115,21 +126,16 @@
   <PropertyGroup>
     <PublishReadyToRun Condition="'$(Configuration)' == 'Debug'">False</PublishReadyToRun>
     <PublishReadyToRun Condition="'$(Configuration)' != 'Debug'">True</PublishReadyToRun>
-    <PublishTrimmed Condition="'$(Configuration)' == 'Debug'">False</PublishTrimmed>
-    <PublishTrimmed Condition="'$(Configuration)' != 'Debug'">True</PublishTrimmed>
-    <PublishAot Condition="'$(Configuration)' != 'Debug'">True</PublishAot>
+    <!--
+      WinUIEdit, Svg.Skia/Jint, and the legacy DataGrid dependency are not trim or NativeAOT
+      compatible. Release builds use ReadyToRun instead so packaging is deterministic and
+      warning-clean without risking runtime type removal from XAML-activated controls.
+    -->
+    <PublishTrimmed>False</PublishTrimmed>
+    <PublishAot>False</PublishAot>
     <SelfContained Condition="'$(Configuration)' != 'Debug'">True</SelfContained>
+    <AppxSymbolPackageEnabled>False</AppxSymbolPackageEnabled>
   </PropertyGroup>
-
-  <!--
-    WinUIEditorCsWinRT.dll (net8.0) and CommunityToolkit DataGrid (net5.0) were not built for AOT
-    or IL trimming. Preserve them entirely so the trimmer/AOT compiler doesn't remove types that
-    WinUI XAML resolves at runtime via XamlTypeInfo.
-  -->
-  <ItemGroup>
-    <TrimmerRootAssembly Include="WinUIEditorCsWinRT" />
-    <TrimmerRootAssembly Include="CommunityToolkit.WinUI.UI.Controls.DataGrid" />
-  </ItemGroup>
 
   <!--
     WinUIEdit uses build\native\*.targets which is not imported for managed .NET projects, so the
@@ -143,4 +149,26 @@
     <WindowsMetadataReference Include="$(NuGetPackageRoot)\winuiedit\0.0.4-prerelease\lib\uap10.0\WinUIEditor.winmd"
                               Implementation="WinUIEditor.dll" />
   </ItemGroup>
+
+  <Target Name="RemoveDisabledAppxSymbolPayload"
+          AfterTargets="_CalculateInputsForGenerateAppxPackageRecipe"
+          Condition="'$(AppxSymbolPackageEnabled)' != 'true'">
+    <ItemGroup>
+      <PDBPayload Remove="@(PDBPayload)" />
+    </ItemGroup>
+  </Target>
+
+  <Target Name="ExcludeIncompleteLocalizationCatalogs" BeforeTargets="PrepareForBuild">
+    <ItemGroup>
+      <!-- Keep incomplete translation catalogs in source, but do not advertise or package them. -->
+      <PRIResource Remove="Strings\bn-BD\**\*;Strings\de\**\*;Strings\el\**\*;Strings\es\**\*;Strings\fr\**\*;Strings\hu-HU\**\*;Strings\it\**\*;Strings\pt\**\*;Strings\tr-TR\**\*;Strings\vi\**\*;Strings\zh-Hans\**\*" />
+    </ItemGroup>
+  </Target>
+
+  <Target Name="RunReleaseSecurityGate"
+          BeforeTargets="Build"
+          Condition="'$(Configuration)' == 'Release' and '$(SkipReleaseSecurityGate)' != 'true' and '$(DesignTimeBuild)' != 'true'">
+    <Exec Command="powershell -NoProfile -ExecutionPolicy Bypass -File &quot;$(MSBuildThisFileDirectory)..\eng\Verify-DependencySecurity.ps1&quot; -Solution &quot;JitHub.slnx&quot;" />
+    <Exec Command="dotnet test &quot;$(MSBuildThisFileDirectory)..\JitHub.WinUI.Tests\JitHub.WinUI.Tests.csproj&quot; -c Release --no-restore --filter &quot;Category=ReleaseSecurity&quot; -p:SkipReleaseSecurityGate=true" />
+  </Target>
 </Project>

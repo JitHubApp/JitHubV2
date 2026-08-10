@@ -9,6 +9,8 @@
                 <ColumnDefinition Width="*" />
             </Grid.ColumnDefinitions>
             <common:Avatar
+                AutomationInstanceId="{Binding ActorAutomationId, Mode=OneWay}"
+                NavigationSource="legacy_issue_timeline_actor"
                 Grid.Column="0"
                 HorizontalAlignment="Center"
                 Login="{Binding Actor.Login, Mode=OneWay}"
@@ -20,7 +22,7 @@
                 Spacing="4">
                 <TextBlock Text="{Binding Actor.Login, Mode=OneWay}" />
                 <TextBlock>
-                    <Run Text="referenced this issue from a commit " />
+                    <Run x:Uid="DataTemplatesIssueEventReferencedEventRunReferencedThisI" Text="referenced this issue from a commit " />
                     <Run Text="{Binding CommitId, Converter={StaticResource CommitShaToShortConverter}, Mode=OneWay}" />
                 </TextBlock>
                 <TextBlock Text="{Binding CreatedAt, Converter={StaticResource TimeAgoConverter}, ConverterParameter='', Mode=OneWay}" />

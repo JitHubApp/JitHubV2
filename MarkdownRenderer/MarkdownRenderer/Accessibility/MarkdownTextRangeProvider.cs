@@ -156,18 +156,35 @@ internal sealed partial class MarkdownTextRangeProvider : ITextRangeProvider
     public void GetBoundingRectangles(out double[] boundingRectangles)
     {
         var doc = _peer.GetSemanticDocument();
-        var values = new List<double>();
-        foreach (var rect in doc.GetDocumentRects(_start, _end))
-        {
-            var screen = _peer.GetScreenRectForDocumentRect(rect);
-            if (screen.Width <= 0 || screen.Height <= 0) continue;
-            values.Add(screen.X);
-            values.Add(screen.Y);
-            values.Add(screen.Width);
-            values.Add(screen.Height);
-        }
+        var visibleBounds = _peer.GetVisibleScreenBounds();
+        boundingRectangles = BuildVisibleBoundingRectangles(
+            _start,
+            _end,
+            doc.GetDocumentRects(_start, _end).Select(_peer.GetScreenRectForDocumentRect),
+            visibleBounds);
+    }
 
-        boundingRectangles = values.ToArray();
+    internal static double[] BuildVisibleBoundingRectangles(
+        int start,
+        int end,
+        IEnumerable<Windows.Foundation.Rect> screenRects,
+        Windows.Foundation.Rect visibleBounds)
+    {
+        return AccessibilityGeometry.BuildVisibleBoundingRectangles(
+            start,
+            end,
+            ConvertRects(),
+            new AccessibilityRect(
+                visibleBounds.X,
+                visibleBounds.Y,
+                visibleBounds.Width,
+                visibleBounds.Height));
+
+        IEnumerable<AccessibilityRect> ConvertRects()
+        {
+            foreach (var rect in screenRects)
+                yield return new AccessibilityRect(rect.X, rect.Y, rect.Width, rect.Height);
+        }
     }
 
     public IRawElementProviderSimple[] GetChildren()
@@ -237,11 +254,22 @@ internal sealed partial class MarkdownTextRangeProvider : ITextRangeProvider
     public void ScrollIntoView(bool alignToTop)
     {
         var doc = _peer.GetSemanticDocument();
-        foreach (var rect in doc.GetDocumentRects(_start, _end))
+        foreach (var image in doc.GetImagesIntersectingTextRange(_start, _end))
+            image.EnsureLoading();
+
+        bool hasDocumentRange = doc.TryGetDocumentRange(_start, _end, out var documentRange);
+
+        foreach (var rect in doc.GetDocumentRects(_start, _end, expandDegenerate: true))
         {
             _peer.OwnerControl.ScrollDocumentRectIntoView(rect, alignToTop);
             return;
         }
+
+        // Lazy layout can expose semantic text before the target block has a
+        // realized glyph rectangle. Fall back to its stable document position
+        // so the owning control can realize and reveal that viewport band.
+        if (hasDocumentRange)
+            _peer.OwnerControl.ScrollToBlock(documentRange.Normalized().Start.BlockIndex);
     }
 
     public void Select()

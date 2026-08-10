@@ -25,12 +25,14 @@
             BorderBrush="{ThemeResource AppOutlineBrush}"
             BorderThickness="0,0,0,1">
             <controls:Segmented
-                x:Name="ViewModeSegmented"
+                x:Uid="JsonPreviewViewMode" x:Name="ViewModeSegmented"
                 HorizontalAlignment="Left"
+                AutomationProperties.AutomationId="JsonPreviewViewMode"
+                AutomationProperties.Name="JSON view mode"
                 SelectionChanged="ViewModeSegmented_SelectionChanged"
                 SelectionMode="Single">
-                <controls:SegmentedItem Content="Rich" />
-                <controls:SegmentedItem Content="Plain" />
+                <controls:SegmentedItem x:Uid="JsonPreviewViewModeRich" AutomationProperties.AutomationId="JsonPreviewViewMode_Rich" AutomationProperties.Name="Formatted JSON view" Content="Rich" />
+                <controls:SegmentedItem x:Uid="JsonPreviewViewModePlain" AutomationProperties.AutomationId="JsonPreviewViewMode_Plain" AutomationProperties.Name="Plain JSON view" Content="Plain" />
             </controls:Segmented>
         </Border>
 

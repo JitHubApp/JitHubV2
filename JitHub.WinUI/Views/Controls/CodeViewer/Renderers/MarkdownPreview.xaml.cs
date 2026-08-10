@@ -1,6 +1,8 @@
 using JitHub.WinUI.ViewModels.CodeViewer;
 using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Controls;
+using JitHub.Services.Markdown;
+using MarkdownRenderer.Images;
 
 namespace JitHub.WinUI.Views.Controls.CodeViewer.Renderers;
 
@@ -22,6 +24,12 @@ public sealed partial class MarkdownPreview : UserControl
     private string? CurrentBaseUrl => ViewModel?.GitHubBlobUrl;
 
     private string? CurrentDocumentPath => ViewModel?.CurrentFile?.Path;
+
+    private MarkdownDocumentSource? CurrentDocumentSource =>
+        MarkdownDocumentSourceFactory.TryCreateRepositoryFile(
+            ViewModel?.CurrentFile?.Sha ?? ViewModel?.CurrentFile?.Path ?? "unknown",
+            CurrentBaseUrl,
+            CurrentDocumentPath);
 
     private void OnDataContextChanged(FrameworkElement sender, DataContextChangedEventArgs args)
     {

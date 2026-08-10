@@ -6,6 +6,8 @@
     xmlns:models="using:JitHub.Models">
     <DataTemplate x:Key="PublicRepo">
         <Button
+            AutomationProperties.AutomationId="{Binding Id}"
+            AutomationProperties.Name="{Binding FullName}"
             Margin="0,0,4,0"
             Style="{StaticResource AppQuietButtonStyle}"
             HorizontalAlignment="Stretch"
@@ -27,6 +29,8 @@
     </DataTemplate>
     <DataTemplate x:Key="PublicRepoSearchResult">
         <Button
+            AutomationProperties.AutomationId="{Binding Id}"
+            AutomationProperties.Name="{Binding FullName}"
             Style="{StaticResource AppQuietButtonStyle}"
             HorizontalAlignment="Stretch"
             HorizontalContentAlignment="Left"
@@ -63,7 +67,10 @@
     </DataTemplate>
     <DataTemplate x:Key="SelectablePublicRepo">
         <Border Style="{ThemeResource Container}">
-            <CheckBox IsChecked="{Binding Selected, Mode=TwoWay}">
+            <CheckBox
+                AutomationProperties.AutomationId="{Binding Id}"
+                AutomationProperties.Name="{Binding FullName}"
+                IsChecked="{Binding Selected, Mode=TwoWay}">
                 <Grid Margin="16,0,0,0">
                     <Grid.ColumnDefinitions>
                         <ColumnDefinition Width="auto" />

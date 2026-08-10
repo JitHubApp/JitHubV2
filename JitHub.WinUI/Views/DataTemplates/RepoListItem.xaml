@@ -4,6 +4,8 @@
     xmlns:appcontrols="using:JitHub.WinUI.Views.Controls.App">
     <DataTemplate x:Key="RepoListItem">
         <Button
+            AutomationProperties.AutomationId="{Binding Id}"
+            AutomationProperties.Name="{Binding FullName}"
             HorizontalAlignment="Stretch"
             VerticalAlignment="Stretch"
             HorizontalContentAlignment="Stretch"

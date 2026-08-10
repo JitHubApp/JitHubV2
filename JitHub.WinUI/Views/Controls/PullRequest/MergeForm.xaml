@@ -24,18 +24,33 @@
                     <ColumnDefinition Width="auto"/>
                 </Grid.ColumnDefinitions>
                 <TextBox
-                        Grid.Column="0"
+                        x:Uid="ControlsPullRequestMergeFormPullRequestMergeTitleTextBox" Grid.Column="0"
                         Margin="0 0 8 0"
+                        AutomationProperties.AutomationId="PullRequestMergeTitleTextBox"
+                        AutomationProperties.Name="Merge commit title"
                         PlaceholderText="Title"
+                        Style="{StaticResource AppTextBoxStyle}"
                         Text="{x:Bind ViewModel.Title, Mode=TwoWay}"/>
                 <ComboBox
-                        Grid.Column="1"
+                        x:Uid="ControlsPullRequestMergeFormPullRequestMergeMethodComboB" Grid.Column="1"
                         Width="120"
+                        AutomationProperties.AutomationId="PullRequestMergeMethodComboBox"
+                        AutomationProperties.Name="Merge method"
                         ItemsSource="{x:Bind ViewModel.Items, Mode=OneWay}"
-                        SelectedItem="{x:Bind ViewModel.SelectedItem, Mode=TwoWay}">
+                        SelectedItem="{x:Bind ViewModel.SelectedItem, Mode=TwoWay}"
+                        Style="{StaticResource AppCompactComboBoxStyle}">
                 </ComboBox>
             </Grid>
+            <TextBlock
+                    Margin="16,0"
+                    AutomationProperties.AutomationId="PullRequestMergeErrorText"
+                    AutomationProperties.LiveSetting="Polite"
+                    Foreground="{ThemeResource AppDangerBrush}"
+                    Text="{x:Bind ViewModel.Error, Mode=OneWay}"
+                    TextWrapping="Wrap" />
             <common:MarkdownForm
+                    AutomationInstanceId="PullRequestMergeForm"
+                    DocumentSource="{x:Bind ViewModel.MarkdownSource, Mode=OneWay}"
                     FormPadding="16 0"
                     Text="{x:Bind ViewModel.Body, Mode=TwoWay}">
                 <common:MarkdownForm.ActionContent>
@@ -45,7 +60,9 @@
                             Padding="16"
                             HorizontalAlignment="Stretch">
                         <Button
-                                Click="{x:Bind ViewModel.Merge, Mode=OneWay}"
+                                x:Uid="ControlsPullRequestMergeFormPullRequestMergeSubmitButton" AutomationProperties.AutomationId="PullRequestMergeSubmitButton"
+                                AutomationProperties.Name="Merge pull request"
+                                Command="{x:Bind ViewModel.MergeCommand, Mode=OneWay}"
                                 Style="{ThemeResource AppAccentButtonStyle}"
                                 HorizontalAlignment="Right"
                                 VerticalContentAlignment="Center"

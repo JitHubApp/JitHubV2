@@ -9,22 +9,44 @@
     d:DesignHeight="300"
     d:DesignWidth="400">
 
-    <StackPanel
-        Orientation="Horizontal"
-        ToolTipService.ToolTip="{x:Bind Login, Mode=OneWay}">
-        <Grid
-            Width="{x:Bind Size, Converter={StaticResource SizeToLengthConverter}, Mode=OneWay}"
-            Height="{x:Bind Size, Converter={StaticResource SizeToLengthConverter}, Mode=OneWay}"
-            CornerRadius="50">
-            <Image x:Name="ProfilePic"/>
-        </Grid>
-        <TextBlock
-            Margin="10 0 0 0"
-            Visibility="{x:Bind ShowLogin, Converter={StaticResource BoolToVisibilityConverter}, Mode=OneWay}"
-            VerticalAlignment="Center"
-            FontWeight="SemiBold"
-            Text="{x:Bind Login, Mode=OneWay}"/>
-    </StackPanel>
+    <Grid>
+        <Button
+            x:Name="ProfileButton"
+            AutomationProperties.AutomationId="{x:Bind ProfileAutomationId, Mode=OneWay}"
+            AutomationProperties.Name="{x:Bind ProfileAccessibleName, Mode=OneWay}"
+            Click="ProfileButton_Click"
+            IsHitTestVisible="{x:Bind IsProfileAvailable, Mode=OneWay}"
+            IsTabStop="{x:Bind IsProfileAvailable, Mode=OneWay}"
+            KeyDown="ProfileButton_KeyDown"
+            Style="{StaticResource AppIdentityButtonStyle}"
+            ToolTipService.ToolTip="{x:Bind ProfileToolTip, Mode=OneWay}">
+            <StackPanel Orientation="Horizontal">
+                <Grid
+                    Width="{x:Bind Size, Converter={StaticResource SizeToLengthConverter}, Mode=OneWay}"
+                    Height="{x:Bind Size, Converter={StaticResource SizeToLengthConverter}, Mode=OneWay}"
+                    CornerRadius="50">
+                    <local:CachedImage
+                        SourceUrl="{x:Bind Url, Mode=OneWay}"
+                        Stretch="UniformToFill" />
+                    <Border
+                        x:Name="HoverRing"
+                        BorderBrush="{ThemeResource AppAccentBrush}"
+                        BorderThickness="1"
+                        CornerRadius="50"
+                        IsHitTestVisible="False"
+                        Opacity="0" />
+                </Grid>
+                <TextBlock
+                    Margin="10,0,0,0"
+                    MaxWidth="220"
+                    VerticalAlignment="Center"
+                    FontWeight="SemiBold"
+                    Text="{x:Bind DisplayText, Mode=OneWay}"
+                    TextTrimming="CharacterEllipsis"
+                    Visibility="{x:Bind ShowLogin, Converter={StaticResource BoolToVisibilityConverter}, Mode=OneWay}" />
+            </StackPanel>
+        </Button>
+    </Grid>
     
 </UserControl>
 

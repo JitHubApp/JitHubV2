@@ -1,0 +1,481 @@
+<?xml version="1.0" encoding="utf-8"?>
+<Page
+    x:Class="JitHub.WinUI.Views.Pages.GistsPage"
+    x:Name="Root"
+    xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+    xmlns:appControls="using:JitHub.WinUI.Views.Controls.App"
+    xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+    xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+    xmlns:viewmodels="using:JitHub.WinUI.ViewModels.Pages"
+    x:DataType="viewmodels:GistsPageViewModel"
+    Background="{ThemeResource AppCanvasBrush}"
+    SizeChanged="Page_SizeChanged"
+    mc:Ignorable="d">
+    <Page.Resources>
+        <Style
+            x:Key="GistEditorContentTextBoxStyle"
+            BasedOn="{StaticResource AppTextBoxStyle}"
+            TargetType="TextBox">
+            <Setter Property="AcceptsReturn" Value="True" />
+            <Setter Property="HorizontalAlignment" Value="Stretch" />
+            <Setter Property="VerticalAlignment" Value="Stretch" />
+            <Setter Property="HorizontalContentAlignment" Value="Stretch" />
+            <Setter Property="VerticalContentAlignment" Value="Top" />
+            <Setter Property="MinHeight" Value="180" />
+            <Setter Property="Padding" Value="12,10" />
+            <Setter Property="FontFamily" Value="{ThemeResource AppMonoFontFamily}" />
+            <Setter Property="FontSize" Value="13" />
+            <Setter Property="IsSpellCheckEnabled" Value="False" />
+            <Setter Property="IsTextPredictionEnabled" Value="False" />
+            <Setter Property="TextWrapping" Value="Wrap" />
+            <Setter Property="ScrollViewer.HorizontalScrollBarVisibility" Value="Disabled" />
+            <Setter Property="ScrollViewer.VerticalScrollBarVisibility" Value="Auto" />
+        </Style>
+
+        <DataTemplate x:Key="GistRowTemplate" x:DataType="viewmodels:GistViewItem">
+            <Grid
+                MinHeight="68"
+                Padding="10,8"
+                ColumnSpacing="10">
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="24" />
+                    <ColumnDefinition Width="*" />
+                    <ColumnDefinition Width="Auto" />
+                </Grid.ColumnDefinitions>
+                <FontIcon
+                    Margin="0,2,0,0"
+                    VerticalAlignment="Top"
+                    FontFamily="{StaticResource SegoeFluentIcons}"
+                    FontSize="15"
+                    Foreground="{ThemeResource AppAccentBrush}"
+                    Glyph="&#xE943;" />
+                <StackPanel Grid.Column="1" MinWidth="0" Spacing="4">
+                    <TextBlock
+                        FontFamily="{ThemeResource AppUiFontFamily}"
+                        FontSize="14"
+                        FontWeight="SemiBold"
+                        Foreground="{ThemeResource AppInkBrush}"
+                        MaxLines="1"
+                        Text="{x:Bind Title, Mode=OneWay}"
+                        TextTrimming="CharacterEllipsis" />
+                    <StackPanel Orientation="Horizontal" Spacing="8">
+                        <TextBlock
+                            MaxWidth="170"
+                            Style="{StaticResource SectionSecondaryTextBlockStyle}"
+                            Text="{x:Bind FileSummary, Mode=OneWay}"
+                            TextTrimming="CharacterEllipsis" />
+                        <TextBlock
+                            Style="{StaticResource SectionSecondaryTextBlockStyle}"
+                            Text="{x:Bind UpdatedText, Mode=OneWay}" />
+                    </StackPanel>
+                </StackPanel>
+                <Border
+                    Grid.Column="2"
+                    Padding="7,3"
+                    VerticalAlignment="Top"
+                    Background="{ThemeResource AppSurfaceSubtleBrush}"
+                    CornerRadius="4">
+                    <TextBlock
+                        FontSize="11"
+                        Foreground="{ThemeResource AppInkMutedBrush}"
+                        Text="{x:Bind VisibilityText, Mode=OneWay}" />
+                </Border>
+            </Grid>
+        </DataTemplate>
+    </Page.Resources>
+
+    <appControls:AdaptiveWorkspace
+        x:Name="GistsWorkspace"
+        AutomationIdPrefix="Gists"
+        LeadingPaneLabel="Gist library"
+        LeadingPaneWidth="344"
+        MediumBreakpoint="760"
+        ModeChanged="GistsWorkspace_ModeChanged"
+        NarrowBreakpoint="560"
+        ShowPaneButtons="True"
+        WideBreakpoint="1120">
+        <appControls:AdaptiveWorkspace.LeadingPane>
+            <Grid
+                x:Name="GistsLibraryRoot"
+                AutomationProperties.AutomationId="GistsLibraryPane"
+                Background="{ThemeResource AppCanvasBrush}"
+                Padding="14,14,12,12"
+                RowSpacing="10">
+                <Grid.RowDefinitions>
+                    <RowDefinition Height="Auto" />
+                    <RowDefinition Height="Auto" />
+                    <RowDefinition Height="Auto" />
+                    <RowDefinition Height="Auto" />
+                    <RowDefinition Height="*" />
+                    <RowDefinition Height="Auto" />
+                </Grid.RowDefinitions>
+
+                <Grid x:Name="GistsHeaderGrid" Style="{StaticResource AppWorkspaceHeaderStyle}">
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="*" />
+                        <ColumnDefinition Width="Auto" />
+                    </Grid.ColumnDefinitions>
+                    <StackPanel Orientation="Horizontal" Spacing="9">
+                        <FontIcon
+                            Style="{StaticResource AppWorkspaceHeaderIconStyle}"
+                            Glyph="&#xE943;" />
+                        <TextBlock
+                            x:Uid="PagesGistsPageTextBlockGists"
+                            Style="{StaticResource AppWorkspaceTitleTextBlockStyle}"
+                            Text="Gists" />
+                    </StackPanel>
+                    <Button
+                        x:Uid="PagesGistsPageGistsNew" x:Name="GistsNewButton"
+                        Grid.Column="1"
+                        MinWidth="74"
+                        AutomationProperties.AutomationId="GistsNew"
+                        AutomationProperties.Name="New gist"
+                        Command="{x:Bind ViewModel.NewGistCommand}"
+                        Style="{StaticResource AppOutlineButtonStyle}">
+                        <StackPanel Orientation="Horizontal" Spacing="6">
+                            <FontIcon FontFamily="{StaticResource SegoeFluentIcons}" FontSize="13" Glyph="&#xE710;" />
+                            <TextBlock x:Uid="PagesGistsPageGistsNewButtonText" x:Name="GistsNewButtonText" Text="New" />
+                        </StackPanel>
+                    </Button>
+                </Grid>
+
+                <Grid Grid.Row="1">
+                    <TextBox
+                        x:Uid="PagesGistsPageGistsSearch" x:Name="GistsSearchBox"
+                        AutomationProperties.AutomationId="GistsSearch"
+                        AutomationProperties.Name="Search gists"
+                        PlaceholderText="Search gists"
+                        Style="{StaticResource AppCommandSearchTextBoxStyle}"
+                        Text="{x:Bind ViewModel.SearchText, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" />
+                    <FontIcon
+                        Margin="11,0,0,0"
+                        HorizontalAlignment="Left"
+                        VerticalAlignment="Center"
+                        FontFamily="{StaticResource SegoeFluentIcons}"
+                        FontSize="13"
+                        Foreground="{ThemeResource AppInkSubtleBrush}"
+                        Glyph="&#xE721;"
+                        IsHitTestVisible="False" />
+                </Grid>
+
+                <Grid Grid.Row="2" ColumnSpacing="8">
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="*" />
+                        <ColumnDefinition Width="*" />
+                    </Grid.ColumnDefinitions>
+                    <ComboBox
+                        x:Uid="PagesGistsPageGistsVisibilityFilter" x:Name="GistVisibilityFilterComboBox"
+                        HorizontalAlignment="Stretch"
+                        AutomationProperties.AutomationId="GistsVisibilityFilter"
+                        AutomationProperties.Name="Filter by visibility"
+                        SelectedIndex="0"
+                        SelectionChanged="GistVisibilityFilter_SelectionChanged"
+                        Style="{StaticResource AppCompactComboBoxStyle}">
+                        <ComboBoxItem x:Uid="PagesGistsPageGistsVisibilityAll" AutomationProperties.AutomationId="GistsVisibility_All" AutomationProperties.Name="Show all gists" Content="All gists" />
+                        <ComboBoxItem x:Uid="PagesGistsPageGistsVisibilityPublic" AutomationProperties.AutomationId="GistsVisibility_Public" AutomationProperties.Name="Show public gists" Content="Public" />
+                        <ComboBoxItem x:Uid="PagesGistsPageGistsVisibilitySecret" AutomationProperties.AutomationId="GistsVisibility_Secret" AutomationProperties.Name="Show secret gists" Content="Secret" />
+                    </ComboBox>
+                    <ComboBox
+                        x:Uid="PagesGistsPageGistsSort" x:Name="GistSortComboBox"
+                        Grid.Column="1"
+                        HorizontalAlignment="Stretch"
+                        AutomationProperties.AutomationId="GistsSort"
+                        AutomationProperties.Name="Sort gists"
+                        SelectedIndex="0"
+                        SelectionChanged="GistSort_SelectionChanged"
+                        Style="{StaticResource AppCompactComboBoxStyle}">
+                        <ComboBoxItem x:Uid="PagesGistsPageGistsSortUpdated" AutomationProperties.AutomationId="GistsSort_Updated" AutomationProperties.Name="Sort by recently updated" Content="Updated" />
+                        <ComboBoxItem x:Uid="PagesGistsPageGistsSortNewest" AutomationProperties.AutomationId="GistsSort_Newest" AutomationProperties.Name="Sort by newest" Content="Newest" />
+                        <ComboBoxItem x:Uid="PagesGistsPageGistsSortOldest" AutomationProperties.AutomationId="GistsSort_Oldest" AutomationProperties.Name="Sort by oldest" Content="Oldest" />
+                        <ComboBoxItem x:Uid="PagesGistsPageGistsSortTitle" AutomationProperties.AutomationId="GistsSort_Title" AutomationProperties.Name="Sort by title" Content="Title" />
+                    </ComboBox>
+                </Grid>
+
+                <StackPanel Grid.Row="3" Spacing="6">
+                    <InfoBar
+                        AutomationProperties.AutomationId="GistsDurabilityStatus"
+                        IsOpen="{x:Bind ViewModel.IsDurabilityWarningVisible, Mode=TwoWay}"
+                        Message="{x:Bind ViewModel.DurabilityWarningMessage, Mode=OneWay}"
+                        Severity="Warning"
+                        Style="{StaticResource AppStatusInfoBarStyle}" />
+                    <InfoBar
+                        AutomationProperties.AutomationId="GistsStatus"
+                        IsOpen="{x:Bind ViewModel.IsErrorVisible, Mode=TwoWay}"
+                        Message="{x:Bind ViewModel.ErrorMessage, Mode=OneWay}"
+                        Style="{StaticResource AppErrorInfoBarStyle}" />
+                </StackPanel>
+
+                <Grid Grid.Row="4">
+                    <StackPanel
+                        HorizontalAlignment="Center"
+                        VerticalAlignment="Center"
+                        Spacing="7"
+                        Visibility="{x:Bind ViewModel.IsLoading, Converter={StaticResource BoolToVisibilityConverter}, Mode=OneWay}">
+                        <ProgressRing Width="24" Height="24" IsActive="True" />
+                        <TextBlock x:Uid="PagesGistsPageTextBlockLoadingGists" Style="{StaticResource SectionSecondaryTextBlockStyle}" Text="Loading gists" />
+                    </StackPanel>
+                    <StackPanel
+                        Style="{StaticResource AppEmptyStatePanelStyle}"
+                        Visibility="{x:Bind ViewModel.IsEmpty, Converter={StaticResource BoolToVisibilityConverter}, Mode=OneWay}">
+                        <FontIcon
+                            FontFamily="{StaticResource SegoeFluentIcons}"
+                            FontSize="26"
+                            Foreground="{ThemeResource AppInkSubtleBrush}"
+                            Glyph="&#xE943;" />
+                        <TextBlock x:Uid="PagesGistsPageTextBlockNoMatchingGists" FontWeight="SemiBold" Text="No matching gists" />
+                    </StackPanel>
+                    <ListView
+                        x:Uid="PagesGistsPageGistsList" x:Name="GistsList"
+                        AutomationProperties.AutomationId="GistsList"
+                        AutomationProperties.Name="Gist library"
+                        Background="Transparent"
+                        BorderThickness="0"
+                        ContainerContentChanging="GistsList_ContainerContentChanging"
+                        IsItemClickEnabled="True"
+                        ItemClick="GistsList_ItemClick"
+                        KeyDown="GistsList_KeyDown"
+                        ItemTemplate="{StaticResource GistRowTemplate}"
+                        ItemsSource="{x:Bind ViewModel.Gists, Mode=OneWay}"
+                        SelectedItem="{x:Bind ViewModel.SelectedGistItem, Mode=TwoWay}"
+                        SelectionMode="Single">
+                        <ListView.ItemContainerStyle>
+                            <Style TargetType="ListViewItem" BasedOn="{StaticResource AppDenseFlatListRowStyle}" />
+                        </ListView.ItemContainerStyle>
+                    </ListView>
+                </Grid>
+
+                <ProgressBar
+                    Grid.Row="5"
+                    Height="2"
+                    IsIndeterminate="True"
+                    Visibility="{x:Bind ViewModel.IsLoadingMore, Converter={StaticResource BoolToVisibilityConverter}, Mode=OneWay}" />
+            </Grid>
+        </appControls:AdaptiveWorkspace.LeadingPane>
+
+        <appControls:AdaptiveWorkspace.PrimaryPane>
+            <Grid
+                x:Name="GistsDetailRoot"
+                AutomationProperties.AutomationId="GistsDetailPane"
+                Padding="18,14,18,16">
+                <StackPanel
+                    HorizontalAlignment="Center"
+                    VerticalAlignment="Center"
+                    Spacing="8"
+                    Visibility="{x:Bind ViewModel.HasSelection, Converter={StaticResource BoolToVisibilityReverseConverter}, Mode=OneWay}">
+                    <FontIcon
+                        FontFamily="{StaticResource SegoeFluentIcons}"
+                        FontSize="32"
+                        Foreground="{ThemeResource AppInkSubtleBrush}"
+                        Glyph="&#xE943;" />
+                    <TextBlock x:Uid="PagesGistsPageTextBlockSelectAGist" FontSize="17" FontWeight="SemiBold" Text="Select a gist" />
+                    <TextBlock x:Uid="PagesGistsPageTextBlockChooseAGistFromTheLibraryToPrevie" Style="{StaticResource SectionSecondaryTextBlockStyle}" Text="Choose a gist from the library to preview its files." />
+                </StackPanel>
+
+                <Grid Visibility="{x:Bind ViewModel.HasSelection, Converter={StaticResource BoolToVisibilityConverter}, Mode=OneWay}" RowSpacing="10">
+                    <Grid.RowDefinitions>
+                        <RowDefinition Height="Auto" />
+                        <RowDefinition Height="Auto" />
+                        <RowDefinition Height="Auto" />
+                        <RowDefinition Height="Auto" />
+                        <RowDefinition Height="Auto" />
+                        <RowDefinition Height="*" />
+                    </Grid.RowDefinitions>
+
+                    <Grid ColumnSpacing="12">
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="*" />
+                            <ColumnDefinition Width="Auto" />
+                        </Grid.ColumnDefinitions>
+                        <StackPanel MinWidth="0" Spacing="5">
+                            <TextBlock
+                                AutomationProperties.AutomationId="GistsDetailTitle"
+                                FontFamily="{ThemeResource AppDisplayFontFamily}"
+                                FontSize="27"
+                                Foreground="{ThemeResource AppInkBrush}"
+                                MaxLines="2"
+                                Text="{x:Bind ViewModel.SelectedTitle, Mode=OneWay}"
+                                TextTrimming="CharacterEllipsis"
+                                TextWrapping="WrapWholeWords" />
+                            <StackPanel Orientation="Horizontal" Spacing="10">
+                                <TextBlock
+                                    Foreground="{ThemeResource AppAccentBrush}"
+                                    Text="{x:Bind ViewModel.SelectedVisibilityText, Mode=OneWay}" />
+                                <TextBlock
+                                    Style="{StaticResource SectionSecondaryTextBlockStyle}"
+                                    Text="{x:Bind ViewModel.SelectedUpdatedText, Mode=OneWay}" />
+                            </StackPanel>
+                        </StackPanel>
+                        <StackPanel Grid.Column="1" VerticalAlignment="Top" Orientation="Horizontal" Spacing="4">
+                            <Button
+                                x:Uid="PagesGistsPageGistsEdit" Width="34"
+                                Height="34"
+                                AutomationProperties.AutomationId="GistsEdit"
+                                AutomationProperties.Name="Edit gist"
+                                Command="{x:Bind ViewModel.EditGistCommand}"
+                                Style="{StaticResource AppToolbarButtonStyle}"
+                                ToolTipService.ToolTip="Edit gist">
+                                <FontIcon FontFamily="{StaticResource SegoeFluentIcons}" FontSize="14" Glyph="&#xE70F;" />
+                            </Button>
+                            <Button
+                                x:Uid="PagesGistsPageGistsCopyLink" Width="34"
+                                Height="34"
+                                AutomationProperties.AutomationId="GistsCopyLink"
+                                AutomationProperties.Name="Copy gist link"
+                                Command="{x:Bind ViewModel.CopyLinkCommand}"
+                                Style="{StaticResource AppToolbarButtonStyle}"
+                                ToolTipService.ToolTip="Copy link">
+                                <FontIcon FontFamily="{StaticResource SegoeFluentIcons}" FontSize="14" Glyph="&#xE8C8;" />
+                            </Button>
+                            <Button
+                                x:Uid="PagesGistsPageGistsShare" Width="34"
+                                Height="34"
+                                AutomationProperties.AutomationId="GistsShare"
+                                AutomationProperties.Name="Share gist"
+                                Command="{x:Bind ViewModel.ShareCommand}"
+                                Style="{StaticResource AppToolbarButtonStyle}"
+                                ToolTipService.ToolTip="Share gist">
+                                <FontIcon FontFamily="{StaticResource SegoeFluentIcons}" FontSize="14" Glyph="&#xE72D;" />
+                            </Button>
+                            <Button
+                                x:Uid="PagesGistsPageGistsDelete" Width="34"
+                                Height="34"
+                                AutomationProperties.AutomationId="GistsDelete"
+                                AutomationProperties.Name="Delete gist"
+                                Command="{x:Bind ViewModel.DeleteGistCommand}"
+                                Foreground="{ThemeResource AppDangerBrush}"
+                                Style="{StaticResource AppToolbarButtonStyle}"
+                                ToolTipService.ToolTip="Delete gist">
+                                <FontIcon FontFamily="{StaticResource SegoeFluentIcons}" FontSize="14" Glyph="&#xE74D;" />
+                            </Button>
+                        </StackPanel>
+                    </Grid>
+
+                    <Rectangle Grid.Row="1" Height="1" Fill="{ThemeResource AppHairlineBrush}" />
+
+                    <Grid Grid.Row="2" RowSpacing="4">
+                        <Grid.RowDefinitions>
+                            <RowDefinition Height="Auto" />
+                            <RowDefinition Height="Auto" />
+                        </Grid.RowDefinitions>
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="*" />
+                            <ColumnDefinition Width="Auto" />
+                        </Grid.ColumnDefinitions>
+                        <ComboBox
+                            x:Uid="PagesGistsPageGistsFilePicker" AutomationProperties.AutomationId="GistsFilePicker"
+                            AutomationProperties.Name="Gist file"
+                            HorizontalAlignment="Stretch"
+                            DisplayMemberPath="Filename"
+                            ItemsSource="{x:Bind ViewModel.Files, Mode=OneWay}"
+                            SelectedItem="{x:Bind ViewModel.SelectedFile, Mode=TwoWay}"
+                            Style="{StaticResource AppCompactComboBoxStyle}" />
+                        <StackPanel Grid.Column="1" Orientation="Horizontal" Spacing="4">
+                            <Button
+                                x:Uid="PagesGistsPageGistsCopyFile" Width="34"
+                                Height="34"
+                                AutomationProperties.AutomationId="GistsCopyFile"
+                                AutomationProperties.Name="Copy complete Gist file"
+                                Command="{x:Bind ViewModel.CopyFileCommand}"
+                                Style="{StaticResource AppToolbarButtonStyle}"
+                                ToolTipService.ToolTip="Copy complete file">
+                                <FontIcon FontFamily="{StaticResource SegoeFluentIcons}" FontSize="14" Glyph="&#xE8C8;" />
+                            </Button>
+                            <Button
+                                x:Uid="PagesGistsPageGistsSaveFile" Width="34"
+                                Height="34"
+                                AutomationProperties.AutomationId="GistsSaveFile"
+                                AutomationProperties.Name="Save complete Gist file"
+                                Command="{x:Bind ViewModel.SaveFileCommand}"
+                                Style="{StaticResource AppToolbarButtonStyle}"
+                                ToolTipService.ToolTip="Save complete file">
+                                <FontIcon FontFamily="{StaticResource SegoeFluentIcons}" FontSize="14" Glyph="&#xE74E;" />
+                            </Button>
+                        </StackPanel>
+                        <TextBlock
+                            Grid.Row="1"
+                            Grid.ColumnSpan="2"
+                            VerticalAlignment="Center"
+                            HorizontalAlignment="Left"
+                            Style="{StaticResource SectionSecondaryTextBlockStyle}"
+                            Text="{x:Bind ViewModel.SelectedFileMeta, Mode=OneWay}" />
+                    </Grid>
+
+                    <Border
+                        Grid.Row="3"
+                        Padding="10,8"
+                        Background="{ThemeResource AppCanvasInsetBrush}"
+                        BorderBrush="{ThemeResource AppOutlineBrush}"
+                        BorderThickness="1"
+                        CornerRadius="{ThemeResource AppRadiusSmall}"
+                        Visibility="{x:Bind ViewModel.IsSelectedFileTruncated, Converter={StaticResource BoolToVisibilityConverter}, Mode=OneWay}">
+                        <Grid ColumnSpacing="10">
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="*" />
+                                <ColumnDefinition Width="Auto" />
+                            </Grid.ColumnDefinitions>
+                            <TextBlock
+                                VerticalAlignment="Center"
+                                Style="{StaticResource SectionSecondaryTextBlockStyle}"
+                                Text="{x:Bind ViewModel.SelectedFileTruncationText, Mode=OneWay}"
+                                TextWrapping="Wrap" />
+                            <Button
+                                x:Uid="PagesGistsPageGistsLoadFullFile" Grid.Column="1"
+                                AutomationProperties.AutomationId="GistsLoadFullFile"
+                                AutomationProperties.Name="Load full Gist file"
+                                Command="{x:Bind ViewModel.LoadFullFileCommand}"
+                                Style="{StaticResource AppOutlineButtonStyle}">
+                                <StackPanel Orientation="Horizontal" Spacing="8">
+                                    <ProgressRing
+                                        Width="16"
+                                        Height="16"
+                                        IsActive="{x:Bind ViewModel.IsFullFileLoading, Mode=OneWay}"
+                                        Visibility="{x:Bind ViewModel.IsFullFileLoading, Converter={StaticResource BoolToVisibilityConverter}, Mode=OneWay}" />
+                                    <TextBlock x:Uid="PagesGistsPageTextBlockLoadFullFile" Text="Load full file" />
+                                </StackPanel>
+                            </Button>
+                        </Grid>
+                    </Border>
+
+                    <Border
+                        Grid.Row="4"
+                        Padding="10,7"
+                        Background="{ThemeResource AppCanvasInsetBrush}"
+                        CornerRadius="{ThemeResource AppRadiusSmall}"
+                        Visibility="{x:Bind ViewModel.IsSelectedFilePreviewCapped, Converter={StaticResource BoolToVisibilityConverter}, Mode=OneWay}">
+                        <TextBlock
+                            AutomationProperties.AutomationId="GistsFilePreviewLimit"
+                            Style="{StaticResource SectionSecondaryTextBlockStyle}"
+                            Text="{x:Bind ViewModel.SelectedFilePreviewStatus, Mode=OneWay}"
+                            TextWrapping="Wrap" />
+                    </Border>
+
+                    <Grid Grid.Row="5">
+                        <TextBox
+                            x:Uid="PagesGistsPageGistsFilePreview" AutomationProperties.AutomationId="GistsFilePreview"
+                            AutomationProperties.Name="Gist file preview"
+                            Padding="14,12"
+                            AcceptsReturn="True"
+                            Background="{ThemeResource AppCanvasInsetBrush}"
+                            BorderBrush="{ThemeResource AppHairlineBrush}"
+                            BorderThickness="1"
+                            FontFamily="{ThemeResource AppMonoFontFamily}"
+                            FontSize="13"
+                            IsReadOnly="True"
+                            ScrollViewer.HorizontalScrollBarVisibility="Disabled"
+                            Text="{x:Bind ViewModel.SelectedFileContent, Mode=OneWay}"
+                            TextWrapping="Wrap"
+                            ScrollViewer.VerticalScrollBarVisibility="Auto" />
+                        <ProgressRing
+                            Width="26"
+                            Height="26"
+                            HorizontalAlignment="Center"
+                            VerticalAlignment="Center"
+                            IsActive="{x:Bind ViewModel.IsDetailLoading, Mode=OneWay}"
+                            Visibility="{x:Bind ViewModel.IsDetailLoading, Converter={StaticResource BoolToVisibilityConverter}, Mode=OneWay}" />
+                    </Grid>
+                </Grid>
+            </Grid>
+        </appControls:AdaptiveWorkspace.PrimaryPane>
+    </appControls:AdaptiveWorkspace>
+</Page>

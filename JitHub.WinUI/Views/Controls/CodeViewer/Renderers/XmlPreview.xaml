@@ -24,12 +24,14 @@
             BorderBrush="{ThemeResource AppOutlineBrush}"
             BorderThickness="0,0,0,1">
             <controls:Segmented
-                x:Name="ViewModeSegmented"
+                x:Uid="ControlsCodeViewerRenderersXmlPreviewXmlPreviewViewMode" x:Name="ViewModeSegmented"
                 HorizontalAlignment="Left"
+                AutomationProperties.AutomationId="XmlPreviewViewMode"
+                AutomationProperties.Name="XML view mode"
                 SelectionChanged="ViewModeSegmented_SelectionChanged"
                 SelectionMode="Single">
-                <controls:SegmentedItem Content="Rich" />
-                <controls:SegmentedItem Content="Plain" />
+                <controls:SegmentedItem x:Uid="ControlsCodeViewerRenderersXmlPreviewXmlPreviewViewModeR" AutomationProperties.AutomationId="XmlPreviewViewMode_Rich" AutomationProperties.Name="Formatted XML view" Content="Rich" />
+                <controls:SegmentedItem x:Uid="ControlsCodeViewerRenderersXmlPreviewXmlPreviewViewModeP" AutomationProperties.AutomationId="XmlPreviewViewMode_Plain" AutomationProperties.Name="Plain XML view" Content="Plain" />
             </controls:Segmented>
         </Border>
 

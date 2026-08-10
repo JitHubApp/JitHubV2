@@ -12,7 +12,33 @@
         x:Name="RootGrid"
         Background="Transparent"
         SizeChanged="RootGrid_SizeChanged">
+        <Grid.RowDefinitions>
+            <RowDefinition Height="Auto" />
+            <RowDefinition Height="*" />
+        </Grid.RowDefinitions>
+
+        <InfoBar
+            x:Uid="ControlsCommonMarkdownViewerMarkdownRemoteImageInfoBar" x:Name="RemoteImageInfoBar"
+            Grid.Row="0"
+            Margin="0,0,0,8"
+            AutomationProperties.AutomationId="MarkdownRemoteImageInfoBar"
+            IsClosable="False"
+            IsOpen="False"
+            Severity="Informational"
+            Title="Remote images are protected">
+            <InfoBar.ActionButton>
+                <Button
+                    x:Uid="ControlsCommonMarkdownViewerMarkdownLoadRemoteImagesButt" x:Name="LoadRemoteImagesButton"
+                    AutomationProperties.AutomationId="MarkdownLoadRemoteImagesButton"
+                    AutomationProperties.Name="Load remote images for this document"
+                    Click="LoadRemoteImagesButton_Click"
+                    Content="Load images"
+                    Style="{StaticResource AppQuietButtonStyle}" />
+            </InfoBar.ActionButton>
+        </InfoBar>
+
         <Border
+            Grid.Row="1"
             Padding="{x:Bind ContentPadding, Mode=OneWay}"
             Background="Transparent"
             HorizontalAlignment="Stretch"

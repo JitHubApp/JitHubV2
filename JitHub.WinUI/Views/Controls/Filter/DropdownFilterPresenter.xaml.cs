@@ -1,4 +1,5 @@
 using System.Collections.ObjectModel;
+using System.Linq;
 using JitHub.Models.Filter;
 using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Controls;
@@ -24,6 +25,8 @@ public sealed partial class DropdownFilterPresenter : UserControl
     private DropdownFilter? TypedFilter => Filter as DropdownFilter;
 
     public string Title => TypedFilter?.Title ?? string.Empty;
+
+    public string AutomationId => $"DropdownFilter_{string.Concat(Title.Where(char.IsLetterOrDigit))}";
 
     public ObservableCollection<Selection> Selections => TypedFilter?.Selections ?? [];
 

@@ -1,5 +1,6 @@
 using Microsoft.UI.Dispatching;
 using Microsoft.UI.Xaml;
+using Microsoft.Windows.Globalization;
 using Microsoft.Windows.AppLifecycle;
 using System;
 using System.Collections.Generic;
@@ -24,14 +25,19 @@ internal static class Program
     {
         try
         {
+            LogStartupPhase("main.enter");
             WinRT.ComWrappersSupport.InitializeComWrappers();
+            LogStartupPhase("main.com-wrappers-ready");
             CurrentLaunchOptions = LaunchOptions.Parse(args);
+            ConfigureAutomationLanguageOverride();
+            LogStartupPhase("main.launch-options-ready");
 
             AppActivationArguments activationArguments = AppInstance.GetCurrent().GetActivatedEventArgs();
             string appInstanceKey = CurrentLaunchOptions.HasPageOverride
                 ? $"{AppInstanceKey}-{Environment.ProcessId}"
                 : AppInstanceKey;
             AppInstance keyInstance = AppInstance.FindOrRegisterForKey(appInstanceKey);
+            LogStartupPhase($"main.app-instance-ready:{keyInstance.IsCurrent}");
 
             if (!keyInstance.IsCurrent)
             {
@@ -45,13 +51,22 @@ internal static class Program
             {
                 try
                 {
+                    LogStartupPhase("app-start.callback-enter");
                     var synchronizationContext = new DispatcherQueueSynchronizationContext(
                         DispatcherQueue.GetForCurrentThread());
                     SynchronizationContext.SetSynchronizationContext(synchronizationContext);
+                    LogStartupPhase("app-start.dispatcher-ready");
 
+                    // WinUI establishes its XAML resource context during Application.Start.
+                    // Reapply the automation qualifier on that dispatcher before App.xaml
+                    // or any page XAML is constructed.
+                    ConfigureAutomationLanguageOverride();
                     _app = new App();
+                    LogStartupPhase("app-start.app-constructed");
                     _app.HandleActivation(activationArguments);
+                    LogStartupPhase("app-start.activation-requested");
                     DrainPendingActivations();
+                    LogStartupPhase("app-start.callback-exit");
                 }
                 catch (Exception ex)
                 {
@@ -133,6 +148,63 @@ internal static class Program
             string entry =
                 $"[{DateTimeOffset.Now:O}]{Environment.NewLine}{ex}{Environment.NewLine}{new string('-', 80)}{Environment.NewLine}";
             File.AppendAllText(logPath, entry);
+        }
+        catch
+        {
+        }
+    }
+
+    private static void ConfigureAutomationLanguageOverride()
+    {
+        const string pseudoLanguage = "qps-ploc";
+        bool isAutomation = !string.IsNullOrWhiteSpace(
+            Environment.GetEnvironmentVariable("JITHUB_AUTOMATION_DATA_ROOT"));
+        bool usePseudoLocalization = string.Equals(
+            CurrentLaunchOptions.Scenario,
+            "vnext-pseudo-localized",
+            StringComparison.OrdinalIgnoreCase);
+
+        if (usePseudoLocalization && isAutomation)
+        {
+            // Windows App SDK's language override is process-local for unpackaged apps.
+            // Set it before App.xaml or any page XAML resolves x:Uid resources.
+            ApplicationLanguages.PrimaryLanguageOverride = pseudoLanguage;
+            return;
+        }
+
+        try
+        {
+            // The Windows language override is persisted per app identity. Never let an
+            // automation-only pseudo locale leak into the next normal product launch.
+            if (string.Equals(
+                    ApplicationLanguages.PrimaryLanguageOverride,
+                    pseudoLanguage,
+                    StringComparison.OrdinalIgnoreCase))
+            {
+                ApplicationLanguages.PrimaryLanguageOverride = string.Empty;
+            }
+        }
+        catch (InvalidOperationException) when (isAutomation)
+        {
+            // Keep normal automation usable on hosts that cannot expose a language context.
+        }
+    }
+
+    internal static void LogStartupPhase(string phase)
+    {
+        string? automationRoot = Environment.GetEnvironmentVariable("JITHUB_AUTOMATION_DATA_ROOT");
+        if (string.IsNullOrWhiteSpace(automationRoot))
+        {
+            return;
+        }
+
+        try
+        {
+            string logDirectory = Path.Combine(Path.GetFullPath(automationRoot), "Local", "logs");
+            Directory.CreateDirectory(logDirectory);
+            File.AppendAllText(
+                Path.Combine(logDirectory, "startup-phases.log"),
+                $"{DateTimeOffset.UtcNow:O}\t{Environment.ProcessId}\t{phase}{Environment.NewLine}");
         }
         catch
         {

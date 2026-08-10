@@ -19,11 +19,15 @@
         <StackPanel
              Spacing="8">
             <TextBox
+                x:Uid="ControlsPullRequestPullRequestEditFormPullRequestEditTit" AutomationProperties.AutomationId="PullRequestEditTitleTextBox"
+                AutomationProperties.Name="Pull request title"
                 Style="{StaticResource AppTextBoxStyle}"
                 PlaceholderText="Title"
                 Margin="16 0"
                 Text="{x:Bind ViewModel.Title, Mode=TwoWay}"/>
             <common:MarkdownForm
+                AutomationInstanceId="PullRequestEditForm"
+                DocumentSource="{x:Bind ViewModel.MarkdownSource, Mode=OneWay}"
                 FormPadding="16 0"
                 Text="{x:Bind ViewModel.Body, Mode=TwoWay}">
                 <common:MarkdownForm.ActionContent>
@@ -33,6 +37,8 @@
                         Padding="16"
                         HorizontalAlignment="Stretch">
                         <Button
+                            x:Uid="ControlsPullRequestPullRequestEditFormPullRequestEditSub" AutomationProperties.AutomationId="PullRequestEditSubmitButton"
+                            AutomationProperties.Name="Update pull request"
                             Command="{x:Bind ViewModel.SubmitCommand}"
                             Style="{ThemeResource AppAccentButtonStyle}"
                             HorizontalAlignment="Right"

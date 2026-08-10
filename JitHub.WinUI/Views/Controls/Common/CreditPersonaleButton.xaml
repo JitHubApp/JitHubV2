@@ -13,6 +13,8 @@
         Width="172"
         Height="204"
         Padding="0"
+        AutomationProperties.AutomationId="{x:Bind Person.AutomationId, Mode=OneWay}"
+        AutomationProperties.Name="{x:Bind Person.AccessibleName, Mode=OneWay}"
         Style="{StaticResource AppQuietButtonStyle}"
         HorizontalContentAlignment="Stretch"
         VerticalContentAlignment="Stretch"

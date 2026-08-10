@@ -176,7 +176,7 @@ Invoke-Az -Arguments @(
 Write-Host ''
 Write-Host 'Provisioning complete. Next steps:'
 Write-Host '1. Configure app settings for the GitHub OAuth app:'
-Write-Host "   az webapp config appsettings set -g $ResourceGroup -n $WebAppName --settings JitHubClientId=<client-id> JithubAppSecret=<client-secret>"
+Write-Host "   az webapp config appsettings set -g $ResourceGroup -n $WebAppName --settings JitHubClientId=<client-id> JithubAppSecret=<client-secret> JITHUB_OAUTH_CALLBACK_URL=https://$WebAppName.azurewebsites.net/authorize"
 Write-Host '2. Download the publish profile:'
 Write-Host "   az webapp deployment list-publishing-profiles -g $ResourceGroup -n $WebAppName --xml > jithub-webapp.PublishSettings"
 Write-Host '3. Save it as the GitHub secret JITHUB_WEBAPP_PUBLISH_PROFILE:'

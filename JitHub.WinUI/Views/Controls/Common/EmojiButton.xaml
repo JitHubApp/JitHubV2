@@ -10,7 +10,8 @@
     d:DesignWidth="400">
 
     <Button
-        AutomationProperties.AutomationId="{x:Bind GetAutomationId(Reaction), Mode=OneWay}"
+        AutomationProperties.AutomationId="{x:Bind GetAutomationId(Reaction, AutomationInstanceId), Mode=OneWay}"
+        AutomationProperties.Name="{x:Bind GetAutomationName(Reaction, ReactionCount, Voted), Mode=OneWay}"
         Style="{StaticResource AppEmojiReactionButtonStyle}"
         Padding="{x:Bind GetPadding(ShowReactionCount), Mode=OneWay}"
         Command="{x:Bind ReactionCommand, Mode=OneWay}"

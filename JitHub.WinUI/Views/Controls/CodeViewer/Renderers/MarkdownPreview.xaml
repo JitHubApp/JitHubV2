@@ -28,12 +28,14 @@
             BorderBrush="{ThemeResource AppOutlineBrush}"
             BorderThickness="0,0,0,1">
             <controls:Segmented
-                x:Name="ViewModeSegmented"
+                x:Uid="MarkdownPreviewViewMode" x:Name="ViewModeSegmented"
                 HorizontalAlignment="Left"
+                AutomationProperties.AutomationId="MarkdownPreviewViewMode"
+                AutomationProperties.Name="Markdown view mode"
                 SelectionChanged="ViewModeSegmented_SelectionChanged"
                 SelectionMode="Single">
-                <controls:SegmentedItem Content="Rich" />
-                <controls:SegmentedItem Content="Plain" />
+                <controls:SegmentedItem x:Uid="MarkdownPreviewViewModeRich" AutomationProperties.AutomationId="MarkdownPreviewViewMode_Rich" AutomationProperties.Name="Rendered Markdown view" Content="Rich" />
+                <controls:SegmentedItem x:Uid="MarkdownPreviewViewModePlain" AutomationProperties.AutomationId="MarkdownPreviewViewMode_Plain" AutomationProperties.Name="Plain Markdown view" Content="Plain" />
             </controls:Segmented>
         </Border>
 
@@ -42,14 +44,16 @@
 
             <!--  Rich: native markdown renderer  -->
             <common:MarkdownViewer
+                HostKind="RepositoryReadme"
+                AutomationInstanceId="RepoCodeReadme"
                 x:Name="RichPanel"
                 BaseUrl="{x:Bind CurrentBaseUrl, Mode=OneWay}"
                 ContentHorizontalAlignment="Center"
                 ContentMaxWidth="860"
                 ContentPadding="16"
+                DocumentSource="{x:Bind CurrentDocumentSource, Mode=OneWay}"
                 DocumentPath="{x:Bind CurrentDocumentPath, Mode=OneWay}"
                 HorizontalAlignment="Stretch"
-                SurfaceColorToken="AppCanvas"
                 Text="{x:Bind ViewModel.Text, Mode=OneWay}"
                 VerticalAlignment="Stretch"
                 Visibility="Visible" />

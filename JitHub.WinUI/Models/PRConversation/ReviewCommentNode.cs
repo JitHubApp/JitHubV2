@@ -34,6 +34,7 @@ namespace JitHub.Models.PRConversation
         public StringEnum<AuthorAssociation> AuthorAssociation { get; set; }
         public ICollection<ReviewCommentNode> Replies { get; set; } = new List<ReviewCommentNode>();
         public ICommand CopyLinkCommand { get; set; } = null!;
+        public int AutomationOrdinal { get; set; }
 
         // For single comments for blocks of code
         public ReviewCommentNode(PullRequestReviewComment comment, Repository repo, int number) : base(repo, number)

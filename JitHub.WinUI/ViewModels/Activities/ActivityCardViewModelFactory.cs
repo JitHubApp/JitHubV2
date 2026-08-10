@@ -1,10 +1,10 @@
 using System;
 using System.Collections.Generic;
-using System.Globalization;
 using System.Linq;
 using System.Windows.Input;
 using JitHub.Models.Activities;
 using JitHub.Models.GitHub;
+using JitHub.Services;
 
 namespace JitHub.WinUI.ViewModels.Activities;
 
@@ -39,10 +39,10 @@ public static class ActivityCardViewModelFactory
         {
             EventId = activityEvent.Id,
             EventType = activityEvent.Type,
-            ActorLogin = string.IsNullOrWhiteSpace(activityEvent.Actor.Login) ? "github" : activityEvent.Actor.Login,
-            ActorAvatarUrl = activityEvent.Actor.AvatarUrl,
+            ActorLogin = UserIdentityNavigationPolicy.GetRoutableLogin(activityEvent.Actor?.Login),
+            ActorAvatarUrl = activityEvent.Actor?.AvatarUrl,
             RepoDisplayName = string.IsNullOrWhiteSpace(activityEvent.Repo.Name) ? "GitHub" : activityEvent.Repo.Name,
-            TimestampText = activityEvent.CreatedAt?.LocalDateTime.ToString("g", CultureInfo.CurrentCulture) ?? "Unknown time",
+            TimestampText = FormatRelativeTime(activityEvent.CreatedAt),
             Title = draft.Title,
             Subtitle = draft.Subtitle,
             Glyph = draft.Glyph,
@@ -59,6 +59,42 @@ public static class ActivityCardViewModelFactory
         ICommand? actionCommand = null)
     {
         return events.Select(activityEvent => Create(activityEvent, actionCommand)).ToList();
+    }
+
+    private static string FormatRelativeTime(DateTimeOffset? value)
+    {
+        if (value is null)
+        {
+            return "just now";
+        }
+
+        TimeSpan age = DateTimeOffset.Now - value.Value.ToLocalTime();
+        if (age.TotalMinutes < 1)
+        {
+            return "just now";
+        }
+
+        if (age.TotalHours < 1)
+        {
+            return $"{(int)Math.Max(1, age.TotalMinutes)}m ago";
+        }
+
+        if (age.TotalDays < 1)
+        {
+            return $"{(int)Math.Max(1, age.TotalHours)}h ago";
+        }
+
+        if (age.TotalDays < 30)
+        {
+            return $"{(int)Math.Max(1, age.TotalDays)}d ago";
+        }
+
+        if (age.TotalDays < 365)
+        {
+            return $"{Math.Max(1, (int)(age.TotalDays / 30))}mo ago";
+        }
+
+        return $"{Math.Max(1, (int)(age.TotalDays / 365))}y ago";
     }
 
     private static ActivityDraft BuildPush(GitHubActivityEvent activityEvent, PushEventPayload payload, ICommand? command)
@@ -510,7 +546,7 @@ public static class ActivityCardViewModelFactory
     }
 
     private static string Actor(GitHubActivityEvent activityEvent) =>
-        string.IsNullOrWhiteSpace(activityEvent.Actor.Login) ? "Someone" : activityEvent.Actor.Login;
+        string.IsNullOrWhiteSpace(activityEvent.Actor?.Login) ? "Someone" : activityEvent.Actor.Login;
 
     private static string BranchOrRepo(string branch) => string.IsNullOrWhiteSpace(branch) ? "the repository" : branch;
 

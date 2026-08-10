@@ -40,6 +40,9 @@ public sealed partial class RepoFilePreviewViewModel : ObservableObject
     public partial string? GitHubBlobUrl { get; set; }
 
     [ObservableProperty]
+    public partial string? GitHubRawUrl { get; set; }
+
+    [ObservableProperty]
     public partial bool ShowRichPreview { get; set; } = true;
 
     [RelayCommand]
@@ -58,6 +61,7 @@ public sealed partial class RepoFilePreviewViewModel : ObservableObject
         IsLoading = false;
         ErrorMessage = null;
         GitHubBlobUrl = null;
+        GitHubRawUrl = null;
         ShowRichPreview = true;
     }
 }

@@ -201,12 +201,12 @@ internal sealed class MarkdownSemanticDocument
         return previous is not null ? PositionFromSpanEnd(previous) : DocumentPosition.Zero;
     }
 
-    public IEnumerable<Rect> GetDocumentRects(int textStart, int textEnd)
+    public IEnumerable<Rect> GetDocumentRects(int textStart, int textEnd, bool expandDegenerate = false)
     {
         textStart = Math.Clamp(textStart, 0, Text.Length);
         textEnd = Math.Clamp(textEnd, textStart, Text.Length);
 
-        if (textStart == textEnd && Text.Length > 0)
+        if (expandDegenerate && textStart == textEnd && Text.Length > 0)
         {
             if (textStart < Text.Length) textEnd = textStart + 1;
             else textStart = Math.Max(0, textStart - 1);
@@ -220,47 +220,92 @@ internal sealed class MarkdownSemanticDocument
             int end = Math.Min(textEnd, span.TextEnd);
             if (end < start) continue;
 
-            if (span.InlineBox is { } icb)
-            {
-                DocumentPosition startPos;
-                DocumentPosition endPos;
-                if (span.InlineRun is { } run)
-                {
-                    int textLength = span.TextEnd - span.TextStart;
-                    startPos = new DocumentPosition(
-                        icb.BlockIndex,
-                        run.InlineIndex,
-                        ProjectTextOffsetToRendered(run, start - span.TextStart, textLength));
-                    endPos = new DocumentPosition(
-                        icb.BlockIndex,
-                        run.InlineIndex,
-                        ProjectTextOffsetToRendered(run, end - span.TextStart, textLength));
-                    if (end > start && endPos.CharacterOffset == startPos.CharacterOffset && run.RenderedLength > 0)
-                        endPos = endPos with { CharacterOffset = run.RenderedLength };
-                }
-                else
-                {
-                    startPos = icb.GetPositionFromBufferOffset(start - span.TextStart);
-                    endPos = icb.GetPositionFromBufferOffset(end - span.TextStart);
-                }
+            foreach (var rect in GetDocumentRectsForSpan(span, start, end))
+                yield return rect;
+        }
+    }
 
-                bool yielded = false;
-                foreach (var rect in icb.GetRangeRects(new DocumentRange(startPos, endPos)))
-                {
-                    yielded = true;
-                    yield return rect;
-                }
+    public bool TryCoercePointToNearestTextRect(Point point, out Point coercedPoint)
+    {
+        bool found = AccessibilityGeometry.TryCoercePointToNearestRect(
+            new AccessibilityPoint(point.X, point.Y),
+            EnumerateTextRects(),
+            out AccessibilityPoint accessiblePoint);
+        coercedPoint = new Point(accessiblePoint.X, accessiblePoint.Y);
+        return found;
 
-                if (!yielded && !icb.HasMeasuredLayout && icb.Bounds.Width > 0 && icb.Bounds.Height > 0)
-                    yield return icb.Bounds;
-            }
-            else if (span.ImageBox is { } image)
+        IEnumerable<AccessibilityRect> EnumerateTextRects()
+        {
+            foreach (var span in TextSpans)
             {
-                yield return image.Bounds;
+                foreach (var rect in GetDocumentRectsForSpan(span, span.TextStart, span.TextEnd))
+                    yield return new AccessibilityRect(rect.X, rect.Y, rect.Width, rect.Height);
             }
-            else if (span.EmbedBox is { } embed)
+        }
+    }
+
+    private static IEnumerable<Rect> GetDocumentRectsForSpan(
+        MarkdownTextSpan span,
+        int start,
+        int end)
+    {
+        start = Math.Clamp(start, span.TextStart, span.TextEnd);
+        end = Math.Clamp(end, start, span.TextEnd);
+
+        if (span.InlineBox is { } icb)
+        {
+            DocumentPosition startPos;
+            DocumentPosition endPos;
+            if (span.InlineRun is { } run)
             {
-                yield return embed.Bounds;
+                int textLength = span.TextEnd - span.TextStart;
+                startPos = new DocumentPosition(
+                    icb.BlockIndex,
+                    run.InlineIndex,
+                    ProjectTextOffsetToRendered(run, start - span.TextStart, textLength));
+                endPos = new DocumentPosition(
+                    icb.BlockIndex,
+                    run.InlineIndex,
+                    ProjectTextOffsetToRendered(run, end - span.TextStart, textLength));
+                if (end > start && endPos.CharacterOffset == startPos.CharacterOffset && run.RenderedLength > 0)
+                    endPos = endPos with { CharacterOffset = run.RenderedLength };
+            }
+            else
+            {
+                startPos = icb.GetPositionFromBufferOffset(start - span.TextStart);
+                endPos = icb.GetPositionFromBufferOffset(end - span.TextStart);
+            }
+
+            foreach (var rect in icb.GetRangeRects(new DocumentRange(startPos, endPos)))
+                yield return rect;
+        }
+        else if (span.ImageBox is { } image)
+        {
+            yield return image.Bounds;
+        }
+        else if (span.EmbedBox is { } embed)
+        {
+            yield return embed.Bounds;
+        }
+    }
+
+    public IEnumerable<ImageBox> GetImagesIntersectingTextRange(int textStart, int textEnd)
+    {
+        textStart = Math.Clamp(textStart, 0, Text.Length);
+        textEnd = Math.Clamp(textEnd, textStart, Text.Length);
+
+        foreach (var span in TextSpans)
+        {
+            if (span.TextEnd < textStart || span.TextStart > textEnd)
+                continue;
+
+            if (span.ImageBox is { } blockImage)
+            {
+                yield return blockImage;
+            }
+            else if (span.InlineRun is InlineImageRun inlineImage)
+            {
+                yield return inlineImage.Image;
             }
         }
     }

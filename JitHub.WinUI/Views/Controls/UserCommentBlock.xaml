@@ -20,9 +20,12 @@
         <Grid Grid.Column="0" VerticalAlignment="Top">
             <common:Avatar
                 Margin="0,0,8,0"
+                AutomationInstanceId="{x:Bind ViewModel.CommenterAvatarAutomationId, Mode=OneWay}"
+                Login="{x:Bind ViewModel.AuthenticatedCommenterLogin, Mode=OneWay}"
+                NavigationSource="comment_avatar"
                 ShowLogin="False"
                 Size="{x:Bind Size, Mode=OneWay}"
-                Url="{x:Bind ViewModel.Commenter.AvatarUrl, Mode=OneWay}" />
+                Url="{x:Bind ViewModel.CommenterAvatarUrl, Mode=OneWay}" />
         </Grid>
         <common:CommentBlock Grid.Column="1">
             <common:CommentBlock.HeaderContent>
@@ -36,7 +39,7 @@
                         VerticalAlignment="Center"
                         Style="{StaticResource SectionSecondaryTextBlockStyle}"
                         Foreground="{ThemeResource AppInkMutedBrush}">
-                        <Run FontWeight="SemiBold" Text="{x:Bind ViewModel.Commenter.Login, Mode=OneWay}" />
+                        <Run FontWeight="SemiBold" Text="{x:Bind ViewModel.CommenterDisplayName, Mode=OneWay}" />
                         <Run Text="{x:Bind ViewModel.CreatedAt, Mode=OneWay}" />
                     </TextBlock>
                     <Grid Grid.Column="1" HorizontalAlignment="Right">
@@ -44,21 +47,29 @@
                             <ColumnDefinition Width="auto" />
                             <ColumnDefinition Width="*" />
                         </Grid.ColumnDefinitions>
-                        <common:EmojiPanelButton ViewModel="{x:Bind ViewModel.EmojiPanelViewModel, Mode=OneWay}" />
+                        <common:EmojiPanelButton
+                            AutomationInstanceId="{x:Bind ViewModel.HeaderReactionAutomationId, Mode=OneWay}"
+                            ViewModel="{x:Bind ViewModel.EmojiPanelViewModel, Mode=OneWay}" />
                         <Button
-                            Grid.Column="1"
+                            x:Uid="ControlsUserCommentBlockXBindViewModelOverflowAutomation" Grid.Column="1"
                             Margin="0"
                             Padding="4,2"
+                            AutomationProperties.AutomationId="{x:Bind ViewModel.OverflowAutomationId, Mode=OneWay}"
+                            AutomationProperties.Name="Comment actions"
                             Style="{StaticResource AppToolbarButtonStyle}">
                             <FontIcon FontFamily="{StaticResource SegoeFluentIcons}" Glyph="&#xE712;" />
                             <Button.Flyout>
                                 <MenuFlyout Placement="BottomEdgeAlignedLeft">
                                     <MenuFlyoutItem
-                                        x:Name="CopyLink"
+                                        x:Uid="ControlsUserCommentBlockXBindViewModelCopyLinkAutomation" x:Name="CopyLink"
+                                        AutomationProperties.AutomationId="{x:Bind ViewModel.CopyLinkAutomationId, Mode=OneWay}"
+                                        AutomationProperties.Name="Copy comment link"
                                         Command="{x:Bind ViewModel.CopyLinkMenuItem.Command, Mode=OneWay}"
                                         Text="{x:Bind ViewModel.CopyLinkMenuItem.Text, Mode=OneWay}" />
                                     <MenuFlyoutItem
-                                        x:Name="QuoteReply"
+                                        x:Uid="ControlsUserCommentBlockXBindViewModelQuoteReplyAutomati" x:Name="QuoteReply"
+                                        AutomationProperties.AutomationId="{x:Bind ViewModel.QuoteReplyAutomationId, Mode=OneWay}"
+                                        AutomationProperties.Name="Quote comment in reply"
                                         Command="{x:Bind ViewModel.QuoteReplyMenuItem.Command, Mode=OneWay}"
                                         CommandParameter="{x:Bind ViewModel.QuoteReplyMenuItem.Parameter, Mode=OneWay}"
                                         Text="{x:Bind ViewModel.QuoteReplyMenuItem.Text, Mode=OneWay}" />
@@ -72,19 +83,24 @@
                 <Grid Padding="8">
                     <StackPanel Spacing="8">
                         <common:MarkdownViewer
+                            HostKind="Comment"
+                            AutomationInstanceId="{x:Bind ViewModel.MarkdownAutomationId, Mode=OneWay}"
                             BaseUrl="https://github.com/"
-                            SurfaceColorToken="AppCanvasRaised"
+                            DocumentSource="{x:Bind ViewModel.MarkdownSource, Mode=OneWay}"
                             Text="{x:Bind ViewModel.Body, Mode=OneWay}" />
                         <StackPanel
                             Orientation="Horizontal"
                             Spacing="8"
                             Visibility="{x:Bind ViewModel.HasReaction, Converter={StaticResource BoolToVisibilityConverter}, Mode=OneWay}">
-                            <common:EmojiPanelButton ViewModel="{x:Bind ViewModel.EmojiPanelViewModel, Mode=OneWay}" />
+                            <common:EmojiPanelButton
+                                AutomationInstanceId="{x:Bind ViewModel.SummaryReactionAutomationId, Mode=OneWay}"
+                                ViewModel="{x:Bind ViewModel.EmojiPanelViewModel, Mode=OneWay}" />
                             <muxc:ItemsRepeater ItemsSource="{x:Bind ViewModel.ReactionWithUsers, Mode=OneWay}">
                                 <muxc:ItemsRepeater.ItemTemplate>
                                     <DataTemplate x:DataType="userviewmodels:ReactionWithUsers">
                                         <Grid>
                                             <common:EmojiButton
+                                                AutomationInstanceId="{x:Bind AutomationInstanceId, Mode=OneWay}"
                                                 Reaction="{x:Bind Type, Mode=OneWay}"
                                                 ReactionCommand="{x:Bind ReactionCommand, Mode=OneWay}"
                                                 ReactionCount="{x:Bind Users.Count, Mode=OneWay}"

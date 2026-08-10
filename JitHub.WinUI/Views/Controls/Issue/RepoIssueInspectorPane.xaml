@@ -1,0 +1,227 @@
+<?xml version="1.0" encoding="utf-8"?>
+<UserControl
+    x:Class="JitHub.WinUI.Views.Controls.Issue.RepoIssueInspectorPane"
+    x:Name="Root"
+    xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+    xmlns:common="using:JitHub.WinUI.Views.Controls.Common"
+    xmlns:github="using:JitHub.Models.GitHub">
+    <UserControl.Resources>
+        <Style x:Key="RepoIssuesPanelStyle" TargetType="Border">
+            <Setter Property="Background" Value="{ThemeResource AppSurfaceSubtleBrush}" />
+            <Setter Property="BorderBrush" Value="{ThemeResource AppHairlineBrush}" />
+            <Setter Property="BorderThickness" Value="1" />
+            <Setter Property="CornerRadius" Value="{ThemeResource AppRadiusSmall}" />
+        </Style>
+        <DataTemplate x:Key="RepoIssueLabelTemplate" x:DataType="github:GitHubLabel">
+            <Border
+                Margin="0,0,6,6"
+                Padding="8,4"
+                Background="{ThemeResource AppCanvasInsetBrush}"
+                BorderBrush="{ThemeResource AppHairlineBrush}"
+                BorderThickness="1"
+                CornerRadius="{ThemeResource AppRadiusSmall}">
+                <StackPanel Orientation="Horizontal" Spacing="6">
+                    <Ellipse
+                        Width="7"
+                        Height="7"
+                        VerticalAlignment="Center"
+                        Fill="{x:Bind Color, Converter={StaticResource HexColorToColorStringConverter}}" />
+                    <TextBlock
+                        FontFamily="{ThemeResource AppMonoFontFamily}"
+                        FontSize="11"
+                        Foreground="{ThemeResource AppInkBrush}"
+                        Text="{x:Bind Name}" />
+                </StackPanel>
+            </Border>
+        </DataTemplate>
+
+        <DataTemplate x:Key="RepoIssueAssigneeTemplate" x:DataType="github:GitHubActor">
+            <Grid
+                MinHeight="34"
+                Margin="0,0,0,6"
+                ColumnSpacing="8">
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="28" />
+                    <ColumnDefinition Width="*" />
+                </Grid.ColumnDefinitions>
+                <common:Avatar
+                    AutomationInstanceId="{x:Bind AutomationId}"
+                    Login="{x:Bind Login}"
+                    NavigationSource="issue_assignee"
+                    ShowLogin="False"
+                    Size="SMALL"
+                    Url="{x:Bind AvatarUrl}" />
+                <TextBlock
+                    Grid.Column="1"
+                    VerticalAlignment="Center"
+                    Style="{StaticResource SectionSecondaryTextBlockStyle}"
+                    Text="{x:Bind Login}"
+                    TextTrimming="CharacterEllipsis" />
+            </Grid>
+        </DataTemplate>
+    </UserControl.Resources>
+
+    <Border
+        x:Uid="PagesRepoIssuePageRepoIssuesInspector"
+        AutomationProperties.AccessibilityView="Control"
+        AutomationProperties.AutomationId="RepoIssuesInspector"
+        AutomationProperties.Name="Issue inspector"
+        Padding="16,10,16,16"
+        Style="{StaticResource RepoIssuesPanelStyle}">
+        <ScrollViewer
+            HorizontalScrollBarVisibility="Disabled"
+            VerticalScrollBarVisibility="Auto">
+            <StackPanel Spacing="18">
+                <Grid ColumnSpacing="8">
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="*" />
+                        <ColumnDefinition Width="Auto" />
+                    </Grid.ColumnDefinitions>
+                    <TextBlock
+                        x:Uid="PagesRepoIssuePageRepoIssuesInspectorTitle"
+                        VerticalAlignment="Center"
+                        AutomationProperties.AutomationId="RepoIssuesInspectorTitle"
+                        FontFamily="{ThemeResource AppDisplayFontFamily}"
+                        FontSize="21"
+                        Foreground="{ThemeResource AppInkBrush}"
+                        Text="Inspector" />
+                    <Button
+                        x:Uid="PagesRepoIssuePageRepoIssuesCloseInspectorPaneButton"
+                        x:Name="CloseInspectorPaneButton"
+                        Grid.Column="1"
+                        Width="36"
+                        Height="36"
+                        Padding="0"
+                        AutomationProperties.AutomationId="RepoIssuesCloseInspectorPaneButton"
+                        AutomationProperties.Name="Close inspector"
+                        Click="CloseInspectorPaneButton_Click"
+                        Style="{StaticResource AppToolbarButtonStyle}"
+                        ToolTipService.ToolTip="Close inspector"
+                        Visibility="Collapsed">
+                        <FontIcon FontFamily="{StaticResource SegoeFluentIcons}" FontSize="14" Glyph="&#xE9D2;" />
+                    </Button>
+                </Grid>
+
+                <Grid RowSpacing="8">
+                    <Grid.RowDefinitions>
+                        <RowDefinition Height="Auto" />
+                        <RowDefinition Height="Auto" />
+                        <RowDefinition Height="Auto" />
+                    </Grid.RowDefinitions>
+                    <TextBlock
+                        x:Uid="PagesRepoIssuePageTextBlockStatus"
+                        FontFamily="{ThemeResource AppUiFontFamily}"
+                        FontSize="13"
+                        FontWeight="SemiBold"
+                        Foreground="{ThemeResource AppInkBrush}"
+                        Text="Status" />
+                    <StackPanel Grid.Row="1" Orientation="Horizontal" Spacing="8">
+                        <Ellipse
+                            Width="8"
+                            Height="8"
+                            VerticalAlignment="Center"
+                            Fill="{ThemeResource AppAccentBrush}" />
+                        <TextBlock Style="{StaticResource SectionSecondaryTextBlockStyle}" Text="{x:Bind ViewModel.SelectedIssueStateText, Mode=OneWay}" />
+                    </StackPanel>
+                    <TextBlock
+                        Grid.Row="2"
+                        Style="{StaticResource SectionSecondaryTextBlockStyle}"
+                        Text="{x:Bind ViewModel.SelectedIssueCommentText, Mode=OneWay}" />
+                </Grid>
+
+                <Grid RowSpacing="8">
+                    <Grid.RowDefinitions>
+                        <RowDefinition Height="Auto" />
+                        <RowDefinition Height="Auto" />
+                    </Grid.RowDefinitions>
+                    <TextBlock
+                        x:Uid="PagesRepoIssuePageTextBlockAssignees"
+                        FontFamily="{ThemeResource AppUiFontFamily}"
+                        FontSize="13"
+                        FontWeight="SemiBold"
+                        Foreground="{ThemeResource AppInkBrush}"
+                        Text="Assignees" />
+                    <TextBlock
+                        x:Uid="PagesRepoIssuePageTextBlockNoOneAssigned"
+                        Grid.Row="1"
+                        Style="{StaticResource SectionSecondaryTextBlockStyle}"
+                        Text="No one assigned"
+                        Visibility="{x:Bind ViewModel.HasNoAssignees, Converter={StaticResource BoolToVisibilityConverter}, Mode=OneWay}" />
+                    <ItemsControl
+                        x:Uid="PagesRepoIssuePageItemsControlIssueAssignees"
+                        Grid.Row="1"
+                        AutomationProperties.Name="Issue assignees"
+                        ItemTemplate="{StaticResource RepoIssueAssigneeTemplate}"
+                        ItemsSource="{x:Bind ViewModel.SelectedAssignees, Mode=OneWay}"
+                        Visibility="{x:Bind ViewModel.HasAssignees, Converter={StaticResource BoolToVisibilityConverter}, Mode=OneWay}" />
+                </Grid>
+
+                <Grid RowSpacing="8">
+                    <Grid.RowDefinitions>
+                        <RowDefinition Height="Auto" />
+                        <RowDefinition Height="Auto" />
+                    </Grid.RowDefinitions>
+                    <TextBlock
+                        x:Uid="PagesRepoIssuePageTextBlockLabels"
+                        FontFamily="{ThemeResource AppUiFontFamily}"
+                        FontSize="13"
+                        FontWeight="SemiBold"
+                        Foreground="{ThemeResource AppInkBrush}"
+                        Text="Labels" />
+                    <TextBlock
+                        x:Uid="PagesRepoIssuePageTextBlockNoLabels"
+                        Grid.Row="1"
+                        Style="{StaticResource SectionSecondaryTextBlockStyle}"
+                        Text="No labels"
+                        Visibility="{x:Bind ViewModel.HasNoLabels, Converter={StaticResource BoolToVisibilityConverter}, Mode=OneWay}" />
+                    <ItemsControl
+                        x:Uid="PagesRepoIssuePageItemsControlIssueLabels"
+                        Grid.Row="1"
+                        AutomationProperties.Name="Issue labels"
+                        ItemTemplate="{StaticResource RepoIssueLabelTemplate}"
+                        ItemsSource="{x:Bind ViewModel.SelectedLabels, Mode=OneWay}"
+                        Visibility="{x:Bind ViewModel.HasLabels, Converter={StaticResource BoolToVisibilityConverter}, Mode=OneWay}" />
+                </Grid>
+
+                <Grid RowSpacing="8">
+                    <Grid.RowDefinitions>
+                        <RowDefinition Height="Auto" />
+                        <RowDefinition Height="Auto" />
+                    </Grid.RowDefinitions>
+                    <TextBlock
+                        x:Uid="PagesRepoIssuePageTextBlockMilestone"
+                        FontFamily="{ThemeResource AppUiFontFamily}"
+                        FontSize="13"
+                        FontWeight="SemiBold"
+                        Foreground="{ThemeResource AppInkBrush}"
+                        Text="Milestone" />
+                    <TextBlock Grid.Row="1" Style="{StaticResource SectionSecondaryTextBlockStyle}" Text="{x:Bind ViewModel.MilestoneTitle, Mode=OneWay}" />
+                </Grid>
+
+                <StackPanel Spacing="8">
+                    <Button
+                        x:Uid="PagesRepoIssuePageRepoIssuesInspectorMetadataButton"
+                        MinHeight="34"
+                        HorizontalAlignment="Stretch"
+                        AutomationProperties.AutomationId="RepoIssuesInspectorMetadataButton"
+                        AutomationProperties.Name="Manage issue metadata"
+                        Click="MetadataButton_Click"
+                        Content="Manage metadata"
+                        IsEnabled="{x:Bind ViewModel.CanManageIssueMetadata, Mode=OneWay}"
+                        Style="{StaticResource AppOutlineButtonStyle}" />
+                    <Button
+                        x:Uid="PagesRepoIssuePageRepoIssuesInspectorReactionsButton"
+                        MinHeight="34"
+                        HorizontalAlignment="Stretch"
+                        AutomationProperties.AutomationId="RepoIssuesInspectorReactionsButton"
+                        AutomationProperties.Name="Manage issue reactions"
+                        Click="ReactionsButton_Click"
+                        Content="Reactions"
+                        IsEnabled="{x:Bind ViewModel.CanReactToIssue, Mode=OneWay}"
+                        Style="{StaticResource AppOutlineButtonStyle}" />
+                </StackPanel>
+            </StackPanel>
+        </ScrollViewer>
+    </Border>
+</UserControl>

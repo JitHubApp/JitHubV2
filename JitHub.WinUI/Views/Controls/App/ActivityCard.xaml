@@ -53,8 +53,10 @@
 
             <common:Avatar
                 Margin="0,3,0,0"
+                AutomationInstanceId="{x:Bind ViewModel.EventId, Mode=OneWay}"
                 VerticalAlignment="Top"
                 Login="{x:Bind ViewModel.ActorLogin, Mode=OneWay}"
+                NavigationSource="dashboard_activity_actor"
                 ShowLogin="False"
                 Size="SMALL"
                 Url="{x:Bind ViewModel.ActorAvatarUrl, Mode=OneWay}" />

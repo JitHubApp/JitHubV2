@@ -10,9 +10,10 @@
     d:DesignWidth="400">
 
     <Button
-        Grid.Column="0"
+        x:Uid="ControlsCommonEmojiPanelButtonXBindGetLauncherAutomation" Grid.Column="0"
         Margin="0 0 4 0"
-        AutomationProperties.AutomationId="EmojiPanelLauncherButton"
+        AutomationProperties.AutomationId="{x:Bind GetLauncherAutomationId(AutomationInstanceId), Mode=OneWay}"
+        AutomationProperties.Name="Add reaction"
         Style="{StaticResource AppEmojiLauncherButtonStyle}">
         <Grid
             Width="24"
@@ -55,6 +56,7 @@
                         <RowDefinition Height="32"/>
                     </Grid.RowDefinitions>
                     <local:EmojiButton
+                        AutomationInstanceId="{x:Bind AutomationInstanceId, Mode=OneWay}"
                         Grid.Column="0"
                         Grid.Row="0"
                         Reaction="Plus1"
@@ -62,6 +64,7 @@
                         Voted="{x:Bind ViewModel.VotesMap, Converter={StaticResource ReactionVotesMapToBoolConverter}, ConverterParameter='Plus1',Mode=OneWay}"
                         ReactionCommand="{x:Bind ViewModel.ReactionCommand, Mode=OneWay}"/>
                     <local:EmojiButton
+                        AutomationInstanceId="{x:Bind AutomationInstanceId, Mode=OneWay}"
                         Grid.Column="1"
                         Grid.Row="0"
                         Reaction="Minus1"
@@ -69,6 +72,7 @@
                         Voted="{x:Bind ViewModel.VotesMap, Converter={StaticResource ReactionVotesMapToBoolConverter}, ConverterParameter='Minus1',Mode=OneWay}"
                         ReactionCommand="{x:Bind ViewModel.ReactionCommand, Mode=OneWay}"/>
                     <local:EmojiButton
+                        AutomationInstanceId="{x:Bind AutomationInstanceId, Mode=OneWay}"
                         Grid.Column="2"
                         Grid.Row="0"
                         Reaction="Laugh"
@@ -76,6 +80,7 @@
                         Voted="{x:Bind ViewModel.VotesMap, Converter={StaticResource ReactionVotesMapToBoolConverter}, ConverterParameter='Laugh',Mode=OneWay}"
                         ReactionCommand="{x:Bind ViewModel.ReactionCommand, Mode=OneWay}"/>
                     <local:EmojiButton
+                        AutomationInstanceId="{x:Bind AutomationInstanceId, Mode=OneWay}"
                         Grid.Column="3"
                         Grid.Row="0"
                         Reaction="Hooray"
@@ -83,6 +88,7 @@
                         Voted="{x:Bind ViewModel.VotesMap, Converter={StaticResource ReactionVotesMapToBoolConverter}, ConverterParameter='Hooray',Mode=OneWay}"
                         ReactionCommand="{x:Bind ViewModel.ReactionCommand, Mode=OneWay}"/>
                     <local:EmojiButton
+                        AutomationInstanceId="{x:Bind AutomationInstanceId, Mode=OneWay}"
                         Grid.Column="0"
                         Grid.Row="1"
                         Reaction="Confused"
@@ -90,6 +96,7 @@
                         Voted="{x:Bind ViewModel.VotesMap, Converter={StaticResource ReactionVotesMapToBoolConverter}, ConverterParameter='Confused',Mode=OneWay}"
                         ReactionCommand="{x:Bind ViewModel.ReactionCommand, Mode=OneWay}"/>
                     <local:EmojiButton
+                        AutomationInstanceId="{x:Bind AutomationInstanceId, Mode=OneWay}"
                         Grid.Column="1"
                         Grid.Row="1"
                         Reaction="Heart"
@@ -97,6 +104,7 @@
                         Voted="{x:Bind ViewModel.VotesMap, Converter={StaticResource ReactionVotesMapToBoolConverter}, ConverterParameter='Heart',Mode=OneWay}"
                         ReactionCommand="{x:Bind ViewModel.ReactionCommand, Mode=OneWay}"/>
                     <local:EmojiButton
+                        AutomationInstanceId="{x:Bind AutomationInstanceId, Mode=OneWay}"
                         Grid.Column="2"
                         Grid.Row="1"
                         Reaction="Rocket"
@@ -104,6 +112,7 @@
                         Voted="{x:Bind ViewModel.VotesMap, Converter={StaticResource ReactionVotesMapToBoolConverter}, ConverterParameter='Rocket',Mode=OneWay}"
                         ReactionCommand="{x:Bind ViewModel.ReactionCommand, Mode=OneWay}"/>
                     <local:EmojiButton
+                        AutomationInstanceId="{x:Bind AutomationInstanceId, Mode=OneWay}"
                         Grid.Column="3"
                         Grid.Row="1"
                         Reaction="Eyes"

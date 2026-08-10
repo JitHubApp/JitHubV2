@@ -7,13 +7,9 @@
     xmlns:controls="using:CommunityToolkit.WinUI.Controls"
     xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
     xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
-    xmlns:viewmodels="using:JitHub.WinUI.ViewModels"
     d:DesignHeight="300"
     d:DesignWidth="400"
     mc:Ignorable="d">
-    <UserControl.DataContext>
-        <viewmodels:MarkdownFormViewModel x:Name="ViewModel" />
-    </UserControl.DataContext>
     <Grid RowSpacing="8">
         <Grid.RowDefinitions>
             <RowDefinition Height="auto" />
@@ -21,14 +17,16 @@
             <RowDefinition Height="auto" />
         </Grid.RowDefinitions>
         <controls:Segmented
+            x:Uid="ControlsCommonMarkdownFormMarkdownModeSegmented" x:Name="ModeSegmented"
             Grid.Row="0"
             HorizontalAlignment="Left"
             AutomationProperties.AutomationId="MarkdownModeSegmented"
+            AutomationProperties.Name="Markdown editor mode"
             SelectedIndex="0"
             SelectionChanged="BodyModeSegmented_SelectionChanged"
             SelectionMode="Single">
-            <controls:SegmentedItem Content="Write" />
-            <controls:SegmentedItem Content="Preview" />
+            <controls:SegmentedItem x:Uid="ControlsCommonMarkdownFormMarkdownModeWrite" x:Name="WriteModeItem" AutomationProperties.AutomationId="MarkdownMode_Write" AutomationProperties.Name="Write Markdown" Content="Write" />
+            <controls:SegmentedItem x:Uid="ControlsCommonMarkdownFormMarkdownModePreview" x:Name="PreviewModeItem" AutomationProperties.AutomationId="MarkdownMode_Preview" AutomationProperties.Name="Preview Markdown" Content="Preview" />
         </controls:Segmented>
 
         <Grid
@@ -40,10 +38,13 @@
                 Value="{x:Bind ViewModel.SelectedBodyView, Mode=OneWay}">
                 <controls:Case Value="Write">
                     <TextBox
+                        x:Uid="ControlsCommonMarkdownFormMarkdownFormEditor" x:Name="EditorTextBox"
+                        AutomationProperties.AutomationId="MarkdownFormEditor"
+                        AutomationProperties.Name="Markdown text"
                         Style="{StaticResource AppTextBoxStyle}"
                         AcceptsReturn="True"
-                        Height="{x:Bind EditorHeight, Mode=OneWay}"
-                        MinHeight="{x:Bind EditorHeight, Mode=OneWay}"
+                        Height="{x:Bind EffectiveEditorHeight, Mode=OneWay}"
+                        MinHeight="{x:Bind EffectiveEditorHeight, Mode=OneWay}"
                         Padding="12"
                         ScrollViewer.HorizontalScrollBarVisibility="Disabled"
                         ScrollViewer.VerticalScrollBarVisibility="Auto"
@@ -53,20 +54,32 @@
                 </controls:Case>
                 <controls:Case Value="Preview">
                     <Border
-                        Height="{x:Bind EditorHeight, Mode=OneWay}"
+                        Height="{x:Bind EffectiveEditorHeight, Mode=OneWay}"
                         HorizontalAlignment="Stretch"
-                        MinHeight="{x:Bind EditorHeight, Mode=OneWay}"
+                        MinHeight="{x:Bind EffectiveEditorHeight, Mode=OneWay}"
                         Padding="12"
                         Background="{ThemeResource AppSurfaceBrush}"
                         BorderBrush="{ThemeResource AppOutlineBrush}"
                         BorderThickness="1"
                         CornerRadius="{ThemeResource AppRadiusMedium}"
                         VerticalAlignment="Top">
-                        <common:MarkdownViewer
-                            BaseUrl="https://github.com/"
-                            HorizontalAlignment="Stretch"
-                            VerticalAlignment="Stretch"
-                            Text="{x:Bind Text, Mode=OneWay}" />
+                        <ScrollViewer
+                            HorizontalScrollBarVisibility="Disabled"
+                            HorizontalScrollMode="Disabled"
+                            VerticalScrollBarVisibility="Auto"
+                            VerticalScrollMode="Enabled"
+                            ZoomMode="Disabled">
+                            <common:MarkdownViewer
+                                x:Uid="ControlsCommonMarkdownFormMarkdownPreview"
+                                HostKind="EditorPreview"
+                                x:Name="PreviewViewer"
+                                AutomationInstanceId="{x:Bind EffectivePreviewAutomationInstanceId, Mode=OneWay}"
+                                AutomationProperties.Name="Markdown preview"
+                                BaseUrl="https://github.com/"
+                                HorizontalAlignment="Stretch"
+                                VerticalAlignment="Top"
+                                Text="{x:Bind Text, Mode=OneWay}" />
+                        </ScrollViewer>
                     </Border>
                 </controls:Case>
             </controls:SwitchPresenter>

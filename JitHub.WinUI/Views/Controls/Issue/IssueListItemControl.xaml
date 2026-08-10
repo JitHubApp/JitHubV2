@@ -13,7 +13,7 @@
             Style="{StaticResource ListItemSecondaryTextBlockStyle}">
             <Run Text="#" />
             <Run Text="{Binding Number}" />
-            <Run Text=" by @" />
+            <Run x:Uid="ControlsIssueIssueListItemControlRunBy" Text=" by @" />
             <Run Text="{Binding User.Login}" />
         </TextBlock>
     </StackPanel>

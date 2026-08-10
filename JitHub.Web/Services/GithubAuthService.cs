@@ -12,17 +12,20 @@ internal sealed class GithubAuthService
     private readonly ILogger<GithubAuthService> _logger;
     private readonly IConfiguration _configuration;
     private readonly IHostEnvironment _environment;
+    private readonly OAuthRedirectUriPolicy _redirectPolicy;
 
     public GithubAuthService(
         HttpClient httpClient,
         ILogger<GithubAuthService> logger,
         IConfiguration configuration,
-        IHostEnvironment environment)
+        IHostEnvironment environment,
+        OAuthRedirectUriPolicy redirectPolicy)
     {
         _httpClient = httpClient;
         _logger = logger;
         _configuration = configuration;
         _environment = environment;
+        _redirectPolicy = redirectPolicy;
     }
 
     public async Task<string> ExchangeCodeForTokenAsync(
@@ -44,15 +47,9 @@ internal sealed class GithubAuthService
             ["code"] = code
         };
 
-        if (TryNormalizeRedirectUri(redirectUri, out string normalizedRedirectUri))
-        {
-            tokenRequestFields["redirect_uri"] = normalizedRedirectUri;
-            _logger.LogInformation("Exchanging GitHub OAuth code with redirect URI {RedirectUri}.", normalizedRedirectUri);
-        }
-        else
-        {
-            _logger.LogWarning("Exchanging GitHub OAuth code without a redirect URI.");
-        }
+        string normalizedRedirectUri = _redirectPolicy.RequireAllowed(redirectUri);
+        tokenRequestFields["redirect_uri"] = normalizedRedirectUri;
+        _logger.LogInformation("Exchanging GitHub OAuth code with an allowlisted redirect URI.");
 
         using HttpRequestMessage request = new(HttpMethod.Post, "login/oauth/access_token")
         {
@@ -152,29 +149,6 @@ internal sealed class GithubAuthService
 
         string? useProductionOAuth = GetSetting(UseProductionOAuthInDevelopmentSetting);
         return !string.Equals(useProductionOAuth, "true", StringComparison.OrdinalIgnoreCase);
-    }
-
-    private static bool TryNormalizeRedirectUri(string? redirectUri, out string normalizedRedirectUri)
-    {
-        normalizedRedirectUri = string.Empty;
-        if (string.IsNullOrWhiteSpace(redirectUri))
-        {
-            return false;
-        }
-
-        if (!Uri.TryCreate(redirectUri, UriKind.Absolute, out Uri? uri))
-        {
-            return false;
-        }
-
-        if (!string.Equals(uri.Scheme, Uri.UriSchemeHttps, StringComparison.OrdinalIgnoreCase) &&
-            !string.Equals(uri.Scheme, Uri.UriSchemeHttp, StringComparison.OrdinalIgnoreCase))
-        {
-            return false;
-        }
-
-        normalizedRedirectUri = uri.GetLeftPart(UriPartial.Path);
-        return true;
     }
 
     private string GetRequiredSetting(string name, string errorMessage, params string[] fallbackNames)

@@ -145,7 +145,7 @@ public class NewRepository
 
     public bool? HasWiki { get; set; }
 
-    public string LicenseTemplate { get; set; } = string.Empty;
+    public string? LicenseTemplate { get; set; }
 
     public RepositoryVisibility? Visibility { get; set; }
 }

@@ -52,7 +52,7 @@
 ## Project Structure
 
 - `JitHub.WinUI`: the desktop app
-- `JitHub.Web`: the website, `/authorize` callback page, and `/api/GithubCodeToToken` token-exchange API
+- `JitHub.Web`: the website, `/authorize` callback page, and short-lived OAuth handoff APIs
 - `JitHub.WinUI.Automation`: screenshot and UI smoke-test harness for the app design lab
 - `MarkdownRenderer`: native WinUI markdown renderer library, documented in [`docs/markdown-renderer`](docs/markdown-renderer/README.md)
 - `artifacts/EditorAssets/dist`: generated editor assets used by the desktop app; this folder is intentionally not checked in
@@ -100,7 +100,7 @@ Use this callback URL for local development:
 https://localhost:7284/authorize
 ```
 
-The callback route is `/authorize`, not `/auth/callback`. The authorize page calls the same-origin `/api/GithubCodeToToken` endpoint and then launches the app through the `jithub://` protocol callback.
+The callback route is `/authorize`, not `/auth/callback`. The authorize page exchanges GitHub's temporary code for a short-lived, one-time handoff and launches the app through the `jithub://` protocol callback. The bearer token never enters browser JavaScript or the protocol URI; the app redeems the handoff directly with a verifier stored in Windows Credential Locker.
 
 Configure the desktop app with your OAuth app's client ID and callback URL. You can use `JitHub.WinUI/appsettings.json` for local development or override values with these environment variables:
 
@@ -110,6 +110,17 @@ $env:JITHUB_OAUTH_CALLBACK_URL = "https://localhost:7284/authorize"
 ```
 
 Configure the web project with the matching OAuth client credentials using your preferred ASP.NET Core configuration source. Keep credentials local to your machine and do not commit them.
+
+Production web deployments also require a shared Redis connection and a Base64-encoded 32-byte handoff encryption key:
+
+```text
+ConnectionStrings__OAuthHandoffRedis=<Redis connection string>
+OAuthHandoff__EncryptionKey=<Base64-encoded 32-byte key>
+JITHUB_OAUTH_CALLBACK_URL=https://your-jithub-host.example/authorize
+```
+
+Redis provides the two-minute distributed TTL and atomic one-time consume semantics across app instances. The encryption key protects GitHub tokens stored in Redis. Production startup fails when either setting is absent; the in-memory backend is limited to the Development environment.
+The callback URL is also required in production and is matched exactly before JitHub exchanges an OAuth code. Development accepts the documented local launch callbacks and any additional loopback callback explicitly listed under `GitHubOAuth:DevelopmentCallbackUrls`.
 
 ## Editor Assets
 
@@ -139,7 +150,7 @@ To build Debug, apply a debug package identity with the Windows App CLI, and lau
 .\eng\Start-JitHubWinUIDebug.ps1
 ```
 
-This builds `JitHub.WinUI` as `Debug|x64`, runs `winapp create-debug-identity` against the built executable, and launches `JitHub.WinUI.exe`.
+This builds `JitHub.WinUI` as `Debug|x64`, removes stale development registrations, registers the dedicated `JitHub.WinUI.Debug` identity, and launches `JitHub.WinUI.exe`. Debug OAuth callbacks use `jithub-dev://`; Store and Release builds remain the sole owners of `jithub://`.
 
 To launch a different platform or pass app arguments:
 
@@ -147,6 +158,8 @@ To launch a different platform or pass app arguments:
 .\eng\Start-JitHubWinUIDebug.ps1 -Platform ARM64
 .\eng\Start-JitHubWinUIDebug.ps1 -AppArguments '--page=design-lab', '--theme=dark'
 ```
+
+Remove stale development identities without launching the app with `eng\Reset-JitHubWinUIDebugIdentity.ps1`. The cleanup is limited to development-mode registrations and preserves the installed Store package.
 
 ## Design Lab And Screenshot Proof
 

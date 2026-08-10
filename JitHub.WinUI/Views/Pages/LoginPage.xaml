@@ -10,7 +10,8 @@
     x:DataType="viewmodels:LoginPageViewModel"
     mc:Ignorable="d">
     <Grid
-        AutomationProperties.AutomationId="LoginRoot"
+        x:Uid="PagesLoginPageLoginRoot" AutomationProperties.AutomationId="LoginRoot"
+        AutomationProperties.Name="GitHub sign in"
         Padding="{ThemeResource AppPagePadding}"
         Background="{ThemeResource AppCanvasBrush}">
         <ScrollViewer VerticalScrollBarVisibility="Auto">
@@ -28,31 +29,46 @@
                         Spacing="0">
                         <TextBlock
                             Style="{StaticResource PageTitleTextBlockStyle}"
-                            Text="{Binding AppTitle}" />
+                            Text="{x:Bind ViewModel.AppTitle, Mode=OneWay}" />
                     </StackPanel>
 
                     <appcontrols:AppSurfaceCard
-                        MaxWidth="460"
+                        x:Uid="PagesLoginPageLoginCard" MaxWidth="460"
                         HorizontalAlignment="Left"
-                        AutomationProperties.AutomationId="LoginCard">
+                        AutomationProperties.AutomationId="LoginCard"
+                        AutomationProperties.Name="GitHub sign in">
                         <appcontrols:AppSurfaceCard.Child>
                             <StackPanel Spacing="16">
                                 <TextBlock
                                     Style="{StaticResource SectionTitleTextBlockStyle}"
-                                    Text="{Binding SignInTitle}" />
+                                    Text="{x:Bind ViewModel.SignInTitle, Mode=OneWay}" />
                                 <TextBlock
+                                    AutomationProperties.AutomationId="LoginStatusText"
                                     Style="{StaticResource SectionSecondaryTextBlockStyle}"
-                                    Text="{Binding StatusText}"
+                                    Text="{x:Bind ViewModel.StatusText, Mode=OneWay}"
                                     TextWrapping="WrapWholeWords" />
+                                <InfoBar
+                                    x:Uid="PagesLoginPageLoginErrorInfoBar" x:Name="LoginErrorInfoBar"
+                                    AutomationProperties.AutomationId="LoginErrorInfoBar"
+                                    AutomationProperties.LiveSetting="Assertive"
+                                    AutomationProperties.Name="GitHub sign-in error"
+                                    IsClosable="False"
+                                    IsOpen="{x:Bind ViewModel.HasLoginError, Mode=OneWay}"
+                                    Message="{x:Bind ViewModel.LoginErrorMessage, Mode=OneWay}"
+                                    Severity="Error"
+                                    Title="{x:Bind ViewModel.LoginErrorTitle, Mode=OneWay}" />
                                 <Button
+                                    x:Uid="PagesLoginPageLoginSignInButton" x:Name="LoginSignInButton"
+                                    AutomationProperties.AutomationId="LoginSignInButton"
+                                    AutomationProperties.Name="Continue with GitHub"
                                     Click="LoginButton_Click"
-                                    IsEnabled="{Binding IsLoginEnabled}"
+                                    IsEnabled="{x:Bind ViewModel.IsLoginEnabled, Mode=OneWay}"
                                     Style="{StaticResource PrimaryActionButtonStyle}">
                                     <StackPanel
                                         Orientation="Horizontal"
                                         Spacing="8">
                                         <FontIcon Glyph="&#xE72E;" />
-                                        <TextBlock Text="{Binding ContinueWithGitHubButtonText}" />
+                                        <TextBlock Text="{x:Bind ViewModel.ContinueWithGitHubButtonText, Mode=OneWay}" />
                                     </StackPanel>
                                 </Button>
                             </StackPanel>

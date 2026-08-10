@@ -2,14 +2,14 @@
     <Style x:Key="Container" TargetType="Border">
         <Setter Property="Padding" Value="{ThemeResource AppCardPadding}" />
         <Setter Property="CornerRadius" Value="{ThemeResource AppRadiusMedium}" />
-        <Setter Property="Background" Value="{ThemeResource AppCanvasRaisedBrush}" />
+        <Setter Property="Background" Value="{ThemeResource AppCardBrush}" />
         <Setter Property="BorderBrush" Value="{ThemeResource AppOutlineBrush}" />
         <Setter Property="BorderThickness" Value="1" />
     </Style>
     <Style x:Key="PlainContainer" TargetType="Border">
         <Setter Property="Padding" Value="{ThemeResource AppCardPadding}" />
         <Setter Property="CornerRadius" Value="{ThemeResource AppRadiusMedium}" />
-        <Setter Property="Background" Value="{ThemeResource AppSurfaceBrush}" />
+        <Setter Property="Background" Value="{ThemeResource AppCardBrush}" />
         <Setter Property="BorderBrush" Value="{ThemeResource AppOutlineBrush}" />
         <Setter Property="BorderThickness" Value="1" />
     </Style>
@@ -24,13 +24,19 @@
         <Setter Property="CornerRadius" Value="{ThemeResource AppRadiusMedium}" />
         <Setter Property="BorderBrush" Value="{ThemeResource AppOutlineBrush}" />
         <Setter Property="BorderThickness" Value="1" />
-        <Setter Property="Background" Value="{ThemeResource AppSurfaceBrush}" />
+        <Setter Property="Background" Value="{ThemeResource AppCardBrush}" />
     </Style>
     <Style x:Key="SectionCardBorderStyle" TargetType="Border">
         <Setter Property="Padding" Value="{ThemeResource AppCardPadding}" />
-        <Setter Property="Background" Value="{ThemeResource AppSurfaceBrush}" />
+        <Setter Property="Background" Value="{ThemeResource AppCardBrush}" />
         <Setter Property="BorderBrush" Value="{ThemeResource AppOutlineBrush}" />
         <Setter Property="BorderThickness" Value="1" />
         <Setter Property="CornerRadius" Value="{ThemeResource AppRadiusLarge}" />
+    </Style>
+    <Style x:Key="WorkspacePanelStyle" TargetType="Border">
+        <Setter Property="Background" Value="{ThemeResource AppRailBrush}" />
+        <Setter Property="BorderBrush" Value="{ThemeResource AppHairlineBrush}" />
+        <Setter Property="BorderThickness" Value="1" />
+        <Setter Property="CornerRadius" Value="{ThemeResource AppRadiusSmall}" />
     </Style>
 </ResourceDictionary>

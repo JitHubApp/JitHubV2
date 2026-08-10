@@ -9,6 +9,8 @@
                 <ColumnDefinition Width="*" />
             </Grid.ColumnDefinitions>
             <common:Avatar
+                AutomationInstanceId="{Binding ActorAutomationId, Mode=OneWay}"
+                NavigationSource="legacy_issue_timeline_actor"
                 Grid.Column="0"
                 HorizontalAlignment="Center"
                 Login="{Binding Actor.Login, Mode=OneWay}"
@@ -19,7 +21,7 @@
                 Orientation="Horizontal"
                 Spacing="4">
                 <TextBlock Text="{Binding Actor.Login, Mode=OneWay}" />
-                <TextBlock Text="was unassigned from this" />
+                <TextBlock x:Uid="DataTemplatesIssueEventUnassignedEventTextBlockWasUnassi" Text="was unassigned from this" />
                 <TextBlock Text="{Binding CreatedAt, Converter={StaticResource TimeAgoConverter}, ConverterParameter='', Mode=OneWay}" />
             </StackPanel>
         </Grid>

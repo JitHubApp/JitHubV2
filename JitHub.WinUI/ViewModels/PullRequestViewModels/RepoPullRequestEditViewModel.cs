@@ -11,6 +11,8 @@ using System.Linq;
 using System.Text;
 using System.Threading.Tasks;
 using System.Windows.Input;
+using JitHub.Services.Markdown;
+using MarkdownRenderer.Images;
 
 namespace JitHub.WinUI.ViewModels.PullRequestViewModels
 {
@@ -53,6 +55,17 @@ namespace JitHub.WinUI.ViewModels.PullRequestViewModels
         public ICommand CloseCommand { get; }
         public ICommand SubmitCommand { get; }
         public ICommand? SuccessCallbackCommand { get; set; }
+
+        public MarkdownDocumentSource? MarkdownSource => Repo?.Owner?.Login is string owner &&
+            !string.IsNullOrWhiteSpace(owner) &&
+            !string.IsNullOrWhiteSpace(Repo.Name) && PullRequest is not null
+                ? MarkdownDocumentSourceFactory.CreateRepositoryDocument(
+                    "pull-request-edit-draft",
+                    PullRequest.Id.ToString(),
+                    owner,
+                    Repo.Name,
+                    PullRequest.Base?.Ref ?? Repo.DefaultBranch)
+                : null;
 
         public RepoPullRequestEditViewModel() : base()
         {

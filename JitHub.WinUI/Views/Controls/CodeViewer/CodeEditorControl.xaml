@@ -10,12 +10,16 @@
     mc:Ignorable="d">
 
     <Grid
+        x:Name="EditorSurface"
         Background="{ThemeResource AppCanvasBrush}"
         BorderBrush="{ThemeResource AppOutlineBrush}"
         BorderThickness="1">
         <editor:CodeEditorControl
             x:Name="InnerEditor"
+            x:Uid="RepoCodeEditor"
             MinHeight="200"
+            AutomationProperties.AutomationId="RepoCodeEditor"
+            AutomationProperties.Name="Source code editor"
             HorizontalAlignment="Stretch"
             VerticalAlignment="Stretch" />
     </Grid>

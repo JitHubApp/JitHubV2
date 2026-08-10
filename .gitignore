@@ -443,4 +443,11 @@ artifacts/EditorAssets/dist/
 JitHub.WinUI/artifacts/
 JitHub.WinUI/EditorAssets/
 JitHub.WinUI/JitHub.WinUI/
+.tools/
+**/obj-auth/
+**/obj-ris*/
+**/obj-security/
+JitHub.WinUI.Tests/artifacts/
+MarkdownRenderer/artifacts/
+markdown-security-lifecycle-smoke/
 *.backup.png

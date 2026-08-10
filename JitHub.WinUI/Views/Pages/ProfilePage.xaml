@@ -2,14 +2,1044 @@
     x:Class="JitHub.WinUI.Views.Pages.ProfilePage"
     xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
     xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
-    xmlns:local="using:JitHub.WinUI.Views.Pages"
+    xmlns:common="using:JitHub.WinUI.Views.Controls.Common"
     xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+    xmlns:local="using:JitHub.WinUI.Views.Pages"
     xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
-    mc:Ignorable="d"
-    Background="{ThemeResource AppCanvasBrush}">
+    xmlns:profile="using:JitHub.WinUI.Views.Controls.Profile"
+    xmlns:vm="using:JitHub.WinUI.ViewModels.Pages"
+    x:Name="PageRoot"
+    Background="Transparent"
+    SizeChanged="Page_SizeChanged"
+    mc:Ignorable="d">
 
-    <Grid>
-        <TextBlock Text="User Profile"/>
+    <Page.Resources>
+        <profile:ProfileHexColorBrushConverter x:Key="ProfileHexColorBrushConverter" />
+
+        <DataTemplate x:Key="ProfileFactTemplate" x:DataType="vm:ProfileFactItem">
+            <Grid MinHeight="32">
+                <Button
+                    MinHeight="32"
+                    Padding="6,3"
+                    HorizontalAlignment="Stretch"
+                    HorizontalContentAlignment="Stretch"
+                    AutomationProperties.AutomationId="{x:Bind AutomationId, Mode=OneWay}"
+                    AutomationProperties.Name="{x:Bind AccessibleName, Mode=OneWay}"
+                    Click="ProfileFactButton_Click"
+                    Style="{StaticResource AppQuietButtonStyle}"
+                    Tag="{x:Bind}"
+                    ToolTipService.ToolTip="{x:Bind OpenLabel, Mode=OneWay}"
+                    Visibility="{x:Bind IsActionable, Converter={StaticResource BoolToVisibilityConverter}, Mode=OneWay}">
+                    <Button.ContextFlyout>
+                        <MenuFlyout>
+                            <MenuFlyoutItem
+                                AutomationProperties.AutomationId="{x:Bind OpenAutomationId, Mode=OneWay}"
+                                AutomationProperties.Name="{x:Bind OpenLabel, Mode=OneWay}"
+                                Click="ProfileFactOpenMenuItem_Click"
+                                Icon="OpenFile"
+                                Tag="{x:Bind}"
+                                Text="{x:Bind OpenLabel, Mode=OneWay}" />
+                            <MenuFlyoutItem
+                                AutomationProperties.AutomationId="{x:Bind CopyAutomationId, Mode=OneWay}"
+                                AutomationProperties.Name="{x:Bind CopyLabel, Mode=OneWay}"
+                                Click="ProfileFactCopyMenuItem_Click"
+                                Icon="Copy"
+                                Tag="{x:Bind}"
+                                Text="{x:Bind CopyLabel, Mode=OneWay}" />
+                        </MenuFlyout>
+                    </Button.ContextFlyout>
+                    <Grid ColumnSpacing="10">
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="20" />
+                            <ColumnDefinition Width="*" />
+                        </Grid.ColumnDefinitions>
+                        <FontIcon
+                            VerticalAlignment="Center"
+                            FontFamily="{ThemeResource SegoeFluentIcons}"
+                            FontSize="13"
+                            Foreground="{ThemeResource AppAccentBrush}"
+                            Glyph="{x:Bind Glyph}" />
+                        <TextBlock
+                            Grid.Column="1"
+                            VerticalAlignment="Center"
+                            Foreground="{ThemeResource AppAccentBrush}"
+                            Style="{StaticResource CaptionTextBlockStyle}"
+                            Text="{x:Bind Text}"
+                            TextTrimming="CharacterEllipsis"
+                            TextWrapping="Wrap" />
+                    </Grid>
+                </Button>
+                <Grid
+                    MinHeight="32"
+                    Padding="6,3"
+                    ColumnSpacing="10"
+                    AutomationProperties.AccessibilityView="Content"
+                    AutomationProperties.AutomationId="{x:Bind AutomationId, Mode=OneWay}"
+                    AutomationProperties.Name="{x:Bind AccessibleName, Mode=OneWay}"
+                    Visibility="{x:Bind IsPassive, Converter={StaticResource BoolToVisibilityConverter}, Mode=OneWay}">
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="20" />
+                        <ColumnDefinition Width="*" />
+                    </Grid.ColumnDefinitions>
+                    <FontIcon
+                        VerticalAlignment="Center"
+                        FontFamily="{ThemeResource SegoeFluentIcons}"
+                        FontSize="13"
+                        Foreground="{ThemeResource AppInkMutedBrush}"
+                        Glyph="{x:Bind Glyph}" />
+                    <TextBlock
+                        Grid.Column="1"
+                        VerticalAlignment="Center"
+                        Foreground="{ThemeResource AppInkMutedBrush}"
+                        Style="{StaticResource CaptionTextBlockStyle}"
+                        Text="{x:Bind Text}"
+                        TextTrimming="CharacterEllipsis"
+                        TextWrapping="Wrap" />
+                </Grid>
+            </Grid>
+        </DataTemplate>
+
+        <DataTemplate x:Key="ProfileHighlightTemplate" x:DataType="vm:ProfileHighlightViewItem">
+            <Border
+                Margin="0,0,0,6"
+                Padding="10,7"
+                Background="{ThemeResource AppCanvasInsetBrush}"
+                BorderBrush="{ThemeResource AppHairlineBrush}"
+                BorderThickness="1"
+                CornerRadius="{ThemeResource AppRadiusSmall}">
+                <Grid ColumnSpacing="8">
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="20" />
+                        <ColumnDefinition Width="*" />
+                    </Grid.ColumnDefinitions>
+                    <FontIcon
+                        FontFamily="{ThemeResource SegoeFluentIcons}"
+                        FontSize="13"
+                        Foreground="{ThemeResource AppAccentBrush}"
+                        Glyph="{x:Bind Glyph}" />
+                    <TextBlock
+                        Grid.Column="1"
+                        VerticalAlignment="Center"
+                        Foreground="{ThemeResource AppInkBrush}"
+                        Style="{StaticResource CaptionTextBlockStyle}"
+                        Text="{x:Bind Label}" />
+                </Grid>
+            </Border>
+        </DataTemplate>
+
+        <DataTemplate x:Key="ProfileOrganizationTemplate" x:DataType="vm:ProfileOrganizationViewItem">
+            <Button
+                Margin="0,0,0,4"
+                HorizontalAlignment="Stretch"
+                HorizontalContentAlignment="Stretch"
+                AutomationProperties.AutomationId="{x:Bind AutomationId, Mode=OneWay}"
+                AutomationProperties.Name="{x:Bind AccessibleName, Mode=OneWay}"
+                Click="OrganizationButton_Click"
+                Style="{StaticResource AppQuietButtonStyle}"
+                Tag="{x:Bind}">
+                <Grid MinHeight="40" ColumnSpacing="10">
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="32" />
+                        <ColumnDefinition Width="*" />
+                    </Grid.ColumnDefinitions>
+                    <common:CachedImage
+                        Width="28"
+                        Height="28"
+                        SourceUrl="{x:Bind AvatarUrl, Mode=OneWay}"
+                        Stretch="UniformToFill" />
+                    <StackPanel Grid.Column="1" VerticalAlignment="Center" Spacing="1">
+                        <TextBlock
+                            Foreground="{ThemeResource AppInkBrush}"
+                            FontWeight="SemiBold"
+                            Style="{StaticResource CaptionTextBlockStyle}"
+                            Text="{x:Bind Login, Mode=OneWay}"
+                            TextTrimming="CharacterEllipsis" />
+                        <TextBlock
+                            Foreground="{ThemeResource AppInkSubtleBrush}"
+                            Style="{StaticResource CaptionTextBlockStyle}"
+                            Text="{x:Bind Description, Mode=OneWay}"
+                            TextTrimming="CharacterEllipsis" />
+                    </StackPanel>
+                </Grid>
+            </Button>
+        </DataTemplate>
+
+        <DataTemplate x:Key="ProfilePinnedRepositoryTemplate" x:DataType="vm:ProfileRepositoryViewItem">
+            <Button
+                Margin="0,0,0,8"
+                HorizontalAlignment="Stretch"
+                HorizontalContentAlignment="Stretch"
+                AutomationProperties.AutomationId="{x:Bind AutomationId, Mode=OneWay}"
+                AutomationProperties.Name="{x:Bind AccessibleName, Mode=OneWay}"
+                Click="RepositoryButton_Click"
+                Style="{StaticResource AppQuietButtonStyle}"
+                Tag="{x:Bind}">
+                <Border
+                    Padding="14,12"
+                    Background="{ThemeResource AppCanvasInsetBrush}"
+                    BorderBrush="{ThemeResource AppHairlineBrush}"
+                    BorderThickness="1"
+                    CornerRadius="{ThemeResource AppRadiusSmall}">
+                    <Grid RowSpacing="6">
+                        <Grid.RowDefinitions>
+                            <RowDefinition Height="Auto" />
+                            <RowDefinition Height="Auto" />
+                            <RowDefinition Height="Auto" />
+                        </Grid.RowDefinitions>
+                        <Grid ColumnSpacing="8">
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="Auto" />
+                                <ColumnDefinition Width="*" />
+                                <ColumnDefinition Width="Auto" />
+                            </Grid.ColumnDefinitions>
+                            <FontIcon
+                                FontFamily="{ThemeResource SegoeFluentIcons}"
+                                FontSize="14"
+                                Foreground="{ThemeResource AppAccentBrush}"
+                                Glyph="&#xE8B7;" />
+                            <TextBlock
+                                Grid.Column="1"
+                                Foreground="{ThemeResource AppInkBrush}"
+                                FontWeight="SemiBold"
+                                Style="{StaticResource BodyTextBlockStyle}"
+                                Text="{x:Bind FullName, Mode=OneWay}"
+                                TextTrimming="CharacterEllipsis" />
+                            <TextBlock
+                                Grid.Column="2"
+                                Foreground="{ThemeResource AppInkSubtleBrush}"
+                                Style="{StaticResource CaptionTextBlockStyle}"
+                                Text="{x:Bind VisibilityText, Mode=OneWay}" />
+                        </Grid>
+                        <TextBlock
+                            Grid.Row="1"
+                            MaxLines="2"
+                            Foreground="{ThemeResource AppInkSubtleBrush}"
+                            Style="{StaticResource CaptionTextBlockStyle}"
+                            Text="{x:Bind Description, Mode=OneWay}"
+                            TextTrimming="CharacterEllipsis"
+                            TextWrapping="Wrap" />
+                        <StackPanel Grid.Row="2" Orientation="Horizontal" Spacing="12">
+                            <StackPanel Orientation="Horizontal" Spacing="5">
+                                <Ellipse
+                                    Width="7"
+                                    Height="7"
+                                    VerticalAlignment="Center"
+                                    Fill="{x:Bind LanguageColor, Converter={StaticResource ProfileHexColorBrushConverter}, Mode=OneWay}" />
+                                <TextBlock
+                                    Foreground="{ThemeResource AppInkSubtleBrush}"
+                                    Style="{StaticResource CaptionTextBlockStyle}"
+                                    Text="{x:Bind Language, Mode=OneWay}" />
+                            </StackPanel>
+                            <TextBlock
+                                Foreground="{ThemeResource AppInkSubtleBrush}"
+                                Style="{StaticResource CaptionTextBlockStyle}"
+                                Text="{x:Bind StarsText, Mode=OneWay}" />
+                            <TextBlock
+                                Foreground="{ThemeResource AppInkSubtleBrush}"
+                                Style="{StaticResource CaptionTextBlockStyle}"
+                                Text="{x:Bind UpdatedText, Mode=OneWay}" />
+                        </StackPanel>
+                    </Grid>
+                </Border>
+            </Button>
+        </DataTemplate>
+
+        <DataTemplate x:Key="ProfileRepositoryRowTemplate" x:DataType="vm:ProfileRepositoryViewItem">
+            <Grid MinHeight="72" Padding="10,8" ColumnSpacing="12">
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="36" />
+                    <ColumnDefinition Width="*" />
+                    <ColumnDefinition Width="Auto" />
+                </Grid.ColumnDefinitions>
+                <common:Avatar
+                    AutomationInstanceId="{x:Bind AutomationId, Mode=OneWay}"
+                    Size="SMALL"
+                    IsProfileNavigationEnabled="True"
+                    Login="{x:Bind OwnerLogin, Mode=OneWay}"
+                    NavigationSource="profile_repository_owner"
+                    ShowLogin="False"
+                    Url="{x:Bind OwnerAvatarUrl, Mode=OneWay}" />
+                <StackPanel Grid.Column="1" VerticalAlignment="Center" Spacing="3">
+                    <TextBlock
+                        Foreground="{ThemeResource AppInkBrush}"
+                        FontWeight="SemiBold"
+                        Style="{StaticResource BodyTextBlockStyle}"
+                        Text="{x:Bind FullName, Mode=OneWay}"
+                        TextTrimming="CharacterEllipsis" />
+                    <TextBlock
+                        MaxLines="1"
+                        Foreground="{ThemeResource AppInkSubtleBrush}"
+                        Style="{StaticResource CaptionTextBlockStyle}"
+                        Text="{x:Bind Description, Mode=OneWay}"
+                        TextTrimming="CharacterEllipsis" />
+                    <StackPanel Orientation="Horizontal" Spacing="12">
+                        <StackPanel Orientation="Horizontal" Spacing="5">
+                            <Ellipse
+                                Width="7"
+                                Height="7"
+                                VerticalAlignment="Center"
+                                Fill="{x:Bind LanguageColor, Converter={StaticResource ProfileHexColorBrushConverter}, Mode=OneWay}" />
+                            <TextBlock
+                                Foreground="{ThemeResource AppInkSubtleBrush}"
+                                Style="{StaticResource CaptionTextBlockStyle}"
+                                Text="{x:Bind Language, Mode=OneWay}" />
+                        </StackPanel>
+                        <TextBlock
+                            Foreground="{ThemeResource AppInkSubtleBrush}"
+                            Style="{StaticResource CaptionTextBlockStyle}"
+                            Text="{x:Bind StarsText, Mode=OneWay}" />
+                    </StackPanel>
+                </StackPanel>
+                <StackPanel Grid.Column="2" HorizontalAlignment="Right" VerticalAlignment="Center" Spacing="4">
+                    <TextBlock
+                        HorizontalAlignment="Right"
+                        Foreground="{ThemeResource AppInkMutedBrush}"
+                        Style="{StaticResource CaptionTextBlockStyle}"
+                        Text="{x:Bind VisibilityText, Mode=OneWay}" />
+                    <TextBlock
+                        HorizontalAlignment="Right"
+                        Foreground="{ThemeResource AppInkSubtleBrush}"
+                        Style="{StaticResource CaptionTextBlockStyle}"
+                        Text="{x:Bind UpdatedText, Mode=OneWay}" />
+                </StackPanel>
+            </Grid>
+        </DataTemplate>
+
+        <DataTemplate x:Key="ProfilePersonRowTemplate" x:DataType="vm:ProfilePersonItem">
+            <Grid MinHeight="64" Padding="10,8" ColumnSpacing="12">
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="40" />
+                    <ColumnDefinition Width="*" />
+                </Grid.ColumnDefinitions>
+                <common:Avatar
+                    AutomationInstanceId="{x:Bind AutomationId, Mode=OneWay}"
+                    Size="SMALL"
+                    IsProfileNavigationEnabled="True"
+                    Login="{x:Bind Login, Mode=OneWay}"
+                    NavigationSource="profile_people"
+                    ShowLogin="False"
+                    Url="{x:Bind AvatarUrl, Mode=OneWay}" />
+                <StackPanel Grid.Column="1" VerticalAlignment="Center" Spacing="3">
+                    <TextBlock
+                        Foreground="{ThemeResource AppInkBrush}"
+                        FontWeight="SemiBold"
+                        Style="{StaticResource BodyTextBlockStyle}"
+                        Text="{x:Bind DisplayName, Mode=OneWay}"
+                        TextTrimming="CharacterEllipsis" />
+                    <TextBlock
+                        Foreground="{ThemeResource AppInkSubtleBrush}"
+                        Style="{StaticResource CaptionTextBlockStyle}"
+                        Text="{x:Bind Subtitle, Mode=OneWay}"
+                        TextTrimming="CharacterEllipsis" />
+                </StackPanel>
+            </Grid>
+        </DataTemplate>
+
+        <DataTemplate x:Key="ProfileActivityRowTemplate" x:DataType="vm:ProfileActivityItem">
+            <Grid MinHeight="64" Padding="10,8" ColumnSpacing="12">
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="28" />
+                    <ColumnDefinition Width="*" />
+                    <ColumnDefinition Width="Auto" />
+                </Grid.ColumnDefinitions>
+                <FontIcon
+                    Margin="0,2,0,0"
+                    VerticalAlignment="Top"
+                    FontFamily="{ThemeResource SegoeFluentIcons}"
+                    FontSize="15"
+                    Foreground="{ThemeResource AppAccentBrush}"
+                    Glyph="{x:Bind Glyph, Mode=OneWay}" />
+                <StackPanel Grid.Column="1" Spacing="3">
+                    <TextBlock
+                        MaxLines="2"
+                        Foreground="{ThemeResource AppInkBrush}"
+                        Style="{StaticResource BodyTextBlockStyle}"
+                        Text="{x:Bind Summary, Mode=OneWay}"
+                        TextWrapping="Wrap" />
+                    <TextBlock
+                        Foreground="{ThemeResource AppAccentBrush}"
+                        Style="{StaticResource CaptionTextBlockStyle}"
+                        Text="{x:Bind RepositoryFullName, Mode=OneWay}"
+                        TextTrimming="CharacterEllipsis" />
+                </StackPanel>
+                <TextBlock
+                    Grid.Column="2"
+                    VerticalAlignment="Top"
+                    Foreground="{ThemeResource AppInkSubtleBrush}"
+                    Style="{StaticResource CaptionTextBlockStyle}"
+                    Text="{x:Bind TimeText, Mode=OneWay}" />
+            </Grid>
+        </DataTemplate>
+    </Page.Resources>
+
+    <Grid
+        x:Uid="PagesProfilePageProfilePageRoot" x:Name="ProfileRoot"
+        Padding="28,24"
+        AutomationProperties.AccessibilityView="Control"
+        AutomationProperties.AutomationId="ProfilePageRoot"
+        AutomationProperties.Name="User profile">
+        <Grid
+            x:Uid="PagesProfilePageProfileBoard" x:Name="ProfileBoard"
+            MaxWidth="1180"
+            HorizontalAlignment="Stretch"
+            VerticalAlignment="Stretch"
+            ColumnSpacing="18"
+            AutomationProperties.AccessibilityView="Control"
+            AutomationProperties.AutomationId="ProfileBoard"
+            AutomationProperties.Name="Profile workspace">
+            <Grid.ColumnDefinitions>
+                <ColumnDefinition x:Name="IdentityColumn" Width="304" />
+                <ColumnDefinition Width="*" />
+            </Grid.ColumnDefinitions>
+            <Grid.RowDefinitions>
+                <RowDefinition x:Name="CompactIdentityRow" Height="0" />
+                <RowDefinition Height="*" />
+            </Grid.RowDefinitions>
+
+            <Border
+                x:Name="IdentityRail"
+                Grid.RowSpan="2"
+                Grid.Column="0"
+                Padding="18"
+                Background="{ThemeResource AppSurfaceSubtleBrush}"
+                BorderBrush="{ThemeResource AppHairlineBrush}"
+                BorderThickness="1"
+                CornerRadius="{ThemeResource AppRadiusSmall}">
+                <ScrollViewer
+                    x:Name="ProfileIdentityScrollViewer"
+                    AutomationProperties.AutomationId="ProfileIdentityScrollViewer"
+                    HorizontalScrollBarVisibility="Disabled"
+                    HorizontalScrollMode="Disabled"
+                    VerticalScrollBarVisibility="Auto"
+                    VerticalScrollMode="Auto">
+                    <StackPanel Spacing="14">
+                        <Border
+                            Width="72"
+                            Height="72"
+                            CornerRadius="36"
+                            AutomationProperties.AccessibilityView="Raw">
+                            <common:CachedImage
+                                SourceUrl="{x:Bind ViewModel.AvatarUrl, Mode=OneWay}"
+                                Stretch="UniformToFill" />
+                        </Border>
+                        <StackPanel Spacing="3">
+                            <TextBlock
+                                AutomationProperties.AutomationId="ProfileDisplayName"
+                                FontFamily="{ThemeResource AppDisplayFontFamily}"
+                                FontSize="30"
+                                Foreground="{ThemeResource AppInkBrush}"
+                                Text="{x:Bind ViewModel.DisplayNameText, Mode=OneWay}"
+                                TextWrapping="Wrap" />
+                            <TextBlock
+                                AutomationProperties.AutomationId="ProfileLogin"
+                                FontFamily="{ThemeResource AppMonoFontFamily}"
+                                Foreground="{ThemeResource AppInkMutedBrush}"
+                                Style="{StaticResource BodyTextBlockStyle}"
+                                Text="{x:Bind ViewModel.LoginText, Mode=OneWay}" />
+                        </StackPanel>
+                        <TextBlock
+                            Foreground="{ThemeResource AppInkBrush}"
+                            Style="{StaticResource BodyTextBlockStyle}"
+                            Text="{x:Bind ViewModel.BioText, Mode=OneWay}"
+                            TextWrapping="Wrap" />
+                        <Border
+                            Padding="10,8"
+                            Background="{ThemeResource AppCanvasInsetBrush}"
+                            CornerRadius="{ThemeResource AppRadiusSmall}"
+                            Visibility="{x:Bind ViewModel.HasStatusMessage, Converter={StaticResource BoolToVisibilityConverter}, Mode=OneWay}">
+                            <StackPanel Orientation="Horizontal" Spacing="6">
+                                <TextBlock Text="{x:Bind ViewModel.StatusEmojiText, Mode=OneWay}" />
+                                <TextBlock
+                                    Foreground="{ThemeResource AppInkBrush}"
+                                    Style="{StaticResource CaptionTextBlockStyle}"
+                                    Text="{x:Bind ViewModel.StatusMessageText, Mode=OneWay}"
+                                    TextWrapping="Wrap" />
+                            </StackPanel>
+                        </Border>
+                        <StackPanel Orientation="Horizontal" Spacing="8">
+                            <Button
+                                x:Uid="PagesProfilePageProfileEditButton" x:Name="ProfileEditButton"
+                                AutomationProperties.AutomationId="ProfileEditButton"
+                                AutomationProperties.Name="Edit profile"
+                                Click="EditProfileButton_Click"
+                                Content="Edit profile"
+                                Style="{StaticResource AppAccentButtonStyle}"
+                                Visibility="{x:Bind ViewModel.IsEditVisible, Converter={StaticResource BoolToVisibilityConverter}, Mode=OneWay}" />
+                            <Button
+                                x:Name="ProfileFollowButton"
+                                AutomationProperties.AutomationId="ProfileFollowButton"
+                                AutomationProperties.Name="{x:Bind ViewModel.FollowButtonText, Mode=OneWay}"
+                                Command="{x:Bind ViewModel.ToggleFollowCommand}"
+                                Content="{x:Bind ViewModel.FollowButtonText, Mode=OneWay}"
+                                Style="{StaticResource AppAccentButtonStyle}"
+                                Visibility="{x:Bind ViewModel.IsFollowVisible, Converter={StaticResource BoolToVisibilityConverter}, Mode=OneWay}" />
+                            <Button
+                                x:Uid="PagesProfilePageProfileStarsLibraryButton" x:Name="ProfileStarsLibraryButton"
+                                AutomationProperties.AutomationId="ProfileStarsLibraryButton"
+                                AutomationProperties.Name="Open Stars library"
+                                Click="StarsLibraryButton_Click"
+                                Style="{StaticResource AppToolbarButtonStyle}"
+                                ToolTipService.ToolTip="Open Stars library"
+                                Visibility="{x:Bind ViewModel.IsEditVisible, Converter={StaticResource BoolToVisibilityConverter}, Mode=OneWay}">
+                                <FontIcon Glyph="&#xE734;" />
+                            </Button>
+                            <Button
+                                x:Uid="PagesProfilePageProfileMoreButton" x:Name="ProfileMoreButton"
+                                AutomationProperties.AutomationId="ProfileMoreButton"
+                                AutomationProperties.Name="More profile actions"
+                                Style="{StaticResource AppToolbarButtonStyle}"
+                                ToolTipService.ToolTip="More profile actions">
+                                <FontIcon Glyph="&#xE712;" />
+                                <Button.Flyout>
+                                    <MenuFlyout>
+                                        <MenuFlyoutItem
+                                            x:Uid="PagesProfilePageProfileOpenOnGitHubMenuItem" AutomationProperties.AutomationId="ProfileOpenOnGitHubMenuItem"
+                                            AutomationProperties.Name="Open profile on GitHub"
+                                            Click="OpenOnGitHubButton_Click"
+                                            IsEnabled="{x:Bind ViewModel.IsOpenProfileEnabled, Mode=OneWay}"
+                                            Text="Open on GitHub" />
+                                    </MenuFlyout>
+                                </Button.Flyout>
+                            </Button>
+                        </StackPanel>
+
+                        <Grid ColumnSpacing="8" RowSpacing="8">
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="*" />
+                                <ColumnDefinition Width="*" />
+                            </Grid.ColumnDefinitions>
+                            <Grid.RowDefinitions>
+                                <RowDefinition Height="Auto" />
+                                <RowDefinition Height="Auto" />
+                            </Grid.RowDefinitions>
+                            <Button
+                                x:Uid="PagesProfilePageProfileReposStatTile" HorizontalAlignment="Stretch"
+                                MinHeight="58"
+                                AutomationProperties.AutomationId="ProfileReposStatTile"
+                                AutomationProperties.Name="Open account repositories"
+                                Click="RepositoriesStatButton_Click"
+                                Style="{StaticResource AppStatButtonStyle}">
+                                <StackPanel>
+                                    <TextBlock FontWeight="SemiBold" Text="{x:Bind ViewModel.RepositoriesText, Mode=OneWay}" />
+                                    <TextBlock x:Uid="PagesProfilePageTextBlockPublicRepos" Foreground="{ThemeResource AppInkSubtleBrush}" Style="{StaticResource CaptionTextBlockStyle}" Text="Public repos" />
+                                </StackPanel>
+                            </Button>
+                            <Button
+                                x:Uid="PagesProfilePageProfileFollowersStatTile" Grid.Column="1"
+                                HorizontalAlignment="Stretch"
+                                MinHeight="58"
+                                AutomationProperties.AutomationId="ProfileFollowersStatTile"
+                                AutomationProperties.Name="Open followers"
+                                Click="FollowersStatButton_Click"
+                                Style="{StaticResource AppStatButtonStyle}">
+                                <StackPanel>
+                                    <TextBlock FontWeight="SemiBold" Text="{x:Bind ViewModel.FollowersText, Mode=OneWay}" />
+                                    <TextBlock x:Uid="PagesProfilePageTextBlockFollowers" Foreground="{ThemeResource AppInkSubtleBrush}" Style="{StaticResource CaptionTextBlockStyle}" Text="Followers" />
+                                </StackPanel>
+                            </Button>
+                            <Button
+                                x:Uid="PagesProfilePageProfileFollowingStatTile" Grid.Row="1"
+                                HorizontalAlignment="Stretch"
+                                MinHeight="58"
+                                AutomationProperties.AutomationId="ProfileFollowingStatTile"
+                                AutomationProperties.Name="Open following"
+                                Click="FollowingStatButton_Click"
+                                Style="{StaticResource AppStatButtonStyle}">
+                                <StackPanel>
+                                    <TextBlock FontWeight="SemiBold" Text="{x:Bind ViewModel.FollowingText, Mode=OneWay}" />
+                                    <TextBlock x:Uid="PagesProfilePageTextBlockFollowing" Foreground="{ThemeResource AppInkSubtleBrush}" Style="{StaticResource CaptionTextBlockStyle}" Text="Following" />
+                                </StackPanel>
+                            </Button>
+                            <Button
+                                x:Uid="PagesProfilePageProfileGistsStatTile" Grid.Row="1"
+                                Grid.Column="1"
+                                HorizontalAlignment="Stretch"
+                                MinHeight="58"
+                                AutomationProperties.AutomationId="ProfileGistsStatTile"
+                                AutomationProperties.Name="Open public gists"
+                                Click="GistsStatButton_Click"
+                                Style="{StaticResource AppStatButtonStyle}">
+                                <StackPanel>
+                                    <TextBlock FontWeight="SemiBold" Text="{x:Bind ViewModel.GistsText, Mode=OneWay}" />
+                                    <TextBlock x:Uid="PagesProfilePageTextBlockPublicGists" Foreground="{ThemeResource AppInkSubtleBrush}" Style="{StaticResource CaptionTextBlockStyle}" Text="Public gists" />
+                                </StackPanel>
+                            </Button>
+                        </Grid>
+
+                        <ItemsRepeater ItemsSource="{x:Bind ViewModel.Facts, Mode=OneWay}" ItemTemplate="{StaticResource ProfileFactTemplate}" />
+
+                        <StackPanel Spacing="8" Visibility="{x:Bind ViewModel.HasHighlights, Converter={StaticResource BoolToVisibilityConverter}, Mode=OneWay}">
+                            <TextBlock x:Uid="PagesProfilePageTextBlockHighlights" FontWeight="SemiBold" Foreground="{ThemeResource AppInkBrush}" Style="{StaticResource BodyTextBlockStyle}" Text="Highlights" />
+                            <ItemsRepeater ItemsSource="{x:Bind ViewModel.Highlights, Mode=OneWay}" ItemTemplate="{StaticResource ProfileHighlightTemplate}" />
+                        </StackPanel>
+
+                        <StackPanel Spacing="8" Visibility="{x:Bind ViewModel.HasOrganizations, Converter={StaticResource BoolToVisibilityConverter}, Mode=OneWay}">
+                            <TextBlock x:Uid="PagesProfilePageTextBlockOrganizations" FontWeight="SemiBold" Foreground="{ThemeResource AppInkBrush}" Style="{StaticResource BodyTextBlockStyle}" Text="Organizations" />
+                            <ItemsRepeater ItemsSource="{x:Bind ViewModel.Organizations, Mode=OneWay}" ItemTemplate="{StaticResource ProfileOrganizationTemplate}" />
+                        </StackPanel>
+                    </StackPanel>
+                </ScrollViewer>
+            </Border>
+
+            <Border
+                x:Name="CompactIdentityPanel"
+                Grid.Row="0"
+                Grid.ColumnSpan="2"
+                Padding="14,12"
+                Background="{ThemeResource AppSurfaceSubtleBrush}"
+                BorderBrush="{ThemeResource AppHairlineBrush}"
+                BorderThickness="1"
+                CornerRadius="{ThemeResource AppRadiusSmall}"
+                Visibility="Collapsed">
+                <Grid x:Name="CompactIdentityGrid" MinWidth="0" ColumnSpacing="12" RowSpacing="8">
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="Auto" />
+                        <ColumnDefinition Width="*" />
+                        <ColumnDefinition Width="Auto" />
+                    </Grid.ColumnDefinitions>
+                    <Grid.RowDefinitions>
+                        <RowDefinition Height="Auto" />
+                        <RowDefinition Height="Auto" />
+                    </Grid.RowDefinitions>
+                    <Border
+                        Width="48"
+                        Height="48"
+                        CornerRadius="24"
+                        AutomationProperties.AccessibilityView="Raw">
+                        <common:CachedImage
+                            SourceUrl="{x:Bind ViewModel.AvatarUrl, Mode=OneWay}"
+                            Stretch="UniformToFill" />
+                    </Border>
+                    <StackPanel Grid.Column="1" VerticalAlignment="Center" Spacing="2">
+                        <TextBlock
+                            FontFamily="{ThemeResource AppDisplayFontFamily}"
+                            FontSize="22"
+                            Foreground="{ThemeResource AppInkBrush}"
+                            Text="{x:Bind ViewModel.DisplayNameText, Mode=OneWay}"
+                            TextTrimming="CharacterEllipsis" />
+                        <TextBlock
+                            FontFamily="{ThemeResource AppMonoFontFamily}"
+                            Foreground="{ThemeResource AppInkMutedBrush}"
+                            Style="{StaticResource CaptionTextBlockStyle}"
+                            Text="{x:Bind ViewModel.LoginText, Mode=OneWay}" />
+                    </StackPanel>
+                    <StackPanel
+                        x:Name="CompactIdentityActions"
+                        Grid.Column="2"
+                        Style="{StaticResource AppWorkspaceHeaderActionsStyle}">
+                        <Button
+                            x:Name="ProfileCompactEditButton"
+                            x:Uid="PagesProfilePageProfileCompactEditButton" AutomationProperties.AutomationId="ProfileCompactEditButton"
+                            AutomationProperties.Name="Edit profile"
+                            Click="EditProfileButton_Click"
+                            Style="{StaticResource AppToolbarButtonStyle}"
+                            ToolTipService.ToolTip="Edit profile"
+                            Visibility="{x:Bind ViewModel.IsEditVisible, Converter={StaticResource BoolToVisibilityConverter}, Mode=OneWay}">
+                            <StackPanel Orientation="Horizontal" Spacing="6">
+                                <FontIcon Glyph="&#xE70F;" />
+                                <TextBlock x:Name="ProfileCompactEditButtonText" Text="{x:Bind CompactEditActionText}" />
+                            </StackPanel>
+                        </Button>
+                        <Button
+                            x:Name="ProfileCompactFollowButton"
+                            AutomationProperties.AutomationId="ProfileCompactFollowButton"
+                            AutomationProperties.Name="{x:Bind ViewModel.FollowButtonText, Mode=OneWay}"
+                            Command="{x:Bind ViewModel.ToggleFollowCommand}"
+                            Style="{StaticResource AppToolbarButtonStyle}"
+                            ToolTipService.ToolTip="{x:Bind ViewModel.FollowButtonText, Mode=OneWay}"
+                            Visibility="{x:Bind ViewModel.IsFollowVisible, Converter={StaticResource BoolToVisibilityConverter}, Mode=OneWay}">
+                            <StackPanel Orientation="Horizontal" Spacing="6">
+                                <FontIcon Glyph="&#xE710;" />
+                                <TextBlock x:Name="ProfileCompactFollowButtonText" Text="{x:Bind ViewModel.FollowButtonText, Mode=OneWay}" />
+                            </StackPanel>
+                        </Button>
+                        <Button
+                            x:Uid="PagesProfilePageProfileCompactStarsLibraryButton" AutomationProperties.AutomationId="ProfileCompactStarsLibraryButton"
+                            AutomationProperties.Name="Open Stars library"
+                            Click="StarsLibraryButton_Click"
+                            Style="{StaticResource AppToolbarButtonStyle}"
+                            ToolTipService.ToolTip="Open Stars library"
+                            Visibility="{x:Bind ViewModel.IsEditVisible, Converter={StaticResource BoolToVisibilityConverter}, Mode=OneWay}">
+                            <FontIcon Glyph="&#xE734;" />
+                        </Button>
+                        <Button
+                            x:Uid="PagesProfilePageProfileCompactIdentityDetailsButton" AutomationProperties.AutomationId="ProfileCompactIdentityDetailsButton"
+                            AutomationProperties.Name="Show profile details"
+                            Style="{StaticResource AppToolbarButtonStyle}"
+                            ToolTipService.ToolTip="Profile details">
+                            <FontIcon Glyph="&#xE946;" />
+                            <Button.Flyout>
+                                <Flyout Placement="BottomEdgeAlignedRight">
+                                    <ScrollViewer MaxWidth="320" MaxHeight="520" VerticalScrollBarVisibility="Auto">
+                                        <StackPanel Width="288" Spacing="12">
+                                            <TextBlock Foreground="{ThemeResource AppInkBrush}" Style="{StaticResource BodyTextBlockStyle}" Text="{x:Bind ViewModel.BioText, Mode=OneWay}" TextWrapping="Wrap" />
+                                            <Grid ColumnSpacing="8" RowSpacing="8">
+                                                <Grid.ColumnDefinitions>
+                                                    <ColumnDefinition Width="*" />
+                                                    <ColumnDefinition Width="*" />
+                                                </Grid.ColumnDefinitions>
+                                                <Grid.RowDefinitions>
+                                                    <RowDefinition Height="Auto" />
+                                                    <RowDefinition Height="Auto" />
+                                                </Grid.RowDefinitions>
+                                                <Button x:Uid="PagesProfilePageProfileCompactReposStatTile" HorizontalAlignment="Stretch" MinHeight="58" AutomationProperties.AutomationId="ProfileCompactReposStatTile" AutomationProperties.Name="Open account repositories" Click="RepositoriesStatButton_Click" Style="{StaticResource AppStatButtonStyle}">
+                                                    <StackPanel>
+                                                        <TextBlock FontWeight="SemiBold" Text="{x:Bind ViewModel.RepositoriesText, Mode=OneWay}" />
+                                                        <TextBlock x:Uid="PagesProfilePageTextBlockPublicRepos2" Foreground="{ThemeResource AppInkSubtleBrush}" Style="{StaticResource CaptionTextBlockStyle}" Text="Public repos" />
+                                                    </StackPanel>
+                                                </Button>
+                                                <Button x:Uid="PagesProfilePageProfileCompactFollowersStatTile" Grid.Column="1" HorizontalAlignment="Stretch" MinHeight="58" AutomationProperties.AutomationId="ProfileCompactFollowersStatTile" AutomationProperties.Name="Open followers" Click="FollowersStatButton_Click" Style="{StaticResource AppStatButtonStyle}">
+                                                    <StackPanel>
+                                                        <TextBlock FontWeight="SemiBold" Text="{x:Bind ViewModel.FollowersText, Mode=OneWay}" />
+                                                        <TextBlock x:Uid="PagesProfilePageTextBlockFollowers2" Foreground="{ThemeResource AppInkSubtleBrush}" Style="{StaticResource CaptionTextBlockStyle}" Text="Followers" />
+                                                    </StackPanel>
+                                                </Button>
+                                                <Button x:Uid="PagesProfilePageProfileCompactFollowingStatTile" Grid.Row="1" HorizontalAlignment="Stretch" MinHeight="58" AutomationProperties.AutomationId="ProfileCompactFollowingStatTile" AutomationProperties.Name="Open following" Click="FollowingStatButton_Click" Style="{StaticResource AppStatButtonStyle}">
+                                                    <StackPanel>
+                                                        <TextBlock FontWeight="SemiBold" Text="{x:Bind ViewModel.FollowingText, Mode=OneWay}" />
+                                                        <TextBlock x:Uid="PagesProfilePageTextBlockFollowing2" Foreground="{ThemeResource AppInkSubtleBrush}" Style="{StaticResource CaptionTextBlockStyle}" Text="Following" />
+                                                    </StackPanel>
+                                                </Button>
+                                                <Button x:Uid="PagesProfilePageProfileCompactGistsStatTile" Grid.Row="1" Grid.Column="1" HorizontalAlignment="Stretch" MinHeight="58" AutomationProperties.AutomationId="ProfileCompactGistsStatTile" AutomationProperties.Name="Open public gists" Click="GistsStatButton_Click" Style="{StaticResource AppStatButtonStyle}">
+                                                    <StackPanel>
+                                                        <TextBlock FontWeight="SemiBold" Text="{x:Bind ViewModel.GistsText, Mode=OneWay}" />
+                                                        <TextBlock x:Uid="PagesProfilePageTextBlockPublicGists2" Foreground="{ThemeResource AppInkSubtleBrush}" Style="{StaticResource CaptionTextBlockStyle}" Text="Public gists" />
+                                                    </StackPanel>
+                                                </Button>
+                                            </Grid>
+                                            <ItemsRepeater ItemsSource="{x:Bind ViewModel.Facts, Mode=OneWay}" ItemTemplate="{StaticResource ProfileFactTemplate}" />
+                                        </StackPanel>
+                                    </ScrollViewer>
+                                </Flyout>
+                            </Button.Flyout>
+                        </Button>
+                    </StackPanel>
+                </Grid>
+            </Border>
+
+            <Grid
+                x:Name="MainColumnHost"
+                Grid.Row="1"
+                Grid.Column="1"
+                MinWidth="0"
+                RowSpacing="12">
+                <Grid.RowDefinitions>
+                    <RowDefinition Height="Auto" />
+                    <RowDefinition Height="*" />
+                </Grid.RowDefinitions>
+
+                <Grid x:Name="ProfileHeaderGrid" MinWidth="0" Style="{StaticResource AppWorkspaceHeaderStyle}">
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="*" />
+                        <ColumnDefinition Width="Auto" />
+                    </Grid.ColumnDefinitions>
+                    <Grid.RowDefinitions>
+                        <RowDefinition Height="Auto" />
+                        <RowDefinition Height="Auto" />
+                    </Grid.RowDefinitions>
+                    <ScrollViewer
+                        x:Name="ProfileModeSelectorHost"
+                        MinWidth="0"
+                        HorizontalAlignment="Stretch"
+                        HorizontalScrollBarVisibility="Hidden"
+                        HorizontalScrollMode="Enabled"
+                        VerticalScrollBarVisibility="Disabled"
+                        VerticalScrollMode="Disabled">
+                    <SelectorBar
+                        x:Uid="PagesProfilePageProfileModeSelector" x:Name="ProfileModeSelector"
+                        HorizontalAlignment="Left"
+                        AutomationProperties.AutomationId="ProfileModeSelector"
+                        AutomationProperties.Name="Profile sections"
+                            KeyDown="ProfileModeSelector_KeyDown"
+                            SelectionChanged="ProfileModeSelector_SelectionChanged">
+                            <SelectorBarItem x:Uid="PagesProfilePageProfileModeOverviewItem" x:Name="OverviewModeItem" AutomationProperties.AutomationId="ProfileModeOverviewItem" AutomationProperties.Name="Show profile overview" Text="Overview" />
+                            <SelectorBarItem x:Uid="PagesProfilePageProfileModeRepositoriesItem" x:Name="RepositoriesModeItem" AutomationProperties.AutomationId="ProfileModeRepositoriesItem" AutomationProperties.Name="Show profile repositories" Text="{x:Bind ViewModel.RepositoriesModeLabel, Mode=OneWay}" />
+                            <SelectorBarItem
+                                x:Uid="PagesProfilePageProfileModeStarsItem" x:Name="StarsModeItem"
+                                AutomationProperties.AutomationId="ProfileModeStarsItem"
+                                AutomationProperties.Name="Show recent public stars"
+                                Text="{x:Bind ViewModel.StarsModeLabel, Mode=OneWay}"
+                                Visibility="{x:Bind ViewModel.IsEditVisible, Converter={StaticResource BoolToVisibilityReverseConverter}, Mode=OneWay}" />
+                            <SelectorBarItem x:Uid="PagesProfilePageProfileModeActivityItem" x:Name="ActivityModeItem" AutomationProperties.AutomationId="ProfileModeActivityItem" AutomationProperties.Name="Show profile activity" Text="{x:Bind ViewModel.ActivityModeLabel, Mode=OneWay}" />
+                            <SelectorBarItem x:Uid="PagesProfilePageProfileModeReadmeItem" x:Name="ReadmeModeItem" AutomationProperties.AutomationId="ProfileModeReadmeItem" AutomationProperties.Name="Show profile README" Text="README" />
+                        </SelectorBar>
+                    </ScrollViewer>
+                    <StackPanel
+                        x:Name="ProfileHeaderStatusHost"
+                        Grid.Column="1"
+                        Style="{StaticResource AppWorkspaceHeaderActionsStyle}">
+                        <Grid x:Name="ProfileOptionalHeaderContextHost">
+                            <TextBlock
+                                x:Name="ProfileHeaderStatusText"
+                                MaxWidth="220"
+                                VerticalAlignment="Center"
+                                Foreground="{ThemeResource AppInkSubtleBrush}"
+                                Style="{StaticResource CaptionTextBlockStyle}"
+                                Text="{x:Bind ViewModel.StatusText, Mode=OneWay}"
+                                TextTrimming="CharacterEllipsis"
+                                Visibility="{x:Bind ViewModel.IsStatusVisible, Converter={StaticResource BoolToVisibilityConverter}, Mode=OneWay}" />
+                        </Grid>
+                        <ProgressRing
+                            Width="20"
+                            Height="20"
+                            IsActive="{x:Bind ViewModel.IsLoading, Mode=OneWay}"
+                            Visibility="{x:Bind ViewModel.IsLoading, Converter={StaticResource BoolToVisibilityConverter}, Mode=OneWay}" />
+                    </StackPanel>
+                </Grid>
+
+                <Grid Grid.Row="1" AutomationProperties.AutomationId="ProfileActiveContentHost">
+                    <ScrollViewer
+                        x:Name="OverviewScrollViewer"
+                        AutomationProperties.AutomationId="ProfileOverviewScrollViewer"
+                        HorizontalScrollBarVisibility="Disabled"
+                        HorizontalScrollMode="Disabled"
+                        VerticalScrollBarVisibility="Auto"
+                        VerticalScrollMode="Auto"
+                        Visibility="{x:Bind ViewModel.IsOverviewMode, Converter={StaticResource BoolToVisibilityConverter}, Mode=OneWay}">
+                        <StackPanel Padding="0,0,0,20" Spacing="14">
+                            <Border
+                                Padding="18"
+                                Background="Transparent"
+                                BorderBrush="{ThemeResource AppHairlineBrush}"
+                                BorderThickness="0,0,0,1">
+                                <StackPanel Spacing="12">
+                                    <Grid>
+                                        <Grid.ColumnDefinitions>
+                                            <ColumnDefinition Width="*" />
+                                            <ColumnDefinition Width="Auto" />
+                                        </Grid.ColumnDefinitions>
+                                        <TextBlock x:Uid="PagesProfilePageTextBlockContributions" FontFamily="{ThemeResource AppDisplayFontFamily}" FontSize="22" Foreground="{ThemeResource AppInkBrush}" Text="Contributions" />
+                                        <TextBlock Grid.Column="1" VerticalAlignment="Center" Foreground="{ThemeResource AppInkMutedBrush}" Style="{StaticResource CaptionTextBlockStyle}" Text="{x:Bind ViewModel.ContributionSubtitleText, Mode=OneWay}" />
+                                    </Grid>
+                                    <profile:ProfileContributionGraph
+                                        x:Name="ProfileContributionGraph"
+                                        AutomationProperties.AutomationId="ProfileContributionGraph"
+                                        Weeks="{x:Bind ViewModel.ContributionWeeks, Mode=OneWay}" />
+                                </StackPanel>
+                            </Border>
+
+                            <Border
+                                Padding="18"
+                                Background="Transparent"
+                                BorderBrush="{ThemeResource AppHairlineBrush}"
+                                BorderThickness="0,0,0,1"
+                                Visibility="{x:Bind ViewModel.HasReadme, Converter={StaticResource BoolToVisibilityConverter}, Mode=OneWay}">
+                                <StackPanel Spacing="12">
+                                    <TextBlock x:Uid="PagesProfilePageTextBlockREADME" FontFamily="{ThemeResource AppDisplayFontFamily}" FontSize="22" Foreground="{ThemeResource AppInkBrush}" Text="README" />
+                                    <common:MarkdownViewer
+                                        x:Name="ProfileOverviewReadmeViewer"
+                                        AutomationProperties.AutomationId="ProfileOverviewReadme"
+                                        AutomationInstanceId="ProfileOverviewReadme"
+                                        BaseUrl="{x:Bind ViewModel.ReadmeBaseUrl, Mode=OneWay}"
+                                        ContentPadding="0"
+                                        DocumentSource="{x:Bind ViewModel.ReadmeDocumentSource, Mode=OneWay}"
+                                        HostKind="ProfileReadme"
+                                        IsSelectionEnabled="True"
+                                        Text="{x:Bind ViewModel.ReadmeMarkdown, Mode=OneWay}" />
+                                </StackPanel>
+                            </Border>
+
+                            <Border
+                                Padding="18"
+                                Background="Transparent"
+                                BorderThickness="0"
+                                Visibility="{x:Bind ViewModel.HasPinnedItems, Converter={StaticResource BoolToVisibilityConverter}, Mode=OneWay}">
+                                <StackPanel Spacing="12">
+                                    <TextBlock x:Uid="PagesProfilePageTextBlockPinnedRepositories" FontFamily="{ThemeResource AppDisplayFontFamily}" FontSize="22" Foreground="{ThemeResource AppInkBrush}" Text="Pinned repositories" />
+                                    <ItemsRepeater ItemsSource="{x:Bind ViewModel.PinnedItems, Mode=OneWay}" ItemTemplate="{StaticResource ProfilePinnedRepositoryTemplate}" />
+                                </StackPanel>
+                            </Border>
+                        </StackPanel>
+                    </ScrollViewer>
+
+                        <ListView
+                            x:Uid="PagesProfilePageProfileRepositoriesList" x:Name="RepositoriesList"
+                            AutomationProperties.AutomationId="ProfileRepositoriesList"
+                            AutomationProperties.Name="Profile repositories"
+                        ContainerContentChanging="ProfileList_ContainerContentChanging"
+                        IsItemClickEnabled="True"
+                        IsMultiSelectCheckBoxEnabled="False"
+                        IsSwipeEnabled="False"
+                        ItemContainerStyle="{StaticResource AppRepositoryListRowStyle}"
+                        ItemClick="RepositoryList_ItemClick"
+                        ItemsSource="{x:Bind ViewModel.RecentRepositories, Mode=OneWay}"
+                        ItemTemplate="{StaticResource ProfileRepositoryRowTemplate}"
+                        SelectionMode="None"
+                        Visibility="{x:Bind ViewModel.IsRepositoriesMode, Converter={StaticResource BoolToVisibilityConverter}, Mode=OneWay}" />
+                    <StackPanel
+                        Style="{StaticResource AppEmptyStatePanelStyle}"
+                        Visibility="{x:Bind ViewModel.ShowRepositoriesEmptyState, Converter={StaticResource BoolToVisibilityConverter}, Mode=OneWay}">
+                        <TextBlock
+                            x:Uid="PagesProfilePageTextBlockNoPublicRepositories" Foreground="{ThemeResource AppInkSubtleBrush}"
+                            Style="{StaticResource BodyTextBlockStyle}"
+                            Text="No public repositories."
+                            TextAlignment="Center" />
+                    </StackPanel>
+
+                        <ListView
+                            x:Uid="PagesProfilePageProfileStarsList" x:Name="StarsList"
+                            AutomationProperties.AutomationId="ProfileStarsList"
+                            AutomationProperties.Name="Recent public stars"
+                        ContainerContentChanging="ProfileList_ContainerContentChanging"
+                        IsItemClickEnabled="True"
+                        IsSwipeEnabled="False"
+                        ItemContainerStyle="{StaticResource AppRepositoryListRowStyle}"
+                        ItemClick="RepositoryList_ItemClick"
+                        ItemsSource="{x:Bind ViewModel.StarredRepositories, Mode=OneWay}"
+                        ItemTemplate="{StaticResource ProfileRepositoryRowTemplate}"
+                        SelectionMode="None"
+                        Visibility="{x:Bind ViewModel.IsStarsMode, Converter={StaticResource BoolToVisibilityConverter}, Mode=OneWay}" />
+                    <StackPanel
+                        Style="{StaticResource AppEmptyStatePanelStyle}"
+                        Visibility="{x:Bind ViewModel.ShowStarsEmptyState, Converter={StaticResource BoolToVisibilityConverter}, Mode=OneWay}">
+                        <TextBlock
+                            x:Uid="PagesProfilePageTextBlockNoPublicStars" Foreground="{ThemeResource AppInkSubtleBrush}"
+                            Style="{StaticResource BodyTextBlockStyle}"
+                            Text="No public stars."
+                            TextAlignment="Center" />
+                    </StackPanel>
+
+                        <ListView
+                            x:Uid="PagesProfilePageProfileActivityList" x:Name="ActivityList"
+                            AutomationProperties.AutomationId="ProfileActivityList"
+                            AutomationProperties.Name="Public activity"
+                        ContainerContentChanging="ProfileList_ContainerContentChanging"
+                        IsItemClickEnabled="True"
+                        IsSwipeEnabled="False"
+                        ItemContainerStyle="{StaticResource AppDenseFlatListRowStyle}"
+                        ItemClick="ActivityList_ItemClick"
+                        ItemsSource="{x:Bind ViewModel.PublicActivity, Mode=OneWay}"
+                        ItemTemplate="{StaticResource ProfileActivityRowTemplate}"
+                        SelectionMode="None"
+                        Visibility="{x:Bind ViewModel.IsActivityMode, Converter={StaticResource BoolToVisibilityConverter}, Mode=OneWay}" />
+                    <StackPanel
+                        Style="{StaticResource AppEmptyStatePanelStyle}"
+                        Visibility="{x:Bind ViewModel.ShowActivityEmptyState, Converter={StaticResource BoolToVisibilityConverter}, Mode=OneWay}">
+                        <TextBlock
+                            x:Uid="PagesProfilePageTextBlockNoRecentPublicActivity" Foreground="{ThemeResource AppInkSubtleBrush}"
+                            Style="{StaticResource BodyTextBlockStyle}"
+                            Text="No recent public activity."
+                            TextAlignment="Center" />
+                    </StackPanel>
+
+                    <ScrollViewer
+                        x:Name="ReadmeScrollViewer"
+                        AutomationProperties.AutomationId="ProfileReadmeScrollViewer"
+                        HorizontalScrollBarVisibility="Disabled"
+                        HorizontalScrollMode="Disabled"
+                        VerticalScrollBarVisibility="Auto"
+                        VerticalScrollMode="Auto"
+                        Visibility="{x:Bind ViewModel.IsReadmeMode, Converter={StaticResource BoolToVisibilityConverter}, Mode=OneWay}">
+                        <Border
+                            Padding="18"
+                            Background="{ThemeResource AppSurfaceSubtleBrush}"
+                            BorderBrush="{ThemeResource AppHairlineBrush}"
+                            BorderThickness="1"
+                            CornerRadius="{ThemeResource AppRadiusSmall}">
+                            <Grid>
+                                <common:MarkdownViewer
+                                    x:Name="ProfileReadmeViewer"
+                                    x:Load="{x:Bind ViewModel.IsReadmeMode, Mode=OneWay}"
+                                    AutomationProperties.AutomationId="ProfileReadme"
+                                    AutomationInstanceId="ProfileReadme"
+                                    BaseUrl="{x:Bind ViewModel.ReadmeBaseUrl, Mode=OneWay}"
+                                    ContentPadding="0"
+                                    DocumentSource="{x:Bind ViewModel.ReadmeDocumentSource, Mode=OneWay}"
+                                    HostKind="ProfileReadme"
+                                    IsSelectionEnabled="True"
+                                    Loaded="ProfileReadmeViewer_Loaded"
+                                    Text="{x:Bind ViewModel.ReadmeMarkdown, Mode=OneWay}"
+                                    Visibility="{x:Bind ViewModel.HasReadme, Converter={StaticResource BoolToVisibilityConverter}, Mode=OneWay}" />
+                                <StackPanel
+                                    Style="{StaticResource AppEmptyStatePanelStyle}"
+                                    Visibility="{x:Bind ViewModel.HasReadme, Converter={StaticResource BoolToVisibilityReverseConverter}, Mode=OneWay}">
+                                    <TextBlock
+                                        Foreground="{ThemeResource AppInkSubtleBrush}"
+                                        Style="{StaticResource BodyTextBlockStyle}"
+                                        Text="{x:Bind ViewModel.ReadmeEmptyText, Mode=OneWay}"
+                                        TextAlignment="Center" />
+                                </StackPanel>
+                            </Grid>
+                        </Border>
+                    </ScrollViewer>
+
+                    <Grid Visibility="{x:Bind ViewModel.IsPeopleMode, Converter={StaticResource BoolToVisibilityConverter}, Mode=OneWay}">
+                        <Grid.RowDefinitions>
+                            <RowDefinition Height="Auto" />
+                            <RowDefinition Height="*" />
+                        </Grid.RowDefinitions>
+                        <Grid Margin="0,0,0,8" ColumnSpacing="8">
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="Auto" />
+                                <ColumnDefinition Width="*" />
+                            </Grid.ColumnDefinitions>
+                            <Button
+                                x:Uid="PagesProfilePageProfilePeopleBackButton" AutomationProperties.AutomationId="ProfilePeopleBackButton"
+                                AutomationProperties.Name="Back to profile overview"
+                                Click="PeopleBackButton_Click"
+                                Style="{StaticResource AppToolbarButtonStyle}"
+                                ToolTipService.ToolTip="Back to profile overview">
+                                <FontIcon Glyph="&#xE72B;" />
+                            </Button>
+                            <TextBlock
+                                Grid.Column="1"
+                                VerticalAlignment="Center"
+                                FontFamily="{ThemeResource AppDisplayFontFamily}"
+                                FontSize="22"
+                                Foreground="{ThemeResource AppInkBrush}"
+                                Text="{x:Bind ViewModel.PeopleTitle, Mode=OneWay}" />
+                        </Grid>
+                            <ListView
+                                x:Uid="PagesProfilePageProfileFollowersList" x:Name="FollowersList"
+                                Grid.Row="1"
+                                AutomationProperties.AutomationId="ProfileFollowersList"
+                                AutomationProperties.Name="Followers"
+                            ContainerContentChanging="ProfileList_ContainerContentChanging"
+                            IsItemClickEnabled="True"
+                            IsSwipeEnabled="False"
+                            ItemContainerStyle="{StaticResource AppDenseFlatListRowStyle}"
+                            ItemClick="PeopleList_ItemClick"
+                            ItemsSource="{x:Bind ViewModel.Followers, Mode=OneWay}"
+                            ItemTemplate="{StaticResource ProfilePersonRowTemplate}"
+                            SelectionMode="None"
+                            Visibility="{x:Bind ViewModel.IsFollowersMode, Converter={StaticResource BoolToVisibilityConverter}, Mode=OneWay}" />
+                        <StackPanel
+                            Grid.Row="1"
+                            Style="{StaticResource AppEmptyStatePanelStyle}"
+                            Visibility="{x:Bind ViewModel.ShowFollowersEmptyState, Converter={StaticResource BoolToVisibilityConverter}, Mode=OneWay}">
+                            <TextBlock
+                                x:Uid="PagesProfilePageTextBlockNoPublicFollowers" Foreground="{ThemeResource AppInkSubtleBrush}"
+                                Style="{StaticResource BodyTextBlockStyle}"
+                                Text="No public followers."
+                                TextAlignment="Center" />
+                        </StackPanel>
+                            <ListView
+                                x:Uid="PagesProfilePageProfileFollowingList" x:Name="FollowingList"
+                                Grid.Row="1"
+                                AutomationProperties.AutomationId="ProfileFollowingList"
+                                AutomationProperties.Name="Following"
+                            ContainerContentChanging="ProfileList_ContainerContentChanging"
+                            IsItemClickEnabled="True"
+                            IsSwipeEnabled="False"
+                            ItemContainerStyle="{StaticResource AppDenseFlatListRowStyle}"
+                            ItemClick="PeopleList_ItemClick"
+                            ItemsSource="{x:Bind ViewModel.Following, Mode=OneWay}"
+                            ItemTemplate="{StaticResource ProfilePersonRowTemplate}"
+                            SelectionMode="None"
+                            Visibility="{x:Bind ViewModel.IsFollowingMode, Converter={StaticResource BoolToVisibilityConverter}, Mode=OneWay}" />
+                        <StackPanel
+                            Grid.Row="1"
+                            Style="{StaticResource AppEmptyStatePanelStyle}"
+                            Visibility="{x:Bind ViewModel.ShowFollowingEmptyState, Converter={StaticResource BoolToVisibilityConverter}, Mode=OneWay}">
+                            <TextBlock
+                                x:Uid="PagesProfilePageTextBlockNoPublicFollowing" Foreground="{ThemeResource AppInkSubtleBrush}"
+                                Style="{StaticResource BodyTextBlockStyle}"
+                                Text="No public following."
+                                TextAlignment="Center" />
+                        </StackPanel>
+                    </Grid>
+                </Grid>
+            </Grid>
+        </Grid>
     </Grid>
 </Page>
-

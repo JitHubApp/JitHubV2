@@ -37,14 +37,14 @@
                                 <RowDefinition Height="Auto" />
                             </Grid.RowDefinitions>
 
-                            <Button Grid.Row="0" Grid.Column="0" Content="Primary" Style="{StaticResource AppAccentButtonStyle}" />
-                            <Button Grid.Row="0" Grid.Column="1" helpers:PreviewStateHelper.VisualState="PointerOver" Content="Hover" Style="{StaticResource AppAccentButtonStyle}" />
-                            <Button Grid.Row="0" Grid.Column="2" helpers:PreviewStateHelper.VisualState="Pressed" Content="Pressed" Style="{StaticResource AppAccentButtonStyle}" />
-                            <Button Grid.Row="1" Grid.Column="0" helpers:PreviewStateHelper.VisualState="Disabled" Content="Disabled" Style="{StaticResource AppAccentButtonStyle}" />
-                            <Button Grid.Row="1" Grid.Column="1" Content="Quiet" Style="{StaticResource AppQuietButtonStyle}" />
-                            <appcontrols:AppStatButton Grid.Row="1" Grid.Column="2" IconKind="Star" IconForeground="{ThemeResource AppInkMutedBrush}" SelectedIconForeground="{ThemeResource AppWarmAccentBrush}" IsSelected="True" ValueText="12.5k" />
-                            <Button Grid.Row="0" Grid.Column="3" Content="Close issue" Style="{StaticResource AppDangerOutlineButtonStyle}" />
-                            <Button Grid.Row="1" Grid.Column="3" Style="{StaticResource AppToolbarButtonStyle}">
+                            <Button Grid.Row="0" Grid.Column="0" AutomationProperties.AutomationId="DesignLabPrimaryButton" AutomationProperties.Name="Primary button sample" Content="Primary" Style="{StaticResource AppAccentButtonStyle}" />
+                            <Button Grid.Row="0" Grid.Column="1" AutomationProperties.AutomationId="DesignLabHoverButton" AutomationProperties.Name="Pointer over button sample" helpers:PreviewStateHelper.VisualState="PointerOver" Content="Hover" Style="{StaticResource AppAccentButtonStyle}" />
+                            <Button Grid.Row="0" Grid.Column="2" AutomationProperties.AutomationId="DesignLabPressedButton" AutomationProperties.Name="Pressed button sample" helpers:PreviewStateHelper.VisualState="Pressed" Content="Pressed" Style="{StaticResource AppAccentButtonStyle}" />
+                            <Button Grid.Row="1" Grid.Column="0" AutomationProperties.AutomationId="DesignLabDisabledButton" AutomationProperties.Name="Disabled button sample" helpers:PreviewStateHelper.VisualState="Disabled" Content="Disabled" Style="{StaticResource AppAccentButtonStyle}" />
+                            <Button Grid.Row="1" Grid.Column="1" AutomationProperties.AutomationId="DesignLabQuietButton" AutomationProperties.Name="Quiet button sample" Content="Quiet" Style="{StaticResource AppQuietButtonStyle}" />
+                            <appcontrols:AppStatButton Grid.Row="1" Grid.Column="2" AutomationId="DesignLabButtonStat" AutomationName="Star statistic button sample" IconKind="Star" IconForeground="{ThemeResource AppInkMutedBrush}" SelectedIconForeground="{ThemeResource AppWarmAccentBrush}" IsSelected="True" ValueText="12.5k" />
+                            <Button Grid.Row="0" Grid.Column="3" AutomationProperties.AutomationId="DesignLabDangerButton" AutomationProperties.Name="Close issue button sample" Content="Close issue" Style="{StaticResource AppDangerOutlineButtonStyle}" />
+                            <Button Grid.Row="1" Grid.Column="3" AutomationProperties.AutomationId="DesignLabOverflowButton" AutomationProperties.Name="More actions button sample" Style="{StaticResource AppToolbarButtonStyle}">
                                 <FontIcon FontFamily="{StaticResource SegoeFluentIcons}" Glyph="&#xE711;" />
                             </Button>
                         </Grid>
@@ -58,15 +58,15 @@
                         AutomationProperties.AutomationId="ScenarioInputs"
                         Spacing="16">
                         <appcontrols:AppSectionHeader Title="Inputs" Description="Search, text, combo, date, and toggle surfaces." />
-                        <AutoSuggestBox PlaceholderText="Search repositories" Style="{StaticResource AppAutoSuggestBoxStyle}" Text="flutter/flutter" />
-                        <TextBox Text="issue triage" Header="Text" Style="{StaticResource AppTextBoxStyle}" />
-                        <ComboBox SelectedIndex="0" Style="{StaticResource ComboBox}">
+                        <AutoSuggestBox AutomationProperties.AutomationId="DesignLabSearchBox" AutomationProperties.Name="Search input sample" PlaceholderText="Search repositories" Style="{StaticResource AppAutoSuggestBoxStyle}" Text="flutter/flutter" />
+                        <TextBox AutomationProperties.AutomationId="DesignLabTextBox" AutomationProperties.Name="Text input sample" Text="issue triage" Header="Text" Style="{StaticResource AppTextBoxStyle}" />
+                        <ComboBox AutomationProperties.AutomationId="DesignLabStateComboBox" AutomationProperties.Name="State picker sample" SelectedIndex="0" Style="{StaticResource ComboBox}">
                             <x:String>Open</x:String>
                             <x:String>Closed</x:String>
                             <x:String>Merged</x:String>
                         </ComboBox>
-                        <DatePicker Style="{StaticResource DatePicker}" />
-                        <ToggleSwitch Header="Developer mode" IsOn="True" />
+                        <DatePicker AutomationProperties.AutomationId="DesignLabDatePicker" AutomationProperties.Name="Date picker sample" Style="{StaticResource DatePicker}" />
+                        <ToggleSwitch AutomationProperties.AutomationId="DesignLabToggleSwitch" AutomationProperties.Name="Developer mode toggle sample" Header="Developer mode" IsOn="True" />
                     </StackPanel>
                 </appcontrols:AppSurfaceCard.Child>
             </appcontrols:AppSurfaceCard>
@@ -93,38 +93,39 @@
                                 <toolkit:Segmented
                                     Width="300"
                                     AutomationProperties.AutomationId="DesignLabRepoSegmented"
+                                    AutomationProperties.Name="Repository visibility sample"
                                     SelectedIndex="1"
                                     SelectionMode="Single">
-                                    <toolkit:SegmentedItem helpers:PreviewStateHelper.VisualState="PointerOver" Content="Public" />
-                                    <toolkit:SegmentedItem Content="Private" />
-                                    <toolkit:SegmentedItem Content="Forked" />
+                                    <toolkit:SegmentedItem AutomationProperties.AutomationId="DesignLabRepoSegmented_Public" AutomationProperties.Name="Public repository sample" helpers:PreviewStateHelper.VisualState="PointerOver" Content="Public" />
+                                    <toolkit:SegmentedItem AutomationProperties.AutomationId="DesignLabRepoSegmented_Private" AutomationProperties.Name="Private repository sample" Content="Private" />
+                                    <toolkit:SegmentedItem AutomationProperties.AutomationId="DesignLabRepoSegmented_Forked" AutomationProperties.Name="Forked repository sample" Content="Forked" />
                                 </toolkit:Segmented>
                             </StackPanel>
 
                             <StackPanel Grid.Row="0" Grid.Column="1" Spacing="8">
                                 <TextBlock Style="{StaticResource SectionSecondaryTextBlockStyle}" Text="Issue filters" />
                                 <StackPanel Orientation="Horizontal" Spacing="8">
-                                    <muxc:DropDownButton Content="Open" Style="{StaticResource AppDropDownButtonStyle}">
+                                    <muxc:DropDownButton AutomationProperties.AutomationId="DesignLabIssueStateDropDown" AutomationProperties.Name="Issue state sample" Content="Open" Style="{StaticResource AppDropDownButtonStyle}">
                                         <muxc:DropDownButton.Flyout>
                                             <MenuFlyout>
-                                                <MenuFlyoutItem Text="Open" />
-                                                <MenuFlyoutItem Text="Closed" />
-                                                <MenuFlyoutItem Text="Merged" />
+                                                <MenuFlyoutItem AutomationProperties.AutomationId="DesignLabIssueStateOpen" AutomationProperties.Name="Open issue state" Text="Open" />
+                                                <MenuFlyoutItem AutomationProperties.AutomationId="DesignLabIssueStateClosed" AutomationProperties.Name="Closed issue state" Text="Closed" />
+                                                <MenuFlyoutItem AutomationProperties.AutomationId="DesignLabIssueStateMerged" AutomationProperties.Name="Merged issue state" Text="Merged" />
                                             </MenuFlyout>
                                         </muxc:DropDownButton.Flyout>
                                     </muxc:DropDownButton>
-                                    <Button Content="Filter" Style="{StaticResource AppOutlineButtonStyle}" />
-                                    <Button Content="Clear" Style="{StaticResource AppQuietButtonStyle}" />
+                                    <Button AutomationProperties.AutomationId="DesignLabFilterButton" AutomationProperties.Name="Apply filter sample" Content="Filter" Style="{StaticResource AppOutlineButtonStyle}" />
+                                    <Button AutomationProperties.AutomationId="DesignLabClearFilterButton" AutomationProperties.Name="Clear filter sample" Content="Clear" Style="{StaticResource AppQuietButtonStyle}" />
                                 </StackPanel>
                             </StackPanel>
 
                             <StackPanel Grid.Row="1" Grid.Column="0" Grid.ColumnSpan="2" Spacing="8">
                                 <TextBlock Style="{StaticResource SectionSecondaryTextBlockStyle}" Text="Repository actions" />
                                 <StackPanel Orientation="Horizontal" Spacing="8">
-                                    <muxc:DropDownButton Width="160" Content="main" Style="{StaticResource AppDropDownButtonStyle}" />
-                                    <appcontrols:AppStatButton IconKind="Watch" IconForeground="{ThemeResource AppInkMutedBrush}" SelectedIconForeground="{ThemeResource AppAccentBrush}" IsSelected="True" ValueText="2.8k" />
-                                    <appcontrols:AppStatButton IconKind="Star" IconForeground="{ThemeResource AppInkMutedBrush}" SelectedIconForeground="{ThemeResource AppWarmAccentBrush}" IsSelected="True" ValueText="170k" />
-                                    <appcontrols:AppStatButton IconKind="Fork" IconForeground="{ThemeResource AppInkMutedBrush}" ValueText="28k" />
+                                    <muxc:DropDownButton Width="160" AutomationProperties.AutomationId="DesignLabBranchDropDown" AutomationProperties.Name="Branch picker sample" Content="main" Style="{StaticResource AppDropDownButtonStyle}" />
+                                    <appcontrols:AppStatButton AutomationId="DesignLabActionsWatchStat" AutomationName="Watch repository action sample" IconKind="Watch" IconForeground="{ThemeResource AppInkMutedBrush}" SelectedIconForeground="{ThemeResource AppAccentBrush}" IsSelected="True" ValueText="2.8k" />
+                                    <appcontrols:AppStatButton AutomationId="DesignLabActionsStarStat" AutomationName="Star repository action sample" IconKind="Star" IconForeground="{ThemeResource AppInkMutedBrush}" SelectedIconForeground="{ThemeResource AppWarmAccentBrush}" IsSelected="True" ValueText="170k" />
+                                    <appcontrols:AppStatButton AutomationId="DesignLabActionsForkStat" AutomationName="Fork repository action sample" IconKind="Fork" IconForeground="{ThemeResource AppInkMutedBrush}" ValueText="28k" />
                                 </StackPanel>
                             </StackPanel>
                         </Grid>
@@ -180,14 +181,14 @@
                                             Glyph="&#xE721;" />
                                     </Grid>
                                 </Border>
-                                <Button Grid.Column="2" Style="{StaticResource AppToolbarButtonStyle}">
+                                <Button Grid.Column="2" AutomationProperties.AutomationId="DesignLabSettingsButton" AutomationProperties.Name="Settings toolbar sample" Style="{StaticResource AppToolbarButtonStyle}">
                                     <FontIcon FontFamily="{StaticResource SegoeFluentIcons}" Glyph="&#xE712;" />
                                 </Button>
                             </Grid>
                         </Border>
-                        <muxc:TabView Style="{StaticResource JitTabViewStyle}">
-                            <muxc:TabViewItem Header="Home"><TextBlock Text="Home content" /></muxc:TabViewItem>
-                            <muxc:TabViewItem Header="Issues"><TextBlock Text="Issue content" /></muxc:TabViewItem>
+                        <muxc:TabView AutomationProperties.AutomationId="DesignLabTabView" AutomationProperties.Name="Workspace tabs sample" Style="{StaticResource JitTabViewStyle}">
+                            <muxc:TabViewItem AutomationProperties.AutomationId="DesignLabTab_Home" AutomationProperties.Name="Home tab sample" Header="Home"><TextBlock Text="Home content" /></muxc:TabViewItem>
+                            <muxc:TabViewItem AutomationProperties.AutomationId="DesignLabTab_Issues" AutomationProperties.Name="Issues tab sample" Header="Issues"><TextBlock Text="Issue content" /></muxc:TabViewItem>
                         </muxc:TabView>
                     </StackPanel>
                 </appcontrols:AppSurfaceCard.Child>
@@ -204,19 +205,19 @@
                                 <FontIcon Glyph="&#xE790;" />
                             </appcontrols:AppSettingsCard.HeaderIcon>
                             <appcontrols:AppSettingsCard.ActionContent>
-                                <ComboBox Width="140" SelectedIndex="0">
+                                <ComboBox Width="140" AutomationProperties.AutomationId="DesignLabThemeComboBox" AutomationProperties.Name="Theme picker sample" SelectedIndex="0" Style="{StaticResource ComboBox}">
                                     <x:String>System</x:String>
                                     <x:String>Light</x:String>
                                     <x:String>Dark</x:String>
                                 </ComboBox>
                             </appcontrols:AppSettingsCard.ActionContent>
                         </appcontrols:AppSettingsCard>
-                        <appcontrols:AppSettingsCard Header="Version" Description="0.0.0-designlab">
+                        <appcontrols:AppSettingsCard Header="Sample build" Description="Design-only sample data">
                             <appcontrols:AppSettingsCard.HeaderIcon>
                                 <BitmapIcon UriSource="ms-appx:///Assets/JitHubLogo.png" ShowAsMonochrome="False" />
                             </appcontrols:AppSettingsCard.HeaderIcon>
                             <appcontrols:AppSettingsCard.ActionContent>
-                                <Button Content="View Source" Style="{StaticResource AppAccentButtonStyle}" />
+                                <Button AutomationProperties.AutomationId="DesignLabViewSourceButton" AutomationProperties.Name="View source sample" Content="View Source" Style="{StaticResource AppAccentButtonStyle}" />
                             </appcontrols:AppSettingsCard.ActionContent>
                         </appcontrols:AppSettingsCard>
                     </StackPanel>
@@ -230,13 +231,13 @@
                         Spacing="16">
                         <appcontrols:AppSectionHeader Title="Repository reference" Description="Repo header, branch picker, and stat buttons." />
                         <StackPanel Orientation="Horizontal" Spacing="8">
-                            <ComboBox MinWidth="160" SelectedIndex="0">
+                            <ComboBox MinWidth="160" AutomationProperties.AutomationId="DesignLabRepositoryBranchComboBox" AutomationProperties.Name="Repository branch sample" SelectedIndex="0" Style="{StaticResource ComboBox}">
                                 <x:String>master</x:String>
                                 <x:String>stable</x:String>
                             </ComboBox>
-                            <appcontrols:AppStatButton IconKind="Watch" IconForeground="{ThemeResource AppInkMutedBrush}" SelectedIconForeground="{ThemeResource AppAccentBrush}" IsSelected="True" ValueText="2.8k" />
-                            <appcontrols:AppStatButton IconKind="Star" IconForeground="{ThemeResource AppInkMutedBrush}" SelectedIconForeground="{ThemeResource AppWarmAccentBrush}" IsSelected="True" ValueText="170k" />
-                            <appcontrols:AppStatButton IconKind="Fork" IconForeground="{ThemeResource AppInkMutedBrush}" ValueText="28k" />
+                            <appcontrols:AppStatButton AutomationId="DesignLabRepoWatchStat" AutomationName="Repository watch statistic sample" IconKind="Watch" IconForeground="{ThemeResource AppInkMutedBrush}" SelectedIconForeground="{ThemeResource AppAccentBrush}" IsSelected="True" ValueText="2.8k" />
+                            <appcontrols:AppStatButton AutomationId="DesignLabRepoStarStat" AutomationName="Repository star statistic sample" IconKind="Star" IconForeground="{ThemeResource AppInkMutedBrush}" SelectedIconForeground="{ThemeResource AppWarmAccentBrush}" IsSelected="True" ValueText="170k" />
+                            <appcontrols:AppStatButton AutomationId="DesignLabRepoForkStat" AutomationName="Repository fork statistic sample" IconKind="Fork" IconForeground="{ThemeResource AppInkMutedBrush}" ValueText="28k" />
                         </StackPanel>
                     </StackPanel>
                 </appcontrols:AppSurfaceCard.Child>
@@ -282,14 +283,15 @@
                         <appcontrols:AppSectionHeader Title="Conversation reference" Description="Comment surfaces, labels, and reactions." />
                         <common:MarkdownForm
                             AutomationProperties.AutomationId="DesignLabMarkdownComposer"
+                            AutomationInstanceId="DesignLabMarkdownComposer"
                             EditorHeight="120"
                             HorizontalAlignment="Left"
                             Width="920"
                             Text="Thanks for the detailed report. I can reproduce this on the current build.">
                             <common:MarkdownForm.ActionContent>
                                 <StackPanel Style="{StaticResource ActionPanel}">
-                                    <Button Content="Close issue" Style="{StaticResource AppDangerOutlineButtonStyle}" />
-                                    <Button Content="Comment" Style="{StaticResource AppAccentButtonStyle}" />
+                                    <Button AutomationProperties.AutomationId="DesignLabCloseIssueAction" AutomationProperties.Name="Close issue action sample" Content="Close issue" Style="{StaticResource AppDangerOutlineButtonStyle}" />
+                                    <Button AutomationProperties.AutomationId="DesignLabCommentAction" AutomationProperties.Name="Comment action sample" Content="Comment" Style="{StaticResource AppAccentButtonStyle}" />
                                 </StackPanel>
                             </common:MarkdownForm.ActionContent>
                         </common:MarkdownForm>
@@ -329,11 +331,11 @@
                                         </Border>
                                     </StackPanel>
                                     <StackPanel Orientation="Horizontal" Spacing="8">
-                                        <common:EmojiButton Reaction="Plus1" ReactionCount="12" ShowReactionCount="True" Voted="True" />
-                                        <common:EmojiButton Reaction="Heart" ReactionCount="4" ShowReactionCount="True" />
-                                        <common:EmojiButton Reaction="Hooray" />
-                                        <common:EmojiButton Reaction="Eyes" />
-                                        <common:EmojiPanelButton ViewModel="{x:Bind DemoEmojiPanelViewModel}" />
+                                        <common:EmojiButton AutomationInstanceId="DesignLabReactionSummary" Reaction="Plus1" ReactionCount="12" ShowReactionCount="True" Voted="True" />
+                                        <common:EmojiButton AutomationInstanceId="DesignLabReactionSummary" Reaction="Heart" ReactionCount="4" ShowReactionCount="True" />
+                                        <common:EmojiButton AutomationInstanceId="DesignLabReactionSummary" Reaction="Hooray" />
+                                        <common:EmojiButton AutomationInstanceId="DesignLabReactionSummary" Reaction="Eyes" />
+                                        <common:EmojiPanelButton AutomationInstanceId="DesignLabReactionLauncher" ViewModel="{x:Bind DemoEmojiPanelViewModel}" />
                                     </StackPanel>
                                 </StackPanel>
                             </common:CommentBlock.BodyContent>

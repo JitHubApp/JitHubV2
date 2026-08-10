@@ -1,5 +1,7 @@
 using System;
+using System.Globalization;
 using JitHub.Models.CodeViewer;
+using JitHub.WinUI.Helpers;
 using JitHub.WinUI.ViewModels.CodeViewer;
 using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Controls;
@@ -13,6 +15,8 @@ namespace JitHub.WinUI.Views.Controls.CodeViewer.Renderers;
 /// </summary>
 public sealed partial class UnsupportedPreview : UserControl
 {
+    public event Action<string>? ActionExecuted;
+
     public UnsupportedPreview()
     {
         InitializeComponent();
@@ -28,8 +32,12 @@ public sealed partial class UnsupportedPreview : UserControl
 
         BodyText.Text = vm.Kind switch
         {
-            RepoFilePreviewKind.TooLarge => "This file is too large to preview here.",
-            _ => "We don't support previewing this file type yet.",
+            RepoFilePreviewKind.TooLarge => LocalizedResourceText.GetString(
+                "RepoCode.Unsupported.TooLarge",
+                "This file is too large to preview here."),
+            _ => LocalizedResourceText.GetString(
+                "RepoCode.Unsupported.FileType",
+                "We don't support previewing this file type yet."),
         };
 
         var ext = string.Empty;
@@ -45,25 +53,28 @@ public sealed partial class UnsupportedPreview : UserControl
     private async void OpenOnGitHub_Click(object sender, RoutedEventArgs e)
     {
         var url = ViewModel?.GitHubBlobUrl;
-        if (!string.IsNullOrEmpty(url))
-            await Windows.System.Launcher.LaunchUriAsync(new Uri(url));
+        if (!string.IsNullOrEmpty(url) && await Windows.System.Launcher.LaunchUriAsync(new Uri(url)))
+        {
+            ActionExecuted?.Invoke(JitHub.Services.CodeViewer.RepoCodeTelemetryActions.ExternalOpen);
+        }
     }
 
     private void CopyUrl_Click(object sender, RoutedEventArgs e)
     {
-        var url = ViewModel?.GitHubBlobUrl;
+        var url = ViewModel?.GitHubRawUrl;
         if (!string.IsNullOrEmpty(url))
         {
             var package = new DataPackage();
             package.SetText(url);
             Clipboard.SetContent(package);
+            ActionExecuted?.Invoke(JitHub.Services.CodeViewer.RepoCodeTelemetryActions.CopyRaw);
         }
     }
 
     private static string FormatBytes(long bytes)
     {
-        if (bytes < 1024) return $"{bytes} B";
-        if (bytes < 1024 * 1024) return $"{bytes / 1024.0:F1} KB";
-        return $"{bytes / (1024.0 * 1024):F1} MB";
+        if (bytes < 1024) return string.Format(CultureInfo.CurrentCulture, "{0:N0} B", bytes);
+        if (bytes < 1024 * 1024) return string.Format(CultureInfo.CurrentCulture, "{0:N1} KB", bytes / 1024.0);
+        return string.Format(CultureInfo.CurrentCulture, "{0:N1} MB", bytes / (1024.0 * 1024));
     }
 }

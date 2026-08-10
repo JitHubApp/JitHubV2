@@ -49,6 +49,7 @@ public class PageNavArg
             HtmlUrl = repo.HtmlUrl?.ToString() ?? string.Empty,
             Private = repo.Private,
             Fork = repo.Fork,
+            Archived = false,
             StargazersCount = repo.StargazersCount,
             WatchersCount = repo.WatchersCount,
             ForksCount = repo.ForksCount,

@@ -13,10 +13,31 @@ public sealed partial class FilePreviewHost : UserControl
     private RepoFilePreviewViewModel? _viewModel;
     private RepoFilePreviewKind? _currentRendererKind;
 
+    public event Action<string>? ActionExecuted;
+
     public FilePreviewHost()
     {
         InitializeComponent();
         DataContextChanged += OnDataContextChanged;
+    }
+
+    public bool FocusPrimary()
+    {
+        if (RendererHost.Content is CodePreview codePreview)
+        {
+            return codePreview.FocusEditor();
+        }
+
+        return RendererHost.Content is Control control
+            ? control.Focus(FocusState.Programmatic)
+            : Focus(FocusState.Programmatic);
+    }
+
+    public bool OpenFind()
+    {
+        if (RendererHost.Content is not CodePreview codePreview) return false;
+        codePreview.OpenFind();
+        return true;
     }
 
     private void OnDataContextChanged(FrameworkElement sender, DataContextChangedEventArgs args)
@@ -61,9 +82,13 @@ public sealed partial class FilePreviewHost : UserControl
 
         if (vm.IsLoading)
         {
-            EmptyState.Visibility = Visibility.Collapsed;
+            EmptyState.Visibility = vm.CurrentFile is null ? Visibility.Visible : Visibility.Collapsed;
             ErrorState.Visibility = Visibility.Collapsed;
             LoadingState.Visibility = Visibility.Visible;
+            if (vm.CurrentFile is not null)
+            {
+                EnsureRenderer(vm);
+            }
             return;
         }
 
@@ -71,10 +96,13 @@ public sealed partial class FilePreviewHost : UserControl
 
         if (!string.IsNullOrEmpty(vm.ErrorMessage))
         {
-            EmptyState.Visibility = Visibility.Collapsed;
+            EmptyState.Visibility = vm.CurrentFile is null ? Visibility.Visible : Visibility.Collapsed;
             ErrorMessageText.Text = vm.ErrorMessage;
             ErrorState.Visibility = Visibility.Visible;
-            ClearRenderer();
+            if (vm.CurrentFile is not null)
+            {
+                EnsureRenderer(vm);
+            }
             return;
         }
 
@@ -104,19 +132,48 @@ public sealed partial class FilePreviewHost : UserControl
             return;
         }
 
+        DetachActionSource(RendererHost.Content as FrameworkElement);
         var renderer = CreateRenderer(vm.Kind);
         renderer.HorizontalAlignment = HorizontalAlignment.Stretch;
         renderer.VerticalAlignment = VerticalAlignment.Stretch;
         renderer.DataContext = vm;
+        AttachActionSource(renderer);
         RendererHost.Content = renderer;
         _currentRendererKind = vm.Kind;
     }
 
     private void ClearRenderer()
     {
+        DetachActionSource(RendererHost.Content as FrameworkElement);
         RendererHost.Content = null;
         _currentRendererKind = null;
     }
+
+    private void AttachActionSource(FrameworkElement renderer)
+    {
+        if (renderer is CodePreview codePreview)
+        {
+            codePreview.ActionExecuted += OnActionExecuted;
+        }
+        else if (renderer is UnsupportedPreview unsupportedPreview)
+        {
+            unsupportedPreview.ActionExecuted += OnActionExecuted;
+        }
+    }
+
+    private void DetachActionSource(FrameworkElement? renderer)
+    {
+        if (renderer is CodePreview codePreview)
+        {
+            codePreview.ActionExecuted -= OnActionExecuted;
+        }
+        else if (renderer is UnsupportedPreview unsupportedPreview)
+        {
+            unsupportedPreview.ActionExecuted -= OnActionExecuted;
+        }
+    }
+
+    private void OnActionExecuted(string action) => ActionExecuted?.Invoke(action);
 
     private static FrameworkElement CreateRenderer(RepoFilePreviewKind kind)
     {

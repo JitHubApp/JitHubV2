@@ -9,7 +9,7 @@
     <Border
         HorizontalAlignment="Stretch"
         VerticalAlignment="Stretch"
-        Background="{ThemeResource AppCanvasRaisedBrush}"
+        Background="{ThemeResource AppCardBrush}"
         BorderBrush="{ThemeResource AppOutlineBrush}"
         BorderThickness="1"
         CornerRadius="{ThemeResource AppRadiusLarge}"

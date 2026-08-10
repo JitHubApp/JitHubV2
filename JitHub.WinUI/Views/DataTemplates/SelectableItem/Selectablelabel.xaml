@@ -7,6 +7,8 @@
             <StackPanel Orientation="Horizontal">
                 <CheckBox
                     Grid.Column="0"
+                    AutomationProperties.AutomationId="{Binding AutomationId}"
+                    AutomationProperties.Name="{Binding AutomationName}"
                     Command="{Binding SelectionCommand, Mode=OneWay}"
                     CommandParameter="{Binding Item, Mode=OneWay}"
                     IsChecked="{Binding Selected, Mode=TwoWay}"

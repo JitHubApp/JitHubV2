@@ -96,7 +96,7 @@ public sealed partial class ActivityCardViewModel
 
     public string Subtitle { get; set; } = string.Empty;
 
-    public string ActorLogin { get; set; } = string.Empty;
+    public string? ActorLogin { get; set; }
 
     public string? ActorAvatarUrl { get; set; }
 

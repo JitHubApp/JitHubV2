@@ -2,6 +2,7 @@ using System;
 using System.ComponentModel;
 using JitHub.Models;
 using JitHub.Models.Base;
+using JitHub.WinUI.Helpers;
 using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Controls;
 
@@ -90,6 +91,20 @@ namespace JitHub.WinUI.Views.Controls.Common
                 MinHeight = 32,
                 VerticalAlignment = VerticalAlignment.Center
             };
+            AutomationIdentity.Apply(
+                checkBox,
+                Item switch
+                {
+                    SelectableLabel label => label.AutomationId,
+                    SelectableUser user => user.AutomationId,
+                    _ => AutomationIdentity.CreateScopedId("IssueSidePanelOption", Item.Type)
+                },
+                Item switch
+                {
+                    SelectableLabel label => label.AutomationName,
+                    SelectableUser user => user.AutomationName,
+                    _ => $"Select {Item.Type}"
+                });
 
             _checkBox = checkBox;
             SyncCheckState();
@@ -109,6 +124,7 @@ namespace JitHub.WinUI.Views.Controls.Common
                 },
                 SelectableUser selectableUser => new Avatar
                 {
+                    IsProfileNavigationEnabled = false,
                     Login = selectableUser.Login,
                     Url = selectableUser.AvatarUrl,
                     ShowLogin = true,

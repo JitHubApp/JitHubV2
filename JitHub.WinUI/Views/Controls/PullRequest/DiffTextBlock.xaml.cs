@@ -1,6 +1,5 @@
 using System;
 using System.Collections.Generic;
-using Windows.UI;
 using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Controls;
 using Microsoft.UI.Xaml.Documents;
@@ -43,14 +42,14 @@ namespace JitHub.WinUI.Views.Controls.PullRequest
                     currChar += line.Length + 1;
                 }
                 //self.SetDiff(lines);
-                var addHighlighter = new TextHighlighter();
-                var removeHighlighter = new TextHighlighter();
-                var greenBrush = new SolidColorBrush(Microsoft.UI.Colors.Green);
-                var redBrush = new SolidColorBrush(Microsoft.UI.Colors.Red);
-                addHighlighter.Foreground = greenBrush;
-                addHighlighter.Background = new SolidColorBrush(Microsoft.UI.Colors.Transparent);
-                removeHighlighter.Foreground = redBrush;
-                removeHighlighter.Background = new SolidColorBrush(Microsoft.UI.Colors.Transparent);
+                var addHighlighter = new TextHighlighter
+                {
+                    Foreground = GetThemeBrush("AppSuccessBrush")
+                };
+                var removeHighlighter = new TextHighlighter
+                {
+                    Foreground = GetThemeBrush("AppDangerBrush")
+                };
                 foreach (var range in addRange)
                 {
                     addHighlighter.Ranges.Add(range);
@@ -77,73 +76,12 @@ namespace JitHub.WinUI.Views.Controls.PullRequest
         public DiffTextBlock()
         {
             this.InitializeComponent();
-            //Lines = new ObservableCollection<FrameworkElement>();
         }
 
-        //public void SetDiff(string[] patches)
-        //{
-        //    //var overflows = new Stack<RichTextBlockOverflow>();
-        //    //for (var i = 0; i < patches.Length; i++)
-        //    //{
-        //    //    Container.RowDefinitions.Add(new RowDefinition() { Height = GridLength.Auto });
-        //    //    var grid = new Grid();
-        //    //    Grid.SetRow(grid, i);
-        //    //    if (i == 0)
-        //    //    {
-        //    //        var text = new RichTextBlock();
-        //    //        var paragraph = new Paragraph { Inlines = { new Run { Text = patches[i] } } };
-        //    //        text.Blocks.Add(paragraph);
-        //    //        if (patches.Length > 1)
-        //    //        {
-        //    //            var overflow = new RichTextBlockOverflow();
-        //    //            text.OverflowContentTarget = overflow;
-        //    //            overflows.Push(overflow);
-        //    //        }
-        //    //        grid.Children.Add(text);
-        //    //    }
-        //    //    else
-        //    //    {
-        //    //        var next = new RichTextBlockOverflow();
-        //    //        var prev = overflows.Pop();
-        //    //        prev.OverflowContentTarget = next;
-        //    //        grid.Children.Add(prev);
-        //    //        overflows.Push(next);
-        //    //    }
-        //    //    if (patches[i].StartsWith('-'))
-        //    //    {
-        //    //        grid.Background = new SolidColorBrush(Colors.Red);
-        //    //    }
-        //    //    else if (patches[i].StartsWith('+'))
-        //    //    {
-        //    //        grid.Background = new SolidColorBrush(Colors.Green);
-        //    //    }
-        //    //    Container.Children.Add(grid);
-        //    //}
-
-        //    for (var i = 0; i < patches.Length; i ++)
-        //    {
-        //        if (i == 0)
-        //        {
-        //            var text = new RichTextBlock();
-        //            var paragraph = new Paragraph { Inlines = { new Run { Text = patches[i] } } };
-        //            text.Blocks.Add(paragraph);
-        //            Lines.Add(text);
-        //        }
-        //        else
-        //        {
-        //            var overflow = new RichTextBlockOverflow();
-        //            if (i == 1)
-        //            {
-        //                ((RichTextBlock)Lines[i - 1]).OverflowContentTarget = overflow;
-        //            }
-        //            else
-        //            {
-        //                ((RichTextBlockOverflow)(Lines[i - 1])).OverflowContentTarget = overflow;
-        //            }
-        //            Lines.Add(overflow);
-        //        }
-        //    }
-        //}
+        private static Brush GetThemeBrush(string resourceKey) =>
+            Application.Current.Resources.TryGetValue(resourceKey, out object? resource) && resource is Brush brush
+                ? brush
+                : throw new InvalidOperationException($"Required theme brush '{resourceKey}' is unavailable.");
     }
 }
 

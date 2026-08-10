@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.Globalization;
 using System.Net;
 using System.Net.Http;
 using System.Net.Http.Headers;
@@ -15,27 +16,47 @@ namespace JitHub.Services;
 
 public sealed class GitHubClientService : IGitHubClientService
 {
-    public const string PublicAccessToken = "__JITHUB_PUBLIC__";
+    public const string PublicAccessToken = GitHubAuthenticationConstants.PublicAccessToken;
 
     private readonly HttpClient _httpClient;
 
-    public GitHubClientService()
+    public GitHubClientService() : this(new HttpClient())
     {
-        _httpClient = new HttpClient
-        {
-            BaseAddress = new Uri("https://api.github.com/")
-        };
-        _httpClient.DefaultRequestHeaders.UserAgent.Add(new ProductInfoHeaderValue("JitHub", "1.0"));
-        _httpClient.DefaultRequestHeaders.Accept.Add(new MediaTypeWithQualityHeaderValue("application/vnd.github+json"));
-        _httpClient.DefaultRequestHeaders.Add("X-GitHub-Api-Version", "2022-11-28");
     }
 
-    public Uri CreateLoginUri(string clientId, string? state = null, string? redirectUri = null)
+    internal GitHubClientService(HttpClient httpClient)
     {
+        _httpClient = httpClient ?? throw new ArgumentNullException(nameof(httpClient));
+        _httpClient.BaseAddress ??= new Uri("https://api.github.com/");
+        if (!_httpClient.DefaultRequestHeaders.UserAgent.Any())
+        {
+            _httpClient.DefaultRequestHeaders.UserAgent.Add(new ProductInfoHeaderValue("JitHub", "1.0"));
+        }
+
+        if (!_httpClient.DefaultRequestHeaders.Accept.Any())
+        {
+            _httpClient.DefaultRequestHeaders.Accept.Add(
+                new MediaTypeWithQualityHeaderValue("application/vnd.github+json"));
+        }
+
+        if (!_httpClient.DefaultRequestHeaders.Contains("X-GitHub-Api-Version"))
+        {
+            _httpClient.DefaultRequestHeaders.Add("X-GitHub-Api-Version", "2022-11-28");
+        }
+    }
+
+    public Uri CreateLoginUri(
+        string clientId,
+        string? state = null,
+        string? redirectUri = null,
+        IReadOnlyCollection<string>? additionalScopes = null)
+    {
+        IReadOnlyList<string> scopes = OAuthScopePolicy.BuildRequestedScopes(additionalScopes);
+
         List<string> queryParts =
         [
             $"client_id={Uri.EscapeDataString(clientId)}",
-            $"scope={Uri.EscapeDataString("user repo delete_repo")}"
+            $"scope={Uri.EscapeDataString(string.Join(' ', scopes))}"
         ];
 
         if (!string.IsNullOrWhiteSpace(redirectUri))
@@ -50,6 +71,26 @@ public sealed class GitHubClientService : IGitHubClientService
 
         string query = string.Join("&", queryParts);
         return new Uri($"https://github.com/login/oauth/authorize?{query}", UriKind.Absolute);
+    }
+
+    public async Task<IReadOnlySet<string>> GetTokenScopesAsync(
+        string token,
+        CancellationToken cancellationToken = default)
+    {
+        using HttpRequestMessage request = CreateAuthenticatedRequest(HttpMethod.Get, "user", token);
+        using HttpResponseMessage response =
+            await _httpClient.SendAsync(request, HttpCompletionOption.ResponseHeadersRead, cancellationToken);
+        await EnsureSuccessAsync(response, cancellationToken);
+
+        if (!response.Headers.TryGetValues("X-OAuth-Scopes", out IEnumerable<string>? headerValues))
+        {
+            return new HashSet<string>(StringComparer.Ordinal);
+        }
+
+        return headerValues
+            .SelectMany(value => value.Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries))
+            .Where(scope => !string.IsNullOrWhiteSpace(scope))
+            .ToHashSet(StringComparer.Ordinal);
     }
 
     public async Task<GitHubUser> GetCurrentUserAsync(string token, CancellationToken cancellationToken = default)
@@ -1452,6 +1493,76 @@ public sealed class GitHubClientService : IGitHubClientService
         return comments;
     }
 
+    public async Task<GitHubCommitComment> CreateCommitCommentAsync(
+        string token,
+        string owner,
+        string name,
+        string gitRef,
+        string body,
+        string? path = null,
+        int? position = null,
+        CancellationToken cancellationToken = default)
+    {
+        string requestPath =
+            $"repos/{Uri.EscapeDataString(owner)}/{Uri.EscapeDataString(name)}/commits/{Uri.EscapeDataString(gitRef)}/comments";
+        GitHubCommitCommentCreateRequest payload = new()
+        {
+            Body = NormalizeLineEndings(body) ?? string.Empty,
+            Path = string.IsNullOrWhiteSpace(path) ? null : path,
+            Position = position
+        };
+        using HttpRequestMessage request = CreateJsonRequest(
+            HttpMethod.Post,
+            requestPath,
+            token,
+            payload,
+            GitHubJsonSerializerContext.Default.GitHubCommitCommentCreateRequest);
+        using HttpResponseMessage response =
+            await _httpClient.SendAsync(request, HttpCompletionOption.ResponseHeadersRead, cancellationToken);
+        await EnsureSuccessAsync(response, cancellationToken);
+
+        return await ReadResponseAsync(
+            response,
+            GitHubJsonSerializerContext.Default.GitHubCommitComment,
+            "commit comment",
+            cancellationToken);
+    }
+
+    public async Task<GitHubPullRequestReview> CreatePullRequestReviewAsync(
+        string token,
+        string owner,
+        string name,
+        int pullRequestNumber,
+        PullRequestReviewSubmission submission,
+        CancellationToken cancellationToken = default)
+    {
+        ArgumentNullException.ThrowIfNull(submission);
+        PullRequestReviewSubmissionPolicy.Validate(submission);
+
+        string path =
+            $"repos/{Uri.EscapeDataString(owner)}/{Uri.EscapeDataString(name)}/pulls/{pullRequestNumber}/reviews";
+        GitHubPullRequestReviewCreateRequest payload = new()
+        {
+            Body = NormalizeLineEndings(submission.Body),
+            Event = PullRequestReviewSubmissionPolicy.ToApiEvent(submission.Decision)
+        };
+        using HttpRequestMessage request = CreateJsonRequest(
+            HttpMethod.Post,
+            path,
+            token,
+            payload,
+            GitHubJsonSerializerContext.Default.GitHubPullRequestReviewCreateRequest);
+        using HttpResponseMessage response =
+            await _httpClient.SendAsync(request, HttpCompletionOption.ResponseHeadersRead, cancellationToken);
+        await EnsureSuccessAsync(response, cancellationToken);
+
+        return await ReadResponseAsync(
+            response,
+            GitHubJsonSerializerContext.Default.GitHubPullRequestReview,
+            "pull request review",
+            cancellationToken);
+    }
+
     public async Task<GitHubRepositoryContent> GetRepositoryContentAsync(
         string token,
         string owner,
@@ -1662,7 +1773,7 @@ public sealed class GitHubClientService : IGitHubClientService
     }
 
     public static bool IsPublicAccessToken(string? token) =>
-        string.Equals(token, PublicAccessToken, StringComparison.Ordinal);
+        GitHubAuthenticationConstants.IsPublicAccessToken(token);
 
     private static HttpRequestMessage CreateJsonRequest<T>(
         HttpMethod method,
@@ -1805,6 +1916,73 @@ public sealed class GitHubClientService : IGitHubClientService
             throw new GitHubAuthenticationException(message);
         }
 
+        if (TryGetRateLimitRetryDelay(response, message, out TimeSpan retryDelay))
+        {
+            throw new GitHubRateLimitException(response.StatusCode, message, retryDelay);
+        }
+
         throw new GitHubApiException(response.StatusCode, message);
     }
+
+    private static bool TryGetRateLimitRetryDelay(
+        HttpResponseMessage response,
+        string message,
+        out TimeSpan retryDelay)
+    {
+        retryDelay = TimeSpan.Zero;
+        bool hasRetryAfter = response.Headers.RetryAfter is not null;
+        bool hasExhaustedPrimaryLimit =
+            TryGetInt64Header(response, "X-RateLimit-Remaining", out long remaining) && remaining == 0;
+        bool isRateLimitStatus =
+            response.StatusCode == HttpStatusCode.TooManyRequests ||
+            (response.StatusCode == HttpStatusCode.Forbidden &&
+                (hasExhaustedPrimaryLimit || IsRateLimitMessage(message)));
+        if (!hasRetryAfter && !isRateLimitStatus)
+        {
+            return false;
+        }
+
+        if (response.Headers.RetryAfter?.Delta is TimeSpan delta)
+        {
+            retryDelay = NormalizeRetryDelay(delta);
+            return true;
+        }
+
+        if (response.Headers.RetryAfter?.Date is DateTimeOffset retryAt)
+        {
+            retryDelay = NormalizeRetryDelay(retryAt - DateTimeOffset.UtcNow);
+            return true;
+        }
+
+        if (hasExhaustedPrimaryLimit &&
+            TryGetInt64Header(response, "X-RateLimit-Reset", out long resetSeconds))
+        {
+            try
+            {
+                retryDelay = NormalizeRetryDelay(
+                    DateTimeOffset.FromUnixTimeSeconds(resetSeconds) - DateTimeOffset.UtcNow + TimeSpan.FromSeconds(1));
+                return true;
+            }
+            catch (ArgumentOutOfRangeException)
+            {
+            }
+        }
+
+        retryDelay = GitHubRetryPolicy.DefaultSecondaryRateLimitDelay;
+        return true;
+    }
+
+    private static bool TryGetInt64Header(HttpResponseMessage response, string name, out long value)
+    {
+        value = 0;
+        return response.Headers.TryGetValues(name, out IEnumerable<string>? values) &&
+            long.TryParse(values.FirstOrDefault(), NumberStyles.Integer, CultureInfo.InvariantCulture, out value);
+    }
+
+    private static TimeSpan NormalizeRetryDelay(TimeSpan retryDelay) =>
+        retryDelay < TimeSpan.Zero ? TimeSpan.Zero : retryDelay;
+
+    private static bool IsRateLimitMessage(string message) =>
+        message.Contains("rate limit", StringComparison.OrdinalIgnoreCase) ||
+        message.Contains("abuse detection", StringComparison.OrdinalIgnoreCase);
 }

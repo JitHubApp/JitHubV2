@@ -9,6 +9,8 @@
                 <ColumnDefinition Width="*" />
             </Grid.ColumnDefinitions>
             <common:Avatar
+                AutomationInstanceId="{Binding ActorAutomationId, Mode=OneWay}"
+                NavigationSource="legacy_issue_timeline_actor"
                 Grid.Column="0"
                 HorizontalAlignment="Center"
                 VerticalAlignment="Center"
@@ -20,10 +22,12 @@
                 Orientation="Horizontal"
                 Spacing="4">
                 <TextBlock VerticalAlignment="Center" Text="{Binding Actor.Login, Mode=OneWay}" />
-                <TextBlock VerticalAlignment="Center" Text="assigned this to" />
+                <TextBlock x:Uid="DataTemplatesIssueEventAssignedEventTextBlockAssignedThi" VerticalAlignment="Center" Text="assigned this to" />
                 <common:Avatar
+                    AutomationInstanceId="{Binding AssigneeAutomationId, Mode=OneWay}"
                     VerticalAlignment="Center"
                     Login="{Binding Assignee.Login, Mode=OneWay}"
+                    NavigationSource="legacy_issue_timeline_assignee"
                     ShowLogin="True"
                     Url="{Binding Assignee.AvatarUrl, Mode=OneWay}" />
                 <TextBlock VerticalAlignment="Center" Text="{Binding CreatedAt, Converter={StaticResource TimeAgoConverter}, ConverterParameter='', Mode=OneWay}" />

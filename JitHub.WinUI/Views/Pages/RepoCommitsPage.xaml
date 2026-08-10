@@ -1,95 +1,889 @@
+<?xml version="1.0" encoding="utf-8"?>
 <Page
     x:Class="JitHub.WinUI.Views.Pages.RepoCommitsPage"
+    x:Name="Root"
     xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
     xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
-    xmlns:local="using:JitHub.WinUI.Views.Pages"
-    xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
-    xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
-    xmlns:muxc="using:Microsoft.UI.Xaml.Controls"
-    xmlns:controls="using:CommunityToolkit.WinUI.UI.Controls"
+    xmlns:app="using:JitHub.WinUI.Views.Controls.App"
     xmlns:commit="using:JitHub.WinUI.Views.Controls.Commit"
-    xmlns:behaviors="using:JitHub.WinUI.Behaviors"
-    mc:Ignorable="d"
-    Background="Transparent">
-    <Grid>
-        <Grid.RowDefinitions>
-            <RowDefinition Height="auto"/>
-            <RowDefinition Height="*"/>
-        </Grid.RowDefinitions>
-        <muxc:ProgressRing
-            Height="50"
-            Width="50"
-            VerticalAlignment="Center"
-            HorizontalAlignment="Center"
-            IsActive="True"
-            Visibility="{x:Bind ViewModel.Loading, Converter={StaticResource BoolToVisibilityConverter}, Mode=OneWay}"/>
-        <ComboBox
-            Grid.Row="0"
-            Margin="15 10"
-            Visibility="{x:Bind ViewModel.Loading, Converter={StaticResource BoolToVisibilityReverseConverter}, Mode=OneWay}"
-            MinWidth="150"
-            ItemsSource="{x:Bind ViewModel.Branches, Mode=OneWay}"
-            DisplayMemberPath="Name"
-            SelectedItem="{x:Bind ViewModel.SelectedBranch, Mode=TwoWay}"
-            Header="Branch"
-            SelectionChanged="{x:Bind ViewModel.BranchSelectionChanged, Mode=OneWay}"/>
-        <controls:ListDetailsView
-            Grid.Row="1"
-            Background="Transparent"
-            Visibility="{x:Bind ViewModel.Loading, Converter={StaticResource BoolToVisibilityReverseConverter}, Mode=OneWay}"
-            x:Name="CommitListDetail"
-            BackButtonBehavior="Automatic"
-            ItemsSource="{x:Bind ViewModel.Commits, Mode=OneWay}"
-            behaviors:IncrementalLoadingBehavior.IsEnabled="True"
-            behaviors:IncrementalLoadingBehavior.PageSize="50"
-            behaviors:IncrementalLoadingBehavior.Source="{x:Bind ViewModel.Commits, Mode=OneWay}"
-            behaviors:IncrementalLoadingBehavior.Threshold="1200"
-            SelectedItem="{x:Bind ViewModel.SelectedCommit, Mode=TwoWay}"
-            NoSelectionContent="Select a commit to view"
-            CompactModeThresholdWidth="960"
-            SelectionChanged="{x:Bind ViewModel.SelectionChanged, Mode=OneWay}">
-            <controls:ListDetailsView.ListFooter>
-                <muxc:ProgressBar
-                    Height="2"
-                    Margin="12,6,12,8"
-                    Background="{ThemeResource AppSurfaceSubtleBrush}"
-                    Foreground="{ThemeResource AppAccentBrush}"
-                    IsIndeterminate="True"
-                    Visibility="{x:Bind ViewModel.IsIncrementalLoading, Converter={StaticResource BoolToVisibilityConverter}, Mode=OneWay}" />
-            </controls:ListDetailsView.ListFooter>
-            <controls:ListDetailsView.ItemTemplate>
-                <DataTemplate>
-                    <commit:CommitListDetailsItemPresenter Item="{Binding Mode=OneWay}"/>
-                </DataTemplate>
-            </controls:ListDetailsView.ItemTemplate>
-            <controls:ListDetailsView.NoSelectionContentTemplate>
-                <DataTemplate>
-                    <Grid
-                        VerticalAlignment="Stretch"
-                        HorizontalAlignment="Stretch">
-                        <StackPanel
+    xmlns:common="using:JitHub.WinUI.Views.Controls.Common"
+    xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+    xmlns:github="using:JitHub.Models.GitHub"
+    xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+    xmlns:toolkit="using:CommunityToolkit.WinUI.Controls"
+    xmlns:viewmodels="using:JitHub.WinUI.ViewModels.Pages"
+    x:DataType="viewmodels:RepoCommitsPageViewModel"
+    Background="Transparent"
+    mc:Ignorable="d">
+    <Page.Resources>
+        <Style x:Key="RepoCommitsPanelStyle" TargetType="Border">
+            <Setter Property="Background" Value="{ThemeResource AppSurfaceSubtleBrush}" />
+            <Setter Property="BorderBrush" Value="{ThemeResource AppHairlineBrush}" />
+            <Setter Property="BorderThickness" Value="1" />
+            <Setter Property="CornerRadius" Value="{ThemeResource AppRadiusSmall}" />
+        </Style>
+
+        <DataTemplate x:Key="RepoCommitListItemTemplate" x:DataType="github:GitHubCommit">
+            <Grid
+                MinHeight="52"
+                AutomationProperties.AutomationId="{x:Bind AutomationId}"
+                AutomationProperties.Name="{x:Bind AutomationName}"
+                RowSpacing="5"
+                PointerEntered="CommitListItem_PointerEntered">
+                <Grid.RowDefinitions>
+                    <RowDefinition Height="Auto" />
+                    <RowDefinition Height="Auto" />
+                    <RowDefinition Height="Auto" />
+                </Grid.RowDefinitions>
+                <TextBlock
+                    FontFamily="{ThemeResource AppUiFontFamily}"
+                    FontSize="13"
+                    FontWeight="SemiBold"
+                    Foreground="{ThemeResource AppInkBrush}"
+                    MaxLines="2"
+                    Text="{Binding SummaryMessage}"
+                    TextTrimming="CharacterEllipsis"
+                    TextWrapping="WrapWholeWords" />
+                <Grid Grid.Row="1" ColumnSpacing="8">
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="Auto" />
+                        <ColumnDefinition Width="Auto" />
+                        <ColumnDefinition Width="*" />
+                        <ColumnDefinition Width="Auto" />
+                    </Grid.ColumnDefinitions>
+                    <TextBlock
+                        FontFamily="{ThemeResource AppMonoFontFamily}"
+                        FontSize="11"
+                        Foreground="{ThemeResource AppAccentBrush}"
+                        Text="{Binding ShortSha}" />
+                    <common:Avatar
+                        Grid.Column="1"
+                        HorizontalAlignment="Left"
+                        AutomationInstanceId="{Binding ShortSha}"
+                        DisplayName="{Binding AuthorDisplayName}"
+                        Login="{Binding AuthorProfileLogin}"
+                        MaxWidth="140"
+                        NavigationSource="commit_list_author"
+                        ShowLogin="True"
+                        Size="SMALL"
+                        VerticalAlignment="Center"
+                        Url="{Binding AuthorAvatarUrl}" />
+                    <TextBlock
+                        Grid.Column="3"
+                        Style="{StaticResource SectionSecondaryTextBlockStyle}"
+                        Text="{Binding Commit.Author.Date, Converter={StaticResource TimeAgoConverter}}" />
+                </Grid>
+                <TextBlock
+                    Grid.Row="2"
+                    FontFamily="{ThemeResource AppUiFontFamily}"
+                    FontSize="11"
+                    Foreground="{ThemeResource AppInkMutedBrush}"
+                    Text="{Binding Stats.SummaryText}"
+                    TextTrimming="CharacterEllipsis" />
+            </Grid>
+        </DataTemplate>
+
+        <DataTemplate x:Key="CommitCommentTemplate" x:DataType="github:GitHubCommitComment">
+            <Border
+                Margin="0,0,0,12"
+                Padding="14"
+                Background="{ThemeResource AppCanvasInsetBrush}"
+                BorderBrush="{ThemeResource AppHairlineBrush}"
+                BorderThickness="1"
+                CornerRadius="{ThemeResource AppRadiusSmall}">
+                <Grid RowSpacing="12">
+                    <Grid.RowDefinitions>
+                        <RowDefinition Height="Auto" />
+                        <RowDefinition Height="Auto" />
+                    </Grid.RowDefinitions>
+                    <Grid ColumnSpacing="10">
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="32" />
+                            <ColumnDefinition Width="*" />
+                            <ColumnDefinition Width="Auto" />
+                        </Grid.ColumnDefinitions>
+                        <common:Avatar
+                            AutomationInstanceId="{Binding AvatarAutomationId}"
+                            DisplayName="{Binding AuthorDisplayName}"
+                            Login="{Binding AuthorProfileLogin}"
+                            NavigationSource="commit_comment"
+                            ShowLogin="False"
+                            Size="SMALL"
+                            Url="{Binding AuthorAvatarUrl}" />
+                        <TextBlock
+                            Grid.Column="1"
                             VerticalAlignment="Center"
-                            HorizontalAlignment="Center"
-                            Spacing="8">
-                            <Image
-                                Width="320"
-                                Source="ms-appx:///Assets/Icons/select_one.png"/>
-                            <TextBlock
-                                HorizontalAlignment="Center"
-                                FontSize="16"
-                                Text="Select a Commit to view"/>
-                        </StackPanel>
+                            FontFamily="{ThemeResource AppUiFontFamily}"
+                            FontSize="13"
+                            FontWeight="SemiBold"
+                            Foreground="{ThemeResource AppInkBrush}"
+                            Text="{Binding AuthorDisplayName}" />
+                        <TextBlock
+                            Grid.Column="2"
+                            VerticalAlignment="Center"
+                            Style="{StaticResource SectionSecondaryTextBlockStyle}"
+                            Text="{Binding CreatedAt, Converter={StaticResource TimeAgoConverter}}" />
                     </Grid>
-                </DataTemplate>
-            </controls:ListDetailsView.NoSelectionContentTemplate>
-            <controls:ListDetailsView.DetailsTemplate>
-                <DataTemplate>
-                    <commit:CommitListDetailsDetailPresenter Item="{Binding Mode=OneWay}"/>
-                </DataTemplate>
-            </controls:ListDetailsView.DetailsTemplate>
-        </controls:ListDetailsView>
+                    <common:MarkdownViewer
+                        HostKind="Comment"
+                        AutomationInstanceId="{x:Bind MarkdownAutomationId}"
+                        Grid.Row="1"
+                        BaseUrl="https://github.com/"
+                        DocumentSource="{x:Bind MarkdownSource}"
+                        Text="{Binding Body}" />
+                </Grid>
+            </Border>
+        </DataTemplate>
+
+        <DataTemplate x:Key="CommitCheckRunTemplate" x:DataType="github:GitHubCheckRun">
+            <Grid
+                MinHeight="36"
+                Margin="0,0,0,8"
+                ColumnSpacing="10">
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="24" />
+                    <ColumnDefinition Width="*" />
+                    <ColumnDefinition Width="Auto" />
+                </Grid.ColumnDefinitions>
+                <FontIcon
+                    Margin="0,2,0,0"
+                    FontFamily="{StaticResource SegoeFluentIcons}"
+                    FontSize="14"
+                    Foreground="{ThemeResource AppSuccessBrush}"
+                    Glyph="&#xE930;" />
+                <StackPanel Grid.Column="1" Spacing="2">
+                    <TextBlock
+                        FontFamily="{ThemeResource AppUiFontFamily}"
+                        FontSize="13"
+                        Foreground="{ThemeResource AppInkBrush}"
+                        Text="{Binding Name}"
+                        TextTrimming="CharacterEllipsis" />
+                    <TextBlock
+                        Style="{StaticResource SectionSecondaryTextBlockStyle}"
+                        Text="{Binding App.Name}"
+                        TextTrimming="CharacterEllipsis" />
+                </StackPanel>
+                <TextBlock
+                    Grid.Column="2"
+                    VerticalAlignment="Center"
+                    FontFamily="{ThemeResource AppUiFontFamily}"
+                    FontSize="11"
+                    Foreground="{ThemeResource AppAccentBrush}"
+                    Text="{Binding Conclusion}" />
+            </Grid>
+        </DataTemplate>
+
+        <DataTemplate x:Key="AssociatedPullRequestTemplate" x:DataType="github:GitHubPullRequest">
+            <Grid
+                MinHeight="34"
+                Margin="0,0,0,8"
+                ColumnSpacing="8">
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="Auto" />
+                    <ColumnDefinition Width="*" />
+                </Grid.ColumnDefinitions>
+                <TextBlock
+                    FontFamily="{ThemeResource AppMonoFontFamily}"
+                    FontSize="11"
+                    Foreground="{ThemeResource AppAccentBrush}"
+                    Text="{Binding Number}" />
+                <TextBlock
+                    Grid.Column="1"
+                    Style="{StaticResource SectionSecondaryTextBlockStyle}"
+                    Text="{Binding Title}"
+                    TextTrimming="CharacterEllipsis" />
+            </Grid>
+        </DataTemplate>
+    </Page.Resources>
+
+    <Grid
+        x:Uid="PagesRepoCommitsPageRepoCommitsPageRoot" x:Name="PerformanceRoot"
+        AutomationProperties.AccessibilityView="Control"
+        AutomationProperties.AutomationId="RepoCommitsPageRoot"
+        AutomationProperties.Name="Repository commits"
+        Padding="{ThemeResource AppPagePadding}">
+        <app:AdaptiveWorkspace
+            x:Name="CommitsWorkspace"
+            AutomationProperties.AutomationId="RepoCommitsAdaptiveWorkspace"
+            AutomationIdPrefix="RepoCommits"
+            LeadingPaneLabel="Commits"
+            LeadingPaneWidth="320"
+            MediumBreakpoint="880"
+            ModeChanged="CommitsWorkspace_ModeChanged"
+            NarrowBreakpoint="620"
+            ShowPaneButtons="False"
+            TrailingPaneLabel="Inspector"
+            TrailingPaneWidth="240"
+            WideBreakpoint="1000">
+            <app:AdaptiveWorkspace.LeadingPane>
+                <Border
+                    AutomationProperties.AutomationId="RepoCommitsListHost"
+                    Padding="10"
+                    Style="{StaticResource RepoCommitsPanelStyle}">
+                    <Grid RowSpacing="10">
+                        <Grid.RowDefinitions>
+                            <RowDefinition Height="Auto" />
+                            <RowDefinition Height="*" />
+                            <RowDefinition Height="Auto" />
+                        </Grid.RowDefinitions>
+
+                        <Grid RowSpacing="8">
+                            <Grid.RowDefinitions>
+                                <RowDefinition Height="Auto" />
+                                <RowDefinition Height="Auto" />
+                                <RowDefinition Height="Auto" />
+                                <RowDefinition Height="Auto" />
+                                <RowDefinition Height="Auto" />
+                            </Grid.RowDefinitions>
+                            <Grid ColumnSpacing="8" Style="{StaticResource AppWorkspaceHeaderStyle}">
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="Auto" />
+                                    <ColumnDefinition Width="*" />
+                                </Grid.ColumnDefinitions>
+                                <Button
+                                    x:Uid="PagesRepoCommitsPageRepoCommitsCloseListPaneButton" x:Name="RepoCommitsCloseListPaneButton"
+                                    Width="36"
+                                    Height="36"
+                                    Padding="0"
+                                    VerticalAlignment="Top"
+                                    AutomationProperties.AutomationId="RepoCommitsCloseListPaneButton"
+                                    AutomationProperties.Name="Close commit list"
+                                    Click="CloseWorkspaceDrawerButton_Click"
+                                    Style="{StaticResource AppToolbarButtonStyle}"
+                                    ToolTipService.ToolTip="Close commits"
+                                    Visibility="Collapsed">
+                                    <FontIcon FontFamily="{StaticResource SegoeFluentIcons}" FontSize="14" Glyph="&#xE8FD;" />
+                                </Button>
+                                <ComboBox
+                                    x:Uid="PagesRepoCommitsPageRepoCommitsBranchComboBox" x:Name="BranchComboBox"
+                                    Grid.Column="1"
+                                    AutomationProperties.AutomationId="RepoCommitsBranchComboBox"
+                                    AutomationProperties.Name="Commit branch"
+                                    DisplayMemberPath="Name"
+                                    ItemsSource="{Binding Branches}"
+                                    PlaceholderText="Branch"
+                                    SelectedItem="{Binding SelectedBranch, Mode=TwoWay}"
+                                    SelectionChanged="BranchComboBox_SelectionChanged"
+                                    Style="{StaticResource AppCompactComboBoxStyle}" />
+                            </Grid>
+
+                            <TextBox
+                                x:Uid="PagesRepoCommitsPageRepoCommitsSearchBox" x:Name="CommitSearchBox"
+                                Grid.Row="1"
+                                    AutomationProperties.AutomationId="RepoCommitsSearchBox"
+                                    AutomationProperties.Name="Search commit messages"
+                                PlaceholderText="Search messages..."
+                                Style="{StaticResource AppCommandTextBoxStyle}"
+                                TextChanged="CommitFilterBox_TextChanged" />
+
+                            <Grid Grid.Row="2" ColumnSpacing="8">
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="*" />
+                                    <ColumnDefinition Width="*" />
+                                </Grid.ColumnDefinitions>
+                                <TextBox
+                                    x:Uid="PagesRepoCommitsPageRepoCommitsPathFilterBox" x:Name="PathFilterBox"
+                                    AutomationProperties.AutomationId="RepoCommitsPathFilterBox"
+                                    AutomationProperties.Name="Filter commits by path"
+                                    PlaceholderText="Path"
+                                    Style="{StaticResource AppCommandTextBoxStyle}"
+                                    TextChanged="CommitFilterBox_TextChanged" />
+                                <TextBox
+                                    x:Uid="PagesRepoCommitsPageRepoCommitsAuthorFilterBox" x:Name="AuthorFilterBox"
+                                    Grid.Column="1"
+                                    AutomationProperties.AutomationId="RepoCommitsAuthorFilterBox"
+                                    AutomationProperties.Name="Filter commits by author"
+                                    PlaceholderText="Author"
+                                    Style="{StaticResource AppCommandTextBoxStyle}"
+                                    TextChanged="CommitFilterBox_TextChanged" />
+                            </Grid>
+
+                            <Grid Grid.Row="3" ColumnSpacing="8">
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="*" />
+                                    <ColumnDefinition Width="*" />
+                                </Grid.ColumnDefinitions>
+                                <CalendarDatePicker
+                                    x:Uid="PagesRepoCommitsPageRepoCommitsSinceFilterPicker" x:Name="SinceFilterPicker"
+                                    AutomationProperties.AutomationId="RepoCommitsSinceFilterPicker"
+                                    AutomationProperties.Name="Commits since date"
+                                    Date="{x:Bind ViewModel.SinceFilterDate, Mode=TwoWay}"
+                                    DateChanged="CommitDateFilter_DateChanged"
+                                    PlaceholderText="Since"
+                                    Style="{StaticResource AppCompactCalendarDatePickerStyle}" />
+                                <CalendarDatePicker
+                                    x:Uid="PagesRepoCommitsPageRepoCommitsUntilFilterPicker" x:Name="UntilFilterPicker"
+                                    Grid.Column="1"
+                                    AutomationProperties.AutomationId="RepoCommitsUntilFilterPicker"
+                                    AutomationProperties.Name="Commits until date"
+                                    Date="{x:Bind ViewModel.UntilFilterDate, Mode=TwoWay}"
+                                    DateChanged="CommitDateFilter_DateChanged"
+                                    PlaceholderText="Until"
+                                    Style="{StaticResource AppCompactCalendarDatePickerStyle}" />
+                            </Grid>
+
+                            <StackPanel
+                                Grid.Row="4"
+                                Orientation="Horizontal"
+                                Spacing="6">
+                                <Button
+                                    x:Uid="PagesRepoCommitsPageRepoCommitsSinceFilterChip" MinHeight="26"
+                                    Padding="8,3"
+                                    AutomationProperties.AutomationId="RepoCommitsSinceFilterChip"
+                                    AutomationProperties.Name="{x:Bind ViewModel.SinceFilterLabel, Mode=OneWay}"
+                                    Click="ClearSinceFilterButton_Click"
+                                    Style="{StaticResource AppQuietButtonStyle}"
+                                    ToolTipService.ToolTip="Clear since date filter"
+                                    Visibility="{x:Bind ViewModel.HasSinceFilter, Converter={StaticResource BoolToVisibilityConverter}, Mode=OneWay}">
+                                    <StackPanel Orientation="Horizontal" Spacing="6">
+                                        <TextBlock Text="{x:Bind ViewModel.SinceFilterLabel, Mode=OneWay}" />
+                                        <FontIcon FontFamily="{StaticResource SegoeFluentIcons}" FontSize="10" Glyph="&#xE711;" />
+                                    </StackPanel>
+                                </Button>
+                                <Button
+                                    x:Uid="PagesRepoCommitsPageRepoCommitsUntilFilterChip" MinHeight="26"
+                                    Padding="8,3"
+                                    AutomationProperties.AutomationId="RepoCommitsUntilFilterChip"
+                                    AutomationProperties.Name="{x:Bind ViewModel.UntilFilterLabel, Mode=OneWay}"
+                                    Click="ClearUntilFilterButton_Click"
+                                    Style="{StaticResource AppQuietButtonStyle}"
+                                    ToolTipService.ToolTip="Clear until date filter"
+                                    Visibility="{x:Bind ViewModel.HasUntilFilter, Converter={StaticResource BoolToVisibilityConverter}, Mode=OneWay}">
+                                    <StackPanel Orientation="Horizontal" Spacing="6">
+                                        <TextBlock Text="{x:Bind ViewModel.UntilFilterLabel, Mode=OneWay}" />
+                                        <FontIcon FontFamily="{StaticResource SegoeFluentIcons}" FontSize="10" Glyph="&#xE711;" />
+                                    </StackPanel>
+                                </Button>
+                            </StackPanel>
+                        </Grid>
+
+                        <Grid Grid.Row="1">
+                            <StackPanel
+                                Style="{StaticResource AppEmptyStatePanelStyle}"
+                                Visibility="{Binding IsEmpty, Converter={StaticResource BoolToVisibilityConverter}}">
+                                <TextBlock x:Uid="PagesRepoCommitsPageTextBlockNoCommitsMatchThisView" Style="{StaticResource SectionSecondaryTextBlockStyle}" Text="No commits match this view." />
+                            </StackPanel>
+                            <ListView
+                                x:Uid="PagesRepoCommitsPageRepoCommitsList" x:Name="CommitsList"
+                            AutomationProperties.AutomationId="RepoCommitsList"
+                            AutomationProperties.Name="Commit history"
+                                Background="Transparent"
+                            BorderThickness="0"
+                            ContainerContentChanging="CommitsList_ContainerContentChanging"
+                            IsItemClickEnabled="True"
+                                ItemClick="CommitsList_ItemClick"
+                            ItemContainerStyle="{StaticResource AppWorkspaceCardListRowStyle}"
+                                ItemTemplate="{StaticResource RepoCommitListItemTemplate}"
+                                ItemsSource="{Binding Commits}"
+                                SelectedItem="{Binding SelectedCommit, Mode=OneWay}"
+                                SelectionChanged="CommitsList_SelectionChanged"
+                                SelectionMode="Single" />
+                        </Grid>
+                        <InfoBar
+                            x:Uid="PagesRepoCommitsPageRepoCommitsScopeNotice" Grid.Row="2"
+                            AutomationProperties.AutomationId="RepoCommitsScopeNotice"
+                            AutomationProperties.Name="Commit result scope"
+                            IsClosable="False"
+                            IsOpen="{x:Bind ViewModel.HasCommitListScopeNotice, Mode=OneWay}"
+                            Message="{x:Bind ViewModel.CommitListScopeNotice, Mode=OneWay}"
+                            Severity="Warning"
+                            Style="{StaticResource AppStatusInfoBarStyle}" />
+                    </Grid>
+                </Border>
+            </app:AdaptiveWorkspace.LeadingPane>
+
+            <app:AdaptiveWorkspace.PrimaryPane>
+                <Border
+                    AutomationProperties.AutomationId="RepoCommitsDetailHost"
+                    Style="{StaticResource RepoCommitsPanelStyle}">
+                    <Grid>
+                        <TextBlock
+                            x:Uid="PagesRepoCommitsPageTextBlockSelectACommitToSeeDetails" HorizontalAlignment="Center"
+                            VerticalAlignment="Center"
+                            Style="{StaticResource SectionSecondaryTextBlockStyle}"
+                            Text="Select a commit to see details."
+                            Visibility="{Binding IsDetailPlaceholderVisible, Converter={StaticResource BoolToVisibilityConverter}}" />
+
+                        <Grid Visibility="{Binding HasSelectedCommit, Converter={StaticResource BoolToVisibilityConverter}}">
+                            <Grid.RowDefinitions>
+                                <RowDefinition Height="Auto" />
+                                <RowDefinition Height="Auto" />
+                                <RowDefinition Height="*" />
+                            </Grid.RowDefinitions>
+
+                            <Grid
+                                Padding="10,10,16,12"
+                                BorderBrush="{ThemeResource AppHairlineBrush}"
+                                BorderThickness="0,0,0,1"
+                                ColumnSpacing="12">
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="Auto" />
+                                    <ColumnDefinition Width="*" />
+                                    <ColumnDefinition Width="Auto" />
+                                </Grid.ColumnDefinitions>
+                                <Button
+                                    x:Uid="PagesRepoCommitsPageRepoCommitsOpenListPaneButton" x:Name="RepoCommitsOpenListPaneButton"
+                                    Width="36"
+                                    Height="36"
+                                    Padding="0"
+                                    VerticalAlignment="Top"
+                                    AutomationProperties.AutomationId="RepoCommitsOpenListPaneButton"
+                                    AutomationProperties.Name="Open commit list"
+                                    Click="OpenListPaneButton_Click"
+                                    Style="{StaticResource AppToolbarButtonStyle}"
+                                    ToolTipService.ToolTip="Commits"
+                                    Visibility="Collapsed">
+                                    <FontIcon FontFamily="{StaticResource SegoeFluentIcons}" FontSize="14" Glyph="&#xE8FD;" />
+                                </Button>
+                                <StackPanel Grid.Column="1" Spacing="7">
+                                    <TextBlock
+                                        x:Name="CommitDetailTitle"
+                                        AutomationProperties.AutomationId="RepoCommitsDetailTitle"
+                                        FontFamily="{ThemeResource AppDisplayFontFamily}"
+                                        FontSize="25"
+                                        Foreground="{ThemeResource AppInkBrush}"
+                                        MaxLines="2"
+                                        Text="{Binding SelectedCommitTitle}"
+                                        TextTrimming="CharacterEllipsis"
+                                        TextWrapping="WrapWholeWords"
+                                        ToolTipService.ToolTip="{Binding SelectedCommitTitle}" />
+                                    <Grid ColumnSpacing="8">
+                                        <Grid.ColumnDefinitions>
+                                            <ColumnDefinition Width="Auto" />
+                                            <ColumnDefinition Width="Auto" />
+                                            <ColumnDefinition Width="Auto" />
+                                            <ColumnDefinition Width="*" />
+                                        </Grid.ColumnDefinitions>
+                                        <TextBlock
+                                            FontFamily="{ThemeResource AppMonoFontFamily}"
+                                            FontSize="12"
+                                            Foreground="{ThemeResource AppAccentBrush}"
+                                            Text="{Binding SelectedCommitShaText}" />
+                                        <TextBlock
+                                            Grid.Column="1"
+                                            Style="{StaticResource SectionSecondaryTextBlockStyle}"
+                                            Text="{Binding SelectedCommitVerificationText}" />
+                                        <common:Avatar
+                                            Grid.Column="2"
+                                            AutomationInstanceId="{Binding SelectedCommitAuthorAutomationId}"
+                                            DisplayName="{Binding SelectedCommitAuthor}"
+                                            Login="{Binding SelectedCommitAuthorLogin}"
+                                            NavigationSource="commit_detail_author"
+                                            ShowLogin="True"
+                                            Size="SMALL"
+                                            Url="{Binding SelectedCommitAvatarUrl}" />
+                                        <TextBlock
+                                            Grid.Column="3"
+                                            Style="{StaticResource SectionSecondaryTextBlockStyle}"
+                                            Text="{Binding SelectedCommitMetaText}"
+                                            TextTrimming="CharacterEllipsis" />
+                                    </Grid>
+                                </StackPanel>
+                                <StackPanel
+                                    Grid.Column="2"
+                                    VerticalAlignment="Top"
+                                    Orientation="Horizontal"
+                                    Spacing="8">
+                                    <Button
+                                        x:Uid="PagesRepoCommitsPageRepoCommitsCopyShaButton" Width="36"
+                                        Height="36"
+                                        Padding="0"
+                                        AutomationProperties.AutomationId="RepoCommitsCopyShaButton"
+                                        AutomationProperties.Name="Copy commit SHA"
+                                        Click="CopyShaButton_Click"
+                                        Style="{StaticResource AppToolbarButtonStyle}"
+                                        ToolTipService.ToolTip="Copy SHA">
+                                        <FontIcon FontFamily="{StaticResource SegoeFluentIcons}" FontSize="14" Glyph="&#xE8C8;" />
+                                    </Button>
+                                    <Button
+                                        x:Uid="PagesRepoCommitsPageRepoCommitsOpenCodeButton" MinHeight="34"
+                                        Padding="12,6"
+                                        AutomationProperties.AutomationId="RepoCommitsOpenCodeButton"
+                                        AutomationProperties.Name="Browse files at this commit"
+                                        Click="OpenCodeButton_Click"
+                                        Content="Browse files"
+                                        Style="{StaticResource AppOutlineButtonStyle}"
+                                        ToolTipService.ToolTip="Open repository files at this commit" />
+                                    <Button
+                                        x:Uid="PagesRepoCommitsPageRepoCommitsOpenInspectorPaneButton" x:Name="RepoCommitsOpenInspectorPaneButton"
+                                        Width="36"
+                                        Height="36"
+                                        Padding="0"
+                                        AutomationProperties.AutomationId="RepoCommitsOpenInspectorPaneButton"
+                                        AutomationProperties.Name="Open inspector"
+                                        Click="OpenInspectorPaneButton_Click"
+                                        Style="{StaticResource AppToolbarButtonStyle}"
+                                        ToolTipService.ToolTip="Inspector"
+                                        Visibility="Collapsed">
+                                        <FontIcon FontFamily="{StaticResource SegoeFluentIcons}" FontSize="14" Glyph="&#xE9D2;" />
+                                    </Button>
+                                </StackPanel>
+                            </Grid>
+
+                            <toolkit:Segmented
+                                x:Uid="PagesRepoCommitsPageRepoCommitsSectionSegmented" x:Name="CommitSectionSegmented"
+                                Grid.Row="1"
+                                Margin="10,10,10,0"
+                                AutomationProperties.AutomationId="RepoCommitsSectionSegmented"
+                                AutomationProperties.Name="Commit section"
+                                FontSize="12"
+                                SelectedIndex="0"
+                                SelectionChanged="CommitSectionSegmented_SelectionChanged">
+                                <toolkit:SegmentedItem x:Uid="PagesRepoCommitsPageRepoCommitsSectionDiff" AutomationProperties.AutomationId="RepoCommitsSection_Diff" AutomationProperties.Name="Show commit diff" Content="Diff" />
+                                <toolkit:SegmentedItem x:Uid="PagesRepoCommitsPageRepoCommitsSectionComments" AutomationProperties.AutomationId="RepoCommitsSection_Comments" AutomationProperties.Name="Show commit comments" Content="Comments" />
+                                <toolkit:SegmentedItem x:Uid="PagesRepoCommitsPageRepoCommitsSectionChecks" AutomationProperties.AutomationId="RepoCommitsSection_Checks" AutomationProperties.Name="Show commit checks" Content="Checks" />
+                                <toolkit:SegmentedItem x:Uid="PagesRepoCommitsPageRepoCommitsSectionCompare" AutomationProperties.AutomationId="RepoCommitsSection_Compare" AutomationProperties.Name="Compare commits" Content="Compare" />
+                            </toolkit:Segmented>
+
+                            <Grid
+                                Grid.Row="2"
+                                MinHeight="0"
+                                Padding="18">
+                                <Grid
+                                    RowSpacing="12"
+                                    Visibility="{Binding IsDiffSectionVisible, Converter={StaticResource BoolToVisibilityConverter}}">
+                                    <Grid.RowDefinitions>
+                                        <RowDefinition Height="Auto" />
+                                        <RowDefinition Height="Auto" />
+                                        <RowDefinition Height="*" />
+                                    </Grid.RowDefinitions>
+                                    <Grid ColumnSpacing="8">
+                                        <Grid.ColumnDefinitions>
+                                            <ColumnDefinition Width="*" />
+                                            <ColumnDefinition Width="220" />
+                                            <ColumnDefinition Width="Auto" />
+                                            <ColumnDefinition Width="Auto" />
+                                            <ColumnDefinition Width="Auto" />
+                                        </Grid.ColumnDefinitions>
+                                        <TextBox
+                                            x:Uid="PagesRepoCommitsPageRepoCommitsDiffFileFilterBox" AutomationProperties.AutomationId="RepoCommitsDiffFileFilterBox"
+                                            AutomationProperties.Name="Filter changed files"
+                                            PlaceholderText="Filter files..."
+                                            Style="{StaticResource AppCommandTextBoxStyle}"
+                                            Text="{Binding DiffFileFilterText, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" />
+                                        <TextBox
+                                            x:Uid="PagesRepoCommitsPageRepoCommitsDiffSearchBox" Grid.Column="1"
+                                            AutomationProperties.AutomationId="RepoCommitsDiffSearchBox"
+                                            AutomationProperties.Name="Search commit diff"
+                                            PlaceholderText="Search diff..."
+                                            Style="{StaticResource AppCommandTextBoxStyle}"
+                                            TextChanged="DiffSearchBox_TextChanged"
+                                            Text="{Binding DiffSearchText, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" />
+                                        <TextBlock
+                                            Grid.Column="2"
+                                            MinWidth="72"
+                                            AutomationProperties.AutomationId="RepoCommitsDiffSearchMatchCount"
+                                            VerticalAlignment="Center"
+                                            Style="{StaticResource SectionSecondaryTextBlockStyle}"
+                                            Text="{Binding DiffSearchMatchCountText}"
+                                            TextAlignment="Right" />
+                                        <Button
+                                            x:Uid="PagesRepoCommitsPageRepoCommitsPreviousDiffMatchButton" Grid.Column="3"
+                                            Width="34"
+                                            Height="34"
+                                            Padding="0"
+                                            AutomationProperties.AutomationId="RepoCommitsPreviousDiffMatchButton"
+                                            AutomationProperties.Name="Previous diff search match"
+                                            Command="{Binding PreviousDiffMatchCommand}"
+                                            Style="{StaticResource AppToolbarButtonStyle}"
+                                            Tag="previous"
+                                            ToolTipService.ToolTip="Previous match">
+                                            <FontIcon FontFamily="{StaticResource SegoeFluentIcons}" FontSize="12" Glyph="&#xE70E;" />
+                                        </Button>
+                                        <Button
+                                            x:Uid="PagesRepoCommitsPageRepoCommitsNextDiffMatchButton" Grid.Column="4"
+                                            Width="34"
+                                            Height="34"
+                                            Padding="0"
+                                            AutomationProperties.AutomationId="RepoCommitsNextDiffMatchButton"
+                                            AutomationProperties.Name="Next diff search match"
+                                            Command="{Binding NextDiffMatchCommand}"
+                                            Style="{StaticResource AppToolbarButtonStyle}"
+                                            Tag="next"
+                                            ToolTipService.ToolTip="Next match">
+                                            <FontIcon FontFamily="{StaticResource SegoeFluentIcons}" FontSize="12" Glyph="&#xE70D;" />
+                                        </Button>
+                                    </Grid>
+                                    <Grid
+                                        Grid.Row="1"
+                                        MinHeight="28"
+                                        ColumnSpacing="8"
+                                        Visibility="{Binding IsDiffStatusVisible, Converter={StaticResource BoolToVisibilityConverter}}">
+                                        <Grid.ColumnDefinitions>
+                                            <ColumnDefinition Width="Auto" />
+                                            <ColumnDefinition Width="*" />
+                                        </Grid.ColumnDefinitions>
+                                        <ProgressRing
+                                            Width="16"
+                                            Height="16"
+                                            VerticalAlignment="Center"
+                                            IsActive="{Binding IsDiffLoading}"
+                                            Visibility="{Binding IsDiffLoading, Converter={StaticResource BoolToVisibilityConverter}}" />
+                                        <TextBlock
+                                            Grid.Column="1"
+                                            VerticalAlignment="Center"
+                                            Style="{StaticResource SectionSecondaryTextBlockStyle}"
+                                            Text="{Binding DiffStatusText}"
+                                            TextTrimming="CharacterEllipsis" />
+                                    </Grid>
+                                    <commit:CommitDiffViewer
+                                        x:Uid="PagesRepoCommitsPageRepoCommitsDiffViewer" Grid.Row="2"
+                                        AutomationProperties.AccessibilityView="Control"
+                                        AutomationProperties.AutomationId="RepoCommitsDiffViewer"
+                                        AutomationProperties.Name="Commit diff"
+                                        RowProjection="{Binding DiffRowProjection}"
+                                        SelectedSearchMatchIndex="{Binding SelectedDiffSearchMatchIndex}" />
+                                </Grid>
+
+                                <ScrollViewer
+                                    x:Name="CommitCommentsSection"
+                                    x:Load="{x:Bind ViewModel.IsCommentsSectionVisible, Mode=OneWay}"
+                                    HorizontalScrollBarVisibility="Disabled"
+                                    VerticalScrollBarVisibility="Auto">
+                                    <StackPanel Spacing="12">
+                                        <Border
+                                            Padding="16"
+                                            Background="{ThemeResource AppCanvasInsetBrush}"
+                                            BorderBrush="{ThemeResource AppHairlineBrush}"
+                                            BorderThickness="1"
+                                            CornerRadius="{ThemeResource AppRadiusSmall}">
+                                            <common:MarkdownViewer
+                                                HostKind="Conversation"
+                                                AutomationInstanceId="RepoCommitsBody"
+                                                BaseUrl="https://github.com/"
+                                                DocumentSource="{Binding CommitBodyMarkdownSource}"
+                                                Text="{Binding SelectedCommitBodyText}" />
+                                        </Border>
+                                        <ItemsControl
+                                            ItemTemplate="{StaticResource CommitCommentTemplate}"
+                                            ItemsSource="{Binding CommitComments}" />
+                                        <common:MarkdownForm
+                                            AutomationInstanceId="RepoCommitsCommentBox"
+                                            DocumentSource="{Binding CommitCommentMarkdownSource}"
+                                            EditorHeight="116"
+                                            Text="{Binding CommentText, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}">
+                                            <common:MarkdownForm.ActionContent>
+                                                <Button
+                                                    x:Uid="PagesRepoCommitsPageRepoCommitsCommentButton" MinHeight="34"
+                                                    MinWidth="92"
+                                                    HorizontalAlignment="Right"
+                                            AutomationProperties.AutomationId="RepoCommitsCommentButton"
+                                            AutomationProperties.Name="Post commit comment"
+                                                    Click="CommentButton_Click"
+                                                    Content="Comment"
+                                                    IsEnabled="{Binding IsCommitCommentEnabled}"
+                                                    Style="{StaticResource AppAccentButtonStyle}" />
+                                            </common:MarkdownForm.ActionContent>
+                                        </common:MarkdownForm>
+                                    </StackPanel>
+                                </ScrollViewer>
+
+                                <ScrollViewer
+                                    x:Name="CommitChecksSection"
+                                    x:Load="{x:Bind ViewModel.IsChecksSectionVisible, Mode=OneWay}"
+                                    HorizontalScrollBarVisibility="Disabled"
+                                    VerticalScrollBarVisibility="Auto">
+                                    <StackPanel Spacing="12">
+                                        <TextBlock
+                                            FontFamily="{ThemeResource AppDisplayFontFamily}"
+                                            FontSize="22"
+                                            Foreground="{ThemeResource AppInkBrush}"
+                                            Text="{Binding CheckSummaryText}" />
+                                        <ItemsControl
+                                            ItemTemplate="{StaticResource CommitCheckRunTemplate}"
+                                            ItemsSource="{Binding CheckRuns}" />
+                                    </StackPanel>
+                                </ScrollViewer>
+
+                                <Grid
+                                    x:Name="CommitCompareSection"
+                                    x:Load="{x:Bind ViewModel.IsCompareSectionVisible, Mode=OneWay}"
+                                    RowSpacing="12">
+                                    <Grid.RowDefinitions>
+                                        <RowDefinition Height="Auto" />
+                                        <RowDefinition Height="Auto" />
+                                        <RowDefinition Height="*" />
+                                    </Grid.RowDefinitions>
+                                    <Grid ColumnSpacing="8">
+                                        <Grid.ColumnDefinitions>
+                                            <ColumnDefinition Width="*" />
+                                            <ColumnDefinition Width="*" />
+                                            <ColumnDefinition Width="Auto" />
+                                        </Grid.ColumnDefinitions>
+                                        <TextBox
+                                            x:Uid="PagesRepoCommitsPageRepoCommitsCompareBaseBox" AutomationProperties.AutomationId="RepoCommitsCompareBaseBox"
+                                            AutomationProperties.Name="Compare base reference"
+                                            PlaceholderText="Base ref"
+                                            Style="{StaticResource AppCommandTextBoxStyle}"
+                                            Text="{Binding CompareBaseText, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" />
+                                        <TextBox
+                                            x:Uid="PagesRepoCommitsPageRepoCommitsCompareHeadBox" Grid.Column="1"
+                                            AutomationProperties.AutomationId="RepoCommitsCompareHeadBox"
+                                            AutomationProperties.Name="Compare head reference"
+                                            PlaceholderText="Head ref"
+                                            Style="{StaticResource AppCommandTextBoxStyle}"
+                                            Text="{Binding CompareHeadText, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" />
+                                        <Button
+                                            x:Uid="PagesRepoCommitsPageRepoCommitsCompareButton" Grid.Column="2"
+                                            AutomationProperties.AutomationId="RepoCommitsCompareButton"
+                                            AutomationProperties.Name="Compare references"
+                                            Click="CompareButton_Click"
+                                            Content="Compare"
+                                            Style="{StaticResource AppCommandButtonStyle}" />
+                                    </Grid>
+                                    <Grid Grid.Row="1" ColumnSpacing="8">
+                                        <Grid.ColumnDefinitions>
+                                            <ColumnDefinition Width="*" />
+                                            <ColumnDefinition Width="220" />
+                                            <ColumnDefinition Width="Auto" />
+                                            <ColumnDefinition Width="Auto" />
+                                            <ColumnDefinition Width="Auto" />
+                                        </Grid.ColumnDefinitions>
+                                        <TextBlock
+                                            VerticalAlignment="Center"
+                                            Style="{StaticResource SectionSecondaryTextBlockStyle}"
+                                            Text="{Binding CompareSummaryText}"
+                                            TextTrimming="CharacterEllipsis" />
+                                        <TextBox
+                                            x:Uid="PagesRepoCommitsPageRepoCommitsCompareDiffSearchBox" Grid.Column="1"
+                                            AutomationProperties.AutomationId="RepoCommitsCompareDiffSearchBox"
+                                            AutomationProperties.Name="Search compare diff"
+                                            PlaceholderText="Search diff..."
+                                            Style="{StaticResource AppCommandTextBoxStyle}"
+                                            TextChanged="DiffSearchBox_TextChanged"
+                                            Text="{Binding DiffSearchText, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" />
+                                        <TextBlock
+                                            Grid.Column="2"
+                                            MinWidth="72"
+                                            VerticalAlignment="Center"
+                                            Style="{StaticResource SectionSecondaryTextBlockStyle}"
+                                            Text="{Binding DiffSearchMatchCountText}"
+                                            TextAlignment="Right" />
+                                        <Button
+                                            x:Uid="PagesRepoCommitsPageRepoCommitsComparePreviousDiffMatchB" Grid.Column="3"
+                                            Width="34"
+                                            Height="34"
+                                            Padding="0"
+                                            AutomationProperties.AutomationId="RepoCommitsComparePreviousDiffMatchButton"
+                                            AutomationProperties.Name="Previous compare diff search match"
+                                            Command="{Binding PreviousDiffMatchCommand}"
+                                            Style="{StaticResource AppToolbarButtonStyle}"
+                                            Tag="previous"
+                                            ToolTipService.ToolTip="Previous match">
+                                            <FontIcon FontFamily="{StaticResource SegoeFluentIcons}" FontSize="12" Glyph="&#xE70E;" />
+                                        </Button>
+                                        <Button
+                                            x:Uid="PagesRepoCommitsPageRepoCommitsCompareNextDiffMatchButto" Grid.Column="4"
+                                            Width="34"
+                                            Height="34"
+                                            Padding="0"
+                                            AutomationProperties.AutomationId="RepoCommitsCompareNextDiffMatchButton"
+                                            AutomationProperties.Name="Next compare diff search match"
+                                            Command="{Binding NextDiffMatchCommand}"
+                                            Style="{StaticResource AppToolbarButtonStyle}"
+                                            Tag="next"
+                                            ToolTipService.ToolTip="Next match">
+                                            <FontIcon FontFamily="{StaticResource SegoeFluentIcons}" FontSize="12" Glyph="&#xE70D;" />
+                                        </Button>
+                                    </Grid>
+                                    <commit:CommitDiffViewer
+                                        x:Uid="PagesRepoCommitsPageRepoCommitsCompareDiffViewer" Grid.Row="2"
+                                        AutomationProperties.AccessibilityView="Control"
+                                        AutomationProperties.AutomationId="RepoCommitsCompareDiffViewer"
+                                        AutomationProperties.Name="Compare commit diff"
+                                        RowProjection="{Binding CompareDiffRowProjection}"
+                                        SelectedSearchMatchIndex="{Binding SelectedDiffSearchMatchIndex}" />
+                                </Grid>
+                            </Grid>
+                        </Grid>
+                    </Grid>
+                </Border>
+            </app:AdaptiveWorkspace.PrimaryPane>
+
+            <app:AdaptiveWorkspace.TrailingPane>
+                <Border
+                    x:Uid="PagesRepoCommitsPageRepoCommitsInspectorHost" AutomationProperties.AccessibilityView="Control"
+                    AutomationProperties.AutomationId="RepoCommitsInspectorHost"
+                    AutomationProperties.Name="Commit inspector"
+                    Padding="12,10,16,12"
+                    Style="{StaticResource RepoCommitsPanelStyle}">
+                    <ScrollViewer VerticalScrollBarVisibility="Auto">
+                        <StackPanel Spacing="14">
+                            <Grid ColumnSpacing="8">
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="*" />
+                                    <ColumnDefinition Width="Auto" />
+                                </Grid.ColumnDefinitions>
+                                <TextBlock
+                                    x:Uid="PagesRepoCommitsPageTextBlockInspector" FontFamily="{ThemeResource AppDisplayFontFamily}"
+                                    FontSize="21"
+                                    Foreground="{ThemeResource AppInkBrush}"
+                                    Text="Inspector" />
+                                <Button
+                                    x:Uid="PagesRepoCommitsPageRepoCommitsCloseInspectorPaneButton" x:Name="RepoCommitsCloseInspectorPaneButton"
+                                    Grid.Column="1"
+                                    Width="36"
+                                    Height="36"
+                                    Padding="0"
+                                    AutomationProperties.AutomationId="RepoCommitsCloseInspectorPaneButton"
+                                    AutomationProperties.Name="Close inspector"
+                                    Click="CloseWorkspaceDrawerButton_Click"
+                                    Style="{StaticResource AppToolbarButtonStyle}"
+                                    ToolTipService.ToolTip="Close inspector"
+                                    Visibility="Collapsed">
+                                    <FontIcon FontFamily="{StaticResource SegoeFluentIcons}" FontSize="14" Glyph="&#xE9D2;" />
+                                </Button>
+                            </Grid>
+
+                            <StackPanel Spacing="6">
+                                <TextBlock x:Uid="PagesRepoCommitsPageTextBlockStats" Style="{StaticResource SectionSecondaryTextBlockStyle}" Text="Stats" />
+                                <TextBlock
+                                    FontFamily="{ThemeResource AppMonoFontFamily}"
+                                    FontSize="12"
+                                    Foreground="{ThemeResource AppInkBrush}"
+                                    Text="{Binding SelectedCommitStatsText}" />
+                            </StackPanel>
+
+                            <StackPanel Spacing="6">
+                                <TextBlock x:Uid="PagesRepoCommitsPageTextBlockSignature" Style="{StaticResource SectionSecondaryTextBlockStyle}" Text="Signature" />
+                                <TextBlock
+                                    FontFamily="{ThemeResource AppUiFontFamily}"
+                                    FontSize="12"
+                                    Foreground="{ThemeResource AppAccentBrush}"
+                                    Text="{Binding SelectedCommitVerificationText}" />
+                            </StackPanel>
+
+                            <StackPanel Spacing="6">
+                                <TextBlock x:Uid="PagesRepoCommitsPageTextBlockParents" Style="{StaticResource SectionSecondaryTextBlockStyle}" Text="Parents" />
+                                <ItemsControl ItemsSource="{Binding ParentCommits}">
+                                    <ItemsControl.ItemTemplate>
+                                        <DataTemplate x:DataType="github:GitHubCommitParent">
+                                            <TextBlock
+                                                Margin="0,0,0,6"
+                                                FontFamily="{ThemeResource AppMonoFontFamily}"
+                                                FontSize="12"
+                                                Foreground="{ThemeResource AppAccentBrush}"
+                                                Text="{Binding ShortSha}" />
+                                        </DataTemplate>
+                                    </ItemsControl.ItemTemplate>
+                                </ItemsControl>
+                            </StackPanel>
+
+                            <StackPanel Spacing="6">
+                                <TextBlock Style="{StaticResource SectionSecondaryTextBlockStyle}" Text="{Binding AssociatedPullRequestsText}" />
+                                <ItemsControl
+                                    ItemTemplate="{StaticResource AssociatedPullRequestTemplate}"
+                                    ItemsSource="{Binding AssociatedPullRequests}" />
+                            </StackPanel>
+
+                            <StackPanel Spacing="6">
+                                <TextBlock Style="{StaticResource SectionSecondaryTextBlockStyle}" Text="{Binding SelectedCommitCommentsText}" />
+                                <TextBlock Style="{StaticResource SectionSecondaryTextBlockStyle}" Text="{Binding CheckSummaryText}" />
+                            </StackPanel>
+                        </StackPanel>
+                    </ScrollViewer>
+                </Border>
+            </app:AdaptiveWorkspace.TrailingPane>
+        </app:AdaptiveWorkspace>
     </Grid>
 </Page>
-
-
-

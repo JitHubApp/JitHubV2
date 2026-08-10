@@ -1,6 +1,7 @@
 using JitHub.Models.LegacyGitHub;
 using System;
 using System.Collections.Generic;
+using System.Linq;
 using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Controls;
 
@@ -39,6 +40,14 @@ namespace JitHub.WinUI.Views.Controls.Common
         public SidePanelDropDown()
         {
             this.InitializeComponent();
+        }
+
+        public string GetAutomationId(string? text)
+        {
+            string suffix = string.IsNullOrWhiteSpace(text)
+                ? "Menu"
+                : string.Concat(text.Where(char.IsLetterOrDigit));
+            return $"SidePanelDropDown_{suffix}";
         }
 
         private static void OnBindablePropertyChanged(DependencyObject d, DependencyPropertyChangedEventArgs e)

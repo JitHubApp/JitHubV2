@@ -1,5 +1,6 @@
 using JitHub.Models.Base;
 using JitHub.Models.LegacyGitHub;
+using System.Linq;
 using System.Windows.Input;
 
 namespace JitHub.Models
@@ -9,6 +10,10 @@ namespace JitHub.Models
     {
         public string Login { get; set; } = string.Empty;
         public string AvatarUrl { get; set; } = string.Empty;
+
+        public string AutomationId => $"SelectableUser_{new string(Login.Where(char.IsLetterOrDigit).ToArray())}";
+
+        public string AutomationName => $"Select user {Login}";
 
         public SelectableUser(string login, string url, ICommand? command)
         {

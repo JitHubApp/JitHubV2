@@ -15,6 +15,8 @@
             </Grid.ColumnDefinitions>
             <CheckBox
                 VerticalAlignment="Top"
+                AutomationProperties.AutomationId="{Binding AutomationId}"
+                AutomationProperties.Name="{Binding AutomationName}"
                 IsChecked="{Binding Selected, Mode=TwoWay}" />
             <StackPanel
                 Grid.Column="1"
@@ -28,11 +30,11 @@
                 <TextBlock
                     Style="{StaticResource SectionSecondaryTextBlockStyle}">
                     <Run Text="{Binding Repository.StargazersCount}" />
-                    <Run Text=" stars  •  " />
+                    <Run x:Uid="ControlsRepositoryRepositorySelectionItemControlRunStars" Text=" stars  •  " />
                     <Run Text="{Binding Repository.ForksCount}" />
-                    <Run Text=" forks  •  " />
+                    <Run x:Uid="ControlsRepositoryRepositorySelectionItemControlRunForks" Text=" forks  •  " />
                     <Run Text="{Binding Repository.OpenIssuesCount}" />
-                    <Run Text=" open issues" />
+                    <Run x:Uid="ControlsRepositoryRepositorySelectionItemControlRunOpenI" Text=" open issues" />
                 </TextBlock>
             </StackPanel>
         </Grid>

@@ -32,6 +32,8 @@
                     <DataTemplate x:DataType="models:IssueSidePanelItem">
                         <Grid>
                             <muxc:Expander
+                                AutomationProperties.AutomationId="{x:Bind Header, Mode=OneWay}"
+                                AutomationProperties.Name="{x:Bind Header, Mode=OneWay}"
                                 Header="{x:Bind Header, Mode=OneWay}"
                                 ExpandDirection="Down"
                                 VerticalAlignment="Top"
@@ -39,7 +41,7 @@
                                 HorizontalContentAlignment="Stretch">
                                 <Grid>
                                     <TextBlock
-                                        HorizontalAlignment="Center"
+                                        x:Uid="ControlsCommonIssueSidePanelTextBlockNothingToShow" HorizontalAlignment="Center"
                                         VerticalAlignment="Center"
                                         Text="Nothing to show"
                                         Visibility="{x:Bind Show, Converter={StaticResource BoolToVisibilityReverseConverter}, Mode=OneWay}"/>

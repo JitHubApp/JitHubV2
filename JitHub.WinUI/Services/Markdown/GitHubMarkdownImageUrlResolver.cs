@@ -7,6 +7,50 @@ public static class GitHubMarkdownImageUrlResolver
 {
     public static bool TryResolve(
         string source,
+        MarkdownRenderer.Images.MarkdownDocumentSource? documentSource,
+        out GitHubMarkdownImageReference reference)
+    {
+        reference = default;
+        source = source?.Trim() ?? string.Empty;
+        if (source.Length == 0)
+        {
+            return false;
+        }
+
+        if (Uri.TryCreate(source, UriKind.Absolute, out Uri? absoluteUri))
+        {
+            return TryParseRepositoryImageUri(absoluteUri, documentSource?.Path, out reference);
+        }
+
+        if (documentSource is null || !documentSource.HasRepositoryContext)
+        {
+            return false;
+        }
+
+        string imagePath = source.StartsWith("/", StringComparison.Ordinal)
+            ? NormalizeRepositoryPath(source.TrimStart('/'))
+            : NormalizeRepositoryPath(JoinRepositoryPath(GetDirectoryName(documentSource.Path!), source));
+        if (string.IsNullOrWhiteSpace(imagePath) || imagePath.StartsWith("../", StringComparison.Ordinal))
+        {
+            return false;
+        }
+
+        Uri sourceUri = CreateGitHubBlobUri(
+            documentSource.Owner!,
+            documentSource.Repository!,
+            documentSource.Ref!,
+            imagePath);
+        reference = new GitHubMarkdownImageReference(
+            documentSource.Owner!,
+            documentSource.Repository!,
+            documentSource.Ref!,
+            imagePath,
+            sourceUri);
+        return true;
+    }
+
+    public static bool TryResolve(
+        string source,
         Uri? baseUri,
         string? documentPath,
         out GitHubMarkdownImageReference reference)

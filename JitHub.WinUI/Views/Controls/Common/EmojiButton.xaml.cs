@@ -3,6 +3,7 @@ using System.Collections;
 using System.Collections.Generic;
 using System.Linq;
 using System.Windows.Input;
+using JitHub.WinUI.Helpers;
 using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Controls;
 using Microsoft.UI.Xaml.Media;
@@ -50,6 +51,12 @@ namespace JitHub.WinUI.Views.Controls.Common
             typeof(EmojiButton),
             new PropertyMetadata(null, OnBindablePropertyChanged));
 
+        public static readonly DependencyProperty AutomationInstanceIdProperty = DependencyProperty.Register(
+            nameof(AutomationInstanceId),
+            typeof(string),
+            typeof(EmojiButton),
+            new PropertyMetadata(string.Empty, OnBindablePropertyChanged));
+
 
 
         public ReactionType Reaction
@@ -88,6 +95,12 @@ namespace JitHub.WinUI.Views.Controls.Common
             set => SetValue(UsersProperty, value);
         }
 
+        public string AutomationInstanceId
+        {
+            get => (string)GetValue(AutomationInstanceIdProperty);
+            set => SetValue(AutomationInstanceIdProperty, value);
+        }
+
         public EmojiButton()
         {
             this.InitializeComponent();
@@ -108,9 +121,18 @@ namespace JitHub.WinUI.Views.Controls.Common
                 : new Thickness(0);
         }
 
-        public string GetAutomationId(ReactionType reaction)
+        public string GetAutomationId(ReactionType reaction, string automationInstanceId)
         {
-            return $"EmojiReactionButton_{reaction}";
+            return AutomationIdentity.CreateScopedId(
+                "EmojiReactionButton",
+                automationInstanceId,
+                reaction.ToString());
+        }
+
+        public string GetAutomationName(ReactionType reaction, int reactionCount, bool voted)
+        {
+            string action = voted ? "Remove" : "Add";
+            return $"{action} {reaction} reaction, {reactionCount} reactions";
         }
 
         public Brush? GetBackgroundBrush(bool voted)

@@ -1,24 +1,29 @@
-using JitHub.WinUI.Helpers;
-using JitHub.Models;
-using JitHub.Models.PRConversation;
-using JitHub.WinUI.ViewModels.Base;
-using JitHub.WinUI.ViewModels.IssueViewModels;
-using JitHub.WinUI.ViewModels.UserViewModel;
-using CommunityToolkit.Mvvm.Input;
-using JitHub.Models.LegacyGitHub;
-using System.Collections.Generic;
+using System;
 using System.Collections.ObjectModel;
 using System.Linq;
 using System.Text;
 using System.Windows.Input;
-using Microsoft.UI.Xaml;
+using System.Threading.Tasks;
+using CommunityToolkit.Mvvm.Input;
+using JitHub.Models.LegacyGitHub;
+using JitHub.Models.PRConversation;
+using JitHub.Services;
+using JitHub.Services.Markdown;
+using JitHub.WinUI.ViewModels.Base;
+using JitHub.WinUI.ViewModels.IssueViewModels;
+using JitHub.WinUI.ViewModels.UserViewModel;
+using MarkdownRenderer.Images;
 
 namespace JitHub.WinUI.ViewModels.PullRequestViewModels.ConversationViewModels
 {
     public class ReviewCommentViewModel : RepoViewModel
     {
         private readonly ICommand _quoteReplyCommand;
+        private readonly string _automationScope;
+        private readonly AsyncRelayCommand _replyCommand;
         private bool _replyBoxExpanded;
+        private bool _isReplyInProgress;
+        private string? _replyErrorMessage;
         private string _replyText = string.Empty;
         private string _diffHunk = string.Empty;
         private string _name = string.Empty;
@@ -35,8 +40,37 @@ namespace JitHub.WinUI.ViewModels.PullRequestViewModels.ConversationViewModels
         public string ReplyText
         {
             get => _replyText;
-            set => SetProperty(ref _replyText, value);
+            set
+            {
+                if (SetProperty(ref _replyText, value))
+                {
+                    _replyCommand.NotifyCanExecuteChanged();
+                }
+            }
         }
+        public bool IsReplyInProgress
+        {
+            get => _isReplyInProgress;
+            private set
+            {
+                if (SetProperty(ref _isReplyInProgress, value))
+                {
+                    _replyCommand.NotifyCanExecuteChanged();
+                }
+            }
+        }
+        public string? ReplyErrorMessage
+        {
+            get => _replyErrorMessage;
+            private set
+            {
+                if (SetProperty(ref _replyErrorMessage, value))
+                {
+                    OnPropertyChanged(nameof(HasReplyError));
+                }
+            }
+        }
+        public bool HasReplyError => !string.IsNullOrWhiteSpace(ReplyErrorMessage);
         public string DiffHunk
         {
             get => _diffHunk;
@@ -70,14 +104,34 @@ namespace JitHub.WinUI.ViewModels.PullRequestViewModels.ConversationViewModels
             set => SetProperty(ref _replies, value);
         }
 
-        public ICommand ReplyCommand { get; }
-        public ICommand ScrollToElementCommand { get; }
+        public IAsyncRelayCommand ReplyCommand => _replyCommand;
 
-        public UIElement? ReplyBox { get; set; }
+        public event EventHandler? ReplyBoxRequested;
 
-        public ReviewCommentViewModel(Repository repo, ReviewCommentNode comment, ICommand scrollToElement)
+        public string ReplyAutomationId => $"{_automationScope}_Reply";
+        public string ReplyExpanderAutomationId => $"{_automationScope}_ReplyExpander";
+        public string ReplyFormAutomationId => $"{_automationScope}_ReplyForm";
+        public string ReplyExpanderAutomationName => string.IsNullOrWhiteSpace(Author?.Login)
+            ? "Reply to review comment"
+            : $"Reply to review comment by {Author.Login}";
+        public MarkdownDocumentSource? ReplyMarkdownSource => Repo?.Owner?.Login is string owner &&
+            !string.IsNullOrWhiteSpace(owner) && !string.IsNullOrWhiteSpace(Repo.Name) && ReviewCommentNode is not null
+                ? MarkdownDocumentSourceFactory.CreateRepositoryDocument(
+                    "pull-request-review-reply-draft",
+                    ReviewCommentNode.Id.ToString(),
+                    owner,
+                    Repo.Name,
+                    gitRef: "HEAD")
+                : null;
+
+        public ReviewCommentViewModel(
+            Repository repo,
+            ReviewCommentNode comment,
+            string deterministicContext)
         {
+            ArgumentNullException.ThrowIfNull(comment);
             Repo = repo;
+            _automationScope = CreateAutomationScope(comment, deterministicContext);
             DiffHunk = comment.DiffHunk ?? string.Empty;
             Name = comment.Path ?? string.Empty;
             Author = comment.User!;
@@ -88,24 +142,58 @@ namespace JitHub.WinUI.ViewModels.PullRequestViewModels.ConversationViewModels
             {
                 Replies.Add(new UserCommentBlockViewModel(reply, _quoteReplyCommand));
             }
-            ScrollToElementCommand = scrollToElement;
-            ReplyCommand = new RelayCommand(OnReply);
+            _replyCommand = new AsyncRelayCommand(ReplyAsync, CanReply);
         }
 
-        private async void OnReply()
+        internal static string CreateAutomationScope(
+            ReviewCommentNode? comment,
+            string deterministicContext)
         {
-            if (string.IsNullOrWhiteSpace(ReplyText)) return;
+            if (comment is null)
+            {
+                return string.Empty;
+            }
+
+            return PullRequestReviewAutomationIdentity.CreateScope(
+                "ReviewComment",
+                comment.Id,
+                comment.NodeId,
+                comment.PullRequestReviewId,
+                comment.Position,
+                comment.OriginalPosition,
+                comment.CreatedAt,
+                deterministicContext);
+        }
+
+        private bool CanReply() => !IsReplyInProgress && !string.IsNullOrWhiteSpace(ReplyText);
+
+        private async Task ReplyAsync()
+        {
+            if (!CanReply())
+            {
+                return;
+            }
+
             var replyText = ReplyText.Trim();
+            IsReplyInProgress = true;
+            ReplyErrorMessage = null;
             try
             {
                 var reply = await GitHubService.ReplyToReview(Repo, ReviewCommentNode.Number, replyText, ReviewCommentNode.Id);
-                ReplyText = "";
+                ReplyText = string.Empty;
                 var replyVM = new UserCommentBlockViewModel(reply, _quoteReplyCommand);
                 Replies.Add(replyVM);
             }
-            catch (System.Exception ex)
+            catch (Exception ex)
             {
-                System.Diagnostics.Debug.WriteLine($"Failed to reply to review comment: {ex}");
+                ReplyErrorMessage = JitHub.WinUI.Helpers.UserFacingError.For(
+                    ex,
+                    JitHub.WinUI.Helpers.UserFacingErrorKind.Action,
+                    "pull-request-review-reply");
+            }
+            finally
+            {
+                IsReplyInProgress = false;
             }
         }
 
@@ -125,10 +213,7 @@ namespace JitHub.WinUI.ViewModels.PullRequestViewModels.ConversationViewModels
                 builder.Append(line);
             }
             ReplyText = builder.ToString();
-            if (ReplyBox is not null && ScrollToElementCommand.CanExecute(ReplyBox))
-            {
-                ScrollToElementCommand.Execute(ReplyBox);
-            }
+            ReplyBoxRequested?.Invoke(this, EventArgs.Empty);
         }
     }
 }

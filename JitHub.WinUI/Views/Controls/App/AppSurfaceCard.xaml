@@ -7,11 +7,14 @@
     xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
     mc:Ignorable="d">
     <Border
-        Background="{ThemeResource AppSurfaceBrush}"
+        Background="{ThemeResource AppCardBrush}"
         BorderBrush="{ThemeResource AppOutlineBrush}"
         BorderThickness="1"
         CornerRadius="{ThemeResource AppRadiusLarge}"
         Padding="{Binding CardPadding, ElementName=Root}">
-        <ContentPresenter Content="{Binding Child, ElementName=Root}" />
+        <ContentPresenter
+            HorizontalContentAlignment="Stretch"
+            VerticalContentAlignment="Stretch"
+            Content="{Binding Child, ElementName=Root}" />
     </Border>
 </UserControl>

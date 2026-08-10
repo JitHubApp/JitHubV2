@@ -1,0 +1,787 @@
+<?xml version="1.0" encoding="utf-8"?>
+<Page
+    x:Class="JitHub.WinUI.Views.Pages.MyIssuesPage"
+    x:Name="Root"
+    xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+    xmlns:app="using:JitHub.WinUI.Views.Controls.App"
+    xmlns:common="using:JitHub.WinUI.Views.Controls.Common"
+    xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+    xmlns:github="using:JitHub.Models.GitHub"
+    xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+    xmlns:toolkit="using:CommunityToolkit.WinUI.Controls"
+    xmlns:viewmodels="using:JitHub.WinUI.ViewModels.Pages"
+    x:DataType="viewmodels:MyIssuesPageViewModel"
+    Background="Transparent"
+    mc:Ignorable="d">
+    <Page.Resources>
+        <DataTemplate x:Key="IssueListItemTemplate" x:DataType="viewmodels:MeWorkItemViewItem">
+            <Grid
+                MinHeight="56"
+                AutomationProperties.AutomationId="{x:Bind AutomationId, Mode=OneWay}"
+                AutomationProperties.Name="{x:Bind AutomationName, Mode=OneWay}"
+                RowSpacing="5">
+                <Grid.RowDefinitions>
+                    <RowDefinition Height="Auto" />
+                    <RowDefinition Height="Auto" />
+                    <RowDefinition Height="Auto" />
+                </Grid.RowDefinitions>
+                <TextBlock
+                    FontFamily="{ThemeResource AppBodyFontFamily}"
+                    FontSize="13"
+                    FontWeight="SemiBold"
+                    Foreground="{ThemeResource AppInkBrush}"
+                    MaxLines="2"
+                    Text="{x:Bind Title, Mode=OneWay}"
+                    TextTrimming="CharacterEllipsis"
+                    TextWrapping="WrapWholeWords" />
+                <TextBlock
+                    Grid.Row="1"
+                    Style="{StaticResource SectionSecondaryTextBlockStyle}"
+                    Text="{x:Bind RepositoryFullName, Mode=OneWay}"
+                    TextTrimming="CharacterEllipsis" />
+                <Grid Grid.Row="2" ColumnSpacing="8">
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="Auto" />
+                        <ColumnDefinition Width="*" />
+                    </Grid.ColumnDefinitions>
+                    <TextBlock
+                        FontFamily="{ThemeResource AppMonoFontFamily}"
+                        FontSize="11"
+                        Foreground="{ThemeResource AppAccentBrush}"
+                        Text="{x:Bind NumberText, Mode=OneWay}" />
+                    <TextBlock
+                        Grid.Column="1"
+                        Style="{StaticResource SectionSecondaryTextBlockStyle}"
+                        Text="{x:Bind UpdatedText, Mode=OneWay}"
+                        TextTrimming="CharacterEllipsis" />
+                </Grid>
+            </Grid>
+        </DataTemplate>
+
+        <DataTemplate x:Key="CommentTemplate" x:DataType="viewmodels:MeIssueCommentViewItem">
+            <Border
+                Margin="0,0,0,12"
+                Padding="14"
+                Background="{ThemeResource AppCanvasInsetBrush}"
+                BorderBrush="{ThemeResource AppHairlineBrush}"
+                BorderThickness="1"
+                CornerRadius="{ThemeResource AppRadiusSmall}">
+                <Grid RowSpacing="12">
+                    <Grid.RowDefinitions>
+                        <RowDefinition Height="Auto" />
+                        <RowDefinition Height="Auto" />
+                    </Grid.RowDefinitions>
+                    <Grid ColumnSpacing="10">
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="32" />
+                            <ColumnDefinition Width="*" />
+                            <ColumnDefinition Width="Auto" />
+                        </Grid.ColumnDefinitions>
+                        <common:Avatar
+                            AutomationInstanceId="{x:Bind AutomationId, Mode=OneWay}"
+                            Login="{x:Bind AuthenticatedLogin, Mode=OneWay}"
+                            NavigationSource="issue_comment"
+                            ShowLogin="False"
+                            Size="SMALL"
+                            Url="{x:Bind AuthorAvatarUrl, Mode=OneWay}" />
+                        <TextBlock
+                            Grid.Column="1"
+                            VerticalAlignment="Center"
+                            FontFamily="{ThemeResource AppBodyFontFamily}"
+                            FontSize="13"
+                            FontWeight="SemiBold"
+                            Foreground="{ThemeResource AppInkBrush}"
+                            Text="{x:Bind AuthorDisplayName, Mode=OneWay}" />
+                        <TextBlock
+                            Grid.Column="2"
+                            VerticalAlignment="Center"
+                            Style="{StaticResource SectionSecondaryTextBlockStyle}"
+                            Text="{x:Bind CreatedText, Mode=OneWay}" />
+                    </Grid>
+                    <common:MarkdownViewer
+                        HostKind="Comment"
+                        AutomationInstanceId="{x:Bind MarkdownAutomationId, Mode=OneWay}"
+                        Grid.Row="1"
+                        BaseUrl="https://github.com/"
+                        DocumentSource="{x:Bind MarkdownSource, Mode=OneWay}"
+                        Text="{x:Bind Body, Mode=OneWay}" />
+                </Grid>
+            </Border>
+        </DataTemplate>
+
+        <DataTemplate x:Key="IssueLabelTemplate" x:DataType="viewmodels:MeLabelViewItem">
+            <Border
+                Margin="0,0,6,6"
+                Padding="8,4"
+                Background="{ThemeResource AppCanvasInsetBrush}"
+                BorderBrush="{ThemeResource AppHairlineBrush}"
+                BorderThickness="1"
+                CornerRadius="{ThemeResource AppRadiusSmall}">
+                <StackPanel Orientation="Horizontal" Spacing="6">
+                    <Ellipse
+                        Width="7"
+                        Height="7"
+                        VerticalAlignment="Center"
+                        Fill="{x:Bind Color, Converter={StaticResource HexColorToColorStringConverter}, Mode=OneWay}" />
+                    <TextBlock
+                        FontFamily="{ThemeResource AppMonoFontFamily}"
+                        FontSize="11"
+                        Foreground="{ThemeResource AppInkBrush}"
+                        Text="{x:Bind Name, Mode=OneWay}" />
+                </StackPanel>
+            </Border>
+        </DataTemplate>
+
+        <DataTemplate x:Key="AssigneeTemplate" x:DataType="viewmodels:MeActorViewItem">
+            <Grid
+                MinHeight="34"
+                Margin="0,0,0,6"
+                ColumnSpacing="8">
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="28" />
+                    <ColumnDefinition Width="*" />
+                </Grid.ColumnDefinitions>
+                <common:Avatar
+                    AutomationInstanceId="{x:Bind AutomationId, Mode=OneWay}"
+                    Login="{x:Bind AuthenticatedLogin, Mode=OneWay}"
+                    NavigationSource="my_issue_assignee"
+                    ShowLogin="False"
+                    Size="SMALL"
+                    Url="{x:Bind AvatarUrl, Mode=OneWay}" />
+                <TextBlock
+                    Grid.Column="1"
+                    VerticalAlignment="Center"
+                    Style="{StaticResource SectionSecondaryTextBlockStyle}"
+                    Text="{x:Bind ActorDisplayName, Mode=OneWay}"
+                    TextTrimming="CharacterEllipsis" />
+            </Grid>
+        </DataTemplate>
+    </Page.Resources>
+
+    <Grid
+        x:Uid="PagesMyIssuesPageMyIssuesPageRoot" x:Name="PerformanceRoot"
+        AutomationProperties.AccessibilityView="Control"
+        AutomationProperties.AutomationId="MyIssuesPageRoot"
+        AutomationProperties.Name="My issues"
+        Padding="{ThemeResource AppPagePadding}">
+
+        <app:AdaptiveWorkspace
+            x:Uid="MyIssuesAdaptiveWorkspace"
+            x:Name="IssuesWorkspace"
+            AutomationProperties.AutomationId="MyIssuesAdaptiveWorkspace"
+            AutomationIdPrefix="MyIssues"
+            LeadingPaneLabel="Issues"
+            LeadingPaneWidth="336"
+            ModeChanged="IssuesWorkspace_ModeChanged"
+            ShowPaneButtons="False"
+            TrailingPaneLabel="Inspector"
+            TrailingPaneWidth="260"
+            WideBreakpoint="1260">
+            <app:AdaptiveWorkspace.LeadingPane>
+            <Border
+                x:Uid="PagesMyIssuesPageMyIssuesListHost" x:Name="IssueListHost"
+                AutomationProperties.AccessibilityView="Control"
+                AutomationProperties.AutomationId="MyIssuesListHost"
+                AutomationProperties.Name="My issues list pane"
+                Padding="10"
+                Style="{StaticResource WorkspacePanelStyle}">
+                <Grid RowSpacing="10">
+                    <Grid.RowDefinitions>
+                        <RowDefinition Height="Auto" />
+                        <RowDefinition Height="Auto" />
+                        <RowDefinition Height="*" />
+                    </Grid.RowDefinitions>
+
+                    <Grid ColumnSpacing="8">
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="Auto" />
+                            <ColumnDefinition Width="*" />
+                        </Grid.ColumnDefinitions>
+                        <Button
+                            x:Uid="PagesMyIssuesPageMyIssuesCloseListPaneButton" x:Name="MyIssuesCloseListPaneButton"
+                            Width="36"
+                            Height="36"
+                            Padding="0"
+                            VerticalAlignment="Top"
+                            AutomationProperties.AutomationId="MyIssuesCloseListPaneButton"
+                            AutomationProperties.Name="Close issue list"
+                            Click="CloseWorkspaceDrawerButton_Click"
+                            Style="{StaticResource AppToolbarButtonStyle}"
+                            ToolTipService.ToolTip="Close issues"
+                            Visibility="Collapsed">
+                            <FontIcon FontFamily="{StaticResource SegoeFluentIcons}" FontSize="14" Glyph="&#xE8FD;" />
+                        </Button>
+                        <Grid
+                            x:Name="IssueFilterHost"
+                            Grid.Column="1"
+                            SizeChanged="IssueFilterHost_SizeChanged">
+                        <StackPanel
+                            x:Name="ExpandedIssueFilters"
+                            Spacing="8">
+                        <toolkit:Segmented
+                            x:Uid="PagesMyIssuesPageMyIssuesScopeSegmented" x:Name="IssueScopeSegmented"
+                            AutomationProperties.AutomationId="MyIssuesScopeSegmented"
+                            AutomationProperties.Name="My issues relationship filter"
+                            HorizontalAlignment="Stretch"
+                            SelectedIndex="0"
+                            SelectionChanged="IssueScopeSegmented_SelectionChanged">
+                            <toolkit:SegmentedItem x:Uid="PagesMyIssuesPageMyIssuesFilterAssigned" x:Name="AssignedScopeSegment" MinWidth="0" Padding="8,6" AutomationProperties.AutomationId="MyIssuesFilter_Assigned" AutomationProperties.Name="Show issues assigned to me" Content="{x:Bind ViewModel.AssignedFilterLabel}" ToolTipService.ToolTip="{x:Bind ViewModel.AssignedFilterToolTip}" />
+                            <toolkit:SegmentedItem x:Uid="PagesMyIssuesPageMyIssuesFilterCreated" x:Name="CreatedScopeSegment" MinWidth="0" Padding="8,6" AutomationProperties.AutomationId="MyIssuesFilter_Created" AutomationProperties.Name="Show issues I created" Content="{x:Bind ViewModel.CreatedFilterLabel}" ToolTipService.ToolTip="{x:Bind ViewModel.CreatedFilterToolTip}" />
+                            <toolkit:SegmentedItem x:Uid="PagesMyIssuesPageMyIssuesFilterMentioned" x:Name="MentionedScopeSegment" MinWidth="0" Padding="8,6" AutomationProperties.AutomationId="MyIssuesFilter_Mentioned" AutomationProperties.Name="Show issues that mention me" Content="{x:Bind ViewModel.MentionedFilterLabel}" ToolTipService.ToolTip="{x:Bind ViewModel.MentionedFilterToolTip}" />
+                        </toolkit:Segmented>
+                        <toolkit:Segmented
+                            x:Uid="PagesMyIssuesPageMyIssuesStateSegmented" x:Name="IssueStateSegmented"
+                            AutomationProperties.AutomationId="MyIssuesStateSegmented"
+                            AutomationProperties.Name="My issues state filter"
+                            HorizontalAlignment="Stretch"
+                            SelectedIndex="0"
+                            SelectionChanged="IssueStateSegmented_SelectionChanged">
+                            <toolkit:SegmentedItem x:Uid="PagesMyIssuesPageMyIssuesStateOpen" x:Name="OpenStateSegment" MinWidth="0" AutomationProperties.AutomationId="MyIssuesState_Open" AutomationProperties.Name="Show open issues" Content="{x:Bind ViewModel.OpenStateLabel}" />
+                            <toolkit:SegmentedItem x:Uid="PagesMyIssuesPageMyIssuesStateClosed" x:Name="ClosedStateSegment" MinWidth="0" AutomationProperties.AutomationId="MyIssuesState_Closed" AutomationProperties.Name="Show closed issues" Content="{x:Bind ViewModel.ClosedStateLabel}" />
+                            <toolkit:SegmentedItem x:Uid="PagesMyIssuesPageMyIssuesStateAll" x:Name="AllStateSegment" MinWidth="0" AutomationProperties.AutomationId="MyIssuesState_All" AutomationProperties.Name="Show all issues" Content="{x:Bind ViewModel.AllStateLabel}" />
+                        </toolkit:Segmented>
+                        </StackPanel>
+
+                        <Grid
+                            x:Name="CompactIssueFilters"
+                            RowSpacing="8"
+                            Visibility="Collapsed">
+                            <Grid.RowDefinitions>
+                                <RowDefinition Height="Auto" />
+                                <RowDefinition Height="Auto" />
+                            </Grid.RowDefinitions>
+                            <ComboBox
+                                x:Name="IssueScopeCompactPicker"
+                                AutomationProperties.AutomationId="MyIssuesScopeCompactPicker"
+                                AutomationProperties.Name="{x:Bind ViewModel.ScopePickerAutomationName}"
+                                HorizontalAlignment="Stretch"
+                                SelectedIndex="0"
+                                SelectionChanged="IssueScopeCompactPicker_SelectionChanged"
+                                Style="{StaticResource AppCompactComboBoxStyle}">
+                                <ComboBoxItem x:Uid="PagesMyIssuesPageMyIssuesScopeCompactAssigned" x:Name="AssignedScopeCompactItem" AutomationProperties.AutomationId="MyIssuesScopeCompact_Assigned" AutomationProperties.Name="Show issues assigned to you" Content="{x:Bind ViewModel.AssignedFilterLabel}" ToolTipService.ToolTip="{x:Bind ViewModel.AssignedFilterToolTip}" />
+                                <ComboBoxItem x:Uid="PagesMyIssuesPageMyIssuesScopeCompactCreated" x:Name="CreatedScopeCompactItem" AutomationProperties.AutomationId="MyIssuesScopeCompact_Created" AutomationProperties.Name="Show issues created by you" Content="{x:Bind ViewModel.CreatedFilterLabel}" ToolTipService.ToolTip="{x:Bind ViewModel.CreatedFilterToolTip}" />
+                                <ComboBoxItem x:Uid="PagesMyIssuesPageMyIssuesScopeCompactMentioned" x:Name="MentionedScopeCompactItem" AutomationProperties.AutomationId="MyIssuesScopeCompact_Mentioned" AutomationProperties.Name="Show issues mentioning you" Content="{x:Bind ViewModel.MentionedFilterLabel}" ToolTipService.ToolTip="{x:Bind ViewModel.MentionedFilterToolTip}" />
+                            </ComboBox>
+                            <ComboBox
+                                x:Name="IssueStateCompactPicker"
+                                Grid.Row="1"
+                                AutomationProperties.AutomationId="MyIssuesStateCompactPicker"
+                                AutomationProperties.Name="{x:Bind ViewModel.StatePickerAutomationName}"
+                                HorizontalAlignment="Stretch"
+                                SelectedIndex="0"
+                                SelectionChanged="IssueStateCompactPicker_SelectionChanged"
+                                Style="{StaticResource AppCompactComboBoxStyle}">
+                                <ComboBoxItem x:Uid="PagesMyIssuesPageMyIssuesStateCompactOpen" x:Name="OpenStateCompactItem" AutomationProperties.AutomationId="MyIssuesStateCompact_Open" AutomationProperties.Name="Show open issues" Content="{x:Bind ViewModel.OpenStateLabel}" />
+                                <ComboBoxItem x:Uid="PagesMyIssuesPageMyIssuesStateCompactClosed" x:Name="ClosedStateCompactItem" AutomationProperties.AutomationId="MyIssuesStateCompact_Closed" AutomationProperties.Name="Show closed issues" Content="{x:Bind ViewModel.ClosedStateLabel}" />
+                                <ComboBoxItem x:Uid="PagesMyIssuesPageMyIssuesStateCompactAll" x:Name="AllStateCompactItem" AutomationProperties.AutomationId="MyIssuesStateCompact_All" AutomationProperties.Name="Show all issues" Content="{x:Bind ViewModel.AllStateLabel}" />
+                            </ComboBox>
+                        </Grid>
+                    </Grid>
+                    </Grid>
+
+                    <TextBlock
+                        Grid.Row="1"
+                        Style="{StaticResource SectionSecondaryTextBlockStyle}"
+                        Text="{x:Bind ViewModel.DetailStatusText, Mode=OneWay}"
+                        TextTrimming="CharacterEllipsis"
+                        Visibility="{x:Bind ViewModel.IsDetailStatusVisible, Converter={StaticResource BoolToVisibilityConverter}, Mode=OneWay}" />
+
+                    <Grid Grid.Row="2">
+                        <StackPanel
+                            Style="{StaticResource AppEmptyStatePanelStyle}"
+                            Visibility="{x:Bind ViewModel.IsEmpty, Converter={StaticResource BoolToVisibilityConverter}, Mode=OneWay}">
+                            <TextBlock
+                                x:Uid="MyIssuesNoMatchesText"
+                                Style="{StaticResource SectionSecondaryTextBlockStyle}"
+                                Text="No issues match this view."
+                                TextAlignment="Center" />
+                        </StackPanel>
+                        <ListView
+                            x:Uid="PagesMyIssuesPageMyIssuesList" x:Name="IssuesList"
+                            AutomationProperties.AutomationId="MyIssuesList"
+                            AutomationProperties.Name="My issues"
+                            Background="Transparent"
+                            BorderThickness="0"
+                            ContainerContentChanging="IssuesList_ContainerContentChanging"
+                            IsItemClickEnabled="True"
+                            ItemClick="IssuesList_ItemClick"
+                            ItemContainerStyle="{StaticResource AppWorkspaceCardListRowStyle}"
+                            ItemTemplate="{StaticResource IssueListItemTemplate}"
+                            ItemsSource="{x:Bind ViewModel.Items, Mode=OneWay}"
+                            SelectedItem="{x:Bind ViewModel.SelectedItem, Mode=OneWay}"
+                            SelectionChanged="IssuesList_SelectionChanged"
+                            SelectionMode="Single" />
+                    </Grid>
+                </Grid>
+            </Border>
+            </app:AdaptiveWorkspace.LeadingPane>
+
+            <app:AdaptiveWorkspace.PrimaryPane>
+            <Border
+                x:Uid="PagesMyIssuesPageMyIssuesDetailHost" x:Name="IssueDetailHost"
+                Grid.Column="1"
+                AutomationProperties.AccessibilityView="Control"
+                AutomationProperties.AutomationId="MyIssuesDetailHost"
+                AutomationProperties.Name="My issue detail pane"
+                Padding="0"
+                Style="{StaticResource WorkspacePanelStyle}">
+                <Grid>
+                    <Grid.RowDefinitions>
+                        <RowDefinition Height="Auto" />
+                        <RowDefinition Height="*" />
+                    </Grid.RowDefinitions>
+                    <Grid
+                        Padding="10,10,10,8"
+                        ColumnSpacing="8">
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="Auto" />
+                            <ColumnDefinition Width="*" />
+                            <ColumnDefinition Width="Auto" />
+                        </Grid.ColumnDefinitions>
+                        <Button
+                            x:Uid="MyIssuesOpenListButton"
+                            x:Name="MyIssuesOpenListPaneButton"
+                            Width="36"
+                            Height="36"
+                            Padding="0"
+                            VerticalAlignment="Top"
+                            AutomationProperties.AutomationId="MyIssuesOpenListPaneButton"
+                            AutomationProperties.Name="Open issue list"
+                            Click="OpenListPaneButton_Click"
+                            Style="{StaticResource AppToolbarButtonStyle}"
+                            ToolTipService.ToolTip="Issues"
+                            Visibility="Collapsed">
+                            <FontIcon FontFamily="{StaticResource SegoeFluentIcons}" FontSize="14" Glyph="&#xE8FD;" />
+                        </Button>
+                        <StackPanel Grid.Column="1" Spacing="2">
+                            <TextBlock
+                                FontFamily="{ThemeResource AppDisplayFontFamily}"
+                                FontSize="30"
+                                Foreground="{ThemeResource AppInkBrush}"
+                                Text="{x:Bind ViewModel.Title, Mode=OneWay}"
+                                TextTrimming="CharacterEllipsis" />
+                            <Grid ColumnSpacing="10">
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="*" />
+                                    <ColumnDefinition Width="Auto" />
+                                </Grid.ColumnDefinitions>
+                                <TextBlock
+                                    Style="{StaticResource SectionSecondaryTextBlockStyle}"
+                                    Text="{x:Bind ViewModel.StatusText, Mode=OneWay}"
+                                    TextTrimming="CharacterEllipsis"
+                                    Visibility="{x:Bind ViewModel.IsStatusVisible, Converter={StaticResource BoolToVisibilityConverter}, Mode=OneWay}" />
+                                <TextBlock
+                                    Grid.Column="1"
+                                    Style="{StaticResource SectionSecondaryTextBlockStyle}"
+                                    Text="{x:Bind ViewModel.ResultCountText, Mode=OneWay}" />
+                            </Grid>
+                        </StackPanel>
+                        <StackPanel
+                            Grid.Column="2"
+                            VerticalAlignment="Top"
+                            Orientation="Horizontal"
+                            Spacing="8">
+                            <ProgressRing
+                                Width="28"
+                                Height="28"
+                                VerticalAlignment="Center"
+                                IsActive="{x:Bind ViewModel.IsLoading, Mode=OneWay}"
+                                Visibility="{x:Bind ViewModel.IsLoading, Converter={StaticResource BoolToVisibilityConverter}, Mode=OneWay}" />
+                            <Button
+                                x:Uid="MyIssuesOpenInspectorButton"
+                                x:Name="MyIssuesOpenInspectorPaneButton"
+                                Width="36"
+                                Height="36"
+                                Padding="0"
+                                VerticalAlignment="Top"
+                                AutomationProperties.AutomationId="MyIssuesOpenInspectorPaneButton"
+                                AutomationProperties.Name="Open inspector"
+                                Click="OpenInspectorPaneButton_Click"
+                                Style="{StaticResource AppToolbarButtonStyle}"
+                                ToolTipService.ToolTip="Inspector"
+                                Visibility="Collapsed">
+                                <FontIcon FontFamily="{StaticResource SegoeFluentIcons}" FontSize="14" Glyph="&#xE9D2;" />
+                            </Button>
+                        </StackPanel>
+                    </Grid>
+
+                    <Grid Grid.Row="1">
+                    <TextBlock
+                        x:Uid="MyIssuesSelectDetailText"
+                        HorizontalAlignment="Center"
+                        VerticalAlignment="Center"
+                        Style="{StaticResource SectionSecondaryTextBlockStyle}"
+                        Text="Select an issue to see details."
+                        Visibility="{x:Bind ViewModel.IsDetailPlaceholderVisible, Converter={StaticResource BoolToVisibilityConverter}, Mode=OneWay}" />
+
+                    <Grid Visibility="{x:Bind ViewModel.HasSelectedIssue, Converter={StaticResource BoolToVisibilityConverter}, Mode=OneWay}">
+                        <Grid.RowDefinitions>
+                            <RowDefinition Height="Auto" />
+                            <RowDefinition Height="*" />
+                        </Grid.RowDefinitions>
+                        <Grid
+                            Padding="18,16,18,12"
+                            BorderBrush="{ThemeResource AppHairlineBrush}"
+                            BorderThickness="0,0,0,1"
+                            ColumnSpacing="12">
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="*" />
+                                <ColumnDefinition Width="Auto" />
+                            </Grid.ColumnDefinitions>
+                            <StackPanel Spacing="7">
+                                <TextBlock
+                                    AutomationProperties.AutomationId="MyIssuesDetailTitle"
+                                    FontFamily="{ThemeResource AppDisplayFontFamily}"
+                                    FontSize="25"
+                                    Foreground="{ThemeResource AppInkBrush}"
+                                    HorizontalAlignment="Stretch"
+                                    MaxLines="2"
+                                    Text="{x:Bind ViewModel.SelectedIssueTitle, Mode=OneWay}"
+                                    TextTrimming="CharacterEllipsis"
+                                    TextWrapping="WrapWholeWords"
+                                    ToolTipService.ToolTip="{x:Bind ViewModel.SelectedIssueTitle, Mode=OneWay}" />
+                                <Grid ColumnSpacing="8">
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition Width="Auto" />
+                                        <ColumnDefinition Width="Auto" />
+                                        <ColumnDefinition Width="*" />
+                                    </Grid.ColumnDefinitions>
+                                    <TextBlock
+                                        FontFamily="{ThemeResource AppMonoFontFamily}"
+                                        FontSize="12"
+                                        Foreground="{ThemeResource AppAccentBrush}"
+                                        Text="{x:Bind ViewModel.SelectedIssueNumberText, Mode=OneWay}" />
+                                    <TextBlock
+                                        Grid.Column="1"
+                                        Style="{StaticResource SectionSecondaryTextBlockStyle}"
+                                        Text="{x:Bind ViewModel.SelectedIssueRepository, Mode=OneWay}"
+                                        TextTrimming="CharacterEllipsis" />
+                                    <TextBlock
+                                        Grid.Column="2"
+                                        Style="{StaticResource SectionSecondaryTextBlockStyle}"
+                                        Text="{x:Bind ViewModel.SelectedIssueMetadataText, Mode=OneWay}"
+                                        TextTrimming="CharacterEllipsis" />
+                                </Grid>
+                            </StackPanel>
+                        <Button
+                            x:Uid="MyIssuesOpenRepositoryButton"
+                                Grid.Column="1"
+                                MinHeight="34"
+                                Padding="12,6"
+                                VerticalAlignment="Top"
+                                AutomationProperties.AutomationId="MyIssuesOpenInRepositoryButton"
+                                AutomationProperties.Name="Open issue in repository"
+                                Click="OpenSelectedInRepositoryButton_Click"
+                                PointerEntered="OpenSelectedInRepositoryButton_PointerEntered"
+                                ToolTipService.ToolTip="Open this issue in its repository workspace"
+                                Style="{StaticResource AppOutlineButtonStyle}">
+                                <StackPanel Orientation="Horizontal" Spacing="8">
+                                    <FontIcon FontFamily="{StaticResource SegoeFluentIcons}" FontSize="13" Glyph="&#xE72A;" />
+                                <TextBlock x:Uid="MyIssuesOpenRepositoryText" Text="Open issue" />
+                                </StackPanel>
+                            </Button>
+                        </Grid>
+
+                        <ListView
+                            x:Uid="PagesMyIssuesPageMyIssuesCommentsList" Grid.Row="1"
+                            Padding="18"
+                            AutomationProperties.AutomationId="MyIssuesCommentsList"
+                            AutomationProperties.Name="Issue conversation"
+                            Background="Transparent"
+                            BorderThickness="0"
+                            ContainerContentChanging="CommentsList_ContainerContentChanging"
+                            HorizontalContentAlignment="Stretch"
+                            IsItemClickEnabled="False"
+                            ItemTemplate="{StaticResource CommentTemplate}"
+                            ItemsSource="{x:Bind ViewModel.Comments, Mode=OneWay}"
+                            SelectionMode="None"
+                            ScrollViewer.HorizontalScrollBarVisibility="Disabled"
+                            ScrollViewer.VerticalScrollBarVisibility="Auto">
+                            <ListView.Header>
+                                <StackPanel Margin="0,0,0,16" Spacing="16">
+                                <Border
+                                    Padding="16"
+                                    Background="{ThemeResource AppCanvasInsetBrush}"
+                                    BorderBrush="{ThemeResource AppHairlineBrush}"
+                                    BorderThickness="1"
+                                    CornerRadius="{ThemeResource AppRadiusSmall}">
+                                    <Grid RowSpacing="12">
+                                        <Grid.RowDefinitions>
+                                            <RowDefinition Height="Auto" />
+                                            <RowDefinition Height="Auto" />
+                                        </Grid.RowDefinitions>
+                                        <Grid ColumnSpacing="10">
+                                            <Grid.ColumnDefinitions>
+                                                <ColumnDefinition Width="32" />
+                                                <ColumnDefinition Width="*" />
+                                                <ColumnDefinition Width="Auto" />
+                                            </Grid.ColumnDefinitions>
+                                            <common:Avatar
+                                                AutomationInstanceId="{x:Bind ViewModel.SelectedIssueAuthorAutomationId, Mode=OneWay}"
+                                                Login="{x:Bind ViewModel.SelectedIssueAuthorLogin, Mode=OneWay}"
+                                                NavigationSource="my_issue_detail_author"
+                                                ShowLogin="False"
+                                                Size="SMALL"
+                                                Url="{x:Bind ViewModel.SelectedIssueAuthorAvatarUrl, Mode=OneWay}" />
+                                            <TextBlock
+                                                Grid.Column="1"
+                                                VerticalAlignment="Center"
+                                                FontFamily="{ThemeResource AppBodyFontFamily}"
+                                                FontSize="13"
+                                                FontWeight="SemiBold"
+                                                Foreground="{ThemeResource AppInkBrush}"
+                                                Text="{x:Bind ViewModel.SelectedIssueAuthorDisplayName, Mode=OneWay}" />
+                                            <TextBlock
+                                                x:Uid="MyWorkItemsAuthorLabel"
+                                                Grid.Column="2"
+                                                VerticalAlignment="Center"
+                                                Style="{StaticResource SectionSecondaryTextBlockStyle}"
+                                                Text="Author" />
+                                        </Grid>
+                                        <Grid Grid.Row="1">
+                                            <common:MarkdownViewer
+                                                x:Name="MyIssuesBodyMarkdown"
+                                                x:Load="{x:Bind ViewModel.IsDetailBodyMarkdownVisible, Mode=OneWay}"
+                                                HostKind="Conversation"
+                                                AutomationInstanceId="MyIssuesBody"
+                                                BaseUrl="{x:Bind ViewModel.DetailBaseUrl, Mode=OneWay}"
+                                                DocumentSource="{x:Bind ViewModel.DetailMarkdownSource, Mode=OneWay}"
+                                                Text="{x:Bind ViewModel.DetailBodyText, Mode=OneWay}" />
+                                            <StackPanel
+                                                x:Name="MyIssuesDeferredBody"
+                                                x:Load="{x:Bind ViewModel.IsDetailBodyDeferred, Mode=OneWay}"
+                                                AutomationProperties.AutomationId="MyIssuesDeferredBodyPreview"
+                                                Spacing="12">
+                                                <TextBlock
+                                                    IsTextSelectionEnabled="True"
+                                                    Style="{StaticResource SectionBodyTextBlockStyle}"
+                                                    Text="{x:Bind ViewModel.DetailBodyPreviewText, Mode=OneWay}"
+                                                    TextWrapping="Wrap" />
+                                                <Button
+                                                    x:Uid="PagesMyIssuesPageMyIssuesExpandBodyButton" AutomationProperties.AutomationId="MyIssuesExpandBodyButton"
+                                                    AutomationProperties.Name="Expand issue body"
+                                                    Command="{x:Bind ViewModel.ExpandDetailBodyCommand}"
+                                                    Content="{x:Bind ViewModel.ShowFullBodyLabel}"
+                                                    HorizontalAlignment="Left"
+                                                    Style="{StaticResource AppOutlineButtonStyle}" />
+                                            </StackPanel>
+                                        </Grid>
+                                    </Grid>
+                                </Border>
+
+                                <Grid ColumnSpacing="10">
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition Width="*" />
+                                        <ColumnDefinition Width="Auto" />
+                                        <ColumnDefinition Width="Auto" />
+                                    </Grid.ColumnDefinitions>
+                                    <TextBlock
+                                        x:Uid="MyIssuesCommentsHeading"
+                                        FontFamily="{ThemeResource AppDisplayFontFamily}"
+                                        FontSize="20"
+                                        Foreground="{ThemeResource AppInkBrush}"
+                                        Text="Comments" />
+                                    <TextBlock
+                                        Grid.Column="1"
+                                        MaxWidth="280"
+                                        VerticalAlignment="Center"
+                                        Style="{StaticResource SectionSecondaryTextBlockStyle}"
+                                        Text="{x:Bind ViewModel.DetailCollectionStatusText, Mode=OneWay}"
+                                        TextTrimming="CharacterEllipsis"
+                                        ToolTipService.ToolTip="{x:Bind ViewModel.DetailCollectionStatusText, Mode=OneWay}"
+                                        Visibility="{x:Bind ViewModel.IsDetailCollectionStatusVisible, Converter={StaticResource BoolToVisibilityConverter}, Mode=OneWay}" />
+                                    <ProgressRing
+                                        Grid.Column="2"
+                                        Width="22"
+                                        Height="22"
+                                        IsActive="{x:Bind ViewModel.IsDetailLoading, Mode=OneWay}"
+                                        Visibility="{x:Bind ViewModel.IsDetailLoading, Converter={StaticResource BoolToVisibilityConverter}, Mode=OneWay}" />
+                                </Grid>
+
+                                <TextBlock
+                                    x:Uid="MyWorkItemsNoCommentsText"
+                                    Style="{StaticResource SectionSecondaryTextBlockStyle}"
+                                    Text="No comments yet."
+                                    Visibility="{x:Bind ViewModel.HasNoComments, Converter={StaticResource BoolToVisibilityConverter}, Mode=OneWay}" />
+                                </StackPanel>
+                            </ListView.Header>
+                        </ListView>
+                    </Grid>
+                    </Grid>
+                </Grid>
+            </Border>
+            </app:AdaptiveWorkspace.PrimaryPane>
+
+            <app:AdaptiveWorkspace.TrailingPane>
+            <Border
+                x:Uid="PagesMyIssuesPageMyIssuesInspector" x:Name="IssueInspectorHost"
+                Grid.Column="2"
+                AutomationProperties.AccessibilityView="Control"
+                AutomationProperties.AutomationId="MyIssuesInspector"
+                AutomationProperties.Name="My issue inspector"
+                Padding="10"
+                Style="{StaticResource WorkspacePanelStyle}">
+                <ScrollViewer
+                    x:Uid="MyWorkItemsInspectorContents"
+                    HorizontalScrollBarVisibility="Disabled"
+                    IsTabStop="False"
+                    VerticalScrollBarVisibility="Auto">
+                    <StackPanel Spacing="18">
+                        <Grid ColumnSpacing="8">
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="*" />
+                                <ColumnDefinition Width="Auto" />
+                            </Grid.ColumnDefinitions>
+                            <TextBlock
+                                x:Uid="MyWorkItemsInspectorHeading"
+                                AutomationProperties.AutomationId="MyIssuesInspectorTitle"
+                                VerticalAlignment="Center"
+                                FontFamily="{ThemeResource AppDisplayFontFamily}"
+                                FontSize="21"
+                                Foreground="{ThemeResource AppInkBrush}"
+                                Text="Inspector" />
+                            <Button
+                                x:Uid="PagesMyIssuesPageMyIssuesCloseInspectorPaneButton" x:Name="MyIssuesCloseInspectorPaneButton"
+                                Grid.Column="1"
+                                Width="36"
+                                Height="36"
+                                Padding="0"
+                                AutomationProperties.AutomationId="MyIssuesCloseInspectorPaneButton"
+                                AutomationProperties.Name="Close inspector"
+                                Click="CloseWorkspaceDrawerButton_Click"
+                                Style="{StaticResource AppToolbarButtonStyle}"
+                                ToolTipService.ToolTip="Close inspector"
+                                Visibility="Collapsed">
+                                <FontIcon FontFamily="{StaticResource SegoeFluentIcons}" FontSize="14" Glyph="&#xE9D2;" />
+                            </Button>
+                        </Grid>
+
+                        <Grid RowSpacing="8">
+                            <Grid.RowDefinitions>
+                                <RowDefinition Height="Auto" />
+                                <RowDefinition Height="Auto" />
+                                <RowDefinition Height="Auto" />
+                            </Grid.RowDefinitions>
+                            <TextBlock
+                                x:Uid="MyWorkItemsInspectorStatusHeading"
+                                FontFamily="{ThemeResource AppBodyFontFamily}"
+                                FontSize="13"
+                                FontWeight="SemiBold"
+                                Foreground="{ThemeResource AppInkBrush}"
+                                Text="Status" />
+                            <StackPanel Grid.Row="1" Orientation="Horizontal" Spacing="8">
+                                <Ellipse
+                                    Width="8"
+                                    Height="8"
+                                    VerticalAlignment="Center"
+                                    Fill="{ThemeResource AppAccentBrush}" />
+                                <TextBlock
+                                    Style="{StaticResource SectionSecondaryTextBlockStyle}"
+                                    Text="{x:Bind ViewModel.SelectedIssueStateText, Mode=OneWay}" />
+                            </StackPanel>
+                            <TextBlock
+                                Grid.Row="2"
+                                Style="{StaticResource SectionSecondaryTextBlockStyle}"
+                                Text="{x:Bind ViewModel.SelectedIssueCommentText, Mode=OneWay}" />
+                        </Grid>
+
+                        <Grid RowSpacing="8">
+                            <Grid.RowDefinitions>
+                                <RowDefinition Height="Auto" />
+                                <RowDefinition Height="Auto" />
+                            </Grid.RowDefinitions>
+                            <TextBlock
+                                x:Uid="MyWorkItemsInspectorAssigneesHeading"
+                                FontFamily="{ThemeResource AppBodyFontFamily}"
+                                FontSize="13"
+                                FontWeight="SemiBold"
+                                Foreground="{ThemeResource AppInkBrush}"
+                                Text="Assignees" />
+                            <TextBlock
+                                x:Uid="MyWorkItemsInspectorNoAssigneesText"
+                                Grid.Row="1"
+                                Style="{StaticResource SectionSecondaryTextBlockStyle}"
+                                Text="No one assigned"
+                                Visibility="{x:Bind ViewModel.HasNoAssignees, Converter={StaticResource BoolToVisibilityConverter}, Mode=OneWay}" />
+                            <ItemsControl
+                                Grid.Row="1"
+                                ItemTemplate="{StaticResource AssigneeTemplate}"
+                                ItemsSource="{x:Bind ViewModel.SelectedAssignees, Mode=OneWay}"
+                                Visibility="{x:Bind ViewModel.HasAssignees, Converter={StaticResource BoolToVisibilityConverter}, Mode=OneWay}" />
+                        </Grid>
+
+                        <Grid RowSpacing="8">
+                            <Grid.RowDefinitions>
+                                <RowDefinition Height="Auto" />
+                                <RowDefinition Height="Auto" />
+                            </Grid.RowDefinitions>
+                            <TextBlock
+                                x:Uid="MyWorkItemsInspectorLabelsHeading"
+                                FontFamily="{ThemeResource AppBodyFontFamily}"
+                                FontSize="13"
+                                FontWeight="SemiBold"
+                                Foreground="{ThemeResource AppInkBrush}"
+                                Text="Labels" />
+                            <TextBlock
+                                x:Uid="MyWorkItemsInspectorNoLabelsText"
+                                Grid.Row="1"
+                                Style="{StaticResource SectionSecondaryTextBlockStyle}"
+                                Text="No labels"
+                                Visibility="{x:Bind ViewModel.HasNoLabels, Converter={StaticResource BoolToVisibilityConverter}, Mode=OneWay}" />
+                            <ItemsControl
+                                Grid.Row="1"
+                                ItemTemplate="{StaticResource IssueLabelTemplate}"
+                                ItemsSource="{x:Bind ViewModel.SelectedLabels, Mode=OneWay}"
+                                Visibility="{x:Bind ViewModel.HasLabels, Converter={StaticResource BoolToVisibilityConverter}, Mode=OneWay}">
+                                <ItemsControl.ItemsPanel>
+                                    <ItemsPanelTemplate>
+                                        <StackPanel Orientation="Vertical" />
+                                    </ItemsPanelTemplate>
+                                </ItemsControl.ItemsPanel>
+                            </ItemsControl>
+                        </Grid>
+
+                        <Grid RowSpacing="8">
+                            <Grid.RowDefinitions>
+                                <RowDefinition Height="Auto" />
+                                <RowDefinition Height="Auto" />
+                            </Grid.RowDefinitions>
+                            <TextBlock
+                                x:Uid="MyWorkItemsInspectorMilestoneHeading"
+                                FontFamily="{ThemeResource AppBodyFontFamily}"
+                                FontSize="13"
+                                FontWeight="SemiBold"
+                                Foreground="{ThemeResource AppInkBrush}"
+                                Text="Milestone" />
+                            <TextBlock
+                                Grid.Row="1"
+                                Style="{StaticResource SectionSecondaryTextBlockStyle}"
+                                Text="{x:Bind ViewModel.MilestoneTitle, Mode=OneWay}" />
+                        </Grid>
+
+                        <Grid RowSpacing="8">
+                            <Grid.RowDefinitions>
+                                <RowDefinition Height="Auto" />
+                                <RowDefinition Height="Auto" />
+                            </Grid.RowDefinitions>
+                            <TextBlock
+                                x:Uid="MyIssuesInspectorLinkedItemsHeading"
+                                FontFamily="{ThemeResource AppBodyFontFamily}"
+                                FontSize="13"
+                                FontWeight="SemiBold"
+                                Foreground="{ThemeResource AppInkBrush}"
+                                Text="Linked items" />
+                            <TextBlock
+                                Grid.Row="1"
+                                Style="{StaticResource SectionSecondaryTextBlockStyle}"
+                                Text="{x:Bind ViewModel.LinkedPullRequestText, Mode=OneWay}"
+                                TextWrapping="WrapWholeWords" />
+                        </Grid>
+                    </StackPanel>
+                </ScrollViewer>
+            </Border>
+            </app:AdaptiveWorkspace.TrailingPane>
+        </app:AdaptiveWorkspace>
+    </Grid>
+</Page>

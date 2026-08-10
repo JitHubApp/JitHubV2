@@ -25,16 +25,36 @@ public static class PixelComparer
     /// <summary>Loads a PNG from disk into a top-down RGBA8888 byte buffer.</summary>
     public static (byte[] Rgba, int Width, int Height) LoadPngAsRgba(string path)
     {
-        using var bmp = new Bitmap(path);
+        // Bitmap(string) still delegates path handling to GDI+, which rejects
+        // otherwise valid long worktree/CI paths. System.IO reads those paths
+        // correctly; keep the stream alive for the lifetime of the bitmap.
+        using var stream = new MemoryStream(File.ReadAllBytes(path), writable: false);
+        using var bmp = new Bitmap(stream);
         return BitmapToRgba(bmp);
     }
 
     /// <summary>Saves an RGBA8888 byte buffer as a PNG.</summary>
     public static void SaveRgbaAsPng(byte[] rgba, int width, int height, string path)
     {
-        var bmp = RgbaToBitmap(rgba, width, height);
-        bmp.Save(path, ImageFormat.Png);
-        bmp.Dispose();
+        string destination = Path.GetFullPath(path);
+        Directory.CreateDirectory(Path.GetDirectoryName(destination)!);
+
+        // GDI+ still uses legacy path handling even when the process and .NET
+        // file APIs are long-path aware. Encode through a short temporary path,
+        // then let System.IO move the completed PNG to a deep worktree/CI path.
+        string temporaryDirectory = Path.Combine(Path.GetTempPath(), "MarkdownRenderer.PixelTests");
+        Directory.CreateDirectory(temporaryDirectory);
+        string temporaryPath = Path.Combine(temporaryDirectory, $"{Guid.NewGuid():N}.png");
+        try
+        {
+            using var bmp = RgbaToBitmap(rgba, width, height);
+            bmp.Save(temporaryPath, ImageFormat.Png);
+            File.Move(temporaryPath, destination, overwrite: true);
+        }
+        finally
+        {
+            try { File.Delete(temporaryPath); } catch { }
+        }
     }
 
     /// <summary>Converts a BGRA premultiplied buffer (Skia output) to RGBA8888 unpremultiplied.</summary>

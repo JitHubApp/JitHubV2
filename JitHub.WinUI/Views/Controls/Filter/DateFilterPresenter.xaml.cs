@@ -1,4 +1,5 @@
 using System;
+using System.Linq;
 using JitHub.Models.Filter;
 using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Controls;
@@ -24,6 +25,8 @@ public sealed partial class DateFilterPresenter : UserControl
     private DateFilter? TypedFilter => Filter as DateFilter;
 
     public string Title => TypedFilter?.Title ?? string.Empty;
+
+    public string AutomationId => $"DateFilter_{string.Concat(Title.Where(char.IsLetterOrDigit))}";
 
     public DateTimeOffset? StartDate
     {

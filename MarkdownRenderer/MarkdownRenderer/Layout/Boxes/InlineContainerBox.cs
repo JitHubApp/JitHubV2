@@ -526,7 +526,7 @@ internal sealed class InlineContainerBox : BlockBox
         if (to <= from)
             return;
 
-        bool intersectsSelection = false;
+        var visibleSelectionRects = new List<Rect>();
         foreach (var rect in GetRangeRects(normalized))
         {
             if (rect.Right < viewport.Left || rect.Left > viewport.Right ||
@@ -535,16 +535,25 @@ internal sealed class InlineContainerBox : BlockBox
                 continue;
             }
 
-            intersectsSelection = true;
-            break;
+            visibleSelectionRects.Add(rect);
         }
 
-        if (!intersectsSelection) return;
+        if (visibleSelectionRects.Count == 0) return;
 
         var style = GetContainerStyle();
         var (sx, sy) = GetSnappedOrigin(style);
         var layout = EnsureSelectionLayout(color, style, from, to - from);
-        ds.DrawTextLayout(layout, sx, sy, color);
+        // Draw a color-neutral copy of the full layout through the exact
+        // selected character regions. Masking non-selected glyphs with a
+        // transparent text color is unreliable on some Win2D/DirectWrite
+        // paths: the later selected-color range can remain transparent and
+        // leave an opaque highlight with no readable glyphs. Geometry clips
+        // preserve the same native ordering and work for wrapped selections.
+        foreach (var rect in visibleSelectionRects)
+        {
+            using var layer = ds.CreateLayer(1.0f, rect);
+            ds.DrawTextLayout(layout, sx, sy, color);
+        }
         DrawSelectedDecorations(ds, sx, sy, color, from, to - from);
         DrawSelectedInlineImages(ds, sx, sy, viewport, normalized, color);
     }
@@ -881,13 +890,14 @@ internal sealed class InlineContainerBox : BlockBox
         _bufferDirty = false;
     }
 
-    private void ApplyRunStyles(CanvasTextLayout layout, bool applyColors)
+    private void ApplyRunStyles(CanvasTextLayout layout, bool applyColors, bool observeCancellation = true)
     {
         var containerStyle = GetContainerStyle();
         int cumulative = 0;
         foreach (var run in _runs)
         {
-            _context.CancellationToken.ThrowIfCancellationRequested();
+            if (observeCancellation)
+                _context.CancellationToken.ThrowIfCancellationRequested();
             int len = run.Text.Length;
             if (len == 0) continue;
             if (ShouldApplyRunTextStyle(run))
@@ -995,14 +1005,11 @@ internal sealed class InlineContainerBox : BlockBox
             Math.Max(1f, _lastWidth - horizontalPadding),
             float.MaxValue);
         _selectionLayout.Options = CanvasDrawTextOptions.EnableColorFont;
-        ApplyRunStyles(_selectionLayout, applyColors: false);
-        if (_buffer.Length > 0)
-        {
-            _selectionLayout.SetColor(0, _buffer.Length, Color.FromArgb(0, 0, 0, 0));
-            if (selectedLength > 0)
-                _selectionLayout.SetColor(selectedStart, selectedLength, color);
-        }
-        ApplyEmbedSpacing(_selectionLayout);
+        // Selection is painted synchronously by a Win2D Draw callback against
+        // an already-committed snapshot. A newer layout may have cancelled the
+        // snapshot's build token, but cancellation must never escape Draw.
+        ApplyRunStyles(_selectionLayout, applyColors: false, observeCancellation: false);
+        ApplyEmbedSpacing(_selectionLayout, observeCancellation: false);
         _selectionLayoutColor = color;
         _selectionLayoutWidth = _lastWidth;
         _selectionLayoutStart = selectedStart;
@@ -1010,12 +1017,16 @@ internal sealed class InlineContainerBox : BlockBox
         return _selectionLayout;
     }
 
-    private void ApplyEmbedSpacing(CanvasTextLayout layout)
+    private void ApplyEmbedSpacing(CanvasTextLayout layout, bool observeCancellation = true)
     {
         int cumulative = 0;
         foreach (var run in _runs)
         {
-            _context.CancellationToken.ThrowIfCancellationRequested();
+            if (observeCancellation)
+            {
+                _context.CancellationToken.ThrowIfCancellationRequested();
+            }
+
             int len = run.Text.Length;
             if (run is InlineEmbedRun emb && len > 0)
             {

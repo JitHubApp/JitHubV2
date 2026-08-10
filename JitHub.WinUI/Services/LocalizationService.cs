@@ -1,12 +1,26 @@
 using System;
 using System.Globalization;
-using Windows.ApplicationModel.Resources;
+using System.Runtime.InteropServices;
+using Microsoft.Windows.ApplicationModel.Resources;
 
 namespace JitHub.Services;
 
 public sealed class LocalizationService
 {
-    private readonly ResourceLoader _resourceLoader = ResourceLoader.GetForViewIndependentUse();
+    private readonly ResourceLoader? _resourceLoader;
+
+    public LocalizationService()
+    {
+        try
+        {
+            _resourceLoader = new ResourceLoader();
+        }
+        catch (COMException)
+        {
+            // Unpackaged development and isolated UI automation may not have a
+            // PRI resource map. Callers supply the canonical English fallback.
+        }
+    }
 
     public string GetString(string resourceKey)
     {
@@ -15,8 +29,20 @@ public sealed class LocalizationService
             return string.Empty;
         }
 
-        string value = _resourceLoader.GetString(NormalizeResourceKey(resourceKey));
-        return string.IsNullOrWhiteSpace(value) ? resourceKey : value;
+        if (_resourceLoader is null)
+        {
+            return resourceKey;
+        }
+
+        try
+        {
+            string value = _resourceLoader.GetString(NormalizeResourceKey(resourceKey));
+            return string.IsNullOrWhiteSpace(value) ? resourceKey : value;
+        }
+        catch (COMException)
+        {
+            return resourceKey;
+        }
     }
 
     public string GetStringOrDefault(string resourceKey, string fallback)
@@ -35,5 +61,6 @@ public sealed class LocalizationService
     {
         return resourceKey.Replace('.', '/');
     }
+
 }
 

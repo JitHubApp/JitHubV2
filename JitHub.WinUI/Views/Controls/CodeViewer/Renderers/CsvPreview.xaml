@@ -26,19 +26,23 @@
             BorderBrush="{ThemeResource AppOutlineBrush}"
             BorderThickness="0,0,0,1">
             <controls:Segmented
-                x:Name="ViewModeSegmented"
+                x:Uid="CsvPreviewViewMode" x:Name="ViewModeSegmented"
                 HorizontalAlignment="Left"
+                AutomationProperties.AutomationId="CsvPreviewViewMode"
+                AutomationProperties.Name="CSV view mode"
                 SelectionChanged="ViewModeSegmented_SelectionChanged"
                 SelectionMode="Single">
-                <controls:SegmentedItem Content="Rich" />
-                <controls:SegmentedItem Content="Plain" />
+                <controls:SegmentedItem x:Uid="CsvPreviewViewModeRich" AutomationProperties.AutomationId="CsvPreviewViewMode_Rich" AutomationProperties.Name="Rich CSV view" Content="Rich" />
+                <controls:SegmentedItem x:Uid="CsvPreviewViewModePlain" AutomationProperties.AutomationId="CsvPreviewViewMode_Plain" AutomationProperties.Name="Plain CSV view" Content="Plain" />
             </controls:Segmented>
         </Border>
 
         <!--  Rich: DataGrid  -->
         <tkcontrols:DataGrid
-            x:Name="DataGrid"
+            x:Uid="CsvPreviewDataGrid" x:Name="DataGrid"
             Grid.Row="1"
+            AutomationProperties.AutomationId="CsvPreviewDataGrid"
+            AutomationProperties.Name="CSV table"
             AutoGenerateColumns="False"
             CanUserReorderColumns="True"
             CanUserResizeColumns="True"

@@ -18,6 +18,7 @@
                 Glyph="&#xE7BA;" />
 
             <TextBlock
+                x:Uid="RepoCodeUnsupportedTitle"
                 Style="{StaticResource SectionTitleTextBlockStyle}"
                 Text="Preview not available"
                 TextAlignment="Center" />
@@ -46,11 +47,17 @@
                 Spacing="8">
                 <Button
                     x:Name="OpenOnGitHubButton"
+                    x:Uid="RepoCodeUnsupportedOpenOnGitHubButton"
+                    AutomationProperties.AutomationId="RepoCodeUnsupportedOpenOnGitHubButton"
+                    AutomationProperties.Name="Open file on GitHub"
                     Click="OpenOnGitHub_Click"
                     Content="Open on github.com"
                     Style="{StaticResource AppAccentButtonStyle}" />
                 <Button
                     x:Name="CopyUrlButton"
+                    x:Uid="RepoCodeUnsupportedCopyRawUrlButton"
+                    AutomationProperties.AutomationId="RepoCodeUnsupportedCopyRawUrlButton"
+                    AutomationProperties.Name="Copy raw file link"
                     Click="CopyUrl_Click"
                     Content="Copy raw URL"
                     Style="{StaticResource AppQuietButtonStyle}" />

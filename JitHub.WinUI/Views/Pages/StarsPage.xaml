@@ -1,0 +1,541 @@
+<?xml version="1.0" encoding="utf-8"?>
+<Page
+    x:Class="JitHub.WinUI.Views.Pages.StarsPage"
+    xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+    xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+    xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+    xmlns:viewmodels="using:JitHub.WinUI.ViewModels.Pages"
+    x:DataType="viewmodels:StarLibraryPageViewModel"
+    Background="{ThemeResource AppCanvasBrush}"
+    mc:Ignorable="d">
+
+    <Page.Resources>
+        <Style
+            x:Key="StarsRowHoverButtonStyle"
+            BasedOn="{StaticResource AppStableButtonBaseStyle}"
+            TargetType="Button">
+            <Setter Property="Height" Value="32" />
+            <Setter Property="MinHeight" Value="32" />
+            <Setter Property="Padding" Value="10,4" />
+            <Setter Property="CornerRadius" Value="{ThemeResource AppRadiusSmall}" />
+            <Setter Property="Background" Value="{ThemeResource AppCanvasRaisedBrush}" />
+            <Setter Property="BorderBrush" Value="{ThemeResource AppOutlineStrongBrush}" />
+        </Style>
+
+        <Style x:Key="StarsNavigationItemStyle" TargetType="ListViewItem" BasedOn="{StaticResource AppCompactNavigationRowStyle}" />
+
+        <Style x:Key="StarsRepositoryItemStyle" TargetType="ListViewItem" BasedOn="{StaticResource AppRepositoryListRowStyle}">
+            <Setter Property="MinHeight" Value="86" />
+            <Setter Property="CornerRadius" Value="0" />
+        </Style>
+
+        <DataTemplate x:Key="NavigationItemTemplate" x:DataType="viewmodels:StarNavigationItem">
+            <StackPanel>
+                <TextBlock
+                    x:Uid="PagesStarsPageTextBlockCATEGORIES" Margin="0,12,0,7"
+                    Style="{StaticResource SectionSecondaryTextBlockStyle}"
+                    Text="CATEGORIES"
+                    Visibility="{x:Bind ShowCategoryHeader, Converter={StaticResource BoolToVisibilityConverter}}" />
+                <Grid
+                    AutomationProperties.AutomationId="{x:Bind AutomationId}"
+                    ColumnSpacing="10">
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="18" />
+                        <ColumnDefinition Width="*" />
+                        <ColumnDefinition Width="Auto" />
+                    </Grid.ColumnDefinitions>
+                    <Border
+                        Grid.ColumnSpan="3"
+                        Margin="-6,-5"
+                        Background="{x:Bind AccentColor, Converter={StaticResource HexColorToSolidBrushConverter}}"
+                        CornerRadius="{ThemeResource AppRadiusSmall}"
+                        IsHitTestVisible="False"
+                        Opacity="0.22"
+                        Visibility="{x:Bind IsDropTarget, Converter={StaticResource BoolToVisibilityConverter}, Mode=OneWay}" />
+                    <FontIcon
+                        FontFamily="{StaticResource SegoeFluentIcons}"
+                        FontSize="14"
+                        Foreground="{x:Bind AccentColor, Converter={StaticResource HexColorToSolidBrushConverter}}"
+                        Glyph="{x:Bind Glyph}" />
+                    <TextBlock
+                        Grid.Column="1"
+                        VerticalAlignment="Center"
+                        FontFamily="{ThemeResource AppUiFontFamily}"
+                        FontSize="13"
+                        Foreground="{ThemeResource AppInkBrush}"
+                        Text="{x:Bind Title}"
+                        TextTrimming="CharacterEllipsis" />
+                    <TextBlock
+                        Grid.Column="2"
+                        VerticalAlignment="Center"
+                        Style="{StaticResource SectionSecondaryTextBlockStyle}"
+                        Text="{x:Bind CountText}" />
+                </Grid>
+            </StackPanel>
+        </DataTemplate>
+
+        <DataTemplate x:Key="RepositoryRowTemplate" x:DataType="viewmodels:StarRepositoryViewItem">
+            <Grid
+                MinHeight="86"
+                Padding="14,10"
+                AutomationProperties.AccessibilityView="Raw"
+                Background="Transparent"
+                ColumnSpacing="12"
+                PointerEntered="RepositoryRow_PointerEntered"
+                PointerExited="RepositoryRow_PointerExited"
+                >
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="Auto" />
+                    <ColumnDefinition Width="*" />
+                    <ColumnDefinition Width="Auto" />
+                </Grid.ColumnDefinitions>
+                <StackPanel Orientation="Horizontal" Spacing="5">
+                    <CheckBox
+                        Margin="0,2,0,0"
+                        AutomationProperties.AutomationId="{x:Bind SelectionCheckBoxAutomationId}"
+                        AutomationProperties.Name="{x:Bind SelectionCheckBoxAutomationName}"
+                        Checked="RepositorySelectionCheckBox_Checked"
+                        IsChecked="{x:Bind IsSelected, Mode=TwoWay}"
+                        Style="{StaticResource AppSelectionCheckBoxStyle}"
+                        Unchecked="RepositorySelectionCheckBox_Unchecked"
+                        Visibility="{x:Bind IsSelectionModeVisible, Converter={StaticResource BoolToVisibilityConverter}, Mode=OneWay}" />
+                    <Border
+                        x:Uid="PagesStarsPageXBindDragHandleAutomationId" Width="24"
+                        Height="28"
+                        AutomationProperties.AutomationId="{x:Bind DragHandleAutomationId}"
+                        AutomationProperties.Name="Drag selected repositories to a category"
+                        Background="Transparent"
+                        PointerCanceled="RepositoryDragHandle_PointerCanceled"
+                        PointerCaptureLost="RepositoryDragHandle_PointerCaptureLost"
+                        PointerMoved="RepositoryDragHandle_PointerMoved"
+                        PointerPressed="RepositoryDragHandle_PointerPressed"
+                        PointerReleased="RepositoryDragHandle_PointerReleased"
+                        ToolTipService.ToolTip="Drag selected repositories to a category"
+                        Visibility="{x:Bind IsSelectionModeVisible, Converter={StaticResource BoolToVisibilityConverter}, Mode=OneWay}">
+                        <FontIcon
+                            HorizontalAlignment="Center"
+                            VerticalAlignment="Center"
+                            FontFamily="{StaticResource SegoeFluentIcons}"
+                            FontSize="14"
+                            Foreground="{ThemeResource AppInkMutedBrush}"
+                            Glyph="&#xE76F;"
+                            IsHitTestVisible="False" />
+                    </Border>
+                </StackPanel>
+                <Grid Grid.Column="1" RowSpacing="5">
+                    <Grid.RowDefinitions>
+                        <RowDefinition Height="Auto" />
+                        <RowDefinition Height="Auto" />
+                        <RowDefinition Height="Auto" />
+                    </Grid.RowDefinitions>
+                    <StackPanel Orientation="Horizontal" Spacing="0">
+                        <TextBlock
+                            FontFamily="{ThemeResource AppUiFontFamily}"
+                            FontSize="14"
+                            FontWeight="SemiBold"
+                            Foreground="{ThemeResource AppInkBrush}"
+                            Text="{x:Bind Owner, Mode=OneWay}" />
+                        <TextBlock
+                            FontFamily="{ThemeResource AppUiFontFamily}"
+                            FontSize="14"
+                            Foreground="{ThemeResource AppInkMutedBrush}"
+                            Text=" / " />
+                        <TextBlock
+                            FontFamily="{ThemeResource AppUiFontFamily}"
+                            FontSize="14"
+                            FontWeight="SemiBold"
+                            Foreground="{ThemeResource AppAccentBrush}"
+                            Text="{x:Bind Name, Mode=OneWay}"
+                            TextTrimming="CharacterEllipsis" />
+                    </StackPanel>
+                    <TextBlock
+                        Grid.Row="1"
+                        MaxLines="1"
+                        Style="{StaticResource SectionSecondaryTextBlockStyle}"
+                        Text="{x:Bind Description, Mode=OneWay}"
+                        TextTrimming="CharacterEllipsis" />
+                    <StackPanel Grid.Row="2" Orientation="Horizontal" Spacing="12">
+                        <StackPanel Orientation="Horizontal" Spacing="5">
+                            <Ellipse Width="8" Height="8" VerticalAlignment="Center" Fill="{x:Bind LanguageColor, Converter={StaticResource HexColorToSolidBrushConverter}, Mode=OneWay}" />
+                            <TextBlock Style="{StaticResource SectionSecondaryTextBlockStyle}" Text="{x:Bind Language, Mode=OneWay}" />
+                        </StackPanel>
+                        <TextBlock Style="{StaticResource SectionSecondaryTextBlockStyle}" Text="{x:Bind CategoriesText, Mode=OneWay}" />
+                    </StackPanel>
+                </Grid>
+                <Grid Grid.Column="2" MinWidth="148" HorizontalAlignment="Right">
+                    <StackPanel x:Name="RepositoryRowMetadata" HorizontalAlignment="Right" Spacing="5">
+                        <StackPanel HorizontalAlignment="Right" Orientation="Horizontal" Spacing="5">
+                            <FontIcon FontFamily="{StaticResource SegoeFluentIcons}" FontSize="11" Glyph="&#xE734;" />
+                            <TextBlock Style="{StaticResource SectionSecondaryTextBlockStyle}" Text="{x:Bind StarsText, Mode=OneWay}" />
+                        </StackPanel>
+                        <TextBlock HorizontalAlignment="Right" Style="{StaticResource SectionSecondaryTextBlockStyle}" Text="{x:Bind StarredText, Mode=OneWay}" />
+                        <StackPanel HorizontalAlignment="Right" Orientation="Horizontal" Spacing="8">
+                            <TextBlock Style="{StaticResource SectionSecondaryTextBlockStyle}" Text="{x:Bind ActivityText, Mode=OneWay}" />
+                            <Border
+                                Padding="6,2"
+                                Background="{ThemeResource AppSurfaceSubtleBrush}"
+                                CornerRadius="{ThemeResource AppRadiusSmall}"
+                                Visibility="{x:Bind HasState, Converter={StaticResource BoolToVisibilityConverter}, Mode=OneWay}">
+                                <TextBlock FontSize="11" Foreground="{ThemeResource AppInkMutedBrush}" Text="{x:Bind StateText, Mode=OneWay}" />
+                            </Border>
+                        </StackPanel>
+                    </StackPanel>
+                    <StackPanel
+                        x:Name="RepositoryHoverActions"
+                        HorizontalAlignment="Right"
+                        VerticalAlignment="Top"
+                        IsHitTestVisible="False"
+                        Opacity="0"
+                        Orientation="Horizontal"
+                        Spacing="4">
+                        <Button
+                            x:Uid="PagesStarsPageXBindHoverUnstarAutomationId" x:Name="RepositoryHoverUnstarButton"
+                            AutomationProperties.AutomationId="{x:Bind HoverUnstarAutomationId}"
+                            AutomationProperties.Name="Unstar repository"
+                            Click="RepositoryHoverUnstarButton_Click"
+                            IsTabStop="False"
+                            Style="{StaticResource StarsRowHoverButtonStyle}"
+                            ToolTipService.ToolTip="Unstar repository">
+                            <StackPanel Orientation="Horizontal" Spacing="7">
+                                <FontIcon FontFamily="{StaticResource SegoeFluentIcons}" FontSize="13" Foreground="{ThemeResource AppAccentBrush}" Glyph="&#xE735;" />
+                                <TextBlock x:Uid="PagesStarsPageTextBlockUnstar" Text="Unstar" />
+                            </StackPanel>
+                        </Button>
+                        <Button
+                            x:Uid="PagesStarsPageRepositoryHoverActions"
+                            Width="32"
+                            Height="32"
+                            AutomationProperties.AutomationId="{x:Bind HoverMenuAutomationId}"
+                            AutomationProperties.Name="Repository actions"
+                            Click="RepositoryHoverMenuButton_Click"
+                            IsTabStop="False"
+                            Style="{StaticResource AppToolbarButtonStyle}"
+                            ToolTipService.ToolTip="Repository actions">
+                            <FontIcon FontFamily="{StaticResource SegoeFluentIcons}" FontSize="13" Glyph="&#xE712;" />
+                        </Button>
+                    </StackPanel>
+                </Grid>
+            </Grid>
+        </DataTemplate>
+    </Page.Resources>
+
+    <Grid
+        x:Uid="PagesStarsPageStarsPageRoot" x:Name="RootGrid"
+        AutomationProperties.AccessibilityView="Control"
+        AutomationProperties.AutomationId="StarsPageRoot"
+        AutomationProperties.Name="Stars library"
+        SizeChanged="RootGrid_SizeChanged">
+        <SplitView
+            x:Name="CategorySplitView"
+            AutomationProperties.AutomationId="StarsCategorySplitView"
+            CompactPaneLength="0"
+            DisplayMode="Inline"
+            IsPaneOpen="True"
+            OpenPaneLength="232"
+            PaneBackground="{ThemeResource AppSurfaceBrush}"
+            PaneClosing="CategorySplitView_PaneClosing"
+            PaneClosed="CategorySplitView_PaneClosed"
+            PaneOpened="CategorySplitView_PaneOpened">
+            <SplitView.Pane>
+                <Grid Width="232" RowSpacing="8">
+                    <Grid.RowDefinitions>
+                        <RowDefinition Height="Auto" />
+                        <RowDefinition Height="Auto" />
+                        <RowDefinition Height="*" />
+                        <RowDefinition Height="Auto" />
+                    </Grid.RowDefinitions>
+                    <Grid Padding="14,16,10,4">
+                        <TextBlock
+                            x:Uid="PagesStarsPageTextBlockStars" VerticalAlignment="Center"
+                            FontFamily="{ThemeResource AppDisplayFontFamily}"
+                            FontSize="23"
+                            Foreground="{ThemeResource AppInkBrush}"
+                            Text="Stars" />
+                        <Button
+                            x:Uid="PagesStarsPageStarsCloseCategories" x:Name="CloseCategoriesButton"
+                            HorizontalAlignment="Right"
+                            AutomationProperties.Name="Close categories"
+                            AutomationProperties.AutomationId="StarsCloseCategories"
+                            Click="CloseCategoriesButton_Click"
+                            Style="{StaticResource AppToolbarButtonStyle}"
+                            ToolTipService.ToolTip="Close categories"
+                            Visibility="Collapsed">
+                            <FontIcon FontFamily="{StaticResource SegoeFluentIcons}" Glyph="&#xE72B;" />
+                        </Button>
+                    </Grid>
+                    <TextBlock x:Uid="PagesStarsPageTextBlockSMARTLISTS" Grid.Row="1" Margin="14,4,14,0" Style="{StaticResource SectionSecondaryTextBlockStyle}" Text="SMART LISTS" />
+                    <ListView
+                        x:Uid="PagesStarsPageStarsCategoryNavigation" x:Name="CategoryNavigationList"
+                        Grid.Row="2"
+                        AutomationProperties.AutomationId="StarsCategoryNavigation"
+                        AutomationProperties.Name="Star categories"
+                        Background="Transparent"
+                        BorderThickness="0"
+                        ItemContainerStyle="{StaticResource StarsNavigationItemStyle}"
+                        ItemTemplate="{StaticResource NavigationItemTemplate}"
+                        ItemsSource="{x:Bind ViewModel.NavigationItems, Mode=OneWay}"
+                        ContainerContentChanging="CategoryNavigationList_ContainerContentChanging"
+                        SelectedItem="{x:Bind ViewModel.SelectedNavigationItem, Mode=TwoWay}"
+                        SelectionMode="Single" />
+                    <Grid Grid.Row="3" Margin="10,4,10,12">
+                        <Button
+                            x:Uid="PagesStarsPageStarsNewCategory" HorizontalAlignment="Stretch"
+                            HorizontalContentAlignment="Left"
+                            AutomationProperties.AutomationId="StarsNewCategory"
+                            AutomationProperties.Name="New category"
+                            Click="NewCategoryButton_Click"
+                            Style="{StaticResource AppQuietButtonStyle}">
+                            <StackPanel Orientation="Horizontal" Spacing="9">
+                                <FontIcon FontFamily="{StaticResource SegoeFluentIcons}" FontSize="14" Glyph="&#xE710;" />
+                                <TextBlock x:Uid="PagesStarsPageTextBlockNewCategory" Text="New category" />
+                            </StackPanel>
+                        </Button>
+                        <Button
+                            x:Uid="PagesStarsPageStarsCategoryMenu" Margin="0,0,2,0"
+                            HorizontalAlignment="Right"
+                            AutomationProperties.Name="Category actions"
+                            AutomationProperties.AutomationId="StarsCategoryMenu"
+                            Click="CategoryMenuButton_Click"
+                            IsEnabled="{x:Bind ViewModel.CanEditSelectedCategory, Mode=OneWay}"
+                            Style="{StaticResource AppToolbarButtonStyle}"
+                            ToolTipService.ToolTip="Category actions">
+                            <FontIcon FontFamily="{StaticResource SegoeFluentIcons}" Glyph="&#xE712;" />
+                        </Button>
+                    </Grid>
+                </Grid>
+            </SplitView.Pane>
+
+            <Grid x:Name="StarsContentRoot" MinWidth="0" Padding="{ThemeResource AppPagePadding}" RowSpacing="10">
+                <Grid.RowDefinitions>
+                    <RowDefinition Height="Auto" />
+                    <RowDefinition Height="Auto" />
+                    <RowDefinition Height="Auto" />
+                    <RowDefinition Height="*" />
+                    <RowDefinition Height="Auto" />
+                </Grid.RowDefinitions>
+
+                <Grid x:Name="StarsHeaderGrid" ColumnSpacing="10" Style="{StaticResource AppWorkspaceHeaderStyle}">
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="Auto" />
+                        <ColumnDefinition Width="*" />
+                        <ColumnDefinition Width="Auto" />
+                    </Grid.ColumnDefinitions>
+                    <Button
+                        x:Uid="PagesStarsPageStarsOpenCategories" x:Name="OpenCategoriesButton"
+                        Width="36"
+                        Height="36"
+                        AutomationProperties.Name="Open categories"
+                        AutomationProperties.AutomationId="StarsOpenCategories"
+                        Click="OpenCategoriesButton_Click"
+                        Style="{StaticResource AppToolbarButtonStyle}"
+                        ToolTipService.ToolTip="Categories"
+                        Visibility="Collapsed">
+                        <FontIcon FontFamily="{StaticResource SegoeFluentIcons}" Glyph="&#xE8B7;" />
+                    </Button>
+                    <Grid Grid.Column="1" MinWidth="0" VerticalAlignment="Center" ColumnSpacing="10">
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="*" />
+                            <ColumnDefinition Width="Auto" />
+                        </Grid.ColumnDefinitions>
+                        <TextBlock
+                            MaxWidth="420"
+                            AutomationProperties.AutomationId="StarsCurrentViewTitle"
+                            AutomationProperties.Name="{x:Bind ViewModel.CurrentViewTitle, Mode=OneWay}"
+                            Style="{StaticResource AppWorkspaceTitleTextBlockStyle}"
+                            Text="{x:Bind ViewModel.CurrentViewTitle, Mode=OneWay}"
+                            TextTrimming="CharacterEllipsis" />
+                        <TextBlock x:Name="StarsResultCount" Grid.Column="1" Style="{StaticResource AppWorkspaceHeaderContextTextBlockStyle}" Text="{x:Bind ViewModel.ResultCountText, Mode=OneWay}" />
+                    </Grid>
+                    <ProgressRing
+                        Grid.Column="2"
+                        Width="18"
+                        Height="18"
+                        AutomationProperties.AutomationId="StarsSyncIndicator"
+                        IsActive="{x:Bind ViewModel.IsSyncing, Mode=OneWay}"
+                        Visibility="{x:Bind ViewModel.IsSyncing, Converter={StaticResource BoolToVisibilityConverter}, Mode=OneWay}" />
+                </Grid>
+
+                <Grid x:Name="StarsCommandGrid" Grid.Row="1" ColumnSpacing="8" RowSpacing="8">
+                    <Grid.RowDefinitions>
+                        <RowDefinition Height="Auto" />
+                        <RowDefinition Height="Auto" />
+                    </Grid.RowDefinitions>
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="*" />
+                        <ColumnDefinition Width="Auto" />
+                        <ColumnDefinition Width="Auto" />
+                        <ColumnDefinition Width="Auto" />
+                    </Grid.ColumnDefinitions>
+                    <Grid x:Name="StarsSearchHost" MinWidth="180">
+                        <TextBox
+                            x:Uid="PagesStarsPageStarsSearch" x:Name="StarsSearchBox"
+                            AutomationProperties.AutomationId="StarsSearch"
+                            AutomationProperties.Name="Search starred repositories"
+                            PlaceholderText="Search stars"
+                            Style="{StaticResource AppCommandSearchTextBoxStyle}"
+                            Text="{x:Bind ViewModel.SearchText, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" />
+                        <FontIcon
+                            Margin="12,0,0,0"
+                            HorizontalAlignment="Left"
+                            VerticalAlignment="Center"
+                            FontFamily="{StaticResource SegoeFluentIcons}"
+                            FontSize="13"
+                            Foreground="{ThemeResource AppInkSubtleBrush}"
+                            Glyph="&#xE721;"
+                            IsHitTestVisible="False" />
+                    </Grid>
+                    <ComboBox
+                        x:Uid="PagesStarsPageStarsSort" x:Name="StarsSortComboBox"
+                        Grid.Column="1"
+                        MinWidth="158"
+                        AutomationProperties.AutomationId="StarsSort"
+                        AutomationProperties.Name="Sort starred repositories"
+                        ItemsSource="{x:Bind ViewModel.SortOptions}"
+                        SelectedItem="{x:Bind ViewModel.SelectedSortOption, Mode=TwoWay}"
+                        Style="{StaticResource AppCompactComboBoxStyle}" />
+                    <Button
+                        x:Uid="PagesStarsPageStarsFilter" x:Name="StarsFilterButton"
+                        Grid.Column="2"
+                        AutomationProperties.AutomationId="StarsFilter"
+                        AutomationProperties.Name="Filter starred repositories"
+                        Style="{StaticResource AppCommandButtonStyle}"
+                        ToolTipService.ToolTip="Filter stars">
+                        <StackPanel Orientation="Horizontal" Spacing="7">
+                            <FontIcon FontFamily="{StaticResource SegoeFluentIcons}" FontSize="14" Glyph="&#xE71C;" />
+                            <TextBlock x:Uid="PagesStarsPageStarsFilterButtonText" x:Name="StarsFilterButtonText" Text="Filter" />
+                        </StackPanel>
+                        <Button.Flyout>
+                            <Flyout Placement="BottomEdgeAlignedRight">
+                                <ContentPresenter Content="{x:Bind ViewModel}">
+                                    <ContentPresenter.ContentTemplate>
+                                        <DataTemplate x:DataType="viewmodels:StarLibraryPageViewModel">
+                                            <StackPanel Width="272" Spacing="10">
+                                                <TextBlock x:Uid="PagesStarsPageTextBlockFilterStars" FontSize="16" FontWeight="SemiBold" Text="Filter stars" />
+                                                <ComboBox x:Uid="PagesStarsPageStarsFilterLanguage" AutomationProperties.AutomationId="StarsFilterLanguage" AutomationProperties.Name="Filter by language" Header="Language" ItemsSource="{x:Bind LanguageOptions}" SelectedItem="{x:Bind SelectedLanguage, Mode=TwoWay}" Style="{StaticResource AppCompactComboBoxStyle}" />
+                                                <ComboBox x:Uid="PagesStarsPageStarsFilterOwner" AutomationProperties.AutomationId="StarsFilterOwner" AutomationProperties.Name="Filter by owner" Header="Owner" ItemsSource="{x:Bind OwnerOptions}" SelectedItem="{x:Bind SelectedOwner, Mode=TwoWay}" Style="{StaticResource AppCompactComboBoxStyle}" />
+                                                <ComboBox x:Uid="PagesStarsPageStarsFilterTopic" AutomationProperties.AutomationId="StarsFilterTopic" AutomationProperties.Name="Filter by topic" Header="Topic" ItemsSource="{x:Bind TopicOptions}" SelectedItem="{x:Bind SelectedTopic, Mode=TwoWay}" Style="{StaticResource AppCompactComboBoxStyle}" />
+                                                <ComboBox x:Uid="PagesStarsPageStarsFilterVisibility" AutomationProperties.AutomationId="StarsFilterVisibility" AutomationProperties.Name="Filter by visibility" Header="Visibility" ItemsSource="{x:Bind VisibilityOptions}" SelectedItem="{x:Bind SelectedVisibility, Mode=TwoWay}" Style="{StaticResource AppCompactComboBoxStyle}" />
+                                                <ComboBox x:Uid="PagesStarsPageStarsFilterKind" AutomationProperties.AutomationId="StarsFilterKind" AutomationProperties.Name="Filter by repository type" Header="Repository type" ItemsSource="{x:Bind KindOptions}" SelectedItem="{x:Bind SelectedKind, Mode=TwoWay}" Style="{StaticResource AppCompactComboBoxStyle}" />
+                                                <ComboBox x:Uid="PagesStarsPageStarsFilterActivity" AutomationProperties.AutomationId="StarsFilterActivity" AutomationProperties.Name="Filter by activity" Header="Activity" ItemsSource="{x:Bind ActivityOptions}" SelectedItem="{x:Bind SelectedActivity, Mode=TwoWay}" Style="{StaticResource AppCompactComboBoxStyle}" />
+                                                <ComboBox x:Uid="PagesStarsPageStarsFilterCategoryState" AutomationProperties.AutomationId="StarsFilterCategoryState" AutomationProperties.Name="Filter by category state" Header="Categories" ItemsSource="{x:Bind CategoryStateOptions}" SelectedItem="{x:Bind SelectedCategoryState, Mode=TwoWay}" Style="{StaticResource AppCompactComboBoxStyle}" />
+                                                <Button x:Uid="PagesStarsPageStarsClearFilters" HorizontalAlignment="Left" AutomationProperties.AutomationId="StarsClearFilters" AutomationProperties.Name="Clear star filters" Click="ClearFiltersButton_Click" Content="Clear filters" Style="{StaticResource AppQuietButtonStyle}" />
+                                            </StackPanel>
+                                        </DataTemplate>
+                                    </ContentPresenter.ContentTemplate>
+                                </ContentPresenter>
+                            </Flyout>
+                        </Button.Flyout>
+                    </Button>
+                    <Button
+                        x:Uid="PagesStarsPageStarsSelectionMode" x:Name="SelectionModeButton"
+                        Grid.Column="3"
+                        AutomationProperties.Name="Select repositories"
+                        AutomationProperties.AutomationId="StarsSelectionMode"
+                        Click="SelectionModeButton_Click"
+                        Style="{StaticResource AppCommandButtonStyle}"
+                        ToolTipService.ToolTip="Select repositories">
+                        <FontIcon FontFamily="{StaticResource SegoeFluentIcons}" Glyph="&#xE762;" />
+                    </Button>
+                </Grid>
+
+                <ItemsControl
+                    Grid.Row="2"
+                    ItemsSource="{x:Bind ViewModel.ActiveFilterChips, Mode=OneWay}"
+                    Visibility="{x:Bind ViewModel.HasActiveFilters, Converter={StaticResource BoolToVisibilityConverter}, Mode=OneWay}">
+                    <ItemsControl.ItemsPanel>
+                        <ItemsPanelTemplate>
+                            <ItemsWrapGrid Orientation="Horizontal" />
+                        </ItemsPanelTemplate>
+                    </ItemsControl.ItemsPanel>
+                    <ItemsControl.ItemTemplate>
+                        <DataTemplate x:DataType="viewmodels:StarFilterChipViewItem">
+                            <Button
+                                Margin="0,0,6,4"
+                                Padding="9,4"
+                                AutomationProperties.AutomationId="{x:Bind AutomationId}"
+                                AutomationProperties.Name="{x:Bind AutomationName}"
+                                Command="{x:Bind RemoveCommand}"
+                                Style="{StaticResource AppQuietButtonStyle}">
+                                <StackPanel Orientation="Horizontal" Spacing="7">
+                                    <TextBlock Text="{x:Bind Label}" />
+                                    <FontIcon FontFamily="{StaticResource SegoeFluentIcons}" FontSize="10" Glyph="&#xE711;" />
+                                </StackPanel>
+                            </Button>
+                        </DataTemplate>
+                    </ItemsControl.ItemTemplate>
+                </ItemsControl>
+
+                <Grid Grid.Row="3" MinHeight="0">
+                    <ListView
+                        x:Uid="PagesStarsPageStarsList" x:Name="RepositoriesList"
+                        AutomationProperties.AutomationId="StarsList"
+                        AutomationProperties.Name="Starred repositories"
+                        Background="Transparent"
+                        BorderBrush="{ThemeResource AppHairlineBrush}"
+                        BorderThickness="0,1,0,0"
+                        ContainerContentChanging="RepositoriesList_ContainerContentChanging"
+                        IsItemClickEnabled="True"
+                        IsMultiSelectCheckBoxEnabled="False"
+                        ItemClick="RepositoriesList_ItemClick"
+                        ItemContainerStyle="{StaticResource StarsRepositoryItemStyle}"
+                        ItemTemplate="{StaticResource RepositoryRowTemplate}"
+                        ItemsSource="{x:Bind ViewModel.Repositories, Mode=OneWay}"
+                        RightTapped="RepositoriesList_RightTapped"
+                        SelectionChanged="RepositoriesList_SelectionChanged"
+                        SelectionMode="None">
+                        <ListView.Resources>
+                            <x:Boolean x:Key="ListViewItemSelectionCheckMarkVisualEnabled">False</x:Boolean>
+                        </ListView.Resources>
+                    </ListView>
+                    <StackPanel
+                        Style="{StaticResource AppEmptyStatePanelStyle}"
+                        Visibility="{x:Bind ViewModel.IsEmpty, Converter={StaticResource BoolToVisibilityConverter}, Mode=OneWay}">
+                        <FontIcon FontFamily="{StaticResource SegoeFluentIcons}" FontSize="26" Foreground="{ThemeResource AppInkMutedBrush}" Glyph="&#xE734;" />
+                        <TextBlock HorizontalAlignment="Center" FontSize="16" FontWeight="SemiBold" Text="{x:Bind ViewModel.EmptyTitle, Mode=OneWay}" />
+                        <TextBlock MaxWidth="360" HorizontalAlignment="Center" TextAlignment="Center" Style="{StaticResource SectionSecondaryTextBlockStyle}" Text="{x:Bind ViewModel.EmptyMessage, Mode=OneWay}" TextWrapping="Wrap" />
+                    </StackPanel>
+                </Grid>
+
+                <Grid
+                    Grid.Row="4"
+                    MinHeight="42"
+                    Padding="10,6"
+                    Background="{ThemeResource AppSurfaceSubtleBrush}"
+                    ColumnSpacing="8"
+                    Visibility="{x:Bind ViewModel.HasSelection, Converter={StaticResource BoolToVisibilityConverter}, Mode=OneWay}">
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="*" />
+                        <ColumnDefinition Width="Auto" />
+                        <ColumnDefinition Width="Auto" />
+                        <ColumnDefinition Width="Auto" />
+                    </Grid.ColumnDefinitions>
+                    <TextBlock
+                        VerticalAlignment="Center"
+                        AutomationProperties.AutomationId="StarsSelectionCount"
+                        FontWeight="SemiBold"
+                        Text="{x:Bind ViewModel.SelectionText, Mode=OneWay}" />
+                    <Button x:Uid="PagesStarsPageStarsBulkCategory" Grid.Column="1" AutomationProperties.AutomationId="StarsBulkCategory" AutomationProperties.Name="Add selected repositories to category" Click="BulkCategoryButton_Click" Content="Add to category" Style="{StaticResource AppQuietButtonStyle}" />
+                    <Button x:Uid="PagesStarsPageStarsBulkUnstar" Grid.Column="2" AutomationProperties.AutomationId="StarsBulkUnstar" AutomationProperties.Name="Unstar selected repositories" Click="BulkUnstarButton_Click" Content="Unstar" Style="{StaticResource AppQuietButtonStyle}" />
+                    <Button x:Uid="PagesStarsPageStarsCancelSelection" Grid.Column="3" AutomationProperties.Name="Cancel selection" AutomationProperties.AutomationId="StarsCancelSelection" Click="CancelSelectionButton_Click" Style="{StaticResource AppToolbarButtonStyle}" ToolTipService.ToolTip="Cancel selection">
+                        <FontIcon FontFamily="{StaticResource SegoeFluentIcons}" Glyph="&#xE711;" />
+                    </Button>
+                </Grid>
+            </Grid>
+        </SplitView>
+
+        <InfoBar
+            x:Name="ActionInfoBar"
+            Margin="16"
+            HorizontalAlignment="Right"
+            VerticalAlignment="Bottom"
+            AutomationProperties.AutomationId="StarsActionInfoBar"
+            IsOpen="False"
+            Severity="Informational"
+            Style="{StaticResource AppStatusInfoBarStyle}">
+            <InfoBar.ActionButton>
+                <Button x:Uid="PagesStarsPageStarsUndoUnstar" x:Name="UndoButton" AutomationProperties.AutomationId="StarsUndoUnstar" AutomationProperties.Name="Undo unstar" Click="UndoButton_Click" Content="Undo" />
+            </InfoBar.ActionButton>
+        </InfoBar>
+    </Grid>
+</Page>

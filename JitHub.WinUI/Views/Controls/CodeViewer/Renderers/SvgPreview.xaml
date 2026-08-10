@@ -23,7 +23,7 @@
                 VerticalAlignment="Stretch"
                 PaintSurface="SvgCanvas_PaintSurface" />
             <TextBlock
-                x:Name="ErrorText"
+                x:Uid="ControlsCodeViewerRenderersSvgPreviewErrorText" x:Name="ErrorText"
                 HorizontalAlignment="Center"
                 VerticalAlignment="Center"
                 Foreground="{ThemeResource AppInkMutedBrush}"

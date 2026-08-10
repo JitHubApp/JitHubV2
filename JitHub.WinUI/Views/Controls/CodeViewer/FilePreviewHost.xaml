@@ -9,25 +9,34 @@
 
     <Grid x:Name="Root">
         <Grid x:Name="LoadingState"
+              Canvas.ZIndex="2"
               Visibility="Collapsed"
-              HorizontalAlignment="Center"
-              VerticalAlignment="Center">
-            <muxc:ProgressRing IsActive="True" Width="40" Height="40" />
+              Margin="12"
+              HorizontalAlignment="Right"
+              VerticalAlignment="Top">
+            <Border
+                Padding="8"
+                Background="{ThemeResource AppSurfaceBrush}"
+                BorderBrush="{ThemeResource AppOutlineBrush}"
+                BorderThickness="1"
+                CornerRadius="{ThemeResource ControlCornerRadius}">
+                <muxc:ProgressRing IsActive="True" Width="18" Height="18" />
+            </Border>
         </Grid>
 
         <Border x:Name="ErrorState"
+                Canvas.ZIndex="3"
                 Visibility="Collapsed"
                 MaxWidth="520"
-                Padding="20"
+                Margin="12"
+                Padding="12"
                 HorizontalAlignment="Center"
-                VerticalAlignment="Center"
+                VerticalAlignment="Top"
                 Background="{ThemeResource AppSurfaceBrush}"
                 BorderBrush="{ThemeResource AppOutlineBrush}"
                 BorderThickness="1"
                 CornerRadius="{ThemeResource AppRadiusLarge}">
-            <StackPanel Spacing="8">
-                <TextBlock Style="{StaticResource SectionTitleTextBlockStyle}"
-                           Text="Unable to load this file." />
+            <StackPanel>
                 <TextBlock x:Name="ErrorMessageText"
                            Style="{StaticResource SectionSecondaryTextBlockStyle}"
                            TextWrapping="WrapWholeWords" />
@@ -40,7 +49,8 @@
               VerticalAlignment="Center">
             <StackPanel Spacing="6" HorizontalAlignment="Center">
                 <FontIcon Glyph="&#xE8A5;" FontSize="32" Foreground="{ThemeResource AppInkMutedBrush}" />
-                <TextBlock Style="{StaticResource SectionSecondaryTextBlockStyle}"
+                <TextBlock x:Uid="RepoCodeEmptyPreview"
+                           Style="{StaticResource SectionSecondaryTextBlockStyle}"
                            HorizontalAlignment="Center"
                            Text="Select a file to preview" />
             </StackPanel>

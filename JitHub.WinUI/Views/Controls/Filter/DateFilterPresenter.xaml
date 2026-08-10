@@ -12,6 +12,8 @@
             x:Name="FilterDatePicker"
             Width="172"
             MinWidth="172"
+            AutomationProperties.AutomationId="{x:Bind AutomationId, Mode=OneWay}"
+            AutomationProperties.Name="{x:Bind Title, Mode=OneWay}"
             DateChanged="OnDateChanged"
             Header="{x:Bind Title, Mode=OneWay}"
             PlaceholderText="{x:Bind Placeholder, Mode=OneWay}"

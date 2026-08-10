@@ -2,6 +2,7 @@ using System.Collections.Generic;
 using Microsoft.UI.Xaml.Automation;
 using Microsoft.UI.Xaml.Automation.Peers;
 using Microsoft.UI.Xaml.Automation.Provider;
+using Microsoft.UI.Xaml;
 using MarkdownRenderer.Controls;
 using MarkdownRenderer.Document;
 using MarkdownRenderer.Layout;
@@ -280,7 +281,7 @@ internal sealed partial class MarkdownAutomationPeer : FrameworkElementAutomatio
 
     internal Windows.Foundation.Rect GetScreenRectForDocumentRect(Windows.Foundation.Rect docRect)
     {
-        var ownerScreen = GetBoundingRectangleCore();
+        var ownerScreen = GetOwnerScreenBounds();
         if (ownerScreen.Width <= 0 || ownerScreen.Height <= 0) return default;
 
         double scale = _owner.XamlRoot?.RasterizationScale ?? 1.0;
@@ -295,7 +296,7 @@ internal sealed partial class MarkdownAutomationPeer : FrameworkElementAutomatio
         Windows.Foundation.Point screenLocation,
         out Windows.Foundation.Point documentPoint)
     {
-        var ownerScreen = GetBoundingRectangleCore();
+        var ownerScreen = GetOwnerScreenBounds();
         if (ownerScreen.Width <= 0 || ownerScreen.Height <= 0)
         {
             documentPoint = default;
@@ -307,43 +308,58 @@ internal sealed partial class MarkdownAutomationPeer : FrameworkElementAutomatio
         var rawPoint = new Windows.Foundation.Point(
             (screenLocation.X - ownerScreen.X) / scale,
             (screenLocation.Y - ownerScreen.Y) / scale - _owner.CurrentContentOffsetY + _owner.CurrentScrollOffsetY);
-        documentPoint = CoerceToNearestTextRect(GetSemanticDocument(), rawPoint);
+        documentPoint = GetSemanticDocument().TryCoercePointToNearestTextRect(rawPoint, out var coercedPoint)
+            ? coercedPoint
+            : rawPoint;
         return true;
     }
 
-    private static Windows.Foundation.Point CoerceToNearestTextRect(
-        MarkdownSemanticDocument doc,
-        Windows.Foundation.Point point)
+    internal Windows.Foundation.Rect GetVisibleScreenBounds()
     {
-        Windows.Foundation.Rect best = default;
-        double bestScore = double.PositiveInfinity;
-
-        foreach (var span in doc.TextSpans)
+        Windows.Foundation.Rect ownerBounds = GetOwnerScreenBounds();
+        Windows.Foundation.Rect clippedBounds = GetBoundingRectangleCore();
+        if (ownerBounds.Width <= 0 || ownerBounds.Height <= 0 ||
+            clippedBounds.Width <= 0 || clippedBounds.Height <= 0)
         {
-            foreach (var rect in doc.GetDocumentRects(span.TextStart, span.TextEnd))
-            {
-                if (rect.Width <= 0 || rect.Height <= 0)
-                    continue;
+            return default;
+        }
 
-                double x = System.Math.Clamp(point.X, rect.Left, rect.Right);
-                double y = System.Math.Clamp(point.Y, rect.Top, rect.Bottom);
-                double dx = point.X - x;
-                double dy = point.Y - y;
-                double score = dx * dx + dy * dy;
-                if (score < bestScore)
-                {
-                    bestScore = score;
-                    best = rect;
-                }
+        double left = System.Math.Max(ownerBounds.Left, clippedBounds.Left);
+        double top = System.Math.Max(ownerBounds.Top, clippedBounds.Top);
+        double right = System.Math.Min(ownerBounds.Right, clippedBounds.Right);
+        double bottom = System.Math.Min(ownerBounds.Bottom, clippedBounds.Bottom);
+        return right > left && bottom > top
+            ? new Windows.Foundation.Rect(left, top, right - left, bottom - top)
+            : default;
+    }
+
+    private Windows.Foundation.Rect GetOwnerScreenBounds()
+    {
+        if (_owner.XamlRoot?.Content is FrameworkElement root)
+        {
+            AutomationPeer? rootPeer = FrameworkElementAutomationPeer.FromElement(root)
+                ?? FrameworkElementAutomationPeer.CreatePeerForElement(root);
+            Windows.Foundation.Rect rootScreen = rootPeer?.GetBoundingRectangle() ?? default;
+            if (rootScreen.Width > 0 && rootScreen.Height > 0)
+            {
+                // A peer's own bounding rectangle is clipped by ancestor
+                // ScrollViewers. Use the element transform for the unclipped
+                // layout origin, anchored to the active XamlRoot's physical
+                // screen bounds. This remains correct for popup XAML islands
+                // while accounting for every outer scroll offset.
+                Windows.Foundation.Point rootPoint = _owner
+                    .TransformToVisual(root)
+                    .TransformPoint(new Windows.Foundation.Point());
+                double scale = _owner.XamlRoot.RasterizationScale;
+                return new Windows.Foundation.Rect(
+                    rootScreen.X + (rootPoint.X * scale),
+                    rootScreen.Y + (rootPoint.Y * scale),
+                    _owner.ActualWidth * scale,
+                    _owner.ActualHeight * scale);
             }
         }
 
-        if (!double.IsFinite(bestScore))
-            return point;
-
-        return new Windows.Foundation.Point(
-            System.Math.Clamp(point.X, best.Left, best.Right),
-            System.Math.Clamp(point.Y, best.Top, best.Bottom));
+        return GetBoundingRectangleCore();
     }
 
     internal bool TryGetTextRangeForInlineBox(InlineContainerBox box, out int start, out int end)

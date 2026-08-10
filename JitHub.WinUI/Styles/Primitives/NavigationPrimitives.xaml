@@ -3,7 +3,7 @@
     xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
     xmlns:muxc="using:Microsoft.UI.Xaml.Controls">
     <Style TargetType="FlyoutPresenter">
-        <Setter Property="Background" Value="{ThemeResource AppSurfaceBrush}" />
+        <Setter Property="Background" Value="{ThemeResource AppCardBrush}" />
         <Setter Property="BorderBrush" Value="{ThemeResource AppOutlineBrush}" />
         <Setter Property="BorderThickness" Value="1" />
         <Setter Property="CornerRadius" Value="{ThemeResource AppRadiusMedium}" />
@@ -17,7 +17,7 @@
         <Setter Property="Margin" Value="0,4" />
     </Style>
     <Style TargetType="muxc:InfoBar">
-        <Setter Property="Background" Value="{ThemeResource AppSurfaceBrush}" />
+        <Setter Property="Background" Value="{ThemeResource AppCardBrush}" />
         <Setter Property="BorderBrush" Value="{ThemeResource AppOutlineBrush}" />
         <Setter Property="BorderThickness" Value="1" />
         <Setter Property="CornerRadius" Value="{ThemeResource AppRadiusMedium}" />

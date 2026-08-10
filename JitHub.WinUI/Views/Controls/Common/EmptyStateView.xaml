@@ -15,9 +15,7 @@
         BorderThickness="0"
         CornerRadius="0">
         <StackPanel
-            HorizontalAlignment="Left"
-            VerticalAlignment="Top"
-            Spacing="6">
+            Style="{StaticResource AppInlineEmptyStatePanelStyle}">
             <TextBlock
                 HorizontalAlignment="Left"
                 Style="{StaticResource SectionTitleTextBlockStyle}"

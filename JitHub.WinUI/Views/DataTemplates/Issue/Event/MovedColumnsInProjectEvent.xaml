@@ -9,6 +9,8 @@
                 <ColumnDefinition Width="*" />
             </Grid.ColumnDefinitions>
             <common:Avatar
+                AutomationInstanceId="{Binding ActorAutomationId, Mode=OneWay}"
+                NavigationSource="legacy_issue_timeline_actor"
                 Grid.Column="0"
                 HorizontalAlignment="Center"
                 Login="{Binding Actor.Login, Mode=OneWay}"
@@ -20,9 +22,9 @@
                 Spacing="4">
                 <TextBlock Text="{Binding Actor.Login, Mode=OneWay}" />
                 <TextBlock>
-                    <Run Text="moved this issue from " />
+                    <Run x:Uid="DataTemplatesIssueEventMovedColumnsInProjectEventRunMove" Text="moved this issue from " />
                     <Run Text="{Binding ProjectCard.PreviousColumnName, Mode=OneWay}" />
-                    <Run Text=" to " />
+                    <Run x:Uid="DataTemplatesIssueEventMovedColumnsInProjectEventRunTo" Text=" to " />
                     <Run Text="{Binding ProjectCard.ColumnName, Mode=OneWay}" />
                 </TextBlock>
                 <TextBlock Text="{Binding CreatedAt, Converter={StaticResource TimeAgoConverter}, ConverterParameter='', Mode=OneWay}" />

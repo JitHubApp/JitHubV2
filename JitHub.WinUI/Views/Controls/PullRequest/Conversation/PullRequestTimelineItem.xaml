@@ -31,6 +31,7 @@
             <common:Avatar
                 x:Name="ActorAvatar"
                 Margin="0,2,0,0"
+                NavigationSource="pull_request_timeline"
                 VerticalAlignment="Top"
                 ShowLogin="False"
                 Size="SMALL" />

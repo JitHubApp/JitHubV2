@@ -156,31 +156,10 @@ internal sealed partial class MarkdownBlockPeer : FrameworkElementAutomationPeer
 
     protected override Windows.Foundation.Rect GetBoundingRectangleCore()
     {
-        // Default FrameworkElementAutomationPeer reports the owning control's
-        // bounding rect in screen coordinates, which means every block claims
-        // the same rectangle — breaking Narrator's per-block scan navigation.
-        // We compose the owner's screen rect (which already does the
-        // window-client → screen conversion correctly, including DPI) with
-        // this block's offset inside the renderer.
-        var ownerScreen = base.GetBoundingRectangleCore();
-        if (ownerScreen.Width <= 0 || ownerScreen.Height <= 0) return ownerScreen;
-
-        double scrollY = _owner.CurrentScrollOffsetY;
-        double contentOffsetY = _owner.CurrentContentOffsetY;
-        double scale = _owner.XamlRoot?.RasterizationScale ?? 1.0;
-        double relX = _box.Bounds.X;
-        double relY = _box.Bounds.Y - scrollY;
-        double w = _box.Bounds.Width * scale;
-        double h = _box.Bounds.Height * scale;
-        // Layout coordinates are authored RTL-aware (ListItemBox places its
-        // marker at content-width when RightToLeft, TableBox arranges cells
-        // similarly), so reporting `ownerScreen.X + relX * scale` matches
-        // the rendered visual without an extra reflection. We intentionally
-        // do NOT mirror here — applying a blanket reflect-about-right-edge
-        // would double-mirror children that are already placed in RTL.
-        double x = ownerScreen.X + relX * scale;
-        double y = ownerScreen.Y + (contentOffsetY + relY) * scale;
-        return new Windows.Foundation.Rect(x, y, w, h);
+        // Route every semantic block through the root's nested-scroll-aware
+        // document-to-screen conversion so Narrator and pointer geometry stay
+        // aligned when the renderer is hosted inside a page ScrollViewer.
+        return _root.GetScreenRectForDocumentRect(_box.Bounds);
     }
 
     internal MarkdownRendererControl OwnerControl => _owner;

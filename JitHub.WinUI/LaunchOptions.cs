@@ -22,7 +22,17 @@ internal sealed record LaunchOptions(
 
     public bool IsPublicPreviewOverride =>
         IsRepositoryPageOverride ||
-        (Page is not null && Page.Equals("home", System.StringComparison.OrdinalIgnoreCase));
+        (Page is not null &&
+         (Page.Equals("home", System.StringComparison.OrdinalIgnoreCase) ||
+          Page.Equals("shell", System.StringComparison.OrdinalIgnoreCase) ||
+          Page.Equals("my-issues", System.StringComparison.OrdinalIgnoreCase) ||
+          Page.Equals("my-pull-requests", System.StringComparison.OrdinalIgnoreCase) ||
+          Page.Equals("profile", System.StringComparison.OrdinalIgnoreCase) ||
+          Page.Equals("repositories", System.StringComparison.OrdinalIgnoreCase) ||
+          Page.Equals("settings", System.StringComparison.OrdinalIgnoreCase) ||
+          Page.Equals("notifications", System.StringComparison.OrdinalIgnoreCase) ||
+          Page.Equals("stars", System.StringComparison.OrdinalIgnoreCase) ||
+          Page.Equals("gists", System.StringComparison.OrdinalIgnoreCase)));
 
     public string RepositoryFullName =>
         string.IsNullOrWhiteSpace(Repository) ? DefaultRepository : Repository.Trim();

@@ -1,4 +1,6 @@
 using System;
+using System.Globalization;
+using JitHub.WinUI.Helpers;
 using Microsoft.UI.Xaml.Data;
 
 namespace JitHub.WinUI.Converters
@@ -30,95 +32,93 @@ namespace JitHub.WinUI.Converters
             }
 
             string? prefix = parameter as string;
-            return ConvertDateToTimeAgoFormat(dateTime, string.IsNullOrWhiteSpace(prefix) ? "Updated " : $"{prefix} ");
+            return ConvertDateToTimeAgoFormat(
+                dateTime,
+                string.IsNullOrWhiteSpace(prefix)
+                    ? L("TimeAgo/DefaultPrefix", "Updated ")
+                    : $"{prefix} ");
         }
 
         public object ConvertBack(object value, Type targetType, object parameter, string language)
             => throw new NotSupportedException();
 
-        private string ConvertDateToTimeAgoFormat(DateTime dt, string prefix)
+        private static string ConvertDateToTimeAgoFormat(DateTime dt, string prefix)
         {
-            var ts = new TimeSpan(DateTime.Now.Ticks - dt.Ticks);
+            TimeSpan ts = DateTime.Now - dt;
             double delta = Math.Abs(ts.TotalSeconds);
 
-            var languageLoader = new Windows.ApplicationModel.Resources.ResourceLoader();
-            var stringToReturn = string.Empty;
+            string stringToReturn;
             if (delta < 60)
             {
-                if (ts.Seconds == 1)
+                int seconds = Math.Abs(ts.Seconds);
+                if (seconds == 1)
                 {
-                    stringToReturn = languageLoader.GetString("aSecondAgo");
+                    stringToReturn = L("aSecondAgo", "one second ago");
                 }
                 else
                 {
-                    stringToReturn = string.Format("{0} {1}",
-                        ts.Seconds,
-                        languageLoader.GetString("secondsAgo"));
+                    stringToReturn = FormatCount(seconds, L("secondsAgo", "seconds ago"));
                 }
             }
             else if (delta < 120)
             {
-                stringToReturn = languageLoader.GetString("aMinuteAgo");
+                stringToReturn = L("aMinuteAgo", "a minute ago");
             }
             else if (delta < 2700) // 45 * 60
             {
-                stringToReturn = string.Format("{0} {1}",
-                    ts.Minutes,
-                    languageLoader.GetString("minutesAgo"));
+                stringToReturn = FormatCount(Math.Abs(ts.Minutes), L("minutesAgo", "minutes ago"));
             }
             else if (delta < 5400) // 90 * 60
             {
-                stringToReturn = languageLoader.GetString("anHourAgo");
+                stringToReturn = L("anHourAgo", "an hour ago");
             }
             else if (delta < 86400) // 24 * 60 * 60
             {
-                stringToReturn = string.Format("{0} {1}",
-                    ts.Hours,
-                    languageLoader.GetString("hoursAgo"));
+                stringToReturn = FormatCount(Math.Abs(ts.Hours), L("hoursAgo", "hours ago"));
             }
             else if (delta < 172800) // 48 * 60 * 60
             {
-                stringToReturn = languageLoader.GetString("aDayAgo");
+                stringToReturn = L("aDayAgo", "a day ago");
             }
             else if (delta < 2592000) // 30 * 24 * 60 * 60
             {
-                stringToReturn = string.Format("{0} {1}",
-                    ts.Days,
-                    languageLoader.GetString("daysAgo"));
+                stringToReturn = FormatCount(Math.Abs(ts.Days), L("daysAgo", "days ago"));
             }
             else if (delta < 31104000) // 12 * 30 * 24 * 60 * 60
             {
-                var months = System.Convert.ToInt32(Math.Floor((double)ts.Days / 30));
+                int months = System.Convert.ToInt32(Math.Floor(Math.Abs((double)ts.Days) / 30));
 
                 if (months <= 1)
                 {
-                    stringToReturn = languageLoader.GetString("oneMonthAgo");
+                    stringToReturn = L("oneMonthAgo", "one month ago");
                 }
                 else
                 {
-                    stringToReturn = string.Format("{0} {1}",
-                        months,
-                        languageLoader.GetString("monthsAgo"));
+                    stringToReturn = FormatCount(months, L("monthsAgo", "months ago"));
                 }
             }
             else
             {
-                int years = System.Convert.ToInt32(Math.Floor((double)ts.Days / 365));
+                int years = System.Convert.ToInt32(Math.Floor(Math.Abs((double)ts.Days) / 365));
 
                 if (years <= 1)
                 {
-                    stringToReturn = languageLoader.GetString("oneYearAgo");
+                    stringToReturn = L("oneYearAgo", "one year ago");
                 }
                 else
                 {
-                    stringToReturn = string.Format("{0} {1}",
-                        years,
-                        languageLoader.GetString("yearsAgo"));
+                    stringToReturn = FormatCount(years, L("yearsAgo", "years ago"));
                 }
             }
-            
-            return String.IsNullOrEmpty(stringToReturn.Trim()) ? "" : prefix + stringToReturn;
+
+            return string.IsNullOrWhiteSpace(stringToReturn) ? string.Empty : prefix + stringToReturn;
         }
+
+        private static string FormatCount(int count, string unit) =>
+            string.Format(CultureInfo.CurrentCulture, "{0} {1}", count, unit);
+
+        private static string L(string key, string fallback) =>
+            LocalizedResourceText.GetString(key, fallback);
     }
 }
 

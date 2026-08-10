@@ -13,6 +13,7 @@ using SortDirection = JitHub.Models.LegacyGitHub.SortDirection;
 using System;
 using System.Collections.Generic;
 using System.Linq;
+using System.Threading;
 using System.Threading.Tasks;
 using RestGitHubIssue = JitHub.Models.GitHub.GitHubIssue;
 
@@ -65,6 +66,19 @@ namespace JitHub.Services
 
         public async Task<bool> StarRepo(string owner, string name)
         {
+            if (RepositoryActionAutomationScenario.IsEnabled)
+            {
+                if (RepositoryActionAutomationScenario.Name.EndsWith("star-failure", StringComparison.Ordinal))
+                {
+                    throw new GitHubApiException(
+                        System.Net.HttpStatusCode.ServiceUnavailable,
+                        "Automation star failure.");
+                }
+
+                RepositoryActionAutomationScenario.IsStarred = true;
+                return true;
+            }
+
             try
             {
                 await _gitHubClientService.StarRepositoryAsync(
@@ -81,6 +95,19 @@ namespace JitHub.Services
 
         public async Task<bool> UnstarRepo(string owner, string name)
         {
+            if (RepositoryActionAutomationScenario.IsEnabled)
+            {
+                if (RepositoryActionAutomationScenario.Name.EndsWith("star-failure", StringComparison.Ordinal))
+                {
+                    throw new GitHubApiException(
+                        System.Net.HttpStatusCode.ServiceUnavailable,
+                        "Automation unstar failure.");
+                }
+
+                RepositoryActionAutomationScenario.IsStarred = false;
+                return true;
+            }
+
             try
             {
                 await _gitHubClientService.UnstarRepositoryAsync(
@@ -95,7 +122,10 @@ namespace JitHub.Services
             }
         }
 
-        public async Task<bool> IsRepoStarredByCurrentUser(string owner, string name)
+        public async Task<bool> IsRepoStarredByCurrentUser(
+            string owner,
+            string name,
+            CancellationToken cancellationToken = default)
         {
             if (IsPublicPreviewRepository(owner, name))
             {
@@ -107,7 +137,8 @@ namespace JitHub.Services
                 return await _gitHubClientService.IsRepositoryStarredAsync(
                     GetAccessTokenOrThrow(),
                     owner,
-                    name);
+                    name,
+                    cancellationToken);
             }
             catch (Exception)
             {
@@ -115,14 +146,48 @@ namespace JitHub.Services
             }
         }
 
-        public async Task<Repository> ForkRepo(long repoId, NewRepositoryFork fork)
+        public async Task<Repository> ForkRepo(
+            long repoId,
+            NewRepositoryFork fork,
+            CancellationToken cancellationToken = default)
         {
+            if (RepositoryActionAutomationScenario.IsEnabled)
+            {
+                cancellationToken.ThrowIfCancellationRequested();
+                RepositoryActionAutomationScenario.RecordForkPost();
+                if (RepositoryActionAutomationScenario.Name.EndsWith("failure", StringComparison.Ordinal))
+                {
+                    throw new GitHubApiException(
+                        System.Net.HttpStatusCode.ServiceUnavailable,
+                        "Automation fork failure.");
+                }
+
+                string repositoryName = JitHub.WinUI.Program.CurrentLaunchOptions.RepositoryFullName
+                    .Split('/', 2, StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)
+                    .LastOrDefault() ?? "JitHubV2";
+                Repository accepted = AdaptRepository(
+                    RepositoryActionAutomationScenario.CreateRepository(
+                        "automation-user",
+                        repositoryName,
+                        9100));
+                if (RepositoryActionAutomationScenario.Name.EndsWith("reconcile", StringComparison.Ordinal))
+                {
+                    throw new OperationCanceledException("Automation transport canceled after GitHub accepted the fork.");
+                }
+
+                return accepted;
+            }
+
             try
             {
                 string token = GetAccessTokenOrThrow();
-                (string owner, string name) = await GetRepositoryIdentityAsync(token, repoId);
-                JitHub.Models.GitHub.GitHubRepository forkedRepository = await _gitHubClientService.ForkRepositoryAsync(token, owner, name);
-                return await GetRepository(forkedRepository.Id);
+                (string owner, string name) = await GetRepositoryIdentityAsync(token, repoId, cancellationToken);
+                JitHub.Models.GitHub.GitHubRepository forkedRepository = await _gitHubClientService.ForkRepositoryAsync(
+                    token,
+                    owner,
+                    name,
+                    cancellationToken);
+                return AdaptRepository(forkedRepository);
             }
             catch (Exception)
             {
@@ -132,6 +197,25 @@ namespace JitHub.Services
 
         public async Task<Subscription> WatchRepo(long repoId)
         {
+            if (RepositoryActionAutomationScenario.IsEnabled)
+            {
+                if (RepositoryActionAutomationScenario.Name.EndsWith("watch-failure", StringComparison.Ordinal))
+                {
+                    throw new GitHubApiException(
+                        System.Net.HttpStatusCode.ServiceUnavailable,
+                        "Automation watch failure.");
+                }
+
+                RepositoryActionAutomationScenario.IsWatching = true;
+                return new Subscription(
+                    subscribed: true,
+                    ignored: false,
+                    reason: string.Empty,
+                    createdAt: DateTimeOffset.UtcNow,
+                    url: string.Empty,
+                    repositoryUrl: string.Empty);
+            }
+
             try
             {
                 string token = GetAccessTokenOrThrow();
@@ -153,6 +237,19 @@ namespace JitHub.Services
 
         public async Task<bool> UnwatchRepo(long repoId)
         {
+            if (RepositoryActionAutomationScenario.IsEnabled)
+            {
+                if (RepositoryActionAutomationScenario.Name.EndsWith("watch-failure", StringComparison.Ordinal))
+                {
+                    throw new GitHubApiException(
+                        System.Net.HttpStatusCode.ServiceUnavailable,
+                        "Automation unwatch failure.");
+                }
+
+                RepositoryActionAutomationScenario.IsWatching = false;
+                return true;
+            }
+
             try
             {
                 string token = GetAccessTokenOrThrow();
@@ -166,7 +263,9 @@ namespace JitHub.Services
             }
         }
 
-        public async Task<bool> IsCurrentUserWatchingRepo(long repoId)
+        public async Task<bool> IsCurrentUserWatchingRepo(
+            long repoId,
+            CancellationToken cancellationToken = default)
         {
             if (IsPublicPreviewToken() && repoId == PublicPreviewRepositoryId)
             {
@@ -174,8 +273,12 @@ namespace JitHub.Services
             }
 
             string token = GetAccessTokenOrThrow();
-            (string owner, string name) = await GetRepositoryIdentityAsync(token, repoId);
-            return await _gitHubClientService.IsRepositoryWatchedAsync(token, owner, name);
+            (string owner, string name) = await GetRepositoryIdentityAsync(token, repoId, cancellationToken);
+            return await _gitHubClientService.IsRepositoryWatchedAsync(
+                token,
+                owner,
+                name,
+                cancellationToken);
         }
 
         public async Task PostNewIssue(string owner, string name, string title, string body)

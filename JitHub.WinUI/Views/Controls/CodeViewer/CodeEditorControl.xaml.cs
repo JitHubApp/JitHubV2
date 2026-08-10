@@ -1,9 +1,18 @@
 using System;
 using System.Diagnostics;
 using System.Runtime.InteropServices;
+using System.Text;
+using JitHub.WinUI.Helpers;
+using JitHub.WinUI.Views.Controls.Common;
+using Microsoft.UI.Input;
 using Microsoft.UI.Xaml;
+using Microsoft.UI.Xaml.Automation;
 using Microsoft.UI.Xaml.Controls;
+using Microsoft.UI.Xaml.Input;
 using Microsoft.UI.Xaml.Media;
+using Windows.System;
+using Windows.UI.Core;
+using Windows.UI.ViewManagement;
 
 namespace JitHub.WinUI.Views.Controls.CodeViewer;
 
@@ -13,6 +22,7 @@ namespace JitHub.WinUI.Views.Controls.CodeViewer;
 /// </summary>
 public sealed partial class CodeEditorControl : UserControl
 {
+    internal const int MaximumSynchronousEditorBytes = 128 * 1024;
     // Scintilla STYLE_DEFAULT = 32, STYLE_LINENUMBER = 33
     private const int StyleDefault = 32;
     private const int StyleLineNumber = 33;
@@ -21,6 +31,15 @@ public sealed partial class CodeEditorControl : UserControl
     private const int LineNumberMargin = 0;
 
     private bool _isInnerReady;
+    private bool _isThemeSubscribed;
+    private bool _isSystemColorSubscribed;
+    private int _allowedEditorHorizontalOffset;
+    private string _appliedText = string.Empty;
+    private readonly UISettings? _uiSettings;
+    private readonly AccessibilitySettings? _accessibilitySettings;
+
+    public event EventHandler? FindRequested;
+    public event EventHandler<int>? CurrentLineChanged;
 
     // ──────────────────────────────────────────────────────────────────
     // DependencyProperty: Text
@@ -188,7 +207,182 @@ public sealed partial class CodeEditorControl : UserControl
     public CodeEditorControl()
     {
         InitializeComponent();
+        _uiSettings = TryCreate(static () => new UISettings());
+        _accessibilitySettings = TryCreate(static () => new AccessibilitySettings());
+        InnerEditor.AddHandler(UIElement.PointerWheelChangedEvent, new PointerEventHandler(InnerEditor_PointerWheelChanged), true);
+        InnerEditor.PreviewKeyDown += InnerEditor_PreviewKeyDown;
+        InnerEditor.PointerReleased += (_, _) => PublishCurrentLine();
         InnerEditor.Loaded += OnInnerEditorLoaded;
+        Unloaded += OnControlUnloaded;
+    }
+
+    public int CurrentLine => !_isInnerReady
+        ? 1
+        : checked((int)InnerEditor.Editor.LineFromPosition(InnerEditor.Editor.CurrentPos) + 1);
+
+    public bool FindNext(string? query, bool reverse = false)
+    {
+        if (!_isInnerReady || string.IsNullOrEmpty(query)) return false;
+
+        try
+        {
+            var editor = InnerEditor.Editor;
+            long start = reverse ? editor.SelectionStart : editor.SelectionEnd;
+            long end = reverse ? 0 : editor.Length;
+            editor.SearchFlags = WinUIEditor.FindOption.None;
+            editor.SetTargetRange(start, end);
+            long position = editor.SearchInTarget(Encoding.UTF8.GetByteCount(query), query);
+            if (position < 0)
+            {
+                editor.SetTargetRange(reverse ? editor.Length : 0, reverse ? 0 : editor.Length);
+                position = editor.SearchInTarget(Encoding.UTF8.GetByteCount(query), query);
+            }
+
+            if (position < 0) return false;
+            editor.SetSel(editor.TargetStart, editor.TargetEnd);
+            editor.ScrollCaret();
+            PublishCurrentLine();
+            return true;
+        }
+        catch (Exception ex)
+        {
+            Debug.WriteLine($"[CodeEditorControl] Find failed: {ex.Message}");
+            return false;
+        }
+    }
+
+    public void GoToLine(int oneBasedLine)
+    {
+        if (!_isInnerReady) return;
+        try
+        {
+            long target = Math.Clamp((long)oneBasedLine - 1, 0, Math.Max(0, InnerEditor.Editor.LineCount - 1));
+            InnerEditor.Editor.GotoLine(target);
+            InnerEditor.Editor.ScrollCaret();
+            PublishCurrentLine();
+        }
+        catch (Exception ex)
+        {
+            Debug.WriteLine($"[CodeEditorControl] Go to line failed: {ex.Message}");
+        }
+    }
+
+    public bool FocusEditor() => InnerEditor.Focus(FocusState.Programmatic);
+
+    private void InnerEditor_PreviewKeyDown(object sender, KeyRoutedEventArgs args)
+    {
+        bool control = (InputKeyboardSource.GetKeyStateForCurrentThread(VirtualKey.Control) & CoreVirtualKeyStates.Down) != 0;
+        if (control && args.Key == VirtualKey.F)
+        {
+            args.Handled = true;
+            FindRequested?.Invoke(this, EventArgs.Empty);
+            return;
+        }
+
+        DispatcherQueue.TryEnqueue(PublishCurrentLine);
+    }
+
+    private void PublishCurrentLine()
+    {
+        if (_isInnerReady)
+        {
+            CurrentLineChanged?.Invoke(this, CurrentLine);
+        }
+    }
+
+    private void InnerEditor_PointerWheelChanged(object sender, PointerRoutedEventArgs args)
+    {
+        Microsoft.UI.Input.PointerPointProperties properties = args.GetCurrentPoint(InnerEditor).Properties;
+        bool modifierHorizontal = HorizontalScrollWheelRouter.IsModifierHorizontalGesture();
+        args.Handled = true;
+
+        if (!modifierHorizontal)
+        {
+            QueueEditorXOffsetRestore(_allowedEditorHorizontalOffset);
+            if (!properties.IsHorizontalMouseWheel)
+            {
+                ScrollEditorVertically(properties.MouseWheelDelta);
+            }
+
+            return;
+        }
+
+        ScrollEditorHorizontally(properties.MouseWheelDelta);
+    }
+
+    private void QueueEditorXOffsetRestore(int horizontalOffset)
+    {
+        RestoreEditorXOffset(horizontalOffset);
+        _ = DispatcherQueue.TryEnqueue(() =>
+        {
+            RestoreEditorXOffset(horizontalOffset);
+            _ = DispatcherQueue.TryEnqueue(() => RestoreEditorXOffset(horizontalOffset));
+        });
+
+        var timer = DispatcherQueue.CreateTimer();
+        timer.Interval = TimeSpan.FromMilliseconds(40);
+        int tickCount = 0;
+        timer.Tick += (_, _) =>
+        {
+            RestoreEditorXOffset(horizontalOffset);
+            tickCount++;
+            if (tickCount >= 2)
+            {
+                timer.Stop();
+            }
+        };
+        timer.Start();
+    }
+
+    private void RestoreEditorXOffset(int horizontalOffset)
+    {
+        try
+        {
+            if (InnerEditor.Editor.XOffset != horizontalOffset)
+            {
+                InnerEditor.Editor.XOffset = horizontalOffset;
+            }
+        }
+        catch (Exception ex)
+        {
+            Debug.WriteLine($"[CodeEditorControl] Restore horizontal offset failed: {ex.Message}");
+        }
+    }
+
+    private void ScrollEditorVertically(int wheelDelta)
+    {
+        try
+        {
+            var editor = InnerEditor.Editor;
+            long current = editor.FirstVisibleLine;
+            long maxFirstVisibleLine = Math.Max(0, editor.LineCount - Math.Max(1, editor.LinesOnScreen));
+            long lines = Math.Max(1, (long)Math.Ceiling(Math.Abs(wheelDelta) / 40d));
+            long target = Math.Clamp(current + (wheelDelta > 0 ? -lines : lines), 0, maxFirstVisibleLine);
+            if (target != current)
+            {
+                editor.FirstVisibleLine = target;
+            }
+
+            editor.XOffset = _allowedEditorHorizontalOffset;
+        }
+        catch (Exception ex)
+        {
+            Debug.WriteLine($"[CodeEditorControl] Vertical wheel scroll failed: {ex.Message}");
+        }
+    }
+
+    private void ScrollEditorHorizontally(int wheelDelta)
+    {
+        try
+        {
+            var editor = InnerEditor.Editor;
+            _allowedEditorHorizontalOffset = Math.Max(0, _allowedEditorHorizontalOffset - wheelDelta);
+            editor.XOffset = _allowedEditorHorizontalOffset;
+        }
+        catch (Exception ex)
+        {
+            Debug.WriteLine($"[CodeEditorControl] Horizontal wheel scroll failed: {ex.Message}");
+        }
     }
 
     private void OnInnerEditorLoaded(object sender, RoutedEventArgs e)
@@ -201,14 +395,88 @@ public sealed partial class CodeEditorControl : UserControl
         ApplyReadOnly();
         ApplyShowLineNumbers();
         ApplyWordWrap();
-        ActualThemeChanged += OnActualThemeChanged;
+        if (!_isThemeSubscribed)
+        {
+            ActualThemeChanged += OnActualThemeChanged;
+            _isThemeSubscribed = true;
+        }
+
+        SubscribeSystemColors();
+    }
+
+    private void OnControlUnloaded(object sender, RoutedEventArgs e)
+    {
+        _isInnerReady = false;
+        if (_isThemeSubscribed)
+        {
+            ActualThemeChanged -= OnActualThemeChanged;
+            _isThemeSubscribed = false;
+        }
+        UnsubscribeSystemColors();
     }
 
     private void OnActualThemeChanged(FrameworkElement sender, object args)
+        => RefreshTheme();
+
+    private void UISettings_ColorValuesChanged(UISettings sender, object args) =>
+        DispatcherQueue.TryEnqueue(RefreshTheme);
+
+    private void AccessibilitySettings_HighContrastChanged(AccessibilitySettings sender, object args) =>
+        DispatcherQueue.TryEnqueue(RefreshTheme);
+
+    private void RefreshTheme()
     {
         ApplyLanguageId();
         ApplyFontSize();
         ApplyThemeColors();
+    }
+
+    private void SubscribeSystemColors()
+    {
+        if (_isSystemColorSubscribed) return;
+        try
+        {
+            if (_uiSettings is not null)
+            {
+                _uiSettings.ColorValuesChanged += UISettings_ColorValuesChanged;
+            }
+
+            if (_accessibilitySettings is not null)
+            {
+                _accessibilitySettings.HighContrastChanged += AccessibilitySettings_HighContrastChanged;
+            }
+
+            _isSystemColorSubscribed = true;
+        }
+        catch (Exception exception)
+        {
+            Debug.WriteLine($"[CodeEditorControl] System color subscription failed: {exception.Message}");
+        }
+    }
+
+    private void UnsubscribeSystemColors()
+    {
+        if (!_isSystemColorSubscribed) return;
+        try
+        {
+            if (_uiSettings is not null)
+            {
+                _uiSettings.ColorValuesChanged -= UISettings_ColorValuesChanged;
+            }
+
+            if (_accessibilitySettings is not null)
+            {
+                _accessibilitySettings.HighContrastChanged -= AccessibilitySettings_HighContrastChanged;
+            }
+        }
+        catch (Exception exception)
+        {
+            Debug.WriteLine($"[CodeEditorControl] System color unsubscription failed: {exception.Message}");
+        }
+        finally
+        {
+            _isSystemColorSubscribed = false;
+        }
     }
 
     // ──────────────────────────────────────────────────────────────────
@@ -219,7 +487,25 @@ public sealed partial class CodeEditorControl : UserControl
     {
         try
         {
-            InnerEditor.Editor.SetText(Text ?? string.Empty);
+            string next = Text ?? string.Empty;
+            if (string.Equals(next, _appliedText, StringComparison.Ordinal)) return;
+
+            if (Encoding.UTF8.GetByteCount(next) > MaximumSynchronousEditorBytes)
+            {
+                AutomationProperties.SetItemStatus(
+                    InnerEditor,
+                    LocalizedResourceText.GetString(
+                        "RepoCode.EditorContentTooLargeStatus",
+                        "This file is available through the file actions menu."));
+                return;
+            }
+
+            InnerEditor.Editor.SetText(next);
+            _appliedText = next;
+            AutomationProperties.SetItemStatus(
+                InnerEditor,
+                LocalizedResourceText.GetString("RepoCode.EditorContentReadyStatus", "Source loaded"));
+            PublishCurrentLine();
         }
         catch (Exception ex)
         {
@@ -352,15 +638,50 @@ public sealed partial class CodeEditorControl : UserControl
         try
         {
             var resources = Application.Current.Resources;
-
-            var bgColor = GetBrushColor(resources, "AppCanvasBrush");
-            var fgColor = TryGetBrushColor(resources, "AppOnSurfaceBrush")
-                          ?? GetBrushColor(resources, "AppInkBrush");
-            var mutedColor = TryGetBrushColor(resources, "AppInkMutedBrush") ?? fgColor;
-            var accentColor = GetResourceColor(resources, "AppAccentColor");
-            var selColor = BlendColors(bgColor, accentColor, 0.35f);
+            bool isHighContrast = IsHighContrastActive();
+            Windows.UI.Color bgColor = isHighContrast
+                ? GetSystemColor(UIColorType.Background, Windows.UI.Color.FromArgb(255, 0, 0, 0))
+                : GetBrushColor(resources, "AppCanvasBrush");
+            Windows.UI.Color fgColor = isHighContrast
+                ? GetSystemColor(UIColorType.Foreground, Windows.UI.Color.FromArgb(255, 255, 255, 255))
+                : TryGetBrushColor(resources, "AppOnSurfaceBrush")
+                    ?? GetBrushColor(resources, "AppInkBrush");
+            Windows.UI.Color mutedColor = isHighContrast
+                ? fgColor
+                : TryGetBrushColor(resources, "AppInkMutedBrush") ?? fgColor;
+            Windows.UI.Color accentColor = isHighContrast
+                ? GetSystemColor(UIColorType.Accent, Windows.UI.Color.FromArgb(255, 255, 255, 0))
+                : GetResourceColor(resources, "AppAccentColor");
+            Windows.UI.Color selColor = isHighContrast
+                ? accentColor
+                : BlendColors(bgColor, accentColor, 0.35f);
 
             var editor = InnerEditor.Editor;
+
+            if (isHighContrast)
+            {
+                // WinUIEdit is a native Scintilla surface, so XAML theme resources do
+                // not recolor its token styles. Collapse every lexer style onto system
+                // foreground/background colors and provide an explicit selected-text
+                // contrast pair instead of assuming the light/dark token palette works.
+                for (int style = 0; style <= 127; style++)
+                {
+                    editor.StyleSetBack(style, ToBgr(bgColor));
+                    editor.StyleSetFore(style, ToBgr(fgColor));
+                }
+
+                editor.SetSelFore(true, ToBgr(bgColor));
+                AutomationProperties.SetHelpText(
+                    InnerEditor,
+                    LocalizedResourceText.GetString(
+                        "RepoCode/EditorHighContrastStatus",
+                        "High contrast editor colors active"));
+            }
+            else
+            {
+                editor.SetSelFore(false, 0);
+                AutomationProperties.SetHelpText(InnerEditor, string.Empty);
+            }
 
             // Override STYLE_DEFAULT bg/fg. We intentionally skip StyleClearAll() to
             // preserve the lexer token colors set by ApplyLanguageId().
@@ -374,6 +695,10 @@ public sealed partial class CodeEditorControl : UserControl
             editor.SetSelBack(true, ToBgr(selColor));
             editor.CaretFore = ToBgr(fgColor);
             try { editor.SetWhitespaceBack(true, ToBgr(bgColor)); } catch { }
+
+            EditorSurface.Background = new SolidColorBrush(bgColor);
+            EditorSurface.BorderBrush = new SolidColorBrush(isHighContrast ? fgColor : GetBrushColor(resources, "AppOutlineBrush"));
+            EditorSurface.BorderThickness = isHighContrast ? new Thickness(2) : new Thickness(1);
         }
         catch (Exception ex)
         {
@@ -477,5 +802,50 @@ public sealed partial class CodeEditorControl : UserControl
         byte g = (byte)(@base.G + (overlay.G - @base.G) * a);
         byte b = (byte)(@base.B + (overlay.B - @base.B) * a);
         return Windows.UI.Color.FromArgb(255, r, g, b);
+    }
+
+    private bool IsHighContrastActive()
+    {
+        if (string.Equals(
+                Environment.GetEnvironmentVariable("JITHUB_AUTOMATION_HIGH_CONTRAST"),
+                "1",
+                StringComparison.Ordinal))
+        {
+            return true;
+        }
+
+        try
+        {
+            return _accessibilitySettings?.HighContrast == true;
+        }
+        catch (Exception)
+        {
+            return false;
+        }
+    }
+
+    private Windows.UI.Color GetSystemColor(UIColorType colorType, Windows.UI.Color fallback)
+    {
+        try
+        {
+            return _uiSettings?.GetColorValue(colorType) ?? fallback;
+        }
+        catch (Exception)
+        {
+            return fallback;
+        }
+    }
+
+    private static T? TryCreate<T>(Func<T> factory)
+        where T : class
+    {
+        try
+        {
+            return factory();
+        }
+        catch (Exception)
+        {
+            return null;
+        }
     }
 }

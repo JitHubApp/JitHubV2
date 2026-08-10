@@ -1,6 +1,7 @@
 using System;
 using System.Text.Json.Serialization;
 using JitHub.WinUI.Helpers;
+using JitHub.Services;
 
 namespace JitHub.Models.GitHub;
 
@@ -65,10 +66,27 @@ public sealed partial class GitHubIssueEvent
     public string MetaText => LocalizedResourceText.Format(
         "GitHubIssueEvent.MetaText",
         "@{0}  •  {1:g}",
-        string.IsNullOrWhiteSpace(Actor.Login)
+        string.IsNullOrWhiteSpace(Actor?.Login)
             ? LocalizedResourceText.GetString("Common.UnknownUser", "unknown")
             : Actor.Login,
         CreatedAt.LocalDateTime);
+
+    [JsonIgnore]
+    public string ActorAutomationId => Id > 0
+        ? $"PullRequestTimelineEvent_{Id}"
+        : $"PullRequestTimelineEvent_{NodeId ?? Url ?? Event}_{CreatedAt:O}";
+
+    [JsonIgnore]
+    public string ActorDisplayName => UserIdentityNavigationPolicy.CreatePresentation(
+        Actor?.Login,
+        displayName: null,
+        LocalizedResourceText.GetString("Common.UnknownUser", "unknown")).DisplayName;
+
+    [JsonIgnore]
+    public string? ActorProfileLogin => UserIdentityNavigationPolicy.GetRoutableLogin(Actor?.Login);
+
+    [JsonIgnore]
+    public string ActorAvatarUrl => Actor?.AvatarUrl ?? string.Empty;
 
     private string BuildSummary()
     {

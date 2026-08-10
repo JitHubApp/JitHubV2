@@ -2,6 +2,7 @@ using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Net;
+using JitHub.WinUI.Helpers;
 
 namespace JitHub.Models.LegacyGitHub;
 
@@ -1616,6 +1617,22 @@ public partial class IssueEvent
     public string LockReason { get; set; } = string.Empty;
     public Milestone? Milestone { get; set; }
     public object? ProjectCard { get; set; }
+
+    public string ActorAutomationId => AutomationIdentity.CreateScopedId(
+        "LegacyIssueEventActor",
+        GetAutomationScope());
+
+    public string AssigneeAutomationId => AutomationIdentity.CreateScopedId(
+        "LegacyIssueEventAssignee",
+        GetAutomationScope());
+
+    private string GetAutomationScope() => Id > 0
+        ? Id.ToString(System.Globalization.CultureInfo.InvariantCulture)
+        : !string.IsNullOrWhiteSpace(NodeId)
+            ? NodeId
+            : !string.IsNullOrWhiteSpace(Url)
+                ? Url
+                : $"{Event}|{CreatedAt:O}";
 }
 
 
