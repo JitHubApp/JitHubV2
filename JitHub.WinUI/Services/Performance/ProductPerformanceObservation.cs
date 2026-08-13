@@ -252,6 +252,9 @@ public sealed class ProductPerformanceScrollTransitionTracker
     private readonly long _startedTimestamp;
     private readonly double _initialOffset;
     private readonly long _initialFrame;
+    private TimeSpan? _appRenderedInterval;
+    private TimeSpan? _observerRenderedInterval;
+    private bool _offsetChangedAfterFrame;
 
     public ProductPerformanceScrollTransitionTracker(
         long startedTimestamp,
@@ -276,7 +279,8 @@ public sealed class ProductPerformanceScrollTransitionTracker
             return;
         }
 
-        Completed = Stopwatch.GetElapsedTime(_startedTimestamp, renderedTimestamp);
+        _appRenderedInterval = Stopwatch.GetElapsedTime(_startedTimestamp, renderedTimestamp);
+        TryComplete();
     }
 
     public void ObserveRenderedInterval(long startedTimestamp, long renderedTimestamp)
@@ -286,18 +290,33 @@ public sealed class ProductPerformanceScrollTransitionTracker
             return;
         }
 
-        Completed = Stopwatch.GetElapsedTime(startedTimestamp, renderedTimestamp);
+        _appRenderedInterval = Stopwatch.GetElapsedTime(startedTimestamp, renderedTimestamp);
+        TryComplete();
     }
 
     public void Observe(double offset, ProductPerformanceHeartbeat heartbeat, long observedTimestamp)
     {
-        if (Completed is not null ||
-            Math.Abs(offset - _initialOffset) < 0.01 ||
-            heartbeat.Frame <= _initialFrame)
+        if (Completed is not null)
         {
             return;
         }
 
-        Completed = Stopwatch.GetElapsedTime(_startedTimestamp, observedTimestamp);
+        if (Math.Abs(offset - _initialOffset) >= 0.01 && heartbeat.Frame > _initialFrame)
+        {
+            _offsetChangedAfterFrame = true;
+            _observerRenderedInterval ??= Stopwatch.GetElapsedTime(_startedTimestamp, observedTimestamp);
+        }
+
+        TryComplete();
+    }
+
+    private void TryComplete()
+    {
+        if (!_offsetChangedAfterFrame)
+        {
+            return;
+        }
+
+        Completed = _appRenderedInterval ?? _observerRenderedInterval;
     }
 }

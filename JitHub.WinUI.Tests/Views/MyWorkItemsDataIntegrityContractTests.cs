@@ -201,26 +201,33 @@ public sealed class MyWorkItemsDataIntegrityContractTests
         Assert.Contains("my-pull-requests-pseudo-long-labels", codeBehind, StringComparison.Ordinal);
     }
 
-    private static string GetPagePath(string fileName) => Path.GetFullPath(Path.Combine(
-        AppContext.BaseDirectory,
-        "..", "..", "..", "..",
-        "JitHub.WinUI", "Views", "Pages", fileName));
+    private static string GetPagePath(string fileName) => Path.Combine(
+        FindRepositoryRoot(),
+        "JitHub.WinUI", "Views", "Pages", fileName);
 
-    private static string GetViewModelPath(string fileName) => Path.GetFullPath(Path.Combine(
-        AppContext.BaseDirectory,
-        "..", "..", "..", "..",
-        "JitHub.WinUI", "ViewModels", "Pages", fileName));
+    private static string GetViewModelPath(string fileName) => Path.Combine(
+        FindRepositoryRoot(),
+        "JitHub.WinUI", "ViewModels", "Pages", fileName);
 
-    private static string GetControlPath(string fileName) => Path.GetFullPath(Path.Combine(
-        AppContext.BaseDirectory,
-        "..", "..", "..", "..",
-        "JitHub.WinUI", "Views", "Controls", "Common", fileName));
+    private static string GetControlPath(string fileName) => Path.Combine(
+        FindRepositoryRoot(),
+        "JitHub.WinUI", "Views", "Controls", "Common", fileName);
 
-    private static string GetServicePath(params string[] segments) => Path.GetFullPath(Path.Combine(
+    private static string GetServicePath(params string[] segments) => Path.Combine(
         [
-            AppContext.BaseDirectory,
-            "..", "..", "..", "..",
+            FindRepositoryRoot(),
             "JitHub.WinUI", "Services",
             .. segments
-        ]));
+        ]);
+
+    private static string FindRepositoryRoot()
+    {
+        DirectoryInfo? directory = new(AppContext.BaseDirectory);
+        while (directory is not null && !File.Exists(Path.Combine(directory.FullName, "JitHub.slnx")))
+        {
+            directory = directory.Parent;
+        }
+
+        return directory?.FullName ?? throw new DirectoryNotFoundException("Repository root was not found.");
+    }
 }

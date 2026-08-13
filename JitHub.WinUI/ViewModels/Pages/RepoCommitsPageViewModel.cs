@@ -21,7 +21,11 @@ namespace JitHub.WinUI.ViewModels.Pages;
 [WinRT.GeneratedBindableCustomProperty]
 public sealed partial class RepoCommitsPageViewModel : ViewModelBase
 {
+    private const int ParsedDiffCacheCapacity = 4;
+    private const long ParsedDiffCacheByteLimit = 64L * 1024 * 1024;
+    private const long ParsedDiffPrefetchInputByteLimit = 32L * 1024 * 1024;
     private static readonly TimeSpan HoverPrefetchDebounce = TimeSpan.FromMilliseconds(120);
+    private static readonly TimeSpan InputCriticalDetailDeferral = TimeSpan.FromMilliseconds(20);
     private readonly IAuthService _authService;
     private readonly IAccountService _accountService;
     private readonly IGitHubClientService _gitHubClientService;
@@ -48,6 +52,12 @@ public sealed partial class RepoCommitsPageViewModel : ViewModelBase
     private string? _lastFocusedCommitSha;
     private string? _loadedCommitQueryIdentity;
     private string? _projectedCommitDetailSha;
+    private string? _projectedDiffSha;
+    private string? _projectedDiffRowsSha;
+    private int _navigationGeneration;
+    private readonly CommitDiffDocumentCache _parsedDiffCache = new(
+        ParsedDiffCacheCapacity,
+        ParsedDiffCacheByteLimit);
     private Task _commitListCompletionTask = Task.CompletedTask;
     private CommitSectionState _commitListState = new(CacheState.Miss, Completeness: PagedDataCompleteness.Loading);
     private CommitSectionState _branchListState = new(CacheState.Miss, Completeness: PagedDataCompleteness.Loading);
@@ -103,6 +113,13 @@ public sealed partial class RepoCommitsPageViewModel : ViewModelBase
     public bool HasSelectedCommit => SelectedCommit is not null;
 
     public bool IsDetailPlaceholderVisible => SelectedCommit is null;
+
+    public bool IsCommitDetailCoherent(GitHubCommit commit) =>
+        IsSelectedCommit(commit) &&
+        string.Equals(_projectedCommitDetailSha, commit.Sha, StringComparison.OrdinalIgnoreCase) &&
+        string.Equals(_projectedDiffSha, commit.Sha, StringComparison.OrdinalIgnoreCase) &&
+        string.Equals(_projectedDiffRowsSha, commit.Sha, StringComparison.OrdinalIgnoreCase) &&
+        !IsDiffLoading;
 
     public string SelectedCommitTitle => SelectedCommit?.SummaryMessage ?? GetString("RepoCommits.SelectCommitTitle", "Select a commit");
 
@@ -394,6 +411,10 @@ public sealed partial class RepoCommitsPageViewModel : ViewModelBase
 
     public void CancelPredictivePrefetches()
     {
+        Interlocked.Increment(ref _navigationGeneration);
+        Interlocked.Increment(ref _listRequestId);
+        Interlocked.Increment(ref _detailRequestId);
+        Interlocked.Increment(ref _diffProjectionRequestId);
         _hoverPrefetch.Cancel();
         _selectionDwellPrefetch?.Dispose();
         _selectionDwellPrefetch = null;
@@ -546,7 +567,6 @@ public sealed partial class RepoCommitsPageViewModel : ViewModelBase
         }
 
         _lastFocusedCommitSha = value.Sha;
-        NotifySelectedCommitHeaderPropertiesChanged();
         _ = ShowCommitAfterInputCommitAsync(value);
     }
 
@@ -597,11 +617,19 @@ public sealed partial class RepoCommitsPageViewModel : ViewModelBase
     private void QueueDiffProjectionUpdate(bool debounce = true)
     {
         int requestId = Interlocked.Increment(ref _diffProjectionRequestId);
+        string? diffSha = _projectedDiffSha;
         CommitDiffDocument diffDocument = DiffDocument;
         CommitDiffDocument compareDiffDocument = CompareDiffDocument;
         string fileFilterText = DiffFileFilterText;
         string searchText = DiffSearchText;
-        _ = BuildDiffRowProjectionsAsync(diffDocument, compareDiffDocument, fileFilterText, searchText, requestId, debounce);
+        _ = BuildDiffRowProjectionsAsync(
+            diffDocument,
+            compareDiffDocument,
+            fileFilterText,
+            searchText,
+            diffSha,
+            requestId,
+            debounce);
     }
 
     private async Task BuildDiffRowProjectionsAsync(
@@ -609,6 +637,7 @@ public sealed partial class RepoCommitsPageViewModel : ViewModelBase
         CommitDiffDocument compareDiffDocument,
         string fileFilterText,
         string searchText,
+        string? diffSha,
         int requestId,
         bool debounce)
     {
@@ -629,6 +658,7 @@ public sealed partial class RepoCommitsPageViewModel : ViewModelBase
 
         DiffRowProjection = diffProjection;
         CompareDiffRowProjection = compareProjection;
+        _projectedDiffRowsSha = diffSha;
         UpdateDiffSearchStateForActiveProjection();
     }
 
@@ -966,17 +996,40 @@ public sealed partial class RepoCommitsPageViewModel : ViewModelBase
 
     private async Task ShowCommitAfterInputCommitAsync(GitHubCommit commit)
     {
-        // Let selection, focus, and the lightweight header render before diff projection,
-        // telemetry, prefetch scheduling, cached sections, or network detail are projected.
-        await Task.Yield();
-        if (IsSelectedCommit(commit))
+        int navigationGeneration = Volatile.Read(ref _navigationGeneration);
+        // Task.Yield resumes before composition. Give the lightweight header a
+        // frame before projecting cached diff rows and ancillary sections.
+        await Task.Delay(InputCriticalDetailDeferral);
+        if (navigationGeneration == Volatile.Read(ref _navigationGeneration) && IsSelectedCommit(commit))
         {
+            BeginCommitDetailTransition(commit);
             ScheduleSelectedCommitPrefetch(commit, CommitPrefetchReason.Dwell, TimeSpan.FromSeconds(5));
             ScheduleNeighborPrefetch(commit);
             TrackEvent("commits.selected", new Dictionary<string, string?> { ["page"] = "repo", ["source"] = "list" });
-            PopulateCommit(commit, hasAuthoritativeDiff: false);
             await ShowCommitAsync(commit, populateSummary: false);
         }
+    }
+
+    private void BeginCommitDetailTransition(GitHubCommit commit)
+    {
+        _projectedCommitDetailSha = null;
+        _projectedDiffSha = null;
+        _projectedDiffRowsSha = null;
+        Interlocked.Increment(ref _diffProjectionRequestId);
+        DiffRowProjection = CommitDiffRowProjection.Empty;
+        ReplaceCollectionByKey(
+            CommitComments,
+            Array.Empty<GitHubCommitComment>(),
+            static comment => comment.Id.ToString(CultureInfo.InvariantCulture));
+        ReplaceCollectionByKey(CheckRuns, Array.Empty<GitHubCheckRun>(), static checkRun => checkRun.Id.ToString(CultureInfo.InvariantCulture));
+        ReplaceCollectionByKey(CommitStatuses, Array.Empty<GitHubCommitStatus>(), static status => status.Id.ToString(CultureInfo.InvariantCulture));
+        ReplaceCollectionByKey(
+            AssociatedPullRequests,
+            Array.Empty<GitHubPullRequest>(),
+            static pullRequest => pullRequest.Number.ToString(CultureInfo.InvariantCulture));
+        PopulateCommit(commit, hasAuthoritativeDiff: false);
+        NotifyCommentPropertiesChanged();
+        NotifyInspectorPropertiesChanged();
     }
 
     private string BuildCommitListStatus(int visibleCount) => _commitListState.Completeness switch
@@ -1127,19 +1180,32 @@ public sealed partial class RepoCommitsPageViewModel : ViewModelBase
         int requestId = Interlocked.Increment(ref _diffRequestId);
         GitHubCommitFile[] files = commit.Files ?? [];
         DiffStatusText = string.Empty;
+        if (TryGetParsedDiff(commit.Sha, out CommitDiffDocument cachedDocument))
+        {
+            _projectedDiffSha = commit.Sha;
+            _projectedDiffRowsSha = null;
+            DiffDocument = cachedDocument;
+            IsDiffLoading = false;
+            return;
+        }
+
         if (files.Length == 0)
         {
+            Interlocked.Increment(ref _diffProjectionRequestId);
+            DiffRowProjection = CommitDiffRowProjection.Empty;
+            _projectedDiffSha = hasAuthoritativeDiff ? commit.Sha : null;
+            _projectedDiffRowsSha = hasAuthoritativeDiff ? commit.Sha : null;
+            DiffDocument = CommitDiffDocument.Empty;
             IsDiffLoading = !hasAuthoritativeDiff;
             DiffStatusText = hasAuthoritativeDiff
                 ? GetString("RepoCommits.NoDiffAvailable", "No diff is available for this commit.")
                 : GetString("RepoCommits.DiffLoading", "Loading diff...");
-            if (hasAuthoritativeDiff)
-            {
-                DiffDocument = CommitDiffDocument.Empty;
-            }
             return;
         }
 
+        _projectedDiffSha = null;
+        _projectedDiffRowsSha = null;
+        DiffDocument = CommitDiffDocument.Empty;
         IsDiffLoading = true;
         DiffStatusText = GetString("RepoCommits.DiffPreparing", "Preparing diff...");
         CancellationTokenSource cancellationTokenSource = new();
@@ -1164,7 +1230,10 @@ public sealed partial class RepoCommitsPageViewModel : ViewModelBase
                 return;
             }
 
+            _projectedDiffSha = sha;
+            _projectedDiffRowsSha = null;
             DiffDocument = document;
+            StoreParsedDiff(sha, document);
             DiffStatusText = document.HasFiles
                 ? string.Empty
                 : GetString("RepoCommits.NoDiffAvailable", "No diff is available for this commit.");
@@ -1453,15 +1522,16 @@ public sealed partial class RepoCommitsPageViewModel : ViewModelBase
         }
     }
 
-    private Task RunTrackedPrefetchAsync(
+    private async Task RunTrackedPrefetchAsync(
         string token,
         string userPartition,
         string owner,
         string repositoryName,
         string sha,
         CommitPrefetchReason reason,
-        CancellationToken cancellationToken) =>
-        CommitPrefetchTelemetry.RunAsync(
+        CancellationToken cancellationToken)
+    {
+        CommitPrefetchOutcome outcome = await CommitPrefetchTelemetry.RunAsync(
             _commitNavigationCache,
             _telemetryService,
             token,
@@ -1470,7 +1540,36 @@ public sealed partial class RepoCommitsPageViewModel : ViewModelBase
             repositoryName,
             sha,
             reason,
-            cancellationToken);
+            cancellationToken).ConfigureAwait(false);
+
+        if (outcome != CommitPrefetchOutcome.Success)
+        {
+            return;
+        }
+
+        cancellationToken.ThrowIfCancellationRequested();
+
+        if (TryGetParsedDiff(sha, out _) ||
+            !_commitNavigationCache.TryGet(
+                userPartition,
+                owner,
+                repositoryName,
+                sha,
+                out CommitNavigationSnapshot snapshot) ||
+            snapshot.Commit.Files is not { Length: > 0 } files)
+        {
+            return;
+        }
+
+        if (EstimatePatchInputBytes(files) > ParsedDiffPrefetchInputByteLimit)
+        {
+            return;
+        }
+
+        CommitDiffDocument document = await CommitDiffParser.ParseAsync(files, cancellationToken).ConfigureAwait(false);
+        cancellationToken.ThrowIfCancellationRequested();
+        StoreParsedDiff(sha, document);
+    }
 
     private Task QueueTrackedPrefetch(
         string token,
@@ -1535,6 +1634,10 @@ public sealed partial class RepoCommitsPageViewModel : ViewModelBase
     private void ResetCommitDetails()
     {
         _projectedCommitDetailSha = null;
+        _projectedDiffSha = null;
+        _projectedDiffRowsSha = null;
+        Interlocked.Increment(ref _diffProjectionRequestId);
+        DiffRowProjection = CommitDiffRowProjection.Empty;
         CancelDiffBuild();
         Interlocked.Increment(ref _diffRequestId);
         IsDiffLoading = false;
@@ -1553,6 +1656,31 @@ public sealed partial class RepoCommitsPageViewModel : ViewModelBase
         NotifyInspectorPropertiesChanged();
         NotifyCommentPropertiesChanged();
         NotifyActionPropertiesChanged();
+    }
+
+    private bool TryGetParsedDiff(string sha, out CommitDiffDocument document)
+        => _parsedDiffCache.TryGet(sha, out document);
+
+    private bool StoreParsedDiff(string sha, CommitDiffDocument document)
+        => _parsedDiffCache.TryStore(sha, document);
+
+    private static long EstimatePatchInputBytes(IEnumerable<GitHubCommitFile> files)
+    {
+        long bytes = 0;
+        foreach (GitHubCommitFile file in files)
+        {
+            long fileBytes = ((long)(file.Patch?.Length ?? 0) +
+                file.Filename.Length +
+                (file.PreviousFilename?.Length ?? 0)) * sizeof(char);
+            if (bytes > long.MaxValue - fileBytes)
+            {
+                return long.MaxValue;
+            }
+
+            bytes += fileBytes;
+        }
+
+        return bytes;
     }
 
     private void CancelDiffBuild()

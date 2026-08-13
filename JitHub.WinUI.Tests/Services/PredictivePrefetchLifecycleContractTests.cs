@@ -50,7 +50,31 @@ public sealed class PredictivePrefetchLifecycleContractTests
         XDocument document = XDocument.Parse(xaml);
 
         Assert.Contains("protected override void OnNavigatedFrom", codeBehind, StringComparison.Ordinal);
-        Assert.Contains("ViewModel.CancelPredictivePrefetches();", codeBehind, StringComparison.Ordinal);
+        string cancellationCall = string.Equals(pageName, "RepoIssuePage", StringComparison.Ordinal)
+            ? "ViewModel.CancelNavigationWork();"
+            : "ViewModel.CancelPredictivePrefetches();";
+        Assert.Contains(cancellationCall, codeBehind, StringComparison.Ordinal);
+        if (string.Equals(pageName, "RepoIssuePage", StringComparison.Ordinal))
+        {
+            string viewModel = ReadProductFile("ViewModels", "Pages", "RepoIssuePageViewModel.cs");
+            Assert.Contains("public void CancelNavigationWork()", viewModel, StringComparison.Ordinal);
+            Assert.Contains("CancelActiveListLoad();", viewModel, StringComparison.Ordinal);
+            Assert.Contains("CancelActiveDetailLoad();", viewModel, StringComparison.Ordinal);
+            Assert.Contains("CancelPendingSelectionLoad();", viewModel, StringComparison.Ordinal);
+            Assert.Contains(
+                "Interlocked.Increment(ref _selectionPresentationGeneration);",
+                codeBehind,
+                StringComparison.Ordinal);
+        }
+        else if (string.Equals(pageName, "RepoCommitsPage", StringComparison.Ordinal))
+        {
+            string viewModel = ReadProductFile("ViewModels", "Pages", "RepoCommitsPageViewModel.cs");
+            Assert.Contains("Interlocked.Increment(ref _navigationGeneration);", viewModel, StringComparison.Ordinal);
+            Assert.Contains(
+                "navigationGeneration == Volatile.Read(ref _navigationGeneration)",
+                viewModel,
+                StringComparison.Ordinal);
+        }
         Assert.Contains($"private void {containerChangingHandler}", codeBehind, StringComparison.Ordinal);
         Assert.Contains($"container.GotFocus -= {focusHandler};", codeBehind, StringComparison.Ordinal);
         Assert.Contains($"container.GotFocus += {focusHandler};", codeBehind, StringComparison.Ordinal);
@@ -66,6 +90,32 @@ public sealed class PredictivePrefetchLifecycleContractTests
                 attribute.Name.LocalName == "ContainerContentChanging" &&
                 string.Equals(attribute.Value, containerChangingHandler, StringComparison.Ordinal)));
         Assert.Contains("PointerEntered=", xaml, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void RepoCode_UsesLatestWinsPredictionAndFocusableTreeContainers()
+    {
+        string viewModel = ReadProductFile("ViewModels", "CodeViewer", "RepoCodePageViewModel.cs");
+        string control = ReadProductFile("Views", "Controls", "CodeViewer", "RepoFileTreeView.xaml.cs");
+        string xaml = ReadProductFile("Views", "Controls", "CodeViewer", "RepoFileTreeView.xaml");
+
+        Assert.Contains("LatestWinsPrefetchScheduler _treeNodePrefetch", viewModel, StringComparison.Ordinal);
+        Assert.Contains("_treeNodePrefetch.Schedule(", viewModel, StringComparison.Ordinal);
+        Assert.Contains("_treeNodePrefetch.Cancel();", viewModel, StringComparison.Ordinal);
+        Assert.Contains("TreeNodePrefetchDebounce", viewModel, StringComparison.Ordinal);
+        Assert.Contains("repo_code.file_hover_prefetch", viewModel, StringComparison.Ordinal);
+        Assert.Contains("GitHubRequestPriority.Prefetch", viewModel, StringComparison.Ordinal);
+        Assert.Contains("new CancellationTokenSourceLease(request)", viewModel, StringComparison.Ordinal);
+        Assert.Contains("source.Cancel();", viewModel, StringComparison.Ordinal);
+        Assert.Contains("container.GotFocus -= OnTreeItemContainerGotFocus;", control, StringComparison.Ordinal);
+        Assert.Contains("container.GotFocus += OnTreeItemContainerGotFocus;", control, StringComparison.Ordinal);
+        Assert.Contains("sender is TreeViewItem", control, StringComparison.Ordinal);
+        Assert.Contains("TreeViewNode { Content: RepoTreeNodeViewModel node }", control, StringComparison.Ordinal);
+        Assert.Contains("PointerEntered=\"OnTreeItemPointerEntered\"", xaml, StringComparison.Ordinal);
+        Assert.DoesNotContain("GotFocus=\"OnTreeItemGotFocus\"", xaml, StringComparison.Ordinal);
+        Assert.True(
+            control.IndexOf("RaiseFileInvoked(nodeVm);", StringComparison.Ordinal) <
+            control.IndexOf("ViewModel?.SelectNodeCommand.Execute(nodeVm);", StringComparison.Ordinal));
     }
 
     private static string ReadProductFile(params string[] relativeSegments)

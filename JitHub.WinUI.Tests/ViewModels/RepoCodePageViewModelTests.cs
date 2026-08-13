@@ -78,6 +78,69 @@ public sealed class RepoCodePageViewModelTests
     }
 
     [Fact]
+    public async Task PrimeTreeNodeSelection_RetiresOlderHydrationBeforePublishingNewSelection()
+    {
+        DeferredTreeService service = new();
+        service.CompleteTree("main", CreateTree(File("a.cs", "a"), File("b.cs", "b")));
+        TaskCompletionSource<RepoCodeLoadResult<RepoFileBlob>> aSource = service.DeferBlob("a");
+        TaskCompletionSource<RepoCodeLoadResult<RepoFileBlob>> bSource = service.DeferBlob("b");
+        RepoCodePageViewModel viewModel = CreateViewModel(service);
+        await viewModel.InitializeAsync("owner", "repo", "main", default);
+
+        Task olderHydration = viewModel.SelectFileAsync(File("a.cs", "a"), default);
+        RepoTreeNodeViewModel newerNode = viewModel.Tree.RootNodes[1];
+        Assert.True(viewModel.PrimeTreeNodeSelection(newerNode, default, out long generation));
+
+        aSource.SetResult(Fresh(Blob("a", "older")));
+        await olderHydration;
+
+        Assert.Equal("b.cs", viewModel.Tree.SelectedNode?.Path);
+        Assert.Equal("b.cs", viewModel.Breadcrumb.CurrentPath);
+        Assert.True(viewModel.IsFileSelectionPresented("b.cs"));
+        Assert.True(viewModel.Preview.IsLoading);
+
+        Task newerHydration = viewModel.HydratePrimedTreeNodeSelectionAsync(newerNode, generation);
+        bSource.SetResult(Fresh(Blob("b", "newer")));
+        await newerHydration;
+
+        Assert.Equal("b.cs", viewModel.Preview.CurrentFile?.Path);
+        Assert.Equal("newer", viewModel.Preview.Text);
+    }
+
+    [Fact]
+    public async Task PrimeTreeNodeSelection_DefersMemoryCachedBodyUntilAfterPresentation()
+    {
+        RepoTreeNode first = File("first.cs", "first-sha");
+        RepoTreeNode second = File("second.cs", "second-sha");
+        MutableTreeService service = new(CreateTree(first, second));
+        service.Blobs[first.Sha!] = Blob(first.Sha!, "first content");
+        service.Blobs[second.Sha!] = Blob(second.Sha!, "second content");
+        RepoCodePageViewModel viewModel = CreateViewModel(service);
+        await viewModel.InitializeAsync("owner", "repo", "main", default);
+        await viewModel.SelectFileAsync(first, default);
+        await viewModel.SelectFileAsync(second, default);
+
+        RepoTreeNodeViewModel firstNode = viewModel.Tree.RootNodes[0];
+        Assert.True(viewModel.PrimeTreeNodeSelection(firstNode, default, out long generation));
+
+        Assert.True(viewModel.IsFileSelectionPresented(first.Path));
+        Assert.False(viewModel.IsFileSelectionCoherent(first.Path));
+        Assert.True(viewModel.Breadcrumb.IsPathTransitioning);
+        Assert.Equal("first.cs", viewModel.Breadcrumb.CurrentFileName);
+        Assert.DoesNotContain(viewModel.Breadcrumb.Segments, segment => segment.Path == first.Path);
+        Assert.True(viewModel.Preview.IsLoading);
+        Assert.Equal("second.cs", viewModel.Preview.CurrentFile?.Path);
+        Assert.Equal("second content", viewModel.Preview.Text);
+
+        await viewModel.HydratePrimedTreeNodeSelectionAsync(firstNode, generation);
+
+        Assert.True(viewModel.IsFileSelectionCoherent(first.Path));
+        Assert.False(viewModel.Breadcrumb.IsPathTransitioning);
+        Assert.Contains(viewModel.Breadcrumb.Segments, segment => segment.Path == first.Path);
+        Assert.Equal("first content", viewModel.Preview.Text);
+    }
+
+    [Fact]
     public async Task SelectFile_AccountQuiescenceDrainsFetchAndPreventsLateCacheWrite()
     {
         DeferredTreeService service = new();
@@ -111,6 +174,40 @@ public sealed class RepoCodePageViewModelTests
         accountWork.Activate("42");
 
         Assert.False(cache.TryGet(new RepoFileCacheKey("owner", "repo", "private-sha", "42"), out _));
+    }
+
+    [Fact]
+    public async Task SelectFile_MemoryCacheHitCannotBypassAccountQuiescence()
+    {
+        RepoTreeNode first = File("first.cs", "first-sha");
+        RepoTreeNode second = File("second.cs", "second-sha");
+        MutableTreeService service = new(CreateTree(first, second));
+        service.Blobs[first.Sha!] = Blob(first.Sha!, "first content");
+        service.Blobs[second.Sha!] = Blob(second.Sha!, "second content");
+        MemoryRepoFileCache cache = new();
+        using ApplicationTaskCoordinator coordinator = new();
+        AccountWorkQuiescence accountWork = new(coordinator);
+        LanguageIdResolver languageResolver = new();
+        RepoCodePageViewModel viewModel = new(
+            service,
+            cache,
+            new FilePreviewResolver(languageResolver),
+            languageResolver,
+            new TestAccountService(),
+            new NoopTelemetryService(),
+            coordinator,
+            accountWork);
+        await viewModel.InitializeAsync("owner", "repo", "main", default);
+        await viewModel.SelectFileAsync(first, default);
+        await viewModel.SelectFileAsync(second, default);
+        Assert.Equal("second.cs", viewModel.Preview.CurrentFile?.Path);
+
+        await accountWork.QuiesceAsync("42");
+        await Assert.ThrowsAnyAsync<OperationCanceledException>(
+            () => viewModel.SelectFileAsync(first, default));
+
+        Assert.Equal("second.cs", viewModel.Preview.CurrentFile?.Path);
+        accountWork.Activate("42");
     }
 
     [Fact]

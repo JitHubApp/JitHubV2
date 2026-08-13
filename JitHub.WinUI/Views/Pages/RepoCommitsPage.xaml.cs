@@ -7,6 +7,7 @@ using JitHub.Models.GitHub;
 using JitHub.Models.NavArgs;
 using JitHub.Services;
 using JitHub.Services.Layout;
+using JitHub.WinUI.Performance;
 using JitHub.WinUI.ViewModels.Pages;
 using JitHub.WinUI.Views.Controls.Common;
 using Microsoft.UI.Input;
@@ -152,17 +153,13 @@ public sealed partial class RepoCommitsPage : Page
         }
 
         _performanceMonitor?.BeginSelection();
+        ProductPerformanceReadiness.BeginTraversal(
+            "repo_commits",
+            commit.AutomationId,
+            "repo_commits");
         int renderGeneration = ++_selectionRenderGeneration;
-        _ = DispatcherQueue.TryEnqueue(
-            Microsoft.UI.Dispatching.DispatcherQueuePriority.Low,
-            () =>
-            {
-                if (ReferenceEquals(CommitsList.SelectedItem, commit))
-                {
-                    ViewModel.SelectedCommit = commit;
-                    CommitSelectionAfterRenderedFrame(commit, renderGeneration);
-                }
-            });
+        CommitSelectionAfterRenderedFrame(commit, renderGeneration);
+        ViewModel.SelectedCommit = commit;
     }
 
     private void CommitsList_ContainerContentChanging(ListViewBase sender, ContainerContentChangingEventArgs args)
@@ -271,31 +268,17 @@ public sealed partial class RepoCommitsPage : Page
         _performanceMonitor = null;
     }
 
-    private async void CommitSelectionAfterRenderedFrame(GitHubCommit commit, int generation)
+    private void CommitSelectionAfterRenderedFrame(GitHubCommit commit, int generation)
     {
-        await WaitForRenderedFrameAsync();
-        if (generation != _selectionRenderGeneration ||
-            !IsLoaded ||
-            !string.Equals(ViewModel.SelectedCommit?.Sha, commit.Sha, StringComparison.OrdinalIgnoreCase) ||
-            !string.Equals(CommitDetailTitle.Text, commit.SummaryMessage, StringComparison.Ordinal))
-        {
-            return;
-        }
-
-        ProductPerformanceReadiness.CommitTraversal("repo_commits", commit.AutomationId);
-    }
-
-    private static Task WaitForRenderedFrameAsync()
-    {
-        TaskCompletionSource<bool> rendered = new(TaskCreationOptions.RunContinuationsAsynchronously);
-        EventHandler<object>? handler = null;
-        handler = (_, _) =>
-        {
-            Microsoft.UI.Xaml.Media.CompositionTarget.Rendering -= handler;
-            rendered.TrySetResult(true);
-        };
-        Microsoft.UI.Xaml.Media.CompositionTarget.Rendering += handler;
-        return rendered.Task;
+        ProductPerformanceRenderCommitter.ScheduleAfterNextFrame(
+            this,
+            () => generation == _selectionRenderGeneration &&
+                IsLoaded &&
+                string.Equals(ViewModel.SelectedCommit?.Sha, commit.Sha, StringComparison.OrdinalIgnoreCase),
+            () =>
+                ViewModel.IsCommitDetailCoherent(commit) &&
+                string.Equals(CommitDetailTitle.Text, commit.SummaryMessage, StringComparison.Ordinal),
+            () => ProductPerformanceReadiness.CommitTraversal("repo_commits", commit.AutomationId));
     }
 
     private void ViewModel_PropertyChanged(object? sender, PropertyChangedEventArgs e)

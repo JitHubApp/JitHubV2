@@ -119,10 +119,12 @@
                         Grid.Column="1"
                         Spacing="7">
                         <TextBlock
+                            x:Name="RepoIssuesDetailTitleText"
                             AutomationProperties.AutomationId="RepoIssuesDetailTitle"
                             FontFamily="{ThemeResource AppDisplayFontFamily}"
                             FontSize="25"
                             Foreground="{ThemeResource AppInkBrush}"
+                            MinHeight="64"
                             HorizontalAlignment="Stretch"
                             MaxLines="2"
                             Text="{x:Bind ViewModel.SelectedIssueTitle, Mode=OneWay}"

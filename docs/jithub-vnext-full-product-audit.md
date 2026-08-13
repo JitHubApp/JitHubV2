@@ -1,8 +1,8 @@
 # JitHub vNext Full Product Audit
 
-Status: tracked remediation implemented and verified; final post-hardening rereview pending
+Status: tracked remediation implemented, independently rereviewed, and verified
 
-Audit date: July 16, 2026; closure reverified August 10, 2026
+Audit date: July 16, 2026; closure reverified August 13, 2026
 
 Scope: current vNext worktree, authenticated preview data, public preview data,
 dark/light themes, static architecture review, and responsive WinUI automation
@@ -82,12 +82,13 @@ The audit combined four forms of evidence:
    names whenever the desktop work area constrains a request.
 4. Dark/light visual comparison and manual screenshot inspection.
 
-At closure, the WinUI suite passes 2,526 tests in both Debug and Release, the
+At closure, the WinUI suite passes 2,542 tests in both Debug and Release, the
 Markdown renderer suite passes 335 tests in both configurations, and the
-renderer pixel suite passes all 82 cases. Product and automation projects build
-warning-free in Debug and Release; the Release product build also passes all 60
-embedded release/security gates. These automated checks supplement, rather than
-replace, the live native interaction and screenshot evidence below.
+renderer pixel suite passes all 87 cases in both configurations. WinUI,
+Automation, PerformanceGate, and Web build warning-free in Debug and Release;
+the Release product build also passes all 60 embedded release/security gates.
+These automated checks supplement, rather than replace, the live native
+interaction and screenshot evidence below.
 
 ## Release Gates
 
@@ -136,7 +137,7 @@ gate is now verified by its recorded closure evidence.
 
 | ID | Pri | Finding | Required Outcome |
 | --- | --- | --- | --- |
-| AUD-PERF-001 | P1 | **Verified 2026-08-07.** Repeatable performance gates cover warm, cold, offline, and large-account startup; cached route and selection; first content; scroll anchors; memory; UI-thread stalls; and blanking across Notifications, My Issues/PRs, Commits/Code, Repository Management, and Stars. The authoritative large Notifications rerun records cached-route p95 `98.61ms`, maximum `101.51ms`, first content `42.74ms`, settled content `77.86ms`, and zero blanking, within the original `150ms` perceived-open and `50ms` cached-interaction budgets. | Closed with `notifications-large-report-v8.json`; the passing My Issues/My PR evaluations from `work-notifications-large-report-v2.json`; `commit-code-performance-report-v5.json`; `repo-manage-warm-report-v10.json`; `stars-warm-report-v7.json`; `stars-manage-offline-report-v7.json`; and independent performance review. The earlier Notifications evaluation in the combined work report is superseded by v8. |
+| AUD-PERF-001 | P1 | **Reverified 2026-08-13.** Repeatable gates cover warm, cold, offline, and large-account startup; cached route and selection; first/settled content; scroll frames; memory; UI-thread stalls; and blanking. Selection now presents a lightweight coherent header/path in the input frame and defers heavy Markdown, diff, tree, and body hydration until after render. The exact ten-iteration eight-route Warm matrix passes all 55 evaluations with unchanged budgets. | Closed against `vnext-publication-full-eight.json`: startup p95 `1149.77ms`/`1500ms`; cached-selection p95 My Issues `36.06ms`, My PRs `33.01ms`, Gists `42.67ms`, Repo Code `34.75ms`, Repo Issues `29.64ms`, Repo PRs `31.91ms`, and Repo Commits `37.52ms`, each against `50ms`. |
 | AUD-PERF-002 | P1 | **Verified 2026-07-28.** Canonical reads inherit stale-first caching, validators and `304` reuse, request dedupe, account partitioning, tags, cancellation, priority lanes, background refresh, and rate-limit retry semantics; Settings reports and clears the shared cache. | Closed with the same 316-test architecture/foundation verification and independent inspection of HTTP-200 GraphQL rate-limit propagation and source ownership gates. |
 | AUD-PERF-003 | P2 | **Verified 2026-07-28.** Predictive work uses one adaptive policy for network, power, memory, per-resource GitHub rate limits, route/account cancellation, request-queue abandonment, and priority promotion; Issue, PR, and Commit hover/focus/dwell/neighbor work is bounded and shutdown-coordinated. | Closed after 113 focused adversarial tests, 30 fresh-process cancellation/promotion stress runs, a zero-warning build, and a third independent review of queue, focus-container, rate-limit-bucket, and foreground-wins behavior. |
 | AUD-PERF-004 | P2 | **Verified 2026-07-28.** Application activation, Shell initialization/search, Commit prefetch, Stars work, Profile GraphQL refresh, Notifications, Repo Code reconciliation, query/cache maintenance, and diagnostics use one coordinator with account/route cancellation, bounded shutdown drain, and identifier-free fault observation. | Closed after 104 focused lifecycle/reliability tests, the 1,311-test Debug suite, a zero-warning build, and independent review. |
@@ -503,9 +504,9 @@ workspace.
 
 Final build and test matrix:
 
-- `JitHub.WinUI.Tests`: 2,526/2,526 in Debug and 2,526/2,526 in Release.
+- `JitHub.WinUI.Tests`: 2,542/2,542 in Debug and 2,542/2,542 in Release.
 - `MarkdownRenderer.Tests`: 335/335 in Debug and 335/335 in Release.
-- `MarkdownRenderer.PixelTests`: 82/82 in Debug and 82/82 in Release.
+- `MarkdownRenderer.PixelTests`: 87/87 in Debug and 87/87 in Release.
 - `JitHub.WinUI`: warning-free Debug and Release builds; Release includes
   60/60 embedded release/security gates.
 - `JitHub.WinUI.Automation`: warning-free Debug and Release builds.
@@ -522,13 +523,30 @@ Final build and test matrix:
 
 Final live evidence:
 
-- Performance: `artifacts/performance/notifications-large-report-v8.json`,
+- Performance: latest exact evidence is
+  `artifacts/performance/vnext-publication-full-eight.json`, which records 4,970
+  measurements, all 55 final eight-route Warm budgets passing, and a clean exit
+  after all 80 measured launches. The former 51/55
+  `vnext-handoff-full-eight-exact-final-v2.json` report is retained only as the
+  superseded baseline, alongside
+  `artifacts/performance/notifications-large-report-v8.json`,
   plus the passing My Issues/My PR evaluations in
   `work-notifications-large-report-v2.json` (its earlier Notifications sample is
   superseded by v8),
   `commit-code-performance-report-v5.json`,
   `repo-manage-warm-report-v10.json`, `stars-warm-report-v7.json`, and
   `stars-manage-offline-report-v7.json`.
+- Superseded post-review performance history: the complete eight-route rerun in
+  `vnext-recovery-full-eight-post-review-v2.json` passed 54/55; its sole miss was
+  a pre-handler My Pull Requests input spike (`50.73ms` input, `6.76ms` render,
+  `55.79ms` p95). Immediate ten-iteration reruns in
+  `vnext-recovery-my-pr-post-review.json` and
+  `vnext-recovery-my-pr-post-review-repeat.json` passed all 8/8 route budgets at
+  `42.10ms` and `49.50ms` cached-selection p95. The full runner emitted a
+  shutdown-only FlaUI COM-wrapper finalizer fault after writing its report; the
+  isolated reruns exited cleanly. The August 13 publication matrix subsequently
+  passed `55/55` and exited cleanly, so neither anomaly remains active release
+  risk.
 - Dialogs: `artifacts/final-dialog-matrix-current-v2` records 47 passed,
   0 blocked, and 0 failed compact cases.
 - Markdown lifecycle: `artifacts/markdown-lifecycle-full-final-debug-v9` and
@@ -542,13 +560,22 @@ Final live evidence:
 - Localization:
   `artifacts/final-localization-release-post-lifecycle/vnext-pseudo-localization-final-v2`
   plus focused long-string matrices.
-- Settings: `artifacts/final-independent-review/settings-responsive`.
+- Settings: `artifacts/final-independent-review/settings-responsive`. The fresh
+  run truthfully skipped the genuine Contrast palette because OS High Contrast
+  was not active; historical `high-contrast-live-final-v3` remains the live
+  High Contrast acceptance evidence.
 - Profile: `artifacts/final-independent-review/profile-responsive` (production
   Shell navigation; constrained captures include actual and requested native bounds).
 - Shell and responsive chrome:
-  `artifacts/final-independent-review/shell-responsive-clean`.
+  `artifacts/final-independent-review/shell-responsive`.
 - Issues progressive/responsive workspace:
-  `artifacts/final-independent-review/issues-responsive-v2`.
+  `artifacts/final-independent-review/issues-responsive-workspace`.
+- Pull Requests responsive workspace:
+  `artifacts/final-independent-review/pull-requests-responsive-workspace`.
+- Repository Code responsive workspace:
+  `artifacts/final-independent-review/repo-code-responsive-workspace`.
+- Commit virtualized diff:
+  `artifacts/final-independent-review/commits-virtualized-diff`.
 - Stars: `artifacts/final-workspaces-release-post-lifecycle/stars-library-final-v12`
   and `artifacts/final-workspaces-release-post-lifecycle/stars-categories-final-v5`,
   reverified by `artifacts/final-recovery-authored/stars-library` and
@@ -559,13 +586,11 @@ Final live evidence:
   artifacts are not committed and are no longer present after the storage
   cleanup; fresh runs should write under `artifacts/final-independent-review`.
 
-All page-specific acceptance probes named above passed. A later combined
-10-iteration performance rerun for `profile,my_issues,repo_code,repo_commits`
-stopped on Profile iteration 8 because the automation route bridge did not
-commit `settings` within its two-second timeout. Existing page-specific
-performance evidence remains valid, but this latest combined rerun must be
-completed before a new final release declaration. See the handoff document for
-the exact failure and resume procedure.
+All page-specific acceptance probes named above passed. The automation bridge
+requires explicit WinUI acknowledgement, and cached traversal completion is
+measured after the rendered frame rather than at command dispatch. The recovered
+exact-source matrix supersedes the 51/55 baseline and closes all four cached-
+selection failures without budget changes.
 
 ## Completed Execution Order
 
@@ -587,9 +612,10 @@ Independent review passes compared this tracker with the route inventory,
 principal view models/services, current binaries, screenshots, UI Automation
 evidence, security and performance gates, and native-layout principles. The
 last data/security/performance review produced eight hardening findings; all
-eight are implemented and covered by the verification record above. Two fresh
-read-only post-hardening rereviews remain the final closure action after the
-combined performance rerun is repaired.
+eight are implemented and covered by the verification record above. Fresh final
+passes reviewed WinUI correctness/accessibility/concurrency and then data,
+security, performance, and resource ownership; their actionable findings were
+fixed before the final focused validation.
 
 ## Definition Of Audit Closure
 
@@ -600,4 +626,4 @@ user-facing surface. Individual findings close only after implementation,
 tests, responsive screenshots, and accessibility verification are attached to
 their ids.
 
-That definition is satisfied as of August 7, 2026.
+That definition is satisfied and reverified as of August 13, 2026.

@@ -1,4 +1,5 @@
 using System;
+using JitHub.Models.GitHub;
 using JitHub.Services.Layout;
 using JitHub.WinUI.ViewModels.Pages;
 using Microsoft.UI.Xaml;
@@ -52,6 +53,24 @@ public sealed partial class RepoIssueDetailPane : UserControl
             : Visibility.Collapsed;
 
         UpdateCommentEditorHeight();
+    }
+
+    public bool IsIssueApplied(GitHubIssue issue) =>
+        ViewModel.SelectedIssue?.Number == issue.Number &&
+        IsIssueSelectionPrimed(issue);
+
+    public bool IsIssueSelectionPrimed(GitHubIssue issue) =>
+        string.Equals(
+            RepoIssuesDetailTitleText.Text,
+            issue.Title,
+            StringComparison.Ordinal);
+
+    public void PrimeIssueSelection(GitHubIssue issue)
+    {
+        if (!string.Equals(RepoIssuesDetailTitleText.Text, issue.Title, StringComparison.Ordinal))
+        {
+            RepoIssuesDetailTitleText.Text = issue.Title;
+        }
     }
 
     private void IssueCommentForm_SizeChanged(object sender, SizeChangedEventArgs e) =>

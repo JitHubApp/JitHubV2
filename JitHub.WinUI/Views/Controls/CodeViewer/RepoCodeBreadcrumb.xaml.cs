@@ -109,6 +109,7 @@ public sealed partial class RepoCodeBreadcrumb : UserControl
 
         // Re-evaluate all x:Bind expressions whenever the DataContext is replaced.
         Bindings.Update();
+        ApplyResponsiveLayout(ActualWidth);
     }
 
     private void OnLoaded(object sender, RoutedEventArgs e)
@@ -136,6 +137,11 @@ public sealed partial class RepoCodeBreadcrumb : UserControl
             or nameof(RepoCodeBreadcrumbViewModel.IsCopyRawUrlDone))
         {
             Bindings.Update();
+        }
+        else if (e.PropertyName is nameof(RepoCodeBreadcrumbViewModel.IsPathTransitioning)
+            or nameof(RepoCodeBreadcrumbViewModel.CurrentPath))
+        {
+            ApplyResponsiveLayout(ActualWidth);
         }
     }
 
@@ -167,7 +173,13 @@ public sealed partial class RepoCodeBreadcrumb : UserControl
     private void ApplyResponsiveLayout(double availableWidth)
     {
         RepoCodeBreadcrumbState state = RepoCodeResponsiveLayout.CalculateBreadcrumb(availableWidth);
-        FullBreadcrumbHost.Visibility = state.ShowFullPath ? Visibility.Visible : Visibility.Collapsed;
+        bool isPathTransitioning = ViewModel?.IsPathTransitioning == true;
+        FullBreadcrumbHost.Visibility = state.ShowFullPath && !isPathTransitioning
+            ? Visibility.Visible
+            : Visibility.Collapsed;
+        TransitionPathText.Visibility = state.ShowFullPath && isPathTransitioning
+            ? Visibility.Visible
+            : Visibility.Collapsed;
         DirectActionsHost.Visibility = state.ShowDirectActions ? Visibility.Visible : Visibility.Collapsed;
         CompactFileName.Visibility = state.ShowFileName ? Visibility.Visible : Visibility.Collapsed;
         FileActionsOverflowButton.Visibility = state.ShowActionsOverflow ? Visibility.Visible : Visibility.Collapsed;

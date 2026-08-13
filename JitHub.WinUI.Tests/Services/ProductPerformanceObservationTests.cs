@@ -101,6 +101,8 @@ public sealed class ProductPerformanceObservationTests
         ProductPerformanceScrollTransitionTracker tracker = new(started, initialOffset: 10, initialFrame: 100);
 
         tracker.ObserveRenderedTimestamp(AtMilliseconds(started, 14));
+        Assert.False(tracker.IsCompleted);
+        tracker.Observe(20, new ProductPerformanceHeartbeat(101, 5), AtMilliseconds(started, 80));
 
         Assert.Equal(TimeSpan.FromMilliseconds(14), tracker.Completed);
     }
@@ -113,6 +115,8 @@ public sealed class ProductPerformanceObservationTests
         ProductPerformanceScrollTransitionTracker tracker = new(observerStarted, initialOffset: 10, initialFrame: 100);
 
         tracker.ObserveRenderedInterval(appStarted, AtMilliseconds(appStarted, 15));
+        Assert.False(tracker.IsCompleted);
+        tracker.Observe(20, new ProductPerformanceHeartbeat(101, 5), AtMilliseconds(observerStarted, 120));
 
         Assert.Equal(TimeSpan.FromMilliseconds(15), tracker.Completed);
     }
@@ -211,11 +215,11 @@ public sealed class ProductPerformanceObservationTests
                 ProductPerformanceReadiness.CommitTraversal("repo_code", "repo:42");
                 ProductPerformanceReadiness.RecordTraversalStage("after.commit");
 
-                Assert.Equal(2, stages.Count);
-                Assert.Equal("source.activated", stages[0].Stage);
-                Assert.Equal("before.commit", stages[1].Stage);
-                Assert.True(stages[0].Generation > 0);
-                Assert.Equal(stages[0].Generation, stages[1].Generation);
+                ProductPerformanceTraversalStage stage = Assert.Single(
+                    stages,
+                    candidate => candidate.Stage is "before.commit" or "after.commit");
+                Assert.Equal("before.commit", stage.Stage);
+                Assert.True(stage.Generation > 0);
             }
             finally
             {

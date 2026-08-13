@@ -8,7 +8,7 @@ namespace JitHub.Services;
 
 public static class CommitPrefetchTelemetry
 {
-    public static async Task RunAsync(
+    public static async Task<CommitPrefetchOutcome> RunAsync(
         ICommitNavigationCache navigationCache,
         ITelemetryService telemetryService,
         string token,
@@ -54,13 +54,14 @@ public static class CommitPrefetchTelemetry
                 _ => "failed"
             },
             TelemetrySanitizer.CreateDurationBucket(stopwatch.Elapsed));
+        return outcome;
     }
 
     private static void TrackStarted(ITelemetryService telemetryService, CommitPrefetchReason reason)
     {
         try
         {
-        SafeTelemetryService.Wrap(telemetryService).TrackEvent(
+            SafeTelemetryService.Wrap(telemetryService).TrackEvent(
                 "commits.prefetch.started",
                 new Dictionary<string, string?>
                 {
@@ -83,7 +84,7 @@ public static class CommitPrefetchTelemetry
     {
         try
         {
-        SafeTelemetryService.Wrap(telemetryService).TrackEvent(
+            SafeTelemetryService.Wrap(telemetryService).TrackEvent(
                 "commits.prefetch.completed",
                 new Dictionary<string, string?>
                 {

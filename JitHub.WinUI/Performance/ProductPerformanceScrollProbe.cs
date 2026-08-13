@@ -1,6 +1,7 @@
 using System;
 using System.Diagnostics;
 using JitHub.Services;
+using Microsoft.UI.Dispatching;
 using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Automation;
 using Microsoft.UI.Xaml.Controls;
@@ -22,7 +23,6 @@ internal sealed class ProductPerformanceScrollProbe : IDisposable
         _statusHost = statusHost;
         _scrollViewer = scrollViewer;
         _scrollViewer.ViewChanging += ScrollViewer_ViewChanging;
-        CompositionTarget.Rendering += CompositionTarget_Rendering;
         long initializedTimestamp = Stopwatch.GetTimestamp();
         AutomationProperties.SetItemStatus(
             _statusHost,
@@ -61,6 +61,7 @@ internal sealed class ProductPerformanceScrollProbe : IDisposable
 
         _startedTimestamp = Stopwatch.GetTimestamp();
         _renderPending = true;
+        CompositionTarget.Rendering += CompositionTarget_Rendering;
     }
 
     private void CompositionTarget_Rendering(object? sender, object e)
@@ -70,13 +71,25 @@ internal sealed class ProductPerformanceScrollProbe : IDisposable
             return;
         }
 
-        _renderPending = false;
-        long renderedTimestamp = Stopwatch.GetTimestamp();
-        AutomationProperties.SetItemStatus(
-            _statusHost,
-            new ProductPerformanceScrollStatus(
-                ++_sequence,
-                _startedTimestamp,
-                renderedTimestamp).Format());
+        CompositionTarget.Rendering -= CompositionTarget_Rendering;
+        long startedTimestamp = _startedTimestamp;
+        _ = _statusHost.DispatcherQueue.TryEnqueue(
+            DispatcherQueuePriority.Low,
+            () =>
+            {
+                _renderPending = false;
+                if (_disposed)
+                {
+                    return;
+                }
+
+                long renderedTimestamp = Stopwatch.GetTimestamp();
+                AutomationProperties.SetItemStatus(
+                    _statusHost,
+                    new ProductPerformanceScrollStatus(
+                        ++_sequence,
+                        startedTimestamp,
+                        renderedTimestamp).Format());
+            });
     }
 }

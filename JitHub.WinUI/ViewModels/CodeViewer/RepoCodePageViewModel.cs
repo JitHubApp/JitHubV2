@@ -21,6 +21,7 @@ namespace JitHub.WinUI.ViewModels.CodeViewer;
 
 public sealed partial class RepoCodePageViewModel : ObservableObject
 {
+    private static readonly TimeSpan TreeNodePrefetchDebounce = TimeSpan.FromMilliseconds(40);
     private readonly IRepoTreeService _treeService;
     private readonly IRepoFileCacheService _cache;
     private readonly IFilePreviewResolver _previewResolver;
@@ -29,6 +30,7 @@ public sealed partial class RepoCodePageViewModel : ObservableObject
     private readonly IApplicationTaskCoordinator _taskCoordinator;
     private readonly IAccountWorkQuiescence _accountWork;
     private readonly RepoCodeNavigationPreparationCache _navigationPreparationCache;
+    private readonly LatestWinsPrefetchScheduler _treeNodePrefetch = new();
     private readonly DispatcherQueue? _dispatcherQueue;
     private readonly List<RepoTreeNode> _backStack = [];
     private readonly List<RepoTreeNode> _forwardStack = [];
@@ -76,6 +78,7 @@ public sealed partial class RepoCodePageViewModel : ObservableObject
         Preview = new RepoFilePreviewViewModel();
         Breadcrumb = new RepoCodeBreadcrumbViewModel();
         Tree.OnSelectNode = NavigateTreeNodeAsync;
+        Tree.OnPrefetchNode = PrefetchTreeNodeAsync;
         Tree.OnAuthoritativeTreeChanged = QueueVisibleFileReconciliation;
         Breadcrumb.OnNavigate = NavigateBreadcrumbAsync;
         Breadcrumb.OnActionExecuted = TrackAction;
@@ -145,6 +148,16 @@ public sealed partial class RepoCodePageViewModel : ObservableObject
             }
         }
     }
+
+    internal bool IsFileSelectionCoherent(string path) =>
+        string.Equals(Breadcrumb.CurrentPath, path, StringComparison.Ordinal) &&
+        string.Equals(Tree.SelectedNode?.Path, path, StringComparison.Ordinal) &&
+        string.Equals(Preview.CurrentFile?.Path, path, StringComparison.Ordinal) &&
+        !Preview.IsLoading;
+
+    internal bool IsFileSelectionPresented(string path) =>
+        string.Equals(Breadcrumb.CurrentPath, path, StringComparison.Ordinal) &&
+        string.Equals(Tree.SelectedNode?.Path, path, StringComparison.Ordinal);
 
     public async Task InitializeAsync(string owner, string name, string @ref, CancellationToken ct)
     {
@@ -397,9 +410,200 @@ public sealed partial class RepoCodePageViewModel : ObservableObject
     public async Task SelectFileAsync(RepoTreeNode? node, CancellationToken ct)
     {
         if (node is null || node.IsDirectory) return;
+        ProductPerformanceReadiness.RecordTraversalStage("repo_code.selection.started");
+        _treeNodePrefetch.Cancel();
         CancelDefaultPreview();
         Volatile.Write(ref _pendingVisiblePath, null);
-        await SelectFileWithNewGenerationAsync(node, ct, push: true).ConfigureAwait(false);
+        (long generation, RequestCancellation request) = ReserveSelection(ct);
+        try
+        {
+            if (_dispatcherQueue is null || _dispatcherQueue.HasThreadAccess)
+            {
+                PrimeFileSelection(node);
+            }
+            else
+            {
+                await RunOnUiAsync(() =>
+                {
+                    PrimeFileSelection(node);
+                }, request.Token).ConfigureAwait(false);
+            }
+            ProductPerformanceReadiness.RecordTraversalStage("repo_code.selection.primed");
+
+            if (TrySelectFileFromMemoryCache(node, push: true, request.Token, generation))
+            {
+                ProductPerformanceReadiness.RecordTraversalStage("repo_code.cache.memory_hit");
+                return;
+            }
+
+            ProductPerformanceReadiness.RecordTraversalStage("repo_code.cache.memory_miss");
+            await RunOnUiAsync(() => Preview.BeginSelection(node), request.Token).ConfigureAwait(false);
+            await SelectFileAsyncInternal(node, request.Token, generation, push: true).ConfigureAwait(false);
+        }
+        catch (OperationCanceledException) when (request.Token.IsCancellationRequested)
+        {
+            await RunOnUiAsync(() =>
+            {
+                if (generation == Volatile.Read(ref _selectionGeneration))
+                {
+                    RestoreSelectionToVisiblePreview();
+                }
+            }, CancellationToken.None).ConfigureAwait(false);
+            throw;
+        }
+        finally
+        {
+            CompleteSelectionRequest(request);
+        }
+    }
+
+    internal bool PrimeTreeNodeSelection(
+        RepoTreeNodeViewModel node,
+        CancellationToken cancellationToken,
+        out long generation)
+    {
+        generation = 0;
+        if (node.IsDirectory || string.IsNullOrWhiteSpace(node.Sha))
+        {
+            return false;
+        }
+
+        RepoTreeNodeViewModel? current = Tree.FindNodeByPath(node.Path);
+        if (current is null ||
+            current.IsDirectory ||
+            !string.Equals(current.Sha, node.Sha, StringComparison.Ordinal))
+        {
+            return false;
+        }
+
+        ProductPerformanceReadiness.RecordTraversalStage("repo_code.selection.started");
+        _treeNodePrefetch.Cancel();
+        CancelDefaultPreview();
+        Volatile.Write(ref _pendingVisiblePath, null);
+        (generation, _) = ReserveSelection(cancellationToken);
+        RepoTreeNode model = ToModelNode(current);
+        PrimeFileSelection(model);
+        Preview.IsLoading = true;
+        Preview.ErrorMessage = null;
+        ProductPerformanceReadiness.RecordTraversalStage("repo_code.selection.primed");
+        return true;
+    }
+
+    internal async Task HydratePrimedTreeNodeSelectionAsync(
+        RepoTreeNodeViewModel node,
+        long generation)
+    {
+        RequestCancellation? request = Volatile.Read(ref _selectionRequest);
+        if (request is null || generation != Volatile.Read(ref _selectionGeneration))
+        {
+            return;
+        }
+
+        RepoTreeNode model = ToModelNode(node);
+        try
+        {
+            if (TrySelectFileFromMemoryCache(model, push: true, request.Token, generation))
+            {
+                ProductPerformanceReadiness.RecordTraversalStage("repo_code.cache.memory_hit");
+                return;
+            }
+
+            ProductPerformanceReadiness.RecordTraversalStage("repo_code.cache.memory_miss");
+            await SelectFileAsyncInternal(model, request.Token, generation, push: true).ConfigureAwait(false);
+        }
+        catch (OperationCanceledException) when (request.Token.IsCancellationRequested)
+        {
+            await RunOnUiAsync(() =>
+            {
+                if (generation == Volatile.Read(ref _selectionGeneration))
+                {
+                    RestoreSelectionToVisiblePreview();
+                }
+            }, CancellationToken.None).ConfigureAwait(false);
+        }
+        catch (Exception exception)
+        {
+            await RunOnUiAsync(() =>
+            {
+                if (generation != Volatile.Read(ref _selectionGeneration)) return;
+                Preview.ErrorMessage = UserFacingError.For(
+                    exception,
+                    Preview.CurrentFile is null
+                        ? UserFacingErrorKind.Loading
+                        : UserFacingErrorKind.Refresh,
+                    "repository-file");
+                RestoreSelectionToVisiblePreview();
+            }, CancellationToken.None).ConfigureAwait(false);
+        }
+        finally
+        {
+            CompleteSelectionRequest(request);
+        }
+    }
+
+    private void PrimeFileSelection(RepoTreeNode node)
+    {
+        if (!string.Equals(Breadcrumb.CurrentPath, node.Path, StringComparison.Ordinal))
+        {
+            Breadcrumb.PrimePath(_repositoryName, node.Path);
+        }
+        Breadcrumb.CurrentRawUrl = GitHubCodeUrlBuilder.BuildRawUrl(
+            _owner,
+            _repositoryName,
+            _ref,
+            node.Path);
+        Breadcrumb.CurrentGitHubUrl = GitHubCodeUrlBuilder.BuildBlobUrl(
+            _owner,
+            _repositoryName,
+            _ref,
+            node.Path);
+        Tree.SelectedNode = Tree.FindNodeByPath(node.Path);
+    }
+
+    private bool TrySelectFileFromMemoryCache(
+        RepoTreeNode node,
+        bool push,
+        CancellationToken cancellationToken,
+        long generation)
+    {
+        if (_dispatcherQueue is not null && !_dispatcherQueue.HasThreadAccess)
+        {
+            return false;
+        }
+
+        long authenticatedUserId = _accountService.GetUser();
+        string userPartition = authenticatedUserId > 0
+            ? authenticatedUserId.ToString(CultureInfo.InvariantCulture)
+            : "public";
+        using IAccountWorkLease lease = _accountWork.Enter(userPartition, cancellationToken);
+        lease.CancellationToken.ThrowIfCancellationRequested();
+
+        if (!IsCurrentSelection(generation, _owner, _repositoryName, _ref))
+        {
+            return false;
+        }
+
+        if (string.IsNullOrWhiteSpace(node.Sha) ||
+            !TryPrepareFilePreviewFromMemory(node, userPartition, out PreparedFilePreview prepared))
+        {
+            return false;
+        }
+
+        RepoTreeNodeViewModel? currentNode = Tree.FindNodeByPath(node.Path);
+        if (currentNode is null ||
+            currentNode.IsDirectory ||
+            !string.Equals(currentNode.Sha, node.Sha, StringComparison.Ordinal))
+        {
+            return false;
+        }
+
+        if (!IsCurrentSelection(generation, _owner, _repositoryName, _ref))
+        {
+            return false;
+        }
+
+        ApplyPreparedFilePreview(node, prepared, push);
+        return true;
     }
 
     public void CancelPendingRequests()
@@ -409,6 +613,7 @@ public sealed partial class RepoCodePageViewModel : ObservableObject
         request?.Cancel();
         request?.Dispose();
         Tree.CancelPendingRequests();
+        _treeNodePrefetch.Cancel();
         CancelDefaultPreview();
         CancelSelection();
         Volatile.Write(ref _pendingVisiblePath, null);
@@ -671,10 +876,7 @@ public sealed partial class RepoCodePageViewModel : ObservableObject
 
     private async Task<bool> SelectFileWithNewGenerationAsync(RepoTreeNode node, CancellationToken ct, bool push)
     {
-        long generation = Interlocked.Increment(ref _selectionGeneration);
-        RequestCancellation request = new(ct);
-        RequestCancellation? previous = Interlocked.Exchange(ref _selectionRequest, request);
-        previous?.Cancel();
+        (long generation, RequestCancellation request) = ReserveSelection(ct);
 
         try
         {
@@ -682,9 +884,24 @@ public sealed partial class RepoCodePageViewModel : ObservableObject
         }
         finally
         {
-            Interlocked.CompareExchange(ref _selectionRequest, null, request);
-            request.Dispose();
+            CompleteSelectionRequest(request);
         }
+    }
+
+    private (long Generation, RequestCancellation Request) ReserveSelection(CancellationToken cancellationToken)
+    {
+        long generation = Interlocked.Increment(ref _selectionGeneration);
+        RequestCancellation request = new(cancellationToken);
+        RequestCancellation? previous = Interlocked.Exchange(ref _selectionRequest, request);
+        previous?.Cancel();
+        previous?.Dispose();
+        return (generation, request);
+    }
+
+    private void CompleteSelectionRequest(RequestCancellation request)
+    {
+        Interlocked.CompareExchange(ref _selectionRequest, null, request);
+        request.Dispose();
     }
 
     private async Task<bool> SelectFileAsyncInternal(
@@ -738,7 +955,8 @@ public sealed partial class RepoCodePageViewModel : ObservableObject
         {
             await RunOnUiAsync(() =>
             {
-                if (generation == Volatile.Read(ref _selectionGeneration)) Preview.IsLoading = false;
+                if (generation != Volatile.Read(ref _selectionGeneration)) return;
+                RestoreSelectionToVisiblePreview();
             }, CancellationToken.None).ConfigureAwait(false);
             return false;
         }
@@ -754,8 +972,33 @@ public sealed partial class RepoCodePageViewModel : ObservableObject
                         ? UserFacingErrorKind.Loading
                         : UserFacingErrorKind.Refresh,
                     "repository-file");
+                RestoreSelectionToVisiblePreview();
             }, CancellationToken.None).ConfigureAwait(false);
             return false;
+        }
+    }
+
+    private void RestoreSelectionToVisiblePreview()
+    {
+        Preview.IsLoading = false;
+        if (Preview.CurrentFile is { } visibleFile)
+        {
+            Breadcrumb.BuildFromPath(_repositoryName, visibleFile.Path);
+            Breadcrumb.CurrentRawUrl = GitHubCodeUrlBuilder.BuildRawUrl(
+                _owner,
+                _repositoryName,
+                _ref,
+                visibleFile.Path);
+            Breadcrumb.CurrentGitHubUrl = GitHubCodeUrlBuilder.BuildBlobUrl(
+                _owner,
+                _repositoryName,
+                _ref,
+                visibleFile.Path);
+            Tree.SelectedNode = Tree.FindNodeByPath(visibleFile.Path);
+        }
+        else if (Breadcrumb.IsPathTransitioning)
+        {
+            Breadcrumb.BuildFromPath(_repositoryName, Breadcrumb.CurrentPath);
         }
     }
 
@@ -782,6 +1025,90 @@ public sealed partial class RepoCodePageViewModel : ObservableObject
             GitHubCodeUrlBuilder.BuildRawUrl(owner, repositoryName, gitRef, node.Path));
     }
 
+    private bool TryPrepareFilePreviewFromMemory(
+        RepoTreeNode node,
+        string userPartition,
+        out PreparedFilePreview prepared)
+    {
+        prepared = default!;
+        RepoFileCacheKey cacheKey = new(_owner, _repositoryName, node.Sha!, userPartition);
+        if (!_cache.TryGet(cacheKey, out RepoFileCacheEntry entry))
+        {
+            return false;
+        }
+
+        int sniffLength = (int)Math.Min(entry.Bytes.LongLength, 8192L);
+        FilePreviewDescriptor descriptor = _previewResolver.Resolve(
+            node.Path,
+            entry.ByteLength,
+            entry.Bytes.AsMemory(0, sniffLength));
+        prepared = new PreparedFilePreview(
+            entry,
+            descriptor,
+            GitHubCodeUrlBuilder.BuildBlobUrl(_owner, _repositoryName, _ref, node.Path),
+            GitHubCodeUrlBuilder.BuildRawUrl(_owner, _repositoryName, _ref, node.Path));
+        return true;
+    }
+
+    private Task PrefetchTreeNodeAsync(
+        RepoTreeNodeViewModel node,
+        CancellationToken cancellationToken)
+    {
+        if (node.IsDirectory || string.IsNullOrWhiteSpace(node.Sha))
+        {
+            return Task.CompletedTask;
+        }
+
+        string owner = _owner;
+        string repositoryName = _repositoryName;
+        string gitRef = _ref;
+        long initializeGeneration = Volatile.Read(ref _initializeGeneration);
+        RepoTreeNode model = ToModelNode(node);
+        long accountId = _accountService.GetUser();
+        string? accountPartition = accountId > 0
+            ? accountId.ToString(CultureInfo.InvariantCulture)
+            : null;
+        _treeNodePrefetch.Schedule(
+            TreeNodePrefetchDebounce,
+            () =>
+            {
+                CancellationTokenSource request = CancellationTokenSource.CreateLinkedTokenSource(
+                    cancellationToken,
+                    GetCurrentRouteToken());
+                _ = _taskCoordinator.RunAsync(
+                    async token =>
+                    {
+                        try
+                        {
+                            _ = await GetFileEntryAsync(
+                                    owner,
+                                    repositoryName,
+                                    model,
+                                    token,
+                                    GitHubRequestPriority.Prefetch)
+                                .ConfigureAwait(false);
+                            token.ThrowIfCancellationRequested();
+                            if (!IsCurrentInitialize(initializeGeneration) ||
+                                !IsRepositoryIdentity(owner, repositoryName, gitRef))
+                            {
+                                return;
+                            }
+                        }
+                        catch (OperationCanceledException) when (token.IsCancellationRequested)
+                        {
+                        }
+                        catch
+                        {
+                            // Predictive work is best-effort and never changes page state.
+                        }
+                    },
+                    new ApplicationTaskOptions("repo_code.file_hover_prefetch", accountPartition),
+                    request.Token);
+                return new CancellationTokenSourceLease(request);
+            });
+        return Task.CompletedTask;
+    }
+
     private void ApplyPreparedFilePreview(
         RepoTreeNode node,
         PreparedFilePreview prepared,
@@ -789,7 +1116,6 @@ public sealed partial class RepoCodePageViewModel : ObservableObject
     {
         RepoFileCacheEntry entry = prepared.Entry;
         FilePreviewDescriptor descriptor = prepared.Descriptor;
-        Preview.CurrentFile = node;
         Preview.Kind = descriptor.Kind;
         Preview.LanguageId = descriptor.LanguageId;
         Preview.ByteSize = entry.ByteLength;
@@ -803,10 +1129,15 @@ public sealed partial class RepoCodePageViewModel : ObservableObject
         Preview.Bytes = descriptor.Kind is RepoFilePreviewKind.TooLarge or RepoFilePreviewKind.Unsupported
             ? null
             : entry.Bytes;
-        Preview.IsLoading = false;
         Preview.ErrorMessage = null;
+        Preview.CurrentFile = node;
+        Preview.IsLoading = false;
 
-        Breadcrumb.BuildFromPath(_repositoryName, node.Path);
+        if (Breadcrumb.IsPathTransitioning ||
+            !string.Equals(Breadcrumb.CurrentPath, node.Path, StringComparison.Ordinal))
+        {
+            Breadcrumb.BuildFromPath(_repositoryName, node.Path);
+        }
         Breadcrumb.CurrentRawUrl = prepared.RawUrl;
         Breadcrumb.CurrentGitHubUrl = prepared.GitHubUrl;
         Tree.SelectedNode = Tree.FindNodeByPath(node.Path);
@@ -820,7 +1151,8 @@ public sealed partial class RepoCodePageViewModel : ObservableObject
         string owner,
         string repositoryName,
         RepoTreeNode node,
-        CancellationToken token)
+        CancellationToken token,
+        GitHubRequestPriority priority = GitHubRequestPriority.Visible)
     {
         long authenticatedUserId = _accountService.GetUser();
         string userPartition = authenticatedUserId > 0
@@ -838,6 +1170,7 @@ public sealed partial class RepoCodePageViewModel : ObservableObject
             owner,
             repositoryName,
             node.Sha!,
+            priority,
             token).ConfigureAwait(false);
         RepoFileBlob blob = result.Value;
         byte[] bytes = blob.Bytes ?? [];
@@ -860,6 +1193,37 @@ public sealed partial class RepoCodePageViewModel : ObservableObject
         token.ThrowIfCancellationRequested();
         await _cache.PutAsync(cacheKey, entry, token).ConfigureAwait(false);
         return entry;
+    }
+
+    private sealed class CancellationTokenSourceLease : IDisposable
+    {
+        private CancellationTokenSource? _source;
+
+        public CancellationTokenSourceLease(CancellationTokenSource source)
+        {
+            _source = source;
+        }
+
+        public void Dispose()
+        {
+            CancellationTokenSource? source = Interlocked.Exchange(ref _source, null);
+            if (source is null)
+            {
+                return;
+            }
+
+            try
+            {
+                source.Cancel();
+            }
+            catch (ObjectDisposedException)
+            {
+            }
+            finally
+            {
+                source.Dispose();
+            }
+        }
     }
 
     private async Task GoBackAsync()

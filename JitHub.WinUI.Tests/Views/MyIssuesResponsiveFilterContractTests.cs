@@ -8,10 +8,7 @@ public sealed class MyIssuesResponsiveFilterContractTests
     [Fact]
     public void MyIssues_UsesResourceBindingsAndCompactOverflowPickers()
     {
-        string path = Path.GetFullPath(Path.Combine(
-            AppContext.BaseDirectory,
-            "..", "..", "..", "..",
-            "JitHub.WinUI", "Views", "Pages", "MyIssuesPage.xaml"));
+        string path = GetPagePath("MyIssuesPage.xaml");
         XDocument document = XDocument.Load(path);
         string source = document.ToString(SaveOptions.DisableFormatting);
 
@@ -24,10 +21,7 @@ public sealed class MyIssuesResponsiveFilterContractTests
     [Fact]
     public void MyIssues_PreservesCanonicalMarkdownHostIdentity()
     {
-        string path = Path.GetFullPath(Path.Combine(
-            AppContext.BaseDirectory,
-            "..", "..", "..", "..",
-            "JitHub.WinUI", "Views", "Pages", "MyIssuesPage.xaml"));
+        string path = GetPagePath("MyIssuesPage.xaml");
         XDocument document = XDocument.Load(path);
         XElement[] viewers = document.Descendants().Where(element => element.Name.LocalName == "MarkdownViewer").ToArray();
 
@@ -40,5 +34,23 @@ public sealed class MyIssuesResponsiveFilterContractTests
         Assert.Contains(viewers, viewer =>
             string.Equals(viewer.Attribute("HostKind")?.Value, "Conversation", StringComparison.Ordinal) &&
             string.Equals(viewer.Attribute("AutomationInstanceId")?.Value, "MyIssuesBody", StringComparison.Ordinal));
+    }
+
+    private static string GetPagePath(string fileName) => Path.Combine(
+        FindRepositoryRoot(),
+        "JitHub.WinUI",
+        "Views",
+        "Pages",
+        fileName);
+
+    private static string FindRepositoryRoot()
+    {
+        DirectoryInfo? directory = new(AppContext.BaseDirectory);
+        while (directory is not null && !File.Exists(Path.Combine(directory.FullName, "JitHub.slnx")))
+        {
+            directory = directory.Parent;
+        }
+
+        return directory?.FullName ?? throw new DirectoryNotFoundException("Repository root was not found.");
     }
 }

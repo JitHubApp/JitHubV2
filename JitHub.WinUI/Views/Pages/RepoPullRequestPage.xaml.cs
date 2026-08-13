@@ -13,6 +13,8 @@ using JitHub.WinUI.Performance;
 using JitHub.WinUI.ViewModels.Pages;
 using JitHub.WinUI.Views.Controls.Common;
 using JitHub.WinUI.Views.Dialogs;
+using Microsoft.UI.Dispatching;
+using Microsoft.UI.Input;
 using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Automation;
 using Microsoft.UI.Xaml.Controls;
@@ -30,6 +32,8 @@ public sealed partial class RepoPullRequestPage : Page
     private CancellationTokenSource? _searchDebounce;
     private ProductPerformanceScrollProbe? _performanceScrollProbe;
     private int _selectionRenderGeneration;
+    private bool _pointerSelectionInProgress;
+    private int? _pendingPointerHydrationNumber;
 
     public RepoPullRequestPageViewModel ViewModel { get; }
 
@@ -93,6 +97,7 @@ public sealed partial class RepoPullRequestPage : Page
     protected override void OnNavigatedFrom(NavigationEventArgs e)
     {
         _selectionRenderGeneration++;
+        _pendingPointerHydrationNumber = null;
         ViewModel.CancelPredictivePrefetches();
         _searchDebounce?.Cancel();
         _searchDebounce?.Dispose();
@@ -198,45 +203,155 @@ public sealed partial class RepoPullRequestPage : Page
     {
         if (e.ClickedItem is GitHubPullRequest pullRequest)
         {
-            ListViewScrollAnchor anchor = ListViewScrollAnchor.Capture(PullRequestsList);
-            int renderGeneration = ++_selectionRenderGeneration;
-            PullRequestsWorkspace.CloseDrawer();
-            anchor.RestoreAcrossLayoutPasses(DispatcherQueue);
-            _ = DispatcherQueue.TryEnqueue(
-                Microsoft.UI.Dispatching.DispatcherQueuePriority.Low,
-                () =>
-                {
-                    ViewModel.SelectedPullRequest = pullRequest;
-                    CommitSelectionAfterRenderedFrame(pullRequest, renderGeneration);
-                });
+            if (PullRequestsWorkspace.IsLeadingDrawerOpen)
+            {
+                ListViewScrollAnchor anchor = ListViewScrollAnchor.Capture(PullRequestsList);
+                PullRequestsWorkspace.CloseDrawer();
+                anchor.RestoreAcrossLayoutPasses(DispatcherQueue);
+            }
+
+            if (_pendingPointerHydrationNumber == pullRequest.Number)
+            {
+                return;
+            }
+
+            ViewModel.SelectedPullRequest = pullRequest;
         }
     }
 
-    private async void CommitSelectionAfterRenderedFrame(GitHubPullRequest pullRequest, int generation)
+    private void PullRequestsList_SelectionChanged(object sender, SelectionChangedEventArgs e)
     {
-        await WaitForRenderedFrameAsync();
-        if (generation != _selectionRenderGeneration ||
-            !IsLoaded ||
-            ViewModel.SelectedPullRequest?.Number != pullRequest.Number ||
-            !string.Equals(PullRequestDetailTitle.Text, pullRequest.Title, StringComparison.Ordinal))
+        if (sender is not ListView { SelectedItem: GitHubPullRequest pullRequest })
         {
             return;
         }
 
-        ProductPerformanceReadiness.CommitTraversal("repo_pull_requests", pullRequest.AutomationId);
+        if (_pointerSelectionInProgress)
+        {
+            return;
+        }
+
+        int generation = BeginPullRequestTraversal(pullRequest);
+        PrimePullRequestSelection(pullRequest);
+        SchedulePullRequestSelection(pullRequest, generation);
+        if (ProductPerformanceReadiness.IsEnabled)
+        {
+            SchedulePullRequestTraversalCommit(pullRequest, generation);
+        }
     }
 
-    private static Task WaitForRenderedFrameAsync()
+    private void PullRequestListItem_PointerPressed(object sender, PointerRoutedEventArgs e)
     {
-        TaskCompletionSource<bool> rendered = new(TaskCreationOptions.RunContinuationsAsynchronously);
-        EventHandler<object>? handler = null;
-        handler = (_, _) =>
+        if (e.Handled)
         {
-            CompositionTarget.Rendering -= handler;
-            rendered.TrySetResult(true);
+            return;
+        }
+
+        GitHubPullRequest? pullRequest = sender switch
+        {
+            ListViewItem { Content: GitHubPullRequest item } => item,
+            FrameworkElement { DataContext: GitHubPullRequest item } => item,
+            _ => null
         };
-        CompositionTarget.Rendering += handler;
-        return rendered.Task;
+        if (pullRequest is null ||
+            sender is not UIElement pointerRoot ||
+            e.GetCurrentPoint(pointerRoot).Properties.PointerUpdateKind != PointerUpdateKind.LeftButtonPressed)
+        {
+            return;
+        }
+
+        int generation = BeginPullRequestTraversal(pullRequest);
+        ProductPerformanceReadiness.RecordTraversalStage("repo_pull_requests.pointer.selected");
+        PrimePullRequestSelection(pullRequest);
+        _pendingPointerHydrationNumber = pullRequest.Number;
+        _pointerSelectionInProgress = true;
+        try
+        {
+            PullRequestsList.SelectedItem = pullRequest;
+        }
+        finally
+        {
+            _pointerSelectionInProgress = false;
+        }
+
+        e.Handled = true;
+        SchedulePullRequestSelection(pullRequest, generation, focusSelection: true);
+        if (ProductPerformanceReadiness.IsEnabled)
+        {
+            SchedulePullRequestTraversalCommit(pullRequest, generation);
+        }
+        if (PullRequestsWorkspace.IsLeadingDrawerOpen)
+        {
+            ListViewScrollAnchor anchor = ListViewScrollAnchor.Capture(PullRequestsList);
+            PullRequestsWorkspace.CloseDrawer();
+            anchor.RestoreAcrossLayoutPasses(DispatcherQueue);
+        }
+    }
+
+    private void PrimePullRequestSelection(GitHubPullRequest pullRequest)
+    {
+        if (!string.Equals(PullRequestDetailTitle.Text, pullRequest.Title, StringComparison.Ordinal))
+        {
+            PullRequestDetailTitle.Text = pullRequest.Title;
+        }
+    }
+
+    private int BeginPullRequestTraversal(GitHubPullRequest pullRequest)
+    {
+        int generation = ++_selectionRenderGeneration;
+        if (!ProductPerformanceReadiness.IsEnabled)
+        {
+            return generation;
+        }
+
+        ProductPerformanceReadiness.BeginTraversal(
+            "repo_pull_requests",
+            pullRequest.AutomationId,
+            "repo_pull_requests");
+        return generation;
+    }
+
+    private void SchedulePullRequestTraversalCommit(
+        GitHubPullRequest pullRequest,
+        int generation)
+    {
+        ProductPerformanceRenderCommitter.ScheduleAfterNextFrame(
+            this,
+            () => generation == _selectionRenderGeneration &&
+                IsLoaded &&
+                PullRequestsList.SelectedItem is GitHubPullRequest selected &&
+                selected.Number == pullRequest.Number,
+            () =>
+                string.Equals(
+                    PullRequestDetailTitle.Text,
+                    pullRequest.Title,
+                    StringComparison.Ordinal),
+            () => ProductPerformanceReadiness.CommitTraversal(
+                "repo_pull_requests",
+                pullRequest.AutomationId));
+    }
+
+    private void SchedulePullRequestSelection(
+        GitHubPullRequest pullRequest,
+        int generation,
+        bool focusSelection = false)
+    {
+        DeferredFrameAction.Schedule(
+            this,
+            () => generation == _selectionRenderGeneration &&
+                IsLoaded &&
+                PullRequestsList.SelectedItem is GitHubPullRequest current &&
+                current.Number == pullRequest.Number,
+            () =>
+            {
+                _pendingPointerHydrationNumber = null;
+                ViewModel.SelectedPullRequest = pullRequest;
+                if (focusSelection &&
+                    PullRequestsList.ContainerFromItem(pullRequest) is Control container)
+                {
+                    container.Focus(FocusState.Pointer);
+                }
+            });
     }
 
     private void PullRequestsList_ContainerContentChanging(ListViewBase sender, ContainerContentChangingEventArgs args)
@@ -247,12 +362,19 @@ public sealed partial class RepoPullRequestPage : Page
         }
 
         container.GotFocus -= PullRequestListItemContainer_GotFocus;
+        container.RemoveHandler(
+            PointerPressedEvent,
+            new PointerEventHandler(PullRequestListItem_PointerPressed));
         if (args.InRecycleQueue)
         {
             return;
         }
 
         container.GotFocus += PullRequestListItemContainer_GotFocus;
+        container.AddHandler(
+            PointerPressedEvent,
+            new PointerEventHandler(PullRequestListItem_PointerPressed),
+            handledEventsToo: true);
         if (args.Item is GitHubPullRequest pullRequest)
         {
             AutomationProperties.SetAutomationId(container, pullRequest.AutomationId);

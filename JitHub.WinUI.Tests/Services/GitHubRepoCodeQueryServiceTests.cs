@@ -152,6 +152,24 @@ public sealed class GitHubRepoCodeQueryServiceTests : IDisposable
         Assert.Single(transport.Requests);
     }
 
+    [Fact]
+    public async Task Blob_PreservesRequestedPrefetchPriorityAtQueryBoundary()
+    {
+        CapturingQueryService queryService = new();
+        GitHubRepoCodeQueryService service = new(queryService);
+
+        await service.GetBlobAsync(
+            "token",
+            "42",
+            "octo",
+            "repo",
+            "abc123",
+            GitHubRequestPriority.Prefetch);
+
+        Assert.Equal(GitHubRequestPriority.Prefetch, queryService.Priority);
+        Assert.Equal("repos/octo/repo/git/blobs/abc123", queryService.RelativePath);
+    }
+
     [Theory]
     [InlineData("main", 5)]
     [InlineData("0123456789abcdef0123456789abcdef01234567", 43200)]
@@ -239,6 +257,47 @@ public sealed class GitHubRepoCodeQueryServiceTests : IDisposable
                 RetryAfter: null,
                 FetchedAt: DateTimeOffset.UtcNow));
         }
+    }
+
+    private sealed class CapturingQueryService : IGitHubQueryService
+    {
+        public GitHubRequestPriority? Priority { get; private set; }
+        public string? RelativePath { get; private set; }
+
+        public Task<CachedResult<T>> GetAsync<T>(
+            GitHubQuery<T> query,
+            QueryFetchPolicy fetchPolicy,
+            CancellationToken cancellationToken = default)
+            where T : class
+        {
+            Priority = query.Priority;
+            RelativePath = query.RelativePath;
+            T value = (T)(object)new GitHubBlob
+            {
+                Sha = "abc123",
+                Encoding = "base64",
+                Content = string.Empty
+            };
+            return Task.FromResult(new CachedResult<T>(
+                value,
+                CacheState.Fresh,
+                DateTimeOffset.UtcNow,
+                DateTimeOffset.UtcNow.AddDays(30)));
+        }
+
+        public Task<CachedResult<T>> RefreshAsync<T>(
+            GitHubQuery<T> query,
+            CancellationToken cancellationToken = default)
+            where T : class =>
+            GetAsync(query, QueryFetchPolicy.NetworkOnly, cancellationToken);
+
+        public Task InvalidateAsync(string cacheKey, CancellationToken cancellationToken = default) =>
+            Task.CompletedTask;
+
+        public Task InvalidateTagsAsync(
+            IReadOnlyCollection<string> tags,
+            CancellationToken cancellationToken = default) =>
+            Task.CompletedTask;
     }
 
     private sealed class NoopTelemetryService : ITelemetryService

@@ -1,11 +1,15 @@
 using System;
+using System.Threading;
+using System.Threading.Tasks;
 using JitHub.Services.Layout;
 using JitHub.Services;
+using JitHub.WinUI.Performance;
 using JitHub.WinUI.Views.Controls.Common;
 using JitHub.WinUI.ViewModels.Pages;
 using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Automation;
 using Microsoft.UI.Xaml.Controls;
+using Microsoft.UI.Xaml.Media;
 
 namespace JitHub.WinUI.Views.Pages;
 
@@ -14,7 +18,9 @@ public sealed partial class MyIssuesPage : Page
     private bool _initialized;
     private bool _openedInitialListDrawer;
     private ListViewScrollAnchor? _pendingRefreshAnchor;
+    private ProductPerformanceScrollProbe? _performanceScrollProbe;
     private bool _syncingFilterControls;
+    private long _selectionRenderGeneration;
 
     public MyIssuesPageViewModel ViewModel { get; }
 
@@ -27,10 +33,12 @@ public sealed partial class MyIssuesPage : Page
         ViewModel.ListSnapshotApplying += OnListSnapshotApplying;
         ViewModel.ListSnapshotApplied += OnListSnapshotApplied;
         Loaded += OnLoaded;
+        Unloaded += OnUnloaded;
     }
 
     private async void OnLoaded(object sender, RoutedEventArgs e)
     {
+        AttachPerformanceScrollProbe();
         if (_initialized)
         {
             CommitPerformanceReadiness();
@@ -52,6 +60,48 @@ public sealed partial class MyIssuesPage : Page
         {
             System.Diagnostics.Debug.WriteLine($"Failed to load issues page: {ex}");
         }
+    }
+
+    private void OnUnloaded(object sender, RoutedEventArgs e)
+    {
+        Interlocked.Increment(ref _selectionRenderGeneration);
+        _performanceScrollProbe?.Dispose();
+        _performanceScrollProbe = null;
+    }
+
+    private void AttachPerformanceScrollProbe()
+    {
+        _performanceScrollProbe?.Dispose();
+        if (!ProductPerformanceReadiness.IsEnabled)
+        {
+            _performanceScrollProbe = null;
+            return;
+        }
+
+        _performanceScrollProbe = FindDescendant<ScrollViewer>(IssuesList) is ScrollViewer scrollViewer
+            ? ProductPerformanceScrollProbe.TryStart(IssuesList, scrollViewer)
+            : null;
+    }
+
+    private static T? FindDescendant<T>(DependencyObject root)
+        where T : DependencyObject
+    {
+        int count = VisualTreeHelper.GetChildrenCount(root);
+        for (int index = 0; index < count; index++)
+        {
+            DependencyObject child = VisualTreeHelper.GetChild(root, index);
+            if (child is T match)
+            {
+                return match;
+            }
+
+            if (FindDescendant<T>(child) is T nested)
+            {
+                return nested;
+            }
+        }
+
+        return null;
     }
 
     private void CommitPerformanceReadiness() =>
@@ -196,7 +246,7 @@ public sealed partial class MyIssuesPage : Page
 
     private void IssuesList_ItemClick(object sender, ItemClickEventArgs e)
     {
-        if (e.ClickedItem is MeWorkItemViewItem item)
+        if (e.ClickedItem is MeWorkItemViewItem item && IssuesWorkspace.IsLeadingDrawerOpen)
         {
             ListViewScrollAnchor anchor = ListViewScrollAnchor.Capture(IssuesList, GetIssueItemKey);
             IssuesWorkspace.CloseDrawer();
@@ -208,17 +258,38 @@ public sealed partial class MyIssuesPage : Page
     {
         if (IssuesList.SelectedItem is MeWorkItemViewItem item)
         {
-            ProductPerformanceReadiness.CommitTraversal("my_issues", item.AutomationId);
-            _ = DispatcherQueue.TryEnqueue(
-                Microsoft.UI.Dispatching.DispatcherQueuePriority.Low,
-                () =>
-                {
-                    if (ReferenceEquals(IssuesList.SelectedItem, item))
-                    {
-                        ViewModel.SelectedItem = item;
-                    }
-                });
+            ProductPerformanceReadiness.BeginTraversal(
+                "my_issues",
+                item.AutomationId,
+                "my_issues");
+            long generation = Interlocked.Increment(ref _selectionRenderGeneration);
+            CommitSelectedIssueAfterRender(item, generation);
+            ViewModel.SelectedItem = item;
         }
+    }
+
+    private void CommitSelectedIssueAfterRender(
+        MeWorkItemViewItem item,
+        long generation)
+    {
+        if (!ProductPerformanceReadiness.IsEnabled)
+        {
+            return;
+        }
+
+        ProductPerformanceRenderCommitter.ScheduleAfterNextFrame(
+            this,
+            () => IsLoaded &&
+                generation == Volatile.Read(ref _selectionRenderGeneration) &&
+                ReferenceEquals(IssuesList.SelectedItem, item) &&
+                ReferenceEquals(ViewModel.SelectedItem, item),
+            () =>
+                ViewModel.IsSelectedHeaderCoherent(item) &&
+                string.Equals(
+                    MyIssuesDetailTitleText.Text,
+                    ViewModel.SelectedIssueTitle,
+                    StringComparison.Ordinal),
+            () => ProductPerformanceReadiness.CommitTraversal("my_issues", item.AutomationId));
     }
 
     private void IssuesList_ContainerContentChanging(ListViewBase sender, ContainerContentChangingEventArgs args)

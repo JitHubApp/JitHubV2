@@ -1,6 +1,6 @@
 # JitHub vNext Audit Remediation Handoff
 
-Status date: August 10, 2026
+Status date: August 13, 2026
 
 Branch: `codex/vnext-full-audit-remediation`
 
@@ -14,7 +14,7 @@ This is the durable recovery record for the full vNext convergence work. It is
 written so a new agent can clone or switch to the branch and continue without
 the prior conversation. The detailed finding history remains in
 `docs/jithub-vnext-full-product-audit.md`; this document records current
-architecture, shipped behavior, verification, unresolved work, environment
+architecture, shipped behavior, verification, remaining work, environment
 constraints, and exact restart commands.
 
 Do not infer unfinished work from deleted legacy files. This branch replaces
@@ -26,17 +26,29 @@ paths merely because they existed on `main`.
 
 - The source implementation for the recorded full-product audit is present.
 - All audit tracker rows were implemented and page-specific tests/probes passed.
-- Eight findings from the last data/security/performance review were implemented
-  and verified with focused tests plus the complete Debug/Release matrices.
-- One fresh combined performance rerun is incomplete because the automation
-  route-input bridge timed out on Profile iteration 8. This is the only known
-  unfinished verification task, not a known product data or UI failure.
-- A fresh pair of independent read-only reviews has not yet run after the final
-  eight hardening changes. Do that after repairing/rerunning the combined gate.
-- Build, test, and screenshot output was intentionally removed after the system
-  drive ran out of space. The branch contains source, tests, lock files, scripts,
-  and documentation, but no claim that local binaries or artifact directories
-  still exist.
+- Eight findings from the last data/security/performance review and the final
+  first-frame selection repairs are implemented and verified with focused tests,
+  the complete Debug/Release matrices, and live native probes.
+- The canonical exact ten-iteration Warm run passes all 55 evaluations without
+  changing budgets. Cached-selection p95 is `36.06ms` for My Issues, `33.01ms`
+  for My Pull Requests, `42.67ms` for Gists, `34.75ms` for Repository Code,
+  `29.64ms` for Repository Issues, `31.91ms` for Repository Pull Requests, and
+  `37.52ms` for Repository Commits. Startup p95 is `1149.77ms` against `1500ms`.
+  `artifacts/performance/vnext-publication-full-eight.json` is controlling.
+- Two final review passes covered WinUI lifecycle/accessibility/concurrency and
+  data/security/performance/resource ownership. Their actionable findings were
+  fixed and focused validation was rerun.
+- A prior post-review full-matrix rerun recorded one My Pull Requests host-input
+  outlier and emitted a FlaUI COM-wrapper finalizer fault during shutdown after
+  writing its report. Two isolated reruns passed, and the August 13 exact full
+  matrix then passed `55/55` across all 80 measured launches with a clean process
+  exit. The outlier and shutdown fault are retained as superseded history, not
+  active release risk.
+- The recovered batch passed consolidated publication review and is ready to be
+  committed as one intentional remediation set. Generated outputs remain ignored
+  evidence and must not enter the commit.
+- Generated outputs are ignored and may be present locally after recovery. They
+  are evidence only and must remain uncommitted.
 
 ## Product Invariants
 
@@ -320,35 +332,49 @@ The repository-level version of these rules is in `AGENTS.md`.
 
 ## Last Successful Verification
 
-These results were completed before generated outputs were deleted:
+These results were rerun sequentially from the recovered final source state on
+2026-08-12 and 2026-08-13. Generated outputs remain evidence only and are not
+commit content.
 
 | Target | Result |
 | --- | --- |
-| `JitHub.WinUI.Tests` Debug | 2,526 / 2,526 passed |
-| `JitHub.WinUI.Tests` Release | 2,526 / 2,526 passed |
+| `JitHub.WinUI.Tests` Debug | 2,542 / 2,542 passed |
+| `JitHub.WinUI.Tests` Release | 2,542 / 2,542 passed |
 | `MarkdownRenderer.Tests` Debug | 335 / 335 passed |
 | `MarkdownRenderer.Tests` Release | 335 / 335 passed |
-| `MarkdownRenderer.PixelTests` Debug | 82 / 82 passed |
-| `MarkdownRenderer.PixelTests` Release | 82 / 82 passed |
+| `MarkdownRenderer.PixelTests` Debug | 87 / 87 passed |
+| `MarkdownRenderer.PixelTests` Release | 87 / 87 passed |
 | `JitHub.Web.Tests` Debug | 17 / 17 passed |
 | `JitHub.Web.Tests` Release | 17 / 17 passed |
 | `JitHub.WinUI` Debug | warning-free build |
 | `JitHub.WinUI` Release | warning-free build; 60 / 60 embedded security gates |
-| Automation / PerformanceGate / Web | warning-free Debug and Release builds |
+| `JitHub.WinUI.Automation` | warning-free x64 Debug and Release builds |
+| `JitHub.WinUI.PerformanceGate` | warning-free x64 Debug and Release builds |
+| `JitHub.Web` | warning-free Debug and Release builds |
 | Dependency policy and audit | passed; no direct/transitive vulnerabilities |
+| Eight-route warm performance gate | 55 / 55 route/fixture/metric budgets passed |
+| Post-review My Pull Requests reruns | 8 / 8 passed twice; cached-selection p95 `42.10ms` and `49.50ms` |
+| Publication eight-route warm performance gate | 55 / 55 passed; 4,970 measurements; clean exit |
 
-Latest native acceptance results before cleanup:
+Latest native acceptance results in `artifacts/final-independent-review`:
 
-- `shell-responsive`: passed, rerun clean after an unrelated Windows low-disk
-  dialog contaminated the first screenshots.
+- `shell-responsive`: passed.
 - `settings-responsive`: passed all five requested widths in light/dark. Genuine
   OS High Contrast was not enabled in that session, so the harness truthfully
   recorded the conditional skip rather than a false pass.
 - `profile-responsive`: passed all widths and the edit dialog.
 - `issues-responsive-workspace`: passed My Issues and Repository Issues at all
   six requested widths after the coordinated breakpoint fix.
-- Screenshots were manually reviewed for clipping, overlap, width shift, active
-  navigation, drawer behavior, and stable content.
+- `pull-requests-responsive-workspace`: passed all five requested widths,
+  section changes, list/detail behavior, and scroll stability.
+- `repo-code-responsive-workspace`: passed all five widths, drawer/focus
+  behavior, overflow access, and breadcrumb routing.
+- `commits-virtualized-diff`: passed wrapped virtualized diff, search,
+  selection/context copy, compare, and compact/wide layouts.
+- Screenshots were manually reviewed through seven contact sheets and targeted
+  original-resolution compact states for clipping, overlap, width shift, active
+  navigation, drawer behavior, and stable content. Windows capped the largest
+  requested windows at `1280x672`; assertions used actual native bounds.
 
 ## Storage Incident And Cleanup
 
@@ -377,66 +403,50 @@ Never run a broad destructive cleanup against a computed path. Use explicit
 worktree-relative generated targets and verify they resolve inside this
 worktree.
 
-## Open Work
+## Final Hardening Progress
 
-### 1. Repair And Rerun The Combined Performance Gate
+The automation and production hardening below is implemented and closed by the
+newest exact combined-performance evidence.
 
-The attempted ten-iteration warm run covered
-`profile,my_issues,repo_code,repo_commits`.
+- The automation bridge now uses bounded, acknowledged input commits and
+  reacquires transient UIA providers instead of accepting an unacknowledged
+  route transition.
+- Cached traversal uses real native pointer input and app-owned timestamps.
+- Traversal completion is published only after `CompositionTarget.Rendered`,
+  with stale, cancellation, timeout, and unload guards in the shared
+  `ProductPerformanceRenderCommitter`.
+- Repository Code publishes its lightweight selected row and breadcrumb first,
+  waits for that frame, and only then hydrates the potentially large file body.
+  This prevents a fast disk/network result from blocking the interaction frame.
+- Repository Code file/tree reads use the shared account-partitioned L1/query
+  cache, true `Prefetch` priority, latest-wins hover/focus prediction, and
+  route/account-owned cancellation leases.
+- The former controlling baseline,
+  `vnext-handoff-full-eight-exact-final-v2.json`, passed 51 of 55 budgets and
+  identified four cached-selection failures. It is retained as superseded
+  evidence, not current status.
+- `vnext-recovery-affected-final-2.json` passes all 29 affected evaluations.
+- `vnext-recovery-full-eight-final-v2.json` passes all 55 exact evaluations and
+  is the first recovered exact closure artifact.
+- `vnext-recovery-full-eight-post-review-v2.json` passed 54 of 55 evaluations.
+  Its only miss was a single My Pull Requests pre-handler input spike: `50.73ms`
+  input and `6.76ms` render, producing `55.79ms` p95. The complete report was
+  written before a shutdown-only FlaUI COM-wrapper finalizer fault.
+- `vnext-recovery-my-pr-post-review.json` and
+  `vnext-recovery-my-pr-post-review-repeat.json` immediately rechecked that
+  route at ten iterations and passed all eight budgets (`42.10ms` and `49.50ms`
+  cached-selection p95) with clean process exits.
+- `vnext-publication-full-eight.json` is the final controlling artifact. It
+  records 4,970 measurements, all 55 evaluations passing, cached-selection p95
+  between `29.64ms` and `42.67ms`, startup p95 `1149.77ms`, and a clean runner
+  exit after all 80 measured launches. It did not reproduce either the My Pull
+  Requests host-input outlier or the FlaUI shutdown fault.
+- Browser-backed SVG pixel tests create Edge suspended, assign it to a Windows
+  Job Object before resume, and terminate/drain the entire process tree. The
+  test verifies both launcher and descendant termination.
 
-- My Issues warm-up and all 10 iterations completed.
-- Profile completed through iteration 7.
-- Profile iteration 8 failed with:
-
-```text
-TimeoutException: The performance route input did not commit 'settings'.
-```
-
-The failure originates in
-`JitHub.WinUI.PerformanceGate/ProductPerformanceRouteProbe.cs`:
-
-- `NavigateRouteAndWait` near line 277.
-- `CommitTextValue` near line 1155.
-
-The corresponding tiny automation bridge is in:
-
-- `JitHub.WinUI/Views/Pages/ShellPage.xaml` near the performance bridge.
-- `JitHub.WinUI/Views/Pages/ShellPage.xaml.cs`,
-  `ProductPerformanceNavigateButton_Click` near line 377.
-
-`CommitTextValue` currently sets the bridge TextBox and waits two seconds. The
-next agent should reproduce Profile in isolation, then harden the bridge by
-reacquiring the UIA element and retrying a bounded commit/acknowledgement. Keep
-the bridge test-only, deterministic, and non-blocking. Do not loosen product
-performance budgets or turn a failed route acknowledgement into a pass.
-
-No partial report was retained after storage cleanup.
-
-### 2. Run Two Fresh Independent Read-Only Reviews
-
-After the performance rerun passes, request two independent reviews:
-
-1. Data/security/performance: account partitioning, cancellation, cache path
-   confinement, OAuth redirect/handoff, dependency gate, pagination, prefetch,
-   and the performance bridge.
-2. WinUI/accessibility/localization/error presentation: responsive pane order,
-   keyboard/focus/UIA behavior, High Contrast/pseudo-localization, safe error
-   copy, and control-catalog consistency.
-
-The earlier WinUI/accessibility reviewer was clean. The later
-data/security/performance reviewer reported eight findings, all now implemented:
-
-1. Pending OAuth token/account partition isolation.
-2. Profile mutation lifecycle coordination.
-3. Repository-file cache path confinement.
-4. Shell Code/Commit prefetch cancellation and draining.
-5. Central localized safe error presentation.
-6. Progressive Issues/comment loading.
-7. Exact production OAuth redirect allowlist.
-8. Locked dependency and Release vulnerability policy.
-
-Do not declare a new final closure until both rereviews report no actionable
-finding and the combined performance run passes.
+No performance budget was loosened and no fixture-specific timestamp shortcut
+was introduced.
 
 ## Next-Session Runbook
 
@@ -448,8 +458,9 @@ git status --short --branch
 Get-PSDrive C
 ```
 
-The expected branch should be clean after this handoff commit. Confirm at least
-6 GB free before rebuilding all configurations and generating screenshots.
+Before the recovery batch is committed, expect the source changes described in
+this handoff plus three new implementation files. Confirm at least 6 GB free
+before rebuilding all configurations and generating screenshots.
 
 ### 2. Restore The Locked Graph Once
 
@@ -516,6 +527,7 @@ $probes = @(
   'profile-responsive',
   'issues-responsive-workspace',
   'pull-requests-responsive-workspace',
+  'repo-code-responsive-workspace',
   'commits-virtualized-diff'
 )
 
@@ -533,9 +545,10 @@ Review every screenshot, not only the exit code. Confirm actual native bounds in
 filenames/logs when Windows caps the request. Run shell, settings, profile, and
 issues first because they exercise the shared responsive primitives.
 
-### 6. Repair And Run The Performance Gate
+### 6. Reverify The Performance Gate
 
-Build the app and gate, then run at least the affected warm fixture:
+Build the app and gate, then run the exact full Warm matrix when performance-
+relevant source changes:
 
 ```powershell
 pwsh -NoProfile -File eng\Invoke-ProductPerformanceGate.ps1 `
@@ -543,21 +556,20 @@ pwsh -NoProfile -File eng\Invoke-ProductPerformanceGate.ps1 `
   -Configuration Debug `
   -Iterations 10 `
   -Fixtures Warm `
-  -Routes profile,my_issues,repo_code,repo_commits `
-  -OutputPath artifacts\performance\vnext-handoff-rerun.json `
-  -ArtifactsPath artifacts\performance\vnext-handoff-rerun `
+  -Routes gists,my_issues,my_pull_requests,profile,repo_code,repo_commits,repo_issues,repo_pull_requests `
+  -OutputPath artifacts\performance\vnext-recovery-rerun.json `
+  -ArtifactsPath artifacts\performance\vnext-recovery-rerun `
   -SkipBuild
 ```
 
 The gate intentionally requires at least 10 iterations. Do not bypass that
-validation. After a passing affected-route run, run the full plan or the CI gate
-configuration before final release closure.
+validation or loosen the checked-in budgets.
 
-### 7. Final Review And Audit Update
+### 7. Future Change Discipline
 
-- Run the two independent reviews described above.
-- Fix every actionable finding and rerun focused plus affected full tests.
-- Update `docs/jithub-vnext-full-product-audit.md` with fresh evidence.
+- Rerun focused tests for every behavioral change and the affected native probe.
+- Repeat both review perspectives for cross-cutting or lifecycle changes.
+- Update `docs/jithub-vnext-full-product-audit.md` only with fresh evidence.
 - Keep generated screenshots/reports uncommitted; link their run names in docs
   only when the team intentionally retains them outside Git.
 

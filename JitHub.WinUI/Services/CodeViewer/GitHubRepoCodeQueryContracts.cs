@@ -33,4 +33,22 @@ public interface IGitHubRepoCodeQueryService
         string sha,
         QueryFetchPolicy fetchPolicy = QueryFetchPolicy.StaleFirst,
         CancellationToken cancellationToken = default);
+
+    Task<CachedResult<GitHubBlob>> GetBlobAsync(
+        string accessToken,
+        string userId,
+        string owner,
+        string repositoryName,
+        string sha,
+        GitHubRequestPriority priority,
+        QueryFetchPolicy fetchPolicy = QueryFetchPolicy.StaleFirst,
+        CancellationToken cancellationToken = default) =>
+        GetBlobAsync(
+            accessToken,
+            userId,
+            owner,
+            repositoryName,
+            sha,
+            fetchPolicy,
+            cancellationToken);
 }

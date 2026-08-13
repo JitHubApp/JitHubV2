@@ -401,6 +401,21 @@ public sealed class RepoTreeService : IRepoTreeService
         string name,
         string sha,
         CancellationToken ct,
+        QueryFetchPolicy fetchPolicy = QueryFetchPolicy.StaleFirst) =>
+        await LoadBlobAsync(
+            owner,
+            name,
+            sha,
+            GitHubRequestPriority.Visible,
+            ct,
+            fetchPolicy).ConfigureAwait(false);
+
+    public async Task<RepoCodeLoadResult<RepoFileBlob>> LoadBlobAsync(
+        string owner,
+        string name,
+        string sha,
+        GitHubRequestPriority priority,
+        CancellationToken ct,
         QueryFetchPolicy fetchPolicy = QueryFetchPolicy.StaleFirst)
     {
         (string token, string userId) = GetAuthenticationContext();
@@ -410,6 +425,7 @@ public sealed class RepoTreeService : IRepoTreeService
             owner,
             name,
             sha,
+            priority,
             fetchPolicy,
             ct).ConfigureAwait(false);
         GitHubBlob blob = result.Value ?? throw new InvalidOperationException("GitHub returned no repository blob.");

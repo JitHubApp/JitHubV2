@@ -431,6 +431,7 @@
                             </Grid.ColumnDefinitions>
                             <StackPanel Spacing="7">
                                 <TextBlock
+                                    x:Name="MyIssuesDetailTitleText"
                                     AutomationProperties.AutomationId="MyIssuesDetailTitle"
                                     FontFamily="{ThemeResource AppDisplayFontFamily}"
                                     FontSize="25"

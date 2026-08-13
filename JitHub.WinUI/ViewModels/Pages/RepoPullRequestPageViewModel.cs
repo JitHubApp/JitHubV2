@@ -495,6 +495,12 @@ public sealed partial class RepoPullRequestPageViewModel : ViewModelBase
 
     public bool HasPullRequestDiffSearchMatches => PullRequestDiffRowProjection.MatchCount > 0;
 
+    public bool IsPullRequestSelectionCoherent(GitHubPullRequest pullRequest) =>
+        SelectedPullRequest?.Number == pullRequest.Number &&
+        (_projectedPullRequestDetailNumber == pullRequest.Number ||
+            !string.IsNullOrWhiteSpace(pullRequest.Body) &&
+            string.Equals(PullRequestBodyText, pullRequest.Body, StringComparison.Ordinal));
+
     public async Task InitializeAsync(PullRequestPageNavArg? navArg)
     {
         CancelPredictivePrefetches();
@@ -1678,6 +1684,7 @@ public sealed partial class RepoPullRequestPageViewModel : ViewModelBase
         }
 
         _lastFocusedPullRequestNumber = value.Number;
+        PreparePullRequestForSelectionLoad(value);
         TrackEvent(
             "pull_requests.selected",
             new Dictionary<string, string?>
@@ -2276,7 +2283,9 @@ public sealed partial class RepoPullRequestPageViewModel : ViewModelBase
         PullRequestMetadataText = FormatPullRequestMetadataSummary(null, pullRequest);
         PullRequestReactionsText = GetString("RepoPullRequest.ReactionsLoading", "Reactions: loading...");
         MergeStatusText = GetString("RepoPullRequest.MergeDetailsLoading", "Loading merge details...");
-        PullRequestBodyText = GetString("RepoPullRequest.BodyLoading", "Loading pull request details...");
+        PullRequestBodyText = string.IsNullOrWhiteSpace(pullRequest.Body)
+            ? GetString("RepoPullRequest.BodyLoading", "Loading pull request details...")
+            : pullRequest.Body;
         PullRequestCommentDraft = string.Empty;
         PullRequestComments.Clear();
         PullRequestCommits.Clear();

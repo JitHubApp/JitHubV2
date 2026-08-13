@@ -1,11 +1,15 @@
 using System;
+using System.Threading;
+using System.Threading.Tasks;
 using JitHub.Services;
 using JitHub.Services.Layout;
+using JitHub.WinUI.Performance;
 using JitHub.WinUI.ViewModels.Pages;
 using JitHub.WinUI.Views.Controls.Common;
 using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Automation;
 using Microsoft.UI.Xaml.Controls;
+using Microsoft.UI.Xaml.Media;
 
 namespace JitHub.WinUI.Views.Pages;
 
@@ -19,6 +23,8 @@ public sealed partial class MyPullRequestsPage : Page
     private bool _openedInitialListDrawer;
     private bool _syncingFilterControls;
     private ListViewScrollAnchor? _pendingRefreshAnchor;
+    private long _selectionRenderGeneration;
+    private ProductPerformanceScrollProbe? _performanceScrollProbe;
 
     public MyPullRequestsPageViewModel ViewModel { get; }
 
@@ -47,10 +53,12 @@ public sealed partial class MyPullRequestsPage : Page
         ViewModel.ListSnapshotApplying += OnListSnapshotApplying;
         ViewModel.ListSnapshotApplied += OnListSnapshotApplied;
         Loaded += OnLoaded;
+        Unloaded += OnUnloaded;
     }
 
     private async void OnLoaded(object sender, RoutedEventArgs e)
     {
+        AttachPerformanceScrollProbe();
         if (_initialized)
         {
             CommitPerformanceReadiness();
@@ -72,6 +80,43 @@ public sealed partial class MyPullRequestsPage : Page
         {
             System.Diagnostics.Debug.WriteLine($"Failed to load pull requests page: {ex}");
         }
+    }
+
+    private void OnUnloaded(object sender, RoutedEventArgs e)
+    {
+        Interlocked.Increment(ref _selectionRenderGeneration);
+        _performanceScrollProbe?.Dispose();
+        _performanceScrollProbe = null;
+    }
+
+    private void AttachPerformanceScrollProbe()
+    {
+        _performanceScrollProbe?.Dispose();
+        _performanceScrollProbe = ProductPerformanceReadiness.IsEnabled &&
+            FindDescendant<ScrollViewer>(PullRequestsList) is ScrollViewer scrollViewer
+                ? ProductPerformanceScrollProbe.TryStart(PullRequestsList, scrollViewer)
+                : null;
+    }
+
+    private static T? FindDescendant<T>(DependencyObject root)
+        where T : DependencyObject
+    {
+        int count = VisualTreeHelper.GetChildrenCount(root);
+        for (int index = 0; index < count; index++)
+        {
+            DependencyObject child = VisualTreeHelper.GetChild(root, index);
+            if (child is T match)
+            {
+                return match;
+            }
+
+            if (FindDescendant<T>(child) is T nested)
+            {
+                return nested;
+            }
+        }
+
+        return null;
     }
 
     private void CommitPerformanceReadiness() =>
@@ -173,7 +218,7 @@ public sealed partial class MyPullRequestsPage : Page
 
     private void PullRequestsList_ItemClick(object sender, ItemClickEventArgs e)
     {
-        if (e.ClickedItem is MeWorkItemViewItem item)
+        if (e.ClickedItem is MeWorkItemViewItem item && PullRequestsWorkspace.IsLeadingDrawerOpen)
         {
             ListViewScrollAnchor anchor = ListViewScrollAnchor.Capture(PullRequestsList, GetPullRequestItemKey);
             PullRequestsWorkspace.CloseDrawer();
@@ -185,17 +230,40 @@ public sealed partial class MyPullRequestsPage : Page
     {
         if (PullRequestsList.SelectedItem is MeWorkItemViewItem item)
         {
-            ProductPerformanceReadiness.CommitTraversal("my_pull_requests", item.AutomationId);
-            _ = DispatcherQueue.TryEnqueue(
-                Microsoft.UI.Dispatching.DispatcherQueuePriority.Low,
-                () =>
-                {
-                    if (ReferenceEquals(PullRequestsList.SelectedItem, item))
-                    {
-                        ViewModel.SelectedItem = item;
-                    }
-                });
+            ProductPerformanceReadiness.BeginTraversal(
+                "my_pull_requests",
+                item.AutomationId,
+                "my_pull_requests");
+            long generation = Interlocked.Increment(ref _selectionRenderGeneration);
+            ScheduleSelectedPullRequestCommit(item, generation);
+            ViewModel.SelectedItem = item;
         }
+    }
+
+    private void ScheduleSelectedPullRequestCommit(
+        MeWorkItemViewItem item,
+        long generation)
+    {
+        if (!ProductPerformanceReadiness.IsEnabled)
+        {
+            return;
+        }
+
+        ProductPerformanceRenderCommitter.ScheduleAfterNextFrame(
+            this,
+            () => IsLoaded &&
+                generation == Volatile.Read(ref _selectionRenderGeneration) &&
+                ReferenceEquals(PullRequestsList.SelectedItem, item) &&
+                ReferenceEquals(ViewModel.SelectedItem, item),
+            () =>
+                ViewModel.IsSelectedHeaderCoherent(item) &&
+                string.Equals(
+                    MyPullRequestsDetailTitleText.Text,
+                    ViewModel.SelectedIssueTitle,
+                    StringComparison.Ordinal),
+            () => ProductPerformanceReadiness.CommitTraversal(
+                "my_pull_requests",
+                item.AutomationId));
     }
 
     private void PullRequestsList_ContainerContentChanging(ListViewBase sender, ContainerContentChangingEventArgs args)

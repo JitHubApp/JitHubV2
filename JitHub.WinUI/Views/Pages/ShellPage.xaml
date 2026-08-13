@@ -916,7 +916,8 @@
                 Width="4"
                 Height="4"
                 AutomationProperties.AutomationId="ProductPerformanceRouteInput"
-                AutomationProperties.Name="Performance route" />
+                AutomationProperties.Name="Performance route"
+                TextChanged="ProductPerformanceRouteInput_TextChanged" />
             <Button
                 x:Uid="PagesShellPageProductPerformanceNavigateButton"
                 x:Name="ProductPerformanceNavigateButton"
@@ -931,7 +932,8 @@
                 Width="4"
                 Height="4"
                 AutomationProperties.AutomationId="ProductPerformanceTraversalInput"
-                AutomationProperties.Name="Expected performance traversal identity" />
+                AutomationProperties.Name="Expected performance traversal identity"
+                TextChanged="ProductPerformanceTraversalInput_TextChanged" />
             <Button
                 x:Uid="PagesShellPageProductPerformanceArmTraversalButton"
                 x:Name="ProductPerformanceArmTraversalButton"

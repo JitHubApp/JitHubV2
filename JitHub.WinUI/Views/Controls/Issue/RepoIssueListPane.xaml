@@ -20,7 +20,9 @@
                 MinHeight="50"
                 AutomationProperties.AutomationId="{x:Bind AutomationId}"
                 AutomationProperties.Name="{x:Bind AutomationName}"
+                Background="Transparent"
                 PointerEntered="IssueListItem_PointerEntered"
+                PointerPressed="IssueListItemContainer_PointerPressed"
                 RowSpacing="5">
                 <Grid.RowDefinitions>
                     <RowDefinition Height="Auto" />
@@ -226,6 +228,7 @@
                     ContainerContentChanging="IssuesList_ContainerContentChanging"
                     IsItemClickEnabled="True"
                     ItemClick="IssuesList_ItemClick"
+                    SelectionChanged="IssuesList_SelectionChanged"
                     ItemContainerStyle="{StaticResource AppWorkspaceCardListRowStyle}"
                     ItemTemplate="{StaticResource RepoIssueListItemTemplate}"
                     ItemsSource="{x:Bind ViewModel.Issues, Mode=OneWay}"

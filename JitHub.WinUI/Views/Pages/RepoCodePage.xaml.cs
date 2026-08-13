@@ -7,6 +7,7 @@ using JitHub.Services;
 using JitHub.Services.CodeViewer;
 using JitHub.Services.Layout;
 using JitHub.WinUI.Helpers;
+using JitHub.WinUI.Performance;
 using JitHub.WinUI.ViewModels.CodeViewer;
 using JitHub.WinUI.Views.Controls.CodeViewer;
 using Microsoft.UI.Input;
@@ -27,8 +28,11 @@ public sealed partial class RepoCodePage : Page, IRepositoryCompactCommandProvid
     private readonly App _app = (App)Application.Current;
     private CancellationTokenSource? _initCts;
     private DispatcherQueueTimer? _performanceHeartbeatTimer;
+    private ProductPerformanceScrollProbe? _performanceScrollProbe;
     private long _performanceHeartbeat;
     private long _navigationGeneration;
+    private long _fileTraversalGeneration;
+    private PendingFileTraversal? _pendingFileTraversal;
 
     public RepoCodePageViewModel ViewModel { get; }
 
@@ -130,6 +134,8 @@ public sealed partial class RepoCodePage : Page, IRepositoryCompactCommandProvid
     protected override void OnNavigatedFrom(NavigationEventArgs e)
     {
         Interlocked.Increment(ref _navigationGeneration);
+        Interlocked.Increment(ref _fileTraversalGeneration);
+        _pendingFileTraversal = null;
         _initCts?.Cancel();
         _initCts?.Dispose();
         _initCts = null;
@@ -160,13 +166,24 @@ public sealed partial class RepoCodePage : Page, IRepositoryCompactCommandProvid
         ViewModel.PropertyChanged -= OnViewModelPropertyChanged;
         ViewModel.PropertyChanged += OnViewModelPropertyChanged;
         StartPerformanceHeartbeatIfRequested();
+        AttachPerformanceScrollProbe();
         DispatcherQueue.TryEnqueue(UpdatePaneButtonVisibility);
     }
 
     private void OnPageUnloaded(object sender, RoutedEventArgs e)
     {
+        Interlocked.Increment(ref _fileTraversalGeneration);
+        _pendingFileTraversal = null;
         ViewModel.PropertyChanged -= OnViewModelPropertyChanged;
+        _performanceScrollProbe?.Dispose();
+        _performanceScrollProbe = null;
         StopPerformanceHeartbeat();
+    }
+
+    private void AttachPerformanceScrollProbe()
+    {
+        _performanceScrollProbe?.Dispose();
+        _performanceScrollProbe = FileTree.StartPerformanceScrollProbe(FileTreeHost);
     }
 
     private void CodeWorkspace_ModeChanged(object? sender, AdaptiveWorkspaceState e)
@@ -184,12 +201,67 @@ public sealed partial class RepoCodePage : Page, IRepositoryCompactCommandProvid
         CodeWorkspace.CloseDrawer();
     }
 
-    private void FileTree_FileInvoked(object? sender, EventArgs e)
+    private async void FileTree_FileInvoked(object? sender, RepoFileInvokedEventArgs e)
     {
         if (CodeWorkspace.IsLeadingDrawerOpen)
         {
             CodeWorkspace.CloseDrawer();
         }
+
+        if (_initCts is not { } initialization ||
+            !ViewModel.PrimeTreeNodeSelection(e.Node, initialization.Token, out long selectionGeneration))
+        {
+            return;
+        }
+
+        e.Handled = true;
+        long generation = Interlocked.Increment(ref _fileTraversalGeneration);
+        if (ProductPerformanceReadiness.IsEnabled)
+        {
+            _pendingFileTraversal = new PendingFileTraversal(
+                e.Path,
+                e.AutomationId,
+                generation,
+                initialization.Token);
+            ScheduleFileTraversalCommit(_pendingFileTraversal);
+            ProductPerformanceReadiness.RecordTraversalStage("repo_code.render.scheduled");
+        }
+
+        try
+        {
+            await WaitForRenderedFrameAsync(initialization.Token);
+            if (generation != Volatile.Read(ref _fileTraversalGeneration) ||
+                initialization.IsCancellationRequested)
+            {
+                return;
+            }
+
+            ProductPerformanceReadiness.RecordTraversalStage("repo_code.command.executed");
+            await ViewModel.HydratePrimedTreeNodeSelectionAsync(e.Node, selectionGeneration);
+        }
+        catch (OperationCanceledException) when (initialization.IsCancellationRequested)
+        {
+        }
+    }
+
+    private void ScheduleFileTraversalCommit(PendingFileTraversal pending)
+    {
+        ProductPerformanceRenderCommitter.ScheduleAfterNextFrame(
+            this,
+            () => _pendingFileTraversal == pending &&
+                IsLoaded &&
+                pending.Generation == Volatile.Read(ref _fileTraversalGeneration) &&
+                !pending.CancellationToken.IsCancellationRequested,
+            () =>
+                ViewModel.IsFileSelectionPresented(pending.Path),
+            () =>
+            {
+                _pendingFileTraversal = null;
+                ProductPerformanceReadiness.RecordTraversalStage("repo_code.render.committed");
+                ProductPerformanceReadiness.CommitTraversal(
+                    "repo_code",
+                    pending.AutomationId);
+            });
     }
 
     private static async Task WaitForRenderedFrameAsync(CancellationToken cancellationToken)
@@ -199,11 +271,11 @@ public sealed partial class RepoCodePage : Page, IRepositoryCompactCommandProvid
         EventHandler<object>? handler = null;
         handler = (_, _) =>
         {
-            Microsoft.UI.Xaml.Media.CompositionTarget.Rendering -= handler;
+            Microsoft.UI.Xaml.Media.CompositionTarget.Rendered -= handler;
             rendered.TrySetResult(true);
         };
 
-        Microsoft.UI.Xaml.Media.CompositionTarget.Rendering += handler;
+        Microsoft.UI.Xaml.Media.CompositionTarget.Rendered += handler;
         using CancellationTokenRegistration registration = cancellationToken.Register(
             () => rendered.TrySetCanceled(cancellationToken));
         try
@@ -212,7 +284,7 @@ public sealed partial class RepoCodePage : Page, IRepositoryCompactCommandProvid
         }
         finally
         {
-            Microsoft.UI.Xaml.Media.CompositionTarget.Rendering -= handler;
+            Microsoft.UI.Xaml.Media.CompositionTarget.Rendered -= handler;
         }
     }
 
@@ -349,4 +421,10 @@ public sealed partial class RepoCodePage : Page, IRepositoryCompactCommandProvid
                 DispatcherQueue.TryEnqueue(() => FileTree.FocusTree());
             })
     ];
+
+    private sealed record PendingFileTraversal(
+        string Path,
+        string AutomationId,
+        long Generation,
+        CancellationToken CancellationToken);
 }

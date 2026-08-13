@@ -30,6 +30,9 @@ public sealed partial class RepoCodeBreadcrumbViewModel : ObservableObject
     [ObservableProperty]
     public partial string CurrentPath { get; set; } = string.Empty;
 
+    [ObservableProperty]
+    public partial bool IsPathTransitioning { get; set; }
+
     /// <summary>
     /// Optional callback invoked when the user taps a breadcrumb segment.
     /// The page VM wires this to expand the tree to that folder.
@@ -94,6 +97,16 @@ public sealed partial class RepoCodeBreadcrumbViewModel : ObservableObject
     }
 
     /// <summary>
+    /// Presents the selected path without rebuilding the interactive segments.
+    /// </summary>
+    internal void PrimePath(string repoName, string filePath)
+    {
+        CurrentPath = filePath;
+        CurrentFileName = GetFileName(repoName, filePath);
+        IsPathTransitioning = true;
+    }
+
+    /// <summary>
     /// Rebuilds segments from a file path (e.g. "src/foo/Bar.cs").
     /// The first segment is always the repo root with <paramref name="repoName"/> as label.
     /// </summary>
@@ -103,11 +116,13 @@ public sealed partial class RepoCodeBreadcrumbViewModel : ObservableObject
         Segments.Add(new BreadcrumbSegment(repoName, string.Empty, IsRoot: true));
 
         CurrentPath = filePath;
-        CurrentFileName = string.IsNullOrEmpty(filePath)
-            ? repoName
-            : filePath.Split('/', StringSplitOptions.RemoveEmptyEntries)[^1];
+        CurrentFileName = GetFileName(repoName, filePath);
 
-        if (string.IsNullOrEmpty(filePath)) return;
+        if (string.IsNullOrEmpty(filePath))
+        {
+            IsPathTransitioning = false;
+            return;
+        }
 
         string[] parts = filePath.Split('/', StringSplitOptions.RemoveEmptyEntries);
         string accumulated = string.Empty;
@@ -116,15 +131,15 @@ public sealed partial class RepoCodeBreadcrumbViewModel : ObservableObject
             accumulated = accumulated.Length == 0 ? part : accumulated + "/" + part;
             Segments.Add(new BreadcrumbSegment(part, accumulated, IsRoot: false));
         }
+
+        IsPathTransitioning = false;
     }
 
-    private string? GetCurrentFilePath()
-    {
-        // The last non-root segment is the current file/folder path.
-        for (int i = Segments.Count - 1; i >= 0; i--)
-        {
-            if (!Segments[i].IsRoot) return Segments[i].Path;
-        }
-        return null;
-    }
+    private string? GetCurrentFilePath() =>
+        string.IsNullOrEmpty(CurrentPath) ? null : CurrentPath;
+
+    private static string GetFileName(string repoName, string filePath) =>
+        string.IsNullOrEmpty(filePath)
+            ? repoName
+            : filePath.Split('/', StringSplitOptions.RemoveEmptyEntries)[^1];
 }

@@ -63,6 +63,7 @@ $restoreOutput = Invoke-CheckedDotNet @(
     "restore",
     $solutionPath,
     "--locked-mode",
+    "-p:Configuration=Release",
     "-p:Platform=x64",
     "-p:NuGetAudit=true",
     "-p:NuGetAuditMode=all",

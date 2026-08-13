@@ -60,6 +60,8 @@ public sealed partial class ShellPage : Page
     private readonly Dictionary<string, long> _productPerformanceRouteStartedTimestamps =
         new(StringComparer.Ordinal);
     private ProductPerformanceTraversalStart? _pendingProductPerformanceTraversal;
+    private string _productPerformanceRouteInputValue = string.Empty;
+    private string _productPerformanceTraversalInputValue = string.Empty;
     private CancellationTokenSource? _notificationLifetime;
     private bool _suppressSearchSuggestionsUntilTextChanges;
     private bool _updatingSearchSelectionFromKeyboard;
@@ -219,6 +221,13 @@ public sealed partial class ShellPage : Page
     {
         RunOnUiThread(() =>
         {
+            if (_pendingProductPerformanceTraversal is { } pending &&
+                string.Equals(commit.Route, pending.Route, StringComparison.Ordinal) &&
+                string.Equals(commit.Identity, pending.Identity, StringComparison.Ordinal))
+            {
+                _pendingProductPerformanceTraversal = null;
+            }
+
             if (_productPerformanceTraversalMarkers.TryGetValue(commit.Route, out FrameworkElement? marker))
             {
                 SchedulePerformanceMarkerSettlement(marker, commit);
@@ -376,7 +385,7 @@ public sealed partial class ShellPage : Page
 
     private void ProductPerformanceNavigateButton_Click(object sender, RoutedEventArgs e)
     {
-        string route = ProductPerformanceRouteInput.Text.Trim();
+        string route = _productPerformanceRouteInputValue.Trim();
         _productPerformanceRouteStartedTimestamps[route] = Stopwatch.GetTimestamp();
         if (_productPerformanceMarkers.TryGetValue(route, out FrameworkElement? marker))
         {
@@ -434,13 +443,34 @@ public sealed partial class ShellPage : Page
 
     private void ProductPerformanceArmTraversalButton_Click(object sender, RoutedEventArgs e)
     {
-        string route = ProductPerformanceRouteInput.Text.Trim();
-        string expectedIdentity = ProductPerformanceTraversalInput.Text.Trim();
+        string route = _productPerformanceRouteInputValue.Trim();
+        string expectedIdentity = _productPerformanceTraversalInputValue.Trim();
+        if (string.IsNullOrWhiteSpace(route) || string.IsNullOrWhiteSpace(expectedIdentity))
+        {
+            return;
+        }
+
         if (_productPerformanceTraversalMarkers.TryGetValue(route, out FrameworkElement? marker))
         {
             CancelPerformanceMarkerSettlement(marker);
             AutomationProperties.SetItemStatus(marker, $"pending;expected={expectedIdentity}");
         }
+    }
+
+    private void ProductPerformanceRouteInput_TextChanged(object sender, TextChangedEventArgs e)
+    {
+        _productPerformanceRouteInputValue = ProductPerformanceRouteInput.Text;
+        AutomationProperties.SetItemStatus(
+            ProductPerformanceRouteInput,
+            _productPerformanceRouteInputValue);
+    }
+
+    private void ProductPerformanceTraversalInput_TextChanged(object sender, TextChangedEventArgs e)
+    {
+        _productPerformanceTraversalInputValue = ProductPerformanceTraversalInput.Text;
+        AutomationProperties.SetItemStatus(
+            ProductPerformanceTraversalInput,
+            _productPerformanceTraversalInputValue);
     }
 
     private async Task InitializeShellAsync(CancellationToken cancellationToken)

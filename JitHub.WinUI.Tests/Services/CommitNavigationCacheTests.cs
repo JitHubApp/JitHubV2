@@ -163,6 +163,7 @@ public sealed class CommitNavigationCacheTests
     [InlineData(CommitPrefetchOutcome.Success, "success")]
     [InlineData(CommitPrefetchOutcome.Failure, "failed")]
     [InlineData(CommitPrefetchOutcome.Canceled, "cancelled")]
+    [InlineData(CommitPrefetchOutcome.Suppressed, "suppressed")]
     public async Task TrackedPrefetch_EmitsReachableStartedAndCompletedEvents(
         CommitPrefetchOutcome outcome,
         string expectedResult)
@@ -180,7 +181,7 @@ public sealed class CommitNavigationCacheTests
             .Returns(outcome);
         RecordingTelemetryService telemetry = new();
 
-        await CommitPrefetchTelemetry.RunAsync(
+        CommitPrefetchOutcome actualOutcome = await CommitPrefetchTelemetry.RunAsync(
             navigationCache,
             telemetry,
             "token",
@@ -190,6 +191,8 @@ public sealed class CommitNavigationCacheTests
             "private-sha",
             CommitPrefetchReason.Hover,
             CancellationToken.None);
+
+        Assert.Equal(outcome, actualOutcome);
 
         Assert.Collection(
             telemetry.Events,

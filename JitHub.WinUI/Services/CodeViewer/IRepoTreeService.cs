@@ -52,4 +52,13 @@ public interface IRepoTreeService
         string sha,
         CancellationToken ct,
         QueryFetchPolicy fetchPolicy = QueryFetchPolicy.StaleFirst);
+
+    Task<RepoCodeLoadResult<RepoFileBlob>> LoadBlobAsync(
+        string owner,
+        string name,
+        string sha,
+        GitHubRequestPriority priority,
+        CancellationToken ct,
+        QueryFetchPolicy fetchPolicy = QueryFetchPolicy.StaleFirst) =>
+        LoadBlobAsync(owner, name, sha, ct, fetchPolicy);
 }

@@ -48,6 +48,23 @@ public sealed partial class RepoFilePreviewViewModel : ObservableObject
     [RelayCommand]
     private void ToggleRichPreview() => ShowRichPreview = !ShowRichPreview;
 
+    internal void BeginSelection(RepoTreeNode file)
+    {
+        IsLoading = true;
+        ErrorMessage = null;
+        Kind = RepoFilePreviewKind.Code;
+        LanguageId = string.Empty;
+        Text = null;
+        Bytes = null;
+        ImageMimeType = null;
+        ByteSize = 0;
+        Encoding = null;
+        GitHubBlobUrl = null;
+        GitHubRawUrl = null;
+        ShowRichPreview = true;
+        CurrentFile = file;
+    }
+
     internal void Reset()
     {
         CurrentFile = null;

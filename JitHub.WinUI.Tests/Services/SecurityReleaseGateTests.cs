@@ -21,6 +21,7 @@ public sealed class SecurityReleaseGateTests
         Assert.Contains("NU1901;NU1902;NU1903;NU1904", props, StringComparison.Ordinal);
         Assert.Contains("Verify-DependencySecurity.ps1", project, StringComparison.Ordinal);
         Assert.Contains("--locked-mode", script, StringComparison.Ordinal);
+        Assert.Contains("-p:Configuration=Release", script, StringComparison.Ordinal);
         Assert.Contains("--vulnerable", script, StringComparison.Ordinal);
         Assert.Contains("--include-transitive", script, StringComparison.Ordinal);
         Assert.Contains("allowedPrereleasePackages", script, StringComparison.Ordinal);

@@ -531,6 +531,7 @@
                                 </Grid.ColumnDefinitions>
                                 <StackPanel Spacing="7">
                                     <TextBlock
+                                        x:Name="MyPullRequestsDetailTitleText"
                                         AutomationProperties.AutomationId="MyPullRequestsDetailTitle"
                                         FontFamily="{ThemeResource AppDisplayFontFamily}"
                                         FontSize="25"

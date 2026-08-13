@@ -1,6 +1,7 @@
 using System.Diagnostics;
 using System.Drawing;
 using System.Runtime.InteropServices;
+using System.Text.Json;
 using FlaUI.Core;
 using FlaUI.Core.AutomationElements;
 using FlaUI.Core.Definitions;
@@ -14,6 +15,7 @@ internal sealed class ProductPerformanceRouteProbe
     private static readonly TimeSpan ElementTimeout = TimeSpan.FromSeconds(20);
     private static readonly TimeSpan TransitionTimeout = TimeSpan.FromSeconds(20);
     private static readonly TimeSpan ObservableTimeout = TimeSpan.FromSeconds(2);
+    private static readonly TimeSpan ProductPerformanceInputCommitTimeout = TimeSpan.FromSeconds(5);
     private const string AppRootAutomationId = "JitHubMainWindowRoot";
     private const string RepoCodeSourceDirectoryStatus = "path:src";
     private const string RepoCodeGeneratedDirectoryStatus = "path:src/generated";
@@ -47,7 +49,7 @@ internal sealed class ProductPerformanceRouteProbe
 
         try
         {
-            _ = WaitForWindow(application, automation);
+            Window appWindow = WaitForWindow(application, automation);
             AutomationElement appRoot = WaitForAppRoot(application, automation);
             _ = WaitForElement(appRoot, "ShellRoot");
             TimeSpan startupElapsed = WaitForInteractiveTimestamp(appRoot, startupStartedTimestamp);
@@ -98,7 +100,7 @@ internal sealed class ProductPerformanceRouteProbe
             if (measureSelectionBeforeScroll)
             {
                 (ProductPerformanceMeasurement selectionMeasurement, int selectionBlanking) =
-                    MeasureCachedSelection(runCase, appRoot);
+                    MeasureCachedSelection(runCase, application, automation, appRoot, appWindow);
                 measurements.Add(selectionMeasurement);
                 blankingOccurrences += selectionBlanking;
             }
@@ -109,7 +111,7 @@ internal sealed class ProductPerformanceRouteProbe
                 !measureSelectionBeforeScroll)
             {
                 (ProductPerformanceMeasurement selectionMeasurement, int selectionBlanking) =
-                    MeasureCachedSelection(runCase, appRoot);
+                    MeasureCachedSelection(runCase, application, automation, appRoot, appWindow);
                 measurements.Add(selectionMeasurement);
                 blankingOccurrences += selectionBlanking;
             }
@@ -276,8 +278,11 @@ internal sealed class ProductPerformanceRouteProbe
         AutomationElement appRoot,
         ProductPerformanceRouteDefinition route)
     {
-        AutomationElement routeInput = WaitForElement(appRoot, "ProductPerformanceRouteInput");
-        CommitTextValue(routeInput, route.Id, "performance route");
+        CommitTextValue(
+            appRoot,
+            "ProductPerformanceRouteInput",
+            route.Id,
+            "performance route");
         AutomationElement navigate = WaitForElement(appRoot, "ProductPerformanceNavigateButton");
         long routeStartedTimestamp = Stopwatch.GetTimestamp();
         ProductPerformanceContentTransitionTracker transition =
@@ -297,32 +302,50 @@ internal sealed class ProductPerformanceRouteProbe
         WaitForRouteTransition(appRoot, route, transition, $"route precondition '{route.Id}'");
     }
 
-    private static (ProductPerformanceMeasurement Measurement, int BlankingOccurrences) MeasureCachedSelection(
+    private (ProductPerformanceMeasurement Measurement, int BlankingOccurrences) MeasureCachedSelection(
         ProductPerformanceRunCase runCase,
-        AutomationElement appRoot)
+        Application application,
+        UIA3Automation automation,
+        AutomationElement appRoot,
+        Window appWindow)
     {
         ProductPerformanceRouteDefinition route = runCase.Route;
         AutomationElement selectionHost = WaitForElement(appRoot, route.SelectionAutomationId!);
         AutomationElement target = FindTraversalTarget(route, selectionHost);
 
         string expectedIdentity = GetExactTraversalIdentity(route, target);
-        AutomationElement routeInput = WaitForElement(appRoot, "ProductPerformanceRouteInput");
-        CommitTextValue(routeInput, route.Id, "performance traversal route");
-        AutomationElement traversalInput = WaitForElement(appRoot, "ProductPerformanceTraversalInput");
-        CommitTextValue(traversalInput, expectedIdentity, "performance traversal identity");
-        SelectOrInvoke(WaitForElement(appRoot, "ProductPerformanceArmTraversalButton"));
+        CommitTextValue(
+            appRoot,
+            "ProductPerformanceRouteInput",
+            route.Id,
+            "performance traversal route");
+        CommitTextValue(
+            appRoot,
+            "ProductPerformanceTraversalInput",
+            expectedIdentity,
+            "performance traversal identity");
+        Func<long> activateTraversalTarget = PrepareTraversalActivation(
+            route,
+            target,
+            expectedIdentity,
+            selectionHost,
+            new IntPtr(appWindow.Properties.NativeWindowHandle.ValueOrDefault));
         AutomationElement traversalMarker = WaitForElement(
             appRoot,
             $"ProductPerformanceTraversalReady_{route.Id}");
-        Action activateTraversalTarget = PrepareTraversalActivation(target);
-        long selectionStartedTimestamp = Stopwatch.GetTimestamp();
-        activateTraversalTarget();
-        TimeSpan selectionElapsed = WaitForExactTraversal(
+        long traversalArmRequestedTimestamp = Stopwatch.GetTimestamp();
+        SelectOrInvoke(WaitForElement(appRoot, "ProductPerformanceArmTraversalButton"));
+        long traversalActivationStartedTimestamp = activateTraversalTarget();
+        ProductPerformanceTraversalTiming selectionTiming = WaitForExactTraversal(
             appRoot,
             route,
             traversalMarker,
             expectedIdentity,
-            selectionStartedTimestamp);
+            traversalArmRequestedTimestamp,
+            traversalActivationStartedTimestamp,
+            application,
+            automation);
+        AppendTraversalObservation(runCase, expectedIdentity, selectionTiming);
 
         return (
             Measure(
@@ -331,9 +354,41 @@ internal sealed class ProductPerformanceRouteProbe
                 route.SupportsCachedSelection
                     ? ProductPerformanceMetric.CachedSelection
                     : ProductPerformanceMetric.CachedRouteNavigation,
-                selectionElapsed.TotalMilliseconds,
+                selectionTiming.Elapsed.TotalMilliseconds,
                 DateTimeOffset.UtcNow),
             0);
+    }
+
+    private void AppendTraversalObservation(
+        ProductPerformanceRunCase runCase,
+        string identity,
+        ProductPerformanceTraversalTiming timing)
+    {
+        string path = Path.Combine(_dataRoot, "traversal-observations.ndjson");
+        var observation = new
+        {
+            recordedAt = DateTimeOffset.UtcNow,
+            fixture = runCase.Fixture.ToString(),
+            route = runCase.Route.Id,
+            iteration = runCase.Iteration,
+            warmup = runCase.Iteration < 0,
+            identity,
+            inputMilliseconds = timing.Input.TotalMilliseconds,
+            renderMilliseconds = timing.Render.TotalMilliseconds,
+            totalMilliseconds = timing.Elapsed.TotalMilliseconds,
+            trace = timing.Trace
+        };
+
+        using FileStream stream = new(
+            path,
+            FileMode.Append,
+            FileAccess.Write,
+            FileShare.Read,
+            bufferSize: 4 * 1024,
+            FileOptions.WriteThrough);
+        JsonSerializer.Serialize(stream, observation);
+        stream.WriteByte((byte)'\n');
+        stream.Flush(flushToDisk: true);
     }
 
     private static string GetExactTraversalIdentity(
@@ -356,17 +411,18 @@ internal sealed class ProductPerformanceRouteProbe
             $"Route '{route.Id}' traversal target did not expose a stable AutomationId or ItemStatus key.");
     }
 
-    private static TimeSpan WaitForExactTraversal(
+    private static ProductPerformanceTraversalTiming WaitForExactTraversal(
         AutomationElement appRoot,
         ProductPerformanceRouteDefinition route,
         AutomationElement marker,
         string expectedIdentity,
-        long startedTimestamp)
+        long minimumStartedTimestamp,
+        long interactionStartedTimestamp,
+        Application application,
+        UIA3Automation automation)
     {
-        long lastFrame = -1;
-        int stableFrames = 0;
-        TimeSpan? firstRenderedMatch = null;
         Stopwatch timeout = Stopwatch.StartNew();
+        string lastMarkerStatus = "<unread>";
         // The app stamps first-render and settled times itself. Give native input
         // an observer-free frame window before making a cross-process UIA call;
         // otherwise the probe can starve the UI thread whose latency it measures.
@@ -380,12 +436,21 @@ internal sealed class ProductPerformanceRouteProbe
                 hasStatus = ProductPerformanceReadyStatus.TryParse(
                     marker.Properties.ItemStatus.ValueOrDefault,
                     out status);
+                lastMarkerStatus = marker.Properties.ItemStatus.ValueOrDefault ?? "<empty>";
             }
             catch (COMException exception) when (
                 IsTransientUiAutomationFailure(exception))
             {
-                // A deferred WinUI subtree can briefly replace its UIA provider. The marker is
-                // stable in the visual tree, so reacquire its provider and retry next frame.
+                if (application.HasExited)
+                {
+                    throw new InvalidOperationException(
+                        $"JitHub exited while measuring cached traversal for route '{route.Id}'.",
+                        exception);
+                }
+
+                // WinUI can replace the root UIA provider together with a deferred content
+                // subtree. Reacquire both providers by process identity before retrying.
+                appRoot = WaitForAppRoot(application, automation);
                 marker = FindVisibleForObservation(
                     appRoot,
                     $"ProductPerformanceTraversalReady_{route.Id}") ?? marker;
@@ -399,39 +464,44 @@ internal sealed class ProductPerformanceRouteProbe
             {
                 if (status.FirstRenderedTimestamp is long firstRenderedTimestamp &&
                     status.StartedTimestamp is long appStartedTimestamp &&
-                    appStartedTimestamp >= startedTimestamp &&
+                    appStartedTimestamp >= minimumStartedTimestamp &&
+                    appStartedTimestamp >= interactionStartedTimestamp &&
                     firstRenderedTimestamp >= appStartedTimestamp)
                 {
                     AutomationElement trace = WaitForElement(appRoot, "ProductPerformanceTraversalTrace");
+                    string traceStatus = trace.Properties.ItemStatus.ValueOrDefault ?? string.Empty;
+                    TimeSpan inputElapsed = Stopwatch.GetElapsedTime(
+                        interactionStartedTimestamp,
+                        appStartedTimestamp);
+                    TimeSpan renderElapsed = Stopwatch.GetElapsedTime(
+                        appStartedTimestamp,
+                        firstRenderedTimestamp);
+                    TimeSpan elapsed = Stopwatch.GetElapsedTime(
+                        interactionStartedTimestamp,
+                        firstRenderedTimestamp);
                     Console.WriteLine(
-                        $"  traversal trace {route.Id}: {trace.Properties.ItemStatus.ValueOrDefault}");
-                    return Stopwatch.GetElapsedTime(appStartedTimestamp, firstRenderedTimestamp);
+                        $"  traversal trace {route.Id}: input=" +
+                        $"{inputElapsed.TotalMilliseconds:0.##}, " +
+                        $"render={renderElapsed.TotalMilliseconds:0.##}; " +
+                        traceStatus);
+                    return new ProductPerformanceTraversalTiming(
+                        elapsed,
+                        inputElapsed,
+                        renderElapsed,
+                        traceStatus);
                 }
-
-                ProductPerformanceHeartbeat heartbeat = ReadHeartbeat(appRoot);
-                if (heartbeat.Frame > lastFrame)
-                {
-                    stableFrames++;
-                    lastFrame = heartbeat.Frame;
-                    firstRenderedMatch ??= Stopwatch.GetElapsedTime(startedTimestamp);
-                }
-
-                if (stableFrames >= 2)
-                {
-                    return firstRenderedMatch ?? Stopwatch.GetElapsedTime(startedTimestamp);
-                }
-            }
-            else
-            {
-                stableFrames = 0;
-                lastFrame = -1;
             }
 
             Thread.Sleep(4);
         }
 
+        AutomationElement? timeoutTrace = FindVisibleForObservation(
+            appRoot,
+            "ProductPerformanceTraversalTrace");
         throw new TimeoutException(
-            $"Cached traversal for route '{route.Id}' never committed exact identity '{expectedIdentity}'.");
+            $"Cached traversal for route '{route.Id}' never committed exact identity '{expectedIdentity}'. " +
+            $"Last marker: {lastMarkerStatus}. " +
+            $"App trace: {timeoutTrace?.Properties.ItemStatus.ValueOrDefault ?? "unavailable"}");
     }
 
     private static AutomationElement FindTraversalTarget(
@@ -441,6 +511,18 @@ internal sealed class ProductPerformanceRouteProbe
         if (string.Equals(route.Id, "repo_code", StringComparison.Ordinal))
         {
             return FindRepoCodeSourceTraversalTarget(selectionHost);
+        }
+
+        if (route.Id is "gists" or "repo_pull_requests")
+        {
+            AutomationElement? secondVisibleItem = selectionHost
+                .FindAllDescendants()
+                .Where(static element => element.ControlType == ControlType.ListItem)
+                .Where(IsVisible)
+                .Skip(1)
+                .FirstOrDefault();
+            return secondVisibleItem ?? throw new InvalidOperationException(
+                $"Route '{route.Id}' did not expose two cached rows for deterministic traversal.");
         }
 
         AutomationElement? target = FindUnselectedTraversalCandidates(selectionHost).FirstOrDefault();
@@ -508,10 +590,7 @@ internal sealed class ProductPerformanceRouteProbe
         {
             AutomationElement scrollTarget = WaitForElement(appRoot, runCase.Route.ScrollAutomationId!);
             PrepareScrollableSurface(runCase.Route, scrollTarget);
-            scrollElement = FindVerticallyScrollableElement(scrollTarget)
-                ?? throw new InvalidOperationException(
-                    $"Route '{runCase.Route.Id}' did not expose a vertically scrollable UIA element under " +
-                    $"'{runCase.Route.ScrollAutomationId}' for its {runCase.Fixture} fixture.");
+            scrollElement = ResolveVerticalScrollElement(appRoot, runCase.Route);
         }
 
         for (int sample = 0; sample < 30; sample++)
@@ -549,6 +628,14 @@ internal sealed class ProductPerformanceRouteProbe
                 ProductPerformanceScrollTransitionTracker scrollTransition =
                     new(scrollStartedTimestamp, initialOffset, initialScrollHeartbeat.Frame);
 
+                if (hasAppScrollProbe)
+                {
+                    // The app records ViewChanging-to-CompositionTarget.Rendering timestamps
+                    // internally. Leave one observer-free render window before cross-process
+                    // UIA polling so the benchmark does not stall the frame it is measuring.
+                    Thread.Sleep(50);
+                }
+
                 Stopwatch timeout = Stopwatch.StartNew();
                 Stopwatch attemptTimeout = Stopwatch.StartNew();
                 while (!scrollTransition.IsCompleted && timeout.Elapsed < ObservableTimeout)
@@ -571,11 +658,8 @@ internal sealed class ProductPerformanceRouteProbe
                             renderedScroll.RenderedTimestamp);
                     }
 
-                    if (!hasAppScrollProbe)
-                    {
-                        double currentOffset = ReadVerticalScrollPercent(appRoot, runCase.Route, ref scrollElement);
-                        scrollTransition.Observe(currentOffset, currentHeartbeat, observedTimestamp);
-                    }
+                    double currentOffset = ReadVerticalScrollPercent(appRoot, runCase.Route, ref scrollElement);
+                    scrollTransition.Observe(currentOffset, currentHeartbeat, observedTimestamp);
                     ObserveContinuity(
                         appRoot,
                         runCase.Route.RootAutomationId,
@@ -600,6 +684,10 @@ internal sealed class ProductPerformanceRouteProbe
                                 scrollStartedTimestamp,
                                 initialOffset,
                                 initialScrollHeartbeat.Frame);
+                            if (hasAppScrollProbe)
+                            {
+                                Thread.Sleep(50);
+                            }
                             attemptTimeout.Restart();
                         }
 
@@ -1013,6 +1101,26 @@ internal sealed class ProductPerformanceRouteProbe
         return null;
     }
 
+    private static AutomationElement? WaitForVerticallyScrollableElement(
+        AutomationElement root,
+        TimeSpan timeout)
+    {
+        Stopwatch stopwatch = Stopwatch.StartNew();
+        do
+        {
+            AutomationElement? scrollElement = FindVerticallyScrollableElement(root);
+            if (scrollElement is not null)
+            {
+                return scrollElement;
+            }
+
+            Thread.Sleep(5);
+        }
+        while (stopwatch.Elapsed < timeout);
+
+        return null;
+    }
+
     private static ProductPerformanceHeartbeat ReadHeartbeat(AutomationElement appRoot)
     {
         string? itemStatus = null;
@@ -1152,68 +1260,268 @@ internal sealed class ProductPerformanceRouteProbe
         element.Click();
     }
 
-    private static void CommitTextValue(AutomationElement element, string value, string description)
+    private static void CommitTextValue(
+        AutomationElement root,
+        string automationId,
+        string value,
+        string description)
     {
-        TextBox textBox = element.AsTextBox();
-        textBox.Text = value;
+        string resetValue = $"__jithub_commit_{Guid.NewGuid():N}";
+        CommitTextValueOnce(root, automationId, resetValue, description);
+        CommitTextValueOnce(root, automationId, value, description);
+
+        // The acknowledgement is published by the WinUI TextChanged handler.
+        // Only begin adjacent measured work after the app thread has consumed it.
+        Thread.Sleep(16);
+    }
+
+    private static void CommitTextValueOnce(
+        AutomationElement root,
+        string automationId,
+        string value,
+        string description)
+    {
+        Stopwatch timeout = Stopwatch.StartNew();
+        Exception? lastTransientFailure = null;
+        while (timeout.Elapsed < ProductPerformanceInputCommitTimeout)
+        {
+            try
+            {
+                AutomationElement? element = FindVisible(root, automationId);
+                if (element is not null)
+                {
+                    TextBox textBox = element.AsTextBox();
+                    if (!string.Equals(textBox.Text, value, StringComparison.Ordinal))
+                    {
+                        textBox.Text = value;
+                    }
+
+                    string committedValue =
+                        element.Properties.ItemStatus.ValueOrDefault ?? string.Empty;
+                    if (string.Equals(committedValue, value, StringComparison.Ordinal))
+                    {
+                        return;
+                    }
+                }
+            }
+            catch (COMException exception)
+            {
+                lastTransientFailure = exception;
+            }
+            catch (InvalidOperationException exception)
+            {
+                lastTransientFailure = exception;
+            }
+
+            Thread.Sleep(8);
+        }
+
+        throw new TimeoutException(
+            $"The {description} input did not receive a WinUI acknowledgement for '{value}'.",
+            lastTransientFailure);
+    }
+
+    private static Func<long> PrepareTraversalActivation(
+        ProductPerformanceRouteDefinition route,
+        AutomationElement element,
+        string expectedIdentity,
+        AutomationElement selectionHost,
+        IntPtr appWindowHandle)
+    {
+        ActivateWindowForPointerInput(appWindowHandle);
+
+        AutomationElement? label = null;
+        if (element.ControlType == ControlType.TreeItem ||
+            route.Id is "repo_issues" or "repo_pull_requests")
+        {
+            label = element
+                .FindAllDescendants()
+                .Where(static descendant => descendant.ControlType == ControlType.Text)
+                .FirstOrDefault(IsVisible);
+            if (label is null && element.ControlType == ControlType.TreeItem)
+            {
+                throw new InvalidOperationException(
+                    "The cached tree traversal target did not expose a visible label.");
+            }
+        }
+
+        Point initialTarget = ResolveTraversalClickPoint(
+            element,
+            label,
+            selectionHost,
+            appWindowHandle);
+        SendNativePointerMove(initialTarget);
+        Thread.Sleep(75);
+        return () =>
+        {
+            ActivateWindowForPointerInput(appWindowHandle);
+            AutomationElement currentElement = FindTraversalElementByIdentity(
+                selectionHost,
+                expectedIdentity) ?? element;
+            AutomationElement? currentLabel =
+                currentElement.ControlType == ControlType.TreeItem ||
+                route.Id is "repo_issues" or "repo_pull_requests"
+                ? currentElement
+                    .FindAllDescendants()
+                    .Where(static descendant => descendant.ControlType == ControlType.Text)
+                    .FirstOrDefault(IsVisible)
+                : null;
+            Point currentTarget = ResolveTraversalClickPoint(
+                currentElement,
+                currentLabel,
+                selectionHost,
+                appWindowHandle);
+            SendNativePointerMove(currentTarget);
+            // Re-resolving a virtualized row can move the pointer to a newly realized
+            // container. Let WinUI finish that hover transition before timing button-down;
+            // cached-selection latency begins with the user's click, not cursor travel.
+            Thread.Sleep(75);
+            long activationStartedTimestamp = Stopwatch.GetTimestamp();
+            SendNativeClick();
+            return activationStartedTimestamp;
+        };
+    }
+
+    private static AutomationElement? FindTraversalElementByIdentity(
+        AutomationElement selectionHost,
+        string expectedIdentity)
+    {
+        foreach (AutomationElement candidate in selectionHost.FindAllDescendants())
+        {
+            try
+            {
+                if (candidate.ControlType is ControlType.ListItem or ControlType.TreeItem or ControlType.DataItem &&
+                    IsVisible(candidate) &&
+                    string.Equals(GetExactTraversalIdentityForComparison(candidate), expectedIdentity, StringComparison.Ordinal))
+                {
+                    return candidate;
+                }
+            }
+            catch (COMException exception) when (IsTransientUiAutomationFailure(exception))
+            {
+            }
+        }
+
+        return null;
+    }
+
+    private static string GetExactTraversalIdentityForComparison(AutomationElement element)
+    {
+        string automationId = element.AutomationId?.Trim() ?? string.Empty;
+        return !string.IsNullOrWhiteSpace(automationId)
+            ? automationId
+            : element.Properties.ItemStatus.ValueOrDefault?.Trim() ?? string.Empty;
+    }
+
+    private static Point ResolveTraversalClickPoint(
+        AutomationElement element,
+        AutomationElement? label,
+        AutomationElement selectionHost,
+        IntPtr appWindowHandle)
+    {
+        Rectangle bounds = GetVisibleActivationBounds(
+            label ?? element,
+            selectionHost,
+            GetWindowBounds(appWindowHandle));
+        if (label is not null)
+        {
+            return new Point(
+                bounds.Left + bounds.Width / 2,
+                bounds.Top + bounds.Height / 2);
+        }
+
+        // List rows can contain legitimate nested actions such as author links.
+        // Activate a neutral point near the leading edge and vertically center it
+        // inside the portion actually clipped by the list viewport. A row can be
+        // reported on-screen while its top edge is hidden beneath the list header.
+        int horizontalInset = Math.Min(12, Math.Max(2, bounds.Width / 4));
+        return element.ControlType is ControlType.ListItem or ControlType.DataItem
+            ? new Point(bounds.Left + horizontalInset, bounds.Top + bounds.Height / 2)
+            : new Point(bounds.Left + bounds.Width / 2, bounds.Top + bounds.Height / 2);
+    }
+
+    private static void ActivateWindowForPointerInput(IntPtr windowHandle)
+    {
+        if (windowHandle == IntPtr.Zero)
+        {
+            throw new InvalidOperationException(
+                "JitHub did not expose a native window handle for cached traversal input.");
+        }
+
+        IntPtr foregroundWindow = GetForegroundWindow();
+        uint currentThread = GetCurrentThreadId();
+        uint targetThread = GetWindowThreadProcessId(windowHandle, out _);
+        uint foregroundThread = foregroundWindow == IntPtr.Zero
+            ? 0
+            : GetWindowThreadProcessId(foregroundWindow, out _);
+        bool attachedTarget = targetThread != 0 && targetThread != currentThread &&
+            AttachThreadInput(currentThread, targetThread, attach: true);
+        bool attachedForeground = foregroundThread != 0 &&
+            foregroundThread != currentThread &&
+            foregroundThread != targetThread &&
+            AttachThreadInput(currentThread, foregroundThread, attach: true);
+        try
+        {
+            _ = ShowWindow(windowHandle, 5);
+            _ = BringWindowToTop(windowHandle);
+            _ = SetForegroundWindow(windowHandle);
+        }
+        finally
+        {
+            if (attachedForeground)
+            {
+                _ = AttachThreadInput(currentThread, foregroundThread, attach: false);
+            }
+
+            if (attachedTarget)
+            {
+                _ = AttachThreadInput(currentThread, targetThread, attach: false);
+            }
+        }
 
         Stopwatch timeout = Stopwatch.StartNew();
         while (timeout.Elapsed < TimeSpan.FromSeconds(2))
         {
-            if (string.Equals(textBox.Text, value, StringComparison.Ordinal))
+            if (GetAncestor(GetForegroundWindow(), 2) == GetAncestor(windowHandle, 2))
             {
-                // Let WinUI process the Value-pattern update before the adjacent
-                // command is invoked. This setup delay is outside measured time.
-                Thread.Sleep(16);
                 return;
             }
 
-            Thread.Sleep(2);
+            Thread.Sleep(10);
         }
 
-        throw new TimeoutException($"The {description} input did not commit '{value}'.");
+        throw new InvalidOperationException(
+            "JitHub could not acquire foreground input before cached traversal.");
     }
 
-    private static Action PrepareTraversalActivation(AutomationElement element)
+    private static Rectangle GetVisibleActivationBounds(
+        AutomationElement element,
+        AutomationElement selectionHost,
+        Rectangle appWindowBounds)
     {
-        if (element.ControlType == ControlType.TreeItem)
+        Rectangle elementBounds = element.BoundingRectangle;
+        Rectangle hostBounds = selectionHost.BoundingRectangle;
+        Rectangle visibleBounds = Rectangle.Intersect(
+            Rectangle.Intersect(elementBounds, hostBounds),
+            appWindowBounds);
+        if (visibleBounds.Width <= 1 || visibleBounds.Height <= 1)
         {
-            AutomationElement? label = element
-                .FindAllDescendants()
-                .Where(static descendant => descendant.ControlType == ControlType.Text)
-                .FirstOrDefault(IsVisible);
-            if (label is not null)
-            {
-                Rectangle labelBounds = label.BoundingRectangle;
-                Point clickPoint = new(
-                    labelBounds.Left + labelBounds.Width / 2,
-                    labelBounds.Top + labelBounds.Height / 2);
-                SendNativePointerMove(clickPoint);
-                Thread.Sleep(75);
-                return SendNativeClick;
-            }
-
-            element.Focus();
-            return static () => Keyboard.Press(VirtualKeyShort.ENTER);
+            throw new InvalidOperationException(
+                "The cached traversal target is outside the JitHub selection viewport.");
         }
 
-        Rectangle bounds = element.BoundingRectangle;
-        if (bounds.Width <= 1 || bounds.Height <= 1)
+        return visibleBounds;
+    }
+
+    private static Rectangle GetWindowBounds(IntPtr windowHandle)
+    {
+        if (!GetWindowRect(windowHandle, out NativeRect bounds))
         {
-            throw new InvalidOperationException("The cached traversal target has no clickable bounds.");
+            throw new InvalidOperationException(
+                "JitHub did not expose valid native bounds for cached traversal input.");
         }
 
-        // List rows can contain legitimate nested actions such as author links.
-        // Activate a neutral point near the row's leading/top edge so the probe
-        // measures row selection rather than whichever child happens to be centered.
-        int horizontalInset = Math.Min(12, Math.Max(2, bounds.Width / 4));
-        int verticalInset = Math.Min(12, Math.Max(2, bounds.Height / 4));
-        Point target = element.ControlType is ControlType.ListItem or ControlType.DataItem
-            ? new Point(bounds.Left + horizontalInset, bounds.Top + verticalInset)
-            : new Point(bounds.Left + bounds.Width / 2, bounds.Top + bounds.Height / 2);
-        SendNativePointerMove(target);
-        Thread.Sleep(75);
-        return SendNativeClick;
+        return Rectangle.FromLTRB(bounds.Left, bounds.Top, bounds.Right, bounds.Bottom);
     }
 
     private static void SendNativePointerMove(Point target)
@@ -1282,6 +1590,12 @@ internal sealed class ProductPerformanceRouteProbe
         }
     }
 
+    private sealed record ProductPerformanceTraversalTiming(
+        TimeSpan Elapsed,
+        TimeSpan Input,
+        TimeSpan Render,
+        string Trace);
+
     [StructLayout(LayoutKind.Sequential)]
     private struct NativeInput
     {
@@ -1300,9 +1614,50 @@ internal sealed class ProductPerformanceRouteProbe
         public UIntPtr ExtraInfo;
     }
 
+    [StructLayout(LayoutKind.Sequential)]
+    private struct NativeRect
+    {
+        public int Left;
+        public int Top;
+        public int Right;
+        public int Bottom;
+    }
+
     [DllImport("user32.dll", SetLastError = true)]
     private static extern uint SendInput(uint inputCount, NativeInput[] inputs, int inputSize);
 
     [DllImport("user32.dll")]
     private static extern int GetSystemMetrics(int index);
+
+    [DllImport("kernel32.dll")]
+    private static extern uint GetCurrentThreadId();
+
+    [DllImport("user32.dll")]
+    private static extern uint GetWindowThreadProcessId(IntPtr windowHandle, out uint processId);
+
+    [DllImport("user32.dll")]
+    [return: MarshalAs(UnmanagedType.Bool)]
+    private static extern bool AttachThreadInput(uint fromThread, uint toThread, bool attach);
+
+    [DllImport("user32.dll")]
+    [return: MarshalAs(UnmanagedType.Bool)]
+    private static extern bool ShowWindow(IntPtr windowHandle, int command);
+
+    [DllImport("user32.dll")]
+    [return: MarshalAs(UnmanagedType.Bool)]
+    private static extern bool BringWindowToTop(IntPtr windowHandle);
+
+    [DllImport("user32.dll")]
+    [return: MarshalAs(UnmanagedType.Bool)]
+    private static extern bool SetForegroundWindow(IntPtr windowHandle);
+
+    [DllImport("user32.dll")]
+    private static extern IntPtr GetForegroundWindow();
+
+    [DllImport("user32.dll")]
+    private static extern IntPtr GetAncestor(IntPtr windowHandle, uint flags);
+
+    [DllImport("user32.dll")]
+    [return: MarshalAs(UnmanagedType.Bool)]
+    private static extern bool GetWindowRect(IntPtr windowHandle, out NativeRect bounds);
 }

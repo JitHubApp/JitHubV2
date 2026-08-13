@@ -638,6 +638,7 @@
                                 <ScrollViewer
                                     x:Name="CommitCommentsSection"
                                     x:Load="{x:Bind ViewModel.IsCommentsSectionVisible, Mode=OneWay}"
+                                    AutomationProperties.AutomationId="RepoCommitsCommentsViewport"
                                     HorizontalScrollBarVisibility="Disabled"
                                     VerticalScrollBarVisibility="Auto">
                                     <StackPanel Spacing="12">

@@ -14,6 +14,7 @@ public sealed partial class FilePreviewHost : UserControl
     private RepoFilePreviewKind? _currentRendererKind;
 
     public event Action<string>? ActionExecuted;
+    public event EventHandler<RepoFilePreviewAppliedEventArgs>? PreviewApplied;
 
     public FilePreviewHost()
     {
@@ -61,10 +62,16 @@ public sealed partial class FilePreviewHost : UserControl
     {
         if (e.PropertyName is nameof(RepoFilePreviewViewModel.IsLoading)
             or nameof(RepoFilePreviewViewModel.ErrorMessage)
-            or nameof(RepoFilePreviewViewModel.Kind)
             or nameof(RepoFilePreviewViewModel.CurrentFile))
         {
-            DispatcherQueue.TryEnqueue(UpdateState);
+            if (DispatcherQueue.HasThreadAccess)
+            {
+                UpdateState();
+            }
+            else
+            {
+                DispatcherQueue.TryEnqueue(UpdateState);
+            }
         }
     }
 
@@ -117,6 +124,9 @@ public sealed partial class FilePreviewHost : UserControl
 
         EmptyState.Visibility = Visibility.Collapsed;
         EnsureRenderer(vm);
+        PreviewApplied?.Invoke(
+            this,
+            new RepoFilePreviewAppliedEventArgs(vm.CurrentFile.Path));
     }
 
     private void EnsureRenderer(RepoFilePreviewViewModel vm)
@@ -194,3 +204,5 @@ public sealed partial class FilePreviewHost : UserControl
         };
     }
 }
+
+public sealed record RepoFilePreviewAppliedEventArgs(string Path);

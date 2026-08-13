@@ -235,6 +235,7 @@
                         IsItemClickEnabled="True"
                         ItemClick="GistsList_ItemClick"
                         KeyDown="GistsList_KeyDown"
+                        SelectionChanged="GistsList_SelectionChanged"
                         ItemTemplate="{StaticResource GistRowTemplate}"
                         ItemsSource="{x:Bind ViewModel.Gists, Mode=OneWay}"
                         SelectedItem="{x:Bind ViewModel.SelectedGistItem, Mode=TwoWay}"
@@ -289,6 +290,7 @@
                         </Grid.ColumnDefinitions>
                         <StackPanel MinWidth="0" Spacing="5">
                             <TextBlock
+                                x:Name="GistsDetailTitleText"
                                 AutomationProperties.AutomationId="GistsDetailTitle"
                                 FontFamily="{ThemeResource AppDisplayFontFamily}"
                                 FontSize="27"
@@ -452,7 +454,7 @@
 
                     <Grid Grid.Row="5">
                         <TextBox
-                            x:Uid="PagesGistsPageGistsFilePreview" AutomationProperties.AutomationId="GistsFilePreview"
+                            x:Uid="PagesGistsPageGistsFilePreview" x:Name="GistsFilePreviewTextBox" AutomationProperties.AutomationId="GistsFilePreview"
                             AutomationProperties.Name="Gist file preview"
                             Padding="14,12"
                             AcceptsReturn="True"

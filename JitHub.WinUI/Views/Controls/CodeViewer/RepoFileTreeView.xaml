@@ -79,9 +79,11 @@
                             <DataTemplate x:DataType="viewmodels:RepoTreeNodeViewModel">
                                 <Grid
                                     AutomationProperties.AccessibilityView="Raw"
+                                    Background="Transparent"
                                     ColumnSpacing="6"
                                     HorizontalAlignment="Left"
                                     Loaded="OnTreeItemContentLoaded"
+                                    PointerEntered="OnTreeItemPointerEntered"
                                     PointerPressed="OnTreeItemPointerPressed">
                                     <Grid.ColumnDefinitions>
                                         <ColumnDefinition Width="Auto" />

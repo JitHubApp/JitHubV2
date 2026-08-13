@@ -8,6 +8,7 @@ using JitHub.Models.NavArgs;
 using JitHub.Services.Layout;
 using JitHub.Services;
 using JitHub.WinUI.Helpers;
+using JitHub.WinUI.Performance;
 using JitHub.WinUI.Views.Controls.Common;
 using JitHub.WinUI.Views.Controls.Issue;
 using JitHub.WinUI.Views.Dialogs;
@@ -28,6 +29,7 @@ public sealed partial class RepoIssuePage : Page
     private RepoIssueListPane? _issueListPane;
     private RepoIssueInspectorPane? _issueInspectorPane;
     private RepoIssueDetailPane? _issueDetailPane;
+    private long _issueTraversalGeneration;
 
     public RepoIssuePageViewModel ViewModel { get; }
 
@@ -37,6 +39,7 @@ public sealed partial class RepoIssuePage : Page
         ViewModel = ((App)Application.Current).GetService<RepoIssuePageViewModel>();
         InitializeComponent();
         DataContext = ViewModel;
+        Unloaded += RepoIssuePage_Unloaded;
         ViewModel.PropertyChanged += (_, args) =>
         {
             if (args.PropertyName == nameof(RepoIssuePageViewModel.IsIssueContentVisible) &&
@@ -45,6 +48,13 @@ public sealed partial class RepoIssuePage : Page
                 ScheduleIssueDetailPaneRealization();
             }
         };
+    }
+
+    private void RepoIssuePage_Unloaded(object sender, RoutedEventArgs e)
+    {
+        Interlocked.Increment(ref _issueTraversalGeneration);
+        ViewModel.CancelNavigationWork();
+        _issueListPane?.CancelPendingWork();
     }
 
     protected override async void OnNavigatedTo(NavigationEventArgs e)
@@ -86,7 +96,8 @@ public sealed partial class RepoIssuePage : Page
 
     protected override void OnNavigatedFrom(NavigationEventArgs e)
     {
-        ViewModel.CancelPredictivePrefetches();
+        Interlocked.Increment(ref _issueTraversalGeneration);
+        ViewModel.CancelNavigationWork();
         _issueListPane?.CancelPendingWork();
         _workspaceChromeRealizationVersion++;
         base.OnNavigatedFrom(e);
@@ -231,11 +242,42 @@ public sealed partial class RepoIssuePage : Page
 
         RepoIssueListPane pane = new(ViewModel);
         pane.CloseRequested += (_, _) => IssuesWorkspace.CloseDrawer();
-        pane.IssueSelected += (_, _) => IssuesWorkspace.CloseDrawer();
+        pane.IssueSelectionPriming += (_, args) =>
+        {
+            EnsureIssueDetailPane();
+            _issueDetailPane?.PrimeIssueSelection(args.Issue);
+        };
+        pane.IssueSelected += (_, args) =>
+        {
+            if (IssuesWorkspace.IsLeadingDrawerOpen)
+            {
+                ListViewScrollAnchor anchor = pane.CaptureScrollAnchor();
+                IssuesWorkspace.CloseDrawer();
+                anchor.RestoreAcrossLayoutPasses(DispatcherQueue);
+            }
+            ScheduleIssueTraversalCommit(args.Issue);
+        };
         pane.NewIssueRequested += (sender, _) => NewIssueButton_Click(sender!, new RoutedEventArgs());
         _issueListPane = pane;
         IssueListPanePresenter.Content = pane;
         UpdatePaneButtonVisibility();
+    }
+
+    private void ScheduleIssueTraversalCommit(GitHubIssue issue)
+    {
+        if (!ProductPerformanceReadiness.IsEnabled)
+        {
+            return;
+        }
+
+        long generation = Interlocked.Increment(ref _issueTraversalGeneration);
+        ProductPerformanceRenderCommitter.ScheduleAfterNextFrame(
+            this,
+            () => generation == Volatile.Read(ref _issueTraversalGeneration) && IsLoaded,
+            () => _issueDetailPane?.IsIssueSelectionPrimed(issue) == true,
+            () => ProductPerformanceReadiness.CommitTraversal(
+                "repo_issues",
+                issue.AutomationId));
     }
 
     private void EnsureIssueInspectorPane()

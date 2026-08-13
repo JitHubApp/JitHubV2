@@ -23,6 +23,8 @@ public sealed partial class RepoIssuePageViewModel : ViewModelBase
 {
     private static readonly TimeSpan SelectionLoadDebounce = TimeSpan.FromMilliseconds(150);
     private static readonly TimeSpan HoverPrefetchDebounce = TimeSpan.FromMilliseconds(120);
+    private static readonly TimeSpan CachedNavigationCommentQuietPeriod = TimeSpan.FromMilliseconds(500);
+    private static readonly TimeSpan CachedNavigationRefreshQuietPeriod = TimeSpan.FromSeconds(1);
     private readonly IAuthService _authService;
     private readonly IAccountService _accountService;
     private readonly IGitHubClientService _gitHubClientService;
@@ -1139,7 +1141,10 @@ public sealed partial class RepoIssuePageViewModel : ViewModelBase
         ScheduleNeighborPrefetch(value);
         CancellationTokenSource cancellationTokenSource = new();
         _selectionLoadCancellationTokenSource = cancellationTokenSource;
-        _ = ShowIssueAfterSelectionDelayAsync(value, cancellationTokenSource.Token);
+        _ = ShowIssueAfterSelectionDelayAsync(
+            value,
+            cancellationTokenSource.Token,
+            _navigationInitializationVersion);
     }
 
     private async Task LoadIssuesAsync(
@@ -1693,6 +1698,15 @@ public sealed partial class RepoIssuePageViewModel : ViewModelBase
         _neighborPrefetch = null;
     }
 
+    public void CancelNavigationWork()
+    {
+        _navigationInitializationVersion++;
+        CancelActiveListLoad();
+        CancelActiveDetailLoad();
+        CancelPendingSelectionLoad();
+        CancelPredictivePrefetches();
+    }
+
     private bool TryApplyNavigationSnapshot(
         string accountPartition,
         IssueNavArg navigationArgs,
@@ -2186,7 +2200,10 @@ public sealed partial class RepoIssuePageViewModel : ViewModelBase
         _suppressSelectionChanged = false;
     }
 
-    private async Task ShowIssueAfterSelectionDelayAsync(GitHubIssue issue, CancellationToken cancellationToken)
+    private async Task ShowIssueAfterSelectionDelayAsync(
+        GitHubIssue issue,
+        CancellationToken cancellationToken,
+        int navigationInitializationVersion)
     {
         try
         {
@@ -2197,7 +2214,9 @@ public sealed partial class RepoIssuePageViewModel : ViewModelBase
             return;
         }
 
-        if (cancellationToken.IsCancellationRequested)
+        if (cancellationToken.IsCancellationRequested ||
+            navigationInitializationVersion != _navigationInitializationVersion ||
+            _navArg is null)
         {
             return;
         }
@@ -2443,14 +2462,10 @@ public sealed partial class RepoIssuePageViewModel : ViewModelBase
         IssueNavigationSnapshot snapshot,
         int initializationVersion)
     {
-        // Let the cached header/body reach a frame before realizing the cached Markdown
-        // conversation. The data is already local; this only moves expensive XAML work out of
-        // the navigation input turn.
-        bool isNotificationHandoff = navigationArgs.IsNotificationHandoff || string.Equals(
-            snapshot.Source,
-            "notification-preview",
-            StringComparison.Ordinal);
-        await Task.Delay(TimeSpan.FromMilliseconds(isNotificationHandoff ? 500 : 75));
+        // Cached content is already local; reserve an input window before realizing the
+        // Markdown conversation and starting stale-list reconciliation.
+        TimeSpan commentDelay = CachedNavigationCommentQuietPeriod;
+        await Task.Delay(commentDelay);
         if (initializationVersion != _navigationInitializationVersion ||
             !ReferenceEquals(_navArg, navigationArgs))
         {
@@ -2458,6 +2473,19 @@ public sealed partial class RepoIssuePageViewModel : ViewModelBase
         }
 
         ApplyDeferredNavigationComments(snapshot);
+        TimeSpan refreshDelay = CachedNavigationRefreshQuietPeriod - commentDelay;
+        if (refreshDelay > TimeSpan.Zero)
+        {
+            // Cached content is already interactive. Reserve the rest of the first second
+            // for input before stale-list reconciliation can enqueue substantial UI work.
+            await Task.Delay(refreshDelay);
+            if (initializationVersion != _navigationInitializationVersion ||
+                !ReferenceEquals(_navArg, navigationArgs))
+            {
+                return;
+            }
+        }
+
         await LoadIssuesAsync(
             navigationArgs.IssueId,
             preserveCurrentDetailDuringLoad: true);

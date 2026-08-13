@@ -102,11 +102,31 @@ public static class PixelComparer
         return dst;
     }
 
+    public static byte[] CropToRequiredBounds(
+        byte[] rgba,
+        int sourceWidth,
+        int sourceHeight,
+        int requiredWidth,
+        int requiredHeight)
+    {
+        if (sourceWidth < requiredWidth || sourceHeight < requiredHeight)
+        {
+            throw new InvalidDataException(
+                $"Raster capture {sourceWidth}x{sourceHeight} does not cover the required " +
+                $"{requiredWidth}x{requiredHeight} comparison area.");
+        }
+
+        return sourceWidth == requiredWidth && sourceHeight == requiredHeight
+            ? rgba
+            : Crop(rgba, sourceWidth, sourceHeight, 0, 0, requiredWidth, requiredHeight);
+    }
+
     /// <summary>
-    /// Compares two RGBA buffers of identical dimensions. Per-channel L1
-    /// distance, ignores any difference ≤ <paramref name="channelTolerance"/>
-    /// (rasterizers commonly disagree by a few units near antialiased
-    /// edges). A pixel is "differing" if any channel exceeds the tolerance.
+    /// Compares two RGBA buffers of identical dimensions. RGB is compared in
+    /// premultiplied-alpha space because unpremultiplied color beneath a fully
+    /// transparent pixel is undefined and cannot affect the rendered image.
+    /// Alpha is compared directly. A pixel is "differing" if any resulting
+    /// channel exceeds <paramref name="channelTolerance"/>.
     /// </summary>
     public static DiffReport Compare(byte[] a, byte[] b, int width, int height, int channelTolerance = 6)
     {
@@ -123,7 +143,13 @@ public static class PixelComparer
             bool pixelDiffers = false;
             for (int c = 0; c < 4; c++)
             {
-                int delta = Math.Abs(a[baseIdx + c] - b[baseIdx + c]);
+                int aValue = c == 3
+                    ? a[baseIdx + c]
+                    : Premultiply(a[baseIdx + c], a[baseIdx + 3]);
+                int bValue = c == 3
+                    ? b[baseIdx + c]
+                    : Premultiply(b[baseIdx + c], b[baseIdx + 3]);
+                int delta = Math.Abs(aValue - bValue);
                 if (delta > maxDelta) maxDelta = delta;
                 sumDelta += delta;
                 if (delta > channelTolerance) pixelDiffers = true;
@@ -134,6 +160,9 @@ public static class PixelComparer
         double frac = (double)differing / (width * height);
         return new DiffReport(width, height, maxDelta, mean, frac);
     }
+
+    private static int Premultiply(byte color, byte alpha) =>
+        (color * alpha + 127) / 255;
 
     private static (byte[] Rgba, int Width, int Height) BitmapToRgba(Bitmap bmp)
     {

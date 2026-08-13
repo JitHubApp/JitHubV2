@@ -226,6 +226,7 @@ public abstract partial class MeSearchPageViewModelBase : ViewModelBase
     private const int PageSize = 100;
     private const int CommentPageSize = 100;
     private const int GitHubSearchResultLimit = 1000;
+    private static readonly TimeSpan InputCriticalDetailDeferral = TimeSpan.FromMilliseconds(20);
     private readonly IAuthService _authService;
     private readonly IAccountService _accountService;
     private readonly IGitHubMeQueryService _meQueryService;
@@ -519,6 +520,11 @@ public abstract partial class MeSearchPageViewModelBase : ViewModelBase
     [ObservableProperty]
     public partial GitHubIssue? SelectedIssue { get; set; }
 
+    public bool IsSelectedHeaderCoherent(MeWorkItemViewItem item) =>
+        ReferenceEquals(SelectedItem, item) &&
+        SelectedIssue?.Number == item.Issue.Number &&
+        string.Equals(SelectedIssueTitle, item.Issue.Title, StringComparison.Ordinal);
+
     public async Task InitializeAsync(CancellationToken cancellationToken = default)
     {
         if (_initialized)
@@ -811,7 +817,6 @@ public abstract partial class MeSearchPageViewModelBase : ViewModelBase
 
     private async Task LoadSelectedItemAfterInputAsync(MeWorkItemViewItem? item)
     {
-        await Task.Yield();
         if (!ReferenceEquals(SelectedItem, item))
         {
             return;
@@ -845,7 +850,6 @@ public abstract partial class MeSearchPageViewModelBase : ViewModelBase
         OnPropertyChanged(nameof(SelectedIssueStateText));
         OnPropertyChanged(nameof(SelectedIssueMetadataText));
         OnPropertyChanged(nameof(SelectedIssueCommentText));
-        OnPropertyChanged(nameof(DetailMarkdownSource));
         OnPropertyChanged(nameof(HasMilestone));
         OnPropertyChanged(nameof(MilestoneTitle));
         OnPropertyChanged(nameof(LinkedPullRequestText));
@@ -896,18 +900,24 @@ public abstract partial class MeSearchPageViewModelBase : ViewModelBase
             return;
         }
 
+        // Publish only the input-critical identity before the next frame. Body
+        // markdown and collections can be expensive even when their data is cached.
         SelectedIssue = item.Issue;
-        ApplySelectedIssue(item.Issue);
+        try
+        {
+            await Task.Delay(InputCriticalDetailDeferral, cancellationToken);
+        }
+        catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
+        {
+            return;
+        }
 
-        // Selection is an input-critical path. Project the row's already-loaded
-        // issue immediately, then let cache reconciliation and background reads
-        // begin on the next UI turn so pointer/keyboard input and the first detail
-        // render are never held behind section setup.
-        await Task.Yield();
         if (version != _detailLoadVersion || cancellationToken.IsCancellationRequested)
         {
             return;
         }
+
+        ApplySelectedIssue(item.Issue);
 
         string fullName = item.RepositoryFullName;
         (string owner, string repositoryName) = MeWorkItemViewItem.SplitRepositoryName(fullName);
@@ -1630,9 +1640,7 @@ public abstract partial class MeSearchPageViewModelBase : ViewModelBase
 
     private void ApplySelectedIssue(GitHubIssue issue)
     {
-        DetailBodyText = string.IsNullOrWhiteSpace(issue.Body)
-            ? GetString("MyWorkItems.Detail.NoDescriptionMarkdown", "_No description provided._")
-            : issue.Body!;
+        DetailBodyText = GetIssueBodyMarkdown(issue);
         DetailBaseUrl = issue.HtmlUrl;
         SelectedLabels.ApplySnapshot(
             issue.Labels,
@@ -1648,7 +1656,13 @@ public abstract partial class MeSearchPageViewModelBase : ViewModelBase
             static (item, actor) => item.Apply(actor));
 
         NotifyInspectorCollectionsChanged();
+        OnPropertyChanged(nameof(DetailMarkdownSource));
     }
+
+    private string GetIssueBodyMarkdown(GitHubIssue issue) =>
+        string.IsNullOrWhiteSpace(issue.Body)
+            ? GetString("MyWorkItems.Detail.NoDescriptionMarkdown", "_No description provided._")
+            : issue.Body!;
 
     private void ReplaceComments(IEnumerable<GitHubIssueComment> comments, bool removeMissing = true)
     {

@@ -182,7 +182,6 @@ public static class ProductPerformanceReadiness
                 expectedDestinationRoute.Trim(),
                 startedTimestamp,
                 generation));
-        RecordTraversalStage("source.activated");
     }
 
     public static void CancelTraversal(long? startedTimestamp = null)

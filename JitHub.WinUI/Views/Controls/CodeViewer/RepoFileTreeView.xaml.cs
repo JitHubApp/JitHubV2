@@ -6,6 +6,7 @@ using System.Threading;
 using System.Threading.Tasks;
 using JitHub.Services;
 using JitHub.Services.CodeViewer;
+using JitHub.WinUI.Performance;
 using JitHub.WinUI.ViewModels.CodeViewer;
 using Microsoft.UI.Input;
 using Microsoft.UI.Xaml;
@@ -34,8 +35,10 @@ public sealed partial class RepoFileTreeView : UserControl
     private readonly object _ownedTaskGate = new();
     private Task _ownedTask = Task.CompletedTask;
     private string? _pendingSelectionPath;
+    private string? _lastInvokedPath;
+    private long _lastInvokedTimestamp;
 
-    public event EventHandler? FileInvoked;
+    public event EventHandler<RepoFileInvokedEventArgs>? FileInvoked;
     public event EventHandler<RepoFileTreeTabNavigationEventArgs>? TabNavigationRequested;
 
     public RepoFileTreeView()
@@ -55,6 +58,40 @@ public sealed partial class RepoFileTreeView : UserControl
     public bool FocusTree() => FileTreeView.Focus(FocusState.Programmatic);
 
     public bool FocusFilter() => FileFilter.Focus(FocusState.Programmatic);
+
+    internal ProductPerformanceScrollProbe? StartPerformanceScrollProbe(
+        FrameworkElement statusHost)
+    {
+        if (!ProductPerformanceReadiness.IsEnabled)
+        {
+            return null;
+        }
+
+        return FindDescendant<ScrollViewer>(FileTreeView) is ScrollViewer scrollViewer
+            ? ProductPerformanceScrollProbe.TryStart(statusHost, scrollViewer)
+            : null;
+    }
+
+    private static T? FindDescendant<T>(DependencyObject root)
+        where T : DependencyObject
+    {
+        int count = VisualTreeHelper.GetChildrenCount(root);
+        for (int index = 0; index < count; index++)
+        {
+            DependencyObject child = VisualTreeHelper.GetChild(root, index);
+            if (child is T match)
+            {
+                return match;
+            }
+
+            if (FindDescendant<T>(child) is T nested)
+            {
+                return nested;
+            }
+        }
+
+        return null;
+    }
 
     private void DrawerTabStop_PreviewKeyDown(object sender, KeyRoutedEventArgs e)
     {
@@ -380,6 +417,8 @@ public sealed partial class RepoFileTreeView : UserControl
 
         if (FindTreeViewItem(element) is TreeViewItem container)
         {
+            container.GotFocus -= OnTreeItemContainerGotFocus;
+            container.GotFocus += OnTreeItemContainerGotFocus;
             AutomationProperties.SetAutomationId(container, node.AutomationId);
             AutomationProperties.SetName(container, node.AutomationName);
             AutomationProperties.SetItemStatus(container, $"path:{node.Path}");
@@ -401,27 +440,92 @@ public sealed partial class RepoFileTreeView : UserControl
 
     private void OnTreeItemPointerPressed(object sender, PointerRoutedEventArgs e)
     {
-        if (sender is not FrameworkElement { DataContext: RepoTreeNodeViewModel { IsDirectory: false } nodeVm } element ||
+        if (e.Handled ||
+            sender is not FrameworkElement { DataContext: RepoTreeNodeViewModel { IsDirectory: false } nodeVm } element ||
             e.GetCurrentPoint(element).Properties.PointerUpdateKind != PointerUpdateKind.LeftButtonPressed)
         {
             return;
         }
 
-        if (FindTreeViewItem(element) is { IsSelected: false } container)
-        {
-            container.IsSelected = true;
-        }
-
         if (string.Equals(ViewModel?.SelectedNode?.Path, nodeVm.Path, StringComparison.Ordinal))
         {
-            FileInvoked?.Invoke(this, EventArgs.Empty);
+            RaiseFileInvoked(nodeVm);
+            e.Handled = true;
             return;
         }
 
-        // Native file explorers select on pointer press. Starting here keeps the
-        // visible selection and cached preview path ahead of TreeView's slower
-        // release/invocation gesture without swallowing the event from TreeView.
-        SelectFileNode(nodeVm);
+        TreeViewItem? container = FindTreeViewItem(element);
+        SelectFileNode(
+            nodeVm,
+            requireVisualSelection: false,
+            clearPendingAtLowPriority: false);
+        e.Handled = true;
+        DeferredFrameAction.Schedule(
+            this,
+            () => IsLoaded && string.Equals(_pendingSelectionPath, nodeVm.Path, StringComparison.Ordinal),
+            () =>
+            {
+                if (container is { IsSelected: false })
+                {
+                    container.IsSelected = true;
+                }
+
+                container?.Focus(FocusState.Pointer);
+
+                if (string.Equals(_pendingSelectionPath, nodeVm.Path, StringComparison.Ordinal))
+                {
+                    _pendingSelectionPath = null;
+                }
+            });
+    }
+
+    private void OnTreeItemPointerEntered(object sender, PointerRoutedEventArgs e)
+    {
+        if (sender is not FrameworkElement
+            {
+                DataContext: RepoTreeNodeViewModel { IsDirectory: false } node
+            })
+        {
+            return;
+        }
+
+        QueueNodePrefetch(node);
+    }
+
+    private void OnTreeItemContainerGotFocus(object sender, RoutedEventArgs e)
+    {
+        if (sender is TreeViewItem item &&
+            ResolveTreeItemNode(item) is { IsDirectory: false } node)
+        {
+            QueueNodePrefetch(node);
+        }
+    }
+
+    private static RepoTreeNodeViewModel? ResolveTreeItemNode(TreeViewItem item) => item.Content switch
+    {
+        RepoTreeNodeViewModel node => node,
+        TreeViewNode { Content: RepoTreeNodeViewModel node } => node,
+        _ => null
+    };
+
+    private void QueueNodePrefetch(RepoTreeNodeViewModel node)
+    {
+        RepoFileTreeViewModel? viewModel = ViewModel;
+        CancellationToken lifetimeToken =
+            Volatile.Read(ref _lifetimeCts)?.Token ?? new CancellationToken(canceled: true);
+        if (viewModel is null || lifetimeToken.IsCancellationRequested)
+        {
+            return;
+        }
+
+        try
+        {
+            _ = viewModel.PrefetchNodeAsync(node, lifetimeToken);
+        }
+        catch (Exception)
+        {
+            // Prediction is best-effort and must never affect navigation.
+        }
     }
 
     private static TreeViewItem? FindTreeViewItem(DependencyObject element)
@@ -457,39 +561,70 @@ public sealed partial class RepoFileTreeView : UserControl
         }
         else
         {
-            FileInvoked?.Invoke(this, EventArgs.Empty);
+            RaiseFileInvoked(nodeVm);
         }
     }
 
-    private void SelectFileNode(RepoTreeNodeViewModel nodeVm, bool requireVisualSelection = true)
+    private void SelectFileNode(
+        RepoTreeNodeViewModel nodeVm,
+        bool requireVisualSelection = true,
+        bool clearPendingAtLowPriority = true)
     {
         if (string.Equals(_pendingSelectionPath, nodeVm.Path, StringComparison.Ordinal))
         {
             return;
         }
 
+        ProductPerformanceReadiness.BeginTraversal(
+            "repo_code",
+            nodeVm.AutomationId,
+            "repo_code");
+        ProductPerformanceReadiness.RecordTraversalStage("repo_code.pointer.selected");
         _pendingSelectionPath = nodeVm.Path;
-        ProductPerformanceReadiness.CommitTraversal("repo_code", nodeVm.AutomationId);
-        _ = DispatcherQueue.TryEnqueue(
-            Microsoft.UI.Dispatching.DispatcherQueuePriority.Low,
-            () =>
-            {
-                if (!string.Equals(_pendingSelectionPath, nodeVm.Path, StringComparison.Ordinal))
-                {
-                    return;
-                }
+        if (requireVisualSelection &&
+            (FileTreeView.SelectedNode?.Content is not RepoTreeNodeViewModel selectedNode ||
+             !string.Equals(selectedNode.Path, nodeVm.Path, StringComparison.Ordinal)))
+        {
+            _pendingSelectionPath = null;
+            ProductPerformanceReadiness.CancelTraversal();
+            return;
+        }
 
-                _pendingSelectionPath = null;
-                if (requireVisualSelection &&
-                    (FileTreeView.SelectedNode?.Content is not RepoTreeNodeViewModel selectedNode ||
-                     !string.Equals(selectedNode.Path, nodeVm.Path, StringComparison.Ordinal)))
+        bool handled = RaiseFileInvoked(nodeVm);
+        ProductPerformanceReadiness.RecordTraversalStage("repo_code.page.invoked");
+        if (!handled)
+        {
+            ViewModel?.SelectNodeCommand.Execute(nodeVm);
+            ProductPerformanceReadiness.RecordTraversalStage("repo_code.command.executed");
+        }
+        if (clearPendingAtLowPriority)
+        {
+            _ = DispatcherQueue.TryEnqueue(
+                Microsoft.UI.Dispatching.DispatcherQueuePriority.Low,
+                () =>
                 {
-                    return;
-                }
+                    if (string.Equals(_pendingSelectionPath, nodeVm.Path, StringComparison.Ordinal))
+                    {
+                        _pendingSelectionPath = null;
+                    }
+                });
+        }
+    }
 
-                ViewModel?.SelectNodeCommand.Execute(nodeVm);
-                FileInvoked?.Invoke(this, EventArgs.Empty);
-            });
+    private bool RaiseFileInvoked(RepoTreeNodeViewModel node)
+    {
+        long now = Environment.TickCount64;
+        if (string.Equals(_lastInvokedPath, node.Path, StringComparison.Ordinal) &&
+            now - _lastInvokedTimestamp < 250)
+        {
+            return true;
+        }
+
+        _lastInvokedPath = node.Path;
+        _lastInvokedTimestamp = now;
+        var args = new RepoFileInvokedEventArgs(node, node.AutomationId);
+        FileInvoked?.Invoke(this, args);
+        return args.Handled;
     }
 
     private void OnExpanding(TreeView sender, TreeViewExpandingEventArgs args)
@@ -570,6 +705,19 @@ public sealed partial class RepoFileTreeView : UserControl
 public sealed class RepoFileTreeTabNavigationEventArgs(bool moveBackward) : EventArgs
 {
     public bool MoveBackward { get; } = moveBackward;
+    public bool Handled { get; set; }
+}
+
+public sealed class RepoFileInvokedEventArgs(
+    RepoTreeNodeViewModel node,
+    string automationId) : EventArgs
+{
+    public RepoTreeNodeViewModel Node { get; } = node;
+
+    public string Path => Node.Path;
+
+    public string AutomationId { get; } = automationId;
+
     public bool Handled { get; set; }
 }
 

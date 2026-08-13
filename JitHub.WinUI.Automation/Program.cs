@@ -3685,7 +3685,7 @@ static void RunShellResponsiveProbe(CaptureOptions options)
             int actualWidth = resizedBounds.Width;
             string viewportLabel = GetResponsiveViewportLabel(width, height, resizedBounds);
             WaitForElement("DashboardCustomizeButton", () => window.FindFirstDescendant(cf => cf.ByAutomationId("DashboardCustomizeButton")), TimeSpan.FromSeconds(8));
-            if (actualWidth > 1260)
+            if (actualWidth >= AutomationResponsiveLayout.ShellRailCollapseWidth)
             {
                 AssertProbe(window.FindFirstDescendant(cf => cf.ByAutomationId("ShellNav_home")) is not null, "Combined shell nav was not present.");
                 AssertProbe(window.FindFirstDescendant(cf => cf.ByAutomationId("ShellRepoFilter_Public")) is not null, "Combined shell repository filter was not present.");
@@ -6606,7 +6606,7 @@ static void RunIssuesResponsiveWorkspaceProbe(CaptureOptions options)
                 previousLeadingInline = leadingInline;
                 previousTrailingInline = trailingInline;
 
-                if (actualWidth >= 1260 && leadingInline)
+                if (actualWidth >= AutomationResponsiveLayout.ShellRailCollapseWidth && leadingInline)
                 {
                     AutomationElement inlineList = WaitForElement(
                         listId,
@@ -8261,7 +8261,7 @@ static void RunCommitsResponsiveWorkspaceProbe(CaptureOptions options)
             AssertProbe(
                 IsVisible(window.FindFirstDescendant(cf => cf.ByAutomationId("RepoCommitsDetailTitle"))),
                 $"commits: primary detail was not visible at {viewportLabel}.");
-            if (actualWidth >= 1260)
+            if (actualWidth >= AutomationResponsiveLayout.ShellRailCollapseWidth)
             {
                 AutomationElement? workspace = window.FindFirstDescendant(
                     cf => cf.ByAutomationId("RepoCommitsAdaptiveWorkspace"));
@@ -8327,10 +8327,33 @@ static void RunCommitsResponsiveWorkspaceProbe(CaptureOptions options)
             () => window.FindFirstDescendant(cf => cf.ByAutomationId("RepoCommitsSection_Comments")),
             TimeSpan.FromSeconds(8));
         InvokeOrClick(commentsSection);
-        Thread.Sleep(650);
-        AssertProbe(
-            IsVisible(window.FindFirstDescendant(cf => cf.ByAutomationId("RepoCommitsCommentButton"))),
-            "Commit comment form was not visible after opening the comments section.");
+        try
+        {
+            AutomationElement commentButton = WaitForElement(
+                "RepoCommitsCommentButton",
+                () => window.FindFirstDescendant(cf => cf.ByAutomationId("RepoCommitsCommentButton")),
+                TimeSpan.FromSeconds(8));
+            AutomationElement commentsViewport = WaitForElement(
+                "RepoCommitsCommentsViewport",
+                () => window.FindFirstDescendant(cf => cf.ByAutomationId("RepoCommitsCommentsViewport")),
+                TimeSpan.FromSeconds(8));
+            for (int attempt = 0; attempt < 6 && !IsVisible(commentButton); attempt++)
+            {
+                Mouse.MoveTo(CenterPoint(commentsViewport, window));
+                Mouse.Scroll(-5);
+                Thread.Sleep(180);
+            }
+            AssertProbe(
+                IsVisible(commentButton),
+                "Commit comment action could not be reached in the comments viewport.");
+        }
+        catch
+        {
+            CaptureWindow(
+                window,
+                Path.Combine(options.OutputDirectory, "commits-section-comments-missing.png"));
+            throw;
+        }
         CaptureWindow(window, Path.Combine(options.OutputDirectory, "commits-section-comments.png"));
     }
     finally
@@ -9831,10 +9854,24 @@ static void AssertSettingsDialogScrim(
     using var baseline = new Bitmap(baselinePath);
     using var opened = new Bitmap(dialogPath);
     Rectangle windowBounds = window.BoundingRectangle;
-    int left = Math.Clamp(dialogBounds.Left - windowBounds.Left, 0, baseline.Width);
-    int top = Math.Clamp(dialogBounds.Top - windowBounds.Top, 0, baseline.Height);
-    int right = Math.Clamp(dialogBounds.Right - windowBounds.Left, 0, baseline.Width);
-    int bottom = Math.Clamp(dialogBounds.Bottom - windowBounds.Top, 0, baseline.Height);
+    double scaleX = windowBounds.Width > 0 ? (double)baseline.Width / windowBounds.Width : 1;
+    double scaleY = windowBounds.Height > 0 ? (double)baseline.Height / windowBounds.Height : 1;
+    int left = Math.Clamp(
+        (int)Math.Round((dialogBounds.Left - windowBounds.Left) * scaleX),
+        0,
+        baseline.Width);
+    int top = Math.Clamp(
+        (int)Math.Round((dialogBounds.Top - windowBounds.Top) * scaleY),
+        0,
+        baseline.Height);
+    int right = Math.Clamp(
+        (int)Math.Round((dialogBounds.Right - windowBounds.Left) * scaleX),
+        0,
+        baseline.Width);
+    int bottom = Math.Clamp(
+        (int)Math.Round((dialogBounds.Bottom - windowBounds.Top) * scaleY),
+        0,
+        baseline.Height);
     double baselineLuminance = 0;
     double openedLuminance = 0;
     int samples = 0;
@@ -16413,4 +16450,12 @@ internal sealed class CaptureOptions
 
         return newest;
     }
+}
+
+internal static class AutomationResponsiveLayout
+{
+    // Mirrors ShellResponsiveLayout.RailCollapseWidth. Keeping the real-app
+    // probes on the production collapse order avoids false wide-layout
+    // assertions when the Windows work area clamps a requested viewport.
+    public const int ShellRailCollapseWidth = 1298;
 }

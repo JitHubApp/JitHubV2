@@ -67,6 +67,10 @@ public sealed partial class RepoFileTreeViewModel : ObservableObject
     // Callback wired by page VM so SelectNodeCommand routes to it.
     public Func<RepoTreeNodeViewModel, CancellationToken, Task>? OnSelectNode { get; set; }
 
+    // Predictive file-content warm-up. The page owns the cache and transport;
+    // the tree only forwards likely navigation intent.
+    public Func<RepoTreeNodeViewModel, CancellationToken, Task>? OnPrefetchNode { get; set; }
+
     // Notifies the page after contents API data authoritatively changes a folder.
     public Action? OnAuthoritativeTreeChanged { get; set; }
 
@@ -168,11 +172,10 @@ public sealed partial class RepoFileTreeViewModel : ObservableObject
     {
         if (node is null) return;
         SelectedNode = node;
-        await Task.Yield();
         ct.ThrowIfCancellationRequested();
         if (OnSelectNode is not null)
         {
-            await OnSelectNode(node, ct);
+            await OnSelectNode(node, ct).ConfigureAwait(false);
         }
     }
 
@@ -340,6 +343,9 @@ public sealed partial class RepoFileTreeViewModel : ObservableObject
             }
         }
     }
+
+    internal Task PrefetchNodeAsync(RepoTreeNodeViewModel node, CancellationToken ct) =>
+        OnPrefetchNode?.Invoke(node, ct) ?? Task.CompletedTask;
 
     public void CancelPendingRequests()
     {

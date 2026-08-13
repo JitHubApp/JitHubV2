@@ -6,6 +6,7 @@ using System.Threading.Tasks;
 using JitHub.Services;
 using JitHub.Services.Layout;
 using JitHub.WinUI.Helpers;
+using JitHub.WinUI.Performance;
 using JitHub.WinUI.ViewModels.Pages;
 using JitHub.WinUI.Views.Controls.Common;
 using JitHub.WinUI.Views.Dialogs;
@@ -15,6 +16,7 @@ using Microsoft.UI.Xaml.Automation;
 using Microsoft.UI.Xaml.Controls;
 using Microsoft.UI.Xaml.Controls.Primitives;
 using Microsoft.UI.Xaml.Input;
+using Microsoft.UI.Xaml.Media;
 using WinRT.Interop;
 using Windows.ApplicationModel.DataTransfer;
 using Windows.Storage;
@@ -34,6 +36,9 @@ public sealed partial class GistsPage : Page
     private DataTransferManager? _shareManager;
     private GistViewItem? _shareItem;
     private ListViewScrollAnchor? _pendingLibraryScrollAnchor;
+    private long _gistTraversalGeneration;
+    private string? _lastGistTraversalKey;
+    private ProductPerformanceScrollProbe? _performanceScrollProbe;
 
     public GistsPageViewModel ViewModel { get; }
 
@@ -67,6 +72,7 @@ public sealed partial class GistsPage : Page
     private async void OnLoaded(object sender, RoutedEventArgs e)
     {
         ApplyResponsiveLayout(ActualWidth);
+        AttachPerformanceScrollProbe();
         await AwaitLatestStopAsync();
         if (_initialized)
         {
@@ -92,6 +98,9 @@ public sealed partial class GistsPage : Page
 
     private async void OnUnloaded(object sender, RoutedEventArgs e)
     {
+        Interlocked.Increment(ref _gistTraversalGeneration);
+        _performanceScrollProbe?.Dispose();
+        _performanceScrollProbe = null;
         UnsubscribeViewModelEvents();
         CancellationTokenSource? pageCancellationTokenSource = Interlocked.Exchange(
             ref _pageCancellationTokenSource,
@@ -116,6 +125,36 @@ public sealed partial class GistsPage : Page
         {
             System.Diagnostics.Debug.WriteLine($"Failed to stop Gists background work: {ex}");
         }
+    }
+
+    private void AttachPerformanceScrollProbe()
+    {
+        _performanceScrollProbe?.Dispose();
+        _performanceScrollProbe = ProductPerformanceReadiness.IsEnabled &&
+            FindDescendant<ScrollViewer>(GistsList) is ScrollViewer scrollViewer
+                ? ProductPerformanceScrollProbe.TryStart(GistsList, scrollViewer)
+                : null;
+    }
+
+    private static T? FindDescendant<T>(DependencyObject root)
+        where T : DependencyObject
+    {
+        int count = VisualTreeHelper.GetChildrenCount(root);
+        for (int index = 0; index < count; index++)
+        {
+            DependencyObject child = VisualTreeHelper.GetChild(root, index);
+            if (child is T match)
+            {
+                return match;
+            }
+
+            if (FindDescendant<T>(child) is T nested)
+            {
+                return nested;
+            }
+        }
+
+        return null;
     }
 
     private async Task AwaitLatestStopAsync()
@@ -811,14 +850,97 @@ public sealed partial class GistsPage : Page
         if (e.ClickedItem is GistViewItem item)
         {
             ViewModel.SelectedGistItem = item;
-            ProductPerformanceReadiness.CommitTraversal(
-                "gists",
-                item.AutomationId);
             if (GistsWorkspace.IsLeadingDrawerOpen)
             {
                 GistsWorkspace.CloseDrawer();
             }
         }
+    }
+
+    private void GistsList_SelectionChanged(object sender, SelectionChangedEventArgs e)
+    {
+        if (!ProductPerformanceReadiness.IsEnabled ||
+            sender is not ListView { SelectedItem: GistViewItem item } ||
+            string.Equals(_lastGistTraversalKey, item.StableKey, StringComparison.Ordinal))
+        {
+            return;
+        }
+
+        StartGistTraversal(item);
+    }
+
+    private void GistListItem_PointerPressed(object sender, PointerRoutedEventArgs e)
+    {
+        if (sender is not ListViewItem { Content: GistViewItem item } container ||
+            e.GetCurrentPoint(container).Properties.PointerUpdateKind != PointerUpdateKind.LeftButtonPressed)
+        {
+            return;
+        }
+
+        StartGistTraversal(item);
+        GistsList.SelectedItem = item;
+        ViewModel.SelectedGistItem = item;
+    }
+
+    private void StartGistTraversal(GistViewItem item)
+    {
+        if (!ProductPerformanceReadiness.IsEnabled)
+        {
+            return;
+        }
+
+        _lastGistTraversalKey = item.StableKey;
+        ProductPerformanceReadiness.BeginTraversal(
+            "gists",
+            item.AutomationId,
+            "gists");
+        long generation = Interlocked.Increment(ref _gistTraversalGeneration);
+        QueueGistTraversalCommit(item, generation, remainingAttempts: 6);
+    }
+
+    private void QueueGistTraversalCommit(
+        GistViewItem item,
+        long generation,
+        int remainingAttempts)
+    {
+        _ = DispatcherQueue.TryEnqueue(() =>
+        {
+            if (generation != Volatile.Read(ref _gistTraversalGeneration) ||
+                !ReferenceEquals(ViewModel.SelectedGistItem, item))
+            {
+                return;
+            }
+
+            if (ViewModel.HasSelection &&
+                string.Equals(GistsDetailTitleText.Text, item.Title, StringComparison.Ordinal) &&
+                string.Equals(
+                    GistsFilePreviewTextBox.Text ?? string.Empty,
+                    ViewModel.SelectedFileContent ?? string.Empty,
+                    StringComparison.Ordinal))
+            {
+                ProductPerformanceRenderCommitter.ScheduleAfterNextFrame(
+                    this,
+                    () => IsLoaded &&
+                        generation == Volatile.Read(ref _gistTraversalGeneration) &&
+                        ReferenceEquals(ViewModel.SelectedGistItem, item),
+                    () =>
+                        ViewModel.HasSelection &&
+                        string.Equals(GistsDetailTitleText.Text, item.Title, StringComparison.Ordinal) &&
+                        string.Equals(
+                            GistsFilePreviewTextBox.Text ?? string.Empty,
+                            ViewModel.SelectedFileContent ?? string.Empty,
+                            StringComparison.Ordinal),
+                    () => ProductPerformanceReadiness.CommitTraversal(
+                        "gists",
+                        item.AutomationId));
+                return;
+            }
+
+            if (remainingAttempts > 1)
+            {
+                QueueGistTraversalCommit(item, generation, remainingAttempts - 1);
+            }
+        });
     }
 
     private void GistsList_KeyDown(object sender, KeyRoutedEventArgs e)
@@ -843,7 +965,24 @@ public sealed partial class GistsPage : Page
 
     private void GistsList_ContainerContentChanging(ListViewBase sender, ContainerContentChangingEventArgs args)
     {
-        if (args.ItemContainer is ListViewItem container && args.Item is GistViewItem item)
+        if (args.ItemContainer is not ListViewItem container)
+        {
+            return;
+        }
+
+        container.RemoveHandler(
+            PointerPressedEvent,
+            new PointerEventHandler(GistListItem_PointerPressed));
+        if (args.InRecycleQueue)
+        {
+            return;
+        }
+
+        container.AddHandler(
+            PointerPressedEvent,
+            new PointerEventHandler(GistListItem_PointerPressed),
+            handledEventsToo: true);
+        if (args.Item is GistViewItem item)
         {
             AutomationProperties.SetAutomationId(container, item.AutomationId);
             AutomationProperties.SetName(container, item.AutomationName);

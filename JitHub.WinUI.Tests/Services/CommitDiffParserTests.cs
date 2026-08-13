@@ -10,6 +10,55 @@ namespace JitHub.WinUI.Tests.Services;
 public sealed class CommitDiffParserTests
 {
     [Fact]
+    public void ParsedDocumentCache_UsesCaseInsensitiveLruWithoutDuplicateRecencyEntries()
+    {
+        CommitDiffDocumentCache cache = new(capacity: 2, maxBytes: 4 * 1024 * 1024);
+        CommitDiffDocument first = CreateDocument("first.txt", "+first");
+        CommitDiffDocument second = CreateDocument("second.txt", "+second");
+        CommitDiffDocument third = CreateDocument("third.txt", "+third");
+
+        Assert.True(cache.TryStore("ABCDEF", first));
+        Assert.True(cache.TryStore("second", second));
+        Assert.True(cache.TryGet("abcdef", out CommitDiffDocument selected));
+        Assert.Same(first, selected);
+        Assert.True(cache.TryStore("third", third));
+
+        Assert.True(cache.TryGet("ABCDEF", out _));
+        Assert.False(cache.TryGet("second", out _));
+        Assert.True(cache.TryGet("third", out _));
+        Assert.Equal(2, cache.Count);
+    }
+
+    [Fact]
+    public void ParsedDocumentCache_RejectsSingleDocumentBeyondByteBudget()
+    {
+        CommitDiffDocument document = CreateDocument("large.txt", $"+{new string('x', 4096)}");
+        long estimatedBytes = CommitDiffDocumentCache.EstimateSizeBytes(document);
+        CommitDiffDocumentCache cache = new(capacity: 4, maxBytes: estimatedBytes - 1);
+
+        Assert.False(cache.TryStore("large", document));
+        Assert.Equal(0, cache.Count);
+        Assert.Equal(0, cache.CurrentBytes);
+    }
+
+    [Fact]
+    public void ParsedDocumentCache_EvictsLeastRecentDocumentsToHonorByteBudget()
+    {
+        CommitDiffDocument first = CreateDocument("first.txt", $"+{new string('a', 512)}");
+        CommitDiffDocument second = CreateDocument("second.txt", $"+{new string('b', 512)}");
+        long budget = CommitDiffDocumentCache.EstimateSizeBytes(first) +
+            CommitDiffDocumentCache.EstimateSizeBytes(second) - 1;
+        CommitDiffDocumentCache cache = new(capacity: 4, maxBytes: budget);
+
+        Assert.True(cache.TryStore("first", first));
+        Assert.True(cache.TryStore("second", second));
+
+        Assert.False(cache.TryGet("first", out _));
+        Assert.True(cache.TryGet("second", out _));
+        Assert.InRange(cache.CurrentBytes, 1, budget);
+    }
+
+    [Fact]
     public async Task ParseAsync_CancelsSupersededLargePatch()
     {
         string patch = "@@ -1 +1 @@\n" + string.Join(
@@ -30,6 +79,19 @@ public sealed class CommitDiffParserTests
 
         await Assert.ThrowsAnyAsync<OperationCanceledException>(() => parse);
     }
+
+    private static CommitDiffDocument CreateDocument(string fileName, string body) =>
+        CommitDiffParser.Parse(
+        [
+            new GitHubCommitFile
+            {
+                Filename = fileName,
+                Status = "modified",
+                Additions = 1,
+                Changes = 1,
+                Patch = $"@@ -0,0 +1 @@\n{body}"
+            }
+        ]);
 
     [Fact]
     public void ParseFile_ParsesHunkLineNumbersAndLineKinds()

@@ -20,6 +20,7 @@ public sealed partial class CodePreview : UserControl
 {
     private CancellationTokenSource? _outlineCts;
     private RepoFilePreviewViewModel? _subscribedViewModel;
+    private long _bindingUpdateGeneration;
 
     public event Action<string>? ActionExecuted;
 
@@ -60,8 +61,7 @@ public sealed partial class CodePreview : UserControl
             _subscribedViewModel.PropertyChanged += OnViewModelPropertyChanged;
         }
 
-        Bindings.Update();
-        QueueOutlineBuild();
+        ApplyPreviewBindings();
     }
 
     private void OnLoaded(object sender, RoutedEventArgs e)
@@ -70,13 +70,13 @@ public sealed partial class CodePreview : UserControl
         {
             _subscribedViewModel = viewModel;
             viewModel.PropertyChanged += OnViewModelPropertyChanged;
-            Bindings.Update();
-            QueueOutlineBuild();
+            ApplyPreviewBindings();
         }
     }
 
     private void OnUnloaded(object sender, RoutedEventArgs e)
     {
+        Interlocked.Increment(ref _bindingUpdateGeneration);
         RetireOutlineRequest();
         if (_subscribedViewModel is not null)
         {
@@ -87,13 +87,36 @@ public sealed partial class CodePreview : UserControl
 
     private void OnViewModelPropertyChanged(object? sender, PropertyChangedEventArgs e)
     {
-        if (e.PropertyName is nameof(RepoFilePreviewViewModel.Text)
-            or nameof(RepoFilePreviewViewModel.LanguageId)
-            or nameof(RepoFilePreviewViewModel.CurrentFile))
+        if (e.PropertyName == nameof(RepoFilePreviewViewModel.CurrentFile))
         {
-            Bindings.Update();
-            QueueOutlineBuild();
+            Interlocked.Increment(ref _bindingUpdateGeneration);
+            ApplyPreviewBindings();
         }
+        else if (e.PropertyName is nameof(RepoFilePreviewViewModel.Text)
+                 or nameof(RepoFilePreviewViewModel.LanguageId))
+        {
+            QueuePreviewBindingFallback();
+        }
+    }
+
+    private void QueuePreviewBindingFallback()
+    {
+        long generation = Interlocked.Increment(ref _bindingUpdateGeneration);
+        _ = DispatcherQueue.TryEnqueue(
+            Microsoft.UI.Dispatching.DispatcherQueuePriority.Low,
+            () =>
+            {
+                if (generation == Volatile.Read(ref _bindingUpdateGeneration))
+                {
+                    ApplyPreviewBindings();
+                }
+            });
+    }
+
+    private void ApplyPreviewBindings()
+    {
+        Bindings.Update();
+        QueueOutlineBuild();
     }
 
     private void QueueOutlineBuild()

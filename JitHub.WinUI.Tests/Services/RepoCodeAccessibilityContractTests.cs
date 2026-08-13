@@ -187,8 +187,11 @@ public sealed class RepoCodeAccessibilityContractTests
         int invokeEnd = source.IndexOf("private void SelectFileNode", invokeStart, StringComparison.Ordinal);
         Assert.True(pointerStart >= 0 && pointerEnd > pointerStart);
         Assert.True(invokeStart >= 0 && invokeEnd > invokeStart);
-        Assert.Contains("FileInvoked?.Invoke(this, EventArgs.Empty);", source[pointerStart..pointerEnd], StringComparison.Ordinal);
-        Assert.Contains("FileInvoked?.Invoke(this, EventArgs.Empty);", source[invokeStart..invokeEnd], StringComparison.Ordinal);
+        Assert.Contains("RaiseFileInvoked(nodeVm);", source[pointerStart..pointerEnd], StringComparison.Ordinal);
+        Assert.Contains("container?.Focus(FocusState.Pointer);", source[pointerStart..pointerEnd], StringComparison.Ordinal);
+        Assert.Contains("RaiseFileInvoked(nodeVm);", source[invokeStart..invokeEnd], StringComparison.Ordinal);
+        Assert.Contains("new RepoFileInvokedEventArgs(node, node.AutomationId)", source, StringComparison.Ordinal);
+        Assert.Contains("public bool Handled { get; set; }", source, StringComparison.Ordinal);
     }
 
     [Fact]

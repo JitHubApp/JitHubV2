@@ -80,6 +80,25 @@ public sealed class GitHubRepoCodeQueryService : IGitHubRepoCodeQueryService
         string repositoryName,
         string sha,
         QueryFetchPolicy fetchPolicy = QueryFetchPolicy.StaleFirst,
+        CancellationToken cancellationToken = default) =>
+        GetBlobAsync(
+            accessToken,
+            userId,
+            owner,
+            repositoryName,
+            sha,
+            GitHubRequestPriority.Visible,
+            fetchPolicy,
+            cancellationToken);
+
+    public Task<CachedResult<GitHubBlob>> GetBlobAsync(
+        string accessToken,
+        string userId,
+        string owner,
+        string repositoryName,
+        string sha,
+        GitHubRequestPriority priority,
+        QueryFetchPolicy fetchPolicy = QueryFetchPolicy.StaleFirst,
         CancellationToken cancellationToken = default)
     {
         if (GitHubAuthenticationConstants.IsPublicAccessToken(accessToken))
@@ -93,7 +112,8 @@ public sealed class GitHubRepoCodeQueryService : IGitHubRepoCodeQueryService
             $"repos/{Escape(owner)}/{Escape(repositoryName)}/git/blobs/{Escape(sha)}",
             GitHubCachePolicy.ImmutableShaResource,
             Phase0GitHubJsonSerializerContext.Default.GitHubBlob,
-            ["repo-code", "repo-code-blob", CreateRepositoryTag(owner, repositoryName), CreateBlobTag(owner, repositoryName, sha)]);
+            ["repo-code", "repo-code-blob", CreateRepositoryTag(owner, repositoryName), CreateBlobTag(owner, repositoryName, sha)],
+            priority);
         return ExecuteAsync(query, fetchPolicy, cancellationToken);
     }
 
@@ -112,7 +132,8 @@ public sealed class GitHubRepoCodeQueryService : IGitHubRepoCodeQueryService
         string relativePath,
         string resourceKind,
         JsonTypeInfo<T> jsonTypeInfo,
-        string[] tags)
+        string[] tags,
+        GitHubRequestPriority priority = GitHubRequestPriority.Visible)
         where T : class
     {
         string normalizedUserId = GitHubAccountPartition.Resolve(accessToken, userId);
@@ -126,7 +147,7 @@ public sealed class GitHubRepoCodeQueryService : IGitHubRepoCodeQueryService
             GitHubCachePolicy.TtlForResource(resourceKind),
             jsonTypeInfo,
             tags,
-            GitHubRequestPriority.Visible);
+            priority);
     }
 
     private static string Escape(string value) => Uri.EscapeDataString(value);

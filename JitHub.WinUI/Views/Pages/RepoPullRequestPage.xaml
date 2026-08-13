@@ -31,8 +31,10 @@
                 MinHeight="52"
                 AutomationProperties.AutomationId="{x:Bind AutomationId, Mode=OneWay}"
                 AutomationProperties.Name="{x:Bind AutomationName, Mode=OneWay}"
+                Background="Transparent"
                 RowSpacing="5"
-                PointerEntered="PullRequestListItem_PointerEntered">
+                PointerEntered="PullRequestListItem_PointerEntered"
+                PointerPressed="PullRequestListItem_PointerPressed">
                 <Grid.RowDefinitions>
                     <RowDefinition Height="Auto" />
                     <RowDefinition Height="Auto" />
@@ -50,7 +52,6 @@
                 <Grid Grid.Row="1" ColumnSpacing="8">
                     <Grid.ColumnDefinitions>
                         <ColumnDefinition Width="Auto" />
-                        <ColumnDefinition Width="Auto" />
                         <ColumnDefinition Width="*" />
                     </Grid.ColumnDefinitions>
                     <TextBlock
@@ -63,25 +64,30 @@
                         AutomationInstanceId="{x:Bind AutomationId, Mode=OneWay}"
                         DisplayName="{x:Bind User.Login, Mode=OneWay}"
                         Login="{x:Bind User.Login, Mode=OneWay}"
-                        MaxWidth="130"
+                        MaxWidth="240"
                         NavigationSource="pull_request_list_author"
                         ShowLogin="True"
                         Size="SMALL"
                         VerticalAlignment="Center"
                         Url="{x:Bind User.AvatarUrl, Mode=OneWay}" />
+                </Grid>
+                <Grid Grid.Row="2" ColumnSpacing="8">
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="*" />
+                        <ColumnDefinition Width="Auto" />
+                    </Grid.ColumnDefinitions>
                     <TextBlock
-                        Grid.Column="2"
+                        FontFamily="{ThemeResource AppMonoFontFamily}"
+                        FontSize="11"
+                        Foreground="{ThemeResource AppInkMutedBrush}"
+                        Text="{x:Bind Head.GitRef, Mode=OneWay}"
+                        TextTrimming="CharacterEllipsis" />
+                    <TextBlock
+                        Grid.Column="1"
                         Style="{StaticResource SectionSecondaryTextBlockStyle}"
                         Text="{x:Bind UpdatedAt, Converter={StaticResource TimeAgoConverter}, Mode=OneWay}"
                         TextAlignment="Right" />
                 </Grid>
-                <TextBlock
-                    Grid.Row="2"
-                    FontFamily="{ThemeResource AppMonoFontFamily}"
-                    FontSize="11"
-                    Foreground="{ThemeResource AppInkMutedBrush}"
-                    Text="{x:Bind Head.GitRef, Mode=OneWay}"
-                    TextTrimming="CharacterEllipsis" />
             </Grid>
         </DataTemplate>
 
@@ -558,6 +564,7 @@
                             ContainerContentChanging="PullRequestsList_ContainerContentChanging"
                             IsItemClickEnabled="True"
                                 ItemClick="PullRequestsList_ItemClick"
+                            SelectionChanged="PullRequestsList_SelectionChanged"
                             ItemContainerStyle="{StaticResource AppWorkspaceCardListRowStyle}"
                                 ItemTemplate="{StaticResource RepoPullRequestListItemTemplate}"
                                 ItemsSource="{Binding PullRequests}"
