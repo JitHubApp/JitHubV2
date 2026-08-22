@@ -324,6 +324,9 @@ internal static class HighContrastLiveProbe
                 startInfo.Environment["JITHUB_MARKDOWN_LIFECYCLE_FIXTURE"] = "1";
                 startInfo.Environment["JITHUB_MARKDOWN_LIFECYCLE_HOST"] = hostId;
                 startInfo.Environment["JITHUB_AUTOMATION_TEXT_SCALE_FACTOR"] = "1";
+                startInfo.Environment["JITHUB_MARKDOWN_RENDER_FAILURE_EVIDENCE_PATH"] = Path.Combine(
+                    options.OutputDirectory,
+                    "high-contrast-live-markdown-render-failure.txt");
             });
     }
 

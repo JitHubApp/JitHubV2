@@ -52,7 +52,7 @@
                 </Grid.RowDefinitions>
                 <TextBlock
                     FontFamily="{ThemeResource AppUiFontFamily}"
-                    FontSize="13"
+                    FontSize="{ThemeResource AppFontSize13}"
                     FontWeight="SemiBold"
                     Foreground="{ThemeResource AppInkBrush}"
                     MaxLines="2"
@@ -66,7 +66,7 @@
                     </Grid.ColumnDefinitions>
                     <TextBlock
                         FontFamily="{ThemeResource AppMonoFontFamily}"
-                        FontSize="11"
+                        FontSize="{ThemeResource AppFontSize11}"
                         Foreground="{ThemeResource AppAccentBrush}"
                         Text="{x:Bind Number, Mode=OneWay}" />
                     <common:Avatar
@@ -89,7 +89,7 @@
                     </Grid.ColumnDefinitions>
                     <TextBlock
                         FontFamily="{ThemeResource AppMonoFontFamily}"
-                        FontSize="11"
+                        FontSize="{ThemeResource AppFontSize11}"
                         Foreground="{ThemeResource AppInkMutedBrush}"
                         Text="{x:Bind Head.GitRef, Mode=OneWay}"
                         TextTrimming="CharacterEllipsis" />
@@ -134,7 +134,7 @@
                             Grid.Column="1"
                             VerticalAlignment="Center"
                             FontFamily="{ThemeResource AppUiFontFamily}"
-                            FontSize="13"
+                            FontSize="{ThemeResource AppFontSize13}"
                             FontWeight="SemiBold"
                             Foreground="{ThemeResource AppInkBrush}"
                             Text="{x:Bind AuthorDisplayName, Mode=OneWay}" />
@@ -196,7 +196,7 @@
                     <StackPanel Grid.Column="1" Spacing="4">
                         <TextBlock
                             FontFamily="{ThemeResource AppUiFontFamily}"
-                            FontSize="13"
+                            FontSize="{ThemeResource AppFontSize13}"
                             FontWeight="SemiBold"
                             Foreground="{ThemeResource AppInkBrush}"
                             MaxLines="2"
@@ -208,7 +208,7 @@
                     <TextBlock
                         Grid.Column="2"
                         FontFamily="{ThemeResource AppMonoFontFamily}"
-                        FontSize="11"
+                        FontSize="{ThemeResource AppFontSize11}"
                         Foreground="{ThemeResource AppAccentBrush}"
                         Text="{x:Bind ShortSha, Mode=OneWay}" />
                 </Grid>
@@ -234,7 +234,7 @@
                 <StackPanel Grid.Column="1" Spacing="3">
                     <TextBlock
                         FontFamily="{ThemeResource AppUiFontFamily}"
-                        FontSize="13"
+                        FontSize="{ThemeResource AppFontSize13}"
                         Foreground="{ThemeResource AppInkBrush}"
                         Text="{x:Bind Summary, Mode=OneWay}"
                         TextWrapping="WrapWholeWords" />
@@ -271,7 +271,7 @@
                             <TextBlock
                                 VerticalAlignment="Center"
                                 FontFamily="{ThemeResource AppUiFontFamily}"
-                                FontSize="13"
+                                FontSize="{ThemeResource AppFontSize13}"
                                 FontWeight="SemiBold"
                                 Foreground="{ThemeResource AppInkBrush}"
                                 Text="{x:Bind ReviewerLogin, Mode=OneWay}" />
@@ -309,7 +309,7 @@
                                             </Grid.ColumnDefinitions>
                                             <TextBlock
                                                 FontFamily="{ThemeResource AppMonoFontFamily}"
-                                                FontSize="11"
+                                                FontSize="{ThemeResource AppFontSize11}"
                                                 Foreground="{ThemeResource AppAccentBrush}"
                                                 Text="{x:Bind PathDisplayText, Mode=OneWay}"
                                                 TextTrimming="CharacterEllipsis" />
@@ -320,7 +320,7 @@
                                         </Grid>
                                         <TextBlock
                                             FontFamily="{ThemeResource AppMonoFontFamily}"
-                                            FontSize="11"
+                                            FontSize="{ThemeResource AppFontSize11}"
                                             Foreground="{ThemeResource AppInkMutedBrush}"
                                             MaxLines="4"
                                             Text="{x:Bind DiffHunkText, Mode=OneWay}"
@@ -360,7 +360,7 @@
                                                                     <ColumnDefinition Width="Auto" />
                                                                 </Grid.ColumnDefinitions>
                                                                 <TextBlock
-                                                                    FontSize="12"
+                                                                    FontSize="{ThemeResource AppFontSize12}"
                                                                     FontWeight="SemiBold"
                                                                     Foreground="{ThemeResource AppInkBrush}"
                                                                     Text="{Binding UserLogin}" />
@@ -437,7 +437,7 @@
                         Fill="{x:Bind Color, Converter={StaticResource HexColorToColorStringConverter}, Mode=OneWay}" />
                     <TextBlock
                         FontFamily="{ThemeResource AppMonoFontFamily}"
-                        FontSize="11"
+                        FontSize="{ThemeResource AppFontSize11}"
                         Foreground="{ThemeResource AppInkBrush}"
                         Text="{x:Bind Name, Mode=OneWay}" />
                 </StackPanel>
@@ -553,7 +553,7 @@
                                     Style="{StaticResource AppToolbarButtonStyle}"
                                     ToolTipService.ToolTip="Close pull requests"
                                     Visibility="Collapsed">
-                                    <FontIcon FontFamily="{StaticResource SegoeFluentIcons}" FontSize="14" Glyph="&#xE8FD;" />
+                                    <FontIcon FontFamily="{StaticResource SegoeFluentIcons}" FontSize="{ThemeResource AppFontSize14}" Glyph="&#xE8FD;" />
                                 </Button>
                                 <toolkit:Segmented
                                     x:Uid="PagesRepoPullRequestPageRepoPullRequestsStateSegmented" x:Name="PullRequestStateSegmented"
@@ -601,7 +601,7 @@
                                     AutomationProperties.Name="Pull request filters"
                                     Style="{StaticResource AppToolbarButtonStyle}"
                                     ToolTipService.ToolTip="Filters">
-                                    <FontIcon FontFamily="{StaticResource SegoeFluentIcons}" FontSize="14" Glyph="&#xE71C;" />
+                                    <FontIcon FontFamily="{StaticResource SegoeFluentIcons}" FontSize="{ThemeResource AppFontSize14}" Glyph="&#xE71C;" />
                                     <Button.Flyout>
                                         <Flyout Opened="PullRequestFiltersFlyout_Opened" Placement="BottomEdgeAlignedRight">
                                             <StackPanel Width="260" Spacing="10">
@@ -748,7 +748,7 @@
                                     Style="{StaticResource AppToolbarButtonStyle}"
                                     ToolTipService.ToolTip="Pull requests"
                                     Visibility="Collapsed">
-                                    <FontIcon FontFamily="{StaticResource SegoeFluentIcons}" FontSize="14" Glyph="&#xE8FD;" />
+                                    <FontIcon FontFamily="{StaticResource SegoeFluentIcons}" FontSize="{ThemeResource AppFontSize14}" Glyph="&#xE8FD;" />
                                 </Button>
                                 <StackPanel
                                     x:Name="PullRequestDetailTitleHost"
@@ -759,7 +759,7 @@
                                         labs:TransitionHelper.Id="PullRequestTitle"
                                         AutomationProperties.AutomationId="RepoPullRequestsDetailTitle"
                                         FontFamily="{ThemeResource AppDisplayFontFamily}"
-                                        FontSize="25"
+                                        FontSize="{ThemeResource AppFontSize25}"
                                         Foreground="{ThemeResource AppInkBrush}"
                                         HorizontalAlignment="Stretch"
                                         MaxLines="2"
@@ -775,7 +775,7 @@
                                         </Grid.ColumnDefinitions>
                                         <TextBlock
                                             FontFamily="{ThemeResource AppMonoFontFamily}"
-                                            FontSize="12"
+                                            FontSize="{ThemeResource AppFontSize12}"
                                             Foreground="{ThemeResource AppAccentBrush}"
                                             Text="{Binding SelectedPullRequestNumberText}" />
                                         <TextBlock
@@ -918,7 +918,7 @@
                                         Style="{StaticResource AppToolbarButtonStyle}"
                                         ToolTipService.ToolTip="Inspector"
                                         Visibility="Collapsed">
-                                        <FontIcon FontFamily="{StaticResource SegoeFluentIcons}" FontSize="14" Glyph="&#xE9D2;" />
+                                        <FontIcon FontFamily="{StaticResource SegoeFluentIcons}" FontSize="{ThemeResource AppFontSize14}" Glyph="&#xE9D2;" />
                                     </Button>
                                 </StackPanel>
                             </Grid>
@@ -930,7 +930,7 @@
                                 labs:TransitionHelper.Id="PullRequestSectionSelector"
                                 AutomationProperties.AutomationId="RepoPullRequestsSectionSegmented"
                                 AutomationProperties.Name="Pull request section"
-                                FontSize="12"
+                                FontSize="{ThemeResource AppFontSize12}"
                                 SelectedIndex="0"
                                 SelectionChanged="PullRequestSectionSegmented_SelectionChanged">
                                 <toolkit:SegmentedItem x:Uid="PagesRepoPullRequestPageRepoPullRequestsSectionConversat" Width="112" Height="48" Padding="4,6" AutomationProperties.AutomationId="RepoPullRequestsSection_Conversation" AutomationProperties.Name="Show pull request conversation" Content="Conversation" ContentTemplate="{StaticResource RepoPullRequestSectionLabelTemplate}" />
@@ -1002,7 +1002,7 @@
                                                             Grid.Column="1"
                                                             VerticalAlignment="Center"
                                                             FontFamily="{ThemeResource AppUiFontFamily}"
-                                                            FontSize="13"
+                                                            FontSize="{ThemeResource AppFontSize13}"
                                                             FontWeight="SemiBold"
                                                             Foreground="{ThemeResource AppInkBrush}"
                                                             Text="{Binding SelectedPullRequestAuthorDisplayName}" />
@@ -1042,7 +1042,7 @@
                                             <TextBlock
                                                 x:Uid="PagesRepoPullRequestPageTextBlockComments"
                                                 FontFamily="{ThemeResource AppDisplayFontFamily}"
-                                                FontSize="20"
+                                                FontSize="{ThemeResource AppFontSize20}"
                                                 Foreground="{ThemeResource AppInkBrush}"
                                                 Text="Comments" />
                                             <TextBlock
@@ -1183,7 +1183,7 @@
                                         IsEnabled="{Binding HasPullRequestDiffSearchMatches}"
                                         Style="{StaticResource AppToolbarButtonStyle}"
                                         ToolTipService.ToolTip="Previous match">
-                                        <FontIcon FontFamily="{StaticResource SegoeFluentIcons}" FontSize="13" Glyph="&#xE70E;" />
+                                        <FontIcon FontFamily="{StaticResource SegoeFluentIcons}" FontSize="{ThemeResource AppFontSize13}" Glyph="&#xE70E;" />
                                     </Button>
                                     <Button
                                         x:Uid="PagesRepoPullRequestPageRepoPullRequestsNextDiffMatch" Grid.Column="4"
@@ -1196,11 +1196,12 @@
                                         IsEnabled="{Binding HasPullRequestDiffSearchMatches}"
                                         Style="{StaticResource AppToolbarButtonStyle}"
                                         ToolTipService.ToolTip="Next match">
-                                        <FontIcon FontFamily="{StaticResource SegoeFluentIcons}" FontSize="13" Glyph="&#xE70D;" />
+                                        <FontIcon FontFamily="{StaticResource SegoeFluentIcons}" FontSize="{ThemeResource AppFontSize13}" Glyph="&#xE70D;" />
                                     </Button>
                                 </Grid>
                                 <commit:CommitDiffViewer
                                     Grid.Row="1"
+                                    ActionCompleted="CommitDiffViewer_ActionCompleted"
                                     AutomationProperties.AutomationId="RepoPullRequestsDiffViewer"
                                     RowProjection="{Binding PullRequestDiffRowProjection}"
                                     SelectedSearchMatchIndex="{Binding SelectedPullRequestDiffSearchMatchIndex}" />
@@ -1308,7 +1309,7 @@
                                     Style="{StaticResource AppToolbarButtonStyle}"
                                     ToolTipService.ToolTip="Pull requests"
                                     Visibility="Collapsed">
-                                    <FontIcon FontFamily="{StaticResource SegoeFluentIcons}" FontSize="14" Glyph="&#xE8FD;" />
+                                    <FontIcon FontFamily="{StaticResource SegoeFluentIcons}" FontSize="{ThemeResource AppFontSize14}" Glyph="&#xE8FD;" />
                                 </Button>
 
                                 <TextBlock
@@ -1318,7 +1319,7 @@
                                     labs:TransitionHelper.Id="PullRequestTitle"
                                     AutomationProperties.AutomationId="RepoPullRequestsDetailTitle"
                                     FontFamily="{ThemeResource AppDisplayFontFamily}"
-                                    FontSize="18"
+                                    FontSize="{ThemeResource AppFontSize18}"
                                     Foreground="{ThemeResource AppInkBrush}"
                                     MaxLines="1"
                                     Text="{Binding SelectedPullRequestTitle}"
@@ -1384,7 +1385,7 @@
                                         Style="{StaticResource AppToolbarButtonStyle}"
                                         ToolTipService.ToolTip="Inspector"
                                         Visibility="Collapsed">
-                                        <FontIcon FontFamily="{StaticResource SegoeFluentIcons}" FontSize="14" Glyph="&#xE9D2;" />
+                                        <FontIcon FontFamily="{StaticResource SegoeFluentIcons}" FontSize="{ThemeResource AppFontSize14}" Glyph="&#xE9D2;" />
                                     </Button>
                                 </StackPanel>
 
@@ -1433,7 +1434,7 @@
                                 <TextBlock
                                     x:Uid="PagesRepoPullRequestPageTextBlockInspector" VerticalAlignment="Center"
                                     FontFamily="{ThemeResource AppDisplayFontFamily}"
-                                    FontSize="21"
+                                    FontSize="{ThemeResource AppFontSize21}"
                                     Foreground="{ThemeResource AppInkBrush}"
                                     Text="Inspector" />
                                 <Button
@@ -1448,14 +1449,14 @@
                                     Style="{StaticResource AppToolbarButtonStyle}"
                                     ToolTipService.ToolTip="Close inspector"
                                     Visibility="Collapsed">
-                                    <FontIcon FontFamily="{StaticResource SegoeFluentIcons}" FontSize="14" Glyph="&#xE9D2;" />
+                                    <FontIcon FontFamily="{StaticResource SegoeFluentIcons}" FontSize="{ThemeResource AppFontSize14}" Glyph="&#xE9D2;" />
                                 </Button>
                             </Grid>
 
                             <StackPanel Spacing="8">
                                 <TextBlock
                                     x:Uid="PagesRepoPullRequestPageTextBlockStatus" FontFamily="{ThemeResource AppUiFontFamily}"
-                                    FontSize="13"
+                                    FontSize="{ThemeResource AppFontSize13}"
                                     FontWeight="SemiBold"
                                     Foreground="{ThemeResource AppInkBrush}"
                                     Text="Status" />
@@ -1476,7 +1477,7 @@
                             <StackPanel Spacing="8">
                                 <TextBlock
                                     x:Uid="PagesRepoPullRequestPageTextBlockReviewers" FontFamily="{ThemeResource AppUiFontFamily}"
-                                    FontSize="13"
+                                    FontSize="{ThemeResource AppFontSize13}"
                                     FontWeight="SemiBold"
                                     Foreground="{ThemeResource AppInkBrush}"
                                     Text="Reviewers" />
@@ -1493,7 +1494,7 @@
                             <StackPanel Spacing="8">
                                 <TextBlock
                                     x:Uid="PagesRepoPullRequestPageTextBlockAssignees" FontFamily="{ThemeResource AppUiFontFamily}"
-                                    FontSize="13"
+                                    FontSize="{ThemeResource AppFontSize13}"
                                     FontWeight="SemiBold"
                                     Foreground="{ThemeResource AppInkBrush}"
                                     Text="Assignees" />
@@ -1510,7 +1511,7 @@
                             <StackPanel Spacing="8">
                                 <TextBlock
                                     x:Uid="PagesRepoPullRequestPageTextBlockLabels" FontFamily="{ThemeResource AppUiFontFamily}"
-                                    FontSize="13"
+                                    FontSize="{ThemeResource AppFontSize13}"
                                     FontWeight="SemiBold"
                                     Foreground="{ThemeResource AppInkBrush}"
                                     Text="Labels" />
@@ -1527,7 +1528,7 @@
                             <StackPanel Spacing="8">
                                 <TextBlock
                                     x:Uid="PagesRepoPullRequestPageTextBlockMilestone" FontFamily="{ThemeResource AppUiFontFamily}"
-                                    FontSize="13"
+                                    FontSize="{ThemeResource AppFontSize13}"
                                     FontWeight="SemiBold"
                                     Foreground="{ThemeResource AppInkBrush}"
                                     Text="Milestone" />

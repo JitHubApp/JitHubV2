@@ -7,8 +7,10 @@ using JitHub.Models.GitHub;
 using JitHub.Models.NavArgs;
 using JitHub.Services;
 using JitHub.Services.Layout;
+using JitHub.WinUI.Helpers;
 using JitHub.WinUI.Performance;
 using JitHub.WinUI.ViewModels.Pages;
+using JitHub.WinUI.Views.Controls.Commit;
 using JitHub.WinUI.Views.Controls.Common;
 using Microsoft.UI.Input;
 using Microsoft.UI.Xaml;
@@ -17,7 +19,6 @@ using Microsoft.UI.Xaml.Controls;
 using Microsoft.UI.Xaml.Input;
 using Microsoft.UI.Xaml.Media.Animation;
 using Microsoft.UI.Xaml.Navigation;
-using Windows.ApplicationModel.DataTransfer;
 using Windows.System;
 
 namespace JitHub.WinUI.Views.Pages;
@@ -32,6 +33,26 @@ public sealed partial class RepoCommitsPage : Page
     private int _selectionRenderGeneration;
 
     public RepoCommitsPageViewModel ViewModel { get; }
+
+    private void CommitDiffViewer_ActionCompleted(
+        object sender,
+        CommitDiffActionCompletedEventArgs e)
+    {
+        CommitActionKind? action = e.Action switch
+        {
+            TelemetryTaxonomy.Actions.CopyDiff => CommitActionKind.CopyDiff,
+            TelemetryTaxonomy.Actions.CopyPath => CommitActionKind.CopyPath,
+            _ => null
+        };
+        if (action is not null)
+        {
+            ViewModel.TrackCommitAction(
+                action.Value,
+                e.Result == TelemetryTaxonomy.Results.Success
+                    ? CommitActionOutcome.Success
+                    : CommitActionOutcome.Failure);
+        }
+    }
 
     public RepoCommitsPage()
     {
@@ -370,17 +391,10 @@ public sealed partial class RepoCommitsPage : Page
             return;
         }
 
-        try
-        {
-            DataPackage package = new();
-            package.SetText(ViewModel.SelectedCommit.Sha);
-            Clipboard.SetContent(package);
-            ViewModel.TrackCommitAction(CommitActionKind.CopySha, CommitActionOutcome.Success);
-        }
-        catch
-        {
-            ViewModel.TrackCommitAction(CommitActionKind.CopySha, CommitActionOutcome.Failure);
-        }
+        bool copied = PlatformHelper.CopyString(ViewModel.SelectedCommit.Sha);
+        ViewModel.TrackCommitAction(
+            CommitActionKind.CopySha,
+            copied ? CommitActionOutcome.Success : CommitActionOutcome.Failure);
     }
 
     private void OpenCodeButton_Click(object sender, RoutedEventArgs e)

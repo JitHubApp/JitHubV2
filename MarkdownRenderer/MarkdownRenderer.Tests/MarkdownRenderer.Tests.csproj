@@ -32,6 +32,8 @@
     <Compile Include="..\MarkdownRenderer\Document\MarkdownSourceMap.cs" Link="Core\MarkdownSourceMap.cs" />
     <Compile Include="..\MarkdownRenderer\Parsing\MarkdigParser.cs" Link="Core\MarkdigParser.cs" />
     <Compile Include="..\MarkdownRenderer\Parsing\ForgivingDataUriFixer.cs" Link="Core\ForgivingDataUriFixer.cs" />
+    <Compile Include="..\MarkdownRenderer\Parsing\SafeHtmlParser.cs" Link="Core\SafeHtmlParser.cs" />
+    <Compile Include="..\MarkdownRenderer\Layout\SafeHtmlBlockScopeTracker.cs" Link="Core\SafeHtmlBlockScopeTracker.cs" />
     <Compile Include="..\MarkdownRenderer\Diagnostics\ShakeLogger.cs" Link="Core\ShakeLogger.cs" />
     <Compile Include="..\MarkdownRenderer\Diagnostics\MarkdownDiagnostics.cs" Link="Core\MarkdownDiagnostics.cs" />
     <Compile Include="..\MarkdownRenderer\Diagnostics\GraphicsDeviceErrors.cs" Link="Core\GraphicsDeviceErrors.cs" />

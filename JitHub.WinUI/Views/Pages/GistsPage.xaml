@@ -25,7 +25,7 @@
             <Setter Property="MinHeight" Value="180" />
             <Setter Property="Padding" Value="12,10" />
             <Setter Property="FontFamily" Value="{ThemeResource AppMonoFontFamily}" />
-            <Setter Property="FontSize" Value="13" />
+            <Setter Property="FontSize" Value="{ThemeResource AppFontSize13}" />
             <Setter Property="IsSpellCheckEnabled" Value="False" />
             <Setter Property="IsTextPredictionEnabled" Value="False" />
             <Setter Property="TextWrapping" Value="Wrap" />
@@ -47,13 +47,13 @@
                     Margin="0,2,0,0"
                     VerticalAlignment="Top"
                     FontFamily="{StaticResource SegoeFluentIcons}"
-                    FontSize="15"
+                    FontSize="{ThemeResource AppFontSize15}"
                     Foreground="{ThemeResource AppAccentBrush}"
                     Glyph="&#xE943;" />
                 <StackPanel Grid.Column="1" MinWidth="0" Spacing="4">
                     <TextBlock
                         FontFamily="{ThemeResource AppUiFontFamily}"
-                        FontSize="14"
+                        FontSize="{ThemeResource AppFontSize14}"
                         FontWeight="SemiBold"
                         Foreground="{ThemeResource AppInkBrush}"
                         MaxLines="1"
@@ -75,9 +75,9 @@
                     Padding="7,3"
                     VerticalAlignment="Top"
                     Background="{ThemeResource AppSurfaceSubtleBrush}"
-                    CornerRadius="4">
+                    CornerRadius="{ThemeResource AppRadiusSmall}">
                     <TextBlock
-                        FontSize="11"
+                        FontSize="{ThemeResource AppFontSize11}"
                         Foreground="{ThemeResource AppInkMutedBrush}"
                         Text="{x:Bind VisibilityText, Mode=OneWay}" />
                 </Border>
@@ -134,7 +134,7 @@
                         Command="{x:Bind ViewModel.NewGistCommand}"
                         Style="{StaticResource AppOutlineButtonStyle}">
                         <StackPanel Orientation="Horizontal" Spacing="6">
-                            <FontIcon FontFamily="{StaticResource SegoeFluentIcons}" FontSize="13" Glyph="&#xE710;" />
+                            <FontIcon FontFamily="{StaticResource SegoeFluentIcons}" FontSize="{ThemeResource AppFontSize13}" Glyph="&#xE710;" />
                             <TextBlock x:Uid="PagesGistsPageGistsNewButtonText" x:Name="GistsNewButtonText" Text="New" />
                         </StackPanel>
                     </Button>
@@ -153,7 +153,7 @@
                         HorizontalAlignment="Left"
                         VerticalAlignment="Center"
                         FontFamily="{StaticResource SegoeFluentIcons}"
-                        FontSize="13"
+                        FontSize="{ThemeResource AppFontSize13}"
                         Foreground="{ThemeResource AppInkSubtleBrush}"
                         Glyph="&#xE721;"
                         IsHitTestVisible="False" />
@@ -220,7 +220,7 @@
                         Visibility="{x:Bind ViewModel.IsEmpty, Converter={StaticResource BoolToVisibilityConverter}, Mode=OneWay}">
                         <FontIcon
                             FontFamily="{StaticResource SegoeFluentIcons}"
-                            FontSize="26"
+                            FontSize="{ThemeResource AppFontSize26}"
                             Foreground="{ThemeResource AppInkSubtleBrush}"
                             Glyph="&#xE943;" />
                         <TextBlock x:Uid="PagesGistsPageTextBlockNoMatchingGists" FontWeight="SemiBold" Text="No matching gists" />
@@ -266,10 +266,10 @@
                     Visibility="{x:Bind ViewModel.HasSelection, Converter={StaticResource BoolToVisibilityReverseConverter}, Mode=OneWay}">
                     <FontIcon
                         FontFamily="{StaticResource SegoeFluentIcons}"
-                        FontSize="32"
+                        FontSize="{ThemeResource AppFontSize32}"
                         Foreground="{ThemeResource AppInkSubtleBrush}"
                         Glyph="&#xE943;" />
-                    <TextBlock x:Uid="PagesGistsPageTextBlockSelectAGist" FontSize="17" FontWeight="SemiBold" Text="Select a gist" />
+                    <TextBlock x:Uid="PagesGistsPageTextBlockSelectAGist" FontSize="{ThemeResource AppFontSize17}" FontWeight="SemiBold" Text="Select a gist" />
                     <TextBlock x:Uid="PagesGistsPageTextBlockChooseAGistFromTheLibraryToPrevie" Style="{StaticResource SectionSecondaryTextBlockStyle}" Text="Choose a gist from the library to preview its files." />
                 </StackPanel>
 
@@ -293,7 +293,7 @@
                                 x:Name="GistsDetailTitleText"
                                 AutomationProperties.AutomationId="GistsDetailTitle"
                                 FontFamily="{ThemeResource AppDisplayFontFamily}"
-                                FontSize="27"
+                                FontSize="{ThemeResource AppFontSize27}"
                                 Foreground="{ThemeResource AppInkBrush}"
                                 MaxLines="2"
                                 Text="{x:Bind ViewModel.SelectedTitle, Mode=OneWay}"
@@ -317,7 +317,7 @@
                                 Command="{x:Bind ViewModel.EditGistCommand}"
                                 Style="{StaticResource AppToolbarButtonStyle}"
                                 ToolTipService.ToolTip="Edit gist">
-                                <FontIcon FontFamily="{StaticResource SegoeFluentIcons}" FontSize="14" Glyph="&#xE70F;" />
+                                <FontIcon FontFamily="{StaticResource SegoeFluentIcons}" FontSize="{ThemeResource AppFontSize14}" Glyph="&#xE70F;" />
                             </Button>
                             <Button
                                 x:Uid="PagesGistsPageGistsCopyLink" Width="34"
@@ -327,7 +327,7 @@
                                 Command="{x:Bind ViewModel.CopyLinkCommand}"
                                 Style="{StaticResource AppToolbarButtonStyle}"
                                 ToolTipService.ToolTip="Copy link">
-                                <FontIcon FontFamily="{StaticResource SegoeFluentIcons}" FontSize="14" Glyph="&#xE8C8;" />
+                                <FontIcon FontFamily="{StaticResource SegoeFluentIcons}" FontSize="{ThemeResource AppFontSize14}" Glyph="&#xE8C8;" />
                             </Button>
                             <Button
                                 x:Uid="PagesGistsPageGistsShare" Width="34"
@@ -337,7 +337,7 @@
                                 Command="{x:Bind ViewModel.ShareCommand}"
                                 Style="{StaticResource AppToolbarButtonStyle}"
                                 ToolTipService.ToolTip="Share gist">
-                                <FontIcon FontFamily="{StaticResource SegoeFluentIcons}" FontSize="14" Glyph="&#xE72D;" />
+                                <FontIcon FontFamily="{StaticResource SegoeFluentIcons}" FontSize="{ThemeResource AppFontSize14}" Glyph="&#xE72D;" />
                             </Button>
                             <Button
                                 x:Uid="PagesGistsPageGistsDelete" Width="34"
@@ -348,7 +348,7 @@
                                 Foreground="{ThemeResource AppDangerBrush}"
                                 Style="{StaticResource AppToolbarButtonStyle}"
                                 ToolTipService.ToolTip="Delete gist">
-                                <FontIcon FontFamily="{StaticResource SegoeFluentIcons}" FontSize="14" Glyph="&#xE74D;" />
+                                <FontIcon FontFamily="{StaticResource SegoeFluentIcons}" FontSize="{ThemeResource AppFontSize14}" Glyph="&#xE74D;" />
                             </Button>
                         </StackPanel>
                     </Grid>
@@ -381,7 +381,7 @@
                                 Command="{x:Bind ViewModel.CopyFileCommand}"
                                 Style="{StaticResource AppToolbarButtonStyle}"
                                 ToolTipService.ToolTip="Copy complete file">
-                                <FontIcon FontFamily="{StaticResource SegoeFluentIcons}" FontSize="14" Glyph="&#xE8C8;" />
+                                <FontIcon FontFamily="{StaticResource SegoeFluentIcons}" FontSize="{ThemeResource AppFontSize14}" Glyph="&#xE8C8;" />
                             </Button>
                             <Button
                                 x:Uid="PagesGistsPageGistsSaveFile" Width="34"
@@ -391,7 +391,7 @@
                                 Command="{x:Bind ViewModel.SaveFileCommand}"
                                 Style="{StaticResource AppToolbarButtonStyle}"
                                 ToolTipService.ToolTip="Save complete file">
-                                <FontIcon FontFamily="{StaticResource SegoeFluentIcons}" FontSize="14" Glyph="&#xE74E;" />
+                                <FontIcon FontFamily="{StaticResource SegoeFluentIcons}" FontSize="{ThemeResource AppFontSize14}" Glyph="&#xE74E;" />
                             </Button>
                         </StackPanel>
                         <TextBlock
@@ -462,7 +462,7 @@
                             BorderBrush="{ThemeResource AppHairlineBrush}"
                             BorderThickness="1"
                             FontFamily="{ThemeResource AppMonoFontFamily}"
-                            FontSize="13"
+                            FontSize="{ThemeResource AppFontSize13}"
                             IsReadOnly="True"
                             ScrollViewer.HorizontalScrollBarVisibility="Disabled"
                             Text="{x:Bind ViewModel.SelectedFileContent, Mode=OneWay}"

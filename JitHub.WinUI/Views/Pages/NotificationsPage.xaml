@@ -28,20 +28,20 @@
                     Width="3"
                     Margin="0,3,0,3"
                     Background="{ThemeResource AppAccentBrush}"
-                    CornerRadius="2"
+                    CornerRadius="{ThemeResource AppRadiusTight}"
                     Visibility="{x:Bind IsUnread, Converter={StaticResource BoolToVisibilityConverter}, Mode=OneWay}" />
                 <FontIcon
                     Grid.Column="1"
                     Margin="0,3,0,0"
                     VerticalAlignment="Top"
                     FontFamily="{StaticResource SegoeFluentIcons}"
-                    FontSize="17"
+                    FontSize="{ThemeResource AppFontSize17}"
                     Foreground="{ThemeResource AppAccentBrush}"
                     Glyph="{x:Bind Glyph, Mode=OneWay}" />
                 <StackPanel Grid.Column="2" MinWidth="0" Spacing="4">
                     <TextBlock
                         FontFamily="{ThemeResource AppUiFontFamily}"
-                        FontSize="14"
+                        FontSize="{ThemeResource AppFontSize14}"
                         FontWeight="SemiBold"
                         Foreground="{ThemeResource AppInkBrush}"
                         MaxLines="2"
@@ -73,7 +73,7 @@
                         Style="{StaticResource AppToolbarButtonStyle}"
                         ToolTipService.ToolTip="{x:Bind ReadActionLabel, Mode=OneWay}"
                         Visibility="{x:Bind IsUnread, Converter={StaticResource BoolToVisibilityConverter}, Mode=OneWay}">
-                        <FontIcon FontFamily="{StaticResource SegoeFluentIcons}" FontSize="14" Glyph="&#xE91B;" />
+                        <FontIcon FontFamily="{StaticResource SegoeFluentIcons}" FontSize="{ThemeResource AppFontSize14}" Glyph="&#xE91B;" />
                     </Button>
                     <Button
                         Width="34"
@@ -86,7 +86,7 @@
                         ToolTipService.ToolTip="{x:Bind SubscriptionActionLabel, Mode=OneWay}">
                         <FontIcon
                             FontFamily="{StaticResource SegoeFluentIcons}"
-                            FontSize="14"
+                            FontSize="{ThemeResource AppFontSize14}"
                             Glyph="{x:Bind SubscriptionGlyph, Mode=OneWay}" />
                     </Button>
                     <Button
@@ -98,7 +98,7 @@
                         IsEnabled="{x:Bind IsActionEnabled, Mode=OneWay}"
                         Style="{StaticResource AppToolbarButtonStyle}"
                         ToolTipService.ToolTip="{x:Bind MuteActionLabel, Mode=OneWay}">
-                        <FontIcon FontFamily="{StaticResource SegoeFluentIcons}" FontSize="14" Glyph="&#xE7ED;" />
+                        <FontIcon FontFamily="{StaticResource SegoeFluentIcons}" FontSize="{ThemeResource AppFontSize14}" Glyph="&#xE7ED;" />
                     </Button>
                 </StackPanel>
 
@@ -185,7 +185,7 @@
                 Command="{x:Bind ViewModel.MarkAllReadCommand}"
                 Style="{StaticResource AppQuietButtonStyle}">
                 <StackPanel Orientation="Horizontal" Spacing="7">
-                    <FontIcon FontFamily="{StaticResource SegoeFluentIcons}" FontSize="14" Glyph="&#xE91B;" />
+                    <FontIcon FontFamily="{StaticResource SegoeFluentIcons}" FontSize="{ThemeResource AppFontSize14}" Glyph="&#xE91B;" />
                     <TextBlock x:Uid="PagesNotificationsPageNotificationsMarkAllReadText" x:Name="NotificationsMarkAllReadText" Text="Mark all read" />
                 </StackPanel>
             </Button>
@@ -213,7 +213,7 @@
                     HorizontalAlignment="Left"
                     VerticalAlignment="Center"
                     FontFamily="{StaticResource SegoeFluentIcons}"
-                    FontSize="13"
+                    FontSize="{ThemeResource AppFontSize13}"
                     Foreground="{ThemeResource AppInkSubtleBrush}"
                     Glyph="&#xE721;"
                     IsHitTestVisible="False" />
@@ -245,8 +245,8 @@
                 <TextBlock x:Uid="PagesNotificationsPageTextBlockLoadingNotifications" Style="{StaticResource SectionSecondaryTextBlockStyle}" Text="Loading notifications" />
             </StackPanel>
             <StackPanel Style="{StaticResource AppEmptyStatePanelStyle}" Visibility="{x:Bind ViewModel.IsEmpty, Converter={StaticResource BoolToVisibilityConverter}, Mode=OneWay}">
-                <FontIcon FontFamily="{StaticResource SegoeFluentIcons}" FontSize="28" Foreground="{ThemeResource AppInkSubtleBrush}" Glyph="&#xEA8F;" />
-                <TextBlock x:Uid="PagesNotificationsPageTextBlockYouReAllCaughtUp" FontSize="16" FontWeight="SemiBold" Text="You're all caught up" />
+                <FontIcon FontFamily="{StaticResource SegoeFluentIcons}" FontSize="{ThemeResource AppFontSize28}" Foreground="{ThemeResource AppInkSubtleBrush}" Glyph="&#xEA8F;" />
+                <TextBlock x:Uid="PagesNotificationsPageTextBlockYouReAllCaughtUp" FontSize="{ThemeResource AppFontSize16}" FontWeight="SemiBold" Text="You're all caught up" />
             </StackPanel>
             <ListView
                 x:Uid="PagesNotificationsPageNotificationsList" x:Name="NotificationsList"

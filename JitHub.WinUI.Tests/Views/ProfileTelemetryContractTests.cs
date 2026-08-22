@@ -33,6 +33,20 @@ public sealed class ProfileTelemetryContractTests
         Assert.DoesNotContain("[\"url\"]", source, StringComparison.Ordinal);
         Assert.Contains("TelemetrySanitizer.CreateDurationBucket", source, StringComparison.Ordinal);
         Assert.Contains("NormalizeTelemetrySource", source, StringComparison.Ordinal);
+        Assert.Contains("TelemetryTaxonomy.Actions.CopyFact", source, StringComparison.Ordinal);
+        Assert.Contains("TelemetryTaxonomy.Actions.OpenProfileExternal", source, StringComparison.Ordinal);
+        Assert.Contains("OpenExternalUriAsync(uri, \"open_repository_external\"", source, StringComparison.Ordinal);
+        Assert.Contains("TrackAction(action, TelemetryTaxonomy.Results.Rejected)", source, StringComparison.Ordinal);
+
+        string viewSource = File.ReadAllText(Path.Combine(
+            FindRepositoryRoot(),
+            "JitHub.WinUI",
+            "Views",
+            "Pages",
+            "ProfilePage.xaml.cs"));
+        Assert.Contains("TrackFactCopy(PlatformHelper.CopyString", viewSource, StringComparison.Ordinal);
+        Assert.Contains("OpenProfileExternallyAsync", viewSource, StringComparison.Ordinal);
+        Assert.DoesNotContain("Launcher.LaunchUriAsync", viewSource, StringComparison.Ordinal);
     }
 
     private static string FindRepositoryRoot()

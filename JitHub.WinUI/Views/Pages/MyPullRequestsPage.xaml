@@ -28,7 +28,7 @@
                 </Grid.RowDefinitions>
                 <TextBlock
                     FontFamily="{ThemeResource AppBodyFontFamily}"
-                    FontSize="13"
+                    FontSize="{ThemeResource AppFontSize13}"
                     FontWeight="SemiBold"
                     Foreground="{ThemeResource AppInkBrush}"
                     MaxLines="2"
@@ -47,7 +47,7 @@
                     </Grid.ColumnDefinitions>
                     <TextBlock
                         FontFamily="{ThemeResource AppMonoFontFamily}"
-                        FontSize="11"
+                        FontSize="{ThemeResource AppFontSize11}"
                         Foreground="{ThemeResource AppAccentBrush}"
                         Text="{x:Bind NumberText, Mode=OneWay}" />
                     <TextBlock
@@ -89,7 +89,7 @@
                             Grid.Column="1"
                             VerticalAlignment="Center"
                             FontFamily="{ThemeResource AppBodyFontFamily}"
-                            FontSize="13"
+                            FontSize="{ThemeResource AppFontSize13}"
                             FontWeight="SemiBold"
                             Foreground="{ThemeResource AppInkBrush}"
                             Text="{x:Bind AuthorDisplayName, Mode=OneWay}" />
@@ -126,7 +126,7 @@
                         Fill="{x:Bind Color, Converter={StaticResource HexColorToColorStringConverter}, Mode=OneWay}" />
                     <TextBlock
                         FontFamily="{ThemeResource AppMonoFontFamily}"
-                        FontSize="11"
+                        FontSize="{ThemeResource AppFontSize11}"
                         Foreground="{ThemeResource AppInkBrush}"
                         Text="{x:Bind Name, Mode=OneWay}" />
                 </StackPanel>
@@ -170,7 +170,7 @@
                 <StackPanel Spacing="4">
                     <TextBlock
                         FontFamily="{ThemeResource AppBodyFontFamily}"
-                        FontSize="13"
+                        FontSize="{ThemeResource AppFontSize13}"
                         FontWeight="SemiBold"
                         Foreground="{ThemeResource AppInkBrush}"
                         MaxLines="2"
@@ -186,7 +186,7 @@
                     <TextBlock
                         HorizontalAlignment="Right"
                         FontFamily="{ThemeResource AppMonoFontFamily}"
-                        FontSize="11"
+                        FontSize="{ThemeResource AppFontSize11}"
                         Foreground="{ThemeResource AppAccentBrush}"
                         Text="{x:Bind ShortSha, Mode=OneWay}" />
                     <TextBlock
@@ -211,7 +211,7 @@
                         </Grid.ColumnDefinitions>
                         <TextBlock
                             FontFamily="{ThemeResource AppMonoFontFamily}"
-                            FontSize="11"
+                            FontSize="{ThemeResource AppFontSize11}"
                             Foreground="{ThemeResource AppInkBrush}"
                             Text="{x:Bind Path, Mode=OneWay}"
                             TextTrimming="CharacterEllipsis" />
@@ -246,14 +246,14 @@
                         </Grid.ColumnDefinitions>
                         <TextBlock
                             FontFamily="{ThemeResource AppBodyFontFamily}"
-                            FontSize="13"
+                            FontSize="{ThemeResource AppFontSize13}"
                             FontWeight="SemiBold"
                             Foreground="{ThemeResource AppInkBrush}"
                             Text="{x:Bind Reviewer, Mode=OneWay}" />
                         <TextBlock
                             Grid.Column="1"
                             FontFamily="{ThemeResource AppUiFontFamily}"
-                            FontSize="11"
+                            FontSize="{ThemeResource AppFontSize11}"
                             Foreground="{ThemeResource AppAccentBrush}"
                             Text="{x:Bind State, Mode=OneWay}" />
                         <TextBlock
@@ -322,7 +322,7 @@
                 </Grid.ColumnDefinitions>
                 <TextBlock
                     FontFamily="{ThemeResource AppDisplayFontFamily}"
-                    FontSize="30"
+                    FontSize="{ThemeResource AppFontSize30}"
                     Foreground="{ThemeResource AppInkBrush}"
                     Text="{x:Bind ViewModel.Title, Mode=OneWay}" />
                 <StackPanel
@@ -342,7 +342,7 @@
                         Style="{StaticResource AppToolbarButtonStyle}"
                         ToolTipService.ToolTip="Pull requests"
                         Visibility="Collapsed">
-                        <FontIcon FontFamily="{StaticResource SegoeFluentIcons}" FontSize="14" Glyph="&#xE8FD;" />
+                        <FontIcon FontFamily="{StaticResource SegoeFluentIcons}" FontSize="{ThemeResource AppFontSize14}" Glyph="&#xE8FD;" />
                     </Button>
                         <Button
                             x:Uid="MyPullRequestsOpenInspectorButton"
@@ -356,7 +356,7 @@
                         Style="{StaticResource AppToolbarButtonStyle}"
                         ToolTipService.ToolTip="Inspector"
                         Visibility="Collapsed">
-                        <FontIcon FontFamily="{StaticResource SegoeFluentIcons}" FontSize="14" Glyph="&#xE9D2;" />
+                        <FontIcon FontFamily="{StaticResource SegoeFluentIcons}" FontSize="{ThemeResource AppFontSize14}" Glyph="&#xE9D2;" />
                     </Button>
                     <ProgressRing
                         Width="28"
@@ -428,7 +428,7 @@
                                 Style="{StaticResource AppToolbarButtonStyle}"
                                 ToolTipService.ToolTip="Close pull requests"
                                 Visibility="Collapsed">
-                                <FontIcon FontFamily="{StaticResource SegoeFluentIcons}" FontSize="14" Glyph="&#xE8FD;" />
+                                <FontIcon FontFamily="{StaticResource SegoeFluentIcons}" FontSize="{ThemeResource AppFontSize14}" Glyph="&#xE8FD;" />
                             </Button>
                             <Grid
                                 x:Name="PullRequestFilterHost"
@@ -534,7 +534,7 @@
                                         x:Name="MyPullRequestsDetailTitleText"
                                         AutomationProperties.AutomationId="MyPullRequestsDetailTitle"
                                         FontFamily="{ThemeResource AppDisplayFontFamily}"
-                                        FontSize="25"
+                                        FontSize="{ThemeResource AppFontSize25}"
                                         Foreground="{ThemeResource AppInkBrush}"
                                         HorizontalAlignment="Stretch"
                                         MaxLines="2"
@@ -550,7 +550,7 @@
                                         </Grid.ColumnDefinitions>
                                         <TextBlock
                                             FontFamily="{ThemeResource AppMonoFontFamily}"
-                                            FontSize="12"
+                                            FontSize="{ThemeResource AppFontSize12}"
                                             Foreground="{ThemeResource AppAccentBrush}"
                                             Text="{x:Bind ViewModel.SelectedIssueNumberText, Mode=OneWay}" />
                                         <TextBlock
@@ -578,7 +578,7 @@
                                     ToolTipService.ToolTip="Open this pull request in its repository workspace"
                                     Style="{StaticResource AppOutlineButtonStyle}">
                                     <StackPanel Orientation="Horizontal" Spacing="8">
-                                        <FontIcon FontFamily="{StaticResource SegoeFluentIcons}" FontSize="13" Glyph="&#xE72A;" />
+                                        <FontIcon FontFamily="{StaticResource SegoeFluentIcons}" FontSize="{ThemeResource AppFontSize13}" Glyph="&#xE72A;" />
                                     <TextBlock x:Uid="MyPullRequestsOpenRepositoryText" Text="Open pull request" />
                                     </StackPanel>
                                 </Button>
@@ -676,7 +676,7 @@
                                                     Grid.Column="1"
                                                     VerticalAlignment="Center"
                                                     FontFamily="{ThemeResource AppBodyFontFamily}"
-                                                    FontSize="13"
+                                                    FontSize="{ThemeResource AppFontSize13}"
                                                     FontWeight="SemiBold"
                                                     Foreground="{ThemeResource AppInkBrush}"
                                                     Text="{x:Bind ViewModel.SelectedIssueAuthorDisplayName, Mode=OneWay}" />
@@ -726,7 +726,7 @@
                                         </Grid.ColumnDefinitions>
                                         <TextBlock
                                             FontFamily="{ThemeResource AppDisplayFontFamily}"
-                                            FontSize="20"
+                                            FontSize="{ThemeResource AppFontSize20}"
                                             Foreground="{ThemeResource AppInkBrush}"
                                             Text="{x:Bind ViewModel.ConversationSectionLabel, Mode=OneWay}" />
                                         <TextBlock
@@ -861,7 +861,7 @@
                                     AutomationProperties.AutomationId="MyPullRequestsInspectorTitle"
                                     VerticalAlignment="Center"
                                     FontFamily="{ThemeResource AppDisplayFontFamily}"
-                                    FontSize="21"
+                                    FontSize="{ThemeResource AppFontSize21}"
                                     Foreground="{ThemeResource AppInkBrush}"
                                     Text="Inspector" />
                                 <Button
@@ -877,7 +877,7 @@
                                     Style="{StaticResource AppToolbarButtonStyle}"
                                     ToolTipService.ToolTip="Close inspector"
                                     Visibility="Collapsed">
-                                    <FontIcon FontFamily="{StaticResource SegoeFluentIcons}" FontSize="14" Glyph="&#xE9D2;" />
+                                    <FontIcon FontFamily="{StaticResource SegoeFluentIcons}" FontSize="{ThemeResource AppFontSize14}" Glyph="&#xE9D2;" />
                                 </Button>
                             </Grid>
 
@@ -890,7 +890,7 @@
                             <TextBlock
                                 x:Uid="MyWorkItemsInspectorStatusHeading"
                                     FontFamily="{ThemeResource AppBodyFontFamily}"
-                                    FontSize="13"
+                                    FontSize="{ThemeResource AppFontSize13}"
                                     FontWeight="SemiBold"
                                     Foreground="{ThemeResource AppInkBrush}"
                                     Text="Status" />
@@ -918,7 +918,7 @@
                             <TextBlock
                                 x:Uid="MyPullRequestsInspectorReviewStateHeading"
                                     FontFamily="{ThemeResource AppBodyFontFamily}"
-                                    FontSize="13"
+                                    FontSize="{ThemeResource AppFontSize13}"
                                     FontWeight="SemiBold"
                                     Foreground="{ThemeResource AppInkBrush}"
                                     Text="Review state" />
@@ -937,7 +937,7 @@
                             <TextBlock
                                 x:Uid="MyWorkItemsInspectorAssigneesHeading"
                                     FontFamily="{ThemeResource AppBodyFontFamily}"
-                                    FontSize="13"
+                                    FontSize="{ThemeResource AppFontSize13}"
                                     FontWeight="SemiBold"
                                     Foreground="{ThemeResource AppInkBrush}"
                                     Text="Assignees" />
@@ -962,7 +962,7 @@
                                 <TextBlock
                                     x:Uid="MyWorkItemsInspectorLabelsHeading"
                                     FontFamily="{ThemeResource AppBodyFontFamily}"
-                                    FontSize="13"
+                                    FontSize="{ThemeResource AppFontSize13}"
                                     FontWeight="SemiBold"
                                     Foreground="{ThemeResource AppInkBrush}"
                                     Text="Labels" />
@@ -993,7 +993,7 @@
                                 <TextBlock
                                     x:Uid="MyWorkItemsInspectorMilestoneHeading"
                                     FontFamily="{ThemeResource AppBodyFontFamily}"
-                                    FontSize="13"
+                                    FontSize="{ThemeResource AppFontSize13}"
                                     FontWeight="SemiBold"
                                     Foreground="{ThemeResource AppInkBrush}"
                                     Text="Milestone" />

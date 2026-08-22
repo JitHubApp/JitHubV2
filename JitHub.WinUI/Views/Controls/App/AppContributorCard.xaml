@@ -25,7 +25,7 @@
                 Background="{ThemeResource AppCanvasInsetBrush}"
                 BorderBrush="{ThemeResource AppHairlineBrush}"
                 BorderThickness="1"
-                CornerRadius="32">
+                CornerRadius="{ThemeResource AppRadiusCircle}">
                 <Image
                     x:Name="ContributorPicture"
                     Stretch="UniformToFill" />

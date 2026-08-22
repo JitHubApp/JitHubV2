@@ -2,11 +2,13 @@ using Microsoft.UI.Dispatching;
 using Microsoft.UI.Xaml;
 using Microsoft.Windows.Globalization;
 using Microsoft.Windows.AppLifecycle;
+using JitHub.Services.Markdown;
 using System;
 using System.Collections.Generic;
 using System.IO;
 using System.Runtime.InteropServices;
 using System.Threading;
+using Windows.ApplicationModel.Activation;
 
 namespace JitHub.WinUI;
 
@@ -28,11 +30,14 @@ internal static class Program
             LogStartupPhase("main.enter");
             WinRT.ComWrappersSupport.InitializeComWrappers();
             LogStartupPhase("main.com-wrappers-ready");
-            CurrentLaunchOptions = LaunchOptions.Parse(args);
+            AppActivationArguments activationArguments = AppInstance.GetCurrent().GetActivatedEventArgs();
+            CurrentLaunchOptions = LaunchOptions.Parse(args, GetLaunchArgumentText(activationArguments));
+            MarkdownLifecycleAutomationBridge.ConfigureLaunchOptions(
+                CurrentLaunchOptions.MarkdownLifecycleFixture,
+                CurrentLaunchOptions.MarkdownLifecycleHost);
             ConfigureAutomationLanguageOverride();
             LogStartupPhase("main.launch-options-ready");
 
-            AppActivationArguments activationArguments = AppInstance.GetCurrent().GetActivatedEventArgs();
             string appInstanceKey = CurrentLaunchOptions.HasPageOverride
                 ? $"{AppInstanceKey}-{Environment.ProcessId}"
                 : AppInstanceKey;
@@ -153,6 +158,12 @@ internal static class Program
         {
         }
     }
+
+    private static string? GetLaunchArgumentText(AppActivationArguments activationArguments) =>
+        activationArguments.Kind == ExtendedActivationKind.Launch &&
+        activationArguments.Data is ILaunchActivatedEventArgs launchArguments
+            ? launchArguments.Arguments
+            : null;
 
     private static void ConfigureAutomationLanguageOverride()
     {

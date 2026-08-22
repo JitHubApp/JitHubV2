@@ -13,7 +13,7 @@
         <StackPanel Spacing="12">
 
             <FontIcon
-                FontSize="48"
+                FontSize="{ThemeResource AppFontSize48}"
                 Foreground="{ThemeResource AppInkMutedBrush}"
                 Glyph="&#xE7BA;" />
 

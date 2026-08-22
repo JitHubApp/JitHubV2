@@ -1106,6 +1106,7 @@ public sealed partial class RepoIssuePageViewModel : ViewModelBase
                 repoName,
                 commentId,
                 body),
+            IssueActionKind.CommentEdit,
             GetString("RepoIssue.CommentUpdatingStatus", "Updating comment..."));
 
     public Task<bool> DeleteIssueCommentAsync(long commentId) =>
@@ -1115,6 +1116,7 @@ public sealed partial class RepoIssuePageViewModel : ViewModelBase
                 owner,
                 repoName,
                 commentId),
+            IssueActionKind.CommentDelete,
             GetString("RepoIssue.CommentDeletingStatus", "Deleting comment..."));
 
     public Task<bool> SetIssueCommentPinnedAsync(long commentId, bool pinned)
@@ -1128,6 +1130,7 @@ public sealed partial class RepoIssuePageViewModel : ViewModelBase
             (token, owner, repoName) => pinned
                 ? _gitHubClientService.PinIssueCommentAsync(token, owner, repoName, commentId)
                 : _gitHubClientService.UnpinIssueCommentAsync(token, owner, repoName, commentId),
+            pinned ? IssueActionKind.CommentPin : IssueActionKind.CommentUnpin,
             pinned
                 ? GetString("RepoIssue.CommentPinningStatus", "Pinning comment...")
                 : GetString("RepoIssue.CommentUnpinningStatus", "Unpinning comment..."));
@@ -1145,12 +1148,16 @@ public sealed partial class RepoIssuePageViewModel : ViewModelBase
                 ? _gitHubClientService.UnminimizeCommentAsync(token, nodeId)
                 : _gitHubClientService.MinimizeCommentAsync(token, nodeId, classifier),
             string.IsNullOrWhiteSpace(classifier)
+                ? IssueActionKind.CommentUnhide
+                : IssueActionKind.CommentHide,
+            string.IsNullOrWhiteSpace(classifier)
                 ? GetString("RepoIssue.CommentUnhidingStatus", "Unhiding comment...")
                 : GetString("RepoIssue.CommentHidingStatus", "Hiding comment..."));
     }
 
     private async Task<bool> ExecuteIssueCommentMutationAsync(
         Func<string, string, string, Task> mutation,
+        IssueActionKind action,
         string status)
     {
         if (_navArg is null || SelectedIssue is null || !TryGetActiveToken(out string token))
@@ -1173,14 +1180,17 @@ public sealed partial class RepoIssuePageViewModel : ViewModelBase
             await RefreshIssueSelectionAsync(
                 _loadedIssues.FirstOrDefault(issue => issue.Number == currentIssue.Number) ?? currentIssue,
                 token);
+            TrackIssueAction(action, IssueActionOutcome.Success);
             return true;
         }
         catch (GitHubAuthenticationException)
         {
+            TrackIssueAction(action, IssueActionOutcome.AuthenticationError);
             _authService.SignOut();
         }
         catch (GitHubApiException ex)
         {
+            TrackIssueAction(action, GetIssueActionOutcome(ex));
             if (IsSelectedIssue(currentIssue))
             {
                 StatusText = UserFacingError.For(ex, UserFacingErrorKind.Action, "issues");
@@ -1188,9 +1198,23 @@ public sealed partial class RepoIssuePageViewModel : ViewModelBase
         }
         catch (HttpRequestException)
         {
+            TrackIssueAction(action, IssueActionOutcome.NetworkError);
             if (IsSelectedIssue(currentIssue))
             {
                 StatusText = GetString("RepoIssue.CommentMutationNetworkError", "JitHub could not reach GitHub to update this comment.");
+            }
+        }
+        catch (OperationCanceledException)
+        {
+            TrackIssueAction(action, IssueActionOutcome.Cancelled);
+        }
+        catch (Exception ex)
+        {
+            Debug.WriteLine($"Issue comment mutation failed: {ex}");
+            TrackIssueAction(action, IssueActionOutcome.Failure);
+            if (IsSelectedIssue(currentIssue))
+            {
+                StatusText = GetString("RepoIssue.CommentMutationUnexpectedError", "JitHub could not update this comment.");
             }
         }
 
@@ -2810,6 +2834,19 @@ public sealed partial class RepoIssuePageViewModel : ViewModelBase
     {
         IssueTelemetry.TrackAction(_telemetryService, action, outcome);
     }
+
+    public void TrackCommentQuoteReply() =>
+        TrackIssueAction(IssueActionKind.QuoteReply, IssueActionOutcome.Success);
+
+    public void TrackCommentCopyLink(bool succeeded) =>
+        TrackIssueAction(
+            IssueActionKind.CopyLink,
+            succeeded ? IssueActionOutcome.Success : IssueActionOutcome.Failure);
+
+    public void TrackCommentCopyMarkdown(bool succeeded) =>
+        TrackIssueAction(
+            IssueActionKind.CopyMarkdown,
+            succeeded ? IssueActionOutcome.Success : IssueActionOutcome.Failure);
 
     private static IssueActionOutcome GetIssueActionOutcome(GitHubApiException exception)
     {

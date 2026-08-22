@@ -264,7 +264,7 @@
 
     <Style TargetType="ComboBoxItem">
         <Setter Property="FontFamily" Value="{ThemeResource AppUiFontFamily}" />
-        <Setter Property="FontSize" Value="13" />
+        <Setter Property="FontSize" Value="{ThemeResource AppFontSize13}" />
         <Setter Property="CornerRadius" Value="{ThemeResource AppRadiusSmall}" />
         <Setter Property="MinHeight" Value="36" />
         <Setter Property="Padding" Value="12,8" />
@@ -361,7 +361,7 @@
 
     <Style TargetType="controls:Segmented">
         <Setter Property="FontFamily" Value="{ThemeResource AppUiFontFamily}" />
-        <Setter Property="FontSize" Value="13" />
+        <Setter Property="FontSize" Value="{ThemeResource AppFontSize13}" />
         <Setter Property="Foreground" Value="{ThemeResource AppInkBrush}" />
         <Setter Property="Background" Value="{ThemeResource AppCanvasInsetBrush}" />
         <Setter Property="BorderBrush" Value="{ThemeResource AppTransparentBrush}" />
@@ -373,7 +373,7 @@
 
     <Style TargetType="controls:SegmentedItem">
         <Setter Property="FontFamily" Value="{ThemeResource AppUiFontFamily}" />
-        <Setter Property="FontSize" Value="13" />
+        <Setter Property="FontSize" Value="{ThemeResource AppFontSize13}" />
         <Setter Property="Foreground" Value="{ThemeResource AppInkMutedBrush}" />
         <Setter Property="Background" Value="{ThemeResource AppTransparentBrush}" />
         <Setter Property="BorderBrush" Value="{ThemeResource AppTransparentBrush}" />

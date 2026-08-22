@@ -824,7 +824,7 @@ public sealed partial class StarsPage : Page
             Background = new SolidColorBrush(Windows.UI.Color.FromArgb(255, red, green, blue)),
             BorderBrush = (Brush)Application.Current.Resources["AppOutlineStrongBrush"],
             BorderThickness = new Thickness(1),
-            CornerRadius = new CornerRadius(3)
+            CornerRadius = (CornerRadius)Application.Current.Resources["AppRadiusTight"]
         };
         TextBlock label = new()
         {

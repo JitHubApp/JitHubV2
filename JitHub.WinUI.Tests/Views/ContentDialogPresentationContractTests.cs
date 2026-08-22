@@ -33,6 +33,13 @@ public sealed class ContentDialogPresentationContractTests
 
         Assert.Contains("GetService<DialogPresentationCoordinator>()", source, StringComparison.Ordinal);
         Assert.Contains("TryBegin(DialogPresentationKind.NativeContentDialog", source, StringComparison.Ordinal);
+        Assert.Contains("dialog.presentation.failed", source, StringComparison.Ordinal);
+        Assert.Contains("catch (OperationCanceledException)", source, StringComparison.Ordinal);
+        Assert.True(
+            source.IndexOf("catch (OperationCanceledException)", StringComparison.Ordinal) <
+            source.IndexOf("catch (Exception ex)", StringComparison.Ordinal));
+        Assert.Contains("App.LogHandledException", source, StringComparison.Ordinal);
+        Assert.Contains("return ContentDialogResult.None", source, StringComparison.Ordinal);
         Assert.Contains("coordinator.Complete(lease);", source, StringComparison.Ordinal);
         Assert.Contains("AppDialogStyleCatalog.Apply(dialog);", source, StringComparison.Ordinal);
         Assert.Contains("DialogFocusRestorationGate.Shared", source, StringComparison.Ordinal);

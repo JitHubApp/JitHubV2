@@ -164,6 +164,107 @@ public sealed class MarkdownHostContractTests
     }
 
     [Fact]
+    public void MarkdownViewer_UsesSemanticTokensAndReportsRecoverableRenderFailures()
+    {
+        string root = FindRepositoryRoot();
+        string viewerRoot = Path.Combine(root, "JitHub.WinUI", "Views", "Controls", "Common");
+        string source = File.ReadAllText(Path.Combine(viewerRoot, "MarkdownViewer.xaml.cs"));
+        XDocument xaml = XDocument.Load(Path.Combine(viewerRoot, "MarkdownViewer.xaml"));
+        XElement errorInfoBar = xaml.Descendants().Single(element =>
+            element.Name.LocalName == "InfoBar" &&
+            element.Attributes().Any(attribute =>
+                attribute.Name.LocalName == "Name" && attribute.Value == "RenderErrorInfoBar"));
+
+        Assert.Equal("{StaticResource AppErrorInfoBarStyle}", (string?)errorInfoBar.Attribute("Style"));
+        Assert.Contains("AppMarkdownBodyFontSize", source, StringComparison.Ordinal);
+        Assert.Contains("AppHighContrastMonoFontFamily", source, StringComparison.Ordinal);
+        Assert.Contains("_accessibilitySettings?.HighContrast == true", source, StringComparison.Ordinal);
+        Assert.Contains("AppMarkdownTableCellPadding", source, StringComparison.Ordinal);
+        Assert.Contains("AppMarkdownHeading1Margin", source, StringComparison.Ordinal);
+        Assert.Contains("_renderer.RenderCompleted += OnRendererRenderCompleted", source, StringComparison.Ordinal);
+        Assert.Contains("_renderer.RenderFailed += OnRendererRenderFailed", source, StringComparison.Ordinal);
+        Assert.Contains("MarkdownLifecycleAutomationBridge.RecordRenderFailure", source, StringComparison.Ordinal);
+        Assert.Contains("\"markdown.error\"", source, StringComparison.Ordinal);
+        Assert.Contains("TelemetryTaxonomy.Actions.Retry", source, StringComparison.Ordinal);
+        Assert.Contains("e.Reason == MarkdownImageUnavailableReason.RemoteContentBlocked", source, StringComparison.Ordinal);
+        Assert.Contains("_remoteContentConsent.IsGranted", source, StringComparison.Ordinal);
+        Assert.DoesNotContain("e.Exception.Message", source, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void SafeHtmlDetailsUseStatefulAccessibleDisclosuresAndTelemetry()
+    {
+        string root = FindRepositoryRoot();
+        string renderer = File.ReadAllText(Path.Combine(
+            root, "MarkdownRenderer", "MarkdownRenderer.Gfm", "Renderers", "HtmlBlockRenderer.cs"));
+        string control = File.ReadAllText(Path.Combine(
+            root, "MarkdownRenderer", "MarkdownRenderer", "Controls", "MarkdownRendererControl.cs"));
+        string peer = File.ReadAllText(Path.Combine(
+            root, "MarkdownRenderer", "MarkdownRenderer", "Accessibility", "MarkdownLinkPeer.cs"));
+        string viewer = File.ReadAllText(Path.Combine(
+            root, "JitHub.WinUI", "Views", "Controls", "Common", "MarkdownViewer.xaml.cs"));
+
+        Assert.Contains("details.TryGetAttribute(\"open\"", renderer, StringComparison.Ordinal);
+        Assert.Contains("context.IsDisclosureExpanded", renderer, StringComparison.Ordinal);
+        Assert.Contains("if (!expanded)", renderer, StringComparison.Ordinal);
+        Assert.Contains("DisclosureId = disclosureId", renderer, StringComparison.Ordinal);
+        Assert.Contains("_disclosureStates.Clear()", control, StringComparison.Ordinal);
+        Assert.Contains("DisclosureStates = new Dictionary<string, bool>", control, StringComparison.Ordinal);
+        Assert.Contains("TryActivateDisclosure", control, StringComparison.Ordinal);
+        Assert.Contains("DisclosureToggled?.Invoke", control, StringComparison.Ordinal);
+        Assert.Contains("IExpandCollapseProvider", peer, StringComparison.Ordinal);
+        Assert.Contains("PatternInterface.ExpandCollapse", peer, StringComparison.Ordinal);
+        Assert.Contains("AutomationControlType.Button", peer, StringComparison.Ordinal);
+        Assert.Contains("_renderer.DisclosureToggled += OnRendererDisclosureToggled", viewer, StringComparison.Ordinal);
+        Assert.Contains("TelemetryTaxonomy.Actions.ToggleDetails", viewer, StringComparison.Ordinal);
+        Assert.Contains("TelemetryTaxonomy.Results.Expanded", viewer, StringComparison.Ordinal);
+        Assert.Contains("TelemetryTaxonomy.Results.Collapsed", viewer, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void LinkedMarkdownImagesAreKeyboardAndAutomationHyperlinks()
+    {
+        string root = FindRepositoryRoot();
+        string snapshot = File.ReadAllText(Path.Combine(
+            root, "MarkdownRenderer", "MarkdownRenderer", "Layout", "LayoutSnapshot.cs"));
+        string control = File.ReadAllText(Path.Combine(
+            root, "MarkdownRenderer", "MarkdownRenderer", "Controls", "MarkdownRendererControl.cs"));
+        string automationPeer = File.ReadAllText(Path.Combine(
+            root, "MarkdownRenderer", "MarkdownRenderer", "Accessibility", "MarkdownAutomationPeer.cs"));
+        string imagePeer = File.ReadAllText(Path.Combine(
+            root, "MarkdownRenderer", "MarkdownRenderer", "Accessibility", "MarkdownLinkedImagePeer.cs"));
+
+        Assert.Contains("InlineImageRun { IsLinked: true }", snapshot, StringComparison.Ordinal);
+        Assert.Contains("TryGetFocusedLinkedImage", control, StringComparison.Ordinal);
+        Assert.Contains("RaiseLinkedImageClickFromAutomation", control, StringComparison.Ordinal);
+        Assert.Contains("InvalidateAutomationLayout();", control, StringComparison.Ordinal);
+        Assert.Contains("FrameworkElementAutomationPeer.FromElement(this)?.InvalidatePeer();", control, StringComparison.Ordinal);
+        Assert.Contains("RaiseFocusForLinkedImage", automationPeer, StringComparison.Ordinal);
+        Assert.Contains("IInvokeProvider", imagePeer, StringComparison.Ordinal);
+        Assert.Contains("AutomationControlType.Hyperlink", imagePeer, StringComparison.Ordinal);
+        Assert.Contains("_run.AltText", imagePeer, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void MarkdownClipboardActionsUseHostStylingAndResultTelemetry()
+    {
+        string root = FindRepositoryRoot();
+        string control = File.ReadAllText(Path.Combine(
+            root, "MarkdownRenderer", "MarkdownRenderer", "Controls", "MarkdownRendererControl.cs"));
+        string viewer = File.ReadAllText(Path.Combine(
+            root, "JitHub.WinUI", "Views", "Controls", "Common", "MarkdownViewer.xaml.cs"));
+
+        Assert.Contains("CodeBlockCopyButtonStyle", control, StringComparison.Ordinal);
+        Assert.Contains("CopyCompleted?.Invoke", control, StringComparison.Ordinal);
+        Assert.Contains("MarkdownCopyKind.CodeBlock", control, StringComparison.Ordinal);
+        Assert.Contains("MarkdownCopyKind.Selection", control, StringComparison.Ordinal);
+        Assert.Contains("_renderer.CopyCompleted += OnRendererCopyCompleted", viewer, StringComparison.Ordinal);
+        Assert.Contains("AppToolbarButtonStyle", viewer, StringComparison.Ordinal);
+        Assert.Contains("TelemetryTaxonomy.Actions.CopyCode", viewer, StringComparison.Ordinal);
+        Assert.Contains("TelemetryTaxonomy.Actions.CopySelection", viewer, StringComparison.Ordinal);
+    }
+
+    [Fact]
     public void MarkdownViewer_UsesPerDocumentConsentAndCanonicalSourceContext()
     {
         string source = File.ReadAllText(Path.Combine(

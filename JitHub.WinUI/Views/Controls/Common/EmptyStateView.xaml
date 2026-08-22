@@ -13,7 +13,7 @@
         Padding="0"
     Background="{ThemeResource AppTransparentBrush}"
         BorderThickness="0"
-        CornerRadius="0">
+        CornerRadius="{ThemeResource AppRadiusNone}">
         <StackPanel
             Style="{StaticResource AppInlineEmptyStatePanelStyle}">
             <TextBlock

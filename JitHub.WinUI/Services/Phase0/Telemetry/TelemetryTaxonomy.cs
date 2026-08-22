@@ -33,6 +33,8 @@ public static class TelemetryTaxonomy
         public const string Failed = "failed";
         public const string PermissionDenied = "permission_denied";
         public const string Queued = "queued";
+        public const string Expanded = "expanded";
+        public const string Collapsed = "collapsed";
     }
 
     public static class Sources
@@ -74,11 +76,29 @@ public static class TelemetryTaxonomy
         public const string ClearRepoFileCache = "clear_repo_file_cache";
         public const string ClearStarsLibrary = "clear_stars_library";
         public const string Comment = "comment";
+        public const string CommentDelete = "comment_delete";
+        public const string CommentEdit = "comment_edit";
+        public const string CommentHide = "comment_hide";
+        public const string CommentPin = "comment_pin";
         public const string CommentReaction = "comment_reaction";
+        public const string CommentUnhide = "comment_unhide";
+        public const string CommentUnpin = "comment_unpin";
         public const string Close = "close";
+        public const string CopyCode = "copy_code";
+        public const string CopyFact = "copy_fact";
+        public const string CopyDiff = "copy_diff";
         public const string CopyLineLink = "copy_line_link";
+        public const string CopyLink = "copy_link";
+        public const string CopyMarkdown = "copy_markdown";
         public const string CopyPath = "copy_path";
         public const string CopyRaw = "copy_raw";
+        public const string CopySelection = "copy_selection";
+        public const string CsvCopy = "csv_copy";
+        public const string CsvPlainView = "csv_plain_view";
+        public const string CsvReorder = "csv_reorder";
+        public const string CsvResize = "csv_resize";
+        public const string CsvRichView = "csv_rich_view";
+        public const string CsvSort = "csv_sort";
         public const string Create = "create";
         public const string Delete = "delete";
         public const string Drawer = "drawer";
@@ -92,15 +112,21 @@ public static class TelemetryTaxonomy
         public const string Hydrate = "hydrate";
         public const string MarkAllRead = "mark_all_read";
         public const string MarkRead = "mark_read";
+        public const string LoadRemoteImages = "load_remote_images";
         public const string Metadata = "metadata";
         public const string Merge = "merge";
         public const string Mute = "mute";
         public const string Outline = "outline";
         public const string OpenRepository = "open_repository";
+        public const string OpenProfileExternal = "open_profile_external";
+        public const string OpenLink = "open_link";
+        public const string QuoteReply = "quote_reply";
         public const string Reaction = "reaction";
+        public const string Render = "render";
         public const string Remove = "remove";
         public const string Reopen = "reopen";
         public const string Reorder = "reorder";
+        public const string Retry = "retry";
         public const string ReviewApprove = "review_approve";
         public const string ReviewComment = "review_comment";
         public const string ReviewReply = "review_reply";
@@ -114,6 +140,7 @@ public static class TelemetryTaxonomy
         public const string SyncUnstar = "sync_unstar";
         public const string ThemeChanged = "theme_changed";
         public const string ToggleState = "toggle_state";
+        public const string ToggleDetails = "toggle_details";
         public const string Unfollow = "unfollow";
         public const string Unstar = "unstar";
         public const string UndoUnstar = "undo_unstar";
@@ -168,7 +195,7 @@ public static class TelemetryTaxonomy
         {
             ["result"] = Values(
                 Results.AlreadyGranted, "allowed", Results.Authenticated, "auth_error", "cached_error", "cancelled", "deferred", "disabled", "dismissed",
-                "empty", Results.Enabled, "error", Results.Failed, "hidden", "launched", "opened", "partial",
+                Results.Collapsed, "empty", Results.Enabled, "error", Results.Expanded, Results.Failed, "hidden", "launched", "opened", "partial",
                 "no_session", Results.PermissionDenied, "preview", Results.Queued, "reconnect", "rejected", "retry", "shown",
                 "staged", "started", "submitted", "success", "suppressed", "unavailable", "unknown", "visible",
                 Results.IdentityError, Results.IdentityUnavailable, Results.NetworkError),
@@ -181,7 +208,7 @@ public static class TelemetryTaxonomy
                 "about", "appearance",
                 "activity", "assignees", "checks", "comments", "commits", "compare", "conversation", "diff", "files", "followers", "following",
                 "data_cache", "diagnostics", "general", "identity", "inspector", "issues", "labels", "list", "metadata", "milestone", "notifications",
-                "overview", "pull_requests", "readme", "recommendations", "repositories", "reviews", "stars",
+                "overview", "preview", "pull_requests", "readme", "recommendations", "repositories", "reviews", "stars",
                 "privacy", "status", "timeline"),
             ["source"] = Values(
                 Sources.Action, "background", Sources.Cache, "command", "command_search", Sources.Dialog, Sources.Dwell, "edit", "energy_saver", Sources.Full, "history", "home",
@@ -193,19 +220,22 @@ public static class TelemetryTaxonomy
                 Actions.BreadcrumbRoot, "browse_files", "clear_all", Actions.ClearAllCache, "clear_all_filters", "clear_cache",
                 Actions.ClearDiagnostics, "clear_filter", Actions.ClearImageCache, "clear_images", Actions.ClearQueryCache,
                 Actions.ClearRepoFileCache, Actions.ClearStarsLibrary,
-                Actions.Close, Actions.Comment, "copy_file", "copy_link", "copy_sha", Actions.Create, Actions.Delete, "detail_selection",
-                Actions.CommentReaction, Actions.CopyLineLink, Actions.CopyPath, Actions.CopyRaw, Actions.DeveloperMode, Actions.Diagnostics,
+                Actions.Close, Actions.Comment, Actions.CommentDelete, Actions.CommentEdit, Actions.CommentHide, Actions.CommentPin,
+                Actions.CommentReaction, Actions.CommentUnhide, Actions.CommentUnpin, Actions.CopyCode, Actions.CopyDiff, Actions.CopyFact, "copy_file", Actions.CopyLink, Actions.CopyMarkdown,
+                Actions.CopySelection, "copy_sha", Actions.Create, Actions.CsvCopy, Actions.CsvPlainView, Actions.CsvReorder, Actions.CsvResize,
+                Actions.CsvRichView, Actions.CsvSort, Actions.Delete, "detail_selection", Actions.CopyLineLink, Actions.CopyPath, Actions.CopyRaw,
+                Actions.DeveloperMode, Actions.Diagnostics,
                 Actions.Drawer, Actions.Edit, "edit_profile", "export", Actions.ExportDiagnostics, Actions.ExternalOpen,
                 "filter_changed", Actions.Find, Actions.Follow,
-                Actions.Hydrate, "load_full_file", "load_next_page", "manage_repositories", Actions.Merge, "new_repository",
+                Actions.Hydrate, Actions.LoadRemoteImages, "load_full_file", "load_next_page", "manage_repositories", Actions.Merge, "new_repository",
                 Actions.MarkAllRead, Actions.MarkRead, Actions.Metadata, Actions.Mute,
                 "open", "open_activity_repository", "open_fact", "open_gists", "open_organization", "open_owner",
-                "open_person", "open_repositories", Actions.OpenRepository, "open_repository_external", "open_source",
+                "open_person", "open_repositories", Actions.OpenLink, Actions.OpenProfileExternal, Actions.OpenRepository, "open_repository_external", "open_source",
                 "open_stars", Actions.Outline, "reaction", "refresh", Actions.RefreshUser, Actions.Remove, "remove_category",
-                Actions.Reaction, Actions.Reopen, Actions.Reorder, "reset", Actions.ReviewApprove, Actions.ReviewComment,
+                Actions.QuoteReply, Actions.Reaction, Actions.Render, Actions.Reopen, Actions.Reorder, "reset", Actions.Retry, Actions.ReviewApprove, Actions.ReviewComment,
                 Actions.ReviewReply, Actions.ReviewRequestChanges, "search", "search_repositories",
                 Actions.SectionChanged, Actions.SelectionMode, "share", Actions.SignIn, Actions.SignOut, "sort_changed", "scope_upgrade", Actions.StoreTelemetry,
-                Actions.SyncStar, Actions.SyncUnstar, Actions.ThemeChanged, Actions.ToggleState, Actions.UndoUnstar, Actions.Unfollow, Actions.Unstar,
+                Actions.SyncStar, Actions.SyncUnstar, Actions.ThemeChanged, Actions.ToggleDetails, Actions.ToggleState, Actions.UndoUnstar, Actions.Unfollow, Actions.Unstar,
                 Actions.Unmute, Actions.Unsubscribe, Actions.Update, "view_all", "write"),
             ["filter_type"] = Values(
                 FilterTypes.All, "archive", "author", "branch", "category", "date", "fork", "language", "list", "owner", "path",
@@ -217,10 +247,10 @@ public static class TelemetryTaxonomy
                 "access_denied", ErrorKinds.Api, ErrorKinds.Authentication, ErrorKinds.Cancelled, "invalid_operation", ErrorKinds.Io, ErrorKinds.Network,
                 ErrorKinds.InvalidCallback, ErrorKinds.Launch, "permission", "rate_limit", "storage", "unexpected", "unknown"),
             ["phase"] = Values("background", "complete", "execute", "incremental", "initial", "schedule"),
-            ["feature"] = Values("command_search", "commits", "issues", "prefetch", "pull_requests", "repository_library"),
+            ["feature"] = Values("command_search", "commits", "issues", "markdown", "prefetch", "pull_requests", "repository_library"),
             ["priority"] = Values("background_refresh", "prefetch", "user_initiated", "visible"),
             ["query_kind"] = Values("immutable_sha", "mutable", "repo_metadata", "search"),
-            ["resource"] = Values("avatar_image", "file", "gist_cache_index", "gist_raw_file", "lookup", "mutable", "repositories", "repository", "search"),
+            ["resource"] = Values("avatar_image", "file", "gist_cache_index", "gist_raw_file", "link", "lookup", "mutable", "remote_image", "repositories", "repository", "search"),
             ["policy"] = Values("allowed", "deferred", "suppressed"),
             ["event_kind"] = Values("action", "navigation", "query"),
             ["status"] = Values("complete", "failed", "partial", "queued", "success", "unavailable"),

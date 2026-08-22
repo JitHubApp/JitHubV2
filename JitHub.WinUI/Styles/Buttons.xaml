@@ -4,7 +4,7 @@
     xmlns:controls="using:Microsoft.UI.Xaml.Controls">
     <Style x:Key="AppStableButtonBaseStyle" TargetType="Button">
         <Setter Property="FontFamily" Value="{ThemeResource AppUiFontFamily}" />
-        <Setter Property="FontSize" Value="13" />
+        <Setter Property="FontSize" Value="{ThemeResource AppFontSize13}" />
         <Setter Property="CornerRadius" Value="{ThemeResource AppRadiusMedium}" />
         <Setter Property="Padding" Value="14,8" />
         <Setter Property="MinHeight" Value="36" />
@@ -85,7 +85,7 @@
 
     <Style TargetType="Button" BasedOn="{StaticResource AppStableButtonBaseStyle}">
         <Setter Property="FontFamily" Value="{ThemeResource AppUiFontFamily}" />
-        <Setter Property="FontSize" Value="13" />
+        <Setter Property="FontSize" Value="{ThemeResource AppFontSize13}" />
         <Setter Property="CornerRadius" Value="{ThemeResource AppRadiusMedium}" />
         <Setter Property="Padding" Value="14,8" />
         <Setter Property="MinHeight" Value="36" />
@@ -95,7 +95,7 @@
 
     <Style x:Key="AppAccentButtonStyle" TargetType="Button" BasedOn="{StaticResource AppStableButtonBaseStyle}">
         <Setter Property="FontFamily" Value="{ThemeResource AppUiFontFamily}" />
-        <Setter Property="FontSize" Value="13" />
+        <Setter Property="FontSize" Value="{ThemeResource AppFontSize13}" />
         <Setter Property="CornerRadius" Value="{ThemeResource AppRadiusMedium}" />
         <Setter Property="Padding" Value="14,8" />
         <Setter Property="MinHeight" Value="36" />
@@ -129,7 +129,7 @@
         <Setter Property="Padding" Value="2" />
         <Setter Property="HorizontalAlignment" Value="Left" />
         <Setter Property="HorizontalContentAlignment" Value="Left" />
-        <Setter Property="CornerRadius" Value="100" />
+        <Setter Property="CornerRadius" Value="{ThemeResource AppRadiusCircle}" />
     </Style>
 
     <Style x:Key="AppReactionButtonBaseStyle" TargetType="Button">
@@ -252,7 +252,7 @@
 
     <Style x:Key="AppOutlineButtonStyle" TargetType="Button" BasedOn="{StaticResource AppStableButtonBaseStyle}">
         <Setter Property="FontFamily" Value="{ThemeResource AppUiFontFamily}" />
-        <Setter Property="FontSize" Value="13" />
+        <Setter Property="FontSize" Value="{ThemeResource AppFontSize13}" />
         <Setter Property="MinHeight" Value="36" />
         <Setter Property="Padding" Value="12,8" />
         <Setter Property="CornerRadius" Value="{ThemeResource AppRadiusMedium}" />
@@ -282,7 +282,7 @@
 
     <Style x:Key="AppDropDownButtonStyle" TargetType="controls:DropDownButton">
         <Setter Property="FontFamily" Value="{ThemeResource AppUiFontFamily}" />
-        <Setter Property="FontSize" Value="13" />
+        <Setter Property="FontSize" Value="{ThemeResource AppFontSize13}" />
         <Setter Property="Padding" Value="12,8" />
         <Setter Property="Background" Value="{ThemeResource AppInputBrush}" />
         <Setter Property="BorderBrush" Value="{ThemeResource AppOutlineBrush}" />
@@ -312,7 +312,7 @@
 
     <Style x:Key="NewButtonStyle" TargetType="Button" BasedOn="{StaticResource AppAccentButtonStyle}">
         <Setter Property="Padding" Value="15,8" />
-        <Setter Property="FontSize" Value="14" />
+        <Setter Property="FontSize" Value="{ThemeResource AppFontSize14}" />
     </Style>
 
     <Style x:Key="PrimaryButton" TargetType="Button" BasedOn="{StaticResource AppAccentButtonStyle}" />

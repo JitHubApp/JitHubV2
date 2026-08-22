@@ -147,6 +147,14 @@ public sealed class Phase1SettingsPageViewModelTests
     }
 
     [Fact]
+    public void SettingsSectionItem_UsesItsLocalizedTitleAsTheDisplayString()
+    {
+        SettingsSectionItem section = new("appearance", "Appearance", "glyph");
+
+        Assert.Equal("Appearance", section.ToString());
+    }
+
+    [Fact]
     public async Task DiagnosticsToggle_EmitsOutcomeOnlyAfterPersistence()
     {
         List<string> order = [];

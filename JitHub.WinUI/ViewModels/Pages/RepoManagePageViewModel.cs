@@ -10,9 +10,9 @@ using System.Threading.Tasks;
 using CommunityToolkit.Mvvm.ComponentModel;
 using JitHub.Models.GitHub;
 using JitHub.Services;
+using JitHub.WinUI.Helpers;
 using JitHub.WinUI.ViewModels.Common;
 using Microsoft.UI.Dispatching;
-using Windows.ApplicationModel.DataTransfer;
 
 namespace JitHub.WinUI.ViewModels.Pages;
 
@@ -392,11 +392,13 @@ public sealed partial class RepoManagePageViewModel : ViewModelBase
         string url = string.IsNullOrWhiteSpace(item.Repository.HtmlUrl)
             ? $"https://github.com/{item.Repository.FullName}"
             : item.Repository.HtmlUrl;
-        DataPackage package = new();
-        package.SetText(url);
-        Clipboard.SetContent(package);
-        StatusText = GetString("RepoManage.LinkCopiedStatus", "Repository link copied.");
-        TrackAction("copy_link", "success");
+        bool succeeded = PlatformHelper.CopyString(url);
+        StatusText = succeeded
+            ? GetString("RepoManage.LinkCopiedStatus", "Repository link copied.")
+            : GetString("RepoManage.LinkCopyFailedStatus", "The repository link could not be copied.");
+        TrackAction(
+            TelemetryTaxonomy.Actions.CopyLink,
+            succeeded ? TelemetryTaxonomy.Results.Success : TelemetryTaxonomy.Results.Error);
     }
 
     public void OpenNewRepository()

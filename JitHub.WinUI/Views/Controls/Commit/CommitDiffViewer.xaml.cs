@@ -4,6 +4,7 @@ using System.Linq;
 using System.Text;
 using JitHub.Services;
 using JitHub.WinUI.Performance;
+using JitHub.WinUI.Helpers;
 using Microsoft.UI.Input;
 using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Controls;
@@ -11,7 +12,6 @@ using Microsoft.UI.Xaml.Controls.Primitives;
 using Microsoft.UI.Xaml.Documents;
 using Microsoft.UI.Xaml.Input;
 using Microsoft.UI.Xaml.Media;
-using Windows.ApplicationModel.DataTransfer;
 using Windows.Foundation;
 using Windows.System;
 using Windows.UI.Core;
@@ -37,6 +37,8 @@ public sealed partial class CommitDiffViewer : UserControl
     private readonly CommitDiffSelectionState _selection = new();
     private ProductPerformanceScrollProbe? _performanceScrollProbe;
     private bool _isSelecting;
+
+    public event EventHandler<CommitDiffActionCompletedEventArgs>? ActionCompleted;
 
     public CommitDiffViewer()
     {
@@ -519,7 +521,9 @@ public sealed partial class CommitDiffViewer : UserControl
             return false;
         }
 
-        CopyText(builder.ToString());
+        CompleteAction(
+            TelemetryTaxonomy.Actions.CopyDiff,
+            CopyText(builder.ToString()));
         return true;
     }
 
@@ -528,7 +532,9 @@ public sealed partial class CommitDiffViewer : UserControl
         if (sender is FrameworkElement source &&
             FindRowFromElement(source) is CommitDiffRow row)
         {
-            CopyText(row.FileName);
+            CompleteAction(
+                TelemetryTaxonomy.Actions.CopyPath,
+                CopyText(row.FileName));
         }
     }
 
@@ -542,7 +548,9 @@ public sealed partial class CommitDiffViewer : UserControl
         if (sender is FrameworkElement source &&
             FindRowFromElement(source) is CommitDiffRow row)
         {
-            CopyText(GetSelectableText(row));
+            CompleteAction(
+                TelemetryTaxonomy.Actions.CopyDiff,
+                CopyText(GetSelectableText(row)));
         }
     }
 
@@ -691,12 +699,21 @@ public sealed partial class CommitDiffViewer : UserControl
         return (state & CoreVirtualKeyStates.Down) == CoreVirtualKeyStates.Down;
     }
 
-    private static void CopyText(string text)
-    {
-        DataPackage package = new();
-        package.SetText(text ?? string.Empty);
-        Clipboard.SetContent(package);
-    }
+    private static bool CopyText(string text) => PlatformHelper.CopyString(text);
+
+    private void CompleteAction(string action, bool succeeded) =>
+        ActionCompleted?.Invoke(
+            this,
+            new CommitDiffActionCompletedEventArgs(
+                action,
+                succeeded ? TelemetryTaxonomy.Results.Success : TelemetryTaxonomy.Results.Error));
+}
+
+public sealed class CommitDiffActionCompletedEventArgs(string action, string result) : EventArgs
+{
+    public string Action { get; } = action;
+
+    public string Result { get; } = result;
 }
 
 internal readonly record struct CommitDiffSelectionHit(int RowIndex, int CharIndex);

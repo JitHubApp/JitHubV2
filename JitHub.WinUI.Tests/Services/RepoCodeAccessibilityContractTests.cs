@@ -262,6 +262,10 @@ public sealed class RepoCodeAccessibilityContractTests
             root, "JitHub.WinUI", "Views", "Controls", "CodeViewer", "Renderers", "CodePreview.xaml.cs"));
         string unsupported = File.ReadAllText(Path.Combine(
             root, "JitHub.WinUI", "Views", "Controls", "CodeViewer", "Renderers", "UnsupportedPreview.xaml.cs"));
+        string csv = File.ReadAllText(Path.Combine(
+            root, "JitHub.WinUI", "Views", "Controls", "CodeViewer", "Renderers", "CsvPreview.xaml.cs"));
+        string dataTable = File.ReadAllText(Path.Combine(
+            root, "JitHub.WinUI", "Views", "Controls", "App", "AppDataTable.xaml.cs"));
         string breadcrumb = File.ReadAllText(Path.Combine(
             root, "JitHub.WinUI", "ViewModels", "CodeViewer", "RepoCodeBreadcrumbViewModel.cs"));
         string page = File.ReadAllText(Path.Combine(
@@ -275,6 +279,18 @@ public sealed class RepoCodeAccessibilityContractTests
         Assert.Contains("RepoCodeTelemetryActions.ExternalOpen", breadcrumb, StringComparison.Ordinal);
         Assert.Contains("RepoCodeTelemetryActions.ExternalOpen", unsupported, StringComparison.Ordinal);
         Assert.Contains("RepoCodeTelemetryActions.Drawer", page, StringComparison.Ordinal);
+        Assert.Contains("RepoCodeTelemetryActions.CsvRichView", csv, StringComparison.Ordinal);
+        Assert.Contains("RepoCodeTelemetryActions.CsvPlainView", csv, StringComparison.Ordinal);
+        Assert.Contains("RepoCodeTelemetryActions.CsvSort", dataTable, StringComparison.Ordinal);
+        Assert.Contains("RepoCodeTelemetryActions.CsvResize", dataTable, StringComparison.Ordinal);
+        Assert.Contains("RepoCodeTelemetryActions.CsvReorder", dataTable, StringComparison.Ordinal);
+        Assert.Contains("RepoCodeTelemetryActions.CsvCopy", dataTable, StringComparison.Ordinal);
+        Assert.Contains("PlatformHelper.CopyString", preview, StringComparison.Ordinal);
+        Assert.Contains("ActionCompleted", preview, StringComparison.Ordinal);
+        Assert.Contains("PlatformHelper.CopyString", unsupported, StringComparison.Ordinal);
+        Assert.Contains("ActionCompleted", unsupported, StringComparison.Ordinal);
+        Assert.Contains("PlatformHelper.CopyString", breadcrumb, StringComparison.Ordinal);
+        Assert.Contains("OnActionCompleted", breadcrumb, StringComparison.Ordinal);
     }
 
     [Fact]

@@ -1,11 +1,12 @@
 using System;
 using System.Globalization;
 using JitHub.Models.CodeViewer;
+using JitHub.Services;
+using JitHub.Services.Markdown;
 using JitHub.WinUI.Helpers;
 using JitHub.WinUI.ViewModels.CodeViewer;
 using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Controls;
-using Windows.ApplicationModel.DataTransfer;
 
 namespace JitHub.WinUI.Views.Controls.CodeViewer.Renderers;
 
@@ -15,7 +16,7 @@ namespace JitHub.WinUI.Views.Controls.CodeViewer.Renderers;
 /// </summary>
 public sealed partial class UnsupportedPreview : UserControl
 {
-    public event Action<string>? ActionExecuted;
+    public event Action<string, string>? ActionCompleted;
 
     public UnsupportedPreview()
     {
@@ -52,24 +53,38 @@ public sealed partial class UnsupportedPreview : UserControl
 
     private async void OpenOnGitHub_Click(object sender, RoutedEventArgs e)
     {
-        var url = ViewModel?.GitHubBlobUrl;
-        if (!string.IsNullOrEmpty(url) && await Windows.System.Launcher.LaunchUriAsync(new Uri(url)))
+        string? url = ViewModel?.GitHubBlobUrl;
+        if (!Uri.TryCreate(url, UriKind.Absolute, out Uri? uri) ||
+            !MarkdownLinkNavigationPolicy.IsAllowedLaunchUri(uri))
         {
-            ActionExecuted?.Invoke(JitHub.Services.CodeViewer.RepoCodeTelemetryActions.ExternalOpen);
+            CompleteAction(JitHub.Services.CodeViewer.RepoCodeTelemetryActions.ExternalOpen, succeeded: false);
+            return;
+        }
+
+        try
+        {
+            CompleteAction(
+                JitHub.Services.CodeViewer.RepoCodeTelemetryActions.ExternalOpen,
+                await Windows.System.Launcher.LaunchUriAsync(uri));
+        }
+        catch (Exception)
+        {
+            CompleteAction(JitHub.Services.CodeViewer.RepoCodeTelemetryActions.ExternalOpen, succeeded: false);
         }
     }
 
     private void CopyUrl_Click(object sender, RoutedEventArgs e)
     {
-        var url = ViewModel?.GitHubRawUrl;
-        if (!string.IsNullOrEmpty(url))
-        {
-            var package = new DataPackage();
-            package.SetText(url);
-            Clipboard.SetContent(package);
-            ActionExecuted?.Invoke(JitHub.Services.CodeViewer.RepoCodeTelemetryActions.CopyRaw);
-        }
+        string? url = ViewModel?.GitHubRawUrl;
+        CompleteAction(
+            JitHub.Services.CodeViewer.RepoCodeTelemetryActions.CopyRaw,
+            PlatformHelper.CopyString(url));
     }
+
+    private void CompleteAction(string action, bool succeeded) =>
+        ActionCompleted?.Invoke(
+            action,
+            succeeded ? TelemetryTaxonomy.Results.Success : TelemetryTaxonomy.Results.Error);
 
     private static string FormatBytes(long bytes)
     {

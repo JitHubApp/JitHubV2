@@ -2,13 +2,13 @@ using JitHub.WinUI.ViewModels.IssueViewModels;
 using JitHub.WinUI.ViewModels.UserViewModel;
 using CommunityToolkit.Mvvm.Input;
 using JitHub.Models.LegacyGitHub;
+using JitHub.WinUI.Helpers;
 using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Text;
 using System.Threading.Tasks;
 using System.Windows.Input;
-using Windows.ApplicationModel.DataTransfer;
 
 namespace JitHub.Models.PRConversation
 {
@@ -62,12 +62,7 @@ namespace JitHub.Models.PRConversation
             CopyLinkCommand = new RelayCommand(CopyLink);
         }
 
-        private void CopyLink()
-        {
-            var dataPackage = new DataPackage();
-            dataPackage.SetText(Url);
-            Clipboard.SetContent(dataPackage);
-        }
+        private void CopyLink() => PlatformHelper.CopyString(Url);
 
         // Only take the last 4 lines of diff hunk to be more concise
         // The one that the comment is about is the last line

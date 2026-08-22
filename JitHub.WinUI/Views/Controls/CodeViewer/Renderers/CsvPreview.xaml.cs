@@ -2,6 +2,7 @@ using System;
 using System.ComponentModel;
 using System.Threading;
 using System.Threading.Tasks;
+using JitHub.Services;
 using JitHub.Services.CodeViewer;
 using JitHub.WinUI.Helpers;
 using JitHub.WinUI.ViewModels.CodeViewer;
@@ -19,12 +20,15 @@ public sealed partial class CsvPreview : UserControl
     private RepoFilePreviewViewModel? _subscribedViewModel;
     private int _parseGeneration;
 
+    public event Action<string, string>? ActionCompleted;
+
     public CsvPreview()
     {
         InitializeComponent();
         DataContextChanged += OnDataContextChanged;
         Loaded += OnLoaded;
         Unloaded += OnUnloaded;
+        DataTable.ActionCompleted += DataTable_ActionCompleted;
     }
 
     private RepoFilePreviewViewModel? ViewModel => DataContext as RepoFilePreviewViewModel;
@@ -99,6 +103,9 @@ public sealed partial class CsvPreview : UserControl
         if (viewModel.ShowRichPreview != wantsRich)
         {
             viewModel.ShowRichPreview = wantsRich;
+            CompleteAction(
+                wantsRich ? RepoCodeTelemetryActions.CsvRichView : RepoCodeTelemetryActions.CsvPlainView,
+                TelemetryTaxonomy.Results.Success);
         }
         else
         {
@@ -179,6 +186,12 @@ public sealed partial class CsvPreview : UserControl
         cancellation.Cancel();
         cancellation.Dispose();
     }
+
+    private void DataTable_ActionCompleted(string action, string result) =>
+        CompleteAction(action, result);
+
+    private void CompleteAction(string action, string result) =>
+        ActionCompleted?.Invoke(action, result);
 
     private static string GetFailureMessage(CsvParseFailure failure) => failure switch
     {

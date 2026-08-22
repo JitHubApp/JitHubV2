@@ -48,7 +48,7 @@
                 Visibility="Collapsed">
                 <FontIcon
                     FontFamily="{StaticResource SegoeFluentIcons}"
-                    FontSize="14"
+                    FontSize="{ThemeResource AppFontSize14}"
                     Glyph="&#xE8FD;" />
             </Button>
             <Button
@@ -62,7 +62,7 @@
                 IsEnabled="{x:Bind CanGoBack, Mode=OneWay}"
                 Style="{StaticResource AppToolbarButtonStyle}"
                 ToolTipService.ToolTip="Go back">
-                <FontIcon FontSize="16" Glyph="&#xE72B;" />
+                <FontIcon FontSize="{ThemeResource AppFontSize16}" Glyph="&#xE72B;" />
             </Button>
             <Button
                 x:Uid="RepoCodeForwardButton"
@@ -75,7 +75,7 @@
                 IsEnabled="{x:Bind CanGoForward, Mode=OneWay}"
                 Style="{StaticResource AppToolbarButtonStyle}"
                 ToolTipService.ToolTip="Go forward">
-                <FontIcon FontSize="16" Glyph="&#xE72A;" />
+                <FontIcon FontSize="{ThemeResource AppFontSize16}" Glyph="&#xE72A;" />
             </Button>
         </StackPanel>
 
@@ -132,7 +132,7 @@
             AutomationProperties.AutomationId="RepoCodeTransitionPath"
             AutomationProperties.Name="{x:Bind ViewModel.CurrentPath, Mode=OneWay}"
             FontFamily="{ThemeResource AppUiFontFamily}"
-            FontSize="13"
+            FontSize="{ThemeResource AppFontSize13}"
             FontWeight="SemiBold"
             Foreground="{ThemeResource AppInkBrush}"
             Text="{x:Bind ViewModel.CurrentPath, Mode=OneWay}"
@@ -149,7 +149,7 @@
             AutomationProperties.AutomationId="RepoCodeCompactFileName"
             AutomationProperties.Name="{x:Bind ViewModel.CurrentFileName, Mode=OneWay}"
             FontFamily="{ThemeResource AppUiFontFamily}"
-            FontSize="13"
+            FontSize="{ThemeResource AppFontSize13}"
             FontWeight="SemiBold"
             Foreground="{ThemeResource AppInkBrush}"
             Text="{x:Bind ViewModel.CurrentFileName, Mode=OneWay}"
@@ -176,7 +176,7 @@
                 Command="{x:Bind ViewModel.CopyPathCommand, Mode=OneWay}"
                 Style="{StaticResource AppToolbarButtonStyle}"
                 ToolTipService.ToolTip="Copy path">
-                <FontIcon FontSize="16" Glyph="{x:Bind local:RepoCodeBreadcrumb.CopyPathGlyph(ViewModel.IsCopyPathDone), Mode=OneWay}" />
+                <FontIcon FontSize="{ThemeResource AppFontSize16}" Glyph="{x:Bind local:RepoCodeBreadcrumb.CopyPathGlyph(ViewModel.IsCopyPathDone), Mode=OneWay}" />
             </Button>
             <Button
                 x:Uid="RepoCodeCopyRawUrlButton"
@@ -188,7 +188,7 @@
                 Command="{x:Bind ViewModel.CopyRawUrlCommand, Mode=OneWay}"
                 Style="{StaticResource AppToolbarButtonStyle}"
                 ToolTipService.ToolTip="Copy raw URL">
-                <FontIcon FontSize="16" Glyph="{x:Bind local:RepoCodeBreadcrumb.CopyRawUrlGlyph(ViewModel.IsCopyRawUrlDone), Mode=OneWay}" />
+                <FontIcon FontSize="{ThemeResource AppFontSize16}" Glyph="{x:Bind local:RepoCodeBreadcrumb.CopyRawUrlGlyph(ViewModel.IsCopyRawUrlDone), Mode=OneWay}" />
             </Button>
             <Button
                 x:Uid="RepoCodeOpenOnGitHubButton"
@@ -200,7 +200,7 @@
                 Command="{x:Bind ViewModel.OpenOnGitHubCommand, Mode=OneWay}"
                 Style="{StaticResource AppToolbarButtonStyle}"
                 ToolTipService.ToolTip="Open on GitHub">
-                <FontIcon FontSize="16" Glyph="&#xE8A7;" />
+                <FontIcon FontSize="{ThemeResource AppFontSize16}" Glyph="&#xE8A7;" />
             </Button>
         </StackPanel>
 
@@ -221,7 +221,7 @@
             Visibility="Collapsed">
             <FontIcon
                 FontFamily="{StaticResource SegoeFluentIcons}"
-                FontSize="14"
+                FontSize="{ThemeResource AppFontSize14}"
                 Glyph="&#xE712;" />
             <Button.Flyout>
                 <MenuFlyout

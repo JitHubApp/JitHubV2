@@ -140,6 +140,47 @@ public sealed class CommentInteractionContractTests
     }
 
     [Fact]
+    public void CommentActionsAreContainedAndCoveredByTelemetry()
+    {
+        string issuePage = File.ReadAllText(ReadPath("JitHub.WinUI", "Views", "Pages", "RepoIssuePage.xaml.cs"));
+        string issueViewModel = File.ReadAllText(ReadPath("JitHub.WinUI", "ViewModels", "Pages", "RepoIssuePageViewModel.cs"));
+        string pullRequestPage = File.ReadAllText(ReadPath("JitHub.WinUI", "Views", "Pages", "RepoPullRequestPage.xaml.cs"));
+        string pullRequestViewModel = File.ReadAllText(ReadPath("JitHub.WinUI", "ViewModels", "Pages", "RepoPullRequestPageViewModel.cs"));
+        string clipboard = File.ReadAllText(ReadPath("JitHub.WinUI", "Helpers", "PlatformHelper.cs"));
+
+        Assert.Contains("TrackCommentQuoteReply", issuePage, StringComparison.Ordinal);
+        Assert.Contains("TrackCommentCopyLink(PlatformHelper.CopyString", issuePage, StringComparison.Ordinal);
+        Assert.Contains("TrackCommentCopyMarkdown(PlatformHelper.CopyString", issuePage, StringComparison.Ordinal);
+        Assert.Contains("TrackCommentQuoteReply", pullRequestPage, StringComparison.Ordinal);
+        Assert.Contains("TrackCommentCopyLink(PlatformHelper.CopyString", pullRequestPage, StringComparison.Ordinal);
+        Assert.Contains("TrackCommentCopyMarkdown(PlatformHelper.CopyString", pullRequestPage, StringComparison.Ordinal);
+        Assert.Contains("catch (OperationCanceledException)", issueViewModel, StringComparison.Ordinal);
+        Assert.Contains("Issue comment mutation failed", issueViewModel, StringComparison.Ordinal);
+        Assert.Contains("catch (OperationCanceledException)", pullRequestViewModel, StringComparison.Ordinal);
+        Assert.Contains("Pull request comment mutation failed", pullRequestViewModel, StringComparison.Ordinal);
+        Assert.Contains("public static bool CopyString", clipboard, StringComparison.Ordinal);
+        Assert.Contains("catch (Exception ex)", clipboard, StringComparison.Ordinal);
+
+        string productRoot = FindRepositoryRoot();
+        string[] directClipboardWrites = Directory
+            .EnumerateFiles(Path.Combine(productRoot, "JitHub.WinUI"), "*.cs", SearchOption.AllDirectories)
+            .Where(path => !path.Contains($"{Path.DirectorySeparatorChar}obj{Path.DirectorySeparatorChar}", StringComparison.OrdinalIgnoreCase))
+            .Where(path => !path.EndsWith(Path.Combine("Helpers", "PlatformHelper.cs"), StringComparison.OrdinalIgnoreCase))
+            .Where(path => File.ReadAllText(path).Contains("Clipboard.SetContent", StringComparison.Ordinal))
+            .Select(path => Path.GetRelativePath(productRoot, path))
+            .ToArray();
+        Assert.Empty(directClipboardWrites);
+
+        string legacyComment = File.ReadAllText(ReadPath(
+            "JitHub.WinUI",
+            "ViewModels",
+            "UserViewModel",
+            "UserCommentBlockViewModel.cs"));
+        Assert.Contains("PullRequestTelemetry.TrackAction", legacyComment, StringComparison.Ordinal);
+        Assert.Contains("PlatformHelper.CopyString(link)", legacyComment, StringComparison.Ordinal);
+    }
+
+    [Fact]
     public void PreviewDataExercisesReactionCountsAndNestedReviewReplies()
     {
         string issues = File.ReadAllText(ReadPath(

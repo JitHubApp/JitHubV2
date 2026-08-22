@@ -659,7 +659,13 @@ public sealed class RepoCodePageViewModelTests
             RepoCodeTelemetryActions.CopyRaw,
             RepoCodeTelemetryActions.CopyLineLink,
             RepoCodeTelemetryActions.Drawer,
-            RepoCodeTelemetryActions.ExternalOpen
+            RepoCodeTelemetryActions.ExternalOpen,
+            RepoCodeTelemetryActions.CsvCopy,
+            RepoCodeTelemetryActions.CsvPlainView,
+            RepoCodeTelemetryActions.CsvReorder,
+            RepoCodeTelemetryActions.CsvResize,
+            RepoCodeTelemetryActions.CsvRichView,
+            RepoCodeTelemetryActions.CsvSort
         ];
 
         foreach (string action in requiredActions)
@@ -677,6 +683,9 @@ public sealed class RepoCodePageViewModelTests
             Assert.Equal("success", entry.Properties["result"]);
             Assert.Equal(3, entry.Properties.Count);
         });
+
+        viewModel.TrackAction(RepoCodeTelemetryActions.CsvCopy, TelemetryTaxonomy.Results.Error);
+        Assert.Equal(TelemetryTaxonomy.Results.Error, telemetry.Events[^1].Properties["result"]);
     }
 
     private static RepoCodePageViewModel CreateViewModel(

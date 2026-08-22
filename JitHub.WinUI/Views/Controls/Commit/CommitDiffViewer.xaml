@@ -41,14 +41,14 @@
                             <TextBlock
                                 x:Name="FileHeaderTextBlock"
                                 FontFamily="{ThemeResource AppMonoFontFamily}"
-                                FontSize="12"
+                                FontSize="{ThemeResource AppFontSize12}"
                                 FontWeight="SemiBold"
                                 Foreground="{ThemeResource AppInkBrush}"
                                 Text="{x:Bind HeaderText, Mode=OneWay}"
                                 TextTrimming="CharacterEllipsis" />
                             <TextBlock
                                 FontFamily="{ThemeResource AppMonoFontFamily}"
-                                FontSize="11"
+                                FontSize="{ThemeResource AppFontSize11}"
                                 Foreground="{ThemeResource AppInkMutedBrush}"
                                 Text="{x:Bind Status, Mode=OneWay}" />
                         </StackPanel>
@@ -56,7 +56,7 @@
                             Grid.Column="1"
                             VerticalAlignment="Center"
                             FontFamily="{ThemeResource AppMonoFontFamily}"
-                            FontSize="12"
+                            FontSize="{ThemeResource AppFontSize12}"
                             Foreground="{ThemeResource AppSuccessBrush}"
                             Text="{x:Bind SummaryText, Mode=OneWay}" />
                         <Button
@@ -69,7 +69,7 @@
                             Click="CopyFilePathButton_Click"
                             Style="{StaticResource AppToolbarButtonStyle}"
                             ToolTipService.ToolTip="Copy file path">
-                            <FontIcon FontFamily="{StaticResource SegoeFluentIcons}" FontSize="13" Glyph="&#xE8C8;" />
+                            <FontIcon FontFamily="{StaticResource SegoeFluentIcons}" FontSize="{ThemeResource AppFontSize13}" Glyph="&#xE8C8;" />
                         </Button>
                     </Grid>
             </Border>
@@ -89,7 +89,7 @@
                 <TextBlock
                         Padding="8,4"
                         FontFamily="{ThemeResource AppMonoFontFamily}"
-                        FontSize="12"
+                        FontSize="{ThemeResource AppFontSize12}"
                         Foreground="{x:Bind LineKind, Converter={StaticResource CommitDiffLineKindToBrushConverter}, ConverterParameter=foreground, Mode=OneWay}"
                         Text="{x:Bind GutterText, Mode=OneWay}"
                         TextAlignment="Right" />
@@ -98,7 +98,7 @@
                         Grid.Column="1"
                         Padding="4,4,12,4"
                         FontFamily="{ThemeResource AppMonoFontFamily}"
-                        FontSize="12"
+                        FontSize="{ThemeResource AppFontSize12}"
                         Foreground="{x:Bind LineKind, Converter={StaticResource CommitDiffLineKindToBrushConverter}, ConverterParameter=foreground, Mode=OneWay}"
                         Text="{x:Bind Text, Mode=OneWay}"
                     TextWrapping="Wrap" />
@@ -120,7 +120,7 @@
                 <TextBlock
                         Padding="10,5"
                         FontFamily="{ThemeResource AppMonoFontFamily}"
-                        FontSize="12"
+                        FontSize="{ThemeResource AppFontSize12}"
                         Foreground="{ThemeResource AppAccentBrush}"
                         Text="@"
                         TextAlignment="Right" />
@@ -129,7 +129,7 @@
                         Grid.Column="1"
                         Padding="4,5,12,5"
                         FontFamily="{ThemeResource AppMonoFontFamily}"
-                        FontSize="12"
+                        FontSize="{ThemeResource AppFontSize12}"
                         Foreground="{ThemeResource AppAccentBrush}"
                         Text="{x:Bind Text, Mode=OneWay}"
                     TextWrapping="Wrap" />
@@ -147,7 +147,7 @@
                 <TextBlock
                     x:Name="UnavailableTextBlock"
                     FontFamily="{ThemeResource AppBodyFontFamily}"
-                    FontSize="12"
+                    FontSize="{ThemeResource AppFontSize12}"
                     Foreground="{ThemeResource AppInkMutedBrush}"
                     Text="{x:Bind Text, Mode=OneWay}"
                     TextWrapping="Wrap" />
@@ -166,7 +166,7 @@
                     x:Name="SearchNoResultsTextBlock"
                     HorizontalAlignment="Center"
                     FontFamily="{ThemeResource AppBodyFontFamily}"
-                    FontSize="12"
+                    FontSize="{ThemeResource AppFontSize12}"
                     Foreground="{ThemeResource AppInkMutedBrush}"
                     Text="{x:Bind Text, Mode=OneWay}"
                     TextWrapping="Wrap" />

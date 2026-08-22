@@ -25,7 +25,7 @@
                 <Grid
                     Width="{x:Bind Size, Converter={StaticResource SizeToLengthConverter}, Mode=OneWay}"
                     Height="{x:Bind Size, Converter={StaticResource SizeToLengthConverter}, Mode=OneWay}"
-                    CornerRadius="50">
+                    CornerRadius="{ThemeResource AppRadiusCircle}">
                     <local:CachedImage
                         SourceUrl="{x:Bind Url, Mode=OneWay}"
                         Stretch="UniformToFill" />
@@ -33,7 +33,7 @@
                         x:Name="HoverRing"
                         BorderBrush="{ThemeResource AppAccentBrush}"
                         BorderThickness="1"
-                        CornerRadius="50"
+                        CornerRadius="{ThemeResource AppRadiusCircle}"
                         IsHitTestVisible="False"
                         Opacity="0" />
                 </Grid>

@@ -4,6 +4,7 @@ using System.ComponentModel;
 using System.Threading;
 using System.Threading.Tasks;
 using JitHub.Models.CodeViewer;
+using JitHub.Services;
 using JitHub.Services.CodeViewer;
 using JitHub.WinUI.Helpers;
 using JitHub.WinUI.ViewModels.CodeViewer;
@@ -11,7 +12,6 @@ using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Automation;
 using Microsoft.UI.Xaml.Controls;
 using Microsoft.UI.Xaml.Input;
-using Windows.ApplicationModel.DataTransfer;
 using Windows.System;
 
 namespace JitHub.WinUI.Views.Controls.CodeViewer.Renderers;
@@ -23,6 +23,7 @@ public sealed partial class CodePreview : UserControl
     private long _bindingUpdateGeneration;
 
     public event Action<string>? ActionExecuted;
+    public event Action<string, string>? ActionCompleted;
 
     public CodePreview()
     {
@@ -262,11 +263,18 @@ public sealed partial class CodePreview : UserControl
     private void CopyLineLinkButton_Click(object sender, RoutedEventArgs e)
     {
         string? url = ViewModel?.GitHubBlobUrl;
-        if (string.IsNullOrWhiteSpace(url)) return;
+        if (string.IsNullOrWhiteSpace(url))
+        {
+            ActionCompleted?.Invoke(
+                RepoCodeTelemetryActions.CopyLineLink,
+                TelemetryTaxonomy.Results.Error);
+            return;
+        }
 
-        DataPackage package = new();
-        package.SetText(GitHubCodeUrlBuilder.AppendLineFragment(url, Editor.CurrentLine));
-        Clipboard.SetContent(package);
-        ActionExecuted?.Invoke(RepoCodeTelemetryActions.CopyLineLink);
+        bool succeeded = PlatformHelper.CopyString(
+            GitHubCodeUrlBuilder.AppendLineFragment(url, Editor.CurrentLine));
+        ActionCompleted?.Invoke(
+            RepoCodeTelemetryActions.CopyLineLink,
+            succeeded ? TelemetryTaxonomy.Results.Success : TelemetryTaxonomy.Results.Error);
     }
 }

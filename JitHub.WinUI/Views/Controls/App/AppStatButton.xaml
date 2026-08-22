@@ -41,7 +41,7 @@
                 Margin="0,1,0,0"
                 VerticalAlignment="Center"
                 FontFamily="{ThemeResource AppUiFontFamily}"
-                FontSize="14"
+                FontSize="{ThemeResource AppFontSize14}"
                 FontWeight="SemiBold"
                 Foreground="{ThemeResource AppInkBrush}"
                 Text="{Binding ValueText, ElementName=Root}" />

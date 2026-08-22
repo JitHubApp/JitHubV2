@@ -265,7 +265,7 @@
 
     <Style x:Key="AppSearchResultRowStyle" TargetType="ListViewItem" BasedOn="{StaticResource AppDenseListRowStyle}">
         <Setter Property="MinHeight" Value="92" />
-        <Setter Property="CornerRadius" Value="0" />
+        <Setter Property="CornerRadius" Value="{ThemeResource AppRadiusNone}" />
     </Style>
 
     <Style x:Key="AppWorkspaceHeaderStyle" TargetType="Grid">
@@ -279,7 +279,7 @@
     <Style x:Key="AppWorkspaceTitleTextBlockStyle" TargetType="TextBlock">
         <Setter Property="VerticalAlignment" Value="Center" />
         <Setter Property="FontFamily" Value="{ThemeResource AppDisplayFontFamily}" />
-        <Setter Property="FontSize" Value="28" />
+        <Setter Property="FontSize" Value="{ThemeResource AppFontSize28}" />
         <Setter Property="Foreground" Value="{ThemeResource AppInkBrush}" />
         <Setter Property="TextTrimming" Value="CharacterEllipsis" />
     </Style>
@@ -287,7 +287,7 @@
     <Style x:Key="AppWorkspaceHeaderIconStyle" TargetType="FontIcon">
         <Setter Property="VerticalAlignment" Value="Center" />
         <Setter Property="FontFamily" Value="{StaticResource SegoeFluentIcons}" />
-        <Setter Property="FontSize" Value="22" />
+        <Setter Property="FontSize" Value="{ThemeResource AppFontSize22}" />
         <Setter Property="Foreground" Value="{ThemeResource AppAccentBrush}" />
     </Style>
 

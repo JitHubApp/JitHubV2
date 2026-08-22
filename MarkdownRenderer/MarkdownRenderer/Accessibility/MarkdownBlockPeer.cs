@@ -162,8 +162,13 @@ internal sealed partial class MarkdownBlockPeer : FrameworkElementAutomationPeer
         return _root.GetScreenRectForDocumentRect(_box.Bounds);
     }
 
+    protected override bool IsOffscreenCore() =>
+        _root.IsScreenRectOffscreen(GetBoundingRectangleCore());
+
     internal MarkdownRendererControl OwnerControl => _owner;
     internal InlineContainerBox Box => _box;
+    internal bool IsOffscreenForChild(Windows.Foundation.Rect screenRect) =>
+        _root.IsScreenRectOffscreen(screenRect);
     /// <summary>Internal accessor that exposes the computed bounding rect so
     /// child link peers can compose against the same screen-space math without
     /// duplicating it.</summary>

@@ -107,6 +107,14 @@ public sealed class MarkdownLayoutContext
     /// <summary>Reports blocked or unavailable image sources to the host control.</summary>
     public System.Action<string, MarkdownImageUnavailableReason>? ImageUnavailable { get; init; }
 
+    /// <summary>Snapshot of user-expanded HTML disclosure state for this layout pass.</summary>
+    public IReadOnlyDictionary<string, bool> DisclosureStates { get; init; } =
+        new Dictionary<string, bool>(StringComparer.Ordinal);
+
+    /// <summary>Returns the effective state of a safe HTML disclosure.</summary>
+    public bool IsDisclosureExpanded(string id, bool defaultExpanded) =>
+        DisclosureStates.TryGetValue(id, out bool expanded) ? expanded : defaultExpanded;
+
     /// <summary>Returns the next one-based block index for a custom block.</summary>
     public int NextBlockIndex() => ++_blockIndex;
     private int _blockIndex;

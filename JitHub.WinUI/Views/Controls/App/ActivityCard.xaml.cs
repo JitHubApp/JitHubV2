@@ -95,7 +95,7 @@ public sealed partial class ActivityCard : UserControl
             {
                 Text = $"{part.Glyph} ",
                 FontFamily = Resource<FontFamily>("SegoeFluentIcons"),
-                FontSize = 12,
+                FontSize = Resource<double>("AppFontSize12"),
                 FontWeight = FontWeights.Normal
             });
         }
@@ -104,7 +104,7 @@ public sealed partial class ActivityCard : UserControl
         {
             Text = part.Text,
             FontFamily = Resource<FontFamily>("AppUiFontFamily"),
-            FontSize = 15,
+            FontSize = Resource<double>("AppFontSize15"),
             FontWeight = FontWeights.SemiBold,
         });
 
@@ -132,7 +132,6 @@ public sealed partial class ActivityCard : UserControl
     }
 
     private T Resource<T>(string key)
-        where T : class
     {
         if (Resources.TryGetValue(key, out object localValue) && localValue is T localTyped)
         {
@@ -144,6 +143,6 @@ public sealed partial class ActivityCard : UserControl
             return typed;
         }
 
-        return null!;
+        return default!;
     }
 }

@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using MarkdownRenderer.Theming;
+using MarkdownRenderer.Parsing;
 
 namespace MarkdownRenderer.Layout;
 
@@ -13,7 +14,7 @@ internal abstract class InlineRun
 {
     public int InlineIndex { get; internal set; }
     public int RenderedLength { get; protected set; }
-    public SourceSpan SourceSpan { get; init; }
+    public SourceSpan SourceSpan { get; internal set; }
     /// <summary>
     /// Empty string means "inherit container's style". Set to a specific key
     /// (e.g. <see cref="MarkdownElementKeys.Strong"/>) to apply a delta override.
@@ -166,11 +167,15 @@ internal sealed class LinkRun : InlineRun
     private readonly string _text;
     public string Url { get; }
     public string? Title { get; }
+    public string? AccessibilityName { get; init; }
+    public string? DisclosureId { get; init; }
+    public bool IsDisclosure => !string.IsNullOrEmpty(DisclosureId);
+    public bool IsExpanded { get; init; }
     /// <summary>
     /// When true, the run is rendered at a reduced size and raised baseline
     /// (like a superscript). Used for footnote citation markers [^1].
     /// </summary>
-    public bool IsSuperscript { get; init; }
+    public bool IsSuperscript { get; internal set; }
     public LinkRun(string text, string url, string? title = null)
     {
         _text = text ?? string.Empty;
@@ -180,6 +185,9 @@ internal sealed class LinkRun : InlineRun
         ElementKey = MarkdownElementKeys.Link;
     }
     public override string Text => _text;
+    public override string AccessibleText => string.IsNullOrWhiteSpace(AccessibilityName)
+        ? _text
+        : AccessibilityName;
 }
 
 internal sealed class InlineImageRun : InlineRun
@@ -200,14 +208,16 @@ internal sealed class InlineImageRun : InlineRun
         string url,
         string? title = null,
         string? linkUrl = null,
-        string? linkTitle = null)
+        string? linkTitle = null,
+        SafeHtmlLength? requestedWidth = null,
+        SafeHtmlLength? requestedHeight = null)
     {
         AltText = altText ?? string.Empty;
         Url = url ?? string.Empty;
         Title = title;
         LinkUrl = linkUrl;
         LinkTitle = linkTitle;
-        Image = new Boxes.ImageBox(context, Url, AltText)
+        Image = new Boxes.ImageBox(context, Url, AltText, requestedWidth, requestedHeight)
         {
             Margin = default
         };

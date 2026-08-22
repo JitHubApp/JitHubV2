@@ -49,7 +49,7 @@
                     IconSize="16" />
                 <StackPanel Grid.Column="1">
                     <TextBlock
-                        FontSize="16"
+                        FontSize="{ThemeResource AppFontSize16}"
                         FontWeight="SemiBold"
                         Text="{Binding FullName, Mode=OneWay}" />
                     <TextBlock Text="{Binding Description, Mode=OneWay}" TextWrapping="Wrap" />

@@ -1369,6 +1369,7 @@ public sealed partial class RepoPullRequestPageViewModel : ViewModelBase
             (token, owner, repoName) => isReviewComment
                 ? _gitHubClientService.UpdatePullRequestReviewCommentAsync(token, owner, repoName, commentId, body)
                 : _gitHubClientService.UpdateIssueCommentAsync(token, owner, repoName, commentId, body),
+            TelemetryTaxonomy.Actions.CommentEdit,
             GetString("RepoPullRequest.CommentUpdatingStatus", "Updating comment..."));
 
     public Task<bool> DeletePullRequestCommentAsync(long commentId, bool isReviewComment) =>
@@ -1376,6 +1377,7 @@ public sealed partial class RepoPullRequestPageViewModel : ViewModelBase
             (token, owner, repoName) => isReviewComment
                 ? _gitHubClientService.DeletePullRequestReviewCommentAsync(token, owner, repoName, commentId)
                 : _gitHubClientService.DeleteIssueCommentAsync(token, owner, repoName, commentId),
+            TelemetryTaxonomy.Actions.CommentDelete,
             GetString("RepoPullRequest.CommentDeletingStatus", "Deleting comment..."));
 
     public async Task<bool> SetPullRequestCommentMinimizedAsync(string nodeId, string? classifier)
@@ -1392,6 +1394,9 @@ public sealed partial class RepoPullRequestPageViewModel : ViewModelBase
             (token, _, _) => string.IsNullOrWhiteSpace(classifier)
                 ? _gitHubClientService.UnminimizeCommentAsync(token, normalizedNodeId)
                 : _gitHubClientService.MinimizeCommentAsync(token, normalizedNodeId, classifier),
+            string.IsNullOrWhiteSpace(classifier)
+                ? TelemetryTaxonomy.Actions.CommentUnhide
+                : TelemetryTaxonomy.Actions.CommentHide,
             string.IsNullOrWhiteSpace(classifier)
                 ? GetString("RepoPullRequest.CommentUnhidingStatus", "Unhiding comment...")
                 : GetString("RepoPullRequest.CommentHidingStatus", "Hiding comment..."));
@@ -1412,6 +1417,7 @@ public sealed partial class RepoPullRequestPageViewModel : ViewModelBase
 
     private async Task<bool> ExecutePullRequestCommentMutationAsync(
         Func<string, string, string, Task> mutation,
+        string action,
         string status)
     {
         if (_navArg is null || SelectedPullRequest is null || !TryGetActiveToken(out string token))
@@ -1428,14 +1434,21 @@ public sealed partial class RepoPullRequestPageViewModel : ViewModelBase
                 currentPullRequest,
                 token,
                 GetString("RepoPullRequest.CommentRefreshError", "Comment updated, but JitHub could not refresh pull request details."));
+            TrackPullRequestAction(action, TelemetryTaxonomy.Results.Success);
             return true;
         }
         catch (GitHubAuthenticationException)
         {
+            TrackPullRequestAction(action, TelemetryTaxonomy.Results.AuthError);
             _authService.SignOut();
         }
         catch (GitHubApiException ex)
         {
+            TrackPullRequestAction(
+                action,
+                IssuePermissionPolicy.IsPermissionDenied(ex)
+                    ? TelemetryTaxonomy.Results.PermissionDenied
+                    : TelemetryTaxonomy.Results.Error);
             DisableRejectedCapability(ex, "comment", currentPullRequest.Number);
             if (IsSelectedPullRequest(currentPullRequest))
             {
@@ -1444,9 +1457,23 @@ public sealed partial class RepoPullRequestPageViewModel : ViewModelBase
         }
         catch (HttpRequestException)
         {
+            TrackPullRequestAction(action, TelemetryTaxonomy.Results.NetworkError);
             if (IsSelectedPullRequest(currentPullRequest))
             {
                 StatusText = GetString("RepoPullRequest.CommentMutationNetworkError", "JitHub could not reach GitHub to update this comment.");
+            }
+        }
+        catch (OperationCanceledException)
+        {
+            TrackPullRequestAction(action, TelemetryTaxonomy.Results.Cancelled);
+        }
+        catch (Exception ex)
+        {
+            Debug.WriteLine($"Pull request comment mutation failed: {ex}");
+            TrackPullRequestAction(action, TelemetryTaxonomy.Results.Error);
+            if (IsSelectedPullRequest(currentPullRequest))
+            {
+                StatusText = GetString("RepoPullRequest.CommentMutationUnexpectedError", "JitHub could not update this comment.");
             }
         }
 
@@ -3689,6 +3716,30 @@ public sealed partial class RepoPullRequestPageViewModel : ViewModelBase
 
     private void TrackPullRequestAction(string action, string result) =>
         PullRequestTelemetry.TrackAction(_telemetryService, action, result);
+
+    public void TrackCommentQuoteReply() =>
+        TrackPullRequestAction(TelemetryTaxonomy.Actions.QuoteReply, TelemetryTaxonomy.Results.Success);
+
+    public void TrackCommentCopyLink(bool succeeded) =>
+        TrackPullRequestAction(
+            TelemetryTaxonomy.Actions.CopyLink,
+            succeeded ? TelemetryTaxonomy.Results.Success : TelemetryTaxonomy.Results.Error);
+
+    public void TrackCommentCopyMarkdown(bool succeeded) =>
+        TrackPullRequestAction(
+            TelemetryTaxonomy.Actions.CopyMarkdown,
+            succeeded ? TelemetryTaxonomy.Results.Success : TelemetryTaxonomy.Results.Error);
+
+    public void TrackDiffViewerAction(string action, string result)
+    {
+        if (action is not (TelemetryTaxonomy.Actions.CopyDiff or TelemetryTaxonomy.Actions.CopyPath) ||
+            result is not (TelemetryTaxonomy.Results.Success or TelemetryTaxonomy.Results.Error))
+        {
+            return;
+        }
+
+        TrackPullRequestAction(action, result);
+    }
 
     private string GetActiveUserPartition(string token)
     {

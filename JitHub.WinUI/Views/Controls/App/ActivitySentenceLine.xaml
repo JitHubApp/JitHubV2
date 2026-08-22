@@ -35,7 +35,7 @@
                 HorizontalAlignment="Center"
                 VerticalAlignment="Center"
                 FontFamily="{StaticResource SegoeFluentIcons}"
-                FontSize="12"
+                FontSize="{ThemeResource AppFontSize12}"
                 Foreground="{x:Bind ViewModel.Tone, Converter={StaticResource ActivityToneToBrushConverter}, Mode=OneWay}"
                 Glyph="{x:Bind ViewModel.Glyph, Mode=OneWay}" />
         </Border>
@@ -54,7 +54,7 @@
                 MinWidth="0"
                 HorizontalAlignment="Left"
                 FontFamily="{ThemeResource AppUiFontFamily}"
-                FontSize="13"
+                FontSize="{ThemeResource AppFontSize13}"
                 Foreground="{ThemeResource AppInkBrush}"
                 IsTextSelectionEnabled="False"
                 LineHeight="20"

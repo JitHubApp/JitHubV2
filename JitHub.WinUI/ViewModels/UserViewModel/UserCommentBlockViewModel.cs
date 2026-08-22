@@ -3,6 +3,7 @@ using JitHub.Models;
 using JitHub.Models.PRConversation;
 using JitHub.WinUI.ViewModels.Base;
 using JitHub.WinUI.ViewModels.EmojiViewModels;
+using CommunityToolkit.Mvvm.DependencyInjection;
 using CommunityToolkit.Mvvm.Input;
 using JitHub.Models.LegacyGitHub;
 using System;
@@ -10,7 +11,6 @@ using System.Collections.Generic;
 using System.Linq;
 using System.Threading.Tasks;
 using System.Windows.Input;
-using Windows.ApplicationModel.DataTransfer;
 using JitHub.Services.Markdown;
 using JitHub.Services;
 using MarkdownRenderer.Images;
@@ -171,7 +171,8 @@ namespace JitHub.WinUI.ViewModels.UserViewModel
             _number = issue.Number;
             _commentId = issue.Id;
             Commenter = issue.User ?? new User();
-            var copyLinkCommand  = new RelayCommand(() => CopyLink(issue.HtmlUrl, issue.Id.ToString()));
+            var copyLinkCommand = new RelayCommand(
+                () => CopyLink($"{issue.HtmlUrl}#issue-{issue.Id}"));
             CopyLinkMenuItem = new MenuItem(
                 LocalizedResourceText.GetString("Comment.Menu.CopyLink", "Copy Link"),
                 copyLinkCommand);
@@ -193,7 +194,7 @@ namespace JitHub.WinUI.ViewModels.UserViewModel
             _commentId = comment.Id;
             CopyLinkMenuItem = new MenuItem(
                 LocalizedResourceText.GetString("Comment.Menu.CopyLink", "Copy Link"),
-                comment.CopyLinkCommand);
+                new RelayCommand(() => CopyLink(comment.Url)));
             QuoteReplyMenuItem = new MenuItem(
                 LocalizedResourceText.GetString("Comment.Menu.QuoteReply", "Quote Reply"),
                 comment.QuoteReplyCommand ?? new RelayCommand<string?>(_ => { }),
@@ -213,7 +214,7 @@ namespace JitHub.WinUI.ViewModels.UserViewModel
             _commentId = comment.Id;
             CreatedAt = comment.CreatedAt;
             Commenter = comment.User ?? new User();
-            var copyCommand = new RelayCommand(() => PlatformHelper.CopyString(comment.HtmlUrl));
+            var copyCommand = new RelayCommand(() => CopyLink(comment.HtmlUrl));
             CopyLinkMenuItem = new MenuItem(
                 LocalizedResourceText.GetString("Comment.Menu.CopyLink", "Copy Link"),
                 copyCommand);
@@ -301,11 +302,16 @@ namespace JitHub.WinUI.ViewModels.UserViewModel
             Loading = false;
         }
 
-        private void CopyLink(string htmlUrl, string id)
+        private void CopyLink(string link)
         {
-            var dataPackage = new DataPackage();
-            dataPackage.SetText($"{htmlUrl}#issue-{id}");
-            Clipboard.SetContent(dataPackage);
+            bool copied = PlatformHelper.CopyString(link);
+            if (Ioc.Default.GetService<ITelemetryService>() is { } telemetry)
+            {
+                PullRequestTelemetry.TrackAction(
+                    telemetry,
+                    TelemetryTaxonomy.Actions.CopyLink,
+                    copied ? TelemetryTaxonomy.Results.Success : TelemetryTaxonomy.Results.Error);
+            }
         }
 
         //TODO: this is getting called twice

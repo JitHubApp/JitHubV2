@@ -14,7 +14,6 @@ using JitHub.Services;
 using JitHub.WinUI.Helpers;
 using JitHub.WinUI.ViewModels.Common;
 using Microsoft.UI.Dispatching;
-using Windows.ApplicationModel.DataTransfer;
 
 namespace JitHub.WinUI.ViewModels.Pages;
 
@@ -369,11 +368,13 @@ public sealed partial class StarLibraryPageViewModel : ViewModelBase, IDisposabl
             return;
         }
 
-        DataPackage package = new();
-        package.SetText(item.Repository.HtmlUrl);
-        Clipboard.SetContent(package);
-        StatusText = L("Stars/Status/LinkCopied", "Repository link copied.");
-        TrackAction("copy_link", "success");
+        bool succeeded = PlatformHelper.CopyString(item.Repository.HtmlUrl);
+        StatusText = succeeded
+            ? L("Stars/Status/LinkCopied", "Repository link copied.")
+            : L("Stars/Status/LinkCopyFailed", "The repository link could not be copied.");
+        TrackAction(
+            TelemetryTaxonomy.Actions.CopyLink,
+            succeeded ? TelemetryTaxonomy.Results.Success : TelemetryTaxonomy.Results.Error);
     }
 
     public async Task<StarUndoState?> UnstarAsync(StarRepositoryViewItem? viewItem, CancellationToken cancellationToken = default)

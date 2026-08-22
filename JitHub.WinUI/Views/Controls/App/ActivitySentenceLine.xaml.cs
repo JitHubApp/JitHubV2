@@ -165,7 +165,7 @@ public sealed partial class ActivitySentenceLine : UserControl
             {
                 Text = $"{part.Glyph} ",
                 FontFamily = Resource<FontFamily>("SegoeFluentIcons"),
-                FontSize = 11,
+                FontSize = Resource<double>("AppFontSize11"),
                 FontWeight = FontWeights.Normal
             });
         }
@@ -174,7 +174,7 @@ public sealed partial class ActivitySentenceLine : UserControl
         {
             Text = BreakableInlineText(ActionLabel(part)),
             FontFamily = Resource<FontFamily>("AppUiFontFamily"),
-            FontSize = 13,
+            FontSize = Resource<double>("AppFontSize13"),
             FontWeight = FontWeights.SemiBold
         });
 
@@ -222,7 +222,6 @@ public sealed partial class ActivitySentenceLine : UserControl
     }
 
     private T Resource<T>(string key)
-        where T : class
     {
         if (Resources.TryGetValue(key, out object localValue) && localValue is T localTyped)
         {
@@ -234,7 +233,7 @@ public sealed partial class ActivitySentenceLine : UserControl
             return typed;
         }
 
-        return null!;
+        return default!;
     }
 
     private void LayoutRoot_SizeChanged(object sender, SizeChangedEventArgs e) => UpdateSentenceWidth();

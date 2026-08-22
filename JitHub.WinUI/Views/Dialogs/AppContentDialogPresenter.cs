@@ -1,4 +1,5 @@
 using System;
+using System.Collections.Generic;
 using System.Threading.Tasks;
 using JitHub.Services;
 using JitHub.WinUI.Helpers;
@@ -49,7 +50,37 @@ internal static class AppContentDialogPresenter
                 mainWindow.ScheduleContentDialogFocusValidation(dialog);
             };
             presentationRoot.Changed += rootChangedHandler;
-            return await mainWindow.ShowContentDialogAsync(dialog);
+            try
+            {
+                return await mainWindow.ShowContentDialogAsync(dialog);
+            }
+            catch (OperationCanceledException)
+            {
+                // Window teardown can cancel a pending dialog. This is an expected dismissal,
+                // not a presentation failure worth surfacing or recording as an error.
+                return ContentDialogResult.None;
+            }
+            catch (Exception ex)
+            {
+                App.LogHandledException(ex, "content-dialog-presentation");
+                try
+                {
+                    SafeTelemetryService.Wrap(((App)Application.Current).GetService<ITelemetryService>())
+                        .TrackEvent(
+                            "dialog.presentation.failed",
+                            new Dictionary<string, string?>
+                            {
+                                ["source"] = TelemetryTaxonomy.Sources.Dialog,
+                                ["result"] = TelemetryTaxonomy.Results.Error,
+                                ["error_kind"] = TelemetryTaxonomy.ErrorKinds.Unexpected
+                            });
+                }
+                catch
+                {
+                    // Dialog presentation failures must stay contained during shutdown.
+                }
+                return ContentDialogResult.None;
+            }
         }
         finally
         {

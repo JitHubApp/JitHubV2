@@ -37,7 +37,7 @@
                 Click="FindButton_Click"
                 Style="{StaticResource AppToolbarButtonStyle}"
                 ToolTipService.ToolTip="Find in file (Ctrl+F)">
-                <FontIcon FontSize="14" Glyph="&#xE721;" />
+                <FontIcon FontSize="{ThemeResource AppFontSize14}" Glyph="&#xE721;" />
             </Button>
             <Button
                 x:Name="SymbolsButton"
@@ -50,7 +50,7 @@
                 Click="SymbolsButton_Click"
                 Style="{StaticResource AppToolbarButtonStyle}"
                 ToolTipService.ToolTip="File outline">
-                <FontIcon FontSize="14" Glyph="&#xE8A9;" />
+                <FontIcon FontSize="{ThemeResource AppFontSize14}" Glyph="&#xE8A9;" />
                 <Button.Flyout>
                     <Flyout Placement="BottomEdgeAlignedRight">
                         <Grid Width="300" MaxHeight="420">
@@ -131,7 +131,7 @@
                 Click="CopyLineLinkButton_Click"
                 Style="{StaticResource AppToolbarButtonStyle}"
                 ToolTipService.ToolTip="Copy link to current line">
-                <FontIcon FontSize="14" Glyph="&#xE71B;" />
+                <FontIcon FontSize="{ThemeResource AppFontSize14}" Glyph="&#xE71B;" />
             </Button>
         </StackPanel>
 
@@ -174,7 +174,7 @@
                     Click="PreviousMatchButton_Click"
                     Style="{StaticResource AppToolbarButtonStyle}"
                     ToolTipService.ToolTip="Previous match">
-                    <FontIcon FontSize="13" Glyph="&#xE70E;" />
+                    <FontIcon FontSize="{ThemeResource AppFontSize13}" Glyph="&#xE70E;" />
                 </Button>
                 <Button
                     x:Uid="RepoCodeNextMatchButton"
@@ -187,7 +187,7 @@
                     Click="NextMatchButton_Click"
                     Style="{StaticResource AppToolbarButtonStyle}"
                     ToolTipService.ToolTip="Next match">
-                    <FontIcon FontSize="13" Glyph="&#xE70D;" />
+                    <FontIcon FontSize="{ThemeResource AppFontSize13}" Glyph="&#xE70D;" />
                 </Button>
                 <Button
                     x:Uid="RepoCodeCloseFindButton"
@@ -200,7 +200,7 @@
                     Click="CloseFindButton_Click"
                     Style="{StaticResource AppToolbarButtonStyle}"
                     ToolTipService.ToolTip="Close find (Esc)">
-                    <FontIcon FontSize="12" Glyph="&#xE711;" />
+                    <FontIcon FontSize="{ThemeResource AppFontSize12}" Glyph="&#xE711;" />
                 </Button>
             </Grid>
         </Border>

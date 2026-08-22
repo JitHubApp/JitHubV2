@@ -17,6 +17,7 @@ using Windows.UI;
 using MarkdownRenderer.Diagnostics;
 using MarkdownRenderer.Document;
 using MarkdownRenderer.Images;
+using MarkdownRenderer.Parsing;
 using MarkdownRenderer.Theming;
 
 namespace MarkdownRenderer.Layout.Boxes;
@@ -113,10 +114,13 @@ internal sealed class ImageBox : BlockBox
     });
     private const int MaxSvgBytes = SvgResourceBudget.MaxInputBytes;
     private const int MaxRemoteImageBytes = RasterImageResourceBudget.MaxInputBytes;
+    private static readonly TimeSpan ImageResolverTimeout = TimeSpan.FromSeconds(20);
 
     private readonly MarkdownLayoutContext _context;
     private readonly string _url;
     private readonly string _alt;
+    private readonly SafeHtmlLength? _requestedWidth;
+    private readonly SafeHtmlLength? _requestedHeight;
     private volatile bool _isSvg;
     private CanvasBitmap? _bitmap;
     private byte[]? _svgRawBytes; // cached pre-nnjectnon bytes, used to re-rasterize on theme/DPI change
@@ -125,6 +129,7 @@ internal sealed class ImageBox : BlockBox
     private CanvasTextLayout? _caption;
     private bool _loadStarted;
     private bool _loadFailed;
+    private bool _isInlineLayout;
     private volatile bool _disposed;
     private float _availableWidth;
     private float _imageWidth;
@@ -143,11 +148,20 @@ internal sealed class ImageBox : BlockBox
     /// changed) or merely repaint. Always raised on the UI thread.</summary>
     public event EventHandler<LoadCompletedEventArgs>? LoadCompleted;
 
-    public ImageBox(MarkdownLayoutContext context, string url, string alt)
+    public CanvasHorizontalAlignment ContentAlignment { get; set; } = CanvasHorizontalAlignment.Left;
+
+    public ImageBox(
+        MarkdownLayoutContext context,
+        string url,
+        string alt,
+        SafeHtmlLength? requestedWidth = null,
+        SafeHtmlLength? requestedHeight = null)
     {
         _context = context;
         _url = url ?? string.Empty;
         _alt = alt ?? string.Empty;
+        _requestedWidth = requestedWidth;
+        _requestedHeight = requestedHeight;
         _isSvg = SvgIntrinsics.LooksLikeSvg(_url);
         Margin = new Thickness(0, 6, 0, 6);
         if (string.IsNullOrEmpty(_url)) return;
@@ -244,12 +258,18 @@ internal sealed class ImageBox : BlockBox
     /// </summary>
     internal Size MeasureInline(float availableWidth, float lineHeight)
     {
+        _isInlineLayout = true;
         _availableWidth = availableWidth;
         float maxW = Math.Max(1f, availableWidth);
         float w;
         float h;
 
-        if (_bitmap is { } bmu)
+        if (ShouldExpandInlineFailure)
+        {
+            h = Math.Clamp(lineHeight, 20f, 28f);
+            w = MeasureInlineFailureWidth(maxW, h);
+        }
+        else if (_bitmap is { } bmu)
         {
             float bw;
             float bh;
@@ -282,8 +302,13 @@ internal sealed class ImageBox : BlockBox
             w = h;
         }
 
+        ApplyRequestedSize(ref w, ref h, maxW);
         _imageWidth = w;
         _imageHeight = h;
+        if (_bitmap is null)
+        {
+            UpdatePlaceholder(w, h);
+        }
         _captionHeight = 0f;
         _caption?.Dispose();
         _caption = null;
@@ -308,6 +333,10 @@ internal sealed class ImageBox : BlockBox
             return;
         }
 
+        // Inline images can be nested several containers deep in raw HTML. Painting is the
+        // final viewport-aware fallback if a host's lazy-image plan did not discover one.
+        EnsureLoading();
+
         if (_bitmap is { } bmu)
         {
             ds.DrawImage(bmu, rect);
@@ -315,10 +344,7 @@ internal sealed class ImageBox : BlockBox
             return;
         }
 
-        var body = _context.ThemeSnapshot.GetStyle(MarkdownElementKeys.Body);
-        var placeholder = body.Background ?? Color.FromArgb(0x1F, body.Foreground.R, body.Foreground.G, body.Foreground.B);
-        ds.FillRoundedRectangle(rect, 3, 3, placeholder);
-        ds.DrawRoundedRectangle(rect, 3, 3, body.Foreground, 1);
+        PaintPlaceholder(ds, rect);
     }
 
     internal void PaintInlineSelectionForeground(CanvasDrawingSession ds, Rect rect, Rect viewport, Color selectionForeground)
@@ -385,14 +411,18 @@ internal sealed class ImageBox : BlockBox
         }
         else
         {
-            // Placeholder height = 32ux alt-text band, stretched to column.
+            // Placeholder height = 32px alt-text band, stretched to column.
             w = maxW;
             h = 32f;
-            UpdatePlaceholder(maxW);
         }
 
+        ApplyRequestedSize(ref w, ref h, maxW);
         _imageWidth = w;
         _imageHeight = h;
+        if (_bitmap is null)
+        {
+            UpdatePlaceholder(w, h);
+        }
 
         // Caption layout — only when alt text is non-empty.
         _caption?.Dispose();
@@ -426,9 +456,47 @@ internal sealed class ImageBox : BlockBox
         return total;
     }
 
+    private void ApplyRequestedSize(ref float width, ref float height, float availableWidth)
+    {
+        float naturalWidth = Math.Max(1f, width);
+        float naturalHeight = Math.Max(1f, height);
+        float aspect = naturalWidth / naturalHeight;
+        float? requestedWidth = _requestedWidth?.Resolve(availableWidth);
+        float? requestedHeight = _requestedHeight is { IsPercent: false } heightLength
+            ? heightLength.Resolve(availableWidth)
+            : null;
+
+        if (requestedWidth is > 0 && requestedHeight is > 0)
+        {
+            float scale = Math.Min(1f, availableWidth / requestedWidth.Value);
+            width = Math.Max(1f, requestedWidth.Value * scale);
+            height = Math.Max(1f, requestedHeight.Value * scale);
+            return;
+        }
+
+        if (requestedWidth is > 0)
+        {
+            width = Math.Max(1f, Math.Min(availableWidth, requestedWidth.Value));
+            height = Math.Max(1f, width / Math.Max(0.001f, aspect));
+            return;
+        }
+
+        if (requestedHeight is > 0)
+        {
+            height = Math.Max(1f, requestedHeight.Value);
+            width = Math.Max(1f, height * aspect);
+            if (width > availableWidth)
+            {
+                float scale = availableWidth / width;
+                width = availableWidth;
+                height = Math.Max(1f, height * scale);
+            }
+        }
+    }
+
     public override void Paint(CanvasDrawingSession ds, Rect viewport)
     {
-        float x = (float)(Bounds.X + Margin.Left);
+        float x = GetContentX();
         float y = (float)(Bounds.Y + Margin.Top);
 
         if (_bitmap is { } bmu)
@@ -439,10 +507,9 @@ internal sealed class ImageBox : BlockBox
             ds.DrawImage(bmu, dest);
             DrawSvgTextRuns(ds, dest);
         }
-        else if (_placeholder is not null)
+        else
         {
-            var fg = _context.ThemeSnapshot.GetStyle(MarkdownElementKeys.Body).Foreground;
-            ds.DrawTextLayout(_placeholder, x, y, fg);
+            PaintPlaceholder(ds, new Rect(x, y, _imageWidth, _imageHeight));
         }
 
         if (_caption is not null)
@@ -488,7 +555,7 @@ internal sealed class ImageBox : BlockBox
             return;
         }
 
-        float x = (float)(Bounds.X + Margin.Left);
+        float x = GetContentX();
         float y = (float)(Bounds.Y + Margin.Top);
         var imageRect = new Rect(x, y, _imageWidth, _imageHeight);
 
@@ -500,9 +567,9 @@ internal sealed class ImageBox : BlockBox
                 {
                     ds.DrawImage(bitmap, imageRect);
                 }
-                else if (_placeholder is not null)
+                else
                 {
-                    ds.DrawTextLayout(_placeholder, x, y, color);
+                    PaintPlaceholder(ds, imageRect);
                 }
             }
 
@@ -595,14 +662,24 @@ internal sealed class ImageBox : BlockBox
                 _context.AllowThirdPartyRemoteImages,
                 _context.ImageDocumentSource);
             resolution = await resolver.ResolveAsync(
-                _url,
-                resolveContext,
-                _context.ImageCancellationToken).ConfigureAwait(false);
+                    _url,
+                    resolveContext,
+                    _context.ImageCancellationToken)
+                .AsTask()
+                .WaitAsync(ImageResolverTimeout, _context.ImageCancellationToken)
+                .ConfigureAwait(false);
         }
         catch (OperationCanceledException)
         {
             if (!_disposed)
                 _loadStarted = false;
+            return;
+        }
+        catch (TimeoutException)
+        {
+            MarkdownDiagnostics.WriteLine($"[ImageBox] image resolver timed out for {_url}.");
+            ReportUnavailable(MarkdownImageUnavailableReason.Unavailable);
+            PublishFailure(cacheKey: string.Empty);
             return;
         }
         catch (Exception ex)
@@ -670,6 +747,18 @@ internal sealed class ImageBox : BlockBox
         }
 
         await LoadBitmapBytesAsync(asset.Bytes, cacheKey).ConfigureAwait(false);
+    }
+
+    private float GetContentX()
+    {
+        float left = (float)(Bounds.X + Margin.Left);
+        float available = Math.Max(0, (float)Bounds.Width - (float)(Margin.Left + Margin.Right));
+        return ContentAlignment switch
+        {
+            CanvasHorizontalAlignment.Center => left + Math.Max(0, (available - _imageWidth) / 2f),
+            CanvasHorizontalAlignment.Right => left + Math.Max(0, available - _imageWidth),
+            _ => left,
+        };
     }
 
     private void ReportUnavailable(MarkdownImageUnavailableReason reason)
@@ -1462,36 +1551,134 @@ internal sealed class ImageBox : BlockBox
                 TrimCache(_failedUrls, MaxFailedUrlEntrnes);
             }
 
-            // A terminal failure does not change the reserved image geometry. Update the
-            // existing placeholder in place and repaint instead of rebuilding the document.
-            // Rebuilding would create a new resolver-backed ImageBox and retry the same
-            // unavailable authenticated/relative source indefinitely.
+            // Block images and explicitly-sized inline images preserve their geometry. A
+            // compact inline image without requested dimensions expands once to show its alt
+            // text; the host relayouts the committed snapshot and does not recreate or retry it.
             float maxWidth = Math.Max(
                 1f,
                 _availableWidth - (float)(Margin.Left + Margin.Right));
-            UpdatePlaceholder(maxWidth);
-            LoadCompleted?.Invoke(this, new LoadCompletedEventArgs(layoutInvalidated: false));
+            UpdatePlaceholder(maxWidth, _imageHeight);
+            LoadCompleted?.Invoke(
+                this,
+                new LoadCompletedEventArgs(layoutInvalidated: ShouldExpandInlineFailure));
         });
     }
 
-    private void UpdatePlaceholder(float maxWidth)
+    private void PaintPlaceholder(CanvasDrawingSession ds, Rect rect)
+    {
+        var snapshot = _context.ThemeSnapshot;
+        var body = snapshot.GetStyle(MarkdownElementKeys.Body);
+        var caption = snapshot.GetStyle(MarkdownElementKeys.ImageCaption);
+        Color fill = snapshot.IsHighContrast
+            ? snapshot.SurfaceColor
+            : Color.FromArgb(0x0F, body.Foreground.R, body.Foreground.G, body.Foreground.B);
+        Color border = snapshot.IsHighContrast
+            ? snapshot.FocusVisualColor
+            : Color.FromArgb(0x52, caption.Foreground.R, caption.Foreground.G, caption.Foreground.B);
+        const float radius = 4f;
+        ds.FillRoundedRectangle(rect, radius, radius, fill);
+        ds.DrawRoundedRectangle(rect, radius, radius, border, 1f);
+
+        bool compactInlineFailure = _isInlineLayout && _loadFailed;
+        if (_placeholder is null ||
+            (!compactInlineFailure && (rect.Width < 96 || rect.Height < 32)))
+        {
+            return;
+        }
+
+        float horizontalPadding = compactInlineFailure ? 8f : 12f;
+        float verticalPadding = compactInlineFailure ? 0f : 8f;
+        using var clip = ds.CreateLayer(1f, rect);
+        ds.DrawTextLayout(
+            _placeholder,
+            (float)rect.X + Math.Min(horizontalPadding, (float)rect.Width / 4f),
+            (float)rect.Y + Math.Min(verticalPadding, (float)rect.Height / 4f),
+            caption.Foreground);
+    }
+
+    private void UpdatePlaceholder(float maxWidth, float maxHeight = float.MaxValue)
     {
         _placeholder?.Dispose();
+        var style = _context.ThemeSnapshot.GetStyle(MarkdownElementKeys.ImageCaption);
+        bool compactInlineFailure = _isInlineLayout && _loadFailed;
         using var format = new CanvasTextFormat
         {
-            FontFamily = "Segoe UI Variable",
-            FontSize = 13,
-            WordWrapping = CanvasWordWrapping.Wrap,
+            FontFamily = style.FontFamily,
+            FontSize = style.FontSize,
+            FontStyle = style.FontStyle,
+            FontWeight = style.FontWeight,
+            WordWrapping = compactInlineFailure
+                ? CanvasWordWrapping.NoWrap
+                : CanvasWordWrapping.Wrap,
+            HorizontalAlignment = CanvasHorizontalAlignment.Center,
+            VerticalAlignment = CanvasVerticalAlignment.Center,
         };
-        string text = _loadFailed
-            ? $"image unavailable: {(string.IsNullOrEmpty(_alt) ? _url : _alt)}"
-            : $"loading {(string.IsNullOrEmpty(_alt) ? _url : _alt)}...";
+        string description = compactInlineFailure
+            ? GetInlineFailureText()
+            : string.IsNullOrWhiteSpace(_alt) ? _url : _alt;
+        const int maxDescriptionLength = 240;
+        if (description.Length > maxDescriptionLength)
+        {
+            description = description[..maxDescriptionLength] + "...";
+        }
+
+        string text = compactInlineFailure
+            ? description
+            : _loadFailed
+            ? $"Image unavailable: {description}"
+            : $"Loading {description}...";
+        float horizontalPadding = compactInlineFailure ? 16f : 24f;
+        float verticalPadding = compactInlineFailure ? 0f : 16f;
+        float layoutWidth = Math.Max(1f, maxWidth - Math.Min(horizontalPadding, maxWidth / 2f));
+        float layoutHeight = float.IsFinite(maxHeight)
+            ? Math.Max(1f, maxHeight - Math.Min(verticalPadding, maxHeight / 2f))
+            : float.MaxValue;
         _placeholder = new CanvasTextLayout(
             _context.ResourceCreator,
             text,
             format,
-            Math.Max(1f, maxWidth),
-            float.MaxValue);
+            layoutWidth,
+            layoutHeight)
+        {
+            Options = CanvasDrawTextOptions.EnableColorFont,
+        };
+    }
+
+    private bool ShouldExpandInlineFailure =>
+        _isInlineLayout &&
+        _loadFailed &&
+        _requestedWidth is null &&
+        _requestedHeight is null;
+
+    private float MeasureInlineFailureWidth(float maxWidth, float height)
+    {
+        var style = _context.ThemeSnapshot.GetStyle(MarkdownElementKeys.ImageCaption);
+        using var format = new CanvasTextFormat
+        {
+            FontFamily = style.FontFamily,
+            FontSize = style.FontSize,
+            FontStyle = style.FontStyle,
+            FontWeight = style.FontWeight,
+            WordWrapping = CanvasWordWrapping.NoWrap,
+        };
+        using var layout = new CanvasTextLayout(
+            _context.ResourceCreator,
+            GetInlineFailureText(),
+            format,
+            Math.Max(maxWidth, 4096f),
+            height);
+        const float horizontalPadding = 16f;
+        float textWidth = (float)Math.Max(layout.LayoutBounds.Width, layout.DrawBounds.Width);
+        return Math.Clamp(MathF.Ceiling(textWidth) + horizontalPadding, height, maxWidth);
+    }
+
+    private string GetInlineFailureText()
+    {
+        string description = string.IsNullOrWhiteSpace(_alt) ? "Image unavailable" : _alt.Trim();
+        const int maxLength = 80;
+        return description.Length <= maxLength
+            ? description
+            : description[..(maxLength - 3)] + "...";
     }
 
     /// <summary>

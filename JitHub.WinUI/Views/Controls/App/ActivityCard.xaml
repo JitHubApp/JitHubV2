@@ -81,7 +81,7 @@
                         CornerRadius="{ThemeResource AppRadiusSmall}">
                         <FontIcon
                             FontFamily="{StaticResource SegoeFluentIcons}"
-                            FontSize="13"
+                            FontSize="{ThemeResource AppFontSize13}"
                             Foreground="{x:Bind ViewModel.Tone, Converter={StaticResource ActivityToneToBrushConverter}, Mode=OneWay}"
                             Glyph="{x:Bind ViewModel.Glyph, Mode=OneWay}" />
                     </Border>
@@ -90,7 +90,7 @@
                         x:Name="SentenceRichTextBlock"
                         Grid.Column="1"
                         FontFamily="{ThemeResource AppUiFontFamily}"
-                        FontSize="15"
+                        FontSize="{ThemeResource AppFontSize15}"
                         Foreground="{ThemeResource AppInkBrush}"
                         IsTextSelectionEnabled="False"
                         LineHeight="25"
@@ -133,7 +133,7 @@
                                         Margin="0,2,0,0"
                                         VerticalAlignment="Top"
                                         FontFamily="{StaticResource SegoeFluentIcons}"
-                                        FontSize="11"
+                                        FontSize="{ThemeResource AppFontSize11}"
                                         Foreground="{ThemeResource AppInkMutedBrush}"
                                         Glyph="{x:Bind Glyph, Mode=OneWay}" />
                                     <TextBlock

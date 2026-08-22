@@ -837,6 +837,8 @@ public sealed partial class SettingsSectionItem
     public string Glyph { get; }
 
     public string AutomationId => $"SettingsSection_{Id}";
+
+    public override string ToString() => Title;
 }
 
 public sealed record ThemeOption(

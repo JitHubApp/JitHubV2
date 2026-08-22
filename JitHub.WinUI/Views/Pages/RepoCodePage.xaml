@@ -62,7 +62,7 @@
                                 ToolTipService.ToolTip="Close repository files">
                                 <FontIcon
                                     FontFamily="{StaticResource SegoeFluentIcons}"
-                                    FontSize="14"
+                                    FontSize="{ThemeResource AppFontSize14}"
                                     Glyph="&#xE8FD;" />
                             </Button>
                         </Grid>

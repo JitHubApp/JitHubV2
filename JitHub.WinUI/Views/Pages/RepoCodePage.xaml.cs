@@ -42,6 +42,7 @@ public sealed partial class RepoCodePage : Page, IRepositoryCompactCommandProvid
         InitializeComponent();
         ProductPerformanceReadiness.RecordTraversalStage("repo_code.xaml.ready");
         PreviewHost.ActionExecuted += ViewModel.TrackAction;
+        PreviewHost.ActionCompleted += ViewModel.TrackAction;
         FileTree.TabNavigationRequested += FileTree_TabNavigationRequested;
         CloseFileTreeButton.AddHandler(
             PreviewKeyDownEvent,

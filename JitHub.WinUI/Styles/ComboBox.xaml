@@ -4,7 +4,7 @@
         BasedOn="{StaticResource DefaultComboBoxStyle}"
         TargetType="ComboBox">
         <Setter Property="FontFamily" Value="{ThemeResource AppUiFontFamily}" />
-        <Setter Property="FontSize" Value="13" />
+        <Setter Property="FontSize" Value="{ThemeResource AppFontSize13}" />
         <Setter Property="Foreground" Value="{ThemeResource AppInkBrush}" />
         <Setter Property="Background" Value="{ThemeResource AppInputBrush}" />
         <Setter Property="BorderBrush" Value="{ThemeResource AppOutlineBrush}" />
@@ -22,7 +22,7 @@
         TargetType="TextBox"
         BasedOn="{StaticResource DefaultTextBoxStyle}">
         <Setter Property="FontFamily" Value="{ThemeResource AppUiFontFamily}" />
-        <Setter Property="FontSize" Value="13" />
+        <Setter Property="FontSize" Value="{ThemeResource AppFontSize13}" />
         <Setter Property="Foreground" Value="{ThemeResource AppInkBrush}" />
         <Setter Property="Background" Value="{ThemeResource AppInputBrush}" />
         <Setter Property="BorderBrush" Value="{ThemeResource AppOutlineBrush}" />
@@ -39,7 +39,7 @@
         TargetType="RichEditBox"
         BasedOn="{StaticResource DefaultRichEditBoxStyle}">
         <Setter Property="FontFamily" Value="{ThemeResource AppBodyFontFamily}" />
-        <Setter Property="FontSize" Value="14" />
+        <Setter Property="FontSize" Value="{ThemeResource AppFontSize14}" />
         <Setter Property="Foreground" Value="{ThemeResource AppInkBrush}" />
         <Setter Property="Background" Value="{ThemeResource AppInputBrush}" />
         <Setter Property="BorderBrush" Value="{ThemeResource AppOutlineBrush}" />
@@ -55,7 +55,7 @@
         TargetType="AutoSuggestBox"
         BasedOn="{StaticResource DefaultAutoSuggestBoxStyle}">
         <Setter Property="FontFamily" Value="{ThemeResource AppUiFontFamily}" />
-        <Setter Property="FontSize" Value="13" />
+        <Setter Property="FontSize" Value="{ThemeResource AppFontSize13}" />
         <Setter Property="Foreground" Value="{ThemeResource AppInkBrush}" />
         <Setter Property="Background" Value="{ThemeResource AppInputBrush}" />
         <Setter Property="BorderBrush" Value="{ThemeResource AppOutlineBrush}" />

@@ -93,21 +93,21 @@
                                     <!--  Folder – open (&#xE188; = FolderOpen in Segoe Fluent Icons)  -->
                                     <FontIcon
                                         Grid.Column="0"
-                                        FontSize="14"
+                                        FontSize="{ThemeResource AppFontSize14}"
                                         Glyph="&#xE188;"
                                         Visibility="{x:Bind local:RepoFileTreeView.FolderOpenVis(IsDirectory, IsExpanded), Mode=OneWay}" />
 
                                     <!--  Folder – closed (&#xE8B7; = Folder)  -->
                                     <FontIcon
                                         Grid.Column="0"
-                                        FontSize="14"
+                                        FontSize="{ThemeResource AppFontSize14}"
                                         Glyph="&#xE8B7;"
                                         Visibility="{x:Bind local:RepoFileTreeView.FolderClosedVis(IsDirectory, IsExpanded), Mode=OneWay}" />
 
                                     <!--  File (&#xE8A5; = Document)  -->
                                     <FontIcon
                                         Grid.Column="0"
-                                        FontSize="14"
+                                        FontSize="{ThemeResource AppFontSize14}"
                                         Glyph="&#xE8A5;"
                                         Visibility="{x:Bind local:RepoFileTreeView.FileVis(IsDirectory), Mode=OneWay}" />
 
@@ -152,6 +152,7 @@
                 IsClosable="True"
                 IsOpen="False"
                 Severity="Warning"
+                Style="{StaticResource AppStatusInfoBarStyle}"
                 Title="Repository files" />
         </Grid>
     </Grid>

@@ -20,22 +20,31 @@ internal static partial class MarkdownLifecycleAutomationBridge
     private const string RuntimeSettingsPathVariable = "JITHUB_MARKDOWN_RUNTIME_SETTINGS_PATH";
     private const string LinkEvidencePathVariable = "JITHUB_MARKDOWN_LINK_EVIDENCE_PATH";
     private const string ImageEvidencePathVariable = "JITHUB_MARKDOWN_IMAGE_EVIDENCE_PATH";
+    private const string RenderFailureEvidencePathVariable = "JITHUB_MARKDOWN_RENDER_FAILURE_EVIDENCE_PATH";
     private const string HighContrastVariable = "JITHUB_AUTOMATION_HIGH_CONTRAST";
     private const string ResourceMapAbsentVariable = "JITHUB_AUTOMATION_RESOURCE_MAP_ABSENT";
     private const string ResourceMapEvidencePathVariable = "JITHUB_AUTOMATION_RESOURCE_MAP_EVIDENCE_PATH";
 
     private static readonly object SignalGate = new();
     private static string? _signaledHost;
+    private static bool _launchFixtureEnabled;
+    private static string? _launchTargetHost;
 
-    public static bool IsEnabled => IsOne(FixtureVariable);
+    public static bool IsEnabled => _launchFixtureEnabled || IsOne(FixtureVariable);
 
     public static bool IsHighContrastEnabled => IsEnabled && IsOne(HighContrastVariable);
 
     public static bool IsResourceMapForcedAbsent => IsEnabled && IsOne(ResourceMapAbsentVariable);
 
     public static string? TargetHost => IsEnabled
-        ? Environment.GetEnvironmentVariable(TargetHostVariable)
+        ? _launchTargetHost ?? Environment.GetEnvironmentVariable(TargetHostVariable)
         : null;
+
+    public static void ConfigureLaunchOptions(bool fixtureEnabled, string? targetHost)
+    {
+        _launchFixtureEnabled = fixtureEnabled;
+        _launchTargetHost = string.IsNullOrWhiteSpace(targetHost) ? null : targetHost.Trim();
+    }
 
     public static bool TargetsHost(string automationId) =>
         IsEnabled &&
@@ -63,7 +72,7 @@ internal static partial class MarkdownLifecycleAutomationBridge
             return;
         }
 
-        string? target = Environment.GetEnvironmentVariable(TargetHostVariable);
+        string? target = TargetHost;
         if (!string.IsNullOrWhiteSpace(target) &&
             !automationId.StartsWith(target, StringComparison.Ordinal))
         {
@@ -235,6 +244,37 @@ internal static partial class MarkdownLifecycleAutomationBridge
                         DateTimeOffset.UtcNow),
                     MarkdownLifecycleJsonContext.Default.ImageUnavailableSignal);
                 File.AppendAllText(fullPath, entry + Environment.NewLine);
+            }
+            catch (IOException)
+            {
+            }
+            catch (UnauthorizedAccessException)
+            {
+            }
+        }
+    }
+
+    public static void RecordRenderFailure(string automationId, Exception exception)
+    {
+        ArgumentNullException.ThrowIfNull(exception);
+        if (!TargetsHost(automationId))
+        {
+            return;
+        }
+
+        string? path = Environment.GetEnvironmentVariable(RenderFailureEvidencePathVariable);
+        if (string.IsNullOrWhiteSpace(path))
+        {
+            return;
+        }
+
+        lock (SignalGate)
+        {
+            try
+            {
+                string fullPath = Path.GetFullPath(path);
+                Directory.CreateDirectory(Path.GetDirectoryName(fullPath)!);
+                File.WriteAllText(fullPath, exception.ToString());
             }
             catch (IOException)
             {

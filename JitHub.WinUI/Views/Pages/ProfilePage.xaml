@@ -56,7 +56,7 @@
                         <FontIcon
                             VerticalAlignment="Center"
                             FontFamily="{ThemeResource SegoeFluentIcons}"
-                            FontSize="13"
+                            FontSize="{ThemeResource AppFontSize13}"
                             Foreground="{ThemeResource AppAccentBrush}"
                             Glyph="{x:Bind Glyph}" />
                         <TextBlock
@@ -84,7 +84,7 @@
                     <FontIcon
                         VerticalAlignment="Center"
                         FontFamily="{ThemeResource SegoeFluentIcons}"
-                        FontSize="13"
+                        FontSize="{ThemeResource AppFontSize13}"
                         Foreground="{ThemeResource AppInkMutedBrush}"
                         Glyph="{x:Bind Glyph}" />
                     <TextBlock
@@ -114,7 +114,7 @@
                     </Grid.ColumnDefinitions>
                     <FontIcon
                         FontFamily="{ThemeResource SegoeFluentIcons}"
-                        FontSize="13"
+                        FontSize="{ThemeResource AppFontSize13}"
                         Foreground="{ThemeResource AppAccentBrush}"
                         Glyph="{x:Bind Glyph}" />
                     <TextBlock
@@ -194,7 +194,7 @@
                             </Grid.ColumnDefinitions>
                             <FontIcon
                                 FontFamily="{ThemeResource SegoeFluentIcons}"
-                                FontSize="14"
+                                FontSize="{ThemeResource AppFontSize14}"
                                 Foreground="{ThemeResource AppAccentBrush}"
                                 Glyph="&#xE8B7;" />
                             <TextBlock
@@ -346,7 +346,7 @@
                     Margin="0,2,0,0"
                     VerticalAlignment="Top"
                     FontFamily="{ThemeResource SegoeFluentIcons}"
-                    FontSize="15"
+                    FontSize="{ThemeResource AppFontSize15}"
                     Foreground="{ThemeResource AppAccentBrush}"
                     Glyph="{x:Bind Glyph, Mode=OneWay}" />
                 <StackPanel Grid.Column="1" Spacing="3">
@@ -416,7 +416,7 @@
                         <Border
                             Width="72"
                             Height="72"
-                            CornerRadius="36"
+                            CornerRadius="{ThemeResource AppRadiusCircle}"
                             AutomationProperties.AccessibilityView="Raw">
                             <common:CachedImage
                                 SourceUrl="{x:Bind ViewModel.AvatarUrl, Mode=OneWay}"
@@ -426,7 +426,7 @@
                             <TextBlock
                                 AutomationProperties.AutomationId="ProfileDisplayName"
                                 FontFamily="{ThemeResource AppDisplayFontFamily}"
-                                FontSize="30"
+                                FontSize="{ThemeResource AppFontSize30}"
                                 Foreground="{ThemeResource AppInkBrush}"
                                 Text="{x:Bind ViewModel.DisplayNameText, Mode=OneWay}"
                                 TextWrapping="Wrap" />
@@ -604,7 +604,7 @@
                     <Border
                         Width="48"
                         Height="48"
-                        CornerRadius="24"
+                        CornerRadius="{ThemeResource AppRadiusCircle}"
                         AutomationProperties.AccessibilityView="Raw">
                         <common:CachedImage
                             SourceUrl="{x:Bind ViewModel.AvatarUrl, Mode=OneWay}"
@@ -613,7 +613,7 @@
                     <StackPanel Grid.Column="1" VerticalAlignment="Center" Spacing="2">
                         <TextBlock
                             FontFamily="{ThemeResource AppDisplayFontFamily}"
-                            FontSize="22"
+                            FontSize="{ThemeResource AppFontSize22}"
                             Foreground="{ThemeResource AppInkBrush}"
                             Text="{x:Bind ViewModel.DisplayNameText, Mode=OneWay}"
                             TextTrimming="CharacterEllipsis" />
@@ -808,7 +808,7 @@
                                             <ColumnDefinition Width="*" />
                                             <ColumnDefinition Width="Auto" />
                                         </Grid.ColumnDefinitions>
-                                        <TextBlock x:Uid="PagesProfilePageTextBlockContributions" FontFamily="{ThemeResource AppDisplayFontFamily}" FontSize="22" Foreground="{ThemeResource AppInkBrush}" Text="Contributions" />
+                                        <TextBlock x:Uid="PagesProfilePageTextBlockContributions" FontFamily="{ThemeResource AppDisplayFontFamily}" FontSize="{ThemeResource AppFontSize22}" Foreground="{ThemeResource AppInkBrush}" Text="Contributions" />
                                         <TextBlock Grid.Column="1" VerticalAlignment="Center" Foreground="{ThemeResource AppInkMutedBrush}" Style="{StaticResource CaptionTextBlockStyle}" Text="{x:Bind ViewModel.ContributionSubtitleText, Mode=OneWay}" />
                                     </Grid>
                                     <profile:ProfileContributionGraph
@@ -825,7 +825,7 @@
                                 BorderThickness="0,0,0,1"
                                 Visibility="{x:Bind ViewModel.HasReadme, Converter={StaticResource BoolToVisibilityConverter}, Mode=OneWay}">
                                 <StackPanel Spacing="12">
-                                    <TextBlock x:Uid="PagesProfilePageTextBlockREADME" FontFamily="{ThemeResource AppDisplayFontFamily}" FontSize="22" Foreground="{ThemeResource AppInkBrush}" Text="README" />
+                                    <TextBlock x:Uid="PagesProfilePageTextBlockREADME" FontFamily="{ThemeResource AppDisplayFontFamily}" FontSize="{ThemeResource AppFontSize22}" Foreground="{ThemeResource AppInkBrush}" Text="README" />
                                     <common:MarkdownViewer
                                         x:Name="ProfileOverviewReadmeViewer"
                                         AutomationProperties.AutomationId="ProfileOverviewReadme"
@@ -845,7 +845,7 @@
                                 BorderThickness="0"
                                 Visibility="{x:Bind ViewModel.HasPinnedItems, Converter={StaticResource BoolToVisibilityConverter}, Mode=OneWay}">
                                 <StackPanel Spacing="12">
-                                    <TextBlock x:Uid="PagesProfilePageTextBlockPinnedRepositories" FontFamily="{ThemeResource AppDisplayFontFamily}" FontSize="22" Foreground="{ThemeResource AppInkBrush}" Text="Pinned repositories" />
+                                    <TextBlock x:Uid="PagesProfilePageTextBlockPinnedRepositories" FontFamily="{ThemeResource AppDisplayFontFamily}" FontSize="{ThemeResource AppFontSize22}" Foreground="{ThemeResource AppInkBrush}" Text="Pinned repositories" />
                                     <ItemsRepeater ItemsSource="{x:Bind ViewModel.PinnedItems, Mode=OneWay}" ItemTemplate="{StaticResource ProfilePinnedRepositoryTemplate}" />
                                 </StackPanel>
                             </Border>
@@ -985,7 +985,7 @@
                                 Grid.Column="1"
                                 VerticalAlignment="Center"
                                 FontFamily="{ThemeResource AppDisplayFontFamily}"
-                                FontSize="22"
+                                FontSize="{ThemeResource AppFontSize22}"
                                 Foreground="{ThemeResource AppInkBrush}"
                                 Text="{x:Bind ViewModel.PeopleTitle, Mode=OneWay}" />
                         </Grid>

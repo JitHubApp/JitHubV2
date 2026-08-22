@@ -46,7 +46,7 @@
                 </Grid.RowDefinitions>
                 <TextBlock
                     FontFamily="{ThemeResource AppUiFontFamily}"
-                    FontSize="13"
+                    FontSize="{ThemeResource AppFontSize13}"
                     FontWeight="SemiBold"
                     Foreground="{ThemeResource AppInkBrush}"
                     MaxLines="2"
@@ -62,7 +62,7 @@
                     </Grid.ColumnDefinitions>
                     <TextBlock
                         FontFamily="{ThemeResource AppMonoFontFamily}"
-                        FontSize="11"
+                        FontSize="{ThemeResource AppFontSize11}"
                         Foreground="{ThemeResource AppAccentBrush}"
                         Text="{Binding ShortSha}" />
                     <common:Avatar
@@ -85,7 +85,7 @@
                 <TextBlock
                     Grid.Row="2"
                     FontFamily="{ThemeResource AppUiFontFamily}"
-                    FontSize="11"
+                    FontSize="{ThemeResource AppFontSize11}"
                     Foreground="{ThemeResource AppInkMutedBrush}"
                     Text="{Binding Stats.SummaryText}"
                     TextTrimming="CharacterEllipsis" />
@@ -123,7 +123,7 @@
                             Grid.Column="1"
                             VerticalAlignment="Center"
                             FontFamily="{ThemeResource AppUiFontFamily}"
-                            FontSize="13"
+                            FontSize="{ThemeResource AppFontSize13}"
                             FontWeight="SemiBold"
                             Foreground="{ThemeResource AppInkBrush}"
                             Text="{Binding AuthorDisplayName}" />
@@ -157,13 +157,13 @@
                 <FontIcon
                     Margin="0,2,0,0"
                     FontFamily="{StaticResource SegoeFluentIcons}"
-                    FontSize="14"
+                    FontSize="{ThemeResource AppFontSize14}"
                     Foreground="{ThemeResource AppSuccessBrush}"
                     Glyph="&#xE930;" />
                 <StackPanel Grid.Column="1" Spacing="2">
                     <TextBlock
                         FontFamily="{ThemeResource AppUiFontFamily}"
-                        FontSize="13"
+                        FontSize="{ThemeResource AppFontSize13}"
                         Foreground="{ThemeResource AppInkBrush}"
                         Text="{Binding Name}"
                         TextTrimming="CharacterEllipsis" />
@@ -176,7 +176,7 @@
                     Grid.Column="2"
                     VerticalAlignment="Center"
                     FontFamily="{ThemeResource AppUiFontFamily}"
-                    FontSize="11"
+                    FontSize="{ThemeResource AppFontSize11}"
                     Foreground="{ThemeResource AppAccentBrush}"
                     Text="{Binding Conclusion}" />
             </Grid>
@@ -193,7 +193,7 @@
                 </Grid.ColumnDefinitions>
                 <TextBlock
                     FontFamily="{ThemeResource AppMonoFontFamily}"
-                    FontSize="11"
+                    FontSize="{ThemeResource AppFontSize11}"
                     Foreground="{ThemeResource AppAccentBrush}"
                     Text="{Binding Number}" />
                 <TextBlock
@@ -261,7 +261,7 @@
                                     Style="{StaticResource AppToolbarButtonStyle}"
                                     ToolTipService.ToolTip="Close commits"
                                     Visibility="Collapsed">
-                                    <FontIcon FontFamily="{StaticResource SegoeFluentIcons}" FontSize="14" Glyph="&#xE8FD;" />
+                                    <FontIcon FontFamily="{StaticResource SegoeFluentIcons}" FontSize="{ThemeResource AppFontSize14}" Glyph="&#xE8FD;" />
                                 </Button>
                                 <ComboBox
                                     x:Uid="PagesRepoCommitsPageRepoCommitsBranchComboBox" x:Name="BranchComboBox"
@@ -346,7 +346,7 @@
                                     Visibility="{x:Bind ViewModel.HasSinceFilter, Converter={StaticResource BoolToVisibilityConverter}, Mode=OneWay}">
                                     <StackPanel Orientation="Horizontal" Spacing="6">
                                         <TextBlock Text="{x:Bind ViewModel.SinceFilterLabel, Mode=OneWay}" />
-                                        <FontIcon FontFamily="{StaticResource SegoeFluentIcons}" FontSize="10" Glyph="&#xE711;" />
+                                        <FontIcon FontFamily="{StaticResource SegoeFluentIcons}" FontSize="{ThemeResource AppFontSize10}" Glyph="&#xE711;" />
                                     </StackPanel>
                                 </Button>
                                 <Button
@@ -360,7 +360,7 @@
                                     Visibility="{x:Bind ViewModel.HasUntilFilter, Converter={StaticResource BoolToVisibilityConverter}, Mode=OneWay}">
                                     <StackPanel Orientation="Horizontal" Spacing="6">
                                         <TextBlock Text="{x:Bind ViewModel.UntilFilterLabel, Mode=OneWay}" />
-                                        <FontIcon FontFamily="{StaticResource SegoeFluentIcons}" FontSize="10" Glyph="&#xE711;" />
+                                        <FontIcon FontFamily="{StaticResource SegoeFluentIcons}" FontSize="{ThemeResource AppFontSize10}" Glyph="&#xE711;" />
                                     </StackPanel>
                                 </Button>
                             </StackPanel>
@@ -442,14 +442,14 @@
                                     Style="{StaticResource AppToolbarButtonStyle}"
                                     ToolTipService.ToolTip="Commits"
                                     Visibility="Collapsed">
-                                    <FontIcon FontFamily="{StaticResource SegoeFluentIcons}" FontSize="14" Glyph="&#xE8FD;" />
+                                    <FontIcon FontFamily="{StaticResource SegoeFluentIcons}" FontSize="{ThemeResource AppFontSize14}" Glyph="&#xE8FD;" />
                                 </Button>
                                 <StackPanel Grid.Column="1" Spacing="7">
                                     <TextBlock
                                         x:Name="CommitDetailTitle"
                                         AutomationProperties.AutomationId="RepoCommitsDetailTitle"
                                         FontFamily="{ThemeResource AppDisplayFontFamily}"
-                                        FontSize="25"
+                                        FontSize="{ThemeResource AppFontSize25}"
                                         Foreground="{ThemeResource AppInkBrush}"
                                         MaxLines="2"
                                         Text="{Binding SelectedCommitTitle}"
@@ -465,7 +465,7 @@
                                         </Grid.ColumnDefinitions>
                                         <TextBlock
                                             FontFamily="{ThemeResource AppMonoFontFamily}"
-                                            FontSize="12"
+                                            FontSize="{ThemeResource AppFontSize12}"
                                             Foreground="{ThemeResource AppAccentBrush}"
                                             Text="{Binding SelectedCommitShaText}" />
                                         <TextBlock
@@ -502,7 +502,7 @@
                                         Click="CopyShaButton_Click"
                                         Style="{StaticResource AppToolbarButtonStyle}"
                                         ToolTipService.ToolTip="Copy SHA">
-                                        <FontIcon FontFamily="{StaticResource SegoeFluentIcons}" FontSize="14" Glyph="&#xE8C8;" />
+                                        <FontIcon FontFamily="{StaticResource SegoeFluentIcons}" FontSize="{ThemeResource AppFontSize14}" Glyph="&#xE8C8;" />
                                     </Button>
                                     <Button
                                         x:Uid="PagesRepoCommitsPageRepoCommitsOpenCodeButton" MinHeight="34"
@@ -524,7 +524,7 @@
                                         Style="{StaticResource AppToolbarButtonStyle}"
                                         ToolTipService.ToolTip="Inspector"
                                         Visibility="Collapsed">
-                                        <FontIcon FontFamily="{StaticResource SegoeFluentIcons}" FontSize="14" Glyph="&#xE9D2;" />
+                                        <FontIcon FontFamily="{StaticResource SegoeFluentIcons}" FontSize="{ThemeResource AppFontSize14}" Glyph="&#xE9D2;" />
                                     </Button>
                                 </StackPanel>
                             </Grid>
@@ -535,7 +535,7 @@
                                 Margin="10,10,10,0"
                                 AutomationProperties.AutomationId="RepoCommitsSectionSegmented"
                                 AutomationProperties.Name="Commit section"
-                                FontSize="12"
+                                FontSize="{ThemeResource AppFontSize12}"
                                 SelectedIndex="0"
                                 SelectionChanged="CommitSectionSegmented_SelectionChanged">
                                 <toolkit:SegmentedItem x:Uid="PagesRepoCommitsPageRepoCommitsSectionDiff" Width="96" Height="48" Padding="4,6" AutomationProperties.AutomationId="RepoCommitsSection_Diff" AutomationProperties.Name="Show commit diff" Content="Diff" ContentTemplate="{StaticResource RepoCommitSectionLabelTemplate}" />
@@ -597,7 +597,7 @@
                                             Style="{StaticResource AppToolbarButtonStyle}"
                                             Tag="previous"
                                             ToolTipService.ToolTip="Previous match">
-                                            <FontIcon FontFamily="{StaticResource SegoeFluentIcons}" FontSize="12" Glyph="&#xE70E;" />
+                                            <FontIcon FontFamily="{StaticResource SegoeFluentIcons}" FontSize="{ThemeResource AppFontSize12}" Glyph="&#xE70E;" />
                                         </Button>
                                         <Button
                                             x:Uid="PagesRepoCommitsPageRepoCommitsNextDiffMatchButton" Grid.Column="4"
@@ -610,7 +610,7 @@
                                             Style="{StaticResource AppToolbarButtonStyle}"
                                             Tag="next"
                                             ToolTipService.ToolTip="Next match">
-                                            <FontIcon FontFamily="{StaticResource SegoeFluentIcons}" FontSize="12" Glyph="&#xE70D;" />
+                                            <FontIcon FontFamily="{StaticResource SegoeFluentIcons}" FontSize="{ThemeResource AppFontSize12}" Glyph="&#xE70D;" />
                                         </Button>
                                     </Grid>
                                     <Grid
@@ -640,6 +640,7 @@
                                         AutomationProperties.AccessibilityView="Control"
                                         AutomationProperties.AutomationId="RepoCommitsDiffViewer"
                                         AutomationProperties.Name="Commit diff"
+                                        ActionCompleted="CommitDiffViewer_ActionCompleted"
                                         RowProjection="{Binding DiffRowProjection}"
                                         SelectedSearchMatchIndex="{Binding SelectedDiffSearchMatchIndex}" />
                                 </Grid>
@@ -697,7 +698,7 @@
                                     <StackPanel Spacing="12">
                                         <TextBlock
                                             FontFamily="{ThemeResource AppDisplayFontFamily}"
-                                            FontSize="22"
+                                            FontSize="{ThemeResource AppFontSize22}"
                                             Foreground="{ThemeResource AppInkBrush}"
                                             Text="{Binding CheckSummaryText}" />
                                         <ItemsControl
@@ -781,7 +782,7 @@
                                             Style="{StaticResource AppToolbarButtonStyle}"
                                             Tag="previous"
                                             ToolTipService.ToolTip="Previous match">
-                                            <FontIcon FontFamily="{StaticResource SegoeFluentIcons}" FontSize="12" Glyph="&#xE70E;" />
+                                            <FontIcon FontFamily="{StaticResource SegoeFluentIcons}" FontSize="{ThemeResource AppFontSize12}" Glyph="&#xE70E;" />
                                         </Button>
                                         <Button
                                             x:Uid="PagesRepoCommitsPageRepoCommitsCompareNextDiffMatchButto" Grid.Column="4"
@@ -794,7 +795,7 @@
                                             Style="{StaticResource AppToolbarButtonStyle}"
                                             Tag="next"
                                             ToolTipService.ToolTip="Next match">
-                                            <FontIcon FontFamily="{StaticResource SegoeFluentIcons}" FontSize="12" Glyph="&#xE70D;" />
+                                            <FontIcon FontFamily="{StaticResource SegoeFluentIcons}" FontSize="{ThemeResource AppFontSize12}" Glyph="&#xE70D;" />
                                         </Button>
                                     </Grid>
                                     <commit:CommitDiffViewer
@@ -802,6 +803,7 @@
                                         AutomationProperties.AccessibilityView="Control"
                                         AutomationProperties.AutomationId="RepoCommitsCompareDiffViewer"
                                         AutomationProperties.Name="Compare commit diff"
+                                        ActionCompleted="CommitDiffViewer_ActionCompleted"
                                         RowProjection="{Binding CompareDiffRowProjection}"
                                         SelectedSearchMatchIndex="{Binding SelectedDiffSearchMatchIndex}" />
                                 </Grid>
@@ -827,7 +829,7 @@
                                 </Grid.ColumnDefinitions>
                                 <TextBlock
                                     x:Uid="PagesRepoCommitsPageTextBlockInspector" FontFamily="{ThemeResource AppDisplayFontFamily}"
-                                    FontSize="21"
+                                    FontSize="{ThemeResource AppFontSize21}"
                                     Foreground="{ThemeResource AppInkBrush}"
                                     Text="Inspector" />
                                 <Button
@@ -842,7 +844,7 @@
                                     Style="{StaticResource AppToolbarButtonStyle}"
                                     ToolTipService.ToolTip="Close inspector"
                                     Visibility="Collapsed">
-                                    <FontIcon FontFamily="{StaticResource SegoeFluentIcons}" FontSize="14" Glyph="&#xE9D2;" />
+                                    <FontIcon FontFamily="{StaticResource SegoeFluentIcons}" FontSize="{ThemeResource AppFontSize14}" Glyph="&#xE9D2;" />
                                 </Button>
                             </Grid>
 
@@ -850,7 +852,7 @@
                                 <TextBlock x:Uid="PagesRepoCommitsPageTextBlockStats" Style="{StaticResource SectionSecondaryTextBlockStyle}" Text="Stats" />
                                 <TextBlock
                                     FontFamily="{ThemeResource AppMonoFontFamily}"
-                                    FontSize="12"
+                                    FontSize="{ThemeResource AppFontSize12}"
                                     Foreground="{ThemeResource AppInkBrush}"
                                     Text="{Binding SelectedCommitStatsText}" />
                             </StackPanel>
@@ -859,7 +861,7 @@
                                 <TextBlock x:Uid="PagesRepoCommitsPageTextBlockSignature" Style="{StaticResource SectionSecondaryTextBlockStyle}" Text="Signature" />
                                 <TextBlock
                                     FontFamily="{ThemeResource AppUiFontFamily}"
-                                    FontSize="12"
+                                    FontSize="{ThemeResource AppFontSize12}"
                                     Foreground="{ThemeResource AppAccentBrush}"
                                     Text="{Binding SelectedCommitVerificationText}" />
                             </StackPanel>
@@ -872,7 +874,7 @@
                                             <TextBlock
                                                 Margin="0,0,0,6"
                                                 FontFamily="{ThemeResource AppMonoFontFamily}"
-                                                FontSize="12"
+                                                FontSize="{ThemeResource AppFontSize12}"
                                                 Foreground="{ThemeResource AppAccentBrush}"
                                                 Text="{Binding ShortSha}" />
                                         </DataTemplate>

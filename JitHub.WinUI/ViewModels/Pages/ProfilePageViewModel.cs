@@ -615,9 +615,10 @@ public sealed partial class ProfilePageViewModel : ViewModelBase
 
         if (!string.IsNullOrWhiteSpace(_currentLogin))
         {
-            bool launched = await _externalUriLauncher.LaunchAsync(
-                new Uri($"https://gist.github.com/{Uri.EscapeDataString(_currentLogin)}"));
-            TrackAction("open_gists", launched ? TelemetryTaxonomy.Results.Success : TelemetryTaxonomy.Results.Unavailable);
+            await OpenExternalUriAsync(
+                new Uri($"https://gist.github.com/{Uri.EscapeDataString(_currentLogin)}"),
+                "open_gists",
+                "GitHub");
         }
     }
 
@@ -933,39 +934,32 @@ public sealed partial class ProfilePageViewModel : ViewModelBase
 
     public async Task OpenFactAsync(ProfileFactItem? fact)
     {
-        Uri? uri = fact?.LaunchUri;
-        if (uri is null || !MarkdownLinkNavigationPolicy.IsAllowedLaunchUri(uri))
-        {
-            return;
-        }
-
-        try
-        {
-            bool launched = await _externalUriLauncher.LaunchAsync(uri);
-            TrackAction("open_fact", launched ? TelemetryTaxonomy.Results.Success : TelemetryTaxonomy.Results.Unavailable);
-        }
-        catch
-        {
-            StatusText = ProfileText.LF(
-                "Profile.Status.FactOpenFailed",
-                "Could not open {0}.",
-                fact!.Label.ToLower(CultureInfo.CurrentCulture));
-            TrackAction("open_fact", "failed");
-        }
+        await OpenExternalUriAsync(
+            fact?.LaunchUri,
+            "open_fact",
+            fact?.Label.ToLower(CultureInfo.CurrentCulture) ?? "link");
     }
+
+    public Task OpenProfileExternallyAsync() =>
+        OpenExternalUriAsync(
+            ProfileUri,
+            TelemetryTaxonomy.Actions.OpenProfileExternal,
+            "GitHub");
+
+    public void TrackFactCopy(bool succeeded) =>
+        TrackAction(
+            TelemetryTaxonomy.Actions.CopyFact,
+            succeeded ? TelemetryTaxonomy.Results.Success : TelemetryTaxonomy.Results.Error);
 
     public async Task OpenRepositoryExternallyAsync(ProfileRepositoryViewItem? repository)
     {
-        if (repository is null || string.IsNullOrWhiteSpace(repository.Url)
-            || !Uri.TryCreate(repository.Url, UriKind.Absolute, out Uri? uri))
+        Uri? uri = null;
+        if (!string.IsNullOrWhiteSpace(repository?.Url))
         {
-            return;
+            _ = Uri.TryCreate(repository.Url, UriKind.Absolute, out uri);
         }
 
-        bool launched = await _externalUriLauncher.LaunchAsync(uri);
-        TrackAction(
-            "open_repository_external",
-            launched ? TelemetryTaxonomy.Results.Success : TelemetryTaxonomy.Results.Unavailable);
+        await OpenExternalUriAsync(uri, "open_repository_external", "GitHub");
     }
 
     public void OpenPerson(ProfilePersonItem? person, string source)
@@ -1104,6 +1098,32 @@ public sealed partial class ProfilePageViewModel : ViewModelBase
             ["result"] = result,
             ["page"] = IsEditVisible ? "authenticated" : "user"
         });
+
+    private async Task OpenExternalUriAsync(Uri? uri, string action, string failureLabel)
+    {
+        if (uri is null || !MarkdownLinkNavigationPolicy.IsAllowedLaunchUri(uri))
+        {
+            TrackAction(action, TelemetryTaxonomy.Results.Rejected);
+            return;
+        }
+
+        try
+        {
+            bool launched = await _externalUriLauncher.LaunchAsync(uri);
+            TrackAction(
+                action,
+                launched ? TelemetryTaxonomy.Results.Success : TelemetryTaxonomy.Results.Unavailable);
+        }
+        catch (Exception ex)
+        {
+            Debug.WriteLine($"Profile external launch failed: {ex}");
+            StatusText = ProfileText.LF(
+                "Profile.Status.FactOpenFailed",
+                "Could not open {0}.",
+                failureLabel);
+            TrackAction(action, TelemetryTaxonomy.Results.Error);
+        }
+    }
 
     private void ExecuteNavigationAction(string action, Func<bool> navigate)
     {

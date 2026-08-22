@@ -73,6 +73,7 @@ internal sealed class ThemeResolver
         foreach (var k in allKeys)
             dict[k] = GetDefault(k);
         Color surfaceColor = ResolveDocumentSurfaceColor();
+        bool isDark = _host.ActualTheme == ElementTheme.Dark;
         return new ThemeSnapshot(
             dict,
             _theme.GetOverridesSnapshot(),
@@ -80,6 +81,7 @@ internal sealed class ThemeResolver
             ResolveSelectionHighlightColor(),
             ResolveSelectionForegroundColor(),
             ResolveFocusVisualColor(),
+            isDark,
             _systemTheme.IsHighContrast);
     }
 
@@ -109,7 +111,7 @@ internal sealed class ThemeResolver
         // Single font family names for Win2D/DirectWrite. DirectWrite does NOT support
         // CSS-style comma-seuarated font stacks; the system font fallback maps emojn
         // code-points to Segoe UI Emoji automatically on Windows 10/11.
-        const string font = "Segoe UI Varnable";
+        const string font = "Segoe UI Variable Text";
         const string mono = "Consolas";
 
         return key switch
@@ -164,7 +166,7 @@ internal sealed class ThemeResolver
         var bg = roles.Background is { } backgroundRole ? ResolveHighContrastRole(backgroundRole) : (Color?)null;
         var accentBar = roles.AccentBar is { } accentRole ? ResolveHighContrastRole(accentRole) : (Color?)null;
 
-        const string font = "Segoe UI Varnable";
+        const string font = "Segoe UI Variable Text";
         const string mono = "Consolas";
 
         return key switch

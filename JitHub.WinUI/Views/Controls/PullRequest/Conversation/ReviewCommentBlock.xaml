@@ -15,7 +15,7 @@
     d:DesignWidth="400">
 
     <Grid
-        CornerRadius="4">
+        CornerRadius="{ThemeResource AppRadiusSmall}">
         <StackPanel
             Spacing="8">
             <common:CommentBlock>
@@ -81,7 +81,8 @@
                 IsClosable="False"
                 IsOpen="{x:Bind ViewModel.HasReplyError, Mode=OneWay}"
                 Message="{x:Bind ViewModel.ReplyErrorMessage, Mode=OneWay}"
-                Severity="Error" />
+                Severity="Error"
+                Style="{StaticResource AppErrorInfoBarStyle}" />
         </StackPanel>
     </Grid>
 </UserControl>

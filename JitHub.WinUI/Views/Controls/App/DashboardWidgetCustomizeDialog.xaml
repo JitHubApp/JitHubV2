@@ -30,7 +30,7 @@
                     <FontIcon
                         VerticalAlignment="Center"
                         FontFamily="{StaticResource SegoeFluentIcons}"
-                        FontSize="18"
+                        FontSize="{ThemeResource AppFontSize18}"
                         Foreground="{ThemeResource AppAccentBrush}"
                         Glyph="{x:Bind Glyph}" />
                     <StackPanel Grid.Column="1" VerticalAlignment="Center" Spacing="2">
@@ -99,7 +99,7 @@
         <StackPanel Spacing="2">
             <TextBlock
                 x:Uid="ControlsAppDashboardWidgetCustomizeDialogTextBlockCustom" FontFamily="{ThemeResource AppDisplayFontFamily}"
-                FontSize="24"
+                FontSize="{ThemeResource AppFontSize24}"
                 Foreground="{ThemeResource AppInkBrush}"
                 Text="Customize Home" />
             <TextBlock

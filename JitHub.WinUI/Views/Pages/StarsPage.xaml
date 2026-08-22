@@ -32,7 +32,7 @@
 
         <Style x:Key="StarsRepositoryItemStyle" TargetType="ListViewItem" BasedOn="{StaticResource AppRepositoryListRowStyle}">
             <Setter Property="MinHeight" Value="86" />
-            <Setter Property="CornerRadius" Value="0" />
+            <Setter Property="CornerRadius" Value="{ThemeResource AppRadiusNone}" />
         </Style>
 
         <DataTemplate x:Key="NavigationItemTemplate" x:DataType="viewmodels:StarNavigationItem">
@@ -57,14 +57,14 @@
                 <FontIcon
                     VerticalAlignment="Center"
                     FontFamily="{StaticResource SegoeFluentIcons}"
-                    FontSize="14"
+                    FontSize="{ThemeResource AppFontSize14}"
                     Foreground="{x:Bind AccentColor, Converter={StaticResource HexColorToSolidBrushConverter}}"
                     Glyph="{x:Bind Glyph}" />
                 <TextBlock
                     Grid.Column="1"
                     VerticalAlignment="Center"
                     FontFamily="{ThemeResource AppUiFontFamily}"
-                    FontSize="13"
+                    FontSize="{ThemeResource AppFontSize13}"
                     Foreground="{ThemeResource AppInkBrush}"
                     Text="{x:Bind Title}"
                     TextTrimming="CharacterEllipsis" />
@@ -118,7 +118,7 @@
                             HorizontalAlignment="Center"
                             VerticalAlignment="Center"
                             FontFamily="{StaticResource SegoeFluentIcons}"
-                            FontSize="14"
+                            FontSize="{ThemeResource AppFontSize14}"
                             Foreground="{ThemeResource AppInkMutedBrush}"
                             Glyph="&#xE76F;"
                             IsHitTestVisible="False" />
@@ -133,18 +133,18 @@
                     <StackPanel Orientation="Horizontal" Spacing="0">
                         <TextBlock
                             FontFamily="{ThemeResource AppUiFontFamily}"
-                            FontSize="14"
+                            FontSize="{ThemeResource AppFontSize14}"
                             FontWeight="SemiBold"
                             Foreground="{ThemeResource AppInkBrush}"
                             Text="{x:Bind Owner, Mode=OneWay}" />
                         <TextBlock
                             FontFamily="{ThemeResource AppUiFontFamily}"
-                            FontSize="14"
+                            FontSize="{ThemeResource AppFontSize14}"
                             Foreground="{ThemeResource AppInkMutedBrush}"
                             Text=" / " />
                         <TextBlock
                             FontFamily="{ThemeResource AppUiFontFamily}"
-                            FontSize="14"
+                            FontSize="{ThemeResource AppFontSize14}"
                             FontWeight="SemiBold"
                             Foreground="{ThemeResource AppAccentBrush}"
                             Text="{x:Bind Name, Mode=OneWay}"
@@ -167,7 +167,7 @@
                 <Grid Grid.Column="2" MinWidth="148" HorizontalAlignment="Right">
                     <StackPanel x:Name="RepositoryRowMetadata" HorizontalAlignment="Right" Spacing="5">
                         <StackPanel HorizontalAlignment="Right" Orientation="Horizontal" Spacing="5">
-                            <FontIcon FontFamily="{StaticResource SegoeFluentIcons}" FontSize="11" Glyph="&#xE734;" />
+                            <FontIcon FontFamily="{StaticResource SegoeFluentIcons}" FontSize="{ThemeResource AppFontSize11}" Glyph="&#xE734;" />
                             <TextBlock Style="{StaticResource SectionSecondaryTextBlockStyle}" Text="{x:Bind StarsText, Mode=OneWay}" />
                         </StackPanel>
                         <TextBlock HorizontalAlignment="Right" Style="{StaticResource SectionSecondaryTextBlockStyle}" Text="{x:Bind StarredText, Mode=OneWay}" />
@@ -178,7 +178,7 @@
                                 Background="{ThemeResource AppSurfaceSubtleBrush}"
                                 CornerRadius="{ThemeResource AppRadiusSmall}"
                                 Visibility="{x:Bind HasState, Converter={StaticResource BoolToVisibilityConverter}, Mode=OneWay}">
-                                <TextBlock FontSize="11" Foreground="{ThemeResource AppInkMutedBrush}" Text="{x:Bind StateText, Mode=OneWay}" />
+                                <TextBlock FontSize="{ThemeResource AppFontSize11}" Foreground="{ThemeResource AppInkMutedBrush}" Text="{x:Bind StateText, Mode=OneWay}" />
                             </Border>
                         </StackPanel>
                     </StackPanel>
@@ -199,7 +199,7 @@
                             Style="{StaticResource StarsRowHoverButtonStyle}"
                             ToolTipService.ToolTip="Unstar repository">
                             <StackPanel Orientation="Horizontal" Spacing="7">
-                                <FontIcon FontFamily="{StaticResource SegoeFluentIcons}" FontSize="13" Foreground="{ThemeResource AppAccentBrush}" Glyph="&#xE735;" />
+                                <FontIcon FontFamily="{StaticResource SegoeFluentIcons}" FontSize="{ThemeResource AppFontSize13}" Foreground="{ThemeResource AppAccentBrush}" Glyph="&#xE735;" />
                                 <TextBlock x:Uid="PagesStarsPageTextBlockUnstar" Text="Unstar" />
                             </StackPanel>
                         </Button>
@@ -213,7 +213,7 @@
                             IsTabStop="False"
                             Style="{StaticResource AppToolbarButtonStyle}"
                             ToolTipService.ToolTip="Repository actions">
-                            <FontIcon FontFamily="{StaticResource SegoeFluentIcons}" FontSize="13" Glyph="&#xE712;" />
+                            <FontIcon FontFamily="{StaticResource SegoeFluentIcons}" FontSize="{ThemeResource AppFontSize13}" Glyph="&#xE712;" />
                         </Button>
                     </StackPanel>
                 </Grid>
@@ -249,7 +249,7 @@
                         <TextBlock
                             x:Uid="PagesStarsPageTextBlockStars" VerticalAlignment="Center"
                             FontFamily="{ThemeResource AppDisplayFontFamily}"
-                            FontSize="23"
+                            FontSize="{ThemeResource AppFontSize23}"
                             Foreground="{ThemeResource AppInkBrush}"
                             Text="Stars" />
                         <Button
@@ -307,7 +307,7 @@
                             Click="NewCategoryButton_Click"
                             Style="{StaticResource AppQuietButtonStyle}">
                             <StackPanel VerticalAlignment="Center" Orientation="Horizontal" Spacing="9">
-                                <FontIcon VerticalAlignment="Center" FontFamily="{StaticResource SegoeFluentIcons}" FontSize="14" Glyph="&#xE710;" />
+                                <FontIcon VerticalAlignment="Center" FontFamily="{StaticResource SegoeFluentIcons}" FontSize="{ThemeResource AppFontSize14}" Glyph="&#xE710;" />
                                 <TextBlock x:Uid="PagesStarsPageTextBlockNewCategory" VerticalAlignment="Center" Text="New category" />
                             </StackPanel>
                         </Button>
@@ -401,7 +401,7 @@
                             HorizontalAlignment="Left"
                             VerticalAlignment="Center"
                             FontFamily="{StaticResource SegoeFluentIcons}"
-                            FontSize="13"
+                            FontSize="{ThemeResource AppFontSize13}"
                             Foreground="{ThemeResource AppInkSubtleBrush}"
                             Glyph="&#xE721;"
                             IsHitTestVisible="False" />
@@ -423,7 +423,7 @@
                         Style="{StaticResource AppCommandButtonStyle}"
                         ToolTipService.ToolTip="Filter stars">
                         <StackPanel Orientation="Horizontal" Spacing="7">
-                            <FontIcon FontFamily="{StaticResource SegoeFluentIcons}" FontSize="14" Glyph="&#xE71C;" />
+                            <FontIcon FontFamily="{StaticResource SegoeFluentIcons}" FontSize="{ThemeResource AppFontSize14}" Glyph="&#xE71C;" />
                             <TextBlock x:Uid="PagesStarsPageStarsFilterButtonText" x:Name="StarsFilterButtonText" Text="Filter" />
                         </StackPanel>
                         <Button.Flyout>
@@ -432,7 +432,7 @@
                                     <ContentPresenter.ContentTemplate>
                                         <DataTemplate x:DataType="viewmodels:StarLibraryPageViewModel">
                                             <StackPanel Width="272" Spacing="10">
-                                                <TextBlock x:Uid="PagesStarsPageTextBlockFilterStars" FontSize="16" FontWeight="SemiBold" Text="Filter stars" />
+                                                <TextBlock x:Uid="PagesStarsPageTextBlockFilterStars" FontSize="{ThemeResource AppFontSize16}" FontWeight="SemiBold" Text="Filter stars" />
                                                 <ComboBox x:Uid="PagesStarsPageStarsFilterLanguage" AutomationProperties.AutomationId="StarsFilterLanguage" AutomationProperties.Name="Filter by language" Header="Language" ItemsSource="{x:Bind LanguageOptions}" SelectedItem="{x:Bind SelectedLanguage, Mode=TwoWay}" Style="{StaticResource AppCompactComboBoxStyle}" />
                                                 <ComboBox x:Uid="PagesStarsPageStarsFilterOwner" AutomationProperties.AutomationId="StarsFilterOwner" AutomationProperties.Name="Filter by owner" Header="Owner" ItemsSource="{x:Bind OwnerOptions}" SelectedItem="{x:Bind SelectedOwner, Mode=TwoWay}" Style="{StaticResource AppCompactComboBoxStyle}" />
                                                 <ComboBox x:Uid="PagesStarsPageStarsFilterTopic" AutomationProperties.AutomationId="StarsFilterTopic" AutomationProperties.Name="Filter by topic" Header="Topic" ItemsSource="{x:Bind TopicOptions}" SelectedItem="{x:Bind SelectedTopic, Mode=TwoWay}" Style="{StaticResource AppCompactComboBoxStyle}" />
@@ -480,7 +480,7 @@
                                 Style="{StaticResource AppQuietButtonStyle}">
                                 <StackPanel Orientation="Horizontal" Spacing="7">
                                     <TextBlock Text="{x:Bind Label}" />
-                                    <FontIcon FontFamily="{StaticResource SegoeFluentIcons}" FontSize="10" Glyph="&#xE711;" />
+                                    <FontIcon FontFamily="{StaticResource SegoeFluentIcons}" FontSize="{ThemeResource AppFontSize10}" Glyph="&#xE711;" />
                                 </StackPanel>
                             </Button>
                         </DataTemplate>
@@ -512,8 +512,8 @@
                     <StackPanel
                         Style="{StaticResource AppEmptyStatePanelStyle}"
                         Visibility="{x:Bind ViewModel.IsEmpty, Converter={StaticResource BoolToVisibilityConverter}, Mode=OneWay}">
-                        <FontIcon FontFamily="{StaticResource SegoeFluentIcons}" FontSize="26" Foreground="{ThemeResource AppInkMutedBrush}" Glyph="&#xE734;" />
-                        <TextBlock HorizontalAlignment="Center" FontSize="16" FontWeight="SemiBold" Text="{x:Bind ViewModel.EmptyTitle, Mode=OneWay}" />
+                        <FontIcon FontFamily="{StaticResource SegoeFluentIcons}" FontSize="{ThemeResource AppFontSize26}" Foreground="{ThemeResource AppInkMutedBrush}" Glyph="&#xE734;" />
+                        <TextBlock HorizontalAlignment="Center" FontSize="{ThemeResource AppFontSize16}" FontWeight="SemiBold" Text="{x:Bind ViewModel.EmptyTitle, Mode=OneWay}" />
                         <TextBlock MaxWidth="360" HorizontalAlignment="Center" TextAlignment="Center" Style="{StaticResource SectionSecondaryTextBlockStyle}" Text="{x:Bind ViewModel.EmptyMessage, Mode=OneWay}" TextWrapping="Wrap" />
                     </StackPanel>
                 </Grid>

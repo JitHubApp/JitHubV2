@@ -15,6 +15,12 @@ public static class RepoCodeTelemetryActions
     public const string ExternalOpen = TelemetryTaxonomy.Actions.ExternalOpen;
     public const string BreadcrumbRoot = TelemetryTaxonomy.Actions.BreadcrumbRoot;
     public const string BreadcrumbPath = TelemetryTaxonomy.Actions.BreadcrumbPath;
+    public const string CsvCopy = TelemetryTaxonomy.Actions.CsvCopy;
+    public const string CsvPlainView = TelemetryTaxonomy.Actions.CsvPlainView;
+    public const string CsvReorder = TelemetryTaxonomy.Actions.CsvReorder;
+    public const string CsvResize = TelemetryTaxonomy.Actions.CsvResize;
+    public const string CsvRichView = TelemetryTaxonomy.Actions.CsvRichView;
+    public const string CsvSort = TelemetryTaxonomy.Actions.CsvSort;
 
     public static IReadOnlySet<string> Allowed { get; } = new HashSet<string>(StringComparer.Ordinal)
     {
@@ -26,6 +32,12 @@ public static class RepoCodeTelemetryActions
         Drawer,
         ExternalOpen,
         BreadcrumbRoot,
-        BreadcrumbPath
+        BreadcrumbPath,
+        CsvCopy,
+        CsvPlainView,
+        CsvReorder,
+        CsvResize,
+        CsvRichView,
+        CsvSort
     };
 }

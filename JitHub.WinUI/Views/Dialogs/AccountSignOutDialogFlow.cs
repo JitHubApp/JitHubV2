@@ -139,7 +139,7 @@ internal static class AccountSignOutDialogFlow
         TextWrapping = TextWrapping.Wrap,
         MaxWidth = 480,
         Opacity = 0.72,
-        FontSize = 12
+        FontSize = (double)Application.Current.Resources["AppFontSize12"]
     };
 
     private static string T(string resourceKey, string fallback) =>

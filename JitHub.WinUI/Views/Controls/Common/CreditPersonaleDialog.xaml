@@ -24,7 +24,7 @@
             HorizontalAlignment="Stretch"
             VerticalAlignment="Stretch"
             Padding="16"
-            CornerRadius="8 8 0 0"
+            CornerRadius="{ThemeResource AppRadiusTopMedium}"
             Background="{ThemeResource AppSurfaceSubtleBrush}">
             <Grid.ColumnDefinitions>
                 <ColumnDefinition Width="auto"/>
@@ -39,7 +39,7 @@
                 HorizontalAlignment="Center"/>
             <TextBlock
                 Grid.Column="1"
-                FontSize="24"
+                FontSize="{ThemeResource AppFontSize24}"
                 FontWeight="SemiBold"
                 Foreground="{ThemeResource TextFillColorPrimaryBrush}"
                 VerticalAlignment="Center"
@@ -54,7 +54,7 @@
                 AutomationProperties.AutomationId="ContributorDetailsCloseButton"
                 AutomationProperties.Name="Close contributor details"
                 Style="{StaticResource AppToolbarButtonStyle}"
-                CornerRadius="8"
+                CornerRadius="{ThemeResource AppRadiusMedium}"
                 Width="32"
                 Height="32"
                 BorderThickness="0"
@@ -77,7 +77,7 @@
         <Grid
             Grid.Row="2"
             Padding="16"
-            CornerRadius="0 0 8 8"
+            CornerRadius="{ThemeResource AppRadiusBottomMedium}"
             Background="{ThemeResource AppSolidSecondaryRush}">
             <muxc:ItemsRepeater
                 HorizontalAlignment="Left"

@@ -16,8 +16,9 @@ namespace MarkdownRenderer.Accessibility;
 /// semantic child peers for structure, plus TextPattern ranges for Narrator
 /// word/line navigation and highlight rectangles.
 /// </summary>
-internal sealed partial class MarkdownAutomationPeer : FrameworkElementAutomationPeer, ITextProvider, ITextProvider2
+internal sealed partial class MarkdownAutomationPeer : FrameworkElementAutomationPeer, ITextProvider, ITextProvider2, IScrollProvider
 {
+    private const double NoScroll = -1;
     private readonly MarkdownRendererControl _owner;
     private readonly System.Runtime.CompilerServices.ConditionalWeakTable<InlineContainerBox, MarkdownBlockPeer> _peerCache = new();
     private readonly Dictionary<MarkdownSemanticNode, MarkdownNodePeer> _nodePeerCache = new();
@@ -81,7 +82,52 @@ internal sealed partial class MarkdownAutomationPeer : FrameworkElementAutomatio
     protected override object GetPatternCore(PatternInterface patternIinterface)
     {
         if (patternIinterface == PatternInterface.Text || patternIinterface == PatternInterface.Text2) return this;
+        if (patternIinterface == PatternInterface.Scroll) return this;
         return base.GetPatternCore(patternIinterface);
+    }
+
+    public bool HorizontallyScrollable => false;
+
+    public double HorizontalScrollPercent => NoScroll;
+
+    public double HorizontalViewSize => 100;
+
+    public bool VerticallyScrollable => TryGetVerticalScrollMetrics(out _, out _, out _);
+
+    public double VerticalScrollPercent
+    {
+        get
+        {
+            if (!TryGetVerticalScrollMetrics(out double offset, out _, out double maximum))
+                return NoScroll;
+
+            return maximum <= 0 ? NoScroll : (offset / maximum) * 100;
+        }
+    }
+
+    public double VerticalViewSize
+    {
+        get
+        {
+            if (!_owner.TryGetAutomationScrollMetrics(out _, out double viewport, out double extent) ||
+                extent <= 0)
+            {
+                return 100;
+            }
+
+            return System.Math.Clamp((viewport / extent) * 100, 0, 100);
+        }
+    }
+
+    public void Scroll(ScrollAmount horizontalAmount, ScrollAmount verticalAmount)
+    {
+        _owner.ScrollFromAutomation(verticalAmount);
+    }
+
+    public void SetScrollPercent(double horizontalPercent, double verticalPercent)
+    {
+        if (verticalPercent != NoScroll)
+            _owner.SetAutomationVerticalScrollPercent(verticalPercent);
     }
 
     public ITextRangeProvider[] GetSelection()
@@ -249,6 +295,15 @@ internal sealed partial class MarkdownAutomationPeer : FrameworkElementAutomatio
             return true;
         }
 
+        if (node.Role == MarkdownSemanticRole.Image &&
+            node.InlineBox is { } imageInline &&
+            node.InlineRun is InlineImageRun { IsLinked: true } linkedImage)
+        {
+            var blockPeer = GetOrCreateBlockPeer(imageInline);
+            peer = _owner.GetOrCreateLinkedImagePeer(blockPeer, linkedImage);
+            return true;
+        }
+
         if (node.Role == MarkdownSemanticRole.Embed)
         {
             var element = node.InlineRun is InlineEmbedRun inlineEmbed
@@ -275,6 +330,13 @@ internal sealed partial class MarkdownAutomationPeer : FrameworkElementAutomatio
         var blockPeer = GetOrCreateBlockPeer(inline);
         var linkPeer = _owner.GetOrCreateLinkPeer(blockPeer, link);
         linkPeer.RaiseAutomationFocusChanged();
+    }
+
+    internal void RaiseFocusForLinkedImage(InlineContainerBox inline, InlineImageRun image)
+    {
+        var blockPeer = GetOrCreateBlockPeer(inline);
+        var imagePeer = _owner.GetOrCreateLinkedImagePeer(blockPeer, image);
+        imagePeer.RaiseAutomationFocusChanged();
     }
 
     internal IRawElementProviderSimple ProviderFromPeerForTextRange(AutomationPeer peer) => ProviderFromPeer(peer);
@@ -331,6 +393,19 @@ internal sealed partial class MarkdownAutomationPeer : FrameworkElementAutomatio
         return right > left && bottom > top
             ? new Windows.Foundation.Rect(left, top, right - left, bottom - top)
             : default;
+    }
+
+    internal bool IsScreenRectOffscreen(Windows.Foundation.Rect screenRect)
+    {
+        Windows.Foundation.Rect viewport = GetVisibleScreenBounds();
+        return screenRect.Width <= 0 ||
+               screenRect.Height <= 0 ||
+               viewport.Width <= 0 ||
+               viewport.Height <= 0 ||
+               screenRect.Right <= viewport.Left ||
+               screenRect.Left >= viewport.Right ||
+               screenRect.Bottom <= viewport.Top ||
+               screenRect.Top >= viewport.Bottom;
     }
 
     private Windows.Foundation.Rect GetOwnerScreenBounds()
@@ -395,6 +470,21 @@ internal sealed partial class MarkdownAutomationPeer : FrameworkElementAutomatio
         return _semanticDocument;
     }
 
+    private bool TryGetVerticalScrollMetrics(
+        out double offset,
+        out double viewport,
+        out double maximum)
+    {
+        if (!_owner.TryGetAutomationScrollMetrics(out offset, out viewport, out double extent))
+        {
+            maximum = 0;
+            return false;
+        }
+
+        maximum = System.Math.Max(0, extent - viewport);
+        return maximum > 0;
+    }
+
     private MarkdownBlockPeer GetOrCreateBlockPeer(InlineContainerBox box)
     {
         if (!_peerCache.TryGetValue(box, out var peer))
@@ -452,7 +542,9 @@ internal sealed partial class MarkdownAutomationPeer : FrameworkElementAutomatio
             MarkdownBlockPeer blockPeer => node.InlineBox is { } inline &&
                                            ReferenceEquals(blockPeer.Box, inline),
             MarkdownLinkPeer linkPeer => node.InlineRun is LinkRun link &&
-                                         ReferenceEquals(linkPeer.Run, link),
+                                          ReferenceEquals(linkPeer.Run, link),
+            MarkdownLinkedImagePeer imagePeer => node.InlineRun is InlineImageRun image &&
+                                                  ReferenceEquals(imagePeer.Run, image),
             _ => PeerMatchesHostedElement(peer, node),
         };
     }

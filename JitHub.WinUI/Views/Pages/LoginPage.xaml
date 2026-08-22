@@ -56,6 +56,7 @@
                                     IsOpen="{x:Bind ViewModel.HasLoginError, Mode=OneWay}"
                                     Message="{x:Bind ViewModel.LoginErrorMessage, Mode=OneWay}"
                                     Severity="Error"
+                                    Style="{StaticResource AppErrorInfoBarStyle}"
                                     Title="{x:Bind ViewModel.LoginErrorTitle, Mode=OneWay}" />
                                 <Button
                                     x:Uid="PagesLoginPageLoginSignInButton" x:Name="LoginSignInButton"

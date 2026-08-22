@@ -348,7 +348,7 @@ public sealed class AutomationHarnessSourceContractTests
     }
 
     [Fact]
-    public void MarkdownImageTerminalFailureRepaintsWithoutRebuildingDocument()
+    public void MarkdownImageTerminalFailureRelayoutsOnlyUnconstrainedInlineFallbacks()
     {
         string source = File.ReadAllText(Path.Combine(
             FindRepositoryRoot(),
@@ -361,8 +361,72 @@ public sealed class AutomationHarnessSourceContractTests
 
         Assert.True(publishFailure >= 0);
         string failureImplementation = source[publishFailure..];
-        Assert.Contains("UpdatePlaceholder(maxWidth)", failureImplementation, StringComparison.Ordinal);
-        Assert.Contains("layoutInvalidated: false", failureImplementation, StringComparison.Ordinal);
+        Assert.Contains("UpdatePlaceholder(maxWidth, _imageHeight)", failureImplementation, StringComparison.Ordinal);
+        Assert.Contains("layoutInvalidated: ShouldExpandInlineFailure", failureImplementation, StringComparison.Ordinal);
+        Assert.Contains("_requestedWidth is null", source, StringComparison.Ordinal);
+        Assert.Contains("_requestedHeight is null", source, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void MarkdownImagePlaceholderUsesThemeTypographyAndPaintsInlineAltText()
+    {
+        string source = File.ReadAllText(Path.Combine(
+            FindRepositoryRoot(),
+            "MarkdownRenderer",
+            "MarkdownRenderer",
+            "Layout",
+            "Boxes",
+            "ImageBox.cs"));
+
+        Assert.Contains("PaintPlaceholder(ds, rect);", source, StringComparison.Ordinal);
+        Assert.Contains("EnsureLoading();", source, StringComparison.Ordinal);
+        Assert.Contains("WaitAsync(ImageResolverTimeout", source, StringComparison.Ordinal);
+        Assert.Contains("compactInlineFailure", source, StringComparison.Ordinal);
+        Assert.Contains("MeasureInlineFailureWidth", source, StringComparison.Ordinal);
+        Assert.Contains("GetInlineFailureText()", source, StringComparison.Ordinal);
+        Assert.Contains("CanvasWordWrapping.NoWrap", source, StringComparison.Ordinal);
+        Assert.Contains("GetStyle(MarkdownElementKeys.ImageCaption)", source, StringComparison.Ordinal);
+        Assert.Contains("FontFamily = style.FontFamily", source, StringComparison.Ordinal);
+        Assert.Contains("FontSize = style.FontSize", source, StringComparison.Ordinal);
+        Assert.DoesNotContain("FontFamily = \"Segoe UI Variable\"", source, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void MarkdownInlineImagesSubscribeBeforeViewportGeometryIsAvailable()
+    {
+        string source = File.ReadAllText(Path.Combine(
+            FindRepositoryRoot(),
+            "MarkdownRenderer",
+            "MarkdownRenderer",
+            "Controls",
+            "MarkdownRendererControl.cs"));
+
+        Assert.Contains("if (run is InlineImageRun imageRun)", source, StringComparison.Ordinal);
+        Assert.Contains("RegisterImage(imageRun.Image);", source, StringComparison.Ordinal);
+        Assert.Contains("_subscribedImages.Contains(image)", source, StringComparison.Ordinal);
+        Assert.Contains("UnsubscribeAllImages();", source, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void MarkdownImageCompletionRelayoutsTheCommittedSnapshotWithoutResolverLoop()
+    {
+        string controlSource = File.ReadAllText(Path.Combine(
+            FindRepositoryRoot(),
+            "MarkdownRenderer",
+            "MarkdownRenderer",
+            "Controls",
+            "MarkdownRendererControl.cs"));
+        string snapshotSource = File.ReadAllText(Path.Combine(
+            FindRepositoryRoot(),
+            "MarkdownRenderer",
+            "MarkdownRenderer",
+            "Layout",
+            "LayoutSnapshot.cs"));
+
+        Assert.Contains("QueueImageRelayout();", controlSource, StringComparison.Ordinal);
+        Assert.Contains("snapshot.RelayoutMeasuredBlocks", controlSource, StringComparison.Ordinal);
+        Assert.DoesNotContain("Initial load / intrinsic-size change", controlSource, StringComparison.Ordinal);
+        Assert.Contains("internal void RelayoutMeasuredBlocks", snapshotSource, StringComparison.Ordinal);
     }
 
     [Fact]

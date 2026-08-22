@@ -3,7 +3,9 @@ using System.Collections.ObjectModel;
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
 using JitHub.Services.CodeViewer;
-using Windows.ApplicationModel.DataTransfer;
+using JitHub.Services;
+using JitHub.Services.Markdown;
+using JitHub.WinUI.Helpers;
 using Windows.System;
 
 namespace JitHub.WinUI.ViewModels.CodeViewer;
@@ -39,7 +41,7 @@ public sealed partial class RepoCodeBreadcrumbViewModel : ObservableObject
     /// </summary>
     public Func<BreadcrumbSegment, System.Threading.CancellationToken, System.Threading.Tasks.Task>? OnNavigate { get; set; }
 
-    public Action<string>? OnActionExecuted { get; set; }
+    public Action<string, string>? OnActionCompleted { get; set; }
 
     [RelayCommand]
     private async System.Threading.Tasks.Task NavigateToSegmentAsync(
@@ -58,10 +60,9 @@ public sealed partial class RepoCodeBreadcrumbViewModel : ObservableObject
         string? path = GetCurrentFilePath();
         if (path is null) return;
 
-        var dp = new DataPackage();
-        dp.SetText(path);
-        Clipboard.SetContent(dp);
-        OnActionExecuted?.Invoke(RepoCodeTelemetryActions.CopyPath);
+        bool succeeded = PlatformHelper.CopyString(path);
+        CompleteAction(RepoCodeTelemetryActions.CopyPath, succeeded);
+        if (!succeeded) return;
 
         IsCopyPathDone = true;
         try { await System.Threading.Tasks.Task.Delay(1500, ct); } catch (OperationCanceledException) { }
@@ -73,10 +74,9 @@ public sealed partial class RepoCodeBreadcrumbViewModel : ObservableObject
     {
         if (CurrentRawUrl is null) return;
 
-        var dp = new DataPackage();
-        dp.SetText(CurrentRawUrl);
-        Clipboard.SetContent(dp);
-        OnActionExecuted?.Invoke(RepoCodeTelemetryActions.CopyRaw);
+        bool succeeded = PlatformHelper.CopyString(CurrentRawUrl);
+        CompleteAction(RepoCodeTelemetryActions.CopyRaw, succeeded);
+        if (!succeeded) return;
 
         IsCopyRawUrlDone = true;
         try { await System.Threading.Tasks.Task.Delay(1500, ct); } catch (OperationCanceledException) { }
@@ -86,15 +86,30 @@ public sealed partial class RepoCodeBreadcrumbViewModel : ObservableObject
     [RelayCommand]
     private async System.Threading.Tasks.Task OpenOnGitHubAsync()
     {
-        if (CurrentGitHubUrl is not null && Uri.TryCreate(CurrentGitHubUrl, UriKind.Absolute, out Uri? uri))
+        if (CurrentGitHubUrl is null ||
+            !Uri.TryCreate(CurrentGitHubUrl, UriKind.Absolute, out Uri? uri) ||
+            !MarkdownLinkNavigationPolicy.IsAllowedLaunchUri(uri))
         {
-            bool launched = await Launcher.LaunchUriAsync(uri);
-            if (launched)
-            {
-                OnActionExecuted?.Invoke(RepoCodeTelemetryActions.ExternalOpen);
-            }
+            CompleteAction(RepoCodeTelemetryActions.ExternalOpen, succeeded: false);
+            return;
+        }
+
+        try
+        {
+            CompleteAction(
+                RepoCodeTelemetryActions.ExternalOpen,
+                await Launcher.LaunchUriAsync(uri));
+        }
+        catch (Exception)
+        {
+            CompleteAction(RepoCodeTelemetryActions.ExternalOpen, succeeded: false);
         }
     }
+
+    private void CompleteAction(string action, bool succeeded) =>
+        OnActionCompleted?.Invoke(
+            action,
+            succeeded ? TelemetryTaxonomy.Results.Success : TelemetryTaxonomy.Results.Error);
 
     /// <summary>
     /// Presents the selected path without rebuilding the interactive segments.

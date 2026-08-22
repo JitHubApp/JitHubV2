@@ -13,6 +13,7 @@ using JitHub.Services.Markdown;
 using JitHub.WinUI.Helpers;
 using JitHub.WinUI.Performance;
 using JitHub.WinUI.ViewModels.Pages;
+using JitHub.WinUI.Views.Controls.Commit;
 using JitHub.WinUI.Views.Controls.Common;
 using JitHub.WinUI.Views.Dialogs;
 using Microsoft.UI.Dispatching;
@@ -33,6 +34,11 @@ public sealed partial class RepoPullRequestPage : Page
     private const double ShyHeaderStartOffset = 56;
     private const double ShyHeaderRestoreOffset = 8;
     private const double ShyHeaderRevealTravel = 64;
+
+    private void CommitDiffViewer_ActionCompleted(
+        object sender,
+        CommitDiffActionCompletedEventArgs e) =>
+        ViewModel.TrackDiffViewerAction(e.Action, e.Result);
     private const double ShyHeaderRehideTravel = 24;
     private const double ScrollDirectionEpsilon = 0.5;
     private const double CompactShyHeaderContentInset = 104;
@@ -1252,12 +1258,13 @@ public sealed partial class RepoPullRequestPage : Page
                 break;
             case CommentActionKind.QuoteReply:
                 QuotePullRequestComment(e.TargetKind, e.TargetId, bar.Body);
+                ViewModel.TrackCommentQuoteReply();
                 break;
             case CommentActionKind.CopyLink:
-                PlatformHelper.CopyString(bar.HtmlUrl);
+                ViewModel.TrackCommentCopyLink(PlatformHelper.CopyString(bar.HtmlUrl));
                 break;
             case CommentActionKind.CopyMarkdown:
-                PlatformHelper.CopyString(bar.Body);
+                ViewModel.TrackCommentCopyMarkdown(PlatformHelper.CopyString(bar.Body));
                 break;
             case CommentActionKind.Edit:
                 if (isPullRequestBody)

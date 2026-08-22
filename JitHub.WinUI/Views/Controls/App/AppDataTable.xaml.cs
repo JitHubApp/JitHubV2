@@ -1,8 +1,10 @@
 using System;
 using System.Collections.Generic;
 using System.Collections.ObjectModel;
+using System.Diagnostics;
 using System.Globalization;
 using System.Linq;
+using JitHub.Services;
 using JitHub.Services.CodeViewer;
 using JitHub.WinUI.Helpers;
 using Microsoft.UI.Xaml;
@@ -38,6 +40,8 @@ public sealed partial class AppDataTable : UserControl
     internal event EventHandler<AppDataTableLayoutChangedEventArgs>? LayoutChanged;
 
     internal event EventHandler? ActiveCellChanged;
+
+    internal event Action<string, string>? ActionCompleted;
 
     public AppDataTable()
     {
@@ -265,7 +269,7 @@ public sealed partial class AppDataTable : UserControl
                 "Sort by {0}",
                 column.Header));
 
-            Grid label = new() { ColumnSpacing = 8 };
+            Grid label = new() { ColumnSpacing = Resource<double>("AppSpace3") };
             label.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
             label.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
             TextBlock title = new()
@@ -278,7 +282,7 @@ public sealed partial class AppDataTable : UserControl
             FontIcon indicator = new()
             {
                 FontFamily = (FontFamily)Application.Current.Resources["SegoeFluentIcons"],
-                FontSize = 12,
+                FontSize = Resource<double>("AppFontSize12"),
                 VerticalAlignment = VerticalAlignment.Center,
                 Visibility = _sortSourceIndex == column.SourceIndex ? Visibility.Visible : Visibility.Collapsed,
                 Glyph = _sortDescending ? "\uE70E" : "\uE70D",
@@ -295,6 +299,7 @@ public sealed partial class AppDataTable : UserControl
                 Tag = column,
             };
             resizeThumb.DragDelta += ResizeThumb_DragDelta;
+            resizeThumb.DragCompleted += ResizeThumb_DragCompleted;
             AutomationProperties.SetAutomationId(resizeThumb, $"CsvPreviewDataTableResizeColumn_{column.SourceIndex}");
             AutomationProperties.SetName(resizeThumb, LF(
                 "RepoCode/Csv/ResizeColumnAutomationName",
@@ -344,6 +349,7 @@ public sealed partial class AppDataTable : UserControl
 
         RebuildHeader();
         ActiveCellChanged?.Invoke(this, EventArgs.Empty);
+        CompleteAction(RepoCodeTelemetryActions.CsvSort, TelemetryTaxonomy.Results.Success);
     }
 
     private void ApplySort()
@@ -382,6 +388,9 @@ public sealed partial class AppDataTable : UserControl
         UpdateTableWidth();
     }
 
+    private void ResizeThumb_DragCompleted(object sender, DragCompletedEventArgs e) =>
+        CompleteAction(RepoCodeTelemetryActions.CsvResize, TelemetryTaxonomy.Results.Success);
+
     private void HeaderButton_DragStarting(UIElement sender, DragStartingEventArgs args)
     {
         if (sender is Button { Tag: AppDataTableColumn column })
@@ -407,25 +416,35 @@ public sealed partial class AppDataTable : UserControl
             return;
         }
 
-        string sourceText = await e.DataView.GetTextAsync();
-        if (!int.TryParse(sourceText, NumberStyles.Integer, CultureInfo.InvariantCulture, out int sourceIndex))
+        try
         {
-            return;
-        }
+            string sourceText = await e.DataView.GetTextAsync();
+            if (!int.TryParse(sourceText, NumberStyles.Integer, CultureInfo.InvariantCulture, out int sourceIndex))
+            {
+                CompleteAction(RepoCodeTelemetryActions.CsvReorder, TelemetryTaxonomy.Results.Error);
+                return;
+            }
 
-        int from = _columns.FindIndex(column => column.SourceIndex == sourceIndex);
-        int to = _columns.IndexOf(destination);
-        if (from < 0 || to < 0 || from == to)
+            int from = _columns.FindIndex(column => column.SourceIndex == sourceIndex);
+            int to = _columns.IndexOf(destination);
+            if (from < 0 || to < 0 || from == to)
+            {
+                return;
+            }
+
+            AppDataTableColumn moving = _columns[from];
+            _columns.RemoveAt(from);
+            _columns.Insert(to, moving);
+            RebuildHeader();
+            UpdateVisibleColumnWindow(force: true);
+            ActiveCellChanged?.Invoke(this, EventArgs.Empty);
+            CompleteAction(RepoCodeTelemetryActions.CsvReorder, TelemetryTaxonomy.Results.Success);
+        }
+        catch (Exception ex)
         {
-            return;
+            Debug.WriteLine($"CSV column reorder failed: {ex}");
+            CompleteAction(RepoCodeTelemetryActions.CsvReorder, TelemetryTaxonomy.Results.Error);
         }
-
-        AppDataTableColumn moving = _columns[from];
-        _columns.RemoveAt(from);
-        _columns.Insert(to, moving);
-        RebuildHeader();
-        UpdateVisibleColumnWindow(force: true);
-        ActiveCellChanged?.Invoke(this, EventArgs.Empty);
     }
 
     private void Root_KeyDown(object sender, KeyRoutedEventArgs e)
@@ -505,17 +524,10 @@ public sealed partial class AppDataTable : UserControl
             return;
         }
 
-        try
-        {
-            DataPackage package = new();
-            package.SetText(row.GetValue(_selectedSourceColumn));
-            Clipboard.SetContent(package);
-            Clipboard.Flush();
-        }
-        catch (Exception)
-        {
-            // Clipboard access can be denied by an isolated or closing app window.
-        }
+        bool succeeded = PlatformHelper.CopyString(row.GetValue(_selectedSourceColumn));
+        CompleteAction(
+            RepoCodeTelemetryActions.CsvCopy,
+            succeeded ? TelemetryTaxonomy.Results.Success : TelemetryTaxonomy.Results.Error);
     }
 
     private AppDataTableRowModel? GetActiveRow()
@@ -524,6 +536,11 @@ public sealed partial class AppDataTable : UserControl
             ? _displayRows[_selectedDisplayRow]
             : null;
     }
+
+    private void CompleteAction(string action, string result) =>
+        ActionCompleted?.Invoke(action, result);
+
+    private static T Resource<T>(string key) => (T)Application.Current.Resources[key];
 
     private void RowsScroller_ViewChanged(object? sender, ScrollViewerViewChangedEventArgs e)
     {

@@ -23,7 +23,7 @@
             VerticalAlignment="Center"
             Style="{StaticResource ListItemSecondaryTextBlockStyle}"
             Height="16"
-            FontSize="12"
+            FontSize="{ThemeResource AppFontSize12}"
             LineHeight="16"
             LineStackingStrategy="BlockLineHeight"
             TextAlignment="Center"

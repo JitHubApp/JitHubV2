@@ -41,7 +41,7 @@
             <Setter Property="Background" Value="{ThemeResource AppTransparentBrush}" />
             <Setter Property="Foreground" Value="{ThemeResource AppInkBrush}" />
             <Setter Property="BorderThickness" Value="0" />
-            <Setter Property="CornerRadius" Value="0" />
+            <Setter Property="CornerRadius" Value="{ThemeResource AppRadiusNone}" />
             <Setter Property="HorizontalContentAlignment" Value="Stretch" />
             <Setter Property="VerticalContentAlignment" Value="Center" />
         </Style>

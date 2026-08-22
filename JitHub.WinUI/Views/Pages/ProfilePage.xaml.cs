@@ -368,7 +368,7 @@ public sealed partial class ProfilePage : Page
         if (sender is FrameworkElement { Tag: ProfileFactItem { IsActionable: true } fact } &&
             !string.IsNullOrWhiteSpace(fact.CopyValue))
         {
-            PlatformHelper.CopyString(fact.CopyValue);
+            ViewModel.TrackFactCopy(PlatformHelper.CopyString(fact.CopyValue));
         }
     }
 
@@ -395,10 +395,7 @@ public sealed partial class ProfilePage : Page
 
     private async void OpenOnGitHubButton_Click(object sender, RoutedEventArgs e)
     {
-        if (ViewModel.ProfileUri is not null)
-        {
-            await Launcher.LaunchUriAsync(ViewModel.ProfileUri);
-        }
+        await ViewModel.OpenProfileExternallyAsync();
     }
 
     private async void EditProfileButton_Click(object sender, RoutedEventArgs e)

@@ -48,13 +48,16 @@ public sealed partial class MarkdownRendererControl : UserControl, IDisposable
     private volatile CancellationTokenSource? _pipelineCts;
     private CancellationTokenSource? _imageLifetimeCts;
     private Task? _pipelineTask;
+    private long _pipelineGeneration;
     private bool _rebuildQueued;
     private bool _hasPendingRebuild;
+    private bool _imageRelayoutQueued;
     private RebuildReason _pendingRebuildReason = RebuildReason.Restyle;
     private float _lastWidth;
     private static readonly MarkdownTheme _defaultTheme = new();
     private static readonly MarkdownExtensionRegistry _defaultRegistry = new();
     private readonly object _parseCacheGate = new();
+    private readonly Dictionary<string, bool> _disclosureStates = new(StringComparer.Ordinal);
     private ParsedMarkdown? _parseCache;
     private string? _parseCacheSource;
     private MarkdownExtensionRegistry? _parseCacheRegistry;
@@ -426,6 +429,7 @@ public sealed partial class MarkdownRendererControl : UserControl, IDisposable
     // viewport + LazyImageOverscanPx band.  Images already in the
     // in-memory cache start loading (no-op) immediately after build.
     private readonly List<Layout.Boxes.ImageBox> _imagePlans = new();
+    private readonly HashSet<Layout.Boxes.ImageBox> _subscribedImages = new();
 
     private readonly record struct CodeBlockHighlightCacheKey(
         string? Language,
@@ -450,6 +454,7 @@ public sealed partial class MarkdownRendererControl : UserControl, IDisposable
     // identity tracking (Narrator focus, "where am I"). Tied to the LinkRun
     // weakly so peers are released alongside the layout snapshot.
     private readonly System.Runtime.CompilerServices.ConditionalWeakTable<LinkRun, MarkdownLinkPeer> _linkPeerCache = new();
+    private readonly System.Runtime.CompilerServices.ConditionalWeakTable<InlineImageRun, MarkdownLinkedImagePeer> _linkedImagePeerCache = new();
 
     // Previous realised embed count — used to suppress redundant
     // EmbedsRealizationChanged fires on every scroll tick (UIA-friendly).
@@ -655,6 +660,21 @@ public sealed partial class MarkdownRendererControl : UserControl, IDisposable
         set => SetValue(CodeBlockCopiedButtonLabelProperty, value);
     }
 
+    /// <summary>Dependency property backing <see cref="CodeBlockCopyButtonStyle"/>.</summary>
+    public static readonly DependencyProperty CodeBlockCopyButtonStyleProperty =
+        DependencyProperty.Register(
+            nameof(CodeBlockCopyButtonStyle),
+            typeof(Style),
+            typeof(MarkdownRendererControl),
+            new PropertyMetadata(null, (d, _) => ((MarkdownRendererControl)d).UpdateCodeBlockCopyButtonStyles()));
+
+    /// <summary>Gets or sets the host-provided style for code-block copy buttons.</summary>
+    public Style? CodeBlockCopyButtonStyle
+    {
+        get => (Style?)GetValue(CodeBlockCopyButtonStyleProperty);
+        set => SetValue(CodeBlockCopyButtonStyleProperty, value);
+    }
+
     /// <summary>Dependency property backing <see cref="IsCodeBlockSyntaxHighlightingEnabled"/>.</summary>
     public static readonly DependencyProperty IsCodeBlockSyntaxHighlightingEnabledProperty =
         DependencyProperty.Register(nameof(IsCodeBlockSyntaxHighlightingEnabled), typeof(bool),
@@ -750,17 +770,41 @@ public sealed partial class MarkdownRendererControl : UserControl, IDisposable
         return _linkPeerCache.GetValue(run, r => new MarkdownLinkPeer(this, parent, r));
     }
 
+    internal MarkdownLinkedImagePeer GetOrCreateLinkedImagePeer(
+        MarkdownBlockPeer parent,
+        InlineImageRun run) =>
+        _linkedImagePeerCache.GetValue(run, r => new MarkdownLinkedImagePeer(this, parent, r));
+
     internal bool IsKeyboardFocusOnLink(LinkRun run)
     {
         return TryGetFocusedLink(out _, out var focusedRun) &&
                AreEquivalentLinks(focusedRun, run);
     }
 
-    internal bool HasKeyboardFocusOnPaintedLink => TryGetFocusedLink(out _, out _);
+    internal bool IsKeyboardFocusOnLinkedImage(InlineImageRun run) =>
+        TryGetFocusedLinkedImage(out _, out var focusedRun) &&
+        ReferenceEquals(focusedRun, run);
+
+    internal bool HasKeyboardFocusOnPaintedLink =>
+        TryGetFocusedLink(out _, out _) || TryGetFocusedLinkedImage(out _, out _);
 
     internal bool FocusLinkFromAutomation(LinkRun run)
     {
         if (!TryGetFocusableIndexForLink(run, out var index))
+            return Focus(FocusState.Programmatic);
+
+        _focusedItemIndex = index;
+        _focusResumeItemIndex = -1;
+        ScrollFocusedItemIntoView();
+        bool focused = Focus(FocusState.Programmatic);
+        UpdateFocusRing();
+        NotifyFocusedItemAutomation();
+        return focused;
+    }
+
+    internal bool FocusLinkedImageFromAutomation(InlineImageRun run)
+    {
+        if (!TryGetFocusableIndexForLinkedImage(run, out var index))
             return Focus(FocusState.Programmatic);
 
         _focusedItemIndex = index;
@@ -792,23 +836,88 @@ public sealed partial class MarkdownRendererControl : UserControl, IDisposable
     internal void RaiseLinkClickFromAutomation(LinkRun run)
     {
         if (run is null) return;
-        var args = new MarkdownLinkClickEventArgs(run.Url, run.Title);
         var dispatcher = DispatcherQueue;
+        void Activate()
+        {
+            if (!TryActivateDisclosure(run))
+            {
+                LinkClick?.Invoke(this, new MarkdownLinkClickEventArgs(run.Url, run.Title));
+            }
+        }
         if (dispatcher is not null && !dispatcher.HasThreadAccess)
         {
-            dispatcher.TryEnqueue(() => LinkClick?.Invoke(this, args));
+            dispatcher.TryEnqueue(Activate);
         }
         else
         {
-            LinkClick?.Invoke(this, args);
+            Activate();
+        }
+    }
+
+    internal void RaiseLinkedImageClickFromAutomation(InlineImageRun run)
+    {
+        if (run is not { IsLinked: true, LinkUrl: { } url }) return;
+        var dispatcher = DispatcherQueue;
+        void Activate()
+        {
+            if (!url.StartsWith("#", StringComparison.Ordinal) || !HandleInternalAnchor(url))
+            {
+                LinkClick?.Invoke(this, new MarkdownLinkClickEventArgs(url, run.LinkTitle));
+            }
+        }
+
+        if (dispatcher is not null && !dispatcher.HasThreadAccess)
+        {
+            dispatcher.TryEnqueue(Activate);
+        }
+        else
+        {
+            Activate();
+        }
+    }
+
+    internal void SetDisclosureExpanded(LinkRun run, bool expanded)
+    {
+        if (run is not { IsDisclosure: true, DisclosureId: { Length: > 0 } id } ||
+            run.IsExpanded == expanded)
+        {
+            return;
+        }
+
+        void Apply()
+        {
+            _disclosureStates[id] = expanded;
+            DisclosureToggled?.Invoke(this, new MarkdownDisclosureToggledEventArgs(expanded));
+            RequestRebuild(RebuildReason.Restyle);
+        }
+
+        if (DispatcherQueue is { HasThreadAccess: false } dispatcher)
+        {
+            dispatcher.TryEnqueue(Apply);
+        }
+        else
+        {
+            Apply();
         }
     }
 
     /// <summary>Raised when the user activates a non-internal markdown link.</summary>
     public event EventHandler<MarkdownLinkClickEventArgs>? LinkClick;
 
+    /// <summary>Raised after a safe HTML disclosure is expanded or collapsed.</summary>
+    public event EventHandler<MarkdownDisclosureToggledEventArgs>? DisclosureToggled;
+
+    /// <summary>Raised after a selection or code block clipboard copy is attempted.</summary>
+    public event EventHandler<MarkdownCopyCompletedEventArgs>? CopyCompleted;
+
     /// <summary>Raised when an image source is deliberately blocked or unavailable.</summary>
     public event EventHandler<MarkdownImageUnavailableEventArgs>? ImageUnavailable;
+
+    /// <summary>Raised after the current Markdown document is rendered successfully.</summary>
+    public event EventHandler? RenderCompleted;
+
+    /// <summary>Raised when the current Markdown document cannot be rendered.</summary>
+    public event EventHandler<MarkdownRenderFailedEventArgs>? RenderFailed;
 
     private void RaiseImageUnavailable(string source, MarkdownImageUnavailableReason reason)
     {
@@ -838,6 +947,53 @@ public sealed partial class MarkdownRendererControl : UserControl, IDisposable
 
     /// <summary>Current vertical scroll offset of the host scroll viewer.</summary>
     internal double CurrentScrollOffsetY => _scroll?.VerticalOffset ?? 0;
+
+    internal bool TryGetAutomationScrollMetrics(
+        out double verticalOffset,
+        out double viewportHeight,
+        out double extentHeight)
+    {
+        if (_scroll is null)
+        {
+            verticalOffset = 0;
+            viewportHeight = 0;
+            extentHeight = 0;
+            return false;
+        }
+
+        verticalOffset = _scroll.VerticalOffset;
+        viewportHeight = _scroll.ViewportHeight;
+        extentHeight = _scroll.ExtentHeight;
+        return true;
+    }
+
+    internal void ScrollFromAutomation(ScrollAmount amount)
+    {
+        if (_scroll is null || amount == ScrollAmount.NoAmount)
+            return;
+
+        double delta = amount switch
+        {
+            ScrollAmount.LargeDecrement => -Math.Max(48, _scroll.ViewportHeight * 0.8),
+            ScrollAmount.SmallDecrement => -48,
+            ScrollAmount.SmallIncrement => 48,
+            ScrollAmount.LargeIncrement => Math.Max(48, _scroll.ViewportHeight * 0.8),
+            _ => 0,
+        };
+        double maximum = Math.Max(0, _scroll.ExtentHeight - _scroll.ViewportHeight);
+        double target = Math.Clamp(_scroll.VerticalOffset + delta, 0, maximum);
+        _scroll.ChangeView(null, target, null, disableAnimation: true);
+    }
+
+    internal void SetAutomationVerticalScrollPercent(double percent)
+    {
+        if (_scroll is null)
+            return;
+
+        double maximum = Math.Max(0, _scroll.ExtentHeight - _scroll.ViewportHeight);
+        double target = maximum * (Math.Clamp(percent, 0, 100) / 100);
+        _scroll.ChangeView(null, target, null, disableAnimation: true);
+    }
 
     /// <summary>
     /// Offset applied between the scroll viewport and document content. The
@@ -882,6 +1038,7 @@ public sealed partial class MarkdownRendererControl : UserControl, IDisposable
         var button = new Button
         {
             Content = new SymbolIcon(Symbol.Copy),
+            Style = CodeBlockCopyButtonStyle,
             Padding = new Thickness(0),
             MinWidth = 0,
             MinHeight = 0,
@@ -925,18 +1082,44 @@ public sealed partial class MarkdownRendererControl : UserControl, IDisposable
         }
     }
 
+    private void UpdateCodeBlockCopyButtonStyles()
+    {
+        foreach (var plan in _codeBlockActionPlans)
+        {
+            if (plan.Realized is Button button)
+                button.Style = CodeBlockCopyButtonStyle;
+        }
+    }
+
     private void CopyCodeBlockToClipboard(CodeBlockActionPlan plan)
     {
+        bool succeeded = false;
         try
         {
             var package = new DataPackage();
             package.SetText(plan.Box.CodeText);
             Clipboard.SetContent(package);
+            Clipboard.Flush();
             plan.ShowCopiedFeedback(this);
+            succeeded = true;
         }
         catch (Exception ex)
         {
             MarkdownDiagnostics.WriteLine($"[MarkdownRendererControl] Code block copy failed: {ex.Message}");
+        }
+
+        RaiseCopyCompleted(MarkdownCopyKind.CodeBlock, succeeded);
+    }
+
+    private void RaiseCopyCompleted(MarkdownCopyKind kind, bool succeeded)
+    {
+        try
+        {
+            CopyCompleted?.Invoke(this, new MarkdownCopyCompletedEventArgs(kind, succeeded));
+        }
+        catch (Exception ex)
+        {
+            MarkdownDiagnostics.WriteLine($"[MarkdownRendererControl] Copy completion subscriber failed: {ex.Message}");
         }
     }
 
@@ -1182,6 +1365,7 @@ public sealed partial class MarkdownRendererControl : UserControl, IDisposable
 
     private void OnMarkdownChanged()
     {
+        _disclosureStates.Clear();
         ClearCodeBlockHighlightCache();
         RequestRebuild();
     }
@@ -1307,11 +1491,23 @@ public sealed partial class MarkdownRendererControl : UserControl, IDisposable
         if (snapshot is null || !_selection.IsActive)
             return false;
 
-        string? renderedText = null;
-        if ((options ?? MarkdownCopyOptions.Default).PlainTextMode == MarkdownPlainTextCopyMode.RenderedText)
-            renderedText = GetRenderedSelectionText(snapshot, _selection.Range);
+        bool succeeded;
+        try
+        {
+            string? renderedText = null;
+            if ((options ?? MarkdownCopyOptions.Default).PlainTextMode == MarkdownPlainTextCopyMode.RenderedText)
+                renderedText = GetRenderedSelectionText(snapshot, _selection.Range);
 
-        return MarkdownClipboardWriter.Copy(snapshot.SourceMap, _selection.Range, options, renderedText);
+            succeeded = MarkdownClipboardWriter.Copy(snapshot.SourceMap, _selection.Range, options, renderedText);
+        }
+        catch (Exception ex)
+        {
+            MarkdownDiagnostics.WriteLine($"[MarkdownRendererControl] Selection copy failed: {ex.Message}");
+            succeeded = false;
+        }
+
+        RaiseCopyCompleted(MarkdownCopyKind.Selection, succeeded);
+        return succeeded;
     }
 
     private static string GetRenderedSelectionText(LayoutSnapshot snapshot, DocumentRange range)
@@ -1469,6 +1665,7 @@ public sealed partial class MarkdownRendererControl : UserControl, IDisposable
         _rebuildQueued = false;
         _hasPendingRebuild = false;
         _pendingRebuildReason = RebuildReason.Restyle;
+        _imageRelayoutQueued = false;
         var oldHighlightCts = _codeBlockHighlightCts;
         _codeBlockHighlightCts = null;
         RetireCancellationTokenSource(oldHighlightCts, DrainCodeBlockHighlightTasks());
@@ -1481,7 +1678,7 @@ public sealed partial class MarkdownRendererControl : UserControl, IDisposable
         // list; otherwise an async load completing after unload fires
         // OnImageLoadCompleted → RequestRebuild on a torn-down control, causing a
         // zombie rebuild cycle that re-subscribes handlers indefinitely.
-        foreach (var img in _imagePlans) img.LoadCompleted -= OnImageLoadCompleted;
+        UnsubscribeAllImages();
         // Tear down embed plans before clearing the overlay so block embed
         // factories get RecycleBlock callbacks and inline embeds release
         // their Run.RealizedElement references — otherwise hosted controls
@@ -1725,7 +1922,8 @@ public sealed partial class MarkdownRendererControl : UserControl, IDisposable
         var oldTask = _pipelineTask;
         _pipelineCts = new CancellationTokenSource();
         var cts = _pipelineCts;
-        var task = RebuildAsync(cts.Token, reason);
+        long generation = ++_pipelineGeneration;
+        var task = RebuildAsync(cts.Token, reason, generation);
         _pipelineTask = task;
         RetireCancellationTokenSource(oldCts, oldTask);
         _ = task.ContinueWith(t =>
@@ -1797,16 +1995,51 @@ public sealed partial class MarkdownRendererControl : UserControl, IDisposable
         InvalidateSelectionAdorner();
     }
 
-    private async Task RebuildAsync(CancellationToken ct, RebuildReason reason)
+    private async Task RebuildAsync(CancellationToken ct, RebuildReason reason, long generation)
     {
         try
         {
             await RebuildInternalAsync(ct, reason).ConfigureAwait(true);
+            if (!ct.IsCancellationRequested)
+            {
+                RaiseRenderCompleted(generation);
+            }
         }
         catch (OperationCanceledException) { /* expected – a new build was requested */ }
         catch (Exception ex)
         {
             MarkdownDiagnostics.WriteLine($"[MarkdownRendererControl] Rebuild failed: {ex}");
+            RaiseRenderFailed(generation, ex);
+        }
+    }
+
+    private void RaiseRenderCompleted(long generation)
+    {
+        if (_isDisposed || _isUnloaded || generation != _pipelineGeneration)
+            return;
+
+        try
+        {
+            RenderCompleted?.Invoke(this, EventArgs.Empty);
+        }
+        catch (Exception ex)
+        {
+            MarkdownDiagnostics.WriteLine($"[MarkdownRendererControl] RenderCompleted subscriber failed: {ex.Message}");
+        }
+    }
+
+    private void RaiseRenderFailed(long generation, Exception exception)
+    {
+        if (_isDisposed || _isUnloaded || generation != _pipelineGeneration)
+            return;
+
+        try
+        {
+            RenderFailed?.Invoke(this, new MarkdownRenderFailedEventArgs(exception));
+        }
+        catch (Exception ex)
+        {
+            MarkdownDiagnostics.WriteLine($"[MarkdownRendererControl] RenderFailed subscriber failed: {ex.Message}");
         }
     }
 
@@ -1895,6 +2128,7 @@ public sealed partial class MarkdownRendererControl : UserControl, IDisposable
             ImageDocumentSource = ImageDocumentSource,
             AllowThirdPartyRemoteImages = AllowThirdPartyRemoteImages,
             ImageUnavailable = RaiseImageUnavailable,
+            DisclosureStates = new Dictionary<string, bool>(_disclosureStates, StringComparer.Ordinal),
         };
         var builder = new LayoutBuilder(ctx, EmbedFactory);
 
@@ -2029,7 +2263,7 @@ public sealed partial class MarkdownRendererControl : UserControl, IDisposable
         _codeBlockActionRects.Clear();
         _embedPlans.Clear();
         _codeBlockActionPlans.Clear();
-        foreach (var img in _imagePlans) img.LoadCompleted -= OnImageLoadCompleted;
+        UnsubscribeAllImages();
         _imagePlans.Clear();
         // Identities change across rebuild even when the count happens to
         // match — reset so the first post-rebuild realisation always fires.
@@ -2478,8 +2712,7 @@ public sealed partial class MarkdownRendererControl : UserControl, IDisposable
         var oldPlans = preserveRealized ? _embedPlans.ToArray() : Array.Empty<EmbedPlan>();
         var oldActionPlans = preserveRealized ? _codeBlockActionPlans.ToArray() : Array.Empty<CodeBlockActionPlan>();
 
-        foreach (var img in _imagePlans)
-            img.LoadCompleted -= OnImageLoadCompleted;
+        UnsubscribeAllImages();
         _imagePlans.Clear();
         _embedRects.Clear();
         _blockEmbedRects.Clear();
@@ -2692,6 +2925,16 @@ public sealed partial class MarkdownRendererControl : UserControl, IDisposable
             }
             case Layout.Boxes.InlineContainerBox icb:
             {
+                // Register completion before asking DirectWrite for rectangles. During the
+                // first commit an inline image can be measurable but not yet have a stable
+                // character region; paint will start it and completion must still reflow.
+                foreach (var run in icb.Runs)
+                {
+                    if (run is InlineImageRun imageRun)
+                    {
+                        RegisterImage(imageRun.Image);
+                    }
+                }
                 foreach (var (run, rect) in icb.EnumerateEmbedRects())
                 {
                     _embedPlans.Add(new InlineEmbedPlan { Icb = icb, Run = run, Rect = rect });
@@ -2723,19 +2966,36 @@ public sealed partial class MarkdownRendererControl : UserControl, IDisposable
 
     private void AddImagePlan(Layout.Boxes.ImageBox image)
     {
+        RegisterImage(image);
         if (_imagePlans.Contains(image))
             return;
 
-        image.LoadCompleted -= OnImageLoadCompleted;
-        image.LoadCompleted += OnImageLoadCompleted;
         _imagePlans.Add(image);
+    }
+
+    private void RegisterImage(Layout.Boxes.ImageBox image)
+    {
+        if (!_subscribedImages.Add(image))
+            return;
+
+        image.LoadCompleted += OnImageLoadCompleted;
+    }
+
+    private void UnsubscribeAllImages()
+    {
+        foreach (var image in _subscribedImages)
+        {
+            image.LoadCompleted -= OnImageLoadCompleted;
+        }
+
+        _subscribedImages.Clear();
     }
 
     private void OnImageLoadCompleted(object? sender, Layout.Boxes.LoadCompletedEventArgs e)
     {
-        // CanvasBitmap.LoadAsync continues on a thread-pool thread.  Always
-        // marshal to the UI thread — RequestRebuild manipulates the canvas
-        // and CTS state, both of which require thread-affinity.  Drop the
+        // CanvasBitmap.LoadAsync continues on a thread-pool thread. Always
+        // marshal to the UI thread because relayout and invalidation touch
+        // UI-owned state. Drop the
         // event silently if we have no dispatcher (control already unloaded).
         var dq = DispatcherQueue;
         if (dq is null) return;
@@ -2745,12 +3005,10 @@ public sealed partial class MarkdownRendererControl : UserControl, IDisposable
             // Guard against the TOCTOU window where this lambda was already
             // dispatched before OnUnloaded ran its unsubscription.
             if (_isUnloaded) return;
-            if (sender is Layout.Boxes.ImageBox image && !_imagePlans.Contains(image)) return;
+            if (sender is Layout.Boxes.ImageBox image && !_subscribedImages.Contains(image)) return;
             if (layoutInvalidated)
             {
-                // Initial load / intrinsic-size change → coalesce through the
-                // rebuild path. Subsequent calls cancel the prior CTS.
-                RequestRebuild();
+                QueueImageRelayout();
             }
             else
             {
@@ -2760,6 +3018,70 @@ public sealed partial class MarkdownRendererControl : UserControl, IDisposable
                 InvalidateCanvas();
             }
         });
+    }
+
+    private void QueueImageRelayout()
+    {
+        if (_imageRelayoutQueued || _isDisposed || _isUnloaded)
+            return;
+
+        _imageRelayoutQueued = true;
+        Microsoft.UI.Dispatching.DispatcherQueue? dispatcher = DispatcherQueue;
+        if (dispatcher is null || !dispatcher.TryEnqueue(
+                Microsoft.UI.Dispatching.DispatcherQueuePriority.Low,
+                ProcessQueuedImageRelayout))
+        {
+            _imageRelayoutQueued = false;
+        }
+    }
+
+    private void ProcessQueuedImageRelayout()
+    {
+        if (!_imageRelayoutQueued)
+            return;
+
+        _imageRelayoutQueued = false;
+        LayoutSnapshot? snapshot = _snapshot;
+        if (_isDisposed || _isUnloaded || snapshot is null)
+            return;
+
+        try
+        {
+            (int BlockIndex, double OffsetFromTop)? anchor = _scroll is null
+                ? null
+                : CaptureScrollAnchor(snapshot, _scroll.VerticalOffset);
+            snapshot.RelayoutMeasuredBlocks((float)Math.Max(50, ActualWidth), CancellationToken.None);
+            if (!ReferenceEquals(snapshot, _snapshot))
+                return;
+
+            ApplySnapshotSize(snapshot);
+            RestoreScrollAnchor(snapshot, anchor);
+            RebuildRealizationPlans(snapshot, preserveRealized: true);
+            _focusableItems = snapshot.CollectFocusableItems();
+            RealizeVisibleEmbeds();
+            ScheduleVisibleCodeBlockHighlighting();
+            UpdateSelectionAdornerViewport();
+            UpdateFocusRing();
+            InvalidateCanvas();
+            InvalidateAutomationLayout();
+        }
+        catch (OperationCanceledException)
+        {
+            // A concurrent full rebuild owns the next committed layout.
+        }
+        catch (Exception ex)
+        {
+            MarkdownDiagnostics.WriteLine($"[MarkdownRendererControl] image relayout failed: {ex}");
+            RequestRebuild();
+        }
+    }
+
+    private void InvalidateAutomationLayout()
+    {
+        // Custom-drawn descendants do not receive XAML layout notifications of
+        // their own. Refresh an existing document peer after image reflow so UIA
+        // clients see the same bounds as the newly painted snapshot immediately.
+        FrameworkElementAutomationPeer.FromElement(this)?.InvalidatePeer();
     }
 
     private void OnRegionsInvalidated(CanvasVirtualControl sender, CanvasRegionsInvalidatedEventArgs args)
@@ -4108,6 +4430,11 @@ public sealed partial class MarkdownRendererControl : UserControl, IDisposable
             var link = FindLinkTargetAt(pos, pt);
             if (link is not null)
             {
+                if (TryActivateDisclosure(link.Value.Run))
+                {
+                    return;
+                }
+
                 // Intercept internal fragment anchors (e.g. footnote back/forward
                 // links) and scroll without surfacing them to external subscribers.
                 if (!link.Value.Url.StartsWith("#", StringComparison.Ordinal) || !HandleInternalAnchor(link.Value.Url))
@@ -4447,13 +4774,17 @@ public sealed partial class MarkdownRendererControl : UserControl, IDisposable
             return TryFocusHostedElement(item, reverse: false);
         }
 
-        // Find the LinkRun in the snapshot and fire LinkClick.
+        // Resolve either a text link or a linked inline image and use the same
+        // activation path as pointer input.
         if (_snapshot is null) return false;
         var pos = new DocumentPosition(item.BlockIndex, item.InlineIndex, 0);
-        if (FindLinkAt(pos) is { } lr)
+        if (FindLinkTargetAt(pos) is { } link)
         {
-            if (!lr.Url.StartsWith("#", StringComparison.Ordinal) || !HandleInternalAnchor(lr.Url))
-                LinkClick?.Invoke(this, new MarkdownLinkClickEventArgs(lr.Url, lr.Title));
+            if (TryActivateDisclosure(link.Run))
+                return true;
+
+            if (!link.Url.StartsWith("#", StringComparison.Ordinal) || !HandleInternalAnchor(link.Url))
+                LinkClick?.Invoke(this, new MarkdownLinkClickEventArgs(link.Url, link.Title));
             return true;
         }
         return false;
@@ -4482,14 +4813,18 @@ public sealed partial class MarkdownRendererControl : UserControl, IDisposable
 
     private void NotifyFocusedItemAutomation()
     {
-        if (!TryGetFocusedLink(out var inline, out var link))
-            return;
-
         void Raise()
         {
             var peer = FrameworkElementAutomationPeer.FromElement(this) as MarkdownAutomationPeer
                        ?? FrameworkElementAutomationPeer.CreatePeerForElement(this) as MarkdownAutomationPeer;
-            peer?.RaiseFocusForLink(inline, link);
+            if (TryGetFocusedLink(out var inline, out var link))
+            {
+                peer?.RaiseFocusForLink(inline, link);
+            }
+            else if (TryGetFocusedLinkedImage(out var imageInline, out var image))
+            {
+                peer?.RaiseFocusForLinkedImage(imageInline, image);
+            }
         }
 
         // Let WinUI finish the real focus transition to the renderer first,
@@ -4890,16 +5225,6 @@ public sealed partial class MarkdownRendererControl : UserControl, IDisposable
         }
     }
 
-    private LinkRun? FindLinkAt(DocumentPosition pos)
-    {
-        if (_snapshot is null) return null;
-        foreach (var b in _snapshot.Blocks)
-        {
-            if (FindLinkInBlock(b, pos) is { } found) return found;
-        }
-        return null;
-    }
-
     private LinkTarget? FindLinkTargetAt(DocumentPosition pos, Point? point = null)
     {
         if (_snapshot is null) return null;
@@ -4920,6 +5245,20 @@ public sealed partial class MarkdownRendererControl : UserControl, IDisposable
             return false;
 
         return TryGetLinkForFocusable(items[_focusedItemIndex], out inline, out link);
+    }
+
+    private bool TryGetFocusedLinkedImage(
+        out Layout.Boxes.InlineContainerBox inline,
+        out InlineImageRun image)
+    {
+        inline = null!;
+        image = null!;
+
+        var items = _focusableItems;
+        if (items is null || _focusedItemIndex < 0 || _focusedItemIndex >= items.Count)
+            return false;
+
+        return TryGetLinkedImageForFocusable(items[_focusedItemIndex], out inline, out image);
     }
 
     private bool TryGetFocusableIndexForLink(LinkRun run, out int index)
@@ -4952,8 +5291,30 @@ public sealed partial class MarkdownRendererControl : UserControl, IDisposable
         return index >= 0;
     }
 
+    private bool TryGetFocusableIndexForLinkedImage(InlineImageRun run, out int index)
+    {
+        index = -1;
+        var items = _focusableItems;
+        if (items is null) return false;
+
+        for (int i = 0; i < items.Count; i++)
+        {
+            if (items[i].IsLink &&
+                TryGetLinkedImageForFocusable(items[i], out _, out var image) &&
+                ReferenceEquals(image, run))
+            {
+                index = i;
+                return true;
+            }
+        }
+
+        return false;
+    }
+
     private static bool AreEquivalentLinks(LinkRun left, LinkRun right) =>
         ReferenceEquals(left, right) ||
+        (left.IsDisclosure && right.IsDisclosure &&
+         string.Equals(left.DisclosureId, right.DisclosureId, StringComparison.Ordinal)) ||
         (string.Equals(left.Text, right.Text, StringComparison.Ordinal) &&
          string.Equals(left.Url, right.Url, StringComparison.Ordinal) &&
          string.Equals(left.Title, right.Title, StringComparison.Ordinal));
@@ -5010,6 +5371,70 @@ public sealed partial class MarkdownRendererControl : UserControl, IDisposable
                 foreach (var c in sb.Children)
                 {
                     if (TryGetLinkForFocusable(c, item, out inline, out link))
+                        return true;
+                }
+                return false;
+            default:
+                return false;
+        }
+    }
+
+    private bool TryGetLinkedImageForFocusable(
+        Layout.FocusableItem item,
+        out Layout.Boxes.InlineContainerBox inline,
+        out InlineImageRun image)
+    {
+        inline = null!;
+        image = null!;
+        if (!item.IsLink || _snapshot is null)
+            return false;
+
+        foreach (var block in _snapshot.Blocks)
+        {
+            if (TryGetLinkedImageForFocusable(block, item, out inline, out image))
+                return true;
+        }
+
+        return false;
+    }
+
+    private static bool TryGetLinkedImageForFocusable(
+        BlockBox box,
+        Layout.FocusableItem item,
+        out Layout.Boxes.InlineContainerBox inline,
+        out InlineImageRun image)
+    {
+        inline = null!;
+        image = null!;
+
+        switch (box)
+        {
+            case Layout.Boxes.InlineContainerBox icb when icb.BlockIndex == item.BlockIndex:
+                foreach (var run in icb.Runs)
+                {
+                    if (run.InlineIndex == item.InlineIndex &&
+                        run is InlineImageRun { IsLinked: true } linkedImage)
+                    {
+                        inline = icb;
+                        image = linkedImage;
+                        return true;
+                    }
+                }
+                return false;
+            case Layout.Boxes.ListItemBox listItem:
+                return TryGetLinkedImageForFocusable(listItem.Marker, item, out inline, out image) ||
+                       TryGetLinkedImageForFocusable(listItem.Content, item, out inline, out image);
+            case Layout.Boxes.TableBox table:
+                foreach (var cell in table.GetCellBoxes())
+                {
+                    if (TryGetLinkedImageForFocusable(cell, item, out inline, out image))
+                        return true;
+                }
+                return false;
+            case Layout.Boxes.StackBox stack:
+                foreach (var child in stack.Children)
+                {
+                    if (TryGetLinkedImageForFocusable(child, item, out inline, out image))
                         return true;
                 }
                 return false;
@@ -5185,35 +5610,6 @@ public sealed partial class MarkdownRendererControl : UserControl, IDisposable
             Math.Clamp(selectionRect.Bottom, viewportTop, Math.Max(viewportTop, viewportBottom - 1)));
     }
 
-    private static LinkRun? FindLinkInBlock(BlockBox box, DocumentPosition pos)
-    {
-        switch (box)
-        {
-            case Layout.Boxes.InlineContainerBox icb when icb.BlockIndex == pos.BlockIndex:
-                foreach (var r in icb.Runs)
-                {
-                    if (r.InlineIndex == pos.InlineIndex && r is LinkRun lr) return lr;
-                }
-                return null;
-            case Layout.Boxes.ListItemBox lib:
-                if (FindLinkInBlock(lib.Marker, pos) is { } lm) return lm;
-                return FindLinkInBlock(lib.Content, pos);
-            case Layout.Boxes.TableBox tb:
-                foreach (var cell in tb.GetCellBoxes())
-                {
-                    if (FindLinkInBlock(cell, pos) is { } tf) return tf;
-                }
-                return null;
-            case Layout.Boxes.StackBox sb:
-                foreach (var c in sb.Children)
-                {
-                    if (FindLinkInBlock(c, pos) is { } f) return f;
-                }
-                return null;
-        }
-        return null;
-    }
-
     private static LinkTarget? FindLinkTargetInBlock(BlockBox box, DocumentPosition pos, Point? point)
     {
         switch (box)
@@ -5228,10 +5624,10 @@ public sealed partial class MarkdownRendererControl : UserControl, IDisposable
                         return null;
 
                     if (r is LinkRun lr)
-                        return new LinkTarget(lr.Url, lr.Title);
+                        return new LinkTarget(lr.Url, lr.Title, lr);
 
                     if (r is InlineImageRun { IsLinked: true } image)
-                        return new LinkTarget(image.LinkUrl!, image.LinkTitle);
+                        return new LinkTarget(image.LinkUrl!, image.LinkTitle, null);
                 }
                 return null;
             case Layout.Boxes.ListItemBox lib:
@@ -5256,7 +5652,18 @@ public sealed partial class MarkdownRendererControl : UserControl, IDisposable
     private static bool IsLinkedRun(InlineRun? run)
         => run is LinkRun or InlineImageRun { IsLinked: true };
 
-    private readonly record struct LinkTarget(string Url, string? Title);
+    private bool TryActivateDisclosure(LinkRun? run)
+    {
+        if (run is not { IsDisclosure: true })
+        {
+            return false;
+        }
+
+        SetDisclosureExpanded(run, !run.IsExpanded);
+        return true;
+    }
+
+    private readonly record struct LinkTarget(string Url, string? Title, LinkRun? Run);
 }
 
 /// <summary>Event data for markdown link activation.</summary>
@@ -5273,5 +5680,55 @@ public sealed class MarkdownLinkClickEventArgs : EventArgs
 
     /// <summary>Gets the optional link title.</summary>
     public string? Title { get; }
+}
+
+/// <summary>Event data for safe HTML disclosure activation.</summary>
+public sealed class MarkdownDisclosureToggledEventArgs : EventArgs
+{
+    /// <summary>Initializes disclosure event data.</summary>
+    public MarkdownDisclosureToggledEventArgs(bool isExpanded) => IsExpanded = isExpanded;
+
+    /// <summary>Gets whether the disclosure is expanded after activation.</summary>
+    public bool IsExpanded { get; }
+}
+
+/// <summary>Identifies the Markdown content copied to the clipboard.</summary>
+public enum MarkdownCopyKind
+{
+    /// <summary>The active text selection.</summary>
+    Selection,
+
+    /// <summary>An entire fenced or indented code block.</summary>
+    CodeBlock,
+}
+
+/// <summary>Event data for a Markdown clipboard copy attempt.</summary>
+public sealed class MarkdownCopyCompletedEventArgs : EventArgs
+{
+    /// <summary>Initializes clipboard copy event data.</summary>
+    public MarkdownCopyCompletedEventArgs(MarkdownCopyKind kind, bool succeeded)
+    {
+        Kind = kind;
+        Succeeded = succeeded;
+    }
+
+    /// <summary>Gets the copied content kind.</summary>
+    public MarkdownCopyKind Kind { get; }
+
+    /// <summary>Gets whether the clipboard accepted the content.</summary>
+    public bool Succeeded { get; }
+}
+
+/// <summary>Event data for a Markdown document render failure.</summary>
+public sealed class MarkdownRenderFailedEventArgs : EventArgs
+{
+    /// <summary>Initializes render-failure event data.</summary>
+    public MarkdownRenderFailedEventArgs(Exception exception)
+    {
+        Exception = exception ?? throw new ArgumentNullException(nameof(exception));
+    }
+
+    /// <summary>Gets the exception raised by the render pipeline.</summary>
+    public Exception Exception { get; }
 }
 

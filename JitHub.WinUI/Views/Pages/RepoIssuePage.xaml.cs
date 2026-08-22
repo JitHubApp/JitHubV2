@@ -333,12 +333,13 @@ public sealed partial class RepoIssuePage : Page
                     ViewModel.IssueCommentDraft,
                     bar.Body);
                 _issueDetailPane?.OpenCommentComposer();
+                ViewModel.TrackCommentQuoteReply();
                 break;
             case CommentActionKind.CopyLink:
-                PlatformHelper.CopyString(bar.HtmlUrl);
+                ViewModel.TrackCommentCopyLink(PlatformHelper.CopyString(bar.HtmlUrl));
                 break;
             case CommentActionKind.CopyMarkdown:
-                PlatformHelper.CopyString(bar.Body);
+                ViewModel.TrackCommentCopyMarkdown(PlatformHelper.CopyString(bar.Body));
                 break;
             case CommentActionKind.Edit:
                 if (isIssueBody)

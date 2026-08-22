@@ -482,7 +482,13 @@ internal sealed class MarkdownSemanticDocument
                         InlineRun = imageRun,
                         TextStart = runSpan.Start,
                         TextEnd = runSpan.End,
-                        HelpText = !string.IsNullOrWhiteSpace(imageRun.Title) ? imageRun.Title : imageRun.Url,
+                        HelpText = imageRun.IsLinked
+                            ? !string.IsNullOrWhiteSpace(imageRun.LinkTitle)
+                                ? imageRun.LinkTitle
+                                : imageRun.LinkUrl
+                            : !string.IsNullOrWhiteSpace(imageRun.Title)
+                                ? imageRun.Title
+                                : imageRun.Url,
                     });
                 }
                 else if (run is AbbreviationRun abbreviationRun)

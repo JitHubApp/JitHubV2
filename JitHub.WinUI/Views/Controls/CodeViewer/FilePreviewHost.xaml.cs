@@ -14,6 +14,7 @@ public sealed partial class FilePreviewHost : UserControl
     private RepoFilePreviewKind? _currentRendererKind;
 
     public event Action<string>? ActionExecuted;
+    public event Action<string, string>? ActionCompleted;
     public event EventHandler<RepoFilePreviewAppliedEventArgs>? PreviewApplied;
 
     public FilePreviewHost()
@@ -164,10 +165,15 @@ public sealed partial class FilePreviewHost : UserControl
         if (renderer is CodePreview codePreview)
         {
             codePreview.ActionExecuted += OnActionExecuted;
+            codePreview.ActionCompleted += OnActionCompleted;
         }
         else if (renderer is UnsupportedPreview unsupportedPreview)
         {
-            unsupportedPreview.ActionExecuted += OnActionExecuted;
+            unsupportedPreview.ActionCompleted += OnActionCompleted;
+        }
+        else if (renderer is CsvPreview csvPreview)
+        {
+            csvPreview.ActionCompleted += OnActionCompleted;
         }
     }
 
@@ -176,14 +182,22 @@ public sealed partial class FilePreviewHost : UserControl
         if (renderer is CodePreview codePreview)
         {
             codePreview.ActionExecuted -= OnActionExecuted;
+            codePreview.ActionCompleted -= OnActionCompleted;
         }
         else if (renderer is UnsupportedPreview unsupportedPreview)
         {
-            unsupportedPreview.ActionExecuted -= OnActionExecuted;
+            unsupportedPreview.ActionCompleted -= OnActionCompleted;
+        }
+        else if (renderer is CsvPreview csvPreview)
+        {
+            csvPreview.ActionCompleted -= OnActionCompleted;
         }
     }
 
     private void OnActionExecuted(string action) => ActionExecuted?.Invoke(action);
+
+    private void OnActionCompleted(string action, string result) =>
+        ActionCompleted?.Invoke(action, result);
 
     private static FrameworkElement CreateRenderer(RepoFilePreviewKind kind)
     {

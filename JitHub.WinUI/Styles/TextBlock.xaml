@@ -36,7 +36,7 @@
         BasedOn="{StaticResource SectionBodyTextBlockStyle}"
         TargetType="TextBlock">
         <Setter Property="FontFamily" Value="{ThemeResource AppUiFontFamily}" />
-        <Setter Property="FontSize" Value="14" />
+        <Setter Property="FontSize" Value="{ThemeResource AppFontSize14}" />
         <Setter Property="FontWeight" Value="SemiBold" />
     </Style>
     <Style
@@ -53,7 +53,7 @@
         TargetType="TextBlock" />
     <Style x:Key="AppStatusPillTextBlockStyle" TargetType="TextBlock">
         <Setter Property="FontFamily" Value="{ThemeResource AppUiFontFamily}" />
-        <Setter Property="FontSize" Value="13" />
+        <Setter Property="FontSize" Value="{ThemeResource AppFontSize13}" />
         <Setter Property="FontWeight" Value="SemiBold" />
         <Setter Property="Height" Value="14" />
         <Setter Property="LineHeight" Value="14" />

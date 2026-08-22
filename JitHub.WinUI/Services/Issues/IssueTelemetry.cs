@@ -10,6 +10,15 @@ public enum IssueActionKind
     Metadata,
     ToggleState,
     Comment,
+    CommentEdit,
+    CommentDelete,
+    CommentPin,
+    CommentUnpin,
+    CommentHide,
+    CommentUnhide,
+    QuoteReply,
+    CopyLink,
+    CopyMarkdown,
     Reaction,
     CommentReaction
 }
@@ -20,6 +29,7 @@ public enum IssueActionOutcome
     AuthenticationError,
     PermissionDenied,
     NetworkError,
+    Cancelled,
     Failure
 }
 
@@ -97,6 +107,15 @@ public static class IssueTelemetry
                 IssueActionKind.Metadata => TelemetryTaxonomy.Actions.Metadata,
                 IssueActionKind.ToggleState => TelemetryTaxonomy.Actions.ToggleState,
                 IssueActionKind.Comment => TelemetryTaxonomy.Actions.Comment,
+                IssueActionKind.CommentEdit => TelemetryTaxonomy.Actions.CommentEdit,
+                IssueActionKind.CommentDelete => TelemetryTaxonomy.Actions.CommentDelete,
+                IssueActionKind.CommentPin => TelemetryTaxonomy.Actions.CommentPin,
+                IssueActionKind.CommentUnpin => TelemetryTaxonomy.Actions.CommentUnpin,
+                IssueActionKind.CommentHide => TelemetryTaxonomy.Actions.CommentHide,
+                IssueActionKind.CommentUnhide => TelemetryTaxonomy.Actions.CommentUnhide,
+                IssueActionKind.QuoteReply => TelemetryTaxonomy.Actions.QuoteReply,
+                IssueActionKind.CopyLink => TelemetryTaxonomy.Actions.CopyLink,
+                IssueActionKind.CopyMarkdown => TelemetryTaxonomy.Actions.CopyMarkdown,
                 IssueActionKind.Reaction => TelemetryTaxonomy.Actions.Reaction,
                 IssueActionKind.CommentReaction => TelemetryTaxonomy.Actions.CommentReaction,
                 _ => "unknown"
@@ -107,6 +126,7 @@ public static class IssueTelemetry
                 IssueActionOutcome.AuthenticationError => TelemetryTaxonomy.Results.AuthError,
                 IssueActionOutcome.PermissionDenied => TelemetryTaxonomy.Results.PermissionDenied,
                 IssueActionOutcome.NetworkError => TelemetryTaxonomy.Results.NetworkError,
+                IssueActionOutcome.Cancelled => TelemetryTaxonomy.Results.Cancelled,
                 _ => TelemetryTaxonomy.Results.Error
             }
         });

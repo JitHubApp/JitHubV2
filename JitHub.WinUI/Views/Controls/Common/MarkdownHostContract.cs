@@ -55,6 +55,15 @@ public static class MarkdownHostContract
         _ => "Markdown content",
     };
 
+    public static string GetTelemetrySection(string? value) => Parse(value) switch
+    {
+        MarkdownHostKind.Conversation => "conversation",
+        MarkdownHostKind.Comment => "comments",
+        MarkdownHostKind.RepositoryReadme or MarkdownHostKind.ProfileReadme => "readme",
+        MarkdownHostKind.EditorPreview => "preview",
+        _ => "conversation",
+    };
+
     public static string GetAutomationId(string? value) => Parse(value) switch
     {
         MarkdownHostKind.Conversation => "MarkdownHost_Conversation",

@@ -57,14 +57,14 @@
                         <FontIcon
                             x:Name="IconGlyph"
                             FontFamily="{StaticResource SegoeFluentIcons}"
-                            FontSize="12" />
+                            FontSize="{ThemeResource AppFontSize12}" />
                     </Border>
 
                     <RichTextBlock
                         x:Name="SentenceRichTextBlock"
                         Grid.Column="1"
                         FontFamily="{ThemeResource AppUiFontFamily}"
-                        FontSize="15"
+                        FontSize="{ThemeResource AppFontSize15}"
                         Foreground="{ThemeResource AppInkBrush}"
                         IsTextSelectionEnabled="False"
                         LineHeight="24"
@@ -99,7 +99,7 @@
                                         Margin="0,2,0,0"
                                         VerticalAlignment="Top"
                                         FontFamily="{StaticResource SegoeFluentIcons}"
-                                        FontSize="11"
+                                        FontSize="{ThemeResource AppFontSize11}"
                                         Foreground="{ThemeResource AppInkMutedBrush}"
                                         Glyph="{x:Bind Glyph, Mode=OneWay}" />
                                     <TextBlock

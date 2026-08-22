@@ -51,13 +51,13 @@
                             Width="18"
                             VerticalAlignment="Center"
                             FontFamily="{StaticResource SegoeFluentIcons}"
-                            FontSize="16"
+                            FontSize="{ThemeResource AppFontSize16}"
                             Foreground="{ThemeResource AppInkMutedBrush}"
                             Glyph="{x:Bind Glyph, Mode=OneWay}" />
                         <TextBlock
                             VerticalAlignment="Center"
                             FontFamily="{StaticResource AppUiFontFamily}"
-                            FontSize="13"
+                            FontSize="{ThemeResource AppFontSize13}"
                             Foreground="{ThemeResource AppInkBrush}"
                             Text="{x:Bind Label, Mode=OneWay}"
                             TextTrimming="CharacterEllipsis" />
@@ -75,7 +75,7 @@
                             AutomationProperties.AccessibilityView="Raw"
                             VerticalAlignment="Center"
                             FontFamily="{ThemeResource AppUiFontFamily}"
-                            FontSize="11"
+                            FontSize="{ThemeResource AppFontSize11}"
                             FontWeight="SemiBold"
                             Foreground="{ThemeResource AppAccentBrush}"
                             Text="+"
@@ -114,14 +114,14 @@
                         <FontIcon
                             VerticalAlignment="Center"
                             FontFamily="{StaticResource SegoeFluentIcons}"
-                            FontSize="15"
+                            FontSize="{ThemeResource AppFontSize15}"
                             Foreground="{ThemeResource AppInkMutedBrush}"
                             Glyph="&#xE8F1;" />
                         <TextBlock
                             Grid.Column="1"
                             VerticalAlignment="Center"
                             FontFamily="{StaticResource AppUiFontFamily}"
-                            FontSize="13"
+                            FontSize="{ThemeResource AppFontSize13}"
                             FontWeight="SemiBold"
                             Foreground="{ThemeResource AppInkBrush}"
                             Text="{x:Bind FullName, Mode=OneWay}"
@@ -165,7 +165,7 @@
                         HorizontalAlignment="Center"
                         VerticalAlignment="Center"
                         FontFamily="{StaticResource SegoeFluentIcons}"
-                        FontSize="14"
+                        FontSize="{ThemeResource AppFontSize14}"
                         Foreground="{ThemeResource AppAccentBrush}"
                         Glyph="{x:Bind Glyph, Mode=OneWay}" />
                 </Border>
@@ -175,14 +175,14 @@
                     Spacing="2">
                     <TextBlock
                         FontFamily="{StaticResource AppUiFontFamily}"
-                        FontSize="13"
+                        FontSize="{ThemeResource AppFontSize13}"
                         FontWeight="SemiBold"
                         Foreground="{ThemeResource AppInkBrush}"
                         Text="{x:Bind Title, Mode=OneWay}"
                         TextTrimming="CharacterEllipsis" />
                     <TextBlock
                         FontFamily="{StaticResource AppUiFontFamily}"
-                        FontSize="11"
+                        FontSize="{ThemeResource AppFontSize11}"
                         Foreground="{ThemeResource AppInkSubtleBrush}"
                         Text="{x:Bind Subtitle, Mode=OneWay}"
                         TextTrimming="CharacterEllipsis" />
@@ -191,7 +191,7 @@
                     Grid.Column="2"
                     VerticalAlignment="Center"
                     FontFamily="{StaticResource AppUiFontFamily}"
-                    FontSize="11"
+                    FontSize="{ThemeResource AppFontSize11}"
                     Foreground="{ThemeResource AppInkSubtleBrush}"
                     Text="{x:Bind KindLabel, Mode=OneWay}" />
             </Grid>
@@ -332,7 +332,7 @@
                     ToolTipService.ToolTip="Navigation">
                     <FontIcon
                         FontFamily="{StaticResource SegoeFluentIcons}"
-                        FontSize="15"
+                        FontSize="{ThemeResource AppFontSize15}"
                         Glyph="&#xE700;" />
                 </Button>
                 <Image
@@ -352,7 +352,7 @@
                     ToolTipService.ToolTip="Back (Alt+Left)">
                     <FontIcon
                         FontFamily="{StaticResource SegoeFluentIcons}"
-                        FontSize="14"
+                        FontSize="{ThemeResource AppFontSize14}"
                         Glyph="&#xE72B;" />
                 </Button>
                 <Button
@@ -367,14 +367,14 @@
                     ToolTipService.ToolTip="Forward (Alt+Right)">
                     <FontIcon
                         FontFamily="{StaticResource SegoeFluentIcons}"
-                        FontSize="14"
+                        FontSize="{ThemeResource AppFontSize14}"
                         Glyph="&#xE72A;" />
                 </Button>
                 <TextBlock
                     x:Uid="PagesShellPageShellTitleText" x:Name="ShellTitleText"
                     VerticalAlignment="Center"
                     FontFamily="{StaticResource AppUiFontFamily}"
-                    FontSize="18"
+                    FontSize="{ThemeResource AppFontSize18}"
                     FontWeight="SemiBold"
                     Foreground="{ThemeResource AppInkBrush}"
                     Text="JitHub" />
@@ -432,7 +432,7 @@
                                 Grid.Column="0"
                                 VerticalAlignment="Center"
                                 FontFamily="{StaticResource SegoeFluentIcons}"
-                                FontSize="13"
+                                FontSize="{ThemeResource AppFontSize13}"
                                 Foreground="{ThemeResource AppInkSubtleBrush}"
                                 Glyph="&#xE721;"
                                 Visibility="{x:Bind ViewModel.Searching, Converter={StaticResource BoolToVisibilityReverseConverter}, Mode=OneWay}" />
@@ -481,7 +481,7 @@
                                     <TextBlock
                                         x:Uid="PagesShellPageTextBlockCtrl" VerticalAlignment="Center"
                                         FontFamily="{StaticResource AppUiFontFamily}"
-                                        FontSize="11"
+                                        FontSize="{ThemeResource AppFontSize11}"
                                         FontWeight="SemiBold"
                                         Foreground="{ThemeResource AppInkSubtleBrush}"
                                         Text="Ctrl" />
@@ -496,7 +496,7 @@
                                     <TextBlock
                                         x:Uid="PagesShellPageTextBlockK" VerticalAlignment="Center"
                                         FontFamily="{StaticResource AppUiFontFamily}"
-                                        FontSize="11"
+                                        FontSize="{ThemeResource AppFontSize11}"
                                         FontWeight="SemiBold"
                                         Foreground="{ThemeResource AppInkSubtleBrush}"
                                         Text="K" />
@@ -617,7 +617,7 @@
                             <TextBlock
                                 x:Uid="PagesShellPageTextBlockRepositories" VerticalAlignment="Center"
                                 FontFamily="{StaticResource AppUiFontFamily}"
-                                FontSize="15"
+                                FontSize="{ThemeResource AppFontSize15}"
                                 FontWeight="SemiBold"
                                 Foreground="{ThemeResource AppInkBrush}"
                                 Text="Repositories" />
@@ -693,7 +693,7 @@
                                 HorizontalAlignment="Center"
                                 VerticalAlignment="Center"
                                 FontFamily="{StaticResource AppUiFontFamily}"
-                                FontSize="12"
+                                FontSize="{ThemeResource AppFontSize12}"
                                 Foreground="{ThemeResource AppInkSubtleBrush}"
                                 Text="No repositories"
                                 Visibility="{x:Bind ViewModel.IsRepositoryRailEmpty, Converter={StaticResource BoolToVisibilityConverter}, Mode=OneWay}" />
@@ -718,7 +718,7 @@
                         <StackPanel Grid.Row="3" Spacing="6">
                             <TextBlock
                                 FontFamily="{StaticResource AppUiFontFamily}"
-                                FontSize="11"
+                                FontSize="{ThemeResource AppFontSize11}"
                                 Foreground="{ThemeResource AppInkSubtleBrush}"
                                 Text="{x:Bind ViewModel.RepositoryRailStatusText, Mode=OneWay}"
                                 TextTrimming="CharacterEllipsis" />
@@ -736,7 +736,7 @@
                                 <StackPanel Orientation="Horizontal" Spacing="6">
                                     <FontIcon
                                         FontFamily="{StaticResource SegoeFluentIcons}"
-                                        FontSize="12"
+                                        FontSize="{ThemeResource AppFontSize12}"
                                         Glyph="&#xE72C;" />
                                     <TextBlock x:Uid="PagesShellPageTextBlockRetry" Text="Retry" />
                                 </StackPanel>

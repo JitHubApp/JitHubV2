@@ -58,7 +58,7 @@
                 ToolTipService.ToolTip="{Binding LeadingPaneLabel, ElementName=Root}">
                 <FontIcon
                     FontFamily="{StaticResource SegoeFluentIcons}"
-                    FontSize="15"
+                    FontSize="{ThemeResource AppFontSize15}"
                     Glyph="&#xE8FD;" />
             </Button>
             <Button
@@ -73,7 +73,7 @@
                 ToolTipService.ToolTip="{Binding TrailingPaneLabel, ElementName=Root}">
                 <FontIcon
                     FontFamily="{StaticResource SegoeFluentIcons}"
-                    FontSize="15"
+                    FontSize="{ThemeResource AppFontSize15}"
                     Glyph="&#xE9D2;" />
             </Button>
         </StackPanel>

@@ -218,7 +218,7 @@ public sealed class VNextLocalizationContractTests
         Assert.Contains("ApplicationLanguages.PrimaryLanguageOverride = pseudoLanguage", source, StringComparison.Ordinal);
         Assert.DoesNotContain("ApplicationLanguages.PrimaryLanguageOverride = string.Empty", source, StringComparison.Ordinal);
         Assert.DoesNotContain("Windows.ApplicationModel.Resources.Core", source, StringComparison.Ordinal);
-        int launchOptionsIndex = source.IndexOf("CurrentLaunchOptions = LaunchOptions.Parse(args);", StringComparison.Ordinal);
+        int launchOptionsIndex = source.IndexOf("CurrentLaunchOptions = LaunchOptions.Parse(args, GetLaunchArgumentText(activationArguments));", StringComparison.Ordinal);
         int languageOverrideIndex = source.IndexOf("ConfigureAutomationLanguageOverride();", StringComparison.Ordinal);
         int applicationStartIndex = source.IndexOf("Application.Start", StringComparison.Ordinal);
         Assert.True(launchOptionsIndex >= 0 && languageOverrideIndex > launchOptionsIndex);

@@ -179,6 +179,42 @@ internal sealed class LayoutSnapshot : System.IDisposable
         }
     }
 
+    /// <summary>
+    /// Remeasures the committed block tree after an asynchronous image changes its
+    /// intrinsic size. Reusing the current boxes preserves resolver-partitioned image
+    /// state; rebuilding would create a fresh unresolved box and restart the load.
+    /// </summary>
+    internal void RelayoutMeasuredBlocks(float availableWidth, CancellationToken cancellationToken)
+    {
+        lock (_layoutLock)
+        {
+            _availableWidth = Math.Max(1f, availableWidth);
+            float y = 0;
+            for (int n = 0; n < Blocks.Count; n++)
+            {
+                cancellationToken.ThrowIfCancellationRequested();
+                BlockBox block = Blocks[n];
+                bool measured = !_lazyLayoutEnabled ||
+                    (_measuredTopLevelBlocks is not null && _measuredTopLevelBlocks[n]);
+                if (measured)
+                {
+                    block.ThrowIfCancellationRequested();
+                    float height = block.Measure(_availableWidth);
+                    block.Arrange(0, y, _availableWidth);
+                    y += height;
+                }
+                else
+                {
+                    float estimate = EstimateHeight(block);
+                    block.ArrangeEstimated(0, y, _availableWidth, estimate);
+                    y += estimate;
+                }
+            }
+
+            Size = new Size(_availableWidth, y);
+        }
+    }
+
     internal bool IsTopLevelBlockMeasured(BlockBox block)
     {
         lock (_layoutLock)
@@ -295,7 +331,8 @@ internal sealed class LayoutSnapshot : System.IDisposable
 
     /// <summary>
     /// Walks the full block tree and returns all keyboard-focusable items
-    /// (<see cref="LinkRun"/> and <see cref="InlineEmbedRun"/> instances) in
+    /// (<see cref="LinkRun"/>, linked <see cref="InlineImageRun"/>, and
+    /// <see cref="InlineEmbedRun"/> instances) in
     /// document order. Used by <see cref="Controls.MarkdownRendererControl"/> for
     /// Tab/Shnft+Tab keyboard navngatnon.
     /// </summary>
@@ -321,7 +358,7 @@ internal sealed class LayoutSnapshot : System.IDisposable
             case InlineContainerBox ncb:
                 foreach (var run in ncb.Runs)
                 {
-                    if (run is LinkRun)
+                    if (run is LinkRun or InlineImageRun { IsLinked: true })
                         list.Add(new FocusableItem(ncb.BlockIndex, run.InlineIndex, FocusableItemKind.Link));
                     else if (run is InlineEmbedRun)
                         list.Add(new FocusableItem(ncb.BlockIndex, run.InlineIndex, FocusableItemKind.InlineEmbed));

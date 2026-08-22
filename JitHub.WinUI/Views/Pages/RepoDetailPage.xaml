@@ -35,7 +35,8 @@
             IsClosable="False"
             IsOpen="{x:Bind ViewModel.IsActionStatusVisible, Mode=OneWay}"
             Message="{x:Bind ViewModel.ActionStatusMessage, Mode=OneWay}"
-            Severity="{x:Bind RepositoryActionStatusSeverity, Mode=OneWay}">
+            Severity="{x:Bind RepositoryActionStatusSeverity, Mode=OneWay}"
+            Style="{StaticResource AppStatusInfoBarStyle}">
             <InfoBar.ActionButton>
                 <Button
                     x:Uid="PagesRepoDetailPageRepoDetailRetryForkButton" AutomationProperties.AutomationId="RepoDetailRetryForkButton"
@@ -92,7 +93,7 @@
                     Background="{ThemeResource AppSurfaceBrush}"
                     BorderBrush="{ThemeResource AppOutlineBrush}"
                     BorderThickness="1"
-                    CornerRadius="8"
+                    CornerRadius="{ThemeResource AppRadiusMedium}"
                     ToolTipService.ToolTip="{x:Bind ViewModel.RepositoryFullName, Mode=OneWay}"
                     Visibility="Collapsed">
                     <Grid
@@ -125,7 +126,7 @@
                             MaxWidth="220"
                             VerticalAlignment="Center"
                             FontFamily="{ThemeResource AppUiFontFamily}"
-                            FontSize="14"
+                            FontSize="{ThemeResource AppFontSize14}"
                             FontWeight="SemiBold"
                             Foreground="{ThemeResource AppInkBrush}"
                             Text="{x:Bind ViewModel.RepositoryFullName, Mode=OneWay}"
@@ -140,12 +141,12 @@
                             Background="{ThemeResource AppCanvasInsetBrush}"
                             BorderBrush="{ThemeResource AppHairlineBrush}"
                             BorderThickness="1"
-                            CornerRadius="5">
+                            CornerRadius="{ThemeResource AppRadiusSmall}">
                             <TextBlock
                                 HorizontalAlignment="Center"
                                 VerticalAlignment="Center"
                                 FontFamily="{ThemeResource AppUiFontFamily}"
-                                FontSize="11"
+                                FontSize="{ThemeResource AppFontSize11}"
                                 FontWeight="SemiBold"
                                 Foreground="{ThemeResource AppInkMutedBrush}"
                                 Text="{x:Bind ViewModel.RepositoryStatusText, Mode=OneWay}"
@@ -213,7 +214,7 @@
                             Style="{StaticResource AppToolbarButtonStyle}"
                             ToolTipService.ToolTip="Repository commands"
                             Visibility="Collapsed">
-                            <FontIcon FontFamily="{StaticResource SegoeFluentIcons}" FontSize="14" Glyph="&#xE712;" />
+                            <FontIcon FontFamily="{StaticResource SegoeFluentIcons}" FontSize="{ThemeResource AppFontSize14}" Glyph="&#xE712;" />
                         </Button>
                         <muxc:ProgressRing
                             VerticalAlignment="Center"
@@ -239,14 +240,14 @@
                                     <TextBlock
                                         VerticalAlignment="Center"
                                         FontFamily="{ThemeResource AppMonoFontFamily}"
-                                        FontSize="12"
+                                        FontSize="{ThemeResource AppFontSize12}"
                                         Text="{x:Bind ViewModel.SelectedBranchName, Mode=OneWay}"
                                         TextTrimming="CharacterEllipsis" />
                                     <FontIcon
                                         Grid.Column="1"
                                         VerticalAlignment="Center"
                                         FontFamily="{StaticResource SegoeFluentIcons}"
-                                        FontSize="10"
+                                        FontSize="{ThemeResource AppFontSize10}"
                                         Glyph="&#xE70D;" />
                                 </Grid>
                                 <Button.Flyout>
@@ -291,7 +292,7 @@
                                                                 <TextBlock
                                                                     Padding="8 6"
                                                                     FontFamily="{ThemeResource AppMonoFontFamily}"
-                                                                    FontSize="12"
+                                                                    FontSize="{ThemeResource AppFontSize12}"
                                                                     Text="{x:Bind Name}" />
                                                             </DataTemplate>
                                                         </ListView.ItemTemplate>
@@ -309,7 +310,7 @@
                                 AutomationProperties.AutomationId="RepoDetailBranchStatus"
                                 AutomationProperties.Name="{x:Bind ViewModel.BranchStatusText, Mode=OneWay}"
                                 FontFamily="{ThemeResource AppUiFontFamily}"
-                                FontSize="12"
+                                FontSize="{ThemeResource AppFontSize12}"
                                 Foreground="{ThemeResource AppInkMutedBrush}"
                                 Text="{x:Bind ViewModel.BranchStatusText, Mode=OneWay}"
                                 TextTrimming="CharacterEllipsis"
@@ -366,7 +367,7 @@
                             Style="{StaticResource AppToolbarButtonStyle}"
                             ToolTipService.ToolTip="Repository actions"
                             Visibility="Collapsed">
-                            <FontIcon FontFamily="{StaticResource SegoeFluentIcons}" FontSize="14" Glyph="&#xE712;" />
+                            <FontIcon FontFamily="{StaticResource SegoeFluentIcons}" FontSize="{ThemeResource AppFontSize14}" Glyph="&#xE712;" />
                             <Button.Flyout>
                                 <MenuFlyout>
                                     <MenuFlyoutItem

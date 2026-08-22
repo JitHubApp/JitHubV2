@@ -6,6 +6,8 @@ public enum CommitActionKind
 {
     Comment,
     CopySha,
+    CopyDiff,
+    CopyPath,
     BrowseFiles
 }
 
@@ -34,6 +36,8 @@ public static class CommitActionTelemetry
                     {
                         CommitActionKind.Comment => "comment",
                         CommitActionKind.CopySha => "copy_sha",
+                        CommitActionKind.CopyDiff => TelemetryTaxonomy.Actions.CopyDiff,
+                        CommitActionKind.CopyPath => TelemetryTaxonomy.Actions.CopyPath,
                         CommitActionKind.BrowseFiles => "browse_files",
                         _ => "unknown"
                     },

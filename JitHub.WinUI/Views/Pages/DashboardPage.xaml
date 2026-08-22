@@ -53,7 +53,7 @@
                 <FontIcon
                     VerticalAlignment="Center"
                     FontFamily="{StaticResource SegoeFluentIcons}"
-                    FontSize="18"
+                    FontSize="{ThemeResource AppFontSize18}"
                     Foreground="{ThemeResource AppAccentBrush}"
                     Glyph="{x:Bind Glyph}" />
                 <TextBlock
@@ -66,7 +66,7 @@
                     Grid.Column="2"
                     VerticalAlignment="Center"
                     FontFamily="{ThemeResource AppUiFontFamily}"
-                    FontSize="15"
+                    FontSize="{ThemeResource AppFontSize15}"
                     FontWeight="SemiBold"
                     Foreground="{ThemeResource AppInkBrush}"
                     Text="{x:Bind Value}" />
@@ -112,7 +112,7 @@
                             <TextBlock
                                 Grid.Column="1"
                                 FontFamily="{ThemeResource AppUiFontFamily}"
-                                FontSize="13"
+                                FontSize="{ThemeResource AppFontSize13}"
                                 FontWeight="SemiBold"
                                 Foreground="{ThemeResource AppInkBrush}"
                                 Text="{x:Bind FullName}"
@@ -179,7 +179,7 @@
                     <StackPanel Grid.Column="1" VerticalAlignment="Top" Spacing="3">
                         <TextBlock
                             FontFamily="{ThemeResource AppUiFontFamily}"
-                            FontSize="13"
+                            FontSize="{ThemeResource AppFontSize13}"
                             FontWeight="SemiBold"
                             Foreground="{ThemeResource AppInkBrush}"
                             Text="{x:Bind FullName}"
@@ -232,14 +232,14 @@
                             HorizontalAlignment="Center"
                             VerticalAlignment="Center"
                             FontFamily="{StaticResource SegoeFluentIcons}"
-                            FontSize="13"
+                            FontSize="{ThemeResource AppFontSize13}"
                             Foreground="{ThemeResource AppAccentBrush}"
                             Glyph="{x:Bind Glyph}" />
                     </Border>
                     <StackPanel Grid.Column="1" Spacing="1">
                         <TextBlock
                             FontFamily="{ThemeResource AppUiFontFamily}"
-                            FontSize="13"
+                            FontSize="{ThemeResource AppFontSize13}"
                             FontWeight="SemiBold"
                             Foreground="{ThemeResource AppInkBrush}"
                             MaxLines="1"
@@ -277,12 +277,12 @@
                         <FontIcon
                             HorizontalAlignment="Left"
                             FontFamily="{StaticResource SegoeFluentIcons}"
-                            FontSize="19"
+                            FontSize="{ThemeResource AppFontSize19}"
                             Foreground="{Binding Tone, Converter={StaticResource ActivityToneToBrushConverter}}"
                             Glyph="{x:Bind Glyph}" />
                         <TextBlock
                             FontFamily="{ThemeResource AppUiFontFamily}"
-                            FontSize="12"
+                            FontSize="{ThemeResource AppFontSize12}"
                             FontWeight="SemiBold"
                             Foreground="{ThemeResource AppInkBrush}"
                             MaxLines="2"
@@ -316,13 +316,13 @@
                             Margin="0,1,0,0"
                             VerticalAlignment="Top"
                             FontFamily="{StaticResource SegoeFluentIcons}"
-                            FontSize="23"
+                            FontSize="{ThemeResource AppFontSize23}"
                             Foreground="{ThemeResource AppAccentBrush}"
                             Glyph="{x:Bind Glyph}" />
                         <TextBlock
                             Grid.Column="1"
                             FontFamily="{ThemeResource AppDisplayFontFamily}"
-                            FontSize="22"
+                            FontSize="{ThemeResource AppFontSize22}"
                             Foreground="{ThemeResource AppInkBrush}"
                             Text="{x:Bind Title}" />
                     </Grid>
@@ -409,7 +409,7 @@
                         Visibility="{x:Bind HasViewAll, Converter={StaticResource BoolToVisibilityConverter}}">
                         <TextBlock
                             FontFamily="{ThemeResource AppUiFontFamily}"
-                            FontSize="13"
+                            FontSize="{ThemeResource AppFontSize13}"
                             Foreground="{ThemeResource AppInkMutedBrush}"
                             Text="{x:Bind ViewAllText}" />
                     </Button>
@@ -482,7 +482,7 @@
                         Style="{StaticResource DashboardHeaderActionButtonStyle}"
                         ToolTipService.ToolTip="Customize Home">
                         <StackPanel Orientation="Horizontal" Spacing="7">
-                            <FontIcon FontFamily="{StaticResource SegoeFluentIcons}" FontSize="13" Glyph="&#xE771;" />
+                            <FontIcon FontFamily="{StaticResource SegoeFluentIcons}" FontSize="{ThemeResource AppFontSize13}" Glyph="&#xE771;" />
                             <TextBlock x:Uid="PagesDashboardPageDashboardCustomizeButtonText" x:Name="DashboardCustomizeButtonText" Text="Customize" />
                         </StackPanel>
                     </Button>
@@ -495,7 +495,7 @@
                         ToolTipService.ToolTip="Overview"
                         Visibility="Collapsed">
                         <StackPanel Orientation="Horizontal" Spacing="7">
-                            <FontIcon FontFamily="{StaticResource SegoeFluentIcons}" FontSize="14" Glyph="&#xE700;" />
+                            <FontIcon FontFamily="{StaticResource SegoeFluentIcons}" FontSize="{ThemeResource AppFontSize14}" Glyph="&#xE700;" />
                             <TextBlock x:Uid="PagesDashboardPageDashboardOverviewButtonText" x:Name="DashboardOverviewButtonText" Text="Overview" Visibility="Collapsed" />
                         </StackPanel>
                     </Button>
@@ -606,7 +606,7 @@
                         <TextBlock
                             x:Uid="PagesDashboardPageTextBlockOverview" VerticalAlignment="Center"
                             FontFamily="{ThemeResource AppDisplayFontFamily}"
-                            FontSize="22"
+                            FontSize="{ThemeResource AppFontSize22}"
                             Foreground="{ThemeResource AppInkBrush}"
                             Text="Overview" />
                         <Button
@@ -624,7 +624,7 @@
                             ToolTipService.ToolTip="Close overview">
                             <TextBlock
                                 x:Uid="PagesDashboardPageTextBlockX" FontFamily="{ThemeResource AppUiFontFamily}"
-                                FontSize="16"
+                                FontSize="{ThemeResource AppFontSize16}"
                                 FontWeight="Bold"
                                 Foreground="{ThemeResource AppInkBrush}"
                                 Text="X" />

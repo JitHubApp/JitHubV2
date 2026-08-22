@@ -1,3 +1,6 @@
+using System.Collections.Generic;
+using System.Linq;
+
 namespace JitHub.WinUI;
 
 internal sealed record LaunchOptions(
@@ -5,8 +8,13 @@ internal sealed record LaunchOptions(
     string? Scenario = null,
     string? Theme = null,
     string? Repository = null,
-    string? Branch = null)
+    string? Branch = null,
+    bool MarkdownLifecycleFixture = false,
+    string? MarkdownLifecycleHost = null,
+    string? MarkdownCorpusPath = null)
 {
+    private const int MaximumActivationArgumentLength = 32_767;
+    private const int MaximumActivationArgumentCount = 128;
     private const string DefaultRepository = "JitHubApp/JitHubV2";
 
     public bool HasPageOverride => !string.IsNullOrWhiteSpace(Page);
@@ -37,20 +45,20 @@ internal sealed record LaunchOptions(
     public string RepositoryFullName =>
         string.IsNullOrWhiteSpace(Repository) ? DefaultRepository : Repository.Trim();
 
-    public static LaunchOptions Parse(string[]? args)
+    public static LaunchOptions Parse(string[]? args, string? activationArguments = null)
     {
         string? page = null;
         string? scenario = null;
         string? theme = null;
         string? repository = null;
         string? branch = null;
+        bool markdownLifecycleFixture = false;
+        string? markdownLifecycleHost = null;
+        string? markdownCorpusPath = null;
 
-        if (args is null)
-        {
-            args = [];
-        }
-
-        foreach (string rawArg in args)
+        IEnumerable<string> effectiveArguments = TokenizeActivationArguments(activationArguments)
+            .Concat(args ?? []);
+        foreach (string rawArg in effectiveArguments)
         {
             string arg = rawArg.Trim();
             if (string.IsNullOrWhiteSpace(arg))
@@ -97,6 +105,26 @@ internal sealed record LaunchOptions(
             if (arg.StartsWith("--branch=", System.StringComparison.OrdinalIgnoreCase))
             {
                 branch = arg[9..].Trim();
+                continue;
+            }
+
+            if (string.Equals(arg, "--markdown-lifecycle-fixture", System.StringComparison.OrdinalIgnoreCase))
+            {
+                markdownLifecycleFixture = true;
+                continue;
+            }
+
+            const string markdownHostPrefix = "--markdown-lifecycle-host=";
+            if (arg.StartsWith(markdownHostPrefix, System.StringComparison.OrdinalIgnoreCase))
+            {
+                markdownLifecycleHost = arg[markdownHostPrefix.Length..].Trim();
+                continue;
+            }
+
+            const string markdownCorpusPrefix = "--markdown-corpus=";
+            if (arg.StartsWith(markdownCorpusPrefix, System.StringComparison.OrdinalIgnoreCase))
+            {
+                markdownCorpusPath = arg[markdownCorpusPrefix.Length..].Trim();
             }
         }
 
@@ -106,6 +134,114 @@ internal sealed record LaunchOptions(
         repository ??= System.Environment.GetEnvironmentVariable("JITHUB_PREVIEW_REPOSITORY");
         branch ??= System.Environment.GetEnvironmentVariable("JITHUB_PREVIEW_BRANCH");
 
-        return new LaunchOptions(page, scenario, theme, repository, branch);
+        return new LaunchOptions(
+            page,
+            scenario,
+            theme,
+            repository,
+            branch,
+            markdownLifecycleFixture,
+            markdownLifecycleHost,
+            markdownCorpusPath);
+    }
+
+    internal static IReadOnlyList<string> TokenizeActivationArguments(string? commandLine)
+    {
+        if (string.IsNullOrWhiteSpace(commandLine) || commandLine.Length > MaximumActivationArgumentLength)
+        {
+            return [];
+        }
+
+        List<string> arguments = [];
+        int index = 0;
+        while (index < commandLine.Length && arguments.Count < MaximumActivationArgumentCount)
+        {
+            while (index < commandLine.Length && char.IsWhiteSpace(commandLine[index]))
+            {
+                index++;
+            }
+
+            if (index >= commandLine.Length)
+            {
+                break;
+            }
+
+            System.Text.StringBuilder argument = new();
+            bool inQuotes = false;
+            bool started = false;
+            while (index < commandLine.Length)
+            {
+                char current = commandLine[index];
+                if (!inQuotes && char.IsWhiteSpace(current))
+                {
+                    break;
+                }
+
+                if (current == '\\')
+                {
+                    int slashStart = index;
+                    while (index < commandLine.Length && commandLine[index] == '\\')
+                    {
+                        index++;
+                    }
+
+                    int slashCount = index - slashStart;
+                    if (index < commandLine.Length && commandLine[index] == '"')
+                    {
+                        argument.Append('\\', slashCount / 2);
+                        if (slashCount % 2 == 0)
+                        {
+                            inQuotes = !inQuotes;
+                        }
+                        else
+                        {
+                            argument.Append('"');
+                        }
+
+                        index++;
+                    }
+                    else
+                    {
+                        argument.Append('\\', slashCount);
+                    }
+
+                    started = true;
+                    continue;
+                }
+
+                if (current == '"')
+                {
+                    if (inQuotes && index + 1 < commandLine.Length && commandLine[index + 1] == '"')
+                    {
+                        argument.Append('"');
+                        index += 2;
+                    }
+                    else
+                    {
+                        inQuotes = !inQuotes;
+                        index++;
+                    }
+
+                    started = true;
+                    continue;
+                }
+
+                argument.Append(current);
+                started = true;
+                index++;
+            }
+
+            if (started)
+            {
+                arguments.Add(argument.ToString());
+            }
+
+            while (index < commandLine.Length && char.IsWhiteSpace(commandLine[index]))
+            {
+                index++;
+            }
+        }
+
+        return arguments;
     }
 }

@@ -401,7 +401,7 @@ public sealed partial class GistsPage : Page
         fileRail.Children.Add(new TextBlock
         {
             Text = T("Gists/Editor/Files", "Files"),
-            FontSize = 13,
+            FontSize = (double)Application.Current.Resources["AppFontSize13"],
             FontWeight = Microsoft.UI.Text.FontWeights.SemiBold,
             Foreground = (Microsoft.UI.Xaml.Media.Brush)Application.Current.Resources["AppInkBrush"]
         });
@@ -449,7 +449,7 @@ public sealed partial class GistsPage : Page
         content.HorizontalAlignment = HorizontalAlignment.Stretch;
         content.VerticalAlignment = VerticalAlignment.Stretch;
         content.FontFamily = (Microsoft.UI.Xaml.Media.FontFamily)Application.Current.Resources["AppMonoFontFamily"];
-        content.FontSize = 13;
+        content.FontSize = (double)Application.Current.Resources["AppFontSize13"];
         TextBlock oversizedStatus = new()
         {
             Text = T("Gists/Editor/TooLarge", "This file is too large to edit here. Its complete content is preserved; use Save as from the detail view to work with the full file."),
@@ -461,7 +461,7 @@ public sealed partial class GistsPage : Page
         TextBlock contentLabel = new()
         {
             Text = fileContentText,
-            FontSize = 13,
+            FontSize = (double)Application.Current.Resources["AppFontSize13"],
             FontWeight = Microsoft.UI.Text.FontWeights.SemiBold,
             Foreground = (Microsoft.UI.Xaml.Media.Brush)Application.Current.Resources["AppInkBrush"]
         };
@@ -618,7 +618,7 @@ public sealed partial class GistsPage : Page
             Content = new FontIcon
             {
                 FontFamily = (Microsoft.UI.Xaml.Media.FontFamily)Application.Current.Resources["SegoeFluentIcons"],
-                FontSize = 14,
+                FontSize = (double)Application.Current.Resources["AppFontSize14"],
                 Glyph = glyph
             }
         };
@@ -724,18 +724,15 @@ public sealed partial class GistsPage : Page
             return;
         }
 
-        try
+        if (PlatformHelper.CopyString(url))
         {
-            DataPackage package = new();
-            package.SetText(url);
-            Clipboard.SetContent(package);
             ViewModel.TrackCopySuccess();
+            return;
         }
-        catch (Exception ex)
-        {
-            System.Diagnostics.Debug.WriteLine($"Could not copy gist link: {ex}");
-            ViewModel.ReportActionError(T("Gists/Error/CopyLink", "The gist link could not be copied."), "copy_link");
-        }
+
+        ViewModel.ReportActionError(
+            T("Gists/Error/CopyLink", "The gist link could not be copied."),
+            "copy_link");
     }
 
     private void ViewModel_CopyFileRequested(object? sender, EventArgs e)
@@ -745,18 +742,15 @@ public sealed partial class GistsPage : Page
             return;
         }
 
-        try
+        if (PlatformHelper.CopyString(content))
         {
-            DataPackage package = new();
-            package.SetText(content);
-            Clipboard.SetContent(package);
             ViewModel.TrackCopyFileSuccess();
+            return;
         }
-        catch (Exception ex)
-        {
-            System.Diagnostics.Debug.WriteLine($"Could not copy Gist file content: {ex}");
-            ViewModel.ReportActionError(T("Gists/Error/CopyFile", "The Gist file content could not be copied."), "copy_file");
-        }
+
+        ViewModel.ReportActionError(
+            T("Gists/Error/CopyFile", "The Gist file content could not be copied."),
+            "copy_file");
     }
 
     private async void ViewModel_SaveFileRequested(object? sender, EventArgs e)

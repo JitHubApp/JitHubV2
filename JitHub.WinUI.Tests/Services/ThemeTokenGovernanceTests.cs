@@ -1,6 +1,7 @@
 using System.Text.RegularExpressions;
 using System.Xml;
 using System.Xml.Linq;
+using System.Globalization;
 using Xunit;
 
 namespace JitHub.WinUI.Tests.Services;
@@ -117,6 +118,106 @@ public sealed class ThemeTokenGovernanceTests
         }
 
         Assert.True(violations.Count == 0, $"Literal visual colors bypass theme tokens:{Environment.NewLine}{string.Join(Environment.NewLine, violations)}");
+    }
+
+    [Fact]
+    public void AppXamlUsesTypographyAndCornerTokensInsteadOfLiteralMetrics()
+    {
+        string productRoot = Path.Combine(FindRepositoryRoot(), "JitHub.WinUI");
+        string typographyTokens = Path.Combine(productRoot, "Styles", "Foundation", "Tokens.Typography.xaml");
+        string cornerTokens = Path.Combine(productRoot, "Styles", "Foundation", "Tokens.Corners.xaml");
+        List<string> violations = [];
+
+        foreach (string path in Directory.EnumerateFiles(productRoot, "*.xaml", SearchOption.AllDirectories)
+                     .Where(path => !path.Contains($"{Path.DirectorySeparatorChar}obj{Path.DirectorySeparatorChar}", StringComparison.OrdinalIgnoreCase))
+                     .Where(path => !string.Equals(path, typographyTokens, StringComparison.OrdinalIgnoreCase))
+                     .Where(path => !string.Equals(path, cornerTokens, StringComparison.OrdinalIgnoreCase)))
+        {
+            XDocument document = XDocument.Load(path, LoadOptions.SetLineInfo);
+            foreach (XElement element in document.Descendants())
+            {
+                foreach (XAttribute attribute in element.Attributes().Where(attribute =>
+                             attribute.Name.LocalName == "FontSize" ||
+                             attribute.Name.LocalName.EndsWith("CornerRadius", StringComparison.Ordinal)))
+                {
+                    AddLiteralMetricViolation(path, element, attribute.Name.LocalName, attribute.Value, violations);
+                }
+
+                if (element.Name.LocalName == "Setter" &&
+                    (string?)element.Attribute("Property") is { } property &&
+                    (property == "FontSize" || property.EndsWith("CornerRadius", StringComparison.Ordinal)))
+                {
+                    AddLiteralMetricViolation(
+                        path,
+                        element,
+                        property,
+                        (string?)element.Attribute("Value") ?? string.Empty,
+                        violations);
+                }
+            }
+        }
+
+        Assert.True(
+            violations.Count == 0,
+            $"Literal typography or corner metrics bypass theme tokens:{Environment.NewLine}{string.Join(Environment.NewLine, violations)}");
+    }
+
+    [Fact]
+    public void RuntimeCreatedUiUsesTypographyAndCornerTokensInsteadOfLiterals()
+    {
+        string productRoot = Path.Combine(FindRepositoryRoot(), "JitHub.WinUI");
+        Regex literalFontSize = new(
+            @"\bFontSize\s*=\s*\d+(?:\.\d+)?\b",
+            RegexOptions.CultureInvariant);
+        Regex literalCornerRadius = new(
+            @"\bCornerRadius\s*=\s*new\s+CornerRadius\(\s*\d+(?:\.\d+)?\s*\)",
+            RegexOptions.CultureInvariant);
+        List<string> violations = [];
+
+        foreach (string path in Directory.EnumerateFiles(productRoot, "*.cs", SearchOption.AllDirectories)
+                     .Where(path => !path.Contains($"{Path.DirectorySeparatorChar}obj{Path.DirectorySeparatorChar}", StringComparison.OrdinalIgnoreCase)))
+        {
+            string[] lines = File.ReadAllLines(path);
+            for (int index = 0; index < lines.Length; index++)
+            {
+                if (literalFontSize.IsMatch(lines[index]) || literalCornerRadius.IsMatch(lines[index]))
+                {
+                    violations.Add($"{Path.GetRelativePath(FindRepositoryRoot(), path)}:{index + 1} -> {lines[index].Trim()}");
+                }
+            }
+        }
+
+        Assert.True(
+            violations.Count == 0,
+            $"Runtime-created UI bypasses typography or corner tokens:{Environment.NewLine}{string.Join(Environment.NewLine, violations)}");
+    }
+
+    [Fact]
+    public void EveryViewInfoBarUsesAnAppOwnedSemanticStyle()
+    {
+        string root = FindRepositoryRoot();
+        string viewsRoot = Path.Combine(root, "JitHub.WinUI", "Views");
+        List<string> violations = [];
+
+        foreach (string path in Directory.EnumerateFiles(viewsRoot, "*.xaml", SearchOption.AllDirectories))
+        {
+            XDocument document = XDocument.Load(path, LoadOptions.SetLineInfo);
+            foreach (XElement infoBar in document.Descendants().Where(element => element.Name.LocalName == "InfoBar"))
+            {
+                string? style = (string?)infoBar.Attribute("Style");
+                if (style is "{StaticResource AppStatusInfoBarStyle}" or "{StaticResource AppErrorInfoBarStyle}")
+                {
+                    continue;
+                }
+
+                IXmlLineInfo lineInfo = infoBar;
+                violations.Add($"{Path.GetRelativePath(root, path)}:{lineInfo.LineNumber} -> {style ?? "missing Style"}");
+            }
+        }
+
+        Assert.True(
+            violations.Count == 0,
+            $"InfoBars bypass the app control catalog:{Environment.NewLine}{string.Join(Environment.NewLine, violations)}");
     }
 
     [Fact]
@@ -246,6 +347,26 @@ public sealed class ThemeTokenGovernanceTests
 
         IXmlLineInfo lineInfo = element;
         violations.Add($"{Path.GetRelativePath(FindRepositoryRoot(), path)}:{lineInfo.LineNumber} -> {candidate}");
+    }
+
+    private static void AddLiteralMetricViolation(
+        string path,
+        XElement element,
+        string property,
+        string value,
+        List<string> violations)
+    {
+        string candidate = value.Trim();
+        bool isLiteral = candidate.Split(',', StringSplitOptions.TrimEntries | StringSplitOptions.RemoveEmptyEntries)
+            .All(part => double.TryParse(part, NumberStyles.Float, CultureInfo.InvariantCulture, out _));
+        if (!isLiteral)
+        {
+            return;
+        }
+
+        IXmlLineInfo lineInfo = element;
+        violations.Add(
+            $"{Path.GetRelativePath(FindRepositoryRoot(), path)}:{lineInfo.LineNumber} -> {property}=\"{candidate}\"");
     }
 
     private static string FindRepositoryRoot()

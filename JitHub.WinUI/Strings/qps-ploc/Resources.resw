@@ -1386,6 +1386,9 @@
   <data name="RepoManage/LinkCopiedStatus" xml:space="preserve">
     <value>⟦Repository link copied. ~~~~~~~~~⟧</value>
   </data>
+  <data name="RepoManage/LinkCopyFailedStatus" xml:space="preserve">
+    <value>⟦The repository link could not be copied. ~~~~~~~~~~~~~~~⟧</value>
+  </data>
   <data name="RepoManage/SelectionUnavailable" xml:space="preserve">
     <value>⟦No repositories in this view can be deleted with the current account permissions. ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~⟧</value>
   </data>
@@ -1661,6 +1664,18 @@
   </data>
   <data name="ControlsCommonMarkdownViewerMarkdownRemoteImageInfoBar.Title" xml:space="preserve">
     <value>⟦Remote images are protected ~~~~~~~~~~⟧</value>
+  </data>
+  <data name="ControlsCommonMarkdownViewerMarkdownRenderErrorInfoBar.Message" xml:space="preserve">
+    <value>⟦Try again. The rest of the page is still available. ~~~~~~~~~~~~~~~~~~⟧</value>
+  </data>
+  <data name="ControlsCommonMarkdownViewerMarkdownRenderErrorInfoBar.Title" xml:space="preserve">
+    <value>⟦Markdown could not be displayed ~~~~~~~~~~~⟧</value>
+  </data>
+  <data name="ControlsCommonMarkdownViewerMarkdownRetryRenderButton.AutomationProperties.Name" xml:space="preserve">
+    <value>⟦Try rendering Markdown again ~~~~~~~~~~⟧</value>
+  </data>
+  <data name="ControlsCommonMarkdownViewerMarkdownRetryRenderButton.Content" xml:space="preserve">
+    <value>⟦Try again ~~~~~~⟧</value>
   </data>
   <data name="ControlsFilterTextFilterPresenterXBindAutomationIdModeOn.PlaceholderText" xml:space="preserve">
     <value>⟦Type to filter ~~~~~~⟧</value>
@@ -4695,6 +4710,9 @@
   <data name="Stars/Status/LinkCopied" xml:space="preserve">
     <value>⟦Repository link copied. ~~~~~~~~~⟧</value>
   </data>
+  <data name="Stars/Status/LinkCopyFailed" xml:space="preserve">
+    <value>⟦The repository link could not be copied. ~~~~~~~~~~~~~~~⟧</value>
+  </data>
   <data name="Stars/Status/LoadFailed" xml:space="preserve">
     <value>⟦Stars could not be loaded. ~~~~~~~~~~⟧</value>
   </data>
@@ -6038,5 +6056,11 @@
   </data>
   <data name="RepoCode/Csv/RowAutomationName" xml:space="preserve">
     <value>⟦Row {0} ~~~~~~⟧</value>
+  </data>
+  <data name="RepoIssue.CommentMutationUnexpectedError" xml:space="preserve">
+    <value>⟦JitHub could not update this comment. ~~~~~~~~~~~~~⟧</value>
+  </data>
+  <data name="RepoPullRequest.CommentMutationUnexpectedError" xml:space="preserve">
+    <value>⟦JitHub could not update this comment. ~~~~~~~~~~~~~⟧</value>
   </data>
 </root>

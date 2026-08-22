@@ -48,7 +48,7 @@
                             Grid.Column="1"
                             VerticalAlignment="Center"
                             FontFamily="{ThemeResource AppUiFontFamily}"
-                            FontSize="13"
+                            FontSize="{ThemeResource AppFontSize13}"
                             FontWeight="SemiBold"
                             Foreground="{ThemeResource AppInkBrush}"
                             Text="{x:Bind AuthorDisplayName}" />
@@ -136,7 +136,7 @@
                         Style="{StaticResource AppToolbarButtonStyle}"
                         ToolTipService.ToolTip="Issues"
                         Visibility="Collapsed">
-                        <FontIcon FontFamily="{StaticResource SegoeFluentIcons}" FontSize="14" Glyph="&#xE8FD;" />
+                        <FontIcon FontFamily="{StaticResource SegoeFluentIcons}" FontSize="{ThemeResource AppFontSize14}" Glyph="&#xE8FD;" />
                     </Button>
                     <StackPanel
                         x:Name="RepoIssuesDetailTitleHost"
@@ -147,7 +147,7 @@
                             labs:TransitionHelper.Id="IssueTitle"
                             AutomationProperties.AutomationId="RepoIssuesDetailTitle"
                             FontFamily="{ThemeResource AppDisplayFontFamily}"
-                            FontSize="25"
+                            FontSize="{ThemeResource AppFontSize25}"
                             Foreground="{ThemeResource AppInkBrush}"
                             MinHeight="64"
                             HorizontalAlignment="Stretch"
@@ -164,7 +164,7 @@
                             </Grid.ColumnDefinitions>
                             <TextBlock
                                 FontFamily="{ThemeResource AppMonoFontFamily}"
-                                FontSize="12"
+                                FontSize="{ThemeResource AppFontSize12}"
                                 Foreground="{ThemeResource AppAccentBrush}"
                                 Text="{x:Bind ViewModel.SelectedIssueNumberText, Mode=OneWay}" />
                             <TextBlock
@@ -222,7 +222,7 @@
                             Style="{StaticResource AppToolbarButtonStyle}"
                             ToolTipService.ToolTip="Inspector"
                             Visibility="Collapsed">
-                            <FontIcon FontFamily="{StaticResource SegoeFluentIcons}" FontSize="14" Glyph="&#xE9D2;" />
+                            <FontIcon FontFamily="{StaticResource SegoeFluentIcons}" FontSize="{ThemeResource AppFontSize14}" Glyph="&#xE9D2;" />
                         </Button>
                     </StackPanel>
                     <StackPanel
@@ -242,7 +242,7 @@
                             AutomationProperties.Name="More issue actions"
                             Style="{StaticResource AppToolbarButtonStyle}"
                             ToolTipService.ToolTip="More issue actions">
-                            <FontIcon FontFamily="{StaticResource SegoeFluentIcons}" FontSize="15" Glyph="&#xE712;" />
+                            <FontIcon FontFamily="{StaticResource SegoeFluentIcons}" FontSize="{ThemeResource AppFontSize15}" Glyph="&#xE712;" />
                             <DropDownButton.Flyout>
                                 <MenuFlyout>
                                     <MenuFlyoutItem
@@ -281,7 +281,7 @@
                             Style="{StaticResource AppToolbarButtonStyle}"
                             ToolTipService.ToolTip="Inspector"
                             Visibility="Collapsed">
-                            <FontIcon FontFamily="{StaticResource SegoeFluentIcons}" FontSize="14" Glyph="&#xE9D2;" />
+                            <FontIcon FontFamily="{StaticResource SegoeFluentIcons}" FontSize="{ThemeResource AppFontSize14}" Glyph="&#xE9D2;" />
                         </Button>
                     </StackPanel>
                 </Grid>
@@ -329,7 +329,7 @@
                                         Grid.Column="1"
                                         VerticalAlignment="Center"
                                         FontFamily="{ThemeResource AppUiFontFamily}"
-                                        FontSize="13"
+                                        FontSize="{ThemeResource AppFontSize13}"
                                         FontWeight="SemiBold"
                                         Foreground="{ThemeResource AppInkBrush}"
                                         Text="{x:Bind ViewModel.SelectedIssueAuthorDisplayName, Mode=OneWay}" />
@@ -374,7 +374,7 @@
                             <TextBlock
                                 x:Uid="PagesRepoIssuePageTextBlockComments"
                                 FontFamily="{ThemeResource AppDisplayFontFamily}"
-                                FontSize="20"
+                                FontSize="{ThemeResource AppFontSize20}"
                                 Foreground="{ThemeResource AppInkBrush}"
                                 Text="Comments" />
                             <ProgressRing
@@ -498,7 +498,7 @@
                         Style="{StaticResource AppToolbarButtonStyle}"
                         ToolTipService.ToolTip="Issues"
                         Visibility="Collapsed">
-                        <FontIcon FontFamily="{StaticResource SegoeFluentIcons}" FontSize="14" Glyph="&#xE8FD;" />
+                        <FontIcon FontFamily="{StaticResource SegoeFluentIcons}" FontSize="{ThemeResource AppFontSize14}" Glyph="&#xE8FD;" />
                     </Button>
 
                     <TextBlock
@@ -508,7 +508,7 @@
                         labs:TransitionHelper.Id="IssueTitle"
                         AutomationProperties.AutomationId="RepoIssuesDetailTitle"
                         FontFamily="{ThemeResource AppDisplayFontFamily}"
-                        FontSize="18"
+                        FontSize="{ThemeResource AppFontSize18}"
                         Foreground="{ThemeResource AppInkBrush}"
                         MaxLines="1"
                         Text="{x:Bind ViewModel.SelectedIssueTitle, Mode=OneWay}"
@@ -533,7 +533,7 @@
                             AutomationProperties.Name="More issue actions"
                             Style="{StaticResource AppToolbarButtonStyle}"
                             ToolTipService.ToolTip="More issue actions">
-                            <FontIcon FontFamily="{StaticResource SegoeFluentIcons}" FontSize="15" Glyph="&#xE712;" />
+                            <FontIcon FontFamily="{StaticResource SegoeFluentIcons}" FontSize="{ThemeResource AppFontSize15}" Glyph="&#xE712;" />
                             <DropDownButton.Flyout>
                                 <MenuFlyout>
                                     <MenuFlyoutItem x:Uid="PagesRepoIssuePageRepoIssuesCompactEditAction" AutomationProperties.AutomationId="RepoIssuesCompactEditAction" AutomationProperties.Name="Edit issue" Click="EditIssueButton_Click" IsEnabled="{x:Bind ViewModel.CanEditIssue, Mode=OneWay}" Text="Edit issue" />
@@ -555,7 +555,7 @@
                             Style="{StaticResource AppToolbarButtonStyle}"
                             ToolTipService.ToolTip="Inspector"
                             Visibility="Collapsed">
-                            <FontIcon FontFamily="{StaticResource SegoeFluentIcons}" FontSize="14" Glyph="&#xE9D2;" />
+                            <FontIcon FontFamily="{StaticResource SegoeFluentIcons}" FontSize="{ThemeResource AppFontSize14}" Glyph="&#xE9D2;" />
                         </Button>
                     </StackPanel>
                 </Grid>

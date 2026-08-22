@@ -32,4 +32,29 @@
     <Thickness x:Key="AppReactionLauncherMargin">0,0,4,0</Thickness>
     <Thickness x:Key="AppReactionFocusMargin">1</Thickness>
     <Thickness x:Key="AppInfoBadgeValueTextMargin">4,0,4,0</Thickness>
+
+    <!--  Markdown component geometry.  -->
+    <x:Double x:Key="AppMarkdownListIndent">24</x:Double>
+    <x:Double x:Key="AppMarkdownNestedListIndent">20</x:Double>
+    <Thickness x:Key="AppMarkdownBodyMargin">0,0,0,8</Thickness>
+    <Thickness x:Key="AppMarkdownHeading1Margin">0,16,0,8</Thickness>
+    <Thickness x:Key="AppMarkdownHeading2Margin">0,16,0,8</Thickness>
+    <Thickness x:Key="AppMarkdownHeading3Margin">0,12,0,4</Thickness>
+    <Thickness x:Key="AppMarkdownHeading4Margin">0,12,0,4</Thickness>
+    <Thickness x:Key="AppMarkdownHeading5Margin">0,8,0,4</Thickness>
+    <Thickness x:Key="AppMarkdownHeading6Margin">0,8,0,4</Thickness>
+    <Thickness x:Key="AppMarkdownInlineCodePadding">4,0</Thickness>
+    <Thickness x:Key="AppMarkdownCodeBlockPadding">12,8</Thickness>
+    <Thickness x:Key="AppMarkdownCodeBlockMargin">0,4,0,12</Thickness>
+    <Thickness x:Key="AppMarkdownQuotePadding">12,4,8,4</Thickness>
+    <Thickness x:Key="AppMarkdownQuoteMargin">0,4,0,8</Thickness>
+    <Thickness x:Key="AppMarkdownDefinitionTermMargin">0,4,0,0</Thickness>
+    <Thickness x:Key="AppMarkdownDefinitionDescriptionMargin">20,0,0,8</Thickness>
+    <Thickness x:Key="AppMarkdownFigureMargin">0,8,0,12</Thickness>
+    <Thickness x:Key="AppMarkdownCaptionMargin">0,4,0,8</Thickness>
+    <Thickness x:Key="AppMarkdownDiagramPadding">12,8</Thickness>
+    <Thickness x:Key="AppMarkdownDiagramMargin">0,8,0,12</Thickness>
+    <Thickness x:Key="AppMarkdownThematicBreakMargin">0,12</Thickness>
+    <Thickness x:Key="AppMarkdownTableMargin">0,8,0,12</Thickness>
+    <Thickness x:Key="AppMarkdownTableCellPadding">12,8</Thickness>
 </ResourceDictionary>

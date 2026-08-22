@@ -1,19 +1,31 @@
 using System;
-using System.Collections.Generic;
-using System.Linq;
-using System.Text;
-using System.Threading.Tasks;
+using System.Diagnostics;
 using Windows.ApplicationModel.DataTransfer;
 
 namespace JitHub.WinUI.Helpers
 {
-    public class PlatformHelper
+    public static class PlatformHelper
     {
-        public static void CopyString(string content)
+        public static bool CopyString(string? content)
         {
-            var dataPackage = new DataPackage();
-            dataPackage.SetText(content);
-            Clipboard.SetContent(dataPackage);
+            if (string.IsNullOrEmpty(content))
+            {
+                return false;
+            }
+
+            try
+            {
+                var dataPackage = new DataPackage();
+                dataPackage.SetText(content);
+                Clipboard.SetContent(dataPackage);
+                Clipboard.Flush();
+                return true;
+            }
+            catch (Exception ex)
+            {
+                Debug.WriteLine($"Clipboard write failed: {ex.GetType().Name}");
+                return false;
+            }
         }
     }
 }

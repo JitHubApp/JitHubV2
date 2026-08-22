@@ -41,7 +41,7 @@ public sealed partial class AppContributorCard : UserControl
             {
                 Padding = new Thickness(2),
                 Background = link.LogoBackgroundBrush,
-                CornerRadius = new CornerRadius(2),
+                CornerRadius = (CornerRadius)Application.Current.Resources["AppRadiusTight"],
                 Child = logo
             };
             var button = new HyperlinkButton

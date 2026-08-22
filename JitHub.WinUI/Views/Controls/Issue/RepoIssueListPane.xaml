@@ -30,7 +30,7 @@
                 </Grid.RowDefinitions>
                 <TextBlock
                     FontFamily="{ThemeResource AppUiFontFamily}"
-                    FontSize="13"
+                    FontSize="{ThemeResource AppFontSize13}"
                     FontWeight="SemiBold"
                     Foreground="{ThemeResource AppInkBrush}"
                     MaxLines="2"
@@ -46,12 +46,12 @@
                     <StackPanel Orientation="Horizontal" Spacing="2">
                         <TextBlock
                             FontFamily="{ThemeResource AppMonoFontFamily}"
-                            FontSize="11"
+                            FontSize="{ThemeResource AppFontSize11}"
                             Foreground="{ThemeResource AppAccentBrush}"
                             Text="#" />
                         <TextBlock
                             FontFamily="{ThemeResource AppMonoFontFamily}"
-                            FontSize="11"
+                            FontSize="{ThemeResource AppFontSize11}"
                             Foreground="{ThemeResource AppAccentBrush}"
                             Text="{x:Bind Number}" />
                     </StackPanel>
@@ -115,7 +115,7 @@
                         Style="{StaticResource AppToolbarButtonStyle}"
                         ToolTipService.ToolTip="Close issues"
                         Visibility="Collapsed">
-                        <FontIcon FontFamily="{StaticResource SegoeFluentIcons}" FontSize="14" Glyph="&#xE8FD;" />
+                        <FontIcon FontFamily="{StaticResource SegoeFluentIcons}" FontSize="{ThemeResource AppFontSize14}" Glyph="&#xE8FD;" />
                     </Button>
                     <toolkit:Segmented
                         x:Uid="PagesRepoIssuePageRepoIssuesStateSegmented"
@@ -167,7 +167,7 @@
                         AutomationProperties.Name="Issue filters"
                         Style="{StaticResource AppToolbarButtonStyle}"
                         ToolTipService.ToolTip="Filters">
-                        <FontIcon FontFamily="{StaticResource SegoeFluentIcons}" FontSize="14" Glyph="&#xE71C;" />
+                        <FontIcon FontFamily="{StaticResource SegoeFluentIcons}" FontSize="{ThemeResource AppFontSize14}" Glyph="&#xE71C;" />
                         <Button.Flyout>
                             <Flyout Opened="IssueFiltersFlyout_Opened" Placement="BottomEdgeAlignedRight">
                                 <StackPanel Width="260" Spacing="10">

@@ -148,7 +148,7 @@
                 <TextBlock
                     x:Name="RepositoryLibraryCount"
                     FontFamily="{ThemeResource AppDisplayFontFamily}"
-                    FontSize="28"
+                    FontSize="{ThemeResource AppFontSize28}"
                     Foreground="{ThemeResource AppInkBrush}"
                     Text="{x:Bind ViewModel.PageTitle, Mode=OneWay}" />
                 <TextBlock
@@ -165,7 +165,7 @@
                     Click="NewRepositoryButton_Click"
                     Style="{StaticResource AppAccentButtonStyle}">
                     <StackPanel Orientation="Horizontal" Spacing="7">
-                        <FontIcon FontFamily="{StaticResource SegoeFluentIcons}" FontSize="14" Glyph="&#xE710;" />
+                        <FontIcon FontFamily="{StaticResource SegoeFluentIcons}" FontSize="{ThemeResource AppFontSize14}" Glyph="&#xE710;" />
                         <TextBlock x:Name="NewRepositoryButtonText" Text="{x:Bind ViewModel.NewRepositoryButtonText, Mode=OneWay}" />
                     </StackPanel>
                 </Button>
@@ -178,7 +178,7 @@
                     Style="{StaticResource AppCommandButtonStyle}"
                     ToolTipService.ToolTip="Select repositories">
                     <StackPanel Orientation="Horizontal" Spacing="7">
-                        <FontIcon FontFamily="{StaticResource SegoeFluentIcons}" FontSize="14" Glyph="&#xE762;" />
+                        <FontIcon FontFamily="{StaticResource SegoeFluentIcons}" FontSize="{ThemeResource AppFontSize14}" Glyph="&#xE762;" />
                         <TextBlock x:Name="SelectionModeButtonText" Text="{x:Bind ViewModel.SelectButtonText, Mode=OneWay}" />
                     </StackPanel>
                 </Button>
@@ -208,7 +208,7 @@
                     HorizontalAlignment="Left"
                     VerticalAlignment="Center"
                     FontFamily="{StaticResource SegoeFluentIcons}"
-                    FontSize="13"
+                    FontSize="{ThemeResource AppFontSize13}"
                     Foreground="{ThemeResource AppInkSubtleBrush}"
                     Glyph="&#xE721;"
                     IsHitTestVisible="False" />
@@ -312,7 +312,7 @@
                                 <StackPanel Orientation="Horizontal" Spacing="8">
                                     <TextBlock
                                         FontFamily="{ThemeResource AppUiFontFamily}"
-                                        FontSize="14"
+                                        FontSize="{ThemeResource AppFontSize14}"
                                         FontWeight="SemiBold"
                                         Foreground="{ThemeResource AppInkBrush}"
                                         Text="{x:Bind Repository.FullName, Mode=OneWay}"
@@ -322,7 +322,7 @@
                                         VerticalAlignment="Center"
                                         Background="{ThemeResource AppSurfaceSubtleBrush}"
                                         CornerRadius="{ThemeResource AppRadiusSmall}">
-                                        <TextBlock FontSize="11" Foreground="{ThemeResource AppInkMutedBrush}" Text="{x:Bind KindText, Mode=OneWay}" />
+                                        <TextBlock FontSize="{ThemeResource AppFontSize11}" Foreground="{ThemeResource AppInkMutedBrush}" Text="{x:Bind KindText, Mode=OneWay}" />
                                     </Border>
                                 </StackPanel>
                                 <TextBlock

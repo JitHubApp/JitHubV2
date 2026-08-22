@@ -30,6 +30,7 @@
     <Compile Include="..\JitHub.WinUI\Models\NavArgs\RepoPageType.cs" Link="Models\NavArgs\%(Filename)%(Extension)" />
     <Compile Include="..\JitHub.WinUI\Helpers\LocalizedResourceText.cs" Link="Helpers\%(Filename)%(Extension)" />
     <Compile Include="..\JitHub.WinUI\Helpers\CommentMarkdownFormatter.cs" Link="Helpers\%(Filename)%(Extension)" />
+    <Compile Include="..\JitHub.WinUI\Helpers\PlatformHelper.cs" Link="Helpers\%(Filename)%(Extension)" />
     <Compile Include="..\JitHub.WinUI\Helpers\UserFacingError.cs" Link="Helpers\%(Filename)%(Extension)" />
     <Compile Include="..\JitHub.WinUI\Services\ISettingService.cs" Link="Services\%(Filename)%(Extension)" />
     <Compile Include="..\JitHub.WinUI\Services\IAccountService.cs" Link="Services\%(Filename)%(Extension)" />

@@ -378,7 +378,13 @@ public sealed class Phase0TelemetryTests : IDisposable
             RepoCodeTelemetryActions.Drawer,
             RepoCodeTelemetryActions.ExternalOpen,
             RepoCodeTelemetryActions.BreadcrumbRoot,
-            RepoCodeTelemetryActions.BreadcrumbPath
+            RepoCodeTelemetryActions.BreadcrumbPath,
+            RepoCodeTelemetryActions.CsvCopy,
+            RepoCodeTelemetryActions.CsvPlainView,
+            RepoCodeTelemetryActions.CsvReorder,
+            RepoCodeTelemetryActions.CsvResize,
+            RepoCodeTelemetryActions.CsvRichView,
+            RepoCodeTelemetryActions.CsvSort
         ]);
 
         IReadOnlyDictionary<string, string> sanitized = TelemetrySanitizer.SanitizeProperties(
@@ -431,7 +437,7 @@ public sealed class Phase0TelemetryTests : IDisposable
 
     private static IEnumerable<string> ExtractTelemetryEventLiterals(string source)
     {
-        string[] methodNames = ["TrackEvent", "TrackEventSafely", "TrackStoreEvent", "TrackCategory", "TrackCacheEvent", "StartTrace"];
+        string[] methodNames = ["TrackEvent", "TrackEventSafely", "TrackStoreEvent", "TrackCategory", "TrackCacheEvent", "TrackMarkdownEvent", "StartTrace"];
         foreach (string methodName in methodNames)
         {
             int searchStart = 0;

@@ -53,6 +53,15 @@ public sealed class IssueTelemetryTests
     [InlineData(IssueActionKind.Metadata, "metadata")]
     [InlineData(IssueActionKind.ToggleState, "toggle_state")]
     [InlineData(IssueActionKind.Comment, "comment")]
+    [InlineData(IssueActionKind.CommentEdit, "comment_edit")]
+    [InlineData(IssueActionKind.CommentDelete, "comment_delete")]
+    [InlineData(IssueActionKind.CommentPin, "comment_pin")]
+    [InlineData(IssueActionKind.CommentUnpin, "comment_unpin")]
+    [InlineData(IssueActionKind.CommentHide, "comment_hide")]
+    [InlineData(IssueActionKind.CommentUnhide, "comment_unhide")]
+    [InlineData(IssueActionKind.QuoteReply, "quote_reply")]
+    [InlineData(IssueActionKind.CopyLink, "copy_link")]
+    [InlineData(IssueActionKind.CopyMarkdown, "copy_markdown")]
     [InlineData(IssueActionKind.Reaction, "reaction")]
     [InlineData(IssueActionKind.CommentReaction, "comment_reaction")]
     public void ActionsMapToStableTaxonomy(IssueActionKind action, string expected)
@@ -72,6 +81,7 @@ public sealed class IssueTelemetryTests
     [InlineData(IssueActionOutcome.AuthenticationError, "auth_error")]
     [InlineData(IssueActionOutcome.PermissionDenied, "permission_denied")]
     [InlineData(IssueActionOutcome.NetworkError, "network_error")]
+    [InlineData(IssueActionOutcome.Cancelled, "cancelled")]
     [InlineData(IssueActionOutcome.Failure, "error")]
     public void ActionOutcomesSurviveSanitization(IssueActionOutcome outcome, string expected)
     {

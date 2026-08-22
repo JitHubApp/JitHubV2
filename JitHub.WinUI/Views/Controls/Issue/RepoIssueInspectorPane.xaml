@@ -29,7 +29,7 @@
                         Fill="{x:Bind Color, Converter={StaticResource HexColorToColorStringConverter}}" />
                     <TextBlock
                         FontFamily="{ThemeResource AppMonoFontFamily}"
-                        FontSize="11"
+                        FontSize="{ThemeResource AppFontSize11}"
                         Foreground="{ThemeResource AppInkBrush}"
                         Text="{x:Bind Name}" />
                 </StackPanel>
@@ -84,7 +84,7 @@
                         VerticalAlignment="Center"
                         AutomationProperties.AutomationId="RepoIssuesInspectorTitle"
                         FontFamily="{ThemeResource AppDisplayFontFamily}"
-                        FontSize="21"
+                        FontSize="{ThemeResource AppFontSize21}"
                         Foreground="{ThemeResource AppInkBrush}"
                         Text="Inspector" />
                     <Button
@@ -100,7 +100,7 @@
                         Style="{StaticResource AppToolbarButtonStyle}"
                         ToolTipService.ToolTip="Close inspector"
                         Visibility="Collapsed">
-                        <FontIcon FontFamily="{StaticResource SegoeFluentIcons}" FontSize="14" Glyph="&#xE9D2;" />
+                        <FontIcon FontFamily="{StaticResource SegoeFluentIcons}" FontSize="{ThemeResource AppFontSize14}" Glyph="&#xE9D2;" />
                     </Button>
                 </Grid>
 
@@ -113,7 +113,7 @@
                     <TextBlock
                         x:Uid="PagesRepoIssuePageTextBlockStatus"
                         FontFamily="{ThemeResource AppUiFontFamily}"
-                        FontSize="13"
+                        FontSize="{ThemeResource AppFontSize13}"
                         FontWeight="SemiBold"
                         Foreground="{ThemeResource AppInkBrush}"
                         Text="Status" />
@@ -139,7 +139,7 @@
                     <TextBlock
                         x:Uid="PagesRepoIssuePageTextBlockAssignees"
                         FontFamily="{ThemeResource AppUiFontFamily}"
-                        FontSize="13"
+                        FontSize="{ThemeResource AppFontSize13}"
                         FontWeight="SemiBold"
                         Foreground="{ThemeResource AppInkBrush}"
                         Text="Assignees" />
@@ -166,7 +166,7 @@
                     <TextBlock
                         x:Uid="PagesRepoIssuePageTextBlockLabels"
                         FontFamily="{ThemeResource AppUiFontFamily}"
-                        FontSize="13"
+                        FontSize="{ThemeResource AppFontSize13}"
                         FontWeight="SemiBold"
                         Foreground="{ThemeResource AppInkBrush}"
                         Text="Labels" />
@@ -193,7 +193,7 @@
                     <TextBlock
                         x:Uid="PagesRepoIssuePageTextBlockMilestone"
                         FontFamily="{ThemeResource AppUiFontFamily}"
-                        FontSize="13"
+                        FontSize="{ThemeResource AppFontSize13}"
                         FontWeight="SemiBold"
                         Foreground="{ThemeResource AppInkBrush}"
                         Text="Milestone" />

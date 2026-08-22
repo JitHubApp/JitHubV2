@@ -90,6 +90,9 @@ internal sealed partial class MarkdownNodePeer : FrameworkElementAutomationPeer,
             : _root.GetScreenRectForDocumentRect(rect);
     }
 
+    protected override bool IsOffscreenCore() =>
+        _root.IsScreenRectOffscreen(GetBoundingRectangleCore());
+
     int IGridProvider.ColumnCount => _node.ColumnCount;
     int IGridProvider.RowCount => _node.RowCount;
 

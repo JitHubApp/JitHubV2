@@ -28,7 +28,7 @@
                 </Grid.RowDefinitions>
                 <TextBlock
                     FontFamily="{ThemeResource AppBodyFontFamily}"
-                    FontSize="13"
+                    FontSize="{ThemeResource AppFontSize13}"
                     FontWeight="SemiBold"
                     Foreground="{ThemeResource AppInkBrush}"
                     MaxLines="2"
@@ -47,7 +47,7 @@
                     </Grid.ColumnDefinitions>
                     <TextBlock
                         FontFamily="{ThemeResource AppMonoFontFamily}"
-                        FontSize="11"
+                        FontSize="{ThemeResource AppFontSize11}"
                         Foreground="{ThemeResource AppAccentBrush}"
                         Text="{x:Bind NumberText, Mode=OneWay}" />
                     <TextBlock
@@ -89,7 +89,7 @@
                             Grid.Column="1"
                             VerticalAlignment="Center"
                             FontFamily="{ThemeResource AppBodyFontFamily}"
-                            FontSize="13"
+                            FontSize="{ThemeResource AppFontSize13}"
                             FontWeight="SemiBold"
                             Foreground="{ThemeResource AppInkBrush}"
                             Text="{x:Bind AuthorDisplayName, Mode=OneWay}" />
@@ -126,7 +126,7 @@
                         Fill="{x:Bind Color, Converter={StaticResource HexColorToColorStringConverter}, Mode=OneWay}" />
                     <TextBlock
                         FontFamily="{ThemeResource AppMonoFontFamily}"
-                        FontSize="11"
+                        FontSize="{ThemeResource AppFontSize11}"
                         Foreground="{ThemeResource AppInkBrush}"
                         Text="{x:Bind Name, Mode=OneWay}" />
                 </StackPanel>
@@ -210,7 +210,7 @@
                             Style="{StaticResource AppToolbarButtonStyle}"
                             ToolTipService.ToolTip="Close issues"
                             Visibility="Collapsed">
-                            <FontIcon FontFamily="{StaticResource SegoeFluentIcons}" FontSize="14" Glyph="&#xE8FD;" />
+                            <FontIcon FontFamily="{StaticResource SegoeFluentIcons}" FontSize="{ThemeResource AppFontSize14}" Glyph="&#xE8FD;" />
                         </Button>
                         <Grid
                             x:Name="IssueFilterHost"
@@ -352,12 +352,12 @@
                             Style="{StaticResource AppToolbarButtonStyle}"
                             ToolTipService.ToolTip="Issues"
                             Visibility="Collapsed">
-                            <FontIcon FontFamily="{StaticResource SegoeFluentIcons}" FontSize="14" Glyph="&#xE8FD;" />
+                            <FontIcon FontFamily="{StaticResource SegoeFluentIcons}" FontSize="{ThemeResource AppFontSize14}" Glyph="&#xE8FD;" />
                         </Button>
                         <StackPanel Grid.Column="1" Spacing="2">
                             <TextBlock
                                 FontFamily="{ThemeResource AppDisplayFontFamily}"
-                                FontSize="30"
+                                FontSize="{ThemeResource AppFontSize30}"
                                 Foreground="{ThemeResource AppInkBrush}"
                                 Text="{x:Bind ViewModel.Title, Mode=OneWay}"
                                 TextTrimming="CharacterEllipsis" />
@@ -401,7 +401,7 @@
                                 Style="{StaticResource AppToolbarButtonStyle}"
                                 ToolTipService.ToolTip="Inspector"
                                 Visibility="Collapsed">
-                                <FontIcon FontFamily="{StaticResource SegoeFluentIcons}" FontSize="14" Glyph="&#xE9D2;" />
+                                <FontIcon FontFamily="{StaticResource SegoeFluentIcons}" FontSize="{ThemeResource AppFontSize14}" Glyph="&#xE9D2;" />
                             </Button>
                         </StackPanel>
                     </Grid>
@@ -434,7 +434,7 @@
                                     x:Name="MyIssuesDetailTitleText"
                                     AutomationProperties.AutomationId="MyIssuesDetailTitle"
                                     FontFamily="{ThemeResource AppDisplayFontFamily}"
-                                    FontSize="25"
+                                    FontSize="{ThemeResource AppFontSize25}"
                                     Foreground="{ThemeResource AppInkBrush}"
                                     HorizontalAlignment="Stretch"
                                     MaxLines="2"
@@ -450,7 +450,7 @@
                                     </Grid.ColumnDefinitions>
                                     <TextBlock
                                         FontFamily="{ThemeResource AppMonoFontFamily}"
-                                        FontSize="12"
+                                        FontSize="{ThemeResource AppFontSize12}"
                                         Foreground="{ThemeResource AppAccentBrush}"
                                         Text="{x:Bind ViewModel.SelectedIssueNumberText, Mode=OneWay}" />
                                     <TextBlock
@@ -478,7 +478,7 @@
                                 ToolTipService.ToolTip="Open this issue in its repository workspace"
                                 Style="{StaticResource AppOutlineButtonStyle}">
                                 <StackPanel Orientation="Horizontal" Spacing="8">
-                                    <FontIcon FontFamily="{StaticResource SegoeFluentIcons}" FontSize="13" Glyph="&#xE72A;" />
+                                    <FontIcon FontFamily="{StaticResource SegoeFluentIcons}" FontSize="{ThemeResource AppFontSize13}" Glyph="&#xE72A;" />
                                 <TextBlock x:Uid="MyIssuesOpenRepositoryText" Text="Open issue" />
                                 </StackPanel>
                             </Button>
@@ -529,7 +529,7 @@
                                                 Grid.Column="1"
                                                 VerticalAlignment="Center"
                                                 FontFamily="{ThemeResource AppBodyFontFamily}"
-                                                FontSize="13"
+                                                FontSize="{ThemeResource AppFontSize13}"
                                                 FontWeight="SemiBold"
                                                 Foreground="{ThemeResource AppInkBrush}"
                                                 Text="{x:Bind ViewModel.SelectedIssueAuthorDisplayName, Mode=OneWay}" />
@@ -580,7 +580,7 @@
                                     <TextBlock
                                         x:Uid="MyIssuesCommentsHeading"
                                         FontFamily="{ThemeResource AppDisplayFontFamily}"
-                                        FontSize="20"
+                                        FontSize="{ThemeResource AppFontSize20}"
                                         Foreground="{ThemeResource AppInkBrush}"
                                         Text="Comments" />
                                     <TextBlock
@@ -639,7 +639,7 @@
                                 AutomationProperties.AutomationId="MyIssuesInspectorTitle"
                                 VerticalAlignment="Center"
                                 FontFamily="{ThemeResource AppDisplayFontFamily}"
-                                FontSize="21"
+                                FontSize="{ThemeResource AppFontSize21}"
                                 Foreground="{ThemeResource AppInkBrush}"
                                 Text="Inspector" />
                             <Button
@@ -654,7 +654,7 @@
                                 Style="{StaticResource AppToolbarButtonStyle}"
                                 ToolTipService.ToolTip="Close inspector"
                                 Visibility="Collapsed">
-                                <FontIcon FontFamily="{StaticResource SegoeFluentIcons}" FontSize="14" Glyph="&#xE9D2;" />
+                                <FontIcon FontFamily="{StaticResource SegoeFluentIcons}" FontSize="{ThemeResource AppFontSize14}" Glyph="&#xE9D2;" />
                             </Button>
                         </Grid>
 
@@ -667,7 +667,7 @@
                             <TextBlock
                                 x:Uid="MyWorkItemsInspectorStatusHeading"
                                 FontFamily="{ThemeResource AppBodyFontFamily}"
-                                FontSize="13"
+                                FontSize="{ThemeResource AppFontSize13}"
                                 FontWeight="SemiBold"
                                 Foreground="{ThemeResource AppInkBrush}"
                                 Text="Status" />
@@ -695,7 +695,7 @@
                             <TextBlock
                                 x:Uid="MyWorkItemsInspectorAssigneesHeading"
                                 FontFamily="{ThemeResource AppBodyFontFamily}"
-                                FontSize="13"
+                                FontSize="{ThemeResource AppFontSize13}"
                                 FontWeight="SemiBold"
                                 Foreground="{ThemeResource AppInkBrush}"
                                 Text="Assignees" />
@@ -720,7 +720,7 @@
                             <TextBlock
                                 x:Uid="MyWorkItemsInspectorLabelsHeading"
                                 FontFamily="{ThemeResource AppBodyFontFamily}"
-                                FontSize="13"
+                                FontSize="{ThemeResource AppFontSize13}"
                                 FontWeight="SemiBold"
                                 Foreground="{ThemeResource AppInkBrush}"
                                 Text="Labels" />
@@ -751,7 +751,7 @@
                             <TextBlock
                                 x:Uid="MyWorkItemsInspectorMilestoneHeading"
                                 FontFamily="{ThemeResource AppBodyFontFamily}"
-                                FontSize="13"
+                                FontSize="{ThemeResource AppFontSize13}"
                                 FontWeight="SemiBold"
                                 Foreground="{ThemeResource AppInkBrush}"
                                 Text="Milestone" />
@@ -769,7 +769,7 @@
                             <TextBlock
                                 x:Uid="MyIssuesInspectorLinkedItemsHeading"
                                 FontFamily="{ThemeResource AppBodyFontFamily}"
-                                FontSize="13"
+                                FontSize="{ThemeResource AppFontSize13}"
                                 FontWeight="SemiBold"
                                 Foreground="{ThemeResource AppInkBrush}"
                                 Text="Linked items" />

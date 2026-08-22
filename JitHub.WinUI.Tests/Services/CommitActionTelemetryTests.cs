@@ -12,6 +12,8 @@ public sealed class CommitActionTelemetryTests
     {
         yield return [CommitActionKind.Comment, "comment"];
         yield return [CommitActionKind.CopySha, "copy_sha"];
+        yield return [CommitActionKind.CopyDiff, TelemetryTaxonomy.Actions.CopyDiff];
+        yield return [CommitActionKind.CopyPath, TelemetryTaxonomy.Actions.CopyPath];
         yield return [CommitActionKind.BrowseFiles, "browse_files"];
     }
 

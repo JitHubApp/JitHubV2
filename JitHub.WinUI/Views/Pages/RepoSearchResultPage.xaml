@@ -28,7 +28,7 @@
                         Width="30"
                         Height="30"
                         AutomationProperties.Name="{x:Bind FullName, Mode=OneWay}"
-                        CornerRadius="15"
+                        CornerRadius="{ThemeResource AppRadiusCircle}"
                         FallbackUrl="ms-appx:///Assets/Octocat.png"
                         SourceUrl="{x:Bind OwnerAvatarUrl, Mode=OneWay}" />
                     <StackPanel Grid.Column="1" MinWidth="0" Spacing="4">
@@ -43,23 +43,23 @@
                                 Background="{ThemeResource AppCanvasInsetBrush}"
                                 BorderBrush="{ThemeResource AppHairlineBrush}"
                                 BorderThickness="1"
-                                CornerRadius="4"
+                                CornerRadius="{ThemeResource AppRadiusSmall}"
                                 Padding="6,1">
-                                <TextBlock FontSize="11" Text="{x:Bind VisibilityLabel, Mode=OneWay}" />
+                                <TextBlock FontSize="{ThemeResource AppFontSize11}" Text="{x:Bind VisibilityLabel, Mode=OneWay}" />
                             </Border>
                             <Border
                                 Background="{ThemeResource AppCanvasInsetBrush}"
-                                CornerRadius="4"
+                                CornerRadius="{ThemeResource AppRadiusSmall}"
                                 Padding="6,1"
                                 Visibility="{x:Bind IsFork, Converter={StaticResource BoolToVisibilityConverter}, Mode=OneWay}">
-                                <TextBlock x:Uid="PagesRepoSearchResultPageTextBlockFork" FontSize="11" Text="Fork" />
+                                <TextBlock x:Uid="PagesRepoSearchResultPageTextBlockFork" FontSize="{ThemeResource AppFontSize11}" Text="Fork" />
                             </Border>
                             <Border
                                 Background="{ThemeResource AppCanvasInsetBrush}"
-                                CornerRadius="4"
+                                CornerRadius="{ThemeResource AppRadiusSmall}"
                                 Padding="6,1"
                                 Visibility="{x:Bind IsArchived, Converter={StaticResource BoolToVisibilityConverter}, Mode=OneWay}">
-                                <TextBlock x:Uid="PagesRepoSearchResultPageTextBlockArchived" FontSize="11" Text="Archived" />
+                                <TextBlock x:Uid="PagesRepoSearchResultPageTextBlockArchived" FontSize="{ThemeResource AppFontSize11}" Text="Archived" />
                             </Border>
                         </StackPanel>
                         <TextBlock
@@ -73,11 +73,11 @@
                                 <TextBlock Style="{StaticResource ListItemSecondaryTextBlockStyle}" Text="{x:Bind Language, Mode=OneWay}" />
                             </StackPanel>
                             <StackPanel Orientation="Horizontal" Spacing="5">
-                                <FontIcon FontSize="12" Glyph="&#xE734;" />
+                                <FontIcon FontSize="{ThemeResource AppFontSize12}" Glyph="&#xE734;" />
                                 <TextBlock Style="{StaticResource ListItemSecondaryTextBlockStyle}" Text="{x:Bind StarsText, Mode=OneWay}" />
                             </StackPanel>
                             <StackPanel Orientation="Horizontal" Spacing="5">
-                                <FontIcon FontSize="12" Glyph="&#xE8AB;" />
+                                <FontIcon FontSize="{ThemeResource AppFontSize12}" Glyph="&#xE8AB;" />
                                 <TextBlock Style="{StaticResource ListItemSecondaryTextBlockStyle}" Text="{x:Bind ForksText, Mode=OneWay}" />
                             </StackPanel>
                             <TextBlock Style="{StaticResource ListItemSecondaryTextBlockStyle}" Text="{x:Bind UpdatedText, Mode=OneWay}" />
@@ -87,7 +87,7 @@
                         Grid.Column="2"
                         Margin="8,0,0,0"
                         VerticalAlignment="Center"
-                        FontSize="14"
+                        FontSize="{ThemeResource AppFontSize14}"
                         Foreground="{ThemeResource AppInkMutedBrush}"
                         Glyph="&#xE76C;" />
                 </Grid>
@@ -263,7 +263,7 @@
                                 Style="{StaticResource AppQuietButtonStyle}">
                                 <StackPanel Orientation="Horizontal" Spacing="6">
                                     <TextBlock Text="{x:Bind Label, Mode=OneWay}" />
-                                    <FontIcon FontSize="10" Glyph="&#xE711;" />
+                                    <FontIcon FontSize="{ThemeResource AppFontSize10}" Glyph="&#xE711;" />
                                 </StackPanel>
                             </Button>
                         </DataTemplate>
@@ -309,7 +309,7 @@
                 <StackPanel
                     Style="{StaticResource AppEmptyStatePanelStyle}"
                     Visibility="{x:Bind ViewModel.IsEmpty, Converter={StaticResource BoolToVisibilityConverter}, Mode=OneWay}">
-                    <FontIcon FontSize="28" Foreground="{ThemeResource AppInkMutedBrush}" Glyph="&#xE721;" />
+                    <FontIcon FontSize="{ThemeResource AppFontSize28}" Foreground="{ThemeResource AppInkMutedBrush}" Glyph="&#xE721;" />
                     <TextBlock x:Uid="PagesRepoSearchResultPageTextBlockNoRepositoriesMatched" Style="{StaticResource ListItemTitleTextBlockStyle}" Text="No repositories matched" />
                     <TextBlock x:Uid="PagesRepoSearchResultPageTextBlockAdjustTheQueryOrRemove" Style="{StaticResource ListItemSecondaryTextBlockStyle}" Text="Adjust the query or remove a filter." />
                 </StackPanel>

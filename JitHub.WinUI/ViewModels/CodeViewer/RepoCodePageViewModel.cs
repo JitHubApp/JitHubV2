@@ -81,7 +81,7 @@ public sealed partial class RepoCodePageViewModel : ObservableObject
         Tree.OnPrefetchNode = PrefetchTreeNodeAsync;
         Tree.OnAuthoritativeTreeChanged = QueueVisibleFileReconciliation;
         Breadcrumb.OnNavigate = NavigateBreadcrumbAsync;
-        Breadcrumb.OnActionExecuted = TrackAction;
+        Breadcrumb.OnActionCompleted = TrackAction;
 
         InitializeCommand = new AsyncRelayCommand(
             () => InitializeAsync(_owner, _repositoryName, _ref, CancellationToken.None));
@@ -1353,9 +1353,13 @@ public sealed partial class RepoCodePageViewModel : ObservableObject
         }
     }
 
-    internal void TrackAction(string action)
+    internal void TrackAction(string action) =>
+        TrackAction(action, TelemetryTaxonomy.Results.Success);
+
+    internal void TrackAction(string action, string result)
     {
-        if (!RepoCodeTelemetryActions.Allowed.Contains(action))
+        if (!RepoCodeTelemetryActions.Allowed.Contains(action) ||
+            result is not (TelemetryTaxonomy.Results.Success or TelemetryTaxonomy.Results.Error))
         {
             return;
         }
@@ -1366,7 +1370,7 @@ public sealed partial class RepoCodePageViewModel : ObservableObject
             {
                 ["page"] = "code",
                 ["action"] = action,
-                ["result"] = TelemetryTaxonomy.Results.Success
+                ["result"] = result
             });
     }
 

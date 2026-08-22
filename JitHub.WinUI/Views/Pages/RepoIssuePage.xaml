@@ -62,7 +62,7 @@
                             VerticalAlignment="Center"
                             AutomationProperties.AutomationId="RepoIssuesDetailTitle"
                             FontFamily="{ThemeResource AppDisplayFontFamily}"
-                            FontSize="25"
+                            FontSize="{ThemeResource AppFontSize25}"
                             Foreground="{ThemeResource AppInkBrush}"
                             MaxLines="2"
                             Text="{x:Bind ViewModel.SelectedIssueTitle, Mode=OneWay}"
