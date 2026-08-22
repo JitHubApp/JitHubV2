@@ -94,6 +94,8 @@ public sealed partial class StarLibraryPageViewModel : ViewModelBase, IDisposabl
 
     public ObservableCollection<StarNavigationItem> NavigationItems { get; } = [];
 
+    public ObservableCollection<StarNavigationGroup> NavigationGroups { get; } = [];
+
     public ObservableCollection<StarCategoryViewItem> CustomCategories { get; } = [];
 
     public ObservableCollection<StarFilterChipViewItem> ActiveFilterChips { get; } = [];
@@ -418,7 +420,6 @@ public sealed partial class StarLibraryPageViewModel : ViewModelBase, IDisposabl
         if (!SelectCategory(category.Id))
         {
             StarCategoryViewItem custom = new(category);
-            bool isFirstCategory = CustomCategories.Count == 0;
             CustomCategories.Add(custom);
             StarNavigationItem navigationItem = new(
                 $"category:{category.Id}",
@@ -426,9 +427,19 @@ public sealed partial class StarLibraryPageViewModel : ViewModelBase, IDisposabl
                 "\uE8EC",
                 category.RepositoryCount,
                 StarSmartList.All,
-                custom,
-                showCategoryHeader: isFirstCategory);
+                custom);
             NavigationItems.Add(navigationItem);
+            StarNavigationGroup? categoryGroup = NavigationGroups.FirstOrDefault(
+                static group => group.Id == "categories");
+            if (categoryGroup is null)
+            {
+                categoryGroup = new StarNavigationGroup(
+                    "categories",
+                    L("Stars/Navigation/CategoriesHeader", "CATEGORIES"));
+                NavigationGroups.Add(categoryGroup);
+            }
+
+            categoryGroup.Add(navigationItem);
             SelectedNavigationItem = navigationItem;
         }
         return category;
@@ -933,25 +944,42 @@ public sealed partial class StarLibraryPageViewModel : ViewModelBase, IDisposabl
             new("smart:archived", L("Stars/SmartLists/Archived", "Archived"), "\uE7B8", GetSmartListCount(StarSmartList.Archived), StarSmartList.Archived, null)
         ];
         NavigationItems.Clear();
+        NavigationGroups.Clear();
+        StarNavigationGroup smartGroup = new(
+            "smart",
+            L("Stars/Navigation/SmartListsHeader", "SMART LISTS"));
+        NavigationGroups.Add(smartGroup);
         foreach (StarNavigationItem item in smart)
         {
             NavigationItems.Add(item);
+            smartGroup.Add(item);
         }
 
         CustomCategories.Clear();
+        StarNavigationGroup? categoryGroup = categories.Count > 0
+            ? new StarNavigationGroup(
+                "categories",
+                L("Stars/Navigation/CategoriesHeader", "CATEGORIES"))
+            : null;
+        if (categoryGroup is not null)
+        {
+            NavigationGroups.Add(categoryGroup);
+        }
+
         for (int index = 0; index < categories.Count; index++)
         {
             StarCategory category = categories[index];
             StarCategoryViewItem custom = new(category);
             CustomCategories.Add(custom);
-            NavigationItems.Add(new StarNavigationItem(
+            StarNavigationItem navigationItem = new(
                 $"category:{category.Id}",
                 category.Name,
                 "\uE8EC",
                 category.RepositoryCount,
                 StarSmartList.All,
-                custom,
-                showCategoryHeader: index == 0));
+                custom);
+            NavigationItems.Add(navigationItem);
+            categoryGroup!.Add(navigationItem);
         }
 
         SelectedNavigationItem = NavigationItems.FirstOrDefault(item => item.Id == selectedId) ?? NavigationItems.FirstOrDefault();
@@ -1138,6 +1166,19 @@ internal enum StarProjectionRefresh
 }
 
 [WinRT.GeneratedBindableCustomProperty]
+public sealed partial class StarNavigationGroup : ObservableCollection<StarNavigationItem>
+{
+    public StarNavigationGroup(string id, string title)
+    {
+        Id = id;
+        Title = title;
+    }
+
+    public string Id { get; }
+    public string Title { get; }
+}
+
+[WinRT.GeneratedBindableCustomProperty]
 public sealed partial class StarNavigationItem : ObservableObject
 {
     public StarNavigationItem(
@@ -1146,8 +1187,7 @@ public sealed partial class StarNavigationItem : ObservableObject
         string glyph,
         int count,
         StarSmartList smartList,
-        StarCategoryViewItem? category,
-        bool showCategoryHeader = false)
+        StarCategoryViewItem? category)
     {
         Id = id;
         Title = title;
@@ -1155,7 +1195,6 @@ public sealed partial class StarNavigationItem : ObservableObject
         Count = count;
         SmartList = smartList;
         Category = category;
-        ShowCategoryHeader = showCategoryHeader;
     }
 
     public string Id { get; }
@@ -1165,7 +1204,6 @@ public sealed partial class StarNavigationItem : ObservableObject
     public string CountText => Count.ToString("N0", CultureInfo.CurrentCulture);
     public StarSmartList SmartList { get; }
     public StarCategoryViewItem? Category { get; }
-    public bool ShowCategoryHeader { get; }
     public bool IsCustomCategory => Category is not null;
     [ObservableProperty]
     public partial bool IsDropTarget { get; set; }

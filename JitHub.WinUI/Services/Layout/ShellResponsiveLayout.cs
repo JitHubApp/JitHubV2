@@ -4,6 +4,7 @@ namespace JitHub.Services.Layout;
 
 public sealed record ShellResponsiveState(
     double WindowWidth,
+    bool CanRailInline,
     bool IsRailInline,
     double ContentWidth,
     double TitleAreaWidth);
@@ -22,13 +23,14 @@ public static class ShellResponsiveLayout
     public const double RailCollapseWidth = RailWidth + WorkspaceLeadingInlineWidth + WorkspaceStructuralInset;
     public const double CompactTitleAreaWidth = 160;
 
-    public static ShellResponsiveState Calculate(double windowWidth)
+    public static ShellResponsiveState Calculate(double windowWidth, bool isRailCollapsedByUser = false)
     {
         double safeWidth = Math.Max(0, windowWidth);
-        bool isRailInline = safeWidth >= RailCollapseWidth;
+        bool canRailInline = safeWidth >= RailCollapseWidth;
+        bool isRailInline = canRailInline && !isRailCollapsedByUser;
         double contentWidth = Math.Max(0, safeWidth - (isRailInline ? RailWidth : 0));
         double titleAreaWidth = isRailInline ? RailWidth : CompactTitleAreaWidth;
-        return new ShellResponsiveState(safeWidth, isRailInline, contentWidth, titleAreaWidth);
+        return new ShellResponsiveState(safeWidth, canRailInline, isRailInline, contentWidth, titleAreaWidth);
     }
 
     public static double CoordinateWorkspaceWidth(

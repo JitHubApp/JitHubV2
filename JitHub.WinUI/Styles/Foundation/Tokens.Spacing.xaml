@@ -18,6 +18,8 @@
     <x:Double x:Key="AppReactionPickerButtonSize">40</x:Double>
     <x:Double x:Key="AppReactionPickerContentWidth">176</x:Double>
     <x:Double x:Key="AppReactionPickerMinWidth">192</x:Double>
+    <x:Double x:Key="AppNavigationSelectionIndicatorWidth">3</x:Double>
+    <x:Double x:Key="AppNavigationSelectionIndicatorHeight">16</x:Double>
     <x:Double x:Key="AppDisabledControlOpacity">0.45</x:Double>
     <GridLength x:Key="AppReactionPickerTrackSize">40</GridLength>
     <Thickness x:Key="AppPagePadding">20</Thickness>
@@ -31,4 +33,5 @@
     <Thickness x:Key="AppReactionPickerItemMargin">2</Thickness>
     <Thickness x:Key="AppReactionLauncherMargin">0,0,4,0</Thickness>
     <Thickness x:Key="AppReactionFocusMargin">1</Thickness>
+    <Thickness x:Key="AppInfoBadgeValueTextMargin">4,0,4,0</Thickness>
 </ResourceDictionary>

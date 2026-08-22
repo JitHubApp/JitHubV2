@@ -64,6 +64,25 @@ public sealed class StarsWorkspaceContractTests
         Assert.Contains("colorField.Children.Add(colorFrame)", code, StringComparison.Ordinal);
     }
 
+    [Fact]
+    public void NavigationHeadingsAreGroupedOutsideSelectableItems()
+    {
+        string root = FindRepositoryRoot();
+        XDocument document = XDocument.Load(Path.Combine(root, "JitHub.WinUI", "Views", "Pages", "StarsPage.xaml"));
+        XNamespace xaml = "http://schemas.microsoft.com/winfx/2006/xaml";
+        XElement navigationTemplate = Assert.Single(document.Descendants(), element =>
+            element.Attribute(xaml + "Key")?.Value == "NavigationItemTemplate");
+        XElement groups = Assert.Single(document.Descendants(), element =>
+            element.Name.LocalName == "CollectionViewSource" &&
+            element.Attribute("IsSourceGrouped")?.Value == "True");
+
+        Assert.Equal("{x:Bind ViewModel.NavigationGroups, Mode=OneWay}", groups.Attribute("Source")?.Value);
+        Assert.Contains(document.Descendants(), element => element.Name.LocalName == "GroupStyle.HeaderTemplate");
+        Assert.DoesNotContain(navigationTemplate.DescendantsAndSelf(), element =>
+            element.Attribute(xaml + "Uid")?.Value == "PagesStarsPageTextBlockCATEGORIES");
+        Assert.DoesNotContain("ShowCategoryHeader", navigationTemplate.ToString(), StringComparison.Ordinal);
+    }
+
     private static string FindRepositoryRoot()
     {
         DirectoryInfo? directory = new(AppContext.BaseDirectory);

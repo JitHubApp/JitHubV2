@@ -151,6 +151,21 @@ public sealed class AdaptiveWorkspaceLayoutTests
         Assert.True(state.TitleAreaWidth > 0);
     }
 
+    [Fact]
+    public void UserCollapsedShellRailRemainsCollapsedAcrossWideResizes()
+    {
+        ShellResponsiveState initial = ShellResponsiveLayout.Calculate(1600, isRailCollapsedByUser: true);
+        ShellResponsiveState resized = ShellResponsiveLayout.Calculate(1400, isRailCollapsedByUser: true);
+
+        Assert.True(initial.CanRailInline);
+        Assert.True(resized.CanRailInline);
+        Assert.False(initial.IsRailInline);
+        Assert.False(resized.IsRailInline);
+        Assert.Equal(initial.WindowWidth, initial.ContentWidth);
+        Assert.Equal(resized.WindowWidth, resized.ContentWidth);
+        Assert.True(ShellResponsiveLayout.Calculate(1600).IsRailInline);
+    }
+
     [Theory]
     [InlineData(1546, true, true, true)]
     [InlineData(1545, true, true, false)]

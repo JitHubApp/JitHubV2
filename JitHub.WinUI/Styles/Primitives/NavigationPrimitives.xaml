@@ -53,9 +53,12 @@
         <Setter Property="Foreground" Value="{ThemeResource AppInkBrush}" />
     </Style>
 
+    <StaticResource x:Key="ValueInfoBadgeTextMargin" ResourceKey="AppInfoBadgeValueTextMargin" />
+
     <Style TargetType="muxc:InfoBadge" BasedOn="{StaticResource DefaultInfoBadgeStyle}">
         <Setter Property="Background" Value="{ThemeResource AppAccentBrush}" />
         <Setter Property="Foreground" Value="{ThemeResource AppAccentForegroundBrush}" />
+        <Setter Property="VerticalAlignment" Value="Center" />
     </Style>
     <Style TargetType="muxc:InfoBar">
         <Setter Property="Background" Value="{ThemeResource AppCardBrush}" />

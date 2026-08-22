@@ -76,6 +76,8 @@ public sealed partial class ShellPage : Page
     private readonly Dictionary<Control, bool> _modalBackgroundTabStops = [];
     private long _activeModalGeneration;
     private bool _isShellRailCompact;
+    private bool _canShellRailInline;
+    private bool _isShellRailCollapsedByUser;
     private bool _isShellSearchCompact;
     private bool _searchSuggestionsDismissedUntilInput;
     private bool _initialized;
@@ -1660,6 +1662,25 @@ public sealed partial class ShellPage : Page
         OpenShellRailDrawer();
     }
 
+    private void ShellRailCollapseButton_Click(object sender, RoutedEventArgs e)
+    {
+        if (!_canShellRailInline)
+        {
+            return;
+        }
+
+        bool expandRail = _isShellRailCompact;
+        _isShellRailCollapsedByUser = !expandRail;
+        _ = DispatcherQueue.TryEnqueue(() =>
+        {
+            ApplyShellResponsiveLayout(ActualWidth);
+            Control focusTarget = _isShellRailCollapsedByUser
+                ? ShellRailDrawerButton
+                : ShellRailCollapseButton;
+            _ = focusTarget.Focus(FocusState.Programmatic);
+        });
+    }
+
     private void ShellRailDrawerOverlay_KeyDown(object sender, KeyRoutedEventArgs e)
     {
         if (e.Key != VirtualKey.Escape)
@@ -1790,6 +1811,7 @@ public sealed partial class ShellPage : Page
              (!isCompact && ReferenceEquals(ShellRail.Child, ShellRailContent))))
         {
             _shellRailDrawerAnimator.SyncToCurrentState();
+            UpdateShellRailCollapseAffordance();
             return;
         }
 
@@ -1800,17 +1822,34 @@ public sealed partial class ShellPage : Page
             ShellRailDrawerPresenter.Content = ShellRailContent;
             _shellRailDrawerAnimator.SetOpen(false, animate: false);
             ShellRailDrawerOverlay.Visibility = Visibility.Collapsed;
+            UpdateShellRailCollapseAffordance();
             return;
         }
 
         CloseShellRailDrawer(restoreFocus: false, animate: false);
         ShellRailDrawerPresenter.Content = null;
         ShellRail.Child = ShellRailContent;
+        UpdateShellRailCollapseAffordance();
+    }
+
+    private void UpdateShellRailCollapseAffordance()
+    {
+        ShellRailCollapseButton.Visibility = _canShellRailInline
+            ? Visibility.Visible
+            : Visibility.Collapsed;
+        bool expandsRail = _isShellRailCompact;
+        ShellRailCollapseGlyph.Glyph = expandsRail ? "\uE76C" : "\uE76B";
+        string label = expandsRail
+            ? LocalizedResourceText.GetString("Shell.Navigation.ExpandPane", "Expand navigation pane")
+            : LocalizedResourceText.GetString("Shell.Navigation.CollapsePane", "Collapse navigation pane");
+        AutomationProperties.SetName(ShellRailCollapseButton, label);
+        ToolTipService.SetToolTip(ShellRailCollapseButton, label);
     }
 
     private void ApplyShellResponsiveLayout(double windowWidth)
     {
-        ShellResponsiveState state = ShellResponsiveLayout.Calculate(windowWidth);
+        ShellResponsiveState state = ShellResponsiveLayout.Calculate(windowWidth, _isShellRailCollapsedByUser);
+        _canShellRailInline = state.CanRailInline;
         _isShellSearchCompact = windowWidth <= 900;
         TitleLogoColumn.Width = new GridLength(state.TitleAreaWidth);
         AppLogoShellPage.Visibility = state.IsRailInline ? Visibility.Visible : Visibility.Collapsed;

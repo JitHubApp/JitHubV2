@@ -11,6 +11,11 @@
     mc:Ignorable="d">
 
     <Page.Resources>
+        <CollectionViewSource
+            x:Name="StarsNavigationGroupsSource"
+            IsSourceGrouped="True"
+            Source="{x:Bind ViewModel.NavigationGroups, Mode=OneWay}" />
+
         <Style
             x:Key="StarsRowHoverButtonStyle"
             BasedOn="{StaticResource AppStableButtonBaseStyle}"
@@ -31,55 +36,43 @@
         </Style>
 
         <DataTemplate x:Key="NavigationItemTemplate" x:DataType="viewmodels:StarNavigationItem">
-            <Grid>
-                <Grid.RowDefinitions>
-                    <RowDefinition Height="Auto" />
-                    <RowDefinition Height="Auto" />
-                </Grid.RowDefinitions>
-                <TextBlock
-                    x:Uid="PagesStarsPageTextBlockCATEGORIES" Margin="0,12,0,7"
-                    Style="{StaticResource SectionSecondaryTextBlockStyle}"
-                    Text="CATEGORIES"
-                    Visibility="{x:Bind ShowCategoryHeader, Converter={StaticResource BoolToVisibilityConverter}}" />
-                <Grid
-                    Grid.Row="1"
-                    MinHeight="38"
+            <Grid
+                MinHeight="38"
+                VerticalAlignment="Center"
+                AutomationProperties.AutomationId="{x:Bind AutomationId}"
+                ColumnSpacing="10">
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="18" />
+                    <ColumnDefinition Width="*" />
+                    <ColumnDefinition Width="Auto" />
+                </Grid.ColumnDefinitions>
+                <Border
+                    Grid.ColumnSpan="3"
+                    Margin="-6,-5"
+                    Background="{x:Bind AccentColor, Converter={StaticResource HexColorToSolidBrushConverter}}"
+                    CornerRadius="{ThemeResource AppRadiusSmall}"
+                    IsHitTestVisible="False"
+                    Opacity="0.22"
+                    Visibility="{x:Bind IsDropTarget, Converter={StaticResource BoolToVisibilityConverter}, Mode=OneWay}" />
+                <FontIcon
                     VerticalAlignment="Center"
-                    AutomationProperties.AutomationId="{x:Bind AutomationId}"
-                    ColumnSpacing="10">
-                    <Grid.ColumnDefinitions>
-                        <ColumnDefinition Width="18" />
-                        <ColumnDefinition Width="*" />
-                        <ColumnDefinition Width="Auto" />
-                    </Grid.ColumnDefinitions>
-                    <Border
-                        Grid.ColumnSpan="3"
-                        Margin="-6,-5"
-                        Background="{x:Bind AccentColor, Converter={StaticResource HexColorToSolidBrushConverter}}"
-                        CornerRadius="{ThemeResource AppRadiusSmall}"
-                        IsHitTestVisible="False"
-                        Opacity="0.22"
-                        Visibility="{x:Bind IsDropTarget, Converter={StaticResource BoolToVisibilityConverter}, Mode=OneWay}" />
-                    <FontIcon
-                        VerticalAlignment="Center"
-                        FontFamily="{StaticResource SegoeFluentIcons}"
-                        FontSize="14"
-                        Foreground="{x:Bind AccentColor, Converter={StaticResource HexColorToSolidBrushConverter}}"
-                        Glyph="{x:Bind Glyph}" />
-                    <TextBlock
-                        Grid.Column="1"
-                        VerticalAlignment="Center"
-                        FontFamily="{ThemeResource AppUiFontFamily}"
-                        FontSize="13"
-                        Foreground="{ThemeResource AppInkBrush}"
-                        Text="{x:Bind Title}"
-                        TextTrimming="CharacterEllipsis" />
-                    <TextBlock
-                        Grid.Column="2"
-                        VerticalAlignment="Center"
-                        Style="{StaticResource SectionSecondaryTextBlockStyle}"
-                        Text="{x:Bind CountText}" />
-                </Grid>
+                    FontFamily="{StaticResource SegoeFluentIcons}"
+                    FontSize="14"
+                    Foreground="{x:Bind AccentColor, Converter={StaticResource HexColorToSolidBrushConverter}}"
+                    Glyph="{x:Bind Glyph}" />
+                <TextBlock
+                    Grid.Column="1"
+                    VerticalAlignment="Center"
+                    FontFamily="{ThemeResource AppUiFontFamily}"
+                    FontSize="13"
+                    Foreground="{ThemeResource AppInkBrush}"
+                    Text="{x:Bind Title}"
+                    TextTrimming="CharacterEllipsis" />
+                <TextBlock
+                    Grid.Column="2"
+                    VerticalAlignment="Center"
+                    Style="{StaticResource SectionSecondaryTextBlockStyle}"
+                    Text="{x:Bind CountText}" />
             </Grid>
         </DataTemplate>
 
@@ -249,7 +242,6 @@
                 <Grid Width="232" RowSpacing="8">
                     <Grid.RowDefinitions>
                         <RowDefinition Height="Auto" />
-                        <RowDefinition Height="Auto" />
                         <RowDefinition Height="*" />
                         <RowDefinition Height="Auto" />
                     </Grid.RowDefinitions>
@@ -272,21 +264,41 @@
                             <FontIcon FontFamily="{StaticResource SegoeFluentIcons}" Glyph="&#xE72B;" />
                         </Button>
                     </Grid>
-                    <TextBlock x:Uid="PagesStarsPageTextBlockSMARTLISTS" Grid.Row="1" Margin="14,4,14,0" Style="{StaticResource SectionSecondaryTextBlockStyle}" Text="SMART LISTS" />
                     <ListView
                         x:Uid="PagesStarsPageStarsCategoryNavigation" x:Name="CategoryNavigationList"
-                        Grid.Row="2"
+                        Grid.Row="1"
                         AutomationProperties.AutomationId="StarsCategoryNavigation"
                         AutomationProperties.Name="Star categories"
                         Background="{ThemeResource AppTransparentBrush}"
                         BorderThickness="0"
                         ItemContainerStyle="{StaticResource StarsNavigationItemStyle}"
                         ItemTemplate="{StaticResource NavigationItemTemplate}"
-                        ItemsSource="{x:Bind ViewModel.NavigationItems, Mode=OneWay}"
+                        ItemsSource="{x:Bind StarsNavigationGroupsSource.View, Mode=OneWay}"
                         ContainerContentChanging="CategoryNavigationList_ContainerContentChanging"
                         SelectedItem="{x:Bind ViewModel.SelectedNavigationItem, Mode=TwoWay}"
-                        SelectionMode="Single" />
-                    <Grid Grid.Row="3" Margin="10,4,10,12">
+                        SelectionMode="Single">
+                        <ListView.GroupStyle>
+                            <GroupStyle>
+                                <GroupStyle.HeaderContainerStyle>
+                                    <Style TargetType="ListViewHeaderItem">
+                                        <Setter Property="Padding" Value="0" />
+                                        <Setter Property="HorizontalContentAlignment" Value="Stretch" />
+                                        <Setter Property="IsHitTestVisible" Value="False" />
+                                        <Setter Property="IsTabStop" Value="False" />
+                                    </Style>
+                                </GroupStyle.HeaderContainerStyle>
+                                <GroupStyle.HeaderTemplate>
+                                    <DataTemplate x:DataType="viewmodels:StarNavigationGroup">
+                                        <TextBlock
+                                            Margin="14,10,14,6"
+                                            Style="{StaticResource SectionSecondaryTextBlockStyle}"
+                                            Text="{x:Bind Title}" />
+                                    </DataTemplate>
+                                </GroupStyle.HeaderTemplate>
+                            </GroupStyle>
+                        </ListView.GroupStyle>
+                    </ListView>
+                    <Grid Grid.Row="2" Margin="10,4,10,12">
                         <Button
                             x:Uid="PagesStarsPageStarsNewCategory" HorizontalAlignment="Stretch"
                             HorizontalContentAlignment="Left"
