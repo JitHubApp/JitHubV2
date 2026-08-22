@@ -122,12 +122,34 @@ public sealed class CsvDocumentParserTests
     }
 
     [Fact]
-    public void Parse_Cancellation_IsObserved()
+    public void Parse_Cancellation_ReturnsCanceledResultWithoutThrowing()
     {
         using CancellationTokenSource cancellation = new();
         cancellation.Cancel();
 
-        Assert.Throws<OperationCanceledException>(() =>
-            CsvDocumentParser.Parse("header\nvalue", ',', cancellation.Token));
+        CsvParseResult result = CsvDocumentParser.Parse(
+            "header\nvalue",
+            ',',
+            cancellation.Token);
+
+        Assert.True(result.WasCanceled);
+        Assert.False(result.Succeeded);
+        Assert.Null(result.Document);
+    }
+
+    [Fact]
+    public async Task ParseAsync_Cancellation_DoesNotCreateCanceledTask()
+    {
+        using CancellationTokenSource cancellation = new();
+        cancellation.Cancel();
+
+        Task<CsvParseResult> parseTask = CsvDocumentParser.ParseAsync(
+            "header\nvalue",
+            ',',
+            cancellation.Token);
+        CsvParseResult result = await parseTask;
+
+        Assert.Equal(TaskStatus.RanToCompletion, parseTask.Status);
+        Assert.True(result.WasCanceled);
     }
 }

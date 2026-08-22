@@ -117,7 +117,7 @@ public sealed partial class CsvPreview : UserControl
         PlainEditor.Visibility = rich ? Visibility.Collapsed : Visibility.Visible;
         PlainEditor.Text = text;
 
-        if (!rich)
+        if (!rich || !IsLoaded)
         {
             return;
         }
@@ -144,28 +144,26 @@ public sealed partial class CsvPreview : UserControl
         int generation,
         CancellationToken cancellationToken)
     {
-        try
+        CsvParseResult result = await CsvDocumentParser.ParseAsync(
+            text,
+            delimiter,
+            cancellationToken);
+        if (result.WasCanceled ||
+            cancellationToken.IsCancellationRequested ||
+            generation != _parseGeneration ||
+            !IsLoaded ||
+            ViewModel?.ShowRichPreview != true)
         {
-            CsvParseResult result = await Task.Run(
-                () => CsvDocumentParser.Parse(text, delimiter, cancellationToken),
-                cancellationToken);
-            cancellationToken.ThrowIfCancellationRequested();
-            if (generation != _parseGeneration || !IsLoaded || ViewModel?.ShowRichPreview != true)
-            {
-                return;
-            }
-
-            if (result.Succeeded)
-            {
-                DataTable.SetDocument(result.Document!);
-            }
-            else
-            {
-                DataTable.ShowStatus(GetFailureMessage(result.Failure));
-            }
+            return;
         }
-        catch (OperationCanceledException)
+
+        if (result.Succeeded)
         {
+            DataTable.SetDocument(result.Document!);
+        }
+        else
+        {
+            DataTable.ShowStatus(GetFailureMessage(result.Failure));
         }
     }
 

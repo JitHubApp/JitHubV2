@@ -2,12 +2,14 @@ using System;
 using System.Collections.Generic;
 using System.Text;
 using System.Threading;
+using System.Threading.Tasks;
 
 namespace JitHub.Services.CodeViewer;
 
 internal enum CsvParseFailure
 {
     None,
+    Canceled,
     Empty,
     InputTooLarge,
     TooManyColumns,
@@ -46,7 +48,11 @@ internal readonly record struct CsvParseResult(CsvDocument? Document, CsvParseFa
 {
     public bool Succeeded => Document is not null && Failure == CsvParseFailure.None;
 
+    public bool WasCanceled => Failure == CsvParseFailure.Canceled;
+
     public static CsvParseResult Success(CsvDocument document) => new(document, CsvParseFailure.None);
+
+    public static CsvParseResult Canceled() => new(null, CsvParseFailure.Canceled);
 
     public static CsvParseResult Rejected(CsvParseFailure failure) => new(null, failure);
 }
@@ -62,6 +68,11 @@ internal static class CsvDocumentParser
         char delimiter,
         CancellationToken cancellationToken = default)
     {
+        if (cancellationToken.IsCancellationRequested)
+        {
+            return CsvParseResult.Canceled();
+        }
+
         if (string.IsNullOrEmpty(text))
         {
             return CsvParseResult.Rejected(CsvParseFailure.Empty);
@@ -83,7 +94,10 @@ internal static class CsvDocumentParser
         {
             if ((index & 0x3ff) == 0)
             {
-                cancellationToken.ThrowIfCancellationRequested();
+                if (cancellationToken.IsCancellationRequested)
+                {
+                    return CsvParseResult.Canceled();
+                }
             }
 
             char current = text[index];
@@ -203,7 +217,11 @@ internal static class CsvDocumentParser
             }
         }
 
-        cancellationToken.ThrowIfCancellationRequested();
+        if (cancellationToken.IsCancellationRequested)
+        {
+            return CsvParseResult.Canceled();
+        }
+
         if (inQuotedField)
         {
             return CsvParseResult.Rejected(CsvParseFailure.UnterminatedQuotedField);
@@ -224,9 +242,14 @@ internal static class CsvDocumentParser
         }
 
         int columnCount = 0;
-        foreach (string[] record in records)
+        for (int recordIndex = 0; recordIndex < records.Count; recordIndex++)
         {
-            columnCount = Math.Max(columnCount, record.Length);
+            if ((recordIndex & 0x3ff) == 0 && cancellationToken.IsCancellationRequested)
+            {
+                return CsvParseResult.Canceled();
+            }
+
+            columnCount = Math.Max(columnCount, records[recordIndex].Length);
         }
 
         if (columnCount == 0)
@@ -247,6 +270,11 @@ internal static class CsvDocumentParser
         List<CsvRow> rows = new(Math.Max(0, records.Count - 1));
         for (int recordIndex = 1; recordIndex < records.Count; recordIndex++)
         {
+            if ((recordIndex & 0x3ff) == 0 && cancellationToken.IsCancellationRequested)
+            {
+                return CsvParseResult.Canceled();
+            }
+
             string[] source = records[recordIndex];
             string[] values = new string[columnCount];
             Array.Copy(source, values, source.Length);
@@ -255,6 +283,21 @@ internal static class CsvDocumentParser
         }
 
         return CsvParseResult.Success(new CsvDocument(headers, rows));
+    }
+
+    public static Task<CsvParseResult> ParseAsync(
+        string? text,
+        char delimiter,
+        CancellationToken cancellationToken = default)
+    {
+        if (cancellationToken.IsCancellationRequested)
+        {
+            return Task.FromResult(CsvParseResult.Canceled());
+        }
+
+        // Preview refresh cancellation is represented by CsvParseResult so normal
+        // view lifecycle changes never surface first-chance exceptions.
+        return Task.Run(() => Parse(text, delimiter, cancellationToken));
     }
 
     private static CsvParseFailure AddField(List<string> fields, StringBuilder field)
