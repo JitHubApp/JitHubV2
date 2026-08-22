@@ -10,15 +10,7 @@
     MaxWidth="920"
     mc:Ignorable="d">
     <UserControl.Resources>
-        <SolidColorBrush x:Key="HyperlinkForeground" Color="{ThemeResource AppAccentColor}" />
-        <SolidColorBrush x:Key="HyperlinkForegroundPointerOver" Color="{ThemeResource AppAccentHoverColor}" />
-        <SolidColorBrush x:Key="HyperlinkForegroundPressed" Color="{ThemeResource AppAccentPressedColor}" />
-        <SolidColorBrush x:Key="SystemControlHyperlinkTextBrush" Color="{ThemeResource AppAccentColor}" />
-        <SolidColorBrush x:Key="SystemControlHyperlinkBaseMediumBrush" Color="{ThemeResource AppAccentHoverColor}" />
-        <SolidColorBrush x:Key="SystemControlHighlightBaseMediumLowBrush" Color="{ThemeResource AppAccentPressedColor}" />
         <SolidColorBrush x:Key="ActivityInlineLinkForegroundBrush" Color="{ThemeResource AppAccentColor}" />
-        <SolidColorBrush x:Key="ActivityInlineLinkForegroundPointerOverBrush" Color="{ThemeResource AppAccentHoverColor}" />
-        <SolidColorBrush x:Key="ActivityInlineLinkForegroundPressedBrush" Color="{ThemeResource AppAccentPressedColor}" />
 
         <Style
             x:Key="ActivityInlineButtonStyle"
@@ -94,16 +86,7 @@
                         Foreground="{ThemeResource AppInkBrush}"
                         IsTextSelectionEnabled="False"
                         LineHeight="25"
-                        TextWrapping="WrapWholeWords">
-                        <RichTextBlock.Resources>
-                            <SolidColorBrush x:Key="HyperlinkForeground" Color="{ThemeResource AppAccentColor}" />
-                            <SolidColorBrush x:Key="HyperlinkForegroundPointerOver" Color="{ThemeResource AppAccentHoverColor}" />
-                            <SolidColorBrush x:Key="HyperlinkForegroundPressed" Color="{ThemeResource AppAccentPressedColor}" />
-                            <SolidColorBrush x:Key="SystemControlHyperlinkTextBrush" Color="{ThemeResource AppAccentColor}" />
-                            <SolidColorBrush x:Key="SystemControlHyperlinkBaseMediumBrush" Color="{ThemeResource AppAccentHoverColor}" />
-                            <SolidColorBrush x:Key="SystemControlHighlightBaseMediumLowBrush" Color="{ThemeResource AppAccentPressedColor}" />
-                        </RichTextBlock.Resources>
-                    </RichTextBlock>
+                        TextWrapping="WrapWholeWords" />
                 </Grid>
 
                 <TextBlock

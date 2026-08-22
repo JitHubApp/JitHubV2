@@ -118,6 +118,7 @@ public sealed class LightThemePaletteTests
         AssertContrast(light, "AppInkSubtleColor", "AppCardColor", 4.5);
         AssertContrast(light, "AppInkSubtleColor", "AppInputColor", 4.5);
         AssertContrast(light, "AppAccentColor", "AppCardColor", 4.5);
+        AssertContrast(light, "AppAccentHoverColor", "AppCardColor", 4.5);
         AssertContrast(light, "AppAccentForegroundColor", "AppAccentColor", 4.5);
         AssertContrast(light, "AppAccentForegroundColor", "AppAccentHoverColor", 4.5);
         AssertContrast(light, "AppAccentForegroundColor", "AppAccentPressedColor", 4.5);
@@ -244,6 +245,7 @@ public sealed class LightThemePaletteTests
         AssertContrast(dark, "AppRowHoverForegroundColor", "AppRowHoverColor", 12.0);
         AssertContrast(dark, "AppRowPressedForegroundColor", "AppRowPressedColor", 10.0);
         AssertContrast(dark, "AppRowSelectedForegroundColor", "AppRowSelectedColor", 10.0);
+        AssertContrast(dark, "AppAccentHoverColor", "AppCardColor", 4.5);
         AssertContrast(dark, "AppAccentForegroundColor", "AppAccentColor", 4.5);
     }
 

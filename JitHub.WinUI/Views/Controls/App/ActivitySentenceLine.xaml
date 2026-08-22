@@ -8,8 +8,6 @@
     mc:Ignorable="d">
     <UserControl.Resources>
         <SolidColorBrush x:Key="ActivityInlineLinkForegroundBrush" Color="{ThemeResource AppAccentColor}" />
-        <SolidColorBrush x:Key="ActivityInlineLinkForegroundPointerOverBrush" Color="{ThemeResource AppAccentHoverColor}" />
-        <SolidColorBrush x:Key="ActivityInlineLinkForegroundPressedBrush" Color="{ThemeResource AppAccentPressedColor}" />
     </UserControl.Resources>
 
     <Grid

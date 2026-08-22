@@ -120,6 +120,9 @@
     <SolidColorBrush x:Key="AccentTextFillColorPrimaryBrush" Color="{ThemeResource AppAccentColor}" />
     <SolidColorBrush x:Key="AccentTextFillColorSecondaryBrush" Color="{ThemeResource AppAccentHoverColor}" />
     <SolidColorBrush x:Key="AccentTextFillColorTertiaryBrush" Color="{ThemeResource AppAccentPressedColor}" />
+    <SolidColorBrush x:Key="HyperlinkForeground" Color="{ThemeResource AppAccentColor}" />
+    <SolidColorBrush x:Key="HyperlinkForegroundPointerOver" Color="{ThemeResource AppAccentHoverColor}" />
+    <SolidColorBrush x:Key="HyperlinkForegroundPressed" Color="{ThemeResource AppAccentPressedColor}" />
     <SolidColorBrush x:Key="AccentFillColorSelectedTextBackgroundBrush" Color="{ThemeResource AppAccentColor}" Opacity="0.45" />
     <SolidColorBrush x:Key="AccentFillColorDisabledBrush" Color="{ThemeResource AppCanvasInsetColor}" />
     <SolidColorBrush x:Key="TextOnAccentFillColorPrimaryBrush" Color="{ThemeResource AppAccentForegroundColor}" />
@@ -144,7 +147,7 @@
     <StaticResource x:Key="SystemAccentColor" ResourceKey="AppAccentColor" />
     <StaticResource x:Key="SystemAccentColorLight1" ResourceKey="AppAccentHoverColor" />
     <StaticResource x:Key="SystemAccentColorLight2" ResourceKey="AppAccentHoverColor" />
-    <StaticResource x:Key="SystemAccentColorLight3" ResourceKey="AppAccentForegroundColor" />
+    <StaticResource x:Key="SystemAccentColorLight3" ResourceKey="AppAccentHoverColor" />
     <StaticResource x:Key="SystemAccentColorDark1" ResourceKey="AppAccentPressedColor" />
     <StaticResource x:Key="SystemAccentColorDark2" ResourceKey="AppAccentPressedColor" />
     <StaticResource x:Key="SystemAccentColorDark3" ResourceKey="AppAccentPressedColor" />

@@ -103,6 +103,42 @@ public sealed class DashboardWorkspaceContractTests
     }
 
     [Fact]
+    public void ActivityLinksUseTokenizedPlatformVisualStates()
+    {
+        XDocument bridge = XDocument.Load(Path(
+            "JitHub.WinUI",
+            "Styles",
+            "Foundation",
+            "WinUIResourceBridge.xaml"));
+        XNamespace xaml = "http://schemas.microsoft.com/winfx/2006/xaml";
+        Dictionary<string, string> brushes = bridge.Root!.Elements()
+            .Where(element => element.Name.LocalName == "SolidColorBrush")
+            .ToDictionary(
+                element => element.Attribute(xaml + "Key")?.Value ?? string.Empty,
+                element => element.Attribute("Color")?.Value ?? string.Empty,
+                StringComparer.Ordinal);
+
+        Assert.Equal("{ThemeResource AppAccentColor}", brushes["HyperlinkForeground"]);
+        Assert.Equal("{ThemeResource AppAccentHoverColor}", brushes["HyperlinkForegroundPointerOver"]);
+        Assert.Equal("{ThemeResource AppAccentPressedColor}", brushes["HyperlinkForegroundPressed"]);
+        XElement lightestSystemAccent = Assert.Single(bridge.Root!.Elements(), element =>
+            element.Attribute(xaml + "Key")?.Value == "SystemAccentColorLight3");
+        Assert.Equal("AppAccentHoverColor", lightestSystemAccent.Attribute("ResourceKey")?.Value);
+
+        foreach (string control in new[] { "ActivitySentenceLine.xaml", "ActivityCard.xaml" })
+        {
+            string activity = File.ReadAllText(Path(
+                "JitHub.WinUI",
+                "Views",
+                "Controls",
+                "App",
+                control));
+            Assert.Contains("ActivityInlineLinkForegroundBrush\" Color=\"{ThemeResource AppAccentColor}", activity, StringComparison.Ordinal);
+            Assert.DoesNotContain("x:Key=\"HyperlinkForegroundPointerOver\"", activity, StringComparison.Ordinal);
+        }
+    }
+
+    [Fact]
     public void OpeningUnreadNotificationUsesOneSharedSupportedMarkReadWorkflow()
     {
         string source = File.ReadAllText(Path(
