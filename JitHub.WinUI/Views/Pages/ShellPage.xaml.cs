@@ -1651,6 +1651,17 @@ public sealed partial class ShellPage : Page
 
     private void ShellRailDrawerButton_Click(object sender, RoutedEventArgs e)
     {
+        if (_canShellRailInline)
+        {
+            _isShellRailCollapsedByUser = !_isShellRailCompact;
+            ViewModel.TrackShellCommand(
+                TelemetryTaxonomy.Actions.Drawer,
+                _isShellRailCollapsedByUser ? "collapsed" : "expanded");
+            ApplyShellResponsiveLayout(ActualWidth);
+            _ = ShellRailDrawerButton.Focus(FocusState.Programmatic);
+            return;
+        }
+
         if (ShellRailDrawerOverlay.Visibility == Visibility.Visible && _shellRailDrawerAnimator.IsOpen)
         {
             ViewModel.TrackShellCommand(TelemetryTaxonomy.Actions.Drawer, "dismissed");
@@ -1660,25 +1671,6 @@ public sealed partial class ShellPage : Page
 
         ViewModel.TrackShellCommand(TelemetryTaxonomy.Actions.Drawer, TelemetryTaxonomy.Results.Opened);
         OpenShellRailDrawer();
-    }
-
-    private void ShellRailCollapseButton_Click(object sender, RoutedEventArgs e)
-    {
-        if (!_canShellRailInline)
-        {
-            return;
-        }
-
-        bool expandRail = _isShellRailCompact;
-        _isShellRailCollapsedByUser = !expandRail;
-        _ = DispatcherQueue.TryEnqueue(() =>
-        {
-            ApplyShellResponsiveLayout(ActualWidth);
-            Control focusTarget = _isShellRailCollapsedByUser
-                ? ShellRailDrawerButton
-                : ShellRailCollapseButton;
-            _ = focusTarget.Focus(FocusState.Programmatic);
-        });
     }
 
     private void ShellRailDrawerOverlay_KeyDown(object sender, KeyRoutedEventArgs e)
@@ -1745,11 +1737,7 @@ public sealed partial class ShellPage : Page
 
         ShellRailDrawerOverlay.Visibility = Visibility.Visible;
         _shellRailDrawerAnimator.SetOpen(true);
-        string closeNavigation = LocalizedResourceText.GetString(
-            "Shell.Navigation.Close",
-            "Close navigation");
-        Microsoft.UI.Xaml.Automation.AutomationProperties.SetName(ShellRailDrawerButton, closeNavigation);
-        ToolTipService.SetToolTip(ShellRailDrawerButton, closeNavigation);
+        UpdateShellRailToggleAffordance();
         _ = ShellRailDrawer.Focus(FocusState.Programmatic);
     }
 
@@ -1771,11 +1759,7 @@ public sealed partial class ShellPage : Page
         }
 
         ShellRailDrawerOverlay.Visibility = Visibility.Collapsed;
-        string openNavigation = LocalizedResourceText.GetString(
-            "Shell.Navigation.Open",
-            "Open navigation");
-        Microsoft.UI.Xaml.Automation.AutomationProperties.SetName(ShellRailDrawerButton, openNavigation);
-        ToolTipService.SetToolTip(ShellRailDrawerButton, openNavigation);
+        UpdateShellRailToggleAffordance();
         if (!restoreFocus)
         {
             _shellRailDrawerRestoreTarget = null;
@@ -1805,13 +1789,20 @@ public sealed partial class ShellPage : Page
     {
         ShellRail.Width = ShellResponsiveLayout.RailWidth;
         ShellRail.Visibility = isCompact ? Visibility.Collapsed : Visibility.Visible;
-        ShellRailDrawerButton.Visibility = isCompact ? Visibility.Visible : Visibility.Collapsed;
+        ShellRailDrawerButton.Visibility = Visibility.Visible;
         if (_isShellRailCompact == isCompact &&
             ((isCompact && ReferenceEquals(ShellRailDrawerPresenter.Content, ShellRailContent)) ||
              (!isCompact && ReferenceEquals(ShellRail.Child, ShellRailContent))))
         {
-            _shellRailDrawerAnimator.SyncToCurrentState();
-            UpdateShellRailCollapseAffordance();
+            if (_canShellRailInline)
+            {
+                CloseShellRailDrawer(restoreFocus: false, animate: false);
+            }
+            else
+            {
+                _shellRailDrawerAnimator.SyncToCurrentState();
+            }
+
             return;
         }
 
@@ -1822,28 +1813,34 @@ public sealed partial class ShellPage : Page
             ShellRailDrawerPresenter.Content = ShellRailContent;
             _shellRailDrawerAnimator.SetOpen(false, animate: false);
             ShellRailDrawerOverlay.Visibility = Visibility.Collapsed;
-            UpdateShellRailCollapseAffordance();
             return;
         }
 
         CloseShellRailDrawer(restoreFocus: false, animate: false);
         ShellRailDrawerPresenter.Content = null;
         ShellRail.Child = ShellRailContent;
-        UpdateShellRailCollapseAffordance();
     }
 
-    private void UpdateShellRailCollapseAffordance()
+    private void UpdateShellRailToggleAffordance()
     {
-        ShellRailCollapseButton.Visibility = _canShellRailInline
-            ? Visibility.Visible
-            : Visibility.Collapsed;
-        bool expandsRail = _isShellRailCompact;
-        ShellRailCollapseGlyph.Glyph = expandsRail ? "\uE76C" : "\uE76B";
-        string label = expandsRail
-            ? LocalizedResourceText.GetString("Shell.Navigation.ExpandPane", "Expand navigation pane")
-            : LocalizedResourceText.GetString("Shell.Navigation.CollapsePane", "Collapse navigation pane");
-        AutomationProperties.SetName(ShellRailCollapseButton, label);
-        ToolTipService.SetToolTip(ShellRailCollapseButton, label);
+        string label;
+        if (_canShellRailInline)
+        {
+            label = _isShellRailCompact
+                ? LocalizedResourceText.GetString("Shell.Navigation.ExpandPane", "Expand navigation pane")
+                : LocalizedResourceText.GetString("Shell.Navigation.CollapsePane", "Collapse navigation pane");
+        }
+        else
+        {
+            bool closesDrawer = ShellRailDrawerOverlay.Visibility == Visibility.Visible &&
+                _shellRailDrawerAnimator.IsOpen;
+            label = closesDrawer
+                ? LocalizedResourceText.GetString("Shell.Navigation.Close", "Close navigation")
+                : LocalizedResourceText.GetString("Shell.Navigation.Open", "Open navigation");
+        }
+
+        AutomationProperties.SetName(ShellRailDrawerButton, label);
+        ToolTipService.SetToolTip(ShellRailDrawerButton, label);
     }
 
     private void ApplyShellResponsiveLayout(double windowWidth)
@@ -1864,6 +1861,7 @@ public sealed partial class ShellPage : Page
         SearchTextBox.PlaceholderText = searchPlaceholder;
         AutomationProperties.SetHelpText(SearchTextBox, searchPlaceholder);
         UpdateShellRailPlacement(!state.IsRailInline);
+        UpdateShellRailToggleAffordance();
     }
 
     private double GetShellRailDrawerWidth()

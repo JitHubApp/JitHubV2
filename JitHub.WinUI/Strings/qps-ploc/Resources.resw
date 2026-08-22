@@ -2823,12 +2823,6 @@
   <data name="Shell.Navigation.ExpandPane" xml:space="preserve">
     <value>⟦Expand navigation pane ~~~~~~~~⟧</value>
   </data>
-  <data name="PagesShellPageShellRailCollapseButton.AutomationProperties.Name" xml:space="preserve">
-    <value>⟦Collapse navigation pane ~~~~~~~~~⟧</value>
-  </data>
-  <data name="PagesShellPageShellRailCollapseButton.ToolTipService.ToolTip" xml:space="preserve">
-    <value>⟦Collapse navigation pane ~~~~~~~~~⟧</value>
-  </data>
   <data name="PagesRepoDetailPageRepoDetailNavigationView.AutomationProperties.Name" xml:space="preserve">
     <value>⟦Repository sections ~~~~~~~⟧</value>
   </data>

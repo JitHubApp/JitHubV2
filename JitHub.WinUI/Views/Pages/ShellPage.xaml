@@ -33,13 +33,14 @@
                         Background="{ThemeResource AppRowSelectedBrush}"
                         CornerRadius="{ThemeResource AppRadiusSmall}"
                         Visibility="{x:Bind IsSelected, Converter={StaticResource BoolToVisibilityConverter}, Mode=OneWay}" />
-                    <Border
-                        Width="{ThemeResource AppNavigationSelectionIndicatorWidth}"
-                        Height="{ThemeResource AppNavigationSelectionIndicatorHeight}"
+                    <Rectangle
+                        Width="{ThemeResource NavigationViewSelectionIndicatorWidth}"
+                        Height="{ThemeResource NavigationViewSelectionIndicatorHeight}"
                         HorizontalAlignment="Left"
                         VerticalAlignment="Center"
-                        Background="{ThemeResource AppAccentBrush}"
-                        CornerRadius="{ThemeResource AppRadiusPill}"
+                        Fill="{ThemeResource NavigationViewSelectionIndicatorForeground}"
+                        RadiusX="{ThemeResource NavigationViewSelectionIndicatorRadius}"
+                        RadiusY="{ThemeResource NavigationViewSelectionIndicatorRadius}"
                         Visibility="{x:Bind IsSelected, Converter={StaticResource BoolToVisibilityConverter}, Mode=OneWay}" />
                     <StackPanel
                         Margin="12,0,8,0"
@@ -319,11 +320,6 @@
                 VerticalAlignment="Center"
                 Orientation="Horizontal"
                 Spacing="12">
-                <Image
-                    x:Name="AppLogoShellPage"
-                    Width="30"
-                    Height="30"
-                    Source="ms-appx:///Assets/JitHubLogoTitleBar.png" />
                 <Button
                     x:Uid="PagesShellPageShellRailDrawerButton" x:Name="ShellRailDrawerButton"
                     Width="36"
@@ -333,13 +329,17 @@
                     AutomationProperties.Name="Open navigation"
                     Click="ShellRailDrawerButton_Click"
                     Style="{StaticResource AppToolbarButtonStyle}"
-                    ToolTipService.ToolTip="Navigation"
-                    Visibility="Collapsed">
+                    ToolTipService.ToolTip="Navigation">
                     <FontIcon
                         FontFamily="{StaticResource SegoeFluentIcons}"
                         FontSize="15"
                         Glyph="&#xE700;" />
                 </Button>
+                <Image
+                    x:Name="AppLogoShellPage"
+                    Width="30"
+                    Height="30"
+                    Source="ms-appx:///Assets/JitHubLogoTitleBar.png" />
                 <Button
                     x:Uid="PagesShellPageShellBackButton" Width="36"
                     Height="36"
@@ -587,42 +587,21 @@
                     <Grid.RowDefinitions>
                         <RowDefinition Height="Auto" />
                         <RowDefinition Height="Auto" />
-                        <RowDefinition Height="Auto" />
                         <RowDefinition Height="*" />
                     </Grid.RowDefinitions>
-                    <Button
-                        x:Uid="PagesShellPageShellRailCollapseButton"
-                        x:Name="ShellRailCollapseButton"
-                        Grid.Row="0"
-                        Width="32"
-                        Height="32"
-                        Margin="0,0,2,4"
-                        HorizontalAlignment="Right"
-                        AutomationProperties.AutomationId="ShellRailCollapseButton"
-                        AutomationProperties.Name="Collapse navigation pane"
-                        Click="ShellRailCollapseButton_Click"
-                        Style="{StaticResource AppToolbarButtonStyle}"
-                        ToolTipService.ToolTip="Collapse navigation pane"
-                        Visibility="Collapsed">
-                        <FontIcon
-                            x:Name="ShellRailCollapseGlyph"
-                            FontFamily="{StaticResource SegoeFluentIcons}"
-                            FontSize="13"
-                            Glyph="&#xE76B;" />
-                    </Button>
                     <ItemsControl
                         x:Name="ShellNavList"
-                        Grid.Row="1"
+                        Grid.Row="0"
                         AutomationProperties.AutomationId="ShellNavList"
                         ItemTemplate="{StaticResource ShellNavigationItemTemplate}"
                         ItemsSource="{x:Bind ViewModel.NavigationItems, Mode=OneWay}" />
                     <Rectangle
-                        Grid.Row="2"
+                        Grid.Row="1"
                         Height="1"
                         Margin="12,12"
                         Fill="{ThemeResource AppHairlineBrush}" />
                     <Grid
-                        Grid.Row="3"
+                        Grid.Row="2"
                         Padding="4,0,4,0"
                         RowSpacing="10">
                         <Grid.RowDefinitions>

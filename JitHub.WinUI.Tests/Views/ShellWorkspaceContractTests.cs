@@ -127,15 +127,16 @@ public sealed class ShellWorkspaceContractTests
     }
 
     [Fact]
-    public void CompactNavigationToggleLocalizesItsStateAndTracksTheCommandOutcome()
+    public void PersistentNavigationToggleOwnsWideCollapseAndCompactDrawerBehavior()
     {
         string root = FindRepositoryRoot();
+        XDocument shell = LoadShellXaml();
         string codeBehind = File.ReadAllText(Path.Combine(
             root,
             "JitHub.WinUI",
             "Views",
             "Pages",
-            "ShellPage.xaml.cs"));
+            "ShellPage.xaml.cs")).Replace("\r\n", "\n", StringComparison.Ordinal);
         string viewModel = File.ReadAllText(Path.Combine(
             root,
             "JitHub.WinUI",
@@ -143,11 +144,59 @@ public sealed class ShellWorkspaceContractTests
             "Pages",
             "ShellPageViewModel.cs"));
 
+        XElement toggle = Assert.Single(shell.Descendants(), element =>
+            string.Equals(
+                (string?)element.Attribute("AutomationProperties.AutomationId"),
+                "ShellRailDrawerButton",
+                StringComparison.Ordinal));
+        XElement logo = Assert.Single(shell.Descendants(), element =>
+            element.Attributes().Any(attribute =>
+                attribute.Name.LocalName == "Name" &&
+                string.Equals(attribute.Value, "AppLogoShellPage", StringComparison.Ordinal)));
+        Assert.Null((string?)toggle.Attribute("Visibility"));
+        Assert.Same(toggle.Parent, logo.Parent);
+        Assert.Contains(logo, toggle.ElementsAfterSelf());
+        Assert.DoesNotContain(shell.Descendants(), element =>
+            string.Equals(
+                (string?)element.Attribute("AutomationProperties.AutomationId"),
+                "ShellRailCollapseButton",
+                StringComparison.Ordinal));
+
         Assert.Contains("Shell.Navigation.Open", codeBehind, StringComparison.Ordinal);
         Assert.Contains("Shell.Navigation.Close", codeBehind, StringComparison.Ordinal);
+        Assert.Contains("Shell.Navigation.CollapsePane", codeBehind, StringComparison.Ordinal);
+        Assert.Contains("Shell.Navigation.ExpandPane", codeBehind, StringComparison.Ordinal);
+        Assert.Contains("if (_canShellRailInline)", codeBehind, StringComparison.Ordinal);
+        Assert.Contains("_isShellRailCollapsedByUser = !_isShellRailCompact;", codeBehind, StringComparison.Ordinal);
+        Assert.Contains(
+            "if (_canShellRailInline)\n            {\n                CloseShellRailDrawer(restoreFocus: false, animate: false);",
+            codeBehind,
+            StringComparison.Ordinal);
+        Assert.DoesNotContain("ShellRailCollapseButton", codeBehind, StringComparison.Ordinal);
         Assert.Contains("ViewModel.TrackShellCommand", codeBehind, StringComparison.Ordinal);
         Assert.Contains("\"shell.command.executed\"", viewModel, StringComparison.Ordinal);
         Assert.Contains("TelemetryTaxonomy.Actions.Drawer", codeBehind, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void ShellSelectionIndicatorUsesNativeNavigationViewGeometry()
+    {
+        XDocument shell = LoadShellXaml();
+        XElement template = Assert.Single(shell.Descendants(), element =>
+            element.Attributes().Any(attribute =>
+                attribute.Name.LocalName == "Key" &&
+                string.Equals(attribute.Value, "ShellNavigationItemTemplate", StringComparison.Ordinal)));
+        XElement indicator = Assert.Single(template.Descendants(), element =>
+            string.Equals(
+                (string?)element.Attribute("Fill"),
+                "{ThemeResource NavigationViewSelectionIndicatorForeground}",
+                StringComparison.Ordinal));
+
+        Assert.Equal("Rectangle", indicator.Name.LocalName);
+        Assert.Equal("{ThemeResource NavigationViewSelectionIndicatorWidth}", (string?)indicator.Attribute("Width"));
+        Assert.Equal("{ThemeResource NavigationViewSelectionIndicatorHeight}", (string?)indicator.Attribute("Height"));
+        Assert.Equal("{ThemeResource NavigationViewSelectionIndicatorRadius}", (string?)indicator.Attribute("RadiusX"));
+        Assert.Equal("{ThemeResource NavigationViewSelectionIndicatorRadius}", (string?)indicator.Attribute("RadiusY"));
     }
 
     [Fact]
