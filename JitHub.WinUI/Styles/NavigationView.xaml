@@ -72,7 +72,7 @@
         <Setter Property="Template">
             <Setter.Value>
                 <ControlTemplate TargetType="muxc:NavigationView">
-                    <Grid x:Name="RootGrid" Background="Transparent">
+                            <Grid x:Name="RootGrid" Background="{ThemeResource AppTransparentBrush}">
                         <Grid
                             x:Name="PaneToggleButtonGrid"
                             Margin="0,8,0,8"

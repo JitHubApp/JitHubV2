@@ -22,6 +22,7 @@ $projectFiles = Get-ChildItem -LiteralPath $repositoryRoot -Recurse -Filter *.cs
     Where-Object { $_.FullName -notmatch '[\\/](?:bin|obj|artifacts)[\\/]' }
 
 $allowedPrereleasePackages = @{
+    "CommunityToolkit.Labs.WinUI.TransitionHelper" = "0.1.251217-build.2433"
     "WinUIEdit" = "0.0.4-prerelease"
 }
 

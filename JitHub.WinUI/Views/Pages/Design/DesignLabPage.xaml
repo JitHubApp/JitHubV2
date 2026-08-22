@@ -11,7 +11,7 @@
     xmlns:muxc="using:Microsoft.UI.Xaml.Controls"
     xmlns:toolkit="using:CommunityToolkit.WinUI.Controls"
     mc:Ignorable="d"
-    Background="Transparent">
+    Background="{ThemeResource AppTransparentBrush}">
     <ScrollViewer AutomationProperties.AutomationId="DesignLabRoot">
         <StackPanel Padding="20" Spacing="20">
             <appcontrols:AppSectionHeader

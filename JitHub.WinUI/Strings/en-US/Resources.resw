@@ -2910,6 +2910,18 @@
   <data name="PagesRepoIssuePageRepoIssuesDirectionComboBox.AutomationProperties.Name" xml:space="preserve">
     <value>Issue sort direction</value>
   </data>
+  <data name="PagesRepoIssuePageRepoIssuesDirectionNewest.Content" xml:space="preserve">
+    <value>Newest first</value>
+  </data>
+  <data name="PagesRepoIssuePageRepoIssuesDirectionNewest.AutomationProperties.Name" xml:space="preserve">
+    <value>Newest first</value>
+  </data>
+  <data name="PagesRepoIssuePageRepoIssuesDirectionOldest.Content" xml:space="preserve">
+    <value>Oldest first</value>
+  </data>
+  <data name="PagesRepoIssuePageRepoIssuesDirectionOldest.AutomationProperties.Name" xml:space="preserve">
+    <value>Oldest first</value>
+  </data>
   <data name="PagesRepoIssuePageRepoIssuesEditButton.AutomationProperties.Name" xml:space="preserve">
     <value>Edit issue</value>
   </data>
@@ -2976,8 +2988,38 @@
   <data name="PagesRepoIssuePageRepoIssuesReactionsButton.ToolTipService.ToolTip" xml:space="preserve">
     <value>Manage issue reactions</value>
   </data>
+  <data name="PagesRepoIssuePageRepoIssuesFilterButton.AutomationProperties.Name" xml:space="preserve">
+    <value>Issue filters</value>
+  </data>
+  <data name="PagesRepoIssuePageRepoIssuesFilterButton.ToolTipService.ToolTip" xml:space="preserve">
+    <value>Filters</value>
+  </data>
   <data name="PagesRepoIssuePageRepoIssuesScopeComboBox.AutomationProperties.Name" xml:space="preserve">
     <value>Issue scope</value>
+  </data>
+  <data name="PagesRepoIssuePageRepoIssuesScopeAll.Content" xml:space="preserve">
+    <value>All</value>
+  </data>
+  <data name="PagesRepoIssuePageRepoIssuesScopeAll.AutomationProperties.Name" xml:space="preserve">
+    <value>All</value>
+  </data>
+  <data name="PagesRepoIssuePageRepoIssuesScopeCreated.Content" xml:space="preserve">
+    <value>Created</value>
+  </data>
+  <data name="PagesRepoIssuePageRepoIssuesScopeCreated.AutomationProperties.Name" xml:space="preserve">
+    <value>Created</value>
+  </data>
+  <data name="PagesRepoIssuePageRepoIssuesScopeMentioned.Content" xml:space="preserve">
+    <value>Mentioned</value>
+  </data>
+  <data name="PagesRepoIssuePageRepoIssuesScopeMentioned.AutomationProperties.Name" xml:space="preserve">
+    <value>Mentioned</value>
+  </data>
+  <data name="PagesRepoIssuePageRepoIssuesScopeMine.Content" xml:space="preserve">
+    <value>Mine</value>
+  </data>
+  <data name="PagesRepoIssuePageRepoIssuesScopeMine.AutomationProperties.Name" xml:space="preserve">
+    <value>Mine</value>
   </data>
   <data name="PagesRepoIssuePageRepoIssuesScopeNotice.AutomationProperties.Name" xml:space="preserve">
     <value>Issue result scope</value>
@@ -2990,6 +3032,24 @@
   </data>
   <data name="PagesRepoIssuePageRepoIssuesSortComboBox.AutomationProperties.Name" xml:space="preserve">
     <value>Sort issues by</value>
+  </data>
+  <data name="PagesRepoIssuePageRepoIssuesSortComments.Content" xml:space="preserve">
+    <value>Comments</value>
+  </data>
+  <data name="PagesRepoIssuePageRepoIssuesSortComments.AutomationProperties.Name" xml:space="preserve">
+    <value>Comments</value>
+  </data>
+  <data name="PagesRepoIssuePageRepoIssuesSortCreated.Content" xml:space="preserve">
+    <value>Created</value>
+  </data>
+  <data name="PagesRepoIssuePageRepoIssuesSortCreated.AutomationProperties.Name" xml:space="preserve">
+    <value>Created</value>
+  </data>
+  <data name="PagesRepoIssuePageRepoIssuesSortUpdated.Content" xml:space="preserve">
+    <value>Updated</value>
+  </data>
+  <data name="PagesRepoIssuePageRepoIssuesSortUpdated.AutomationProperties.Name" xml:space="preserve">
+    <value>Updated</value>
   </data>
   <data name="PagesRepoIssuePageRepoIssuesStateAll.AutomationProperties.Name" xml:space="preserve">
     <value>Show all issues</value>
@@ -3020,6 +3080,18 @@
   </data>
   <data name="PagesRepoIssuePageTextBlockComments.Text" xml:space="preserve">
     <value>Comments</value>
+  </data>
+  <data name="PagesRepoIssuePageTextBlockIssueFilters.Text" xml:space="preserve">
+    <value>Issue filters</value>
+  </data>
+  <data name="PagesRepoIssuePageTextBlockIssueOrder.Text" xml:space="preserve">
+    <value>Order</value>
+  </data>
+  <data name="PagesRepoIssuePageTextBlockIssueScope.Text" xml:space="preserve">
+    <value>Scope</value>
+  </data>
+  <data name="PagesRepoIssuePageTextBlockIssueSort.Text" xml:space="preserve">
+    <value>Sort by</value>
   </data>
   <data name="PagesRepoIssuePageTextBlockLabels.Text" xml:space="preserve">
     <value>Labels</value>
@@ -3123,6 +3195,18 @@
   <data name="PagesRepoPullRequestPageRepoPullRequestsDirectionComboBo.AutomationProperties.Name" xml:space="preserve">
     <value>Pull request sort direction</value>
   </data>
+  <data name="PagesRepoPullRequestPageRepoPullRequestsDirectionNewest.Content" xml:space="preserve">
+    <value>Newest first</value>
+  </data>
+  <data name="PagesRepoPullRequestPageRepoPullRequestsDirectionNewest.AutomationProperties.Name" xml:space="preserve">
+    <value>Newest first</value>
+  </data>
+  <data name="PagesRepoPullRequestPageRepoPullRequestsDirectionOldest.Content" xml:space="preserve">
+    <value>Oldest first</value>
+  </data>
+  <data name="PagesRepoPullRequestPageRepoPullRequestsDirectionOldest.AutomationProperties.Name" xml:space="preserve">
+    <value>Oldest first</value>
+  </data>
   <data name="PagesRepoPullRequestPageRepoPullRequestsEditButton.AutomationProperties.Name" xml:space="preserve">
     <value>Edit pull request</value>
   </data>
@@ -3222,6 +3306,12 @@
   <data name="PagesRepoPullRequestPageRepoPullRequestsSearchBox.PlaceholderText" xml:space="preserve">
     <value>Filter pull requests...</value>
   </data>
+  <data name="PagesRepoPullRequestPageRepoPullRequestsFilterButton.AutomationProperties.Name" xml:space="preserve">
+    <value>Pull request filters</value>
+  </data>
+  <data name="PagesRepoPullRequestPageRepoPullRequestsFilterButton.ToolTipService.ToolTip" xml:space="preserve">
+    <value>Filters</value>
+  </data>
   <data name="PagesRepoPullRequestPageRepoPullRequestsSectionCommits.AutomationProperties.Name" xml:space="preserve">
     <value>Show pull request commits</value>
   </data>
@@ -3257,6 +3347,30 @@
   </data>
   <data name="PagesRepoPullRequestPageRepoPullRequestsSortComboBox.AutomationProperties.Name" xml:space="preserve">
     <value>Sort pull requests</value>
+  </data>
+  <data name="PagesRepoPullRequestPageRepoPullRequestsSortCreated.Content" xml:space="preserve">
+    <value>Created</value>
+  </data>
+  <data name="PagesRepoPullRequestPageRepoPullRequestsSortCreated.AutomationProperties.Name" xml:space="preserve">
+    <value>Created</value>
+  </data>
+  <data name="PagesRepoPullRequestPageRepoPullRequestsSortLongRunning.Content" xml:space="preserve">
+    <value>Long-running</value>
+  </data>
+  <data name="PagesRepoPullRequestPageRepoPullRequestsSortLongRunning.AutomationProperties.Name" xml:space="preserve">
+    <value>Long-running</value>
+  </data>
+  <data name="PagesRepoPullRequestPageRepoPullRequestsSortPopularity.Content" xml:space="preserve">
+    <value>Popularity</value>
+  </data>
+  <data name="PagesRepoPullRequestPageRepoPullRequestsSortPopularity.AutomationProperties.Name" xml:space="preserve">
+    <value>Popularity</value>
+  </data>
+  <data name="PagesRepoPullRequestPageRepoPullRequestsSortUpdated.Content" xml:space="preserve">
+    <value>Updated</value>
+  </data>
+  <data name="PagesRepoPullRequestPageRepoPullRequestsSortUpdated.AutomationProperties.Name" xml:space="preserve">
+    <value>Updated</value>
   </data>
   <data name="PagesRepoPullRequestPageRepoPullRequestsSquashMergeActio.AutomationProperties.Name" xml:space="preserve">
     <value>Squash and merge</value>
@@ -3323,6 +3437,15 @@
   </data>
   <data name="PagesRepoPullRequestPageTextBlockNoReviewersRequested.Text" xml:space="preserve">
     <value>No reviewers requested</value>
+  </data>
+  <data name="PagesRepoPullRequestPageTextBlockPullRequestFilters.Text" xml:space="preserve">
+    <value>Pull request filters</value>
+  </data>
+  <data name="PagesRepoPullRequestPageTextBlockPullRequestOrder.Text" xml:space="preserve">
+    <value>Order</value>
+  </data>
+  <data name="PagesRepoPullRequestPageTextBlockPullRequestSort.Text" xml:space="preserve">
+    <value>Sort by</value>
   </data>
   <data name="PagesRepoPullRequestPageTextBlockReviewers.Text" xml:space="preserve">
     <value>Reviewers</value>
@@ -4350,6 +4473,9 @@
   <data name="Stars/Dialogs/Category/ColorHeader" xml:space="preserve">
     <value>Color</value>
   </data>
+  <data name="Stars/Dialogs/Category/ColorPlaceholder" xml:space="preserve">
+    <value>Choose a color</value>
+  </data>
   <data name="Stars/Dialogs/Category/CreateTitle" xml:space="preserve">
     <value>New category</value>
   </data>
@@ -5271,17 +5397,17 @@
   <data name="Dashboard/Notification/MarkReadFailed" xml:space="preserve">
     <value>The notification opened, but GitHub could not mark it as read.</value>
   </data>
-  <data name="Dashboard/QuickAction/ActiveIssues" xml:space="preserve">
-    <value>Active Repo Issues</value>
+  <data name="Dashboard/QuickAction/MyIssues" xml:space="preserve">
+    <value>My Issues</value>
   </data>
-  <data name="Dashboard/QuickAction/ActiveIssuesDescription" xml:space="preserve">
-    <value>Open issues</value>
+  <data name="Dashboard/QuickAction/MyIssuesDescription" xml:space="preserve">
+    <value>Issues involving you</value>
   </data>
-  <data name="Dashboard/QuickAction/ActivePullRequests" xml:space="preserve">
-    <value>Active Repo Pull Requests</value>
+  <data name="Dashboard/QuickAction/MyPullRequests" xml:space="preserve">
+    <value>My Pull Requests</value>
   </data>
-  <data name="Dashboard/QuickAction/ActivePullRequestsDescription" xml:space="preserve">
-    <value>Open pull requests</value>
+  <data name="Dashboard/QuickAction/MyPullRequestsDescription" xml:space="preserve">
+    <value>Pull requests involving you</value>
   </data>
   <data name="Dashboard/QuickAction/ManageRepositories" xml:space="preserve">
     <value>Manage Repositories</value>
@@ -5726,5 +5852,80 @@
   </data>
   <data name="RepoCode/Error/CachedTreeRefreshFailedSafe" xml:space="preserve">
     <value>Showing cached repository files. Refresh failed.</value>
+  </data>
+  <data name="ControlsIssueRepoIssueDetailPaneOpenCommentButton.AutomationProperties.Name" xml:space="preserve">
+    <value>Open issue comment editor</value>
+  </data>
+  <data name="ControlsIssueRepoIssueDetailPaneOpenCommentLabel.Text" xml:space="preserve">
+    <value>Comment</value>
+  </data>
+  <data name="RepoPullRequestsOpenCommentButton.AutomationProperties.Name" xml:space="preserve">
+    <value>Open pull request comment editor</value>
+  </data>
+  <data name="RepoPullRequestsOpenCommentLabel.Text" xml:space="preserve">
+    <value>Comment</value>
+  </data>
+  <data name="ControlsCommonCommentInteractionBarAddReactionButton.AutomationProperties.Name" xml:space="preserve">
+    <value>Add reaction</value>
+  </data>
+  <data name="ControlsCommonCommentInteractionBarAddReactionButton.ToolTipService.ToolTip" xml:space="preserve">
+    <value>Add reaction</value>
+  </data>
+  <data name="ControlsCommonCommentInteractionBarActionsButton.AutomationProperties.Name" xml:space="preserve">
+    <value>Comment actions</value>
+  </data>
+  <data name="ControlsCommonCommentInteractionBarActionsButton.ToolTipService.ToolTip" xml:space="preserve">
+    <value>Comment actions</value>
+  </data>
+  <data name="ControlsCommonCommentInteractionBarQuoteReplyItem.Text" xml:space="preserve">
+    <value>Quote reply</value>
+  </data>
+  <data name="ControlsCommonCommentInteractionBarCopyLinkItem.Text" xml:space="preserve">
+    <value>Copy link</value>
+  </data>
+  <data name="ControlsCommonCommentInteractionBarCopyMarkdownItem.Text" xml:space="preserve">
+    <value>Copy Markdown</value>
+  </data>
+  <data name="ControlsCommonCommentInteractionBarEditItem.Text" xml:space="preserve">
+    <value>Edit</value>
+  </data>
+  <data name="ControlsCommonCommentInteractionBarPinItem.Text" xml:space="preserve">
+    <value>Pin</value>
+  </data>
+  <data name="ControlsCommonCommentInteractionBarUnpinItem.Text" xml:space="preserve">
+    <value>Unpin</value>
+  </data>
+  <data name="ControlsCommonCommentInteractionBarHideItem.Text" xml:space="preserve">
+    <value>Hide</value>
+  </data>
+  <data name="ControlsCommonCommentInteractionBarHideOffTopicItem.Text" xml:space="preserve">
+    <value>Off topic</value>
+  </data>
+  <data name="ControlsCommonCommentInteractionBarHideOutdatedItem.Text" xml:space="preserve">
+    <value>Outdated</value>
+  </data>
+  <data name="ControlsCommonCommentInteractionBarHideResolvedItem.Text" xml:space="preserve">
+    <value>Resolved</value>
+  </data>
+  <data name="ControlsCommonCommentInteractionBarHideDuplicateItem.Text" xml:space="preserve">
+    <value>Duplicate</value>
+  </data>
+  <data name="ControlsCommonCommentInteractionBarHideSpamItem.Text" xml:space="preserve">
+    <value>Spam</value>
+  </data>
+  <data name="ControlsCommonCommentInteractionBarHideAbuseItem.Text" xml:space="preserve">
+    <value>Abuse</value>
+  </data>
+  <data name="ControlsCommonCommentInteractionBarUnhideItem.Text" xml:space="preserve">
+    <value>Unhide</value>
+  </data>
+  <data name="ControlsCommonCommentInteractionBarDeleteItem.Text" xml:space="preserve">
+    <value>Delete</value>
+  </data>
+  <data name="ControlsIssueRepoIssueDetailPaneBodyInteractionBar.AutomationProperties.Name" xml:space="preserve">
+    <value>Issue body actions</value>
+  </data>
+  <data name="RepoPullRequestsBodyInteractionBar.AutomationProperties.Name" xml:space="preserve">
+    <value>Pull request body actions</value>
   </data>
 </root>

@@ -32,7 +32,7 @@ public sealed class PullRequestResponsiveActionContractTests
 
         foreach (string id in requiredIds)
         {
-            Assert.Single(xaml.Descendants(), element =>
+            Assert.Contains(xaml.Descendants(), element =>
                 (string?)element.Attribute("AutomationProperties.AutomationId") == id ||
                 (string?)element.Attribute(XName.Get("Name", "http://schemas.microsoft.com/winfx/2006/xaml")) == id);
         }
@@ -41,10 +41,11 @@ public sealed class PullRequestResponsiveActionContractTests
                      "RepoPullRequestsCompact",
                      StringComparison.Ordinal)))
         {
-            XElement action = Assert.Single(xaml.Descendants(), element =>
-                (string?)element.Attribute("AutomationProperties.AutomationId") == id);
-            Assert.False(string.IsNullOrWhiteSpace(
-                (string?)action.Attribute("AutomationProperties.Name")));
+            XElement[] actions = xaml.Descendants().Where(element =>
+                (string?)element.Attribute("AutomationProperties.AutomationId") == id).ToArray();
+            Assert.True(actions.Length > 0);
+            Assert.All(actions, action => Assert.False(string.IsNullOrWhiteSpace(
+                (string?)action.Attribute("AutomationProperties.Name"))));
         }
     }
 
@@ -57,9 +58,18 @@ public sealed class PullRequestResponsiveActionContractTests
             "Pages",
             "RepoPullRequestPage.xaml.cs"));
 
-        Assert.Contains("state.Mode != AdaptiveWorkspaceMode.Wide", source, StringComparison.Ordinal);
+        Assert.Contains("bool useCompactActionOverflow =", source, StringComparison.Ordinal);
+        Assert.Contains(
+            "PullRequestsWorkspace.State is { Mode: not AdaptiveWorkspaceMode.Wide }",
+            source,
+            StringComparison.Ordinal);
         Assert.Contains("RepoPullRequestsInlineActions.Visibility", source, StringComparison.Ordinal);
         Assert.Contains("RepoPullRequestsCompactActionsButton.Visibility", source, StringComparison.Ordinal);
+        Assert.Contains("RepoPullRequestsShyActionsButton", File.ReadAllText(SourcePath(
+            "JitHub.WinUI",
+            "Views",
+            "Pages",
+            "RepoPullRequestPage.xaml")), StringComparison.Ordinal);
         Assert.Contains("RepoPullRequestsSubmitReviewDialog", source, StringComparison.Ordinal);
     }
 

@@ -81,7 +81,7 @@
                                             Padding="8,6"
                                             AutomationProperties.AutomationId="{x:Bind AutomationId}"
                                             AutomationProperties.Name="{x:Bind AutomationName}"
-                                            Background="Transparent"
+                Background="{ThemeResource AppTransparentBrush}"
                                             ColumnSpacing="8">
                                             <Grid.ColumnDefinitions>
                                                 <ColumnDefinition Width="*" />

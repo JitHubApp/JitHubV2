@@ -11,7 +11,7 @@
         MaxWidth="520"
         HorizontalAlignment="Left"
         Padding="0"
-        Background="Transparent"
+    Background="{ThemeResource AppTransparentBrush}"
         BorderThickness="0"
         CornerRadius="0">
         <StackPanel

@@ -229,7 +229,7 @@
                         x:Uid="PagesGistsPageGistsList" x:Name="GistsList"
                         AutomationProperties.AutomationId="GistsList"
                         AutomationProperties.Name="Gist library"
-                        Background="Transparent"
+                                    Background="{ThemeResource AppTransparentBrush}"
                         BorderThickness="0"
                         ContainerContentChanging="GistsList_ContainerContentChanging"
                         IsItemClickEnabled="True"

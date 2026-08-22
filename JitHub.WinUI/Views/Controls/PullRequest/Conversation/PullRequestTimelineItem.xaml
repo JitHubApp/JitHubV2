@@ -18,7 +18,7 @@
         x:Name="TimelineCard"
         Padding="4,8"
         HorizontalAlignment="Stretch"
-        Background="Transparent"
+            Background="{ThemeResource AppTransparentBrush}"
         BorderThickness="0">
         <Grid
             x:Name="Root"

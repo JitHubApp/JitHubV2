@@ -20,6 +20,15 @@
     <SolidColorBrush x:Key="AppSelectionBrush" Color="{ThemeResource AppSelectionColor}" />
     <SolidColorBrush x:Key="AppSelectionForegroundBrush" Color="{ThemeResource AppSelectionForegroundColor}" />
     <SolidColorBrush x:Key="AppOverlayBrush" Color="{ThemeResource AppOverlayColor}" />
+    <SolidColorBrush x:Key="AppTransparentBrush" Color="{ThemeResource AppTransparentColor}" />
+    <SolidColorBrush x:Key="AppPopupSurfaceBrush" Color="{ThemeResource AppPopupSurfaceColor}" />
+    <SolidColorBrush x:Key="AppPopupBorderBrush" Color="{ThemeResource AppPopupBorderColor}" />
+    <SolidColorBrush x:Key="AppReactionChipBackgroundBrush" Color="{ThemeResource AppReactionChipBackgroundColor}" />
+    <SolidColorBrush x:Key="AppReactionChipHoverBrush" Color="{ThemeResource AppReactionChipHoverColor}" />
+    <SolidColorBrush x:Key="AppReactionChipPressedBrush" Color="{ThemeResource AppReactionChipPressedColor}" />
+    <SolidColorBrush x:Key="AppReactionChipBorderBrush" Color="{ThemeResource AppReactionChipBorderColor}" />
+    <SolidColorBrush x:Key="AppReactionChipForegroundBrush" Color="{ThemeResource AppReactionChipForegroundColor}" />
+    <SolidColorBrush x:Key="AppReactionChipSelectedBrush" Color="{ThemeResource AppReactionChipSelectedColor}" />
     <SolidColorBrush x:Key="AppInkBrush" Color="{ThemeResource AppInkColor}" />
     <SolidColorBrush x:Key="AppInkMutedBrush" Color="{ThemeResource AppInkMutedColor}" />
     <SolidColorBrush x:Key="AppInkSubtleBrush" Color="{ThemeResource AppInkSubtleColor}" />
@@ -40,6 +49,7 @@
     <SolidColorBrush x:Key="AppSuccessBrush" Color="{ThemeResource AppSuccessColor}" />
     <SolidColorBrush x:Key="AppSuccessForegroundBrush" Color="{ThemeResource AppSuccessForegroundColor}" />
     <SolidColorBrush x:Key="AppShadowBrush" Color="{ThemeResource AppShadowColor}" />
+    <SolidColorBrush x:Key="AppSmokeBrush" Color="{ThemeResource AppSmokeColor}" />
 
     <AcrylicBrush
         x:Key="AppTransientOverlayBrush"

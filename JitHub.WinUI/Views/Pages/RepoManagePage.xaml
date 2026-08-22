@@ -27,8 +27,8 @@
                     <ControlTemplate TargetType="ListViewItem">
                         <Border
                             x:Name="RowRoot"
-                            Background="Transparent"
-                            BorderBrush="Transparent"
+                            Background="{ThemeResource AppTransparentBrush}"
+                            BorderBrush="{ThemeResource AppTransparentBrush}"
                             BorderThickness="1"
                             CornerRadius="{TemplateBinding CornerRadius}">
                             <VisualStateManager.VisualStateGroups>
@@ -260,7 +260,7 @@
                 x:Uid="RepoManageRepositoryList"
                 AutomationProperties.AutomationId="RepositoryLibraryList"
                 AutomationProperties.Name="Account repositories"
-                Background="Transparent"
+                Background="{ThemeResource AppTransparentBrush}"
                 BorderBrush="{ThemeResource AppHairlineBrush}"
                 BorderThickness="0,1,0,0"
                 ContainerContentChanging="RepositoriesList_ContainerContentChanging"
@@ -279,7 +279,7 @@
                             x:Name="RepositoryRowRoot"
                             MinHeight="82"
                             Padding="12,10"
-                            Background="Transparent"
+                            Background="{ThemeResource AppTransparentBrush}"
                             ColumnSpacing="12">
                             <Grid.ColumnDefinitions>
                                 <ColumnDefinition Width="Auto" />

@@ -47,10 +47,10 @@
     <SolidColorBrush x:Key="ToggleSwitchContentForegroundDisabled" Color="{ThemeResource AppInkSubtleColor}" />
     <SolidColorBrush x:Key="ToggleSwitchHeaderForeground" Color="{ThemeResource AppInkColor}" />
     <SolidColorBrush x:Key="ToggleSwitchHeaderForegroundDisabled" Color="{ThemeResource AppInkSubtleColor}" />
-    <SolidColorBrush x:Key="ToggleSwitchContainerBackground" Color="Transparent" />
-    <SolidColorBrush x:Key="ToggleSwitchContainerBackgroundPointerOver" Color="Transparent" />
-    <SolidColorBrush x:Key="ToggleSwitchContainerBackgroundPressed" Color="Transparent" />
-    <SolidColorBrush x:Key="ToggleSwitchContainerBackgroundDisabled" Color="Transparent" />
+    <SolidColorBrush x:Key="ToggleSwitchContainerBackground" Color="{ThemeResource AppTransparentColor}" />
+    <SolidColorBrush x:Key="ToggleSwitchContainerBackgroundPointerOver" Color="{ThemeResource AppTransparentColor}" />
+    <SolidColorBrush x:Key="ToggleSwitchContainerBackgroundPressed" Color="{ThemeResource AppTransparentColor}" />
+    <SolidColorBrush x:Key="ToggleSwitchContainerBackgroundDisabled" Color="{ThemeResource AppTransparentColor}" />
     <SolidColorBrush x:Key="ToggleSwitchFillOff" Color="{ThemeResource AppRowHoverColor}" />
     <SolidColorBrush x:Key="ToggleSwitchFillOffPointerOver" Color="{ThemeResource AppInputHoverColor}" />
     <SolidColorBrush x:Key="ToggleSwitchFillOffPressed" Color="{ThemeResource AppRowPressedColor}" />
@@ -82,9 +82,9 @@
     <SolidColorBrush x:Key="ControlFillColorTertiaryBrush" Color="{ThemeResource AppRowPressedColor}" />
     <SolidColorBrush x:Key="ControlFillColorDisabledBrush" Color="{ThemeResource AppCanvasInsetColor}" />
     <SolidColorBrush x:Key="ControlFillColorInputActiveBrush" Color="{ThemeResource AppInputColor}" />
-    <SolidColorBrush x:Key="ControlFillColorTransparent" Color="Transparent" />
-    <SolidColorBrush x:Key="ControlFillColorTransparentBrush" Color="Transparent" />
-    <SolidColorBrush x:Key="ControlAltFillColorTransparentBrush" Color="Transparent" />
+    <SolidColorBrush x:Key="ControlFillColorTransparent" Color="{ThemeResource AppTransparentColor}" />
+    <SolidColorBrush x:Key="ControlFillColorTransparentBrush" Color="{ThemeResource AppTransparentColor}" />
+    <SolidColorBrush x:Key="ControlAltFillColorTransparentBrush" Color="{ThemeResource AppTransparentColor}" />
     <SolidColorBrush x:Key="ControlStrongFillColorDefaultBrush" Color="{ThemeResource AppInkMutedColor}" />
     <SolidColorBrush x:Key="ControlStrongFillColorDisabledBrush" Color="{ThemeResource AppInkSubtleColor}" />
     <SolidColorBrush x:Key="ControlSolidFillColorDefaultBrush" Color="{ThemeResource AppInputColor}" />
@@ -102,13 +102,13 @@
     <SolidColorBrush x:Key="SurfaceStrokeColorDefaultBrush" Color="{ThemeResource AppOutlineColor}" />
     <SolidColorBrush x:Key="SurfaceStrokeColorFlyoutBrush" Color="{ThemeResource AppOutlineStrongColor}" />
     <SolidColorBrush x:Key="DividerStrokeColorDefaultBrush" Color="{ThemeResource AppHairlineColor}" />
-    <SolidColorBrush x:Key="SystemControlTransparentRevealBackgroundBrush" Color="Transparent" />
-    <SolidColorBrush x:Key="SystemControlTransparentRevealBorderBrush" Color="Transparent" />
+    <SolidColorBrush x:Key="SystemControlTransparentRevealBackgroundBrush" Color="{ThemeResource AppTransparentColor}" />
+    <SolidColorBrush x:Key="SystemControlTransparentRevealBorderBrush" Color="{ThemeResource AppTransparentColor}" />
     <SolidColorBrush x:Key="SystemControlBackgroundChromeMediumBrush" Color="{ThemeResource AppSurfaceSubtleColor}" />
-    <SolidColorBrush x:Key="SubtleFillColorTransparentBrush" Color="Transparent" />
+    <SolidColorBrush x:Key="SubtleFillColorTransparentBrush" Color="{ThemeResource AppTransparentColor}" />
     <SolidColorBrush x:Key="SubtleFillColorSecondaryBrush" Color="{ThemeResource AppRowHoverColor}" />
     <SolidColorBrush x:Key="SubtleFillColorTertiaryBrush" Color="{ThemeResource AppRowPressedColor}" />
-    <SolidColorBrush x:Key="SubtleFillColorDisabledBrush" Color="Transparent" />
+    <SolidColorBrush x:Key="SubtleFillColorDisabledBrush" Color="{ThemeResource AppTransparentColor}" />
     <SolidColorBrush x:Key="TextFillColorPrimaryBrush" Color="{ThemeResource AppInkColor}" />
     <SolidColorBrush x:Key="TextFillColorSecondaryBrush" Color="{ThemeResource AppInkMutedColor}" />
     <SolidColorBrush x:Key="TextFillColorTertiaryBrush" Color="{ThemeResource AppInkSubtleColor}" />
@@ -131,7 +131,7 @@
     <SolidColorBrush x:Key="TextOnAccentAAFillColorPrimaryBrush" Color="{ThemeResource AppAccentForegroundColor}" />
     <SolidColorBrush x:Key="FocusStrokeColorOuterBrush" Color="{ThemeResource AppAccentColor}" />
     <SolidColorBrush x:Key="FocusStrokeColorInnerBrush" Color="{ThemeResource AppSurfaceColor}" />
-    <SolidColorBrush x:Key="SmokeFillColorDefaultBrush" Color="#88000000" />
+    <SolidColorBrush x:Key="SmokeFillColorDefaultBrush" Color="{ThemeResource AppSmokeColor}" />
     <SolidColorBrush x:Key="LayerOnAcrylicFillColorDefaultBrush" Color="{ThemeResource AppOutlineStrongColor}" />
     <SolidColorBrush x:Key="ExpanderHeaderBackground" Color="{ThemeResource AppCardColor}" />
     <SolidColorBrush x:Key="ExpanderContentBackground" Color="{ThemeResource AppSurfaceColor}" />
@@ -177,15 +177,15 @@
     <SolidColorBrush x:Key="TextControlBorderBrushFocused" Color="{ThemeResource AppAccentColor}" />
     <SolidColorBrush x:Key="TextControlBorderBrushDisabled" Color="{ThemeResource AppHairlineColor}" />
     <SolidColorBrush x:Key="TextControlSelectionHighlightColor" Color="{ThemeResource AppSelectionColor}" />
-    <SolidColorBrush x:Key="TextControlButtonBackground" Color="Transparent" />
+    <SolidColorBrush x:Key="TextControlButtonBackground" Color="{ThemeResource AppTransparentColor}" />
     <SolidColorBrush x:Key="TextControlButtonBackgroundPointerOver" Color="{ThemeResource AppRowHoverColor}" />
     <SolidColorBrush x:Key="TextControlButtonBackgroundPressed" Color="{ThemeResource AppRowPressedColor}" />
     <SolidColorBrush x:Key="TextControlButtonForeground" Color="{ThemeResource AppInkMutedColor}" />
     <SolidColorBrush x:Key="TextControlButtonForegroundPointerOver" Color="{ThemeResource AppRowHoverForegroundColor}" />
     <SolidColorBrush x:Key="TextControlButtonForegroundPressed" Color="{ThemeResource AppRowPressedForegroundColor}" />
-    <SolidColorBrush x:Key="TextControlButtonBorderBrush" Color="Transparent" />
-    <SolidColorBrush x:Key="TextControlButtonBorderBrushPointerOver" Color="Transparent" />
-    <SolidColorBrush x:Key="TextControlButtonBorderBrushPressed" Color="Transparent" />
+    <SolidColorBrush x:Key="TextControlButtonBorderBrush" Color="{ThemeResource AppTransparentColor}" />
+    <SolidColorBrush x:Key="TextControlButtonBorderBrushPointerOver" Color="{ThemeResource AppTransparentColor}" />
+    <SolidColorBrush x:Key="TextControlButtonBorderBrushPressed" Color="{ThemeResource AppTransparentColor}" />
 
     <!--  Combo boxes and dropdown picker popups  -->
     <SolidColorBrush x:Key="ComboBoxBackground" Color="{ThemeResource AppInputColor}" />
@@ -224,40 +224,40 @@
     <SolidColorBrush x:Key="ComboBoxItemForegroundSelectedPointerOver" Color="{ThemeResource AppRowHoverForegroundColor}" />
     <SolidColorBrush x:Key="ComboBoxItemForegroundSelectedPressed" Color="{ThemeResource AppRowPressedForegroundColor}" />
     <SolidColorBrush x:Key="ComboBoxItemForegroundSelectedDisabled" Color="{ThemeResource AppInkSubtleColor}" />
-    <SolidColorBrush x:Key="ComboBoxItemBackground" Color="Transparent" />
+    <SolidColorBrush x:Key="ComboBoxItemBackground" Color="{ThemeResource AppTransparentColor}" />
     <SolidColorBrush x:Key="ComboBoxItemBackgroundPointerOver" Color="{ThemeResource AppRowHoverColor}" />
     <SolidColorBrush x:Key="ComboBoxItemBackgroundPressed" Color="{ThemeResource AppRowPressedColor}" />
-    <SolidColorBrush x:Key="ComboBoxItemBackgroundDisabled" Color="Transparent" />
+    <SolidColorBrush x:Key="ComboBoxItemBackgroundDisabled" Color="{ThemeResource AppTransparentColor}" />
     <SolidColorBrush x:Key="ComboBoxItemBackgroundSelected" Color="{ThemeResource AppRowSelectedColor}" />
     <SolidColorBrush x:Key="ComboBoxItemBackgroundSelectedUnfocused" Color="{ThemeResource AppRowSelectedColor}" />
     <SolidColorBrush x:Key="ComboBoxItemBackgroundSelectedPointerOver" Color="{ThemeResource AppRowHoverColor}" />
     <SolidColorBrush x:Key="ComboBoxItemBackgroundSelectedPressed" Color="{ThemeResource AppRowPressedColor}" />
     <SolidColorBrush x:Key="ComboBoxItemBackgroundSelectedDisabled" Color="{ThemeResource AppCanvasInsetColor}" />
-    <SolidColorBrush x:Key="ComboBoxItemBorderBrush" Color="Transparent" />
-    <SolidColorBrush x:Key="ComboBoxItemBorderBrushPointerOver" Color="Transparent" />
-    <SolidColorBrush x:Key="ComboBoxItemBorderBrushPressed" Color="Transparent" />
-    <SolidColorBrush x:Key="ComboBoxItemBorderBrushSelected" Color="Transparent" />
-    <SolidColorBrush x:Key="ComboBoxItemBorderBrushSelectedUnfocused" Color="Transparent" />
-    <SolidColorBrush x:Key="ComboBoxItemBorderBrushSelectedPointerOver" Color="Transparent" />
-    <SolidColorBrush x:Key="ComboBoxItemBorderBrushSelectedPressed" Color="Transparent" />
-    <SolidColorBrush x:Key="ComboBoxItemRevealBackground" Color="Transparent" />
+    <SolidColorBrush x:Key="ComboBoxItemBorderBrush" Color="{ThemeResource AppTransparentColor}" />
+    <SolidColorBrush x:Key="ComboBoxItemBorderBrushPointerOver" Color="{ThemeResource AppTransparentColor}" />
+    <SolidColorBrush x:Key="ComboBoxItemBorderBrushPressed" Color="{ThemeResource AppTransparentColor}" />
+    <SolidColorBrush x:Key="ComboBoxItemBorderBrushSelected" Color="{ThemeResource AppTransparentColor}" />
+    <SolidColorBrush x:Key="ComboBoxItemBorderBrushSelectedUnfocused" Color="{ThemeResource AppTransparentColor}" />
+    <SolidColorBrush x:Key="ComboBoxItemBorderBrushSelectedPointerOver" Color="{ThemeResource AppTransparentColor}" />
+    <SolidColorBrush x:Key="ComboBoxItemBorderBrushSelectedPressed" Color="{ThemeResource AppTransparentColor}" />
+    <SolidColorBrush x:Key="ComboBoxItemRevealBackground" Color="{ThemeResource AppTransparentColor}" />
     <SolidColorBrush x:Key="ComboBoxItemRevealBackgroundPointerOver" Color="{ThemeResource AppRowHoverColor}" />
     <SolidColorBrush x:Key="ComboBoxItemRevealBackgroundPressed" Color="{ThemeResource AppRowPressedColor}" />
-    <SolidColorBrush x:Key="ComboBoxItemRevealBackgroundDisabled" Color="Transparent" />
+    <SolidColorBrush x:Key="ComboBoxItemRevealBackgroundDisabled" Color="{ThemeResource AppTransparentColor}" />
     <SolidColorBrush x:Key="ComboBoxItemRevealBackgroundSelected" Color="{ThemeResource AppRowSelectedColor}" />
     <SolidColorBrush x:Key="ComboBoxItemRevealBackgroundSelectedUnfocused" Color="{ThemeResource AppRowSelectedColor}" />
     <SolidColorBrush x:Key="ComboBoxItemRevealBackgroundSelectedPointerOver" Color="{ThemeResource AppRowHoverColor}" />
     <SolidColorBrush x:Key="ComboBoxItemRevealBackgroundSelectedPressed" Color="{ThemeResource AppRowPressedColor}" />
-    <SolidColorBrush x:Key="ComboBoxItemRevealBackgroundSelectedDisabled" Color="Transparent" />
-    <SolidColorBrush x:Key="ComboBoxItemRevealBorderBrush" Color="Transparent" />
-    <SolidColorBrush x:Key="ComboBoxItemRevealBorderBrushPointerOver" Color="Transparent" />
-    <SolidColorBrush x:Key="ComboBoxItemRevealBorderBrushPressed" Color="Transparent" />
-    <SolidColorBrush x:Key="ComboBoxItemRevealBorderBrushDisabled" Color="Transparent" />
-    <SolidColorBrush x:Key="ComboBoxItemRevealBorderBrushSelected" Color="Transparent" />
-    <SolidColorBrush x:Key="ComboBoxItemRevealBorderBrushSelectedUnfocused" Color="Transparent" />
-    <SolidColorBrush x:Key="ComboBoxItemRevealBorderBrushSelectedPointerOver" Color="Transparent" />
-    <SolidColorBrush x:Key="ComboBoxItemRevealBorderBrushSelectedPressed" Color="Transparent" />
-    <SolidColorBrush x:Key="ComboBoxItemRevealBorderBrushSelectedDisabled" Color="Transparent" />
+    <SolidColorBrush x:Key="ComboBoxItemRevealBackgroundSelectedDisabled" Color="{ThemeResource AppTransparentColor}" />
+    <SolidColorBrush x:Key="ComboBoxItemRevealBorderBrush" Color="{ThemeResource AppTransparentColor}" />
+    <SolidColorBrush x:Key="ComboBoxItemRevealBorderBrushPointerOver" Color="{ThemeResource AppTransparentColor}" />
+    <SolidColorBrush x:Key="ComboBoxItemRevealBorderBrushPressed" Color="{ThemeResource AppTransparentColor}" />
+    <SolidColorBrush x:Key="ComboBoxItemRevealBorderBrushDisabled" Color="{ThemeResource AppTransparentColor}" />
+    <SolidColorBrush x:Key="ComboBoxItemRevealBorderBrushSelected" Color="{ThemeResource AppTransparentColor}" />
+    <SolidColorBrush x:Key="ComboBoxItemRevealBorderBrushSelectedUnfocused" Color="{ThemeResource AppTransparentColor}" />
+    <SolidColorBrush x:Key="ComboBoxItemRevealBorderBrushSelectedPointerOver" Color="{ThemeResource AppTransparentColor}" />
+    <SolidColorBrush x:Key="ComboBoxItemRevealBorderBrushSelectedPressed" Color="{ThemeResource AppTransparentColor}" />
+    <SolidColorBrush x:Key="ComboBoxItemRevealBorderBrushSelectedDisabled" Color="{ThemeResource AppTransparentColor}" />
     <SolidColorBrush x:Key="ComboBoxItemPillFillBrush" Color="{ThemeResource AppAccentColor}" />
     <Thickness x:Key="ComboBoxItemThemePadding">12,8</Thickness>
     <Thickness x:Key="ComboBoxItemRevealThemePadding">12,8</Thickness>
@@ -277,19 +277,19 @@
     <SolidColorBrush x:Key="MenuFlyoutPresenterBorderBrush" Color="{ThemeResource AppOutlineStrongColor}" />
     <Thickness x:Key="MenuFlyoutPresenterThemePadding">6</Thickness>
     <Thickness x:Key="MenuFlyoutPresenterBorderThemeThickness">1</Thickness>
-    <SolidColorBrush x:Key="MenuFlyoutItemBackground" Color="Transparent" />
+    <SolidColorBrush x:Key="MenuFlyoutItemBackground" Color="{ThemeResource AppTransparentColor}" />
     <SolidColorBrush x:Key="MenuFlyoutItemBackgroundPointerOver" Color="{ThemeResource AppRowHoverColor}" />
     <SolidColorBrush x:Key="MenuFlyoutItemBackgroundPressed" Color="{ThemeResource AppRowPressedColor}" />
-    <SolidColorBrush x:Key="MenuFlyoutItemBackgroundDisabled" Color="Transparent" />
+    <SolidColorBrush x:Key="MenuFlyoutItemBackgroundDisabled" Color="{ThemeResource AppTransparentColor}" />
     <SolidColorBrush x:Key="MenuFlyoutItemForeground" Color="{ThemeResource AppInkColor}" />
     <SolidColorBrush x:Key="MenuFlyoutItemForegroundPointerOver" Color="{ThemeResource AppRowHoverForegroundColor}" />
     <SolidColorBrush x:Key="MenuFlyoutItemForegroundPressed" Color="{ThemeResource AppRowPressedForegroundColor}" />
     <SolidColorBrush x:Key="MenuFlyoutItemForegroundDisabled" Color="{ThemeResource AppInkSubtleColor}" />
-    <SolidColorBrush x:Key="MenuFlyoutSubItemBackground" Color="Transparent" />
+    <SolidColorBrush x:Key="MenuFlyoutSubItemBackground" Color="{ThemeResource AppTransparentColor}" />
     <SolidColorBrush x:Key="MenuFlyoutSubItemBackgroundPointerOver" Color="{ThemeResource AppRowHoverColor}" />
     <SolidColorBrush x:Key="MenuFlyoutSubItemBackgroundPressed" Color="{ThemeResource AppRowPressedColor}" />
     <SolidColorBrush x:Key="MenuFlyoutSubItemBackgroundSubMenuOpened" Color="{ThemeResource AppRowSelectedColor}" />
-    <SolidColorBrush x:Key="MenuFlyoutSubItemBackgroundDisabled" Color="Transparent" />
+    <SolidColorBrush x:Key="MenuFlyoutSubItemBackgroundDisabled" Color="{ThemeResource AppTransparentColor}" />
     <SolidColorBrush x:Key="MenuFlyoutSubItemForeground" Color="{ThemeResource AppInkColor}" />
     <SolidColorBrush x:Key="MenuFlyoutSubItemForegroundPointerOver" Color="{ThemeResource AppRowHoverForegroundColor}" />
     <SolidColorBrush x:Key="MenuFlyoutSubItemForegroundPressed" Color="{ThemeResource AppRowPressedForegroundColor}" />
@@ -300,10 +300,10 @@
     <SolidColorBrush x:Key="MenuFlyoutSubItemChevronPressed" Color="{ThemeResource AppInkColor}" />
     <SolidColorBrush x:Key="MenuFlyoutSubItemChevronSubMenuOpened" Color="{ThemeResource AppInkColor}" />
     <SolidColorBrush x:Key="MenuFlyoutSubItemChevronDisabled" Color="{ThemeResource AppInkSubtleColor}" />
-    <SolidColorBrush x:Key="ToggleMenuFlyoutItemBackground" Color="Transparent" />
+    <SolidColorBrush x:Key="ToggleMenuFlyoutItemBackground" Color="{ThemeResource AppTransparentColor}" />
     <SolidColorBrush x:Key="ToggleMenuFlyoutItemBackgroundPointerOver" Color="{ThemeResource AppRowHoverColor}" />
     <SolidColorBrush x:Key="ToggleMenuFlyoutItemBackgroundPressed" Color="{ThemeResource AppRowPressedColor}" />
-    <SolidColorBrush x:Key="ToggleMenuFlyoutItemBackgroundDisabled" Color="Transparent" />
+    <SolidColorBrush x:Key="ToggleMenuFlyoutItemBackgroundDisabled" Color="{ThemeResource AppTransparentColor}" />
     <SolidColorBrush x:Key="ToggleMenuFlyoutItemForeground" Color="{ThemeResource AppInkColor}" />
     <SolidColorBrush x:Key="ToggleMenuFlyoutItemForegroundPointerOver" Color="{ThemeResource AppRowHoverForegroundColor}" />
     <SolidColorBrush x:Key="ToggleMenuFlyoutItemForegroundPressed" Color="{ThemeResource AppRowPressedForegroundColor}" />
@@ -337,13 +337,13 @@
     <FontFamily x:Key="PivotHeaderItemFontFamily">Segoe UI Variable Text</FontFamily>
     <x:Double x:Key="PivotHeaderItemFontSize">13</x:Double>
     <Thickness x:Key="PivotHeaderItemMargin">12,8</Thickness>
-    <SolidColorBrush x:Key="PivotHeaderItemBackgroundUnselected" Color="Transparent" />
+    <SolidColorBrush x:Key="PivotHeaderItemBackgroundUnselected" Color="{ThemeResource AppTransparentColor}" />
     <SolidColorBrush x:Key="PivotHeaderItemBackgroundUnselectedPointerOver" Color="{ThemeResource AppRowHoverColor}" />
     <SolidColorBrush x:Key="PivotHeaderItemBackgroundUnselectedPressed" Color="{ThemeResource AppRowPressedColor}" />
     <SolidColorBrush x:Key="PivotHeaderItemBackgroundSelected" Color="{ThemeResource AppRowSelectedColor}" />
     <SolidColorBrush x:Key="PivotHeaderItemBackgroundSelectedPointerOver" Color="{ThemeResource AppRowSelectedColor}" />
     <SolidColorBrush x:Key="PivotHeaderItemBackgroundSelectedPressed" Color="{ThemeResource AppRowPressedColor}" />
-    <SolidColorBrush x:Key="PivotHeaderItemBackgroundDisabled" Color="Transparent" />
+    <SolidColorBrush x:Key="PivotHeaderItemBackgroundDisabled" Color="{ThemeResource AppTransparentColor}" />
     <SolidColorBrush x:Key="PivotHeaderItemForegroundUnselected" Color="{ThemeResource AppInkMutedColor}" />
     <SolidColorBrush x:Key="PivotHeaderItemForegroundUnselectedPointerOver" Color="{ThemeResource AppRowHoverForegroundColor}" />
     <SolidColorBrush x:Key="PivotHeaderItemForegroundUnselectedPressed" Color="{ThemeResource AppRowPressedForegroundColor}" />
@@ -356,7 +356,7 @@
     <Style TargetType="Pivot">
         <Setter Property="FontFamily" Value="{ThemeResource AppUiFontFamily}" />
         <Setter Property="Foreground" Value="{ThemeResource AppInkBrush}" />
-        <Setter Property="Background" Value="Transparent" />
+        <Setter Property="Background" Value="{ThemeResource AppTransparentBrush}" />
     </Style>
 
     <Style TargetType="controls:Segmented">
@@ -364,7 +364,7 @@
         <Setter Property="FontSize" Value="13" />
         <Setter Property="Foreground" Value="{ThemeResource AppInkBrush}" />
         <Setter Property="Background" Value="{ThemeResource AppCanvasInsetBrush}" />
-        <Setter Property="BorderBrush" Value="Transparent" />
+        <Setter Property="BorderBrush" Value="{ThemeResource AppTransparentBrush}" />
         <Setter Property="BorderThickness" Value="0" />
         <Setter Property="CornerRadius" Value="{ThemeResource AppRadiusMedium}" />
         <Setter Property="Padding" Value="3" />
@@ -375,8 +375,8 @@
         <Setter Property="FontFamily" Value="{ThemeResource AppUiFontFamily}" />
         <Setter Property="FontSize" Value="13" />
         <Setter Property="Foreground" Value="{ThemeResource AppInkMutedBrush}" />
-        <Setter Property="Background" Value="Transparent" />
-        <Setter Property="BorderBrush" Value="Transparent" />
+        <Setter Property="Background" Value="{ThemeResource AppTransparentBrush}" />
+        <Setter Property="BorderBrush" Value="{ThemeResource AppTransparentBrush}" />
         <Setter Property="BorderThickness" Value="0" />
         <Setter Property="CornerRadius" Value="{ThemeResource AppRadiusSmall}" />
         <Setter Property="Margin" Value="1" />

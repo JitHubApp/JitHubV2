@@ -9,7 +9,7 @@
             HorizontalAlignment="Stretch"
             VerticalAlignment="Stretch"
             HorizontalContentAlignment="Stretch"
-            Background="Transparent"
+        Background="{ThemeResource AppTransparentBrush}"
             BorderThickness="0"
             Command="{Binding DetailNavigationCommand}"
             Style="{StaticResource AppQuietButtonStyle}">

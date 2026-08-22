@@ -1491,11 +1491,21 @@ public sealed class GitHubPullRequestQueryService : IGitHubPullRequestQueryServi
             .Select(index => new GitHubIssueComment
             {
                 Id = (pullRequestNumber * 100) + index,
+                NodeId = $"IC_preview_{pullRequestNumber}_{index}",
+                HtmlUrl = $"https://github.com/JitHubApp/JitHubV2/pull/{pullRequestNumber}#issuecomment-{(pullRequestNumber * 100) + index}",
                 Body = index == 0
                     ? "The drawer alignment looks good in the compact breakpoint."
                     : $"Performance conversation reply {index}: cached content remains stable while the detail workspace scrolls.",
                 CreatedAt = DateTimeOffset.UtcNow.AddHours(-(index + 3)),
                 UpdatedAt = DateTimeOffset.UtcNow.AddHours(-(index + 3)),
+                Reactions = index == 0
+                    ? new GitHubReactionSummary
+                    {
+                        TotalCount = 6,
+                        PlusOne = 4,
+                        Eyes = 2
+                    }
+                    : new GitHubReactionSummary(),
                 User = new GitHubActor { Login = index % 2 == 0 ? "reviewer" : "maintainer" }
             })
             .ToArray();
@@ -1576,12 +1586,39 @@ public sealed class GitHubPullRequestQueryService : IGitHubPullRequestQueryServi
             new()
             {
                 Id = 200,
+                NodeId = "PRRC_preview_200",
                 PullRequestReviewId = 1,
+                HtmlUrl = "https://github.com/JitHubApp/JitHubV2/pull/1#discussion_r200",
                 Body = "This control now keeps the detail pane stable.",
                 Path = "JitHub.WinUI/Views/Pages/RepoPullRequestPage.xaml",
                 DiffHunk = "@@ -1,3 +1,3 @@\n+ AdaptiveWorkspace",
                 CreatedAt = DateTimeOffset.UtcNow.AddHours(-1),
+                UpdatedAt = DateTimeOffset.UtcNow.AddHours(-1),
+                Reactions = new GitHubReactionSummary
+                {
+                    TotalCount = 4,
+                    PlusOne = 3,
+                    Heart = 1
+                },
                 User = new GitHubActor { Login = "reviewer" }
+            },
+            new()
+            {
+                Id = 201,
+                NodeId = "PRRC_preview_201",
+                PullRequestReviewId = 1,
+                InReplyToId = 200,
+                HtmlUrl = "https://github.com/JitHubApp/JitHubV2/pull/1#discussion_r201",
+                Body = "Agreed. The reply controls should stay attached to the discussion.",
+                Path = "JitHub.WinUI/Views/Pages/RepoPullRequestPage.xaml",
+                CreatedAt = DateTimeOffset.UtcNow.AddMinutes(-45),
+                UpdatedAt = DateTimeOffset.UtcNow.AddMinutes(-45),
+                Reactions = new GitHubReactionSummary
+                {
+                    TotalCount = 1,
+                    Hooray = 1
+                },
+                User = new GitHubActor { Login = "jithub-preview" }
             }
         ];
         if (includeIdentitylessItems)

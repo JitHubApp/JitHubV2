@@ -27,7 +27,7 @@
             Url="{x:Bind ViewModel.ReviewerAvatarUrl, Mode=OneWay}"/>
         <Grid
             Grid.Column="1"
-            Style="{ThemeResource PlainContainer}"
+        Style="{StaticResource PlainContainer}"
             Padding="8">
             <StackPanel
                 Spacing="8">

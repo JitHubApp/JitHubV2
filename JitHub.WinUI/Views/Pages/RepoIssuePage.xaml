@@ -9,7 +9,7 @@
     xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
     xmlns:viewmodels="using:JitHub.WinUI.ViewModels.Pages"
     x:DataType="viewmodels:RepoIssuePageViewModel"
-    Background="Transparent"
+    Background="{ThemeResource AppTransparentBrush}"
     mc:Ignorable="d">
     <Page.Resources>
         <Style x:Key="RepoIssuesPanelStyle" TargetType="Border">

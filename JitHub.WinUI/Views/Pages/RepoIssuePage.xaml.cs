@@ -136,7 +136,9 @@ public sealed partial class RepoIssuePage : Page
         bool isLeadingDrawerOpen = state?.VisibleDrawer == AdaptiveWorkspaceDrawer.Leading;
         bool isTrailingDrawerOpen = state?.VisibleDrawer == AdaptiveWorkspaceDrawer.Trailing;
         _issueListPane?.SetDrawerOpen(isLeadingDrawerOpen);
-        _issueInspectorPane?.SetDrawerOpen(isTrailingDrawerOpen);
+        _issueInspectorPane?.UpdateResponsiveState(
+            isTrailingDrawerOpen,
+            state?.Mode is AdaptiveWorkspaceMode.Narrow or AdaptiveWorkspaceMode.Compact);
         _issueDetailPane?.UpdateResponsiveState(state);
     }
 
@@ -225,9 +227,9 @@ public sealed partial class RepoIssuePage : Page
         pane.OpenInspectorRequested += (_, _) => OpenIssueInspectorPane();
         pane.EditRequested += (sender, _) => EditIssueButton_Click(sender!, new RoutedEventArgs());
         pane.MetadataRequested += (sender, _) => MetadataButton_Click(sender!, new RoutedEventArgs());
-        pane.ReactionsRequested += (sender, _) => IssueReactionsButton_Click(sender!, new RoutedEventArgs());
         pane.ToggleStateRequested += (sender, _) => ToggleIssueStateButton_Click(sender!, new RoutedEventArgs());
         pane.CommentRequested += (sender, _) => CommentButton_Click(sender!, new RoutedEventArgs());
+        pane.CommentActionRequested += IssueCommentActionRequested;
         _issueDetailPane = pane;
         IssueDetailPanePresenter.Content = pane;
         pane.UpdateResponsiveState(IssuesWorkspace.State);
@@ -290,7 +292,6 @@ public sealed partial class RepoIssuePage : Page
         RepoIssueInspectorPane pane = new(ViewModel);
         pane.CloseRequested += (_, _) => IssuesWorkspace.CloseDrawer();
         pane.MetadataRequested += (sender, _) => MetadataButton_Click(sender!, new RoutedEventArgs());
-        pane.ReactionsRequested += (sender, _) => IssueReactionsButton_Click(sender!, new RoutedEventArgs());
         _issueInspectorPane = pane;
         IssueInspectorPanePresenter.Content = pane;
         UpdatePaneButtonVisibility();
@@ -304,6 +305,175 @@ public sealed partial class RepoIssuePage : Page
     private async void CommentButton_Click(object sender, RoutedEventArgs e)
     {
         await ViewModel.AddIssueCommentAsync();
+        _issueDetailPane?.CompleteCommentSubmission();
+    }
+
+    private async void IssueCommentActionRequested(object? sender, CommentActionRequestedEventArgs e)
+    {
+        if (sender is not CommentInteractionBar bar)
+        {
+            return;
+        }
+
+        bool isIssueBody = e.TargetKind == CommentTargetKind.Issue;
+        switch (e.Action)
+        {
+            case CommentActionKind.ToggleReaction when !string.IsNullOrWhiteSpace(e.Value):
+                if (isIssueBody)
+                {
+                    await ToggleSelectedIssueReactionAsync(e.Value);
+                }
+                else
+                {
+                    await ToggleIssueCommentReactionAsync(e.TargetId, e.Value);
+                }
+                break;
+            case CommentActionKind.QuoteReply:
+                ViewModel.IssueCommentDraft = CommentMarkdownFormatter.AppendQuote(
+                    ViewModel.IssueCommentDraft,
+                    bar.Body);
+                _issueDetailPane?.OpenCommentComposer();
+                break;
+            case CommentActionKind.CopyLink:
+                PlatformHelper.CopyString(bar.HtmlUrl);
+                break;
+            case CommentActionKind.CopyMarkdown:
+                PlatformHelper.CopyString(bar.Body);
+                break;
+            case CommentActionKind.Edit:
+                if (isIssueBody)
+                {
+                    EditIssueButton_Click(bar, new RoutedEventArgs());
+                }
+                else
+                {
+                    await ShowIssueCommentEditDialogAsync(e.TargetId, bar.Body);
+                }
+                break;
+            case CommentActionKind.Pin:
+                await ViewModel.SetIssueCommentPinnedAsync(e.TargetId, pinned: true);
+                break;
+            case CommentActionKind.Unpin:
+                await ViewModel.SetIssueCommentPinnedAsync(e.TargetId, pinned: false);
+                break;
+            case CommentActionKind.Hide when !string.IsNullOrWhiteSpace(e.Value):
+                await ViewModel.SetIssueCommentMinimizedAsync(bar.NodeId, e.Value);
+                break;
+            case CommentActionKind.Unhide:
+                await ViewModel.SetIssueCommentMinimizedAsync(bar.NodeId, classifier: null);
+                break;
+            case CommentActionKind.Delete:
+                await ShowIssueCommentDeleteDialogAsync(e.TargetId);
+                break;
+        }
+    }
+
+    private async Task ToggleSelectedIssueReactionAsync(string content)
+    {
+        IReadOnlyList<GitHubReaction>? reactions = await ViewModel.GetSelectedIssueReactionsAsync();
+        if (reactions is null)
+        {
+            return;
+        }
+
+        Dictionary<string, long> viewerReactionIds = reactions
+            .Where(reaction => string.Equals(reaction.User.Login, ViewModel.AuthenticatedLogin, StringComparison.OrdinalIgnoreCase))
+            .GroupBy(static reaction => reaction.Content, StringComparer.OrdinalIgnoreCase)
+            .ToDictionary(static group => group.Key, static group => group.First().Id, StringComparer.OrdinalIgnoreCase);
+        HashSet<string> selected = viewerReactionIds.Keys.ToHashSet(StringComparer.OrdinalIgnoreCase);
+        if (!selected.Add(content))
+        {
+            selected.Remove(content);
+        }
+
+        await ViewModel.ApplySelectedIssueReactionSelectionAsync(selected, viewerReactionIds);
+    }
+
+    private async Task ToggleIssueCommentReactionAsync(long commentId, string content)
+    {
+        IReadOnlyList<GitHubReaction>? reactions = await ViewModel.GetIssueCommentReactionsAsync(commentId);
+        if (reactions is null)
+        {
+            return;
+        }
+
+        Dictionary<string, long> viewerReactionIds = reactions
+            .Where(reaction => string.Equals(reaction.User.Login, ViewModel.AuthenticatedLogin, StringComparison.OrdinalIgnoreCase))
+            .GroupBy(static reaction => reaction.Content, StringComparer.OrdinalIgnoreCase)
+            .ToDictionary(static group => group.Key, static group => group.First().Id, StringComparer.OrdinalIgnoreCase);
+        HashSet<string> selected = viewerReactionIds.Keys.ToHashSet(StringComparer.OrdinalIgnoreCase);
+        if (!selected.Add(content))
+        {
+            selected.Remove(content);
+        }
+
+        await ViewModel.ApplyIssueCommentReactionSelectionAsync(commentId, selected, viewerReactionIds);
+    }
+
+    private async Task ShowIssueCommentEditDialogAsync(long commentId, string body)
+    {
+        GitHubIssueComment? comment = ViewModel.IssueComments.FirstOrDefault(item => item.Id == commentId);
+        MarkdownForm form = new()
+        {
+            Text = body,
+            DocumentSource = comment?.MarkdownSource,
+            EditorHeight = 420
+        };
+        AutomationProperties.SetAutomationId(form, $"RepoIssuesComment_{commentId}_EditForm");
+        AutomationProperties.SetName(form, L("RepoIssues/Dialogs/CommentEdit/BodyAutomationName", "Comment Markdown"));
+        TextBlock errorText = AppContentDialogPresenter.CreateInlineErrorPresenter("RepoIssuesCommentEditDialogError");
+        ContentDialog dialog = new()
+        {
+            XamlRoot = XamlRoot,
+            Title = L("RepoIssues/Dialogs/CommentEdit/Title", "Edit comment"),
+            Content = AppDialogStyleCatalog.CreateContentPanel(form, errorText),
+            PrimaryButtonText = L("Common/Save", "Save"),
+            CloseButtonText = L("Common/Cancel", "Cancel"),
+            DefaultButton = ContentDialogButton.Primary
+        };
+        AppDialogStyleCatalog.Apply(dialog);
+        AutomationProperties.SetAutomationId(dialog, "RepoIssuesCommentEditDialog");
+        AutomationProperties.SetName(dialog, L("RepoIssues/Dialogs/CommentEdit/AutomationName", "Edit issue comment"));
+
+        await AppContentDialogPresenter.ShowForPrimaryActionAsync(
+            dialog,
+            XamlRoot,
+            async () => await ViewModel.UpdateIssueCommentAsync(commentId, form.Text)
+                ? DialogMutationResult.Success()
+                : DialogMutationResult.Failure(ViewModel.StatusText),
+            errorText,
+            layoutKind: AppDialogLayoutKind.Editor);
+    }
+
+    private async Task ShowIssueCommentDeleteDialogAsync(long commentId)
+    {
+        TextBlock errorText = AppContentDialogPresenter.CreateInlineErrorPresenter("RepoIssuesCommentDeleteDialogError");
+        ContentDialog dialog = new()
+        {
+            XamlRoot = XamlRoot,
+            Title = L("RepoIssues/Dialogs/CommentDelete/Title", "Delete comment?"),
+            Content = AppDialogStyleCatalog.CreateContentPanel(
+                new TextBlock
+                {
+                    Text = L("RepoIssues/Dialogs/CommentDelete/Message", "This comment will be permanently deleted."),
+                    TextWrapping = TextWrapping.Wrap
+                },
+                errorText),
+            PrimaryButtonText = L("Common/Delete", "Delete"),
+            CloseButtonText = L("Common/Cancel", "Cancel"),
+            DefaultButton = ContentDialogButton.Close
+        };
+        AppDialogStyleCatalog.Apply(dialog);
+        AutomationProperties.SetAutomationId(dialog, "RepoIssuesCommentDeleteDialog");
+        AutomationProperties.SetName(dialog, L("RepoIssues/Dialogs/CommentDelete/AutomationName", "Delete issue comment"));
+
+        await AppContentDialogPresenter.ShowForPrimaryActionAsync(
+            dialog,
+            XamlRoot,
+            async () => await ViewModel.DeleteIssueCommentAsync(commentId)
+                ? DialogMutationResult.Success()
+                : DialogMutationResult.Failure(ViewModel.StatusText),
+            errorText);
     }
 
     private async void EditIssueButton_Click(object sender, RoutedEventArgs e)
@@ -372,7 +542,8 @@ public sealed partial class RepoIssuePage : Page
                     ? DialogMutationResult.Success()
                     : DialogMutationResult.Failure(ViewModel.StatusText);
             },
-            errorText);
+            errorText,
+            layoutKind: AppDialogLayoutKind.Editor);
     }
 
     private async void MetadataButton_Click(object sender, RoutedEventArgs e)
@@ -558,85 +729,6 @@ public sealed partial class RepoIssuePage : Page
             errorText);
     }
 
-    private async void IssueReactionsButton_Click(object sender, RoutedEventArgs e)
-    {
-        IReadOnlyList<GitHubReaction>? reactions = await ViewModel.GetSelectedIssueReactionsAsync();
-        if (reactions is null || ViewModel.SelectedIssue is null)
-        {
-            return;
-        }
-
-        await ShowReactionDialogAsync(
-            ViewModel.ReactionDialogTitleText,
-            reactions,
-            ViewModel.ApplySelectedIssueReactionSelectionAsync);
-    }
-
-    private async Task ShowReactionDialogAsync(
-        string title,
-        IReadOnlyList<GitHubReaction> reactions,
-        Func<HashSet<string>, Dictionary<string, long>, Task> applySelection)
-    {
-        string viewerLogin = ViewModel.AuthenticatedLogin;
-        Dictionary<string, long> viewerReactionIds = reactions
-            .Where(reaction => string.Equals(reaction.User.Login, viewerLogin, StringComparison.OrdinalIgnoreCase))
-            .GroupBy(static reaction => reaction.Content, StringComparer.OrdinalIgnoreCase)
-            .ToDictionary(static group => group.Key, static group => group.First().Id, StringComparer.OrdinalIgnoreCase);
-        Dictionary<string, int> counts = reactions
-            .GroupBy(static reaction => reaction.Content, StringComparer.OrdinalIgnoreCase)
-            .ToDictionary(static group => group.Key, static group => group.Count(), StringComparer.OrdinalIgnoreCase);
-
-        StackPanel options = new() { Spacing = 6 };
-        foreach (string content in SupportedReactionContents)
-        {
-            CheckBox option = new()
-            {
-                Content = GitHubReactionTextFormatter.FormatPickerLabel(
-                    content,
-                    counts.GetValueOrDefault(content)),
-                IsChecked = viewerReactionIds.ContainsKey(content),
-                Tag = content
-            };
-            AutomationProperties.SetAutomationId(option, $"RepoIssuesReaction_{ToAutomationToken(content)}");
-            AutomationProperties.SetName(
-                option,
-                LF("RepoIssues/Dialogs/Reactions/ToggleAutomationNameFormat", "Toggle {0} reaction", content));
-            options.Children.Add(option);
-        }
-        TextBlock errorText = AppContentDialogPresenter.CreateInlineErrorPresenter("RepoIssuesReactionDialogError");
-        options.Children.Add(errorText);
-
-        ContentDialog dialog = new()
-        {
-            XamlRoot = XamlRoot,
-            Title = title,
-            Content = options,
-            PrimaryButtonText = ViewModel.ReactionDialogSaveButtonText,
-            CloseButtonText = ViewModel.CancelButtonText,
-            DefaultButton = ContentDialogButton.Primary
-        };
-        AppDialogStyleCatalog.Apply(dialog);
-        AutomationProperties.SetAutomationId(dialog, "RepoIssuesReactionDialog");
-        AutomationProperties.SetName(dialog, title);
-
-        await AppContentDialogPresenter.ShowForPrimaryActionAsync(
-            dialog,
-            XamlRoot,
-            async () =>
-            {
-                HashSet<string> selected = options.Children
-                    .OfType<CheckBox>()
-                    .Where(static option => option.IsChecked == true)
-                    .Select(static option => (string)option.Tag)
-                    .ToHashSet(StringComparer.OrdinalIgnoreCase);
-                await applySelection(selected, viewerReactionIds);
-                return ViewModel.LastDialogMutationSucceeded
-                    ? DialogMutationResult.Success()
-                    : DialogMutationResult.Failure(ViewModel.StatusText);
-            },
-            errorText);
-    }
-
     private static ListView CreateMetadataList<T>(
         string header,
         string automationId,
@@ -669,13 +761,6 @@ public sealed partial class RepoIssuePage : Page
             list.SelectedItems.Add(item);
         }
     }
-
-    private static string ToAutomationToken(string content) => content switch
-    {
-        "+1" => "PlusOne",
-        "-1" => "MinusOne",
-        _ => char.ToUpperInvariant(content[0]) + content[1..]
-    };
 
     private async void NewIssueButton_Click(object sender, RoutedEventArgs e)
     {
@@ -747,9 +832,6 @@ public sealed partial class RepoIssuePage : Page
 
     private static string LF(string key, string fallback, params object?[] arguments) =>
         LocalizedResourceText.Format(key, fallback, arguments);
-
-    private static readonly string[] SupportedReactionContents =
-        ["+1", "-1", "laugh", "hooray", "confused", "heart", "rocket", "eyes"];
 
     private sealed record IssueMilestoneChoice(int? Number, string Title);
 }

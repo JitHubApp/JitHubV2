@@ -49,11 +49,9 @@ public sealed class CompactDialogAutomationContractTests
             "RepoIssuesCreateDialog",
             "RepoIssuesEditDialog",
             "RepoIssuesMetadataDialog",
-            "RepoIssuesReactionDialog",
             "RepoPullRequestsCreateDialog",
             "RepoPullRequestsEditDialog",
             "RepoPullRequestsMetadataDialog",
-            "RepoPullRequestsReactionDialog",
             "RepoPullRequestsSubmitReviewDialog",
             "RepoPullRequestsMergeDialog"
         ];
@@ -101,10 +99,10 @@ public sealed class CompactDialogAutomationContractTests
 
         Assert.Contains("RepoIssuesCreateDialog", issues, StringComparison.Ordinal);
         Assert.Contains("RepoIssuesMetadataDialog", issues, StringComparison.Ordinal);
-        Assert.Contains("RepoIssuesReactionDialog", issues, StringComparison.Ordinal);
+        Assert.DoesNotContain("RepoIssuesReactionDialog", issues, StringComparison.Ordinal);
         Assert.Contains("RepoPullRequestsCreateDialog", pulls, StringComparison.Ordinal);
         Assert.Contains("RepoPullRequestsMetadataDialog", pulls, StringComparison.Ordinal);
-        Assert.Contains("RepoPullRequestsReactionDialog", pulls, StringComparison.Ordinal);
+        Assert.DoesNotContain("RepoPullRequestsReactionDialog", pulls, StringComparison.Ordinal);
         Assert.Contains("RepoPullRequestsMergeDialog", pulls, StringComparison.Ordinal);
         Assert.Contains("ProfileEditDialog", profile, StringComparison.Ordinal);
         Assert.Contains("RepositoryDeleteConfirmation", repositories, StringComparison.Ordinal);

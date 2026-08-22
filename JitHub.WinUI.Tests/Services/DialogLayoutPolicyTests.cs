@@ -6,10 +6,10 @@ namespace JitHub.WinUI.Tests.Services;
 public sealed class DialogLayoutPolicyTests
 {
     [Theory]
-    [InlineData(1366, 900, 24, 620, 720)]
-    [InlineData(760, 650, 24, 620, 602)]
-    [InlineData(640, 600, 24, 592, 552)]
-    [InlineData(520, 560, 12, 496, 536)]
+    [InlineData(1366, 900, 24, 620, 520)]
+    [InlineData(760, 650, 24, 620, 520)]
+    [InlineData(640, 600, 24, 592, 520)]
+    [InlineData(520, 560, 12, 496, 520)]
     [InlineData(320, 480, 12, 296, 456)]
     public void StandardDialog_StaysInsideViewport(
         double width,

@@ -12,7 +12,7 @@
     xmlns:toolkit="using:CommunityToolkit.WinUI.Controls"
     xmlns:viewmodels="using:JitHub.WinUI.ViewModels.Pages"
     x:DataType="viewmodels:MyPullRequestsPageViewModel"
-    Background="Transparent"
+    Background="{ThemeResource AppTransparentBrush}"
     mc:Ignorable="d">
     <Page.Resources>
         <DataTemplate x:Key="PullRequestListItemTemplate" x:DataType="viewmodels:MeWorkItemViewItem">
@@ -481,7 +481,7 @@
                                 x:Uid="PagesMyPullRequestsPageMyPullRequestsList" x:Name="PullRequestsList"
                                 AutomationProperties.AutomationId="MyPullRequestsList"
                                 AutomationProperties.Name="My pull requests"
-                                Background="Transparent"
+                                            Background="{ThemeResource AppTransparentBrush}"
                                 BorderThickness="0"
                                 ContainerContentChanging="PullRequestsList_ContainerContentChanging"
                                 IsItemClickEnabled="True"
@@ -634,7 +634,7 @@
                                 Padding="18"
                                 AutomationProperties.AutomationId="MyPullRequestsCommentsList"
                                 AutomationProperties.Name="Pull request conversation"
-                                Background="Transparent"
+                                                Background="{ThemeResource AppTransparentBrush}"
                                 BorderThickness="0"
                                 ContainerContentChanging="PullRequestDetailList_ContainerContentChanging"
                                 HorizontalContentAlignment="Stretch"
@@ -769,7 +769,7 @@
                                 <ListView
                                     x:Uid="PagesMyPullRequestsPageMyPullRequestsCommitsList" AutomationProperties.AutomationId="MyPullRequestsCommitsList"
                                     AutomationProperties.Name="Pull request commits"
-                                    Background="Transparent"
+                                                Background="{ThemeResource AppTransparentBrush}"
                                     BorderThickness="0"
                                     ContainerContentChanging="PullRequestDetailList_ContainerContentChanging"
                                     HorizontalContentAlignment="Stretch"
@@ -794,7 +794,7 @@
                                 <ListView
                                     x:Uid="PagesMyPullRequestsPageMyPullRequestsReviewsList" AutomationProperties.AutomationId="MyPullRequestsReviewsList"
                                     AutomationProperties.Name="Pull request reviews"
-                                    Background="Transparent"
+                                                Background="{ThemeResource AppTransparentBrush}"
                                     BorderThickness="0"
                                     ContainerContentChanging="PullRequestDetailList_ContainerContentChanging"
                                     HorizontalContentAlignment="Stretch"
@@ -819,7 +819,7 @@
                                 <ListView
                                     x:Uid="PagesMyPullRequestsPageMyPullRequestsTimelineList" AutomationProperties.AutomationId="MyPullRequestsTimelineList"
                                     AutomationProperties.Name="Pull request timeline"
-                                    Background="Transparent"
+                                                Background="{ThemeResource AppTransparentBrush}"
                                     BorderThickness="0"
                                     ContainerContentChanging="PullRequestDetailList_ContainerContentChanging"
                                     HorizontalContentAlignment="Stretch"

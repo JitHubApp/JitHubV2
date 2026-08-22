@@ -12,7 +12,7 @@
             Style="{StaticResource AppQuietButtonStyle}"
             HorizontalAlignment="Stretch"
             HorizontalContentAlignment="Stretch"
-            Background="Transparent"
+        Background="{ThemeResource AppTransparentBrush}"
             BorderThickness="0"
             Command="{Binding DetailNavigationCommand}">
             <Grid>
@@ -62,7 +62,7 @@
         </Button>
     </DataTemplate>
     <DataTemplate x:Key="SelectableForkRepo">
-        <Border Style="{ThemeResource Container}">
+        <Border Style="{StaticResource Container}">
             <CheckBox
                 AutomationProperties.AutomationId="{Binding Id}"
                 AutomationProperties.Name="{Binding FullName}"

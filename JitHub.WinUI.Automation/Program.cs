@@ -674,7 +674,7 @@ static void RunMarkdownHostLifecycleProbe(CaptureOptions options)
         new("issue-comment", "repo-issues", "MarkdownHost_Comment_IssueComment_301", false,
             RealizationContainerAutomationId: "RepoIssuesConversationScrollViewer"),
         new("issue-comment-form", "repo-issues", "MarkdownHost_EditorPreview_RepoIssuesCommentBox_Preview", false,
-            RealizationContainerAutomationId: "RepoIssuesConversationScrollViewer"),
+            LauncherControlAutomationId: "RepoIssuesOpenCommentButton"),
         new("pull-request-body", "repo-pulls", "MarkdownHost_Conversation_RepoPullRequestsBody", false,
             RealizationContainerAutomationId: "RepoPullRequestsCommentsList", RealizationStartsAtTop: true),
         new("pull-request-comment", "repo-pulls", "MarkdownHost_Comment_IssueComment_1000", false,
@@ -694,11 +694,8 @@ static void RunMarkdownHostLifecycleProbe(CaptureOptions options)
             RealizationContainerAutomationId: "RepoPullRequestsReviewsList",
             CompactSectionPickerAutomationId: "RepoPullRequestsSectionComboBox",
             CompactSectionControlAutomationId: "RepoPullRequestsCompactSection_Reviews"),
-        new("pull-request-comment-form", "repo-pulls", "MarkdownHost_EditorPreview_RepoPullRequestsCommentBox_Preview", false,
-            LayoutVariant: MarkdownLifecycleLayoutVariant.PullRequestInlineComposer),
-        new("pull-request-compact-comment-form", "repo-pulls", "MarkdownHost_EditorPreview_RepoPullRequestsCompactCommentBox_Preview", false,
-            LauncherControlAutomationId: "RepoPullRequestsOpenCompactCommentButton",
-            LayoutVariant: MarkdownLifecycleLayoutVariant.PullRequestCompactComposer),
+        new("pull-request-comment-form", "repo-pulls", "MarkdownHost_EditorPreview_RepoPullRequestsCompactCommentBox_Preview", false,
+            LauncherControlAutomationId: "RepoPullRequestsOpenCompactCommentButton"),
         new("commit-body", "repo-commits", "MarkdownHost_Conversation_RepoCommitsBody", false,
             SectionControlAutomationId: "RepoCommitsSection_Comments"),
         new("commit-comment", "repo-commits", "MarkdownHost_Comment_CommitComment_1", false,
@@ -3759,7 +3756,6 @@ static void RunShellNavClicksProbe(CaptureOptions options)
             ("ShellNav_notifications", "NotificationsList"),
             ("ShellNav_stars", "StarsList"),
             ("ShellNav_gists", "GistsList"),
-            ("ShellNav_settings", "SettingsSectionList"),
             ("ShellNav_home", "DashboardCustomizeButton")
         ];
 
@@ -3781,7 +3777,7 @@ static void RunShellNavClicksProbe(CaptureOptions options)
         ScrollElementToBottom(homeScroll);
         double homeScrollBeforeNavigation = GetVerticalScrollPercent(homeScroll);
 
-        AutomationElement settingsNav = GetShellNavigationElement(window, "ShellNav_settings");
+        AutomationElement settingsNav = AssertNamedAutomationElement(window, "ShellSettingsTopButton", ControlType.Button);
         InvokeOrClick(settingsNav);
         WaitForElement("SettingsSectionList before history", () => window.FindFirstDescendant(cf => cf.ByAutomationId("SettingsSectionList")), TimeSpan.FromSeconds(8));
         AutomationElement settingsSections = window.FindFirstDescendant(cf => cf.ByAutomationId("SettingsSectionList"))!;
@@ -3860,7 +3856,6 @@ static void RunShellNavClicksProbe(CaptureOptions options)
         AssertNamedAutomationElement(window, "ShellNewRepositoryButton", ControlType.Button);
         AssertNamedAutomationElement(window, "ShellSettingsTopButton", ControlType.Button);
         AssertNamedAutomationElement(window, "ShellProfileTopButton", ControlType.Button);
-        AssertNamedAutomationElement(window, "ShellUserFooterButton", ControlType.Button);
 
         AutomationElement newRepository = window.FindFirstDescendant(cf => cf.ByAutomationId("ShellNewRepositoryButton"))!;
         newRepository.Focus();
@@ -3915,12 +3910,10 @@ static void RunShellHoverStatesProbe(CaptureOptions options)
             "ShellNav_stars",
             "ShellNav_gists",
             "ShellNav_explore",
-            "ShellNav_settings",
             "ShellSearchSubmitButton",
             "ShellNewRepositoryButton",
             "ShellSettingsTopButton",
             "ShellProfileTopButton",
-            "ShellUserFooterButton",
             "ShellSearchTextBox",
             "ShellRepoFilter_Public",
             "ShellRepoFilter_Private",
@@ -6472,12 +6465,9 @@ static void AssertRepoIssuePermissionSurface(Window window, UIA3Automation autom
     [
         "RepoIssuesNewIssueButton",
         "RepoIssuesEditButton",
-        "RepoIssuesReactionsButton",
         "RepoIssuesToggleStateButton",
         "RepoIssuesInspectorMetadataButton",
-        "RepoIssuesInspectorReactionsButton",
-        "RepoIssuesCommentBox_Editor",
-        "RepoIssuesCommentButton"
+        "RepoIssuesOpenCommentButton"
     ];
 
     foreach (string actionId in actionIds)
@@ -6509,10 +6499,16 @@ static void AssertRepoIssuePermissionSurface(Window window, UIA3Automation autom
     Thread.Sleep(250);
     CaptureWindow(window, Path.Combine(outputDirectory, "repo-issues-page-action-hover.png"));
 
-    AutomationElement reactions = FindCurrentVisibleByAutomationId(window, "RepoIssuesReactionsButton")!;
+    AutomationElement bodyInteractions = WaitForElement(
+        "RepoIssuesBodyInteractionBar",
+        () => FindCurrentVisibleByAutomationId(window, "RepoIssuesBodyInteractionBar"),
+        TimeSpan.FromSeconds(8));
     AssertProbe(
-        !string.Equals(edit.Name, reactions.Name, StringComparison.OrdinalIgnoreCase),
-        "Repository Issues edit and reaction actions did not expose distinct accessible names.");
+        string.Equals(bodyInteractions.Name, "Issue body actions", StringComparison.Ordinal),
+        "Repository Issues body did not expose the shared interaction surface.");
+    AssertProbe(
+        FindCurrentVisibleByAutomationId(window, "CommentAddReactionButton") is null,
+        "Repository Issues exposed an enabled reaction picker for the read-only public preview viewer.");
     Console.WriteLine("repo-issues: public preview exposes issue content while every write capability remains disabled.");
     _ = automation;
 }
@@ -6532,7 +6528,6 @@ static void AssertRepoIssueCompactActionOverflow(Window window, UIA3Automation a
     [
         "RepoIssuesCompactEditAction",
         "RepoIssuesCompactMetadataAction",
-        "RepoIssuesCompactReactionsAction",
         "RepoIssuesCompactToggleStateAction"
     ];
     foreach (string actionId in menuActionIds)
@@ -8637,31 +8632,14 @@ static void RunProfileResponsiveProbe(CaptureOptions options)
             "Dashboard before profile navigation",
             () => FindCurrentVisibleByAutomationId(window, "DashboardPageRoot"),
             TimeSpan.FromSeconds(8));
-        AutomationElement? profileRoute = FindCurrentVisibleByAutomationId(window, "ShellProfileTopButton");
-        if (!IsVisible(profileRoute))
-        {
-            AutomationElement railButton = WaitForElement(
-                "ShellRailDrawerButton for compact profile navigation",
-                () => FindCurrentVisibleByAutomationId(window, "ShellRailDrawerButton"),
-                TimeSpan.FromSeconds(8));
-            InvokeOrClick(railButton);
-            WaitForElement(
-                "ShellRailDrawer for compact profile navigation",
-                () => FindCurrentVisibleByAutomationId(window, "ShellRailDrawer"),
-                TimeSpan.FromSeconds(8));
-            profileRoute = WaitForElement(
-                "ShellUserFooterButton in compact navigation drawer",
-                () => FindCurrentVisibleByAutomationId(window, "ShellUserFooterButton"),
-                TimeSpan.FromSeconds(8));
-        }
-        else
-        {
-            AssertProbe(
-                shellBounds.Width >= 900,
-                $"Shell exposed its wide Profile action at an unexpected native width of {shellBounds.Width}px.");
-        }
-
-        InvokeOrClick(profileRoute!);
+        AssertProbe(
+            shellBounds.Width < 900,
+            $"Compact Profile route probe settled at an unexpected native width of {shellBounds.Width}px.");
+        AutomationElement profileRoute = WaitForElement(
+            "ShellProfileTopButton for compact profile navigation",
+            () => FindCurrentVisibleByAutomationId(window, "ShellProfileTopButton"),
+            TimeSpan.FromSeconds(8));
+        InvokeOrClick(profileRoute);
         WaitForElement(
             "ProfilePageRoot through shell navigation",
             () => FindCurrentVisibleByAutomationId(window, "ProfilePageRoot"),
@@ -12834,25 +12812,35 @@ static void AssertDrawerInsideWorkspace(Window window, string prefix, bool leadi
 
 static void ExerciseRepoIssueFiltersAndCommentEditor(Window window, string outputDirectory)
 {
-    AutomationElement editor = WaitForElement(
-        "RepoIssuesCommentBox_Editor",
-        () => window.FindFirstDescendant(cf => cf.ByAutomationId("RepoIssuesCommentBox_Editor")),
+    AutomationElement launcher = WaitForElement(
+        "RepoIssuesOpenCommentButton",
+        () => window.FindFirstDescendant(cf => cf.ByAutomationId("RepoIssuesOpenCommentButton")),
         TimeSpan.FromSeconds(8));
-    AutomationElement mode = WaitForElement(
-        "RepoIssuesCommentBox_Mode",
-        () => window.FindFirstDescendant(cf => cf.ByAutomationId("RepoIssuesCommentBox_Mode")),
-        TimeSpan.FromSeconds(5));
-    AutomationElement preview = WaitForElement(
-        "Repo Issues comment Preview",
-        () => mode.FindFirstDescendant(cf => cf.ByAutomationId("RepoIssuesCommentBox_Mode_Preview")),
-        TimeSpan.FromSeconds(5));
-    AutomationElement commentButton = WaitForElement(
-        "RepoIssuesCommentButton",
-        () => window.FindFirstDescendant(cf => cf.ByAutomationId("RepoIssuesCommentButton")),
-        TimeSpan.FromSeconds(5));
-    AssertProbe(IsVisible(commentButton), "Issue comment command was not visible with the comment editor.");
-    if (editor.IsEnabled)
+    if (!launcher.IsEnabled)
     {
+        CaptureWindow(window, Path.Combine(outputDirectory, "repo-issues-page-comment-read-only.png"));
+    }
+    else
+    {
+        InvokeOrClick(launcher);
+        AutomationElement editor = WaitForElement(
+            "RepoIssuesCommentBox_Editor",
+            () => window.FindFirstDescendant(cf => cf.ByAutomationId("RepoIssuesCommentBox_Editor")),
+            TimeSpan.FromSeconds(8));
+        AutomationElement mode = WaitForElement(
+            "RepoIssuesCommentBox_Mode",
+            () => window.FindFirstDescendant(cf => cf.ByAutomationId("RepoIssuesCommentBox_Mode")),
+            TimeSpan.FromSeconds(5));
+        AutomationElement preview = WaitForElement(
+            "Repo Issues comment Preview",
+            () => mode.FindFirstDescendant(cf => cf.ByAutomationId("RepoIssuesCommentBox_Mode_Preview")),
+            TimeSpan.FromSeconds(5));
+        AutomationElement commentButton = WaitForElement(
+            "RepoIssuesCommentButton",
+            () => window.FindFirstDescendant(cf => cf.ByAutomationId("RepoIssuesCommentButton")),
+            TimeSpan.FromSeconds(5));
+        AssertProbe(IsVisible(commentButton), "Issue comment command was not visible with the comment editor.");
+        AssertProbe(editor.IsEnabled, "Enabled issue comment launcher opened a disabled editor.");
         SetTextBoxText(editor, "**automation comment preview**");
         InvokeOrClick(preview);
         WaitForElement(
@@ -12860,12 +12848,6 @@ static void ExerciseRepoIssueFiltersAndCommentEditor(Window window, string outpu
             () => window.FindFirstDescendant(cf => cf.ByAutomationId("RepoIssuesCommentBox_Preview")),
             TimeSpan.FromSeconds(5));
         CaptureWindow(window, Path.Combine(outputDirectory, "repo-issues-page-comment-preview.png"));
-    }
-    else
-    {
-        AssertProbe(!preview.IsEnabled, "Read-only issue preview left its Markdown mode selector enabled.");
-        AssertProbe(!commentButton.IsEnabled, "Read-only issue preview left its comment command enabled.");
-        CaptureWindow(window, Path.Combine(outputDirectory, "repo-issues-page-comment-read-only.png"));
     }
 
     AutomationElement search = WaitForElement(
@@ -15762,36 +15744,11 @@ internal sealed record MarkdownLifecycleTarget(
     string? RealizationContainerAutomationId = null,
     string? CompactSectionPickerAutomationId = null,
     string? CompactSectionControlAutomationId = null,
-    bool RealizationStartsAtTop = false,
-    MarkdownLifecycleLayoutVariant LayoutVariant = MarkdownLifecycleLayoutVariant.Default)
+    bool RealizationStartsAtTop = false)
 {
-    public bool AppliesTo(MarkdownLifecycleViewport viewport, double textScale)
-    {
-        if (LayoutVariant == MarkdownLifecycleLayoutVariant.PullRequestInlineComposer)
-        {
-            return string.Equals(viewport.Name, "wide", StringComparison.OrdinalIgnoreCase) &&
-                viewport.Height >= 800 &&
-                textScale < 1.5;
-        }
-
-        if (LayoutVariant == MarkdownLifecycleLayoutVariant.PullRequestCompactComposer)
-        {
-            return string.Equals(viewport.Name, "compact", StringComparison.OrdinalIgnoreCase) ||
-                string.Equals(viewport.Name, "snapped", StringComparison.OrdinalIgnoreCase) ||
-                viewport.Height < 800 ||
-                (string.Equals(viewport.Name, "wide", StringComparison.OrdinalIgnoreCase) && textScale >= 1.5);
-        }
-
-        return string.IsNullOrWhiteSpace(RequiredViewportName) ||
-            string.Equals(RequiredViewportName, viewport.Name, StringComparison.OrdinalIgnoreCase);
-    }
-}
-
-internal enum MarkdownLifecycleLayoutVariant
-{
-    Default,
-    PullRequestInlineComposer,
-    PullRequestCompactComposer,
+    public bool AppliesTo(MarkdownLifecycleViewport viewport, double textScale) =>
+        string.IsNullOrWhiteSpace(RequiredViewportName) ||
+        string.Equals(RequiredViewportName, viewport.Name, StringComparison.OrdinalIgnoreCase);
 }
 
 internal sealed record MarkdownLifecycleViewport(string Name, int Width, int Height);
@@ -16372,6 +16329,7 @@ internal sealed class CaptureOptions
         throw new InvalidOperationException(
             "No fresh JitHub executable was found for UI automation. " +
             "Run 'dotnet publish JitHub.WinUI\\JitHub.WinUI.csproj -c Debug -p:Platform=x64' " +
+            "(add '-p:EnablePseudoLocalization=true' for the vnext-pseudo-localization probe) " +
             "or pass an intentional executable with --app=<path>.");
     }
 

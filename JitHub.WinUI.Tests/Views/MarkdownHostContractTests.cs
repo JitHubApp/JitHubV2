@@ -255,8 +255,14 @@ public sealed class MarkdownHostContractTests
     }
 
     [Fact]
-    public void PullRequestConversation_UsesHeightAwareComposerAndCompactHeader()
+    public void PullRequestConversation_UsesOnDemandComposerAndShyHeader()
     {
+        string xaml = File.ReadAllText(Path.Combine(
+            FindRepositoryRoot(),
+            "JitHub.WinUI",
+            "Views",
+            "Pages",
+            "RepoPullRequestPage.xaml"));
         string source = File.ReadAllText(Path.Combine(
             FindRepositoryRoot(),
             "JitHub.WinUI",
@@ -264,22 +270,48 @@ public sealed class MarkdownHostContractTests
             "Pages",
             "RepoPullRequestPage.xaml.cs"));
 
-        Assert.Contains("PullRequestDetailHost.SizeChanged += PullRequestDetailHost_SizeChanged;", source, StringComparison.Ordinal);
-        Assert.Contains("PullRequestCommentForm.EffectiveEditorHeight", source, StringComparison.Ordinal);
-        Assert.Contains("DetailChromeAndMinimumConversationHeight", source, StringComparison.Ordinal);
-        Assert.Contains("PullRequestCommentForm.Visibility = useCompactComposer", source, StringComparison.Ordinal);
-        Assert.Contains("RepoPullRequestsOpenCompactCommentButton.Visibility = useCompactComposer", source, StringComparison.Ordinal);
-        Assert.Contains("PullRequestDetailTitle.MaxLines = isCompact ? 1 : 2;", source, StringComparison.Ordinal);
-        Assert.Contains("TextWrapping.NoWrap", source, StringComparison.Ordinal);
+        Assert.Contains("x:Name=\"RepoPullRequestsOpenCompactCommentButton\"", xaml, StringComparison.Ordinal);
+        Assert.Contains("x:Name=\"PullRequestCommentFlyout\"", xaml, StringComparison.Ordinal);
+        Assert.Contains("x:Name=\"PullRequestCompactCommentForm\"", xaml, StringComparison.Ordinal);
+        Assert.DoesNotContain("x:Name=\"PullRequestCommentForm\"", xaml, StringComparison.Ordinal);
+        Assert.Contains("x:Name=\"PullRequestShySectionComboBox\"", xaml, StringComparison.Ordinal);
+        Assert.Contains("SizeChanged=\"PullRequestScrollableSection_SizeChanged\"", xaml, StringComparison.Ordinal);
+        Assert.Contains("x:Name=\"PullRequestFilesSection\"", xaml, StringComparison.Ordinal);
+        Assert.Contains("Loaded=\"PullRequestScrollableSection_Loaded\"", xaml, StringComparison.Ordinal);
+        Assert.Contains("Unloaded=\"PullRequestScrollableSection_Unloaded\"", xaml, StringComparison.Ordinal);
+        Assert.Contains("labs:TransitionHelper.Id=\"PullRequestHeaderSurface\"", xaml, StringComparison.Ordinal);
+        Assert.Contains("Background=\"{ThemeResource AppTransientOverlayBrush}\"", xaml, StringComparison.Ordinal);
+        Assert.Contains("ShyHeaderStartOffset", source, StringComparison.Ordinal);
+        Assert.Contains("ShyHeaderRestoreOffset", source, StringComparison.Ordinal);
+        Assert.Contains("ShyHeaderRevealTravel", source, StringComparison.Ordinal);
+        Assert.Contains("ShyHeaderRehideTravel", source, StringComparison.Ordinal);
+        Assert.Contains("PullRequestSectionScrollViewer_ViewChanged", source, StringComparison.Ordinal);
+        Assert.Contains("RegisterPropertyChangedCallback", source, StringComparison.Ordinal);
+        Assert.Contains("new TransitionHelper", source, StringComparison.Ordinal);
+        Assert.Contains("_headerTransition.StartAsync", source, StringComparison.Ordinal);
+        Assert.Contains("_headerTransition.ReverseAsync", source, StringComparison.Ordinal);
+        Assert.Contains("AnimateContentReflow", source, StringComparison.Ordinal);
+        Assert.Contains("TranslationTransition", source, StringComparison.Ordinal);
+        Assert.Contains("PullRequestDetailLayout.UpdateLayout()", source, StringComparison.Ordinal);
+        Assert.Contains("generation != _headerTransitionGeneration", source, StringComparison.Ordinal);
+        Assert.Contains("AttachActiveSectionScrollSources", source, StringComparison.Ordinal);
+        Assert.Contains("PullRequestSectionComboBox.Visibility = IsCompactWorkspace", source, StringComparison.Ordinal);
+        Assert.Contains("PullRequestShySectionComboBox.Visibility = !IsCompactWorkspace", source, StringComparison.Ordinal);
+        Assert.Contains("PullRequestCompactCommentForm.FocusEditor()", source, StringComparison.Ordinal);
         Assert.DoesNotContain("forceInlineComposerForLifecycle", source, StringComparison.Ordinal);
         Assert.DoesNotContain("JITHUB_MARKDOWN_LIFECYCLE", source, StringComparison.Ordinal);
-        Assert.DoesNotContain("GetTextScaleFactor() is <= 1.01", source, StringComparison.Ordinal);
-        Assert.DoesNotContain("forceFullComposerForLifecycle", source, StringComparison.Ordinal);
     }
 
     [Fact]
-    public void IssueConversation_PreservesReadingViewportAtLargeTextScale()
+    public void IssueConversation_UsesOnDemandComposerAndShyHeader()
     {
+        string xaml = File.ReadAllText(Path.Combine(
+            FindRepositoryRoot(),
+            "JitHub.WinUI",
+            "Views",
+            "Controls",
+            "Issue",
+            "RepoIssueDetailPane.xaml"));
         string source = File.ReadAllText(Path.Combine(
             FindRepositoryRoot(),
             "JitHub.WinUI",
@@ -288,10 +320,25 @@ public sealed class MarkdownHostContractTests
             "Issue",
             "RepoIssueDetailPane.xaml.cs"));
 
-        Assert.Contains("IssueCommentForm.EffectiveEditorHeight", source, StringComparison.Ordinal);
+        Assert.Contains("AutomationProperties.AutomationId=\"RepoIssuesOpenCommentButton\"", xaml, StringComparison.Ordinal);
+        Assert.Contains("x:Name=\"IssueCommentFlyout\"", xaml, StringComparison.Ordinal);
+        Assert.Contains("ViewChanged=\"IssueConversationScrollViewer_ViewChanged\"", xaml, StringComparison.Ordinal);
         Assert.Contains("AdaptiveWorkspaceMode.Narrow or AdaptiveWorkspaceMode.Compact", source, StringComparison.Ordinal);
-        Assert.Contains("isCompactWorkspace && textScale >= 1.75", source, StringComparison.Ordinal);
-        Assert.Contains("CompactLargeTextCommentEditorHeight", source, StringComparison.Ordinal);
+        Assert.Contains("ShyHeaderStartOffset", source, StringComparison.Ordinal);
+        Assert.Contains("ShyHeaderRestoreOffset", source, StringComparison.Ordinal);
+        Assert.Contains("ShyHeaderRevealTravel", source, StringComparison.Ordinal);
+        Assert.Contains("ShyHeaderRehideTravel", source, StringComparison.Ordinal);
+        Assert.Contains("labs:TransitionHelper.Id=\"IssueHeaderSurface\"", xaml, StringComparison.Ordinal);
+        Assert.Contains("Background=\"{ThemeResource AppTransientOverlayBrush}\"", xaml, StringComparison.Ordinal);
+        Assert.Contains("new TransitionHelper", source, StringComparison.Ordinal);
+        Assert.Contains("_headerTransition.StartAsync", source, StringComparison.Ordinal);
+        Assert.Contains("_headerTransition.ReverseAsync", source, StringComparison.Ordinal);
+        Assert.Contains("AnimateContentReflow", source, StringComparison.Ordinal);
+        Assert.Contains("TranslationTransition", source, StringComparison.Ordinal);
+        Assert.Contains("RepoIssuesDetailLayout.UpdateLayout()", source, StringComparison.Ordinal);
+        Assert.Contains("generation != _headerTransitionGeneration", source, StringComparison.Ordinal);
+        Assert.Contains("IssueCommentForm.FocusEditor()", source, StringComparison.Ordinal);
+        Assert.DoesNotContain("IssueCommentForm.EffectiveEditorHeight", source, StringComparison.Ordinal);
         Assert.DoesNotContain("JITHUB_MARKDOWN_LIFECYCLE", source, StringComparison.Ordinal);
     }
 

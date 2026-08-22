@@ -23,6 +23,7 @@ public sealed partial class RepoIssueListPane : UserControl
     private ProductPerformanceScrollProbe? _performanceScrollProbe;
     private long _selectionPresentationGeneration;
     private bool _pointerSelectionInProgress;
+    private bool _initializingFilterFlyout;
 
     public RepoIssuePageViewModel ViewModel { get; }
 
@@ -104,10 +105,51 @@ public sealed partial class RepoIssueListPane : UserControl
 
     private async void IssueFilterComboBox_SelectionChanged(object sender, SelectionChangedEventArgs e)
     {
-        if (_initialized)
+        if (!_initialized || _initializingFilterFlyout)
         {
-            await ViewModel.ApplyFiltersAsync();
+            return;
         }
+
+        ViewModel.SelectedScopeOption = GetSelectedOption(ViewModel.ScopeOptions, IssueScopeComboBox.SelectedIndex);
+        ViewModel.SelectedSortOption = GetSelectedOption(ViewModel.SortOptions, IssueSortComboBox.SelectedIndex);
+        ViewModel.SelectedDirectionOption = GetSelectedOption(ViewModel.DirectionOptions, IssueDirectionComboBox.SelectedIndex);
+        await ViewModel.ApplyFiltersAsync();
+    }
+
+    private void IssueFiltersFlyout_Opened(object sender, object e)
+    {
+        _initializingFilterFlyout = true;
+        try
+        {
+            IssueScopeComboBox.SelectedIndex = GetSelectedIndex(ViewModel.ScopeOptions, ViewModel.SelectedScopeOption);
+            IssueSortComboBox.SelectedIndex = GetSelectedIndex(ViewModel.SortOptions, ViewModel.SelectedSortOption);
+            IssueDirectionComboBox.SelectedIndex = GetSelectedIndex(ViewModel.DirectionOptions, ViewModel.SelectedDirectionOption);
+        }
+        finally
+        {
+            _initializingFilterFlyout = false;
+        }
+    }
+
+    private static QueryOption? GetSelectedOption(System.Collections.Generic.IReadOnlyList<QueryOption> options, int index) =>
+        index >= 0 && index < options.Count ? options[index] : null;
+
+    private static int GetSelectedIndex(System.Collections.Generic.IReadOnlyList<QueryOption> options, QueryOption? selected)
+    {
+        if (selected is null)
+        {
+            return 0;
+        }
+
+        for (int index = 0; index < options.Count; index++)
+        {
+            if (options[index] == selected)
+            {
+                return index;
+            }
+        }
+
+        return 0;
     }
 
     private async void IssueSearchBox_TextChanged(object sender, TextChangedEventArgs e)

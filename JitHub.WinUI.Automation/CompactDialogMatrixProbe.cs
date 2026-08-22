@@ -484,11 +484,6 @@ internal static class CompactDialogMatrixProbe
                     "content-dialog/issue-metadata",
                     "RepoIssuesMetadataDialog",
                     (window, automation) => OpenIssueDialog(window, automation, "RepoIssuesInspectorMetadataButton"),
-                    null),
-                new(
-                    "content-dialog/issue-reactions",
-                    "RepoIssuesReactionDialog",
-                    (window, automation) => OpenIssueDialog(window, automation, "RepoIssuesReactionsButton"),
                     null)
             ];
             foreach (LiveDialogContract contract in contracts)
@@ -523,11 +518,6 @@ internal static class CompactDialogMatrixProbe
                     "content-dialog/pr-metadata",
                     "RepoPullRequestsMetadataDialog",
                     (window, automation) => OpenPullRequestDialog(window, automation, "RepoPullRequestsMetadataButton"),
-                    null),
-                new(
-                    "content-dialog/pr-reactions",
-                    "RepoPullRequestsReactionDialog",
-                    (window, automation) => OpenPullRequestDialog(window, automation, "RepoPullRequestsReactionsButton"),
                     null),
                 new(
                     "content-dialog/pr-review",
@@ -639,8 +629,7 @@ internal static class CompactDialogMatrixProbe
         string openerAutomationId)
     {
         if (openerAutomationId is "RepoPullRequestsEditButton" or
-            "RepoPullRequestsMetadataButton" or
-            "RepoPullRequestsReactionsButton")
+            "RepoPullRequestsMetadataButton")
         {
             if (!IsVisible(Find(window, automation, openerAutomationId)))
             {

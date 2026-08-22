@@ -8,7 +8,7 @@
     xmlns:muxc="using:Microsoft.UI.Xaml.Controls"
     xmlns:shell="using:JitHub.WinUI.ViewModels.Pages"
     xmlns:toolkit="using:CommunityToolkit.WinUI.Controls"
-    Background="Transparent"
+    Background="{ThemeResource AppTransparentBrush}"
     Loaded="Page_Loaded"
     SizeChanged="Page_SizeChanged"
     mc:Ignorable="d">
@@ -42,6 +42,7 @@
                         Spacing="10">
                         <FontIcon
                             Width="18"
+                            VerticalAlignment="Center"
                             FontFamily="{StaticResource SegoeFluentIcons}"
                             FontSize="16"
                             Foreground="{ThemeResource AppInkMutedBrush}"
@@ -93,7 +94,7 @@
                 ToolTipService.ToolTip="{x:Bind FullName, Mode=OneWay}">
                 <Grid MinHeight="38" Padding="10,6">
                     <Border
-                        Margin="-2,-1"
+                        Margin="-10,-6"
                         Background="{ThemeResource AppSurfaceSubtleBrush}"
                         CornerRadius="{ThemeResource AppRadiusSmall}"
                         Visibility="{x:Bind IsSelected, Converter={StaticResource BoolToVisibilityConverter}, Mode=OneWay}" />
@@ -104,8 +105,7 @@
                             <ColumnDefinition Width="Auto" />
                         </Grid.ColumnDefinitions>
                         <FontIcon
-                            Margin="0,2,0,0"
-                            VerticalAlignment="Top"
+                            VerticalAlignment="Center"
                             FontFamily="{StaticResource SegoeFluentIcons}"
                             FontSize="15"
                             Foreground="{ThemeResource AppInkMutedBrush}"
@@ -140,7 +140,7 @@
                 Padding="12,8"
                 AutomationProperties.AutomationId="{x:Bind AutomationId, Mode=OneWay}"
                 AutomationProperties.Name="{x:Bind AutomationName, Mode=OneWay}"
-                Background="Transparent"
+                Background="{ThemeResource AppTransparentBrush}"
                 ColumnSpacing="12">
                 <Grid.ColumnDefinitions>
                     <ColumnDefinition Width="28" />
@@ -234,8 +234,8 @@
                     <VisualState.Setters>
                         <Setter Target="TitleWindowColumn.Width" Value="72" />
                         <Setter Target="NewRepositoryButton.Visibility" Value="Collapsed" />
-                        <Setter Target="SettingsTopButton.Visibility" Value="Collapsed" />
-                        <Setter Target="ProfileTopButton.Visibility" Value="Collapsed" />
+                        <Setter Target="SettingsTopButton.Visibility" Value="Visible" />
+                        <Setter Target="ProfileTopButton.Visibility" Value="Visible" />
                         <Setter Target="SearchBoxFrame.Width" Value="220" />
                         <Setter Target="SearchBoxFrame.HorizontalAlignment" Value="Stretch" />
                         <Setter Target="ModalContent.HorizontalAlignment" Value="Stretch" />
@@ -288,7 +288,7 @@
             VerticalAlignment="Top"
             AutomationProperties.AccessibilityView="Raw"
             AutomationProperties.AutomationId="ShellSearchFocusSink"
-            Background="Transparent"
+            Background="{ThemeResource AppTransparentBrush}"
             BorderThickness="0"
             IsTabStop="True"
             Opacity="0"
@@ -445,12 +445,12 @@
                                 Style="{StaticResource ShellSearchTextBoxStyle}"
                                 TextChanged="SearchTextBox_TextChanged">
                                 <TextBox.Resources>
-                                    <SolidColorBrush x:Key="TextControlBackground" Color="Transparent" />
-                                    <SolidColorBrush x:Key="TextControlBackgroundPointerOver" Color="Transparent" />
-                                    <SolidColorBrush x:Key="TextControlBackgroundFocused" Color="Transparent" />
-                                    <SolidColorBrush x:Key="TextControlBorderBrush" Color="Transparent" />
-                                    <SolidColorBrush x:Key="TextControlBorderBrushPointerOver" Color="Transparent" />
-                                    <SolidColorBrush x:Key="TextControlBorderBrushFocused" Color="Transparent" />
+                                    <SolidColorBrush x:Key="TextControlBackground" Color="{ThemeResource AppTransparentColor}" />
+                                    <SolidColorBrush x:Key="TextControlBackgroundPointerOver" Color="{ThemeResource AppTransparentColor}" />
+                                    <SolidColorBrush x:Key="TextControlBackgroundFocused" Color="{ThemeResource AppTransparentColor}" />
+                                    <SolidColorBrush x:Key="TextControlBorderBrush" Color="{ThemeResource AppTransparentColor}" />
+                                    <SolidColorBrush x:Key="TextControlBorderBrushPointerOver" Color="{ThemeResource AppTransparentColor}" />
+                                    <SolidColorBrush x:Key="TextControlBorderBrushFocused" Color="{ThemeResource AppTransparentColor}" />
                                     <Thickness x:Key="TextControlBorderThemeThickness">0</Thickness>
                                     <Thickness x:Key="TextControlBorderThemeThicknessFocused">0</Thickness>
                                 </TextBox.Resources>
@@ -582,7 +582,6 @@
                         <RowDefinition Height="Auto" />
                         <RowDefinition Height="Auto" />
                         <RowDefinition Height="*" />
-                        <RowDefinition Height="Auto" />
                     </Grid.RowDefinitions>
                     <ItemsControl
                         x:Name="ShellNavList"
@@ -654,7 +653,7 @@
                                 x:Uid="PagesShellPageShellRepositoryList" x:Name="ShellRepositoryList"
                                 AutomationProperties.AutomationId="ShellRepositoryList"
                                 AutomationProperties.Name="Repositories"
-                                Background="Transparent"
+                                Background="{ThemeResource AppTransparentBrush}"
                                 BorderThickness="0"
                                 ContainerContentChanging="ShellRepositoryList_ContainerContentChanging"
                                 ItemTemplate="{StaticResource ShellRepositoryItemTemplate}"
@@ -696,43 +695,6 @@
                             </Button>
                         </StackPanel>
                     </Grid>
-                    <Button
-                        x:Uid="PagesShellPageShellUserFooterButton" Grid.Row="3"
-                        Margin="6,12,6,0"
-                        Padding="10"
-                        HorizontalAlignment="Stretch"
-                        HorizontalContentAlignment="Stretch"
-                        AutomationProperties.AutomationId="ShellUserFooterButton"
-                        AutomationProperties.Name="Open your GitHub profile"
-                        Command="{x:Bind ViewModel.GoToProfilePageCommand, Mode=OneWay}"
-                        Style="{StaticResource AppQuietButtonStyle}"
-                        ToolTipService.ToolTip="Open your GitHub profile">
-                        <Grid ColumnSpacing="10">
-                            <Grid.ColumnDefinitions>
-                                <ColumnDefinition Width="34" />
-                                <ColumnDefinition Width="*" />
-                            </Grid.ColumnDefinitions>
-                            <PersonPicture
-                                Width="34"
-                                Height="34"
-                                DisplayName="{x:Bind ViewModel.UserDisplayName, Mode=OneWay}" />
-                            <StackPanel Grid.Column="1" VerticalAlignment="Center" Spacing="1">
-                                <TextBlock
-                                    FontFamily="{StaticResource AppUiFontFamily}"
-                                    FontSize="13"
-                                    FontWeight="SemiBold"
-                                    Foreground="{ThemeResource AppInkBrush}"
-                                    Text="{x:Bind ViewModel.UserDisplayName, Mode=OneWay}"
-                                    TextTrimming="CharacterEllipsis" />
-                                <TextBlock
-                                    FontFamily="{StaticResource AppUiFontFamily}"
-                                    FontSize="11"
-                                    Foreground="{ThemeResource AppInkSubtleBrush}"
-                                    Text="{x:Bind ViewModel.UserSubtitle, Mode=OneWay}"
-                                    TextTrimming="CharacterEllipsis" />
-                            </StackPanel>
-                        </Grid>
-                    </Button>
                 </Grid>
             </Border>
 
@@ -790,7 +752,7 @@
                     x:Uid="PagesShellPageShellSearchSuggestionsList" x:Name="SearchSuggestionsList"
                     AutomationProperties.AutomationId="ShellSearchSuggestionsList"
                     AutomationProperties.Name="Search suggestions"
-                    Background="Transparent"
+                    Background="{ThemeResource AppTransparentBrush}"
                     BorderThickness="0"
                     IsItemClickEnabled="True"
                     IsTabStop="False"

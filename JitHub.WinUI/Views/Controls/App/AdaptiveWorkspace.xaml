@@ -9,7 +9,7 @@
     <Grid
         x:Name="WorkspaceRoot"
         AutomationProperties.AccessibilityView="Raw"
-        Background="Transparent"
+    Background="{ThemeResource AppTransparentBrush}"
         KeyDown="WorkspaceRoot_KeyDown"
         SizeChanged="WorkspaceRoot_SizeChanged">
         <Grid.Clip>
@@ -82,7 +82,7 @@
             x:Name="DrawerOverlay"
             HorizontalAlignment="Left"
             AutomationProperties.AccessibilityView="Raw"
-            Background="Transparent"
+                Background="{ThemeResource AppTransparentBrush}"
             TabFocusNavigation="Cycle"
             Visibility="Collapsed">
             <Border

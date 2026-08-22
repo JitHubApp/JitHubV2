@@ -1,6 +1,12 @@
 <ResourceDictionary
     xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
     xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml">
+    <Style TargetType="ListView">
+        <Setter Property="Background" Value="{ThemeResource AppTransparentBrush}" />
+        <Setter Property="Foreground" Value="{ThemeResource AppInkBrush}" />
+        <Setter Property="HorizontalContentAlignment" Value="Stretch" />
+    </Style>
+
     <Style TargetType="ListViewItem">
         <Setter Property="FontFamily" Value="{ThemeResource AppUiFontFamily}" />
         <Setter Property="Foreground" Value="{ThemeResource AppInkBrush}" />
@@ -12,5 +18,20 @@
     </Style>
     <Style TargetType="ProgressRing">
         <Setter Property="Foreground" Value="{ThemeResource AppAccentBrush}" />
+    </Style>
+
+    <Style TargetType="ProgressBar" BasedOn="{StaticResource DefaultProgressBarStyle}">
+        <Setter Property="Background" Value="{ThemeResource AppCanvasInsetBrush}" />
+        <Setter Property="Foreground" Value="{ThemeResource AppAccentBrush}" />
+    </Style>
+
+    <Style TargetType="PersonPicture" BasedOn="{StaticResource DefaultPersonPictureStyle}">
+        <Setter Property="Background" Value="{ThemeResource AppSurfaceSubtleBrush}" />
+        <Setter Property="Foreground" Value="{ThemeResource AppInkBrush}" />
+    </Style>
+
+    <Style TargetType="TreeView">
+        <Setter Property="Background" Value="{ThemeResource AppTransparentBrush}" />
+        <Setter Property="Foreground" Value="{ThemeResource AppInkBrush}" />
     </Style>
 </ResourceDictionary>

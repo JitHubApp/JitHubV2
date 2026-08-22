@@ -725,17 +725,37 @@ public sealed partial class StarsPage : Page
         AutomationProperties.SetName(name, L("Stars/Dialogs/Category/NameAutomationName", "Category name"));
         ComboBox color = new()
         {
-            Header = L("Stars/Dialogs/Category/ColorHeader", "Color"),
+            PlaceholderText = L("Stars/Dialogs/Category/ColorPlaceholder", "Choose a color"),
+            MinWidth = 220,
+            MinHeight = 40,
+            HorizontalAlignment = HorizontalAlignment.Stretch,
+            HorizontalContentAlignment = HorizontalAlignment.Stretch,
+            VerticalContentAlignment = VerticalAlignment.Center,
+            Background = new SolidColorBrush(Microsoft.UI.Colors.Transparent),
+            BorderThickness = new Thickness(0),
             ItemsSource = CategoryColors,
+            ItemTemplate = (DataTemplate)Resources["CategoryColorOptionTemplate"],
             SelectedItem = existing?.Color is { Length: > 0 } current && CategoryColors.Contains(current, StringComparer.OrdinalIgnoreCase)
                 ? CategoryColors.First(value => string.Equals(value, current, StringComparison.OrdinalIgnoreCase))
                 : CategoryColors[0]
         };
         AutomationProperties.SetAutomationId(color, "StarsCategoryColorPicker");
         AutomationProperties.SetName(color, L("Stars/Dialogs/Category/ColorAutomationName", "Category color"));
+        Border colorFrame = new()
+        {
+            MinHeight = 40,
+            Background = (Brush)Application.Current.Resources["AppInputBrush"],
+            BorderBrush = (Brush)Application.Current.Resources["AppOutlineBrush"],
+            BorderThickness = new Thickness(1),
+            CornerRadius = (CornerRadius)Application.Current.Resources["AppRadiusMedium"],
+            Child = color
+        };
+        StackPanel colorField = new() { Spacing = 6 };
+        colorField.Children.Add(new TextBlock { Text = L("Stars/Dialogs/Category/ColorHeader", "Color") });
+        colorField.Children.Add(colorFrame);
         StackPanel content = new() { Spacing = 12 };
         content.Children.Add(name);
-        content.Children.Add(color);
+        content.Children.Add(colorField);
         ContentDialog dialog = CreateDialog(
             title,
             content,

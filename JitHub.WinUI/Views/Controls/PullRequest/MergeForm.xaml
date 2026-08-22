@@ -63,7 +63,7 @@
                                 x:Uid="ControlsPullRequestMergeFormPullRequestMergeSubmitButton" AutomationProperties.AutomationId="PullRequestMergeSubmitButton"
                                 AutomationProperties.Name="Merge pull request"
                                 Command="{x:Bind ViewModel.MergeCommand, Mode=OneWay}"
-                                Style="{ThemeResource AppAccentButtonStyle}"
+                Style="{StaticResource AppAccentButtonStyle}"
                                 HorizontalAlignment="Right"
                                 VerticalContentAlignment="Center"
                                 Content="Merge pull request"/>

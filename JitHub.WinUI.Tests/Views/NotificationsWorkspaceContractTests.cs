@@ -23,6 +23,24 @@ public sealed class NotificationsWorkspaceContractTests
     }
 
     [Fact]
+    public void HeaderCountUsesMeasuredVisualBaselineCompensation()
+    {
+        XDocument document = XDocument.Load(NotificationsXamlPath());
+        XNamespace xaml = "http://schemas.microsoft.com/winfx/2006/xaml";
+        XElement identity = Assert.Single(document.Descendants(), element =>
+            element.Attribute(xaml + "Name")?.Value == "NotificationsHeaderIdentity");
+        XElement scope = Assert.Single(identity.Descendants(), element =>
+            element.Attribute("AutomationProperties.AutomationId")?.Value == "NotificationsResultScope");
+
+        Assert.Equal("Grid", identity.Name.LocalName);
+        Assert.Equal("Center", identity.Attribute("VerticalAlignment")?.Value);
+        Assert.Equal("2", scope.Attribute("Grid.Column")?.Value);
+        Assert.Null(scope.Attribute("Margin"));
+        Assert.Equal("0,4,0", scope.Attribute("Translation")?.Value);
+        Assert.Equal("Bottom", scope.Attribute("VerticalAlignment")?.Value);
+    }
+
+    [Fact]
     public void Filter_UsesOneStableNativeSelectorBar()
     {
         XDocument document = XDocument.Load(NotificationsXamlPath());

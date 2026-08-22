@@ -20,7 +20,7 @@
                 MinHeight="50"
                 AutomationProperties.AutomationId="{x:Bind AutomationId}"
                 AutomationProperties.Name="{x:Bind AutomationName}"
-                Background="Transparent"
+    Background="{ThemeResource AppTransparentBrush}"
                 PointerEntered="IssueListItem_PointerEntered"
                 PointerPressed="IssueListItemContainer_PointerPressed"
                 RowSpacing="5">
@@ -58,6 +58,7 @@
                     <common:Avatar
                         Grid.Column="1"
                         AutomationInstanceId="{x:Bind AutomationId}"
+                        ContainerCornerRadius="{ThemeResource AppRadiusSmall}"
                         DisplayName="{x:Bind User.Login}"
                         Login="{x:Bind User.Login}"
                         MaxWidth="150"
@@ -94,7 +95,7 @@
                     <RowDefinition Height="Auto" />
                     <RowDefinition Height="Auto" />
                 </Grid.RowDefinitions>
-                <Grid ColumnSpacing="8" Style="{StaticResource AppWorkspaceHeaderStyle}">
+                <Grid ColumnSpacing="0" Style="{StaticResource AppWorkspaceHeaderStyle}">
                     <Grid.ColumnDefinitions>
                         <ColumnDefinition Width="Auto" />
                         <ColumnDefinition Width="*" />
@@ -105,6 +106,7 @@
                         x:Name="CloseListPaneButton"
                         Width="36"
                         Height="36"
+                        Margin="0,0,8,0"
                         Padding="0"
                         VerticalAlignment="Top"
                         AutomationProperties.AutomationId="RepoIssuesCloseListPaneButton"
@@ -141,74 +143,100 @@
                         Style="{StaticResource AppAccentButtonStyle}"
                         ToolTipService.ToolTip="Create a new issue" />
                 </Grid>
-                <Grid Grid.Row="1" RowSpacing="6">
-                    <Grid.RowDefinitions>
-                        <RowDefinition Height="Auto" />
-                        <RowDefinition Height="Auto" />
-                        <RowDefinition Height="Auto" />
-                    </Grid.RowDefinitions>
-                    <Grid ColumnSpacing="8">
-                        <Grid.ColumnDefinitions>
-                            <ColumnDefinition Width="*" />
-                            <ColumnDefinition Width="Auto" />
-                        </Grid.ColumnDefinitions>
-                        <TextBox
-                            x:Uid="PagesRepoIssuePageRepoIssuesSearchBox"
-                            x:Name="IssueSearchBox"
-                            AutomationProperties.AutomationId="RepoIssuesSearchBox"
-                            AutomationProperties.Name="Filter repository issues"
-                            PlaceholderText="Filter issues..."
-                            Style="{StaticResource AppCommandSearchTextBoxStyle}"
-                            TextChanged="IssueSearchBox_TextChanged" />
-                        <ProgressRing
-                            Grid.Column="1"
-                            Width="24"
-                            Height="24"
-                            VerticalAlignment="Center"
-                            IsActive="{x:Bind ViewModel.IsLoading, Mode=OneWay}"
-                            Visibility="{x:Bind ViewModel.IsLoading, Converter={StaticResource BoolToVisibilityConverter}, Mode=OneWay}" />
-                    </Grid>
-                    <Grid Grid.Row="1" ColumnSpacing="6">
-                        <Grid.ColumnDefinitions>
-                            <ColumnDefinition Width="*" />
-                            <ColumnDefinition Width="*" />
-                        </Grid.ColumnDefinitions>
-                        <ComboBox
-                            x:Uid="PagesRepoIssuePageRepoIssuesScopeComboBox"
-                            MinWidth="0"
-                            HorizontalAlignment="Stretch"
-                            AutomationProperties.AutomationId="RepoIssuesScopeComboBox"
-                            AutomationProperties.Name="Issue scope"
-                            DisplayMemberPath="Label"
-                            ItemsSource="{x:Bind ViewModel.ScopeOptions, Mode=OneWay}"
-                            SelectedItem="{x:Bind ViewModel.SelectedScopeOption, Mode=TwoWay}"
-                            SelectionChanged="IssueFilterComboBox_SelectionChanged"
-                            Style="{StaticResource AppCompactComboBoxStyle}" />
-                        <ComboBox
-                            x:Uid="PagesRepoIssuePageRepoIssuesSortComboBox"
-                            Grid.Column="1"
-                            MinWidth="0"
-                            HorizontalAlignment="Stretch"
-                            AutomationProperties.AutomationId="RepoIssuesSortComboBox"
-                            AutomationProperties.Name="Sort issues by"
-                            DisplayMemberPath="Label"
-                            ItemsSource="{x:Bind ViewModel.SortOptions, Mode=OneWay}"
-                            SelectedItem="{x:Bind ViewModel.SelectedSortOption, Mode=TwoWay}"
-                            SelectionChanged="IssueFilterComboBox_SelectionChanged"
-                            Style="{StaticResource AppCompactComboBoxStyle}" />
-                    </Grid>
-                    <ComboBox
-                        x:Uid="PagesRepoIssuePageRepoIssuesDirectionComboBox"
-                        Grid.Row="2"
-                        MinWidth="0"
-                        HorizontalAlignment="Stretch"
-                        AutomationProperties.AutomationId="RepoIssuesDirectionComboBox"
-                        AutomationProperties.Name="Issue sort direction"
-                        DisplayMemberPath="Label"
-                        ItemsSource="{x:Bind ViewModel.DirectionOptions, Mode=OneWay}"
-                        SelectedItem="{x:Bind ViewModel.SelectedDirectionOption, Mode=TwoWay}"
-                        SelectionChanged="IssueFilterComboBox_SelectionChanged"
-                        Style="{StaticResource AppCompactComboBoxStyle}" />
+                <Grid Grid.Row="1" ColumnSpacing="8">
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="*" />
+                        <ColumnDefinition Width="Auto" />
+                        <ColumnDefinition Width="Auto" />
+                    </Grid.ColumnDefinitions>
+                    <TextBox
+                        x:Uid="PagesRepoIssuePageRepoIssuesSearchBox"
+                        x:Name="IssueSearchBox"
+                        AutomationProperties.AutomationId="RepoIssuesSearchBox"
+                        AutomationProperties.Name="Filter repository issues"
+                        PlaceholderText="Filter issues..."
+                        Style="{StaticResource AppCommandSearchTextBoxStyle}"
+                        TextChanged="IssueSearchBox_TextChanged" />
+                    <Button
+                        x:Uid="PagesRepoIssuePageRepoIssuesFilterButton"
+                        Grid.Column="1"
+                        Width="36"
+                        Height="36"
+                        Padding="0"
+                        AutomationProperties.AutomationId="RepoIssuesFilterButton"
+                        AutomationProperties.Name="Issue filters"
+                        Style="{StaticResource AppToolbarButtonStyle}"
+                        ToolTipService.ToolTip="Filters">
+                        <FontIcon FontFamily="{StaticResource SegoeFluentIcons}" FontSize="14" Glyph="&#xE71C;" />
+                        <Button.Flyout>
+                            <Flyout Opened="IssueFiltersFlyout_Opened" Placement="BottomEdgeAlignedRight">
+                                <StackPanel Width="260" Spacing="10">
+                                    <TextBlock
+                                        x:Uid="PagesRepoIssuePageTextBlockIssueFilters"
+                                        Style="{StaticResource ListItemTitleTextBlockStyle}"
+                                        Text="Issue filters" />
+                                    <StackPanel Spacing="4">
+                                        <TextBlock x:Uid="PagesRepoIssuePageTextBlockIssueScope" Style="{StaticResource SectionSecondaryTextBlockStyle}" Text="Scope" />
+                                        <ComboBox
+                                            x:Uid="PagesRepoIssuePageRepoIssuesScopeComboBox"
+                                            x:Name="IssueScopeComboBox"
+                                            MinWidth="0"
+                                            HorizontalAlignment="Stretch"
+                                            AutomationProperties.AutomationId="RepoIssuesScopeComboBox"
+                                            AutomationProperties.Name="Issue scope"
+                                            SelectedIndex="0"
+                                            SelectionChanged="IssueFilterComboBox_SelectionChanged"
+                                            Style="{StaticResource AppCompactComboBoxStyle}">
+                                            <ComboBoxItem x:Uid="PagesRepoIssuePageRepoIssuesScopeAll" AutomationProperties.AutomationId="RepoIssuesScope_All" AutomationProperties.Name="All" Content="All" />
+                                            <ComboBoxItem x:Uid="PagesRepoIssuePageRepoIssuesScopeMine" AutomationProperties.AutomationId="RepoIssuesScope_Mine" AutomationProperties.Name="Mine" Content="Mine" />
+                                            <ComboBoxItem x:Uid="PagesRepoIssuePageRepoIssuesScopeCreated" AutomationProperties.AutomationId="RepoIssuesScope_Created" AutomationProperties.Name="Created" Content="Created" />
+                                            <ComboBoxItem x:Uid="PagesRepoIssuePageRepoIssuesScopeMentioned" AutomationProperties.AutomationId="RepoIssuesScope_Mentioned" AutomationProperties.Name="Mentioned" Content="Mentioned" />
+                                        </ComboBox>
+                                    </StackPanel>
+                                    <StackPanel Spacing="4">
+                                        <TextBlock x:Uid="PagesRepoIssuePageTextBlockIssueSort" Style="{StaticResource SectionSecondaryTextBlockStyle}" Text="Sort by" />
+                                        <ComboBox
+                                            x:Uid="PagesRepoIssuePageRepoIssuesSortComboBox"
+                                            x:Name="IssueSortComboBox"
+                                            MinWidth="0"
+                                            HorizontalAlignment="Stretch"
+                                            AutomationProperties.AutomationId="RepoIssuesSortComboBox"
+                                            AutomationProperties.Name="Sort issues by"
+                                            SelectedIndex="0"
+                                            SelectionChanged="IssueFilterComboBox_SelectionChanged"
+                                            Style="{StaticResource AppCompactComboBoxStyle}">
+                                            <ComboBoxItem x:Uid="PagesRepoIssuePageRepoIssuesSortUpdated" AutomationProperties.AutomationId="RepoIssuesSort_Updated" AutomationProperties.Name="Updated" Content="Updated" />
+                                            <ComboBoxItem x:Uid="PagesRepoIssuePageRepoIssuesSortCreated" AutomationProperties.AutomationId="RepoIssuesSort_Created" AutomationProperties.Name="Created" Content="Created" />
+                                            <ComboBoxItem x:Uid="PagesRepoIssuePageRepoIssuesSortComments" AutomationProperties.AutomationId="RepoIssuesSort_Comments" AutomationProperties.Name="Comments" Content="Comments" />
+                                        </ComboBox>
+                                    </StackPanel>
+                                    <StackPanel Spacing="4">
+                                        <TextBlock x:Uid="PagesRepoIssuePageTextBlockIssueOrder" Style="{StaticResource SectionSecondaryTextBlockStyle}" Text="Order" />
+                                        <ComboBox
+                                            x:Uid="PagesRepoIssuePageRepoIssuesDirectionComboBox"
+                                            x:Name="IssueDirectionComboBox"
+                                            MinWidth="0"
+                                            HorizontalAlignment="Stretch"
+                                            AutomationProperties.AutomationId="RepoIssuesDirectionComboBox"
+                                            AutomationProperties.Name="Issue sort direction"
+                                            SelectedIndex="0"
+                                            SelectionChanged="IssueFilterComboBox_SelectionChanged"
+                                            Style="{StaticResource AppCompactComboBoxStyle}">
+                                            <ComboBoxItem x:Uid="PagesRepoIssuePageRepoIssuesDirectionNewest" AutomationProperties.AutomationId="RepoIssuesDirection_Newest" AutomationProperties.Name="Newest first" Content="Newest first" />
+                                            <ComboBoxItem x:Uid="PagesRepoIssuePageRepoIssuesDirectionOldest" AutomationProperties.AutomationId="RepoIssuesDirection_Oldest" AutomationProperties.Name="Oldest first" Content="Oldest first" />
+                                        </ComboBox>
+                                    </StackPanel>
+                                </StackPanel>
+                            </Flyout>
+                        </Button.Flyout>
+                    </Button>
+                    <ProgressRing
+                        Grid.Column="2"
+                        Width="24"
+                        Height="24"
+                        VerticalAlignment="Center"
+                        IsActive="{x:Bind ViewModel.IsLoading, Mode=OneWay}"
+                        Visibility="{x:Bind ViewModel.IsLoading, Converter={StaticResource BoolToVisibilityConverter}, Mode=OneWay}" />
                 </Grid>
             </Grid>
 
@@ -223,7 +251,7 @@
                     x:Name="IssuesList"
                     AutomationProperties.AutomationId="RepoIssuesList"
                     AutomationProperties.Name="Repository issues"
-                    Background="Transparent"
+                            Background="{ThemeResource AppTransparentBrush}"
                     BorderThickness="0"
                     ContainerContentChanging="IssuesList_ContainerContentChanging"
                     IsItemClickEnabled="True"

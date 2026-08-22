@@ -9,7 +9,7 @@
         <Setter Property="Padding" Value="{ThemeResource TabViewHeaderPadding}" />
         <Setter Property="IsTabStop" Value="False" />
         <Setter Property="Background" Value="{ThemeResource TabViewBackground}" />
-        <Setter Property="BorderBrush" Value="Transparent" />
+        <Setter Property="BorderBrush" Value="{ThemeResource AppTransparentBrush}" />
         <Setter Property="BorderThickness" Value="0" />
         <Setter Property="KeyboardAcceleratorPlacementMode" Value="Hidden" />
         <Setter Property="Template">
@@ -504,7 +504,7 @@
                                         <Setter Target="IconControl.Foreground" Value="{ThemeResource TabViewItemIconForegroundSelected}" />
                                         <Setter Target="CloseButton.Background" Value="{ThemeResource TabViewItemHeaderSelectedCloseButtonBackground}" />
                                         <Setter Target="CloseButton.Foreground" Value="{ThemeResource TabViewItemHeaderSelectedCloseButtonForeground}" />
-                                        <Setter Target="LayoutRoot.Background" Value="Transparent" />
+                                        <Setter Target="LayoutRoot.Background" Value="{ThemeResource AppTransparentBrush}" />
                                         <Setter Target="ContentPresenter.FontWeight" Value="SemiBold" />
                                     </VisualState.Setters>
                                 </VisualState>
@@ -523,7 +523,7 @@
                                         <Setter Target="IconControl.Foreground" Value="{ThemeResource TabViewItemIconForegroundSelected}" />
                                         <Setter Target="CloseButton.Background" Value="{ThemeResource TabViewItemHeaderSelectedCloseButtonBackground}" />
                                         <Setter Target="CloseButton.Foreground" Value="{ThemeResource TabViewItemHeaderSelectedCloseButtonForeground}" />
-                                        <Setter Target="LayoutRoot.Background" Value="Transparent" />
+                                        <Setter Target="LayoutRoot.Background" Value="{ThemeResource AppTransparentBrush}" />
                                         <Setter Target="ContentPresenter.FontWeight" Value="SemiBold" />
                                     </VisualState.Setters>
                                 </VisualState>
@@ -542,7 +542,7 @@
                                         <Setter Target="IconControl.Foreground" Value="{ThemeResource TabViewItemIconForegroundSelected}" />
                                         <Setter Target="CloseButton.Background" Value="{ThemeResource TabViewItemHeaderSelectedCloseButtonBackground}" />
                                         <Setter Target="CloseButton.Foreground" Value="{ThemeResource TabViewItemHeaderSelectedCloseButtonForeground}" />
-                                        <Setter Target="LayoutRoot.Background" Value="Transparent" />
+                                        <Setter Target="LayoutRoot.Background" Value="{ThemeResource AppTransparentBrush}" />
                                         <Setter Target="ContentPresenter.FontWeight" Value="SemiBold" />
                                     </VisualState.Setters>
                                 </VisualState>

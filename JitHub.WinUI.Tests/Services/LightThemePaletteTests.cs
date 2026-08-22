@@ -40,7 +40,16 @@ public sealed class LightThemePaletteTests
         "AppRowPressedForegroundColor",
         "AppRowSelectedForegroundColor",
         "AppSelectionColor",
-        "AppSelectionForegroundColor"
+        "AppSelectionForegroundColor",
+        "AppPopupSurfaceColor",
+        "AppPopupBorderColor",
+        "AppReactionChipBackgroundColor",
+        "AppReactionChipHoverColor",
+        "AppReactionChipPressedColor",
+        "AppReactionChipBorderColor",
+        "AppReactionChipForegroundColor",
+        "AppReactionChipSelectedColor",
+        "AppSmokeColor"
     ];
 
     private static readonly string[] ContentSurfaceKeys =
@@ -122,6 +131,10 @@ public sealed class LightThemePaletteTests
         AssertContrast(light, "AppOutlineStrongColor", "AppCardColor", 3.0);
         AssertContrast(light, "AppOutlineColor", "AppCardColor", 1.4);
         AssertContrast(light, "AppHairlineColor", "AppCardColor", 1.2);
+        AssertContrast(light, "AppInkColor", "AppPopupSurfaceColor", 12.0);
+        AssertContrast(light, "AppReactionChipForegroundColor", "AppReactionChipHoverColor", 10.0);
+        AssertContrast(light, "AppReactionChipForegroundColor", "AppReactionChipPressedColor", 9.0);
+        AssertContrast(light, "AppReactionChipBorderColor", "AppPopupSurfaceColor", 1.4);
     }
 
     [Fact]
@@ -142,6 +155,8 @@ public sealed class LightThemePaletteTests
         Assert.True(ColorDistance(selected, accent) >= 180, "Selected rows should be tinted, not filled with brand green.");
         Assert.True(ColorDistance(light["AppDangerColor"], light["AppSuccessColor"]) >= 100);
         Assert.True(ColorDistance(light["AppWarmAccentColor"], light["AppDangerColor"]) >= 70);
+        Assert.True(ColorDistance(light["AppReactionChipHoverColor"], light["AppReactionChipPressedColor"]) >= 15);
+        Assert.True(ColorDistance(light["AppReactionChipHoverColor"], light["AppReactionChipSelectedColor"]) >= 18);
     }
 
     [Fact]
@@ -276,7 +291,7 @@ public sealed class LightThemePaletteTests
         Assert.Contains("ListViewItemForegroundPressed\" Color=\"{ThemeResource AppRowPressedForegroundColor}", interactions, StringComparison.Ordinal);
         Assert.Contains("ListViewItemForegroundSelected\" Color=\"{ThemeResource AppRowSelectedForegroundColor}", interactions, StringComparison.Ordinal);
 
-        Assert.Contains("CheckBoxBackgroundChecked\" Color=\"{ThemeResource AppAccentColor}", catalog, StringComparison.Ordinal);
+        Assert.Contains("CheckBoxCheckBackgroundFillChecked\" Color=\"{ThemeResource AppAccentColor}", catalog, StringComparison.Ordinal);
         Assert.Contains("CheckBoxCheckGlyphForegroundChecked\" Color=\"{ThemeResource AppAccentForegroundColor}", catalog, StringComparison.Ordinal);
     }
 

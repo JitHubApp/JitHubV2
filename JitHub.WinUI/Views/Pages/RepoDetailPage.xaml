@@ -10,7 +10,7 @@
     xmlns:muxc="using:Microsoft.UI.Xaml.Controls"
     xmlns:appcontrols="using:JitHub.WinUI.Views.Controls.App"
     xmlns:legacy="using:JitHub.Models.LegacyGitHub"
-    Background="Transparent"
+    Background="{ThemeResource AppTransparentBrush}"
     Loaded="Page_Loaded"
     Unloaded="Page_Unloaded"
     SizeChanged="Page_SizeChanged">

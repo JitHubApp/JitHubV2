@@ -13,13 +13,13 @@
         <Canvas Width="20" Height="20">
             <Path
                 x:Name="PrimaryPath"
-                Fill="Transparent"
+            Fill="{ThemeResource AppTransparentBrush}"
                 StrokeEndLineCap="Round"
                 StrokeLineJoin="Round"
                 StrokeStartLineCap="Round" />
             <Path
                 x:Name="SecondaryPath"
-                Fill="Transparent"
+            Fill="{ThemeResource AppTransparentBrush}"
                 StrokeEndLineCap="Round"
                 StrokeLineJoin="Round"
                 StrokeStartLineCap="Round" />

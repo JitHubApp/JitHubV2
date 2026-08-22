@@ -127,8 +127,7 @@ public sealed partial class ShellPageViewModel : ViewModelBase
             new("notifications", ShellNavigationText("Notifications", "Notifications"), "\uEA8F", new RelayCommand(OpenNotificationsPage)),
             new("stars", ShellNavigationText("Stars", "Stars"), "\uE734", new RelayCommand(OpenStarsPage)),
             new("gists", ShellNavigationText("Gists", "Gists"), "\uE943", new RelayCommand(OpenGistsPage)),
-            new("explore", ShellNavigationText("Search", "Search"), "\uE721", new RelayCommand(FocusCommandSearchRequested)),
-            new("settings", ShellNavigationText("Settings", "Settings"), "\uE713", new RelayCommand(GoToSettingsPage))
+            new("explore", ShellNavigationText("Search", "Search"), "\uE721", new RelayCommand(FocusCommandSearchRequested))
         ];
 
         _notificationInboxState.PropertyChanged += NotificationInboxState_PropertyChanged;

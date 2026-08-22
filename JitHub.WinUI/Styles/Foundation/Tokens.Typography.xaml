@@ -5,10 +5,15 @@
     <FontFamily x:Key="AppUiFontFamily">Segoe UI Variable Text</FontFamily>
     <FontFamily x:Key="AppMonoFontFamily">ms-appx:///Assets/Fonts/JetBrainsMono-Variable.ttf#JetBrains Mono</FontFamily>
     <FontFamily x:Key="AppBodyFontFamily">Segoe UI Variable Text</FontFamily>
+    <FontFamily x:Key="AppEmojiFontFamily">Segoe UI Emoji</FontFamily>
 
     <x:Double x:Key="AppDisplay1FontSize">36</x:Double>
     <x:Double x:Key="AppDisplay2FontSize">28</x:Double>
     <x:Double x:Key="AppTitleFontSize">22</x:Double>
     <x:Double x:Key="AppBodyFontSize">15</x:Double>
     <x:Double x:Key="AppMetaFontSize">13</x:Double>
+    <x:Double x:Key="AppReactionCountFontSize">12</x:Double>
+    <x:Double x:Key="AppReactionSummaryEmojiFontSize">16</x:Double>
+    <x:Double x:Key="AppReactionPickerEmojiFontSize">18</x:Double>
+    <x:Double x:Key="AppCommandIconFontSize">14</x:Double>
 </ResourceDictionary>

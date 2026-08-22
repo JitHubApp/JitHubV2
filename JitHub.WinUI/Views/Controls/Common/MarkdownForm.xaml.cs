@@ -89,6 +89,9 @@ namespace JitHub.WinUI.Views.Controls.Common
             set => SetValue(EditorHeightProperty, value);
         }
 
+        public bool FocusEditor(FocusState focusState = FocusState.Programmatic) =>
+            EditorTextBox.Focus(focusState);
+
         public double EffectiveEditorHeight
         {
             get

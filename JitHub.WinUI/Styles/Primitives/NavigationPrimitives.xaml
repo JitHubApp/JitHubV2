@@ -2,19 +2,60 @@
     xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
     xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
     xmlns:muxc="using:Microsoft.UI.Xaml.Controls">
-    <Style TargetType="FlyoutPresenter">
-        <Setter Property="Background" Value="{ThemeResource AppCardBrush}" />
-        <Setter Property="BorderBrush" Value="{ThemeResource AppOutlineBrush}" />
-        <Setter Property="BorderThickness" Value="1" />
+    <Style x:Key="AppPopupFlyoutPresenterStyle" TargetType="FlyoutPresenter">
+        <Setter Property="Background" Value="{ThemeResource AppPopupSurfaceBrush}" />
+        <Setter Property="BorderBrush" Value="{ThemeResource AppPopupBorderBrush}" />
+        <Setter Property="BorderThickness" Value="{ThemeResource AppHairlineBorderThickness}" />
         <Setter Property="CornerRadius" Value="{ThemeResource AppRadiusMedium}" />
-        <Setter Property="Padding" Value="8" />
+        <Setter Property="Padding" Value="{ThemeResource AppPopupPadding}" />
     </Style>
-    <Style TargetType="MenuFlyoutItem">
+
+    <Style TargetType="FlyoutPresenter" BasedOn="{StaticResource AppPopupFlyoutPresenterStyle}" />
+
+    <Style x:Key="AppReactionPickerFlyoutPresenterStyle" TargetType="FlyoutPresenter" BasedOn="{StaticResource AppPopupFlyoutPresenterStyle}">
+        <Setter Property="MinWidth" Value="{ThemeResource AppReactionPickerMinWidth}" />
+        <Setter Property="Padding" Value="{ThemeResource AppPopupPadding}" />
+        <Setter Property="CornerRadius" Value="{ThemeResource AppRadiusLarge}" />
+    </Style>
+
+    <Style x:Key="AppMenuFlyoutItemStyle" TargetType="MenuFlyoutItem">
         <Setter Property="FontFamily" Value="{ThemeResource AppUiFontFamily}" />
         <Setter Property="Foreground" Value="{ThemeResource AppInkBrush}" />
     </Style>
-    <Style TargetType="MenuFlyoutSeparator">
+
+    <Style TargetType="MenuFlyoutItem" BasedOn="{StaticResource AppMenuFlyoutItemStyle}" />
+
+    <Style x:Key="AppMenuFlyoutSubItemStyle" TargetType="MenuFlyoutSubItem">
+        <Setter Property="FontFamily" Value="{ThemeResource AppUiFontFamily}" />
+        <Setter Property="Foreground" Value="{ThemeResource AppInkBrush}" />
+    </Style>
+
+    <Style TargetType="MenuFlyoutSubItem" BasedOn="{StaticResource AppMenuFlyoutSubItemStyle}" />
+
+    <Style x:Key="AppMenuFlyoutSeparatorStyle" TargetType="MenuFlyoutSeparator">
         <Setter Property="Margin" Value="0,4" />
+    </Style>
+
+    <Style TargetType="MenuFlyoutSeparator" BasedOn="{StaticResource AppMenuFlyoutSeparatorStyle}" />
+
+    <Style TargetType="muxc:SelectorBar">
+        <Setter Property="Background" Value="{ThemeResource AppTransparentBrush}" />
+        <Setter Property="Foreground" Value="{ThemeResource AppInkBrush}" />
+    </Style>
+
+    <Style TargetType="muxc:SelectorBarItem">
+        <Setter Property="Background" Value="{ThemeResource AppTransparentBrush}" />
+        <Setter Property="Foreground" Value="{ThemeResource AppInkMutedBrush}" />
+    </Style>
+
+    <Style TargetType="muxc:Expander" BasedOn="{StaticResource DefaultExpanderStyle}">
+        <Setter Property="Background" Value="{ThemeResource AppTransparentBrush}" />
+        <Setter Property="Foreground" Value="{ThemeResource AppInkBrush}" />
+    </Style>
+
+    <Style TargetType="muxc:InfoBadge" BasedOn="{StaticResource DefaultInfoBadgeStyle}">
+        <Setter Property="Background" Value="{ThemeResource AppAccentBrush}" />
+        <Setter Property="Foreground" Value="{ThemeResource AppAccentForegroundBrush}" />
     </Style>
     <Style TargetType="muxc:InfoBar">
         <Setter Property="Background" Value="{ThemeResource AppCardBrush}" />

@@ -26,6 +26,9 @@
             <ContentPresenter
                 Grid.Column="0"
                 Grid.RowSpan="2"
+                Width="{StaticResource AppSpace7}"
+                Height="{StaticResource AppSpace7}"
+                HorizontalAlignment="Center"
                 VerticalAlignment="Top"
                 Content="{Binding HeaderIcon, ElementName=Root}" />
             <StackPanel

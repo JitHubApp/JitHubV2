@@ -18,7 +18,7 @@
         Style="{StaticResource AppQuietButtonStyle}"
         HorizontalContentAlignment="Stretch"
         VerticalContentAlignment="Stretch"
-        Background="Transparent"
+        Background="{ThemeResource AppTransparentBrush}"
         BorderThickness="0"
         Click="{x:Bind OnClick, Mode=OneWay}">
         <Border

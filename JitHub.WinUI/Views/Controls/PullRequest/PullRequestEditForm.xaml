@@ -40,7 +40,7 @@
                             x:Uid="ControlsPullRequestPullRequestEditFormPullRequestEditSub" AutomationProperties.AutomationId="PullRequestEditSubmitButton"
                             AutomationProperties.Name="Update pull request"
                             Command="{x:Bind ViewModel.SubmitCommand}"
-                            Style="{ThemeResource AppAccentButtonStyle}"
+            Style="{StaticResource AppAccentButtonStyle}"
                             HorizontalAlignment="Right"
                             VerticalContentAlignment="Center"
                             Content="Update"/>

@@ -59,7 +59,7 @@
                 Height="32"
                 BorderThickness="0"
                 FontWeight="Bold"
-                Background="Transparent"
+                Background="{ThemeResource AppTransparentBrush}"
                 Foreground="{ThemeResource TextFillColorPrimaryBrush}"
                 Command="{x:Bind CancelCommand, Mode=OneWay}"
                 HorizontalContentAlignment="Center"

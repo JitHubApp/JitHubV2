@@ -186,7 +186,6 @@ public sealed class AutomationHarnessSourceContractTests
             "pull-request-review-comment",
             "pull-request-review-reply-form",
             "pull-request-comment-form",
-            "pull-request-compact-comment-form",
             "commit-body",
             "commit-comment",
             "commit-comment-form",
@@ -209,9 +208,9 @@ public sealed class AutomationHarnessSourceContractTests
         Assert.Contains("new(\"snapped\", 760, 650)", source, StringComparison.Ordinal);
         Assert.Contains("new(\"compact\", 640, 600)", source, StringComparison.Ordinal);
         Assert.Contains("double[] textScales = [1, 1.5, 2];", source, StringComparison.Ordinal);
-        Assert.Contains("viewport.Height >= 800", source, StringComparison.Ordinal);
-        Assert.Contains("viewport.Height < 800", source, StringComparison.Ordinal);
         Assert.Contains("string.IsNullOrWhiteSpace(RequiredViewportName) ||", source, StringComparison.Ordinal);
+        Assert.Contains("LauncherControlAutomationId: \"RepoIssuesOpenCommentButton\"", source, StringComparison.Ordinal);
+        Assert.Contains("LauncherControlAutomationId: \"RepoPullRequestsOpenCompactCommentButton\"", source, StringComparison.Ordinal);
         string pullRequestPageSource = File.ReadAllText(Path.Combine(
             FindRepositoryRoot(),
             "JitHub.WinUI",
@@ -390,7 +389,7 @@ public sealed class AutomationHarnessSourceContractTests
             "Run-MarkdownLifecycleMatrix.ps1"));
 
         Assert.Contains("@(\"Debug\", \"Release\")", source, StringComparison.Ordinal);
-        Assert.Contains("((20 * 3 * 3) + 9) * 3", source, StringComparison.Ordinal);
+        Assert.Contains("(21 * 3 * 3) * 3", source, StringComparison.Ordinal);
         Assert.Contains("$expectedHostNames", source, StringComparison.Ordinal);
         Assert.Contains("pointerDragSelection", source, StringComparison.Ordinal);
         Assert.Contains("retainedMemoryBudget", source, StringComparison.Ordinal);
@@ -470,8 +469,9 @@ public sealed class AutomationHarnessSourceContractTests
         Assert.Contains("RepoIssuesCloseInspectorPaneButton", source, StringComparison.Ordinal);
         Assert.Contains("repository issue inspector drawer to close", source, StringComparison.Ordinal);
         Assert.Contains("RepoIssuesCommentBox_Mode_Preview", source, StringComparison.Ordinal);
-        Assert.Contains("if (editor.IsEnabled)", source, StringComparison.Ordinal);
-        Assert.Contains("Read-only issue preview left its Markdown mode selector enabled.", source, StringComparison.Ordinal);
+        Assert.Contains("if (!launcher.IsEnabled)", source, StringComparison.Ordinal);
+        Assert.Contains("RepoIssuesOpenCommentButton", source, StringComparison.Ordinal);
+        Assert.Contains("Enabled issue comment launcher opened a disabled editor.", source, StringComparison.Ordinal);
         Assert.Contains("repo-issues-page-comment-read-only.png", source, StringComparison.Ordinal);
     }
 

@@ -38,6 +38,12 @@ public sealed partial class GitHubPullRequestReview
     [JsonPropertyName("author_association")]
     public string? AuthorAssociation { get; set; }
 
+    [JsonPropertyName("minimized")]
+    public GitHubIssueCommentMinimization? Minimized { get; set; }
+
+    [JsonIgnore]
+    public bool IsMinimized => Minimized is not null;
+
     [JsonPropertyName("reactions")]
     public GitHubReactionSummary Reactions { get; set; } = new();
 
@@ -109,6 +115,12 @@ public sealed partial class GitHubPullRequestReviewComment
 
     [JsonPropertyName("author_association")]
     public string? AuthorAssociation { get; set; }
+
+    [JsonPropertyName("minimized")]
+    public GitHubIssueCommentMinimization? Minimized { get; set; }
+
+    [JsonIgnore]
+    public bool IsMinimized => Minimized is not null;
 
     [JsonIgnore]
     public MarkdownDocumentSource? MarkdownSource =>

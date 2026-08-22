@@ -254,6 +254,46 @@ public interface IGitHubClientService
         string body,
         CancellationToken cancellationToken = default);
 
+    Task<GitHubIssueComment> UpdateIssueCommentAsync(
+        string token,
+        string owner,
+        string name,
+        long commentId,
+        string body,
+        CancellationToken cancellationToken = default);
+
+    Task DeleteIssueCommentAsync(
+        string token,
+        string owner,
+        string name,
+        long commentId,
+        CancellationToken cancellationToken = default);
+
+    Task<GitHubIssueComment> PinIssueCommentAsync(
+        string token,
+        string owner,
+        string name,
+        long commentId,
+        CancellationToken cancellationToken = default);
+
+    Task UnpinIssueCommentAsync(
+        string token,
+        string owner,
+        string name,
+        long commentId,
+        CancellationToken cancellationToken = default);
+
+    Task MinimizeCommentAsync(
+        string token,
+        string nodeId,
+        string classifier,
+        CancellationToken cancellationToken = default);
+
+    Task UnminimizeCommentAsync(
+        string token,
+        string nodeId,
+        CancellationToken cancellationToken = default);
+
     Task<IReadOnlyList<GitHubReaction>> GetIssueReactionsAsync(
         string token,
         string owner,
@@ -354,6 +394,21 @@ public interface IGitHubClientService
         int pullRequestNumber,
         long commentId,
         string body,
+        CancellationToken cancellationToken = default);
+
+    Task<GitHubPullRequestReviewComment> UpdatePullRequestReviewCommentAsync(
+        string token,
+        string owner,
+        string name,
+        long commentId,
+        string body,
+        CancellationToken cancellationToken = default);
+
+    Task DeletePullRequestReviewCommentAsync(
+        string token,
+        string owner,
+        string name,
+        long commentId,
         CancellationToken cancellationToken = default);
 
     Task<GitHubPullRequestReview> CreatePullRequestReviewAsync(

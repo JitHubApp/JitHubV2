@@ -6,8 +6,8 @@ namespace JitHub.WinUI.Tests.Views;
 public sealed class DialogFamilyPresentationContractTests
 {
     [Theory]
-    [InlineData("RepoIssuePage.xaml.cs", 4, "RepoIssuesCreateDialog", "RepoIssuesEditDialog", "RepoIssuesMetadataDialog", "RepoIssuesReactionDialog")]
-    [InlineData("RepoPullRequestPage.xaml.cs", 6, "RepoPullRequestsCreateDialog", "RepoPullRequestsEditDialog", "RepoPullRequestsMetadataDialog", "RepoPullRequestsReactionDialog")]
+    [InlineData("RepoIssuePage.xaml.cs", 3, "RepoIssuesCreateDialog", "RepoIssuesEditDialog", "RepoIssuesMetadataDialog")]
+    [InlineData("RepoPullRequestPage.xaml.cs", 5, "RepoPullRequestsCreateDialog", "RepoPullRequestsEditDialog", "RepoPullRequestsMetadataDialog")]
     public void IssueAndPullRequestMutationDialogs_UseSharedSingleFlightPresenter(
         string fileName,
         int minimumPresenterCalls,
@@ -22,6 +22,27 @@ public sealed class DialogFamilyPresentationContractTests
         {
             Assert.Contains(automationId, source, StringComparison.Ordinal);
         }
+    }
+
+    [Fact]
+    public void EditorDialogsKeepResponsiveDimensionsStableAcrossWriteAndPreview()
+    {
+        string productRoot = FindRepositoryDirectory("JitHub.WinUI");
+        string catalog = File.ReadAllText(Path.Combine(productRoot, "Views", "Dialogs", "AppDialogStyleCatalog.cs"));
+        string issuePage = ReadPage("RepoIssuePage.xaml.cs");
+        string pullRequestPage = ReadPage("RepoPullRequestPage.xaml.cs");
+
+        Assert.Contains("dialog.MinWidth = metrics.MaximumWidth", catalog, StringComparison.Ordinal);
+        Assert.Contains("dialog.MaxWidth = metrics.MaximumWidth", catalog, StringComparison.Ordinal);
+        Assert.Contains("dialog.MinHeight = metrics.MaximumHeight", catalog, StringComparison.Ordinal);
+        Assert.Contains("dialog.MaxHeight = metrics.MaximumHeight", catalog, StringComparison.Ordinal);
+        Assert.Contains("content.Width = contentWidth", catalog, StringComparison.Ordinal);
+        Assert.Contains("content.MinWidth = contentWidth", catalog, StringComparison.Ordinal);
+        Assert.Contains("content.MaxWidth = contentWidth", catalog, StringComparison.Ordinal);
+        Assert.Contains("VerticalScrollBarVisibility = ScrollBarVisibility.Auto", catalog, StringComparison.Ordinal);
+        Assert.Contains("layoutKind: AppDialogLayoutKind.Editor", issuePage, StringComparison.Ordinal);
+        Assert.Contains("layoutKind: AppDialogLayoutKind.Editor", pullRequestPage, StringComparison.Ordinal);
+        Assert.Contains("MarkdownForm", pullRequestPage, StringComparison.Ordinal);
     }
 
     [Fact]

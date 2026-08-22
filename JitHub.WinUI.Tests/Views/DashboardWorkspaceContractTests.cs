@@ -67,6 +67,36 @@ public sealed class DashboardWorkspaceContractTests
     }
 
     [Fact]
+    public void QuickActionsAreUniformAndRouteWithoutAnActiveRepository()
+    {
+        XDocument document = XDocument.Load(Path(
+            "JitHub.WinUI",
+            "Views",
+            "Pages",
+            "DashboardPage.xaml"));
+        XNamespace xaml = "http://schemas.microsoft.com/winfx/2006/xaml";
+        XElement quickActionTemplate = Assert.Single(document.Descendants(), element =>
+            element.Attribute(xaml + "Key")?.Value == "DashboardQuickActionTemplate");
+        XElement quickActionButton = Assert.Single(quickActionTemplate.Elements(), element =>
+            element.Name.LocalName == "Button");
+        string viewModel = File.ReadAllText(Path(
+            "JitHub.WinUI",
+            "ViewModels",
+            "Pages",
+            "DashboardPageViewModel.cs"));
+
+        Assert.Equal("94", quickActionButton.Attribute("Height")?.Value);
+        Assert.Equal("Stretch", quickActionButton.Attribute("VerticalContentAlignment")?.Value);
+        Assert.Contains("_shellViewModel.TryOpenMyIssuesPage", viewModel, StringComparison.Ordinal);
+        Assert.Contains("_shellViewModel.TryOpenMyPullRequestsPage", viewModel, StringComparison.Ordinal);
+        Assert.DoesNotContain("_shellViewModel.TryOpenActiveRepositoryIssues", viewModel, StringComparison.Ordinal);
+        Assert.DoesNotContain("_shellViewModel.TryOpenActiveRepositoryPullRequests", viewModel, StringComparison.Ordinal);
+        Assert.Contains("DashboardWidgetIds.Repositories => 370", viewModel, StringComparison.Ordinal);
+        Assert.Contains("DashboardWidgetIds.QuickActions => 220", viewModel, StringComparison.Ordinal);
+        Assert.Contains("Math.Clamp(Math.Floor(contentWidth / Math.Max(1, QuickActions.Count)) - 8, 104, 124)", viewModel, StringComparison.Ordinal);
+    }
+
+    [Fact]
     public void OpeningUnreadNotificationUsesOneSharedSupportedMarkReadWorkflow()
     {
         string source = File.ReadAllText(Path(

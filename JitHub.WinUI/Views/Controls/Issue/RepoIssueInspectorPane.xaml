@@ -64,6 +64,7 @@
 
     <Border
         x:Uid="PagesRepoIssuePageRepoIssuesInspector"
+        x:Name="InspectorPanel"
         AutomationProperties.AccessibilityView="Control"
         AutomationProperties.AutomationId="RepoIssuesInspector"
         AutomationProperties.Name="Issue inspector"
@@ -209,16 +210,6 @@
                         Click="MetadataButton_Click"
                         Content="Manage metadata"
                         IsEnabled="{x:Bind ViewModel.CanManageIssueMetadata, Mode=OneWay}"
-                        Style="{StaticResource AppOutlineButtonStyle}" />
-                    <Button
-                        x:Uid="PagesRepoIssuePageRepoIssuesInspectorReactionsButton"
-                        MinHeight="34"
-                        HorizontalAlignment="Stretch"
-                        AutomationProperties.AutomationId="RepoIssuesInspectorReactionsButton"
-                        AutomationProperties.Name="Manage issue reactions"
-                        Click="ReactionsButton_Click"
-                        Content="Reactions"
-                        IsEnabled="{x:Bind ViewModel.CanReactToIssue, Mode=OneWay}"
                         Style="{StaticResource AppOutlineButtonStyle}" />
                 </StackPanel>
             </StackPanel>

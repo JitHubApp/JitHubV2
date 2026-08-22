@@ -137,12 +137,12 @@ namespace JitHub.WinUI.Views.Controls.Common
 
         public Brush? GetBackgroundBrush(bool voted)
         {
-            return GetAppBrush(voted ? "AppAccentBrush" : "AppSurfaceSubtleBrush");
+            return GetAppBrush(voted ? "AppReactionChipSelectedBrush" : "AppReactionChipBackgroundBrush");
         }
 
         public Brush? GetForegroundBrush(bool voted)
         {
-            return GetAppBrush(voted ? "AppAccentForegroundBrush" : "AppInkBrush");
+            return GetAppBrush("AppReactionChipForegroundBrush");
         }
 
         private static Brush? GetAppBrush(string resourceKey)

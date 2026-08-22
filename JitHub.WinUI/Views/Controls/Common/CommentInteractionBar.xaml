@@ -1,0 +1,129 @@
+<?xml version="1.0" encoding="utf-8"?>
+<UserControl
+    x:Class="JitHub.WinUI.Views.Controls.Common.CommentInteractionBar"
+    x:Name="Root"
+    xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+    xmlns:github="using:JitHub.Models.GitHub">
+    <Grid ColumnSpacing="{ThemeResource AppSpace3}">
+        <Grid.ColumnDefinitions>
+            <ColumnDefinition Width="*" />
+            <ColumnDefinition Width="Auto" />
+        </Grid.ColumnDefinitions>
+
+        <StackPanel Orientation="Horizontal" Spacing="{ThemeResource AppReactionItemSpacing}">
+            <ItemsControl x:Name="ReactionItems">
+                <ItemsControl.ItemsPanel>
+                    <ItemsPanelTemplate>
+                        <ItemsWrapGrid Orientation="Horizontal" />
+                    </ItemsPanelTemplate>
+                </ItemsControl.ItemsPanel>
+                <ItemsControl.ItemTemplate>
+                    <DataTemplate x:DataType="github:GitHubReactionChip">
+                        <Button
+                            Margin="{ThemeResource AppReactionChipItemMargin}"
+                            AutomationProperties.AutomationId="{x:Bind Content, Mode=OneWay}"
+                            AutomationProperties.Name="{x:Bind AutomationName, Mode=OneWay}"
+                            Click="ReactionChip_Click"
+                            Style="{StaticResource AppReactionChipButtonStyle}">
+                            <StackPanel Orientation="Horizontal" Spacing="{ThemeResource AppReactionContentSpacing}">
+                                <TextBlock
+                                    VerticalAlignment="Center"
+                                    FontFamily="{ThemeResource AppEmojiFontFamily}"
+                                    FontSize="{ThemeResource AppReactionSummaryEmojiFontSize}"
+                                    Text="{x:Bind Emoji, Mode=OneWay}" />
+                                <TextBlock
+                                    VerticalAlignment="Center"
+                                    FontFamily="{ThemeResource AppUiFontFamily}"
+                                    FontSize="{ThemeResource AppReactionCountFontSize}"
+                                    FontWeight="SemiBold"
+                                    Foreground="{ThemeResource AppReactionChipForegroundBrush}"
+                                    Text="{x:Bind Count, Mode=OneWay}" />
+                            </StackPanel>
+                        </Button>
+                    </DataTemplate>
+                </ItemsControl.ItemTemplate>
+            </ItemsControl>
+
+            <Button
+                x:Uid="ControlsCommonCommentInteractionBarAddReactionButton"
+                x:Name="AddReactionButton"
+                AutomationProperties.AutomationId="CommentAddReactionButton"
+                AutomationProperties.Name="Add reaction"
+                Style="{StaticResource AppEmojiLauncherButtonStyle}"
+                ToolTipService.ToolTip="Add reaction">
+                <SymbolIcon Symbol="Emoji" />
+                <Button.Flyout>
+                    <Flyout Placement="BottomEdgeAlignedLeft">
+                        <Flyout.FlyoutPresenterStyle>
+                            <Style TargetType="FlyoutPresenter" BasedOn="{StaticResource AppReactionPickerFlyoutPresenterStyle}" />
+                        </Flyout.FlyoutPresenterStyle>
+                        <ItemsControl
+                            Width="{ThemeResource AppReactionPickerContentWidth}"
+                            ItemsSource="{x:Bind ReactionOptions, Mode=OneWay}">
+                            <ItemsControl.ItemsPanel>
+                                <ItemsPanelTemplate>
+                                    <ItemsWrapGrid
+                                        MaximumRowsOrColumns="4"
+                                        Orientation="Horizontal" />
+                                </ItemsPanelTemplate>
+                            </ItemsControl.ItemsPanel>
+                            <ItemsControl.ItemTemplate>
+                                <DataTemplate x:DataType="github:GitHubReactionOption">
+                                    <Button
+                                        Margin="{ThemeResource AppReactionPickerItemMargin}"
+                                        AutomationProperties.AutomationId="{x:Bind Content, Mode=OneWay}"
+                                        AutomationProperties.Name="{x:Bind Label, Mode=OneWay}"
+                                        Click="ReactionOption_Click"
+                                        Style="{StaticResource AppReactionPickerButtonStyle}"
+                                        ToolTipService.ToolTip="{x:Bind Label, Mode=OneWay}">
+                                        <TextBlock
+                                            FontFamily="{ThemeResource AppEmojiFontFamily}"
+                                            FontSize="{ThemeResource AppReactionPickerEmojiFontSize}"
+                                            Text="{x:Bind Emoji, Mode=OneWay}" />
+                                    </Button>
+                                </DataTemplate>
+                            </ItemsControl.ItemTemplate>
+                        </ItemsControl>
+                    </Flyout>
+                </Button.Flyout>
+            </Button>
+        </StackPanel>
+
+        <Button
+            x:Uid="ControlsCommonCommentInteractionBarActionsButton"
+            x:Name="ActionsButton"
+            Grid.Column="1"
+            AutomationProperties.AutomationId="CommentActionsButton"
+            AutomationProperties.Name="Comment actions"
+            Style="{StaticResource AppCommentActionButtonStyle}"
+            ToolTipService.ToolTip="Comment actions">
+            <FontIcon
+                FontFamily="{StaticResource SegoeFluentIcons}"
+                FontSize="{ThemeResource AppCommandIconFontSize}"
+                Glyph="&#xE712;" />
+            <Button.Flyout>
+                <MenuFlyout Placement="BottomEdgeAlignedRight">
+                    <MenuFlyoutItem x:Uid="ControlsCommonCommentInteractionBarQuoteReplyItem" x:Name="QuoteReplyItem" AutomationProperties.AutomationId="CommentQuoteReplyItem" AutomationProperties.Name="{Binding Text, RelativeSource={RelativeSource Mode=Self}}" Click="QuoteReplyItem_Click" Text="Quote reply" />
+                    <MenuFlyoutItem x:Uid="ControlsCommonCommentInteractionBarCopyLinkItem" AutomationProperties.AutomationId="CommentCopyLinkItem" AutomationProperties.Name="{Binding Text, RelativeSource={RelativeSource Mode=Self}}" Click="CopyLinkItem_Click" Text="Copy link" />
+                    <MenuFlyoutItem x:Uid="ControlsCommonCommentInteractionBarCopyMarkdownItem" AutomationProperties.AutomationId="CommentCopyMarkdownItem" AutomationProperties.Name="{Binding Text, RelativeSource={RelativeSource Mode=Self}}" Click="CopyMarkdownItem_Click" Text="Copy Markdown" />
+                    <MenuFlyoutSeparator x:Name="ManagementSeparator" />
+                    <MenuFlyoutItem x:Uid="ControlsCommonCommentInteractionBarEditItem" x:Name="EditItem" AutomationProperties.AutomationId="CommentEditItem" AutomationProperties.Name="{Binding Text, RelativeSource={RelativeSource Mode=Self}}" Click="EditItem_Click" Text="Edit" />
+                    <MenuFlyoutItem x:Uid="ControlsCommonCommentInteractionBarPinItem" x:Name="PinItem" AutomationProperties.AutomationId="CommentPinItem" AutomationProperties.Name="{Binding Text, RelativeSource={RelativeSource Mode=Self}}" Click="PinItem_Click" Text="Pin" />
+                    <MenuFlyoutItem x:Uid="ControlsCommonCommentInteractionBarUnpinItem" x:Name="UnpinItem" AutomationProperties.AutomationId="CommentUnpinItem" AutomationProperties.Name="{Binding Text, RelativeSource={RelativeSource Mode=Self}}" Click="UnpinItem_Click" Text="Unpin" />
+                    <MenuFlyoutSubItem x:Uid="ControlsCommonCommentInteractionBarHideItem" x:Name="HideItem" AutomationProperties.AutomationId="CommentHideItem" AutomationProperties.Name="{Binding Text, RelativeSource={RelativeSource Mode=Self}}" Text="Hide">
+                        <MenuFlyoutItem x:Uid="ControlsCommonCommentInteractionBarHideOffTopicItem" AutomationProperties.AutomationId="CommentHideOffTopicItem" AutomationProperties.Name="{Binding Text, RelativeSource={RelativeSource Mode=Self}}" Click="HideItem_Click" Tag="OFF_TOPIC" Text="Off topic" />
+                        <MenuFlyoutItem x:Uid="ControlsCommonCommentInteractionBarHideOutdatedItem" AutomationProperties.AutomationId="CommentHideOutdatedItem" AutomationProperties.Name="{Binding Text, RelativeSource={RelativeSource Mode=Self}}" Click="HideItem_Click" Tag="OUTDATED" Text="Outdated" />
+                        <MenuFlyoutItem x:Uid="ControlsCommonCommentInteractionBarHideResolvedItem" AutomationProperties.AutomationId="CommentHideResolvedItem" AutomationProperties.Name="{Binding Text, RelativeSource={RelativeSource Mode=Self}}" Click="HideItem_Click" Tag="RESOLVED" Text="Resolved" />
+                        <MenuFlyoutItem x:Uid="ControlsCommonCommentInteractionBarHideDuplicateItem" AutomationProperties.AutomationId="CommentHideDuplicateItem" AutomationProperties.Name="{Binding Text, RelativeSource={RelativeSource Mode=Self}}" Click="HideItem_Click" Tag="DUPLICATE" Text="Duplicate" />
+                        <MenuFlyoutItem x:Uid="ControlsCommonCommentInteractionBarHideSpamItem" AutomationProperties.AutomationId="CommentHideSpamItem" AutomationProperties.Name="{Binding Text, RelativeSource={RelativeSource Mode=Self}}" Click="HideItem_Click" Tag="SPAM" Text="Spam" />
+                        <MenuFlyoutItem x:Uid="ControlsCommonCommentInteractionBarHideAbuseItem" AutomationProperties.AutomationId="CommentHideAbuseItem" AutomationProperties.Name="{Binding Text, RelativeSource={RelativeSource Mode=Self}}" Click="HideItem_Click" Tag="ABUSE" Text="Abuse" />
+                    </MenuFlyoutSubItem>
+                    <MenuFlyoutItem x:Uid="ControlsCommonCommentInteractionBarUnhideItem" x:Name="UnhideItem" AutomationProperties.AutomationId="CommentUnhideItem" AutomationProperties.Name="{Binding Text, RelativeSource={RelativeSource Mode=Self}}" Click="UnhideItem_Click" Text="Unhide" />
+                    <MenuFlyoutSeparator x:Name="DeleteSeparator" />
+                    <MenuFlyoutItem x:Uid="ControlsCommonCommentInteractionBarDeleteItem" x:Name="DeleteItem" AutomationProperties.AutomationId="CommentDeleteItem" AutomationProperties.Name="{Binding Text, RelativeSource={RelativeSource Mode=Self}}" Click="DeleteItem_Click" Text="Delete" />
+                </MenuFlyout>
+            </Button.Flyout>
+        </Button>
+    </Grid>
+</UserControl>

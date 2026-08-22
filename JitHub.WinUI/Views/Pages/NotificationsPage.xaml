@@ -152,22 +152,31 @@
                 <ColumnDefinition Width="*" />
                 <ColumnDefinition Width="Auto" />
             </Grid.ColumnDefinitions>
-            <StackPanel x:Name="NotificationsHeaderIdentity" Orientation="Horizontal" Spacing="10">
+            <Grid x:Name="NotificationsHeaderIdentity" VerticalAlignment="Center" ColumnSpacing="10">
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="Auto" />
+                    <ColumnDefinition Width="Auto" />
+                    <ColumnDefinition Width="Auto" />
+                </Grid.ColumnDefinitions>
                 <FontIcon
                     Style="{StaticResource AppWorkspaceHeaderIconStyle}"
                     Glyph="&#xEA8F;" />
                 <TextBlock
                     x:Uid="PagesNotificationsPageNotificationsResultScope"
+                    Grid.Column="1"
                     Style="{StaticResource AppWorkspaceTitleTextBlockStyle}"
                     Text="Notifications" />
                 <TextBlock
                     x:Uid="PagesNotificationsPageNotificationsResultScope2" x:Name="NotificationsResultScope" MaxWidth="240"
+                    Grid.Column="2"
+                    Translation="0,4,0"
+                    VerticalAlignment="Bottom"
                     AutomationProperties.AutomationId="NotificationsResultScope"
                     AutomationProperties.Name="Notification result scope"
                     Style="{StaticResource AppWorkspaceHeaderContextTextBlockStyle}"
                     Text="{x:Bind ViewModel.ResultCountText, Mode=OneWay}"
                     TextTrimming="CharacterEllipsis" />
-            </StackPanel>
+            </Grid>
             <Button
                 x:Uid="PagesNotificationsPageNotificationsMarkAllRead" x:Name="NotificationsMarkAllReadButton"
                 Grid.Column="1"
@@ -243,7 +252,7 @@
                 x:Uid="PagesNotificationsPageNotificationsList" x:Name="NotificationsList"
                 AutomationProperties.AutomationId="NotificationsList"
                 AutomationProperties.Name="GitHub notifications"
-                Background="Transparent"
+                        Background="{ThemeResource AppTransparentBrush}"
                 BorderThickness="0"
                 ContainerContentChanging="NotificationsList_ContainerContentChanging"
                 IsItemClickEnabled="True"

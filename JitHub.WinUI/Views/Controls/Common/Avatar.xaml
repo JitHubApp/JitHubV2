@@ -15,6 +15,7 @@
             AutomationProperties.AutomationId="{x:Bind ProfileAutomationId, Mode=OneWay}"
             AutomationProperties.Name="{x:Bind ProfileAccessibleName, Mode=OneWay}"
             Click="ProfileButton_Click"
+            CornerRadius="{x:Bind ContainerCornerRadius, Mode=OneWay}"
             IsHitTestVisible="{x:Bind IsProfileAvailable, Mode=OneWay}"
             IsTabStop="{x:Bind IsProfileAvailable, Mode=OneWay}"
             KeyDown="ProfileButton_KeyDown"

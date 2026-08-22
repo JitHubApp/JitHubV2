@@ -40,6 +40,30 @@ public sealed partial class GitHubIssueComment
     [JsonPropertyName("author_association")]
     public string? AuthorAssociation { get; set; }
 
+    [JsonPropertyName("pin")]
+    public GitHubIssueCommentPin? Pin { get; set; }
+
+    [JsonPropertyName("minimized")]
+    public GitHubIssueCommentMinimization? Minimized { get; set; }
+
+    [JsonIgnore]
+    public bool IsPinned => Pin is not null;
+
+    [JsonIgnore]
+    public bool IsMinimized => Minimized is not null;
+
+    [JsonIgnore]
+    public string ViewerLogin { get; set; } = string.Empty;
+
+    [JsonIgnore]
+    public bool CanViewerReact { get; set; }
+
+    [JsonIgnore]
+    public bool CanViewerReply { get; set; }
+
+    [JsonIgnore]
+    public bool CanViewerModerate { get; set; }
+
     [JsonIgnore]
     public string ReactionsButtonText => LocalizedResourceText.GetString("Common.ReactionsButton", "Reactions");
 
@@ -69,4 +93,18 @@ public sealed partial class GitHubIssueComment
             "issue-comment",
             Id > 0 ? Id.ToString() : NodeId ?? HtmlUrl,
             HtmlUrl);
+}
+
+[WinRT.GeneratedBindableCustomProperty]
+public sealed partial class GitHubIssueCommentPin
+{
+    [JsonPropertyName("pinned_at")]
+    public DateTimeOffset PinnedAt { get; set; }
+
+    [JsonPropertyName("pinned_by")]
+    public GitHubActor PinnedBy { get; set; } = new();
+}
+
+public sealed class GitHubIssueCommentMinimization
+{
 }

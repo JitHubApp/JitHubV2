@@ -28,7 +28,7 @@ public static class MarkdownHostContract
     public static string GetSurfaceColorToken(string? value) => Parse(value) switch
     {
         MarkdownHostKind.Conversation => "AppCanvasInset",
-        MarkdownHostKind.Comment => "AppCanvasRaised",
+        MarkdownHostKind.Comment => "AppCanvasInset",
         MarkdownHostKind.RepositoryReadme => "AppCanvas",
         MarkdownHostKind.ProfileReadme => "AppSurfaceSubtle",
         MarkdownHostKind.EditorPreview => "AppSurface",
@@ -38,7 +38,7 @@ public static class MarkdownHostContract
     public static string GetSurfaceFallback(string? value, bool dark) => Parse(value) switch
     {
         MarkdownHostKind.Conversation => dark ? "#11130F" : "#EDEDED",
-        MarkdownHostKind.Comment => dark ? "#1C211C" : "#FFFFFF",
+        MarkdownHostKind.Comment => dark ? "#11130F" : "#EDEDED",
         MarkdownHostKind.RepositoryReadme => dark ? "#171914" : "#F3F3F3",
         MarkdownHostKind.ProfileReadme => dark ? "#252B25" : "#F0F0F0",
         MarkdownHostKind.EditorPreview => dark ? "#212621" : "#FAFAFA",

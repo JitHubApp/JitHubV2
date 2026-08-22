@@ -91,6 +91,12 @@ internal sealed class GitHubIssueCommentCreateRequest
     public string Body { get; set; } = string.Empty;
 }
 
+internal sealed class GitHubIssueCommentUpdateRequest
+{
+    [JsonPropertyName("body")]
+    public string Body { get; set; } = string.Empty;
+}
+
 internal sealed class GitHubPullRequestCreateRequest
 {
     [JsonPropertyName("title")]

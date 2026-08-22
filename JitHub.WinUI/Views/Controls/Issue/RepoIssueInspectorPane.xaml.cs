@@ -11,7 +11,6 @@ public sealed partial class RepoIssueInspectorPane : UserControl
 
     public event EventHandler? CloseRequested;
     public event EventHandler? MetadataRequested;
-    public event EventHandler? ReactionsRequested;
 
     public RepoIssueInspectorPane(RepoIssuePageViewModel viewModel)
     {
@@ -19,8 +18,13 @@ public sealed partial class RepoIssueInspectorPane : UserControl
         InitializeComponent();
     }
 
-    public void SetDrawerOpen(bool isOpen) =>
-        CloseInspectorPaneButton.Visibility = isOpen ? Visibility.Visible : Visibility.Collapsed;
+    public void UpdateResponsiveState(bool isDrawerOpen, bool isCompactWorkspace)
+    {
+        CloseInspectorPaneButton.Visibility = isDrawerOpen ? Visibility.Visible : Visibility.Collapsed;
+        InspectorPanel.Padding = isCompactWorkspace
+            ? new Thickness(16, 10, 10, 16)
+            : new Thickness(16, 10, 16, 16);
+    }
 
     private void CloseInspectorPaneButton_Click(object sender, RoutedEventArgs e) =>
         CloseRequested?.Invoke(this, EventArgs.Empty);
@@ -28,6 +32,4 @@ public sealed partial class RepoIssueInspectorPane : UserControl
     private void MetadataButton_Click(object sender, RoutedEventArgs e) =>
         MetadataRequested?.Invoke(this, EventArgs.Empty);
 
-    private void ReactionsButton_Click(object sender, RoutedEventArgs e) =>
-        ReactionsRequested?.Invoke(this, EventArgs.Empty);
 }

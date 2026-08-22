@@ -1,8 +1,10 @@
 using System;
 using System.Collections.Generic;
 using System.Linq;
+using System.Numerics;
 using System.Threading;
 using System.Threading.Tasks;
+using CommunityToolkit.WinUI;
 using JitHub.Models.GitHub;
 using JitHub.Models.NavArgs;
 using JitHub.Services;
@@ -21,19 +23,40 @@ using Microsoft.UI.Xaml.Controls;
 using Microsoft.UI.Xaml.Input;
 using Microsoft.UI.Xaml.Navigation;
 using Microsoft.UI.Xaml.Media;
+using Windows.UI.ViewManagement;
 
 namespace JitHub.WinUI.Views.Pages;
 
 public sealed partial class RepoPullRequestPage : Page
 {
     private const string ReplyIdentityAutomationScenario = "pr-reply-identities";
+    private const double ShyHeaderStartOffset = 56;
+    private const double ShyHeaderRestoreOffset = 8;
+    private const double ShyHeaderRevealTravel = 64;
+    private const double ShyHeaderRehideTravel = 24;
+    private const double ScrollDirectionEpsilon = 0.5;
+    private const double CompactShyHeaderContentInset = 104;
+    private static readonly TimeSpan ShyHeaderForwardDuration = TimeSpan.FromMilliseconds(240);
+    private static readonly TimeSpan ShyHeaderReverseDuration = TimeSpan.FromMilliseconds(220);
     private bool _initialized;
     private bool _openedInitialListDrawer;
     private CancellationTokenSource? _searchDebounce;
     private ProductPerformanceScrollProbe? _performanceScrollProbe;
     private int _selectionRenderGeneration;
     private bool _pointerSelectionInProgress;
+    private bool _initializingFilterFlyout;
     private int? _pendingPointerHydrationNumber;
+    private readonly Dictionary<ScrollViewer, long> _sectionScrollViewers = [];
+    private readonly TransitionHelper _headerTransition;
+    private ScrollViewer? _activeShyHeaderScrollViewer;
+    private double _lastShyHeaderScrollOffset;
+    private double _upwardRevealTravel;
+    private double _downwardRehideTravel;
+    private bool _headerRevealedByUpwardScroll;
+    private bool _isScrollHeaderShy;
+    private bool _isDetailHeaderShy;
+    private bool _synchronizingSectionSelection;
+    private int _headerTransitionGeneration;
 
     public RepoPullRequestPageViewModel ViewModel { get; }
 
@@ -41,6 +64,23 @@ public sealed partial class RepoPullRequestPage : Page
     {
         ViewModel = ((App)Application.Current).GetService<RepoPullRequestPageViewModel>();
         InitializeComponent();
+        _headerTransition = new TransitionHelper
+        {
+            Source = PullRequestExpandedHeaderSurface,
+            Target = PullRequestShyHeaderSurface,
+            Duration = ShyHeaderForwardDuration,
+            ReverseDuration = ShyHeaderReverseDuration,
+            SourceToggleMethod = VisualStateToggleMethod.ByVisibility,
+            TargetToggleMethod = VisualStateToggleMethod.ByVisibility,
+            Configs =
+            [
+                new TransitionConfig { Id = "PullRequestHeaderSurface", ScaleMode = ScaleMode.ScaleY, EnableClipAnimation = true },
+                new TransitionConfig { Id = "PullRequestTitle" },
+                new TransitionConfig { Id = "PullRequestSectionSelector", ScaleMode = ScaleMode.ScaleX, EnableClipAnimation = true },
+                new TransitionConfig { Id = "PullRequestListButton" },
+                new TransitionConfig { Id = "PullRequestActions" }
+            ]
+        };
         DataContext = ViewModel;
         PullRequestContentScrollViewer.Loaded += PullRequestContentScrollViewer_Loaded;
         PullRequestContentScrollViewer.Unloaded += PullRequestContentScrollViewer_Unloaded;
@@ -60,6 +100,7 @@ public sealed partial class RepoPullRequestPage : Page
         {
             PullRequestSectionSegmented.SelectedIndex = 3;
             PullRequestSectionComboBox.SelectedIndex = 3;
+            PullRequestShySectionComboBox.SelectedIndex = 3;
             ViewModel.SetSection(PullRequestWorkspaceSection.Reviews);
         }
 
@@ -86,22 +127,35 @@ public sealed partial class RepoPullRequestPage : Page
         {
             PullRequestSectionSegmented.SelectedIndex = 3;
             PullRequestSectionComboBox.SelectedIndex = 3;
+            PullRequestShySectionComboBox.SelectedIndex = 3;
             ViewModel.SetSection(PullRequestWorkspaceSection.Reviews);
         }
 
         _initialized = true;
         UpdatePaneButtonVisibility();
         MaybeOpenInitialPullRequestListDrawer();
+        _ = DispatcherQueue.TryEnqueue(
+            Microsoft.UI.Dispatching.DispatcherQueuePriority.Low,
+            AttachPerformanceScrollProbe);
     }
 
     protected override void OnNavigatedFrom(NavigationEventArgs e)
     {
+        _initialized = false;
         _selectionRenderGeneration++;
         _pendingPointerHydrationNumber = null;
         ViewModel.CancelPredictivePrefetches();
         _searchDebounce?.Cancel();
         _searchDebounce?.Dispose();
         _searchDebounce = null;
+        foreach ((ScrollViewer scrollViewer, long callbackToken) in _sectionScrollViewers)
+        {
+            scrollViewer.ViewChanged -= PullRequestSectionScrollViewer_ViewChanged;
+            scrollViewer.UnregisterPropertyChangedCallback(ScrollViewer.VerticalOffsetProperty, callbackToken);
+        }
+
+        _sectionScrollViewers.Clear();
+        _activeShyHeaderScrollViewer = null;
         base.OnNavigatedFrom(e);
     }
 
@@ -114,16 +168,244 @@ public sealed partial class RepoPullRequestPage : Page
 
     private void AttachPerformanceScrollProbe()
     {
+        if (!_initialized || !PullRequestContentScrollViewer.IsLoaded)
+        {
+            return;
+        }
+
         _performanceScrollProbe?.Dispose();
-        _performanceScrollProbe = FindDescendant<ScrollViewer>(PullRequestContentScrollViewer) is ScrollViewer scrollViewer
-            ? ProductPerformanceScrollProbe.TryStart(PullRequestContentHost, scrollViewer)
-            : null;
+        IReadOnlyList<ScrollViewer> scrollViewers = FindScrollViewers(PullRequestContentScrollViewer);
+        foreach (ScrollViewer candidate in scrollViewers)
+        {
+            AttachShyHeaderScrollViewer(candidate);
+        }
+
+        if (scrollViewers.FirstOrDefault() is ScrollViewer scrollViewer)
+        {
+            _performanceScrollProbe = ProductPerformanceScrollProbe.TryStart(PullRequestContentHost, scrollViewer);
+        }
+        else
+        {
+            _performanceScrollProbe = null;
+        }
     }
 
     private void PullRequestContentScrollViewer_Unloaded(object sender, RoutedEventArgs e)
     {
         _performanceScrollProbe?.Dispose();
         _performanceScrollProbe = null;
+        DetachShyHeaderScrollViewer(PullRequestContentScrollViewer);
+    }
+
+    private void PullRequestScrollableSection_Loaded(object sender, RoutedEventArgs e)
+    {
+        if (sender is not DependencyObject owner)
+        {
+            return;
+        }
+
+        _ = DispatcherQueue.TryEnqueue(
+            Microsoft.UI.Dispatching.DispatcherQueuePriority.Low,
+            () =>
+            {
+                if (_initialized && owner is FrameworkElement { IsLoaded: true })
+                {
+                    AttachShyHeaderScrollSources(owner);
+                }
+            });
+    }
+
+    private void PullRequestScrollableSection_SizeChanged(object sender, SizeChangedEventArgs e)
+    {
+        if (sender is not DependencyObject owner)
+        {
+            return;
+        }
+
+        _ = DispatcherQueue.TryEnqueue(
+            Microsoft.UI.Dispatching.DispatcherQueuePriority.Low,
+            () =>
+            {
+                if (_initialized && owner is FrameworkElement { IsLoaded: true })
+                {
+                    AttachShyHeaderScrollSources(owner);
+                }
+            });
+    }
+
+    private void PullRequestScrollableSection_Unloaded(object sender, RoutedEventArgs e)
+    {
+        if (sender is DependencyObject owner)
+        {
+            DetachShyHeaderScrollViewer(owner);
+        }
+    }
+
+    private void AttachShyHeaderScrollSources(DependencyObject owner)
+    {
+        IReadOnlyList<ScrollViewer> scrollViewers = FindScrollViewers(owner);
+        foreach (ScrollViewer scrollViewer in scrollViewers)
+        {
+            AttachShyHeaderScrollViewer(scrollViewer);
+        }
+
+        ScrollViewer? primary = scrollViewers.FirstOrDefault(IsShyHeaderScrollCandidate);
+        if (primary is not null)
+        {
+            ActivateShyHeaderScrollViewer(primary);
+        }
+    }
+
+    private void AttachShyHeaderScrollViewer(ScrollViewer scrollViewer)
+    {
+        if (!_sectionScrollViewers.ContainsKey(scrollViewer))
+        {
+            scrollViewer.ViewChanged += PullRequestSectionScrollViewer_ViewChanged;
+            long callbackToken = scrollViewer.RegisterPropertyChangedCallback(
+                ScrollViewer.VerticalOffsetProperty,
+                PullRequestSectionScrollViewer_VerticalOffsetChanged);
+            _sectionScrollViewers.Add(scrollViewer, callbackToken);
+        }
+    }
+
+    private void DetachShyHeaderScrollViewer(DependencyObject owner)
+    {
+        foreach (ScrollViewer scrollViewer in FindScrollViewers(owner))
+        {
+            if (_sectionScrollViewers.Remove(scrollViewer, out long callbackToken))
+            {
+                scrollViewer.ViewChanged -= PullRequestSectionScrollViewer_ViewChanged;
+                scrollViewer.UnregisterPropertyChangedCallback(ScrollViewer.VerticalOffsetProperty, callbackToken);
+            }
+        }
+    }
+
+    private void PullRequestSectionScrollViewer_ViewChanged(object? sender, ScrollViewerViewChangedEventArgs e)
+    {
+        if (PullRequestsWorkspace.State?.Mode is AdaptiveWorkspaceMode.Narrow or AdaptiveWorkspaceMode.Compact ||
+            sender is not ScrollViewer scrollViewer)
+        {
+            return;
+        }
+
+        UpdateDetailHeaderForScrollViewer(scrollViewer);
+    }
+
+    private void PullRequestSectionScrollViewer_VerticalOffsetChanged(
+        DependencyObject sender,
+        DependencyProperty dependencyProperty)
+    {
+        if (PullRequestsWorkspace.State?.Mode is AdaptiveWorkspaceMode.Narrow or AdaptiveWorkspaceMode.Compact ||
+            sender is not ScrollViewer scrollViewer)
+        {
+            return;
+        }
+
+        UpdateDetailHeaderForScrollViewer(scrollViewer);
+    }
+
+    private static bool IsShyHeaderScrollCandidate(ScrollViewer scrollViewer) =>
+        scrollViewer.IsLoaded &&
+        scrollViewer.ActualHeight >= 96 &&
+        scrollViewer.ScrollableHeight > 0;
+
+    private void ActivateShyHeaderScrollViewer(ScrollViewer scrollViewer)
+    {
+        if (ReferenceEquals(_activeShyHeaderScrollViewer, scrollViewer))
+        {
+            return;
+        }
+
+        _activeShyHeaderScrollViewer = scrollViewer;
+        _lastShyHeaderScrollOffset = scrollViewer.VerticalOffset;
+        _upwardRevealTravel = 0;
+        _downwardRehideTravel = 0;
+        _headerRevealedByUpwardScroll = false;
+        _isScrollHeaderShy = scrollViewer.VerticalOffset >= ShyHeaderStartOffset;
+        SetDetailHeaderShy(IsCompactWorkspace || _isScrollHeaderShy, animate: false);
+    }
+
+    private void UpdateDetailHeaderForScrollViewer(ScrollViewer scrollViewer)
+    {
+        if (!IsShyHeaderScrollCandidate(scrollViewer))
+        {
+            return;
+        }
+
+        if (!ReferenceEquals(_activeShyHeaderScrollViewer, scrollViewer))
+        {
+            ActivateShyHeaderScrollViewer(scrollViewer);
+            return;
+        }
+
+        double offset = scrollViewer.VerticalOffset;
+        double delta = offset - _lastShyHeaderScrollOffset;
+        _lastShyHeaderScrollOffset = offset;
+
+        if (_isScrollHeaderShy)
+        {
+            if (offset <= ShyHeaderRestoreOffset)
+            {
+                RevealScrollHeader(revealedByUpwardScroll: false);
+            }
+            else if (delta < -ScrollDirectionEpsilon)
+            {
+                _upwardRevealTravel += -delta;
+                if (_upwardRevealTravel >= ShyHeaderRevealTravel)
+                {
+                    RevealScrollHeader(revealedByUpwardScroll: true);
+                }
+            }
+            else if (delta > ScrollDirectionEpsilon)
+            {
+                _upwardRevealTravel = 0;
+            }
+
+            return;
+        }
+
+        if (offset <= ShyHeaderRestoreOffset)
+        {
+            _headerRevealedByUpwardScroll = false;
+            _downwardRehideTravel = 0;
+        }
+        else if (_headerRevealedByUpwardScroll)
+        {
+            if (delta > ScrollDirectionEpsilon)
+            {
+                _downwardRehideTravel += delta;
+                if (_downwardRehideTravel >= ShyHeaderRehideTravel)
+                {
+                    HideScrollHeader();
+                }
+            }
+            else if (delta < -ScrollDirectionEpsilon)
+            {
+                _downwardRehideTravel = 0;
+            }
+        }
+        else if (offset >= ShyHeaderStartOffset)
+        {
+            HideScrollHeader();
+        }
+    }
+
+    private void RevealScrollHeader(bool revealedByUpwardScroll)
+    {
+        _isScrollHeaderShy = false;
+        _headerRevealedByUpwardScroll = revealedByUpwardScroll;
+        _upwardRevealTravel = 0;
+        _downwardRehideTravel = 0;
+        SetDetailHeaderShy(IsCompactWorkspace, animate: true);
+    }
+
+    private void HideScrollHeader()
+    {
+        _isScrollHeaderShy = true;
+        _headerRevealedByUpwardScroll = false;
+        _upwardRevealTravel = 0;
+        _downwardRehideTravel = 0;
+        SetDetailHeaderShy(true, animate: true);
     }
 
     private void PullRequestDetailHost_SizeChanged(object sender, SizeChangedEventArgs e)
@@ -134,25 +416,29 @@ public sealed partial class RepoPullRequestPage : Page
         }
     }
 
-    private static T? FindDescendant<T>(DependencyObject root)
-        where T : DependencyObject
+    private static IReadOnlyList<ScrollViewer> FindScrollViewers(DependencyObject root)
+    {
+        List<ScrollViewer> candidates = [];
+        CollectScrollViewers(root, candidates);
+        return candidates
+            .OrderByDescending(static scrollViewer => scrollViewer.ScrollableHeight)
+            .ThenByDescending(static scrollViewer => scrollViewer.ActualHeight)
+            .ToArray();
+    }
+
+    private static void CollectScrollViewers(DependencyObject root, ICollection<ScrollViewer> candidates)
     {
         int count = VisualTreeHelper.GetChildrenCount(root);
         for (int index = 0; index < count; index++)
         {
             DependencyObject child = VisualTreeHelper.GetChild(root, index);
-            if (child is T match)
+            if (child is ScrollViewer scrollViewer)
             {
-                return match;
+                candidates.Add(scrollViewer);
             }
 
-            if (FindDescendant<T>(child) is T descendant)
-            {
-                return descendant;
-            }
+            CollectScrollViewers(child, candidates);
         }
-
-        return null;
     }
 
     private async void PullRequestStateSegmented_SelectionChanged(object sender, SelectionChangedEventArgs e)
@@ -169,12 +455,49 @@ public sealed partial class RepoPullRequestPage : Page
 
     private async void PullRequestFilterComboBox_SelectionChanged(object sender, SelectionChangedEventArgs e)
     {
-        if (!_initialized)
+        if (!_initialized || _initializingFilterFlyout)
         {
             return;
         }
 
+        ViewModel.SelectedSortOption = GetSelectedOption(ViewModel.SortOptions, PullRequestSortComboBox.SelectedIndex);
+        ViewModel.SelectedDirectionOption = GetSelectedOption(ViewModel.DirectionOptions, PullRequestDirectionComboBox.SelectedIndex);
         await ViewModel.ApplyFiltersAsync();
+    }
+
+    private void PullRequestFiltersFlyout_Opened(object sender, object e)
+    {
+        _initializingFilterFlyout = true;
+        try
+        {
+            PullRequestSortComboBox.SelectedIndex = GetSelectedIndex(ViewModel.SortOptions, ViewModel.SelectedSortOption);
+            PullRequestDirectionComboBox.SelectedIndex = GetSelectedIndex(ViewModel.DirectionOptions, ViewModel.SelectedDirectionOption);
+        }
+        finally
+        {
+            _initializingFilterFlyout = false;
+        }
+    }
+
+    private static QueryOption? GetSelectedOption(IReadOnlyList<QueryOption> options, int index) =>
+        index >= 0 && index < options.Count ? options[index] : null;
+
+    private static int GetSelectedIndex(IReadOnlyList<QueryOption> options, QueryOption? selected)
+    {
+        if (selected is null)
+        {
+            return 0;
+        }
+
+        for (int index = 0; index < options.Count; index++)
+        {
+            if (options[index] == selected)
+            {
+                return index;
+            }
+        }
+
+        return 0;
     }
 
     private async void PullRequestSearchBox_TextChanged(object sender, TextChangedEventArgs e)
@@ -293,6 +616,11 @@ public sealed partial class RepoPullRequestPage : Page
         if (!string.Equals(PullRequestDetailTitle.Text, pullRequest.Title, StringComparison.Ordinal))
         {
             PullRequestDetailTitle.Text = pullRequest.Title;
+        }
+
+        if (!string.Equals(PullRequestShyDetailTitle.Text, pullRequest.Title, StringComparison.Ordinal))
+        {
+            PullRequestShyDetailTitle.Text = pullRequest.Title;
         }
     }
 
@@ -456,52 +784,213 @@ public sealed partial class RepoPullRequestPage : Page
         AdaptiveWorkspaceState? state = PullRequestsWorkspace.State;
         bool isLeadingDrawerOpen = state?.VisibleDrawer == AdaptiveWorkspaceDrawer.Leading;
         bool isTrailingDrawerOpen = state?.VisibleDrawer == AdaptiveWorkspaceDrawer.Trailing;
-        RepoPullRequestsOpenListPaneButton.Visibility = state?.ShouldShowLeadingPaneButton == true && !isLeadingDrawerOpen
+        Visibility listButtonVisibility = state?.ShouldShowLeadingPaneButton == true && !isLeadingDrawerOpen
             ? Visibility.Visible
             : Visibility.Collapsed;
+        RepoPullRequestsOpenListPaneButton.Visibility = listButtonVisibility;
+        RepoPullRequestsShyOpenListPaneButton.Visibility = listButtonVisibility;
         RepoPullRequestsCloseListPaneButton.Visibility = isLeadingDrawerOpen
             ? Visibility.Visible
             : Visibility.Collapsed;
-        RepoPullRequestsOpenInspectorPaneButton.Visibility = state?.ShouldShowTrailingPaneButton == true && !isTrailingDrawerOpen
+        Visibility inspectorButtonVisibility = state?.ShouldShowTrailingPaneButton == true && !isTrailingDrawerOpen
             ? Visibility.Visible
             : Visibility.Collapsed;
+        RepoPullRequestsOpenInspectorPaneButton.Visibility = inspectorButtonVisibility;
+        RepoPullRequestsShyOpenInspectorPaneButton.Visibility = inspectorButtonVisibility;
         RepoPullRequestsCloseInspectorPaneButton.Visibility = isTrailingDrawerOpen
             ? Visibility.Visible
             : Visibility.Collapsed;
 
-        bool isCompact = state?.Mode is AdaptiveWorkspaceMode.Narrow or AdaptiveWorkspaceMode.Compact;
-        PullRequestDetailHeader.Padding = isCompact
-            ? new Thickness(8, 6, 10, 8)
-            : new Thickness(10, 10, 16, 12);
-        PullRequestDetailTitle.MaxLines = isCompact ? 1 : 2;
-        PullRequestDetailTitle.TextWrapping = isCompact
-            ? TextWrapping.NoWrap
-            : TextWrapping.WrapWholeWords;
-        PullRequestSectionSegmented.Visibility = isCompact ? Visibility.Collapsed : Visibility.Visible;
-        PullRequestSectionComboBox.Visibility = isCompact ? Visibility.Visible : Visibility.Collapsed;
-        bool useCompactActionOverflow = state is not null && state.Mode != AdaptiveWorkspaceMode.Wide;
+        SetDetailHeaderShy(IsCompactWorkspace || _isScrollHeaderShy, animate: false);
+        Thickness sectionPadding = IsCompactWorkspace
+            ? new Thickness(12, CompactShyHeaderContentInset, 12, 12)
+            : new Thickness(18);
+        PullRequestContentScrollViewer.Padding = sectionPadding;
+        if (PullRequestCommitsSection is not null)
+        {
+            PullRequestCommitsSection.Padding = sectionPadding;
+        }
+
+        if (PullRequestReviewsSection is not null)
+        {
+            PullRequestReviewsSection.Padding = sectionPadding;
+        }
+
+        if (PullRequestTimelineSection is not null)
+        {
+            PullRequestTimelineSection.Padding = sectionPadding;
+        }
+
+        if (PullRequestFilesSection is not null)
+        {
+            PullRequestFilesSection.Padding = IsCompactWorkspace
+                ? new Thickness(12, CompactShyHeaderContentInset, 12, 12)
+                : new Thickness(18, 12, 18, 18);
+        }
+        PullRequestCommentFormHost.Padding = IsCompactWorkspace
+            ? new Thickness(10, 6, 10, 6)
+            : new Thickness(12, 8, 12, 8);
+    }
+
+    private bool IsCompactWorkspace =>
+        PullRequestsWorkspace.State?.Mode is AdaptiveWorkspaceMode.Narrow or AdaptiveWorkspaceMode.Compact;
+
+    private void SetDetailHeaderShy(bool isShy, bool animate)
+    {
+        ApplyDetailHeaderChrome();
+        if (_isDetailHeaderShy == isShy)
+        {
+            return;
+        }
+
+        _isDetailHeaderShy = isShy;
+        int generation = ++_headerTransitionGeneration;
+        if (!animate || !PullRequestExpandedHeaderSurface.IsLoaded || !AreAnimationsEnabled())
+        {
+            _headerTransition.Reset(toInitialState: !isShy);
+            PullRequestDetailLayout.UpdateLayout();
+            ResetContentReflow();
+            return;
+        }
+
+        _ = AnimateDetailHeaderAsync(isShy, generation);
+    }
+
+    private async Task AnimateDetailHeaderAsync(bool isShy, int generation)
+    {
+        try
+        {
+            FrameworkElement visibleContent = GetVisibleDetailContentSurface();
+            bool reverseFromSettledShyState =
+                !isShy && _headerTransition.IsTargetState && !_headerTransition.IsAnimating;
+            double previousContentTop = reverseFromSettledShyState
+                ? GetElementTop(visibleContent, PullRequestDetailLayout)
+                : 0;
+            Task headerAnimation = isShy
+                ? _headerTransition.StartAsync(forceUpdateAnimatedElements: true)
+                : _headerTransition.ReverseAsync(forceUpdateAnimatedElements: true);
+
+            PullRequestDetailLayout.UpdateLayout();
+            if (isShy)
+            {
+                double reclaimedHeight = Math.Max(
+                    0,
+                    PullRequestExpandedHeaderSurface.ActualHeight - PullRequestShyHeaderSurface.ActualHeight);
+                AnimateContentReflow(
+                    new Vector3(0, (float)-reclaimedHeight, 0),
+                    ShyHeaderForwardDuration);
+            }
+            else if (reverseFromSettledShyState)
+            {
+                double expandedContentTop = GetElementTop(visibleContent, PullRequestDetailLayout);
+                SetContentReflowImmediately(new Vector3(0, (float)(previousContentTop - expandedContentTop), 0));
+                AnimateContentReflow(Vector3.Zero, ShyHeaderReverseDuration);
+            }
+
+            else
+            {
+                AnimateContentReflow(Vector3.Zero, ShyHeaderReverseDuration);
+            }
+
+            await headerAnimation;
+            if (generation != _headerTransitionGeneration)
+            {
+                return;
+            }
+
+            PullRequestDetailLayout.UpdateLayout();
+            ResetContentReflow();
+        }
+        catch (OperationCanceledException)
+        {
+        }
+        catch (Exception) when (generation != _headerTransitionGeneration)
+        {
+        }
+        catch when (generation == _headerTransitionGeneration)
+        {
+            _headerTransition.Reset(toInitialState: !isShy);
+            PullRequestDetailLayout.UpdateLayout();
+            ResetContentReflow();
+        }
+    }
+
+    private FrameworkElement GetVisibleDetailContentSurface() =>
+        PullRequestFilesSection is { IsLoaded: true, Visibility: Visibility.Visible }
+            ? PullRequestFilesSection
+            : PullRequestContentHost;
+
+    private IReadOnlyList<UIElement> GetDetailContentSurfaces()
+    {
+        List<UIElement> surfaces = [PullRequestContentHost];
+        if (PullRequestFilesSection is not null)
+        {
+            surfaces.Add(PullRequestFilesSection);
+        }
+
+        return surfaces;
+    }
+
+    private void AnimateContentReflow(Vector3 translation, TimeSpan duration)
+    {
+        foreach (UIElement surface in GetDetailContentSurfaces())
+        {
+            surface.TranslationTransition = new Vector3Transition
+            {
+                Components = Vector3TransitionComponents.Y,
+                Duration = duration
+            };
+            surface.Translation = translation;
+        }
+    }
+
+    private void SetContentReflowImmediately(Vector3 translation)
+    {
+        foreach (UIElement surface in GetDetailContentSurfaces())
+        {
+            surface.TranslationTransition = null;
+            surface.Translation = translation;
+        }
+    }
+
+    private void ResetContentReflow() =>
+        SetContentReflowImmediately(Vector3.Zero);
+
+    private static double GetElementTop(FrameworkElement element, UIElement relativeTo) =>
+        element.TransformToVisual(relativeTo).TransformPoint(new Windows.Foundation.Point()).Y;
+
+    private void ApplyDetailHeaderChrome()
+    {
+        bool useCompactActionOverflow =
+            PullRequestsWorkspace.State is { Mode: not AdaptiveWorkspaceMode.Wide };
+
+        PullRequestSectionSegmented.Visibility = !IsCompactWorkspace
+            ? Visibility.Visible
+            : Visibility.Collapsed;
+        PullRequestSectionComboBox.Visibility = IsCompactWorkspace
+            ? Visibility.Visible
+            : Visibility.Collapsed;
+        PullRequestShySectionComboBox.Visibility = !IsCompactWorkspace
+            ? Visibility.Visible
+            : Visibility.Collapsed;
         RepoPullRequestsInlineActions.Visibility = useCompactActionOverflow
             ? Visibility.Collapsed
             : Visibility.Visible;
         RepoPullRequestsCompactActionsButton.Visibility = useCompactActionOverflow
             ? Visibility.Visible
             : Visibility.Collapsed;
-        PullRequestCommentForm.EditorHeight = 130;
-        double availableDetailHeight = PullRequestDetailHost.ActualHeight > 0
-            ? PullRequestDetailHost.ActualHeight
-            : ActualHeight;
-        const double DetailChromeAndMinimumConversationHeight = 390;
-        bool useCompactComposer = isCompact ||
-            availableDetailHeight < PullRequestCommentForm.EffectiveEditorHeight +
-            DetailChromeAndMinimumConversationHeight;
-        PullRequestCommentForm.Visibility = useCompactComposer ? Visibility.Collapsed : Visibility.Visible;
-        RepoPullRequestsOpenCompactCommentButton.Visibility = useCompactComposer ? Visibility.Visible : Visibility.Collapsed;
-        PullRequestContentScrollViewer.Padding = isCompact
-            ? new Thickness(12, 10, 12, 12)
-            : new Thickness(18);
-        PullRequestCommentFormHost.Padding = isCompact
-            ? new Thickness(12, 8, 12, 8)
-            : new Thickness(18, 12, 18, 18);
+    }
+
+    private static bool AreAnimationsEnabled()
+    {
+        try
+        {
+            return new UISettings().AnimationsEnabled;
+        }
+        catch
+        {
+            return false;
+        }
     }
 
     private void MaybeOpenInitialPullRequestListDrawer()
@@ -520,34 +1009,67 @@ public sealed partial class RepoPullRequestPage : Page
 
     private void PullRequestSectionSegmented_SelectionChanged(object sender, SelectionChangedEventArgs e)
     {
-        if (!_initialized)
-        {
-            return;
-        }
-
-        int selectedIndex = PullRequestSectionSegmented.SelectedIndex;
-        if (PullRequestSectionComboBox.SelectedIndex != selectedIndex)
-        {
-            PullRequestSectionComboBox.SelectedIndex = selectedIndex;
-        }
-
-        ViewModel.SetSection(PullRequestSectionSelectionPolicy.FromIndex(selectedIndex));
+        UpdatePullRequestSectionSelection(PullRequestSectionSegmented.SelectedIndex);
     }
 
     private void PullRequestSectionComboBox_SelectionChanged(object sender, SelectionChangedEventArgs e)
     {
-        if (!_initialized)
+        UpdatePullRequestSectionSelection(PullRequestSectionComboBox.SelectedIndex);
+    }
+
+    private void PullRequestShySectionComboBox_SelectionChanged(object sender, SelectionChangedEventArgs e)
+    {
+        UpdatePullRequestSectionSelection(PullRequestShySectionComboBox.SelectedIndex);
+    }
+
+    private void UpdatePullRequestSectionSelection(int selectedIndex)
+    {
+        if (!_initialized || _synchronizingSectionSelection || selectedIndex < 0)
         {
             return;
         }
 
-        int selectedIndex = PullRequestSectionComboBox.SelectedIndex;
-        if (PullRequestSectionSegmented.SelectedIndex != selectedIndex)
+        _synchronizingSectionSelection = true;
+        try
         {
             PullRequestSectionSegmented.SelectedIndex = selectedIndex;
+            PullRequestSectionComboBox.SelectedIndex = selectedIndex;
+            PullRequestShySectionComboBox.SelectedIndex = selectedIndex;
+        }
+        finally
+        {
+            _synchronizingSectionSelection = false;
         }
 
         ViewModel.SetSection(PullRequestSectionSelectionPolicy.FromIndex(selectedIndex));
+        _activeShyHeaderScrollViewer = null;
+        _lastShyHeaderScrollOffset = 0;
+        _upwardRevealTravel = 0;
+        _downwardRehideTravel = 0;
+        _headerRevealedByUpwardScroll = false;
+        _isScrollHeaderShy = false;
+        SetDetailHeaderShy(IsCompactWorkspace, animate: false);
+        _ = DispatcherQueue.TryEnqueue(
+            DispatcherQueuePriority.Low,
+            () => AttachActiveSectionScrollSources(selectedIndex));
+    }
+
+    private void AttachActiveSectionScrollSources(int selectedIndex)
+    {
+        FrameworkElement? activeSection = selectedIndex switch
+        {
+            0 => PullRequestContentScrollViewer,
+            1 => PullRequestFilesSection,
+            2 => PullRequestCommitsSection,
+            3 => PullRequestReviewsSection,
+            4 => PullRequestTimelineSection,
+            _ => null
+        };
+
+        if (_initialized && activeSection is { IsLoaded: true })
+        {
+            AttachShyHeaderScrollSources(activeSection);
+        }
     }
 
     private async void TogglePullRequestStateButton_Click(object sender, RoutedEventArgs e)
@@ -558,6 +1080,15 @@ public sealed partial class RepoPullRequestPage : Page
     private async void CommentButton_Click(object sender, RoutedEventArgs e)
     {
         await ViewModel.AddPullRequestCommentAsync();
+        if (string.IsNullOrWhiteSpace(ViewModel.PullRequestCommentDraft))
+        {
+            PullRequestCommentFlyout.Hide();
+        }
+    }
+
+    private void CompactCommentFlyout_Opened(object sender, object e)
+    {
+        _ = DispatcherQueue.TryEnqueue(() => PullRequestCompactCommentForm.FocusEditor());
     }
 
     private void CompactCommentFlyout_Closed(object sender, object e)
@@ -698,6 +1229,197 @@ public sealed partial class RepoPullRequestPage : Page
         }
     }
 
+    private async void CommentInteractionBar_ActionRequested(object? sender, CommentActionRequestedEventArgs e)
+    {
+        if (sender is not CommentInteractionBar bar)
+        {
+            return;
+        }
+
+        bool isPullRequestBody = e.TargetKind == CommentTargetKind.PullRequest;
+        bool isReviewComment = e.TargetKind == CommentTargetKind.PullRequestReviewComment;
+        switch (e.Action)
+        {
+            case CommentActionKind.ToggleReaction when !string.IsNullOrWhiteSpace(e.Value):
+                if (isPullRequestBody)
+                {
+                    await ToggleSelectedPullRequestReactionAsync(e.Value);
+                }
+                else
+                {
+                    await TogglePullRequestCommentReactionAsync(e.TargetKind, e.TargetId, e.Value);
+                }
+                break;
+            case CommentActionKind.QuoteReply:
+                QuotePullRequestComment(e.TargetKind, e.TargetId, bar.Body);
+                break;
+            case CommentActionKind.CopyLink:
+                PlatformHelper.CopyString(bar.HtmlUrl);
+                break;
+            case CommentActionKind.CopyMarkdown:
+                PlatformHelper.CopyString(bar.Body);
+                break;
+            case CommentActionKind.Edit:
+                if (isPullRequestBody)
+                {
+                    EditPullRequestButton_Click(bar, new RoutedEventArgs());
+                }
+                else
+                {
+                    await ShowPullRequestCommentEditDialogAsync(e.TargetId, bar.Body, isReviewComment);
+                }
+                break;
+            case CommentActionKind.Hide when !string.IsNullOrWhiteSpace(e.Value):
+                await ViewModel.SetPullRequestCommentMinimizedAsync(bar.NodeId, e.Value);
+                break;
+            case CommentActionKind.Unhide:
+                await ViewModel.SetPullRequestCommentMinimizedAsync(bar.NodeId, classifier: null);
+                break;
+            case CommentActionKind.Delete:
+                await ShowPullRequestCommentDeleteDialogAsync(e.TargetId, isReviewComment);
+                break;
+        }
+    }
+
+    private async Task ToggleSelectedPullRequestReactionAsync(string content)
+    {
+        IReadOnlyList<GitHubReaction>? reactions = await ViewModel.GetSelectedPullRequestReactionsAsync();
+        if (reactions is null)
+        {
+            return;
+        }
+
+        Dictionary<string, long> viewerReactionIds = reactions
+            .Where(reaction => string.Equals(reaction.User.Login, ViewModel.AuthenticatedLogin, StringComparison.OrdinalIgnoreCase))
+            .GroupBy(static reaction => reaction.Content, StringComparer.OrdinalIgnoreCase)
+            .ToDictionary(static group => group.Key, static group => group.First().Id, StringComparer.OrdinalIgnoreCase);
+        HashSet<string> selected = viewerReactionIds.Keys.ToHashSet(StringComparer.OrdinalIgnoreCase);
+        if (!selected.Add(content))
+        {
+            selected.Remove(content);
+        }
+
+        await ViewModel.ApplySelectedPullRequestReactionSelectionAsync(selected, viewerReactionIds);
+    }
+
+    private async Task TogglePullRequestCommentReactionAsync(
+        CommentTargetKind targetKind,
+        long commentId,
+        string content)
+    {
+        IReadOnlyList<GitHubReaction>? reactions = targetKind == CommentTargetKind.PullRequestReviewComment
+            ? await ViewModel.GetReviewCommentReactionsAsync(commentId)
+            : await ViewModel.GetPullRequestCommentReactionsAsync(commentId);
+        if (reactions is null)
+        {
+            return;
+        }
+
+        Dictionary<string, long> viewerReactionIds = reactions
+            .Where(reaction => string.Equals(reaction.User.Login, ViewModel.AuthenticatedLogin, StringComparison.OrdinalIgnoreCase))
+            .GroupBy(static reaction => reaction.Content, StringComparer.OrdinalIgnoreCase)
+            .ToDictionary(static group => group.Key, static group => group.First().Id, StringComparer.OrdinalIgnoreCase);
+        HashSet<string> selected = viewerReactionIds.Keys.ToHashSet(StringComparer.OrdinalIgnoreCase);
+        if (!selected.Add(content))
+        {
+            selected.Remove(content);
+        }
+
+        if (targetKind == CommentTargetKind.PullRequestReviewComment)
+        {
+            await ViewModel.ApplyReviewCommentReactionSelectionAsync(commentId, selected, viewerReactionIds);
+        }
+        else
+        {
+            await ViewModel.ApplyPullRequestCommentReactionSelectionAsync(commentId, selected, viewerReactionIds);
+        }
+    }
+
+    private void QuotePullRequestComment(CommentTargetKind targetKind, long commentId, string body)
+    {
+        if (targetKind == CommentTargetKind.PullRequestReviewComment)
+        {
+            RepoPullRequestPageViewModel.PullRequestReviewThreadItem? thread = ViewModel.PullRequestReviews
+                .SelectMany(static review => review.Threads)
+                .FirstOrDefault(item => item.CommentId == commentId || item.Replies.Any(reply => reply.Id == commentId));
+            if (thread is not null)
+            {
+                thread.ReplyText = CommentMarkdownFormatter.AppendQuote(thread.ReplyText, body);
+            }
+
+            return;
+        }
+
+        ViewModel.PullRequestCommentDraft = CommentMarkdownFormatter.AppendQuote(
+            ViewModel.PullRequestCommentDraft,
+            body);
+        PullRequestCommentFlyout.ShowAt(RepoPullRequestsOpenCompactCommentButton);
+    }
+
+    private async Task ShowPullRequestCommentEditDialogAsync(long commentId, string body, bool isReviewComment)
+    {
+        MarkdownForm form = new()
+        {
+            Text = body,
+            EditorHeight = 420
+        };
+        AutomationProperties.SetAutomationId(form, $"RepoPullRequestsComment_{commentId}_EditForm");
+        AutomationProperties.SetName(form, L("RepoPullRequests/Dialogs/CommentEdit/BodyAutomationName", "Comment Markdown"));
+        TextBlock errorText = AppContentDialogPresenter.CreateInlineErrorPresenter("RepoPullRequestsCommentEditDialogError");
+        ContentDialog dialog = new()
+        {
+            XamlRoot = XamlRoot,
+            Title = L("RepoPullRequests/Dialogs/CommentEdit/Title", "Edit comment"),
+            Content = AppDialogStyleCatalog.CreateContentPanel(form, errorText),
+            PrimaryButtonText = L("Common/Save", "Save"),
+            CloseButtonText = L("Common/Cancel", "Cancel"),
+            DefaultButton = ContentDialogButton.Primary
+        };
+        AppDialogStyleCatalog.Apply(dialog);
+        AutomationProperties.SetAutomationId(dialog, "RepoPullRequestsCommentEditDialog");
+        AutomationProperties.SetName(dialog, L("RepoPullRequests/Dialogs/CommentEdit/AutomationName", "Edit pull request comment"));
+
+        await AppContentDialogPresenter.ShowForPrimaryActionAsync(
+            dialog,
+            XamlRoot,
+            async () => await ViewModel.UpdatePullRequestCommentAsync(commentId, form.Text, isReviewComment)
+                ? DialogMutationResult.Success()
+                : DialogMutationResult.Failure(ViewModel.StatusText),
+            errorText,
+            layoutKind: AppDialogLayoutKind.Editor);
+    }
+
+    private async Task ShowPullRequestCommentDeleteDialogAsync(long commentId, bool isReviewComment)
+    {
+        TextBlock errorText = AppContentDialogPresenter.CreateInlineErrorPresenter("RepoPullRequestsCommentDeleteDialogError");
+        ContentDialog dialog = new()
+        {
+            XamlRoot = XamlRoot,
+            Title = L("RepoPullRequests/Dialogs/CommentDelete/Title", "Delete comment?"),
+            Content = AppDialogStyleCatalog.CreateContentPanel(
+                new TextBlock
+                {
+                    Text = L("RepoPullRequests/Dialogs/CommentDelete/Message", "This comment will be permanently deleted."),
+                    TextWrapping = TextWrapping.Wrap
+                },
+                errorText),
+            PrimaryButtonText = L("Common/Delete", "Delete"),
+            CloseButtonText = L("Common/Cancel", "Cancel"),
+            DefaultButton = ContentDialogButton.Close
+        };
+        AppDialogStyleCatalog.Apply(dialog);
+        AutomationProperties.SetAutomationId(dialog, "RepoPullRequestsCommentDeleteDialog");
+        AutomationProperties.SetName(dialog, L("RepoPullRequests/Dialogs/CommentDelete/AutomationName", "Delete pull request comment"));
+
+        await AppContentDialogPresenter.ShowForPrimaryActionAsync(
+            dialog,
+            XamlRoot,
+            async () => await ViewModel.DeletePullRequestCommentAsync(commentId, isReviewComment)
+                ? DialogMutationResult.Success()
+                : DialogMutationResult.Failure(ViewModel.StatusText),
+            errorText);
+    }
+
     private async void NewPullRequestButton_Click(object sender, RoutedEventArgs e)
     {
         RepoPullRequestPageViewModel.PullRequestCreateDialogData? data = await ViewModel.LoadCreateDialogDataAsync();
@@ -791,7 +1513,8 @@ public sealed partial class RepoPullRequestPage : Page
                     string.Equals(ViewModel.SelectedPullRequest?.Title, titleBox.Text.Trim(), StringComparison.Ordinal),
                     "created pull request");
             },
-            errorText);
+            errorText,
+            layoutKind: AppDialogLayoutKind.Editor);
     }
 
     private async void EditPullRequestButton_Click(object sender, RoutedEventArgs e)
@@ -810,16 +1533,14 @@ public sealed partial class RepoPullRequestPage : Page
         };
         AutomationProperties.SetAutomationId(titleBox, "RepoPullRequestsEditTitleBox");
         AutomationProperties.SetName(titleBox, L("RepoPullRequests/Dialogs/TitleAutomationName", "Pull request title"));
-        TextBox bodyBox = new()
+        MarkdownForm bodyForm = new()
         {
-            Header = ViewModel.DescriptionHeaderText,
             Text = ViewModel.PullRequestBodyText,
-            AcceptsReturn = true,
-            Height = 220,
-            TextWrapping = TextWrapping.Wrap
+            DocumentSource = ViewModel.PullRequestBodyMarkdownSource,
+            EditorHeight = 360
         };
-        AutomationProperties.SetAutomationId(bodyBox, "RepoPullRequestsEditBodyBox");
-        AutomationProperties.SetName(bodyBox, L("RepoPullRequests/Dialogs/DescriptionAutomationName", "Pull request description"));
+        AutomationProperties.SetAutomationId(bodyForm, "RepoPullRequestsEditBodyForm");
+        AutomationProperties.SetName(bodyForm, L("RepoPullRequests/Dialogs/DescriptionAutomationName", "Pull request description"));
         TextBlock errorText = AppContentDialogPresenter.CreateInlineErrorPresenter(
             "RepoPullRequestsEditDialogError");
         StackPanel content = new()
@@ -828,7 +1549,7 @@ public sealed partial class RepoPullRequestPage : Page
             Children =
             {
                 titleBox,
-                bodyBox,
+                bodyForm,
                 errorText
             }
         };
@@ -857,13 +1578,14 @@ public sealed partial class RepoPullRequestPage : Page
                 }
 
                 string previousStatus = ViewModel.StatusText;
-                await ViewModel.UpdateSelectedPullRequestAsync(titleBox.Text.Trim(), bodyBox.Text);
+                await ViewModel.UpdateSelectedPullRequestAsync(titleBox.Text.Trim(), bodyForm.Text);
                 return ResolvePullRequestMutationResult(
                     previousStatus,
                     string.Equals(ViewModel.SelectedPullRequest?.Title, titleBox.Text.Trim(), StringComparison.Ordinal),
                     "updated");
             },
-            errorText);
+            errorText,
+            layoutKind: AppDialogLayoutKind.Editor);
     }
 
     private async void MetadataButton_Click(object sender, RoutedEventArgs e)
@@ -947,80 +1669,6 @@ public sealed partial class RepoPullRequestPage : Page
                     SplitCsv(labelsBox.Text),
                     milestone?.Number));
                 return ResolvePullRequestMutationResult(previousStatus, false, "updated");
-            },
-            errorText);
-    }
-
-    private async void PullRequestReactionsButton_Click(object sender, RoutedEventArgs e)
-    {
-        IReadOnlyList<GitHubReaction>? reactions = await ViewModel.GetSelectedPullRequestReactionsAsync();
-        if (reactions is null || ViewModel.SelectedPullRequest is null)
-        {
-            return;
-        }
-
-        string viewerLogin = ViewModel.AuthenticatedLogin;
-        Dictionary<string, long> viewerReactionIds = reactions
-            .Where(reaction => string.Equals(reaction.User.Login, viewerLogin, StringComparison.OrdinalIgnoreCase))
-            .GroupBy(static reaction => reaction.Content, StringComparer.OrdinalIgnoreCase)
-            .ToDictionary(static group => group.Key, static group => group.First().Id, StringComparer.OrdinalIgnoreCase);
-        Dictionary<string, int> counts = reactions
-            .GroupBy(static reaction => reaction.Content, StringComparer.OrdinalIgnoreCase)
-            .ToDictionary(static group => group.Key, static group => group.Count(), StringComparer.OrdinalIgnoreCase);
-
-        StackPanel options = new() { Spacing = 6 };
-        foreach (string content in SupportedReactionContents)
-        {
-            CheckBox option = new()
-            {
-                Content = GitHubReactionTextFormatter.FormatPickerLabel(content, counts.GetValueOrDefault(content)),
-                IsChecked = viewerReactionIds.ContainsKey(content),
-                Tag = content
-            };
-            AutomationProperties.SetAutomationId(option, $"RepoPullRequestsReaction_{ToAutomationToken(content)}");
-            AutomationProperties.SetName(
-                option,
-                LF("RepoPullRequests/Dialogs/Reactions/ToggleAutomationNameFormat", "Toggle {0} reaction", content));
-            options.Children.Add(option);
-        }
-
-        TextBlock errorText = AppContentDialogPresenter.CreateInlineErrorPresenter(
-            "RepoPullRequestsReactionDialogError");
-        options.Children.Add(errorText);
-        ContentDialog dialog = new()
-        {
-            XamlRoot = XamlRoot,
-            Title = ViewModel.SelectedPullRequestReactionDialogTitle,
-            Content = options,
-            PrimaryButtonText = ViewModel.ReactionDialogSaveButtonText,
-            CloseButtonText = ViewModel.CancelButtonText,
-            DefaultButton = ContentDialogButton.Primary
-        };
-        AppDialogStyleCatalog.Apply(dialog);
-        AutomationProperties.SetAutomationId(dialog, "RepoPullRequestsReactionDialog");
-        AutomationProperties.SetName(dialog, L("RepoPullRequests/Dialogs/Reactions/AutomationName", "Manage pull request reactions"));
-
-        await AppContentDialogPresenter.ShowForPrimaryActionAsync(
-            dialog,
-            XamlRoot,
-            async () =>
-            {
-                HashSet<string> selected = options.Children
-                    .OfType<CheckBox>()
-                    .Where(static option => option.IsChecked == true)
-                    .Select(static option => (string)option.Tag)
-                    .ToHashSet(StringComparer.OrdinalIgnoreCase);
-                bool noChanges = selected.SetEquals(viewerReactionIds.Keys);
-                string previousStatus = ViewModel.StatusText;
-                string previousSummary = ViewModel.PullRequestReactionsText;
-                await ViewModel.ApplySelectedPullRequestReactionSelectionAsync(selected, viewerReactionIds);
-                return ResolvePullRequestMutationResult(
-                    previousStatus,
-                    noChanges || !string.Equals(
-                        previousSummary,
-                        ViewModel.PullRequestReactionsText,
-                        StringComparison.Ordinal),
-                    "reaction updated");
             },
             errorText);
     }
@@ -1118,16 +1766,6 @@ public sealed partial class RepoPullRequestPage : Page
 
     private static string[] SplitCsv(string value) =>
         value.Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
-
-    private static readonly string[] SupportedReactionContents =
-        ["+1", "-1", "laugh", "hooray", "confused", "heart", "rocket", "eyes"];
-
-    private static string ToAutomationToken(string content) => content switch
-    {
-        "+1" => "PlusOne",
-        "-1" => "MinusOne",
-        _ => char.ToUpperInvariant(content[0]) + content[1..]
-    };
 
     private DialogMutationResult ResolvePullRequestMutationResult(
         string previousStatus,

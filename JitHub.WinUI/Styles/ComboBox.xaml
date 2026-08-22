@@ -69,7 +69,7 @@
     <Style
         x:Key="ShellSearchAutoSuggestBoxStyle"
         TargetType="AutoSuggestBox">
-        <Setter Property="Background" Value="Transparent" />
+        <Setter Property="Background" Value="{ThemeResource AppTransparentBrush}" />
         <Setter Property="BorderThickness" Value="0" />
         <Setter Property="MinHeight" Value="36" />
         <Setter Property="Padding" Value="0" />
@@ -85,8 +85,8 @@
         x:Key="ShellSearchTextBoxStyle"
         TargetType="TextBox"
         BasedOn="{StaticResource AppTextBoxStyle}">
-        <Setter Property="Background" Value="Transparent" />
-        <Setter Property="BorderBrush" Value="Transparent" />
+        <Setter Property="Background" Value="{ThemeResource AppTransparentBrush}" />
+        <Setter Property="BorderBrush" Value="{ThemeResource AppTransparentBrush}" />
         <Setter Property="BorderThickness" Value="0" />
         <Setter Property="Padding" Value="0,9,0,0" />
         <Setter Property="MinHeight" Value="36" />

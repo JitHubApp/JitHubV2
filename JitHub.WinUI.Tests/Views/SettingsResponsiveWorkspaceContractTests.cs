@@ -9,6 +9,20 @@ namespace JitHub.WinUI.Tests.Views;
 
 public sealed class SettingsResponsiveWorkspaceContractTests
 {
+    [Fact]
+    public void HeaderAndWorkspaceUseOneCompactVerticalGap()
+    {
+        XDocument document = LoadSettingsPage();
+        XElement layout = FindNamedElement(document, "SettingsLayout");
+        XElement workspace = FindNamedElement(document, "SettingsWorkspace");
+        XElement errorBar = document.Descendants().Single(element =>
+            (string?)element.Attribute("AutomationProperties.AutomationId") == "SettingsErrorBar");
+
+        Assert.Equal("0", (string?)layout.Attribute("RowSpacing"));
+        Assert.Equal("0,10,0,0", (string?)workspace.Attribute("Margin"));
+        Assert.Equal("0,8,0,0", (string?)errorBar.Attribute("Margin"));
+    }
+
     private static readonly XNamespace Xaml = "http://schemas.microsoft.com/winfx/2006/xaml";
 
     [Fact]

@@ -8,62 +8,8 @@
     xmlns:models="using:JitHub.Models"
     xmlns:pageViewModels="using:JitHub.WinUI.ViewModels.Pages"
     mc:Ignorable="d"
-    Background="Transparent"
+    Background="{ThemeResource AppTransparentBrush}"
     SizeChanged="SettingsPage_SizeChanged">
-
-    <Page.Resources>
-        <Style x:Key="SettingsThemeCardRadioButtonStyle" TargetType="RadioButton">
-            <Setter Property="Background" Value="Transparent" />
-            <Setter Property="BorderThickness" Value="0" />
-            <Setter Property="FocusVisualMargin" Value="-2" />
-            <Setter Property="HorizontalContentAlignment" Value="Stretch" />
-            <Setter Property="Padding" Value="0" />
-            <Setter Property="UseSystemFocusVisuals" Value="True" />
-            <Setter Property="VerticalContentAlignment" Value="Stretch" />
-            <Setter Property="Template">
-                <Setter.Value>
-                    <ControlTemplate TargetType="RadioButton">
-                        <Grid
-                            x:Name="ThemeCardRoot"
-                            Background="{TemplateBinding Background}"
-                            CornerRadius="{ThemeResource AppRadiusMedium}">
-                            <VisualStateManager.VisualStateGroups>
-                                <VisualStateGroup x:Name="CommonStates">
-                                    <VisualState x:Name="Normal" />
-                                    <VisualState x:Name="PointerOver">
-                                        <VisualState.Setters>
-                                            <Setter Target="ThemeCardRoot.Background" Value="{ThemeResource ButtonBackgroundPointerOver}" />
-                                        </VisualState.Setters>
-                                    </VisualState>
-                                    <VisualState x:Name="Pressed">
-                                        <VisualState.Setters>
-                                            <Setter Target="ThemeCardRoot.Background" Value="{ThemeResource ButtonBackgroundPressed}" />
-                                        </VisualState.Setters>
-                                    </VisualState>
-                                    <VisualState x:Name="Disabled">
-                                        <VisualState.Setters>
-                                            <Setter Target="ThemeCardRoot.Opacity" Value="0.55" />
-                                        </VisualState.Setters>
-                                    </VisualState>
-                                </VisualStateGroup>
-                                <VisualStateGroup x:Name="CheckStates">
-                                    <VisualState x:Name="Checked" />
-                                    <VisualState x:Name="Unchecked" />
-                                    <VisualState x:Name="Indeterminate" />
-                                </VisualStateGroup>
-                            </VisualStateManager.VisualStateGroups>
-                            <ContentPresenter
-                                HorizontalContentAlignment="{TemplateBinding HorizontalContentAlignment}"
-                                VerticalContentAlignment="{TemplateBinding VerticalContentAlignment}"
-                                Content="{TemplateBinding Content}"
-                                ContentTemplate="{TemplateBinding ContentTemplate}"
-                                Padding="{TemplateBinding Padding}" />
-                        </Grid>
-                    </ControlTemplate>
-                </Setter.Value>
-            </Setter>
-        </Style>
-    </Page.Resources>
 
     <Grid
         x:Name="SettingsRootGrid"
@@ -90,7 +36,7 @@
                 <VisualState x:Name="NarrowSettingsState">
                     <VisualState.Setters>
                         <Setter Target="SettingsRootGrid.Padding" Value="12" />
-                        <Setter Target="SettingsLayout.RowSpacing" Value="10" />
+                        <Setter Target="SettingsLayout.RowSpacing" Value="0" />
                         <Setter Target="SettingsHeader.RowSpacing" Value="10" />
                         <Setter Target="SettingsSectionRail.Visibility" Value="Collapsed" />
                         <Setter Target="CompactSectionPicker.Visibility" Value="Visible" />
@@ -160,7 +106,7 @@
             x:Name="SettingsLayout"
             MaxWidth="1080"
             HorizontalAlignment="Stretch"
-            RowSpacing="14">
+            RowSpacing="0">
             <Grid.RowDefinitions>
                 <RowDefinition Height="Auto" />
                 <RowDefinition Height="Auto" />
@@ -226,7 +172,7 @@
 
             <InfoBar
                 Grid.Row="1"
-                Margin="0,10,0,0"
+                Margin="0,8,0,0"
                 AutomationProperties.AutomationId="SettingsErrorBar"
                 IsClosable="False"
                 IsOpen="{x:Bind ViewModel.HasStatusError, Mode=OneWay}"
@@ -245,7 +191,7 @@
             <Grid
                 x:Name="SettingsWorkspace"
                 Grid.Row="2"
-                Margin="0,14,0,0"
+                Margin="0,10,0,0"
                 MinHeight="0"
                 ColumnSpacing="16">
                 <Grid.ColumnDefinitions>
@@ -354,7 +300,7 @@
                                                 GroupName="SettingsTheme"
                                                 HorizontalAlignment="Stretch"
                                                 MinWidth="0"
-                                                Style="{StaticResource SettingsThemeCardRadioButtonStyle}">
+                                Style="{StaticResource AppThemeCardRadioButtonStyle}">
                                                 <Border
                                                     Height="140"
                                                     HorizontalAlignment="Stretch"
@@ -428,7 +374,7 @@
                                                 GroupName="SettingsTheme"
                                                 HorizontalAlignment="Stretch"
                                                 MinWidth="0"
-                                                Style="{StaticResource SettingsThemeCardRadioButtonStyle}">
+                                Style="{StaticResource AppThemeCardRadioButtonStyle}">
                                                 <Border
                                                     Height="140"
                                                     HorizontalAlignment="Stretch"
@@ -502,7 +448,7 @@
                                                 GroupName="SettingsTheme"
                                                 HorizontalAlignment="Stretch"
                                                 MinWidth="0"
-                                                Style="{StaticResource SettingsThemeCardRadioButtonStyle}">
+                                Style="{StaticResource AppThemeCardRadioButtonStyle}">
                                                 <Border
                                                     Height="140"
                                                     HorizontalAlignment="Stretch"

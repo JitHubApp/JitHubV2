@@ -10,7 +10,7 @@
     xmlns:muxc="using:Microsoft.UI.Xaml.Controls"
     xmlns:controls="using:CommunityToolkit.WinUI.UI.Controls"
     mc:Ignorable="d"
-    Background="Transparent"
+    Background="{ThemeResource AppTransparentBrush}"
     Loaded="IssueSidePanel_Loaded"
     d:DesignHeight="300"
     d:DesignWidth="400">

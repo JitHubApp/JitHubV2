@@ -98,7 +98,6 @@ public sealed class RuntimeCreatedAccessibilityContractTests
         AssertIdentities("Views/Pages/RepoIssuePage.xaml.cs",
             "RepoIssuesEditDialog",
             "RepoIssuesMetadataDialog",
-            "RepoIssuesReactionDialog",
             "RepoIssuesCreateDialog");
         AssertIdentities("Views/Pages/ProfilePage.xaml.cs", "ProfileEditDialog");
         AssertIdentities("Views/Pages/GistsPage.xaml.cs", "GistEditorDialog", "GistDeleteDialog");

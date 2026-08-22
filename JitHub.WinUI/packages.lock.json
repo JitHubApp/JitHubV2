@@ -2,6 +2,17 @@
   "version": 1,
   "dependencies": {
     "net10.0-windows10.0.26100": {
+      "CommunityToolkit.Labs.WinUI.TransitionHelper": {
+        "type": "Direct",
+        "requested": "[0.1.251217-build.2433, )",
+        "resolved": "0.1.251217-build.2433",
+        "contentHash": "K/KzBULNkLFZCo+TESF5ui8kJE7q79oIwwcjZA6x55sydRorHUOhKZihBTMpHKlcsh4mopcDeb5B8xcqYg0ECA==",
+        "dependencies": {
+          "CommunityToolkit.WinUI.Animations": "8.2.250402",
+          "CommunityToolkit.WinUI.Behaviors": "8.2.250402",
+          "Microsoft.WindowsAppSDK": "1.6.250108002"
+        }
+      },
       "CommunityToolkit.Mvvm": {
         "type": "Direct",
         "requested": "[8.4.2, )",
@@ -230,6 +241,17 @@
         "type": "Transitive",
         "resolved": "8.2.1",
         "contentHash": "LWuhy8cQKJ/MYcy3XafJ916U3gPH/YDvYoNGWyQWN11aiEKCZszzPOTJAOvBjP9yG8vHmIcCyPUt4L82OK47Iw=="
+      },
+      "CommunityToolkit.WinUI.Behaviors": {
+        "type": "Transitive",
+        "resolved": "8.2.250402",
+        "contentHash": "Bb0uLjMJrLyNDaARHnlFGjTw7T/y0NkL2VTJWY5iWVw8NWCoBxFJCs0KQ258I/PRth5DG582Zy2CDn6HTkUliw==",
+        "dependencies": {
+          "CommunityToolkit.WinUI.Animations": "8.2.250402",
+          "CommunityToolkit.WinUI.Extensions": "8.2.250402",
+          "Microsoft.WindowsAppSDK": "1.6.250108002",
+          "Microsoft.Xaml.Behaviors.WinUI.Managed": "3.0.0"
+        }
       },
       "CommunityToolkit.WinUI.Extensions": {
         "type": "Transitive",

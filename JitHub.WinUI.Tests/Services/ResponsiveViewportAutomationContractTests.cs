@@ -32,8 +32,8 @@ public sealed class ResponsiveViewportAutomationContractTests
         Assert.Contains("LaunchApplication(options.AppPath, \"--page=shell\"", probe, StringComparison.Ordinal);
         Assert.Contains("Rectangle shellBounds = ResizeWindow(window, 760, 650);", probe, StringComparison.Ordinal);
         Assert.Contains("ShellProfileTopButton", probe, StringComparison.Ordinal);
-        Assert.Contains("ShellRailDrawerButton for compact profile navigation", probe, StringComparison.Ordinal);
-        Assert.Contains("ShellUserFooterButton in compact navigation drawer", probe, StringComparison.Ordinal);
+        Assert.Contains("ShellProfileTopButton for compact profile navigation", probe, StringComparison.Ordinal);
+        Assert.DoesNotContain("ShellUserFooterButton", probe, StringComparison.Ordinal);
         Assert.Contains("string editButtonId = editViewport.Width >= 900", probe, StringComparison.Ordinal);
         Assert.Contains("ProfilePageRoot through shell navigation", probe, StringComparison.Ordinal);
         Assert.DoesNotContain("--page=profile", probe, StringComparison.Ordinal);

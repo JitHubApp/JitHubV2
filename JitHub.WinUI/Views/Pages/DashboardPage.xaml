@@ -10,7 +10,7 @@
     xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
     xmlns:viewmodels="using:JitHub.WinUI.ViewModels.Pages"
     x:DataType="viewmodels:DashboardPageViewModel"
-    Background="Transparent"
+    Background="{ThemeResource AppTransparentBrush}"
     SizeChanged="Page_SizeChanged"
     mc:Ignorable="d">
     <Page.Resources>
@@ -256,17 +256,19 @@
 
         <DataTemplate x:Key="DashboardQuickActionTemplate" x:DataType="viewmodels:DashboardQuickActionItem">
             <Button
-                MinHeight="86"
+                Height="94"
                 Margin="0,0,8,8"
                 Padding="0"
                 HorizontalAlignment="Stretch"
                 HorizontalContentAlignment="Stretch"
+                VerticalContentAlignment="Stretch"
                 AutomationProperties.AutomationId="{x:Bind AutomationId}"
                 AutomationProperties.Name="{x:Bind AutomationName}"
                 Command="{x:Bind Command}"
                 Style="{StaticResource AppQuietButtonStyle}">
                 <Border
                     Padding="11"
+                    VerticalAlignment="Stretch"
                     Background="{ThemeResource AppCanvasInsetBrush}"
                     BorderBrush="{ThemeResource AppHairlineBrush}"
                     BorderThickness="1"
@@ -567,7 +569,7 @@
         <Grid
             x:Name="DashboardSideDrawer"
             AutomationProperties.AccessibilityView="Raw"
-            Background="Transparent"
+                                                Background="{ThemeResource AppTransparentBrush}"
             PointerPressed="DashboardSideDrawer_PointerPressed"
             Visibility="Collapsed">
             <Border

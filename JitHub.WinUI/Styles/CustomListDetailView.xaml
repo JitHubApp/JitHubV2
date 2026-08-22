@@ -155,7 +155,7 @@
                                                 Width="48"
                                                 Height="44"
                                                 Style="{StaticResource AppToolbarButtonStyle}"
-                                                Background="Transparent"
+                                Background="{ThemeResource AppTransparentBrush}"
                                                 Visibility="Collapsed">
                                                 <SymbolIcon Symbol="Back" />
                                             </Button>

@@ -57,7 +57,6 @@ public sealed class ShellWorkspaceContractTests
             "ShellSettingsTopButton",
             "ShellProfileTopButton",
             "ShellRepositoryRetryButton",
-            "ShellUserFooterButton",
             "ShellModalCloseButton"
         })
         {
@@ -65,6 +64,8 @@ public sealed class ShellWorkspaceContractTests
             Assert.False(string.IsNullOrWhiteSpace((string?)element.Attribute("AutomationProperties.Name")));
             Assert.False(string.IsNullOrWhiteSpace((string?)element.Attribute("ToolTipService.ToolTip")));
         }
+
+        Assert.DoesNotContain("ShellUserFooterButton", byId.Keys);
 
         XElement modalContent = Assert.Contains("ShellModalContent", byId);
         Assert.Equal("Cycle", (string?)modalContent.Attribute("TabFocusNavigation"));
@@ -301,7 +302,7 @@ public sealed class ShellWorkspaceContractTests
     }
 
     [Fact]
-    public void SignedInFooterUsesTruthfulAccountIdentityInsteadOfPlaceholderEntitlement()
+    public void AccountRoutesLiveInTheTitleBarWithoutDuplicateRailContent()
     {
         string root = FindRepositoryRoot();
         string xaml = File.ReadAllText(Path.Combine(root, "JitHub.WinUI", "Views", "Pages", "ShellPage.xaml"));
@@ -314,8 +315,11 @@ public sealed class ShellWorkspaceContractTests
 
         Assert.DoesNotContain("Pro User", xaml, StringComparison.OrdinalIgnoreCase);
         Assert.DoesNotContain("Pro User", viewModel, StringComparison.OrdinalIgnoreCase);
-        Assert.Contains("UserSubtitle", xaml, StringComparison.Ordinal);
-        Assert.Contains("GitHub account", viewModel, StringComparison.Ordinal);
+        Assert.Contains("ShellSettingsTopButton", xaml, StringComparison.Ordinal);
+        Assert.Contains("ShellProfileTopButton", xaml, StringComparison.Ordinal);
+        Assert.Contains("GoToSettingsPageCommand", xaml, StringComparison.Ordinal);
+        Assert.Contains("GoToProfilePageCommand", xaml, StringComparison.Ordinal);
+        Assert.DoesNotContain("ShellUserFooterButton", xaml, StringComparison.Ordinal);
     }
 
     private static XDocument LoadShellXaml() =>

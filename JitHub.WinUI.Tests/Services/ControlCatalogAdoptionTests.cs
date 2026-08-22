@@ -75,9 +75,9 @@ public sealed partial class ControlCatalogAdoptionTests
             [Path.Combine("Views", "Dialogs", "AccountSignOutDialogFlow.cs")] = 1,
             [Path.Combine("Views", "Pages", "GistsPage.xaml.cs")] = 2,
             [Path.Combine("Views", "Pages", "ProfilePage.xaml.cs")] = 1,
-            [Path.Combine("Views", "Pages", "RepoIssuePage.xaml.cs")] = 4,
+            [Path.Combine("Views", "Pages", "RepoIssuePage.xaml.cs")] = 5,
             [Path.Combine("Views", "Pages", "RepoManagePage.xaml.cs")] = 2,
-            [Path.Combine("Views", "Pages", "RepoPullRequestPage.xaml.cs")] = 6,
+            [Path.Combine("Views", "Pages", "RepoPullRequestPage.xaml.cs")] = 7,
             [Path.Combine("Views", "Pages", "SettingsPage.xaml.cs")] = 1,
             [Path.Combine("Views", "Pages", "StarsPage.xaml.cs")] = 1
         };
@@ -155,12 +155,15 @@ public sealed partial class ControlCatalogAdoptionTests
         string[] interactionStates = ["", "PointerOver", "Pressed", "Disabled"];
         foreach (string state in interactionStates)
         {
-            Assert.Contains($"CheckBoxBackgroundUnchecked{state}", brushKeys);
-            Assert.Contains($"CheckBoxBackgroundChecked{state}", brushKeys);
-            Assert.Contains($"CheckBoxBorderBrushUnchecked{state}", brushKeys);
-            Assert.Contains($"CheckBoxBorderBrushChecked{state}", brushKeys);
+            Assert.Contains($"CheckBoxCheckBackgroundFillUnchecked{state}", brushKeys);
+            Assert.Contains($"CheckBoxCheckBackgroundFillChecked{state}", brushKeys);
+            Assert.Contains($"CheckBoxCheckBackgroundStrokeUnchecked{state}", brushKeys);
+            Assert.Contains($"CheckBoxCheckBackgroundStrokeChecked{state}", brushKeys);
             Assert.Contains($"CheckBoxCheckGlyphForegroundChecked{state}", brushKeys);
         }
+
+        Assert.DoesNotContain(brushKeys, key => key.StartsWith("CheckBoxBackground", StringComparison.Ordinal));
+        Assert.DoesNotContain(brushKeys, key => key.StartsWith("CheckBoxBorderBrush", StringComparison.Ordinal));
 
         Assert.All(
             catalog.Root!.Elements().Where(element => element.Name.LocalName == "SolidColorBrush"),

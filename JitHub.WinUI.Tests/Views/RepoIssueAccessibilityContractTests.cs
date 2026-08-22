@@ -27,16 +27,15 @@ public sealed class RepoIssueAccessibilityContractTests
             "RepoIssuesOpenListPaneButton",
             "RepoIssuesCloseListPaneButton",
             "RepoIssuesEditButton",
-            "RepoIssuesReactionsButton",
             "RepoIssuesToggleStateButton",
             "RepoIssuesOpenInspectorPaneButton",
             "RepoIssuesCompactActionOverflowButton",
             "RepoIssuesCompactEditAction",
             "RepoIssuesCompactMetadataAction",
-            "RepoIssuesCompactReactionsAction",
             "RepoIssuesCompactToggleStateAction",
             "RepoIssuesInspectorMetadataButton",
-            "RepoIssuesInspectorReactionsButton",
+            "RepoIssuesBodyInteractionBar",
+            "RepoIssuesOpenCommentButton",
             "RepoIssuesCommentBox",
             "RepoIssuesCommentButton",
             "RepoIssuesCloseInspectorPaneButton"
@@ -44,9 +43,11 @@ public sealed class RepoIssueAccessibilityContractTests
 
         foreach (string id in requiredIds)
         {
-            XElement element = documents.SelectMany(static document => document.Descendants()).Single(node =>
-                string.Equals((string?)node.Attribute("AutomationProperties.AutomationId"), id, StringComparison.Ordinal));
-            Assert.False(string.IsNullOrWhiteSpace((string?)element.Attribute("AutomationProperties.Name")));
+            XElement[] elements = documents.SelectMany(static document => document.Descendants()).Where(node =>
+                string.Equals((string?)node.Attribute("AutomationProperties.AutomationId"), id, StringComparison.Ordinal)).ToArray();
+            Assert.True(elements.Length > 0);
+            Assert.All(elements, element =>
+                Assert.False(string.IsNullOrWhiteSpace((string?)element.Attribute("AutomationProperties.Name"))));
         }
     }
 

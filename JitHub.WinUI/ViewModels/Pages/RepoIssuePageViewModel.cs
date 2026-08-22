@@ -224,6 +224,12 @@ public sealed partial class RepoIssuePageViewModel : ViewModelBase
 
     public string SelectedIssueCommentText => SelectedIssue is null ? string.Empty : FormatCommentCount(SelectedIssue.Comments);
 
+    public long SelectedIssueReactionTargetId => SelectedIssue?.Number ?? 0;
+
+    public string SelectedIssueHtmlUrl => SelectedIssue?.HtmlUrl ?? string.Empty;
+
+    public GitHubReactionSummary SelectedIssueReactions => SelectedIssue?.Reactions ?? new();
+
     public MarkdownDocumentSource? IssueBodyMarkdownSource => _isIssueBodyDeferred
         ? null
         : SelectedIssue?.MarkdownSource;
@@ -1090,6 +1096,105 @@ public sealed partial class RepoIssuePageViewModel : ViewModelBase
 
             StatusText = GetString("RepoIssue.ReactionsNetworkError", "JitHub could not reach GitHub to update reactions.");
         }
+    }
+
+    public Task<bool> UpdateIssueCommentAsync(long commentId, string body) =>
+        ExecuteIssueCommentMutationAsync(
+            (token, owner, repoName) => _gitHubClientService.UpdateIssueCommentAsync(
+                token,
+                owner,
+                repoName,
+                commentId,
+                body),
+            GetString("RepoIssue.CommentUpdatingStatus", "Updating comment..."));
+
+    public Task<bool> DeleteIssueCommentAsync(long commentId) =>
+        ExecuteIssueCommentMutationAsync(
+            (token, owner, repoName) => _gitHubClientService.DeleteIssueCommentAsync(
+                token,
+                owner,
+                repoName,
+                commentId),
+            GetString("RepoIssue.CommentDeletingStatus", "Deleting comment..."));
+
+    public Task<bool> SetIssueCommentPinnedAsync(long commentId, bool pinned)
+    {
+        if (!CanManageIssueMetadata)
+        {
+            return Task.FromResult(false);
+        }
+
+        return ExecuteIssueCommentMutationAsync(
+            (token, owner, repoName) => pinned
+                ? _gitHubClientService.PinIssueCommentAsync(token, owner, repoName, commentId)
+                : _gitHubClientService.UnpinIssueCommentAsync(token, owner, repoName, commentId),
+            pinned
+                ? GetString("RepoIssue.CommentPinningStatus", "Pinning comment...")
+                : GetString("RepoIssue.CommentUnpinningStatus", "Unpinning comment..."));
+    }
+
+    public Task<bool> SetIssueCommentMinimizedAsync(string nodeId, string? classifier)
+    {
+        if (!CanManageIssueMetadata || string.IsNullOrWhiteSpace(nodeId))
+        {
+            return Task.FromResult(false);
+        }
+
+        return ExecuteIssueCommentMutationAsync(
+            (token, _, _) => string.IsNullOrWhiteSpace(classifier)
+                ? _gitHubClientService.UnminimizeCommentAsync(token, nodeId)
+                : _gitHubClientService.MinimizeCommentAsync(token, nodeId, classifier),
+            string.IsNullOrWhiteSpace(classifier)
+                ? GetString("RepoIssue.CommentUnhidingStatus", "Unhiding comment...")
+                : GetString("RepoIssue.CommentHidingStatus", "Hiding comment..."));
+    }
+
+    private async Task<bool> ExecuteIssueCommentMutationAsync(
+        Func<string, string, string, Task> mutation,
+        string status)
+    {
+        if (_navArg is null || SelectedIssue is null || !TryGetActiveToken(out string token))
+        {
+            return false;
+        }
+
+        GitHubIssue currentIssue = SelectedIssue;
+        try
+        {
+            string owner = _navArg.Repo.Owner.Login;
+            string repoName = _navArg.Repo.Name;
+            StatusText = status;
+            await mutation(token, owner, repoName);
+            await _issueQueryService.InvalidateIssueAsync(
+                GetActiveUserPartition(token),
+                owner,
+                repoName,
+                currentIssue.Number);
+            await RefreshIssueSelectionAsync(
+                _loadedIssues.FirstOrDefault(issue => issue.Number == currentIssue.Number) ?? currentIssue,
+                token);
+            return true;
+        }
+        catch (GitHubAuthenticationException)
+        {
+            _authService.SignOut();
+        }
+        catch (GitHubApiException ex)
+        {
+            if (IsSelectedIssue(currentIssue))
+            {
+                StatusText = UserFacingError.For(ex, UserFacingErrorKind.Action, "issues");
+            }
+        }
+        catch (HttpRequestException)
+        {
+            if (IsSelectedIssue(currentIssue))
+            {
+                StatusText = GetString("RepoIssue.CommentMutationNetworkError", "JitHub could not reach GitHub to update this comment.");
+            }
+        }
+
+        return false;
     }
 
     partial void OnSelectedIssueChanged(GitHubIssue? value)
@@ -2361,6 +2466,10 @@ public sealed partial class RepoIssuePageViewModel : ViewModelBase
         int targetIndex = 0;
         foreach (GitHubIssueComment comment in comments)
         {
+            comment.ViewerLogin = AuthenticatedLogin;
+            comment.CanViewerReact = CanReactToIssue;
+            comment.CanViewerReply = IsAddCommentEnabled;
+            comment.CanViewerModerate = CanManageIssueMetadata;
             if (!incomingIds.Add(comment.Id))
             {
                 continue;
@@ -2950,6 +3059,9 @@ public sealed partial class RepoIssuePageViewModel : ViewModelBase
         OnPropertyChanged(nameof(SelectedIssueStateText));
         OnPropertyChanged(nameof(SelectedIssueMetadataText));
         OnPropertyChanged(nameof(SelectedIssueCommentText));
+        OnPropertyChanged(nameof(SelectedIssueReactionTargetId));
+        OnPropertyChanged(nameof(SelectedIssueHtmlUrl));
+        OnPropertyChanged(nameof(SelectedIssueReactions));
         OnPropertyChanged(nameof(IssueBodyMarkdownSource));
         OnPropertyChanged(nameof(IssueCommentMarkdownSource));
         OnPropertyChanged(nameof(MilestoneTitle));

@@ -1058,6 +1058,12 @@ public sealed class GitHubIssueQueryService : IGitHubIssueQueryService
             Body = "The cached issue detail stays visible while its discussion refreshes.",
             CreatedAt = DateTimeOffset.UtcNow.AddHours(-2),
             UpdatedAt = DateTimeOffset.UtcNow.AddHours(-2),
+            Reactions = new GitHubReactionSummary
+            {
+                TotalCount = 5,
+                PlusOne = 3,
+                Heart = 2
+            },
             User = new GitHubActor
             {
                 Login = "jithub-reviewer",

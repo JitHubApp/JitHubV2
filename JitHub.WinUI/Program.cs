@@ -172,22 +172,8 @@ internal static class Program
             return;
         }
 
-        try
-        {
-            // The Windows language override is persisted per app identity. Never let an
-            // automation-only pseudo locale leak into the next normal product launch.
-            if (string.Equals(
-                    ApplicationLanguages.PrimaryLanguageOverride,
-                    pseudoLanguage,
-                    StringComparison.OrdinalIgnoreCase))
-            {
-                ApplicationLanguages.PrimaryLanguageOverride = string.Empty;
-            }
-        }
-        catch (InvalidOperationException) when (isAutomation)
-        {
-            // Keep normal automation usable on hosts that cannot expose a language context.
-        }
+        // Normal product builds do not package qps-ploc, so a persisted automation
+        // override cannot resolve pseudo resources on a later product launch.
     }
 
     internal static void LogStartupPhase(string phase)

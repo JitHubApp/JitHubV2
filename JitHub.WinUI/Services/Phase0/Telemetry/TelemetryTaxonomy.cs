@@ -189,7 +189,7 @@ public static class TelemetryTaxonomy
                 Sources.NavigationHandoff, Sources.Neighbor, Sources.Notifications, "profile", "profile_organization", "profile_selector", "query", "refresh", "repository_library",
                 "rate_limit_headroom", "route", Sources.Scope, "session", "shell", "sign_in", "stars", Sources.Startup, Sources.User, "callback"),
             ["action"] = Values(
-                Actions.Add, "active_issues", "active_pull_requests", "add_category", "assign_category", Actions.BreadcrumbPath,
+                Actions.Add, "my_issues", "my_pull_requests", "add_category", "assign_category", Actions.BreadcrumbPath,
                 Actions.BreadcrumbRoot, "browse_files", "clear_all", Actions.ClearAllCache, "clear_all_filters", "clear_cache",
                 Actions.ClearDiagnostics, "clear_filter", Actions.ClearImageCache, "clear_images", Actions.ClearQueryCache,
                 Actions.ClearRepoFileCache, Actions.ClearStarsLibrary,

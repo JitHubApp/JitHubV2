@@ -30,14 +30,47 @@
             <Setter Property="CornerRadius" Value="0" />
         </Style>
 
+        <DataTemplate x:Key="CategoryColorOptionTemplate">
+            <Grid
+                MinWidth="180"
+                MinHeight="36"
+                VerticalAlignment="Center"
+                ColumnSpacing="10">
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="20" />
+                    <ColumnDefinition Width="*" />
+                </Grid.ColumnDefinitions>
+                <Border
+                    Width="16"
+                    Height="16"
+                    VerticalAlignment="Center"
+                    Background="{Binding Converter={StaticResource HexColorToSolidBrushConverter}}"
+                    BorderBrush="{ThemeResource AppOutlineStrongBrush}"
+                    BorderThickness="1"
+                    CornerRadius="3" />
+                <TextBlock
+                    Grid.Column="1"
+                    VerticalAlignment="Center"
+                    Style="{StaticResource BodyTextBlockStyle}"
+                    Text="{Binding}" />
+            </Grid>
+        </DataTemplate>
+
         <DataTemplate x:Key="NavigationItemTemplate" x:DataType="viewmodels:StarNavigationItem">
-            <StackPanel>
+            <Grid>
+                <Grid.RowDefinitions>
+                    <RowDefinition Height="Auto" />
+                    <RowDefinition Height="Auto" />
+                </Grid.RowDefinitions>
                 <TextBlock
                     x:Uid="PagesStarsPageTextBlockCATEGORIES" Margin="0,12,0,7"
                     Style="{StaticResource SectionSecondaryTextBlockStyle}"
                     Text="CATEGORIES"
                     Visibility="{x:Bind ShowCategoryHeader, Converter={StaticResource BoolToVisibilityConverter}}" />
                 <Grid
+                    Grid.Row="1"
+                    MinHeight="38"
+                    VerticalAlignment="Center"
                     AutomationProperties.AutomationId="{x:Bind AutomationId}"
                     ColumnSpacing="10">
                     <Grid.ColumnDefinitions>
@@ -54,6 +87,7 @@
                         Opacity="0.22"
                         Visibility="{x:Bind IsDropTarget, Converter={StaticResource BoolToVisibilityConverter}, Mode=OneWay}" />
                     <FontIcon
+                        VerticalAlignment="Center"
                         FontFamily="{StaticResource SegoeFluentIcons}"
                         FontSize="14"
                         Foreground="{x:Bind AccentColor, Converter={StaticResource HexColorToSolidBrushConverter}}"
@@ -72,7 +106,7 @@
                         Style="{StaticResource SectionSecondaryTextBlockStyle}"
                         Text="{x:Bind CountText}" />
                 </Grid>
-            </StackPanel>
+            </Grid>
         </DataTemplate>
 
         <DataTemplate x:Key="RepositoryRowTemplate" x:DataType="viewmodels:StarRepositoryViewItem">
@@ -80,7 +114,7 @@
                 MinHeight="86"
                 Padding="14,10"
                 AutomationProperties.AccessibilityView="Raw"
-                Background="Transparent"
+                Background="{ThemeResource AppTransparentBrush}"
                 ColumnSpacing="12"
                 PointerEntered="RepositoryRow_PointerEntered"
                 PointerExited="RepositoryRow_PointerExited"
@@ -105,7 +139,7 @@
                         Height="28"
                         AutomationProperties.AutomationId="{x:Bind DragHandleAutomationId}"
                         AutomationProperties.Name="Drag selected repositories to a category"
-                        Background="Transparent"
+                        Background="{ThemeResource AppTransparentBrush}"
                         PointerCanceled="RepositoryDragHandle_PointerCanceled"
                         PointerCaptureLost="RepositoryDragHandle_PointerCaptureLost"
                         PointerMoved="RepositoryDragHandle_PointerMoved"
@@ -270,7 +304,7 @@
                         Grid.Row="2"
                         AutomationProperties.AutomationId="StarsCategoryNavigation"
                         AutomationProperties.Name="Star categories"
-                        Background="Transparent"
+                        Background="{ThemeResource AppTransparentBrush}"
                         BorderThickness="0"
                         ItemContainerStyle="{StaticResource StarsNavigationItemStyle}"
                         ItemTemplate="{StaticResource NavigationItemTemplate}"
@@ -286,9 +320,9 @@
                             AutomationProperties.Name="New category"
                             Click="NewCategoryButton_Click"
                             Style="{StaticResource AppQuietButtonStyle}">
-                            <StackPanel Orientation="Horizontal" Spacing="9">
-                                <FontIcon FontFamily="{StaticResource SegoeFluentIcons}" FontSize="14" Glyph="&#xE710;" />
-                                <TextBlock x:Uid="PagesStarsPageTextBlockNewCategory" Text="New category" />
+                            <StackPanel VerticalAlignment="Center" Orientation="Horizontal" Spacing="9">
+                                <FontIcon VerticalAlignment="Center" FontFamily="{StaticResource SegoeFluentIcons}" FontSize="14" Glyph="&#xE710;" />
+                                <TextBlock x:Uid="PagesStarsPageTextBlockNewCategory" VerticalAlignment="Center" Text="New category" />
                             </StackPanel>
                         </Button>
                         <Button
@@ -340,6 +374,7 @@
                         </Grid.ColumnDefinitions>
                         <TextBlock
                             MaxWidth="420"
+                            HorizontalAlignment="Left"
                             AutomationProperties.AutomationId="StarsCurrentViewTitle"
                             AutomationProperties.Name="{x:Bind ViewModel.CurrentViewTitle, Mode=OneWay}"
                             Style="{StaticResource AppWorkspaceTitleTextBlockStyle}"
@@ -471,7 +506,7 @@
                         x:Uid="PagesStarsPageStarsList" x:Name="RepositoriesList"
                         AutomationProperties.AutomationId="StarsList"
                         AutomationProperties.Name="Starred repositories"
-                        Background="Transparent"
+                        Background="{ThemeResource AppTransparentBrush}"
                         BorderBrush="{ThemeResource AppHairlineBrush}"
                         BorderThickness="0,1,0,0"
                         ContainerContentChanging="RepositoriesList_ContainerContentChanging"

@@ -17,6 +17,7 @@ namespace JitHub.Services;
 public sealed class GitHubClientService : IGitHubClientService
 {
     public const string PublicAccessToken = GitHubAuthenticationConstants.PublicAccessToken;
+    private const string CommentApiVersion = "2026-03-10";
 
     private readonly HttpClient _httpClient;
 
@@ -729,6 +730,7 @@ public sealed class GitHubClientService : IGitHubClientService
         string path =
             $"repos/{Uri.EscapeDataString(owner)}/{Uri.EscapeDataString(name)}/issues/{issueNumber}/comments?sort=created&direction=asc&per_page={pageSize}&page={pageNumber}";
         using HttpRequestMessage request = CreateAuthenticatedRequest(HttpMethod.Get, path, token);
+        SetApiVersion(request, CommentApiVersion);
         using HttpResponseMessage response =
             await _httpClient.SendAsync(request, HttpCompletionOption.ResponseHeadersRead, cancellationToken);
         await EnsureSuccessAsync(response, cancellationToken);
@@ -894,6 +896,134 @@ public sealed class GitHubClientService : IGitHubClientService
             response,
             GitHubJsonSerializerContext.Default.GitHubIssueComment,
             "issue comment",
+            cancellationToken);
+    }
+
+    public async Task<GitHubIssueComment> UpdateIssueCommentAsync(
+        string token,
+        string owner,
+        string name,
+        long commentId,
+        string body,
+        CancellationToken cancellationToken = default)
+    {
+        string path =
+            $"repos/{Uri.EscapeDataString(owner)}/{Uri.EscapeDataString(name)}/issues/comments/{commentId}";
+        GitHubIssueCommentUpdateRequest payload = new()
+        {
+            Body = NormalizeLineEndings(body) ?? string.Empty
+        };
+        using HttpRequestMessage request = CreateJsonRequest(
+            HttpMethod.Patch,
+            path,
+            token,
+            payload,
+            GitHubJsonSerializerContext.Default.GitHubIssueCommentUpdateRequest);
+        SetApiVersion(request, CommentApiVersion);
+        using HttpResponseMessage response =
+            await _httpClient.SendAsync(request, HttpCompletionOption.ResponseHeadersRead, cancellationToken);
+        await EnsureSuccessAsync(response, cancellationToken);
+
+        return await ReadResponseAsync(
+            response,
+            GitHubJsonSerializerContext.Default.GitHubIssueComment,
+            "issue comment",
+            cancellationToken);
+    }
+
+    public async Task DeleteIssueCommentAsync(
+        string token,
+        string owner,
+        string name,
+        long commentId,
+        CancellationToken cancellationToken = default)
+    {
+        string path =
+            $"repos/{Uri.EscapeDataString(owner)}/{Uri.EscapeDataString(name)}/issues/comments/{commentId}";
+        using HttpRequestMessage request = CreateAuthenticatedRequest(HttpMethod.Delete, path, token);
+        SetApiVersion(request, CommentApiVersion);
+        using HttpResponseMessage response =
+            await _httpClient.SendAsync(request, HttpCompletionOption.ResponseHeadersRead, cancellationToken);
+        await EnsureSuccessAsync(response, cancellationToken);
+    }
+
+    public async Task<GitHubIssueComment> PinIssueCommentAsync(
+        string token,
+        string owner,
+        string name,
+        long commentId,
+        CancellationToken cancellationToken = default)
+    {
+        string path =
+            $"repos/{Uri.EscapeDataString(owner)}/{Uri.EscapeDataString(name)}/issues/comments/{commentId}/pin";
+        using HttpRequestMessage request = CreateAuthenticatedRequest(HttpMethod.Put, path, token);
+        SetApiVersion(request, CommentApiVersion);
+        using HttpResponseMessage response =
+            await _httpClient.SendAsync(request, HttpCompletionOption.ResponseHeadersRead, cancellationToken);
+        await EnsureSuccessAsync(response, cancellationToken);
+
+        return await ReadResponseAsync(
+            response,
+            GitHubJsonSerializerContext.Default.GitHubIssueComment,
+            "pinned issue comment",
+            cancellationToken);
+    }
+
+    public async Task UnpinIssueCommentAsync(
+        string token,
+        string owner,
+        string name,
+        long commentId,
+        CancellationToken cancellationToken = default)
+    {
+        string path =
+            $"repos/{Uri.EscapeDataString(owner)}/{Uri.EscapeDataString(name)}/issues/comments/{commentId}/pin";
+        using HttpRequestMessage request = CreateAuthenticatedRequest(HttpMethod.Delete, path, token);
+        SetApiVersion(request, CommentApiVersion);
+        using HttpResponseMessage response =
+            await _httpClient.SendAsync(request, HttpCompletionOption.ResponseHeadersRead, cancellationToken);
+        await EnsureSuccessAsync(response, cancellationToken);
+    }
+
+    public async Task MinimizeCommentAsync(
+        string token,
+        string nodeId,
+        string classifier,
+        CancellationToken cancellationToken = default)
+    {
+        const string query = "mutation($subjectId: ID!, $classifier: ReportedContentClassifiers!) { minimizeComment(input: { subjectId: $subjectId, classifier: $classifier }) { minimizedComment { isMinimized minimizedReason } } }";
+        GitHubGraphQlTransport transport = new(_httpClient);
+        await transport.SendAsync<GitHubCommentMutationData>(
+            token,
+            new GitHubGraphQlRequest
+            {
+                Query = query,
+                Variables = new Dictionary<string, string?>
+                {
+                    ["subjectId"] = nodeId,
+                    ["classifier"] = classifier
+                }
+            },
+            cancellationToken);
+    }
+
+    public async Task UnminimizeCommentAsync(
+        string token,
+        string nodeId,
+        CancellationToken cancellationToken = default)
+    {
+        const string query = "mutation($subjectId: ID!) { unminimizeComment(input: { subjectId: $subjectId }) { unminimizedComment { isMinimized minimizedReason } } }";
+        GitHubGraphQlTransport transport = new(_httpClient);
+        await transport.SendAsync<GitHubCommentMutationData>(
+            token,
+            new GitHubGraphQlRequest
+            {
+                Query = query,
+                Variables = new Dictionary<string, string?>
+                {
+                    ["subjectId"] = nodeId
+                }
+            },
             cancellationToken);
     }
 
@@ -1187,6 +1317,52 @@ public sealed class GitHubClientService : IGitHubClientService
             GitHubJsonSerializerContext.Default.GitHubPullRequestReviewComment,
             "pull request review comment",
             cancellationToken);
+    }
+
+    public async Task<GitHubPullRequestReviewComment> UpdatePullRequestReviewCommentAsync(
+        string token,
+        string owner,
+        string name,
+        long commentId,
+        string body,
+        CancellationToken cancellationToken = default)
+    {
+        string path =
+            $"repos/{Uri.EscapeDataString(owner)}/{Uri.EscapeDataString(name)}/pulls/comments/{commentId}";
+        GitHubIssueCommentUpdateRequest payload = new()
+        {
+            Body = NormalizeLineEndings(body) ?? string.Empty
+        };
+        using HttpRequestMessage request = CreateJsonRequest(
+            HttpMethod.Patch,
+            path,
+            token,
+            payload,
+            GitHubJsonSerializerContext.Default.GitHubIssueCommentUpdateRequest);
+        using HttpResponseMessage response =
+            await _httpClient.SendAsync(request, HttpCompletionOption.ResponseHeadersRead, cancellationToken);
+        await EnsureSuccessAsync(response, cancellationToken);
+
+        return await ReadResponseAsync(
+            response,
+            GitHubJsonSerializerContext.Default.GitHubPullRequestReviewComment,
+            "pull request review comment",
+            cancellationToken);
+    }
+
+    public async Task DeletePullRequestReviewCommentAsync(
+        string token,
+        string owner,
+        string name,
+        long commentId,
+        CancellationToken cancellationToken = default)
+    {
+        string path =
+            $"repos/{Uri.EscapeDataString(owner)}/{Uri.EscapeDataString(name)}/pulls/comments/{commentId}";
+        using HttpRequestMessage request = CreateAuthenticatedRequest(HttpMethod.Delete, path, token);
+        using HttpResponseMessage response =
+            await _httpClient.SendAsync(request, HttpCompletionOption.ResponseHeadersRead, cancellationToken);
+        await EnsureSuccessAsync(response, cancellationToken);
     }
 
     public async Task<GitHubPullRequest> CreatePullRequestAsync(
@@ -1770,6 +1946,12 @@ public sealed class GitHubClientService : IGitHubClientService
         }
 
         return request;
+    }
+
+    private static void SetApiVersion(HttpRequestMessage request, string version)
+    {
+        request.Headers.Remove("X-GitHub-Api-Version");
+        request.Headers.TryAddWithoutValidation("X-GitHub-Api-Version", version);
     }
 
     public static bool IsPublicAccessToken(string? token) =>

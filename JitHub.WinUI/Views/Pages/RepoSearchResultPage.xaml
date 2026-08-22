@@ -14,7 +14,7 @@
     <Page.Resources>
         <DataTemplate x:Key="RepoSearchResultTemplate" x:DataType="viewModels:RepositorySearchResultItem">
             <Border
-                Background="Transparent"
+    Background="{ThemeResource AppTransparentBrush}"
                 BorderBrush="{ThemeResource AppHairlineBrush}"
                 BorderThickness="0,0,0,1"
                 Padding="12,11">

@@ -108,7 +108,7 @@
 
     <Style x:Key="AppQuietButtonStyle" TargetType="Button" BasedOn="{StaticResource AppStableButtonBaseStyle}">
         <Setter Property="FontFamily" Value="{ThemeResource AppUiFontFamily}" />
-        <Setter Property="Background" Value="Transparent" />
+        <Setter Property="Background" Value="{ThemeResource AppTransparentBrush}" />
         <Setter Property="BorderThickness" Value="0" />
         <Setter Property="Foreground" Value="{ThemeResource AppInkMutedBrush}" />
         <Setter Property="Padding" Value="8,6" />
@@ -132,38 +132,118 @@
         <Setter Property="CornerRadius" Value="100" />
     </Style>
 
-    <Style x:Key="AppEmojiLauncherButtonStyle" TargetType="Button" BasedOn="{StaticResource AppQuietButtonStyle}">
-        <Setter Property="Width" Value="32" />
-        <Setter Property="Height" Value="32" />
+    <Style x:Key="AppReactionButtonBaseStyle" TargetType="Button">
+        <Setter Property="FontFamily" Value="{ThemeResource AppUiFontFamily}" />
+        <Setter Property="FontSize" Value="{ThemeResource AppMetaFontSize}" />
+        <Setter Property="Background" Value="{ThemeResource AppReactionChipBackgroundBrush}" />
+        <Setter Property="BorderBrush" Value="{ThemeResource AppReactionChipBorderBrush}" />
+        <Setter Property="BorderThickness" Value="{ThemeResource AppHairlineBorderThickness}" />
+        <Setter Property="Foreground" Value="{ThemeResource AppReactionChipForegroundBrush}" />
+        <Setter Property="CornerRadius" Value="{ThemeResource AppRadiusSmall}" />
+        <Setter Property="HorizontalContentAlignment" Value="Center" />
+        <Setter Property="VerticalContentAlignment" Value="Center" />
+        <Setter Property="Template">
+            <Setter.Value>
+                <ControlTemplate TargetType="Button">
+                    <Grid>
+                        <VisualStateManager.VisualStateGroups>
+                            <VisualStateGroup x:Name="CommonStates">
+                                <VisualState x:Name="Normal" />
+                                <VisualState x:Name="PointerOver">
+                                    <VisualState.Setters>
+                                        <Setter Target="ReactionRoot.Background" Value="{ThemeResource AppReactionChipHoverBrush}" />
+                                    </VisualState.Setters>
+                                </VisualState>
+                                <VisualState x:Name="Pressed">
+                                    <VisualState.Setters>
+                                        <Setter Target="ReactionRoot.Background" Value="{ThemeResource AppReactionChipPressedBrush}" />
+                                    </VisualState.Setters>
+                                </VisualState>
+                                <VisualState x:Name="Disabled">
+                                    <VisualState.Setters>
+                                        <Setter Target="ReactionRoot.Opacity" Value="{ThemeResource AppDisabledControlOpacity}" />
+                                    </VisualState.Setters>
+                                </VisualState>
+                            </VisualStateGroup>
+                            <VisualStateGroup x:Name="FocusStates">
+                                <VisualState x:Name="Unfocused" />
+                                <VisualState x:Name="PointerFocused" />
+                                <VisualState x:Name="Focused">
+                                    <VisualState.Setters>
+                                        <Setter Target="ReactionFocusVisual.Opacity" Value="1" />
+                                    </VisualState.Setters>
+                                </VisualState>
+                            </VisualStateGroup>
+                        </VisualStateManager.VisualStateGroups>
+                        <Border
+                            x:Name="ReactionRoot"
+                            Background="{TemplateBinding Background}"
+                            BorderBrush="{TemplateBinding BorderBrush}"
+                            BorderThickness="{TemplateBinding BorderThickness}"
+                            CornerRadius="{TemplateBinding CornerRadius}">
+                            <ContentPresenter
+                                Padding="{TemplateBinding Padding}"
+                                Content="{TemplateBinding Content}"
+                                ContentTemplate="{TemplateBinding ContentTemplate}"
+                                ContentTransitions="{TemplateBinding ContentTransitions}"
+                                Foreground="{TemplateBinding Foreground}"
+                                HorizontalContentAlignment="{TemplateBinding HorizontalContentAlignment}"
+                                VerticalContentAlignment="{TemplateBinding VerticalContentAlignment}" />
+                        </Border>
+                        <Border
+                            x:Name="ReactionFocusVisual"
+                            Margin="{ThemeResource AppReactionFocusMargin}"
+                            BorderBrush="{ThemeResource AppAccentBrush}"
+                            BorderThickness="{ThemeResource AppHairlineBorderThickness}"
+                            CornerRadius="{TemplateBinding CornerRadius}"
+                            IsHitTestVisible="False"
+                            Opacity="0" />
+                    </Grid>
+                </ControlTemplate>
+            </Setter.Value>
+        </Setter>
+    </Style>
+
+    <Style x:Key="AppReactionChipButtonStyle" TargetType="Button" BasedOn="{StaticResource AppReactionButtonBaseStyle}">
+        <Setter Property="MinWidth" Value="{ThemeResource AppReactionChipMinWidth}" />
+        <Setter Property="MinHeight" Value="{ThemeResource AppReactionChipMinHeight}" />
+        <Setter Property="Padding" Value="{ThemeResource AppReactionChipPadding}" />
+    </Style>
+
+    <Style x:Key="AppEmojiLauncherButtonStyle" TargetType="Button" BasedOn="{StaticResource AppReactionButtonBaseStyle}">
+        <Setter Property="Width" Value="{ThemeResource AppReactionIconButtonSize}" />
+        <Setter Property="Height" Value="{ThemeResource AppReactionIconButtonSize}" />
         <Setter Property="MinWidth" Value="0" />
         <Setter Property="MinHeight" Value="0" />
         <Setter Property="Padding" Value="0" />
         <Setter Property="CornerRadius" Value="{ThemeResource AppRadiusSmall}" />
-        <Setter Property="Background" Value="{ThemeResource AppRowHoverBrush}" />
-        <Setter Property="Foreground" Value="{ThemeResource AppInkBrush}" />
-        <Setter Property="BorderThickness" Value="0" />
         <Setter Property="HorizontalContentAlignment" Value="Center" />
         <Setter Property="VerticalContentAlignment" Value="Center" />
     </Style>
 
-    <Style x:Key="AppEmojiReactionButtonStyle" TargetType="Button" BasedOn="{StaticResource AppStableButtonBaseStyle}">
-        <Setter Property="MinWidth" Value="32" />
-        <Setter Property="MinHeight" Value="32" />
-        <Setter Property="Height" Value="32" />
+    <Style x:Key="AppReactionPickerButtonStyle" TargetType="Button" BasedOn="{StaticResource AppReactionButtonBaseStyle}">
+        <Setter Property="Width" Value="{ThemeResource AppReactionPickerButtonSize}" />
+        <Setter Property="Height" Value="{ThemeResource AppReactionPickerButtonSize}" />
+        <Setter Property="MinWidth" Value="0" />
+        <Setter Property="MinHeight" Value="0" />
         <Setter Property="Padding" Value="0" />
         <Setter Property="CornerRadius" Value="{ThemeResource AppRadiusSmall}" />
-        <Setter Property="Background" Value="{ThemeResource AppRowHoverBrush}" />
-        <Setter Property="BorderBrush" Value="Transparent" />
         <Setter Property="BorderThickness" Value="0" />
-        <Setter Property="HorizontalContentAlignment" Value="Center" />
-        <Setter Property="VerticalContentAlignment" Value="Center" />
     </Style>
+
+    <Style x:Key="AppCommentActionButtonStyle" TargetType="Button" BasedOn="{StaticResource AppReactionPickerButtonStyle}">
+        <Setter Property="Width" Value="{ThemeResource AppReactionIconButtonSize}" />
+        <Setter Property="Height" Value="{ThemeResource AppReactionIconButtonSize}" />
+        <Setter Property="Foreground" Value="{ThemeResource AppInkMutedBrush}" />
+    </Style>
+
+    <Style x:Key="AppEmojiReactionButtonStyle" TargetType="Button" BasedOn="{StaticResource AppReactionChipButtonStyle}" />
 
     <Style x:Key="AppSearchSuggestionButtonStyle" TargetType="Button" BasedOn="{StaticResource AppQuietButtonStyle}">
         <Setter Property="Padding" Value="0" />
         <Setter Property="MinHeight" Value="44" />
-        <Setter Property="Background" Value="Transparent" />
-        <Setter Property="BorderBrush" Value="Transparent" />
+        <Setter Property="Background" Value="{ThemeResource AppTransparentBrush}" />
+        <Setter Property="BorderBrush" Value="{ThemeResource AppTransparentBrush}" />
         <Setter Property="Foreground" Value="{ThemeResource AppInkBrush}" />
         <Setter Property="HorizontalAlignment" Value="Stretch" />
         <Setter Property="HorizontalContentAlignment" Value="Stretch" />
@@ -213,6 +293,13 @@
         <Setter Property="HorizontalContentAlignment" Value="Center" />
         <Setter Property="VerticalContentAlignment" Value="Center" />
         <Setter Property="VerticalAlignment" Value="Center" />
+    </Style>
+
+    <Style TargetType="controls:DropDownButton" BasedOn="{StaticResource AppDropDownButtonStyle}" />
+
+    <Style TargetType="HyperlinkButton" BasedOn="{StaticResource DefaultHyperlinkButtonStyle}">
+        <Setter Property="FontFamily" Value="{ThemeResource AppUiFontFamily}" />
+        <Setter Property="Foreground" Value="{ThemeResource AppAccentBrush}" />
     </Style>
 
     <Style x:Key="AppDestructiveButtonStyle" TargetType="Button" BasedOn="{StaticResource AppStableButtonBaseStyle}">

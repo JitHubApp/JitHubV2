@@ -1,6 +1,6 @@
 # JitHub vNext Audit Remediation Handoff
 
-Status date: August 13, 2026
+Status date: August 19, 2026
 
 Branch: `codex/vnext-full-audit-remediation`
 
@@ -47,6 +47,52 @@ paths merely because they existed on `main`.
 - The recovered batch passed consolidated publication review and is ready to be
   committed as one intentional remediation set. Generated outputs remain ignored
   evidence and must not enter the commit.
+- The August 19 desktop cleanup is implemented and verified: normal Visual
+  Studio launches no longer package pseudo-localized strings, duplicate
+  profile/settings rail routes are removed, affected headers and navigation rows
+  are aligned, the Stars category color picker has a default swatch preview, and
+  Home quick actions are uniform global routes. A Visual Studio x64 Debug solution
+  build and all 2,555 WinUI tests pass from this source state.
+- Shared CheckBox colors now target WinUI's indicator fill and stroke resources,
+  leaving the full label row transparent. The New Repository and sign-out dialogs
+  were visually verified in dark theme, and New Repository was also verified in
+  light theme, for both unchecked and checked states. The Visual Studio x64 Debug
+  app build and 19 focused control-catalog/palette tests pass after this repair.
+- Repository issue and pull-request detail headers now use paired expanded and
+  compact visual trees animated by Community Toolkit Labs `TransitionHelper`.
+  Scrolling down hides the expanded chrome; returning within 8 DIP of the top or
+  accumulating 64 DIP of upward travel restores it. A subsequent 24 DIP downward
+  move can hide it again. Reduced-motion mode resets directly to the target state.
+- Pull-request scroll ownership is re-elected for Conversation, Files, Commits,
+  Reviews, and Timeline, so the shy-header behavior follows every section rather
+  than only the conversation. The compact overlay uses the transient acrylic
+  brush while section content scrolls beneath it, with a scrollable content inset
+  preventing first-frame occlusion at compact widths.
+- Issue and pull-request content surfaces translate through the header height
+  delta during each morph. The translation is cleared in the same forced layout
+  pass that commits the new `Auto` row height, preventing the old expanded row
+  from flashing as an empty band before content moves into the reclaimed space.
+  Reversing an in-flight morph retargets the content from its current position.
+- Repository issue and pull-request lists now keep only state tabs, search, and
+  the primary create action visible at rest. Scope/sort/order controls live in a
+  localized, accessible filter flyout with full-height native ComboBoxes. State
+  tabs align with search and card content, and list identity chips use a small
+  rounded-rectangle radius instead of a pill silhouette.
+- The issue and pull-request on-demand comment composers use a bounded 440-DIP
+  surface inside a 460-DIP flyout presenter, preventing right-edge clipping.
+  Accent button foregrounds are explicit, and comment Markdown now inherits the
+  same inset surface contract as issue/PR body Markdown.
+- Content dialogs now use stable responsive width and height metrics owned by
+  the shared presenter. Editor dialogs use an 840x720 preferred surface that
+  contracts with the window, while their content scrolls instead of resizing
+  the dialog when switching between Markdown Write and Preview modes.
+- Issue comments, pull-request conversation comments, review threads, and review
+  replies share one permission-aware interaction bar. Reactions render inline
+  with native emoji and counts; available actions include quote reply, copy link,
+  copy Markdown, edit, issue-comment pin/unpin, minimize/unminimize, and delete.
+  Review replies are visually integrated into their parent discussion and local
+  minimization state is retained across the REST refresh that follows a GraphQL
+  mutation.
 - Generated outputs are ignored and may be present locally after recovery. They
   are evidence only and must remain uncommitted.
 
@@ -85,7 +131,7 @@ The repository-level version of these rules is in `AGENTS.md`.
 
 - `ShellPage` and `ShellPageViewModel` own the single-frame shell, combined
   nav/repository rail, global command search, active route, repository context,
-  compact rail drawer, profile footer, notifications, and settings entry.
+  compact rail drawer, notifications, and title-bar profile/settings entries.
 - Canonical routes cover Home, My Issues, My Pull Requests, Stars, Gists,
   Notifications, Profile, Settings, Search, Repository Management, and repo
   Code/Issues/Pull Requests/Commits.
@@ -183,8 +229,10 @@ The repository-level version of these rules is in `AGENTS.md`.
   are not presented in status text or dialogs.
 - UI copy and accessibility fallbacks are resource-backed through stable
   `x:Uid` ownership and `LocalizedResourceText`.
-- The complete `qps-ploc` catalog is packaged for long-string testing; incomplete
-  human translations are not exposed as product languages.
+- The complete `qps-ploc` catalog remains available for long-string testing, but
+  normal builds exclude it from PRI packaging. Opt in only for localization
+  automation with `-p:EnablePseudoLocalization=true`; incomplete human
+  translations are likewise not exposed as product languages.
 - Light, dark, and High Contrast resources bridge through the foundation tokens
   and control catalog.
 
@@ -208,6 +256,10 @@ The repository-level version of these rules is in `AGENTS.md`.
 - Fixed shell plus centered two-rail widget board.
 - Main rail: recent activity, recent/pinned repositories, quick actions.
 - Side rail: overview, recommended repositories, notifications.
+- Wide recent-repository previews allow four entries when four are available.
+  The five quick actions use one uniform row and route to repository creation,
+  search, repository management, My Issues, and My Pull Requests without
+  requiring an active repository.
 - Compact widths use an animated right drawer; widgets have capped previews and
   native internal routes rather than internal scroll regions.
 - Widget visibility, order, rail placement, and reset persist through
@@ -222,6 +274,7 @@ The repository-level version of these rules is in `AGENTS.md`.
 - Cache/diagnostic snapshot, export, clear, telemetry state, version, theme,
   developer mode, contributor photos/intros/social links, and confirmation/error
   behavior are present.
+- Header-to-workspace spacing is compact in both wide and narrow layouts.
 
 ### My Issues And Repository Issues
 
@@ -232,6 +285,10 @@ The repository-level version of these rules is in `AGENTS.md`.
   refresh, and scroll-anchor preservation prevent list flashes and jumps.
 - Compact controls occupy existing title/action rows; drawers align opener and
   closer locations and slide within the repository workspace boundary.
+- Repository issue comments now open in a focused flyout on demand instead of
+  permanently consuming the bottom of the conversation. The detail header
+  condenses after meaningful vertical scrolling and restores at the top, with
+  reduced-motion support and cancellable transitions.
 
 ### My Pull Requests And Repository Pull Requests
 
@@ -241,6 +298,11 @@ The repository-level version of these rules is in `AGENTS.md`.
   section, and list anchor persist through refresh.
 - Pull-request identity projections are stable and no longer bind form state to
   the wrong nested view model.
+- Repository pull-request comments use the same on-demand focused composer. At
+  medium/wide widths, scrolling condenses title, metadata, actions, and tabs into
+  one title/section row; returning to the top restores the expanded header.
+  Compact widths keep a full-width section selector below the condensed title so
+  all PR sections remain reachable without crowding or overlap.
 
 ### Repository Commits
 
@@ -290,12 +352,15 @@ The repository-level version of these rules is in `AGENTS.md`.
   at 100 items per page. Incomplete reconciliation never prunes local rows.
 - User-created categories live in a separate account-partitioned SQLite store
   and have a separately confirmed Settings clear operation.
+- Smart-list icon/text rows are vertically aligned, category titles are
+  left-aligned, and category editing defaults to a full-width color selector
+  that previews each color with a swatch and hex value.
 
 ### Notifications, Gists, Search, And Repository Management
 
 - Notifications: virtualized unread/all/participating inbox, search, polling,
   automatic paging, optimistic read/unread, mark-all-read, subscription/mute,
-  and internal routing.
+  internal routing, and baseline-aligned result counts.
 - Gists: cached library/detail, filters, native Markdown/code editing, multi-file
   create/update/delete, persistence, keyboard/context actions, and compact mode.
 - Search: stale-first repository suggestions and canonical results workspace;
@@ -333,12 +398,12 @@ The repository-level version of these rules is in `AGENTS.md`.
 ## Last Successful Verification
 
 These results were rerun sequentially from the recovered final source state on
-2026-08-12 and 2026-08-13. Generated outputs remain evidence only and are not
-commit content.
+2026-08-12, 2026-08-13, and 2026-08-19. Generated outputs remain evidence only
+and are not commit content.
 
 | Target | Result |
 | --- | --- |
-| `JitHub.WinUI.Tests` Debug | 2,542 / 2,542 passed |
+| `JitHub.WinUI.Tests` Debug | 2,555 / 2,555 passed |
 | `JitHub.WinUI.Tests` Release | 2,542 / 2,542 passed |
 | `MarkdownRenderer.Tests` Debug | 335 / 335 passed |
 | `MarkdownRenderer.Tests` Release | 335 / 335 passed |
@@ -355,6 +420,96 @@ commit content.
 | Eight-route warm performance gate | 55 / 55 route/fixture/metric budgets passed |
 | Post-review My Pull Requests reruns | 8 / 8 passed twice; cached-selection p95 `42.10ms` and `49.50ms` |
 | Publication eight-route warm performance gate | 55 / 55 passed; 4,970 measurements; clean exit |
+
+The August 19 UI cleanup also passed a warning-free x64 Debug build of
+`JitHub.slnx` with Visual Studio Community MSBuild 18.9.1. Live `winapp` review
+covered Home quick actions and recent repositories, shell and Stars alignment,
+the collapsed and expanded category color picker, notification count alignment,
+and wide/narrow Settings spacing.
+
+The August 19 issue/PR vertical-space pass also completed a warning-free x64
+Debug app build and 45 focused contracts. Live `winapp` checks covered issue and
+PR resting layouts at 1180x800, shy-header activation/restoration at 1180x450,
+focused comment flyouts, and the PR compact workspace at 760x650 in light theme.
+The issue conversation grew from roughly 319 to 513 DIP at 1180x800. The PR
+conversation now measures roughly 436 DIP at the same fixture, materially larger
+than its persistent-composer baseline.
+
+The August 19 directional shy-header pass completed another warning-free x64
+Debug app build and the full 2,546-test WinUI suite. Live native review verified
+the 240ms forward/220ms reverse morph, acrylic content underlay, restoration after
+a large upward scroll away from the top, and the Conversation, Files, Commits,
+Reviews, and Timeline PR sections. The PR responsive probe passed in
+`.codex-artifacts/shy-header-final`. The final My Issues/Repository Issues probe
+passed all six requested widths in `.codex-artifacts/shy-header-issue-final-v3`,
+including aligned list/inspector drawer controls at wide and compact placements.
+The 760x650 and 1536x816 Repository Issues screenshots were manually reviewed at
+original resolution after the final placement-aware inspector inset correction.
+
+The follow-up morph-reflow repair also passed a warning-free x64 Debug app build,
+all 2,546 WinUI tests, `pull-requests-responsive-workspace`, and
+`issues-responsive-workspace`. Live captures taken approximately 80ms into the
+shrink verified that PR and issue content was already rendered beneath the
+transitioning acrylic header, including a 485-DIP-high issue viewport. Artifacts
+are in `.codex-artifacts/shy-header-reflow-pr` and
+`.codex-artifacts/shy-header-reflow-issues`.
+
+The August 19 issue/PR list-density pass completed another warning-free x64 Debug
+app build, a warning-free Debug automation build, and all 2,555 WinUI tests.
+Native light/dark review covered resting issue and PR lists, both advanced-filter
+flyouts, both enabled on-demand comment composers, accent contrast, and parent-
+matched Markdown surfaces. `pull-requests-responsive-workspace` passed at all
+five requested widths in `.codex-artifacts/density-pr-probe-final`, and
+`issues-responsive-workspace` passed My Issues and Repository Issues at all six
+requested widths in `.codex-artifacts/density-issues-probe-final`. Windows capped
+the largest requested windows to the current `1536x816` work area; both lifecycle
+logs record `status=passed`, clean app exit code 0, and automation exit code 0.
+
+The August 20 dialog and comment-interaction pass completed a warning-free x64
+Debug app build and all 2,567 WinUI tests. Live light-theme review verified that
+an issue editor keeps identical bounds between Write and Preview, PR conversation
+and review reactions show native emoji with counts, the eight-reaction picker is
+usable, nested review replies render as an integrated thread, and a normal reply
+offers Hide without simultaneously offering Unhide. The preview app was closed
+after verification.
+
+The August 20 theme-token and control-catalog pass completed a warning-free x64
+Debug app build and all 2,573 WinUI tests. Semantic popup, reaction, smoke, and
+transparent tokens now have aligned Default, Light, Dark, and High Contrast
+definitions; app XAML outside the palette contains no literal visual colors.
+Shared interactive WinUI controls are governed by app-owned implicit or keyed
+styles, view structure references styles statically, and the obsolete parallel
+`WinUICommonColor.xaml` palette was removed. Reaction chips, the launcher, and the
+eight-reaction popup now share quiet token-driven color, typography, geometry,
+and states. Live Light and Dark Design Lab review also caught and fixed two
+runtime-only defects: a
+missing `DefaultListViewStyle` resource reference that blocked activation and an
+unconstrained settings-card icon slot that expanded a bitmap across the viewport.
+The latter is now fixed at the app metric token and covered by a regression
+contract. Evidence data roots are `.codex-artifacts/token-audit-design-light-final`
+and `.codex-artifacts/token-audit-design-dark-final`; the preview app was closed
+after verification.
+
+An August 20 Visual Studio runtime follow-up removed unpublished Windows App SDK
+style-key dependencies from the app-owned implicit `SelectorBar`,
+`SelectorBarItem`, and `TreeView` styles. Their platform templates now resolve
+normally through each control's `DefaultStyleKey`, while JitHub's semantic-token
+setters remain in effect. A governance test guards all three keys. The x64 Debug
+app build is warning-free, all 2,574 WinUI tests pass, and a debugger-attached
+Light `repo-code` launch was visually verified with the repository tabs, file
+tree, and README content rendered. The verification app was closed afterward.
+
+The August 20 issue/PR body-reaction follow-up moved body reactions out of the
+title and inspector areas and removed both legacy checkbox dialogs. Issue and
+pull-request bodies now use the same permission-aware `CommentInteractionBar`
+as comments, with inline native emoji/count chips, the shared eight-reaction
+picker, and Quote reply, Copy link, Copy Markdown, and Edit actions. Body targets
+intentionally omit comment-only pin, hide, and delete commands. Focused contracts
+passed 556 tests; the final x64 Debug app build is warning-free and all 2,574
+WinUI tests pass. Live review covered an enabled Light issue fixture and Dark PR
+fixture from `.codex-artifacts/body-reaction-issue-light-direct` and
+`.codex-artifacts/body-reaction-pr-dark-direct`; the verification app was closed
+afterward.
 
 Latest native acceptance results in `artifacts/final-independent-review`:
 

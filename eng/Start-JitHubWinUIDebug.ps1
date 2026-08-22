@@ -5,6 +5,7 @@ param(
     [switch]$SkipBuild,
     [switch]$SkipDebugIdentity,
     [switch]$SkipIdentityCleanup,
+    [switch]$EnablePseudoLocalization,
     [switch]$NoLaunch,
     [switch]$Wait,
     [string[]]$AppArguments = @()
@@ -95,7 +96,18 @@ if (-not $SkipBuild -and -not (Test-Path -LiteralPath $editorAssetsIndexPath)) {
 
 if (-not $SkipBuild) {
     Write-Host "Building JitHub.WinUI Debug|$Platform..."
-    & dotnet build $resolvedProjectPath -c Debug -p:Platform=$Platform
+    $buildArguments = @(
+        'build',
+        $resolvedProjectPath,
+        '-c',
+        'Debug',
+        "-p:Platform=$Platform"
+    )
+    if ($EnablePseudoLocalization) {
+        $buildArguments += '-p:EnablePseudoLocalization=true'
+    }
+
+    & dotnet @buildArguments
     if ($LASTEXITCODE -ne 0) {
         throw 'dotnet build failed.'
     }

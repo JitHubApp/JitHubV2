@@ -26,7 +26,6 @@ $expectedHostNames = @(
     "pull-request-review-comment",
     "pull-request-review-reply-form",
     "pull-request-comment-form",
-    "pull-request-compact-comment-form",
     "commit-body",
     "commit-comment",
     "commit-comment-form",
@@ -41,9 +40,8 @@ $expectedHostNames = @(
     "profile-readme"
 )
 $expectedHosts = $expectedHostNames.Count
-# Twenty non-composer hosts run at all three viewports and text scales. The PR
-# inline and compact composers partition the same nine real responsive states.
-$expectedCases = ((20 * 3 * 3) + 9) * 3
+# All twenty-one hosts run at every viewport and text scale in each theme.
+$expectedCases = (21 * 3 * 3) * 3
 
 function Get-SourceSnapshotHash {
     $roots = @(

@@ -22,7 +22,7 @@
             x:Name="AppTitleBar"
             Height="40"
             VerticalAlignment="Top"
-            Background="Transparent" />
+        Background="{ThemeResource AppTransparentBrush}" />
         <Frame
             x:Name="ContentFrame"
             AutomationProperties.AutomationId="MainContentFrame"

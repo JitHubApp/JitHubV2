@@ -424,7 +424,9 @@ public sealed partial class DashboardPageViewModel : ViewModelBase
             RefreshPreviewCollections();
         }
 
-        QuickActionCardWidth = 124;
+        QuickActionCardWidth = repositoryColumns > 1
+            ? Math.Clamp(Math.Floor(contentWidth / Math.Max(1, QuickActions.Count)) - 8, 104, 124)
+            : 124;
     }
 
     private void OpenSideRail()
@@ -949,8 +951,8 @@ public sealed partial class DashboardPageViewModel : ViewModelBase
             return true;
         });
         AddQuickAction("manage_repositories", L("Dashboard/QuickAction/ManageRepositories", "Manage Repositories"), L("Dashboard/QuickAction/ManageRepositoriesDescription", "Open repository management"), "\uE8B7", ActivityCardTone.Gold, _shellViewModel.TryOpenManageRepositories);
-        AddQuickAction("active_issues", L("Dashboard/QuickAction/ActiveIssues", "Active Repo Issues"), L("Dashboard/QuickAction/ActiveIssuesDescription", "Open issues"), "\uE8A5", ActivityCardTone.Warning, _shellViewModel.TryOpenActiveRepositoryIssues);
-        AddQuickAction("active_pull_requests", L("Dashboard/QuickAction/ActivePullRequests", "Active Repo Pull Requests"), L("Dashboard/QuickAction/ActivePullRequestsDescription", "Open pull requests"), "\uE8EE", ActivityCardTone.Purple, _shellViewModel.TryOpenActiveRepositoryPullRequests);
+        AddQuickAction("my_issues", L("Dashboard/QuickAction/MyIssues", "My Issues"), L("Dashboard/QuickAction/MyIssuesDescription", "Issues involving you"), "\uE8A5", ActivityCardTone.Warning, _shellViewModel.TryOpenMyIssuesPage);
+        AddQuickAction("my_pull_requests", L("Dashboard/QuickAction/MyPullRequests", "My Pull Requests"), L("Dashboard/QuickAction/MyPullRequestsDescription", "Pull requests involving you"), "\uE8EE", ActivityCardTone.Purple, _shellViewModel.TryOpenMyPullRequestsPage);
     }
 
     private void AddQuickAction(string id, string title, string subtitle, string glyph, ActivityCardTone tone, Func<bool> action)
@@ -1268,8 +1270,8 @@ public sealed partial class DashboardPageViewModel : ViewModelBase
     private static double WidgetHeight(string id) => id switch
     {
         DashboardWidgetIds.RecentActivity => 430,
-        DashboardWidgetIds.Repositories => 330,
-        DashboardWidgetIds.QuickActions => 180,
+        DashboardWidgetIds.Repositories => 370,
+        DashboardWidgetIds.QuickActions => 220,
         DashboardWidgetIds.Overview => 300,
         DashboardWidgetIds.RecommendedRepositories => 380,
         DashboardWidgetIds.Notifications => 300,

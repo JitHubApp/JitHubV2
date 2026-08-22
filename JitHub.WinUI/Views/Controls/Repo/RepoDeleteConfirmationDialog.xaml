@@ -47,7 +47,7 @@
                     x:Uid="ControlsRepoRepoDeleteConfirmationDialogRepoDeleteConfir" AutomationProperties.AutomationId="RepoDeleteConfirmButton"
                     AutomationProperties.Name="Confirm repository deletion"
                     Content="Confirm"
-                    Style="{ThemeResource AppAccentButtonStyle}"
+                Style="{StaticResource AppAccentButtonStyle}"
                     Command="{x:Bind ConfirmCommand, Mode=OneWay}"/>
                 <Button
                     x:Uid="ControlsRepoRepoDeleteConfirmationDialogRepoDeleteCancel" AutomationProperties.AutomationId="RepoDeleteCancelButton"

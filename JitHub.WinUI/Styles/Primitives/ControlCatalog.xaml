@@ -3,26 +3,64 @@
     xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
     xmlns:muxc="using:Microsoft.UI.Xaml.Controls">
 
-    <SolidColorBrush x:Key="CheckBoxBackgroundUnchecked" Color="{ThemeResource AppInputColor}" />
-    <SolidColorBrush x:Key="CheckBoxBackgroundUncheckedPointerOver" Color="{ThemeResource AppInputHoverColor}" />
-    <SolidColorBrush x:Key="CheckBoxBackgroundUncheckedPressed" Color="{ThemeResource AppRowPressedColor}" />
-    <SolidColorBrush x:Key="CheckBoxBackgroundUncheckedDisabled" Color="{ThemeResource AppCanvasInsetColor}" />
-    <SolidColorBrush x:Key="CheckBoxBackgroundChecked" Color="{ThemeResource AppAccentColor}" />
-    <SolidColorBrush x:Key="CheckBoxBackgroundCheckedPointerOver" Color="{ThemeResource AppAccentHoverColor}" />
-    <SolidColorBrush x:Key="CheckBoxBackgroundCheckedPressed" Color="{ThemeResource AppAccentPressedColor}" />
-    <SolidColorBrush x:Key="CheckBoxBackgroundCheckedDisabled" Color="{ThemeResource AppCanvasInsetColor}" />
-    <SolidColorBrush x:Key="CheckBoxBorderBrushUnchecked" Color="{ThemeResource AppOutlineStrongColor}" />
-    <SolidColorBrush x:Key="CheckBoxBorderBrushUncheckedPointerOver" Color="{ThemeResource AppAccentColor}" />
-    <SolidColorBrush x:Key="CheckBoxBorderBrushUncheckedPressed" Color="{ThemeResource AppAccentPressedColor}" />
-    <SolidColorBrush x:Key="CheckBoxBorderBrushUncheckedDisabled" Color="{ThemeResource AppHairlineColor}" />
-    <SolidColorBrush x:Key="CheckBoxBorderBrushChecked" Color="{ThemeResource AppAccentColor}" />
-    <SolidColorBrush x:Key="CheckBoxBorderBrushCheckedPointerOver" Color="{ThemeResource AppAccentHoverColor}" />
-    <SolidColorBrush x:Key="CheckBoxBorderBrushCheckedPressed" Color="{ThemeResource AppAccentPressedColor}" />
-    <SolidColorBrush x:Key="CheckBoxBorderBrushCheckedDisabled" Color="{ThemeResource AppHairlineColor}" />
+    <SolidColorBrush x:Key="CheckBoxCheckBackgroundFillUnchecked" Color="{ThemeResource AppInputColor}" />
+    <SolidColorBrush x:Key="CheckBoxCheckBackgroundFillUncheckedPointerOver" Color="{ThemeResource AppInputHoverColor}" />
+    <SolidColorBrush x:Key="CheckBoxCheckBackgroundFillUncheckedPressed" Color="{ThemeResource AppRowPressedColor}" />
+    <SolidColorBrush x:Key="CheckBoxCheckBackgroundFillUncheckedDisabled" Color="{ThemeResource AppCanvasInsetColor}" />
+    <SolidColorBrush x:Key="CheckBoxCheckBackgroundFillChecked" Color="{ThemeResource AppAccentColor}" />
+    <SolidColorBrush x:Key="CheckBoxCheckBackgroundFillCheckedPointerOver" Color="{ThemeResource AppAccentHoverColor}" />
+    <SolidColorBrush x:Key="CheckBoxCheckBackgroundFillCheckedPressed" Color="{ThemeResource AppAccentPressedColor}" />
+    <SolidColorBrush x:Key="CheckBoxCheckBackgroundFillCheckedDisabled" Color="{ThemeResource AppCanvasInsetColor}" />
+    <SolidColorBrush x:Key="CheckBoxCheckBackgroundStrokeUnchecked" Color="{ThemeResource AppOutlineStrongColor}" />
+    <SolidColorBrush x:Key="CheckBoxCheckBackgroundStrokeUncheckedPointerOver" Color="{ThemeResource AppAccentColor}" />
+    <SolidColorBrush x:Key="CheckBoxCheckBackgroundStrokeUncheckedPressed" Color="{ThemeResource AppAccentPressedColor}" />
+    <SolidColorBrush x:Key="CheckBoxCheckBackgroundStrokeUncheckedDisabled" Color="{ThemeResource AppHairlineColor}" />
+    <SolidColorBrush x:Key="CheckBoxCheckBackgroundStrokeChecked" Color="{ThemeResource AppAccentColor}" />
+    <SolidColorBrush x:Key="CheckBoxCheckBackgroundStrokeCheckedPointerOver" Color="{ThemeResource AppAccentHoverColor}" />
+    <SolidColorBrush x:Key="CheckBoxCheckBackgroundStrokeCheckedPressed" Color="{ThemeResource AppAccentPressedColor}" />
+    <SolidColorBrush x:Key="CheckBoxCheckBackgroundStrokeCheckedDisabled" Color="{ThemeResource AppHairlineColor}" />
     <SolidColorBrush x:Key="CheckBoxCheckGlyphForegroundChecked" Color="{ThemeResource AppAccentForegroundColor}" />
     <SolidColorBrush x:Key="CheckBoxCheckGlyphForegroundCheckedPointerOver" Color="{ThemeResource AppAccentForegroundColor}" />
     <SolidColorBrush x:Key="CheckBoxCheckGlyphForegroundCheckedPressed" Color="{ThemeResource AppAccentForegroundColor}" />
     <SolidColorBrush x:Key="CheckBoxCheckGlyphForegroundCheckedDisabled" Color="{ThemeResource AppInkSubtleColor}" />
+
+    <SolidColorBrush x:Key="RadioButtonOuterEllipseStroke" Color="{ThemeResource AppOutlineStrongColor}" />
+    <SolidColorBrush x:Key="RadioButtonOuterEllipseStrokePointerOver" Color="{ThemeResource AppAccentColor}" />
+    <SolidColorBrush x:Key="RadioButtonOuterEllipseStrokePressed" Color="{ThemeResource AppAccentPressedColor}" />
+    <SolidColorBrush x:Key="RadioButtonOuterEllipseStrokeDisabled" Color="{ThemeResource AppHairlineColor}" />
+    <SolidColorBrush x:Key="RadioButtonOuterEllipseFill" Color="{ThemeResource AppTransparentColor}" />
+    <SolidColorBrush x:Key="RadioButtonOuterEllipseFillPointerOver" Color="{ThemeResource AppTransparentColor}" />
+    <SolidColorBrush x:Key="RadioButtonOuterEllipseFillPressed" Color="{ThemeResource AppTransparentColor}" />
+    <SolidColorBrush x:Key="RadioButtonOuterEllipseFillDisabled" Color="{ThemeResource AppTransparentColor}" />
+    <SolidColorBrush x:Key="RadioButtonOuterEllipseCheckedStroke" Color="{ThemeResource AppAccentColor}" />
+    <SolidColorBrush x:Key="RadioButtonOuterEllipseCheckedStrokePointerOver" Color="{ThemeResource AppAccentHoverColor}" />
+    <SolidColorBrush x:Key="RadioButtonOuterEllipseCheckedStrokePressed" Color="{ThemeResource AppAccentPressedColor}" />
+    <SolidColorBrush x:Key="RadioButtonOuterEllipseCheckedStrokeDisabled" Color="{ThemeResource AppHairlineColor}" />
+    <SolidColorBrush x:Key="RadioButtonOuterEllipseCheckedFill" Color="{ThemeResource AppTransparentColor}" />
+    <SolidColorBrush x:Key="RadioButtonOuterEllipseCheckedFillPointerOver" Color="{ThemeResource AppTransparentColor}" />
+    <SolidColorBrush x:Key="RadioButtonOuterEllipseCheckedFillPressed" Color="{ThemeResource AppTransparentColor}" />
+    <SolidColorBrush x:Key="RadioButtonOuterEllipseCheckedFillDisabled" Color="{ThemeResource AppTransparentColor}" />
+    <SolidColorBrush x:Key="RadioButtonCheckGlyphFill" Color="{ThemeResource AppAccentColor}" />
+    <SolidColorBrush x:Key="RadioButtonCheckGlyphFillPointerOver" Color="{ThemeResource AppAccentHoverColor}" />
+    <SolidColorBrush x:Key="RadioButtonCheckGlyphFillPressed" Color="{ThemeResource AppAccentPressedColor}" />
+    <SolidColorBrush x:Key="RadioButtonCheckGlyphFillDisabled" Color="{ThemeResource AppInkSubtleColor}" />
+    <SolidColorBrush x:Key="RadioButtonCheckGlyphStroke" Color="{ThemeResource AppTransparentColor}" />
+    <SolidColorBrush x:Key="RadioButtonCheckGlyphStrokePointerOver" Color="{ThemeResource AppTransparentColor}" />
+    <SolidColorBrush x:Key="RadioButtonCheckGlyphStrokePressed" Color="{ThemeResource AppTransparentColor}" />
+    <SolidColorBrush x:Key="RadioButtonCheckGlyphStrokeDisabled" Color="{ThemeResource AppTransparentColor}" />
+
+    <Style TargetType="CheckBox" BasedOn="{StaticResource DefaultCheckBoxStyle}">
+        <Setter Property="FontFamily" Value="{ThemeResource AppUiFontFamily}" />
+        <Setter Property="Background" Value="{ThemeResource AppTransparentBrush}" />
+        <Setter Property="Foreground" Value="{ThemeResource AppInkBrush}" />
+        <Setter Property="VerticalAlignment" Value="Center" />
+    </Style>
+
+    <Style TargetType="RadioButton" BasedOn="{StaticResource DefaultRadioButtonStyle}">
+        <Setter Property="FontFamily" Value="{ThemeResource AppUiFontFamily}" />
+        <Setter Property="Background" Value="{ThemeResource AppTransparentBrush}" />
+        <Setter Property="Foreground" Value="{ThemeResource AppInkBrush}" />
+    </Style>
 
     <Style x:Key="AppCommandTextBoxStyle" TargetType="TextBox" BasedOn="{StaticResource AppTextBoxStyle}">
         <Setter Property="Height" Value="36" />
@@ -67,6 +105,58 @@
         <Setter Property="VerticalAlignment" Value="Top" />
     </Style>
 
+    <Style x:Key="AppThemeCardRadioButtonStyle" TargetType="RadioButton">
+        <Setter Property="Background" Value="{ThemeResource AppTransparentBrush}" />
+        <Setter Property="BorderThickness" Value="0" />
+        <Setter Property="FocusVisualMargin" Value="-2" />
+        <Setter Property="HorizontalContentAlignment" Value="Stretch" />
+        <Setter Property="Padding" Value="0" />
+        <Setter Property="UseSystemFocusVisuals" Value="True" />
+        <Setter Property="VerticalContentAlignment" Value="Stretch" />
+        <Setter Property="Template">
+            <Setter.Value>
+                <ControlTemplate TargetType="RadioButton">
+                    <Grid
+                        x:Name="ThemeCardRoot"
+                        Background="{TemplateBinding Background}"
+                        CornerRadius="{ThemeResource AppRadiusMedium}">
+                        <VisualStateManager.VisualStateGroups>
+                            <VisualStateGroup x:Name="CommonStates">
+                                <VisualState x:Name="Normal" />
+                                <VisualState x:Name="PointerOver">
+                                    <VisualState.Setters>
+                                        <Setter Target="ThemeCardRoot.Background" Value="{ThemeResource AppRowHoverBrush}" />
+                                    </VisualState.Setters>
+                                </VisualState>
+                                <VisualState x:Name="Pressed">
+                                    <VisualState.Setters>
+                                        <Setter Target="ThemeCardRoot.Background" Value="{ThemeResource AppRowPressedBrush}" />
+                                    </VisualState.Setters>
+                                </VisualState>
+                                <VisualState x:Name="Disabled">
+                                    <VisualState.Setters>
+                                        <Setter Target="ThemeCardRoot.Opacity" Value="0.55" />
+                                    </VisualState.Setters>
+                                </VisualState>
+                            </VisualStateGroup>
+                            <VisualStateGroup x:Name="CheckStates">
+                                <VisualState x:Name="Checked" />
+                                <VisualState x:Name="Unchecked" />
+                                <VisualState x:Name="Indeterminate" />
+                            </VisualStateGroup>
+                        </VisualStateManager.VisualStateGroups>
+                        <ContentPresenter
+                            Padding="{TemplateBinding Padding}"
+                            Content="{TemplateBinding Content}"
+                            ContentTemplate="{TemplateBinding ContentTemplate}"
+                            HorizontalContentAlignment="{TemplateBinding HorizontalContentAlignment}"
+                            VerticalContentAlignment="{TemplateBinding VerticalContentAlignment}" />
+                    </Grid>
+                </ControlTemplate>
+            </Setter.Value>
+        </Setter>
+    </Style>
+
     <Style x:Key="AppDenseListRowStyle" TargetType="ListViewItem" BasedOn="{StaticResource DefaultListViewItemStyle}">
         <Setter Property="MinHeight" Value="68" />
         <Setter Property="Margin" Value="0" />
@@ -86,7 +176,7 @@
         <Setter Property="MinHeight" Value="0" />
         <Setter Property="Margin" Value="0" />
         <Setter Property="Padding" Value="0" />
-        <Setter Property="Background" Value="Transparent" />
+        <Setter Property="Background" Value="{ThemeResource AppTransparentBrush}" />
         <Setter Property="HorizontalContentAlignment" Value="Stretch" />
         <Setter Property="VerticalContentAlignment" Value="Stretch" />
         <Setter Property="IsTabStop" Value="False" />

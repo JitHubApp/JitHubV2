@@ -48,6 +48,7 @@ public sealed partial class RepoPullRequestPageViewModel : ViewModelBase
     private bool _isPullRequestCommentSubmissionInProgress;
     private bool _canCommentOnPullRequest;
     private readonly HashSet<long> _inProgressReviewReplyCommentIds = [];
+    private readonly Dictionary<string, bool> _commentMinimizationOverrides = new(StringComparer.Ordinal);
     private IDisposable? _selectionDwellPrefetch;
     private IDisposable? _neighborPrefetch;
     private CancellationTokenSource? _navigationRefresh;
@@ -181,6 +182,12 @@ public sealed partial class RepoPullRequestPageViewModel : ViewModelBase
     public string SelectedPullRequestCommentText => SelectedPullRequest is null
         ? string.Empty
         : FormatCommentCount(SelectedPullRequest.Comments);
+
+    public long SelectedPullRequestReactionTargetId => SelectedPullRequest?.Number ?? 0;
+
+    public string SelectedPullRequestHtmlUrl => SelectedPullRequest?.HtmlUrl ?? string.Empty;
+
+    public GitHubReactionSummary PullRequestReactions => _selectedPullRequestIssue?.Reactions ?? new();
 
     public MarkdownDocumentSource? PullRequestBodyMarkdownSource => SelectedPullRequest?.MarkdownSource;
 
@@ -1357,6 +1364,95 @@ public sealed partial class RepoPullRequestPageViewModel : ViewModelBase
             existingReactionIds);
     }
 
+    public Task<bool> UpdatePullRequestCommentAsync(long commentId, string body, bool isReviewComment) =>
+        ExecutePullRequestCommentMutationAsync(
+            (token, owner, repoName) => isReviewComment
+                ? _gitHubClientService.UpdatePullRequestReviewCommentAsync(token, owner, repoName, commentId, body)
+                : _gitHubClientService.UpdateIssueCommentAsync(token, owner, repoName, commentId, body),
+            GetString("RepoPullRequest.CommentUpdatingStatus", "Updating comment..."));
+
+    public Task<bool> DeletePullRequestCommentAsync(long commentId, bool isReviewComment) =>
+        ExecutePullRequestCommentMutationAsync(
+            (token, owner, repoName) => isReviewComment
+                ? _gitHubClientService.DeletePullRequestReviewCommentAsync(token, owner, repoName, commentId)
+                : _gitHubClientService.DeleteIssueCommentAsync(token, owner, repoName, commentId),
+            GetString("RepoPullRequest.CommentDeletingStatus", "Deleting comment..."));
+
+    public async Task<bool> SetPullRequestCommentMinimizedAsync(string nodeId, string? classifier)
+    {
+        if (!CanManagePullRequestMetadata || string.IsNullOrWhiteSpace(nodeId))
+        {
+            return false;
+        }
+
+        string normalizedNodeId = nodeId.Trim();
+        bool hadPreviousOverride = _commentMinimizationOverrides.TryGetValue(normalizedNodeId, out bool previousOverride);
+        _commentMinimizationOverrides[normalizedNodeId] = !string.IsNullOrWhiteSpace(classifier);
+        bool succeeded = await ExecutePullRequestCommentMutationAsync(
+            (token, _, _) => string.IsNullOrWhiteSpace(classifier)
+                ? _gitHubClientService.UnminimizeCommentAsync(token, normalizedNodeId)
+                : _gitHubClientService.MinimizeCommentAsync(token, normalizedNodeId, classifier),
+            string.IsNullOrWhiteSpace(classifier)
+                ? GetString("RepoPullRequest.CommentUnhidingStatus", "Unhiding comment...")
+                : GetString("RepoPullRequest.CommentHidingStatus", "Hiding comment..."));
+        if (!succeeded)
+        {
+            if (hadPreviousOverride)
+            {
+                _commentMinimizationOverrides[normalizedNodeId] = previousOverride;
+            }
+            else
+            {
+                _commentMinimizationOverrides.Remove(normalizedNodeId);
+            }
+        }
+
+        return succeeded;
+    }
+
+    private async Task<bool> ExecutePullRequestCommentMutationAsync(
+        Func<string, string, string, Task> mutation,
+        string status)
+    {
+        if (_navArg is null || SelectedPullRequest is null || !TryGetActiveToken(out string token))
+        {
+            return false;
+        }
+
+        GitHubPullRequest currentPullRequest = SelectedPullRequest;
+        try
+        {
+            StatusText = status;
+            await mutation(token, _navArg.Repo.Owner.Login, _navArg.Repo.Name);
+            await TryRefreshPullRequestSelectionAfterMutationAsync(
+                currentPullRequest,
+                token,
+                GetString("RepoPullRequest.CommentRefreshError", "Comment updated, but JitHub could not refresh pull request details."));
+            return true;
+        }
+        catch (GitHubAuthenticationException)
+        {
+            _authService.SignOut();
+        }
+        catch (GitHubApiException ex)
+        {
+            DisableRejectedCapability(ex, "comment", currentPullRequest.Number);
+            if (IsSelectedPullRequest(currentPullRequest))
+            {
+                StatusText = UserFacingError.For(ex, UserFacingErrorKind.Action, "pull-requests");
+            }
+        }
+        catch (HttpRequestException)
+        {
+            if (IsSelectedPullRequest(currentPullRequest))
+            {
+                StatusText = GetString("RepoPullRequest.CommentMutationNetworkError", "JitHub could not reach GitHub to update this comment.");
+            }
+        }
+
+        return false;
+    }
+
     public async Task ReplyToReviewCommentAsync(PullRequestReviewThreadItem threadItem)
     {
         if (_navArg is null || SelectedPullRequest is null || !_canCommentOnPullRequest || !TryGetActiveToken(out string token))
@@ -2085,6 +2181,7 @@ public sealed partial class RepoPullRequestPageViewModel : ViewModelBase
                 preservedReplyDrafts = CaptureReviewReplyDrafts();
             }
 
+            ConfigurePullRequestComments(comments);
             ReplaceCollectionByKey(
                 PullRequestComments,
                 comments,
@@ -2369,6 +2466,7 @@ public sealed partial class RepoPullRequestPageViewModel : ViewModelBase
         IsTogglePullRequestStateEnabled = snapshot.IsToggleStateEnabled;
         IsMergeEnabled = snapshot.IsMergeEnabled;
         IsPullRequestCommentEnabled = snapshot.IsCommentEnabled;
+        ConfigurePullRequestComments(snapshot.Comments);
         ReplaceCollectionByKey(
             PullRequestComments,
             snapshot.Comments,
@@ -2735,6 +2833,36 @@ public sealed partial class RepoPullRequestPageViewModel : ViewModelBase
         IsPullRequestCommentEnabled = _canCommentOnPullRequest && !_isPullRequestCommentSubmissionInProgress;
     }
 
+    private void ConfigurePullRequestComments(IEnumerable<GitHubIssueComment> comments)
+    {
+        foreach (GitHubIssueComment comment in comments)
+        {
+            ApplyCommentMinimizationOverride(comment);
+            comment.ViewerLogin = AuthenticatedLogin;
+            comment.CanViewerReact = CanReactToPullRequest;
+            comment.CanViewerReply = _canCommentOnPullRequest;
+            comment.CanViewerModerate = CanManagePullRequestMetadata;
+        }
+    }
+
+    private void ApplyCommentMinimizationOverride(GitHubIssueComment comment)
+    {
+        if (!string.IsNullOrWhiteSpace(comment.NodeId) &&
+            _commentMinimizationOverrides.TryGetValue(comment.NodeId, out bool isMinimized))
+        {
+            comment.Minimized = isMinimized ? comment.Minimized ?? new GitHubIssueCommentMinimization() : null;
+        }
+    }
+
+    private void ApplyCommentMinimizationOverride(GitHubPullRequestReviewComment comment)
+    {
+        if (!string.IsNullOrWhiteSpace(comment.NodeId) &&
+            _commentMinimizationOverrides.TryGetValue(comment.NodeId, out bool isMinimized))
+        {
+            comment.Minimized = isMinimized ? comment.Minimized ?? new GitHubIssueCommentMinimization() : null;
+        }
+    }
+
     private void QueuePullRequestDiffProjectionUpdate(bool debounce)
     {
         int requestVersion = Interlocked.Increment(ref _pullRequestDiffProjectionVersion);
@@ -2948,6 +3076,7 @@ public sealed partial class RepoPullRequestPageViewModel : ViewModelBase
         for (int commentOrdinal = 0; commentOrdinal < orderedComments.Length; commentOrdinal++)
         {
             GitHubPullRequestReviewComment comment = orderedComments[commentOrdinal];
+            ApplyCommentMinimizationOverride(comment);
             if (comment.InReplyToId.HasValue && threadLookup.TryGetValue(comment.InReplyToId.Value, out PullRequestReviewThreadItem? existingThread))
             {
                 existingThread.AddReply(comment, comment.Reactions.DisplayText, UnknownUserText, ReplyPrefixText, OpenButtonText, ReactionsButtonText);
@@ -2965,6 +3094,10 @@ public sealed partial class RepoPullRequestPageViewModel : ViewModelBase
                 ReplyButtonText,
                 ReplyPrefixText,
                 $"pr:{pullRequestNumber}:thread:{commentOrdinal}");
+            threadItem.ViewerLogin = AuthenticatedLogin;
+            threadItem.CanReact = CanReactToPullRequest;
+            threadItem.CanReply = _canCommentOnPullRequest;
+            threadItem.CanModerate = CanManagePullRequestMetadata;
             if (comment.Id > 0)
             {
                 threadLookup[comment.Id] = threadItem;
@@ -3192,6 +3325,7 @@ public sealed partial class RepoPullRequestPageViewModel : ViewModelBase
 
         SetSelectedPullRequest(snapshot.PullRequest);
         PopulatePullRequest(snapshot.PullRequest);
+        ConfigurePullRequestComments(snapshot.Comments);
         ReplaceCollectionByKey(
             PullRequestComments,
             snapshot.Comments,
@@ -3500,6 +3634,9 @@ public sealed partial class RepoPullRequestPageViewModel : ViewModelBase
         OnPropertyChanged(nameof(SelectedPullRequestStateText));
         OnPropertyChanged(nameof(BranchSummaryText));
         OnPropertyChanged(nameof(SelectedPullRequestCommentText));
+        OnPropertyChanged(nameof(SelectedPullRequestReactionTargetId));
+        OnPropertyChanged(nameof(SelectedPullRequestHtmlUrl));
+        OnPropertyChanged(nameof(PullRequestReactions));
         OnPropertyChanged(nameof(PullRequestBodyMarkdownSource));
         OnPropertyChanged(nameof(PullRequestCommentMarkdownSource));
     }
@@ -4005,6 +4142,7 @@ public sealed partial class RepoPullRequestPageViewModel : ViewModelBase
             string deterministicContext)
         {
             CommentId = comment.Id;
+            CommentNodeId = comment.NodeId ?? string.Empty;
             PullRequestIdentityPresentation identity = PullRequestIdentityProjection.Create(
                 comment,
                 unknownUserText,
@@ -4012,10 +4150,13 @@ public sealed partial class RepoPullRequestPageViewModel : ViewModelBase
                 deterministicContext);
             AutomationId = identity.AutomationInstanceId;
             CommentUserLogin = identity.DisplayName;
+            CommentAuthorLogin = comment.User?.Login ?? string.Empty;
             CommentUserProfileLogin = identity.ProfileLogin;
             CommentUserAvatarUrl = identity.AvatarUrl;
             CommentBody = comment.Body;
             CommentHtmlUrl = comment.HtmlUrl;
+            Reactions = comment.Reactions;
+            IsMinimized = comment.IsMinimized;
             MarkdownSource = comment.MarkdownSource;
             PathDisplayText = string.IsNullOrWhiteSpace(comment.Path) ? changedFileText : comment.Path;
             CreatedAtText = comment.CreatedAt.LocalDateTime.ToString("g");
@@ -4030,6 +4171,8 @@ public sealed partial class RepoPullRequestPageViewModel : ViewModelBase
 
         public long CommentId { get; }
 
+        public string CommentNodeId { get; }
+
         public string AutomationId { get; }
 
         public string ReplyAutomationId => $"{AutomationId}_Reply";
@@ -4038,6 +4181,8 @@ public sealed partial class RepoPullRequestPageViewModel : ViewModelBase
 
         public string CommentUserLogin { get; }
 
+        public string CommentAuthorLogin { get; }
+
         public string? CommentUserProfileLogin { get; }
 
         public string CommentUserAvatarUrl { get; }
@@ -4045,6 +4190,18 @@ public sealed partial class RepoPullRequestPageViewModel : ViewModelBase
         public string CommentBody { get; }
 
         public string CommentHtmlUrl { get; }
+
+        public GitHubReactionSummary Reactions { get; }
+
+        public bool IsMinimized { get; }
+
+        public string ViewerLogin { get; set; } = string.Empty;
+
+        public bool CanReact { get; set; }
+
+        public bool CanReply { get; set; }
+
+        public bool CanModerate { get; set; }
 
         public MarkdownDocumentSource? MarkdownSource { get; }
 
@@ -4080,6 +4237,8 @@ public sealed partial class RepoPullRequestPageViewModel : ViewModelBase
 
         public ObservableCollection<PullRequestReviewReplyItem> Replies { get; } = [];
 
+        System.Collections.IEnumerable IPullRequestReviewThreadItem.Replies => Replies;
+
         public void AddReply(
             GitHubPullRequestReviewComment reply,
             string reactionText,
@@ -4095,7 +4254,11 @@ public sealed partial class RepoPullRequestPageViewModel : ViewModelBase
                 replyPrefixText,
                 openButtonText,
                 reactionsButtonText,
-                $"{AutomationId}:reply:{Replies.Count}"));
+                $"{AutomationId}:reply:{Replies.Count}",
+                ViewerLogin,
+                CanReact,
+                CanReply,
+                CanModerate));
         }
 
         partial void OnIsReplyInProgressChanged(bool value)
@@ -4114,9 +4277,14 @@ public sealed partial class RepoPullRequestPageViewModel : ViewModelBase
             string replyPrefixText,
             string openButtonText,
             string reactionsButtonText,
-            string deterministicContext)
+            string deterministicContext,
+            string viewerLogin,
+            bool canReact,
+            bool canReply,
+            bool canModerate)
         {
             Id = comment.Id;
+            NodeId = comment.NodeId ?? string.Empty;
             PullRequestIdentityPresentation identity = PullRequestIdentityProjection.Create(
                 comment,
                 unknownUserText,
@@ -4124,6 +4292,7 @@ public sealed partial class RepoPullRequestPageViewModel : ViewModelBase
                 deterministicContext);
             AutomationId = identity.AutomationInstanceId;
             UserLogin = identity.DisplayName;
+            AuthorLogin = comment.User?.Login ?? string.Empty;
             UserProfileLogin = identity.ProfileLogin;
             UserAvatarUrl = identity.AvatarUrl;
             CreatedAtText = comment.CreatedAt.LocalDateTime.ToString("g");
@@ -4134,13 +4303,23 @@ public sealed partial class RepoPullRequestPageViewModel : ViewModelBase
             ReplyPrefixText = replyPrefixText;
             OpenButtonText = openButtonText;
             ReactionsButtonText = reactionsButtonText;
+            Reactions = comment.Reactions;
+            IsMinimized = comment.IsMinimized;
+            ViewerLogin = viewerLogin;
+            CanReact = canReact;
+            CanReply = canReply;
+            CanModerate = canModerate;
         }
 
         public long Id { get; }
 
+        public string NodeId { get; }
+
         public string AutomationId { get; }
 
         public string UserLogin { get; }
+
+        public string AuthorLogin { get; }
 
         public string? UserProfileLogin { get; }
 
@@ -4161,5 +4340,17 @@ public sealed partial class RepoPullRequestPageViewModel : ViewModelBase
         public string OpenButtonText { get; }
 
         public string ReactionsButtonText { get; }
+
+        public GitHubReactionSummary Reactions { get; }
+
+        public bool IsMinimized { get; }
+
+        public string ViewerLogin { get; }
+
+        public bool CanReact { get; }
+
+        public bool CanReply { get; }
+
+        public bool CanModerate { get; }
     }
 }

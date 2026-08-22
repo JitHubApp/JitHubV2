@@ -216,7 +216,7 @@ public sealed class VNextLocalizationContractTests
         Assert.Contains("vnext-pseudo-localized", source, StringComparison.Ordinal);
         Assert.Contains("using Microsoft.Windows.Globalization;", source, StringComparison.Ordinal);
         Assert.Contains("ApplicationLanguages.PrimaryLanguageOverride = pseudoLanguage", source, StringComparison.Ordinal);
-        Assert.Contains("ApplicationLanguages.PrimaryLanguageOverride = string.Empty", source, StringComparison.Ordinal);
+        Assert.DoesNotContain("ApplicationLanguages.PrimaryLanguageOverride = string.Empty", source, StringComparison.Ordinal);
         Assert.DoesNotContain("Windows.ApplicationModel.Resources.Core", source, StringComparison.Ordinal);
         int launchOptionsIndex = source.IndexOf("CurrentLaunchOptions = LaunchOptions.Parse(args);", StringComparison.Ordinal);
         int languageOverrideIndex = source.IndexOf("ConfigureAutomationLanguageOverride();", StringComparison.Ordinal);
@@ -225,7 +225,13 @@ public sealed class VNextLocalizationContractTests
         Assert.True(applicationStartIndex > languageOverrideIndex);
 
         string project = File.ReadAllText(Path.Combine(root, "JitHub.WinUI", "JitHub.WinUI.csproj"));
-        Assert.DoesNotContain("Strings\\qps-ploc\\**\\*", project, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("<EnablePseudoLocalization>false</EnablePseudoLocalization>", project, StringComparison.Ordinal);
+        Assert.Contains("Strings\\qps-ploc\\**\\*", project, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("'$(EnablePseudoLocalization)' != 'true'", project, StringComparison.Ordinal);
+
+        string debugLauncher = File.ReadAllText(Path.Combine(root, "eng", "Start-JitHubWinUIDebug.ps1"));
+        Assert.Contains("[switch]$EnablePseudoLocalization", debugLauncher, StringComparison.Ordinal);
+        Assert.Contains("-p:EnablePseudoLocalization=true", debugLauncher, StringComparison.Ordinal);
 
         string localizationService = File.ReadAllText(Path.Combine(
             root,

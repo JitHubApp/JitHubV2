@@ -7,6 +7,8 @@ namespace JitHub.WinUI.Views.Dialogs;
 
 internal static class AppDialogStyleCatalog
 {
+    private const double HorizontalChromeWidth = 48;
+
     public static void Apply(ContentDialog dialog)
     {
         ArgumentNullException.ThrowIfNull(dialog);
@@ -32,11 +34,15 @@ internal static class AppDialogStyleCatalog
             layoutKind);
         dialog.Resources["ContentDialogMinWidth"] = metrics.MinimumWidth;
         dialog.Resources["ContentDialogMaxWidth"] = metrics.MaximumWidth;
+        dialog.Resources["ContentDialogMinHeight"] = metrics.MaximumHeight;
         dialog.Resources["ContentDialogMaxHeight"] = metrics.MaximumHeight;
-        dialog.MinWidth = 0;
+        dialog.Width = metrics.MaximumWidth;
+        dialog.Height = metrics.MaximumHeight;
+        dialog.MinWidth = metrics.MaximumWidth;
         dialog.MaxWidth = metrics.MaximumWidth;
-        dialog.MinWidth = metrics.MinimumWidth;
+        dialog.MinHeight = metrics.MaximumHeight;
         dialog.MaxHeight = metrics.MaximumHeight;
+        ApplyContentWidth(dialog.Content as FrameworkElement, metrics.MaximumWidth);
         dialog.InvalidateMeasure();
     }
 
@@ -100,6 +106,20 @@ internal static class AppDialogStyleCatalog
         VerticalScrollMode = ScrollMode.Auto,
         ZoomMode = ZoomMode.Disabled
     };
+
+    private static void ApplyContentWidth(FrameworkElement? content, double dialogWidth)
+    {
+        if (content is null)
+        {
+            return;
+        }
+
+        double contentWidth = Math.Max(0, dialogWidth - HorizontalChromeWidth);
+        content.Width = contentWidth;
+        content.MinWidth = contentWidth;
+        content.MaxWidth = contentWidth;
+        content.HorizontalAlignment = HorizontalAlignment.Stretch;
+    }
 
     private static void ApplyFieldStyles(DependencyObject? element)
     {

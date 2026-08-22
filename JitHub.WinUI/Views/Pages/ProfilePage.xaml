@@ -9,7 +9,7 @@
     xmlns:profile="using:JitHub.WinUI.Views.Controls.Profile"
     xmlns:vm="using:JitHub.WinUI.ViewModels.Pages"
     x:Name="PageRoot"
-    Background="Transparent"
+    Background="{ThemeResource AppTransparentBrush}"
     SizeChanged="Page_SizeChanged"
     mc:Ignorable="d">
 
@@ -799,7 +799,7 @@
                         <StackPanel Padding="0,0,0,20" Spacing="14">
                             <Border
                                 Padding="18"
-                                Background="Transparent"
+                                    Background="{ThemeResource AppTransparentBrush}"
                                 BorderBrush="{ThemeResource AppHairlineBrush}"
                                 BorderThickness="0,0,0,1">
                                 <StackPanel Spacing="12">
@@ -820,7 +820,7 @@
 
                             <Border
                                 Padding="18"
-                                Background="Transparent"
+                                    Background="{ThemeResource AppTransparentBrush}"
                                 BorderBrush="{ThemeResource AppHairlineBrush}"
                                 BorderThickness="0,0,0,1"
                                 Visibility="{x:Bind ViewModel.HasReadme, Converter={StaticResource BoolToVisibilityConverter}, Mode=OneWay}">
@@ -841,7 +841,7 @@
 
                             <Border
                                 Padding="18"
-                                Background="Transparent"
+                                    Background="{ThemeResource AppTransparentBrush}"
                                 BorderThickness="0"
                                 Visibility="{x:Bind ViewModel.HasPinnedItems, Converter={StaticResource BoolToVisibilityConverter}, Mode=OneWay}">
                                 <StackPanel Spacing="12">

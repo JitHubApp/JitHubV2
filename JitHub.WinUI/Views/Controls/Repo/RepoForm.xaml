@@ -63,7 +63,7 @@
             </ComboBox>
             <TextBlock
                 Text="{x:Bind ViewModel.LicenseConsequenceText, Mode=OneWay}"
-                Style="{ThemeResource CaptionTextBlockStyle}"
+                    Style="{StaticResource CaptionTextBlockStyle}"
                 Foreground="{ThemeResource TextFillColorSecondaryBrush}"
                 TextWrapping="Wrap"/>
             <TextBlock
@@ -80,7 +80,7 @@
                 AutomationProperties.AutomationId="RepoFormCreateButton"
                 AutomationProperties.Name="Create repository"
                 Content="Create"
-                Style="{ThemeResource AppAccentButtonStyle}"
+                Style="{StaticResource AppAccentButtonStyle}"
                 Command="{x:Bind ViewModel.CreateCommand, Mode=OneWay}"/>
         </StackPanel>
     </Grid>
