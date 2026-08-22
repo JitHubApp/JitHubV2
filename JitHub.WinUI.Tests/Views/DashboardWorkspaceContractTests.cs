@@ -14,9 +14,15 @@ public sealed class DashboardWorkspaceContractTests
         XDocument document = XDocument.Load(Path("JitHub.WinUI", "Views", "Pages", "DashboardPage.xaml"));
         XElement main = FindById(document, "DashboardMainRailScrollViewer");
         XElement side = FindById(document, "DashboardSideRailScrollViewer");
+        XElement mainItems = FindById(document, "DashboardMainRail");
+        XElement sideItems = FindById(document, "DashboardSideRail");
+        XElement drawerItems = FindById(document, "DashboardSideDrawerWidgets");
 
         Assert.Equal("Auto", main.Attribute("VerticalScrollBarVisibility")?.Value);
         Assert.Equal("Auto", side.Attribute("VerticalScrollBarVisibility")?.Value);
+        Assert.Equal("{x:Bind ViewModel.MainWidgets, Mode=OneWay}", mainItems.Attribute("ItemsSource")?.Value);
+        Assert.Equal("{x:Bind ViewModel.SideWidgets, Mode=OneWay}", sideItems.Attribute("ItemsSource")?.Value);
+        Assert.Equal("{x:Bind ViewModel.SideWidgets, Mode=OneWay}", drawerItems.Attribute("ItemsSource")?.Value);
         Assert.DoesNotContain(main.Ancestors(), static element => element.Name.LocalName == "ScrollViewer");
         Assert.DoesNotContain(side.Ancestors(), static element => element.Name.LocalName == "ScrollViewer");
     }

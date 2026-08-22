@@ -14,7 +14,7 @@ using Microsoft.UI.Xaml.Controls;
 
 namespace JitHub.WinUI.ViewModels.RepositoryViewModels
 {
-    public class RepoFormViewModel : ObservableObject
+public partial class RepoFormViewModel : ObservableObject
     {
         private readonly IGitHubService _gitHubService;
         private string _name = string.Empty;

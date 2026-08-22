@@ -23,7 +23,7 @@ internal static class AuthLifecycleScenario
     public const string MultiAccountCleanup = "auth-multi-account-cleanup";
 }
 
-internal sealed class AuthLifecycleAutomationContext
+internal sealed partial class AuthLifecycleAutomationContext
 {
     internal const long PrimaryUserId = 101;
     internal const long SecondaryUserId = 202;
@@ -214,7 +214,7 @@ internal sealed class AuthLifecycleAutomationContext
         }
     }
 
-    internal sealed class AuthLifecycleHttpMessageHandler : HttpMessageHandler
+internal sealed partial class AuthLifecycleHttpMessageHandler : HttpMessageHandler
     {
         private const string UserJson = "{\"login\":\"automation-user\",\"id\":101,\"name\":\"Automation User\",\"avatar_url\":\"\",\"html_url\":\"https://github.com/automation-user\",\"public_repos\":0,\"followers\":0,\"following\":0}";
         private readonly AuthLifecycleAutomationContext _context;

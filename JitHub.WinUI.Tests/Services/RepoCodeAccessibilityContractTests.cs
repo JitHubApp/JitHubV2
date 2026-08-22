@@ -141,6 +141,31 @@ public sealed class RepoCodeAccessibilityContractTests
 
         Assert.Equal("Grid", itemContent.Name.LocalName);
         Assert.Null(itemContent.Attribute("AutomationProperties.AutomationId"));
+        Assert.Null(itemContent.Attribute("Tag"));
+
+        string source = File.ReadAllText(Path.Combine(
+            FindRepositoryRoot(),
+            "JitHub.WinUI",
+            "Views",
+            "Controls",
+            "CodeViewer",
+            "RepoFileTreeView.xaml.cs"));
+        Assert.Contains("DataContext: RepoTreeNodeViewModel boundNode", source, StringComparison.Ordinal);
+        Assert.Contains("DispatcherQueue.TryEnqueue", source, StringComparison.Ordinal);
+        Assert.Contains("FileTreeView.ContainerFromNode(treeNode) is TreeViewItem container", source, StringComparison.Ordinal);
+        Assert.Contains("AnnotateRealizedTreeItems(FileTreeView.RootNodes);", source, StringComparison.Ordinal);
+        Assert.Contains("ItemContainerStyleSelector = new RepoTreeItemStyleSelector(ConfigureTreeItemContainer);", source, StringComparison.Ordinal);
+        Assert.Contains("AutomationProperties.SetAutomationId(container, node.AutomationId);", source, StringComparison.Ordinal);
+
+        string selector = File.ReadAllText(Path.Combine(
+            FindRepositoryRoot(),
+            "JitHub.WinUI",
+            "Views",
+            "Controls",
+            "CodeViewer",
+            "RepoTreeItemStyleSelector.cs"));
+        Assert.Contains("TreeViewNode { Content: RepoTreeNodeViewModel treeNode }", selector, StringComparison.Ordinal);
+        Assert.Contains("_configureContainer(treeViewItem, node);", selector, StringComparison.Ordinal);
     }
 
     [Fact]

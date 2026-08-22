@@ -40,7 +40,7 @@ public interface IRepositoryForkOwnershipStore
     Task ClearAccountAsync(string accountUserId, CancellationToken cancellationToken = default);
 }
 
-public sealed class RepositoryForkOwnershipStore : IRepositoryForkOwnershipStore
+public sealed partial class RepositoryForkOwnershipStore : IRepositoryForkOwnershipStore
 {
     private const int CurrentVersion = 1;
     private readonly SemaphoreSlim _gate = new(1, 1);
@@ -222,9 +222,10 @@ public sealed class RepositoryForkOwnershipStore : IRepositoryForkOwnershipStore
                 4096,
                 FileOptions.Asynchronous | FileOptions.SequentialScan))
             {
-                document = await JsonSerializer.DeserializeAsync<RepositoryForkOwnershipDocument>(
+                document = await JsonSerializer.DeserializeAsync(
                     stream,
-                    cancellationToken: cancellationToken).ConfigureAwait(false);
+                    RepositoryForkOwnershipJsonContext.Default.Document,
+                    cancellationToken).ConfigureAwait(false);
             }
 
             if (document is { Version: CurrentVersion })
@@ -319,9 +320,10 @@ public sealed class RepositoryForkOwnershipStore : IRepositoryForkOwnershipStore
                 FileShare.Read,
                 4096,
                 FileOptions.Asynchronous | FileOptions.SequentialScan);
-            return await JsonSerializer.DeserializeAsync<RepositoryForkOwnershipDocument>(
+            return await JsonSerializer.DeserializeAsync(
                 stream,
-                cancellationToken: cancellationToken).ConfigureAwait(false)
+                RepositoryForkOwnershipJsonContext.Default.Document,
+                cancellationToken).ConfigureAwait(false)
                 ?? throw new InvalidDataException("The repository fork recovery document is empty or invalid.");
         }
         catch (JsonException exception)
@@ -351,7 +353,11 @@ public sealed class RepositoryForkOwnershipStore : IRepositoryForkOwnershipStore
                 4096,
                 FileOptions.Asynchronous | FileOptions.WriteThrough))
             {
-                await JsonSerializer.SerializeAsync(stream, document, cancellationToken: cancellationToken).ConfigureAwait(false);
+                await JsonSerializer.SerializeAsync(
+                    stream,
+                    document,
+                    RepositoryForkOwnershipJsonContext.Default.Document,
+                    cancellationToken).ConfigureAwait(false);
                 await stream.FlushAsync(cancellationToken).ConfigureAwait(false);
             }
 
@@ -374,6 +380,11 @@ public sealed class RepositoryForkOwnershipStore : IRepositoryForkOwnershipStore
 
         [JsonIgnore]
         public bool HasConservativeQuarantine { get; set; }
+    }
+
+    [JsonSerializable(typeof(RepositoryForkOwnershipDocument), TypeInfoPropertyName = "Document")]
+    private sealed partial class RepositoryForkOwnershipJsonContext : JsonSerializerContext
+    {
     }
 }
 

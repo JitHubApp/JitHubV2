@@ -8,7 +8,7 @@ using JitHub.Services;
 
 namespace JitHub.WinUI.ViewModels.PullRequestViewModels.ConversationViewModels
 {
-    public class ReviewNodeViewModel : RepoViewModel
+public partial class ReviewNodeViewModel : RepoViewModel
     {
         private ObservableCollection<ReviewCommentViewModel> _blocks = [];
         private User? _reviewer;

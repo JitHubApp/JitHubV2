@@ -1,5 +1,4 @@
 using System;
-using System.Collections.Generic;
 using JitHub.Models.GitHub;
 using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Controls;
@@ -69,6 +68,11 @@ public sealed partial class CommentInteractionBar : UserControl
     public CommentInteractionBar()
     {
         InitializeComponent();
+        foreach (GitHubReactionOption option in GitHubReactionCatalog.Options)
+        {
+            ReactionOptionsItems.Items.Add(option);
+        }
+
         Loaded += (_, _) => UpdateState();
     }
 
@@ -89,7 +93,6 @@ public sealed partial class CommentInteractionBar : UserControl
     public bool IsPinned { get => (bool)GetValue(IsPinnedProperty); set => SetValue(IsPinnedProperty, value); }
     public bool IsMinimized { get => (bool)GetValue(IsMinimizedProperty); set => SetValue(IsMinimizedProperty, value); }
 
-    public IReadOnlyList<GitHubReactionOption> ReactionOptions => GitHubReactionCatalog.Options;
     public string AddReactionEmoji => "\U0001F642";
 
     private static DependencyProperty Register(string name, Type type, object? defaultValue) =>

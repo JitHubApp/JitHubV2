@@ -79,7 +79,7 @@ public interface ICommitNavigationCache
         TimeSpan delay);
 }
 
-public sealed class CommitNavigationCache : ICommitNavigationCache
+public sealed partial class CommitNavigationCache : ICommitNavigationCache
 {
     private static readonly TimeSpan SnapshotSoftTtl = TimeSpan.FromMinutes(10);
     private readonly ConcurrentDictionary<string, CommitNavigationSnapshot> _snapshots = new(StringComparer.OrdinalIgnoreCase);
@@ -415,7 +415,7 @@ public sealed class CommitNavigationCache : ICommitNavigationCache
             : normalized;
     }
 
-    private sealed class DisposableAction : IDisposable
+    private sealed partial class DisposableAction : IDisposable
     {
         public static readonly IDisposable Empty = new DisposableAction(null, null);
 

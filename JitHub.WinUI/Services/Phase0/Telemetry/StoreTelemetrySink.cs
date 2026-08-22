@@ -1,5 +1,7 @@
 using System;
-using System.Reflection;
+#if STORE_ENGAGEMENT_AVAILABLE
+using Microsoft.Services.Store.Engagement;
+#endif
 
 namespace JitHub.Services;
 
@@ -14,53 +16,60 @@ public interface IStoreTelemetrySink
 
 public sealed class StoreTelemetrySink : IStoreTelemetrySink
 {
-    private readonly object? _logger;
-    private readonly MethodInfo? _logMethod;
+#if STORE_ENGAGEMENT_AVAILABLE
+    private readonly StoreServicesCustomEventLogger? _logger;
+#endif
     private readonly string _availabilityStatus;
 
     public StoreTelemetrySink()
     {
+#if STORE_ENGAGEMENT_AVAILABLE
         try
         {
-            Type? loggerType = Type.GetType(
-                "Microsoft.Services.Store.Engagement.StoreServicesCustomEventLogger, Microsoft.Services.Store.Engagement",
-                throwOnError: false);
-            if (loggerType is null)
-            {
-                _availabilityStatus = "store_engagement_type_unavailable";
-                return;
-            }
-
-            MethodInfo? defaultMethod = loggerType?.GetMethod("GetDefault", BindingFlags.Public | BindingFlags.Static);
-            _logger = defaultMethod?.Invoke(null, null);
-            _logMethod = loggerType?.GetMethod("Log", [typeof(string)]);
-            _availabilityStatus = IsAvailable ? "available" : "store_engagement_logger_unavailable";
+            _logger = StoreServicesCustomEventLogger.GetDefault();
+            _availabilityStatus = _logger is null
+                ? "store_engagement_logger_unavailable"
+                : "available";
         }
-        catch (Exception ex)
+        catch (Exception exception)
         {
             _logger = null;
-            _logMethod = null;
-            _availabilityStatus = ex.GetType().Name;
+            _availabilityStatus = exception.GetType().Name;
         }
+#else
+        _availabilityStatus = "store_engagement_architecture_unavailable";
+#endif
     }
 
-    public bool IsAvailable => _logger is not null && _logMethod is not null;
+    public bool IsAvailable
+    {
+        get
+        {
+#if STORE_ENGAGEMENT_AVAILABLE
+            return _logger is not null;
+#else
+            return false;
+#endif
+        }
+    }
 
     public string AvailabilityStatus => _availabilityStatus;
 
     public void TrackEvent(string name)
     {
-        if (!IsAvailable || !TelemetrySanitizer.IsStoreEventAllowed(name))
+        if (!TelemetrySanitizer.IsStoreEventAllowed(name))
         {
             return;
         }
 
+#if STORE_ENGAGEMENT_AVAILABLE
         try
         {
-            _logMethod!.Invoke(_logger, [name]);
+            _logger?.Log(name);
         }
         catch
         {
         }
+#endif
     }
 }

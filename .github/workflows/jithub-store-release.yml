@@ -29,9 +29,14 @@ on:
         description: Optional staged rollout percentage from 0 to 100.
         required: false
         type: string
+      native_aot_validation_run_id:
+        description: Successful Native AOT hardware validation workflow run ID for this exact commit.
+        required: true
+        type: string
 
 permissions:
   contents: read
+  actions: read
 
 jobs:
   publish-store:
@@ -63,6 +68,24 @@ jobs:
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
+
+      - name: Require matching hardware validation
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ github.token }}
+          VALIDATION_RUN_ID: ${{ inputs.native_aot_validation_run_id }}
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $run = gh api "/repos/$env:GITHUB_REPOSITORY/actions/runs/$env:VALIDATION_RUN_ID" | ConvertFrom-Json
+          if ($run.name -ne 'Native AOT hardware validation') {
+            throw "Run $env:VALIDATION_RUN_ID is not the Native AOT hardware validation workflow."
+          }
+          if ($run.conclusion -ne 'success') {
+            throw "Native AOT hardware validation run did not succeed: $($run.conclusion)"
+          }
+          if ($run.head_sha -ne $env:GITHUB_SHA) {
+            throw "Native AOT hardware validation was for $($run.head_sha), not $env:GITHUB_SHA."
+          }
 
       - name: Set up .NET SDK
         uses: actions/setup-dotnet@v4
@@ -108,7 +131,7 @@ jobs:
           $ErrorActionPreference = 'Stop'
           $projectPath = Join-Path $env:GITHUB_WORKSPACE $env:PROJECT_PATH
           $packageDir = $env:APP_PACKAGES_DIR
-          $bundlePlatforms = if ([string]::IsNullOrWhiteSpace($env:BUNDLE_PLATFORMS)) { 'x64|ARM64' } else { $env:BUNDLE_PLATFORMS }
+          $bundlePlatforms = if ([string]::IsNullOrWhiteSpace($env:BUNDLE_PLATFORMS)) { 'x86|x64|ARM64' } else { $env:BUNDLE_PLATFORMS }
 
           .\eng\Build-JitHubWinUIStorePackage.ps1 `
             -ProjectPath $projectPath `

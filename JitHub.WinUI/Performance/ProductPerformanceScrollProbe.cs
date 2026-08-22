@@ -9,7 +9,7 @@ using Microsoft.UI.Xaml.Media;
 
 namespace JitHub.WinUI.Performance;
 
-internal sealed class ProductPerformanceScrollProbe : IDisposable
+internal sealed partial class ProductPerformanceScrollProbe : IDisposable
 {
     private readonly FrameworkElement _statusHost;
     private readonly ScrollViewer _scrollViewer;

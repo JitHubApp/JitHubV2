@@ -157,17 +157,21 @@ internal static class Program
     private static void ConfigureAutomationLanguageOverride()
     {
         const string pseudoLanguage = "qps-ploc";
-        bool isAutomation = !string.IsNullOrWhiteSpace(
+#if PSEUDO_LOCALIZATION_BUILD
+        const bool isPseudoLocalizationBuild = true;
+#else
+        const bool isPseudoLocalizationBuild = false;
+#endif
+        bool canUsePseudoLocalization = isPseudoLocalizationBuild || !string.IsNullOrWhiteSpace(
             Environment.GetEnvironmentVariable("JITHUB_AUTOMATION_DATA_ROOT"));
         bool usePseudoLocalization = string.Equals(
             CurrentLaunchOptions.Scenario,
             "vnext-pseudo-localized",
             StringComparison.OrdinalIgnoreCase);
 
-        if (usePseudoLocalization && isAutomation)
+        if (usePseudoLocalization && canUsePseudoLocalization)
         {
-            // Windows App SDK's language override is process-local for unpackaged apps.
-            // Set it before App.xaml or any page XAML resolves x:Uid resources.
+            // Set the override before App.xaml or any page XAML resolves x:Uid resources.
             ApplicationLanguages.PrimaryLanguageOverride = pseudoLanguage;
             return;
         }

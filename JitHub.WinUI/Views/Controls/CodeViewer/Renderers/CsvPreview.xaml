@@ -2,11 +2,11 @@
     x:Class="JitHub.WinUI.Views.Controls.CodeViewer.Renderers.CsvPreview"
     xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
     xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+    xmlns:app="using:JitHub.WinUI.Views.Controls.App"
     xmlns:codeviewer="using:JitHub.WinUI.Views.Controls.CodeViewer"
     xmlns:controls="using:CommunityToolkit.WinUI.Controls"
     xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
     xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
-    xmlns:tkcontrols="using:CommunityToolkit.WinUI.UI.Controls"
     Background="{ThemeResource AppCanvasBrush}"
     d:DesignHeight="600"
     d:DesignWidth="900"
@@ -37,18 +37,12 @@
             </controls:Segmented>
         </Border>
 
-        <!--  Rich: DataGrid  -->
-        <tkcontrols:DataGrid
-            x:Uid="CsvPreviewDataGrid" x:Name="DataGrid"
+        <!--  Rich: app-owned virtualized table  -->
+        <app:AppDataTable
+            x:Uid="ControlsCodeViewerRenderersCsvPreviewCsvPreviewDataGrid" x:Name="DataTable"
             Grid.Row="1"
             AutomationProperties.AutomationId="CsvPreviewDataGrid"
             AutomationProperties.Name="CSV table"
-            AutoGenerateColumns="False"
-            CanUserReorderColumns="True"
-            CanUserResizeColumns="True"
-            CanUserSortColumns="True"
-            GridLinesVisibility="All"
-            IsReadOnly="True"
             Visibility="Visible" />
 
         <!--  Plain: raw text editor  -->

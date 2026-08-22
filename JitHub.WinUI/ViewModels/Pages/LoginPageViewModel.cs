@@ -4,11 +4,10 @@ using System.Diagnostics;
 using System.Threading.Tasks;
 using CommunityToolkit.Mvvm.ComponentModel;
 using JitHub.Services;
-using Microsoft.UI.Xaml.Data;
 
 namespace JitHub.WinUI.ViewModels.Pages;
 
-[Bindable]
+[WinRT.GeneratedBindableCustomProperty]
 public sealed partial class LoginPageViewModel : ObservableObject
 {
     private readonly IAuthService _authService;

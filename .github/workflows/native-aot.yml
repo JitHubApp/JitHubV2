@@ -1,0 +1,172 @@
+name: Full Native AOT
+
+on:
+  push:
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  tests:
+    name: Native AOT contract and unit tests
+    runs-on: windows-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-dotnet@v4
+        with:
+          global-json-file: ./global.json
+
+      - name: Verify locked Native AOT graph
+        shell: pwsh
+        run: |
+          .\eng\Restore-NativeAot.ps1 -Architecture x64
+          .\eng\Update-NativeAotDependencyLedger.ps1 -Verify
+
+      - name: Restore tests
+        shell: pwsh
+        run: >
+          dotnet restore .\JitHub.WinUI.Tests\JitHub.WinUI.Tests.csproj
+          -p:Platform=x64
+          -p:RuntimeIdentifier=win-x64
+          --locked-mode
+
+      - name: Run unit tests
+        shell: pwsh
+        run: >
+          dotnet test .\JitHub.WinUI.Tests\JitHub.WinUI.Tests.csproj
+          -c Debug
+          -p:Platform=x64
+          -p:RuntimeIdentifier=win-x64
+          --no-restore
+          --logger "trx;LogFileName=native-aot-tests.trx"
+
+      - name: Upload test results
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: native-aot-test-results
+          path: '**/native-aot-tests.trx'
+          if-no-files-found: warn
+          retention-days: 7
+
+  publish-package:
+    name: Publish and package ${{ matrix.architecture }}
+    needs: tests
+    runs-on: windows-latest
+    timeout-minutes: 90
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - architecture: x86
+            platform: x86
+            rid: win-x86
+          - architecture: x64
+            platform: x64
+            rid: win-x64
+          - architecture: arm64
+            platform: ARM64
+            rid: win-arm64
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-dotnet@v4
+        with:
+          global-json-file: ./global.json
+
+      - name: Restore locked architecture graph
+        shell: pwsh
+        run: |
+          .\eng\Restore-NativeAot.ps1 -Architecture ${{ matrix.architecture }}
+          .\eng\Update-NativeAotDependencyLedger.ps1 -Verify
+
+      - name: Publish Native AOT
+        shell: pwsh
+        run: >
+          dotnet publish .\JitHub.WinUI\JitHub.WinUI.csproj
+          -c Release
+          -r ${{ matrix.rid }}
+          -p:Platform=${{ matrix.platform }}
+          -p:GenerateAppxPackageOnBuild=false
+          -p:SkipReleaseSecurityGate=true
+          --no-restore
+          -o .\artifacts\native-aot\${{ matrix.architecture }}\publish
+          -v:minimal
+
+      - name: Verify loose native payload
+        shell: pwsh
+        run: >
+          .\eng\Verify-NativeAotArtifact.ps1
+          -InputPath .\artifacts\native-aot\${{ matrix.architecture }}\publish
+          -Architecture ${{ matrix.architecture }}
+
+      - name: Build architecture MSIX
+        shell: pwsh
+        run: |
+          $packageDirectory = [System.IO.Path]::GetFullPath(".\artifacts\native-aot\${{ matrix.architecture }}\packages") + [System.IO.Path]::DirectorySeparatorChar
+          $arguments = @(
+            'msbuild'
+            '.\JitHub.WinUI\JitHub.WinUI.csproj'
+            '/m'
+            '/p:Configuration=Release'
+            '/p:Platform=${{ matrix.platform }}'
+            '/p:RuntimeIdentifier=${{ matrix.rid }}'
+            '/p:PublishAot=true'
+            '/p:PublishTrimmed=true'
+            '/p:SelfContained=true'
+            '/p:PublishReadyToRun=false'
+            '/p:RestoreLockedMode=true'
+            '/p:SkipReleaseSecurityGate=true'
+            '/p:GenerateAppxPackageOnBuild=true'
+            '/p:UapAppxPackageBuildMode=SideloadOnly'
+            '/p:AppxBundle=Never'
+            '/p:GenerateAppInstallerFile=false'
+            '/p:AppxAutoIncrementPackageRevision=false'
+            '/p:AppxSymbolPackageEnabled=false'
+            '/p:AppxPackageSigningEnabled=false'
+            "/p:AppxPackageDir=$packageDirectory"
+            '/v:minimal'
+          )
+          & dotnet @arguments
+          if ($LASTEXITCODE -ne 0) { throw 'Architecture MSIX build failed.' }
+
+      - name: Verify architecture MSIX
+        shell: pwsh
+        run: |
+          $package = Get-ChildItem ".\artifacts\native-aot\${{ matrix.architecture }}\packages" -Recurse -File |
+            Where-Object { $_.Extension -in @('.msix', '.appx') } |
+            Sort-Object LastWriteTime -Descending |
+            Select-Object -First 1
+          if (-not $package) { throw 'Architecture MSIX was not produced.' }
+          .\eng\Verify-NativeAotArtifact.ps1 -InputPath $package.FullName -Architecture ${{ matrix.architecture }}
+
+      - name: Upload native payload
+        uses: actions/upload-artifact@v4
+        with:
+          name: jithub-native-aot-${{ matrix.architecture }}
+          path: |
+            artifacts/native-aot/${{ matrix.architecture }}/publish/**
+            !artifacts/native-aot/${{ matrix.architecture }}/publish/**/*.pdb
+          if-no-files-found: error
+          retention-days: 7
+
+      - name: Upload native symbols
+        uses: actions/upload-artifact@v4
+        with:
+          name: jithub-native-aot-${{ matrix.architecture }}-symbols
+          path: artifacts/native-aot/${{ matrix.architecture }}/publish/**/*.pdb
+          if-no-files-found: error
+          retention-days: 7
+
+      - name: Upload verified MSIX
+        uses: actions/upload-artifact@v4
+        with:
+          name: jithub-native-aot-${{ matrix.architecture }}-msix
+          path: |
+            artifacts/native-aot/${{ matrix.architecture }}/packages/**/*.msix
+            artifacts/native-aot/${{ matrix.architecture }}/packages/**/*.appx
+          if-no-files-found: error
+          retention-days: 7

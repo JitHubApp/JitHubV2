@@ -8,8 +8,12 @@ namespace JitHub.Models.GitHub;
 [JsonSerializable(typeof(GitHubUser[]))]
 [JsonSerializable(typeof(GitHubUserProfileUpdateRequest))]
 [JsonSerializable(typeof(GitHubGraphQlRequest))]
-[JsonSerializable(typeof(GitHubGraphQlResponse<GitHubProfileGraphQlData>))]
-[JsonSerializable(typeof(GitHubGraphQlResponse<GitHubCommentMutationData>))]
+[JsonSerializable(
+    typeof(GitHubGraphQlResponse<GitHubProfileGraphQlData>),
+    TypeInfoPropertyName = "GitHubProfileGraphQlResponse")]
+[JsonSerializable(
+    typeof(GitHubGraphQlResponse<GitHubCommentMutationData>),
+    TypeInfoPropertyName = "GitHubCommentMutationGraphQlResponse")]
 [JsonSerializable(typeof(GitHubCommentMutationData))]
 [JsonSerializable(typeof(GitHubCommentMutationPayload))]
 [JsonSerializable(typeof(GitHubMinimizedComment))]

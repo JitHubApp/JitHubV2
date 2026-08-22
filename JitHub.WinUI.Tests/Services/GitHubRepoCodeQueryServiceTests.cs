@@ -30,6 +30,75 @@ public sealed class GitHubRepoCodeQueryServiceTests : IDisposable
         Assert.True(GitHubRepoCodeQueryService.PerformanceFixtureTreeFileCount >= 1_000);
     }
 
+    [Fact]
+    public async Task PublicPreview_ExposesNativeRendererFixturesWithMatchingBlobs()
+    {
+        GitHubRepoCodeQueryService service = new(new CapturingQueryService());
+
+        CachedResult<GitHubTree> tree = await service.GetTreeAsync(
+            GitHubAuthenticationConstants.PublicAccessToken,
+            "public",
+            "JitHubApp",
+            "JitHubV2",
+            "main");
+        CachedResult<GitHubRepositoryContent[]> directory = await service.GetDirectoryAsync(
+            GitHubAuthenticationConstants.PublicAccessToken,
+            "public",
+            "JitHubApp",
+            "JitHubV2",
+            string.Empty,
+            "main");
+
+        Assert.NotNull(tree.Value);
+        Assert.NotNull(tree.Value.Tree);
+        Assert.Contains(tree.Value.Tree, item => item is { Path: "data.csv", Sha: "preview-csv" });
+        Assert.Contains(tree.Value.Tree, item => item is { Path: "architecture.svg", Sha: "preview-svg" });
+        Assert.NotNull(directory.Value);
+        Assert.Contains(directory.Value, item => item is { Name: "data.csv", Sha: "preview-csv" });
+        Assert.Contains(directory.Value, item => item is { Name: "architecture.svg", Sha: "preview-svg" });
+
+        string csv = await ReadPublicPreviewBlobAsync(service, "preview-csv");
+        CsvParseResult csvResult = CsvDocumentParser.Parse(csv, ',');
+        Assert.True(csvResult.Succeeded);
+        Assert.Equal(5, csvResult.Document!.Headers.Count);
+        Assert.Equal(7, csvResult.Document.Rows.Count);
+        Assert.Equal("First line\nSecond line", csvResult.Document.Rows[5].Values[4]);
+
+        string svg = await ReadPublicPreviewBlobAsync(service, "preview-svg");
+        Assert.Contains("<linearGradient", svg, StringComparison.Ordinal);
+        Assert.Contains("<clipPath", svg, StringComparison.Ordinal);
+        Assert.Contains("<mask", svg, StringComparison.Ordinal);
+        Assert.Contains("<use", svg, StringComparison.Ordinal);
+        Assert.DoesNotContain("http://", svg.Replace("http://www.w3.org/2000/svg", string.Empty, StringComparison.Ordinal), StringComparison.OrdinalIgnoreCase);
+
+        byte[] svgBytes = Encoding.UTF8.GetBytes(svg);
+        RepositorySvgValidationResult validation = RepositorySvgSecurityPolicy.Validate(
+            svgBytes,
+            CancellationToken.None);
+        Assert.True(validation.Accepted, validation.Reason);
+        RepositorySvgRasterizer rasterizer = new();
+        using RepositorySvgDocument? svgDocument = rasterizer.Load(svgBytes, CancellationToken.None);
+        Assert.NotNull(svgDocument);
+        RepositorySvgTile svgTile = rasterizer.RasterizeTile(
+            svgDocument,
+            new RepositorySvgTileRequest(0, 0, 960, 540, 1),
+            CancellationToken.None);
+        Assert.Contains(svgTile.BgraPixels.Where((_, index) => index % 4 == 3), alpha => alpha != 0);
+    }
+
+    private static async Task<string> ReadPublicPreviewBlobAsync(
+        GitHubRepoCodeQueryService service,
+        string sha)
+    {
+        CachedResult<GitHubBlob> result = await service.GetBlobAsync(
+            GitHubAuthenticationConstants.PublicAccessToken,
+            "public",
+            "JitHubApp",
+            "JitHubV2",
+            sha);
+        return Encoding.UTF8.GetString(Convert.FromBase64String(result.Value!.Content!));
+    }
+
     public void Dispose()
     {
         try

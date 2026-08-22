@@ -1,5 +1,6 @@
 using System;
 using System.Globalization;
+using System.IO;
 using System.Linq;
 using System.Net;
 using System.Net.Http;
@@ -271,8 +272,11 @@ public sealed class GitHubRestTransport : IGitHubRestTransport
         string? message = null;
         try
         {
-            using JsonDocument? document = await response.Content.ReadFromJsonAsync<JsonDocument>(cancellationToken);
-            if (document is not null && document.RootElement.TryGetProperty("message", out JsonElement messageElement))
+            await using Stream stream = await response.Content.ReadAsStreamAsync(cancellationToken);
+            using JsonDocument document = await JsonDocument.ParseAsync(
+                stream,
+                cancellationToken: cancellationToken);
+            if (document.RootElement.TryGetProperty("message", out JsonElement messageElement))
             {
                 message = messageElement.GetString();
             }

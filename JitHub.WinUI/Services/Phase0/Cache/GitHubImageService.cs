@@ -61,7 +61,7 @@ public interface IGitHubImageService
     Task InvalidateAsync(string sourceUrl, CancellationToken cancellationToken = default);
 }
 
-public sealed class GitHubImageService : IGitHubImageService, IDisposable
+public sealed partial class GitHubImageService : IGitHubImageService, IDisposable
 {
     private const int MaxImageBytes = 10 * 1024 * 1024;
     private static readonly TimeSpan Freshness =

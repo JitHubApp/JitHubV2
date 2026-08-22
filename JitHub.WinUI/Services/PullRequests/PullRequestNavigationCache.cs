@@ -83,7 +83,7 @@ public interface IPullRequestNavigationCache
         CancellationToken cancellationToken = default);
 }
 
-public sealed class PullRequestNavigationCache : IPullRequestNavigationCache
+public sealed partial class PullRequestNavigationCache : IPullRequestNavigationCache
 {
     private static readonly TimeSpan SnapshotSoftTtl = TimeSpan.FromMinutes(10);
     private readonly ConcurrentDictionary<string, PullRequestNavigationSnapshot> _snapshots = new(StringComparer.OrdinalIgnoreCase);
@@ -515,7 +515,7 @@ public sealed class PullRequestNavigationCache : IPullRequestNavigationCache
             : normalized;
     }
 
-    private sealed class DisposableAction : IDisposable
+    private sealed partial class DisposableAction : IDisposable
     {
         public static readonly IDisposable Empty = new DisposableAction(null, null);
 

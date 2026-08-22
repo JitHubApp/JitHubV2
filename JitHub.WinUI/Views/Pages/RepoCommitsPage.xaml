@@ -23,6 +23,15 @@
             <Setter Property="CornerRadius" Value="{ThemeResource AppRadiusSmall}" />
         </Style>
 
+        <DataTemplate x:Key="RepoCommitSectionLabelTemplate" x:DataType="x:String">
+            <TextBlock
+                AutomationProperties.AccessibilityView="Raw"
+                MaxLines="2"
+                Text="{x:Bind Mode=OneTime}"
+                TextAlignment="Center"
+                TextWrapping="WrapWholeWords" />
+        </DataTemplate>
+
         <DataTemplate x:Key="RepoCommitListItemTemplate" x:DataType="github:GitHubCommit">
             <Grid
                 MinHeight="52"
@@ -529,10 +538,10 @@
                                 FontSize="12"
                                 SelectedIndex="0"
                                 SelectionChanged="CommitSectionSegmented_SelectionChanged">
-                                <toolkit:SegmentedItem x:Uid="PagesRepoCommitsPageRepoCommitsSectionDiff" AutomationProperties.AutomationId="RepoCommitsSection_Diff" AutomationProperties.Name="Show commit diff" Content="Diff" />
-                                <toolkit:SegmentedItem x:Uid="PagesRepoCommitsPageRepoCommitsSectionComments" AutomationProperties.AutomationId="RepoCommitsSection_Comments" AutomationProperties.Name="Show commit comments" Content="Comments" />
-                                <toolkit:SegmentedItem x:Uid="PagesRepoCommitsPageRepoCommitsSectionChecks" AutomationProperties.AutomationId="RepoCommitsSection_Checks" AutomationProperties.Name="Show commit checks" Content="Checks" />
-                                <toolkit:SegmentedItem x:Uid="PagesRepoCommitsPageRepoCommitsSectionCompare" AutomationProperties.AutomationId="RepoCommitsSection_Compare" AutomationProperties.Name="Compare commits" Content="Compare" />
+                                <toolkit:SegmentedItem x:Uid="PagesRepoCommitsPageRepoCommitsSectionDiff" Width="96" Height="48" Padding="4,6" AutomationProperties.AutomationId="RepoCommitsSection_Diff" AutomationProperties.Name="Show commit diff" Content="Diff" ContentTemplate="{StaticResource RepoCommitSectionLabelTemplate}" />
+                                <toolkit:SegmentedItem x:Uid="PagesRepoCommitsPageRepoCommitsSectionComments" Width="96" Height="48" Padding="4,6" AutomationProperties.AutomationId="RepoCommitsSection_Comments" AutomationProperties.Name="Show commit comments" Content="Comments" ContentTemplate="{StaticResource RepoCommitSectionLabelTemplate}" />
+                                <toolkit:SegmentedItem x:Uid="PagesRepoCommitsPageRepoCommitsSectionChecks" Width="96" Height="48" Padding="4,6" AutomationProperties.AutomationId="RepoCommitsSection_Checks" AutomationProperties.Name="Show commit checks" Content="Checks" ContentTemplate="{StaticResource RepoCommitSectionLabelTemplate}" />
+                                <toolkit:SegmentedItem x:Uid="PagesRepoCommitsPageRepoCommitsSectionCompare" Width="96" Height="48" Padding="4,6" AutomationProperties.AutomationId="RepoCommitsSection_Compare" AutomationProperties.Name="Compare commits" Content="Compare" ContentTemplate="{StaticResource RepoCommitSectionLabelTemplate}" />
                             </toolkit:Segmented>
 
                             <Grid
@@ -682,6 +691,7 @@
                                 <ScrollViewer
                                     x:Name="CommitChecksSection"
                                     x:Load="{x:Bind ViewModel.IsChecksSectionVisible, Mode=OneWay}"
+                                    AutomationProperties.AutomationId="RepoCommitsChecksViewport"
                                     HorizontalScrollBarVisibility="Disabled"
                                     VerticalScrollBarVisibility="Auto">
                                     <StackPanel Spacing="12">

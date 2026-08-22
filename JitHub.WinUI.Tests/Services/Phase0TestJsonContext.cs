@@ -3,6 +3,7 @@ using System.Text.Json.Serialization;
 namespace JitHub.WinUI.Tests.Services;
 
 [JsonSerializable(typeof(Phase0TestPayload))]
+[JsonSerializable(typeof(JitHub.Services.RepositoryForkOwnershipState[]))]
 internal sealed partial class Phase0TestJsonContext : JsonSerializerContext
 {
 }

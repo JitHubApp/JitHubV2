@@ -1,5 +1,5 @@
 using System;
-using System.Reflection;
+using System.Diagnostics;
 using System.Runtime.InteropServices;
 using Windows.ApplicationModel;
 
@@ -22,19 +22,33 @@ public sealed class SystemInformation
                 return version;
             }
 
-            Version assemblyVersion = Assembly.GetEntryAssembly()?.GetName().Version
-                ?? Assembly.GetExecutingAssembly().GetName().Version
-                ?? new Version(0, 0, 0, 0);
+            FileVersionInfo? fileVersion = TryGetProcessVersion();
 
             return new PackageVersion
             {
-                Major = (ushort)Math.Max(0, assemblyVersion.Major),
-                Minor = (ushort)Math.Max(0, assemblyVersion.Minor),
-                Build = (ushort)Math.Max(0, assemblyVersion.Build),
-                Revision = (ushort)Math.Max(0, assemblyVersion.Revision)
+                Major = ToPackageVersionPart(fileVersion?.FileMajorPart ?? 0),
+                Minor = ToPackageVersionPart(fileVersion?.FileMinorPart ?? 0),
+                Build = ToPackageVersionPart(fileVersion?.FileBuildPart ?? 0),
+                Revision = ToPackageVersionPart(fileVersion?.FilePrivatePart ?? 0)
             };
         }
     }
+
+    private static FileVersionInfo? TryGetProcessVersion()
+    {
+        try
+        {
+            string? processPath = Environment.ProcessPath;
+            return string.IsNullOrWhiteSpace(processPath) ? null : FileVersionInfo.GetVersionInfo(processPath);
+        }
+        catch (Exception)
+        {
+            return null;
+        }
+    }
+
+    private static ushort ToPackageVersionPart(int value) =>
+        (ushort)Math.Clamp(value, 0, ushort.MaxValue);
 
     private static bool TryGetPackagedVersion(out PackageVersion version)
     {

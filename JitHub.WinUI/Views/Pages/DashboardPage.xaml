@@ -542,7 +542,7 @@
                         AutomationProperties.AutomationId="DashboardMainRail"
                         AutomationProperties.Name="Main dashboard widgets"
                         ItemTemplate="{StaticResource DashboardWidgetTemplate}"
-                        ItemsSource="{Binding MainWidgets}" />
+                        ItemsSource="{x:Bind ViewModel.MainWidgets, Mode=OneWay}" />
                 </ScrollViewer>
             </Grid>
 
@@ -556,13 +556,13 @@
                 HorizontalScrollMode="Disabled"
                 VerticalScrollBarVisibility="Auto"
                 VerticalScrollMode="Auto"
-                Visibility="{Binding IsSideRailExpanded, Converter={StaticResource BoolToVisibilityConverter}}">
+                Visibility="{x:Bind ViewModel.IsSideRailExpanded, Converter={StaticResource BoolToVisibilityConverter}, Mode=OneWay}">
                 <ItemsControl
                     x:Uid="PagesDashboardPageDashboardSideRail" AutomationProperties.AccessibilityView="Control"
                     AutomationProperties.AutomationId="DashboardSideRail"
                     AutomationProperties.Name="Overview dashboard widgets"
                     ItemTemplate="{StaticResource DashboardWidgetTemplate}"
-                    ItemsSource="{Binding SideWidgets}" />
+                    ItemsSource="{x:Bind ViewModel.SideWidgets, Mode=OneWay}" />
             </ScrollViewer>
             </Grid>
 
@@ -632,8 +632,9 @@
                     </Grid>
                     <ScrollViewer Grid.Row="1" VerticalScrollBarVisibility="Auto" VerticalScrollMode="Auto">
                         <ItemsControl
+                            AutomationProperties.AutomationId="DashboardSideDrawerWidgets"
                             ItemTemplate="{StaticResource DashboardWidgetTemplate}"
-                            ItemsSource="{Binding SideWidgets}" />
+                            ItemsSource="{x:Bind ViewModel.SideWidgets, Mode=OneWay}" />
                     </ScrollViewer>
                     <Button
                         x:Name="DashboardSideDrawerEndFocusSentinel"

@@ -1575,6 +1575,15 @@
   <data name="ControlsCodeViewerRenderersSvgPreviewErrorText.Text" xml:space="preserve">
     <value>Unable to render this SVG.</value>
   </data>
+  <data name="ControlsCodeViewerRenderersSvgPreviewRoot.AutomationProperties.Name" xml:space="preserve">
+    <value>SVG preview</value>
+  </data>
+  <data name="ControlsCodeViewerRenderersSvgPreviewScrollViewer.AutomationProperties.Name" xml:space="preserve">
+    <value>Zoomable SVG canvas</value>
+  </data>
+  <data name="ControlsCodeViewerRenderersSvgPreviewViewport.AutomationProperties.Name" xml:space="preserve">
+    <value>Rendered SVG</value>
+  </data>
   <data name="ControlsCodeViewerRenderersXmlPreviewXmlPreviewViewMode.AutomationProperties.Name" xml:space="preserve">
     <value>XML view mode</value>
   </data>
@@ -3795,19 +3804,19 @@
   <data name="PagesShellPageShellRepoFilterForked.AutomationProperties.Name" xml:space="preserve">
     <value>Show forked repositories</value>
   </data>
-  <data name="PagesShellPageShellRepoFilterForked.Content" xml:space="preserve">
+  <data name="PagesShellPageShellRepoFilterForkedLabel.Text" xml:space="preserve">
     <value>Forked</value>
   </data>
   <data name="PagesShellPageShellRepoFilterPrivate.AutomationProperties.Name" xml:space="preserve">
     <value>Show private repositories</value>
   </data>
-  <data name="PagesShellPageShellRepoFilterPrivate.Content" xml:space="preserve">
+  <data name="PagesShellPageShellRepoFilterPrivateLabel.Text" xml:space="preserve">
     <value>Private</value>
   </data>
   <data name="PagesShellPageShellRepoFilterPublic.AutomationProperties.Name" xml:space="preserve">
     <value>Show public repositories</value>
   </data>
-  <data name="PagesShellPageShellRepoFilterPublic.Content" xml:space="preserve">
+  <data name="PagesShellPageShellRepoFilterPublicLabel.Text" xml:space="preserve">
     <value>Public</value>
   </data>
   <data name="PagesShellPageShellRepoFilterSegmented.AutomationProperties.Name" xml:space="preserve">
@@ -5927,5 +5936,95 @@
   </data>
   <data name="RepoPullRequestsBodyInteractionBar.AutomationProperties.Name" xml:space="preserve">
     <value>Pull request body actions</value>
+  </data>
+  <data name="ControlsAppAppDataTableCsvPreviewDataTableRows.AutomationProperties.Name" xml:space="preserve">
+    <value>CSV rows</value>
+  </data>
+  <data name="ControlsCodeViewerRenderersCsvPreviewCsvPreviewDataGrid.AutomationProperties.Name" xml:space="preserve">
+    <value>CSV table</value>
+  </data>
+  <data name="RepoCode/Csv/CellAutomationName" xml:space="preserve">
+    <value>{0}: {1}</value>
+  </data>
+  <data name="RepoCode/Csv/Empty" xml:space="preserve">
+    <value>No rows to display.</value>
+  </data>
+  <data name="RepoCode/Csv/HeaderOnly" xml:space="preserve">
+    <value>This file contains a header but no data rows.</value>
+  </data>
+  <data name="RepoCode/Csv/InputTooLarge" xml:space="preserve">
+    <value>Rich preview supports files up to {0} KiB. Plain view is still available.</value>
+  </data>
+  <data name="RepoCode/Csv/InvalidQuote" xml:space="preserve">
+    <value>A quote appears outside a valid quoted field. Check the file in plain view.</value>
+  </data>
+  <data name="RepoCode/Csv/Loading" xml:space="preserve">
+    <value>Preparing table...</value>
+  </data>
+  <data name="RepoCode/Csv/ReorderColumn" xml:space="preserve">
+    <value>Move column</value>
+  </data>
+  <data name="RepoCode/Csv/ResizeColumnAutomationName" xml:space="preserve">
+    <value>Resize {0} column</value>
+  </data>
+  <data name="RepoCode/Csv/SortColumnAutomationName" xml:space="preserve">
+    <value>Sort by {0}</value>
+  </data>
+  <data name="RepoCode/Csv/SortColumnToolTip" xml:space="preserve">
+    <value>Sort by {0}</value>
+  </data>
+  <data name="RepoCode/Csv/TooManyColumns" xml:space="preserve">
+    <value>Rich preview supports up to {0} columns. Plain view is still available.</value>
+  </data>
+  <data name="RepoCode/Csv/TooManyRows" xml:space="preserve">
+    <value>Rich preview supports up to {0:N0} rows. Plain view is still available.</value>
+  </data>
+  <data name="RepoCode/Csv/UnterminatedQuotedField" xml:space="preserve">
+    <value>A quoted field is not closed. Check the file in plain view.</value>
+  </data>
+  <data name="RepoIssues/Dialogs/CommentDelete/AutomationName" xml:space="preserve">
+    <value>Delete issue comment</value>
+  </data>
+  <data name="RepoIssues/Dialogs/CommentDelete/Message" xml:space="preserve">
+    <value>This comment will be permanently deleted.</value>
+  </data>
+  <data name="RepoIssues/Dialogs/CommentDelete/Title" xml:space="preserve">
+    <value>Delete comment?</value>
+  </data>
+  <data name="RepoIssues/Dialogs/CommentEdit/AutomationName" xml:space="preserve">
+    <value>Edit issue comment</value>
+  </data>
+  <data name="RepoIssues/Dialogs/CommentEdit/BodyAutomationName" xml:space="preserve">
+    <value>Comment Markdown</value>
+  </data>
+  <data name="RepoIssues/Dialogs/CommentEdit/Title" xml:space="preserve">
+    <value>Edit comment</value>
+  </data>
+  <data name="RepoPullRequests/Dialogs/CommentDelete/AutomationName" xml:space="preserve">
+    <value>Delete pull request comment</value>
+  </data>
+  <data name="RepoPullRequests/Dialogs/CommentDelete/Message" xml:space="preserve">
+    <value>This comment will be permanently deleted.</value>
+  </data>
+  <data name="RepoPullRequests/Dialogs/CommentDelete/Title" xml:space="preserve">
+    <value>Delete comment?</value>
+  </data>
+  <data name="RepoPullRequests/Dialogs/CommentEdit/AutomationName" xml:space="preserve">
+    <value>Edit pull request comment</value>
+  </data>
+  <data name="RepoPullRequests/Dialogs/CommentEdit/BodyAutomationName" xml:space="preserve">
+    <value>Comment Markdown</value>
+  </data>
+  <data name="RepoPullRequests/Dialogs/CommentEdit/Title" xml:space="preserve">
+    <value>Edit comment</value>
+  </data>
+  <data name="RepoCode/Svg/AutomationName" xml:space="preserve">
+    <value>SVG preview</value>
+  </data>
+  <data name="ControlsAppAppDataTableCsvPreviewDataTable.AutomationProperties.Name" xml:space="preserve">
+    <value>CSV table</value>
+  </data>
+  <data name="RepoCode/Csv/RowAutomationName" xml:space="preserve">
+    <value>Row {0}</value>
   </data>
 </root>

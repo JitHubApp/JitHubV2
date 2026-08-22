@@ -3,6 +3,7 @@ using System.Collections.Generic;
 using System.IO;
 using System.Net;
 using System.Net.Http;
+using System.Text.Json.Serialization.Metadata;
 using System.Threading;
 using System.Threading.Tasks;
 using JitHub.Services;
@@ -210,7 +211,8 @@ public sealed class GitHubGraphQlQueryServiceTests : IDisposable
         GitHubRateLimitException exception = await Assert.ThrowsAsync<GitHubRateLimitException>(() =>
             transport.SendAsync<GitHubProfileGraphQlData>(
                 "token",
-                new GitHubGraphQlRequest { Query = "query { viewer { login } }" }));
+                new GitHubGraphQlRequest { Query = "query { viewer { login } }" },
+                JitHub.Models.GitHub.GitHubJsonSerializerContext.Default.GitHubProfileGraphQlResponse));
 
         Assert.Equal(HttpStatusCode.TooManyRequests, exception.StatusCode);
         Assert.Equal(TimeSpan.FromSeconds(1), exception.RetryDelay);
@@ -238,7 +240,8 @@ public sealed class GitHubGraphQlQueryServiceTests : IDisposable
         GitHubRateLimitException exception = await Assert.ThrowsAsync<GitHubRateLimitException>(() =>
             transport.SendAsync<GitHubProfileGraphQlData>(
                 "token",
-                new GitHubGraphQlRequest { Query = "query { viewer { login } }" }));
+                new GitHubGraphQlRequest { Query = "query { viewer { login } }" },
+                JitHub.Models.GitHub.GitHubJsonSerializerContext.Default.GitHubProfileGraphQlResponse));
 
         Assert.Equal(HttpStatusCode.OK, exception.StatusCode);
         Assert.Equal(TimeSpan.FromSeconds(1), exception.RetryDelay);
@@ -266,7 +269,8 @@ public sealed class GitHubGraphQlQueryServiceTests : IDisposable
 
         GitHubGraphQlResponse<GitHubProfileGraphQlData> result = await transport.SendAsync<GitHubProfileGraphQlData>(
             "token",
-            new GitHubGraphQlRequest { Query = "query { user(login: \"octocat\") { login } }" });
+            new GitHubGraphQlRequest { Query = "query { user(login: \"octocat\") { login } }" },
+            JitHub.Models.GitHub.GitHubJsonSerializerContext.Default.GitHubProfileGraphQlResponse);
 
         Assert.Equal(42, result.RateLimitRemaining);
         Assert.Equal(resetAt.ToUnixTimeSeconds(), result.RateLimitReset?.ToUnixTimeSeconds());
@@ -345,7 +349,8 @@ public sealed class GitHubGraphQlQueryServiceTests : IDisposable
             {
                 Query = "query Profile($login: String!) { user(login: $login) { login } }",
                 Variables = new Dictionary<string, string?> { ["login"] = "octocat" }
-            });
+            },
+            JitHub.Models.GitHub.GitHubJsonSerializerContext.Default.GitHubProfileGraphQlResponse);
     }
 
     private static GitHubProfileGraphQlData CreatePayload(string login) => new()
@@ -416,6 +421,7 @@ public sealed class GitHubGraphQlQueryServiceTests : IDisposable
         public async Task<GitHubGraphQlResponse<T>> SendAsync<T>(
             string accessToken,
             GitHubGraphQlRequest request,
+            JsonTypeInfo<GitHubGraphQlResponse<T>> responseJsonTypeInfo,
             CancellationToken cancellationToken = default)
             where T : class
         {

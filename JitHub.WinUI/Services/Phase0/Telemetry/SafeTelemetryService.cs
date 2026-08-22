@@ -7,7 +7,7 @@ namespace JitHub.Services;
 /// Keeps optional telemetry outside product failure boundaries, including when
 /// tests or future integrations provide an arbitrary <see cref="ITelemetryService"/>.
 /// </summary>
-public sealed class SafeTelemetryService : ITelemetryService
+public sealed partial class SafeTelemetryService : ITelemetryService
 {
     private readonly ITelemetryService _inner;
 
@@ -59,7 +59,7 @@ public sealed class SafeTelemetryService : ITelemetryService
         }
     }
 
-    private sealed class SafePerformanceTrace : IPerformanceTrace
+    private sealed partial class SafePerformanceTrace : IPerformanceTrace
     {
         private IPerformanceTrace? _inner;
 
@@ -93,7 +93,7 @@ public sealed class SafeTelemetryService : ITelemetryService
         }
     }
 
-    private sealed class NoOpPerformanceTrace : IPerformanceTrace
+    private sealed partial class NoOpPerformanceTrace : IPerformanceTrace
     {
         public static NoOpPerformanceTrace Instance { get; } = new();
 

@@ -60,7 +60,7 @@ public interface IApplicationTaskCoordinator
         CancellationToken cancellationToken = default);
 }
 
-public sealed class ApplicationTaskCoordinator : IApplicationTaskCoordinator, IDisposable
+public sealed partial class ApplicationTaskCoordinator : IApplicationTaskCoordinator, IDisposable
 {
     private readonly object _gate = new();
     private readonly CancellationTokenSource _shutdown = new();

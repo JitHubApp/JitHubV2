@@ -758,7 +758,8 @@ public sealed class GitHubProfileQueryService : IGitHubProfileQueryService
                     Variables = forceAuthenticatedUser
                         ? null
                         : new Dictionary<string, string?> { ["login"] = login }
-                }),
+                },
+                GitHubJsonSerializerContext.Default.GitHubProfileGraphQlResponse),
             QueryFetchPolicy.StaleFirst,
             cancellationToken);
     }

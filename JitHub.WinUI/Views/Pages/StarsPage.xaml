@@ -30,32 +30,6 @@
             <Setter Property="CornerRadius" Value="0" />
         </Style>
 
-        <DataTemplate x:Key="CategoryColorOptionTemplate">
-            <Grid
-                MinWidth="180"
-                MinHeight="36"
-                VerticalAlignment="Center"
-                ColumnSpacing="10">
-                <Grid.ColumnDefinitions>
-                    <ColumnDefinition Width="20" />
-                    <ColumnDefinition Width="*" />
-                </Grid.ColumnDefinitions>
-                <Border
-                    Width="16"
-                    Height="16"
-                    VerticalAlignment="Center"
-                    Background="{Binding Converter={StaticResource HexColorToSolidBrushConverter}}"
-                    BorderBrush="{ThemeResource AppOutlineStrongBrush}"
-                    BorderThickness="1"
-                    CornerRadius="3" />
-                <TextBlock
-                    Grid.Column="1"
-                    VerticalAlignment="Center"
-                    Style="{StaticResource BodyTextBlockStyle}"
-                    Text="{Binding}" />
-            </Grid>
-        </DataTemplate>
-
         <DataTemplate x:Key="NavigationItemTemplate" x:DataType="viewmodels:StarNavigationItem">
             <Grid>
                 <Grid.RowDefinitions>

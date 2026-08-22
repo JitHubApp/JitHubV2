@@ -18,6 +18,7 @@ using Windows.ApplicationModel.DataTransfer;
 
 namespace JitHub.WinUI.ViewModels.Pages;
 
+[WinRT.GeneratedBindableCustomProperty]
 public sealed partial class StarLibraryPageViewModel : ViewModelBase, IDisposable
 {
     private const int InitialPageSize = 24;

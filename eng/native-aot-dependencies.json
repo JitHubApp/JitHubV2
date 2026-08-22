@@ -1,0 +1,1071 @@
+{
+  "schemaVersion": 1,
+  "project": "JitHub.WinUI/JitHub.WinUI.csproj",
+  "runtimeIdentifiers": [
+    "win-x86",
+    "win-x64",
+    "win-arm64"
+  ],
+  "packageCount": 69,
+  "packages": [
+    {
+      "id": "CommunityToolkit.Common",
+      "version": "8.2.1",
+      "direct": false,
+      "roles": [
+        "compile",
+        "runtime"
+      ],
+      "targets": [
+        "net10.0-windows10.0.26100.0",
+        "net10.0-windows10.0.26100.0/win-arm64",
+        "net10.0-windows10.0.26100.0/win-x64",
+        "net10.0-windows10.0.26100.0/win-x86"
+      ]
+    },
+    {
+      "id": "CommunityToolkit.Labs.WinUI.TransitionHelper",
+      "version": "0.1.251217-build.2433",
+      "direct": true,
+      "roles": [
+        "compile",
+        "runtime"
+      ],
+      "targets": [
+        "net10.0-windows10.0.26100.0",
+        "net10.0-windows10.0.26100.0/win-arm64",
+        "net10.0-windows10.0.26100.0/win-x64",
+        "net10.0-windows10.0.26100.0/win-x86"
+      ]
+    },
+    {
+      "id": "CommunityToolkit.Mvvm",
+      "version": "8.4.2",
+      "direct": true,
+      "roles": [
+        "analyzer",
+        "build",
+        "compile",
+        "runtime"
+      ],
+      "targets": [
+        "net10.0-windows10.0.26100.0",
+        "net10.0-windows10.0.26100.0/win-arm64",
+        "net10.0-windows10.0.26100.0/win-x64",
+        "net10.0-windows10.0.26100.0/win-x86"
+      ]
+    },
+    {
+      "id": "CommunityToolkit.WinUI.Animations",
+      "version": "8.2.251219",
+      "direct": true,
+      "roles": [
+        "compile",
+        "runtime"
+      ],
+      "targets": [
+        "net10.0-windows10.0.26100.0",
+        "net10.0-windows10.0.26100.0/win-arm64",
+        "net10.0-windows10.0.26100.0/win-x64",
+        "net10.0-windows10.0.26100.0/win-x86"
+      ]
+    },
+    {
+      "id": "CommunityToolkit.WinUI.Behaviors",
+      "version": "8.2.250402",
+      "direct": false,
+      "roles": [
+        "compile",
+        "runtime"
+      ],
+      "targets": [
+        "net10.0-windows10.0.26100.0",
+        "net10.0-windows10.0.26100.0/win-arm64",
+        "net10.0-windows10.0.26100.0/win-x64",
+        "net10.0-windows10.0.26100.0/win-x86"
+      ]
+    },
+    {
+      "id": "CommunityToolkit.WinUI.Controls.Primitives",
+      "version": "8.2.251219",
+      "direct": true,
+      "roles": [
+        "compile",
+        "runtime"
+      ],
+      "targets": [
+        "net10.0-windows10.0.26100.0",
+        "net10.0-windows10.0.26100.0/win-arm64",
+        "net10.0-windows10.0.26100.0/win-x64",
+        "net10.0-windows10.0.26100.0/win-x86"
+      ]
+    },
+    {
+      "id": "CommunityToolkit.WinUI.Controls.Segmented",
+      "version": "8.2.251219",
+      "direct": true,
+      "roles": [
+        "compile",
+        "runtime"
+      ],
+      "targets": [
+        "net10.0-windows10.0.26100.0",
+        "net10.0-windows10.0.26100.0/win-arm64",
+        "net10.0-windows10.0.26100.0/win-x64",
+        "net10.0-windows10.0.26100.0/win-x86"
+      ]
+    },
+    {
+      "id": "CommunityToolkit.WinUI.Controls.SettingsControls",
+      "version": "8.2.251219",
+      "direct": true,
+      "roles": [
+        "compile",
+        "runtime"
+      ],
+      "targets": [
+        "net10.0-windows10.0.26100.0",
+        "net10.0-windows10.0.26100.0/win-arm64",
+        "net10.0-windows10.0.26100.0/win-x64",
+        "net10.0-windows10.0.26100.0/win-x86"
+      ]
+    },
+    {
+      "id": "CommunityToolkit.WinUI.Controls.Sizers",
+      "version": "8.2.250402",
+      "direct": true,
+      "roles": [
+        "compile",
+        "runtime"
+      ],
+      "targets": [
+        "net10.0-windows10.0.26100.0",
+        "net10.0-windows10.0.26100.0/win-arm64",
+        "net10.0-windows10.0.26100.0/win-x64",
+        "net10.0-windows10.0.26100.0/win-x86"
+      ]
+    },
+    {
+      "id": "CommunityToolkit.WinUI.Extensions",
+      "version": "8.2.251219",
+      "direct": false,
+      "roles": [
+        "compile",
+        "runtime"
+      ],
+      "targets": [
+        "net10.0-windows10.0.26100.0",
+        "net10.0-windows10.0.26100.0/win-arm64",
+        "net10.0-windows10.0.26100.0/win-x64",
+        "net10.0-windows10.0.26100.0/win-x86"
+      ]
+    },
+    {
+      "id": "CommunityToolkit.WinUI.Helpers",
+      "version": "8.2.251219",
+      "direct": false,
+      "roles": [
+        "compile",
+        "runtime"
+      ],
+      "targets": [
+        "net10.0-windows10.0.26100.0",
+        "net10.0-windows10.0.26100.0/win-arm64",
+        "net10.0-windows10.0.26100.0/win-x64",
+        "net10.0-windows10.0.26100.0/win-x86"
+      ]
+    },
+    {
+      "id": "CommunityToolkit.WinUI.Triggers",
+      "version": "8.2.251219",
+      "direct": false,
+      "roles": [
+        "compile",
+        "runtime"
+      ],
+      "targets": [
+        "net10.0-windows10.0.26100.0",
+        "net10.0-windows10.0.26100.0/win-arm64",
+        "net10.0-windows10.0.26100.0/win-x64",
+        "net10.0-windows10.0.26100.0/win-x86"
+      ]
+    },
+    {
+      "id": "ExCSS",
+      "version": "4.3.1",
+      "direct": false,
+      "roles": [
+        "compile",
+        "runtime"
+      ],
+      "targets": [
+        "net10.0-windows10.0.26100.0",
+        "net10.0-windows10.0.26100.0/win-arm64",
+        "net10.0-windows10.0.26100.0/win-x64",
+        "net10.0-windows10.0.26100.0/win-x86"
+      ]
+    },
+    {
+      "id": "HarfBuzzSharp.NativeAssets.Linux",
+      "version": "14.2.0",
+      "direct": false,
+      "roles": [
+        "build",
+        "compile",
+        "runtime",
+        "runtimeTargets"
+      ],
+      "targets": [
+        "net10.0-windows10.0.26100.0",
+        "net10.0-windows10.0.26100.0/win-arm64",
+        "net10.0-windows10.0.26100.0/win-x64",
+        "net10.0-windows10.0.26100.0/win-x86"
+      ]
+    },
+    {
+      "id": "HarfBuzzSharp.NativeAssets.macOS",
+      "version": "14.2.0",
+      "direct": false,
+      "roles": [
+        "build",
+        "compile",
+        "runtime",
+        "runtimeTargets"
+      ],
+      "targets": [
+        "net10.0-windows10.0.26100.0",
+        "net10.0-windows10.0.26100.0/win-arm64",
+        "net10.0-windows10.0.26100.0/win-x64",
+        "net10.0-windows10.0.26100.0/win-x86"
+      ]
+    },
+    {
+      "id": "HarfBuzzSharp.NativeAssets.Win32",
+      "version": "14.2.0",
+      "direct": false,
+      "roles": [
+        "build",
+        "compile",
+        "native",
+        "runtime",
+        "runtimeTargets"
+      ],
+      "targets": [
+        "net10.0-windows10.0.26100.0",
+        "net10.0-windows10.0.26100.0/win-arm64",
+        "net10.0-windows10.0.26100.0/win-x64",
+        "net10.0-windows10.0.26100.0/win-x86"
+      ]
+    },
+    {
+      "id": "HarfBuzzSharp",
+      "version": "14.2.0",
+      "direct": false,
+      "roles": [
+        "compile",
+        "runtime"
+      ],
+      "targets": [
+        "net10.0-windows10.0.26100.0",
+        "net10.0-windows10.0.26100.0/win-arm64",
+        "net10.0-windows10.0.26100.0/win-x64",
+        "net10.0-windows10.0.26100.0/win-x86"
+      ]
+    },
+    {
+      "id": "Markdig",
+      "version": "0.42.0",
+      "direct": false,
+      "roles": [
+        "compile",
+        "runtime"
+      ],
+      "targets": [
+        "net10.0-windows10.0.26100.0",
+        "net10.0-windows10.0.26100.0/win-arm64",
+        "net10.0-windows10.0.26100.0/win-x64",
+        "net10.0-windows10.0.26100.0/win-x86"
+      ]
+    },
+    {
+      "id": "Microsoft.CodeAnalysis.BannedApiAnalyzers",
+      "version": "5.6.0",
+      "direct": true,
+      "roles": [
+        "analyzer",
+        "build"
+      ],
+      "targets": [
+        "net10.0-windows10.0.26100.0",
+        "net10.0-windows10.0.26100.0/win-arm64",
+        "net10.0-windows10.0.26100.0/win-x64",
+        "net10.0-windows10.0.26100.0/win-x86"
+      ]
+    },
+    {
+      "id": "Microsoft.Data.Sqlite.Core",
+      "version": "10.0.8",
+      "direct": false,
+      "roles": [
+        "compile",
+        "runtime"
+      ],
+      "targets": [
+        "net10.0-windows10.0.26100.0",
+        "net10.0-windows10.0.26100.0/win-arm64",
+        "net10.0-windows10.0.26100.0/win-x64",
+        "net10.0-windows10.0.26100.0/win-x86"
+      ]
+    },
+    {
+      "id": "Microsoft.Data.Sqlite",
+      "version": "10.0.8",
+      "direct": true,
+      "roles": [
+        "compile",
+        "runtime"
+      ],
+      "targets": [
+        "net10.0-windows10.0.26100.0",
+        "net10.0-windows10.0.26100.0/win-arm64",
+        "net10.0-windows10.0.26100.0/win-x64",
+        "net10.0-windows10.0.26100.0/win-x86"
+      ]
+    },
+    {
+      "id": "Microsoft.DotNet.ILCompiler",
+      "version": "10.0.11",
+      "direct": true,
+      "roles": [
+        "build"
+      ],
+      "targets": [
+        "net10.0-windows10.0.26100.0",
+        "net10.0-windows10.0.26100.0/win-arm64",
+        "net10.0-windows10.0.26100.0/win-x64",
+        "net10.0-windows10.0.26100.0/win-x86"
+      ]
+    },
+    {
+      "id": "Microsoft.Extensions.Configuration.Abstractions",
+      "version": "10.0.0",
+      "direct": false,
+      "roles": [
+        "build",
+        "compile",
+        "runtime"
+      ],
+      "targets": [
+        "net10.0-windows10.0.26100.0",
+        "net10.0-windows10.0.26100.0/win-arm64",
+        "net10.0-windows10.0.26100.0/win-x64",
+        "net10.0-windows10.0.26100.0/win-x86"
+      ]
+    },
+    {
+      "id": "Microsoft.Extensions.Configuration.Binder",
+      "version": "10.0.0",
+      "direct": true,
+      "roles": [
+        "analyzer",
+        "build",
+        "compile",
+        "runtime"
+      ],
+      "targets": [
+        "net10.0-windows10.0.26100.0",
+        "net10.0-windows10.0.26100.0/win-arm64",
+        "net10.0-windows10.0.26100.0/win-x64",
+        "net10.0-windows10.0.26100.0/win-x86"
+      ]
+    },
+    {
+      "id": "Microsoft.Extensions.Configuration.FileExtensions",
+      "version": "10.0.0",
+      "direct": false,
+      "roles": [
+        "build",
+        "compile",
+        "runtime"
+      ],
+      "targets": [
+        "net10.0-windows10.0.26100.0",
+        "net10.0-windows10.0.26100.0/win-arm64",
+        "net10.0-windows10.0.26100.0/win-x64",
+        "net10.0-windows10.0.26100.0/win-x86"
+      ]
+    },
+    {
+      "id": "Microsoft.Extensions.Configuration.Json",
+      "version": "10.0.0",
+      "direct": true,
+      "roles": [
+        "build",
+        "compile",
+        "runtime"
+      ],
+      "targets": [
+        "net10.0-windows10.0.26100.0",
+        "net10.0-windows10.0.26100.0/win-arm64",
+        "net10.0-windows10.0.26100.0/win-x64",
+        "net10.0-windows10.0.26100.0/win-x86"
+      ]
+    },
+    {
+      "id": "Microsoft.Extensions.Configuration",
+      "version": "10.0.0",
+      "direct": false,
+      "roles": [
+        "build",
+        "compile",
+        "runtime"
+      ],
+      "targets": [
+        "net10.0-windows10.0.26100.0",
+        "net10.0-windows10.0.26100.0/win-arm64",
+        "net10.0-windows10.0.26100.0/win-x64",
+        "net10.0-windows10.0.26100.0/win-x86"
+      ]
+    },
+    {
+      "id": "Microsoft.Extensions.DependencyInjection.Abstractions",
+      "version": "10.0.0",
+      "direct": false,
+      "roles": [
+        "build",
+        "compile",
+        "runtime"
+      ],
+      "targets": [
+        "net10.0-windows10.0.26100.0",
+        "net10.0-windows10.0.26100.0/win-arm64",
+        "net10.0-windows10.0.26100.0/win-x64",
+        "net10.0-windows10.0.26100.0/win-x86"
+      ]
+    },
+    {
+      "id": "Microsoft.Extensions.DependencyInjection",
+      "version": "10.0.0",
+      "direct": true,
+      "roles": [
+        "build",
+        "compile",
+        "runtime"
+      ],
+      "targets": [
+        "net10.0-windows10.0.26100.0",
+        "net10.0-windows10.0.26100.0/win-arm64",
+        "net10.0-windows10.0.26100.0/win-x64",
+        "net10.0-windows10.0.26100.0/win-x86"
+      ]
+    },
+    {
+      "id": "Microsoft.Extensions.FileProviders.Abstractions",
+      "version": "10.0.0",
+      "direct": false,
+      "roles": [
+        "build",
+        "compile",
+        "runtime"
+      ],
+      "targets": [
+        "net10.0-windows10.0.26100.0",
+        "net10.0-windows10.0.26100.0/win-arm64",
+        "net10.0-windows10.0.26100.0/win-x64",
+        "net10.0-windows10.0.26100.0/win-x86"
+      ]
+    },
+    {
+      "id": "Microsoft.Extensions.FileProviders.Physical",
+      "version": "10.0.0",
+      "direct": false,
+      "roles": [
+        "build",
+        "compile",
+        "runtime"
+      ],
+      "targets": [
+        "net10.0-windows10.0.26100.0",
+        "net10.0-windows10.0.26100.0/win-arm64",
+        "net10.0-windows10.0.26100.0/win-x64",
+        "net10.0-windows10.0.26100.0/win-x86"
+      ]
+    },
+    {
+      "id": "Microsoft.Extensions.FileSystemGlobbing",
+      "version": "10.0.0",
+      "direct": false,
+      "roles": [
+        "build",
+        "compile",
+        "runtime"
+      ],
+      "targets": [
+        "net10.0-windows10.0.26100.0",
+        "net10.0-windows10.0.26100.0/win-arm64",
+        "net10.0-windows10.0.26100.0/win-x64",
+        "net10.0-windows10.0.26100.0/win-x86"
+      ]
+    },
+    {
+      "id": "Microsoft.Extensions.Primitives",
+      "version": "10.0.0",
+      "direct": false,
+      "roles": [
+        "build",
+        "compile",
+        "runtime"
+      ],
+      "targets": [
+        "net10.0-windows10.0.26100.0",
+        "net10.0-windows10.0.26100.0/win-arm64",
+        "net10.0-windows10.0.26100.0/win-x64",
+        "net10.0-windows10.0.26100.0/win-x86"
+      ]
+    },
+    {
+      "id": "Microsoft.Graphics.Win2D",
+      "version": "1.4.0",
+      "direct": true,
+      "roles": [
+        "build",
+        "compile",
+        "native",
+        "runtime",
+        "runtimeTargets"
+      ],
+      "targets": [
+        "net10.0-windows10.0.26100.0",
+        "net10.0-windows10.0.26100.0/win-arm64",
+        "net10.0-windows10.0.26100.0/win-x64",
+        "net10.0-windows10.0.26100.0/win-x86"
+      ]
+    },
+    {
+      "id": "Microsoft.NET.ILLink.Tasks",
+      "version": "10.0.11",
+      "direct": true,
+      "roles": [
+        "analyzer",
+        "build"
+      ],
+      "targets": [
+        "net10.0-windows10.0.26100.0",
+        "net10.0-windows10.0.26100.0/win-arm64",
+        "net10.0-windows10.0.26100.0/win-x64",
+        "net10.0-windows10.0.26100.0/win-x86"
+      ]
+    },
+    {
+      "id": "Microsoft.Services.Store.Engagement",
+      "version": "10.1610.0",
+      "direct": true,
+      "roles": [
+        "build"
+      ],
+      "targets": [
+        "net10.0-windows10.0.26100.0",
+        "net10.0-windows10.0.26100.0/win-arm64",
+        "net10.0-windows10.0.26100.0/win-x64",
+        "net10.0-windows10.0.26100.0/win-x86"
+      ]
+    },
+    {
+      "id": "Microsoft.Web.WebView2",
+      "version": "1.0.3179.45",
+      "direct": false,
+      "roles": [
+        "build",
+        "native",
+        "runtimeTargets"
+      ],
+      "targets": [
+        "net10.0-windows10.0.26100.0",
+        "net10.0-windows10.0.26100.0/win-arm64",
+        "net10.0-windows10.0.26100.0/win-x64",
+        "net10.0-windows10.0.26100.0/win-x86"
+      ]
+    },
+    {
+      "id": "Microsoft.Windows.CsWinRT",
+      "version": "2.2.0",
+      "direct": true,
+      "roles": [
+        "analyzer",
+        "build",
+        "compile",
+        "runtime"
+      ],
+      "targets": [
+        "net10.0-windows10.0.26100.0",
+        "net10.0-windows10.0.26100.0/win-arm64",
+        "net10.0-windows10.0.26100.0/win-x64",
+        "net10.0-windows10.0.26100.0/win-x86"
+      ]
+    },
+    {
+      "id": "Microsoft.Windows.SDK.BuildTools.MSIX",
+      "version": "1.7.20250829.1",
+      "direct": false,
+      "roles": [
+        "build"
+      ],
+      "targets": [
+        "net10.0-windows10.0.26100.0",
+        "net10.0-windows10.0.26100.0/win-arm64",
+        "net10.0-windows10.0.26100.0/win-x64",
+        "net10.0-windows10.0.26100.0/win-x86"
+      ]
+    },
+    {
+      "id": "Microsoft.Windows.SDK.BuildTools",
+      "version": "10.0.28000.1721",
+      "direct": true,
+      "roles": [
+        "build"
+      ],
+      "targets": [
+        "net10.0-windows10.0.26100.0",
+        "net10.0-windows10.0.26100.0/win-arm64",
+        "net10.0-windows10.0.26100.0/win-x64",
+        "net10.0-windows10.0.26100.0/win-x86"
+      ]
+    },
+    {
+      "id": "Microsoft.WindowsAppSDK.AI",
+      "version": "1.8.53",
+      "direct": false,
+      "roles": [
+        "build",
+        "compile",
+        "runtime"
+      ],
+      "targets": [
+        "net10.0-windows10.0.26100.0",
+        "net10.0-windows10.0.26100.0/win-arm64",
+        "net10.0-windows10.0.26100.0/win-x64",
+        "net10.0-windows10.0.26100.0/win-x86"
+      ]
+    },
+    {
+      "id": "Microsoft.WindowsAppSDK.Base",
+      "version": "1.8.251216001",
+      "direct": false,
+      "roles": [
+        "build"
+      ],
+      "targets": [
+        "net10.0-windows10.0.26100.0",
+        "net10.0-windows10.0.26100.0/win-arm64",
+        "net10.0-windows10.0.26100.0/win-x64",
+        "net10.0-windows10.0.26100.0/win-x86"
+      ]
+    },
+    {
+      "id": "Microsoft.WindowsAppSDK.DWrite",
+      "version": "1.8.25122902",
+      "direct": false,
+      "roles": [
+        "build"
+      ],
+      "targets": [
+        "net10.0-windows10.0.26100.0",
+        "net10.0-windows10.0.26100.0/win-arm64",
+        "net10.0-windows10.0.26100.0/win-x64",
+        "net10.0-windows10.0.26100.0/win-x86"
+      ]
+    },
+    {
+      "id": "Microsoft.WindowsAppSDK.Foundation",
+      "version": "1.8.260222000",
+      "direct": false,
+      "roles": [
+        "build",
+        "compile",
+        "native",
+        "runtime",
+        "runtimeTargets"
+      ],
+      "targets": [
+        "net10.0-windows10.0.26100.0",
+        "net10.0-windows10.0.26100.0/win-arm64",
+        "net10.0-windows10.0.26100.0/win-x64",
+        "net10.0-windows10.0.26100.0/win-x86"
+      ]
+    },
+    {
+      "id": "Microsoft.WindowsAppSDK.InteractiveExperiences",
+      "version": "1.8.260125001",
+      "direct": false,
+      "roles": [
+        "build",
+        "compile",
+        "runtime"
+      ],
+      "targets": [
+        "net10.0-windows10.0.26100.0",
+        "net10.0-windows10.0.26100.0/win-arm64",
+        "net10.0-windows10.0.26100.0/win-x64",
+        "net10.0-windows10.0.26100.0/win-x86"
+      ]
+    },
+    {
+      "id": "Microsoft.WindowsAppSDK.ML",
+      "version": "1.8.2141",
+      "direct": false,
+      "roles": [
+        "build",
+        "compile",
+        "runtime"
+      ],
+      "targets": [
+        "net10.0-windows10.0.26100.0",
+        "net10.0-windows10.0.26100.0/win-arm64",
+        "net10.0-windows10.0.26100.0/win-x64",
+        "net10.0-windows10.0.26100.0/win-x86"
+      ]
+    },
+    {
+      "id": "Microsoft.WindowsAppSDK.Runtime",
+      "version": "1.8.260317003",
+      "direct": false,
+      "roles": [
+        "build"
+      ],
+      "targets": [
+        "net10.0-windows10.0.26100.0",
+        "net10.0-windows10.0.26100.0/win-arm64",
+        "net10.0-windows10.0.26100.0/win-x64",
+        "net10.0-windows10.0.26100.0/win-x86"
+      ]
+    },
+    {
+      "id": "Microsoft.WindowsAppSDK.Widgets",
+      "version": "1.8.251231004",
+      "direct": false,
+      "roles": [
+        "build",
+        "compile",
+        "runtime"
+      ],
+      "targets": [
+        "net10.0-windows10.0.26100.0",
+        "net10.0-windows10.0.26100.0/win-arm64",
+        "net10.0-windows10.0.26100.0/win-x64",
+        "net10.0-windows10.0.26100.0/win-x86"
+      ]
+    },
+    {
+      "id": "Microsoft.WindowsAppSDK.WinUI",
+      "version": "1.8.260224000",
+      "direct": false,
+      "roles": [
+        "build",
+        "compile",
+        "runtime"
+      ],
+      "targets": [
+        "net10.0-windows10.0.26100.0",
+        "net10.0-windows10.0.26100.0/win-arm64",
+        "net10.0-windows10.0.26100.0/win-x64",
+        "net10.0-windows10.0.26100.0/win-x86"
+      ]
+    },
+    {
+      "id": "Microsoft.WindowsAppSDK",
+      "version": "1.8.260317003",
+      "direct": true,
+      "roles": [
+        "build"
+      ],
+      "targets": [
+        "net10.0-windows10.0.26100.0",
+        "net10.0-windows10.0.26100.0/win-arm64",
+        "net10.0-windows10.0.26100.0/win-x64",
+        "net10.0-windows10.0.26100.0/win-x86"
+      ]
+    },
+    {
+      "id": "Microsoft.Xaml.Behaviors.WinUI.Managed",
+      "version": "3.0.1",
+      "direct": true,
+      "roles": [
+        "compile",
+        "runtime"
+      ],
+      "targets": [
+        "net10.0-windows10.0.26100.0",
+        "net10.0-windows10.0.26100.0/win-arm64",
+        "net10.0-windows10.0.26100.0/win-x64",
+        "net10.0-windows10.0.26100.0/win-x86"
+      ]
+    },
+    {
+      "id": "runtime.win-arm64.Microsoft.DotNet.ILCompiler",
+      "version": "10.0.11",
+      "direct": false,
+      "roles": [
+        "metadata"
+      ],
+      "targets": [
+        "net10.0-windows10.0.26100.0/win-arm64"
+      ]
+    },
+    {
+      "id": "runtime.win-x64.Microsoft.DotNet.ILCompiler",
+      "version": "10.0.11",
+      "direct": false,
+      "roles": [
+        "metadata"
+      ],
+      "targets": [
+        "net10.0-windows10.0.26100.0/win-x64"
+      ]
+    },
+    {
+      "id": "runtime.win-x86.Microsoft.DotNet.ILCompiler",
+      "version": "10.0.11",
+      "direct": false,
+      "roles": [
+        "metadata"
+      ],
+      "targets": [
+        "net10.0-windows10.0.26100.0/win-x86"
+      ]
+    },
+    {
+      "id": "ShimSkiaSharp",
+      "version": "5.2.1",
+      "direct": false,
+      "roles": [
+        "compile",
+        "runtime"
+      ],
+      "targets": [
+        "net10.0-windows10.0.26100.0",
+        "net10.0-windows10.0.26100.0/win-arm64",
+        "net10.0-windows10.0.26100.0/win-x64",
+        "net10.0-windows10.0.26100.0/win-x86"
+      ]
+    },
+    {
+      "id": "SkiaSharp.NativeAssets.Win32",
+      "version": "4.151.1",
+      "direct": false,
+      "roles": [
+        "build",
+        "compile",
+        "native",
+        "runtime",
+        "runtimeTargets"
+      ],
+      "targets": [
+        "net10.0-windows10.0.26100.0",
+        "net10.0-windows10.0.26100.0/win-arm64",
+        "net10.0-windows10.0.26100.0/win-x64",
+        "net10.0-windows10.0.26100.0/win-x86"
+      ]
+    },
+    {
+      "id": "SkiaSharp",
+      "version": "4.151.1",
+      "direct": true,
+      "roles": [
+        "compile",
+        "runtime"
+      ],
+      "targets": [
+        "net10.0-windows10.0.26100.0",
+        "net10.0-windows10.0.26100.0/win-arm64",
+        "net10.0-windows10.0.26100.0/win-x64",
+        "net10.0-windows10.0.26100.0/win-x86"
+      ]
+    },
+    {
+      "id": "SourceGear.sqlite3",
+      "version": "3.50.4.5",
+      "direct": false,
+      "roles": [
+        "build",
+        "compile",
+        "native",
+        "runtime",
+        "runtimeTargets"
+      ],
+      "targets": [
+        "net10.0-windows10.0.26100.0",
+        "net10.0-windows10.0.26100.0/win-arm64",
+        "net10.0-windows10.0.26100.0/win-x64",
+        "net10.0-windows10.0.26100.0/win-x86"
+      ]
+    },
+    {
+      "id": "SQLitePCLRaw.bundle_e_sqlite3",
+      "version": "3.0.3",
+      "direct": true,
+      "roles": [
+        "metadata"
+      ],
+      "targets": [
+        "net10.0-windows10.0.26100.0",
+        "net10.0-windows10.0.26100.0/win-arm64",
+        "net10.0-windows10.0.26100.0/win-x64",
+        "net10.0-windows10.0.26100.0/win-x86"
+      ]
+    },
+    {
+      "id": "SQLitePCLRaw.config.e_sqlite3",
+      "version": "3.0.3",
+      "direct": false,
+      "roles": [
+        "compile",
+        "runtime"
+      ],
+      "targets": [
+        "net10.0-windows10.0.26100.0",
+        "net10.0-windows10.0.26100.0/win-arm64",
+        "net10.0-windows10.0.26100.0/win-x64",
+        "net10.0-windows10.0.26100.0/win-x86"
+      ]
+    },
+    {
+      "id": "SQLitePCLRaw.core",
+      "version": "3.0.3",
+      "direct": false,
+      "roles": [
+        "compile",
+        "runtime"
+      ],
+      "targets": [
+        "net10.0-windows10.0.26100.0",
+        "net10.0-windows10.0.26100.0/win-arm64",
+        "net10.0-windows10.0.26100.0/win-x64",
+        "net10.0-windows10.0.26100.0/win-x86"
+      ]
+    },
+    {
+      "id": "SQLitePCLRaw.provider.e_sqlite3",
+      "version": "3.0.3",
+      "direct": false,
+      "roles": [
+        "compile",
+        "runtime"
+      ],
+      "targets": [
+        "net10.0-windows10.0.26100.0",
+        "net10.0-windows10.0.26100.0/win-arm64",
+        "net10.0-windows10.0.26100.0/win-x64",
+        "net10.0-windows10.0.26100.0/win-x86"
+      ]
+    },
+    {
+      "id": "Svg.Animation",
+      "version": "5.2.1",
+      "direct": false,
+      "roles": [
+        "compile",
+        "runtime"
+      ],
+      "targets": [
+        "net10.0-windows10.0.26100.0",
+        "net10.0-windows10.0.26100.0/win-arm64",
+        "net10.0-windows10.0.26100.0/win-x64",
+        "net10.0-windows10.0.26100.0/win-x86"
+      ]
+    },
+    {
+      "id": "Svg.Custom",
+      "version": "5.2.1",
+      "direct": false,
+      "roles": [
+        "compile",
+        "runtime"
+      ],
+      "targets": [
+        "net10.0-windows10.0.26100.0",
+        "net10.0-windows10.0.26100.0/win-arm64",
+        "net10.0-windows10.0.26100.0/win-x64",
+        "net10.0-windows10.0.26100.0/win-x86"
+      ]
+    },
+    {
+      "id": "Svg.Model",
+      "version": "5.2.1",
+      "direct": false,
+      "roles": [
+        "compile",
+        "runtime"
+      ],
+      "targets": [
+        "net10.0-windows10.0.26100.0",
+        "net10.0-windows10.0.26100.0/win-arm64",
+        "net10.0-windows10.0.26100.0/win-x64",
+        "net10.0-windows10.0.26100.0/win-x86"
+      ]
+    },
+    {
+      "id": "Svg.SceneGraph",
+      "version": "5.2.1",
+      "direct": false,
+      "roles": [
+        "compile",
+        "runtime"
+      ],
+      "targets": [
+        "net10.0-windows10.0.26100.0",
+        "net10.0-windows10.0.26100.0/win-arm64",
+        "net10.0-windows10.0.26100.0/win-x64",
+        "net10.0-windows10.0.26100.0/win-x86"
+      ]
+    },
+    {
+      "id": "Svg.Skia",
+      "version": "5.2.1",
+      "direct": true,
+      "roles": [
+        "compile",
+        "runtime"
+      ],
+      "targets": [
+        "net10.0-windows10.0.26100.0",
+        "net10.0-windows10.0.26100.0/win-arm64",
+        "net10.0-windows10.0.26100.0/win-x64",
+        "net10.0-windows10.0.26100.0/win-x86"
+      ]
+    },
+    {
+      "id": "System.Numerics.Tensors",
+      "version": "9.0.0",
+      "direct": false,
+      "roles": [
+        "build",
+        "compile",
+        "runtime"
+      ],
+      "targets": [
+        "net10.0-windows10.0.26100.0",
+        "net10.0-windows10.0.26100.0/win-arm64",
+        "net10.0-windows10.0.26100.0/win-x64",
+        "net10.0-windows10.0.26100.0/win-x86"
+      ]
+    },
+    {
+      "id": "WinUIEdit",
+      "version": "0.0.5-prerelease",
+      "direct": true,
+      "roles": [
+        "build",
+        "compile",
+        "native",
+        "runtime",
+        "runtimeTargets"
+      ],
+      "targets": [
+        "net10.0-windows10.0.26100.0",
+        "net10.0-windows10.0.26100.0/win-arm64",
+        "net10.0-windows10.0.26100.0/win-x64",
+        "net10.0-windows10.0.26100.0/win-x86"
+      ]
+    }
+  ]
+}

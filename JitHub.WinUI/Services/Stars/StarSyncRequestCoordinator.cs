@@ -6,7 +6,7 @@ namespace JitHub.Services;
 
 internal readonly record struct StarSyncRequestBatch(long Version, bool ForceFull);
 
-internal sealed class StarSyncRequestCoordinator : IDisposable
+internal sealed partial class StarSyncRequestCoordinator : IDisposable
 {
     private readonly object _stateGate = new();
     private readonly SemaphoreSlim _executionGate = new(1, 1);

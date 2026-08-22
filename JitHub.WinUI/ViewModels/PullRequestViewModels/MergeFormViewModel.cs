@@ -14,7 +14,7 @@ using MarkdownRenderer.Images;
 
 namespace JitHub.WinUI.ViewModels.PullRequestViewModels
 {
-    public class MergeFormViewModel : RepoViewModel
+public partial class MergeFormViewModel : RepoViewModel
     {
         private string _title = string.Empty;
         private string _body = string.Empty;

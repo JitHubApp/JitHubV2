@@ -652,7 +652,9 @@ public sealed class Phase0TelemetryTests : IDisposable
         Assert.Equal(96, lines.Length);
         Assert.Equal(
             Enumerable.Range(0, 96).Select(index => $"flush-{index:D2}"),
-            lines.Select(line => JsonSerializer.Deserialize<LocalDiagnosticEvent>(line)!.Name));
+            lines.Select(line => JsonSerializer.Deserialize(
+                line,
+                LocalDiagnosticsJsonContext.Default.DiagnosticEvent)!.Name));
     }
 
     [Fact]
@@ -784,11 +786,13 @@ public sealed class Phase0TelemetryTests : IDisposable
         string first = SerializeDiagnostic("first", now);
         string second = SerializeDiagnostic("second", now);
         string third = SerializeDiagnostic("third", now);
-        string oversized = JsonSerializer.Serialize(new LocalDiagnosticEvent(
-            now,
-            "event",
-            "oversized",
-            new Dictionary<string, string> { ["result"] = new string('x', 4096) }));
+        string oversized = JsonSerializer.Serialize(
+            new LocalDiagnosticEvent(
+                now,
+                "event",
+                "oversized",
+                new Dictionary<string, string> { ["result"] = new string('x', 4096) }),
+            LocalDiagnosticsJsonContext.Default.DiagnosticEvent);
         long maxBytes = Encoding.UTF8.GetByteCount(second + Environment.NewLine + third + Environment.NewLine);
         SinglePassEnumerable<string> source = new([
             expired,
@@ -931,7 +935,9 @@ public sealed class Phase0TelemetryTests : IDisposable
             new Dictionary<string, string> { ["result"] = "success" });
 
     private static string SerializeDiagnostic(string name, DateTimeOffset timestamp) =>
-        JsonSerializer.Serialize(CreateDiagnostic(name, timestamp));
+        JsonSerializer.Serialize(
+            CreateDiagnostic(name, timestamp),
+            LocalDiagnosticsJsonContext.Default.DiagnosticEvent);
 
     private sealed class SinglePassEnumerable<T> : IEnumerable<T>
     {

@@ -12,7 +12,7 @@ namespace JitHub.WinUI.ViewModels.CodeViewer;
 /// Warms the non-visual repository tree projection before navigation. Prepared
 /// view models are transferred to one destination page and are never shared.
 /// </summary>
-public sealed class RepoCodeNavigationPreparationCache
+public sealed partial class RepoCodeNavigationPreparationCache
 {
     private const int MaximumPreparedRepositoryCount = 8;
     private readonly IRepoTreeService _treeService;
@@ -299,7 +299,7 @@ public sealed class RepoCodeNavigationPreparationCache
         }
     }
 
-    private sealed class Entry : IDisposable
+    private sealed partial class Entry : IDisposable
     {
         private readonly CancellationTokenSource _workCancellation;
         private int _hasForegroundConsumer;

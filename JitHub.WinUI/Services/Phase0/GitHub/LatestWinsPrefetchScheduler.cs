@@ -8,7 +8,7 @@ namespace JitHub.Services;
 /// Debounces predictive intent and keeps at most one started prediction alive.
 /// The caller owns route lifetime and must call <see cref="Cancel"/> when leaving it.
 /// </summary>
-public sealed class LatestWinsPrefetchScheduler
+public sealed partial class LatestWinsPrefetchScheduler
 {
     private readonly object _gate = new();
     private CancellationTokenSource? _pendingCancellation;
@@ -132,7 +132,7 @@ public sealed class LatestWinsPrefetchScheduler
         }
     }
 
-    private sealed class EmptyDisposable : IDisposable
+    private sealed partial class EmptyDisposable : IDisposable
     {
         public static readonly IDisposable Instance = new EmptyDisposable();
 

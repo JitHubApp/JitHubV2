@@ -168,11 +168,65 @@ public sealed class GitHubRepoCodeQueryService : IGitHubRepoCodeQueryService
 
     private static readonly Lazy<string> LargePreviewSource = new(CreateLargePreviewSource);
 
+    private const string PreviewReadme = """
+        # JitHub
+
+        A fast native GitHub workspace for Windows.
+
+        - Cached repository navigation
+        - Responsive code reading
+        - Native Markdown rendering
+        """;
+
+    private const string PreviewCsv = """
+        Repository,Language,Open issues,Status,Notes
+        JitHub,C#,18,Active,"Native AOT, WinUI 3"
+        MarkdownRenderer,C#,4,Active,"Quoted fields, sorting, and copy"
+        AppDataTable,C#,0,Preview,"Two-axis virtualization"
+        RepositorySvgRasterizer,C#,2,Preview,"Transparent tiles, 0.1x through 8x zoom"
+        "Roadmap, 2026",Mixed,7,Planned,"A field with a comma"
+        "Multiline fixture",Text,1,Active,"First line
+        Second line"
+        "Escaped quotes",Text,0,Complete,"Native ""rich"" preview"
+        """;
+
+    private const string PreviewSvg = """
+        <svg xmlns="http://www.w3.org/2000/svg" width="960" height="540" viewBox="0 0 960 540">
+          <defs>
+            <linearGradient id="panel" x1="0" y1="0" x2="1" y2="1">
+              <stop offset="0" stop-color="#2f81f7"/>
+              <stop offset="1" stop-color="#3fb950"/>
+            </linearGradient>
+            <clipPath id="roundClip"><rect x="56" y="48" width="848" height="444" rx="32"/></clipPath>
+            <mask id="fadeMask">
+              <rect width="960" height="540" fill="white"/>
+              <circle cx="840" cy="92" r="88" fill="#808080"/>
+            </mask>
+            <g id="node">
+              <rect width="180" height="76" rx="12" fill="#ffffff" fill-opacity="0.94"/>
+              <circle cx="32" cy="38" r="13" fill="#1f883d"/>
+              <path d="M58 30h92M58 46h66" stroke="#24292f" stroke-width="7" stroke-linecap="round"/>
+            </g>
+          </defs>
+          <g clip-path="url(#roundClip)" mask="url(#fadeMask)">
+            <rect x="56" y="48" width="848" height="444" fill="url(#panel)"/>
+            <path d="M236 178H480M480 178L724 362M480 178L236 362" fill="none" stroke="#ffffff" stroke-opacity="0.65" stroke-width="8"/>
+            <use href="#node" x="146" y="140"/>
+            <use href="#node" x="390" y="140"/>
+            <use href="#node" x="634" y="324"/>
+            <use href="#node" x="146" y="324"/>
+          </g>
+          <text x="480" y="522" text-anchor="middle" font-family="Segoe UI, sans-serif" font-size="24" fill="#57606a">Native repository rendering</text>
+        </svg>
+        """;
+
     private static GitHubTree CreatePreviewTree()
     {
         List<GitHubTreeEntry> entries =
         [
-            new() { Path = "README.md", Type = "blob", Sha = "preview-readme", Size = 220 },
+            new() { Path = "README.md", Type = "blob", Sha = "preview-readme", Size = Encoding.UTF8.GetByteCount(PreviewReadme) },
+            new() { Path = "data.csv", Type = "blob", Sha = "preview-csv", Size = Encoding.UTF8.GetByteCount(PreviewCsv) },
+            new() { Path = "architecture.svg", Type = "blob", Sha = "preview-svg", Size = Encoding.UTF8.GetByteCount(PreviewSvg) },
             new() { Path = "src", Type = "tree", Sha = "preview-src" },
             new()
             {
@@ -220,16 +274,21 @@ public sealed class GitHubRepoCodeQueryService : IGitHubRepoCodeQueryService
             :
             [
                 new GitHubRepositoryContent { Name = "src", Path = "src", Type = "dir", Sha = "preview-src" },
-                new GitHubRepositoryContent { Name = "README.md", Path = "README.md", Type = "file", Sha = "preview-readme", Size = 220 }
+                new GitHubRepositoryContent { Name = "README.md", Path = "README.md", Type = "file", Sha = "preview-readme", Size = Encoding.UTF8.GetByteCount(PreviewReadme) },
+                new GitHubRepositoryContent { Name = "data.csv", Path = "data.csv", Type = "file", Sha = "preview-csv", Size = Encoding.UTF8.GetByteCount(PreviewCsv) },
+                new GitHubRepositoryContent { Name = "architecture.svg", Path = "architecture.svg", Type = "file", Sha = "preview-svg", Size = Encoding.UTF8.GetByteCount(PreviewSvg) }
             ];
 
     private static GitHubBlob CreatePreviewBlob(string sha)
     {
-        string text = string.Equals(sha, "preview-readme", StringComparison.Ordinal)
-            ? "# JitHub\n\nA fast native GitHub workspace for Windows.\n\n- Cached repository navigation\n- Responsive code reading\n- Native Markdown rendering"
-            : string.Equals(sha, "preview-app", StringComparison.Ordinal)
-                ? CreatePreviewSource()
-                : "namespace JitHub.Generated;\n\ninternal static class Fixture { }\n";
+        string text = sha switch
+        {
+            "preview-readme" => PreviewReadme,
+            "preview-csv" => PreviewCsv,
+            "preview-svg" => PreviewSvg,
+            "preview-app" => CreatePreviewSource(),
+            _ => "namespace JitHub.Generated;\n\ninternal static class Fixture { }\n"
+        };
         return new GitHubBlob
         {
             Sha = sha,

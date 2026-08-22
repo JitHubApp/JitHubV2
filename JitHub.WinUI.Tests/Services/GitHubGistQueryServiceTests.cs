@@ -9,6 +9,7 @@ using System.Net.Http;
 using System.Net.Http.Headers;
 using System.Text;
 using System.Text.Json;
+using System.Text.Json.Nodes;
 using System.Threading;
 using System.Threading.Tasks;
 using JitHub.Models.GitHub;
@@ -1312,25 +1313,25 @@ public sealed class GitHubGistQueryServiceTests : IDisposable
             string id = request.Method == HttpMethod.Patch
                 ? request.RequestUri!.Segments.Last().Trim('/')
                 : $"created-{requestNumber}";
-            string json = JsonSerializer.Serialize(new
+            string json = new JsonObject
             {
-                id,
-                description,
-                @public = false,
-                html_url = $"https://gist.github.com/{id}",
-                url = $"https://api.github.com/gists/{id}",
-                files = new Dictionary<string, object>
+                ["id"] = id,
+                ["description"] = description,
+                ["public"] = false,
+                ["html_url"] = $"https://gist.github.com/{id}",
+                ["url"] = $"https://api.github.com/gists/{id}",
+                ["files"] = new JsonObject
                 {
-                    ["sample.cs"] = new
+                    ["sample.cs"] = new JsonObject
                     {
-                        filename = "sample.cs",
-                        type = "text/plain",
-                        language = "C#",
-                        size = 12,
-                        content = "return true;"
+                        ["filename"] = "sample.cs",
+                        ["type"] = "text/plain",
+                        ["language"] = "C#",
+                        ["size"] = 12,
+                        ["content"] = "return true;"
                     }
                 }
-            });
+            }.ToJsonString();
             return new HttpResponseMessage(HttpStatusCode.OK)
             {
                 Content = new StringContent(json, Encoding.UTF8, "application/json")

@@ -1195,7 +1195,7 @@ public sealed partial class RepoCodePageViewModel : ObservableObject
         return entry;
     }
 
-    private sealed class CancellationTokenSourceLease : IDisposable
+    private sealed partial class CancellationTokenSourceLease : IDisposable
     {
         private CancellationTokenSource? _source;
 
@@ -1920,7 +1920,7 @@ public sealed partial class RepoCodePageViewModel : ObservableObject
         string GitHubUrl,
         string RawUrl);
 
-    private sealed class RequestCancellation : IDisposable
+    private sealed partial class RequestCancellation : IDisposable
     {
         private readonly object _gate = new();
         private CancellationTokenSource? _source;

@@ -121,7 +121,9 @@ public sealed class SettingsDiagnosticsService : ISettingsDiagnosticsService
         foreach (LocalDiagnosticEvent diagnosticEvent in events)
         {
             cancellationToken.ThrowIfCancellationRequested();
-            await writer.WriteLineAsync(JsonSerializer.Serialize(diagnosticEvent));
+            await writer.WriteLineAsync(JsonSerializer.Serialize(
+                diagnosticEvent,
+                LocalDiagnosticsJsonContext.Default.DiagnosticEvent));
         }
     }
 
@@ -170,5 +172,6 @@ public sealed class SettingsDiagnosticsService : ISettingsDiagnosticsService
     private bool IsDisabledByCompatibility() =>
         _storeTelemetrySink.AvailabilityStatus.Contains("type_unavailable", StringComparison.OrdinalIgnoreCase) ||
         _storeTelemetrySink.AvailabilityStatus.Contains("logger_unavailable", StringComparison.OrdinalIgnoreCase) ||
+        _storeTelemetrySink.AvailabilityStatus.Contains("architecture_unavailable", StringComparison.OrdinalIgnoreCase) ||
         _storeTelemetrySink.AvailabilityStatus.Contains("compat", StringComparison.OrdinalIgnoreCase);
 }

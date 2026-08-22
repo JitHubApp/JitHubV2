@@ -5,7 +5,6 @@
     xmlns:appcontrols="using:JitHub.WinUI.Views.Controls.App"
     xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
     xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
-    xmlns:models="using:JitHub.Models"
     xmlns:pageViewModels="using:JitHub.WinUI.ViewModels.Pages"
     mc:Ignorable="d"
     Background="{ThemeResource AppTransparentBrush}"
@@ -139,8 +138,6 @@
                     AutomationProperties.AutomationId="SettingsCompactSectionPicker"
                     AutomationProperties.Name="{x:Bind ViewModel.SectionPickerAutomationName, Mode=OneWay}"
                     DropDownOpened="CompactSectionPicker_DropDownOpened"
-                    ItemsSource="{x:Bind ViewModel.SettingsSections, Mode=OneWay}"
-                    SelectedItem="{x:Bind ViewModel.SelectedSection, Mode=TwoWay}"
                     SelectionChanged="SettingsSectionSelectionChanged"
                     Style="{StaticResource AppCompactComboBoxStyle}"
                     Visibility="Collapsed">
@@ -207,16 +204,15 @@
                     CornerRadius="{ThemeResource AppRadiusMedium}"
                     Padding="8">
                         <ListView
-                            x:Uid="PagesSettingsPageSettingsSectionList" AutomationProperties.AutomationId="SettingsSectionList"
+                            x:Uid="PagesSettingsPageSettingsSectionList" x:Name="SettingsSectionList"
+                            AutomationProperties.AutomationId="SettingsSectionList"
                             AutomationProperties.Name="Settings sections"
                         ContainerContentChanging="SettingsSectionList_ContainerContentChanging"
                         ItemContainerStyle="{StaticResource AppCompactNavigationRowStyle}"
-                        ItemsSource="{x:Bind ViewModel.SettingsSections, Mode=OneWay}"
                         ScrollViewer.HorizontalScrollBarVisibility="Disabled"
                         ScrollViewer.HorizontalScrollMode="Disabled"
                         ScrollViewer.VerticalScrollBarVisibility="Disabled"
                         ScrollViewer.VerticalScrollMode="Disabled"
-                        SelectedItem="{x:Bind ViewModel.SelectedSection, Mode=TwoWay}"
                         SelectionChanged="SettingsSectionSelectionChanged"
                         SelectionMode="Single">
                         <ListView.ItemTemplate>
@@ -934,7 +930,7 @@
                                         <TextBlock
                                             x:Uid="PagesSettingsPageTextBlockCacheOwnerHealth" Style="{StaticResource ListItemTitleTextBlockStyle}"
                                             Text="Cache owner health" />
-                                        <ItemsControl ItemsSource="{x:Bind ViewModel.CacheOwners, Mode=OneWay}">
+                                        <ItemsControl x:Name="SettingsCacheOwnersList">
                                             <ItemsControl.ItemTemplate>
                                                 <DataTemplate x:DataType="pageViewModels:SettingsCacheOwnerItem">
                                                     <Border
@@ -1100,73 +1096,7 @@
                                         <TextBlock
                                             x:Uid="PagesSettingsPageTextBlockDevelopers" Style="{StaticResource ListItemTitleTextBlockStyle}"
                                             Text="Developers" />
-                                        <ItemsControl ItemsSource="{x:Bind Developers, Mode=OneWay}">
-                                            <ItemsControl.ItemTemplate>
-                                                <DataTemplate x:DataType="models:CreditPersonale">
-                                                    <Border
-                                                        Margin="0,0,0,10"
-                                                        Background="{ThemeResource AppSurfaceSubtleBrush}"
-                                                        BorderBrush="{ThemeResource AppHairlineBrush}"
-                                                        BorderThickness="1"
-                                                        CornerRadius="{ThemeResource AppRadiusSmall}"
-                                                        Padding="12">
-                                                        <Grid ColumnSpacing="14">
-                                                            <Grid.ColumnDefinitions>
-                                                                <ColumnDefinition Width="76" />
-                                                                <ColumnDefinition Width="*" />
-                                                            </Grid.ColumnDefinitions>
-                                                            <PersonPicture
-                                                                Width="64"
-                                                                Height="64"
-                                                                AutomationProperties.Name="{x:Bind PersonaleName, Mode=OneWay}"
-                                                                ProfilePicture="{x:Bind ImageSource, Mode=OneWay}" />
-                                                            <StackPanel
-                                                                Grid.Column="1"
-                                                                Spacing="4">
-                                                                <TextBlock
-                                                                    Style="{StaticResource ListItemTitleTextBlockStyle}"
-                                                                    Text="{x:Bind PersonaleName, Mode=OneWay}" />
-                                                                <TextBlock
-                                                                    Style="{StaticResource ListItemSecondaryTextBlockStyle}"
-                                                                    Text="{x:Bind Role, Mode=OneWay}" />
-                                                                <TextBlock
-                                                                    MaxWidth="620"
-                                                                    Style="{StaticResource SectionSecondaryTextBlockStyle}"
-                                                                    TextWrapping="WrapWholeWords"
-                                                                    Text="{x:Bind Description, Mode=OneWay}" />
-                                                                <ItemsControl ItemsSource="{x:Bind Links, Mode=OneWay}">
-                                                                    <ItemsControl.ItemsPanel>
-                                                                        <ItemsPanelTemplate>
-                                                                            <StackPanel Orientation="Horizontal" />
-                                                                        </ItemsPanelTemplate>
-                                                                    </ItemsControl.ItemsPanel>
-                                                                    <ItemsControl.ItemTemplate>
-                                                                        <DataTemplate x:DataType="models:PersonalLink">
-                                                                            <HyperlinkButton
-                                                                                Margin="0,2,8,0"
-                                                                                Padding="0"
-                                                                                AutomationProperties.AutomationId="{x:Bind AutomationId, Mode=OneWay}"
-                                                                                AutomationProperties.Name="{x:Bind AccessibleName, Mode=OneWay}"
-                                                                                NavigateUri="{x:Bind Link, Mode=OneWay}">
-                                                                                <Border
-                                                                                    Padding="2"
-                                                                                    Background="{x:Bind LogoBackgroundBrush, Mode=OneWay}"
-                                                                                    CornerRadius="2">
-                                                                                    <Image
-                                                                                        Width="18"
-                                                                                        Height="18"
-                                                                                        Source="{x:Bind LogoSource, Mode=OneWay}" />
-                                                                                </Border>
-                                                                            </HyperlinkButton>
-                                                                        </DataTemplate>
-                                                                    </ItemsControl.ItemTemplate>
-                                                                </ItemsControl>
-                                                            </StackPanel>
-                                                        </Grid>
-                                                    </Border>
-                                                </DataTemplate>
-                                            </ItemsControl.ItemTemplate>
-                                        </ItemsControl>
+                                        <StackPanel x:Name="SettingsDevelopersList" />
                                     </StackPanel>
                                 </Border>
 
@@ -1180,73 +1110,7 @@
                                         <TextBlock
                                             x:Uid="PagesSettingsPageTextBlockDesigners" Style="{StaticResource ListItemTitleTextBlockStyle}"
                                             Text="Designers" />
-                                        <ItemsControl ItemsSource="{x:Bind Designers, Mode=OneWay}">
-                                            <ItemsControl.ItemTemplate>
-                                                <DataTemplate x:DataType="models:CreditPersonale">
-                                                    <Border
-                                                        Margin="0,0,0,10"
-                                                        Background="{ThemeResource AppSurfaceSubtleBrush}"
-                                                        BorderBrush="{ThemeResource AppHairlineBrush}"
-                                                        BorderThickness="1"
-                                                        CornerRadius="{ThemeResource AppRadiusSmall}"
-                                                        Padding="12">
-                                                        <Grid ColumnSpacing="14">
-                                                            <Grid.ColumnDefinitions>
-                                                                <ColumnDefinition Width="76" />
-                                                                <ColumnDefinition Width="*" />
-                                                            </Grid.ColumnDefinitions>
-                                                            <PersonPicture
-                                                                Width="64"
-                                                                Height="64"
-                                                                AutomationProperties.Name="{x:Bind PersonaleName, Mode=OneWay}"
-                                                                ProfilePicture="{x:Bind ImageSource, Mode=OneWay}" />
-                                                            <StackPanel
-                                                                Grid.Column="1"
-                                                                Spacing="4">
-                                                                <TextBlock
-                                                                    Style="{StaticResource ListItemTitleTextBlockStyle}"
-                                                                    Text="{x:Bind PersonaleName, Mode=OneWay}" />
-                                                                <TextBlock
-                                                                    Style="{StaticResource ListItemSecondaryTextBlockStyle}"
-                                                                    Text="{x:Bind Role, Mode=OneWay}" />
-                                                                <TextBlock
-                                                                    MaxWidth="620"
-                                                                    Style="{StaticResource SectionSecondaryTextBlockStyle}"
-                                                                    TextWrapping="WrapWholeWords"
-                                                                    Text="{x:Bind Description, Mode=OneWay}" />
-                                                                <ItemsControl ItemsSource="{x:Bind Links, Mode=OneWay}">
-                                                                    <ItemsControl.ItemsPanel>
-                                                                        <ItemsPanelTemplate>
-                                                                            <StackPanel Orientation="Horizontal" />
-                                                                        </ItemsPanelTemplate>
-                                                                    </ItemsControl.ItemsPanel>
-                                                                    <ItemsControl.ItemTemplate>
-                                                                        <DataTemplate x:DataType="models:PersonalLink">
-                                                                            <HyperlinkButton
-                                                                                Margin="0,2,8,0"
-                                                                                Padding="0"
-                                                                                AutomationProperties.AutomationId="{x:Bind AutomationId, Mode=OneWay}"
-                                                                                AutomationProperties.Name="{x:Bind AccessibleName, Mode=OneWay}"
-                                                                                NavigateUri="{x:Bind Link, Mode=OneWay}">
-                                                                                <Border
-                                                                                    Padding="2"
-                                                                                    Background="{x:Bind LogoBackgroundBrush, Mode=OneWay}"
-                                                                                    CornerRadius="2">
-                                                                                    <Image
-                                                                                        Width="18"
-                                                                                        Height="18"
-                                                                                        Source="{x:Bind LogoSource, Mode=OneWay}" />
-                                                                                </Border>
-                                                                            </HyperlinkButton>
-                                                                        </DataTemplate>
-                                                                    </ItemsControl.ItemTemplate>
-                                                                </ItemsControl>
-                                                            </StackPanel>
-                                                        </Grid>
-                                                    </Border>
-                                                </DataTemplate>
-                                            </ItemsControl.ItemTemplate>
-                                        </ItemsControl>
+                                        <StackPanel x:Name="SettingsDesignersList" />
                                     </StackPanel>
                                 </Border>
                             </StackPanel>

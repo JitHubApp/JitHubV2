@@ -4,7 +4,7 @@ using System.Diagnostics;
 
 namespace JitHub.Services;
 
-public sealed class TelemetryService : ITelemetryService
+public sealed partial class TelemetryService : ITelemetryService
 {
     private readonly ILocalDiagnosticsStore _diagnosticsStore;
     private readonly IStoreTelemetrySink _storeTelemetrySink;
@@ -115,7 +115,7 @@ public sealed class TelemetryService : ITelemetryService
         (!_settingService.Contains(SettingsKeys.StoreTelemetryEnabled) ||
             _settingService.Get<bool>(SettingsKeys.StoreTelemetryEnabled));
 
-    private sealed class PerformanceTrace : IPerformanceTrace
+    private sealed partial class PerformanceTrace : IPerformanceTrace
     {
         private readonly TelemetryService _owner;
         private readonly string _name;
@@ -177,7 +177,7 @@ public sealed class TelemetryService : ITelemetryService
         }
     }
 
-    private sealed class NoOpPerformanceTrace : IPerformanceTrace
+    private sealed partial class NoOpPerformanceTrace : IPerformanceTrace
     {
         public static NoOpPerformanceTrace Instance { get; } = new();
 

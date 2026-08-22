@@ -38,7 +38,7 @@ namespace JitHub.WinUI.ViewModels.RepositoryViewModels
         RepositoryWorkspaceSection Section,
         object Parameter);
 
-    public class RepoDetailViewModel : RepoViewModel
+public partial class RepoDetailViewModel : RepoViewModel
     {
         private bool _starred;
         private bool _watching;

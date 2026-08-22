@@ -79,7 +79,7 @@
                             <DataTemplate x:DataType="viewmodels:RepoTreeNodeViewModel">
                                 <Grid
                                     AutomationProperties.AccessibilityView="Raw"
-                    Background="{ThemeResource AppTransparentBrush}"
+                                    Background="{ThemeResource AppTransparentBrush}"
                                     ColumnSpacing="6"
                                     HorizontalAlignment="Left"
                                     Loaded="OnTreeItemContentLoaded"

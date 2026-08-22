@@ -23,7 +23,7 @@ public static class IncrementalLoadingBehavior
     public static readonly DependencyProperty SourceProperty =
         DependencyProperty.RegisterAttached(
             "Source",
-            typeof(object),
+            typeof(ISupportIncrementalLoading),
             typeof(IncrementalLoadingBehavior),
             new PropertyMetadata(null, OnSourceChanged));
 
@@ -54,10 +54,10 @@ public static class IncrementalLoadingBehavior
     public static void SetIsEnabled(DependencyObject obj, bool value)
         => obj.SetValue(IsEnabledProperty, value);
 
-    public static object? GetSource(DependencyObject obj)
-        => obj.GetValue(SourceProperty);
+    public static ISupportIncrementalLoading? GetSource(DependencyObject obj)
+        => obj.GetValue(SourceProperty) as ISupportIncrementalLoading;
 
-    public static void SetSource(DependencyObject obj, object? value)
+    public static void SetSource(DependencyObject obj, ISupportIncrementalLoading? value)
         => obj.SetValue(SourceProperty, value);
 
     public static int GetPageSize(DependencyObject obj)
@@ -175,7 +175,7 @@ public static class IncrementalLoadingBehavior
         if (ResolveSource(element) is not ISupportIncrementalLoading source || !source.HasMoreItems)
             return;
 
-        if (IsSourceLoading(source))
+        if (IncrementalLoadingSourceAdapter.IsLoading(source))
         {
             ScheduleAfterCurrentSourceLoad(element, state);
             return;
@@ -234,21 +234,17 @@ public static class IncrementalLoadingBehavior
             QueueLoadIfNeeded(owner, state);
     }
 
-    private static object? ResolveSource(FrameworkElement element)
+    private static ISupportIncrementalLoading? ResolveSource(FrameworkElement element)
     {
-        object? explicitSource = GetSource(element);
+        ISupportIncrementalLoading? explicitSource = GetSource(element);
         if (explicitSource is not null)
             return explicitSource;
 
-        return element switch
-        {
-            ItemsControl itemsControl => itemsControl.ItemsSource,
-            _ => element.GetType().GetProperty("ItemsSource")?.GetValue(element)
-        };
+        object? itemsSource = element is ItemsControl itemsControl
+            ? itemsControl.ItemsSource
+            : null;
+        return IncrementalLoadingSourceAdapter.Resolve(explicitSource, itemsSource, element);
     }
-
-    private static bool IsSourceLoading(ISupportIncrementalLoading source)
-        => source.GetType().GetProperty("IsLoading")?.GetValue(source) is true;
 
     private static bool ShouldWaitForListHost(FrameworkElement element)
         => element is ItemsControl and not ListViewBase && ResolveSource(element) is not null;

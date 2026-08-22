@@ -3,6 +3,7 @@ using System.Collections.Generic;
 using System.IO;
 using System.Linq;
 using System.Text.Json;
+using System.Text.Json.Serialization;
 using System.Threading;
 using System.Threading.Tasks;
 using JitHub.Models.GitHub;
@@ -59,7 +60,6 @@ public interface IGistMutationJournal
 
 public sealed class GistMutationJournal : IGistMutationJournal
 {
-    private static readonly JsonSerializerOptions SerializerOptions = new(JsonSerializerDefaults.Web);
     private readonly SemaphoreSlim _gate = new(1, 1);
 
     public GistMutationJournal(IAppStoragePathProvider pathProvider)
@@ -230,7 +230,7 @@ public sealed class GistMutationJournal : IGistMutationJournal
                 FileOptions.Asynchronous | FileOptions.SequentialScan);
             return await JsonSerializer.DeserializeAsync<List<GistMutationJournalEntry>>(
                 stream,
-                SerializerOptions,
+                GistMutationJournalJsonContext.Default.JournalEntries,
                 cancellationToken).ConfigureAwait(false) ?? [];
         }
         catch (JsonException)
@@ -252,7 +252,7 @@ public sealed class GistMutationJournal : IGistMutationJournal
                 FileOptions.Asynchronous | FileOptions.SequentialScan);
             return await JsonSerializer.DeserializeAsync<List<GistMutationJournalEntry>>(
                 stream,
-                SerializerOptions,
+                GistMutationJournalJsonContext.Default.JournalEntries,
                 cancellationToken).ConfigureAwait(false)
                 ?? throw new InvalidDataException("The Gist mutation journal is empty or invalid.");
         }
@@ -279,10 +279,12 @@ public sealed class GistMutationJournal : IGistMutationJournal
                 16 * 1024,
                 FileOptions.Asynchronous | FileOptions.WriteThrough))
             {
+                List<GistMutationJournalEntry> payload = entries as List<GistMutationJournalEntry>
+                    ?? entries.ToList();
                 await JsonSerializer.SerializeAsync(
                     stream,
-                    entries,
-                    SerializerOptions,
+                    payload,
+                    GistMutationJournalJsonContext.Default.JournalEntries,
                     cancellationToken).ConfigureAwait(false);
                 await stream.FlushAsync(cancellationToken).ConfigureAwait(false);
             }
@@ -302,4 +304,12 @@ public sealed class GistMutationJournal : IGistMutationJournal
         string.IsNullOrWhiteSpace(gistId)
             ? throw new ArgumentException("A stable Gist id is required.", nameof(gistId))
             : gistId.Trim();
+}
+
+[JsonSourceGenerationOptions(JsonSerializerDefaults.Web)]
+[JsonSerializable(
+    typeof(List<GistMutationJournalEntry>),
+    TypeInfoPropertyName = "JournalEntries")]
+internal sealed partial class GistMutationJournalJsonContext : JsonSerializerContext
+{
 }

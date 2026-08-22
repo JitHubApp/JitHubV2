@@ -16,7 +16,7 @@ namespace JitHub.Services.CodeViewer;
 /// <summary>
 /// Two-tier (in-memory LRU + disk) cache for repository file blobs.
 /// </summary>
-public sealed class RepoFileCacheService : IRepoFileCacheService
+public sealed partial class RepoFileCacheService : IRepoFileCacheService
 {
     // ── Configuration ────────────────────────────────────────────────────────
     private const int DefaultMemMaxEntries = 256;
@@ -1264,7 +1264,7 @@ public sealed class RepoFileCacheService : IRepoFileCacheService
         }
     }
 
-    private sealed class KeyLockLease : IDisposable
+    private sealed partial class KeyLockLease : IDisposable
     {
         private RepoFileCacheService? _owner;
         private readonly string _cacheKey;

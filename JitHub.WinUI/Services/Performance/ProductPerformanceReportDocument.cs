@@ -20,12 +20,6 @@ public sealed record ProductPerformanceReportDocument(
 {
     public const int CurrentSchemaVersion = 3;
 
-    private static readonly JsonSerializerOptions SerializerOptions = new(JsonSerializerDefaults.Web)
-    {
-        WriteIndented = true,
-        Converters = { new JsonStringEnumConverter() }
-    };
-
     public static ProductPerformanceReportDocument Create(
         string? configuration,
         IEnumerable<ProductPerformanceMeasurement> measurements,
@@ -82,7 +76,10 @@ public sealed record ProductPerformanceReportDocument(
                        bufferSize: 16 * 1024,
                        FileOptions.WriteThrough))
             {
-                JsonSerializer.Serialize(stream, this, SerializerOptions);
+                JsonSerializer.Serialize(
+                    stream,
+                    this,
+                    ProductPerformanceReportJsonContext.Default.Report);
                 stream.Flush(flushToDisk: true);
             }
 
@@ -102,7 +99,7 @@ public sealed record ProductPerformanceReportDocument(
         using FileStream stream = File.OpenRead(Path.GetFullPath(path));
         ProductPerformanceReportDocument? report = JsonSerializer.Deserialize<ProductPerformanceReportDocument>(
             stream,
-            SerializerOptions);
+            ProductPerformanceReportJsonContext.Default.Report);
         if (report is null || report.SchemaVersion != CurrentSchemaVersion)
         {
             throw new InvalidDataException("The product performance report is missing or uses an unsupported schema.");
@@ -115,4 +112,13 @@ public sealed record ProductPerformanceReportDocument(
 
         return report;
     }
+}
+
+[JsonSourceGenerationOptions(
+    JsonSerializerDefaults.Web,
+    WriteIndented = true,
+    UseStringEnumConverter = true)]
+[JsonSerializable(typeof(ProductPerformanceReportDocument), TypeInfoPropertyName = "Report")]
+internal sealed partial class ProductPerformanceReportJsonContext : JsonSerializerContext
+{
 }

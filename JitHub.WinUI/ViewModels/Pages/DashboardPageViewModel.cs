@@ -16,11 +16,10 @@ using JitHub.Services;
 using JitHub.WinUI.Helpers;
 using JitHub.WinUI.ViewModels.Activities;
 using JitHub.WinUI.ViewModels.Common;
-using Microsoft.UI.Xaml.Data;
 
 namespace JitHub.WinUI.ViewModels.Pages;
 
-[Bindable]
+[WinRT.GeneratedBindableCustomProperty]
 public sealed partial class DashboardPageViewModel : ViewModelBase
 {
     private readonly IAuthService _authService;

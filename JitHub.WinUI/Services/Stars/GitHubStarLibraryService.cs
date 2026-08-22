@@ -9,7 +9,7 @@ using JitHub.Models.GitHub;
 
 namespace JitHub.Services;
 
-public sealed class GitHubStarLibraryService : IGitHubStarLibraryService, IDisposable
+public sealed partial class GitHubStarLibraryService : IGitHubStarLibraryService, IDisposable
 {
     private static readonly TimeSpan CompleteReconciliationInterval = TimeSpan.FromHours(24);
     internal static readonly IReadOnlyList<string> StarMutationCacheTags =

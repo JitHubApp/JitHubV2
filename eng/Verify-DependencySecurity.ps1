@@ -6,6 +6,7 @@ param(
 $ErrorActionPreference = "Stop"
 $repositoryRoot = (Resolve-Path (Join-Path $PSScriptRoot "..")).Path
 $solutionPath = (Resolve-Path (Join-Path $repositoryRoot $Solution)).Path
+$appProjectPath = (Resolve-Path (Join-Path $repositoryRoot 'JitHub.WinUI\JitHub.WinUI.csproj')).Path
 
 function Invoke-CheckedDotNet {
     param([Parameter(Mandatory = $true)][string[]] $Arguments)
@@ -19,11 +20,11 @@ function Invoke-CheckedDotNet {
 }
 
 $projectFiles = Get-ChildItem -LiteralPath $repositoryRoot -Recurse -Filter *.csproj -File |
-    Where-Object { $_.FullName -notmatch '[\\/](?:bin|obj|artifacts)[\\/]' }
+    Where-Object { $_.FullName -notmatch '[\\/](?:bin|obj|artifacts|\.codex-artifacts)[\\/]' }
 
 $allowedPrereleasePackages = @{
     "CommunityToolkit.Labs.WinUI.TransitionHelper" = "0.1.251217-build.2433"
-    "WinUIEdit" = "0.0.4-prerelease"
+    "WinUIEdit" = "0.0.5-prerelease"
 }
 
 foreach ($projectFile in $projectFiles) {
@@ -62,10 +63,12 @@ foreach ($source in @($nugetConfig.configuration.packageSources.add)) {
 
 $restoreOutput = Invoke-CheckedDotNet @(
     "restore",
-    $solutionPath,
+    $appProjectPath,
     "--locked-mode",
     "-p:Configuration=Release",
     "-p:Platform=x64",
+    "-p:RuntimeIdentifier=win-x64",
+    "-p:PublishAot=true",
     "-p:NuGetAudit=true",
     "-p:NuGetAuditMode=all",
     "-warnaserror:NU1901;NU1902;NU1903;NU1904",
@@ -74,7 +77,7 @@ $restoreOutput = Invoke-CheckedDotNet @(
 
 $vulnerabilityOutput = Invoke-CheckedDotNet @(
     "list",
-    $solutionPath,
+    $appProjectPath,
     "package",
     "--vulnerable",
     "--include-transitive",

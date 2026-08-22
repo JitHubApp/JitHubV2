@@ -10,7 +10,7 @@ using System.Threading.Tasks;
 
 namespace JitHub.WinUI.ViewModels
 {
-    public class DevConsoleViewModel : ObservableObject
+public partial class DevConsoleViewModel : ObservableObject
     {
         private string _token = string.Empty;
         private readonly IAuthService _authService;

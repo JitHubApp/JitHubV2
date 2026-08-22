@@ -2,6 +2,7 @@ using System;
 using System.Collections.Generic;
 using System.Net;
 using System.Net.Http;
+using System.Text.Json.Serialization.Metadata;
 using System.Threading;
 using System.Threading.Tasks;
 
@@ -9,7 +10,8 @@ namespace JitHub.Services;
 
 public sealed record GitHubGraphQlQuery<T>(
     GitHubQuery<T> CacheQuery,
-    GitHubGraphQlRequest Request)
+    GitHubGraphQlRequest Request,
+    JsonTypeInfo<GitHubGraphQlResponse<T>> ResponseJsonTypeInfo)
     where T : class;
 
 public interface IGitHubGraphQlQueryService
@@ -257,6 +259,7 @@ public sealed class GitHubGraphQlQueryService : IGitHubGraphQlQueryService
         GitHubGraphQlResponse<T> response = await _transport.SendAsync<T>(
             query.CacheQuery.AccessToken,
             query.Request,
+            query.ResponseJsonTypeInfo,
             cancellationToken).ConfigureAwait(false);
         ObserveRateLimitSafely(
             query.CacheQuery.UserId,

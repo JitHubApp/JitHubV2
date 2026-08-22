@@ -5,7 +5,7 @@ using System.Windows.Input;
 
 namespace JitHub.WinUI.ViewModels.EmojiViewModels
 {   
-    public class EmojiPanelViewModel : ObservableObject
+public partial class EmojiPanelViewModel : ObservableObject
     {
         private Dictionary<ReactionType, Reaction> _votesMap = [];
         private Dictionary<ReactionType, ICollection<string>> _userReactions = [];

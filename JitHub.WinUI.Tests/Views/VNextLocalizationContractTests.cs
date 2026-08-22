@@ -226,6 +226,9 @@ public sealed class VNextLocalizationContractTests
 
         string project = File.ReadAllText(Path.Combine(root, "JitHub.WinUI", "JitHub.WinUI.csproj"));
         Assert.Contains("<EnablePseudoLocalization>false</EnablePseudoLocalization>", project, StringComparison.Ordinal);
+        Assert.Contains("PSEUDO_LOCALIZATION_BUILD", project, StringComparison.Ordinal);
+        Assert.Contains("#if PSEUDO_LOCALIZATION_BUILD", source, StringComparison.Ordinal);
+        Assert.Contains("isPseudoLocalizationBuild ||", source, StringComparison.Ordinal);
         Assert.Contains("Strings\\qps-ploc\\**\\*", project, StringComparison.OrdinalIgnoreCase);
         Assert.Contains("'$(EnablePseudoLocalization)' != 'true'", project, StringComparison.Ordinal);
 
@@ -352,6 +355,123 @@ public sealed class VNextLocalizationContractTests
                  })
         {
             Assert.Contains($"AutomationProperties.AutomationId=\"{automationId}\"", settingsXaml, StringComparison.Ordinal);
+        }
+    }
+
+    [Fact]
+    public void ShellRepositoryFilters_WrapLocalizedLabelsInsideStableSegments()
+    {
+        string root = FindRepositoryRoot();
+        string shellXaml = File.ReadAllText(Path.Combine(
+            root,
+            "JitHub.WinUI",
+            "Views",
+            "Pages",
+            "ShellPage.xaml"));
+        XDocument shellDocument = XDocument.Parse(shellXaml);
+        XNamespace xaml = "http://schemas.microsoft.com/winfx/2006/xaml";
+        IReadOnlyDictionary<string, string> english = LoadResources(
+            Path.Combine(root, "JitHub.WinUI", "Strings", "en-US", "Resources.resw"));
+        IReadOnlyDictionary<string, string> pseudo = LoadResources(
+            Path.Combine(root, "JitHub.WinUI", "Strings", "qps-ploc", "Resources.resw"));
+
+        foreach (string filter in new[] { "Public", "Private", "Forked" })
+        {
+            string itemUid = $"PagesShellPageShellRepoFilter{filter}";
+            string labelKey = $"{itemUid}Label.Text";
+            XElement item = Assert.Single(
+                shellDocument.Descendants(),
+                element =>
+                    element.Name.LocalName == "SegmentedItem" &&
+                    string.Equals((string?)element.Attribute(xaml + "Uid"), itemUid, StringComparison.Ordinal));
+            XElement label = Assert.Single(item.Elements(), element => element.Name.LocalName == "TextBlock");
+
+            Assert.Equal("48", (string?)item.Attribute("Height"));
+            Assert.Equal("4,6", (string?)item.Attribute("Padding"));
+            Assert.Equal("80", (string?)item.Attribute("Width"));
+            Assert.Equal($"{itemUid}Label", (string?)label.Attribute(xaml + "Uid"));
+            Assert.Equal("2", (string?)label.Attribute("MaxLines"));
+            Assert.Equal("WrapWholeWords", (string?)label.Attribute("TextWrapping"));
+            Assert.True(english.ContainsKey(labelKey), $"Missing English shell filter label '{labelKey}'.");
+            Assert.True(pseudo.TryGetValue(labelKey, out string? pseudoLabel), $"Missing pseudo shell filter label '{labelKey}'.");
+            Assert.StartsWith("⟦", pseudoLabel, StringComparison.Ordinal);
+        }
+
+        Assert.DoesNotContain("PagesShellPageShellRepoFilterPublic.Content", english.Keys);
+        Assert.DoesNotContain("PagesShellPageShellRepoFilterPrivate.Content", english.Keys);
+        Assert.DoesNotContain("PagesShellPageShellRepoFilterForked.Content", english.Keys);
+    }
+
+    [Fact]
+    public void RepositoryDetailSectionSegments_KeepEveryLocalizedTabVisible()
+    {
+        string root = FindRepositoryRoot();
+        XNamespace xaml = "http://schemas.microsoft.com/winfx/2006/xaml";
+        IReadOnlyDictionary<string, string> pseudo = LoadResources(
+            Path.Combine(root, "JitHub.WinUI", "Strings", "qps-ploc", "Resources.resw"));
+        var pages = new[]
+        {
+            new
+            {
+                File = "RepoPullRequestPage.xaml",
+                Template = "RepoPullRequestSectionLabelTemplate",
+                Width = "112",
+                Uids = new[]
+                {
+                    "PagesRepoPullRequestPageRepoPullRequestsSectionConversat",
+                    "PagesRepoPullRequestPageRepoPullRequestsSectionFiles",
+                    "PagesRepoPullRequestPageRepoPullRequestsSectionCommits",
+                    "PagesRepoPullRequestPageRepoPullRequestsSectionReviews",
+                    "PagesRepoPullRequestPageRepoPullRequestsSectionTimeline"
+                }
+            },
+            new
+            {
+                File = "RepoCommitsPage.xaml",
+                Template = "RepoCommitSectionLabelTemplate",
+                Width = "96",
+                Uids = new[]
+                {
+                    "PagesRepoCommitsPageRepoCommitsSectionDiff",
+                    "PagesRepoCommitsPageRepoCommitsSectionComments",
+                    "PagesRepoCommitsPageRepoCommitsSectionChecks",
+                    "PagesRepoCommitsPageRepoCommitsSectionCompare"
+                }
+            }
+        };
+
+        foreach (var page in pages)
+        {
+            XDocument document = XDocument.Load(Path.Combine(
+                root,
+                "JitHub.WinUI",
+                "Views",
+                "Pages",
+                page.File));
+            XElement template = Assert.Single(
+                document.Descendants(),
+                element =>
+                    element.Name.LocalName == "DataTemplate" &&
+                    string.Equals((string?)element.Attribute(xaml + "Key"), page.Template, StringComparison.Ordinal));
+            XElement label = Assert.Single(template.Elements(), element => element.Name.LocalName == "TextBlock");
+            Assert.Equal("x:String", (string?)template.Attribute(xaml + "DataType"));
+            Assert.Equal("2", (string?)label.Attribute("MaxLines"));
+            Assert.Equal("WrapWholeWords", (string?)label.Attribute("TextWrapping"));
+
+            foreach (string uid in page.Uids)
+            {
+                XElement item = Assert.Single(
+                    document.Descendants(),
+                    element =>
+                        element.Name.LocalName == "SegmentedItem" &&
+                        string.Equals((string?)element.Attribute(xaml + "Uid"), uid, StringComparison.Ordinal));
+                Assert.Equal("48", (string?)item.Attribute("Height"));
+                Assert.Equal("4,6", (string?)item.Attribute("Padding"));
+                Assert.Equal(page.Width, (string?)item.Attribute("Width"));
+                Assert.Equal($"{{StaticResource {page.Template}}}", (string?)item.Attribute("ContentTemplate"));
+                Assert.True(pseudo.TryGetValue($"{uid}.Content", out string? content), $"Missing pseudo section label '{uid}.Content'.");
+                Assert.StartsWith("⟦", content, StringComparison.Ordinal);
+            }
         }
     }
 

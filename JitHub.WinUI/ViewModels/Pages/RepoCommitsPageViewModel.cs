@@ -1939,7 +1939,7 @@ public sealed partial class RepoCommitsPageViewModel : ViewModelBase
         return $"{Math.Max(1, (int)elapsed.TotalDays).ToString(CultureInfo.CurrentCulture)}d ago";
     }
 
-    private sealed class PrefetchCancellation : IDisposable
+    private sealed partial class PrefetchCancellation : IDisposable
     {
         private CancellationTokenSource? _cancellation;
 
@@ -1970,7 +1970,7 @@ public sealed partial class RepoCommitsPageViewModel : ViewModelBase
         }
     }
 
-    private sealed class EmptyDisposable : IDisposable
+    private sealed partial class EmptyDisposable : IDisposable
     {
         public static readonly IDisposable Instance = new EmptyDisposable();
 

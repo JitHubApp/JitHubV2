@@ -36,8 +36,8 @@ public sealed class SettingsResponsiveWorkspaceContractTests
                 (string?)element.Attribute("AutomationProperties.AutomationId") == "SettingsCompactSectionPicker");
 
         Assert.Equal("Collapsed", (string?)selector.Attribute("Visibility"));
-        Assert.Contains("SettingsSections", (string?)selector.Attribute("ItemsSource"), StringComparison.Ordinal);
-        Assert.Contains("SelectedSection", (string?)selector.Attribute("SelectedItem"), StringComparison.Ordinal);
+        Assert.Null(selector.Attribute("ItemsSource"));
+        Assert.Null(selector.Attribute("SelectedItem"));
 
         XElement compactState = document.Descendants().Single(element =>
             element.Name.LocalName == "VisualState" &&
@@ -131,6 +131,23 @@ public sealed class SettingsResponsiveWorkspaceContractTests
         Assert.All(navigationLabels, label =>
             Assert.Equal("WrapWholeWords", (string?)label.Attribute("TextWrapping")));
         Assert.DoesNotContain(navigationLabels, label => label.Attribute("TextTrimming") is not null);
+    }
+
+    [Fact]
+    public void SectionNavigation_CoalescesScrollResetWithoutForcingLayout()
+    {
+        string source = File.ReadAllText(Path.Combine(
+            FindRepositoryRoot(),
+            "JitHub.WinUI",
+            "Views",
+            "Pages",
+            "SettingsPage.xaml.cs"));
+
+        Assert.Contains("int requestVersion = ++_sectionScrollRequestVersion", source, StringComparison.Ordinal);
+        Assert.Contains("DispatcherQueuePriority.Low", source, StringComparison.Ordinal);
+        Assert.Contains("requestVersion != _sectionScrollRequestVersion", source, StringComparison.Ordinal);
+        Assert.Contains("SettingsContentScrollViewer.ChangeView", source, StringComparison.Ordinal);
+        Assert.DoesNotContain("SettingsContentScrollViewer.UpdateLayout", source, StringComparison.Ordinal);
     }
 
     [Fact]

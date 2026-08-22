@@ -16,7 +16,7 @@ using MarkdownRenderer.Images;
 
 namespace JitHub.WinUI.ViewModels.PullRequestViewModels.ConversationViewModels
 {
-    public class ReviewCommentViewModel : RepoViewModel
+public partial class ReviewCommentViewModel : RepoViewModel
     {
         private readonly ICommand _quoteReplyCommand;
         private readonly string _automationScope;

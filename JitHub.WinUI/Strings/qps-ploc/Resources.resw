@@ -1,5 +1,64 @@
 <?xml version="1.0" encoding="utf-8"?>
 <root>
+  <!--
+    Microsoft ResX Schema
+
+    Version 2.0
+
+    The primary goals of this format is to allow a simple XML format
+    that is mostly human readable. The generation and parsing of the
+    various data types are done through the TypeConverter classes
+    associated with the data types.
+
+    Example:
+
+    ... ado.net/XML headers & schema ...
+    <resheader name="resmimetype">text/microsoft-resx</resheader>
+    <resheader name="version">2.0</resheader>
+    <resheader name="reader">System.Resources.ResXResourceReader, System.Windows.Forms, ...</resheader>
+    <resheader name="writer">System.Resources.ResXResourceWriter, System.Windows.Forms, ...</resheader>
+    <data name="Name1"><value>this is my long string</value><comment>this is a comment</comment></data>
+    <data name="Color1" type="System.Drawing.Color, System.Drawing">Blue</data>
+    <data name="Bitmap1" mimetype="application/x-microsoft.net.object.binary.base64">
+        <value>[base64 mime encoded serialized .NET Framework object]</value>
+    </data>
+    <data name="Icon1" type="System.Drawing.Icon, System.Drawing" mimetype="application/x-microsoft.net.object.bytearray.base64">
+        <value>[base64 mime encoded string representing a byte array form of the .NET Framework object]</value>
+        <comment>This is a comment</comment>
+    </data>
+
+    There are any number of "resheader" rows that contain simple
+    name/value pairs.
+
+    Each data row contains a name, and value. The row also contains a
+    type or mimetype. Type corresponds to a .NET class that support
+    text/value conversion through the TypeConverter architecture.
+    Classes that don't support this are serialized and stored with the
+    mimetype set.
+
+    The mimetype is used for serialized objects, and tells the
+    ResXResourceReader how to depersist the object. This is currently not
+    extensible. For a given mimetype the value must be set accordingly:
+
+    Note - application/x-microsoft.net.object.binary.base64 is the format
+    that the ResXResourceWriter will generate, however the reader can
+    read any of the formats listed below.
+
+    mimetype: application/x-microsoft.net.object.binary.base64
+    value   : The object must be serialized with
+            : System.Runtime.Serialization.Formatters.Binary.BinaryFormatter
+            : and then encoded with base64 encoding.
+
+    mimetype: application/x-microsoft.net.object.soap.base64
+    value   : The object must be serialized with
+            : System.Runtime.Serialization.Formatters.Soap.SoapFormatter
+            : and then encoded with base64 encoding.
+
+    mimetype: application/x-microsoft.net.object.bytearray.base64
+    value   : The object must be serialized into a byte array
+            : using a System.ComponentModel.TypeConverter
+            : and then encoded with base64 encoding.
+    -->
   <xsd:schema id="root" xmlns="" xmlns:xsd="http://www.w3.org/2001/XMLSchema" xmlns:msdata="urn:schemas-microsoft-com:xml-msdata">
     <xsd:import namespace="http://www.w3.org/XML/1998/namespace" />
     <xsd:element name="root" msdata:IsDataSet="true">
@@ -1349,7 +1408,7 @@
     <value>⟦JitHub could not verify repository deletion access. Check your connection and try again. ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~⟧</value>
   </data>
   <data name="RepoManage/DeleteAuthorizationFailure" xml:space="preserve">
-    <value>⟦JitHub could not request repository deletion access. Try again. ~~~~~~~~~~~~~~~~~~~~~~⟧</value>
+    <value>⟦JitHub could not request repository deletion access. Try again. ~~~~~~~~~~~~~~~~~~~~~~~⟧</value>
   </data>
   <data name="RepoManage/DeleteSingleDialogContent" xml:space="preserve">
     <value>⟦Delete {0}? This repository and all of its contents will be permanently removed. This cannot be undone. ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~⟧</value>
@@ -1361,7 +1420,7 @@
     <value>⟦Delete {0} repositories ({1})? Their contents will be permanently removed. This cannot be undone. ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~⟧</value>
   </data>
   <data name="RepoManage/UnexpectedErrorStatus" xml:space="preserve">
-    <value>⟦JitHub could not manage repositories. Try again. ~~~~~~~~~~~~~~~~⟧</value>
+    <value>⟦JitHub could not manage repositories. Try again. ~~~~~~~~~~~~~~~~~⟧</value>
   </data>
   <data name="RepoManage/SyncFailureCachedStatus" xml:space="preserve">
     <value>⟦Some repositories may be out of date. ~~~~~~~~~~~~~⟧</value>
@@ -1515,6 +1574,15 @@
   </data>
   <data name="ControlsCodeViewerRenderersSvgPreviewErrorText.Text" xml:space="preserve">
     <value>⟦Unable to render this SVG. ~~~~~~~~~~⟧</value>
+  </data>
+  <data name="ControlsCodeViewerRenderersSvgPreviewRoot.AutomationProperties.Name" xml:space="preserve">
+    <value>⟦SVG preview ~~~~~~⟧</value>
+  </data>
+  <data name="ControlsCodeViewerRenderersSvgPreviewScrollViewer.AutomationProperties.Name" xml:space="preserve">
+    <value>⟦Zoomable SVG canvas ~~~~~~~⟧</value>
+  </data>
+  <data name="ControlsCodeViewerRenderersSvgPreviewViewport.AutomationProperties.Name" xml:space="preserve">
+    <value>⟦Rendered SVG ~~~~~~⟧</value>
   </data>
   <data name="ControlsCodeViewerRenderersXmlPreviewXmlPreviewViewMode.AutomationProperties.Name" xml:space="preserve">
     <value>⟦XML view mode ~~~~~~⟧</value>
@@ -3736,19 +3804,19 @@
   <data name="PagesShellPageShellRepoFilterForked.AutomationProperties.Name" xml:space="preserve">
     <value>⟦Show forked repositories ~~~~~~~~~⟧</value>
   </data>
-  <data name="PagesShellPageShellRepoFilterForked.Content" xml:space="preserve">
+  <data name="PagesShellPageShellRepoFilterForkedLabel.Text" xml:space="preserve">
     <value>⟦Forked ~~~~~~⟧</value>
   </data>
   <data name="PagesShellPageShellRepoFilterPrivate.AutomationProperties.Name" xml:space="preserve">
     <value>⟦Show private repositories ~~~~~~~~~⟧</value>
   </data>
-  <data name="PagesShellPageShellRepoFilterPrivate.Content" xml:space="preserve">
+  <data name="PagesShellPageShellRepoFilterPrivateLabel.Text" xml:space="preserve">
     <value>⟦Private ~~~~~~⟧</value>
   </data>
   <data name="PagesShellPageShellRepoFilterPublic.AutomationProperties.Name" xml:space="preserve">
     <value>⟦Show public repositories ~~~~~~~~~⟧</value>
   </data>
-  <data name="PagesShellPageShellRepoFilterPublic.Content" xml:space="preserve">
+  <data name="PagesShellPageShellRepoFilterPublicLabel.Text" xml:space="preserve">
     <value>⟦Public ~~~~~~⟧</value>
   </data>
   <data name="PagesShellPageShellRepoFilterSegmented.AutomationProperties.Name" xml:space="preserve">
@@ -5339,16 +5407,16 @@
     <value>⟦The notification opened, but GitHub could not mark it as read. ~~~~~~~~~~~~~~~~~~~~~~⟧</value>
   </data>
   <data name="Dashboard/QuickAction/MyIssues" xml:space="preserve">
-    <value>⟦My Issues ~~~~~~~~⟧</value>
+    <value>⟦My Issues ~~~~~~⟧</value>
   </data>
   <data name="Dashboard/QuickAction/MyIssuesDescription" xml:space="preserve">
-    <value>⟦Issues involving you ~~~~~~~~⟧</value>
+    <value>⟦Issues involving you ~~~~~~~⟧</value>
   </data>
   <data name="Dashboard/QuickAction/MyPullRequests" xml:space="preserve">
-    <value>⟦My Pull Requests ~~~~~~~~⟧</value>
+    <value>⟦My Pull Requests ~~~~~~⟧</value>
   </data>
   <data name="Dashboard/QuickAction/MyPullRequestsDescription" xml:space="preserve">
-    <value>⟦Pull requests involving you ~~~~~~~~~⟧</value>
+    <value>⟦Pull requests involving you ~~~~~~~~~~⟧</value>
   </data>
   <data name="Dashboard/QuickAction/ManageRepositories" xml:space="preserve">
     <value>⟦Manage Repositories ~~~~~~~⟧</value>
@@ -5711,22 +5779,22 @@
     <value>⟦Some profile details could not be refreshed. ~~~~~~~~~~~~~~~~⟧</value>
   </data>
   <data name="Profile.Status.LoadFailed" xml:space="preserve">
-    <value>⟦JitHub could not load this profile. Try again. ~~~~~~~~~~~~~~~~⟧</value>
+    <value>⟦JitHub could not load this profile. Try again. ~~~~~~~~~~~~~~~~~⟧</value>
   </data>
   <data name="Profile.Status.UpdateFailed" xml:space="preserve">
     <value>⟦JitHub could not update your profile. Try again. ~~~~~~~~~~~~~~~~~⟧</value>
   </data>
   <data name="Profile.Status.SectionLoadFailed" xml:space="preserve">
-    <value>⟦JitHub could not load this profile section. Try again. ~~~~~~~~~~~~~~~~~~~~⟧</value>
+    <value>⟦JitHub could not load this profile section. Try again. ~~~~~~~~~~~~~~~~~~~⟧</value>
   </data>
   <data name="Profile.Status.RelationshipChangeFailed" xml:space="preserve">
-    <value>⟦JitHub could not change the follow state. Try again. ~~~~~~~~~~~~~~~~~~⟧</value>
+    <value>⟦JitHub could not change the follow state. Try again. ~~~~~~~~~~~~~~~~~~~⟧</value>
   </data>
   <data name="RepoManage/DeletePermissionRequired" xml:space="preserve">
-    <value>⟦Repository deletion permission is required before JitHub can continue. ~~~~~~~~~~~~~~~~~~~~~~~~⟧</value>
+    <value>⟦Repository deletion permission is required before JitHub can continue. ~~~~~~~~~~~~~~~~~~~~~~~~~⟧</value>
   </data>
   <data name="RepoPullRequests/Dialogs/Review/CommentRequired" xml:space="preserve">
-    <value>⟦Enter a review comment before commenting or requesting changes. ~~~~~~~~~~~~~~~~~~~~~~⟧</value>
+    <value>⟦Enter a review comment before commenting or requesting changes. ~~~~~~~~~~~~~~~~~~~~~~~⟧</value>
   </data>
   <data name="Dialogs/Status/Working" xml:space="preserve">
     <value>⟦Working ~~~~~~⟧</value>
@@ -5738,7 +5806,7 @@
     <value>⟦JitHub could not complete this action. Try again. ~~~~~~~~~~~~~~~~~~⟧</value>
   </data>
   <data name="Dialogs/SignOut/Title" xml:space="preserve">
-    <value>⟦Sign out of JitHub? ~~~~~~~~⟧</value>
+    <value>⟦Sign out of JitHub? ~~~~~~~⟧</value>
   </data>
   <data name="Dialogs/SignOut/AutomationName" xml:space="preserve">
     <value>⟦Sign out of JitHub ~~~~~~~⟧</value>
@@ -5753,10 +5821,10 @@
     <value>⟦Signing out keeps this account's local data by default so a later sign-in stays fast. ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~⟧</value>
   </data>
   <data name="Dialogs/SignOut/RemovalDetails" xml:space="preserve">
-    <value>⟦Removal deletes this account's cached GitHub queries, payloads, images, repository files, Stars library, and pending Gist/fork recovery data. Other accounts are preserved. App diagnostics are retained because they contain no account or content identifiers. ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~⟧</value>
+    <value>⟦Removal deletes this account's cached GitHub queries, payloads, images, repository files, Stars library, and pending Gist/fork recovery data. Other accounts are preserved. App diagnostics are retained because they contain no account or content identifiers. ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~⟧</value>
   </data>
   <data name="Dialogs/SignOut/RemovalFailed" xml:space="preserve">
-    <value>⟦Some local account data could not be removed. {0} data groups are still pending. You are still signed in; retry, or cancel to continue cleanup in the background. ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~⟧</value>
+    <value>⟦Some local account data could not be removed. {0} data groups are still pending. You are still signed in; retry, or cancel to continue cleanup in the background. ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~⟧</value>
   </data>
   <data name="Errors/Action" xml:space="preserve">
     <value>⟦JitHub could not complete this action. Try again. ~~~~~~~~~~~~~~~~~~⟧</value>
@@ -5768,7 +5836,7 @@
     <value>⟦JitHub could not load this content. Try again. ~~~~~~~~~~~~~~~~~⟧</value>
   </data>
   <data name="Errors/Refresh" xml:space="preserve">
-    <value>⟦JitHub could not refresh this content. Existing data is still available. ~~~~~~~~~~~~~~~~~~~~~~~~~⟧</value>
+    <value>⟦JitHub could not refresh this content. Existing data is still available. ~~~~~~~~~~~~~~~~~~~~~~~~~~⟧</value>
   </data>
   <data name="Errors/SignIn" xml:space="preserve">
     <value>⟦JitHub could not sign you in. Try again. ~~~~~~~~~~~~~~⟧</value>
@@ -5777,19 +5845,19 @@
     <value>⟦Could not filter repository files. ~~~~~~~~~~~~⟧</value>
   </data>
   <data name="RepoCode/Error/FolderRefreshFailedSafe" xml:space="preserve">
-    <value>⟦Could not refresh this folder. ~~~~~~~~~~⟧</value>
+    <value>⟦Could not refresh this folder. ~~~~~~~~~~~⟧</value>
   </data>
   <data name="RepoCode/Error/CachedFolderRefreshFailedSafe" xml:space="preserve">
     <value>⟦Showing cached folder contents. Refresh failed. ~~~~~~~~~~~~~~~~~⟧</value>
   </data>
   <data name="RepoCode/Error/PartialTreeRefreshFailedSafe" xml:space="preserve">
-    <value>⟦Showing the partial repository tree. Folder refresh failed. ~~~~~~~~~~~~~~~~~~~~⟧</value>
+    <value>⟦Showing the partial repository tree. Folder refresh failed. ~~~~~~~~~~~~~~~~~~~~~⟧</value>
   </data>
   <data name="RepoCode/Error/RefLoadFailedShowingPreviousSafe" xml:space="preserve">
     <value>⟦Could not load {0}. Showing {1}. ~~~~~~~~~~~~⟧</value>
   </data>
   <data name="RepoCode/Error/RefreshFailedShowingPreviousSafe" xml:space="preserve">
-    <value>⟦Showing previously loaded repository files. Refresh failed. ~~~~~~~~~~~~~~~~~~~~⟧</value>
+    <value>⟦Showing previously loaded repository files. Refresh failed. ~~~~~~~~~~~~~~~~~~~~~⟧</value>
   </data>
   <data name="RepoCode/Error/CachedTreeRefreshFailedSafe" xml:space="preserve">
     <value>⟦Showing cached repository files. Refresh failed. ~~~~~~~~~~~~~~~~~⟧</value>
@@ -5807,66 +5875,156 @@
     <value>⟦Comment ~~~~~~⟧</value>
   </data>
   <data name="ControlsCommonCommentInteractionBarAddReactionButton.AutomationProperties.Name" xml:space="preserve">
-    <value>⟦Add reaction ~~~~~~~~⟧</value>
+    <value>⟦Add reaction ~~~~~~⟧</value>
   </data>
   <data name="ControlsCommonCommentInteractionBarAddReactionButton.ToolTipService.ToolTip" xml:space="preserve">
-    <value>⟦Add reaction ~~~~~~~~⟧</value>
+    <value>⟦Add reaction ~~~~~~⟧</value>
   </data>
   <data name="ControlsCommonCommentInteractionBarActionsButton.AutomationProperties.Name" xml:space="preserve">
-    <value>⟦Comment actions ~~~~~~~~⟧</value>
+    <value>⟦Comment actions ~~~~~~⟧</value>
   </data>
   <data name="ControlsCommonCommentInteractionBarActionsButton.ToolTipService.ToolTip" xml:space="preserve">
-    <value>⟦Comment actions ~~~~~~~~⟧</value>
+    <value>⟦Comment actions ~~~~~~⟧</value>
   </data>
   <data name="ControlsCommonCommentInteractionBarQuoteReplyItem.Text" xml:space="preserve">
-    <value>⟦Quote reply ~~~~~~~~⟧</value>
+    <value>⟦Quote reply ~~~~~~⟧</value>
   </data>
   <data name="ControlsCommonCommentInteractionBarCopyLinkItem.Text" xml:space="preserve">
-    <value>⟦Copy link ~~~~~~~~⟧</value>
+    <value>⟦Copy link ~~~~~~⟧</value>
   </data>
   <data name="ControlsCommonCommentInteractionBarCopyMarkdownItem.Text" xml:space="preserve">
-    <value>⟦Copy Markdown ~~~~~~~~⟧</value>
+    <value>⟦Copy Markdown ~~~~~~⟧</value>
   </data>
   <data name="ControlsCommonCommentInteractionBarEditItem.Text" xml:space="preserve">
-    <value>⟦Edit ~~~~~~~~⟧</value>
+    <value>⟦Edit ~~~~~~⟧</value>
   </data>
   <data name="ControlsCommonCommentInteractionBarPinItem.Text" xml:space="preserve">
-    <value>⟦Pin ~~~~~~~~⟧</value>
+    <value>⟦Pin ~~~~~~⟧</value>
   </data>
   <data name="ControlsCommonCommentInteractionBarUnpinItem.Text" xml:space="preserve">
-    <value>⟦Unpin ~~~~~~~~⟧</value>
+    <value>⟦Unpin ~~~~~~⟧</value>
   </data>
   <data name="ControlsCommonCommentInteractionBarHideItem.Text" xml:space="preserve">
-    <value>⟦Hide ~~~~~~~~⟧</value>
+    <value>⟦Hide ~~~~~~⟧</value>
   </data>
   <data name="ControlsCommonCommentInteractionBarHideOffTopicItem.Text" xml:space="preserve">
-    <value>⟦Off topic ~~~~~~~~⟧</value>
+    <value>⟦Off topic ~~~~~~⟧</value>
   </data>
   <data name="ControlsCommonCommentInteractionBarHideOutdatedItem.Text" xml:space="preserve">
-    <value>⟦Outdated ~~~~~~~~⟧</value>
+    <value>⟦Outdated ~~~~~~⟧</value>
   </data>
   <data name="ControlsCommonCommentInteractionBarHideResolvedItem.Text" xml:space="preserve">
-    <value>⟦Resolved ~~~~~~~~⟧</value>
+    <value>⟦Resolved ~~~~~~⟧</value>
   </data>
   <data name="ControlsCommonCommentInteractionBarHideDuplicateItem.Text" xml:space="preserve">
-    <value>⟦Duplicate ~~~~~~~~⟧</value>
+    <value>⟦Duplicate ~~~~~~⟧</value>
   </data>
   <data name="ControlsCommonCommentInteractionBarHideSpamItem.Text" xml:space="preserve">
-    <value>⟦Spam ~~~~~~~~⟧</value>
+    <value>⟦Spam ~~~~~~⟧</value>
   </data>
   <data name="ControlsCommonCommentInteractionBarHideAbuseItem.Text" xml:space="preserve">
-    <value>⟦Abuse ~~~~~~~~⟧</value>
+    <value>⟦Abuse ~~~~~~⟧</value>
   </data>
   <data name="ControlsCommonCommentInteractionBarUnhideItem.Text" xml:space="preserve">
-    <value>⟦Unhide ~~~~~~~~⟧</value>
+    <value>⟦Unhide ~~~~~~⟧</value>
   </data>
   <data name="ControlsCommonCommentInteractionBarDeleteItem.Text" xml:space="preserve">
-    <value>⟦Delete ~~~~~~~~⟧</value>
+    <value>⟦Delete ~~~~~~⟧</value>
   </data>
   <data name="ControlsIssueRepoIssueDetailPaneBodyInteractionBar.AutomationProperties.Name" xml:space="preserve">
-    <value>⟦Issue body actions ~~~~~~~~⟧</value>
+    <value>⟦Issue body actions ~~~~~~~⟧</value>
   </data>
   <data name="RepoPullRequestsBodyInteractionBar.AutomationProperties.Name" xml:space="preserve">
-    <value>⟦Pull request body actions ~~~~~~~~~~~~⟧</value>
+    <value>⟦Pull request body actions ~~~~~~~~~⟧</value>
+  </data>
+  <data name="ControlsAppAppDataTableCsvPreviewDataTableRows.AutomationProperties.Name" xml:space="preserve">
+    <value>⟦CSV rows ~~~~~~⟧</value>
+  </data>
+  <data name="ControlsCodeViewerRenderersCsvPreviewCsvPreviewDataGrid.AutomationProperties.Name" xml:space="preserve">
+    <value>⟦CSV table ~~~~~~⟧</value>
+  </data>
+  <data name="RepoCode/Csv/CellAutomationName" xml:space="preserve">
+    <value>{0}: {1}</value>
+  </data>
+  <data name="RepoCode/Csv/Empty" xml:space="preserve">
+    <value>⟦No rows to display. ~~~~~~~⟧</value>
+  </data>
+  <data name="RepoCode/Csv/HeaderOnly" xml:space="preserve">
+    <value>⟦This file contains a header but no data rows. ~~~~~~~~~~~~~~~~⟧</value>
+  </data>
+  <data name="RepoCode/Csv/InputTooLarge" xml:space="preserve">
+    <value>⟦Rich preview supports files up to {0} KiB. Plain view is still available. ~~~~~~~~~~~~~~~~~~~~~~~~~~⟧</value>
+  </data>
+  <data name="RepoCode/Csv/InvalidQuote" xml:space="preserve">
+    <value>⟦A quote appears outside a valid quoted field. Check the file in plain view. ~~~~~~~~~~~~~~~~~~~~~~~~~~~⟧</value>
+  </data>
+  <data name="RepoCode/Csv/Loading" xml:space="preserve">
+    <value>⟦Preparing table... ~~~~~~~⟧</value>
+  </data>
+  <data name="RepoCode/Csv/ReorderColumn" xml:space="preserve">
+    <value>⟦Move column ~~~~~~⟧</value>
+  </data>
+  <data name="RepoCode/Csv/ResizeColumnAutomationName" xml:space="preserve">
+    <value>⟦Resize {0} column ~~~~~~⟧</value>
+  </data>
+  <data name="RepoCode/Csv/SortColumnAutomationName" xml:space="preserve">
+    <value>⟦Sort by {0} ~~~~~~⟧</value>
+  </data>
+  <data name="RepoCode/Csv/SortColumnToolTip" xml:space="preserve">
+    <value>⟦Sort by {0} ~~~~~~⟧</value>
+  </data>
+  <data name="RepoCode/Csv/TooManyColumns" xml:space="preserve">
+    <value>⟦Rich preview supports up to {0} columns. Plain view is still available. ~~~~~~~~~~~~~~~~~~~~~~~~~⟧</value>
+  </data>
+  <data name="RepoCode/Csv/TooManyRows" xml:space="preserve">
+    <value>⟦Rich preview supports up to {0:N0} rows. Plain view is still available. ~~~~~~~~~~~~~~~~~~~~~~~~~⟧</value>
+  </data>
+  <data name="RepoCode/Csv/UnterminatedQuotedField" xml:space="preserve">
+    <value>⟦A quoted field is not closed. Check the file in plain view. ~~~~~~~~~~~~~~~~~~~~~⟧</value>
+  </data>
+  <data name="RepoIssues/Dialogs/CommentDelete/AutomationName" xml:space="preserve">
+    <value>⟦Delete issue comment ~~~~~~~⟧</value>
+  </data>
+  <data name="RepoIssues/Dialogs/CommentDelete/Message" xml:space="preserve">
+    <value>⟦This comment will be permanently deleted. ~~~~~~~~~~~~~~~⟧</value>
+  </data>
+  <data name="RepoIssues/Dialogs/CommentDelete/Title" xml:space="preserve">
+    <value>⟦Delete comment? ~~~~~~⟧</value>
+  </data>
+  <data name="RepoIssues/Dialogs/CommentEdit/AutomationName" xml:space="preserve">
+    <value>⟦Edit issue comment ~~~~~~~⟧</value>
+  </data>
+  <data name="RepoIssues/Dialogs/CommentEdit/BodyAutomationName" xml:space="preserve">
+    <value>⟦Comment Markdown ~~~~~~⟧</value>
+  </data>
+  <data name="RepoIssues/Dialogs/CommentEdit/Title" xml:space="preserve">
+    <value>⟦Edit comment ~~~~~~⟧</value>
+  </data>
+  <data name="RepoPullRequests/Dialogs/CommentDelete/AutomationName" xml:space="preserve">
+    <value>⟦Delete pull request comment ~~~~~~~~~~⟧</value>
+  </data>
+  <data name="RepoPullRequests/Dialogs/CommentDelete/Message" xml:space="preserve">
+    <value>⟦This comment will be permanently deleted. ~~~~~~~~~~~~~~~⟧</value>
+  </data>
+  <data name="RepoPullRequests/Dialogs/CommentDelete/Title" xml:space="preserve">
+    <value>⟦Delete comment? ~~~~~~⟧</value>
+  </data>
+  <data name="RepoPullRequests/Dialogs/CommentEdit/AutomationName" xml:space="preserve">
+    <value>⟦Edit pull request comment ~~~~~~~~~⟧</value>
+  </data>
+  <data name="RepoPullRequests/Dialogs/CommentEdit/BodyAutomationName" xml:space="preserve">
+    <value>⟦Comment Markdown ~~~~~~⟧</value>
+  </data>
+  <data name="RepoPullRequests/Dialogs/CommentEdit/Title" xml:space="preserve">
+    <value>⟦Edit comment ~~~~~~⟧</value>
+  </data>
+  <data name="RepoCode/Svg/AutomationName" xml:space="preserve">
+    <value>⟦SVG preview ~~~~~~⟧</value>
+  </data>
+  <data name="ControlsAppAppDataTableCsvPreviewDataTable.AutomationProperties.Name" xml:space="preserve">
+    <value>⟦CSV table ~~~~~~⟧</value>
+  </data>
+  <data name="RepoCode/Csv/RowAutomationName" xml:space="preserve">
+    <value>⟦Row {0} ~~~~~~⟧</value>
   </data>
 </root>

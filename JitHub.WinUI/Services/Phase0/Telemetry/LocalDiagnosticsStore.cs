@@ -5,13 +5,14 @@ using System.Linq;
 using System.Globalization;
 using System.Text;
 using System.Text.Json;
+using System.Text.Json.Serialization;
 using System.Threading;
 using System.Threading.Channels;
 using System.Threading.Tasks;
 
 namespace JitHub.Services;
 
-public sealed class LocalDiagnosticsStore : ILocalDiagnosticsStore, IDisposable
+public sealed partial class LocalDiagnosticsStore : ILocalDiagnosticsStore, IDisposable
 {
     public const long DefaultMaxBytes = 25L * 1024L * 1024L;
     public const int DefaultQueueCapacity = 512;
@@ -402,7 +403,9 @@ public sealed class LocalDiagnosticsStore : ILocalDiagnosticsStore, IDisposable
             {
                 if (operation.Entry!.Timestamp >= cutoff)
                 {
-                    contents.Append(JsonSerializer.Serialize(operation.Entry));
+                    contents.Append(JsonSerializer.Serialize(
+                        operation.Entry,
+                        LocalDiagnosticsJsonContext.Default.DiagnosticEvent));
                     contents.Append(Environment.NewLine);
                 }
             }
@@ -609,7 +612,9 @@ public sealed class LocalDiagnosticsStore : ILocalDiagnosticsStore, IDisposable
 
         try
         {
-            item = JsonSerializer.Deserialize<LocalDiagnosticEvent>(line);
+            item = JsonSerializer.Deserialize(
+                line,
+                LocalDiagnosticsJsonContext.Default.DiagnosticEvent);
             return item is not null;
         }
         catch (JsonException)
@@ -680,4 +685,9 @@ public sealed class LocalDiagnosticsStore : ILocalDiagnosticsStore, IDisposable
         public static StoreOperation CreateOverflowSignal() =>
             new(StoreOperationKind.OverflowSignal, Entry: null, CancellationToken.None, Completion: null);
     }
+}
+
+[JsonSerializable(typeof(LocalDiagnosticEvent), TypeInfoPropertyName = "DiagnosticEvent")]
+internal sealed partial class LocalDiagnosticsJsonContext : JsonSerializerContext
+{
 }

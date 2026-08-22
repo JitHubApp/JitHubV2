@@ -1511,7 +1511,8 @@ public sealed partial class ShellPageViewModel : ViewModelBase
                 () => _contentFrame.Navigate(
                     pageSource,
                     parameter,
-                    new SuppressNavigationTransitionInfo()));
+                    new SuppressNavigationTransitionInfo()),
+                ReportNavigationFailure);
             ProductPerformanceReadiness.RecordTraversalStage("shell.frame.navigate.end");
             _isShellFrameNavigation = false;
             if (!navigationAttempt.Accepted)
@@ -1540,7 +1541,8 @@ public sealed partial class ShellPageViewModel : ViewModelBase
         };
 
         ShellNavigationAttempt fallbackAttempt = ShellNavigationAttempt.Navigate(
-            () => frame.Navigate(pageSource, parameter, new SuppressNavigationTransitionInfo()));
+            () => frame.Navigate(pageSource, parameter, new SuppressNavigationTransitionInfo()),
+            ReportNavigationFailure);
         if (!fallbackAttempt.Accepted)
         {
             TrackRouteOutcome(identity.Page, fallbackAttempt.Result);
@@ -1558,6 +1560,9 @@ public sealed partial class ShellPageViewModel : ViewModelBase
             _modalService.IsOpen,
             _dialogPresentationCoordinator.ActiveKind == DialogPresentationKind.NativeContentDialog,
             () => _modalService.TryClose(expectedSession: null));
+
+    private static void ReportNavigationFailure(Exception exception) =>
+        App.LogHandledException(exception, "navigation-failure");
 
     private void TrackRouteOutcome(string page, string result) =>
         TrackEvent(

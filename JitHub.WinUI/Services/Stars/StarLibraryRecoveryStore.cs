@@ -3,18 +3,15 @@ using System.Collections.Generic;
 using System.IO;
 using System.Linq;
 using System.Text.Json;
+using System.Text.Json.Serialization;
 using System.Threading;
 using System.Threading.Tasks;
 
 namespace JitHub.Services;
 
-public sealed class StarLibraryRecoveryStore : IStarLibraryRecoveryStore
+public sealed partial class StarLibraryRecoveryStore : IStarLibraryRecoveryStore
 {
     private const string ClearManifestSuffix = ".clear-transaction.json";
-    private static readonly JsonSerializerOptions SerializerOptions = new(JsonSerializerDefaults.Web)
-    {
-        WriteIndented = false
-    };
     private readonly SemaphoreSlim _gate = new(1, 1);
 
     public StarLibraryRecoveryStore(IAppStoragePathProvider pathProvider)
@@ -153,7 +150,9 @@ public sealed class StarLibraryRecoveryStore : IStarLibraryRecoveryStore
             manifest = new ClearManifest(transactionId, backupFileName, hadJournal);
             await WriteBytesAtomicAsync(
                     ClearManifestPath,
-                    JsonSerializer.SerializeToUtf8Bytes(manifest, SerializerOptions),
+                    JsonSerializer.SerializeToUtf8Bytes(
+                        manifest,
+                        StarLibraryRecoveryJsonContext.Default.ClearManifest),
                     cancellationToken)
                 .ConfigureAwait(false);
 
@@ -288,9 +287,9 @@ public sealed class StarLibraryRecoveryStore : IStarLibraryRecoveryStore
                     4096,
                     FileOptions.Asynchronous | FileOptions.SequentialScan);
                 List<StarLibraryRecoveryEntry> entries =
-                    await JsonSerializer.DeserializeAsync<List<StarLibraryRecoveryEntry>>(
+                    await JsonSerializer.DeserializeAsync(
                         stream,
-                        SerializerOptions,
+                        StarLibraryRecoveryJsonContext.Default.RecoveryEntries,
                         cancellationToken).ConfigureAwait(false) ?? [];
                 List<string> problems = [];
                 if (orphanBytes > 0)
@@ -367,9 +366,9 @@ public sealed class StarLibraryRecoveryStore : IStarLibraryRecoveryStore
                 FileShare.Read,
                 4096,
                 FileOptions.Asynchronous | FileOptions.SequentialScan);
-            return await JsonSerializer.DeserializeAsync<List<StarLibraryRecoveryEntry>>(
+            return await JsonSerializer.DeserializeAsync(
                 stream,
-                SerializerOptions,
+                StarLibraryRecoveryJsonContext.Default.RecoveryEntries,
                 cancellationToken).ConfigureAwait(false) ?? [];
         }
         catch (JsonException)
@@ -385,7 +384,9 @@ public sealed class StarLibraryRecoveryStore : IStarLibraryRecoveryStore
         CancellationToken cancellationToken) =>
         await WriteBytesAtomicAsync(
                 FilePath,
-                JsonSerializer.SerializeToUtf8Bytes(entries, SerializerOptions),
+                JsonSerializer.SerializeToUtf8Bytes(
+                    entries.ToList(),
+                    StarLibraryRecoveryJsonContext.Default.RecoveryEntries),
                 cancellationToken)
             .ConfigureAwait(false);
 
@@ -432,9 +433,9 @@ public sealed class StarLibraryRecoveryStore : IStarLibraryRecoveryStore
             FileShare.Read,
             4096,
             FileOptions.Asynchronous | FileOptions.SequentialScan);
-        ClearManifest manifest = await JsonSerializer.DeserializeAsync<ClearManifest>(
+        ClearManifest manifest = await JsonSerializer.DeserializeAsync(
                 stream,
-                SerializerOptions,
+                StarLibraryRecoveryJsonContext.Default.ClearManifest,
                 cancellationToken)
             .ConfigureAwait(false)
             ?? throw new InvalidDataException("The Stars clear transaction manifest is empty.");
@@ -593,6 +594,13 @@ public sealed class StarLibraryRecoveryStore : IStarLibraryRecoveryStore
         string TransactionId,
         string BackupFileName,
         bool HadJournal);
+
+    [JsonSourceGenerationOptions(JsonSerializerDefaults.Web)]
+    [JsonSerializable(typeof(List<StarLibraryRecoveryEntry>), TypeInfoPropertyName = "RecoveryEntries")]
+    [JsonSerializable(typeof(ClearManifest), TypeInfoPropertyName = "ClearManifest")]
+    private sealed partial class StarLibraryRecoveryJsonContext : JsonSerializerContext
+    {
+    }
 
     private sealed class RecoveryClearTransaction : IStarLibraryRecoveryClearTransaction
     {

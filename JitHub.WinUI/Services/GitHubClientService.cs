@@ -1004,6 +1004,7 @@ public sealed class GitHubClientService : IGitHubClientService
                     ["classifier"] = classifier
                 }
             },
+            GitHubJsonSerializerContext.Default.GitHubCommentMutationGraphQlResponse,
             cancellationToken);
     }
 
@@ -1024,6 +1025,7 @@ public sealed class GitHubClientService : IGitHubClientService
                     ["subjectId"] = nodeId
                 }
             },
+            GitHubJsonSerializerContext.Default.GitHubCommentMutationGraphQlResponse,
             cancellationToken);
     }
 

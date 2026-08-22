@@ -446,7 +446,7 @@ public sealed partial class ProfileContributionGraph : UserControl
     protected override AutomationPeer OnCreateAutomationPeer() =>
         new ProfileContributionGraphAutomationPeer(this);
 
-    private sealed class ProfileContributionGraphAutomationPeer(ProfileContributionGraph owner)
+    private sealed partial class ProfileContributionGraphAutomationPeer(ProfileContributionGraph owner)
         : FrameworkElementAutomationPeer(owner)
     {
         protected override string GetClassNameCore() => nameof(ProfileContributionGraph);

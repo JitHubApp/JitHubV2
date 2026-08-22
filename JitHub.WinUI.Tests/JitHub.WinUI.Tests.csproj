@@ -7,9 +7,11 @@
     <IsTestProject>true</IsTestProject>
     <Platform Condition="'$(Platform)' == ''">x64</Platform>
     <Platforms>x86;x64;ARM64</Platforms>
+    <RuntimeIdentifiers>win-x86;win-x64;win-arm64</RuntimeIdentifiers>
     <RuntimeIdentifier Condition="'$(RuntimeIdentifier)' == '' and '$(Platform)' == 'x86'">win-x86</RuntimeIdentifier>
     <RuntimeIdentifier Condition="'$(RuntimeIdentifier)' == '' and '$(Platform)' == 'x64'">win-x64</RuntimeIdentifier>
     <RuntimeIdentifier Condition="'$(RuntimeIdentifier)' == '' and '$(Platform)' == 'ARM64'">win-arm64</RuntimeIdentifier>
+    <JsonSerializerIsReflectionEnabledByDefault>false</JsonSerializerIsReflectionEnabledByDefault>
     <!-- Suppress warnings about Windows-specific APIs in test context -->
     <NoWarn>$(NoWarn);CA1416</NoWarn>
     <DefaultItemExcludes>$(DefaultItemExcludes);obj\**;obj-*\**;bin\**;bin-*\**;artifacts\**</DefaultItemExcludes>
@@ -64,6 +66,8 @@
     <Compile Include="..\JitHub.WinUI\Services\CodeViewer\IRepoFileCacheService.cs" Link="Services\%(Filename)%(Extension)" />
     <Compile Include="..\JitHub.WinUI\Services\CodeViewer\FilePreviewResolver.cs" Link="Services\%(Filename)%(Extension)" />
     <Compile Include="..\JitHub.WinUI\Services\CodeViewer\RepositorySvgSecurityPolicy.cs" Link="Services\%(Filename)%(Extension)" />
+    <Compile Include="..\JitHub.WinUI\Services\CodeViewer\RepositorySvgRasterizer.cs" Link="Services\%(Filename)%(Extension)" />
+    <Compile Include="..\JitHub.WinUI\Services\CodeViewer\CsvDocumentParser.cs" Link="Services\%(Filename)%(Extension)" />
     <Compile Include="..\JitHub.WinUI\Services\CodeViewer\SvgPreviewRequestGate.cs" Link="Services\%(Filename)%(Extension)" />
     <Compile Include="..\JitHub.WinUI\Services\CodeViewer\LanguageIdResolver.cs" Link="Services\%(Filename)%(Extension)" />
     <Compile Include="..\JitHub.WinUI\Services\CodeViewer\RepoFileCacheService.cs" Link="Services\%(Filename)%(Extension)" />
@@ -73,6 +77,9 @@
     <Compile Include="..\JitHub.WinUI\Services\CodeViewer\GitReferencePolicy.cs" Link="Services\%(Filename)%(Extension)" />
     <Compile Include="..\JitHub.WinUI\Services\CodeViewer\CodeSymbolExtractor.cs" Link="Services\%(Filename)%(Extension)" />
     <Compile Include="..\JitHub.WinUI\Services\CodeViewer\UiWorkBudget.cs" Link="Services\%(Filename)%(Extension)" />
+    <Compile Include="..\JitHub.WinUI\Behaviors\IncrementalLoadingContracts.cs" Link="Behaviors\%(Filename)%(Extension)" />
+    <Compile Include="..\JitHub.WinUI\Behaviors\IncrementalLoadingSourceAdapter.cs" Link="Behaviors\%(Filename)%(Extension)" />
+    <Compile Include="..\JitHub.WinUI\Toolkit\IncrementalLoadingCollection.cs" Link="Toolkit\%(Filename)%(Extension)" />
     <Compile Include="..\JitHub.WinUI\Services\CodeViewer\RepoCodeTelemetryActions.cs" Link="Services\%(Filename)%(Extension)" />
     <Compile Include="..\JitHub.WinUI\Services\CodeViewer\IRepoTreeService.cs" Link="Services\%(Filename)%(Extension)" />
     <Compile Include="..\JitHub.WinUI\Services\CodeViewer\RepoTreeService.cs" Link="Services\%(Filename)%(Extension)" />
@@ -136,6 +143,7 @@
 
   <ItemGroup>
     <PackageReference Include="CommunityToolkit.Mvvm" Version="8.4.2" />
+    <PackageReference Include="CommunityToolkit.Common" Version="8.2.1" />
     <PackageReference Include="Microsoft.WindowsAppSDK" Version="1.8.260317003" />
     <PackageReference Include="xunit" Version="2.9.2" />
     <PackageReference Include="xunit.runner.visualstudio" Version="2.8.2">
@@ -146,6 +154,8 @@
     <PackageReference Include="Microsoft.Data.Sqlite" Version="10.0.8" />
     <PackageReference Include="SQLitePCLRaw.bundle_e_sqlite3" Version="3.0.3" />
     <PackageReference Include="NSubstitute" Version="5.3.0" />
+    <PackageReference Include="SkiaSharp" Version="4.151.1" />
+    <PackageReference Include="Svg.Skia" Version="5.2.1" />
     <PackageReference Include="coverlet.collector" Version="6.0.2">
       <IncludeAssets>runtime; build; native; contentfiles; analyzers; buildtransitive</IncludeAssets>
       <PrivateAssets>all</PrivateAssets>

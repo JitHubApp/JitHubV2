@@ -1,5 +1,8 @@
 <Solution>
   <Configurations>
+    <BuildType Name="Debug" />
+    <BuildType Name="Release" />
+    <BuildType Name="AotDebug" />
     <Platform Name="Any CPU" />
     <Platform Name="ARM" />
     <Platform Name="ARM64" />

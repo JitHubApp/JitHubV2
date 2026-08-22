@@ -5,6 +5,7 @@ using System.Linq;
 using System.Security.Cryptography;
 using System.Text;
 using System.Text.Json;
+using System.Text.Json.Serialization;
 using System.Threading;
 using System.Threading.Tasks;
 
@@ -36,11 +37,6 @@ public interface IAccountDataRemovalJournal
 
 public sealed class AccountDataRemovalJournal : IAccountDataRemovalJournal
 {
-    private static readonly JsonSerializerOptions JsonOptions = new(JsonSerializerDefaults.General)
-    {
-        WriteIndented = true
-    };
-
     private readonly string _rootPath;
     private readonly SemaphoreSlim _gate = new(1, 1);
 
@@ -125,7 +121,7 @@ public sealed class AccountDataRemovalJournal : IAccountDataRemovalJournal
                     FileOptions.Asynchronous | FileOptions.SequentialScan);
                 AccountDataRemovalJournalEntry? entry = await JsonSerializer.DeserializeAsync<AccountDataRemovalJournalEntry>(
                     stream,
-                    JsonOptions,
+                    AccountDataRemovalJournalJsonContext.Default.JournalEntry,
                     cancellationToken).ConfigureAwait(false);
                 if (entry is null)
                 {
@@ -222,7 +218,7 @@ public sealed class AccountDataRemovalJournal : IAccountDataRemovalJournal
             FileOptions.Asynchronous | FileOptions.SequentialScan);
         AccountDataRemovalJournalEntry? entry = await JsonSerializer.DeserializeAsync<AccountDataRemovalJournalEntry>(
             stream,
-            JsonOptions,
+            AccountDataRemovalJournalJsonContext.Default.JournalEntry,
             cancellationToken).ConfigureAwait(false);
         if (entry is null || !string.Equals(entry.AccountPartition, partition, StringComparison.Ordinal))
         {
@@ -249,7 +245,11 @@ public sealed class AccountDataRemovalJournal : IAccountDataRemovalJournal
                 4096,
                 FileOptions.Asynchronous | FileOptions.WriteThrough))
             {
-                await JsonSerializer.SerializeAsync(stream, entry, JsonOptions, cancellationToken)
+                await JsonSerializer.SerializeAsync(
+                        stream,
+                        entry,
+                        AccountDataRemovalJournalJsonContext.Default.JournalEntry,
+                        cancellationToken)
                     .ConfigureAwait(false);
                 await stream.FlushAsync(cancellationToken).ConfigureAwait(false);
                 stream.Flush(flushToDisk: true);
@@ -272,6 +272,12 @@ public sealed class AccountDataRemovalJournal : IAccountDataRemovalJournal
 
     private static string HashPartition(string partition) =>
         Convert.ToHexString(SHA256.HashData(Encoding.UTF8.GetBytes(partition))).ToLowerInvariant();
+}
+
+[JsonSourceGenerationOptions(WriteIndented = true)]
+[JsonSerializable(typeof(AccountDataRemovalJournalEntry), TypeInfoPropertyName = "JournalEntry")]
+internal sealed partial class AccountDataRemovalJournalJsonContext : JsonSerializerContext
+{
 }
 
 internal sealed class InMemoryAccountDataRemovalJournal : IAccountDataRemovalJournal

@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.Globalization;
 using System.Linq;
 using System.Threading.Tasks;
 using JitHub.Services;
@@ -732,13 +733,17 @@ public sealed partial class StarsPage : Page
             HorizontalContentAlignment = HorizontalAlignment.Stretch,
             VerticalContentAlignment = VerticalAlignment.Center,
             Background = new SolidColorBrush(Microsoft.UI.Colors.Transparent),
-            BorderThickness = new Thickness(0),
-            ItemsSource = CategoryColors,
-            ItemTemplate = (DataTemplate)Resources["CategoryColorOptionTemplate"],
-            SelectedItem = existing?.Color is { Length: > 0 } current && CategoryColors.Contains(current, StringComparer.OrdinalIgnoreCase)
-                ? CategoryColors.First(value => string.Equals(value, current, StringComparison.OrdinalIgnoreCase))
-                : CategoryColors[0]
+            BorderThickness = new Thickness(0)
         };
+        foreach (string categoryColor in CategoryColors)
+        {
+            color.Items.Add(CreateCategoryColorItem(categoryColor));
+        }
+
+        int selectedColorIndex = existing?.Color is { Length: > 0 } current
+            ? Array.FindIndex(CategoryColors, value => string.Equals(value, current, StringComparison.OrdinalIgnoreCase))
+            : 0;
+        color.SelectedIndex = selectedColorIndex >= 0 ? selectedColorIndex : 0;
         AutomationProperties.SetAutomationId(color, "StarsCategoryColorPicker");
         AutomationProperties.SetName(color, L("Stars/Dialogs/Category/ColorAutomationName", "Category color"));
         Border colorFrame = new()
@@ -778,7 +783,9 @@ public sealed partial class StarsPage : Page
                 }
 
                 string normalizedName = name.Text.Trim();
-                string normalizedColor = color.SelectedItem as string ?? CategoryColors[0];
+                string normalizedColor = color.SelectedItem is ComboBoxItem { Tag: string selectedColor }
+                    ? selectedColor
+                    : CategoryColors[0];
                 try
                 {
                     await mutateAsync(normalizedName, normalizedColor);
@@ -791,6 +798,51 @@ public sealed partial class StarsPage : Page
                 }
             },
             errorText) == ContentDialogResult.Primary;
+    }
+
+    private static ComboBoxItem CreateCategoryColorItem(string hexColor)
+    {
+        byte red = byte.Parse(hexColor.AsSpan(1, 2), NumberStyles.HexNumber, CultureInfo.InvariantCulture);
+        byte green = byte.Parse(hexColor.AsSpan(3, 2), NumberStyles.HexNumber, CultureInfo.InvariantCulture);
+        byte blue = byte.Parse(hexColor.AsSpan(5, 2), NumberStyles.HexNumber, CultureInfo.InvariantCulture);
+
+        Grid content = new()
+        {
+            MinWidth = 180,
+            MinHeight = 36,
+            VerticalAlignment = VerticalAlignment.Center,
+            ColumnSpacing = 10
+        };
+        content.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(20) });
+        content.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
+
+        Border swatch = new()
+        {
+            Width = 16,
+            Height = 16,
+            VerticalAlignment = VerticalAlignment.Center,
+            Background = new SolidColorBrush(Windows.UI.Color.FromArgb(255, red, green, blue)),
+            BorderBrush = (Brush)Application.Current.Resources["AppOutlineStrongBrush"],
+            BorderThickness = new Thickness(1),
+            CornerRadius = new CornerRadius(3)
+        };
+        TextBlock label = new()
+        {
+            Text = hexColor,
+            VerticalAlignment = VerticalAlignment.Center
+        };
+        Grid.SetColumn(label, 1);
+        content.Children.Add(swatch);
+        content.Children.Add(label);
+
+        return new ComboBoxItem
+        {
+            Tag = hexColor,
+            Content = content,
+            MinHeight = 40,
+            HorizontalContentAlignment = HorizontalAlignment.Stretch,
+            VerticalContentAlignment = VerticalAlignment.Center
+        };
     }
 
     private async Task<StarCategoryViewItem?> ChooseCategoryAsync(string title)

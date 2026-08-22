@@ -16,7 +16,7 @@ using MarkdownRenderer.Images;
 
 namespace JitHub.WinUI.ViewModels.PullRequestViewModels
 {
-    public class RepoPullRequestEditViewModel : RepoViewModel
+public partial class RepoPullRequestEditViewModel : RepoViewModel
     {
         private string _title = string.Empty;
         private string _body = string.Empty;

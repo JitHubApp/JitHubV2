@@ -37,6 +37,7 @@ public sealed partial class RepoFileTreeView : UserControl
     private string? _pendingSelectionPath;
     private string? _lastInvokedPath;
     private long _lastInvokedTimestamp;
+    private bool _treeItemAnnotationQueued;
 
     public event EventHandler<RepoFileInvokedEventArgs>? FileInvoked;
     public event EventHandler<RepoFileTreeTabNavigationEventArgs>? TabNavigationRequested;
@@ -44,6 +45,7 @@ public sealed partial class RepoFileTreeView : UserControl
     public RepoFileTreeView()
     {
         InitializeComponent();
+        FileTreeView.ItemContainerStyleSelector = new RepoTreeItemStyleSelector(ConfigureTreeItemContainer);
         DataContextChanged += OnDataContextChanged;
         Loaded += OnLoaded;
         Unloaded += OnUnloaded;
@@ -238,6 +240,7 @@ public sealed partial class RepoFileTreeView : UserControl
                 AutomationProperties.SetItemStatus(
                     FileTreeView,
                     hasDeterministicSource ? "ready:path:src/App.cs" : "ready");
+                QueueTreeItemContainerAnnotation();
             }
         }
         catch (OperationCanceledException) when (request.IsCancellationRequested)
@@ -410,19 +413,76 @@ public sealed partial class RepoFileTreeView : UserControl
 
     private void OnTreeItemContentLoaded(object sender, RoutedEventArgs e)
     {
-        if (sender is not FrameworkElement { DataContext: RepoTreeNodeViewModel node } element)
+        if (sender is not FrameworkElement element)
         {
             return;
         }
 
-        if (FindTreeViewItem(element) is TreeViewItem container)
+        if (!TryConfigureTreeItemContainer(element))
         {
-            container.GotFocus -= OnTreeItemContainerGotFocus;
-            container.GotFocus += OnTreeItemContainerGotFocus;
-            AutomationProperties.SetAutomationId(container, node.AutomationId);
-            AutomationProperties.SetName(container, node.AutomationName);
-            AutomationProperties.SetItemStatus(container, $"path:{node.Path}");
+            QueueTreeItemContainerAnnotation();
         }
+    }
+
+    private bool TryConfigureTreeItemContainer(FrameworkElement element)
+    {
+        if (FindTreeViewItem(element) is not TreeViewItem container ||
+            GetNodeForElement(element) is not RepoTreeNodeViewModel node)
+        {
+            return false;
+        }
+
+        ConfigureTreeItemContainer(container, node);
+        return true;
+    }
+
+    private void QueueTreeItemContainerAnnotation()
+    {
+        if (_treeItemAnnotationQueued)
+        {
+            return;
+        }
+
+        _treeItemAnnotationQueued = true;
+        DispatcherQueue.TryEnqueue(
+            Microsoft.UI.Dispatching.DispatcherQueuePriority.Low,
+            () =>
+            {
+                _treeItemAnnotationQueued = false;
+                if (!IsLoaded)
+                {
+                    return;
+                }
+
+                FileTreeView.UpdateLayout();
+                AnnotateRealizedTreeItems(FileTreeView.RootNodes);
+            });
+    }
+
+    private void AnnotateRealizedTreeItems(IEnumerable<TreeViewNode> nodes)
+    {
+        foreach (TreeViewNode treeNode in nodes)
+        {
+            if (treeNode.Content is RepoTreeNodeViewModel node &&
+                FileTreeView.ContainerFromNode(treeNode) is TreeViewItem container)
+            {
+                ConfigureTreeItemContainer(container, node);
+            }
+
+            if (treeNode.IsExpanded && treeNode.Children.Count > 0)
+            {
+                AnnotateRealizedTreeItems(treeNode.Children);
+            }
+        }
+    }
+
+    private void ConfigureTreeItemContainer(TreeViewItem container, RepoTreeNodeViewModel node)
+    {
+        container.GotFocus -= OnTreeItemContainerGotFocus;
+        container.GotFocus += OnTreeItemContainerGotFocus;
+        AutomationProperties.SetAutomationId(container, node.AutomationId);
+        AutomationProperties.SetName(container, node.AutomationName);
+        AutomationProperties.SetItemStatus(container, $"path:{node.Path}");
     }
 
     // ── TreeView event handlers ───────────────────────────────────────
@@ -441,7 +501,8 @@ public sealed partial class RepoFileTreeView : UserControl
     private void OnTreeItemPointerPressed(object sender, PointerRoutedEventArgs e)
     {
         if (e.Handled ||
-            sender is not FrameworkElement { DataContext: RepoTreeNodeViewModel { IsDirectory: false } nodeVm } element ||
+            sender is not FrameworkElement element ||
+            GetNodeForElement(element) is not RepoTreeNodeViewModel { IsDirectory: false } nodeVm ||
             e.GetCurrentPoint(element).Properties.PointerUpdateKind != PointerUpdateKind.LeftButtonPressed)
         {
             return;
@@ -481,10 +542,8 @@ public sealed partial class RepoFileTreeView : UserControl
 
     private void OnTreeItemPointerEntered(object sender, PointerRoutedEventArgs e)
     {
-        if (sender is not FrameworkElement
-            {
-                DataContext: RepoTreeNodeViewModel { IsDirectory: false } node
-            })
+        if (sender is not FrameworkElement element ||
+            GetNodeForElement(element) is not RepoTreeNodeViewModel { IsDirectory: false } node)
         {
             return;
         }
@@ -538,6 +597,21 @@ public sealed partial class RepoFileTreeView : UserControl
 
         return current as TreeViewItem;
     }
+
+    private RepoTreeNodeViewModel? GetNodeForElement(DependencyObject element)
+    {
+        if (element is FrameworkElement { DataContext: RepoTreeNodeViewModel boundNode })
+        {
+            return boundNode;
+        }
+
+        return FindTreeViewItem(element) is TreeViewItem container
+            ? GetNodeForContainer(container)
+            : null;
+    }
+
+    private RepoTreeNodeViewModel? GetNodeForContainer(TreeViewItem container) =>
+        FileTreeView.NodeFromContainer(container)?.Content as RepoTreeNodeViewModel;
 
     private void OnItemInvoked(TreeView sender, TreeViewItemInvokedEventArgs args)
     {
@@ -666,6 +740,7 @@ public sealed partial class RepoFileTreeView : UserControl
                     new UiWorkBudget(),
                     token);
                 treeNode.HasUnrealizedChildren = nodeVm.IsDirectory && !nodeVm.ChildrenLoaded;
+                QueueTreeItemContainerAnnotation();
                 if (viewModel.FindNodeByPath("src/App.cs") is not null)
                 {
                     AutomationProperties.SetItemStatus(FileTreeView, "ready:path:src/App.cs");

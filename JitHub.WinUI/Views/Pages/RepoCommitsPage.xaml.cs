@@ -410,7 +410,7 @@ public sealed partial class RepoCommitsPage : Page
     }
 }
 
-internal sealed class CommitWorkspacePerformanceMonitor : IDisposable
+internal sealed partial class CommitWorkspacePerformanceMonitor : IDisposable
 {
     private readonly FrameworkElement _automationOwner;
     private readonly Microsoft.UI.Dispatching.DispatcherQueueTimer _dispatcherTimer;

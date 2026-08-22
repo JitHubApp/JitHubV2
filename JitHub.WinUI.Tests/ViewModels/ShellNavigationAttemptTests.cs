@@ -77,10 +77,14 @@ public sealed class ShellNavigationAttemptTests
     [Fact]
     public void FrameException_ReportsErrorWithoutAcceptance()
     {
+        Exception? reportedException = null;
         ShellNavigationAttempt attempt = ShellNavigationAttempt.Navigate(
-            static () => throw new InvalidOperationException("navigation failed"));
+            static () => throw new InvalidOperationException("navigation failed"),
+            exception => reportedException = exception);
 
         Assert.False(attempt.Accepted);
         Assert.Equal(TelemetryTaxonomy.Results.Error, attempt.Result);
+        Assert.IsType<InvalidOperationException>(reportedException);
+        Assert.Equal("navigation failed", reportedException.Message);
     }
 }

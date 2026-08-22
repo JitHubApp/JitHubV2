@@ -25,7 +25,7 @@ public sealed class NotificationMutationLease
     internal long Id { get; }
 }
 
-public sealed class NotificationInboxState : ObservableObject
+public sealed partial class NotificationInboxState : ObservableObject
 {
     private sealed record ActiveMutation(
         int UnreadDelta,

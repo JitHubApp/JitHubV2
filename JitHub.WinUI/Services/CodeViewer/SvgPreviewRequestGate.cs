@@ -3,7 +3,7 @@ using System.Threading;
 
 namespace JitHub.Services.CodeViewer;
 
-internal sealed class SvgPreviewRequestGate : IDisposable
+internal sealed partial class SvgPreviewRequestGate : IDisposable
 {
     private readonly object _sync = new();
     private long _generation;
@@ -77,7 +77,7 @@ internal sealed class SvgPreviewRequestGate : IDisposable
     }
 }
 
-internal sealed class SvgPreviewRequest : IDisposable
+internal sealed partial class SvgPreviewRequest : IDisposable
 {
     private readonly CancellationTokenSource _cancellation = new();
     private int _disposed;

@@ -174,6 +174,20 @@ public sealed class Phase1SettingsDiagnosticsServiceTests : IDisposable
     }
 
     [Fact]
+    public async Task StoreTelemetry_ReportsArchitectureFallbackAsCompatibilityDisabled()
+    {
+        TestHarness harness = CreateHarness(
+            storeAvailable: false,
+            availabilityStatus: "store_engagement_architecture_unavailable");
+
+        SettingsDiagnosticsSnapshot snapshot = await harness.Service.GetSnapshotAsync();
+
+        Assert.Equal("Disabled by compatibility", snapshot.StoreTelemetry.Status);
+        Assert.True(snapshot.StoreTelemetry.IsDisabledByCompatibility);
+        Assert.False(snapshot.StoreTelemetryEnabled);
+    }
+
+    [Fact]
     public async Task ExportDiagnostics_WritesSameNdjsonEntries()
     {
         TestHarness harness = CreateHarness(storeAvailable: true);
@@ -185,8 +199,12 @@ public sealed class Phase1SettingsDiagnosticsServiceTests : IDisposable
 
         string[] lines = await File.ReadAllLinesAsync(exportPath);
         Assert.Equal(2, lines.Length);
-        LocalDiagnosticEvent? first = JsonSerializer.Deserialize<LocalDiagnosticEvent>(lines[0]);
-        LocalDiagnosticEvent? second = JsonSerializer.Deserialize<LocalDiagnosticEvent>(lines[1]);
+        LocalDiagnosticEvent? first = JsonSerializer.Deserialize(
+            lines[0],
+            LocalDiagnosticsJsonContext.Default.DiagnosticEvent);
+        LocalDiagnosticEvent? second = JsonSerializer.Deserialize(
+            lines[1],
+            LocalDiagnosticsJsonContext.Default.DiagnosticEvent);
         Assert.Equal("settings.export.one", first?.Name);
         Assert.Equal("settings.export.two", second?.Name);
     }
@@ -221,7 +239,7 @@ public sealed class Phase1SettingsDiagnosticsServiceTests : IDisposable
             snapshot.CacheOwners!.Single(owner => owner.Id == CacheOwnerIds.GitHubQuery).Health);
     }
 
-    private TestHarness CreateHarness(bool storeAvailable)
+    private TestHarness CreateHarness(bool storeAvailable, string? availabilityStatus = null)
     {
         string localCache = Path.Combine(_root, Guid.NewGuid().ToString(), "cache");
         string localFolder = Path.Combine(_root, Guid.NewGuid().ToString(), "local");
@@ -242,7 +260,7 @@ public sealed class Phase1SettingsDiagnosticsServiceTests : IDisposable
         SettingsDiagnosticsService service = new(
             paths,
             diagnosticsStore,
-            new FakeStoreTelemetrySink(storeAvailable),
+            new FakeStoreTelemetrySink(storeAvailable, availabilityStatus),
             settings,
             cacheRegistry);
 
@@ -304,10 +322,10 @@ public sealed class Phase1SettingsDiagnosticsServiceTests : IDisposable
 
     private sealed class FakeStoreTelemetrySink : IStoreTelemetrySink
     {
-        public FakeStoreTelemetrySink(bool isAvailable)
+        public FakeStoreTelemetrySink(bool isAvailable, string? availabilityStatus = null)
         {
             IsAvailable = isAvailable;
-            AvailabilityStatus = isAvailable ? "available" : "store_engagement_type_unavailable";
+            AvailabilityStatus = availabilityStatus ?? (isAvailable ? "available" : "store_engagement_type_unavailable");
         }
 
         public bool IsAvailable { get; }

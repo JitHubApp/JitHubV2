@@ -1,5 +1,5 @@
 using System;
-using System.Reflection;
+using System.Diagnostics;
 using JitHub.Models;
 using Microsoft.UI.Xaml;
 using Windows.ApplicationModel;
@@ -59,10 +59,20 @@ public sealed class SettingsPreferencesService : ISettingsPreferencesService
         }
         catch (Exception)
         {
-            Version? version = Assembly.GetEntryAssembly()?.GetName().Version;
-            return version is null
-                ? "Development build"
-                : $"{version.Major}.{version.Minor}.{version.Build} (development)";
+            try
+            {
+                string? processPath = Environment.ProcessPath;
+                if (!string.IsNullOrWhiteSpace(processPath))
+                {
+                    FileVersionInfo version = FileVersionInfo.GetVersionInfo(processPath);
+                    return $"{version.FileMajorPart}.{version.FileMinorPart}.{version.FileBuildPart} (development)";
+                }
+            }
+            catch (Exception)
+            {
+            }
+
+            return "Development build";
         }
     }
 }

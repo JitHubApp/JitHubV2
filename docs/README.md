@@ -13,5 +13,6 @@ This folder contains repository documentation.
 | [JitHub vNext quiet UI updates](jithub-vnext-quiet-ui-updates.md) | Foundation plan for keyed diffing, refresh stability, and no-flash UI updates across vNext pages. |
 | [JitHub vNext route ownership](jithub-vnext-route-ownership.md) | Canonical production routes and the single vNext page/view-model owner for each workspace. |
 | [MarkdownRenderer](markdown-renderer/README.md) | Native WinUI markdown renderer architecture, APIs, theming, accessibility, performance, packaging, and roadmap. |
+| [Native AOT release contract](native-aot.md) | Locked restore, dependency review, native artifact verification, packaging, hardware validation, and Store release requirements. |
 | [Windows CLI workflow](windows-cli-workflow.md) | Windows App CLI, Microsoft Store Developer CLI, and Store client CLI workflow notes. |
 

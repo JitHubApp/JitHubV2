@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using System.Text.Json.Serialization;
+using System.Text.Json.Serialization.Metadata;
 using System.Threading;
 using System.Threading.Tasks;
 using JitHub.Models.GitHub;
@@ -269,6 +270,7 @@ public interface IGitHubGraphQlTransport
     Task<GitHubGraphQlResponse<T>> SendAsync<T>(
         string accessToken,
         GitHubGraphQlRequest request,
+        JsonTypeInfo<GitHubGraphQlResponse<T>> responseJsonTypeInfo,
         CancellationToken cancellationToken = default)
         where T : class;
 }

@@ -20,7 +20,9 @@ internal readonly record struct ShellNavigationAttempt(bool Accepted, string Res
             : new ShellNavigationAttempt(false, TelemetryTaxonomy.Results.Rejected);
     }
 
-    public static ShellNavigationAttempt Navigate(Func<bool> navigate)
+    public static ShellNavigationAttempt Navigate(
+        Func<bool> navigate,
+        Action<Exception>? reportException = null)
     {
         try
         {
@@ -29,8 +31,9 @@ internal readonly record struct ShellNavigationAttempt(bool Accepted, string Res
                 accepted,
                 TelemetryTaxonomy.NavigationResult(accepted));
         }
-        catch
+        catch (Exception exception)
         {
+            reportException?.Invoke(exception);
             return new ShellNavigationAttempt(false, TelemetryTaxonomy.Results.Error);
         }
     }

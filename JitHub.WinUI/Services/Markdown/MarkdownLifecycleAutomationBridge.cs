@@ -2,6 +2,8 @@ using System;
 using System.Globalization;
 using System.IO;
 using System.Text.Json;
+using System.Text.Json.Serialization;
+using System.Text.Json.Serialization.Metadata;
 
 namespace JitHub.Services.Markdown;
 
@@ -9,7 +11,7 @@ namespace JitHub.Services.Markdown;
 /// File-backed lifecycle coordination used only by isolated Markdown automation runs.
 /// Production behavior is unchanged unless the explicit lifecycle fixture is enabled.
 /// </summary>
-internal static class MarkdownLifecycleAutomationBridge
+internal static partial class MarkdownLifecycleAutomationBridge
 {
     private const string FixtureVariable = "JITHUB_MARKDOWN_LIFECYCLE_FIXTURE";
     private const string TargetHostVariable = "JITHUB_MARKDOWN_LIFECYCLE_HOST";
@@ -50,7 +52,8 @@ internal static class MarkdownLifecycleAutomationBridge
 
         WriteSignal(
             Environment.GetEnvironmentVariable(AppReadyPathVariable),
-            new LifecycleReadySignal(Environment.ProcessId, "app", DateTimeOffset.UtcNow));
+            new LifecycleReadySignal(Environment.ProcessId, "app", DateTimeOffset.UtcNow),
+            MarkdownLifecycleJsonContext.Default.LifecycleReadySignal);
     }
 
     public static void SignalHostReady(string automationId)
@@ -76,7 +79,8 @@ internal static class MarkdownLifecycleAutomationBridge
 
             WriteSignal(
                 Environment.GetEnvironmentVariable(HostReadyPathVariable),
-                new LifecycleReadySignal(Environment.ProcessId, automationId, DateTimeOffset.UtcNow));
+                new LifecycleReadySignal(Environment.ProcessId, automationId, DateTimeOffset.UtcNow),
+                MarkdownLifecycleJsonContext.Default.LifecycleReadySignal);
             _signaledHost = automationId;
         }
     }
@@ -127,7 +131,9 @@ internal static class MarkdownLifecycleAutomationBridge
                 FileMode.Open,
                 FileAccess.Read,
                 FileShare.ReadWrite | FileShare.Delete);
-            settings = JsonSerializer.Deserialize<MarkdownLifecycleRuntimeSettings>(stream);
+            settings = JsonSerializer.Deserialize(
+                stream,
+                MarkdownLifecycleJsonContext.Default.RuntimeSettings);
             return settings is not null;
         }
         catch (IOException)
@@ -153,7 +159,8 @@ internal static class MarkdownLifecycleAutomationBridge
 
         WriteSignal(
             Environment.GetEnvironmentVariable(ResourceMapEvidencePathVariable),
-            new ResourceMapFallbackSignal(Environment.ProcessId, fallback, DateTimeOffset.UtcNow));
+            new ResourceMapFallbackSignal(Environment.ProcessId, fallback, DateTimeOffset.UtcNow),
+            MarkdownLifecycleJsonContext.Default.ResourceMapFallbackSignal);
     }
 
     public static bool RecordLinkRoute(string automationId, Uri uri, string disposition)
@@ -175,12 +182,14 @@ internal static class MarkdownLifecycleAutomationBridge
             {
                 string fullPath = Path.GetFullPath(path);
                 Directory.CreateDirectory(Path.GetDirectoryName(fullPath)!);
-                string entry = JsonSerializer.Serialize(new LinkRouteSignal(
-                    Environment.ProcessId,
-                    automationId,
-                    disposition,
-                    uri.AbsoluteUri,
-                    DateTimeOffset.UtcNow));
+                string entry = JsonSerializer.Serialize(
+                    new LinkRouteSignal(
+                        Environment.ProcessId,
+                        automationId,
+                        disposition,
+                        uri.AbsoluteUri,
+                        DateTimeOffset.UtcNow),
+                    MarkdownLifecycleJsonContext.Default.LinkRouteSignal);
                 File.AppendAllText(fullPath, entry + Environment.NewLine);
                 return true;
             }
@@ -217,12 +226,14 @@ internal static class MarkdownLifecycleAutomationBridge
             {
                 string fullPath = Path.GetFullPath(path);
                 Directory.CreateDirectory(Path.GetDirectoryName(fullPath)!);
-                string entry = JsonSerializer.Serialize(new ImageUnavailableSignal(
-                    Environment.ProcessId,
-                    automationId,
-                    source,
-                    reason.ToString(),
-                    DateTimeOffset.UtcNow));
+                string entry = JsonSerializer.Serialize(
+                    new ImageUnavailableSignal(
+                        Environment.ProcessId,
+                        automationId,
+                        source,
+                        reason.ToString(),
+                        DateTimeOffset.UtcNow),
+                    MarkdownLifecycleJsonContext.Default.ImageUnavailableSignal);
                 File.AppendAllText(fullPath, entry + Environment.NewLine);
             }
             catch (IOException)
@@ -239,7 +250,7 @@ internal static class MarkdownLifecycleAutomationBridge
         "1",
         StringComparison.Ordinal);
 
-    private static void WriteSignal<T>(string? path, T signal)
+    private static void WriteSignal<T>(string? path, T signal, JsonTypeInfo<T> jsonTypeInfo)
     {
         if (string.IsNullOrWhiteSpace(path))
         {
@@ -251,7 +262,7 @@ internal static class MarkdownLifecycleAutomationBridge
             string fullPath = Path.GetFullPath(path);
             Directory.CreateDirectory(Path.GetDirectoryName(fullPath)!);
             string temporaryPath = fullPath + $".{Environment.ProcessId}.tmp";
-            File.WriteAllText(temporaryPath, JsonSerializer.Serialize(signal));
+            File.WriteAllText(temporaryPath, JsonSerializer.Serialize(signal, jsonTypeInfo));
             File.Move(temporaryPath, fullPath, overwrite: true);
         }
         catch (IOException)
@@ -281,4 +292,13 @@ internal static class MarkdownLifecycleAutomationBridge
         DateTimeOffset Timestamp);
 
     private sealed record MarkdownLifecycleRuntimeSettings(double TextScaleFactor, int Revision);
+
+    [JsonSerializable(typeof(LifecycleReadySignal), TypeInfoPropertyName = "LifecycleReadySignal")]
+    [JsonSerializable(typeof(ResourceMapFallbackSignal), TypeInfoPropertyName = "ResourceMapFallbackSignal")]
+    [JsonSerializable(typeof(LinkRouteSignal), TypeInfoPropertyName = "LinkRouteSignal")]
+    [JsonSerializable(typeof(ImageUnavailableSignal), TypeInfoPropertyName = "ImageUnavailableSignal")]
+    [JsonSerializable(typeof(MarkdownLifecycleRuntimeSettings), TypeInfoPropertyName = "RuntimeSettings")]
+    private sealed partial class MarkdownLifecycleJsonContext : JsonSerializerContext
+    {
+    }
 }

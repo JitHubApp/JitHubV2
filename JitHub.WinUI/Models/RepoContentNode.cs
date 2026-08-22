@@ -6,7 +6,7 @@ using System.Collections.Generic;
 
 namespace JitHub.Models
 {
-    public class RepoContentNode : ObservableObject
+public partial class RepoContentNode : ObservableObject
     {
         private bool _isExpanded;
         private ICollection<RepoContentNode> _children = [];

@@ -12,12 +12,11 @@ using JitHub.Models.GitHub;
 using JitHub.Services;
 using JitHub.WinUI.ViewModels.Common;
 using Microsoft.UI.Dispatching;
-using Microsoft.UI.Xaml.Data;
 using Windows.ApplicationModel.DataTransfer;
 
 namespace JitHub.WinUI.ViewModels.Pages;
 
-[Bindable]
+[WinRT.GeneratedBindableCustomProperty]
 public sealed partial class RepoManagePageViewModel : ViewModelBase
 {
     private readonly IAuthService _authService;
@@ -903,7 +902,7 @@ public sealed class RepositorySortOption
     public override string ToString() => Label;
 }
 
-[Bindable]
+[WinRT.GeneratedBindableCustomProperty]
 public sealed partial class RepositoryLibraryViewItem : ObservableObject
 {
     public RepositoryLibraryViewItem(GitHubRepository repository)

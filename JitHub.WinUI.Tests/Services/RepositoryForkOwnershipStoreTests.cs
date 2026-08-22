@@ -1,6 +1,7 @@
 using System;
 using System.IO;
 using System.Text.Json;
+using System.Text.Json.Nodes;
 using System.Threading.Tasks;
 using JitHub.Services;
 using Xunit;
@@ -91,11 +92,14 @@ public sealed class RepositoryForkOwnershipStoreTests : IDisposable
         RepositoryForkOwnershipState known = new(
             knownKey, "42", 7, "source", "repo", "viewer", "repo",
             RepositoryForkOwnershipStatus.Uncertain, null, 2, now, now);
-        await File.WriteAllTextAsync(path, JsonSerializer.Serialize(new
+        JsonObject oldDocument = new()
         {
-            Version = 0,
-            Items = new[] { known }
-        }));
+            ["Version"] = 0,
+            ["Items"] = JsonSerializer.SerializeToNode(
+                new[] { known },
+                Phase0TestJsonContext.Default.RepositoryForkOwnershipStateArray)
+        };
+        await File.WriteAllTextAsync(path, oldDocument.ToJsonString());
 
         RepositoryForkOwnershipStore store = new(path);
         RepositoryForkOwnershipState? restoredKnown = await store.GetAsync(knownKey);

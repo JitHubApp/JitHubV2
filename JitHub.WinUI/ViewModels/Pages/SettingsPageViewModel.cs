@@ -77,15 +77,15 @@ public sealed partial class SettingsPageViewModel : ObservableObject
             ? string.Join(" ", Enumerable.Repeat(standard, 4))
             : standard;
 
-        SettingsSections =
-        [
+        SettingsSections = new SettingsSectionItem[]
+        {
             new(AppearanceSectionId, Label(L("Settings/Sections/Appearance", "Appearance")), "\uE790"),
             new(GeneralSectionId, Label(L("Settings/Sections/General", "General")), "\uE7BE"),
             new(PrivacySectionId, Label(L("Settings/Sections/Privacy", "Privacy")), "\uE72E"),
             new(DataCacheSectionId, Label(L("Settings/Sections/DataCache", "Data & Cache")), "\uE8B7"),
             new(DiagnosticsSectionId, Label(L("Settings/Sections/Diagnostics", "Diagnostics")), "\uE9D9"),
             new(AboutSectionId, Label(L("Settings/Sections/About", "About")), "\uE946")
-        ];
+        };
 
         ThemeOptions =
         [
@@ -788,19 +788,54 @@ public sealed partial class SettingsPageViewModel : ObservableObject
         LocalizedResourceText.Format(key, fallback, arguments);
 }
 
-public sealed record SettingsCacheOwnerItem(
-    string Id,
-    string DisplayName,
-    string Health,
-    string Size,
-    string Policy,
-    string HealthDetail);
-
-public sealed record SettingsSectionItem(
-    string Id,
-    string Title,
-    string Glyph)
+[WinRT.GeneratedBindableCustomProperty]
+public sealed partial class SettingsCacheOwnerItem
 {
+    public SettingsCacheOwnerItem(
+        string id,
+        string displayName,
+        string health,
+        string size,
+        string policy,
+        string healthDetail)
+    {
+        Id = id;
+        DisplayName = displayName;
+        Health = health;
+        Size = size;
+        Policy = policy;
+        HealthDetail = healthDetail;
+    }
+
+    public string Id { get; }
+
+    public string DisplayName { get; }
+
+    public string Health { get; }
+
+    public string Size { get; }
+
+    public string Policy { get; }
+
+    public string HealthDetail { get; }
+}
+
+[WinRT.GeneratedBindableCustomProperty]
+public sealed partial class SettingsSectionItem
+{
+    public SettingsSectionItem(string id, string title, string glyph)
+    {
+        Id = id;
+        Title = title;
+        Glyph = glyph;
+    }
+
+    public string Id { get; }
+
+    public string Title { get; }
+
+    public string Glyph { get; }
+
     public string AutomationId => $"SettingsSection_{Id}";
 }
 

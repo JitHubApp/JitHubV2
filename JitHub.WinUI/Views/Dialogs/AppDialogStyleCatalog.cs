@@ -165,6 +165,6 @@ internal static class AppDialogStyleCatalog
 /// Marks dialog content that already owns its vertical scrolling. The dialog
 /// catalog leaves this layout unwrapped so there is only one scroll owner.
 /// </summary>
-internal sealed class AppDialogScrollableContent : Grid
+internal sealed partial class AppDialogScrollableContent : Grid
 {
 }

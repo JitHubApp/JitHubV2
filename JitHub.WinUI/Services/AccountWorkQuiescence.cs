@@ -21,7 +21,7 @@ public interface IAccountWorkQuiescence
     void Activate(string accountPartition);
 }
 
-public sealed class AccountWorkQuiescence : IAccountWorkQuiescence
+public sealed partial class AccountWorkQuiescence : IAccountWorkQuiescence
 {
     private readonly object _gate = new();
     private readonly Dictionary<string, PartitionState> _partitions = new(StringComparer.Ordinal);
@@ -177,7 +177,7 @@ public sealed class AccountWorkQuiescence : IAccountWorkQuiescence
         public TaskCompletionSource? Drained { get; set; }
     }
 
-    private sealed class AccountWorkLease : IAccountWorkLease
+    private sealed partial class AccountWorkLease : IAccountWorkLease
     {
         private AccountWorkQuiescence? _owner;
         private readonly string _partition;

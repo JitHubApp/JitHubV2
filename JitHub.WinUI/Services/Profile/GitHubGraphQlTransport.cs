@@ -1,11 +1,13 @@
 using System;
 using System.Globalization;
+using System.IO;
 using System.Linq;
 using System.Net;
 using System.Net.Http;
 using System.Net.Http.Headers;
 using System.Net.Http.Json;
 using System.Text.Json;
+using System.Text.Json.Serialization.Metadata;
 using System.Threading;
 using System.Threading.Tasks;
 using JitHub.Models.GitHub;
@@ -30,6 +32,7 @@ public sealed class GitHubGraphQlTransport : IGitHubGraphQlTransport
     public async Task<GitHubGraphQlResponse<T>> SendAsync<T>(
         string accessToken,
         GitHubGraphQlRequest request,
+        JsonTypeInfo<GitHubGraphQlResponse<T>> responseJsonTypeInfo,
         CancellationToken cancellationToken = default)
         where T : class
     {
@@ -79,7 +82,7 @@ public sealed class GitHubGraphQlTransport : IGitHubGraphQlTransport
         }
 
         GitHubGraphQlResponse<T>? payload =
-            await response.Content.ReadFromJsonAsync<GitHubGraphQlResponse<T>>(cancellationToken);
+            await response.Content.ReadFromJsonAsync(responseJsonTypeInfo, cancellationToken);
         if (payload is null)
         {
             throw new GitHubApiException(HttpStatusCode.OK, "GitHub GraphQL returned an empty payload.");
@@ -209,8 +212,11 @@ public sealed class GitHubGraphQlTransport : IGitHubGraphQlTransport
     {
         try
         {
-            using JsonDocument? document = await response.Content.ReadFromJsonAsync<JsonDocument>(cancellationToken);
-            if (document is not null && document.RootElement.TryGetProperty("message", out JsonElement messageElement))
+            await using Stream stream = await response.Content.ReadAsStreamAsync(cancellationToken);
+            using JsonDocument document = await JsonDocument.ParseAsync(
+                stream,
+                cancellationToken: cancellationToken);
+            if (document.RootElement.TryGetProperty("message", out JsonElement messageElement))
             {
                 return messageElement.GetString() ?? $"GitHub GraphQL request failed with status code {(int)response.StatusCode}.";
             }

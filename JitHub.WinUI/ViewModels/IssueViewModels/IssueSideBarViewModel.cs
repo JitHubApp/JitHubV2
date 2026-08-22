@@ -12,7 +12,7 @@ using System.Windows.Input;
 namespace JitHub.WinUI.ViewModels.IssueViewModels
 {
     //Issue side bar can be in issues and pull request
-    public class IssueSideBarViewModel : RepoViewModel
+public partial class IssueSideBarViewModel : RepoViewModel
     {
         private PullRequest? _pullRequest;
         private Issue _issue = null!;

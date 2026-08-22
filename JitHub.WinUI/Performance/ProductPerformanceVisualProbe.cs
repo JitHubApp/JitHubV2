@@ -7,7 +7,7 @@ using Microsoft.UI.Xaml.Media;
 
 namespace JitHub.WinUI.Performance;
 
-internal sealed class ProductPerformanceVisualProbe : IDisposable
+internal sealed partial class ProductPerformanceVisualProbe : IDisposable
 {
     private readonly FrameworkElement _root;
     private readonly DispatcherQueueTimer _dispatcherTimer;

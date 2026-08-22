@@ -5,6 +5,10 @@
     },
     "JitHub.WinUI (Unpackaged)": {
       "commandName": "Project"
+    },
+    "JitHub.WinUI (AotDebug)": {
+      "commandName": "MsixPackage",
+      "nativeDebugging": true
     }
   }
 }

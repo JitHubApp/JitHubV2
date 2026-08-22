@@ -5,6 +5,7 @@ using System.IO;
 using System.Linq;
 using System.Text;
 using System.Text.Json;
+using System.Text.Json.Serialization;
 using System.Threading;
 using System.Threading.Tasks;
 using JitHub.Models.GitHub;
@@ -1514,7 +1515,11 @@ public sealed class SqliteStarLibraryStore : IStarLibraryStore
         command.Parameters.AddWithValue("$open_issues_count", repository.OpenIssuesCount);
         command.Parameters.AddWithValue("$language", repository.Language ?? string.Empty);
         command.Parameters.AddWithValue("$visibility", repository.Visibility ?? string.Empty);
-        command.Parameters.AddWithValue("$topics_json", JsonSerializer.Serialize(repository.Topics ?? []));
+        command.Parameters.AddWithValue(
+            "$topics_json",
+            JsonSerializer.Serialize(
+                repository.Topics ?? [],
+                StarLibraryPrimitiveJsonContext.Default.StringArray));
         command.Parameters.AddWithValue("$updated_at_utc", DbDate(repository.UpdatedAt));
         command.Parameters.AddWithValue("$pushed_at_utc", DbDate(repository.PushedAt));
         command.Parameters.AddWithValue("$starred_at_utc", FormatDate(starred.StarredAt));
@@ -1759,7 +1764,9 @@ public sealed class SqliteStarLibraryStore : IStarLibraryStore
     {
         try
         {
-            return JsonSerializer.Deserialize<string[]>(json) ?? [];
+            return JsonSerializer.Deserialize(
+                json,
+                StarLibraryPrimitiveJsonContext.Default.StringArray) ?? [];
         }
         catch (JsonException)
         {
@@ -1784,4 +1791,9 @@ public sealed class SqliteStarLibraryStore : IStarLibraryStore
     private static string FormatDate(DateTimeOffset value) => value.UtcDateTime.ToString("O", CultureInfo.InvariantCulture);
 
     private sealed record SqlQueryParts(string JoinClause, string WhereClause, bool UsesFts);
+}
+
+[JsonSerializable(typeof(string[]), TypeInfoPropertyName = "StringArray")]
+internal sealed partial class StarLibraryPrimitiveJsonContext : JsonSerializerContext
+{
 }

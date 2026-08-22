@@ -1,6 +1,7 @@
 <Project Sdk="Microsoft.NET.Sdk">
   <PropertyGroup>
     <OutputType>WinExe</OutputType>
+    <Configurations>Debug;Release;AotDebug</Configurations>
     <TargetFramework>net10.0-windows10.0.26100.0</TargetFramework>
     <TargetPlatformMinVersion>10.0.19041.0</TargetPlatformMinVersion>
     <RootNamespace>JitHub.WinUI</RootNamespace>
@@ -26,17 +27,33 @@
     <DefaultItemExcludes>$(DefaultItemExcludes);$(MSBuildProjectDirectory)\obj*\**;$(MSBuildProjectDirectory)\bin*\**;$(MSBuildProjectDirectory)\artifacts\**</DefaultItemExcludes>
     <NoWarn>$(NoWarn);WMC1506;WMC1510</NoWarn>
     <SuppressXamlWarnings>1506;1510</SuppressXamlWarnings>
-    <EnableXBindDiagnostics>false</EnableXBindDiagnostics>
-    <EnableBindingDiagnostics>false</EnableBindingDiagnostics>
+    <EnableXBindDiagnostics>true</EnableXBindDiagnostics>
+    <EnableBindingDiagnostics>true</EnableBindingDiagnostics>
+    <IsAotCompatible>true</IsAotCompatible>
+    <EnableAotAnalyzer>true</EnableAotAnalyzer>
+    <EnableTrimAnalyzer>true</EnableTrimAnalyzer>
+    <CsWinRTAotOptimizerEnabled>true</CsWinRTAotOptimizerEnabled>
+    <CsWinRTAotWarningLevel>2</CsWinRTAotWarningLevel>
+    <JsonSerializerIsReflectionEnabledByDefault>false</JsonSerializerIsReflectionEnabledByDefault>
+    <EnableConfigurationBindingGenerator>true</EnableConfigurationBindingGenerator>
     <DefaultLanguage>en-US</DefaultLanguage>
     <EnablePseudoLocalization>false</EnablePseudoLocalization>
   </PropertyGroup>
 
+  <PropertyGroup Condition="'$(EnablePseudoLocalization)' == 'true'">
+    <DefineConstants>$(DefineConstants);PSEUDO_LOCALIZATION_BUILD</DefineConstants>
+  </PropertyGroup>
+
+  <PropertyGroup Condition="'$(RuntimeIdentifier)' == 'win-x86' or '$(RuntimeIdentifier)' == 'win-x64'">
+    <DefineConstants>$(DefineConstants);STORE_ENGAGEMENT_AVAILABLE</DefineConstants>
+    <CsWinRTIncludes>Microsoft.Services.Store.Engagement</CsWinRTIncludes>
+  </PropertyGroup>
+
   <ItemGroup>
-    <AppxManifest Include="Package.Debug.appxmanifest" Condition="'$(Configuration)' == 'Debug'">
+    <AppxManifest Include="Package.Debug.appxmanifest" Condition="'$(Configuration)' == 'Debug' or '$(Configuration)' == 'AotDebug'">
       <SubType>Designer</SubType>
     </AppxManifest>
-    <AppxManifest Include="Package.appxmanifest" Condition="'$(Configuration)' != 'Debug'">
+    <AppxManifest Include="Package.appxmanifest" Condition="'$(Configuration)' != 'Debug' and '$(Configuration)' != 'AotDebug'">
       <SubType>Designer</SubType>
     </AppxManifest>
   </ItemGroup>
@@ -102,20 +119,20 @@
     <PackageReference Include="Microsoft.Graphics.Win2D" Version="1.4.0" />
     <PackageReference Include="Microsoft.Data.Sqlite" Version="10.0.8" />
     <PackageReference Include="SQLitePCLRaw.bundle_e_sqlite3" Version="3.0.3" />
-    <PackageReference Include="Microsoft.Services.Store.SDK" Version="10.1705.16001" />
+    <PackageReference Include="Microsoft.Services.Store.Engagement" Version="10.1610.0" GeneratePathProperty="true" />
     <PackageReference Include="Microsoft.Xaml.Behaviors.WinUI.Managed" Version="3.0.1" />
     <PackageReference Include="Microsoft.Windows.SDK.BuildTools" Version="10.0.28000.1721" />
     <PackageReference Include="Microsoft.WindowsAppSDK" Version="1.8.260317003" />
-    <PackageReference Include="WinUIEdit" Version="0.0.4-prerelease" />
-    <PackageReference Include="SkiaSharp" Version="3.119.2" />
-    <PackageReference Include="SkiaSharp.Views.WinUI" Version="3.119.2" />
-    <PackageReference Include="Svg.Skia" Version="4.6.0" />
-    <PackageReference Include="CsvHelper" Version="33.1.0" />
-    <PackageReference Include="CommunityToolkit.WinUI.UI.Controls.DataGrid" Version="7.1.2" />
+    <PackageReference Include="Microsoft.Windows.CsWinRT" Version="2.2.0" PrivateAssets="all" />
+    <PackageReference Include="Microsoft.CodeAnalysis.BannedApiAnalyzers" Version="5.6.0" PrivateAssets="all" />
+    <PackageReference Include="WinUIEdit" Version="0.0.5-prerelease" GeneratePathProperty="true" />
+    <PackageReference Include="SkiaSharp" Version="4.151.1" />
+    <PackageReference Include="Svg.Skia" Version="5.2.1" />
     <PackageReference Include="CommunityToolkit.WinUI.Controls.Sizers" Version="8.2.250402" />
   </ItemGroup>
 
   <ItemGroup>
+    <AdditionalFiles Include="..\eng\BannedSymbols.txt" />
     <Compile Include="..\Shared\OAuthHandoffProtocol.cs" Link="Security\OAuthHandoffProtocol.cs" />
     <ProjectReference Include="..\MarkdownRenderer\MarkdownRenderer\MarkdownRenderer.csproj" />
     <ProjectReference Include="..\MarkdownRenderer\MarkdownRenderer.Gfm\MarkdownRenderer.Gfm.csproj" />
@@ -126,18 +143,11 @@
   </PropertyGroup>
 
   <PropertyGroup>
-    <PublishReadyToRun Condition="'$(Configuration)' == 'Debug'">False</PublishReadyToRun>
-    <PublishReadyToRun Condition="'$(Configuration)' != 'Debug'">True</PublishReadyToRun>
-    <!--
-      WinUIEdit, Svg.Skia/Jint, and the legacy DataGrid dependency are not trim or NativeAOT
-      compatible. Release builds use ReadyToRun instead so packaging is deterministic and
-      warning-clean without risking runtime type removal from XAML-activated controls.
-    -->
-    <PublishTrimmed>False</PublishTrimmed>
-    <PublishAot>False</PublishAot>
-    <SelfContained Condition="'$(Configuration)' != 'Debug'">True</SelfContained>
+    <PublishReadyToRun Condition="'$(Configuration)' == 'Debug'">false</PublishReadyToRun>
     <AppxSymbolPackageEnabled>False</AppxSymbolPackageEnabled>
   </PropertyGroup>
+
+  <Import Project="..\eng\NativeAot.props" />
 
   <!--
     WinUIEdit uses build\native\*.targets which is not imported for managed .NET projects, so the
@@ -148,8 +158,14 @@
     STATUS_STOWED_EXCEPTION (0xC000027B) in Microsoft.UI.Xaml.dll.
   -->
   <ItemGroup>
-    <WindowsMetadataReference Include="$(NuGetPackageRoot)\winuiedit\0.0.4-prerelease\lib\uap10.0\WinUIEditor.winmd"
+    <WindowsMetadataReference Include="$(PkgWinUIEdit)\lib\uap10.0\WinUIEditor.winmd"
                               Implementation="WinUIEditor.dll" />
+    <SDKReference Include="Microsoft.Services.Store.Engagement, Version=10.0"
+                  Condition="'$(RuntimeIdentifier)' == 'win-x86' or '$(RuntimeIdentifier)' == 'win-x64'" />
+    <SDKReference Include="Microsoft.VCLibs, Version=14.0"
+                  Condition="'$(RuntimeIdentifier)' == 'win-x86' or '$(RuntimeIdentifier)' == 'win-x64'" />
+    <CsWinRTInputs Include="$(PkgMicrosoft_Services_Store_Engagement)\SDK\Windows Kits\10\ExtensionSDKs\Microsoft.Services.Store.Engagement\10.0\References\CommonConfiguration\neutral\Microsoft.Services.Store.Engagement.winmd"
+                    Condition="'$(RuntimeIdentifier)' == 'win-x86' or '$(RuntimeIdentifier)' == 'win-x64'" />
   </ItemGroup>
 
   <Target Name="RemoveDisabledAppxSymbolPayload"

@@ -2,6 +2,8 @@ using System;
 using System.Net;
 using System.Net.Http;
 using System.Net.Http.Json;
+using System.Text.Json;
+using System.Text.Json.Serialization;
 using System.Threading;
 using System.Threading.Tasks;
 
@@ -17,7 +19,7 @@ public interface IAuthHandoffClient
         CancellationToken cancellationToken = default);
 }
 
-public sealed class AuthHandoffClient : IAuthHandoffClient, IDisposable
+public sealed partial class AuthHandoffClient : IAuthHandoffClient, IDisposable
 {
     private static readonly TimeSpan RequestTimeout = TimeSpan.FromSeconds(20);
     private readonly HttpClient _httpClient;
@@ -52,6 +54,7 @@ public sealed class AuthHandoffClient : IAuthHandoffClient, IDisposable
         using HttpResponseMessage response = await _httpClient.PostAsJsonAsync(
             endpoint,
             new RedeemRequest(handoff, state, verifier),
+            AuthHandoffJsonContext.Default.RedeemRequest,
             timeout.Token);
         if (response.StatusCode is HttpStatusCode.BadRequest or HttpStatusCode.Gone)
         {
@@ -59,7 +62,9 @@ public sealed class AuthHandoffClient : IAuthHandoffClient, IDisposable
         }
 
         response.EnsureSuccessStatusCode();
-        RedeemResponse? payload = await response.Content.ReadFromJsonAsync<RedeemResponse>(timeout.Token);
+        RedeemResponse? payload = await response.Content.ReadFromJsonAsync(
+            AuthHandoffJsonContext.Default.RedeemResponse,
+            timeout.Token);
         return string.IsNullOrWhiteSpace(payload?.Token) ? null : payload.Token;
     }
 
@@ -89,4 +94,11 @@ public sealed class AuthHandoffClient : IAuthHandoffClient, IDisposable
     private sealed record RedeemRequest(string Handoff, string State, string Verifier);
 
     private sealed record RedeemResponse(string Token);
+
+    [JsonSourceGenerationOptions(JsonSerializerDefaults.Web)]
+    [JsonSerializable(typeof(RedeemRequest), TypeInfoPropertyName = "RedeemRequest")]
+    [JsonSerializable(typeof(RedeemResponse), TypeInfoPropertyName = "RedeemResponse")]
+    private sealed partial class AuthHandoffJsonContext : JsonSerializerContext
+    {
+    }
 }

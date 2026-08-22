@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.Collections.ObjectModel;
 using System.Globalization;
 using System.Linq;
 
@@ -440,7 +441,7 @@ public sealed partial class CommitDiffRowProjection
         string fileFilterText,
         string searchText)
     {
-        Rows = rows;
+        Rows = new ObservableCollection<CommitDiffRow>(rows);
         Matches = matches;
         FileFilterText = fileFilterText;
         SearchText = searchText;
@@ -454,7 +455,7 @@ public sealed partial class CommitDiffRowProjection
         }
     }
 
-    public IReadOnlyList<CommitDiffRow> Rows { get; }
+    public ObservableCollection<CommitDiffRow> Rows { get; }
 
     public IReadOnlyList<CommitDiffSearchMatch> Matches { get; }
 

@@ -11,7 +11,7 @@ public sealed record ShellStarLibrarySnapshot(
     bool IsComplete,
     StarLibraryDegradedState DegradedState);
 
-public sealed class ShellStarLibraryProjection : IDisposable
+public sealed partial class ShellStarLibraryProjection : IDisposable
 {
     private readonly IGitHubStarLibraryService _starLibraryService;
     private readonly object _gate = new();

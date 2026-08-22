@@ -1,13 +1,13 @@
 using System;
 using System.Globalization;
-using System.Reflection;
+using System.IO;
 using System.Runtime.InteropServices;
 using System.Threading;
 using Microsoft.Windows.ApplicationModel.Resources;
 
 namespace JitHub.WinUI.Helpers;
 
-internal static class LocalizedResourceText
+internal static partial class LocalizedResourceText
 {
     private static readonly object LoaderGate = new();
     private static readonly TimeSpan LoaderRetryDelay = TimeSpan.FromSeconds(5);
@@ -67,10 +67,9 @@ internal static class LocalizedResourceText
         // handling runs because that process has no Windows application resource map.
         // The production executable owns the PRI context; every other host uses the
         // caller-provided fallback unless a test explicitly installs a loader factory.
-        if (!string.Equals(
-                Assembly.GetEntryAssembly()?.GetName().Name,
-                "JitHub.WinUI",
-                StringComparison.Ordinal))
+        string? processPath = Environment.ProcessPath;
+        if (processPath is null ||
+            !string.Equals(Path.GetFileNameWithoutExtension(processPath), "JitHub.WinUI", StringComparison.Ordinal))
         {
             return null;
         }
@@ -173,7 +172,7 @@ internal static class LocalizedResourceText
         }
     }
 
-    private sealed class RestoreAction(Action restore) : IDisposable
+    private sealed partial class RestoreAction(Action restore) : IDisposable
     {
         private Action? _restore = restore;
 

@@ -1,16 +1,19 @@
 using System;
 using System.Collections.Generic;
+using System.ComponentModel;
 using System.Threading.Tasks;
 using JitHub.Models;
 using JitHub.Services;
 using JitHub.Services.Layout;
 using JitHub.WinUI.Helpers;
 using JitHub.WinUI.ViewModels.Pages;
+using JitHub.WinUI.Views.Controls.App;
 using JitHub.WinUI.Views.Dialogs;
 using JitHubModels = JitHub.Models;
 using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Automation;
 using Microsoft.UI.Xaml.Controls;
+using Microsoft.UI.Xaml.Controls.Primitives;
 using Windows.Storage;
 using Windows.Storage.Pickers;
 using Windows.System;
@@ -22,19 +25,57 @@ namespace JitHub.WinUI.Views.Pages;
 public sealed partial class SettingsPage : Page
 {
     private readonly SettingsActionGate _actionGate = new();
+    private bool _isSynchronizingSectionSelection;
     private bool _isSynchronizingThemeCards;
+    private int _sectionScrollRequestVersion;
 
     public SettingsPage()
     {
         ViewModel = ((App)Application.Current).GetService<SettingsPageViewModel>();
         InitializeComponent();
+        PopulateSettingsSections();
+        PopulateContributors(SettingsDevelopersList, Developers);
+        PopulateContributors(SettingsDesignersList, Designers);
         RegisterThemeCardKeyboardNavigation();
         DataContext = ViewModel;
+        ViewModel.PropertyChanged += ViewModel_PropertyChanged;
         _actionGate.StateChanged += SettingsActionGate_StateChanged;
         Loaded += SettingsPage_Loaded;
+        Unloaded += SettingsPage_Unloaded;
     }
 
     public SettingsPageViewModel ViewModel { get; }
+
+    private void PopulateSettingsSections()
+    {
+        foreach (SettingsSectionItem section in ViewModel.SettingsSections)
+        {
+            SettingsSectionList.Items.Add(section);
+            CompactSectionPicker.Items.Add(section);
+        }
+
+        SynchronizeSectionSelection(ViewModel.SelectedSection);
+    }
+
+    private static void PopulateItems<T>(ItemsControl control, IEnumerable<T> items)
+    {
+        control.Items.Clear();
+        foreach (T item in items)
+        {
+            control.Items.Add(item);
+        }
+    }
+
+    private static void PopulateContributors(
+        StackPanel panel,
+        IEnumerable<CreditPersonale> contributors)
+    {
+        panel.Children.Clear();
+        foreach (CreditPersonale contributor in contributors)
+        {
+            panel.Children.Add(new AppContributorCard(contributor));
+        }
+    }
 
     private void RegisterThemeCardKeyboardNavigation()
     {
@@ -115,6 +156,7 @@ public sealed partial class SettingsPage : Page
         try
         {
             await ViewModel.InitializeAsync();
+            PopulateItems(SettingsCacheOwnersList, ViewModel.CacheOwners);
             SynchronizeThemeCards();
         }
         catch (Exception ex)
@@ -126,6 +168,31 @@ public sealed partial class SettingsPage : Page
         ProductPerformanceReadiness.CommitRoute(
             "settings",
             ProductPerformanceReadiness.CountIdentity(ViewModel.SettingsSections.Count));
+    }
+
+    private void SettingsPage_Unloaded(object sender, RoutedEventArgs e)
+    {
+        _sectionScrollRequestVersion++;
+        ViewModel.PropertyChanged -= ViewModel_PropertyChanged;
+        Unloaded -= SettingsPage_Unloaded;
+    }
+
+    private void ViewModel_PropertyChanged(object? sender, PropertyChangedEventArgs e)
+    {
+        if (!string.Equals(e.PropertyName, nameof(SettingsPageViewModel.CacheOwners), StringComparison.Ordinal))
+        {
+            return;
+        }
+
+        if (DispatcherQueue.HasThreadAccess)
+        {
+            PopulateItems(SettingsCacheOwnersList, ViewModel.CacheOwners);
+        }
+        else
+        {
+            _ = DispatcherQueue.TryEnqueue(
+                () => PopulateItems(SettingsCacheOwnersList, ViewModel.CacheOwners));
+        }
     }
 
     private void SettingsPage_SizeChanged(object sender, SizeChangedEventArgs e)
@@ -153,11 +220,39 @@ public sealed partial class SettingsPage : Page
 
     private void SettingsSectionSelectionChanged(object sender, SelectionChangedEventArgs e)
     {
-        _ = DispatcherQueue.TryEnqueue(() =>
+        if (_isSynchronizingSectionSelection ||
+            sender is not Selector selector ||
+            selector.SelectedItem is not SettingsSectionItem section)
         {
-            SettingsContentScrollViewer.UpdateLayout();
+            return;
+        }
+
+        ViewModel.SelectedSection = section;
+        SynchronizeSectionSelection(section);
+        int requestVersion = ++_sectionScrollRequestVersion;
+        _ = DispatcherQueue.TryEnqueue(Microsoft.UI.Dispatching.DispatcherQueuePriority.Low, () =>
+        {
+            if (requestVersion != _sectionScrollRequestVersion)
+            {
+                return;
+            }
+
             SettingsContentScrollViewer.ChangeView(null, 0, null, disableAnimation: true);
         });
+    }
+
+    private void SynchronizeSectionSelection(SettingsSectionItem section)
+    {
+        _isSynchronizingSectionSelection = true;
+        try
+        {
+            SettingsSectionList.SelectedItem = section;
+            CompactSectionPicker.SelectedItem = section;
+        }
+        finally
+        {
+            _isSynchronizingSectionSelection = false;
+        }
     }
 
     private void ApplyCompactSectionAutomationProperties()

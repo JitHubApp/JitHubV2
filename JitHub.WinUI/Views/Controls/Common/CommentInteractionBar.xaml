@@ -59,8 +59,8 @@
                             <Style TargetType="FlyoutPresenter" BasedOn="{StaticResource AppReactionPickerFlyoutPresenterStyle}" />
                         </Flyout.FlyoutPresenterStyle>
                         <ItemsControl
-                            Width="{ThemeResource AppReactionPickerContentWidth}"
-                            ItemsSource="{x:Bind ReactionOptions, Mode=OneWay}">
+                            x:Name="ReactionOptionsItems"
+                            Width="{ThemeResource AppReactionPickerContentWidth}">
                             <ItemsControl.ItemsPanel>
                                 <ItemsPanelTemplate>
                                     <ItemsWrapGrid

@@ -23,6 +23,15 @@
             <Setter Property="CornerRadius" Value="{ThemeResource AppRadiusSmall}" />
         </Style>
 
+        <DataTemplate x:Key="RepoPullRequestSectionLabelTemplate" x:DataType="x:String">
+            <TextBlock
+                AutomationProperties.AccessibilityView="Raw"
+                MaxLines="2"
+                Text="{x:Bind Mode=OneTime}"
+                TextAlignment="Center"
+                TextWrapping="WrapWholeWords" />
+        </DataTemplate>
+
         <ItemsPanelTemplate x:Key="RepoPullRequestVirtualizingItemsPanel">
             <ItemsStackPanel CacheLength="8" />
         </ItemsPanelTemplate>
@@ -924,11 +933,11 @@
                                 FontSize="12"
                                 SelectedIndex="0"
                                 SelectionChanged="PullRequestSectionSegmented_SelectionChanged">
-                                <toolkit:SegmentedItem x:Uid="PagesRepoPullRequestPageRepoPullRequestsSectionConversat" AutomationProperties.AutomationId="RepoPullRequestsSection_Conversation" AutomationProperties.Name="Show pull request conversation" Content="Conversation" />
-                                <toolkit:SegmentedItem x:Uid="PagesRepoPullRequestPageRepoPullRequestsSectionFiles" AutomationProperties.AutomationId="RepoPullRequestsSection_Files" AutomationProperties.Name="Show changed files" Content="Files" />
-                                <toolkit:SegmentedItem x:Uid="PagesRepoPullRequestPageRepoPullRequestsSectionCommits" AutomationProperties.AutomationId="RepoPullRequestsSection_Commits" AutomationProperties.Name="Show pull request commits" Content="Commits" />
-                                <toolkit:SegmentedItem x:Uid="PagesRepoPullRequestPageRepoPullRequestsSectionReviews" AutomationProperties.AutomationId="RepoPullRequestsSection_Reviews" AutomationProperties.Name="Show pull request reviews" Content="Reviews" />
-                                <toolkit:SegmentedItem x:Uid="PagesRepoPullRequestPageRepoPullRequestsSectionTimeline" AutomationProperties.AutomationId="RepoPullRequestsSection_Timeline" AutomationProperties.Name="Show pull request timeline" Content="Timeline" />
+                                <toolkit:SegmentedItem x:Uid="PagesRepoPullRequestPageRepoPullRequestsSectionConversat" Width="112" Height="48" Padding="4,6" AutomationProperties.AutomationId="RepoPullRequestsSection_Conversation" AutomationProperties.Name="Show pull request conversation" Content="Conversation" ContentTemplate="{StaticResource RepoPullRequestSectionLabelTemplate}" />
+                                <toolkit:SegmentedItem x:Uid="PagesRepoPullRequestPageRepoPullRequestsSectionFiles" Width="112" Height="48" Padding="4,6" AutomationProperties.AutomationId="RepoPullRequestsSection_Files" AutomationProperties.Name="Show changed files" Content="Files" ContentTemplate="{StaticResource RepoPullRequestSectionLabelTemplate}" />
+                                <toolkit:SegmentedItem x:Uid="PagesRepoPullRequestPageRepoPullRequestsSectionCommits" Width="112" Height="48" Padding="4,6" AutomationProperties.AutomationId="RepoPullRequestsSection_Commits" AutomationProperties.Name="Show pull request commits" Content="Commits" ContentTemplate="{StaticResource RepoPullRequestSectionLabelTemplate}" />
+                                <toolkit:SegmentedItem x:Uid="PagesRepoPullRequestPageRepoPullRequestsSectionReviews" Width="112" Height="48" Padding="4,6" AutomationProperties.AutomationId="RepoPullRequestsSection_Reviews" AutomationProperties.Name="Show pull request reviews" Content="Reviews" ContentTemplate="{StaticResource RepoPullRequestSectionLabelTemplate}" />
+                                <toolkit:SegmentedItem x:Uid="PagesRepoPullRequestPageRepoPullRequestsSectionTimeline" Width="112" Height="48" Padding="4,6" AutomationProperties.AutomationId="RepoPullRequestsSection_Timeline" AutomationProperties.Name="Show pull request timeline" Content="Timeline" ContentTemplate="{StaticResource RepoPullRequestSectionLabelTemplate}" />
                             </toolkit:Segmented>
                                 </Grid>
 
