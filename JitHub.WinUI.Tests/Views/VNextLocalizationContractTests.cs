@@ -386,8 +386,8 @@ public sealed class VNextLocalizationContractTests
                     string.Equals((string?)element.Attribute(xaml + "Uid"), itemUid, StringComparison.Ordinal));
             XElement label = Assert.Single(item.Elements(), element => element.Name.LocalName == "TextBlock");
 
-            Assert.Equal("48", (string?)item.Attribute("Height"));
-            Assert.Equal("4,6", (string?)item.Attribute("Padding"));
+            Assert.Equal("44", (string?)item.Attribute("Height"));
+            Assert.Equal("4,4", (string?)item.Attribute("Padding"));
             Assert.Equal("80", (string?)item.Attribute("Width"));
             Assert.Equal($"{itemUid}Label", (string?)label.Attribute(xaml + "Uid"));
             Assert.Equal("2", (string?)label.Attribute("MaxLines"));

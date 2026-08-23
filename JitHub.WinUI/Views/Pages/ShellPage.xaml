@@ -635,8 +635,8 @@
                                 SelectionMode="Single">
                                 <toolkit:SegmentedItem
                                     x:Uid="PagesShellPageShellRepoFilterPublic"
-                                    Height="48"
-                                    Padding="4,6"
+                                    Height="44"
+                                    Padding="4,4"
                                     Width="80"
                                     AutomationProperties.AutomationId="ShellRepoFilter_Public"
                                     AutomationProperties.Name="Show public repositories">
@@ -650,8 +650,8 @@
                                 </toolkit:SegmentedItem>
                                 <toolkit:SegmentedItem
                                     x:Uid="PagesShellPageShellRepoFilterPrivate"
-                                    Height="48"
-                                    Padding="4,6"
+                                    Height="44"
+                                    Padding="4,4"
                                     Width="80"
                                     AutomationProperties.AutomationId="ShellRepoFilter_Private"
                                     AutomationProperties.Name="Show private repositories">
@@ -665,8 +665,8 @@
                                 </toolkit:SegmentedItem>
                                 <toolkit:SegmentedItem
                                     x:Uid="PagesShellPageShellRepoFilterForked"
-                                    Height="48"
-                                    Padding="4,6"
+                                    Height="44"
+                                    Padding="4,4"
                                     Width="80"
                                     AutomationProperties.AutomationId="ShellRepoFilter_Forked"
                                     AutomationProperties.Name="Show forked repositories">

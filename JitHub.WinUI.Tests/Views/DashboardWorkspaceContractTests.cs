@@ -139,6 +139,54 @@ public sealed class DashboardWorkspaceContractTests
     }
 
     [Fact]
+    public void ActivityRowsAndWidgetHeadersCenterIconsWithPrimaryText()
+    {
+        XNamespace xaml = "http://schemas.microsoft.com/winfx/2006/xaml";
+        XDocument activity = XDocument.Load(Path(
+            "JitHub.WinUI",
+            "Views",
+            "Controls",
+            "App",
+            "ActivitySentenceLine.xaml"));
+        XElement activityRoot = Assert.Single(activity.Descendants(), element =>
+            element.Attribute(xaml + "Name")?.Value == "LayoutRoot");
+        XElement activityIcon = Assert.Single(activityRoot.Elements(), element =>
+            element.Name.LocalName == "Border");
+        XElement sentence = Assert.Single(activityRoot.Elements(), element =>
+            element.Attribute(xaml + "Name")?.Value == "SentenceRichTextBlock");
+        XElement timestamp = Assert.Single(activityRoot.Elements(), element =>
+            element.Name.LocalName == "TextBlock" && element.Attribute("Grid.Column")?.Value == "2");
+
+        Assert.Equal("Center", activityIcon.Attribute("VerticalAlignment")?.Value);
+        Assert.Equal("Center", sentence.Attribute("VerticalAlignment")?.Value);
+        Assert.Equal("Center", timestamp.Attribute("VerticalAlignment")?.Value);
+        Assert.Equal(2, activityRoot
+            .Elements()
+            .Single(element => element.Name.LocalName == "Grid.RowDefinitions")
+            .Elements()
+            .Count());
+
+        XDocument dashboard = XDocument.Load(Path(
+            "JitHub.WinUI",
+            "Views",
+            "Pages",
+            "DashboardPage.xaml"));
+        XElement widgetTemplate = Assert.Single(dashboard.Descendants(), element =>
+            element.Attribute(xaml + "Key")?.Value == "DashboardWidgetTemplate");
+        XElement widgetLayout = Assert.Single(widgetTemplate.Elements("{http://schemas.microsoft.com/winfx/2006/xaml/presentation}Border"))
+            .Elements()
+            .Single(element => element.Name.LocalName == "Grid");
+        XElement widgetHeader = widgetLayout.Elements()
+            .First(element => element.Name.LocalName == "Grid" && element.Attribute("Grid.Row") is null);
+        XElement widgetIcon = Assert.Single(widgetHeader.Elements(), element => element.Name.LocalName == "FontIcon");
+        XElement widgetTitle = Assert.Single(widgetHeader.Elements(), element => element.Name.LocalName == "TextBlock");
+
+        Assert.Equal("Center", widgetIcon.Attribute("VerticalAlignment")?.Value);
+        Assert.Null(widgetIcon.Attribute("Margin"));
+        Assert.Equal("Center", widgetTitle.Attribute("VerticalAlignment")?.Value);
+    }
+
+    [Fact]
     public void OpeningUnreadNotificationUsesOneSharedSupportedMarkReadWorkflow()
     {
         string source = File.ReadAllText(Path(

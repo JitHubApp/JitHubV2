@@ -19,12 +19,15 @@
             <ColumnDefinition Width="*" />
             <ColumnDefinition Width="58" />
         </Grid.ColumnDefinitions>
+        <Grid.RowDefinitions>
+            <RowDefinition Height="Auto" />
+            <RowDefinition Height="Auto" />
+        </Grid.RowDefinitions>
 
         <Border
             Width="24"
             Height="24"
-            Margin="0,0,0,0"
-            VerticalAlignment="Top"
+            VerticalAlignment="Center"
             Background="{ThemeResource AppCanvasInsetBrush}"
             BorderBrush="{x:Bind ViewModel.Tone, Converter={StaticResource ActivityToneToBrushConverter}, ConverterParameter=Border, Mode=OneWay}"
             BorderThickness="1"
@@ -38,42 +41,35 @@
                 Glyph="{x:Bind ViewModel.Glyph, Mode=OneWay}" />
         </Border>
 
-        <Grid
-            x:Name="SentenceTextColumn"
+        <RichTextBlock
+            x:Name="SentenceRichTextBlock"
             Grid.Column="1"
             MinWidth="0"
-            RowSpacing="3">
-            <Grid.RowDefinitions>
-                <RowDefinition Height="Auto" />
-                <RowDefinition Height="Auto" />
-            </Grid.RowDefinitions>
-            <RichTextBlock
-                x:Name="SentenceRichTextBlock"
-                MinWidth="0"
-                HorizontalAlignment="Left"
-                FontFamily="{ThemeResource AppUiFontFamily}"
-                FontSize="{ThemeResource AppFontSize13}"
-                Foreground="{ThemeResource AppInkBrush}"
-                IsTextSelectionEnabled="False"
-                LineHeight="20"
-                MaxLines="2"
-                TextWrapping="Wrap" />
-            <TextBlock
-                x:Name="SecondaryTextBlock"
-                Grid.Row="1"
-                MinWidth="0"
-                HorizontalAlignment="Left"
-                Style="{StaticResource SectionSecondaryTextBlockStyle}"
-                MaxLines="1"
-                TextTrimming="CharacterEllipsis"
-                Visibility="Collapsed" />
-        </Grid>
+            HorizontalAlignment="Left"
+            VerticalAlignment="Center"
+            FontFamily="{ThemeResource AppUiFontFamily}"
+            FontSize="{ThemeResource AppFontSize13}"
+            Foreground="{ThemeResource AppInkBrush}"
+            IsTextSelectionEnabled="False"
+            LineHeight="20"
+            MaxLines="2"
+            TextWrapping="Wrap" />
+        <TextBlock
+            x:Name="SecondaryTextBlock"
+            Grid.Row="1"
+            Grid.Column="1"
+            MinWidth="0"
+            Margin="0,3,0,0"
+            HorizontalAlignment="Left"
+            Style="{StaticResource SectionSecondaryTextBlockStyle}"
+            MaxLines="1"
+            TextTrimming="CharacterEllipsis"
+            Visibility="Collapsed" />
 
         <TextBlock
             Grid.Column="2"
-            Margin="0,2,0,0"
             HorizontalAlignment="Right"
-            VerticalAlignment="Top"
+            VerticalAlignment="Center"
             Style="{StaticResource SectionSecondaryTextBlockStyle}"
             Text="{x:Bind ViewModel.TimestampText, Mode=OneWay}"
             TextTrimming="CharacterEllipsis" />
