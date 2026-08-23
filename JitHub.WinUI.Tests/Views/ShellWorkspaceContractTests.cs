@@ -225,6 +225,8 @@ public sealed class ShellWorkspaceContractTests
             string.Equals((string?)element.Attribute(xaml + "Name"), "RepositoryShyHeaderSurface", StringComparison.Ordinal));
         XElement list = Assert.Single(shell.Descendants(), element =>
             string.Equals((string?)element.Attribute(xaml + "Name"), "ShellRepositoryList", StringComparison.Ordinal));
+        XElement expandedFilter = Assert.Single(expanded.Descendants(), element =>
+            string.Equals((string?)element.Attribute(xaml + "Name"), "ShellRepositoryExpandedFilter", StringComparison.Ordinal));
         XElement compactFilter = Assert.Single(compact.Descendants(), element =>
             string.Equals((string?)element.Attribute(xaml + "Name"), "ShellRepositoryCompactFilter", StringComparison.Ordinal));
 
@@ -258,6 +260,8 @@ public sealed class ShellWorkspaceContractTests
         Assert.Equal("34", (string?)compact.Attribute("Height"));
         Assert.Equal("Top", (string?)compact.Attribute("VerticalAlignment"));
         Assert.Null(compact.Attribute("MinHeight"));
+        Assert.Equal(3, expandedFilter.Elements().Count(element => element.Name.LocalName == "SegmentedItem"));
+        Assert.Single(expandedFilter.Descendants(), element => element.Name.LocalName == "EqualPanel");
         Assert.Equal("30", (string?)compactFilter.Attribute("Height"));
         Assert.Equal("2", (string?)compactFilter.Attribute("Padding"));
         Assert.Equal(3, compactFilter.Elements().Count(element => element.Name.LocalName == "SegmentedItem"));

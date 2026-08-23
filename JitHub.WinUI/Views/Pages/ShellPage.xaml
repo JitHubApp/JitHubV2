@@ -641,6 +641,11 @@
                                     SelectedIndex="0"
                                     SelectionChanged="RepositoryFilterSegmented_SelectionChanged"
                                     SelectionMode="Single">
+                                    <toolkit:Segmented.ItemsPanel>
+                                        <ItemsPanelTemplate>
+                                            <toolkit:EqualPanel />
+                                        </ItemsPanelTemplate>
+                                    </toolkit:Segmented.ItemsPanel>
                                     <toolkit:SegmentedItem
                                         x:Uid="PagesShellPageShellRepoFilterPublic"
                                         Height="44"
