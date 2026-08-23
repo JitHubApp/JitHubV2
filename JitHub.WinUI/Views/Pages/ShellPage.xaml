@@ -4,6 +4,7 @@
     xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
     xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
     xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+    xmlns:labs="using:CommunityToolkit.WinUI"
     xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
     xmlns:muxc="using:Microsoft.UI.Xaml.Controls"
     xmlns:shell="using:JitHub.WinUI.ViewModels.Pages"
@@ -601,86 +602,201 @@
                         Margin="12,12"
                         Fill="{ThemeResource AppHairlineBrush}" />
                     <Grid
+                        x:Name="RepositoryRailLayout"
                         Grid.Row="2"
                         Padding="4,0,4,0"
                         RowSpacing="10">
                         <Grid.RowDefinitions>
                             <RowDefinition Height="Auto" />
-                            <RowDefinition Height="Auto" />
                             <RowDefinition Height="*" />
                             <RowDefinition Height="Auto" />
                         </Grid.RowDefinitions>
-                        <Grid ColumnSpacing="8">
-                            <Grid.ColumnDefinitions>
-                                <ColumnDefinition Width="*" />
-                            </Grid.ColumnDefinitions>
+                        <Grid
+                            x:Name="RepositoryExpandedHeaderSurface"
+                            labs:TransitionHelper.Id="RepositoryHeaderSurface"
+                            RowSpacing="10">
+                            <Grid.RowDefinitions>
+                                <RowDefinition Height="Auto" />
+                                <RowDefinition Height="Auto" />
+                            </Grid.RowDefinitions>
                             <TextBlock
-                                x:Uid="PagesShellPageTextBlockRepositories" VerticalAlignment="Center"
+                                x:Uid="PagesShellPageTextBlockRepositories"
+                                VerticalAlignment="Center"
+                                labs:TransitionHelper.Id="RepositoryHeaderTitle"
                                 FontFamily="{StaticResource AppUiFontFamily}"
                                 FontSize="{ThemeResource AppFontSize15}"
                                 FontWeight="SemiBold"
                                 Foreground="{ThemeResource AppInkBrush}"
                                 Text="Repositories" />
+                            <Grid
+                                x:Uid="PagesShellPageShellRepoFilterSegmented"
+                                Grid.Row="1"
+                                AutomationProperties.AccessibilityView="Control"
+                                AutomationProperties.AutomationId="ShellRepoFilterSegmented"
+                                AutomationProperties.Name="Repository visibility filters">
+                                <toolkit:Segmented
+                                    x:Uid="PagesShellPageShellRepositoryFilter"
+                                    x:Name="ShellRepositoryExpandedFilter"
+                                    labs:TransitionHelper.Id="RepositoryHeaderFilter"
+                                    AutomationProperties.AutomationId="ShellRepositoryFilter"
+                                    AutomationProperties.Name="Repository visibility filter"
+                                    SelectedIndex="0"
+                                    SelectionChanged="RepositoryFilterSegmented_SelectionChanged"
+                                    SelectionMode="Single">
+                                    <toolkit:SegmentedItem
+                                        x:Uid="PagesShellPageShellRepoFilterPublic"
+                                        Height="44"
+                                        Padding="4,4"
+                                        Width="80"
+                                        AutomationProperties.AutomationId="ShellRepoFilter_Public"
+                                        AutomationProperties.Name="Show public repositories">
+                                        <TextBlock
+                                            x:Uid="PagesShellPageShellRepoFilterPublicLabel"
+                                            AutomationProperties.AccessibilityView="Raw"
+                                            MaxLines="2"
+                                            Text="Public"
+                                            TextAlignment="Center"
+                                            TextWrapping="WrapWholeWords" />
+                                    </toolkit:SegmentedItem>
+                                    <toolkit:SegmentedItem
+                                        x:Uid="PagesShellPageShellRepoFilterPrivate"
+                                        Height="44"
+                                        Padding="4,4"
+                                        Width="80"
+                                        AutomationProperties.AutomationId="ShellRepoFilter_Private"
+                                        AutomationProperties.Name="Show private repositories">
+                                        <TextBlock
+                                            x:Uid="PagesShellPageShellRepoFilterPrivateLabel"
+                                            AutomationProperties.AccessibilityView="Raw"
+                                            MaxLines="2"
+                                            Text="Private"
+                                            TextAlignment="Center"
+                                            TextWrapping="WrapWholeWords" />
+                                    </toolkit:SegmentedItem>
+                                    <toolkit:SegmentedItem
+                                        x:Uid="PagesShellPageShellRepoFilterForked"
+                                        Height="44"
+                                        Padding="4,4"
+                                        Width="80"
+                                        AutomationProperties.AutomationId="ShellRepoFilter_Forked"
+                                        AutomationProperties.Name="Show forked repositories">
+                                        <TextBlock
+                                            x:Uid="PagesShellPageShellRepoFilterForkedLabel"
+                                            AutomationProperties.AccessibilityView="Raw"
+                                            MaxLines="2"
+                                            Text="Forked"
+                                            TextAlignment="Center"
+                                            TextWrapping="WrapWholeWords" />
+                                    </toolkit:SegmentedItem>
+                                </toolkit:Segmented>
+                            </Grid>
                         </Grid>
                         <Grid
-                            x:Uid="PagesShellPageShellRepoFilterSegmented" Grid.Row="1"
-                            AutomationProperties.AccessibilityView="Control"
-                            AutomationProperties.AutomationId="ShellRepoFilterSegmented"
-                            AutomationProperties.Name="Repository visibility filters">
+                            x:Name="RepositoryShyHeaderSurface"
+                            Margin="-4,0"
+                            Padding="4,2"
+                            MinHeight="34"
+                            labs:TransitionHelper.Id="RepositoryHeaderSurface"
+                            AutomationProperties.AccessibilityView="Raw"
+                            Background="{ThemeResource AppTransientOverlayBrush}"
+                            BorderBrush="{ThemeResource AppHairlineBrush}"
+                            BorderThickness="0,0,0,1"
+                            Canvas.ZIndex="10"
+                            ColumnSpacing="8"
+                            Visibility="Collapsed">
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="*" />
+                                <ColumnDefinition Width="Auto" />
+                            </Grid.ColumnDefinitions>
+                            <TextBlock
+                                x:Uid="PagesShellPageTextBlockCompactRepositories"
+                                VerticalAlignment="Center"
+                                labs:TransitionHelper.Id="RepositoryHeaderTitle"
+                                FontFamily="{StaticResource AppUiFontFamily}"
+                                FontSize="{ThemeResource AppFontSize13}"
+                                FontWeight="SemiBold"
+                                Foreground="{ThemeResource AppInkBrush}"
+                                MaxLines="1"
+                                Text="Repositories"
+                                TextTrimming="CharacterEllipsis" />
                             <toolkit:Segmented
-                                x:Uid="PagesShellPageShellRepositoryFilter" AutomationProperties.AutomationId="ShellRepositoryFilter"
+                                x:Uid="PagesShellPageShellCompactRepositoryFilter"
+                                x:Name="ShellRepositoryCompactFilter"
+                                Grid.Column="1"
+                                Height="30"
+                                MinHeight="30"
+                                Padding="2"
+                                VerticalAlignment="Center"
+                                labs:TransitionHelper.Id="RepositoryHeaderFilter"
+                                AutomationProperties.AutomationId="ShellRepositoryCompactFilter"
                                 AutomationProperties.Name="Repository visibility filter"
                                 SelectedIndex="0"
                                 SelectionChanged="RepositoryFilterSegmented_SelectionChanged"
                                 SelectionMode="Single">
+                                <toolkit:Segmented.ItemsPanel>
+                                    <ItemsPanelTemplate>
+                                        <toolkit:EqualPanel />
+                                    </ItemsPanelTemplate>
+                                </toolkit:Segmented.ItemsPanel>
                                 <toolkit:SegmentedItem
-                                    x:Uid="PagesShellPageShellRepoFilterPublic"
-                                    Height="44"
-                                    Padding="4,4"
-                                    Width="80"
-                                    AutomationProperties.AutomationId="ShellRepoFilter_Public"
+                                    x:Uid="PagesShellPageShellRepoCompactFilterPublic"
+                                    Width="44"
+                                    Height="24"
+                                    MinHeight="24"
+                                    Padding="2,0"
+                                    AutomationProperties.AutomationId="ShellRepoCompactFilter_Public"
                                     AutomationProperties.Name="Show public repositories">
                                     <TextBlock
-                                        x:Uid="PagesShellPageShellRepoFilterPublicLabel"
+                                        x:Uid="PagesShellPageShellRepoCompactFilterPublicLabel"
                                         AutomationProperties.AccessibilityView="Raw"
-                                        MaxLines="2"
+                                        FontSize="{ThemeResource AppFontSize10}"
+                                        MaxLines="1"
                                         Text="Public"
                                         TextAlignment="Center"
-                                        TextWrapping="WrapWholeWords" />
+                                        TextTrimming="CharacterEllipsis"
+                                        TextWrapping="NoWrap" />
                                 </toolkit:SegmentedItem>
                                 <toolkit:SegmentedItem
-                                    x:Uid="PagesShellPageShellRepoFilterPrivate"
-                                    Height="44"
-                                    Padding="4,4"
-                                    Width="80"
-                                    AutomationProperties.AutomationId="ShellRepoFilter_Private"
+                                    x:Uid="PagesShellPageShellRepoCompactFilterPrivate"
+                                    Width="44"
+                                    Height="24"
+                                    MinHeight="24"
+                                    Padding="2,0"
+                                    AutomationProperties.AutomationId="ShellRepoCompactFilter_Private"
                                     AutomationProperties.Name="Show private repositories">
                                     <TextBlock
-                                        x:Uid="PagesShellPageShellRepoFilterPrivateLabel"
+                                        x:Uid="PagesShellPageShellRepoCompactFilterPrivateLabel"
                                         AutomationProperties.AccessibilityView="Raw"
-                                        MaxLines="2"
+                                        FontSize="{ThemeResource AppFontSize10}"
+                                        MaxLines="1"
                                         Text="Private"
                                         TextAlignment="Center"
-                                        TextWrapping="WrapWholeWords" />
+                                        TextTrimming="CharacterEllipsis"
+                                        TextWrapping="NoWrap" />
                                 </toolkit:SegmentedItem>
                                 <toolkit:SegmentedItem
-                                    x:Uid="PagesShellPageShellRepoFilterForked"
-                                    Height="44"
-                                    Padding="4,4"
-                                    Width="80"
-                                    AutomationProperties.AutomationId="ShellRepoFilter_Forked"
+                                    x:Uid="PagesShellPageShellRepoCompactFilterForked"
+                                    Width="44"
+                                    Height="24"
+                                    MinHeight="24"
+                                    Padding="2,0"
+                                    AutomationProperties.AutomationId="ShellRepoCompactFilter_Forked"
                                     AutomationProperties.Name="Show forked repositories">
                                     <TextBlock
-                                        x:Uid="PagesShellPageShellRepoFilterForkedLabel"
+                                        x:Uid="PagesShellPageShellRepoCompactFilterForkedLabel"
                                         AutomationProperties.AccessibilityView="Raw"
-                                        MaxLines="2"
+                                        FontSize="{ThemeResource AppFontSize10}"
+                                        MaxLines="1"
                                         Text="Forked"
                                         TextAlignment="Center"
-                                        TextWrapping="WrapWholeWords" />
+                                        TextTrimming="CharacterEllipsis"
+                                        TextWrapping="NoWrap" />
                                 </toolkit:SegmentedItem>
                             </toolkit:Segmented>
                         </Grid>
-                        <Grid Grid.Row="2">
+                        <Grid
+                            x:Name="RepositoryListHost"
+                            Grid.Row="1">
                             <ProgressRing
                                 Width="24"
                                 Height="24"
@@ -706,7 +822,10 @@
                                 ContainerContentChanging="ShellRepositoryList_ContainerContentChanging"
                                 ItemTemplate="{StaticResource ShellRepositoryItemTemplate}"
                                 ItemsSource="{x:Bind ViewModel.RepositoryItems, Mode=OneWay}"
+                                Loaded="ShellRepositoryList_Loaded"
                                 SelectionMode="None"
+                                SizeChanged="ShellRepositoryList_SizeChanged"
+                                Unloaded="ShellRepositoryList_Unloaded"
                                 Visibility="{x:Bind ViewModel.AreRepositoriesVisible, Converter={StaticResource BoolToVisibilityConverter}, Mode=OneWay}">
                                 <ListView.ItemContainerStyle>
                                     <Style TargetType="ListViewItem" BasedOn="{StaticResource AppDenseListRowStyle}">
@@ -715,7 +834,7 @@
                                 </ListView.ItemContainerStyle>
                             </ListView>
                         </Grid>
-                        <StackPanel Grid.Row="3" Spacing="6">
+                        <StackPanel Grid.Row="2" Spacing="6">
                             <TextBlock
                                 FontFamily="{StaticResource AppUiFontFamily}"
                                 FontSize="{ThemeResource AppFontSize11}"

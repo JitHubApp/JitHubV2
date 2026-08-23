@@ -3,9 +3,11 @@ using System.Collections.Generic;
 using System.ComponentModel;
 using System.Diagnostics;
 using System.Globalization;
+using System.Numerics;
 using System.Runtime.InteropServices;
 using System.Threading;
 using System.Threading.Tasks;
+using CommunityToolkit.WinUI;
 using CommunityToolkit.WinUI.Controls;
 using CommunityToolkit.Mvvm.Input;
 using JitHub.Models.GitHub;
@@ -28,13 +30,21 @@ using Microsoft.UI.Xaml.Navigation;
 using Windows.Foundation;
 using Windows.System;
 using Windows.UI.Core;
+using Windows.UI.ViewManagement;
 
 namespace JitHub.WinUI.Views.Pages;
 
 public sealed partial class ShellPage : Page
 {
     private const double SearchSuggestionsTopOffset = 8;
+    private const double RepositoryShyHeaderStartOffset = 56;
+    private const double RepositoryShyHeaderRestoreOffset = 8;
+    private const double RepositoryShyHeaderRevealTravel = 64;
+    private const double RepositoryShyHeaderRehideTravel = 24;
+    private const double RepositoryScrollDirectionEpsilon = 0.5;
     private const string SearchSuggestionsScenario = "search-suggestions";
+    private static readonly TimeSpan RepositoryShyHeaderForwardDuration = TimeSpan.FromMilliseconds(240);
+    private static readonly TimeSpan RepositoryShyHeaderReverseDuration = TimeSpan.FromMilliseconds(220);
     private static readonly string[] ProductPerformanceRoutes =
     [
         "home",
@@ -67,6 +77,7 @@ public sealed partial class ShellPage : Page
     private bool _updatingSearchSelectionFromKeyboard;
     private bool _isSearchPointerOver;
     private readonly SlideDrawerAnimator _shellRailDrawerAnimator;
+    private readonly TransitionHelper _repositoryHeaderTransition;
     private readonly IApplicationTaskCoordinator _taskCoordinator;
     private CancellationTokenSource? _pageLifetime;
     private Control? _searchRestoreTarget;
@@ -87,12 +98,40 @@ public sealed partial class ShellPage : Page
     private int _routeStateRestoreVersion;
     private int _lastHistoryMouseButton;
     private long _lastHistoryMouseButtonTimestamp;
+    private ScrollViewer? _repositoryScrollViewer;
+    private long _repositoryVerticalOffsetCallbackToken;
+    private long _repositoryScrollableHeightCallbackToken;
+    private double _lastRepositoryScrollOffset;
+    private double _repositoryUpwardRevealTravel;
+    private double _repositoryDownwardRehideTravel;
+    private bool _repositoryHeaderRevealedByUpwardScroll;
+    private bool _isRepositoryScrollHeaderShy;
+    private bool _isRepositoryHeaderShy;
+    private bool _synchronizingRepositoryFilters;
+    private bool _repositoryFiltersInitialized;
+    private int _repositoryHeaderTransitionGeneration;
 
     public ShellPage()
     {
         ViewModel = ((App)Application.Current).GetService<ShellPageViewModel>();
         _taskCoordinator = ((App)Application.Current).GetService<IApplicationTaskCoordinator>();
         InitializeComponent();
+        _repositoryHeaderTransition = new TransitionHelper
+        {
+            Source = RepositoryExpandedHeaderSurface,
+            Target = RepositoryShyHeaderSurface,
+            Duration = RepositoryShyHeaderForwardDuration,
+            ReverseDuration = RepositoryShyHeaderReverseDuration,
+            SourceToggleMethod = VisualStateToggleMethod.ByVisibility,
+            TargetToggleMethod = VisualStateToggleMethod.ByVisibility,
+            Configs =
+            [
+                new TransitionConfig { Id = "RepositoryHeaderSurface", ScaleMode = ScaleMode.ScaleY, EnableClipAnimation = true },
+                new TransitionConfig { Id = "RepositoryHeaderTitle" },
+                new TransitionConfig { Id = "RepositoryHeaderFilter", ScaleMode = ScaleMode.ScaleX, EnableClipAnimation = true }
+            ]
+        };
+        _repositoryFiltersInitialized = true;
         Modal.AddHandler(KeyDownEvent, new KeyEventHandler(Modal_KeyDown), handledEventsToo: true);
         Modal.AddHandler(PointerPressedEvent, new PointerEventHandler(ModalScrim_PointerPressed), handledEventsToo: true);
         _shellRailDrawerAnimator = new SlideDrawerAnimator(
@@ -166,6 +205,7 @@ public sealed partial class ShellPage : Page
         _pageLifetime?.Cancel();
         _pageLifetime?.Dispose();
         _pageLifetime = null;
+        DetachRepositoryScrollViewer();
         _shellRailDrawerAnimator.Stop();
         ConnectedAnimationService.GetForCurrentView().PrepareToAnimate("AppLogoLogoutAnimation", AppLogoShellPage);
     }
@@ -984,6 +1024,26 @@ public sealed partial class ShellPage : Page
             return;
         }
 
+        if (e.PropertyName is nameof(ShellPageViewModel.AreRepositoriesVisible))
+        {
+            if (ViewModel.AreRepositoriesVisible)
+            {
+                _ = DispatcherQueue.TryEnqueue(
+                    Microsoft.UI.Dispatching.DispatcherQueuePriority.Low,
+                    AttachRepositoryScrollViewer);
+            }
+            else
+            {
+                _isRepositoryScrollHeaderShy = false;
+                _repositoryHeaderRevealedByUpwardScroll = false;
+                _repositoryUpwardRevealTravel = 0;
+                _repositoryDownwardRehideTravel = 0;
+                SetRepositoryHeaderShy(false, animate: true);
+            }
+
+            return;
+        }
+
         if (e.PropertyName is nameof(ShellPageViewModel.IsNotificationOpen) && ViewModel.IsNotificationOpen)
         {
             StartNotificationTimer();
@@ -1592,6 +1652,325 @@ public sealed partial class ShellPage : Page
         }
     }
 
+    private void ShellRepositoryList_Loaded(object sender, RoutedEventArgs e)
+    {
+        _ = DispatcherQueue.TryEnqueue(
+            Microsoft.UI.Dispatching.DispatcherQueuePriority.Low,
+            AttachRepositoryScrollViewer);
+    }
+
+    private void ShellRepositoryList_Unloaded(object sender, RoutedEventArgs e) =>
+        DetachRepositoryScrollViewer();
+
+    private void ShellRepositoryList_SizeChanged(object sender, SizeChangedEventArgs e)
+    {
+        if (e.NewSize.Width > 0 && e.NewSize.Height > 0)
+        {
+            _ = DispatcherQueue.TryEnqueue(
+                Microsoft.UI.Dispatching.DispatcherQueuePriority.Low,
+                AttachRepositoryScrollViewer);
+        }
+    }
+
+    private void AttachRepositoryScrollViewer()
+    {
+        if (!ShellRepositoryList.IsLoaded)
+        {
+            return;
+        }
+
+        ShellRepositoryList.ApplyTemplate();
+        ScrollViewer? scrollViewer = FindDescendant<ScrollViewer>(ShellRepositoryList);
+        if (scrollViewer is null)
+        {
+            return;
+        }
+
+        if (ReferenceEquals(_repositoryScrollViewer, scrollViewer))
+        {
+            UpdateRepositoryHeaderForScroll(scrollViewer);
+            return;
+        }
+
+        DetachRepositoryScrollViewer();
+        _repositoryScrollViewer = scrollViewer;
+        scrollViewer.ViewChanged += RepositoryScrollViewer_ViewChanged;
+        _repositoryVerticalOffsetCallbackToken = scrollViewer.RegisterPropertyChangedCallback(
+            ScrollViewer.VerticalOffsetProperty,
+            RepositoryScrollViewer_ScrollPropertyChanged);
+        _repositoryScrollableHeightCallbackToken = scrollViewer.RegisterPropertyChangedCallback(
+            ScrollViewer.ScrollableHeightProperty,
+            RepositoryScrollViewer_ScrollPropertyChanged);
+
+        _lastRepositoryScrollOffset = scrollViewer.VerticalOffset;
+        _repositoryUpwardRevealTravel = 0;
+        _repositoryDownwardRehideTravel = 0;
+        _repositoryHeaderRevealedByUpwardScroll = false;
+        _isRepositoryScrollHeaderShy =
+            scrollViewer.ScrollableHeight > 0 &&
+            scrollViewer.VerticalOffset >= RepositoryShyHeaderStartOffset;
+        SetRepositoryHeaderShy(_isRepositoryScrollHeaderShy, animate: false);
+    }
+
+    private void DetachRepositoryScrollViewer()
+    {
+        if (_repositoryScrollViewer is not ScrollViewer scrollViewer)
+        {
+            return;
+        }
+
+        scrollViewer.ViewChanged -= RepositoryScrollViewer_ViewChanged;
+        scrollViewer.UnregisterPropertyChangedCallback(
+            ScrollViewer.VerticalOffsetProperty,
+            _repositoryVerticalOffsetCallbackToken);
+        scrollViewer.UnregisterPropertyChangedCallback(
+            ScrollViewer.ScrollableHeightProperty,
+            _repositoryScrollableHeightCallbackToken);
+        _repositoryScrollViewer = null;
+        _repositoryVerticalOffsetCallbackToken = 0;
+        _repositoryScrollableHeightCallbackToken = 0;
+    }
+
+    private void RepositoryScrollViewer_ViewChanged(object? sender, ScrollViewerViewChangedEventArgs e)
+    {
+        if (sender is ScrollViewer scrollViewer)
+        {
+            UpdateRepositoryHeaderForScroll(scrollViewer);
+        }
+    }
+
+    private void RepositoryScrollViewer_ScrollPropertyChanged(
+        DependencyObject sender,
+        DependencyProperty dependencyProperty)
+    {
+        if (sender is ScrollViewer scrollViewer)
+        {
+            UpdateRepositoryHeaderForScroll(scrollViewer);
+        }
+    }
+
+    private void UpdateRepositoryHeaderForScroll(ScrollViewer scrollViewer)
+    {
+        if (!ReferenceEquals(_repositoryScrollViewer, scrollViewer))
+        {
+            return;
+        }
+
+        if (scrollViewer.ScrollableHeight <= 0)
+        {
+            _lastRepositoryScrollOffset = 0;
+            _repositoryUpwardRevealTravel = 0;
+            _repositoryDownwardRehideTravel = 0;
+            _repositoryHeaderRevealedByUpwardScroll = false;
+            _isRepositoryScrollHeaderShy = false;
+            SetRepositoryHeaderShy(false, animate: true);
+            return;
+        }
+
+        double offset = scrollViewer.VerticalOffset;
+        double delta = offset - _lastRepositoryScrollOffset;
+        _lastRepositoryScrollOffset = offset;
+
+        if (_isRepositoryScrollHeaderShy)
+        {
+            if (offset <= RepositoryShyHeaderRestoreOffset)
+            {
+                RevealRepositoryScrollHeader(revealedByUpwardScroll: false);
+            }
+            else if (delta < -RepositoryScrollDirectionEpsilon)
+            {
+                _repositoryUpwardRevealTravel += -delta;
+                if (_repositoryUpwardRevealTravel >= RepositoryShyHeaderRevealTravel)
+                {
+                    RevealRepositoryScrollHeader(revealedByUpwardScroll: true);
+                }
+            }
+            else if (delta > RepositoryScrollDirectionEpsilon)
+            {
+                _repositoryUpwardRevealTravel = 0;
+            }
+
+            return;
+        }
+
+        if (offset <= RepositoryShyHeaderRestoreOffset)
+        {
+            _repositoryHeaderRevealedByUpwardScroll = false;
+            _repositoryDownwardRehideTravel = 0;
+        }
+        else if (_repositoryHeaderRevealedByUpwardScroll)
+        {
+            if (delta > RepositoryScrollDirectionEpsilon)
+            {
+                _repositoryDownwardRehideTravel += delta;
+                if (_repositoryDownwardRehideTravel >= RepositoryShyHeaderRehideTravel)
+                {
+                    HideRepositoryScrollHeader();
+                }
+            }
+            else if (delta < -RepositoryScrollDirectionEpsilon)
+            {
+                _repositoryDownwardRehideTravel = 0;
+            }
+        }
+        else if (offset >= RepositoryShyHeaderStartOffset)
+        {
+            HideRepositoryScrollHeader();
+        }
+    }
+
+    private void RevealRepositoryScrollHeader(bool revealedByUpwardScroll)
+    {
+        _isRepositoryScrollHeaderShy = false;
+        _repositoryHeaderRevealedByUpwardScroll = revealedByUpwardScroll;
+        _repositoryUpwardRevealTravel = 0;
+        _repositoryDownwardRehideTravel = 0;
+        SetRepositoryHeaderShy(false, animate: true);
+    }
+
+    private void HideRepositoryScrollHeader()
+    {
+        _isRepositoryScrollHeaderShy = true;
+        _repositoryHeaderRevealedByUpwardScroll = false;
+        _repositoryUpwardRevealTravel = 0;
+        _repositoryDownwardRehideTravel = 0;
+        SetRepositoryHeaderShy(true, animate: true);
+    }
+
+    private void SetRepositoryHeaderShy(bool isShy, bool animate)
+    {
+        if (_isRepositoryHeaderShy == isShy)
+        {
+            return;
+        }
+
+        _isRepositoryHeaderShy = isShy;
+        int generation = ++_repositoryHeaderTransitionGeneration;
+        if (!animate || !RepositoryExpandedHeaderSurface.IsLoaded || !AreAnimationsEnabled())
+        {
+            _repositoryHeaderTransition.Reset(toInitialState: !isShy);
+            RepositoryRailLayout.UpdateLayout();
+            ResetRepositoryListReflow();
+            return;
+        }
+
+        _ = AnimateRepositoryHeaderAsync(isShy, generation);
+    }
+
+    private async Task AnimateRepositoryHeaderAsync(bool isShy, int generation)
+    {
+        try
+        {
+            bool reverseFromSettledShyState =
+                !isShy && _repositoryHeaderTransition.IsTargetState && !_repositoryHeaderTransition.IsAnimating;
+            double previousListTop = reverseFromSettledShyState
+                ? GetElementTop(RepositoryListHost, RepositoryRailLayout)
+                : 0;
+            Task headerAnimation = isShy
+                ? _repositoryHeaderTransition.StartAsync(forceUpdateAnimatedElements: true)
+                : _repositoryHeaderTransition.ReverseAsync(forceUpdateAnimatedElements: true);
+
+            RepositoryRailLayout.UpdateLayout();
+            if (isShy)
+            {
+                double reclaimedHeight = Math.Max(
+                    0,
+                    RepositoryExpandedHeaderSurface.ActualHeight - RepositoryShyHeaderSurface.ActualHeight);
+                AnimateRepositoryListReflow(
+                    new Vector3(0, (float)-reclaimedHeight, 0),
+                    RepositoryShyHeaderForwardDuration);
+            }
+            else if (reverseFromSettledShyState)
+            {
+                double expandedListTop = GetElementTop(RepositoryListHost, RepositoryRailLayout);
+                SetRepositoryListReflowImmediately(
+                    new Vector3(0, (float)(previousListTop - expandedListTop), 0));
+                AnimateRepositoryListReflow(Vector3.Zero, RepositoryShyHeaderReverseDuration);
+            }
+            else
+            {
+                AnimateRepositoryListReflow(Vector3.Zero, RepositoryShyHeaderReverseDuration);
+            }
+
+            await headerAnimation;
+            if (generation != _repositoryHeaderTransitionGeneration)
+            {
+                return;
+            }
+
+            RepositoryRailLayout.UpdateLayout();
+            ResetRepositoryListReflow();
+        }
+        catch (OperationCanceledException)
+        {
+        }
+        catch (Exception) when (generation != _repositoryHeaderTransitionGeneration)
+        {
+        }
+        catch when (generation == _repositoryHeaderTransitionGeneration)
+        {
+            _repositoryHeaderTransition.Reset(toInitialState: !isShy);
+            RepositoryRailLayout.UpdateLayout();
+            ResetRepositoryListReflow();
+        }
+    }
+
+    private void AnimateRepositoryListReflow(Vector3 translation, TimeSpan duration)
+    {
+        RepositoryListHost.TranslationTransition = new Vector3Transition
+        {
+            Components = Vector3TransitionComponents.Y,
+            Duration = duration
+        };
+        RepositoryListHost.Translation = translation;
+    }
+
+    private void SetRepositoryListReflowImmediately(Vector3 translation)
+    {
+        RepositoryListHost.TranslationTransition = null;
+        RepositoryListHost.Translation = translation;
+    }
+
+    private void ResetRepositoryListReflow() =>
+        SetRepositoryListReflowImmediately(Vector3.Zero);
+
+    private static double GetElementTop(FrameworkElement element, UIElement relativeTo) =>
+        element.TransformToVisual(relativeTo).TransformPoint(new Point()).Y;
+
+    private static T? FindDescendant<T>(DependencyObject root)
+        where T : DependencyObject
+    {
+        int childCount = VisualTreeHelper.GetChildrenCount(root);
+        for (int index = 0; index < childCount; index++)
+        {
+            DependencyObject child = VisualTreeHelper.GetChild(root, index);
+            if (child is T match)
+            {
+                return match;
+            }
+
+            T? descendant = FindDescendant<T>(child);
+            if (descendant is not null)
+            {
+                return descendant;
+            }
+        }
+
+        return null;
+    }
+
+    private static bool AreAnimationsEnabled()
+    {
+        try
+        {
+            return new UISettings().AnimationsEnabled;
+        }
+        catch
+        {
+            return false;
+        }
+    }
+
     private void Page_PointerReleased(object sender, PointerRoutedEventArgs e)
     {
 
@@ -1616,12 +1995,33 @@ public sealed partial class ShellPage : Page
 
     private void RepositoryFilterSegmented_SelectionChanged(object sender, SelectionChangedEventArgs e)
     {
-        if (sender is not Segmented segmented)
+        if (!_repositoryFiltersInitialized ||
+            _synchronizingRepositoryFilters ||
+            sender is not Segmented segmented)
         {
             return;
         }
 
-        string filter = segmented.SelectedIndex switch
+        int selectedIndex = Math.Clamp(segmented.SelectedIndex, 0, 2);
+        _synchronizingRepositoryFilters = true;
+        try
+        {
+            if (ShellRepositoryExpandedFilter.SelectedIndex != selectedIndex)
+            {
+                ShellRepositoryExpandedFilter.SelectedIndex = selectedIndex;
+            }
+
+            if (ShellRepositoryCompactFilter.SelectedIndex != selectedIndex)
+            {
+                ShellRepositoryCompactFilter.SelectedIndex = selectedIndex;
+            }
+        }
+        finally
+        {
+            _synchronizingRepositoryFilters = false;
+        }
+
+        string filter = selectedIndex switch
         {
             1 => "Private",
             2 => "Forked",

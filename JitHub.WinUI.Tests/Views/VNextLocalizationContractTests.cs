@@ -397,6 +397,29 @@ public sealed class VNextLocalizationContractTests
             Assert.StartsWith("⟦", pseudoLabel, StringComparison.Ordinal);
         }
 
+        foreach (string filter in new[] { "Public", "Private", "Forked" })
+        {
+            string itemUid = $"PagesShellPageShellRepoCompactFilter{filter}";
+            string labelKey = $"{itemUid}Label.Text";
+            XElement item = Assert.Single(
+                shellDocument.Descendants(),
+                element =>
+                    element.Name.LocalName == "SegmentedItem" &&
+                    string.Equals((string?)element.Attribute(xaml + "Uid"), itemUid, StringComparison.Ordinal));
+            XElement label = Assert.Single(item.Elements(), element => element.Name.LocalName == "TextBlock");
+
+            Assert.Equal("24", (string?)item.Attribute("Height"));
+            Assert.Equal("2,0", (string?)item.Attribute("Padding"));
+            Assert.Equal("44", (string?)item.Attribute("Width"));
+            Assert.Equal($"{itemUid}Label", (string?)label.Attribute(xaml + "Uid"));
+            Assert.Equal("1", (string?)label.Attribute("MaxLines"));
+            Assert.Equal("NoWrap", (string?)label.Attribute("TextWrapping"));
+            Assert.Equal("CharacterEllipsis", (string?)label.Attribute("TextTrimming"));
+            Assert.True(english.ContainsKey(labelKey), $"Missing English compact shell filter label '{labelKey}'.");
+            Assert.True(pseudo.TryGetValue(labelKey, out string? pseudoLabel), $"Missing pseudo compact shell filter label '{labelKey}'.");
+            Assert.StartsWith("⟦", pseudoLabel, StringComparison.Ordinal);
+        }
+
         Assert.DoesNotContain("PagesShellPageShellRepoFilterPublic.Content", english.Keys);
         Assert.DoesNotContain("PagesShellPageShellRepoFilterPrivate.Content", english.Keys);
         Assert.DoesNotContain("PagesShellPageShellRepoFilterForked.Content", english.Keys);

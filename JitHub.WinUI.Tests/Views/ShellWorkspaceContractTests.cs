@@ -200,6 +200,53 @@ public sealed class ShellWorkspaceContractTests
     }
 
     [Fact]
+    public void RepositoryRailUsesDirectionAwareMorphingCompactHeader()
+    {
+        string root = FindRepositoryRoot();
+        XDocument shell = LoadShellXaml();
+        string source = File.ReadAllText(Path.Combine(
+            root,
+            "JitHub.WinUI",
+            "Views",
+            "Pages",
+            "ShellPage.xaml.cs"));
+        XNamespace xaml = "http://schemas.microsoft.com/winfx/2006/xaml";
+        XNamespace labs = "using:CommunityToolkit.WinUI";
+
+        XElement expanded = Assert.Single(shell.Descendants(), element =>
+            string.Equals((string?)element.Attribute(xaml + "Name"), "RepositoryExpandedHeaderSurface", StringComparison.Ordinal));
+        XElement compact = Assert.Single(shell.Descendants(), element =>
+            string.Equals((string?)element.Attribute(xaml + "Name"), "RepositoryShyHeaderSurface", StringComparison.Ordinal));
+        XElement list = Assert.Single(shell.Descendants(), element =>
+            string.Equals((string?)element.Attribute(xaml + "Name"), "ShellRepositoryList", StringComparison.Ordinal));
+        XElement compactFilter = Assert.Single(compact.Descendants(), element =>
+            string.Equals((string?)element.Attribute(xaml + "Name"), "ShellRepositoryCompactFilter", StringComparison.Ordinal));
+
+        Assert.Equal("RepositoryHeaderSurface", (string?)expanded.Attribute(labs + "TransitionHelper.Id"));
+        Assert.Equal("RepositoryHeaderSurface", (string?)compact.Attribute(labs + "TransitionHelper.Id"));
+        Assert.Equal("Collapsed", (string?)compact.Attribute("Visibility"));
+        Assert.Equal("{ThemeResource AppTransientOverlayBrush}", (string?)compact.Attribute("Background"));
+        Assert.Equal("30", (string?)compactFilter.Attribute("Height"));
+        Assert.Equal("2", (string?)compactFilter.Attribute("Padding"));
+        Assert.Equal(3, compactFilter.Elements().Count(element => element.Name.LocalName == "SegmentedItem"));
+        Assert.Single(compactFilter.Descendants(), element => element.Name.LocalName == "EqualPanel");
+        Assert.Equal("ShellRepositoryList_Loaded", (string?)list.Attribute("Loaded"));
+        Assert.Equal("ShellRepositoryList_SizeChanged", (string?)list.Attribute("SizeChanged"));
+        Assert.Equal("ShellRepositoryList_Unloaded", (string?)list.Attribute("Unloaded"));
+
+        Assert.Contains("new TransitionHelper", source, StringComparison.Ordinal);
+        Assert.Contains("RepositoryShyHeaderStartOffset", source, StringComparison.Ordinal);
+        Assert.Contains("RepositoryShyHeaderRestoreOffset", source, StringComparison.Ordinal);
+        Assert.Contains("RepositoryShyHeaderRevealTravel", source, StringComparison.Ordinal);
+        Assert.Contains("RepositoryShyHeaderRehideTravel", source, StringComparison.Ordinal);
+        Assert.Contains("RegisterPropertyChangedCallback", source, StringComparison.Ordinal);
+        Assert.Contains("nameof(ShellPageViewModel.AreRepositoriesVisible)", source, StringComparison.Ordinal);
+        Assert.Contains("AnimateRepositoryListReflow", source, StringComparison.Ordinal);
+        Assert.Contains("ShellRepositoryExpandedFilter.SelectedIndex", source, StringComparison.Ordinal);
+        Assert.Contains("ShellRepositoryCompactFilter.SelectedIndex", source, StringComparison.Ordinal);
+    }
+
+    [Fact]
     public void ShellCommandFamiliesHaveTelemetryAndFocusReturnOwnership()
     {
         string root = FindRepositoryRoot();

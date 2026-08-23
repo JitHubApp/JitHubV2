@@ -3822,6 +3822,27 @@
   <data name="PagesShellPageShellRailDrawerButton.ToolTipService.ToolTip" xml:space="preserve">
     <value>⟦Navigation ~~~~~~⟧</value>
   </data>
+  <data name="PagesShellPageShellCompactRepositoryFilter.AutomationProperties.Name" xml:space="preserve">
+    <value>⟦Repository visibility filter ~~~~~~~~~~⟧</value>
+  </data>
+  <data name="PagesShellPageShellRepoCompactFilterForked.AutomationProperties.Name" xml:space="preserve">
+    <value>⟦Show forked repositories ~~~~~~~~~⟧</value>
+  </data>
+  <data name="PagesShellPageShellRepoCompactFilterForkedLabel.Text" xml:space="preserve">
+    <value>⟦Forked ~~~~~~⟧</value>
+  </data>
+  <data name="PagesShellPageShellRepoCompactFilterPrivate.AutomationProperties.Name" xml:space="preserve">
+    <value>⟦Show private repositories ~~~~~~~~~⟧</value>
+  </data>
+  <data name="PagesShellPageShellRepoCompactFilterPrivateLabel.Text" xml:space="preserve">
+    <value>⟦Private ~~~~~~⟧</value>
+  </data>
+  <data name="PagesShellPageShellRepoCompactFilterPublic.AutomationProperties.Name" xml:space="preserve">
+    <value>⟦Show public repositories ~~~~~~~~~⟧</value>
+  </data>
+  <data name="PagesShellPageShellRepoCompactFilterPublicLabel.Text" xml:space="preserve">
+    <value>⟦Public ~~~~~~⟧</value>
+  </data>
   <data name="PagesShellPageShellRepoFilterForked.AutomationProperties.Name" xml:space="preserve">
     <value>⟦Show forked repositories ~~~~~~~~~⟧</value>
   </data>
@@ -3905,6 +3926,9 @@
   </data>
   <data name="PagesShellPageTextBlockNoRepositories.Text" xml:space="preserve">
     <value>⟦No repositories ~~~~~~⟧</value>
+  </data>
+  <data name="PagesShellPageTextBlockCompactRepositories.Text" xml:space="preserve">
+    <value>⟦Repositories ~~~~~~⟧</value>
   </data>
   <data name="PagesShellPageTextBlockRepositories.Text" xml:space="preserve">
     <value>⟦Repositories ~~~~~~⟧</value>
