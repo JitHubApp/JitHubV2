@@ -226,6 +226,9 @@ public sealed class ShellWorkspaceContractTests
         Assert.Equal("RepositoryHeaderSurface", (string?)compact.Attribute(labs + "TransitionHelper.Id"));
         Assert.Equal("Collapsed", (string?)compact.Attribute("Visibility"));
         Assert.Equal("{ThemeResource AppTransientOverlayBrush}", (string?)compact.Attribute("Background"));
+        Assert.Equal("34", (string?)compact.Attribute("Height"));
+        Assert.Equal("Top", (string?)compact.Attribute("VerticalAlignment"));
+        Assert.Null(compact.Attribute("MinHeight"));
         Assert.Equal("30", (string?)compactFilter.Attribute("Height"));
         Assert.Equal("2", (string?)compactFilter.Attribute("Padding"));
         Assert.Equal(3, compactFilter.Elements().Count(element => element.Name.LocalName == "SegmentedItem"));
@@ -235,6 +238,18 @@ public sealed class ShellWorkspaceContractTests
         Assert.Equal("ShellRepositoryList_Unloaded", (string?)list.Attribute("Unloaded"));
 
         Assert.Contains("new TransitionHelper", source, StringComparison.Ordinal);
+        Assert.Contains(
+            "new TransitionConfig { Id = \"RepositoryHeaderSurface\", ScaleMode = ScaleMode.None, EnableClipAnimation = true }",
+            source,
+            StringComparison.Ordinal);
+        Assert.Contains(
+            "new TransitionConfig { Id = \"RepositoryHeaderFilter\", ScaleMode = ScaleMode.None, EnableClipAnimation = true }",
+            source,
+            StringComparison.Ordinal);
+        Assert.DoesNotContain(
+            "Id = \"RepositoryHeaderFilter\", ScaleMode = ScaleMode.ScaleX",
+            source,
+            StringComparison.Ordinal);
         Assert.Contains("RepositoryShyHeaderStartOffset", source, StringComparison.Ordinal);
         Assert.Contains("RepositoryShyHeaderRestoreOffset", source, StringComparison.Ordinal);
         Assert.Contains("RepositoryShyHeaderRevealTravel", source, StringComparison.Ordinal);

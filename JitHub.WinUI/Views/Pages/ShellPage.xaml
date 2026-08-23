@@ -693,9 +693,10 @@
                         </Grid>
                         <Grid
                             x:Name="RepositoryShyHeaderSurface"
+                            Height="34"
                             Margin="-4,0"
                             Padding="4,2"
-                            MinHeight="34"
+                            VerticalAlignment="Top"
                             labs:TransitionHelper.Id="RepositoryHeaderSurface"
                             AutomationProperties.AccessibilityView="Raw"
                             Background="{ThemeResource AppTransientOverlayBrush}"

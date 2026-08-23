@@ -126,9 +126,9 @@ public sealed partial class ShellPage : Page
             TargetToggleMethod = VisualStateToggleMethod.ByVisibility,
             Configs =
             [
-                new TransitionConfig { Id = "RepositoryHeaderSurface", ScaleMode = ScaleMode.ScaleY, EnableClipAnimation = true },
+                new TransitionConfig { Id = "RepositoryHeaderSurface", ScaleMode = ScaleMode.None, EnableClipAnimation = true },
                 new TransitionConfig { Id = "RepositoryHeaderTitle" },
-                new TransitionConfig { Id = "RepositoryHeaderFilter", ScaleMode = ScaleMode.ScaleX, EnableClipAnimation = true }
+                new TransitionConfig { Id = "RepositoryHeaderFilter", ScaleMode = ScaleMode.None, EnableClipAnimation = true }
             ]
         };
         _repositoryFiltersInitialized = true;
