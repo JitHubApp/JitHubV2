@@ -7,6 +7,7 @@
     xmlns:appcontrols="using:JitHub.WinUI.Views.Controls.App"
     xmlns:common="using:JitHub.WinUI.Views.Controls.Common"
     xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+    xmlns:labs="using:CommunityToolkit.WinUI"
     xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
     xmlns:viewmodels="using:JitHub.WinUI.ViewModels.Pages"
     x:DataType="viewmodels:DashboardPageViewModel"
@@ -30,6 +31,18 @@
             <Setter Property="Padding" Value="11,6" />
             <Setter Property="CornerRadius" Value="{ThemeResource AppRadiusSmall}" />
             <Setter Property="FontWeight" Value="SemiBold" />
+        </Style>
+
+        <Style
+            x:Key="DashboardShyHeaderActionButtonStyle"
+            BasedOn="{StaticResource AppToolbarButtonStyle}"
+            TargetType="Button">
+            <Setter Property="Width" Value="32" />
+            <Setter Property="Height" Value="32" />
+            <Setter Property="MinWidth" Value="32" />
+            <Setter Property="MinHeight" Value="32" />
+            <Setter Property="Padding" Value="0" />
+            <Setter Property="CornerRadius" Value="{ThemeResource AppRadiusSmall}" />
         </Style>
 
         <DataTemplate x:Key="DashboardActivityTemplate" x:DataType="activities:ActivityCardViewModel">
@@ -435,7 +448,7 @@
             AutomationProperties.AutomationId="DashboardWidgetBoard"
             AutomationProperties.Name="Dashboard widgets"
             ColumnSpacing="16"
-            RowSpacing="14">
+            RowSpacing="0">
             <Grid.ColumnDefinitions>
                 <ColumnDefinition Width="*" />
                 <ColumnDefinition x:Name="DashboardSideColumn" Width="344" />
@@ -462,8 +475,10 @@
                 </Grid.RowDefinitions>
                 <StackPanel x:Name="DashboardGreetingStack" Spacing="2">
                     <TextBlock
+                        x:Name="DashboardGreetingText"
+                        labs:TransitionHelper.Id="DashboardHeaderGreeting"
                         Style="{StaticResource AppWorkspaceTitleTextBlockStyle}"
-                        Text="{Binding GreetingText}"
+                        Text="{x:Bind ViewModel.GreetingText, Mode=OneWay}"
                         TextTrimming="CharacterEllipsis" />
                     <TextBlock
                         Style="{StaticResource SectionSecondaryTextBlockStyle}"
@@ -477,6 +492,7 @@
                     Style="{StaticResource AppWorkspaceHeaderActionsStyle}">
                     <Button
                         x:Uid="PagesDashboardPageDashboardCustomizeButton" x:Name="DashboardCustomizeButton"
+                        labs:TransitionHelper.Id="DashboardHeaderCustomize"
                         AutomationProperties.AutomationId="DashboardCustomizeButton"
                         AutomationProperties.Name="Customize Home"
                         Click="DashboardCustomizeButton_Click"
@@ -489,6 +505,7 @@
                     </Button>
                     <Button
                         x:Uid="PagesDashboardPageDashboardOverviewDrawerButton" x:Name="DashboardOverviewDrawerButton"
+                        labs:TransitionHelper.Id="DashboardHeaderOverview"
                         AutomationProperties.AutomationId="DashboardOverviewDrawerButton"
                         AutomationProperties.Name="Open overview panel"
                         Click="DashboardOverviewDrawerButton_Click"
@@ -504,8 +521,78 @@
             </Grid>
 
             <Grid
+                x:Name="DashboardShyHeaderSurface"
+                Grid.Row="0"
+                Grid.RowSpan="2"
+                Grid.Column="0"
+                Height="40"
+                Padding="4"
+                VerticalAlignment="Top"
+                AutomationProperties.AccessibilityView="Raw"
+                Background="{ThemeResource AppTransientOverlayBrush}"
+                BorderBrush="{ThemeResource AppHairlineBrush}"
+                BorderThickness="0,0,0,1"
+                Canvas.ZIndex="10"
+                ColumnSpacing="8"
+                Visibility="Collapsed">
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="*" />
+                    <ColumnDefinition Width="Auto" />
+                </Grid.ColumnDefinitions>
+                <TextBlock
+                    x:Name="DashboardShyGreetingText"
+                    VerticalAlignment="Center"
+                    labs:TransitionHelper.Id="DashboardHeaderGreeting"
+                    FontFamily="{ThemeResource AppDisplayFontFamily}"
+                    FontSize="{ThemeResource AppFontSize18}"
+                    Foreground="{ThemeResource AppInkBrush}"
+                    MaxLines="1"
+                    Text="{x:Bind ViewModel.GreetingText, Mode=OneWay}"
+                    TextTrimming="CharacterEllipsis"
+                    TextWrapping="NoWrap" />
+                <StackPanel
+                    x:Name="DashboardShyHeaderActions"
+                    Grid.Column="1"
+                    VerticalAlignment="Center"
+                    Orientation="Horizontal"
+                    Spacing="8">
+                    <Button
+                        x:Uid="PagesDashboardPageDashboardCustomizeButton"
+                        x:Name="DashboardShyCustomizeButton"
+                        labs:TransitionHelper.Id="DashboardHeaderCustomize"
+                        AutomationProperties.AutomationId="DashboardShyCustomizeButton"
+                        AutomationProperties.Name="Customize Home"
+                        Click="DashboardCustomizeButton_Click"
+                        Style="{StaticResource DashboardShyHeaderActionButtonStyle}"
+                        ToolTipService.ToolTip="Customize Home">
+                        <FontIcon
+                            FontFamily="{StaticResource SegoeFluentIcons}"
+                            FontSize="{ThemeResource AppFontSize13}"
+                            Glyph="&#xE771;" />
+                    </Button>
+                    <Button
+                        x:Uid="PagesDashboardPageDashboardOverviewDrawerButton"
+                        x:Name="DashboardShyOverviewDrawerButton"
+                        labs:TransitionHelper.Id="DashboardHeaderOverview"
+                        AutomationProperties.AutomationId="DashboardShyOverviewDrawerButton"
+                        AutomationProperties.Name="Open overview panel"
+                        Click="DashboardOverviewDrawerButton_Click"
+                        Style="{StaticResource DashboardShyHeaderActionButtonStyle}"
+                        ToolTipService.ToolTip="Overview"
+                        Visibility="Collapsed">
+                        <FontIcon
+                            FontFamily="{StaticResource SegoeFluentIcons}"
+                            FontSize="{ThemeResource AppFontSize14}"
+                            Glyph="&#xE700;" />
+                    </Button>
+                </StackPanel>
+            </Grid>
+
+            <Grid
+                x:Name="DashboardMainRailHost"
                 Grid.Row="1"
                 Grid.Column="0"
+                Margin="0,14,0,0"
                 RowSpacing="10">
                 <Grid.RowDefinitions>
                     <RowDefinition Height="Auto" />
@@ -537,7 +624,8 @@
                     HorizontalScrollBarVisibility="Disabled"
                     HorizontalScrollMode="Disabled"
                     VerticalScrollBarVisibility="Auto"
-                    VerticalScrollMode="Auto">
+                    VerticalScrollMode="Auto"
+                    ViewChanged="DashboardMainRailScrollViewer_ViewChanged">
                     <ItemsControl
                         x:Uid="PagesDashboardPageDashboardMainRail" AutomationProperties.AccessibilityView="Control"
                         AutomationProperties.AutomationId="DashboardMainRail"

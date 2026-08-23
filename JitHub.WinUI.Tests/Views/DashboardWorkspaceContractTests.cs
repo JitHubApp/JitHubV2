@@ -28,6 +28,72 @@ public sealed class DashboardWorkspaceContractTests
     }
 
     [Fact]
+    public void DashboardHeaderMorphsWithoutDroppingResponsiveOverviewAccess()
+    {
+        XDocument document = XDocument.Load(Path("JitHub.WinUI", "Views", "Pages", "DashboardPage.xaml"));
+        XNamespace xaml = "http://schemas.microsoft.com/winfx/2006/xaml";
+        XNamespace labs = "using:CommunityToolkit.WinUI";
+        XElement expanded = Assert.Single(document.Descendants(), element =>
+            string.Equals((string?)element.Attribute(xaml + "Name"), "DashboardHeaderGrid", StringComparison.Ordinal));
+        XElement compact = Assert.Single(document.Descendants(), element =>
+            string.Equals((string?)element.Attribute(xaml + "Name"), "DashboardShyHeaderSurface", StringComparison.Ordinal));
+        XElement mainRailHost = Assert.Single(document.Descendants(), element =>
+            string.Equals((string?)element.Attribute(xaml + "Name"), "DashboardMainRailHost", StringComparison.Ordinal));
+        XElement mainScrollViewer = FindById(document, "DashboardMainRailScrollViewer");
+        string source = File.ReadAllText(Path(
+            "JitHub.WinUI",
+            "Views",
+            "Pages",
+            "DashboardPage.xaml.cs"));
+
+        Assert.Null(expanded.Attribute(labs + "TransitionHelper.Id"));
+        Assert.Null(compact.Attribute(labs + "TransitionHelper.Id"));
+        foreach (string id in new[]
+        {
+            "DashboardHeaderGreeting",
+            "DashboardHeaderCustomize",
+            "DashboardHeaderOverview"
+        })
+        {
+            Assert.Single(expanded.Descendants(), element =>
+                string.Equals((string?)element.Attribute(labs + "TransitionHelper.Id"), id, StringComparison.Ordinal));
+            Assert.Single(compact.Descendants(), element =>
+                string.Equals((string?)element.Attribute(labs + "TransitionHelper.Id"), id, StringComparison.Ordinal));
+        }
+
+        Assert.Equal("Collapsed", (string?)compact.Attribute("Visibility"));
+        Assert.Equal("40", (string?)compact.Attribute("Height"));
+        Assert.Equal("2", (string?)compact.Attribute("Grid.RowSpan"));
+        Assert.Equal("{ThemeResource AppTransientOverlayBrush}", (string?)compact.Attribute("Background"));
+        Assert.Equal("0,0,0,1", (string?)compact.Attribute("BorderThickness"));
+        Assert.Equal("0,14,0,0", (string?)mainRailHost.Attribute("Margin"));
+        Assert.Equal(
+            "DashboardMainRailScrollViewer_ViewChanged",
+            (string?)mainScrollViewer.Attribute("ViewChanged"));
+        Assert.Contains(compact.Descendants(), element =>
+            string.Equals(
+                (string?)element.Attribute("AutomationProperties.AutomationId"),
+                "DashboardShyCustomizeButton",
+                StringComparison.Ordinal));
+        Assert.Contains(compact.Descendants(), element =>
+            string.Equals(
+                (string?)element.Attribute("AutomationProperties.AutomationId"),
+                "DashboardShyOverviewDrawerButton",
+                StringComparison.Ordinal));
+
+        Assert.Contains("new TransitionHelper", source, StringComparison.Ordinal);
+        Assert.Contains("CustomScalingCalculator = HeaderGreetingScaling", source, StringComparison.Ordinal);
+        Assert.Contains("ShyHeaderRevealTravel", source, StringComparison.Ordinal);
+        Assert.Contains("ShyHeaderRehideTravel", source, StringComparison.Ordinal);
+        Assert.Contains("AnimateMainRailReflow", source, StringComparison.Ordinal);
+        Assert.Contains(
+            "DashboardShyOverviewDrawerButton.Visibility = showOverviewDrawerButton",
+            source,
+            StringComparison.Ordinal);
+        Assert.Contains("GetActiveOverviewDrawerButton()", source, StringComparison.Ordinal);
+    }
+
+    [Fact]
     public void OnlyCanonicalNotificationsWorkspaceExposesViewAll()
     {
         string models = File.ReadAllText(Path(

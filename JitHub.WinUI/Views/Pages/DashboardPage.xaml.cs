@@ -1,7 +1,10 @@
 using System;
 using System.Collections.Generic;
 using System.ComponentModel;
+using System.Numerics;
 using System.Runtime.InteropServices;
+using System.Threading.Tasks;
+using CommunityToolkit.WinUI;
 using CommunityToolkit.Mvvm.Input;
 using JitHub.Services;
 using JitHub.Services.Layout;
@@ -11,18 +14,28 @@ using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Controls;
 using Microsoft.UI.Xaml.Input;
 using Microsoft.UI.Xaml.Media;
+using Microsoft.UI.Xaml.Media.Animation;
 using Microsoft.UI.Xaml.Navigation;
 using Windows.Foundation;
 using Windows.System;
+using Windows.UI.ViewManagement;
 
 namespace JitHub.WinUI.Views.Pages;
 
 public sealed partial class DashboardPage : Page
 {
+    private const double ShyHeaderStartOffset = 56;
+    private const double ShyHeaderRestoreOffset = 8;
+    private const double ShyHeaderRevealTravel = 64;
+    private const double ShyHeaderRehideTravel = 24;
+    private const double ScrollDirectionEpsilon = 0.5;
     private const double SideDrawerFallbackWidth = 360;
     private const int VkShift = 0x10;
     private const int VkLeftShift = 0xA0;
     private const int VkRightShift = 0xA1;
+    private static readonly TimeSpan ShyHeaderForwardDuration = TimeSpan.FromMilliseconds(240);
+    private static readonly TimeSpan ShyHeaderReverseDuration = TimeSpan.FromMilliseconds(220);
+    private static readonly IScalingCalculator HeaderGreetingScaling = new TextScalingCalculator();
 
     [LibraryImport("user32.dll")]
     private static partial short GetKeyState(int virtualKey);
@@ -31,12 +44,23 @@ public sealed partial class DashboardPage : Page
     private readonly IGitHubStarLibraryService _starLibraryService;
     private readonly NotificationInboxState _notificationInboxState;
     private readonly SlideDrawerAnimator _sideDrawerAnimator;
+    private readonly TransitionHelper _headerTransition;
     private bool _initialized;
     private bool _isCustomizeDialogShowing;
     private ModalSession? _customizeModalSession;
     private bool _isSideDrawerOpen;
     private bool _isSideDrawerShiftPressed;
     private Control? _sideDrawerRestoreTarget;
+    private long _verticalOffsetCallbackToken;
+    private long _scrollableHeightCallbackToken;
+    private bool _scrollCallbacksRegistered;
+    private double _lastScrollOffset;
+    private double _upwardRevealTravel;
+    private double _downwardRehideTravel;
+    private bool _headerRevealedByUpwardScroll;
+    private bool _isScrollHeaderShy;
+    private bool _isHeaderShy;
+    private int _headerTransitionGeneration;
 
     public DashboardPageViewModel ViewModel { get; }
 
@@ -48,6 +72,36 @@ public sealed partial class DashboardPage : Page
         _starLibraryService = ((App)Application.Current).GetService<IGitHubStarLibraryService>();
         _notificationInboxState = ((App)Application.Current).GetService<NotificationInboxState>();
         InitializeComponent();
+        _headerTransition = new TransitionHelper
+        {
+            Source = DashboardHeaderGrid,
+            Target = DashboardShyHeaderSurface,
+            Duration = ShyHeaderForwardDuration,
+            ReverseDuration = ShyHeaderReverseDuration,
+            SourceToggleMethod = VisualStateToggleMethod.ByVisibility,
+            TargetToggleMethod = VisualStateToggleMethod.ByVisibility,
+            Configs =
+            [
+                new TransitionConfig
+                {
+                    Id = "DashboardHeaderGreeting",
+                    ScaleMode = ScaleMode.Custom,
+                    CustomScalingCalculator = HeaderGreetingScaling
+                },
+                new TransitionConfig
+                {
+                    Id = "DashboardHeaderCustomize",
+                    ScaleMode = ScaleMode.Scale,
+                    EnableClipAnimation = true
+                },
+                new TransitionConfig
+                {
+                    Id = "DashboardHeaderOverview",
+                    ScaleMode = ScaleMode.Scale,
+                    EnableClipAnimation = true
+                }
+            ]
+        };
         DashboardSideDrawer.AddHandler(PreviewKeyDownEvent, new KeyEventHandler(DashboardSideDrawer_KeyDown), true);
         DashboardSideDrawer.AddHandler(PreviewKeyUpEvent, new KeyEventHandler(DashboardSideDrawer_KeyUp), true);
         _sideDrawerAnimator = new SlideDrawerAnimator(
@@ -73,6 +127,8 @@ public sealed partial class DashboardPage : Page
         ViewModel.ApplySharedNotificationReadStates();
         try
         {
+            ApplyResponsiveLayout(ActualWidth);
+            AttachHeaderScrollTracking();
             if (_initialized)
             {
                 CommitPerformanceReadiness();
@@ -80,8 +136,8 @@ public sealed partial class DashboardPage : Page
             }
 
             _initialized = true;
-            ApplyResponsiveLayout(ActualWidth);
             await ViewModel.InitializeAsync();
+            UpdateHeaderForScroll(DashboardMainRailScrollViewer);
             CommitPerformanceReadiness();
         }
         catch (Exception ex)
@@ -151,7 +207,9 @@ public sealed partial class DashboardPage : Page
         DashboardHeaderActions.HorizontalAlignment = HorizontalAlignment.Right;
         DashboardHeaderActions.Margin = new Thickness(0);
         DashboardGreetingStack.Visibility = hideGreeting ? Visibility.Collapsed : Visibility.Visible;
+        DashboardShyGreetingText.Visibility = hideGreeting ? Visibility.Collapsed : Visibility.Visible;
         DashboardOverviewDrawerButton.Visibility = showOverviewDrawerButton ? Visibility.Visible : Visibility.Collapsed;
+        DashboardShyOverviewDrawerButton.Visibility = showOverviewDrawerButton ? Visibility.Visible : Visibility.Collapsed;
         DashboardOverviewButtonText.Visibility = Visibility.Collapsed;
         WorkspaceChromeVisuals.ApplyActionLabel(DashboardCustomizeButtonText, chrome);
         DashboardOverviewDrawerButton.MinWidth = 38;
@@ -168,6 +226,266 @@ public sealed partial class DashboardPage : Page
         }
 
         UpdateSideDrawerCloseButtonPlacement();
+    }
+
+    private void AttachHeaderScrollTracking()
+    {
+        if (_scrollCallbacksRegistered)
+        {
+            UpdateHeaderForScroll(DashboardMainRailScrollViewer);
+            return;
+        }
+
+        _verticalOffsetCallbackToken = DashboardMainRailScrollViewer.RegisterPropertyChangedCallback(
+            ScrollViewer.VerticalOffsetProperty,
+            DashboardMainRailScrollPropertyChanged);
+        _scrollableHeightCallbackToken = DashboardMainRailScrollViewer.RegisterPropertyChangedCallback(
+            ScrollViewer.ScrollableHeightProperty,
+            DashboardMainRailScrollPropertyChanged);
+        _scrollCallbacksRegistered = true;
+        _lastScrollOffset = DashboardMainRailScrollViewer.VerticalOffset;
+        _upwardRevealTravel = 0;
+        _downwardRehideTravel = 0;
+        _headerRevealedByUpwardScroll = false;
+        _isScrollHeaderShy = DashboardMainRailScrollViewer.ScrollableHeight > 0 &&
+            DashboardMainRailScrollViewer.VerticalOffset >= ShyHeaderStartOffset;
+        SetHeaderShy(_isScrollHeaderShy, animate: false);
+    }
+
+    private void DetachHeaderScrollTracking()
+    {
+        if (!_scrollCallbacksRegistered)
+        {
+            return;
+        }
+
+        DashboardMainRailScrollViewer.UnregisterPropertyChangedCallback(
+            ScrollViewer.VerticalOffsetProperty,
+            _verticalOffsetCallbackToken);
+        DashboardMainRailScrollViewer.UnregisterPropertyChangedCallback(
+            ScrollViewer.ScrollableHeightProperty,
+            _scrollableHeightCallbackToken);
+        _verticalOffsetCallbackToken = 0;
+        _scrollableHeightCallbackToken = 0;
+        _scrollCallbacksRegistered = false;
+    }
+
+    private void DashboardMainRailScrollViewer_ViewChanged(
+        object? sender,
+        ScrollViewerViewChangedEventArgs e)
+    {
+        if (sender is ScrollViewer scrollViewer)
+        {
+            UpdateHeaderForScroll(scrollViewer);
+        }
+    }
+
+    private void DashboardMainRailScrollPropertyChanged(
+        DependencyObject sender,
+        DependencyProperty dependencyProperty)
+    {
+        if (sender is ScrollViewer scrollViewer)
+        {
+            UpdateHeaderForScroll(scrollViewer);
+        }
+    }
+
+    private void UpdateHeaderForScroll(ScrollViewer scrollViewer)
+    {
+        if (!ReferenceEquals(scrollViewer, DashboardMainRailScrollViewer))
+        {
+            return;
+        }
+
+        if (scrollViewer.ScrollableHeight <= 0)
+        {
+            _lastScrollOffset = 0;
+            _upwardRevealTravel = 0;
+            _downwardRehideTravel = 0;
+            _headerRevealedByUpwardScroll = false;
+            _isScrollHeaderShy = false;
+            SetHeaderShy(false, animate: true);
+            return;
+        }
+
+        double offset = scrollViewer.VerticalOffset;
+        double delta = offset - _lastScrollOffset;
+        _lastScrollOffset = offset;
+
+        if (_isScrollHeaderShy)
+        {
+            if (offset <= ShyHeaderRestoreOffset)
+            {
+                RevealScrollHeader(revealedByUpwardScroll: false);
+            }
+            else if (delta < -ScrollDirectionEpsilon)
+            {
+                _upwardRevealTravel += -delta;
+                if (_upwardRevealTravel >= ShyHeaderRevealTravel)
+                {
+                    RevealScrollHeader(revealedByUpwardScroll: true);
+                }
+            }
+            else if (delta > ScrollDirectionEpsilon)
+            {
+                _upwardRevealTravel = 0;
+            }
+
+            return;
+        }
+
+        if (offset <= ShyHeaderRestoreOffset)
+        {
+            _headerRevealedByUpwardScroll = false;
+            _downwardRehideTravel = 0;
+        }
+        else if (_headerRevealedByUpwardScroll)
+        {
+            if (delta > ScrollDirectionEpsilon)
+            {
+                _downwardRehideTravel += delta;
+                if (_downwardRehideTravel >= ShyHeaderRehideTravel)
+                {
+                    HideScrollHeader();
+                }
+            }
+            else if (delta < -ScrollDirectionEpsilon)
+            {
+                _downwardRehideTravel = 0;
+            }
+        }
+        else if (offset >= ShyHeaderStartOffset)
+        {
+            HideScrollHeader();
+        }
+    }
+
+    private void RevealScrollHeader(bool revealedByUpwardScroll)
+    {
+        _isScrollHeaderShy = false;
+        _headerRevealedByUpwardScroll = revealedByUpwardScroll;
+        _upwardRevealTravel = 0;
+        _downwardRehideTravel = 0;
+        SetHeaderShy(false, animate: true);
+    }
+
+    private void HideScrollHeader()
+    {
+        _isScrollHeaderShy = true;
+        _headerRevealedByUpwardScroll = false;
+        _upwardRevealTravel = 0;
+        _downwardRehideTravel = 0;
+        SetHeaderShy(true, animate: true);
+    }
+
+    private void SetHeaderShy(bool isShy, bool animate)
+    {
+        if (_isHeaderShy == isShy)
+        {
+            return;
+        }
+
+        _isHeaderShy = isShy;
+        int generation = ++_headerTransitionGeneration;
+        if (!animate || !DashboardHeaderGrid.IsLoaded || !AreAnimationsEnabled())
+        {
+            _headerTransition.Reset(toInitialState: !isShy);
+            DashboardWidgetBoard.UpdateLayout();
+            ResetMainRailReflow();
+            return;
+        }
+
+        _ = AnimateHeaderAsync(isShy, generation);
+    }
+
+    private async Task AnimateHeaderAsync(bool isShy, int generation)
+    {
+        try
+        {
+            bool reverseFromSettledShyState =
+                !isShy && _headerTransition.IsTargetState && !_headerTransition.IsAnimating;
+            double previousRailTop = reverseFromSettledShyState
+                ? GetElementTop(DashboardMainRailHost, DashboardWidgetBoard)
+                : 0;
+            Task headerAnimation = isShy
+                ? _headerTransition.StartAsync(forceUpdateAnimatedElements: true)
+                : _headerTransition.ReverseAsync(forceUpdateAnimatedElements: true);
+
+            DashboardWidgetBoard.UpdateLayout();
+            if (isShy)
+            {
+                double reclaimedHeight = Math.Max(0, DashboardHeaderGrid.ActualHeight);
+                AnimateMainRailReflow(
+                    new Vector3(0, (float)-reclaimedHeight, 0),
+                    ShyHeaderForwardDuration);
+            }
+            else if (reverseFromSettledShyState)
+            {
+                double expandedRailTop = GetElementTop(DashboardMainRailHost, DashboardWidgetBoard);
+                SetMainRailReflowImmediately(
+                    new Vector3(0, (float)(previousRailTop - expandedRailTop), 0));
+                AnimateMainRailReflow(Vector3.Zero, ShyHeaderReverseDuration);
+            }
+            else
+            {
+                AnimateMainRailReflow(Vector3.Zero, ShyHeaderReverseDuration);
+            }
+
+            await headerAnimation;
+            if (generation != _headerTransitionGeneration)
+            {
+                return;
+            }
+
+            DashboardWidgetBoard.UpdateLayout();
+            ResetMainRailReflow();
+        }
+        catch (OperationCanceledException)
+        {
+        }
+        catch (Exception) when (generation != _headerTransitionGeneration)
+        {
+        }
+        catch when (generation == _headerTransitionGeneration)
+        {
+            _headerTransition.Reset(toInitialState: !isShy);
+            DashboardWidgetBoard.UpdateLayout();
+            ResetMainRailReflow();
+        }
+    }
+
+    private void AnimateMainRailReflow(Vector3 translation, TimeSpan duration)
+    {
+        DashboardMainRailHost.TranslationTransition = new Vector3Transition
+        {
+            Components = Vector3TransitionComponents.Y,
+            Duration = duration
+        };
+        DashboardMainRailHost.Translation = translation;
+    }
+
+    private void SetMainRailReflowImmediately(Vector3 translation)
+    {
+        DashboardMainRailHost.TranslationTransition = null;
+        DashboardMainRailHost.Translation = translation;
+    }
+
+    private void ResetMainRailReflow() =>
+        SetMainRailReflowImmediately(Vector3.Zero);
+
+    private static double GetElementTop(FrameworkElement element, UIElement relativeTo) =>
+        element.TransformToVisual(relativeTo).TransformPoint(new Point()).Y;
+
+    private static bool AreAnimationsEnabled()
+    {
+        try
+        {
+            return new UISettings().AnimationsEnabled;
+        }
+        catch
+        {
+            return false;
+        }
     }
 
     private double GetVisibleContentWidth(double fallbackWidth)
@@ -211,7 +529,7 @@ public sealed partial class DashboardPage : Page
 
     private void SetSideDrawerOpen(bool open, bool animate = true)
     {
-        if (open && DashboardOverviewDrawerButton.Visibility != Visibility.Visible)
+        if (open && GetActiveOverviewDrawerButton().Visibility != Visibility.Visible)
         {
             return;
         }
@@ -423,11 +741,14 @@ public sealed partial class DashboardPage : Page
         {
             _ = restoreTarget!.Focus(FocusState.Keyboard);
         }
-        else if (IsUsableFocusTarget(DashboardOverviewDrawerButton))
+        else if (IsUsableFocusTarget(GetActiveOverviewDrawerButton()))
         {
-            _ = DashboardOverviewDrawerButton.Focus(FocusState.Keyboard);
+            _ = GetActiveOverviewDrawerButton().Focus(FocusState.Keyboard);
         }
     }
+
+    private Button GetActiveOverviewDrawerButton() =>
+        _isHeaderShy ? DashboardShyOverviewDrawerButton : DashboardOverviewDrawerButton;
 
     private Control? TryGetFocusedControl()
     {
@@ -474,6 +795,10 @@ public sealed partial class DashboardPage : Page
         FocusManager.LosingFocus -= FocusManager_LosingFocus;
         _starLibraryService.Changed -= StarLibraryService_Changed;
         _notificationInboxState.PropertyChanged -= NotificationInboxState_PropertyChanged;
+        DetachHeaderScrollTracking();
+        _headerTransitionGeneration++;
+        _headerTransition.Reset(toInitialState: !_isHeaderShy);
+        ResetMainRailReflow();
         _sideDrawerAnimator.Stop();
         CloseCustomizeDialog(cancelChanges: true);
     }
@@ -587,6 +912,22 @@ public sealed partial class DashboardPage : Page
         if (ViewModel.IsCustomizeDialogOpen && ViewModel.CancelCustomizeCommand.CanExecute(null))
         {
             ViewModel.CancelCustomizeCommand.Execute(null);
+        }
+    }
+
+    private sealed class TextScalingCalculator : IScalingCalculator
+    {
+        public Vector2 GetScaling(UIElement source, UIElement target)
+        {
+            if (source is not TextBlock sourceText ||
+                target is not TextBlock targetText ||
+                sourceText.FontSize <= 0)
+            {
+                return Vector2.One;
+            }
+
+            float scale = (float)(targetText.FontSize / sourceText.FontSize);
+            return float.IsFinite(scale) && scale > 0 ? new Vector2(scale) : Vector2.One;
         }
     }
 }
