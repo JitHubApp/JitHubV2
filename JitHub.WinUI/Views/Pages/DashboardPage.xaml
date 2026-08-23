@@ -52,6 +52,7 @@
                 </Grid.ColumnDefinitions>
                 <FontIcon
                     VerticalAlignment="Center"
+                    Translation="0,-3,0"
                     FontFamily="{StaticResource SegoeFluentIcons}"
                     FontSize="{ThemeResource AppFontSize18}"
                     Foreground="{ThemeResource AppAccentBrush}"

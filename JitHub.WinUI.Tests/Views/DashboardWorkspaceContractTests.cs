@@ -158,6 +158,7 @@ public sealed class DashboardWorkspaceContractTests
             element.Name.LocalName == "TextBlock" && element.Attribute("Grid.Column")?.Value == "2");
 
         Assert.Equal("Center", activityIcon.Attribute("VerticalAlignment")?.Value);
+        Assert.Equal("0,-2,0", activityIcon.Attribute("Translation")?.Value);
         Assert.Equal("Center", sentence.Attribute("VerticalAlignment")?.Value);
         Assert.Equal("Center", timestamp.Attribute("VerticalAlignment")?.Value);
         Assert.Equal(2, activityRoot
@@ -184,6 +185,13 @@ public sealed class DashboardWorkspaceContractTests
         Assert.Equal("Center", widgetIcon.Attribute("VerticalAlignment")?.Value);
         Assert.Null(widgetIcon.Attribute("Margin"));
         Assert.Equal("Center", widgetTitle.Attribute("VerticalAlignment")?.Value);
+
+        XElement metricTemplate = Assert.Single(dashboard.Descendants(), element =>
+            element.Attribute(xaml + "Key")?.Value == "DashboardMetricTemplate");
+        XElement metricIcon = Assert.Single(metricTemplate.Descendants(), element =>
+            element.Name.LocalName == "FontIcon");
+        Assert.Equal("Center", metricIcon.Attribute("VerticalAlignment")?.Value);
+        Assert.Equal("0,-3,0", metricIcon.Attribute("Translation")?.Value);
     }
 
     [Fact]

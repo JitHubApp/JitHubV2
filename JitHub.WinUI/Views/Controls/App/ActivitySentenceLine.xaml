@@ -28,6 +28,7 @@
             Width="24"
             Height="24"
             VerticalAlignment="Center"
+            Translation="0,-2,0"
             Background="{ThemeResource AppCanvasInsetBrush}"
             BorderBrush="{x:Bind ViewModel.Tone, Converter={StaticResource ActivityToneToBrushConverter}, ConverterParameter=Border, Mode=OneWay}"
             BorderThickness="1"
