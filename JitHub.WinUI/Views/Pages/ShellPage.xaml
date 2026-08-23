@@ -4,6 +4,7 @@
     xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
     xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
     xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+    xmlns:common="using:JitHub.WinUI.Views.Controls.Common"
     xmlns:labs="using:CommunityToolkit.WinUI"
     xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
     xmlns:muxc="using:Microsoft.UI.Xaml.Controls"
@@ -222,6 +223,7 @@
                     <VisualState.Setters>
                         <Setter Target="TitleWindowColumn.Width" Value="132" />
                         <Setter Target="NewRepositoryButton.Visibility" Value="Visible" />
+                        <Setter Target="NotificationsTopButton.Visibility" Value="Visible" />
                         <Setter Target="SettingsTopButton.Visibility" Value="Visible" />
                         <Setter Target="ProfileTopButton.Visibility" Value="Visible" />
                         <Setter Target="SearchBoxFrame.Width" Value="520" />
@@ -233,6 +235,7 @@
                     <VisualState.Setters>
                         <Setter Target="TitleWindowColumn.Width" Value="96" />
                         <Setter Target="NewRepositoryButton.Visibility" Value="Visible" />
+                        <Setter Target="NotificationsTopButton.Visibility" Value="Visible" />
                         <Setter Target="SettingsTopButton.Visibility" Value="Visible" />
                         <Setter Target="ProfileTopButton.Visibility" Value="Visible" />
                         <Setter Target="SearchBoxFrame.Width" Value="360" />
@@ -242,6 +245,7 @@
                     <VisualState.Setters>
                         <Setter Target="TitleWindowColumn.Width" Value="72" />
                         <Setter Target="NewRepositoryButton.Visibility" Value="Collapsed" />
+                        <Setter Target="NotificationsTopButton.Visibility" Value="Visible" />
                         <Setter Target="SettingsTopButton.Visibility" Value="Visible" />
                         <Setter Target="ProfileTopButton.Visibility" Value="Visible" />
                         <Setter Target="SearchBoxFrame.Width" Value="220" />
@@ -542,6 +546,44 @@
                         Glyph="&#xE8F4;" />
                 </Button>
                 <Button
+                    x:Uid="PagesShellPageShellNotificationsTopButton"
+                    x:Name="NotificationsTopButton"
+                    Width="36"
+                    Height="36"
+                    Padding="0"
+                    AutomationProperties.AutomationId="ShellNotificationsTopButton"
+                    AutomationProperties.HelpText="{x:Bind ViewModel.NotificationBadgeAutomationName, Mode=OneWay}"
+                    AutomationProperties.Name="Notifications"
+                    Command="{x:Bind ViewModel.OpenNotificationsCommand, Mode=OneWay}"
+                    Style="{StaticResource AppToolbarButtonStyle}"
+                    ToolTipService.ToolTip="Notifications">
+                    <Grid Width="24" Height="24">
+                        <FontIcon
+                            HorizontalAlignment="Center"
+                            VerticalAlignment="Center"
+                            FontFamily="{StaticResource SegoeFluentIcons}"
+                            Glyph="&#xEA8F;" />
+                        <StackPanel
+                            Margin="0,-7,-9,0"
+                            HorizontalAlignment="Right"
+                            VerticalAlignment="Top"
+                            AutomationProperties.AccessibilityView="Raw"
+                            Orientation="Horizontal"
+                            Spacing="1"
+                            Visibility="{x:Bind ViewModel.HasNotificationBadge, Converter={StaticResource BoolToVisibilityConverter}, Mode=OneWay}">
+                            <InfoBadge Value="{x:Bind ViewModel.DisplayNotificationBadgeValue, Mode=OneWay}" />
+                            <TextBlock
+                                VerticalAlignment="Center"
+                                FontFamily="{ThemeResource AppUiFontFamily}"
+                                FontSize="{ThemeResource AppFontSize11}"
+                                FontWeight="SemiBold"
+                                Foreground="{ThemeResource AppAccentBrush}"
+                                Text="+"
+                                Visibility="{x:Bind ViewModel.HasNotificationBadgeSuffix, Converter={StaticResource BoolToVisibilityConverter}, Mode=OneWay}" />
+                        </StackPanel>
+                    </Grid>
+                </Button>
+                <Button
                     x:Uid="PagesShellPageShellSettingsTopButton" x:Name="SettingsTopButton"
                     AutomationProperties.AutomationId="ShellSettingsTopButton"
                     AutomationProperties.Name="Settings"
@@ -554,14 +596,23 @@
                 </Button>
                 <Button
                     x:Uid="PagesShellPageShellProfileTopButton" x:Name="ProfileTopButton"
+                    Width="36"
+                    Height="36"
+                    Padding="6"
                     AutomationProperties.AutomationId="ShellProfileTopButton"
                     AutomationProperties.Name="Profile"
                     Command="{x:Bind ViewModel.GoToProfilePageCommand, Mode=OneWay}"
                     Style="{StaticResource AppToolbarButtonStyle}"
                     ToolTipService.ToolTip="Profile">
-                    <FontIcon
-                        FontFamily="{StaticResource SegoeFluentIcons}"
-                        Glyph="&#xE77B;" />
+                    <Border
+                        Width="24"
+                        Height="24"
+                        Background="{ThemeResource AppCanvasInsetBrush}"
+                        CornerRadius="{ThemeResource AppRadiusCircle}">
+                        <common:CachedImage
+                            SourceUrl="{x:Bind ViewModel.UserAvatarUrl, Mode=OneWay}"
+                            Stretch="UniformToFill" />
+                    </Border>
                 </Button>
             </StackPanel>
         </Grid>

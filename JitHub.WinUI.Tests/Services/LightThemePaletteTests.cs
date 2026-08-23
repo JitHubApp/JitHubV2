@@ -12,6 +12,7 @@ public sealed class LightThemePaletteTests
     private static readonly string[] StructuralNeutralKeys =
     [
         "AppCanvasColor",
+        "AppCanvasMaterialTintColor",
         "AppCanvasRaisedColor",
         "AppCanvasInsetColor",
         "AppRailColor",
@@ -177,6 +178,7 @@ public sealed class LightThemePaletteTests
         string[] requiredKeys =
         [
             .. SemanticSurfaceKeys,
+            "AppCanvasMaterialTintColor",
             "AppRailMaterialTintColor",
             "AppDangerForegroundColor",
             "AppSuccessForegroundColor"

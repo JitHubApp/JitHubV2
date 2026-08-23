@@ -48,7 +48,16 @@ public sealed record DashboardMetricItem(
     string Value,
     string Caption,
     string Glyph,
-    CacheState CacheState);
+    CacheState CacheState,
+    string Id = "");
+
+public static class DashboardMetricIds
+{
+    public const string Repositories = "repositories";
+    public const string Issues = "issues";
+    public const string PullRequests = "pull-requests";
+    public const string Followers = "followers";
+}
 
 public interface IGitHubDashboardQueryService
 {

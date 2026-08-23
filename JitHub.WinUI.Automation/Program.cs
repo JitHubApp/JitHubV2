@@ -4094,7 +4094,10 @@ static void RunShellRepoClickProbe(CaptureOptions options)
 
 static void RunHomeWidgetBoardProbe(CaptureOptions options)
 {
-    using var app = LaunchApplication(options.AppPath, "--page=shell", "--theme=dark");
+    bool isAttached = !string.IsNullOrWhiteSpace(options.AttachProcess);
+    using var app = isAttached
+        ? CreateProbeApplication(options)
+        : LaunchApplication(options.AppPath, "--page=shell", "--theme=dark");
     using var automation = new UIA3Automation();
     try
     {
@@ -4251,8 +4254,11 @@ static void RunHomeWidgetBoardProbe(CaptureOptions options)
     }
     finally
     {
-        TryClose(app);
-        KillExistingApplicationInstances(options.AppPath);
+        if (!isAttached)
+        {
+            TryClose(app);
+            KillExistingApplicationInstances(options.AppPath);
+        }
     }
 }
 

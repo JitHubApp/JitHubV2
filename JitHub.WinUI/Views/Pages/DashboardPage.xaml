@@ -57,7 +57,10 @@
         </DataTemplate>
 
         <DataTemplate x:Key="DashboardMetricTemplate" x:DataType="viewmodels:DashboardMetricViewItem">
-            <Grid MinHeight="46" ColumnSpacing="12">
+            <Grid
+                MinHeight="46"
+                labs:TransitionHelper.Id="{x:Bind TransitionId, Mode=OneWay}"
+                ColumnSpacing="12">
                 <Grid.ColumnDefinitions>
                     <ColumnDefinition Width="30" />
                     <ColumnDefinition Width="*" />
@@ -84,6 +87,49 @@
                     FontWeight="SemiBold"
                     Foreground="{ThemeResource AppInkBrush}"
                     Text="{x:Bind Value}" />
+            </Grid>
+        </DataTemplate>
+
+        <DataTemplate x:Key="DashboardCompactMetricTemplate" x:DataType="viewmodels:DashboardMetricViewItem">
+            <Grid
+                Width="76"
+                Height="46"
+                AutomationProperties.AccessibilityView="Raw"
+                labs:TransitionHelper.Id="{x:Bind TransitionId, Mode=OneWay}"
+                RowSpacing="1"
+                ToolTipService.ToolTip="{x:Bind Label}">
+                <Grid.RowDefinitions>
+                    <RowDefinition Height="Auto" />
+                    <RowDefinition Height="Auto" />
+                </Grid.RowDefinitions>
+                <StackPanel
+                    HorizontalAlignment="Center"
+                    VerticalAlignment="Center"
+                    Orientation="Horizontal"
+                    Spacing="5">
+                    <FontIcon
+                        VerticalAlignment="Center"
+                        FontFamily="{StaticResource SegoeFluentIcons}"
+                        FontSize="{ThemeResource AppFontSize13}"
+                        Foreground="{ThemeResource AppAccentBrush}"
+                        Glyph="{x:Bind Glyph}" />
+                    <TextBlock
+                        VerticalAlignment="Center"
+                        FontFamily="{ThemeResource AppUiFontFamily}"
+                        FontSize="{ThemeResource AppFontSize13}"
+                        FontWeight="SemiBold"
+                        Foreground="{ThemeResource AppInkBrush}"
+                        Text="{x:Bind Value}" />
+                </StackPanel>
+                <TextBlock
+                    Grid.Row="1"
+                    MaxWidth="72"
+                    HorizontalAlignment="Center"
+                    FontFamily="{ThemeResource AppUiFontFamily}"
+                    FontSize="{ThemeResource AppFontSize11}"
+                    Foreground="{ThemeResource AppInkSubtleBrush}"
+                    Text="{x:Bind Label}"
+                    TextTrimming="CharacterEllipsis" />
             </Grid>
         </DataTemplate>
 
@@ -314,6 +360,9 @@
                 AutomationProperties.AccessibilityView="Control"
                 AutomationProperties.AutomationId="{x:Bind AutomationId}"
                 AutomationProperties.Name="{x:Bind Title}"
+                Loaded="DashboardWidgetCard_Loaded"
+                Tag="{x:Bind Id}"
+                Unloaded="DashboardWidgetCard_Unloaded"
                 Style="{StaticResource DashboardWidgetCardStyle}">
                 <Grid RowSpacing="12">
                     <Grid.RowDefinitions>
@@ -529,7 +578,7 @@
                 Padding="4"
                 VerticalAlignment="Top"
                 AutomationProperties.AccessibilityView="Raw"
-                Background="{ThemeResource AppTransientOverlayBrush}"
+                Background="{ThemeResource AppCanvasTransientOverlayBrush}"
                 BorderBrush="{ThemeResource AppHairlineBrush}"
                 BorderThickness="0,0,0,1"
                 Canvas.ZIndex="10"
@@ -635,24 +684,53 @@
                 </ScrollViewer>
             </Grid>
 
-            <ScrollViewer
-                x:Name="DashboardSideRailScrollViewer"
+            <Grid
+                x:Name="DashboardSideRailHost"
                 Grid.Row="0"
                 Grid.RowSpan="2"
                 Grid.Column="1"
-                AutomationProperties.AutomationId="DashboardSideRailScrollViewer"
-                HorizontalScrollBarVisibility="Disabled"
-                HorizontalScrollMode="Disabled"
-                VerticalScrollBarVisibility="Auto"
-                VerticalScrollMode="Auto"
                 Visibility="{x:Bind ViewModel.IsSideRailExpanded, Converter={StaticResource BoolToVisibilityConverter}, Mode=OneWay}">
-                <ItemsControl
-                    x:Uid="PagesDashboardPageDashboardSideRail" AutomationProperties.AccessibilityView="Control"
-                    AutomationProperties.AutomationId="DashboardSideRail"
-                    AutomationProperties.Name="Overview dashboard widgets"
-                    ItemTemplate="{StaticResource DashboardWidgetTemplate}"
-                    ItemsSource="{x:Bind ViewModel.SideWidgets, Mode=OneWay}" />
-            </ScrollViewer>
+                <ScrollViewer
+                    x:Name="DashboardSideRailScrollViewer"
+                    AutomationProperties.AutomationId="DashboardSideRailScrollViewer"
+                    HorizontalScrollBarVisibility="Disabled"
+                    HorizontalScrollMode="Disabled"
+                    VerticalScrollBarVisibility="Auto"
+                    VerticalScrollMode="Auto"
+                    ViewChanged="DashboardSideRailScrollViewer_ViewChanged">
+                    <ItemsControl
+                        x:Uid="PagesDashboardPageDashboardSideRail"
+                        x:Name="DashboardSideRailItems"
+                        AutomationProperties.AccessibilityView="Control"
+                        AutomationProperties.AutomationId="DashboardSideRail"
+                        AutomationProperties.Name="Overview dashboard widgets"
+                        ItemTemplate="{StaticResource DashboardWidgetTemplate}"
+                        ItemsSource="{x:Bind ViewModel.SideWidgets, Mode=OneWay}" />
+                </ScrollViewer>
+                <Border
+                    x:Name="DashboardOverviewShySurface"
+                    Height="54"
+                    Padding="4"
+                    VerticalAlignment="Top"
+                    AutomationProperties.AccessibilityView="Raw"
+                    Background="{ThemeResource AppCanvasTransientOverlayBrush}"
+                    BorderBrush="{ThemeResource AppHairlineBrush}"
+                    BorderThickness="0,0,0,1"
+                    Canvas.ZIndex="10"
+                    IsHitTestVisible="False"
+                    Visibility="Collapsed">
+                    <ItemsControl
+                        HorizontalAlignment="Center"
+                        ItemTemplate="{StaticResource DashboardCompactMetricTemplate}"
+                        ItemsSource="{x:Bind ViewModel.Metrics, Mode=OneWay}">
+                        <ItemsControl.ItemsPanel>
+                            <ItemsPanelTemplate>
+                                <ItemsStackPanel Orientation="Horizontal" />
+                            </ItemsPanelTemplate>
+                        </ItemsControl.ItemsPanel>
+                    </ItemsControl>
+                </Border>
+            </Grid>
             </Grid>
 
         <Grid

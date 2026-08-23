@@ -64,7 +64,7 @@ public sealed class DashboardWorkspaceContractTests
         Assert.Equal("Collapsed", (string?)compact.Attribute("Visibility"));
         Assert.Equal("40", (string?)compact.Attribute("Height"));
         Assert.Equal("2", (string?)compact.Attribute("Grid.RowSpan"));
-        Assert.Equal("{ThemeResource AppTransientOverlayBrush}", (string?)compact.Attribute("Background"));
+        Assert.Equal("{ThemeResource AppCanvasTransientOverlayBrush}", (string?)compact.Attribute("Background"));
         Assert.Equal("0,0,0,1", (string?)compact.Attribute("BorderThickness"));
         Assert.Equal("0,14,0,0", (string?)mainRailHost.Attribute("Margin"));
         Assert.Equal(
@@ -91,6 +91,61 @@ public sealed class DashboardWorkspaceContractTests
             source,
             StringComparison.Ordinal);
         Assert.Contains("GetActiveOverviewDrawerButton()", source, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void SideRailOverviewMorphsIntoAHorizontalCanvasMatchedStrip()
+    {
+        XDocument document = XDocument.Load(Path("JitHub.WinUI", "Views", "Pages", "DashboardPage.xaml"));
+        XNamespace xaml = "http://schemas.microsoft.com/winfx/2006/xaml";
+        XNamespace labs = "using:CommunityToolkit.WinUI";
+        XElement sideScrollViewer = FindById(document, "DashboardSideRailScrollViewer");
+        XElement sideItems = FindById(document, "DashboardSideRail");
+        XElement compact = Assert.Single(document.Descendants(), element =>
+            string.Equals((string?)element.Attribute(xaml + "Name"), "DashboardOverviewShySurface", StringComparison.Ordinal));
+        XElement compactTemplate = Assert.Single(document.Descendants(), element =>
+            string.Equals((string?)element.Attribute(xaml + "Key"), "DashboardCompactMetricTemplate", StringComparison.Ordinal));
+        XElement horizontalPanel = Assert.Single(compact.Descendants(), element => element.Name.LocalName == "ItemsStackPanel");
+        string source = File.ReadAllText(Path("JitHub.WinUI", "Views", "Pages", "DashboardPage.xaml.cs"));
+        string models = File.ReadAllText(Path("JitHub.WinUI", "ViewModels", "Pages", "DashboardModels.cs"));
+        string contracts = File.ReadAllText(Path("JitHub.WinUI", "Services", "Dashboard", "DashboardHomeContracts.cs"));
+        string queryService = File.ReadAllText(Path("JitHub.WinUI", "Services", "Dashboard", "GitHubDashboardQueryService.cs"));
+        string brushes = File.ReadAllText(Path("JitHub.WinUI", "Styles", "Foundation", "Tokens.Brushes.xaml"));
+        string colors = File.ReadAllText(Path("JitHub.WinUI", "Styles", "Foundation", "Tokens.Colors.xaml"));
+
+        Assert.Equal("DashboardSideRailScrollViewer_ViewChanged", (string?)sideScrollViewer.Attribute("ViewChanged"));
+        Assert.Equal("DashboardWidgetCard_Loaded", (string?)document.Descendants()
+            .Single(element => string.Equals((string?)element.Attribute(xaml + "Key"), "DashboardWidgetTemplate", StringComparison.Ordinal))
+            .Descendants()
+            .First(element => element.Name.LocalName == "Border")
+            .Attribute("Loaded"));
+        Assert.Equal("Collapsed", (string?)compact.Attribute("Visibility"));
+        Assert.Equal("54", (string?)compact.Attribute("Height"));
+        Assert.Equal("{ThemeResource AppCanvasTransientOverlayBrush}", (string?)compact.Attribute("Background"));
+        Assert.Equal("Horizontal", (string?)horizontalPanel.Attribute("Orientation"));
+        Assert.Equal("{x:Bind ViewModel.Metrics, Mode=OneWay}", (string?)compact.Descendants()
+            .First(element => element.Name.LocalName == "ItemsControl")
+            .Attribute("ItemsSource"));
+        Assert.NotNull(compactTemplate.Descendants().Single(element => element.Attribute(labs + "TransitionHelper.Id") is not null));
+        Assert.NotNull(sideItems.Attribute(xaml + "Name"));
+
+        Assert.Contains("SourceToggleMethod = VisualStateToggleMethod.ByIsVisible", source, StringComparison.Ordinal);
+        Assert.Contains("TargetToggleMethod = VisualStateToggleMethod.ByIsVisible", source, StringComparison.Ordinal);
+        Assert.Contains("DashboardOverviewMetricRepositories", source, StringComparison.Ordinal);
+        Assert.Contains("OverviewShyStartInset", source, StringComparison.Ordinal);
+        Assert.Contains("RegisterPropertyChangedCallback", source, StringComparison.Ordinal);
+        Assert.Contains("public string TransitionId => Metric.Id switch", models, StringComparison.Ordinal);
+        Assert.DoesNotContain("public string TransitionId => Label switch", models, StringComparison.Ordinal);
+        foreach (string id in new[] { "Repositories", "Issues", "PullRequests", "Followers" })
+        {
+            Assert.Contains($"public const string {id}", contracts, StringComparison.Ordinal);
+            Assert.Contains($"DashboardMetricIds.{id}", queryService, StringComparison.Ordinal);
+        }
+
+        Assert.Contains("x:Key=\"AppCanvasTransientOverlayBrush\"", brushes, StringComparison.Ordinal);
+        Assert.Contains("TintColor=\"{ThemeResource AppCanvasMaterialTintColor}\"", brushes, StringComparison.Ordinal);
+        Assert.Contains("FallbackColor=\"{ThemeResource AppCanvasColor}\"", brushes, StringComparison.Ordinal);
+        Assert.Contains("x:Key=\"AppCanvasMaterialTintColor\"", colors, StringComparison.Ordinal);
     }
 
     [Fact]

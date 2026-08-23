@@ -54,6 +54,7 @@ public sealed class ShellWorkspaceContractTests
             "ShellForwardButton",
             "ShellSearchSubmitButton",
             "ShellNewRepositoryButton",
+            "ShellNotificationsTopButton",
             "ShellSettingsTopButton",
             "ShellProfileTopButton",
             "ShellRepositoryRetryButton",
@@ -351,8 +352,9 @@ public sealed class ShellWorkspaceContractTests
     }
 
     [Fact]
-    public void SearchNavigationLabelMatchesItsCommandPaletteBehavior()
+    public void SearchLivesOnlyInTheGlobalTitleBarSurface()
     {
+        XDocument shell = LoadShellXaml();
         string source = File.ReadAllText(Path.Combine(
             FindRepositoryRoot(),
             "JitHub.WinUI",
@@ -360,11 +362,9 @@ public sealed class ShellWorkspaceContractTests
             "Pages",
             "ShellPageViewModel.cs"));
 
-        Assert.Contains(
-            "new(\"explore\", ShellNavigationText(\"Search\", \"Search\"), \"\\uE721\", new RelayCommand(FocusCommandSearchRequested))",
-            source,
-            StringComparison.Ordinal);
-        Assert.DoesNotContain("ShellNavigationText(\"Explore\"", source, StringComparison.Ordinal);
+        Assert.DoesNotContain("new(\"explore\"", source, StringComparison.Ordinal);
+        Assert.NotNull(Assert.Single(shell.Descendants(), element =>
+            string.Equals((string?)element.Attribute("AutomationProperties.AutomationId"), "ShellSearchTextBox", StringComparison.Ordinal)));
     }
 
     [Fact]
@@ -385,10 +385,8 @@ public sealed class ShellWorkspaceContractTests
             "ShellPage.xaml.cs"));
         XDocument shell = LoadShellXaml();
 
-        Assert.Contains(
-            "new(\"notifications\", ShellNavigationText(\"Notifications\", \"Notifications\")",
-            viewModel,
-            StringComparison.Ordinal);
+        Assert.DoesNotContain("new(\"notifications\", ShellNavigationText", viewModel, StringComparison.Ordinal);
+        Assert.Contains("OpenNotificationsCommand = new RelayCommand(OpenNotificationsPage)", viewModel, StringComparison.Ordinal);
         Assert.Contains("typeof(NotificationsPage)", viewModel, StringComparison.Ordinal);
         Assert.Contains("VirtualKey.Left", codeBehind, StringComparison.Ordinal);
         Assert.Contains("XButton1Pressed", codeBehind, StringComparison.Ordinal);
@@ -458,9 +456,15 @@ public sealed class ShellWorkspaceContractTests
         Assert.DoesNotContain("Pro User", xaml, StringComparison.OrdinalIgnoreCase);
         Assert.DoesNotContain("Pro User", viewModel, StringComparison.OrdinalIgnoreCase);
         Assert.Contains("ShellSettingsTopButton", xaml, StringComparison.Ordinal);
+        Assert.Contains("ShellNotificationsTopButton", xaml, StringComparison.Ordinal);
         Assert.Contains("ShellProfileTopButton", xaml, StringComparison.Ordinal);
+        Assert.Contains("OpenNotificationsCommand", xaml, StringComparison.Ordinal);
         Assert.Contains("GoToSettingsPageCommand", xaml, StringComparison.Ordinal);
         Assert.Contains("GoToProfilePageCommand", xaml, StringComparison.Ordinal);
+        Assert.Contains("SourceUrl=\"{x:Bind ViewModel.UserAvatarUrl, Mode=OneWay}\"", xaml, StringComparison.Ordinal);
+        Assert.Contains("NotificationBadgeAutomationName", xaml, StringComparison.Ordinal);
+        Assert.DoesNotContain("new(\"notifications\", ShellNavigationText", viewModel, StringComparison.Ordinal);
+        Assert.DoesNotContain("new(\"explore\"", viewModel, StringComparison.Ordinal);
         Assert.DoesNotContain("ShellUserFooterButton", xaml, StringComparison.Ordinal);
     }
 

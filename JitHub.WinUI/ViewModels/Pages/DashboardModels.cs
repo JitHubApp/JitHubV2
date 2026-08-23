@@ -136,6 +136,15 @@ public sealed partial class DashboardMetricViewItem : ObservableObject
 
     public string CacheStateText => Metric.CacheState.ToString();
 
+    public string TransitionId => Metric.Id switch
+    {
+        DashboardMetricIds.Repositories => "DashboardOverviewMetricRepositories",
+        DashboardMetricIds.Issues => "DashboardOverviewMetricIssues",
+        DashboardMetricIds.PullRequests => "DashboardOverviewMetricPullRequests",
+        DashboardMetricIds.Followers => "DashboardOverviewMetricFollowers",
+        _ => string.Empty
+    };
+
     partial void OnMetricChanged(DashboardMetricItem value)
     {
         OnPropertyChanged(nameof(Label));
@@ -143,6 +152,7 @@ public sealed partial class DashboardMetricViewItem : ObservableObject
         OnPropertyChanged(nameof(Caption));
         OnPropertyChanged(nameof(Glyph));
         OnPropertyChanged(nameof(CacheStateText));
+        OnPropertyChanged(nameof(TransitionId));
     }
 }
 

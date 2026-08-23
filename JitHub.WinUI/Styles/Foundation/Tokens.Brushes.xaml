@@ -57,6 +57,13 @@
         TintOpacity="0.2"
         TintLuminosityOpacity="0.85"
         FallbackColor="{ThemeResource AppOverlayColor}" />
+    <!-- Compensated tint keeps active acrylic visually continuous with the opaque canvas. -->
+    <AcrylicBrush
+        x:Key="AppCanvasTransientOverlayBrush"
+        TintColor="{ThemeResource AppCanvasMaterialTintColor}"
+        TintOpacity="0.96"
+        TintLuminosityOpacity="1"
+        FallbackColor="{ThemeResource AppCanvasColor}" />
     <!-- Compensated tint keeps active acrylic visually continuous with the opaque rail. -->
     <AcrylicBrush
         x:Key="AppRailTransientOverlayBrush"

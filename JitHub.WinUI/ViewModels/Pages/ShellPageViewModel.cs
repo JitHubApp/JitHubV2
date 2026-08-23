@@ -82,6 +82,9 @@ public sealed partial class ShellPageViewModel : ViewModelBase
     private bool _isStarLibraryDegraded;
     private string _userDisplayName = "GitHub";
     private string _userSubtitle = "Signed in";
+    private string _userAvatarUrl = string.Empty;
+    private string _notificationBadgeText = string.Empty;
+    private int _notificationBadgeValue;
     private GitHubRepository? _activeRepository;
     private int _searchRequestVersion;
     private CancellationTokenSource? _searchCancellationTokenSource;
@@ -113,6 +116,7 @@ public sealed partial class ShellPageViewModel : ViewModelBase
         NewTabCommand = new RelayCommand(OpenNewHomeTab);
         CloseSelectedTabCommand = new RelayCommand(CloseSelectedTab);
         OpenNewRepositoryCommand = new RelayCommand(OpenNewRepositoryModal);
+        OpenNotificationsCommand = new RelayCommand(OpenNotificationsPage);
         GoToSettingsPageCommand = new RelayCommand(GoToSettingsPage);
         GoToProfilePageCommand = new RelayCommand(GoToProfilePage);
         SetRepositoryFilterCommand = new RelayCommand<string?>(SetRepositoryFilter);
@@ -124,10 +128,8 @@ public sealed partial class ShellPageViewModel : ViewModelBase
             new("home", ShellNavigationText("Home", "Home"), "\uE80F", new RelayCommand(GoHome)),
             new("issues", ShellNavigationText("Issues", "Issues"), "\uE8A5", new RelayCommand(OpenMyIssuesPage)),
             new("pull-requests", ShellNavigationText("PullRequests", "Pull Requests"), "\uE8EE", new RelayCommand(OpenMyPullRequestsPage)),
-            new("notifications", ShellNavigationText("Notifications", "Notifications"), "\uEA8F", new RelayCommand(OpenNotificationsPage)),
             new("stars", ShellNavigationText("Stars", "Stars"), "\uE734", new RelayCommand(OpenStarsPage)),
-            new("gists", ShellNavigationText("Gists", "Gists"), "\uE943", new RelayCommand(OpenGistsPage)),
-            new("explore", ShellNavigationText("Search", "Search"), "\uE721", new RelayCommand(FocusCommandSearchRequested))
+            new("gists", ShellNavigationText("Gists", "Gists"), "\uE943", new RelayCommand(OpenGistsPage))
         ];
 
         _notificationInboxState.PropertyChanged += NotificationInboxState_PropertyChanged;
@@ -159,12 +161,8 @@ public sealed partial class ShellPageViewModel : ViewModelBase
 
     private void UpdateNotificationBadge()
     {
-        ShellNavigationItem? item = NavigationItems.FirstOrDefault(static item => item.Id == "notifications");
-        if (item is not null)
-        {
-            item.BadgeText = _notificationInboxState.BadgeText;
-            item.BadgeValue = _notificationInboxState.UnreadCount;
-        }
+        NotificationBadgeText = _notificationInboxState.BadgeText;
+        NotificationBadgeValue = _notificationInboxState.UnreadCount;
     }
 
     public GlobalViewModel GlobalViewModel { get; }
@@ -176,6 +174,8 @@ public sealed partial class ShellPageViewModel : ViewModelBase
     public ICommand CloseSelectedTabCommand { get; }
 
     public ICommand OpenNewRepositoryCommand { get; }
+
+    public ICommand OpenNotificationsCommand { get; }
 
     public ICommand GoToSettingsPageCommand { get; }
 
@@ -309,6 +309,49 @@ public sealed partial class ShellPageViewModel : ViewModelBase
         get => _userSubtitle;
         private set => SetProperty(ref _userSubtitle, value);
     }
+
+    public string UserAvatarUrl
+    {
+        get => _userAvatarUrl;
+        private set => SetProperty(ref _userAvatarUrl, value ?? string.Empty);
+    }
+
+    public string NotificationBadgeText
+    {
+        get => _notificationBadgeText;
+        private set
+        {
+            if (SetProperty(ref _notificationBadgeText, value ?? string.Empty))
+            {
+                OnPropertyChanged(nameof(HasNotificationBadgeSuffix));
+                OnPropertyChanged(nameof(NotificationBadgeAutomationName));
+            }
+        }
+    }
+
+    public int NotificationBadgeValue
+    {
+        get => _notificationBadgeValue;
+        private set
+        {
+            if (SetProperty(ref _notificationBadgeValue, Math.Max(0, value)))
+            {
+                OnPropertyChanged(nameof(HasNotificationBadge));
+                OnPropertyChanged(nameof(DisplayNotificationBadgeValue));
+                OnPropertyChanged(nameof(NotificationBadgeAutomationName));
+            }
+        }
+    }
+
+    public bool HasNotificationBadge => NotificationBadgeValue > 0;
+
+    public int DisplayNotificationBadgeValue => Math.Min(99, NotificationBadgeValue);
+
+    public bool HasNotificationBadgeSuffix => NotificationBadgeText.EndsWith('+');
+
+    public string NotificationBadgeAutomationName => HasNotificationBadge
+        ? ShellFormat("Notifications.BadgeAutomationFormat", "Unread notifications: {0}", NotificationBadgeValue)
+        : ShellText("Notifications.NoUnreadAutomation", "No unread notifications");
 
     public GitHubRepository? ActiveRepository
     {
@@ -2138,6 +2181,7 @@ public sealed partial class ShellPageViewModel : ViewModelBase
         UserSubtitle = !string.IsNullOrWhiteSpace(login) && !string.Equals(login, UserDisplayName, StringComparison.OrdinalIgnoreCase)
             ? $"@{login}"
             : "GitHub account";
+        UserAvatarUrl = user?.AvatarUrl?.Trim() ?? string.Empty;
     }
 
     private void RepositoryIndexService_Changed(object? sender, AccountRepositoryIndexChangedEventArgs e)

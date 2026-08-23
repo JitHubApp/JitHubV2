@@ -2311,6 +2311,7 @@ public sealed partial class ShellPage : Page
                 SearchSubmitButton,
                 ShellRailDrawerButton,
                 NewRepositoryButton,
+                NotificationsTopButton,
                 SettingsTopButton,
                 ProfileTopButton);
         });

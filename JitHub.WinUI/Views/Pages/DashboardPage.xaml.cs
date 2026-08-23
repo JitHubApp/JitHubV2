@@ -28,6 +28,8 @@ public sealed partial class DashboardPage : Page
     private const double ShyHeaderRestoreOffset = 8;
     private const double ShyHeaderRevealTravel = 64;
     private const double ShyHeaderRehideTravel = 24;
+    private const double OverviewShyStartInset = 56;
+    private const double OverviewShyRestoreInset = 8;
     private const double ScrollDirectionEpsilon = 0.5;
     private const double SideDrawerFallbackWidth = 360;
     private const int VkShift = 0x10;
@@ -35,6 +37,8 @@ public sealed partial class DashboardPage : Page
     private const int VkRightShift = 0xA1;
     private static readonly TimeSpan ShyHeaderForwardDuration = TimeSpan.FromMilliseconds(240);
     private static readonly TimeSpan ShyHeaderReverseDuration = TimeSpan.FromMilliseconds(220);
+    private static readonly TimeSpan OverviewShyForwardDuration = TimeSpan.FromMilliseconds(240);
+    private static readonly TimeSpan OverviewShyReverseDuration = TimeSpan.FromMilliseconds(220);
     private static readonly IScalingCalculator HeaderGreetingScaling = new TextScalingCalculator();
 
     [LibraryImport("user32.dll")]
@@ -45,6 +49,8 @@ public sealed partial class DashboardPage : Page
     private readonly NotificationInboxState _notificationInboxState;
     private readonly SlideDrawerAnimator _sideDrawerAnimator;
     private readonly TransitionHelper _headerTransition;
+    private TransitionHelper? _overviewTransition;
+    private FrameworkElement? _overviewMorphSource;
     private bool _initialized;
     private bool _isCustomizeDialogShowing;
     private ModalSession? _customizeModalSession;
@@ -61,6 +67,11 @@ public sealed partial class DashboardPage : Page
     private bool _isScrollHeaderShy;
     private bool _isHeaderShy;
     private int _headerTransitionGeneration;
+    private long _overviewVerticalOffsetCallbackToken;
+    private long _overviewScrollableHeightCallbackToken;
+    private bool _overviewScrollCallbacksRegistered;
+    private bool _isOverviewShy;
+    private int _overviewTransitionGeneration;
 
     public DashboardPageViewModel ViewModel { get; }
 
@@ -129,8 +140,10 @@ public sealed partial class DashboardPage : Page
         {
             ApplyResponsiveLayout(ActualWidth);
             AttachHeaderScrollTracking();
+            AttachOverviewScrollTracking();
             if (_initialized)
             {
+                UpdateOverviewForScroll(DashboardSideRailScrollViewer);
                 CommitPerformanceReadiness();
                 return;
             }
@@ -138,6 +151,7 @@ public sealed partial class DashboardPage : Page
             _initialized = true;
             await ViewModel.InitializeAsync();
             UpdateHeaderForScroll(DashboardMainRailScrollViewer);
+            UpdateOverviewForScroll(DashboardSideRailScrollViewer);
             CommitPerformanceReadiness();
         }
         catch (Exception ex)
@@ -192,6 +206,15 @@ public sealed partial class DashboardPage : Page
         bool iconOnlyActions = !chrome.ShowActionLabels;
 
         ViewModel.SetCompactSideRail(compact);
+        if (compact)
+        {
+            SetOverviewShy(false, animate: false);
+        }
+        else
+        {
+            _ = DispatcherQueue.TryEnqueue(() => UpdateOverviewForScroll(DashboardSideRailScrollViewer));
+        }
+
         DashboardSideColumn.Width = compact ? new GridLength(0) : new GridLength(344);
         DashboardWidgetBoard.ColumnSpacing = compact ? 0 : 16;
         double mainRailWidth = compact ? boardWidth : Math.Max(0, boardWidth - 344 - 16);
@@ -270,6 +293,42 @@ public sealed partial class DashboardPage : Page
         _scrollCallbacksRegistered = false;
     }
 
+    private void AttachOverviewScrollTracking()
+    {
+        if (_overviewScrollCallbacksRegistered)
+        {
+            UpdateOverviewForScroll(DashboardSideRailScrollViewer);
+            return;
+        }
+
+        _overviewVerticalOffsetCallbackToken = DashboardSideRailScrollViewer.RegisterPropertyChangedCallback(
+            ScrollViewer.VerticalOffsetProperty,
+            DashboardSideRailScrollPropertyChanged);
+        _overviewScrollableHeightCallbackToken = DashboardSideRailScrollViewer.RegisterPropertyChangedCallback(
+            ScrollViewer.ScrollableHeightProperty,
+            DashboardSideRailScrollPropertyChanged);
+        _overviewScrollCallbacksRegistered = true;
+        UpdateOverviewForScroll(DashboardSideRailScrollViewer);
+    }
+
+    private void DetachOverviewScrollTracking()
+    {
+        if (!_overviewScrollCallbacksRegistered)
+        {
+            return;
+        }
+
+        DashboardSideRailScrollViewer.UnregisterPropertyChangedCallback(
+            ScrollViewer.VerticalOffsetProperty,
+            _overviewVerticalOffsetCallbackToken);
+        DashboardSideRailScrollViewer.UnregisterPropertyChangedCallback(
+            ScrollViewer.ScrollableHeightProperty,
+            _overviewScrollableHeightCallbackToken);
+        _overviewVerticalOffsetCallbackToken = 0;
+        _overviewScrollableHeightCallbackToken = 0;
+        _overviewScrollCallbacksRegistered = false;
+    }
+
     private void DashboardMainRailScrollViewer_ViewChanged(
         object? sender,
         ScrollViewerViewChangedEventArgs e)
@@ -287,6 +346,208 @@ public sealed partial class DashboardPage : Page
         if (sender is ScrollViewer scrollViewer)
         {
             UpdateHeaderForScroll(scrollViewer);
+        }
+    }
+
+    private void DashboardSideRailScrollViewer_ViewChanged(
+        object? sender,
+        ScrollViewerViewChangedEventArgs e)
+    {
+        if (sender is ScrollViewer scrollViewer)
+        {
+            UpdateOverviewForScroll(scrollViewer);
+        }
+    }
+
+    private void DashboardSideRailScrollPropertyChanged(
+        DependencyObject sender,
+        DependencyProperty dependencyProperty)
+    {
+        if (sender is ScrollViewer scrollViewer)
+        {
+            UpdateOverviewForScroll(scrollViewer);
+        }
+    }
+
+    private void DashboardWidgetCard_Loaded(object sender, RoutedEventArgs e)
+    {
+        if (sender is FrameworkElement { Tag: string id } card &&
+            string.Equals(id, DashboardWidgetIds.Overview, StringComparison.Ordinal) &&
+            IsWithin(card, DashboardSideRailItems))
+        {
+            ConfigureOverviewMorphSource(card);
+        }
+    }
+
+    private void DashboardWidgetCard_Unloaded(object sender, RoutedEventArgs e)
+    {
+        if (ReferenceEquals(sender, _overviewMorphSource))
+        {
+            ClearOverviewMorphSource();
+        }
+    }
+
+    private void ConfigureOverviewMorphSource(FrameworkElement source)
+    {
+        if (ReferenceEquals(_overviewMorphSource, source))
+        {
+            UpdateOverviewForScroll(DashboardSideRailScrollViewer);
+            return;
+        }
+
+        ClearOverviewMorphSource();
+        _overviewMorphSource = source;
+        _overviewTransition = new TransitionHelper
+        {
+            Source = source,
+            Target = DashboardOverviewShySurface,
+            Duration = OverviewShyForwardDuration,
+            ReverseDuration = OverviewShyReverseDuration,
+            SourceToggleMethod = VisualStateToggleMethod.ByIsVisible,
+            TargetToggleMethod = VisualStateToggleMethod.ByIsVisible,
+            Configs =
+            [
+                new TransitionConfig { Id = "DashboardOverviewMetricRepositories", ScaleMode = ScaleMode.Scale, EnableClipAnimation = true },
+                new TransitionConfig { Id = "DashboardOverviewMetricIssues", ScaleMode = ScaleMode.Scale, EnableClipAnimation = true },
+                new TransitionConfig { Id = "DashboardOverviewMetricPullRequests", ScaleMode = ScaleMode.Scale, EnableClipAnimation = true },
+                new TransitionConfig { Id = "DashboardOverviewMetricFollowers", ScaleMode = ScaleMode.Scale, EnableClipAnimation = true }
+            ]
+        };
+        _isOverviewShy = false;
+        _ = DispatcherQueue.TryEnqueue(() =>
+        {
+            if (ReferenceEquals(_overviewMorphSource, source))
+            {
+                UpdateOverviewForScroll(DashboardSideRailScrollViewer);
+            }
+        });
+    }
+
+    private void ClearOverviewMorphSource()
+    {
+        _overviewTransitionGeneration++;
+        try
+        {
+            _overviewTransition?.Reset(toInitialState: true);
+        }
+        catch (InvalidOperationException)
+        {
+        }
+
+        _overviewTransition = null;
+        _overviewMorphSource = null;
+        _isOverviewShy = false;
+        DashboardOverviewShySurface.Visibility = Visibility.Collapsed;
+    }
+
+    private void UpdateOverviewForScroll(ScrollViewer scrollViewer)
+    {
+        if (!ReferenceEquals(scrollViewer, DashboardSideRailScrollViewer))
+        {
+            return;
+        }
+
+        FrameworkElement? source = _overviewMorphSource;
+        if (_overviewTransition is null ||
+            source is not { IsLoaded: true } ||
+            !ViewModel.IsSideRailExpanded ||
+            scrollViewer.ScrollableHeight <= 0)
+        {
+            SetOverviewShy(false, animate: true);
+            return;
+        }
+
+        double sourceTop;
+        try
+        {
+            sourceTop = source.TransformToVisual(DashboardSideRailItems).TransformPoint(new Point()).Y;
+        }
+        catch (Exception ex) when (ex is InvalidOperationException or ArgumentException or COMException)
+        {
+            SetOverviewShy(false, animate: false);
+            return;
+        }
+
+        double offset = scrollViewer.VerticalOffset;
+        if (_isOverviewShy)
+        {
+            if (offset <= sourceTop + OverviewShyRestoreInset)
+            {
+                SetOverviewShy(false, animate: true);
+            }
+
+            return;
+        }
+
+        if (offset >= sourceTop + OverviewShyStartInset)
+        {
+            SetOverviewShy(true, animate: true);
+        }
+    }
+
+    private void SetOverviewShy(bool isShy, bool animate)
+    {
+        TransitionHelper? transition = _overviewTransition;
+        if (transition is null || _isOverviewShy == isShy)
+        {
+            return;
+        }
+
+        _isOverviewShy = isShy;
+        int generation = ++_overviewTransitionGeneration;
+        bool targetWasCollapsed = DashboardOverviewShySurface.Visibility != Visibility.Visible;
+        if (isShy && targetWasCollapsed)
+        {
+            DashboardOverviewShySurface.Visibility = Visibility.Visible;
+            DashboardSideRailHost.UpdateLayout();
+            transition.Reset(toInitialState: true);
+        }
+
+        if (!animate || !DashboardSideRailHost.IsLoaded || !AreAnimationsEnabled())
+        {
+            transition.Reset(toInitialState: !isShy);
+            if (!isShy)
+            {
+                DashboardOverviewShySurface.Visibility = Visibility.Collapsed;
+            }
+
+            return;
+        }
+
+        _ = AnimateOverviewAsync(transition, isShy, generation);
+    }
+
+    private async Task AnimateOverviewAsync(TransitionHelper transition, bool isShy, int generation)
+    {
+        try
+        {
+            if (isShy)
+            {
+                await transition.StartAsync(forceUpdateAnimatedElements: true);
+            }
+            else
+            {
+                await transition.ReverseAsync(forceUpdateAnimatedElements: true);
+            }
+
+            if (generation == _overviewTransitionGeneration && !isShy)
+            {
+                DashboardOverviewShySurface.Visibility = Visibility.Collapsed;
+            }
+        }
+        catch (OperationCanceledException)
+        {
+        }
+        catch (Exception) when (generation != _overviewTransitionGeneration)
+        {
+        }
+        catch when (generation == _overviewTransitionGeneration)
+        {
+            transition.Reset(toInitialState: !isShy);
+            if (!isShy)
+            {
+                DashboardOverviewShySurface.Visibility = Visibility.Collapsed;
+            }
         }
     }
 
@@ -796,9 +1057,11 @@ public sealed partial class DashboardPage : Page
         _starLibraryService.Changed -= StarLibraryService_Changed;
         _notificationInboxState.PropertyChanged -= NotificationInboxState_PropertyChanged;
         DetachHeaderScrollTracking();
+        DetachOverviewScrollTracking();
         _headerTransitionGeneration++;
         _headerTransition.Reset(toInitialState: !_isHeaderShy);
         ResetMainRailReflow();
+        ClearOverviewMorphSource();
         _sideDrawerAnimator.Stop();
         CloseCustomizeDialog(cancelChanges: true);
     }

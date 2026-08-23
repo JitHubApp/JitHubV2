@@ -51,6 +51,8 @@ public sealed class AutomationHarnessSourceContractTests
         Assert.Contains("home-widget-board-drawer-close-focused.png", probe, StringComparison.Ordinal);
         Assert.Contains("home-widget-board-drawer-escape-focus-restored.png", probe, StringComparison.Ordinal);
         Assert.Contains("home-widget-board-drawer-light-dismiss-focus-restored.png", probe, StringComparison.Ordinal);
+        Assert.Contains("CreateProbeApplication(options)", probe, StringComparison.Ordinal);
+        Assert.Contains("if (!isAttached)", probe, StringComparison.Ordinal);
     }
 
     [Fact]

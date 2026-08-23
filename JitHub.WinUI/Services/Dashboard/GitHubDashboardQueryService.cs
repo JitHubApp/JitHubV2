@@ -306,10 +306,10 @@ public sealed class GitHubDashboardQueryService : IGitHubDashboardQueryService
         CacheState cacheState = CombineCacheState(repositories.CacheState, issueCount.CacheState, pullRequestCount.CacheState);
         DashboardMetricItem[] items =
         [
-            new("Repositories", FormatCount(user.PublicRepos), "public repos", "\uE8B7", repositories.CacheState),
-            new("Open issues", FormatCount(issueCount.Value.TotalCount), "involving you", "\uE8A5", issueCount.CacheState),
-            new("Open PRs", FormatCount(pullRequestCount.Value.TotalCount), "involving you", "\uE8EE", pullRequestCount.CacheState),
-            new("Followers", FormatCount(user.Followers), "profile followers", "\uE716", CacheState.Fresh)
+            new("Repositories", FormatCount(user.PublicRepos), "public repos", "\uE8B7", repositories.CacheState, DashboardMetricIds.Repositories),
+            new("Open issues", FormatCount(issueCount.Value.TotalCount), "involving you", "\uE8A5", issueCount.CacheState, DashboardMetricIds.Issues),
+            new("Open PRs", FormatCount(pullRequestCount.Value.TotalCount), "involving you", "\uE8EE", pullRequestCount.CacheState, DashboardMetricIds.PullRequests),
+            new("Followers", FormatCount(user.Followers), "profile followers", "\uE716", CacheState.Fresh, DashboardMetricIds.Followers)
         ];
 
         return new DashboardSectionResult<DashboardMetricItem[]>(
@@ -423,10 +423,10 @@ public sealed class GitHubDashboardQueryService : IGitHubDashboardQueryService
             };
             DashboardMetricItem[] largeMetrics =
             [
-                new("Repositories", largeRepositories.Length.ToString(), "public repos", "\uE8B7", CacheState.Fresh),
-                new("Open issues", ProductPerformanceLargeAccountFixture.WorkItemCount.ToString(), "involving you", "\uE8A5", CacheState.Fresh),
-                new("Open PRs", ProductPerformanceLargeAccountFixture.WorkItemCount.ToString(), "involving you", "\uE8EE", CacheState.Fresh),
-                new("Followers", ProductPerformanceLargeAccountFixture.PeopleCount.ToString(), "profile followers", "\uE716", CacheState.Fresh)
+                new("Repositories", largeRepositories.Length.ToString(), "public repos", "\uE8B7", CacheState.Fresh, DashboardMetricIds.Repositories),
+                new("Open issues", ProductPerformanceLargeAccountFixture.WorkItemCount.ToString(), "involving you", "\uE8A5", CacheState.Fresh, DashboardMetricIds.Issues),
+                new("Open PRs", ProductPerformanceLargeAccountFixture.WorkItemCount.ToString(), "involving you", "\uE8EE", CacheState.Fresh, DashboardMetricIds.PullRequests),
+                new("Followers", ProductPerformanceLargeAccountFixture.PeopleCount.ToString(), "profile followers", "\uE716", CacheState.Fresh, DashboardMetricIds.Followers)
             ];
             return new DashboardHomeSnapshot(
                 largeUser,
@@ -462,10 +462,10 @@ public sealed class GitHubDashboardQueryService : IGitHubDashboardQueryService
         ];
         DashboardMetricItem[] metrics =
         [
-            new("Repositories", "4", "public repos", "\uE8B7", CacheState.Fresh),
-            new("Open issues", "12", "involving you", "\uE8A5", CacheState.Fresh),
-            new("Open PRs", "5", "involving you", "\uE8EE", CacheState.Fresh),
-            new("Followers", "128", "profile followers", "\uE716", CacheState.Fresh)
+            new("Repositories", "4", "public repos", "\uE8B7", CacheState.Fresh, DashboardMetricIds.Repositories),
+            new("Open issues", "12", "involving you", "\uE8A5", CacheState.Fresh, DashboardMetricIds.Issues),
+            new("Open PRs", "5", "involving you", "\uE8EE", CacheState.Fresh, DashboardMetricIds.PullRequests),
+            new("Followers", "128", "profile followers", "\uE716", CacheState.Fresh, DashboardMetricIds.Followers)
         ];
 
         return new DashboardHomeSnapshot(

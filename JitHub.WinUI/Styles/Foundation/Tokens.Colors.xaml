@@ -4,6 +4,7 @@
     <ResourceDictionary.ThemeDictionaries>
         <ResourceDictionary x:Key="Default">
             <Color x:Key="AppCanvasColor">#F3F4F4</Color>
+            <Color x:Key="AppCanvasMaterialTintColor">#F5F6F6</Color>
             <Color x:Key="AppCanvasRaisedColor">#FFFFFF</Color>
             <Color x:Key="AppCanvasInsetColor">#E7E9E8</Color>
             <Color x:Key="AppRailColor">#ECEEEE</Color>
@@ -56,6 +57,7 @@
         </ResourceDictionary>
         <ResourceDictionary x:Key="Light">
             <Color x:Key="AppCanvasColor">#F3F4F4</Color>
+            <Color x:Key="AppCanvasMaterialTintColor">#F5F6F6</Color>
             <Color x:Key="AppCanvasRaisedColor">#FFFFFF</Color>
             <Color x:Key="AppCanvasInsetColor">#E7E9E8</Color>
             <Color x:Key="AppRailColor">#ECEEEE</Color>
@@ -108,6 +110,7 @@
         </ResourceDictionary>
         <ResourceDictionary x:Key="Dark">
             <Color x:Key="AppCanvasColor">#161916</Color>
+            <Color x:Key="AppCanvasMaterialTintColor">#141714</Color>
             <Color x:Key="AppCanvasRaisedColor">#1C211D</Color>
             <Color x:Key="AppCanvasInsetColor">#0F120F</Color>
             <Color x:Key="AppRailColor">#121612</Color>
@@ -160,6 +163,7 @@
         </ResourceDictionary>
         <ResourceDictionary x:Key="HighContrast">
             <StaticResource x:Key="AppCanvasColor" ResourceKey="SystemColorWindowColor" />
+            <StaticResource x:Key="AppCanvasMaterialTintColor" ResourceKey="SystemColorWindowColor" />
             <StaticResource x:Key="AppCanvasRaisedColor" ResourceKey="SystemColorButtonFaceColor" />
             <StaticResource x:Key="AppCanvasInsetColor" ResourceKey="SystemColorWindowColor" />
             <StaticResource x:Key="AppRailColor" ResourceKey="SystemColorWindowColor" />

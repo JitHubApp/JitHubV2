@@ -3804,6 +3804,12 @@
   <data name="PagesShellPageShellNewRepositoryButton.ToolTipService.ToolTip" xml:space="preserve">
     <value>New repository</value>
   </data>
+  <data name="PagesShellPageShellNotificationsTopButton.AutomationProperties.Name" xml:space="preserve">
+    <value>Notifications</value>
+  </data>
+  <data name="PagesShellPageShellNotificationsTopButton.ToolTipService.ToolTip" xml:space="preserve">
+    <value>Notifications</value>
+  </data>
   <data name="PagesShellPageShellProfileTopButton.AutomationProperties.Name" xml:space="preserve">
     <value>Profile</value>
   </data>
@@ -3902,6 +3908,12 @@
   </data>
   <data name="Shell.Search.Placeholder" xml:space="preserve">
     <value>Search repos or commands</value>
+  </data>
+  <data name="Shell.Notifications.BadgeAutomationFormat" xml:space="preserve">
+    <value>Unread notifications: {0}</value>
+  </data>
+  <data name="Shell.Notifications.NoUnreadAutomation" xml:space="preserve">
+    <value>No unread notifications</value>
   </data>
   <data name="PagesShellPageShellSettingsTopButton.AutomationProperties.Name" xml:space="preserve">
     <value>Settings</value>
