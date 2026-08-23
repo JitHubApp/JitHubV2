@@ -45,6 +45,7 @@ public sealed partial class ShellPage : Page
     private const string SearchSuggestionsScenario = "search-suggestions";
     private static readonly TimeSpan RepositoryShyHeaderForwardDuration = TimeSpan.FromMilliseconds(240);
     private static readonly TimeSpan RepositoryShyHeaderReverseDuration = TimeSpan.FromMilliseconds(220);
+    private static readonly IScalingCalculator RepositoryHeaderTitleScaling = new TextScalingCalculator();
     private static readonly string[] ProductPerformanceRoutes =
     [
         "home",
@@ -126,9 +127,15 @@ public sealed partial class ShellPage : Page
             TargetToggleMethod = VisualStateToggleMethod.ByVisibility,
             Configs =
             [
-                new TransitionConfig { Id = "RepositoryHeaderSurface", ScaleMode = ScaleMode.None, EnableClipAnimation = true },
-                new TransitionConfig { Id = "RepositoryHeaderTitle" },
-                new TransitionConfig { Id = "RepositoryHeaderFilter", ScaleMode = ScaleMode.None, EnableClipAnimation = true }
+                new TransitionConfig
+                {
+                    Id = "RepositoryHeaderTitle",
+                    ScaleMode = ScaleMode.Custom,
+                    CustomScalingCalculator = RepositoryHeaderTitleScaling
+                },
+                new TransitionConfig { Id = "RepositoryHeaderFilterPublic", ScaleMode = ScaleMode.Scale, EnableClipAnimation = true },
+                new TransitionConfig { Id = "RepositoryHeaderFilterPrivate", ScaleMode = ScaleMode.Scale, EnableClipAnimation = true },
+                new TransitionConfig { Id = "RepositoryHeaderFilterForked", ScaleMode = ScaleMode.Scale, EnableClipAnimation = true }
             ]
         };
         _repositoryFiltersInitialized = true;
@@ -2385,4 +2392,20 @@ public sealed partial class ShellPage : Page
                 HtmlUrl = $"https://github.com/{owner}"
             }
         };
+
+    private sealed class TextScalingCalculator : IScalingCalculator
+    {
+        public Vector2 GetScaling(UIElement source, UIElement target)
+        {
+            if (source is not TextBlock sourceText ||
+                target is not TextBlock targetText ||
+                sourceText.FontSize <= 0)
+            {
+                return Vector2.One;
+            }
+
+            float scale = (float)(targetText.FontSize / sourceText.FontSize);
+            return float.IsFinite(scale) && scale > 0 ? new Vector2(scale) : Vector2.One;
+        }
+    }
 }

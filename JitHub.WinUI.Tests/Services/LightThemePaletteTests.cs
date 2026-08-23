@@ -15,6 +15,7 @@ public sealed class LightThemePaletteTests
         "AppCanvasRaisedColor",
         "AppCanvasInsetColor",
         "AppRailColor",
+        "AppRailMaterialTintColor",
         "AppSurfaceColor",
         "AppSurfaceSubtleColor",
         "AppCardColor",
@@ -176,6 +177,7 @@ public sealed class LightThemePaletteTests
         string[] requiredKeys =
         [
             .. SemanticSurfaceKeys,
+            "AppRailMaterialTintColor",
             "AppDangerForegroundColor",
             "AppSuccessForegroundColor"
         ];

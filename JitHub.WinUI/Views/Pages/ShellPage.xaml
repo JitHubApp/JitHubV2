@@ -613,7 +613,6 @@
                         </Grid.RowDefinitions>
                         <Grid
                             x:Name="RepositoryExpandedHeaderSurface"
-                            labs:TransitionHelper.Id="RepositoryHeaderSurface"
                             RowSpacing="10">
                             <Grid.RowDefinitions>
                                 <RowDefinition Height="Auto" />
@@ -637,7 +636,6 @@
                                 <toolkit:Segmented
                                     x:Uid="PagesShellPageShellRepositoryFilter"
                                     x:Name="ShellRepositoryExpandedFilter"
-                                    labs:TransitionHelper.Id="RepositoryHeaderFilter"
                                     AutomationProperties.AutomationId="ShellRepositoryFilter"
                                     AutomationProperties.Name="Repository visibility filter"
                                     SelectedIndex="0"
@@ -648,6 +646,7 @@
                                         Height="44"
                                         Padding="4,4"
                                         Width="80"
+                                        labs:TransitionHelper.Id="RepositoryHeaderFilterPublic"
                                         AutomationProperties.AutomationId="ShellRepoFilter_Public"
                                         AutomationProperties.Name="Show public repositories">
                                         <TextBlock
@@ -663,6 +662,7 @@
                                         Height="44"
                                         Padding="4,4"
                                         Width="80"
+                                        labs:TransitionHelper.Id="RepositoryHeaderFilterPrivate"
                                         AutomationProperties.AutomationId="ShellRepoFilter_Private"
                                         AutomationProperties.Name="Show private repositories">
                                         <TextBlock
@@ -678,6 +678,7 @@
                                         Height="44"
                                         Padding="4,4"
                                         Width="80"
+                                        labs:TransitionHelper.Id="RepositoryHeaderFilterForked"
                                         AutomationProperties.AutomationId="ShellRepoFilter_Forked"
                                         AutomationProperties.Name="Show forked repositories">
                                         <TextBlock
@@ -697,9 +698,8 @@
                             Margin="-4,0"
                             Padding="4,2"
                             VerticalAlignment="Top"
-                            labs:TransitionHelper.Id="RepositoryHeaderSurface"
                             AutomationProperties.AccessibilityView="Raw"
-                            Background="{ThemeResource AppTransientOverlayBrush}"
+                            Background="{ThemeResource AppRailTransientOverlayBrush}"
                             BorderBrush="{ThemeResource AppHairlineBrush}"
                             BorderThickness="0,0,0,1"
                             Canvas.ZIndex="10"
@@ -728,7 +728,6 @@
                                 MinHeight="30"
                                 Padding="2"
                                 VerticalAlignment="Center"
-                                labs:TransitionHelper.Id="RepositoryHeaderFilter"
                                 AutomationProperties.AutomationId="ShellRepositoryCompactFilter"
                                 AutomationProperties.Name="Repository visibility filter"
                                 SelectedIndex="0"
@@ -745,6 +744,7 @@
                                     Height="24"
                                     MinHeight="24"
                                     Padding="2,0"
+                                    labs:TransitionHelper.Id="RepositoryHeaderFilterPublic"
                                     AutomationProperties.AutomationId="ShellRepoCompactFilter_Public"
                                     AutomationProperties.Name="Show public repositories">
                                     <TextBlock
@@ -763,6 +763,7 @@
                                     Height="24"
                                     MinHeight="24"
                                     Padding="2,0"
+                                    labs:TransitionHelper.Id="RepositoryHeaderFilterPrivate"
                                     AutomationProperties.AutomationId="ShellRepoCompactFilter_Private"
                                     AutomationProperties.Name="Show private repositories">
                                     <TextBlock
@@ -781,6 +782,7 @@
                                     Height="24"
                                     MinHeight="24"
                                     Padding="2,0"
+                                    labs:TransitionHelper.Id="RepositoryHeaderFilterForked"
                                     AutomationProperties.AutomationId="ShellRepoCompactFilter_Forked"
                                     AutomationProperties.Name="Show forked repositories">
                                     <TextBlock

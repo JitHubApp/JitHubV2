@@ -210,6 +210,12 @@ public sealed class ShellWorkspaceContractTests
             "Views",
             "Pages",
             "ShellPage.xaml.cs"));
+        string brushes = File.ReadAllText(Path.Combine(
+            root,
+            "JitHub.WinUI",
+            "Styles",
+            "Foundation",
+            "Tokens.Brushes.xaml"));
         XNamespace xaml = "http://schemas.microsoft.com/winfx/2006/xaml";
         XNamespace labs = "using:CommunityToolkit.WinUI";
 
@@ -222,10 +228,33 @@ public sealed class ShellWorkspaceContractTests
         XElement compactFilter = Assert.Single(compact.Descendants(), element =>
             string.Equals((string?)element.Attribute(xaml + "Name"), "ShellRepositoryCompactFilter", StringComparison.Ordinal));
 
-        Assert.Equal("RepositoryHeaderSurface", (string?)expanded.Attribute(labs + "TransitionHelper.Id"));
-        Assert.Equal("RepositoryHeaderSurface", (string?)compact.Attribute(labs + "TransitionHelper.Id"));
+        Assert.Null(expanded.Attribute(labs + "TransitionHelper.Id"));
+        Assert.Null(compact.Attribute(labs + "TransitionHelper.Id"));
+        Assert.Equal(
+            4,
+            expanded.Descendants().Count(element => element.Attribute(labs + "TransitionHelper.Id") is not null));
+        Assert.Equal(
+            4,
+            compact.Descendants().Count(element => element.Attribute(labs + "TransitionHelper.Id") is not null));
+        foreach (string id in new[]
+        {
+            "RepositoryHeaderTitle",
+            "RepositoryHeaderFilterPublic",
+            "RepositoryHeaderFilterPrivate",
+            "RepositoryHeaderFilterForked"
+        })
+        {
+            Assert.Single(expanded.Descendants(), element =>
+                string.Equals((string?)element.Attribute(labs + "TransitionHelper.Id"), id, StringComparison.Ordinal));
+            Assert.Single(compact.Descendants(), element =>
+                string.Equals((string?)element.Attribute(labs + "TransitionHelper.Id"), id, StringComparison.Ordinal));
+        }
+
         Assert.Equal("Collapsed", (string?)compact.Attribute("Visibility"));
-        Assert.Equal("{ThemeResource AppTransientOverlayBrush}", (string?)compact.Attribute("Background"));
+        Assert.Equal("{ThemeResource AppRailTransientOverlayBrush}", (string?)compact.Attribute("Background"));
+        Assert.Contains("x:Key=\"AppRailTransientOverlayBrush\"", brushes, StringComparison.Ordinal);
+        Assert.Contains("TintColor=\"{ThemeResource AppRailMaterialTintColor}\"", brushes, StringComparison.Ordinal);
+        Assert.Contains("FallbackColor=\"{ThemeResource AppRailColor}\"", brushes, StringComparison.Ordinal);
         Assert.Equal("34", (string?)compact.Attribute("Height"));
         Assert.Equal("Top", (string?)compact.Attribute("VerticalAlignment"));
         Assert.Null(compact.Attribute("MinHeight"));
@@ -238,18 +267,16 @@ public sealed class ShellWorkspaceContractTests
         Assert.Equal("ShellRepositoryList_Unloaded", (string?)list.Attribute("Unloaded"));
 
         Assert.Contains("new TransitionHelper", source, StringComparison.Ordinal);
-        Assert.Contains(
-            "new TransitionConfig { Id = \"RepositoryHeaderSurface\", ScaleMode = ScaleMode.None, EnableClipAnimation = true }",
-            source,
-            StringComparison.Ordinal);
-        Assert.Contains(
-            "new TransitionConfig { Id = \"RepositoryHeaderFilter\", ScaleMode = ScaleMode.None, EnableClipAnimation = true }",
-            source,
-            StringComparison.Ordinal);
+        Assert.Contains("ScaleMode = ScaleMode.Custom", source, StringComparison.Ordinal);
+        Assert.Contains("CustomScalingCalculator = RepositoryHeaderTitleScaling", source, StringComparison.Ordinal);
+        Assert.Contains("Id = \"RepositoryHeaderFilterPublic\", ScaleMode = ScaleMode.Scale", source, StringComparison.Ordinal);
+        Assert.Contains("Id = \"RepositoryHeaderFilterPrivate\", ScaleMode = ScaleMode.Scale", source, StringComparison.Ordinal);
+        Assert.Contains("Id = \"RepositoryHeaderFilterForked\", ScaleMode = ScaleMode.Scale", source, StringComparison.Ordinal);
         Assert.DoesNotContain(
             "Id = \"RepositoryHeaderFilter\", ScaleMode = ScaleMode.ScaleX",
             source,
             StringComparison.Ordinal);
+        Assert.DoesNotContain("Id = \"RepositoryHeaderSurface\"", source, StringComparison.Ordinal);
         Assert.Contains("RepositoryShyHeaderStartOffset", source, StringComparison.Ordinal);
         Assert.Contains("RepositoryShyHeaderRestoreOffset", source, StringComparison.Ordinal);
         Assert.Contains("RepositoryShyHeaderRevealTravel", source, StringComparison.Ordinal);

@@ -7,6 +7,7 @@
             <Color x:Key="AppCanvasRaisedColor">#FFFFFF</Color>
             <Color x:Key="AppCanvasInsetColor">#E7E9E8</Color>
             <Color x:Key="AppRailColor">#ECEEEE</Color>
+            <Color x:Key="AppRailMaterialTintColor">#EEF0F0</Color>
             <Color x:Key="AppSurfaceColor">#F9FAFA</Color>
             <Color x:Key="AppSurfaceSubtleColor">#EFF1F0</Color>
             <Color x:Key="AppCardColor">#FFFFFF</Color>
@@ -58,6 +59,7 @@
             <Color x:Key="AppCanvasRaisedColor">#FFFFFF</Color>
             <Color x:Key="AppCanvasInsetColor">#E7E9E8</Color>
             <Color x:Key="AppRailColor">#ECEEEE</Color>
+            <Color x:Key="AppRailMaterialTintColor">#EEF0F0</Color>
             <Color x:Key="AppSurfaceColor">#F9FAFA</Color>
             <Color x:Key="AppSurfaceSubtleColor">#EFF1F0</Color>
             <Color x:Key="AppCardColor">#FFFFFF</Color>
@@ -109,6 +111,7 @@
             <Color x:Key="AppCanvasRaisedColor">#1C211D</Color>
             <Color x:Key="AppCanvasInsetColor">#0F120F</Color>
             <Color x:Key="AppRailColor">#121612</Color>
+            <Color x:Key="AppRailMaterialTintColor">#101410</Color>
             <Color x:Key="AppSurfaceColor">#1D221E</Color>
             <Color x:Key="AppSurfaceSubtleColor">#202621</Color>
             <Color x:Key="AppCardColor">#242A25</Color>
@@ -160,6 +163,7 @@
             <StaticResource x:Key="AppCanvasRaisedColor" ResourceKey="SystemColorButtonFaceColor" />
             <StaticResource x:Key="AppCanvasInsetColor" ResourceKey="SystemColorWindowColor" />
             <StaticResource x:Key="AppRailColor" ResourceKey="SystemColorWindowColor" />
+            <StaticResource x:Key="AppRailMaterialTintColor" ResourceKey="SystemColorWindowColor" />
             <StaticResource x:Key="AppSurfaceColor" ResourceKey="SystemColorWindowColor" />
             <StaticResource x:Key="AppSurfaceSubtleColor" ResourceKey="SystemColorButtonFaceColor" />
             <StaticResource x:Key="AppCardColor" ResourceKey="SystemColorWindowColor" />
