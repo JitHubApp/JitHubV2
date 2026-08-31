@@ -5,6 +5,7 @@ internal sealed class OAuthRedirectUriPolicy
     internal const string CallbackUrlSetting = "GitHubOAuth:AuthorizationCallbackUrl";
     internal const string CallbackUrlEnvironmentSetting = "JITHUB_OAUTH_CALLBACK_URL";
     internal const string DevelopmentCallbackUrlsSection = "GitHubOAuth:DevelopmentCallbackUrls";
+    internal const string AzureWebsiteHostnameSetting = "WEBSITE_HOSTNAME";
 
     private static readonly string[] DefaultDevelopmentCallbacks =
     [
@@ -15,9 +16,12 @@ internal sealed class OAuthRedirectUriPolicy
 
     private readonly HashSet<string> _allowedRedirectUris;
 
-    private OAuthRedirectUriPolicy(HashSet<string> allowedRedirectUris)
+    private OAuthRedirectUriPolicy(
+        HashSet<string> allowedRedirectUris,
+        string? configurationError)
     {
         _allowedRedirectUris = allowedRedirectUris;
+        ConfigurationError = configurationError;
     }
 
     public static OAuthRedirectUriPolicy Load(
@@ -28,15 +32,30 @@ internal sealed class OAuthRedirectUriPolicy
         ArgumentNullException.ThrowIfNull(environment);
 
         HashSet<string> allowedRedirectUris = new(StringComparer.Ordinal);
+        string? configurationError = null;
         string? configuredCallback = GetConfiguredCallback(configuration);
         if (!string.IsNullOrWhiteSpace(configuredCallback))
         {
-            allowedRedirectUris.Add(NormalizeConfiguredCallback(configuredCallback, environment.IsDevelopment()));
+            try
+            {
+                allowedRedirectUris.Add(NormalizeConfiguredCallback(configuredCallback, environment.IsDevelopment()));
+            }
+            catch (InvalidOperationException ex) when (!environment.IsDevelopment())
+            {
+                configurationError = ex.Message;
+            }
+        }
+        else if (!environment.IsDevelopment() &&
+                 TryCreateAzureAppServiceCallback(
+                     configuration[AzureWebsiteHostnameSetting],
+                     out string azureCallback))
+        {
+            allowedRedirectUris.Add(azureCallback);
         }
         else if (!environment.IsDevelopment())
         {
-            throw new InvalidOperationException(
-                $"Production OAuth requires {CallbackUrlEnvironmentSetting} or {CallbackUrlSetting}.");
+            configurationError =
+                $"Production OAuth requires {CallbackUrlEnvironmentSetting}, {CallbackUrlSetting}, or a valid {AzureWebsiteHostnameSetting} value.";
         }
 
         if (environment.IsDevelopment())
@@ -55,7 +74,7 @@ internal sealed class OAuthRedirectUriPolicy
             }
         }
 
-        return new OAuthRedirectUriPolicy(allowedRedirectUris);
+        return new OAuthRedirectUriPolicy(allowedRedirectUris, configurationError);
     }
 
     public string RequireAllowed(string? redirectUri)
@@ -70,6 +89,8 @@ internal sealed class OAuthRedirectUriPolicy
     }
 
     internal IReadOnlyCollection<string> AllowedRedirectUris => _allowedRedirectUris;
+
+    internal string? ConfigurationError { get; }
 
     private static string? GetConfiguredCallback(IConfiguration configuration) =>
         configuration[CallbackUrlEnvironmentSetting] ??
@@ -107,6 +128,34 @@ internal sealed class OAuthRedirectUriPolicy
         }
 
         return normalizedCallback;
+    }
+
+    private static bool TryCreateAzureAppServiceCallback(
+        string? hostname,
+        out string callback)
+    {
+        callback = string.Empty;
+        string normalizedHostname = hostname?.Trim() ?? string.Empty;
+        if (normalizedHostname.Length == 0 ||
+            !Uri.TryCreate($"https://{normalizedHostname}/authorize", UriKind.Absolute, out Uri? uri) ||
+            !string.Equals(normalizedHostname, uri.Host, StringComparison.OrdinalIgnoreCase) ||
+            !uri.IsDefaultPort ||
+            !string.IsNullOrEmpty(uri.UserInfo) ||
+            !string.IsNullOrEmpty(uri.Query) ||
+            !string.IsNullOrEmpty(uri.Fragment))
+        {
+            return false;
+        }
+
+        const string AzureWebsitesSuffix = ".azurewebsites.net";
+        if (uri.Host.Length <= AzureWebsitesSuffix.Length ||
+            !uri.Host.EndsWith(AzureWebsitesSuffix, StringComparison.OrdinalIgnoreCase))
+        {
+            return false;
+        }
+
+        callback = uri.GetLeftPart(UriPartial.Path);
+        return true;
     }
 
     private static bool TryNormalizeCallback(string? redirectUri, out string normalizedRedirectUri)

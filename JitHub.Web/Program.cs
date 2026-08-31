@@ -4,7 +4,6 @@ using JitHub.Web.Services;
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.HttpOverrides;
 using Microsoft.AspNetCore.RateLimiting;
-using StackExchange.Redis;
 
 WebApplicationBuilder builder = WebApplication.CreateBuilder(args);
 const string GithubAuthRateLimitPolicy = "github-auth";
@@ -12,11 +11,14 @@ bool isDevelopment = builder.Environment.IsDevelopment();
 int permitLimit = isDevelopment ? 1000 : 10;
 ForwardedHeaderTrustPolicy forwardedHeaderTrust = ForwardedHeaderTrustPolicy.Load(builder.Configuration);
 OAuthRedirectUriPolicy oauthRedirectPolicy = OAuthRedirectUriPolicy.Load(builder.Configuration, builder.Environment);
+OAuthHandoffBackendSelection oauthHandoffBackend = OAuthHandoffBackendRegistration.Configure(
+    builder.Services,
+    builder.Configuration,
+    isDevelopment);
 
 builder.Services.AddRazorComponents();
 builder.Services.AddSingleton(TimeProvider.System);
 builder.Services.AddSingleton(oauthRedirectPolicy);
-ConfigureOAuthHandoffBackend(builder, isDevelopment);
 builder.Services.AddSingleton<OAuthHandoffStore>();
 builder.Services.AddHttpClient<GithubAuthService>(client =>
 {
@@ -47,6 +49,20 @@ builder.Services.AddRateLimiter(options =>
 
 WebApplication app = builder.Build();
 
+if (oauthHandoffBackend.FallbackReason is { } fallbackReason)
+{
+    app.Logger.LogWarning(
+        "OAuth handoffs are using the bounded process-local backend. {FallbackReason}",
+        fallbackReason);
+}
+
+if (oauthRedirectPolicy.ConfigurationError is { } callbackConfigurationError)
+{
+    app.Logger.LogWarning(
+        "GitHub OAuth callbacks are disabled. {ConfigurationError}",
+        callbackConfigurationError);
+}
+
 if (!app.Environment.IsDevelopment())
 {
     app.UseHsts();
@@ -67,6 +83,7 @@ app.UseHttpsRedirection();
 app.UseAntiforgery();
 app.UseRateLimiter();
 app.MapStaticAssets();
+app.MapGet("/healthz", () => TypedResults.Text("ok", "text/plain"));
 
 RouteGroupBuilder api = app.MapGroup("/api")
     .RequireRateLimiting(GithubAuthRateLimitPolicy);
@@ -136,53 +153,6 @@ app.MapRazorComponents<App>()
     .WithStaticAssets();
 
 app.Run();
-
-static void ConfigureOAuthHandoffBackend(WebApplicationBuilder builder, bool isDevelopment)
-{
-    string? redisConnection = builder.Configuration.GetConnectionString("OAuthHandoffRedis");
-    string? encryptionKeyText = builder.Configuration["OAuthHandoff:EncryptionKey"];
-    bool hasRedis = !string.IsNullOrWhiteSpace(redisConnection);
-    bool hasEncryptionKey = !string.IsNullOrWhiteSpace(encryptionKeyText);
-
-    if (!hasRedis && !hasEncryptionKey && isDevelopment)
-    {
-        builder.Services.AddSingleton<IOAuthHandoffBackend, InMemoryOAuthHandoffBackend>();
-        return;
-    }
-
-    if (!hasRedis || !hasEncryptionKey)
-    {
-        throw new InvalidOperationException(
-            "Production OAuth handoffs require ConnectionStrings:OAuthHandoffRedis and " +
-            "OAuthHandoff:EncryptionKey (a Base64-encoded 32-byte key).");
-    }
-
-    byte[] encryptionKey;
-    try
-    {
-        encryptionKey = Convert.FromBase64String(encryptionKeyText!);
-    }
-    catch (FormatException ex)
-    {
-        throw new InvalidOperationException(
-            "OAuthHandoff:EncryptionKey must be a Base64-encoded 32-byte key.",
-            ex);
-    }
-
-    if (encryptionKey.Length != 32)
-    {
-        throw new InvalidOperationException(
-            "OAuthHandoff:EncryptionKey must decode to exactly 32 bytes.");
-    }
-
-    ConfigurationOptions redisOptions = ConfigurationOptions.Parse(redisConnection!);
-    redisOptions.AbortOnConnectFail = false;
-    builder.Services.AddSingleton<IConnectionMultiplexer>(_ => ConnectionMultiplexer.Connect(redisOptions));
-    builder.Services.AddSingleton<IOAuthHandoffBackend>(services =>
-        new RedisOAuthHandoffBackend(
-            services.GetRequiredService<IConnectionMultiplexer>(),
-            encryptionKey));
-}
 
 static void SetNoStore(HttpContext httpContext)
 {

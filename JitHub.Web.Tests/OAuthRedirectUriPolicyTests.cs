@@ -36,10 +36,67 @@ public sealed class OAuthRedirectUriPolicyTests
     }
 
     [Fact]
-    public void ProductionRequiresConfiguredCallbackIdentity()
+    public void ProductionWithoutCallbackFailsClosedWithoutCrashingStartup()
     {
+        OAuthRedirectUriPolicy policy = LoadPolicy(
+            Environments.Production,
+            new Dictionary<string, string?>());
+
+        Assert.Empty(policy.AllowedRedirectUris);
+        Assert.NotNull(policy.ConfigurationError);
         Assert.Throws<InvalidOperationException>(() =>
-            LoadPolicy(Environments.Production, new Dictionary<string, string?>()));
+            policy.RequireAllowed("https://jithub-web-prod.azurewebsites.net/authorize"));
+    }
+
+    [Fact]
+    public void ProductionUsesAzureAppServiceReadOnlyHostnameWhenCallbackIsNotExplicit()
+    {
+        OAuthRedirectUriPolicy policy = LoadPolicy(
+            Environments.Production,
+            new Dictionary<string, string?>
+            {
+                [OAuthRedirectUriPolicy.AzureWebsiteHostnameSetting] =
+                    "jithub-web-prod.azurewebsites.net"
+            });
+
+        Assert.Equal(
+            "https://jithub-web-prod.azurewebsites.net/authorize",
+            policy.RequireAllowed("https://jithub-web-prod.azurewebsites.net/authorize"));
+        Assert.Throws<InvalidOperationException>(() =>
+            policy.RequireAllowed("https://attacker.example/authorize"));
+    }
+
+    [Theory]
+    [InlineData("attacker.example")]
+    [InlineData("jithub-web-prod.azurewebsites.net.attacker.example")]
+    [InlineData("jithub-web-prod.azurewebsites.net/attacker")]
+    [InlineData("user@jithub-web-prod.azurewebsites.net")]
+    public void ProductionRejectsUntrustedAzureHostnameFallback(string hostname)
+    {
+        OAuthRedirectUriPolicy policy = LoadPolicy(
+            Environments.Production,
+            new Dictionary<string, string?>
+            {
+                [OAuthRedirectUriPolicy.AzureWebsiteHostnameSetting] = hostname
+            });
+
+        Assert.Empty(policy.AllowedRedirectUris);
+        Assert.NotNull(policy.ConfigurationError);
+    }
+
+    [Fact]
+    public void ProductionInvalidExplicitCallbackFailsClosedWithoutCrashingStartup()
+    {
+        OAuthRedirectUriPolicy policy = LoadPolicy(
+            Environments.Production,
+            new Dictionary<string, string?>
+            {
+                [OAuthRedirectUriPolicy.CallbackUrlSetting] =
+                    "https://jithub-web-prod.azurewebsites.net/authorize?attacker=true"
+            });
+
+        Assert.Empty(policy.AllowedRedirectUris);
+        Assert.Contains("absolute callback URL", policy.ConfigurationError, StringComparison.Ordinal);
     }
 
     [Theory]

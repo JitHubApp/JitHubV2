@@ -54,6 +54,40 @@ jobs:
       - name: Publish website
         run: dotnet publish ./${{ env.WEBSITE_PROJECT }} --configuration Release --no-restore --output ./publish --property:TreatWarningsAsErrors=true
 
+      - name: Smoke test production startup
+        shell: bash
+        run: |
+          log_file="${RUNNER_TEMP}/jithub-web-production.log"
+          ASPNETCORE_ENVIRONMENT=Production \
+          WEBSITE_HOSTNAME=jithub-web-prod.azurewebsites.net \
+          ASPNETCORE_URLS=http://127.0.0.1:5088 \
+            dotnet ./publish/JitHub.Web.dll >"${log_file}" 2>&1 &
+          web_pid=$!
+          cleanup() {
+            if kill -0 "${web_pid}" 2>/dev/null; then
+              kill "${web_pid}"
+              wait "${web_pid}" || true
+            fi
+          }
+          trap cleanup EXIT
+
+          for attempt in {1..30}; do
+            if ! kill -0 "${web_pid}" 2>/dev/null; then
+              cat "${log_file}"
+              exit 1
+            fi
+
+            if [ "$(curl --silent --show-error --fail --max-time 2 http://127.0.0.1:5088/healthz || true)" = "ok" ]; then
+              exit 0
+            fi
+
+            sleep 1
+          done
+
+          cat "${log_file}"
+          echo "Production startup health check timed out."
+          exit 1
+
       - name: Upload published website
         uses: actions/upload-artifact@v4
         with:
@@ -95,3 +129,21 @@ jobs:
           app-name: ${{ env.AZURE_WEBAPP_NAME }}
           package: ./publish
           publish-profile: ${{ secrets.JITHUB_WEBAPP_PUBLISH_PROFILE }}
+
+      - name: Verify deployed website health
+        shell: bash
+        env:
+          JITHUB_WEBAPP_HEALTH_URL: ${{ vars.JITHUB_WEBAPP_HEALTH_URL }}
+        run: |
+          health_url="${JITHUB_WEBAPP_HEALTH_URL:-https://${AZURE_WEBAPP_NAME}.azurewebsites.net/healthz}"
+          for attempt in {1..30}; do
+            if [ "$(curl --silent --show-error --fail --max-time 10 "${health_url}" || true)" = "ok" ]; then
+              echo "Production website is healthy at ${health_url}."
+              exit 0
+            fi
+
+            sleep 10
+          done
+
+          echo "Production website did not become healthy at ${health_url}."
+          exit 1
