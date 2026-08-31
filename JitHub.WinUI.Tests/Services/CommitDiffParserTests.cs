@@ -77,7 +77,8 @@ public sealed class CommitDiffParserTests
         using CancellationTokenSource cancellation = new();
 
         Task<CommitDiffDocument> parse = CommitDiffParser.ParseAsync([file], cancellation.Token);
-        cancellation.CancelAfter(TimeSpan.FromMilliseconds(1));
+        // Cancel synchronously so this contract does not depend on thread-pool timer availability.
+        cancellation.Cancel();
 
         await Assert.ThrowsAnyAsync<OperationCanceledException>(() => parse);
     }
