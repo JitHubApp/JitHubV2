@@ -45,15 +45,17 @@ public sealed class CodeSymbolExtractorTests
     }
 
     [Fact]
-    public async System.Threading.Tasks.Task UiWorkBudgetRequestsYieldWithinFiftyMilliseconds()
+    public void UiWorkBudget_YieldsAtConfiguredTimestampBoundary()
     {
-        UiWorkBudget budget = new(TimeSpan.FromMilliseconds(2));
-        Stopwatch stopwatch = Stopwatch.StartNew();
-        while (!budget.ShouldYield())
-        {
-            await System.Threading.Tasks.Task.Yield();
-        }
+        TimeSpan slice = TimeSpan.FromMilliseconds(2);
+        long sliceTicks = Math.Max(1, (long)(slice.TotalSeconds * Stopwatch.Frequency));
+        const long started = 10_000;
+        UiWorkBudget budget = new(slice, started);
 
-        Assert.True(stopwatch.Elapsed < TimeSpan.FromMilliseconds(50));
+        Assert.False(budget.ShouldYield(started));
+        Assert.False(budget.ShouldYield(started + sliceTicks - 1));
+        Assert.True(budget.ShouldYield(started + sliceTicks));
+        Assert.False(budget.ShouldYield(started + sliceTicks));
+        Assert.True(budget.ShouldYield(started + (2 * sliceTicks)));
     }
 }

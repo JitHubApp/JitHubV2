@@ -19,16 +19,10 @@ param(
 
 $ErrorActionPreference = 'Stop'
 
+& (Join-Path $PSScriptRoot 'Assert-JitHubStorePackageVersion.ps1') -Version $Version
+
 if (-not (Test-Path -LiteralPath $ManifestPath)) {
     throw "Manifest not found: $ManifestPath"
-}
-
-if ([string]::IsNullOrWhiteSpace($Version)) {
-    throw 'Version must not be empty.'
-}
-
-if ($Version -notmatch '^\d+\.\d+\.\d+\.\d+$') {
-    throw "Version '$Version' must use the four-part format Major.Minor.Build.Revision."
 }
 
 if ([string]::IsNullOrWhiteSpace($PackageIdentityName)) {
