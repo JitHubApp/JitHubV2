@@ -224,27 +224,34 @@ public sealed class NativeAotSourceContractTests
 
     [Fact]
     [Trait("Category", "ReleaseSecurity")]
-    public void StoreRelease_RequiresDeterministicMatchingHardwareValidation()
+    public void StoreRelease_UsesPrValidatedNativeAotWithoutHardwareDependency()
     {
         string root = FindRepositoryRoot();
-        string hardwareWorkflow = File.ReadAllText(Path.Combine(
+        string nativeAotWorkflow = File.ReadAllText(Path.Combine(
             root,
             ".github",
             "workflows",
-            "native-aot-hardware-validation.yml"));
+            "native-aot.yml"));
+        string hardwareWorkflowPath = Path.Combine(
+            root,
+            ".github",
+            "workflows",
+            "native-aot-hardware-validation.yml");
         string storeWorkflow = File.ReadAllText(Path.Combine(
             root,
             ".github",
             "workflows",
             "jithub-store-release.yml"));
 
-        Assert.Contains("runner: X86", hardwareWorkflow, StringComparison.Ordinal);
-        Assert.Contains("runner: X64", hardwareWorkflow, StringComparison.Ordinal);
-        Assert.Contains("runner: ARM64", hardwareWorkflow, StringComparison.Ordinal);
-        Assert.Equal(3, CountOccurrences(hardwareWorkflow, "-AutomationDataRoot"));
-        Assert.Equal(3, CountOccurrences(hardwareWorkflow, "-Scenario vnext-native-aot"));
-        Assert.Contains("native_aot_validation_run_id", storeWorkflow, StringComparison.Ordinal);
-        Assert.Contains("$run.head_sha -ne $env:GITHUB_SHA", storeWorkflow, StringComparison.Ordinal);
+        Assert.False(File.Exists(hardwareWorkflowPath));
+        Assert.Contains("pull_request:", nativeAotWorkflow, StringComparison.Ordinal);
+        Assert.Contains("- architecture: x86", nativeAotWorkflow, StringComparison.Ordinal);
+        Assert.Contains("- architecture: x64", nativeAotWorkflow, StringComparison.Ordinal);
+        Assert.Contains("- architecture: arm64", nativeAotWorkflow, StringComparison.Ordinal);
+        Assert.Contains("Verify architecture MSIX", nativeAotWorkflow, StringComparison.Ordinal);
+        Assert.DoesNotContain("native_aot_validation_run_id", storeWorkflow, StringComparison.Ordinal);
+        Assert.DoesNotContain("Require matching hardware validation", storeWorkflow, StringComparison.Ordinal);
+        Assert.DoesNotContain("actions: read", storeWorkflow, StringComparison.Ordinal);
         Assert.Contains("'x86|x64|ARM64'", storeWorkflow, StringComparison.Ordinal);
     }
 

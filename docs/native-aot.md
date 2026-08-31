@@ -59,6 +59,6 @@ New runtime reflection, dynamic code generation, expression compilation, runtime
 
 ## Release gate
 
-`.github/workflows/native-aot.yml` publishes and packages all three architectures on every change. `.github/workflows/native-aot-hardware-validation.yml` runs the native payload on matching x86, x64, and ARM64 hardware and records UI Automation and screenshot evidence. Store publication requires the successful hardware-validation run ID for the exact commit.
+`.github/workflows/native-aot.yml` publishes, verifies, and packages all three architectures on every push and pull request. Store publication relies on that reviewed PR gate and rebuilds the locked Native AOT x86, x64, and ARM64 bundle in `.github/workflows/jithub-store-release.yml`; it does not require a separate hardware-validation run or run ID.
 
-Symbols are uploaded separately. A release is not eligible for Store submission until all architecture publishes have zero AOT, trim, and CsWinRT warnings and the matching-hardware workflow is green.
+Symbols are uploaded separately. A release is eligible for Store submission after the PR architecture matrix has zero AOT, trim, and CsWinRT warnings and the Store package verifier passes.
