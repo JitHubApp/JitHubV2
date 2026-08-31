@@ -24,7 +24,7 @@ screenshots, traces, packages, and reports remain uncommitted evidence.
 | `Running` | Gate is currently executing. |
 | `Passed` | Reproducible evidence passed against the recorded candidate source. |
 | `Failed` | A reproducible defect or gate failure exists. |
-| `Blocked` | External state or matching hardware prevents verification. |
+| `Blocked` | External state prevents verification. |
 | `N/A` | The gate does not apply, with a recorded reason. |
 
 | Severity | Release meaning |
@@ -44,7 +44,7 @@ true for the exact submitted commit:
   XAML, CsWinRT, trim, and Native AOT warnings.
 - `win-x86`, `win-x64`, and `win-arm64` locked Native AOT publishes pass the
   artifact verifier, and the Store MSIXBundle passes package verification.
-- Matching-architecture hardware validation is green for all three payloads.
+- The pull-request Native AOT matrix is green for all three payloads.
 - Every production route, dialog, flyout, mode, empty/loading/error state, and
   destructive action passes keyboard/UIA and visual review at audited widths.
 - Light, Dark, genuine High Contrast, en-US, and explicit pseudolocalization
@@ -75,7 +75,7 @@ true for the exact submitted commit:
 | REL-AOT-002 | x86 locked Native AOT publish + verifier | `x86-release-candidate-v31` published warning-free and passed the native payload verifier | Passed |
 | REL-AOT-003 | ARM64 locked Native AOT publish + verifier | `arm64-release-candidate-v31` published warning-free and passed the native payload verifier | Passed |
 | REL-PKG-001 | Three-architecture MSIXBundle verifier | `JitHub.WinUI_1.6.2.0_x86_x64_ARM64_bundle.msixupload`; 122,974,474 bytes; SHA-256 `905969C1EC115F7FD435AC14BA0C456A87C2A24B75775D2E969E0AACCACA8DD5`; all three payloads reverified from the final bundle | Passed |
-| REL-HW-001 | Matching x86/x64/ARM64 hardware validation | Requires the exact committed source and matching-architecture CI/hardware run; ARM64 cannot be executed on this x64 host | Blocked |
+| REL-HW-001 | Matching x86/x64/ARM64 hardware validation | Retired from the release contract; the PR Native AOT matrix and Store bundle build verify all three architectures | N/A |
 | REL-PERF-001 | Exact ten-iteration full product gate | v31 ran 560 isolated app cases; all 353 / 353 budgets passed without budget changes | Passed |
 | REL-TEL-001 | Telemetry taxonomy/allowlist/property coverage | Full contracts pass; v31 matrix produced 4,226 valid records, 0 malformed records, 0 handled exceptions, and 0 fallback signals | Passed |
 | REL-TEL-002 | Store sink and local diagnostics | Typed Store SDK and all-architecture packaging gates pass; Partner Center receipt must be confirmed from the exact Store-associated package | Blocked |

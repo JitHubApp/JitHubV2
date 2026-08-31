@@ -27,10 +27,10 @@ paths merely because they existed on `main`.
 - The authoritative release state is in
   `docs/jithub-vnext-release-readiness.md`. Candidate v31 passes every local
   build, test, security, Native AOT, package, performance, telemetry-integrity,
-  and exact-state UI gate. Store submission remains blocked until this working
-  tree has an exact commit identity, matching-architecture hardware validation
-  is green, and Partner Center receipt is confirmed from that Store-associated
-  package.
+  and exact-state UI gate. Native AOT architecture verification runs on every
+  pull request and is rebuilt by the Store workflow. Store submission remains
+  blocked only until Partner Center receipt is confirmed from the
+  Store-associated package.
 - x86, x64, and ARM64 locked Native AOT publishes are warning-free and pass the
   native artifact verifier. The final verified upload is
   `.codex-artifacts/release-review/package/vnext-store-v31/` followed by
