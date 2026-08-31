@@ -1,6 +1,7 @@
 using JitHub.Models;
 using JitHub.Services;
 using JitHub.Services.Markdown;
+using System.Xml.Linq;
 using Xunit;
 
 namespace JitHub.WinUI.Tests.Services;
@@ -32,6 +33,21 @@ public sealed class SecurityReleaseGateTests
         Assert.Contains("--include-transitive", script, StringComparison.Ordinal);
         Assert.Contains("allowedPrereleasePackages", script, StringComparison.Ordinal);
         Assert.Contains("UriSchemeHttps", script, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    [Trait("Category", "ReleaseSecurity")]
+    public void PackageRestore_UsesOnlyReviewedPublicSources()
+    {
+        string root = FindRepositoryRoot();
+        XDocument configuration = XDocument.Load(Path.Combine(root, "NuGet.config"));
+        XElement source = Assert.Single(configuration.Root!
+            .Element("packageSources")!
+            .Elements("add"));
+
+        Assert.Equal("nuget.org", source.Attribute("key")?.Value);
+        Assert.Equal("https://api.nuget.org/v3/index.json", source.Attribute("value")?.Value);
+        Assert.Equal("3", source.Attribute("protocolVersion")?.Value);
     }
 
     [Fact]
