@@ -176,11 +176,14 @@ Invoke-Az -Arguments @(
 Write-Host ''
 Write-Host 'Provisioning complete. Next steps:'
 Write-Host '1. Configure app settings for the GitHub OAuth app:'
-Write-Host "   az webapp config appsettings set -g $ResourceGroup -n $WebAppName --settings JitHubClientId=<client-id> JithubAppSecret=<client-secret> JITHUB_OAUTH_CALLBACK_URL=https://$WebAppName.azurewebsites.net/authorize"
-Write-Host '2. Download the publish profile:'
+Write-Host "   az webapp config appsettings set -g $ResourceGroup -n $WebAppName --settings JitHubClientId=<client-id> JithubAppSecret=<client-secret>"
+Write-Host "   The default callback is derived from App Service's read-only WEBSITE_HOSTNAME. Set JITHUB_OAUTH_CALLBACK_URL only when using a custom callback host."
+Write-Host '2. For multi-instance handoffs, configure ConnectionStrings__OAuthHandoffRedis and OAuthHandoff__EncryptionKey.'
+Write-Host '   Without Redis, the app uses a bounded two-minute process-local handoff store and remains available.'
+Write-Host '3. Download the publish profile:'
 Write-Host "   az webapp deployment list-publishing-profiles -g $ResourceGroup -n $WebAppName --xml > jithub-webapp.PublishSettings"
-Write-Host '3. Save it as the GitHub secret JITHUB_WEBAPP_PUBLISH_PROFILE:'
+Write-Host '4. Save it as the GitHub secret JITHUB_WEBAPP_PUBLISH_PROFILE:'
 Write-Host '   gh secret set JITHUB_WEBAPP_PUBLISH_PROFILE --repo JitHubApp/JitHubV2 < jithub-webapp.PublishSettings'
-Write-Host '4. Save the target app name as a GitHub Actions variable:'
+Write-Host '5. Save the target app name as a GitHub Actions variable:'
 Write-Host "   gh variable set JITHUB_WEBAPP_NAME --repo JitHubApp/JitHubV2 --body $WebAppName"
-Write-Host '5. Move custom domains/OAuth callback hosts after the new Web App passes a smoke test.'
+Write-Host '6. Move custom domains/OAuth callback hosts after the new Web App passes a smoke test.'
