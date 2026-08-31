@@ -11,17 +11,23 @@ public sealed class UiWorkBudget
     private long _sliceStarted;
 
     public UiWorkBudget(TimeSpan? maximumSlice = null)
+        : this(maximumSlice, Stopwatch.GetTimestamp())
+    {
+    }
+
+    internal UiWorkBudget(TimeSpan? maximumSlice, long sliceStarted)
     {
         TimeSpan slice = maximumSlice ?? DefaultSlice;
         if (slice <= TimeSpan.Zero) throw new ArgumentOutOfRangeException(nameof(maximumSlice));
 
         _maximumTicks = Math.Max(1, (long)(slice.TotalSeconds * Stopwatch.Frequency));
-        _sliceStarted = Stopwatch.GetTimestamp();
+        _sliceStarted = sliceStarted;
     }
 
-    public bool ShouldYield()
+    public bool ShouldYield() => ShouldYield(Stopwatch.GetTimestamp());
+
+    internal bool ShouldYield(long now)
     {
-        long now = Stopwatch.GetTimestamp();
         if (now - _sliceStarted < _maximumTicks) return false;
         _sliceStarted = now;
         return true;
