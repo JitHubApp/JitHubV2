@@ -7,44 +7,44 @@
     xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
     xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
     HorizontalAlignment="Stretch"
-    MaxWidth="920"
+    MaxWidth="{ThemeResource AppDimension920}"
     mc:Ignorable="d">
     <UserControl.Resources>
-        <SolidColorBrush x:Key="ActivityInlineLinkForegroundBrush" Color="{ThemeResource AppAccentColor}" />
+        <StaticResource x:Key="ActivityInlineLinkForegroundBrush" ResourceKey="AppAccentBrush" />
 
         <Style
             x:Key="ActivityInlineButtonStyle"
             BasedOn="{StaticResource AppQuietButtonStyle}"
             TargetType="Button">
-            <Setter Property="MinWidth" Value="0" />
-            <Setter Property="MinHeight" Value="0" />
-            <Setter Property="Padding" Value="7,3" />
-            <Setter Property="Margin" Value="2,0" />
+            <Setter Property="MinWidth" Value="{ThemeResource AppDimension0}" />
+            <Setter Property="MinHeight" Value="{ThemeResource AppDimension0}" />
+            <Setter Property="Padding" Value="{ThemeResource AppPadding7_3}" />
+            <Setter Property="Margin" Value="{ThemeResource AppMargin2_0}" />
             <Setter Property="CornerRadius" Value="{ThemeResource AppRadiusSmall}" />
             <Setter Property="Background" Value="{ThemeResource AppSurfaceSubtleBrush}" />
             <Setter Property="BorderBrush" Value="{ThemeResource AppHairlineBrush}" />
-            <Setter Property="BorderThickness" Value="1" />
+            <Setter Property="BorderThickness" Value="{ThemeResource AppHairlineBorderThickness}" />
             <Setter Property="Foreground" Value="{ThemeResource AppInkBrush}" />
             <Setter Property="VerticalAlignment" Value="Center" />
         </Style>
     </UserControl.Resources>
 
     <Border
-        Margin="0,0,0,12"
-        Padding="16"
+        Margin="{ThemeResource AppMargin0_0_0_12}"
+        Padding="{ThemeResource AppPadding16}"
         HorizontalAlignment="Stretch"
         Background="{ThemeResource AppSurfaceBrush}"
         BorderBrush="{x:Bind ViewModel.Tone, Converter={StaticResource ActivityToneToBrushConverter}, ConverterParameter=Border, Mode=OneWay}"
-        BorderThickness="1"
+        BorderThickness="{ThemeResource AppHairlineBorderThickness}"
         CornerRadius="{ThemeResource AppRadiusLarge}">
-        <Grid ColumnSpacing="12">
+        <Grid ColumnSpacing="{ThemeResource AppGap12}">
             <Grid.ColumnDefinitions>
                 <ColumnDefinition Width="Auto" />
                 <ColumnDefinition Width="*" />
             </Grid.ColumnDefinitions>
 
             <common:Avatar
-                Margin="0,3,0,0"
+                Margin="{ThemeResource AppMargin0_3_0_0}"
                 AutomationInstanceId="{x:Bind ViewModel.EventId, Mode=OneWay}"
                 VerticalAlignment="Top"
                 Login="{x:Bind ViewModel.ActorLogin, Mode=OneWay}"
@@ -55,21 +55,21 @@
 
             <StackPanel
                 Grid.Column="1"
-                Spacing="10">
-                <Grid ColumnSpacing="8">
+                Spacing="{ThemeResource AppGap10}">
+                <Grid ColumnSpacing="{ThemeResource AppGap8}">
                     <Grid.ColumnDefinitions>
                         <ColumnDefinition Width="Auto" />
                         <ColumnDefinition Width="*" />
                     </Grid.ColumnDefinitions>
 
                     <Border
-                        Width="26"
-                        Height="26"
-                        Margin="0,1,0,0"
+                        Width="{ThemeResource AppDimension26}"
+                        Height="{ThemeResource AppDimension26}"
+                        Margin="{ThemeResource AppMargin0_1_0_0}"
                         VerticalAlignment="Top"
                         Background="{ThemeResource AppSurfaceSubtleBrush}"
                         BorderBrush="{x:Bind ViewModel.Tone, Converter={StaticResource ActivityToneToBrushConverter}, ConverterParameter=Border, Mode=OneWay}"
-                        BorderThickness="1"
+                        BorderThickness="{ThemeResource AppHairlineBorderThickness}"
                         CornerRadius="{ThemeResource AppRadiusSmall}">
                         <FontIcon
                             FontFamily="{StaticResource SegoeFluentIcons}"
@@ -85,42 +85,42 @@
                         FontSize="{ThemeResource AppFontSize15}"
                         Foreground="{ThemeResource AppInkBrush}"
                         IsTextSelectionEnabled="False"
-                        LineHeight="25"
+                        LineHeight="{ThemeResource AppLineHeight25}"
                         TextWrapping="WrapWholeWords" />
                 </Grid>
 
                 <TextBlock
-                    Margin="34,-4,0,0"
+                    Margin="{ThemeResource AppMargin34_Neg4_0_0}"
                     Style="{StaticResource SectionSecondaryTextBlockStyle}"
                     Text="{x:Bind ViewModel.TimestampText, Mode=OneWay}" />
 
                 <Border
-                    Padding="12,0,0,0"
+                    Padding="{ThemeResource AppPadding12_0_0_0}"
                     BorderBrush="{x:Bind ViewModel.Tone, Converter={StaticResource ActivityToneToBrushConverter}, ConverterParameter=Border, Mode=OneWay}"
-                    BorderThickness="2,0,0,0"
+                    BorderThickness="{ThemeResource AppLeftStrongBorderThickness}"
                     Visibility="{x:Bind ViewModel.HasDetails, Converter={StaticResource BoolToVisibilityConverter}, Mode=OneWay}">
                     <ItemsControl ItemsSource="{x:Bind ViewModel.Details, Mode=OneWay}">
                         <ItemsControl.ItemsPanel>
                             <ItemsPanelTemplate>
-                                <StackPanel Spacing="4" />
+                                <StackPanel Spacing="{ThemeResource AppGap4}" />
                             </ItemsPanelTemplate>
                         </ItemsControl.ItemsPanel>
                         <ItemsControl.ItemTemplate>
                             <DataTemplate x:DataType="activities:ActivityCardDetailViewModel">
-                                <Grid ColumnSpacing="8">
+                                <Grid ColumnSpacing="{ThemeResource AppGap8}">
                                     <Grid.ColumnDefinitions>
                                         <ColumnDefinition Width="Auto" />
                                         <ColumnDefinition Width="*" />
                                     </Grid.ColumnDefinitions>
                                     <FontIcon
-                                        Margin="0,2,0,0"
-                                        VerticalAlignment="Top"
+                                        VerticalAlignment="Center"
                                         FontFamily="{StaticResource SegoeFluentIcons}"
                                         FontSize="{ThemeResource AppFontSize11}"
                                         Foreground="{ThemeResource AppInkMutedBrush}"
                                         Glyph="{x:Bind Glyph, Mode=OneWay}" />
                                     <TextBlock
                                         Grid.Column="1"
+                                        VerticalAlignment="Center"
                                         Style="{StaticResource SectionSecondaryTextBlockStyle}"
                                         Text="{x:Bind Text, Mode=OneWay}"
                                         TextTrimming="CharacterEllipsis"

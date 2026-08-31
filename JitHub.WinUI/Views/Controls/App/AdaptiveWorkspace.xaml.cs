@@ -385,28 +385,29 @@ public sealed partial class AdaptiveWorkspace : UserControl
         Guid correlationId = e.CorrelationId;
         int containedFocusVersion = _containedDrawerFocusVersion;
         int requestVersion = _drawerFocusRequestVersion;
-        _ = DispatcherQueue.TryEnqueue(async () =>
-        {
-            if (!IsLoaded ||
-                IsAppModalPresenting() ||
-                requestVersion != _drawerFocusRequestVersion ||
-                State?.VisibleDrawer != visibleDrawer)
+        _ = DispatcherQueue.TryEnqueue(() =>
+            UiTaskGuard.Run(async () =>
             {
-                return;
-            }
+                if (!IsLoaded ||
+                    IsAppModalPresenting() ||
+                    requestVersion != _drawerFocusRequestVersion ||
+                    State?.VisibleDrawer != visibleDrawer)
+                {
+                    return;
+                }
 
-            if (_lastContainedDrawerFocusCorrelation == correlationId ||
-                _containedDrawerFocusVersion != containedFocusVersion)
-            {
-                return;
-            }
+                if (_lastContainedDrawerFocusCorrelation == correlationId ||
+                    _containedDrawerFocusVersion != containedFocusVersion)
+                {
+                    return;
+                }
 
-            UIElement target = (moveBackward
-                ? FindLastUsableTabStop(activeDrawer)
-                : FindFirstUsableTabStop(activeDrawer)) as UIElement
-                ?? activeDrawer;
-            _ = await TryFocusDrawerElementAsync(target);
-        });
+                UIElement target = (moveBackward
+                    ? FindLastUsableTabStop(activeDrawer)
+                    : FindFirstUsableTabStop(activeDrawer)) as UIElement
+                    ?? activeDrawer;
+                _ = await TryFocusDrawerElementAsync(target);
+            }, "ui-adaptive-workspace"));
     }
 
     private void WorkspaceRoot_SizeChanged(object sender, SizeChangedEventArgs e)
@@ -845,65 +846,66 @@ public sealed partial class AdaptiveWorkspace : UserControl
     {
         StopDrawerFocusTimer();
         int requestVersion = ++_drawerFocusRequestVersion;
-        _ = DispatcherQueue.TryEnqueue(async () =>
-        {
-            if (requestVersion != _drawerFocusRequestVersion || State?.VisibleDrawer != drawer)
+        _ = DispatcherQueue.TryEnqueue(() =>
+            UiTaskGuard.Run(async () =>
             {
-                return;
-            }
-
-            if (!await TryFocusFirstDrawerElementAsync(drawer))
-            {
-                // Content can be reparented into the drawer while its slide animation
-                // starts. Keep focus in the modal surface until a child accepts it.
-                _ = await TryFocusDrawerContainerAsync(drawer);
-            }
-
-            DispatcherQueueTimer timer = DispatcherQueue.CreateTimer();
-            _drawerFocusTimer = timer;
-            timer.Interval = TimeSpan.FromMilliseconds(50);
-            bool focusAttemptInProgress = false;
-            timer.Tick += async (_, _) =>
-            {
-                if (requestVersion != _drawerFocusRequestVersion ||
-                    State?.VisibleDrawer != drawer)
-                {
-                    timer.Stop();
-                    if (ReferenceEquals(_drawerFocusTimer, timer)) _drawerFocusTimer = null;
-                    return;
-                }
-
-                if (focusAttemptInProgress)
+                if (requestVersion != _drawerFocusRequestVersion || State?.VisibleDrawer != drawer)
                 {
                     return;
                 }
 
-                Border targetDrawer = drawer == AdaptiveWorkspaceDrawer.Leading
-                    ? LeftDrawer
-                    : RightDrawer;
-                if (FocusManager.GetFocusedElement(XamlRoot) is DependencyObject focusedElement &&
-                    IsWithin(focusedElement, targetDrawer))
+                if (!await TryFocusFirstDrawerElementAsync(drawer))
                 {
-                    timer.Stop();
-                    if (ReferenceEquals(_drawerFocusTimer, timer)) _drawerFocusTimer = null;
-                    return;
+                    // Content can be reparented into the drawer while its slide animation
+                    // starts. Keep focus in the modal surface until a child accepts it.
+                    _ = await TryFocusDrawerContainerAsync(drawer);
                 }
 
-                focusAttemptInProgress = true;
-                try
+                DispatcherQueueTimer timer = DispatcherQueue.CreateTimer();
+                _drawerFocusTimer = timer;
+                timer.Interval = TimeSpan.FromMilliseconds(50);
+                bool focusAttemptInProgress = false;
+                timer.Tick += (_, _) => UiTaskGuard.Run(async () =>
                 {
-                    if (!await TryFocusFirstDrawerElementAsync(drawer))
+                    if (requestVersion != _drawerFocusRequestVersion ||
+                        State?.VisibleDrawer != drawer)
                     {
-                        _ = await TryFocusDrawerContainerAsync(drawer);
+                        timer.Stop();
+                        if (ReferenceEquals(_drawerFocusTimer, timer)) _drawerFocusTimer = null;
+                        return;
                     }
-                }
-                finally
-                {
-                    focusAttemptInProgress = false;
-                }
-            };
-            timer.Start();
-        });
+
+                    if (focusAttemptInProgress)
+                    {
+                        return;
+                    }
+
+                    Border targetDrawer = drawer == AdaptiveWorkspaceDrawer.Leading
+                        ? LeftDrawer
+                        : RightDrawer;
+                    if (FocusManager.GetFocusedElement(XamlRoot) is DependencyObject focusedElement &&
+                        IsWithin(focusedElement, targetDrawer))
+                    {
+                        timer.Stop();
+                        if (ReferenceEquals(_drawerFocusTimer, timer)) _drawerFocusTimer = null;
+                        return;
+                    }
+
+                    focusAttemptInProgress = true;
+                    try
+                    {
+                        if (!await TryFocusFirstDrawerElementAsync(drawer))
+                        {
+                            _ = await TryFocusDrawerContainerAsync(drawer);
+                        }
+                    }
+                    finally
+                    {
+                        focusAttemptInProgress = false;
+                    }
+                }, "ui-adaptive-workspace");
+                timer.Start();
+            }, "ui-adaptive-workspace"));
     }
 
     private async Task<bool> TryFocusFirstDrawerElementAsync(AdaptiveWorkspaceDrawer drawer)
@@ -956,7 +958,7 @@ public sealed partial class AdaptiveWorkspace : UserControl
         }
         catch (Exception ex)
         {
-            System.Diagnostics.Debug.WriteLine($"Adaptive workspace modal ownership check failed: {ex}");
+            JitHub.WinUI.App.LogHandledException(ex, "ui-adaptive-workspace-modal-ownership");
             return false;
         }
     }

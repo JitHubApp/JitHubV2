@@ -2,6 +2,7 @@
     xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
     xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml">
     <SolidColorBrush x:Key="AppCanvasBrush" Color="{ThemeResource AppCanvasColor}" />
+    <SolidColorBrush x:Key="AppWindowBackgroundBrush" Color="{ThemeResource AppCanvasColor}" />
     <SolidColorBrush x:Key="AppCanvasRaisedBrush" Color="{ThemeResource AppCanvasRaisedColor}" />
     <SolidColorBrush x:Key="AppCanvasInsetBrush" Color="{ThemeResource AppCanvasInsetColor}" />
     <SolidColorBrush x:Key="AppRailBrush" Color="{ThemeResource AppRailColor}" />
@@ -42,6 +43,13 @@
     <SolidColorBrush x:Key="AppAccentHoverBrush" Color="{ThemeResource AppAccentHoverColor}" />
     <SolidColorBrush x:Key="AppAccentPressedBrush" Color="{ThemeResource AppAccentPressedColor}" />
     <SolidColorBrush x:Key="AppAccentForegroundBrush" Color="{ThemeResource AppAccentForegroundColor}" />
+    <SolidColorBrush x:Key="AppAccentSelectionMutedBrush" Color="{ThemeResource AppAccentColor}" Opacity="{ThemeResource AppOpacityDisabledControl}" />
+    <SolidColorBrush x:Key="AppAccentForegroundSecondaryBrush" Color="{ThemeResource AppAccentForegroundColor}" Opacity="{ThemeResource AppOpacityOnAccentSecondary}" />
+    <SolidColorBrush x:Key="AppAccentLowBrush" Color="{ThemeResource AppAccentPressedColor}" Opacity="{ThemeResource AppOpacityAccentLow}" />
+    <SolidColorBrush x:Key="AppAccentMediumBrush" Color="{ThemeResource AppAccentColor}" Opacity="{ThemeResource AppOpacityAccentMedium}" />
+    <SolidColorBrush x:Key="AppPlaceholderBrush" Color="{ThemeResource AppRowHoverForegroundColor}" Opacity="{ThemeResource AppOpacityPlaceholder}" />
+    <SolidColorBrush x:Key="AppPlaceholderStrongBrush" Color="{ThemeResource AppRowHoverForegroundColor}" Opacity="{ThemeResource AppOpacityPlaceholderStrong}" />
+    <SolidColorBrush x:Key="AppPlaceholderSelectedStrongBrush" Color="{ThemeResource AppRowSelectedForegroundColor}" Opacity="{ThemeResource AppOpacityPlaceholderStrong}" />
     <SolidColorBrush x:Key="AppWarmAccentBrush" Color="{ThemeResource AppWarmAccentColor}" />
     <SolidColorBrush x:Key="AppWarmAccentForegroundBrush" Color="{ThemeResource AppWarmAccentForegroundColor}" />
     <SolidColorBrush x:Key="AppDangerBrush" Color="{ThemeResource AppDangerColor}" />
@@ -54,21 +62,27 @@
     <AcrylicBrush
         x:Key="AppTransientOverlayBrush"
         TintColor="{ThemeResource AppOverlayColor}"
-        TintOpacity="0.2"
-        TintLuminosityOpacity="0.85"
+        TintOpacity="{ThemeResource AppOpacityMaterialTint}"
+        TintLuminosityOpacity="{ThemeResource AppOpacityMaterialLuminosity}"
         FallbackColor="{ThemeResource AppOverlayColor}" />
     <!-- Compensated tint keeps active acrylic visually continuous with the opaque canvas. -->
     <AcrylicBrush
         x:Key="AppCanvasTransientOverlayBrush"
         TintColor="{ThemeResource AppCanvasMaterialTintColor}"
-        TintOpacity="0.96"
-        TintLuminosityOpacity="1"
+        TintOpacity="{ThemeResource AppOpacityMaterial}"
+        TintLuminosityOpacity="{ThemeResource AppOpacityVisible}"
         FallbackColor="{ThemeResource AppCanvasColor}" />
+    <AcrylicBrush
+        x:Key="AppTitleBarMaterialBrush"
+        TintColor="{ThemeResource AppCanvasMaterialTintColor}"
+        TintOpacity="{ThemeResource AppOpacityMaterial}"
+        TintLuminosityOpacity="{ThemeResource AppOpacityVisible}"
+        FallbackColor="{ThemeResource AppCanvasRaisedColor}" />
     <!-- Compensated tint keeps active acrylic visually continuous with the opaque rail. -->
     <AcrylicBrush
         x:Key="AppRailTransientOverlayBrush"
         TintColor="{ThemeResource AppRailMaterialTintColor}"
-        TintOpacity="0.96"
-        TintLuminosityOpacity="1"
+        TintOpacity="{ThemeResource AppOpacityMaterial}"
+        TintLuminosityOpacity="{ThemeResource AppOpacityVisible}"
         FallbackColor="{ThemeResource AppRailColor}" />
 </ResourceDictionary>

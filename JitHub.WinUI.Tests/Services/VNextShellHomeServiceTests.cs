@@ -110,6 +110,8 @@ public sealed class VNextShellHomeServiceTests
         await service.GetIssuesPageAsync("token", "42", "octo", GitHubMeIssueFilter.Created, 500, 2, GitHubMeWorkItemState.All);
         await service.GetPullRequestsAsync("token", "42", "octo", GitHubMePullRequestFilter.Involves, 30);
         await service.GetPullRequestsPageAsync("token", "42", "octo", GitHubMePullRequestFilter.Authored, 100, 3, GitHubMeWorkItemState.Open);
+        await service.GetPullRequestsPageAsync("token", "42", "octo", GitHubMePullRequestFilter.ReviewRequested, 100, 4, GitHubMeWorkItemState.Open);
+        await service.GetPullRequestsPageAsync("token", "42", "octo", GitHubMePullRequestFilter.Assigned, 100, 5, GitHubMeWorkItemState.Open);
         await service.GetIssueDetailAsync("token", "42", "octo", "hello-world", 17);
         await service.GetIssueCommentsAsync("token", "42", "octo", "hello-world", 17, 30);
         await service.GetIssueCommentsPageAsync("token", "42", "octo", "hello-world", 17, 100, 4);
@@ -121,12 +123,14 @@ public sealed class VNextShellHomeServiceTests
         Assert.Contains(query.Paths, path => path.StartsWith("search/issues?", StringComparison.Ordinal) && path.Contains("is%3Apr", StringComparison.Ordinal));
         Assert.Contains(query.Paths, path => path.Contains("author%3Aocto", StringComparison.Ordinal) && path.Contains("per_page=100&page=2", StringComparison.Ordinal));
         Assert.Contains(query.Paths, path => path.Contains("is%3Apr", StringComparison.Ordinal) && path.Contains("page=3", StringComparison.Ordinal));
+        Assert.Contains(query.Paths, path => path.Contains("review-requested%3Aocto", StringComparison.Ordinal) && path.Contains("page=4", StringComparison.Ordinal));
+        Assert.Contains(query.Paths, path => path.Contains("assignee%3Aocto", StringComparison.Ordinal) && path.Contains("page=5", StringComparison.Ordinal));
         Assert.Contains("repos/octo/hello-world/issues/17", query.Paths);
         Assert.Contains("repos/octo/hello-world/issues/17/comments?sort=created&direction=asc&per_page=30&page=1", query.Paths);
         Assert.Contains("repos/octo/hello-world/issues/17/comments?sort=created&direction=asc&per_page=100&page=4", query.Paths);
         Assert.Contains("user/starred?sort=updated&direction=desc&per_page=30&page=1", query.Paths);
         Assert.Contains("gists?per_page=30&page=1", query.Paths);
-        Assert.Equal(3, query.Priorities.Count(static priority => priority == GitHubRequestPriority.BackgroundRefresh));
+        Assert.Equal(5, query.Priorities.Count(static priority => priority == GitHubRequestPriority.BackgroundRefresh));
     }
 
     [Fact]

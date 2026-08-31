@@ -46,14 +46,14 @@
                         </Grid.RowDefinitions>
                         <Grid
                             x:Name="FileTreeDrawerHeader"
-                            Padding="8,6"
+                            Padding="{ThemeResource AppPadding8_6}"
                             Visibility="Collapsed">
                             <Button
                                 x:Name="CloseFileTreeButton"
                                 x:Uid="RepoCodeCloseFileTreeButton"
-                                Width="36"
-                                Height="36"
-                                Padding="0"
+                                Width="{ThemeResource AppDimension36}"
+                                Height="{ThemeResource AppDimension36}"
+                                Padding="{ThemeResource AppPadding0}"
                                 HorizontalAlignment="Left"
                                 AutomationProperties.AutomationId="RepoCodeCloseFileTreeButton"
                                 AutomationProperties.Name="Close repository files"
@@ -108,8 +108,8 @@
         <muxc:InfoBar
             x:Name="ErrorBanner"
             x:Uid="RepoCodeStatusBar"
-            MaxWidth="720"
-            Margin="12"
+            MaxWidth="{ThemeResource AppDimension720}"
+            Margin="{ThemeResource AppMargin12}"
             HorizontalAlignment="Center"
             VerticalAlignment="Top"
             IsClosable="True"

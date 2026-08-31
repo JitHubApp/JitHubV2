@@ -280,7 +280,8 @@ public sealed partial class NotificationsPageViewModel : ObservableObject, IDisp
 
     public KeyedObservableCollection<NotificationViewItem, GitHubNotificationThread> Notifications { get; } = [];
 
-    public IReadOnlyList<string> FilterOptions { get; } = ["Unread", "All", "Participating"];
+    public IReadOnlyList<string> FilterOptions { get; } =
+        (string[])["Unread", "All", "Participating"];
 
     [ObservableProperty]
     public partial string SearchText { get; set; } = string.Empty;

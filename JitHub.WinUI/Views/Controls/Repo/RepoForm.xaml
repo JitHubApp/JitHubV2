@@ -15,12 +15,12 @@
     </UserControl.DataContext>
     <Grid>
         <StackPanel
-            Margin="16 0 16 16"
-            Spacing="8"
+            Margin="{ThemeResource AppMargin16_0_16_16}"
+            Spacing="{ThemeResource AppGap8}"
             HorizontalAlignment="Stretch">
             <TextBlock
                 x:Uid="ControlsRepoRepoFormTextBlockName" Text="Name"
-                FontWeight="SemiBold"/>
+                FontWeight="{ThemeResource AppFontWeightSemibold}"/>
             <TextBox
                 x:Uid="ControlsRepoRepoFormRepoFormNameTextBox" AutomationProperties.AutomationId="RepoFormNameTextBox"
                 AutomationProperties.Name="Repository name"
@@ -35,7 +35,7 @@
                 TextWrapping="Wrap"/>
             <TextBlock
                 x:Uid="ControlsRepoRepoFormTextBlockDescription" Text="Description"
-                FontWeight="SemiBold"/>
+                FontWeight="{ThemeResource AppFontWeightSemibold}"/>
             <TextBox
                 x:Uid="ControlsRepoRepoFormRepoFormDescriptionTextBox" AutomationProperties.AutomationId="RepoFormDescriptionTextBox"
                 AutomationProperties.Name="Repository description"
@@ -48,7 +48,7 @@
                 IsChecked="{x:Bind ViewModel.CreateReadme, Mode=TwoWay}"/>
             <TextBlock
                 x:Uid="ControlsRepoRepoFormTextBlockLicenseTemplate" Text="License Template"
-                FontWeight="SemiBold"/>
+                FontWeight="{ThemeResource AppFontWeightSemibold}"/>
             <ComboBox
                 x:Uid="ControlsRepoRepoFormRepoFormLicenseComboBox" AutomationProperties.AutomationId="RepoFormLicenseComboBox"
                 AutomationProperties.Name="License template"
@@ -68,7 +68,7 @@
                 TextWrapping="Wrap"/>
             <TextBlock
                 x:Uid="ControlsRepoRepoFormTextBlockVisibility" Text="Visibility"
-                FontWeight="SemiBold"/>
+                FontWeight="{ThemeResource AppFontWeightSemibold}"/>
             <ComboBox
                 x:Uid="ControlsRepoRepoFormRepoFormVisibilityComboBox" AutomationProperties.AutomationId="RepoFormVisibilityComboBox"
                 AutomationProperties.Name="Repository visibility"

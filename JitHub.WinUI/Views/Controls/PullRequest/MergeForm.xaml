@@ -16,16 +16,16 @@
     <Grid>
 
         <StackPanel
-                    Spacing="8">
+                    Spacing="{ThemeResource AppGap8}">
             <Grid
-                    Padding="16">
+                    Padding="{ThemeResource AppPadding16}">
                 <Grid.ColumnDefinitions>
                     <ColumnDefinition Width="*"/>
                     <ColumnDefinition Width="auto"/>
                 </Grid.ColumnDefinitions>
                 <TextBox
                         x:Uid="ControlsPullRequestMergeFormPullRequestMergeTitleTextBox" Grid.Column="0"
-                        Margin="0 0 8 0"
+                        Margin="{ThemeResource AppMargin0_0_8_0}"
                         AutomationProperties.AutomationId="PullRequestMergeTitleTextBox"
                         AutomationProperties.Name="Merge commit title"
                         PlaceholderText="Title"
@@ -33,7 +33,7 @@
                         Text="{x:Bind ViewModel.Title, Mode=TwoWay}"/>
                 <ComboBox
                         x:Uid="ControlsPullRequestMergeFormPullRequestMergeMethodComboB" Grid.Column="1"
-                        Width="120"
+                        Width="{ThemeResource AppDimension120}"
                         AutomationProperties.AutomationId="PullRequestMergeMethodComboBox"
                         AutomationProperties.Name="Merge method"
                         ItemsSource="{x:Bind ViewModel.Items, Mode=OneWay}"
@@ -42,7 +42,7 @@
                 </ComboBox>
             </Grid>
             <TextBlock
-                    Margin="16,0"
+                    Margin="{ThemeResource AppMargin16_0}"
                     AutomationProperties.AutomationId="PullRequestMergeErrorText"
                     AutomationProperties.LiveSetting="Polite"
                     Foreground="{ThemeResource AppDangerBrush}"
@@ -56,8 +56,8 @@
                 <common:MarkdownForm.ActionContent>
                     <Grid
                             Background="{ThemeResource AppSolidSecondaryRush}"
-                            Height="76"
-                            Padding="16"
+                            Height="{ThemeResource AppDimension76}"
+                            Padding="{ThemeResource AppPadding16}"
                             HorizontalAlignment="Stretch">
                         <Button
                                 x:Uid="ControlsPullRequestMergeFormPullRequestMergeSubmitButton" AutomationProperties.AutomationId="PullRequestMergeSubmitButton"

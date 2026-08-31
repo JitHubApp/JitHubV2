@@ -1,3 +1,5 @@
+using System;
+using System.Collections.Generic;
 using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
@@ -312,5 +314,69 @@ public sealed class CommitDiffParserTests
         Assert.Equal(2, index);
         Assert.False(projection.TryGetRow("missing", out _));
         Assert.False(projection.TryGetRowIndex("missing", out _));
+    }
+
+    [Fact]
+    public void Parse_BuildsSortedHierarchicalFileTree()
+    {
+        CommitDiffDocument document = CommitDiffParser.Parse(
+        [
+            new GitHubCommitFile { Filename = "README.md", Status = "modified", Additions = 1, Patch = "+readme" },
+            new GitHubCommitFile { Filename = "src/zeta.cs", Status = "modified", Additions = 2, Patch = "+zeta" },
+            new GitHubCommitFile { Filename = "src/features/alpha.cs", Status = "modified", Deletions = 3, Patch = "-alpha" }
+        ]);
+
+        Assert.Equal(["src", "README.md"], document.FileTree.Select(static node => node.Name).ToArray());
+        CommitDiffTreeNode src = document.FileTree[0];
+        Assert.False(src.IsFile);
+        Assert.Equal(["features", "zeta.cs"], src.Children.Select(static node => node.Name).ToArray());
+        CommitDiffTreeNode alpha = src.Children[0].Children[0];
+        Assert.True(alpha.IsFile);
+        Assert.Equal("src/features/alpha.cs", alpha.FullPath);
+        Assert.Equal("+0 -3", alpha.SummaryText);
+    }
+
+    [Fact]
+    public void RowProjection_CollapsesOnlyRequestedFileAndPreservesHeader()
+    {
+        CommitDiffDocument document = CommitDiffParser.Parse(
+        [
+            new GitHubCommitFile { Filename = "src/app.cs", Status = "modified", Patch = "@@ -1 +1 @@\n-old\n+new" },
+            new GitHubCommitFile { Filename = "src/other.cs", Status = "modified", Patch = "@@ -1 +1 @@\n-old\n+new" }
+        ]);
+
+        CommitDiffRowProjection projection = CommitDiffRowProjection.Create(
+            document,
+            string.Empty,
+            string.Empty,
+            new HashSet<string>(["src/app.cs"], StringComparer.OrdinalIgnoreCase));
+
+        CommitDiffRow collapsedHeader = Assert.Single(
+            projection.Rows,
+            static row => row.FileName == "src/app.cs");
+        Assert.True(collapsedHeader.IsFileHeader);
+        Assert.True(collapsedHeader.IsFileCollapsed);
+        Assert.Contains(
+            projection.Rows,
+            static row => row.FileName == "src/other.cs" && !row.IsFileHeader);
+    }
+
+    [Fact]
+    public void RowProjection_SearchTemporarilyExpandsCollapsedFile()
+    {
+        CommitDiffDocument document = CommitDiffParser.Parse(
+        [
+            new GitHubCommitFile { Filename = "src/app.cs", Status = "modified", Patch = "@@ -1 +1 @@\n-old\n+needle" }
+        ]);
+
+        CommitDiffRowProjection projection = CommitDiffRowProjection.Create(
+            document,
+            string.Empty,
+            "needle",
+            new HashSet<string>(["src/app.cs"], StringComparer.OrdinalIgnoreCase));
+
+        Assert.Equal(1, projection.MatchCount);
+        Assert.Contains(projection.Rows, static row => row.Text.Contains("needle", StringComparison.Ordinal));
+        Assert.False(projection.Rows[0].IsFileCollapsed);
     }
 }

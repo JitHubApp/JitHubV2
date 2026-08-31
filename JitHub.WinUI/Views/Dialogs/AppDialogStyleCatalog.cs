@@ -7,8 +7,6 @@ namespace JitHub.WinUI.Views.Dialogs;
 
 internal static class AppDialogStyleCatalog
 {
-    private const double HorizontalChromeWidth = 48;
-
     public static void Apply(ContentDialog dialog)
     {
         ArgumentNullException.ThrowIfNull(dialog);
@@ -28,10 +26,14 @@ internal static class AppDialogStyleCatalog
         ArgumentNullException.ThrowIfNull(dialog);
         ArgumentNullException.ThrowIfNull(xamlRoot);
 
+        double titleBarSafeHeight = GetTitleBarSafeHeight();
+        double contentHeight = Math.Max(0, xamlRoot.Size.Height - titleBarSafeHeight);
         DialogLayoutMetrics metrics = DialogLayoutPolicy.Calculate(
             xamlRoot.Size.Width,
-            xamlRoot.Size.Height,
+            contentHeight,
+            GetLayoutTokens(),
             layoutKind);
+        dialog.Margin = new Thickness(0, titleBarSafeHeight, 0, 0);
         dialog.Resources["ContentDialogMinWidth"] = metrics.MinimumWidth;
         dialog.Resources["ContentDialogMaxWidth"] = metrics.MaximumWidth;
         dialog.Resources["ContentDialogMinHeight"] = metrics.MaximumHeight;
@@ -114,7 +116,7 @@ internal static class AppDialogStyleCatalog
             return;
         }
 
-        double contentWidth = Math.Max(0, dialogWidth - HorizontalChromeWidth);
+        double contentWidth = Math.Max(0, dialogWidth - GetDouble("AppDialogHorizontalChromeWidth"));
         content.Width = contentWidth;
         content.MinWidth = contentWidth;
         content.MaxWidth = contentWidth;
@@ -154,11 +156,33 @@ internal static class AppDialogStyleCatalog
         }
     }
 
-    private static Style GetStyle(string resourceKey) =>
+    internal static Style GetStyle(string resourceKey) =>
         Application.Current.Resources.TryGetValue(resourceKey, out object? resource)
             && resource is Style style
                 ? style
                 : throw new InvalidOperationException($"Required dialog style '{resourceKey}' is unavailable.");
+
+    internal static DialogLayoutTokenSet GetLayoutTokens() => new(
+        GetDouble("AppDialogCompactBreakpoint"),
+        GetDouble("AppDialogCompactOuterMargin"),
+        GetDouble("AppDialogStandardOuterMargin"),
+        GetDouble("AppDialogConfirmationPreferredWidth"),
+        GetDouble("AppDialogCompactFormPreferredWidth"),
+        GetDouble("AppDialogStandardPreferredWidth"),
+        GetDouble("AppDialogEditorPreferredWidth"),
+        GetDouble("AppDialogConfirmationPreferredHeight"),
+        GetDouble("AppDialogCompactFormPreferredHeight"),
+        GetDouble("AppDialogStandardPreferredHeight"),
+        GetDouble("AppDialogEditorPreferredHeight"),
+        GetDouble("AppDialogPreferredMinimumWidth"));
+
+    internal static double GetTitleBarSafeHeight() => GetDouble("AppTitleBarSafeHeight");
+
+    private static double GetDouble(string resourceKey) =>
+        Application.Current.Resources.TryGetValue(resourceKey, out object? resource)
+            && resource is double value
+                ? value
+                : throw new InvalidOperationException($"Required dialog metric '{resourceKey}' is unavailable.");
 }
 
 /// <summary>

@@ -106,6 +106,23 @@ public sealed class ApplicationBackgroundWorkIntegrationTests
         Assert.DoesNotContain("AccountPartition", method, StringComparison.Ordinal);
     }
 
+    [Fact]
+    public void ConcurrentRepositoryLoadsObserveFaultsBeforeOwnerCancellationCanExit()
+    {
+        string observer = Read("JitHub.WinUI", "Services", "Phase0", "Telemetry", "BackgroundTaskObserver.cs");
+        string repository = Read(
+            "JitHub.WinUI",
+            "ViewModels",
+            "RepositoryViewModels",
+            "RepoDetailViewModel.cs");
+
+        Assert.Contains("public static void MarkFaultObserved(Task task)", observer, StringComparison.Ordinal);
+        Assert.Contains("private static async Task ObserveFaultAsync(Task task)", observer, StringComparison.Ordinal);
+        Assert.Contains("await task.ConfigureAwait(false)", observer, StringComparison.Ordinal);
+        Assert.DoesNotContain(".ContinueWith(", observer, StringComparison.Ordinal);
+        Assert.Equal(3, Count(repository, "BackgroundTaskObserver.MarkFaultObserved("));
+    }
+
     private static string ExtractMethod(string source, string startMarker, string endMarker)
     {
         int start = source.IndexOf(startMarker, StringComparison.Ordinal);
@@ -113,6 +130,17 @@ public sealed class ApplicationBackgroundWorkIntegrationTests
         Assert.True(start >= 0, $"Missing source marker: {startMarker}");
         Assert.True(end > start, $"Missing source marker: {endMarker}");
         return source[start..end];
+    }
+
+    private static int Count(string source, string value)
+    {
+        int count = 0;
+        for (int index = 0; (index = source.IndexOf(value, index, StringComparison.Ordinal)) >= 0; index += value.Length)
+        {
+            count++;
+        }
+
+        return count;
     }
 
     private static string Read(params string[] path) =>
@@ -123,7 +151,7 @@ public sealed class ApplicationBackgroundWorkIntegrationTests
         DirectoryInfo? directory = new(AppContext.BaseDirectory);
         while (directory is not null)
         {
-            if (File.Exists(Path.Combine(directory.FullName, "JitHub.slnx")))
+            if (File.Exists(Path.Combine(directory.FullName, "Directory.Build.props")))
             {
                 return directory.FullName;
             }

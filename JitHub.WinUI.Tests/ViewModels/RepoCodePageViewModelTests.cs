@@ -95,7 +95,7 @@ public sealed class RepoCodePageViewModelTests
         await olderHydration;
 
         Assert.Equal("b.cs", viewModel.Tree.SelectedNode?.Path);
-        Assert.Equal("b.cs", viewModel.Breadcrumb.CurrentPath);
+        Assert.Equal("a.cs", viewModel.Breadcrumb.CurrentPath);
         Assert.True(viewModel.IsFileSelectionPresented("b.cs"));
         Assert.True(viewModel.Preview.IsLoading);
 
@@ -125,10 +125,10 @@ public sealed class RepoCodePageViewModelTests
 
         Assert.True(viewModel.IsFileSelectionPresented(first.Path));
         Assert.False(viewModel.IsFileSelectionCoherent(first.Path));
-        Assert.True(viewModel.Breadcrumb.IsPathTransitioning);
-        Assert.Equal("first.cs", viewModel.Breadcrumb.CurrentFileName);
+        Assert.False(viewModel.Breadcrumb.IsPathTransitioning);
+        Assert.Equal("second.cs", viewModel.Breadcrumb.CurrentFileName);
         Assert.DoesNotContain(viewModel.Breadcrumb.Segments, segment => segment.Path == first.Path);
-        Assert.True(viewModel.Preview.IsLoading);
+        Assert.False(viewModel.Preview.IsLoading);
         Assert.Equal("second.cs", viewModel.Preview.CurrentFile?.Path);
         Assert.Equal("second content", viewModel.Preview.Text);
 
@@ -408,6 +408,7 @@ public sealed class RepoCodePageViewModelTests
         Assert.Equal("README.md", viewModel.Preview.CurrentFile!.Path);
         Assert.Equal("readme", viewModel.Preview.CurrentFile.Sha);
         Assert.Equal("current readme", viewModel.Preview.Text);
+        Assert.Equal("README.md", viewModel.Tree.SelectedNode?.Path);
     }
 
     [Fact]
@@ -665,7 +666,13 @@ public sealed class RepoCodePageViewModelTests
             RepoCodeTelemetryActions.CsvReorder,
             RepoCodeTelemetryActions.CsvResize,
             RepoCodeTelemetryActions.CsvRichView,
-            RepoCodeTelemetryActions.CsvSort
+            RepoCodeTelemetryActions.CsvSort,
+            RepoCodeTelemetryActions.ImageZoom,
+            RepoCodeTelemetryActions.JsonPlainView,
+            RepoCodeTelemetryActions.JsonRichView,
+            RepoCodeTelemetryActions.SvgZoom,
+            RepoCodeTelemetryActions.XmlPlainView,
+            RepoCodeTelemetryActions.XmlRichView
         ];
 
         foreach (string action in requiredActions)

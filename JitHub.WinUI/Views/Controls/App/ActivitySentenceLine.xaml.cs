@@ -163,7 +163,7 @@ public sealed partial class ActivitySentenceLine : UserControl
         {
             hyperlink.Inlines.Add(new Run
             {
-                Text = $"{part.Glyph} ",
+                Text = $"{part.Glyph}\u00A0",
                 FontFamily = Resource<FontFamily>("SegoeFluentIcons"),
                 FontSize = Resource<double>("AppFontSize11"),
                 FontWeight = FontWeights.Normal
@@ -264,7 +264,6 @@ public sealed partial class ActivitySentenceLine : UserControl
         }
 
         double available = visibleWidth - 28 - 58 - 20;
-        double width = visibleWidth < 760 ? Math.Min(320, available) : available;
-        SentenceRichTextBlock.Width = Math.Max(80, width);
+        SentenceRichTextBlock.Width = Math.Max(80, available);
     }
 }

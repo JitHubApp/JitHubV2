@@ -16,6 +16,42 @@ public sealed class MyIssuesResponsiveFilterContractTests
         Assert.Contains("ViewModel.MentionedFilterLabel", source, StringComparison.Ordinal);
         Assert.Contains("MyIssuesScopeCompactPicker", source, StringComparison.Ordinal);
         Assert.Contains("MyIssuesStateCompactPicker", source, StringComparison.Ordinal);
+        Assert.Equal(2, document.Descendants().Count(element =>
+            element.Name.LocalName == "ComboBox" &&
+            string.Equals(
+                element.Attribute("Style")?.Value,
+                "{StaticResource AppCompactTextComboBoxStyle}",
+                StringComparison.Ordinal)));
+    }
+
+    [Fact]
+    public void MyPullRequests_MatchesMyIssuesResponsiveFilterAffordance()
+    {
+        string path = GetPagePath("MyPullRequestsPage.xaml");
+        XDocument document = XDocument.Load(path);
+        string source = document.ToString(SaveOptions.DisableFormatting);
+        string codeBehind = File.ReadAllText(path + ".cs");
+
+        Assert.Contains("ViewModel.PullRequestInvolvedFilterLabel", source, StringComparison.Ordinal);
+        Assert.Contains("ViewModel.PullRequestReviewRequestedFilterLabel", source, StringComparison.Ordinal);
+        Assert.Contains("ViewModel.PullRequestAuthoredFilterLabel", source, StringComparison.Ordinal);
+        Assert.Contains("ViewModel.PullRequestAssignedFilterLabel", source, StringComparison.Ordinal);
+        Assert.Contains("ExpandedPullRequestFilters", source, StringComparison.Ordinal);
+        Assert.Contains("CompactPullRequestFilters", source, StringComparison.Ordinal);
+        Assert.Contains("MyPullRequestsScopeSegmented", source, StringComparison.Ordinal);
+        Assert.Contains("MyPullRequestsScopeCompactPicker", source, StringComparison.Ordinal);
+        Assert.Contains("MyPullRequestsStateSegmented", source, StringComparison.Ordinal);
+        Assert.Contains("MyPullRequestsStateCompactPicker", source, StringComparison.Ordinal);
+        Assert.Equal(2, document.Descendants().Count(element =>
+            element.Name.LocalName == "ComboBox" &&
+            string.Equals(
+                element.Attribute("Style")?.Value,
+                "{StaticResource AppCompactTextComboBoxStyle}",
+                StringComparison.Ordinal)));
+        Assert.Contains("SetPullRequestFilter", codeBehind, StringComparison.Ordinal);
+        Assert.Contains("GitHubMePullRequestFilter.ReviewRequested", codeBehind, StringComparison.Ordinal);
+        Assert.Contains("GitHubMePullRequestFilter.Authored", codeBehind, StringComparison.Ordinal);
+        Assert.Contains("GitHubMePullRequestFilter.Assigned", codeBehind, StringComparison.Ordinal);
     }
 
     [Fact]
@@ -46,7 +82,7 @@ public sealed class MyIssuesResponsiveFilterContractTests
     private static string FindRepositoryRoot()
     {
         DirectoryInfo? directory = new(AppContext.BaseDirectory);
-        while (directory is not null && !File.Exists(Path.Combine(directory.FullName, "JitHub.slnx")))
+        while (directory is not null && !File.Exists(Path.Combine(directory.FullName, "Directory.Build.props")))
         {
             directory = directory.Parent;
         }

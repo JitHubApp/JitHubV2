@@ -96,17 +96,43 @@ public sealed class PullRequestResponsiveActionContractTests
         XElement listHost = Assert.Single(xaml.Descendants(), element =>
             (string?)element.Attribute("AutomationProperties.AutomationId") == "RepoPullRequestsListHost");
 
-        Assert.Equal("8,6,10,10", (string?)listHost.Attribute("Padding"));
+        Assert.Equal("{ThemeResource AppPadding10}", (string?)listHost.Attribute("Padding"));
 
         XElement inspector = Assert.Single(xaml.Descendants(), element =>
             (string?)element.Attribute("AutomationProperties.AutomationId") == "RepoPullRequestsInspector");
-        Assert.Equal("16,6,10,16", (string?)inspector.Attribute("Padding"));
+        Assert.Equal("{ThemeResource AppPadding16_6_10_16}", (string?)inspector.Attribute("Padding"));
+    }
+
+    [Fact]
+    public void PullRequestResponsiveProbeExercisesShyHeaderAcrossEverySection()
+    {
+        string automation = File.ReadAllText(SourcePath(
+            "JitHub.WinUI.Automation",
+            "Program.cs"));
+        string queryService = File.ReadAllText(SourcePath(
+            "JitHub.WinUI",
+            "Services",
+            "PullRequests",
+            "GitHubPullRequestQueryService.cs"));
+
+        Assert.Contains("--scenario=pr-shy-header", automation, StringComparison.Ordinal);
+        Assert.Contains("ExercisePullRequestShyHeaderSection", automation, StringComparison.Ordinal);
+        Assert.Contains("section upward reveal", automation, StringComparison.Ordinal);
+        Assert.Contains("section downward re-hide", automation, StringComparison.Ordinal);
+        foreach (string section in new[] { "Conversation", "Files", "Commits", "Reviews", "Timeline" })
+        {
+            Assert.Contains($"RepoPullRequestsSection_{section}", automation, StringComparison.Ordinal);
+        }
+
+        Assert.Contains("IsShyHeaderAutomationScenario", queryService, StringComparison.Ordinal);
+        Assert.Contains("Enumerable.Range(1, 160)", queryService, StringComparison.Ordinal);
+        Assert.Contains("Enumerable.Range(1, 24)", queryService, StringComparison.Ordinal);
     }
 
     private static string SourcePath(params string[] segments)
     {
         DirectoryInfo? directory = new(AppContext.BaseDirectory);
-        while (directory is not null && !File.Exists(Path.Combine(directory.FullName, "JitHub.slnx")))
+        while (directory is not null && !File.Exists(Path.Combine(directory.FullName, "Directory.Build.props")))
         {
             directory = directory.Parent;
         }

@@ -134,11 +134,8 @@ function Assert-ActivationManifest {
     $dependencyNames = @($manifest.SelectNodes('/f:Package/f:Dependencies/f:PackageDependency', $namespace) |
         ForEach-Object { [string]$_.Name })
     $hasStoreEngagement = $dependencyNames -contains 'Microsoft.Services.Store.Engagement'
-    if ($CurrentArchitecture -in @('x86', 'x64') -and -not $hasStoreEngagement) {
+    if (-not $hasStoreEngagement) {
         throw "Store Engagement dependency is missing from the $CurrentArchitecture manifest."
-    }
-    if ($CurrentArchitecture -eq 'arm64' -and $hasStoreEngagement) {
-        throw 'ARM64 manifest must not depend on the unavailable Store Engagement framework.'
     }
 
     $activationPaths = @($manifest.SelectNodes('//f:Extension[@Category="windows.activatableClass.inProcessServer"]/f:InProcessServer/f:Path', $namespace))

@@ -137,6 +137,7 @@ public sealed partial class ControlCatalogAdoptionTests
         }
 
         AssertBasedOn(styles, "AppCommandSearchTextBoxStyle", "AppCommandTextBoxStyle");
+        AssertBasedOn(styles, "AppCommandLeadingIconSearchTextBoxStyle", "AppCommandSearchTextBoxStyle");
         AssertBasedOn(styles, "AppDenseFlatListRowStyle", "AppDenseListRowStyle");
         AssertBasedOn(styles, "AppWorkspaceCardListRowStyle", "AppDenseListRowStyle");
         AssertBasedOn(styles, "AppCompactNavigationRowStyle", "AppDenseListRowStyle");
@@ -145,9 +146,11 @@ public sealed partial class ControlCatalogAdoptionTests
         AssertBasedOn(styles, "AppInlineEmptyStatePanelStyle", "AppEmptyStatePanelStyle");
         AssertBasedOn(styles, "AppErrorInfoBarStyle", "AppStatusInfoBarStyle");
 
-        HashSet<string> brushKeys = catalog.Root!
+        XElement[] brushResources = catalog.Root!
             .Elements()
-            .Where(element => element.Name.LocalName == "SolidColorBrush")
+            .Where(element => element.Name.LocalName is "SolidColorBrush" or "StaticResource")
+            .ToArray();
+        HashSet<string> brushKeys = brushResources
             .Select(element => (string?)element.Attribute(x + "Key"))
             .Where(static key => !string.IsNullOrWhiteSpace(key))
             .Select(static key => key!)
@@ -165,9 +168,21 @@ public sealed partial class ControlCatalogAdoptionTests
         Assert.DoesNotContain(brushKeys, key => key.StartsWith("CheckBoxBackground", StringComparison.Ordinal));
         Assert.DoesNotContain(brushKeys, key => key.StartsWith("CheckBoxBorderBrush", StringComparison.Ordinal));
 
-        Assert.All(
-            catalog.Root!.Elements().Where(element => element.Name.LocalName == "SolidColorBrush"),
-            brush => Assert.StartsWith("{ThemeResource ", (string?)brush.Attribute("Color") ?? string.Empty, StringComparison.Ordinal));
+        Assert.All(brushResources, brush =>
+        {
+            if (brush.Name.LocalName == "SolidColorBrush")
+            {
+                Assert.StartsWith(
+                    "{ThemeResource ",
+                    (string?)brush.Attribute("Color") ?? string.Empty,
+                    StringComparison.Ordinal);
+                return;
+            }
+
+            string resourceKey = (string?)brush.Attribute("ResourceKey") ?? string.Empty;
+            Assert.StartsWith("App", resourceKey, StringComparison.Ordinal);
+            Assert.EndsWith("Brush", resourceKey, StringComparison.Ordinal);
+        });
     }
 
     [Fact]
@@ -192,11 +207,11 @@ public sealed partial class ControlCatalogAdoptionTests
             element.Name.LocalName == "Border"
             && string.Equals(ReadXamlName(element), "CardRoot", StringComparison.Ordinal));
 
-        Assert.Equal("76", (string?)cardRoot.Attribute("MinHeight"));
-        Assert.Equal("12", (string?)cardRoot.Attribute("Padding"));
+        Assert.Equal("{ThemeResource AppWorkspaceCardMinHeight}", (string?)cardRoot.Attribute("MinHeight"));
+        Assert.Equal("{ThemeResource AppWorkspaceCardPadding}", (string?)cardRoot.Attribute("Padding"));
         Assert.Equal("{ThemeResource AppCardBrush}", (string?)cardRoot.Attribute("Background"));
         Assert.Equal("{ThemeResource AppHairlineBrush}", (string?)cardRoot.Attribute("BorderBrush"));
-        Assert.Equal("1", (string?)cardRoot.Attribute("BorderThickness"));
+        Assert.Equal("{ThemeResource AppHairlineBorderThickness}", (string?)cardRoot.Attribute("BorderThickness"));
         Assert.Equal("{ThemeResource AppRadiusSmall}", (string?)cardRoot.Attribute("CornerRadius"));
 
         string[] requiredStates =
@@ -227,7 +242,10 @@ public sealed partial class ControlCatalogAdoptionTests
 
         AssertStateSetter(states["PressedSelected"], "CardRoot.Background", "{ThemeResource AppRowPressedBrush}");
         AssertStateSetter(states["PressedSelected"], "CardRoot.BorderBrush", "{ThemeResource AppAccentBrush}");
-        AssertStateSetter(states["Disabled"], "CardRoot.Opacity", "0.55");
+        AssertStateSetter(
+            states["Disabled"],
+            "CardRoot.Opacity",
+            "{ThemeResource AppOpacityDisabledSurface}");
 
         XElement presenter = template.Descendants().Single(element => element.Name.LocalName == "ContentPresenter");
         Assert.Equal("{TemplateBinding Content}", (string?)presenter.Attribute("Content"));
@@ -402,8 +420,8 @@ public sealed partial class ControlCatalogAdoptionTests
                 string styleKey = ReadStaticResourceKey((string?)control.Attribute("Style")) ?? string.Empty;
                 string[] allowedStyles = control.Name.LocalName switch
                 {
-                    "TextBox" => ["AppCommandTextBoxStyle", "AppCommandSearchTextBoxStyle", "ShellSearchTextBoxStyle"],
-                    "ComboBox" => ["AppCompactComboBoxStyle"],
+                    "TextBox" => ["AppCommandTextBoxStyle", "AppCommandSearchTextBoxStyle", "AppCommandLeadingIconSearchTextBoxStyle", "ShellSearchTextBoxStyle"],
+                    "ComboBox" => ["AppCompactComboBoxStyle", "AppCompactTextComboBoxStyle", "AppLabeledComboBoxStyle"],
                     "CalendarDatePicker" => ["AppCompactCalendarDatePickerStyle"],
                     _ => []
                 };
@@ -601,7 +619,7 @@ public sealed partial class ControlCatalogAdoptionTests
     private static string FindRepositoryRoot()
     {
         DirectoryInfo? directory = new(AppContext.BaseDirectory);
-        while (directory is not null && !File.Exists(Path.Combine(directory.FullName, "JitHub.slnx")))
+        while (directory is not null && !File.Exists(Path.Combine(directory.FullName, "Directory.Build.props")))
         {
             directory = directory.Parent;
         }

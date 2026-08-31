@@ -33,7 +33,7 @@
     <Style TargetType="MenuFlyoutSubItem" BasedOn="{StaticResource AppMenuFlyoutSubItemStyle}" />
 
     <Style x:Key="AppMenuFlyoutSeparatorStyle" TargetType="MenuFlyoutSeparator">
-        <Setter Property="Margin" Value="0,4" />
+        <Setter Property="Margin" Value="{ThemeResource AppMargin0_4}" />
     </Style>
 
     <Style TargetType="MenuFlyoutSeparator" BasedOn="{StaticResource AppMenuFlyoutSeparatorStyle}" />
@@ -63,7 +63,7 @@
     <Style TargetType="muxc:InfoBar">
         <Setter Property="Background" Value="{ThemeResource AppCardBrush}" />
         <Setter Property="BorderBrush" Value="{ThemeResource AppOutlineBrush}" />
-        <Setter Property="BorderThickness" Value="1" />
+        <Setter Property="BorderThickness" Value="{ThemeResource AppHairlineBorderThickness}" />
         <Setter Property="CornerRadius" Value="{ThemeResource AppRadiusMedium}" />
         <Setter Property="Foreground" Value="{ThemeResource AppInkBrush}" />
     </Style>

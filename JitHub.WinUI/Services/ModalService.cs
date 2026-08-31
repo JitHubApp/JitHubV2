@@ -252,8 +252,7 @@ public class ModalService
             }
             catch (Exception cleanupException)
             {
-                System.Diagnostics.Debug.WriteLine(
-                    $"Shell dialog host cleanup failed after an open error: {cleanupException}");
+                HandledFailureReporter.Report(cleanupException, "shell-dialog-open-cleanup");
             }
             throw;
         }

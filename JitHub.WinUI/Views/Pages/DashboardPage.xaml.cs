@@ -8,13 +8,14 @@ using CommunityToolkit.WinUI;
 using CommunityToolkit.Mvvm.Input;
 using JitHub.Services;
 using JitHub.Services.Layout;
+using JitHub.WinUI.Helpers;
+using JitHub.WinUI.Performance;
 using JitHub.WinUI.ViewModels.Pages;
 using JitHub.WinUI.Views.Controls.App;
 using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Controls;
 using Microsoft.UI.Xaml.Input;
 using Microsoft.UI.Xaml.Media;
-using Microsoft.UI.Xaml.Media.Animation;
 using Microsoft.UI.Xaml.Navigation;
 using Windows.Foundation;
 using Windows.System;
@@ -35,10 +36,7 @@ public sealed partial class DashboardPage : Page
     private const int VkShift = 0x10;
     private const int VkLeftShift = 0xA0;
     private const int VkRightShift = 0xA1;
-    private static readonly TimeSpan ShyHeaderForwardDuration = TimeSpan.FromMilliseconds(240);
-    private static readonly TimeSpan ShyHeaderReverseDuration = TimeSpan.FromMilliseconds(220);
-    private static readonly TimeSpan OverviewShyForwardDuration = TimeSpan.FromMilliseconds(240);
-    private static readonly TimeSpan OverviewShyReverseDuration = TimeSpan.FromMilliseconds(220);
+    private static readonly TimeSpan ShyHeaderDuration = AppMotionTokens.MediumDuration;
     private static readonly IScalingCalculator HeaderGreetingScaling = new TextScalingCalculator();
 
     [LibraryImport("user32.dll")]
@@ -70,8 +68,10 @@ public sealed partial class DashboardPage : Page
     private long _overviewVerticalOffsetCallbackToken;
     private long _overviewScrollableHeightCallbackToken;
     private bool _overviewScrollCallbacksRegistered;
+    private bool _isOverviewScrollHeaderShy;
     private bool _isOverviewShy;
     private int _overviewTransitionGeneration;
+    private ProductPerformanceScrollProbe? _performanceScrollProbe;
 
     public DashboardPageViewModel ViewModel { get; }
 
@@ -87,12 +87,18 @@ public sealed partial class DashboardPage : Page
         {
             Source = DashboardHeaderGrid,
             Target = DashboardShyHeaderSurface,
-            Duration = ShyHeaderForwardDuration,
-            ReverseDuration = ShyHeaderReverseDuration,
+            Duration = ShyHeaderDuration,
+            ReverseDuration = ShyHeaderDuration,
             SourceToggleMethod = VisualStateToggleMethod.ByVisibility,
             TargetToggleMethod = VisualStateToggleMethod.ByVisibility,
             Configs =
             [
+                new TransitionConfig
+                {
+                    Id = "DashboardHeaderChrome",
+                    ScaleMode = ScaleMode.Scale,
+                    EnableClipAnimation = true
+                },
                 new TransitionConfig
                 {
                     Id = "DashboardHeaderGreeting",
@@ -125,39 +131,52 @@ public sealed partial class DashboardPage : Page
         Unloaded += OnUnloaded;
     }
 
-    private async void OnLoaded(object sender, RoutedEventArgs e)
+    private void OnLoaded(object sender, RoutedEventArgs e)
     {
-        FocusManager.GettingFocus -= FocusManager_GettingFocus;
-        FocusManager.GettingFocus += FocusManager_GettingFocus;
-        FocusManager.LosingFocus -= FocusManager_LosingFocus;
-        FocusManager.LosingFocus += FocusManager_LosingFocus;
-        _starLibraryService.Changed -= StarLibraryService_Changed;
-        _starLibraryService.Changed += StarLibraryService_Changed;
-        _notificationInboxState.PropertyChanged -= NotificationInboxState_PropertyChanged;
-        _notificationInboxState.PropertyChanged += NotificationInboxState_PropertyChanged;
-        ViewModel.ApplySharedNotificationReadStates();
-        try
+        _headerTransitionGeneration++;
+        MorphTransitionSafety.TryResetVisibilityState(
+            _headerTransition,
+            DashboardHeaderGrid,
+            DashboardShyHeaderSurface,
+            toInitialState: !_isHeaderShy);
+        _performanceScrollProbe?.Dispose();
+        _performanceScrollProbe = ProductPerformanceScrollProbe.TryStart(
+            DashboardMainRailScrollViewer,
+            DashboardMainRailScrollViewer);
+        UiTaskGuard.Run(async () =>
         {
-            ApplyResponsiveLayout(ActualWidth);
-            AttachHeaderScrollTracking();
-            AttachOverviewScrollTracking();
-            if (_initialized)
+            FocusManager.GettingFocus -= FocusManager_GettingFocus;
+            FocusManager.GettingFocus += FocusManager_GettingFocus;
+            FocusManager.LosingFocus -= FocusManager_LosingFocus;
+            FocusManager.LosingFocus += FocusManager_LosingFocus;
+            _starLibraryService.Changed -= StarLibraryService_Changed;
+            _starLibraryService.Changed += StarLibraryService_Changed;
+            _notificationInboxState.PropertyChanged -= NotificationInboxState_PropertyChanged;
+            _notificationInboxState.PropertyChanged += NotificationInboxState_PropertyChanged;
+            ViewModel.ApplySharedNotificationReadStates();
+            try
             {
+                ApplyResponsiveLayout(ActualWidth);
+                AttachHeaderScrollTracking();
+                AttachOverviewScrollTracking();
+                if (_initialized)
+                {
+                    UpdateOverviewForScroll(DashboardSideRailScrollViewer);
+                    CommitPerformanceReadiness();
+                    return;
+                }
+
+                _initialized = true;
+                await ViewModel.InitializeAsync();
+                UpdateHeaderForScroll(DashboardMainRailScrollViewer);
                 UpdateOverviewForScroll(DashboardSideRailScrollViewer);
                 CommitPerformanceReadiness();
-                return;
             }
-
-            _initialized = true;
-            await ViewModel.InitializeAsync();
-            UpdateHeaderForScroll(DashboardMainRailScrollViewer);
-            UpdateOverviewForScroll(DashboardSideRailScrollViewer);
-            CommitPerformanceReadiness();
-        }
-        catch (Exception ex)
-        {
-            System.Diagnostics.Debug.WriteLine($"Failed to load dashboard: {ex}");
-        }
+            catch (Exception ex)
+            {
+                JitHub.WinUI.App.LogHandledException(ex, "ui-dashboard-page-initialize");
+            }
+        }, "ui-dashboard-page");
     }
 
     private void Page_SizeChanged(object sender, SizeChangedEventArgs e)
@@ -248,7 +267,6 @@ public sealed partial class DashboardPage : Page
             _sideDrawerAnimator.SyncToCurrentState();
         }
 
-        UpdateSideDrawerCloseButtonPlacement();
     }
 
     private void AttachHeaderScrollTracking()
@@ -401,8 +419,9 @@ public sealed partial class DashboardPage : Page
         {
             Source = source,
             Target = DashboardOverviewShySurface,
-            Duration = OverviewShyForwardDuration,
-            ReverseDuration = OverviewShyReverseDuration,
+            Duration = ShyHeaderDuration,
+            ReverseDuration = ShyHeaderDuration,
+            DefaultOpacityTransitionProgressKey = AppMotionTokens.ShyHeaderOpacityTransitionProgressKey,
             SourceToggleMethod = VisualStateToggleMethod.ByIsVisible,
             TargetToggleMethod = VisualStateToggleMethod.ByIsVisible,
             Configs =
@@ -413,6 +432,7 @@ public sealed partial class DashboardPage : Page
                 new TransitionConfig { Id = "DashboardOverviewMetricFollowers", ScaleMode = ScaleMode.Scale, EnableClipAnimation = true }
             ]
         };
+        _isOverviewScrollHeaderShy = false;
         _isOverviewShy = false;
         _ = DispatcherQueue.TryEnqueue(() =>
         {
@@ -426,16 +446,22 @@ public sealed partial class DashboardPage : Page
     private void ClearOverviewMorphSource()
     {
         _overviewTransitionGeneration++;
-        try
+        if (_overviewTransition is TransitionHelper transition)
         {
-            _overviewTransition?.Reset(toInitialState: true);
-        }
-        catch (InvalidOperationException)
-        {
+            MorphTransitionSafety.TryStop(transition);
+            if (_overviewMorphSource is FrameworkElement source)
+            {
+                MorphTransitionSafety.TryReset(
+                    transition,
+                    source,
+                    DashboardOverviewShySurface,
+                    toInitialState: true);
+            }
         }
 
         _overviewTransition = null;
         _overviewMorphSource = null;
+        _isOverviewScrollHeaderShy = false;
         _isOverviewShy = false;
         DashboardOverviewShySurface.Visibility = Visibility.Collapsed;
     }
@@ -453,6 +479,7 @@ public sealed partial class DashboardPage : Page
             !ViewModel.IsSideRailExpanded ||
             scrollViewer.ScrollableHeight <= 0)
         {
+            _isOverviewScrollHeaderShy = false;
             SetOverviewShy(false, animate: true);
             return;
         }
@@ -469,18 +496,23 @@ public sealed partial class DashboardPage : Page
         }
 
         double offset = scrollViewer.VerticalOffset;
-        if (_isOverviewShy)
+        double restoreOffset = Math.Max(0, sourceTop + OverviewShyRestoreInset);
+        double startOffset = Math.Max(restoreOffset, sourceTop + OverviewShyStartInset);
+
+        if (_isOverviewScrollHeaderShy)
         {
-            if (offset <= sourceTop + OverviewShyRestoreInset)
+            if (offset <= restoreOffset)
             {
+                _isOverviewScrollHeaderShy = false;
                 SetOverviewShy(false, animate: true);
             }
 
             return;
         }
 
-        if (offset >= sourceTop + OverviewShyStartInset)
+        if (offset >= startOffset)
         {
+            _isOverviewScrollHeaderShy = true;
             SetOverviewShy(true, animate: true);
         }
     }
@@ -500,12 +532,20 @@ public sealed partial class DashboardPage : Page
         {
             DashboardOverviewShySurface.Visibility = Visibility.Visible;
             DashboardSideRailHost.UpdateLayout();
-            transition.Reset(toInitialState: true);
+            MorphTransitionSafety.TryReset(
+                transition,
+                _overviewMorphSource!,
+                DashboardOverviewShySurface,
+                toInitialState: true);
         }
 
         if (!animate || !DashboardSideRailHost.IsLoaded || !AreAnimationsEnabled())
         {
-            transition.Reset(toInitialState: !isShy);
+            MorphTransitionSafety.TryReset(
+                transition,
+                _overviewMorphSource!,
+                DashboardOverviewShySurface,
+                toInitialState: !isShy);
             if (!isShy)
             {
                 DashboardOverviewShySurface.Visibility = Visibility.Collapsed;
@@ -514,13 +554,19 @@ public sealed partial class DashboardPage : Page
             return;
         }
 
-        _ = AnimateOverviewAsync(transition, isShy, generation);
+        UiTaskGuard.Observe(AnimateOverviewAsync(transition, isShy, generation), "ui-dashboard-page");
     }
 
     private async Task AnimateOverviewAsync(TransitionHelper transition, bool isShy, int generation)
     {
         try
         {
+            FrameworkElement? source = _overviewMorphSource;
+            if (source is null)
+            {
+                return;
+            }
+
             if (isShy)
             {
                 await transition.StartAsync(forceUpdateAnimatedElements: true);
@@ -530,7 +576,17 @@ public sealed partial class DashboardPage : Page
                 await transition.ReverseAsync(forceUpdateAnimatedElements: true);
             }
 
-            if (generation == _overviewTransitionGeneration && !isShy)
+            if (generation != _overviewTransitionGeneration)
+            {
+                return;
+            }
+
+            MorphTransitionSafety.TrySetStableState(
+                transition,
+                source,
+                DashboardOverviewShySurface,
+                isTargetState: isShy);
+            if (!isShy)
             {
                 DashboardOverviewShySurface.Visibility = Visibility.Collapsed;
             }
@@ -541,9 +597,18 @@ public sealed partial class DashboardPage : Page
         catch (Exception) when (generation != _overviewTransitionGeneration)
         {
         }
-        catch when (generation == _overviewTransitionGeneration)
+        catch (Exception ex) when (generation == _overviewTransitionGeneration)
         {
-            transition.Reset(toInitialState: !isShy);
+            JitHub.WinUI.App.LogHandledException(ex, "ui-dashboard-overview-morph");
+            if (_overviewMorphSource is FrameworkElement source)
+            {
+                MorphTransitionSafety.TryReset(
+                    transition,
+                    source,
+                    DashboardOverviewShySurface,
+                    toInitialState: !isShy);
+            }
+
             if (!isShy)
             {
                 DashboardOverviewShySurface.Visibility = Visibility.Collapsed;
@@ -650,47 +715,31 @@ public sealed partial class DashboardPage : Page
         int generation = ++_headerTransitionGeneration;
         if (!animate || !DashboardHeaderGrid.IsLoaded || !AreAnimationsEnabled())
         {
-            _headerTransition.Reset(toInitialState: !isShy);
-            DashboardWidgetBoard.UpdateLayout();
-            ResetMainRailReflow();
+            if (MorphTransitionSafety.TryResetVisibilityState(
+                _headerTransition,
+                DashboardHeaderGrid,
+                DashboardShyHeaderSurface,
+                toInitialState: !isShy))
+            {
+                if (!isShy)
+                {
+                    DashboardShyHeaderSurface.Visibility = Visibility.Collapsed;
+                }
+            }
+
             return;
         }
 
-        _ = AnimateHeaderAsync(isShy, generation);
+        UiTaskGuard.Observe(AnimateHeaderAsync(isShy, generation), "ui-dashboard-page");
     }
 
     private async Task AnimateHeaderAsync(bool isShy, int generation)
     {
         try
         {
-            bool reverseFromSettledShyState =
-                !isShy && _headerTransition.IsTargetState && !_headerTransition.IsAnimating;
-            double previousRailTop = reverseFromSettledShyState
-                ? GetElementTop(DashboardMainRailHost, DashboardWidgetBoard)
-                : 0;
             Task headerAnimation = isShy
                 ? _headerTransition.StartAsync(forceUpdateAnimatedElements: true)
                 : _headerTransition.ReverseAsync(forceUpdateAnimatedElements: true);
-
-            DashboardWidgetBoard.UpdateLayout();
-            if (isShy)
-            {
-                double reclaimedHeight = Math.Max(0, DashboardHeaderGrid.ActualHeight);
-                AnimateMainRailReflow(
-                    new Vector3(0, (float)-reclaimedHeight, 0),
-                    ShyHeaderForwardDuration);
-            }
-            else if (reverseFromSettledShyState)
-            {
-                double expandedRailTop = GetElementTop(DashboardMainRailHost, DashboardWidgetBoard);
-                SetMainRailReflowImmediately(
-                    new Vector3(0, (float)(previousRailTop - expandedRailTop), 0));
-                AnimateMainRailReflow(Vector3.Zero, ShyHeaderReverseDuration);
-            }
-            else
-            {
-                AnimateMainRailReflow(Vector3.Zero, ShyHeaderReverseDuration);
-            }
 
             await headerAnimation;
             if (generation != _headerTransitionGeneration)
@@ -698,8 +747,15 @@ public sealed partial class DashboardPage : Page
                 return;
             }
 
-            DashboardWidgetBoard.UpdateLayout();
-            ResetMainRailReflow();
+            MorphTransitionSafety.TrySetStableState(
+                _headerTransition,
+                DashboardHeaderGrid,
+                DashboardShyHeaderSurface,
+                isTargetState: isShy);
+            if (!isShy)
+            {
+                DashboardShyHeaderSurface.Visibility = Visibility.Collapsed;
+            }
         }
         catch (OperationCanceledException)
         {
@@ -707,35 +763,22 @@ public sealed partial class DashboardPage : Page
         catch (Exception) when (generation != _headerTransitionGeneration)
         {
         }
-        catch when (generation == _headerTransitionGeneration)
+        catch (Exception ex) when (generation == _headerTransitionGeneration)
         {
-            _headerTransition.Reset(toInitialState: !isShy);
-            DashboardWidgetBoard.UpdateLayout();
-            ResetMainRailReflow();
+            JitHub.WinUI.App.LogHandledException(ex, "ui-dashboard-header-morph");
+            if (MorphTransitionSafety.TryResetVisibilityState(
+                _headerTransition,
+                DashboardHeaderGrid,
+                DashboardShyHeaderSurface,
+                toInitialState: !isShy))
+            {
+                if (!isShy)
+                {
+                    DashboardShyHeaderSurface.Visibility = Visibility.Collapsed;
+                }
+            }
         }
     }
-
-    private void AnimateMainRailReflow(Vector3 translation, TimeSpan duration)
-    {
-        DashboardMainRailHost.TranslationTransition = new Vector3Transition
-        {
-            Components = Vector3TransitionComponents.Y,
-            Duration = duration
-        };
-        DashboardMainRailHost.Translation = translation;
-    }
-
-    private void SetMainRailReflowImmediately(Vector3 translation)
-    {
-        DashboardMainRailHost.TranslationTransition = null;
-        DashboardMainRailHost.Translation = translation;
-    }
-
-    private void ResetMainRailReflow() =>
-        SetMainRailReflowImmediately(Vector3.Zero);
-
-    private static double GetElementTop(FrameworkElement element, UIElement relativeTo) =>
-        element.TransformToVisual(relativeTo).TransformPoint(new Point()).Y;
 
     private static bool AreAnimationsEnabled()
     {
@@ -804,6 +847,7 @@ public sealed partial class DashboardPage : Page
             ViewModel.CloseSideRailCommand.Execute(null);
         }
 
+        bool isFreshOpen = open && !_isSideDrawerOpen;
         _isSideDrawerOpen = open;
 
         if (open)
@@ -815,7 +859,10 @@ public sealed partial class DashboardPage : Page
 
             DashboardSideDrawer.Visibility = Visibility.Visible;
             DashboardSideDrawerCloseButton.Visibility = Visibility.Visible;
-            UpdateSideDrawerCloseButtonPlacement();
+            if (isFreshOpen)
+            {
+                ResetSideDrawerViewport();
+            }
         }
 
         _sideDrawerAnimator.SetOpen(open, animate, () => CompleteSideDrawerAnimation(open));
@@ -832,7 +879,6 @@ public sealed partial class DashboardPage : Page
         {
             DashboardSideDrawer.Visibility = Visibility.Visible;
             DashboardSideDrawerCloseButton.Visibility = Visibility.Visible;
-            UpdateSideDrawerCloseButtonPlacement();
             _ = DispatcherQueue.TryEnqueue(() => DashboardSideDrawerCloseButton.Focus(FocusState.Keyboard));
         }
 
@@ -1043,11 +1089,24 @@ public sealed partial class DashboardPage : Page
         return DashboardSideDrawerPanel.Width > 0 ? DashboardSideDrawerPanel.Width : SideDrawerFallbackWidth;
     }
 
-    private void UpdateSideDrawerCloseButtonPlacement()
+    private void ResetSideDrawerViewport()
     {
-        DashboardSideDrawerCloseButton.Margin = new Thickness(0);
-        DashboardSideDrawerCloseButton.Width = 38;
-        DashboardSideDrawerCloseButton.Height = 36;
+        DashboardSideDrawerScrollViewer.ChangeView(null, 0, null, disableAnimation: true);
+        _ = DispatcherQueue.TryEnqueue(() =>
+        {
+            if (_isSideDrawerOpen)
+            {
+                DashboardSideDrawerScrollViewer.ChangeView(null, 0, null, disableAnimation: true);
+            }
+        });
+    }
+
+    private void DashboardHeaderGrid_SizeChanged(object sender, SizeChangedEventArgs e)
+    {
+        if (double.IsFinite(e.NewSize.Height) && e.NewSize.Height > 0)
+        {
+            DashboardHeaderScrollSpacer.Height = e.NewSize.Height;
+        }
     }
 
     private void OnUnloaded(object sender, RoutedEventArgs e)
@@ -1058,9 +1117,10 @@ public sealed partial class DashboardPage : Page
         _notificationInboxState.PropertyChanged -= NotificationInboxState_PropertyChanged;
         DetachHeaderScrollTracking();
         DetachOverviewScrollTracking();
+        _performanceScrollProbe?.Dispose();
+        _performanceScrollProbe = null;
         _headerTransitionGeneration++;
-        _headerTransition.Reset(toInitialState: !_isHeaderShy);
-        ResetMainRailReflow();
+        MorphTransitionSafety.TryStop(_headerTransition);
         ClearOverviewMorphSource();
         _sideDrawerAnimator.Stop();
         CloseCustomizeDialog(cancelChanges: true);

@@ -50,7 +50,7 @@ public sealed class GitHubStarQueryService : IGitHubStarQueryService
             GitHubCachePolicy.MutableResource,
             GitHubCachePolicy.TtlForResource(GitHubCachePolicy.MutableResource),
             Phase0GitHubJsonSerializerContext.Default.GitHubStarredRepositoryArray,
-            ["me-stars", "star-library", "repo"],
+            (string[])["me-stars", "star-library", "repo"],
             priority,
             StarMediaType);
         return _queryService.GetAsync(query, fetchPolicy, cancellationToken);
@@ -59,6 +59,13 @@ public sealed class GitHubStarQueryService : IGitHubStarQueryService
     private static GitHubStarredRepository[] CreatePreviewStars()
     {
         string[] names = ["JitHubApp/JitHubV2", "microsoft/WinUI-Gallery", "microsoft/WindowsAppSDK", "dotnet/runtime"];
+        string[] descriptions =
+        [
+            "A native Windows GitHub client.",
+            "Explore WinUI controls and design patterns.",
+            "Windows APIs and components for desktop apps.",
+            "The .NET runtime, libraries, and tools."
+        ];
         return names.Select((fullName, index) =>
         {
             string[] parts = fullName.Split('/', 2);
@@ -70,7 +77,7 @@ public sealed class GitHubStarQueryService : IGitHubStarQueryService
                     Id = index + 1,
                     Name = parts[1],
                     FullName = fullName,
-                    Description = index == 0 ? "A native Windows GitHub client." : "A useful developer repository.",
+                    Description = descriptions[index],
                     DefaultBranch = "main",
                     HtmlUrl = $"https://github.com/{fullName}",
                     Language = index % 2 == 0 ? "C#" : "C++",

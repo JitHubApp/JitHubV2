@@ -122,6 +122,18 @@ public sealed class ProductPerformanceObservationTests
     }
 
     [Fact]
+    public void ScrollTransition_RecognizesSmallPercentageMovementOnLongExtents()
+    {
+        long started = Stopwatch.GetTimestamp();
+        ProductPerformanceScrollTransitionTracker tracker = new(started, initialOffset: 0.016, initialFrame: 214);
+
+        tracker.ObserveRenderedInterval(started, AtMilliseconds(started, 16));
+        tracker.Observe(0.021, new ProductPerformanceHeartbeat(215, 5), AtMilliseconds(started, 40));
+
+        Assert.Equal(TimeSpan.FromMilliseconds(16), tracker.Completed);
+    }
+
+    [Fact]
     public void ScrollStatus_RoundTripsCompositionTimestamps()
     {
         ProductPerformanceScrollStatus expected = new(7, 1234, 5678);
@@ -225,6 +237,43 @@ public sealed class ProductPerformanceObservationTests
             {
                 ProductPerformanceReadiness.CancelTraversal();
                 ProductPerformanceReadiness.TraversalStageRecorded -= handler;
+                Environment.SetEnvironmentVariable("JITHUB_PERFORMANCE_FIXTURE", previous);
+            }
+        }
+    }
+
+    [Fact]
+    public void TraversalMeasurement_ResumesProbeAfterCommitOrCancellation()
+    {
+        lock (ReadinessGate)
+        {
+            string? previous = Environment.GetEnvironmentVariable("JITHUB_PERFORMANCE_FIXTURE");
+            int armed = 0;
+            int completed = 0;
+            EventHandler armedHandler = (_, _) => armed++;
+            EventHandler completedHandler = (_, _) => completed++;
+            ProductPerformanceReadiness.TraversalMeasurementArmed += armedHandler;
+            ProductPerformanceReadiness.TraversalMeasurementCompleted += completedHandler;
+            try
+            {
+                Environment.SetEnvironmentVariable("JITHUB_PERFORMANCE_FIXTURE", "1");
+
+                ProductPerformanceReadiness.ArmTraversalMeasurement();
+                ProductPerformanceReadiness.BeginTraversal("repo_code", "file:1", "repo_code");
+                ProductPerformanceReadiness.CommitTraversal("repo_code", "file:1");
+
+                ProductPerformanceReadiness.ArmTraversalMeasurement();
+                ProductPerformanceReadiness.BeginTraversal("repo_code", "file:2", "repo_code");
+                ProductPerformanceReadiness.CancelTraversal();
+
+                Assert.Equal(2, armed);
+                Assert.Equal(2, completed);
+            }
+            finally
+            {
+                ProductPerformanceReadiness.CancelTraversal();
+                ProductPerformanceReadiness.TraversalMeasurementArmed -= armedHandler;
+                ProductPerformanceReadiness.TraversalMeasurementCompleted -= completedHandler;
                 Environment.SetEnvironmentVariable("JITHUB_PERFORMANCE_FIXTURE", previous);
             }
         }

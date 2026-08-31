@@ -73,21 +73,22 @@ internal sealed partial class ProductPerformanceScrollProbe : IDisposable
 
         CompositionTarget.Rendering -= CompositionTarget_Rendering;
         long startedTimestamp = _startedTimestamp;
+        long renderedTimestamp = Stopwatch.GetTimestamp();
+        long sequence = ++_sequence;
+        _renderPending = false;
         _ = _statusHost.DispatcherQueue.TryEnqueue(
             DispatcherQueuePriority.Low,
             () =>
             {
-                _renderPending = false;
                 if (_disposed)
                 {
                     return;
                 }
 
-                long renderedTimestamp = Stopwatch.GetTimestamp();
                 AutomationProperties.SetItemStatus(
                     _statusHost,
                     new ProductPerformanceScrollStatus(
-                        ++_sequence,
+                        sequence,
                         startedTimestamp,
                         renderedTimestamp).Format());
             });

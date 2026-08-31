@@ -14,35 +14,35 @@
     <Page.Resources>
         <DataTemplate x:Key="NotificationRowTemplate" x:DataType="viewmodels:NotificationViewItem">
             <Grid
-                MinHeight="82"
-                Padding="12,10"
-                ColumnSpacing="12">
+                MinHeight="{ThemeResource AppDimension82}"
+                Padding="{ThemeResource AppPadding12_10}"
+                ColumnSpacing="{ThemeResource AppGap12}">
                 <Grid.ColumnDefinitions>
-                    <ColumnDefinition Width="4" />
-                    <ColumnDefinition Width="28" />
+                    <ColumnDefinition Width="{ThemeResource AppGridLength4}" />
+                    <ColumnDefinition Width="{ThemeResource AppGridLength28}" />
                     <ColumnDefinition Width="*" />
                     <ColumnDefinition Width="Auto" />
                 </Grid.ColumnDefinitions>
 
                 <Border
-                    Width="3"
-                    Margin="0,3,0,3"
+                    Width="{ThemeResource AppDimension3}"
+                    Margin="{ThemeResource AppMargin0_3_0_3}"
                     Background="{ThemeResource AppAccentBrush}"
                     CornerRadius="{ThemeResource AppRadiusTight}"
                     Visibility="{x:Bind IsUnread, Converter={StaticResource BoolToVisibilityConverter}, Mode=OneWay}" />
                 <FontIcon
                     Grid.Column="1"
-                    Margin="0,3,0,0"
+                    Margin="{ThemeResource AppMargin0_3_0_0}"
                     VerticalAlignment="Top"
                     FontFamily="{StaticResource SegoeFluentIcons}"
                     FontSize="{ThemeResource AppFontSize17}"
                     Foreground="{ThemeResource AppAccentBrush}"
                     Glyph="{x:Bind Glyph, Mode=OneWay}" />
-                <StackPanel Grid.Column="2" MinWidth="0" Spacing="4">
+                <StackPanel Grid.Column="2" MinWidth="{ThemeResource AppDimension0}" Spacing="{ThemeResource AppGap4}">
                     <TextBlock
                         FontFamily="{ThemeResource AppUiFontFamily}"
                         FontSize="{ThemeResource AppFontSize14}"
-                        FontWeight="SemiBold"
+                        FontWeight="{ThemeResource AppFontWeightSemibold}"
                         Foreground="{ThemeResource AppInkBrush}"
                         MaxLines="2"
                         Text="{x:Bind Title, Mode=OneWay}"
@@ -52,7 +52,7 @@
                         Style="{StaticResource SectionSecondaryTextBlockStyle}"
                         Text="{x:Bind RepositoryText, Mode=OneWay}"
                         TextTrimming="CharacterEllipsis" />
-                    <StackPanel Orientation="Horizontal" Spacing="8">
+                    <StackPanel Orientation="Horizontal" Spacing="{ThemeResource AppGap8}">
                         <TextBlock Style="{StaticResource SectionSecondaryTextBlockStyle}" Text="{x:Bind TypeText, Mode=OneWay}" />
                         <TextBlock Style="{StaticResource SectionSecondaryTextBlockStyle}" Text="{x:Bind ReasonText, Mode=OneWay}" />
                         <TextBlock Style="{StaticResource SectionSecondaryTextBlockStyle}" Text="{x:Bind UpdatedText, Mode=OneWay}" />
@@ -62,10 +62,10 @@
                     Grid.Column="3"
                     VerticalAlignment="Center"
                     Orientation="Horizontal"
-                    Spacing="4">
+                    Spacing="{ThemeResource AppGap4}">
                     <Button
-                        Width="34"
-                        Height="34"
+                        Width="{ThemeResource AppDimension34}"
+                        Height="{ThemeResource AppDimension34}"
                         AutomationProperties.AutomationId="{x:Bind ReadAutomationId, Mode=OneWay}"
                         AutomationProperties.Name="{x:Bind ReadActionLabel, Mode=OneWay}"
                         Command="{x:Bind MarkReadCommand}"
@@ -73,11 +73,15 @@
                         Style="{StaticResource AppToolbarButtonStyle}"
                         ToolTipService.ToolTip="{x:Bind ReadActionLabel, Mode=OneWay}"
                         Visibility="{x:Bind IsUnread, Converter={StaticResource BoolToVisibilityConverter}, Mode=OneWay}">
-                        <FontIcon FontFamily="{StaticResource SegoeFluentIcons}" FontSize="{ThemeResource AppFontSize14}" Glyph="&#xE91B;" />
+                        <Viewbox
+                            Width="{ThemeResource AppDimension14}"
+                            Height="{ThemeResource AppDimension14}">
+                            <SymbolIcon Symbol="Accept" />
+                        </Viewbox>
                     </Button>
                     <Button
-                        Width="34"
-                        Height="34"
+                        Width="{ThemeResource AppDimension34}"
+                        Height="{ThemeResource AppDimension34}"
                         AutomationProperties.AutomationId="{x:Bind SubscriptionAutomationId, Mode=OneWay}"
                         AutomationProperties.Name="{x:Bind SubscriptionActionLabel, Mode=OneWay}"
                         Command="{x:Bind ToggleSubscriptionCommand}"
@@ -90,8 +94,8 @@
                             Glyph="{x:Bind SubscriptionGlyph, Mode=OneWay}" />
                     </Button>
                     <Button
-                        Width="34"
-                        Height="34"
+                        Width="{ThemeResource AppDimension34}"
+                        Height="{ThemeResource AppDimension34}"
                         AutomationProperties.AutomationId="{x:Bind MuteAutomationId, Mode=OneWay}"
                         AutomationProperties.Name="{x:Bind MuteActionLabel, Mode=OneWay}"
                         Command="{x:Bind ToggleMuteCommand}"
@@ -138,7 +142,7 @@
         AutomationProperties.Name="Notifications"
         Padding="{ThemeResource AppPagePadding}"
         SizeChanged="NotificationsRoot_SizeChanged"
-        RowSpacing="10">
+        RowSpacing="{ThemeResource AppGap10}">
         <Grid.RowDefinitions>
             <RowDefinition Height="Auto" />
             <RowDefinition Height="Auto" />
@@ -152,30 +156,34 @@
                 <ColumnDefinition Width="*" />
                 <ColumnDefinition Width="Auto" />
             </Grid.ColumnDefinitions>
-            <Grid x:Name="NotificationsHeaderIdentity" VerticalAlignment="Center" ColumnSpacing="10">
+            <Grid x:Name="NotificationsHeaderIdentity" VerticalAlignment="Center" ColumnSpacing="{ThemeResource AppGap10}">
                 <Grid.ColumnDefinitions>
                     <ColumnDefinition Width="Auto" />
-                    <ColumnDefinition Width="Auto" />
-                    <ColumnDefinition Width="Auto" />
+                    <ColumnDefinition Width="*" />
                 </Grid.ColumnDefinitions>
                 <FontIcon
+                    VerticalAlignment="Center"
                     Style="{StaticResource AppWorkspaceHeaderIconStyle}"
                     Glyph="&#xEA8F;" />
                 <TextBlock
-                    x:Uid="PagesNotificationsPageNotificationsResultScope"
+                    x:Uid="PagesNotificationsPageNotificationsResultScope2"
+                    x:Name="NotificationsResultScope"
                     Grid.Column="1"
-                    Style="{StaticResource AppWorkspaceTitleTextBlockStyle}"
-                    Text="Notifications" />
-                <TextBlock
-                    x:Uid="PagesNotificationsPageNotificationsResultScope2" x:Name="NotificationsResultScope" MaxWidth="240"
-                    Grid.Column="2"
-                    Translation="0,4,0"
-                    VerticalAlignment="Bottom"
+                    MaxWidth="{ThemeResource AppDimension420}"
+                    HorizontalAlignment="Left"
+                    VerticalAlignment="Center"
                     AutomationProperties.AutomationId="NotificationsResultScope"
                     AutomationProperties.Name="Notification result scope"
-                    Style="{StaticResource AppWorkspaceHeaderContextTextBlockStyle}"
-                    Text="{x:Bind ViewModel.ResultCountText, Mode=OneWay}"
-                    TextTrimming="CharacterEllipsis" />
+                    Style="{StaticResource AppWorkspaceTitleTextBlockStyle}"
+                    TextTrimming="CharacterEllipsis">
+                    <Run x:Uid="PagesNotificationsPageNotificationsResultScope" Text="Notifications" />
+                    <Run Text=" " />
+                    <Run
+                        FontFamily="{ThemeResource AppUiFontFamily}"
+                        FontSize="{ThemeResource AppMetaFontSize}"
+                        Foreground="{ThemeResource AppInkMutedBrush}"
+                        Text="{x:Bind ViewModel.ResultCountText, Mode=OneWay}" />
+                </TextBlock>
             </Grid>
             <Button
                 x:Uid="PagesNotificationsPageNotificationsMarkAllRead" x:Name="NotificationsMarkAllReadButton"
@@ -184,14 +192,19 @@
                 AutomationProperties.Name="Mark all notifications as read"
                 Command="{x:Bind ViewModel.MarkAllReadCommand}"
                 Style="{StaticResource AppQuietButtonStyle}">
-                <StackPanel Orientation="Horizontal" Spacing="7">
-                    <FontIcon FontFamily="{StaticResource SegoeFluentIcons}" FontSize="{ThemeResource AppFontSize14}" Glyph="&#xE91B;" />
-                    <TextBlock x:Uid="PagesNotificationsPageNotificationsMarkAllReadText" x:Name="NotificationsMarkAllReadText" Text="Mark all read" />
+                <StackPanel Orientation="Horizontal" Spacing="{ThemeResource AppGap7}">
+                    <Viewbox
+                        Width="{ThemeResource AppDimension14}"
+                        Height="{ThemeResource AppDimension14}"
+                        VerticalAlignment="Center">
+                        <SymbolIcon Symbol="Accept" />
+                    </Viewbox>
+                    <TextBlock x:Uid="PagesNotificationsPageNotificationsMarkAllReadText" x:Name="NotificationsMarkAllReadText" VerticalAlignment="Center" Text="Mark all read" />
                 </StackPanel>
             </Button>
         </Grid>
 
-        <Grid x:Name="NotificationsCommandGrid" Grid.Row="1" ColumnSpacing="10" RowSpacing="8">
+        <Grid x:Name="NotificationsCommandGrid" Grid.Row="1" ColumnSpacing="{ThemeResource AppGap10}" RowSpacing="{ThemeResource AppGap8}">
             <Grid.RowDefinitions>
                 <RowDefinition Height="Auto" />
                 <RowDefinition Height="Auto" />
@@ -200,16 +213,16 @@
                 <ColumnDefinition Width="*" />
                 <ColumnDefinition Width="Auto" />
             </Grid.ColumnDefinitions>
-            <Grid x:Name="NotificationSearchHost" MinWidth="180">
+            <Grid x:Name="NotificationSearchHost" MinWidth="{ThemeResource AppDimension180}">
                 <TextBox
                     x:Uid="PagesNotificationsPageNotificationsSearch" x:Name="NotificationSearchBox"
                     AutomationProperties.AutomationId="NotificationsSearch"
                     AutomationProperties.Name="Search notifications"
                     PlaceholderText="Search"
-                    Style="{StaticResource AppCommandSearchTextBoxStyle}"
+                    Style="{StaticResource AppCommandLeadingIconSearchTextBoxStyle}"
                     Text="{x:Bind ViewModel.SearchText, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" />
                 <FontIcon
-                    Margin="12,0,0,0"
+                    Margin="{ThemeResource AppMargin12_0_0_0}"
                     HorizontalAlignment="Left"
                     VerticalAlignment="Center"
                     FontFamily="{StaticResource SegoeFluentIcons}"
@@ -221,7 +234,7 @@
             <SelectorBar
                 x:Uid="PagesNotificationsPageNotificationsFilter" x:Name="NotificationFilterSegmented"
                 Grid.Column="1"
-                MinWidth="286"
+                MinWidth="{ThemeResource AppDimension286}"
                 HorizontalAlignment="Right"
                 AutomationProperties.AutomationId="NotificationsFilter"
                 AutomationProperties.Name="Notification view"
@@ -240,20 +253,20 @@
             Style="{StaticResource AppErrorInfoBarStyle}" />
 
         <Grid Grid.Row="3">
-            <StackPanel HorizontalAlignment="Center" VerticalAlignment="Center" Spacing="8" Visibility="{x:Bind ViewModel.IsLoading, Converter={StaticResource BoolToVisibilityConverter}, Mode=OneWay}">
-                <ProgressRing Width="24" Height="24" IsActive="True" />
+            <StackPanel HorizontalAlignment="Center" VerticalAlignment="Center" Spacing="{ThemeResource AppGap8}" Visibility="{x:Bind ViewModel.IsLoading, Converter={StaticResource BoolToVisibilityConverter}, Mode=OneWay}">
+                <ProgressRing Width="{ThemeResource AppDimension24}" Height="{ThemeResource AppDimension24}" IsActive="True" />
                 <TextBlock x:Uid="PagesNotificationsPageTextBlockLoadingNotifications" Style="{StaticResource SectionSecondaryTextBlockStyle}" Text="Loading notifications" />
             </StackPanel>
             <StackPanel Style="{StaticResource AppEmptyStatePanelStyle}" Visibility="{x:Bind ViewModel.IsEmpty, Converter={StaticResource BoolToVisibilityConverter}, Mode=OneWay}">
                 <FontIcon FontFamily="{StaticResource SegoeFluentIcons}" FontSize="{ThemeResource AppFontSize28}" Foreground="{ThemeResource AppInkSubtleBrush}" Glyph="&#xEA8F;" />
-                <TextBlock x:Uid="PagesNotificationsPageTextBlockYouReAllCaughtUp" FontSize="{ThemeResource AppFontSize16}" FontWeight="SemiBold" Text="You're all caught up" />
+                <TextBlock x:Uid="PagesNotificationsPageTextBlockYouReAllCaughtUp" FontSize="{ThemeResource AppFontSize16}" FontWeight="{ThemeResource AppFontWeightSemibold}" Text="You're all caught up" />
             </StackPanel>
             <ListView
                 x:Uid="PagesNotificationsPageNotificationsList" x:Name="NotificationsList"
                 AutomationProperties.AutomationId="NotificationsList"
                 AutomationProperties.Name="GitHub notifications"
                         Background="{ThemeResource AppTransparentBrush}"
-                BorderThickness="0"
+                BorderThickness="{ThemeResource AppZeroThickness}"
                 ContainerContentChanging="NotificationsList_ContainerContentChanging"
                 IsItemClickEnabled="True"
                 ItemClick="NotificationsList_ItemClick"
@@ -268,7 +281,7 @@
 
         <ProgressBar
             Grid.Row="4"
-            Height="2"
+            Height="{ThemeResource AppDimension2}"
             IsIndeterminate="True"
             Visibility="{x:Bind ViewModel.IsLoadingMore, Converter={StaticResource BoolToVisibilityConverter}, Mode=OneWay}" />
     </Grid>

@@ -206,7 +206,8 @@ public sealed class CanonicalPageAccessibilityContractTests
                         : null)
                     ?? GetCodeAssignedIdentity(element, consumerCodeBehind)
                 : element.Attribute("AutomationProperties.AutomationId")?.Value
-                    ?? element.Attribute("AutomationId")?.Value;
+                    ?? element.Attribute("AutomationId")?.Value
+                    ?? GetCodeAssignedIdentity(element, consumerCodeBehind);
             string? accessibleName = element.Attribute("AutomationProperties.Name")?.Value
                 ?? element.Attribute("AutomationName")?.Value
                 ?? (customControl?.HasInstanceIdentityProperty == true && customControl.SuppliesInnerAccessibleNames
@@ -426,20 +427,60 @@ public sealed class CanonicalPageAccessibilityContractTests
     {
         XNamespace xaml = "http://schemas.microsoft.com/winfx/2006/xaml";
         string? elementName = element.Attribute(xaml + "Name")?.Value;
-        if (string.IsNullOrWhiteSpace(elementName) || string.IsNullOrWhiteSpace(consumerCodeBehind))
+        if (string.IsNullOrWhiteSpace(consumerCodeBehind))
         {
             return null;
         }
 
-        return consumerCodeBehind.Contains($"{elementName}.AutomationInstanceId =", StringComparison.Ordinal)
-            ? $"assigned in code to {elementName}"
+        if (!string.IsNullOrWhiteSpace(elementName) &&
+            (consumerCodeBehind.Contains($"{elementName}.AutomationInstanceId =", StringComparison.Ordinal) ||
+             consumerCodeBehind.Contains($"AutomationProperties.SetAutomationId({elementName},", StringComparison.Ordinal)))
+        {
+            return $"assigned in code to {elementName}";
+        }
+
+        string? loadedHandler = element.Attribute("Loaded")?.Value;
+        return !string.IsNullOrWhiteSpace(loadedHandler) &&
+               MethodContainsAutomationIdAssignment(consumerCodeBehind, loadedHandler)
+            ? $"assigned in {loadedHandler}"
             : null;
+    }
+
+    private static bool MethodContainsAutomationIdAssignment(string source, string methodName)
+    {
+        int methodStart = source.IndexOf($"{methodName}(", StringComparison.Ordinal);
+        if (methodStart < 0)
+        {
+            return false;
+        }
+
+        int bodyStart = source.IndexOf('{', methodStart);
+        if (bodyStart < 0)
+        {
+            return false;
+        }
+
+        int depth = 0;
+        for (int index = bodyStart; index < source.Length; index++)
+        {
+            if (source[index] == '{')
+            {
+                depth++;
+            }
+            else if (source[index] == '}' && --depth == 0)
+            {
+                return source.AsSpan(bodyStart, index - bodyStart + 1)
+                    .Contains("AutomationProperties.SetAutomationId(", StringComparison.Ordinal);
+            }
+        }
+
+        return false;
     }
 
     private static string FindRepositoryRoot()
     {
         DirectoryInfo? directory = new(AppContext.BaseDirectory);
-        while (directory is not null && !File.Exists(Path.Combine(directory.FullName, "JitHub.slnx")))
+        while (directory is not null && !File.Exists(Path.Combine(directory.FullName, "Directory.Build.props")))
         {
             directory = directory.Parent;
         }

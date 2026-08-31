@@ -64,7 +64,7 @@ public sealed partial class CachedImage : UserControl
     {
         if (dependencyObject is CachedImage image)
         {
-            _ = image.LoadAsync(args.NewValue as string);
+            UiTaskGuard.Observe(image.LoadAsync(args.NewValue as string), "ui-cached-image");
         }
     }
 
@@ -190,7 +190,7 @@ public sealed partial class CachedImage : UserControl
     private void CachedImage_Unloaded(object sender, RoutedEventArgs e)
     {
         Volatile.Write(ref _isLoaded, 0);
-        _ = CancelIfStillUnloadedAsync();
+        UiTaskGuard.Observe(CancelIfStillUnloadedAsync(), "ui-cached-image");
     }
 
     private void CachedImage_Loaded(object sender, RoutedEventArgs e)
@@ -198,7 +198,7 @@ public sealed partial class CachedImage : UserControl
         Volatile.Write(ref _isLoaded, 1);
         if (ImageElement.Source is null)
         {
-            _ = LoadAsync(SourceUrl);
+            UiTaskGuard.Observe(LoadAsync(SourceUrl), "ui-cached-image");
         }
     }
 

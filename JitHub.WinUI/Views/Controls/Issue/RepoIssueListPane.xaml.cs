@@ -91,29 +91,35 @@ public sealed partial class RepoIssueListPane : UserControl
         _searchDebounce = null;
     }
 
-    private async void IssueStateSegmented_SelectionChanged(object sender, SelectionChangedEventArgs e)
+    private void IssueStateSegmented_SelectionChanged(object sender, SelectionChangedEventArgs e)
     {
-        if (!_initialized || sender is not CommunityToolkit.WinUI.Controls.Segmented segmented)
+        UiTaskGuard.Run(async () =>
         {
-            return;
-        }
+            if (!_initialized || sender is not CommunityToolkit.WinUI.Controls.Segmented segmented)
+            {
+                return;
+            }
 
-        int selectedIndex = Math.Clamp(segmented.SelectedIndex, 0, ViewModel.StateOptions.Count - 1);
-        ViewModel.SelectedStateOption = ViewModel.StateOptions[selectedIndex];
-        await ViewModel.ApplyFiltersAsync();
+            int selectedIndex = Math.Clamp(segmented.SelectedIndex, 0, ViewModel.StateOptions.Count - 1);
+            ViewModel.SelectedStateOption = ViewModel.StateOptions[selectedIndex];
+            await ViewModel.ApplyFiltersAsync();
+        }, "ui-repo-issue-list-pane");
     }
 
-    private async void IssueFilterComboBox_SelectionChanged(object sender, SelectionChangedEventArgs e)
+    private void IssueFilterComboBox_SelectionChanged(object sender, SelectionChangedEventArgs e)
     {
-        if (!_initialized || _initializingFilterFlyout)
+        UiTaskGuard.Run(async () =>
         {
-            return;
-        }
+            if (!_initialized || _initializingFilterFlyout)
+            {
+                return;
+            }
 
-        ViewModel.SelectedScopeOption = GetSelectedOption(ViewModel.ScopeOptions, IssueScopeComboBox.SelectedIndex);
-        ViewModel.SelectedSortOption = GetSelectedOption(ViewModel.SortOptions, IssueSortComboBox.SelectedIndex);
-        ViewModel.SelectedDirectionOption = GetSelectedOption(ViewModel.DirectionOptions, IssueDirectionComboBox.SelectedIndex);
-        await ViewModel.ApplyFiltersAsync();
+            ViewModel.SelectedScopeOption = GetSelectedOption(ViewModel.ScopeOptions, IssueScopeComboBox.SelectedIndex);
+            ViewModel.SelectedSortOption = GetSelectedOption(ViewModel.SortOptions, IssueSortComboBox.SelectedIndex);
+            ViewModel.SelectedDirectionOption = GetSelectedOption(ViewModel.DirectionOptions, IssueDirectionComboBox.SelectedIndex);
+            await ViewModel.ApplyFiltersAsync();
+        }, "ui-repo-issue-list-pane");
     }
 
     private void IssueFiltersFlyout_Opened(object sender, object e)
@@ -152,26 +158,29 @@ public sealed partial class RepoIssueListPane : UserControl
         return 0;
     }
 
-    private async void IssueSearchBox_TextChanged(object sender, TextChangedEventArgs e)
+    private void IssueSearchBox_TextChanged(AutoSuggestBox sender, AutoSuggestBoxTextChangedEventArgs e)
     {
-        if (!_initialized || sender is not TextBox textBox)
+        UiTaskGuard.Run(async () =>
         {
-            return;
-        }
+            if (!_initialized || e.Reason != AutoSuggestionBoxTextChangeReason.UserInput)
+            {
+                return;
+            }
 
-        ViewModel.SearchText = textBox.Text;
-        _searchDebounce?.Cancel();
-        _searchDebounce?.Dispose();
-        CancellationTokenSource debounce = new();
-        _searchDebounce = debounce;
-        try
-        {
-            await Task.Delay(220, debounce.Token);
-            await ViewModel.ApplyFiltersAsync();
-        }
-        catch (OperationCanceledException)
-        {
-        }
+            ViewModel.SearchText = sender.Text;
+            _searchDebounce?.Cancel();
+            _searchDebounce?.Dispose();
+            CancellationTokenSource debounce = new();
+            _searchDebounce = debounce;
+            try
+            {
+                await Task.Delay(220, debounce.Token);
+                await ViewModel.ApplyFiltersAsync();
+            }
+            catch (OperationCanceledException)
+            {
+            }
+        }, "ui-repo-issue-list-pane");
     }
 
     private void IssuesList_ItemClick(object sender, ItemClickEventArgs e)

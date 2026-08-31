@@ -136,6 +136,8 @@ public sealed partial class DashboardMetricViewItem : ObservableObject
 
     public string CacheStateText => Metric.CacheState.ToString();
 
+    public string AutomationName => $"{Label}: {Value}";
+
     public string TransitionId => Metric.Id switch
     {
         DashboardMetricIds.Repositories => "DashboardOverviewMetricRepositories",
@@ -152,6 +154,7 @@ public sealed partial class DashboardMetricViewItem : ObservableObject
         OnPropertyChanged(nameof(Caption));
         OnPropertyChanged(nameof(Glyph));
         OnPropertyChanged(nameof(CacheStateText));
+        OnPropertyChanged(nameof(AutomationName));
         OnPropertyChanged(nameof(TransitionId));
     }
 }

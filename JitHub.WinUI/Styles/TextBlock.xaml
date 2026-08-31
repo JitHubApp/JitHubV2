@@ -17,19 +17,19 @@
         <Setter Property="FontFamily" Value="{ThemeResource AppDisplayFontFamily}" />
         <Setter Property="FontSize" Value="{ThemeResource AppDisplay1FontSize}" />
         <Setter Property="Foreground" Value="{ThemeResource AppInkBrush}" />
-        <Setter Property="LineHeight" Value="42" />
+        <Setter Property="LineHeight" Value="{ThemeResource AppLineHeight42}" />
     </Style>
     <Style x:Key="SectionTitleTextBlockStyle" TargetType="TextBlock">
         <Setter Property="FontFamily" Value="{ThemeResource AppDisplayFontFamily}" />
         <Setter Property="FontSize" Value="{ThemeResource AppDisplay2FontSize}" />
         <Setter Property="Foreground" Value="{ThemeResource AppInkBrush}" />
-        <Setter Property="LineHeight" Value="34" />
+        <Setter Property="LineHeight" Value="{ThemeResource AppLineHeight34}" />
     </Style>
     <Style x:Key="SectionBodyTextBlockStyle" TargetType="TextBlock">
         <Setter Property="FontFamily" Value="{ThemeResource AppBodyFontFamily}" />
         <Setter Property="FontSize" Value="{ThemeResource AppBodyFontSize}" />
         <Setter Property="Foreground" Value="{ThemeResource AppInkBrush}" />
-        <Setter Property="LineHeight" Value="24" />
+        <Setter Property="LineHeight" Value="{ThemeResource AppLineHeight24}" />
     </Style>
     <Style
         x:Key="ListItemTitleTextBlockStyle"
@@ -37,7 +37,7 @@
         TargetType="TextBlock">
         <Setter Property="FontFamily" Value="{ThemeResource AppUiFontFamily}" />
         <Setter Property="FontSize" Value="{ThemeResource AppFontSize14}" />
-        <Setter Property="FontWeight" Value="SemiBold" />
+        <Setter Property="FontWeight" Value="{ThemeResource AppFontWeightSemibold}" />
     </Style>
     <Style
         x:Key="SectionSecondaryTextBlockStyle"
@@ -48,22 +48,38 @@
         <Setter Property="Foreground" Value="{ThemeResource AppInkMutedBrush}" />
     </Style>
     <Style
+        x:Key="AppInlineMetadataTextBlockStyle"
+        BasedOn="{StaticResource SectionSecondaryTextBlockStyle}"
+        TargetType="TextBlock">
+        <Setter Property="LineHeight" Value="{ThemeResource AppLineHeight16}" />
+        <Setter Property="TextLineBounds" Value="Tight" />
+        <Setter Property="TextWrapping" Value="NoWrap" />
+        <Setter Property="VerticalAlignment" Value="Center" />
+    </Style>
+    <Style
+        x:Key="AppInlineIdentityTextBlockStyle"
+        BasedOn="{StaticResource AppInlineMetadataTextBlockStyle}"
+        TargetType="TextBlock">
+        <Setter Property="FontWeight" Value="{ThemeResource AppFontWeightSemibold}" />
+        <Setter Property="Foreground" Value="{ThemeResource AppInkBrush}" />
+    </Style>
+    <Style
         x:Key="ListItemSecondaryTextBlockStyle"
         BasedOn="{StaticResource SectionSecondaryTextBlockStyle}"
         TargetType="TextBlock" />
     <Style x:Key="AppStatusPillTextBlockStyle" TargetType="TextBlock">
         <Setter Property="FontFamily" Value="{ThemeResource AppUiFontFamily}" />
         <Setter Property="FontSize" Value="{ThemeResource AppFontSize13}" />
-        <Setter Property="FontWeight" Value="SemiBold" />
-        <Setter Property="Height" Value="14" />
-        <Setter Property="LineHeight" Value="14" />
+        <Setter Property="FontWeight" Value="{ThemeResource AppFontWeightSemibold}" />
+        <Setter Property="Height" Value="{ThemeResource AppDimension14}" />
+        <Setter Property="LineHeight" Value="{ThemeResource AppLineHeight14}" />
         <Setter Property="TextLineBounds" Value="Tight" />
         <Setter Property="TextWrapping" Value="NoWrap" />
         <Setter Property="TextAlignment" Value="Center" />
         <Setter Property="Foreground" Value="{ThemeResource AppAccentForegroundBrush}" />
         <Setter Property="HorizontalAlignment" Value="Center" />
         <Setter Property="VerticalAlignment" Value="Center" />
-        <Setter Property="Margin" Value="0,4,0,0" />
+        <Setter Property="Margin" Value="{ThemeResource AppMargin0_4_0_0}" />
     </Style>
     <Style x:Key="AppRichTextBlockStyle" TargetType="RichTextBlock">
         <Setter Property="FontFamily" Value="{ThemeResource AppBodyFontFamily}" />

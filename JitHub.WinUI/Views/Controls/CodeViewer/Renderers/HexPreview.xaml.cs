@@ -2,7 +2,6 @@ using System;
 using System.Text;
 using System.Threading.Tasks;
 using JitHub.WinUI.ViewModels.CodeViewer;
-using Microsoft.UI.Dispatching;
 using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Controls;
 
@@ -16,13 +15,11 @@ public sealed partial class HexPreview : UserControl
 {
     private const int BytesPerRow = 16;
 
-    private readonly DispatcherQueue _dispatcher;
     private byte[]? _lastBytes;
 
     public HexPreview()
     {
         InitializeComponent();
-        _dispatcher = DispatcherQueue.GetForCurrentThread();
         DataContextChanged += OnDataContextChanged;
     }
 
@@ -44,15 +41,14 @@ public sealed partial class HexPreview : UserControl
             return;
         }
 
-        Task.Run(() => BuildHexDump(bytes))
-            .ContinueWith(t =>
+        UiTaskGuard.Run(async () =>
+        {
+            string content = await Task.Run(() => BuildHexDump(bytes));
+            if (_lastBytes == bytes)
             {
-                _dispatcher.TryEnqueue(() =>
-                {
-                    if (_lastBytes == bytes)
-                        HexEditor.Text = t.Result;
-                });
-            }, TaskScheduler.Default);
+                HexEditor.Text = content;
+            }
+        }, "ui-hex-preview");
     }
 
     private static string BuildHexDump(byte[] bytes)

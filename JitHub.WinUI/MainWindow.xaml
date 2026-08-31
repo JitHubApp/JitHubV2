@@ -8,21 +8,32 @@
     xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
     Title="JitHub"
     mc:Ignorable="d">
-    <Window.SystemBackdrop>
-        <MicaBackdrop />
-    </Window.SystemBackdrop>
-
     <Grid
         x:Name="RootLayout"
         AutomationProperties.AccessibilityView="Control"
         AutomationProperties.AutomationId="JitHubMainWindowRoot"
         AutomationProperties.Name="JitHub application window"
-        Background="{ThemeResource AppCanvasBrush}">
+        Background="{ThemeResource AppWindowBackgroundBrush}"
+        KeyboardAcceleratorPlacementMode="Hidden">
         <Border
             x:Name="AppTitleBar"
-            Height="40"
+            Height="{ThemeResource AppDimension40}"
             VerticalAlignment="Top"
         Background="{ThemeResource AppTransparentBrush}" />
+        <Grid
+            Width="{ThemeResource AppDimension0}"
+            Height="{ThemeResource AppDimension0}"
+            IsHitTestVisible="False"
+            Opacity="{ThemeResource AppOpacityTransparent}"
+            AutomationProperties.AccessibilityView="Raw">
+            <Border x:Name="TitleBarForegroundTokenProbe" Background="{ThemeResource AppInkBrush}" />
+            <Border x:Name="TitleBarInactiveForegroundTokenProbe" Background="{ThemeResource AppInkMutedBrush}" />
+            <Border x:Name="TitleBarHoverForegroundTokenProbe" Background="{ThemeResource AppRowHoverForegroundBrush}" />
+            <Border x:Name="TitleBarPressedForegroundTokenProbe" Background="{ThemeResource AppRowPressedForegroundBrush}" />
+            <Border x:Name="TitleBarHoverBackgroundTokenProbe" Background="{ThemeResource AppRowHoverBrush}" />
+            <Border x:Name="TitleBarPressedBackgroundTokenProbe" Background="{ThemeResource AppRowPressedBrush}" />
+            <Border x:Name="TitleBarTransparentTokenProbe" Background="{ThemeResource AppTransparentBrush}" />
+        </Grid>
         <Frame
             x:Name="ContentFrame"
             AutomationProperties.AutomationId="MainContentFrame"
@@ -36,26 +47,26 @@
             Visibility="Collapsed">
             <Button
                 x:Name="DialogFocusSentinel"
-                Width="1"
-                Height="1"
+                Width="{ThemeResource AppDimension1}"
+                Height="{ThemeResource AppDimension1}"
                 HorizontalAlignment="Center"
                 VerticalAlignment="Center"
                 AutomationProperties.AccessibilityView="Raw"
                 IsTabStop="False"
-                Opacity="0" />
+                Opacity="{ThemeResource AppOpacityTransparent}" />
         </Grid>
         <Border
             x:Name="ActivationStatusHost"
             AutomationProperties.AutomationId="AppStatusHost"
             AutomationProperties.Name="Application status"
-            Margin="12"
+            Margin="{ThemeResource AppMargin12}"
             HorizontalAlignment="Left"
             VerticalAlignment="Bottom"
             Background="{ThemeResource AppSurfaceBrush}"
             BorderBrush="{ThemeResource AppOutlineBrush}"
-            BorderThickness="1"
+            BorderThickness="{ThemeResource AppHairlineBorderThickness}"
             CornerRadius="{ThemeResource AppRadiusMedium}"
-            Padding="10"
+            Padding="{ThemeResource AppPadding10}"
             Visibility="Collapsed">
             <TextBlock
                 x:Name="ActivationStatusText"

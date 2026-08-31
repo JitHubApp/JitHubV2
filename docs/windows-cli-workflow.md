@@ -78,12 +78,6 @@ If you only want to verify command availability without launching the app:
 .\eng\Invoke-WinAppCliSmoke.ps1 -SkipBuild -SkipLaunch
 ```
 
-The smoke script assumes editor assets already exist under `artifacts/EditorAssets/dist`. If they do not, run:
-
-```powershell
-.\sync-vscode-assets.ps1
-```
-
 Policy:
 
 - Do not run `winapp init` against `JitHub.WinUI` casually. It can rewrite project, manifest, asset, and package setup that this repo already owns.

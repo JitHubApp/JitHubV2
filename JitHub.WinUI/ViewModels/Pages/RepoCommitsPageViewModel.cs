@@ -18,6 +18,15 @@ using MarkdownRenderer.Images;
 
 namespace JitHub.WinUI.ViewModels.Pages;
 
+public enum CommitComparePresentationState
+{
+    Initial,
+    Loading,
+    Ready,
+    NoChanges,
+    Error
+}
+
 [WinRT.GeneratedBindableCustomProperty]
 public sealed partial class RepoCommitsPageViewModel : ViewModelBase
 {
@@ -36,10 +45,12 @@ public sealed partial class RepoCommitsPageViewModel : ViewModelBase
     private readonly IAdaptivePrefetchPolicy _prefetchPolicy;
     private readonly List<GitHubCommit> _loadedCommits = [];
     private readonly CommitListQueryOptions _commitQuery = new();
+    private readonly HashSet<string> _collapsedDiffFiles = new(StringComparer.OrdinalIgnoreCase);
     private CommitPageNavArg? _navArg;
     private int _listRequestId;
     private int _detailRequestId;
     private int _diffRequestId;
+    private int _compareRequestId;
     private int _compareDiffRequestId;
     private int _diffProjectionRequestId;
     private CancellationTokenSource? _diffBuildCancellationTokenSource;
@@ -160,6 +171,10 @@ public sealed partial class RepoCommitsPageViewModel : ViewModelBase
 
     public string SelectedCommitCommentsText => FormatString("RepoCommits.CommentCount", "{0} comments", CommitComments.Count);
 
+    public bool HasCommitComments => CommitComments.Count > 0;
+
+    public bool HasNoCommitComments => CommitComments.Count == 0;
+
     public string CheckSummaryText => CheckRuns.Count == 0 && CommitStatuses.Count == 0
         ? GetString("RepoCommits.NoChecks", "No checks reported.")
         : FormatString("RepoCommits.CheckSummary", "{0} checks · {1} statuses", CheckRuns.Count, CommitStatuses.Count);
@@ -170,9 +185,12 @@ public sealed partial class RepoCommitsPageViewModel : ViewModelBase
 
     public bool AreCommitActionsEnabled => SelectedCommit is not null && !IsCommitDetailsLoading;
 
-    public bool IsCommitCommentEnabled =>
+    public bool CanAddCommitComment =>
         SelectedCommit is not null &&
-        !IsCommitCommentSubmissionInProgress &&
+        !IsCommitCommentSubmissionInProgress;
+
+    public bool IsCommitCommentEnabled =>
+        CanAddCommitComment &&
         !string.IsNullOrWhiteSpace(CommentText);
 
     public bool IsDiffSectionVisible => SelectedSection == CommitWorkspaceSection.Diff;
@@ -190,6 +208,13 @@ public sealed partial class RepoCommitsPageViewModel : ViewModelBase
     public CommitDiffViewMode SelectedDiffViewMode => CommitDiffViewMode.Unified;
 
     public bool HasDiffSearchMatches => DiffSearchMatchCount > 0;
+
+    public IReadOnlyList<CommitDiffTreeNode> DiffFileTree => DiffDocument.FileTree;
+
+    public string DiffFileCountText => FormatString(
+        "RepoCommits.DiffFileCount",
+        DiffDocument.FileCount == 1 ? "{0} file" : "{0} files",
+        DiffDocument.FileCount);
 
     public string DiffSearchMatchCountText
     {
@@ -213,6 +238,25 @@ public sealed partial class RepoCommitsPageViewModel : ViewModelBase
         }
     }
 
+    public bool HasCompareSummary => !string.IsNullOrWhiteSpace(CompareSummaryText);
+
+    public bool IsCompareInputEnabled => CompareState != CommitComparePresentationState.Loading;
+
+    public bool CanRunCompare =>
+        IsCompareInputEnabled &&
+        !string.IsNullOrWhiteSpace(CompareBaseText) &&
+        !string.IsNullOrWhiteSpace(CompareHeadText);
+
+    public bool IsCompareLoading => CompareState == CommitComparePresentationState.Loading;
+
+    public bool IsCompareInitialStateVisible => CompareState == CommitComparePresentationState.Initial;
+
+    public bool IsCompareDiffVisible => CompareState == CommitComparePresentationState.Ready;
+
+    public bool IsCompareNoChangesStateVisible => CompareState == CommitComparePresentationState.NoChanges;
+
+    public bool IsCompareErrorStateVisible => CompareState == CommitComparePresentationState.Error;
+
     [ObservableProperty]
     public partial string StatusText { get; set; } = string.Empty;
 
@@ -222,7 +266,10 @@ public sealed partial class RepoCommitsPageViewModel : ViewModelBase
     public bool HasCommitListScopeNotice => !string.IsNullOrWhiteSpace(CommitListScopeNotice);
 
     [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(SelectedBranchName))]
     public partial GitHubBranch? SelectedBranch { get; set; }
+
+    public string SelectedBranchName => SelectedBranch?.Name ?? string.Empty;
 
     [ObservableProperty]
     public partial QueryOption? SelectedDiffModeOption { get; set; }
@@ -277,13 +324,26 @@ public sealed partial class RepoCommitsPageViewModel : ViewModelBase
     public partial string CommentText { get; set; } = string.Empty;
 
     [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(CanRunCompare))]
     public partial string CompareBaseText { get; set; } = string.Empty;
 
     [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(CanRunCompare))]
     public partial string CompareHeadText { get; set; } = string.Empty;
 
     [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(HasCompareSummary))]
     public partial string CompareSummaryText { get; set; } = string.Empty;
+
+    [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(IsCompareInputEnabled))]
+    [NotifyPropertyChangedFor(nameof(CanRunCompare))]
+    [NotifyPropertyChangedFor(nameof(IsCompareLoading))]
+    [NotifyPropertyChangedFor(nameof(IsCompareInitialStateVisible))]
+    [NotifyPropertyChangedFor(nameof(IsCompareDiffVisible))]
+    [NotifyPropertyChangedFor(nameof(IsCompareNoChangesStateVisible))]
+    [NotifyPropertyChangedFor(nameof(IsCompareErrorStateVisible))]
+    public partial CommitComparePresentationState CompareState { get; set; } = CommitComparePresentationState.Initial;
 
     [ObservableProperty]
     public partial bool IsLoadingCommits { get; set; }
@@ -333,7 +393,10 @@ public sealed partial class RepoCommitsPageViewModel : ViewModelBase
 
         ApplyNavigationDefaults(navArg);
         TrackEvent("commits.opened", new Dictionary<string, string?> { ["page"] = "repo" });
-        _ = LoadBranchesAsync();
+        BackgroundTaskObserver.Run(
+            LoadBranchesAsync,
+            "commits",
+            _telemetryService);
         await LoadCommitsAsync(navArg.GitRef);
     }
 
@@ -447,7 +510,7 @@ public sealed partial class RepoCommitsPageViewModel : ViewModelBase
                 CommentText = string.Empty;
                 ReplaceCollectionByKey(
                     CommitComments,
-                    CommitComments.Concat([comment]).OrderBy(item => item.CreatedAt),
+                    CommitComments.Concat((GitHubCommitComment[])[comment]).OrderBy(item => item.CreatedAt),
                     static commentItem => commentItem.Id.ToString(CultureInfo.InvariantCulture));
                 NotifyCommentPropertiesChanged();
                 StoreNavigationSnapshot(currentCommit, "comment");
@@ -490,6 +553,11 @@ public sealed partial class RepoCommitsPageViewModel : ViewModelBase
             return;
         }
 
+        int requestId = Interlocked.Increment(ref _compareRequestId);
+        CompareState = CommitComparePresentationState.Loading;
+        CompareSummaryText = string.Empty;
+        CompareDiffDocument = CommitDiffDocument.Empty;
+        CompareDiffRowProjection = CommitDiffRowProjection.Empty;
         Stopwatch compareDuration = Stopwatch.StartNew();
         try
         {
@@ -500,6 +568,11 @@ public sealed partial class RepoCommitsPageViewModel : ViewModelBase
                 _navArg.Repo.Name,
                 baseRef,
                 headRef);
+            if (requestId != _compareRequestId)
+            {
+                return;
+            }
+
             GitHubCompareResult? compare = result.Value;
             CompareSummaryText = compare is null
                 ? GetString("RepoCommits.CompareUnavailable", "Compare data unavailable.")
@@ -507,21 +580,37 @@ public sealed partial class RepoCommitsPageViewModel : ViewModelBase
                     "RepoCommits.CompareSummary",
                     "{0} commits · +{1} -{2}",
                     compare.TotalCommits,
-                    compare.Files.Sum(file => file.Additions),
-                    compare.Files.Sum(file => file.Deletions));
-            await BuildCompareDiffDocumentAsync(compare?.Files ?? []);
+                     compare.Files.Sum(file => file.Additions),
+                     compare.Files.Sum(file => file.Deletions));
+            bool diffPrepared = await BuildCompareDiffDocumentAsync(compare?.Files ?? []);
+            if (requestId != _compareRequestId)
+            {
+                return;
+            }
+
+            CompareState = compare is null || !diffPrepared
+                ? CommitComparePresentationState.Error
+                : compare.Files.Length == 0
+                    ? CommitComparePresentationState.NoChanges
+                    : CommitComparePresentationState.Ready;
             TrackEvent(
                 "commits.compare.opened",
                 new Dictionary<string, string?>
                 {
                     ["page"] = "repo",
-                    ["result"] = compare is null ? "empty" : "success",
+                    ["result"] = compare is null ? "empty" : diffPrepared ? "success" : "error",
                     ["cache_state"] = result.CacheState.ToString().ToLowerInvariant(),
                     ["duration_bucket"] = TelemetrySanitizer.CreateDurationBucket(compareDuration.Elapsed)
                 });
         }
         catch (GitHubAuthenticationException)
         {
+            if (requestId != _compareRequestId)
+            {
+                return;
+            }
+
+            CompareState = CommitComparePresentationState.Error;
             TrackEvent(
                 "commits.compare.opened",
                 new Dictionary<string, string?>
@@ -534,7 +623,13 @@ public sealed partial class RepoCommitsPageViewModel : ViewModelBase
         }
         catch (Exception ex) when (ex is GitHubApiException or HttpRequestException)
         {
+            if (requestId != _compareRequestId)
+            {
+                return;
+            }
+
             StatusText = GetString("RepoCommits.CompareFailed", "JitHub could not compare those refs.");
+            CompareState = CommitComparePresentationState.Error;
             TrackEvent(
                 "commits.compare.opened",
                 new Dictionary<string, string?>
@@ -544,6 +639,25 @@ public sealed partial class RepoCommitsPageViewModel : ViewModelBase
                     ["duration_bucket"] = TelemetrySanitizer.CreateDurationBucket(compareDuration.Elapsed)
                 });
         }
+    }
+
+    public void SwapCompareReferences()
+    {
+        if (!IsCompareInputEnabled)
+        {
+            return;
+        }
+
+        string previousBase = CompareBaseText;
+        CompareBaseText = CompareHeadText;
+        CompareHeadText = previousBase;
+        TrackEvent(
+            "commits.compare.refs_swapped",
+            new Dictionary<string, string?>
+            {
+                ["page"] = "repo",
+                ["result"] = "success"
+            });
     }
 
     partial void OnSelectedCommitChanged(GitHubCommit? value)
@@ -567,7 +681,11 @@ public sealed partial class RepoCommitsPageViewModel : ViewModelBase
         }
 
         _lastFocusedCommitSha = value.Sha;
-        _ = ShowCommitAfterInputCommitAsync(value);
+        NotifySelectedCommitHeaderPropertiesChanged();
+        BackgroundTaskObserver.Run(
+            () => ShowCommitAfterInputCommitAsync(value),
+            "commits",
+            _telemetryService);
     }
 
     partial void OnSelectedSectionChanged(CommitWorkspaceSection value)
@@ -606,13 +724,41 @@ public sealed partial class RepoCommitsPageViewModel : ViewModelBase
 
     partial void OnDiffSearchTextChanged(string value) => QueueDiffProjectionUpdate();
 
-    partial void OnDiffDocumentChanged(CommitDiffDocument value) => QueueDiffProjectionUpdate(debounce: false);
+    partial void OnCompareBaseTextChanged(string value) => InvalidateCompareResultForInputChange();
+
+    partial void OnCompareHeadTextChanged(string value) => InvalidateCompareResultForInputChange();
+
+    partial void OnDiffDocumentChanged(CommitDiffDocument value)
+    {
+        HashSet<string> availableFiles = value.Files
+            .Select(static file => file.Filename)
+            .ToHashSet(StringComparer.OrdinalIgnoreCase);
+        _collapsedDiffFiles.RemoveWhere(file => !availableFiles.Contains(file));
+        OnPropertyChanged(nameof(DiffFileTree));
+        OnPropertyChanged(nameof(DiffFileCountText));
+        QueueDiffProjectionUpdate(debounce: false);
+    }
 
     partial void OnCompareDiffDocumentChanged(CommitDiffDocument value) => QueueDiffProjectionUpdate(debounce: false);
 
     partial void OnSelectedDiffSearchMatchIndexChanged(int value) => NotifyDiffSearchPropertiesChanged();
 
     partial void OnCommentTextChanged(string value) => NotifyActionPropertiesChanged();
+
+    private void InvalidateCompareResultForInputChange()
+    {
+        if (CompareState is CommitComparePresentationState.Initial or CommitComparePresentationState.Loading)
+        {
+            return;
+        }
+
+        Interlocked.Increment(ref _compareRequestId);
+        CancelCompareDiffBuild();
+        CompareState = CommitComparePresentationState.Initial;
+        CompareSummaryText = string.Empty;
+        CompareDiffDocument = CommitDiffDocument.Empty;
+        CompareDiffRowProjection = CommitDiffRowProjection.Empty;
+    }
 
     private void QueueDiffProjectionUpdate(bool debounce = true)
     {
@@ -622,14 +768,19 @@ public sealed partial class RepoCommitsPageViewModel : ViewModelBase
         CommitDiffDocument compareDiffDocument = CompareDiffDocument;
         string fileFilterText = DiffFileFilterText;
         string searchText = DiffSearchText;
-        _ = BuildDiffRowProjectionsAsync(
-            diffDocument,
-            compareDiffDocument,
-            fileFilterText,
-            searchText,
-            diffSha,
-            requestId,
-            debounce);
+        HashSet<string> collapsedFiles = new(_collapsedDiffFiles, StringComparer.OrdinalIgnoreCase);
+        BackgroundTaskObserver.Run(
+            () => BuildDiffRowProjectionsAsync(
+                diffDocument,
+                compareDiffDocument,
+                fileFilterText,
+                searchText,
+                collapsedFiles,
+                diffSha,
+                requestId,
+                debounce),
+            "commits",
+            _telemetryService);
     }
 
     private async Task BuildDiffRowProjectionsAsync(
@@ -637,6 +788,7 @@ public sealed partial class RepoCommitsPageViewModel : ViewModelBase
         CommitDiffDocument compareDiffDocument,
         string fileFilterText,
         string searchText,
+        IReadOnlySet<string> collapsedFiles,
         string? diffSha,
         int requestId,
         bool debounce)
@@ -647,9 +799,9 @@ public sealed partial class RepoCommitsPageViewModel : ViewModelBase
         }
 
         CommitDiffRowProjection diffProjection = await Task.Run(() =>
-            CommitDiffRowProjection.Create(diffDocument, fileFilterText, searchText));
+            CommitDiffRowProjection.Create(diffDocument, fileFilterText, searchText, collapsedFiles));
         CommitDiffRowProjection compareProjection = await Task.Run(() =>
-            CommitDiffRowProjection.Create(compareDiffDocument, fileFilterText, searchText));
+            CommitDiffRowProjection.Create(compareDiffDocument, fileFilterText, searchText, collapsedFiles));
 
         if (requestId != _diffProjectionRequestId)
         {
@@ -660,6 +812,60 @@ public sealed partial class RepoCommitsPageViewModel : ViewModelBase
         CompareDiffRowProjection = compareProjection;
         _projectedDiffRowsSha = diffSha;
         UpdateDiffSearchStateForActiveProjection();
+    }
+
+    public bool ToggleDiffFileCollapsed(string fileName)
+    {
+        if (string.IsNullOrWhiteSpace(fileName))
+        {
+            return false;
+        }
+
+        bool isCollapsed;
+        if (_collapsedDiffFiles.Remove(fileName))
+        {
+            isCollapsed = false;
+        }
+        else
+        {
+            _collapsedDiffFiles.Add(fileName);
+            isCollapsed = true;
+        }
+
+        QueueDiffProjectionUpdate(debounce: false);
+        return isCollapsed;
+    }
+
+    public bool ExpandDiffFile(string fileName)
+    {
+        bool changed = _collapsedDiffFiles.Remove(fileName);
+        if (changed)
+        {
+            QueueDiffProjectionUpdate(debounce: false);
+        }
+
+        return changed;
+    }
+
+    public void CollapseAllDiffFiles()
+    {
+        foreach (CommitDiffFile file in DiffDocument.Files)
+        {
+            _collapsedDiffFiles.Add(file.Filename);
+        }
+
+        QueueDiffProjectionUpdate(debounce: false);
+    }
+
+    public void ExpandAllDiffFiles()
+    {
+        if (_collapsedDiffFiles.Count == 0)
+        {
+            return;
+        }
+
+        _collapsedDiffFiles.Clear();
+        QueueDiffProjectionUpdate(debounce: false);
     }
 
     private void UpdateDiffSearchStateForActiveProjection()
@@ -988,7 +1194,10 @@ public sealed partial class RepoCommitsPageViewModel : ViewModelBase
         else if (selectionChanged || !HasSelectedCommit)
         {
             PopulateCommit(selectedCommit, hasAuthoritativeDiff: false);
-            _ = ShowCommitAfterInputCommitAsync(selectedCommit);
+            BackgroundTaskObserver.Run(
+                () => ShowCommitAfterInputCommitAsync(selectedCommit),
+                "commits",
+                _telemetryService);
         }
 
         return Task.CompletedTask;
@@ -1016,6 +1225,7 @@ public sealed partial class RepoCommitsPageViewModel : ViewModelBase
         _projectedDiffSha = null;
         _projectedDiffRowsSha = null;
         Interlocked.Increment(ref _diffProjectionRequestId);
+        _collapsedDiffFiles.Clear();
         DiffRowProjection = CommitDiffRowProjection.Empty;
         ReplaceCollectionByKey(
             CommitComments,
@@ -1184,7 +1394,15 @@ public sealed partial class RepoCommitsPageViewModel : ViewModelBase
         {
             _projectedDiffSha = commit.Sha;
             _projectedDiffRowsSha = null;
+            bool isCurrentDocument = ReferenceEquals(DiffDocument, cachedDocument);
             DiffDocument = cachedDocument;
+            if (isCurrentDocument)
+            {
+                // A delayed detail transition can clear rows after this document was
+                // already published. Reusing the same cache entry does not raise the
+                // generated property callback, so explicitly restore its projection.
+                QueueDiffProjectionUpdate(debounce: false);
+            }
             IsDiffLoading = false;
             return;
         }
@@ -1219,6 +1437,7 @@ public sealed partial class RepoCommitsPageViewModel : ViewModelBase
         int requestId,
         CancellationTokenSource cancellationTokenSource)
     {
+        Stopwatch parseDuration = Stopwatch.StartNew();
         try
         {
             CommitDiffDocument document = await CommitDiffParser.ParseAsync(
@@ -1237,16 +1456,24 @@ public sealed partial class RepoCommitsPageViewModel : ViewModelBase
             DiffStatusText = document.HasFiles
                 ? string.Empty
                 : GetString("RepoCommits.NoDiffAvailable", "No diff is available for this commit.");
+            TrackDiffPrepared(
+                document.HasFiles ? TelemetryTaxonomy.Results.Success : TelemetryTaxonomy.Results.Empty,
+                parseDuration.Elapsed);
         }
         catch (OperationCanceledException) when (cancellationTokenSource.IsCancellationRequested)
         {
         }
-        catch (Exception)
+        catch (Exception exception)
         {
             if (requestId == _diffRequestId &&
                 string.Equals(SelectedCommit?.Sha, sha, StringComparison.OrdinalIgnoreCase))
             {
+                _ = UserFacingError.For(
+                    exception,
+                    UserFacingErrorKind.Loading,
+                    "repository-commit-diff");
                 DiffStatusText = GetString("RepoCommits.DiffFailed", "JitHub could not prepare this diff.");
+                TrackDiffPrepared(TelemetryTaxonomy.Results.Error, parseDuration.Elapsed);
             }
         }
         finally
@@ -1264,14 +1491,14 @@ public sealed partial class RepoCommitsPageViewModel : ViewModelBase
         }
     }
 
-    private async Task BuildCompareDiffDocumentAsync(GitHubCommitFile[] files)
+    private async Task<bool> BuildCompareDiffDocumentAsync(GitHubCommitFile[] files)
     {
         CancelCompareDiffBuild();
         int requestId = Interlocked.Increment(ref _compareDiffRequestId);
         if (files.Length == 0)
         {
             CompareDiffDocument = CommitDiffDocument.Empty;
-            return;
+            return true;
         }
 
         CancellationTokenSource cancellationTokenSource = new();
@@ -1285,9 +1512,26 @@ public sealed partial class RepoCommitsPageViewModel : ViewModelBase
             {
                 CompareDiffDocument = document;
             }
+
+            return true;
         }
         catch (OperationCanceledException) when (cancellationTokenSource.IsCancellationRequested)
         {
+            return false;
+        }
+        catch (Exception exception)
+        {
+            _ = UserFacingError.For(
+                exception,
+                UserFacingErrorKind.Loading,
+                "repository-commit-compare-diff");
+            if (requestId == _compareDiffRequestId)
+            {
+                CompareDiffDocument = CommitDiffDocument.Empty;
+                StatusText = GetString("RepoCommits.DiffFailed", "JitHub could not prepare this diff.");
+            }
+
+            return false;
         }
         finally
         {
@@ -1298,6 +1542,16 @@ public sealed partial class RepoCommitsPageViewModel : ViewModelBase
             cancellationTokenSource.Dispose();
         }
     }
+
+    private void TrackDiffPrepared(string result, TimeSpan duration) =>
+        TrackEvent(
+            "commits.diff.prepared",
+            new Dictionary<string, string?>
+            {
+                ["page"] = "repo",
+                ["result"] = result,
+                ["duration_bucket"] = TelemetrySanitizer.CreateDurationBucket(duration)
+            });
 
     private void PopulateAggregate(CommitDetailAggregate aggregate)
     {
@@ -1637,6 +1891,7 @@ public sealed partial class RepoCommitsPageViewModel : ViewModelBase
         _projectedDiffSha = null;
         _projectedDiffRowsSha = null;
         Interlocked.Increment(ref _diffProjectionRequestId);
+        _collapsedDiffFiles.Clear();
         DiffRowProjection = CommitDiffRowProjection.Empty;
         CancelDiffBuild();
         Interlocked.Increment(ref _diffRequestId);
@@ -1644,9 +1899,12 @@ public sealed partial class RepoCommitsPageViewModel : ViewModelBase
         DiffStatusText = string.Empty;
         DiffDocument = CommitDiffDocument.Empty;
         CancelCompareDiffBuild();
+        Interlocked.Increment(ref _compareRequestId);
         Interlocked.Increment(ref _compareDiffRequestId);
         CompareDiffDocument = CommitDiffDocument.Empty;
+        CompareDiffRowProjection = CommitDiffRowProjection.Empty;
         CompareSummaryText = string.Empty;
+        CompareState = CommitComparePresentationState.Initial;
         ReplaceCollectionByKey(CommitComments, Array.Empty<GitHubCommitComment>(), static comment => comment.Id.ToString(CultureInfo.InvariantCulture));
         ReplaceCollectionByKey(CheckRuns, Array.Empty<GitHubCheckRun>(), static checkRun => checkRun.Id.ToString(CultureInfo.InvariantCulture));
         ReplaceCollectionByKey(CommitStatuses, Array.Empty<GitHubCommitStatus>(), static status => status.Id.ToString(CultureInfo.InvariantCulture));
@@ -1858,11 +2116,14 @@ public sealed partial class RepoCommitsPageViewModel : ViewModelBase
     private void NotifyCommentPropertiesChanged()
     {
         OnPropertyChanged(nameof(SelectedCommitCommentsText));
+        OnPropertyChanged(nameof(HasCommitComments));
+        OnPropertyChanged(nameof(HasNoCommitComments));
     }
 
     private void NotifyActionPropertiesChanged()
     {
         OnPropertyChanged(nameof(AreCommitActionsEnabled));
+        OnPropertyChanged(nameof(CanAddCommitComment));
         OnPropertyChanged(nameof(IsCommitCommentEnabled));
     }
 

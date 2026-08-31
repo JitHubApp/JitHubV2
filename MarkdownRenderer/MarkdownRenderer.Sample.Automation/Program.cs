@@ -1916,7 +1916,7 @@ internal static class Program
     {
         string root = AppContext.BaseDirectory;
         var dir = new DirectoryInfo(root);
-        while (dir is not null && !File.Exists(Path.Combine(dir.FullName, "JitHub.slnx")))
+        while (dir is not null && !File.Exists(Path.Combine(dir.FullName, "Directory.Build.props")))
             dir = dir.Parent;
         if (dir is null) return null;
         string sampleDir = Path.Combine(dir.FullName, "MarkdownRenderer", "MarkdownRenderer.Sample", "bin");

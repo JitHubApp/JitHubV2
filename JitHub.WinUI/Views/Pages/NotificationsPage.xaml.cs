@@ -1,6 +1,7 @@
 using System;
 using JitHub.Services;
 using JitHub.Services.Layout;
+using JitHub.WinUI.Performance;
 using JitHub.WinUI.ViewModels.Pages;
 using Microsoft.UI.Input;
 using Microsoft.UI.Xaml;
@@ -15,6 +16,7 @@ public sealed partial class NotificationsPage : Page
 {
     private bool _initialized;
     private string? _pointerOpenedNotificationKey;
+    private ProductPerformanceScrollProbe? _performanceScrollProbe;
 
     public NotificationsPageViewModel ViewModel { get; }
 
@@ -26,28 +28,69 @@ public sealed partial class NotificationsPage : Page
         NotificationFilterSegmented.SelectedItem = UnreadFilterItem;
         DataContext = ViewModel;
         Loaded += OnLoaded;
+        Unloaded += OnUnloaded;
     }
 
-    private async void OnLoaded(object sender, RoutedEventArgs e)
+    private void OnLoaded(object sender, RoutedEventArgs e)
     {
-        _pointerOpenedNotificationKey = null;
-        ApplyResponsiveLayout(ActualWidth);
-        if (_initialized)
+        UiTaskGuard.Run(async () =>
         {
-            CommitPerformanceReadiness();
-            return;
+            _pointerOpenedNotificationKey = null;
+            AttachPerformanceScrollProbe();
+            ApplyResponsiveLayout(ActualWidth);
+            if (_initialized)
+            {
+                CommitPerformanceReadiness();
+                return;
+            }
+
+            _initialized = true;
+            try
+            {
+                await ViewModel.InitializeAsync();
+                CommitPerformanceReadiness();
+            }
+            catch (Exception ex)
+            {
+                JitHub.WinUI.App.LogHandledException(ex, "ui-notifications-page-initialize");
+            }
+        }, "ui-notifications-page");
+    }
+
+    private void OnUnloaded(object sender, RoutedEventArgs e)
+    {
+        _performanceScrollProbe?.Dispose();
+        _performanceScrollProbe = null;
+    }
+
+    private void AttachPerformanceScrollProbe()
+    {
+        _performanceScrollProbe?.Dispose();
+        _performanceScrollProbe = ProductPerformanceReadiness.IsEnabled &&
+            FindDescendant<ScrollViewer>(NotificationsList) is ScrollViewer scrollViewer
+                ? ProductPerformanceScrollProbe.TryStart(NotificationsList, scrollViewer)
+                : null;
+    }
+
+    private static T? FindDescendant<T>(DependencyObject root)
+        where T : DependencyObject
+    {
+        int count = VisualTreeHelper.GetChildrenCount(root);
+        for (int index = 0; index < count; index++)
+        {
+            DependencyObject child = VisualTreeHelper.GetChild(root, index);
+            if (child is T match)
+            {
+                return match;
+            }
+
+            if (FindDescendant<T>(child) is T nested)
+            {
+                return nested;
+            }
         }
 
-        _initialized = true;
-        try
-        {
-            await ViewModel.InitializeAsync();
-            CommitPerformanceReadiness();
-        }
-        catch (Exception ex)
-        {
-            System.Diagnostics.Debug.WriteLine($"Failed to initialize notifications: {ex}");
-        }
+        return null;
     }
 
     private void CommitPerformanceReadiness() =>
@@ -65,7 +108,6 @@ public sealed partial class NotificationsPage : Page
             WorkspaceChromeContracts.Notifications);
         WorkspaceChromeVisuals.ApplyRoot(NotificationsRoot, chrome);
         WorkspaceChromeVisuals.ApplyHeader(NotificationsHeaderGrid, chrome);
-        WorkspaceChromeVisuals.ApplyOptionalContext(NotificationsResultScope, chrome);
         WorkspaceChromeVisuals.ApplyActionLabel(NotificationsMarkAllReadText, chrome);
         WorkspaceChromeVisuals.ApplyActionButton(
             NotificationsMarkAllReadButton,
@@ -85,19 +127,18 @@ public sealed partial class NotificationsPage : Page
         NotificationFilterSegmented.MinWidth = chrome.StackCommandRows ? 0 : 286;
     }
 
-    private async void NotificationFilterSegmented_SelectionChanged(SelectorBar sender, SelectorBarSelectionChangedEventArgs args)
+    private void NotificationFilterSegmented_SelectionChanged(SelectorBar sender, SelectorBarSelectionChangedEventArgs args)
     {
-        if (!_initialized)
+        UiTaskGuard.Run(async () =>
         {
-            return;
-        }
+            if (!_initialized)
+            {
+                return;
+            }
 
-        NotificationListFilter filter = ReferenceEquals(sender.SelectedItem, AllFilterItem)
-            ? NotificationListFilter.All
-            : ReferenceEquals(sender.SelectedItem, ParticipatingFilterItem)
-                ? NotificationListFilter.Participating
-                : NotificationListFilter.Unread;
-        await ViewModel.ChangeFilterAsync(filter);
+            NotificationListFilter filter = ReferenceEquals(sender.SelectedItem, AllFilterItem) ? NotificationListFilter.All : ReferenceEquals(sender.SelectedItem, ParticipatingFilterItem) ? NotificationListFilter.Participating : NotificationListFilter.Unread;
+            await ViewModel.ChangeFilterAsync(filter);
+        }, "ui-notifications-page");
     }
 
     private void NotificationsList_ItemClick(object sender, ItemClickEventArgs e)
@@ -144,7 +185,7 @@ public sealed partial class NotificationsPage : Page
 
         if (ViewModel.HasMore && !ViewModel.IsLoadingMore && args.ItemIndex >= ViewModel.Notifications.Count - 10)
         {
-            _ = ViewModel.LoadMoreCommand.ExecuteAsync(null);
+            UiTaskGuard.Observe(ViewModel.LoadMoreCommand.ExecuteAsync(null), "ui-notifications-page");
         }
     }
 
@@ -152,7 +193,7 @@ public sealed partial class NotificationsPage : Page
     {
         if (sender is ListViewItem { DataContext: NotificationViewItem item })
         {
-            _ = ViewModel.PrefetchDestinationAsync(item);
+            UiTaskGuard.Observe(ViewModel.PrefetchDestinationAsync(item), "ui-notifications-page");
         }
     }
 

@@ -8,6 +8,7 @@ using JitHub.WinUI.Views.Dialogs;
 using JitHub.Models.GitHub;
 using JitHub.Services;
 using JitHub.Services.Layout;
+using JitHub.WinUI.Performance;
 using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Automation;
 using Microsoft.UI.Xaml.Controls;
@@ -21,6 +22,7 @@ public sealed partial class RepoManagePage : Page
     private bool _automationRepositoriesSeeded;
     private bool _synchronizingNativeSelection;
     private ListViewScrollAnchor? _pendingScrollAnchor;
+    private ProductPerformanceScrollProbe? _performanceScrollProbe;
     private readonly PointerEventHandler _repositoryRowPointerEnteredHandler;
     private readonly PointerEventHandler _repositoryRowPointerExitedHandler;
     private readonly PointerEventHandler _repositoryRowPointerPressedHandler;
@@ -43,27 +45,64 @@ public sealed partial class RepoManagePage : Page
         ViewModel.SelectionStateChanged += ViewModel_SelectionStateChanged;
     }
 
-    private async void Page_Loaded(object sender, RoutedEventArgs e)
+    private void Page_Loaded(object sender, RoutedEventArgs e)
     {
-        UpdateWidthState(ActualWidth);
-        if (IsRepositoryLibraryAutomationScenario() && !_automationRepositoriesSeeded)
+        AttachPerformanceScrollProbe();
+        UiTaskGuard.Run(async () =>
         {
-            _automationRepositoriesSeeded = true;
-            ViewModel.SetAutomationRepositories(CreateAutomationRepositories());
-        }
+            UpdateWidthState(ActualWidth);
+            if (IsRepositoryLibraryAutomationScenario() && !_automationRepositoriesSeeded)
+            {
+                _automationRepositoriesSeeded = true;
+                ViewModel.SetAutomationRepositories(CreateAutomationRepositories());
+            }
 
-        await RunSafelyAsync(ViewModel.ActivateAsync);
-        ProductPerformanceReadiness.CommitRoute(
-            "repo_manage",
-            ProductPerformanceReadiness.CountIdentity(ViewModel.Repositories.Count));
-        _ = ViewModel.PrefetchLikelyRepositoriesAsync();
-        SynchronizeNativeSelection();
+            await RunSafelyAsync(ViewModel.ActivateAsync);
+            ProductPerformanceReadiness.CommitRoute("repo_manage", ProductPerformanceReadiness.CountIdentity(ViewModel.Repositories.Count));
+            UiTaskGuard.Observe(ViewModel.PrefetchLikelyRepositoriesAsync(), "ui-repo-manage-page");
+            SynchronizeNativeSelection();
+        }, "ui-repo-manage-page");
     }
 
     private void Page_SizeChanged(object sender, SizeChangedEventArgs e) =>
         UpdateWidthState(e.NewSize.Width);
 
-    private void Page_Unloaded(object sender, RoutedEventArgs e) => ViewModel.Deactivate();
+    private void Page_Unloaded(object sender, RoutedEventArgs e)
+    {
+        _performanceScrollProbe?.Dispose();
+        _performanceScrollProbe = null;
+        ViewModel.Deactivate();
+    }
+
+    private void AttachPerformanceScrollProbe()
+    {
+        _performanceScrollProbe?.Dispose();
+        _performanceScrollProbe = ProductPerformanceReadiness.IsEnabled &&
+            FindDescendant<ScrollViewer>(RepositoriesList) is ScrollViewer scrollViewer
+                ? ProductPerformanceScrollProbe.TryStart(RepositoriesList, scrollViewer)
+                : null;
+    }
+
+    private static T? FindDescendant<T>(DependencyObject root)
+        where T : DependencyObject
+    {
+        int count = VisualTreeHelper.GetChildrenCount(root);
+        for (int index = 0; index < count; index++)
+        {
+            DependencyObject child = VisualTreeHelper.GetChild(root, index);
+            if (child is T match)
+            {
+                return match;
+            }
+
+            if (FindDescendant<T>(child) is T nested)
+            {
+                return nested;
+            }
+        }
+
+        return null;
+    }
 
     private void UpdateWidthState(double availableWidth)
     {
@@ -73,9 +112,6 @@ public sealed partial class RepoManagePage : Page
             chrome.StackCommandRows ? "Compact" : "Wide",
             useTransitions: false);
         WorkspaceRoot.Padding = chrome.Insets.ToThickness();
-        RepositoryLibraryCount.Visibility = chrome.ShowOptionalHeaderContext
-            ? Visibility.Visible
-            : Visibility.Collapsed;
         NewRepositoryButtonText.Visibility = chrome.ShowActionLabels
             ? Visibility.Visible
             : Visibility.Collapsed;
@@ -106,7 +142,7 @@ public sealed partial class RepoManagePage : Page
         SetRepositoryRowBackground(sender as ListViewItem, "AppSurfaceSubtleBrush");
         if (sender is ListViewItem { DataContext: RepositoryLibraryViewItem item })
         {
-            _ = ViewModel.PrefetchRepositoryAsync(item);
+            UiTaskGuard.Observe(ViewModel.PrefetchRepositoryAsync(item), "ui-repo-manage-page");
         }
     }
 
@@ -339,8 +375,13 @@ public sealed partial class RepoManagePage : Page
         }
     }
 
-    private async void RetryButton_Click(object sender, RoutedEventArgs e) =>
-        await RunSafelyAsync(ViewModel.RetryAsync);
+    private void RetryButton_Click(object sender, RoutedEventArgs e)
+    {
+        UiTaskGuard.Run(async () =>
+        {
+            await RunSafelyAsync(ViewModel.RetryAsync);
+        }, "ui-repo-manage-page");
+    }
 
     private void RepositorySelectionCheckBox_Checked(object sender, RoutedEventArgs e)
     {
@@ -429,24 +470,30 @@ public sealed partial class RepoManagePage : Page
     private void CopyRepositoryLinkMenuItem_Click(object sender, RoutedEventArgs e) =>
         ViewModel.CopyRepositoryLink(GetCommandRepository(sender));
 
-    private async void DeleteRepositoryMenuItem_Click(object sender, RoutedEventArgs e)
+    private void DeleteRepositoryMenuItem_Click(object sender, RoutedEventArgs e)
     {
-        RepositoryLibraryViewItem? item = GetCommandRepository(sender);
-        if (item is null)
+        UiTaskGuard.Run(async () =>
         {
-            return;
-        }
+            RepositoryLibraryViewItem? item = GetCommandRepository(sender);
+            if (item is null)
+            {
+                return;
+            }
 
-        await DeleteRepositoriesAsync([item]);
+            await DeleteRepositoriesAsync((RepositoryLibraryViewItem[])[item]);
+        }, "ui-repo-manage-page");
     }
 
-    private async void DeleteSelectedButton_Click(object sender, RoutedEventArgs e)
+    private void DeleteSelectedButton_Click(object sender, RoutedEventArgs e)
     {
-        IReadOnlyList<RepositoryLibraryViewItem> selected = ViewModel.GetSelectedRepositories();
-        if (selected.Count > 0)
+        UiTaskGuard.Run(async () =>
         {
-            await DeleteRepositoriesAsync(selected);
-        }
+            IReadOnlyList<RepositoryLibraryViewItem> selected = ViewModel.GetSelectedRepositories();
+            if (selected.Count > 0)
+            {
+                await DeleteRepositoriesAsync(selected);
+            }
+        }, "ui-repo-manage-page");
     }
 
     private async Task DeleteRepositoriesAsync(IReadOnlyList<RepositoryLibraryViewItem> repositories)
@@ -488,7 +535,8 @@ public sealed partial class RepoManagePage : Page
                     return DialogMutationResult.Failure(ViewModel.StatusText);
                 }
             },
-            errorText);
+            errorText,
+            layoutKind: AppDialogLayoutKind.Confirmation);
 
         if (dialogResult == ContentDialogResult.Primary && deletionResult?.HasFailures == true)
         {

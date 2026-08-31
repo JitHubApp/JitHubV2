@@ -93,9 +93,7 @@ public static class AdaptiveWorkspaceLayout
             : AdaptivePanePlacement.Hidden;
 
         AdaptivePanePlacement trailingPlacement = hasTrailingPane
-            ? mode == AdaptiveWorkspaceMode.Wide
-                ? AdaptivePanePlacement.Inline
-                : AdaptivePanePlacement.RightDrawer
+            ? AdaptivePanePlacement.RightDrawer
             : AdaptivePanePlacement.Hidden;
 
         AdaptiveWorkspaceDrawer safeDrawer = visibleDrawer;

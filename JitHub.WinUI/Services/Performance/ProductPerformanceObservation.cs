@@ -249,6 +249,7 @@ public sealed class ProductPerformanceContentTransitionTracker
 
 public sealed class ProductPerformanceScrollTransitionTracker
 {
+    private const double MinimumOffsetDelta = 0.001;
     private readonly long _startedTimestamp;
     private readonly double _initialOffset;
     private readonly long _initialFrame;
@@ -301,7 +302,7 @@ public sealed class ProductPerformanceScrollTransitionTracker
             return;
         }
 
-        if (Math.Abs(offset - _initialOffset) >= 0.01 && heartbeat.Frame > _initialFrame)
+        if (Math.Abs(offset - _initialOffset) >= MinimumOffsetDelta && heartbeat.Frame > _initialFrame)
         {
             _offsetChangedAfterFrame = true;
             _observerRenderedInterval ??= Stopwatch.GetElapsedTime(_startedTimestamp, observedTimestamp);

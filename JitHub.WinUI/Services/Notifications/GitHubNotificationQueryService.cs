@@ -5,6 +5,8 @@ using System.Net;
 using System.Net.Http;
 using System.Net.Http.Headers;
 using System.Net.Http.Json;
+using System.IO;
+using System.Text.Json;
 using System.Threading;
 using System.Threading.Tasks;
 using JitHub.Models.GitHub;
@@ -102,7 +104,7 @@ public sealed class GitHubNotificationQueryService : IGitHubNotificationQuerySer
             JsonContent.Create(payload, GitHubJsonSerializerContext.Default.GitHubNotificationMarkReadRequest),
             "mark-all-read",
             cancellationToken);
-        await InvalidateBestEffortAsync(userId, ["notifications", "dashboard-notifications"]);
+        await InvalidateBestEffortAsync(userId, (string[])["notifications", "dashboard-notifications"]);
     }
 
     public async Task MarkThreadReadAsync(string accessToken, string userId, string threadId, CancellationToken cancellationToken = default)
@@ -297,7 +299,7 @@ public sealed class GitHubNotificationQueryService : IGitHubNotificationQuerySer
     private Task InvalidateThreadBestEffortAsync(string userId, string threadId) =>
         InvalidateBestEffortAsync(
             userId,
-            ["notifications", "dashboard-notifications", $"notification-thread-{threadId}"]);
+            (string[])["notifications", "dashboard-notifications", $"notification-thread-{threadId}"]);
 
     private async Task InvalidateBestEffortAsync(string userId, IReadOnlyCollection<string> tags)
     {
@@ -357,7 +359,11 @@ public sealed class GitHubNotificationQueryService : IGitHubNotificationQuerySer
                     JitHub.WinUI.Helpers.UserFacingErrorKind.Action,
                     "notification-api");
         }
-        catch
+        catch (OperationCanceledException)
+        {
+            throw;
+        }
+        catch (Exception ex) when (ex is JsonException or NotSupportedException or IOException)
         {
             return $"GitHub returned HTTP {(int)response.StatusCode}.";
         }

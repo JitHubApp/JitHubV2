@@ -40,6 +40,8 @@ public sealed partial class CommitDiffViewer : UserControl
 
     public event EventHandler<CommitDiffActionCompletedEventArgs>? ActionCompleted;
 
+    public event EventHandler<CommitDiffFileExpansionRequestedEventArgs>? FileExpansionRequested;
+
     public CommitDiffViewer()
     {
         InitializeComponent();
@@ -73,6 +75,7 @@ public sealed partial class CommitDiffViewer : UserControl
 
     private void CommitDiffViewer_Loaded(object sender, RoutedEventArgs e)
     {
+        ApplyRowProjection();
         _performanceScrollProbe ??= ProductPerformanceScrollProbe.TryStart(this, DiffRowsScrollViewer);
     }
 
@@ -94,15 +97,50 @@ public sealed partial class CommitDiffViewer : UserControl
         set => SetValue(SelectedSearchMatchIndexProperty, value);
     }
 
+    public ScrollViewer ScrollViewport => DiffRowsScrollViewer;
+
+    public void BringFileIntoView(string fileName)
+    {
+        CommitDiffRowProjection projection = RowProjection ?? CommitDiffRowProjection.Empty;
+        int rowIndex = projection.Rows
+            .Select((row, index) => (row, index))
+            .FirstOrDefault(item =>
+                item.row.IsFileHeader &&
+                string.Equals(item.row.FileName, fileName, StringComparison.OrdinalIgnoreCase))
+            .index;
+        if (rowIndex < 0 || rowIndex >= projection.Rows.Count ||
+            !string.Equals(projection.Rows[rowIndex].FileName, fileName, StringComparison.OrdinalIgnoreCase))
+        {
+            return;
+        }
+
+        _ = DispatcherQueue.TryEnqueue(() =>
+        {
+            UIElement? element = DiffRowsRepeater.GetOrCreateElement(rowIndex);
+            element?.StartBringIntoView(new BringIntoViewOptions
+            {
+                AnimationDesired = true,
+                VerticalAlignmentRatio = 0,
+                VerticalOffset = -8
+            });
+        });
+    }
+
     private static void OnRowProjectionChanged(DependencyObject dependencyObject, DependencyPropertyChangedEventArgs args)
     {
         if (dependencyObject is CommitDiffViewer viewer)
         {
-            viewer._selection.Clear();
-            viewer.Bindings.Update();
-            viewer.ApplyHighlightsToRealizedRows();
-            viewer.ScrollToSelectedMatch();
+            viewer.ApplyRowProjection();
         }
+    }
+
+    private void ApplyRowProjection()
+    {
+        _selection.Clear();
+        _realizedRows.Clear();
+        DiffRowsRepeater.ItemsSource = (RowProjection ?? CommitDiffRowProjection.Empty).Rows;
+        ApplyHighlightsToRealizedRows();
+        ScrollToSelectedMatch();
     }
 
     private static void OnSelectedSearchMatchIndexChanged(DependencyObject dependencyObject, DependencyPropertyChangedEventArgs args)
@@ -437,7 +475,7 @@ public sealed partial class CommitDiffViewer : UserControl
         {
             AddHighlighter(
                 textBlock,
-                [new CommitDiffSearchMatch(0, row.Key, rowIndex, start, length)],
+                (CommitDiffSearchMatch[])[new CommitDiffSearchMatch(0, row.Key, rowIndex, start, length)],
                 GetThemeBrush("AppAccentBrush"),
                 GetThemeBrush("AppAccentForegroundBrush"));
         }
@@ -535,6 +573,17 @@ public sealed partial class CommitDiffViewer : UserControl
             CompleteAction(
                 TelemetryTaxonomy.Actions.CopyPath,
                 CopyText(row.FileName));
+        }
+    }
+
+    private void ToggleFileExpansionButton_Click(object sender, RoutedEventArgs e)
+    {
+        if (sender is FrameworkElement source &&
+            FindRowFromElement(source) is CommitDiffRow { IsFileHeader: true } row)
+        {
+            FileExpansionRequested?.Invoke(
+                this,
+                new CommitDiffFileExpansionRequestedEventArgs(row.FileName, row.IsFileCollapsed));
         }
     }
 
@@ -714,6 +763,15 @@ public sealed class CommitDiffActionCompletedEventArgs(string action, string res
     public string Action { get; } = action;
 
     public string Result { get; } = result;
+}
+
+public sealed class CommitDiffFileExpansionRequestedEventArgs(
+    string fileName,
+    bool isCurrentlyCollapsed) : EventArgs
+{
+    public string FileName { get; } = fileName;
+
+    public bool IsCurrentlyCollapsed { get; } = isCurrentlyCollapsed;
 }
 
 internal readonly record struct CommitDiffSelectionHit(int RowIndex, int CharIndex);

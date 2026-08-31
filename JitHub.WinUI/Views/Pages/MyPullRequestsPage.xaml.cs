@@ -6,9 +6,11 @@ using JitHub.Services.Layout;
 using JitHub.WinUI.Performance;
 using JitHub.WinUI.ViewModels.Pages;
 using JitHub.WinUI.Views.Controls.Common;
+using Microsoft.UI.Input;
 using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Automation;
 using Microsoft.UI.Xaml.Controls;
+using Microsoft.UI.Xaml.Input;
 using Microsoft.UI.Xaml.Media;
 
 namespace JitHub.WinUI.Views.Pages;
@@ -16,6 +18,10 @@ namespace JitHub.WinUI.Views.Pages;
 public sealed partial class MyPullRequestsPage : Page
 {
     private const string PseudoLongLabelsScenario = "my-pull-requests-pseudo-long-labels";
+    private const string PseudoInvolvedScopeLabel = "Pull requests involving the authenticated account";
+    private const string PseudoReviewRequestedScopeLabel = "Pull requests requesting review from the authenticated account";
+    private const string PseudoAuthoredScopeLabel = "Pull requests created by the authenticated account";
+    private const string PseudoAssignedScopeLabel = "Pull requests assigned to the authenticated account";
     private const string PseudoOpenStateLabel = "Currently open pull requests involving the authenticated account";
     private const string PseudoClosedStateLabel = "Previously closed pull requests involving the authenticated account";
     private const string PseudoAllStateLabel = "All pull requests involving the authenticated account";
@@ -24,6 +30,9 @@ public sealed partial class MyPullRequestsPage : Page
     private bool _syncingFilterControls;
     private ListViewScrollAnchor? _pendingRefreshAnchor;
     private long _selectionRenderGeneration;
+    private bool _pointerSelectionInProgress;
+    private long _readinessRenderGeneration;
+    private bool _performanceReadinessCommitted;
     private ProductPerformanceScrollProbe? _performanceScrollProbe;
 
     public MyPullRequestsPageViewModel ViewModel { get; }
@@ -56,35 +65,41 @@ public sealed partial class MyPullRequestsPage : Page
         Unloaded += OnUnloaded;
     }
 
-    private async void OnLoaded(object sender, RoutedEventArgs e)
+    private void OnLoaded(object sender, RoutedEventArgs e)
     {
-        AttachPerformanceScrollProbe();
-        if (_initialized)
+        _performanceReadinessCommitted = false;
+        Interlocked.Increment(ref _readinessRenderGeneration);
+        UiTaskGuard.Run(async () =>
         {
-            CommitPerformanceReadiness();
-            return;
-        }
+            AttachPerformanceScrollProbe();
+            if (_initialized)
+            {
+                SchedulePerformanceReadinessAfterRender();
+                return;
+            }
 
-        _initialized = true;
-        UpdatePullRequestFilterLayout(PullRequestFilterHost.ActualWidth);
-        try
-        {
-            await ViewModel.InitializeAsync();
-            CommitPerformanceReadiness();
-            ApplyPseudoLongLabelsForAutomation();
+            _initialized = true;
             UpdatePullRequestFilterLayout(PullRequestFilterHost.ActualWidth);
-            UpdatePaneButtonVisibility();
-            MaybeOpenInitialPullRequestListDrawer();
-        }
-        catch (Exception ex)
-        {
-            System.Diagnostics.Debug.WriteLine($"Failed to load pull requests page: {ex}");
-        }
+            try
+            {
+                await ViewModel.InitializeAsync();
+                SchedulePerformanceReadinessAfterRender();
+                ApplyPseudoLongLabelsForAutomation();
+                UpdatePullRequestFilterLayout(PullRequestFilterHost.ActualWidth);
+                UpdatePaneButtonVisibility();
+                MaybeOpenInitialPullRequestListDrawer();
+            }
+            catch (Exception ex)
+            {
+                JitHub.WinUI.App.LogHandledException(ex, "ui-my-pull-requests-page-initialize");
+            }
+        }, "ui-my-pull-requests-page");
     }
 
     private void OnUnloaded(object sender, RoutedEventArgs e)
     {
         Interlocked.Increment(ref _selectionRenderGeneration);
+        Interlocked.Increment(ref _readinessRenderGeneration);
         _performanceScrollProbe?.Dispose();
         _performanceScrollProbe = null;
     }
@@ -124,6 +139,38 @@ public sealed partial class MyPullRequestsPage : Page
             "my_pull_requests",
             ProductPerformanceReadiness.CountIdentity(ViewModel.Items.Count));
 
+    private void SchedulePerformanceReadinessAfterRender()
+    {
+        if (!ProductPerformanceReadiness.IsEnabled || _performanceReadinessCommitted)
+        {
+            return;
+        }
+
+        long generation = Interlocked.Increment(ref _readinessRenderGeneration);
+        ProductPerformanceRenderCommitter.ScheduleAfterNextFrame(
+            this,
+            () => IsLoaded &&
+                generation == Volatile.Read(ref _readinessRenderGeneration) &&
+                !_performanceReadinessCommitted,
+            static () => true,
+            () =>
+            {
+                _performanceReadinessCommitted = true;
+                CommitPerformanceReadiness();
+            });
+    }
+
+    private void PullRequestScopeSegmented_SelectionChanged(object sender, SelectionChangedEventArgs e)
+    {
+        if (!_initialized || _syncingFilterControls)
+        {
+            return;
+        }
+
+        SyncFilterSelection(PullRequestScopeSegmented.SelectedIndex, PullRequestStateSegmented.SelectedIndex);
+        ViewModel.SetPullRequestFilter(ToPullRequestFilter(PullRequestScopeSegmented.SelectedIndex));
+    }
+
     private void PullRequestStateSegmented_SelectionChanged(object sender, SelectionChangedEventArgs e)
     {
         if (!_initialized || _syncingFilterControls)
@@ -131,7 +178,7 @@ public sealed partial class MyPullRequestsPage : Page
             return;
         }
 
-        SyncStateFilterSelection(PullRequestStateSegmented.SelectedIndex);
+        SyncFilterSelection(PullRequestScopeSegmented.SelectedIndex, PullRequestStateSegmented.SelectedIndex);
         GitHubMeWorkItemState state = PullRequestStateSegmented.SelectedIndex switch
         {
             1 => GitHubMeWorkItemState.Closed,
@@ -141,6 +188,17 @@ public sealed partial class MyPullRequestsPage : Page
         ViewModel.SetWorkItemState(state);
     }
 
+    private void PullRequestScopeCompactPicker_SelectionChanged(object sender, SelectionChangedEventArgs e)
+    {
+        if (!_initialized || _syncingFilterControls)
+        {
+            return;
+        }
+
+        SyncFilterSelection(PullRequestScopeCompactPicker.SelectedIndex, PullRequestStateCompactPicker.SelectedIndex);
+        ViewModel.SetPullRequestFilter(ToPullRequestFilter(PullRequestScopeCompactPicker.SelectedIndex));
+    }
+
     private void PullRequestStateCompactPicker_SelectionChanged(object sender, SelectionChangedEventArgs e)
     {
         if (!_initialized || _syncingFilterControls)
@@ -148,7 +206,7 @@ public sealed partial class MyPullRequestsPage : Page
             return;
         }
 
-        SyncStateFilterSelection(PullRequestStateCompactPicker.SelectedIndex);
+        SyncFilterSelection(PullRequestScopeCompactPicker.SelectedIndex, PullRequestStateCompactPicker.SelectedIndex);
         ViewModel.SetWorkItemState(PullRequestStateCompactPicker.SelectedIndex switch
         {
             1 => GitHubMeWorkItemState.Closed,
@@ -157,14 +215,25 @@ public sealed partial class MyPullRequestsPage : Page
         });
     }
 
-    private void SyncStateFilterSelection(int selectedIndex)
+    private static GitHubMePullRequestFilter ToPullRequestFilter(int selectedIndex) => selectedIndex switch
+    {
+        1 => GitHubMePullRequestFilter.ReviewRequested,
+        2 => GitHubMePullRequestFilter.Authored,
+        3 => GitHubMePullRequestFilter.Assigned,
+        _ => GitHubMePullRequestFilter.Involves
+    };
+
+    private void SyncFilterSelection(int scopeIndex, int stateIndex)
     {
         _syncingFilterControls = true;
         try
         {
-            int normalizedIndex = Math.Clamp(selectedIndex, 0, 2);
-            PullRequestStateSegmented.SelectedIndex = normalizedIndex;
-            PullRequestStateCompactPicker.SelectedIndex = normalizedIndex;
+            int normalizedScopeIndex = Math.Clamp(scopeIndex, 0, 3);
+            int normalizedStateIndex = Math.Clamp(stateIndex, 0, 2);
+            PullRequestScopeSegmented.SelectedIndex = normalizedScopeIndex;
+            PullRequestScopeCompactPicker.SelectedIndex = normalizedScopeIndex;
+            PullRequestStateSegmented.SelectedIndex = normalizedStateIndex;
+            PullRequestStateCompactPicker.SelectedIndex = normalizedStateIndex;
         }
         finally
         {
@@ -177,6 +246,13 @@ public sealed partial class MyPullRequestsPage : Page
 
     private void UpdatePullRequestFilterLayout(double availableWidth)
     {
+        string[] scopeLabels =
+        [
+            InvolvedScopeSegment.Content?.ToString() ?? string.Empty,
+            ReviewRequestedScopeSegment.Content?.ToString() ?? string.Empty,
+            AuthoredScopeSegment.Content?.ToString() ?? string.Empty,
+            AssignedScopeSegment.Content?.ToString() ?? string.Empty
+        ];
         string[] stateLabels =
         [
             OpenStateSegment.Content?.ToString() ?? string.Empty,
@@ -185,10 +261,10 @@ public sealed partial class MyPullRequestsPage : Page
         ];
         bool useCompact = MyIssuesFilterLayoutPolicy.ShouldUseCompact(
             availableWidth,
-            [],
+            scopeLabels,
             stateLabels);
-        PullRequestStateSegmented.Visibility = useCompact ? Visibility.Collapsed : Visibility.Visible;
-        PullRequestStateCompactPicker.Visibility = useCompact ? Visibility.Visible : Visibility.Collapsed;
+        ExpandedPullRequestFilters.Visibility = useCompact ? Visibility.Collapsed : Visibility.Visible;
+        CompactPullRequestFilters.Visibility = useCompact ? Visibility.Visible : Visibility.Collapsed;
     }
 
     private void ApplyPseudoLongLabelsForAutomation()
@@ -202,6 +278,13 @@ public sealed partial class MyPullRequestsPage : Page
         CommitsSectionItem.Text = "Commits included in this pull request";
         ReviewsSectionItem.Text = "Reviews and reviewer feedback";
         TimelineSectionItem.Text = "Complete pull request timeline";
+        InvolvedScopeSegment.Content = InvolvedScopeCompactItem.Content = PseudoInvolvedScopeLabel;
+        ReviewRequestedScopeSegment.Content = ReviewRequestedScopeCompactItem.Content = PseudoReviewRequestedScopeLabel;
+        AuthoredScopeSegment.Content = AuthoredScopeCompactItem.Content = PseudoAuthoredScopeLabel;
+        AssignedScopeSegment.Content = AssignedScopeCompactItem.Content = PseudoAssignedScopeLabel;
+        OpenStateSegment.Content = OpenStateCompactItem.Content = PseudoOpenStateLabel;
+        ClosedStateSegment.Content = ClosedStateCompactItem.Content = PseudoClosedStateLabel;
+        AllStateSegment.Content = AllStateCompactItem.Content = PseudoAllStateLabel;
     }
 
     private void PullRequestSectionSelector_SelectionChanged(SelectorBar sender, SelectorBarSelectionChangedEventArgs args)
@@ -228,15 +311,79 @@ public sealed partial class MyPullRequestsPage : Page
 
     private void PullRequestsList_SelectionChanged(object sender, SelectionChangedEventArgs e)
     {
-        if (PullRequestsList.SelectedItem is MeWorkItemViewItem item)
+        if (_pointerSelectionInProgress ||
+            PullRequestsList.SelectedItem is not MeWorkItemViewItem item)
         {
-            ProductPerformanceReadiness.BeginTraversal(
-                "my_pull_requests",
-                item.AutomationId,
-                "my_pull_requests");
-            long generation = Interlocked.Increment(ref _selectionRenderGeneration);
-            ScheduleSelectedPullRequestCommit(item, generation);
-            ViewModel.SelectedItem = item;
+            return;
+        }
+
+        long generation = BeginPullRequestTraversal(item);
+        PrimePullRequestSelection(item);
+        ProductPerformanceReadiness.RecordTraversalStage("my_pull_requests.selection.primed");
+        ScheduleSelectedPullRequestCommit(item, generation);
+        SchedulePullRequestSelection(item, generation);
+    }
+
+    private void PullRequestListItem_PointerPressed(object sender, PointerRoutedEventArgs e)
+    {
+        MeWorkItemViewItem? item = sender switch
+        {
+            ListViewItem { Content: MeWorkItemViewItem containerItem } => containerItem,
+            FrameworkElement { DataContext: MeWorkItemViewItem templateItem } => templateItem,
+            _ => null
+        };
+        if (e.Handled ||
+            item is null ||
+            sender is not UIElement pointerRoot ||
+            e.GetCurrentPoint(pointerRoot).Properties.PointerUpdateKind != PointerUpdateKind.LeftButtonPressed)
+        {
+            return;
+        }
+
+        long generation = BeginPullRequestTraversal(item);
+        ProductPerformanceReadiness.RecordTraversalStage("my_pull_requests.pointer.selected");
+        PrimePullRequestSelection(item);
+        ProductPerformanceReadiness.RecordTraversalStage("my_pull_requests.selection.primed");
+        ScheduleSelectedPullRequestCommit(item, generation);
+
+        _pointerSelectionInProgress = true;
+        try
+        {
+            PullRequestsList.SelectedItem = item;
+        }
+        finally
+        {
+            _pointerSelectionInProgress = false;
+        }
+
+        ProductPerformanceReadiness.RecordTraversalStage("my_pull_requests.list.selected");
+        e.Handled = true;
+        SchedulePullRequestSelection(item, generation, focusSelection: true);
+        ProductPerformanceReadiness.RecordTraversalStage("my_pull_requests.hydration.scheduled");
+
+        if (PullRequestsWorkspace.IsLeadingDrawerOpen)
+        {
+            ListViewScrollAnchor anchor = ListViewScrollAnchor.Capture(PullRequestsList, GetPullRequestItemKey);
+            PullRequestsWorkspace.CloseDrawer();
+            anchor.RestoreAcrossLayoutPasses(DispatcherQueue);
+        }
+    }
+
+    private long BeginPullRequestTraversal(MeWorkItemViewItem item)
+    {
+        long generation = Interlocked.Increment(ref _selectionRenderGeneration);
+        ProductPerformanceReadiness.BeginTraversal(
+            "my_pull_requests",
+            item.AutomationId,
+            "my_pull_requests");
+        return generation;
+    }
+
+    private void PrimePullRequestSelection(MeWorkItemViewItem item)
+    {
+        if (!string.Equals(MyPullRequestsDetailTitleText.Text, item.Title, StringComparison.Ordinal))
+        {
+            MyPullRequestsDetailTitleText.Text = item.Title;
         }
     }
 
@@ -253,25 +400,63 @@ public sealed partial class MyPullRequestsPage : Page
             this,
             () => IsLoaded &&
                 generation == Volatile.Read(ref _selectionRenderGeneration) &&
-                ReferenceEquals(PullRequestsList.SelectedItem, item) &&
-                ReferenceEquals(ViewModel.SelectedItem, item),
+                ReferenceEquals(PullRequestsList.SelectedItem, item),
+            () => string.Equals(
+                MyPullRequestsDetailTitleText.Text,
+                item.Title,
+                StringComparison.Ordinal),
             () =>
-                ViewModel.IsSelectedHeaderCoherent(item) &&
-                string.Equals(
-                    MyPullRequestsDetailTitleText.Text,
-                    ViewModel.SelectedIssueTitle,
-                    StringComparison.Ordinal),
-            () => ProductPerformanceReadiness.CommitTraversal(
-                "my_pull_requests",
-                item.AutomationId));
+            {
+                ProductPerformanceReadiness.RecordTraversalStage("my_pull_requests.render.committed");
+                ProductPerformanceReadiness.CommitTraversal(
+                    "my_pull_requests",
+                    item.AutomationId);
+            });
+    }
+
+    private void SchedulePullRequestSelection(
+        MeWorkItemViewItem item,
+        long generation,
+        bool focusSelection = false)
+    {
+        DeferredFrameAction.Schedule(
+            this,
+            () => IsLoaded &&
+                generation == Volatile.Read(ref _selectionRenderGeneration) &&
+                ReferenceEquals(PullRequestsList.SelectedItem, item),
+            () =>
+            {
+                ViewModel.SelectedItem = item;
+                if (focusSelection && PullRequestsList.ContainerFromItem(item) is Control container)
+                {
+                    container.Focus(FocusState.Pointer);
+                }
+            });
     }
 
     private void PullRequestsList_ContainerContentChanging(ListViewBase sender, ContainerContentChangingEventArgs args)
     {
-        if (args.ItemContainer is not null && args.Item is MeWorkItemViewItem item)
+        if (args.ItemContainer is not ListViewItem container)
         {
-            AutomationProperties.SetAutomationId(args.ItemContainer, item.AutomationId);
-            AutomationProperties.SetName(args.ItemContainer, item.AutomationName);
+            return;
+        }
+
+        container.RemoveHandler(
+            PointerPressedEvent,
+            new PointerEventHandler(PullRequestListItem_PointerPressed));
+        if (args.InRecycleQueue)
+        {
+            return;
+        }
+
+        container.AddHandler(
+            PointerPressedEvent,
+            new PointerEventHandler(PullRequestListItem_PointerPressed),
+            handledEventsToo: true);
+        if (args.Item is MeWorkItemViewItem item)
+        {
+            AutomationProperties.SetAutomationId(container, item.AutomationId);
+            AutomationProperties.SetName(container, item.AutomationName);
         }
     }
 
@@ -312,6 +497,7 @@ public sealed partial class MyPullRequestsPage : Page
         ListViewScrollAnchor? anchor = _pendingRefreshAnchor;
         _pendingRefreshAnchor = null;
         anchor?.RestoreAfterCollectionChange(DispatcherQueue);
+        SchedulePerformanceReadinessAfterRender();
     }
 
     private static string? GetPullRequestItemKey(object item) =>

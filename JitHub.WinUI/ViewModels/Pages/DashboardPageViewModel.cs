@@ -355,7 +355,10 @@ public sealed partial class DashboardPageViewModel : ViewModelBase
             SetLoadingStates(false);
             if (_starProjectionRefreshPending)
             {
-                _ = RefreshStarProjectionAsync();
+                BackgroundTaskObserver.Run(
+                    RefreshStarProjectionAsync,
+                    "dashboard",
+                    _telemetryService);
             }
         }
     }
@@ -381,7 +384,10 @@ public sealed partial class DashboardPageViewModel : ViewModelBase
         _starProjectionRefreshPending = true;
         if (!IsDashboardRefreshing)
         {
-            _ = RefreshStarProjectionAsync();
+            BackgroundTaskObserver.Run(
+                RefreshStarProjectionAsync,
+                "dashboard",
+                _telemetryService);
         }
     }
 

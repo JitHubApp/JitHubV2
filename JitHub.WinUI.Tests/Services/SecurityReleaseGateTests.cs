@@ -13,11 +13,17 @@ public sealed class SecurityReleaseGateTests
     {
         string root = FindRepositoryRoot();
         string props = File.ReadAllText(Path.Combine(root, "Directory.Build.props"));
+        string nativeAotProps = File.ReadAllText(Path.Combine(root, "eng", "NativeAot.props"));
         string project = File.ReadAllText(Path.Combine(root, "JitHub.WinUI", "JitHub.WinUI.csproj"));
         string script = File.ReadAllText(Path.Combine(root, "eng", "Verify-DependencySecurity.ps1"));
 
         Assert.Contains("<RestorePackagesWithLockFile>true</RestorePackagesWithLockFile>", props, StringComparison.Ordinal);
+        Assert.Contains("<NuGetLockFilePath>$(MSBuildProjectDirectory)\\obj\\$(Configuration)\\packages.lock.json</NuGetLockFilePath>", props, StringComparison.Ordinal);
+        Assert.Contains("'$(Configuration)' != 'Release' and '$(Configuration)' != 'AotDebug'", props, StringComparison.Ordinal);
         Assert.Contains("<RestoreLockedMode>true</RestoreLockedMode>", props, StringComparison.Ordinal);
+        Assert.Contains("'$(Configuration)' == 'Release' or '$(Configuration)' == 'AotDebug'", props, StringComparison.Ordinal);
+        Assert.Contains("<NuGetLockFilePath>$(MSBuildProjectDirectory)\\obj\\$(Configuration)\\packages.lock.json</NuGetLockFilePath>", nativeAotProps, StringComparison.Ordinal);
+        Assert.Contains("<RestoreLockedMode>true</RestoreLockedMode>", nativeAotProps, StringComparison.Ordinal);
         Assert.Contains("NU1901;NU1902;NU1903;NU1904", props, StringComparison.Ordinal);
         Assert.Contains("Verify-DependencySecurity.ps1", project, StringComparison.Ordinal);
         Assert.Contains("--locked-mode", script, StringComparison.Ordinal);
@@ -26,6 +32,30 @@ public sealed class SecurityReleaseGateTests
         Assert.Contains("--include-transitive", script, StringComparison.Ordinal);
         Assert.Contains("allowedPrereleasePackages", script, StringComparison.Ordinal);
         Assert.Contains("UriSchemeHttps", script, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    [Trait("Category", "ReleaseSecurity")]
+    public void StorePackage_RestoresNativeGraphBeforeVerifyingDependencyLedger()
+    {
+        string root = FindRepositoryRoot();
+        string script = File.ReadAllText(Path.Combine(root, "eng", "Build-JitHubWinUIStorePackage.ps1"));
+        int restoreIndex = script.IndexOf(
+            "Restore-NativeAot.ps1') -Architecture $ledgerArchitecture",
+            StringComparison.Ordinal);
+        int verifyIndex = script.IndexOf(
+            "Update-NativeAotDependencyLedger.ps1') -Verify",
+            StringComparison.Ordinal);
+
+        Assert.True(restoreIndex >= 0, "The Store package script must materialize a locked Native AOT graph.");
+        Assert.True(verifyIndex > restoreIndex, "The dependency ledger must be verified after the Native AOT restore.");
+        Assert.Contains("-Platform @($platforms)[0]", script, StringComparison.Ordinal);
+        int testRestoreIndex = script.IndexOf("& dotnet restore $resolvedTestProjectPath", StringComparison.Ordinal);
+        int releaseConfigurationIndex = script.IndexOf("-p:Configuration=Release", testRestoreIndex, StringComparison.Ordinal);
+        int lockedModeIndex = script.IndexOf("--locked-mode", testRestoreIndex, StringComparison.Ordinal);
+        Assert.True(
+            testRestoreIndex >= 0 && releaseConfigurationIndex > testRestoreIndex && lockedModeIndex > releaseConfigurationIndex,
+            "The Store package script must verify the canonical Release test lock file.");
     }
 
     [Theory]
@@ -164,7 +194,7 @@ public sealed class SecurityReleaseGateTests
         DirectoryInfo? current = new(AppContext.BaseDirectory);
         while (current is not null)
         {
-            if (File.Exists(Path.Combine(current.FullName, "JitHub.slnx")))
+            if (File.Exists(Path.Combine(current.FullName, "Directory.Build.props")))
             {
                 return current.FullName;
             }

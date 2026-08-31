@@ -18,9 +18,9 @@
         <Grid
             x:Name="InlineGrid">
             <Grid.ColumnDefinitions>
-                <ColumnDefinition x:Name="LeadingColumn" Width="0" />
+                <ColumnDefinition x:Name="LeadingColumn" Width="{ThemeResource AppGridLength0}" />
                 <ColumnDefinition x:Name="PrimaryColumn" Width="*" />
-                <ColumnDefinition x:Name="TrailingColumn" Width="0" />
+                <ColumnDefinition x:Name="TrailingColumn" Width="{ThemeResource AppGridLength0}" />
             </Grid.ColumnDefinitions>
             <ContentPresenter
                 x:Name="LeadingInlinePresenter"
@@ -41,16 +41,16 @@
 
         <StackPanel
             x:Name="PaneButtonHost"
-            Margin="4,10,0,0"
+            Margin="{ThemeResource AppMargin4_10_0_0}"
             HorizontalAlignment="Left"
             VerticalAlignment="Top"
             Orientation="Vertical"
-            Spacing="8">
+            Spacing="{ThemeResource AppGap8}">
             <Button
                 x:Uid="AdaptiveWorkspaceOpenLeadingPaneButton" x:Name="OpenLeadingPaneButton"
-                Width="38"
-                Height="38"
-                Padding="0"
+                Width="{ThemeResource AppDimension38}"
+                Height="{ThemeResource AppDimension38}"
+                Padding="{ThemeResource AppPadding0}"
                 AutomationProperties.AutomationId="AdaptiveWorkspaceOpenLeadingPaneButton"
                 AutomationProperties.Name="Open list"
                 Click="OpenLeadingPaneButton_Click"
@@ -63,9 +63,9 @@
             </Button>
             <Button
                 x:Uid="AdaptiveWorkspaceOpenTrailingPaneButton" x:Name="OpenTrailingPaneButton"
-                Width="38"
-                Height="38"
-                Padding="0"
+                Width="{ThemeResource AppDimension38}"
+                Height="{ThemeResource AppDimension38}"
+                Padding="{ThemeResource AppPadding0}"
                 AutomationProperties.AutomationId="AdaptiveWorkspaceOpenTrailingPaneButton"
                 AutomationProperties.Name="Open inspector"
                 Click="OpenTrailingPaneButton_Click"
@@ -92,7 +92,7 @@
                 AutomationProperties.AutomationId="AdaptiveWorkspaceLeftDrawer"
                 AutomationProperties.Name="List drawer"
                 Background="{ThemeResource AppCanvasBrush}"
-                BorderThickness="0"
+                BorderThickness="{ThemeResource AppZeroThickness}"
                 IsTabStop="True"
                 TabFocusNavigation="Cycle">
                 <Border.RenderTransform>
@@ -101,15 +101,15 @@
                 <Grid>
                     <Button
                         x:Name="LeftDrawerStartFocusSentinel"
-                        Width="1"
-                        Height="1"
+                        Width="{ThemeResource AppDimension1}"
+                        Height="{ThemeResource AppDimension1}"
                         HorizontalAlignment="Left"
                         VerticalAlignment="Top"
                         AutomationProperties.AccessibilityView="Raw"
                         GotFocus="LeftDrawerStartFocusSentinel_GotFocus"
                         IsHitTestVisible="False"
                         IsTabStop="True"
-                        Opacity="0"
+                        Opacity="{ThemeResource AppOpacityTransparent}"
                         TabIndex="-2147483648" />
                     <ContentPresenter
                         x:Name="LeadingDrawerPresenter"
@@ -118,15 +118,15 @@
                         VerticalContentAlignment="Stretch" />
                     <Button
                         x:Name="LeftDrawerEndFocusSentinel"
-                        Width="1"
-                        Height="1"
+                        Width="{ThemeResource AppDimension1}"
+                        Height="{ThemeResource AppDimension1}"
                         HorizontalAlignment="Right"
                         VerticalAlignment="Bottom"
                         AutomationProperties.AccessibilityView="Raw"
                         GotFocus="LeftDrawerEndFocusSentinel_GotFocus"
                         IsHitTestVisible="False"
                         IsTabStop="True"
-                        Opacity="0"
+                        Opacity="{ThemeResource AppOpacityTransparent}"
                         TabIndex="2147483647" />
                 </Grid>
             </Border>
@@ -137,7 +137,7 @@
                 AutomationProperties.AutomationId="AdaptiveWorkspaceRightDrawer"
                 AutomationProperties.Name="Inspector drawer"
                 Background="{ThemeResource AppCanvasBrush}"
-                BorderThickness="0"
+                BorderThickness="{ThemeResource AppZeroThickness}"
                 IsTabStop="True"
                 TabFocusNavigation="Cycle">
                 <Border.RenderTransform>
@@ -146,15 +146,15 @@
                 <Grid>
                     <Button
                         x:Name="RightDrawerStartFocusSentinel"
-                        Width="1"
-                        Height="1"
+                        Width="{ThemeResource AppDimension1}"
+                        Height="{ThemeResource AppDimension1}"
                         HorizontalAlignment="Left"
                         VerticalAlignment="Top"
                         AutomationProperties.AccessibilityView="Raw"
                         GotFocus="RightDrawerStartFocusSentinel_GotFocus"
                         IsHitTestVisible="False"
                         IsTabStop="True"
-                        Opacity="0"
+                        Opacity="{ThemeResource AppOpacityTransparent}"
                         TabIndex="-2147483648" />
                     <ContentPresenter
                         x:Name="TrailingDrawerPresenter"
@@ -163,15 +163,15 @@
                         VerticalContentAlignment="Stretch" />
                     <Button
                         x:Name="RightDrawerEndFocusSentinel"
-                        Width="1"
-                        Height="1"
+                        Width="{ThemeResource AppDimension1}"
+                        Height="{ThemeResource AppDimension1}"
                         HorizontalAlignment="Right"
                         VerticalAlignment="Bottom"
                         AutomationProperties.AccessibilityView="Raw"
                         GotFocus="RightDrawerEndFocusSentinel_GotFocus"
                         IsHitTestVisible="False"
                         IsTabStop="True"
-                        Opacity="0"
+                        Opacity="{ThemeResource AppOpacityTransparent}"
                         TabIndex="2147483647" />
                 </Grid>
             </Border>

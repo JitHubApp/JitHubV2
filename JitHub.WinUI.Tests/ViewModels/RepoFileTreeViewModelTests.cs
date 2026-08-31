@@ -15,16 +15,16 @@ namespace JitHub.WinUI.Tests.ViewModels;
 public sealed class RepoFileTreeViewModelTests
 {
     [Fact]
-    public void Load_AppliesKeyedChangesAndPreservesSelectionByPath()
+    public async Task Load_AppliesKeyedChangesAndPreservesSelectionByPath()
     {
         RepoFileTreeViewModel viewModel = new(new NoopTreeService(), new LanguageIdResolver());
-        viewModel.Load(CreateTree(
+        await LoadTreeAsync(viewModel, CreateTree(
             File("README.md", "old-sha"),
             File("obsolete.txt", "obsolete")), "owner", "repo", "main");
         RepoTreeNodeViewModel readme = viewModel.RootNodes[0];
         viewModel.SelectedNode = readme;
 
-        viewModel.Load(CreateTree(
+        await LoadTreeAsync(viewModel, CreateTree(
             File("README.md", "new-sha"),
             File("added.txt", "added")), "owner", "repo", "main");
 
@@ -36,15 +36,20 @@ public sealed class RepoFileTreeViewModelTests
     }
 
     [Fact]
-    public void Load_ReusesNestedDirectoryAndFileInstances()
+    public async Task Load_ReusesNestedDirectoryAndFileInstances()
     {
         RepoTreeNode firstDirectory = Directory("src", File("src/App.cs", "one"));
         RepoFileTreeViewModel viewModel = new(new NoopTreeService(), new LanguageIdResolver());
-        viewModel.Load(CreateTree(firstDirectory), "owner", "repo", "main");
+        await LoadTreeAsync(viewModel, CreateTree(firstDirectory), "owner", "repo", "main");
         RepoTreeNodeViewModel directory = viewModel.RootNodes[0];
         RepoTreeNodeViewModel file = directory.Children[0];
 
-        viewModel.Load(CreateTree(Directory("src", File("src/App.cs", "two"))), "owner", "repo", "main");
+        await LoadTreeAsync(
+            viewModel,
+            CreateTree(Directory("src", File("src/App.cs", "two"))),
+            "owner",
+            "repo",
+            "main");
 
         Assert.Same(directory, viewModel.RootNodes[0]);
         Assert.Same(file, viewModel.RootNodes[0].Children[0]);
@@ -56,11 +61,11 @@ public sealed class RepoFileTreeViewModelTests
     {
         DeferredDirectoryTreeService service = new();
         RepoFileTreeViewModel viewModel = new(service, new LanguageIdResolver());
-        viewModel.Load(CreateTree(Directory("src")), "owner", "repo", "main");
+        await LoadTreeAsync(viewModel, CreateTree(Directory("src")), "owner", "repo", "main");
         RepoTreeNodeViewModel oldDirectory = viewModel.RootNodes[0];
 
         Task pending = viewModel.LoadDirectoryAsync(oldDirectory, default);
-        viewModel.Load(CreateTree(Directory("next")), "owner", "repo", "next");
+        await LoadTreeAsync(viewModel, CreateTree(Directory("next")), "owner", "repo", "next");
         service.Source.SetResult(new RepoCodeLoadResult<IReadOnlyList<RepoTreeNode>>(
             [File("src/late.cs", "late")],
             CacheState.Fresh));
@@ -79,7 +84,7 @@ public sealed class RepoFileTreeViewModelTests
             File("README.md", "readme")]);
         RepoFileTreeViewModel viewModel = new(service, new LanguageIdResolver());
 
-        viewModel.Load(CreateTree(
+        await LoadTreeAsync(viewModel, CreateTree(
             truncated: true,
             Directory("src", File("src/partial.cs", "partial")),
             File("ghost.txt", "ghost")), "owner", "repo", "main");
@@ -99,7 +104,7 @@ public sealed class RepoFileTreeViewModelTests
         RootDirectoryTreeService service = new([Directory("src")]);
         RepoFileTreeViewModel viewModel = new(service, new LanguageIdResolver());
 
-        viewModel.Load(CreateTree(
+        await LoadTreeAsync(viewModel, CreateTree(
             truncated: true,
             Directory("src", File("src/partial.cs", "partial"))), "owner", "repo", "main");
         await viewModel.RootReconciliationTask;
@@ -113,7 +118,7 @@ public sealed class RepoFileTreeViewModelTests
     {
         DeferredRootDirectoryTreeService service = new();
         RepoFileTreeViewModel viewModel = new(service, new LanguageIdResolver());
-        viewModel.Load(CreateTree(
+        await LoadTreeAsync(viewModel, CreateTree(
             truncated: true,
             File("partial.txt", "partial")), "owner", "repo", "main");
         Task pending = viewModel.RootReconciliationTask;
@@ -161,7 +166,7 @@ public sealed class RepoFileTreeViewModelTests
         CachedThenRefreshDirectoryTreeService service = new(
             [File("src/cached.cs", "cached")]);
         RepoFileTreeViewModel viewModel = new(service, new LanguageIdResolver());
-        viewModel.Load(CreateTree(Directory("src")), "owner", "repo", "main");
+        await LoadTreeAsync(viewModel, CreateTree(Directory("src")), "owner", "repo", "main");
         RepoTreeNodeViewModel src = viewModel.RootNodes[0];
         src.ChildrenLoaded = false;
 
@@ -185,7 +190,7 @@ public sealed class RepoFileTreeViewModelTests
             File("src/current.cs", "stale-sha"),
             File("src/cached-only.cs", "cached-only")]);
         RepoFileTreeViewModel viewModel = new(service, new LanguageIdResolver());
-        viewModel.Load(CreateTree(Directory(
+        await LoadTreeAsync(viewModel, CreateTree(Directory(
             "src",
             File("src/current.cs", "recursive-sha"),
             File("src/recursive-only.cs", "recursive-only"))), "owner", "repo", "main");
@@ -219,7 +224,7 @@ public sealed class RepoFileTreeViewModelTests
             File("src/current.cs", "stale-sha"),
             File("src/cached-only.cs", "cached-only")]);
         RepoFileTreeViewModel viewModel = new(service, new LanguageIdResolver());
-        viewModel.Load(CreateTree(Directory(
+        await LoadTreeAsync(viewModel, CreateTree(Directory(
             "src",
             File("src/current.cs", "recursive-sha"),
             File("src/recursive-only.cs", "recursive-only"))), "owner", "repo", "main");
@@ -245,7 +250,7 @@ public sealed class RepoFileTreeViewModelTests
             Directory("src"),
             File("cached-root.txt", "cached-root")]);
         RepoFileTreeViewModel viewModel = new(service, new LanguageIdResolver());
-        viewModel.Load(CreateTree(
+        await LoadTreeAsync(viewModel, CreateTree(
             truncated: true,
             Directory("src", File("src/partial.cs", "partial")),
             File("recursive-root.txt", "recursive-root")), "owner", "repo", "main");
@@ -277,7 +282,12 @@ public sealed class RepoFileTreeViewModelTests
 
         for (int index = 0; index < 40; index++)
         {
-            viewModel.Load(CreateTree(Directory($"src-{index}")), "owner", "repo", $"ref-{index}");
+            await LoadTreeAsync(
+                viewModel,
+                CreateTree(Directory($"src-{index}")),
+                "owner",
+                "repo",
+                $"ref-{index}");
             RepoTreeNodeViewModel directory = viewModel.RootNodes[0];
             directory.ChildrenLoaded = false;
             pending.Add(viewModel.LoadDirectoryAsync(directory, default));
@@ -295,10 +305,15 @@ public sealed class RepoFileTreeViewModelTests
     {
         DeferredRootDirectoryTreeService service = new();
         RepoFileTreeViewModel viewModel = new(service, new LanguageIdResolver());
-        viewModel.Load(CreateTree(truncated: true, File("old.txt", "old")), "owner", "repo", "old");
+        await LoadTreeAsync(
+            viewModel,
+            CreateTree(truncated: true, File("old.txt", "old")),
+            "owner",
+            "repo",
+            "old");
         Task oldReconciliation = viewModel.RootReconciliationTask;
 
-        viewModel.Load(CreateTree(File("new.txt", "new")), "owner", "repo", "new");
+        await LoadTreeAsync(viewModel, CreateTree(File("new.txt", "new")), "owner", "repo", "new");
         service.Source.SetException(new InvalidOperationException("old failure"));
         await oldReconciliation;
 
@@ -332,7 +347,12 @@ public sealed class RepoFileTreeViewModelTests
         TimestampDirectoryTreeService service = new(new RepoCodeLoadResult<IReadOnlyList<RepoTreeNode>>(
             [File("src/current.cs", "directory-sha")], CacheState.Fresh));
         RepoFileTreeViewModel viewModel = new(service, new LanguageIdResolver());
-        viewModel.Load(CreateTree(Directory("src", File("src/current.cs", "initial-sha"))), "owner", "repo", "main");
+        await LoadTreeAsync(
+            viewModel,
+            CreateTree(Directory("src", File("src/current.cs", "initial-sha"))),
+            "owner",
+            "repo",
+            "main");
         long delayedTreeGeneration = viewModel.BeginSourceRequest();
         RepoFileTreeViewModel.PreparedTree delayedTree = await viewModel.PrepareLoadAsync(
             CreateTree(Directory("src", File("src/current.cs", "delayed-tree-sha"), File("src/stale.cs", "stale"))),
@@ -342,7 +362,13 @@ public sealed class RepoFileTreeViewModelTests
 
         await viewModel.LoadDirectoryAsync(directory, default);
         await viewModel.PendingReconciliationTask;
-        bool delayedApplied = viewModel.Load(delayedTree, "owner", "repo", "main", delayedTreeGeneration);
+        bool delayedApplied = await ApplyPreparedTreeAsync(
+            viewModel,
+            delayedTree,
+            "owner",
+            "repo",
+            "main",
+            delayedTreeGeneration);
 
         Assert.False(delayedApplied);
         Assert.Equal("directory-sha", Assert.Single(directory.Children).Sha);
@@ -361,7 +387,13 @@ public sealed class RepoFileTreeViewModelTests
             File("src/current.cs", "recursive-sha"),
             File("src/removed.cs", "removed")));
         RepoFileTreeViewModel.PreparedTree prepared = await viewModel.PrepareLoadAsync(tree, default);
-        Assert.True(viewModel.Load(prepared, "owner", "repo", "main", viewModel.BeginSourceRequest()));
+        Assert.True(await ApplyPreparedTreeAsync(
+            viewModel,
+            prepared,
+            "owner",
+            "repo",
+            "main",
+            viewModel.BeginSourceRequest()));
         RepoTreeNodeViewModel directory = viewModel.RootNodes[0];
         directory.ChildrenLoaded = false;
 
@@ -384,8 +416,20 @@ public sealed class RepoFileTreeViewModelTests
             default);
 
         long newestGeneration = viewModel.BeginSourceRequest();
-        Assert.True(viewModel.Load(current, "owner", "repo", "main", newestGeneration));
-        Assert.False(viewModel.Load(older, "owner", "repo", "older-ref", newestGeneration - 1));
+        Assert.True(await ApplyPreparedTreeAsync(
+            viewModel,
+            current,
+            "owner",
+            "repo",
+            "main",
+            newestGeneration));
+        Assert.False(await ApplyPreparedTreeAsync(
+            viewModel,
+            older,
+            "owner",
+            "repo",
+            "older-ref",
+            newestGeneration - 1));
 
         Assert.Equal("current.cs", Assert.Single(viewModel.RootNodes).Path);
     }
@@ -418,6 +462,39 @@ public sealed class RepoFileTreeViewModelTests
     }
 
     private static RepoTree CreateTree(params RepoTreeNode[] nodes) => CreateTree(false, nodes);
+
+    private static async Task<bool> LoadTreeAsync(
+        RepoFileTreeViewModel viewModel,
+        RepoTree tree,
+        string owner,
+        string repository,
+        string gitRef)
+    {
+        RepoFileTreeViewModel.PreparedTree prepared = await viewModel.PrepareLoadAsync(tree, default);
+        return await ApplyPreparedTreeAsync(
+            viewModel,
+            prepared,
+            owner,
+            repository,
+            gitRef,
+            viewModel.BeginSourceRequest());
+    }
+
+    private static Task<bool> ApplyPreparedTreeAsync(
+        RepoFileTreeViewModel viewModel,
+        RepoFileTreeViewModel.PreparedTree prepared,
+        string owner,
+        string repository,
+        string gitRef,
+        long sourceGeneration) =>
+        viewModel.LoadIncrementallyAsync(
+            prepared,
+            owner,
+            repository,
+            gitRef,
+            sourceGeneration,
+            sourceIsAuthoritative: true,
+            default);
 
     private static RepoTree CreateTree(bool truncated, params RepoTreeNode[] nodes) => new()
     {

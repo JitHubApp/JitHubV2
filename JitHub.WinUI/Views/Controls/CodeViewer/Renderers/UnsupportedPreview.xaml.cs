@@ -51,26 +51,26 @@ public sealed partial class UnsupportedPreview : UserControl
         MetaText.Text = $"{FormatBytes(vm.ByteSize)}{(ext.Length > 0 ? $"  ·  .{ext}" : string.Empty)}";
     }
 
-    private async void OpenOnGitHub_Click(object sender, RoutedEventArgs e)
+    private void OpenOnGitHub_Click(object sender, RoutedEventArgs e)
     {
-        string? url = ViewModel?.GitHubBlobUrl;
-        if (!Uri.TryCreate(url, UriKind.Absolute, out Uri? uri) ||
-            !MarkdownLinkNavigationPolicy.IsAllowedLaunchUri(uri))
+        UiTaskGuard.Run(async () =>
         {
-            CompleteAction(JitHub.Services.CodeViewer.RepoCodeTelemetryActions.ExternalOpen, succeeded: false);
-            return;
-        }
+            string? url = ViewModel?.GitHubBlobUrl;
+            if (!Uri.TryCreate(url, UriKind.Absolute, out Uri? uri) || !MarkdownLinkNavigationPolicy.IsAllowedLaunchUri(uri))
+            {
+                CompleteAction(JitHub.Services.CodeViewer.RepoCodeTelemetryActions.ExternalOpen, succeeded: false);
+                return;
+            }
 
-        try
-        {
-            CompleteAction(
-                JitHub.Services.CodeViewer.RepoCodeTelemetryActions.ExternalOpen,
-                await Windows.System.Launcher.LaunchUriAsync(uri));
-        }
-        catch (Exception)
-        {
-            CompleteAction(JitHub.Services.CodeViewer.RepoCodeTelemetryActions.ExternalOpen, succeeded: false);
-        }
+            try
+            {
+                CompleteAction(JitHub.Services.CodeViewer.RepoCodeTelemetryActions.ExternalOpen, await Windows.System.Launcher.LaunchUriAsync(uri));
+            }
+            catch (Exception)
+            {
+                CompleteAction(JitHub.Services.CodeViewer.RepoCodeTelemetryActions.ExternalOpen, succeeded: false);
+            }
+        }, "ui-unsupported-preview");
     }
 
     private void CopyUrl_Click(object sender, RoutedEventArgs e)

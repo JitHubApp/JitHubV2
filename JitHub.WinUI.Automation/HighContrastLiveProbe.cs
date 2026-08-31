@@ -16,7 +16,6 @@ internal static class HighContrastLiveProbe
 {
     private const uint SpiGetHighContrast = 0x0042;
     private const uint SpiSetHighContrast = 0x0043;
-    private const uint SpiGetWorkArea = 0x0030;
     private const uint HcfHighContrastOn = 0x00000001;
     private const uint HcfOptionNoThemeChange = 0x00001000;
     private const uint SpifUpdateIniFile = 0x0001;
@@ -195,7 +194,9 @@ internal static class HighContrastLiveProbe
             Path.Combine(outputDirectory, $"high-contrast-live-destructive-dialog-{viewportName}.png"),
             "Settings destructive confirmation dialog");
         Keyboard.Press(VirtualKeyShort.ESCAPE);
-        WaitUntil("Settings destructive dialog dismissal", () => !IsVisible(dialog));
+        WaitUntil(
+            "Settings destructive dialog dismissal",
+            () => FindVisible(window, "SettingsConfirmClearAllCache") is null);
     }
 
     private static void ValidateSettingsWide(
@@ -406,8 +407,16 @@ internal static class HighContrastLiveProbe
             palette,
             Path.Combine(outputDirectory, $"high-contrast-live-editor-dialog-{viewportName}.png"),
             "Gist editor dialog");
-        Keyboard.Press(VirtualKeyShort.ESCAPE);
-        WaitUntil("Gist editor dialog dismissal", () => !IsVisible(dialog));
+        AutomationElement cancelButton = WaitForElement(
+            "Gist editor Cancel button",
+            () => dialog.FindFirstDescendant(cf => cf.ByAutomationId("CloseButton")) is { } candidate &&
+                IsVisible(candidate)
+                    ? candidate
+                    : null);
+        Invoke(cancelButton, "Gist editor Cancel action");
+        WaitUntil(
+            "Gist editor dialog dismissal",
+            () => FindVisible(window, "GistEditorDialog") is null);
     }
 
     private static void ValidateDashboardCustomShellDialog(
@@ -429,7 +438,9 @@ internal static class HighContrastLiveProbe
             Path.Combine(outputDirectory, $"high-contrast-live-custom-shell-dialog-{viewportName}.png"),
             "Dashboard custom-shell dialog");
         Invoke(WaitForVisibleElement(window, "DashboardCustomizeCancelButton"), "Dashboard customize cancel action");
-        WaitUntil("Dashboard custom-shell dialog dismissal", () => !IsVisible(dialog));
+        WaitUntil(
+            "Dashboard custom-shell dialog dismissal",
+            () => FindVisible(window, "DashboardCustomizeDialog") is null);
     }
 
     private static void CaptureDialogState(
@@ -533,11 +544,18 @@ internal static class HighContrastLiveProbe
         AssertFocusPixelsChanged(before, after, graph.BoundingRectangle, "Profile contribution graph");
         AssertSystemColorTreatment(after, graph.BoundingRectangle, palette, "Profile contribution graph");
 
-        string initialName = graph.Name;
-        Keyboard.Press(VirtualKeyShort.LEFT);
+        string lastDayName = graph.Name;
+        ActivateForKeyboard(window, graph, "Profile contribution graph Home navigation");
+        Keyboard.Press(VirtualKeyShort.HOME);
         WaitUntil(
-            "Profile contribution graph keyboard selection to move",
-            () => !string.Equals(graph.Name, initialName, StringComparison.Ordinal));
+            "Profile contribution graph Home navigation to reach the first day",
+            () => !string.Equals(graph.Name, lastDayName, StringComparison.Ordinal));
+        string firstDayName = graph.Name;
+        ActivateForKeyboard(window, graph, "Profile contribution graph End navigation");
+        Keyboard.Press(VirtualKeyShort.END);
+        WaitUntil(
+            "Profile contribution graph End navigation to restore the last day",
+            () => !string.Equals(graph.Name, firstDayName, StringComparison.Ordinal));
         Assert(
             graph.Name.StartsWith("Contribution calendar. ", StringComparison.Ordinal),
             "Profile contribution graph lost its accessible selected-day identity after keyboard navigation.");
@@ -692,6 +710,18 @@ internal static class HighContrastLiveProbe
         Thread.Sleep(150);
     }
 
+    private static void ActivateForKeyboard(Window window, AutomationElement element, string description)
+    {
+        IntPtr windowHandle = new(window.Properties.NativeWindowHandle.ValueOrDefault);
+        Assert(windowHandle != IntPtr.Zero, $"{description} did not expose a native window handle.");
+        window.SetForeground();
+        _ = SetForegroundWindow(windowHandle);
+        WaitUntil(
+            $"{description} foreground ownership",
+            () => GetForegroundWindow() == windowHandle);
+        Focus(element, description);
+    }
+
     private static void AssertSelected(AutomationElement element, string description)
     {
         Assert(
@@ -788,6 +818,8 @@ internal static class HighContrastLiveProbe
 
     private static CapturedFrame CaptureWindow(Window window)
     {
+        const int DwmwaExtendedFrameBounds = 9;
+        const uint PwRenderFullContent = 0x00000002;
         IntPtr windowHandle = new(window.Properties.NativeWindowHandle.ValueOrDefault);
         Assert(windowHandle != IntPtr.Zero, "JitHub did not expose a native window handle for capture.");
         Assert(GetWindowRect(windowHandle, out NativeRect logicalBounds), "Could not read JitHub logical window bounds.");
@@ -811,17 +843,57 @@ internal static class HighContrastLiveProbe
             Assert(logicalRectangle.Width > 0 && logicalRectangle.Height > 0, "JitHub logical window bounds were empty.");
             Assert(physicalRectangle.Width > 0 && physicalRectangle.Height > 0, "JitHub physical window bounds were empty.");
 
-            Bitmap bitmap = new(physicalRectangle.Width, physicalRectangle.Height, PixelFormat.Format32bppArgb);
-            using (Graphics graphics = Graphics.FromImage(bitmap))
+            NativeRect visibleBounds = physicalBounds;
+            if (DwmGetWindowAttribute(
+                    windowHandle,
+                    DwmwaExtendedFrameBounds,
+                    out NativeRect extendedFrameBounds,
+                    Marshal.SizeOf<NativeRect>()) == 0)
             {
-                graphics.CopyFromScreen(
-                    physicalRectangle.Location,
-                    Point.Empty,
-                    physicalRectangle.Size,
-                    CopyPixelOperation.SourceCopy);
+                visibleBounds = extendedFrameBounds;
+            }
+            Rectangle visibleRectangle = Rectangle.FromLTRB(
+                visibleBounds.Left,
+                visibleBounds.Top,
+                visibleBounds.Right,
+                visibleBounds.Bottom);
+            Rectangle crop = Rectangle.Intersect(
+                new Rectangle(
+                    visibleRectangle.Left - physicalRectangle.Left,
+                    visibleRectangle.Top - physicalRectangle.Top,
+                    visibleRectangle.Width,
+                    visibleRectangle.Height),
+                new Rectangle(Point.Empty, physicalRectangle.Size));
+            Assert(crop.Width > 0 && crop.Height > 0, "JitHub DWM bounds did not intersect its rendered window surface.");
+
+            using var fullWindow = new Bitmap(
+                physicalRectangle.Width,
+                physicalRectangle.Height,
+                PixelFormat.Format32bppArgb);
+            using (Graphics graphics = Graphics.FromImage(fullWindow))
+            {
+                IntPtr deviceContext = graphics.GetHdc();
+                try
+                {
+                    Assert(
+                        PrintWindow(windowHandle, deviceContext, PwRenderFullContent),
+                        "Windows could not render the JitHub surface for High Contrast capture.");
+                }
+                finally
+                {
+                    graphics.ReleaseHdc(deviceContext);
+                }
             }
 
-            return new CapturedFrame(bitmap, logicalRectangle);
+            Bitmap bitmap = fullWindow.Clone(crop, PixelFormat.Format32bppArgb);
+            double logicalScaleX = logicalRectangle.Width / (double)physicalRectangle.Width;
+            double logicalScaleY = logicalRectangle.Height / (double)physicalRectangle.Height;
+            Rectangle logicalVisibleRectangle = Rectangle.FromLTRB(
+                logicalRectangle.Left + (int)Math.Round(crop.Left * logicalScaleX),
+                logicalRectangle.Top + (int)Math.Round(crop.Top * logicalScaleY),
+                logicalRectangle.Left + (int)Math.Round(crop.Right * logicalScaleX),
+                logicalRectangle.Top + (int)Math.Round(crop.Bottom * logicalScaleY));
+            return new CapturedFrame(bitmap, logicalVisibleRectangle);
         }
         finally
         {
@@ -899,25 +971,34 @@ internal static class HighContrastLiveProbe
     private static void Resize(Window window, Viewport viewport)
     {
         Assert(window.Patterns.Transform.IsSupported, "JitHub window does not support UIA resize.");
-        NativeRect workArea = ReadLogicalWorkArea();
+        IntPtr windowHandle = new(window.Properties.NativeWindowHandle.ValueOrDefault);
+        Assert(windowHandle != IntPtr.Zero, "JitHub did not expose a native window handle for resize.");
+        uint dpi = GetDpiForWindow(windowHandle);
+        Assert(dpi > 0, "Windows did not report the JitHub window DPI.");
+        double scale = dpi / 96d;
+        int requestedPhysicalWidth = Math.Max(1, (int)Math.Round(viewport.Width * scale));
+        int requestedPhysicalHeight = Math.Max(1, (int)Math.Round(viewport.Height * scale));
         const int outerMargin = 10;
-        int availableWidth = Math.Max(1, workArea.Right - workArea.Left - (outerMargin * 2));
-        int availableHeight = Math.Max(1, workArea.Bottom - workArea.Top - (outerMargin * 2));
         window.Patterns.Transform.Pattern.Resize(
-            Math.Min(viewport.Width, availableWidth),
-            Math.Min(viewport.Height, availableHeight));
-        window.Move(workArea.Left + outerMargin, workArea.Top + outerMargin);
+            requestedPhysicalWidth,
+            requestedPhysicalHeight);
+        window.Move(outerMargin, outerMargin);
         window.SetForeground();
         Thread.Sleep(500);
-        Assert(ReadHighContrast().IsEnabled, "High Contrast became inactive while resizing JitHub.");
-    }
-
-    private static NativeRect ReadLogicalWorkArea()
-    {
+        Assert(GetWindowRect(windowHandle, out NativeRect actualBounds), "Could not read JitHub bounds after resize.");
+        int actualLogicalWidth = (int)Math.Round((actualBounds.Right - actualBounds.Left) / scale);
+        int actualLogicalHeight = (int)Math.Round((actualBounds.Bottom - actualBounds.Top) / scale);
+        int minimumUsableHeight = Math.Min(viewport.Height, 760);
         Assert(
-            SystemParametersInfoWorkArea(SpiGetWorkArea, 0, out NativeRect workArea, 0),
-            "Could not read the logical desktop work area.");
-        return workArea;
+            Math.Abs(actualLogicalWidth - viewport.Width) <= 4 &&
+            actualLogicalHeight >= minimumUsableHeight &&
+            actualLogicalHeight <= viewport.Height + 4,
+            $"JitHub logical resize did not preserve the requested responsive width and usable height " +
+            $"for {viewport.Width}x{viewport.Height}; actual={actualLogicalWidth}x{actualLogicalHeight}, dpi={dpi}.");
+        Console.WriteLine(
+            $"High Contrast logical viewport requested={viewport.Width}x{viewport.Height}; " +
+            $"actual={actualLogicalWidth}x{actualLogicalHeight}; dpi={dpi}.");
+        Assert(ReadHighContrast().IsEnabled, "High Contrast became inactive while resizing JitHub.");
     }
 
     private static bool IsVisible(AutomationElement? element) =>
@@ -1126,14 +1207,6 @@ internal static class HighContrastLiveProbe
         ref NativeHighContrast highContrast,
         uint updateFlags);
 
-    [DllImport("user32.dll", CharSet = CharSet.Unicode, EntryPoint = "SystemParametersInfoW", SetLastError = true)]
-    [return: MarshalAs(UnmanagedType.Bool)]
-    private static extern bool SystemParametersInfoWorkArea(
-        uint action,
-        uint parameter,
-        out NativeRect workArea,
-        uint updateFlags);
-
     [DllImport("user32.dll")]
     private static extern IntPtr SetThreadDpiAwarenessContext(IntPtr dpiContext);
 
@@ -1145,8 +1218,25 @@ internal static class HighContrastLiveProbe
     private static extern bool GetWindowRect(IntPtr windowHandle, out NativeRect bounds);
 
     [DllImport("user32.dll")]
+    private static extern uint GetDpiForWindow(IntPtr windowHandle);
+
+    [DllImport("user32.dll", SetLastError = true)]
+    [return: MarshalAs(UnmanagedType.Bool)]
+    private static extern bool PrintWindow(IntPtr windowHandle, IntPtr deviceContext, uint flags);
+
+    [DllImport("dwmapi.dll")]
+    private static extern int DwmGetWindowAttribute(
+        IntPtr windowHandle,
+        int attribute,
+        out NativeRect value,
+        int valueSize);
+
+    [DllImport("user32.dll")]
     [return: MarshalAs(UnmanagedType.Bool)]
     private static extern bool SetForegroundWindow(IntPtr windowHandle);
+
+    [DllImport("user32.dll")]
+    private static extern IntPtr GetForegroundWindow();
 
     [StructLayout(LayoutKind.Sequential)]
     private struct NativeHighContrast

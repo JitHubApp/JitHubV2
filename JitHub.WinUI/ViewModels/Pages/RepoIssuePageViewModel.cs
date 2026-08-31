@@ -405,10 +405,13 @@ public sealed partial class RepoIssuePageViewModel : ViewModelBase
                 previewSnapshot,
                 "Opening issue...",
                 deferComments: true);
-            _ = CompleteCachedNavigationInitializationAsync(
-                navArg,
-                previewSnapshot,
-                initializationVersion);
+            BackgroundTaskObserver.Run(
+                () => CompleteCachedNavigationInitializationAsync(
+                    navArg,
+                    previewSnapshot,
+                    initializationVersion),
+                "issues",
+                _telemetryService);
             return;
         }
 
@@ -421,10 +424,13 @@ public sealed partial class RepoIssuePageViewModel : ViewModelBase
             out IssueNavigationSnapshot? navigationSnapshot);
         if (hasNavigationSnapshot && returnAfterCachedDetail && navigationSnapshot is not null)
         {
-            _ = CompleteCachedNavigationInitializationAsync(
-                navArg,
-                navigationSnapshot,
-                initializationVersion);
+            BackgroundTaskObserver.Run(
+                () => CompleteCachedNavigationInitializationAsync(
+                    navArg,
+                    navigationSnapshot,
+                    initializationVersion),
+                "issues",
+                _telemetryService);
             return;
         }
 
@@ -1210,7 +1216,7 @@ public sealed partial class RepoIssuePageViewModel : ViewModelBase
         }
         catch (Exception ex)
         {
-            Debug.WriteLine($"Issue comment mutation failed: {ex}");
+            JitHub.WinUI.App.LogHandledException(ex, "issue-comment-mutation");
             TrackIssueAction(action, IssueActionOutcome.Failure);
             if (IsSelectedIssue(currentIssue))
             {
@@ -1246,7 +1252,10 @@ public sealed partial class RepoIssuePageViewModel : ViewModelBase
         if (value is null)
         {
             _pendingIssueSelectionState = null;
-            _ = ShowIssueAsync(null);
+            BackgroundTaskObserver.Run(
+                () => ShowIssueAsync(null),
+                "issues",
+                _telemetryService);
             return;
         }
 
@@ -1270,10 +1279,13 @@ public sealed partial class RepoIssuePageViewModel : ViewModelBase
         ScheduleNeighborPrefetch(value);
         CancellationTokenSource cancellationTokenSource = new();
         _selectionLoadCancellationTokenSource = cancellationTokenSource;
-        _ = ShowIssueAfterSelectionDelayAsync(
-            value,
-            cancellationTokenSource.Token,
-            _navigationInitializationVersion);
+        BackgroundTaskObserver.Run(
+            () => ShowIssueAfterSelectionDelayAsync(
+                value,
+                cancellationTokenSource.Token,
+                _navigationInitializationVersion),
+            "issues",
+            _telemetryService);
     }
 
     private async Task LoadIssuesAsync(

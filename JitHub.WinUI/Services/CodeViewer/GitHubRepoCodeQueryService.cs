@@ -182,12 +182,12 @@ public sealed class GitHubRepoCodeQueryService : IGitHubRepoCodeQueryService
         Repository,Language,Open issues,Status,Notes
         JitHub,C#,18,Active,"Native AOT, WinUI 3"
         MarkdownRenderer,C#,4,Active,"Quoted fields, sorting, and copy"
-        AppDataTable,C#,0,Preview,"Two-axis virtualization"
-        RepositorySvgRasterizer,C#,2,Preview,"Transparent tiles, 0.1x through 8x zoom"
-        "Roadmap, 2026",Mixed,7,Planned,"A field with a comma"
-        "Multiline fixture",Text,1,Active,"First line
-        Second line"
-        "Escaped quotes",Text,0,Complete,"Native ""rich"" preview"
+        JitHub.Web,C#,0,Active,"Website and authorization handoff"
+        JitHub.Automation,C#,2,Active,"Windows UI verification"
+        "JitHub roadmap, 2026",Markdown,7,Planned,"Release notes, milestones, and owners"
+        "Release notes",Text,1,Active,"First draft
+        Review requested"
+        "Theme samples",Text,0,Complete,"Supports ""Light"" and ""Dark"" modes"
         """;
 
     private const string PreviewSvg = """

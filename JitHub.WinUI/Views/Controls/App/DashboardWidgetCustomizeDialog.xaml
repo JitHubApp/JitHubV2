@@ -11,19 +11,19 @@
     <UserControl.Resources>
         <DataTemplate x:Key="CustomizeWidgetTemplate" x:DataType="viewmodels:DashboardWidgetCustomizeItem">
             <Border
-                Margin="0,0,0,8"
-                Padding="12"
+                Margin="{ThemeResource AppMargin0_0_0_8}"
+                Padding="{ThemeResource AppPadding12}"
                 Background="{ThemeResource AppSurfaceSubtleBrush}"
                 BorderBrush="{ThemeResource AppHairlineBrush}"
-                BorderThickness="1"
+                BorderThickness="{ThemeResource AppHairlineBorderThickness}"
                 CornerRadius="{ThemeResource AppRadiusSmall}">
-                <Grid ColumnSpacing="12" RowSpacing="8">
+                <Grid ColumnSpacing="{ThemeResource AppGap12}" RowSpacing="{ThemeResource AppGap8}">
                     <Grid.RowDefinitions>
                         <RowDefinition Height="Auto" />
                         <RowDefinition Height="Auto" />
                     </Grid.RowDefinitions>
                     <Grid.ColumnDefinitions>
-                        <ColumnDefinition Width="32" />
+                        <ColumnDefinition Width="{ThemeResource AppGridLength32}" />
                         <ColumnDefinition Width="*" />
                         <ColumnDefinition Width="Auto" />
                     </Grid.ColumnDefinitions>
@@ -33,9 +33,9 @@
                         FontSize="{ThemeResource AppFontSize18}"
                         Foreground="{ThemeResource AppAccentBrush}"
                         Glyph="{x:Bind Glyph}" />
-                    <StackPanel Grid.Column="1" VerticalAlignment="Center" Spacing="2">
+                    <StackPanel Grid.Column="1" VerticalAlignment="Center" Spacing="{ThemeResource AppGap2}">
                         <TextBlock
-                            FontWeight="SemiBold"
+                            FontWeight="{ThemeResource AppFontWeightSemibold}"
                             Foreground="{ThemeResource AppInkBrush}"
                             Text="{x:Bind Title, Mode=OneWay}"
                             TextTrimming="CharacterEllipsis" />
@@ -49,9 +49,9 @@
                         Grid.ColumnSpan="2"
                         HorizontalAlignment="Right"
                         Orientation="Horizontal"
-                        Spacing="4">
+                        Spacing="{ThemeResource AppGap4}">
                         <ToggleSwitch
-                            MinWidth="0"
+                            MinWidth="{ThemeResource AppDimension0}"
                             AutomationProperties.AutomationId="{x:Bind VisibilityAutomationId}"
                             AutomationProperties.Name="{x:Bind VisibilityAutomationName}"
                             IsOn="{x:Bind IsVisible, Mode=TwoWay}" />
@@ -83,20 +83,20 @@
     </UserControl.Resources>
 
     <Grid
-        x:Uid="DashboardCustomizeDialog" MinWidth="0"
-        MaxWidth="720"
-        MaxHeight="620"
+        x:Uid="DashboardCustomizeDialog" MinWidth="{ThemeResource AppDimension0}"
+        MaxWidth="{ThemeResource AppDimension720}"
+        MaxHeight="{ThemeResource AppDimension620}"
         HorizontalAlignment="Stretch"
-        Padding="18"
+        Padding="{ThemeResource AppPadding18}"
         AutomationProperties.AutomationId="DashboardCustomizeDialog"
         AutomationProperties.Name="Customize Home"
-        RowSpacing="14">
+        RowSpacing="{ThemeResource AppGap14}">
         <Grid.RowDefinitions>
             <RowDefinition Height="Auto" />
             <RowDefinition Height="*" />
             <RowDefinition Height="Auto" />
         </Grid.RowDefinitions>
-        <StackPanel Spacing="2">
+        <StackPanel Spacing="{ThemeResource AppGap2}">
             <TextBlock
                 x:Uid="ControlsAppDashboardWidgetCustomizeDialogTextBlockCustom" FontFamily="{ThemeResource AppDisplayFontFamily}"
                 FontSize="{ThemeResource AppFontSize24}"
@@ -115,7 +115,7 @@
             Grid.Row="2"
             HorizontalAlignment="Right"
             Orientation="Horizontal"
-            Spacing="8">
+            Spacing="{ThemeResource AppGap8}">
             <Button
                 x:Uid="DashboardCustomizeResetButton" AutomationProperties.AutomationId="DashboardCustomizeResetButton"
                 AutomationProperties.Name="Reset dashboard widgets to defaults"

@@ -9,13 +9,14 @@ public sealed class LaunchOptionsTests
     {
         LaunchOptions options = LaunchOptions.Parse(
             [],
-            "--page=repo --theme=dark --repo=sindresorhus/awesome " +
+            "--page=repo --theme=dark --palette=github --repo=sindresorhus/awesome " +
             "--markdown-lifecycle-fixture " +
             "--markdown-lifecycle-host=MarkdownHost_RepositoryReadme " +
             "--markdown-corpus=\"C:\\readmes\\awesome README.md\"");
 
         Assert.Equal("repo", options.Page);
         Assert.Equal("dark", options.Theme);
+        Assert.Equal("github", options.Palette);
         Assert.Equal("sindresorhus/awesome", options.RepositoryFullName);
         Assert.True(options.MarkdownLifecycleFixture);
         Assert.Equal("MarkdownHost_RepositoryReadme", options.MarkdownLifecycleHost);
@@ -32,6 +33,16 @@ public sealed class LaunchOptionsTests
         Assert.Equal("repo", options.Page);
         Assert.Equal("light", options.Theme);
         Assert.Equal("JitHubApp/JitHubV2", options.RepositoryFullName);
+    }
+
+    [Fact]
+    public void Parse_EnablesWebsiteShowcaseOnlyForTheExplicitCaptureFlag()
+    {
+        LaunchOptions capture = LaunchOptions.Parse(["--website-showcase"]);
+        LaunchOptions normal = LaunchOptions.Parse([]);
+
+        Assert.True(capture.WebsiteShowcase);
+        Assert.False(normal.WebsiteShowcase);
     }
 
     [Fact]

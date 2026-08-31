@@ -11,15 +11,15 @@ public sealed partial class ProfileHexColorBrushConverter : IValueConverter
         ProfileColorBrush.Create(value as string, Color.FromArgb(255, 116, 190, 167));
 
     public object ConvertBack(object value, Type targetType, object parameter, string language) =>
-        throw new NotSupportedException();
+        Microsoft.UI.Xaml.DependencyProperty.UnsetValue;
 }
 
 internal static class ProfileColorBrush
 {
     public static SolidColorBrush Create(string? hex, Color fallback) =>
-        new(Parse(hex, fallback));
+        new(CreateColor(hex, fallback));
 
-    private static Color Parse(string? hex, Color fallback)
+    public static Color CreateColor(string? hex, Color fallback)
     {
         string clean = (hex ?? string.Empty).Trim().TrimStart('#');
         if (clean.Length != 6

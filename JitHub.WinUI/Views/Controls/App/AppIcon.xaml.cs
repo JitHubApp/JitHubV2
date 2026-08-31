@@ -1,3 +1,5 @@
+using System;
+using JitHub.Services;
 using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Controls;
 using Microsoft.UI.Xaml.Media;
@@ -17,6 +19,8 @@ public enum AppIconKind
 [WinRT.GeneratedBindableCustomProperty]
 public sealed partial class AppIcon : UserControl
 {
+    private bool _isPaletteSubscribed;
+
     public static readonly DependencyProperty IconKindProperty = DependencyProperty.Register(
         nameof(IconKind), typeof(AppIconKind), typeof(AppIcon), new PropertyMetadata(AppIconKind.Star, OnIconPropertyChanged));
 
@@ -39,7 +43,8 @@ public sealed partial class AppIcon : UserControl
     {
         InitializeComponent();
         ActualThemeChanged += (_, _) => UpdateIcon();
-        Loaded += (_, _) => UpdateIcon();
+        Loaded += AppIcon_Loaded;
+        Unloaded += AppIcon_Unloaded;
     }
 
     public AppIconKind IconKind
@@ -85,6 +90,31 @@ public sealed partial class AppIcon : UserControl
             icon.UpdateIcon();
         }
     }
+
+    private void AppIcon_Loaded(object sender, RoutedEventArgs e)
+    {
+        if (!_isPaletteSubscribed)
+        {
+            ThemePaletteRuntime.PaletteChanged += ThemePaletteRuntime_PaletteChanged;
+            _isPaletteSubscribed = true;
+        }
+
+        UpdateIcon();
+    }
+
+    private void AppIcon_Unloaded(object sender, RoutedEventArgs e)
+    {
+        if (_isPaletteSubscribed)
+        {
+            ThemePaletteRuntime.PaletteChanged -= ThemePaletteRuntime_PaletteChanged;
+            _isPaletteSubscribed = false;
+        }
+    }
+
+    private void ThemePaletteRuntime_PaletteChanged(
+        object? sender,
+        ThemePaletteChangedEventArgs args) =>
+        UpdateIcon();
 
     private void UpdateIcon()
     {

@@ -30,8 +30,11 @@ public sealed partial class LoginPage : Page
         ViewModel.PrepareForDisplay();
     }
 
-    private async void LoginButton_Click(object sender, RoutedEventArgs e)
+    private void LoginButton_Click(object sender, RoutedEventArgs e)
     {
-        await ViewModel.StartLoginAsync();
+        UiTaskGuard.Run(async () =>
+        {
+            await ViewModel.StartLoginAsync();
+        }, "ui-login-page");
     }
 }

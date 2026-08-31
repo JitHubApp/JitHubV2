@@ -75,12 +75,13 @@ public sealed class CacheRegistry : ICacheRegistry
         Task<CacheOwnerSnapshot> query = CaptureAsync(
             CacheOwnerIds.GitHubQuery,
             "GitHub query cache",
-            [_paths.CacheDatabasePath, _paths.PayloadRootPath],
+            (string[])[_paths.CacheDatabasePath, _paths.PayloadRootPath],
             softCapBytes: null,
             _policy.DescribeQueryTtlPolicy(),
             "Authenticated GitHub user ID",
             "Cleared with GitHub query cache or Clear all cache data",
             isDurableUserData: false,
+            (CacheOwnerCap[])
             [
                 new CacheOwnerCap("SQLite metadata and inline payloads", _policy.MetadataSoftCapBytes),
                 new CacheOwnerCap("Logical JSON/blob/diff payloads", _policy.PayloadSoftCapBytes)
@@ -91,33 +92,33 @@ public sealed class CacheRegistry : ICacheRegistry
         Task<CacheOwnerSnapshot> images = CaptureAsync(
             CacheOwnerIds.GitHubImages,
             "Avatar and image cache",
-            [_paths.ImageRootPath],
+            (string[])[_paths.ImageRootPath],
             _policy.AvatarImageSoftCapBytes,
             GitHubCachePolicy.FormatDuration(GitHubCachePolicy.TtlForResource(GitHubCachePolicy.AvatarImageResource)),
             "Authenticated GitHub user ID or public partition, plus canonical HTTPS image identity",
             "Cleared with image cache or Clear all cache data",
             isDurableUserData: false,
-            [new CacheOwnerCap("Physical image payloads", _policy.AvatarImageSoftCapBytes)],
+            (CacheOwnerCap[])[new CacheOwnerCap("Physical image payloads", _policy.AvatarImageSoftCapBytes)],
             _imageCache.InspectAsync,
             cancellationToken);
 
         Task<CacheOwnerSnapshot> repoFiles = CaptureAsync(
             CacheOwnerIds.RepositoryFiles,
             "Repository file cache",
-            [_repoFileCache.RootPath],
+            (string[])[_repoFileCache.RootPath],
             _repoFileCache.DiskSoftCapBytes,
             FormatTtl(_repoFileCache.Ttl),
             "Authenticated GitHub user ID or public unauthenticated partition, repository owner/name, and immutable blob SHA",
             "Cleared with repository file cache or Clear all cache data",
             isDurableUserData: false,
-            [new CacheOwnerCap("Physical repository file payloads", _repoFileCache.DiskSoftCapBytes)],
+            (CacheOwnerCap[])[new CacheOwnerCap("Physical repository file payloads", _repoFileCache.DiskSoftCapBytes)],
             _repoFileCache.InspectAsync,
             cancellationToken);
 
         Task<CacheOwnerSnapshot> stars = CaptureAsync(
             CacheOwnerIds.StarsLibrary,
             "Stars library and categories",
-            [_starLibrary.DatabasePath, _starRecovery.FilePath],
+            (string[])[_starLibrary.DatabasePath, _starRecovery.FilePath],
             softCapBytes: null,
             "Durable until remote reconciliation or explicit deletion",
             "Authenticated GitHub user ID",
@@ -291,12 +292,12 @@ public sealed class CacheRegistry : ICacheRegistry
         catch (StarLibraryClearCoordinationException exception)
         {
             throw new CacheClearException(
-                [new CacheClearFailure(exception.Component, exception.GetType().Name, exception.Message)]);
+                (CacheClearFailure[])[new CacheClearFailure(exception.Component, exception.GetType().Name, exception.Message)]);
         }
         catch (Exception exception)
         {
             throw new CacheClearException(
-                [new CacheClearFailure(CacheOwnerIds.StarsLibrary, exception.GetType().Name, exception.Message)]);
+                (CacheClearFailure[])[new CacheClearFailure(CacheOwnerIds.StarsLibrary, exception.GetType().Name, exception.Message)]);
         }
     }
 }

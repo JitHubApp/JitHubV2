@@ -42,8 +42,7 @@ public sealed partial class RepoPullRequestPage : Page
     private const double ShyHeaderRehideTravel = 24;
     private const double ScrollDirectionEpsilon = 0.5;
     private const double CompactShyHeaderContentInset = 104;
-    private static readonly TimeSpan ShyHeaderForwardDuration = TimeSpan.FromMilliseconds(240);
-    private static readonly TimeSpan ShyHeaderReverseDuration = TimeSpan.FromMilliseconds(220);
+    private static readonly TimeSpan ShyHeaderDuration = AppMotionTokens.MediumDuration;
     private bool _initialized;
     private bool _openedInitialListDrawer;
     private CancellationTokenSource? _searchDebounce;
@@ -74,75 +73,74 @@ public sealed partial class RepoPullRequestPage : Page
         {
             Source = PullRequestExpandedHeaderSurface,
             Target = PullRequestShyHeaderSurface,
-            Duration = ShyHeaderForwardDuration,
-            ReverseDuration = ShyHeaderReverseDuration,
+            Duration = ShyHeaderDuration,
+            ReverseDuration = ShyHeaderDuration,
             SourceToggleMethod = VisualStateToggleMethod.ByVisibility,
-            TargetToggleMethod = VisualStateToggleMethod.ByVisibility,
+            TargetToggleMethod = VisualStateToggleMethod.ByIsVisible,
             Configs =
             [
-                new TransitionConfig { Id = "PullRequestHeaderSurface", ScaleMode = ScaleMode.ScaleY, EnableClipAnimation = true },
-                new TransitionConfig { Id = "PullRequestTitle" },
-                new TransitionConfig { Id = "PullRequestSectionSelector", ScaleMode = ScaleMode.ScaleX, EnableClipAnimation = true },
-                new TransitionConfig { Id = "PullRequestListButton" },
-                new TransitionConfig { Id = "PullRequestActions" }
+                new TransitionConfig { Id = "PullRequestHeaderChrome", ScaleMode = ScaleMode.Scale, EnableClipAnimation = true },
+                new TransitionConfig { Id = "PullRequestTitle", ScaleMode = ScaleMode.ScaleY },
+                new TransitionConfig { Id = "PullRequestSectionSelector", ScaleMode = ScaleMode.Scale, EnableClipAnimation = true },
+                new TransitionConfig { Id = "PullRequestListButton", ScaleMode = ScaleMode.Scale, EnableClipAnimation = true },
+                new TransitionConfig { Id = "PullRequestActions", ScaleMode = ScaleMode.Scale, EnableClipAnimation = true }
             ]
         };
         DataContext = ViewModel;
+        Loaded += RepoPullRequestPage_Loaded;
+        Unloaded += RepoPullRequestPage_Unloaded;
         PullRequestContentScrollViewer.Loaded += PullRequestContentScrollViewer_Loaded;
         PullRequestContentScrollViewer.Unloaded += PullRequestContentScrollViewer_Unloaded;
         PullRequestDetailHost.SizeChanged += PullRequestDetailHost_SizeChanged;
     }
 
-    protected override async void OnNavigatedTo(NavigationEventArgs e)
+    protected override void OnNavigatedTo(NavigationEventArgs e)
     {
-        _initialized = false;
-        _openedInitialListDrawer = false;
-        PullRequestPageNavArg? arg = e.Parameter as PullRequestPageNavArg;
-        bool isReplyIdentityAutomationScenario = string.Equals(
-            Program.CurrentLaunchOptions.Scenario,
-            ReplyIdentityAutomationScenario,
-            StringComparison.OrdinalIgnoreCase);
-        if (isReplyIdentityAutomationScenario)
+        UiTaskGuard.Run(async () =>
         {
-            PullRequestSectionSegmented.SelectedIndex = 3;
-            PullRequestSectionComboBox.SelectedIndex = 3;
-            PullRequestShySectionComboBox.SelectedIndex = 3;
-            ViewModel.SetSection(PullRequestWorkspaceSection.Reviews);
-        }
+            _initialized = false;
+            _openedInitialListDrawer = false;
+            PullRequestPageNavArg? arg = e.Parameter as PullRequestPageNavArg;
+            bool isReplyIdentityAutomationScenario = string.Equals(Program.CurrentLaunchOptions.Scenario, ReplyIdentityAutomationScenario, StringComparison.OrdinalIgnoreCase);
+            if (isReplyIdentityAutomationScenario)
+            {
+                PullRequestSectionSegmented.SelectedIndex = 3;
+                PullRequestSectionComboBox.SelectedIndex = 3;
+                PullRequestShySectionComboBox.SelectedIndex = 3;
+                ViewModel.SetSection(PullRequestWorkspaceSection.Reviews);
+            }
 
-        await ViewModel.InitializeAsync(arg);
-        if (DialogMatrixAutomationScenario.IsEnabled)
-        {
-            bool hasSelection = ViewModel.SelectedPullRequest is not null;
-            ViewModel.CanEditPullRequest = hasSelection;
-            ViewModel.CanManagePullRequestMetadata = hasSelection;
-            ViewModel.CanReactToPullRequest = hasSelection;
-            ViewModel.CanSubmitReviewComment = hasSelection;
-            ViewModel.CanApprovePullRequest = hasSelection;
-            ViewModel.CanRequestPullRequestChanges = hasSelection;
-            ViewModel.IsMergeEnabled = hasSelection;
-            ViewModel.CanMergeWithMergeCommit = hasSelection;
-            ViewModel.CanMergeWithSquash = hasSelection;
-            ViewModel.CanMergeWithRebase = hasSelection;
-            ViewModel.ArePullRequestActionsEnabled = hasSelection;
-        }
-        ProductPerformanceReadiness.CommitRoute(
-            "repo_pull_requests",
-            $"{ProductPerformanceReadiness.CountIdentity(ViewModel.PullRequests.Count)};selected={ViewModel.SelectedPullRequest?.Id ?? 0}");
-        if (isReplyIdentityAutomationScenario)
-        {
-            PullRequestSectionSegmented.SelectedIndex = 3;
-            PullRequestSectionComboBox.SelectedIndex = 3;
-            PullRequestShySectionComboBox.SelectedIndex = 3;
-            ViewModel.SetSection(PullRequestWorkspaceSection.Reviews);
-        }
+            await ViewModel.InitializeAsync(arg);
+            if (DialogMatrixAutomationScenario.IsEnabled)
+            {
+                bool hasSelection = ViewModel.SelectedPullRequest is not null;
+                ViewModel.CanEditPullRequest = hasSelection;
+                ViewModel.CanManagePullRequestMetadata = hasSelection;
+                ViewModel.CanReactToPullRequest = hasSelection;
+                ViewModel.CanSubmitReviewComment = hasSelection;
+                ViewModel.CanApprovePullRequest = hasSelection;
+                ViewModel.CanRequestPullRequestChanges = hasSelection;
+                ViewModel.IsMergeEnabled = hasSelection;
+                ViewModel.CanMergeWithMergeCommit = hasSelection;
+                ViewModel.CanMergeWithSquash = hasSelection;
+                ViewModel.CanMergeWithRebase = hasSelection;
+                ViewModel.ArePullRequestActionsEnabled = hasSelection;
+            }
 
-        _initialized = true;
-        UpdatePaneButtonVisibility();
-        MaybeOpenInitialPullRequestListDrawer();
-        _ = DispatcherQueue.TryEnqueue(
-            Microsoft.UI.Dispatching.DispatcherQueuePriority.Low,
-            AttachPerformanceScrollProbe);
+            ProductPerformanceReadiness.CommitRoute("repo_pull_requests", $"{ProductPerformanceReadiness.CountIdentity(ViewModel.PullRequests.Count)};selected={ViewModel.SelectedPullRequest?.Id ?? 0}");
+            if (isReplyIdentityAutomationScenario)
+            {
+                PullRequestSectionSegmented.SelectedIndex = 3;
+                PullRequestSectionComboBox.SelectedIndex = 3;
+                PullRequestShySectionComboBox.SelectedIndex = 3;
+                ViewModel.SetSection(PullRequestWorkspaceSection.Reviews);
+            }
+
+            _initialized = true;
+            UpdatePaneButtonVisibility();
+            MaybeOpenInitialPullRequestListDrawer();
+            _ = DispatcherQueue.TryEnqueue(Microsoft.UI.Dispatching.DispatcherQueuePriority.Low, AttachPerformanceScrollProbe);
+        }, "ui-repo-pull-request-page");
     }
 
     protected override void OnNavigatedFrom(NavigationEventArgs e)
@@ -162,7 +160,28 @@ public sealed partial class RepoPullRequestPage : Page
 
         _sectionScrollViewers.Clear();
         _activeShyHeaderScrollViewer = null;
+        StopDetailHeaderTransition();
         base.OnNavigatedFrom(e);
+    }
+
+    private void RepoPullRequestPage_Loaded(object sender, RoutedEventArgs e)
+    {
+        _headerTransitionGeneration++;
+        MorphTransitionSafety.TryResetVisibilityState(
+            _headerTransition,
+            PullRequestExpandedHeaderSurface,
+            PullRequestShyHeaderSurface,
+            toInitialState: !_isDetailHeaderShy);
+        ResetContentReflow();
+    }
+
+    private void RepoPullRequestPage_Unloaded(object sender, RoutedEventArgs e) =>
+        StopDetailHeaderTransition();
+
+    private void StopDetailHeaderTransition()
+    {
+        _headerTransitionGeneration++;
+        MorphTransitionSafety.TryStop(_headerTransition);
     }
 
     private void PullRequestContentScrollViewer_Loaded(object sender, RoutedEventArgs e)
@@ -180,14 +199,14 @@ public sealed partial class RepoPullRequestPage : Page
         }
 
         _performanceScrollProbe?.Dispose();
-        IReadOnlyList<ScrollViewer> scrollViewers = FindScrollViewers(PullRequestContentScrollViewer);
-        foreach (ScrollViewer candidate in scrollViewers)
+        ScrollViewer? scrollViewer = FindPrimaryShyHeaderScrollViewer(PullRequestContentScrollViewer);
+        if (scrollViewer is not null)
         {
-            AttachShyHeaderScrollViewer(candidate);
-        }
-
-        if (scrollViewers.FirstOrDefault() is ScrollViewer scrollViewer)
-        {
+            AttachShyHeaderScrollViewer(scrollViewer);
+            if (IsShyHeaderScrollCandidate(scrollViewer))
+            {
+                ActivateShyHeaderScrollViewer(scrollViewer);
+            }
             _performanceScrollProbe = ProductPerformanceScrollProbe.TryStart(PullRequestContentHost, scrollViewer);
         }
         else
@@ -249,14 +268,14 @@ public sealed partial class RepoPullRequestPage : Page
 
     private void AttachShyHeaderScrollSources(DependencyObject owner)
     {
-        IReadOnlyList<ScrollViewer> scrollViewers = FindScrollViewers(owner);
-        foreach (ScrollViewer scrollViewer in scrollViewers)
+        ScrollViewer? primary = FindPrimaryShyHeaderScrollViewer(owner);
+        if (primary is null)
         {
-            AttachShyHeaderScrollViewer(scrollViewer);
+            return;
         }
 
-        ScrollViewer? primary = scrollViewers.FirstOrDefault(IsShyHeaderScrollCandidate);
-        if (primary is not null)
+        AttachShyHeaderScrollViewer(primary);
+        if (IsShyHeaderScrollCandidate(primary))
         {
             ActivateShyHeaderScrollViewer(primary);
         }
@@ -327,7 +346,9 @@ public sealed partial class RepoPullRequestPage : Page
         _upwardRevealTravel = 0;
         _downwardRehideTravel = 0;
         _headerRevealedByUpwardScroll = false;
-        _isScrollHeaderShy = scrollViewer.VerticalOffset >= ShyHeaderStartOffset;
+        _isScrollHeaderShy =
+            scrollViewer.VerticalOffset >= ShyHeaderStartOffset &&
+            CanHideScrollHeader(scrollViewer);
         SetDetailHeaderShy(IsCompactWorkspace || _isScrollHeaderShy, animate: false);
     }
 
@@ -407,11 +428,30 @@ public sealed partial class RepoPullRequestPage : Page
 
     private void HideScrollHeader()
     {
+        if (!CanHideScrollHeader(_activeShyHeaderScrollViewer))
+        {
+            _downwardRehideTravel = 0;
+            return;
+        }
+
         _isScrollHeaderShy = true;
         _headerRevealedByUpwardScroll = false;
         _upwardRevealTravel = 0;
         _downwardRehideTravel = 0;
         SetDetailHeaderShy(true, animate: true);
+    }
+
+    private bool CanHideScrollHeader(ScrollViewer? scrollViewer)
+    {
+        if (scrollViewer is null)
+        {
+            return false;
+        }
+
+        return ShyHeaderScrollPolicy.CanCollapse(
+            scrollViewer.ScrollableHeight,
+            PullRequestExpandedHeaderSurface.ActualHeight,
+            ShyHeaderRestoreOffset);
     }
 
     private void PullRequestDetailHost_SizeChanged(object sender, SizeChangedEventArgs e)
@@ -426,10 +466,13 @@ public sealed partial class RepoPullRequestPage : Page
     {
         List<ScrollViewer> candidates = [];
         CollectScrollViewers(root, candidates);
-        return candidates
-            .OrderByDescending(static scrollViewer => scrollViewer.ScrollableHeight)
-            .ThenByDescending(static scrollViewer => scrollViewer.ActualHeight)
-            .ToArray();
+        return candidates;
+    }
+
+    private static ScrollViewer? FindPrimaryShyHeaderScrollViewer(DependencyObject owner)
+    {
+        IReadOnlyList<ScrollViewer> scrollViewers = FindScrollViewers(owner);
+        return scrollViewers.FirstOrDefault(IsShyHeaderScrollCandidate) ?? scrollViewers.FirstOrDefault();
     }
 
     private static void CollectScrollViewers(DependencyObject root, ICollection<ScrollViewer> candidates)
@@ -447,28 +490,34 @@ public sealed partial class RepoPullRequestPage : Page
         }
     }
 
-    private async void PullRequestStateSegmented_SelectionChanged(object sender, SelectionChangedEventArgs e)
+    private void PullRequestStateSegmented_SelectionChanged(object sender, SelectionChangedEventArgs e)
     {
-        if (!_initialized)
+        UiTaskGuard.Run(async () =>
         {
-            return;
-        }
+            if (!_initialized)
+            {
+                return;
+            }
 
-        int selectedIndex = Math.Clamp(PullRequestStateSegmented.SelectedIndex, 0, ViewModel.StateOptions.Count - 1);
-        ViewModel.SelectedStateOption = ViewModel.StateOptions[selectedIndex];
-        await ViewModel.ApplyFiltersAsync();
+            int selectedIndex = Math.Clamp(PullRequestStateSegmented.SelectedIndex, 0, ViewModel.StateOptions.Count - 1);
+            ViewModel.SelectedStateOption = ViewModel.StateOptions[selectedIndex];
+            await ViewModel.ApplyFiltersAsync();
+        }, "ui-repo-pull-request-page");
     }
 
-    private async void PullRequestFilterComboBox_SelectionChanged(object sender, SelectionChangedEventArgs e)
+    private void PullRequestFilterComboBox_SelectionChanged(object sender, SelectionChangedEventArgs e)
     {
-        if (!_initialized || _initializingFilterFlyout)
+        UiTaskGuard.Run(async () =>
         {
-            return;
-        }
+            if (!_initialized || _initializingFilterFlyout)
+            {
+                return;
+            }
 
-        ViewModel.SelectedSortOption = GetSelectedOption(ViewModel.SortOptions, PullRequestSortComboBox.SelectedIndex);
-        ViewModel.SelectedDirectionOption = GetSelectedOption(ViewModel.DirectionOptions, PullRequestDirectionComboBox.SelectedIndex);
-        await ViewModel.ApplyFiltersAsync();
+            ViewModel.SelectedSortOption = GetSelectedOption(ViewModel.SortOptions, PullRequestSortComboBox.SelectedIndex);
+            ViewModel.SelectedDirectionOption = GetSelectedOption(ViewModel.DirectionOptions, PullRequestDirectionComboBox.SelectedIndex);
+            await ViewModel.ApplyFiltersAsync();
+        }, "ui-repo-pull-request-page");
     }
 
     private void PullRequestFiltersFlyout_Opened(object sender, object e)
@@ -506,26 +555,29 @@ public sealed partial class RepoPullRequestPage : Page
         return 0;
     }
 
-    private async void PullRequestSearchBox_TextChanged(object sender, TextChangedEventArgs e)
+    private void PullRequestSearchBox_TextChanged(AutoSuggestBox sender, AutoSuggestBoxTextChangedEventArgs e)
     {
-        if (!_initialized)
+        UiTaskGuard.Run(async () =>
         {
-            return;
-        }
+            if (!_initialized || e.Reason != AutoSuggestionBoxTextChangeReason.UserInput)
+            {
+                return;
+            }
 
-        ViewModel.SearchText = PullRequestSearchBox.Text;
-        _searchDebounce?.Cancel();
-        _searchDebounce?.Dispose();
-        CancellationTokenSource debounce = new();
-        _searchDebounce = debounce;
-        try
-        {
-            await Task.Delay(220, debounce.Token);
-            await ViewModel.ApplyFiltersAsync();
-        }
-        catch (OperationCanceledException)
-        {
-        }
+            ViewModel.SearchText = sender.Text;
+            _searchDebounce?.Cancel();
+            _searchDebounce?.Dispose();
+            CancellationTokenSource debounce = new();
+            _searchDebounce = debounce;
+            try
+            {
+                await Task.Delay(220, debounce.Token);
+                await ViewModel.ApplyFiltersAsync();
+            }
+            catch (OperationCanceledException)
+            {
+            }
+        }, "ui-repo-pull-request-page");
     }
 
     private void PullRequestsList_ItemClick(object sender, ItemClickEventArgs e)
@@ -561,12 +613,16 @@ public sealed partial class RepoPullRequestPage : Page
         }
 
         int generation = BeginPullRequestTraversal(pullRequest);
+        ViewModel.CancelHoverPrefetch();
+        ProductPerformanceReadiness.RecordTraversalStage("repo_pull_requests.hover.cancelled");
         PrimePullRequestSelection(pullRequest);
-        SchedulePullRequestSelection(pullRequest, generation);
+        ProductPerformanceReadiness.RecordTraversalStage("repo_pull_requests.selection.primed");
         if (ProductPerformanceReadiness.IsEnabled)
         {
             SchedulePullRequestTraversalCommit(pullRequest, generation);
         }
+        SchedulePullRequestSelection(pullRequest, generation);
+        ProductPerformanceReadiness.RecordTraversalStage("repo_pull_requests.hydration.scheduled");
     }
 
     private void PullRequestListItem_PointerPressed(object sender, PointerRoutedEventArgs e)
@@ -590,8 +646,15 @@ public sealed partial class RepoPullRequestPage : Page
         }
 
         int generation = BeginPullRequestTraversal(pullRequest);
+        ViewModel.CancelHoverPrefetch();
+        ProductPerformanceReadiness.RecordTraversalStage("repo_pull_requests.hover.cancelled");
         ProductPerformanceReadiness.RecordTraversalStage("repo_pull_requests.pointer.selected");
         PrimePullRequestSelection(pullRequest);
+        ProductPerformanceReadiness.RecordTraversalStage("repo_pull_requests.selection.primed");
+        if (ProductPerformanceReadiness.IsEnabled)
+        {
+            SchedulePullRequestTraversalCommit(pullRequest, generation);
+        }
         _pendingPointerHydrationNumber = pullRequest.Number;
         _pointerSelectionInProgress = true;
         try
@@ -602,13 +665,11 @@ public sealed partial class RepoPullRequestPage : Page
         {
             _pointerSelectionInProgress = false;
         }
+        ProductPerformanceReadiness.RecordTraversalStage("repo_pull_requests.list.selected");
 
         e.Handled = true;
         SchedulePullRequestSelection(pullRequest, generation, focusSelection: true);
-        if (ProductPerformanceReadiness.IsEnabled)
-        {
-            SchedulePullRequestTraversalCommit(pullRequest, generation);
-        }
+        ProductPerformanceReadiness.RecordTraversalStage("repo_pull_requests.hydration.scheduled");
         if (PullRequestsWorkspace.IsLeadingDrawerOpen)
         {
             ListViewScrollAnchor anchor = ListViewScrollAnchor.Capture(PullRequestsList);
@@ -649,6 +710,7 @@ public sealed partial class RepoPullRequestPage : Page
         GitHubPullRequest pullRequest,
         int generation)
     {
+        ProductPerformanceReadiness.RecordTraversalStage("repo_pull_requests.render.scheduled");
         ProductPerformanceRenderCommitter.ScheduleAfterNextFrame(
             this,
             () => generation == _selectionRenderGeneration &&
@@ -660,9 +722,13 @@ public sealed partial class RepoPullRequestPage : Page
                     PullRequestDetailTitle.Text,
                     pullRequest.Title,
                     StringComparison.Ordinal),
-            () => ProductPerformanceReadiness.CommitTraversal(
-                "repo_pull_requests",
-                pullRequest.AutomationId));
+            () =>
+            {
+                ProductPerformanceReadiness.RecordTraversalStage("repo_pull_requests.render.committed");
+                ProductPerformanceReadiness.CommitTraversal(
+                    "repo_pull_requests",
+                    pullRequest.AutomationId);
+            });
     }
 
     private void SchedulePullRequestSelection(
@@ -853,13 +919,24 @@ public sealed partial class RepoPullRequestPage : Page
         int generation = ++_headerTransitionGeneration;
         if (!animate || !PullRequestExpandedHeaderSurface.IsLoaded || !AreAnimationsEnabled())
         {
-            _headerTransition.Reset(toInitialState: !isShy);
-            PullRequestDetailLayout.UpdateLayout();
-            ResetContentReflow();
+            if (MorphTransitionSafety.TryResetVisibilityState(
+                _headerTransition,
+                PullRequestExpandedHeaderSurface,
+                PullRequestShyHeaderSurface,
+                toInitialState: !isShy))
+            {
+                PullRequestDetailLayout.UpdateLayout();
+                ResetContentReflow();
+                if (!isShy)
+                {
+                    PullRequestShyHeaderSurface.Visibility = Visibility.Collapsed;
+                }
+            }
+
             return;
         }
 
-        _ = AnimateDetailHeaderAsync(isShy, generation);
+        UiTaskGuard.Observe(AnimateDetailHeaderAsync(isShy, generation), "ui-repo-pull-request-page");
     }
 
     private async Task AnimateDetailHeaderAsync(bool isShy, int generation)
@@ -876,7 +953,6 @@ public sealed partial class RepoPullRequestPage : Page
                 ? _headerTransition.StartAsync(forceUpdateAnimatedElements: true)
                 : _headerTransition.ReverseAsync(forceUpdateAnimatedElements: true);
 
-            PullRequestDetailLayout.UpdateLayout();
             if (isShy)
             {
                 double reclaimedHeight = Math.Max(
@@ -884,18 +960,18 @@ public sealed partial class RepoPullRequestPage : Page
                     PullRequestExpandedHeaderSurface.ActualHeight - PullRequestShyHeaderSurface.ActualHeight);
                 AnimateContentReflow(
                     new Vector3(0, (float)-reclaimedHeight, 0),
-                    ShyHeaderForwardDuration);
+                    ShyHeaderDuration);
             }
             else if (reverseFromSettledShyState)
             {
                 double expandedContentTop = GetElementTop(visibleContent, PullRequestDetailLayout);
                 SetContentReflowImmediately(new Vector3(0, (float)(previousContentTop - expandedContentTop), 0));
-                AnimateContentReflow(Vector3.Zero, ShyHeaderReverseDuration);
+                AnimateContentReflow(Vector3.Zero, ShyHeaderDuration);
             }
 
             else
             {
-                AnimateContentReflow(Vector3.Zero, ShyHeaderReverseDuration);
+                AnimateContentReflow(Vector3.Zero, ShyHeaderDuration);
             }
 
             await headerAnimation;
@@ -904,8 +980,17 @@ public sealed partial class RepoPullRequestPage : Page
                 return;
             }
 
+            MorphTransitionSafety.TrySetStableState(
+                _headerTransition,
+                PullRequestExpandedHeaderSurface,
+                PullRequestShyHeaderSurface,
+                isTargetState: isShy);
             PullRequestDetailLayout.UpdateLayout();
             ResetContentReflow();
+            if (!isShy)
+            {
+                PullRequestShyHeaderSurface.Visibility = Visibility.Collapsed;
+            }
         }
         catch (OperationCanceledException)
         {
@@ -913,11 +998,22 @@ public sealed partial class RepoPullRequestPage : Page
         catch (Exception) when (generation != _headerTransitionGeneration)
         {
         }
-        catch when (generation == _headerTransitionGeneration)
+        catch (Exception ex) when (generation == _headerTransitionGeneration)
         {
-            _headerTransition.Reset(toInitialState: !isShy);
-            PullRequestDetailLayout.UpdateLayout();
-            ResetContentReflow();
+            JitHub.WinUI.App.LogHandledException(ex, "ui-repo-pull-request-header-morph");
+            if (MorphTransitionSafety.TryResetVisibilityState(
+                _headerTransition,
+                PullRequestExpandedHeaderSurface,
+                PullRequestShyHeaderSurface,
+                toInitialState: !isShy))
+            {
+                PullRequestDetailLayout.UpdateLayout();
+                ResetContentReflow();
+                if (!isShy)
+                {
+                    PullRequestShyHeaderSurface.Visibility = Visibility.Collapsed;
+                }
+            }
         }
     }
 
@@ -1078,18 +1174,24 @@ public sealed partial class RepoPullRequestPage : Page
         }
     }
 
-    private async void TogglePullRequestStateButton_Click(object sender, RoutedEventArgs e)
+    private void TogglePullRequestStateButton_Click(object sender, RoutedEventArgs e)
     {
-        await ViewModel.ToggleSelectedPullRequestStateAsync();
+        UiTaskGuard.Run(async () =>
+        {
+            await ViewModel.ToggleSelectedPullRequestStateAsync();
+        }, "ui-repo-pull-request-page");
     }
 
-    private async void CommentButton_Click(object sender, RoutedEventArgs e)
+    private void CommentButton_Click(object sender, RoutedEventArgs e)
     {
-        await ViewModel.AddPullRequestCommentAsync();
-        if (string.IsNullOrWhiteSpace(ViewModel.PullRequestCommentDraft))
+        UiTaskGuard.Run(async () =>
         {
-            PullRequestCommentFlyout.Hide();
-        }
+            await ViewModel.AddPullRequestCommentAsync();
+            if (string.IsNullOrWhiteSpace(ViewModel.PullRequestCommentDraft))
+            {
+                PullRequestCommentFlyout.Hide();
+            }
+        }, "ui-repo-pull-request-page");
     }
 
     private void CompactCommentFlyout_Opened(object sender, object e)
@@ -1102,52 +1204,46 @@ public sealed partial class RepoPullRequestPage : Page
         RepoPullRequestsOpenCompactCommentButton.Focus(FocusState.Programmatic);
     }
 
-    private async void SubmitReviewButton_Click(object sender, RoutedEventArgs e)
+    private void SubmitReviewButton_Click(object sender, RoutedEventArgs e)
     {
-        RadioButton commentOption = CreateReviewDecisionOption(
-            "RepoPullRequestsReviewDecisionComment",
-            L("RepoPullRequests/Dialogs/Review/DecisionComment", "Comment"),
-            ViewModel.CanSubmitReviewComment);
-        RadioButton approveOption = CreateReviewDecisionOption(
-            "RepoPullRequestsReviewDecisionApprove",
-            L("RepoPullRequests/Dialogs/Review/DecisionApprove", "Approve"),
-            ViewModel.CanApprovePullRequest);
-        RadioButton requestChangesOption = CreateReviewDecisionOption(
-            "RepoPullRequestsReviewDecisionRequestChanges",
-            L("RepoPullRequests/Dialogs/Review/DecisionRequestChanges", "Request changes"),
-            ViewModel.CanRequestPullRequestChanges);
-        RadioButton? initialOption = new[] { commentOption, approveOption, requestChangesOption }
-            .FirstOrDefault(option => option.IsEnabled);
-        if (initialOption is null)
+        UiTaskGuard.Run(async () =>
         {
-            return;
-        }
-
-        initialOption.IsChecked = true;
-        MarkdownForm reviewForm = new()
-        {
-            EditorHeight = 180,
-            DocumentSource = ViewModel.PullRequestCommentMarkdownSource,
-            Text = string.Empty
-        };
-        AutomationProperties.SetAutomationId(reviewForm, "RepoPullRequestsReviewBody");
-        AutomationProperties.SetName(reviewForm, L("RepoPullRequests/Dialogs/Review/BodyAutomationName", "Pull request review body"));
-
-        TextBlock validationText = AppContentDialogPresenter.CreateInlineErrorPresenter(
-            "RepoPullRequestsReviewValidationText");
-        AutomationProperties.SetAutomationId(validationText, "RepoPullRequestsReviewValidationText");
-        AutomationProperties.SetName(validationText, L("RepoPullRequests/Dialogs/Review/ValidationAutomationName", "Review validation message"));
-
-        ContentDialog dialog = new()
-        {
-            XamlRoot = XamlRoot,
-            Title = L("RepoPullRequests/Dialogs/Review/Title", "Submit review"),
-            Content = new StackPanel
+            RadioButton commentOption = CreateReviewDecisionOption("RepoPullRequestsReviewDecisionComment", L("RepoPullRequests/Dialogs/Review/DecisionComment", "Comment"), ViewModel.CanSubmitReviewComment);
+            RadioButton approveOption = CreateReviewDecisionOption("RepoPullRequestsReviewDecisionApprove", L("RepoPullRequests/Dialogs/Review/DecisionApprove", "Approve"), ViewModel.CanApprovePullRequest);
+            RadioButton requestChangesOption = CreateReviewDecisionOption("RepoPullRequestsReviewDecisionRequestChanges", L("RepoPullRequests/Dialogs/Review/DecisionRequestChanges", "Request changes"), ViewModel.CanRequestPullRequestChanges);
+            RadioButton? initialOption = new[]
             {
-                MaxWidth = 520,
-                Spacing = 12,
-                Children =
+            commentOption,
+            approveOption,
+            requestChangesOption
+            }.FirstOrDefault(option => option.IsEnabled);
+            if (initialOption is null)
+            {
+                return;
+            }
+
+            initialOption.IsChecked = true;
+            MarkdownForm reviewForm = new()
+            {
+                EditorHeight = 180,
+                DocumentSource = ViewModel.PullRequestCommentMarkdownSource,
+                Text = string.Empty
+            };
+            AutomationProperties.SetAutomationId(reviewForm, "RepoPullRequestsReviewBody");
+            AutomationProperties.SetName(reviewForm, L("RepoPullRequests/Dialogs/Review/BodyAutomationName", "Pull request review body"));
+            TextBlock validationText = AppContentDialogPresenter.CreateInlineErrorPresenter("RepoPullRequestsReviewValidationText");
+            AutomationProperties.SetAutomationId(validationText, "RepoPullRequestsReviewValidationText");
+            AutomationProperties.SetName(validationText, L("RepoPullRequests/Dialogs/Review/ValidationAutomationName", "Review validation message"));
+            ContentDialog dialog = new()
+            {
+                XamlRoot = XamlRoot,
+                Title = L("RepoPullRequests/Dialogs/Review/Title", "Submit review"),
+                Content = new StackPanel
                 {
+                    MaxWidth = 520,
+                    Spacing = 12,
+                    Children =
+                    {
                     new TextBlock
                     {
                         Text = L("RepoPullRequests/Dialogs/Review/DecisionHeader", "Review decision"),
@@ -1158,44 +1254,32 @@ public sealed partial class RepoPullRequestPage : Page
                     requestChangesOption,
                     reviewForm,
                     validationText
-                }
-            },
-            PrimaryButtonText = L("RepoPullRequests/Dialogs/Review/Primary", "Submit review"),
-            CloseButtonText = L("Common/Cancel", "Cancel"),
-            DefaultButton = ContentDialogButton.Primary
-        };
-        AppDialogStyleCatalog.Apply(dialog);
-        AutomationProperties.SetAutomationId(dialog, "RepoPullRequestsSubmitReviewDialog");
-        AutomationProperties.SetName(dialog, L("RepoPullRequests/Dialogs/Review/AutomationName", "Submit pull request review"));
-        await AppContentDialogPresenter.ShowForPrimaryActionAsync(
-            dialog,
-            XamlRoot,
-            async () =>
+                    }
+                },
+                PrimaryButtonText = L("RepoPullRequests/Dialogs/Review/Primary", "Submit review"),
+                CloseButtonText = L("Common/Cancel", "Cancel"),
+                DefaultButton = ContentDialogButton.Primary
+            };
+            AppDialogStyleCatalog.Apply(dialog);
+            AutomationProperties.SetAutomationId(dialog, "RepoPullRequestsSubmitReviewDialog");
+            AutomationProperties.SetName(dialog, L("RepoPullRequests/Dialogs/Review/AutomationName", "Submit pull request review"));
+            await AppContentDialogPresenter.ShowForPrimaryActionAsync(dialog, XamlRoot, async () =>
             {
-                PullRequestReviewSubmission submission = CreateReviewSubmission(
-                    commentOption,
-                    approveOption,
-                    reviewForm.Text);
+                PullRequestReviewSubmission submission = CreateReviewSubmission(commentOption, approveOption, reviewForm.Text);
                 try
                 {
                     PullRequestReviewSubmissionPolicy.Validate(submission);
                 }
-                catch (ArgumentException ex)
+                catch (ArgumentException)
                 {
-                    System.Diagnostics.Debug.WriteLine($"Pull request review validation failed: {ex}");
-                    return DialogMutationResult.Failure(L(
-                        "RepoPullRequests/Dialogs/Review/CommentRequired",
-                        "Enter a review comment before commenting or requesting changes."));
+                    return DialogMutationResult.Failure(L("RepoPullRequests/Dialogs/Review/CommentRequired", "Enter a review comment before commenting or requesting changes."));
                 }
 
                 string previousStatus = ViewModel.StatusText;
                 await ViewModel.SubmitPullRequestReviewAsync(submission.Decision, submission.Body);
-                return ResolvePullRequestMutationResult(
-                    previousStatus,
-                    ViewModel.SelectedSection == PullRequestWorkspaceSection.Reviews,
-                    "submitted");
-            },
-            validationText);
+                return ResolvePullRequestMutationResult(previousStatus, ViewModel.SelectedSection == PullRequestWorkspaceSection.Reviews, "submitted");
+            }, validationText);
+        }, "ui-repo-pull-request-page");
     }
 
     private static RadioButton CreateReviewDecisionOption(
@@ -1227,65 +1311,73 @@ public sealed partial class RepoPullRequestPage : Page
         return new PullRequestReviewSubmission(decision, body);
     }
 
-    private async void ReviewReplyButton_Click(object sender, RoutedEventArgs e)
+    private void ReviewReplyButton_Click(object sender, RoutedEventArgs e)
     {
-        if (sender is FrameworkElement { DataContext: RepoPullRequestPageViewModel.PullRequestReviewThreadItem thread })
+        UiTaskGuard.Run(async () =>
         {
-            await ViewModel.ReplyToReviewCommentAsync(thread);
-        }
+            if (sender is FrameworkElement { DataContext: RepoPullRequestPageViewModel.PullRequestReviewThreadItem thread })
+            {
+                await ViewModel.ReplyToReviewCommentAsync(thread);
+            }
+        }, "ui-repo-pull-request-page");
     }
 
-    private async void CommentInteractionBar_ActionRequested(object? sender, CommentActionRequestedEventArgs e)
+    private void CommentInteractionBar_ActionRequested(object? sender, CommentActionRequestedEventArgs e)
     {
-        if (sender is not CommentInteractionBar bar)
+        UiTaskGuard.Run(async () =>
         {
-            return;
-        }
+            if (sender is not CommentInteractionBar bar)
+            {
+                return;
+            }
 
-        bool isPullRequestBody = e.TargetKind == CommentTargetKind.PullRequest;
-        bool isReviewComment = e.TargetKind == CommentTargetKind.PullRequestReviewComment;
-        switch (e.Action)
-        {
-            case CommentActionKind.ToggleReaction when !string.IsNullOrWhiteSpace(e.Value):
-                if (isPullRequestBody)
-                {
-                    await ToggleSelectedPullRequestReactionAsync(e.Value);
-                }
-                else
-                {
-                    await TogglePullRequestCommentReactionAsync(e.TargetKind, e.TargetId, e.Value);
-                }
-                break;
-            case CommentActionKind.QuoteReply:
-                QuotePullRequestComment(e.TargetKind, e.TargetId, bar.Body);
-                ViewModel.TrackCommentQuoteReply();
-                break;
-            case CommentActionKind.CopyLink:
-                ViewModel.TrackCommentCopyLink(PlatformHelper.CopyString(bar.HtmlUrl));
-                break;
-            case CommentActionKind.CopyMarkdown:
-                ViewModel.TrackCommentCopyMarkdown(PlatformHelper.CopyString(bar.Body));
-                break;
-            case CommentActionKind.Edit:
-                if (isPullRequestBody)
-                {
-                    EditPullRequestButton_Click(bar, new RoutedEventArgs());
-                }
-                else
-                {
-                    await ShowPullRequestCommentEditDialogAsync(e.TargetId, bar.Body, isReviewComment);
-                }
-                break;
-            case CommentActionKind.Hide when !string.IsNullOrWhiteSpace(e.Value):
-                await ViewModel.SetPullRequestCommentMinimizedAsync(bar.NodeId, e.Value);
-                break;
-            case CommentActionKind.Unhide:
-                await ViewModel.SetPullRequestCommentMinimizedAsync(bar.NodeId, classifier: null);
-                break;
-            case CommentActionKind.Delete:
-                await ShowPullRequestCommentDeleteDialogAsync(e.TargetId, isReviewComment);
-                break;
-        }
+            bool isPullRequestBody = e.TargetKind == CommentTargetKind.PullRequest;
+            bool isReviewComment = e.TargetKind == CommentTargetKind.PullRequestReviewComment;
+            switch (e.Action)
+            {
+                case CommentActionKind.ToggleReaction when !string.IsNullOrWhiteSpace(e.Value):
+                    if (isPullRequestBody)
+                    {
+                        await ToggleSelectedPullRequestReactionAsync(e.Value);
+                    }
+                    else
+                    {
+                        await TogglePullRequestCommentReactionAsync(e.TargetKind, e.TargetId, e.Value);
+                    }
+
+                    break;
+                case CommentActionKind.QuoteReply:
+                    QuotePullRequestComment(e.TargetKind, e.TargetId, bar.Body);
+                    ViewModel.TrackCommentQuoteReply();
+                    break;
+                case CommentActionKind.CopyLink:
+                    ViewModel.TrackCommentCopyLink(PlatformHelper.CopyString(bar.HtmlUrl));
+                    break;
+                case CommentActionKind.CopyMarkdown:
+                    ViewModel.TrackCommentCopyMarkdown(PlatformHelper.CopyString(bar.Body));
+                    break;
+                case CommentActionKind.Edit:
+                    if (isPullRequestBody)
+                    {
+                        EditPullRequestButton_Click(bar, new RoutedEventArgs());
+                    }
+                    else
+                    {
+                        await ShowPullRequestCommentEditDialogAsync(e.TargetId, bar.Body, isReviewComment);
+                    }
+
+                    break;
+                case CommentActionKind.Hide when !string.IsNullOrWhiteSpace(e.Value):
+                    await ViewModel.SetPullRequestCommentMinimizedAsync(bar.NodeId, e.Value);
+                    break;
+                case CommentActionKind.Unhide:
+                    await ViewModel.SetPullRequestCommentMinimizedAsync(bar.NodeId, classifier: null);
+                    break;
+                case CommentActionKind.Delete:
+                    await ShowPullRequestCommentDeleteDialogAsync(e.TargetId, isReviewComment);
+                    break;
+            }
+        }, "ui-repo-pull-request-page");
     }
 
     private async Task ToggleSelectedPullRequestReactionAsync(string content)
@@ -1412,7 +1504,8 @@ public sealed partial class RepoPullRequestPage : Page
                 errorText),
             PrimaryButtonText = L("Common/Delete", "Delete"),
             CloseButtonText = L("Common/Cancel", "Cancel"),
-            DefaultButton = ContentDialogButton.Close
+            DefaultButton = ContentDialogButton.Close,
+            PrimaryButtonStyle = (Style)Application.Current.Resources["AppDestructiveButtonStyle"]
         };
         AppDialogStyleCatalog.Apply(dialog);
         AutomationProperties.SetAutomationId(dialog, "RepoPullRequestsCommentDeleteDialog");
@@ -1424,159 +1517,143 @@ public sealed partial class RepoPullRequestPage : Page
             async () => await ViewModel.DeletePullRequestCommentAsync(commentId, isReviewComment)
                 ? DialogMutationResult.Success()
                 : DialogMutationResult.Failure(ViewModel.StatusText),
-            errorText);
+            errorText,
+            layoutKind: AppDialogLayoutKind.Confirmation);
     }
 
-    private async void NewPullRequestButton_Click(object sender, RoutedEventArgs e)
+    private void NewPullRequestButton_Click(object sender, RoutedEventArgs e)
     {
-        RepoPullRequestPageViewModel.PullRequestCreateDialogData? data = await ViewModel.LoadCreateDialogDataAsync();
-        if (data is null)
+        UiTaskGuard.Run(async () =>
         {
-            return;
-        }
-
-        TextBox titleBox = new()
-        {
-            Header = ViewModel.TitleHeaderText,
-            PlaceholderText = L("RepoPullRequests/Dialogs/TitlePlaceholder", "Pull request title"),
-            MinWidth = 0,
-            HorizontalAlignment = HorizontalAlignment.Stretch
-        };
-        AutomationProperties.SetAutomationId(titleBox, "RepoPullRequestsCreateTitleBox");
-        AutomationProperties.SetName(titleBox, L("RepoPullRequests/Dialogs/TitleAutomationName", "Pull request title"));
-        TextBox headBox = new()
-        {
-            Header = ViewModel.HeadBranchHeaderText,
-            PlaceholderText = ViewModel.HeadBranchDialogPlaceholderText,
-            Text = data.DefaultHead
-        };
-        AutomationProperties.SetAutomationId(headBox, "RepoPullRequestsCreateHeadBranchBox");
-        AutomationProperties.SetName(headBox, L("RepoPullRequests/Dialogs/Create/HeadAutomationName", "Pull request head branch"));
-        TextBox baseBox = new()
-        {
-            Header = ViewModel.BaseBranchHeaderText,
-            Text = data.DefaultBase
-        };
-        AutomationProperties.SetAutomationId(baseBox, "RepoPullRequestsCreateBaseBranchBox");
-        AutomationProperties.SetName(baseBox, L("RepoPullRequests/Dialogs/Create/BaseAutomationName", "Pull request base branch"));
-        TextBox bodyBox = new()
-        {
-            Header = ViewModel.DescriptionHeaderText,
-            PlaceholderText = L("RepoPullRequests/Dialogs/DescriptionPlaceholder", "Add a description..."),
-            AcceptsReturn = true,
-            Height = 180,
-            TextWrapping = TextWrapping.Wrap
-        };
-        AutomationProperties.SetAutomationId(bodyBox, "RepoPullRequestsCreateBodyBox");
-        AutomationProperties.SetName(bodyBox, L("RepoPullRequests/Dialogs/DescriptionAutomationName", "Pull request description"));
-        TextBlock errorText = AppContentDialogPresenter.CreateInlineErrorPresenter(
-            "RepoPullRequestsCreateDialogError");
-        StackPanel content = new()
-        {
-            Spacing = 12,
-            Children =
+            RepoPullRequestPageViewModel.PullRequestCreateDialogData? data = await ViewModel.LoadCreateDialogDataAsync();
+            if (data is null)
             {
+                return;
+            }
+
+            TextBox titleBox = new()
+            {
+                Header = ViewModel.TitleHeaderText,
+                PlaceholderText = L("RepoPullRequests/Dialogs/TitlePlaceholder", "Pull request title"),
+                MinWidth = 0,
+                HorizontalAlignment = HorizontalAlignment.Stretch
+            };
+            AutomationProperties.SetAutomationId(titleBox, "RepoPullRequestsCreateTitleBox");
+            AutomationProperties.SetName(titleBox, L("RepoPullRequests/Dialogs/TitleAutomationName", "Pull request title"));
+            TextBox headBox = new()
+            {
+                Header = ViewModel.HeadBranchHeaderText,
+                PlaceholderText = ViewModel.HeadBranchDialogPlaceholderText,
+                Text = data.DefaultHead
+            };
+            AutomationProperties.SetAutomationId(headBox, "RepoPullRequestsCreateHeadBranchBox");
+            AutomationProperties.SetName(headBox, L("RepoPullRequests/Dialogs/Create/HeadAutomationName", "Pull request head branch"));
+            TextBox baseBox = new()
+            {
+                Header = ViewModel.BaseBranchHeaderText,
+                Text = data.DefaultBase
+            };
+            AutomationProperties.SetAutomationId(baseBox, "RepoPullRequestsCreateBaseBranchBox");
+            AutomationProperties.SetName(baseBox, L("RepoPullRequests/Dialogs/Create/BaseAutomationName", "Pull request base branch"));
+            TextBox bodyBox = new()
+            {
+                Header = ViewModel.DescriptionHeaderText,
+                PlaceholderText = L("RepoPullRequests/Dialogs/DescriptionPlaceholder", "Add a description..."),
+                AcceptsReturn = true,
+                Height = 180,
+                TextWrapping = TextWrapping.Wrap
+            };
+            AutomationProperties.SetAutomationId(bodyBox, "RepoPullRequestsCreateBodyBox");
+            AutomationProperties.SetName(bodyBox, L("RepoPullRequests/Dialogs/DescriptionAutomationName", "Pull request description"));
+            TextBlock errorText = AppContentDialogPresenter.CreateInlineErrorPresenter("RepoPullRequestsCreateDialogError");
+            StackPanel content = new()
+            {
+                Spacing = 12,
+                Children =
+                {
                 errorText,
                 titleBox,
                 headBox,
                 baseBox,
                 bodyBox
-            }
-        };
-        ContentDialog dialog = new()
-        {
-            XamlRoot = XamlRoot,
-            Title = ViewModel.NewPullRequestDialogTitle,
-            Content = content,
-            PrimaryButtonText = ViewModel.CreateButtonText,
-            CloseButtonText = ViewModel.CancelButtonText,
-            DefaultButton = ContentDialogButton.Primary
-        };
-        AppDialogStyleCatalog.Apply(dialog);
-        AutomationProperties.SetAutomationId(dialog, "RepoPullRequestsCreateDialog");
-        AutomationProperties.SetName(dialog, L("RepoPullRequests/Dialogs/Create/AutomationName", "Create pull request"));
-
-        await AppContentDialogPresenter.ShowForPrimaryActionAsync(
-            dialog,
-            XamlRoot,
-            async () =>
+                }
+            };
+            ContentDialog dialog = new()
             {
-                if (string.IsNullOrWhiteSpace(titleBox.Text) ||
-                    string.IsNullOrWhiteSpace(headBox.Text) ||
-                    string.IsNullOrWhiteSpace(baseBox.Text))
+                XamlRoot = XamlRoot,
+                Title = ViewModel.NewPullRequestDialogTitle,
+                Content = content,
+                PrimaryButtonText = ViewModel.CreateButtonText,
+                CloseButtonText = ViewModel.CancelButtonText,
+                DefaultButton = ContentDialogButton.Primary
+            };
+            AppDialogStyleCatalog.Apply(dialog);
+            AutomationProperties.SetAutomationId(dialog, "RepoPullRequestsCreateDialog");
+            AutomationProperties.SetName(dialog, L("RepoPullRequests/Dialogs/Create/AutomationName", "Create pull request"));
+            await AppContentDialogPresenter.ShowForPrimaryActionAsync(dialog, XamlRoot, async () =>
+            {
+                if (string.IsNullOrWhiteSpace(titleBox.Text) || string.IsNullOrWhiteSpace(headBox.Text) || string.IsNullOrWhiteSpace(baseBox.Text))
                 {
-                    return DialogMutationResult.Failure(
-                        L("RepoPullRequests/Dialogs/Create/RequiredFields", "Title, head branch, and base branch are required."));
+                    return DialogMutationResult.Failure(L("RepoPullRequests/Dialogs/Create/RequiredFields", "Title, head branch, and base branch are required."));
                 }
 
                 string previousStatus = ViewModel.StatusText;
-                await ViewModel.CreatePullRequestAsync(
-                    titleBox.Text.Trim(),
-                    headBox.Text.Trim(),
-                    baseBox.Text.Trim(),
-                    bodyBox.Text);
-                return ResolvePullRequestMutationResult(
-                    previousStatus,
-                    string.Equals(ViewModel.SelectedPullRequest?.Title, titleBox.Text.Trim(), StringComparison.Ordinal),
-                    "created pull request");
-            },
-            errorText,
-            layoutKind: AppDialogLayoutKind.Editor);
+                await ViewModel.CreatePullRequestAsync(titleBox.Text.Trim(), headBox.Text.Trim(), baseBox.Text.Trim(), bodyBox.Text);
+                return ResolvePullRequestMutationResult(previousStatus, string.Equals(ViewModel.SelectedPullRequest?.Title, titleBox.Text.Trim(), StringComparison.Ordinal), "created pull request");
+            }, errorText, layoutKind: AppDialogLayoutKind.Editor);
+        }, "ui-repo-pull-request-page");
     }
 
-    private async void EditPullRequestButton_Click(object sender, RoutedEventArgs e)
+    private void EditPullRequestButton_Click(object sender, RoutedEventArgs e)
     {
-        if (ViewModel.SelectedPullRequest is null)
+        UiTaskGuard.Run(async () =>
         {
-            return;
-        }
-
-        TextBox titleBox = new()
-        {
-            Header = ViewModel.TitleHeaderText,
-            Text = ViewModel.SelectedPullRequest.Title,
-            MinWidth = 0,
-            HorizontalAlignment = HorizontalAlignment.Stretch
-        };
-        AutomationProperties.SetAutomationId(titleBox, "RepoPullRequestsEditTitleBox");
-        AutomationProperties.SetName(titleBox, L("RepoPullRequests/Dialogs/TitleAutomationName", "Pull request title"));
-        MarkdownForm bodyForm = new()
-        {
-            Text = ViewModel.PullRequestBodyText,
-            DocumentSource = ViewModel.PullRequestBodyMarkdownSource,
-            EditorHeight = 360
-        };
-        AutomationProperties.SetAutomationId(bodyForm, "RepoPullRequestsEditBodyForm");
-        AutomationProperties.SetName(bodyForm, L("RepoPullRequests/Dialogs/DescriptionAutomationName", "Pull request description"));
-        TextBlock errorText = AppContentDialogPresenter.CreateInlineErrorPresenter(
-            "RepoPullRequestsEditDialogError");
-        StackPanel content = new()
-        {
-            Spacing = 12,
-            Children =
+            if (ViewModel.SelectedPullRequest is null)
             {
+                return;
+            }
+
+            TextBox titleBox = new()
+            {
+                Header = ViewModel.TitleHeaderText,
+                Text = ViewModel.SelectedPullRequest.Title,
+                MinWidth = 0,
+                HorizontalAlignment = HorizontalAlignment.Stretch
+            };
+            AutomationProperties.SetAutomationId(titleBox, "RepoPullRequestsEditTitleBox");
+            AutomationProperties.SetName(titleBox, L("RepoPullRequests/Dialogs/TitleAutomationName", "Pull request title"));
+            MarkdownForm bodyForm = new()
+            {
+                Text = ViewModel.PullRequestBodyText,
+                DocumentSource = ViewModel.PullRequestBodyMarkdownSource,
+                EditorHeight = 360
+            };
+            AutomationProperties.SetAutomationId(bodyForm, "RepoPullRequestsEditBodyForm");
+            AutomationProperties.SetName(bodyForm, L("RepoPullRequests/Dialogs/DescriptionAutomationName", "Pull request description"));
+            TextBlock errorText = AppContentDialogPresenter.CreateInlineErrorPresenter("RepoPullRequestsEditDialogError");
+            StackPanel content = new()
+            {
+                Spacing = 12,
+                Children =
+                {
                 titleBox,
                 bodyForm,
                 errorText
-            }
-        };
-        ContentDialog dialog = new()
-        {
-            XamlRoot = XamlRoot,
-            Title = ViewModel.FormatEditPullRequestDialogTitle(ViewModel.SelectedPullRequest.Number),
-            Content = content,
-            PrimaryButtonText = ViewModel.SaveButtonText,
-            CloseButtonText = ViewModel.CancelButtonText,
-            DefaultButton = ContentDialogButton.Primary
-        };
-        AppDialogStyleCatalog.Apply(dialog);
-        AutomationProperties.SetAutomationId(dialog, "RepoPullRequestsEditDialog");
-        AutomationProperties.SetName(dialog, L("RepoPullRequests/Dialogs/Edit/AutomationName", "Edit pull request"));
-
-        await AppContentDialogPresenter.ShowForPrimaryActionAsync(
-            dialog,
-            XamlRoot,
-            async () =>
+                }
+            };
+            ContentDialog dialog = new()
+            {
+                XamlRoot = XamlRoot,
+                Title = ViewModel.FormatEditPullRequestDialogTitle(ViewModel.SelectedPullRequest.Number),
+                Content = content,
+                PrimaryButtonText = ViewModel.SaveButtonText,
+                CloseButtonText = ViewModel.CancelButtonText,
+                DefaultButton = ContentDialogButton.Primary
+            };
+            AppDialogStyleCatalog.Apply(dialog);
+            AutomationProperties.SetAutomationId(dialog, "RepoPullRequestsEditDialog");
+            AutomationProperties.SetName(dialog, L("RepoPullRequests/Dialogs/Edit/AutomationName", "Edit pull request"));
+            await AppContentDialogPresenter.ShowForPrimaryActionAsync(dialog, XamlRoot, async () =>
             {
                 if (string.IsNullOrWhiteSpace(titleBox.Text))
                 {
@@ -1586,98 +1663,87 @@ public sealed partial class RepoPullRequestPage : Page
 
                 string previousStatus = ViewModel.StatusText;
                 await ViewModel.UpdateSelectedPullRequestAsync(titleBox.Text.Trim(), bodyForm.Text);
-                return ResolvePullRequestMutationResult(
-                    previousStatus,
-                    string.Equals(ViewModel.SelectedPullRequest?.Title, titleBox.Text.Trim(), StringComparison.Ordinal),
-                    "updated");
-            },
-            errorText,
-            layoutKind: AppDialogLayoutKind.Editor);
+                return ResolvePullRequestMutationResult(previousStatus, string.Equals(ViewModel.SelectedPullRequest?.Title, titleBox.Text.Trim(), StringComparison.Ordinal), "updated");
+            }, errorText, layoutKind: AppDialogLayoutKind.Editor);
+        }, "ui-repo-pull-request-page");
     }
 
-    private async void MetadataButton_Click(object sender, RoutedEventArgs e)
+    private void MetadataButton_Click(object sender, RoutedEventArgs e)
     {
-        RepoPullRequestPageViewModel.PullRequestMetadataDialogData? data = await ViewModel.LoadSelectedPullRequestMetadataDialogDataAsync();
-        if (data is null || ViewModel.SelectedPullRequest is null)
+        UiTaskGuard.Run(async () =>
         {
-            return;
-        }
-
-        TextBox reviewersBox = new()
-        {
-            Header = ViewModel.RequestedReviewersSectionTitle,
-            Text = string.Join(", ", ViewModel.RequestedReviewers.Select(reviewer => reviewer.Login)),
-            PlaceholderText = L("RepoPullRequests/Dialogs/Metadata/UsersPlaceholder", "user1, user2")
-        };
-        AutomationProperties.SetAutomationId(reviewersBox, "RepoPullRequestsMetadataReviewersBox");
-        AutomationProperties.SetName(reviewersBox, L("RepoPullRequests/Dialogs/Metadata/ReviewersAutomationName", "Requested reviewers"));
-        TextBox assigneesBox = new()
-        {
-            Header = ViewModel.AssigneesSectionTitle,
-            Text = string.Join(", ", ViewModel.SelectedAssignees.Select(assignee => assignee.Login)),
-            PlaceholderText = L("RepoPullRequests/Dialogs/Metadata/UsersPlaceholder", "user1, user2")
-        };
-        AutomationProperties.SetAutomationId(assigneesBox, "RepoPullRequestsMetadataAssigneesBox");
-        AutomationProperties.SetName(assigneesBox, L("RepoPullRequests/Dialogs/Metadata/AssigneesAutomationName", "Pull request assignees"));
-        TextBox labelsBox = new()
-        {
-            Header = ViewModel.LabelsSectionTitle,
-            Text = string.Join(", ", ViewModel.SelectedLabels.Select(label => label.Name)),
-            PlaceholderText = L("RepoPullRequests/Dialogs/Metadata/LabelsPlaceholder", "bug, ui")
-        };
-        AutomationProperties.SetAutomationId(labelsBox, "RepoPullRequestsMetadataLabelsBox");
-        AutomationProperties.SetName(labelsBox, L("RepoPullRequests/Dialogs/Metadata/LabelsAutomationName", "Pull request labels"));
-        ComboBox milestoneBox = new()
-        {
-            Header = ViewModel.MilestoneHeaderText,
-            DisplayMemberPath = nameof(GitHubMilestone.Title),
-            ItemsSource = data.AvailableMilestones,
-            SelectedItem = data.AvailableMilestones.FirstOrDefault(milestone => milestone.Title == ViewModel.MilestoneTitle)
-        };
-        AutomationProperties.SetAutomationId(milestoneBox, "RepoPullRequestsMetadataMilestonePicker");
-        AutomationProperties.SetName(milestoneBox, L("RepoPullRequests/Dialogs/Metadata/MilestoneAutomationName", "Pull request milestone"));
-        TextBlock errorText = AppContentDialogPresenter.CreateInlineErrorPresenter(
-            "RepoPullRequestsMetadataDialogError");
-        StackPanel content = new()
-        {
-            Spacing = 12,
-            Children =
+            RepoPullRequestPageViewModel.PullRequestMetadataDialogData? data = await ViewModel.LoadSelectedPullRequestMetadataDialogDataAsync();
+            if (data is null || ViewModel.SelectedPullRequest is null)
             {
+                return;
+            }
+
+            TextBox reviewersBox = new()
+            {
+                Header = ViewModel.RequestedReviewersSectionTitle,
+                Text = string.Join(", ", ViewModel.RequestedReviewers.Select(reviewer => reviewer.Login)),
+                PlaceholderText = L("RepoPullRequests/Dialogs/Metadata/UsersPlaceholder", "user1, user2")
+            };
+            AutomationProperties.SetAutomationId(reviewersBox, "RepoPullRequestsMetadataReviewersBox");
+            AutomationProperties.SetName(reviewersBox, L("RepoPullRequests/Dialogs/Metadata/ReviewersAutomationName", "Requested reviewers"));
+            TextBox assigneesBox = new()
+            {
+                Header = ViewModel.AssigneesSectionTitle,
+                Text = string.Join(", ", ViewModel.SelectedAssignees.Select(assignee => assignee.Login)),
+                PlaceholderText = L("RepoPullRequests/Dialogs/Metadata/UsersPlaceholder", "user1, user2")
+            };
+            AutomationProperties.SetAutomationId(assigneesBox, "RepoPullRequestsMetadataAssigneesBox");
+            AutomationProperties.SetName(assigneesBox, L("RepoPullRequests/Dialogs/Metadata/AssigneesAutomationName", "Pull request assignees"));
+            TextBox labelsBox = new()
+            {
+                Header = ViewModel.LabelsSectionTitle,
+                Text = string.Join(", ", ViewModel.SelectedLabels.Select(label => label.Name)),
+                PlaceholderText = L("RepoPullRequests/Dialogs/Metadata/LabelsPlaceholder", "bug, ui")
+            };
+            AutomationProperties.SetAutomationId(labelsBox, "RepoPullRequestsMetadataLabelsBox");
+            AutomationProperties.SetName(labelsBox, L("RepoPullRequests/Dialogs/Metadata/LabelsAutomationName", "Pull request labels"));
+            ComboBox milestoneBox = new()
+            {
+                Header = ViewModel.MilestoneHeaderText,
+                DisplayMemberPath = nameof(GitHubMilestone.Title),
+                ItemsSource = data.AvailableMilestones,
+                SelectedItem = data.AvailableMilestones.FirstOrDefault(milestone => milestone.Title == ViewModel.MilestoneTitle)
+            };
+            AutomationProperties.SetAutomationId(milestoneBox, "RepoPullRequestsMetadataMilestonePicker");
+            AutomationProperties.SetName(milestoneBox, L("RepoPullRequests/Dialogs/Metadata/MilestoneAutomationName", "Pull request milestone"));
+            TextBlock errorText = AppContentDialogPresenter.CreateInlineErrorPresenter("RepoPullRequestsMetadataDialogError");
+            StackPanel content = new()
+            {
+                Spacing = 12,
+                Children =
+                {
                 reviewersBox,
                 assigneesBox,
                 labelsBox,
                 milestoneBox,
                 errorText
-            }
-        };
-        ContentDialog dialog = new()
-        {
-            XamlRoot = XamlRoot,
-            Title = ViewModel.FormatMetadataDialogTitle(ViewModel.SelectedPullRequest.Number),
-            Content = content,
-            PrimaryButtonText = ViewModel.SaveButtonText,
-            CloseButtonText = ViewModel.CancelButtonText,
-            DefaultButton = ContentDialogButton.Primary
-        };
-        AppDialogStyleCatalog.Apply(dialog);
-        AutomationProperties.SetAutomationId(dialog, "RepoPullRequestsMetadataDialog");
-        AutomationProperties.SetName(dialog, L("RepoPullRequests/Dialogs/Metadata/AutomationName", "Edit pull request metadata"));
-
-        await AppContentDialogPresenter.ShowForPrimaryActionAsync(
-            dialog,
-            XamlRoot,
-            async () =>
+                }
+            };
+            ContentDialog dialog = new()
+            {
+                XamlRoot = XamlRoot,
+                Title = ViewModel.FormatMetadataDialogTitle(ViewModel.SelectedPullRequest.Number),
+                Content = content,
+                PrimaryButtonText = ViewModel.SaveButtonText,
+                CloseButtonText = ViewModel.CancelButtonText,
+                DefaultButton = ContentDialogButton.Primary
+            };
+            AppDialogStyleCatalog.Apply(dialog);
+            AutomationProperties.SetAutomationId(dialog, "RepoPullRequestsMetadataDialog");
+            AutomationProperties.SetName(dialog, L("RepoPullRequests/Dialogs/Metadata/AutomationName", "Edit pull request metadata"));
+            await AppContentDialogPresenter.ShowForPrimaryActionAsync(dialog, XamlRoot, async () =>
             {
                 GitHubMilestone? milestone = milestoneBox.SelectedItem as GitHubMilestone;
                 string previousStatus = ViewModel.StatusText;
-                await ViewModel.UpdateSelectedPullRequestMetadataAsync(new RepoPullRequestPageViewModel.PullRequestMetadataUpdate(
-                    SplitCsv(reviewersBox.Text),
-                    SplitCsv(assigneesBox.Text),
-                    SplitCsv(labelsBox.Text),
-                    milestone?.Number));
+                await ViewModel.UpdateSelectedPullRequestMetadataAsync(new RepoPullRequestPageViewModel.PullRequestMetadataUpdate(SplitCsv(reviewersBox.Text), SplitCsv(assigneesBox.Text), SplitCsv(labelsBox.Text), milestone?.Number));
                 return ResolvePullRequestMutationResult(previousStatus, false, "updated");
-            },
-            errorText);
+            }, errorText);
+        }, "ui-repo-pull-request-page");
     }
 
     private void PreviousDiffMatchButton_Click(object sender, RoutedEventArgs e)
@@ -1686,19 +1752,28 @@ public sealed partial class RepoPullRequestPage : Page
     private void NextDiffMatchButton_Click(object sender, RoutedEventArgs e)
         => ViewModel.MovePullRequestDiffSearchMatch(1);
 
-    private async void MergeCommitMenuItem_Click(object sender, RoutedEventArgs e)
+    private void MergeCommitMenuItem_Click(object sender, RoutedEventArgs e)
     {
-        await ShowMergeDialogAsync("merge");
+        UiTaskGuard.Run(async () =>
+        {
+            await ShowMergeDialogAsync("merge");
+        }, "ui-repo-pull-request-page");
     }
 
-    private async void SquashMergeMenuItem_Click(object sender, RoutedEventArgs e)
+    private void SquashMergeMenuItem_Click(object sender, RoutedEventArgs e)
     {
-        await ShowMergeDialogAsync("squash");
+        UiTaskGuard.Run(async () =>
+        {
+            await ShowMergeDialogAsync("squash");
+        }, "ui-repo-pull-request-page");
     }
 
-    private async void RebaseMergeMenuItem_Click(object sender, RoutedEventArgs e)
+    private void RebaseMergeMenuItem_Click(object sender, RoutedEventArgs e)
     {
-        await ShowMergeDialogAsync("rebase");
+        UiTaskGuard.Run(async () =>
+        {
+            await ShowMergeDialogAsync("rebase");
+        }, "ui-repo-pull-request-page");
     }
 
     private async Task ShowMergeDialogAsync(string mergeMethod)

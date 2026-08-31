@@ -8,15 +8,15 @@
         <Button
             AutomationProperties.AutomationId="{Binding Id}"
             AutomationProperties.Name="{Binding FullName}"
-            Margin="0,0,4,0"
+            Margin="{ThemeResource AppMargin0_0_4_0}"
             Style="{StaticResource AppQuietButtonStyle}"
             HorizontalAlignment="Stretch"
             HorizontalContentAlignment="Stretch"
         Background="{ThemeResource AppTransparentBrush}"
-            BorderThickness="0"
+            BorderThickness="{ThemeResource AppZeroThickness}"
             Command="{Binding DetailNavigationCommand}">
             <Grid>
-                <StackPanel Orientation="Horizontal" Spacing="4">
+                <StackPanel Orientation="Horizontal" Spacing="{ThemeResource AppGap4}">
                     <appcontrols:AppIcon
                         VerticalAlignment="Center"
                         IconBrush="{ThemeResource AppInkMutedBrush}"
@@ -42,7 +42,7 @@
                 </Grid.ColumnDefinitions>
                 <appcontrols:AppIcon
                     Grid.Column="0"
-                    Margin="0,5,5,0"
+                    Margin="{ThemeResource AppMargin0_5_5_0}"
                     VerticalAlignment="Top"
                     IconBrush="{ThemeResource AppInkMutedBrush}"
                     IconKind="Fork"
@@ -52,10 +52,11 @@
                     <TextBlock Text="{Binding Description, Mode=OneWay}" TextWrapping="Wrap" />
                     <StackPanel Orientation="Horizontal">
                         <appcontrols:AppIcon
+                            VerticalAlignment="Center"
                             IconBrush="{ThemeResource AppWarmAccentBrush}"
                             IconKind="Star"
                             IconSize="14" />
-                        <TextBlock Text="{Binding StargazersCount, Converter={StaticResource NumberToKizedStringConverter}, Mode=OneWay}" />
+                        <TextBlock VerticalAlignment="Center" Text="{Binding StargazersCount, Converter={StaticResource NumberToKizedStringConverter}, Mode=OneWay}" />
                     </StackPanel>
                 </StackPanel>
             </Grid>
@@ -67,14 +68,14 @@
                 AutomationProperties.AutomationId="{Binding Id}"
                 AutomationProperties.Name="{Binding FullName}"
                 IsChecked="{Binding Selected, Mode=TwoWay}">
-                <Grid Margin="16,0,0,0">
+                <Grid Margin="{ThemeResource AppMargin16_0_0_0}">
                     <Grid.ColumnDefinitions>
                         <ColumnDefinition Width="auto" />
                         <ColumnDefinition Width="*" />
                     </Grid.ColumnDefinitions>
                     <appcontrols:AppIcon
                         Grid.Column="0"
-                        Margin="0,5,5,0"
+                        Margin="{ThemeResource AppMargin0_5_5_0}"
                         VerticalAlignment="Top"
                         IconBrush="{ThemeResource AppInkMutedBrush}"
                         IconKind="Fork"
@@ -82,8 +83,9 @@
                     <StackPanel Grid.Column="1">
                         <TextBlock Text="{Binding FullName, Mode=OneWay}" />
                         <TextBlock Text="{Binding Description, Mode=OneWay}" TextWrapping="Wrap" />
-                        <StackPanel Orientation="Horizontal" Spacing="4">
+                        <StackPanel Orientation="Horizontal" Spacing="{ThemeResource AppGap4}">
                             <appcontrols:AppIcon
+                                VerticalAlignment="Center"
                                 IconBrush="{ThemeResource AppWarmAccentBrush}"
                                 IconKind="Star"
                                 IconSize="14" />

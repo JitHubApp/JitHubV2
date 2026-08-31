@@ -15,12 +15,12 @@
     d:DesignHeight="300"
     d:DesignWidth="400">
     <Grid
-        MinWidth="280"
-        Padding="4">
+        MinWidth="{ThemeResource AppDimension280}"
+        Padding="{ThemeResource AppPadding4}">
         <muxc:ProgressRing
             IsActive="True"
-            Height="50"
-            Width="50"
+            Height="{ThemeResource AppDimension50}"
+            Width="{ThemeResource AppDimension50}"
             HorizontalAlignment="Center"
             VerticalAlignment="Center"
             Visibility="{x:Bind ViewModel.Loading, Converter={StaticResource BoolToVisibilityConverter}, Mode=OneWay}"/>
@@ -58,7 +58,7 @@
                                             <muxc:ItemsRepeater.Layout>
                                                 <muxc:StackLayout
                                                     Orientation="Vertical"
-                                                    Spacing="4"/>
+                                                    Spacing="{ThemeResource AppGap4}"/>
                                             </muxc:ItemsRepeater.Layout>
                                         </muxc:ItemsRepeater>
                                     </ScrollViewer>
@@ -69,7 +69,7 @@
                 </muxc:ItemsRepeater.ItemTemplate>
                 <muxc:ItemsRepeater.Layout>
                     <muxc:StackLayout
-                        Spacing="4"/>
+                        Spacing="{ThemeResource AppGap4}"/>
                 </muxc:ItemsRepeater.Layout>
             </muxc:ItemsRepeater>
         </ScrollViewer>

@@ -466,8 +466,8 @@ public sealed partial class StarLibraryRecoveryStore : IStarLibraryRecoveryStore
         // SQLite's committed marker still proves that the logical clear won.
         // These deletes are intentionally separate. If the manifest cannot be removed,
         // its backup must remain available for the next recovery attempt.
-        DeletePathsStrict([ClearManifestPath]);
-        DeletePathsStrict([GetBackupPath(manifest)]);
+        DeletePathsStrict((string[])[ClearManifestPath]);
+        DeletePathsStrict((string[])[GetBackupPath(manifest)]);
         DeleteSidecarsStrict();
     }
 
@@ -492,8 +492,8 @@ public sealed partial class StarLibraryRecoveryStore : IStarLibraryRecoveryStore
 
         // Once the active journal is restored, remove the manifest before the backup. A
         // crash can leave an orphan backup, but never an instruction to restore missing data.
-        DeletePathsStrict([ClearManifestPath]);
-        DeletePathsStrict([backupPath]);
+        DeletePathsStrict((string[])[ClearManifestPath]);
+        DeletePathsStrict((string[])[backupPath]);
     }
 
     private string GetBackupPath(ClearManifest manifest) =>

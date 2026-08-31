@@ -238,7 +238,7 @@ public sealed class RepositoryLibraryWorkspaceContractTests
         DirectoryInfo? directory = new(AppContext.BaseDirectory);
         while (directory is not null)
         {
-            if (File.Exists(Path.Combine(directory.FullName, "JitHub.slnx")) ||
+            if (File.Exists(Path.Combine(directory.FullName, "Directory.Build.props")) ||
                 Directory.Exists(Path.Combine(directory.FullName, ".git")))
             {
                 return directory.FullName;

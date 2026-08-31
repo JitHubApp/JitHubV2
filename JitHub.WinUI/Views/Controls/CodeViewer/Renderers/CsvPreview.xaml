@@ -21,20 +21,21 @@
         <!--  Toolbar  -->
         <Border
             Grid.Row="0"
-            Padding="8,6"
+            Padding="{ThemeResource AppPadding8_6}"
             Background="{ThemeResource AppSurfaceBrush}"
             BorderBrush="{ThemeResource AppOutlineBrush}"
-            BorderThickness="0,0,0,1">
-            <controls:Segmented
+            BorderThickness="{ThemeResource AppBottomHairlineBorderThickness}">
+            <app:AppSegmented
                 x:Uid="CsvPreviewViewMode" x:Name="ViewModeSegmented"
                 HorizontalAlignment="Left"
                 AutomationProperties.AutomationId="CsvPreviewViewMode"
                 AutomationProperties.Name="CSV view mode"
                 SelectionChanged="ViewModeSegmented_SelectionChanged"
+                Style="{StaticResource AppContentSizedSegmentedStyle}"
                 SelectionMode="Single">
-                <controls:SegmentedItem x:Uid="CsvPreviewViewModeRich" AutomationProperties.AutomationId="CsvPreviewViewMode_Rich" AutomationProperties.Name="Rich CSV view" Content="Rich" />
-                <controls:SegmentedItem x:Uid="CsvPreviewViewModePlain" AutomationProperties.AutomationId="CsvPreviewViewMode_Plain" AutomationProperties.Name="Plain CSV view" Content="Plain" />
-            </controls:Segmented>
+                <app:AppSegmentedItem x:Uid="CsvPreviewViewModeRich" AutomationProperties.AutomationId="CsvPreviewViewMode_Rich" AutomationProperties.Name="Rich CSV view" Content="Rich" Style="{StaticResource AppContentSizedSegmentedItemStyle}" />
+                <app:AppSegmentedItem x:Uid="CsvPreviewViewModePlain" AutomationProperties.AutomationId="CsvPreviewViewMode_Plain" AutomationProperties.Name="Plain CSV view" Content="Plain" Style="{StaticResource AppContentSizedSegmentedItemStyle}" />
+            </app:AppSegmented>
         </Border>
 
         <!--  Rich: app-owned virtualized table  -->

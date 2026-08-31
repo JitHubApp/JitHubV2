@@ -15,7 +15,7 @@
 
     <Grid>
         <Grid.RowDefinitions>
-            <RowDefinition Height="118"/>
+            <RowDefinition Height="{ThemeResource AppGridLength118}"/>
             <RowDefinition Height="*"/>
             <RowDefinition Height="auto"/>
         </Grid.RowDefinitions>
@@ -23,7 +23,7 @@
             Grid.Row="0"
             HorizontalAlignment="Stretch"
             VerticalAlignment="Stretch"
-            Padding="16"
+            Padding="{ThemeResource AppPadding16}"
             CornerRadius="{ThemeResource AppRadiusTopMedium}"
             Background="{ThemeResource AppSurfaceSubtleBrush}">
             <Grid.ColumnDefinitions>
@@ -35,30 +35,31 @@
                 Grid.Column="0"
                 AutomationProperties.Name="{x:Bind Person.PersonaleName, Mode=OneWay}"
                 ProfilePicture="{x:Bind Person.ImageSource, Mode=OneWay}"
-                Width="86"
-                HorizontalAlignment="Center"/>
+                Width="{ThemeResource AppDimension86}"
+                HorizontalAlignment="Center"
+                VerticalAlignment="Center"/>
             <TextBlock
                 Grid.Column="1"
                 FontSize="{ThemeResource AppFontSize24}"
-                FontWeight="SemiBold"
+                FontWeight="{ThemeResource AppFontWeightSemibold}"
                 Foreground="{ThemeResource TextFillColorPrimaryBrush}"
                 VerticalAlignment="Center"
-                Margin="16 0 0 0"
+                Margin="{ThemeResource AppMargin16_0_0_0}"
                 Text="{x:Bind Person.PersonaleName, Mode=OneWay}"/>
             <Button
                 x:Uid="ControlsCommonCreditPersonaleDialogContributorDetailsClo" Grid.Column="2"
-                Padding="0"
-                Margin="16"
+                Padding="{ThemeResource AppPadding0}"
+                Margin="{ThemeResource AppMargin16}"
                 FontFamily="Segoe MDL2 Assets"
                 Content="&#xE711;"
                 AutomationProperties.AutomationId="ContributorDetailsCloseButton"
                 AutomationProperties.Name="Close contributor details"
                 Style="{StaticResource AppToolbarButtonStyle}"
                 CornerRadius="{ThemeResource AppRadiusMedium}"
-                Width="32"
-                Height="32"
-                BorderThickness="0"
-                FontWeight="Bold"
+                Width="{ThemeResource AppDimension32}"
+                Height="{ThemeResource AppDimension32}"
+                BorderThickness="{ThemeResource AppZeroThickness}"
+                FontWeight="{ThemeResource AppFontWeightBold}"
                 Background="{ThemeResource AppTransparentBrush}"
                 Foreground="{ThemeResource TextFillColorPrimaryBrush}"
                 Command="{x:Bind CancelCommand, Mode=OneWay}"
@@ -68,7 +69,7 @@
         </Grid>
         <Grid
             Grid.Row="1"
-            Padding="16 32"
+            Padding="{ThemeResource AppPadding16_32}"
             Background="{ThemeResource AppSolidPrimaryRush}">
             <TextBlock
                 TextWrapping="Wrap"
@@ -76,25 +77,25 @@
         </Grid>
         <Grid
             Grid.Row="2"
-            Padding="16"
+            Padding="{ThemeResource AppPadding16}"
             CornerRadius="{ThemeResource AppRadiusBottomMedium}"
             Background="{ThemeResource AppSolidSecondaryRush}">
             <muxc:ItemsRepeater
                 HorizontalAlignment="Left"
                 ItemsSource="{x:Bind Person.Links, Mode=OneWay}">
                 <muxc:ItemsRepeater.Layout>
-                    <muxc:StackLayout Orientation="Horizontal" Spacing="8"/>
+                    <muxc:StackLayout Orientation="Horizontal" Spacing="{ThemeResource AppGap8}"/>
                 </muxc:ItemsRepeater.Layout>
                 <muxc:ItemsRepeater.ItemTemplate>
                     <DataTemplate x:DataType="models:PersonalLink">
                         <Grid>
                             <HyperlinkButton
-                                Padding="0"
+                                Padding="{ThemeResource AppPadding0}"
                                 AutomationProperties.AutomationId="{x:Bind AutomationId, Mode=OneWay}"
                                 AutomationProperties.Name="{x:Bind AccessibleName, Mode=OneWay}"
                                 NavigateUri="{x:Bind Link, Mode=OneWay}">
                                 <Image
-                                    Width="32"
+                                    Width="{ThemeResource AppDimension32}"
                                     Source="{x:Bind LogoSource, Mode=OneWay}"/>
                             </HyperlinkButton>
                         </Grid>

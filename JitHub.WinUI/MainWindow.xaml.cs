@@ -6,7 +6,9 @@ using System.Runtime.InteropServices;
 using System.Threading.Tasks;
 using JitHub.Models;
 using JitHub.Services;
+using JitHub.WinUI.Helpers;
 using JitHub.WinUI.Performance;
+using Microsoft.UI.Composition.SystemBackdrops;
 using Microsoft.UI.Dispatching;
 using Microsoft.UI.Input;
 using Microsoft.UI.Windowing;
@@ -21,6 +23,7 @@ using Windows.Foundation;
 using Windows.Graphics;
 using Windows.ApplicationModel.Activation;
 using Windows.System;
+using Windows.UI;
 using Windows.UI.ViewManagement;
 using WinRT.Interop;
 
@@ -49,6 +52,7 @@ public sealed partial class MainWindow : Window
     private const int DefaultLaunchHeightDip = 900;
     private const int MinimumLaunchWidthDip = 960;
     private const int MinimumLaunchHeightDip = 640;
+    private static readonly TimeSpan StatusDisplayDuration = TimeSpan.FromSeconds(5);
     private static readonly nuint KeyboardSubclassId = 0x4A484B31;
     private readonly UISettings _uiSettings = new();
     private readonly InputNonClientPointerSource _nonClientPointerSource;
@@ -61,15 +65,28 @@ public sealed partial class MainWindow : Window
     private readonly Button _dialogFocusSentinel;
     private readonly Border _activationStatusHost;
     private readonly TextBlock _activationStatusText;
+    private readonly Microsoft.UI.Dispatching.DispatcherQueueTimer _activationStatusTimer;
+    private readonly Border _titleBarForegroundTokenProbe;
+    private readonly Border _titleBarInactiveForegroundTokenProbe;
+    private readonly Border _titleBarHoverForegroundTokenProbe;
+    private readonly Border _titleBarPressedForegroundTokenProbe;
+    private readonly Border _titleBarHoverBackgroundTokenProbe;
+    private readonly Border _titleBarPressedBackgroundTokenProbe;
+    private readonly Border _titleBarTransparentTokenProbe;
     private readonly ProductPerformanceVisualProbe? _productPerformanceVisualProbe;
+    private readonly bool _websiteShowcasePresentationMode;
     private nint _largeIconHandle;
     private nint _smallIconHandle;
+    private AppThemeSettingsMonitor? _themeSettings;
     private string _configuredTheme = ThemeConst.System;
     private bool _followSystemTheme;
+    private bool _suppressActiveThemeBrushRefresh;
     private bool _allowCloseAfterDiagnostics;
     private bool _closingRequestedRaised;
     private Task? _diagnosticsCloseTask;
     private ContentDialog? _activeContentDialog;
+    private bool _titleBarColorUpdatePending;
+    private bool _websiteShowcaseTooltipCleanupPending;
 
     private delegate nint SubclassProc(nint hWnd, uint message, nint wParam, nint lParam, nuint subclassId, nuint refData);
 
@@ -124,12 +141,26 @@ public sealed partial class MainWindow : Window
         InitializeComponent();
 
         _rootLayout = ResolveRequiredElement(RootLayout, nameof(RootLayout));
+        _websiteShowcasePresentationMode =
+            Program.CurrentLaunchOptions.WebsiteShowcase &&
+            !string.Equals(Program.CurrentLaunchOptions.Page, "profile", StringComparison.OrdinalIgnoreCase);
         _appTitleBar = ResolveRequiredElement(AppTitleBar, nameof(AppTitleBar));
         _contentFrame = ResolveRequiredElement(ContentFrame, nameof(ContentFrame));
         _contentDialogHost = ResolveRequiredElement(ContentDialogHost, nameof(ContentDialogHost));
         _dialogFocusSentinel = ResolveRequiredElement(DialogFocusSentinel, nameof(DialogFocusSentinel));
         _activationStatusHost = ResolveRequiredElement(ActivationStatusHost, nameof(ActivationStatusHost));
         _activationStatusText = ResolveRequiredElement(ActivationStatusText, nameof(ActivationStatusText));
+        _activationStatusTimer = DispatcherQueue.CreateTimer();
+        _activationStatusTimer.Interval = StatusDisplayDuration;
+        _activationStatusTimer.IsRepeating = false;
+        _activationStatusTimer.Tick += ActivationStatusTimer_Tick;
+        _titleBarForegroundTokenProbe = ResolveRequiredElement(TitleBarForegroundTokenProbe, nameof(TitleBarForegroundTokenProbe));
+        _titleBarInactiveForegroundTokenProbe = ResolveRequiredElement(TitleBarInactiveForegroundTokenProbe, nameof(TitleBarInactiveForegroundTokenProbe));
+        _titleBarHoverForegroundTokenProbe = ResolveRequiredElement(TitleBarHoverForegroundTokenProbe, nameof(TitleBarHoverForegroundTokenProbe));
+        _titleBarPressedForegroundTokenProbe = ResolveRequiredElement(TitleBarPressedForegroundTokenProbe, nameof(TitleBarPressedForegroundTokenProbe));
+        _titleBarHoverBackgroundTokenProbe = ResolveRequiredElement(TitleBarHoverBackgroundTokenProbe, nameof(TitleBarHoverBackgroundTokenProbe));
+        _titleBarPressedBackgroundTokenProbe = ResolveRequiredElement(TitleBarPressedBackgroundTokenProbe, nameof(TitleBarPressedBackgroundTokenProbe));
+        _titleBarTransparentTokenProbe = ResolveRequiredElement(TitleBarTransparentTokenProbe, nameof(TitleBarTransparentTokenProbe));
         AutomationProperties.SetAccessibilityView(
             _rootLayout,
             Microsoft.UI.Xaml.Automation.Peers.AccessibilityView.Control);
@@ -149,13 +180,36 @@ public sealed partial class MainWindow : Window
 
         ApplyDefaultLaunchPlacement();
         ConfigureWindowIcon();
+        _rootLayout.Loaded += RootLayout_Loaded;
+        _rootLayout.ActualThemeChanged += RootLayout_ActualThemeChanged;
+        if (_websiteShowcasePresentationMode)
+        {
+            _rootLayout.LayoutUpdated += RootLayout_LayoutUpdated;
+        }
         _uiSettings.ColorValuesChanged += OnColorValuesChanged;
+        _uiSettings.AnimationsEnabledChanged += OnVisualEffectsChanged;
+        _uiSettings.AdvancedEffectsEnabledChanged += OnVisualEffectsChanged;
         AppWindow.Closing += AppWindow_Closing;
         Closed += (_, _) =>
         {
             _productPerformanceVisualProbe?.Dispose();
             MarkdownRenderer.MarkdownRendererRuntime.Shutdown();
             _ = RemoveWindowSubclass(_hwnd, _keyboardSubclassProc, KeyboardSubclassId);
+            _rootLayout.Loaded -= RootLayout_Loaded;
+            _rootLayout.ActualThemeChanged -= RootLayout_ActualThemeChanged;
+            if (_themeSettings is not null)
+            {
+                _themeSettings.Changed -= ThemeSettings_Changed;
+            }
+            if (_websiteShowcasePresentationMode)
+            {
+                _rootLayout.LayoutUpdated -= RootLayout_LayoutUpdated;
+            }
+            _uiSettings.ColorValuesChanged -= OnColorValuesChanged;
+            _uiSettings.AnimationsEnabledChanged -= OnVisualEffectsChanged;
+            _uiSettings.AdvancedEffectsEnabledChanged -= OnVisualEffectsChanged;
+            _activationStatusTimer.Stop();
+            _activationStatusTimer.Tick -= ActivationStatusTimer_Tick;
             ReleaseWindowIcons();
         };
     }
@@ -163,7 +217,7 @@ public sealed partial class MainWindow : Window
     public void ProcessActivation()
     {
         ActivateAndForeground();
-        _activationStatusHost.Visibility = Visibility.Collapsed;
+        HideActivationStatus();
     }
 
     public void ShowActivationError(string message)
@@ -174,15 +228,288 @@ public sealed partial class MainWindow : Window
     public void ShowStatus(string message)
     {
         ActivateAndForeground();
+        _activationStatusTimer.Stop();
         _activationStatusText.Text = message;
         _activationStatusHost.Visibility = Visibility.Visible;
+        _activationStatusTimer.Start();
+    }
+
+    private void ActivationStatusTimer_Tick(
+        Microsoft.UI.Dispatching.DispatcherQueueTimer sender,
+        object args) =>
+        HideActivationStatus();
+
+    private void HideActivationStatus()
+    {
+        _activationStatusTimer.Stop();
+        _activationStatusHost.Visibility = Visibility.Collapsed;
+        _activationStatusText.Text = string.Empty;
     }
 
     public void ConfigureTheme(string? theme)
     {
         _configuredTheme = string.IsNullOrWhiteSpace(theme) ? ThemeConst.System : theme;
         _followSystemTheme = string.Equals(_configuredTheme, ThemeConst.System, StringComparison.OrdinalIgnoreCase);
-        _rootLayout.RequestedTheme = ResolveElementTheme(_configuredTheme);
+        _suppressActiveThemeBrushRefresh = true;
+        try
+        {
+            _rootLayout.RequestedTheme = ResolveElementTheme(_configuredTheme);
+        }
+        finally
+        {
+            _suppressActiveThemeBrushRefresh = false;
+        }
+
+        RefreshActivePaletteBrushes();
+        ApplyMaterialPolicy();
+        QueueTitleBarColorUpdate();
+    }
+
+    public void RefreshThemePalette()
+    {
+        ElementTheme resolvedTheme = ResolveElementTheme(_configuredTheme);
+        ElementTheme refreshTheme = resolvedTheme == ElementTheme.Dark
+            ? ElementTheme.Light
+            : ElementTheme.Dark;
+
+        // WinUI caches ThemeResource values already resolved by the visual tree.
+        // Switching away and back synchronously invalidates that cache without
+        // presenting the intermediate theme in a rendered frame.
+        _suppressActiveThemeBrushRefresh = true;
+        try
+        {
+            _rootLayout.RequestedTheme = refreshTheme;
+            _rootLayout.RequestedTheme = resolvedTheme;
+        }
+        finally
+        {
+            _suppressActiveThemeBrushRefresh = false;
+        }
+
+        RefreshActivePaletteBrushes(throwOnFailure: true);
+        ApplyMaterialPolicy(throwOnFailure: true);
+        _rootLayout.InvalidateMeasure();
+        _rootLayout.InvalidateArrange();
+        QueueTitleBarColorUpdate();
+    }
+
+    private void RootLayout_Loaded(object sender, RoutedEventArgs e)
+    {
+        EnsureThemeSettingsMonitor();
+        RefreshActivePaletteBrushes();
+        ApplyMaterialPolicy();
+        QueueTitleBarColorUpdate();
+    }
+
+    private void RootLayout_LayoutUpdated(object? sender, object e)
+    {
+        if (_websiteShowcaseTooltipCleanupPending)
+        {
+            return;
+        }
+
+        _websiteShowcaseTooltipCleanupPending = true;
+        _ = DispatcherQueue.TryEnqueue(Microsoft.UI.Dispatching.DispatcherQueuePriority.Low, () =>
+        {
+            _websiteShowcaseTooltipCleanupPending = false;
+            RemoveWebsiteShowcaseTooltips(_rootLayout);
+        });
+    }
+
+    private static void RemoveWebsiteShowcaseTooltips(DependencyObject root)
+    {
+        var pending = new Stack<DependencyObject>();
+        var tooltipOwners = new List<DependencyObject>();
+        pending.Push(root);
+        while (pending.Count > 0)
+        {
+            DependencyObject current = pending.Pop();
+            if (ToolTipService.GetToolTip(current) is not null)
+            {
+                tooltipOwners.Add(current);
+            }
+
+            int childCount = VisualTreeHelper.GetChildrenCount(current);
+            for (int index = 0; index < childCount; index++)
+            {
+                pending.Push(VisualTreeHelper.GetChild(current, index));
+            }
+        }
+
+        foreach (DependencyObject owner in tooltipOwners)
+        {
+            ToolTipService.SetToolTip(owner, null);
+        }
+    }
+
+    private void RootLayout_ActualThemeChanged(FrameworkElement sender, object args)
+    {
+        if (!_suppressActiveThemeBrushRefresh)
+        {
+            RefreshActivePaletteBrushes();
+        }
+
+        ApplyMaterialPolicy();
+        QueueTitleBarColorUpdate();
+    }
+
+    private void EnsureThemeSettingsMonitor()
+    {
+        AppThemeSettingsMonitor? monitor = ThemeSettingsHelper.TryGetFor(_rootLayout);
+        if (monitor is null || ReferenceEquals(_themeSettings, monitor))
+        {
+            return;
+        }
+
+        if (_themeSettings is not null)
+        {
+            _themeSettings.Changed -= ThemeSettings_Changed;
+        }
+
+        _themeSettings = monitor;
+        _themeSettings.Changed += ThemeSettings_Changed;
+    }
+
+    private void ThemeSettings_Changed(object? sender, EventArgs e)
+    {
+        _ = DispatcherQueue.TryEnqueue(() =>
+        {
+            RefreshActivePaletteBrushes();
+            ApplyMaterialPolicy();
+            QueueTitleBarColorUpdate();
+        });
+    }
+
+    private void RefreshActivePaletteBrushes(bool throwOnFailure = false)
+    {
+        try
+        {
+            ElementTheme activeTheme = _rootLayout.ActualTheme;
+            if (activeTheme == ElementTheme.Default)
+            {
+                activeTheme = ResolveElementTheme(_configuredTheme);
+            }
+
+            ThemePaletteRuntime.RefreshActiveBrushes(
+                Application.Current.Resources,
+                activeTheme,
+                ThemeSettingsHelper.IsHighContrastActive(_themeSettings));
+        }
+        catch (Exception exception) when (!throwOnFailure)
+        {
+            App.LogHandledException(exception, "theme-palette-brush-refresh");
+        }
+    }
+
+    private void ApplyMaterialPolicy(bool throwOnFailure = false)
+    {
+        try
+        {
+            AppMaterialPolicyState policy = AppMaterialPolicy.Evaluate(
+                _uiSettings.AnimationsEnabled,
+                _uiSettings.AdvancedEffectsEnabled,
+                ThemeSettingsHelper.IsHighContrastActive(_themeSettings),
+                MicaController.IsSupported());
+
+            if (policy.UseSystemBackdrop)
+            {
+                if (SystemBackdrop is not MicaBackdrop)
+                {
+                    SystemBackdrop = new MicaBackdrop();
+                }
+            }
+            else if (SystemBackdrop is not null)
+            {
+                SystemBackdrop = null;
+            }
+
+            ThemePaletteRuntime.SetMaterialEffectsEnabled(
+                Application.Current.Resources,
+                policy.UseTransientAcrylic);
+
+            if (!Application.Current.Resources.ContainsKey("AppWindowBackgroundBrush") ||
+                Application.Current.Resources["AppWindowBackgroundBrush"] is not SolidColorBrush windowBrush ||
+                !Application.Current.Resources.ContainsKey("AppCanvasBrush") ||
+                Application.Current.Resources["AppCanvasBrush"] is not SolidColorBrush canvasBrush)
+            {
+                throw new InvalidOperationException("The window material brush contract is unavailable.");
+            }
+
+            windowBrush.Color = policy.UseTransparentWindowSurface
+                ? Microsoft.UI.Colors.Transparent
+                : canvasBrush.Color;
+        }
+        catch (Exception exception) when (!throwOnFailure)
+        {
+            App.LogHandledException(exception, "window-material-policy");
+        }
+    }
+
+    private void QueueTitleBarColorUpdate()
+    {
+        if (_titleBarColorUpdatePending)
+        {
+            return;
+        }
+
+        _titleBarColorUpdatePending = true;
+        if (!DispatcherQueue.TryEnqueue(
+                Microsoft.UI.Dispatching.DispatcherQueuePriority.Low,
+                ApplyTitleBarColors))
+        {
+            _titleBarColorUpdatePending = false;
+        }
+    }
+
+    private void ApplyTitleBarColors()
+    {
+        _titleBarColorUpdatePending = false;
+        if (!TryReadTokenColor(_titleBarForegroundTokenProbe, out Color foreground) ||
+            !TryReadTokenColor(_titleBarInactiveForegroundTokenProbe, out Color inactiveForeground) ||
+            !TryReadTokenColor(_titleBarHoverForegroundTokenProbe, out Color hoverForeground) ||
+            !TryReadTokenColor(_titleBarPressedForegroundTokenProbe, out Color pressedForeground) ||
+            !TryReadTokenColor(_titleBarHoverBackgroundTokenProbe, out Color hoverBackground) ||
+            !TryReadTokenColor(_titleBarPressedBackgroundTokenProbe, out Color pressedBackground) ||
+            !TryReadTokenColor(_titleBarTransparentTokenProbe, out Color transparent))
+        {
+            ClearTitleBarColorOverrides();
+            return;
+        }
+
+        AppWindowTitleBar titleBar = AppWindow.TitleBar;
+        titleBar.ButtonForegroundColor = foreground;
+        titleBar.ButtonInactiveForegroundColor = inactiveForeground;
+        titleBar.ButtonHoverForegroundColor = hoverForeground;
+        titleBar.ButtonPressedForegroundColor = pressedForeground;
+        titleBar.ButtonBackgroundColor = transparent;
+        titleBar.ButtonInactiveBackgroundColor = transparent;
+        titleBar.ButtonHoverBackgroundColor = hoverBackground;
+        titleBar.ButtonPressedBackgroundColor = pressedBackground;
+    }
+
+    private void ClearTitleBarColorOverrides()
+    {
+        AppWindowTitleBar titleBar = AppWindow.TitleBar;
+        titleBar.ButtonForegroundColor = null;
+        titleBar.ButtonInactiveForegroundColor = null;
+        titleBar.ButtonHoverForegroundColor = null;
+        titleBar.ButtonPressedForegroundColor = null;
+        titleBar.ButtonBackgroundColor = null;
+        titleBar.ButtonInactiveBackgroundColor = null;
+        titleBar.ButtonHoverBackgroundColor = null;
+        titleBar.ButtonPressedBackgroundColor = null;
+    }
+
+    private static bool TryReadTokenColor(Border probe, out Color color)
+    {
+        if (probe.Background is SolidColorBrush brush)
+        {
+            color = brush.Color;
+            return true;
+        }
+
+        color = default;
+        return false;
     }
 
     public Frame ContentFrameHost => _contentFrame;
@@ -288,7 +615,7 @@ public sealed partial class MainWindow : Window
         }
         catch (Exception ex)
         {
-            System.Diagnostics.Debug.WriteLine($"Dialog focus inspection was skipped: {ex}");
+            App.LogHandledException(ex, "content-dialog-focus-inspection");
         }
 
         return false;
@@ -461,7 +788,7 @@ public sealed partial class MainWindow : Window
         }
         catch (Exception exception) when (exception is InvalidOperationException or System.Runtime.InteropServices.COMException)
         {
-            System.Diagnostics.Debug.WriteLine($"The active dialog could not be dismissed before close: {exception.Message}");
+            App.LogHandledException(exception, "content-dialog-close-dismissal");
         }
 
         for (int attempt = 0; attempt < 50 && ReferenceEquals(_activeContentDialog, dialog); attempt++)
@@ -574,12 +901,30 @@ public sealed partial class MainWindow : Window
 
     private void OnColorValuesChanged(UISettings sender, object args)
     {
-        if (!_followSystemTheme)
+        _ = DispatcherQueue.TryEnqueue(() =>
         {
-            return;
-        }
+            if (_followSystemTheme)
+            {
+                _suppressActiveThemeBrushRefresh = true;
+                try
+                {
+                    _rootLayout.RequestedTheme = ResolveElementTheme(_configuredTheme);
+                }
+                finally
+                {
+                    _suppressActiveThemeBrushRefresh = false;
+                }
+            }
 
-        _ = DispatcherQueue.TryEnqueue(() => _rootLayout.RequestedTheme = ResolveElementTheme(_configuredTheme));
+            RefreshActivePaletteBrushes();
+            ApplyMaterialPolicy();
+            QueueTitleBarColorUpdate();
+        });
+    }
+
+    private void OnVisualEffectsChanged(UISettings sender, object args)
+    {
+        _ = DispatcherQueue.TryEnqueue(() => ApplyMaterialPolicy());
     }
 
     private static ElementTheme GetCurrentSystemTheme()

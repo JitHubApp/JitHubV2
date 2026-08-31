@@ -2,6 +2,8 @@ using System;
 using System.IO;
 using System.Runtime.InteropServices.WindowsRuntime;
 using System.Threading.Tasks;
+using JitHub.Services;
+using JitHub.Services.CodeViewer;
 using JitHub.WinUI.ViewModels.CodeViewer;
 using Microsoft.UI.Dispatching;
 using Microsoft.UI.Xaml;
@@ -17,17 +19,64 @@ namespace JitHub.WinUI.Views.Controls.CodeViewer.Renderers;
 /// </summary>
 public sealed partial class ImagePreview : UserControl
 {
+    private static readonly TimeSpan ZoomSettleDelay = TimeSpan.FromMilliseconds(120);
+
     private readonly DispatcherQueue _dispatcher;
+    private readonly SettledZoomTracker _zoomTracker = new();
+    private readonly DispatcherQueueTimer _zoomSettleTimer;
     private byte[]? _lastBytes;
+
+    public event Action<string, string>? ActionCompleted;
 
     public ImagePreview()
     {
         InitializeComponent();
         _dispatcher = DispatcherQueue.GetForCurrentThread();
+        _zoomSettleTimer = _dispatcher.CreateTimer();
+        _zoomSettleTimer.Interval = ZoomSettleDelay;
+        _zoomSettleTimer.IsRepeating = false;
+        _zoomSettleTimer.Tick += ZoomSettleTimer_Tick;
         DataContextChanged += OnDataContextChanged;
+        Loaded += OnLoaded;
+        Unloaded += OnUnloaded;
     }
 
     private RepoFilePreviewViewModel? ViewModel => DataContext as RepoFilePreviewViewModel;
+
+    private void OnLoaded(object sender, RoutedEventArgs e)
+    {
+        _zoomTracker.Reset(PreviewScrollViewer.ZoomFactor);
+    }
+
+    private void OnUnloaded(object sender, RoutedEventArgs e)
+    {
+        _zoomSettleTimer.Stop();
+        _zoomTracker.ClearPending();
+    }
+
+    private void PreviewScrollViewer_ViewChanged(object? sender, ScrollViewerViewChangedEventArgs e)
+    {
+        if (!_zoomTracker.Observe(PreviewScrollViewer.ZoomFactor))
+        {
+            _zoomSettleTimer.Stop();
+            return;
+        }
+
+        _zoomSettleTimer.Stop();
+        _zoomSettleTimer.Start();
+    }
+
+    private void ZoomSettleTimer_Tick(DispatcherQueueTimer sender, object args)
+    {
+        if (!_zoomTracker.TrySettle(out _))
+        {
+            return;
+        }
+
+        ActionCompleted?.Invoke(
+            RepoCodeTelemetryActions.ImageZoom,
+            TelemetryTaxonomy.Results.Success);
+    }
 
     private void OnDataContextChanged(FrameworkElement sender, DataContextChangedEventArgs args)
     {
@@ -48,7 +97,7 @@ public sealed partial class ImagePreview : UserControl
 
         UpdateFooter(vm!, null, null);
 
-        _ = LoadImageAsync(bytes, vm!);
+        UiTaskGuard.Observe(LoadImageAsync(bytes, vm!), "ui-image-preview");
     }
 
     private async Task LoadImageAsync(byte[] bytes, RepoFilePreviewViewModel vm)

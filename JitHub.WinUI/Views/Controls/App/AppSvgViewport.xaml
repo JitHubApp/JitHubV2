@@ -14,7 +14,7 @@
     <Grid Background="{ThemeResource AppTransparentBrush}">
         <Canvas
             x:Name="TileCanvas"
-            Margin="16"
+            Margin="{ThemeResource AppMargin16}"
             Background="{ThemeResource AppTransparentBrush}"
             SizeChanged="TileCanvas_SizeChanged" />
     </Grid>

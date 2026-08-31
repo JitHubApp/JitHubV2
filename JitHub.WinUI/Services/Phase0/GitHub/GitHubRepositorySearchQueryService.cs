@@ -166,7 +166,7 @@ public sealed class GitHubRepositorySearchQueryService : IGitHubRepositorySearch
             GitHubCachePolicy.SearchResource,
             GitHubCachePolicy.TtlForResource(GitHubCachePolicy.SearchResource),
             Phase0GitHubJsonSerializerContext.Default.GitHubRepositorySearchResponse,
-            ["repo-search", "repository-search-workspace"],
+            (string[])["repo-search", "repository-search-workspace"],
             page == 1 ? GitHubRequestPriority.UserInitiated : GitHubRequestPriority.Prefetch);
 
         return forceRefresh

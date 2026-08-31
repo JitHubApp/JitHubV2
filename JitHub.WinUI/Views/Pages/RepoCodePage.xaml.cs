@@ -52,84 +52,74 @@ public sealed partial class RepoCodePage : Page, IRepositoryCompactCommandProvid
         Unloaded += OnPageUnloaded;
     }
 
-    protected override async void OnNavigatedTo(NavigationEventArgs e)
+    protected override void OnNavigatedTo(NavigationEventArgs e)
     {
-        base.OnNavigatedTo(e);
-        ProductPerformanceReadiness.RecordTraversalStage("repo_code.navigated");
-
-        if (e.Parameter is not CodeViewerNavArg arg || arg.Repo is null)
+        UiTaskGuard.Run(async () =>
         {
-            ShowError(LocalizedResourceText.GetString(
-                "RepoCode/Error/MissingContext",
-                "Repository context is required to open the code viewer."));
-            return;
-        }
-
-        var repo = arg.Repo;
-        var owner = repo.Owner?.Login;
-        var name = repo.Name;
-        if (string.IsNullOrWhiteSpace(owner) || string.IsNullOrWhiteSpace(name))
-        {
-            ShowError(LocalizedResourceText.GetString(
-                "RepoCode/Error/IncompleteMetadata",
-                "Repository metadata is incomplete."));
-            return;
-        }
-
-        string? gitRef = arg.IsBranch ? arg.Branch : arg.GitRef;
-        if (string.IsNullOrWhiteSpace(gitRef))
-        {
-            gitRef = repo.DefaultBranch;
-        }
-
-        if (string.IsNullOrWhiteSpace(gitRef))
-        {
-            ShowError(LocalizedResourceText.GetString(
-                "RepoCode/Error/MissingRef",
-                "Could not determine which branch to load."));
-            return;
-        }
-
-        _initCts?.Cancel();
-        _initCts?.Dispose();
-        _initCts = new CancellationTokenSource();
-        long navigationGeneration = Interlocked.Increment(ref _navigationGeneration);
-        CancellationToken routeToken = _initCts.Token;
-
-        try
-        {
-            // Publish the stable workspace state, then let it paint before a
-            // ready preparation can reconcile synchronously. Without this
-            // boundary a cache hit can be slower perceptually than a miss.
-            ProductPerformanceReadiness.CommitRoute(
-                "repo_code",
-                $"repo={owner}/{name};state=visible");
-            ProductPerformanceReadiness.RecordTraversalStage("repo_code.visible");
-            await WaitForRenderedFrameAsync(routeToken);
-            if (navigationGeneration != Volatile.Read(ref _navigationGeneration))
+            base.OnNavigatedTo(e);
+            ProductPerformanceReadiness.RecordTraversalStage("repo_code.navigated");
+            if (e.Parameter is not CodeViewerNavArg arg || arg.Repo is null)
             {
+                ShowError(LocalizedResourceText.GetString("RepoCode/Error/MissingContext", "Repository context is required to open the code viewer."));
                 return;
             }
 
-            await ViewModel.InitializeAsync(owner!, name!, gitRef!, routeToken);
-            if (navigationGeneration != Volatile.Read(ref _navigationGeneration))
+            var repo = arg.Repo;
+            var owner = repo.Owner?.Login;
+            var name = repo.Name;
+            if (string.IsNullOrWhiteSpace(owner) || string.IsNullOrWhiteSpace(name))
             {
+                ShowError(LocalizedResourceText.GetString("RepoCode/Error/IncompleteMetadata", "Repository metadata is incomplete."));
                 return;
             }
 
-            ProductPerformanceReadiness.CommitRoute(
-                "repo_code",
-                $"repo={owner}/{name};{ProductPerformanceReadiness.CountIdentity(ViewModel.Tree.RootNodes.Count)}");
-            UpdatePaneButtonVisibility();
-        }
-        catch (OperationCanceledException) { }
-        catch (Exception ex)
-        {
-            ShowError(JitHub.WinUI.Helpers.UserFacingError.For(
-                ex,
-                JitHub.WinUI.Helpers.UserFacingErrorKind.Loading,
-                "repository-code"));
-        }
+            string? gitRef = arg.IsBranch ? arg.Branch : arg.GitRef;
+            if (string.IsNullOrWhiteSpace(gitRef))
+            {
+                gitRef = repo.DefaultBranch;
+            }
+
+            if (string.IsNullOrWhiteSpace(gitRef))
+            {
+                ShowError(LocalizedResourceText.GetString("RepoCode/Error/MissingRef", "Could not determine which branch to load."));
+                return;
+            }
+
+            _initCts?.Cancel();
+            _initCts?.Dispose();
+            _initCts = new CancellationTokenSource();
+            long navigationGeneration = Interlocked.Increment(ref _navigationGeneration);
+            CancellationToken routeToken = _initCts.Token;
+            try
+            {
+                // Publish the stable workspace state, then let it paint before a
+                // ready preparation can reconcile synchronously. Without this
+                // boundary a cache hit can be slower perceptually than a miss.
+                ProductPerformanceReadiness.CommitRoute("repo_code", $"repo={owner}/{name};state=visible");
+                ProductPerformanceReadiness.RecordTraversalStage("repo_code.visible");
+                await WaitForRenderedFrameAsync(routeToken);
+                if (navigationGeneration != Volatile.Read(ref _navigationGeneration))
+                {
+                    return;
+                }
+
+                await ViewModel.InitializeAsync(owner!, name!, gitRef!, routeToken);
+                if (navigationGeneration != Volatile.Read(ref _navigationGeneration))
+                {
+                    return;
+                }
+
+                ProductPerformanceReadiness.CommitRoute("repo_code", $"repo={owner}/{name};{ProductPerformanceReadiness.CountIdentity(ViewModel.Tree.RootNodes.Count)}");
+                UpdatePaneButtonVisibility();
+            }
+            catch (OperationCanceledException)
+            {
+            }
+            catch (Exception ex)
+            {
+                ShowError(JitHub.WinUI.Helpers.UserFacingError.For(ex, JitHub.WinUI.Helpers.UserFacingErrorKind.Loading, "repository-code"));
+            }
+        }, "ui-repo-code-page");
     }
 
     protected override void OnNavigatedFrom(NavigationEventArgs e)
@@ -202,47 +192,41 @@ public sealed partial class RepoCodePage : Page, IRepositoryCompactCommandProvid
         CodeWorkspace.CloseDrawer();
     }
 
-    private async void FileTree_FileInvoked(object? sender, RepoFileInvokedEventArgs e)
+    private void FileTree_FileInvoked(object? sender, RepoFileInvokedEventArgs e)
     {
-        if (CodeWorkspace.IsLeadingDrawerOpen)
+        UiTaskGuard.Run(async () =>
         {
-            CodeWorkspace.CloseDrawer();
-        }
+            if (CodeWorkspace.IsLeadingDrawerOpen)
+            {
+                CodeWorkspace.CloseDrawer();
+            }
 
-        if (_initCts is not { } initialization ||
-            !ViewModel.PrimeTreeNodeSelection(e.Node, initialization.Token, out long selectionGeneration))
-        {
-            return;
-        }
-
-        e.Handled = true;
-        long generation = Interlocked.Increment(ref _fileTraversalGeneration);
-        if (ProductPerformanceReadiness.IsEnabled)
-        {
-            _pendingFileTraversal = new PendingFileTraversal(
-                e.Path,
-                e.AutomationId,
-                generation,
-                initialization.Token);
-            ScheduleFileTraversalCommit(_pendingFileTraversal);
-            ProductPerformanceReadiness.RecordTraversalStage("repo_code.render.scheduled");
-        }
-
-        try
-        {
-            await WaitForRenderedFrameAsync(initialization.Token);
-            if (generation != Volatile.Read(ref _fileTraversalGeneration) ||
-                initialization.IsCancellationRequested)
+            if (_initCts is not { } initialization || !ViewModel.PrimeTreeNodeSelection(e.Node, initialization.Token, out long selectionGeneration))
             {
                 return;
             }
 
-            ProductPerformanceReadiness.RecordTraversalStage("repo_code.command.executed");
-            await ViewModel.HydratePrimedTreeNodeSelectionAsync(e.Node, selectionGeneration);
-        }
-        catch (OperationCanceledException) when (initialization.IsCancellationRequested)
-        {
-        }
+            e.Handled = true;
+            long generation = Interlocked.Increment(ref _fileTraversalGeneration);
+            _pendingFileTraversal = new PendingFileTraversal(e.Path, e.AutomationId, generation, initialization.Token);
+            ScheduleFileTraversalCommit(_pendingFileTraversal);
+            ProductPerformanceReadiness.RecordTraversalStage("repo_code.render.scheduled");
+
+            try
+            {
+                await WaitForRenderedFrameAsync(initialization.Token);
+                if (generation != Volatile.Read(ref _fileTraversalGeneration) || initialization.IsCancellationRequested)
+                {
+                    return;
+                }
+
+                ProductPerformanceReadiness.RecordTraversalStage("repo_code.command.executed");
+                await ViewModel.HydratePrimedTreeNodeSelectionAsync(e.Node, selectionGeneration);
+            }
+            catch (OperationCanceledException) when (initialization.IsCancellationRequested)
+            {
+            }
+        }, "ui-repo-code-page");
     }
 
     private void ScheduleFileTraversalCommit(PendingFileTraversal pending)
@@ -254,7 +238,16 @@ public sealed partial class RepoCodePage : Page, IRepositoryCompactCommandProvid
                 pending.Generation == Volatile.Read(ref _fileTraversalGeneration) &&
                 !pending.CancellationToken.IsCancellationRequested,
             () =>
-                ViewModel.IsFileSelectionPresented(pending.Path),
+            {
+                bool isPresented =
+                    ViewModel.IsFileSelectionPresented(pending.Path) &&
+                    FileTree.IsFileSelectionVisuallyPresented(pending.Path);
+                ProductPerformanceReadiness.RecordTraversalStage(
+                    isPresented
+                        ? "repo_code.render.ready"
+                        : "repo_code.render.not_ready");
+                return isPresented;
+            },
             () =>
             {
                 _pendingFileTraversal = null;
@@ -262,7 +255,8 @@ public sealed partial class RepoCodePage : Page, IRepositoryCompactCommandProvid
                 ProductPerformanceReadiness.CommitTraversal(
                     "repo_code",
                     pending.AutomationId);
-            });
+            },
+            scheduleWhenDisabled: true);
     }
 
     private static async Task WaitForRenderedFrameAsync(CancellationToken cancellationToken)
@@ -411,6 +405,7 @@ public sealed partial class RepoCodePage : Page, IRepositoryCompactCommandProvid
     }
 
     public System.Collections.Generic.IReadOnlyList<RepositoryCompactCommand> GetRepositoryCompactCommands() =>
+    (RepositoryCompactCommand[])
     [
         new(
             "file-tree",

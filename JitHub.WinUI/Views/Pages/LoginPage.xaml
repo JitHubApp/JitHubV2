@@ -17,28 +17,28 @@
         <ScrollViewer VerticalScrollBarVisibility="Auto">
             <Grid
                 MaxWidth="{ThemeResource AppLoginPageMaxWidth}"
-                Margin="0,40,0,40"
+                Margin="{ThemeResource AppMargin0_40_0_40}"
                 HorizontalAlignment="Center"
                 VerticalAlignment="Center">
                 <StackPanel
-                    MaxWidth="760"
-                    Spacing="24"
+                    MaxWidth="{ThemeResource AppDimension760}"
+                    Spacing="{ThemeResource AppGap24}"
                     VerticalAlignment="Center">
                     <StackPanel
-                        MaxWidth="640"
-                        Spacing="0">
+                        MaxWidth="{ThemeResource AppDimension640}"
+                        Spacing="{ThemeResource AppGap0}">
                         <TextBlock
                             Style="{StaticResource PageTitleTextBlockStyle}"
                             Text="{x:Bind ViewModel.AppTitle, Mode=OneWay}" />
                     </StackPanel>
 
                     <appcontrols:AppSurfaceCard
-                        x:Uid="PagesLoginPageLoginCard" MaxWidth="460"
+                        x:Uid="PagesLoginPageLoginCard" MaxWidth="{ThemeResource AppDimension460}"
                         HorizontalAlignment="Left"
                         AutomationProperties.AutomationId="LoginCard"
                         AutomationProperties.Name="GitHub sign in">
                         <appcontrols:AppSurfaceCard.Child>
-                            <StackPanel Spacing="16">
+                            <StackPanel Spacing="{ThemeResource AppGap16}">
                                 <TextBlock
                                     Style="{StaticResource SectionTitleTextBlockStyle}"
                                     Text="{x:Bind ViewModel.SignInTitle, Mode=OneWay}" />
@@ -67,9 +67,9 @@
                                     Style="{StaticResource PrimaryActionButtonStyle}">
                                     <StackPanel
                                         Orientation="Horizontal"
-                                        Spacing="8">
-                                        <FontIcon Glyph="&#xE72E;" />
-                                        <TextBlock Text="{x:Bind ViewModel.ContinueWithGitHubButtonText, Mode=OneWay}" />
+                                        Spacing="{ThemeResource AppGap8}">
+                                        <FontIcon VerticalAlignment="Center" Glyph="&#xE72E;" />
+                                        <TextBlock VerticalAlignment="Center" Text="{x:Bind ViewModel.ContinueWithGitHubButtonText, Mode=OneWay}" />
                                     </StackPanel>
                                 </Button>
                             </StackPanel>

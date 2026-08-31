@@ -93,7 +93,7 @@ public sealed partial class ActivityCard : UserControl
         {
             hyperlink.Inlines.Add(new Run
             {
-                Text = $"{part.Glyph} ",
+                Text = $"{part.Glyph}\u00A0",
                 FontFamily = Resource<FontFamily>("SegoeFluentIcons"),
                 FontSize = Resource<double>("AppFontSize12"),
                 FontWeight = FontWeights.Normal

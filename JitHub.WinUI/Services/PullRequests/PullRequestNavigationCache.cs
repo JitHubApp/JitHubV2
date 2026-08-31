@@ -268,16 +268,7 @@ public sealed partial class PullRequestNavigationCache : IPullRequestNavigationC
                 completion),
             new ApplicationTaskOptions("pull_requests.prefetch.scheduled", normalizedPartition),
             cancellation.Token);
-        _ = scheduledTask.ContinueWith(
-            static (task, state) =>
-            {
-                _ = task.Exception;
-                ((ScheduledPrefetchCompletion<PullRequestPrefetchResult>)state!).Complete(PullRequestPrefetchResult.Cancelled);
-            },
-            completion,
-            CancellationToken.None,
-            TaskContinuationOptions.ExecuteSynchronously,
-            TaskScheduler.Default);
+        completion.Observe(scheduledTask, PullRequestPrefetchResult.Cancelled);
         return new DisposableAction(cancellation, scheduledTask);
     }
 

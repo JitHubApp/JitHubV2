@@ -1,4 +1,5 @@
 using System.Diagnostics;
+using System.ComponentModel;
 using System.Drawing;
 using System.Runtime.InteropServices;
 using System.Text.Json;
@@ -105,7 +106,11 @@ internal sealed class ProductPerformanceRouteProbe
                 blankingOccurrences += selectionBlanking;
             }
 
-            measurements.AddRange(MeasureDispatcherAndScroll(runCase, appRoot, continuity));
+            measurements.AddRange(MeasureDispatcherAndScroll(
+                runCase,
+                appRoot,
+                continuity,
+                new IntPtr(appWindow.Properties.NativeWindowHandle.ValueOrDefault)));
             if (runCase.Fixture != ProductPerformanceFixture.Cold &&
                 runCase.Route.SupportsTraversal &&
                 !measureSelectionBeforeScroll)
@@ -138,7 +143,36 @@ internal sealed class ProductPerformanceRouteProbe
         finally
         {
             CloseApplication(application);
+            ArchiveDiagnostics(runCase, partitionRoot);
         }
+    }
+
+    private void ArchiveDiagnostics(ProductPerformanceRunCase runCase, string partitionRoot)
+    {
+        string sourcePath = Path.Combine(
+            partitionRoot,
+            "Local",
+            "Diagnostics",
+            "v1",
+            "diagnostics.ndjson");
+        if (!File.Exists(sourcePath))
+        {
+            return;
+        }
+
+        string iterationName = runCase.Iteration < 0
+            ? "warmup"
+            : $"iteration-{runCase.Iteration + 1:D2}";
+        string destinationDirectory = Path.Combine(
+            _dataRoot,
+            "diagnostics",
+            runCase.Fixture.ToString().ToLowerInvariant(),
+            runCase.Route.Id);
+        Directory.CreateDirectory(destinationDirectory);
+        File.Copy(
+            sourcePath,
+            Path.Combine(destinationDirectory, $"{iterationName}.ndjson"),
+            overwrite: true);
     }
 
     private ProcessStartInfo CreateStartInfo(ProductPerformanceRunCase runCase, string partitionRoot)
@@ -206,11 +240,15 @@ internal sealed class ProductPerformanceRouteProbe
             catch (InvalidOperationException)
             {
             }
-            catch (COMException exception) when (
-                exception.HResult == unchecked((int)0x80040201))
+            catch (COMException exception) when (IsTransientUiAutomationFailure(exception))
             {
                 // A startup element can disappear between enumeration and property access.
                 // Retry the fresh desktop tree instead of failing the entire benchmark run.
+            }
+            catch (Win32Exception exception) when (IsTransientUiAutomationTimeout(exception))
+            {
+                // FlaUI wraps a temporarily unresponsive provider as Win32 timeout 1460.
+                // The outer 20-second deadline remains authoritative.
             }
 
             Thread.Sleep(10);
@@ -224,10 +262,19 @@ internal sealed class ProductPerformanceRouteProbe
         Stopwatch timeout = Stopwatch.StartNew();
         while (timeout.Elapsed < ElementTimeout)
         {
-            AutomationElement? element = FindVisible(root, automationId);
-            if (element is not null)
+            try
             {
-                return element;
+                AutomationElement? element = FindVisible(root, automationId);
+                if (element is not null)
+                {
+                    return element;
+                }
+            }
+            catch (COMException exception) when (IsTransientUiAutomationFailure(exception))
+            {
+            }
+            catch (Win32Exception exception) when (IsTransientUiAutomationTimeout(exception))
+            {
             }
 
             Thread.Sleep(5);
@@ -263,6 +310,12 @@ internal sealed class ProductPerformanceRouteProbe
                 }
             }
             catch (InvalidOperationException)
+            {
+            }
+            catch (COMException exception) when (IsTransientUiAutomationFailure(exception))
+            {
+            }
+            catch (Win32Exception exception) when (IsTransientUiAutomationTimeout(exception))
             {
             }
 
@@ -335,6 +388,9 @@ internal sealed class ProductPerformanceRouteProbe
             $"ProductPerformanceTraversalReady_{route.Id}");
         long traversalArmRequestedTimestamp = Stopwatch.GetTimestamp();
         SelectOrInvoke(WaitForElement(appRoot, "ProductPerformanceArmTraversalButton"));
+        // Arming mutates a hidden UIA marker. Let that observer-only work drain
+        // before timing native input so it cannot steal the user's first frame.
+        Thread.Sleep(50);
         long traversalActivationStartedTimestamp = activateTraversalTarget();
         ProductPerformanceTraversalTiming selectionTiming = WaitForExactTraversal(
             appRoot,
@@ -513,7 +569,7 @@ internal sealed class ProductPerformanceRouteProbe
             return FindRepoCodeSourceTraversalTarget(selectionHost);
         }
 
-        if (route.Id is "gists" or "repo_pull_requests")
+        if (route.Id is "gists" or "repo_pull_requests" or "repo_commits")
         {
             AutomationElement? secondVisibleItem = selectionHost
                 .FindAllDescendants()
@@ -582,7 +638,8 @@ internal sealed class ProductPerformanceRouteProbe
     private static IEnumerable<ProductPerformanceMeasurement> MeasureDispatcherAndScroll(
         ProductPerformanceRunCase runCase,
         AutomationElement appRoot,
-        ProductPerformanceContentTransitionTracker continuity)
+        ProductPerformanceContentTransitionTracker continuity,
+        IntPtr appWindowHandle)
     {
         List<ProductPerformanceMeasurement> measurements = [];
         AutomationElement? scrollElement = null;
@@ -627,6 +684,10 @@ internal sealed class ProductPerformanceRouteProbe
                 ScrollVertically(appRoot, runCase.Route, ref scrollElement, amount);
                 ProductPerformanceScrollTransitionTracker scrollTransition =
                     new(scrollStartedTimestamp, initialOffset, initialScrollHeartbeat.Frame);
+                int scrollAttempts = 1;
+                double lastObservedOffset = initialOffset;
+                ProductPerformanceHeartbeat lastObservedHeartbeat = initialScrollHeartbeat;
+                ProductPerformanceScrollStatus? lastObservedStatus = initialScrollStatus;
 
                 if (hasAppScrollProbe)
                 {
@@ -641,30 +702,31 @@ internal sealed class ProductPerformanceRouteProbe
                 while (!scrollTransition.IsCompleted && timeout.Elapsed < ObservableTimeout)
                 {
                     ProductPerformanceHeartbeat currentHeartbeat = ReadHeartbeat(appRoot);
-                    if (currentHeartbeat.Frame <= initialScrollHeartbeat.Frame)
+                    lastObservedHeartbeat = currentHeartbeat;
+                    if (currentHeartbeat.Frame > initialScrollHeartbeat.Frame)
                     {
-                        Thread.Sleep(1);
-                        continue;
+                        long observedTimestamp = Stopwatch.GetTimestamp();
+                        ProductPerformanceScrollStatus? scrollStatus = ReadScrollStatus(appRoot, runCase.Route);
+                        lastObservedStatus = scrollStatus;
+                        if (scrollStatus is ProductPerformanceScrollStatus renderedScroll &&
+                            renderedScroll.Sequence > initialScrollSequence &&
+                            renderedScroll.StartedTimestamp >= scrollStartedTimestamp)
+                        {
+                            scrollTransition.ObserveRenderedInterval(
+                                renderedScroll.StartedTimestamp,
+                                renderedScroll.RenderedTimestamp);
+                        }
+
+                        double currentOffset = ReadVerticalScrollPercent(appRoot, runCase.Route, ref scrollElement);
+                        lastObservedOffset = currentOffset;
+                        scrollTransition.Observe(currentOffset, currentHeartbeat, observedTimestamp);
+                        ObserveContinuity(
+                            appRoot,
+                            runCase.Route.RootAutomationId,
+                            runCase.Route.ReadyAutomationId,
+                            continuity);
                     }
 
-                    long observedTimestamp = Stopwatch.GetTimestamp();
-                    ProductPerformanceScrollStatus? scrollStatus = ReadScrollStatus(appRoot, runCase.Route);
-                    if (scrollStatus is ProductPerformanceScrollStatus renderedScroll &&
-                        renderedScroll.Sequence > initialScrollSequence &&
-                        renderedScroll.StartedTimestamp >= scrollStartedTimestamp)
-                    {
-                        scrollTransition.ObserveRenderedInterval(
-                            renderedScroll.StartedTimestamp,
-                            renderedScroll.RenderedTimestamp);
-                    }
-
-                    double currentOffset = ReadVerticalScrollPercent(appRoot, runCase.Route, ref scrollElement);
-                    scrollTransition.Observe(currentOffset, currentHeartbeat, observedTimestamp);
-                    ObserveContinuity(
-                        appRoot,
-                        runCase.Route.RootAutomationId,
-                        runCase.Route.ReadyAutomationId,
-                        continuity);
                     if (!scrollTransition.IsCompleted)
                     {
                         if (attemptTimeout.Elapsed >= TimeSpan.FromMilliseconds(250))
@@ -672,14 +734,14 @@ internal sealed class ProductPerformanceRouteProbe
                             scrollElement = ResolveVerticalScrollElement(appRoot, runCase.Route);
                             initialOffset = ReadVerticalScrollPercent(appRoot, runCase.Route, ref scrollElement);
                             initialScrollHeartbeat = ReadHeartbeat(appRoot);
-                            amount = initialOffset >= 10
-                                ? ScrollAmount.SmallDecrement
-                                : ScrollAmount.SmallIncrement;
                             initialScrollStatus = ReadScrollStatus(appRoot, runCase.Route);
                             hasAppScrollProbe = initialScrollStatus is not null;
                             initialScrollSequence = initialScrollStatus?.Sequence ?? 0;
-                            scrollStartedTimestamp = Stopwatch.GetTimestamp();
-                            ScrollVertically(appRoot, runCase.Route, ref scrollElement, amount);
+                            scrollStartedTimestamp = SendNativeWheelOverElement(
+                                scrollElement,
+                                appWindowHandle,
+                                scrollUp: initialOffset >= 10);
+                            scrollAttempts++;
                             scrollTransition = new ProductPerformanceScrollTransitionTracker(
                                 scrollStartedTimestamp,
                                 initialOffset,
@@ -697,8 +759,14 @@ internal sealed class ProductPerformanceRouteProbe
 
                 if (!scrollTransition.IsCompleted)
                 {
+                    string scrollElementState = DescribeScrollElement(scrollElement);
                     throw new TimeoutException(
-                        $"Route '{runCase.Route.Id}' scroll did not produce both a scroll-offset change and a rendered frame.");
+                        $"Route '{runCase.Route.Id}' scroll did not produce both a scroll-offset change and a rendered frame. " +
+                        $"Attempts={scrollAttempts}; initialOffset={initialOffset:0.###}; " +
+                        $"lastOffset={lastObservedOffset:0.###}; " +
+                        $"frame={initialScrollHeartbeat.Frame}->{lastObservedHeartbeat.Frame}; " +
+                        $"probeSequence={initialScrollSequence}->{lastObservedStatus?.Sequence ?? -1}; " +
+                        $"scrollElement={scrollElementState}.");
                 }
 
                 measurements.Add(Measure(
@@ -883,6 +951,30 @@ internal sealed class ProductPerformanceRouteProbe
                 Thread.Sleep(5);
             }
         }
+    }
+
+    private static long SendNativeWheelOverElement(
+        AutomationElement scrollElement,
+        IntPtr appWindowHandle,
+        bool scrollUp)
+    {
+        ActivateWindowForPointerInput(appWindowHandle);
+        Rectangle visibleBounds = Rectangle.Intersect(
+            scrollElement.BoundingRectangle,
+            GetWindowBounds(appWindowHandle));
+        if (visibleBounds.Width <= 1 || visibleBounds.Height <= 1)
+        {
+            throw new InvalidOperationException(
+                "The measured scroll surface is outside the JitHub window.");
+        }
+
+        SendNativePointerMove(new Point(
+            visibleBounds.Left + visibleBounds.Width / 2,
+            visibleBounds.Top + visibleBounds.Height / 2));
+        Thread.Sleep(20);
+        long startedTimestamp = Stopwatch.GetTimestamp();
+        SendNativeWheel(scrollUp);
+        return startedTimestamp;
     }
 
     private static TimeSpan WaitForHeartbeatAdvance(
@@ -1088,6 +1180,7 @@ internal sealed class ProductPerformanceRouteProbe
             try
             {
                 if (candidate.Patterns.Scroll.IsSupported &&
+                    IsVisible(candidate) &&
                     candidate.Patterns.Scroll.Pattern.VerticallyScrollable.ValueOrDefault)
                 {
                     return candidate;
@@ -1099,6 +1192,26 @@ internal sealed class ProductPerformanceRouteProbe
         }
 
         return null;
+    }
+
+    private static string DescribeScrollElement(AutomationElement element)
+    {
+        try
+        {
+            var scroll = element.Patterns.Scroll.Pattern;
+            Rectangle bounds = element.BoundingRectangle;
+            return $"id={element.AutomationId ?? "<none>"}," +
+                $"name={element.Name ?? "<none>"}," +
+                $"type={element.ControlType}," +
+                $"offscreen={element.Properties.IsOffscreen.ValueOrDefault}," +
+                $"bounds={bounds.Left:0.#},{bounds.Top:0.#},{bounds.Width:0.#},{bounds.Height:0.#}," +
+                $"percent={scroll.VerticalScrollPercent.ValueOrDefault:0.###}," +
+                $"view={scroll.VerticalViewSize.ValueOrDefault:0.###}";
+        }
+        catch (Exception exception)
+        {
+            return $"unavailable:{exception.GetType().Name}";
+        }
     }
 
     private static AutomationElement? WaitForVerticallyScrollableElement(
@@ -1148,6 +1261,10 @@ internal sealed class ProductPerformanceRouteProbe
 
     private static bool IsTransientUiAutomationFailure(COMException exception) =>
         exception.HResult is unchecked((int)0x80040201) or unchecked((int)0x8000FFFF);
+
+    private static bool IsTransientUiAutomationTimeout(Win32Exception exception) =>
+        exception.NativeErrorCode == 1460 ||
+        exception.HResult == unchecked((int)0x800705B4);
 
     private static TimeSpan WaitForInteractiveTimestamp(
         AutomationElement appRoot,
@@ -1563,6 +1680,27 @@ internal sealed class ProductPerformanceRouteProbe
         if (SendInput((uint)inputs.Length, inputs, Marshal.SizeOf<NativeInput>()) != inputs.Length)
         {
             throw new InvalidOperationException("Could not deliver native cached-traversal click.");
+        }
+    }
+
+    private static void SendNativeWheel(bool scrollUp)
+    {
+        NativeInput[] inputs =
+        [
+            new()
+            {
+                Type = 0,
+                Mouse = new NativeMouseInput
+                {
+                    MouseData = unchecked((uint)(scrollUp ? 120 : -120)),
+                    Flags = 0x0800
+                }
+            }
+        ];
+
+        if (SendInput((uint)inputs.Length, inputs, Marshal.SizeOf<NativeInput>()) != inputs.Length)
+        {
+            throw new InvalidOperationException("Could not deliver native scroll-wheel input.");
         }
     }
 

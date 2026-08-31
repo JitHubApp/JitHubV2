@@ -67,10 +67,40 @@ public sealed class LocalizationPackagingContractTests
             (string?)pseudoRemoval.Attribute("Condition"));
     }
 
+    [Fact]
+    public void ProjectInvalidatesPriOutputsWhenPseudoLocalizationModeChanges()
+    {
+        XDocument project = XDocument.Load(Path.Combine(
+            FindRepositoryRoot(),
+            "JitHub.WinUI",
+            "JitHub.WinUI.csproj"));
+
+        Assert.Contains(
+            "InvalidateProjectPriWhenPseudoLocalizationModeChanges",
+            project.Descendants("GenerateProjectPriFileDependsOn").Single().Value,
+            StringComparison.Ordinal);
+
+        XElement target = project.Descendants("Target").Single(element =>
+            string.Equals(
+                (string?)element.Attribute("Name"),
+                "InvalidateProjectPriWhenPseudoLocalizationModeChanges",
+                StringComparison.Ordinal));
+        Assert.NotNull(target.Descendants("ReadLinesFromFile").SingleOrDefault());
+        Assert.Equal(
+            "true",
+            (string?)target.Descendants("WriteLinesToFile").Single().Attribute("WriteOnlyWhenDifferent"));
+
+        string invalidatedFiles = (string?)target.Descendants("Delete").Single().Attribute("Files") ?? string.Empty;
+        Assert.Contains("$(ProjectPriFullPath)", invalidatedFiles, StringComparison.Ordinal);
+        Assert.Contains("$(_PriConfigXmlPath)", invalidatedFiles, StringComparison.Ordinal);
+        Assert.Contains("$(_ResourcesResfilesPath)", invalidatedFiles, StringComparison.Ordinal);
+        Assert.Contains("$(_PriResfilesPath)", invalidatedFiles, StringComparison.Ordinal);
+    }
+
     private static string FindRepositoryRoot()
     {
         DirectoryInfo? directory = new(AppContext.BaseDirectory);
-        while (directory is not null && !File.Exists(Path.Combine(directory.FullName, "JitHub.slnx")))
+        while (directory is not null && !File.Exists(Path.Combine(directory.FullName, "Directory.Build.props")))
         {
             directory = directory.Parent;
         }

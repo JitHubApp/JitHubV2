@@ -10,6 +10,7 @@ using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
 using JitHub.Models.GitHub;
 using JitHub.Services;
+using JitHub.WinUI.Helpers;
 using JitHub.WinUI.ViewModels.Common;
 
 namespace JitHub.WinUI.ViewModels.Pages;
@@ -718,7 +719,7 @@ public sealed partial class GistsPageViewModel : ViewModelBase, IDisposable, IAs
         }
         catch (Exception ex) when (remoteCommitted)
         {
-            Debug.WriteLine($"GitHub completed the Gist creation, but local commit projection failed: {ex}");
+            HandledFailureReporter.Report(ex, "gists-create-local-projection");
             ClearError();
             ShowPostCommitWarning(durabilityDegraded, projectionFailed: true);
             return true;
@@ -793,7 +794,7 @@ public sealed partial class GistsPageViewModel : ViewModelBase, IDisposable, IAs
         }
         catch (Exception ex) when (remoteCommitted)
         {
-            Debug.WriteLine($"GitHub completed the Gist update, but local commit projection failed: {ex}");
+            HandledFailureReporter.Report(ex, "gists-update-local-projection");
             ClearError();
             ShowPostCommitWarning(durabilityDegraded, projectionFailed: true);
             return true;
@@ -864,7 +865,7 @@ public sealed partial class GistsPageViewModel : ViewModelBase, IDisposable, IAs
         }
         catch (Exception ex) when (remoteCommitted)
         {
-            Debug.WriteLine($"GitHub completed the Gist deletion, but local commit projection failed: {ex}");
+            HandledFailureReporter.Report(ex, "gists-delete-local-projection");
             ClearError();
             ShowPostCommitWarning(durabilityDegraded, projectionFailed: true);
             return true;
@@ -916,8 +917,12 @@ public sealed partial class GistsPageViewModel : ViewModelBase, IDisposable, IAs
             }
 
             Task[] pending = tracked
-                .Concat(initializationTask is { IsCompleted: false } ? [initializationTask] : [])
-                .Concat(fullFileTask is { IsCompleted: false } ? [fullFileTask] : [])
+                .Concat(initializationTask is { IsCompleted: false }
+                    ? (Task[])[initializationTask]
+                    : (Task[])[])
+                .Concat(fullFileTask is { IsCompleted: false }
+                    ? (Task[])[fullFileTask]
+                    : (Task[])[])
                 .Distinct()
                 .ToArray();
             if (pending.Length == 0)
@@ -1664,7 +1669,7 @@ public sealed partial class GistsPageViewModel : ViewModelBase, IDisposable, IAs
         }
         catch (Exception ex)
         {
-            Debug.WriteLine($"Gist reconciliation could not be scheduled: {ex}");
+            HandledFailureReporter.Report(ex, "gists-reconciliation-schedule");
             if (remoteCommitted)
             {
                 ClearError();
@@ -1761,7 +1766,7 @@ public sealed partial class GistsPageViewModel : ViewModelBase, IDisposable, IAs
         }
         catch (Exception ex)
         {
-            System.Diagnostics.Debug.WriteLine($"Gists background operation failed: {ex}");
+            HandledFailureReporter.Report(ex, "gists-background-operation");
         }
         finally
         {
@@ -1918,7 +1923,7 @@ public sealed partial class GistsPageViewModel : ViewModelBase, IDisposable, IAs
         }
         catch (Exception ex)
         {
-            System.Diagnostics.Debug.WriteLine($"Could not verify Gist OAuth scope: {ex}");
+            HandledFailureReporter.Report(ex, "gists-oauth-scope");
         }
 
         ShowError("Reconnect GitHub to create or change gists. Your current draft is still available.");
@@ -1950,7 +1955,7 @@ public sealed partial class GistsPageViewModel : ViewModelBase, IDisposable, IAs
         }
         catch (Exception ex)
         {
-            Debug.WriteLine($"GitHub completed the Gist mutation, but the local projection failed: {ex}");
+            HandledFailureReporter.Report(ex, "gists-local-projection");
             return false;
         }
     }
@@ -2012,7 +2017,7 @@ public sealed partial class GistsPageViewModel : ViewModelBase, IDisposable, IAs
         }
         catch (Exception ex)
         {
-            Debug.WriteLine($"Gists telemetry is unavailable for action '{action}': {ex}");
+            HandledFailureReporter.Report(ex, "gists-telemetry");
         }
     }
 

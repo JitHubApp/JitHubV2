@@ -10,8 +10,8 @@
     <Grid>
         <ComboBox
             x:Name="FilterComboBox"
-            Width="172"
-            MinWidth="172"
+            Width="{ThemeResource AppDimension172}"
+            MinWidth="{ThemeResource AppDimension172}"
             AutomationProperties.AutomationId="{x:Bind AutomationId, Mode=OneWay}"
             AutomationProperties.Name="{x:Bind Title, Mode=OneWay}"
             HorizontalAlignment="Left"

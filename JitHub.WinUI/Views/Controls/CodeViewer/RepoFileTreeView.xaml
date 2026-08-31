@@ -26,8 +26,8 @@
         <!--  Truncated-tree banner  -->
         <Border
             Grid.Row="0"
-            Margin="8,8,8,0"
-            Padding="12,6"
+            Margin="{ThemeResource AppMargin8_8_8_0}"
+            Padding="{ThemeResource AppPadding12_6}"
             Background="{ThemeResource AppSurfaceBrush}"
             CornerRadius="{ThemeResource AppRadiusSmall}"
             Visibility="{x:Bind BoolToVis(ViewModel.IsTruncated), Mode=OneWay}">
@@ -43,7 +43,7 @@
             x:Name="FileFilter"
             x:Uid="RepoCodeFileFilter"
             Grid.Row="1"
-            Margin="8,8,8,4"
+            Margin="{ThemeResource AppMargin8_8_8_4}"
             AutomationProperties.AutomationId="RepoCodeFileFilter"
             AutomationProperties.Name="Filter repository files"
             PlaceholderText="Filter files…"
@@ -80,7 +80,7 @@
                                 <Grid
                                     AutomationProperties.AccessibilityView="Raw"
                                     Background="{ThemeResource AppTransparentBrush}"
-                                    ColumnSpacing="6"
+                                    ColumnSpacing="{ThemeResource AppGap6}"
                                     HorizontalAlignment="Left"
                                     Loaded="OnTreeItemContentLoaded"
                                     PointerEntered="OnTreeItemPointerEntered"
@@ -93,6 +93,7 @@
                                     <!--  Folder – open (&#xE188; = FolderOpen in Segoe Fluent Icons)  -->
                                     <FontIcon
                                         Grid.Column="0"
+                                        VerticalAlignment="Center"
                                         FontSize="{ThemeResource AppFontSize14}"
                                         Glyph="&#xE188;"
                                         Visibility="{x:Bind local:RepoFileTreeView.FolderOpenVis(IsDirectory, IsExpanded), Mode=OneWay}" />
@@ -100,6 +101,7 @@
                                     <!--  Folder – closed (&#xE8B7; = Folder)  -->
                                     <FontIcon
                                         Grid.Column="0"
+                                        VerticalAlignment="Center"
                                         FontSize="{ThemeResource AppFontSize14}"
                                         Glyph="&#xE8B7;"
                                         Visibility="{x:Bind local:RepoFileTreeView.FolderClosedVis(IsDirectory, IsExpanded), Mode=OneWay}" />
@@ -107,14 +109,15 @@
                                     <!--  File (&#xE8A5; = Document)  -->
                                     <FontIcon
                                         Grid.Column="0"
+                                        VerticalAlignment="Center"
                                         FontSize="{ThemeResource AppFontSize14}"
                                         Glyph="&#xE8A5;"
                                         Visibility="{x:Bind local:RepoFileTreeView.FileVis(IsDirectory), Mode=OneWay}" />
 
-                                    <TextBlock
-                                        Grid.Column="1"
-                                        VerticalAlignment="Center"
-                                        Text="{x:Bind Name}" />
+                                            <TextBlock
+                                                Grid.Column="1"
+                                                VerticalAlignment="Center"
+                                                Text="{x:Bind Name}" />
                                 </Grid>
                             </DataTemplate>
                         </ContentControl.ContentTemplate>
@@ -125,26 +128,26 @@
 
             <!--  Loading overlay  -->
             <Border
-                Margin="8"
-                Padding="8"
+                Margin="{ThemeResource AppMargin8}"
+                Padding="{ThemeResource AppPadding8}"
                 HorizontalAlignment="Right"
                 VerticalAlignment="Top"
                 Background="{ThemeResource AppSurfaceBrush}"
                 BorderBrush="{ThemeResource AppOutlineBrush}"
-                BorderThickness="1"
+                BorderThickness="{ThemeResource AppHairlineBorderThickness}"
                 CornerRadius="{ThemeResource ControlCornerRadius}"
                 Visibility="{x:Bind BoolToVis(ViewModel.IsLoading), Mode=OneWay}">
                 <ProgressRing
-                    Width="18"
-                    Height="18"
+                    Width="{ThemeResource AppDimension18}"
+                    Height="{ThemeResource AppDimension18}"
                     IsActive="{x:Bind ViewModel.IsLoading, Mode=OneWay}" />
             </Border>
 
             <muxc:InfoBar
                 x:Name="TreeStatus"
                 x:Uid="RepoCodeFileTreeStatus"
-                MaxWidth="260"
-                Margin="8"
+                MaxWidth="{ThemeResource AppDimension260}"
+                Margin="{ThemeResource AppMargin8}"
                 AutomationProperties.AutomationId="RepoCodeFileTreeStatus"
                 AutomationProperties.Name="Repository files status"
                 HorizontalAlignment="Center"

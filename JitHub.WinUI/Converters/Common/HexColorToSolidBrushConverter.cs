@@ -27,7 +27,7 @@ public sealed partial class HexColorToSolidBrushConverter : IValueConverter
     }
 
     public object ConvertBack(object value, Type targetType, object parameter, string language) =>
-        throw new NotSupportedException();
+        Microsoft.UI.Xaml.DependencyProperty.UnsetValue;
 
     private static bool TryParse(string? value, out Color color)
     {

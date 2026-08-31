@@ -5,7 +5,7 @@
     <DataTemplate x:Key="HeadRefForcePushedEventTemplate">
         <Grid>
             <Grid.ColumnDefinitions>
-                <ColumnDefinition Width="48" />
+                <ColumnDefinition Width="{ThemeResource AppGridLength48}" />
                 <ColumnDefinition Width="*" />
             </Grid.ColumnDefinitions>
             <common:Avatar
@@ -19,7 +19,7 @@
                 Grid.Column="1"
                 VerticalAlignment="Center"
                 Orientation="Horizontal"
-                Spacing="4">
+                Spacing="{ThemeResource AppGap4}">
                 <TextBlock Text="{Binding Actor.Login, Mode=OneWay}" />
                 <TextBlock x:Uid="DataTemplatesIssueEventHeadRefForcePushedEventTextBlockF" Text="force-pushed to this branch" />
                 <TextBlock Text="{Binding CreatedAt, Converter={StaticResource TimeAgoConverter}, ConverterParameter='', Mode=OneWay}" />

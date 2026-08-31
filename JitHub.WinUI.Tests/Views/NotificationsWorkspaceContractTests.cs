@@ -18,12 +18,14 @@ public sealed class NotificationsWorkspaceContractTests
                 element.Name.LocalName == "TextBlock" &&
                 element.Attribute("AutomationProperties.AutomationId")?.Value == "NotificationsResultScope");
 
-        Assert.Contains("ResultCountText", scope.Attribute("Text")?.Value, StringComparison.Ordinal);
+        Assert.Contains(scope.Descendants(), static element =>
+            element.Name.LocalName == "Run" &&
+            element.Attribute("Text")?.Value.Contains("ResultCountText", StringComparison.Ordinal) == true);
         Assert.Equal("Notification result scope", scope.Attribute("AutomationProperties.Name")?.Value);
     }
 
     [Fact]
-    public void HeaderCountUsesMeasuredVisualBaselineCompensation()
+    public void HeaderTitleAndCountShareOneTextBaseline()
     {
         XDocument document = XDocument.Load(NotificationsXamlPath());
         XNamespace xaml = "http://schemas.microsoft.com/winfx/2006/xaml";
@@ -34,10 +36,17 @@ public sealed class NotificationsWorkspaceContractTests
 
         Assert.Equal("Grid", identity.Name.LocalName);
         Assert.Equal("Center", identity.Attribute("VerticalAlignment")?.Value);
-        Assert.Equal("2", scope.Attribute("Grid.Column")?.Value);
+        Assert.Equal("1", scope.Attribute("Grid.Column")?.Value);
         Assert.Null(scope.Attribute("Margin"));
-        Assert.Equal("0,4,0", scope.Attribute("Translation")?.Value);
-        Assert.Equal("Bottom", scope.Attribute("VerticalAlignment")?.Value);
+        Assert.Null(scope.Attribute("Translation"));
+        Assert.Equal("Left", scope.Attribute("HorizontalAlignment")?.Value);
+        Assert.Equal("Center", scope.Attribute("VerticalAlignment")?.Value);
+        Assert.Contains(scope.Descendants(), static element =>
+            element.Name.LocalName == "Run" &&
+            string.Equals(element.Attribute("Text")?.Value, "Notifications", StringComparison.Ordinal));
+        Assert.Contains(scope.Descendants(), static element =>
+            element.Name.LocalName == "Run" &&
+            element.Attribute("Text")?.Value.Contains("ResultCountText", StringComparison.Ordinal) == true);
     }
 
     [Fact]
@@ -50,7 +59,7 @@ public sealed class NotificationsWorkspaceContractTests
                 element.Name.LocalName == "SelectorBar" &&
                 element.Attribute("AutomationProperties.AutomationId")?.Value == "NotificationsFilter");
 
-        Assert.Equal("286", filter.Attribute("MinWidth")?.Value);
+        Assert.Equal("{ThemeResource AppDimension286}", filter.Attribute("MinWidth")?.Value);
         Assert.Equal("Right", filter.Attribute("HorizontalAlignment")?.Value);
         Assert.Equal("Notification view", filter.Attribute("AutomationProperties.Name")?.Value);
 
@@ -89,6 +98,26 @@ public sealed class NotificationsWorkspaceContractTests
         Assert.Contains(
             template.Descendants().Where(static element => element.Name.LocalName == "MenuFlyoutItem"),
             static element => element.Attribute("Command")?.Value.Contains("ToggleSubscriptionCommand", StringComparison.Ordinal) == true);
+    }
+
+    [Fact]
+    public void MarkReadActions_UseTheSemanticNativeAcceptGlyph()
+    {
+        XDocument document = XDocument.Load(NotificationsXamlPath());
+        XElement rowTemplate = Assert.Single(document.Descendants(), element =>
+            element.Name.LocalName == "DataTemplate" &&
+            element.Attribute(XName.Get("Key", "http://schemas.microsoft.com/winfx/2006/xaml"))?.Value == "NotificationRowTemplate");
+        XElement rowButton = Assert.Single(rowTemplate.Descendants(), element =>
+            element.Name.LocalName == "Button" &&
+            element.Attribute("Command")?.Value.Contains("MarkReadCommand", StringComparison.Ordinal) == true);
+        XElement rowIcon = Assert.Single(rowButton.Descendants(), element => element.Name.LocalName == "SymbolIcon");
+        Assert.Equal("Accept", rowIcon.Attribute("Symbol")?.Value);
+
+        XElement markAll = Assert.Single(document.Descendants(), element =>
+            element.Attribute("AutomationProperties.AutomationId")?.Value == "NotificationsMarkAllRead");
+        XElement markAllIcon = Assert.Single(markAll.Descendants(), element => element.Name.LocalName == "SymbolIcon");
+        Assert.Equal("Accept", markAllIcon.Attribute("Symbol")?.Value);
+        Assert.DoesNotContain("E91B", document.ToString(), StringComparison.OrdinalIgnoreCase);
     }
 
     [Fact]
@@ -135,7 +164,7 @@ public sealed class NotificationsWorkspaceContractTests
         DirectoryInfo? directory = new(AppContext.BaseDirectory);
         while (directory is not null)
         {
-            if (File.Exists(Path.Combine(directory.FullName, "JitHub.slnx")) ||
+            if (File.Exists(Path.Combine(directory.FullName, "Directory.Build.props")) ||
                 Directory.Exists(Path.Combine(directory.FullName, ".git")))
             {
                 return directory.FullName;

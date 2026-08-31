@@ -8,11 +8,11 @@
     xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
     mc:Ignorable="d">
     <Border
-        MaxWidth="520"
+        MaxWidth="{ThemeResource AppDimension520}"
         HorizontalAlignment="Left"
-        Padding="0"
+        Padding="{ThemeResource AppPadding0}"
     Background="{ThemeResource AppTransparentBrush}"
-        BorderThickness="0"
+        BorderThickness="{ThemeResource AppZeroThickness}"
         CornerRadius="{ThemeResource AppRadiusNone}">
         <StackPanel
             Style="{StaticResource AppInlineEmptyStatePanelStyle}">

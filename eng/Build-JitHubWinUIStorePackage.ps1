@@ -490,11 +490,16 @@ $certificatePath = $null
 $effectiveCertificatePassword = $PackageCertificatePassword
 $effectiveCertificateThumbprint = $PackageCertificateThumbprint
 try {
+    # The shared assets file may describe a normal Debug restore. Materialize one
+    # locked Native AOT graph before validating the dependency ledger.
+    $ledgerArchitecture = Get-NativeArchitecture -Platform @($platforms)[0]
+    & (Join-Path $PSScriptRoot 'Restore-NativeAot.ps1') -Architecture $ledgerArchitecture
     & (Join-Path $PSScriptRoot 'Update-NativeAotDependencyLedger.ps1') -Verify
 
     $testProjectPath = Join-Path (Split-Path -Parent $resolvedProjectPath) '..\JitHub.WinUI.Tests\JitHub.WinUI.Tests.csproj'
     $resolvedTestProjectPath = Resolve-AbsolutePath -Path $testProjectPath
     & dotnet restore $resolvedTestProjectPath `
+        -p:Configuration=Release `
         -p:Platform=x64 `
         -p:RuntimeIdentifier=win-x64 `
         --locked-mode
@@ -539,7 +544,9 @@ try {
         Write-Host "Building Store upload package for $platform."
 
         $nativeArchitecture = Get-NativeArchitecture -Platform $platform
-        & (Join-Path $PSScriptRoot 'Restore-NativeAot.ps1') -Architecture $nativeArchitecture
+        if ($nativeArchitecture -ne $ledgerArchitecture) {
+            & (Join-Path $PSScriptRoot 'Restore-NativeAot.ps1') -Architecture $nativeArchitecture
+        }
 
         $buildParameters = @{
             ResolvedProjectPath = $resolvedProjectPath

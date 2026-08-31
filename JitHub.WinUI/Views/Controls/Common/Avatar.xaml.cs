@@ -58,6 +58,11 @@ namespace JitHub.WinUI.Views.Controls.Common
             typeof(CornerRadius),
             typeof(Avatar),
             new PropertyMetadata(new CornerRadius(100), OnBindablePropertyChanged));
+        public static readonly DependencyProperty LabelStyleProperty = DependencyProperty.Register(
+            nameof(LabelStyle),
+            typeof(Style),
+            typeof(Avatar),
+            new PropertyMetadata(null, OnBindablePropertyChanged));
 
         private static void OnUrlChanged(DependencyObject d, DependencyPropertyChangedEventArgs e)
         {
@@ -139,6 +144,12 @@ namespace JitHub.WinUI.Views.Controls.Common
         {
             get => (CornerRadius)GetValue(ContainerCornerRadiusProperty);
             set => SetValue(ContainerCornerRadiusProperty, value);
+        }
+
+        public Style? LabelStyle
+        {
+            get => (Style?)GetValue(LabelStyleProperty);
+            set => SetValue(LabelStyleProperty, value);
         }
 
         public bool IsProfileAvailable =>

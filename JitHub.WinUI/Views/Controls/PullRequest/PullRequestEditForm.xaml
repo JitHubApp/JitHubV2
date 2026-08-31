@@ -17,13 +17,13 @@
 
     <Grid>
         <StackPanel
-             Spacing="8">
+             Spacing="{ThemeResource AppGap8}">
             <TextBox
                 x:Uid="ControlsPullRequestPullRequestEditFormPullRequestEditTit" AutomationProperties.AutomationId="PullRequestEditTitleTextBox"
                 AutomationProperties.Name="Pull request title"
                 Style="{StaticResource AppTextBoxStyle}"
                 PlaceholderText="Title"
-                Margin="16 0"
+                Margin="{ThemeResource AppMargin16_0}"
                 Text="{x:Bind ViewModel.Title, Mode=TwoWay}"/>
             <common:MarkdownForm
                 AutomationInstanceId="PullRequestEditForm"
@@ -33,8 +33,8 @@
                 <common:MarkdownForm.ActionContent>
                     <Grid
                         Background="{ThemeResource AppSolidSecondaryRush}"
-                        Height="76"
-                        Padding="16"
+                        Height="{ThemeResource AppDimension76}"
+                        Padding="{ThemeResource AppPadding16}"
                         HorizontalAlignment="Stretch">
                         <Button
                             x:Uid="ControlsPullRequestPullRequestEditFormPullRequestEditSub" AutomationProperties.AutomationId="PullRequestEditSubmitButton"

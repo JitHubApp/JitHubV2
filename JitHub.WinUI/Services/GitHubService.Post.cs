@@ -403,24 +403,17 @@ namespace JitHub.Services
         
         public async Task<ReviewCommentNode> ReplyToReview(Repository repo, int number, string replyText, long inReplyToId)
         {
-            try
-            {
-                string token = GetAccessTokenOrThrow();
-                JitHub.Models.GitHub.GitHubPullRequestReviewComment replyComment = await _gitHubClientService.ReplyToPullRequestReviewCommentAsync(
-                    token,
-                    repo.Owner.Login,
-                    repo.Name,
-                    number,
-                    inReplyToId,
-                    replyText.NormalizeString());
-                PullRequestReviewComment reply = AdaptReviewComment(replyComment);
-                // number is a necessary field
-                return new ReviewCommentNode(reply, repo, number);
-            }
-            catch
-            {
-                throw new Exception($"Failed to reply to review comment repoId: {repo.Id}, pr: {number}, inReplyToId: {inReplyToId}");
-            }
+            string token = GetAccessTokenOrThrow();
+            JitHub.Models.GitHub.GitHubPullRequestReviewComment replyComment = await _gitHubClientService.ReplyToPullRequestReviewCommentAsync(
+                token,
+                repo.Owner.Login,
+                repo.Name,
+                number,
+                inReplyToId,
+                replyText.NormalizeString());
+            PullRequestReviewComment reply = AdaptReviewComment(replyComment);
+            // number is a necessary field
+            return new ReviewCommentNode(reply, repo, number);
         }
 
         public async Task AssignIssue(string owner, string name, int num, ICollection<string> users)
@@ -528,128 +521,72 @@ namespace JitHub.Services
 
         public async Task DeleteIssueCommentReaction(string owner, string repoName, long commentId, long reactionId)
         {
-            try
-            {
-                await _gitHubClientService.DeleteIssueCommentReactionAsync(
-                    GetAccessTokenOrThrow(),
-                    owner,
-                    repoName,
-                    commentId,
-                    reactionId);
-            }
-            catch (Exception)
-            {
-                throw new Exception("Failed to delete reaction");
-            }
+            await _gitHubClientService.DeleteIssueCommentReactionAsync(
+                GetAccessTokenOrThrow(),
+                owner,
+                repoName,
+                commentId,
+                reactionId);
         }
 
         public async Task DeleteIssueCommentReaction(long repoId, long commentId, long reactionId)
         {
-            try
-            {
-                string token = GetAccessTokenOrThrow();
-                (string owner, string name) = await GetRepositoryIdentityAsync(token, repoId);
-                await _gitHubClientService.DeleteIssueCommentReactionAsync(token, owner, name, commentId, reactionId);
-            }
-            catch (Exception)
-            {
-                throw new Exception("Failed to delete reaction");
-            }
+            string token = GetAccessTokenOrThrow();
+            (string owner, string name) = await GetRepositoryIdentityAsync(token, repoId);
+            await _gitHubClientService.DeleteIssueCommentReactionAsync(token, owner, name, commentId, reactionId);
         }
 
         public async Task DeleteReviewCommentReaction(string owner, string repoName, long commentId, long reactionId)
         {
-            try
-            {
-                await _gitHubClientService.DeletePullRequestReviewCommentReactionAsync(
-                    GetAccessTokenOrThrow(),
-                    owner,
-                    repoName,
-                    commentId,
-                    reactionId);
-            }
-            catch (Exception)
-            {
-                throw new Exception("Failed to delete reaction");
-            }
+            await _gitHubClientService.DeletePullRequestReviewCommentReactionAsync(
+                GetAccessTokenOrThrow(),
+                owner,
+                repoName,
+                commentId,
+                reactionId);
         }
 
         public async Task DeleteReviewCommentReaction(long repoId, long commentId, long reactionId)
         {
-            try
-            {
-                string token = GetAccessTokenOrThrow();
-                (string owner, string name) = await GetRepositoryIdentityAsync(token, repoId);
-                await _gitHubClientService.DeletePullRequestReviewCommentReactionAsync(token, owner, name, commentId, reactionId);
-            }
-            catch (Exception)
-            {
-                throw new Exception("Failed to delete reaction");
-            }
+            string token = GetAccessTokenOrThrow();
+            (string owner, string name) = await GetRepositoryIdentityAsync(token, repoId);
+            await _gitHubClientService.DeletePullRequestReviewCommentReactionAsync(token, owner, name, commentId, reactionId);
         }
 
         public async Task DeleteIssueReaction(string owner, string name, int num, long id)
         {
-            try
-            {
-                await _gitHubClientService.DeleteIssueReactionAsync(
-                    GetAccessTokenOrThrow(),
-                    owner,
-                    name,
-                    num,
-                    id);
-            }
-            catch (Exception)
-            {
-                throw new Exception("Failed to delete reaction");
-            }
+            await _gitHubClientService.DeleteIssueReactionAsync(
+                GetAccessTokenOrThrow(),
+                owner,
+                name,
+                num,
+                id);
         }
 
         public async Task ReactToIssue(long repoId, int number, ReactionType type)
         {
-            try
-            {
-                string token = GetAccessTokenOrThrow();
-                (string owner, string name) = await GetRepositoryIdentityAsync(token, repoId);
-                await _gitHubClientService.ReactToIssueAsync(token, owner, name, number, type.ToGitHubReactionContent());
-            }
-            catch (Exception)
-            {
-                throw new Exception($"Failed to react to issue {number} in repo: {repoId}");
-            }
+            string token = GetAccessTokenOrThrow();
+            (string owner, string name) = await GetRepositoryIdentityAsync(token, repoId);
+            await _gitHubClientService.ReactToIssueAsync(token, owner, name, number, type.ToGitHubReactionContent());
         }
 
         public async Task ReactToIssueComment(long repoId, long commentId, ReactionType type)
         {
-            try
-            {
-                string token = GetAccessTokenOrThrow();
-                (string owner, string name) = await GetRepositoryIdentityAsync(token, repoId);
-                await _gitHubClientService.ReactToIssueCommentAsync(token, owner, name, commentId, type.ToGitHubReactionContent());
-            }
-            catch
-            {
-                throw new Exception($"Failed to react to issue comment: {commentId} in repo: {repoId}");
-            }
+            string token = GetAccessTokenOrThrow();
+            (string owner, string name) = await GetRepositoryIdentityAsync(token, repoId);
+            await _gitHubClientService.ReactToIssueCommentAsync(token, owner, name, commentId, type.ToGitHubReactionContent());
         }
 
         public async Task ReactToReviewComment(long repoId, long reviewCommentId, ReactionType type)
         {
-            try
-            {
-                string token = GetAccessTokenOrThrow();
-                (string owner, string name) = await GetRepositoryIdentityAsync(token, repoId);
-                await _gitHubClientService.ReactToPullRequestReviewCommentAsync(
-                    token,
-                    owner,
-                    name,
-                    reviewCommentId,
-                    type.ToGitHubReactionContent());
-            }
-            catch
-            {
-                throw new Exception($"Failed to react to pr review comment: {reviewCommentId} in repo: {repoId}");
-            }
+            string token = GetAccessTokenOrThrow();
+            (string owner, string name) = await GetRepositoryIdentityAsync(token, repoId);
+            await _gitHubClientService.ReactToPullRequestReviewCommentAsync(
+                token,
+                owner,
+                name,
+                reviewCommentId,
+                type.ToGitHubReactionContent());
         }
     }
 }

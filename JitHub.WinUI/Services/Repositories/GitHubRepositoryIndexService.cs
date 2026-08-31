@@ -223,7 +223,7 @@ public sealed class GitHubRepositoryIndexService : IGitHubRepositoryIndexService
         RaiseChanged(state);
         await _queryService.InvalidateTagsAsync(
             partition,
-            [AccountTag(partition)],
+            (string[])[AccountTag(partition)],
             cancellationToken).ConfigureAwait(false);
     }
 
@@ -264,7 +264,7 @@ public sealed class GitHubRepositoryIndexService : IGitHubRepositoryIndexService
             GitHubCachePolicy.RepositoryResource,
             GitHubCachePolicy.TtlForResource(GitHubCachePolicy.RepositoryResource),
             Phase0GitHubJsonSerializerContext.Default.GitHubRepositoryArray,
-            ["account-repositories", AccountTag(partition), "user-repos", "repo"],
+            (string[])["account-repositories", AccountTag(partition), "user-repos", "repo"],
             priority);
     }
 

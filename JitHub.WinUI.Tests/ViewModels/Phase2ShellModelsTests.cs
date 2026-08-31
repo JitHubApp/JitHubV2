@@ -112,15 +112,13 @@ public sealed class Phase2ShellModelsTests
     }
 
     [Fact]
-    public void StarsNavigationBadgeUsesLibrarySemanticsInsteadOfNotificationSemantics()
+    public void StarsNavigationItemDoesNotPresentLibrarySizeAsANotification()
     {
-        ShellNavigationItem item = new("stars", "Stars", "\uE734", new CountingCommand())
-        {
-            BadgeValue = 12,
-            BadgeText = "12"
-        };
+        ShellNavigationItem item = new("stars", "Stars", "\uE734", new CountingCommand());
 
-        Assert.Equal("12 stars", item.BadgeAutomationName);
+        Assert.False(item.HasBadge);
+        Assert.Equal(0, item.BadgeValue);
+        Assert.Equal(string.Empty, item.BadgeText);
     }
 
     [Theory]

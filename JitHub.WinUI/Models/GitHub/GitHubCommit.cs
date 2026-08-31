@@ -63,6 +63,9 @@ public sealed partial class GitHubCommit
     public string AuthorAvatarUrl => Author?.AvatarUrl ?? string.Empty;
 
     [JsonIgnore]
+    public DateTimeOffset? AuthorDate => Commit.Author.Date;
+
+    [JsonIgnore]
     public string TimestampDisplayText => Commit.Author.Date?.LocalDateTime.ToString("g") ?? "Unknown time";
 
     [JsonIgnore]

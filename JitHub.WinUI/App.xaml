@@ -16,9 +16,11 @@
 
                 <!--  Foundation  -->
                 <ResourceDictionary Source="ms-appx:///Styles/Foundation/Tokens.Colors.xaml" />
+                <ResourceDictionary Source="ms-appx:///Styles/Foundation/Tokens.Effects.xaml" />
                 <ResourceDictionary Source="ms-appx:///Styles/Foundation/Tokens.Brushes.xaml" />
                 <ResourceDictionary Source="ms-appx:///Styles/Foundation/Tokens.Typography.xaml" />
                 <ResourceDictionary Source="ms-appx:///Styles/Foundation/Tokens.Spacing.xaml" />
+                <ResourceDictionary Source="ms-appx:///Styles/Foundation/Tokens.Layout.xaml" />
                 <ResourceDictionary Source="ms-appx:///Styles/Foundation/Tokens.Corners.xaml" />
                 <ResourceDictionary Source="ms-appx:///Styles/Foundation/Tokens.Motion.xaml" />
                 <ResourceDictionary Source="ms-appx:///Styles/Foundation/WinUIResourceBridge.xaml" />
@@ -106,8 +108,6 @@
             <commonconverters:SizeToLengthConverter x:Key="SizeToLengthConverter" x:Name="SizeToLengthConverter" />
             <commonconverters:NumberToKizedStringConverter x:Key="NumberToKizedStringConverter" x:Name="NumberToKizedStringConverter" />
             <commonconverters:DiffToMarkdownConverter x:Key="DiffToMarkdownConverter" x:Name="DiffToMarkdownConverter" />
-            <commonconverters:StringToSvgSourceConverter x:Key="StringToSvgSourceConverter" x:Name="StringToSvgSourceConverter" />
-            <commonconverters:UseGradientToForegroundConverter x:Key="UseGradientToForegroundConverter" x:Name="UseGradientToForegroundConverter" />
             <commonconverters:ColorToSolidBrushConverter x:Key="ColorToSolidBrushConverter" x:Name="ColorToSolidBrushConverter" />
             <commonconverters:HexColorToSolidBrushConverter x:Key="HexColorToSolidBrushConverter" />
             <commonconverters:ObjToVisibilityConverter x:Key="ObjToVisibilityConverter" x:Name="ObjToVisibilityConverter" />

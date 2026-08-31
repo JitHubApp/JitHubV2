@@ -38,7 +38,7 @@ namespace JitHub.WinUI.ViewModels.RepositoryViewModels
         RepositoryWorkspaceSection Section,
         object Parameter);
 
-public partial class RepoDetailViewModel : RepoViewModel
+    public partial class RepoDetailViewModel : RepoViewModel
     {
         private bool _starred;
         private bool _watching;
@@ -169,6 +169,8 @@ public partial class RepoDetailViewModel : RepoViewModel
         public string WatchValueText => RepositoryActionPresentation.ValueText(
             _repositoryLoadCoordinator.WatchState,
             Model?.SubscribersCount ?? 0);
+
+        public string ForkValueText => RepositoryDisplayFormatter.FormatCount(Model?.ForksCount ?? 0);
 
         public string BranchStatusText => RepositoryActionPresentation.BranchStatus(
             _repositoryLoadCoordinator.BranchState,
@@ -348,7 +350,7 @@ public partial class RepoDetailViewModel : RepoViewModel
         {
             NavigateRepositoryView(RepositoryWorkspaceSection.Issues, arg.WithRepo(Model));
         }
-        
+
         private void GoToIssuesPage()
         {
             NavigateRepositoryView(RepositoryWorkspaceSection.Issues, new IssueNavArg(Model, 0));
@@ -409,7 +411,6 @@ public partial class RepoDetailViewModel : RepoViewModel
             }
             catch (Exception ex)
             {
-                System.Diagnostics.Debug.WriteLine($"Failed to navigate repository detail: {ex}");
                 App.LogHandledException(ex, "repository-navigation");
                 ShowActionStatus(
                     LocalizedResourceText.GetString(
@@ -512,16 +513,11 @@ public partial class RepoDetailViewModel : RepoViewModel
                     GoToCodePage(ResolveInitialCodeViewerArg((CodeViewerNavArg)args.Ref));
                     ProductPerformanceReadiness.RecordTraversalStage("repo_detail.child.end");
                     break;
-                //TODO: add cases for other page types
                 case RepoPageType.IssuePage:
                     GoToIssuesPage((IssueNavArg)args.Ref);
                     break;
                 case RepoPageType.PullRequestPage:
                     GoToPullRequestPage((PullRequestPageNavArg)args.Ref);
-                    if (JitHub.WinUI.Program.CurrentLaunchOptions.IsPublicPreviewOverride)
-                    {
-                        _ = EnsurePreviewPullRequestPageAsync((PullRequestPageNavArg)args.Ref);
-                    }
                     break;
                 case RepoPageType.CommitPage:
                     GoToCommitsPage((CommitPageNavArg)args.Ref);
@@ -530,7 +526,7 @@ public partial class RepoDetailViewModel : RepoViewModel
                     break;
             }
 
-            if (resolved.ShouldPromote)
+            if (resolved.ShouldPromote && !ProductPerformanceReadiness.IsEnabled)
             {
                 // Promotion is ancillary to navigation. Its cache/query setup can run
                 // synchronously until the first await, so schedule it beyond the first
@@ -563,20 +559,30 @@ public partial class RepoDetailViewModel : RepoViewModel
                 QueryFetchPolicy.StaleFirst,
                 GitHubRequestPriority.Visible,
                 cancellationToken);
-            Task<CachedResult<GitHubResourceState>> starredTask = _repositoryQueryService.GetStarStateAsync(
-                queryContext.AccessToken,
-                queryContext.UserId,
-                owner,
-                name,
-                QueryFetchPolicy.StaleFirst,
-                cancellationToken);
-            Task<CachedResult<GitHubRepositorySubscription>> watchingTask = _repositoryQueryService.GetWatchStateAsync(
-                queryContext.AccessToken,
-                queryContext.UserId,
-                owner,
-                name,
-                QueryFetchPolicy.StaleFirst,
-                cancellationToken);
+            Task<CachedResult<GitHubResourceState>>? starredTask = null;
+            Task<CachedResult<GitHubRepositorySubscription>>? watchingTask = null;
+            if (!GitHubAuthenticationConstants.IsPublicAccessToken(queryContext.AccessToken) ||
+                Program.CurrentLaunchOptions.WebsiteShowcase)
+            {
+                starredTask = _repositoryQueryService.GetStarStateAsync(
+                    queryContext.AccessToken,
+                    queryContext.UserId,
+                    owner,
+                    name,
+                    QueryFetchPolicy.StaleFirst,
+                    cancellationToken);
+                watchingTask = _repositoryQueryService.GetWatchStateAsync(
+                    queryContext.AccessToken,
+                    queryContext.UserId,
+                    owner,
+                    name,
+                    QueryFetchPolicy.StaleFirst,
+                    cancellationToken);
+                BackgroundTaskObserver.MarkFaultObserved(starredTask);
+                BackgroundTaskObserver.MarkFaultObserved(watchingTask);
+            }
+
+            BackgroundTaskObserver.MarkFaultObserved(branchesTask);
 
             try
             {
@@ -631,7 +637,13 @@ public partial class RepoDetailViewModel : RepoViewModel
             }
             EnsureCodePageBranchAlignment(args);
 
-            try
+            if (starredTask is null)
+            {
+                _repositoryLoadCoordinator.ThrowIfStale(generation, cancellationToken);
+                _repositoryLoadCoordinator.MarkStarStateUnavailable(generation);
+                NotifyRepositoryDataStatesChanged();
+            }
+            else try
             {
                 CachedResult<GitHubResourceState> result = await starredTask;
                 bool isStarred = result.Value?.Exists == true;
@@ -657,25 +669,24 @@ public partial class RepoDetailViewModel : RepoViewModel
             {
                 throw;
             }
-            catch (Exception)
+            catch (Exception ex)
             {
                 _repositoryLoadCoordinator.ThrowIfStale(generation, cancellationToken);
-                bool preservedStarState = IsStarStateKnown;
-                if (!preservedStarState)
+                if (!IsStarStateKnown)
                 {
                     _repositoryLoadCoordinator.MarkStarStateUnavailable(generation);
                 }
                 NotifyRepositoryDataStatesChanged();
-                ShowActionStatus(
-                    preservedStarState
-                        ? L(
-                            "RepoDetail.Star.RefreshFailedCached",
-                            "Could not refresh star state. Showing the previous state.")
-                        : L("RepoDetail.Star.Unavailable", "Star state is temporarily unavailable."),
-                    RepositoryActionStatusKind.Warning);
+                HandledFailureReporter.Report(ex, "repository-star-state-load");
             }
 
-            try
+            if (watchingTask is null)
+            {
+                _repositoryLoadCoordinator.ThrowIfStale(generation, cancellationToken);
+                _repositoryLoadCoordinator.MarkWatchStateUnavailable(generation);
+                NotifyRepositoryDataStatesChanged();
+            }
+            else try
             {
                 CachedResult<GitHubRepositorySubscription> result = await watchingTask;
                 GitHubRepositorySubscription? subscription = result.Value;
@@ -702,30 +713,17 @@ public partial class RepoDetailViewModel : RepoViewModel
             {
                 throw;
             }
-            catch (Exception)
+            catch (Exception ex)
             {
                 _repositoryLoadCoordinator.ThrowIfStale(generation, cancellationToken);
-                bool preservedWatchState = IsWatchStateKnown;
-                if (!preservedWatchState)
+                if (!IsWatchStateKnown)
                 {
                     _repositoryLoadCoordinator.MarkWatchStateUnavailable(generation);
                 }
                 NotifyRepositoryDataStatesChanged();
-                ShowActionStatus(
-                    preservedWatchState
-                        ? L(
-                            "RepoDetail.Watch.RefreshFailedCached",
-                            "Could not refresh watch state. Showing the previous state.")
-                        : L("RepoDetail.Watch.Unavailable", "Watch state is temporarily unavailable."),
-                    RepositoryActionStatusKind.Warning);
+                HandledFailureReporter.Report(ex, "repository-watch-state-load");
             }
 
-            if (JitHub.WinUI.Program.CurrentLaunchOptions.IsPublicPreviewOverride &&
-                args.Page == RepoPageType.PullRequestPage &&
-                args.Ref is PullRequestPageNavArg pullRequestPageArg)
-            {
-                GoToPullRequestPage(pullRequestPageArg);
-            }
         }
 
         private long BeginRepositoryTransition(RepoDetailPageArgs args, bool resetPendingFork)
@@ -801,7 +799,7 @@ public partial class RepoDetailViewModel : RepoViewModel
                 }
                 catch (Exception ex)
                 {
-                    System.Diagnostics.Debug.WriteLine($"Failed to resolve repository by name: {ex}");
+                    HandledFailureReporter.Report(ex, "repository-resolve-by-name");
                 }
             }
 
@@ -826,7 +824,7 @@ public partial class RepoDetailViewModel : RepoViewModel
                 }
                 catch (Exception ex)
                 {
-                    System.Diagnostics.Debug.WriteLine($"Failed to resolve repository by id: {ex}");
+                    HandledFailureReporter.Report(ex, "repository-resolve-by-id");
                 }
             }
 
@@ -902,7 +900,7 @@ public partial class RepoDetailViewModel : RepoViewModel
             }
             catch (Exception ex)
             {
-                System.Diagnostics.Debug.WriteLine($"Progressive branch paging stopped: {ex}");
+                HandledFailureReporter.Report(ex, "repository-branch-progressive-load");
             }
         }
 
@@ -968,7 +966,7 @@ public partial class RepoDetailViewModel : RepoViewModel
             }
             catch (Exception ex)
             {
-                System.Diagnostics.Debug.WriteLine($"Repository metadata refresh failed; cached data remains visible: {ex}");
+                HandledFailureReporter.Report(ex, "repository-metadata-refresh");
             }
         }
 
@@ -1052,7 +1050,7 @@ public partial class RepoDetailViewModel : RepoViewModel
             }
             catch (Exception ex)
             {
-                System.Diagnostics.Debug.WriteLine($"Branch refresh failed; cached branches remain visible: {ex}");
+                HandledFailureReporter.Report(ex, "repository-branch-refresh");
             }
         }
 
@@ -1088,7 +1086,7 @@ public partial class RepoDetailViewModel : RepoViewModel
             }
             catch (Exception ex)
             {
-                System.Diagnostics.Debug.WriteLine($"Star refresh failed; cached state remains visible: {ex}");
+                HandledFailureReporter.Report(ex, "repository-star-refresh");
             }
         }
 
@@ -1125,7 +1123,7 @@ public partial class RepoDetailViewModel : RepoViewModel
             }
             catch (Exception ex)
             {
-                System.Diagnostics.Debug.WriteLine($"Watch refresh failed; cached state remains visible: {ex}");
+                HandledFailureReporter.Report(ex, "repository-watch-refresh");
             }
         }
 
@@ -1370,12 +1368,6 @@ public partial class RepoDetailViewModel : RepoViewModel
 
         private readonly record struct ResolvedRepository(Repository Value, bool ShouldPromote);
 
-        private async Task EnsurePreviewPullRequestPageAsync(PullRequestPageNavArg arg)
-        {
-            await Task.Delay(800);
-            GoToPullRequestPage(arg);
-        }
-
         private CodeViewerNavArg ResolveInitialCodeViewerArg(CodeViewerNavArg arg)
         {
             if (arg.IsGitRef)
@@ -1544,6 +1536,7 @@ public partial class RepoDetailViewModel : RepoViewModel
             OnPropertyChanged(nameof(IsRepositoryPrivate));
             OnPropertyChanged(nameof(RepositoryStatusText));
             OnPropertyChanged(nameof(IsRepositoryIdentityVisible));
+            OnPropertyChanged(nameof(ForkValueText));
         }
 
         private async Task<bool> ToggleStar()
@@ -1610,7 +1603,7 @@ public partial class RepoDetailViewModel : RepoViewModel
                         RepositoryActionStatusKind.Warning);
                 }
                 TrackRepositoryAction(desired ? "star" : "unstar", "error", stopwatch.Elapsed);
-                System.Diagnostics.Debug.WriteLine($"Repository star mutation failed: {ex}");
+                HandledFailureReporter.Report(ex, "repository-star-mutation");
                 return false;
             }
             bool localProjectionWarning = false;
@@ -1642,7 +1635,7 @@ public partial class RepoDetailViewModel : RepoViewModel
             catch (Exception ex)
             {
                 localProjectionWarning = true;
-                System.Diagnostics.Debug.WriteLine($"Stars library update failed: {ex}");
+                HandledFailureReporter.Report(ex, "repository-stars-library-update");
                 if (IsMutationUiCurrent(repository, queryContext, generation, mutationVersion, _starMutationVersion))
                 {
                     ShowActionStatus(
@@ -1663,7 +1656,7 @@ public partial class RepoDetailViewModel : RepoViewModel
             }
             catch (Exception ex)
             {
-                System.Diagnostics.Debug.WriteLine($"Repository star cache invalidation failed: {ex}");
+                HandledFailureReporter.Report(ex, "repository-star-cache-invalidation");
             }
             if (IsMutationUiCurrent(repository, queryContext, generation, mutationVersion, _starMutationVersion))
             {
@@ -1753,7 +1746,7 @@ public partial class RepoDetailViewModel : RepoViewModel
                 }
                 catch (Exception ex)
                 {
-                    System.Diagnostics.Debug.WriteLine($"Repository watch cache invalidation failed: {ex}");
+                    HandledFailureReporter.Report(ex, "repository-watch-cache-invalidation");
                 }
                 TrackRepositoryAction(desired ? "watch" : "unwatch", "success", stopwatch.Elapsed);
                 return true;
@@ -1770,7 +1763,7 @@ public partial class RepoDetailViewModel : RepoViewModel
                         RepositoryActionStatusKind.Warning);
                 }
                 TrackRepositoryAction(desired ? "watch" : "unwatch", "error", stopwatch.Elapsed);
-                System.Diagnostics.Debug.WriteLine($"Repository watch mutation failed: {ex}");
+                HandledFailureReporter.Report(ex, "repository-watch-mutation");
                 return false;
             }
         }
@@ -2119,7 +2112,6 @@ public partial class RepoDetailViewModel : RepoViewModel
             catch (GitHubRateLimitException ex)
             {
                 ConfigureForkRetry(DateTimeOffset.UtcNow.Add(ex.RetryDelay));
-                System.Diagnostics.Debug.WriteLine($"Fork operation rate limited: {ex}");
                 ShowActionStatus(
                     L(
                         "RepoDetail.Fork.RetryRateLimited",
@@ -2140,7 +2132,7 @@ public partial class RepoDetailViewModel : RepoViewModel
             catch (Exception ex)
             {
                 ConfigureForkRetry(retryAvailableAt: null);
-                System.Diagnostics.Debug.WriteLine($"Fork operation failed: {ex}");
+                HandledFailureReporter.Report(ex, "repository-fork");
                 ShowActionStatus(
                     L(
                         "RepoDetail.Fork.NotReady",

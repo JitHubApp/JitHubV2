@@ -6,9 +6,9 @@
         <Setter Property="Background" Value="{ThemeResource AppInputBrush}" />
         <Setter Property="Foreground" Value="{ThemeResource AppInkBrush}" />
         <Setter Property="BorderBrush" Value="{ThemeResource AppOutlineBrush}" />
-        <Setter Property="BorderThickness" Value="1" />
+        <Setter Property="BorderThickness" Value="{ThemeResource AppHairlineBorderThickness}" />
         <Setter Property="CornerRadius" Value="{ThemeResource AppRadiusMedium}" />
-        <Setter Property="MinHeight" Value="36" />
+        <Setter Property="MinHeight" Value="{ThemeResource AppDimension36}" />
     </Style>
     <Style TargetType="DatePicker" BasedOn="{StaticResource DatePicker}" />
 </ResourceDictionary>

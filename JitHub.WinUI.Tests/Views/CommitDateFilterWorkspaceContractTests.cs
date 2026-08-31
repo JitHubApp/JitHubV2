@@ -79,10 +79,60 @@ public sealed class CommitDateFilterWorkspaceContractTests
         Assert.Equal("240", (string?)workspace.Attribute("TrailingPaneWidth"));
     }
 
+    [Fact]
+    public void CommitDetailUsesCompactDensityAndOnDemandCompareSearch()
+    {
+        string root = FindRepositoryRoot();
+        XDocument document = XDocument.Load(Path.Combine(
+            root,
+            "JitHub.WinUI",
+            "Views",
+            "Pages",
+            "RepoCommitsPage.xaml"));
+        string source = File.ReadAllText(Path.Combine(
+            root,
+            "JitHub.WinUI",
+            "Views",
+            "Pages",
+            "RepoCommitsPage.xaml.cs"));
+
+        XElement metadata = Assert.Single(document.Descendants(), element =>
+            element.Attributes().Any(attribute =>
+                attribute.Name.LocalName == "Name" && attribute.Value == "CommitDetailMetadata"));
+        Assert.NotNull(metadata);
+        XElement sectionSelector = Assert.Single(document.Descendants(), element =>
+            (string?)element.Attribute("AutomationProperties.AutomationId") == "RepoCommitsSectionSegmented");
+        Assert.Equal(
+            "{StaticResource AppContentSizedSegmentedStyle}",
+            (string?)sectionSelector.Attribute("Style"));
+        Assert.All(
+            sectionSelector.Elements().Where(static element => element.Name.LocalName == "AppSegmentedItem"),
+            element =>
+            {
+                Assert.Equal(
+                    "{StaticResource AppContentSizedSegmentedItemStyle}",
+                    (string?)element.Attribute("Style"));
+                Assert.Null(element.Attribute("Width"));
+            });
+        XElement compareSearchButton = Assert.Single(document.Descendants(), element =>
+            (string?)element.Attribute("AutomationProperties.AutomationId") == "RepoCommitsCompareSearchButton");
+        XElement compareSearchBox = Assert.Single(document.Descendants(), element =>
+            (string?)element.Attribute("AutomationProperties.AutomationId") == "RepoCommitsCompareDiffSearchBox");
+        Assert.Contains(compareSearchBox.Ancestors(), ancestor => ancestor.Name.LocalName == "Flyout");
+        Assert.Contains("IsCompareDiffVisible", compareSearchButton.Attribute("IsEnabled")?.Value, StringComparison.Ordinal);
+
+        Assert.Contains("AdaptiveWorkspaceMode.Narrow or AdaptiveWorkspaceMode.Compact", source, StringComparison.Ordinal);
+        Assert.Contains("CommitDetailMetadata.Visibility = isCompact", source, StringComparison.Ordinal);
+        Assert.Contains("CommitCompareSearchFlyout_Opened", source, StringComparison.Ordinal);
+        Assert.Contains("CommitCompareSearchFlyout_Closed", source, StringComparison.Ordinal);
+        Assert.Contains("CommitActionKind.ShowSearchTools", source, StringComparison.Ordinal);
+        Assert.Contains("CommitActionKind.HideSearchTools", source, StringComparison.Ordinal);
+    }
+
     private static string FindRepositoryRoot()
     {
         DirectoryInfo? directory = new(AppContext.BaseDirectory);
-        while (directory is not null && !File.Exists(Path.Combine(directory.FullName, "JitHub.slnx")))
+        while (directory is not null && !File.Exists(Path.Combine(directory.FullName, "Directory.Build.props")))
         {
             directory = directory.Parent;
         }

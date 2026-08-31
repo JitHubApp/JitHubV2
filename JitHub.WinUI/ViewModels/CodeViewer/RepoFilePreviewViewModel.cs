@@ -9,6 +9,8 @@ public sealed partial class RepoFilePreviewViewModel : ObservableObject
     [ObservableProperty]
     public partial RepoTreeNode? CurrentFile { get; set; }
 
+    public string CurrentFilePath => CurrentFile?.Path ?? string.Empty;
+
     [ObservableProperty]
     public partial RepoFilePreviewKind Kind { get; set; }
 
@@ -47,6 +49,9 @@ public sealed partial class RepoFilePreviewViewModel : ObservableObject
 
     [RelayCommand]
     private void ToggleRichPreview() => ShowRichPreview = !ShowRichPreview;
+
+    partial void OnCurrentFileChanged(RepoTreeNode? value) =>
+        OnPropertyChanged(nameof(CurrentFilePath));
 
     internal void BeginSelection(RepoTreeNode file)
     {

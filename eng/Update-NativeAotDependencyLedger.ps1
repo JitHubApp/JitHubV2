@@ -24,7 +24,48 @@ if (-not (Test-Path -LiteralPath $resolvedAssetsPath -PathType Leaf)) {
     throw "Assets file not found: $resolvedAssetsPath"
 }
 
-$assets = Get-Content -LiteralPath $resolvedAssetsPath -Raw | ConvertFrom-Json -AsHashtable
+$convertFromJsonCommand = Get-Command ConvertFrom-Json
+$legacyJsonSerializer = $null
+
+function ConvertFrom-LedgerJson {
+    param([Parameter(Mandatory = $true)][string]$Json)
+
+    if ($convertFromJsonCommand.Parameters.ContainsKey('AsHashtable')) {
+        return $Json | ConvertFrom-Json -AsHashtable
+    }
+
+    if ($null -eq $script:legacyJsonSerializer) {
+        Add-Type -AssemblyName System.Web.Extensions
+        $script:legacyJsonSerializer = [System.Web.Script.Serialization.JavaScriptSerializer]::new()
+        $script:legacyJsonSerializer.MaxJsonLength = [int]::MaxValue
+    }
+
+    return $script:legacyJsonSerializer.DeserializeObject($Json)
+}
+
+function Get-DependencyLedgerFingerprint {
+    param([Parameter(Mandatory = $true)]$Document)
+
+    $lines = [System.Collections.Generic.List[string]]::new()
+    $lines.Add("schemaVersion=$($Document.schemaVersion)")
+    $lines.Add("project=$($Document.project)")
+    $lines.Add("runtimeIdentifiers=$(@($Document.runtimeIdentifiers) -join ',')")
+    $lines.Add("packageCount=$($Document.packageCount)")
+    foreach ($package in @($Document.packages)) {
+        $lines.Add(@(
+            $package.id,
+            $package.version,
+            $package.direct,
+            (@($package.roles) -join ','),
+            (@($package.targets) -join ',')
+        ) -join '|')
+    }
+
+    return $lines -join "`n"
+}
+
+$assetsJson = Get-Content -LiteralPath $resolvedAssetsPath -Raw
+$assets = ConvertFrom-LedgerJson -Json $assetsJson
 $directDependencies = [System.Collections.Generic.HashSet[string]]::new([System.StringComparer]::OrdinalIgnoreCase)
 foreach ($framework in $assets.project.frameworks.Values) {
     if ($framework.dependencies) {
@@ -109,8 +150,9 @@ if ($Verify) {
         throw "Dependency ledger is missing: $resolvedOutputPath"
     }
 
-    $existing = (Get-Content -LiteralPath $resolvedOutputPath -Raw) -replace "`r`n", "`n"
-    if ($existing -ne $generated) {
+    $existing = ConvertFrom-LedgerJson -Json (Get-Content -LiteralPath $resolvedOutputPath -Raw)
+    if ((Get-DependencyLedgerFingerprint -Document $existing) -cne
+        (Get-DependencyLedgerFingerprint -Document $document)) {
         throw 'Native AOT dependency ledger is stale. Run eng\Update-NativeAotDependencyLedger.ps1 and review the package changes.'
     }
 

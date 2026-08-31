@@ -5,7 +5,7 @@
     <DataTemplate x:Key="AssignedEventTemplate">
         <Grid>
             <Grid.ColumnDefinitions>
-                <ColumnDefinition Width="48" />
+                <ColumnDefinition Width="{ThemeResource AppGridLength48}" />
                 <ColumnDefinition Width="*" />
             </Grid.ColumnDefinitions>
             <common:Avatar
@@ -20,7 +20,7 @@
                 Grid.Column="1"
                 VerticalAlignment="Center"
                 Orientation="Horizontal"
-                Spacing="4">
+                Spacing="{ThemeResource AppGap4}">
                 <TextBlock VerticalAlignment="Center" Text="{Binding Actor.Login, Mode=OneWay}" />
                 <TextBlock x:Uid="DataTemplatesIssueEventAssignedEventTextBlockAssignedThi" VerticalAlignment="Center" Text="assigned this to" />
                 <common:Avatar

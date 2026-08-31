@@ -18,7 +18,13 @@ public sealed class Phase1SettingsPageViewModelTests
     [Fact]
     public async Task Initialize_LoadsThemeVersionDeveloperModeTogglesAndSnapshot()
     {
-        FakePreferencesService preferences = new() { Theme = ThemeConst.Dark, IsDeveloperMode = true, VersionText = "1.2.3.4" };
+        FakePreferencesService preferences = new()
+        {
+            Theme = ThemeConst.Dark,
+            Palette = ThemePaletteIds.GitHub,
+            IsDeveloperMode = true,
+            VersionText = "1.2.3.4"
+        };
         MemorySettingService settings = new();
         FakeSettingsDiagnosticsService diagnostics = new(CreateSnapshot(metadataBytes: 128, payloadBytes: 256, imageBytes: 64, diagnosticsBytes: 32));
         RecordingTelemetryService telemetry = new();
@@ -29,6 +35,7 @@ public sealed class Phase1SettingsPageViewModelTests
         Assert.Equal("JitHub 1.2.3.4", viewModel.VersionText);
         Assert.True(viewModel.IsDeveloperMode);
         Assert.Equal(ThemeConst.Dark, viewModel.SelectedThemeOption?.Value);
+        Assert.Equal(ThemePaletteIds.GitHub, viewModel.SelectedPaletteOption?.Id);
         Assert.True(viewModel.DiagnosticsEnabled);
         Assert.True(viewModel.StoreTelemetryEnabled);
         Assert.True(viewModel.CanUseStoreTelemetry);
@@ -51,16 +58,56 @@ public sealed class Phase1SettingsPageViewModelTests
         await viewModel.InitializeAsync();
 
         viewModel.SelectedThemeOption = viewModel.ThemeOptions.Single(option => option.Value == ThemeConst.Light);
+        viewModel.SelectedPaletteOption = viewModel.PaletteOptions.Single(option => option.Id == ThemePaletteIds.Solarized);
         viewModel.DiagnosticsEnabled = false;
         viewModel.StoreTelemetryEnabled = false;
         viewModel.IsDeveloperMode = true;
 
         Assert.Equal(ThemeConst.Light, preferences.Theme);
+        Assert.Equal(ThemePaletteIds.Solarized, preferences.Palette);
         Assert.False(settings.Get<bool>(SettingsKeys.DiagnosticsEnabled));
         Assert.False(settings.Get<bool>(SettingsKeys.StoreTelemetryEnabled));
         Assert.True(preferences.IsDeveloperMode);
         Assert.Contains(telemetry.Events, static entry =>
             entry.Name == "settings.action.executed" && entry.Properties["action"] == "theme_changed");
+        Assert.Contains(telemetry.Events, static entry =>
+            entry.Name == "settings.action.executed" &&
+            entry.Properties["action"] == "theme_palette_changed" &&
+            entry.Properties["theme_palette"] == ThemePaletteIds.Solarized);
+    }
+
+    [Fact]
+    public async Task PaletteChangeFailure_RestoresPreviousSelectionAndReportsError()
+    {
+        FakePreferencesService preferences = new()
+        {
+            Palette = ThemePaletteIds.GitHub,
+            PaletteApplySucceeds = false
+        };
+        RecordingTelemetryService telemetry = new();
+        SettingsPageViewModel viewModel = new(
+            preferences,
+            new MemorySettingService(),
+            new FakeSettingsDiagnosticsService(CreateSnapshot()),
+            telemetry);
+        await viewModel.InitializeAsync();
+
+        viewModel.SelectedPaletteOption = viewModel.PaletteOptions.Single(
+            option => option.Id == ThemePaletteIds.VisualStudioCode);
+
+        Assert.Equal(ThemePaletteIds.GitHub, preferences.Palette);
+        Assert.Equal(ThemePaletteIds.GitHub, viewModel.SelectedPaletteOption?.Id);
+        Assert.True(viewModel.HasStatusError);
+        Assert.Equal(
+            "JitHub could not apply that color theme. Your previous theme is still active.",
+            viewModel.StatusText);
+        Assert.True(viewModel.PaletteOptions.Single(option => option.Id == ThemePaletteIds.GitHub).IsSelected);
+        Assert.False(viewModel.PaletteOptions.Single(option => option.Id == ThemePaletteIds.VisualStudioCode).IsSelected);
+        RecordedTelemetryEvent action = Assert.Single(telemetry.Events, static entry =>
+            entry.Name == "settings.action.executed" &&
+            entry.Properties["action"] == TelemetryTaxonomy.Actions.ThemePaletteChanged);
+        Assert.Equal(ThemePaletteIds.VisualStudioCode, action.Properties["theme_palette"]);
+        Assert.Equal(TelemetryTaxonomy.Results.Error, action.Properties["result"]);
     }
 
     [Fact]
@@ -265,13 +312,30 @@ public sealed class Phase1SettingsPageViewModelTests
     {
         public string Theme { get; set; } = ThemeConst.System;
 
+        public string Palette { get; set; } = ThemePaletteIds.JitHub;
+
         public bool IsDeveloperMode { get; set; }
 
         public string VersionText { get; set; } = "0.0.0.0";
 
+        public bool PaletteApplySucceeds { get; set; } = true;
+
         public string GetTheme() => Theme;
 
         public void SetTheme(string theme) => Theme = theme;
+
+        public string GetPalette() => Palette;
+
+        public bool TrySetPalette(string paletteId)
+        {
+            if (!PaletteApplySucceeds)
+            {
+                return false;
+            }
+
+            Palette = ThemePaletteCatalog.Normalize(paletteId);
+            return true;
+        }
 
         public string GetVersionText() => VersionText;
     }

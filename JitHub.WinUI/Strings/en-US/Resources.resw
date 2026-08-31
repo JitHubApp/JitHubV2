@@ -726,6 +726,33 @@
   <data name="MyPullRequests/Section/Timeline" xml:space="preserve">
     <value>Timeline</value>
   </data>
+  <data name="MyPullRequests/Filter/InvolvedLabel" xml:space="preserve">
+    <value>Involved</value>
+  </data>
+  <data name="MyPullRequests/Filter/InvolvedToolTip" xml:space="preserve">
+    <value>Pull requests involving me</value>
+  </data>
+  <data name="MyPullRequests/Filter/ReviewRequestedLabel" xml:space="preserve">
+    <value>Review</value>
+  </data>
+  <data name="MyPullRequests/Filter/ReviewRequestedToolTip" xml:space="preserve">
+    <value>Review requested from me</value>
+  </data>
+  <data name="MyPullRequests/Filter/AuthoredLabel" xml:space="preserve">
+    <value>Created</value>
+  </data>
+  <data name="MyPullRequests/Filter/AuthoredToolTip" xml:space="preserve">
+    <value>Created by me</value>
+  </data>
+  <data name="MyPullRequests/Filter/AssignedLabel" xml:space="preserve">
+    <value>Assigned</value>
+  </data>
+  <data name="MyPullRequests/Filter/AssignedToolTip" xml:space="preserve">
+    <value>Assigned to me</value>
+  </data>
+  <data name="MyPullRequests/Filter/ScopeAutomationName" xml:space="preserve">
+    <value>Pull request scope</value>
+  </data>
   <data name="MyPullRequests/Filter/StateAutomationName" xml:space="preserve">
     <value>Pull request state</value>
   </data>
@@ -938,6 +965,9 @@
   </data>
   <data name="RepoCode/EditorContentTooLargeStatus" xml:space="preserve">
     <value>This file is available through the file actions menu.</value>
+  </data>
+  <data name="RepoCode/EditorContentLoadingStatus" xml:space="preserve">
+    <value>Loading source</value>
   </data>
   <data name="RepoCode/EditorContentReadyStatus" xml:space="preserve">
     <value>Source loaded</value>
@@ -1502,6 +1532,9 @@
   </data>
   <data name="RepoCode/EditorHighContrastStatus" xml:space="preserve">
     <value>High contrast editor colors active</value>
+  </data>
+  <data name="RepoCode/EditorControlType" xml:space="preserve">
+    <value>code editor</value>
   </data>
   <data name="RepoIssue/MetadataPartialStatus" xml:space="preserve">
     <value>Some issue metadata could not be loaded. Available choices are shown.</value>
@@ -2295,6 +2328,18 @@
   <data name="PagesMyPullRequestsPageMyPullRequestsExpandBodyButton.AutomationProperties.Name" xml:space="preserve">
     <value>Expand pull request body</value>
   </data>
+  <data name="PagesMyPullRequestsPageMyPullRequestsFilterAssigned.AutomationProperties.Name" xml:space="preserve">
+    <value>Show pull requests assigned to me</value>
+  </data>
+  <data name="PagesMyPullRequestsPageMyPullRequestsFilterAuthored.AutomationProperties.Name" xml:space="preserve">
+    <value>Show pull requests I created</value>
+  </data>
+  <data name="PagesMyPullRequestsPageMyPullRequestsFilterInvolved.AutomationProperties.Name" xml:space="preserve">
+    <value>Show pull requests involving me</value>
+  </data>
+  <data name="PagesMyPullRequestsPageMyPullRequestsFilterReviewRequested.AutomationProperties.Name" xml:space="preserve">
+    <value>Show pull requests requesting my review</value>
+  </data>
   <data name="PagesMyPullRequestsPageMyPullRequestsInspector.AutomationProperties.Name" xml:space="preserve">
     <value>My pull request inspector</value>
   </data>
@@ -2324,6 +2369,21 @@
   </data>
   <data name="PagesMyPullRequestsPageMyPullRequestsSectionTimeline.AutomationProperties.Name" xml:space="preserve">
     <value>Show pull request timeline</value>
+  </data>
+  <data name="PagesMyPullRequestsPageMyPullRequestsScopeCompactAssigned.AutomationProperties.Name" xml:space="preserve">
+    <value>Show pull requests assigned to me</value>
+  </data>
+  <data name="PagesMyPullRequestsPageMyPullRequestsScopeCompactAuthored.AutomationProperties.Name" xml:space="preserve">
+    <value>Show pull requests I created</value>
+  </data>
+  <data name="PagesMyPullRequestsPageMyPullRequestsScopeCompactInvolved.AutomationProperties.Name" xml:space="preserve">
+    <value>Show pull requests involving me</value>
+  </data>
+  <data name="PagesMyPullRequestsPageMyPullRequestsScopeCompactReviewRequested.AutomationProperties.Name" xml:space="preserve">
+    <value>Show pull requests requesting my review</value>
+  </data>
+  <data name="PagesMyPullRequestsPageMyPullRequestsScopeSegmented.AutomationProperties.Name" xml:space="preserve">
+    <value>My pull requests relationship filter</value>
   </data>
   <data name="PagesMyPullRequestsPageMyPullRequestsStateAll.AutomationProperties.Name" xml:space="preserve">
     <value>Show all pull requests</value>
@@ -2478,6 +2538,9 @@
   <data name="PagesProfilePageProfileModeReadmeItem.Text" xml:space="preserve">
     <value>README</value>
   </data>
+  <data name="PagesProfilePageProfileLoadingIndicator.AutomationProperties.Name" xml:space="preserve">
+    <value>Loading profile details</value>
+  </data>
   <data name="PagesProfilePageProfileModeRepositoriesItem.AutomationProperties.Name" xml:space="preserve">
     <value>Show profile repositories</value>
   </data>
@@ -2581,6 +2644,9 @@
     <value>Filter commits by author</value>
   </data>
   <data name="PagesRepoCommitsPageRepoCommitsAuthorFilterBox.PlaceholderText" xml:space="preserve">
+    <value>Login or email</value>
+  </data>
+  <data name="PagesRepoCommitsPageRepoCommitsAuthorFilterBox.Header" xml:space="preserve">
     <value>Author</value>
   </data>
   <data name="PagesRepoCommitsPageRepoCommitsBranchComboBox.AutomationProperties.Name" xml:space="preserve">
@@ -2619,6 +2685,45 @@
   <data name="PagesRepoCommitsPageRepoCommitsCompareButton.Content" xml:space="preserve">
     <value>Compare</value>
   </data>
+  <data name="PagesRepoCommitsPageTextBlockCompareBase.Text" xml:space="preserve">
+    <value>Base</value>
+  </data>
+  <data name="PagesRepoCommitsPageTextBlockCompareHead.Text" xml:space="preserve">
+    <value>Compare</value>
+  </data>
+  <data name="PagesRepoCommitsPageRepoCommitsCompareSwapButton.AutomationProperties.Name" xml:space="preserve">
+    <value>Swap base and compare references</value>
+  </data>
+  <data name="PagesRepoCommitsPageRepoCommitsCompareSwapButton.ToolTipService.ToolTip" xml:space="preserve">
+    <value>Swap references</value>
+  </data>
+  <data name="PagesRepoCommitsPageRepoCommitsCompareSearchButton.AutomationProperties.Name" xml:space="preserve">
+    <value>Search compare diff</value>
+  </data>
+  <data name="PagesRepoCommitsPageRepoCommitsCompareSearchButton.ToolTipService.ToolTip" xml:space="preserve">
+    <value>Search compare diff</value>
+  </data>
+  <data name="PagesRepoCommitsPageTextBlockSearchCompareDiff.Text" xml:space="preserve">
+    <value>Search comparison</value>
+  </data>
+  <data name="PagesRepoCommitsPageTextBlockNoComparisonLoaded.Text" xml:space="preserve">
+    <value>No comparison loaded</value>
+  </data>
+  <data name="PagesRepoCommitsPageTextBlockComparingChanges.Text" xml:space="preserve">
+    <value>Comparing changes</value>
+  </data>
+  <data name="PagesRepoCommitsPageTextBlockNoFileChanges.Text" xml:space="preserve">
+    <value>No file changes</value>
+  </data>
+  <data name="PagesRepoCommitsPageTextBlockComparisonUnavailable.Text" xml:space="preserve">
+    <value>Comparison unavailable</value>
+  </data>
+  <data name="PagesRepoCommitsPageRepoCommitsCompareSearchToggleButton.AutomationProperties.Name" xml:space="preserve">
+    <value>Show compare diff search</value>
+  </data>
+  <data name="PagesRepoCommitsPageRepoCommitsCompareSearchToggleButton.ToolTipService.ToolTip" xml:space="preserve">
+    <value>Search compare diff</value>
+  </data>
   <data name="PagesRepoCommitsPageRepoCommitsCompareDiffSearchBox.AutomationProperties.Name" xml:space="preserve">
     <value>Search compare diff</value>
   </data>
@@ -2632,7 +2737,7 @@
     <value>Compare head reference</value>
   </data>
   <data name="PagesRepoCommitsPageRepoCommitsCompareHeadBox.PlaceholderText" xml:space="preserve">
-    <value>Head ref</value>
+    <value>Compare ref</value>
   </data>
   <data name="PagesRepoCommitsPageRepoCommitsCompareNextDiffMatchButto.AutomationProperties.Name" xml:space="preserve">
     <value>Next compare diff search match</value>
@@ -2658,6 +2763,12 @@
   <data name="PagesRepoCommitsPageRepoCommitsDiffFileFilterBox.PlaceholderText" xml:space="preserve">
     <value>Filter files...</value>
   </data>
+  <data name="PagesRepoCommitsPageRepoCommitsDiffSearchButton.AutomationProperties.Name" xml:space="preserve">
+    <value>Search commit diff</value>
+  </data>
+  <data name="PagesRepoCommitsPageRepoCommitsDiffSearchButton.ToolTipService.ToolTip" xml:space="preserve">
+    <value>Search diff</value>
+  </data>
   <data name="PagesRepoCommitsPageRepoCommitsDiffSearchBox.AutomationProperties.Name" xml:space="preserve">
     <value>Search commit diff</value>
   </data>
@@ -2666,6 +2777,12 @@
   </data>
   <data name="PagesRepoCommitsPageRepoCommitsDiffViewer.AutomationProperties.Name" xml:space="preserve">
     <value>Commit diff</value>
+  </data>
+  <data name="RepoCommits/CompareSearch/Hide" xml:space="preserve">
+    <value>Hide compare diff search</value>
+  </data>
+  <data name="RepoCommits/CompareSearch/Show" xml:space="preserve">
+    <value>Show compare diff search</value>
   </data>
   <data name="PagesRepoCommitsPageRepoCommitsInspectorHost.AutomationProperties.Name" xml:space="preserve">
     <value>Commit inspector</value>
@@ -2707,6 +2824,9 @@
     <value>Filter commits by path</value>
   </data>
   <data name="PagesRepoCommitsPageRepoCommitsPathFilterBox.PlaceholderText" xml:space="preserve">
+    <value>src/components</value>
+  </data>
+  <data name="PagesRepoCommitsPageRepoCommitsPathFilterBox.Header" xml:space="preserve">
     <value>Path</value>
   </data>
   <data name="PagesRepoCommitsPageRepoCommitsPreviousDiffMatchButton.AutomationProperties.Name" xml:space="preserve">
@@ -2723,6 +2843,12 @@
   </data>
   <data name="PagesRepoCommitsPageRepoCommitsSearchBox.PlaceholderText" xml:space="preserve">
     <value>Search messages...</value>
+  </data>
+  <data name="PagesRepoCommitsPageRepoCommitsSearchButton.AutomationProperties.Name" xml:space="preserve">
+    <value>Search commit messages</value>
+  </data>
+  <data name="PagesRepoCommitsPageRepoCommitsSearchButton.ToolTipService.ToolTip" xml:space="preserve">
+    <value>Search commits</value>
   </data>
   <data name="PagesRepoCommitsPageRepoCommitsSectionChecks.AutomationProperties.Name" xml:space="preserve">
     <value>Show commit checks</value>
@@ -2758,7 +2884,10 @@
     <value>Commits since date</value>
   </data>
   <data name="PagesRepoCommitsPageRepoCommitsSinceFilterPicker.PlaceholderText" xml:space="preserve">
-    <value>Since</value>
+    <value>Start date</value>
+  </data>
+  <data name="PagesRepoCommitsPageRepoCommitsSinceFilterPicker.Header" xml:space="preserve">
+    <value>From</value>
   </data>
   <data name="PagesRepoCommitsPageRepoCommitsUntilFilterChip.ToolTipService.ToolTip" xml:space="preserve">
     <value>Clear until date filter</value>
@@ -2767,7 +2896,10 @@
     <value>Commits until date</value>
   </data>
   <data name="PagesRepoCommitsPageRepoCommitsUntilFilterPicker.PlaceholderText" xml:space="preserve">
-    <value>Until</value>
+    <value>End date</value>
+  </data>
+  <data name="PagesRepoCommitsPageRepoCommitsUntilFilterPicker.Header" xml:space="preserve">
+    <value>To</value>
   </data>
   <data name="PagesRepoCommitsPageTextBlockInspector.Text" xml:space="preserve">
     <value>Inspector</value>
@@ -5910,6 +6042,9 @@
   <data name="RepoCode/Error/FilterFailedSafe" xml:space="preserve">
     <value>Could not filter repository files.</value>
   </data>
+  <data name="RepoCode/Error/TreePresentationFailedSafe" xml:space="preserve">
+    <value>JitHub could not display repository files. Try refreshing the page.</value>
+  </data>
   <data name="RepoCode/Error/FolderRefreshFailedSafe" xml:space="preserve">
     <value>Could not refresh this folder.</value>
   </data>
@@ -6098,5 +6233,209 @@
   </data>
   <data name="RepoPullRequest.CommentMutationUnexpectedError" xml:space="preserve">
     <value>JitHub could not update this comment.</value>
+  </data>
+  <data name="Comment.Menu.CopyLink" xml:space="preserve">
+    <value>Copy link</value>
+  </data>
+  <data name="Comment.Menu.QuoteReply" xml:space="preserve">
+    <value>Quote reply</value>
+  </data>
+  <data name="Comment.Reaction.LoadFailed" xml:space="preserve">
+    <value>JitHub could not load reactions. Try again.</value>
+  </data>
+  <data name="Comment.Reaction.UpdateFailed" xml:space="preserve">
+    <value>JitHub could not update this reaction. Try again.</value>
+  </data>
+  <data name="PagesRepoCommitsPageTextBlockCommits.Text" xml:space="preserve">
+    <value>Commits</value>
+  </data>
+  <data name="PagesRepoCommitsPageRepoCommitsFilterButton.AutomationProperties.Name" xml:space="preserve">
+    <value>Commit filters</value>
+  </data>
+  <data name="PagesRepoCommitsPageRepoCommitsFilterButton.ToolTipService.ToolTip" xml:space="preserve">
+    <value>Filters</value>
+  </data>
+  <data name="PagesRepoCommitsPageTextBlockCommitFilters.Text" xml:space="preserve">
+    <value>Commit filters</value>
+  </data>
+  <data name="PagesRepoCommitsPageRepoCommitsClearFiltersButton.AutomationProperties.Name" xml:space="preserve">
+    <value>Clear commit filters</value>
+  </data>
+  <data name="PagesRepoCommitsPageRepoCommitsClearFiltersButton.Content" xml:space="preserve">
+    <value>Clear</value>
+  </data>
+  <data name="PagesRepoCommitsPageRepoCommitsMessageButton.AutomationProperties.Name" xml:space="preserve">
+    <value>View full commit message</value>
+  </data>
+  <data name="PagesRepoCommitsPageRepoCommitsMessageButton.ToolTipService.ToolTip" xml:space="preserve">
+    <value>Commit message</value>
+  </data>
+  <data name="PagesRepoCommitsPageTextBlockCommitMessage.Text" xml:space="preserve">
+    <value>Commit message</value>
+  </data>
+  <data name="PagesRepoCommitsPageRepoCommitsDiffFilesButton.AutomationProperties.Name" xml:space="preserve">
+    <value>Toggle changed files navigator</value>
+  </data>
+  <data name="PagesRepoCommitsPageRepoCommitsDiffFilesButton.ToolTipService.ToolTip" xml:space="preserve">
+    <value>Changed files</value>
+  </data>
+  <data name="PagesRepoCommitsPageRunFiles.Text" xml:space="preserve">
+    <value>Files</value>
+  </data>
+  <data name="PagesRepoCommitsPageRepoCommitsDiffCloseFilesButton.AutomationProperties.Name" xml:space="preserve">
+    <value>Close changed files navigator</value>
+  </data>
+  <data name="PagesRepoCommitsPageRepoCommitsDiffCloseFilesButton.ToolTipService.ToolTip" xml:space="preserve">
+    <value>Close changed files</value>
+  </data>
+  <data name="PagesRepoCommitsPageRepoCommitsDiffFileTree.AutomationProperties.Name" xml:space="preserve">
+    <value>Changed files</value>
+  </data>
+  <data name="PagesRepoCommitsPageRepoCommitsCollapseAllFilesButton.AutomationProperties.Name" xml:space="preserve">
+    <value>Collapse all changed files</value>
+  </data>
+  <data name="PagesRepoCommitsPageRepoCommitsCollapseAllFilesButton.Content" xml:space="preserve">
+    <value>Collapse all</value>
+  </data>
+  <data name="PagesRepoCommitsPageRepoCommitsExpandAllFilesButton.AutomationProperties.Name" xml:space="preserve">
+    <value>Expand all changed files</value>
+  </data>
+  <data name="PagesRepoCommitsPageRepoCommitsExpandAllFilesButton.Content" xml:space="preserve">
+    <value>Expand all</value>
+  </data>
+  <data name="PagesRepoCommitsPageRunComments.Text" xml:space="preserve">
+    <value>Comments</value>
+  </data>
+  <data name="PagesRepoCommitsPageRepoCommitsOpenCommentButton.AutomationProperties.Name" xml:space="preserve">
+    <value>Open commit comment editor</value>
+  </data>
+  <data name="PagesRepoCommitsPageTextBlockComment.Text" xml:space="preserve">
+    <value>Comment</value>
+  </data>
+  <data name="PagesRepoCommitsPageTextBlockNoComments.Text" xml:space="preserve">
+    <value>No comments yet.</value>
+  </data>
+  <data name="PagesRepoCommitsPageTextBlockSearchCommitDiff.Text" xml:space="preserve">
+    <value>Search commit diff</value>
+  </data>
+  <data name="PagesRepoCommitsPageTextBlockSearchCommitMessages.Text" xml:space="preserve">
+    <value>Search commit messages</value>
+  </data>
+  <data name="PagesRepoCommitsPageRepoCommitsShyOverflowButton.AutomationProperties.Name" xml:space="preserve">
+    <value>More commit actions</value>
+  </data>
+  <data name="PagesRepoCommitsPageRepoCommitsShyOverflowButton.ToolTipService.ToolTip" xml:space="preserve">
+    <value>More commit actions</value>
+  </data>
+  <data name="PagesRepoCommitsPageRepoCommitsShyDiffFilesAction.AutomationProperties.Name" xml:space="preserve">
+    <value>Changed files</value>
+  </data>
+  <data name="PagesRepoCommitsPageRepoCommitsShyDiffFilesAction.Text" xml:space="preserve">
+    <value>Changed files</value>
+  </data>
+  <data name="PagesRepoCommitsPageRepoCommitsShyDiffSearchAction.AutomationProperties.Name" xml:space="preserve">
+    <value>Search commit diff</value>
+  </data>
+  <data name="PagesRepoCommitsPageRepoCommitsShyDiffSearchAction.Text" xml:space="preserve">
+    <value>Search diff</value>
+  </data>
+  <data name="PagesRepoCommitsPageRepoCommitsShyMessageAction.AutomationProperties.Name" xml:space="preserve">
+    <value>Commit message</value>
+  </data>
+  <data name="PagesRepoCommitsPageRepoCommitsShyMessageAction.Text" xml:space="preserve">
+    <value>Commit message</value>
+  </data>
+  <data name="PagesRepoCommitsPageRepoCommitsShyBrowseAction.AutomationProperties.Name" xml:space="preserve">
+    <value>Browse files</value>
+  </data>
+  <data name="PagesRepoCommitsPageRepoCommitsShyBrowseAction.Text" xml:space="preserve">
+    <value>Browse files</value>
+  </data>
+  <data name="PagesRepoCommitsPageRepoCommitsShyInspectorAction.AutomationProperties.Name" xml:space="preserve">
+    <value>Inspector</value>
+  </data>
+  <data name="PagesRepoCommitsPageRepoCommitsShyInspectorAction.Text" xml:space="preserve">
+    <value>Inspector</value>
+  </data>
+  <data name="PagesSettingsPageTextBlockColorTheme.Text" xml:space="preserve">
+    <value>Color theme</value>
+  </data>
+  <data name="PagesSettingsPageTextBlockColorThemeDescription.Text" xml:space="preserve">
+    <value>Choose the color family used throughout JitHub.</value>
+  </data>
+  <data name="PagesSettingsPageSettingsResetPaletteButton.Content" xml:space="preserve">
+    <value>Restore JitHub</value>
+  </data>
+  <data name="PagesSettingsPageSettingsResetPaletteButton.AutomationProperties.Name" xml:space="preserve">
+    <value>Restore the default JitHub color theme</value>
+  </data>
+  <data name="PagesSettingsPageThemePaletteRepeater.AutomationProperties.Name" xml:space="preserve">
+    <value>Color theme</value>
+  </data>
+  <data name="Settings/Palette/JitHub" xml:space="preserve">
+    <value>JitHub (default)</value>
+  </data>
+  <data name="Settings/Palette/JitHubDescription" xml:space="preserve">
+    <value>The original jade JitHub palette.</value>
+  </data>
+  <data name="Settings/Palette/Windows11" xml:space="preserve">
+    <value>Windows 11</value>
+  </data>
+  <data name="Settings/Palette/Windows11Description" xml:space="preserve">
+    <value>Neutral Windows surfaces with a familiar blue accent.</value>
+  </data>
+  <data name="Settings/Palette/VisualStudioCode" xml:space="preserve">
+    <value>Visual Studio Code</value>
+  </data>
+  <data name="Settings/Palette/VisualStudioCodeDescription" xml:space="preserve">
+    <value>Focused editor colors based on VS Code Modern.</value>
+  </data>
+  <data name="Settings/Palette/GitHub" xml:space="preserve">
+    <value>GitHub</value>
+  </data>
+  <data name="Settings/Palette/GitHubDescription" xml:space="preserve">
+    <value>Familiar repository colors based on GitHub.</value>
+  </data>
+  <data name="Settings/Palette/Solarized" xml:space="preserve">
+    <value>Solarized</value>
+  </data>
+  <data name="Settings/Palette/SolarizedDescription" xml:space="preserve">
+    <value>A carefully balanced low-glare color family.</value>
+  </data>
+  <data name="Settings/Palette/OneDarkPro" xml:space="preserve"><value>One Dark Pro</value></data>
+  <data name="Settings/Palette/OneDarkProDescription" xml:space="preserve"><value>Balanced editor neutrals inspired by One Dark Pro.</value></data>
+  <data name="Settings/Palette/Dracula" xml:space="preserve"><value>Dracula</value></data>
+  <data name="Settings/Palette/DraculaDescription" xml:space="preserve"><value>Deep violet surfaces and vivid accents inspired by Dracula.</value></data>
+  <data name="Settings/Palette/Nord" xml:space="preserve"><value>Nord</value></data>
+  <data name="Settings/Palette/NordDescription" xml:space="preserve"><value>Cool, quiet surfaces inspired by the Nord palette.</value></data>
+  <data name="Settings/Palette/TokyoNight" xml:space="preserve"><value>Tokyo Night</value></data>
+  <data name="Settings/Palette/TokyoNightDescription" xml:space="preserve"><value>Calm indigo surfaces inspired by Tokyo Night.</value></data>
+  <data name="Settings/Palette/Catppuccin" xml:space="preserve"><value>Catppuccin</value></data>
+  <data name="Settings/Palette/CatppuccinDescription" xml:space="preserve"><value>Soft pastel surfaces inspired by Catppuccin Latte and Mocha.</value></data>
+  <data name="Settings/Palette/Gruvbox" xml:space="preserve"><value>Gruvbox</value></data>
+  <data name="Settings/Palette/GruvboxDescription" xml:space="preserve"><value>Warm, grounded colors inspired by Gruvbox.</value></data>
+  <data name="Settings/Palette/Monokai" xml:space="preserve"><value>Monokai</value></data>
+  <data name="Settings/Palette/MonokaiDescription" xml:space="preserve"><value>Crisp charcoal and vivid accents inspired by Monokai.</value></data>
+  <data name="Settings/Palette/Ayu" xml:space="preserve"><value>Ayu</value></data>
+  <data name="Settings/Palette/AyuDescription" xml:space="preserve"><value>Clean neutrals and warm accents inspired by Ayu.</value></data>
+  <data name="Settings/Palette/NightOwl" xml:space="preserve"><value>Night Owl</value></data>
+  <data name="Settings/Palette/NightOwlDescription" xml:space="preserve"><value>High-clarity blues inspired by Night Owl.</value></data>
+  <data name="Settings/Palette/RosePine" xml:space="preserve"><value>Rose Pine</value></data>
+  <data name="Settings/Palette/RosePineDescription" xml:space="preserve"><value>Muted rose and violet tones inspired by Rose Pine.</value></data>
+  <data name="Settings/Palette/Everforest" xml:space="preserve"><value>Everforest</value></data>
+  <data name="Settings/Palette/EverforestDescription" xml:space="preserve"><value>Low-contrast natural colors inspired by Everforest.</value></data>
+  <data name="Settings/Palette/Cobalt2" xml:space="preserve"><value>Cobalt2</value></data>
+  <data name="Settings/Palette/Cobalt2Description" xml:space="preserve"><value>Saturated blue surfaces and gold accents inspired by Cobalt2.</value></data>
+  <data name="Settings/Palette/Material" xml:space="preserve"><value>Material</value></data>
+  <data name="Settings/Palette/MaterialDescription" xml:space="preserve"><value>Clear surfaces and teal-blue accents inspired by Material themes.</value></data>
+  <data name="Settings/Palette/VisualStudio" xml:space="preserve"><value>Visual Studio</value></data>
+  <data name="Settings/Palette/VisualStudioDescription" xml:space="preserve"><value>Classic IDE surfaces inspired by Visual Studio.</value></data>
+  <data name="Settings/Palette/QuietLight" xml:space="preserve"><value>Quiet Light</value></data>
+  <data name="Settings/Palette/QuietLightDescription" xml:space="preserve"><value>Soft paper-like surfaces inspired by Quiet Light.</value></data>
+  <data name="Settings/Status/PaletteChangedFormat" xml:space="preserve">
+    <value>Color theme changed to {0}.</value>
+  </data>
+  <data name="Settings/Status/PaletteChangeFailed" xml:space="preserve">
+    <value>JitHub could not apply that color theme. Your previous theme is still active.</value>
   </data>
 </root>

@@ -135,12 +135,14 @@ public sealed record GitHubProfileReadme(
     string Markdown,
     string HtmlUrl,
     string RepositoryFullName,
+    string Path,
     bool Exists)
 {
     public static GitHubProfileReadme Missing(string login) => new(
         string.Empty,
         string.Empty,
         string.IsNullOrWhiteSpace(login) ? string.Empty : $"{login}/{login}",
+        string.Empty,
         false);
 }
 

@@ -324,6 +324,8 @@ public abstract partial class MeSearchPageViewModelBase : ViewModelBase
 
     public GitHubMeIssueFilter IssueFilter { get; private set; } = GitHubMeIssueFilter.Assigned;
 
+    public GitHubMePullRequestFilter PullRequestFilter { get; private set; } = GitHubMePullRequestFilter.Involves;
+
     public GitHubMeWorkItemState WorkItemState { get; private set; } = GitHubMeWorkItemState.Open;
 
     public bool IsAssignedFilterSelected => IssueFilter == GitHubMeIssueFilter.Assigned;
@@ -331,6 +333,14 @@ public abstract partial class MeSearchPageViewModelBase : ViewModelBase
     public bool IsCreatedFilterSelected => IssueFilter == GitHubMeIssueFilter.Created;
 
     public bool IsMentionedFilterSelected => IssueFilter == GitHubMeIssueFilter.Mentioned;
+
+    public bool IsInvolvedPullRequestFilterSelected => PullRequestFilter == GitHubMePullRequestFilter.Involves;
+
+    public bool IsReviewRequestedPullRequestFilterSelected => PullRequestFilter == GitHubMePullRequestFilter.ReviewRequested;
+
+    public bool IsAuthoredPullRequestFilterSelected => PullRequestFilter == GitHubMePullRequestFilter.Authored;
+
+    public bool IsAssignedPullRequestFilterSelected => PullRequestFilter == GitHubMePullRequestFilter.Assigned;
 
     public bool IsOpenStateSelected => WorkItemState == GitHubMeWorkItemState.Open;
 
@@ -365,6 +375,25 @@ public abstract partial class MeSearchPageViewModelBase : ViewModelBase
     public string PullRequestClosedStateLabel => GetString("MyPullRequests.State.ClosedLabel", "Closed");
 
     public string PullRequestAllStateLabel => GetString("MyPullRequests.State.AllLabel", "All");
+
+    public string PullRequestInvolvedFilterLabel => GetString("MyPullRequests.Filter.InvolvedLabel", "Involved");
+
+    public string PullRequestInvolvedFilterToolTip => GetString("MyPullRequests.Filter.InvolvedToolTip", "Pull requests involving me");
+
+    public string PullRequestReviewRequestedFilterLabel => GetString("MyPullRequests.Filter.ReviewRequestedLabel", "Review");
+
+    public string PullRequestReviewRequestedFilterToolTip => GetString("MyPullRequests.Filter.ReviewRequestedToolTip", "Review requested from me");
+
+    public string PullRequestAuthoredFilterLabel => GetString("MyPullRequests.Filter.AuthoredLabel", "Created");
+
+    public string PullRequestAuthoredFilterToolTip => GetString("MyPullRequests.Filter.AuthoredToolTip", "Created by me");
+
+    public string PullRequestAssignedFilterLabel => GetString("MyPullRequests.Filter.AssignedLabel", "Assigned");
+
+    public string PullRequestAssignedFilterToolTip => GetString("MyPullRequests.Filter.AssignedToolTip", "Assigned to me");
+
+    public string PullRequestScopePickerAutomationName =>
+        GetString("MyPullRequests.Filter.ScopeAutomationName", "Pull request scope");
 
     public string PullRequestStatePickerAutomationName =>
         GetString("MyPullRequests.Filter.StateAutomationName", "Pull request state");
@@ -522,8 +551,7 @@ public abstract partial class MeSearchPageViewModelBase : ViewModelBase
 
     public bool IsSelectedHeaderCoherent(MeWorkItemViewItem item) =>
         ReferenceEquals(SelectedItem, item) &&
-        SelectedIssue?.Number == item.Issue.Number &&
-        string.Equals(SelectedIssueTitle, item.Issue.Title, StringComparison.Ordinal);
+        SelectedIssue?.Number == item.Issue.Number;
 
     public async Task InitializeAsync(CancellationToken cancellationToken = default)
     {
@@ -538,7 +566,11 @@ public abstract partial class MeSearchPageViewModelBase : ViewModelBase
             new Dictionary<string, string?>
             {
                 ["page"] = "my",
-                ["source"] = TelemetryTaxonomy.Sources.Shell
+                ["source"] = TelemetryTaxonomy.Sources.Shell,
+                ["view_mode"] = IsPullRequestPage
+                    ? TelemetryTaxonomy.EnumValue(PullRequestFilter)
+                    : TelemetryTaxonomy.EnumValue(IssueFilter),
+                ["status"] = TelemetryTaxonomy.EnumValue(WorkItemState)
             });
         await RefreshAsync(cancellationToken);
     }
@@ -552,7 +584,18 @@ public abstract partial class MeSearchPageViewModelBase : ViewModelBase
 
         IssueFilter = filter;
         NotifyFilterPropertiesChanged();
-        _ = RefreshAsync();
+        _telemetryService.TrackEvent(
+            "issues.filter.changed",
+            new Dictionary<string, string?>
+            {
+                ["page"] = "my",
+                ["filter_type"] = "scope",
+                ["view_mode"] = TelemetryTaxonomy.EnumValue(filter)
+            });
+        BackgroundTaskObserver.Run(
+            () => RefreshAsync(),
+            IsPullRequestPage ? "pull_requests" : "issues",
+            _telemetryService);
     }
 
     public void SetWorkItemState(GitHubMeWorkItemState state)
@@ -564,7 +607,41 @@ public abstract partial class MeSearchPageViewModelBase : ViewModelBase
 
         WorkItemState = state;
         NotifyFilterPropertiesChanged();
-        _ = RefreshAsync();
+        _telemetryService.TrackEvent(
+            IsPullRequestPage ? "pull_requests.filter.changed" : "issues.filter.changed",
+            new Dictionary<string, string?>
+            {
+                ["page"] = "my",
+                ["filter_type"] = "state",
+                ["status"] = TelemetryTaxonomy.EnumValue(state)
+            });
+        BackgroundTaskObserver.Run(
+            () => RefreshAsync(),
+            IsPullRequestPage ? "pull_requests" : "issues",
+            _telemetryService);
+    }
+
+    public void SetPullRequestFilter(GitHubMePullRequestFilter filter)
+    {
+        if (!IsPullRequestPage || PullRequestFilter == filter)
+        {
+            return;
+        }
+
+        PullRequestFilter = filter;
+        NotifyFilterPropertiesChanged();
+        _telemetryService.TrackEvent(
+            "pull_requests.filter.changed",
+            new Dictionary<string, string?>
+            {
+                ["page"] = "my",
+                ["filter_type"] = "scope",
+                ["view_mode"] = TelemetryTaxonomy.EnumValue(filter)
+            });
+        BackgroundTaskObserver.Run(
+            () => RefreshAsync(),
+            "pull_requests",
+            _telemetryService);
     }
 
     public void SetPullRequestSection(PullRequestWorkspaceSection section)
@@ -578,7 +655,10 @@ public abstract partial class MeSearchPageViewModelBase : ViewModelBase
         {
             if (!_loadedPullRequestSections.Contains(section))
             {
-                _ = EnsureSelectedPullRequestSectionAsync();
+                BackgroundTaskObserver.Run(
+                    EnsureSelectedPullRequestSectionAsync,
+                    "pull_requests",
+                    _telemetryService);
             }
 
             return;
@@ -594,7 +674,10 @@ public abstract partial class MeSearchPageViewModelBase : ViewModelBase
                 ["page"] = "my",
                 ["section"] = TelemetryTaxonomy.EnumValue(section)
             });
-        _ = EnsureSelectedPullRequestSectionAsync();
+        BackgroundTaskObserver.Run(
+            EnsureSelectedPullRequestSectionAsync,
+            "pull_requests",
+            _telemetryService);
     }
 
     protected abstract Task<CachedResult<GitHubSearchIssuesResponse>> QueryAsync(
@@ -626,7 +709,11 @@ public abstract partial class MeSearchPageViewModelBase : ViewModelBase
             new Dictionary<string, string?>
             {
                 ["page"] = "my",
-                ["source"] = TelemetryTaxonomy.Sources.Cache
+                ["source"] = TelemetryTaxonomy.Sources.Cache,
+                ["view_mode"] = IsPullRequestPage
+                    ? TelemetryTaxonomy.EnumValue(PullRequestFilter)
+                    : TelemetryTaxonomy.EnumValue(IssueFilter),
+                ["status"] = TelemetryTaxonomy.EnumValue(WorkItemState)
             });
 
         string? token = GetActiveToken();
@@ -689,7 +776,10 @@ public abstract partial class MeSearchPageViewModelBase : ViewModelBase
 
             _activeLogin = login;
             _activeIdentityPartition = userPartition;
-            string queryKey = $"{IssueFilter}:{WorkItemState}:{login}";
+            string activeFilter = IsPullRequestPage
+                ? PullRequestFilter.ToString()
+                : IssueFilter.ToString();
+            string queryKey = $"{activeFilter}:{WorkItemState}:{login}";
             bool queryChanged = !string.Equals(_activeListQueryKey, queryKey, StringComparison.Ordinal);
 
             bool queryCommitted = !queryChanged;
@@ -812,7 +902,10 @@ public abstract partial class MeSearchPageViewModelBase : ViewModelBase
         _selectedIssueDwellPrefetch?.Dispose();
         _selectedIssueDwellPrefetch = null;
         OpenSelectedInRepositoryCommand.NotifyCanExecuteChanged();
-        _ = LoadSelectedItemAfterInputAsync(value);
+        BackgroundTaskObserver.Run(
+            () => LoadSelectedItemAfterInputAsync(value),
+            IsPullRequestPage ? "pull_requests" : "issues",
+            _telemetryService);
     }
 
     private async Task LoadSelectedItemAfterInputAsync(MeWorkItemViewItem? item)
@@ -1166,26 +1259,8 @@ public abstract partial class MeSearchPageViewModelBase : ViewModelBase
             switch (section)
             {
                 case PullRequestWorkspaceSection.Commits:
-                {
-                    PullRequestPagedSection<GitHubCommit> result = await _pullRequestQueryService.GetAllPullRequestCommitsAsync(
-                        token, userPartition, owner, repositoryName, pullRequestNumber, cancellationToken);
-                    if (!IsCurrent())
                     {
-                        return;
-                    }
-
-                    PullRequestCommits.ApplySnapshot(
-                        result.Items,
-                        MePullRequestCommitViewItem.GetStableKey,
-                        static item => item.StableKey,
-                        static commit => new MePullRequestCommitViewItem(commit),
-                        static (item, commit) => item.Apply(commit),
-                        result.State.ErrorMessage is null
-                            ? KeyedCollectionDiffOptions.Default
-                            : KeyedCollectionDiffOptions.PreserveMissing);
-                    if (RequiresAuthoritativeRefresh(result.State))
-                    {
-                        result = await _pullRequestQueryService.RefreshAllPullRequestCommitsAsync(
+                        PullRequestPagedSection<GitHubCommit> result = await _pullRequestQueryService.GetAllPullRequestCommitsAsync(
                             token, userPartition, owner, repositoryName, pullRequestNumber, cancellationToken);
                         if (!IsCurrent())
                         {
@@ -1201,75 +1276,75 @@ public abstract partial class MeSearchPageViewModelBase : ViewModelBase
                             result.State.ErrorMessage is null
                                 ? KeyedCollectionDiffOptions.Default
                                 : KeyedCollectionDiffOptions.PreserveMissing);
-                    }
-                    OnPropertyChanged(nameof(HasNoPullRequestCommits));
-                    states = [result.State];
-                    sectionCompleteness = result.Completeness;
-                    sectionItemCount = result.Items.Length;
-                    sectionApiLimit = result.ApiLimit;
-                    break;
-                }
-                case PullRequestWorkspaceSection.Reviews:
-                {
-                    Task<PullRequestPagedSection<GitHubPullRequestReview>> reviewsTask =
-                        _pullRequestQueryService.GetAllPullRequestReviewsAsync(
-                            token, userPartition, owner, repositoryName, pullRequestNumber, cancellationToken);
-                    Task<PullRequestPagedSection<GitHubPullRequestReviewComment>> commentsTask =
-                        _pullRequestQueryService.GetAllPullRequestReviewCommentsAsync(
-                            token, userPartition, owner, repositoryName, pullRequestNumber, cancellationToken);
-                    await Task.WhenAll(reviewsTask, commentsTask);
-                    if (!IsCurrent())
-                    {
-                        return;
-                    }
+                        if (RequiresAuthoritativeRefresh(result.State))
+                        {
+                            result = await _pullRequestQueryService.RefreshAllPullRequestCommitsAsync(
+                                token, userPartition, owner, repositoryName, pullRequestNumber, cancellationToken);
+                            if (!IsCurrent())
+                            {
+                                return;
+                            }
 
-                    PullRequestPagedSection<GitHubPullRequestReview> reviews = await reviewsTask;
-                    PullRequestPagedSection<GitHubPullRequestReviewComment> reviewComments = await commentsTask;
-                    ApplyPullRequestReviewSections(reviews, reviewComments);
-                    if (RequiresAuthoritativeRefresh(reviews.State) || RequiresAuthoritativeRefresh(reviewComments.State))
+                            PullRequestCommits.ApplySnapshot(
+                                result.Items,
+                                MePullRequestCommitViewItem.GetStableKey,
+                                static item => item.StableKey,
+                                static commit => new MePullRequestCommitViewItem(commit),
+                                static (item, commit) => item.Apply(commit),
+                                result.State.ErrorMessage is null
+                                    ? KeyedCollectionDiffOptions.Default
+                                    : KeyedCollectionDiffOptions.PreserveMissing);
+                        }
+                        OnPropertyChanged(nameof(HasNoPullRequestCommits));
+                        states = [result.State];
+                        sectionCompleteness = result.Completeness;
+                        sectionItemCount = result.Items.Length;
+                        sectionApiLimit = result.ApiLimit;
+                        break;
+                    }
+                case PullRequestWorkspaceSection.Reviews:
                     {
-                        Task<PullRequestPagedSection<GitHubPullRequestReview>> refreshReviewsTask =
-                            _pullRequestQueryService.RefreshAllPullRequestReviewsAsync(
+                        Task<PullRequestPagedSection<GitHubPullRequestReview>> reviewsTask =
+                            _pullRequestQueryService.GetAllPullRequestReviewsAsync(
                                 token, userPartition, owner, repositoryName, pullRequestNumber, cancellationToken);
-                        Task<PullRequestPagedSection<GitHubPullRequestReviewComment>> refreshCommentsTask =
-                            _pullRequestQueryService.RefreshAllPullRequestReviewCommentsAsync(
+                        Task<PullRequestPagedSection<GitHubPullRequestReviewComment>> commentsTask =
+                            _pullRequestQueryService.GetAllPullRequestReviewCommentsAsync(
                                 token, userPartition, owner, repositoryName, pullRequestNumber, cancellationToken);
-                        await Task.WhenAll(refreshReviewsTask, refreshCommentsTask);
+                        await Task.WhenAll(reviewsTask, commentsTask);
                         if (!IsCurrent())
                         {
                             return;
                         }
 
-                        reviews = await refreshReviewsTask;
-                        reviewComments = await refreshCommentsTask;
+                        PullRequestPagedSection<GitHubPullRequestReview> reviews = await reviewsTask;
+                        PullRequestPagedSection<GitHubPullRequestReviewComment> reviewComments = await commentsTask;
                         ApplyPullRequestReviewSections(reviews, reviewComments);
-                    }
-                    states = [reviews.State, reviewComments.State];
-                    sectionCompleteness = MergeCompleteness(reviews.Completeness, reviewComments.Completeness);
-                    sectionItemCount = reviews.Items.Length + reviewComments.Items.Length;
-                    break;
-                }
-                case PullRequestWorkspaceSection.Timeline:
-                {
-                    PullRequestPagedSection<GitHubIssueEvent> result = await _pullRequestQueryService.GetAllPullRequestTimelineEventsAsync(
-                        token, userPartition, owner, repositoryName, pullRequestNumber, cancellationToken);
-                    if (!IsCurrent())
-                    {
-                        return;
-                    }
+                        if (RequiresAuthoritativeRefresh(reviews.State) || RequiresAuthoritativeRefresh(reviewComments.State))
+                        {
+                            Task<PullRequestPagedSection<GitHubPullRequestReview>> refreshReviewsTask =
+                                _pullRequestQueryService.RefreshAllPullRequestReviewsAsync(
+                                    token, userPartition, owner, repositoryName, pullRequestNumber, cancellationToken);
+                            Task<PullRequestPagedSection<GitHubPullRequestReviewComment>> refreshCommentsTask =
+                                _pullRequestQueryService.RefreshAllPullRequestReviewCommentsAsync(
+                                    token, userPartition, owner, repositoryName, pullRequestNumber, cancellationToken);
+                            await Task.WhenAll(refreshReviewsTask, refreshCommentsTask);
+                            if (!IsCurrent())
+                            {
+                                return;
+                            }
 
-                    PullRequestTimelineEvents.ApplySnapshot(
-                        result.Items,
-                        MePullRequestTimelineViewItem.GetStableKey,
-                        static item => item.StableKey,
-                        static timelineEvent => new MePullRequestTimelineViewItem(timelineEvent),
-                        static (item, timelineEvent) => item.Apply(timelineEvent),
-                        result.State.ErrorMessage is null
-                            ? KeyedCollectionDiffOptions.Default
-                            : KeyedCollectionDiffOptions.PreserveMissing);
-                    if (RequiresAuthoritativeRefresh(result.State))
+                            reviews = await refreshReviewsTask;
+                            reviewComments = await refreshCommentsTask;
+                            ApplyPullRequestReviewSections(reviews, reviewComments);
+                        }
+                        states = [reviews.State, reviewComments.State];
+                        sectionCompleteness = MergeCompleteness(reviews.Completeness, reviewComments.Completeness);
+                        sectionItemCount = reviews.Items.Length + reviewComments.Items.Length;
+                        break;
+                    }
+                case PullRequestWorkspaceSection.Timeline:
                     {
-                        result = await _pullRequestQueryService.RefreshAllPullRequestTimelineEventsAsync(
+                        PullRequestPagedSection<GitHubIssueEvent> result = await _pullRequestQueryService.GetAllPullRequestTimelineEventsAsync(
                             token, userPartition, owner, repositoryName, pullRequestNumber, cancellationToken);
                         if (!IsCurrent())
                         {
@@ -1285,26 +1360,34 @@ public abstract partial class MeSearchPageViewModelBase : ViewModelBase
                             result.State.ErrorMessage is null
                                 ? KeyedCollectionDiffOptions.Default
                                 : KeyedCollectionDiffOptions.PreserveMissing);
-                    }
-                    OnPropertyChanged(nameof(HasNoPullRequestTimelineEvents));
-                    states = [result.State];
-                    sectionCompleteness = result.Completeness;
-                    sectionItemCount = result.Items.Length;
-                    break;
-                }
-                default:
-                {
-                    PullRequestPagedSection<GitHubIssueComment> result = await _pullRequestQueryService.GetAllPullRequestCommentsAsync(
-                        token, userPartition, owner, repositoryName, pullRequestNumber, cancellationToken);
-                    if (!IsCurrent())
-                    {
-                        return;
-                    }
+                        if (RequiresAuthoritativeRefresh(result.State))
+                        {
+                            result = await _pullRequestQueryService.RefreshAllPullRequestTimelineEventsAsync(
+                                token, userPartition, owner, repositoryName, pullRequestNumber, cancellationToken);
+                            if (!IsCurrent())
+                            {
+                                return;
+                            }
 
-                    ReplaceComments(result.Items, result.State.ErrorMessage is null);
-                    if (RequiresAuthoritativeRefresh(result.State))
+                            PullRequestTimelineEvents.ApplySnapshot(
+                                result.Items,
+                                MePullRequestTimelineViewItem.GetStableKey,
+                                static item => item.StableKey,
+                                static timelineEvent => new MePullRequestTimelineViewItem(timelineEvent),
+                                static (item, timelineEvent) => item.Apply(timelineEvent),
+                                result.State.ErrorMessage is null
+                                    ? KeyedCollectionDiffOptions.Default
+                                    : KeyedCollectionDiffOptions.PreserveMissing);
+                        }
+                        OnPropertyChanged(nameof(HasNoPullRequestTimelineEvents));
+                        states = [result.State];
+                        sectionCompleteness = result.Completeness;
+                        sectionItemCount = result.Items.Length;
+                        break;
+                    }
+                default:
                     {
-                        result = await _pullRequestQueryService.RefreshAllPullRequestCommentsAsync(
+                        PullRequestPagedSection<GitHubIssueComment> result = await _pullRequestQueryService.GetAllPullRequestCommentsAsync(
                             token, userPartition, owner, repositoryName, pullRequestNumber, cancellationToken);
                         if (!IsCurrent())
                         {
@@ -1312,16 +1395,26 @@ public abstract partial class MeSearchPageViewModelBase : ViewModelBase
                         }
 
                         ReplaceComments(result.Items, result.State.ErrorMessage is null);
+                        if (RequiresAuthoritativeRefresh(result.State))
+                        {
+                            result = await _pullRequestQueryService.RefreshAllPullRequestCommentsAsync(
+                                token, userPartition, owner, repositoryName, pullRequestNumber, cancellationToken);
+                            if (!IsCurrent())
+                            {
+                                return;
+                            }
+
+                            ReplaceComments(result.Items, result.State.ErrorMessage is null);
+                        }
+                        states = [result.State];
+                        DetailCollectionStatusText = FormatLoadedStatus(
+                            GetString("MyWorkItems.Noun.Comments", "comments"),
+                            result.Items.Length,
+                            result.Completeness);
+                        sectionCompleteness = result.Completeness;
+                        sectionItemCount = result.Items.Length;
+                        break;
                     }
-                    states = [result.State];
-                    DetailCollectionStatusText = FormatLoadedStatus(
-                        GetString("MyWorkItems.Noun.Comments", "comments"),
-                        result.Items.Length,
-                        result.Completeness);
-                    sectionCompleteness = result.Completeness;
-                    sectionItemCount = result.Items.Length;
-                    break;
-                }
             }
 
             PullRequestSectionStatusText = CreatePullRequestSectionStatus(
@@ -2214,6 +2307,10 @@ public abstract partial class MeSearchPageViewModelBase : ViewModelBase
         OnPropertyChanged(nameof(IsAssignedFilterSelected));
         OnPropertyChanged(nameof(IsCreatedFilterSelected));
         OnPropertyChanged(nameof(IsMentionedFilterSelected));
+        OnPropertyChanged(nameof(IsInvolvedPullRequestFilterSelected));
+        OnPropertyChanged(nameof(IsReviewRequestedPullRequestFilterSelected));
+        OnPropertyChanged(nameof(IsAuthoredPullRequestFilterSelected));
+        OnPropertyChanged(nameof(IsAssignedPullRequestFilterSelected));
         OnPropertyChanged(nameof(IsOpenStateSelected));
         OnPropertyChanged(nameof(IsClosedStateSelected));
         OnPropertyChanged(nameof(IsAllStateSelected));
@@ -2338,7 +2435,7 @@ public sealed partial class MyPullRequestsPageViewModel : MeSearchPageViewModelB
         GitHubMeWorkItemState state,
         int page,
         CancellationToken cancellationToken) =>
-        GetPullRequestsAsync(token, userId, login, GitHubMePullRequestFilter.Involves, state, page, cancellationToken);
+        GetPullRequestsAsync(token, userId, login, PullRequestFilter, state, page, cancellationToken);
 
     protected override Task<CachedResult<GitHubSearchIssuesResponse>> RefreshQueryAsync(
         string token,
@@ -2347,5 +2444,5 @@ public sealed partial class MyPullRequestsPageViewModel : MeSearchPageViewModelB
         GitHubMeWorkItemState state,
         int page,
         CancellationToken cancellationToken) =>
-        RefreshPullRequestsAsync(token, userId, login, GitHubMePullRequestFilter.Involves, state, page, cancellationToken);
+        RefreshPullRequestsAsync(token, userId, login, PullRequestFilter, state, page, cancellationToken);
 }

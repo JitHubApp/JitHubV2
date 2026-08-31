@@ -22,25 +22,57 @@
     };
 
     const getSystemTheme = () => systemThemeQuery.matches ? "dark" : "light";
-
     const normalizeTheme = (theme) => theme === "dark" || theme === "light" ? theme : getSystemTheme();
+    const getMediaSource = (image, theme) => theme === "dark" ? image.dataset.themeDarkSrc : image.dataset.themeLightSrc;
+    const shouldLoadMedia = (image) => image.dataset.themeImmediate === "true" || image.dataset.mediaVisible === "true";
 
-    const updateThemeImages = (theme) => {
-        document.querySelectorAll("[data-theme-light-src][data-theme-dark-src]").forEach((image) => {
-            const nextSource = theme === "dark" ? image.dataset.themeDarkSrc : image.dataset.themeLightSrc;
-            if (nextSource && image.getAttribute("src") !== nextSource) {
-                image.setAttribute("src", nextSource);
-            }
-        });
+    const preloadImage = (source) => new Promise((resolve) => {
+        if (!source) {
+            resolve();
+            return;
+        }
+
+        const preload = new Image();
+        preload.onload = resolve;
+        preload.onerror = resolve;
+        preload.src = source;
+    });
+
+    const loadThemeImage = (image, theme = normalizeTheme(root.dataset.theme)) => {
+        image.dataset.mediaVisible = "true";
+        const source = getMediaSource(image, theme);
+        if (source && image.getAttribute("src") !== source) {
+            image.setAttribute("src", source);
+        }
     };
 
-    const applyTheme = (theme, persist) => {
+    const updateThemeImages = async (theme, atomic) => {
+        const images = Array.from(document.querySelectorAll("[data-theme-media]"))
+            .filter(shouldLoadMedia);
+
+        if (!atomic) {
+            images.forEach((image) => loadThemeImage(image, theme));
+            return;
+        }
+
+        await Promise.all(images.map((image) => preloadImage(getMediaSource(image, theme))));
+        if (root.dataset.theme !== theme) {
+            return;
+        }
+
+        images.forEach((image) => loadThemeImage(image, theme));
+    };
+
+    const applyTheme = (theme, persist, atomicMedia = false) => {
         const normalizedTheme = normalizeTheme(theme);
         root.dataset.theme = normalizedTheme;
         root.style.colorScheme = normalizedTheme;
 
         if (themeColor) {
-            themeColor.setAttribute("content", normalizedTheme === "dark" ? "#141a14" : "#eef1e7");
+            const browserThemeColor = getComputedStyle(root).getPropertyValue("--browser-theme-color").trim();
+            if (browserThemeColor) {
+                themeColor.setAttribute("content", browserThemeColor);
+            }
         }
 
         if (themeToggle) {
@@ -53,22 +85,27 @@
             themeToggleLabel.textContent = normalizedTheme === "dark" ? "Dark" : "Light";
         }
 
-        updateThemeImages(normalizedTheme);
+        void updateThemeImages(normalizedTheme, atomicMedia);
 
         if (persist) {
             setStoredTheme(normalizedTheme);
         }
     };
 
+    window.JitHubThemeMedia = Object.freeze({
+        load: loadThemeImage,
+        currentTheme: () => normalizeTheme(root.dataset.theme)
+    });
+
     applyTheme(getStoredTheme(), false);
 
     themeToggle?.addEventListener("click", () => {
-        applyTheme(root.dataset.theme === "dark" ? "light" : "dark", true);
+        applyTheme(root.dataset.theme === "dark" ? "light" : "dark", true, true);
     });
 
     systemThemeQuery.addEventListener("change", () => {
         if (!getStoredTheme()) {
-            applyTheme(getSystemTheme(), false);
+            applyTheme(getSystemTheme(), false, true);
         }
     });
 })();

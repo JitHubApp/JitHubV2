@@ -7,6 +7,8 @@ on:
     paths:
       - '.github/workflows/main_jithubweb.yml'
       - 'JitHub.Web/**'
+      - 'JitHub.Web.Tests/**'
+      - 'Shared/OAuthHandoffProtocol.cs'
       - 'global.json'
       - 'README.md'
   pull_request:
@@ -15,6 +17,8 @@ on:
     paths:
       - '.github/workflows/main_jithubweb.yml'
       - 'JitHub.Web/**'
+      - 'JitHub.Web.Tests/**'
+      - 'Shared/OAuthHandoffProtocol.cs'
       - 'global.json'
       - 'README.md'
   workflow_dispatch:
@@ -25,6 +29,7 @@ permissions:
 env:
   AZURE_WEBAPP_NAME: ${{ vars.JITHUB_WEBAPP_NAME || 'jithub-web-prod' }}
   WEBSITE_PROJECT: JitHub.Web/JitHub.Web.csproj
+  WEBSITE_TEST_PROJECT: JitHub.Web.Tests/JitHub.Web.Tests.csproj
 
 jobs:
   build:
@@ -41,10 +46,13 @@ jobs:
           global-json-file: ./global.json
 
       - name: Restore website dependencies
-        run: dotnet restore ./${{ env.WEBSITE_PROJECT }}
+        run: dotnet restore ./${{ env.WEBSITE_TEST_PROJECT }} --locked-mode
+
+      - name: Test website
+        run: dotnet test ./${{ env.WEBSITE_TEST_PROJECT }} --configuration Release --no-restore --property:TreatWarningsAsErrors=true
 
       - name: Publish website
-        run: dotnet publish ./${{ env.WEBSITE_PROJECT }} --configuration Release --output ./publish
+        run: dotnet publish ./${{ env.WEBSITE_PROJECT }} --configuration Release --no-restore --output ./publish --property:TreatWarningsAsErrors=true
 
       - name: Upload published website
         uses: actions/upload-artifact@v4

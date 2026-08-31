@@ -39,12 +39,11 @@ public sealed partial class ShellPage : Page
     private const double SearchSuggestionsTopOffset = 8;
     private const double RepositoryShyHeaderStartOffset = 56;
     private const double RepositoryShyHeaderRestoreOffset = 8;
-    private const double RepositoryShyHeaderRevealTravel = 64;
+    private const double RepositoryShyHeaderRevealTravel = 40;
     private const double RepositoryShyHeaderRehideTravel = 24;
     private const double RepositoryScrollDirectionEpsilon = 0.5;
     private const string SearchSuggestionsScenario = "search-suggestions";
-    private static readonly TimeSpan RepositoryShyHeaderForwardDuration = TimeSpan.FromMilliseconds(240);
-    private static readonly TimeSpan RepositoryShyHeaderReverseDuration = TimeSpan.FromMilliseconds(220);
+    private static readonly TimeSpan RepositoryShyHeaderDuration = AppMotionTokens.MediumDuration;
     private static readonly IScalingCalculator RepositoryHeaderTitleScaling = new TextScalingCalculator();
     private static readonly string[] ProductPerformanceRoutes =
     [
@@ -70,7 +69,10 @@ public sealed partial class ShellPage : Page
     private readonly Dictionary<FrameworkElement, int> _productPerformanceMarkerGenerations = [];
     private readonly Dictionary<string, long> _productPerformanceRouteStartedTimestamps =
         new(StringComparer.Ordinal);
+    private readonly object _productPerformanceTraversalTraceGate = new();
     private ProductPerformanceTraversalStart? _pendingProductPerformanceTraversal;
+    private long _productPerformanceTraversalTraceStartedTimestamp;
+    private string _productPerformanceTraversalTraceValue = string.Empty;
     private string _productPerformanceRouteInputValue = string.Empty;
     private string _productPerformanceTraversalInputValue = string.Empty;
     private CancellationTokenSource? _notificationLifetime;
@@ -111,6 +113,7 @@ public sealed partial class ShellPage : Page
     private bool _synchronizingRepositoryFilters;
     private bool _repositoryFiltersInitialized;
     private int _repositoryHeaderTransitionGeneration;
+    private bool _isRepositoryHeaderLayoutTransitionActive;
 
     public ShellPage()
     {
@@ -121,8 +124,9 @@ public sealed partial class ShellPage : Page
         {
             Source = RepositoryExpandedHeaderSurface,
             Target = RepositoryShyHeaderSurface,
-            Duration = RepositoryShyHeaderForwardDuration,
-            ReverseDuration = RepositoryShyHeaderReverseDuration,
+            Duration = RepositoryShyHeaderDuration,
+            ReverseDuration = RepositoryShyHeaderDuration,
+            DefaultOpacityTransitionProgressKey = AppMotionTokens.ShyHeaderOpacityTransitionProgressKey,
             SourceToggleMethod = VisualStateToggleMethod.ByVisibility,
             TargetToggleMethod = VisualStateToggleMethod.ByVisibility,
             Configs =
@@ -133,6 +137,7 @@ public sealed partial class ShellPage : Page
                     ScaleMode = ScaleMode.Custom,
                     CustomScalingCalculator = RepositoryHeaderTitleScaling
                 },
+                new TransitionConfig { Id = "RepositoryHeaderFilterSurface", ScaleMode = ScaleMode.Scale, EnableClipAnimation = true },
                 new TransitionConfig { Id = "RepositoryHeaderFilterPublic", ScaleMode = ScaleMode.Scale, EnableClipAnimation = true },
                 new TransitionConfig { Id = "RepositoryHeaderFilterPrivate", ScaleMode = ScaleMode.Scale, EnableClipAnimation = true },
                 new TransitionConfig { Id = "RepositoryHeaderFilterForked", ScaleMode = ScaleMode.Scale, EnableClipAnimation = true }
@@ -268,8 +273,28 @@ public sealed partial class ShellPage : Page
         object? sender,
         ProductPerformanceRouteCommit commit)
     {
+        string traceValue = string.Empty;
+        bool publishTrace = false;
+        lock (_productPerformanceTraversalTraceGate)
+        {
+            if (commit.StartedTimestamp is long startedTimestamp &&
+                startedTimestamp == _productPerformanceTraversalTraceStartedTimestamp)
+            {
+                traceValue = _productPerformanceTraversalTraceValue;
+                _productPerformanceTraversalTraceStartedTimestamp = 0;
+                publishTrace = true;
+            }
+        }
+
         RunOnUiThread(() =>
         {
+            if (publishTrace)
+            {
+                AutomationProperties.SetItemStatus(
+                    ProductPerformanceTraversalTrace,
+                    traceValue);
+            }
+
             if (_pendingProductPerformanceTraversal is { } pending &&
                 string.Equals(commit.Route, pending.Route, StringComparison.Ordinal) &&
                 string.Equals(commit.Identity, pending.Identity, StringComparison.Ordinal))
@@ -314,28 +339,39 @@ public sealed partial class ShellPage : Page
 
     private void ProductPerformanceReadiness_TraversalStarted(
         object? sender,
-        ProductPerformanceTraversalStart commit) =>
+        ProductPerformanceTraversalStart commit)
+    {
+        lock (_productPerformanceTraversalTraceGate)
+        {
+            _productPerformanceTraversalTraceStartedTimestamp = commit.StartedTimestamp;
+            _productPerformanceTraversalTraceValue = string.Empty;
+        }
+
         RunOnUiThread(() =>
         {
             _pendingProductPerformanceTraversal = commit;
-            AutomationProperties.SetItemStatus(ProductPerformanceTraversalTrace, string.Empty);
         });
+    }
 
     private void ProductPerformanceReadiness_TraversalStageRecorded(
         object? sender,
-        ProductPerformanceTraversalStage stage) =>
-        RunOnUiThread(() =>
+        ProductPerformanceTraversalStage stage)
+    {
+        string elapsed = Stopwatch.GetElapsedTime(stage.StartedTimestamp, stage.RecordedTimestamp)
+            .TotalMilliseconds
+            .ToString("0.##", System.Globalization.CultureInfo.InvariantCulture);
+        lock (_productPerformanceTraversalTraceGate)
         {
-            string elapsed = Stopwatch.GetElapsedTime(stage.StartedTimestamp, stage.RecordedTimestamp)
-                .TotalMilliseconds
-                .ToString("0.##", System.Globalization.CultureInfo.InvariantCulture);
-            string previous = AutomationProperties.GetItemStatus(ProductPerformanceTraversalTrace) ?? string.Empty;
-            AutomationProperties.SetItemStatus(
-                ProductPerformanceTraversalTrace,
-                string.IsNullOrEmpty(previous)
-                    ? $"{stage.Stage}={elapsed}"
-                    : $"{previous};{stage.Stage}={elapsed}");
-        });
+            if (stage.StartedTimestamp != _productPerformanceTraversalTraceStartedTimestamp)
+            {
+                return;
+            }
+
+            _productPerformanceTraversalTraceValue = string.IsNullOrEmpty(_productPerformanceTraversalTraceValue)
+                ? $"{stage.Stage}={elapsed}"
+                : $"{_productPerformanceTraversalTraceValue};{stage.Stage}={elapsed}";
+        }
+    }
 
     private void RunOnUiThread(Action action)
     {
@@ -504,6 +540,8 @@ public sealed partial class ShellPage : Page
             CancelPerformanceMarkerSettlement(marker);
             AutomationProperties.SetItemStatus(marker, $"pending;expected={expectedIdentity}");
         }
+
+        ProductPerformanceReadiness.ArmTraversalMeasurement();
     }
 
     private void ProductPerformanceRouteInput_TextChanged(object sender, TextChangedEventArgs e)
@@ -570,7 +608,7 @@ public sealed partial class ShellPage : Page
 
         if (openRepository)
         {
-            _ = OpenLaunchRepositoryPageAsync();
+            UiTaskGuard.Observe(OpenLaunchRepositoryPageAsync(), "ui-shell-page");
             return;
         }
 
@@ -829,7 +867,7 @@ public sealed partial class ShellPage : Page
     private ShellRouteViewState? CaptureCurrentRouteViewState()
     {
         Interlocked.Increment(ref _routeStateRestoreVersion);
-        if (!IsLoaded || XamlRoot is null || ShellContentFrame.Content is not DependencyObject pageRoot)
+        if (!TryGetCurrentRouteRoot(out DependencyObject pageRoot))
         {
             return null;
         }
@@ -872,15 +910,26 @@ public sealed partial class ShellPage : Page
 
     private void RestoreRouteViewState(ShellRouteViewState viewState)
     {
+        CancellationTokenSource? lifetime = _pageLifetime;
+        if (lifetime is null || lifetime.IsCancellationRequested)
+        {
+            return;
+        }
+
         int restoreVersion = Interlocked.Increment(ref _routeStateRestoreVersion);
-        _ = RestoreRouteViewStateAsync(viewState, restoreVersion);
+        UiTaskGuard.Observe(
+            RestoreRouteViewStateAsync(viewState, restoreVersion, lifetime.Token),
+            "ui-shell-page");
     }
 
-    private async Task RestoreRouteViewStateAsync(ShellRouteViewState viewState, int restoreVersion)
+    private async Task RestoreRouteViewStateAsync(
+        ShellRouteViewState viewState,
+        int restoreVersion,
+        CancellationToken cancellationToken)
     {
         for (int attempt = 0; attempt < 60; attempt++)
         {
-            await Task.Delay(attempt == 0 ? 16 : 50);
+            await Task.Delay(attempt == 0 ? 16 : 50, cancellationToken);
             if (restoreVersion != Volatile.Read(ref _routeStateRestoreVersion))
             {
                 return;
@@ -895,7 +944,7 @@ public sealed partial class ShellPage : Page
 
     private bool RestoreRouteViewStateCore(ShellRouteViewState viewState)
     {
-        if (ShellContentFrame.Content is not DependencyObject pageRoot)
+        if (!TryGetCurrentRouteRoot(out DependencyObject pageRoot))
         {
             return false;
         }
@@ -938,6 +987,31 @@ public sealed partial class ShellPage : Page
         }
 
         return selectionRestored && scrollRestored && focusRestored;
+    }
+
+    private bool TryGetCurrentRouteRoot(out DependencyObject pageRoot)
+    {
+        pageRoot = null!;
+        if (!IsLoaded || XamlRoot is null)
+        {
+            return false;
+        }
+
+        try
+        {
+            if (ShellContentFrame.Content is FrameworkElement { IsLoaded: true } root)
+            {
+                pageRoot = root;
+                return true;
+            }
+
+            return false;
+        }
+        catch (Exception ex) when (ex is COMException or InvalidOperationException)
+        {
+            pageRoot = null!;
+            return false;
+        }
     }
 
     private static T? FindDescendantByAutomationId<T>(DependencyObject root, string automationId)
@@ -1006,7 +1080,7 @@ public sealed partial class ShellPage : Page
         _notificationLifetime?.Dispose();
         CancellationTokenSource lifetime = new();
         _notificationLifetime = lifetime;
-        _ = CloseNotificationAsync(lifetime.Token);
+        UiTaskGuard.Observe(CloseNotificationAsync(lifetime.Token), "ui-shell-page");
     }
 
     private async Task CloseNotificationAsync(CancellationToken cancellationToken)
@@ -1063,12 +1137,15 @@ public sealed partial class ShellPage : Page
         FocusSearchBox();
     }
 
-    private async void ViewModel_SignOutRequested(object? sender, EventArgs e)
+    private void ViewModel_SignOutRequested(object? sender, EventArgs e)
     {
-        if (XamlRoot is not null)
+        UiTaskGuard.Run(async () =>
         {
-            await AccountSignOutDialogFlow.ShowAsync(XamlRoot);
-        }
+            if (XamlRoot is not null)
+            {
+                await AccountSignOutDialogFlow.ShowAsync(XamlRoot);
+            }
+        }, "ui-shell-page");
     }
 
     private void Page_SizeChanged(object sender, SizeChangedEventArgs e)
@@ -1293,9 +1370,12 @@ public sealed partial class ShellPage : Page
 
     private void UpdateModalLayout(Size viewport)
     {
-        const double titleBarSafeHeight = 40;
+        double titleBarSafeHeight = AppDialogStyleCatalog.GetTitleBarSafeHeight();
         double contentHeight = Math.Max(0, viewport.Height - titleBarSafeHeight);
-        DialogLayoutMetrics metrics = DialogLayoutPolicy.Calculate(viewport.Width, contentHeight);
+        DialogLayoutMetrics metrics = DialogLayoutPolicy.Calculate(
+            viewport.Width,
+            contentHeight,
+            AppDialogStyleCatalog.GetLayoutTokens());
         ModalContent.Width = metrics.MaximumWidth;
         ModalContent.MaxWidth = metrics.MaximumWidth;
         ModalContent.MaxHeight = metrics.MaximumHeight;
@@ -1369,10 +1449,7 @@ public sealed partial class ShellPage : Page
             return;
         }
 
-        _ = _taskCoordinator.RunAsync(
-            operation,
-            new ApplicationTaskOptions(taskName, GetActiveAccountPartition()),
-            lifetime.Token);
+        UiTaskGuard.Observe(_taskCoordinator.RunAsync(operation, new ApplicationTaskOptions(taskName, GetActiveAccountPartition()), lifetime.Token), "ui-shell-page");
     }
 
     private string? GetActiveAccountPartition()
@@ -1661,13 +1738,30 @@ public sealed partial class ShellPage : Page
 
     private void ShellRepositoryList_Loaded(object sender, RoutedEventArgs e)
     {
+        _repositoryHeaderTransitionGeneration++;
+        MorphTransitionSafety.TryResetVisibilityState(
+            _repositoryHeaderTransition,
+            RepositoryExpandedHeaderSurface,
+            RepositoryShyHeaderSurface,
+            toInitialState: !_isRepositoryHeaderShy);
+        ResetRepositoryListReflow();
+        ShellRepositoryList.LayoutUpdated -= ShellRepositoryList_LayoutUpdated;
+        ShellRepositoryList.LayoutUpdated += ShellRepositoryList_LayoutUpdated;
         _ = DispatcherQueue.TryEnqueue(
             Microsoft.UI.Dispatching.DispatcherQueuePriority.Low,
             AttachRepositoryScrollViewer);
     }
 
-    private void ShellRepositoryList_Unloaded(object sender, RoutedEventArgs e) =>
+    private void ShellRepositoryList_Unloaded(object sender, RoutedEventArgs e)
+    {
+        _repositoryHeaderTransitionGeneration++;
+        MorphTransitionSafety.TryStop(_repositoryHeaderTransition);
+        ShellRepositoryList.LayoutUpdated -= ShellRepositoryList_LayoutUpdated;
         DetachRepositoryScrollViewer();
+    }
+
+    private void ShellRepositoryList_LayoutUpdated(object? sender, object e) =>
+        AttachRepositoryScrollViewer();
 
     private void ShellRepositoryList_SizeChanged(object sender, SizeChangedEventArgs e)
     {
@@ -1692,6 +1786,8 @@ public sealed partial class ShellPage : Page
         {
             return;
         }
+
+        ShellRepositoryList.LayoutUpdated -= ShellRepositoryList_LayoutUpdated;
 
         if (ReferenceEquals(_repositoryScrollViewer, scrollViewer))
         {
@@ -1763,6 +1859,12 @@ public sealed partial class ShellPage : Page
             return;
         }
 
+        if (_isRepositoryHeaderLayoutTransitionActive)
+        {
+            _lastRepositoryScrollOffset = scrollViewer.VerticalOffset;
+            return;
+        }
+
         if (scrollViewer.ScrollableHeight <= 0)
         {
             _lastRepositoryScrollOffset = 0;
@@ -1794,7 +1896,7 @@ public sealed partial class ShellPage : Page
             }
             else if (delta > RepositoryScrollDirectionEpsilon)
             {
-                _repositoryUpwardRevealTravel = 0;
+                _repositoryUpwardRevealTravel = Math.Max(0, _repositoryUpwardRevealTravel - delta);
             }
 
             return;
@@ -1855,29 +1957,37 @@ public sealed partial class ShellPage : Page
         int generation = ++_repositoryHeaderTransitionGeneration;
         if (!animate || !RepositoryExpandedHeaderSurface.IsLoaded || !AreAnimationsEnabled())
         {
-            _repositoryHeaderTransition.Reset(toInitialState: !isShy);
-            RepositoryRailLayout.UpdateLayout();
-            ResetRepositoryListReflow();
+            if (MorphTransitionSafety.TryResetVisibilityState(
+                _repositoryHeaderTransition,
+                RepositoryExpandedHeaderSurface,
+                RepositoryShyHeaderSurface,
+                toInitialState: !isShy))
+            {
+                RepositoryRailLayout.UpdateLayout();
+                ResetRepositoryListReflow();
+            }
+
             return;
         }
 
-        _ = AnimateRepositoryHeaderAsync(isShy, generation);
+        UiTaskGuard.Observe(AnimateRepositoryHeaderAsync(isShy, generation), "ui-shell-page");
     }
 
     private async Task AnimateRepositoryHeaderAsync(bool isShy, int generation)
     {
         try
         {
+            _isRepositoryHeaderLayoutTransitionActive = true;
             bool reverseFromSettledShyState =
                 !isShy && _repositoryHeaderTransition.IsTargetState && !_repositoryHeaderTransition.IsAnimating;
             double previousListTop = reverseFromSettledShyState
                 ? GetElementTop(RepositoryListHost, RepositoryRailLayout)
                 : 0;
+
             Task headerAnimation = isShy
                 ? _repositoryHeaderTransition.StartAsync(forceUpdateAnimatedElements: true)
                 : _repositoryHeaderTransition.ReverseAsync(forceUpdateAnimatedElements: true);
 
-            RepositoryRailLayout.UpdateLayout();
             if (isShy)
             {
                 double reclaimedHeight = Math.Max(
@@ -1885,18 +1995,18 @@ public sealed partial class ShellPage : Page
                     RepositoryExpandedHeaderSurface.ActualHeight - RepositoryShyHeaderSurface.ActualHeight);
                 AnimateRepositoryListReflow(
                     new Vector3(0, (float)-reclaimedHeight, 0),
-                    RepositoryShyHeaderForwardDuration);
+                    RepositoryShyHeaderDuration);
             }
             else if (reverseFromSettledShyState)
             {
                 double expandedListTop = GetElementTop(RepositoryListHost, RepositoryRailLayout);
                 SetRepositoryListReflowImmediately(
                     new Vector3(0, (float)(previousListTop - expandedListTop), 0));
-                AnimateRepositoryListReflow(Vector3.Zero, RepositoryShyHeaderReverseDuration);
+                AnimateRepositoryListReflow(Vector3.Zero, RepositoryShyHeaderDuration);
             }
             else
             {
-                AnimateRepositoryListReflow(Vector3.Zero, RepositoryShyHeaderReverseDuration);
+                AnimateRepositoryListReflow(Vector3.Zero, RepositoryShyHeaderDuration);
             }
 
             await headerAnimation;
@@ -1905,6 +2015,11 @@ public sealed partial class ShellPage : Page
                 return;
             }
 
+            MorphTransitionSafety.TrySetStableState(
+                _repositoryHeaderTransition,
+                RepositoryExpandedHeaderSurface,
+                RepositoryShyHeaderSurface,
+                isTargetState: isShy);
             RepositoryRailLayout.UpdateLayout();
             ResetRepositoryListReflow();
         }
@@ -1914,11 +2029,29 @@ public sealed partial class ShellPage : Page
         catch (Exception) when (generation != _repositoryHeaderTransitionGeneration)
         {
         }
-        catch when (generation == _repositoryHeaderTransitionGeneration)
+        catch (Exception ex) when (generation == _repositoryHeaderTransitionGeneration)
         {
-            _repositoryHeaderTransition.Reset(toInitialState: !isShy);
-            RepositoryRailLayout.UpdateLayout();
-            ResetRepositoryListReflow();
+            JitHub.WinUI.App.LogHandledException(ex, "ui-shell-repository-header-morph");
+            if (MorphTransitionSafety.TryResetVisibilityState(
+                _repositoryHeaderTransition,
+                RepositoryExpandedHeaderSurface,
+                RepositoryShyHeaderSurface,
+                toInitialState: !isShy))
+            {
+                RepositoryRailLayout.UpdateLayout();
+                ResetRepositoryListReflow();
+            }
+        }
+        finally
+        {
+            if (generation == _repositoryHeaderTransitionGeneration)
+            {
+                _isRepositoryHeaderLayoutTransitionActive = false;
+                if (_repositoryScrollViewer is ScrollViewer scrollViewer)
+                {
+                    _lastRepositoryScrollOffset = scrollViewer.VerticalOffset;
+                }
+            }
         }
     }
 
@@ -2046,9 +2179,12 @@ public sealed partial class ShellPage : Page
         ViewModel.RepositoryFilterText = sender is TextBox textBox ? textBox.Text : string.Empty;
     }
 
-    private async void RefreshRepositoriesButton_Click(object sender, RoutedEventArgs e)
+    private void RefreshRepositoriesButton_Click(object sender, RoutedEventArgs e)
     {
-        await ViewModel.RefreshRepositoryRailAsync();
+        UiTaskGuard.Run(async () =>
+        {
+            await ViewModel.RefreshRepositoryRailAsync();
+        }, "ui-shell-page");
     }
 
     private void ShowMoreRepositoriesButton_Click(object sender, RoutedEventArgs e)

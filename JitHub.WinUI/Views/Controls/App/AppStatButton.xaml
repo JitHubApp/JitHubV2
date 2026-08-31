@@ -23,7 +23,7 @@
             <SolidColorBrush x:Key="ButtonForegroundPressed" Color="{ThemeResource AppInkColor}" />
         </Button.Resources>
         <Grid
-            ColumnSpacing="8"
+            ColumnSpacing="{ThemeResource AppGap8}"
             VerticalAlignment="Center">
             <Grid.ColumnDefinitions>
                 <ColumnDefinition Width="Auto" />
@@ -38,11 +38,11 @@
                 SelectedBrush="{Binding SelectedIconForeground, ElementName=Root}" />
             <TextBlock
                 Grid.Column="1"
-                Margin="0,1,0,0"
+                Margin="{ThemeResource AppMargin0_1_0_0}"
                 VerticalAlignment="Center"
                 FontFamily="{ThemeResource AppUiFontFamily}"
                 FontSize="{ThemeResource AppFontSize14}"
-                FontWeight="SemiBold"
+                FontWeight="{ThemeResource AppFontWeightSemibold}"
                 Foreground="{ThemeResource AppInkBrush}"
                 Text="{Binding ValueText, ElementName=Root}" />
         </Grid>

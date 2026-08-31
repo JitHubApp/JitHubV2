@@ -4,6 +4,7 @@
     xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
     xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
     xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+    xmlns:app="using:JitHub.WinUI.Views.Controls.App"
     xmlns:common="using:JitHub.WinUI.Views.Controls.Common"
     xmlns:labs="using:CommunityToolkit.WinUI"
     xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
@@ -19,8 +20,8 @@
             x:Key="ShellNavigationItemTemplate"
             x:DataType="shell:ShellNavigationItem">
             <Button
-                Margin="8,2"
-                Padding="0"
+                Margin="{ThemeResource AppMargin8_2}"
+                Padding="{ThemeResource AppPadding0}"
                 HorizontalAlignment="Stretch"
                 HorizontalContentAlignment="Stretch"
                 AutomationProperties.AutomationId="{x:Bind AutomationId, Mode=OneWay}"
@@ -30,7 +31,7 @@
                 IsEnabled="{x:Bind IsEnabled, Mode=OneWay}"
                 Style="{StaticResource AppQuietButtonStyle}"
                 ToolTipService.ToolTip="{x:Bind Label, Mode=OneWay}">
-                <Grid MinHeight="40">
+                <Grid MinHeight="{ThemeResource AppDimension40}">
                     <Border
                         Background="{ThemeResource AppRowSelectedBrush}"
                         CornerRadius="{ThemeResource AppRadiusSmall}"
@@ -45,12 +46,12 @@
                         RadiusY="{ThemeResource NavigationViewSelectionIndicatorRadius}"
                         Visibility="{x:Bind IsSelected, Converter={StaticResource BoolToVisibilityConverter}, Mode=OneWay}" />
                     <StackPanel
-                        Margin="12,0,8,0"
+                        Margin="{ThemeResource AppMargin12_0_8_0}"
                         VerticalAlignment="Center"
                         Orientation="Horizontal"
-                        Spacing="10">
+                        Spacing="{ThemeResource AppGap10}">
                         <FontIcon
-                            Width="18"
+                            Width="{ThemeResource AppDimension18}"
                             VerticalAlignment="Center"
                             FontFamily="{StaticResource SegoeFluentIcons}"
                             FontSize="{ThemeResource AppFontSize16}"
@@ -65,12 +66,12 @@
                             TextTrimming="CharacterEllipsis" />
                     </StackPanel>
                     <StackPanel
-                        Margin="0,0,10,0"
+                        Margin="{ThemeResource AppMargin0_0_10_0}"
                         HorizontalAlignment="Right"
                         VerticalAlignment="Center"
                         AutomationProperties.Name="{x:Bind BadgeAutomationName, Mode=OneWay}"
                         Orientation="Horizontal"
-                        Spacing="1"
+                        Spacing="{ThemeResource AppGap1}"
                         Visibility="{x:Bind HasBadge, Converter={StaticResource BoolToVisibilityConverter}, Mode=OneWay}">
                         <InfoBadge VerticalAlignment="Center" Value="{x:Bind DisplayBadgeValue, Mode=OneWay}" />
                         <TextBlock
@@ -78,7 +79,7 @@
                             VerticalAlignment="Center"
                             FontFamily="{ThemeResource AppUiFontFamily}"
                             FontSize="{ThemeResource AppFontSize11}"
-                            FontWeight="SemiBold"
+                            FontWeight="{ThemeResource AppFontWeightSemibold}"
                             Foreground="{ThemeResource AppAccentBrush}"
                             Text="+"
                             Visibility="{x:Bind HasBadgeSuffix, Converter={StaticResource BoolToVisibilityConverter}, Mode=OneWay}" />
@@ -91,8 +92,8 @@
             x:Key="ShellRepositoryItemTemplate"
             x:DataType="shell:ShellRepositoryItem">
             <Button
-                Margin="0"
-                Padding="0"
+                Margin="{ThemeResource AppMargin0}"
+                Padding="{ThemeResource AppPadding0}"
                 HorizontalAlignment="Stretch"
                 HorizontalContentAlignment="Stretch"
                 AutomationProperties.AutomationId="{x:Bind AutomationId, Mode=OneWay}"
@@ -101,15 +102,15 @@
                 Click="ShellRailRepositoryButton_Click"
                 Style="{StaticResource AppQuietButtonStyle}"
                 ToolTipService.ToolTip="{x:Bind FullName, Mode=OneWay}">
-                <Grid MinHeight="38" Padding="10,6">
+                <Grid MinHeight="{ThemeResource AppDimension38}" Padding="{ThemeResource AppPadding10_6}">
                     <Border
-                        Margin="-10,-6"
+                        Margin="{ThemeResource AppMarginNeg10_Neg6}"
                         Background="{ThemeResource AppSurfaceSubtleBrush}"
                         CornerRadius="{ThemeResource AppRadiusSmall}"
                         Visibility="{x:Bind IsSelected, Converter={StaticResource BoolToVisibilityConverter}, Mode=OneWay}" />
-                    <Grid ColumnSpacing="10">
+                    <Grid ColumnSpacing="{ThemeResource AppGap10}">
                         <Grid.ColumnDefinitions>
-                            <ColumnDefinition Width="18" />
+                            <ColumnDefinition Width="{ThemeResource AppGridLength18}" />
                             <ColumnDefinition Width="*" />
                             <ColumnDefinition Width="Auto" />
                         </Grid.ColumnDefinitions>
@@ -124,16 +125,16 @@
                             VerticalAlignment="Center"
                             FontFamily="{StaticResource AppUiFontFamily}"
                             FontSize="{ThemeResource AppFontSize13}"
-                            FontWeight="SemiBold"
+                            FontWeight="{ThemeResource AppFontWeightSemibold}"
                             Foreground="{ThemeResource AppInkBrush}"
                             Text="{x:Bind FullName, Mode=OneWay}"
                             TextTrimming="CharacterEllipsis" />
                         <Ellipse
                             Grid.Column="2"
-                            Width="6"
-                            Height="6"
-                            Margin="4,8,2,0"
-                            VerticalAlignment="Top"
+                            Width="{ThemeResource AppDimension6}"
+                            Height="{ThemeResource AppDimension6}"
+                            Margin="{ThemeResource AppMargin4_0_2_0}"
+                            VerticalAlignment="Center"
                             Fill="{ThemeResource AppAccentBrush}"
                             Visibility="{x:Bind IsSelected, Converter={StaticResource BoolToVisibilityConverter}, Mode=OneWay}" />
                     </Grid>
@@ -145,23 +146,23 @@
             x:Key="ShellCommandSearchResultTemplate"
             x:DataType="shell:ShellCommandSearchResult">
             <Grid
-                MinHeight="48"
-                Padding="12,8"
+                MinHeight="{ThemeResource AppDimension48}"
+                Padding="{ThemeResource AppPadding12_8}"
                 AutomationProperties.AutomationId="{x:Bind AutomationId, Mode=OneWay}"
                 AutomationProperties.Name="{x:Bind AutomationName, Mode=OneWay}"
                 Background="{ThemeResource AppTransparentBrush}"
-                ColumnSpacing="12">
+                ColumnSpacing="{ThemeResource AppGap12}">
                 <Grid.ColumnDefinitions>
-                    <ColumnDefinition Width="28" />
+                    <ColumnDefinition Width="{ThemeResource AppGridLength28}" />
                     <ColumnDefinition Width="*" />
                     <ColumnDefinition Width="Auto" />
                 </Grid.ColumnDefinitions>
                 <Border
-                    Width="28"
-                    Height="28"
+                    Width="{ThemeResource AppDimension28}"
+                    Height="{ThemeResource AppDimension28}"
                     Background="{ThemeResource AppCanvasInsetBrush}"
                     BorderBrush="{ThemeResource AppHairlineBrush}"
-                    BorderThickness="1"
+                    BorderThickness="{ThemeResource AppHairlineBorderThickness}"
                     CornerRadius="{ThemeResource AppRadiusSmall}">
                     <FontIcon
                         HorizontalAlignment="Center"
@@ -174,11 +175,11 @@
                 <StackPanel
                     Grid.Column="1"
                     VerticalAlignment="Center"
-                    Spacing="2">
+                    Spacing="{ThemeResource AppGap2}">
                     <TextBlock
                         FontFamily="{StaticResource AppUiFontFamily}"
                         FontSize="{ThemeResource AppFontSize13}"
-                        FontWeight="SemiBold"
+                        FontWeight="{ThemeResource AppFontWeightSemibold}"
                         Foreground="{ThemeResource AppInkBrush}"
                         Text="{x:Bind Title, Mode=OneWay}"
                         TextTrimming="CharacterEllipsis" />
@@ -205,7 +206,7 @@
         AutomationProperties.AccessibilityView="Control"
         AutomationProperties.AutomationId="ShellRoot"
         AutomationProperties.Name="JitHub application shell"
-        Background="{ThemeResource AppCanvasBrush}"
+        Background="{ThemeResource AppWindowBackgroundBrush}"
         KeyboardAcceleratorPlacementMode="Hidden">
         <Grid.RowDefinitions>
             <RowDefinition Height="Auto" />
@@ -221,34 +222,34 @@
             <VisualStateGroup x:Name="LayoutStates">
                 <VisualState x:Name="WideLayout">
                     <VisualState.Setters>
-                        <Setter Target="TitleWindowColumn.Width" Value="132" />
+                        <Setter Target="TitleWindowColumn.Width" Value="{ThemeResource AppGridLength132}" />
                         <Setter Target="NewRepositoryButton.Visibility" Value="Visible" />
                         <Setter Target="NotificationsTopButton.Visibility" Value="Visible" />
                         <Setter Target="SettingsTopButton.Visibility" Value="Visible" />
                         <Setter Target="ProfileTopButton.Visibility" Value="Visible" />
-                        <Setter Target="SearchBoxFrame.Width" Value="520" />
+                        <Setter Target="SearchBoxFrame.Width" Value="{ThemeResource AppDimension520}" />
                         <Setter Target="SearchBoxFrame.HorizontalAlignment" Value="Center" />
                         <Setter Target="ModalContent.HorizontalAlignment" Value="Center" />
                     </VisualState.Setters>
                 </VisualState>
                 <VisualState x:Name="MediumLayout">
                     <VisualState.Setters>
-                        <Setter Target="TitleWindowColumn.Width" Value="96" />
+                        <Setter Target="TitleWindowColumn.Width" Value="{ThemeResource AppGridLength96}" />
                         <Setter Target="NewRepositoryButton.Visibility" Value="Visible" />
                         <Setter Target="NotificationsTopButton.Visibility" Value="Visible" />
                         <Setter Target="SettingsTopButton.Visibility" Value="Visible" />
                         <Setter Target="ProfileTopButton.Visibility" Value="Visible" />
-                        <Setter Target="SearchBoxFrame.Width" Value="360" />
+                        <Setter Target="SearchBoxFrame.Width" Value="{ThemeResource AppDimension360}" />
                     </VisualState.Setters>
                 </VisualState>
                 <VisualState x:Name="NarrowLayout">
                     <VisualState.Setters>
-                        <Setter Target="TitleWindowColumn.Width" Value="72" />
+                        <Setter Target="TitleWindowColumn.Width" Value="{ThemeResource AppGridLength72}" />
                         <Setter Target="NewRepositoryButton.Visibility" Value="Collapsed" />
                         <Setter Target="NotificationsTopButton.Visibility" Value="Visible" />
                         <Setter Target="SettingsTopButton.Visibility" Value="Visible" />
                         <Setter Target="ProfileTopButton.Visibility" Value="Visible" />
-                        <Setter Target="SearchBoxFrame.Width" Value="220" />
+                        <Setter Target="SearchBoxFrame.Width" Value="{ThemeResource AppDimension220}" />
                         <Setter Target="SearchBoxFrame.HorizontalAlignment" Value="Stretch" />
                         <Setter Target="ModalContent.HorizontalAlignment" Value="Stretch" />
                     </VisualState.Setters>
@@ -257,16 +258,16 @@
             <VisualStateGroup x:Name="SearchFocusStates">
                 <VisualState x:Name="SearchUnfocused">
                     <VisualState.Setters>
-                        <Setter Target="SearchFocusGlow.Opacity" Value="0" />
-                        <Setter Target="SearchFocusRing.Opacity" Value="0" />
+                        <Setter Target="SearchFocusGlow.Opacity" Value="{ThemeResource AppOpacityTransparent}" />
+                        <Setter Target="SearchFocusRing.Opacity" Value="{ThemeResource AppOpacityTransparent}" />
                         <Setter Target="SearchBoxContainer.BorderBrush" Value="{ThemeResource AppOutlineBrush}" />
                         <Setter Target="SearchShortcutBadge.Visibility" Value="Visible" />
                     </VisualState.Setters>
                 </VisualState>
                 <VisualState x:Name="SearchFocused">
                     <VisualState.Setters>
-                        <Setter Target="SearchFocusGlow.Opacity" Value="0.18" />
-                        <Setter Target="SearchFocusRing.Opacity" Value="1" />
+                        <Setter Target="SearchFocusGlow.Opacity" Value="{ThemeResource AppOpacityPressedOverlay}" />
+                        <Setter Target="SearchFocusRing.Opacity" Value="{ThemeResource AppOpacityVisible}" />
                         <Setter Target="SearchBoxContainer.BorderBrush" Value="{ThemeResource AppAccentBrush}" />
                         <Setter Target="SearchShortcutBadge.Visibility" Value="Collapsed" />
                     </VisualState.Setters>
@@ -293,43 +294,43 @@
 
         <Button
             x:Name="SearchFocusSink"
-            Width="1"
-            Height="1"
-            Padding="0"
+            Width="{ThemeResource AppDimension1}"
+            Height="{ThemeResource AppDimension1}"
+            Padding="{ThemeResource AppPadding0}"
             HorizontalAlignment="Left"
             VerticalAlignment="Top"
             AutomationProperties.AccessibilityView="Raw"
             AutomationProperties.AutomationId="ShellSearchFocusSink"
             Background="{ThemeResource AppTransparentBrush}"
-            BorderThickness="0"
+            BorderThickness="{ThemeResource AppZeroThickness}"
             IsTabStop="True"
-            Opacity="0"
+            Opacity="{ThemeResource AppOpacityTransparent}"
             TabIndex="-1"
             UseSystemFocusVisuals="False" />
 
         <Grid
             x:Name="TitleBarHost"
             Grid.Row="0"
-            MinHeight="64"
-            Background="{ThemeResource AppCanvasRaisedBrush}">
+            MinHeight="{ThemeResource AppDimension64}"
+            Background="{ThemeResource AppTitleBarMaterialBrush}">
             <Grid.ColumnDefinitions>
-                <ColumnDefinition x:Name="TitleLogoColumn" Width="286" />
+                <ColumnDefinition x:Name="TitleLogoColumn" Width="{ThemeResource AppGridLength286}" />
                 <ColumnDefinition Width="*" />
                 <ColumnDefinition Width="Auto" />
-                <ColumnDefinition x:Name="TitleWindowColumn" Width="132" />
+                <ColumnDefinition x:Name="TitleWindowColumn" Width="{ThemeResource AppGridLength132}" />
             </Grid.ColumnDefinitions>
             <StackPanel
                 Grid.Column="0"
-                Margin="18,0,0,0"
+                Margin="{ThemeResource AppMargin18_0_0_0}"
                 HorizontalAlignment="Left"
                 VerticalAlignment="Center"
                 Orientation="Horizontal"
-                Spacing="12">
+                Spacing="{ThemeResource AppGap12}">
                 <Button
                     x:Uid="PagesShellPageShellRailDrawerButton" x:Name="ShellRailDrawerButton"
-                    Width="36"
-                    Height="36"
-                    Padding="0"
+                    Width="{ThemeResource AppDimension36}"
+                    Height="{ThemeResource AppDimension36}"
+                    Padding="{ThemeResource AppPadding0}"
                     AutomationProperties.AutomationId="ShellRailDrawerButton"
                     AutomationProperties.Name="Open navigation"
                     Click="ShellRailDrawerButton_Click"
@@ -342,13 +343,14 @@
                 </Button>
                 <Image
                     x:Name="AppLogoShellPage"
-                    Width="30"
-                    Height="30"
+                    Width="{ThemeResource AppDimension30}"
+                    Height="{ThemeResource AppDimension30}"
+                    VerticalAlignment="Center"
                     Source="ms-appx:///Assets/JitHubLogoTitleBar.png" />
                 <Button
-                    x:Uid="PagesShellPageShellBackButton" Width="36"
-                    Height="36"
-                    Padding="0"
+                    x:Uid="PagesShellPageShellBackButton" Width="{ThemeResource AppDimension36}"
+                    Height="{ThemeResource AppDimension36}"
+                    Padding="{ThemeResource AppPadding0}"
                     AutomationProperties.AutomationId="ShellBackButton"
                     AutomationProperties.Name="Back"
                     Command="{x:Bind ViewModel.GoBackCommand, Mode=OneWay}"
@@ -361,9 +363,9 @@
                         Glyph="&#xE72B;" />
                 </Button>
                 <Button
-                    x:Uid="PagesShellPageShellForwardButton" Width="36"
-                    Height="36"
-                    Padding="0"
+                    x:Uid="PagesShellPageShellForwardButton" Width="{ThemeResource AppDimension36}"
+                    Height="{ThemeResource AppDimension36}"
+                    Padding="{ThemeResource AppPadding0}"
                     AutomationProperties.AutomationId="ShellForwardButton"
                     AutomationProperties.Name="Forward"
                     Command="{x:Bind ViewModel.GoForwardCommand, Mode=OneWay}"
@@ -380,7 +382,7 @@
                     VerticalAlignment="Center"
                     FontFamily="{StaticResource AppUiFontFamily}"
                     FontSize="{ThemeResource AppFontSize18}"
-                    FontWeight="SemiBold"
+                    FontWeight="{ThemeResource AppFontWeightSemibold}"
                     Foreground="{ThemeResource AppInkBrush}"
                     Text="JitHub" />
             </StackPanel>
@@ -388,48 +390,48 @@
             <Grid
                 x:Name="SearchRegion"
                 Grid.Column="1"
-                Margin="12,0"
+                Margin="{ThemeResource AppMargin12_0}"
                 HorizontalAlignment="Stretch"
                 VerticalAlignment="Center">
                 <Grid x:Name="SearchBoxFrame">
                     <Border
                         x:Name="SearchFocusGlow"
-                        Margin="-3"
+                        Margin="{ThemeResource AppMarginNeg3}"
                         Background="{ThemeResource AppAccentBrush}"
                         CornerRadius="{ThemeResource AppRadiusPill}"
                         IsHitTestVisible="False"
-                        Opacity="0" />
+                        Opacity="{ThemeResource AppOpacityTransparent}" />
                     <Border
                         x:Name="SearchFocusRing"
-                        Margin="-1"
+                        Margin="{ThemeResource AppMarginNeg1}"
                         BorderBrush="{ThemeResource AppAccentBrush}"
-                        BorderThickness="1"
+                        BorderThickness="{ThemeResource AppHairlineBorderThickness}"
                         CornerRadius="{ThemeResource AppRadiusPill}"
                         IsHitTestVisible="False"
-                        Opacity="0" />
+                        Opacity="{ThemeResource AppOpacityTransparent}" />
                     <Border
                         x:Name="SearchBoxContainer"
-                        Padding="10,4"
+                        Padding="{ThemeResource AppPadding10_4}"
                         AutomationProperties.AccessibilityView="Raw"
                         Background="{ThemeResource AppInputBrush}"
                         BorderBrush="{ThemeResource AppOutlineBrush}"
-                        BorderThickness="1"
+                        BorderThickness="{ThemeResource AppHairlineBorderThickness}"
                         CornerRadius="{ThemeResource AppRadiusPill}"
                         PointerEntered="SearchBoxContainer_PointerEntered"
                         PointerExited="SearchBoxContainer_PointerExited"
                         PointerPressed="SearchBoxContainer_PointerPressed"
                         PointerReleased="SearchBoxContainer_PointerReleased">
-                        <Grid ColumnSpacing="6">
+                        <Grid ColumnSpacing="{ThemeResource AppGap6}">
                             <Grid.ColumnDefinitions>
-                                <ColumnDefinition Width="18" />
+                                <ColumnDefinition Width="{ThemeResource AppGridLength18}" />
                                 <ColumnDefinition Width="*" />
                                 <ColumnDefinition Width="Auto" />
                                 <ColumnDefinition Width="Auto" />
                             </Grid.ColumnDefinitions>
                             <muxc:ProgressRing
                                 Grid.Column="0"
-                                Width="12"
-                                Height="12"
+                                Width="{ThemeResource AppDimension12}"
+                                Height="{ThemeResource AppDimension12}"
                                 VerticalAlignment="Center"
                                 IsActive="{x:Bind ViewModel.Searching, Mode=OneWay}"
                                 Visibility="{x:Bind ViewModel.Searching, Converter={StaticResource BoolToVisibilityConverter}, Mode=OneWay}" />
@@ -475,34 +477,34 @@
                                 AutomationProperties.Name="Ctrl K shortcut"
                                 IsHitTestVisible="False"
                                 Orientation="Horizontal"
-                                Spacing="4">
+                                Spacing="{ThemeResource AppGap4}">
                                 <Border
-                                    MinHeight="22"
-                                    Padding="7,2"
+                                    MinHeight="{ThemeResource AppDimension22}"
+                                    Padding="{ThemeResource AppPadding7_2}"
                                     Background="{ThemeResource AppCanvasInsetBrush}"
                                     BorderBrush="{ThemeResource AppOutlineBrush}"
-                                    BorderThickness="1"
+                                    BorderThickness="{ThemeResource AppHairlineBorderThickness}"
                                     CornerRadius="{ThemeResource AppRadiusSmall}">
                                     <TextBlock
                                         x:Uid="PagesShellPageTextBlockCtrl" VerticalAlignment="Center"
                                         FontFamily="{StaticResource AppUiFontFamily}"
                                         FontSize="{ThemeResource AppFontSize11}"
-                                        FontWeight="SemiBold"
+                                        FontWeight="{ThemeResource AppFontWeightSemibold}"
                                         Foreground="{ThemeResource AppInkSubtleBrush}"
                                         Text="Ctrl" />
                                 </Border>
                                 <Border
-                                    MinHeight="22"
-                                    Padding="7,2"
+                                    MinHeight="{ThemeResource AppDimension22}"
+                                    Padding="{ThemeResource AppPadding7_2}"
                                     Background="{ThemeResource AppCanvasInsetBrush}"
                                     BorderBrush="{ThemeResource AppOutlineBrush}"
-                                    BorderThickness="1"
+                                    BorderThickness="{ThemeResource AppHairlineBorderThickness}"
                                     CornerRadius="{ThemeResource AppRadiusSmall}">
                                     <TextBlock
                                         x:Uid="PagesShellPageTextBlockK" VerticalAlignment="Center"
                                         FontFamily="{StaticResource AppUiFontFamily}"
                                         FontSize="{ThemeResource AppFontSize11}"
-                                        FontWeight="SemiBold"
+                                        FontWeight="{ThemeResource AppFontWeightSemibold}"
                                         Foreground="{ThemeResource AppInkSubtleBrush}"
                                         Text="K" />
                                 </Border>
@@ -529,11 +531,11 @@
 
             <StackPanel
                 Grid.Column="2"
-                Margin="0,0,18,0"
+                Margin="{ThemeResource AppMargin0_0_18_0}"
                 HorizontalAlignment="Right"
                 VerticalAlignment="Center"
                 Orientation="Horizontal"
-                Spacing="8">
+                Spacing="{ThemeResource AppGap8}">
                 <Button
                     x:Uid="PagesShellPageShellNewRepositoryButton" x:Name="NewRepositoryButton"
                     AutomationProperties.AutomationId="ShellNewRepositoryButton"
@@ -548,35 +550,35 @@
                 <Button
                     x:Uid="PagesShellPageShellNotificationsTopButton"
                     x:Name="NotificationsTopButton"
-                    Width="36"
-                    Height="36"
-                    Padding="0"
+                    Width="{ThemeResource AppDimension36}"
+                    Height="{ThemeResource AppDimension36}"
+                    Padding="{ThemeResource AppPadding0}"
                     AutomationProperties.AutomationId="ShellNotificationsTopButton"
                     AutomationProperties.HelpText="{x:Bind ViewModel.NotificationBadgeAutomationName, Mode=OneWay}"
                     AutomationProperties.Name="Notifications"
                     Command="{x:Bind ViewModel.OpenNotificationsCommand, Mode=OneWay}"
                     Style="{StaticResource AppToolbarButtonStyle}"
                     ToolTipService.ToolTip="Notifications">
-                    <Grid Width="24" Height="24">
+                    <Grid Width="{ThemeResource AppDimension24}" Height="{ThemeResource AppDimension24}">
                         <FontIcon
                             HorizontalAlignment="Center"
                             VerticalAlignment="Center"
                             FontFamily="{StaticResource SegoeFluentIcons}"
                             Glyph="&#xEA8F;" />
                         <StackPanel
-                            Margin="0,-7,-9,0"
+                            Margin="{ThemeResource AppMargin0_Neg7_Neg9_0}"
                             HorizontalAlignment="Right"
                             VerticalAlignment="Top"
                             AutomationProperties.AccessibilityView="Raw"
                             Orientation="Horizontal"
-                            Spacing="1"
+                            Spacing="{ThemeResource AppGap1}"
                             Visibility="{x:Bind ViewModel.HasNotificationBadge, Converter={StaticResource BoolToVisibilityConverter}, Mode=OneWay}">
-                            <InfoBadge Value="{x:Bind ViewModel.DisplayNotificationBadgeValue, Mode=OneWay}" />
+                            <InfoBadge VerticalAlignment="Center" Value="{x:Bind ViewModel.DisplayNotificationBadgeValue, Mode=OneWay}" />
                             <TextBlock
                                 VerticalAlignment="Center"
                                 FontFamily="{ThemeResource AppUiFontFamily}"
                                 FontSize="{ThemeResource AppFontSize11}"
-                                FontWeight="SemiBold"
+                                FontWeight="{ThemeResource AppFontWeightSemibold}"
                                 Foreground="{ThemeResource AppAccentBrush}"
                                 Text="+"
                                 Visibility="{x:Bind ViewModel.HasNotificationBadgeSuffix, Converter={StaticResource BoolToVisibilityConverter}, Mode=OneWay}" />
@@ -596,17 +598,17 @@
                 </Button>
                 <Button
                     x:Uid="PagesShellPageShellProfileTopButton" x:Name="ProfileTopButton"
-                    Width="36"
-                    Height="36"
-                    Padding="6"
+                    Width="{ThemeResource AppDimension36}"
+                    Height="{ThemeResource AppDimension36}"
+                    Padding="{ThemeResource AppPadding6}"
                     AutomationProperties.AutomationId="ShellProfileTopButton"
                     AutomationProperties.Name="Profile"
                     Command="{x:Bind ViewModel.GoToProfilePageCommand, Mode=OneWay}"
                     Style="{StaticResource AppToolbarButtonStyle}"
                     ToolTipService.ToolTip="Profile">
                     <Border
-                        Width="24"
-                        Height="24"
+                        Width="{ThemeResource AppDimension24}"
+                        Height="{ThemeResource AppDimension24}"
                         Background="{ThemeResource AppCanvasInsetBrush}"
                         CornerRadius="{ThemeResource AppRadiusCircle}">
                         <common:CachedImage
@@ -626,16 +628,16 @@
             <Border
                 x:Uid="PagesShellPageShellRail" x:Name="ShellRail"
                 Grid.Column="0"
-                Width="286"
+                Width="{ThemeResource AppDimension286}"
                 AutomationProperties.AccessibilityView="Control"
                 AutomationProperties.AutomationId="ShellRail"
                 AutomationProperties.Name="Application navigation and repositories"
                 Background="{ThemeResource AppRailBrush}"
                 BorderBrush="{ThemeResource AppHairlineBrush}"
-                BorderThickness="0,0,1,0">
+                BorderThickness="{ThemeResource AppRightHairlineBorderThickness}">
                 <Grid
                     x:Name="ShellRailContent"
-                    Padding="10,12">
+                    Padding="{ThemeResource AppPadding10_12}">
                     <Grid.RowDefinitions>
                         <RowDefinition Height="Auto" />
                         <RowDefinition Height="Auto" />
@@ -649,14 +651,14 @@
                         ItemsSource="{x:Bind ViewModel.NavigationItems, Mode=OneWay}" />
                     <Rectangle
                         Grid.Row="1"
-                        Height="1"
-                        Margin="12,12"
+                        Height="{ThemeResource AppDimension1}"
+                        Margin="{ThemeResource AppMargin12_12}"
                         Fill="{ThemeResource AppHairlineBrush}" />
                     <Grid
                         x:Name="RepositoryRailLayout"
                         Grid.Row="2"
-                        Padding="4,0,4,0"
-                        RowSpacing="10">
+                        Padding="{ThemeResource AppPadding4_0_4_0}"
+                        RowSpacing="{ThemeResource AppGap10}">
                         <Grid.RowDefinitions>
                             <RowDefinition Height="Auto" />
                             <RowDefinition Height="*" />
@@ -664,7 +666,7 @@
                         </Grid.RowDefinitions>
                         <Grid
                             x:Name="RepositoryExpandedHeaderSurface"
-                            RowSpacing="10">
+                            RowSpacing="{ThemeResource AppGap10}">
                             <Grid.RowDefinitions>
                                 <RowDefinition Height="Auto" />
                                 <RowDefinition Height="Auto" />
@@ -675,7 +677,7 @@
                                 labs:TransitionHelper.Id="RepositoryHeaderTitle"
                                 FontFamily="{StaticResource AppUiFontFamily}"
                                 FontSize="{ThemeResource AppFontSize15}"
-                                FontWeight="SemiBold"
+                                FontWeight="{ThemeResource AppFontWeightSemibold}"
                                 Foreground="{ThemeResource AppInkBrush}"
                                 Text="Repositories" />
                             <Grid
@@ -684,24 +686,30 @@
                                 AutomationProperties.AccessibilityView="Control"
                                 AutomationProperties.AutomationId="ShellRepoFilterSegmented"
                                 AutomationProperties.Name="Repository visibility filters">
-                                <toolkit:Segmented
+                                <Border
+                                    labs:TransitionHelper.Id="RepositoryHeaderFilterSurface"
+                                    AutomationProperties.AccessibilityView="Raw"
+                                    Background="{ThemeResource AppCanvasInsetBrush}"
+                                    CornerRadius="{ThemeResource AppRadiusMedium}" />
+                                <app:AppSegmented
                                     x:Uid="PagesShellPageShellRepositoryFilter"
                                     x:Name="ShellRepositoryExpandedFilter"
+                                    Background="{ThemeResource AppTransparentBrush}"
                                     AutomationProperties.AutomationId="ShellRepositoryFilter"
                                     AutomationProperties.Name="Repository visibility filter"
                                     SelectedIndex="0"
                                     SelectionChanged="RepositoryFilterSegmented_SelectionChanged"
                                     SelectionMode="Single">
-                                    <toolkit:Segmented.ItemsPanel>
+                                    <app:AppSegmented.ItemsPanel>
                                         <ItemsPanelTemplate>
                                             <toolkit:EqualPanel />
                                         </ItemsPanelTemplate>
-                                    </toolkit:Segmented.ItemsPanel>
-                                    <toolkit:SegmentedItem
+                                    </app:AppSegmented.ItemsPanel>
+                                    <app:AppSegmentedItem
                                         x:Uid="PagesShellPageShellRepoFilterPublic"
-                                        Height="44"
-                                        Padding="4,4"
-                                        Width="80"
+                                        Height="{ThemeResource AppDimension44}"
+                                        Padding="{ThemeResource AppPadding4_4}"
+                                        Width="{ThemeResource AppDimension80}"
                                         labs:TransitionHelper.Id="RepositoryHeaderFilterPublic"
                                         AutomationProperties.AutomationId="ShellRepoFilter_Public"
                                         AutomationProperties.Name="Show public repositories">
@@ -712,12 +720,12 @@
                                             Text="Public"
                                             TextAlignment="Center"
                                             TextWrapping="WrapWholeWords" />
-                                    </toolkit:SegmentedItem>
-                                    <toolkit:SegmentedItem
+                                    </app:AppSegmentedItem>
+                                    <app:AppSegmentedItem
                                         x:Uid="PagesShellPageShellRepoFilterPrivate"
-                                        Height="44"
-                                        Padding="4,4"
-                                        Width="80"
+                                        Height="{ThemeResource AppDimension44}"
+                                        Padding="{ThemeResource AppPadding4_4}"
+                                        Width="{ThemeResource AppDimension80}"
                                         labs:TransitionHelper.Id="RepositoryHeaderFilterPrivate"
                                         AutomationProperties.AutomationId="ShellRepoFilter_Private"
                                         AutomationProperties.Name="Show private repositories">
@@ -728,12 +736,12 @@
                                             Text="Private"
                                             TextAlignment="Center"
                                             TextWrapping="WrapWholeWords" />
-                                    </toolkit:SegmentedItem>
-                                    <toolkit:SegmentedItem
+                                    </app:AppSegmentedItem>
+                                    <app:AppSegmentedItem
                                         x:Uid="PagesShellPageShellRepoFilterForked"
-                                        Height="44"
-                                        Padding="4,4"
-                                        Width="80"
+                                        Height="{ThemeResource AppDimension44}"
+                                        Padding="{ThemeResource AppPadding4_4}"
+                                        Width="{ThemeResource AppDimension80}"
                                         labs:TransitionHelper.Id="RepositoryHeaderFilterForked"
                                         AutomationProperties.AutomationId="ShellRepoFilter_Forked"
                                         AutomationProperties.Name="Show forked repositories">
@@ -744,22 +752,22 @@
                                             Text="Forked"
                                             TextAlignment="Center"
                                             TextWrapping="WrapWholeWords" />
-                                    </toolkit:SegmentedItem>
-                                </toolkit:Segmented>
+                                    </app:AppSegmentedItem>
+                                </app:AppSegmented>
                             </Grid>
                         </Grid>
                         <Grid
                             x:Name="RepositoryShyHeaderSurface"
-                            Height="34"
-                            Margin="-4,0"
-                            Padding="4,2"
+                            Height="{ThemeResource AppDimension34}"
+                            Margin="{ThemeResource AppMarginNeg4_0}"
+                            Padding="{ThemeResource AppPadding4_2}"
                             VerticalAlignment="Top"
                             AutomationProperties.AccessibilityView="Raw"
                             Background="{ThemeResource AppRailTransientOverlayBrush}"
                             BorderBrush="{ThemeResource AppHairlineBrush}"
-                            BorderThickness="0,0,0,1"
+                            BorderThickness="{ThemeResource AppBottomHairlineBorderThickness}"
                             Canvas.ZIndex="10"
-                            ColumnSpacing="8"
+                            ColumnSpacing="{ThemeResource AppGap8}"
                             Visibility="Collapsed">
                             <Grid.ColumnDefinitions>
                                 <ColumnDefinition Width="*" />
@@ -771,100 +779,110 @@
                                 labs:TransitionHelper.Id="RepositoryHeaderTitle"
                                 FontFamily="{StaticResource AppUiFontFamily}"
                                 FontSize="{ThemeResource AppFontSize13}"
-                                FontWeight="SemiBold"
+                                FontWeight="{ThemeResource AppFontWeightSemibold}"
                                 Foreground="{ThemeResource AppInkBrush}"
                                 MaxLines="1"
                                 Text="Repositories"
                                 TextTrimming="CharacterEllipsis" />
-                            <toolkit:Segmented
-                                x:Uid="PagesShellPageShellCompactRepositoryFilter"
-                                x:Name="ShellRepositoryCompactFilter"
+                            <Grid
                                 Grid.Column="1"
-                                Height="30"
-                                MinHeight="30"
-                                Padding="2"
-                                VerticalAlignment="Center"
-                                AutomationProperties.AutomationId="ShellRepositoryCompactFilter"
-                                AutomationProperties.Name="Repository visibility filter"
-                                SelectedIndex="0"
-                                SelectionChanged="RepositoryFilterSegmented_SelectionChanged"
-                                SelectionMode="Single">
-                                <toolkit:Segmented.ItemsPanel>
-                                    <ItemsPanelTemplate>
-                                        <toolkit:EqualPanel />
-                                    </ItemsPanelTemplate>
-                                </toolkit:Segmented.ItemsPanel>
-                                <toolkit:SegmentedItem
-                                    x:Uid="PagesShellPageShellRepoCompactFilterPublic"
-                                    Width="44"
-                                    Height="24"
-                                    MinHeight="24"
-                                    Padding="2,0"
-                                    labs:TransitionHelper.Id="RepositoryHeaderFilterPublic"
-                                    AutomationProperties.AutomationId="ShellRepoCompactFilter_Public"
-                                    AutomationProperties.Name="Show public repositories">
-                                    <TextBlock
-                                        x:Uid="PagesShellPageShellRepoCompactFilterPublicLabel"
-                                        AutomationProperties.AccessibilityView="Raw"
-                                        FontSize="{ThemeResource AppFontSize10}"
-                                        MaxLines="1"
-                                        Text="Public"
-                                        TextAlignment="Center"
-                                        TextTrimming="CharacterEllipsis"
-                                        TextWrapping="NoWrap" />
-                                </toolkit:SegmentedItem>
-                                <toolkit:SegmentedItem
-                                    x:Uid="PagesShellPageShellRepoCompactFilterPrivate"
-                                    Width="44"
-                                    Height="24"
-                                    MinHeight="24"
-                                    Padding="2,0"
-                                    labs:TransitionHelper.Id="RepositoryHeaderFilterPrivate"
-                                    AutomationProperties.AutomationId="ShellRepoCompactFilter_Private"
-                                    AutomationProperties.Name="Show private repositories">
-                                    <TextBlock
-                                        x:Uid="PagesShellPageShellRepoCompactFilterPrivateLabel"
-                                        AutomationProperties.AccessibilityView="Raw"
-                                        FontSize="{ThemeResource AppFontSize10}"
-                                        MaxLines="1"
-                                        Text="Private"
-                                        TextAlignment="Center"
-                                        TextTrimming="CharacterEllipsis"
-                                        TextWrapping="NoWrap" />
-                                </toolkit:SegmentedItem>
-                                <toolkit:SegmentedItem
-                                    x:Uid="PagesShellPageShellRepoCompactFilterForked"
-                                    Width="44"
-                                    Height="24"
-                                    MinHeight="24"
-                                    Padding="2,0"
-                                    labs:TransitionHelper.Id="RepositoryHeaderFilterForked"
-                                    AutomationProperties.AutomationId="ShellRepoCompactFilter_Forked"
-                                    AutomationProperties.Name="Show forked repositories">
-                                    <TextBlock
-                                        x:Uid="PagesShellPageShellRepoCompactFilterForkedLabel"
-                                        AutomationProperties.AccessibilityView="Raw"
-                                        FontSize="{ThemeResource AppFontSize10}"
-                                        MaxLines="1"
-                                        Text="Forked"
-                                        TextAlignment="Center"
-                                        TextTrimming="CharacterEllipsis"
-                                        TextWrapping="NoWrap" />
-                                </toolkit:SegmentedItem>
-                            </toolkit:Segmented>
+                                Height="{ThemeResource AppDimension30}"
+                                VerticalAlignment="Center">
+                                <Border
+                                    labs:TransitionHelper.Id="RepositoryHeaderFilterSurface"
+                                    AutomationProperties.AccessibilityView="Raw"
+                                    Background="{ThemeResource AppCanvasInsetBrush}"
+                                    CornerRadius="{ThemeResource AppRadiusMedium}" />
+                                <app:AppSegmented
+                                    x:Uid="PagesShellPageShellCompactRepositoryFilter"
+                                    x:Name="ShellRepositoryCompactFilter"
+                                    Height="{ThemeResource AppDimension30}"
+                                    MinHeight="{ThemeResource AppDimension30}"
+                                    Padding="{ThemeResource AppPadding2}"
+                                    VerticalAlignment="Center"
+                                    Background="{ThemeResource AppTransparentBrush}"
+                                    AutomationProperties.AutomationId="ShellRepositoryCompactFilter"
+                                    AutomationProperties.Name="Repository visibility filter"
+                                    SelectedIndex="0"
+                                    SelectionChanged="RepositoryFilterSegmented_SelectionChanged"
+                                    SelectionMode="Single">
+                                    <app:AppSegmented.ItemsPanel>
+                                        <ItemsPanelTemplate>
+                                            <toolkit:EqualPanel />
+                                        </ItemsPanelTemplate>
+                                    </app:AppSegmented.ItemsPanel>
+                                    <app:AppSegmentedItem
+                                        x:Uid="PagesShellPageShellRepoCompactFilterPublic"
+                                        Width="{ThemeResource AppDimension44}"
+                                        Height="{ThemeResource AppDimension24}"
+                                        MinHeight="{ThemeResource AppDimension24}"
+                                        Padding="{ThemeResource AppPadding2_0}"
+                                        labs:TransitionHelper.Id="RepositoryHeaderFilterPublic"
+                                        AutomationProperties.AutomationId="ShellRepoCompactFilter_Public"
+                                        AutomationProperties.Name="Show public repositories">
+                                        <TextBlock
+                                            x:Uid="PagesShellPageShellRepoCompactFilterPublicLabel"
+                                            AutomationProperties.AccessibilityView="Raw"
+                                            FontSize="{ThemeResource AppFontSize10}"
+                                            MaxLines="1"
+                                            Text="Public"
+                                            TextAlignment="Center"
+                                            TextTrimming="CharacterEllipsis"
+                                            TextWrapping="NoWrap" />
+                                    </app:AppSegmentedItem>
+                                    <app:AppSegmentedItem
+                                        x:Uid="PagesShellPageShellRepoCompactFilterPrivate"
+                                        Width="{ThemeResource AppDimension44}"
+                                        Height="{ThemeResource AppDimension24}"
+                                        MinHeight="{ThemeResource AppDimension24}"
+                                        Padding="{ThemeResource AppPadding2_0}"
+                                        labs:TransitionHelper.Id="RepositoryHeaderFilterPrivate"
+                                        AutomationProperties.AutomationId="ShellRepoCompactFilter_Private"
+                                        AutomationProperties.Name="Show private repositories">
+                                        <TextBlock
+                                            x:Uid="PagesShellPageShellRepoCompactFilterPrivateLabel"
+                                            AutomationProperties.AccessibilityView="Raw"
+                                            FontSize="{ThemeResource AppFontSize10}"
+                                            MaxLines="1"
+                                            Text="Private"
+                                            TextAlignment="Center"
+                                            TextTrimming="CharacterEllipsis"
+                                            TextWrapping="NoWrap" />
+                                    </app:AppSegmentedItem>
+                                    <app:AppSegmentedItem
+                                        x:Uid="PagesShellPageShellRepoCompactFilterForked"
+                                        Width="{ThemeResource AppDimension44}"
+                                        Height="{ThemeResource AppDimension24}"
+                                        MinHeight="{ThemeResource AppDimension24}"
+                                        Padding="{ThemeResource AppPadding2_0}"
+                                        labs:TransitionHelper.Id="RepositoryHeaderFilterForked"
+                                        AutomationProperties.AutomationId="ShellRepoCompactFilter_Forked"
+                                        AutomationProperties.Name="Show forked repositories">
+                                        <TextBlock
+                                            x:Uid="PagesShellPageShellRepoCompactFilterForkedLabel"
+                                            AutomationProperties.AccessibilityView="Raw"
+                                            FontSize="{ThemeResource AppFontSize10}"
+                                            MaxLines="1"
+                                            Text="Forked"
+                                            TextAlignment="Center"
+                                            TextTrimming="CharacterEllipsis"
+                                            TextWrapping="NoWrap" />
+                                    </app:AppSegmentedItem>
+                                </app:AppSegmented>
+                            </Grid>
                         </Grid>
                         <Grid
                             x:Name="RepositoryListHost"
                             Grid.Row="1">
                             <ProgressRing
-                                Width="24"
-                                Height="24"
+                                Width="{ThemeResource AppDimension24}"
+                                Height="{ThemeResource AppDimension24}"
                                 HorizontalAlignment="Center"
                                 VerticalAlignment="Center"
                                 IsActive="{x:Bind ViewModel.IsRepositoryRailRefreshing, Mode=OneWay}"
                                 Visibility="{x:Bind ViewModel.IsRepositoryRailRefreshing, Converter={StaticResource BoolToVisibilityConverter}, Mode=OneWay}" />
                             <TextBlock
-                                x:Uid="PagesShellPageTextBlockNoRepositories" Margin="4,32"
+                                x:Uid="PagesShellPageTextBlockNoRepositories" Margin="{ThemeResource AppMargin4_32}"
                                 HorizontalAlignment="Center"
                                 VerticalAlignment="Center"
                                 FontFamily="{StaticResource AppUiFontFamily}"
@@ -877,7 +895,7 @@
                                 AutomationProperties.AutomationId="ShellRepositoryList"
                                 AutomationProperties.Name="Repositories"
                                 Background="{ThemeResource AppTransparentBrush}"
-                                BorderThickness="0"
+                                BorderThickness="{ThemeResource AppZeroThickness}"
                                 ContainerContentChanging="ShellRepositoryList_ContainerContentChanging"
                                 ItemTemplate="{StaticResource ShellRepositoryItemTemplate}"
                                 ItemsSource="{x:Bind ViewModel.RepositoryItems, Mode=OneWay}"
@@ -888,12 +906,12 @@
                                 Visibility="{x:Bind ViewModel.AreRepositoriesVisible, Converter={StaticResource BoolToVisibilityConverter}, Mode=OneWay}">
                                 <ListView.ItemContainerStyle>
                                     <Style TargetType="ListViewItem" BasedOn="{StaticResource AppDenseListRowStyle}">
-                                        <Setter Property="MinHeight" Value="48" />
+                                        <Setter Property="MinHeight" Value="{ThemeResource AppDimension48}" />
                                     </Style>
                                 </ListView.ItemContainerStyle>
                             </ListView>
                         </Grid>
-                        <StackPanel Grid.Row="2" Spacing="6">
+                        <StackPanel Grid.Row="2" Spacing="{ThemeResource AppGap6}">
                             <TextBlock
                                 FontFamily="{StaticResource AppUiFontFamily}"
                                 FontSize="{ThemeResource AppFontSize11}"
@@ -902,8 +920,8 @@
                                 TextTrimming="CharacterEllipsis" />
                             <Button
                                 x:Uid="PagesShellPageShellRepositoryRetryButton" x:Name="RepositoryRailRetryButton"
-                                MinHeight="32"
-                                Padding="10,4"
+                                MinHeight="{ThemeResource AppDimension32}"
+                                Padding="{ThemeResource AppPadding10_4}"
                                 HorizontalAlignment="Left"
                                 AutomationProperties.AutomationId="ShellRepositoryRetryButton"
                                 AutomationProperties.Name="Retry loading repositories"
@@ -911,12 +929,13 @@
                                 Style="{StaticResource AppQuietButtonStyle}"
                                 ToolTipService.ToolTip="Retry loading repositories"
                                 Visibility="{x:Bind ViewModel.HasRepositoryRailError, Converter={StaticResource BoolToVisibilityConverter}, Mode=OneWay}">
-                                <StackPanel Orientation="Horizontal" Spacing="6">
+                                <StackPanel Orientation="Horizontal" Spacing="{ThemeResource AppGap6}">
                                     <FontIcon
+                                        VerticalAlignment="Center"
                                         FontFamily="{StaticResource SegoeFluentIcons}"
                                         FontSize="{ThemeResource AppFontSize12}"
                                         Glyph="&#xE72C;" />
-                                    <TextBlock x:Uid="PagesShellPageTextBlockRetry" Text="Retry" />
+                                    <TextBlock x:Uid="PagesShellPageTextBlockRetry" VerticalAlignment="Center" Text="Retry" />
                                 </StackPanel>
                             </Button>
                         </StackPanel>
@@ -940,14 +959,14 @@
                 Visibility="Collapsed">
                 <Border
                     x:Uid="PagesShellPageShellRailDrawer" x:Name="ShellRailDrawer"
-                    Width="286"
+                    Width="{ThemeResource AppDimension286}"
                     HorizontalAlignment="Left"
                     VerticalAlignment="Stretch"
                     AutomationProperties.AutomationId="ShellRailDrawer"
                     AutomationProperties.Name="Navigation drawer"
                     Background="{ThemeResource AppRailBrush}"
                     BorderBrush="{ThemeResource AppOutlineBrush}"
-                    BorderThickness="0,0,1,0"
+                    BorderThickness="{ThemeResource AppRightHairlineBorderThickness}"
                     IsTabStop="True"
                     PointerReleased="ShellRailDrawer_PointerReleased">
                     <Border.RenderTransform>
@@ -971,7 +990,7 @@
                 x:Name="SearchSuggestionsHost"
                 Background="{ThemeResource AppCardBrush}"
                 BorderBrush="{ThemeResource AppOutlineStrongBrush}"
-                BorderThickness="1"
+                BorderThickness="{ThemeResource AppHairlineBorderThickness}"
                 CornerRadius="{ThemeResource AppRadiusLarge}"
                 Visibility="Collapsed">
                 <ListView
@@ -979,7 +998,7 @@
                     AutomationProperties.AutomationId="ShellSearchSuggestionsList"
                     AutomationProperties.Name="Search suggestions"
                     Background="{ThemeResource AppTransparentBrush}"
-                    BorderThickness="0"
+                    BorderThickness="{ThemeResource AppZeroThickness}"
                     IsItemClickEnabled="True"
                     IsTabStop="False"
                     ItemClick="SearchSuggestionsList_ItemClick"
@@ -991,7 +1010,7 @@
                     Tapped="SearchSuggestionsList_Tapped">
                     <ListView.ItemContainerStyle>
                         <Style TargetType="ListViewItem" BasedOn="{StaticResource AppDenseListRowStyle}">
-                            <Setter Property="MinHeight" Value="48" />
+                            <Setter Property="MinHeight" Value="{ThemeResource AppDimension48}" />
                             <Setter Property="CornerRadius" Value="{ThemeResource AppRadiusMedium}" />
                         </Style>
                     </ListView.ItemContainerStyle>
@@ -1015,12 +1034,12 @@
                 AutomationProperties.Name="Dialog"
                 HorizontalAlignment="Center"
                 VerticalAlignment="Center"
-                Margin="16"
-                MaxWidth="620"
-                MaxHeight="720"
+                Margin="{ThemeResource AppMargin16}"
+                MaxWidth="{ThemeResource AppDimension620}"
+                MaxHeight="{ThemeResource AppDimension720}"
                 Background="{ThemeResource AppOverlayBrush}"
                 BorderBrush="{ThemeResource AppOutlineBrush}"
-                BorderThickness="1"
+                BorderThickness="{ThemeResource AppHairlineBorderThickness}"
                 CornerRadius="{ThemeResource AppRadiusLarge}"
                 TabFocusNavigation="Cycle">
                 <Grid>
@@ -1030,21 +1049,21 @@
                     </Grid.RowDefinitions>
                     <Grid
                         Grid.Row="0"
-                        Height="64"
+                        Height="{ThemeResource AppDimension64}"
                         HorizontalAlignment="Stretch"
                         Visibility="{x:Bind ViewModel.UseHeader, Converter={StaticResource BoolToVisibilityReverseConverter}, Mode=OneWay}">
                         <TextBlock
-                            Margin="16,0,0,0"
+                            Margin="{ThemeResource AppMargin16_0_0_0}"
                             HorizontalAlignment="Left"
                             VerticalAlignment="Center"
                             Style="{StaticResource SectionTitleTextBlockStyle}"
                             Text="{x:Bind ViewModel.Title, Mode=OneWay}" />
                         <Button
                             x:Uid="PagesShellPageShellModalCloseButton" x:Name="ModalCloseButton"
-                            Width="32"
-                            Height="32"
-                            Margin="16"
-                            Padding="0"
+                            Width="{ThemeResource AppDimension32}"
+                            Height="{ThemeResource AppDimension32}"
+                            Margin="{ThemeResource AppMargin16}"
+                            Padding="{ThemeResource AppPadding0}"
                             HorizontalAlignment="Right"
                             VerticalAlignment="Center"
                             AutomationProperties.AutomationId="ShellModalCloseButton"
@@ -1077,7 +1096,7 @@
         <muxc:InfoBar
             x:Name="NotificationBar"
             Grid.Row="1"
-            Margin="16"
+            Margin="{ThemeResource AppMargin16}"
             HorizontalAlignment="Stretch"
             VerticalAlignment="Bottom"
             IsClosable="True"
@@ -1089,44 +1108,44 @@
         <Grid
             x:Uid="PagesShellPageProductPerformanceBridge"
             x:Name="ProductPerformanceBridge"
-            Width="4"
-            Height="4"
+            Width="{ThemeResource AppDimension4}"
+            Height="{ThemeResource AppDimension4}"
             HorizontalAlignment="Right"
             VerticalAlignment="Bottom"
             AutomationProperties.AccessibilityView="Control"
             AutomationProperties.AutomationId="ProductPerformanceBridge"
             AutomationProperties.Name="Product performance automation bridge"
-            Opacity="0.01"
+            Opacity="{ThemeResource AppOpacityFocusSentinel}"
             Visibility="Collapsed">
             <TextBox
                 x:Uid="PagesShellPageProductPerformanceRouteInput"
                 x:Name="ProductPerformanceRouteInput"
-                Width="4"
-                Height="4"
+                Width="{ThemeResource AppDimension4}"
+                Height="{ThemeResource AppDimension4}"
                 AutomationProperties.AutomationId="ProductPerformanceRouteInput"
                 AutomationProperties.Name="Performance route"
                 TextChanged="ProductPerformanceRouteInput_TextChanged" />
             <Button
                 x:Uid="PagesShellPageProductPerformanceNavigateButton"
                 x:Name="ProductPerformanceNavigateButton"
-                Width="4"
-                Height="4"
+                Width="{ThemeResource AppDimension4}"
+                Height="{ThemeResource AppDimension4}"
                 AutomationProperties.AutomationId="ProductPerformanceNavigateButton"
                 AutomationProperties.Name="Navigate performance route"
                 Click="ProductPerformanceNavigateButton_Click" />
             <TextBox
                 x:Uid="PagesShellPageProductPerformanceTraversalInput"
                 x:Name="ProductPerformanceTraversalInput"
-                Width="4"
-                Height="4"
+                Width="{ThemeResource AppDimension4}"
+                Height="{ThemeResource AppDimension4}"
                 AutomationProperties.AutomationId="ProductPerformanceTraversalInput"
                 AutomationProperties.Name="Expected performance traversal identity"
                 TextChanged="ProductPerformanceTraversalInput_TextChanged" />
             <Button
                 x:Uid="PagesShellPageProductPerformanceArmTraversalButton"
                 x:Name="ProductPerformanceArmTraversalButton"
-                Width="4"
-                Height="4"
+                Width="{ThemeResource AppDimension4}"
+                Height="{ThemeResource AppDimension4}"
                 AutomationProperties.AutomationId="ProductPerformanceArmTraversalButton"
                 AutomationProperties.Name="Arm performance traversal"
                 Click="ProductPerformanceArmTraversalButton_Click" />

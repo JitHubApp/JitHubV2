@@ -12,7 +12,7 @@ using System.Threading.Tasks;
 
 namespace JitHub.Services;
 
-public sealed partial class LocalDiagnosticsStore : ILocalDiagnosticsStore, IDisposable
+public sealed partial class LocalDiagnosticsStore : ILocalDiagnosticsStore
 {
     public const long DefaultMaxBytes = 25L * 1024L * 1024L;
     public const int DefaultQueueCapacity = 512;
@@ -197,9 +197,6 @@ public sealed partial class LocalDiagnosticsStore : ILocalDiagnosticsStore, IDis
         await shutdownTask.WaitAsync(cancellationToken).ConfigureAwait(false);
     }
 
-    public void Dispose() =>
-        ShutdownAsync().GetAwaiter().GetResult();
-
     public async ValueTask DisposeAsync() =>
         await ShutdownAsync().ConfigureAwait(false);
 
@@ -371,7 +368,8 @@ public sealed partial class LocalDiagnosticsStore : ILocalDiagnosticsStore, IDis
                 ["dropped_count"] = dropped.ToString(CultureInfo.InvariantCulture),
                 ["queue_capacity"] = _queueCapacity.ToString(CultureInfo.InvariantCulture)
             });
-        await ExecuteAppendBatchAsync([StoreOperation.CreateUnobservedAppend(overflow)]).ConfigureAwait(false);
+        await ExecuteAppendBatchAsync(
+            (StoreOperation[])[StoreOperation.CreateUnobservedAppend(overflow)]).ConfigureAwait(false);
     }
 
     private async Task ExecuteAppendBatchAsync(IReadOnlyList<StoreOperation> operations)

@@ -89,11 +89,6 @@ if (-not (Test-Path -LiteralPath $manifestPath)) {
     throw "Package manifest not found: $manifestPath"
 }
 
-$editorAssetsIndexPath = Join-Path (Split-Path -Parent $projectDirectory) 'artifacts\EditorAssets\dist\index.html'
-if (-not $SkipBuild -and -not (Test-Path -LiteralPath $editorAssetsIndexPath)) {
-    throw "Embedded editor assets are missing at '$editorAssetsIndexPath'. Run .\sync-vscode-assets.ps1 before launching JitHub.WinUI."
-}
-
 if (-not $SkipBuild) {
     Write-Host "Building JitHub.WinUI Debug|$Platform..."
     $buildArguments = @(
@@ -173,9 +168,27 @@ if (-not $SkipDebugIdentity) {
         '--keep-identity'
     )
 
-    & winapp @debugIdentityArguments
-    if ($LASTEXITCODE -ne 0) {
-        throw 'winapp create-debug-identity failed.'
+    # winapp generates a manifest-only resources.pri while registering the
+    # identity. Preserve the compiled MRT index so x:Uid localization remains
+    # available to the launched app, including explicit qps-ploc builds.
+    $resourceIndexPath = Join-Path $outputDirectory 'resources.pri'
+    $resourceIndexBackupPath = $null
+    if (Test-Path -LiteralPath $resourceIndexPath) {
+        $resourceIndexBackupPath = Join-Path ([System.IO.Path]::GetTempPath()) "JitHub-$([System.Guid]::NewGuid().ToString('N')).resources.pri"
+        Copy-Item -LiteralPath $resourceIndexPath -Destination $resourceIndexBackupPath -Force
+    }
+
+    try {
+        & winapp @debugIdentityArguments
+        if ($LASTEXITCODE -ne 0) {
+            throw 'winapp create-debug-identity failed.'
+        }
+    }
+    finally {
+        if ($null -ne $resourceIndexBackupPath -and (Test-Path -LiteralPath $resourceIndexBackupPath)) {
+            Copy-Item -LiteralPath $resourceIndexBackupPath -Destination $resourceIndexPath -Force
+            Remove-Item -LiteralPath $resourceIndexBackupPath -Force
+        }
     }
 }
 

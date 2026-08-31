@@ -58,6 +58,7 @@ public sealed class GitHubProfileQueryServiceTests
         Assert.Equal("octocat", snapshot.User.Value.Login);
         Assert.True(snapshot.Readme.Value.Exists);
         Assert.Equal("# Hello profile", snapshot.Readme.Value.Markdown);
+        Assert.Equal("README.md", snapshot.Readme.Value.Path);
         Assert.Empty(snapshot.Repositories.Value);
         Assert.Empty(snapshot.StarredRepositories.Value);
         Assert.Empty(snapshot.Followers.Value);

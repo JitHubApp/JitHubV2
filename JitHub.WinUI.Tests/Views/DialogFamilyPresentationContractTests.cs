@@ -81,7 +81,7 @@ public sealed class DialogFamilyPresentationContractTests
         Assert.Contains("session.TryClose();", control, StringComparison.Ordinal);
         Assert.Contains("Click=\"SaveButton_Click\"", xaml, StringComparison.Ordinal);
         Assert.DoesNotContain("Command=\"{Binding SaveCustomizeCommand}\"", xaml, StringComparison.Ordinal);
-        Assert.Contains("MaxWidth=\"720\"", xaml, StringComparison.Ordinal);
+        Assert.Contains("MaxWidth=\"{ThemeResource AppDimension720}\"", xaml, StringComparison.Ordinal);
         Assert.Contains("<ScrollViewer Grid.Row=\"1\"", xaml, StringComparison.Ordinal);
     }
 
@@ -114,9 +114,13 @@ public sealed class DialogFamilyPresentationContractTests
         Assert.Contains("await mutateAsync(normalizedName, normalizedColor);", stars, StringComparison.Ordinal);
         Assert.Contains("ViewModel.CreateCategoryAsync(name, color)", stars, StringComparison.Ordinal);
         Assert.Contains("ViewModel.UpdateCategoryAsync(category, name, color)", stars, StringComparison.Ordinal);
+        Assert.Contains("layoutKind: AppDialogLayoutKind.CompactForm", stars, StringComparison.Ordinal);
 
         Assert.Contains("AppContentDialogPresenter.ShowAsync", settings, StringComparison.Ordinal);
         Assert.Contains("AppDestructiveButtonStyle", settings, StringComparison.Ordinal);
+        Assert.Contains("AppDialogLayoutKind.Confirmation", settings, StringComparison.Ordinal);
+        Assert.Contains("AppDialogLayoutKind.Confirmation", repositories, StringComparison.Ordinal);
+        Assert.Contains("AppDialogLayoutKind.Confirmation", stars, StringComparison.Ordinal);
     }
 
     [Fact]

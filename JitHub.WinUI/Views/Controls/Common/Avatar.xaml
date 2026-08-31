@@ -32,16 +32,17 @@
                     <Border
                         x:Name="HoverRing"
                         BorderBrush="{ThemeResource AppAccentBrush}"
-                        BorderThickness="1"
+                        BorderThickness="{ThemeResource AppHairlineBorderThickness}"
                         CornerRadius="{ThemeResource AppRadiusCircle}"
                         IsHitTestVisible="False"
-                        Opacity="0" />
+                        Opacity="{ThemeResource AppOpacityTransparent}" />
                 </Grid>
                 <TextBlock
-                    Margin="10,0,0,0"
-                    MaxWidth="220"
+                    Margin="{ThemeResource AppMargin10_0_0_0}"
+                    MaxWidth="{ThemeResource AppDimension220}"
                     VerticalAlignment="Center"
-                    FontWeight="SemiBold"
+                    FontWeight="{ThemeResource AppFontWeightSemibold}"
+                    Style="{x:Bind LabelStyle, Mode=OneWay}"
                     Text="{x:Bind DisplayText, Mode=OneWay}"
                     TextTrimming="CharacterEllipsis"
                     Visibility="{x:Bind ShowLogin, Converter={StaticResource BoolToVisibilityConverter}, Mode=OneWay}" />

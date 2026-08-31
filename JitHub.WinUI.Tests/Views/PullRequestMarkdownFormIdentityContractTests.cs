@@ -252,7 +252,7 @@ public sealed class PullRequestMarkdownFormIdentityContractTests
     private static string FindRepositoryRoot()
     {
         DirectoryInfo? current = new(AppContext.BaseDirectory);
-        while (current is not null && !File.Exists(Path.Combine(current.FullName, "JitHub.slnx")))
+        while (current is not null && !File.Exists(Path.Combine(current.FullName, "Directory.Build.props")))
         {
             current = current.Parent;
         }

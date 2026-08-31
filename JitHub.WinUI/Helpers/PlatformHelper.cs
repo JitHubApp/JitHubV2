@@ -1,11 +1,13 @@
 using System;
-using System.Diagnostics;
+using System.Threading;
 using Windows.ApplicationModel.DataTransfer;
 
 namespace JitHub.WinUI.Helpers
 {
     public static class PlatformHelper
     {
+        private static int _clipboardFailureReported;
+
         public static bool CopyString(string? content)
         {
             if (string.IsNullOrEmpty(content))
@@ -23,7 +25,10 @@ namespace JitHub.WinUI.Helpers
             }
             catch (Exception ex)
             {
-                Debug.WriteLine($"Clipboard write failed: {ex.GetType().Name}");
+                if (Interlocked.Exchange(ref _clipboardFailureReported, 1) == 0)
+                {
+                    HandledFailureReporter.Report(ex, "ui-clipboard-write");
+                }
                 return false;
             }
         }

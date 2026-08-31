@@ -79,7 +79,7 @@ public sealed class SettingsSourceNavigationService : ISettingsSourceNavigationS
         }
         catch (Exception ex)
         {
-            System.Diagnostics.Debug.WriteLine($"Failed to open JitHub source repository: {ex}");
+            HandledFailureReporter.Report(ex, "settings-source-navigation");
             Track("error");
             return new(SettingsSourceNavigationResult.Error);
         }

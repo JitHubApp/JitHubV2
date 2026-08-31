@@ -9,11 +9,11 @@
     <Platform Name="x64" />
     <Platform Name="x86" />
   </Configurations>
-  <Project Path="JitHub.Web/JitHub.Web.csproj" />
   <Project Path="JitHub.Web.Tests/JitHub.Web.Tests.csproj" />
+  <Project Path="JitHub.Web/JitHub.Web.csproj" />
   <Project Path="JitHub.WinUI.Automation/JitHub.WinUI.Automation.csproj" />
   <Project Path="JitHub.WinUI.PerformanceGate/JitHub.WinUI.PerformanceGate.csproj" />
-  <Project Path="MarkdownRenderer/MarkdownRenderer/MarkdownRenderer.csproj">
+  <Project Path="JitHub.WinUI.Tests/JitHub.WinUI.Tests.csproj">
     <Platform Solution="*|ARM" Project="x86" />
     <Platform Solution="*|ARM64" Project="ARM64" />
     <Platform Solution="*|x64" Project="x64" />
@@ -21,7 +21,37 @@
     <Platform Solution="Debug|Any CPU" Project="x64" />
     <Platform Solution="Release|Any CPU" Project="x86" />
   </Project>
+  <Project Path="JitHub.WinUI/JitHub.WinUI.csproj">
+    <Platform Solution="*|ARM" Project="x86" />
+    <Platform Solution="*|ARM64" Project="ARM64" />
+    <Platform Solution="*|x64" Project="x64" />
+    <Platform Solution="*|x86" Project="x86" />
+    <Platform Solution="Debug|Any CPU" Project="x64" />
+    <Platform Solution="Release|Any CPU" Project="x86" />
+    <Deploy Solution="*|ARM64" />
+    <Deploy Solution="*|x64" />
+    <Deploy Solution="*|x86" />
+    <Deploy Solution="Debug|Any CPU" />
+  </Project>
   <Project Path="MarkdownRenderer/MarkdownRenderer.Gfm/MarkdownRenderer.Gfm.csproj">
+    <Platform Solution="*|ARM" Project="x86" />
+    <Platform Solution="*|ARM64" Project="ARM64" />
+    <Platform Solution="*|x64" Project="x64" />
+    <Platform Solution="*|x86" Project="x86" />
+    <Platform Solution="Debug|Any CPU" Project="x64" />
+    <Platform Solution="Release|Any CPU" Project="x86" />
+  </Project>
+  <Project Path="MarkdownRenderer/MarkdownRenderer.PixelTests/MarkdownRenderer.PixelTests.csproj">
+    <Platform Solution="*|x64" Project="x64" />
+    <Platform Solution="Debug|Any CPU" Project="x64" />
+    <Platform Solution="Release|Any CPU" Project="x64" />
+  </Project>
+  <Project Path="MarkdownRenderer/MarkdownRenderer.Sample.Automation/MarkdownRenderer.Sample.Automation.csproj">
+    <Platform Solution="*|x64" Project="x64" />
+    <Platform Solution="Debug|Any CPU" Project="x64" />
+    <Platform Solution="Release|Any CPU" Project="x64" />
+  </Project>
+  <Project Path="MarkdownRenderer/MarkdownRenderer.Sample/MarkdownRenderer.Sample.csproj">
     <Platform Solution="*|ARM" Project="x86" />
     <Platform Solution="*|ARM64" Project="ARM64" />
     <Platform Solution="*|x64" Project="x64" />
@@ -42,37 +72,7 @@
     <Platform Solution="Debug|Any CPU" Project="x64" />
     <Platform Solution="Release|Any CPU" Project="x64" />
   </Project>
-  <Project Path="MarkdownRenderer/MarkdownRenderer.PixelTests/MarkdownRenderer.PixelTests.csproj">
-    <Platform Solution="*|x64" Project="x64" />
-    <Platform Solution="Debug|Any CPU" Project="x64" />
-    <Platform Solution="Release|Any CPU" Project="x64" />
-  </Project>
-  <Project Path="MarkdownRenderer/MarkdownRenderer.Sample/MarkdownRenderer.Sample.csproj">
-    <Platform Solution="*|ARM" Project="x86" />
-    <Platform Solution="*|ARM64" Project="ARM64" />
-    <Platform Solution="*|x64" Project="x64" />
-    <Platform Solution="*|x86" Project="x86" />
-    <Platform Solution="Debug|Any CPU" Project="x64" />
-    <Platform Solution="Release|Any CPU" Project="x86" />
-  </Project>
-  <Project Path="MarkdownRenderer/MarkdownRenderer.Sample.Automation/MarkdownRenderer.Sample.Automation.csproj">
-    <Platform Solution="*|x64" Project="x64" />
-    <Platform Solution="Debug|Any CPU" Project="x64" />
-    <Platform Solution="Release|Any CPU" Project="x64" />
-  </Project>
-  <Project Path="JitHub.WinUI/JitHub.WinUI.csproj">
-    <Platform Solution="*|ARM" Project="x86" />
-    <Platform Solution="*|ARM64" Project="ARM64" />
-    <Platform Solution="*|x64" Project="x64" />
-    <Platform Solution="*|x86" Project="x86" />
-    <Platform Solution="Debug|Any CPU" Project="x64" />
-    <Platform Solution="Release|Any CPU" Project="x86" />
-    <Deploy Solution="*|ARM64" />
-    <Deploy Solution="*|x64" />
-    <Deploy Solution="*|x86" />
-    <Deploy Solution="Debug|Any CPU" />
-  </Project>
-  <Project Path="JitHub.WinUI.Tests/JitHub.WinUI.Tests.csproj">
+  <Project Path="MarkdownRenderer/MarkdownRenderer/MarkdownRenderer.csproj">
     <Platform Solution="*|ARM" Project="x86" />
     <Platform Solution="*|ARM64" Project="ARM64" />
     <Platform Solution="*|x64" Project="x64" />

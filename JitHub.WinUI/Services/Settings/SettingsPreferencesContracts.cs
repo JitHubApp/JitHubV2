@@ -6,6 +6,10 @@ public interface ISettingsPreferencesService
 
     void SetTheme(string theme);
 
+    string GetPalette();
+
+    bool TrySetPalette(string paletteId);
+
     bool IsDeveloperMode { get; set; }
 
     string GetVersionText();

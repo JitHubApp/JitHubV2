@@ -41,15 +41,14 @@ public sealed partial class MarkdownViewer : UserControl
     private readonly UISettings? _uiSettings = RuntimeEventSubscription.TryCreate(
         static () => new UISettings(),
         nameof(UISettings));
-    private readonly AccessibilitySettings? _accessibilitySettings = RuntimeEventSubscription.TryCreate(
-        static () => new AccessibilitySettings(),
-        nameof(AccessibilitySettings));
+    private AppThemeSettingsMonitor? _themeSettings;
     private MarkdownRendererControl? _renderer;
     private bool _isLoaded;
     private bool _rendererCreationQueued;
     private bool _colorValuesSubscribed;
     private bool _textScaleSubscribed;
     private bool _highContrastSubscribed;
+    private bool _paletteSubscribed;
     private double _appliedTextScaleFactor = 1;
     private Microsoft.UI.Dispatching.DispatcherQueueTimer? _lifecycleRuntimeSettingsTimer;
     private int _lifecycleRuntimeSettingsRevision;
@@ -98,6 +97,12 @@ public sealed partial class MarkdownViewer : UserControl
         typeof(string),
         typeof(MarkdownViewer),
         new PropertyMetadata(MarkdownHostContract.Conversation, OnThemePropertyChanged));
+
+    public static readonly DependencyProperty SurfaceColorTokenProperty = DependencyProperty.Register(
+        nameof(SurfaceColorToken),
+        typeof(string),
+        typeof(MarkdownViewer),
+        new PropertyMetadata(null, OnThemePropertyChanged));
 
     public static readonly DependencyProperty AutomationInstanceIdProperty = DependencyProperty.Register(
         nameof(AutomationInstanceId),
@@ -169,6 +174,12 @@ public sealed partial class MarkdownViewer : UserControl
     {
         get => (string)GetValue(HostKindProperty);
         set => SetValue(HostKindProperty, value);
+    }
+
+    public string? SurfaceColorToken
+    {
+        get => (string?)GetValue(SurfaceColorTokenProperty);
+        set => SetValue(SurfaceColorTokenProperty, value);
     }
 
     /// <summary>Stable identity and repository context for the logical document.</summary>
@@ -328,11 +339,18 @@ public sealed partial class MarkdownViewer : UserControl
                 () => _uiSettings.TextScaleFactorChanged += UISettings_TextScaleFactorChanged,
                 nameof(UISettings.TextScaleFactorChanged));
         }
-        if (_accessibilitySettings is not null && !_highContrastSubscribed)
+        _themeSettings ??= ThemeSettingsHelper.TryGetFor(this);
+        if (_themeSettings is not null && !_highContrastSubscribed)
         {
             _highContrastSubscribed = RuntimeEventSubscription.TrySubscribe(
-                () => _accessibilitySettings.HighContrastChanged += AccessibilitySettings_HighContrastChanged,
-                nameof(AccessibilitySettings.HighContrastChanged));
+                () => _themeSettings.Changed += ThemeSettings_Changed,
+                nameof(AppThemeSettingsMonitor.Changed));
+        }
+        if (!_paletteSubscribed)
+        {
+            _paletteSubscribed = RuntimeEventSubscription.TrySubscribe(
+                () => ThemePaletteRuntime.PaletteChanged += ThemePaletteRuntime_PaletteChanged,
+                nameof(ThemePaletteRuntime.PaletteChanged));
         }
         if (MarkdownLifecycleAutomationBridge.IsEnabled && _lifecycleRuntimeSettingsTimer is null)
         {
@@ -359,17 +377,24 @@ public sealed partial class MarkdownViewer : UserControl
                 nameof(UISettings.TextScaleFactorChanged));
         }
 
-        if (_accessibilitySettings is not null)
+        if (_themeSettings is not null)
         {
             RuntimeEventSubscription.TryUnsubscribe(
-                () => _accessibilitySettings.HighContrastChanged -= AccessibilitySettings_HighContrastChanged,
+                () => _themeSettings.Changed -= ThemeSettings_Changed,
                 _highContrastSubscribed,
-                nameof(AccessibilitySettings.HighContrastChanged));
+                nameof(AppThemeSettingsMonitor.Changed));
         }
+
+        RuntimeEventSubscription.TryUnsubscribe(
+            () => ThemePaletteRuntime.PaletteChanged -= ThemePaletteRuntime_PaletteChanged,
+            _paletteSubscribed,
+            nameof(ThemePaletteRuntime.PaletteChanged));
 
         _colorValuesSubscribed = false;
         _textScaleSubscribed = false;
         _highContrastSubscribed = false;
+        _paletteSubscribed = false;
+        _themeSettings = null;
         if (_lifecycleRuntimeSettingsTimer is not null)
         {
             _lifecycleRuntimeSettingsTimer.Stop();
@@ -401,7 +426,12 @@ public sealed partial class MarkdownViewer : UserControl
     private void UISettings_TextScaleFactorChanged(UISettings sender, object args) =>
         QueueRuntimeThemeRefresh();
 
-    private void AccessibilitySettings_HighContrastChanged(AccessibilitySettings sender, object args) =>
+    private void ThemeSettings_Changed(object? sender, EventArgs args) =>
+        QueueRuntimeThemeRefresh();
+
+    private void ThemePaletteRuntime_PaletteChanged(
+        object? sender,
+        ThemePaletteChangedEventArgs args) =>
         QueueRuntimeThemeRefresh();
 
     private void QueueRuntimeThemeRefresh()
@@ -967,65 +997,41 @@ public sealed partial class MarkdownViewer : UserControl
             : DefaultBaseUri;
     }
 
-    private async void OnRendererLinkClick(object? sender, MarkdownLinkClickEventArgs e)
+    private void OnRendererLinkClick(object? sender, MarkdownLinkClickEventArgs e)
     {
-        if (!TryCreateLaunchUri(e.Url, out Uri? uri, out bool mayNavigateInternally) || uri is null)
+        UiTaskGuard.Run(async () =>
         {
-            TrackMarkdownEvent(
-                "markdown.action.executed",
-                TelemetryTaxonomy.Actions.OpenLink,
-                TelemetryTaxonomy.Results.Rejected,
-                resource: "link");
-            return;
-        }
+            if (!TryCreateLaunchUri(e.Url, out Uri? uri, out bool mayNavigateInternally) || uri is null)
+            {
+                TrackMarkdownEvent("markdown.action.executed", TelemetryTaxonomy.Actions.OpenLink, TelemetryTaxonomy.Results.Rejected, resource: "link");
+                return;
+            }
 
-        MarkdownGitHubRoute route = MarkdownLinkNavigationPolicy.ClassifyGitHubRoute(uri);
-        string disposition = mayNavigateInternally && route.Kind is (
-            MarkdownGitHubRouteKind.User or
-            MarkdownGitHubRouteKind.Repository or
-            MarkdownGitHubRouteKind.Issue or
-            MarkdownGitHubRouteKind.PullRequest)
-                ? route.Kind.ToString().ToLowerInvariant()
-                : "external-browser";
-        string automationId = MarkdownHostContract.GetAutomationId(HostKind, AutomationInstanceId);
-        if (MarkdownLifecycleAutomationBridge.RecordLinkRoute(automationId, uri, disposition))
-        {
-            TrackMarkdownEvent(
-                "markdown.action.executed",
-                TelemetryTaxonomy.Actions.OpenLink,
-                TelemetryTaxonomy.Results.Success,
-                resource: "link");
-            return;
-        }
+            MarkdownGitHubRoute route = MarkdownLinkNavigationPolicy.ClassifyGitHubRoute(uri);
+            string disposition = mayNavigateInternally && route.Kind is (MarkdownGitHubRouteKind.User or MarkdownGitHubRouteKind.Repository or MarkdownGitHubRouteKind.Issue or MarkdownGitHubRouteKind.PullRequest) ? route.Kind.ToString().ToLowerInvariant() : "external-browser";
+            string automationId = MarkdownHostContract.GetAutomationId(HostKind, AutomationInstanceId);
+            if (MarkdownLifecycleAutomationBridge.RecordLinkRoute(automationId, uri, disposition))
+            {
+                TrackMarkdownEvent("markdown.action.executed", TelemetryTaxonomy.Actions.OpenLink, TelemetryTaxonomy.Results.Success, resource: "link");
+                return;
+            }
 
-        if (mayNavigateInternally && TryOpenInternalGitHubRoute(uri))
-        {
-            TrackMarkdownEvent(
-                "markdown.action.executed",
-                TelemetryTaxonomy.Actions.OpenLink,
-                TelemetryTaxonomy.Results.Success,
-                resource: "link");
-            return;
-        }
+            if (mayNavigateInternally && TryOpenInternalGitHubRoute(uri))
+            {
+                TrackMarkdownEvent("markdown.action.executed", TelemetryTaxonomy.Actions.OpenLink, TelemetryTaxonomy.Results.Success, resource: "link");
+                return;
+            }
 
-        try
-        {
-            bool launched = await Launcher.LaunchUriAsync(uri);
-            TrackMarkdownEvent(
-                "markdown.action.executed",
-                TelemetryTaxonomy.Actions.OpenLink,
-                launched ? TelemetryTaxonomy.Results.Launched : TelemetryTaxonomy.Results.Failed,
-                resource: "link");
-        }
-        catch (Exception)
-        {
-            TrackMarkdownEvent(
-                "markdown.error",
-                TelemetryTaxonomy.Actions.OpenLink,
-                TelemetryTaxonomy.Results.Failed,
-                resource: "link",
-                errorKind: TelemetryTaxonomy.ErrorKinds.Launch);
-        }
+            try
+            {
+                bool launched = await Launcher.LaunchUriAsync(uri);
+                TrackMarkdownEvent("markdown.action.executed", TelemetryTaxonomy.Actions.OpenLink, launched ? TelemetryTaxonomy.Results.Launched : TelemetryTaxonomy.Results.Failed, resource: "link");
+            }
+            catch (Exception)
+            {
+                TrackMarkdownEvent("markdown.error", TelemetryTaxonomy.Actions.OpenLink, TelemetryTaxonomy.Results.Failed, resource: "link", errorKind: TelemetryTaxonomy.ErrorKinds.Launch);
+            }
+        }, "ui-markdown-viewer");
     }
 
     private void TrackMarkdownEvent(
@@ -1413,14 +1419,7 @@ public sealed partial class MarkdownViewer : UserControl
             return true;
         }
 
-        try
-        {
-            return _accessibilitySettings?.HighContrast == true;
-        }
-        catch (System.Runtime.InteropServices.COMException)
-        {
-            return false;
-        }
+        return ThemeSettingsHelper.IsHighContrastActive(_themeSettings);
     }
 
     private void AddAlertOverride(
@@ -1553,8 +1552,11 @@ public sealed partial class MarkdownViewer : UserControl
         Color ink = ResolveColor("AppInk", dark ? "#F0F2EA" : "#1B1B1B");
         Color inkMuted = ResolveColor("AppInkMuted", dark ? "#C7CDBF" : "#4F4F4F");
         Color inkSubtle = ResolveColor("AppInkSubtle", dark ? "#99A294" : "#6B6B6B");
+        string markdownSurfaceToken = string.IsNullOrWhiteSpace(SurfaceColorToken)
+            ? MarkdownHostContract.GetSurfaceColorToken(HostKind)
+            : SurfaceColorToken.Trim();
         Color markdownSurface = ResolveColor(
-            MarkdownHostContract.GetSurfaceColorToken(HostKind),
+            markdownSurfaceToken,
             MarkdownHostContract.GetSurfaceFallback(HostKind, dark));
         Color surface = ResolveColor("AppSurface", dark ? "#212621" : "#FAFAFA");
         Color surfaceSubtle = ResolveColor("AppSurfaceSubtle", dark ? "#252B25" : "#F0F0F0");

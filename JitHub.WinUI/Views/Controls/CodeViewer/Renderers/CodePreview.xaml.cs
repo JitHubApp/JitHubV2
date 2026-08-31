@@ -93,10 +93,18 @@ public sealed partial class CodePreview : UserControl
             Interlocked.Increment(ref _bindingUpdateGeneration);
             ApplyPreviewBindings();
         }
-        else if (e.PropertyName is nameof(RepoFilePreviewViewModel.Text)
-                 or nameof(RepoFilePreviewViewModel.LanguageId))
+        else if (e.PropertyName == nameof(RepoFilePreviewViewModel.Text))
+        {
+            Interlocked.Increment(ref _bindingUpdateGeneration);
+            ApplyPreviewBindings();
+        }
+        else if (e.PropertyName == nameof(RepoFilePreviewViewModel.LanguageId))
         {
             QueuePreviewBindingFallback();
+        }
+        else if (e.PropertyName == nameof(RepoFilePreviewViewModel.IsLoading))
+        {
+            PublishEditorReadiness();
         }
     }
 
@@ -117,7 +125,25 @@ public sealed partial class CodePreview : UserControl
     private void ApplyPreviewBindings()
     {
         Bindings.Update();
+        PublishEditorReadiness();
         QueueOutlineBuild();
+    }
+
+    private void PublishEditorReadiness()
+    {
+        if (ViewModel is not { } viewModel)
+        {
+            return;
+        }
+
+        if (viewModel.IsLoading)
+        {
+            Editor.MarkContentLoading();
+        }
+        else if (viewModel.Text is not null)
+        {
+            Editor.MarkContentReadyIfApplied(viewModel.Text);
+        }
     }
 
     private void QueueOutlineBuild()
@@ -125,9 +151,31 @@ public sealed partial class CodePreview : UserControl
         RetireOutlineRequest();
         CancellationTokenSource cts = new();
         _outlineCts = cts;
+        CancellationToken cancellationToken = cts.Token;
         string? text = ViewModel?.Text;
         string? language = ViewModel?.LanguageId;
-        _ = BuildOutlineObservedAsync(text, language, cts);
+        UiTaskGuard.Observe(
+            BuildOutlineObservedAsync(text, language, cts),
+            "ui-code-preview",
+            _ => ShowOutlineFailure(cancellationToken));
+    }
+
+    private void ShowOutlineFailure(CancellationToken cancellationToken)
+    {
+        if (!IsLoaded || cancellationToken.IsCancellationRequested)
+        {
+            return;
+        }
+
+        SymbolsList.ItemsSource = null;
+        NoSymbolsText.Text = LocalizedResourceText.GetString(
+            "RepoCode/Outline/Error",
+            "Outline is temporarily unavailable for this file.");
+        NoSymbolsText.Visibility = Visibility.Visible;
+        SymbolsList.Visibility = Visibility.Collapsed;
+        ActionCompleted?.Invoke(
+            RepoCodeTelemetryActions.Outline,
+            TelemetryTaxonomy.Results.Error);
     }
 
     private async Task BuildOutlineObservedAsync(
@@ -194,7 +242,7 @@ public sealed partial class CodePreview : UserControl
     private void CloseFind()
     {
         FindPanel.Visibility = Visibility.Collapsed;
-        FindStatus.Visibility = Visibility.Collapsed;
+        ClearFindStatus();
         Editor.FocusEditor();
     }
 
@@ -202,7 +250,7 @@ public sealed partial class CodePreview : UserControl
     {
         if (FindPanel.Visibility != Visibility.Visible || string.IsNullOrEmpty(FindTextBox.Text))
         {
-            FindStatus.Visibility = Visibility.Collapsed;
+            ClearFindStatus();
             return;
         }
 
@@ -238,7 +286,13 @@ public sealed partial class CodePreview : UserControl
             : LocalizedResourceText.GetString("RepoCode/Find/NoMatches", "No matches");
         AutomationProperties.SetName(FindStatus, FindStatus.Text);
         AutomationProperties.SetItemStatus(FindStatus, found ? "match" : "no-match");
-        FindStatus.Visibility = Visibility.Visible;
+    }
+
+    private void ClearFindStatus()
+    {
+        FindStatus.Text = string.Empty;
+        AutomationProperties.SetName(FindStatus, string.Empty);
+        AutomationProperties.SetItemStatus(FindStatus, string.Empty);
     }
 
     private void SymbolsList_ItemClick(object sender, ItemClickEventArgs e)

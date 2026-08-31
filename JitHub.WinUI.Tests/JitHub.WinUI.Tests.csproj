@@ -23,6 +23,7 @@
     <!-- Link pure C# service/model source files from JitHub.WinUI (no WinUI/XAML deps) -->
     <Compile Include="..\JitHub.WinUI\Models\CodeViewer\*.cs" Link="Models\%(Filename)%(Extension)" />
     <Compile Include="..\JitHub.WinUI\Models\ThemeConst.cs" Link="Models\%(Filename)%(Extension)" />
+    <Compile Include="..\JitHub.WinUI\Models\ThemePaletteCatalog.cs" Link="Models\%(Filename)%(Extension)" />
     <Compile Include="..\JitHub.WinUI\LaunchOptions.cs" Link="%(Filename)%(Extension)" />
     <Compile Include="..\JitHub.WinUI\Models\Credential.cs" Link="Models\%(Filename)%(Extension)" />
     <Compile Include="..\JitHub.WinUI\Models\License.cs" Link="Models\%(Filename)%(Extension)" />
@@ -31,8 +32,13 @@
     <Compile Include="..\JitHub.WinUI\Helpers\LocalizedResourceText.cs" Link="Helpers\%(Filename)%(Extension)" />
     <Compile Include="..\JitHub.WinUI\Helpers\CommentMarkdownFormatter.cs" Link="Helpers\%(Filename)%(Extension)" />
     <Compile Include="..\JitHub.WinUI\Helpers\PlatformHelper.cs" Link="Helpers\%(Filename)%(Extension)" />
+    <Compile Include="..\JitHub.WinUI\Helpers\HandledFailureReporter.cs" Link="Helpers\%(Filename)%(Extension)" />
     <Compile Include="..\JitHub.WinUI\Helpers\UserFacingError.cs" Link="Helpers\%(Filename)%(Extension)" />
+    <Compile Include="..\JitHub.WinUI\Helpers\ShyHeaderScrollPolicy.cs" Link="Helpers\%(Filename)%(Extension)" />
+    <Compile Include="..\JitHub.WinUI\Helpers\AppMaterialPolicy.cs" Link="Helpers\%(Filename)%(Extension)" />
     <Compile Include="..\JitHub.WinUI\Services\ISettingService.cs" Link="Services\%(Filename)%(Extension)" />
+    <Compile Include="..\JitHub.WinUI\Services\IThemeService.cs" Link="Services\%(Filename)%(Extension)" />
+    <Compile Include="..\JitHub.WinUI\Services\ThemeService.cs" Link="Services\%(Filename)%(Extension)" />
     <Compile Include="..\JitHub.WinUI\Services\IAccountService.cs" Link="Services\%(Filename)%(Extension)" />
     <Compile Include="..\JitHub.WinUI\Services\IAuthService.cs" Link="Services\%(Filename)%(Extension)" />
     <Compile Include="..\JitHub.WinUI\Services\IAppConfig.cs" Link="Services\%(Filename)%(Extension)" />
@@ -70,6 +76,8 @@
     <Compile Include="..\JitHub.WinUI\Services\CodeViewer\RepositorySvgRasterizer.cs" Link="Services\%(Filename)%(Extension)" />
     <Compile Include="..\JitHub.WinUI\Services\CodeViewer\CsvDocumentParser.cs" Link="Services\%(Filename)%(Extension)" />
     <Compile Include="..\JitHub.WinUI\Services\CodeViewer\SvgPreviewRequestGate.cs" Link="Services\%(Filename)%(Extension)" />
+    <Compile Include="..\JitHub.WinUI\Services\CodeViewer\SettledZoomTracker.cs" Link="Services\%(Filename)%(Extension)" />
+    <Compile Include="..\JitHub.WinUI\Services\CodeViewer\ViewportZoomAnchor.cs" Link="Services\%(Filename)%(Extension)" />
     <Compile Include="..\JitHub.WinUI\Services\CodeViewer\LanguageIdResolver.cs" Link="Services\%(Filename)%(Extension)" />
     <Compile Include="..\JitHub.WinUI\Services\CodeViewer\RepoFileCacheService.cs" Link="Services\%(Filename)%(Extension)" />
     <Compile Include="..\JitHub.WinUI\Services\CodeViewer\GitHubRepoCodeQueryContracts.cs" Link="Services\%(Filename)%(Extension)" />
@@ -145,7 +153,7 @@
   <ItemGroup>
     <PackageReference Include="CommunityToolkit.Mvvm" Version="8.4.2" />
     <PackageReference Include="CommunityToolkit.Common" Version="8.2.1" />
-    <PackageReference Include="Microsoft.WindowsAppSDK" Version="1.8.260317003" />
+    <PackageReference Include="Microsoft.WindowsAppSDK" Version="1.8.260710003" />
     <PackageReference Include="xunit" Version="2.9.2" />
     <PackageReference Include="xunit.runner.visualstudio" Version="2.8.2">
       <IncludeAssets>runtime; build; native; contentfiles; analyzers; buildtransitive</IncludeAssets>

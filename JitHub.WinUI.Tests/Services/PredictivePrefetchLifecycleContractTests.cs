@@ -103,6 +103,12 @@ public sealed class PredictivePrefetchLifecycleContractTests
         Assert.Contains("_treeNodePrefetch.Schedule(", viewModel, StringComparison.Ordinal);
         Assert.Contains("_treeNodePrefetch.Cancel();", viewModel, StringComparison.Ordinal);
         Assert.Contains("TreeNodePrefetchDebounce", viewModel, StringComparison.Ordinal);
+        Assert.Contains(
+            "TreeNodePrefetchDebounce = TimeSpan.FromMilliseconds(500)",
+            viewModel,
+            StringComparison.Ordinal);
+        Assert.Contains("Tree.OnCancelPrefetch = CancelTreeNodePrefetch;", viewModel, StringComparison.Ordinal);
+        Assert.Contains("public void CancelTreeNodePrefetch()", viewModel, StringComparison.Ordinal);
         Assert.Contains("repo_code.file_hover_prefetch", viewModel, StringComparison.Ordinal);
         Assert.Contains("GitHubRequestPriority.Prefetch", viewModel, StringComparison.Ordinal);
         Assert.Contains("new CancellationTokenSourceLease(request)", viewModel, StringComparison.Ordinal);
@@ -113,9 +119,30 @@ public sealed class PredictivePrefetchLifecycleContractTests
         Assert.Contains("TreeViewNode { Content: RepoTreeNodeViewModel node }", control, StringComparison.Ordinal);
         Assert.Contains("PointerEntered=\"OnTreeItemPointerEntered\"", xaml, StringComparison.Ordinal);
         Assert.DoesNotContain("GotFocus=\"OnTreeItemGotFocus\"", xaml, StringComparison.Ordinal);
+        int selectionStart = control.IndexOf("ProductPerformanceReadiness.BeginTraversal(", StringComparison.Ordinal);
+        int cancelPrefetch = control.IndexOf("ViewModel?.CancelPrefetch();", selectionStart, StringComparison.Ordinal);
+        int invokeSelection = control.IndexOf("RaiseFileInvoked(nodeVm);", cancelPrefetch, StringComparison.Ordinal);
+        Assert.True(selectionStart >= 0 && cancelPrefetch > selectionStart && invokeSelection > cancelPrefetch);
+        Assert.Contains("repo_code.prefetch.cancelled", control, StringComparison.Ordinal);
         Assert.True(
             control.IndexOf("RaiseFileInvoked(nodeVm);", StringComparison.Ordinal) <
             control.IndexOf("ViewModel?.SelectNodeCommand.Execute(nodeVm);", StringComparison.Ordinal));
+    }
+
+    [Fact]
+    public void RepoPullRequests_LeavesImmediateSelectionAheadOfHoverPrediction()
+    {
+        string viewModel = ReadProductFile("ViewModels", "Pages", "RepoPullRequestPageViewModel.cs");
+
+        Assert.Contains(
+            "HoverPrefetchDebounce = TimeSpan.FromMilliseconds(500)",
+            viewModel,
+            StringComparison.Ordinal);
+        Assert.Contains("public void CancelHoverPrefetch()", viewModel, StringComparison.Ordinal);
+
+        string codeBehind = ReadProductFile("Views", "Pages", "RepoPullRequestPage.xaml.cs");
+        Assert.Contains("ViewModel.CancelHoverPrefetch();", codeBehind, StringComparison.Ordinal);
+        Assert.Contains("repo_pull_requests.hover.cancelled", codeBehind, StringComparison.Ordinal);
     }
 
     private static string ReadProductFile(params string[] relativeSegments)

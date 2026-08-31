@@ -13,6 +13,7 @@ using System.Text;
 using System.Threading;
 using System.Threading.Tasks;
 using JitHub.Models.GitHub;
+using JitHub.WinUI.Helpers;
 
 namespace JitHub.Services;
 
@@ -552,7 +553,7 @@ public sealed class GitHubGistQueryService : IGitHubGistQueryService
         }
         catch (Exception exception)
         {
-            System.Diagnostics.Debug.WriteLine($"Could not persist the successful Gist mutation recovery record: {exception}");
+            HandledFailureReporter.Report(exception, "gists-mutation-recovery-persistence");
             await TryInvalidateMutationCachesAsync(partition, gistId).ConfigureAwait(false);
             return false;
         }
@@ -565,6 +566,7 @@ public sealed class GitHubGistQueryService : IGitHubGistQueryService
             using CancellationTokenSource invalidationTimeout = new(LocalDurabilityOperationTimeout);
             await _queryService.InvalidateTagsAsync(
                 partition,
+                (string[])
                 [
                     GistCacheTagPolicy.List(partition),
                     GistCacheTagPolicy.ListIndex(partition),
@@ -574,7 +576,7 @@ public sealed class GitHubGistQueryService : IGitHubGistQueryService
         }
         catch (Exception exception)
         {
-            System.Diagnostics.Debug.WriteLine($"Could not invalidate Gist caches after a durability failure: {exception}");
+            HandledFailureReporter.Report(exception, "gists-mutation-cache-invalidation");
         }
     }
 
@@ -625,7 +627,7 @@ public sealed class GitHubGistQueryService : IGitHubGistQueryService
         }
         catch (Exception exception)
         {
-            System.Diagnostics.Debug.WriteLine($"Could not write through a mutated Gist detail: {exception}");
+            HandledFailureReporter.Report(exception, "gists-mutation-cache-write-through");
         }
     }
 
@@ -927,11 +929,11 @@ public sealed class GitHubGistQueryService : IGitHubGistQueryService
                     JitHub.WinUI.Helpers.UserFacingErrorKind.Action,
                     "gist-api");
         }
-        catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
+        catch (OperationCanceledException)
         {
             throw;
         }
-        catch
+        catch (Exception ex) when (ex is System.Text.Json.JsonException or NotSupportedException or IOException)
         {
             message = $"GitHub returned HTTP {(int)response.StatusCode}.";
         }
@@ -1086,7 +1088,7 @@ public sealed class GitHubGistQueryService : IGitHubGistQueryService
                 {
                     await _queryService.InvalidateTagsAsync(
                         partition,
-                        [GistCacheTagPolicy.Detail(partition, mutation.GistId)],
+                        (string[])[GistCacheTagPolicy.Detail(partition, mutation.GistId)],
                         cancellationToken).ConfigureAwait(false);
                 }
 
@@ -1209,7 +1211,7 @@ public sealed class GitHubGistQueryService : IGitHubGistQueryService
         }
         catch (Exception ex)
         {
-            System.Diagnostics.Debug.WriteLine($"Could not persist the Gist cache page index: {ex}");
+            HandledFailureReporter.Report(ex, "gists-cache-page-index");
         }
     }
 
@@ -1230,7 +1232,7 @@ public sealed class GitHubGistQueryService : IGitHubGistQueryService
             ResourceKind: "gist-cache-index",
             CachePageIndexTtl,
             GistCacheJsonSerializerContext.Default.GistCachePageIndex,
-            [GistCacheTagPolicy.ListIndex(partition)],
+            (string[])[GistCacheTagPolicy.ListIndex(partition)],
             GitHubRequestPriority.BackgroundRefresh);
     }
 
@@ -1255,7 +1257,7 @@ public sealed class GitHubGistQueryService : IGitHubGistQueryService
             ResourceKind: "gist-raw-file",
             _rawFileTtl,
             GistCacheJsonSerializerContext.Default.String,
-            [GistCacheTagPolicy.Raw(partition, identity)],
+            (string[])[GistCacheTagPolicy.Raw(partition, identity)],
             priority);
     }
 
@@ -1439,17 +1441,40 @@ public sealed class GitHubGistQueryService : IGitHubGistQueryService
     private static GitHubGist CreatePreviewGist(int index)
     {
         string id = $"preview-gist-{index:D3}";
-        int fileKind = index % 3;
-        string filename = fileKind == 0 ? "query.cs" : fileKind == 1 ? "notes.md" : "script.ps1";
-        string content = filename.EndsWith(".md", StringComparison.Ordinal)
-            ? $"# Native gist {index}\n\nA cached preview file for the JitHub Gists workspace."
-            : filename.EndsWith(".cs", StringComparison.Ordinal)
-                ? $"public static string Gist{index}() => \"cached and ready\";"
-                : $"Write-Output 'Gist {index} is ready'";
+        int templateIndex = (index - 1) % 6;
+        string[] descriptions =
+        [
+            "Release checklist",
+            "Helpful PowerShell commands",
+            "Repository query example",
+            "Markdown table example",
+            "Package verification script",
+            "Search filter sample"
+        ];
+        string[] filenames =
+        [
+            "release-checklist.md",
+            "release-tools.ps1",
+            "repository-query.cs",
+            "markdown-table.md",
+            "verify-package.ps1",
+            "search-filter.cs"
+        ];
+        string[] contents =
+        [
+            "# Release checklist\n\n- Review open pull requests\n- Verify the Windows package\n- Publish release notes",
+            "Get-ChildItem .\\artifacts | Sort-Object LastWriteTime -Descending",
+            "public static string RepositoryQuery(string owner, string name) => $\"{owner}/{name}\";",
+            "| Area | Status |\n| --- | --- |\n| Windows package | Ready |",
+            "Write-Output 'Package verification complete'",
+            "public static bool Matches(string value, string query) => value.Contains(query, StringComparison.OrdinalIgnoreCase);"
+        ];
+        string filename = filenames[templateIndex];
+        string content = contents[templateIndex];
         return new GitHubGist
         {
             Id = id,
-            Description = index % 5 == 0 ? string.Empty : $"Native workflow note {index}",
+            Description = descriptions[templateIndex],
             HtmlUrl = $"https://gist.github.com/jithub/{id}",
             ApiUrl = $"https://api.github.com/gists/{id}",
             Public = index % 4 != 0,

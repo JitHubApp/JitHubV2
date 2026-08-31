@@ -2,11 +2,33 @@ using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Text.RegularExpressions;
+using JitHub.Models;
 
 namespace JitHub.Services;
 
 public static class TelemetryTaxonomy
 {
+    public static class Features
+    {
+        public const string Authentication = "authentication";
+        public const string Code = "code";
+        public const string Commits = "commits";
+        public const string Dashboard = "dashboard";
+        public const string Gists = "gists";
+        public const string Issues = "issues";
+        public const string Markdown = "markdown";
+        public const string Notifications = "notifications";
+        public const string Profile = "profile";
+        public const string PullRequests = "pull_requests";
+        public const string Repository = "repository";
+        public const string Runtime = "runtime";
+        public const string Settings = "settings";
+        public const string Shell = "shell";
+        public const string Stars = "stars";
+        public const string Telemetry = "telemetry";
+        public const string Ui = "ui";
+    }
+
     public static class Results
     {
         public const string AlreadyGranted = "already_granted";
@@ -40,6 +62,7 @@ public static class TelemetryTaxonomy
     public static class Sources
     {
         public const string Action = "action";
+        public const string Background = "background";
         public const string Callback = "callback";
         public const string Cache = "cache";
         public const string Dwell = "dwell";
@@ -110,6 +133,9 @@ public static class TelemetryTaxonomy
         public const string Find = "find";
         public const string Follow = "follow";
         public const string Hydrate = "hydrate";
+        public const string ImageZoom = "image_zoom";
+        public const string JsonPlainView = "json_plain_view";
+        public const string JsonRichView = "json_rich_view";
         public const string MarkAllRead = "mark_all_read";
         public const string MarkRead = "mark_read";
         public const string LoadRemoteImages = "load_remote_images";
@@ -136,9 +162,11 @@ public static class TelemetryTaxonomy
         public const string SelectionMode = "selection_mode";
         public const string SignIn = "sign_in";
         public const string SignOut = "sign_out";
+        public const string SvgZoom = "svg_zoom";
         public const string SyncStar = "sync_star";
         public const string SyncUnstar = "sync_unstar";
         public const string ThemeChanged = "theme_changed";
+        public const string ThemePaletteChanged = "theme_palette_changed";
         public const string ToggleState = "toggle_state";
         public const string ToggleDetails = "toggle_details";
         public const string Unfollow = "unfollow";
@@ -148,6 +176,8 @@ public static class TelemetryTaxonomy
         public const string Unsubscribe = "unsubscribe";
         public const string Update = "update";
         public const string RefreshUser = "refresh_user";
+        public const string XmlPlainView = "xml_plain_view";
+        public const string XmlRichView = "xml_rich_view";
     }
 
     public static class FilterTypes
@@ -181,6 +211,44 @@ public static class TelemetryTaxonomy
 
     public static string NavigationResult(bool accepted) =>
         accepted ? Results.Success : Results.Rejected;
+
+    public static string FeatureForExceptionCategory(string? category)
+    {
+        string value = category?.Trim().ToLowerInvariant() ?? string.Empty;
+        if (value.Contains("pull-request", StringComparison.Ordinal) ||
+            value.Contains("pull_request", StringComparison.Ordinal))
+        {
+            return Features.PullRequests;
+        }
+
+        if (value.Contains("issue", StringComparison.Ordinal)) return Features.Issues;
+        if (value.Contains("commit", StringComparison.Ordinal)) return Features.Commits;
+        if (value.Contains("markdown", StringComparison.Ordinal)) return Features.Markdown;
+        if (value.Contains("notification", StringComparison.Ordinal)) return Features.Notifications;
+        if (value.Contains("profile", StringComparison.Ordinal)) return Features.Profile;
+        if (value.Contains("dashboard", StringComparison.Ordinal) || value.Contains("home", StringComparison.Ordinal)) return Features.Dashboard;
+        if (value.Contains("gist", StringComparison.Ordinal)) return Features.Gists;
+        if (value.Contains("star", StringComparison.Ordinal)) return Features.Stars;
+        if (value.Contains("setting", StringComparison.Ordinal)) return Features.Settings;
+        if (value.Contains("login", StringComparison.Ordinal) || value.Contains("auth", StringComparison.Ordinal) || value.Contains("activation", StringComparison.Ordinal)) return Features.Authentication;
+        if (value.Contains("telemetry", StringComparison.Ordinal) || value.Contains("diagnostic", StringComparison.Ordinal)) return Features.Telemetry;
+        if (value.Contains("repo-code", StringComparison.Ordinal) || value.Contains("file-tree", StringComparison.Ordinal) ||
+            value.Contains("code-editor", StringComparison.Ordinal) || value.Contains("svg", StringComparison.Ordinal) ||
+            value.Contains("csv", StringComparison.Ordinal))
+        {
+            return Features.Code;
+        }
+
+        if (value.Contains("repository", StringComparison.Ordinal) || value.Contains("repo", StringComparison.Ordinal)) return Features.Repository;
+        if (value.Contains("shell", StringComparison.Ordinal) || value.Contains("navigation", StringComparison.Ordinal) ||
+            value.Contains("search", StringComparison.Ordinal) || value.Contains("route", StringComparison.Ordinal))
+        {
+            return Features.Shell;
+        }
+
+        if (value.Contains("xaml", StringComparison.Ordinal) || value.Contains("dialog", StringComparison.Ordinal) || value.StartsWith("ui-", StringComparison.Ordinal)) return Features.Ui;
+        return Features.Runtime;
+    }
 
     public static string EnumValue<TEnum>(TEnum value)
         where TEnum : struct, Enum =>
@@ -227,27 +295,38 @@ public static class TelemetryTaxonomy
                 Actions.DeveloperMode, Actions.Diagnostics,
                 Actions.Drawer, Actions.Edit, "edit_profile", "export", Actions.ExportDiagnostics, Actions.ExternalOpen,
                 "filter_changed", Actions.Find, Actions.Follow,
-                Actions.Hydrate, Actions.LoadRemoteImages, "load_full_file", "load_next_page", "manage_repositories", Actions.Merge, "new_repository",
+                Actions.Hydrate, Actions.ImageZoom, Actions.LoadRemoteImages, "load_full_file", "load_next_page", "manage_repositories", Actions.Merge, "new_repository",
+                Actions.JsonPlainView, Actions.JsonRichView,
                 Actions.MarkAllRead, Actions.MarkRead, Actions.Metadata, Actions.Mute,
                 "open", "open_activity_repository", "open_fact", "open_gists", "open_organization", "open_owner",
                 "open_person", "open_repositories", Actions.OpenLink, Actions.OpenProfileExternal, Actions.OpenRepository, "open_repository_external", "open_source",
                 "open_stars", Actions.Outline, "reaction", "refresh", Actions.RefreshUser, Actions.Remove, "remove_category",
                 Actions.QuoteReply, Actions.Reaction, Actions.Render, Actions.Reopen, Actions.Reorder, "reset", Actions.Retry, Actions.ReviewApprove, Actions.ReviewComment,
                 Actions.ReviewReply, Actions.ReviewRequestChanges, "search", "search_repositories",
-                Actions.SectionChanged, Actions.SelectionMode, "share", Actions.SignIn, Actions.SignOut, "sort_changed", "scope_upgrade", Actions.StoreTelemetry,
-                Actions.SyncStar, Actions.SyncUnstar, Actions.ThemeChanged, Actions.ToggleDetails, Actions.ToggleState, Actions.UndoUnstar, Actions.Unfollow, Actions.Unstar,
-                Actions.Unmute, Actions.Unsubscribe, Actions.Update, "view_all", "write"),
+                Actions.SectionChanged, Actions.SelectionMode, "share", Actions.SignIn, Actions.SignOut, "sort_changed", "scope_upgrade", Actions.StoreTelemetry, Actions.SvgZoom,
+                Actions.SyncStar, Actions.SyncUnstar, Actions.ThemeChanged, Actions.ThemePaletteChanged, Actions.ToggleDetails, Actions.ToggleState, Actions.UndoUnstar, Actions.Unfollow, Actions.Unstar,
+                Actions.Unmute, Actions.Unsubscribe, Actions.Update, "view_all", "write", Actions.XmlPlainView, Actions.XmlRichView),
             ["filter_type"] = Values(
                 FilterTypes.All, "archive", "author", "branch", "category", "date", "fork", "language", "list", "owner", "path",
                 FilterTypes.Participating, "activity", "kind", "navigation", "search", "sort", "state", "topic",
                 FilterTypes.Unread, "visibility", "unknown"),
             ["view_mode"] = Values("dark", "light", "split", "system", "unified"),
+            ["theme_palette"] = Values(
+                ThemePaletteIds.GitHub,
+                ThemePaletteIds.JitHub,
+                ThemePaletteIds.Solarized,
+                ThemePaletteIds.VisualStudioCode,
+                ThemePaletteIds.Windows11),
             ["sort"] = Values("least_recently_active", "most_stars", "name", "recently_active", "recently_starred"),
             ["error_kind"] = Values(
                 "access_denied", ErrorKinds.Api, ErrorKinds.Authentication, ErrorKinds.Cancelled, "invalid_operation", ErrorKinds.Io, ErrorKinds.Network,
                 ErrorKinds.InvalidCallback, ErrorKinds.Launch, "permission", "rate_limit", "storage", "unexpected", "unknown"),
             ["phase"] = Values("background", "complete", "execute", "incremental", "initial", "schedule"),
-            ["feature"] = Values("command_search", "commits", "issues", "markdown", "prefetch", "pull_requests", "repository_library"),
+            ["feature"] = Values(
+                Features.Authentication, Features.Code, "command_search", Features.Commits, Features.Dashboard,
+                Features.Gists, Features.Issues, Features.Markdown, Features.Notifications, "prefetch", Features.Profile,
+                Features.PullRequests, Features.Repository, "repository_library", Features.Runtime, Features.Settings,
+                Features.Shell, Features.Stars, Features.Telemetry, Features.Ui),
             ["priority"] = Values("background_refresh", "prefetch", "user_initiated", "visible"),
             ["query_kind"] = Values("immutable_sha", "mutable", "repo_metadata", "search"),
             ["resource"] = Values("avatar_image", "file", "gist_cache_index", "gist_raw_file", "link", "lookup", "mutable", "remote_image", "repositories", "repository", "search"),

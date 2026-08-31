@@ -3,6 +3,7 @@ using System.ComponentModel;
 using JitHub.Models.CodeViewer;
 using JitHub.WinUI.ViewModels.CodeViewer;
 using JitHub.WinUI.Views.Controls.CodeViewer.Renderers;
+using Microsoft.UI.Dispatching;
 using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Controls;
 
@@ -12,6 +13,8 @@ public sealed partial class FilePreviewHost : UserControl
 {
     private RepoFilePreviewViewModel? _viewModel;
     private RepoFilePreviewKind? _currentRendererKind;
+    private CodePreview? _cachedCodeRenderer;
+    private bool _codePrewarmQueued;
 
     public event Action<string>? ActionExecuted;
     public event Action<string, string>? ActionCompleted;
@@ -21,11 +24,12 @@ public sealed partial class FilePreviewHost : UserControl
     {
         InitializeComponent();
         DataContextChanged += OnDataContextChanged;
+        Loaded += OnLoaded;
     }
 
     public bool FocusPrimary()
     {
-        if (RendererHost.Content is CodePreview codePreview)
+        if (_currentRendererKind == RepoFilePreviewKind.Code && _cachedCodeRenderer is { } codePreview)
         {
             return codePreview.FocusEditor();
         }
@@ -37,9 +41,32 @@ public sealed partial class FilePreviewHost : UserControl
 
     public bool OpenFind()
     {
-        if (RendererHost.Content is not CodePreview codePreview) return false;
+        if (_currentRendererKind != RepoFilePreviewKind.Code || _cachedCodeRenderer is not { } codePreview)
+        {
+            return false;
+        }
+
         codePreview.OpenFind();
         return true;
+    }
+
+    private void OnLoaded(object sender, RoutedEventArgs e)
+    {
+        if (_cachedCodeRenderer is not null || _codePrewarmQueued)
+        {
+            return;
+        }
+
+        _codePrewarmQueued = DispatcherQueue.TryEnqueue(
+            DispatcherQueuePriority.Low,
+            () =>
+            {
+                _codePrewarmQueued = false;
+                if (IsLoaded && _cachedCodeRenderer is null)
+                {
+                    _ = GetOrCreateCodeRenderer();
+                }
+            });
     }
 
     private void OnDataContextChanged(FrameworkElement sender, DataContextChangedEventArgs args)
@@ -132,6 +159,15 @@ public sealed partial class FilePreviewHost : UserControl
 
     private void EnsureRenderer(RepoFilePreviewViewModel vm)
     {
+        if (vm.Kind == RepoFilePreviewKind.Code)
+        {
+            ShowCodeRenderer(vm);
+            return;
+        }
+
+        HideCodeRenderer();
+        RendererHost.Visibility = Visibility.Visible;
+
         // Keep the renderer instance stable while the preview kind is unchanged.
         // Markdown selection owns pointer capture; replacing the control during a
         // queued preview refresh drops that capture in packaged builds.
@@ -155,9 +191,55 @@ public sealed partial class FilePreviewHost : UserControl
 
     private void ClearRenderer()
     {
+        HideCodeRenderer();
         DetachActionSource(RendererHost.Content as FrameworkElement);
         RendererHost.Content = null;
+        RendererHost.Visibility = Visibility.Visible;
         _currentRendererKind = null;
+    }
+
+    private void ShowCodeRenderer(RepoFilePreviewViewModel vm)
+    {
+        DetachActionSource(RendererHost.Content as FrameworkElement);
+        RendererHost.Content = null;
+        RendererHost.Visibility = Visibility.Collapsed;
+
+        CodePreview renderer = GetOrCreateCodeRenderer();
+        if (!ReferenceEquals(renderer.DataContext, vm))
+        {
+            renderer.DataContext = vm;
+        }
+
+        CachedCodeRendererHost.Visibility = Visibility.Visible;
+        _currentRendererKind = RepoFilePreviewKind.Code;
+    }
+
+    private void HideCodeRenderer()
+    {
+        CachedCodeRendererHost.Visibility = Visibility.Collapsed;
+        if (_cachedCodeRenderer is not null && _cachedCodeRenderer.DataContext is not null)
+        {
+            _cachedCodeRenderer.DataContext = null;
+        }
+    }
+
+    private CodePreview GetOrCreateCodeRenderer()
+    {
+        if (_cachedCodeRenderer is { } existing)
+        {
+            return existing;
+        }
+
+        CodePreview renderer = new()
+        {
+            DataContext = null,
+            HorizontalAlignment = HorizontalAlignment.Stretch,
+            VerticalAlignment = VerticalAlignment.Stretch,
+        };
+        AttachActionSource(renderer);
+        CachedCodeRendererHost.Children.Add(renderer);
+        _cachedCodeRenderer = renderer;
+        return renderer;
     }
 
     private void AttachActionSource(FrameworkElement renderer)
@@ -175,6 +257,22 @@ public sealed partial class FilePreviewHost : UserControl
         {
             csvPreview.ActionCompleted += OnActionCompleted;
         }
+        else if (renderer is JsonPreview jsonPreview)
+        {
+            jsonPreview.ActionCompleted += OnActionCompleted;
+        }
+        else if (renderer is XmlPreview xmlPreview)
+        {
+            xmlPreview.ActionCompleted += OnActionCompleted;
+        }
+        else if (renderer is ImagePreview imagePreview)
+        {
+            imagePreview.ActionCompleted += OnActionCompleted;
+        }
+        else if (renderer is SvgPreview svgPreview)
+        {
+            svgPreview.ActionCompleted += OnActionCompleted;
+        }
     }
 
     private void DetachActionSource(FrameworkElement? renderer)
@@ -191,6 +289,22 @@ public sealed partial class FilePreviewHost : UserControl
         else if (renderer is CsvPreview csvPreview)
         {
             csvPreview.ActionCompleted -= OnActionCompleted;
+        }
+        else if (renderer is JsonPreview jsonPreview)
+        {
+            jsonPreview.ActionCompleted -= OnActionCompleted;
+        }
+        else if (renderer is XmlPreview xmlPreview)
+        {
+            xmlPreview.ActionCompleted -= OnActionCompleted;
+        }
+        else if (renderer is ImagePreview imagePreview)
+        {
+            imagePreview.ActionCompleted -= OnActionCompleted;
+        }
+        else if (renderer is SvgPreview svgPreview)
+        {
+            svgPreview.ActionCompleted -= OnActionCompleted;
         }
     }
 

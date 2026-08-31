@@ -26,6 +26,7 @@ public sealed class RepoCodeAccessibilityContractTests
     [Fact]
     public void CodeWorkspace_InteractiveControlsExposeStableAutomationContracts()
     {
+        XNamespace x = "http://schemas.microsoft.com/winfx/2006/xaml";
         XDocument codePage = LoadXaml("JitHub.WinUI", "Views", "Pages", "RepoCodePage.xaml");
         XDocument breadcrumb = LoadXaml("JitHub.WinUI", "Views", "Controls", "CodeViewer", "RepoCodeBreadcrumb.xaml");
         XDocument tree = LoadXaml("JitHub.WinUI", "Views", "Controls", "CodeViewer", "RepoFileTreeView.xaml");
@@ -66,6 +67,14 @@ public sealed class RepoCodeAccessibilityContractTests
             "RepoCodePreviousMatchButton",
             "RepoCodeNextMatchButton",
             "RepoCodeCloseFindButton");
+        XElement findStatus = codePreview.Descendants()
+            .Single(element => string.Equals(
+                (string?)element.Attribute("AutomationProperties.AutomationId"),
+                "RepoCodeFindStatus",
+                StringComparison.Ordinal));
+        Assert.Contains(findStatus.Ancestors(), element =>
+            string.Equals((string?)element.Attribute(x + "Name"), "FindPanel", StringComparison.Ordinal));
+        Assert.Equal("1", (string?)findStatus.Attribute("Grid.Column"));
         Assert.Contains(
             codePreview.Descendants(),
             element => string.Equals(
@@ -196,6 +205,31 @@ public sealed class RepoCodeAccessibilityContractTests
     }
 
     [Fact]
+    public void ViewModelSelectionIsMirroredIntoTheNativeTreeVisualState()
+    {
+        string source = File.ReadAllText(Path.Combine(
+            FindRepositoryRoot(),
+            "JitHub.WinUI",
+            "Views",
+            "Controls",
+            "CodeViewer",
+            "RepoFileTreeView.xaml.cs"));
+
+        Assert.Contains(
+            "e.PropertyName == nameof(RepoFileTreeViewModel.SelectedNode)",
+            source,
+            StringComparison.Ordinal);
+        Assert.Contains("SynchronizeNativeSelection(vm.SelectedNode);", source, StringComparison.Ordinal);
+        Assert.Contains("SynchronizeNativeSelection(ViewModel?.SelectedNode);", source, StringComparison.Ordinal);
+        Assert.Contains("FileTreeView.SelectedNode = nativeNode;", source, StringComparison.Ordinal);
+        Assert.DoesNotContain("container.IsSelected = true;", source, StringComparison.Ordinal);
+        Assert.Contains(
+            "FileTreeView.SelectedNode?.Content is RepoTreeNodeViewModel selectedNode",
+            source,
+            StringComparison.Ordinal);
+    }
+
+    [Fact]
     public void InvokingTheSelectedFileStillNotifiesTheWorkspace()
     {
         string source = File.ReadAllText(Path.Combine(
@@ -213,7 +247,9 @@ public sealed class RepoCodeAccessibilityContractTests
         Assert.True(pointerStart >= 0 && pointerEnd > pointerStart);
         Assert.True(invokeStart >= 0 && invokeEnd > invokeStart);
         Assert.Contains("RaiseFileInvoked(nodeVm);", source[pointerStart..pointerEnd], StringComparison.Ordinal);
-        Assert.Contains("container?.Focus(FocusState.Pointer);", source[pointerStart..pointerEnd], StringComparison.Ordinal);
+        Assert.Contains("FileTreeView.SelectedNode = nativeNode;", source[pointerStart..pointerEnd], StringComparison.Ordinal);
+        Assert.DoesNotContain("e.Handled = true;", source[pointerStart..pointerEnd], StringComparison.Ordinal);
+        Assert.DoesNotContain("Focus(FocusState.Pointer)", source[pointerStart..pointerEnd], StringComparison.Ordinal);
         Assert.Contains("RaiseFileInvoked(nodeVm);", source[invokeStart..invokeEnd], StringComparison.Ordinal);
         Assert.Contains("new RepoFileInvokedEventArgs(node, node.AutomationId)", source, StringComparison.Ordinal);
         Assert.Contains("public bool Handled { get; set; }", source, StringComparison.Ordinal);
@@ -255,6 +291,89 @@ public sealed class RepoCodeAccessibilityContractTests
     }
 
     [Fact]
+    public void DataTableOwnsHeaderPeersWithoutRuntimeVisualTreeRecovery()
+    {
+        string source = File.ReadAllText(Path.Combine(
+            FindRepositoryRoot(),
+            "JitHub.WinUI",
+            "Views",
+            "Controls",
+            "App",
+            "AppDataTable.xaml.cs"));
+        string peer = File.ReadAllText(Path.Combine(
+            FindRepositoryRoot(),
+            "JitHub.WinUI",
+            "Views",
+            "Controls",
+            "App",
+            "AppDataTableAutomationPeer.cs"));
+
+        Assert.Contains("private readonly List<Button> _headerButtons = [];", source, StringComparison.Ordinal);
+        Assert.Contains("AppDataTableHeaderButton sortButton = new()", source, StringComparison.Ordinal);
+        Assert.Contains("_headerButtons.Add(sortButton);", source, StringComparison.Ordinal);
+        Assert.Contains("return _headerButtons[column];", source, StringComparison.Ordinal);
+        Assert.Contains("FrameworkElementAutomationPeer.CreatePeerForElement(sortButton);", source, StringComparison.Ordinal);
+        Assert.DoesNotContain("FindDescendant<Button>(HeaderGrid.Children[column])", source, StringComparison.Ordinal);
+        Assert.Contains("class AppDataTableHeaderButtonAutomationPeer : ButtonAutomationPeer", peer, StringComparison.Ordinal);
+        Assert.Contains("AutomationControlType.HeaderItem", peer, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void SegmentedSurfacesUseTheAppOwnedSelectionPeer()
+    {
+        string root = FindRepositoryRoot();
+        string productRoot = Path.Combine(root, "JitHub.WinUI");
+        string control = File.ReadAllText(Path.Combine(
+            productRoot,
+            "Views",
+            "Controls",
+            "App",
+            "AppSegmented.cs"));
+        string bridge = File.ReadAllText(Path.Combine(
+            productRoot,
+            "Styles",
+            "Foundation",
+            "WinUIResourceBridge.xaml"));
+
+        Assert.Contains("new AppSegmentedAutomationPeer(this)", control, StringComparison.Ordinal);
+        Assert.Contains("class AppSegmentedAutomationPeer : ListViewBaseAutomationPeer", control, StringComparison.Ordinal);
+        Assert.Contains("class AppSegmentedItemAutomationPeer : ListViewItemAutomationPeer, ISelectionItemProvider", control, StringComparison.Ordinal);
+        Assert.Contains("FrameworkElementAutomationPeer.CreatePeerForElement(item)", control, StringComparison.Ordinal);
+        Assert.Contains(
+            "TargetType=\"app:AppSegmented\" BasedOn=\"{StaticResource AppSegmentedBaseStyle}\"",
+            bridge,
+            StringComparison.Ordinal);
+        Assert.Contains(
+            "TargetType=\"app:AppSegmentedItem\" BasedOn=\"{StaticResource AppSegmentedItemBaseStyle}\"",
+            bridge,
+            StringComparison.Ordinal);
+
+        int appOwnedCount = 0;
+        int appOwnedItemCount = 0;
+        foreach (string path in Directory.EnumerateFiles(productRoot, "*.xaml", SearchOption.AllDirectories)
+                     .Where(path => !path.Contains(
+                         $"{Path.DirectorySeparatorChar}obj{Path.DirectorySeparatorChar}",
+                         StringComparison.OrdinalIgnoreCase)))
+        {
+            XDocument document = XDocument.Load(path);
+            Assert.DoesNotContain(
+                document.Descendants(),
+                element =>
+                    (element.Name.LocalName == "Segmented" || element.Name.LocalName == "SegmentedItem") &&
+                    element.Name.NamespaceName == "using:CommunityToolkit.WinUI.Controls");
+            appOwnedCount += document.Descendants().Count(element =>
+                element.Name.LocalName == "AppSegmented" &&
+                element.Name.NamespaceName == "using:JitHub.WinUI.Views.Controls.App");
+            appOwnedItemCount += document.Descendants().Count(element =>
+                element.Name.LocalName == "AppSegmentedItem" &&
+                element.Name.NamespaceName == "using:JitHub.WinUI.Views.Controls.App");
+        }
+
+        Assert.Equal(17, appOwnedCount);
+        Assert.Equal(51, appOwnedItemCount);
+    }
+
+    [Fact]
     public void RepoCodeInteractionSitesEmitTheCanonicalActionTaxonomy()
     {
         string root = FindRepositoryRoot();
@@ -264,6 +383,14 @@ public sealed class RepoCodeAccessibilityContractTests
             root, "JitHub.WinUI", "Views", "Controls", "CodeViewer", "Renderers", "UnsupportedPreview.xaml.cs"));
         string csv = File.ReadAllText(Path.Combine(
             root, "JitHub.WinUI", "Views", "Controls", "CodeViewer", "Renderers", "CsvPreview.xaml.cs"));
+        string json = File.ReadAllText(Path.Combine(
+            root, "JitHub.WinUI", "Views", "Controls", "CodeViewer", "Renderers", "JsonPreview.xaml.cs"));
+        string xml = File.ReadAllText(Path.Combine(
+            root, "JitHub.WinUI", "Views", "Controls", "CodeViewer", "Renderers", "XmlPreview.xaml.cs"));
+        string image = File.ReadAllText(Path.Combine(
+            root, "JitHub.WinUI", "Views", "Controls", "CodeViewer", "Renderers", "ImagePreview.xaml.cs"));
+        string svg = File.ReadAllText(Path.Combine(
+            root, "JitHub.WinUI", "Views", "Controls", "CodeViewer", "Renderers", "SvgPreview.xaml.cs"));
         string dataTable = File.ReadAllText(Path.Combine(
             root, "JitHub.WinUI", "Views", "Controls", "App", "AppDataTable.xaml.cs"));
         string breadcrumb = File.ReadAllText(Path.Combine(
@@ -285,6 +412,15 @@ public sealed class RepoCodeAccessibilityContractTests
         Assert.Contains("RepoCodeTelemetryActions.CsvResize", dataTable, StringComparison.Ordinal);
         Assert.Contains("RepoCodeTelemetryActions.CsvReorder", dataTable, StringComparison.Ordinal);
         Assert.Contains("RepoCodeTelemetryActions.CsvCopy", dataTable, StringComparison.Ordinal);
+        Assert.Contains("RepoCodeTelemetryActions.JsonRichView", json, StringComparison.Ordinal);
+        Assert.Contains("RepoCodeTelemetryActions.JsonPlainView", json, StringComparison.Ordinal);
+        Assert.Contains("RepoCodeTelemetryActions.XmlRichView", xml, StringComparison.Ordinal);
+        Assert.Contains("RepoCodeTelemetryActions.XmlPlainView", xml, StringComparison.Ordinal);
+        Assert.Contains("RepoCodeTelemetryActions.ImageZoom", image, StringComparison.Ordinal);
+        Assert.Contains("RepoCodeTelemetryActions.SvgZoom", svg, StringComparison.Ordinal);
+        string svgViewport = File.ReadAllText(Path.Combine(
+            root, "JitHub.WinUI", "Views", "Controls", "App", "AppSvgViewport.xaml.cs"));
+        Assert.Contains("TileSeamOverlapPixels", svgViewport, StringComparison.Ordinal);
         Assert.Contains("PlatformHelper.CopyString", preview, StringComparison.Ordinal);
         Assert.Contains("ActionCompleted", preview, StringComparison.Ordinal);
         Assert.Contains("PlatformHelper.CopyString", unsupported, StringComparison.Ordinal);
@@ -313,7 +449,7 @@ public sealed class RepoCodeAccessibilityContractTests
             Assert.Equal("Button", sentinel.Name.LocalName);
             Assert.Equal("Raw", (string?)sentinel.Attribute("AutomationProperties.AccessibilityView"));
             Assert.Equal("False", (string?)sentinel.Attribute("IsHitTestVisible"));
-            Assert.Equal("0", (string?)sentinel.Attribute("Opacity"));
+            Assert.Equal("{ThemeResource AppOpacityTransparent}", (string?)sentinel.Attribute("Opacity"));
         }
     }
 
@@ -366,6 +502,7 @@ public sealed class RepoCodeAccessibilityContractTests
             "RepoCode/Tree/FileAutomationName",
             "RepoCode/Unsupported/TooLarge",
             "RepoCode/Unsupported/FileType",
+            "RepoCode/EditorControlType",
             "RepoCode/EditorHighContrastStatus",
         ];
         Assert.All(dynamicResourceKeys, key => Assert.Contains(key, resourceNames));
@@ -382,13 +519,100 @@ public sealed class RepoCodeAccessibilityContractTests
             "CodeViewer",
             "CodeEditorControl.xaml.cs"));
 
-        Assert.Contains("_accessibilitySettings.HighContrastChanged +=", source, StringComparison.Ordinal);
-        Assert.Contains("_accessibilitySettings.HighContrastChanged -=", source, StringComparison.Ordinal);
+        Assert.Contains("ThemeSettingsHelper.TryGetFor(this)", source, StringComparison.Ordinal);
+        Assert.Contains("AppThemeSettingsMonitor? _themeSettings", source, StringComparison.Ordinal);
+        Assert.Contains("_themeSettings.Changed +=", source, StringComparison.Ordinal);
+        Assert.Contains("_themeSettings.Changed -=", source, StringComparison.Ordinal);
+        Assert.Contains("ThemeSettingsHelper.IsHighContrastActive(_themeSettings)", source, StringComparison.Ordinal);
+        Assert.DoesNotContain("AccessibilitySettings", source, StringComparison.Ordinal);
         Assert.Contains("UIColorType.Background", source, StringComparison.Ordinal);
         Assert.Contains("UIColorType.Foreground", source, StringComparison.Ordinal);
         Assert.Contains("for (int style = 0; style <= 127; style++)", source, StringComparison.Ordinal);
         Assert.Contains("editor.SetSelFore(true", source, StringComparison.Ordinal);
         Assert.Contains("RepoCode/EditorHighContrastStatus", source, StringComparison.Ordinal);
+        Assert.Contains("AutomationProperties.SetHelpText(this, highContrastStatus)", source, StringComparison.Ordinal);
+        int subscribeIndex = source.IndexOf("SubscribeSystemColors();", StringComparison.Ordinal);
+        int applyThemeIndex = source.IndexOf("ApplyThemeColors();     // override", StringComparison.Ordinal);
+        Assert.True(subscribeIndex >= 0 && applyThemeIndex > subscribeIndex);
+        Assert.Contains("ReportFailureOnce(ex, \"ui-code-editor-theme\")", source, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void RepositoryStatusOverlay_DoesNotCoverTheLeadingIdentityAndCanBeDismissed()
+    {
+        XDocument repoChrome = LoadXaml("JitHub.WinUI", "Views", "Pages", "RepoDetailPage.xaml");
+        XElement status = repoChrome.Descendants()
+            .Single(element => string.Equals(
+                (string?)element.Attribute("AutomationProperties.AutomationId"),
+                "RepoDetailActionStatus",
+                StringComparison.Ordinal));
+
+        Assert.Equal("Right", (string?)status.Attribute("HorizontalAlignment"));
+        Assert.Equal("{ThemeResource AppTransientStatusMaxWidth}", (string?)status.Attribute("MaxWidth"));
+        Assert.Equal("True", (string?)status.Attribute("IsClosable"));
+
+        XDocument spacing = LoadXaml("JitHub.WinUI", "Styles", "Foundation", "Tokens.Spacing.xaml");
+        Assert.Contains(spacing.Descendants(), element =>
+            string.Equals((string?)element.Attribute(XName.Get("Key", "http://schemas.microsoft.com/winfx/2006/xaml")),
+                "AppTransientStatusMaxWidth",
+                StringComparison.Ordinal));
+    }
+
+    [Fact]
+    public void NativeEditorUsesOneNamedPeerAndForwardsRealTextPatterns()
+    {
+        string root = FindRepositoryRoot();
+        string source = File.ReadAllText(Path.Combine(
+            root,
+            "JitHub.WinUI",
+            "Views",
+            "Controls",
+            "CodeViewer",
+            "CodeEditorControl.xaml.cs"));
+        string xaml = File.ReadAllText(Path.Combine(
+            root,
+            "JitHub.WinUI",
+            "Views",
+            "Controls",
+            "CodeViewer",
+            "CodeEditorControl.xaml"));
+        string peer = File.ReadAllText(Path.Combine(
+            root,
+            "JitHub.WinUI",
+            "Views",
+            "Controls",
+            "CodeViewer",
+            "CodeEditorAutomationPeer.cs"));
+
+        Assert.Contains("FindNativeEditorSurface(InnerEditor)", source, StringComparison.Ordinal);
+        Assert.Contains("child is WinUIEditor.EditorBaseControl nativeEditor", source, StringComparison.Ordinal);
+        Assert.Contains("AutomationProperties.SetAccessibilityView(nativeEditor, AccessibilityView.Raw)", source, StringComparison.Ordinal);
+        Assert.Contains("new CodeEditorAutomationPeer(this)", source, StringComparison.Ordinal);
+        Assert.Contains("AutomationProperties.AccessibilityView=\"Raw\"", xaml, StringComparison.Ordinal);
+        Assert.Contains("AutomationProperties.AutomationId=\"RepoCodeEditor\"", xaml, StringComparison.Ordinal);
+        Assert.Contains("AutomationProperties.Name=\"Source code editor\"", xaml, StringComparison.Ordinal);
+        Assert.Contains("AutomationProperties.SetItemStatus(this, status)", source, StringComparison.Ordinal);
+        Assert.Contains("AutomationProperties.SetItemStatus(InnerEditor, status)", source, StringComparison.Ordinal);
+        Assert.Contains("RepoCode/EditorContentLoadingStatus", source, StringComparison.Ordinal);
+        Assert.Contains("MarkContentReadyIfApplied", source, StringComparison.Ordinal);
+        Assert.Contains("string.Equals(_appliedText, expectedText ?? string.Empty, StringComparison.Ordinal)", source, StringComparison.Ordinal);
+        Assert.Contains("bool restoreReadOnly = editor.ReadOnly", source, StringComparison.Ordinal);
+        Assert.Contains("editor.ReadOnly = false", source, StringComparison.Ordinal);
+        Assert.Contains("editor.Length != expectedByteCount", source, StringComparison.Ordinal);
+        Assert.Contains("AutomationControlType.Edit", peer, StringComparison.Ordinal);
+        Assert.Contains("PatternInterface.TextEdit", peer, StringComparison.Ordinal);
+        Assert.Contains("PatternInterface.Text2", peer, StringComparison.Ordinal);
+        Assert.Contains("PatternInterface.Value", peer, StringComparison.Ordinal);
+        Assert.Contains("ITextProvider", peer, StringComparison.Ordinal);
+        Assert.Contains("ITextProvider2", peer, StringComparison.Ordinal);
+        Assert.Contains("ITextEditProvider", peer, StringComparison.Ordinal);
+        Assert.Contains("IValueProvider", peer, StringComparison.Ordinal);
+        Assert.Contains("IsPasswordCore() => false", peer, StringComparison.Ordinal);
+        Assert.Contains("return this;", peer, StringComparison.Ordinal);
+        Assert.Contains("GetNativePattern<ITextProvider>", peer, StringComparison.Ordinal);
+        Assert.Contains("catch (NotImplementedException)", peer, StringComparison.Ordinal);
+        Assert.Contains("GetActiveComposition() => GetCaretRange", peer, StringComparison.Ordinal);
+        Assert.Contains("GetConversionTarget() => GetCaretRange", peer, StringComparison.Ordinal);
     }
 
     private static void AssertAutomationContracts(XDocument document, params string[] automationIds)
@@ -412,7 +636,7 @@ public sealed class RepoCodeAccessibilityContractTests
     private static string FindRepositoryRoot()
     {
         DirectoryInfo? directory = new(AppContext.BaseDirectory);
-        while (directory is not null && !File.Exists(Path.Combine(directory.FullName, "JitHub.slnx")))
+        while (directory is not null && !File.Exists(Path.Combine(directory.FullName, "Directory.Build.props")))
         {
             directory = directory.Parent;
         }

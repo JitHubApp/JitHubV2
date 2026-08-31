@@ -19,6 +19,9 @@ public sealed class CommentInteractionContractTests
             "Common",
             "CommentInteractionBar.xaml"));
 
+        Assert.Equal(
+            "{ThemeResource AppReactionIconButtonSize}",
+            (string?)xaml.Root?.Attribute("MinHeight"));
         Assert.Contains(xaml.Descendants(), element =>
             element.Name.LocalName == "TextBlock" &&
             (string?)element.Attribute("FontFamily") == "{ThemeResource AppEmojiFontFamily}" &&
@@ -110,6 +113,21 @@ public sealed class CommentInteractionContractTests
             (string?)element.Attribute("Reactions") == "{Binding PullRequestReactions}");
         Assert.Contains(pullRequestBars, element =>
             (string?)element.Attribute("TargetKind") == "PullRequestComment");
+        foreach (XElement commentBar in issue.Descendants()
+                     .Concat(pullRequest.Descendants())
+                     .Where(element =>
+                         element.Name.LocalName == "CommentInteractionBar" &&
+                         (string?)element.Attribute("TargetKind") is "IssueComment" or "PullRequestComment"))
+        {
+            XElement hostGrid = Assert.IsType<XElement>(commentBar.Parent);
+            XElement rowDefinitions = Assert.Single(
+                hostGrid.Elements(),
+                element => element.Name.LocalName == "Grid.RowDefinitions");
+            XElement interactionRow = rowDefinitions.Elements().ElementAt(2);
+            Assert.Equal(
+                "{ThemeResource AppReactionIconButtonSize}",
+                (string?)interactionRow.Attribute("MinHeight"));
+        }
         Assert.True(pullRequestBars.Count(element =>
             (string?)element.Attribute("TargetKind") == "PullRequestReviewComment") >= 2);
         Assert.Contains(pullRequest.Descendants(), element =>
@@ -122,6 +140,40 @@ public sealed class CommentInteractionContractTests
         Assert.DoesNotContain("RepoIssuesReactionsButton", issueSource, StringComparison.Ordinal);
         Assert.DoesNotContain("PullRequestReactionsButton_Click", pullRequestSource, StringComparison.Ordinal);
         Assert.DoesNotContain("RepoPullRequestsReactionsButton", pullRequestSource, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void EveryInteractionBarScopesItsInnerAutomationIdentity()
+    {
+        XDocument issue = XDocument.Load(ReadPath(
+            "JitHub.WinUI",
+            "Views",
+            "Controls",
+            "Issue",
+            "RepoIssueDetailPane.xaml"));
+        XDocument pullRequest = XDocument.Load(ReadPath(
+            "JitHub.WinUI",
+            "Views",
+            "Pages",
+            "RepoPullRequestPage.xaml"));
+        string control = File.ReadAllText(ReadPath(
+            "JitHub.WinUI",
+            "Views",
+            "Controls",
+            "Common",
+            "CommentInteractionBar.xaml.cs"));
+
+        XElement[] bars = issue.Descendants()
+            .Concat(pullRequest.Descendants())
+            .Where(element => element.Name.LocalName == "CommentInteractionBar")
+            .ToArray();
+
+        Assert.Equal(6, bars.Length);
+        Assert.All(bars, bar => Assert.False(string.IsNullOrWhiteSpace((string?)bar.Attribute("AutomationInstanceId"))));
+        Assert.Contains("AutomationInstanceIdProperty", control, StringComparison.Ordinal);
+        Assert.Contains("CreateAutomationId(\"CommentActionsButton\")", control, StringComparison.Ordinal);
+        Assert.Contains("CreateAutomationId(\"CommentReactionButton\", chip.Content)", control, StringComparison.Ordinal);
+        Assert.Contains("CreateAutomationId(\"CommentReactionOptionButton\", option.Content)", control, StringComparison.Ordinal);
     }
 
     [Fact]
@@ -155,9 +207,9 @@ public sealed class CommentInteractionContractTests
         Assert.Contains("TrackCommentCopyLink(PlatformHelper.CopyString", pullRequestPage, StringComparison.Ordinal);
         Assert.Contains("TrackCommentCopyMarkdown(PlatformHelper.CopyString", pullRequestPage, StringComparison.Ordinal);
         Assert.Contains("catch (OperationCanceledException)", issueViewModel, StringComparison.Ordinal);
-        Assert.Contains("Issue comment mutation failed", issueViewModel, StringComparison.Ordinal);
+        Assert.Contains("App.LogHandledException(ex, \"issue-comment-mutation\")", issueViewModel, StringComparison.Ordinal);
         Assert.Contains("catch (OperationCanceledException)", pullRequestViewModel, StringComparison.Ordinal);
-        Assert.Contains("Pull request comment mutation failed", pullRequestViewModel, StringComparison.Ordinal);
+        Assert.Contains("App.LogHandledException(ex, \"pull-request-comment-mutation\")", pullRequestViewModel, StringComparison.Ordinal);
         Assert.Contains("public static bool CopyString", clipboard, StringComparison.Ordinal);
         Assert.Contains("catch (Exception ex)", clipboard, StringComparison.Ordinal);
 
@@ -176,8 +228,26 @@ public sealed class CommentInteractionContractTests
             "ViewModels",
             "UserViewModel",
             "UserCommentBlockViewModel.cs"));
+        string legacyCommentControl = File.ReadAllText(ReadPath(
+            "JitHub.WinUI",
+            "Views",
+            "Controls",
+            "UserCommentBlock.xaml.cs"));
+        string legacyCommentXaml = File.ReadAllText(ReadPath(
+            "JitHub.WinUI",
+            "Views",
+            "Controls",
+            "UserCommentBlock.xaml"));
         Assert.Contains("PullRequestTelemetry.TrackAction", legacyComment, StringComparison.Ordinal);
+        Assert.Contains("IssueTelemetry.TrackAction", legacyComment, StringComparison.Ordinal);
         Assert.Contains("PlatformHelper.CopyString(link)", legacyComment, StringComparison.Ordinal);
+        Assert.Contains("Interlocked.Increment(ref _reactionLoadGeneration)", legacyComment, StringComparison.Ordinal);
+        Assert.Contains("Volatile.Read(ref _reactionLoadGeneration)", legacyComment, StringComparison.Ordinal);
+        Assert.Contains("catch (Exception exception)", legacyComment, StringComparison.Ordinal);
+        Assert.DoesNotContain("getting called twice", legacyComment, StringComparison.Ordinal);
+        Assert.Contains("UiTaskGuard.Observe", legacyCommentControl, StringComparison.Ordinal);
+        Assert.Contains("LegacyCommentReactionError", legacyCommentXaml, StringComparison.Ordinal);
+        Assert.Contains("ViewModel.HasReactionError, Mode=TwoWay", legacyCommentXaml, StringComparison.Ordinal);
     }
 
     [Fact]
@@ -219,7 +289,7 @@ public sealed class CommentInteractionContractTests
     private static string FindRepositoryRoot()
     {
         DirectoryInfo? current = new(AppContext.BaseDirectory);
-        while (current is not null && !File.Exists(Path.Combine(current.FullName, "JitHub.slnx")))
+        while (current is not null && !File.Exists(Path.Combine(current.FullName, "Directory.Build.props")))
         {
             current = current.Parent;
         }

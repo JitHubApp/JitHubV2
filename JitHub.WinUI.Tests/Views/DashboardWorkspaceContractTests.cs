@@ -39,6 +39,8 @@ public sealed class DashboardWorkspaceContractTests
             string.Equals((string?)element.Attribute(xaml + "Name"), "DashboardShyHeaderSurface", StringComparison.Ordinal));
         XElement mainRailHost = Assert.Single(document.Descendants(), element =>
             string.Equals((string?)element.Attribute(xaml + "Name"), "DashboardMainRailHost", StringComparison.Ordinal));
+        XElement headerSpacer = Assert.Single(document.Descendants(), element =>
+            string.Equals((string?)element.Attribute(xaml + "Name"), "DashboardHeaderScrollSpacer", StringComparison.Ordinal));
         XElement mainScrollViewer = FindById(document, "DashboardMainRailScrollViewer");
         string source = File.ReadAllText(Path(
             "JitHub.WinUI",
@@ -50,6 +52,7 @@ public sealed class DashboardWorkspaceContractTests
         Assert.Null(compact.Attribute(labs + "TransitionHelper.Id"));
         foreach (string id in new[]
         {
+            "DashboardHeaderChrome",
             "DashboardHeaderGreeting",
             "DashboardHeaderCustomize",
             "DashboardHeaderOverview"
@@ -62,11 +65,27 @@ public sealed class DashboardWorkspaceContractTests
         }
 
         Assert.Equal("Collapsed", (string?)compact.Attribute("Visibility"));
-        Assert.Equal("40", (string?)compact.Attribute("Height"));
+        Assert.Equal("{ThemeResource AppDimension40}", (string?)compact.Attribute("Height"));
         Assert.Equal("2", (string?)compact.Attribute("Grid.RowSpan"));
-        Assert.Equal("{ThemeResource AppCanvasTransientOverlayBrush}", (string?)compact.Attribute("Background"));
-        Assert.Equal("0,0,0,1", (string?)compact.Attribute("BorderThickness"));
-        Assert.Equal("0,14,0,0", (string?)mainRailHost.Attribute("Margin"));
+        XElement compactChrome = Assert.Single(compact.Descendants(), element =>
+            string.Equals((string?)element.Attribute(labs + "TransitionHelper.Id"), "DashboardHeaderChrome", StringComparison.Ordinal));
+        Assert.Equal("{ThemeResource AppCanvasTransientOverlayBrush}", (string?)compactChrome.Attribute("Background"));
+        Assert.Equal("{ThemeResource AppBottomHairlineBorderThickness}", (string?)compactChrome.Attribute("BorderThickness"));
+        Assert.Equal("0", (string?)mainRailHost.Attribute("Grid.Row"));
+        Assert.Equal("2", (string?)mainRailHost.Attribute("Grid.RowSpan"));
+        Assert.Null(mainRailHost.Attribute("Margin"));
+        Assert.Equal("0", (string?)mainRailHost.Attribute("Canvas.ZIndex"));
+        Assert.Equal("20", (string?)expanded.Attribute("Canvas.ZIndex"));
+        Assert.Equal("20", (string?)compact.Attribute("Canvas.ZIndex"));
+        Assert.Same(mainRailHost.Parent, expanded.Parent);
+        Assert.Same(mainRailHost.Parent, compact.Parent);
+        Assert.True(
+            mainRailHost.ElementsAfterSelf().Any(element => ReferenceEquals(element, expanded)),
+            "The expanded header must follow the scrolling rail in paint order.");
+        Assert.True(
+            mainRailHost.ElementsAfterSelf().Any(element => ReferenceEquals(element, compact)),
+            "The compact header must follow the scrolling rail in paint order.");
+        Assert.Contains(headerSpacer.Ancestors(), element => ReferenceEquals(element, mainScrollViewer));
         Assert.Equal(
             "DashboardMainRailScrollViewer_ViewChanged",
             (string?)mainScrollViewer.Attribute("ViewChanged"));
@@ -82,10 +101,22 @@ public sealed class DashboardWorkspaceContractTests
                 StringComparison.Ordinal));
 
         Assert.Contains("new TransitionHelper", source, StringComparison.Ordinal);
+        Assert.Contains("SourceToggleMethod = VisualStateToggleMethod.ByVisibility", source, StringComparison.Ordinal);
+        Assert.Contains("TargetToggleMethod = VisualStateToggleMethod.ByVisibility", source, StringComparison.Ordinal);
+        Assert.Contains("Id = \"DashboardHeaderChrome\"", source, StringComparison.Ordinal);
+        Assert.Contains("ScaleMode = ScaleMode.Scale", source, StringComparison.Ordinal);
+        Assert.Contains("EnableClipAnimation = true", source, StringComparison.Ordinal);
         Assert.Contains("CustomScalingCalculator = HeaderGreetingScaling", source, StringComparison.Ordinal);
+        Assert.Contains("forceUpdateAnimatedElements: true", source, StringComparison.Ordinal);
+        Assert.Contains("_headerTransition.StartAsync(forceUpdateAnimatedElements: true)", source, StringComparison.Ordinal);
+        Assert.Contains("_headerTransition.ReverseAsync(forceUpdateAnimatedElements: true)", source, StringComparison.Ordinal);
+        Assert.DoesNotContain("TryPrepareIncomingSurface", source, StringComparison.Ordinal);
+        Assert.Contains("MorphTransitionSafety.TryStop(_headerTransition)", source, StringComparison.Ordinal);
+        Assert.Contains("MorphTransitionSafety.TryResetVisibilityState", source, StringComparison.Ordinal);
+        Assert.Contains("ui-dashboard-header-morph", source, StringComparison.Ordinal);
         Assert.Contains("ShyHeaderRevealTravel", source, StringComparison.Ordinal);
         Assert.Contains("ShyHeaderRehideTravel", source, StringComparison.Ordinal);
-        Assert.Contains("AnimateMainRailReflow", source, StringComparison.Ordinal);
+        Assert.DoesNotContain("AnimateMainRailReflow", source, StringComparison.Ordinal);
         Assert.Contains(
             "DashboardShyOverviewDrawerButton.Visibility = showOverviewDrawerButton",
             source,
@@ -112,6 +143,7 @@ public sealed class DashboardWorkspaceContractTests
         string queryService = File.ReadAllText(Path("JitHub.WinUI", "Services", "Dashboard", "GitHubDashboardQueryService.cs"));
         string brushes = File.ReadAllText(Path("JitHub.WinUI", "Styles", "Foundation", "Tokens.Brushes.xaml"));
         string colors = File.ReadAllText(Path("JitHub.WinUI", "Styles", "Foundation", "Tokens.Colors.xaml"));
+        string motionTokens = File.ReadAllText(Path("JitHub.WinUI", "Helpers", "AppMotionTokens.cs"));
 
         Assert.Equal("DashboardSideRailScrollViewer_ViewChanged", (string?)sideScrollViewer.Attribute("ViewChanged"));
         Assert.Equal("DashboardWidgetCard_Loaded", (string?)document.Descendants()
@@ -120,7 +152,7 @@ public sealed class DashboardWorkspaceContractTests
             .First(element => element.Name.LocalName == "Border")
             .Attribute("Loaded"));
         Assert.Equal("Collapsed", (string?)compact.Attribute("Visibility"));
-        Assert.Equal("54", (string?)compact.Attribute("Height"));
+        Assert.Equal("{ThemeResource AppDimension54}", (string?)compact.Attribute("Height"));
         Assert.Equal("{ThemeResource AppCanvasTransientOverlayBrush}", (string?)compact.Attribute("Background"));
         Assert.Equal("Horizontal", (string?)horizontalPanel.Attribute("Orientation"));
         Assert.Equal("{x:Bind ViewModel.Metrics, Mode=OneWay}", (string?)compact.Descendants()
@@ -128,11 +160,31 @@ public sealed class DashboardWorkspaceContractTests
             .Attribute("ItemsSource"));
         Assert.NotNull(compactTemplate.Descendants().Single(element => element.Attribute(labs + "TransitionHelper.Id") is not null));
         Assert.NotNull(sideItems.Attribute(xaml + "Name"));
+        Assert.Single(sideItems.Descendants(), element => element.Name.LocalName == "StackPanel");
 
         Assert.Contains("SourceToggleMethod = VisualStateToggleMethod.ByIsVisible", source, StringComparison.Ordinal);
         Assert.Contains("TargetToggleMethod = VisualStateToggleMethod.ByIsVisible", source, StringComparison.Ordinal);
+        Assert.Contains(
+            "DefaultOpacityTransitionProgressKey = AppMotionTokens.ShyHeaderOpacityTransitionProgressKey",
+            source,
+            StringComparison.Ordinal);
+        Assert.Contains(
+            "ShyHeaderOpacityTransitionProgress = new(0.3, 0.3)",
+            motionTokens,
+            StringComparison.Ordinal);
+        Assert.Contains("MorphTransitionSafety.TryStop(transition)", source, StringComparison.Ordinal);
+        Assert.Contains("MorphTransitionSafety.TryReset(", source, StringComparison.Ordinal);
+        Assert.Contains("MorphTransitionSafety.TrySetStableState", source, StringComparison.Ordinal);
+        Assert.Contains("ui-dashboard-overview-morph", source, StringComparison.Ordinal);
+        Assert.Contains("transition.StartAsync(forceUpdateAnimatedElements: true)", source, StringComparison.Ordinal);
+        Assert.Contains("transition.ReverseAsync(forceUpdateAnimatedElements: true)", source, StringComparison.Ordinal);
         Assert.Contains("DashboardOverviewMetricRepositories", source, StringComparison.Ordinal);
         Assert.Contains("OverviewShyStartInset", source, StringComparison.Ordinal);
+        Assert.Contains("double restoreOffset = Math.Max(0, sourceTop + OverviewShyRestoreInset);", source, StringComparison.Ordinal);
+        Assert.Contains("if (offset <= restoreOffset)", source, StringComparison.Ordinal);
+        Assert.Contains("if (offset >= startOffset)", source, StringComparison.Ordinal);
+        Assert.DoesNotContain("_overviewUpwardRevealTravel", source, StringComparison.Ordinal);
+        Assert.DoesNotContain("restoreAnchor", source, StringComparison.Ordinal);
         Assert.Contains("RegisterPropertyChangedCallback", source, StringComparison.Ordinal);
         Assert.Contains("public string TransitionId => Metric.Id switch", models, StringComparison.Ordinal);
         Assert.DoesNotContain("public string TransitionId => Label switch", models, StringComparison.Ordinal);
@@ -212,7 +264,7 @@ public sealed class DashboardWorkspaceContractTests
             "Pages",
             "DashboardPageViewModel.cs"));
 
-        Assert.Equal("94", quickActionButton.Attribute("Height")?.Value);
+        Assert.Equal("{ThemeResource AppDimension94}", quickActionButton.Attribute("Height")?.Value);
         Assert.Equal("Stretch", quickActionButton.Attribute("VerticalContentAlignment")?.Value);
         Assert.Contains("_shellViewModel.TryOpenMyIssuesPage", viewModel, StringComparison.Ordinal);
         Assert.Contains("_shellViewModel.TryOpenMyPullRequestsPage", viewModel, StringComparison.Ordinal);
@@ -232,30 +284,35 @@ public sealed class DashboardWorkspaceContractTests
             "Foundation",
             "WinUIResourceBridge.xaml"));
         XNamespace xaml = "http://schemas.microsoft.com/winfx/2006/xaml";
-        Dictionary<string, string> brushes = bridge.Root!.Elements()
-            .Where(element => element.Name.LocalName == "SolidColorBrush")
+        Dictionary<string, string> aliases = bridge.Root!.Elements()
+            .Where(element => element.Name.LocalName == "StaticResource")
             .ToDictionary(
                 element => element.Attribute(xaml + "Key")?.Value ?? string.Empty,
-                element => element.Attribute("Color")?.Value ?? string.Empty,
+                element => element.Attribute("ResourceKey")?.Value ?? string.Empty,
                 StringComparer.Ordinal);
 
-        Assert.Equal("{ThemeResource AppAccentColor}", brushes["HyperlinkForeground"]);
-        Assert.Equal("{ThemeResource AppAccentHoverColor}", brushes["HyperlinkForegroundPointerOver"]);
-        Assert.Equal("{ThemeResource AppAccentPressedColor}", brushes["HyperlinkForegroundPressed"]);
+        Assert.Equal("AppAccentBrush", aliases["HyperlinkForeground"]);
+        Assert.Equal("AppAccentHoverBrush", aliases["HyperlinkForegroundPointerOver"]);
+        Assert.Equal("AppAccentPressedBrush", aliases["HyperlinkForegroundPressed"]);
         XElement lightestSystemAccent = Assert.Single(bridge.Root!.Elements(), element =>
             element.Attribute(xaml + "Key")?.Value == "SystemAccentColorLight3");
         Assert.Equal("AppAccentHoverColor", lightestSystemAccent.Attribute("ResourceKey")?.Value);
 
         foreach (string control in new[] { "ActivitySentenceLine.xaml", "ActivityCard.xaml" })
         {
-            string activity = File.ReadAllText(Path(
+            XDocument activity = XDocument.Load(Path(
                 "JitHub.WinUI",
                 "Views",
                 "Controls",
                 "App",
                 control));
-            Assert.Contains("ActivityInlineLinkForegroundBrush\" Color=\"{ThemeResource AppAccentColor}", activity, StringComparison.Ordinal);
-            Assert.DoesNotContain("x:Key=\"HyperlinkForegroundPointerOver\"", activity, StringComparison.Ordinal);
+            XElement linkAlias = Assert.Single(activity.Descendants(), element =>
+                element.Name.LocalName == "StaticResource" &&
+                element.Attribute(xaml + "Key")?.Value == "ActivityInlineLinkForegroundBrush");
+            Assert.Equal("AppAccentBrush", linkAlias.Attribute("ResourceKey")?.Value);
+            Assert.DoesNotContain(
+                activity.Descendants(),
+                element => element.Attribute(xaml + "Key")?.Value == "HyperlinkForegroundPointerOver");
         }
     }
 
@@ -302,10 +359,25 @@ public sealed class DashboardWorkspaceContractTests
             .First(element => element.Name.LocalName == "Grid" && element.Attribute("Grid.Row") is null);
         XElement widgetIcon = Assert.Single(widgetHeader.Elements(), element => element.Name.LocalName == "FontIcon");
         XElement widgetTitle = Assert.Single(widgetHeader.Elements(), element => element.Name.LocalName == "TextBlock");
+        XElement leadingColumn = widgetHeader
+            .Elements()
+            .Single(element => element.Name.LocalName == "Grid.ColumnDefinitions")
+            .Elements()
+            .First();
 
+        Assert.Equal("{ThemeResource AppGridLength28}", leadingColumn.Attribute("Width")?.Value);
         Assert.Equal("Center", widgetIcon.Attribute("VerticalAlignment")?.Value);
         Assert.Null(widgetIcon.Attribute("Margin"));
         Assert.Equal("Center", widgetTitle.Attribute("VerticalAlignment")?.Value);
+
+        string sentenceSource = File.ReadAllText(Path(
+            "JitHub.WinUI",
+            "Views",
+            "Controls",
+            "App",
+            "ActivitySentenceLine.xaml.cs"));
+        Assert.DoesNotContain("Math.Min(320, available)", sentenceSource, StringComparison.Ordinal);
+        Assert.Contains("$\"{part.Glyph}\\u00A0\"", sentenceSource, StringComparison.Ordinal);
 
         XElement metricTemplate = Assert.Single(dashboard.Descendants(), element =>
             element.Attribute(xaml + "Key")?.Value == "DashboardMetricTemplate");
@@ -365,6 +437,23 @@ public sealed class DashboardWorkspaceContractTests
         Assert.Contains("e.TrySetNewFocusedElement(wrappedTarget) || e.TryCancel()", code, StringComparison.Ordinal);
         Assert.Contains("RestoreSideDrawerFocus", code, StringComparison.Ordinal);
         Assert.Contains("SetSideDrawerOpen(false);", code, StringComparison.Ordinal);
+        Assert.Contains("ResetSideDrawerViewport();", code, StringComparison.Ordinal);
+        Assert.Contains("DashboardSideDrawerScrollViewer.ChangeView(null, 0, null, disableAnimation: true)", code, StringComparison.Ordinal);
+        Assert.DoesNotContain("DashboardSideDrawerCloseButton.Width =", code, StringComparison.Ordinal);
+
+        XDocument document = XDocument.Load(Path(
+            "JitHub.WinUI",
+            "Views",
+            "Pages",
+            "DashboardPage.xaml"));
+        XElement drawerScrollViewer = FindById(document, "DashboardSideDrawerScrollViewer");
+        Assert.Equal("Auto", drawerScrollViewer.Attribute("VerticalScrollBarVisibility")?.Value);
+
+        XElement metricTemplate = Assert.Single(document.Descendants(), element =>
+            element.Attribute(XName.Get("Key", "http://schemas.microsoft.com/winfx/2006/xaml"))?.Value == "DashboardMetricTemplate");
+        XElement metricRoot = Assert.Single(metricTemplate.Elements(), element => element.Name.LocalName == "Grid");
+        Assert.Equal("{x:Bind TransitionId, Mode=OneWay}", metricRoot.Attribute("AutomationProperties.AutomationId")?.Value);
+        Assert.Equal("{x:Bind AutomationName, Mode=OneWay}", metricRoot.Attribute("AutomationProperties.Name")?.Value);
     }
 
     [Fact]
@@ -409,7 +498,7 @@ public sealed class DashboardWorkspaceContractTests
     private static string FindRepositoryRoot()
     {
         DirectoryInfo? directory = new(AppContext.BaseDirectory);
-        while (directory is not null && !File.Exists(System.IO.Path.Combine(directory.FullName, "JitHub.slnx")))
+        while (directory is not null && !File.Exists(System.IO.Path.Combine(directory.FullName, "Directory.Build.props")))
         {
             directory = directory.Parent;
         }

@@ -61,19 +61,27 @@ public sealed class MarkdownHostContractTests
     }
 
     [Fact]
-    public void ProgrammaticProfileHost_UsesCanonicalProfileContract()
+    public void DeclarativeProfileHost_UsesCanonicalProfileContract()
     {
+        string root = FindRepositoryRoot();
+        string xaml = File.ReadAllText(Path.Combine(
+            root,
+            "JitHub.WinUI",
+            "Views",
+            "Pages",
+            "ProfilePage.xaml"));
         string source = File.ReadAllText(Path.Combine(
-            FindRepositoryRoot(),
+            root,
             "JitHub.WinUI",
             "Views",
             "Pages",
             "ProfilePage.xaml.cs"));
 
-        Assert.Contains("HostKind = MarkdownHostContract.ProfileReadme", source, StringComparison.Ordinal);
-        Assert.Contains("AutomationInstanceId = \"ProfileReadme\"", source, StringComparison.Ordinal);
-        Assert.Contains("MarkdownViewer.DocumentSourceProperty", source, StringComparison.Ordinal);
-        Assert.DoesNotContain("SurfaceColorToken", source, StringComparison.Ordinal);
+        Assert.Contains("HostKind=\"ProfileReadme\"", xaml, StringComparison.Ordinal);
+        Assert.Contains("AutomationInstanceId=\"ProfileReadme\"", xaml, StringComparison.Ordinal);
+        Assert.Contains("DocumentSource=\"{x:Bind ViewModel.ReadmeDocumentSource, Mode=OneWay}\"", xaml, StringComparison.Ordinal);
+        Assert.DoesNotContain("MarkdownViewer.DocumentSourceProperty", source, StringComparison.Ordinal);
+        Assert.DoesNotContain("SurfaceColorToken", xaml, StringComparison.Ordinal);
     }
 
     [Fact]
@@ -155,8 +163,12 @@ public sealed class MarkdownHostContractTests
         Assert.Contains("_uiSettings?.TextScaleFactor", source, StringComparison.Ordinal);
         Assert.Contains("_uiSettings.TextScaleFactorChanged +=", source, StringComparison.Ordinal);
         Assert.Contains("_uiSettings.TextScaleFactorChanged -=", source, StringComparison.Ordinal);
-        Assert.Contains("_accessibilitySettings.HighContrastChanged +=", source, StringComparison.Ordinal);
-        Assert.Contains("_accessibilitySettings.HighContrastChanged -=", source, StringComparison.Ordinal);
+        Assert.Contains("ThemeSettingsHelper.TryGetFor(this)", source, StringComparison.Ordinal);
+        Assert.Contains("AppThemeSettingsMonitor? _themeSettings", source, StringComparison.Ordinal);
+        Assert.Contains("_themeSettings.Changed +=", source, StringComparison.Ordinal);
+        Assert.Contains("_themeSettings.Changed -=", source, StringComparison.Ordinal);
+        Assert.Contains("ThemeSettingsHelper.IsHighContrastActive(_themeSettings)", source, StringComparison.Ordinal);
+        Assert.DoesNotContain("AccessibilitySettings", source, StringComparison.Ordinal);
         Assert.Contains("QueueRuntimeThemeRefresh", source, StringComparison.Ordinal);
         Assert.Contains("MarkdownLifecycleAutomationBridge.GetRuntimeSettingsRevision()", source, StringComparison.Ordinal);
         Assert.Contains("LifecycleRuntimeSettingsTimer_Tick", source, StringComparison.Ordinal);
@@ -178,7 +190,7 @@ public sealed class MarkdownHostContractTests
         Assert.Equal("{StaticResource AppErrorInfoBarStyle}", (string?)errorInfoBar.Attribute("Style"));
         Assert.Contains("AppMarkdownBodyFontSize", source, StringComparison.Ordinal);
         Assert.Contains("AppHighContrastMonoFontFamily", source, StringComparison.Ordinal);
-        Assert.Contains("_accessibilitySettings?.HighContrast == true", source, StringComparison.Ordinal);
+        Assert.Contains("ThemeSettingsHelper.IsHighContrastActive(_themeSettings)", source, StringComparison.Ordinal);
         Assert.Contains("AppMarkdownTableCellPadding", source, StringComparison.Ordinal);
         Assert.Contains("AppMarkdownHeading1Margin", source, StringComparison.Ordinal);
         Assert.Contains("_renderer.RenderCompleted += OnRendererRenderCompleted", source, StringComparison.Ordinal);
@@ -380,17 +392,34 @@ public sealed class MarkdownHostContractTests
         Assert.Contains("x:Name=\"PullRequestFilesSection\"", xaml, StringComparison.Ordinal);
         Assert.Contains("Loaded=\"PullRequestScrollableSection_Loaded\"", xaml, StringComparison.Ordinal);
         Assert.Contains("Unloaded=\"PullRequestScrollableSection_Unloaded\"", xaml, StringComparison.Ordinal);
-        Assert.Contains("labs:TransitionHelper.Id=\"PullRequestHeaderSurface\"", xaml, StringComparison.Ordinal);
+        Assert.DoesNotContain("labs:TransitionHelper.Id=\"PullRequestHeaderSurface\"", xaml, StringComparison.Ordinal);
+        Assert.Equal(2, xaml.Split("labs:TransitionHelper.Id=\"PullRequestHeaderChrome\"", StringSplitOptions.None).Length - 1);
+        Assert.Equal(2, xaml.Split("labs:TransitionHelper.Id=\"PullRequestTitle\"", StringSplitOptions.None).Length - 1);
+        Assert.Equal(2, xaml.Split("labs:TransitionHelper.Id=\"PullRequestSectionSelector\"", StringSplitOptions.None).Length - 1);
         Assert.Contains("Background=\"{ThemeResource AppTransientOverlayBrush}\"", xaml, StringComparison.Ordinal);
         Assert.Contains("ShyHeaderStartOffset", source, StringComparison.Ordinal);
         Assert.Contains("ShyHeaderRestoreOffset", source, StringComparison.Ordinal);
         Assert.Contains("ShyHeaderRevealTravel", source, StringComparison.Ordinal);
         Assert.Contains("ShyHeaderRehideTravel", source, StringComparison.Ordinal);
+        Assert.Contains("ShyHeaderScrollPolicy.CanCollapse", source, StringComparison.Ordinal);
         Assert.Contains("PullRequestSectionScrollViewer_ViewChanged", source, StringComparison.Ordinal);
         Assert.Contains("RegisterPropertyChangedCallback", source, StringComparison.Ordinal);
+        Assert.Contains("FindPrimaryShyHeaderScrollViewer", source, StringComparison.Ordinal);
+        Assert.Contains("AttachShyHeaderScrollViewer(primary);", source, StringComparison.Ordinal);
+        Assert.DoesNotContain("foreach (ScrollViewer candidate in scrollViewers)", source, StringComparison.Ordinal);
         Assert.Contains("new TransitionHelper", source, StringComparison.Ordinal);
+        Assert.Contains("TargetToggleMethod = VisualStateToggleMethod.ByIsVisible", source, StringComparison.Ordinal);
+        Assert.Contains("new TransitionConfig { Id = \"PullRequestHeaderChrome\", ScaleMode = ScaleMode.Scale, EnableClipAnimation = true }", source, StringComparison.Ordinal);
+        Assert.Contains("new TransitionConfig { Id = \"PullRequestSectionSelector\", ScaleMode = ScaleMode.Scale, EnableClipAnimation = true }", source, StringComparison.Ordinal);
         Assert.Contains("_headerTransition.StartAsync", source, StringComparison.Ordinal);
         Assert.Contains("_headerTransition.ReverseAsync", source, StringComparison.Ordinal);
+        Assert.Contains("forceUpdateAnimatedElements: true", source, StringComparison.Ordinal);
+        Assert.DoesNotContain("TryPrepareIncomingSurface", source, StringComparison.Ordinal);
+        Assert.Contains("PullRequestShyHeaderSurface.Visibility = Visibility.Collapsed", source, StringComparison.Ordinal);
+        Assert.Contains("RepoPullRequestPage_Unloaded", source, StringComparison.Ordinal);
+        Assert.Contains("MorphTransitionSafety.TryStop(_headerTransition)", source, StringComparison.Ordinal);
+        Assert.Contains("MorphTransitionSafety.TryResetVisibilityState", source, StringComparison.Ordinal);
+        Assert.Contains("ui-repo-pull-request-header-morph", source, StringComparison.Ordinal);
         Assert.Contains("AnimateContentReflow", source, StringComparison.Ordinal);
         Assert.Contains("TranslationTransition", source, StringComparison.Ordinal);
         Assert.Contains("PullRequestDetailLayout.UpdateLayout()", source, StringComparison.Ordinal);
@@ -429,11 +458,23 @@ public sealed class MarkdownHostContractTests
         Assert.Contains("ShyHeaderRestoreOffset", source, StringComparison.Ordinal);
         Assert.Contains("ShyHeaderRevealTravel", source, StringComparison.Ordinal);
         Assert.Contains("ShyHeaderRehideTravel", source, StringComparison.Ordinal);
-        Assert.Contains("labs:TransitionHelper.Id=\"IssueHeaderSurface\"", xaml, StringComparison.Ordinal);
+        Assert.Contains("ShyHeaderScrollPolicy.CanCollapse", source, StringComparison.Ordinal);
+        Assert.DoesNotContain("labs:TransitionHelper.Id=\"IssueHeaderSurface\"", xaml, StringComparison.Ordinal);
+        Assert.Equal(2, xaml.Split("labs:TransitionHelper.Id=\"IssueHeaderChrome\"", StringSplitOptions.None).Length - 1);
+        Assert.Equal(2, xaml.Split("labs:TransitionHelper.Id=\"IssueTitle\"", StringSplitOptions.None).Length - 1);
         Assert.Contains("Background=\"{ThemeResource AppTransientOverlayBrush}\"", xaml, StringComparison.Ordinal);
         Assert.Contains("new TransitionHelper", source, StringComparison.Ordinal);
+        Assert.Contains("TargetToggleMethod = VisualStateToggleMethod.ByIsVisible", source, StringComparison.Ordinal);
+        Assert.Contains("new TransitionConfig { Id = \"IssueHeaderChrome\", ScaleMode = ScaleMode.Scale, EnableClipAnimation = true }", source, StringComparison.Ordinal);
         Assert.Contains("_headerTransition.StartAsync", source, StringComparison.Ordinal);
         Assert.Contains("_headerTransition.ReverseAsync", source, StringComparison.Ordinal);
+        Assert.Contains("forceUpdateAnimatedElements: true", source, StringComparison.Ordinal);
+        Assert.DoesNotContain("TryPrepareIncomingSurface", source, StringComparison.Ordinal);
+        Assert.Contains("RepoIssuesShyHeaderSurface.Visibility = Visibility.Collapsed", source, StringComparison.Ordinal);
+        Assert.Contains("RepoIssueDetailPane_Unloaded", source, StringComparison.Ordinal);
+        Assert.Contains("MorphTransitionSafety.TryStop(_headerTransition)", source, StringComparison.Ordinal);
+        Assert.Contains("MorphTransitionSafety.TryResetVisibilityState", source, StringComparison.Ordinal);
+        Assert.Contains("ui-repo-issue-header-morph", source, StringComparison.Ordinal);
         Assert.Contains("AnimateContentReflow", source, StringComparison.Ordinal);
         Assert.Contains("TranslationTransition", source, StringComparison.Ordinal);
         Assert.Contains("RepoIssuesDetailLayout.UpdateLayout()", source, StringComparison.Ordinal);
@@ -441,6 +482,48 @@ public sealed class MarkdownHostContractTests
         Assert.Contains("IssueCommentForm.FocusEditor()", source, StringComparison.Ordinal);
         Assert.DoesNotContain("IssueCommentForm.EffectiveEditorHeight", source, StringComparison.Ordinal);
         Assert.DoesNotContain("JITHUB_MARKDOWN_LIFECYCLE", source, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void ShyHeaderMorphs_UseSharedMediumMotionToken()
+    {
+        string root = FindRepositoryRoot();
+        string motionTokens = File.ReadAllText(Path.Combine(
+            root,
+            "JitHub.WinUI",
+            "Styles",
+            "Foundation",
+            "Tokens.Motion.xaml"));
+        string resolver = File.ReadAllText(Path.Combine(
+            root,
+            "JitHub.WinUI",
+            "Helpers",
+            "AppMotionTokens.cs"));
+        string[] shyHeaderSources =
+        [
+            Path.Combine(root, "JitHub.WinUI", "Views", "Pages", "RepoPullRequestPage.xaml.cs"),
+            Path.Combine(root, "JitHub.WinUI", "Views", "Controls", "Issue", "RepoIssueDetailPane.xaml.cs"),
+            Path.Combine(root, "JitHub.WinUI", "Views", "Pages", "DashboardPage.xaml.cs"),
+            Path.Combine(root, "JitHub.WinUI", "Views", "Pages", "ShellPage.xaml.cs")
+        ];
+
+        Assert.Contains("<Duration x:Key=\"AppMediumDuration\">0:0:0.18</Duration>", motionTokens, StringComparison.Ordinal);
+        Assert.Contains("MediumDurationResourceKey = \"AppMediumDuration\"", resolver, StringComparison.Ordinal);
+        Assert.Contains("resources.MergedDictionaries[index]", resolver, StringComparison.Ordinal);
+        Assert.Contains("directValue = resources[resourceKey]", resolver, StringComparison.Ordinal);
+        Assert.Contains("TimeSpan timeSpan when timeSpan > TimeSpan.Zero", resolver, StringComparison.Ordinal);
+        Assert.Contains("Duration xamlDuration when xamlDuration.HasTimeSpan", resolver, StringComparison.Ordinal);
+        Assert.Contains("double seconds when double.IsFinite(seconds)", resolver, StringComparison.Ordinal);
+        Assert.Contains("TimeSpan.FromSeconds(seconds)", resolver, StringComparison.Ordinal);
+        Assert.Contains("Interlocked.CompareExchange(ref _mediumDurationTicks", resolver, StringComparison.Ordinal);
+
+        foreach (string path in shyHeaderSources)
+        {
+            string source = File.ReadAllText(path);
+            Assert.Contains("AppMotionTokens.MediumDuration", source, StringComparison.Ordinal);
+            Assert.DoesNotContain("TimeSpan.FromMilliseconds(240)", source, StringComparison.Ordinal);
+            Assert.DoesNotContain("TimeSpan.FromMilliseconds(220)", source, StringComparison.Ordinal);
+        }
     }
 
     [Fact]
@@ -504,7 +587,7 @@ public sealed class MarkdownHostContractTests
         DirectoryInfo? directory = new(AppContext.BaseDirectory);
         while (directory is not null)
         {
-            if (File.Exists(Path.Combine(directory.FullName, "JitHub.slnx")) ||
+            if (File.Exists(Path.Combine(directory.FullName, "Directory.Build.props")) ||
                 File.Exists(Path.Combine(directory.FullName, ".git")) ||
                 Directory.Exists(Path.Combine(directory.FullName, ".git")))
             {

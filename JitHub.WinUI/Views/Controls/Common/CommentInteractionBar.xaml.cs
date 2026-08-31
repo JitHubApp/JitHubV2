@@ -1,6 +1,8 @@
 using System;
 using JitHub.Models.GitHub;
+using JitHub.WinUI.Helpers;
 using Microsoft.UI.Xaml;
+using Microsoft.UI.Xaml.Automation;
 using Microsoft.UI.Xaml.Controls;
 
 namespace JitHub.WinUI.Views.Controls.Common;
@@ -64,6 +66,7 @@ public sealed partial class CommentInteractionBar : UserControl
     public static readonly DependencyProperty CanModerateProperty = Register(nameof(CanModerate), typeof(bool), false);
     public static readonly DependencyProperty IsPinnedProperty = Register(nameof(IsPinned), typeof(bool), false);
     public static readonly DependencyProperty IsMinimizedProperty = Register(nameof(IsMinimized), typeof(bool), false);
+    public static readonly DependencyProperty AutomationInstanceIdProperty = Register(nameof(AutomationInstanceId), typeof(string), string.Empty);
 
     public CommentInteractionBar()
     {
@@ -92,6 +95,7 @@ public sealed partial class CommentInteractionBar : UserControl
     public bool CanModerate { get => (bool)GetValue(CanModerateProperty); set => SetValue(CanModerateProperty, value); }
     public bool IsPinned { get => (bool)GetValue(IsPinnedProperty); set => SetValue(IsPinnedProperty, value); }
     public bool IsMinimized { get => (bool)GetValue(IsMinimizedProperty); set => SetValue(IsMinimizedProperty, value); }
+    public string AutomationInstanceId { get => (string)GetValue(AutomationInstanceIdProperty); set => SetValue(AutomationInstanceIdProperty, value); }
 
     public string AddReactionEmoji => "\U0001F642";
 
@@ -134,6 +138,51 @@ public sealed partial class CommentInteractionBar : UserControl
             ? Visibility.Visible
             : Visibility.Collapsed;
         DeleteItem.Visibility = canDelete ? Visibility.Visible : Visibility.Collapsed;
+        UpdateAutomationIdentity();
+    }
+
+    private void UpdateAutomationIdentity()
+    {
+        AutomationProperties.SetAutomationId(AddReactionButton, CreateAutomationId("CommentAddReactionButton"));
+        AutomationProperties.SetAutomationId(ActionsButton, CreateAutomationId("CommentActionsButton"));
+        AutomationProperties.SetAutomationId(QuoteReplyItem, CreateAutomationId("CommentQuoteReplyItem"));
+        AutomationProperties.SetAutomationId(CopyLinkItem, CreateAutomationId("CommentCopyLinkItem"));
+        AutomationProperties.SetAutomationId(CopyMarkdownItem, CreateAutomationId("CommentCopyMarkdownItem"));
+        AutomationProperties.SetAutomationId(EditItem, CreateAutomationId("CommentEditItem"));
+        AutomationProperties.SetAutomationId(PinItem, CreateAutomationId("CommentPinItem"));
+        AutomationProperties.SetAutomationId(UnpinItem, CreateAutomationId("CommentUnpinItem"));
+        AutomationProperties.SetAutomationId(HideItem, CreateAutomationId("CommentHideItem"));
+        AutomationProperties.SetAutomationId(HideOffTopicItem, CreateAutomationId("CommentHideOffTopicItem"));
+        AutomationProperties.SetAutomationId(HideOutdatedItem, CreateAutomationId("CommentHideOutdatedItem"));
+        AutomationProperties.SetAutomationId(HideResolvedItem, CreateAutomationId("CommentHideResolvedItem"));
+        AutomationProperties.SetAutomationId(HideDuplicateItem, CreateAutomationId("CommentHideDuplicateItem"));
+        AutomationProperties.SetAutomationId(HideSpamItem, CreateAutomationId("CommentHideSpamItem"));
+        AutomationProperties.SetAutomationId(HideAbuseItem, CreateAutomationId("CommentHideAbuseItem"));
+        AutomationProperties.SetAutomationId(UnhideItem, CreateAutomationId("CommentUnhideItem"));
+        AutomationProperties.SetAutomationId(DeleteItem, CreateAutomationId("CommentDeleteItem"));
+    }
+
+    private string CreateAutomationId(string prefix, string? suffix = null) =>
+        AutomationIdentity.CreateScopedId(prefix, AutomationInstanceId, suffix);
+
+    private void ReactionChip_Loaded(object sender, RoutedEventArgs e)
+    {
+        if (sender is Button { DataContext: GitHubReactionChip chip } button)
+        {
+            AutomationProperties.SetAutomationId(
+                button,
+                CreateAutomationId("CommentReactionButton", chip.Content));
+        }
+    }
+
+    private void ReactionOption_Loaded(object sender, RoutedEventArgs e)
+    {
+        if (sender is Button { DataContext: GitHubReactionOption option } button)
+        {
+            AutomationProperties.SetAutomationId(
+                button,
+                CreateAutomationId("CommentReactionOptionButton", option.Content));
+        }
     }
 
     private void ReactionChip_Click(object sender, RoutedEventArgs e)

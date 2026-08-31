@@ -57,6 +57,7 @@ public static class WorkspaceChromeContracts
         WorkspaceChromeFeatures.CommandRows);
 
     public static readonly IReadOnlyList<WorkspaceChromeContract> CanonicalPages =
+    (WorkspaceChromeContract[])
     [
         Dashboard,
         Profile,

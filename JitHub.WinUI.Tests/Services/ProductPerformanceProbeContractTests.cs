@@ -6,6 +6,124 @@ namespace JitHub.WinUI.Tests.Services;
 public sealed class ProductPerformanceProbeContractTests
 {
     [Fact]
+    public void RouteProbe_ArchivesBoundedDiagnosticsForEveryIteration()
+    {
+        string root = FindRepositoryRoot();
+        string source = File.ReadAllText(Path.Combine(
+            root,
+            "JitHub.WinUI.PerformanceGate",
+            "ProductPerformanceRouteProbe.cs"));
+
+        Assert.Contains("ArchiveDiagnostics(runCase, partitionRoot)", source, StringComparison.Ordinal);
+        Assert.Contains("runCase.Fixture.ToString().ToLowerInvariant()", source, StringComparison.Ordinal);
+        Assert.Contains("runCase.Route.Id", source, StringComparison.Ordinal);
+        Assert.Contains("iteration-{runCase.Iteration + 1:D2}", source, StringComparison.Ordinal);
+        Assert.Contains("diagnostics.ndjson", source, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void TraversalTrace_PublishesUiAutomationOnceAfterTheMeasuredCommit()
+    {
+        string root = FindRepositoryRoot();
+        string source = File.ReadAllText(Path.Combine(
+            root,
+            "JitHub.WinUI",
+            "Views",
+            "Pages",
+            "ShellPage.xaml.cs"));
+        int started = source.IndexOf(
+            "private void ProductPerformanceReadiness_TraversalStarted",
+            StringComparison.Ordinal);
+        int stage = source.IndexOf(
+            "private void ProductPerformanceReadiness_TraversalStageRecorded",
+            started,
+            StringComparison.Ordinal);
+        int runOnUiThread = source.IndexOf(
+            "private void RunOnUiThread",
+            stage,
+            StringComparison.Ordinal);
+
+        Assert.True(started >= 0 && stage > started && runOnUiThread > stage);
+        Assert.Contains(
+            "_productPerformanceTraversalTraceValue = string.Empty",
+            source[started..stage],
+            StringComparison.Ordinal);
+        Assert.Contains(
+            "lock (_productPerformanceTraversalTraceGate)",
+            source[started..stage],
+            StringComparison.Ordinal);
+        Assert.DoesNotContain(
+            "AutomationProperties.SetItemStatus",
+            source[started..runOnUiThread],
+            StringComparison.Ordinal);
+        Assert.Contains(
+            "_productPerformanceTraversalTraceValue = string.IsNullOrEmpty",
+            source[stage..runOnUiThread],
+            StringComparison.Ordinal);
+        Assert.Contains(
+            "stage.StartedTimestamp != _productPerformanceTraversalTraceStartedTimestamp",
+            source[stage..runOnUiThread],
+            StringComparison.Ordinal);
+        Assert.DoesNotContain(
+            "RunOnUiThread",
+            source[stage..runOnUiThread],
+            StringComparison.Ordinal);
+
+        int committed = source.IndexOf(
+            "private void ProductPerformanceReadiness_TraversalCommitted",
+            StringComparison.Ordinal);
+        int routeCommitted = source.IndexOf(
+            "private void ProductPerformanceReadiness_RouteCommitted",
+            committed,
+            StringComparison.Ordinal);
+        string commitHandler = source[committed..routeCommitted];
+        Assert.True(
+            commitHandler.IndexOf(
+                "lock (_productPerformanceTraversalTraceGate)",
+                StringComparison.Ordinal) <
+            commitHandler.IndexOf(
+                "RunOnUiThread",
+                StringComparison.Ordinal));
+        Assert.Contains(
+            "if (publishTrace)\n            {\n                AutomationProperties.SetItemStatus(\n                    ProductPerformanceTraversalTrace,\n                    traceValue)",
+            commitHandler.ReplaceLineEndings("\n"),
+            StringComparison.Ordinal);
+        Assert.True(
+            commitHandler.IndexOf(
+                "AutomationProperties.SetItemStatus(",
+                StringComparison.Ordinal) <
+            commitHandler.IndexOf(
+                "SchedulePerformanceMarkerSettlement(marker, commit)",
+                StringComparison.Ordinal));
+    }
+
+    [Fact]
+    public void CanonicalListRoutes_PublishAppSideScrollFrameTimestamps()
+    {
+        string root = FindRepositoryRoot();
+        Dictionary<string, string> expectedProbeHosts = new(StringComparer.Ordinal)
+        {
+            ["DashboardPage.xaml.cs"] = "ProductPerformanceScrollProbe.TryStart(\n            DashboardMainRailScrollViewer,\n            DashboardMainRailScrollViewer)",
+            ["NotificationsPage.xaml.cs"] = "ProductPerformanceScrollProbe.TryStart(NotificationsList, scrollViewer)",
+            ["RepoManagePage.xaml.cs"] = "ProductPerformanceScrollProbe.TryStart(RepositoriesList, scrollViewer)",
+            ["RepoSearchResultPage.xaml.cs"] = "ProductPerformanceScrollProbe.TryStart(ResultsList, scrollViewer)",
+            ["StarsPage.xaml.cs"] = "ProductPerformanceScrollProbe.TryStart(RepositoriesList, scrollViewer)"
+        };
+
+        foreach ((string fileName, string expectedProbe) in expectedProbeHosts)
+        {
+            string source = File.ReadAllText(Path.Combine(
+                root,
+                "JitHub.WinUI",
+                "Views",
+                "Pages",
+                fileName));
+            Assert.Contains(expectedProbe, source, StringComparison.Ordinal);
+            Assert.Contains("_performanceScrollProbe?.Dispose()", source, StringComparison.Ordinal);
+        }
+    }
+
+    [Fact]
     public void RepositoryTraversal_PaintsChildBeforeStartingAncillaryPromotion()
     {
         string root = FindRepositoryRoot();
@@ -27,6 +145,10 @@ public sealed class ProductPerformanceProbeContractTests
         Assert.True(promotion > codeNavigation);
         Assert.Contains("ancillary to navigation", source, StringComparison.Ordinal);
         Assert.Contains(
+            "if (resolved.ShouldPromote && !ProductPerformanceReadiness.IsEnabled)",
+            source,
+            StringComparison.Ordinal);
+        Assert.Contains(
             "await Task.Delay(TimeSpan.FromMilliseconds(34), cancellationToken);",
             source,
             StringComparison.Ordinal);
@@ -45,6 +167,28 @@ public sealed class ProductPerformanceProbeContractTests
             "Task.Run(\n                () => _libraryService.LoadCachedPageAsync",
             starsSource.ReplaceLineEndings("\n"),
             StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void RepositoryPullRequestRoute_NavigatesChildSurfaceOnlyOnce()
+    {
+        string source = File.ReadAllText(Path.Combine(
+            FindRepositoryRoot(),
+            "JitHub.WinUI",
+            "ViewModels",
+            "RepositoryViewModels",
+            "RepoDetailViewModel.cs"));
+        int handlerStart = source.IndexOf("private async Task HandleNavigatedTo(", StringComparison.Ordinal);
+        int handlerEnd = source.IndexOf("private long BeginRepositoryTransition(", handlerStart, StringComparison.Ordinal);
+
+        Assert.True(handlerStart >= 0 && handlerEnd > handlerStart);
+        string handler = source[handlerStart..handlerEnd];
+        int pullRequestNavigations = handler.Split(
+            "GoToPullRequestPage(",
+            StringSplitOptions.None).Length - 1;
+
+        Assert.Equal(1, pullRequestNavigations);
+        Assert.DoesNotContain("EnsurePreviewPullRequestPageAsync", source, StringComparison.Ordinal);
     }
 
     [Fact]
@@ -204,7 +348,9 @@ public sealed class ProductPerformanceProbeContractTests
         Assert.Contains("new PointerEventHandler(CommitListItem_PointerPressed)", commitsPageCode, StringComparison.Ordinal);
         Assert.Contains("CommitsList.SelectedItem = commit", commitsPageCode, StringComparison.Ordinal);
         Assert.Contains("ProductPerformanceReadiness.CommitTraversal(\"repo_commits\", commit.AutomationId)", commitsPageCode, StringComparison.Ordinal);
-        Assert.Contains("SelectedItem=\"{Binding SelectedCommit, Mode=OneWay}\"", commitsPage, StringComparison.Ordinal);
+        Assert.Contains("ItemsSource=\"{x:Bind ViewModel.Commits, Mode=OneWay}\"", commitsPage, StringComparison.Ordinal);
+        Assert.Contains("SelectedItem=\"{x:Bind ViewModel.SelectedCommit, Mode=OneWay}\"", commitsPage, StringComparison.Ordinal);
+        Assert.DoesNotContain("{Binding", commitsPage, StringComparison.Ordinal);
         Assert.True(
             commitsPageCode.IndexOf(
                 "ProductPerformanceReadiness.CommitTraversal(\"repo_commits\", commit.AutomationId)",
@@ -252,6 +398,28 @@ public sealed class ProductPerformanceProbeContractTests
                 "SchedulePullRequestSelection(pullRequest, generation)",
                 pullRequestBegin,
                 StringComparison.Ordinal) > pullRequestBegin);
+        int pullRequestPrime = pullRequestSelection.IndexOf(
+            "PrimePullRequestSelection(pullRequest)",
+            pullRequestBegin,
+            StringComparison.Ordinal);
+        int pullRequestHoverCancellation = pullRequestSelection.IndexOf(
+            "ViewModel.CancelHoverPrefetch()",
+            pullRequestBegin,
+            StringComparison.Ordinal);
+        int pullRequestScheduleCommit = pullRequestSelection.IndexOf(
+            "SchedulePullRequestTraversalCommit(pullRequest, generation)",
+            pullRequestPrime,
+            StringComparison.Ordinal);
+        int pullRequestScheduleHydration = pullRequestSelection.IndexOf(
+            "SchedulePullRequestSelection(pullRequest, generation)",
+            pullRequestScheduleCommit,
+            StringComparison.Ordinal);
+        Assert.True(
+            pullRequestHoverCancellation > pullRequestBegin &&
+            pullRequestHoverCancellation < pullRequestPrime &&
+            pullRequestPrime > pullRequestBegin &&
+            pullRequestScheduleCommit > pullRequestPrime &&
+            pullRequestScheduleHydration > pullRequestScheduleCommit);
         Assert.DoesNotContain(
             "ViewModel.SelectedPullRequest = pullRequest;",
             pullRequestSelection,
@@ -260,6 +428,39 @@ public sealed class ProductPerformanceProbeContractTests
             "ViewModel.IsPullRequestSelectionCoherent(pullRequest)",
             pullRequestsPageCode,
             StringComparison.Ordinal);
+        int pullRequestPointerStart = pullRequestsPageCode.IndexOf(
+            "private void PullRequestListItem_PointerPressed",
+            StringComparison.Ordinal);
+        int pullRequestPrimeInPointer = pullRequestsPageCode.IndexOf(
+            "PrimePullRequestSelection(pullRequest)",
+            pullRequestPointerStart,
+            StringComparison.Ordinal);
+        int pullRequestHoverCancellationInPointer = pullRequestsPageCode.IndexOf(
+            "ViewModel.CancelHoverPrefetch()",
+            pullRequestPointerStart,
+            StringComparison.Ordinal);
+        int pullRequestCommitInPointer = pullRequestsPageCode.IndexOf(
+            "SchedulePullRequestTraversalCommit(pullRequest, generation)",
+            pullRequestPrimeInPointer,
+            StringComparison.Ordinal);
+        int pullRequestNativeSelection = pullRequestsPageCode.IndexOf(
+            "PullRequestsList.SelectedItem = pullRequest",
+            pullRequestCommitInPointer,
+            StringComparison.Ordinal);
+        int pullRequestHydrationInPointer = pullRequestsPageCode.IndexOf(
+            "SchedulePullRequestSelection(pullRequest, generation, focusSelection: true)",
+            pullRequestNativeSelection,
+            StringComparison.Ordinal);
+        Assert.True(
+            pullRequestPointerStart >= 0 &&
+            pullRequestHoverCancellationInPointer > pullRequestPointerStart &&
+            pullRequestHoverCancellationInPointer < pullRequestPrimeInPointer &&
+            pullRequestPrimeInPointer > pullRequestPointerStart &&
+            pullRequestCommitInPointer > pullRequestPrimeInPointer &&
+            pullRequestNativeSelection > pullRequestCommitInPointer &&
+            pullRequestHydrationInPointer > pullRequestNativeSelection);
+        Assert.Contains("repo_pull_requests.render.scheduled", pullRequestsPageCode, StringComparison.Ordinal);
+        Assert.Contains("repo_pull_requests.render.committed", pullRequestsPageCode, StringComparison.Ordinal);
 
         foreach ((string pageName, string route) in new[]
         {
@@ -285,14 +486,14 @@ public sealed class ProductPerformanceProbeContractTests
                 StringComparison.Ordinal);
             int traversalCommit = pageCode.IndexOf(
                 "ProductPerformanceReadiness.CommitTraversal(",
-                selectedItemAssignment,
                 StringComparison.Ordinal);
-            Assert.True(traversalCommit > selectedItemAssignment);
+            Assert.True(selectedItemAssignment >= 0 && traversalCommit >= 0);
             Assert.Contains($"\"{route}\"", pageCode[traversalCommit..], StringComparison.Ordinal);
             Assert.Contains("DetailTitleText.Text", pageCode, StringComparison.Ordinal);
-            Assert.Contains("ViewModel.IsSelectedHeaderCoherent(item)", pageCode, StringComparison.Ordinal);
             if (pageName == "MyIssuesPage")
             {
+                Assert.True(traversalCommit > selectedItemAssignment);
+                Assert.Contains("ViewModel.IsSelectedHeaderCoherent(item)", pageCode, StringComparison.Ordinal);
                 Assert.Contains("CommitSelectedIssueAfterRender", pageCode, StringComparison.Ordinal);
                 Assert.Contains(
                     "item && IssuesWorkspace.IsLeadingDrawerOpen",
@@ -305,7 +506,18 @@ public sealed class ProductPerformanceProbeContractTests
             }
             else
             {
+                Assert.True(traversalCommit < selectedItemAssignment);
                 Assert.Contains("ScheduleSelectedPullRequestCommit", pageCode, StringComparison.Ordinal);
+                Assert.Contains("PullRequestListItem_PointerPressed", pageCode, StringComparison.Ordinal);
+                Assert.Contains(
+                    "PointerPressed=\"PullRequestListItem_PointerPressed\"",
+                    pageXaml,
+                    StringComparison.Ordinal);
+                Assert.Contains("my_pull_requests.pointer.selected", pageCode, StringComparison.Ordinal);
+                Assert.Contains("my_pull_requests.selection.primed", pageCode, StringComparison.Ordinal);
+                Assert.Contains("my_pull_requests.list.selected", pageCode, StringComparison.Ordinal);
+                Assert.Contains("my_pull_requests.hydration.scheduled", pageCode, StringComparison.Ordinal);
+                Assert.Contains("DeferredFrameAction.Schedule(", pageCode, StringComparison.Ordinal);
                 Assert.Contains(
                     "item && PullRequestsWorkspace.IsLeadingDrawerOpen",
                     pageCode,
@@ -314,12 +526,43 @@ public sealed class ProductPerformanceProbeContractTests
                     "ProductPerformanceRenderCommitter.ScheduleAfterNextFrame",
                     pageCode,
                     StringComparison.Ordinal);
+                int pointerStart = pageCode.IndexOf(
+                    "private void PullRequestListItem_PointerPressed",
+                    StringComparison.Ordinal);
+                int pointerPrime = pageCode.IndexOf("PrimePullRequestSelection(item);", pointerStart, StringComparison.Ordinal);
+                int pointerCommit = pageCode.IndexOf("ScheduleSelectedPullRequestCommit(item, generation);", pointerPrime, StringComparison.Ordinal);
+                int nativeSelection = pageCode.IndexOf("PullRequestsList.SelectedItem = item;", pointerCommit, StringComparison.Ordinal);
+                int deferredHydration = pageCode.IndexOf("SchedulePullRequestSelection(item, generation", nativeSelection, StringComparison.Ordinal);
+                Assert.True(
+                    pointerStart >= 0 &&
+                    pointerPrime > pointerStart &&
+                    pointerCommit > pointerPrime &&
+                    nativeSelection > pointerCommit &&
+                    deferredHydration > nativeSelection);
             }
 
             Assert.True(
                 pageCode.IndexOf("ProductPerformanceReadiness.BeginTraversal(", StringComparison.Ordinal) <
                 pageCode.IndexOf("ViewModel.SelectedItem = item", StringComparison.Ordinal));
         }
+
+        string selectionModels = File.ReadAllText(Path.Combine(
+            root,
+            "JitHub.WinUI",
+            "ViewModels",
+            "Pages",
+            "MePageModels.cs"));
+        int coherenceStart = selectionModels.IndexOf(
+            "public bool IsSelectedHeaderCoherent",
+            StringComparison.Ordinal);
+        int coherenceEnd = selectionModels.IndexOf(
+            "public async Task InitializeAsync",
+            coherenceStart,
+            StringComparison.Ordinal);
+        Assert.True(coherenceStart >= 0 && coherenceEnd > coherenceStart);
+        string coherenceContract = selectionModels[coherenceStart..coherenceEnd];
+        Assert.Contains("SelectedIssue?.Number == item.Issue.Number", coherenceContract, StringComparison.Ordinal);
+        Assert.DoesNotContain("item.Issue.Title", coherenceContract, StringComparison.Ordinal);
 
         string diffViewer = File.ReadAllText(Path.Combine(
             root,
@@ -346,7 +589,13 @@ public sealed class ProductPerformanceProbeContractTests
             selectionHandlerStart,
             StringComparison.Ordinal);
         string selectionHandler = commitsViewModel[selectionHandlerStart..selectionHandlerEnd];
-        Assert.DoesNotContain("NotifySelectedCommitHeaderPropertiesChanged()", selectionHandler, StringComparison.Ordinal);
+        int headerNotification = selectionHandler.IndexOf(
+            "NotifySelectedCommitHeaderPropertiesChanged()",
+            StringComparison.Ordinal);
+        int deferredLoad = selectionHandler.IndexOf(
+            "BackgroundTaskObserver.Run(",
+            StringComparison.Ordinal);
+        Assert.True(headerNotification >= 0 && deferredLoad > headerNotification);
         Assert.DoesNotContain("PopulateCommit(value", selectionHandler, StringComparison.Ordinal);
         int deferredDetailStart = commitsViewModel.IndexOf(
             "private async Task ShowCommitAfterInputCommitAsync",
@@ -428,6 +677,25 @@ public sealed class ProductPerformanceProbeContractTests
         Assert.Contains("ProductPerformanceReadiness.BeginTraversal(", repoFileTree, StringComparison.Ordinal);
         Assert.Contains("_pendingSelectionPath", repoFileTree, StringComparison.Ordinal);
         Assert.Contains("DispatcherQueuePriority.Low", repoFileTree, StringComparison.Ordinal);
+        int repoCodePointerStart = repoFileTree.IndexOf(
+            "private void OnTreeItemPointerPressed",
+            StringComparison.Ordinal);
+        int repoCodeNativePointerSelection = repoFileTree.IndexOf(
+            "FileTreeView.SelectedNode = nativeNode;",
+            repoCodePointerStart,
+            StringComparison.Ordinal);
+        Assert.True(
+            repoCodePointerStart >= 0 &&
+            repoCodeNativePointerSelection > repoCodePointerStart);
+        Assert.DoesNotContain(
+            "DeferredFrameAction.Schedule(",
+            repoFileTree[repoCodePointerStart..repoCodeSelectionMethod],
+            StringComparison.Ordinal);
+        Assert.Contains(
+            "SelectFileNode(nodeVm, visualSelectionContainer: container);",
+            repoFileTree,
+            StringComparison.Ordinal);
+        Assert.Contains("repo_code.visual.selected", repoFileTree, StringComparison.Ordinal);
         Assert.True(
             repoCodeSelection.IndexOf("bool handled = RaiseFileInvoked(nodeVm);", StringComparison.Ordinal) <
             repoCodeSelection.IndexOf("if (!handled)", StringComparison.Ordinal));
@@ -445,6 +713,10 @@ public sealed class ProductPerformanceProbeContractTests
             "ViewModel.IsFileSelectionPresented(pending.Path)",
             repoCodeTraversalStart,
             StringComparison.Ordinal);
+        int repoCodeVisualSelection = repoCodePageSource.IndexOf(
+            "FileTree.IsFileSelectionVisuallyPresented(pending.Path)",
+            repoCodeVisibleIdentity,
+            StringComparison.Ordinal);
         int repoCodeTraversal = repoCodePageSource.IndexOf(
             "ProductPerformanceReadiness.CommitTraversal(",
             repoCodeTraversalStart,
@@ -452,7 +724,8 @@ public sealed class ProductPerformanceProbeContractTests
         Assert.True(
             repoCodeTraversalStart >= 0 &&
             repoCodeVisibleIdentity > repoCodeTraversalStart &&
-            repoCodeTraversal > repoCodeVisibleIdentity);
+            repoCodeVisualSelection > repoCodeVisibleIdentity &&
+            repoCodeTraversal > repoCodeVisualSelection);
         Assert.Contains(
             "ProductPerformanceRenderCommitter.ScheduleAfterNextFrame",
             repoCodePageSource,
@@ -472,10 +745,11 @@ public sealed class ProductPerformanceProbeContractTests
             primeSelectionStart,
             StringComparison.Ordinal);
         string primeSelection = repoCodeSelectionViewModelSource[primeSelectionStart..hydrateSelectionStart];
-        Assert.Contains("PrimeFileSelection(model)", primeSelection, StringComparison.Ordinal);
+        Assert.Contains("Tree.SelectedNode = current;", primeSelection, StringComparison.Ordinal);
         Assert.Contains("Breadcrumb.PrimePath", repoCodeSelectionViewModelSource, StringComparison.Ordinal);
-        Assert.Contains("Preview.IsLoading = true", primeSelection, StringComparison.Ordinal);
-        Assert.Contains("Preview.ErrorMessage = null", primeSelection, StringComparison.Ordinal);
+        Assert.DoesNotContain("PrimeFileSelection(", primeSelection, StringComparison.Ordinal);
+        Assert.DoesNotContain("Breadcrumb.", primeSelection, StringComparison.Ordinal);
+        Assert.DoesNotContain("Preview.", primeSelection, StringComparison.Ordinal);
         Assert.DoesNotContain("Preview.BeginSelection", primeSelection, StringComparison.Ordinal);
         Assert.DoesNotContain("TrySelectFileFromMemoryCache", primeSelection, StringComparison.Ordinal);
         Assert.Contains(
@@ -529,12 +803,42 @@ public sealed class ProductPerformanceProbeContractTests
             "Performance",
             "ProductPerformanceRenderCommitter.cs"));
         Assert.Contains("CompositionTarget.Rendered += rendering", renderCommitter, StringComparison.Ordinal);
-        Assert.DoesNotContain("CompositionTarget.Rendering += rendering", renderCommitter, StringComparison.Ordinal);
+        Assert.DoesNotContain("CompositionTarget.Rendering += rendering;", renderCommitter, StringComparison.Ordinal);
+        Assert.Contains("CompositionTarget.Rendering += renderingWakeUp", renderCommitter, StringComparison.Ordinal);
+        Assert.Contains("CompositionTarget.Rendering -= renderingWakeUp", renderCommitter, StringComparison.Ordinal);
+        Assert.Contains("render.frame_started", renderCommitter, StringComparison.Ordinal);
         Assert.Contains("Func<bool> isCurrent", renderCommitter, StringComparison.Ordinal);
         Assert.Contains("Func<bool> isReady", renderCommitter, StringComparison.Ordinal);
         Assert.Contains("ReadyTimeout = TimeSpan.FromSeconds(2)", renderCommitter, StringComparison.Ordinal);
         Assert.Contains("if (!isReady()) return;", renderCommitter, StringComparison.Ordinal);
         Assert.Contains("bool scheduleWhenDisabled = false", renderCommitter, StringComparison.Ordinal);
+        Assert.Contains("scheduleWhenDisabled: true", repoCodePageSource, StringComparison.Ordinal);
+
+        string visualProbe = File.ReadAllText(Path.Combine(
+            root,
+            "JitHub.WinUI",
+            "Performance",
+            "ProductPerformanceVisualProbe.cs"));
+        int dispatcherTickStart = visualProbe.IndexOf(
+            "private void DispatcherTimer_Tick",
+            StringComparison.Ordinal);
+        int traversalArmStart = visualProbe.IndexOf(
+            "private void TraversalMeasurement_Armed",
+            dispatcherTickStart,
+            StringComparison.Ordinal);
+        Assert.True(dispatcherTickStart >= 0 && traversalArmStart > dispatcherTickStart);
+        string dispatcherTick = visualProbe[dispatcherTickStart..traversalArmStart];
+        Assert.Contains("if (_disposed || IsHeartbeatSuppressed())", dispatcherTick, StringComparison.Ordinal);
+        Assert.Contains("_dispatcher++;", dispatcherTick, StringComparison.Ordinal);
+        Assert.Contains("Publish();", dispatcherTick, StringComparison.Ordinal);
+        Assert.DoesNotContain("TryEnqueue", dispatcherTick, StringComparison.Ordinal);
+        Assert.Contains("TraversalMeasurementArmed +=", visualProbe, StringComparison.Ordinal);
+        Assert.Contains("TraversalMeasurementCompleted +=", visualProbe, StringComparison.Ordinal);
+        Assert.Contains("IsHeartbeatSuppressed()", visualProbe, StringComparison.Ordinal);
+        Assert.Contains("TraversalSuppressionTimeoutTicks", visualProbe, StringComparison.Ordinal);
+        Assert.Contains("RunOnDispatcher(StopRenderingObservation)", visualProbe, StringComparison.Ordinal);
+        Assert.Contains("RunOnDispatcher(StartRenderingObservation)", visualProbe, StringComparison.Ordinal);
+        Assert.Contains("CompositionTarget.Rendering -= CompositionTarget_Rendering", visualProbe, StringComparison.Ordinal);
 
         string previewHostSource = File.ReadAllText(Path.Combine(
             root,
@@ -546,6 +850,10 @@ public sealed class ProductPerformanceProbeContractTests
         Assert.Contains("EnsureRenderer(vm);", previewHostSource, StringComparison.Ordinal);
         Assert.Contains("PreviewApplied?.Invoke(", previewHostSource, StringComparison.Ordinal);
         Assert.Contains("DispatcherQueue.HasThreadAccess", previewHostSource, StringComparison.Ordinal);
+        Assert.Contains("DispatcherQueuePriority.Low", previewHostSource, StringComparison.Ordinal);
+        Assert.Contains("GetOrCreateCodeRenderer", previewHostSource, StringComparison.Ordinal);
+        Assert.Contains("DataContext = null", previewHostSource, StringComparison.Ordinal);
+        Assert.Contains("CachedCodeRendererHost.Visibility = Visibility.Visible", previewHostSource, StringComparison.Ordinal);
         int previewChangeHandlerStart = previewHostSource.IndexOf(
             "private void OnViewModelChanged",
             StringComparison.Ordinal);
@@ -591,6 +899,8 @@ public sealed class ProductPerformanceProbeContractTests
         Assert.Contains("QueuePreviewBindingFallback", codePreviewSource, StringComparison.Ordinal);
         Assert.Contains("DispatcherQueuePriority.Low", codePreviewSource, StringComparison.Ordinal);
         Assert.Contains("generation == Volatile.Read(ref _bindingUpdateGeneration)", codePreviewSource, StringComparison.Ordinal);
+        Assert.Contains("e.PropertyName == nameof(RepoFilePreviewViewModel.Text)", codePreviewSource, StringComparison.Ordinal);
+        Assert.Contains("Interlocked.Increment(ref _bindingUpdateGeneration);\n            ApplyPreviewBindings();", codePreviewSource, StringComparison.Ordinal);
 
         string pullRequestQueryService = File.ReadAllText(Path.Combine(
             root,
@@ -641,7 +951,8 @@ public sealed class ProductPerformanceProbeContractTests
         Assert.Contains("Thread.Sleep(50);", source);
         Assert.Contains("Thread.Sleep(8);", source);
         Assert.Contains("candidate.Properties.ProcessId.ValueOrDefault == application.ProcessId", source);
-        Assert.Contains("exception.HResult == unchecked((int)0x80040201)", source);
+        Assert.Contains("catch (COMException exception) when (IsTransientUiAutomationFailure(exception))", source);
+        Assert.Contains("catch (Win32Exception exception) when (IsTransientUiAutomationTimeout(exception))", source);
         Assert.Contains("Func<long> activateTraversalTarget = PrepareTraversalActivation(", source);
         Assert.Contains("new IntPtr(appWindow.Properties.NativeWindowHandle.ValueOrDefault)", source);
         Assert.Contains("long traversalActivationStartedTimestamp = activateTraversalTarget();", source);
@@ -683,11 +994,37 @@ public sealed class ProductPerformanceProbeContractTests
         Assert.Contains("VerticalScrollPercent", source);
         Assert.Contains("ReadHeartbeat", source);
         Assert.Contains("FindRepoCodeSourceTraversalTarget", source);
+        Assert.Contains(
+            "route.Id is \"gists\" or \"repo_pull_requests\" or \"repo_commits\"",
+            source);
         Assert.Contains("ExpandRepoCodeTreeItem(\n            selectionHost", source.ReplaceLineEndings("\n"));
         Assert.Contains("PrepareScrollableSurface(runCase.Route, scrollTarget)", source);
         Assert.Contains("scrollElement = ResolveVerticalScrollElement(appRoot, runCase.Route);", source);
         Assert.Contains("Leave one observer-free render window", source);
         Assert.Contains("ScrollVertically(appRoot, runCase.Route, ref scrollElement, amount);", source);
+        Assert.DoesNotContain(
+            "if (currentHeartbeat.Frame <= initialScrollHeartbeat.Frame)\n                    {\n                        Thread.Sleep(1);\n                        continue;",
+            source.ReplaceLineEndings("\n"),
+            StringComparison.Ordinal);
+        Assert.Contains(
+            "if (currentHeartbeat.Frame > initialScrollHeartbeat.Frame)",
+            source,
+            StringComparison.Ordinal);
+        Assert.Contains(
+            "if (attemptTimeout.Elapsed >= TimeSpan.FromMilliseconds(250))",
+            source,
+            StringComparison.Ordinal);
+        Assert.Contains(
+            "SendNativeWheelOverElement(\n                                scrollElement,",
+            source.ReplaceLineEndings("\n"),
+            StringComparison.Ordinal);
+        Assert.Contains("SendNativeWheel(scrollUp)", source, StringComparison.Ordinal);
+        Assert.Contains("MouseData = unchecked((uint)(scrollUp ? 120 : -120))", source, StringComparison.Ordinal);
+        Assert.Contains("Flags = 0x0800", source, StringComparison.Ordinal);
+        Assert.Contains("probeSequence=", source, StringComparison.Ordinal);
+        Assert.Contains("IsVisible(candidate)", source, StringComparison.Ordinal);
+        Assert.Contains("DescribeScrollElement(scrollElement)", source, StringComparison.Ordinal);
+        Assert.Contains("scroll.VerticalViewSize.ValueOrDefault", source, StringComparison.Ordinal);
         Assert.Contains("ProductPerformanceInputCommitTimeout = TimeSpan.FromSeconds(5)", source);
         Assert.Contains("CommitTextValueOnce(root, automationId, resetValue, description)", source);
         Assert.Contains("Guid.NewGuid():N", source);
@@ -695,6 +1032,10 @@ public sealed class ProductPerformanceProbeContractTests
         Assert.Contains("element.Properties.ItemStatus.ValueOrDefault", source);
         Assert.Contains("did not receive a WinUI acknowledgement", source);
         Assert.Contains("long traversalArmRequestedTimestamp = Stopwatch.GetTimestamp();", source);
+        Assert.Contains(
+            "SelectOrInvoke(WaitForElement(appRoot, \"ProductPerformanceArmTraversalButton\"));\n        // Arming mutates a hidden UIA marker. Let that observer-only work drain\n        // before timing native input so it cannot steal the user's first frame.\n        Thread.Sleep(50);\n        long traversalActivationStartedTimestamp = activateTraversalTarget();",
+            source.ReplaceLineEndings("\n"),
+            StringComparison.Ordinal);
         Assert.Contains("long traversalActivationStartedTimestamp = activateTraversalTarget();", source);
         Assert.Contains("long activationStartedTimestamp = Stopwatch.GetTimestamp();\n            SendNativeClick();", source.ReplaceLineEndings("\n"));
         Assert.Contains("appStartedTimestamp >= minimumStartedTimestamp", source);
@@ -723,6 +1064,20 @@ public sealed class ProductPerformanceProbeContractTests
         Assert.DoesNotContain("CompositionTarget.Rendered", scrollProbeSource);
         Assert.Contains("DispatcherQueuePriority.Low", scrollProbeSource);
         Assert.Contains("long renderedTimestamp = Stopwatch.GetTimestamp();", scrollProbeSource);
+        Assert.True(
+            scrollProbeSource.IndexOf("long renderedTimestamp = Stopwatch.GetTimestamp();", StringComparison.Ordinal) <
+            scrollProbeSource.IndexOf("DispatcherQueuePriority.Low", StringComparison.Ordinal));
+        Assert.Contains(
+            "long sequence = ++_sequence;\n        _renderPending = false;",
+            scrollProbeSource.ReplaceLineEndings("\n"),
+            StringComparison.Ordinal);
+        Assert.Contains(
+            "new ProductPerformanceScrollStatus(\n                        sequence,\n                        startedTimestamp,\n                        renderedTimestamp)",
+            scrollProbeSource.ReplaceLineEndings("\n"),
+            StringComparison.Ordinal);
+        Assert.True(
+            scrollProbeSource.IndexOf("_renderPending = false;", StringComparison.Ordinal) <
+            scrollProbeSource.IndexOf("DispatcherQueuePriority.Low", StringComparison.Ordinal));
 
         string shellSource = File.ReadAllText(Path.Combine(
             root,
@@ -737,6 +1092,7 @@ public sealed class ProductPerformanceProbeContractTests
         Assert.Contains("_productPerformanceRouteInputValue.Trim()", shellSource);
         Assert.Contains("_productPerformanceTraversalInputValue.Trim()", shellSource);
         Assert.Contains("AutomationProperties.SetItemStatus", shellSource);
+        Assert.Contains("ProductPerformanceReadiness.ArmTraversalMeasurement()", shellSource);
         Assert.DoesNotContain("ProductPerformanceReadiness.BeginTraversal(route, expectedIdentity, route)", shellSource);
         Assert.Contains("string.Equals(commit.Identity, pending.Identity, StringComparison.Ordinal)", shellSource);
 
@@ -778,6 +1134,34 @@ public sealed class ProductPerformanceProbeContractTests
         Assert.Contains("SelectionChanged=\"OnSelectionChanged\"", repoCodeTreeXaml);
         Assert.Contains("PointerPressed=\"OnTreeItemPointerPressed\"", repoCodeTreeXaml);
         Assert.Contains("sender.SelectedNode?.Content", repoCodeTreeSource);
+        Assert.Contains("_nativeSelectedContainer is { IsLoaded: true, IsSelected: true }", repoCodeTreeSource);
+        Assert.Contains("GetNodeForContainer(container)", repoCodeTreeSource);
+        int repoCodePageSelection = repoCodeTreeSource.IndexOf(
+            "bool handled = RaiseFileInvoked(nodeVm);",
+            StringComparison.Ordinal);
+        int repoCodeVisualSelection = repoCodeTreeSource.IndexOf(
+            "IsFileSelectionVisuallyPresented(nodeVm.Path)",
+            repoCodePageSelection,
+            StringComparison.Ordinal);
+        int repoCodePageInvocation = repoCodeTreeSource.IndexOf(
+            "ProductPerformanceReadiness.RecordTraversalStage(\"repo_code.page.invoked\")",
+            StringComparison.Ordinal);
+        Assert.True(
+            repoCodePageSelection >= 0 &&
+            repoCodeVisualSelection > repoCodePageSelection &&
+            repoCodePageInvocation > repoCodeVisualSelection);
+        Assert.DoesNotContain(
+            "visualSelectionContainer.IsSelected = true;",
+            repoCodeTreeSource,
+            StringComparison.Ordinal);
+        Assert.DoesNotContain(
+            "container.IsSelected = true;",
+            repoCodeTreeSource,
+            StringComparison.Ordinal);
+        Assert.DoesNotContain(
+            "FileTreeView.UpdateLayout()",
+            repoCodeTreeSource,
+            StringComparison.Ordinal);
         Assert.Contains("PointerUpdateKind.LeftButtonPressed", repoCodeTreeSource);
         Assert.Contains("DispatcherQueuePriority.Low", shellSource);
         Assert.Contains("commit.StartedTimestamp ?? commit.CommittedTimestamp", shellSource);
@@ -795,6 +1179,9 @@ public sealed class ProductPerformanceProbeContractTests
             "ProductPerformanceRouteProbe.cs"));
 
         Assert.Contains("traversal-observations.ndjson", source, StringComparison.Ordinal);
+        Assert.Contains("IsTransientUiAutomationTimeout", source, StringComparison.Ordinal);
+        Assert.Contains("exception.NativeErrorCode == 1460", source, StringComparison.Ordinal);
+        Assert.Contains("catch (Win32Exception exception)", source, StringComparison.Ordinal);
         Assert.Contains("inputMilliseconds = timing.Input.TotalMilliseconds", source, StringComparison.Ordinal);
         Assert.Contains("renderMilliseconds = timing.Render.TotalMilliseconds", source, StringComparison.Ordinal);
         Assert.Contains("trace = timing.Trace", source, StringComparison.Ordinal);
@@ -885,6 +1272,21 @@ public sealed class ProductPerformanceProbeContractTests
         Assert.True(prime >= 0 && frame > prime && hydrate > frame);
         Assert.Contains("e.Handled = true", page);
         Assert.Contains("if (!handled)", tree);
+
+        string viewModel = File.ReadAllText(Path.Combine(
+            root,
+            "JitHub.WinUI",
+            "ViewModels",
+            "CodeViewer",
+            "RepoCodePageViewModel.cs"));
+        int primeMethod = viewModel.IndexOf("internal bool PrimeTreeNodeSelection(", StringComparison.Ordinal);
+        int hydrateMethod = viewModel.IndexOf("internal async Task HydratePrimedTreeNodeSelectionAsync(", StringComparison.Ordinal);
+        Assert.True(primeMethod >= 0 && hydrateMethod > primeMethod);
+        string primeBody = viewModel[primeMethod..hydrateMethod];
+        Assert.Contains("Tree.SelectedNode = current;", primeBody, StringComparison.Ordinal);
+        Assert.DoesNotContain("PrimeFileSelection(", primeBody, StringComparison.Ordinal);
+        Assert.DoesNotContain("Breadcrumb.", primeBody, StringComparison.Ordinal);
+        Assert.DoesNotContain("Preview.", primeBody, StringComparison.Ordinal);
     }
 
     [Fact]
@@ -984,7 +1386,7 @@ public sealed class ProductPerformanceProbeContractTests
         DirectoryInfo? current = new(AppContext.BaseDirectory);
         while (current is not null)
         {
-            if (File.Exists(Path.Combine(current.FullName, "JitHub.slnx")))
+            if (File.Exists(Path.Combine(current.FullName, "Directory.Build.props")))
             {
                 return current.FullName;
             }

@@ -165,63 +165,71 @@ public static class IncrementalLoadingBehavior
         element.ClearValue(StateProperty);
     }
 
-    private static async void QueueLoadIfNeeded(FrameworkElement element, IncrementalLoadingState state)
+    private static void QueueLoadIfNeeded(FrameworkElement element, IncrementalLoadingState state)
     {
-        if (!GetIsEnabled(element) ||
-            !ReferenceEquals(element.GetValue(StateProperty), state) ||
-            state.IsLoading)
-            return;
-
-        if (ResolveSource(element) is not ISupportIncrementalLoading source || !source.HasMoreItems)
-            return;
-
-        if (IncrementalLoadingSourceAdapter.IsLoading(source))
+        UiTaskGuard.Run(async () =>
         {
-            ScheduleAfterCurrentSourceLoad(element, state);
-            return;
-        }
+            if (!GetIsEnabled(element) || !ReferenceEquals(element.GetValue(StateProperty), state) || state.IsLoading)
+                return;
+            if (ResolveSource(element) is not ISupportIncrementalLoading source || !source.HasMoreItems)
+                return;
+            if (IncrementalLoadingSourceAdapter.IsLoading(source))
+            {
+                ScheduleAfterCurrentSourceLoad(element, state);
+                return;
+            }
 
-        if (source is System.Collections.ICollection { Count: 0 })
-            return;
+            if (source is System.Collections.ICollection { Count: 0 })
+                return;
+            if (!state.ShouldLoad(GetThreshold(element)))
+                return;
+            state.IsLoading = true;
+            bool loadSucceeded = false;
+            try
+            {
+                uint pageSize = (uint)Math.Max(1, GetPageSize(element));
+                await source.LoadMoreItemsAsync(pageSize);
+                loadSucceeded = true;
+            }
+            catch (OperationCanceledException)
+            {
+            }
+            catch (Exception ex)
+            {
+                if (!state.HasReportedFailure)
+                {
+                    state.HasReportedFailure = true;
+                    JitHub.WinUI.App.LogHandledException(ex, "ui-incremental-loading-behavior");
+                }
+            }
+            finally
+            {
+                state.IsLoading = false;
+            }
 
-        if (!state.ShouldLoad(GetThreshold(element)))
-            return;
-
-        state.IsLoading = true;
-        try
-        {
-            uint pageSize = (uint)Math.Max(1, GetPageSize(element));
-            await source.LoadMoreItemsAsync(pageSize);
-        }
-        catch (Exception ex)
-        {
-            System.Diagnostics.Debug.WriteLine($"Incremental load failed: {ex}");
-        }
-        finally
-        {
-            state.IsLoading = false;
-        }
-
-        if (source.HasMoreItems && state.ShouldLoad(GetThreshold(element)))
-            _ = element.DispatcherQueue.TryEnqueue(() => QueueLoadIfNeeded(element, state));
+            if (loadSucceeded && source.HasMoreItems && state.ShouldLoad(GetThreshold(element)))
+                _ = element.DispatcherQueue.TryEnqueue(() => QueueLoadIfNeeded(element, state));
+        }, "ui-incremental-loading-behavior");
     }
 
-    private static async void ScheduleAfterCurrentSourceLoad(FrameworkElement element, IncrementalLoadingState state)
+    private static void ScheduleAfterCurrentSourceLoad(FrameworkElement element, IncrementalLoadingState state)
     {
-        if (state.IsWaitingForSource)
-            return;
-
-        state.IsWaitingForSource = true;
-        try
+        UiTaskGuard.Run(async () =>
         {
-            await Task.Delay(120);
-        }
-        finally
-        {
-            state.IsWaitingForSource = false;
-        }
+            if (state.IsWaitingForSource)
+                return;
+            state.IsWaitingForSource = true;
+            try
+            {
+                await Task.Delay(120);
+            }
+            finally
+            {
+                state.IsWaitingForSource = false;
+            }
 
-        QueueLoadIfNeeded(element, state);
+            QueueLoadIfNeeded(element, state);
+        }, "ui-incremental-loading-behavior");
     }
 
     private static void OnViewChanged(object? sender, ScrollViewerViewChangedEventArgs e)
@@ -297,6 +305,8 @@ public static class IncrementalLoadingBehavior
         public bool IsLoading { get; set; }
 
         public bool IsWaitingForSource { get; set; }
+
+        public bool HasReportedFailure { get; set; }
 
         public int ScrollViewerCount => _scrollViewers.Count;
 

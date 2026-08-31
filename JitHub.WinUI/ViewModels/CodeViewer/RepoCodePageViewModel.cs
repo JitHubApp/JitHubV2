@@ -21,7 +21,7 @@ namespace JitHub.WinUI.ViewModels.CodeViewer;
 
 public sealed partial class RepoCodePageViewModel : ObservableObject
 {
-    private static readonly TimeSpan TreeNodePrefetchDebounce = TimeSpan.FromMilliseconds(40);
+    private static readonly TimeSpan TreeNodePrefetchDebounce = TimeSpan.FromMilliseconds(500);
     private readonly IRepoTreeService _treeService;
     private readonly IRepoFileCacheService _cache;
     private readonly IFilePreviewResolver _previewResolver;
@@ -79,6 +79,7 @@ public sealed partial class RepoCodePageViewModel : ObservableObject
         Breadcrumb = new RepoCodeBreadcrumbViewModel();
         Tree.OnSelectNode = NavigateTreeNodeAsync;
         Tree.OnPrefetchNode = PrefetchTreeNodeAsync;
+        Tree.OnCancelPrefetch = CancelTreeNodePrefetch;
         Tree.OnAuthoritativeTreeChanged = QueueVisibleFileReconciliation;
         Breadcrumb.OnNavigate = NavigateBreadcrumbAsync;
         Breadcrumb.OnActionCompleted = TrackAction;
@@ -156,7 +157,6 @@ public sealed partial class RepoCodePageViewModel : ObservableObject
         !Preview.IsLoading;
 
     internal bool IsFileSelectionPresented(string path) =>
-        string.Equals(Breadcrumb.CurrentPath, path, StringComparison.Ordinal) &&
         string.Equals(Tree.SelectedNode?.Path, path, StringComparison.Ordinal);
 
     public async Task InitializeAsync(string owner, string name, string @ref, CancellationToken ct)
@@ -481,10 +481,10 @@ public sealed partial class RepoCodePageViewModel : ObservableObject
         CancelDefaultPreview();
         Volatile.Write(ref _pendingVisiblePath, null);
         (generation, _) = ReserveSelection(cancellationToken);
-        RepoTreeNode model = ToModelNode(current);
-        PrimeFileSelection(model);
-        Preview.IsLoading = true;
-        Preview.ErrorMessage = null;
+        // Paint the native tree selection before changing the breadcrumb or preview.
+        // The existing detail stays stable for this frame; hydration updates the
+        // complete file surface immediately afterward.
+        Tree.SelectedNode = current;
         ProductPerformanceReadiness.RecordTraversalStage("repo_code.selection.primed");
         return true;
     }
@@ -618,6 +618,8 @@ public sealed partial class RepoCodePageViewModel : ObservableObject
         CancelSelection();
         Volatile.Write(ref _pendingVisiblePath, null);
     }
+
+    public void CancelTreeNodePrefetch() => _treeNodePrefetch.Cancel();
 
     private async Task ApplyTreeAsync(
         RepoCodeLoadResult<RepoTree> result,
@@ -942,7 +944,9 @@ public sealed partial class RepoCodePageViewModel : ObservableObject
                     currentNode.IsDirectory ||
                     !string.Equals(currentNode.Sha, node.Sha, StringComparison.Ordinal))
                 {
-                    Preview.IsLoading = false;
+                    Tree.SelectedNode = null;
+                    Preview.Reset();
+                    ResetBreadcrumb(repositoryName);
                     return;
                 }
 
@@ -1871,28 +1875,57 @@ public sealed partial class RepoCodePageViewModel : ObservableObject
         }
 
         TaskCompletionSource completion = new(TaskCreationOptions.RunContinuationsAsynchronously);
-        if (!_dispatcherQueue.TryEnqueue(async () =>
-        {
-            try
-            {
-                cancellationToken.ThrowIfCancellationRequested();
-                await action();
-                completion.TrySetResult();
-            }
-            catch (OperationCanceledException exception)
-            {
-                completion.TrySetCanceled(exception.CancellationToken);
-            }
-            catch (Exception exception)
-            {
-                completion.TrySetException(exception);
-            }
-        }))
+        if (!_dispatcherQueue.TryEnqueue(() =>
+            ObserveDispatchedUiAction(action, cancellationToken, completion)))
         {
             completion.TrySetException(new InvalidOperationException("The Repo Code UI dispatcher is unavailable."));
         }
 
         return completion.Task;
+    }
+
+    private static void ObserveDispatchedUiAction(
+        Func<Task> action,
+        CancellationToken cancellationToken,
+        TaskCompletionSource completion)
+    {
+        Task actionTask;
+        try
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+            actionTask = action();
+        }
+        catch (OperationCanceledException exception)
+        {
+            completion.TrySetCanceled(exception.CancellationToken);
+            return;
+        }
+        catch (Exception exception)
+        {
+            completion.TrySetException(exception);
+            return;
+        }
+
+        _ = CompleteDispatchedUiActionAsync(actionTask, completion);
+    }
+
+    private static async Task CompleteDispatchedUiActionAsync(
+        Task actionTask,
+        TaskCompletionSource completion)
+    {
+        try
+        {
+            await actionTask.ConfigureAwait(false);
+            completion.TrySetResult();
+        }
+        catch (OperationCanceledException exception)
+        {
+            completion.TrySetCanceled(exception.CancellationToken);
+        }
+        catch (Exception exception)
+        {
+            completion.TrySetException(exception);
+        }
     }
 
     private static DispatcherQueue? TryGetDispatcherQueue()

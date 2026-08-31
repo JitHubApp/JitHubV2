@@ -4,6 +4,7 @@ using System.Threading.Tasks;
 using CommunityToolkit.WinUI;
 using JitHub.Models.GitHub;
 using JitHub.Services.Layout;
+using JitHub.WinUI.Helpers;
 using JitHub.WinUI.ViewModels.Pages;
 using JitHub.WinUI.Views.Controls.Common;
 using Microsoft.UI.Xaml;
@@ -20,8 +21,7 @@ public sealed partial class RepoIssueDetailPane : UserControl
     private const double ShyHeaderRehideTravel = 24;
     private const double ScrollDirectionEpsilon = 0.5;
     private const double CompactShyHeaderContentInset = 74;
-    private static readonly TimeSpan ShyHeaderForwardDuration = TimeSpan.FromMilliseconds(240);
-    private static readonly TimeSpan ShyHeaderReverseDuration = TimeSpan.FromMilliseconds(220);
+    private static readonly TimeSpan ShyHeaderDuration = AppMotionTokens.MediumDuration;
     private readonly TransitionHelper _headerTransition;
     private AdaptiveWorkspaceState? _responsiveState;
     private double _lastScrollOffset;
@@ -50,18 +50,37 @@ public sealed partial class RepoIssueDetailPane : UserControl
         {
             Source = RepoIssuesDetailHeader,
             Target = RepoIssuesShyHeaderSurface,
-            Duration = ShyHeaderForwardDuration,
-            ReverseDuration = ShyHeaderReverseDuration,
+            Duration = ShyHeaderDuration,
+            ReverseDuration = ShyHeaderDuration,
             SourceToggleMethod = VisualStateToggleMethod.ByVisibility,
-            TargetToggleMethod = VisualStateToggleMethod.ByVisibility,
+            TargetToggleMethod = VisualStateToggleMethod.ByIsVisible,
             Configs =
             [
-                new TransitionConfig { Id = "IssueHeaderSurface", ScaleMode = ScaleMode.ScaleY, EnableClipAnimation = true },
-                new TransitionConfig { Id = "IssueTitle" },
-                new TransitionConfig { Id = "IssueListButton" },
-                new TransitionConfig { Id = "IssueActions" }
+                new TransitionConfig { Id = "IssueHeaderChrome", ScaleMode = ScaleMode.Scale, EnableClipAnimation = true },
+                new TransitionConfig { Id = "IssueTitle", ScaleMode = ScaleMode.ScaleY },
+                new TransitionConfig { Id = "IssueListButton", ScaleMode = ScaleMode.Scale, EnableClipAnimation = true },
+                new TransitionConfig { Id = "IssueActions", ScaleMode = ScaleMode.Scale, EnableClipAnimation = true }
             ]
         };
+        Loaded += RepoIssueDetailPane_Loaded;
+        Unloaded += RepoIssueDetailPane_Unloaded;
+    }
+
+    private void RepoIssueDetailPane_Loaded(object sender, RoutedEventArgs e)
+    {
+        _headerTransitionGeneration++;
+        MorphTransitionSafety.TryResetVisibilityState(
+            _headerTransition,
+            RepoIssuesDetailHeader,
+            RepoIssuesShyHeaderSurface,
+            toInitialState: !_isDetailHeaderShy);
+        ResetContentReflow();
+    }
+
+    private void RepoIssueDetailPane_Unloaded(object sender, RoutedEventArgs e)
+    {
+        _headerTransitionGeneration++;
+        MorphTransitionSafety.TryStop(_headerTransition);
     }
 
     public void UpdateResponsiveState(AdaptiveWorkspaceState? state)
@@ -81,7 +100,9 @@ public sealed partial class RepoIssueDetailPane : UserControl
         RepoIssuesOpenInspectorPaneButton.Visibility = inspectorButtonVisibility;
         RepoIssuesCompactOpenInspectorPaneButton.Visibility = inspectorButtonVisibility;
         RepoIssuesShyOpenInspectorPaneButton.Visibility = inspectorButtonVisibility;
-        _isScrollHeaderShy = IssueConversationScrollViewer.VerticalOffset >= ShyHeaderStartOffset;
+        _isScrollHeaderShy =
+            IssueConversationScrollViewer.VerticalOffset >= ShyHeaderStartOffset &&
+            CanHideScrollHeader();
         _lastScrollOffset = IssueConversationScrollViewer.VerticalOffset;
         IssueConversationScrollViewer.Padding = IsCompactWorkspace
             ? new Thickness(18, CompactShyHeaderContentInset, 18, 18)
@@ -195,11 +216,25 @@ public sealed partial class RepoIssueDetailPane : UserControl
 
     private void HideScrollHeader()
     {
+        if (!CanHideScrollHeader())
+        {
+            _downwardRehideTravel = 0;
+            return;
+        }
+
         _isScrollHeaderShy = true;
         _headerRevealedByUpwardScroll = false;
         _upwardRevealTravel = 0;
         _downwardRehideTravel = 0;
         SetDetailHeaderShy(true, animate: true);
+    }
+
+    private bool CanHideScrollHeader()
+    {
+        return ShyHeaderScrollPolicy.CanCollapse(
+            IssueConversationScrollViewer.ScrollableHeight,
+            RepoIssuesDetailHeader.ActualHeight,
+            ShyHeaderRestoreOffset);
     }
 
     private void SetDetailHeaderShy(bool isShy, bool animate)
@@ -214,13 +249,24 @@ public sealed partial class RepoIssueDetailPane : UserControl
         int generation = ++_headerTransitionGeneration;
         if (!animate || !RepoIssuesDetailHeader.IsLoaded || !AreAnimationsEnabled())
         {
-            _headerTransition.Reset(toInitialState: !isShy);
-            RepoIssuesDetailLayout.UpdateLayout();
-            ResetContentReflow();
+            if (MorphTransitionSafety.TryResetVisibilityState(
+                _headerTransition,
+                RepoIssuesDetailHeader,
+                RepoIssuesShyHeaderSurface,
+                toInitialState: !isShy))
+            {
+                RepoIssuesDetailLayout.UpdateLayout();
+                ResetContentReflow();
+                if (!isShy)
+                {
+                    RepoIssuesShyHeaderSurface.Visibility = Visibility.Collapsed;
+                }
+            }
+
             return;
         }
 
-        _ = AnimateDetailHeaderAsync(isShy, generation);
+        UiTaskGuard.Observe(AnimateDetailHeaderAsync(isShy, generation), "ui-repo-issue-detail-pane");
     }
 
     private async Task AnimateDetailHeaderAsync(bool isShy, int generation)
@@ -236,7 +282,6 @@ public sealed partial class RepoIssueDetailPane : UserControl
                 ? _headerTransition.StartAsync(forceUpdateAnimatedElements: true)
                 : _headerTransition.ReverseAsync(forceUpdateAnimatedElements: true);
 
-            RepoIssuesDetailLayout.UpdateLayout();
             if (isShy)
             {
                 double reclaimedHeight = Math.Max(
@@ -244,18 +289,18 @@ public sealed partial class RepoIssueDetailPane : UserControl
                     RepoIssuesDetailHeader.ActualHeight - RepoIssuesShyHeaderSurface.ActualHeight);
                 AnimateContentReflow(
                     new Vector3(0, (float)-reclaimedHeight, 0),
-                    ShyHeaderForwardDuration);
+                    ShyHeaderDuration);
             }
             else if (reverseFromSettledShyState)
             {
                 double expandedContentTop = GetElementTop(IssueConversationScrollViewer, RepoIssuesDetailLayout);
                 SetContentReflowImmediately(new Vector3(0, (float)(previousContentTop - expandedContentTop), 0));
-                AnimateContentReflow(Vector3.Zero, ShyHeaderReverseDuration);
+                AnimateContentReflow(Vector3.Zero, ShyHeaderDuration);
             }
 
             else
             {
-                AnimateContentReflow(Vector3.Zero, ShyHeaderReverseDuration);
+                AnimateContentReflow(Vector3.Zero, ShyHeaderDuration);
             }
 
             await headerAnimation;
@@ -264,8 +309,17 @@ public sealed partial class RepoIssueDetailPane : UserControl
                 return;
             }
 
+            MorphTransitionSafety.TrySetStableState(
+                _headerTransition,
+                RepoIssuesDetailHeader,
+                RepoIssuesShyHeaderSurface,
+                isTargetState: isShy);
             RepoIssuesDetailLayout.UpdateLayout();
             ResetContentReflow();
+            if (!isShy)
+            {
+                RepoIssuesShyHeaderSurface.Visibility = Visibility.Collapsed;
+            }
         }
         catch (OperationCanceledException)
         {
@@ -273,11 +327,22 @@ public sealed partial class RepoIssueDetailPane : UserControl
         catch (Exception) when (generation != _headerTransitionGeneration)
         {
         }
-        catch when (generation == _headerTransitionGeneration)
+        catch (Exception ex) when (generation == _headerTransitionGeneration)
         {
-            _headerTransition.Reset(toInitialState: !isShy);
-            RepoIssuesDetailLayout.UpdateLayout();
-            ResetContentReflow();
+            JitHub.WinUI.App.LogHandledException(ex, "ui-repo-issue-header-morph");
+            if (MorphTransitionSafety.TryResetVisibilityState(
+                _headerTransition,
+                RepoIssuesDetailHeader,
+                RepoIssuesShyHeaderSurface,
+                toInitialState: !isShy))
+            {
+                RepoIssuesDetailLayout.UpdateLayout();
+                ResetContentReflow();
+                if (!isShy)
+                {
+                    RepoIssuesShyHeaderSurface.Visibility = Visibility.Collapsed;
+                }
+            }
         }
     }
 

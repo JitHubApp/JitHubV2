@@ -125,20 +125,23 @@ namespace JitHub.WinUI.Views.Pages
             e.Handled = true;
         }
 
-        override protected async void OnNavigatedTo(NavigationEventArgs e)
+        override protected void OnNavigatedTo(NavigationEventArgs e)
         {
-            base.OnNavigatedTo(e);
-            ProductPerformanceReadiness.RecordTraversalStage("repo_detail.navigated");
-            if (await TryReactivateCachedWorkspaceAsync(e.Parameter as RepoDetailPageArgs))
+            UiTaskGuard.Run(async () =>
             {
-                SyncSectionSelection();
-                return;
-            }
+                base.OnNavigatedTo(e);
+                ProductPerformanceReadiness.RecordTraversalStage("repo_detail.navigated");
+                if (await TryReactivateCachedWorkspaceAsync(e.Parameter as RepoDetailPageArgs))
+                {
+                    SyncSectionSelection();
+                    return;
+                }
 
-            if (e.Parameter is RepoDetailPageArgs args)
-            {
-                await ViewModel.InitializeAsync(args);
-            }
+                if (e.Parameter is RepoDetailPageArgs args)
+                {
+                    await ViewModel.InitializeAsync(args);
+                }
+            }, "ui-repo-detail-page");
         }
 
         private async Task<bool> TryReactivateCachedWorkspaceAsync(RepoDetailPageArgs? args)
@@ -221,9 +224,10 @@ namespace JitHub.WinUI.Views.Pages
             bool condensed = width < 1180;
             bool hideIdentity = width < 980;
             _isCompact = compact;
-            RepoDetailIdentityChrome.Visibility = compact || hideIdentity
-                ? Visibility.Collapsed
-                : ViewModel.IsRepositoryIdentityVisible ? Visibility.Visible : Visibility.Collapsed;
+            RepoDetailIdentityChrome.Visibility = compact || !hideIdentity
+                ? ViewModel.IsRepositoryIdentityVisible ? Visibility.Visible : Visibility.Collapsed
+                : Visibility.Collapsed;
+            RepoDetailIdentityStatusBadge.Visibility = compact ? Visibility.Collapsed : Visibility.Visible;
             RepoDetailSectionSelectorHost.Visibility = compact ? Visibility.Collapsed : Visibility.Visible;
             RepoDetailBranchChrome.Visibility = compact ? Visibility.Collapsed : Visibility.Visible;
             ShouldLoadRepositoryStatButtons = !compact && !condensed;

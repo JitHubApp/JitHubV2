@@ -221,7 +221,11 @@ public sealed class GitHubGraphQlTransport : IGitHubGraphQlTransport
                 return messageElement.GetString() ?? $"GitHub GraphQL request failed with status code {(int)response.StatusCode}.";
             }
         }
-        catch
+        catch (OperationCanceledException)
+        {
+            throw;
+        }
+        catch (Exception ex) when (ex is JsonException or NotSupportedException or IOException)
         {
         }
 

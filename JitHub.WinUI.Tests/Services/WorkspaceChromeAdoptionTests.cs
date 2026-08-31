@@ -48,8 +48,6 @@ public sealed class WorkspaceChromeAdoptionTests
 
     [Theory]
     [InlineData("ProfilePage")]
-    [InlineData("NotificationsPage")]
-    [InlineData("StarsPage")]
     public void ContextBearingPage_UsesSharedOptionalContextPolicy(string pageName)
     {
         string source = File.ReadAllText(Path.Combine(PagesPath(), pageName + ".xaml.cs"));
@@ -121,8 +119,8 @@ public sealed class WorkspaceChromeAdoptionTests
             .Descendants()
             .Single(element => (string?)element.Attribute(x + "Name") == name);
 
-        Assert.Equal("0", (string?)Find("MainColumnHost").Attribute("MinWidth"));
-        Assert.Equal("0", (string?)Find("ProfileModeSelectorHost").Attribute("MinWidth"));
+        Assert.Equal("{ThemeResource AppDimension0}", (string?)Find("MainColumnHost").Attribute("MinWidth"));
+        Assert.Equal("{ThemeResource AppDimension0}", (string?)Find("ProfileModeSelectorHost").Attribute("MinWidth"));
         Assert.NotNull(Find("ProfileHeaderStatusHost"));
         Assert.NotNull(Find("ProfileOptionalHeaderContextHost"));
         Assert.NotNull(Find("CompactIdentityActions"));
@@ -157,7 +155,6 @@ public sealed class WorkspaceChromeAdoptionTests
         Assert.Contains("AppWorkspaceHeaderStyle", styleKeys);
         Assert.Contains("AppWorkspaceTitleTextBlockStyle", styleKeys);
         Assert.Contains("AppWorkspaceHeaderIconStyle", styleKeys);
-        Assert.Contains("AppWorkspaceHeaderContextTextBlockStyle", styleKeys);
         Assert.Contains("AppWorkspaceHeaderActionsStyle", styleKeys);
     }
 
@@ -170,7 +167,7 @@ public sealed class WorkspaceChromeAdoptionTests
     private static string FindRepositoryRoot()
     {
         DirectoryInfo? directory = new(AppContext.BaseDirectory);
-        while (directory is not null && !File.Exists(Path.Combine(directory.FullName, "JitHub.slnx")))
+        while (directory is not null && !File.Exists(Path.Combine(directory.FullName, "Directory.Build.props")))
         {
             directory = directory.Parent;
         }

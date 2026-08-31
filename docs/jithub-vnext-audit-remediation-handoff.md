@@ -1,6 +1,6 @@
 # JitHub vNext Audit Remediation Handoff
 
-Status date: August 19, 2026
+Status date: August 25, 2026
 
 Branch: `codex/vnext-full-audit-remediation`
 
@@ -24,17 +24,40 @@ paths merely because they existed on `main`.
 
 ## Current Truth
 
+- The authoritative release state is in
+  `docs/jithub-vnext-release-readiness.md`. Candidate v31 passes every local
+  build, test, security, Native AOT, package, performance, telemetry-integrity,
+  and exact-state UI gate. Store submission remains blocked until this working
+  tree has an exact commit identity, matching-architecture hardware validation
+  is green, and Partner Center receipt is confirmed from that Store-associated
+  package.
+- x86, x64, and ARM64 locked Native AOT publishes are warning-free and pass the
+  native artifact verifier. The final verified upload is
+  `.codex-artifacts/release-review/package/vnext-store-v31/` followed by
+  `JitHub.WinUI_1.6.2.0_x86_x64_ARM64_bundle.msixupload` (`122,974,474` bytes;
+  SHA-256 `905969C1EC115F7FD435AC14BA0C456A87C2A24B75775D2E969E0AACCACA8DD5`).
+- The controlling performance artifact is
+  `.codex-artifacts/release-review/performance/` followed by
+  `vnext-release-native-x64-final-v31.json`: 560 isolated native app cases and
+  all 353 budgets pass. Repository Code cached-selection p95 is `48.69ms` Warm,
+  `38.76ms` Offline, and `31.54ms` LargeAccount, with zero content blanking.
+- The final diagnostics audit parsed 4,226 records from 143 streams with zero
+  malformed records, handled exceptions, or motion/resource fallback signals.
+  The exact v31 Native AOT Repo Code probe passes five responsive widths, focus,
+  drawers, overflow, breadcrumbs, CSV rich/plain behavior, SVG zoom, and manual
+  visual review, then exits gracefully with code `0`.
 - The source implementation for the recorded full-product audit is present.
 - All audit tracker rows were implemented and page-specific tests/probes passed.
 - Eight findings from the last data/security/performance review and the final
   first-frame selection repairs are implemented and verified with focused tests,
   the complete Debug/Release matrices, and live native probes.
-- The canonical exact ten-iteration Warm run passes all 55 evaluations without
+- The prior canonical exact ten-iteration Warm run passed all 55 evaluations without
   changing budgets. Cached-selection p95 is `36.06ms` for My Issues, `33.01ms`
   for My Pull Requests, `42.67ms` for Gists, `34.75ms` for Repository Code,
   `29.64ms` for Repository Issues, `31.91ms` for Repository Pull Requests, and
   `37.52ms` for Repository Commits. Startup p95 is `1149.77ms` against `1500ms`.
-  `artifacts/performance/vnext-publication-full-eight.json` is controlling.
+  `artifacts/performance/vnext-publication-full-eight.json` is retained as the
+  superseded eight-route baseline; the v31 artifact above controls release decisions.
 - Two final review passes covered WinUI lifecycle/accessibility/concurrency and
   data/security/performance/resource ownership. Their actionable findings were
   fixed and focused validation was rerun.
@@ -397,29 +420,31 @@ The repository-level version of these rules is in `AGENTS.md`.
 
 ## Last Successful Verification
 
-These results were rerun sequentially from the recovered final source state on
-2026-08-12, 2026-08-13, and 2026-08-19. Generated outputs remain evidence only
-and are not commit content.
+These results were rerun sequentially through 2026-08-25. Generated outputs
+remain evidence only and are not commit content.
 
 | Target | Result |
 | --- | --- |
-| `JitHub.WinUI.Tests` Debug | 2,555 / 2,555 passed |
-| `JitHub.WinUI.Tests` Release | 2,542 / 2,542 passed |
-| `MarkdownRenderer.Tests` Debug | 335 / 335 passed |
-| `MarkdownRenderer.Tests` Release | 335 / 335 passed |
+| `JitHub.WinUI.Tests` Debug | 2,763 / 2,763 passed |
+| `JitHub.WinUI.Tests` Release | 2,763 / 2,763 passed |
+| `MarkdownRenderer.Tests` Debug | 355 / 355 passed |
+| `MarkdownRenderer.Tests` Release | 355 / 355 passed |
 | `MarkdownRenderer.PixelTests` Debug | 87 / 87 passed |
 | `MarkdownRenderer.PixelTests` Release | 87 / 87 passed |
 | `JitHub.Web.Tests` Debug | 17 / 17 passed |
 | `JitHub.Web.Tests` Release | 17 / 17 passed |
 | `JitHub.WinUI` Debug | warning-free build |
-| `JitHub.WinUI` Release | warning-free build; 60 / 60 embedded security gates |
+| `JitHub.WinUI` Release | warning-free Native AOT publishes for x86/x64/ARM64; 72 / 72 embedded security gates |
 | `JitHub.WinUI.Automation` | warning-free x64 Debug and Release builds |
 | `JitHub.WinUI.PerformanceGate` | warning-free x64 Debug and Release builds |
 | `JitHub.Web` | warning-free Debug and Release builds |
-| Dependency policy and audit | passed; no direct/transitive vulnerabilities |
-| Eight-route warm performance gate | 55 / 55 route/fixture/metric budgets passed |
+| Dependency policy and audit | 69-package reviewed ledger passed; no direct/transitive vulnerabilities |
+| Full native performance gate | 353 / 353 route/fixture/metric budgets passed across 560 isolated app cases |
 | Post-review My Pull Requests reruns | 8 / 8 passed twice; cached-selection p95 `42.10ms` and `49.50ms` |
-| Publication eight-route warm performance gate | 55 / 55 passed; 4,970 measurements; clean exit |
+| v31 Native AOT payloads | x86/x64/ARM64 verifier passed; no CLR/JIT/managed app payload |
+| v31 Store upload | all three payloads reverified inside the final MSIXBundle |
+| v31 telemetry integrity | 4,226 valid records; 0 malformed, handled-exception, or fallback signals |
+| v31 Repo Code native probe | five widths plus focus/drawer/overflow/CSV/SVG passed; graceful exit 0 |
 
 The August 19 UI cleanup also passed a warning-free x64 Debug build of
 `JitHub.slnx` with Visual Studio Community MSBuild 18.9.1. Live `winapp` review
@@ -591,11 +616,15 @@ newest exact combined-performance evidence.
   `vnext-recovery-my-pr-post-review-repeat.json` immediately rechecked that
   route at ten iterations and passed all eight budgets (`42.10ms` and `49.50ms`
   cached-selection p95) with clean process exits.
-- `vnext-publication-full-eight.json` is the final controlling artifact. It
+- `vnext-publication-full-eight.json` was the controlling eight-route artifact. It
   records 4,970 measurements, all 55 evaluations passing, cached-selection p95
   between `29.64ms` and `42.67ms`, startup p95 `1149.77ms`, and a clean runner
   exit after all 80 measured launches. It did not reproduce either the My Pull
   Requests host-input outlier or the FlaUI shutdown fault.
+- `vnext-release-native-x64-final-v31.json` supersedes the eight-route artifact
+  for release decisions. It records 30,730 measurements, all 353 evaluations
+  passing across Cold, Warm, Offline, and LargeAccount fixtures, and all 560
+  isolated native app cases completing. No budget was loosened.
 - Browser-backed SVG pixel tests create Edge suspended, assign it to a Windows
   Job Object before resume, and terminate/drain the entire process tree. The
   test verifies both launcher and descendant termination.
@@ -617,13 +646,16 @@ Before the recovery batch is committed, expect the source changes described in
 this handoff plus three new implementation files. Confirm at least 6 GB free
 before rebuilding all configurations and generating screenshots.
 
-### 2. Restore The Locked Graph Once
+### 2. Restore The Locked Graphs
 
 ```powershell
-dotnet restore JitHub.slnx --force-evaluate `
-  -p:Platform=x64 `
-  -p:RestoreLockedMode=false `
-  -p:SkipReleaseSecurityGate=true
+.\eng\Restore-NativeAot.ps1 -Architecture x86
+.\eng\Restore-NativeAot.ps1 -Architecture x64
+.\eng\Restore-NativeAot.ps1 -Architecture arm64
+.\eng\Update-NativeAotDependencyLedger.ps1 -Verify
+
+dotnet restore JitHub.WinUI.Tests\JitHub.WinUI.Tests.csproj --locked-mode
+dotnet restore JitHub.Web.Tests\JitHub.Web.Tests.csproj --locked-mode
 ```
 
 Do not change `JitHub.WinUI.Tests.csproj` to `AnyCPU`. Its default platform must
@@ -661,7 +693,8 @@ dotnet build JitHub.Web\JitHub.Web.csproj -c Release --no-restore
 ```
 
 The Release app build runs `eng/Verify-DependencySecurity.ps1`, including x64
-locked restore and 60 security gates. The script itself can also be run directly:
+locked restore and the embedded security gates. The script itself can also be
+run directly:
 
 ```powershell
 pwsh -NoProfile -File eng\Verify-DependencySecurity.ps1
@@ -700,18 +733,23 @@ Review every screenshot, not only the exit code. Confirm actual native bounds in
 filenames/logs when Windows caps the request. Run shell, settings, profile, and
 issues first because they exercise the shared responsive primitives.
 
-### 6. Reverify The Performance Gate
+### 6. Reverify Native AOT And Performance
 
-Build the app and gate, then run the exact full Warm matrix when performance-
-relevant source changes:
+Publish and verify the exact x64 native app, then run all fixtures and routes
+when performance-relevant source changes:
 
 ```powershell
-pwsh -NoProfile -File eng\Invoke-ProductPerformanceGate.ps1 `
-  -AppPath $app `
-  -Configuration Debug `
+.\eng\Restore-NativeAot.ps1 -Architecture x64
+dotnet publish JitHub.WinUI\JitHub.WinUI.csproj -c Release -r win-x64 `
+  -p:Platform=x64 -p:SkipReleaseSecurityGate=true --no-restore `
+  -o artifacts\native-aot\x64
+.\eng\Verify-NativeAotArtifact.ps1 `
+  -InputPath artifacts\native-aot\x64 -Architecture x64
+
+.\eng\Invoke-ProductPerformanceGate.ps1 `
+  -AppPath artifacts\native-aot\x64\JitHub.WinUI.exe `
+  -Configuration Release `
   -Iterations 10 `
-  -Fixtures Warm `
-  -Routes gists,my_issues,my_pull_requests,profile,repo_code,repo_commits,repo_issues,repo_pull_requests `
   -OutputPath artifacts\performance\vnext-recovery-rerun.json `
   -ArtifactsPath artifacts\performance\vnext-recovery-rerun `
   -SkipBuild

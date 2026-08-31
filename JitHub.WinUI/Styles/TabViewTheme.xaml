@@ -4,7 +4,7 @@
     xmlns:muxc="using:Microsoft.UI.Xaml.Controls">
     <ResourceDictionary.ThemeDictionaries>
         <ResourceDictionary x:Key="Light">
-            <SolidColorBrush x:Key="TabViewChromeTransparentBrush" Color="{ThemeResource AppTransparentColor}" />
+            <StaticResource x:Key="TabViewChromeTransparentBrush" ResourceKey="AppTransparentBrush" />
             <StaticResource x:Key="TabViewHairlineTransparentBrush" ResourceKey="TabViewChromeTransparentBrush" />
             <StaticResource x:Key="TabViewBackground" ResourceKey="AppCanvasRaisedBrush" />
             <StaticResource x:Key="TabViewItemHeaderBackground" ResourceKey="AppCanvasRaisedBrush" />
@@ -76,7 +76,7 @@
         </ResourceDictionary>
 
         <ResourceDictionary x:Key="Dark">
-            <SolidColorBrush x:Key="TabViewChromeTransparentBrush" Color="{ThemeResource AppTransparentColor}" />
+            <StaticResource x:Key="TabViewChromeTransparentBrush" ResourceKey="AppTransparentBrush" />
             <StaticResource x:Key="TabViewHairlineTransparentBrush" ResourceKey="TabViewChromeTransparentBrush" />
             <StaticResource x:Key="TabViewBackground" ResourceKey="AppCanvasRaisedBrush" />
             <StaticResource x:Key="TabViewItemHeaderBackground" ResourceKey="AppCanvasRaisedBrush" />

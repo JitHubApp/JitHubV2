@@ -1,10 +1,13 @@
 <UserControl
     x:Class="JitHub.WinUI.Views.Controls.CodeViewer.CodeEditorControl"
+    x:Uid="RepoCodeEditor"
     xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
     xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
     xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
     xmlns:editor="using:WinUIEditor"
     xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+    AutomationProperties.AutomationId="RepoCodeEditor"
+    AutomationProperties.Name="Source code editor"
     d:DesignHeight="300"
     d:DesignWidth="600"
     mc:Ignorable="d">
@@ -13,13 +16,11 @@
         x:Name="EditorSurface"
         Background="{ThemeResource AppCanvasBrush}"
         BorderBrush="{ThemeResource AppOutlineBrush}"
-        BorderThickness="1">
+        BorderThickness="{ThemeResource AppHairlineBorderThickness}">
         <editor:CodeEditorControl
             x:Name="InnerEditor"
-            x:Uid="RepoCodeEditor"
-            MinHeight="200"
-            AutomationProperties.AutomationId="RepoCodeEditor"
-            AutomationProperties.Name="Source code editor"
+            MinHeight="{ThemeResource AppDimension200}"
+            AutomationProperties.AccessibilityView="Raw"
             HorizontalAlignment="Stretch"
             VerticalAlignment="Stretch" />
     </Grid>

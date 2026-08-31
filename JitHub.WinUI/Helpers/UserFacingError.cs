@@ -1,5 +1,4 @@
 using System;
-using System.Diagnostics;
 
 namespace JitHub.WinUI.Helpers;
 
@@ -17,7 +16,7 @@ internal static class UserFacingError
     public static string For(Exception exception, UserFacingErrorKind kind, string? context = null)
     {
         ArgumentNullException.ThrowIfNull(exception);
-        Log(exception.ToString(), context);
+        HandledFailureReporter.Report(exception, NormalizeContext(context));
         return GetLocalizedMessage(kind);
     }
 
@@ -28,7 +27,7 @@ internal static class UserFacingError
     {
         if (!string.IsNullOrWhiteSpace(internalMessage))
         {
-            Log(internalMessage, context);
+            HandledFailureReporter.Report(internalMessage, NormalizeContext(context));
         }
 
         return GetLocalizedMessage(kind);
@@ -53,9 +52,6 @@ internal static class UserFacingError
             "JitHub could not complete this action. Try again.")
     };
 
-    private static void Log(string detail, string? context)
-    {
-        string scope = string.IsNullOrWhiteSpace(context) ? "ui" : context.Trim();
-        Debug.WriteLine($"[UserFacingError/{scope}] {detail}");
-    }
+    private static string NormalizeContext(string? context) =>
+        string.IsNullOrWhiteSpace(context) ? "ui" : context.Trim();
 }

@@ -3,11 +3,11 @@ using JitHub.Models;
 using JitHub.Models.Base;
 using JitHub.Models.LegacyGitHub;
 using JitHub.Services.Accessibility;
+using JitHub.WinUI.Helpers;
 using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Controls;
 using Microsoft.UI.Xaml.Media;
 using Windows.UI;
-using Windows.UI.ViewManagement;
 
 // The User Control item template is documented at https://go.microsoft.com/fwlink/?LinkId=234236
 
@@ -15,9 +15,7 @@ namespace JitHub.WinUI.Views.Controls.Common
 {
     public sealed partial class RepoLabel : UserControl
     {
-        private static readonly Lazy<AccessibilitySettings?> AccessibilitySettingsInstance = new(
-            TryCreateAccessibilitySettings,
-            isThreadSafe: true);
+        private AppThemeSettingsMonitor? _themeSettings;
         private bool _isHighContrastSubscribed;
 
         public static DependencyProperty LabelProperty = DependencyProperty.Register(
@@ -25,7 +23,7 @@ namespace JitHub.WinUI.Views.Controls.Common
             typeof(object),
             typeof(RepoLabel),
             new PropertyMetadata(default(object), OnLabelChanged));
-        
+
         public object? Label
         {
             get => GetValue(LabelProperty);
@@ -83,12 +81,12 @@ namespace JitHub.WinUI.Views.Controls.Common
 
         private void RepoLabel_Loaded(object sender, RoutedEventArgs e)
         {
-            AccessibilitySettings? accessibilitySettings = AccessibilitySettingsInstance.Value;
-            if (accessibilitySettings is not null && !_isHighContrastSubscribed)
+            _themeSettings ??= ThemeSettingsHelper.TryGetFor(this);
+            if (_themeSettings is not null && !_isHighContrastSubscribed)
             {
                 try
                 {
-                    accessibilitySettings.HighContrastChanged += AccessibilitySettings_HighContrastChanged;
+                    _themeSettings.Changed += ThemeSettings_Changed;
                     _isHighContrastSubscribed = true;
                 }
                 catch (Exception)
@@ -102,15 +100,15 @@ namespace JitHub.WinUI.Views.Controls.Common
 
         private void RepoLabel_Unloaded(object sender, RoutedEventArgs e)
         {
-            AccessibilitySettings? accessibilitySettings = AccessibilitySettingsInstance.Value;
-            if (accessibilitySettings is null || !_isHighContrastSubscribed)
+            if (_themeSettings is null || !_isHighContrastSubscribed)
             {
+                _themeSettings = null;
                 return;
             }
 
             try
             {
-                accessibilitySettings.HighContrastChanged -= AccessibilitySettings_HighContrastChanged;
+                _themeSettings.Changed -= ThemeSettings_Changed;
             }
             catch (Exception)
             {
@@ -119,35 +117,15 @@ namespace JitHub.WinUI.Views.Controls.Common
             finally
             {
                 _isHighContrastSubscribed = false;
+                _themeSettings = null;
             }
         }
 
-        private void AccessibilitySettings_HighContrastChanged(AccessibilitySettings sender, object args) =>
+        private void ThemeSettings_Changed(object? sender, EventArgs args) =>
             DispatcherQueue.TryEnqueue(Bindings.Update);
 
-        private bool IsHighContrastActive()
-        {
-            try
-            {
-                return AccessibilitySettingsInstance.Value?.HighContrast == true;
-            }
-            catch (Exception)
-            {
-                return false;
-            }
-        }
-
-        private static AccessibilitySettings? TryCreateAccessibilitySettings()
-        {
-            try
-            {
-                return new AccessibilitySettings();
-            }
-            catch (Exception)
-            {
-                return null;
-            }
-        }
+        private bool IsHighContrastActive() =>
+            ThemeSettingsHelper.IsHighContrastActive(_themeSettings);
 
         private static Brush GetThemeBrush(string resourceKey) =>
             Application.Current.Resources.TryGetValue(resourceKey, out object? resource) && resource is Brush brush

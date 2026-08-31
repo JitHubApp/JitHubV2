@@ -48,6 +48,7 @@ public sealed class ProfileNativeWorkspaceContractTests
                 element.Name.LocalName == "ListView" &&
                 element.Attribute("AutomationProperties.AutomationId")?.Value == id);
             Assert.False(string.IsNullOrWhiteSpace(list.Attribute("AutomationProperties.Name")?.Value));
+            Assert.False(string.IsNullOrWhiteSpace(list.Attribute(XName.Get("Load", XamlNamespace))?.Value));
             Assert.DoesNotContain(list.Ancestors(), static ancestor => ancestor.Name.LocalName == "ScrollViewer");
         }
     }
@@ -130,6 +131,7 @@ public sealed class ProfileNativeWorkspaceContractTests
     public void CompactIdentityStatsKeepVisibleCountAndScopeLabels()
     {
         XDocument document = XDocument.Load(XamlPath());
+        string xaml = File.ReadAllText(XamlPath());
         string[] ids =
         [
             "ProfileCompactReposStatTile",
@@ -145,6 +147,18 @@ public sealed class ProfileNativeWorkspaceContractTests
                 element.Attribute("AutomationProperties.AutomationId")?.Value == id);
             Assert.Equal(2, button.Descendants().Count(static element => element.Name.LocalName == "TextBlock"));
         }
+
+        Assert.Contains("ProfileCompactIdentityDetailsContent", xaml, StringComparison.Ordinal);
+        Assert.Contains("ProfileCompactIdentityDetailsScrollViewer", xaml, StringComparison.Ordinal);
+        Assert.Contains("MaxHeight=\"{ThemeResource AppDimension420}\"", xaml, StringComparison.Ordinal);
+        Assert.Equal(2, CountOccurrences(xaml, "ItemsSource=\"{x:Bind ViewModel.Highlights"));
+        Assert.Equal(1, CountOccurrences(xaml, "ItemsSource=\"{x:Bind ViewModel.Organizations"));
+        Assert.Equal(1, CountOccurrences(xaml, "ItemsSource=\"{x:Bind ViewModel.CompactOrganizations"));
+        Assert.Contains("<ItemsControl.ItemsPanel>", xaml, StringComparison.Ordinal);
+
+        string viewModel = File.ReadAllText(ViewModelPath());
+        Assert.Contains("CompactOrganizationLimit = 6", viewModel, StringComparison.Ordinal);
+        Assert.Contains(".Take(CompactOrganizationLimit)", viewModel, StringComparison.Ordinal);
     }
 
     [Fact]
@@ -165,13 +179,26 @@ public sealed class ProfileNativeWorkspaceContractTests
     [Fact]
     public void OverviewIsIdentityFocusedAndFullModesLoadIncrementally()
     {
+        XDocument document = XDocument.Load(XamlPath());
+        XElement overview = Assert.Single(document.Descendants(), static element =>
+            element.Name.LocalName == "ScrollViewer" &&
+            element.Attribute("AutomationProperties.AutomationId")?.Value == "ProfileOverviewScrollViewer");
+        XElement readme = Assert.Single(document.Descendants(), static element =>
+            element.Name.LocalName == "MarkdownViewer" &&
+            element.Attribute("AutomationProperties.AutomationId")?.Value == "ProfileReadme");
         string viewModel = File.ReadAllText(ViewModelPath());
         string service = File.ReadAllText(ServicePath());
 
+        Assert.DoesNotContain(overview.Descendants(), static element => element.Name.LocalName == "MarkdownViewer");
+        Assert.NotNull(readme);
         Assert.Contains("LoadNextPageAsync", viewModel, StringComparison.Ordinal);
         Assert.Contains("ProfilePagingState", viewModel, StringComparison.Ordinal);
         Assert.DoesNotContain("snapshot.Repositories.Value", viewModel, StringComparison.Ordinal);
         Assert.DoesNotContain("snapshot.StarredRepositories.Value", viewModel, StringComparison.Ordinal);
+        Assert.Contains("await ApplySnapshotAsync(snapshot, authenticatedView, cancellationToken)", viewModel, StringComparison.Ordinal);
+        Assert.Contains("await YieldOverviewFrameAsync(cancellationToken)", viewModel, StringComparison.Ordinal);
+        Assert.Contains("IsProfileLoading => IsLoading || IsOverviewLoading", viewModel, StringComparison.Ordinal);
+        Assert.Contains("TryCreateRepositoryFile", viewModel, StringComparison.Ordinal);
         Assert.Contains("per_page={RepositoryPageSize}&page={page}", service, StringComparison.Ordinal);
         Assert.Contains("per_page={PeoplePageSize}&page={page}", service, StringComparison.Ordinal);
     }
@@ -205,6 +232,16 @@ public sealed class ProfileNativeWorkspaceContractTests
         Assert.Contains("_weeksCollection.CollectionChanged -= WeeksCollection_CollectionChanged", control, StringComparison.Ordinal);
         Assert.Contains("AttachWeeksCollection();", control, StringComparison.Ordinal);
         Assert.Contains("DetachWeeksCollection();", control, StringComparison.Ordinal);
+        Assert.Contains("Interlocked.Exchange(ref _renderQueued, 1)", control, StringComparison.Ordinal);
+        Assert.Contains("RequestRender();", control, StringComparison.Ordinal);
+        Assert.Contains("CanvasControl _calendarCanvas", control, StringComparison.Ordinal);
+        Assert.Contains("ToolTipService.SetToolTip(_calendarCanvas, _cellToolTip);", control, StringComparison.Ordinal);
+        Assert.Contains("_calendarCanvas.Invalidate();", control, StringComparison.Ordinal);
+        Assert.Contains("_contributionColors.TryGetValue(day.ColorHex", control, StringComparison.Ordinal);
+        Assert.DoesNotContain("_calendarGrid.Children.Add", control, StringComparison.Ordinal);
+        Assert.DoesNotContain("new Border", control, StringComparison.Ordinal);
+        Assert.DoesNotContain("Days.Take(7).ToArray()", control, StringComparison.Ordinal);
+        Assert.DoesNotContain("WeeksCollection_CollectionChanged(object? sender, NotifyCollectionChangedEventArgs e)\n    {\n        if (DispatcherQueue.HasThreadAccess)", control.ReplaceLineEndings("\n"), StringComparison.Ordinal);
         Assert.Contains("_preserveUserSelection && TryGetSelectedCell", control, StringComparison.Ordinal);
         Assert.Contains("_preserveUserSelection = true;", control, StringComparison.Ordinal);
     }
@@ -276,7 +313,7 @@ public sealed class ProfileNativeWorkspaceContractTests
         DirectoryInfo? directory = new(AppContext.BaseDirectory);
         while (directory is not null)
         {
-            if (File.Exists(Path.Combine(directory.FullName, "JitHub.slnx")) || Directory.Exists(Path.Combine(directory.FullName, ".git")))
+            if (File.Exists(Path.Combine(directory.FullName, "Directory.Build.props")) || Directory.Exists(Path.Combine(directory.FullName, ".git")))
             {
                 return directory.FullName;
             }

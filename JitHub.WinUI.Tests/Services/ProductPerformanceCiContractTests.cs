@@ -35,7 +35,7 @@ public sealed class ProductPerformanceCiContractTests
         DirectoryInfo? current = new(AppContext.BaseDirectory);
         while (current is not null)
         {
-            if (File.Exists(Path.Combine(current.FullName, "JitHub.slnx")))
+            if (File.Exists(Path.Combine(current.FullName, "Directory.Build.props")))
             {
                 return current.FullName;
             }

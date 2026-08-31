@@ -161,7 +161,7 @@ internal static class AppContentDialogPresenter
             }
             catch (Exception ex)
             {
-                System.Diagnostics.Debug.WriteLine($"Dialog mutation failed: {ex}");
+                App.LogHandledException(ex, "content-dialog-primary-action");
                 ShowInlineError(errorPresenter, null);
             }
             finally
@@ -220,7 +220,7 @@ internal static class AppContentDialogPresenter
         }
         catch (Exception ex)
         {
-            System.Diagnostics.Debug.WriteLine($"Dialog opener focus could not be captured: {ex}");
+            App.LogHandledException(ex, "content-dialog-focus-capture");
             return null;
         }
     }
@@ -257,7 +257,7 @@ internal static class AppContentDialogPresenter
             }
             catch (Exception ex)
             {
-                System.Diagnostics.Debug.WriteLine($"Dialog focus restoration was skipped: {ex}");
+                App.LogHandledException(ex, "content-dialog-focus-restoration");
             }
         });
     }
@@ -288,7 +288,7 @@ internal static class AppContentDialogPresenter
         }
         catch (Exception ex)
         {
-            System.Diagnostics.Debug.WriteLine($"Dialog validation state could not be evaluated: {ex}");
+            App.LogHandledException(ex, "content-dialog-validation");
             return fallback;
         }
     }

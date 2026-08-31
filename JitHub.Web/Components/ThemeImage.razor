@@ -1,0 +1,39 @@
+@using JitHub.Web.Content
+
+<img class="@Class"
+     src="@TransparentPixel"
+     data-theme-media
+     data-theme-immediate="@(Loading == "eager" ? "true" : null)"
+     data-theme-light-src="@Assets[Media.LightSource.TrimStart('/')]"
+     data-theme-dark-src="@Assets[Media.DarkSource.TrimStart('/')]"
+     alt="@Media.Alt"
+     width="@Media.Width"
+     height="@Media.Height"
+     loading="@Loading"
+     decoding="async"
+     fetchpriority="@FetchPriority" />
+<noscript>
+    <img class="@Class"
+         src="@Assets[Media.LightSource.TrimStart('/')]"
+         alt="@Media.Alt"
+         width="@Media.Width"
+         height="@Media.Height"
+         loading="@Loading"
+         decoding="async" />
+</noscript>
+
+@code {
+    private const string TransparentPixel = "data:image/gif;base64,R0lGODlhAQABAAD/ACwAAAAAAQABAAACADs=";
+
+    [Parameter, EditorRequired]
+    public required MediaAsset Media { get; set; }
+
+    [Parameter]
+    public string? Class { get; set; }
+
+    [Parameter]
+    public string Loading { get; set; } = "lazy";
+
+    [Parameter]
+    public string FetchPriority { get; set; } = "auto";
+}

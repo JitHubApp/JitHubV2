@@ -121,6 +121,7 @@ public sealed partial class GitHubReactionChip
 public static class GitHubReactionCatalog
 {
     public static IReadOnlyList<GitHubReactionOption> Options { get; } =
+    (GitHubReactionOption[])
     [
         new("+1", "\U0001F44D", GitHubReactionTextFormatter.GetReactionLabel("+1")),
         new("-1", "\U0001F44E", GitHubReactionTextFormatter.GetReactionLabel("-1")),

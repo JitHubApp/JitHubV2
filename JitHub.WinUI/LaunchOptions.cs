@@ -7,11 +7,13 @@ internal sealed record LaunchOptions(
     string? Page = null,
     string? Scenario = null,
     string? Theme = null,
+    string? Palette = null,
     string? Repository = null,
     string? Branch = null,
     bool MarkdownLifecycleFixture = false,
     string? MarkdownLifecycleHost = null,
-    string? MarkdownCorpusPath = null)
+    string? MarkdownCorpusPath = null,
+    bool WebsiteShowcase = false)
 {
     private const int MaximumActivationArgumentLength = 32_767;
     private const int MaximumActivationArgumentCount = 128;
@@ -50,11 +52,13 @@ internal sealed record LaunchOptions(
         string? page = null;
         string? scenario = null;
         string? theme = null;
+        string? palette = null;
         string? repository = null;
         string? branch = null;
         bool markdownLifecycleFixture = false;
         string? markdownLifecycleHost = null;
         string? markdownCorpusPath = null;
+        bool websiteShowcase = false;
 
         IEnumerable<string> effectiveArguments = TokenizeActivationArguments(activationArguments)
             .Concat(args ?? []);
@@ -90,6 +94,12 @@ internal sealed record LaunchOptions(
                 continue;
             }
 
+            if (arg.StartsWith("--palette=", System.StringComparison.OrdinalIgnoreCase))
+            {
+                palette = arg[10..].Trim();
+                continue;
+            }
+
             if (arg.StartsWith("--repo=", System.StringComparison.OrdinalIgnoreCase))
             {
                 repository = arg[7..].Trim();
@@ -114,6 +124,12 @@ internal sealed record LaunchOptions(
                 continue;
             }
 
+            if (string.Equals(arg, "--website-showcase", System.StringComparison.OrdinalIgnoreCase))
+            {
+                websiteShowcase = true;
+                continue;
+            }
+
             const string markdownHostPrefix = "--markdown-lifecycle-host=";
             if (arg.StartsWith(markdownHostPrefix, System.StringComparison.OrdinalIgnoreCase))
             {
@@ -131,6 +147,7 @@ internal sealed record LaunchOptions(
         page ??= System.Environment.GetEnvironmentVariable("JITHUB_PREVIEW_PAGE");
         scenario ??= System.Environment.GetEnvironmentVariable("JITHUB_PREVIEW_SCENARIO");
         theme ??= System.Environment.GetEnvironmentVariable("JITHUB_PREVIEW_THEME");
+        palette ??= System.Environment.GetEnvironmentVariable("JITHUB_PREVIEW_PALETTE");
         repository ??= System.Environment.GetEnvironmentVariable("JITHUB_PREVIEW_REPOSITORY");
         branch ??= System.Environment.GetEnvironmentVariable("JITHUB_PREVIEW_BRANCH");
 
@@ -138,11 +155,13 @@ internal sealed record LaunchOptions(
             page,
             scenario,
             theme,
+            palette,
             repository,
             branch,
             markdownLifecycleFixture,
             markdownLifecycleHost,
-            markdownCorpusPath);
+            markdownCorpusPath,
+            websiteShowcase);
     }
 
     internal static IReadOnlyList<string> TokenizeActivationArguments(string? commandLine)

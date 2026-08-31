@@ -1,5 +1,5 @@
 100x100
 maxChannelDelta=255
-meanChannelDelta=18.925
+meanChannelDelta=17.520
 differingPixelFraction=0.1500
 knownGap=true (pixel comparison skipped)

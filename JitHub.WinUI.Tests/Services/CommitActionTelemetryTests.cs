@@ -15,6 +15,12 @@ public sealed class CommitActionTelemetryTests
         yield return [CommitActionKind.CopyDiff, TelemetryTaxonomy.Actions.CopyDiff];
         yield return [CommitActionKind.CopyPath, TelemetryTaxonomy.Actions.CopyPath];
         yield return [CommitActionKind.BrowseFiles, "browse_files"];
+        yield return [CommitActionKind.ShowSearchTools, "show_search_tools"];
+        yield return [CommitActionKind.HideSearchTools, "hide_search_tools"];
+        yield return [CommitActionKind.ShowFilters, "show_filters"];
+        yield return [CommitActionKind.ToggleFileNavigator, "toggle_file_navigator"];
+        yield return [CommitActionKind.CollapseDiffFile, "collapse_diff_file"];
+        yield return [CommitActionKind.ExpandDiffFile, "expand_diff_file"];
     }
 
     [Theory]

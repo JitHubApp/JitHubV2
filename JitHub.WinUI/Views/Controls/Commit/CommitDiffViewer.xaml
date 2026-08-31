@@ -24,25 +24,26 @@
 
         <DataTemplate x:Key="CommitDiffFileHeaderTemplate" x:DataType="services:CommitDiffRow">
             <Border
-                Margin="0,10,0,0"
-                Padding="12,9"
+                Margin="{ThemeResource AppMargin0_6_0_0}"
+                Padding="{ThemeResource AppPadding10_6}"
                 HorizontalAlignment="Stretch"
                 Background="{ThemeResource AppSurfaceSubtleBrush}"
                 BorderBrush="{ThemeResource AppHairlineBrush}"
-                BorderThickness="1"
+                BorderThickness="{ThemeResource AppHairlineBorderThickness}"
                 CornerRadius="{ThemeResource AppRadiusSmall}">
-                    <Grid ColumnSpacing="10">
+                    <Grid ColumnSpacing="{ThemeResource AppGap10}">
                         <Grid.ColumnDefinitions>
                             <ColumnDefinition Width="*" />
                             <ColumnDefinition Width="Auto" />
                             <ColumnDefinition Width="Auto" />
+                            <ColumnDefinition Width="Auto" />
                         </Grid.ColumnDefinitions>
-                        <StackPanel Spacing="2">
+                        <StackPanel Spacing="{ThemeResource AppGap2}">
                             <TextBlock
                                 x:Name="FileHeaderTextBlock"
                                 FontFamily="{ThemeResource AppMonoFontFamily}"
                                 FontSize="{ThemeResource AppFontSize12}"
-                                FontWeight="SemiBold"
+                                FontWeight="{ThemeResource AppFontWeightSemibold}"
                                 Foreground="{ThemeResource AppInkBrush}"
                                 Text="{x:Bind HeaderText, Mode=OneWay}"
                                 TextTrimming="CharacterEllipsis" />
@@ -60,10 +61,22 @@
                             Foreground="{ThemeResource AppSuccessBrush}"
                             Text="{x:Bind SummaryText, Mode=OneWay}" />
                         <Button
-                            x:Uid="ControlsCommitCommitDiffViewerBindingCopyFileAutomationI" Grid.Column="2"
-                            Width="32"
-                            Height="32"
-                            Padding="0"
+                            Grid.Column="2"
+                            Width="{ThemeResource AppDimension32}"
+                            Height="{ThemeResource AppDimension32}"
+                            Padding="{ThemeResource AppPadding0}"
+                            AutomationProperties.AutomationId="{x:Bind ExpandFileAutomationId, Mode=OneWay}"
+                            AutomationProperties.Name="{x:Bind FileExpansionAutomationName, Mode=OneWay}"
+                            Click="ToggleFileExpansionButton_Click"
+                            Style="{StaticResource AppToolbarButtonStyle}"
+                            ToolTipService.ToolTip="{x:Bind FileExpansionAutomationName, Mode=OneWay}">
+                            <FontIcon FontFamily="{StaticResource SegoeFluentIcons}" FontSize="{ThemeResource AppFontSize12}" Glyph="{x:Bind FileExpansionGlyph, Mode=OneWay}" />
+                        </Button>
+                        <Button
+                            x:Uid="ControlsCommitCommitDiffViewerBindingCopyFileAutomationI" Grid.Column="3"
+                            Width="{ThemeResource AppDimension32}"
+                            Height="{ThemeResource AppDimension32}"
+                            Padding="{ThemeResource AppPadding0}"
                             AutomationProperties.AutomationId="{x:Bind CopyFileAutomationId, Mode=OneWay}"
                             AutomationProperties.Name="Copy file path"
                             Click="CopyFilePathButton_Click"
@@ -77,17 +90,17 @@
 
         <DataTemplate x:Key="CommitDiffLineTemplate" x:DataType="services:CommitDiffRow">
             <Grid
-                MinHeight="24"
+                MinHeight="{ThemeResource AppDimension24}"
                 HorizontalAlignment="Stretch"
                 Background="{x:Bind LineKind, Converter={StaticResource CommitDiffLineKindToBrushConverter}, ConverterParameter=background, Mode=OneWay}"
-                ColumnSpacing="0"
+                ColumnSpacing="{ThemeResource AppGap0}"
                 ContextFlyout="{StaticResource CommitDiffLineFlyout}">
                     <Grid.ColumnDefinitions>
-                        <ColumnDefinition Width="122" />
+                        <ColumnDefinition Width="{ThemeResource AppGridLength122}" />
                         <ColumnDefinition Width="*" />
                     </Grid.ColumnDefinitions>
                 <TextBlock
-                        Padding="8,4"
+                        Padding="{ThemeResource AppPadding8_4}"
                         FontFamily="{ThemeResource AppMonoFontFamily}"
                         FontSize="{ThemeResource AppFontSize12}"
                         Foreground="{x:Bind LineKind, Converter={StaticResource CommitDiffLineKindToBrushConverter}, ConverterParameter=foreground, Mode=OneWay}"
@@ -96,7 +109,7 @@
                 <TextBlock
                         x:Name="DiffLineTextBlock"
                         Grid.Column="1"
-                        Padding="4,4,12,4"
+                        Padding="{ThemeResource AppPadding4_4_12_4}"
                         FontFamily="{ThemeResource AppMonoFontFamily}"
                         FontSize="{ThemeResource AppFontSize12}"
                         Foreground="{x:Bind LineKind, Converter={StaticResource CommitDiffLineKindToBrushConverter}, ConverterParameter=foreground, Mode=OneWay}"
@@ -107,18 +120,18 @@
 
         <DataTemplate x:Key="CommitDiffHunkHeaderTemplate" x:DataType="services:CommitDiffRow">
             <Grid
-                MinHeight="26"
-                Padding="0"
+                MinHeight="{ThemeResource AppDimension26}"
+                Padding="{ThemeResource AppPadding0}"
                 HorizontalAlignment="Stretch"
                 Background="{x:Bind LineKind, Converter={StaticResource CommitDiffLineKindToBrushConverter}, ConverterParameter=background, Mode=OneWay}"
-                ColumnSpacing="0"
+                ColumnSpacing="{ThemeResource AppGap0}"
                 ContextFlyout="{StaticResource CommitDiffLineFlyout}">
                     <Grid.ColumnDefinitions>
-                        <ColumnDefinition Width="122" />
+                        <ColumnDefinition Width="{ThemeResource AppGridLength122}" />
                         <ColumnDefinition Width="*" />
                     </Grid.ColumnDefinitions>
                 <TextBlock
-                        Padding="10,5"
+                        Padding="{ThemeResource AppPadding10_5}"
                         FontFamily="{ThemeResource AppMonoFontFamily}"
                         FontSize="{ThemeResource AppFontSize12}"
                         Foreground="{ThemeResource AppAccentBrush}"
@@ -127,7 +140,7 @@
                 <TextBlock
                         x:Name="HunkTextBlock"
                         Grid.Column="1"
-                        Padding="4,5,12,5"
+                        Padding="{ThemeResource AppPadding4_5_12_5}"
                         FontFamily="{ThemeResource AppMonoFontFamily}"
                         FontSize="{ThemeResource AppFontSize12}"
                         Foreground="{ThemeResource AppAccentBrush}"
@@ -138,11 +151,11 @@
 
         <DataTemplate x:Key="CommitDiffUnavailableTemplate" x:DataType="services:CommitDiffRow">
             <Border
-                Margin="0,2,0,0"
-                Padding="12,10"
+                Margin="{ThemeResource AppMargin0_2_0_0}"
+                Padding="{ThemeResource AppPadding12_10}"
                 Background="{ThemeResource AppCanvasRaisedBrush}"
                 BorderBrush="{ThemeResource AppHairlineBrush}"
-                BorderThickness="1"
+                BorderThickness="{ThemeResource AppHairlineBorderThickness}"
                 CornerRadius="{ThemeResource AppRadiusSmall}">
                 <TextBlock
                     x:Name="UnavailableTextBlock"
@@ -156,11 +169,11 @@
 
         <DataTemplate x:Key="CommitDiffSearchNoResultsTemplate" x:DataType="services:CommitDiffRow">
             <Border
-                Padding="16"
+                Padding="{ThemeResource AppPadding16}"
                 HorizontalAlignment="Stretch"
                 Background="{ThemeResource AppCanvasInsetBrush}"
                 BorderBrush="{ThemeResource AppHairlineBrush}"
-                BorderThickness="1"
+                BorderThickness="{ThemeResource AppHairlineBorderThickness}"
                 CornerRadius="{ThemeResource AppRadiusSmall}">
                 <TextBlock
                     x:Name="SearchNoResultsTextBlock"
@@ -186,7 +199,7 @@
     <Grid Background="{ThemeResource AppCanvasInsetBrush}">
         <Border
             BorderBrush="{ThemeResource AppHairlineBrush}"
-            BorderThickness="1"
+            BorderThickness="{ThemeResource AppHairlineBorderThickness}"
             CornerRadius="{ThemeResource AppRadiusSmall}">
             <ScrollViewer
                 x:Name="DiffRowsScrollViewer"
@@ -201,7 +214,6 @@
                     x:Name="DiffRowsRepeater"
                     AutomationProperties.AutomationId="CommitDiffViewerRows"
                     ItemTemplate="{StaticResource CommitDiffRowTemplateSelector}"
-                    ItemsSource="{x:Bind RowProjection.Rows, Mode=OneWay}"
                     VerticalCacheLength="2">
                     <ItemsRepeater.Layout>
                         <StackLayout Orientation="Vertical" />

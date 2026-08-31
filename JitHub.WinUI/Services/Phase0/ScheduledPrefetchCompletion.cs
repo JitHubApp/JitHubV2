@@ -1,6 +1,7 @@
 using System;
 using System.Diagnostics;
 using System.Threading;
+using System.Threading.Tasks;
 
 namespace JitHub.Services;
 
@@ -30,6 +31,29 @@ internal sealed class ScheduledPrefetchCompletion<TResult>
         catch
         {
             // Prefetch observers are best-effort and cannot affect cache work.
+        }
+    }
+
+    public void Observe(Task task, TResult fallbackResult)
+    {
+        ArgumentNullException.ThrowIfNull(task);
+        _ = ObserveAsync(task, fallbackResult);
+    }
+
+    private async Task ObserveAsync(Task task, TResult fallbackResult)
+    {
+        try
+        {
+            await task.ConfigureAwait(false);
+        }
+        catch
+        {
+            // The owning task coordinator reports failures. This observer guarantees
+            // the scheduling callback still receives a terminal result.
+        }
+        finally
+        {
+            Complete(fallbackResult);
         }
     }
 }

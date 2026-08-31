@@ -9,12 +9,12 @@
     <Border
         Background="{ThemeResource AppCardBrush}"
         BorderBrush="{ThemeResource AppOutlineBrush}"
-        BorderThickness="1"
+        BorderThickness="{ThemeResource AppHairlineBorderThickness}"
         CornerRadius="{ThemeResource AppRadiusLarge}"
-        Padding="16">
+        Padding="{ThemeResource AppPadding16}">
         <Grid
-            ColumnSpacing="16"
-            RowSpacing="12">
+            ColumnSpacing="{ThemeResource AppGap16}"
+            RowSpacing="{ThemeResource AppGap12}">
             <Grid.ColumnDefinitions>
                 <ColumnDefinition Width="Auto" />
                 <ColumnDefinition Width="*" />
@@ -33,7 +33,7 @@
                 Content="{Binding HeaderIcon, ElementName=Root}" />
             <StackPanel
                 Grid.Column="1"
-                Spacing="4">
+                Spacing="{ThemeResource AppGap4}">
                 <TextBlock Style="{StaticResource ListItemTitleTextBlockStyle}" Text="{Binding Header, ElementName=Root}" />
                 <TextBlock Style="{StaticResource SectionSecondaryTextBlockStyle}" Text="{Binding Description, ElementName=Root}" />
             </StackPanel>

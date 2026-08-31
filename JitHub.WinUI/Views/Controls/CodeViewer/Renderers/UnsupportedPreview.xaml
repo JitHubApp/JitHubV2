@@ -9,8 +9,8 @@
     d:DesignWidth="600"
     mc:Ignorable="d">
 
-    <Grid HorizontalAlignment="Center" VerticalAlignment="Center" MaxWidth="480" Padding="24">
-        <StackPanel Spacing="12">
+    <Grid HorizontalAlignment="Center" VerticalAlignment="Center" MaxWidth="{ThemeResource AppDimension480}" Padding="{ThemeResource AppPadding24}">
+        <StackPanel Spacing="{ThemeResource AppGap12}">
 
             <FontIcon
                 FontSize="{ThemeResource AppFontSize48}"
@@ -33,7 +33,7 @@
             <StackPanel
                 HorizontalAlignment="Center"
                 Orientation="Horizontal"
-                Spacing="8">
+                Spacing="{ThemeResource AppGap8}">
                 <TextBlock
                     x:Name="MetaText"
                     Foreground="{ThemeResource AppInkMutedBrush}"
@@ -42,9 +42,9 @@
 
             <StackPanel
                 HorizontalAlignment="Center"
-                Margin="0,8,0,0"
+                Margin="{ThemeResource AppMargin0_8_0_0}"
                 Orientation="Horizontal"
-                Spacing="8">
+                Spacing="{ThemeResource AppGap8}">
                 <Button
                     x:Name="OpenOnGitHubButton"
                     x:Uid="RepoCodeUnsupportedOpenOnGitHubButton"

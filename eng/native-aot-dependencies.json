@@ -558,7 +558,7 @@
     },
     {
       "id": "Microsoft.Services.Store.Engagement",
-      "version": "10.1610.0",
+      "version": "10.2307.3001",
       "direct": true,
       "roles": [
         "build"
@@ -588,7 +588,7 @@
     },
     {
       "id": "Microsoft.Windows.CsWinRT",
-      "version": "2.2.0",
+      "version": "2.3.1",
       "direct": true,
       "roles": [
         "analyzer",
@@ -633,7 +633,7 @@
     },
     {
       "id": "Microsoft.WindowsAppSDK.AI",
-      "version": "1.8.53",
+      "version": "1.8.79",
       "direct": false,
       "roles": [
         "build",
@@ -677,7 +677,7 @@
     },
     {
       "id": "Microsoft.WindowsAppSDK.Foundation",
-      "version": "1.8.260222000",
+      "version": "1.8.260709000",
       "direct": false,
       "roles": [
         "build",
@@ -695,7 +695,7 @@
     },
     {
       "id": "Microsoft.WindowsAppSDK.InteractiveExperiences",
-      "version": "1.8.260125001",
+      "version": "1.8.260708001",
       "direct": false,
       "roles": [
         "build",
@@ -711,7 +711,7 @@
     },
     {
       "id": "Microsoft.WindowsAppSDK.ML",
-      "version": "1.8.2141",
+      "version": "1.8.2197",
       "direct": false,
       "roles": [
         "build",
@@ -727,7 +727,7 @@
     },
     {
       "id": "Microsoft.WindowsAppSDK.Runtime",
-      "version": "1.8.260317003",
+      "version": "1.8.260710003",
       "direct": false,
       "roles": [
         "build"
@@ -757,7 +757,7 @@
     },
     {
       "id": "Microsoft.WindowsAppSDK.WinUI",
-      "version": "1.8.260224000",
+      "version": "1.8.260709004",
       "direct": false,
       "roles": [
         "build",
@@ -773,7 +773,7 @@
     },
     {
       "id": "Microsoft.WindowsAppSDK",
-      "version": "1.8.260317003",
+      "version": "1.8.260710003",
       "direct": true,
       "roles": [
         "build"

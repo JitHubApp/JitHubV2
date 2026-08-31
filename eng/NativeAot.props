@@ -1,4 +1,14 @@
 <Project>
+  <!-- Keep the app's canonical AOT graph protected even when external tooling
+       injects a project-local Directory.Build.props and shadows the repository policy. -->
+  <PropertyGroup Condition="'$(Configuration)' != 'Release' and '$(Configuration)' != 'AotDebug'">
+    <NuGetLockFilePath>$(MSBuildProjectDirectory)\obj\$(Configuration)\packages.lock.json</NuGetLockFilePath>
+  </PropertyGroup>
+
+  <PropertyGroup Condition="'$(Configuration)' == 'Release' or '$(Configuration)' == 'AotDebug'">
+    <RestoreLockedMode>true</RestoreLockedMode>
+  </PropertyGroup>
+
   <PropertyGroup Condition="'$(Configuration)' == 'Release' or '$(Configuration)' == 'AotDebug'">
     <PublishAot>true</PublishAot>
     <PublishTrimmed>true</PublishTrimmed>

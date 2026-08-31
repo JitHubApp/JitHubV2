@@ -169,7 +169,20 @@ public sealed class CompactDialogAutomationContractTests
     [InlineData(640, 600)]
     public void SharedLayoutPolicyPreservesCompactBounds(double width, double height)
     {
-        DialogLayoutMetrics metrics = DialogLayoutPolicy.Calculate(width, height);
+        DialogLayoutTokenSet tokens = new(
+            CompactBreakpoint: 640,
+            CompactMargin: 12,
+            StandardMargin: 24,
+            ConfirmationPreferredWidth: 620,
+            CompactFormPreferredWidth: 480,
+            StandardPreferredWidth: 620,
+            EditorPreferredWidth: 840,
+            ConfirmationPreferredHeight: 360,
+            CompactFormPreferredHeight: 340,
+            StandardPreferredHeight: 520,
+            EditorPreferredHeight: 720,
+            PreferredMinimumWidth: 320);
+        DialogLayoutMetrics metrics = DialogLayoutPolicy.Calculate(width, height, tokens);
 
         Assert.True(metrics.MinimumWidth <= metrics.MaximumWidth);
         Assert.True(metrics.MaximumWidth + (metrics.OuterMargin * 2) <= width);
@@ -186,7 +199,7 @@ public sealed class CompactDialogAutomationContractTests
         DirectoryInfo? directory = new(AppContext.BaseDirectory);
         while (directory is not null)
         {
-            if (File.Exists(Path.Combine(directory.FullName, "JitHub.slnx")))
+            if (File.Exists(Path.Combine(directory.FullName, "Directory.Build.props")))
             {
                 return directory.FullName;
             }

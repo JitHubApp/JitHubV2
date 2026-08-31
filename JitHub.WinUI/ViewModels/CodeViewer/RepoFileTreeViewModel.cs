@@ -71,6 +71,10 @@ public sealed partial class RepoFileTreeViewModel : ObservableObject
     // the tree only forwards likely navigation intent.
     public Func<RepoTreeNodeViewModel, CancellationToken, Task>? OnPrefetchNode { get; set; }
 
+    // Selection takes priority over prediction. The page owns the scheduler,
+    // so the tree forwards cancellation through the same typed boundary.
+    public Action? OnCancelPrefetch { get; set; }
+
     // Notifies the page after contents API data authoritatively changes a folder.
     public Action? OnAuthoritativeTreeChanged { get; set; }
 
@@ -185,25 +189,6 @@ public sealed partial class RepoFileTreeViewModel : ObservableObject
     internal long BeginSourceRequest() =>
         Interlocked.Increment(ref _sourceRequestGeneration);
 
-    public void Load(RepoTree tree, string owner, string repo, string @ref) =>
-        Load(PrepareTree(tree, _languageResolver, CancellationToken.None), owner, repo, @ref, BeginSourceRequest());
-
-    internal bool Load(
-        PreparedTree prepared,
-        string owner,
-        string repo,
-        string @ref,
-        long sourceGeneration) =>
-        LoadCoreAsync(
-            prepared,
-            owner,
-            repo,
-            @ref,
-            sourceGeneration,
-            sourceIsAuthoritative: true,
-            CancellationToken.None,
-            yieldBetweenSlices: false).GetAwaiter().GetResult();
-
     internal Task<bool> LoadIncrementallyAsync(
         PreparedTree prepared,
         string owner,
@@ -219,8 +204,7 @@ public sealed partial class RepoFileTreeViewModel : ObservableObject
             @ref,
             sourceGeneration,
             sourceIsAuthoritative,
-            ct,
-            yieldBetweenSlices: true);
+            ct);
 
     private async Task<bool> LoadCoreAsync(
         PreparedTree prepared,
@@ -229,8 +213,7 @@ public sealed partial class RepoFileTreeViewModel : ObservableObject
         string @ref,
         long sourceGeneration,
         bool sourceIsAuthoritative,
-        CancellationToken ct,
-        bool yieldBetweenSlices)
+        CancellationToken ct)
     {
         RepoTree tree = prepared.Tree;
         bool contextChanged =
@@ -295,8 +278,7 @@ public sealed partial class RepoFileTreeViewModel : ObservableObject
                 reuseExisting: !contextChanged,
                 prepared.NodesByPath,
                 budget,
-                ct,
-                yieldBetweenSlices);
+                ct);
         }
         SelectedNode = string.IsNullOrEmpty(selectedPath)
             ? null
@@ -346,6 +328,8 @@ public sealed partial class RepoFileTreeViewModel : ObservableObject
 
     internal Task PrefetchNodeAsync(RepoTreeNodeViewModel node, CancellationToken ct) =>
         OnPrefetchNode?.Invoke(node, ct) ?? Task.CompletedTask;
+
+    internal void CancelPrefetch() => OnCancelPrefetch?.Invoke();
 
     public void CancelPendingRequests()
     {
@@ -935,8 +919,7 @@ public sealed partial class RepoFileTreeViewModel : ObservableObject
         bool reuseExisting,
         IReadOnlyDictionary<string, RepoTreeNodeViewModel>? preparedNodes,
         UiWorkBudget budget,
-        CancellationToken ct,
-        bool yieldBetweenSlices)
+        CancellationToken ct)
     {
         Dictionary<string, RepoTreeNodeViewModel> existing = target
             .GroupBy(static node => node.Path, StringComparer.Ordinal)
@@ -969,8 +952,7 @@ public sealed partial class RepoFileTreeViewModel : ObservableObject
                         reuseExisting: true,
                         preparedNodes,
                         budget,
-                        ct,
-                        yieldBetweenSlices);
+                        ct);
                     item.ChildrenLoaded = true;
                 }
                 else if (mode == TreeApplyMode.PartialRecursive)
@@ -991,8 +973,7 @@ public sealed partial class RepoFileTreeViewModel : ObservableObject
                             reuseExisting: true,
                             preparedNodes,
                             budget,
-                            ct,
-                            yieldBetweenSlices);
+                            ct);
                     }
                 }
                 else if (!string.Equals(previousSha, item.Sha, StringComparison.Ordinal))
@@ -1013,7 +994,7 @@ public sealed partial class RepoFileTreeViewModel : ObservableObject
             }
 
             desired.Add(item);
-            await YieldIfNeededAsync(budget, ct, yieldBetweenSlices);
+            await YieldIfNeededAsync(budget, ct);
         }
 
         if (replaceTarget)
@@ -1028,7 +1009,7 @@ public sealed partial class RepoFileTreeViewModel : ObservableObject
                     target.RemoveAt(index);
                 }
 
-                await YieldIfNeededAsync(budget, ct, yieldBetweenSlices);
+                await YieldIfNeededAsync(budget, ct);
             }
         }
 
@@ -1046,16 +1027,15 @@ public sealed partial class RepoFileTreeViewModel : ObservableObject
                 target.Move(currentIndex, index);
             }
 
-            await YieldIfNeededAsync(budget, ct, yieldBetweenSlices);
+            await YieldIfNeededAsync(budget, ct);
         }
     }
 
     private static async Task YieldIfNeededAsync(
         UiWorkBudget budget,
-        CancellationToken ct,
-        bool yieldBetweenSlices)
+        CancellationToken ct)
     {
-        if (!yieldBetweenSlices || !budget.ShouldYield()) return;
+        if (!budget.ShouldYield()) return;
         ct.ThrowIfCancellationRequested();
         await Task.Yield();
         ct.ThrowIfCancellationRequested();

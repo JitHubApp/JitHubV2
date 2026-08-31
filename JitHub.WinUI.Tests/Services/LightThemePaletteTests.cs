@@ -258,17 +258,17 @@ public sealed class LightThemePaletteTests
     {
         string root = FindRepositoryRoot();
         string brushes = Read(root, "JitHub.WinUI", "Styles", "Foundation", "Tokens.Brushes.xaml");
-        string interactions = Read(root, "JitHub.WinUI", "Styles", "Foundation", "WinUIResourceBridge.xaml");
+        XDocument interactions = XDocument.Parse(Read(root, "JitHub.WinUI", "Styles", "Foundation", "WinUIResourceBridge.xaml"));
         string catalog = Read(root, "JitHub.WinUI", "Styles", "Primitives", "ControlCatalog.xaml");
         string shell = Read(root, "JitHub.WinUI", "Views", "Pages", "ShellPage.xaml");
 
         Assert.All(
             new[] { "AppRailBrush", "AppCardBrush", "AppInputBrush", "AppInputHoverBrush", "AppRowHoverBrush", "AppRowPressedBrush", "AppRowSelectedBrush", "AppSelectionBrush", "AppSelectionForegroundBrush" },
             key => Assert.Contains($"x:Key=\"{key}\"", brushes, StringComparison.Ordinal));
-        Assert.Contains("AppInputColor", interactions, StringComparison.Ordinal);
-        Assert.Contains("AppRowHoverColor", interactions, StringComparison.Ordinal);
-        Assert.Contains("AppRowPressedColor", interactions, StringComparison.Ordinal);
-        Assert.Contains("AppRowSelectedColor", interactions, StringComparison.Ordinal);
+        AssertStaticResourceAlias(interactions, "ButtonBackground", "AppInputBrush");
+        AssertStaticResourceAlias(interactions, "ListViewItemBackgroundPointerOver", "AppRowHoverBrush");
+        AssertStaticResourceAlias(interactions, "ListViewItemBackgroundPressed", "AppRowPressedBrush");
+        AssertStaticResourceAlias(interactions, "ListViewItemBackgroundSelected", "AppRowSelectedBrush");
         Assert.Contains("AppRowSelectedBrush", catalog, StringComparison.Ordinal);
         Assert.Contains("Background=\"{ThemeResource AppRailBrush}\"", shell, StringComparison.Ordinal);
         Assert.Contains("Background=\"{ThemeResource AppInputBrush}\"", shell, StringComparison.Ordinal);
@@ -279,26 +279,26 @@ public sealed class LightThemePaletteTests
     {
         string root = FindRepositoryRoot();
         string buttons = Read(root, "JitHub.WinUI", "Styles", "Buttons.xaml");
-        string interactions = Read(root, "JitHub.WinUI", "Styles", "Foundation", "WinUIResourceBridge.xaml");
-        string catalog = Read(root, "JitHub.WinUI", "Styles", "Primitives", "ControlCatalog.xaml");
+        XDocument interactions = XDocument.Parse(Read(root, "JitHub.WinUI", "Styles", "Foundation", "WinUIResourceBridge.xaml"));
+        XDocument catalog = XDocument.Parse(Read(root, "JitHub.WinUI", "Styles", "Primitives", "ControlCatalog.xaml"));
 
-        Assert.Contains("ButtonBackground\" Color=\"{ThemeResource AppInputColor}", interactions, StringComparison.Ordinal);
-        Assert.Contains("ButtonBackgroundPointerOver\" Color=\"{ThemeResource AppInputHoverColor}", interactions, StringComparison.Ordinal);
-        Assert.Contains("ButtonBackgroundPressed\" Color=\"{ThemeResource AppRowPressedColor}", interactions, StringComparison.Ordinal);
+        AssertStaticResourceAlias(interactions, "ButtonBackground", "AppInputBrush");
+        AssertStaticResourceAlias(interactions, "ButtonBackgroundPointerOver", "AppInputHoverBrush");
+        AssertStaticResourceAlias(interactions, "ButtonBackgroundPressed", "AppRowPressedBrush");
         Assert.Contains("AppDangerForegroundBrush", buttons, StringComparison.Ordinal);
 
-        Assert.Contains("TextControlBackground\" Color=\"{ThemeResource AppInputColor}", interactions, StringComparison.Ordinal);
-        Assert.Contains("TextControlBackgroundPointerOver\" Color=\"{ThemeResource AppInputHoverColor}", interactions, StringComparison.Ordinal);
-        Assert.Contains("ComboBoxBackgroundPressed\" Color=\"{ThemeResource AppRowPressedColor}", interactions, StringComparison.Ordinal);
-        Assert.Contains("ListViewItemBackgroundSelected\" Color=\"{ThemeResource AppRowSelectedColor}", interactions, StringComparison.Ordinal);
-        Assert.Contains("MenuFlyoutPresenterBackground\" Color=\"{ThemeResource AppCardColor}", interactions, StringComparison.Ordinal);
-        Assert.Contains("PivotHeaderItemSelectedPipeFill\" Color=\"{ThemeResource AppAccentColor}", interactions, StringComparison.Ordinal);
-        Assert.Contains("ListViewItemForegroundPointerOver\" Color=\"{ThemeResource AppRowHoverForegroundColor}", interactions, StringComparison.Ordinal);
-        Assert.Contains("ListViewItemForegroundPressed\" Color=\"{ThemeResource AppRowPressedForegroundColor}", interactions, StringComparison.Ordinal);
-        Assert.Contains("ListViewItemForegroundSelected\" Color=\"{ThemeResource AppRowSelectedForegroundColor}", interactions, StringComparison.Ordinal);
+        AssertStaticResourceAlias(interactions, "TextControlBackground", "AppInputBrush");
+        AssertStaticResourceAlias(interactions, "TextControlBackgroundPointerOver", "AppInputHoverBrush");
+        AssertStaticResourceAlias(interactions, "ComboBoxBackgroundPressed", "AppRowPressedBrush");
+        AssertStaticResourceAlias(interactions, "ListViewItemBackgroundSelected", "AppRowSelectedBrush");
+        AssertStaticResourceAlias(interactions, "MenuFlyoutPresenterBackground", "AppCardBrush");
+        AssertStaticResourceAlias(interactions, "PivotHeaderItemSelectedPipeFill", "AppAccentBrush");
+        AssertStaticResourceAlias(interactions, "ListViewItemForegroundPointerOver", "AppRowHoverForegroundBrush");
+        AssertStaticResourceAlias(interactions, "ListViewItemForegroundPressed", "AppRowPressedForegroundBrush");
+        AssertStaticResourceAlias(interactions, "ListViewItemForegroundSelected", "AppRowSelectedForegroundBrush");
 
-        Assert.Contains("CheckBoxCheckBackgroundFillChecked\" Color=\"{ThemeResource AppAccentColor}", catalog, StringComparison.Ordinal);
-        Assert.Contains("CheckBoxCheckGlyphForegroundChecked\" Color=\"{ThemeResource AppAccentForegroundColor}", catalog, StringComparison.Ordinal);
+        AssertStaticResourceAlias(catalog, "CheckBoxCheckBackgroundFillChecked", "AppAccentBrush");
+        AssertStaticResourceAlias(catalog, "CheckBoxCheckGlyphForegroundChecked", "AppAccentForegroundBrush");
     }
 
     [Fact]
@@ -457,13 +457,23 @@ public sealed class LightThemePaletteTests
             element.Name.LocalName == "ResourceDictionary" &&
             string.Equals((string?)element.Attribute(x + "Key"), key, StringComparison.Ordinal));
 
+    private static void AssertStaticResourceAlias(XDocument document, string key, string resourceKey)
+    {
+        XNamespace x = "http://schemas.microsoft.com/winfx/2006/xaml";
+        XElement alias = Assert.Single(document.Descendants(), element =>
+            element.Name.LocalName == "StaticResource" &&
+            string.Equals((string?)element.Attribute(x + "Key"), key, StringComparison.Ordinal));
+
+        Assert.Equal(resourceKey, (string?)alias.Attribute("ResourceKey"));
+    }
+
     private static string Read(string root, params string[] parts) =>
         File.ReadAllText(Path.Combine([root, .. parts]));
 
     private static string FindRepositoryRoot()
     {
         DirectoryInfo? directory = new(AppContext.BaseDirectory);
-        while (directory is not null && !File.Exists(Path.Combine(directory.FullName, "JitHub.slnx")))
+        while (directory is not null && !File.Exists(Path.Combine(directory.FullName, "Directory.Build.props")))
         {
             directory = directory.Parent;
         }

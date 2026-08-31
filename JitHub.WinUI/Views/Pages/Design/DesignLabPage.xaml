@@ -13,7 +13,7 @@
     mc:Ignorable="d"
     Background="{ThemeResource AppTransparentBrush}">
     <ScrollViewer AutomationProperties.AutomationId="DesignLabRoot">
-        <StackPanel Padding="20" Spacing="20">
+        <StackPanel Padding="{ThemeResource AppPadding20}" Spacing="{ThemeResource AppGap20}">
             <appcontrols:AppSectionHeader
                 Eyebrow="DESIGN SYSTEM"
                 Title="WinUI Design Lab"
@@ -23,9 +23,9 @@
                 <appcontrols:AppSurfaceCard.Child>
                     <StackPanel
                         AutomationProperties.AutomationId="ScenarioButtons"
-                        Spacing="16">
+                        Spacing="{ThemeResource AppGap16}">
                         <appcontrols:AppSectionHeader Title="Buttons" Description="Primary, quiet, stat, pressed, hover, and disabled states." />
-                        <Grid ColumnSpacing="12" RowSpacing="12">
+                        <Grid ColumnSpacing="{ThemeResource AppGap12}" RowSpacing="{ThemeResource AppGap12}">
                             <Grid.ColumnDefinitions>
                                 <ColumnDefinition Width="Auto" />
                                 <ColumnDefinition Width="Auto" />
@@ -56,7 +56,7 @@
                 <appcontrols:AppSurfaceCard.Child>
                     <StackPanel
                         AutomationProperties.AutomationId="ScenarioInputs"
-                        Spacing="16">
+                        Spacing="{ThemeResource AppGap16}">
                         <appcontrols:AppSectionHeader Title="Inputs" Description="Search, text, combo, date, and toggle surfaces." />
                         <AutoSuggestBox AutomationProperties.AutomationId="DesignLabSearchBox" AutomationProperties.Name="Search input sample" PlaceholderText="Search repositories" Style="{StaticResource AppAutoSuggestBoxStyle}" Text="flutter/flutter" />
                         <TextBox AutomationProperties.AutomationId="DesignLabTextBox" AutomationProperties.Name="Text input sample" Text="issue triage" Header="Text" Style="{StaticResource AppTextBoxStyle}" />
@@ -75,10 +75,10 @@
                 <appcontrols:AppSurfaceCard.Child>
                     <StackPanel
                         AutomationProperties.AutomationId="ScenarioSegments"
-                        Spacing="16">
+                        Spacing="{ThemeResource AppGap16}">
                         <appcontrols:AppSectionHeader Title="Segmented and action controls" Description="Repo filters, dropdown actions, and stat buttons with stable state geometry." />
 
-                        <Grid ColumnSpacing="20" RowSpacing="14">
+                        <Grid ColumnSpacing="{ThemeResource AppGap20}" RowSpacing="{ThemeResource AppGap14}">
                             <Grid.ColumnDefinitions>
                                 <ColumnDefinition Width="Auto" />
                                 <ColumnDefinition Width="Auto" />
@@ -88,23 +88,23 @@
                                 <RowDefinition Height="Auto" />
                             </Grid.RowDefinitions>
 
-                            <StackPanel Grid.Row="0" Grid.Column="0" Spacing="8">
+                            <StackPanel Grid.Row="0" Grid.Column="0" Spacing="{ThemeResource AppGap8}">
                                 <TextBlock Style="{StaticResource SectionSecondaryTextBlockStyle}" Text="Repository filters" />
-                                <toolkit:Segmented
-                                    Width="300"
+                                <appcontrols:AppSegmented
+                                    Width="{ThemeResource AppDimension300}"
                                     AutomationProperties.AutomationId="DesignLabRepoSegmented"
                                     AutomationProperties.Name="Repository visibility sample"
                                     SelectedIndex="1"
                                     SelectionMode="Single">
-                                    <toolkit:SegmentedItem AutomationProperties.AutomationId="DesignLabRepoSegmented_Public" AutomationProperties.Name="Public repository sample" helpers:PreviewStateHelper.VisualState="PointerOver" Content="Public" />
-                                    <toolkit:SegmentedItem AutomationProperties.AutomationId="DesignLabRepoSegmented_Private" AutomationProperties.Name="Private repository sample" Content="Private" />
-                                    <toolkit:SegmentedItem AutomationProperties.AutomationId="DesignLabRepoSegmented_Forked" AutomationProperties.Name="Forked repository sample" Content="Forked" />
-                                </toolkit:Segmented>
+                                    <appcontrols:AppSegmentedItem AutomationProperties.AutomationId="DesignLabRepoSegmented_Public" AutomationProperties.Name="Public repository sample" helpers:PreviewStateHelper.VisualState="PointerOver" Content="Public" />
+                                    <appcontrols:AppSegmentedItem AutomationProperties.AutomationId="DesignLabRepoSegmented_Private" AutomationProperties.Name="Private repository sample" Content="Private" />
+                                    <appcontrols:AppSegmentedItem AutomationProperties.AutomationId="DesignLabRepoSegmented_Forked" AutomationProperties.Name="Forked repository sample" Content="Forked" />
+                                </appcontrols:AppSegmented>
                             </StackPanel>
 
-                            <StackPanel Grid.Row="0" Grid.Column="1" Spacing="8">
+                            <StackPanel Grid.Row="0" Grid.Column="1" Spacing="{ThemeResource AppGap8}">
                                 <TextBlock Style="{StaticResource SectionSecondaryTextBlockStyle}" Text="Issue filters" />
-                                <StackPanel Orientation="Horizontal" Spacing="8">
+                                <StackPanel Orientation="Horizontal" Spacing="{ThemeResource AppGap8}">
                                     <muxc:DropDownButton AutomationProperties.AutomationId="DesignLabIssueStateDropDown" AutomationProperties.Name="Issue state sample" Content="Open" Style="{StaticResource AppDropDownButtonStyle}">
                                         <muxc:DropDownButton.Flyout>
                                             <MenuFlyout>
@@ -119,10 +119,10 @@
                                 </StackPanel>
                             </StackPanel>
 
-                            <StackPanel Grid.Row="1" Grid.Column="0" Grid.ColumnSpan="2" Spacing="8">
+                            <StackPanel Grid.Row="1" Grid.Column="0" Grid.ColumnSpan="2" Spacing="{ThemeResource AppGap8}">
                                 <TextBlock Style="{StaticResource SectionSecondaryTextBlockStyle}" Text="Repository actions" />
-                                <StackPanel Orientation="Horizontal" Spacing="8">
-                                    <muxc:DropDownButton Width="160" AutomationProperties.AutomationId="DesignLabBranchDropDown" AutomationProperties.Name="Branch picker sample" Content="main" Style="{StaticResource AppDropDownButtonStyle}" />
+                                <StackPanel Orientation="Horizontal" Spacing="{ThemeResource AppGap8}">
+                                    <muxc:DropDownButton Width="{ThemeResource AppDimension160}" AutomationProperties.AutomationId="DesignLabBranchDropDown" AutomationProperties.Name="Branch picker sample" Content="main" Style="{StaticResource AppDropDownButtonStyle}" />
                                     <appcontrols:AppStatButton AutomationId="DesignLabActionsWatchStat" AutomationName="Watch repository action sample" IconKind="Watch" IconForeground="{ThemeResource AppInkMutedBrush}" SelectedIconForeground="{ThemeResource AppAccentBrush}" IsSelected="True" ValueText="2.8k" />
                                     <appcontrols:AppStatButton AutomationId="DesignLabActionsStarStat" AutomationName="Star repository action sample" IconKind="Star" IconForeground="{ThemeResource AppInkMutedBrush}" SelectedIconForeground="{ThemeResource AppWarmAccentBrush}" IsSelected="True" ValueText="170k" />
                                     <appcontrols:AppStatButton AutomationId="DesignLabActionsForkStat" AutomationName="Fork repository action sample" IconKind="Fork" IconForeground="{ThemeResource AppInkMutedBrush}" ValueText="28k" />
@@ -137,33 +137,33 @@
                 <appcontrols:AppSurfaceCard.Child>
                     <StackPanel
                         AutomationProperties.AutomationId="ScenarioNavigation"
-                        Spacing="16">
+                        Spacing="{ThemeResource AppGap16}">
                         <appcontrols:AppSectionHeader Title="Navigation and shell chrome" Description="Search rail, toolbar actions, and tabs rendered with the new shell language." />
                         <Border
-                            Padding="16"
+                            Padding="{ThemeResource AppPadding16}"
                             Background="{ThemeResource AppCanvasRaisedBrush}"
                             BorderBrush="{ThemeResource AppOutlineBrush}"
-                            BorderThickness="1"
+                            BorderThickness="{ThemeResource AppHairlineBorderThickness}"
                             CornerRadius="{ThemeResource AppRadiusLarge}">
-                            <Grid RowSpacing="12">
+                            <Grid RowSpacing="{ThemeResource AppGap12}">
                                 <Grid.ColumnDefinitions>
                                     <ColumnDefinition Width="Auto" />
                                     <ColumnDefinition Width="*" />
                                     <ColumnDefinition Width="Auto" />
                                 </Grid.ColumnDefinitions>
-                                <StackPanel Orientation="Horizontal" Spacing="8" VerticalAlignment="Center">
-                                    <Image Width="28" Height="28" Source="ms-appx:///Assets/JitHubLogoTitleBar.png" />
-                                    <TextBlock Style="{StaticResource ListItemTitleTextBlockStyle}" Text="JitHub" />
+                                <StackPanel Orientation="Horizontal" Spacing="{ThemeResource AppGap8}" VerticalAlignment="Center">
+                                    <Image Width="{ThemeResource AppDimension28}" Height="{ThemeResource AppDimension28}" VerticalAlignment="Center" Source="ms-appx:///Assets/JitHubLogoTitleBar.png" />
+                                    <TextBlock VerticalAlignment="Center" Style="{StaticResource ListItemTitleTextBlockStyle}" Text="JitHub" />
                                 </StackPanel>
                                 <Border
                                     Grid.Column="1"
-                                    Height="42"
-                                    Padding="14,0"
+                                    Height="{ThemeResource AppDimension42}"
+                                    Padding="{ThemeResource AppPadding14_0}"
                                     Background="{ThemeResource AppSurfaceBrush}"
                                     BorderBrush="{ThemeResource AppOutlineBrush}"
-                                    BorderThickness="1"
+                                    BorderThickness="{ThemeResource AppHairlineBorderThickness}"
                                     CornerRadius="{ThemeResource AppRadiusMedium}">
-                                    <Grid ColumnSpacing="10">
+                                    <Grid ColumnSpacing="{ThemeResource AppGap10}">
                                         <Grid.ColumnDefinitions>
                                             <ColumnDefinition Width="*" />
                                             <ColumnDefinition Width="Auto" />
@@ -198,14 +198,14 @@
                 <appcontrols:AppSurfaceCard.Child>
                     <StackPanel
                         AutomationProperties.AutomationId="ScenarioSettings"
-                        Spacing="16">
+                        Spacing="{ThemeResource AppGap16}">
                         <appcontrols:AppSectionHeader Title="Settings reference" Description="App-owned settings cards and credit cards." />
                         <appcontrols:AppSettingsCard Header="Theme" Description="Set app theme to light, dark or follow Windows system theme.">
                             <appcontrols:AppSettingsCard.HeaderIcon>
                                 <FontIcon Glyph="&#xE790;" />
                             </appcontrols:AppSettingsCard.HeaderIcon>
                             <appcontrols:AppSettingsCard.ActionContent>
-                                <ComboBox Width="140" AutomationProperties.AutomationId="DesignLabThemeComboBox" AutomationProperties.Name="Theme picker sample" SelectedIndex="0" Style="{StaticResource ComboBox}">
+                                <ComboBox Width="{ThemeResource AppDimension140}" AutomationProperties.AutomationId="DesignLabThemeComboBox" AutomationProperties.Name="Theme picker sample" SelectedIndex="0" Style="{StaticResource ComboBox}">
                                     <x:String>System</x:String>
                                     <x:String>Light</x:String>
                                     <x:String>Dark</x:String>
@@ -228,10 +228,10 @@
                 <appcontrols:AppSurfaceCard.Child>
                     <StackPanel
                         AutomationProperties.AutomationId="ScenarioRepoReference"
-                        Spacing="16">
+                        Spacing="{ThemeResource AppGap16}">
                         <appcontrols:AppSectionHeader Title="Repository reference" Description="Repo header, branch picker, and stat buttons." />
-                        <StackPanel Orientation="Horizontal" Spacing="8">
-                            <ComboBox MinWidth="160" AutomationProperties.AutomationId="DesignLabRepositoryBranchComboBox" AutomationProperties.Name="Repository branch sample" SelectedIndex="0" Style="{StaticResource ComboBox}">
+                        <StackPanel Orientation="Horizontal" Spacing="{ThemeResource AppGap8}">
+                            <ComboBox MinWidth="{ThemeResource AppDimension160}" AutomationProperties.AutomationId="DesignLabRepositoryBranchComboBox" AutomationProperties.Name="Repository branch sample" SelectedIndex="0" Style="{StaticResource ComboBox}">
                                 <x:String>master</x:String>
                                 <x:String>stable</x:String>
                             </ComboBox>
@@ -247,24 +247,24 @@
                 <appcontrols:AppSurfaceCard.Child>
                     <StackPanel
                         AutomationProperties.AutomationId="ScenarioActivities"
-                        Spacing="16">
+                        Spacing="{ThemeResource AppGap16}">
                         <appcontrols:AppSectionHeader
                             Title="Activity cards"
                             Description="Every documented GitHub Events API type rendered with typed details and in-app action chips." />
                         <Grid
                             HorizontalAlignment="Left"
-                            ColumnSpacing="16">
+                            ColumnSpacing="{ThemeResource AppGap16}">
                             <Grid.ColumnDefinitions>
-                                <ColumnDefinition Width="760" />
-                                <ColumnDefinition Width="380" />
+                                <ColumnDefinition Width="{ThemeResource AppGridLength760}" />
+                                <ColumnDefinition Width="{ThemeResource AppGridLength380}" />
                             </Grid.ColumnDefinitions>
-                            <StackPanel Spacing="8">
+                            <StackPanel Spacing="{ThemeResource AppGap8}">
                                 <TextBlock Style="{StaticResource SectionSecondaryTextBlockStyle}" Text="Roomy dashboard width" />
                                 <ItemsControl
                                     ItemTemplateSelector="{StaticResource GitHubActivityCardTemplateSelector}"
                                     ItemsSource="{x:Bind ActivityCards, Mode=OneWay}" />
                             </StackPanel>
-                            <StackPanel Grid.Column="1" Spacing="8">
+                            <StackPanel Grid.Column="1" Spacing="{ThemeResource AppGap8}">
                                 <TextBlock Style="{StaticResource SectionSecondaryTextBlockStyle}" Text="Dense sidebar width" />
                                 <ItemsControl
                                     ItemTemplateSelector="{StaticResource GitHubActivityCardTemplateSelector}"
@@ -279,14 +279,14 @@
                 <appcontrols:AppSurfaceCard.Child>
                     <StackPanel
                         AutomationProperties.AutomationId="ScenarioConversation"
-                        Spacing="16">
+                        Spacing="{ThemeResource AppGap16}">
                         <appcontrols:AppSectionHeader Title="Conversation reference" Description="Comment surfaces, labels, and reactions." />
                         <common:MarkdownForm
                             AutomationProperties.AutomationId="DesignLabMarkdownComposer"
                             AutomationInstanceId="DesignLabMarkdownComposer"
                             EditorHeight="120"
                             HorizontalAlignment="Left"
-                            Width="920"
+                            Width="{ThemeResource AppDimension920}"
                             Text="Thanks for the detailed report. I can reproduce this on the current build.">
                             <common:MarkdownForm.ActionContent>
                                 <StackPanel Style="{StaticResource ActionPanel}">
@@ -299,38 +299,38 @@
                             <common:CommentBlock.HeaderContent>
                                 <Grid>
                                     <TextBlock Style="{StaticResource SectionSecondaryTextBlockStyle}">
-                                        <Run FontWeight="SemiBold" Text="nerocui" />
+                                        <Run FontWeight="{ThemeResource AppFontWeightSemibold}" Text="nerocui" />
                                         <Run Text=" commented 3h ago" />
                                     </TextBlock>
                                 </Grid>
                             </common:CommentBlock.HeaderContent>
                             <common:CommentBlock.BodyContent>
-                                <StackPanel Padding="12" Spacing="12">
+                                <StackPanel Padding="{ThemeResource AppPadding12}" Spacing="{ThemeResource AppGap12}">
                                     <TextBlock Text="This is a reference conversation block for screenshot proof." />
-                                    <StackPanel Orientation="Horizontal" Spacing="6">
+                                    <StackPanel Orientation="Horizontal" Spacing="{ThemeResource AppGap6}">
                                         <common:RepoLabel Label="{x:Bind BugLabel, Mode=OneWay}" />
                                         <common:RepoLabel Label="{x:Bind AccessibilityLabel, Mode=OneWay}" />
                                         <common:RepoLabel Label="{x:Bind NeedsTriageLabel, Mode=OneWay}" />
                                     </StackPanel>
-                                    <StackPanel Orientation="Horizontal" Spacing="8">
+                                    <StackPanel Orientation="Horizontal" Spacing="{ThemeResource AppGap8}">
                                         <Border
-                                            Height="24"
-                                            MinWidth="48"
-                                            Padding="8,0"
+                                            Height="{ThemeResource AppDimension24}"
+                                            MinWidth="{ThemeResource AppDimension48}"
+                                            Padding="{ThemeResource AppPadding8_0}"
                                             Background="{ThemeResource AppSuccessBrush}"
                                             CornerRadius="{ThemeResource AppRadiusSmall}">
                                             <TextBlock Style="{StaticResource AppStatusPillTextBlockStyle}" Text="Open" />
                                         </Border>
                                         <Border
-                                            Height="24"
-                                            MinWidth="56"
-                                            Padding="8,0"
+                                            Height="{ThemeResource AppDimension24}"
+                                            MinWidth="{ThemeResource AppDimension56}"
+                                            Padding="{ThemeResource AppPadding8_0}"
                                             Background="{ThemeResource AppDangerBrush}"
                                             CornerRadius="{ThemeResource AppRadiusSmall}">
                                             <TextBlock Style="{StaticResource AppStatusPillTextBlockStyle}" Text="Closed" />
                                         </Border>
                                     </StackPanel>
-                                    <StackPanel Orientation="Horizontal" Spacing="8">
+                                    <StackPanel Orientation="Horizontal" Spacing="{ThemeResource AppGap8}">
                                         <common:EmojiButton AutomationInstanceId="DesignLabReactionSummary" Reaction="Plus1" ReactionCount="12" ShowReactionCount="True" Voted="True" />
                                         <common:EmojiButton AutomationInstanceId="DesignLabReactionSummary" Reaction="Heart" ReactionCount="4" ShowReactionCount="True" />
                                         <common:EmojiButton AutomationInstanceId="DesignLabReactionSummary" Reaction="Hooray" />
@@ -348,18 +348,18 @@
                 <appcontrols:AppSurfaceCard.Child>
                     <StackPanel
                         AutomationProperties.AutomationId="ScenarioPullRequestTimeline"
-                        Spacing="16">
+                        Spacing="{ThemeResource AppGap16}">
                         <appcontrols:AppSectionHeader
                             Title="Pull request timeline"
                             Description="Commit and PR update rows rendered as inline timeline sentences, using the same link/tone tokens as activity cards." />
                         <Grid
                             HorizontalAlignment="Left"
-                            ColumnSpacing="16">
+                            ColumnSpacing="{ThemeResource AppGap16}">
                             <Grid.ColumnDefinitions>
-                                <ColumnDefinition Width="760" />
-                                <ColumnDefinition Width="380" />
+                                <ColumnDefinition Width="{ThemeResource AppGridLength760}" />
+                                <ColumnDefinition Width="{ThemeResource AppGridLength380}" />
                             </Grid.ColumnDefinitions>
-                            <StackPanel Spacing="8">
+                            <StackPanel Spacing="{ThemeResource AppGap8}">
                                 <TextBlock Style="{StaticResource SectionSecondaryTextBlockStyle}" Text="Roomy conversation width" />
                                 <ItemsControl ItemsSource="{x:Bind PullRequestTimelineItems, Mode=OneWay}">
                                     <ItemsControl.ItemTemplate>
@@ -369,12 +369,12 @@
                                     </ItemsControl.ItemTemplate>
                                     <ItemsControl.ItemsPanel>
                                         <ItemsPanelTemplate>
-                                            <StackPanel Spacing="8" />
+                                            <StackPanel Spacing="{ThemeResource AppGap8}" />
                                         </ItemsPanelTemplate>
                                     </ItemsControl.ItemsPanel>
                                 </ItemsControl>
                             </StackPanel>
-                            <StackPanel Grid.Column="1" Spacing="8">
+                            <StackPanel Grid.Column="1" Spacing="{ThemeResource AppGap8}">
                                 <TextBlock Style="{StaticResource SectionSecondaryTextBlockStyle}" Text="Dense conversation width" />
                                 <ItemsControl ItemsSource="{x:Bind PullRequestTimelineItems, Mode=OneWay}">
                                     <ItemsControl.ItemTemplate>
@@ -384,7 +384,7 @@
                                     </ItemsControl.ItemTemplate>
                                     <ItemsControl.ItemsPanel>
                                         <ItemsPanelTemplate>
-                                            <StackPanel Spacing="8" />
+                                            <StackPanel Spacing="{ThemeResource AppGap8}" />
                                         </ItemsPanelTemplate>
                                     </ItemsControl.ItemsPanel>
                                 </ItemsControl>

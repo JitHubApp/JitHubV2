@@ -42,5 +42,5 @@ public sealed partial class CommitDiffLineKindToBrushConverter : IValueConverter
     }
 
     public object ConvertBack(object value, Type targetType, object parameter, string language) =>
-        throw new NotSupportedException();
+        Microsoft.UI.Xaml.DependencyProperty.UnsetValue;
 }

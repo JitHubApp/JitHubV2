@@ -92,8 +92,8 @@ public sealed class RepoIssueAccessibilityContractTests
         {
             XElement element = document.Descendants().Single(node =>
                 string.Equals((string?)node.Attribute("AutomationProperties.AutomationId"), id, StringComparison.Ordinal));
-            Assert.Equal("36", (string?)element.Attribute("Width"));
-            Assert.Equal("36", (string?)element.Attribute("Height"));
+            Assert.Equal("{ThemeResource AppDimension36}", (string?)element.Attribute("Width"));
+            Assert.Equal("{ThemeResource AppDimension36}", (string?)element.Attribute("Height"));
             Assert.False(string.IsNullOrWhiteSpace((string?)element.Attribute("AutomationProperties.Name")));
         }
 
@@ -129,7 +129,7 @@ public sealed class RepoIssueAccessibilityContractTests
         DirectoryInfo? directory = new(AppContext.BaseDirectory);
         while (directory is not null)
         {
-            if (File.Exists(Path.Combine(directory.FullName, "JitHub.slnx")))
+            if (File.Exists(Path.Combine(directory.FullName, "Directory.Build.props")))
             {
                 return directory.FullName;
             }

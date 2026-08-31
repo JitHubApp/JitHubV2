@@ -27,12 +27,12 @@
         <InfoBar
             Grid.Row="0"
             Canvas.ZIndex="20"
-            Margin="12,8,12,0"
-            MaxWidth="720"
-            HorizontalAlignment="Center"
+            Margin="{ThemeResource AppMargin12_8_12_0}"
+            MaxWidth="{ThemeResource AppTransientStatusMaxWidth}"
+            HorizontalAlignment="Right"
             VerticalAlignment="Top"
             AutomationProperties.AutomationId="RepoDetailActionStatus"
-            IsClosable="False"
+            IsClosable="True"
             IsOpen="{x:Bind ViewModel.IsActionStatusVisible, Mode=OneWay}"
             Message="{x:Bind ViewModel.ActionStatusMessage, Mode=OneWay}"
             Severity="{x:Bind RepositoryActionStatusSeverity, Mode=OneWay}"
@@ -49,9 +49,9 @@
             </InfoBar.ActionButton>
         </InfoBar>
         <TextBlock
-            Width="1"
-            Height="1"
-            Opacity="0"
+            Width="{ThemeResource AppDimension1}"
+            Height="{ThemeResource AppDimension1}"
+            Opacity="{ThemeResource AppOpacityTransparent}"
             AutomationProperties.AccessibilityView="Control"
             AutomationProperties.AutomationId="RepoDetailAutomationState"
             AutomationProperties.Name="{x:Bind ViewModel.RepositoryAutomationStatusText, Mode=OneWay}"
@@ -69,12 +69,12 @@
             <Grid
                 x:Name="RepoDetailHeader"
                 Grid.Row="0"
-                MinHeight="48"
-                Padding="8,6,12,6"
-                ColumnSpacing="8"
+                MinHeight="{ThemeResource AppDimension48}"
+                Padding="{ThemeResource AppPadding8_6_12_6}"
+                ColumnSpacing="{ThemeResource AppGap8}"
                 Background="{ThemeResource AppCanvasBrush}"
                 BorderBrush="{ThemeResource AppHairlineBrush}"
-                BorderThickness="0,0,0,1">
+                BorderThickness="{ThemeResource AppBottomHairlineBorderThickness}">
                 <Grid.ColumnDefinitions>
                     <ColumnDefinition Width="Auto" />
                     <ColumnDefinition Width="Auto" />
@@ -83,31 +83,31 @@
                 </Grid.ColumnDefinitions>
                 <Border
                     x:Name="RepoDetailIdentityChrome"
-                    Height="36"
-                    MaxWidth="280"
-                    Margin="4,0,8,0"
-                    Padding="12,0,10,0"
+                    Height="{ThemeResource AppDimension36}"
+                    MaxWidth="{ThemeResource AppDimension280}"
+                    Margin="{ThemeResource AppMargin4_0_8_0}"
+                    Padding="{ThemeResource AppPadding12_0_10_0}"
                     VerticalAlignment="Center"
                     AutomationProperties.AutomationId="RepoDetailIdentity"
                     AutomationProperties.Name="{x:Bind ViewModel.RepositoryFullName, Mode=OneWay}"
                     Background="{ThemeResource AppSurfaceBrush}"
                     BorderBrush="{ThemeResource AppOutlineBrush}"
-                    BorderThickness="1"
+                    BorderThickness="{ThemeResource AppHairlineBorderThickness}"
                     CornerRadius="{ThemeResource AppRadiusMedium}"
                     ToolTipService.ToolTip="{x:Bind ViewModel.RepositoryFullName, Mode=OneWay}"
                     Visibility="Collapsed">
                     <Grid
-                        ColumnSpacing="8"
+                        ColumnSpacing="{ThemeResource AppGap8}"
                         VerticalAlignment="Center">
                         <Grid.ColumnDefinitions>
                             <ColumnDefinition Width="Auto" />
-                            <ColumnDefinition Width="*" MinWidth="0" />
+                            <ColumnDefinition Width="*" MinWidth="{ThemeResource AppDimension0}" />
                             <ColumnDefinition Width="Auto" />
                         </Grid.ColumnDefinitions>
                         <Grid
                             VerticalAlignment="Center"
-                            Width="18"
-                            Height="18">
+                            Width="{ThemeResource AppDimension18}"
+                            Height="{ThemeResource AppDimension18}">
                             <appcontrols:AppIcon
                                 IconBrush="{ThemeResource AppAccentBrush}"
                                 IconKind="PublicRepository"
@@ -123,31 +123,32 @@
                         </Grid>
                         <TextBlock
                             Grid.Column="1"
-                            MaxWidth="220"
+                            MaxWidth="{ThemeResource AppDimension220}"
                             VerticalAlignment="Center"
                             FontFamily="{ThemeResource AppUiFontFamily}"
                             FontSize="{ThemeResource AppFontSize14}"
-                            FontWeight="SemiBold"
+                            FontWeight="{ThemeResource AppFontWeightSemibold}"
                             Foreground="{ThemeResource AppInkBrush}"
                             Text="{x:Bind ViewModel.RepositoryFullName, Mode=OneWay}"
                             TextLineBounds="Tight"
                             TextTrimming="CharacterEllipsis"
                             TextWrapping="NoWrap" />
                         <Border
+                            x:Name="RepoDetailIdentityStatusBadge"
                             Grid.Column="2"
-                            MinWidth="48"
-                            Padding="7,2,7,3"
+                            MinWidth="{ThemeResource AppDimension48}"
+                            Padding="{ThemeResource AppPadding7_2_7_3}"
                             VerticalAlignment="Center"
                             Background="{ThemeResource AppCanvasInsetBrush}"
                             BorderBrush="{ThemeResource AppHairlineBrush}"
-                            BorderThickness="1"
+                            BorderThickness="{ThemeResource AppHairlineBorderThickness}"
                             CornerRadius="{ThemeResource AppRadiusSmall}">
                             <TextBlock
                                 HorizontalAlignment="Center"
                                 VerticalAlignment="Center"
                                 FontFamily="{ThemeResource AppUiFontFamily}"
                                 FontSize="{ThemeResource AppFontSize11}"
-                                FontWeight="SemiBold"
+                                FontWeight="{ThemeResource AppFontWeightSemibold}"
                                 Foreground="{ThemeResource AppInkMutedBrush}"
                                 Text="{x:Bind ViewModel.RepositoryStatusText, Mode=OneWay}"
                                 TextLineBounds="Tight"
@@ -158,7 +159,7 @@
                 <ScrollViewer
                     x:Name="RepoDetailSectionSelectorHost"
                     Grid.Column="1"
-                    MinWidth="0"
+                    MinWidth="{ThemeResource AppDimension0}"
                     HorizontalScrollBarVisibility="Hidden"
                     HorizontalScrollMode="Enabled"
                     VerticalScrollBarVisibility="Disabled"
@@ -200,14 +201,14 @@
                     HorizontalAlignment="Stretch">
                     <StackPanel
                         Orientation="Horizontal"
-                        Spacing="8"
+                        Spacing="{ThemeResource AppGap8}"
                         VerticalAlignment="Center"
                         HorizontalAlignment="Right">
                         <Button
                             x:Uid="PagesRepoDetailPageRepoDetailCompactCommandsButton" x:Name="RepoDetailCompactCommandsButton"
-                            Width="36"
-                            Height="36"
-                            Padding="0"
+                            Width="{ThemeResource AppDimension36}"
+                            Height="{ThemeResource AppDimension36}"
+                            Padding="{ThemeResource AppPadding0}"
                             AutomationProperties.AutomationId="RepoDetailCompactCommandsButton"
                             AutomationProperties.Name="Repository commands"
                             Click="RepoDetailCompactCommandsButton_Click"
@@ -219,20 +220,20 @@
                         <muxc:ProgressRing
                             VerticalAlignment="Center"
                             IsActive="True"
-                            Height="16"
-                            Width="16"
+                            Height="{ThemeResource AppDimension16}"
+                            Width="{ThemeResource AppDimension16}"
                             Visibility="{x:Bind ViewModel.Loading, Converter={StaticResource BoolToVisibilityConverter}, Mode=OneWay}"/>
                         <Grid x:Name="RepoDetailBranchChrome">
                             <Button
                                 x:Uid="PagesRepoDetailPageRepoDetailBranchPicker" x:Name="RepoDetailBranchPicker"
                                 Visibility="{x:Bind ViewModel.IsBranchPickerVisible, Converter={StaticResource BoolToVisibilityConverter}, Mode=OneWay}"
-                                MinWidth="150"
+                                MinWidth="{ThemeResource AppDimension150}"
                                 AutomationProperties.AutomationId="RepoDetailBranchPicker"
                                 AutomationProperties.Name="Repository branch"
                                 IsEnabled="{x:Bind ViewModel.CanChangeBranch, Mode=OneWay}"
                                 HorizontalContentAlignment="Stretch"
                                 Style="{StaticResource AppQuietButtonStyle}">
-                                <Grid ColumnSpacing="12">
+                                <Grid ColumnSpacing="{ThemeResource AppGap12}">
                                     <Grid.ColumnDefinitions>
                                         <ColumnDefinition Width="*" />
                                         <ColumnDefinition Width="Auto" />
@@ -258,11 +259,11 @@
                                             <ContentPresenter.ContentTemplate>
                                                 <DataTemplate x:DataType="repoviewmodels:RepoDetailViewModel">
                                                 <Grid
-                                                    x:Uid="PagesRepoDetailPageRepoDetailBranchFlyoutRoot" Width="320"
-                                                    Height="380"
+                                                    x:Uid="PagesRepoDetailPageRepoDetailBranchFlyoutRoot" Width="{ThemeResource AppDimension320}"
+                                                    Height="{ThemeResource AppDimension380}"
                                                     AutomationProperties.AutomationId="RepoDetailBranchFlyoutRoot"
                                                     AutomationProperties.Name="Repository branch picker"
-                                                    RowSpacing="8">
+                                                    RowSpacing="{ThemeResource AppGap8}">
                                                     <Grid.RowDefinitions>
                                                         <RowDefinition Height="Auto" />
                                                         <RowDefinition Height="*" />
@@ -290,7 +291,7 @@
                                                         <ListView.ItemTemplate>
                                                             <DataTemplate x:DataType="legacy:Branch">
                                                                 <TextBlock
-                                                                    Padding="8 6"
+                                                                    Padding="{ThemeResource AppPadding8_6}"
                                                                     FontFamily="{ThemeResource AppMonoFontFamily}"
                                                                     FontSize="{ThemeResource AppFontSize12}"
                                                                     Text="{x:Bind Name}" />
@@ -305,7 +306,7 @@
                                 </Button.Flyout>
                             </Button>
                             <TextBlock
-                                MinWidth="150"
+                                MinWidth="{ThemeResource AppDimension150}"
                                 VerticalAlignment="Center"
                                 AutomationProperties.AutomationId="RepoDetailBranchStatus"
                                 AutomationProperties.Name="{x:Bind ViewModel.BranchStatusText, Mode=OneWay}"
@@ -321,7 +322,7 @@
                             x:Name="RepoDetailStatButtonsGroup"
                             x:Load="{x:Bind ShouldLoadRepositoryStatButtons, Mode=OneWay}"
                             Orientation="Horizontal"
-                            Spacing="8">
+                            Spacing="{ThemeResource AppGap8}">
                             <appcontrols:AppStatButton
                                 AutomationId="RepoDetailWatchButton"
                                 AutomationName="{x:Bind ViewModel.WatchActionLabel, Mode=OneWay}"
@@ -355,13 +356,13 @@
                                 IconForeground="{ThemeResource AppInkMutedBrush}"
                                 IsActionEnabled="{x:Bind ViewModel.CanForkRepository, Mode=OneWay}"
                                 ToolTipService.ToolTip="{x:Bind ForkActionLabel, Mode=OneTime}"
-                                ValueText="{x:Bind ViewModel.Model.ForksCount, Converter={StaticResource NumberToKizedStringConverter}, Mode=OneWay}" />
+                                ValueText="{x:Bind ViewModel.ForkValueText, Mode=OneWay}" />
                         </StackPanel>
                         <Button
                             x:Uid="PagesRepoDetailPageRepoDetailActionsMenuButton" x:Name="RepoDetailActionsMenuButton"
-                            Width="36"
-                            Height="36"
-                            Padding="0"
+                            Width="{ThemeResource AppDimension36}"
+                            Height="{ThemeResource AppDimension36}"
+                            Padding="{ThemeResource AppPadding0}"
                             AutomationProperties.AutomationId="RepoDetailActionsMenuButton"
                             AutomationProperties.Name="Repository actions"
                             Style="{StaticResource AppToolbarButtonStyle}"

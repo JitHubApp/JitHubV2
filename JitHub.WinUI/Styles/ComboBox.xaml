@@ -9,9 +9,9 @@
         <Setter Property="Background" Value="{ThemeResource AppInputBrush}" />
         <Setter Property="BorderBrush" Value="{ThemeResource AppOutlineBrush}" />
         <Setter Property="CornerRadius" Value="{ThemeResource AppRadiusMedium}" />
-        <Setter Property="BorderThickness" Value="1" />
-        <Setter Property="MinHeight" Value="36" />
-        <Setter Property="Padding" Value="12,8" />
+        <Setter Property="BorderThickness" Value="{ThemeResource AppHairlineBorderThickness}" />
+        <Setter Property="MinHeight" Value="{ThemeResource AppDimension36}" />
+        <Setter Property="Padding" Value="{ThemeResource AppPadding12_8}" />
         <Setter Property="HorizontalContentAlignment" Value="Stretch" />
         <Setter Property="VerticalAlignment" Value="Center" />
         <Setter Property="VerticalContentAlignment" Value="Center" />
@@ -27,9 +27,9 @@
         <Setter Property="Background" Value="{ThemeResource AppInputBrush}" />
         <Setter Property="BorderBrush" Value="{ThemeResource AppOutlineBrush}" />
         <Setter Property="CornerRadius" Value="{ThemeResource AppRadiusMedium}" />
-        <Setter Property="BorderThickness" Value="1" />
-        <Setter Property="MinHeight" Value="36" />
-        <Setter Property="Padding" Value="12,8" />
+        <Setter Property="BorderThickness" Value="{ThemeResource AppHairlineBorderThickness}" />
+        <Setter Property="MinHeight" Value="{ThemeResource AppDimension36}" />
+        <Setter Property="Padding" Value="{ThemeResource AppPadding12_8}" />
         <Setter Property="VerticalAlignment" Value="Center" />
         <Setter Property="VerticalContentAlignment" Value="Center" />
     </Style>
@@ -44,9 +44,9 @@
         <Setter Property="Background" Value="{ThemeResource AppInputBrush}" />
         <Setter Property="BorderBrush" Value="{ThemeResource AppOutlineBrush}" />
         <Setter Property="CornerRadius" Value="{ThemeResource AppRadiusMedium}" />
-        <Setter Property="BorderThickness" Value="1" />
-        <Setter Property="Padding" Value="12,10" />
-        <Setter Property="MinHeight" Value="120" />
+        <Setter Property="BorderThickness" Value="{ThemeResource AppHairlineBorderThickness}" />
+        <Setter Property="Padding" Value="{ThemeResource AppPadding12_10}" />
+        <Setter Property="MinHeight" Value="{ThemeResource AppDimension120}" />
         <Setter Property="VerticalAlignment" Value="Stretch" />
     </Style>
 
@@ -60,9 +60,9 @@
         <Setter Property="Background" Value="{ThemeResource AppInputBrush}" />
         <Setter Property="BorderBrush" Value="{ThemeResource AppOutlineBrush}" />
         <Setter Property="CornerRadius" Value="{ThemeResource AppRadiusMedium}" />
-        <Setter Property="BorderThickness" Value="1" />
-        <Setter Property="MinHeight" Value="36" />
-        <Setter Property="Padding" Value="12,8" />
+        <Setter Property="BorderThickness" Value="{ThemeResource AppHairlineBorderThickness}" />
+        <Setter Property="MinHeight" Value="{ThemeResource AppDimension36}" />
+        <Setter Property="Padding" Value="{ThemeResource AppPadding12_8}" />
         <Setter Property="VerticalContentAlignment" Value="Center" />
     </Style>
 
@@ -70,9 +70,9 @@
         x:Key="ShellSearchAutoSuggestBoxStyle"
         TargetType="AutoSuggestBox">
         <Setter Property="Background" Value="{ThemeResource AppTransparentBrush}" />
-        <Setter Property="BorderThickness" Value="0" />
-        <Setter Property="MinHeight" Value="36" />
-        <Setter Property="Padding" Value="0" />
+        <Setter Property="BorderThickness" Value="{ThemeResource AppZeroThickness}" />
+        <Setter Property="MinHeight" Value="{ThemeResource AppDimension36}" />
+        <Setter Property="Padding" Value="{ThemeResource AppPadding0}" />
         <Setter Property="HorizontalContentAlignment" Value="Stretch" />
         <Setter Property="VerticalAlignment" Value="Center" />
         <Setter Property="VerticalContentAlignment" Value="Center" />
@@ -87,9 +87,9 @@
         BasedOn="{StaticResource AppTextBoxStyle}">
         <Setter Property="Background" Value="{ThemeResource AppTransparentBrush}" />
         <Setter Property="BorderBrush" Value="{ThemeResource AppTransparentBrush}" />
-        <Setter Property="BorderThickness" Value="0" />
-        <Setter Property="Padding" Value="0,9,0,0" />
-        <Setter Property="MinHeight" Value="36" />
+        <Setter Property="BorderThickness" Value="{ThemeResource AppZeroThickness}" />
+        <Setter Property="Padding" Value="{ThemeResource AppPadding0_9_0_0}" />
+        <Setter Property="MinHeight" Value="{ThemeResource AppDimension36}" />
         <Setter Property="HorizontalAlignment" Value="Stretch" />
         <Setter Property="VerticalAlignment" Value="Center" />
         <Setter Property="VerticalContentAlignment" Value="Center" />

@@ -17,6 +17,17 @@ public sealed class MyIssuesFilterLayoutPolicyTests
     }
 
     [Fact]
+    public void PullRequestEnglishLabels_UseSegmentedControlsAtNormalLeadingPaneWidth()
+    {
+        bool compact = MyIssuesFilterLayoutPolicy.ShouldUseCompact(
+            312,
+            ["Involved", "Review", "Created", "Assigned"],
+            ["Open", "Closed", "All"]);
+
+        Assert.False(compact);
+    }
+
+    [Fact]
     public void PseudoLongLabels_UseCompactPickersWithoutDependingOnWindowLanguage()
     {
         bool compact = MyIssuesFilterLayoutPolicy.ShouldUseCompact(

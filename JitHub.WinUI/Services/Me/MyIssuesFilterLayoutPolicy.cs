@@ -7,7 +7,7 @@ namespace JitHub.Services;
 public static class MyIssuesFilterLayoutPolicy
 {
     private const double EstimatedGlyphWidth = 7.5;
-    private const double ItemHorizontalChrome = 28;
+    private const double ItemHorizontalChrome = 16;
     private const double MinimumItemWidth = 52;
 
     public static bool ShouldUseCompact(

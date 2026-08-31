@@ -4,6 +4,8 @@ namespace JitHub.Services;
 
 internal enum AppDialogLayoutKind
 {
+    Confirmation,
+    CompactForm,
     Standard,
     Editor
 }
@@ -14,38 +16,54 @@ internal readonly record struct DialogLayoutMetrics(
     double MaximumWidth,
     double MaximumHeight);
 
+internal readonly record struct DialogLayoutTokenSet(
+    double CompactBreakpoint,
+    double CompactMargin,
+    double StandardMargin,
+    double ConfirmationPreferredWidth,
+    double CompactFormPreferredWidth,
+    double StandardPreferredWidth,
+    double EditorPreferredWidth,
+    double ConfirmationPreferredHeight,
+    double CompactFormPreferredHeight,
+    double StandardPreferredHeight,
+    double EditorPreferredHeight,
+    double PreferredMinimumWidth);
+
 internal static class DialogLayoutPolicy
 {
-    private const double CompactBreakpoint = 640;
-    private const double CompactMargin = 12;
-    private const double StandardMargin = 24;
-    private const double StandardPreferredWidth = 620;
-    private const double EditorPreferredWidth = 840;
-    private const double StandardPreferredHeight = 520;
-    private const double EditorPreferredHeight = 720;
-    private const double PreferredMinimumWidth = 320;
-
     public static DialogLayoutMetrics Calculate(
         double viewportWidth,
         double viewportHeight,
+        DialogLayoutTokenSet tokens,
         AppDialogLayoutKind kind = AppDialogLayoutKind.Standard)
     {
-        double safeWidth = NormalizeViewportDimension(viewportWidth, EditorPreferredWidth + (StandardMargin * 2));
-        double safeHeight = NormalizeViewportDimension(viewportHeight, EditorPreferredHeight + (StandardMargin * 2));
-        double margin = safeWidth < CompactBreakpoint ? CompactMargin : StandardMargin;
+        double safeWidth = NormalizeViewportDimension(
+            viewportWidth,
+            tokens.EditorPreferredWidth + (tokens.StandardMargin * 2));
+        double safeHeight = NormalizeViewportDimension(
+            viewportHeight,
+            tokens.EditorPreferredHeight + (tokens.StandardMargin * 2));
+        double margin = safeWidth < tokens.CompactBreakpoint
+            ? tokens.CompactMargin
+            : tokens.StandardMargin;
         double availableWidth = Math.Max(0, safeWidth - (margin * 2));
         double availableHeight = Math.Max(0, safeHeight - (margin * 2));
-        double preferredWidth = kind == AppDialogLayoutKind.Editor
-            ? EditorPreferredWidth
-            : StandardPreferredWidth;
-        double preferredHeight = kind == AppDialogLayoutKind.Editor
-            ? EditorPreferredHeight
-            : StandardPreferredHeight;
+        (double preferredWidth, double preferredHeight) = kind switch
+        {
+            AppDialogLayoutKind.Confirmation =>
+                (tokens.ConfirmationPreferredWidth, tokens.ConfirmationPreferredHeight),
+            AppDialogLayoutKind.CompactForm =>
+                (tokens.CompactFormPreferredWidth, tokens.CompactFormPreferredHeight),
+            AppDialogLayoutKind.Editor =>
+                (tokens.EditorPreferredWidth, tokens.EditorPreferredHeight),
+            _ => (tokens.StandardPreferredWidth, tokens.StandardPreferredHeight)
+        };
         double maximumWidth = Math.Min(preferredWidth, availableWidth);
 
         return new DialogLayoutMetrics(
             margin,
-            Math.Min(PreferredMinimumWidth, maximumWidth),
+            Math.Min(tokens.PreferredMinimumWidth, maximumWidth),
             maximumWidth,
             Math.Min(preferredHeight, availableHeight));
     }

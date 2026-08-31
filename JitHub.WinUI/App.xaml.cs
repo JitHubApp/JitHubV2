@@ -48,6 +48,8 @@ public partial class App : Application
     private readonly DispatcherQueue _dispatcherQueue;
     private readonly ApplicationActivationGate _activationGate = new();
     private string? _storedTheme;
+    private string _storedPalette = ThemePaletteIds.JitHub;
+    private bool _isStoredPaletteApplied;
     private bool _runtimeMergedDictionariesLoaded;
     private MainWindow? _mainWindow;
     private IServiceProvider? _services;
@@ -59,13 +61,16 @@ public partial class App : Application
     public App()
     {
         Program.LogStartupPhase("app.constructor-enter");
+        HandledFailureReporter.Configure(LogHandledException, LogHandledFailure);
         UnhandledException += App_UnhandledException;
         AppDomain.CurrentDomain.UnhandledException += CurrentDomain_UnhandledException;
         AppDomain.CurrentDomain.ProcessExit += CurrentDomain_ProcessExit;
         TaskScheduler.UnobservedTaskException += TaskScheduler_UnobservedTaskException;
         InitializeComponent();
         _dispatcherQueue = DispatcherQueue.GetForCurrentThread();
-        _storedTheme = new ThemeService(new SettingService()).GetTheme();
+        ThemeService initialThemeService = new(new SettingService());
+        _storedTheme = initialThemeService.GetTheme();
+        _storedPalette = initialThemeService.GetPalette();
         ApplyStoredTheme();
         Program.LogStartupPhase("app.constructor-exit");
     }
@@ -80,13 +85,16 @@ public partial class App : Application
         Program.LogStartupPhase($"activation.received:thread-access={_dispatcherQueue.HasThreadAccess}");
         ActivationRequest activationRequest = CreateActivationRequest(activationArguments);
 
-        if (_dispatcherQueue.HasThreadAccess)
+        if (_dispatcherQueue.HasThreadAccess && _isStoredPaletteApplied)
         {
             QueueActivation(activationRequest);
             return;
         }
 
-        if (!_dispatcherQueue.TryEnqueue(() => QueueActivation(activationRequest)))
+        // Application.Resources is not projected safely until Application.Start's
+        // initialization callback returns. The first queued turn applies the selected
+        // palette before MainWindow resolves any theme resources.
+        if (!_dispatcherQueue.TryEnqueue(DispatcherQueuePriority.High, () => QueueActivation(activationRequest)))
         {
             LogActivationError(new InvalidOperationException("The activation dispatcher is unavailable."));
         }
@@ -549,6 +557,28 @@ public partial class App : Application
         }
     }
 
+    private void ApplyStoredPalette()
+    {
+        string paletteId = GetConfiguredPalette();
+        if (ThemePaletteRuntime.TryApply(Resources, paletteId, out Exception? error))
+        {
+            _storedPalette = paletteId;
+            return;
+        }
+
+        _storedPalette = ThemePaletteIds.JitHub;
+        if (error is not null)
+        {
+            LogHandledException(error, "theme-palette-startup");
+        }
+
+        if (!ThemePaletteRuntime.TryApply(Resources, ThemePaletteIds.JitHub, out Exception? fallbackError) &&
+            fallbackError is not null)
+        {
+            LogHandledException(fallbackError, "theme-palette-startup-fallback");
+        }
+    }
+
     private void LoadRuntimeMergedDictionaries()
     {
         AddRuntimeMergedDictionary("ms-appx:///Styles/TabViewTheme.xaml");
@@ -704,6 +734,7 @@ public partial class App : Application
     {
         if (_mainWindow is null)
         {
+            EnsureStoredPaletteApplied();
             Program.LogStartupPhase("window.construct-enter");
             try
             {
@@ -725,6 +756,18 @@ public partial class App : Application
         return _mainWindow;
     }
 
+    private void EnsureStoredPaletteApplied()
+    {
+        if (_isStoredPaletteApplied)
+        {
+            return;
+        }
+
+        ApplyStoredPalette();
+        _isStoredPaletteApplied = true;
+        Program.LogStartupPhase($"application.palette-ready:{_storedPalette}");
+    }
+
     internal void ApplyTheme(string? theme)
     {
         string normalizedTheme = NormalizeTheme(theme);
@@ -737,6 +780,49 @@ public partial class App : Application
         if (_mainWindow is not null)
         {
             _mainWindow.ConfigureTheme(normalizedTheme);
+        }
+    }
+
+    internal bool TryApplyPalette(string? paletteId)
+    {
+        string normalizedPalette = ThemePaletteCatalog.Normalize(paletteId);
+        string previousPalette = ThemePaletteCatalog.Normalize(_storedPalette);
+        if (!ThemePaletteRuntime.TryApply(Resources, normalizedPalette, out Exception? applyError))
+        {
+            if (applyError is not null)
+            {
+                LogHandledException(applyError, "theme-palette-apply");
+            }
+
+            return false;
+        }
+
+        try
+        {
+            if (_services is not null)
+            {
+                GetService<IThemeService>().SetPalette(normalizedPalette);
+            }
+            else
+            {
+                new ThemeService(new SettingService()).SetPalette(normalizedPalette);
+            }
+
+            _storedPalette = normalizedPalette;
+            _mainWindow?.RefreshThemePalette();
+            return true;
+        }
+        catch (Exception exception)
+        {
+            LogHandledException(exception, "theme-palette-persist");
+            _ = ThemePaletteRuntime.TryApply(Resources, previousPalette, out Exception? rollbackError);
+            if (rollbackError is not null)
+            {
+                LogHandledException(rollbackError, "theme-palette-rollback");
+            }
+
+            _mainWindow?.RefreshThemePalette();
+            return false;
         }
     }
 
@@ -869,11 +955,14 @@ public partial class App : Application
     private void App_UnhandledException(object sender, Microsoft.UI.Xaml.UnhandledExceptionEventArgs e)
     {
         LogUnhandledException(e.Exception, "xaml-unhandled");
+        TrackExceptionTelemetry("app.exception.unhandled", e.Exception, "xaml-unhandled");
     }
 
     private void CurrentDomain_UnhandledException(object sender, System.UnhandledExceptionEventArgs e)
     {
-        LogUnhandledException(e.ExceptionObject as Exception, "appdomain-unhandled");
+        Exception? exception = e.ExceptionObject as Exception;
+        LogUnhandledException(exception, "appdomain-unhandled");
+        TrackExceptionTelemetry("app.exception.unhandled", exception, "appdomain-unhandled");
     }
 
     private static bool IsLoginLaunchFailurePreview() =>
@@ -947,18 +1036,15 @@ public partial class App : Application
                 return;
             }
 
-            IReadOnlyDictionary<string, string> properties = TelemetrySanitizer.SanitizeProperties(
-                new Dictionary<string, string?>
-                {
-                    ["feature"] = failure.Name,
-                    ["error_kind"] = failure.Exception.GetBaseException().GetType().Name,
-                    ["phase"] = "background"
-                });
-            _ = services?.GetService<ILocalDiagnosticsStore>()?.TryAppend(new LocalDiagnosticEvent(
-                DateTimeOffset.UtcNow,
-                "error",
-                "background.task.failed",
-                properties));
+            IReadOnlyDictionary<string, string?> properties = new Dictionary<string, string?>
+            {
+                ["feature"] = failure.Name,
+                ["error_kind"] = failure.Exception.GetBaseException().GetType().Name,
+                ["phase"] = "background"
+            };
+            services?.GetService<ITelemetryService>()?.TrackEvent(
+                "app.background_task.failed",
+                properties);
         }
         catch
         {
@@ -1017,6 +1103,7 @@ public partial class App : Application
     private void TaskScheduler_UnobservedTaskException(object? sender, UnobservedTaskExceptionEventArgs e)
     {
         LogUnhandledException(e.Exception, "task-unobserved");
+        TrackExceptionTelemetry("app.exception.unhandled", e.Exception, "task-unobserved");
     }
 
     private static void LogUnhandledException(Exception? exception, string category)
@@ -1033,8 +1120,41 @@ public partial class App : Application
         }
     }
 
-    internal static void LogHandledException(Exception exception, string category) =>
+    internal static void LogHandledException(Exception exception, string category)
+    {
         LogUnhandledException(exception, category);
+        TrackExceptionTelemetry("app.exception.handled", exception, category);
+    }
+
+    internal static void LogHandledFailure(string detail, string category)
+    {
+        LogUnhandledException(new InvalidOperationException(detail), category);
+        TrackExceptionTelemetry("app.exception.handled", exception: null, category);
+    }
+
+    private static void TrackExceptionTelemetry(string eventName, Exception? exception, string category)
+    {
+        try
+        {
+            if (Current is not App app || app._services is null)
+            {
+                return;
+            }
+
+            app._services.GetService<ITelemetryService>()?.TrackEvent(
+                eventName,
+                new Dictionary<string, string?>
+                {
+                    ["error_kind"] = exception?.GetBaseException().GetType().Name
+                        ?? TelemetryTaxonomy.ErrorKinds.Unexpected,
+                    ["feature"] = TelemetryTaxonomy.FeatureForExceptionCategory(category)
+                });
+        }
+        catch
+        {
+            // Fault reporting must remain outside the product failure boundary.
+        }
+    }
 
     private static string GetLogDirectoryPath()
     {
@@ -1070,6 +1190,14 @@ public partial class App : Application
         }
 
         return NormalizeTheme(_storedTheme);
+    }
+
+    private string GetConfiguredPalette()
+    {
+        string? launchPalette = Program.CurrentLaunchOptions.Palette;
+        return string.IsNullOrWhiteSpace(launchPalette)
+            ? ThemePaletteCatalog.Normalize(_storedPalette)
+            : ThemePaletteCatalog.Normalize(launchPalette);
     }
 
     private static string NormalizeTheme(string? theme)

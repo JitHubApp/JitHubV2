@@ -47,13 +47,17 @@ public sealed partial class RepoSearchResultPageViewModel : ObservableObject, ID
 
     public ObservableCollection<RepositorySearchFilterChip> ActiveFilters { get; } = [];
 
-    public IReadOnlyList<string> VisibilityOptions { get; } = ["Any visibility", "Public", "Private"];
+    public IReadOnlyList<string> VisibilityOptions { get; } =
+        (string[])["Any visibility", "Public", "Private"];
 
-    public IReadOnlyList<string> ForkOptions { get; } = ["All repositories", "Sources", "Forks"];
+    public IReadOnlyList<string> ForkOptions { get; } =
+        (string[])["All repositories", "Sources", "Forks"];
 
-    public IReadOnlyList<string> ArchiveOptions { get; } = ["Active and archived", "Active", "Archived"];
+    public IReadOnlyList<string> ArchiveOptions { get; } =
+        (string[])["Active and archived", "Active", "Archived"];
 
-    public IReadOnlyList<string> SortOptions { get; } = ["Best match", "Recently updated", "Most stars", "Most forks"];
+    public IReadOnlyList<string> SortOptions { get; } =
+        (string[])["Best match", "Recently updated", "Most stars", "Most forks"];
 
     [ObservableProperty]
     public partial string QueryText { get; set; } = string.Empty;

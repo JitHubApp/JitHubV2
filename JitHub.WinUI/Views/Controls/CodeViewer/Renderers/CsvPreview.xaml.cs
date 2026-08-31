@@ -142,7 +142,28 @@ public sealed partial class CsvPreview : UserControl
         CancellationTokenSource cancellation = new();
         _parseCancellation = cancellation;
         int generation = ++_parseGeneration;
-        _ = ParseAndPresentAsync(text, delimiter, generation, cancellation.Token);
+        UiTaskGuard.Observe(
+            ParseAndPresentAsync(text, delimiter, generation, cancellation.Token),
+            "ui-csv-preview",
+            _ => ShowParseFailure(generation, cancellation.Token));
+    }
+
+    private void ShowParseFailure(int generation, CancellationToken cancellationToken)
+    {
+        if (cancellationToken.IsCancellationRequested ||
+            generation != _parseGeneration ||
+            !IsLoaded ||
+            ViewModel?.ShowRichPreview != true)
+        {
+            return;
+        }
+
+        DataTable.ShowStatus(L(
+            "RepoCode/Csv/PreviewFailed",
+            "The table preview could not be prepared. Plain view is still available."));
+        CompleteAction(
+            RepoCodeTelemetryActions.CsvRichView,
+            TelemetryTaxonomy.Results.Error);
     }
 
     private async Task ParseAndPresentAsync(

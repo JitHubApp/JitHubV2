@@ -160,8 +160,7 @@ public partial class RepoFormViewModel : ObservableObject
                 }
                 catch (Exception refreshException)
                 {
-                    System.Diagnostics.Debug.WriteLine(
-                        $"Repository created, but the repository rail refresh failed: {refreshException}");
+                    HandledFailureReporter.Report(refreshException, "repository-create-rail-refresh");
                 }
             }
         }

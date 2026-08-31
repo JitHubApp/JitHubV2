@@ -596,7 +596,7 @@ public sealed class GitHubIssueQueryService : IGitHubIssueQueryService
         CancellationToken cancellationToken = default) =>
         _queryService.InvalidateTagsAsync(
             GitHubAccountPartition.Require(userId),
-            [IssueTag(owner, repositoryName, issueNumber), RepositoryTag(owner, repositoryName)],
+            (string[])[IssueTag(owner, repositoryName, issueNumber), RepositoryTag(owner, repositoryName)],
             cancellationToken);
 
     public Task InvalidateRepositoryIssuesAsync(
@@ -606,7 +606,7 @@ public sealed class GitHubIssueQueryService : IGitHubIssueQueryService
         CancellationToken cancellationToken = default) =>
         _queryService.InvalidateTagsAsync(
             GitHubAccountPartition.Require(userId),
-            [RepositoryTag(owner, repositoryName)],
+            (string[])[RepositoryTag(owner, repositoryName)],
             cancellationToken);
 
     private async Task<CachedResult<GitHubIssue[]>> RefreshIssuesPageAsync(

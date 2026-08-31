@@ -1,6 +1,6 @@
 using System;
-using System.Diagnostics;
 using System.Runtime.InteropServices;
+using System.Threading;
 
 namespace JitHub.Services.Markdown;
 
@@ -10,6 +10,10 @@ namespace JitHub.Services.Markdown;
 /// </summary>
 internal static class RuntimeEventSubscription
 {
+    private static int _createFailureReported;
+    private static int _subscribeFailureReported;
+    private static int _unsubscribeFailureReported;
+
     public static T? TryCreate<T>(Func<T> factory, string sourceName)
         where T : class
     {
@@ -20,7 +24,7 @@ internal static class RuntimeEventSubscription
         }
         catch (COMException exception)
         {
-            Debug.WriteLine($"[MarkdownViewer] Runtime settings source '{sourceName}' is unavailable: 0x{exception.HResult:X8}.");
+            ReportOnce(ref _createFailureReported, exception, "markdown-runtime-source");
             return null;
         }
     }
@@ -35,7 +39,7 @@ internal static class RuntimeEventSubscription
         }
         catch (COMException exception)
         {
-            Debug.WriteLine($"[MarkdownViewer] Runtime event '{eventName}' is unavailable: 0x{exception.HResult:X8}.");
+            ReportOnce(ref _subscribeFailureReported, exception, "markdown-runtime-event-subscribe");
             return false;
         }
     }
@@ -54,7 +58,15 @@ internal static class RuntimeEventSubscription
         }
         catch (COMException exception)
         {
-            Debug.WriteLine($"[MarkdownViewer] Runtime event '{eventName}' could not be detached because its OS source is unavailable: 0x{exception.HResult:X8}.");
+            ReportOnce(ref _unsubscribeFailureReported, exception, "markdown-runtime-event-unsubscribe");
+        }
+    }
+
+    private static void ReportOnce(ref int reported, Exception exception, string category)
+    {
+        if (Interlocked.Exchange(ref reported, 1) == 0)
+        {
+            JitHub.WinUI.Helpers.HandledFailureReporter.Report(exception, category);
         }
     }
 }

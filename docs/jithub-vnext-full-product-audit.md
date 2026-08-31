@@ -2,7 +2,7 @@
 
 Status: tracked remediation implemented, independently rereviewed, and verified
 
-Audit date: July 16, 2026; closure reverified August 13, 2026
+Audit date: July 16, 2026; closure and release candidate reverified August 25, 2026
 
 Scope: current vNext worktree, authenticated preview data, public preview data,
 dark/light themes, static architecture review, and responsive WinUI automation
@@ -50,6 +50,16 @@ This closure is deliberately scoped to the recorded audit. New capabilities or
 future regressions should be tracked as new work rather than reopening resolved
 historical descriptions without new evidence.
 
+The August 25 v31 release review is locally green. WinUI Debug and Release each
+pass 2,763 tests; the full x64 Native AOT performance matrix completes 560
+isolated app cases and passes 353/353 budgets; x86, x64, and ARM64 native
+publishes and the final Store bundle pass artifact verification. The runtime
+diagnostics audit contains no malformed records, handled exceptions, or
+motion/resource fallback signals. Store submission remains blocked only by the
+absence of an exact candidate commit, matching-architecture hardware execution,
+and Partner Center receipt confirmation. The authoritative decision and artifact
+paths are maintained in `docs/jithub-vnext-release-readiness.md`.
+
 ## Product Identity To Preserve
 
 - One single-frame shell with a combined navigation/repository rail.
@@ -82,11 +92,12 @@ The audit combined four forms of evidence:
    names whenever the desktop work area constrains a request.
 4. Dark/light visual comparison and manual screenshot inspection.
 
-At closure, the WinUI suite passes 2,542 tests in both Debug and Release, the
-Markdown renderer suite passes 335 tests in both configurations, and the
+At the current release review, the WinUI suite passes 2,763 tests in both Debug
+and Release, the Markdown renderer suite passes 355 tests in both
+configurations, and the
 renderer pixel suite passes all 87 cases in both configurations. WinUI,
 Automation, PerformanceGate, and Web build warning-free in Debug and Release;
-the Release product build also passes all 60 embedded release/security gates.
+the Release product build also passes all 72 embedded release/security gates.
 These automated checks supplement, rather than replace, the live native
 interaction and screenshot evidence below.
 
@@ -137,7 +148,7 @@ gate is now verified by its recorded closure evidence.
 
 | ID | Pri | Finding | Required Outcome |
 | --- | --- | --- | --- |
-| AUD-PERF-001 | P1 | **Reverified 2026-08-13.** Repeatable gates cover warm, cold, offline, and large-account startup; cached route and selection; first/settled content; scroll frames; memory; UI-thread stalls; and blanking. Selection now presents a lightweight coherent header/path in the input frame and defers heavy Markdown, diff, tree, and body hydration until after render. The exact ten-iteration eight-route Warm matrix passes all 55 evaluations with unchanged budgets. | Closed against `vnext-publication-full-eight.json`: startup p95 `1149.77ms`/`1500ms`; cached-selection p95 My Issues `36.06ms`, My PRs `33.01ms`, Gists `42.67ms`, Repo Code `34.75ms`, Repo Issues `29.64ms`, Repo PRs `31.91ms`, and Repo Commits `37.52ms`, each against `50ms`. |
+| AUD-PERF-001 | P1 | **Reverified 2026-08-25.** Repeatable gates cover warm, cold, offline, and large-account startup; cached route and selection; first/settled content; scroll frames; memory; UI-thread stalls; and blanking. Selection presents coherent native state in the input frame and defers heavy Markdown, diff, tree, and body hydration until after render. The exact full native matrix passes all 353 evaluations with unchanged budgets. | Closed against `vnext-release-native-x64-final-v31.json`: 560 isolated app cases; Repo Code cached-selection p95 Warm `48.69ms`, Offline `38.76ms`, LargeAccount `31.54ms`; Repo PR p95 Warm `21.65ms`, Offline `23.56ms`, LargeAccount `25.09ms`; zero content blanking. |
 | AUD-PERF-002 | P1 | **Verified 2026-07-28.** Canonical reads inherit stale-first caching, validators and `304` reuse, request dedupe, account partitioning, tags, cancellation, priority lanes, background refresh, and rate-limit retry semantics; Settings reports and clears the shared cache. | Closed with the same 316-test architecture/foundation verification and independent inspection of HTTP-200 GraphQL rate-limit propagation and source ownership gates. |
 | AUD-PERF-003 | P2 | **Verified 2026-07-28.** Predictive work uses one adaptive policy for network, power, memory, per-resource GitHub rate limits, route/account cancellation, request-queue abandonment, and priority promotion; Issue, PR, and Commit hover/focus/dwell/neighbor work is bounded and shutdown-coordinated. | Closed after 113 focused adversarial tests, 30 fresh-process cancellation/promotion stress runs, a zero-warning build, and a third independent review of queue, focus-container, rate-limit-bucket, and foreground-wins behavior. |
 | AUD-PERF-004 | P2 | **Verified 2026-07-28.** Application activation, Shell initialization/search, Commit prefetch, Stars work, Profile GraphQL refresh, Notifications, Repo Code reconciliation, query/cache maintenance, and diagnostics use one coordinator with account/route cancellation, bounded shutdown drain, and identifier-free fault observation. | Closed after 104 focused lifecycle/reliability tests, the 1,311-test Debug suite, a zero-warning build, and independent review. |

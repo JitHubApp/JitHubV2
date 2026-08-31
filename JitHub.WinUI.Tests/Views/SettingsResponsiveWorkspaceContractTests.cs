@@ -18,9 +18,9 @@ public sealed class SettingsResponsiveWorkspaceContractTests
         XElement errorBar = document.Descendants().Single(element =>
             (string?)element.Attribute("AutomationProperties.AutomationId") == "SettingsErrorBar");
 
-        Assert.Equal("0", (string?)layout.Attribute("RowSpacing"));
-        Assert.Equal("0,10,0,0", (string?)workspace.Attribute("Margin"));
-        Assert.Equal("0,8,0,0", (string?)errorBar.Attribute("Margin"));
+        Assert.Equal("{ThemeResource AppGap0}", (string?)layout.Attribute("RowSpacing"));
+        Assert.Equal("{ThemeResource AppMargin0_10_0_0}", (string?)workspace.Attribute("Margin"));
+        Assert.Equal("{ThemeResource AppMargin0_8_0_0}", (string?)errorBar.Attribute("Margin"));
     }
 
     private static readonly XNamespace Xaml = "http://schemas.microsoft.com/winfx/2006/xaml";
@@ -38,6 +38,26 @@ public sealed class SettingsResponsiveWorkspaceContractTests
         Assert.Equal("Collapsed", (string?)selector.Attribute("Visibility"));
         Assert.Null(selector.Attribute("ItemsSource"));
         Assert.Null(selector.Attribute("SelectedItem"));
+
+        XElement itemTemplateRoot = selector
+            .Descendants()
+            .Single(element => element.Name.LocalName == "DataTemplate")
+            .Elements()
+            .Single();
+        XElement itemIcon = itemTemplateRoot.Elements().Single(element => element.Name.LocalName == "FontIcon");
+        XElement itemContainerStyle = selector
+            .Elements()
+            .Single(element => element.Name.LocalName == "ComboBox.ItemContainerStyle")
+            .Elements()
+            .Single();
+
+        Assert.Null(itemTemplateRoot.Attribute("MinHeight"));
+        Assert.Equal("Center", itemTemplateRoot.Attribute("VerticalAlignment")?.Value);
+        Assert.Equal("{ThemeResource AppDimension20}", itemIcon.Attribute("Width")?.Value);
+        Assert.Equal("{ThemeResource AppDimension20}", itemIcon.Attribute("Height")?.Value);
+        Assert.Contains(itemContainerStyle.Elements(), setter =>
+            setter.Attribute("Property")?.Value == "VerticalContentAlignment" &&
+            setter.Attribute("Value")?.Value == "Center");
 
         XElement compactState = document.Descendants().Single(element =>
             element.Name.LocalName == "VisualState" &&
@@ -64,7 +84,7 @@ public sealed class SettingsResponsiveWorkspaceContractTests
         XElement sectionList = document.Descendants().Single(element =>
             (string?)element.Attribute("AutomationProperties.AutomationId") == "SettingsSectionList");
 
-        Assert.Equal("220", workspace.Elements().Single(element => element.Name.LocalName == "Grid.ColumnDefinitions")
+        Assert.Equal("{ThemeResource AppGridLength220}", workspace.Elements().Single(element => element.Name.LocalName == "Grid.ColumnDefinitions")
             .Elements().First().Attribute("Width")?.Value);
         Assert.Equal("1", (string?)contentPanel.Attribute("Grid.Column"));
         Assert.Equal("Disabled", (string?)contentScroller.Attribute("HorizontalScrollMode"));
@@ -174,8 +194,49 @@ public sealed class SettingsResponsiveWorkspaceContractTests
             Assert.EndsWith("_Checked", (string?)card.Attribute("Checked"), StringComparison.Ordinal);
             Assert.False(string.IsNullOrWhiteSpace((string?)card.Attribute("AutomationProperties.Name")));
         });
-        Assert.Equal(3, source.Split("AddHandler(UIElement.KeyDownEvent", StringSplitOptions.None).Length - 1);
+        Assert.Contains("SystemThemeButton.AddHandler(UIElement.KeyDownEvent", source, StringComparison.Ordinal);
+        Assert.Contains("LightThemeButton.AddHandler(UIElement.KeyDownEvent", source, StringComparison.Ordinal);
+        Assert.Contains("DarkThemeButton.AddHandler(UIElement.KeyDownEvent", source, StringComparison.Ordinal);
         Assert.Contains("handledEventsToo: true", source, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void PaletteCards_UseTokenPreviewsAndNativeSingleSelectionSemantics()
+    {
+        XDocument document = LoadSettingsPage();
+        string source = File.ReadAllText(Path.Combine(
+            FindRepositoryRoot(),
+            "JitHub.WinUI",
+            "Views",
+            "Pages",
+            "SettingsPage.xaml.cs"));
+        XElement repeater = document.Descendants().Single(element =>
+            (string?)element.Attribute("AutomationProperties.AutomationId") == "SettingsPaletteOptions");
+        XElement card = repeater.Descendants().Single(element => element.Name.LocalName == "RadioButton");
+
+        Assert.Equal("SettingsPalette", (string?)card.Attribute("GroupName"));
+        Assert.Null(card.Attribute("Checked"));
+        Assert.Null(card.Attribute("KeyDown"));
+        Assert.Equal("ThemePaletteRepeater_ElementPrepared", (string?)repeater.Attribute("ElementPrepared"));
+        Assert.Equal("ThemePaletteRepeater_ElementClearing", (string?)repeater.Attribute("ElementClearing"));
+        Assert.Contains(
+            repeater.Descendants(),
+            element => element.Name.LocalName == "AppResponsiveUniformGridLayout");
+        Assert.DoesNotContain(
+            repeater.Descendants(),
+            element => element.Name.LocalName == "UniformGridLayout");
+        Assert.Contains("card.AddHandler(UIElement.KeyDownEvent, keyHandler, handledEventsToo: true)", source, StringComparison.Ordinal);
+        Assert.Contains("card.RemoveHandler(UIElement.KeyDownEvent, keyHandler)", source, StringComparison.Ordinal);
+        Assert.Equal("{x:Bind AutomationId}", (string?)card.Attribute("AutomationProperties.AutomationId"));
+        Assert.Equal("{x:Bind Label}", (string?)card.Attribute("AutomationProperties.Name"));
+        Assert.Equal("{x:Bind Description}", (string?)card.Attribute("AutomationProperties.HelpText"));
+        Assert.Equal("{x:Bind IsSelected, Mode=OneWay}", (string?)card.Attribute("IsChecked"));
+        Assert.Contains(
+            card.Descendants(),
+            element => ((string?)element.Attribute("Background"))?.Contains("Light.", StringComparison.Ordinal) == true);
+        Assert.Contains(
+            card.Descendants(),
+            element => ((string?)element.Attribute("Background"))?.Contains("Dark.", StringComparison.Ordinal) == true);
     }
 
     [Fact]
@@ -241,8 +302,16 @@ public sealed class SettingsResponsiveWorkspaceContractTests
         }
 
         Assert.Contains("AssertSettingsThemeCardSemantics", source, StringComparison.Ordinal);
+        Assert.Contains("AssertSettingsPaletteCardSemantics", source, StringComparison.Ordinal);
+        Assert.Contains("theme-palettes", source, StringComparison.Ordinal);
+        Assert.Contains("APPLICATION_PALETTE_KEY", source, StringComparison.Ordinal);
+        Assert.Contains("JITHUB_PREVIEW_PALETTE", source, StringComparison.Ordinal);
         Assert.Contains("AssertSettingsSignOutConfirmation", source, StringComparison.Ordinal);
         Assert.Contains("AssertSettingsExportPicker", source, StringComparison.Ordinal);
+        Assert.Contains("settings-export-picker", source, StringComparison.Ordinal);
+        Assert.Contains("RunSettingsExportPickerProbe", source, StringComparison.Ordinal);
+        Assert.Contains("diagnostics export action gate releases", source, StringComparison.Ordinal);
+        Assert.Contains("Patterns.SelectionItem.Pattern.IsSelected.Value", source, StringComparison.Ordinal);
         Assert.Contains("SettingsConfirmClearRepoFileCache", source, StringComparison.Ordinal);
         Assert.Contains("IsHighContrastEnabled", source, StringComparison.Ordinal);
         Assert.Contains("settings-pseudo-long-labels", source, StringComparison.Ordinal);
@@ -257,7 +326,7 @@ public sealed class SettingsResponsiveWorkspaceContractTests
     private static string FindRepositoryRoot()
     {
         DirectoryInfo? directory = new(AppContext.BaseDirectory);
-        while (directory is not null && !File.Exists(Path.Combine(directory.FullName, "JitHub.slnx")))
+        while (directory is not null && !File.Exists(Path.Combine(directory.FullName, "Directory.Build.props")))
         {
             directory = directory.Parent;
         }

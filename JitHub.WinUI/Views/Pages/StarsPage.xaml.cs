@@ -6,6 +6,7 @@ using System.Threading.Tasks;
 using JitHub.Services;
 using JitHub.Services.Layout;
 using JitHub.WinUI.Helpers;
+using JitHub.WinUI.Performance;
 using JitHub.WinUI.ViewModels.Pages;
 using JitHub.WinUI.Views.Dialogs;
 using Microsoft.UI.Xaml;
@@ -36,6 +37,7 @@ public sealed partial class StarsPage : Page
     private FrameworkElement? _repositoryDragSource;
     private StarNavigationItem? _repositoryDragTarget;
     private IReadOnlyList<StarRepositoryViewItem> _draggedRepositories = [];
+    private ProductPerformanceScrollProbe? _performanceScrollProbe;
 
     public StarLibraryPageViewModel ViewModel { get; }
 
@@ -47,28 +49,45 @@ public sealed partial class StarsPage : Page
         Loaded += OnLoaded;
     }
 
-    private async void OnLoaded(object sender, RoutedEventArgs e)
+    private void OnLoaded(object sender, RoutedEventArgs e)
     {
-        if (!_initialized)
+        UiTaskGuard.Run(async () =>
         {
-            _initialized = true;
-            try
+            AttachPerformanceScrollProbe();
+            if (!_initialized)
             {
-                await ViewModel.InitializeAsync();
-                _ = ViewModel.PrefetchLikelyRepositoriesAsync();
+                _initialized = true;
+                try
+                {
+                    await ViewModel.InitializeAsync();
+                    UiTaskGuard.Observe(ViewModel.PrefetchLikelyRepositoriesAsync(), "ui-stars-page");
+                }
+                catch (Exception ex)
+                {
+                    JitHub.WinUI.App.LogHandledException(ex, "ui-stars-page-initialize");
+                    ShowStatus(L("Stars/Status/OpenFailed", "The Stars library could not be opened."), InfoBarSeverity.Error, canUndo: false);
+                }
             }
-            catch (Exception ex)
-            {
-                System.Diagnostics.Debug.WriteLine($"Failed to initialize Stars: {ex}");
-                ShowStatus(L("Stars/Status/OpenFailed", "The Stars library could not be opened."), InfoBarSeverity.Error, canUndo: false);
-            }
-        }
 
-        ProductPerformanceReadiness.CommitRoute(
-            "stars",
-            ProductPerformanceReadiness.CountIdentity(ViewModel.Repositories.Count));
+            ProductPerformanceReadiness.CommitRoute("stars", ProductPerformanceReadiness.CountIdentity(ViewModel.Repositories.Count));
+            _ = DispatcherQueue.TryEnqueue(RestoreWorkspaceState);
+        }, "ui-stars-page");
+    }
 
-        _ = DispatcherQueue.TryEnqueue(RestoreWorkspaceState);
+    protected override void OnNavigatedFrom(NavigationEventArgs e)
+    {
+        _performanceScrollProbe?.Dispose();
+        _performanceScrollProbe = null;
+        base.OnNavigatedFrom(e);
+    }
+
+    private void AttachPerformanceScrollProbe()
+    {
+        _performanceScrollProbe?.Dispose();
+        _performanceScrollProbe = ProductPerformanceReadiness.IsEnabled &&
+            FindDescendant<ScrollViewer>(RepositoriesList) is ScrollViewer scrollViewer
+                ? ProductPerformanceScrollProbe.TryStart(RepositoriesList, scrollViewer)
+                : null;
     }
 
     private void RestoreWorkspaceState()
@@ -119,7 +138,6 @@ public sealed partial class StarsPage : Page
         }
         OpenCategoriesButton.Visibility = compact ? Visibility.Visible : Visibility.Collapsed;
         CloseCategoriesButton.Visibility = compact ? Visibility.Visible : Visibility.Collapsed;
-        WorkspaceChromeVisuals.ApplyOptionalContext(StarsResultCount, chrome);
         WorkspaceChromeVisuals.ApplyActionLabel(StarsFilterButtonText, chrome);
         WorkspaceChromeVisuals.ApplyActionButton(
             StarsFilterButton,
@@ -251,30 +269,33 @@ public sealed partial class StarsPage : Page
         }
     }
 
-    private async void RepositoriesList_ContainerContentChanging(ListViewBase sender, ContainerContentChangingEventArgs args)
+    private void RepositoriesList_ContainerContentChanging(ListViewBase sender, ContainerContentChangingEventArgs args)
     {
-        if (args.ItemContainer is ListViewItem container && args.Item is StarRepositoryViewItem item)
+        UiTaskGuard.Run(async () =>
         {
-            AutomationProperties.SetAutomationId(container, item.AutomationId);
-            AutomationProperties.SetName(container, item.AutomationName);
-            item.IsSelectionModeVisible = RepositoriesList.SelectionMode == ListViewSelectionMode.Multiple;
-            item.IsSelected = RepositoriesList.SelectedItems.Contains(item);
-        }
+            if (args.ItemContainer is ListViewItem container && args.Item is StarRepositoryViewItem item)
+            {
+                AutomationProperties.SetAutomationId(container, item.AutomationId);
+                AutomationProperties.SetName(container, item.AutomationName);
+                item.IsSelectionModeVisible = RepositoriesList.SelectionMode == ListViewSelectionMode.Multiple;
+                item.IsSelected = RepositoriesList.SelectedItems.Contains(item);
+            }
 
-        if (_loadingMore || !ViewModel.HasMore || args.ItemIndex < ViewModel.Repositories.Count - 12)
-        {
-            return;
-        }
+            if (_loadingMore || !ViewModel.HasMore || args.ItemIndex < ViewModel.Repositories.Count - 12)
+            {
+                return;
+            }
 
-        _loadingMore = true;
-        try
-        {
-            await ViewModel.LoadMoreAsync();
-        }
-        finally
-        {
-            _loadingMore = false;
-        }
+            _loadingMore = true;
+            try
+            {
+                await ViewModel.LoadMoreAsync();
+            }
+            finally
+            {
+                _loadingMore = false;
+            }
+        }, "ui-stars-page");
     }
 
     private void SelectionModeButton_Click(object sender, RoutedEventArgs e)
@@ -381,26 +402,21 @@ public sealed partial class StarsPage : Page
         ViewModel.SetSelection([]);
     }
 
-    private async void BulkUnstarButton_Click(object sender, RoutedEventArgs e)
+    private void BulkUnstarButton_Click(object sender, RoutedEventArgs e)
     {
-        IReadOnlyList<StarRepositoryViewItem> selected = GetSelectedRepositories();
-        if (selected.Count == 0)
+        UiTaskGuard.Run(async () =>
         {
-            return;
-        }
+            IReadOnlyList<StarRepositoryViewItem> selected = GetSelectedRepositories();
+            if (selected.Count == 0)
+            {
+                return;
+            }
 
-        ContentDialog dialog = CreateDialog(
-            L("Stars/Dialogs/BulkUnstar/Title", "Unstar repositories?"),
-            LF("Stars/Dialogs/BulkUnstar/BodyFormat", "This will remove {0:N0} repositories from your GitHub stars and from every local category.", selected.Count),
-            L("Common/Unstar", "Unstar"),
-            L("Common/Cancel", "Cancel"));
-        dialog.PrimaryButtonStyle = (Style)Application.Current.Resources["AppDestructiveButtonStyle"];
-        dialog.DefaultButton = ContentDialogButton.Close;
-        TextBlock errorText = AttachInlineError(dialog, "StarsBulkUnstarDialogError");
-        await AppContentDialogPresenter.ShowForPrimaryActionAsync(
-            dialog,
-            XamlRoot,
-            async () =>
+            ContentDialog dialog = CreateDialog(L("Stars/Dialogs/BulkUnstar/Title", "Unstar repositories?"), LF("Stars/Dialogs/BulkUnstar/BodyFormat", "This will remove {0:N0} repositories from your GitHub stars and from every local category.", selected.Count), L("Common/Unstar", "Unstar"), L("Common/Cancel", "Cancel"));
+            dialog.PrimaryButtonStyle = (Style)Application.Current.Resources["AppDestructiveButtonStyle"];
+            dialog.DefaultButton = ContentDialogButton.Close;
+            TextBlock errorText = AttachInlineError(dialog, "StarsBulkUnstarDialogError");
+            await AppContentDialogPresenter.ShowForPrimaryActionAsync(dialog, XamlRoot, async () =>
             {
                 try
                 {
@@ -411,24 +427,27 @@ public sealed partial class StarsPage : Page
                 }
                 catch (Exception ex)
                 {
-                    System.Diagnostics.Debug.WriteLine($"Bulk unstar failed: {ex}");
+                    JitHub.WinUI.App.LogHandledException(ex, "ui-stars-bulk-unstar");
                     return DialogMutationResult.Failure(L("Stars/Status/BulkUnstarFailed", "The selected repositories could not be unstarred."));
                 }
-            },
-            errorText);
+            }, errorText, layoutKind: AppDialogLayoutKind.Confirmation);
+        }, "ui-stars-page");
     }
 
-    private async void BulkCategoryButton_Click(object sender, RoutedEventArgs e)
+    private void BulkCategoryButton_Click(object sender, RoutedEventArgs e)
     {
-        IReadOnlyList<StarRepositoryViewItem> selected = GetSelectedRepositories();
-        StarCategoryViewItem? category = await ChooseCategoryAsync(L("Stars/Dialogs/ChooseCategory/BulkTitle", "Add selected repositories"));
-        if (category is null || selected.Count == 0)
+        UiTaskGuard.Run(async () =>
         {
-            return;
-        }
+            IReadOnlyList<StarRepositoryViewItem> selected = GetSelectedRepositories();
+            StarCategoryViewItem? category = await ChooseCategoryAsync(L("Stars/Dialogs/ChooseCategory/BulkTitle", "Add selected repositories"));
+            if (category is null || selected.Count == 0)
+            {
+                return;
+            }
 
-        await ViewModel.AddToCategoryAsync(category.Id, selected);
-        ShowStatus(LF("Stars/Status/BulkAddedToCategoryFormat", "Added {0:N0} repositories to {1}.", selected.Count, category.Name), InfoBarSeverity.Success, canUndo: false);
+            await ViewModel.AddToCategoryAsync(category.Id, selected);
+            ShowStatus(LF("Stars/Status/BulkAddedToCategoryFormat", "Added {0:N0} repositories to {1}.", selected.Count, category.Name), InfoBarSeverity.Success, canUndo: false);
+        }, "ui-stars-page");
     }
 
     private void RepositoryDragHandle_PointerPressed(object sender, PointerRoutedEventArgs e)
@@ -443,7 +462,7 @@ public sealed partial class StarsPage : Page
         _draggedRepositories = selectedItems.Any(
             selected => selected.Repository.Id == draggedItem.Repository.Id)
                 ? selectedItems
-                : [draggedItem];
+                : (StarRepositoryViewItem[])[draggedItem];
         _repositoryDragSource = source;
         _repositoryDragStart = e.GetCurrentPoint(RootGrid).Position;
         _isRepositoryPointerDown = source.CapturePointer(e.Pointer);
@@ -476,29 +495,32 @@ public sealed partial class StarsPage : Page
         e.Handled = true;
     }
 
-    private async void RepositoryDragHandle_PointerReleased(object sender, PointerRoutedEventArgs e)
+    private void RepositoryDragHandle_PointerReleased(object sender, PointerRoutedEventArgs e)
     {
-        if (!_isRepositoryPointerDown)
+        UiTaskGuard.Run(async () =>
         {
-            return;
-        }
+            if (!_isRepositoryPointerDown)
+            {
+                return;
+            }
 
-        Point position = e.GetCurrentPoint(RootGrid).Position;
-        if (_isRepositoryDragActive)
-        {
-            SetRepositoryDragTarget(FindCategoryAt(position));
-        }
+            Point position = e.GetCurrentPoint(RootGrid).Position;
+            if (_isRepositoryDragActive)
+            {
+                SetRepositoryDragTarget(FindCategoryAt(position));
+            }
 
-        StarNavigationItem? target = _repositoryDragTarget;
-        IReadOnlyList<StarRepositoryViewItem> repositories = _draggedRepositories;
-        bool shouldAssign = _isRepositoryDragActive && target?.Category is not null && repositories.Count > 0;
-        ResetRepositoryDrag();
-        e.Handled = true;
-        if (shouldAssign)
-        {
-            AutomationProperties.SetItemStatus(RepositoriesList, "drop-received");
-            await AssignDraggedRepositoriesAsync(target!, repositories);
-        }
+            StarNavigationItem? target = _repositoryDragTarget;
+            IReadOnlyList<StarRepositoryViewItem> repositories = _draggedRepositories;
+            bool shouldAssign = _isRepositoryDragActive && target?.Category is not null && repositories.Count > 0;
+            ResetRepositoryDrag();
+            e.Handled = true;
+            if (shouldAssign)
+            {
+                AutomationProperties.SetItemStatus(RepositoriesList, "drop-received");
+                await AssignDraggedRepositoriesAsync(target!, repositories);
+            }
+        }, "ui-stars-page");
     }
 
     private void RepositoryDragHandle_PointerCanceled(object sender, PointerRoutedEventArgs e)
@@ -579,29 +601,25 @@ public sealed partial class StarsPage : Page
         }
         catch (Exception ex)
         {
-            System.Diagnostics.Debug.WriteLine($"Assign Stars category failed: {ex}");
+            JitHub.WinUI.App.LogHandledException(ex, "ui-stars-assign-category");
             AutomationProperties.SetItemStatus(RepositoriesList, "drop-failed");
             ShowStatus(L("Stars/Status/AddToCategoryFailed", "The repositories could not be added to the category."), InfoBarSeverity.Error, canUndo: false);
         }
     }
 
-    private async void NewCategoryButton_Click(object sender, RoutedEventArgs e)
+    private void NewCategoryButton_Click(object sender, RoutedEventArgs e)
     {
-        StarCategory? createdCategory = null;
-        bool saved = await EditCategoryDialogAsync(
-            L("Stars/Dialogs/Category/CreateTitle", "New category"),
-            existing: null,
-            async (name, color) => createdCategory = await ViewModel.CreateCategoryAsync(name, color),
-            L("Stars/Status/CategoryCreateFailed", "The category could not be created."));
-        if (!saved || createdCategory is null)
+        UiTaskGuard.Run(async () =>
         {
-            return;
-        }
+            StarCategory? createdCategory = null;
+            bool saved = await EditCategoryDialogAsync(L("Stars/Dialogs/Category/CreateTitle", "New category"), existing: null, async (name, color) => createdCategory = await ViewModel.CreateCategoryAsync(name, color), L("Stars/Status/CategoryCreateFailed", "The category could not be created."));
+            if (!saved || createdCategory is null)
+            {
+                return;
+            }
 
-        ViewModel.SelectCategory(createdCategory.Id);
-        _ = DispatcherQueue.TryEnqueue(
-            Microsoft.UI.Dispatching.DispatcherQueuePriority.Low,
-            () =>
+            ViewModel.SelectCategory(createdCategory.Id);
+            _ = DispatcherQueue.TryEnqueue(Microsoft.UI.Dispatching.DispatcherQueuePriority.Low, () =>
             {
                 CategoryNavigationList.UpdateLayout();
                 if (ViewModel.SelectedNavigationItem is not null)
@@ -609,10 +627,8 @@ public sealed partial class StarsPage : Page
                     CategoryNavigationList.ScrollIntoView(ViewModel.SelectedNavigationItem);
                 }
             });
-        ShowStatus(
-            LF("Stars/Status/CategoryCreatedFormat", "Created {0}.", createdCategory.Name),
-            InfoBarSeverity.Success,
-            canUndo: false);
+            ShowStatus(LF("Stars/Status/CategoryCreatedFormat", "Created {0}.", createdCategory.Name), InfoBarSeverity.Success, canUndo: false);
+        }, "ui-stars-page");
     }
 
     private void CategoryMenuButton_Click(object sender, RoutedEventArgs e)
@@ -632,11 +648,15 @@ public sealed partial class StarsPage : Page
         MenuFlyoutItem moveUp = new() { Text = L("Stars/CategoryActions/MoveUp", "Move up"), Icon = new FontIcon { Glyph = "\uE74A" }, IsEnabled = category.Position > 0 };
         AutomationProperties.SetAutomationId(moveUp, "StarsCategoryActionMoveUp");
         AutomationProperties.SetName(moveUp, L("Stars/CategoryActions/MoveUpAutomationName", "Move category up"));
-        moveUp.Click += async (_, _) => await ViewModel.MoveCategoryAsync(category, -1);
+        moveUp.Click += (_, _) => UiTaskGuard.Run(
+            () => ViewModel.MoveCategoryAsync(category, -1),
+            "ui-stars-page");
         MenuFlyoutItem moveDown = new() { Text = L("Stars/CategoryActions/MoveDown", "Move down"), Icon = new FontIcon { Glyph = "\uE74B" }, IsEnabled = category.Position < ViewModel.CustomCategories.Count - 1 };
         AutomationProperties.SetAutomationId(moveDown, "StarsCategoryActionMoveDown");
         AutomationProperties.SetName(moveDown, L("Stars/CategoryActions/MoveDownAutomationName", "Move category down"));
-        moveDown.Click += async (_, _) => await ViewModel.MoveCategoryAsync(category, 1);
+        moveDown.Click += (_, _) => UiTaskGuard.Run(
+            () => ViewModel.MoveCategoryAsync(category, 1),
+            "ui-stars-page");
         MenuFlyoutItem delete = new() { Text = L("Stars/CategoryActions/Delete", "Delete category"), Icon = new FontIcon { Glyph = "\uE74D" } };
         AutomationProperties.SetAutomationId(delete, "StarsCategoryActionDelete");
         AutomationProperties.SetName(delete, L("Stars/CategoryActions/DeleteAutomationName", "Delete category"));
@@ -646,11 +666,11 @@ public sealed partial class StarsPage : Page
         menu.Items.Add(moveDown);
         menu.Items.Add(new MenuFlyoutSeparator());
         menu.Items.Add(delete);
-        menu.Closed += async (_, _) =>
+        menu.Closed += (_, _) =>
         {
             if (deferredDialogAction is not null)
             {
-                await deferredDialogAction();
+                UiTaskGuard.Run(deferredDialogAction, "ui-stars-page");
             }
         };
         menu.ShowAt(anchor);
@@ -686,6 +706,7 @@ public sealed partial class StarsPage : Page
             LF("Stars/Dialogs/Category/DeleteBodyFormat", "Delete {0}? Repositories stay starred and remain in the library.", category.Name),
             L("Common/Delete", "Delete"),
             L("Common/Cancel", "Cancel"));
+        AutomationProperties.SetAutomationId(dialog, "StarsDeleteCategoryDialog");
         dialog.PrimaryButtonStyle = (Style)Application.Current.Resources["AppDestructiveButtonStyle"];
         dialog.DefaultButton = ContentDialogButton.Close;
         TextBlock errorText = AttachInlineError(dialog, "StarsDeleteCategoryDialogError");
@@ -702,11 +723,12 @@ public sealed partial class StarsPage : Page
                 }
                 catch (Exception ex)
                 {
-                    System.Diagnostics.Debug.WriteLine($"Delete Stars category failed: {ex}");
+                    JitHub.WinUI.App.LogHandledException(ex, "ui-stars-delete-category");
                     return DialogMutationResult.Failure(L("Stars/Status/CategoryDeleteFailed", "The category could not be deleted."));
                 }
             },
-            errorText);
+            errorText,
+            layoutKind: AppDialogLayoutKind.Confirmation);
     }
 
     private async Task<bool> EditCategoryDialogAsync(
@@ -726,14 +748,9 @@ public sealed partial class StarsPage : Page
         AutomationProperties.SetName(name, L("Stars/Dialogs/Category/NameAutomationName", "Category name"));
         ComboBox color = new()
         {
+            Header = L("Stars/Dialogs/Category/ColorHeader", "Color"),
             PlaceholderText = L("Stars/Dialogs/Category/ColorPlaceholder", "Choose a color"),
-            MinWidth = 220,
-            MinHeight = 40,
-            HorizontalAlignment = HorizontalAlignment.Stretch,
-            HorizontalContentAlignment = HorizontalAlignment.Stretch,
-            VerticalContentAlignment = VerticalAlignment.Center,
-            Background = new SolidColorBrush(Microsoft.UI.Colors.Transparent),
-            BorderThickness = new Thickness(0)
+            Style = AppDialogStyleCatalog.GetStyle("AppDialogColorPickerStyle")
         };
         foreach (string categoryColor in CategoryColors)
         {
@@ -746,21 +763,9 @@ public sealed partial class StarsPage : Page
         color.SelectedIndex = selectedColorIndex >= 0 ? selectedColorIndex : 0;
         AutomationProperties.SetAutomationId(color, "StarsCategoryColorPicker");
         AutomationProperties.SetName(color, L("Stars/Dialogs/Category/ColorAutomationName", "Category color"));
-        Border colorFrame = new()
-        {
-            MinHeight = 40,
-            Background = (Brush)Application.Current.Resources["AppInputBrush"],
-            BorderBrush = (Brush)Application.Current.Resources["AppOutlineBrush"],
-            BorderThickness = new Thickness(1),
-            CornerRadius = (CornerRadius)Application.Current.Resources["AppRadiusMedium"],
-            Child = color
-        };
-        StackPanel colorField = new() { Spacing = 6 };
-        colorField.Children.Add(new TextBlock { Text = L("Stars/Dialogs/Category/ColorHeader", "Color") });
-        colorField.Children.Add(colorFrame);
-        StackPanel content = new() { Spacing = 12 };
+        StackPanel content = new();
         content.Children.Add(name);
-        content.Children.Add(colorField);
+        content.Children.Add(color);
         ContentDialog dialog = CreateDialog(
             title,
             content,
@@ -793,11 +798,12 @@ public sealed partial class StarsPage : Page
                 }
                 catch (Exception ex)
                 {
-                    System.Diagnostics.Debug.WriteLine($"Stars category mutation failed: {ex}");
+                    JitHub.WinUI.App.LogHandledException(ex, "ui-stars-category-mutation");
                     return DialogMutationResult.Failure(mutationFailureMessage);
                 }
             },
-            errorText) == ContentDialogResult.Primary;
+            errorText,
+            layoutKind: AppDialogLayoutKind.CompactForm) == ContentDialogResult.Primary;
     }
 
     private static ComboBoxItem CreateCategoryColorItem(string hexColor)
@@ -808,23 +814,15 @@ public sealed partial class StarsPage : Page
 
         Grid content = new()
         {
-            MinWidth = 180,
-            MinHeight = 36,
-            VerticalAlignment = VerticalAlignment.Center,
-            ColumnSpacing = 10
+            Style = AppDialogStyleCatalog.GetStyle("AppColorOptionLayoutStyle")
         };
-        content.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(20) });
+        content.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
         content.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
 
         Border swatch = new()
         {
-            Width = 16,
-            Height = 16,
-            VerticalAlignment = VerticalAlignment.Center,
+            Style = AppDialogStyleCatalog.GetStyle("AppColorSwatchStyle"),
             Background = new SolidColorBrush(Windows.UI.Color.FromArgb(255, red, green, blue)),
-            BorderBrush = (Brush)Application.Current.Resources["AppOutlineStrongBrush"],
-            BorderThickness = new Thickness(1),
-            CornerRadius = (CornerRadius)Application.Current.Resources["AppRadiusTight"]
         };
         TextBlock label = new()
         {
@@ -838,10 +836,7 @@ public sealed partial class StarsPage : Page
         return new ComboBoxItem
         {
             Tag = hexColor,
-            Content = content,
-            MinHeight = 40,
-            HorizontalContentAlignment = HorizontalAlignment.Stretch,
-            VerticalContentAlignment = VerticalAlignment.Center
+            Content = content
         };
     }
 
@@ -854,7 +849,10 @@ public sealed partial class StarsPage : Page
                 L("Stars/Dialogs/ChooseCategory/EmptyBody", "Create a category first, then assign repositories to it."),
                 L("Common/OK", "OK"),
                 string.Empty);
-            await AppContentDialogPresenter.ShowAsync(empty, XamlRoot);
+            await AppContentDialogPresenter.ShowAsync(
+                empty,
+                XamlRoot,
+                AppDialogLayoutKind.Confirmation);
             return null;
         }
 
@@ -891,7 +889,7 @@ public sealed partial class StarsPage : Page
             SetRepositoryRowHoverState(row, isVisible: true);
             if (row.DataContext is StarRepositoryViewItem item)
             {
-                _ = ViewModel.PrefetchRepositoryAsync(item);
+                UiTaskGuard.Observe(ViewModel.PrefetchRepositoryAsync(item), "ui-stars-page");
             }
         }
     }
@@ -918,12 +916,15 @@ public sealed partial class StarsPage : Page
         }
     }
 
-    private async void RepositoryHoverUnstarButton_Click(object sender, RoutedEventArgs e)
+    private void RepositoryHoverUnstarButton_Click(object sender, RoutedEventArgs e)
     {
-        if (sender is FrameworkElement { DataContext: StarRepositoryViewItem item })
+        UiTaskGuard.Run(async () =>
         {
-            await UnstarOneAsync(item);
-        }
+            if (sender is FrameworkElement { DataContext: StarRepositoryViewItem item })
+            {
+                await UnstarOneAsync(item);
+            }
+        }, "ui-stars-page");
     }
 
     private void RepositoryHoverMenuButton_Click(object sender, RoutedEventArgs e)
@@ -959,12 +960,15 @@ public sealed partial class StarsPage : Page
             StarCategoryViewItem? category = await ChooseCategoryAsync(L("Stars/RepositoryActions/AddToCategory", "Add to category"));
             if (category is not null)
             {
-                await ViewModel.AddToCategoryAsync(category.Id, [item]);
+                await ViewModel.AddToCategoryAsync(category.Id, (StarRepositoryViewItem[])[item]);
             }
         }));
         if (ViewModel.SelectedNavigationItem?.Category is not null)
         {
-            menu.Items.Add(CreateMenuItem(L("Stars/RepositoryActions/RemoveFromCategory", "Remove from current category"), "\uE711", async () => await ViewModel.RemoveFromCurrentCategoryAsync([item])));
+            menu.Items.Add(CreateMenuItem(
+                L("Stars/RepositoryActions/RemoveFromCategory", "Remove from current category"),
+                "\uE711",
+                async () => await ViewModel.RemoveFromCurrentCategoryAsync((StarRepositoryViewItem[])[item])));
         }
         menu.Items.Add(new MenuFlyoutSeparator());
         menu.Items.Add(CreateMenuItem(L("Stars/RepositoryActions/CopyLink", "Copy repository link"), "\uE8C8", () => ViewModel.CopyRepositoryLink(item)));
@@ -981,25 +985,28 @@ public sealed partial class StarsPage : Page
         }
         catch (Exception ex)
         {
-            System.Diagnostics.Debug.WriteLine($"Unstar failed: {ex}");
+            JitHub.WinUI.App.LogHandledException(ex, "ui-stars-unstar");
             ShowStatus(L("Stars/Status/UnstarFailed", "The repository could not be unstarred."), InfoBarSeverity.Error, canUndo: false);
         }
     }
 
-    private async void UndoButton_Click(object sender, RoutedEventArgs e)
+    private void UndoButton_Click(object sender, RoutedEventArgs e)
     {
-        StarUndoState? undo = _undoState;
-        _undoState = null;
-        try
+        UiTaskGuard.Run(async () =>
         {
-            await ViewModel.UndoUnstarAsync(undo);
-            ShowStatus(L("Stars/Status/UndoSucceeded", "The star was restored."), InfoBarSeverity.Success, canUndo: false);
-        }
-        catch (Exception ex)
-        {
-            System.Diagnostics.Debug.WriteLine($"Undo unstar failed: {ex}");
-            ShowStatus(L("Stars/Status/UndoFailed", "The star could not be restored."), InfoBarSeverity.Error, canUndo: false);
-        }
+            StarUndoState? undo = _undoState;
+            _undoState = null;
+            try
+            {
+                await ViewModel.UndoUnstarAsync(undo);
+                ShowStatus(L("Stars/Status/UndoSucceeded", "The star was restored."), InfoBarSeverity.Success, canUndo: false);
+            }
+            catch (Exception ex)
+            {
+                JitHub.WinUI.App.LogHandledException(ex, "ui-stars-undo-unstar");
+                ShowStatus(L("Stars/Status/UndoFailed", "The star could not be restored."), InfoBarSeverity.Error, canUndo: false);
+            }
+        }, "ui-stars-page");
     }
 
     private void ClearFiltersButton_Click(object sender, RoutedEventArgs e) => ViewModel.ClearFilters();
@@ -1078,7 +1085,7 @@ public sealed partial class StarsPage : Page
         MenuFlyoutItem item = new() { Text = text, Icon = new FontIcon { Glyph = glyph } };
         AutomationProperties.SetAutomationId(item, "StarsContext" + new string(text.Where(char.IsLetterOrDigit).ToArray()));
         AutomationProperties.SetName(item, text);
-        item.Click += async (_, _) => await action();
+        item.Click += (_, _) => UiTaskGuard.Run(action, "ui-stars-page");
         return item;
     }
 

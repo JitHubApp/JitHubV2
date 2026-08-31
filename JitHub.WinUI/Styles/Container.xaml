@@ -4,39 +4,39 @@
         <Setter Property="CornerRadius" Value="{ThemeResource AppRadiusMedium}" />
         <Setter Property="Background" Value="{ThemeResource AppCardBrush}" />
         <Setter Property="BorderBrush" Value="{ThemeResource AppOutlineBrush}" />
-        <Setter Property="BorderThickness" Value="1" />
+        <Setter Property="BorderThickness" Value="{ThemeResource AppHairlineBorderThickness}" />
     </Style>
     <Style x:Key="PlainContainer" TargetType="Border">
         <Setter Property="Padding" Value="{ThemeResource AppCardPadding}" />
         <Setter Property="CornerRadius" Value="{ThemeResource AppRadiusMedium}" />
         <Setter Property="Background" Value="{ThemeResource AppCardBrush}" />
         <Setter Property="BorderBrush" Value="{ThemeResource AppOutlineBrush}" />
-        <Setter Property="BorderThickness" Value="1" />
+        <Setter Property="BorderThickness" Value="{ThemeResource AppHairlineBorderThickness}" />
     </Style>
     <Style x:Key="ActionPanel" TargetType="StackPanel">
-        <Setter Property="Margin" Value="0,8,0,0" />
-        <Setter Property="Spacing" Value="8" />
+        <Setter Property="Margin" Value="{ThemeResource AppMargin0_8_0_0}" />
+        <Setter Property="Spacing" Value="{ThemeResource AppGap8}" />
         <Setter Property="HorizontalAlignment" Value="Right" />
         <Setter Property="Orientation" Value="Horizontal" />
     </Style>
     <Style x:Key="ActivityContainer" TargetType="Border">
-        <Setter Property="Padding" Value="12" />
+        <Setter Property="Padding" Value="{ThemeResource AppPadding12}" />
         <Setter Property="CornerRadius" Value="{ThemeResource AppRadiusMedium}" />
         <Setter Property="BorderBrush" Value="{ThemeResource AppOutlineBrush}" />
-        <Setter Property="BorderThickness" Value="1" />
+        <Setter Property="BorderThickness" Value="{ThemeResource AppHairlineBorderThickness}" />
         <Setter Property="Background" Value="{ThemeResource AppCardBrush}" />
     </Style>
     <Style x:Key="SectionCardBorderStyle" TargetType="Border">
         <Setter Property="Padding" Value="{ThemeResource AppCardPadding}" />
         <Setter Property="Background" Value="{ThemeResource AppCardBrush}" />
         <Setter Property="BorderBrush" Value="{ThemeResource AppOutlineBrush}" />
-        <Setter Property="BorderThickness" Value="1" />
+        <Setter Property="BorderThickness" Value="{ThemeResource AppHairlineBorderThickness}" />
         <Setter Property="CornerRadius" Value="{ThemeResource AppRadiusLarge}" />
     </Style>
     <Style x:Key="WorkspacePanelStyle" TargetType="Border">
         <Setter Property="Background" Value="{ThemeResource AppRailBrush}" />
         <Setter Property="BorderBrush" Value="{ThemeResource AppHairlineBrush}" />
-        <Setter Property="BorderThickness" Value="1" />
+        <Setter Property="BorderThickness" Value="{ThemeResource AppHairlineBorderThickness}" />
         <Setter Property="CornerRadius" Value="{ThemeResource AppRadiusSmall}" />
     </Style>
 </ResourceDictionary>

@@ -12,19 +12,19 @@
 
     <Border
         Style="{StaticResource Container}"
-        Padding="0">
+        Padding="{ThemeResource AppPadding0}">
         <Grid
-            Padding="0">
+            Padding="{ThemeResource AppPadding0}">
             <Grid.RowDefinitions>
                 <RowDefinition Height="auto"/>
                 <RowDefinition Height="*"/>
             </Grid.RowDefinitions>
             <Border
                 Grid.Row="0"
-                Padding="12 10"
+                Padding="{ThemeResource AppPadding12_10}"
                 Background="{ThemeResource AppCanvasRaisedBrush}"
                 BorderBrush="{ThemeResource AppOutlineBrush}"
-                BorderThickness="0,0,0,1"
+                BorderThickness="{ThemeResource AppBottomHairlineBorderThickness}"
                 CornerRadius="{ThemeResource AppRadiusMedium}">
                 <ContentPresenter
                     Content="{x:Bind HeaderContent, Mode=OneWay}"/>

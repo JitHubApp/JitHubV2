@@ -26,7 +26,7 @@ public sealed partial class TelemetryService : ITelemetryService
         {
             string eventName = TelemetrySanitizer.NormalizeEventName(name);
             IReadOnlyDictionary<string, string> sanitized = TelemetrySanitizer.SanitizeProperties(properties);
-            TrackStoreEvent(eventName);
+            TrackStoreEvent(eventName, sanitized);
             AppendDiagnostics(new LocalDiagnosticEvent(
                 DateTimeOffset.UtcNow,
                 "event",
@@ -48,7 +48,7 @@ public sealed partial class TelemetryService : ITelemetryService
                 ["metric"] = name
             };
             IReadOnlyDictionary<string, string> sanitized = TelemetrySanitizer.SanitizeProperties(merged);
-            TrackStoreEvent("telemetry.metric");
+            TrackStoreEvent("telemetry.metric", sanitized);
             AppendDiagnostics(new LocalDiagnosticEvent(
                 DateTimeOffset.UtcNow,
                 "metric",
@@ -91,13 +91,20 @@ public sealed partial class TelemetryService : ITelemetryService
         }
     }
 
-    private void TrackStoreEvent(string eventName)
+    private void TrackStoreEvent(
+        string eventName,
+        IReadOnlyDictionary<string, string> sanitizedProperties)
     {
         try
         {
             if (IsStoreTelemetryEnabled())
             {
                 _storeTelemetrySink.TrackEvent(eventName);
+                string? projectedEvent = StoreTelemetryProjection.Create(eventName, sanitizedProperties);
+                if (projectedEvent is not null)
+                {
+                    _storeTelemetrySink.TrackEvent(projectedEvent);
+                }
             }
         }
         catch
@@ -162,7 +169,7 @@ public sealed partial class TelemetryService : ITelemetryService
                 _properties["duration_bucket"] = TelemetrySanitizer.CreateDurationBucket(_stopwatch.Elapsed);
                 IReadOnlyDictionary<string, string> sanitized = TelemetrySanitizer.SanitizeProperties(_properties);
                 string eventName = TelemetrySanitizer.NormalizeEventName(_name);
-                _owner.TrackStoreEvent(eventName);
+                _owner.TrackStoreEvent(eventName, sanitized);
                 _owner.AppendDiagnostics(new LocalDiagnosticEvent(
                     DateTimeOffset.UtcNow,
                     "trace",

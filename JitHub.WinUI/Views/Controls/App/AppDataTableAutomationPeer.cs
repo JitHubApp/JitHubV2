@@ -8,6 +8,24 @@ using Microsoft.UI.Xaml.Controls;
 
 namespace JitHub.WinUI.Views.Controls.App;
 
+internal sealed partial class AppDataTableHeaderButton : Button
+{
+    protected override AutomationPeer OnCreateAutomationPeer() =>
+        new AppDataTableHeaderButtonAutomationPeer(this);
+}
+
+internal sealed partial class AppDataTableHeaderButtonAutomationPeer : ButtonAutomationPeer
+{
+    public AppDataTableHeaderButtonAutomationPeer(AppDataTableHeaderButton owner) : base(owner)
+    {
+    }
+
+    protected override string GetClassNameCore() => nameof(AppDataTableHeaderButton);
+
+    protected override AutomationControlType GetAutomationControlTypeCore() =>
+        AutomationControlType.HeaderItem;
+}
+
 internal sealed partial class AppDataTableAutomationPeer : FrameworkElementAutomationPeer, IGridProvider, ITableProvider
 {
     private readonly AppDataTable _owner;
@@ -31,6 +49,30 @@ internal sealed partial class AppDataTableAutomationPeer : FrameworkElementAutom
         _ => base.GetPatternCore(patternInterface),
     };
 
+    protected override IList<AutomationPeer> GetChildrenCore()
+    {
+        IList<AutomationPeer> baseChildren = base.GetChildrenCore() ?? Array.Empty<AutomationPeer>();
+        List<AutomationPeer> children = new(_owner.ColumnCount + baseChildren.Count);
+        for (int column = 0; column < _owner.ColumnCount; column++)
+        {
+            if (_owner.GetHeaderElement(column) is Button header &&
+                (FromElement(header) ?? CreatePeerForElement(header)) is AutomationPeer peer)
+            {
+                children.Add(peer);
+            }
+        }
+
+        foreach (AutomationPeer child in baseChildren)
+        {
+            if (!string.Equals(child.GetAutomationId(), "HeaderScroller", StringComparison.Ordinal))
+            {
+                children.Add(child);
+            }
+        }
+
+        return children;
+    }
+
     int IGridProvider.ColumnCount => _owner.ColumnCount;
 
     int IGridProvider.RowCount => _owner.RowCount;
@@ -45,7 +87,7 @@ internal sealed partial class AppDataTableAutomationPeer : FrameworkElementAutom
         return peer is null ? null! : ProviderFromPeer(peer);
     }
 
-    IRawElementProviderSimple[] ITableProvider.GetColumnHeaders()
+    public IRawElementProviderSimple[] GetColumnHeaders()
     {
         List<IRawElementProviderSimple> providers = new(_owner.ColumnCount);
         for (int column = 0; column < _owner.ColumnCount; column++)
@@ -55,20 +97,19 @@ internal sealed partial class AppDataTableAutomationPeer : FrameworkElementAutom
                 continue;
             }
 
-            AutomationPeer? peer = FrameworkElementAutomationPeer.FromElement(header) ??
-                FrameworkElementAutomationPeer.CreatePeerForElement(header);
+            AutomationPeer? peer = FromElement(header) ?? CreatePeerForElement(header);
             if (peer is not null)
             {
                 providers.Add(ProviderFromPeer(peer));
             }
         }
 
-        return providers.ToArray();
+        return providers.Count > 0 ? providers.ToArray() : Array.Empty<IRawElementProviderSimple>();
     }
 
-    IRawElementProviderSimple[] ITableProvider.GetRowHeaders() => [];
+    public IRawElementProviderSimple[] GetRowHeaders() => Array.Empty<IRawElementProviderSimple>();
 
-    RowOrColumnMajor ITableProvider.RowOrColumnMajor => RowOrColumnMajor.RowMajor;
+    public RowOrColumnMajor RowOrColumnMajor => RowOrColumnMajor.RowMajor;
 }
 
 internal sealed partial class AppDataTableCell : Grid
@@ -143,7 +184,7 @@ internal sealed partial class AppDataTableCellAutomationPeer : FrameworkElementA
 
     IRawElementProviderSimple IGridItemProvider.ContainingGrid => GetTableProvider();
 
-    IRawElementProviderSimple[] ITableItemProvider.GetColumnHeaderItems()
+    public IRawElementProviderSimple[] GetColumnHeaderItems()
     {
         int column = _cell.Table.GetDisplayColumn(_cell.SourceColumnIndex);
         if (_cell.Table.GetHeaderElement(column) is not Button header)
@@ -151,12 +192,11 @@ internal sealed partial class AppDataTableCellAutomationPeer : FrameworkElementA
             return [];
         }
 
-        AutomationPeer? peer = FrameworkElementAutomationPeer.FromElement(header) ??
-            FrameworkElementAutomationPeer.CreatePeerForElement(header);
-        return peer is null ? [] : [ProviderFromPeer(peer)];
+        AutomationPeer? peer = FromElement(header) ?? CreatePeerForElement(header);
+        return peer is null ? Array.Empty<IRawElementProviderSimple>() : [ProviderFromPeer(peer)];
     }
 
-    IRawElementProviderSimple[] ITableItemProvider.GetRowHeaderItems() => [];
+    public IRawElementProviderSimple[] GetRowHeaderItems() => Array.Empty<IRawElementProviderSimple>();
 
     private IRawElementProviderSimple GetTableProvider()
     {

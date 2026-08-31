@@ -19,7 +19,7 @@
         </Grid.ColumnDefinitions>
         <Grid Grid.Column="0" VerticalAlignment="Top">
             <common:Avatar
-                Margin="0,0,8,0"
+                Margin="{ThemeResource AppMargin0_0_8_0}"
                 AutomationInstanceId="{x:Bind ViewModel.CommenterAvatarAutomationId, Mode=OneWay}"
                 Login="{x:Bind ViewModel.AuthenticatedCommenterLogin, Mode=OneWay}"
                 NavigationSource="comment_avatar"
@@ -39,7 +39,7 @@
                         VerticalAlignment="Center"
                         Style="{StaticResource SectionSecondaryTextBlockStyle}"
                         Foreground="{ThemeResource AppInkMutedBrush}">
-                        <Run FontWeight="SemiBold" Text="{x:Bind ViewModel.CommenterDisplayName, Mode=OneWay}" />
+                        <Run FontWeight="{ThemeResource AppFontWeightSemibold}" Text="{x:Bind ViewModel.CommenterDisplayName, Mode=OneWay}" />
                         <Run Text="{x:Bind ViewModel.CreatedAt, Mode=OneWay}" />
                     </TextBlock>
                     <Grid Grid.Column="1" HorizontalAlignment="Right">
@@ -52,8 +52,8 @@
                             ViewModel="{x:Bind ViewModel.EmojiPanelViewModel, Mode=OneWay}" />
                         <Button
                             x:Uid="ControlsUserCommentBlockXBindViewModelOverflowAutomation" Grid.Column="1"
-                            Margin="0"
-                            Padding="4,2"
+                            Margin="{ThemeResource AppMargin0}"
+                            Padding="{ThemeResource AppPadding4_2}"
                             AutomationProperties.AutomationId="{x:Bind ViewModel.OverflowAutomationId, Mode=OneWay}"
                             AutomationProperties.Name="Comment actions"
                             Style="{StaticResource AppToolbarButtonStyle}">
@@ -64,15 +64,15 @@
                                         x:Uid="ControlsUserCommentBlockXBindViewModelCopyLinkAutomation" x:Name="CopyLink"
                                         AutomationProperties.AutomationId="{x:Bind ViewModel.CopyLinkAutomationId, Mode=OneWay}"
                                         AutomationProperties.Name="Copy comment link"
-                                        Command="{x:Bind ViewModel.CopyLinkMenuItem.Command, Mode=OneWay}"
-                                        Text="{x:Bind ViewModel.CopyLinkMenuItem.Text, Mode=OneWay}" />
+                                        Command="{x:Bind ViewModel.CopyLinkCommand, Mode=OneWay}"
+                                        Text="{x:Bind ViewModel.CopyLinkText, Mode=OneWay}" />
                                     <MenuFlyoutItem
                                         x:Uid="ControlsUserCommentBlockXBindViewModelQuoteReplyAutomati" x:Name="QuoteReply"
                                         AutomationProperties.AutomationId="{x:Bind ViewModel.QuoteReplyAutomationId, Mode=OneWay}"
                                         AutomationProperties.Name="Quote comment in reply"
-                                        Command="{x:Bind ViewModel.QuoteReplyMenuItem.Command, Mode=OneWay}"
-                                        CommandParameter="{x:Bind ViewModel.QuoteReplyMenuItem.Parameter, Mode=OneWay}"
-                                        Text="{x:Bind ViewModel.QuoteReplyMenuItem.Text, Mode=OneWay}" />
+                                        Command="{x:Bind ViewModel.QuoteReplyCommand, Mode=OneWay}"
+                                        CommandParameter="{x:Bind ViewModel.QuoteReplyParameter, Mode=OneWay}"
+                                        Text="{x:Bind ViewModel.QuoteReplyText, Mode=OneWay}" />
                                 </MenuFlyout>
                             </Button.Flyout>
                         </Button>
@@ -80,8 +80,14 @@
                 </Grid>
             </common:CommentBlock.HeaderContent>
             <common:CommentBlock.BodyContent>
-                <Grid Padding="8">
-                    <StackPanel Spacing="8">
+                <Grid Padding="{ThemeResource AppPadding8}">
+                    <StackPanel Spacing="{ThemeResource AppGap8}">
+                        <muxc:InfoBar
+                            AutomationProperties.AutomationId="LegacyCommentReactionError"
+                            IsOpen="{x:Bind ViewModel.HasReactionError, Mode=TwoWay}"
+                            Message="{x:Bind ViewModel.ReactionErrorText, Mode=OneWay}"
+                            Severity="Error"
+                            Style="{StaticResource AppErrorInfoBarStyle}" />
                         <common:MarkdownViewer
                             HostKind="Comment"
                             AutomationInstanceId="{x:Bind ViewModel.MarkdownAutomationId, Mode=OneWay}"
@@ -90,7 +96,7 @@
                             Text="{x:Bind ViewModel.Body, Mode=OneWay}" />
                         <StackPanel
                             Orientation="Horizontal"
-                            Spacing="8"
+                            Spacing="{ThemeResource AppGap8}"
                             Visibility="{x:Bind ViewModel.HasReaction, Converter={StaticResource BoolToVisibilityConverter}, Mode=OneWay}">
                             <common:EmojiPanelButton
                                 AutomationInstanceId="{x:Bind ViewModel.SummaryReactionAutomationId, Mode=OneWay}"
@@ -111,7 +117,7 @@
                                     </DataTemplate>
                                 </muxc:ItemsRepeater.ItemTemplate>
                                 <muxc:ItemsRepeater.Layout>
-                                    <muxc:StackLayout Orientation="Horizontal" Spacing="8" />
+                                    <muxc:StackLayout Orientation="Horizontal" Spacing="{ThemeResource AppGap8}" />
                                 </muxc:ItemsRepeater.Layout>
                             </muxc:ItemsRepeater>
                         </StackPanel>

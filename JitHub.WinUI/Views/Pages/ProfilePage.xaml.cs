@@ -6,13 +6,11 @@ using JitHub.Models.NavArgs;
 using JitHub.Services;
 using JitHub.Services.Layout;
 using JitHub.WinUI.ViewModels.Pages;
-using JitHub.WinUI.Views.Controls.Common;
 using JitHub.WinUI.Views.Dialogs;
 using JitHub.WinUI.Helpers;
 using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Automation;
 using Microsoft.UI.Xaml.Controls;
-using Microsoft.UI.Xaml.Data;
 using Microsoft.UI.Xaml.Input;
 using Microsoft.UI.Xaml.Navigation;
 using Windows.System;
@@ -33,6 +31,11 @@ public sealed partial class ProfilePage : Page
             "PagesProfilePageProfileEditButton/Content",
             "Edit profile");
 
+    public string CompactProfileDetailsText =>
+        LocalizedResourceText.GetString(
+            "PagesProfilePageProfileCompactIdentityDetailsButton/ToolTipService.ToolTip",
+            "Profile details");
+
     public ProfilePage()
     {
         NavigationCacheMode = NavigationCacheMode.Required;
@@ -41,32 +44,32 @@ public sealed partial class ProfilePage : Page
         InitializeComponent();
         DataContext = ViewModel;
 
-        ProfileOverviewReadmeViewer.HostKind = MarkdownHostContract.ProfileReadme;
-        ProfileOverviewReadmeViewer.AutomationInstanceId = "ProfileOverviewReadme";
-
         ViewModel.PropertyChanged += ViewModel_PropertyChanged;
         Loaded += ProfilePage_Loaded;
         Unloaded += ProfilePage_Unloaded;
         SyncModeSelection();
     }
 
-    protected override async void OnNavigatedTo(NavigationEventArgs e)
+    protected override void OnNavigatedTo(NavigationEventArgs e)
     {
-        base.OnNavigatedTo(e);
-        ApplyResponsiveLayout(ActualWidth);
-        UserProfilePageArgs? args = e.Parameter as UserProfilePageArgs;
-        string profileKey = CreateProfileKey(args);
-        if (_initialized && string.Equals(_loadedProfileKey, profileKey, StringComparison.Ordinal))
+        UiTaskGuard.Run(async () =>
         {
-            CommitPerformanceReadiness();
-            return;
-        }
+            base.OnNavigatedTo(e);
+            ApplyResponsiveLayout(ActualWidth);
+            UserProfilePageArgs? args = e.Parameter as UserProfilePageArgs;
+            string profileKey = CreateProfileKey(args);
+            if (_initialized && string.Equals(_loadedProfileKey, profileKey, StringComparison.Ordinal))
+            {
+                CommitPerformanceReadiness();
+                return;
+            }
 
-        _initialized = true;
-        _loadedProfileKey = profileKey;
-        await ViewModel.InitializeAsync(args);
-        CommitPerformanceReadiness();
-        SyncModeSelection();
+            _initialized = true;
+            _loadedProfileKey = profileKey;
+            await ViewModel.InitializeAsync(args);
+            CommitPerformanceReadiness();
+            SyncModeSelection();
+        }, "ui-profile-page");
     }
 
     private void CommitPerformanceReadiness() =>
@@ -272,7 +275,7 @@ public sealed partial class ProfilePage : Page
 
         if (!args.InRecycleQueue && args.ItemIndex >= Math.Max(0, sender.Items.Count - 6))
         {
-            _ = LoadNextPageForListAsync(sender);
+            UiTaskGuard.Observe(LoadNextPageForListAsync(sender), "ui-profile-page");
         }
     }
 
@@ -316,21 +319,6 @@ public sealed partial class ProfilePage : Page
     private void ActivityList_ItemClick(object sender, ItemClickEventArgs e) =>
         ViewModel.OpenActivity(e.ClickedItem as ProfileActivityItem);
 
-    private void ProfileReadmeViewer_Loaded(object sender, RoutedEventArgs e)
-    {
-        if (sender is MarkdownViewer viewer)
-        {
-            viewer.HostKind = MarkdownHostContract.ProfileReadme;
-            viewer.AutomationInstanceId = "ProfileReadme";
-            viewer.SetBinding(MarkdownViewer.DocumentSourceProperty, new Binding
-            {
-                Source = ViewModel,
-                Path = new PropertyPath(nameof(ProfilePageViewModel.ReadmeDocumentSource)),
-                Mode = BindingMode.OneWay
-            });
-        }
-    }
-
     private void RepositoryButton_Click(object sender, RoutedEventArgs e)
     {
         if (sender is FrameworkElement { Tag: ProfileRepositoryViewItem repository })
@@ -347,20 +335,26 @@ public sealed partial class ProfilePage : Page
         }
     }
 
-    private async void ProfileFactButton_Click(object sender, RoutedEventArgs e)
+    private void ProfileFactButton_Click(object sender, RoutedEventArgs e)
     {
-        if (sender is FrameworkElement { Tag: ProfileFactItem fact })
+        UiTaskGuard.Run(async () =>
         {
-            await ViewModel.OpenFactAsync(fact);
-        }
+            if (sender is FrameworkElement { Tag: ProfileFactItem fact })
+            {
+                await ViewModel.OpenFactAsync(fact);
+            }
+        }, "ui-profile-page");
     }
 
-    private async void ProfileFactOpenMenuItem_Click(object sender, RoutedEventArgs e)
+    private void ProfileFactOpenMenuItem_Click(object sender, RoutedEventArgs e)
     {
-        if (sender is FrameworkElement { Tag: ProfileFactItem fact })
+        UiTaskGuard.Run(async () =>
         {
-            await ViewModel.OpenFactAsync(fact);
-        }
+            if (sender is FrameworkElement { Tag: ProfileFactItem fact })
+            {
+                await ViewModel.OpenFactAsync(fact);
+            }
+        }, "ui-profile-page");
     }
 
     private void ProfileFactCopyMenuItem_Click(object sender, RoutedEventArgs e)
@@ -381,8 +375,13 @@ public sealed partial class ProfilePage : Page
     private void FollowingStatButton_Click(object sender, RoutedEventArgs e) =>
         ViewModel.OpenFollowingStat();
 
-    private async void GistsStatButton_Click(object sender, RoutedEventArgs e) =>
-        await ViewModel.OpenGistsStatAsync();
+    private void GistsStatButton_Click(object sender, RoutedEventArgs e)
+    {
+        UiTaskGuard.Run(async () =>
+        {
+            await ViewModel.OpenGistsStatAsync();
+        }, "ui-profile-page");
+    }
 
     private void StarsLibraryButton_Click(object sender, RoutedEventArgs e) =>
         ViewModel.OpenStarsLibrary();
@@ -393,63 +392,68 @@ public sealed partial class ProfilePage : Page
         ProfileModeSelector.Focus(FocusState.Programmatic);
     }
 
-    private async void OpenOnGitHubButton_Click(object sender, RoutedEventArgs e)
+    private void OpenOnGitHubButton_Click(object sender, RoutedEventArgs e)
     {
-        await ViewModel.OpenProfileExternallyAsync();
+        UiTaskGuard.Run(async () =>
+        {
+            await ViewModel.OpenProfileExternallyAsync();
+        }, "ui-profile-page");
     }
 
-    private async void EditProfileButton_Click(object sender, RoutedEventArgs e)
+    private void EditProfileButton_Click(object sender, RoutedEventArgs e)
     {
-        if (!ViewModel.IsEditVisible)
+        UiTaskGuard.Run(async () =>
         {
-            return;
-        }
-
-        ProfileEditDraft draft = ViewModel.CreateEditDraft();
-        TextBlock errorText = AppContentDialogPresenter.CreateInlineErrorPresenter("ProfileEditDialogError");
-        ScrollViewer fieldsScroller = new()
-        {
-            Content = CreateEditProfileContent(draft),
-            HorizontalScrollBarVisibility = ScrollBarVisibility.Disabled,
-            HorizontalScrollMode = ScrollMode.Disabled,
-            VerticalScrollBarVisibility = ScrollBarVisibility.Auto,
-            VerticalScrollMode = ScrollMode.Enabled,
-            MaxHeight = Math.Max(280, XamlRoot.Size.Height - 240)
-        };
-        AutomationProperties.SetAutomationId(fieldsScroller, "ProfileEditFieldsScrollViewer");
-        AutomationProperties.SetName(fieldsScroller, T("Profile/Edit/Fields", "Profile fields"));
-        errorText.Margin = new Thickness(0, 12, 0, 0);
-        AppDialogScrollableContent dialogContent = new()
-        {
-            RowDefinitions =
+            if (!ViewModel.IsEditVisible)
             {
-                new RowDefinition { Height = new GridLength(1, GridUnitType.Star) },
-                new RowDefinition { Height = GridLength.Auto }
+                return;
             }
-        };
-        dialogContent.Children.Add(fieldsScroller);
-        dialogContent.Children.Add(errorText);
-        Grid.SetRow(errorText, 1);
-        ContentDialog dialog = new()
-        {
-            XamlRoot = XamlRoot,
-            Title = T("Profile/Edit/Title", "Edit profile"),
-            PrimaryButtonText = T("Common/Save", "Save"),
-            CloseButtonText = T("Common/Cancel", "Cancel"),
-            DefaultButton = ContentDialogButton.Primary,
-            Content = dialogContent
-        };
-        AppDialogStyleCatalog.Apply(dialog);
-        AutomationProperties.SetAutomationId(dialog, "ProfileEditDialog");
-        AutomationProperties.SetName(dialog, T("Profile/Edit/Title", "Edit profile"));
 
-        await AppContentDialogPresenter.ShowForPrimaryActionAsync(
-            dialog,
-            XamlRoot,
-            async () => await ViewModel.SaveProfileAsync(draft)
-                ? DialogMutationResult.Success()
-                : DialogMutationResult.Failure(ViewModel.StatusText),
-            errorText);
+            ProfileEditDraft draft = ViewModel.CreateEditDraft();
+            TextBlock errorText = AppContentDialogPresenter.CreateInlineErrorPresenter("ProfileEditDialogError");
+            ScrollViewer fieldsScroller = new()
+            {
+                Content = CreateEditProfileContent(draft),
+                HorizontalScrollBarVisibility = ScrollBarVisibility.Disabled,
+                HorizontalScrollMode = ScrollMode.Disabled,
+                VerticalScrollBarVisibility = ScrollBarVisibility.Auto,
+                VerticalScrollMode = ScrollMode.Enabled,
+                MaxHeight = Math.Max(280, XamlRoot.Size.Height - 240)
+            };
+            AutomationProperties.SetAutomationId(fieldsScroller, "ProfileEditFieldsScrollViewer");
+            AutomationProperties.SetName(fieldsScroller, T("Profile/Edit/Fields", "Profile fields"));
+            errorText.Margin = new Thickness(0, 12, 0, 0);
+            AppDialogScrollableContent dialogContent = new()
+            {
+                RowDefinitions =
+                {
+                new RowDefinition
+                {
+                    Height = new GridLength(1, GridUnitType.Star)
+                },
+                new RowDefinition
+                {
+                    Height = GridLength.Auto
+                }
+                }
+            };
+            dialogContent.Children.Add(fieldsScroller);
+            dialogContent.Children.Add(errorText);
+            Grid.SetRow(errorText, 1);
+            ContentDialog dialog = new()
+            {
+                XamlRoot = XamlRoot,
+                Title = T("Profile/Edit/Title", "Edit profile"),
+                PrimaryButtonText = T("Common/Save", "Save"),
+                CloseButtonText = T("Common/Cancel", "Cancel"),
+                DefaultButton = ContentDialogButton.Primary,
+                Content = dialogContent
+            };
+            AppDialogStyleCatalog.Apply(dialog);
+            AutomationProperties.SetAutomationId(dialog, "ProfileEditDialog");
+            AutomationProperties.SetName(dialog, T("Profile/Edit/Title", "Edit profile"));
+            await AppContentDialogPresenter.ShowForPrimaryActionAsync(dialog, XamlRoot, async () => await ViewModel.SaveProfileAsync(draft) ? DialogMutationResult.Success() : DialogMutationResult.Failure(ViewModel.StatusText), errorText);
+        }, "ui-profile-page");
     }
 
     private static Grid CreateEditProfileContent(ProfileEditDraft draft)

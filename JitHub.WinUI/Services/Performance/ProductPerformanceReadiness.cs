@@ -97,6 +97,10 @@ public static class ProductPerformanceReadiness
 
     public static event EventHandler<ProductPerformanceTraversalStage>? TraversalStageRecorded;
 
+    public static event EventHandler? TraversalMeasurementArmed;
+
+    public static event EventHandler? TraversalMeasurementCompleted;
+
     public static bool IsEnabled =>
         !string.IsNullOrWhiteSpace(Environment.GetEnvironmentVariable("JITHUB_PERFORMANCE_FIXTURE"));
 
@@ -148,13 +152,28 @@ public static class ProductPerformanceReadiness
             Interlocked.CompareExchange(ref _activeTraversal, null, traversal);
         }
 
-        TraversalCommitted?.Invoke(
-            null,
-            new ProductPerformanceRouteCommit(
-                route.Trim(),
-                identity.Trim(),
-                Stopwatch.GetTimestamp(),
-                startedTimestamp ?? traversal?.StartedTimestamp));
+        try
+        {
+            TraversalCommitted?.Invoke(
+                null,
+                new ProductPerformanceRouteCommit(
+                    route.Trim(),
+                    identity.Trim(),
+                    Stopwatch.GetTimestamp(),
+                    startedTimestamp ?? traversal?.StartedTimestamp));
+        }
+        finally
+        {
+            TraversalMeasurementCompleted?.Invoke(null, EventArgs.Empty);
+        }
+    }
+
+    public static void ArmTraversalMeasurement()
+    {
+        if (IsEnabled)
+        {
+            TraversalMeasurementArmed?.Invoke(null, EventArgs.Empty);
+        }
     }
 
     public static void BeginTraversal(
@@ -193,7 +212,12 @@ public static class ProductPerformanceReadiness
             return;
         }
 
-        Interlocked.CompareExchange(ref _activeTraversal, null, traversal);
+        if (ReferenceEquals(
+                Interlocked.CompareExchange(ref _activeTraversal, null, traversal),
+                traversal))
+        {
+            TraversalMeasurementCompleted?.Invoke(null, EventArgs.Empty);
+        }
     }
 
     public static void RecordTraversalStage(string stage)

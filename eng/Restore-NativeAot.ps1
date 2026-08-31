@@ -49,6 +49,7 @@ function Invoke-DotNetRestore {
     else {
         $arguments += '-p:RestoreLockedMode=true'
         $arguments += '--locked-mode'
+        $arguments += '--force'
     }
 
     & dotnet @arguments

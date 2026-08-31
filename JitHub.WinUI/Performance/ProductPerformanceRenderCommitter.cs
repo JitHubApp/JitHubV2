@@ -27,11 +27,13 @@ internal static class ProductPerformanceRenderCommitter
         }
 
         EventHandler<object>? rendering = null;
+        EventHandler<object>? renderingWakeUp = null;
         RoutedEventHandler? unloaded = null;
         Stopwatch readyTimeout = Stopwatch.StartNew();
         void Detach()
         {
             CompositionTarget.Rendered -= rendering;
+            CompositionTarget.Rendering -= renderingWakeUp;
             owner.Unloaded -= unloaded;
         }
 
@@ -55,8 +57,11 @@ internal static class ProductPerformanceRenderCommitter
             Detach();
             commit();
         };
+        renderingWakeUp = static (_, _) =>
+            ProductPerformanceReadiness.RecordTraversalStage("render.frame_started");
         unloaded = (_, _) => Detach();
         owner.Unloaded += unloaded;
+        CompositionTarget.Rendering += renderingWakeUp;
         CompositionTarget.Rendered += rendering;
     }
 }

@@ -64,9 +64,9 @@ else
         ForwardedHeaderTrustPolicy.ConfigurationSectionName);
 }
 app.UseHttpsRedirection();
-app.UseStaticFiles();
 app.UseAntiforgery();
 app.UseRateLimiter();
+app.MapStaticAssets();
 
 RouteGroupBuilder api = app.MapGroup("/api")
     .RequireRateLimiting(GithubAuthRateLimitPolicy);
@@ -132,7 +132,8 @@ api.MapPost("/RedeemGithubHandoff", async Task<IResult> (
             statusCode: StatusCodes.Status400BadRequest);
 }).DisableAntiforgery();
 
-app.MapRazorComponents<App>();
+app.MapRazorComponents<App>()
+    .WithStaticAssets();
 
 app.Run();
 

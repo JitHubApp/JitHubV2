@@ -6,12 +6,12 @@
     xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
     xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
     mc:Ignorable="d">
-    <Grid RowSpacing="8">
+    <Grid RowSpacing="{ThemeResource AppGap8}">
         <Grid.ColumnDefinitions>
             <ColumnDefinition Width="*" />
             <ColumnDefinition Width="Auto" />
         </Grid.ColumnDefinitions>
-        <StackPanel Spacing="4">
+        <StackPanel Spacing="{ThemeResource AppGap4}">
             <TextBlock
                 Visibility="{Binding HasEyebrow, ElementName=Root}"
                 Style="{StaticResource SectionSecondaryTextBlockStyle}"

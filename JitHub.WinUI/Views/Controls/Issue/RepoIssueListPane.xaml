@@ -4,6 +4,7 @@
     x:Name="Root"
     xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
     xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+    xmlns:app="using:JitHub.WinUI.Views.Controls.App"
     xmlns:common="using:JitHub.WinUI.Views.Controls.Common"
     xmlns:github="using:JitHub.Models.GitHub"
     xmlns:toolkit="using:CommunityToolkit.WinUI.Controls"
@@ -12,18 +13,18 @@
         <Style x:Key="RepoIssuesPanelStyle" TargetType="Border">
             <Setter Property="Background" Value="{ThemeResource AppSurfaceSubtleBrush}" />
             <Setter Property="BorderBrush" Value="{ThemeResource AppHairlineBrush}" />
-            <Setter Property="BorderThickness" Value="1" />
+            <Setter Property="BorderThickness" Value="{ThemeResource AppHairlineBorderThickness}" />
             <Setter Property="CornerRadius" Value="{ThemeResource AppRadiusSmall}" />
         </Style>
         <DataTemplate x:Key="RepoIssueListItemTemplate" x:DataType="github:GitHubIssue">
             <Grid
-                MinHeight="50"
-                AutomationProperties.AutomationId="{x:Bind AutomationId}"
-                AutomationProperties.Name="{x:Bind AutomationName}"
+                MinHeight="{ThemeResource AppDimension50}"
+                AutomationProperties.AutomationId="{x:Bind AutomationId, Mode=OneWay}"
+                AutomationProperties.Name="{x:Bind AutomationName, Mode=OneWay}"
     Background="{ThemeResource AppTransparentBrush}"
                 PointerEntered="IssueListItem_PointerEntered"
                 PointerPressed="IssueListItemContainer_PointerPressed"
-                RowSpacing="5">
+                RowSpacing="{ThemeResource AppGap5}">
                 <Grid.RowDefinitions>
                     <RowDefinition Height="Auto" />
                     <RowDefinition Height="Auto" />
@@ -31,46 +32,43 @@
                 <TextBlock
                     FontFamily="{ThemeResource AppUiFontFamily}"
                     FontSize="{ThemeResource AppFontSize13}"
-                    FontWeight="SemiBold"
+                    FontWeight="{ThemeResource AppFontWeightSemibold}"
                     Foreground="{ThemeResource AppInkBrush}"
                     MaxLines="2"
-                    Text="{x:Bind Title}"
+                    Text="{x:Bind Title, Mode=OneWay}"
                     TextTrimming="CharacterEllipsis"
                     TextWrapping="WrapWholeWords" />
-                <Grid Grid.Row="1" ColumnSpacing="8">
+                <Grid Grid.Row="1" ColumnSpacing="{ThemeResource AppGap8}">
                     <Grid.ColumnDefinitions>
                         <ColumnDefinition Width="Auto" />
                         <ColumnDefinition Width="*" />
                         <ColumnDefinition Width="Auto" />
                     </Grid.ColumnDefinitions>
-                    <StackPanel Orientation="Horizontal" Spacing="2">
-                        <TextBlock
-                            FontFamily="{ThemeResource AppMonoFontFamily}"
-                            FontSize="{ThemeResource AppFontSize11}"
-                            Foreground="{ThemeResource AppAccentBrush}"
-                            Text="#" />
-                        <TextBlock
-                            FontFamily="{ThemeResource AppMonoFontFamily}"
-                            FontSize="{ThemeResource AppFontSize11}"
-                            Foreground="{ThemeResource AppAccentBrush}"
-                            Text="{x:Bind Number}" />
-                    </StackPanel>
+                    <TextBlock
+                        VerticalAlignment="Center"
+                        FontFamily="{ThemeResource AppMonoFontFamily}"
+                        Foreground="{ThemeResource AppAccentBrush}"
+                        Style="{StaticResource AppInlineMetadataTextBlockStyle}">
+                        <Run Text="#" /><Run Text="{x:Bind Number, Mode=OneWay}" />
+                    </TextBlock>
                     <common:Avatar
                         Grid.Column="1"
-                        AutomationInstanceId="{x:Bind AutomationId}"
+                        AutomationInstanceId="{x:Bind AutomationId, Mode=OneWay}"
                         ContainerCornerRadius="{ThemeResource AppRadiusSmall}"
-                        DisplayName="{x:Bind User.Login}"
-                        Login="{x:Bind User.Login}"
-                        MaxWidth="150"
+                        DisplayName="{x:Bind AuthorDisplayName, Mode=OneWay}"
+                        LabelStyle="{StaticResource AppInlineIdentityTextBlockStyle}"
+                        Login="{x:Bind AuthorProfileLogin, Mode=OneWay}"
+                        MaxWidth="{ThemeResource AppDimension150}"
                         NavigationSource="issue_list_author"
                         ShowLogin="True"
                         Size="SMALL"
                         VerticalAlignment="Center"
-                        Url="{x:Bind User.AvatarUrl}" />
+                        Url="{x:Bind AuthorAvatarUrl, Mode=OneWay}" />
                     <TextBlock
                         Grid.Column="2"
-                        Style="{StaticResource SectionSecondaryTextBlockStyle}"
-                        Text="{x:Bind UpdatedAt, Converter={StaticResource TimeAgoConverter}}" />
+                        VerticalAlignment="Center"
+                        Style="{StaticResource AppInlineMetadataTextBlockStyle}"
+                        Text="{x:Bind UpdatedAt, Converter={StaticResource TimeAgoConverter}, Mode=OneWay}" />
                 </Grid>
             </Grid>
         </DataTemplate>
@@ -81,21 +79,21 @@
         AutomationProperties.AccessibilityView="Control"
         AutomationProperties.AutomationId="RepoIssuesListHost"
         AutomationProperties.Name="Issue list pane"
-        Padding="10"
+        Padding="{ThemeResource AppPadding10}"
         Style="{StaticResource RepoIssuesPanelStyle}">
-        <Grid RowSpacing="10">
+        <Grid RowSpacing="{ThemeResource AppGap10}">
             <Grid.RowDefinitions>
                 <RowDefinition Height="Auto" />
                 <RowDefinition Height="*" />
                 <RowDefinition Height="Auto" />
             </Grid.RowDefinitions>
 
-            <Grid RowSpacing="8">
+            <Grid RowSpacing="{ThemeResource AppGap8}">
                 <Grid.RowDefinitions>
                     <RowDefinition Height="Auto" />
                     <RowDefinition Height="Auto" />
                 </Grid.RowDefinitions>
-                <Grid ColumnSpacing="0" Style="{StaticResource AppWorkspaceHeaderStyle}">
+                <Grid ColumnSpacing="{ThemeResource AppGap0}" Style="{StaticResource AppWorkspaceHeaderStyle}">
                     <Grid.ColumnDefinitions>
                         <ColumnDefinition Width="Auto" />
                         <ColumnDefinition Width="*" />
@@ -104,10 +102,10 @@
                     <Button
                         x:Uid="PagesRepoIssuePageRepoIssuesCloseListPaneButton"
                         x:Name="CloseListPaneButton"
-                        Width="36"
-                        Height="36"
-                        Margin="0,0,8,0"
-                        Padding="0"
+                        Width="{ThemeResource AppDimension36}"
+                        Height="{ThemeResource AppDimension36}"
+                        Margin="{ThemeResource AppMargin0_0_8_0}"
+                        Padding="{ThemeResource AppPadding0}"
                         VerticalAlignment="Top"
                         AutomationProperties.AutomationId="RepoIssuesCloseListPaneButton"
                         AutomationProperties.Name="Close issue list"
@@ -117,7 +115,7 @@
                         Visibility="Collapsed">
                         <FontIcon FontFamily="{StaticResource SegoeFluentIcons}" FontSize="{ThemeResource AppFontSize14}" Glyph="&#xE8FD;" />
                     </Button>
-                    <toolkit:Segmented
+                    <app:AppSegmented
                         x:Uid="PagesRepoIssuePageRepoIssuesStateSegmented"
                         x:Name="IssueStateSegmented"
                         Grid.Column="1"
@@ -125,16 +123,16 @@
                         AutomationProperties.Name="Issue state filter"
                         SelectedIndex="0"
                         SelectionChanged="IssueStateSegmented_SelectionChanged">
-                        <toolkit:SegmentedItem x:Uid="PagesRepoIssuePageRepoIssuesStateOpen" AutomationProperties.AutomationId="RepoIssuesState_Open" AutomationProperties.Name="Show open issues" Content="Open" />
-                        <toolkit:SegmentedItem x:Uid="PagesRepoIssuePageRepoIssuesStateClosed" AutomationProperties.AutomationId="RepoIssuesState_Closed" AutomationProperties.Name="Show closed issues" Content="Closed" />
-                        <toolkit:SegmentedItem x:Uid="PagesRepoIssuePageRepoIssuesStateAll" AutomationProperties.AutomationId="RepoIssuesState_All" AutomationProperties.Name="Show all issues" Content="All" />
-                    </toolkit:Segmented>
+                        <app:AppSegmentedItem x:Uid="PagesRepoIssuePageRepoIssuesStateOpen" AutomationProperties.AutomationId="RepoIssuesState_Open" AutomationProperties.Name="Show open issues" Content="Open" />
+                        <app:AppSegmentedItem x:Uid="PagesRepoIssuePageRepoIssuesStateClosed" AutomationProperties.AutomationId="RepoIssuesState_Closed" AutomationProperties.Name="Show closed issues" Content="Closed" />
+                        <app:AppSegmentedItem x:Uid="PagesRepoIssuePageRepoIssuesStateAll" AutomationProperties.AutomationId="RepoIssuesState_All" AutomationProperties.Name="Show all issues" Content="All" />
+                    </app:AppSegmented>
                     <Button
                         x:Uid="PagesRepoIssuePageRepoIssuesNewIssueButton"
                         Grid.Column="2"
-                        MinWidth="58"
-                        MinHeight="34"
-                        Padding="12,6"
+                        MinWidth="{ThemeResource AppDimension58}"
+                        MinHeight="{ThemeResource AppDimension34}"
+                        Padding="{ThemeResource AppPadding12_6}"
                         AutomationProperties.AutomationId="RepoIssuesNewIssueButton"
                         AutomationProperties.Name="New issue"
                         Click="NewIssueButton_Click"
@@ -143,26 +141,27 @@
                         Style="{StaticResource AppAccentButtonStyle}"
                         ToolTipService.ToolTip="Create a new issue" />
                 </Grid>
-                <Grid Grid.Row="1" ColumnSpacing="8">
+                <Grid Grid.Row="1" ColumnSpacing="{ThemeResource AppGap8}">
                     <Grid.ColumnDefinitions>
                         <ColumnDefinition Width="*" />
                         <ColumnDefinition Width="Auto" />
                         <ColumnDefinition Width="Auto" />
                     </Grid.ColumnDefinitions>
-                    <TextBox
+                    <AutoSuggestBox
                         x:Uid="PagesRepoIssuePageRepoIssuesSearchBox"
                         x:Name="IssueSearchBox"
                         AutomationProperties.AutomationId="RepoIssuesSearchBox"
                         AutomationProperties.Name="Filter repository issues"
                         PlaceholderText="Filter issues..."
-                        Style="{StaticResource AppCommandSearchTextBoxStyle}"
+                        QueryIcon="Find"
+                        Style="{StaticResource AppAutoSuggestBoxStyle}"
                         TextChanged="IssueSearchBox_TextChanged" />
                     <Button
                         x:Uid="PagesRepoIssuePageRepoIssuesFilterButton"
                         Grid.Column="1"
-                        Width="36"
-                        Height="36"
-                        Padding="0"
+                        Width="{ThemeResource AppDimension36}"
+                        Height="{ThemeResource AppDimension36}"
+                        Padding="{ThemeResource AppPadding0}"
                         AutomationProperties.AutomationId="RepoIssuesFilterButton"
                         AutomationProperties.Name="Issue filters"
                         Style="{StaticResource AppToolbarButtonStyle}"
@@ -170,17 +169,17 @@
                         <FontIcon FontFamily="{StaticResource SegoeFluentIcons}" FontSize="{ThemeResource AppFontSize14}" Glyph="&#xE71C;" />
                         <Button.Flyout>
                             <Flyout Opened="IssueFiltersFlyout_Opened" Placement="BottomEdgeAlignedRight">
-                                <StackPanel Width="260" Spacing="10">
+                                <StackPanel Width="{ThemeResource AppDimension260}" Spacing="{ThemeResource AppGap10}">
                                     <TextBlock
                                         x:Uid="PagesRepoIssuePageTextBlockIssueFilters"
                                         Style="{StaticResource ListItemTitleTextBlockStyle}"
                                         Text="Issue filters" />
-                                    <StackPanel Spacing="4">
+                                    <StackPanel Spacing="{ThemeResource AppGap4}">
                                         <TextBlock x:Uid="PagesRepoIssuePageTextBlockIssueScope" Style="{StaticResource SectionSecondaryTextBlockStyle}" Text="Scope" />
                                         <ComboBox
                                             x:Uid="PagesRepoIssuePageRepoIssuesScopeComboBox"
                                             x:Name="IssueScopeComboBox"
-                                            MinWidth="0"
+                                            MinWidth="{ThemeResource AppDimension0}"
                                             HorizontalAlignment="Stretch"
                                             AutomationProperties.AutomationId="RepoIssuesScopeComboBox"
                                             AutomationProperties.Name="Issue scope"
@@ -193,12 +192,12 @@
                                             <ComboBoxItem x:Uid="PagesRepoIssuePageRepoIssuesScopeMentioned" AutomationProperties.AutomationId="RepoIssuesScope_Mentioned" AutomationProperties.Name="Mentioned" Content="Mentioned" />
                                         </ComboBox>
                                     </StackPanel>
-                                    <StackPanel Spacing="4">
+                                    <StackPanel Spacing="{ThemeResource AppGap4}">
                                         <TextBlock x:Uid="PagesRepoIssuePageTextBlockIssueSort" Style="{StaticResource SectionSecondaryTextBlockStyle}" Text="Sort by" />
                                         <ComboBox
                                             x:Uid="PagesRepoIssuePageRepoIssuesSortComboBox"
                                             x:Name="IssueSortComboBox"
-                                            MinWidth="0"
+                                            MinWidth="{ThemeResource AppDimension0}"
                                             HorizontalAlignment="Stretch"
                                             AutomationProperties.AutomationId="RepoIssuesSortComboBox"
                                             AutomationProperties.Name="Sort issues by"
@@ -210,12 +209,12 @@
                                             <ComboBoxItem x:Uid="PagesRepoIssuePageRepoIssuesSortComments" AutomationProperties.AutomationId="RepoIssuesSort_Comments" AutomationProperties.Name="Comments" Content="Comments" />
                                         </ComboBox>
                                     </StackPanel>
-                                    <StackPanel Spacing="4">
+                                    <StackPanel Spacing="{ThemeResource AppGap4}">
                                         <TextBlock x:Uid="PagesRepoIssuePageTextBlockIssueOrder" Style="{StaticResource SectionSecondaryTextBlockStyle}" Text="Order" />
                                         <ComboBox
                                             x:Uid="PagesRepoIssuePageRepoIssuesDirectionComboBox"
                                             x:Name="IssueDirectionComboBox"
-                                            MinWidth="0"
+                                            MinWidth="{ThemeResource AppDimension0}"
                                             HorizontalAlignment="Stretch"
                                             AutomationProperties.AutomationId="RepoIssuesDirectionComboBox"
                                             AutomationProperties.Name="Issue sort direction"
@@ -232,8 +231,8 @@
                     </Button>
                     <ProgressRing
                         Grid.Column="2"
-                        Width="24"
-                        Height="24"
+                        Width="{ThemeResource AppDimension24}"
+                        Height="{ThemeResource AppDimension24}"
                         VerticalAlignment="Center"
                         IsActive="{x:Bind ViewModel.IsLoading, Mode=OneWay}"
                         Visibility="{x:Bind ViewModel.IsLoading, Converter={StaticResource BoolToVisibilityConverter}, Mode=OneWay}" />
@@ -252,7 +251,7 @@
                     AutomationProperties.AutomationId="RepoIssuesList"
                     AutomationProperties.Name="Repository issues"
                             Background="{ThemeResource AppTransparentBrush}"
-                    BorderThickness="0"
+                    BorderThickness="{ThemeResource AppZeroThickness}"
                     ContainerContentChanging="IssuesList_ContainerContentChanging"
                     IsItemClickEnabled="True"
                     ItemClick="IssuesList_ItemClick"

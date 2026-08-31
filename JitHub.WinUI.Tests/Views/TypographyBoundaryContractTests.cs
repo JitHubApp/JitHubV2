@@ -37,12 +37,14 @@ public sealed class TypographyBoundaryContractTests
             "RepoCommitsPage.xaml");
 
         XElement pivotHeaderFont = FindKeyedElement(interactionPrimitives, "PivotHeaderItemFontFamily");
-        Assert.Equal(FindKeyedElement(typographyTokens, "AppUiFontFamily").Value, pivotHeaderFont.Value);
+        Assert.Equal("StaticResource", pivotHeaderFont.Name.LocalName);
+        Assert.Equal("AppUiFontFamily", (string?)pivotHeaderFont.Attribute("ResourceKey"));
+        Assert.Equal("Segoe UI Variable Text", FindKeyedElement(typographyTokens, "AppUiFontFamily").Value);
 
         AssertUiOrBodyFont(FindTextElement(myPullRequests, "{x:Bind State, Mode=OneWay}"));
-        AssertUiOrBodyFont(FindTextElement(repoCommits, "{Binding Conclusion}"));
+        AssertUiOrBodyFont(FindTextElement(repoCommits, "{x:Bind Conclusion}"));
         Assert.All(
-            FindTextElements(repoCommits, "{Binding SelectedCommitVerificationText}"),
+            FindTextElements(repoCommits, "{x:Bind ViewModel.SelectedCommitVerificationText, Mode=OneWay}"),
             AssertUiOrBodyFont);
     }
 
@@ -67,10 +69,12 @@ public sealed class TypographyBoundaryContractTests
         Assert.Equal(MonoFont, FontFamily(FindNamedElement(diffViewer, "FileHeaderTextBlock")));
         Assert.Equal(MonoFont, FontFamily(FindNamedElement(diffViewer, "DiffLineTextBlock")));
         Assert.Equal(MonoFont, FontFamily(FindNamedElement(diffViewer, "HunkTextBlock")));
-        Assert.Equal(MonoFont, FontFamily(FindTextElement(repoCommits, "{Binding SelectedCommitStatsText}")));
+        Assert.Equal(MonoFont, FontFamily(FindTextElement(
+            repoCommits,
+            "{x:Bind ViewModel.SelectedCommitStatsText, Mode=OneWay}")));
         Assert.All(
             repoCommits.Descendants().Where(element =>
-                string.Equals((string?)element.Attribute("Text"), "{Binding ShortSha}", StringComparison.Ordinal)),
+                string.Equals((string?)element.Attribute("Text"), "{x:Bind ShortSha}", StringComparison.Ordinal)),
             element => Assert.Equal(MonoFont, FontFamily(element)));
     }
 
@@ -119,7 +123,7 @@ public sealed class TypographyBoundaryContractTests
     private static string FindRepositoryRoot()
     {
         DirectoryInfo? directory = new(AppContext.BaseDirectory);
-        while (directory is not null && !File.Exists(Path.Combine(directory.FullName, "JitHub.slnx")))
+        while (directory is not null && !File.Exists(Path.Combine(directory.FullName, "Directory.Build.props")))
         {
             directory = directory.Parent;
         }

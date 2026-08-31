@@ -1,8 +1,8 @@
 using System;
-using System.Diagnostics;
 using System.Threading;
 using System.Threading.Tasks;
 using JitHub.Services;
+using JitHub.WinUI.Helpers;
 
 namespace JitHub.WinUI.ViewModels.CodeViewer;
 
@@ -146,7 +146,7 @@ public sealed class RepositoryRoutePrefetchCoordinator
                     }
                     catch (Exception exception)
                     {
-                        Debug.WriteLine($"Repository route prefetch failed: {exception}");
+                        HandledFailureReporter.Report(exception, "repository-route-prefetch");
                     }
                 },
                 new ApplicationTaskOptions(taskName, accountPartition),

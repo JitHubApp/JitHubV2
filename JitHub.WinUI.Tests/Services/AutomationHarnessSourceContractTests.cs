@@ -51,8 +51,22 @@ public sealed class AutomationHarnessSourceContractTests
         Assert.Contains("home-widget-board-drawer-close-focused.png", probe, StringComparison.Ordinal);
         Assert.Contains("home-widget-board-drawer-escape-focus-restored.png", probe, StringComparison.Ordinal);
         Assert.Contains("home-widget-board-drawer-light-dismiss-focus-restored.png", probe, StringComparison.Ordinal);
+        Assert.Contains("DashboardOverviewMetricRepositories", probe, StringComparison.Ordinal);
         Assert.Contains("CreateProbeApplication(options)", probe, StringComparison.Ordinal);
         Assert.Contains("if (!isAttached)", probe, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void StarsCategoryCleanupReacquiresVisibleStateAndUsesStableDialogIdentity()
+    {
+        string source = File.ReadAllText(Path.Combine(
+            FindRepositoryRoot(),
+            "JitHub.WinUI.Automation",
+            "Program.cs"));
+
+        Assert.Contains("StarsDeleteCategoryDialog", source, StringComparison.Ordinal);
+        Assert.Contains("FindVisibleStarsCategory(window, categoryName)", source, StringComparison.Ordinal);
+        Assert.Contains("string.Equals(GetAutomationId(element), \"PrimaryButton\"", source, StringComparison.Ordinal);
     }
 
     [Fact]
@@ -64,12 +78,16 @@ public sealed class AutomationHarnessSourceContractTests
             "Program.cs"));
 
         Assert.Contains("GetNewestSourceWriteTimeUtc", source, StringComparison.Ordinal);
-        Assert.Contains("File.GetLastWriteTimeUtc(adjacentAssembly) >= newestSourceWrite", source, StringComparison.Ordinal);
+        Assert.Contains("GetFreshnessArtifact(candidate)", source, StringComparison.Ordinal);
+        Assert.Contains("File.GetLastWriteTimeUtc(freshnessArtifact) >= newestSourceWrite", source, StringComparison.Ordinal);
         Assert.Contains("firstSegment.StartsWith(\"obj\"", source, StringComparison.Ordinal);
         Assert.Contains("firstSegment.StartsWith(\"bin\"", source, StringComparison.Ordinal);
         Assert.Contains("No fresh JitHub executable was found for UI automation", source, StringComparison.Ordinal);
         Assert.Contains("\"publish\", \"JitHub.WinUI.exe\"", source, StringComparison.Ordinal);
         Assert.Contains("EnsureAppBinaryIsFresh(appPath);", source, StringComparison.Ordinal);
+        Assert.Contains("IsNativeAotExecutable(appPath)", source, StringComparison.Ordinal);
+        Assert.Contains("using PEReader reader", source, StringComparison.Ordinal);
+        Assert.Contains("reader.PEHeaders.CorHeader is null", source, StringComparison.Ordinal);
         Assert.Contains("Refusing stale JitHub automation binary", source, StringComparison.Ordinal);
     }
 
@@ -93,6 +111,9 @@ public sealed class AutomationHarnessSourceContractTests
             source,
             StringComparison.Ordinal);
         Assert.Contains("captureBounds.IntersectsWith(candidateBounds)", source, StringComparison.Ordinal);
+        Assert.Contains("\"Shell_SystemDialogProxy\"", source, StringComparison.Ordinal);
+        Assert.Contains("!bounds.IsEmpty && !captureBounds.IntersectsWith(bounds)", source, StringComparison.Ordinal);
+        Assert.Contains("CountSignificantThemePaletteChromeChanges(initial, live)", source, StringComparison.Ordinal);
 
         int cleanupStart = source.IndexOf("static void KillExistingApplicationInstances", StringComparison.Ordinal);
         int cleanupEnd = source.IndexOf("static HashSet<int> GetApplicationProcessIds", cleanupStart, StringComparison.Ordinal);
@@ -198,7 +219,6 @@ public sealed class AutomationHarnessSourceContractTests
             "my-pull-requests-review",
             "my-pull-requests-review-comment",
             "repository-readme",
-            "profile-overview-readme",
             "profile-readme",
         ];
         foreach (string host in hosts)
@@ -211,6 +231,8 @@ public sealed class AutomationHarnessSourceContractTests
         Assert.Contains("new(\"compact\", 640, 600)", source, StringComparison.Ordinal);
         Assert.Contains("double[] textScales = [1, 1.5, 2];", source, StringComparison.Ordinal);
         Assert.Contains("string.IsNullOrWhiteSpace(RequiredViewportName) ||", source, StringComparison.Ordinal);
+        Assert.Contains("protocol completion status dismissed", source, StringComparison.Ordinal);
+        Assert.Contains("ByAutomationId(\"AppStatusHost\")", source, StringComparison.Ordinal);
         Assert.Contains("LauncherControlAutomationId: \"RepoIssuesOpenCommentButton\"", source, StringComparison.Ordinal);
         Assert.Contains("LauncherControlAutomationId: \"RepoPullRequestsOpenCompactCommentButton\"", source, StringComparison.Ordinal);
         string pullRequestPageSource = File.ReadAllText(Path.Combine(
@@ -332,7 +354,9 @@ public sealed class AutomationHarnessSourceContractTests
             FindRepositoryRoot(), "JitHub.WinUI", "Views", "Controls", "CodeViewer", "Renderers", "MarkdownPreview.xaml"));
         Assert.Contains("FilePreviewHost", repoCodePage, StringComparison.Ordinal);
         Assert.Contains("RendererHost", filePreviewHost, StringComparison.Ordinal);
+        Assert.Contains("CachedCodeRendererHost", filePreviewHost, StringComparison.Ordinal);
         Assert.Contains("RepoFilePreviewKind.Markdown => new MarkdownPreview()", filePreviewHostCode, StringComparison.Ordinal);
+        Assert.Contains("GetOrCreateCodeRenderer", filePreviewHostCode, StringComparison.Ordinal);
         Assert.Contains("MarkdownViewer", markdownPreview, StringComparison.Ordinal);
     }
 
@@ -455,7 +479,7 @@ public sealed class AutomationHarnessSourceContractTests
             "Run-MarkdownLifecycleMatrix.ps1"));
 
         Assert.Contains("@(\"Debug\", \"Release\")", source, StringComparison.Ordinal);
-        Assert.Contains("(21 * 3 * 3) * 3", source, StringComparison.Ordinal);
+        Assert.Contains("($expectedHosts * 3 * 3) * 3", source, StringComparison.Ordinal);
         Assert.Contains("$expectedHostNames", source, StringComparison.Ordinal);
         Assert.Contains("pointerDragSelection", source, StringComparison.Ordinal);
         Assert.Contains("retainedMemoryBudget", source, StringComparison.Ordinal);
@@ -493,9 +517,37 @@ public sealed class AutomationHarnessSourceContractTests
         Assert.Contains("WaitForElementWithItemStatus", source, StringComparison.Ordinal);
         Assert.Contains("dispatcher heartbeat did not advance within 50 ms", source, StringComparison.Ordinal);
         Assert.Contains("first editor content took", source, StringComparison.Ordinal);
+        Assert.Contains("TimeSpan.FromSeconds(5)", source, StringComparison.Ordinal);
+        Assert.Contains("firstContent.Elapsed <= TimeSpan.FromMilliseconds(150)", source, StringComparison.Ordinal);
+        Assert.Contains("repo-code-performance-editor-timeout.png", source, StringComparison.Ordinal);
+        Assert.Contains("observedStatuses", source, StringComparison.Ordinal);
         Assert.Contains("deterministic Repo Code outline item", source, StringComparison.Ordinal);
         Assert.DoesNotContain("if (sourceFile is not null)", source, StringComparison.Ordinal);
         Assert.DoesNotContain("SetTextBoxText(filter, \".dart\")", source, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void RepoCodeResponsiveProbeExercisesCsvSemanticsAndSvgZoomExtremes()
+    {
+        string source = File.ReadAllText(Path.Combine(
+            FindRepositoryRoot(),
+            "JitHub.WinUI.Automation",
+            "Program.cs"));
+
+        Assert.Contains("ExerciseRepoCodeContentSurfaces(window, options)", source, StringComparison.Ordinal);
+        Assert.Contains("candidate.Patterns.Grid.Pattern.RowCount.Value == 7", source, StringComparison.Ordinal);
+        Assert.Contains("candidate.Patterns.Grid.Pattern.ColumnCount.Value == 5", source, StringComparison.Ordinal);
+        Assert.Contains("firstCell.Patterns.GridItem.IsSupported", source, StringComparison.Ordinal);
+        Assert.Contains("firstCell.Patterns.TableItem.IsSupported", source, StringComparison.Ordinal);
+        Assert.Contains("plainEditor.Patterns.Value.Pattern.IsReadOnly.Value", source, StringComparison.Ordinal);
+        Assert.Contains("CsvPreviewViewMode_Rich", source, StringComparison.Ordinal);
+        Assert.Contains("CsvPreviewViewMode_Plain", source, StringComparison.Ordinal);
+        Assert.Contains("svgViewport.Patterns.Transform2.IsSupported", source, StringComparison.Ordinal);
+        Assert.Contains("SvgPreviewScrollViewer", source, StringComparison.Ordinal);
+        Assert.Contains("VerifyRepoCodeSvgZoom(window, svgViewport, svgScrollViewport, zoom, 800", source, StringComparison.Ordinal);
+        Assert.Contains("VerifyRepoCodeSvgZoom(window, svgViewport, svgScrollViewport, zoom, 10", source, StringComparison.Ordinal);
+        Assert.Contains("AssertSvgViewportContainsRenderedColor", source, StringComparison.Ordinal);
+        Assert.Contains("the {percent / 100:F1}x viewport was blank", source, StringComparison.Ordinal);
     }
 
     [Fact]
@@ -646,6 +698,8 @@ public sealed class AutomationHarnessSourceContractTests
         string close = source[closeStart..cleanupStart];
         Assert.Contains("AutomationApplicationPathRegistry.TryGet(app", close, StringComparison.Ordinal);
         Assert.Contains("TryGetOwnedProcess(", close, StringComparison.Ordinal);
+        Assert.Contains("NativeMethods.TryRequestGracefulClose(processId, out IntPtr windowHandle)", close, StringComparison.Ordinal);
+        Assert.Contains("transport=WM_CLOSE", close, StringComparison.Ordinal);
         Assert.Contains("ownedProcess.WaitForExit", close, StringComparison.Ordinal);
         Assert.Contains("NativeMethods.OpenProcessExitHandle(processId)", close, StringComparison.Ordinal);
         Assert.Contains("NativeMethods.GetProcessExitCode(processExitHandle)", close, StringComparison.Ordinal);
@@ -653,7 +707,16 @@ public sealed class AutomationHarnessSourceContractTests
         Assert.Contains("if (exitCode != 0)", close, StringComparison.Ordinal);
         Assert.Contains("result=graceful; exitCode={exitCode}", close, StringComparison.Ordinal);
         Assert.DoesNotContain("TryTerminateOwnedProcess", close, StringComparison.Ordinal);
+        Assert.DoesNotContain("app.Close(", close, StringComparison.Ordinal);
+        Assert.DoesNotContain("app.Close();", close, StringComparison.Ordinal);
         Assert.DoesNotContain("result=owned-timeout-termination", close, StringComparison.Ordinal);
+
+        Assert.Contains("private static extern bool EnumWindows", source, StringComparison.Ordinal);
+        Assert.Contains("private static extern bool PostMessage", source, StringComparison.Ordinal);
+        Assert.Contains("candidateProcessId != (uint)processId", source, StringComparison.Ordinal);
+        Assert.Contains("GetWindow(candidate, GwOwner) != IntPtr.Zero", source, StringComparison.Ordinal);
+        Assert.Contains("selectedProcessId != (uint)processId", source, StringComparison.Ordinal);
+        Assert.Contains("return PostMessage(selectedWindow, WmClose", source, StringComparison.Ordinal);
 
         string cleanup = source[cleanupStart..processScanStart];
         Assert.Contains("owned-process-cleanup-failed", cleanup, StringComparison.Ordinal);
@@ -665,6 +728,49 @@ public sealed class AutomationHarnessSourceContractTests
         Assert.Contains("catch (ArgumentException)\n    {", wait.Replace("\r\n", "\n"), StringComparison.Ordinal);
         Assert.Contains("Absence is the successful state this cleanup wait is proving.", wait, StringComparison.Ordinal);
         Assert.Contains("catch (InvalidOperationException)\n    {\n        return true;", wait.Replace("\r\n", "\n"), StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void SettingsExportPickerUsesOwnedWindowAndLocalizationIndependentDialogContracts()
+    {
+        string source = File.ReadAllText(Path.Combine(
+            FindRepositoryRoot(),
+            "JitHub.WinUI.Automation",
+            "Program.cs"));
+
+        int methodStart = source.IndexOf("static void AssertSettingsExportPicker(", StringComparison.Ordinal);
+        int methodEnd = source.IndexOf("static void RunStarsLibraryProbe", methodStart, StringComparison.Ordinal);
+        Assert.True(methodStart >= 0 && methodEnd > methodStart);
+
+        string method = source[methodStart..methodEnd];
+        Assert.Contains("NativeMethods.TryFindLargestOwnedTopLevelWindow(appWindowHandle, out IntPtr pickerHandle)", method, StringComparison.Ordinal);
+        Assert.Contains("automation.FromHandle(pickerHandle)", method, StringComparison.Ordinal);
+        Assert.Contains("ByAutomationId(\"FileNameControlHost\")", method, StringComparison.Ordinal);
+        Assert.Contains("ByAutomationId(\"1\").And(cf.ByControlType(ControlType.Button))", method, StringComparison.Ordinal);
+        Assert.Contains("ByAutomationId(\"2\").And(cf.ByControlType(ControlType.Button))", method, StringComparison.Ordinal);
+        Assert.DoesNotContain("string.Equals(element.Name, \"Save\"", method, StringComparison.Ordinal);
+        Assert.DoesNotContain("string.Equals(element.Name, \"Cancel\"", method, StringComparison.Ordinal);
+        Assert.DoesNotContain("!= appProcessId", method, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void ShellResponsiveProbeValidatesPersistentWideRailToggle()
+    {
+        string source = File.ReadAllText(Path.Combine(
+            FindRepositoryRoot(),
+            "JitHub.WinUI.Automation",
+            "Program.cs"));
+
+        int methodStart = source.IndexOf("static void RunShellResponsiveProbe", StringComparison.Ordinal);
+        int methodEnd = source.IndexOf("static void RunShellNavClicksProbe", methodStart, StringComparison.Ordinal);
+        Assert.True(methodStart >= 0 && methodEnd > methodStart);
+
+        string method = source[methodStart..methodEnd];
+        Assert.Contains("user collapses wide shell rail", method, StringComparison.Ordinal);
+        Assert.Contains("user-collapsed shell rail remains collapsed after resize", method, StringComparison.Ordinal);
+        Assert.Contains("user expands wide shell rail", method, StringComparison.Ordinal);
+        Assert.Contains("Wide shell did not expose the persistent navigation toggle", method, StringComparison.Ordinal);
+        Assert.DoesNotContain("redundant navigation drawer button", method, StringComparison.Ordinal);
     }
 
     [Fact]
@@ -707,13 +813,47 @@ public sealed class AutomationHarnessSourceContractTests
         }
     }
 
+    [Fact]
+    public void ThemePaletteProbeRequiresExactLiveAccentRepaintAndWindowOnlyEvidence()
+    {
+        string source = File.ReadAllText(Path.Combine(
+            FindRepositoryRoot(),
+            "JitHub.WinUI.Automation",
+            "Program.cs"));
+
+        int switchStart = source.IndexOf("static void RunThemeSwitchProbe", StringComparison.Ordinal);
+        int paletteStart = source.IndexOf("static void RunThemePaletteProbe", switchStart, StringComparison.Ordinal);
+        int paletteEnd = source.IndexOf("static void RunThemePaletteHomeMatrix", paletteStart, StringComparison.Ordinal);
+        int captureStart = source.IndexOf("static void CaptureWindow(Window window, string path)", StringComparison.Ordinal);
+        int captureEnd = source.IndexOf("static void WaitForScreenshotRegionToStabilize", captureStart, StringComparison.Ordinal);
+        Assert.True(switchStart >= 0 && paletteStart > switchStart && paletteEnd > paletteStart);
+        Assert.True(captureStart >= 0 && captureEnd > captureStart);
+
+        string themeProbe = source[switchStart..paletteEnd];
+        string capture = source[captureStart..captureEnd];
+        Assert.Contains("AssertLiveThemeAppearanceRepaint(beforePath, afterPath, restoredPath);", themeProbe, StringComparison.Ordinal);
+        Assert.Contains("Color.FromArgb(0x00, 0x5F, 0xB8)", themeProbe, StringComparison.Ordinal);
+        Assert.Contains("Color.FromArgb(0x00, 0x78, 0xD4)", themeProbe, StringComparison.Ordinal);
+        Assert.Contains("Color.FromArgb(0x77, 0xB5, 0x9A)", themeProbe, StringComparison.Ordinal);
+        Assert.Contains("CountSignificantThemePaletteChromeChanges(initial, live)", themeProbe, StringComparison.Ordinal);
+        Assert.Contains("NativeMethods.CaptureWindowSurface(windowHandle)", capture, StringComparison.Ordinal);
+        Assert.DoesNotContain("CopyFromScreen", capture, StringComparison.Ordinal);
+        Assert.Contains("PrintWindow(windowHandle, deviceContext, PwRenderFullContent)", source, StringComparison.Ordinal);
+        Assert.Contains("GetPhysicalWindowBounds(windowHandle)", source, StringComparison.Ordinal);
+    }
+
     private static string FindRepositoryRoot()
     {
         DirectoryInfo? directory = new(AppContext.BaseDirectory);
         while (directory is not null)
         {
-            if (File.Exists(Path.Combine(directory.FullName, "JitHub.slnx")) &&
-                Directory.Exists(Path.Combine(directory.FullName, "JitHub.WinUI.Automation")))
+            string gitMarker = Path.Combine(directory.FullName, ".git");
+            bool isRepositoryRoot = File.Exists(gitMarker)
+                || Directory.Exists(gitMarker)
+                || File.Exists(Path.Combine(directory.FullName, "Directory.Build.props"));
+            if (isRepositoryRoot
+                && Directory.Exists(Path.Combine(directory.FullName, "JitHub.WinUI"))
+                && Directory.Exists(Path.Combine(directory.FullName, "JitHub.WinUI.Automation")))
             {
                 return directory.FullName;
             }

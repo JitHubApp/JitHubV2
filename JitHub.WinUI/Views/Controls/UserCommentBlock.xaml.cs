@@ -42,11 +42,11 @@ namespace JitHub.WinUI.Views.Controls
                 self.Bindings.Update();
             }
         }
-        
+
         public UserCommentBlockViewModel ViewModel
         {
-            get {  return (UserCommentBlockViewModel)GetValue(ViewModelProperty); }
-            set {  SetValue(ViewModelProperty, value); }
+            get { return (UserCommentBlockViewModel)GetValue(ViewModelProperty); }
+            set { SetValue(ViewModelProperty, value); }
         }
 
         public UISize Size
@@ -73,7 +73,9 @@ namespace JitHub.WinUI.Views.Controls
             if (ViewModel?.LoadCommand?.CanExecute(null) == true)
             {
                 _loadedViewModel = ViewModel;
-                ViewModel.LoadCommand.Execute(null);
+                UiTaskGuard.Observe(
+                    ViewModel.LoadCommand.ExecuteAsync(null),
+                    "ui-legacy-comment-load");
             }
         }
     }

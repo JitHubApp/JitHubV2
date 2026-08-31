@@ -1162,7 +1162,7 @@ public sealed partial class ShellPageViewModel : ViewModelBase
         }
         catch (Exception ex)
         {
-            System.Diagnostics.Debug.WriteLine($"Failed to open notification destination: {ex}");
+            HandledFailureReporter.Report(ex, "notifications-open-destination");
             ShowNotification("GitHub could not be opened for this notification.");
             TrackNotificationOpen(source, "error");
         }
@@ -1946,6 +1946,7 @@ public sealed partial class ShellPageViewModel : ViewModelBase
     {
         string normalizedTerm = term.Trim();
         IEnumerable<ShellCommandSearchResult> commands =
+        (ShellCommandSearchResult[])
         [
             CreateCommandResult("Home", "Go Home", "Open the Home workspace", "\uE80F", 100, GoHome),
             CreateCommandResult("Settings", "Open Settings", "Open app settings", "\uE713", 98, GoToSettingsPage),
@@ -1966,6 +1967,7 @@ public sealed partial class ShellPageViewModel : ViewModelBase
         if (GlobalViewModel.DevMode)
         {
             commands = commands.Concat(
+            (ShellCommandSearchResult[])
             [
                 CreateCommandResult("DevConsole", "Dev Console", "Open the developer console", "\uEC7A", 80, OnOpenDevConsole),
                 CreateCommandResult("DesignLab", "Design Lab", "Open vNext design lab", "\uF158", 78, GoToDesignLabPage)
@@ -2225,14 +2227,6 @@ public sealed partial class ShellPageViewModel : ViewModelBase
 
         StarLibraryIndexedCount = snapshot.IndexedCount;
         IsStarLibraryDegraded = snapshot.DegradedState.IsDegraded;
-        ShellNavigationItem? stars = NavigationItems.FirstOrDefault(static item => item.Id == "stars");
-        if (stars is not null)
-        {
-            stars.BadgeValue = snapshot.IndexedCount;
-            stars.BadgeText = snapshot.IndexedCount > 99
-                ? "99+"
-                : snapshot.IndexedCount.ToString(System.Globalization.CultureInfo.InvariantCulture);
-        }
     }
 
     private void ApplyRepositoryIndexSnapshot(AccountRepositoryIndexSnapshot snapshot)

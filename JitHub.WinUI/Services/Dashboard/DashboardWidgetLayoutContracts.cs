@@ -12,6 +12,7 @@ public static class DashboardWidgetIds
     public const string Notifications = "notifications";
 
     public static IReadOnlyList<string> All { get; } =
+    (string[])
     [
         RecentActivity,
         Repositories,

@@ -87,7 +87,7 @@ public sealed class AdaptiveWorkspaceLayoutTests
     }
 
     [Fact]
-    public void ShellAndWorkspace_CollapseInspectorThenRailThenLeadingPane()
+    public void ShellAndWorkspace_KeepInspectorOnDemandWhileRailAndLeadingPaneAdapt()
     {
         AdaptiveWorkspaceBreakpoints breakpoints = new();
 
@@ -99,7 +99,8 @@ public sealed class AdaptiveWorkspaceLayoutTests
             hasTrailingPane: true,
             breakpoints);
         Assert.True(fullyWideShell.IsRailInline);
-        Assert.Equal(AdaptivePanePlacement.Inline, fullyWideWorkspace.TrailingPanePlacement);
+        Assert.Equal(AdaptivePanePlacement.RightDrawer, fullyWideWorkspace.TrailingPanePlacement);
+        Assert.True(fullyWideWorkspace.ShouldShowTrailingPaneButton);
 
         ShellResponsiveState inspectorCollapsedShell = ShellResponsiveLayout.Calculate(1400);
         AdaptiveWorkspaceState inspectorCollapsedWorkspace = AdaptiveWorkspaceLayout.CalculateForShell(
@@ -167,7 +168,7 @@ public sealed class AdaptiveWorkspaceLayoutTests
     }
 
     [Theory]
-    [InlineData(1546, true, true, true)]
+    [InlineData(1546, true, true, false)]
     [InlineData(1545, true, true, false)]
     [InlineData(1298, true, true, false)]
     [InlineData(1297, false, true, false)]
@@ -192,7 +193,7 @@ public sealed class AdaptiveWorkspaceLayoutTests
     }
 
     [Fact]
-    public void WideLayoutKeepsAllPanesInline()
+    public void WideLayoutKeepsInspectorAvailableOnDemand()
     {
         AdaptiveWorkspaceState state = AdaptiveWorkspaceLayout.Calculate(
             1366,
@@ -202,9 +203,23 @@ public sealed class AdaptiveWorkspaceLayoutTests
         Assert.Equal(AdaptiveWorkspaceMode.Wide, state.Mode);
         Assert.Equal(AdaptivePanePlacement.Inline, state.LeadingPanePlacement);
         Assert.Equal(AdaptivePanePlacement.Inline, state.PrimaryPanePlacement);
-        Assert.Equal(AdaptivePanePlacement.Inline, state.TrailingPanePlacement);
+        Assert.Equal(AdaptivePanePlacement.RightDrawer, state.TrailingPanePlacement);
         Assert.False(state.ShouldShowLeadingPaneButton);
-        Assert.False(state.ShouldShowTrailingPaneButton);
+        Assert.True(state.ShouldShowTrailingPaneButton);
+    }
+
+    [Fact]
+    public void WideLayoutKeepsAnOpenedInspectorDrawerVisible()
+    {
+        AdaptiveWorkspaceState state = AdaptiveWorkspaceLayout.Calculate(
+            1366,
+            hasLeadingPane: true,
+            hasTrailingPane: true,
+            visibleDrawer: AdaptiveWorkspaceDrawer.Trailing);
+
+        Assert.Equal(AdaptivePanePlacement.RightDrawer, state.TrailingPanePlacement);
+        Assert.Equal(AdaptiveWorkspaceDrawer.Trailing, state.VisibleDrawer);
+        Assert.True(state.ShouldShowTrailingPaneButton);
     }
 
     [Fact]
@@ -282,11 +297,11 @@ public sealed class AdaptiveWorkspaceLayoutTests
     }
 
     [Theory]
-    [InlineData(1366, 1080, true, true)]
+    [InlineData(1366, 1080, true, false)]
     [InlineData(1180, 1180, true, false)]
     [InlineData(900, 900, true, false)]
     [InlineData(760, 760, false, false)]
-    public void CommitBreakpointsCollapseInspectorThenShellRailThenHistory(
+    public void CommitBreakpointsKeepInspectorOnDemandWhileHistoryAdapts(
         double windowWidth,
         double contentWidth,
         bool expectedLeadingInline,
@@ -325,7 +340,7 @@ public sealed class AdaptiveWorkspaceLayoutTests
     private static string FindRepositoryRoot()
     {
         DirectoryInfo? directory = new(AppContext.BaseDirectory);
-        while (directory is not null && !File.Exists(Path.Combine(directory.FullName, "JitHub.slnx")))
+        while (directory is not null && !File.Exists(Path.Combine(directory.FullName, "Directory.Build.props")))
         {
             directory = directory.Parent;
         }

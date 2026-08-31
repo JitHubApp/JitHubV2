@@ -22,6 +22,13 @@ public sealed class HighContrastLiveProbeContractTests
         Assert.DoesNotContain("Microsoft.Win32.Registry", source, StringComparison.Ordinal);
         Assert.DoesNotContain("--high-contrast", source, StringComparison.Ordinal);
         Assert.DoesNotContain("PRINT SCREEN", source, StringComparison.OrdinalIgnoreCase);
+        Assert.DoesNotContain("CopyFromScreen", source, StringComparison.Ordinal);
+        Assert.Contains("PrintWindow(windowHandle, deviceContext, PwRenderFullContent)", source, StringComparison.Ordinal);
+        Assert.Contains("DwmGetWindowAttribute", source, StringComparison.Ordinal);
+        Assert.Contains("fullWindow.Clone(crop", source, StringComparison.Ordinal);
+        Assert.Contains("uint dpi = GetDpiForWindow(windowHandle);", source, StringComparison.Ordinal);
+        Assert.Contains("viewport.Width * scale", source, StringComparison.Ordinal);
+        Assert.DoesNotContain("Math.Min(viewport.Width, availableWidth)", source, StringComparison.Ordinal);
     }
 
     [Fact]
@@ -63,6 +70,9 @@ public sealed class HighContrastLiveProbeContractTests
         Assert.Contains("AssertSelected", source, StringComparison.Ordinal);
         Assert.Contains("AssertFocusPixelsChanged", source, StringComparison.Ordinal);
         Assert.Contains("AssertSystemColorTreatment", source, StringComparison.Ordinal);
+        Assert.Contains("VirtualKeyShort.HOME", source, StringComparison.Ordinal);
+        Assert.Contains("VirtualKeyShort.END", source, StringComparison.Ordinal);
+        Assert.Contains("GetForegroundWindow() == windowHandle", source, StringComparison.Ordinal);
         Assert.Contains("GetSysColor", source, StringComparison.Ordinal);
         Assert.Contains("high-contrast-live-settings-1366x900.png", source, StringComparison.Ordinal);
         Assert.Contains("high-contrast-live-settings-760x650.png", source, StringComparison.Ordinal);
@@ -79,6 +89,9 @@ public sealed class HighContrastLiveProbeContractTests
         Assert.Contains("ValidateGistEditorDialog(window, options.OutputDirectory, palette, Compact, \"760x650\")", source, StringComparison.Ordinal);
         Assert.Contains("ValidateDashboardCustomShellDialog(window, options.OutputDirectory, palette, Compact, \"760x650\")", source, StringComparison.Ordinal);
         Assert.Contains("windowBounds.Contains(dialogBounds)", source, StringComparison.Ordinal);
+        Assert.Contains("dialog.FindFirstDescendant(cf => cf.ByAutomationId(\"CloseButton\"))", source, StringComparison.Ordinal);
+        Assert.Contains("FindVisible(window, \"GistEditorDialog\") is null", source, StringComparison.Ordinal);
+        Assert.Contains("FindVisible(window, \"DashboardCustomizeDialog\") is null", source, StringComparison.Ordinal);
     }
 
     [Fact]
@@ -111,7 +124,7 @@ public sealed class HighContrastLiveProbeContractTests
         DirectoryInfo? directory = new(AppContext.BaseDirectory);
         while (directory is not null)
         {
-            if (File.Exists(Path.Combine(directory.FullName, "JitHub.slnx")) &&
+            if (File.Exists(Path.Combine(directory.FullName, "Directory.Build.props")) &&
                 Directory.Exists(Path.Combine(directory.FullName, "JitHub.WinUI.Automation")))
             {
                 return directory.FullName;

@@ -32,6 +32,8 @@ internal static class Program
             LogStartupPhase("main.com-wrappers-ready");
             AppActivationArguments activationArguments = AppInstance.GetCurrent().GetActivatedEventArgs();
             CurrentLaunchOptions = LaunchOptions.Parse(args, GetLaunchArgumentText(activationArguments));
+            JitHub.Services.RepositoryActionAutomationScenario.ConfigureWebsiteShowcase(
+                CurrentLaunchOptions.WebsiteShowcase);
             MarkdownLifecycleAutomationBridge.ConfigureLaunchOptions(
                 CurrentLaunchOptions.MarkdownLifecycleFixture,
                 CurrentLaunchOptions.MarkdownLifecycleHost);

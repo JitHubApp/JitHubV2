@@ -26,6 +26,7 @@ public sealed partial class AppDataTable : UserControl
     private const int ColumnOverscan = 1;
 
     private readonly List<AppDataTableColumn> _columns = [];
+    private readonly List<Button> _headerButtons = [];
     private readonly List<AppDataTableRowModel> _sourceRows = [];
     private ObservableCollection<AppDataTableRowModel> _displayRows = [];
     private ScrollViewer? _rowsScroller;
@@ -112,6 +113,7 @@ public sealed partial class AppDataTable : UserControl
         RowsList.ItemsSource = null;
         HeaderGrid.Children.Clear();
         HeaderGrid.ColumnDefinitions.Clear();
+        _headerButtons.Clear();
         HeaderGrid.Width = 0;
         StatusText.Text = message;
         StatusOverlay.Visibility = Visibility.Visible;
@@ -175,12 +177,12 @@ public sealed partial class AppDataTable : UserControl
 
     internal FrameworkElement? GetHeaderElement(int column)
     {
-        if (column < 0 || column >= HeaderGrid.Children.Count)
+        if (column < 0 || column >= _headerButtons.Count)
         {
             return null;
         }
 
-        return FindDescendant<Button>(HeaderGrid.Children[column]);
+        return _headerButtons[column];
     }
 
     internal double GetColumnLeft(int displayColumn)
@@ -235,6 +237,7 @@ public sealed partial class AppDataTable : UserControl
     {
         HeaderGrid.Children.Clear();
         HeaderGrid.ColumnDefinitions.Clear();
+        _headerButtons.Clear();
 
         for (int displayIndex = 0; displayIndex < _columns.Count; displayIndex++)
         {
@@ -251,7 +254,7 @@ public sealed partial class AppDataTable : UserControl
             cell.Drop += HeaderCell_Drop;
 
             Grid content = new();
-            Button sortButton = new()
+            AppDataTableHeaderButton sortButton = new()
             {
                 Style = (Style)Resources["AppDataTableHeaderButtonStyle"],
                 Tag = column,
@@ -268,6 +271,7 @@ public sealed partial class AppDataTable : UserControl
                 "RepoCode/Csv/SortColumnToolTip",
                 "Sort by {0}",
                 column.Header));
+            _headerButtons.Add(sortButton);
 
             Grid label = new() { ColumnSpacing = Resource<double>("AppSpace3") };
             label.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
@@ -310,6 +314,7 @@ public sealed partial class AppDataTable : UserControl
 
             Grid.SetColumn(cell, displayIndex);
             HeaderGrid.Children.Add(cell);
+            FrameworkElementAutomationPeer.CreatePeerForElement(sortButton);
         }
 
         UpdateTableWidth();
@@ -408,43 +413,45 @@ public sealed partial class AppDataTable : UserControl
             "Move column");
     }
 
-    private async void HeaderCell_Drop(object sender, DragEventArgs e)
+    private void HeaderCell_Drop(object sender, DragEventArgs e)
     {
-        if (sender is not Border { Tag: AppDataTableColumn destination } ||
-            !e.DataView.Contains(StandardDataFormats.Text))
+        UiTaskGuard.Run(async () =>
         {
-            return;
-        }
-
-        try
-        {
-            string sourceText = await e.DataView.GetTextAsync();
-            if (!int.TryParse(sourceText, NumberStyles.Integer, CultureInfo.InvariantCulture, out int sourceIndex))
+            if (sender is not Border { Tag: AppDataTableColumn destination } || !e.DataView.Contains(StandardDataFormats.Text))
             {
+                return;
+            }
+
+            try
+            {
+                string sourceText = await e.DataView.GetTextAsync();
+                if (!int.TryParse(sourceText, NumberStyles.Integer, CultureInfo.InvariantCulture, out int sourceIndex))
+                {
+                    CompleteAction(RepoCodeTelemetryActions.CsvReorder, TelemetryTaxonomy.Results.Error);
+                    return;
+                }
+
+                int from = _columns.FindIndex(column => column.SourceIndex == sourceIndex);
+                int to = _columns.IndexOf(destination);
+                if (from < 0 || to < 0 || from == to)
+                {
+                    return;
+                }
+
+                AppDataTableColumn moving = _columns[from];
+                _columns.RemoveAt(from);
+                _columns.Insert(to, moving);
+                RebuildHeader();
+                UpdateVisibleColumnWindow(force: true);
+                ActiveCellChanged?.Invoke(this, EventArgs.Empty);
+                CompleteAction(RepoCodeTelemetryActions.CsvReorder, TelemetryTaxonomy.Results.Success);
+            }
+            catch (Exception ex)
+            {
+                JitHub.WinUI.App.LogHandledException(ex, "ui-csv-column-reorder");
                 CompleteAction(RepoCodeTelemetryActions.CsvReorder, TelemetryTaxonomy.Results.Error);
-                return;
             }
-
-            int from = _columns.FindIndex(column => column.SourceIndex == sourceIndex);
-            int to = _columns.IndexOf(destination);
-            if (from < 0 || to < 0 || from == to)
-            {
-                return;
-            }
-
-            AppDataTableColumn moving = _columns[from];
-            _columns.RemoveAt(from);
-            _columns.Insert(to, moving);
-            RebuildHeader();
-            UpdateVisibleColumnWindow(force: true);
-            ActiveCellChanged?.Invoke(this, EventArgs.Empty);
-            CompleteAction(RepoCodeTelemetryActions.CsvReorder, TelemetryTaxonomy.Results.Success);
-        }
-        catch (Exception ex)
-        {
-            Debug.WriteLine($"CSV column reorder failed: {ex}");
-            CompleteAction(RepoCodeTelemetryActions.CsvReorder, TelemetryTaxonomy.Results.Error);
-        }
+        }, "ui-app-data-table");
     }
 
     private void Root_KeyDown(object sender, KeyRoutedEventArgs e)

@@ -1,0 +1,218 @@
+<ResourceDictionary
+    xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml">
+    <ResourceDictionary.ThemeDictionaries>
+        <ResourceDictionary x:Key="Default">
+            <Color x:Key="AppCanvasColor">#F3F3F3</Color>
+            <Color x:Key="AppCanvasMaterialTintColor">#F7F7F7</Color>
+            <Color x:Key="AppCanvasRaisedColor">#FFFFFF</Color>
+            <Color x:Key="AppCanvasInsetColor">#EAEAEA</Color>
+            <Color x:Key="AppRailColor">#EFEFEF</Color>
+            <Color x:Key="AppRailMaterialTintColor">#F3F3F3</Color>
+            <Color x:Key="AppSurfaceColor">#F9F9F9</Color>
+            <Color x:Key="AppSurfaceSubtleColor">#F0F0F0</Color>
+            <Color x:Key="AppCardColor">#FFFFFF</Color>
+            <Color x:Key="AppInputColor">#FFFFFF</Color>
+            <Color x:Key="AppInputHoverColor">#F8F8F8</Color>
+            <Color x:Key="AppRowColor">#00FFFFFF</Color>
+            <Color x:Key="AppRowHoverColor">#EDEDED</Color>
+            <Color x:Key="AppRowPressedColor">#E5E5E5</Color>
+            <Color x:Key="AppRowSelectedColor">#DDEEFF</Color>
+            <Color x:Key="AppRowHoverForegroundColor">#1B1B1B</Color>
+            <Color x:Key="AppRowPressedForegroundColor">#1B1B1B</Color>
+            <Color x:Key="AppRowSelectedForegroundColor">#1B1B1B</Color>
+            <Color x:Key="AppSelectionColor">#0067C0</Color>
+            <Color x:Key="AppSelectionForegroundColor">#FFFFFF</Color>
+            <Color x:Key="AppOverlayColor">#FFFFFF</Color>
+            <Color x:Key="AppTransparentColor">#00FFFFFF</Color>
+            <Color x:Key="AppPopupSurfaceColor">#FFFFFF</Color>
+            <Color x:Key="AppPopupBorderColor">#C7C7C7</Color>
+            <Color x:Key="AppReactionChipBackgroundColor">#00FFFFFF</Color>
+            <Color x:Key="AppReactionChipHoverColor">#EDEDED</Color>
+            <Color x:Key="AppReactionChipPressedColor">#E5E5E5</Color>
+            <Color x:Key="AppReactionChipBorderColor">#C7C7C7</Color>
+            <Color x:Key="AppReactionChipForegroundColor">#1B1B1B</Color>
+            <Color x:Key="AppReactionChipSelectedColor">#DDEEFF</Color>
+            <Color x:Key="AppInkColor">#1B1B1B</Color>
+            <Color x:Key="AppInkMutedColor">#454545</Color>
+            <Color x:Key="AppInkSubtleColor">#5C5C5C</Color>
+            <Color x:Key="AppInkInverseColor">#FFFFFF</Color>
+            <Color x:Key="AppLabelDarkTextColor">#000000</Color>
+            <Color x:Key="AppLabelLightTextColor">#FFFFFF</Color>
+            <Color x:Key="AppOutlineColor">#C7C7C7</Color>
+            <Color x:Key="AppOutlineStrongColor">#858585</Color>
+            <Color x:Key="AppHairlineColor">#E1E1E1</Color>
+            <Color x:Key="AppAccentColor">#0067C0</Color>
+            <Color x:Key="AppAccentHoverColor">#005A9E</Color>
+            <Color x:Key="AppAccentPressedColor">#004578</Color>
+            <Color x:Key="AppAccentForegroundColor">#FFFFFF</Color>
+            <Color x:Key="AppWarmAccentColor">#7A4700</Color>
+            <Color x:Key="AppWarmAccentForegroundColor">#FFFFFF</Color>
+            <Color x:Key="AppDangerColor">#C42B1C</Color>
+            <Color x:Key="AppDangerForegroundColor">#FFFFFF</Color>
+            <Color x:Key="AppSuccessColor">#0F7B0F</Color>
+            <Color x:Key="AppSuccessForegroundColor">#FFFFFF</Color>
+            <Color x:Key="AppShadowColor">#000000</Color>
+            <Color x:Key="AppSmokeColor">#88000000</Color>
+        </ResourceDictionary>
+        <ResourceDictionary x:Key="Light">
+            <Color x:Key="AppCanvasColor">#F3F3F3</Color>
+            <Color x:Key="AppCanvasMaterialTintColor">#F7F7F7</Color>
+            <Color x:Key="AppCanvasRaisedColor">#FFFFFF</Color>
+            <Color x:Key="AppCanvasInsetColor">#EAEAEA</Color>
+            <Color x:Key="AppRailColor">#EFEFEF</Color>
+            <Color x:Key="AppRailMaterialTintColor">#F3F3F3</Color>
+            <Color x:Key="AppSurfaceColor">#F9F9F9</Color>
+            <Color x:Key="AppSurfaceSubtleColor">#F0F0F0</Color>
+            <Color x:Key="AppCardColor">#FFFFFF</Color>
+            <Color x:Key="AppInputColor">#FFFFFF</Color>
+            <Color x:Key="AppInputHoverColor">#F8F8F8</Color>
+            <Color x:Key="AppRowColor">#00FFFFFF</Color>
+            <Color x:Key="AppRowHoverColor">#EDEDED</Color>
+            <Color x:Key="AppRowPressedColor">#E5E5E5</Color>
+            <Color x:Key="AppRowSelectedColor">#DDEEFF</Color>
+            <Color x:Key="AppRowHoverForegroundColor">#1B1B1B</Color>
+            <Color x:Key="AppRowPressedForegroundColor">#1B1B1B</Color>
+            <Color x:Key="AppRowSelectedForegroundColor">#1B1B1B</Color>
+            <Color x:Key="AppSelectionColor">#0067C0</Color>
+            <Color x:Key="AppSelectionForegroundColor">#FFFFFF</Color>
+            <Color x:Key="AppOverlayColor">#FFFFFF</Color>
+            <Color x:Key="AppTransparentColor">#00FFFFFF</Color>
+            <Color x:Key="AppPopupSurfaceColor">#FFFFFF</Color>
+            <Color x:Key="AppPopupBorderColor">#C7C7C7</Color>
+            <Color x:Key="AppReactionChipBackgroundColor">#00FFFFFF</Color>
+            <Color x:Key="AppReactionChipHoverColor">#EDEDED</Color>
+            <Color x:Key="AppReactionChipPressedColor">#E5E5E5</Color>
+            <Color x:Key="AppReactionChipBorderColor">#C7C7C7</Color>
+            <Color x:Key="AppReactionChipForegroundColor">#1B1B1B</Color>
+            <Color x:Key="AppReactionChipSelectedColor">#DDEEFF</Color>
+            <Color x:Key="AppInkColor">#1B1B1B</Color>
+            <Color x:Key="AppInkMutedColor">#454545</Color>
+            <Color x:Key="AppInkSubtleColor">#5C5C5C</Color>
+            <Color x:Key="AppInkInverseColor">#FFFFFF</Color>
+            <Color x:Key="AppLabelDarkTextColor">#000000</Color>
+            <Color x:Key="AppLabelLightTextColor">#FFFFFF</Color>
+            <Color x:Key="AppOutlineColor">#C7C7C7</Color>
+            <Color x:Key="AppOutlineStrongColor">#858585</Color>
+            <Color x:Key="AppHairlineColor">#E1E1E1</Color>
+            <Color x:Key="AppAccentColor">#0067C0</Color>
+            <Color x:Key="AppAccentHoverColor">#005A9E</Color>
+            <Color x:Key="AppAccentPressedColor">#004578</Color>
+            <Color x:Key="AppAccentForegroundColor">#FFFFFF</Color>
+            <Color x:Key="AppWarmAccentColor">#7A4700</Color>
+            <Color x:Key="AppWarmAccentForegroundColor">#FFFFFF</Color>
+            <Color x:Key="AppDangerColor">#C42B1C</Color>
+            <Color x:Key="AppDangerForegroundColor">#FFFFFF</Color>
+            <Color x:Key="AppSuccessColor">#0F7B0F</Color>
+            <Color x:Key="AppSuccessForegroundColor">#FFFFFF</Color>
+            <Color x:Key="AppShadowColor">#000000</Color>
+            <Color x:Key="AppSmokeColor">#88000000</Color>
+        </ResourceDictionary>
+        <ResourceDictionary x:Key="Dark">
+            <Color x:Key="AppCanvasColor">#202020</Color>
+            <Color x:Key="AppCanvasMaterialTintColor">#1D1D1D</Color>
+            <Color x:Key="AppCanvasRaisedColor">#272727</Color>
+            <Color x:Key="AppCanvasInsetColor">#171717</Color>
+            <Color x:Key="AppRailColor">#1C1C1C</Color>
+            <Color x:Key="AppRailMaterialTintColor">#191919</Color>
+            <Color x:Key="AppSurfaceColor">#252525</Color>
+            <Color x:Key="AppSurfaceSubtleColor">#2B2B2B</Color>
+            <Color x:Key="AppCardColor">#2D2D2D</Color>
+            <Color x:Key="AppInputColor">#292929</Color>
+            <Color x:Key="AppInputHoverColor">#323232</Color>
+            <Color x:Key="AppRowColor">#00000000</Color>
+            <Color x:Key="AppRowHoverColor">#2F2F2F</Color>
+            <Color x:Key="AppRowPressedColor">#383838</Color>
+            <Color x:Key="AppRowSelectedColor">#0D3A58</Color>
+            <Color x:Key="AppRowHoverForegroundColor">#F5F5F5</Color>
+            <Color x:Key="AppRowPressedForegroundColor">#F5F5F5</Color>
+            <Color x:Key="AppRowSelectedForegroundColor">#F5F5F5</Color>
+            <Color x:Key="AppSelectionColor">#60CDFF</Color>
+            <Color x:Key="AppSelectionForegroundColor">#00344A</Color>
+            <Color x:Key="AppOverlayColor">#2D2D2D</Color>
+            <Color x:Key="AppTransparentColor">#00000000</Color>
+            <Color x:Key="AppPopupSurfaceColor">#2D2D2D</Color>
+            <Color x:Key="AppPopupBorderColor">#707070</Color>
+            <Color x:Key="AppReactionChipBackgroundColor">#00000000</Color>
+            <Color x:Key="AppReactionChipHoverColor">#2F2F2F</Color>
+            <Color x:Key="AppReactionChipPressedColor">#383838</Color>
+            <Color x:Key="AppReactionChipBorderColor">#454545</Color>
+            <Color x:Key="AppReactionChipForegroundColor">#F5F5F5</Color>
+            <Color x:Key="AppReactionChipSelectedColor">#0D3A58</Color>
+            <Color x:Key="AppInkColor">#F5F5F5</Color>
+            <Color x:Key="AppInkMutedColor">#D0D0D0</Color>
+            <Color x:Key="AppInkSubtleColor">#A6A6A6</Color>
+            <Color x:Key="AppInkInverseColor">#1B1B1B</Color>
+            <Color x:Key="AppLabelDarkTextColor">#000000</Color>
+            <Color x:Key="AppLabelLightTextColor">#FFFFFF</Color>
+            <Color x:Key="AppOutlineColor">#454545</Color>
+            <Color x:Key="AppOutlineStrongColor">#707070</Color>
+            <Color x:Key="AppHairlineColor">#383838</Color>
+            <Color x:Key="AppAccentColor">#60CDFF</Color>
+            <Color x:Key="AppAccentHoverColor">#8BDFFF</Color>
+            <Color x:Key="AppAccentPressedColor">#39B9F2</Color>
+            <Color x:Key="AppAccentForegroundColor">#00344A</Color>
+            <Color x:Key="AppWarmAccentColor">#FCE100</Color>
+            <Color x:Key="AppWarmAccentForegroundColor">#2A2400</Color>
+            <Color x:Key="AppDangerColor">#FF99A4</Color>
+            <Color x:Key="AppDangerForegroundColor">#3B0008</Color>
+            <Color x:Key="AppSuccessColor">#6CCB5F</Color>
+            <Color x:Key="AppSuccessForegroundColor">#102A0D</Color>
+            <Color x:Key="AppShadowColor">#000000</Color>
+            <Color x:Key="AppSmokeColor">#99000000</Color>
+        </ResourceDictionary>
+        <ResourceDictionary x:Key="HighContrast">
+            <StaticResource x:Key="AppCanvasColor" ResourceKey="SystemColorWindowColor" />
+            <StaticResource x:Key="AppCanvasMaterialTintColor" ResourceKey="SystemColorWindowColor" />
+            <StaticResource x:Key="AppCanvasRaisedColor" ResourceKey="SystemColorButtonFaceColor" />
+            <StaticResource x:Key="AppCanvasInsetColor" ResourceKey="SystemColorWindowColor" />
+            <StaticResource x:Key="AppRailColor" ResourceKey="SystemColorWindowColor" />
+            <StaticResource x:Key="AppRailMaterialTintColor" ResourceKey="SystemColorWindowColor" />
+            <StaticResource x:Key="AppSurfaceColor" ResourceKey="SystemColorWindowColor" />
+            <StaticResource x:Key="AppSurfaceSubtleColor" ResourceKey="SystemColorButtonFaceColor" />
+            <StaticResource x:Key="AppCardColor" ResourceKey="SystemColorWindowColor" />
+            <StaticResource x:Key="AppInputColor" ResourceKey="SystemColorButtonFaceColor" />
+            <StaticResource x:Key="AppInputHoverColor" ResourceKey="SystemColorHighlightColor" />
+            <StaticResource x:Key="AppRowColor" ResourceKey="SystemColorWindowColor" />
+            <StaticResource x:Key="AppRowHoverColor" ResourceKey="SystemColorButtonFaceColor" />
+            <StaticResource x:Key="AppRowPressedColor" ResourceKey="SystemColorButtonTextColor" />
+            <StaticResource x:Key="AppRowSelectedColor" ResourceKey="SystemColorHighlightColor" />
+            <StaticResource x:Key="AppRowHoverForegroundColor" ResourceKey="SystemColorButtonTextColor" />
+            <StaticResource x:Key="AppRowPressedForegroundColor" ResourceKey="SystemColorButtonFaceColor" />
+            <StaticResource x:Key="AppRowSelectedForegroundColor" ResourceKey="SystemColorHighlightTextColor" />
+            <StaticResource x:Key="AppSelectionColor" ResourceKey="SystemColorHighlightColor" />
+            <StaticResource x:Key="AppSelectionForegroundColor" ResourceKey="SystemColorHighlightTextColor" />
+            <StaticResource x:Key="AppOverlayColor" ResourceKey="SystemColorWindowColor" />
+            <StaticResource x:Key="AppTransparentColor" ResourceKey="SystemColorWindowColor" />
+            <StaticResource x:Key="AppPopupSurfaceColor" ResourceKey="SystemColorWindowColor" />
+            <StaticResource x:Key="AppPopupBorderColor" ResourceKey="SystemColorWindowTextColor" />
+            <StaticResource x:Key="AppReactionChipBackgroundColor" ResourceKey="SystemColorWindowColor" />
+            <StaticResource x:Key="AppReactionChipHoverColor" ResourceKey="SystemColorButtonFaceColor" />
+            <StaticResource x:Key="AppReactionChipPressedColor" ResourceKey="SystemColorButtonTextColor" />
+            <StaticResource x:Key="AppReactionChipBorderColor" ResourceKey="SystemColorWindowTextColor" />
+            <StaticResource x:Key="AppReactionChipForegroundColor" ResourceKey="SystemColorWindowTextColor" />
+            <StaticResource x:Key="AppReactionChipSelectedColor" ResourceKey="SystemColorHighlightColor" />
+            <StaticResource x:Key="AppInkColor" ResourceKey="SystemColorWindowTextColor" />
+            <StaticResource x:Key="AppInkMutedColor" ResourceKey="SystemColorWindowTextColor" />
+            <StaticResource x:Key="AppInkSubtleColor" ResourceKey="SystemColorWindowTextColor" />
+            <StaticResource x:Key="AppInkInverseColor" ResourceKey="SystemColorWindowColor" />
+            <StaticResource x:Key="AppLabelDarkTextColor" ResourceKey="SystemColorHighlightTextColor" />
+            <StaticResource x:Key="AppLabelLightTextColor" ResourceKey="SystemColorHighlightTextColor" />
+            <StaticResource x:Key="AppOutlineColor" ResourceKey="SystemColorWindowTextColor" />
+            <StaticResource x:Key="AppOutlineStrongColor" ResourceKey="SystemColorWindowTextColor" />
+            <StaticResource x:Key="AppHairlineColor" ResourceKey="SystemColorWindowTextColor" />
+            <StaticResource x:Key="AppAccentColor" ResourceKey="SystemColorHighlightColor" />
+            <StaticResource x:Key="AppAccentHoverColor" ResourceKey="SystemColorHighlightColor" />
+            <StaticResource x:Key="AppAccentPressedColor" ResourceKey="SystemColorHighlightColor" />
+            <StaticResource x:Key="AppAccentForegroundColor" ResourceKey="SystemColorHighlightTextColor" />
+            <StaticResource x:Key="AppWarmAccentColor" ResourceKey="SystemColorHighlightColor" />
+            <StaticResource x:Key="AppWarmAccentForegroundColor" ResourceKey="SystemColorHighlightTextColor" />
+            <StaticResource x:Key="AppDangerColor" ResourceKey="SystemColorHighlightColor" />
+            <StaticResource x:Key="AppDangerForegroundColor" ResourceKey="SystemColorHighlightTextColor" />
+            <StaticResource x:Key="AppSuccessColor" ResourceKey="SystemColorHighlightColor" />
+            <StaticResource x:Key="AppSuccessForegroundColor" ResourceKey="SystemColorHighlightTextColor" />
+            <StaticResource x:Key="AppShadowColor" ResourceKey="SystemColorWindowTextColor" />
+            <StaticResource x:Key="AppSmokeColor" ResourceKey="SystemColorWindowTextColor" />
+        </ResourceDictionary>
+    </ResourceDictionary.ThemeDictionaries>
+</ResourceDictionary>

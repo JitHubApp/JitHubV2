@@ -7,17 +7,17 @@
     HorizontalAlignment="Stretch"
     mc:Ignorable="d">
     <UserControl.Resources>
-        <SolidColorBrush x:Key="ActivityInlineLinkForegroundBrush" Color="{ThemeResource AppAccentColor}" />
+        <StaticResource x:Key="ActivityInlineLinkForegroundBrush" ResourceKey="AppAccentBrush" />
     </UserControl.Resources>
 
     <Grid
         x:Name="LayoutRoot"
-        ColumnSpacing="10"
+        ColumnSpacing="{ThemeResource AppGap10}"
         SizeChanged="LayoutRoot_SizeChanged">
         <Grid.ColumnDefinitions>
-            <ColumnDefinition Width="28" />
+            <ColumnDefinition Width="{ThemeResource AppGridLength28}" />
             <ColumnDefinition Width="*" />
-            <ColumnDefinition Width="58" />
+            <ColumnDefinition Width="{ThemeResource AppGridLength58}" />
         </Grid.ColumnDefinitions>
         <Grid.RowDefinitions>
             <RowDefinition Height="Auto" />
@@ -25,13 +25,13 @@
         </Grid.RowDefinitions>
 
         <Border
-            Width="24"
-            Height="24"
+            Width="{ThemeResource AppDimension24}"
+            Height="{ThemeResource AppDimension24}"
             VerticalAlignment="Center"
             Translation="0,-2,0"
             Background="{ThemeResource AppCanvasInsetBrush}"
             BorderBrush="{x:Bind ViewModel.Tone, Converter={StaticResource ActivityToneToBrushConverter}, ConverterParameter=Border, Mode=OneWay}"
-            BorderThickness="1"
+            BorderThickness="{ThemeResource AppHairlineBorderThickness}"
             CornerRadius="{ThemeResource AppRadiusSmall}">
             <FontIcon
                 HorizontalAlignment="Center"
@@ -45,22 +45,22 @@
         <RichTextBlock
             x:Name="SentenceRichTextBlock"
             Grid.Column="1"
-            MinWidth="0"
+            MinWidth="{ThemeResource AppDimension0}"
             HorizontalAlignment="Left"
             VerticalAlignment="Center"
             FontFamily="{ThemeResource AppUiFontFamily}"
             FontSize="{ThemeResource AppFontSize13}"
             Foreground="{ThemeResource AppInkBrush}"
             IsTextSelectionEnabled="False"
-            LineHeight="20"
+            LineHeight="{ThemeResource AppLineHeight20}"
             MaxLines="2"
             TextWrapping="Wrap" />
         <TextBlock
             x:Name="SecondaryTextBlock"
             Grid.Row="1"
             Grid.Column="1"
-            MinWidth="0"
-            Margin="0,3,0,0"
+            MinWidth="{ThemeResource AppDimension0}"
+            Margin="{ThemeResource AppMargin0_3_0_0}"
             HorizontalAlignment="Left"
             Style="{StaticResource SectionSecondaryTextBlockStyle}"
             MaxLines="1"

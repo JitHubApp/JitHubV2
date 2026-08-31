@@ -36,12 +36,11 @@ $expectedHostNames = @(
     "my-pull-requests-review",
     "my-pull-requests-review-comment",
     "repository-readme",
-    "profile-overview-readme",
     "profile-readme"
 )
 $expectedHosts = $expectedHostNames.Count
-# All twenty-one hosts run at every viewport and text scale in each theme.
-$expectedCases = (21 * 3 * 3) * 3
+# Every current host runs at every viewport and text scale in each theme.
+$expectedCases = ($expectedHosts * 3 * 3) * 3
 
 function Get-SourceSnapshotHash {
     $roots = @(

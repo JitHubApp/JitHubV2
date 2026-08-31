@@ -29,7 +29,7 @@
                             x:Name="RowRoot"
                             Background="{ThemeResource AppTransparentBrush}"
                             BorderBrush="{ThemeResource AppTransparentBrush}"
-                            BorderThickness="1"
+                            BorderThickness="{ThemeResource AppHairlineBorderThickness}"
                             CornerRadius="{TemplateBinding CornerRadius}">
                             <VisualStateManager.VisualStateGroups>
                                 <VisualStateGroup x:Name="CommonStates">
@@ -71,7 +71,7 @@
                                     </VisualState>
                                     <VisualState x:Name="Disabled">
                                         <VisualState.Setters>
-                                            <Setter Target="RowRoot.Opacity" Value="0.55" />
+                                            <Setter Target="RowRoot.Opacity" Value="{ThemeResource AppOpacityDisabledSurface}" />
                                         </VisualState.Setters>
                                     </VisualState>
                                 </VisualStateGroup>
@@ -91,8 +91,8 @@
     <Grid
         x:Name="WorkspaceRoot"
         AutomationProperties.AutomationId="RepoManagePageRoot"
-        Padding="24,18,24,16"
-        RowSpacing="12"
+        Padding="{ThemeResource AppPadding24_18_24_16}"
+        RowSpacing="{ThemeResource AppGap12}"
         AutomationProperties.AccessibilityView="Content">
         <Grid.RowDefinitions>
             <RowDefinition Height="Auto" />
@@ -106,67 +106,70 @@
             <VisualStateGroup x:Name="WidthStates">
                 <VisualState x:Name="Compact">
                     <VisualState.Setters>
-                        <Setter Target="WorkspaceRoot.Padding" Value="16,14,16,12" />
+                        <Setter Target="WorkspaceRoot.Padding" Value="{ThemeResource AppPadding16_14_16_12}" />
                         <Setter Target="SearchHost.(Grid.Row)" Value="0" />
                         <Setter Target="SearchHost.(Grid.Column)" Value="0" />
                         <Setter Target="SearchHost.(Grid.ColumnSpan)" Value="3" />
                         <Setter Target="CommandSecondaryColumn.Width" Value="*" />
-                        <Setter Target="CommandTertiaryColumn.Width" Value="0" />
+                        <Setter Target="CommandTertiaryColumn.Width" Value="{ThemeResource AppGridLength0}" />
                         <Setter Target="FilterComboBox.(Grid.Row)" Value="1" />
                         <Setter Target="FilterComboBox.(Grid.Column)" Value="0" />
-                        <Setter Target="FilterComboBox.Margin" Value="0,8,0,0" />
+                        <Setter Target="FilterComboBox.Margin" Value="{ThemeResource AppMargin0_8_0_0}" />
                         <Setter Target="SortComboBox.(Grid.Row)" Value="1" />
                         <Setter Target="SortComboBox.(Grid.Column)" Value="1" />
-                        <Setter Target="SortComboBox.Margin" Value="8,8,0,0" />
+                        <Setter Target="SortComboBox.Margin" Value="{ThemeResource AppMargin8_8_0_0}" />
                     </VisualState.Setters>
                 </VisualState>
                 <VisualState x:Name="Wide">
                     <VisualState.Setters>
-                        <Setter Target="WorkspaceRoot.Padding" Value="24,18,24,16" />
+                        <Setter Target="WorkspaceRoot.Padding" Value="{ThemeResource AppPadding24_18_24_16}" />
                         <Setter Target="SearchHost.(Grid.Row)" Value="0" />
                         <Setter Target="SearchHost.(Grid.Column)" Value="0" />
                         <Setter Target="SearchHost.(Grid.ColumnSpan)" Value="1" />
-                        <Setter Target="CommandSecondaryColumn.Width" Value="204" />
-                        <Setter Target="CommandTertiaryColumn.Width" Value="200" />
+                        <Setter Target="CommandSecondaryColumn.Width" Value="{ThemeResource AppGridLength204}" />
+                        <Setter Target="CommandTertiaryColumn.Width" Value="{ThemeResource AppGridLength200}" />
                         <Setter Target="FilterComboBox.(Grid.Row)" Value="0" />
                         <Setter Target="FilterComboBox.(Grid.Column)" Value="1" />
-                        <Setter Target="FilterComboBox.Margin" Value="8,0,0,0" />
+                        <Setter Target="FilterComboBox.Margin" Value="{ThemeResource AppMargin8_0_0_0}" />
                         <Setter Target="SortComboBox.(Grid.Row)" Value="0" />
                         <Setter Target="SortComboBox.(Grid.Column)" Value="2" />
-                        <Setter Target="SortComboBox.Margin" Value="8,0,0,0" />
+                        <Setter Target="SortComboBox.Margin" Value="{ThemeResource AppMargin8_0_0_0}" />
                     </VisualState.Setters>
                 </VisualState>
             </VisualStateGroup>
         </VisualStateManager.VisualStateGroups>
 
-        <Grid ColumnSpacing="12" Style="{StaticResource AppWorkspaceHeaderStyle}">
+        <Grid ColumnSpacing="{ThemeResource AppGap12}" Style="{StaticResource AppWorkspaceHeaderStyle}">
             <Grid.ColumnDefinitions>
                 <ColumnDefinition Width="*" />
                 <ColumnDefinition Width="Auto" />
             </Grid.ColumnDefinitions>
-            <StackPanel VerticalAlignment="Center" Orientation="Horizontal" Spacing="12">
-                <TextBlock
-                    x:Name="RepositoryLibraryCount"
-                    FontFamily="{ThemeResource AppDisplayFontFamily}"
-                    FontSize="{ThemeResource AppFontSize28}"
-                    Foreground="{ThemeResource AppInkBrush}"
-                    Text="{x:Bind ViewModel.PageTitle, Mode=OneWay}" />
-                <TextBlock
-                    VerticalAlignment="Center"
-                    AutomationProperties.AutomationId="RepositoryLibraryCount"
-                    Style="{StaticResource SectionSecondaryTextBlockStyle}"
+            <TextBlock
+                x:Name="RepositoryLibraryHeading"
+                VerticalAlignment="Center"
+                AutomationProperties.AutomationId="RepositoryLibraryCount"
+                FontFamily="{ThemeResource AppDisplayFontFamily}"
+                FontSize="{ThemeResource AppFontSize28}"
+                Foreground="{ThemeResource AppInkBrush}"
+                TextTrimming="CharacterEllipsis">
+                <Run Text="{x:Bind ViewModel.PageTitle, Mode=OneWay}" />
+                <Run Text=" " />
+                <Run
+                    FontFamily="{ThemeResource AppUiFontFamily}"
+                    FontSize="{ThemeResource AppMetaFontSize}"
+                    Foreground="{ThemeResource AppInkMutedBrush}"
                     Text="{x:Bind ViewModel.ResultCountText, Mode=OneWay}" />
-            </StackPanel>
-            <StackPanel Grid.Column="1" Orientation="Horizontal" Spacing="8">
+            </TextBlock>
+            <StackPanel Grid.Column="1" Orientation="Horizontal" Spacing="{ThemeResource AppGap8}">
                 <Button
                     x:Uid="RepoManageNewButton"
                     AutomationProperties.AutomationId="RepositoryLibraryNew"
                     AutomationProperties.Name="New repository"
                     Click="NewRepositoryButton_Click"
                     Style="{StaticResource AppAccentButtonStyle}">
-                    <StackPanel Orientation="Horizontal" Spacing="7">
-                        <FontIcon FontFamily="{StaticResource SegoeFluentIcons}" FontSize="{ThemeResource AppFontSize14}" Glyph="&#xE710;" />
-                        <TextBlock x:Name="NewRepositoryButtonText" Text="{x:Bind ViewModel.NewRepositoryButtonText, Mode=OneWay}" />
+                    <StackPanel Orientation="Horizontal" Spacing="{ThemeResource AppGap7}">
+                        <FontIcon VerticalAlignment="Center" FontFamily="{StaticResource SegoeFluentIcons}" FontSize="{ThemeResource AppFontSize14}" Glyph="&#xE710;" />
+                        <TextBlock x:Name="NewRepositoryButtonText" VerticalAlignment="Center" Text="{x:Bind ViewModel.NewRepositoryButtonText, Mode=OneWay}" />
                     </StackPanel>
                 </Button>
                 <Button
@@ -177,9 +180,9 @@
                     IsEnabled="{x:Bind ViewModel.IsSelectionModeAvailable, Mode=OneWay}"
                     Style="{StaticResource AppCommandButtonStyle}"
                     ToolTipService.ToolTip="Select repositories">
-                    <StackPanel Orientation="Horizontal" Spacing="7">
-                        <FontIcon FontFamily="{StaticResource SegoeFluentIcons}" FontSize="{ThemeResource AppFontSize14}" Glyph="&#xE762;" />
-                        <TextBlock x:Name="SelectionModeButtonText" Text="{x:Bind ViewModel.SelectButtonText, Mode=OneWay}" />
+                    <StackPanel Orientation="Horizontal" Spacing="{ThemeResource AppGap7}">
+                        <FontIcon VerticalAlignment="Center" FontFamily="{StaticResource SegoeFluentIcons}" FontSize="{ThemeResource AppFontSize14}" Glyph="&#xE762;" />
+                        <TextBlock x:Name="SelectionModeButtonText" VerticalAlignment="Center" Text="{x:Bind ViewModel.SelectButtonText, Mode=OneWay}" />
                     </StackPanel>
                 </Button>
             </StackPanel>
@@ -192,19 +195,19 @@
             </Grid.RowDefinitions>
             <Grid.ColumnDefinitions>
                 <ColumnDefinition Width="*" />
-                <ColumnDefinition x:Name="CommandSecondaryColumn" Width="204" />
-                <ColumnDefinition x:Name="CommandTertiaryColumn" Width="200" />
+                <ColumnDefinition x:Name="CommandSecondaryColumn" Width="{ThemeResource AppGridLength204}" />
+                <ColumnDefinition x:Name="CommandTertiaryColumn" Width="{ThemeResource AppGridLength200}" />
             </Grid.ColumnDefinitions>
-            <Grid x:Name="SearchHost" MinWidth="180">
+            <Grid x:Name="SearchHost" MinWidth="{ThemeResource AppDimension180}">
                 <TextBox
                     x:Uid="RepoManageSearchBox"
                     AutomationProperties.AutomationId="RepositoryLibrarySearch"
                     AutomationProperties.Name="Search account repositories"
                     PlaceholderText="Search repositories"
-                    Style="{StaticResource AppCommandSearchTextBoxStyle}"
+                    Style="{StaticResource AppCommandLeadingIconSearchTextBoxStyle}"
                     Text="{x:Bind ViewModel.SearchText, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" />
                 <FontIcon
-                    Margin="12,0,0,0"
+                    Margin="{ThemeResource AppMargin12_0_0_0}"
                     HorizontalAlignment="Left"
                     VerticalAlignment="Center"
                     FontFamily="{StaticResource SegoeFluentIcons}"
@@ -219,7 +222,7 @@
                 Grid.Column="1"
                 AutomationProperties.AutomationId="RepositoryLibraryFilter"
                 AutomationProperties.Name="Filter account repositories"
-                ItemsSource="{x:Bind ViewModel.FilterOptions}"
+                ItemsSource="{x:Bind ViewModel.FilterOptions, Mode=OneWay}"
                 SelectedItem="{x:Bind ViewModel.SelectedFilterOption, Mode=TwoWay}"
                 Style="{StaticResource AppCompactComboBoxStyle}" />
             <ComboBox
@@ -228,14 +231,14 @@
                 Grid.Column="2"
                 AutomationProperties.AutomationId="RepositoryLibrarySort"
                 AutomationProperties.Name="Sort account repositories"
-                ItemsSource="{x:Bind ViewModel.SortOptions}"
+                ItemsSource="{x:Bind ViewModel.SortOptions, Mode=OneWay}"
                 SelectedItem="{x:Bind ViewModel.SelectedSortOption, Mode=TwoWay}"
                 Style="{StaticResource AppCompactComboBoxStyle}" />
         </Grid>
 
         <Grid
             Grid.Row="2"
-            MinHeight="20"
+            MinHeight="{ThemeResource AppDimension20}"
             Visibility="{x:Bind ViewModel.IsStatusVisible, Converter={StaticResource BoolToVisibilityConverter}, Mode=OneWay}">
             <TextBlock
                 VerticalAlignment="Center"
@@ -244,7 +247,7 @@
                 Text="{x:Bind ViewModel.StatusText, Mode=OneWay}"
                 TextTrimming="CharacterEllipsis" />
             <Button
-                x:Uid="PagesRepoManagePageRepositoryLibraryRetry" Margin="8,0,0,0"
+                x:Uid="PagesRepoManagePageRepositoryLibraryRetry" Margin="{ThemeResource AppMargin8_0_0_0}"
                 HorizontalAlignment="Right"
                     AutomationProperties.AutomationId="RepositoryLibraryRetry"
                     AutomationProperties.Name="Retry loading repositories"
@@ -254,7 +257,7 @@
                 Visibility="{x:Bind ViewModel.IsRetryVisible, Converter={StaticResource BoolToVisibilityConverter}, Mode=OneWay}" />
         </Grid>
 
-        <Grid Grid.Row="3" MinHeight="0">
+        <Grid Grid.Row="3" MinHeight="{ThemeResource AppDimension0}">
             <ListView
                 x:Name="RepositoriesList"
                 x:Uid="RepoManageRepositoryList"
@@ -262,7 +265,7 @@
                 AutomationProperties.Name="Account repositories"
                 Background="{ThemeResource AppTransparentBrush}"
                 BorderBrush="{ThemeResource AppHairlineBrush}"
-                BorderThickness="0,1,0,0"
+                BorderThickness="{ThemeResource AppTopHairlineBorderThickness}"
                 ContainerContentChanging="RepositoriesList_ContainerContentChanging"
                 IsEnabled="{x:Bind ViewModel.IsInteractionEnabled, Mode=OneWay}"
                 IsItemClickEnabled="True"
@@ -277,17 +280,17 @@
                     <DataTemplate x:DataType="viewmodels:RepositoryLibraryViewItem">
                         <Grid
                             x:Name="RepositoryRowRoot"
-                            MinHeight="82"
-                            Padding="12,10"
+                            MinHeight="{ThemeResource AppDimension82}"
+                            Padding="{ThemeResource AppPadding12_10}"
                             Background="{ThemeResource AppTransparentBrush}"
-                            ColumnSpacing="12">
+                            ColumnSpacing="{ThemeResource AppGap12}">
                             <Grid.ColumnDefinitions>
                                 <ColumnDefinition Width="Auto" />
-                                <ColumnDefinition Width="32" />
+                                <ColumnDefinition Width="{ThemeResource AppGridLength32}" />
                                 <ColumnDefinition Width="*" />
                             </Grid.ColumnDefinitions>
                             <CheckBox
-                                Margin="0,2,0,0"
+                                Margin="{ThemeResource AppMargin0_2_0_0}"
                                 AutomationProperties.AutomationId="{x:Bind SelectionAutomationId}"
                                 AutomationProperties.Name="{x:Bind SelectionAutomationName}"
                                 Checked="RepositorySelectionCheckBox_Checked"
@@ -298,27 +301,27 @@
                                 Visibility="{x:Bind IsSelectionModeVisible, Converter={StaticResource BoolToVisibilityConverter}, Mode=OneWay}" />
                             <common:CachedImage
                                 Grid.Column="1"
-                                Width="30"
-                                Height="30"
+                                Width="{ThemeResource AppDimension30}"
+                                Height="{ThemeResource AppDimension30}"
                                 VerticalAlignment="Top"
-                                SourceUrl="{x:Bind Repository.Owner.AvatarUrl, Mode=OneWay}"
+                                SourceUrl="{x:Bind OwnerAvatarUrl, Mode=OneWay}"
                                 Stretch="UniformToFill" />
-                            <Grid Grid.Column="2" MinWidth="0" RowSpacing="5">
+                            <Grid Grid.Column="2" MinWidth="{ThemeResource AppDimension0}" RowSpacing="{ThemeResource AppGap5}">
                                 <Grid.RowDefinitions>
                                     <RowDefinition Height="Auto" />
                                     <RowDefinition Height="Auto" />
                                     <RowDefinition Height="Auto" />
                                 </Grid.RowDefinitions>
-                                <StackPanel Orientation="Horizontal" Spacing="8">
+                                <StackPanel Orientation="Horizontal" Spacing="{ThemeResource AppGap8}">
                                     <TextBlock
                                         FontFamily="{ThemeResource AppUiFontFamily}"
                                         FontSize="{ThemeResource AppFontSize14}"
-                                        FontWeight="SemiBold"
+                                        FontWeight="{ThemeResource AppFontWeightSemibold}"
                                         Foreground="{ThemeResource AppInkBrush}"
                                         Text="{x:Bind Repository.FullName, Mode=OneWay}"
                                         TextTrimming="CharacterEllipsis" />
                                     <Border
-                                        Padding="6,2"
+                                        Padding="{ThemeResource AppPadding6_2}"
                                         VerticalAlignment="Center"
                                         Background="{ThemeResource AppSurfaceSubtleBrush}"
                                         CornerRadius="{ThemeResource AppRadiusSmall}">
@@ -331,14 +334,14 @@
                                     MaxLines="1"
                                     Text="{x:Bind Repository.Description, Mode=OneWay}"
                                     TextTrimming="CharacterEllipsis" />
-                                <StackPanel Grid.Row="2" Orientation="Horizontal" Spacing="12">
-                                    <StackPanel Orientation="Horizontal" Spacing="5">
-                                        <Ellipse Width="7" Height="7" VerticalAlignment="Center" Fill="{ThemeResource AppAccentBrush}" />
-                                        <TextBlock Style="{StaticResource SectionSecondaryTextBlockStyle}" Text="{x:Bind LanguageText, Mode=OneWay}" />
+                                <StackPanel Grid.Row="2" Orientation="Horizontal" Spacing="{ThemeResource AppGap12}">
+                                    <StackPanel Orientation="Horizontal" Spacing="{ThemeResource AppGap5}">
+                                        <Ellipse Style="{StaticResource AppLanguageIndicatorDotStyle}" Fill="{ThemeResource AppAccentBrush}" />
+                                        <TextBlock VerticalAlignment="Center" Style="{StaticResource AppInlineMetadataTextBlockStyle}" Text="{x:Bind LanguageText, Mode=OneWay}" />
                                     </StackPanel>
-                                    <StackPanel Orientation="Horizontal" Spacing="4">
-                                        <appcontrols:AppIcon IconKind="Star" IconSize="13" IconBrush="{ThemeResource AppWarmAccentBrush}" />
-                                        <TextBlock Style="{StaticResource SectionSecondaryTextBlockStyle}" Text="{x:Bind StarText, Mode=OneWay}" />
+                                    <StackPanel Orientation="Horizontal" Spacing="{ThemeResource AppGap4}">
+                                        <appcontrols:AppIcon VerticalAlignment="Center" IconKind="Star" IconSize="13" IconBrush="{ThemeResource AppWarmAccentBrush}" />
+                                        <TextBlock VerticalAlignment="Center" Style="{StaticResource SectionSecondaryTextBlockStyle}" Text="{x:Bind StarText, Mode=OneWay}" />
                                     </StackPanel>
                                     <TextBlock Style="{StaticResource SectionSecondaryTextBlockStyle}" Text="{x:Bind UpdatedText, Mode=OneWay}" />
                                 </StackPanel>
@@ -354,7 +357,7 @@
                 Visibility="{x:Bind ViewModel.IsEmptyStateVisible, Converter={StaticResource BoolToVisibilityConverter}, Mode=OneWay}" />
 
             <ProgressBar
-                Height="2"
+                Height="{ThemeResource AppDimension2}"
                 VerticalAlignment="Top"
                 IsIndeterminate="True"
                 Visibility="{x:Bind ViewModel.IsSynchronizing, Converter={StaticResource BoolToVisibilityConverter}, Mode=OneWay}" />
@@ -362,10 +365,10 @@
 
         <Grid
             Grid.Row="4"
-            MinHeight="44"
-            Padding="10,6"
+            MinHeight="{ThemeResource AppDimension44}"
+            Padding="{ThemeResource AppPadding10_6}"
             Background="{ThemeResource AppSurfaceSubtleBrush}"
-            ColumnSpacing="8"
+            ColumnSpacing="{ThemeResource AppGap8}"
             Visibility="{x:Bind ViewModel.HasSelection, Converter={StaticResource BoolToVisibilityConverter}, Mode=OneWay}">
             <Grid.ColumnDefinitions>
                 <ColumnDefinition Width="*" />
@@ -375,7 +378,7 @@
             <TextBlock
                 VerticalAlignment="Center"
                 AutomationProperties.AutomationId="RepositoryLibrarySelectionCount"
-                FontWeight="SemiBold"
+                FontWeight="{ThemeResource AppFontWeightSemibold}"
                 Text="{x:Bind ViewModel.SelectionText, Mode=OneWay}" />
             <Button
                 x:Uid="PagesRepoManagePageRepositoryLibraryDeleteSelected" Grid.Column="1"

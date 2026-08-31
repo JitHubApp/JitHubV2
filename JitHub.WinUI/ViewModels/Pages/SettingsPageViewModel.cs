@@ -31,6 +31,7 @@ public sealed partial class SettingsPageViewModel : ObservableObject
 
     private SettingsSectionItem _selectedSection;
     private ThemeOption? _selectedThemeOption;
+    private ThemePaletteOption? _selectedPaletteOption;
     private bool _isDeveloperMode;
     private bool _diagnosticsEnabled = true;
     private bool _storeTelemetryEnabled = true;
@@ -88,13 +89,17 @@ public sealed partial class SettingsPageViewModel : ObservableObject
         };
 
         ThemeOptions =
+        (ThemeOption[])
         [
             new(ThemeConst.System, L("Settings/Theme/System", "System"), L("Settings/Theme/SystemDescription", "Follow Windows theme")),
             new(ThemeConst.Light, L("Settings/Theme/Light", "Light"), L("Settings/Theme/LightDescription", "Always use light theme")),
             new(ThemeConst.Dark, L("Settings/Theme/Dark", "Dark"), L("Settings/Theme/DarkDescription", "Always use dark theme"))
         ];
 
+        PaletteOptions = CreatePaletteOptions();
+
         Credits =
+        (SettingsCredit[])
         [
             new("Nero Cui", L("Settings/Credits/DeveloperRole", "Developer"), L("Settings/Credits/NeroDescription", "Core app, migration, and product direction.")),
             new("Get", L("Settings/Credits/DeveloperRole", "Developer"), L("Settings/Credits/GetDescription", "Prototype work, app polish, and productivity workflows.")),
@@ -110,6 +115,8 @@ public sealed partial class SettingsPageViewModel : ObservableObject
     public IReadOnlyList<SettingsSectionItem> SettingsSections { get; }
 
     public IReadOnlyList<ThemeOption> ThemeOptions { get; }
+
+    public IReadOnlyList<ThemePaletteOption> PaletteOptions { get; }
 
     public IReadOnlyList<SettingsCredit> Credits { get; }
 
@@ -194,6 +201,71 @@ public sealed partial class SettingsPageViewModel : ObservableObject
     public bool IsLightThemeSelected => IsThemeSelected(ThemeConst.Light);
 
     public bool IsDarkThemeSelected => IsThemeSelected(ThemeConst.Dark);
+
+    public ThemePaletteOption? SelectedPaletteOption
+    {
+        get => _selectedPaletteOption;
+        set
+        {
+            if (value is null || ReferenceEquals(_selectedPaletteOption, value))
+            {
+                return;
+            }
+
+            ThemePaletteOption? previous = _selectedPaletteOption;
+            _selectedPaletteOption = value;
+            OnPropertyChanged();
+            UpdatePaletteSelection();
+
+            if (_isInitializing)
+            {
+                return;
+            }
+
+            bool applied;
+            try
+            {
+                applied = _preferencesService.TrySetPalette(value.Id);
+            }
+            catch (Exception)
+            {
+                applied = false;
+            }
+
+            if (!applied)
+            {
+                _selectedPaletteOption = previous;
+                OnPropertyChanged();
+                UpdatePaletteSelection();
+                HasStatusError = true;
+                StatusText = L(
+                    "Settings/Status/PaletteChangeFailed",
+                    "JitHub could not apply that color theme. Your previous theme is still active.");
+                TrackEvent("settings.action.executed", new Dictionary<string, string?>
+                {
+                    ["action"] = TelemetryTaxonomy.Actions.ThemePaletteChanged,
+                    ["theme_palette"] = value.Id,
+                    ["result"] = TelemetryTaxonomy.Results.Error
+                });
+                return;
+            }
+
+            HasStatusError = false;
+            StatusText = LF(
+                "Settings/Status/PaletteChangedFormat",
+                "Color theme changed to {0}.",
+                value.Label);
+            TrackEvent("settings.action.executed", new Dictionary<string, string?>
+            {
+                ["action"] = TelemetryTaxonomy.Actions.ThemePaletteChanged,
+                ["theme_palette"] = value.Id,
+                ["result"] = TelemetryTaxonomy.Results.Success
+            });
+        }
+    }
+
+    public bool CanResetPalette =>
+        !string.Equals(SelectedPaletteOption?.Id, ThemePaletteIds.JitHub, StringComparison.Ordinal);
 
     public bool IsDeveloperMode
     {
@@ -396,6 +468,7 @@ public sealed partial class SettingsPageViewModel : ObservableObject
             VersionText = LF("Settings/About/VersionFormat", "JitHub {0}", _preferencesService.GetVersionText());
             IsDeveloperMode = _preferencesService.IsDeveloperMode;
             SelectedThemeOption = FindThemeOption(_preferencesService.GetTheme());
+            SelectedPaletteOption = FindPaletteOption(_preferencesService.GetPalette());
             await RunRefreshAsync(cancellationToken, "initial");
         }
         catch (Exception ex)
@@ -478,6 +551,16 @@ public sealed partial class SettingsPageViewModel : ObservableObject
     public void SelectTheme(string theme)
     {
         SelectedThemeOption = FindThemeOption(theme);
+    }
+
+    public void SelectPalette(string paletteId)
+    {
+        SelectedPaletteOption = FindPaletteOption(paletteId);
+    }
+
+    public void ResetPalette()
+    {
+        SelectPalette(ThemePaletteIds.JitHub);
     }
 
     public void ReportActionFailure(Exception exception)
@@ -619,6 +702,16 @@ public sealed partial class SettingsPageViewModel : ObservableObject
         OnPropertyChanged(nameof(IsDarkThemeSelected));
     }
 
+    private void UpdatePaletteSelection()
+    {
+        foreach (ThemePaletteOption option in PaletteOptions)
+        {
+            option.IsSelected = ReferenceEquals(option, _selectedPaletteOption);
+        }
+
+        OnPropertyChanged(nameof(CanResetPalette));
+    }
+
     private void NotifySnapshotChanged()
     {
         OnPropertyChanged(nameof(StoreTelemetryStatusText));
@@ -651,6 +744,37 @@ public sealed partial class SettingsPageViewModel : ObservableObject
         }
 
         return ThemeOptions[0];
+    }
+
+    private ThemePaletteOption FindPaletteOption(string? paletteId)
+    {
+        string normalized = ThemePaletteCatalog.Normalize(paletteId);
+        foreach (ThemePaletteOption option in PaletteOptions)
+        {
+            if (string.Equals(option.Id, normalized, StringComparison.Ordinal))
+            {
+                return option;
+            }
+        }
+
+        return PaletteOptions[0];
+    }
+
+    private IReadOnlyList<ThemePaletteOption> CreatePaletteOptions()
+    {
+        List<ThemePaletteOption> options = new(ThemePaletteCatalog.All.Count);
+        foreach (ThemePaletteDefinition palette in ThemePaletteCatalog.All)
+        {
+            options.Add(new ThemePaletteOption(
+                palette.Id,
+                L($"Settings/Palette/{palette.ResourceKey}", palette.Name),
+                L($"Settings/Palette/{palette.ResourceKey}Description", palette.Description),
+                string.Equals(palette.Id, ThemePaletteIds.JitHub, StringComparison.Ordinal),
+                palette.Light,
+                palette.Dark));
+        }
+
+        return options;
     }
 
     private bool IsSelected(string sectionId) =>
@@ -845,6 +969,47 @@ public sealed record ThemeOption(
     string Value,
     string Label,
     string Description);
+
+public sealed partial class ThemePaletteOption : ObservableObject
+{
+    private bool _isSelected;
+
+    public ThemePaletteOption(
+        string id,
+        string label,
+        string description,
+        bool isDefault,
+        ThemePalettePreview light,
+        ThemePalettePreview dark)
+    {
+        Id = id;
+        Label = label;
+        Description = description;
+        IsDefault = isDefault;
+        Light = light;
+        Dark = dark;
+    }
+
+    public string Id { get; }
+
+    public string Label { get; }
+
+    public string Description { get; }
+
+    public bool IsDefault { get; }
+
+    public ThemePalettePreview Light { get; }
+
+    public ThemePalettePreview Dark { get; }
+
+    public string AutomationId => $"SettingsPalette_{Id}";
+
+    public bool IsSelected
+    {
+        get => _isSelected;
+        set => SetProperty(ref _isSelected, value);
+    }
+}
 
 public sealed record SettingsCredit(
     string Name,

@@ -191,11 +191,26 @@ public sealed class VNextLocalizationContractTests
             root, "JitHub.WinUI", "ViewModels", "RepositoryViewModels", "RepoDetailViewModel.cs"));
         string comments = File.ReadAllText(Path.Combine(
             root, "JitHub.WinUI", "ViewModels", "UserViewModel", "UserCommentBlockViewModel.cs"));
+        string englishResources = File.ReadAllText(Path.Combine(
+            root, "JitHub.WinUI", "Strings", "en-US", "Resources.resw"));
+        string pseudoResources = File.ReadAllText(Path.Combine(
+            root, "JitHub.WinUI", "Strings", "qps-ploc", "Resources.resw"));
 
         Assert.Contains("Dashboard/Greeting/Default", dashboard, StringComparison.Ordinal);
         Assert.Contains("Profile.Status.Loading", profile, StringComparison.Ordinal);
         Assert.Contains("RepoDetail.Star.ActionUnavailable", repository, StringComparison.Ordinal);
         Assert.Contains("Comment.Menu.CopyLink", comments, StringComparison.Ordinal);
+        foreach (string key in new[]
+        {
+            "Comment.Menu.CopyLink",
+            "Comment.Menu.QuoteReply",
+            "Comment.Reaction.LoadFailed",
+            "Comment.Reaction.UpdateFailed"
+        })
+        {
+            Assert.Contains($"name=\"{key}\"", englishResources, StringComparison.Ordinal);
+            Assert.Contains($"name=\"{key}\"", pseudoResources, StringComparison.Ordinal);
+        }
         Assert.DoesNotMatch(
             new Regex(@"(?:DashboardStatusText|NotificationStatusText)\s*=\s*\""", RegexOptions.CultureInvariant),
             dashboard);
@@ -241,8 +256,9 @@ public sealed class VNextLocalizationContractTests
             "JitHub.WinUI",
             "Services",
             "LocalizationService.cs"));
-        Assert.Contains("Microsoft.Windows.ApplicationModel.Resources", localizationService, StringComparison.Ordinal);
-        Assert.DoesNotContain("using Windows.ApplicationModel.Resources;", localizationService, StringComparison.Ordinal);
+        Assert.Contains("LocalizedResourceText.GetString", localizationService, StringComparison.Ordinal);
+        Assert.Contains("LocalizedResourceText.Format", localizationService, StringComparison.Ordinal);
+        Assert.DoesNotContain("ResourceLoader", localizationService, StringComparison.Ordinal);
         Assert.DoesNotContain("ApplyAutomationPseudoLocalization", localizationService, StringComparison.Ordinal);
 
         string localizedResourceText = File.ReadAllText(Path.Combine(
@@ -251,6 +267,13 @@ public sealed class VNextLocalizationContractTests
             "Helpers",
             "LocalizedResourceText.cs"));
         Assert.Contains("Microsoft.Windows.ApplicationModel.Resources", localizedResourceText, StringComparison.Ordinal);
+        Assert.Contains("using Microsoft.Windows.Globalization;", localizedResourceText, StringComparison.Ordinal);
+        Assert.Contains("Path.Combine(AppContext.BaseDirectory, \"resources.pri\")", localizedResourceText, StringComparison.Ordinal);
+        Assert.Contains("new ResourceManager(resourceFilePath)", localizedResourceText, StringComparison.Ordinal);
+        Assert.Contains("TryGetSubtree(\"Resources\")", localizedResourceText, StringComparison.Ordinal);
+        Assert.Contains("resourceContext.QualifierValues[\"Language\"] = languageOverride", localizedResourceText, StringComparison.Ordinal);
+        Assert.Contains("resourceMap.TryGetValue(resourceKey, resourceContext)", localizedResourceText, StringComparison.Ordinal);
+        Assert.DoesNotContain("ResourceLoader", localizedResourceText, StringComparison.Ordinal);
         Assert.DoesNotContain("using Windows.ApplicationModel.Resources;", localizedResourceText, StringComparison.Ordinal);
         Assert.DoesNotContain("ApplyAutomationPseudoLocalization", localizedResourceText, StringComparison.Ordinal);
 
@@ -271,7 +294,7 @@ public sealed class VNextLocalizationContractTests
             "Views",
             "Pages",
             "ShellPage.xaml"));
-        Assert.Contains("Target=\"SearchBoxFrame.Width\" Value=\"220\"", shellXaml, StringComparison.Ordinal);
+        Assert.Contains("Target=\"SearchBoxFrame.Width\" Value=\"{ThemeResource AppDimension220}\"", shellXaml, StringComparison.Ordinal);
 
         string automation = File.ReadAllText(Path.Combine(
             root,
@@ -382,13 +405,13 @@ public sealed class VNextLocalizationContractTests
             XElement item = Assert.Single(
                 shellDocument.Descendants(),
                 element =>
-                    element.Name.LocalName == "SegmentedItem" &&
+                    element.Name.LocalName == "AppSegmentedItem" &&
                     string.Equals((string?)element.Attribute(xaml + "Uid"), itemUid, StringComparison.Ordinal));
             XElement label = Assert.Single(item.Elements(), element => element.Name.LocalName == "TextBlock");
 
-            Assert.Equal("44", (string?)item.Attribute("Height"));
-            Assert.Equal("4,4", (string?)item.Attribute("Padding"));
-            Assert.Equal("80", (string?)item.Attribute("Width"));
+            Assert.Equal("{ThemeResource AppDimension44}", (string?)item.Attribute("Height"));
+            Assert.Equal("{ThemeResource AppPadding4_4}", (string?)item.Attribute("Padding"));
+            Assert.Equal("{ThemeResource AppDimension80}", (string?)item.Attribute("Width"));
             Assert.Equal($"{itemUid}Label", (string?)label.Attribute(xaml + "Uid"));
             Assert.Equal("2", (string?)label.Attribute("MaxLines"));
             Assert.Equal("WrapWholeWords", (string?)label.Attribute("TextWrapping"));
@@ -404,13 +427,13 @@ public sealed class VNextLocalizationContractTests
             XElement item = Assert.Single(
                 shellDocument.Descendants(),
                 element =>
-                    element.Name.LocalName == "SegmentedItem" &&
+                    element.Name.LocalName == "AppSegmentedItem" &&
                     string.Equals((string?)element.Attribute(xaml + "Uid"), itemUid, StringComparison.Ordinal));
             XElement label = Assert.Single(item.Elements(), element => element.Name.LocalName == "TextBlock");
 
-            Assert.Equal("24", (string?)item.Attribute("Height"));
-            Assert.Equal("2,0", (string?)item.Attribute("Padding"));
-            Assert.Equal("44", (string?)item.Attribute("Width"));
+            Assert.Equal("{ThemeResource AppDimension24}", (string?)item.Attribute("Height"));
+            Assert.Equal("{ThemeResource AppPadding2_0}", (string?)item.Attribute("Padding"));
+            Assert.Equal("{ThemeResource AppDimension44}", (string?)item.Attribute("Width"));
             Assert.Equal($"{itemUid}Label", (string?)label.Attribute(xaml + "Uid"));
             Assert.Equal("1", (string?)label.Attribute("MaxLines"));
             Assert.Equal("NoWrap", (string?)label.Attribute("TextWrapping"));
@@ -438,7 +461,10 @@ public sealed class VNextLocalizationContractTests
             {
                 File = "RepoPullRequestPage.xaml",
                 Template = "RepoPullRequestSectionLabelTemplate",
-                Width = "112",
+                ContentSized = true,
+                ExpectedItems = 1,
+                Width = "{ThemeResource AppDimension112}",
+                Height = "{ThemeResource AppDimension48}",
                 Uids = new[]
                 {
                     "PagesRepoPullRequestPageRepoPullRequestsSectionConversat",
@@ -452,7 +478,10 @@ public sealed class VNextLocalizationContractTests
             {
                 File = "RepoCommitsPage.xaml",
                 Template = "RepoCommitSectionLabelTemplate",
-                Width = "96",
+                ContentSized = true,
+                ExpectedItems = 2,
+                Width = "{ThemeResource AppDimension96}",
+                Height = "{ThemeResource AppCommandControlHeight}",
                 Uids = new[]
                 {
                     "PagesRepoCommitsPageRepoCommitsSectionDiff",
@@ -471,27 +500,46 @@ public sealed class VNextLocalizationContractTests
                 "Views",
                 "Pages",
                 page.File));
-            XElement template = Assert.Single(
-                document.Descendants(),
-                element =>
-                    element.Name.LocalName == "DataTemplate" &&
-                    string.Equals((string?)element.Attribute(xaml + "Key"), page.Template, StringComparison.Ordinal));
-            XElement label = Assert.Single(template.Elements(), element => element.Name.LocalName == "TextBlock");
-            Assert.Equal("x:String", (string?)template.Attribute(xaml + "DataType"));
-            Assert.Equal("2", (string?)label.Attribute("MaxLines"));
-            Assert.Equal("WrapWholeWords", (string?)label.Attribute("TextWrapping"));
+            if (!page.ContentSized)
+            {
+                XElement template = Assert.Single(
+                    document.Descendants(),
+                    element =>
+                        element.Name.LocalName == "DataTemplate" &&
+                        string.Equals((string?)element.Attribute(xaml + "Key"), page.Template, StringComparison.Ordinal));
+                XElement label = Assert.Single(template.Elements(), element => element.Name.LocalName == "TextBlock");
+                Assert.Equal("x:String", (string?)template.Attribute(xaml + "DataType"));
+                Assert.Equal("2", (string?)label.Attribute("MaxLines"));
+                Assert.Equal("WrapWholeWords", (string?)label.Attribute("TextWrapping"));
+            }
 
             foreach (string uid in page.Uids)
             {
-                XElement item = Assert.Single(
-                    document.Descendants(),
-                    element =>
-                        element.Name.LocalName == "SegmentedItem" &&
-                        string.Equals((string?)element.Attribute(xaml + "Uid"), uid, StringComparison.Ordinal));
-                Assert.Equal("48", (string?)item.Attribute("Height"));
-                Assert.Equal("4,6", (string?)item.Attribute("Padding"));
-                Assert.Equal(page.Width, (string?)item.Attribute("Width"));
-                Assert.Equal($"{{StaticResource {page.Template}}}", (string?)item.Attribute("ContentTemplate"));
+                XElement[] items = document.Descendants()
+                    .Where(element =>
+                        element.Name.LocalName == "AppSegmentedItem" &&
+                        string.Equals((string?)element.Attribute(xaml + "Uid"), uid, StringComparison.Ordinal))
+                    .ToArray();
+                Assert.Equal(page.ExpectedItems, items.Length);
+                foreach (XElement item in items)
+                {
+                    if (page.ContentSized)
+                    {
+                        Assert.Equal(
+                            "{StaticResource AppContentSizedSegmentedItemStyle}",
+                            (string?)item.Attribute("Style"));
+                        Assert.Null(item.Attribute("Width"));
+                        Assert.Null(item.Attribute("ContentTemplate"));
+                    }
+                    else
+                    {
+                        Assert.Equal(page.Height, (string?)item.Attribute("Height"));
+                        Assert.Equal("{ThemeResource AppPadding4_6}", (string?)item.Attribute("Padding"));
+                        Assert.Equal(page.Width, (string?)item.Attribute("Width"));
+                        Assert.Equal($"{{StaticResource {page.Template}}}", (string?)item.Attribute("ContentTemplate"));
+                    }
+                }
+
                 Assert.True(pseudo.TryGetValue($"{uid}.Content", out string? content), $"Missing pseudo section label '{uid}.Content'.");
                 Assert.StartsWith("⟦", content, StringComparison.Ordinal);
             }
@@ -513,7 +561,8 @@ public sealed class VNextLocalizationContractTests
     {
         fallback = null;
         if (element.Name.LocalName is not ("TextBlock" or "Run" or "Button" or "ToggleButton" or
-            "RadioButton" or "CheckBox" or "ComboBoxItem" or "SegmentedItem" or "SelectorBarItem" or "MenuFlyoutItem"))
+            "RadioButton" or "CheckBox" or "ComboBoxItem" or "AppSegmentedItem" or "SegmentedItem" or
+            "SelectorBarItem" or "MenuFlyoutItem"))
         {
             return false;
         }
@@ -579,7 +628,7 @@ public sealed class VNextLocalizationContractTests
     private static string FindRepositoryRoot()
     {
         DirectoryInfo? directory = new(AppContext.BaseDirectory);
-        while (directory is not null && !File.Exists(Path.Combine(directory.FullName, "JitHub.slnx")))
+        while (directory is not null && !File.Exists(Path.Combine(directory.FullName, "Directory.Build.props")))
         {
             directory = directory.Parent;
         }

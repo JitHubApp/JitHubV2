@@ -16,6 +16,7 @@ param(
 
     [ValidateSet('light', 'dark')]
     [string]$Theme = 'dark',
+    [string]$Palette,
 
     [string]$Repository = 'JitHubApp/JitHubV2',
     [string[]]$Routes,
@@ -67,7 +68,11 @@ namespace JitHub.NativeAotVerification
         private const uint SwpNoMove = 0x0002;
         private const uint SwpNoZOrder = 0x0004;
         private const uint SwpNoActivate = 0x0010;
+        private const uint RdwInvalidate = 0x0001;
+        private const uint RdwAllChildren = 0x0080;
+        private const uint RdwUpdateNow = 0x0100;
         private const int SwRestore = 9;
+        private const double DefaultDpi = 96.0;
 
         public static void ResizeProcessWindow(int processId, int width, int height)
         {
@@ -94,18 +99,94 @@ namespace JitHub.NativeAotVerification
 
             ShowWindow(windowHandle, SwRestore);
             Thread.Sleep(150);
-            if (!SetWindowPos(
-                    windowHandle,
-                    IntPtr.Zero,
-                    0,
-                    0,
-                    width,
-                    height,
-                    SwpNoMove | SwpNoZOrder | SwpNoActivate))
+            IntPtr previousDpiContext = SetThreadDpiAwarenessContext(
+                GetWindowDpiAwarenessContext(windowHandle));
+            try
             {
-                throw new Win32Exception(Marshal.GetLastWin32Error(), "SetWindowPos failed.");
+                uint dpi = GetDpiForWindow(windowHandle);
+                if (dpi == 0)
+                {
+                    dpi = (uint)DefaultDpi;
+                }
+                int physicalWidth = checked((int)Math.Ceiling(width * dpi / DefaultDpi));
+                int physicalHeight = checked((int)Math.Ceiling(height * dpi / DefaultDpi));
+                if (!SetWindowPos(
+                        windowHandle,
+                        IntPtr.Zero,
+                        0,
+                        0,
+                        physicalWidth,
+                        physicalHeight,
+                        SwpNoMove | SwpNoZOrder | SwpNoActivate))
+                {
+                    throw new Win32Exception(Marshal.GetLastWin32Error(), "SetWindowPos failed.");
+                }
+                Thread.Sleep(500);
+
+                WindowRect resizedBounds;
+                if (!GetWindowRect(windowHandle, out resizedBounds))
+                {
+                    throw new Win32Exception(Marshal.GetLastWin32Error(), "GetWindowRect failed.");
+                }
+                int resizedWidth = resizedBounds.Right - resizedBounds.Left;
+                int resizedHeight = resizedBounds.Bottom - resizedBounds.Top;
+                double scale = dpi / DefaultDpi;
+                int actualLogicalWidth = (int)Math.Round(resizedWidth / scale);
+                int actualLogicalHeight = (int)Math.Round(resizedHeight / scale);
+                int minimumUsableHeight = Math.Min(height, 760);
+                if (Math.Abs(actualLogicalWidth - width) > 4 ||
+                    actualLogicalHeight < minimumUsableHeight ||
+                    actualLogicalHeight > height + 4)
+                {
+                    throw new InvalidOperationException(
+                        "Window resize did not preserve the requested responsive width and usable height " +
+                        "for " + width + "x" + height + "; actual=" + actualLogicalWidth + "x" +
+                        actualLogicalHeight + ", dpi=" + dpi + ".");
+                }
+                Console.WriteLine(
+                    "Native AOT logical viewport requested=" + width + "x" + height +
+                    "; actual=" + actualLogicalWidth + "x" + actualLogicalHeight + "; dpi=" + dpi + ".");
             }
+            finally
+            {
+                if (previousDpiContext != IntPtr.Zero)
+                {
+                    SetThreadDpiAwarenessContext(previousDpiContext);
+                }
+            }
+        }
+
+        public static void PrepareProcessWindowForCapture(int processId)
+        {
+            IntPtr windowHandle = WaitForProcessWindow(processId);
+            ShowWindow(windowHandle, SwRestore);
+            SetForegroundWindow(windowHandle);
+            RedrawWindow(
+                windowHandle,
+                IntPtr.Zero,
+                IntPtr.Zero,
+                RdwInvalidate | RdwAllChildren | RdwUpdateNow);
+            DwmFlush();
             Thread.Sleep(500);
+        }
+
+        private static IntPtr WaitForProcessWindow(int processId)
+        {
+            Stopwatch stopwatch = Stopwatch.StartNew();
+            while (stopwatch.Elapsed < TimeSpan.FromSeconds(10))
+            {
+                using (Process process = Process.GetProcessById(processId))
+                {
+                    process.Refresh();
+                    if (process.MainWindowHandle != IntPtr.Zero)
+                    {
+                        return process.MainWindowHandle;
+                    }
+                }
+                Thread.Sleep(100);
+            }
+
+            throw new InvalidOperationException("The packaged app did not expose a main window for capture.");
         }
 
         public static HighContrastSnapshot CaptureHighContrast()
@@ -124,7 +205,7 @@ namespace JitHub.NativeAotVerification
                     DefaultScheme = current.DefaultScheme
                 });
                 WaitForHighContrast(true);
-                Thread.Sleep(1_250);
+                Thread.Sleep(1250);
             }
         }
 
@@ -213,6 +294,19 @@ namespace JitHub.NativeAotVerification
         [DllImport("user32.dll")]
         private static extern bool ShowWindow(IntPtr windowHandle, int command);
 
+        [DllImport("user32.dll")]
+        private static extern bool SetForegroundWindow(IntPtr windowHandle);
+
+        [DllImport("user32.dll")]
+        private static extern bool RedrawWindow(
+            IntPtr windowHandle,
+            IntPtr updateRectangle,
+            IntPtr updateRegion,
+            uint flags);
+
+        [DllImport("dwmapi.dll")]
+        private static extern int DwmFlush();
+
         [DllImport("user32.dll", SetLastError = true)]
         private static extern bool SetWindowPos(
             IntPtr windowHandle,
@@ -222,6 +316,18 @@ namespace JitHub.NativeAotVerification
             int width,
             int height,
             uint flags);
+
+        [DllImport("user32.dll")]
+        private static extern uint GetDpiForWindow(IntPtr windowHandle);
+
+        [DllImport("user32.dll")]
+        private static extern IntPtr GetWindowDpiAwarenessContext(IntPtr windowHandle);
+
+        [DllImport("user32.dll")]
+        private static extern IntPtr SetThreadDpiAwarenessContext(IntPtr dpiContext);
+
+        [DllImport("user32.dll", SetLastError = true)]
+        private static extern bool GetWindowRect(IntPtr windowHandle, out WindowRect bounds);
 
         [DllImport("user32.dll", CharSet = CharSet.Unicode, EntryPoint = "SystemParametersInfoW", SetLastError = true)]
         [return: MarshalAs(UnmanagedType.Bool)]
@@ -238,9 +344,21 @@ namespace JitHub.NativeAotVerification
             public uint Flags;
             public IntPtr DefaultScheme;
         }
+
+        [StructLayout(LayoutKind.Sequential)]
+        private struct WindowRect
+        {
+            public int Left;
+            public int Top;
+            public int Right;
+            public int Bottom;
+        }
     }
 }
 '@
+}
+if (-not ('System.Windows.Automation.AutomationElement' -as [type])) {
+    Add-Type -AssemblyName UIAutomationClient
 }
 
 $visualMode = if ($HighContrast) { 'highcontrast' } else { $Theme }
@@ -251,12 +369,58 @@ function Invoke-WinAppCommand {
         [string[]]$Arguments
     )
 
-    $output = & winapp @Arguments 2>&1
-    if ($LASTEXITCODE -ne 0) {
-        throw "winapp failed with exit code $LASTEXITCODE`: $($Arguments -join ' ')`n$($output -join [Environment]::NewLine)"
+    $previousErrorActionPreference = $ErrorActionPreference
+    try {
+        # Windows PowerShell promotes native stderr records before we can retain
+        # winapp's complete structured diagnostic when the script preference is Stop.
+        $ErrorActionPreference = 'Continue'
+        $output = @(& winapp @Arguments 2>&1) | ForEach-Object { $_.ToString() }
+        $exitCode = $LASTEXITCODE
+    }
+    finally {
+        $ErrorActionPreference = $previousErrorActionPreference
+    }
+
+    if ($exitCode -ne 0) {
+        throw "winapp failed with exit code $exitCode`: $($Arguments -join ' ')`n$($output -join [Environment]::NewLine)"
     }
 
     return $output
+}
+
+function Remove-GeneratedLayoutDirectory {
+    param(
+        [Parameter(Mandatory = $true)]
+        [string]$LayoutPath,
+
+        [Parameter(Mandatory = $true)]
+        [string]$LayoutRoot
+    )
+
+    if (-not (Test-Path -LiteralPath $LayoutPath -PathType Container)) {
+        return
+    }
+
+    $resolvedRoot = [System.IO.Path]::GetFullPath($LayoutRoot).TrimEnd('\', '/') +
+        [System.IO.Path]::DirectorySeparatorChar
+    $resolvedLayout = [System.IO.Path]::GetFullPath($LayoutPath)
+    if (-not $resolvedLayout.StartsWith($resolvedRoot, [System.StringComparison]::OrdinalIgnoreCase)) {
+        throw "Refusing to remove generated layout outside '$resolvedRoot': $resolvedLayout"
+    }
+
+    for ($attempt = 1; $attempt -le 20; $attempt++) {
+        try {
+            [System.IO.Directory]::Delete($resolvedLayout, $true)
+            return
+        }
+        catch {
+            if ($attempt -eq 20) {
+                throw
+            }
+
+            Start-Sleep -Milliseconds 250
+        }
+    }
 }
 
 function Wait-ForElement {
@@ -336,10 +500,14 @@ function Test-VisibleElement {
         [string]$AutomationId
     )
 
-    $output = & winapp ui get-property $AutomationId `
-        -a $AppProcessId.ToString([Globalization.CultureInfo]::InvariantCulture) `
-        --property IsOffscreen --json 2>&1
-    if ($LASTEXITCODE -ne 0) {
+    try {
+        $output = Invoke-WinAppCommand -Arguments @(
+            'ui', 'get-property', $AutomationId,
+            '-a', $AppProcessId.ToString([Globalization.CultureInfo]::InvariantCulture),
+            '--property', 'IsOffscreen', '--json'
+        )
+    }
+    catch {
         return $false
     }
 
@@ -350,6 +518,172 @@ function Test-VisibleElement {
     catch {
         return $false
     }
+}
+
+function Get-ElementBoundingRectangle {
+    param(
+        [Parameter(Mandatory = $true)]
+        [int]$AppProcessId,
+
+        [Parameter(Mandatory = $true)]
+        [string]$AutomationId
+    )
+
+    $output = Invoke-WinAppCommand -Arguments @(
+        'ui', 'get-property', $AutomationId,
+        '-a', $AppProcessId.ToString([Globalization.CultureInfo]::InvariantCulture),
+        '--property', 'BoundingRectangle', '--json'
+    )
+    $result = $output -join [Environment]::NewLine | ConvertFrom-Json
+    $parts = @([string]$result.properties.BoundingRectangle -split ',' | ForEach-Object {
+        [double]::Parse($_, [Globalization.CultureInfo]::InvariantCulture)
+    })
+    if ($parts.Count -ne 4) {
+        throw "Element '$AutomationId' returned an invalid BoundingRectangle."
+    }
+
+    return [pscustomobject]@{
+        X = $parts[0]
+        Y = $parts[1]
+        Width = $parts[2]
+        Height = $parts[3]
+    }
+}
+
+function Assert-MinimumInteractiveSize {
+    param(
+        [Parameter(Mandatory = $true)]
+        [int]$AppProcessId,
+
+        [Parameter(Mandatory = $true)]
+        [string]$AutomationId,
+
+        [double]$MinimumPixels = 32
+    )
+
+    $bounds = Get-ElementBoundingRectangle -AppProcessId $AppProcessId -AutomationId $AutomationId
+    if ($bounds.Width -lt $MinimumPixels -or $bounds.Height -lt $MinimumPixels) {
+        throw "Interactive element '$AutomationId' is clipped or undersized: $($bounds.Width)x$($bounds.Height) px."
+    }
+}
+
+function Show-InteractiveElementThroughScrollHost {
+    param(
+        [Parameter(Mandatory = $true)]
+        [int]$AppProcessId,
+
+        [Parameter(Mandatory = $true)]
+        [string]$AutomationId,
+
+        [Parameter(Mandatory = $true)]
+        [string]$ScrollHostAutomationId,
+
+        [double]$MinimumPixels = 32,
+
+        [int]$MaximumScrollAttempts = 6
+    )
+
+    Invoke-WinAppCommand -Arguments @(
+        'ui', 'scroll-into-view', $AutomationId,
+        '-a', $AppProcessId.ToString([Globalization.CultureInfo]::InvariantCulture)
+    ) | Out-Null
+    Start-Sleep -Milliseconds 150
+
+    for ($attempt = 0; $attempt -le $MaximumScrollAttempts; $attempt++) {
+        $bounds = Get-ElementBoundingRectangle `
+            -AppProcessId $AppProcessId `
+            -AutomationId $AutomationId
+        if ($bounds.Width -ge $MinimumPixels -and $bounds.Height -ge $MinimumPixels) {
+            return
+        }
+
+        if ($attempt -eq $MaximumScrollAttempts) {
+            break
+        }
+
+        Invoke-WinAppCommand -Arguments @(
+            'ui', 'scroll', $ScrollHostAutomationId, '--direction', 'down',
+            '-a', $AppProcessId.ToString([Globalization.CultureInfo]::InvariantCulture)
+        ) | Out-Null
+        Start-Sleep -Milliseconds 350
+    }
+
+    throw "Interactive element '$AutomationId' could not be reached through scroll host '$ScrollHostAutomationId'."
+}
+
+function Assert-ElementValueContains {
+    param(
+        [Parameter(Mandatory = $true)]
+        [int]$AppProcessId,
+
+        [Parameter(Mandatory = $true)]
+        [string]$AutomationId,
+
+        [Parameter(Mandatory = $true)]
+        [string]$ExpectedText
+    )
+
+    $output = Invoke-WinAppCommand -Arguments @(
+        'ui', 'get-value', $AutomationId,
+        '-a', $AppProcessId.ToString([Globalization.CultureInfo]::InvariantCulture),
+        '--json'
+    )
+    $result = $output -join [Environment]::NewLine | ConvertFrom-Json
+    if ([string]$result.text -notlike "*$ExpectedText*") {
+        throw "Element '$AutomationId' did not expose expected UI Automation text '$ExpectedText'."
+    }
+}
+
+function Wait-NativeUiaBooleanProperty {
+    param(
+        [Parameter(Mandatory = $true)]
+        [int]$AppProcessId,
+
+        [Parameter(Mandatory = $true)]
+        [string]$AutomationId,
+
+        [Parameter(Mandatory = $true)]
+        [ValidateSet('HasKeyboardFocus', 'IsEnabled', 'IsKeyboardFocusable', 'IsPassword')]
+        [string]$Property,
+
+        [Parameter(Mandatory = $true)]
+        [bool]$ExpectedValue,
+
+        [int]$TimeoutMilliseconds = ($TimeoutSeconds * 1000)
+    )
+
+    $condition = [System.Windows.Automation.AndCondition]::new(
+        [System.Windows.Automation.PropertyCondition]::new(
+            [System.Windows.Automation.AutomationElement]::ProcessIdProperty,
+            $AppProcessId),
+        [System.Windows.Automation.PropertyCondition]::new(
+            [System.Windows.Automation.AutomationElement]::AutomationIdProperty,
+            $AutomationId))
+    $stopwatch = [Diagnostics.Stopwatch]::StartNew()
+    while ($stopwatch.ElapsedMilliseconds -lt $TimeoutMilliseconds) {
+        try {
+            $element = [System.Windows.Automation.AutomationElement]::RootElement.FindFirst(
+                [System.Windows.Automation.TreeScope]::Descendants,
+                $condition)
+            if ($null -ne $element) {
+                $actualValue = switch ($Property) {
+                    'HasKeyboardFocus' { $element.Current.HasKeyboardFocus }
+                    'IsEnabled' { $element.Current.IsEnabled }
+                    'IsKeyboardFocusable' { $element.Current.IsKeyboardFocusable }
+                    'IsPassword' { $element.Current.IsPassword }
+                }
+                if ($actualValue -eq $ExpectedValue) {
+                    return
+                }
+            }
+        }
+        catch [System.Windows.Automation.ElementNotAvailableException] {
+        }
+
+        Start-Sleep -Milliseconds 100
+    }
+
+    throw "Element '$AutomationId' did not expose native UIA property '$Property' as '$ExpectedValue'."
 }
 
 function Wait-ForAnyVisibleElement {
@@ -374,6 +708,28 @@ function Wait-ForAnyVisibleElement {
     }
 
     throw "None of the expected UI elements became visible: $($AutomationIds -join ', ')"
+}
+
+function Wait-ForElementHidden {
+    param(
+        [Parameter(Mandatory = $true)]
+        [int]$AppProcessId,
+
+        [Parameter(Mandatory = $true)]
+        [string]$AutomationId,
+
+        [int]$TimeoutMilliseconds = ($TimeoutSeconds * 1000)
+    )
+
+    $stopwatch = [Diagnostics.Stopwatch]::StartNew()
+    while ($stopwatch.ElapsedMilliseconds -lt $TimeoutMilliseconds) {
+        if (-not (Test-VisibleElement -AppProcessId $AppProcessId -AutomationId $AutomationId)) {
+            return
+        }
+        Start-Sleep -Milliseconds 100
+    }
+
+    throw "'$AutomationId' remained visible after $TimeoutMilliseconds ms."
 }
 
 function Invoke-SectionMatrix {
@@ -411,9 +767,9 @@ function Invoke-CompactSectionMatrix {
     )
 
     foreach ($section in $Sections) {
-        Invoke-Element -AppProcessId $AppProcessId -AutomationId $PickerAutomationId -Interaction 'click'
+        Invoke-Element -AppProcessId $AppProcessId -AutomationId $PickerAutomationId -Interaction 'invoke'
         Wait-ForElement -AppProcessId $AppProcessId -AutomationId $section.Action
-        Invoke-Element -AppProcessId $AppProcessId -AutomationId $section.Action -Interaction 'click'
+        Invoke-Element -AppProcessId $AppProcessId -AutomationId $section.Action -Interaction 'invoke'
         Wait-ForElement -AppProcessId $AppProcessId -AutomationId $section.Target
     }
 }
@@ -437,16 +793,103 @@ function Save-RouteEvidence {
     )
     $tree -join [Environment]::NewLine | Set-Content -LiteralPath $treePath -Encoding utf8
 
+    $screenshotPath = Join-Path $resolvedOutputDirectory "$RouteName-$visualMode.png"
     $screenshotArguments = @(
         'ui', 'screenshot', 'JitHubMainWindowRoot',
         '-a', $AppProcessId.ToString([Globalization.CultureInfo]::InvariantCulture),
-        '-o', (Join-Path $resolvedOutputDirectory "$RouteName-$visualMode.png")
+        '-o', $screenshotPath
     )
     if ($CaptureScreen) {
         $screenshotArguments += '--capture-screen'
     }
 
-    Invoke-WinAppCommand -Arguments $screenshotArguments | Out-Null
+    $composition = $null
+    for ($attempt = 1; $attempt -le 3; $attempt++) {
+        [JitHub.NativeAotVerification.NativeUi]::PrepareProcessWindowForCapture($AppProcessId)
+        Invoke-WinAppCommand -Arguments $screenshotArguments | Out-Null
+        $composition = Measure-ScreenshotComposition -Path $screenshotPath -Attempt $attempt
+        if ($composition.IsComposited) {
+            break
+        }
+
+        Start-Sleep -Milliseconds 750
+    }
+
+    $compositionPath = Join-Path $resolvedOutputDirectory "$RouteName-render.json"
+    $composition | ConvertTo-Json | Set-Content -LiteralPath $compositionPath -Encoding utf8
+    if (-not $composition.IsComposited) {
+        throw "Screenshot remained compositor-black after $($composition.Attempt) attempts: $screenshotPath"
+    }
+}
+
+function Measure-ScreenshotComposition {
+    param(
+        [Parameter(Mandatory = $true)]
+        [string]$Path,
+
+        [Parameter(Mandatory = $true)]
+        [int]$Attempt
+    )
+
+    try {
+        Add-Type -AssemblyName System.Drawing.Common -ErrorAction Stop
+    }
+    catch {
+        Add-Type -AssemblyName System.Drawing -ErrorAction Stop
+    }
+    $bitmap = [System.Drawing.Bitmap]::new($Path)
+    try {
+        $sampleStep = [Math]::Max(8, [Math]::Floor([Math]::Min($bitmap.Width, $bitmap.Height) / 90))
+        $sampleCount = 0
+        $blackSampleCount = 0
+        $visibleSampleCount = 0
+        $minVisibleX = $bitmap.Width
+        $maxVisibleX = 0
+        $minVisibleY = $bitmap.Height
+        $maxVisibleY = 0
+        for ($y = 0; $y -lt $bitmap.Height; $y += $sampleStep) {
+            for ($x = 0; $x -lt $bitmap.Width; $x += $sampleStep) {
+                $pixel = $bitmap.GetPixel($x, $y)
+                $sampleCount++
+                if ($pixel.R -le 2 -and $pixel.G -le 2 -and $pixel.B -le 2) {
+                    $blackSampleCount++
+                }
+                if ([Math]::Max($pixel.R, [Math]::Max($pixel.G, $pixel.B)) -ge 32) {
+                    $visibleSampleCount++
+                    $minVisibleX = [Math]::Min($minVisibleX, $x)
+                    $maxVisibleX = [Math]::Max($maxVisibleX, $x)
+                    $minVisibleY = [Math]::Min($minVisibleY, $y)
+                    $maxVisibleY = [Math]::Max($maxVisibleY, $y)
+                }
+            }
+        }
+
+        $blackRatio = if ($sampleCount -eq 0) { 1.0 } else { $blackSampleCount / $sampleCount }
+        $horizontalSignalRatio = if ($visibleSampleCount -eq 0) { 0.0 } else { ($maxVisibleX - $minVisibleX) / $bitmap.Width }
+        $verticalSignalRatio = if ($visibleSampleCount -eq 0) { 0.0 } else { ($maxVisibleY - $minVisibleY) / $bitmap.Height }
+        $isComposited = if ($HighContrast) {
+            $visibleSampleCount -ge 24 -and
+                $horizontalSignalRatio -ge 0.08 -and
+                $verticalSignalRatio -ge 0.08
+        }
+        else {
+            $blackRatio -lt 0.85
+        }
+        return [pscustomobject]@{
+            Attempt = $Attempt
+            Width = $bitmap.Width
+            Height = $bitmap.Height
+            SampleCount = $sampleCount
+            BlackSampleRatio = [Math]::Round($blackRatio, 4)
+            VisibleSampleCount = $visibleSampleCount
+            HorizontalSignalRatio = [Math]::Round($horizontalSignalRatio, 4)
+            VerticalSignalRatio = [Math]::Round($verticalSignalRatio, 4)
+            IsComposited = $isComposited
+        }
+    }
+    finally {
+        $bitmap.Dispose()
+    }
 }
 
 $resolvedInputPath = [System.IO.Path]::GetFullPath($InputPath)
@@ -520,12 +963,16 @@ if ($HighContrast) {
 }
 foreach ($route in $routeDefinitions) {
     $launch = $null
+    $layoutDirectory = $null
     $routeUsesCompactLayout = $false
     $routeReadyAutomationId = $null
     $routeStartedAt = [DateTimeOffset]::UtcNow
     try {
         $layoutDirectory = Join-Path $resolvedOutputDirectory "layouts\$($route.Name)"
         $appArguments = "--page=$($route.Page) --theme=$Theme --repo=$Repository"
+        if (-not [string]::IsNullOrWhiteSpace($Palette)) {
+            $appArguments += " --palette=$Palette"
+        }
         if (-not [string]::IsNullOrWhiteSpace($Scenario)) {
             $appArguments += " --scenario=$Scenario"
         }
@@ -565,6 +1012,10 @@ foreach ($route in $routeDefinitions) {
                     Wait-ForAnyVisibleElement -AppProcessId $appProcessId `
                         -AutomationIds @('SettingsSection_appearance', 'SettingsCompactSectionPicker')
                 }
+                'profile' {
+                    Wait-ForAnyVisibleElement -AppProcessId $appProcessId `
+                        -AutomationIds @('ProfileIdentityScrollViewer', 'ProfileCompactIdentityDetailsButton')
+                }
                 'stars' {
                     Wait-ForAnyVisibleElement -AppProcessId $appProcessId `
                         -AutomationIds @('StarsNewCategory', 'StarsOpenCategories')
@@ -583,6 +1034,7 @@ foreach ($route in $routeDefinitions) {
         $routeUsesCompactLayout = switch ($route.Name) {
             'home' { $routeReadyAutomationId -eq 'DashboardOverviewDrawerButton' }
             'settings' { $routeReadyAutomationId -eq 'SettingsCompactSectionPicker' }
+            'profile' { $routeReadyAutomationId -eq 'ProfileCompactIdentityDetailsButton' }
             'stars' { $routeReadyAutomationId -eq 'StarsOpenCategories' }
             'gists' { $routeReadyAutomationId -eq 'GistsLeadingPaneButton' }
             'repo-code' { $routeReadyAutomationId -eq 'RepoCodeOpenFileTreeButton' }
@@ -603,6 +1055,23 @@ foreach ($route in $routeDefinitions) {
                 else {
                     Wait-ForElement -AppProcessId $appProcessId -AutomationId 'DashboardWidget_overview'
                 }
+            }
+            'profile' {
+                $organizationAutomationId = 'ProfileOrganization_JitHubApp'
+                if ($routeUsesCompactLayout) {
+                    Invoke-Element -AppProcessId $appProcessId -AutomationId 'ProfileCompactIdentityDetailsButton'
+                    Wait-ForElement -AppProcessId $appProcessId -AutomationId 'ProfileCompactIdentityDetailsContent'
+                }
+                Wait-ForElement -AppProcessId $appProcessId -AutomationId $organizationAutomationId
+                Invoke-WinAppCommand -Arguments @(
+                    'ui', 'scroll-into-view', $organizationAutomationId,
+                    '-a', $appProcessId.ToString([Globalization.CultureInfo]::InvariantCulture)
+                ) | Out-Null
+                Wait-ForElementProperty -AppProcessId $appProcessId `
+                    -AutomationId $organizationAutomationId -Property 'IsOffscreen' -Value 'False'
+                Assert-MinimumInteractiveSize -AppProcessId $appProcessId -AutomationId $organizationAutomationId
+                Save-RouteEvidence -AppProcessId $appProcessId -RouteName 'profile-organization' `
+                    -CaptureScreen:$routeUsesCompactLayout
             }
             'settings' {
                 for ($settingsCycle = 0; $settingsCycle -lt 2; $settingsCycle++) {
@@ -627,6 +1096,23 @@ foreach ($route in $routeDefinitions) {
                         )
                     }
                 }
+
+                if ($routeUsesCompactLayout) {
+                    Invoke-CompactSectionMatrix -AppProcessId $appProcessId `
+                        -PickerAutomationId 'SettingsCompactSectionPicker' -Sections @(
+                            [pscustomobject]@{ Action = 'SettingsSection_privacy_Compact'; Target = 'SettingsStoreTelemetryToggle' }
+                        )
+                }
+                else {
+                    Invoke-SectionMatrix -AppProcessId $appProcessId -Sections @(
+                        [pscustomobject]@{ Action = 'SettingsSection_privacy'; Target = 'SettingsStoreTelemetryToggle'; Interaction = 'invoke' }
+                    )
+                }
+                $storeTelemetryExpected = $true
+                Wait-NativeUiaBooleanProperty -AppProcessId $appProcessId `
+                    -AutomationId 'SettingsStoreTelemetryToggle' -Property 'IsEnabled' `
+                    -ExpectedValue $storeTelemetryExpected
+                Save-RouteEvidence -AppProcessId $appProcessId -RouteName 'settings-store-telemetry'
             }
             'stars' {
                 if ($routeUsesCompactLayout) {
@@ -681,6 +1167,23 @@ foreach ($route in $routeDefinitions) {
                 Wait-ForElement -AppProcessId $appProcessId -AutomationId $sourceFile
                 Invoke-Element -AppProcessId $appProcessId -AutomationId $sourceFile -Interaction 'click'
                 Wait-ForElement -AppProcessId $appProcessId -AutomationId 'RepoCodeEditor'
+                Wait-NativeUiaBooleanProperty -AppProcessId $appProcessId `
+                    -AutomationId 'RepoCodeEditor' -Property 'IsKeyboardFocusable' -ExpectedValue $true
+                Wait-NativeUiaBooleanProperty -AppProcessId $appProcessId `
+                    -AutomationId 'RepoCodeEditor' -Property 'IsPassword' -ExpectedValue $false
+                Invoke-WinAppCommand -Arguments @(
+                    'ui', 'focus', 'RepoCodeEditor',
+                    '-a', $appProcessId.ToString([Globalization.CultureInfo]::InvariantCulture)
+                ) | Out-Null
+                Wait-NativeUiaBooleanProperty -AppProcessId $appProcessId `
+                    -AutomationId 'RepoCodeEditor' -Property 'HasKeyboardFocus' -ExpectedValue $true
+                Assert-ElementValueContains -AppProcessId $appProcessId `
+                    -AutomationId 'RepoCodeEditor' -ExpectedText 'public const string Experience'
+                if ($HighContrast) {
+                    Wait-ForElementProperty -AppProcessId $appProcessId `
+                        -AutomationId 'RepoCodeEditor' -Property 'HelpText' `
+                        -Value 'High contrast editor colors active'
+                }
                 Wait-ForElement -AppProcessId $appProcessId -AutomationId 'RepoCodeFindButton'
                 Invoke-Element -AppProcessId $appProcessId -AutomationId 'RepoCodeFindButton'
                 Wait-ForElement -AppProcessId $appProcessId -AutomationId 'RepoCodeFindTextBox'
@@ -713,15 +1216,53 @@ foreach ($route in $routeDefinitions) {
                         [pscustomobject]@{ Action = 'RepoPullRequestsSection_Conversation'; Target = 'RepoPullRequestsCommentsList'; Interaction = 'click'; Scroll = $false }
                     )
                 }
+
+                $commentActionAutomationId = 'CommentActionsButton_IssueComment_1000_6E2934754F8C'
+                $commentReactionAutomationId = 'CommentReactionButton_IssueComment_1000_6E2934754F8C_1'
+                foreach ($commentControlAutomationId in @($commentReactionAutomationId, $commentActionAutomationId)) {
+                    Wait-ForElement -AppProcessId $appProcessId -AutomationId $commentControlAutomationId
+                    Show-InteractiveElementThroughScrollHost `
+                        -AppProcessId $appProcessId `
+                        -AutomationId $commentControlAutomationId `
+                        -ScrollHostAutomationId 'RepoPullRequestsCommentsList'
+                    Assert-MinimumInteractiveSize `
+                        -AppProcessId $appProcessId `
+                        -AutomationId $commentControlAutomationId
+                }
+                Save-RouteEvidence -AppProcessId $appProcessId -RouteName 'repo-pull-requests-comment-actions'
             }
             'repo-commits' {
                 Wait-ForElement -AppProcessId $appProcessId -AutomationId 'RepoCommitsDetailTitle'
                 Invoke-SectionMatrix -AppProcessId $appProcessId -Sections @(
-                    [pscustomobject]@{ Action = 'RepoCommitsSection_Diff'; Target = 'RepoCommitsDiffFileFilterBox'; Interaction = 'click'; Scroll = $false }
+                    [pscustomobject]@{ Action = 'RepoCommitsSection_Diff'; Target = 'RepoCommitsDiffViewer'; Interaction = 'click'; Scroll = $false }
+                )
+                Invoke-Element -AppProcessId $appProcessId -AutomationId 'RepoCommitsDiffFilesButton'
+                Wait-ForElement -AppProcessId $appProcessId -AutomationId 'RepoCommitsDiffFileFilterBox'
+                Wait-ForElement -AppProcessId $appProcessId -AutomationId 'RepoCommitsDiffFileTree'
+                Save-RouteEvidence -AppProcessId $appProcessId -RouteName 'repo-commits-diff-files'
+                Invoke-Element -AppProcessId $appProcessId -AutomationId 'RepoCommitsDiffCloseFilesButton'
+                Invoke-Element -AppProcessId $appProcessId -AutomationId 'RepoCommitsDiffSearchButton'
+                Wait-ForElement -AppProcessId $appProcessId -AutomationId 'RepoCommitsDiffSearchBox'
+                Save-RouteEvidence -AppProcessId $appProcessId -RouteName 'repo-commits-diff-search'
+                Invoke-WinAppCommand -Arguments @(
+                    'ui', 'send-keys', 'esc',
+                    '-a', $appProcessId.ToString([Globalization.CultureInfo]::InvariantCulture),
+                    '--target', 'RepoCommitsDiffSearchBox',
+                    '--via', 'send-input'
+                ) | Out-Null
+                Wait-ForElementHidden -AppProcessId $appProcessId -AutomationId 'RepoCommitsDiffSearchBox'
+                Invoke-SectionMatrix -AppProcessId $appProcessId -Sections @(
                     [pscustomobject]@{ Action = 'RepoCommitsSection_Comments'; Target = 'RepoCommitsCommentsViewport'; Interaction = 'click'; Scroll = $false }
                     [pscustomobject]@{ Action = 'RepoCommitsSection_Checks'; Target = 'RepoCommitsChecksViewport'; Interaction = 'click'; Scroll = $false }
                     [pscustomobject]@{ Action = 'RepoCommitsSection_Compare'; Target = 'RepoCommitsCompareBaseBox'; Interaction = 'click'; Scroll = $false }
                 )
+                Invoke-Element -AppProcessId $appProcessId -AutomationId 'RepoCommitsCompareButton'
+                Wait-ForElement -AppProcessId $appProcessId -AutomationId 'RepoCommitsCompareDiffViewer'
+                Wait-NativeUiaBooleanProperty -AppProcessId $appProcessId `
+                    -AutomationId 'RepoCommitsCompareSearchButton' -Property 'IsEnabled' -ExpectedValue $true
+                Invoke-Element -AppProcessId $appProcessId -AutomationId 'RepoCommitsCompareSearchButton'
+                Wait-ForElement -AppProcessId $appProcessId -AutomationId 'RepoCommitsCompareDiffSearchBox'
+                Save-RouteEvidence -AppProcessId $appProcessId -RouteName 'repo-commits-compare-search'
             }
         }
 
@@ -730,6 +1271,7 @@ foreach ($route in $routeDefinitions) {
             Route = $route.Name
             Architecture = $Architecture
             Theme = $visualMode
+            Palette = $Palette
             Viewport = if ($ViewportWidth -eq 0) { 'default' } else { "$($ViewportWidth)x$($ViewportHeight)" }
             Layout = if ($routeUsesCompactLayout) { 'compact' } else { 'wide' }
             Status = 'PASS'
@@ -738,11 +1280,23 @@ foreach ($route in $routeDefinitions) {
     }
     catch {
         $message = $_.Exception.Message
+        if ($null -ne $launch -and $null -ne $launch.ProcessId) {
+            try {
+                Save-RouteEvidence `
+                    -AppProcessId ([int]$launch.ProcessId) `
+                    -RouteName "$($route.Name)-failure" `
+                    -CaptureScreen
+            }
+            catch {
+                $message += " Failure evidence capture also failed: $($_.Exception.Message)"
+            }
+        }
         $failures.Add("$($route.Name): $message")
         $results.Add([pscustomobject]@{
             Route = $route.Name
             Architecture = $Architecture
             Theme = $visualMode
+            Palette = $Palette
             Viewport = if ($ViewportWidth -eq 0) { 'default' } else { "$($ViewportWidth)x$($ViewportHeight)" }
             Layout = if ($routeUsesCompactLayout) { 'compact' } else { 'wide' }
             Status = 'FAIL'
@@ -754,6 +1308,11 @@ foreach ($route in $routeDefinitions) {
         if ($null -ne $launch -and $null -ne $launch.ProcessId) {
             Stop-Process -Id ([int]$launch.ProcessId) -Force -ErrorAction SilentlyContinue
             Wait-Process -Id ([int]$launch.ProcessId) -Timeout 10 -ErrorAction SilentlyContinue
+        }
+        if ($null -ne $layoutDirectory) {
+            Remove-GeneratedLayoutDirectory `
+                -LayoutPath $layoutDirectory `
+                -LayoutRoot (Join-Path $resolvedOutputDirectory 'layouts')
         }
     }
 }

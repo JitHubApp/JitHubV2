@@ -145,7 +145,7 @@ public sealed class GitHubRepositoryQueryService : IGitHubRepositoryQueryService
         GitHubRequestPriority priority,
         CancellationToken cancellationToken = default)
     {
-        if (_enableAutomationFixtures && RepositoryActionAutomationScenario.IsEnabled)
+        if (_enableAutomationFixtures && RepositoryActionAutomationScenario.UsesLocalReadFixtures)
         {
             if (RepositoryActionAutomationScenario.ShouldRateLimitForkReadiness(owner))
             {
@@ -167,7 +167,7 @@ public sealed class GitHubRepositoryQueryService : IGitHubRepositoryQueryService
                 path,
                 GitHubCachePolicy.RepositoryMetadataResource,
                 Phase0GitHubJsonSerializerContext.Default.GitHubRepository,
-                ["repository", "repository-metadata", RepositoryTag(owner, repositoryName), RepositoryNameTag(owner, repositoryName)],
+                (string[])["repository", "repository-metadata", RepositoryTag(owner, repositoryName), RepositoryNameTag(owner, repositoryName)],
                 priority),
             fetchPolicy,
             cancellationToken);
@@ -180,7 +180,7 @@ public sealed class GitHubRepositoryQueryService : IGitHubRepositoryQueryService
         QueryFetchPolicy fetchPolicy = QueryFetchPolicy.StaleFirst,
         CancellationToken cancellationToken = default)
     {
-        if (_enableAutomationFixtures && RepositoryActionAutomationScenario.IsEnabled)
+        if (_enableAutomationFixtures && RepositoryActionAutomationScenario.UsesLocalReadFixtures)
         {
             return Task.FromResult(CreateCached(RepositoryActionAutomationScenario.CreateRepository("JitHubApp", "JitHubV2", repositoryId)));
         }
@@ -193,7 +193,7 @@ public sealed class GitHubRepositoryQueryService : IGitHubRepositoryQueryService
                 path,
                 GitHubCachePolicy.RepositoryMetadataResource,
                 Phase0GitHubJsonSerializerContext.Default.GitHubRepository,
-                ["repository", "repository-metadata", $"repository-id:{repositoryId}"]),
+                (string[])["repository", "repository-metadata", $"repository-id:{repositoryId}"]),
             fetchPolicy,
             cancellationToken);
     }
@@ -208,7 +208,7 @@ public sealed class GitHubRepositoryQueryService : IGitHubRepositoryQueryService
         GitHubRequestPriority priority = GitHubRequestPriority.Visible,
         CancellationToken cancellationToken = default)
     {
-        if (_enableAutomationFixtures && RepositoryActionAutomationScenario.IsEnabled)
+        if (_enableAutomationFixtures && RepositoryActionAutomationScenario.UsesLocalReadFixtures)
         {
             return Task.FromResult(CreateCached(
                 RepositoryActionAutomationScenario.CreateBranches(owner, repositoryName, Math.Max(1, page))));
@@ -222,7 +222,7 @@ public sealed class GitHubRepositoryQueryService : IGitHubRepositoryQueryService
             path,
             GitHubCachePolicy.RepositoryMetadataResource,
             Phase0GitHubJsonSerializerContext.Default.GitHubBranchArray,
-            ["repository", "repository-branches", RepositoryTag(owner, repositoryName)],
+            (string[])["repository", "repository-branches", RepositoryTag(owner, repositoryName)],
             priority);
         return ExecuteAsync(query, fetchPolicy, cancellationToken);
     }
@@ -235,7 +235,7 @@ public sealed class GitHubRepositoryQueryService : IGitHubRepositoryQueryService
         QueryFetchPolicy fetchPolicy = QueryFetchPolicy.StaleFirst,
         CancellationToken cancellationToken = default)
     {
-        if (_enableAutomationFixtures && RepositoryActionAutomationScenario.IsEnabled)
+        if (_enableAutomationFixtures && RepositoryActionAutomationScenario.UsesLocalReadFixtures)
         {
             if (RepositoryActionAutomationScenario.StatesUnavailable)
             {
@@ -262,7 +262,7 @@ public sealed class GitHubRepositoryQueryService : IGitHubRepositoryQueryService
             path,
             GitHubCachePolicy.MutableResource,
             Phase0GitHubJsonSerializerContext.Default.GitHubResourceState,
-            ["repository", "repository-star", RepositoryTag(owner, repositoryName), StarTag(owner, repositoryName)],
+            (string[])["repository", "repository-star", RepositoryTag(owner, repositoryName), StarTag(owner, repositoryName)],
             GitHubRequestPriority.Visible,
             acceptNotFound: true,
             emptyResponseFactory: status => new GitHubResourceState
@@ -280,7 +280,7 @@ public sealed class GitHubRepositoryQueryService : IGitHubRepositoryQueryService
         QueryFetchPolicy fetchPolicy = QueryFetchPolicy.StaleFirst,
         CancellationToken cancellationToken = default)
     {
-        if (_enableAutomationFixtures && RepositoryActionAutomationScenario.IsEnabled)
+        if (_enableAutomationFixtures && RepositoryActionAutomationScenario.UsesLocalReadFixtures)
         {
             if (RepositoryActionAutomationScenario.StatesUnavailable)
             {
@@ -307,7 +307,7 @@ public sealed class GitHubRepositoryQueryService : IGitHubRepositoryQueryService
             path,
             GitHubCachePolicy.MutableResource,
             Phase0GitHubJsonSerializerContext.Default.GitHubRepositorySubscription,
-            ["repository", "repository-watch", RepositoryTag(owner, repositoryName), WatchTag(owner, repositoryName)],
+            (string[])["repository", "repository-watch", RepositoryTag(owner, repositoryName), WatchTag(owner, repositoryName)],
             GitHubRequestPriority.Visible,
             acceptNotFound: true,
             emptyResponseFactory: _ => new GitHubRepositorySubscription());
@@ -342,7 +342,7 @@ public sealed class GitHubRepositoryQueryService : IGitHubRepositoryQueryService
                     path,
                     GitHubCachePolicy.MutableResource,
                     Phase0GitHubJsonSerializerContext.Default.GitHubRepositoryArray,
-                    ["repository", "repository-forks", RepositoryTag(sourceOwner, sourceRepositoryName)],
+                    (string[])["repository", "repository-forks", RepositoryTag(sourceOwner, sourceRepositoryName)],
                     GitHubRequestPriority.BackgroundRefresh),
                 QueryFetchPolicy.NetworkOnly,
                 cancellationToken).ConfigureAwait(false);
@@ -366,7 +366,7 @@ public sealed class GitHubRepositoryQueryService : IGitHubRepositoryQueryService
         CancellationToken cancellationToken = default) =>
         _queryService.InvalidateTagsAsync(
             GitHubAccountPartition.Require(userId),
-            [StarTag(owner, repositoryName)],
+            (string[])[StarTag(owner, repositoryName)],
             cancellationToken);
 
     public Task InvalidateWatchStateAsync(
@@ -377,7 +377,7 @@ public sealed class GitHubRepositoryQueryService : IGitHubRepositoryQueryService
         CancellationToken cancellationToken = default) =>
         _queryService.InvalidateTagsAsync(
             GitHubAccountPartition.Require(userId),
-            [WatchTag(owner, repositoryName)],
+            (string[])[WatchTag(owner, repositoryName)],
             cancellationToken);
 
     public Task InvalidateRepositoryAsync(
@@ -489,6 +489,7 @@ internal static class RepositoryActionAutomationScenario
     private static int _forkPostCount;
     private static int _forkReadinessRateLimitCount;
     private static int _repositoryRouteReadCount;
+    private static bool _websiteShowcase;
 
     internal static string Name =>
         Environment.GetEnvironmentVariable("JITHUB_PREVIEW_SCENARIO")?.Trim().ToLowerInvariant() ?? string.Empty;
@@ -496,6 +497,13 @@ internal static class RepositoryActionAutomationScenario
     internal static bool IsEnabled =>
         Name.StartsWith(Prefix, StringComparison.Ordinal) &&
         AppDataPathPolicy.TryGetAutomationRoots(out _, out _);
+
+    internal static bool UsesLocalReadFixtures =>
+        (IsEnabled || Volatile.Read(ref _websiteShowcase)) &&
+        AppDataPathPolicy.TryGetAutomationRoots(out _, out _);
+
+    internal static void ConfigureWebsiteShowcase(bool enabled) =>
+        Volatile.Write(ref _websiteShowcase, enabled);
 
     internal static bool StatesUnavailable => Name.EndsWith("disabled", StringComparison.Ordinal);
 

@@ -73,7 +73,7 @@
     border: 1px solid var(--border-soft);
     border-radius: var(--radius-md);
     color: var(--text-strong);
-    background: color-mix(in oklch, var(--surface) 88%, white 12%);
+    background: color-mix(in oklch, var(--surface) 88%, var(--surface-tint) 12%);
     font: 600 0.76rem/1 var(--font-mono);
     letter-spacing: 0.04em;
     cursor: pointer;

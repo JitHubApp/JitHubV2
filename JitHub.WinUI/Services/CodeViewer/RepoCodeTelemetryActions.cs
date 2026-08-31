@@ -13,6 +13,7 @@ public static class RepoCodeTelemetryActions
     public const string CopyLineLink = TelemetryTaxonomy.Actions.CopyLineLink;
     public const string Drawer = TelemetryTaxonomy.Actions.Drawer;
     public const string ExternalOpen = TelemetryTaxonomy.Actions.ExternalOpen;
+    public const string ImageZoom = TelemetryTaxonomy.Actions.ImageZoom;
     public const string BreadcrumbRoot = TelemetryTaxonomy.Actions.BreadcrumbRoot;
     public const string BreadcrumbPath = TelemetryTaxonomy.Actions.BreadcrumbPath;
     public const string CsvCopy = TelemetryTaxonomy.Actions.CsvCopy;
@@ -21,6 +22,11 @@ public static class RepoCodeTelemetryActions
     public const string CsvResize = TelemetryTaxonomy.Actions.CsvResize;
     public const string CsvRichView = TelemetryTaxonomy.Actions.CsvRichView;
     public const string CsvSort = TelemetryTaxonomy.Actions.CsvSort;
+    public const string JsonPlainView = TelemetryTaxonomy.Actions.JsonPlainView;
+    public const string JsonRichView = TelemetryTaxonomy.Actions.JsonRichView;
+    public const string SvgZoom = TelemetryTaxonomy.Actions.SvgZoom;
+    public const string XmlPlainView = TelemetryTaxonomy.Actions.XmlPlainView;
+    public const string XmlRichView = TelemetryTaxonomy.Actions.XmlRichView;
 
     public static IReadOnlySet<string> Allowed { get; } = new HashSet<string>(StringComparer.Ordinal)
     {
@@ -31,6 +37,7 @@ public static class RepoCodeTelemetryActions
         CopyLineLink,
         Drawer,
         ExternalOpen,
+        ImageZoom,
         BreadcrumbRoot,
         BreadcrumbPath,
         CsvCopy,
@@ -38,6 +45,11 @@ public static class RepoCodeTelemetryActions
         CsvReorder,
         CsvResize,
         CsvRichView,
-        CsvSort
+        CsvSort,
+        JsonPlainView,
+        JsonRichView,
+        SvgZoom,
+        XmlPlainView,
+        XmlRichView
     };
 }

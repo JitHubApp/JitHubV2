@@ -6,11 +6,11 @@
     xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
     mc:Ignorable="d">
     <Expander
-        Margin="0,4,0,0"
+        Margin="{ThemeResource AppMargin0_4_0_0}"
         AutomationProperties.AutomationId="{Binding Filename}"
         AutomationProperties.Name="{Binding HeaderText}">
         <Expander.Header>
-            <StackPanel Spacing="2">
+            <StackPanel Spacing="{ThemeResource AppGap2}">
                 <TextBlock
                     Style="{StaticResource ListItemTitleTextBlockStyle}"
                     Text="{Binding HeaderText}" />

@@ -124,7 +124,7 @@ public sealed class GistsWorkspaceContractTests
         Assert.Equal("{ThemeResource AppMonoFontFamily}", setters["FontFamily"]);
         Assert.Equal("Auto", setters["ScrollViewer.VerticalScrollBarVisibility"]);
         Assert.Equal("Disabled", setters["ScrollViewer.HorizontalScrollBarVisibility"]);
-        Assert.True(double.Parse(setters["MinHeight"], System.Globalization.CultureInfo.InvariantCulture) >= 180);
+        Assert.Equal("{ThemeResource AppDimension180}", setters["MinHeight"]);
     }
 
     [Fact]
@@ -139,13 +139,21 @@ public sealed class GistsWorkspaceContractTests
         string normalizedSource = source.ReplaceLineEndings("\n");
 
         Assert.Contains("layoutKind: AppDialogLayoutKind.Editor", source, StringComparison.Ordinal);
-        Assert.Contains("Math.Clamp(XamlRoot.Size.Height - 210, 220, 620)", source, StringComparison.Ordinal);
+        Assert.DoesNotContain("editor.Height =", source, StringComparison.Ordinal);
         Assert.DoesNotContain("dialog.Resources[\"ContentDialogMaxWidth\"]", source, StringComparison.Ordinal);
         Assert.Contains("canSubmit: () => session.CanSave", source, StringComparison.Ordinal);
-        Assert.Contains("bool compact = width < 520", source, StringComparison.Ordinal);
+        Assert.Contains("bool shortWindow = XamlRoot.Size.Height < AppResource<double>(\"AppDialogCompactBreakpoint\")", source, StringComparison.Ordinal);
+        Assert.Contains("bool compactMetadata = width < AppResource<double>(\"AppGistEditorCompactBreakpoint\") && !shortWindow", source, StringComparison.Ordinal);
+        Assert.Contains("bool stackedFiles = width < AppResource<double>(\"AppGistEditorStackedFileBreakpoint\")", source, StringComparison.Ordinal);
         Assert.Contains("GistEditorContentTextBoxStyle", source, StringComparison.Ordinal);
         Assert.Contains("T(\"Gists/Editor/FileContent\", \"File content\")", source, StringComparison.Ordinal);
         Assert.Contains("GistEditorContentLabel", source, StringComparison.Ordinal);
+        Assert.Contains("AppDialogScrollableContent dialogContent", source, StringComparison.Ordinal);
+        Assert.Contains("GistEditorWorkspace", source, StringComparison.Ordinal);
+        Assert.Contains("GistEditorFileRail", source, StringComparison.Ordinal);
+        Assert.Contains("AppDialogFileListRowStyle", source, StringComparison.Ordinal);
+        Assert.Contains("AppGistEditorFileRailWidth", source, StringComparison.Ordinal);
+        Assert.Contains("AppBottomHairlineBorderThickness", source, StringComparison.Ordinal);
         Assert.Contains("CommitCurrentEditorFields();", source, StringComparison.Ordinal);
         Assert.True(
             normalizedSource.IndexOf("CommitCurrentEditorFields();\n            session.AddFile();", StringComparison.Ordinal) >= 0,
@@ -155,9 +163,16 @@ public sealed class GistsWorkspaceContractTests
             "Remove file must commit the displayed draft before changing selection.");
         Assert.Contains("session.CommitDisplayedFile(displayedDraft", source, StringComparison.Ordinal);
         Assert.Contains("!content.IsReadOnly", source, StringComparison.Ordinal);
-        Assert.Contains("Grid.SetRow(visibility, 1)", source, StringComparison.Ordinal);
-        Assert.Contains("Grid.SetRow(filesArea, 2)", source, StringComparison.Ordinal);
-        Assert.Contains("MinWidth = 180", source, StringComparison.Ordinal);
+        Assert.Contains("Header = visibilityText", source, StringComparison.Ordinal);
+        Assert.Contains("descriptionText,", source, StringComparison.Ordinal);
+        Assert.Contains("Grid.SetRow(visibility, compactMetadata ? 1 : 0)", source, StringComparison.Ordinal);
+        Assert.Contains("Grid.SetRow(editorFrame, 1)", source, StringComparison.Ordinal);
+        Assert.Contains("content.MinHeight = shortWindow", source, StringComparison.Ordinal);
+        Assert.Contains("AppDialogEditorPreferredHeight", source, StringComparison.Ordinal);
+        Assert.Contains("AppDimension120", source, StringComparison.Ordinal);
+        Assert.Contains("AppDimension180", source, StringComparison.Ordinal);
+        Assert.Contains("AppGistEditorCompactContentMinHeight", source, StringComparison.Ordinal);
+        Assert.Contains("AppGistEditorVisibilityWidth", source, StringComparison.Ordinal);
         Assert.DoesNotContain("Height = 420", source, StringComparison.Ordinal);
     }
 
@@ -320,7 +335,7 @@ public sealed class GistsWorkspaceContractTests
         DirectoryInfo? directory = new(AppContext.BaseDirectory);
         while (directory is not null)
         {
-            if (File.Exists(Path.Combine(directory.FullName, "JitHub.slnx")) || Directory.Exists(Path.Combine(directory.FullName, ".git")))
+            if (File.Exists(Path.Combine(directory.FullName, "Directory.Build.props")) || Directory.Exists(Path.Combine(directory.FullName, ".git")))
             {
                 return directory.FullName;
             }

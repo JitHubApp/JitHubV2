@@ -2,6 +2,7 @@ using System;
 using System.ComponentModel;
 using System.Threading;
 using System.Threading.Tasks;
+using JitHub.Services;
 using JitHub.Services.CodeViewer;
 using JitHub.WinUI.ViewModels.CodeViewer;
 using JitHub.WinUI.Views.Controls.App;
@@ -25,11 +26,14 @@ public sealed partial class SvgPreview : UserControl
     private RepoFilePreviewViewModel? _viewModel;
     private bool _isAttached;
 
+    public event Action<string, string>? ActionCompleted;
+
     public SvgPreview()
     {
         InitializeComponent();
         _dispatcher = DispatcherQueue.GetForCurrentThread();
         SvgViewport.RenderFailed += SvgViewport_RenderFailed;
+        SvgViewport.ZoomSettled += SvgViewport_ZoomSettled;
         DataContextChanged += OnDataContextChanged;
         Loaded += OnLoaded;
         Unloaded += OnUnloaded;
@@ -98,7 +102,7 @@ public sealed partial class SvgPreview : UserControl
         AutomationProperties.SetItemStatus(ErrorText, string.Empty);
         AutomationProperties.SetHelpText(ErrorText, string.Empty);
         SvgViewport.Visibility = Visibility.Collapsed;
-        _ = LoadSvgAsync(bytes, request);
+        UiTaskGuard.Observe(LoadSvgAsync(bytes, request), "ui-svg-preview");
     }
 
     private async Task LoadSvgAsync(byte[]? bytes, SvgPreviewRequest request)
@@ -175,6 +179,11 @@ public sealed partial class SvgPreview : UserControl
             AutomationProperties.SetHelpText(ErrorText, e.Exception.Message);
         }
     }
+
+    private void SvgViewport_ZoomSettled(object? sender, EventArgs e) =>
+        ActionCompleted?.Invoke(
+            RepoCodeTelemetryActions.SvgZoom,
+            TelemetryTaxonomy.Results.Success);
 
     private void ShowUnavailable()
     {

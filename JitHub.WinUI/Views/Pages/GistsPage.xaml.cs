@@ -17,10 +17,8 @@ using Microsoft.UI.Xaml.Controls;
 using Microsoft.UI.Xaml.Controls.Primitives;
 using Microsoft.UI.Xaml.Input;
 using Microsoft.UI.Xaml.Media;
-using WinRT.Interop;
+using Microsoft.Windows.Storage.Pickers;
 using Windows.ApplicationModel.DataTransfer;
-using Windows.Storage;
-using Windows.Storage.Pickers;
 using Windows.System;
 using Windows.UI.Core;
 
@@ -69,62 +67,68 @@ public sealed partial class GistsPage : Page
             hasVisibleLabel: chrome.ShowActionLabels);
     }
 
-    private async void OnLoaded(object sender, RoutedEventArgs e)
+    private void OnLoaded(object sender, RoutedEventArgs e)
     {
-        ApplyResponsiveLayout(ActualWidth);
-        AttachPerformanceScrollProbe();
-        await AwaitLatestStopAsync();
-        if (_initialized)
+        UiTaskGuard.Run(async () =>
         {
-            return;
-        }
+            ApplyResponsiveLayout(ActualWidth);
+            AttachPerformanceScrollProbe();
+            await AwaitLatestStopAsync();
+            if (_initialized)
+            {
+                return;
+            }
 
-        _pageCancellationTokenSource?.Dispose();
-        _pageCancellationTokenSource = new CancellationTokenSource();
-        SubscribeViewModelEvents();
-        _initialized = true;
-        try
-        {
-            await ViewModel.InitializeAsync(_pageCancellationTokenSource.Token);
-            ProductPerformanceReadiness.CommitRoute(
-                "gists",
-                ProductPerformanceReadiness.CountIdentity(ViewModel.Gists.Count));
-        }
-        catch (Exception ex)
-        {
-            System.Diagnostics.Debug.WriteLine($"Failed to initialize gists: {ex}");
-        }
+            _pageCancellationTokenSource?.Dispose();
+            CancellationTokenSource pageCancellationTokenSource = new();
+            _pageCancellationTokenSource = pageCancellationTokenSource;
+            SubscribeViewModelEvents();
+            _initialized = true;
+            try
+            {
+                await ViewModel.InitializeAsync(pageCancellationTokenSource.Token);
+                ProductPerformanceReadiness.CommitRoute("gists", ProductPerformanceReadiness.CountIdentity(ViewModel.Gists.Count));
+            }
+            catch (OperationCanceledException) when (pageCancellationTokenSource.IsCancellationRequested)
+            {
+            }
+            catch (Exception ex)
+            {
+                JitHub.WinUI.App.LogHandledException(ex, "ui-gists-page-initialize");
+            }
+        }, "ui-gists-page");
     }
 
-    private async void OnUnloaded(object sender, RoutedEventArgs e)
+    private void OnUnloaded(object sender, RoutedEventArgs e)
     {
-        Interlocked.Increment(ref _gistTraversalGeneration);
-        _performanceScrollProbe?.Dispose();
-        _performanceScrollProbe = null;
-        UnsubscribeViewModelEvents();
-        CancellationTokenSource? pageCancellationTokenSource = Interlocked.Exchange(
-            ref _pageCancellationTokenSource,
-            null);
-        pageCancellationTokenSource?.Cancel();
-        _activeDialog = null;
-        if (_shareManager is not null)
+        UiTaskGuard.Run(async () =>
         {
-            _shareManager.DataRequested -= ShareManager_DataRequested;
-            _shareManager = null;
-        }
+            Interlocked.Increment(ref _gistTraversalGeneration);
+            _performanceScrollProbe?.Dispose();
+            _performanceScrollProbe = null;
+            UnsubscribeViewModelEvents();
+            CancellationTokenSource? pageCancellationTokenSource = Interlocked.Exchange(ref _pageCancellationTokenSource, null);
+            pageCancellationTokenSource?.Cancel();
+            _activeDialog = null;
+            if (_shareManager is not null)
+            {
+                _shareManager.DataRequested -= ShareManager_DataRequested;
+                _shareManager = null;
+            }
 
-        _shareItem = null;
-        _initialized = false;
-        Task priorStop = _stopTask;
-        _stopTask = StopAfterAsync(priorStop, pageCancellationTokenSource);
-        try
-        {
-            await _stopTask;
-        }
-        catch (Exception ex)
-        {
-            System.Diagnostics.Debug.WriteLine($"Failed to stop Gists background work: {ex}");
-        }
+            _shareItem = null;
+            _initialized = false;
+            Task priorStop = _stopTask;
+            _stopTask = StopAfterAsync(priorStop, pageCancellationTokenSource);
+            try
+            {
+                await _stopTask;
+            }
+            catch (Exception ex)
+            {
+                JitHub.WinUI.App.LogHandledException(ex, "ui-gists-page-stop");
+            }
+        }, "ui-gists-page");
     }
 
     private void AttachPerformanceScrollProbe()
@@ -180,7 +184,7 @@ public sealed partial class GistsPage : Page
             }
             catch (Exception ex)
             {
-                System.Diagnostics.Debug.WriteLine($"A prior Gists stop operation failed: {ex}");
+                JitHub.WinUI.App.LogHandledException(ex, "ui-gists-page-prior-stop");
             }
 
             await ViewModel.StopAsync();
@@ -243,31 +247,37 @@ public sealed partial class GistsPage : Page
         anchor?.RestoreAfterCollectionChange(DispatcherQueue);
     }
 
-    private async void ViewModel_NewGistRequested(object? sender, EventArgs e)
+    private void ViewModel_NewGistRequested(object? sender, EventArgs e)
     {
-        if (_activeDialog is not null)
+        UiTaskGuard.Run(async () =>
         {
-            return;
-        }
+            if (_activeDialog is not null)
+            {
+                return;
+            }
 
-        GistEditorSession session = ViewModel.CreateNewEditorSession();
-        await ShowEditorAsync(session, ViewModel.CreateGistAsync);
+            GistEditorSession session = ViewModel.CreateNewEditorSession();
+            await ShowEditorAsync(session, ViewModel.CreateGistAsync);
+        }, "ui-gists-page");
     }
 
-    private async void ViewModel_EditGistRequested(object? sender, EventArgs e)
+    private void ViewModel_EditGistRequested(object? sender, EventArgs e)
     {
-        if (_activeDialog is not null)
+        UiTaskGuard.Run(async () =>
         {
-            return;
-        }
+            if (_activeDialog is not null)
+            {
+                return;
+            }
 
-        GistEditorSession? session = ViewModel.CreateEditEditorSession();
-        if (session is null)
-        {
-            return;
-        }
+            GistEditorSession? session = ViewModel.CreateEditEditorSession();
+            if (session is null)
+            {
+                return;
+            }
 
-        await ShowEditorAsync(session, ViewModel.UpdateSelectedGistAsync);
+            await ShowEditorAsync(session, ViewModel.UpdateSelectedGistAsync);
+        }, "ui-gists-page");
     }
 
     private async Task ShowEditorAsync(
@@ -276,21 +286,24 @@ public sealed partial class GistsPage : Page
     {
         FrameworkElement editor = CreateEditor(session);
         editor.HorizontalAlignment = HorizontalAlignment.Stretch;
-        editor.Height = Math.Clamp(XamlRoot.Size.Height - 210, 220, 620);
+        editor.VerticalAlignment = VerticalAlignment.Stretch;
         TextBlock errorText = AppContentDialogPresenter.CreateInlineErrorPresenter("GistEditorDialogError");
+        AppDialogScrollableContent dialogContent = new()
+        {
+            RowSpacing = AppResource<double>("AppGap12"),
+            HorizontalAlignment = HorizontalAlignment.Stretch,
+            VerticalAlignment = VerticalAlignment.Stretch
+        };
+        dialogContent.RowDefinitions.Add(new RowDefinition { Height = new GridLength(1, GridUnitType.Star) });
+        dialogContent.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
+        dialogContent.Children.Add(editor);
+        Grid.SetRow(errorText, 1);
+        dialogContent.Children.Add(errorText);
         ContentDialog dialog = new()
         {
             XamlRoot = XamlRoot,
             Title = session.Title,
-            Content = new StackPanel
-            {
-                Spacing = 12,
-                Children =
-                {
-                    editor,
-                    errorText
-                }
-            },
+            Content = dialogContent,
             PrimaryButtonText = T("Common/Save", "Save"),
             CloseButtonText = T("Common/Cancel", "Cancel"),
             DefaultButton = ContentDialogButton.Primary,
@@ -354,63 +367,100 @@ public sealed partial class GistsPage : Page
         Grid root = new()
         {
             MinWidth = 0,
-            MinHeight = 220,
-            RowSpacing = 12
+            MinHeight = 0,
+            RowSpacing = AppResource<double>("AppGap16"),
+            HorizontalAlignment = HorizontalAlignment.Stretch,
+            VerticalAlignment = VerticalAlignment.Stretch
         };
-        root.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
         root.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
         root.RowDefinitions.Add(new RowDefinition { Height = new GridLength(1, GridUnitType.Star) });
 
+        Grid metadata = new()
+        {
+            ColumnSpacing = AppResource<double>("AppGap16"),
+            RowSpacing = AppResource<double>("AppGap12")
+        };
+        metadata.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
+        metadata.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(AppResource<double>("AppGistEditorVisibilityWidth")) });
+        metadata.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
+        metadata.RowDefinitions.Add(new RowDefinition { Height = new GridLength(0) });
+
+        string descriptionText = T("Gists/Editor/Description", "Description");
         TextBox description = CreateEditorTextBox(
             "GistEditorDescription",
             T("Gists/Editor/DescriptionAutomationName", "Gist description"),
-            T("Gists/Editor/Description", "Description"),
+            descriptionText,
             T("Gists/Editor/OptionalDescription", "Optional description"));
         description.MaxLength = 256;
         description.Text = session.Description;
+        description.HorizontalAlignment = HorizontalAlignment.Stretch;
         description.TextChanged += (_, _) => session.Description = description.Text;
-        root.Children.Add(description);
+        metadata.Children.Add(description);
+        string visibilityText = T("Gists/Editor/Visibility", "Visibility");
         ToggleSwitch visibility = new()
         {
-            Header = T("Gists/Editor/Visibility", "Visibility"),
+            Header = visibilityText,
             OffContent = T("Gists/Editor/Secret", "Secret"),
             OnContent = T("Gists/Editor/Public", "Public"),
             IsEnabled = session.CanChangeVisibility,
             IsOn = session.IsPublic,
-            MinWidth = 180,
+            MinWidth = 0,
             HorizontalAlignment = HorizontalAlignment.Left,
-            VerticalAlignment = VerticalAlignment.Center
+            VerticalAlignment = VerticalAlignment.Bottom
         };
         AutomationProperties.SetAutomationId(visibility, "GistEditorVisibility");
         AutomationProperties.SetName(visibility, T("Gists/Editor/VisibilityAutomationName", "Gist visibility"));
         visibility.Toggled += (_, _) => session.IsPublic = visibility.IsOn;
-        Grid.SetRow(visibility, 1);
-        root.Children.Add(visibility);
+        Grid.SetColumn(visibility, 1);
+        metadata.Children.Add(visibility);
+        root.Children.Add(metadata);
 
-        Grid filesArea = new() { ColumnSpacing = 12, RowSpacing = 10 };
-        filesArea.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(188) });
+        Grid filesArea = new();
+        filesArea.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(AppResource<double>("AppGistEditorFileRailWidth")) });
         filesArea.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
         filesArea.RowDefinitions.Add(new RowDefinition { Height = new GridLength(1, GridUnitType.Star) });
         filesArea.RowDefinitions.Add(new RowDefinition { Height = new GridLength(0) });
-        Grid.SetRow(filesArea, 2);
 
-        Grid fileRail = new() { RowSpacing = 8 };
+        Grid fileRail = new()
+        {
+            Padding = AppResource<Thickness>("AppPadding12"),
+            RowSpacing = AppResource<double>("AppGap8")
+        };
         fileRail.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
         fileRail.RowDefinitions.Add(new RowDefinition { Height = new GridLength(1, GridUnitType.Star) });
-        fileRail.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
-        fileRail.Children.Add(new TextBlock
+        Grid fileRailHeader = new()
         {
-            Text = T("Gists/Editor/Files", "Files"),
-            FontSize = (double)Application.Current.Resources["AppFontSize13"],
-            FontWeight = Microsoft.UI.Text.FontWeights.SemiBold,
-            Foreground = (Microsoft.UI.Xaml.Media.Brush)Application.Current.Resources["AppInkBrush"]
-        });
+            ColumnSpacing = AppResource<double>("AppGap4"),
+            VerticalAlignment = VerticalAlignment.Center
+        };
+        fileRailHeader.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
+        fileRailHeader.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
+        fileRailHeader.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
+        TextBlock filesLabel = CreateEditorLabel(T("Gists/Editor/Files", "Files"));
+        filesLabel.VerticalAlignment = VerticalAlignment.Center;
+        fileRailHeader.Children.Add(filesLabel);
+
+        Button addFile = CreateEditorCommandButton("GistEditorAddFile", T("Gists/Editor/AddFile", "Add file"), "\uE710");
+        Button removeFile = CreateEditorCommandButton("GistEditorRemoveFile", T("Gists/Editor/RemoveFile", "Remove selected file"), "\uE74D");
+        removeFile.IsEnabled = session.CanRemoveFile;
+        Grid.SetColumn(addFile, 1);
+        Grid.SetColumn(removeFile, 2);
+        fileRailHeader.Children.Add(addFile);
+        fileRailHeader.Children.Add(removeFile);
+        fileRail.Children.Add(fileRailHeader);
+
         ListView files = new()
         {
             ItemsSource = session.Files,
-            DisplayMemberPath = nameof(GistEditorFileDraft.Filename),
+            ItemTemplate = (DataTemplate)Resources["GistEditorFileTemplate"],
+            ItemContainerStyle = AppResource<Style>("AppDialogFileListRowStyle"),
             SelectedItem = session.SelectedFile,
-            SelectionMode = ListViewSelectionMode.Single
+            SelectionMode = ListViewSelectionMode.Single,
+            Background = AppResource<Brush>("AppTransparentBrush"),
+            BorderThickness = AppResource<Thickness>("AppZeroThickness"),
+            Padding = AppResource<Thickness>("AppPadding0"),
+            HorizontalAlignment = HorizontalAlignment.Stretch,
+            VerticalAlignment = VerticalAlignment.Stretch
         };
         AutomationProperties.SetAutomationId(files, "GistEditorFiles");
         AutomationProperties.SetName(files, T("Gists/Editor/FilesAutomationName", "Gist files"));
@@ -424,17 +474,21 @@ public sealed partial class GistsPage : Page
         Grid.SetRow(files, 1);
         fileRail.Children.Add(files);
 
-        StackPanel fileCommands = new() { Orientation = Orientation.Horizontal, Spacing = 6 };
-        Button addFile = CreateEditorCommandButton("GistEditorAddFile", T("Gists/Editor/AddFile", "Add file"), "\uE710");
-        Button removeFile = CreateEditorCommandButton("GistEditorRemoveFile", T("Gists/Editor/RemoveFile", "Remove selected file"), "\uE74D");
-        removeFile.IsEnabled = session.CanRemoveFile;
-        fileCommands.Children.Add(addFile);
-        fileCommands.Children.Add(removeFile);
-        Grid.SetRow(fileCommands, 2);
-        fileRail.Children.Add(fileCommands);
-        filesArea.Children.Add(fileRail);
+        Border fileRailSurface = new()
+        {
+            Background = AppResource<Brush>("AppSurfaceSubtleBrush"),
+            BorderBrush = AppResource<Brush>("AppOutlineBrush"),
+            BorderThickness = AppResource<Thickness>("AppRightHairlineBorderThickness"),
+            Child = fileRail
+        };
+        AutomationProperties.SetAutomationId(fileRailSurface, "GistEditorFileRail");
+        filesArea.Children.Add(fileRailSurface);
 
-        Grid fileEditor = new() { RowSpacing = 8 };
+        Grid fileEditor = new()
+        {
+            Padding = AppResource<Thickness>("AppPadding16"),
+            RowSpacing = AppResource<double>("AppGap8")
+        };
         fileEditor.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
         fileEditor.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
         fileEditor.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
@@ -461,9 +515,11 @@ public sealed partial class GistsPage : Page
         TextBlock contentLabel = new()
         {
             Text = fileContentText,
-            FontSize = (double)Application.Current.Resources["AppFontSize13"],
+            FontFamily = AppResource<FontFamily>("AppUiFontFamily"),
+            FontSize = AppResource<double>("AppFontSize13"),
             FontWeight = Microsoft.UI.Text.FontWeights.SemiBold,
-            Foreground = (Microsoft.UI.Xaml.Media.Brush)Application.Current.Resources["AppInkBrush"]
+            Foreground = AppResource<Brush>("AppInkBrush"),
+            VerticalAlignment = VerticalAlignment.Center
         };
         AutomationProperties.SetAutomationId(contentLabel, "GistEditorContentLabel");
         Grid.SetRow(contentLabel, 1);
@@ -475,26 +531,66 @@ public sealed partial class GistsPage : Page
         fileEditor.Children.Add(content);
         Grid.SetColumn(fileEditor, 1);
         filesArea.Children.Add(fileEditor);
-        root.Children.Add(filesArea);
+
+        Border editorFrame = new()
+        {
+            Background = AppResource<Brush>("AppOverlayBrush"),
+            BorderBrush = AppResource<Brush>("AppOutlineBrush"),
+            BorderThickness = AppResource<Thickness>("AppHairlineBorderThickness"),
+            CornerRadius = AppResource<CornerRadius>("AppRadiusMedium"),
+            HorizontalAlignment = HorizontalAlignment.Stretch,
+            VerticalAlignment = VerticalAlignment.Stretch,
+            Child = filesArea
+        };
+        AutomationProperties.SetAutomationId(editorFrame, "GistEditorWorkspace");
+        Grid.SetRow(editorFrame, 1);
+        root.Children.Add(editorFrame);
 
         void UpdateResponsiveEditor(double width)
         {
-            bool compact = width < 520;
-            filesArea.ColumnDefinitions[0].Width = compact
+            bool shortWindow = XamlRoot.Size.Height < AppResource<double>("AppDialogCompactBreakpoint");
+            bool compactMetadata = width < AppResource<double>("AppGistEditorCompactBreakpoint") && !shortWindow;
+            bool stackedFiles = width < AppResource<double>("AppGistEditorStackedFileBreakpoint");
+            metadata.ColumnDefinitions[0].Width = new GridLength(1, GridUnitType.Star);
+            metadata.ColumnDefinitions[1].Width = compactMetadata
+                ? new GridLength(0)
+                : new GridLength(AppResource<double>("AppGistEditorVisibilityWidth"));
+            metadata.RowDefinitions[1].Height = compactMetadata
+                ? GridLength.Auto
+                : new GridLength(0);
+            Grid.SetColumn(description, 0);
+            Grid.SetColumn(visibility, compactMetadata ? 0 : 1);
+            Grid.SetRow(visibility, compactMetadata ? 1 : 0);
+            filesArea.ColumnDefinitions[0].Width = stackedFiles
                 ? new GridLength(1, GridUnitType.Star)
-                : new GridLength(188);
-            filesArea.ColumnDefinitions[1].Width = compact
+                : new GridLength(AppResource<double>("AppGistEditorFileRailWidth"));
+            filesArea.ColumnDefinitions[1].Width = stackedFiles
                 ? new GridLength(0)
                 : new GridLength(1, GridUnitType.Star);
-            filesArea.RowDefinitions[0].Height = compact
+            filesArea.RowDefinitions[0].Height = stackedFiles
                 ? GridLength.Auto
                 : new GridLength(1, GridUnitType.Star);
-            filesArea.RowDefinitions[1].Height = compact
+            filesArea.RowDefinitions[1].Height = stackedFiles
                 ? new GridLength(1, GridUnitType.Star)
                 : new GridLength(0);
-            fileRail.Height = compact ? 112 : double.NaN;
-            Grid.SetColumn(fileEditor, compact ? 0 : 1);
-            Grid.SetRow(fileEditor, compact ? 1 : 0);
+            fileRailSurface.Height = stackedFiles
+                ? AppResource<double>("AppGistEditorCompactFileRailHeight")
+                : double.NaN;
+            fileRailSurface.BorderThickness = stackedFiles
+                ? AppResource<Thickness>("AppBottomHairlineBorderThickness")
+                : AppResource<Thickness>("AppRightHairlineBorderThickness");
+            fileEditor.Padding = compactMetadata
+                ? AppResource<Thickness>("AppPadding12")
+                : AppResource<Thickness>("AppPadding16");
+            Grid.SetColumn(fileRailSurface, 0);
+            Grid.SetRow(fileRailSurface, 0);
+            Grid.SetColumn(fileEditor, stackedFiles ? 0 : 1);
+            Grid.SetRow(fileEditor, stackedFiles ? 1 : 0);
+            content.MinHeight = shortWindow
+                ? AppResource<double>("AppGistEditorCompactContentMinHeight")
+                : XamlRoot.Size.Height < AppResource<double>("AppDialogEditorPreferredHeight")
+                    ? AppResource<double>("AppDimension120")
+                    : AppResource<double>("AppDimension180");
         }
 
         filesArea.SizeChanged += (_, args) => UpdateResponsiveEditor(args.NewSize.Width);
@@ -586,6 +682,25 @@ public sealed partial class GistsPage : Page
         return root;
     }
 
+    private static TextBlock CreateEditorLabel(string text) => new()
+    {
+        Text = text,
+        FontFamily = AppResource<FontFamily>("AppUiFontFamily"),
+        FontSize = AppResource<double>("AppFontSize13"),
+        FontWeight = Microsoft.UI.Text.FontWeights.SemiBold,
+        Foreground = AppResource<Brush>("AppInkBrush")
+    };
+
+    private static T AppResource<T>(string resourceKey)
+    {
+        if (Application.Current.Resources.TryGetValue(resourceKey, out object? value) && value is T typedValue)
+        {
+            return typedValue;
+        }
+
+        throw new InvalidOperationException($"Required app resource '{resourceKey}' is unavailable.");
+    }
+
     private static void UpdateEditorFileContainerAutomation(
         ListViewItem container,
         GistEditorFileDraft draft,
@@ -612,13 +727,13 @@ public sealed partial class GistsPage : Page
     {
         Button button = new()
         {
-            Width = 34,
-            Height = 34,
-            Style = (Style)Application.Current.Resources["AppToolbarButtonStyle"],
+            Width = AppResource<double>("AppCommandControlHeight"),
+            Height = AppResource<double>("AppCommandControlHeight"),
+            Style = AppResource<Style>("AppToolbarButtonStyle"),
             Content = new FontIcon
             {
-                FontFamily = (Microsoft.UI.Xaml.Media.FontFamily)Application.Current.Resources["SegoeFluentIcons"],
-                FontSize = (double)Application.Current.Resources["AppFontSize14"],
+                FontFamily = AppResource<FontFamily>("SegoeFluentIcons"),
+                FontSize = AppResource<double>("AppFontSize14"),
                 Glyph = glyph
             }
         };
@@ -628,48 +743,47 @@ public sealed partial class GistsPage : Page
         return button;
     }
 
-    private async void ViewModel_DeleteGistRequested(object? sender, EventArgs e)
+    private void ViewModel_DeleteGistRequested(object? sender, EventArgs e)
     {
-        if (ViewModel.SelectedGistItem is not { } selected)
+        UiTaskGuard.Run(async () =>
         {
-            return;
-        }
-
-        ContentDialog dialog = new()
-        {
-            XamlRoot = XamlRoot,
-            Title = T("Gists/Delete/Title", "Delete gist?"),
-            Content = TF("Gists/Delete/ContentFormat", "Delete '{0}' permanently? This cannot be undone.", selected.Title),
-            PrimaryButtonText = T("Common/Delete", "Delete"),
-            CloseButtonText = T("Common/Cancel", "Cancel"),
-            DefaultButton = ContentDialogButton.Close,
-            PrimaryButtonStyle = (Style)Application.Current.Resources["AppDestructiveButtonStyle"]
-        };
-        AppDialogStyleCatalog.Apply(dialog);
-        AutomationProperties.SetAutomationId(dialog, "GistDeleteDialog");
-        AutomationProperties.SetName(dialog, T("Gists/Delete/AutomationName", "Delete gist"));
-        TextBlock errorText = AppContentDialogPresenter.CreateInlineErrorPresenter("GistDeleteDialogError");
-        dialog.Content = new StackPanel
-        {
-            Spacing = 12,
-            Children =
+            if (ViewModel.SelectedGistItem is not { } selected)
             {
+                return;
+            }
+
+            ContentDialog dialog = new()
+            {
+                XamlRoot = XamlRoot,
+                Title = T("Gists/Delete/Title", "Delete gist?"),
+                Content = TF("Gists/Delete/ContentFormat", "Delete '{0}' permanently? This cannot be undone.", selected.Title),
+                PrimaryButtonText = T("Common/Delete", "Delete"),
+                CloseButtonText = T("Common/Cancel", "Cancel"),
+                DefaultButton = ContentDialogButton.Close,
+                PrimaryButtonStyle = (Style)Application.Current.Resources["AppDestructiveButtonStyle"]
+            };
+            AppDialogStyleCatalog.Apply(dialog);
+            AutomationProperties.SetAutomationId(dialog, "GistDeleteDialog");
+            AutomationProperties.SetName(dialog, T("Gists/Delete/AutomationName", "Delete gist"));
+            TextBlock errorText = AppContentDialogPresenter.CreateInlineErrorPresenter("GistDeleteDialogError");
+            dialog.Content = new StackPanel
+            {
+                Spacing = 12,
+                Children =
+                {
                 new TextBlock
                 {
                     Text = TF("Gists/Delete/ContentFormat", "Delete '{0}' permanently? This cannot be undone.", selected.Title),
                     TextWrapping = TextWrapping.Wrap
                 },
                 errorText
-            }
-        };
-        _activeDialog = dialog;
-        ContentDialogResult result;
-        try
-        {
-            result = await AppContentDialogPresenter.ShowForPrimaryActionAsync(
-                dialog,
-                XamlRoot,
-                async () =>
+                }
+            };
+            _activeDialog = dialog;
+            ContentDialogResult result;
+            try
+            {
+                result = await AppContentDialogPresenter.ShowForPrimaryActionAsync(dialog, XamlRoot, async () =>
                 {
                     if (_pageCancellationTokenSource is not { } pageCancellationTokenSource)
                     {
@@ -677,21 +791,19 @@ public sealed partial class GistsPage : Page
                     }
 
                     bool deleted = await ViewModel.DeleteSelectedGistAsync(pageCancellationTokenSource.Token);
-                    return deleted
-                        ? DialogMutationResult.Success()
-                        : DialogMutationResult.Failure(ViewModel.ErrorMessage);
-                },
-                errorText);
-        }
-        finally
-        {
-            if (ReferenceEquals(_activeDialog, dialog))
-            {
-                _activeDialog = null;
+                    return deleted ? DialogMutationResult.Success() : DialogMutationResult.Failure(ViewModel.ErrorMessage);
+                }, errorText, layoutKind: AppDialogLayoutKind.Confirmation);
             }
-        }
+            finally
+            {
+                if (ReferenceEquals(_activeDialog, dialog))
+                {
+                    _activeDialog = null;
+                }
+            }
 
-        _ = result;
+            _ = result;
+        }, "ui-gists-page");
     }
 
     private void ViewModel_ShareRequested(object? sender, EventArgs e)
@@ -712,7 +824,7 @@ public sealed partial class GistsPage : Page
         }
         catch (Exception ex)
         {
-            System.Diagnostics.Debug.WriteLine($"Could not open share UI: {ex}");
+            JitHub.WinUI.App.LogHandledException(ex, "ui-gists-share");
             ViewModel.ReportActionError(T("Gists/Error/ShareUnavailable", "Windows Share is temporarily unavailable. The Copy link action is still available."), "share");
         }
     }
@@ -753,44 +865,44 @@ public sealed partial class GistsPage : Page
             "copy_file");
     }
 
-    private async void ViewModel_SaveFileRequested(object? sender, EventArgs e)
+    private void ViewModel_SaveFileRequested(object? sender, EventArgs e)
     {
-        if (ViewModel.SelectedFile?.File is not { Truncated: false, Content: { } content } file)
+        UiTaskGuard.Run(async () =>
         {
-            return;
-        }
-
-        try
-        {
-            FileSavePicker picker = new()
-            {
-                SuggestedStartLocation = PickerLocationId.Downloads,
-                SuggestedFileName = string.IsNullOrWhiteSpace(file.Filename) ? T("Gists/Save/DefaultFileName", "gist-file") : file.Filename
-            };
-            string extension = Path.GetExtension(file.Filename);
-            if (string.IsNullOrWhiteSpace(extension) || extension.IndexOfAny(Path.GetInvalidFileNameChars()) >= 0)
-            {
-                extension = ".txt";
-            }
-
-            picker.FileTypeChoices.Add(T("Gists/Save/FileType", "Gist file"), [extension]);
-            InitializeWithWindow.Initialize(
-                picker,
-                WindowNative.GetWindowHandle(((App)Application.Current).CurrentMainWindow));
-            StorageFile? destination = await picker.PickSaveFileAsync();
-            if (destination is null)
+            if (ViewModel.SelectedFile?.File is not { Truncated: false, Content: { } content } file)
             {
                 return;
             }
 
-            await FileIO.WriteTextAsync(destination, content);
-            ViewModel.TrackActionSuccess("save_file");
-        }
-        catch (Exception ex)
-        {
-            System.Diagnostics.Debug.WriteLine($"Could not save Gist file content: {ex}");
-            ViewModel.ReportActionError(T("Gists/Error/SaveFile", "The Gist file could not be saved."), "save_file");
-        }
+            try
+            {
+                FileSavePicker picker = new(((App)Application.Current).CurrentMainWindow.AppWindow.Id)
+                {
+                    SuggestedStartLocation = PickerLocationId.Downloads,
+                    SuggestedFileName = string.IsNullOrWhiteSpace(file.Filename) ? T("Gists/Save/DefaultFileName", "gist-file") : file.Filename
+                };
+                string extension = Path.GetExtension(file.Filename);
+                if (string.IsNullOrWhiteSpace(extension) || extension.IndexOfAny(Path.GetInvalidFileNameChars()) >= 0)
+                {
+                    extension = ".txt";
+                }
+
+                picker.FileTypeChoices.Add(T("Gists/Save/FileType", "Gist file"), [extension]);
+                PickFileResult? destination = await picker.PickSaveFileAsync();
+                if (destination is null)
+                {
+                    return;
+                }
+
+                await File.WriteAllTextAsync(destination.Path, content);
+                ViewModel.TrackActionSuccess("save_file");
+            }
+            catch (Exception ex)
+            {
+                JitHub.WinUI.App.LogHandledException(ex, "ui-gists-save-file");
+                ViewModel.ReportActionError(T("Gists/Error/SaveFile", "The Gist file could not be saved."), "save_file");
+            }
+        }, "ui-gists-page");
     }
 
     private void ShareManager_DataRequested(DataTransferManager sender, DataRequestedEventArgs args)

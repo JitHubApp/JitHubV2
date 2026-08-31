@@ -16,25 +16,25 @@
             <Border
     Background="{ThemeResource AppTransparentBrush}"
                 BorderBrush="{ThemeResource AppHairlineBrush}"
-                BorderThickness="0,0,0,1"
-                Padding="12,11">
-                <Grid ColumnSpacing="12">
+                BorderThickness="{ThemeResource AppBottomHairlineBorderThickness}"
+                Padding="{ThemeResource AppPadding12_11}">
+                <Grid ColumnSpacing="{ThemeResource AppGap12}">
                     <Grid.ColumnDefinitions>
-                        <ColumnDefinition Width="36" />
+                        <ColumnDefinition Width="{ThemeResource AppGridLength36}" />
                         <ColumnDefinition Width="*" />
                         <ColumnDefinition Width="Auto" />
                     </Grid.ColumnDefinitions>
                     <common:CachedImage
-                        Width="30"
-                        Height="30"
+                        Width="{ThemeResource AppDimension30}"
+                        Height="{ThemeResource AppDimension30}"
                         AutomationProperties.Name="{x:Bind FullName, Mode=OneWay}"
                         CornerRadius="{ThemeResource AppRadiusCircle}"
                         FallbackUrl="ms-appx:///Assets/Octocat.png"
                         SourceUrl="{x:Bind OwnerAvatarUrl, Mode=OneWay}" />
-                    <StackPanel Grid.Column="1" MinWidth="0" Spacing="4">
-                        <StackPanel Orientation="Horizontal" Spacing="8">
+                    <StackPanel Grid.Column="1" MinWidth="{ThemeResource AppDimension0}" Spacing="{ThemeResource AppGap4}">
+                        <StackPanel Orientation="Horizontal" Spacing="{ThemeResource AppGap8}">
                             <TextBlock
-                                FontWeight="SemiBold"
+                                FontWeight="{ThemeResource AppFontWeightSemibold}"
                                 MaxLines="1"
                                 Style="{StaticResource ListItemTitleTextBlockStyle}"
                                 Text="{x:Bind FullName, Mode=OneWay}"
@@ -42,22 +42,22 @@
                             <Border
                                 Background="{ThemeResource AppCanvasInsetBrush}"
                                 BorderBrush="{ThemeResource AppHairlineBrush}"
-                                BorderThickness="1"
+                                BorderThickness="{ThemeResource AppHairlineBorderThickness}"
                                 CornerRadius="{ThemeResource AppRadiusSmall}"
-                                Padding="6,1">
+                                Padding="{ThemeResource AppPadding6_1}">
                                 <TextBlock FontSize="{ThemeResource AppFontSize11}" Text="{x:Bind VisibilityLabel, Mode=OneWay}" />
                             </Border>
                             <Border
                                 Background="{ThemeResource AppCanvasInsetBrush}"
                                 CornerRadius="{ThemeResource AppRadiusSmall}"
-                                Padding="6,1"
+                                Padding="{ThemeResource AppPadding6_1}"
                                 Visibility="{x:Bind IsFork, Converter={StaticResource BoolToVisibilityConverter}, Mode=OneWay}">
                                 <TextBlock x:Uid="PagesRepoSearchResultPageTextBlockFork" FontSize="{ThemeResource AppFontSize11}" Text="Fork" />
                             </Border>
                             <Border
                                 Background="{ThemeResource AppCanvasInsetBrush}"
                                 CornerRadius="{ThemeResource AppRadiusSmall}"
-                                Padding="6,1"
+                                Padding="{ThemeResource AppPadding6_1}"
                                 Visibility="{x:Bind IsArchived, Converter={StaticResource BoolToVisibilityConverter}, Mode=OneWay}">
                                 <TextBlock x:Uid="PagesRepoSearchResultPageTextBlockArchived" FontSize="{ThemeResource AppFontSize11}" Text="Archived" />
                             </Border>
@@ -67,25 +67,25 @@
                             Style="{StaticResource ListItemSecondaryTextBlockStyle}"
                             Text="{x:Bind Description, Mode=OneWay}"
                             TextTrimming="CharacterEllipsis" />
-                        <StackPanel Orientation="Horizontal" Spacing="14">
-                            <StackPanel Orientation="Horizontal" Spacing="6" Visibility="{x:Bind HasLanguage, Converter={StaticResource BoolToVisibilityConverter}, Mode=OneWay}">
-                                <Ellipse Width="7" Height="7" VerticalAlignment="Center" Fill="{x:Bind LanguageColor, Converter={StaticResource HexColorToSolidBrushConverter}, Mode=OneWay}" />
-                                <TextBlock Style="{StaticResource ListItemSecondaryTextBlockStyle}" Text="{x:Bind Language, Mode=OneWay}" />
+                        <StackPanel Orientation="Horizontal" Spacing="{ThemeResource AppGap14}">
+                            <StackPanel Orientation="Horizontal" Spacing="{ThemeResource AppGap6}" Visibility="{x:Bind HasLanguage, Converter={StaticResource BoolToVisibilityConverter}, Mode=OneWay}">
+                                <Ellipse Style="{StaticResource AppLanguageIndicatorDotStyle}" Fill="{x:Bind LanguageColor, Converter={StaticResource HexColorToSolidBrushConverter}, Mode=OneWay}" />
+                                <TextBlock VerticalAlignment="Center" Style="{StaticResource AppInlineMetadataTextBlockStyle}" Text="{x:Bind Language, Mode=OneWay}" />
                             </StackPanel>
-                            <StackPanel Orientation="Horizontal" Spacing="5">
-                                <FontIcon FontSize="{ThemeResource AppFontSize12}" Glyph="&#xE734;" />
-                                <TextBlock Style="{StaticResource ListItemSecondaryTextBlockStyle}" Text="{x:Bind StarsText, Mode=OneWay}" />
+                            <StackPanel Orientation="Horizontal" Spacing="{ThemeResource AppGap5}">
+                                <FontIcon VerticalAlignment="Center" FontSize="{ThemeResource AppFontSize12}" Glyph="&#xE734;" />
+                                <TextBlock VerticalAlignment="Center" Style="{StaticResource ListItemSecondaryTextBlockStyle}" Text="{x:Bind StarsText, Mode=OneWay}" />
                             </StackPanel>
-                            <StackPanel Orientation="Horizontal" Spacing="5">
-                                <FontIcon FontSize="{ThemeResource AppFontSize12}" Glyph="&#xE8AB;" />
-                                <TextBlock Style="{StaticResource ListItemSecondaryTextBlockStyle}" Text="{x:Bind ForksText, Mode=OneWay}" />
+                            <StackPanel Orientation="Horizontal" Spacing="{ThemeResource AppGap5}">
+                                <FontIcon VerticalAlignment="Center" FontSize="{ThemeResource AppFontSize12}" Glyph="&#xE8AB;" />
+                                <TextBlock VerticalAlignment="Center" Style="{StaticResource ListItemSecondaryTextBlockStyle}" Text="{x:Bind ForksText, Mode=OneWay}" />
                             </StackPanel>
                             <TextBlock Style="{StaticResource ListItemSecondaryTextBlockStyle}" Text="{x:Bind UpdatedText, Mode=OneWay}" />
                         </StackPanel>
                     </StackPanel>
                     <FontIcon
                         Grid.Column="2"
-                        Margin="8,0,0,0"
+                        Margin="{ThemeResource AppMargin8_0_0_0}"
                         VerticalAlignment="Center"
                         FontSize="{ThemeResource AppFontSize14}"
                         Foreground="{ThemeResource AppInkMutedBrush}"
@@ -101,7 +101,7 @@
         AutomationProperties.AutomationId="RepoSearchPageRoot"
         AutomationProperties.Name="Repository search results"
         Padding="{ThemeResource AppPagePadding}"
-        RowSpacing="10">
+        RowSpacing="{ThemeResource AppGap10}">
         <Grid.RowDefinitions>
             <RowDefinition Height="Auto" />
             <RowDefinition Height="Auto" />
@@ -116,7 +116,7 @@
             <Grid.ColumnDefinitions>
                 <ColumnDefinition Width="*" />
                 <ColumnDefinition Width="Auto" />
-                <ColumnDefinition x:Name="SearchSortColumn" Width="180" />
+                <ColumnDefinition x:Name="SearchSortColumn" Width="{ThemeResource AppGridLength180}" />
             </Grid.ColumnDefinitions>
             <TextBox
                 x:Uid="PagesRepoSearchResultPageRepoSearchQueryTextBox" x:Name="QueryTextBox"
@@ -130,8 +130,8 @@
             <Button
                 x:Uid="PagesRepoSearchResultPageRepoSearchFilterButton" x:Name="FilterButton"
                 Grid.Column="1"
-                Width="36"
-                Height="36"
+                Width="{ThemeResource AppDimension36}"
+                Height="{ThemeResource AppDimension36}"
                 AutomationProperties.AutomationId="RepoSearchFilterButton"
                 AutomationProperties.Name="Repository filters"
                 Style="{StaticResource AppToolbarButtonStyle}"
@@ -139,7 +139,7 @@
                 <FontIcon Glyph="&#xE71C;" />
                 <Button.Flyout>
                     <Flyout Placement="BottomEdgeAlignedRight">
-                        <Grid Width="320" RowSpacing="10">
+                        <Grid Width="{ThemeResource AppDimension320}" RowSpacing="{ThemeResource AppGap10}">
                             <Grid.RowDefinitions>
                                 <RowDefinition Height="Auto" />
                                 <RowDefinition Height="Auto" />
@@ -149,7 +149,7 @@
                                 <RowDefinition Height="Auto" />
                             </Grid.RowDefinitions>
                             <TextBlock x:Uid="PagesRepoSearchResultPageTextBlockRepositoryFilters" Style="{StaticResource ListItemTitleTextBlockStyle}" Text="Repository filters" />
-                            <Grid Grid.Row="1" ColumnSpacing="8">
+                            <Grid Grid.Row="1" ColumnSpacing="{ThemeResource AppGap8}">
                                 <Grid.ColumnDefinitions>
                                     <ColumnDefinition Width="*" />
                                     <ColumnDefinition Width="*" />
@@ -181,7 +181,7 @@
                                 Style="{StaticResource AppCommandTextBoxStyle}"
                                 Text="{x:Bind ViewModel.TopicFilter, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"
                                 TextChanged="SearchCriteria_TextChanged" />
-                            <Grid Grid.Row="3" ColumnSpacing="8">
+                            <Grid Grid.Row="3" ColumnSpacing="{ThemeResource AppGap8}">
                                 <Grid.ColumnDefinitions>
                                     <ColumnDefinition Width="*" />
                                     <ColumnDefinition Width="*" />
@@ -190,7 +190,7 @@
                     x:Uid="PagesRepoSearchResultPageRepoSearchVisibilityFilter" AutomationProperties.AutomationId="RepoSearchVisibilityFilter"
                     AutomationProperties.Name="Filter repositories by visibility"
                                     Header="Visibility"
-                                    ItemsSource="{x:Bind ViewModel.VisibilityOptions}"
+                                    ItemsSource="{x:Bind ViewModel.VisibilityOptions, Mode=OneWay}"
                                     SelectedItem="{x:Bind ViewModel.SelectedVisibility, Mode=TwoWay}"
                                     SelectionChanged="SearchCriteria_SelectionChanged"
                                     Style="{StaticResource AppCompactComboBoxStyle}" />
@@ -199,7 +199,7 @@
                     AutomationProperties.AutomationId="RepoSearchForkFilter"
                     AutomationProperties.Name="Filter source and fork repositories"
                                     Header="Type"
-                                    ItemsSource="{x:Bind ViewModel.ForkOptions}"
+                                    ItemsSource="{x:Bind ViewModel.ForkOptions, Mode=OneWay}"
                                     SelectedItem="{x:Bind ViewModel.SelectedForkScope, Mode=TwoWay}"
                                     SelectionChanged="SearchCriteria_SelectionChanged"
                                     Style="{StaticResource AppCompactComboBoxStyle}" />
@@ -209,7 +209,7 @@
                     AutomationProperties.AutomationId="RepoSearchArchiveFilter"
                     AutomationProperties.Name="Filter archived repositories"
                                 Header="Archive state"
-                                ItemsSource="{x:Bind ViewModel.ArchiveOptions}"
+                                ItemsSource="{x:Bind ViewModel.ArchiveOptions, Mode=OneWay}"
                                 SelectedItem="{x:Bind ViewModel.SelectedArchiveScope, Mode=TwoWay}"
                                 SelectionChanged="SearchCriteria_SelectionChanged"
                                 Style="{StaticResource AppCompactComboBoxStyle}" />
@@ -230,13 +230,13 @@
                 Grid.Column="2"
                 AutomationProperties.AutomationId="RepoSearchSortComboBox"
                 AutomationProperties.Name="Sort repository results"
-                ItemsSource="{x:Bind ViewModel.SortOptions}"
+                ItemsSource="{x:Bind ViewModel.SortOptions, Mode=OneWay}"
                 SelectedItem="{x:Bind ViewModel.SelectedSort, Mode=TwoWay}"
                 SelectionChanged="SearchCriteria_SelectionChanged"
                 Style="{StaticResource AppCompactComboBoxStyle}" />
         </Grid>
 
-        <Grid Grid.Row="1" MinHeight="28" ColumnSpacing="10">
+        <Grid Grid.Row="1" MinHeight="{ThemeResource AppDimension28}" ColumnSpacing="{ThemeResource AppGap10}">
             <Grid.ColumnDefinitions>
                 <ColumnDefinition Width="Auto" />
                 <ColumnDefinition Width="*" />
@@ -250,20 +250,20 @@
             <ScrollViewer Grid.Column="1" HorizontalScrollBarVisibility="Hidden" HorizontalScrollMode="Auto" VerticalScrollMode="Disabled">
                 <ItemsControl ItemsSource="{x:Bind ViewModel.ActiveFilters, Mode=OneWay}">
                     <ItemsControl.ItemsPanel>
-                        <ItemsPanelTemplate><StackPanel Orientation="Horizontal" Spacing="6" /></ItemsPanelTemplate>
+                        <ItemsPanelTemplate><StackPanel Orientation="Horizontal" Spacing="{ThemeResource AppGap6}" /></ItemsPanelTemplate>
                     </ItemsControl.ItemsPanel>
                     <ItemsControl.ItemTemplate>
                         <DataTemplate x:DataType="viewModels:RepositorySearchFilterChip">
                             <Button
-                                MinHeight="26"
-                                Padding="8,3"
+                                MinHeight="{ThemeResource AppDimension26}"
+                                Padding="{ThemeResource AppPadding8_3}"
                                 AutomationProperties.AutomationId="{x:Bind AutomationId, Mode=OneWay}"
                                 AutomationProperties.Name="{x:Bind Label, Mode=OneWay}"
                                 Click="FilterChip_Click"
                                 Style="{StaticResource AppQuietButtonStyle}">
-                                <StackPanel Orientation="Horizontal" Spacing="6">
-                                    <TextBlock Text="{x:Bind Label, Mode=OneWay}" />
-                                    <FontIcon FontSize="{ThemeResource AppFontSize10}" Glyph="&#xE711;" />
+                                <StackPanel Orientation="Horizontal" Spacing="{ThemeResource AppGap6}">
+                                    <TextBlock VerticalAlignment="Center" Text="{x:Bind Label, Mode=OneWay}" />
+                                    <FontIcon VerticalAlignment="Center" FontSize="{ThemeResource AppFontSize10}" Glyph="&#xE711;" />
                                 </StackPanel>
                             </Button>
                         </DataTemplate>
@@ -272,18 +272,19 @@
             </ScrollViewer>
             <ProgressRing
                 Grid.Column="2"
-                Width="18"
-                Height="18"
+                Width="{ThemeResource AppDimension18}"
+                Height="{ThemeResource AppDimension18}"
+                VerticalAlignment="Center"
                 AutomationProperties.AutomationId="RepoSearchProgress"
                 IsActive="{x:Bind ViewModel.IsLoading, Mode=OneWay}" />
         </Grid>
 
         <Border
             Grid.Row="2"
-            MinHeight="0"
+            MinHeight="{ThemeResource AppDimension0}"
             Background="{ThemeResource AppSurfaceBrush}"
             BorderBrush="{ThemeResource AppOutlineBrush}"
-            BorderThickness="1"
+            BorderThickness="{ThemeResource AppHairlineBorderThickness}"
             CornerRadius="{ThemeResource AppRadiusMedium}">
             <Grid>
                 <ListView
@@ -299,9 +300,9 @@
                     SelectionMode="Single">
                     <ListView.Footer>
                         <ProgressRing
-                            Width="20"
-                            Height="20"
-                            Margin="0,10"
+                            Width="{ThemeResource AppDimension20}"
+                            Height="{ThemeResource AppDimension20}"
+                            Margin="{ThemeResource AppMargin0_10}"
                             AutomationProperties.AutomationId="RepoSearchLoadMoreProgress"
                             IsActive="{x:Bind ViewModel.IsLoadingMore, Mode=OneWay}" />
                     </ListView.Footer>
@@ -314,7 +315,7 @@
                     <TextBlock x:Uid="PagesRepoSearchResultPageTextBlockAdjustTheQueryOrRemove" Style="{StaticResource ListItemSecondaryTextBlockStyle}" Text="Adjust the query or remove a filter." />
                 </StackPanel>
                 <InfoBar
-                    Margin="12"
+                    Margin="{ThemeResource AppMargin12}"
                     VerticalAlignment="Top"
                     AutomationProperties.AutomationId="RepoSearchErrorBar"
                     IsClosable="False"

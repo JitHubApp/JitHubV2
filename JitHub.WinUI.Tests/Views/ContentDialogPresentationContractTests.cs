@@ -47,6 +47,33 @@ public sealed class ContentDialogPresentationContractTests
         Assert.Contains("FocusManager.FindFirstFocusableElement(root)", source, StringComparison.Ordinal);
         Assert.Contains("presentationRoot.Changed += rootChangedHandler;", source, StringComparison.Ordinal);
         Assert.Contains("presentationRoot.Changed -= rootChangedHandler;", source, StringComparison.Ordinal);
+        Assert.Contains("content-dialog-primary-action", source, StringComparison.Ordinal);
+        Assert.Contains("content-dialog-focus-capture", source, StringComparison.Ordinal);
+        Assert.Contains("content-dialog-focus-restoration", source, StringComparison.Ordinal);
+        Assert.Contains("content-dialog-validation", source, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void DialogChromeWidth_ComesFromTheFoundationTokenCatalog()
+    {
+        string productRoot = FindRepositoryDirectory("JitHub.WinUI");
+        string catalog = File.ReadAllText(Path.Combine(productRoot, "Views", "Dialogs", "AppDialogStyleCatalog.cs"));
+        string tokens = File.ReadAllText(Path.Combine(productRoot, "Styles", "Foundation", "Tokens.Spacing.xaml"));
+
+        Assert.Contains("GetDouble(\"AppDialogHorizontalChromeWidth\")", catalog, StringComparison.Ordinal);
+        Assert.DoesNotContain("private const double HorizontalChromeWidth", catalog, StringComparison.Ordinal);
+        Assert.Contains("x:Key=\"AppDialogHorizontalChromeWidth\"", tokens, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void NativeDialogs_ReserveTheCustomTitleBarSafeArea()
+    {
+        string productRoot = FindRepositoryDirectory("JitHub.WinUI");
+        string catalog = File.ReadAllText(Path.Combine(productRoot, "Views", "Dialogs", "AppDialogStyleCatalog.cs"));
+
+        Assert.Contains("double titleBarSafeHeight = GetTitleBarSafeHeight();", catalog, StringComparison.Ordinal);
+        Assert.Contains("xamlRoot.Size.Height - titleBarSafeHeight", catalog, StringComparison.Ordinal);
+        Assert.Contains("dialog.Margin = new Thickness(0, titleBarSafeHeight, 0, 0);", catalog, StringComparison.Ordinal);
     }
 
     [Fact]
@@ -234,7 +261,7 @@ public sealed class ContentDialogPresentationContractTests
         string shellCode = File.ReadAllText(Path.Combine(productRoot, "Views", "Pages", "ShellPage.xaml.cs"));
 
         Assert.DoesNotMatch("(?m)^\\s*Width=\"720\"", customizeXaml);
-        Assert.Contains("MaxWidth=\"720\"", customizeXaml, StringComparison.Ordinal);
+        Assert.Contains("MaxWidth=\"{ThemeResource AppDimension720}\"", customizeXaml, StringComparison.Ordinal);
         Assert.Contains("<ScrollViewer Grid.Row=\"1\"", customizeXaml, StringComparison.Ordinal);
         Assert.Contains("callback: new RelayCommand(OnCustomizeModalClosed)", dashboardPage, StringComparison.Ordinal);
         Assert.Contains("CloseCustomizeDialog(cancelChanges: true);", dashboardPage, StringComparison.Ordinal);
@@ -243,7 +270,8 @@ public sealed class ContentDialogPresentationContractTests
         Assert.Contains("x:Name=\"ShellModalScrollViewer\"", shellXaml, StringComparison.Ordinal);
         Assert.Contains("VerticalScrollMode=\"Auto\"", shellXaml, StringComparison.Ordinal);
         Assert.Contains("HorizontalScrollMode=\"Disabled\"", shellXaml, StringComparison.Ordinal);
-        Assert.Contains("DialogLayoutPolicy.Calculate(viewport.Width, contentHeight)", shellCode, StringComparison.Ordinal);
+        Assert.Contains("AppDialogStyleCatalog.GetTitleBarSafeHeight()", shellCode, StringComparison.Ordinal);
+        Assert.Contains("AppDialogStyleCatalog.GetLayoutTokens()", shellCode, StringComparison.Ordinal);
         Assert.Contains("UpdateModalLayout(e.NewSize);", shellCode, StringComparison.Ordinal);
     }
 

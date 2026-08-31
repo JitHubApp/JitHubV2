@@ -21,6 +21,8 @@ public sealed partial class MyIssuesPage : Page
     private ProductPerformanceScrollProbe? _performanceScrollProbe;
     private bool _syncingFilterControls;
     private long _selectionRenderGeneration;
+    private long _readinessRenderGeneration;
+    private bool _performanceReadinessCommitted;
 
     public MyIssuesPageViewModel ViewModel { get; }
 
@@ -36,35 +38,41 @@ public sealed partial class MyIssuesPage : Page
         Unloaded += OnUnloaded;
     }
 
-    private async void OnLoaded(object sender, RoutedEventArgs e)
+    private void OnLoaded(object sender, RoutedEventArgs e)
     {
-        AttachPerformanceScrollProbe();
-        if (_initialized)
+        _performanceReadinessCommitted = false;
+        Interlocked.Increment(ref _readinessRenderGeneration);
+        UiTaskGuard.Run(async () =>
         {
-            CommitPerformanceReadiness();
-            return;
-        }
+            AttachPerformanceScrollProbe();
+            if (_initialized)
+            {
+                SchedulePerformanceReadinessAfterRender();
+                return;
+            }
 
-        _initialized = true;
-        ApplyPseudoLongLabelsForAutomation();
-        UpdateFilterPresentation(IssueFilterHost.ActualWidth);
-        try
-        {
-            await ViewModel.InitializeAsync();
-            CommitPerformanceReadiness();
+            _initialized = true;
+            ApplyPseudoLongLabelsForAutomation();
             UpdateFilterPresentation(IssueFilterHost.ActualWidth);
-            UpdatePaneButtonVisibility();
-            MaybeOpenInitialIssueListDrawer();
-        }
-        catch (Exception ex)
-        {
-            System.Diagnostics.Debug.WriteLine($"Failed to load issues page: {ex}");
-        }
+            try
+            {
+                await ViewModel.InitializeAsync();
+                SchedulePerformanceReadinessAfterRender();
+                UpdateFilterPresentation(IssueFilterHost.ActualWidth);
+                UpdatePaneButtonVisibility();
+                MaybeOpenInitialIssueListDrawer();
+            }
+            catch (Exception ex)
+            {
+                JitHub.WinUI.App.LogHandledException(ex, "ui-my-issues-page-initialize");
+            }
+        }, "ui-my-issues-page");
     }
 
     private void OnUnloaded(object sender, RoutedEventArgs e)
     {
         Interlocked.Increment(ref _selectionRenderGeneration);
+        Interlocked.Increment(ref _readinessRenderGeneration);
         _performanceScrollProbe?.Dispose();
         _performanceScrollProbe = null;
     }
@@ -108,6 +116,27 @@ public sealed partial class MyIssuesPage : Page
         ProductPerformanceReadiness.CommitRoute(
             "my_issues",
             ProductPerformanceReadiness.CountIdentity(ViewModel.Items.Count));
+
+    private void SchedulePerformanceReadinessAfterRender()
+    {
+        if (!ProductPerformanceReadiness.IsEnabled || _performanceReadinessCommitted)
+        {
+            return;
+        }
+
+        long generation = Interlocked.Increment(ref _readinessRenderGeneration);
+        ProductPerformanceRenderCommitter.ScheduleAfterNextFrame(
+            this,
+            () => IsLoaded &&
+                generation == Volatile.Read(ref _readinessRenderGeneration) &&
+                !_performanceReadinessCommitted,
+            static () => true,
+            () =>
+            {
+                _performanceReadinessCommitted = true;
+                CommitPerformanceReadiness();
+            });
+    }
 
     private void IssueScopeSegmented_SelectionChanged(object sender, SelectionChangedEventArgs e)
     {
@@ -323,6 +352,7 @@ public sealed partial class MyIssuesPage : Page
         ListViewScrollAnchor? anchor = _pendingRefreshAnchor;
         _pendingRefreshAnchor = null;
         anchor?.RestoreAfterCollectionChange(DispatcherQueue);
+        SchedulePerformanceReadinessAfterRender();
     }
 
     private static string? GetIssueItemKey(object item) =>

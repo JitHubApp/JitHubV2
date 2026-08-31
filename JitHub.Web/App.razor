@@ -25,14 +25,15 @@
             root.style.colorScheme = theme;
         })();
     </script>
-    <link rel="icon" type="image/png" href="favicon.png" />
-    <link rel="preload" href="fonts/instrument-serif-regular.ttf" as="font" type="font/ttf" crossorigin />
-    <link rel="preload" href="fonts/cormorant-garamond-latin.woff2" as="font" type="font/woff2" crossorigin />
-    <link rel="preload" href="fonts/ibm-plex-sans-latin.woff2" as="font" type="font/woff2" crossorigin />
-    <link rel="preload" href="fonts/ibm-plex-mono-regular-latin.woff2" as="font" type="font/woff2" crossorigin />
-    <link rel="stylesheet" href="app.css" />
-    <link rel="stylesheet" href="JitHub.Web.styles.css" />
-    <script src="js/theme.js" defer></script>
+    <link rel="icon" type="image/png" href="@Assets["favicon.png"]" />
+    <link rel="preload" href="@Assets["fonts/instrument-serif-regular.ttf"]" as="font" type="font/ttf" crossorigin />
+    <link rel="preload" href="@Assets["fonts/cormorant-garamond-latin.woff2"]" as="font" type="font/woff2" crossorigin />
+    <link rel="preload" href="@Assets["fonts/ibm-plex-sans-latin.woff2"]" as="font" type="font/woff2" crossorigin />
+    <link rel="preload" href="@Assets["fonts/ibm-plex-mono-regular-latin.woff2"]" as="font" type="font/woff2" crossorigin />
+    <link rel="stylesheet" href="@Assets["app.css"]" />
+    <link rel="stylesheet" href="@Assets["JitHub.Web.styles.css"]" />
+    <script src="@Assets["js/theme.js"]" defer></script>
+    <script src="@Assets["js/media.js"]" defer></script>
     <HeadOutlet />
 </head>
 <body>

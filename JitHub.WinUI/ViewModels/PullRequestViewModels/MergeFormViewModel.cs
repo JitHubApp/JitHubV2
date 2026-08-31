@@ -113,7 +113,6 @@ public partial class MergeFormViewModel : RepoViewModel
             }
             catch (Exception ex)
             {
-                System.Diagnostics.Debug.WriteLine($"Failed to merge pull request from merge form: {ex}");
                 Error = JitHub.WinUI.Helpers.UserFacingError.For(
                     ex,
                     JitHub.WinUI.Helpers.UserFacingErrorKind.Action,
@@ -139,8 +138,7 @@ public partial class MergeFormViewModel : RepoViewModel
             }
             catch (Exception refreshException)
             {
-                System.Diagnostics.Debug.WriteLine(
-                    $"Pull request merged, but the refresh callback failed: {refreshException}");
+                HandledFailureReporter.Report(refreshException, "pull-request-merge-refresh");
             }
         }
     }

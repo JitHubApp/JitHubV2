@@ -18,8 +18,8 @@
     <Grid
         Background="{ThemeResource AppSurfaceBrush}"
         BorderBrush="{ThemeResource AppOutlineBrush}"
-        BorderThickness="0,0,0,1"
-        Padding="8,6">
+        BorderThickness="{ThemeResource AppBottomHairlineBorderThickness}"
+        Padding="{ThemeResource AppPadding8_6}">
 
         <Grid.ColumnDefinitions>
             <ColumnDefinition Width="Auto" />
@@ -30,16 +30,16 @@
         <!--  Back / Forward navigation  -->
         <StackPanel
             Grid.Column="0"
-            Margin="0,0,4,0"
+            Margin="{ThemeResource AppMargin0_0_4_0}"
             Orientation="Horizontal"
-            Spacing="2"
+            Spacing="{ThemeResource AppGap2}"
             VerticalAlignment="Center">
             <Button
                 x:Name="OpenFileTreeButton"
                 x:Uid="RepoCodeOpenFileTreeButton"
-                Width="36"
-                Height="36"
-                Padding="0"
+                Width="{ThemeResource AppDimension36}"
+                Height="{ThemeResource AppDimension36}"
+                Padding="{ThemeResource AppPadding0}"
                 AutomationProperties.AutomationId="RepoCodeOpenFileTreeButton"
                 AutomationProperties.Name="Open repository files"
                 Click="OpenFileTreeButton_Click"
@@ -53,9 +53,9 @@
             </Button>
             <Button
                 x:Uid="RepoCodeBackButton"
-                Width="36"
-                Height="36"
-                Padding="0"
+                Width="{ThemeResource AppDimension36}"
+                Height="{ThemeResource AppDimension36}"
+                Padding="{ThemeResource AppPadding0}"
                 AutomationProperties.AutomationId="RepoCodeBackButton"
                 AutomationProperties.Name="Go back to previous file"
                 Command="{x:Bind GoBackCommand, Mode=OneWay}"
@@ -66,9 +66,9 @@
             </Button>
             <Button
                 x:Uid="RepoCodeForwardButton"
-                Width="36"
-                Height="36"
-                Padding="0"
+                Width="{ThemeResource AppDimension36}"
+                Height="{ThemeResource AppDimension36}"
+                Padding="{ThemeResource AppPadding0}"
                 AutomationProperties.AutomationId="RepoCodeForwardButton"
                 AutomationProperties.Name="Go forward to next file"
                 Command="{x:Bind GoForwardCommand, Mode=OneWay}"
@@ -100,7 +100,7 @@
                                 <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
                                     <!--  "›" separator — hidden for the root segment  -->
                                     <TextBlock
-                                        Margin="2,0"
+                                        Margin="{ThemeResource AppMargin2_0}"
                                         VerticalAlignment="Center"
                                         Foreground="{ThemeResource AppInkMutedBrush}"
                                         Text="›"
@@ -110,8 +110,8 @@
                                         AutomationProperties.ItemStatus="{x:Bind AutomationPath}"
                                         AutomationProperties.Name="{x:Bind AutomationName}"
                                         Click="OnBreadcrumbSegmentClick"
-                                        MinHeight="28"
-                                        Padding="4,2"
+                                        MinHeight="{ThemeResource AppDimension28}"
+                                        Padding="{ThemeResource AppPadding4_2}"
                                         VerticalAlignment="Center"
                                         Foreground="{ThemeResource AppInkBrush}"
                                         Style="{StaticResource AppQuietButtonStyle}"
@@ -127,13 +127,13 @@
         <TextBlock
             x:Name="TransitionPathText"
             Grid.Column="1"
-            MinWidth="0"
+            MinWidth="{ThemeResource AppDimension0}"
             VerticalAlignment="Center"
             AutomationProperties.AutomationId="RepoCodeTransitionPath"
             AutomationProperties.Name="{x:Bind ViewModel.CurrentPath, Mode=OneWay}"
             FontFamily="{ThemeResource AppUiFontFamily}"
             FontSize="{ThemeResource AppFontSize13}"
-            FontWeight="SemiBold"
+            FontWeight="{ThemeResource AppFontWeightSemibold}"
             Foreground="{ThemeResource AppInkBrush}"
             Text="{x:Bind ViewModel.CurrentPath, Mode=OneWay}"
             TextTrimming="CharacterEllipsis"
@@ -144,13 +144,13 @@
         <TextBlock
             x:Name="CompactFileName"
             Grid.Column="1"
-            MinWidth="0"
+            MinWidth="{ThemeResource AppDimension0}"
             VerticalAlignment="Center"
             AutomationProperties.AutomationId="RepoCodeCompactFileName"
             AutomationProperties.Name="{x:Bind ViewModel.CurrentFileName, Mode=OneWay}"
             FontFamily="{ThemeResource AppUiFontFamily}"
             FontSize="{ThemeResource AppFontSize13}"
-            FontWeight="SemiBold"
+            FontWeight="{ThemeResource AppFontWeightSemibold}"
             Foreground="{ThemeResource AppInkBrush}"
             Text="{x:Bind ViewModel.CurrentFileName, Mode=OneWay}"
             TextTrimming="CharacterEllipsis"
@@ -162,15 +162,15 @@
         <StackPanel
             x:Name="DirectActionsHost"
             Grid.Column="2"
-            Margin="4,0,0,0"
+            Margin="{ThemeResource AppMargin4_0_0_0}"
             Orientation="Horizontal"
-            Spacing="2"
+            Spacing="{ThemeResource AppGap2}"
             VerticalAlignment="Center">
             <Button
                 x:Uid="RepoCodeCopyPathButton"
-                Width="36"
-                Height="36"
-                Padding="0"
+                Width="{ThemeResource AppDimension36}"
+                Height="{ThemeResource AppDimension36}"
+                Padding="{ThemeResource AppPadding0}"
                 AutomationProperties.AutomationId="RepoCodeCopyPathButton"
                 AutomationProperties.Name="Copy current file path"
                 Command="{x:Bind ViewModel.CopyPathCommand, Mode=OneWay}"
@@ -180,9 +180,9 @@
             </Button>
             <Button
                 x:Uid="RepoCodeCopyRawUrlButton"
-                Width="36"
-                Height="36"
-                Padding="0"
+                Width="{ThemeResource AppDimension36}"
+                Height="{ThemeResource AppDimension36}"
+                Padding="{ThemeResource AppPadding0}"
                 AutomationProperties.AutomationId="RepoCodeCopyRawUrlButton"
                 AutomationProperties.Name="Copy raw file link"
                 Command="{x:Bind ViewModel.CopyRawUrlCommand, Mode=OneWay}"
@@ -192,9 +192,9 @@
             </Button>
             <Button
                 x:Uid="RepoCodeOpenOnGitHubButton"
-                Width="36"
-                Height="36"
-                Padding="0"
+                Width="{ThemeResource AppDimension36}"
+                Height="{ThemeResource AppDimension36}"
+                Padding="{ThemeResource AppPadding0}"
                 AutomationProperties.AutomationId="RepoCodeOpenOnGitHubButton"
                 AutomationProperties.Name="Open current file on GitHub"
                 Command="{x:Bind ViewModel.OpenOnGitHubCommand, Mode=OneWay}"
@@ -208,10 +208,10 @@
             x:Name="FileActionsOverflowButton"
             x:Uid="RepoCodeFileActionsOverflowButton"
             Grid.Column="2"
-            Width="36"
-            Height="36"
-            Margin="4,0,0,0"
-            Padding="0"
+            Width="{ThemeResource AppDimension36}"
+            Height="{ThemeResource AppDimension36}"
+            Margin="{ThemeResource AppMargin4_0_0_0}"
+            Padding="{ThemeResource AppPadding0}"
             VerticalAlignment="Center"
             AutomationProperties.AutomationId="RepoCodeFileActionsOverflowButton"
             AutomationProperties.Name="File actions"

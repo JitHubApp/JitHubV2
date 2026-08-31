@@ -56,28 +56,16 @@ namespace JitHub.Services
         private readonly IGitHubClientService _gitHubClientService;
         private readonly IGitHubImageService _gitHubImageService;
         private readonly IMarkdownRemoteImagePolicy _markdownRemoteImagePolicy;
-        private INotificationService _notificationService = null!;
         private string? _accessToken;
-
-        public INotificationService NotificationService
-        {
-            get => _notificationService;
-            set
-            {
-                _notificationService = value;
-            }
-        }
 
         public GitHubService(
             IGitHubClientService gitHubClientService,
             IGitHubImageService gitHubImageService,
-            INotificationService notificationService,
             IMarkdownRemoteImagePolicy markdownRemoteImagePolicy)
         {
             _gitHubClientService = gitHubClientService;
             _gitHubImageService = gitHubImageService;
             _markdownRemoteImagePolicy = markdownRemoteImagePolicy;
-            NotificationService = notificationService;
         }
 
         public void SetAccessToken(string? token)
@@ -1077,11 +1065,12 @@ namespace JitHub.Services
 
         private static IssueEvent AdaptIssueEvent(RestGitHubIssueEvent issueEvent)
         {
-            EventInfoState? parsedEvent = ParseGitHubEnum<EventInfoState>(issueEvent.Event);
-            if (!parsedEvent.HasValue || parsedEvent.Value == EventInfoState.ConvertToDraft)
+            EventInfoState eventState =
+                ParseGitHubEnum<EventInfoState>(issueEvent.Event) ?? EventInfoState.Unknown;
+            StringEnum<EventInfoState> eventValue = new(eventState)
             {
-                throw new NotSupportedException($"Unsupported issue event '{issueEvent.Event}'.");
-            }
+                StringValue = issueEvent.Event ?? string.Empty
+            };
 
             return new IssueEvent(
                 issueEvent.Id,
@@ -1090,7 +1079,7 @@ namespace JitHub.Services
                 AdaptUser(issueEvent.Actor),
                 issueEvent.Assignee is null ? null : AdaptUser(issueEvent.Assignee),
                 issueEvent.Label is null ? null : AdaptLabel(issueEvent.Label),
-                parsedEvent.Value,
+                eventValue,
                 issueEvent.CommitId ?? string.Empty,
                 issueEvent.CreatedAt,
                 issueEvent.DismissedReview,
@@ -1423,54 +1412,46 @@ namespace JitHub.Services
             RepositoryIssueRequest repoIssueRequest,
             ApiOptions apiOptions)
         {
-            try
+            int pageSize = apiOptions?.PageSize ?? 100;
+            int startPage = apiOptions?.StartPage ?? 1;
+            int pageCount = apiOptions?.PageCount ?? 1;
+            pageSize = pageSize > 0 ? pageSize : 100;
+            startPage = startPage > 0 ? startPage : 1;
+            pageCount = pageCount > 0 ? pageCount : 1;
+
+            if (IsPublicPreviewRepository(owner, name))
             {
-                int pageSize = apiOptions?.PageSize ?? 100;
-                int startPage = apiOptions?.StartPage ?? 1;
-                int pageCount = apiOptions?.PageCount ?? 1;
-                pageSize = pageSize > 0 ? pageSize : 100;
-                startPage = startPage > 0 ? startPage : 1;
-                pageCount = pageCount > 0 ? pageCount : 1;
-
-                if (IsPublicPreviewRepository(owner, name))
-                {
-                    List<Issue> previewIssues = FilterPublicPreviewIssues(repoIssueRequest, pageSize, startPage, pageCount).ToList();
-                    return new PagedGitHubItems<Issue>(previewIssues, previewIssues.Count >= pageSize * pageCount);
-                }
-
-                string token = GetAccessTokenOrThrow();
-                List<Issue> issues = [];
-                bool hasMoreItems = false;
-
-                for (int offset = 0; offset < pageCount; offset++)
-                {
-                    int pageNumber = startPage + offset;
-                    IReadOnlyList<RestGitHubIssue> page = await _gitHubClientService.GetIssuesAsync(
-                        token,
-                        owner,
-                        name,
-                        pageSize,
-                        pageNumber,
-                        AdaptIssueQueryOptions(repoIssueRequest),
-                        includePullRequests: true);
-                    issues.AddRange(page
-                        .Where(static issue => !issue.IsPullRequest)
-                        .Select(issue => AdaptIssue(issue)));
-
-                    hasMoreItems = page.Count >= pageSize;
-                    if (!hasMoreItems)
-                    {
-                        break;
-                    }
-                }
-
-                return new PagedGitHubItems<Issue>(issues, hasMoreItems);
+                List<Issue> previewIssues = FilterPublicPreviewIssues(repoIssueRequest, pageSize, startPage, pageCount).ToList();
+                return new PagedGitHubItems<Issue>(previewIssues, previewIssues.Count >= pageSize * pageCount);
             }
-            catch (Exception e)
+
+            string token = GetAccessTokenOrThrow();
+            List<Issue> issues = [];
+            bool hasMoreItems = false;
+
+            for (int offset = 0; offset < pageCount; offset++)
             {
-                NotificationService.Push(e.Message);
-                throw new Exception(e.Message);
+                int pageNumber = startPage + offset;
+                IReadOnlyList<RestGitHubIssue> page = await _gitHubClientService.GetIssuesAsync(
+                    token,
+                    owner,
+                    name,
+                    pageSize,
+                    pageNumber,
+                    AdaptIssueQueryOptions(repoIssueRequest),
+                    includePullRequests: true);
+                issues.AddRange(page
+                    .Where(static issue => !issue.IsPullRequest)
+                    .Select(issue => AdaptIssue(issue)));
+
+                hasMoreItems = page.Count >= pageSize;
+                if (!hasMoreItems)
+                {
+                    break;
+                }
             }
+
+            return new PagedGitHubItems<Issue>(issues, hasMoreItems);
         }
 
         private static ICollection<Issue> FilterPublicPreviewIssues(
@@ -1526,7 +1507,7 @@ namespace JitHub.Services
 
             return AdaptIssue(await _gitHubClientService.GetIssueAsync(GetAccessTokenOrThrow(), owner, name, number));
         }
-        
+
         public async Task<Issue> GetIssue(long repositoryId, int number)
         {
             if (IsPublicPreviewToken() && repositoryId == PublicPreviewRepositoryId)
@@ -1673,7 +1654,7 @@ namespace JitHub.Services
                 .ToList();
             nodes.AddRange(dirs);
             nodes.AddRange(files);
-            
+
             return nodes;
         }
 
@@ -2017,53 +1998,26 @@ namespace JitHub.Services
 
         public async Task<ICollection<Reaction>> GetReactionFromIssueAsync(long repoId, int number)
         {
-            try
-            {
-                string token = GetAccessTokenOrThrow();
-                (string owner, string name) = await GetRepositoryIdentityAsync(token, repoId);
-                IReadOnlyList<RestGitHubReaction> reactions = await _gitHubClientService.GetIssueReactionsAsync(token, owner, name, number);
-                return reactions.Select(AdaptReaction).ToList();
-            }
-            catch
-            {
-                var error = $"Failed to fetch reactions from issue: {number} in repo: {repoId}";
-                NotificationService.Push(error);
-                throw new Exception(error);
-            }
+            string token = GetAccessTokenOrThrow();
+            (string owner, string name) = await GetRepositoryIdentityAsync(token, repoId);
+            IReadOnlyList<RestGitHubReaction> reactions = await _gitHubClientService.GetIssueReactionsAsync(token, owner, name, number);
+            return reactions.Select(AdaptReaction).ToList();
         }
 
         public async Task<ICollection<Reaction>> GetReactionFromIssueComment(long repoId, long commentId)
         {
-            try
-            {
-                string token = GetAccessTokenOrThrow();
-                (string owner, string name) = await GetRepositoryIdentityAsync(token, repoId);
-                IReadOnlyList<RestGitHubReaction> reactions = await _gitHubClientService.GetIssueCommentReactionsAsync(token, owner, name, commentId);
-                return reactions.Select(AdaptReaction).ToList();
-            }
-            catch
-            {
-                var error = $"Failed to fetch reactions from comment: {commentId} in repo: {repoId}";
-                NotificationService.Push(error);
-                throw new Exception(error);
-            }
+            string token = GetAccessTokenOrThrow();
+            (string owner, string name) = await GetRepositoryIdentityAsync(token, repoId);
+            IReadOnlyList<RestGitHubReaction> reactions = await _gitHubClientService.GetIssueCommentReactionsAsync(token, owner, name, commentId);
+            return reactions.Select(AdaptReaction).ToList();
         }
 
         public async Task<ICollection<Reaction>> GetReactionFromReviewComment(long repoId, long commentId)
         {
-            try
-            {
-                string token = GetAccessTokenOrThrow();
-                (string owner, string name) = await GetRepositoryIdentityAsync(token, repoId);
-                IReadOnlyList<RestGitHubReaction> reactions = await _gitHubClientService.GetPullRequestReviewCommentReactionsAsync(token, owner, name, commentId);
-                return reactions.Select(AdaptReaction).ToList();
-            }
-            catch
-            {
-                var error = $"Failed to fetch reactions from review comment: {commentId} in repo: {repoId}";
-                NotificationService.Push(error);
-                throw new Exception(error);
-            }
+            string token = GetAccessTokenOrThrow();
+            (string owner, string name) = await GetRepositoryIdentityAsync(token, repoId);
+            IReadOnlyList<RestGitHubReaction> reactions = await _gitHubClientService.GetPullRequestReviewCommentReactionsAsync(token, owner, name, commentId);
+            return reactions.Select(AdaptReaction).ToList();
         }
 
         public async ValueTask<MarkdownImageResolution> ResolveAsync(

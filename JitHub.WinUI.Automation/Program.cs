@@ -1,10 +1,12 @@
 using System.Diagnostics;
 using System.Drawing;
 using System.Drawing.Imaging;
+using System.Reflection.PortableExecutable;
 using System.Runtime.InteropServices;
 using System.Security.Cryptography;
 using System.Text;
 using System.Text.Json;
+using System.Text.Json.Nodes;
 using System.Xml.Linq;
 using FlaUI.Core;
 using FlaUI.Core.AutomationElements;
@@ -14,7 +16,10 @@ using FlaUI.Core.Input;
 using FlaUI.Core.Tools;
 using FlaUI.Core.WindowsAPI;
 using FlaUI.UIA3;
+using NativeTableElementArray = Interop.UIAutomationClient.IUIAutomationElementArray;
+using NativeTableItemPattern = Interop.UIAutomationClient.IUIAutomationTableItemPattern;
 
+NativeMethods.EnablePerMonitorV2DpiAwareness();
 var options = CaptureOptions.Parse(args);
 Directory.CreateDirectory(options.OutputDirectory);
 PrepareAutomationDataRoot();
@@ -35,6 +40,12 @@ if (string.Equals(options.Probe, "search-context", StringComparison.OrdinalIgnor
 if (string.Equals(options.Probe, "theme-switch", StringComparison.OrdinalIgnoreCase))
 {
     RunThemeSwitchProbe(options);
+    return;
+}
+
+if (string.Equals(options.Probe, "theme-palettes", StringComparison.OrdinalIgnoreCase))
+{
+    RunThemePaletteProbe(options);
     return;
 }
 
@@ -236,6 +247,12 @@ if (string.Equals(options.Probe, "repo-code-responsive-workspace", StringCompari
     return;
 }
 
+if (string.Equals(options.Probe, "repo-code-content-surfaces", StringComparison.OrdinalIgnoreCase))
+{
+    RunRepoCodeContentSurfacesProbe(options);
+    return;
+}
+
 if (string.Equals(options.Probe, "repo-code-performance", StringComparison.OrdinalIgnoreCase))
 {
     RunRepoCodePerformanceProbe(options);
@@ -301,6 +318,12 @@ if (string.Equals(options.Probe, "settings-responsive", StringComparison.Ordinal
     return;
 }
 
+if (string.Equals(options.Probe, "settings-export-picker", StringComparison.OrdinalIgnoreCase))
+{
+    RunSettingsExportPickerProbe(options);
+    return;
+}
+
 if (string.Equals(options.Probe, "settings-pseudo-long", StringComparison.OrdinalIgnoreCase))
 {
     RunSettingsPseudoLongLabelsProbe(options);
@@ -361,6 +384,12 @@ if (string.Equals(options.Probe, "diagnostics-launch-close", StringComparison.Or
     return;
 }
 
+if (string.Equals(options.Probe, "website-showcase", StringComparison.OrdinalIgnoreCase))
+{
+    RunWebsiteShowcaseProbe(options);
+    return;
+}
+
 var captures = new List<CaptureResult>();
 foreach (string theme in options.Themes)
 {
@@ -410,17 +439,20 @@ foreach (string theme in options.Themes)
             AutomationElement captureTarget = string.Equals(target.Page, "design-lab", StringComparison.OrdinalIgnoreCase)
                 ? window
                 : element;
-            CaptureElement(window, captureTarget, filePath);
+            if (ReferenceEquals(captureTarget, window) || IsAppPreviewTarget(target))
+            {
+                CaptureWindow(window, filePath);
+            }
+            else
+            {
+                CaptureElement(window, captureTarget, filePath);
+            }
 
             if (string.Equals(target.Name, "login", StringComparison.OrdinalIgnoreCase))
             {
                 AssertLoginThemeScreenshot(filePath, theme);
             }
 
-            if (IsAppPreviewTarget(target))
-            {
-                TrimAppPreviewCapture(filePath);
-            }
             captures.Add(new CaptureResult(theme, target.Name, fileName));
         }
         finally
@@ -445,6 +477,622 @@ finally
     AutomationLifecycleLog.Write(
         "probe-completed",
         $"probe={options.Probe ?? "capture"}; automationExitCode={automationExitCode}; status={(automationExitCode == 0 ? "passed" : "failed")}");
+}
+
+static void RunWebsiteShowcaseProbe(CaptureOptions options)
+{
+    const int captureWidth = 3200;
+    const int captureHeight = 1800;
+    const int minimumLogicalWidth = 1200;
+    const int minimumLogicalHeight = 675;
+    (string Id, string Page, string? Scenario, string ReadyAutomationId, string SourceState)[] surfaces =
+    [
+        ("home-workspace", "home", "website-showcase", "DashboardWidgetBoard", "home-expanded"),
+        ("pull-request-conversation", "repo-pulls", "pr-shy-header", "RepoPullRequestsDetailTitle", "pull-request-conversation"),
+        ("code-editor", "repo-code", "website-showcase", "RepoCodePageRoot", "repository-source-editor"),
+        ("csv-table", "repo-code", "website-showcase", "RepoCodePageRoot", "repository-csv-rich"),
+        ("commit-diff", "repo-commits", "website-showcase", "RepoCommitsAdaptiveWorkspace", "commit-diff"),
+        ("stars-library", "stars", "website-showcase", "StarsPageRoot", "stars-all"),
+        ("gists-editor", "gists", "website-showcase", "GistsWorkspace", "gist-editor"),
+        ("profile-overview", "profile", "website-showcase", "ProfilePageRoot", "profile-overview")
+    ];
+
+    if (options.ShowcaseIds.Count > 0)
+    {
+        string[] requestedIds = options.ShowcaseIds
+            .Distinct(StringComparer.OrdinalIgnoreCase)
+            .ToArray();
+        surfaces = surfaces
+            .Where(surface => requestedIds.Contains(surface.Id, StringComparer.OrdinalIgnoreCase))
+            .ToArray();
+        AssertProbe(
+            surfaces.Length == requestedIds.Length,
+            "website-showcase received an unknown --showcase-ids value.");
+    }
+
+    string[] themes = options.Themes
+        .Select(static theme => theme.Trim().ToLowerInvariant())
+        .Distinct(StringComparer.Ordinal)
+        .ToArray();
+    bool isCompleteGallery = surfaces.Length == 8;
+    AssertProbe(
+        themes.Length > 0 && themes.All(theme => theme is "light" or "dark"),
+        "website-showcase themes must be light or dark.");
+    AssertProbe(
+        !isCompleteGallery ||
+            (themes.Length == 2 && themes.Contains("light", StringComparer.Ordinal) && themes.Contains("dark", StringComparer.Ordinal)),
+        "A complete website-showcase run requires exactly the light and dark themes so every catalog asset remains paired.");
+
+    var assets = new JsonArray();
+    foreach (string theme in themes)
+    {
+        foreach ((string id, string page, string? scenario, string readyAutomationId, string sourceState) in surfaces)
+        {
+            JsonObject captured = CaptureWebsiteShowcaseSurface(
+                options,
+                id,
+                page,
+                scenario,
+                readyAutomationId,
+                sourceState,
+                theme,
+                captureWidth,
+                captureHeight,
+                minimumLogicalWidth,
+                minimumLogicalHeight);
+            assets.Add(captured);
+        }
+    }
+
+    int expectedAssetCount = surfaces.Length * themes.Length;
+    AssertProbe(
+        assets.Count == expectedAssetCount,
+        $"website-showcase captured {assets.Count} of {expectedAssetCount} requested still assets.");
+    var manifest = new JsonObject
+    {
+        ["schemaVersion"] = 2,
+        ["generatedAtUtc"] = DateTimeOffset.UtcNow.ToString("O"),
+        ["captureWidth"] = captureWidth,
+        ["captureHeight"] = captureHeight,
+        ["minimumLogicalWidth"] = minimumLogicalWidth,
+        ["minimumLogicalHeight"] = minimumLogicalHeight,
+        ["source"] = "synthetic-public-preview",
+        ["networkPolicy"] = "blocked-loopback-proxy",
+        ["assets"] = assets
+    };
+    string manifestPath = Path.Combine(options.OutputDirectory, "media-manifest.json");
+    File.WriteAllText(
+        manifestPath,
+        manifest.ToJsonString(new JsonSerializerOptions { WriteIndented = true }),
+        new UTF8Encoding(encoderShouldEmitUTF8Identifier: false));
+    Console.WriteLine(
+        $"website-showcase: captured {assets.Count} exact {captureWidth}x{captureHeight} stills " +
+        $"with at least {minimumLogicalWidth}x{minimumLogicalHeight} logical workspace; manifest={manifestPath}");
+}
+
+static JsonObject CaptureWebsiteShowcaseSurface(
+    CaptureOptions options,
+    string id,
+    string page,
+    string? scenario,
+    string readyAutomationId,
+    string sourceState,
+    string theme,
+    int captureWidth,
+    int captureHeight,
+    int minimumLogicalWidth,
+    int minimumLogicalHeight)
+{
+    KillExistingApplicationInstances(options.AppPath);
+    var arguments = new List<string>
+    {
+        $"--page={page}",
+        $"--theme={theme}",
+        "--website-showcase",
+        "--network-disabled"
+    };
+    if (!string.IsNullOrWhiteSpace(scenario))
+    {
+        arguments.Add($"--scenario={scenario}");
+    }
+    if (page.StartsWith("repo", StringComparison.OrdinalIgnoreCase))
+    {
+        arguments.Add($"--repo={options.RepositoryFullName}");
+    }
+
+    using var app = LaunchApplication(options.AppPath, arguments.ToArray());
+    using var automation = new UIA3Automation();
+    try
+    {
+        Window window = GetReadyWindow(app, automation, $"website-showcase {theme} {id}");
+        Rectangle physicalBounds = ResizeWebsiteShowcaseWindow(window, captureWidth, captureHeight);
+        uint windowDpi = NativeMethods.GetWindowDpi(GetNativeWindowHandle(window));
+        int logicalWidth = (int)Math.Round(physicalBounds.Width * 96d / windowDpi);
+        int logicalHeight = (int)Math.Round(physicalBounds.Height * 96d / windowDpi);
+        AssertProbe(
+            logicalWidth >= minimumLogicalWidth && logicalHeight >= minimumLogicalHeight,
+            $"website-showcase requires at least {minimumLogicalWidth}x{minimumLogicalHeight} logical pixels; " +
+            $"capture={physicalBounds.Width}x{physicalBounds.Height}, dpi={windowDpi}, logical={logicalWidth}x{logicalHeight}.");
+        WaitForElement(
+            $"website-showcase {id} root",
+            () => FindCurrentVisibleByAutomationId(window, readyAutomationId),
+            TimeSpan.FromSeconds(18));
+        PrepareWebsiteShowcasePresentation(window, automation);
+        PrepareWebsiteShowcaseSurface(window, id, options.OutputDirectory);
+        if (page.StartsWith("repo", StringComparison.OrdinalIgnoreCase))
+        {
+            WaitForWebsiteRepositoryStatistics(window);
+        }
+        PrepareWebsiteShowcaseTooltips(window, automation);
+        Thread.Sleep(900);
+
+        string fileName = $"{id}-{theme}.png";
+        string filePath = Path.Combine(options.OutputDirectory, fileName);
+        DateTime captureStartedUtc = DateTime.UtcNow;
+        TryDeleteFile(filePath);
+        CaptureWindow(window, filePath);
+        string hash = ValidateWebsiteShowcaseStill(filePath, captureStartedUtc, captureWidth, captureHeight);
+
+        Console.WriteLine(
+            $"website-showcase: {theme}/{id} -> {fileName} ({hash[..12]}); " +
+            $"dpi={windowDpi}, logical={logicalWidth}x{logicalHeight}");
+        return new JsonObject
+        {
+            ["id"] = id,
+            ["theme"] = theme,
+            ["file"] = fileName,
+            ["sourceState"] = $"synthetic-public-preview/{sourceState}",
+            ["width"] = captureWidth,
+            ["height"] = captureHeight,
+            ["windowDpi"] = windowDpi,
+            ["logicalWidth"] = logicalWidth,
+            ["logicalHeight"] = logicalHeight,
+            ["sha256"] = hash
+        };
+    }
+    finally
+    {
+        TryClose(app);
+        KillExistingApplicationInstances(options.AppPath);
+    }
+}
+
+static void WaitForWebsiteRepositoryStatistics(Window window)
+{
+    WaitForElement(
+        "website-showcase repository watcher count",
+        () => FindRepositoryStatisticWithValue(window, "RepoDetailWatchButton", "7"),
+        TimeSpan.FromSeconds(12));
+    WaitForElement(
+        "website-showcase repository star count",
+        () => FindRepositoryStatisticWithValue(window, "RepoDetailStarButton", "42"),
+        TimeSpan.FromSeconds(12));
+}
+
+static AutomationElement? FindRepositoryStatisticWithValue(
+    Window window,
+    string automationId,
+    string expectedValue)
+{
+    AutomationElement? statistic = FindCurrentVisibleByAutomationId(window, automationId);
+    return statistic is not null && statistic.FindAllDescendants()
+        .Any(element =>
+            IsVisible(element) &&
+            string.Equals(element.Name, expectedValue, StringComparison.Ordinal))
+        ? statistic
+        : null;
+}
+
+static void PrepareWebsiteShowcaseSurface(Window window, string id, string outputDirectory)
+{
+    switch (id)
+    {
+        case "home-workspace":
+        {
+            AutomationElement scrollHost = WaitForElement(
+                "website-showcase Home scroll host",
+                () => FindCurrentVisibleByAutomationId(window, "DashboardMainRailScrollViewer"),
+                TimeSpan.FromSeconds(12));
+            if (scrollHost.Patterns.Scroll.IsSupported)
+            {
+                scrollHost.Patterns.Scroll.Pattern.SetScrollPercent(
+                    FlaUI.Core.Patterns.ScrollPatternConstants.NoScroll,
+                    0);
+            }
+            WaitForElement(
+                "website-showcase expanded Home header",
+                () => FindCurrentVisibleByAutomationId(window, "DashboardCustomizeButton"),
+                TimeSpan.FromSeconds(8));
+            WaitForElement(
+                "website-showcase Home overview affordance",
+                () => FindCurrentVisibleByAutomationId(window, "DashboardSideRail") ??
+                    FindCurrentVisibleByAutomationId(window, "DashboardOverviewDrawerButton"),
+                TimeSpan.FromSeconds(12));
+            break;
+        }
+        case "pull-request-conversation":
+        {
+            EnsureWebsitePullRequestDetailVisible(window);
+            AutomationElement conversation = WaitForElement(
+                "website-showcase pull request conversation",
+                () => FindCurrentVisibleByAutomationId(window, "RepoPullRequestsCommentsList"),
+                TimeSpan.FromSeconds(18));
+            if (conversation.Patterns.Scroll.IsSupported)
+            {
+                conversation.Patterns.Scroll.Pattern.SetScrollPercent(
+                    FlaUI.Core.Patterns.ScrollPatternConstants.NoScroll,
+                    10);
+            }
+            CloseVisiblePane(window, "RepoPullRequestsCloseInspectorPaneButton");
+            break;
+        }
+        case "code-editor":
+            ExpandWebsiteRepoCodeFolder(window, "src");
+            SelectRepoCodeFixtureFile(window, "src/App.cs", "App.cs, file");
+            WaitForElement(
+                "website-showcase native code editor",
+                () => window.FindAllDescendants(cf => cf.ByAutomationId("RepoCodeEditor"))
+                    .FirstOrDefault(element => IsVisible(element) && element.Patterns.Value.IsSupported),
+                TimeSpan.FromSeconds(18));
+            break;
+        case "csv-table":
+            SelectRepoCodeFixtureFile(window, "data.csv", "data.csv, file");
+            WaitForElement(
+                "website-showcase rich CSV table",
+                () => window.FindAllDescendants()
+                    .FirstOrDefault(element =>
+                        IsVisible(element) &&
+                        (string.Equals(GetAutomationId(element), "CsvPreviewDataGrid", StringComparison.Ordinal) ||
+                         string.Equals(GetAutomationId(element), "CsvPreviewDataTable", StringComparison.Ordinal)) &&
+                        element.Patterns.Grid.IsSupported &&
+                        element.Patterns.Grid.Pattern.RowCount.Value == 7),
+                TimeSpan.FromSeconds(18));
+            break;
+        case "commit-diff":
+        {
+            EnsureCommitDetailVisible(window);
+            AutomationElement diffSelector = WaitForElement(
+                "website-showcase commit Diff section",
+                () => FindCurrentVisibleByAutomationId(window, "RepoCommitsSection_Diff") ??
+                    FindCurrentVisibleByAutomationId(window, "RepoCommitsShySection_Diff"),
+                TimeSpan.FromSeconds(10));
+            if (diffSelector.Patterns.SelectionItem.IsSupported && !diffSelector.Patterns.SelectionItem.Pattern.IsSelected.Value)
+            {
+                diffSelector.Patterns.SelectionItem.Pattern.Select();
+            }
+            AutomationElement diffRows = WaitForElement(
+                "website-showcase commit diff rows",
+                () => FindCurrentVisibleByAutomationId(window, "CommitDiffViewerRowsScrollViewer"),
+                TimeSpan.FromSeconds(18));
+            WaitUntil(
+                "website-showcase rendered commit diff text",
+                () => FindVisibleDiffTextElements(diffRows).Length >= 2,
+                TimeSpan.FromSeconds(18));
+            if (diffRows.Patterns.Scroll.IsSupported)
+            {
+                diffRows.Patterns.Scroll.Pattern.SetScrollPercent(
+                    FlaUI.Core.Patterns.ScrollPatternConstants.NoScroll,
+                    0);
+            }
+            CloseVisiblePane(window, "RepoCommitsCloseInspectorPaneButton");
+            break;
+        }
+        case "stars-library":
+        {
+            AutomationElement list = WaitForElement(
+                "website-showcase Stars list",
+                () => FindCurrentVisibleByAutomationId(window, "StarsList"),
+                TimeSpan.FromSeconds(15));
+            WaitForElement(
+                "website-showcase first Star",
+                () => list.FindFirstDescendant(cf => cf.ByControlType(ControlType.ListItem)),
+                TimeSpan.FromSeconds(12));
+            break;
+        }
+        case "gists-editor":
+        {
+            if (!IsVisible(FindCurrentVisibleByAutomationId(window, "GistsDetailTitle")))
+            {
+                AutomationElement? list = FindCurrentVisibleByAutomationId(window, "GistsList");
+                if (list is null)
+                {
+                    AutomationElement libraryButton = WaitForElement(
+                        "website-showcase Gists library button",
+                        () => FindCurrentVisibleByAutomationId(window, "GistsLeadingPaneButton"),
+                        TimeSpan.FromSeconds(10));
+                    InvokeOrClick(libraryButton);
+                    list = WaitForElement(
+                        "website-showcase Gists list drawer",
+                        () => FindCurrentVisibleByAutomationId(window, "GistsList"),
+                        TimeSpan.FromSeconds(10));
+                }
+
+                AutomationElement firstGist = WaitForElement(
+                    "website-showcase first Gist",
+                    () => list.FindFirstDescendant(cf => cf.ByControlType(ControlType.ListItem)),
+                    TimeSpan.FromSeconds(12));
+                InvokeOrClick(firstGist);
+                WaitForElement(
+                    "website-showcase Gist detail",
+                    () => FindCurrentVisibleByAutomationId(window, "GistsDetailTitle"),
+                    TimeSpan.FromSeconds(12));
+            }
+
+            AutomationElement editButton = WaitForElement(
+                "website-showcase Edit Gist button",
+                () => FindCurrentVisibleByAutomationId(window, "GistsEdit"),
+                TimeSpan.FromSeconds(10));
+            InvokeOrClick(editButton);
+            AutomationElement editorDialog = WaitForElement(
+                "website-showcase Gist editor dialog",
+                () => FindCurrentVisibleByAutomationId(window, "GistEditorDialog"),
+                TimeSpan.FromSeconds(12));
+            AutomationElement contentEditor = WaitForElement(
+                "website-showcase Gist content editor",
+                () => editorDialog.FindFirstDescendant(cf => cf.ByAutomationId("GistEditorContent")),
+                TimeSpan.FromSeconds(10));
+            bool contentEditorVisible = WaitUntilAvailable(
+                () => FindCurrentVisibleByAutomationId(window, "GistEditorDialog") is { } liveDialog &&
+                    liveDialog.FindFirstDescendant(cf => cf.ByAutomationId("GistEditorContent")) is { } liveEditor &&
+                    IsVisible(liveEditor) &&
+                    liveEditor.Patterns.Value.IsSupported &&
+                    (liveEditor.Patterns.Value.Pattern.Value.Value ?? string.Empty).Contains("# Release checklist", StringComparison.Ordinal) &&
+                    Rectangle.Intersect(GetClippedAutomationBounds(liveEditor), window.BoundingRectangle) is { Width: > 240, Height: > 80 },
+                TimeSpan.FromSeconds(6));
+            if (!contentEditorVisible)
+            {
+                CaptureWindowWithPopups(window, Path.Combine(outputDirectory, "gists-editor-scroll-debug.png"));
+                AutomationElement liveEditor = FindCurrentVisibleByAutomationId(window, "GistEditorDialog")?
+                    .FindFirstDescendant(cf => cf.ByAutomationId("GistEditorContent")) ?? contentEditor;
+                throw new InvalidOperationException(
+                    "website-showcase could not expose a useful Gist content editor viewport. " +
+                    $"Editor={liveEditor.BoundingRectangle}; clipped={GetClippedAutomationBounds(liveEditor)}; " +
+                    $"window={window.BoundingRectangle}; ancestors=[{DescribeScrollAncestors(liveEditor)}].");
+            }
+            break;
+        }
+        case "profile-overview":
+        {
+            AutomationElement overview = WaitForElement(
+                "website-showcase Profile overview",
+                () => FindCurrentVisibleByAutomationId(window, "ProfileOverviewScrollViewer"),
+                TimeSpan.FromSeconds(18));
+            WaitForElement(
+                "website-showcase Profile identity",
+                () => FindCurrentVisibleByAutomationId(window, "ProfileDisplayName") ??
+                    FindCurrentVisibleByAutomationId(window, "ProfileCompactIdentityDetailsButton"),
+                TimeSpan.FromSeconds(12));
+            WaitForElement(
+                "website-showcase contribution graph",
+                () => FindCurrentVisibleByAutomationId(window, "ProfileContributionGraph"),
+                TimeSpan.FromSeconds(18));
+            if (overview.Patterns.Scroll.IsSupported &&
+                overview.Patterns.Scroll.Pattern.VerticallyScrollable.ValueOrDefault)
+            {
+                overview.Patterns.Scroll.Pattern.SetScrollPercent(
+                    FlaUI.Core.Patterns.ScrollPatternConstants.NoScroll,
+                    0);
+            }
+            break;
+        }
+        default:
+            throw new InvalidOperationException($"Unknown website showcase surface '{id}'.");
+    }
+}
+
+static void PrepareWebsiteShowcasePresentation(Window window, UIA3Automation automation)
+{
+    AutomationElement[] dismissButtons = window
+        .FindAllDescendants(cf => cf.ByAutomationId("CloseButton").And(cf.ByControlType(ControlType.Button)))
+        .Where(IsVisible)
+        .ToArray();
+    foreach (AutomationElement button in dismissButtons)
+    {
+        InvokeOrClick(button);
+    }
+
+    if (dismissButtons.Length > 0)
+    {
+        WaitUntil(
+            "website-showcase transient status closes",
+            () => window
+                .FindAllDescendants(cf => cf.ByAutomationId("CloseButton").And(cf.ByControlType(ControlType.Button)))
+                .All(button => !IsVisible(button)),
+            TimeSpan.FromSeconds(5));
+    }
+
+    PrepareWebsiteShowcaseTooltips(window, automation);
+}
+
+static void PrepareWebsiteShowcaseTooltips(Window window, UIA3Automation automation)
+{
+    NativeMethods.MoveCursorPhysical(new Point(1, 1));
+    Thread.Sleep(80);
+    NativeMethods.MoveCursorPhysical(new Point(2, 2));
+    SendMouseInput(
+        new Point(2, 2),
+        MouseEventFlags.MOUSEEVENTF_MOVE | MouseEventFlags.MOUSEEVENTF_MOVE_NOCOALESCE);
+    Thread.Sleep(1200);
+    Rectangle windowBounds = window.BoundingRectangle;
+    int appProcessId = window.Properties.ProcessId.ValueOrDefault;
+    bool hasVisibleTooltip = automation.GetDesktop()
+        .FindAllDescendants(cf => cf.ByControlType(ControlType.ToolTip))
+        .Any(element => IsVisibleTooltipOverWindow(element, windowBounds, appProcessId));
+    if (hasVisibleTooltip)
+    {
+        Keyboard.Press(VirtualKeyShort.ESCAPE);
+        Thread.Sleep(120);
+    }
+
+    bool tooltipsClosed = WaitUntilAvailable(
+        () => automation.GetDesktop()
+            .FindAllDescendants(cf => cf.ByControlType(ControlType.ToolTip))
+            .All(element => !IsVisibleTooltipOverWindow(element, windowBounds, appProcessId)),
+        TimeSpan.FromSeconds(3));
+    if (!tooltipsClosed)
+    {
+        string tooltipDetails = string.Join(
+            " | ",
+            automation.GetDesktop()
+                .FindAllDescendants(cf => cf.ByControlType(ControlType.ToolTip))
+                .Where(element => IsVisibleTooltipOverWindow(element, windowBounds, appProcessId))
+                .Select(element =>
+                    $"name='{GetElementName(element)}',pid={element.Properties.ProcessId.ValueOrDefault}," +
+                    $"hwnd={element.Properties.NativeWindowHandle.ValueOrDefault}," +
+                    $"windowPattern={element.Patterns.Window.IsSupported},bounds={element.BoundingRectangle}"));
+        throw new InvalidOperationException(
+            $"website-showcase could not dismiss a tooltip overlapping the app window; " +
+            $"cursor={NativeMethods.GetCursorPositionPhysical()}: {tooltipDetails}");
+    }
+    Thread.Sleep(250);
+}
+
+static bool IsVisibleTooltipOverWindow(AutomationElement element, Rectangle windowBounds, int appProcessId)
+{
+    try
+    {
+        if (element.Properties.ProcessId.ValueOrDefault != appProcessId)
+        {
+            return false;
+        }
+
+        Rectangle intersection = Rectangle.Intersect(element.BoundingRectangle, windowBounds);
+        return IsVisible(element) && intersection.Width > 1 && intersection.Height > 1;
+    }
+    catch (COMException)
+    {
+        return false;
+    }
+}
+
+static void EnsureWebsitePullRequestDetailVisible(Window window)
+{
+    if (IsVisible(FindCurrentVisibleByAutomationId(window, "RepoPullRequestsDetailTitle")))
+    {
+        return;
+    }
+
+    AutomationElement list = WaitForElement(
+        "website-showcase pull request list",
+        () => FindCurrentVisibleByAutomationId(window, "RepoPullRequestsList"),
+        TimeSpan.FromSeconds(15));
+    AutomationElement firstPullRequest = WaitForElement(
+        "website-showcase first pull request",
+        () => list.FindFirstDescendant(cf => cf.ByControlType(ControlType.ListItem)),
+        TimeSpan.FromSeconds(12));
+    InvokeOrClick(firstPullRequest);
+    WaitForElement(
+        "website-showcase pull request detail",
+        () => FindCurrentVisibleByAutomationId(window, "RepoPullRequestsDetailTitle"),
+        TimeSpan.FromSeconds(15));
+}
+
+static void ExpandWebsiteRepoCodeFolder(Window window, string path)
+{
+    AutomationElement? folder = window.FindAllDescendants(cf => cf.ByControlType(ControlType.TreeItem))
+        .FirstOrDefault(element =>
+            IsVisible(element) &&
+            string.Equals(element.Properties.ItemStatus.ValueOrDefault, $"path:{path}", StringComparison.Ordinal));
+    if (folder is null)
+    {
+        AutomationElement opener = WaitForElement(
+            "website-showcase repository file-tree opener",
+            () => window.FindAllDescendants(cf => cf.ByAutomationId("RepoCodeOpenFileTreeButton"))
+                .FirstOrDefault(IsVisible),
+            TimeSpan.FromSeconds(8));
+        OpenRepoCodeFileTreeDrawer(window, opener);
+        AutomationElement drawer = WaitForElement(
+            "website-showcase repository file-tree drawer",
+            () => window.FindAllDescendants(cf => cf.ByAutomationId("RepoCodeLeftDrawer"))
+                .FirstOrDefault(IsVisible),
+            TimeSpan.FromSeconds(8));
+        folder = WaitForElement(
+            $"website-showcase repository folder {path}",
+            () => drawer.FindAllDescendants(cf => cf.ByControlType(ControlType.TreeItem))
+                .FirstOrDefault(element =>
+                    IsVisible(element) &&
+                    string.Equals(element.Properties.ItemStatus.ValueOrDefault, $"path:{path}", StringComparison.Ordinal)),
+            TimeSpan.FromSeconds(12));
+    }
+
+    if (folder.Patterns.ExpandCollapse.IsSupported &&
+        folder.Patterns.ExpandCollapse.Pattern.ExpandCollapseState.Value != ExpandCollapseState.Expanded)
+    {
+        folder.Patterns.ExpandCollapse.Pattern.Expand();
+        Thread.Sleep(450);
+    }
+}
+
+static void CloseVisiblePane(Window window, string closeAutomationId)
+{
+    AutomationElement? close = FindCurrentVisibleByAutomationId(window, closeAutomationId);
+    if (IsVisible(close))
+    {
+        InvokeOrClick(close!);
+        Thread.Sleep(350);
+    }
+}
+
+static Rectangle ResizeWebsiteShowcaseWindow(Window window, int physicalWidth, int physicalHeight)
+{
+    Rectangle workArea = NativeMethods.GetWorkArea();
+    AssertProbe(
+        workArea.Width >= physicalWidth && workArea.Height >= physicalHeight,
+        $"website-showcase requires a physical work area of at least {physicalWidth}x{physicalHeight}; current work area is {workArea.Width}x{workArea.Height}.");
+
+    IntPtr handle = GetNativeWindowHandle(window);
+    _ = ResizeWindow(window, physicalWidth, physicalHeight, reactivate: false);
+    for (int attempt = 0; attempt < 6; attempt++)
+    {
+        Rectangle physical = NativeMethods.GetPhysicalWindowBounds(handle);
+        if (physical.Width == physicalWidth && physical.Height == physicalHeight)
+        {
+            TryActivateWindow(window);
+            Thread.Sleep(650);
+            return physical;
+        }
+
+        Rectangle outer = NativeMethods.GetWindowBounds(handle);
+        int nextWidth = outer.Width + (physicalWidth - physical.Width);
+        int nextHeight = outer.Height + (physicalHeight - physical.Height);
+        NativeMethods.ResizeWindow(handle, nextWidth, nextHeight);
+        Thread.Sleep(260);
+    }
+
+    Rectangle actual = NativeMethods.GetPhysicalWindowBounds(handle);
+    throw new InvalidOperationException(
+        $"website-showcase refused a constrained capture. Requested physical DWM bounds {physicalWidth}x{physicalHeight}; actual={actual.Width}x{actual.Height}.");
+}
+
+static string ValidateWebsiteShowcaseStill(
+    string filePath,
+    DateTime captureStartedUtc,
+    int expectedWidth,
+    int expectedHeight)
+{
+    FileInfo file = new(filePath);
+    AssertProbe(file.Exists && file.Length > 10_000, $"website-showcase produced an empty still '{filePath}'.");
+    AssertProbe(
+        file.LastWriteTimeUtc >= captureStartedUtc.AddSeconds(-1),
+        $"website-showcase refused stale output '{filePath}'.");
+    using var image = new Bitmap(filePath);
+    AssertProbe(
+        image.Width == expectedWidth && image.Height == expectedHeight,
+        $"website-showcase expected {expectedWidth}x{expectedHeight} pixels for '{file.Name}', found {image.Width}x{image.Height}.");
+    var sampledColors = new HashSet<int>();
+    int horizontalStep = Math.Max(1, image.Width / 80);
+    int verticalStep = Math.Max(1, image.Height / 50);
+    for (int y = verticalStep / 2; y < image.Height; y += verticalStep)
+    {
+        for (int x = horizontalStep / 2; x < image.Width; x += horizontalStep)
+        {
+            sampledColors.Add(image.GetPixel(x, y).ToArgb());
+        }
+    }
+    AssertProbe(
+        sampledColors.Count >= 12,
+        $"website-showcase refused a visually blank still '{filePath}' ({sampledColors.Count} sampled colors).");
+    return ComputeFileSha256(filePath);
 }
 
 static void RunDiagnosticsLaunchCloseProbe(CaptureOptions options)
@@ -717,7 +1365,6 @@ static void RunMarkdownHostLifecycleProbe(CaptureOptions options)
             SectionControlAutomationId: "MyPullRequestsSection_Reviews",
             RealizationContainerAutomationId: "MyPullRequestsReviewsList"),
         new("repository-readme", "repo-code", "MarkdownHost_RepositoryReadme_RepoCodeReadme", false),
-        new("profile-overview-readme", "profile", "MarkdownHost_ProfileReadme_ProfileOverviewReadme", false),
         new("profile-readme", "profile", "MarkdownHost_ProfileReadme_ProfileReadme", false,
             SectionControlAutomationId: "ProfileModeReadmeItem"),
     ];
@@ -3126,6 +3773,7 @@ static void SetNearestVerticalAncestorScrollPercent(AutomationElement element, d
     }
 }
 
+
 static AutomationElement? TryGetAutomationParent(ITreeWalker walker, AutomationElement element)
 {
     try
@@ -3204,7 +3852,11 @@ static void RunSearchContextProbe(CaptureOptions options)
 static void RunThemeSwitchProbe(CaptureOptions options)
 {
     using var app = string.IsNullOrWhiteSpace(options.AttachProcess)
-        ? LaunchApplication(options.AppPath, "--page=settings", "--theme=light")
+        ? LaunchApplication(
+            options.AppPath,
+            "--page=settings",
+            "--theme=light",
+            "--palette=visual-studio-code")
         : CreateProbeApplication(options);
     using var automation = new UIA3Automation();
 
@@ -3222,28 +3874,451 @@ static void RunThemeSwitchProbe(CaptureOptions options)
     string beforePath = Path.Combine(options.OutputDirectory, "probe-theme-before.png");
     CaptureWindow(window, beforePath);
 
-    darkCard.Click();
+    SelectAutomationItem(darkCard, "dark theme card");
     WaitUntil(
         "dark theme card selected",
-        () => string.Equals(darkCard.Properties.HelpText.ValueOrDefault, "Selected", StringComparison.Ordinal),
+        () => window.FindFirstDescendant(cf => cf.ByAutomationId("SettingsThemeDark")) is { } currentDark &&
+            currentDark.Patterns.SelectionItem.IsSupported &&
+            currentDark.Patterns.SelectionItem.Pattern.IsSelected.Value,
         TimeSpan.FromSeconds(5));
     Thread.Sleep(1200);
 
     string afterPath = Path.Combine(options.OutputDirectory, "probe-theme-after.png");
     CaptureWindow(window, afterPath);
 
-    lightCard.Click();
+    SelectAutomationItem(lightCard, "light theme card");
     WaitUntil(
         "light theme card selected again",
-        () => string.Equals(lightCard.Properties.HelpText.ValueOrDefault, "Selected", StringComparison.Ordinal),
+        () => window.FindFirstDescendant(cf => cf.ByAutomationId("SettingsThemeLight")) is { } currentLight &&
+            currentLight.Patterns.SelectionItem.IsSupported &&
+            currentLight.Patterns.SelectionItem.Pattern.IsSelected.Value,
         TimeSpan.FromSeconds(5));
+    Thread.Sleep(300);
     string restoredPath = Path.Combine(options.OutputDirectory, "probe-theme-restored-light.png");
     CaptureWindow(window, restoredPath);
+
+    AssertLiveThemeAppearanceRepaint(beforePath, afterPath, restoredPath);
 
     Console.WriteLine($"theme-switch probe: before={beforePath}, dark={afterPath}, restored={restoredPath}");
     if (string.IsNullOrWhiteSpace(options.AttachProcess))
     {
         TryClose(app);
+    }
+}
+
+static void AssertLiveThemeAppearanceRepaint(string lightPath, string darkPath, string restoredLightPath)
+{
+    using var light = new Bitmap(lightPath);
+    using var dark = new Bitmap(darkPath);
+    using var restoredLight = new Bitmap(restoredLightPath);
+    AssertProbe(
+        light.Size == dark.Size && dark.Size == restoredLight.Size,
+        "Live appearance repaint captures must use identical window dimensions.");
+
+    double lightDarkDifference = AverageRgbDistance(
+        AverageThemePaletteChrome(light),
+        AverageThemePaletteChrome(dark));
+    double restoredDifference = AverageRgbDistance(
+        AverageThemePaletteChrome(light),
+        AverageThemePaletteChrome(restoredLight));
+    int minimumAccentPixels = Math.Max(12, (int)Math.Round(light.Width / 100d));
+    int lightAccentPixels = CountThemePalettePixelsNearAnySurface(light, Color.FromArgb(0x00, 0x5F, 0xB8));
+    int darkAccentPixels = CountThemePalettePixelsNearAnySurface(dark, Color.FromArgb(0x00, 0x78, 0xD4));
+    int restoredAccentPixels = CountThemePalettePixelsNearAnySurface(restoredLight, Color.FromArgb(0x00, 0x5F, 0xB8));
+
+    AssertProbe(
+        lightDarkDifference >= 60,
+        $"Live Light-to-Dark switching did not repaint existing chrome (RGB delta {lightDarkDifference:F2}).");
+    AssertProbe(
+        restoredDifference <= 3,
+        $"The restored Light chrome differs from its initial frame (RGB delta {restoredDifference:F2}).");
+    AssertProbe(
+        lightAccentPixels >= minimumAccentPixels && restoredAccentPixels >= minimumAccentPixels,
+        $"The Visual Studio Code Light accent did not survive the live appearance round trip " +
+        $"({lightAccentPixels}/{restoredAccentPixels} pixels; expected at least {minimumAccentPixels}).");
+    AssertProbe(
+        darkAccentPixels >= minimumAccentPixels,
+        $"The Visual Studio Code Dark accent did not repaint during the live appearance switch " +
+        $"({darkAccentPixels} pixels; expected at least {minimumAccentPixels}).");
+}
+
+static void RunThemePaletteProbe(CaptureOptions options)
+{
+    AssertProbe(
+        string.IsNullOrWhiteSpace(options.AttachProcess),
+        "theme-palettes requires app ownership so it can verify persistence across a clean restart.");
+    (string Id, string Name)[] palettes =
+    [
+        ("jithub", "JitHub (default)"),
+        ("windows-11", "Windows 11"),
+        ("visual-studio-code", "Visual Studio Code"),
+        ("github", "GitHub"),
+        ("solarized", "Solarized")
+    ];
+    string dataRoot = GetAutomationDataRoot();
+    string initialPath = Path.Combine(options.OutputDirectory, "theme-palette-live-jithub-dark.png");
+    string livePath = Path.Combine(options.OutputDirectory, "theme-palette-live-visual-studio-code-dark.png");
+    string persistedPath = Path.Combine(options.OutputDirectory, "theme-palette-persisted-visual-studio-code-dark.png");
+
+    KillExistingApplicationInstances(options.AppPath);
+    using (var app = LaunchApplication(
+        options.AppPath,
+        "--page=settings",
+        "--theme=dark",
+        "--palette=jithub"))
+    using (var automation = new UIA3Automation())
+    {
+        try
+        {
+            Window window = GetReadyWindow(app, automation, "theme-palettes live switch");
+            ResizeLogicalWindow(window, 1180, 700);
+            AssertSettingsPaletteCardSemantics(window, palettes);
+            AssertThemePaletteKeyboardNavigation(window, dataRoot);
+            Thread.Sleep(200);
+            CaptureWindow(window, initialPath);
+
+            AutomationElement visualStudioCode = WaitForElement(
+                "SettingsPalette_visual-studio-code",
+                () => window.FindFirstDescendant(
+                    cf => cf.ByAutomationId("SettingsPalette_visual-studio-code")),
+                TimeSpan.FromSeconds(10));
+            RevealForInteraction(visualStudioCode, "Visual Studio Code palette");
+            SelectAutomationItem(visualStudioCode, "Visual Studio Code palette");
+            WaitUntil(
+                "Visual Studio Code palette native selection",
+                () => window.FindFirstDescendant(
+                        cf => cf.ByAutomationId("SettingsPalette_visual-studio-code")) is { } current &&
+                    current.Patterns.SelectionItem.IsSupported &&
+                    current.Patterns.SelectionItem.Pattern.IsSelected.Value,
+                TimeSpan.FromSeconds(5));
+            WaitUntil(
+                "Visual Studio Code palette persistence",
+                () => string.Equals(
+                    ReadAuthSetting(dataRoot, "APPLICATION_PALETTE_KEY"),
+                    "visual-studio-code",
+                    StringComparison.Ordinal),
+                TimeSpan.FromSeconds(5));
+            Thread.Sleep(350);
+            CaptureWindow(window, livePath);
+
+            ResizeLogicalWindow(window, 640, 650);
+            AutomationElement narrowSelection = WaitForElement(
+                "Visual Studio Code palette at narrow width",
+                () => window.FindFirstDescendant(
+                    cf => cf.ByAutomationId("SettingsPalette_visual-studio-code")),
+                TimeSpan.FromSeconds(5));
+            RevealForInteraction(narrowSelection, "Visual Studio Code palette at narrow width");
+            AssertProbe(
+                IsInsideWindowBounds(narrowSelection, window),
+                "The selected palette card escaped the Settings viewport at 640x700.");
+            CaptureWindow(
+                window,
+                Path.Combine(options.OutputDirectory, "theme-palette-live-visual-studio-code-dark-640x700.png"));
+        }
+        finally
+        {
+            TryClose(app);
+            KillExistingApplicationInstances(options.AppPath);
+        }
+    }
+
+    using (var app = LaunchApplication(options.AppPath, "--page=settings", "--theme=dark"))
+    using (var automation = new UIA3Automation())
+    {
+        try
+        {
+            Window window = GetReadyWindow(app, automation, "theme-palettes persistence restart");
+            ResizeLogicalWindow(window, 1180, 700);
+            AutomationElement persisted = WaitForElement(
+                "persisted Visual Studio Code palette",
+                () => window.FindFirstDescendant(
+                    cf => cf.ByAutomationId("SettingsPalette_visual-studio-code")),
+                TimeSpan.FromSeconds(10));
+            WaitUntil(
+                "persisted Visual Studio Code palette selection",
+                () => persisted.Patterns.SelectionItem.IsSupported &&
+                    persisted.Patterns.SelectionItem.Pattern.IsSelected.Value,
+                TimeSpan.FromSeconds(5));
+            CaptureWindow(window, persistedPath);
+        }
+        finally
+        {
+            TryClose(app);
+            KillExistingApplicationInstances(options.AppPath);
+        }
+    }
+
+    AssertThemePaletteChromeRepaint(initialPath, livePath, persistedPath);
+
+    foreach (string requestedTheme in options.Themes)
+    {
+        string theme = requestedTheme.Trim().ToLowerInvariant();
+        AssertProbe(theme is "light" or "dark", "theme-palettes themes must be light or dark.");
+        foreach ((string paletteId, string paletteName) in palettes)
+        {
+            using var app = LaunchApplication(
+                options.AppPath,
+                "--page=settings",
+                $"--theme={theme}",
+                $"--palette={paletteId}");
+            using var automation = new UIA3Automation();
+            try
+            {
+                Window window = GetReadyWindow(app, automation, $"theme-palettes {theme}/{paletteId}");
+                ResizeLogicalWindow(window, 1180, 700);
+                AutomationElement selected = WaitForElement(
+                    $"SettingsPalette_{paletteId}",
+                    () => window.FindFirstDescendant(cf => cf.ByAutomationId($"SettingsPalette_{paletteId}")),
+                    TimeSpan.FromSeconds(10));
+                RevealForInteraction(selected, $"{paletteName} palette");
+                AssertProbe(
+                    selected.Patterns.SelectionItem.IsSupported &&
+                    selected.Patterns.SelectionItem.Pattern.IsSelected.Value,
+                    $"{paletteName} was not selected for the {theme} startup matrix.");
+                Thread.Sleep(250);
+                CaptureWindow(
+                    window,
+                    Path.Combine(options.OutputDirectory, $"theme-palette-{paletteId}-{theme}.png"));
+            }
+            finally
+            {
+                TryClose(app);
+                KillExistingApplicationInstances(options.AppPath);
+            }
+        }
+    }
+
+    RunThemePaletteHomeMatrix(options, palettes);
+
+    Console.WriteLine(
+        $"theme-palettes probe: verified keyboard and live switching, visual repaint, restart persistence, " +
+        $"narrow layout, and {palettes.Length * options.Themes.Count} Settings plus Home palette/theme combinations.");
+}
+
+static void AssertThemePaletteKeyboardNavigation(Window window, string dataRoot)
+{
+    AutomationElement jithub = WaitForElement(
+        "JitHub palette for keyboard navigation",
+        () => window.FindFirstDescendant(cf => cf.ByAutomationId("SettingsPalette_jithub")),
+        TimeSpan.FromSeconds(5));
+    AutomationElement windows11 = WaitForElement(
+        "Windows 11 palette for keyboard navigation",
+        () => window.FindFirstDescendant(cf => cf.ByAutomationId("SettingsPalette_windows-11")),
+        TimeSpan.FromSeconds(5));
+
+    RevealForInteraction(jithub, "JitHub palette for keyboard navigation");
+    FocusForKeyboardActivation(window, jithub);
+    PressKeyForWindow(window, VirtualKeyShort.RIGHT);
+    WaitUntil(
+        "Right Arrow selects Windows 11 palette",
+        () => windows11.Patterns.SelectionItem.Pattern.IsSelected.Value &&
+            string.Equals(
+                ReadAuthSetting(dataRoot, "APPLICATION_PALETTE_KEY"),
+                "windows-11",
+                StringComparison.Ordinal),
+        TimeSpan.FromSeconds(5));
+
+    PressKeyForWindow(window, VirtualKeyShort.LEFT);
+    WaitUntil(
+        "Left Arrow restores JitHub palette",
+        () => jithub.Patterns.SelectionItem.Pattern.IsSelected.Value &&
+            string.Equals(
+                ReadAuthSetting(dataRoot, "APPLICATION_PALETTE_KEY"),
+                "jithub",
+                StringComparison.Ordinal),
+        TimeSpan.FromSeconds(5));
+}
+
+static void AssertThemePaletteChromeRepaint(string initialPath, string livePath, string persistedPath)
+{
+    using var initial = new Bitmap(initialPath);
+    using var live = new Bitmap(livePath);
+    using var persisted = new Bitmap(persistedPath);
+    AssertProbe(
+        initial.Size == live.Size && live.Size == persisted.Size,
+        "Theme palette repaint captures must use identical window dimensions.");
+
+    (double R, double G, double B) initialColor = AverageThemePaletteChrome(initial);
+    (double R, double G, double B) liveColor = AverageThemePaletteChrome(live);
+    (double R, double G, double B) persistedColor = AverageThemePaletteChrome(persisted);
+    double liveChange = AverageRgbDistance(initialColor, liveColor);
+    double restartDifference = AverageRgbDistance(liveColor, persistedColor);
+    int changedAccentPixels = CountSignificantThemePaletteChromeChanges(initial, live);
+    int minimumChangedAccentPixels = Math.Max(12, (int)Math.Round(initial.Width / 60d));
+    int initialJitHubAccentPixels = CountThemePalettePixelsNear(initial, Color.FromArgb(0x77, 0xB5, 0x9A));
+    int liveVisualStudioCodeAccentPixels = CountThemePalettePixelsNear(live, Color.FromArgb(0x00, 0x78, 0xD4));
+    int persistedVisualStudioCodeAccentPixels = CountThemePalettePixelsNear(persisted, Color.FromArgb(0x00, 0x78, 0xD4));
+    int minimumAccentPixels = Math.Max(12, (int)Math.Round(initial.Width / 100d));
+
+    AssertProbe(
+        liveChange >= 3.5,
+        $"Live palette switching did not repaint existing chrome (RGB delta {liveChange:F2}).");
+    AssertProbe(
+        changedAccentPixels >= minimumChangedAccentPixels,
+        $"Live palette switching did not repaint the existing navigation accent " +
+        $"({changedAccentPixels} significant pixels; expected at least {minimumChangedAccentPixels}).");
+    AssertProbe(
+        initialJitHubAccentPixels >= minimumAccentPixels,
+        $"The initial navigation indicator did not render the JitHub dark accent " +
+        $"({initialJitHubAccentPixels} pixels; expected at least {minimumAccentPixels}).");
+    AssertProbe(
+        liveVisualStudioCodeAccentPixels >= minimumAccentPixels,
+        $"The live navigation indicator did not render the Visual Studio Code dark accent " +
+        $"({liveVisualStudioCodeAccentPixels} pixels; expected at least {minimumAccentPixels}).");
+    AssertProbe(
+        persistedVisualStudioCodeAccentPixels >= minimumAccentPixels,
+        $"The persisted navigation indicator did not render the Visual Studio Code dark accent " +
+        $"({persistedVisualStudioCodeAccentPixels} pixels; expected at least {minimumAccentPixels}).");
+    AssertProbe(
+        restartDifference <= 3,
+        $"Live palette chrome differs from a clean-start frame (RGB delta {restartDifference:F2}).");
+}
+
+static (double R, double G, double B) AverageThemePaletteChrome(Bitmap bitmap)
+{
+    int left = (int)(bitmap.Width * 0.22);
+    int right = (int)(bitmap.Width * 0.28);
+    int top = (int)(bitmap.Height * 0.025);
+    int bottom = (int)(bitmap.Height * 0.075);
+    long red = 0;
+    long green = 0;
+    long blue = 0;
+    long count = 0;
+
+    for (int y = top; y < bottom; y += 3)
+    {
+        for (int x = left; x < right; x += 3)
+        {
+            Color color = bitmap.GetPixel(x, y);
+            red += color.R;
+            green += color.G;
+            blue += color.B;
+            count++;
+        }
+    }
+
+    return (red / (double)count, green / (double)count, blue / (double)count);
+}
+
+static int CountSignificantThemePaletteChromeChanges(Bitmap initial, Bitmap live)
+{
+    int left = (int)(initial.Width * 0.04);
+    int right = (int)(initial.Width * 0.2);
+    int top = (int)(initial.Height * 0.2);
+    int bottom = (int)(initial.Height * 0.38);
+    int changedPixels = 0;
+
+    for (int y = top; y < bottom; y++)
+    {
+        for (int x = left; x < right; x++)
+        {
+            Color before = initial.GetPixel(x, y);
+            Color after = live.GetPixel(x, y);
+            double distance =
+                (Math.Abs(before.R - after.R) +
+                 Math.Abs(before.G - after.G) +
+                 Math.Abs(before.B - after.B)) / 3d;
+            if (distance >= 18)
+            {
+                changedPixels++;
+            }
+        }
+    }
+
+    return changedPixels;
+}
+
+static int CountThemePalettePixelsNear(Bitmap bitmap, Color expected)
+{
+    int left = (int)(bitmap.Width * 0.04);
+    int right = (int)(bitmap.Width * 0.22);
+    int top = (int)(bitmap.Height * 0.2);
+    int bottom = (int)(bitmap.Height * 0.38);
+    int matchingPixels = 0;
+
+    for (int y = top; y < bottom; y++)
+    {
+        for (int x = left; x < right; x++)
+        {
+            Color actual = bitmap.GetPixel(x, y);
+            if (Math.Abs(actual.R - expected.R) <= 10 &&
+                Math.Abs(actual.G - expected.G) <= 10 &&
+                Math.Abs(actual.B - expected.B) <= 10)
+            {
+                matchingPixels++;
+            }
+        }
+    }
+
+    return matchingPixels;
+}
+
+static int CountThemePalettePixelsNearAnySurface(Bitmap bitmap, Color expected)
+{
+    int matchingPixels = 0;
+    for (int y = 0; y < bitmap.Height; y++)
+    {
+        for (int x = 0; x < bitmap.Width; x++)
+        {
+            Color actual = bitmap.GetPixel(x, y);
+            if (Math.Abs(actual.R - expected.R) <= 10 &&
+                Math.Abs(actual.G - expected.G) <= 10 &&
+                Math.Abs(actual.B - expected.B) <= 10)
+            {
+                matchingPixels++;
+            }
+        }
+    }
+
+    return matchingPixels;
+}
+
+static double AverageRgbDistance(
+    (double R, double G, double B) left,
+    (double R, double G, double B) right) =>
+    (Math.Abs(left.R - right.R) + Math.Abs(left.G - right.G) + Math.Abs(left.B - right.B)) / 3d;
+
+static void RunThemePaletteHomeMatrix(
+    CaptureOptions options,
+    IReadOnlyList<(string Id, string Name)> palettes)
+{
+    foreach (string requestedTheme in options.Themes)
+    {
+        string theme = requestedTheme.Trim().ToLowerInvariant();
+        foreach ((string paletteId, _) in palettes)
+        {
+            using var app = LaunchApplication(
+                options.AppPath,
+                "--page=home",
+                "--scenario=website-showcase",
+                "--website-showcase",
+                $"--theme={theme}",
+                $"--palette={paletteId}");
+            using var automation = new UIA3Automation();
+            try
+            {
+                Window window = GetReadyWindow(app, automation, $"theme-palettes Home {theme}/{paletteId}");
+                ResizeLogicalWindow(window, 1180, 700);
+                WaitForElement(
+                    $"Home widget board for {theme}/{paletteId}",
+                    () => window.FindFirstDescendant(cf => cf.ByAutomationId("DashboardWidgetBoard")),
+                    TimeSpan.FromSeconds(12));
+                WaitUntil(
+                    $"Home palette surface ready for {theme}/{paletteId}",
+                    () => IsVisible(window.FindFirstDescendant(
+                        cf => cf.ByAutomationId("DashboardRepository_1"))),
+                    TimeSpan.FromSeconds(12));
+                Thread.Sleep(200);
+                CaptureWindow(
+                    window,
+                    Path.Combine(options.OutputDirectory, $"theme-palette-{paletteId}-{theme}-home.png"));
+            }
+            finally
+            {
+                TryClose(app);
+                KillExistingApplicationInstances(options.AppPath);
+            }
+        }
     }
 }
 
@@ -3667,6 +4742,62 @@ static void RunShellResponsiveProbe(CaptureOptions options)
     try
     {
         Window window = GetReadyWindow(app, automation, "shell-responsive probe");
+        Rectangle initialWideBounds = ResizeWindow(window, 1366, 900);
+        if (initialWideBounds.Width >= AutomationResponsiveLayout.ShellRailCollapseWidth)
+        {
+            WaitForElement(
+                "DashboardCustomizeButton",
+                () => window.FindFirstDescendant(cf => cf.ByAutomationId("DashboardCustomizeButton")),
+                TimeSpan.FromSeconds(8));
+            AutomationElement wideRailButton = WaitForElement(
+                "wide ShellRailDrawerButton",
+                () =>
+                {
+                    AutomationElement? button = window.FindFirstDescendant(
+                        cf => cf.ByAutomationId("ShellRailDrawerButton"));
+                    return IsVisible(button) ? button : null;
+                },
+                TimeSpan.FromSeconds(5));
+            WaitUntil(
+                "wide shell rail starts inline",
+                () => IsVisible(window.FindFirstDescendant(cf => cf.ByAutomationId("ShellRail"))),
+                TimeSpan.FromSeconds(5));
+
+            InvokeOrClick(wideRailButton);
+            WaitUntil(
+                "user collapses wide shell rail",
+                () => !IsVisible(window.FindFirstDescendant(cf => cf.ByAutomationId("ShellRail"))),
+                TimeSpan.FromSeconds(5));
+            CaptureWindow(
+                window,
+                Path.Combine(options.OutputDirectory, "shell-responsive-user-collapsed-wide.png"));
+
+            ResizeWindow(window, 900, 700);
+            ResizeWindow(window, 1366, 900);
+            WaitUntil(
+                "user-collapsed shell rail remains collapsed after resize",
+                () => !IsVisible(window.FindFirstDescendant(cf => cf.ByAutomationId("ShellRail"))),
+                TimeSpan.FromSeconds(5));
+            CaptureWindow(
+                window,
+                Path.Combine(options.OutputDirectory, "shell-responsive-user-collapse-persisted.png"));
+
+            wideRailButton = WaitForElement(
+                "wide ShellRailDrawerButton after resize",
+                () =>
+                {
+                    AutomationElement? button = window.FindFirstDescendant(
+                        cf => cf.ByAutomationId("ShellRailDrawerButton"));
+                    return IsVisible(button) ? button : null;
+                },
+                TimeSpan.FromSeconds(5));
+            InvokeOrClick(wideRailButton);
+            WaitUntil(
+                "user expands wide shell rail",
+                () => IsVisible(window.FindFirstDescendant(cf => cf.ByAutomationId("ShellRail"))),
+                TimeSpan.FromSeconds(5));
+        }
+
         (int Width, int Height)[] sizes =
         [
             (1366, 900),
@@ -3686,7 +4817,8 @@ static void RunShellResponsiveProbe(CaptureOptions options)
             {
                 AssertProbe(window.FindFirstDescendant(cf => cf.ByAutomationId("ShellNav_home")) is not null, "Combined shell nav was not present.");
                 AssertProbe(window.FindFirstDescendant(cf => cf.ByAutomationId("ShellRepoFilter_Public")) is not null, "Combined shell repository filter was not present.");
-                AssertProbe(!IsVisible(window.FindFirstDescendant(cf => cf.ByAutomationId("ShellRailDrawerButton"))), "Wide shell exposed a redundant navigation drawer button.");
+                AssertProbe(IsVisible(window.FindFirstDescendant(cf => cf.ByAutomationId("ShellRailDrawerButton"))), "Wide shell did not expose the persistent navigation toggle.");
+                AssertProbe(IsVisible(window.FindFirstDescendant(cf => cf.ByAutomationId("ShellRail"))), "Wide shell rail did not return inline after the user expanded it.");
             }
             else
             {
@@ -4250,6 +5382,14 @@ static void RunHomeWidgetBoardProbe(CaptureOptions options)
             }, TimeSpan.FromSeconds(8));
         }
         Thread.Sleep(350);
+        AutomationElement visibleOverviewMetric = WaitForElement(
+            "visible Overview metric after repeated drawer cycles",
+            () => window.FindAllDescendants(cf => cf.ByAutomationId("DashboardOverviewMetricRepositories"))
+                .FirstOrDefault(IsVisible),
+            TimeSpan.FromSeconds(5));
+        AssertProbe(
+            IsVisible(visibleOverviewMetric),
+            "Repeated Home drawer cycles reopened below the Overview metrics.");
         CaptureWindow(window, Path.Combine(options.OutputDirectory, "home-widget-board-compact-drawer.png"));
     }
     finally
@@ -4661,6 +5801,13 @@ static void RunAuthProtocolReactivationScenario(CaptureOptions options)
             "Protocol reactivation retained consumed OAuth state.");
         AssertAuthMarker(root, "protocol.authorization.completed");
         CaptureWindow(window, Path.Combine(options.OutputDirectory, "auth-protocol-reactivation-light.png"));
+        WaitUntil(
+            "protocol completion status dismissed",
+            () => !IsVisible(window.FindFirstDescendant(cf => cf.ByAutomationId("AppStatusHost"))),
+            TimeSpan.FromSeconds(8));
+        CaptureWindow(window, Path.Combine(
+            options.OutputDirectory,
+            "auth-protocol-reactivation-status-dismissed-light.png"));
     }
     finally
     {
@@ -6695,6 +7842,7 @@ static void RunPullRequestsResponsiveWorkspaceProbe(CaptureOptions options)
     using var app = LaunchApplication(
         options.AppPath,
         "--page=repo-pulls",
+        "--scenario=pr-shy-header",
         "--theme=dark",
         $"--repo={options.RepositoryFullName}");
     using var automation = new UIA3Automation();
@@ -6734,6 +7882,24 @@ static void RunPullRequestsResponsiveWorkspaceProbe(CaptureOptions options)
                 window.FindFirstDescendant(cf => cf.ByAutomationId("WorkspaceTabs")) is null,
                 "Pull requests exposed workspace tabs.");
 
+            bool compactWorkspace = IsVisible(FindCurrentVisibleByAutomationId(
+                window,
+                "RepoPullRequestsSectionComboBox"));
+            AssertProbe(
+                IsVisible(FindCurrentVisibleByAutomationId(
+                    window,
+                    compactWorkspace ? "RepoPullRequestsSectionComboBox" : "RepoPullRequestsSectionSegmented")),
+                $"pull-requests: expected {(compactWorkspace ? "compact" : "expanded")} detail header was not visible at {viewportLabel}.");
+
+            AutomationElement? compactRepositoryCommands =
+                FindCurrentVisibleByAutomationId(window, "RepoDetailCompactCommandsButton");
+            if (IsVisible(compactRepositoryCommands))
+            {
+                AssertProbe(
+                    IsVisible(FindCurrentVisibleByAutomationId(window, "RepoDetailIdentity")),
+                    $"pull-requests: compact repository identity was not visible at {viewportLabel}.");
+            }
+
             AutomationElement? leadingButton = FindAdaptivePaneButton(window, "RepoPullRequests", leading: true);
             if (IsVisible(leadingButton))
             {
@@ -6757,19 +7923,91 @@ static void RunPullRequestsResponsiveWorkspaceProbe(CaptureOptions options)
             TimeSpan.FromSeconds(8));
         ExerciseIssueListScrollSelection(window, list, options.OutputDirectory, "pull-requests-page");
 
-        AutomationElement section = WaitForElement(
-            "RepoPullRequestsSection_Commits",
-            () => window.FindFirstDescendant(cf => cf.ByAutomationId("RepoPullRequestsSection_Commits")),
-            TimeSpan.FromSeconds(8));
-        InvokeOrClick(section);
-        Thread.Sleep(650);
-        CaptureWindow(window, Path.Combine(options.OutputDirectory, "pull-requests-section-commits.png"));
+        (string SelectorId, string ContentId, string Slug)[] sections =
+        [
+            ("RepoPullRequestsSection_Conversation", "RepoPullRequestsCommentsList", "conversation"),
+            ("RepoPullRequestsSection_Files", "CommitDiffViewerRowsScrollViewer", "files"),
+            ("RepoPullRequestsSection_Commits", "RepoPullRequestsCommitsList", "commits"),
+            ("RepoPullRequestsSection_Reviews", "RepoPullRequestsReviewsList", "reviews"),
+            ("RepoPullRequestsSection_Timeline", "RepoPullRequestsTimelineList", "timeline")
+        ];
+        foreach ((string selectorId, string contentId, string slug) in sections)
+        {
+            ExercisePullRequestShyHeaderSection(
+                window,
+                selectorId,
+                contentId,
+                slug,
+                options.OutputDirectory);
+        }
     }
     finally
     {
         TryClose(app);
         KillExistingApplicationInstances(options.AppPath);
     }
+}
+
+static void ExercisePullRequestShyHeaderSection(
+    Window window,
+    string selectorAutomationId,
+    string contentAutomationId,
+    string slug,
+    string outputDirectory)
+{
+    AutomationElement selector = WaitForElement(
+        selectorAutomationId,
+        () => FindCurrentVisibleByAutomationId(window, selectorAutomationId),
+        TimeSpan.FromSeconds(8));
+    InvokeOrClick(selector);
+
+    AutomationElement scrollHost = WaitForElement(
+        contentAutomationId,
+        () => FindCurrentVisibleByAutomationId(window, contentAutomationId),
+        TimeSpan.FromSeconds(12));
+    WaitUntil(
+        $"{slug} section vertical scroll contract",
+        () => scrollHost.Patterns.Scroll.IsSupported &&
+            scrollHost.Patterns.Scroll.Pattern.VerticallyScrollable.ValueOrDefault,
+        TimeSpan.FromSeconds(12));
+
+    var scroll = scrollHost.Patterns.Scroll.Pattern;
+    scroll.SetScrollPercent(FlaUI.Core.Patterns.ScrollPatternConstants.NoScroll, 0);
+    WaitForPullRequestHeaderState(window, shy: false, $"{slug} section top restoration");
+    Thread.Sleep(300);
+    CaptureWindow(window, Path.Combine(outputDirectory, $"pull-requests-section-{slug}.png"));
+
+    scroll.SetScrollPercent(FlaUI.Core.Patterns.ScrollPatternConstants.NoScroll, 85);
+    WaitForPullRequestHeaderState(window, shy: true, $"{slug} section shy header");
+    Thread.Sleep(300);
+    CaptureWindow(window, Path.Combine(outputDirectory, $"pull-requests-section-{slug}-shy.png"));
+
+    scroll.SetScrollPercent(FlaUI.Core.Patterns.ScrollPatternConstants.NoScroll, 45);
+    WaitForPullRequestHeaderState(window, shy: false, $"{slug} section upward reveal");
+    AssertProbe(
+        scroll.VerticalScrollPercent.ValueOrDefault > 1,
+        $"{slug} section only restored its expanded header at the top instead of after upward travel.");
+    Thread.Sleep(300);
+    CaptureWindow(window, Path.Combine(outputDirectory, $"pull-requests-section-{slug}-revealed.png"));
+
+    scroll.SetScrollPercent(FlaUI.Core.Patterns.ScrollPatternConstants.NoScroll, 65);
+    WaitForPullRequestHeaderState(window, shy: true, $"{slug} section downward re-hide");
+    Thread.Sleep(300);
+    CaptureWindow(window, Path.Combine(outputDirectory, $"pull-requests-section-{slug}-rehidden.png"));
+
+    scroll.SetScrollPercent(FlaUI.Core.Patterns.ScrollPatternConstants.NoScroll, 0);
+    WaitForPullRequestHeaderState(window, shy: false, $"{slug} section final top restoration");
+}
+
+static void WaitForPullRequestHeaderState(Window window, bool shy, string context)
+{
+    string visibleHeaderId = shy ? "RepoPullRequestsShySectionComboBox" : "RepoPullRequestsSectionSegmented";
+    string hiddenHeaderId = shy ? "RepoPullRequestsSectionSegmented" : "RepoPullRequestsShySectionComboBox";
+    WaitUntil(
+        context,
+        () => IsVisible(FindCurrentVisibleByAutomationId(window, visibleHeaderId)) &&
+            !IsVisible(FindCurrentVisibleByAutomationId(window, hiddenHeaderId)),
+        TimeSpan.FromSeconds(5));
 }
 
 static void RunPullRequestReplyIdentityProbe(CaptureOptions options)
@@ -7203,13 +8441,357 @@ static void RunRepoCodeResponsiveWorkspaceProbe(CaptureOptions options)
             () => string.Equals(GetRepoCodeRoutePath(window), beforePath, StringComparison.Ordinal),
             TimeSpan.FromSeconds(6));
 
-        Console.WriteLine($"repo-code-responsive-workspace probe: {sizes.Length} responsive states, focus containment, drawer behavior, overflow access, and breadcrumb routing passed; output={options.OutputDirectory}");
+        ExerciseRepoCodeContentSurfaces(window, options);
+
+        Console.WriteLine($"repo-code-responsive-workspace probe: {sizes.Length} responsive states, focus containment, drawer behavior, overflow access, breadcrumb routing, CSV rich/plain semantics, and SVG zoom passed; output={options.OutputDirectory}");
     }
     finally
     {
         TryClose(app);
         KillExistingApplicationInstances(options.AppPath);
     }
+}
+
+static void ExerciseRepoCodeContentSurfaces(Window window, CaptureOptions options)
+{
+    ResizeWindow(window, 1366, 900);
+    Thread.Sleep(320);
+
+    SelectRepoCodeFixtureFile(window, "data.csv", "data.csv, file");
+    AutomationElement dataTable = WaitForElement(
+        "ready CSV data table",
+        () =>
+        {
+            AutomationElement? candidate = window.FindAllDescendants()
+                .FirstOrDefault(element =>
+                    IsVisible(element) &&
+                    (string.Equals(GetAutomationId(element), "CsvPreviewDataGrid", StringComparison.Ordinal) ||
+                     string.Equals(GetAutomationId(element), "CsvPreviewDataTable", StringComparison.Ordinal)));
+            if (candidate is null ||
+                !candidate.Patterns.Grid.IsSupported ||
+                !candidate.Patterns.Table.IsSupported)
+            {
+                return null;
+            }
+
+            try
+            {
+                return candidate.Patterns.Grid.Pattern.RowCount.Value == 7 &&
+                    candidate.Patterns.Grid.Pattern.ColumnCount.Value == 5
+                    ? candidate
+                    : null;
+            }
+            catch (COMException)
+            {
+                return null;
+            }
+        },
+        TimeSpan.FromSeconds(12));
+
+    Grid csvGrid = dataTable.AsGrid();
+    AssertProbe(csvGrid.RowCount == 7, $"repo-code CSV: expected 7 data rows, found {csvGrid.RowCount}.");
+    AssertProbe(csvGrid.ColumnCount == 5, $"repo-code CSV: expected 5 columns, found {csvGrid.ColumnCount}.");
+    AutomationElement[] visibleHeaders = window.FindAllDescendants()
+        .Where(element =>
+            IsVisible(element) &&
+            GetAutomationId(element).StartsWith("CsvPreviewDataTableSortColumn_", StringComparison.Ordinal))
+        .ToArray();
+    AssertProbe(visibleHeaders.Length == 5, $"repo-code CSV: visual tree exposed {visibleHeaders.Length} of five column headers.");
+    var tablePattern = dataTable.Patterns.Table.Pattern;
+    AssertProbe(
+        tablePattern.RowOrColumnMajor.IsSupported &&
+        tablePattern.RowOrColumnMajor.Value == FlaUI.Core.Definitions.RowOrColumnMajor.RowMajor,
+        "repo-code CSV: TablePattern omitted its row-major traversal contract.");
+
+    AutomationElement firstCell = dataTable.Patterns.Grid.Pattern.GetItem(0, 0);
+    AssertProbe(firstCell.Patterns.GridItem.IsSupported, "repo-code CSV: cells omitted GridItem semantics.");
+    AssertProbe(firstCell.Patterns.TableItem.IsSupported, "repo-code CSV: cells omitted TableItem semantics.");
+    for (int column = 0; column < csvGrid.ColumnCount; column++)
+    {
+        AutomationElement cell = dataTable.Patterns.Grid.Pattern.GetItem(0, column);
+        AssertProbe(cell.Patterns.TableItem.IsSupported, $"repo-code CSV: column {column} omitted TableItem semantics.");
+        UIA3FrameworkAutomationElement nativeCell =
+            (UIA3FrameworkAutomationElement)cell.FrameworkAutomationElement;
+        NativeTableItemPattern nativeTableItemPattern =
+            (NativeTableItemPattern)nativeCell.NativeElement.GetCurrentPattern(10013);
+        NativeTableElementArray nativeColumnHeaders =
+            nativeTableItemPattern.GetCurrentColumnHeaderItems();
+        string nativeHeaderId = nativeColumnHeaders?.Length == 1
+            ? nativeColumnHeaders.GetElement(0).CurrentAutomationId
+            : string.Empty;
+        AssertProbe(
+            string.Equals(nativeHeaderId, $"CsvPreviewDataTableSortColumn_{column}", StringComparison.Ordinal),
+            $"repo-code CSV: column {column} did not resolve to its native column header.");
+    }
+
+    AssertProbe(
+        string.Equals(GetElementName(firstCell), "Repository: JitHub", StringComparison.Ordinal),
+        $"repo-code CSV: unexpected initial first cell '{GetElementName(firstCell)}'.");
+
+    AutomationElement repositorySort = WaitForElement(
+        "CSV Repository sort header",
+        () => window.FindAllDescendants(cf => cf.ByAutomationId("CsvPreviewDataTableSortColumn_0"))
+            .FirstOrDefault(IsVisible),
+        TimeSpan.FromSeconds(5));
+    AssertProbe(repositorySort.Patterns.Invoke.IsSupported, "repo-code CSV: sort header omitted Invoke semantics.");
+    repositorySort.Patterns.Invoke.Pattern.Invoke();
+    WaitUntil(
+        "CSV ascending Repository sort",
+        () => string.Equals(
+            GetElementName(dataTable.Patterns.Grid.Pattern.GetItem(0, 0)),
+            "Repository: AppDataTable",
+            StringComparison.Ordinal),
+        TimeSpan.FromSeconds(5));
+    CaptureWindow(window, Path.Combine(options.OutputDirectory, "repo-code-csv-rich-1366x900.png"));
+
+    SelectSegmentedItem(window, "CsvPreviewViewMode_Plain", "Plain CSV view");
+    AutomationElement plainEditor = WaitForElement(
+        "read-only plain CSV editor",
+        () => window.FindAllDescendants(cf => cf.ByAutomationId("RepoCodeEditor"))
+            .FirstOrDefault(element =>
+                IsVisible(element) &&
+                element.Patterns.Value.IsSupported &&
+                (element.Patterns.Value.Pattern.Value.Value ?? string.Empty)
+                    .Contains("Repository,Language,Open issues,Status,Notes", StringComparison.Ordinal)),
+        TimeSpan.FromSeconds(10));
+    AssertProbe(
+        plainEditor.Patterns.Value.Pattern.IsReadOnly.Value,
+        "repo-code CSV: Plain mode exposed an editable source control.");
+    AssertProbe(
+        !window.FindAllDescendants()
+            .Any(element =>
+                IsVisible(element) &&
+                (string.Equals(GetAutomationId(element), "CsvPreviewDataGrid", StringComparison.Ordinal) ||
+                 string.Equals(GetAutomationId(element), "CsvPreviewDataTable", StringComparison.Ordinal))),
+        "repo-code CSV: Rich table remained visible behind Plain mode.");
+    CaptureWindow(window, Path.Combine(options.OutputDirectory, "repo-code-csv-plain-1366x900.png"));
+
+    SelectSegmentedItem(window, "CsvPreviewViewMode_Rich", "Rich CSV view");
+    dataTable = WaitForElement(
+        "restored rich CSV table",
+        () => window.FindAllDescendants()
+            .FirstOrDefault(element =>
+                IsVisible(element) &&
+                (string.Equals(GetAutomationId(element), "CsvPreviewDataGrid", StringComparison.Ordinal) ||
+                 string.Equals(GetAutomationId(element), "CsvPreviewDataTable", StringComparison.Ordinal)) &&
+                element.Patterns.Grid.IsSupported),
+        TimeSpan.FromSeconds(10));
+
+    ResizeWindow(window, 640, 600);
+    Thread.Sleep(420);
+    AssertProbe(IsInsideWindowBounds(dataTable, window), "repo-code CSV: compact table escaped the 640px viewport.");
+    AssertProbe(IsVisible(window.FindFirstDescendant(cf => cf.ByAutomationId("CsvPreviewViewMode"))), "repo-code CSV: view switcher disappeared at 640px.");
+    CaptureWindow(window, Path.Combine(options.OutputDirectory, "repo-code-csv-rich-640x600.png"));
+
+    ResizeWindow(window, 1366, 900);
+    Thread.Sleep(320);
+    SelectRepoCodeFixtureFile(window, "architecture.svg", "architecture.svg, file");
+    AutomationElement svgViewport = WaitForElement(
+        "rendered SVG viewport",
+        () =>
+        {
+            AutomationElement? candidate = window.FindFirstDescendant(cf => cf.ByAutomationId("SvgPreviewViewport"));
+            string status = candidate?.Properties.ItemStatus.ValueOrDefault ?? string.Empty;
+            return candidate is not null &&
+                IsVisible(candidate) &&
+                status.StartsWith("rendered:tiles:", StringComparison.Ordinal)
+                ? candidate
+                : null;
+        },
+        TimeSpan.FromSeconds(14));
+    AutomationElement renderedImage = WaitForElement(
+        "rendered SVG image",
+        () => window.FindAllDescendants(cf => cf.ByAutomationId("SvgPreviewRenderedImage"))
+            .FirstOrDefault(IsVisible),
+        TimeSpan.FromSeconds(8));
+    AssertProbe(
+        renderedImage.BoundingRectangle.Width > 0 && renderedImage.BoundingRectangle.Height > 0,
+        "repo-code SVG: rendered image had empty bounds.");
+    AutomationElement svgScrollViewport = WaitForElement(
+        "SVG scroll viewport",
+        () => window.FindFirstDescendant(cf => cf.ByAutomationId("SvgPreviewScrollViewer")),
+        TimeSpan.FromSeconds(5));
+
+    AssertProbe(svgViewport.Patterns.Transform2.IsSupported, "repo-code SVG: zoom surface omitted Transform2 semantics.");
+    var zoom = svgViewport.Patterns.Transform2.Pattern;
+    AssertProbe(zoom.CanZoom.Value, "repo-code SVG: Transform2 reported that zoom was unavailable.");
+    AssertProbe(Math.Abs(zoom.ZoomMinimum.Value - 10) < 0.1, $"repo-code SVG: expected 0.1x minimum zoom, found {zoom.ZoomMinimum.Value / 100:F2}x.");
+    AssertProbe(Math.Abs(zoom.ZoomMaximum.Value - 800) < 0.1, $"repo-code SVG: expected 8x maximum zoom, found {zoom.ZoomMaximum.Value / 100:F2}x.");
+
+    VerifyRepoCodeSvgZoom(window, svgViewport, svgScrollViewport, zoom, 100, "repo-code-svg-zoom-1x.png", options.OutputDirectory);
+    VerifyRepoCodeSvgZoom(window, svgViewport, svgScrollViewport, zoom, 800, "repo-code-svg-zoom-8x.png", options.OutputDirectory);
+    VerifyRepoCodeSvgZoom(window, svgViewport, svgScrollViewport, zoom, 10, "repo-code-svg-zoom-0.1x.png", options.OutputDirectory);
+    VerifyRepoCodeSvgZoom(window, svgViewport, svgScrollViewport, zoom, 100, "repo-code-svg-zoom-restored-1x.png", options.OutputDirectory);
+
+    ResizeWindow(window, 640, 600);
+    Thread.Sleep(420);
+    AssertProbe(IsVisible(svgViewport), "repo-code SVG: viewport disappeared at 640px.");
+    AssertProbe(IsInsideWindowBounds(svgViewport, window), "repo-code SVG: compact viewport escaped the 640px window.");
+    CaptureWindow(window, Path.Combine(options.OutputDirectory, "repo-code-svg-640x600.png"));
+}
+
+static void RunRepoCodeContentSurfacesProbe(CaptureOptions options)
+{
+    KillExistingApplicationInstances(options.AppPath);
+    using var app = LaunchApplication(
+        options.AppPath,
+        "--page=repo-code",
+        "--theme=dark",
+        $"--repo={options.RepositoryFullName}");
+    using var automation = new UIA3Automation();
+    try
+    {
+        Window window = GetReadyWindow(app, automation, "repo-code-content-surfaces probe");
+        ExerciseRepoCodeContentSurfaces(window, options);
+        Console.WriteLine($"repo-code-content-surfaces probe: CSV and SVG behaviors passed; output={options.OutputDirectory}");
+    }
+    finally
+    {
+        TryClose(app);
+        KillExistingApplicationInstances(options.AppPath);
+    }
+}
+
+static void SelectRepoCodeFixtureFile(Window window, string path, string accessibleName)
+{
+    AutomationElement? file = window.FindAllDescendants(cf => cf.ByControlType(ControlType.TreeItem))
+        .FirstOrDefault(element =>
+            IsVisible(element) &&
+            string.Equals(element.Properties.ItemStatus.ValueOrDefault, $"path:{path}", StringComparison.Ordinal) &&
+            string.Equals(GetElementName(element), accessibleName, StringComparison.OrdinalIgnoreCase));
+    if (file is null)
+    {
+        AutomationElement opener = WaitForElement(
+            "RepoCode file-tree opener for fixture selection",
+            () => window.FindAllDescendants(cf => cf.ByAutomationId("RepoCodeOpenFileTreeButton"))
+                .FirstOrDefault(IsVisible),
+            TimeSpan.FromSeconds(5));
+        OpenRepoCodeFileTreeDrawer(window, opener);
+        AutomationElement drawer = WaitForElement(
+            "RepoCode fixture-selection drawer",
+            () => window.FindAllDescendants(cf => cf.ByAutomationId("RepoCodeLeftDrawer"))
+                .FirstOrDefault(IsVisible),
+            TimeSpan.FromSeconds(5));
+        file = WaitForElement(
+            $"repository fixture {path}",
+            () => drawer.FindAllDescendants(cf => cf.ByControlType(ControlType.TreeItem))
+                .FirstOrDefault(element =>
+                    IsVisible(element) &&
+                    string.Equals(element.Properties.ItemStatus.ValueOrDefault, $"path:{path}", StringComparison.Ordinal) &&
+                    string.Equals(GetElementName(element), accessibleName, StringComparison.OrdinalIgnoreCase)),
+            TimeSpan.FromSeconds(10));
+    }
+
+    SelectAutomationItem(file, $"repository fixture {path}");
+    WaitUntil(
+        $"repository fixture route {path}",
+        () => IsRepoCodeFixtureRouteVisible(window, path),
+        TimeSpan.FromSeconds(12));
+}
+
+static bool IsRepoCodeFixtureRouteVisible(Window window, string path)
+{
+    if (string.Equals(GetRepoCodeRoutePath(window), path, StringComparison.Ordinal))
+    {
+        return true;
+    }
+
+    AutomationElement? transitionPath = FindCurrentVisibleByAutomationId(window, "RepoCodeTransitionPath");
+    if (transitionPath is not null &&
+        string.Equals(GetElementName(transitionPath), path, StringComparison.Ordinal))
+    {
+        return true;
+    }
+
+    AutomationElement? compactFileName = FindCurrentVisibleByAutomationId(window, "RepoCodeCompactFileName");
+    return compactFileName is not null && string.Equals(
+        GetElementName(compactFileName),
+        Path.GetFileName(path),
+        StringComparison.Ordinal);
+}
+
+static void SelectSegmentedItem(Window window, string automationId, string accessibleName)
+{
+    AutomationElement item = WaitForElement(
+        accessibleName,
+        () => window.FindAllDescendants(cf => cf.ByAutomationId(automationId)).FirstOrDefault(IsVisible),
+        TimeSpan.FromSeconds(5));
+    AssertProbe(item.Patterns.SelectionItem.IsSupported, $"{accessibleName} omitted SelectionItem semantics.");
+    item.Patterns.SelectionItem.Pattern.Select();
+    WaitUntil(
+        $"{accessibleName} selected",
+        () => item.Patterns.SelectionItem.Pattern.IsSelected.Value,
+        TimeSpan.FromSeconds(5));
+}
+
+static void VerifyRepoCodeSvgZoom(
+    Window window,
+    AutomationElement svgViewport,
+    AutomationElement svgScrollViewport,
+    FlaUI.Core.Patterns.ITransform2Pattern zoom,
+    double percent,
+    string artifactName,
+    string outputDirectory)
+{
+    zoom.Zoom(percent);
+    WaitUntil(
+        $"SVG zoom settles at {percent / 100:F1}x",
+        () => Math.Abs(zoom.ZoomLevel.Value - percent) < 0.1,
+        TimeSpan.FromSeconds(5));
+    Thread.Sleep(520);
+    AssertProbe(
+        (svgViewport.Properties.ItemStatus.ValueOrDefault ?? string.Empty)
+            .StartsWith("rendered:tiles:", StringComparison.Ordinal),
+        $"repo-code SVG: render did not recover after zooming to {percent / 100:F1}x.");
+    AssertProbe(
+        !window.FindAllDescendants(cf => cf.ByName("Unable to render this SVG."))
+            .Any(IsVisible),
+        $"repo-code SVG: error state appeared after zooming to {percent / 100:F1}x.");
+    string artifactPath = Path.Combine(outputDirectory, artifactName);
+    CaptureWindow(window, artifactPath);
+    AssertSvgViewportContainsRenderedColor(window, svgScrollViewport, artifactPath, percent);
+}
+
+static void AssertSvgViewportContainsRenderedColor(
+    Window window,
+    AutomationElement svgViewport,
+    string screenshotPath,
+    double percent)
+{
+    Rectangle captureBounds = NativeMethods.GetPhysicalWindowBounds(GetNativeWindowHandle(window));
+    Rectangle viewportBounds = svgViewport.BoundingRectangle;
+    using var screenshot = new Bitmap(screenshotPath);
+
+    int left = Math.Clamp(viewportBounds.Left - captureBounds.Left, 0, screenshot.Width);
+    int top = Math.Clamp(viewportBounds.Top - captureBounds.Top, 0, screenshot.Height);
+    int right = Math.Clamp(viewportBounds.Right - captureBounds.Left, 0, screenshot.Width);
+    int bottom = Math.Clamp(viewportBounds.Bottom - captureBounds.Top, 0, screenshot.Height);
+    AssertProbe(right > left && bottom > top, "repo-code SVG: viewport had no capturable pixel area.");
+
+    const int sampleStep = 2;
+    int colorfulPixels = 0;
+    int sampledPixels = 0;
+    for (int y = top; y < bottom; y += sampleStep)
+    {
+        for (int x = left; x < right; x += sampleStep)
+        {
+            Color pixel = screenshot.GetPixel(x, y);
+            int maximum = Math.Max(pixel.R, Math.Max(pixel.G, pixel.B));
+            int minimum = Math.Min(pixel.R, Math.Min(pixel.G, pixel.B));
+            if (maximum >= 96 && maximum - minimum >= 32)
+            {
+                colorfulPixels++;
+            }
+
+            sampledPixels++;
+        }
+    }
+
+    int requiredPixels = Math.Max(32, sampledPixels / 10_000);
+    AssertProbe(
+        colorfulPixels >= requiredPixels,
+        $"repo-code SVG: the {percent / 100:F1}x viewport was blank or framed outside the rendered fixture " +
+        $"({colorfulPixels} colorful pixels; required {requiredPixels}).");
 }
 
 static void RunRepoCodePerformanceProbe(CaptureOptions options)
@@ -7249,11 +8831,22 @@ static void RunRepoCodePerformanceProbe(CaptureOptions options)
             !string.Equals(initialHeartbeat, nextHeartbeat, StringComparison.Ordinal),
             "repo-code-performance: dispatcher heartbeat did not advance within 50 ms of source selection.");
 
-        AutomationElement editor = WaitForElementWithItemStatus(
-            window,
-            "RepoCodeEditor",
-            "Source loaded",
-            TimeSpan.FromMilliseconds(150));
+        AutomationElement editor;
+        try
+        {
+            editor = WaitForElementWithItemStatus(
+                window,
+                "RepoCodeEditor",
+                "Source loaded",
+                TimeSpan.FromSeconds(5));
+        }
+        catch
+        {
+            CaptureWindow(
+                window,
+                Path.Combine(options.OutputDirectory, "repo-code-performance-editor-timeout.png"));
+            throw;
+        }
         firstContent.Stop();
         AssertProbe(
             firstContent.Elapsed <= TimeSpan.FromMilliseconds(150),
@@ -7439,9 +9032,17 @@ static void ExerciseRepoCodeFindOutlineAndTraversal(
         "RepoCode deterministic find result",
         () => !string.IsNullOrEmpty(findStatus.Properties.ItemStatus.ValueOrDefault),
         TimeSpan.FromSeconds(5));
+    string editorValue = editor.Patterns.Value.IsSupported
+        ? editor.Patterns.Value.Pattern.Value.Value ?? string.Empty
+        : string.Empty;
+    string editorValuePrefix = editorValue.Length <= 80
+        ? editorValue
+        : editorValue[..80];
     AssertProbe(
         string.Equals(findStatus.Properties.ItemStatus.ValueOrDefault, "match", StringComparison.Ordinal),
-        $"repo-code: deterministic Experience search did not find source content ({GetElementName(findStatus)})." );
+        $"repo-code: deterministic Experience search did not find source content ({GetElementName(findStatus)}); " +
+        $"UIA value length={editorValue.Length}, contains target={editorValue.Contains("Experience", StringComparison.Ordinal)}, " +
+        $"prefix={editorValuePrefix.ReplaceLineEndings(" ")}." );
     Keyboard.Press(VirtualKeyShort.ESCAPE);
 
     AutomationElement symbols = WaitForElement(
@@ -7458,6 +9059,13 @@ static void ExerciseRepoCodeFindOutlineAndTraversal(
         TimeSpan.FromSeconds(5));
     CaptureWindowWithPopups(window, Path.Combine(outputDirectory, $"{artifactPrefix}-find-outline.png"));
     Keyboard.Press(VirtualKeyShort.ESCAPE);
+    AssertProbe(
+        WaitUntilAvailable(
+            () => !automation.GetDesktop()
+                .FindAllDescendants(cf => cf.ByAutomationId("RepoCodeSymbolsList"))
+                .Any(IsVisible),
+            TimeSpan.FromSeconds(2)),
+        "repo-code: outline flyout did not close before the next editor command.");
 
     AutomationElement copyLineLink = AssertNamedAutomationElement(
         window,
@@ -7515,8 +9123,17 @@ static AutomationElement WaitForElementWithItemStatus(
     }
     while (stopwatch.Elapsed <= timeout);
 
+    AutomationElement[] observed = window.FindAllDescendants(cf => cf.ByAutomationId(automationId));
+    string observedStatuses = observed.Length == 0
+        ? "element absent"
+        : string.Join(
+            ", ",
+            observed.Select(element =>
+                $"status='{element.Properties.ItemStatus.ValueOrDefault ?? string.Empty}', " +
+                $"name='{GetElementName(element)}', visible={IsVisible(element)}"));
     throw new InvalidOperationException(
-        $"Timed out waiting for {automationId} item status '{expectedStatus}' within {timeout.TotalMilliseconds:F0} ms.");
+        $"Timed out waiting for {automationId} item status '{expectedStatus}' within {timeout.TotalMilliseconds:F0} ms; " +
+        $"observed: {observedStatuses}.");
 }
 
 static string WaitForChangingItemStatus(
@@ -9111,6 +10728,30 @@ static void RunSettingsResponsiveProbe(CaptureOptions options)
     }
 }
 
+static void RunSettingsExportPickerProbe(CaptureOptions options)
+{
+    bool isAttached = !string.IsNullOrWhiteSpace(options.AttachProcess);
+    using var app = isAttached
+        ? CreateProbeApplication(options)
+        : LaunchApplication(options.AppPath, "--page=settings", "--theme=light");
+    using var automation = new UIA3Automation();
+    try
+    {
+        Window window = GetReadyWindow(app, automation, "settings export picker probe");
+        ResizeWindow(window, 1366, 900);
+        AssertSettingsExportPicker(window, automation, options.OutputDirectory);
+        Console.WriteLine("settings-export-picker probe: picker canceled and settings action gate released.");
+    }
+    finally
+    {
+        if (!isAttached)
+        {
+            TryClose(app);
+            KillExistingApplicationInstances(options.AppPath);
+        }
+    }
+}
+
 static void RunVNextPseudoLocalizationProbe(CaptureOptions options)
 {
     (string Page, string RootId, string[] LocalizedCheckpointIds)[] targets =
@@ -9118,6 +10759,7 @@ static void RunVNextPseudoLocalizationProbe(CaptureOptions options)
         ("settings", "SettingsRoot",
         [
             "SettingsThemeHeading",
+            "SettingsPaletteHeading",
             "SettingsThemeSystemLabel",
             "SettingsThemeLightLabel",
             "SettingsThemeDarkLabel",
@@ -9137,6 +10779,7 @@ static void RunVNextPseudoLocalizationProbe(CaptureOptions options)
     string[] requiredSettingsCheckpoints =
     [
         "SettingsThemeHeading",
+        "SettingsPaletteHeading",
         "SettingsThemeSystemLabel",
         "SettingsThemeLightLabel",
         "SettingsThemeDarkLabel",
@@ -9280,7 +10923,7 @@ static IReadOnlySet<string> LoadEnglishUiFallbacks(string appPath)
 {
     string? appDirectory = Path.GetDirectoryName(Path.GetFullPath(appPath));
     DirectoryInfo? directory = appDirectory is null ? null : new DirectoryInfo(appDirectory);
-    while (directory is not null && !File.Exists(Path.Combine(directory.FullName, "JitHub.slnx")))
+    while (directory is not null && !File.Exists(Path.Combine(directory.FullName, "Directory.Build.props")))
     {
         directory = directory.Parent;
     }
@@ -9652,6 +11295,39 @@ static void AssertSettingsThemeCardSemantics(Window window)
     AssertProbe(light.Patterns.SelectionItem.Pattern.IsSelected.Value, "Space did not preserve native Light theme radio selection.");
 }
 
+static void AssertSettingsPaletteCardSemantics(
+    Window window,
+    IReadOnlyList<(string Id, string Name)> palettes)
+{
+    foreach ((string id, string name) in palettes)
+    {
+        string automationId = $"SettingsPalette_{id}";
+        AutomationElement card = WaitForElement(
+            automationId,
+            () => window.FindFirstDescendant(cf => cf.ByAutomationId(automationId)),
+            TimeSpan.FromSeconds(8));
+        RevealForInteraction(card, $"{name} palette card");
+        card = WaitForElement(
+            $"visible {automationId}",
+            () =>
+            {
+                AutomationElement? current = window.FindFirstDescendant(cf => cf.ByAutomationId(automationId));
+                return IsVisible(current) ? current : null;
+            },
+            TimeSpan.FromSeconds(5));
+        AssertProbe(card.ControlType == ControlType.RadioButton, $"{automationId} exposed {card.ControlType} instead of RadioButton.");
+        AssertProbe(
+            string.Equals(card.Name, name, StringComparison.Ordinal),
+            $"{id} palette card exposed the wrong accessible name: '{card.Name}'.");
+        AssertProbe(
+            card.Patterns.SelectionItem.IsSupported,
+            $"{name} palette card did not expose native selection semantics.");
+        AssertProbe(
+            !string.IsNullOrWhiteSpace(card.Properties.HelpText.ValueOrDefault),
+            $"{name} palette card did not expose its description to assistive technology.");
+    }
+}
+
 static void RunSettingsPseudoLongLabelsProbe(CaptureOptions options)
 {
     KillExistingApplicationInstances(options.AppPath);
@@ -9715,6 +11391,15 @@ static void RunSettingsHighContrastProbe(CaptureOptions options)
     try
     {
         Window window = GetReadyWindow(app, automation, "settings genuine High Contrast probe");
+        AssertSettingsPaletteCardSemantics(
+            window,
+            [
+                ("jithub", "JitHub (default)"),
+                ("windows-11", "Windows 11"),
+                ("visual-studio-code", "Visual Studio Code"),
+                ("github", "GitHub"),
+                ("solarized", "Solarized")
+            ]);
         AssertSettingsResponsiveLayoutAtAllWidths(window, automation, options.OutputDirectory, "high-contrast");
     }
     finally
@@ -10012,51 +11697,67 @@ static void AssertSettingsExportPicker(
     {
         action.Focus();
     }
-    int appProcessId = window.Properties.ProcessId.ValueOrDefault;
+    IntPtr appWindowHandle = GetNativeWindowHandle(window);
     InvokeOrClick(action);
     TryInvokeDisabledSettingsAction(action);
-    AutomationElement? pickerSave = null;
+    AutomationElement? pickerWindow = null;
     try
     {
-        pickerSave = WaitForElement(
-            "Windows diagnostics save picker command",
-            () => automation.GetDesktop()
-                .FindAllDescendants(cf => cf.ByControlType(ControlType.Button))
-                .FirstOrDefault(element =>
-                    IsVisible(element) &&
-                    string.Equals(element.Name, "Save", StringComparison.OrdinalIgnoreCase) &&
-                    element.Properties.ProcessId.ValueOrDefault != appProcessId),
+        pickerWindow = WaitForElement(
+            "Windows diagnostics save picker window",
+            () =>
+            {
+                if (!NativeMethods.TryFindLargestOwnedTopLevelWindow(appWindowHandle, out IntPtr pickerHandle))
+                {
+                    return null;
+                }
+
+                AutomationElement candidate = automation.FromHandle(pickerHandle);
+                return IsVisible(candidate) &&
+                    candidate.FindFirstDescendant(
+                        cf => cf.ByAutomationId("FileNameControlHost")) is not null
+                    ? candidate
+                    : null;
+            },
             TimeSpan.FromSeconds(8));
+        AutomationElement pickerSave = WaitForElement(
+            "Windows diagnostics save picker primary command",
+            () => pickerWindow.FindFirstDescendant(
+                cf => cf.ByAutomationId("1").And(cf.ByControlType(ControlType.Button))),
+            TimeSpan.FromSeconds(3));
         AssertSettingsActionsDisabled(window);
+        IntPtr pickerHandle = new(pickerWindow.Properties.NativeWindowHandle.ValueOrDefault);
         File.WriteAllText(
             Path.Combine(outputDirectory, "settings-export-picker.txt"),
-            $"Picker process {pickerSave.Properties.ProcessId.ValueOrDefault} exposed its Save command while " +
-            "Settings actions were disabled, then closed through Escape.");
+            $"Picker HWND 0x{pickerHandle.ToInt64():X} in process " +
+            $"{pickerWindow.Properties.ProcessId.ValueOrDefault} exposed its standard primary command while " +
+            "Settings actions were disabled, then closed through its standard cancel command.");
     }
     finally
     {
-        if (pickerSave is not null && !canUseForegroundFocus)
+        if (pickerWindow is not null)
         {
-            AutomationElement? cancel = automation.GetDesktop()
-                .FindAllDescendants(cf => cf.ByControlType(ControlType.Button))
-                .FirstOrDefault(element =>
-                    IsVisible(element) &&
-                    string.Equals(element.Name, "Cancel", StringComparison.OrdinalIgnoreCase) &&
-                    element.Properties.ProcessId.ValueOrDefault == pickerSave.Properties.ProcessId.ValueOrDefault);
+            AutomationElement? cancel = pickerWindow.FindFirstDescendant(
+                cf => cf.ByAutomationId("2").And(cf.ByControlType(ControlType.Button)));
             if (cancel is not null)
             {
                 InvokeOrClick(cancel);
+            }
+            else
+            {
+                pickerWindow.Focus();
+                Keyboard.Press(VirtualKeyShort.ESCAPE);
             }
         }
         else
         {
             Keyboard.Press(VirtualKeyShort.ESCAPE);
         }
-        if (pickerSave is not null)
+        if (pickerWindow is not null)
         {
             WaitUntil(
                 "diagnostics save picker closes",
-                () => !IsVisible(pickerSave),
+                () => !IsVisible(pickerWindow),
                 TimeSpan.FromSeconds(8));
         }
     }
@@ -10064,6 +11765,10 @@ static void AssertSettingsExportPicker(
     {
         WaitUntil("diagnostics export restores focus", () => IsElementFocused(action), TimeSpan.FromSeconds(5));
     }
+    WaitUntil(
+        "diagnostics export action gate releases",
+        () => action.IsEnabled,
+        TimeSpan.FromSeconds(5));
 }
 
 static void RunStarsLibraryProbe(CaptureOptions options, bool includeCategoryPersistence = true)
@@ -11689,6 +13394,7 @@ static void PurgeAutomationStarsCategories(Window window, UIA3Automation automat
             () => window.FindFirstDescendant(cf => cf.ByAutomationId("StarsCategoryNavigation")),
             TimeSpan.FromSeconds(5));
         string? categoryName = navigation.FindAllDescendants()
+            .Where(IsVisible)
             .Select(element => element.Name)
             .FirstOrDefault(name => name.StartsWith(automationPrefix, StringComparison.Ordinal));
         if (string.IsNullOrWhiteSpace(categoryName))
@@ -11699,8 +13405,8 @@ static void PurgeAutomationStarsCategories(Window window, UIA3Automation automat
         DeleteStarsCategory(window, automation, categoryName);
         WaitUntil(
             $"test category deletion: {categoryName}",
-            () => !navigation.FindAllDescendants().Any(element => string.Equals(element.Name, categoryName, StringComparison.Ordinal)),
-            TimeSpan.FromSeconds(5));
+            () => !IsVisible(FindVisibleStarsCategory(window, categoryName)),
+            TimeSpan.FromSeconds(10));
     }
 
     throw new InvalidOperationException("Unable to purge all automation-owned Stars categories.");
@@ -11808,13 +13514,23 @@ static void DeleteStarsCategory(Window window, UIA3Automation automation, string
 {
     SelectStarsCategory(window, name);
     InvokeOrClick(OpenStarsCategoryMenuItem(window, automation, "StarsCategoryActionDelete"));
-    AutomationElement delete = WaitForElement(
-        "Delete category confirmation",
-        () => automation.GetDesktop().FindAllDescendants(cf => cf.ByText("Delete"))
-            .LastOrDefault(element => IsVisible(element) && element.ControlType == ControlType.Button),
+    AutomationElement dialog = WaitForElement(
+        "StarsDeleteCategoryDialog",
+        () => FindElementInWindowOrDialog(window, automation, "StarsDeleteCategoryDialog"),
         TimeSpan.FromSeconds(5));
+    AutomationElement delete = WaitForElement(
+        "Delete category primary action",
+        () => dialog.FindAllDescendants(cf => cf.ByControlType(ControlType.Button))
+            .FirstOrDefault(element =>
+                IsVisible(element) &&
+                string.Equals(GetAutomationId(element), "PrimaryButton", StringComparison.Ordinal)),
+        TimeSpan.FromSeconds(5));
+    AssertProbe(delete.Properties.IsEnabled.ValueOrDefault, "Delete category primary action was disabled.");
     InvokeOrClick(delete);
-    Thread.Sleep(900);
+    WaitUntil(
+        "delete category dialog dismissal",
+        () => !IsVisible(FindElementInWindowOrDialog(window, automation, "StarsDeleteCategoryDialog")),
+        TimeSpan.FromSeconds(10));
 }
 
 static AutomationElement OpenStarsCategoryMenuItem(
@@ -12362,13 +14078,15 @@ static void SetTextBoxText(AutomationElement element, string text)
 
 static void EnsureCommitDetailVisible(Window window)
 {
-    AutomationElement? detail = window.FindFirstDescendant(cf => cf.ByAutomationId("RepoCommitsDetailTitle"));
-    if (IsVisible(detail))
+    AutomationElement? detail = FindCurrentVisibleByAutomationId(window, "RepoCommitsDetailTitle");
+    if (IsVisible(detail) ||
+        IsVisible(FindCurrentVisibleByAutomationId(window, "RepoCommitsDetailShyHeader")) ||
+        IsVisible(FindCurrentVisibleByAutomationId(window, "RepoCommitsDiffViewer")))
     {
         return;
     }
 
-    AutomationElement? list = window.FindFirstDescendant(cf => cf.ByAutomationId("RepoCommitsList"));
+    AutomationElement? list = FindCurrentVisibleByAutomationId(window, "RepoCommitsList");
     if (!IsVisible(list))
     {
         AutomationElement? leadingButton = FindAdaptivePaneButton(window, "RepoCommits", leading: true);
@@ -12376,21 +14094,22 @@ static void EnsureCommitDetailVisible(Window window)
         {
             InvokeOrClick(leadingButton!);
             Thread.Sleep(450);
-            list = window.FindFirstDescendant(cf => cf.ByAutomationId("RepoCommitsList"));
+            list = FindCurrentVisibleByAutomationId(window, "RepoCommitsList");
         }
     }
 
-    AutomationElement? firstRow = list?.FindFirstDescendant(cf => cf.ByControlType(ControlType.ListItem));
-    if (firstRow is not null)
-    {
-        InvokeOrClick(firstRow);
-        Thread.Sleep(650);
-    }
+    AssertProbe(IsVisible(list), "RepoCommitsList was not available for commit selection.");
+    AutomationElement firstRow = WaitForElement(
+        "first visible commit row",
+        () => list!.FindAllDescendants(cf => cf.ByControlType(ControlType.ListItem)).FirstOrDefault(IsVisible),
+        TimeSpan.FromSeconds(12));
+    SelectAutomationItem(firstRow, "first commit row");
+    Thread.Sleep(650);
 
     WaitForElement(
         "RepoCommitsDetailTitle",
-        () => window.FindFirstDescendant(cf => cf.ByAutomationId("RepoCommitsDetailTitle")),
-        TimeSpan.FromSeconds(8));
+        () => FindCurrentVisibleByAutomationId(window, "RepoCommitsDetailTitle"),
+        TimeSpan.FromSeconds(12));
 }
 
 static void ExerciseAdaptiveWorkspaceDrawers(
@@ -13361,6 +15080,21 @@ static Rectangle ResizeWindow(Window window, int width, int height, bool reactiv
     return settledBounds;
 }
 
+static Rectangle ResizeLogicalWindow(Window window, int logicalWidth, int logicalHeight)
+{
+    uint dpi = NativeMethods.GetWindowDpi(GetNativeWindowHandle(window));
+    double scale = dpi / 96d;
+    int physicalWidth = Math.Max(1, (int)Math.Round(logicalWidth * scale));
+    int physicalHeight = Math.Max(1, (int)Math.Round(logicalHeight * scale));
+    Rectangle physicalBounds = ResizeWindow(window, physicalWidth, physicalHeight);
+    int actualLogicalWidth = (int)Math.Round(physicalBounds.Width / scale);
+    int actualLogicalHeight = (int)Math.Round(physicalBounds.Height / scale);
+    Console.WriteLine(
+        $"Logical viewport requested={logicalWidth}x{logicalHeight}; " +
+        $"actual={actualLogicalWidth}x{actualLogicalHeight}; dpi={dpi}.");
+    return physicalBounds;
+}
+
 static string GetResponsiveViewportLabel(int requestedWidth, int requestedHeight, Rectangle actualBounds)
 {
     string actual = $"{actualBounds.Width}x{actualBounds.Height}";
@@ -13596,10 +15330,12 @@ static void PrintVisibleAutomationIds(Window window, string context)
 
 static void CaptureWindow(Window window, string path)
 {
-    CaptureVerifiedScreenRegion(
-        window,
-        NativeMethods.GetPhysicalWindowBounds(GetNativeWindowHandle(window)),
-        path);
+    AssertJitHubWindow(window);
+    (_, IntPtr windowHandle) = ReadCaptureWindowIdentity(window);
+    Directory.CreateDirectory(Path.GetDirectoryName(path) ?? Environment.CurrentDirectory);
+    using Bitmap bitmap = NativeMethods.CaptureWindowSurface(windowHandle);
+    ValidateCapturePixels(bitmap);
+    bitmap.Save(path, ImageFormat.Png);
 }
 
 static void WaitForScreenshotRegionToStabilize(
@@ -14277,21 +16013,21 @@ static void AssertProbe(bool condition, string message)
 
 static void OpenRepoCodeFileTreeDrawer(Window window, AutomationElement opener)
 {
-    FocusForKeyboardActivation(window, opener);
-    Keyboard.Press(VirtualKeyShort.SPACE);
+    InvokeOrClick(opener);
     bool opened = WaitUntilAvailable(
         () => window.FindAllDescendants(cf => cf.ByAutomationId("RepoCodeLeftDrawer")).Any(IsVisible),
         TimeSpan.FromSeconds(1));
     if (!opened)
     {
-        Keyboard.Press(VirtualKeyShort.ENTER);
+        FocusForKeyboardActivation(window, opener);
+        Keyboard.Press(VirtualKeyShort.SPACE);
         opened = WaitUntilAvailable(
             () => window.FindAllDescendants(cf => cf.ByAutomationId("RepoCodeLeftDrawer")).Any(IsVisible),
             TimeSpan.FromSeconds(1));
     }
     if (!opened)
     {
-        InvokeOrClick(opener);
+        Keyboard.Press(VirtualKeyShort.ENTER);
     }
 }
 
@@ -14669,6 +16405,10 @@ static void AddPreviewEnvironment(
         {
             processStartInfo.Environment["JITHUB_PREVIEW_THEME"] = argument[8..];
         }
+        else if (argument.StartsWith("--palette=", StringComparison.OrdinalIgnoreCase))
+        {
+            processStartInfo.Environment["JITHUB_PREVIEW_PALETTE"] = argument[10..];
+        }
         else if (argument.StartsWith("--repo=", StringComparison.OrdinalIgnoreCase))
         {
             processStartInfo.Environment["JITHUB_PREVIEW_REPOSITORY"] = argument[7..];
@@ -14688,6 +16428,15 @@ static void AddPreviewEnvironment(
         else if (string.Equals(argument, "--large-commit", StringComparison.OrdinalIgnoreCase))
         {
             processStartInfo.Environment["JITHUB_AUTOMATION_LARGE_COMMIT"] = "1";
+        }
+        else if (string.Equals(argument, "--network-disabled", StringComparison.OrdinalIgnoreCase))
+        {
+            const string blockedProxy = "http://127.0.0.1:9";
+            processStartInfo.Environment["JITHUB_AUTOMATION_NETWORK_DISABLED"] = "1";
+            processStartInfo.Environment["HTTP_PROXY"] = blockedProxy;
+            processStartInfo.Environment["HTTPS_PROXY"] = blockedProxy;
+            processStartInfo.Environment["ALL_PROXY"] = blockedProxy;
+            processStartInfo.Environment["NO_PROXY"] = string.Empty;
         }
         else if (string.Equals(argument, "--markdown-lifecycle-fixture", StringComparison.OrdinalIgnoreCase))
         {
@@ -14784,26 +16533,6 @@ static bool IsAppPreviewTarget(CaptureTarget target) =>
     target.Page.StartsWith("repo", StringComparison.OrdinalIgnoreCase) ||
     string.Equals(target.Page, "home", StringComparison.OrdinalIgnoreCase);
 
-static void TrimAppPreviewCapture(string filePath)
-{
-    const int left = 49;
-    const int top = 42;
-
-    byte[] sourceBytes = File.ReadAllBytes(filePath);
-    using var sourceStream = new MemoryStream(sourceBytes);
-    using var image = new Bitmap(sourceStream);
-    if (image.Width <= left || image.Height <= top)
-    {
-        return;
-    }
-
-    var crop = new Rectangle(left, top, image.Width - left, image.Height - top);
-    using Bitmap cropped = image.Clone(crop, image.PixelFormat);
-    using MemoryStream output = new();
-    cropped.Save(output, ImageFormat.Png);
-    File.WriteAllBytes(filePath, output.ToArray());
-}
-
 static void TryClose(Application app)
 {
     if (!AutomationApplicationPathRegistry.TryGet(app, out AutomationApplicationRegistration? registration) ||
@@ -14858,8 +16587,19 @@ static void TryClose(Application app)
     try
     {
         processExitHandle = NativeMethods.OpenProcessExitHandle(processId);
-        AutomationLifecycleLog.Write("close-requested", $"pid={processId}");
-        app.Close();
+        if (!NativeMethods.TryRequestGracefulClose(processId, out IntPtr windowHandle))
+        {
+            AutomationLifecycleLog.Write(
+                "close-request-failed",
+                $"pid={processId}; result=owned-top-level-window-not-found-or-close-rejected");
+            throw new InvalidOperationException(
+                $"Could not request a graceful close for the top-level window owned by process {processId}.");
+        }
+
+        AutomationLifecycleLog.Write(
+            "close-requested",
+            $"pid={processId}; hwnd=0x{windowHandle.ToInt64():X}; transport=WM_CLOSE");
+
         bool exited = ownedProcess.HasExited || ownedProcess.WaitForExit(TimeSpan.FromSeconds(12));
         if (!exited)
         {
@@ -15147,8 +16887,10 @@ internal static partial class NativeMethods
 
     private const uint CfUnicodeText = 13;
     private const uint GmemMoveable = 0x0002;
+    private const uint GwOwner = 4;
     private const uint GwHwndPrev = 3;
     private const uint GaRoot = 2;
+    private const uint WmClose = 0x0010;
     private const int SwHide = 0;
     private const int SwShowNoActivate = 4;
     private const int SwRestore = 9;
@@ -15166,6 +16908,13 @@ internal static partial class NativeMethods
         internal int Bottom;
     }
 
+    [StructLayout(LayoutKind.Sequential)]
+    private struct NativePoint
+    {
+        internal int X;
+        internal int Y;
+    }
+
     [StructLayout(LayoutKind.Sequential, CharSet = CharSet.Unicode)]
     private struct NativeHighContrast
     {
@@ -15174,8 +16923,41 @@ internal static partial class NativeMethods
         internal IntPtr DefaultScheme;
     }
 
+    private delegate bool EnumWindowsCallback(IntPtr windowHandle, IntPtr parameter);
+
     [DllImport("user32.dll")]
     private static extern IntPtr GetForegroundWindow();
+
+    [DllImport("user32.dll", SetLastError = true)]
+    [return: MarshalAs(UnmanagedType.Bool)]
+    private static extern bool SetCursorPos(int x, int y);
+
+    [DllImport("user32.dll")]
+    [return: MarshalAs(UnmanagedType.Bool)]
+    private static extern bool GetCursorPos(out NativePoint point);
+
+    internal static void MoveCursorPhysical(Point point)
+    {
+        _ = SetCursorPos(point.X, point.Y);
+    }
+
+    internal static Point GetCursorPositionPhysical() =>
+        GetCursorPos(out NativePoint point)
+            ? new Point(point.X, point.Y)
+            : Point.Empty;
+
+    [DllImport("user32.dll", SetLastError = true)]
+    [return: MarshalAs(UnmanagedType.Bool)]
+    private static extern bool SetProcessDpiAwarenessContext(IntPtr dpiContext);
+
+    [DllImport("user32.dll")]
+    private static extern IntPtr GetThreadDpiAwarenessContext();
+
+    [DllImport("user32.dll")]
+    private static extern int GetAwarenessFromDpiAwarenessContext(IntPtr dpiContext);
+
+    [DllImport("user32.dll")]
+    private static extern uint GetDpiForWindow(IntPtr windowHandle);
 
     [DllImport("user32.dll")]
     private static extern IntPtr SetFocus(IntPtr windowHandle);
@@ -15224,6 +17006,14 @@ internal static partial class NativeMethods
     [DllImport("user32.dll", SetLastError = true)]
     private static extern IntPtr GetWindow(IntPtr hWnd, uint command);
 
+    [DllImport("user32.dll", SetLastError = true)]
+    [return: MarshalAs(UnmanagedType.Bool)]
+    private static extern bool EnumWindows(EnumWindowsCallback callback, IntPtr parameter);
+
+    [DllImport("user32.dll", SetLastError = true)]
+    [return: MarshalAs(UnmanagedType.Bool)]
+    private static extern bool PostMessage(IntPtr windowHandle, uint message, IntPtr wParam, IntPtr lParam);
+
     [DllImport("user32.dll")]
     private static extern IntPtr GetAncestor(IntPtr hWnd, uint flags);
 
@@ -15234,6 +17024,10 @@ internal static partial class NativeMethods
     [DllImport("user32.dll", SetLastError = true)]
     [return: MarshalAs(UnmanagedType.Bool)]
     private static extern bool GetWindowRect(IntPtr hWnd, out NativeRect rect);
+
+    [DllImport("user32.dll", SetLastError = true)]
+    [return: MarshalAs(UnmanagedType.Bool)]
+    private static extern bool PrintWindow(IntPtr hWnd, IntPtr hdcBlt, uint flags);
 
     [DllImport("user32.dll")]
     [return: MarshalAs(UnmanagedType.Bool)]
@@ -15289,6 +17083,119 @@ internal static partial class NativeMethods
 
     [DllImport("kernel32.dll")]
     private static extern uint GetCurrentThreadId();
+
+    internal static bool TryRequestGracefulClose(int processId, out IntPtr windowHandle)
+    {
+        windowHandle = IntPtr.Zero;
+        if (processId <= 0)
+        {
+            return false;
+        }
+
+        IntPtr selectedWindow = IntPtr.Zero;
+        long selectedArea = -1;
+        bool enumerationCompleted = EnumWindows(
+            (candidate, parameter) =>
+            {
+                _ = parameter;
+                _ = GetWindowThreadProcessId(candidate, out uint candidateProcessId);
+                if (candidateProcessId != (uint)processId ||
+                    !IsWindowVisible(candidate) ||
+                    GetWindow(candidate, GwOwner) != IntPtr.Zero)
+                {
+                    return true;
+                }
+
+                long area = 0;
+                if (GetWindowRect(candidate, out NativeRect bounds))
+                {
+                    long width = Math.Max(0L, (long)bounds.Right - bounds.Left);
+                    long height = Math.Max(0L, (long)bounds.Bottom - bounds.Top);
+                    area = width * height;
+                }
+
+                if (selectedWindow == IntPtr.Zero || area > selectedArea)
+                {
+                    selectedWindow = candidate;
+                    selectedArea = area;
+                }
+
+                return true;
+            },
+            IntPtr.Zero);
+
+        if (!enumerationCompleted || selectedWindow == IntPtr.Zero)
+        {
+            return false;
+        }
+
+        _ = GetWindowThreadProcessId(selectedWindow, out uint selectedProcessId);
+        if (selectedProcessId != (uint)processId || !IsWindowVisible(selectedWindow))
+        {
+            return false;
+        }
+
+        windowHandle = selectedWindow;
+        return PostMessage(selectedWindow, WmClose, IntPtr.Zero, IntPtr.Zero);
+    }
+
+    internal static bool IsOwnedTopLevelWindow(IntPtr candidateWindow, IntPtr ownerWindow)
+    {
+        if (candidateWindow == IntPtr.Zero || ownerWindow == IntPtr.Zero)
+        {
+            return false;
+        }
+
+        IntPtr candidateRoot = GetAncestor(candidateWindow, GaRoot);
+        IntPtr ownerRoot = GetAncestor(ownerWindow, GaRoot);
+        return candidateRoot == candidateWindow &&
+            ownerRoot != IntPtr.Zero &&
+            GetWindow(candidateWindow, GwOwner) == ownerRoot;
+    }
+
+    internal static bool TryFindLargestOwnedTopLevelWindow(
+        IntPtr ownerWindow,
+        out IntPtr ownedWindow)
+    {
+        ownedWindow = IntPtr.Zero;
+        if (ownerWindow == IntPtr.Zero)
+        {
+            return false;
+        }
+
+        IntPtr selectedWindow = IntPtr.Zero;
+        long selectedArea = -1;
+        bool enumerationCompleted = EnumWindows(
+            (candidate, parameter) =>
+            {
+                _ = parameter;
+                if (!IsWindowVisible(candidate) ||
+                    !IsOwnedTopLevelWindow(candidate, ownerWindow))
+                {
+                    return true;
+                }
+
+                long area = 0;
+                if (GetWindowRect(candidate, out NativeRect bounds))
+                {
+                    long width = Math.Max(0L, (long)bounds.Right - bounds.Left);
+                    long height = Math.Max(0L, (long)bounds.Bottom - bounds.Top);
+                    area = width * height;
+                }
+
+                if (selectedWindow == IntPtr.Zero || area > selectedArea)
+                {
+                    selectedWindow = candidate;
+                    selectedArea = area;
+                }
+
+                return true;
+            },
+            IntPtr.Zero);
+
+        ownedWindow = selectedWindow;
+        return enumerationCompleted && selectedWindow != IntPtr.Zero;
+    }
 
     internal static bool IsHighContrastEnabled()
     {
@@ -15410,6 +17317,41 @@ internal static partial class NativeMethods
             : Rectangle.Empty;
     }
 
+    internal static uint GetWindowDpi(IntPtr windowHandle)
+    {
+        uint dpi = windowHandle == IntPtr.Zero ? 0 : GetDpiForWindow(windowHandle);
+        if (dpi == 0)
+        {
+            throw new InvalidOperationException("Could not read the JitHub window DPI for website capture.");
+        }
+
+        return dpi;
+    }
+
+    internal static void EnablePerMonitorV2DpiAwareness()
+    {
+        IntPtr perMonitorV2 = new(-4);
+        if (!SetProcessDpiAwarenessContext(perMonitorV2))
+        {
+            int error = Marshal.GetLastWin32Error();
+            const int errorAccessDenied = 5;
+            if (error != errorAccessDenied)
+            {
+                throw new System.ComponentModel.Win32Exception(
+                    error,
+                    "The automation harness could not enable per-monitor-v2 DPI awareness.");
+            }
+        }
+
+        int awareness = GetAwarenessFromDpiAwarenessContext(GetThreadDpiAwarenessContext());
+        const int perMonitorAware = 2;
+        if (awareness != perMonitorAware)
+        {
+            throw new InvalidOperationException(
+                $"The automation harness requires per-monitor DPI awareness; active awareness={awareness}.");
+        }
+    }
+
     internal static IntPtr OpenProcessExitHandle(int processId)
     {
         IntPtr handle = OpenProcess(ProcessQueryLimitedInformation | Synchronize, inheritHandle: false, (uint)processId);
@@ -15491,6 +17433,53 @@ internal static partial class NativeMethods
         return fallback;
     }
 
+    internal static Bitmap CaptureWindowSurface(IntPtr windowHandle)
+    {
+        const uint PwRenderFullContent = 0x00000002;
+        Rectangle windowBounds = GetWindowBounds(windowHandle);
+        Rectangle visibleBounds = GetPhysicalWindowBounds(windowHandle);
+        if (windowBounds.IsEmpty || visibleBounds.IsEmpty)
+        {
+            throw new InvalidOperationException("Could not read JitHub window bounds for window-only capture.");
+        }
+
+        using var fullWindow = new Bitmap(
+            Math.Max(1, windowBounds.Width),
+            Math.Max(1, windowBounds.Height),
+            PixelFormat.Format32bppArgb);
+        using (Graphics graphics = Graphics.FromImage(fullWindow))
+        {
+            IntPtr deviceContext = graphics.GetHdc();
+            try
+            {
+                if (!PrintWindow(windowHandle, deviceContext, PwRenderFullContent))
+                {
+                    throw new System.ComponentModel.Win32Exception(
+                        Marshal.GetLastWin32Error(),
+                        "Windows could not render the JitHub surface for screenshot capture.");
+                }
+            }
+            finally
+            {
+                graphics.ReleaseHdc(deviceContext);
+            }
+        }
+
+        Rectangle crop = Rectangle.Intersect(
+            new Rectangle(
+                visibleBounds.Left - windowBounds.Left,
+                visibleBounds.Top - windowBounds.Top,
+                visibleBounds.Width,
+                visibleBounds.Height),
+            new Rectangle(Point.Empty, fullWindow.Size));
+        if (crop.Width <= 0 || crop.Height <= 0)
+        {
+            throw new InvalidOperationException("The DWM window surface does not intersect the rendered JitHub window.");
+        }
+
+        return fullWindow.Clone(crop, PixelFormat.Format32bppArgb);
+    }
+
     internal static IReadOnlyList<IntPtr> PrepareExclusiveScreenCapture(
         IntPtr mainWindowHandle,
         int expectedProcessId,
@@ -15505,6 +17494,14 @@ internal static partial class NativeMethods
         if (rootWindowHandle != IntPtr.Zero)
         {
             mainWindowHandle = rootWindowHandle;
+        }
+
+        IntPtr blockingSystemDialog = FindBlockingSystemDialog(captureBounds);
+        if (blockingSystemDialog != IntPtr.Zero)
+        {
+            _ = GetWindowThreadProcessId(blockingSystemDialog, out uint blockingProcessId);
+            throw new InvalidOperationException(
+                $"Refusing screenshot capture because a Windows system dialog from process {blockingProcessId} overlaps JitHub.");
         }
 
         IntPtr foreground = GetForegroundWindow();
@@ -15564,6 +17561,40 @@ internal static partial class NativeMethods
         }
 
         return hiddenOverlays;
+    }
+
+    private static IntPtr FindBlockingSystemDialog(Rectangle captureBounds)
+    {
+        IntPtr blockingWindow = IntPtr.Zero;
+        _ = EnumWindows(
+            (candidate, parameter) =>
+            {
+                _ = parameter;
+                if (GetWindowClassName(candidate) is not (
+                        "Shell_SystemDialog" or
+                        "Shell_SystemDialogProxy" or
+                        "Shell_SystemDim"))
+                {
+                    return true;
+                }
+
+                if (!GetWindowRect(candidate, out NativeRect rect))
+                {
+                    blockingWindow = candidate;
+                    return false;
+                }
+
+                Rectangle bounds = Rectangle.FromLTRB(rect.Left, rect.Top, rect.Right, rect.Bottom);
+                if (!bounds.IsEmpty && !captureBounds.IntersectsWith(bounds))
+                {
+                    return true;
+                }
+
+                blockingWindow = candidate;
+                return false;
+            },
+            IntPtr.Zero);
+        return blockingWindow;
     }
 
     internal static void RestoreCaptureOverlays(IReadOnlyList<IntPtr> windowHandles)
@@ -16205,6 +18236,7 @@ internal sealed class CaptureOptions
     public string? Probe { get; init; }
     public string? AttachProcess { get; init; }
     public string? Configuration { get; init; }
+    public IReadOnlyList<string> ShowcaseIds { get; init; } = [];
 
     public static CaptureOptions Parse(string[] args)
     {
@@ -16216,6 +18248,7 @@ internal sealed class CaptureOptions
         string repoFullName = "JitHubApp/JitHubV2";
         string[] themes = ["light", "dark"];
         string[] targetNames = ["buttons", "inputs", "segments", "navigation", "settings", "repo", "conversation", "pr-timeline", "empty", "login", "settings-page"];
+        string[] showcaseIds = [];
 
         foreach (string arg in args)
         {
@@ -16238,6 +18271,10 @@ internal sealed class CaptureOptions
             else if (arg.StartsWith("--probe=", StringComparison.OrdinalIgnoreCase))
             {
                 probe = arg[8..].Trim();
+            }
+            else if (arg.StartsWith("--showcase-ids=", StringComparison.OrdinalIgnoreCase))
+            {
+                showcaseIds = arg[15..].Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
             }
             else if (arg.StartsWith("--attach-process=", StringComparison.OrdinalIgnoreCase))
             {
@@ -16299,7 +18336,8 @@ internal sealed class CaptureOptions
             RepositoryFullName = string.IsNullOrWhiteSpace(repoFullName) ? "JitHubApp/JitHubV2" : repoFullName,
             Probe = probe,
             AttachProcess = attachProcess,
-            Configuration = configuration
+            Configuration = configuration,
+            ShowcaseIds = showcaseIds
         };
     }
 
@@ -16323,8 +18361,9 @@ internal sealed class CaptureOptions
                 return false;
             }
 
-            string adjacentAssembly = Path.Combine(Path.GetDirectoryName(candidate)!, "JitHub.WinUI.dll");
-            return File.Exists(adjacentAssembly) && File.GetLastWriteTimeUtc(adjacentAssembly) >= newestSourceWrite;
+            string? freshnessArtifact = GetFreshnessArtifact(candidate);
+            return freshnessArtifact is not null &&
+                File.GetLastWriteTimeUtc(freshnessArtifact) >= newestSourceWrite;
         });
 
         if (freshCandidate is not null)
@@ -16341,22 +18380,57 @@ internal sealed class CaptureOptions
 
     private static void EnsureAppBinaryIsFresh(string appPath)
     {
-        string adjacentAssembly = Path.Combine(Path.GetDirectoryName(appPath)!, "JitHub.WinUI.dll");
-        if (!File.Exists(adjacentAssembly))
+        string? freshnessArtifact = GetFreshnessArtifact(appPath);
+        if (freshnessArtifact is null)
         {
-            throw new FileNotFoundException(
-                $"The automation app executable has no adjacent JitHub.WinUI.dll at '{adjacentAssembly}'.");
+            throw new InvalidOperationException(
+                $"The automation app '{appPath}' is neither a managed JitHub build with an adjacent assembly " +
+                "nor a native PE image without a CLR header.");
         }
 
         string repositoryRoot = FindRepositoryRoot();
         DateTime newestSourceWrite = GetNewestSourceWriteTimeUtc(repositoryRoot);
-        DateTime assemblyWrite = File.GetLastWriteTimeUtc(adjacentAssembly);
-        if (assemblyWrite < newestSourceWrite)
+        DateTime artifactWrite = File.GetLastWriteTimeUtc(freshnessArtifact);
+        if (artifactWrite < newestSourceWrite)
         {
             throw new InvalidOperationException(
                 $"Refusing stale JitHub automation binary '{appPath}'. " +
-                $"Assembly timestamp {assemblyWrite:O} predates source timestamp {newestSourceWrite:O}. " +
+                $"Artifact timestamp {artifactWrite:O} predates source timestamp {newestSourceWrite:O}. " +
                 "Rebuild the app and pass the rebuilt executable.");
+        }
+    }
+
+    private static string? GetFreshnessArtifact(string appPath)
+    {
+        string adjacentAssembly = Path.Combine(Path.GetDirectoryName(appPath)!, "JitHub.WinUI.dll");
+        if (File.Exists(adjacentAssembly))
+        {
+            return adjacentAssembly;
+        }
+
+        return IsNativeAotExecutable(appPath) ? appPath : null;
+    }
+
+    private static bool IsNativeAotExecutable(string appPath)
+    {
+        try
+        {
+            using FileStream stream = File.Open(appPath, FileMode.Open, FileAccess.Read, FileShare.Read);
+            using PEReader reader = new(stream);
+            return reader.PEHeaders.PEHeader is not null &&
+                reader.PEHeaders.CorHeader is null;
+        }
+        catch (BadImageFormatException)
+        {
+            return false;
+        }
+        catch (IOException)
+        {
+            return false;
+        }
+        catch (UnauthorizedAccessException)
+        {
+            return false;
         }
     }
 

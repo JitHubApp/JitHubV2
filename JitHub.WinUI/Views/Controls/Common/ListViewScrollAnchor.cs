@@ -24,6 +24,7 @@ public sealed class ListViewScrollAnchor
     private readonly KeyEventHandler? _keyInteractionHandler;
     private bool _handlersAttached;
     private bool _userInteracted;
+    private bool _restoreFailureReported;
 
     private ListViewScrollAnchor(ListViewBase listView, ScrollViewer? scrollViewer, Func<object, string?>? itemKeySelector)
     {
@@ -93,8 +94,13 @@ public sealed class ListViewScrollAnchor
             double targetVerticalOffset = Math.Min(_verticalOffset, _scrollViewer.ScrollableHeight);
             _scrollViewer.ChangeView(_horizontalOffset, targetVerticalOffset, null, disableAnimation: true);
         }
-        catch (Exception)
+        catch (Exception exception)
         {
+            if (!_restoreFailureReported)
+            {
+                _restoreFailureReported = true;
+                JitHub.WinUI.App.LogHandledException(exception, "ui-list-view-scroll-anchor");
+            }
         }
     }
 
@@ -213,7 +219,7 @@ public sealed class ListViewScrollAnchor
             return;
         }
 
-        _ = RestoreAfterDelayAsync(dispatcherQueue, delayMilliseconds, releaseHandlers);
+        UiTaskGuard.Observe(RestoreAfterDelayAsync(dispatcherQueue, delayMilliseconds, releaseHandlers), "ui-list-view-scroll-anchor");
     }
 
     private async Task RestoreAfterDelayAsync(

@@ -355,6 +355,7 @@ public enum PullRequestReviewState
 
 public enum EventInfoState
 {
+    Unknown,
     AddedToProject,
     Assigned,
     AutomaticBaseChangeFailed,
@@ -516,8 +517,8 @@ public partial class User : Account
 {
     public User()
     : this([])
-{
-}
+    {
+    }
 
     public User(params object?[] values)
     {
@@ -587,8 +588,8 @@ public class Collaborator : User
 {
     public Collaborator()
     : this([])
-{
-}
+    {
+    }
 
     public Collaborator(params object?[] values)
         : base(
@@ -635,8 +636,8 @@ public partial class RepositoryContributor : User
 {
     public RepositoryContributor()
     : this([])
-{
-}
+    {
+    }
 
     public RepositoryContributor(params object?[] values)
         : base(values)
@@ -649,8 +650,8 @@ public partial class Reaction
 {
     public Reaction()
     : this([])
-{
-}
+    {
+    }
 
     public Reaction(params object?[] values)
     {
@@ -671,8 +672,8 @@ public partial class ReactionSummary
 {
     public ReactionSummary()
     : this([])
-{
-}
+    {
+    }
 
     public ReactionSummary(params object?[] values)
     {
@@ -705,8 +706,8 @@ public partial class Label
 {
     public Label()
     : this([])
-{
-}
+    {
+    }
 
     public Label(params object?[] values)
     {
@@ -733,8 +734,8 @@ public partial class Milestone
 {
     public Milestone()
     : this([])
-{
-}
+    {
+    }
 
     public Milestone(params object?[] values)
     {
@@ -777,8 +778,8 @@ public partial class GitReference
 {
     public GitReference()
     : this([])
-{
-}
+    {
+    }
 
     public GitReference(params object?[] values)
     {
@@ -805,8 +806,8 @@ public partial class Branch
 {
     public Branch()
     : this([])
-{
-}
+    {
+    }
 
     public Branch(params object?[] values)
     {
@@ -825,8 +826,8 @@ public partial class Blob
 {
     public Blob()
     : this([])
-{
-}
+    {
+    }
 
     public Blob(params object?[] values)
     {
@@ -849,8 +850,8 @@ public partial class Repository
 {
     public Repository()
     : this([])
-{
-}
+    {
+    }
 
     public Repository(params object?[] values)
     {
@@ -919,8 +920,8 @@ public partial class PullRequest
 {
     public PullRequest()
     : this([])
-{
-}
+    {
+    }
 
     public PullRequest(params object?[] values)
     {
@@ -1015,8 +1016,8 @@ public partial class PullRequestMerge
 {
     public PullRequestMerge()
     : this([])
-{
-}
+    {
+    }
 
     public PullRequestMerge(params object?[] values)
     {
@@ -1035,8 +1036,8 @@ public partial class Issue
 {
     public Issue()
     : this([])
-{
-}
+    {
+    }
 
     public Issue(params object?[] values)
     {
@@ -1101,8 +1102,8 @@ public partial class IssueComment
 {
     public IssueComment()
     : this([])
-{
-}
+    {
+    }
 
     public IssueComment(params object?[] values)
     {
@@ -1135,8 +1136,8 @@ public partial class PullRequestReviewComment
 {
     public PullRequestReviewComment()
     : this([])
-{
-}
+    {
+    }
 
     public PullRequestReviewComment(params object?[] values)
     {
@@ -1187,8 +1188,8 @@ public partial class PullRequestReview
 {
     public PullRequestReview()
     : this([])
-{
-}
+    {
+    }
 
     public PullRequestReview(params object?[] values)
     {
@@ -1221,8 +1222,8 @@ public partial class Author
 {
     public Author()
     : this([])
-{
-}
+    {
+    }
 
     public Author(params object?[] values)
     {
@@ -1269,8 +1270,8 @@ public partial class Committer
 {
     public Committer()
     : this([])
-{
-}
+    {
+    }
 
     public Committer(params object?[] values)
     {
@@ -1289,8 +1290,8 @@ public partial class Commit
 {
     public Commit()
     : this([])
-{
-}
+    {
+    }
 
     public Commit(params object?[] values)
     {
@@ -1331,8 +1332,8 @@ public partial class GitHubCommitFile
 {
     public GitHubCommitFile()
     : this([])
-{
-}
+    {
+    }
 
     public GitHubCommitFile(params object?[] values)
     {
@@ -1371,8 +1372,8 @@ public partial class GitHubCommitStats
 {
     public GitHubCommitStats()
     : this([])
-{
-}
+    {
+    }
 
     public GitHubCommitStats(params object?[] values)
     {
@@ -1391,8 +1392,8 @@ public partial class GitHubCommit
 {
     public GitHubCommit()
     : this([])
-{
-}
+    {
+    }
 
     public GitHubCommit(params object?[] values)
     {
@@ -1435,8 +1436,8 @@ public partial class PullRequestCommit
 {
     public PullRequestCommit()
     : this([])
-{
-}
+    {
+    }
 
     public PullRequestCommit(params object?[] values)
     {
@@ -1467,8 +1468,8 @@ public partial class CommitComment
 {
     public CommitComment()
     : this([])
-{
-}
+    {
+    }
 
     public CommitComment(params object?[] values)
     {
@@ -1507,8 +1508,8 @@ public partial class CompareResult
 {
     public CompareResult()
     : this([])
-{
-}
+    {
+    }
 
     public CompareResult(params object?[] values)
     {
@@ -1572,8 +1573,8 @@ public partial class IssueEvent
 {
     public IssueEvent()
     : this([])
-{
-}
+    {
+    }
 
     public IssueEvent(params object?[] values)
     {

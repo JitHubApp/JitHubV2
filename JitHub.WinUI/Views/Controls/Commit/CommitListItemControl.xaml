@@ -5,7 +5,7 @@
     xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
     xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
     mc:Ignorable="d">
-    <StackPanel Spacing="4">
+    <StackPanel Spacing="{ThemeResource AppGap4}">
         <TextBlock
             Style="{StaticResource ListItemTitleTextBlockStyle}"
             Text="{Binding SummaryMessage}" />

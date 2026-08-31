@@ -50,6 +50,25 @@ public sealed class SettingsPreferencesService : ISettingsPreferencesService
         _themeService.SetTheme(theme);
     }
 
+    public string GetPalette()
+    {
+        string? launchPalette = JitHub.WinUI.Program.CurrentLaunchOptions.Palette;
+        return string.IsNullOrWhiteSpace(launchPalette)
+            ? _themeService.GetPalette()
+            : ThemePaletteCatalog.Normalize(launchPalette);
+    }
+
+    public bool TrySetPalette(string paletteId)
+    {
+        if (Application.Current is JitHub.WinUI.App app)
+        {
+            return app.TryApplyPalette(paletteId);
+        }
+
+        _themeService.SetPalette(ThemePaletteCatalog.Normalize(paletteId));
+        return true;
+    }
+
     public string GetVersionText()
     {
         try

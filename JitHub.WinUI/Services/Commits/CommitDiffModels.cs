@@ -45,11 +45,14 @@ public sealed partial class CommitDiffDocument
     {
         Files = files;
         Rows = rows;
+        FileTree = CommitDiffTreeNode.Build(files);
     }
 
     public IReadOnlyList<CommitDiffFile> Files { get; }
 
     public IReadOnlyList<CommitDiffRow> Rows { get; }
+
+    public IReadOnlyList<CommitDiffTreeNode> FileTree { get; }
 
     public bool HasFiles => Files.Count > 0;
 
@@ -90,6 +93,98 @@ public sealed partial class CommitDiffDocument
 
         return rows;
     }
+}
+
+[WinRT.GeneratedBindableCustomProperty]
+public sealed partial class CommitDiffTreeNode
+{
+    private CommitDiffTreeNode(
+        string name,
+        string fullPath,
+        bool isFile,
+        string summaryText)
+    {
+        Name = name;
+        FullPath = fullPath;
+        IsFile = isFile;
+        SummaryText = summaryText;
+    }
+
+    public string Name { get; }
+
+    public string FullPath { get; }
+
+    public bool IsFile { get; }
+
+    public string SummaryText { get; }
+
+    public bool HasSummary => !string.IsNullOrWhiteSpace(SummaryText);
+
+    public string IconGlyph => IsFile ? "\uE8A5" : "\uE8B7";
+
+    public string AutomationId => $"CommitDiffTree_{SanitizeAutomationValue(FullPath)}";
+
+    public string AutomationName => IsFile
+        ? $"{Name}, {SummaryText}"
+        : $"Folder {Name}";
+
+    public ObservableCollection<CommitDiffTreeNode> Children { get; } = [];
+
+    internal static IReadOnlyList<CommitDiffTreeNode> Build(IReadOnlyList<CommitDiffFile> files)
+    {
+        List<CommitDiffTreeNode> roots = [];
+        foreach (CommitDiffFile file in files.OrderBy(static file => file.Filename, StringComparer.OrdinalIgnoreCase))
+        {
+            string[] segments = file.Filename
+                .Split(['/', '\\'], StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
+            if (segments.Length == 0)
+            {
+                continue;
+            }
+
+            IList<CommitDiffTreeNode> siblings = roots;
+            string currentPath = string.Empty;
+            for (int index = 0; index < segments.Length; index++)
+            {
+                string segment = segments[index];
+                currentPath = string.IsNullOrEmpty(currentPath) ? segment : $"{currentPath}/{segment}";
+                bool isFile = index == segments.Length - 1;
+                CommitDiffTreeNode? node = siblings.FirstOrDefault(candidate =>
+                    candidate.IsFile == isFile &&
+                    string.Equals(candidate.Name, segment, StringComparison.OrdinalIgnoreCase));
+                if (node is null)
+                {
+                    node = new CommitDiffTreeNode(
+                        segment,
+                        isFile ? file.Filename : currentPath,
+                        isFile,
+                        isFile ? file.SummaryText : string.Empty);
+                    siblings.Add(node);
+                }
+
+                siblings = node.Children;
+            }
+        }
+
+        SortNodes(roots);
+        return roots;
+    }
+
+    private static void SortNodes(IList<CommitDiffTreeNode> nodes)
+    {
+        CommitDiffTreeNode[] sorted = [.. nodes
+            .OrderBy(static node => node.IsFile)
+            .ThenBy(static node => node.Name, StringComparer.OrdinalIgnoreCase)];
+        nodes.Clear();
+        foreach (CommitDiffTreeNode node in sorted)
+        {
+            SortNodes(node.Children);
+            nodes.Add(node);
+        }
+    }
+
+    private static string SanitizeAutomationValue(string value) =>
+        new(value.Where(char.IsLetterOrDigit).Take(80).ToArray());
 }
 
 [WinRT.GeneratedBindableCustomProperty]
@@ -232,7 +327,8 @@ public sealed partial class CommitDiffRow
         string marker,
         string text,
         CommitDiffLineKind? lineKind,
-        IReadOnlyList<CommitDiffSearchMatch>? searchMatches = null)
+        IReadOnlyList<CommitDiffSearchMatch>? searchMatches = null,
+        bool isFileCollapsed = false)
     {
         Key = key;
         Kind = kind;
@@ -250,6 +346,7 @@ public sealed partial class CommitDiffRow
         Text = text;
         LineKind = lineKind;
         SearchMatches = searchMatches ?? [];
+        IsFileCollapsed = isFileCollapsed;
     }
 
     public string Key { get; }
@@ -290,9 +387,19 @@ public sealed partial class CommitDiffRow
 
     public IReadOnlyList<CommitDiffSearchMatch> SearchMatches { get; }
 
+    public bool IsFileCollapsed { get; }
+
+    public string FileExpansionGlyph => IsFileCollapsed ? "\uE70D" : "\uE70E";
+
+    public string FileExpansionAutomationName => IsFileCollapsed
+        ? $"Expand {FileName}"
+        : $"Collapse {FileName}";
+
     public string AutomationId => $"CommitDiffRow_{SanitizeAutomationValue(Key)}";
 
     public string CopyFileAutomationId => $"CommitDiffCopyFile_{SanitizeAutomationValue(Key)}";
+
+    public string ExpandFileAutomationId => $"CommitDiffExpandFile_{SanitizeAutomationValue(Key)}";
 
     public string AutomationName => Kind switch
     {
@@ -424,7 +531,28 @@ public sealed partial class CommitDiffRow
             Marker,
             Text,
             LineKind,
-            matches);
+            matches,
+            IsFileCollapsed);
+
+    public CommitDiffRow WithFileCollapsed(bool isCollapsed) =>
+        new(
+            Key,
+            Kind,
+            File,
+            Line,
+            FileName,
+            HeaderText,
+            Status,
+            Additions,
+            Deletions,
+            Changes,
+            OldLineDisplay,
+            NewLineDisplay,
+            Marker,
+            Text,
+            LineKind,
+            SearchMatches,
+            isCollapsed);
 }
 
 [WinRT.GeneratedBindableCustomProperty]
@@ -492,19 +620,31 @@ public sealed partial class CommitDiffRowProjection
     internal bool TryGetRowIndex(string key, out int index) =>
         _rowIndexesByKey.TryGetValue(key, out index);
 
-    public static CommitDiffRowProjection Create(CommitDiffDocument? document, string? fileFilterText, string? searchText)
+    public static CommitDiffRowProjection Create(
+        CommitDiffDocument? document,
+        string? fileFilterText,
+        string? searchText,
+        IReadOnlySet<string>? collapsedFiles = null)
     {
         CommitDiffDocument source = document ?? CommitDiffDocument.Empty;
         string fileFilter = fileFilterText?.Trim() ?? string.Empty;
         string search = searchText?.Trim() ?? string.Empty;
 
-        IReadOnlyList<CommitDiffRow> filteredRows = FilterRowsByFile(source, fileFilter);
+        IReadOnlyList<CommitDiffRow> filteredRows = FilterRowsByFile(
+            source,
+            fileFilter,
+            collapsedFiles,
+            applyCollapsedState: string.IsNullOrWhiteSpace(search));
         if (filteredRows.Count == 0)
         {
             string message = string.IsNullOrWhiteSpace(fileFilter)
                 ? "No diff is available for this commit."
                 : "No files match the current filter.";
-            return new CommitDiffRowProjection([CommitDiffRow.CreateSearchNoResults(message)], [], fileFilter, search);
+            return new CommitDiffRowProjection(
+                (CommitDiffRow[])[CommitDiffRow.CreateSearchNoResults(message)],
+                [],
+                fileFilter,
+                search);
         }
 
         if (string.IsNullOrWhiteSpace(search))
@@ -532,33 +672,52 @@ public sealed partial class CommitDiffRowProjection
         return new CommitDiffRowProjection(projectedRows, matches, fileFilter, search);
     }
 
-    private static IReadOnlyList<CommitDiffRow> FilterRowsByFile(CommitDiffDocument document, string fileFilter)
+    private static IReadOnlyList<CommitDiffRow> FilterRowsByFile(
+        CommitDiffDocument document,
+        string fileFilter,
+        IReadOnlySet<string>? collapsedFiles,
+        bool applyCollapsedState)
     {
         if (document.Rows.Count == 0)
         {
             return [];
         }
 
-        if (string.IsNullOrWhiteSpace(fileFilter))
-        {
-            return document.Rows;
-        }
+        HashSet<string>? matchingFiles = string.IsNullOrWhiteSpace(fileFilter)
+            ? null
+            : document.Files
+                .Where(file =>
+                    file.Filename.Contains(fileFilter, StringComparison.OrdinalIgnoreCase) ||
+                    (file.PreviousFilename?.Contains(fileFilter, StringComparison.OrdinalIgnoreCase) ?? false))
+                .Select(static file => file.Filename)
+                .ToHashSet(StringComparer.OrdinalIgnoreCase);
 
-        HashSet<string> matchingFiles = document.Files
-            .Where(file =>
-                file.Filename.Contains(fileFilter, StringComparison.OrdinalIgnoreCase) ||
-                (file.PreviousFilename?.Contains(fileFilter, StringComparison.OrdinalIgnoreCase) ?? false))
-            .Select(static file => file.Filename)
-            .ToHashSet(StringComparer.OrdinalIgnoreCase);
-
-        if (matchingFiles.Count == 0)
+        if (matchingFiles is { Count: 0 })
         {
             return [];
         }
 
-        return [.. document.Rows.Where(row =>
-            !string.IsNullOrWhiteSpace(row.FileName) &&
-            matchingFiles.Contains(row.FileName))];
+        List<CommitDiffRow> rows = [];
+        foreach (CommitDiffRow row in document.Rows)
+        {
+            if (string.IsNullOrWhiteSpace(row.FileName) ||
+                (matchingFiles is not null && !matchingFiles.Contains(row.FileName)))
+            {
+                continue;
+            }
+
+            bool isCollapsed = applyCollapsedState && collapsedFiles?.Contains(row.FileName) == true;
+            if (row.IsFileHeader)
+            {
+                rows.Add(row.WithFileCollapsed(isCollapsed));
+            }
+            else if (!isCollapsed)
+            {
+                rows.Add(row);
+            }
+        }
+
+        return rows;
     }
 
     private static IReadOnlyList<CommitDiffSearchMatch> FindMatches(

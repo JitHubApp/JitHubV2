@@ -10,16 +10,16 @@
             VerticalAlignment="Stretch"
             HorizontalContentAlignment="Stretch"
         Background="{ThemeResource AppTransparentBrush}"
-            BorderThickness="0"
+            BorderThickness="{ThemeResource AppZeroThickness}"
             Command="{Binding DetailNavigationCommand}"
             Style="{StaticResource AppQuietButtonStyle}">
             <Grid
-                Margin="10,0"
-                Padding="10"
+                Margin="{ThemeResource AppMargin10_0}"
+                Padding="{ThemeResource AppPadding10}"
                 HorizontalAlignment="Stretch"
                 VerticalAlignment="Stretch"
                 BorderBrush="{StaticResource BorderGray}"
-                BorderThickness="0,0,0,1">
+                BorderThickness="{ThemeResource AppBottomHairlineBorderThickness}">
                 <Grid.RowDefinitions>
                     <RowDefinition Height="*" />
                     <RowDefinition Height="*" />
@@ -39,10 +39,10 @@
                         Text="{Binding Name}" />
                     <Grid
                         Grid.Column="1"
-                        Padding="5,2"
+                        Padding="{ThemeResource AppPadding5_2}"
                         HorizontalAlignment="Right"
                         BorderBrush="{StaticResource BorderGray}"
-                        BorderThickness="1"
+                        BorderThickness="{ThemeResource AppHairlineBorderThickness}"
                         CornerRadius="{ThemeResource AppRadiusSmall}">
                         <Grid.ColumnDefinitions>
                             <ColumnDefinition Width="*" />
@@ -50,12 +50,14 @@
                         </Grid.ColumnDefinitions>
                         <appcontrols:AppIcon
                             Grid.Column="0"
-                            Margin="0,0,5,0"
+                            Margin="{ThemeResource AppMargin0_0_5_0}"
+                            VerticalAlignment="Center"
                             IconBrush="{ThemeResource AppWarmAccentBrush}"
                             IconKind="Star"
                             IconSize="12" />
                         <TextBlock
                             Grid.Column="1"
+                            VerticalAlignment="Center"
                             FontSize="{ThemeResource AppFontSize14}"
                             Text="{Binding StargazersCount}" />
                     </Grid>
@@ -71,7 +73,7 @@
                     VerticalAlignment="Stretch"
                     Orientation="Horizontal">
                     <TextBlock
-                        Margin="0,0,15,0"
+                        Margin="{ThemeResource AppMargin0_0_15_0}"
                         Text="{Binding Language}"
                         Visibility="{Binding Language, Converter={StaticResource LanguageToVisibilityConverter}, Mode=OneWay}" />
                     <TextBlock Text="{Binding UpdatedAt, Converter={StaticResource TimeAgoConverter}, Mode=OneWay}" />

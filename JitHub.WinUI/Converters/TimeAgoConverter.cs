@@ -40,7 +40,7 @@ namespace JitHub.WinUI.Converters
         }
 
         public object ConvertBack(object value, Type targetType, object parameter, string language)
-            => throw new NotSupportedException();
+            => Microsoft.UI.Xaml.DependencyProperty.UnsetValue;
 
         private static string ConvertDateToTimeAgoFormat(DateTime dt, string prefix)
         {

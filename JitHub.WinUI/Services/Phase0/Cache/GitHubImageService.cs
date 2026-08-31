@@ -747,11 +747,23 @@ public sealed partial class GitHubImageService : IGitHubImageService, IDisposabl
                 return;
             }
 
-            _ = Task.ContinueWith(
-                _ => _cancellationTokenSource.Dispose(),
-                CancellationToken.None,
-                TaskContinuationOptions.ExecuteSynchronously,
-                TaskScheduler.Default);
+            _ = DisposeRequestWhenCompleteAsync();
+        }
+
+        private async Task DisposeRequestWhenCompleteAsync()
+        {
+            try
+            {
+                await Task.ConfigureAwait(false);
+            }
+            catch
+            {
+                // Waiters own user-visible failures; disposal only observes completion.
+            }
+            finally
+            {
+                _cancellationTokenSource.Dispose();
+            }
         }
     }
 }

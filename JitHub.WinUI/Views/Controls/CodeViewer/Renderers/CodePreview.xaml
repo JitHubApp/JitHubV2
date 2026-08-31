@@ -15,23 +15,23 @@
     <Grid>
         <codeviewer:CodeEditorControl
             x:Name="Editor"
-            FilePath="{x:Bind ViewModel.CurrentFile.Path, Mode=OneWay}"
+            FilePath="{x:Bind ViewModel.CurrentFilePath, Mode=OneWay}"
             FindRequested="Editor_FindRequested"
             IsReadOnlyEditor="True"
             LanguageId="{x:Bind ViewModel.LanguageId, Mode=OneWay}"
             Text="{x:Bind ViewModel.Text, Mode=OneWay}" />
 
         <StackPanel
-            Margin="8"
+            Margin="{ThemeResource AppMargin8}"
             HorizontalAlignment="Right"
             VerticalAlignment="Top"
             Orientation="Horizontal"
-            Spacing="2">
+            Spacing="{ThemeResource AppGap2}">
             <Button
                 x:Uid="RepoCodeFindButton"
-                Width="32"
-                Height="32"
-                Padding="0"
+                Width="{ThemeResource AppDimension32}"
+                Height="{ThemeResource AppDimension32}"
+                Padding="{ThemeResource AppPadding0}"
                 AutomationProperties.AutomationId="RepoCodeFindButton"
                 AutomationProperties.Name="Find in file"
                 Click="FindButton_Click"
@@ -42,9 +42,9 @@
             <Button
                 x:Name="SymbolsButton"
                 x:Uid="RepoCodeSymbolsButton"
-                Width="32"
-                Height="32"
-                Padding="0"
+                Width="{ThemeResource AppDimension32}"
+                Height="{ThemeResource AppDimension32}"
+                Padding="{ThemeResource AppPadding0}"
                 AutomationProperties.AutomationId="RepoCodeSymbolsButton"
                 AutomationProperties.Name="File outline"
                 Click="SymbolsButton_Click"
@@ -53,16 +53,16 @@
                 <FontIcon FontSize="{ThemeResource AppFontSize14}" Glyph="&#xE8A9;" />
                 <Button.Flyout>
                     <Flyout Placement="BottomEdgeAlignedRight">
-                        <Grid Width="300" MaxHeight="420">
+                        <Grid Width="{ThemeResource AppDimension300}" MaxHeight="{ThemeResource AppDimension420}">
                             <Grid.RowDefinitions>
                                 <RowDefinition Height="Auto" />
                                 <RowDefinition Height="*" />
                             </Grid.RowDefinitions>
                             <TextBlock
                                 x:Uid="RepoCodeOutlineHeading"
-                                Margin="4,0,4,8"
+                                Margin="{ThemeResource AppMargin4_0_4_8}"
                                 Foreground="{ThemeResource AppInkBrush}"
-                                FontWeight="SemiBold"
+                                FontWeight="{ThemeResource AppFontWeightSemibold}"
                                 Text="File outline" />
                             <ListView
                                 x:Name="SymbolsList"
@@ -78,16 +78,16 @@
                                 <ListView.ItemTemplate>
                                     <DataTemplate x:DataType="models:CodeSymbol">
                                         <Grid
-                                            Padding="8,6"
+                                            Padding="{ThemeResource AppPadding8_6}"
                                             AutomationProperties.AutomationId="{x:Bind AutomationId}"
                                             AutomationProperties.Name="{x:Bind AutomationName}"
                 Background="{ThemeResource AppTransparentBrush}"
-                                            ColumnSpacing="8">
+                                            ColumnSpacing="{ThemeResource AppGap8}">
                                             <Grid.ColumnDefinitions>
                                                 <ColumnDefinition Width="*" />
                                                 <ColumnDefinition Width="Auto" />
                                             </Grid.ColumnDefinitions>
-                                            <StackPanel Spacing="1">
+                                            <StackPanel Spacing="{ThemeResource AppGap1}">
                                                 <TextBlock
                                                     Foreground="{ThemeResource AppInkBrush}"
                                                     Text="{x:Bind Name}"
@@ -111,7 +111,7 @@
                                 x:Name="NoSymbolsText"
                                 x:Uid="RepoCodeOutlineEmptyState"
                                 Grid.Row="1"
-                                Padding="8"
+                                Padding="{ThemeResource AppPadding8}"
                                 AutomationProperties.AutomationId="RepoCodeOutlineEmptyState"
                                 Foreground="{ThemeResource AppInkMutedBrush}"
                                 Text="Outline is not available for this file."
@@ -123,9 +123,9 @@
             </Button>
             <Button
                 x:Uid="RepoCodeCopyLineLinkButton"
-                Width="32"
-                Height="32"
-                Padding="0"
+                Width="{ThemeResource AppDimension32}"
+                Height="{ThemeResource AppDimension32}"
+                Padding="{ThemeResource AppPadding0}"
                 AutomationProperties.AutomationId="RepoCodeCopyLineLinkButton"
                 AutomationProperties.Name="Copy link to current line"
                 Click="CopyLineLinkButton_Click"
@@ -137,18 +137,19 @@
 
         <Border
             x:Name="FindPanel"
-            Margin="8,44,8,8"
-            Padding="6"
+            Margin="{ThemeResource AppMargin8_44_8_8}"
+            Padding="{ThemeResource AppPadding6}"
             HorizontalAlignment="Right"
             VerticalAlignment="Top"
             Background="{ThemeResource AppSurfaceBrush}"
             BorderBrush="{ThemeResource AppOutlineBrush}"
-            BorderThickness="1"
+            BorderThickness="{ThemeResource AppHairlineBorderThickness}"
             CornerRadius="{ThemeResource ControlCornerRadius}"
             Visibility="Collapsed">
-            <Grid ColumnSpacing="2">
+            <Grid ColumnSpacing="{ThemeResource AppGap2}">
                 <Grid.ColumnDefinitions>
-                    <ColumnDefinition Width="220" />
+                    <ColumnDefinition Width="{ThemeResource AppGridLength220}" />
+                    <ColumnDefinition Width="{ThemeResource AppGridLength48}" />
                     <ColumnDefinition Width="Auto" />
                     <ColumnDefinition Width="Auto" />
                     <ColumnDefinition Width="Auto" />
@@ -156,19 +157,29 @@
                 <TextBox
                     x:Name="FindTextBox"
                     x:Uid="RepoCodeFindTextBox"
-                    Height="32"
+                    Height="{ThemeResource AppDimension32}"
                     AutomationProperties.AutomationId="RepoCodeFindTextBox"
                     AutomationProperties.Name="Find text"
                     KeyDown="FindTextBox_KeyDown"
                     PlaceholderText="Find in file"
                     Style="{StaticResource AppTextBoxStyle}"
                     TextChanged="FindTextBox_TextChanged" />
+                <TextBlock
+                    x:Name="FindStatus"
+                    x:Uid="RepoCodeFindStatus"
+                    Grid.Column="1"
+                    HorizontalAlignment="Center"
+                    VerticalAlignment="Center"
+                    AutomationProperties.AutomationId="RepoCodeFindStatus"
+                    AutomationProperties.LiveSetting="Polite"
+                    Foreground="{ThemeResource AppInkMutedBrush}"
+                    Style="{StaticResource SectionSecondaryTextBlockStyle}" />
                 <Button
                     x:Uid="RepoCodePreviousMatchButton"
-                    Grid.Column="1"
-                    Width="32"
-                    Height="32"
-                    Padding="0"
+                    Grid.Column="2"
+                    Width="{ThemeResource AppDimension32}"
+                    Height="{ThemeResource AppDimension32}"
+                    Padding="{ThemeResource AppPadding0}"
                     AutomationProperties.AutomationId="RepoCodePreviousMatchButton"
                     AutomationProperties.Name="Previous match"
                     Click="PreviousMatchButton_Click"
@@ -178,10 +189,10 @@
                 </Button>
                 <Button
                     x:Uid="RepoCodeNextMatchButton"
-                    Grid.Column="2"
-                    Width="32"
-                    Height="32"
-                    Padding="0"
+                    Grid.Column="3"
+                    Width="{ThemeResource AppDimension32}"
+                    Height="{ThemeResource AppDimension32}"
+                    Padding="{ThemeResource AppPadding0}"
                     AutomationProperties.AutomationId="RepoCodeNextMatchButton"
                     AutomationProperties.Name="Next match"
                     Click="NextMatchButton_Click"
@@ -191,10 +202,10 @@
                 </Button>
                 <Button
                     x:Uid="RepoCodeCloseFindButton"
-                    Grid.Column="3"
-                    Width="32"
-                    Height="32"
-                    Padding="0"
+                    Grid.Column="4"
+                    Width="{ThemeResource AppDimension32}"
+                    Height="{ThemeResource AppDimension32}"
+                    Padding="{ThemeResource AppPadding0}"
                     AutomationProperties.AutomationId="RepoCodeCloseFindButton"
                     AutomationProperties.Name="Close find"
                     Click="CloseFindButton_Click"
@@ -204,17 +215,5 @@
                 </Button>
             </Grid>
         </Border>
-
-        <TextBlock
-            x:Name="FindStatus"
-            x:Uid="RepoCodeFindStatus"
-            Margin="12,82,12,0"
-            HorizontalAlignment="Right"
-            VerticalAlignment="Top"
-            AutomationProperties.AutomationId="RepoCodeFindStatus"
-            AutomationProperties.LiveSetting="Polite"
-            Foreground="{ThemeResource AppInkMutedBrush}"
-            Style="{StaticResource SectionSecondaryTextBlockStyle}"
-            Visibility="Collapsed" />
     </Grid>
 </UserControl>

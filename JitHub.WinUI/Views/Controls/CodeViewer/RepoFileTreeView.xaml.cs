@@ -35,6 +35,8 @@ public sealed partial class RepoFileTreeView : UserControl
     private readonly object _ownedTaskGate = new();
     private Task _ownedTask = Task.CompletedTask;
     private string? _pendingSelectionPath;
+    private string? _nativeSelectedPath;
+    private TreeViewItem? _nativeSelectedContainer;
     private string? _lastInvokedPath;
     private long _lastInvokedTimestamp;
     private bool _treeItemAnnotationQueued;
@@ -168,6 +170,8 @@ public sealed partial class RepoFileTreeView : UserControl
     private void OnUnloaded(object sender, RoutedEventArgs e)
     {
         RetireTreeUpdate();
+        _nativeSelectedPath = null;
+        _nativeSelectedContainer = null;
         CancellationTokenSource? lifetime = Interlocked.Exchange(ref _lifetimeCts, null);
         lifetime?.Cancel();
         if (lifetime is not null)
@@ -196,6 +200,10 @@ public sealed partial class RepoFileTreeView : UserControl
         else if (e.PropertyName == nameof(RepoFileTreeViewModel.ErrorMessage))
         {
             UpdateTreeStatus(vm);
+        }
+        else if (e.PropertyName == nameof(RepoFileTreeViewModel.SelectedNode))
+        {
+            SynchronizeNativeSelection(vm.SelectedNode);
         }
     }
 
@@ -237,6 +245,7 @@ public sealed partial class RepoFileTreeView : UserControl
                 request.Token);
             if (ReferenceEquals(Volatile.Read(ref _treeUpdateCts), request))
             {
+                SynchronizeNativeSelection(ViewModel?.SelectedNode);
                 AutomationProperties.SetItemStatus(
                     FileTreeView,
                     hasDeterministicSource ? "ready:path:src/App.cs" : "ready");
@@ -245,6 +254,10 @@ public sealed partial class RepoFileTreeView : UserControl
         }
         catch (OperationCanceledException) when (request.IsCancellationRequested)
         {
+        }
+        catch (Exception exception)
+        {
+            ShowTreePresentationFailure(exception);
         }
         finally
         {
@@ -356,16 +369,24 @@ public sealed partial class RepoFileTreeView : UserControl
         {
             await previous.ConfigureAwait(false);
         }
-        catch
+        catch (OperationCanceledException)
         {
+        }
+        catch (Exception exception)
+        {
+            JitHub.WinUI.App.LogHandledException(exception, "ui-repo-file-tree-owned-work");
         }
 
         try
         {
             await current.ConfigureAwait(false);
         }
-        catch
+        catch (OperationCanceledException)
         {
+        }
+        catch (Exception exception)
+        {
+            JitHub.WinUI.App.LogHandledException(exception, "ui-repo-file-tree-owned-work");
         }
     }
 
@@ -377,7 +398,7 @@ public sealed partial class RepoFileTreeView : UserControl
             pending = _ownedTask;
         }
 
-        _ = DisposeSourceAfterAsync(source, pending);
+        UiTaskGuard.Observe(DisposeSourceAfterAsync(source, pending), "ui-repo-file-tree-view");
     }
 
     private static async Task DisposeSourceAfterAsync(CancellationTokenSource source, Task pending)
@@ -386,8 +407,12 @@ public sealed partial class RepoFileTreeView : UserControl
         {
             await pending.ConfigureAwait(false);
         }
-        catch
+        catch (OperationCanceledException)
         {
+        }
+        catch (Exception exception)
+        {
+            JitHub.WinUI.App.LogHandledException(exception, "ui-repo-file-tree-dispose");
         }
         finally
         {
@@ -454,7 +479,6 @@ public sealed partial class RepoFileTreeView : UserControl
                     return;
                 }
 
-                FileTreeView.UpdateLayout();
                 AnnotateRealizedTreeItems(FileTreeView.RootNodes);
             });
     }
@@ -483,19 +507,75 @@ public sealed partial class RepoFileTreeView : UserControl
         AutomationProperties.SetAutomationId(container, node.AutomationId);
         AutomationProperties.SetName(container, node.AutomationName);
         AutomationProperties.SetItemStatus(container, $"path:{node.Path}");
+
+        if (FileTreeView.SelectedNode?.Content is RepoTreeNodeViewModel selectedNode &&
+            string.Equals(selectedNode.Path, node.Path, StringComparison.Ordinal))
+        {
+            RememberNativeSelection(container, node);
+        }
     }
 
     // ── TreeView event handlers ───────────────────────────────────────
 
+    private void SynchronizeNativeSelection(RepoTreeNodeViewModel? selectedNode)
+    {
+        TreeViewNode? nativeNode = selectedNode is null
+            ? null
+            : FindTreeViewNodeByPath(FileTreeView.RootNodes, selectedNode.Path);
+
+        if (!ReferenceEquals(FileTreeView.SelectedNode, nativeNode))
+        {
+            FileTreeView.SelectedNode = nativeNode;
+        }
+
+        if (nativeNode?.Content is RepoTreeNodeViewModel nativeViewModel &&
+            FileTreeView.ContainerFromNode(nativeNode) is TreeViewItem container)
+        {
+            RememberNativeSelection(container, nativeViewModel);
+            return;
+        }
+
+        _nativeSelectedPath = null;
+        _nativeSelectedContainer = null;
+    }
+
+    private static TreeViewNode? FindTreeViewNodeByPath(
+        IEnumerable<TreeViewNode> nodes,
+        string path)
+    {
+        foreach (TreeViewNode node in nodes)
+        {
+            if (node.Content is RepoTreeNodeViewModel viewModel &&
+                string.Equals(viewModel.Path, path, StringComparison.Ordinal))
+            {
+                return node;
+            }
+
+            if (node.Children.Count > 0 &&
+                FindTreeViewNodeByPath(node.Children, path) is { } descendant)
+            {
+                return descendant;
+            }
+        }
+
+        return null;
+    }
+
     private void OnSelectionChanged(TreeView sender, TreeViewSelectionChangedEventArgs args)
     {
-        if (sender.SelectedNode?.Content is not RepoTreeNodeViewModel { IsDirectory: false } nodeVm ||
-            string.Equals(ViewModel?.SelectedNode?.Path, nodeVm.Path, StringComparison.Ordinal))
+        if (sender.SelectedNode?.Content is not RepoTreeNodeViewModel { IsDirectory: false } nodeVm)
         {
             return;
         }
 
-        SelectFileNode(nodeVm);
+        TreeViewItem? container = sender.ContainerFromNode(sender.SelectedNode) as TreeViewItem;
+        RememberNativeSelection(container, nodeVm);
+        if (string.Equals(ViewModel?.SelectedNode?.Path, nodeVm.Path, StringComparison.Ordinal))
+        {
+            return;
+        }
+
+        SelectFileNode(nodeVm, visualSelectionContainer: container);
     }
 
     private void OnTreeItemPointerPressed(object sender, PointerRoutedEventArgs e)
@@ -511,33 +591,36 @@ public sealed partial class RepoFileTreeView : UserControl
         if (string.Equals(ViewModel?.SelectedNode?.Path, nodeVm.Path, StringComparison.Ordinal))
         {
             RaiseFileInvoked(nodeVm);
-            e.Handled = true;
             return;
         }
 
         TreeViewItem? container = FindTreeViewItem(element);
-        SelectFileNode(
-            nodeVm,
-            requireVisualSelection: false,
-            clearPendingAtLowPriority: false);
-        e.Handled = true;
-        DeferredFrameAction.Schedule(
-            this,
-            () => IsLoaded && string.Equals(_pendingSelectionPath, nodeVm.Path, StringComparison.Ordinal),
-            () =>
-            {
-                if (container is { IsSelected: false })
-                {
-                    container.IsSelected = true;
-                }
+        TreeViewNode? nativeNode = container is null
+            ? null
+            : FileTreeView.NodeFromContainer(container);
+        if (nativeNode is not null && !ReferenceEquals(FileTreeView.SelectedNode, nativeNode))
+        {
+            // Select on pointer-down like the Windows file surfaces do, while leaving
+            // focus and invocation to TreeView's native routed-input pipeline.
+            FileTreeView.SelectedNode = nativeNode;
+        }
+    }
 
-                container?.Focus(FocusState.Pointer);
+    internal bool IsFileSelectionVisuallyPresented(string path) =>
+        string.Equals(_nativeSelectedPath, path, StringComparison.Ordinal) &&
+        _nativeSelectedContainer is { IsLoaded: true, IsSelected: true } &&
+        FileTreeView.SelectedNode?.Content is RepoTreeNodeViewModel selectedNode &&
+        string.Equals(selectedNode.Path, path, StringComparison.Ordinal);
 
-                if (string.Equals(_pendingSelectionPath, nodeVm.Path, StringComparison.Ordinal))
-                {
-                    _pendingSelectionPath = null;
-                }
-            });
+    private void RememberNativeSelection(TreeViewItem? container, RepoTreeNodeViewModel node)
+    {
+        if (container is not { IsSelected: true })
+        {
+            return;
+        }
+
+        _nativeSelectedPath = node.Path;
+        _nativeSelectedContainer = container;
     }
 
     private void OnTreeItemPointerEntered(object sender, PointerRoutedEventArgs e)
@@ -579,7 +662,7 @@ public sealed partial class RepoFileTreeView : UserControl
 
         try
         {
-            _ = viewModel.PrefetchNodeAsync(node, lifetimeToken);
+            UiTaskGuard.Observe(viewModel.PrefetchNodeAsync(node, lifetimeToken), "ui-repo-file-tree-view");
         }
         catch (Exception)
         {
@@ -642,7 +725,8 @@ public sealed partial class RepoFileTreeView : UserControl
     private void SelectFileNode(
         RepoTreeNodeViewModel nodeVm,
         bool requireVisualSelection = true,
-        bool clearPendingAtLowPriority = true)
+        bool clearPendingAtLowPriority = true,
+        TreeViewItem? visualSelectionContainer = null)
     {
         if (string.Equals(_pendingSelectionPath, nodeVm.Path, StringComparison.Ordinal))
         {
@@ -653,6 +737,8 @@ public sealed partial class RepoFileTreeView : UserControl
             "repo_code",
             nodeVm.AutomationId,
             "repo_code");
+        ViewModel?.CancelPrefetch();
+        ProductPerformanceReadiness.RecordTraversalStage("repo_code.prefetch.cancelled");
         ProductPerformanceReadiness.RecordTraversalStage("repo_code.pointer.selected");
         _pendingSelectionPath = nodeVm.Path;
         if (requireVisualSelection &&
@@ -665,6 +751,12 @@ public sealed partial class RepoFileTreeView : UserControl
         }
 
         bool handled = RaiseFileInvoked(nodeVm);
+        if (visualSelectionContainer is not null &&
+            IsFileSelectionVisuallyPresented(nodeVm.Path))
+        {
+            ProductPerformanceReadiness.RecordTraversalStage("repo_code.visual.selected");
+        }
+
         ProductPerformanceReadiness.RecordTraversalStage("repo_code.page.invoked");
         if (!handled)
         {
@@ -749,7 +841,22 @@ public sealed partial class RepoFileTreeView : UserControl
             catch (OperationCanceledException) when (request.IsCancellationRequested)
             {
             }
+            catch (Exception exception)
+            {
+                ShowTreePresentationFailure(exception);
+            }
         }
+    }
+
+    private void ShowTreePresentationFailure(Exception exception)
+    {
+        JitHub.WinUI.App.LogHandledException(exception, "ui-repo-file-tree-presentation");
+        AutomationProperties.SetItemStatus(FileTreeView, "error");
+        TreeStatus.Severity = InfoBarSeverity.Error;
+        TreeStatus.Message = LocalizedResourceText.GetString(
+            "RepoCode/Error/TreePresentationFailedSafe",
+            "JitHub could not display repository files. Try refreshing the page.");
+        TreeStatus.IsOpen = true;
     }
 
     private void OnCollapsed(TreeView sender, TreeViewCollapsedEventArgs args)

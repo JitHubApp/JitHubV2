@@ -118,7 +118,8 @@ internal static class AccountSignOutDialogFlow
                             "Some local account data could not be removed. {0} data groups are still pending. You are still signed in; retry, or cancel to continue cleanup in the background.",
                             result.Failures.Count));
                 },
-                errorText);
+                errorText,
+                layoutKind: AppDialogLayoutKind.Confirmation);
         }
         finally
         {

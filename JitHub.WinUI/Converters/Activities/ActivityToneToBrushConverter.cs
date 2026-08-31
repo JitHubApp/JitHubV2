@@ -23,7 +23,7 @@ public sealed partial class ActivityToneToBrushConverter : IValueConverter
 
     public object ConvertBack(object value, Type targetType, object parameter, string language)
     {
-        throw new NotImplementedException();
+        return Microsoft.UI.Xaml.DependencyProperty.UnsetValue;
     }
 
     private static string ForegroundKey(ActivityCardTone tone) => tone switch

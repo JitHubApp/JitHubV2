@@ -5,11 +5,13 @@ using System.Threading.Tasks;
 using JitHub.Models.GitHub;
 using JitHub.Services;
 using JitHub.Services.Layout;
+using JitHub.WinUI.Performance;
 using JitHub.WinUI.ViewModels.Pages;
 using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Automation;
 using Microsoft.UI.Xaml.Controls;
 using Microsoft.UI.Xaml.Input;
+using Microsoft.UI.Xaml.Media;
 using Microsoft.UI.Xaml.Navigation;
 using Windows.System;
 
@@ -22,6 +24,7 @@ public sealed partial class RepoSearchResultPage : Page
     private CancellationTokenSource? _searchDebounce;
     private string _initialQuery = string.Empty;
     private bool _initialized;
+    private ProductPerformanceScrollProbe? _performanceScrollProbe;
 
     public RepoSearchResultPage()
     {
@@ -50,20 +53,22 @@ public sealed partial class RepoSearchResultPage : Page
         base.OnNavigatedFrom(e);
     }
 
-    private async void RepoSearchResultPage_Loaded(object sender, RoutedEventArgs e)
+    private void RepoSearchResultPage_Loaded(object sender, RoutedEventArgs e)
     {
-        ApplyResponsiveLayout(ActualWidth);
-        if (_initialized)
+        UiTaskGuard.Run(async () =>
         {
-            return;
-        }
+            AttachPerformanceScrollProbe();
+            ApplyResponsiveLayout(ActualWidth);
+            if (_initialized)
+            {
+                return;
+            }
 
-        _initialized = true;
-        await ViewModel.InitializeAsync(_initialQuery, _lifetimeCancellation.Token);
-        ProductPerformanceReadiness.CommitRoute(
-            "repo_search",
-            ProductPerformanceReadiness.CountIdentity(ViewModel.Results.Count));
-        _ = PrefetchLikelyRepositoriesAsync();
+            _initialized = true;
+            await ViewModel.InitializeAsync(_initialQuery, _lifetimeCancellation.Token);
+            ProductPerformanceReadiness.CommitRoute("repo_search", ProductPerformanceReadiness.CountIdentity(ViewModel.Results.Count));
+            UiTaskGuard.Observe(PrefetchLikelyRepositoriesAsync(), "ui-repo-search-result-page");
+        }, "ui-repo-search-result-page");
     }
 
     private Task PrefetchLikelyRepositoriesAsync() =>
@@ -75,8 +80,40 @@ public sealed partial class RepoSearchResultPage : Page
 
     private void RepoSearchResultPage_Unloaded(object sender, RoutedEventArgs e)
     {
+        _performanceScrollProbe?.Dispose();
+        _performanceScrollProbe = null;
         _searchDebounce?.Cancel();
         ViewModel.CancelPendingWork();
+    }
+
+    private void AttachPerformanceScrollProbe()
+    {
+        _performanceScrollProbe?.Dispose();
+        _performanceScrollProbe = ProductPerformanceReadiness.IsEnabled &&
+            FindDescendant<ScrollViewer>(ResultsList) is ScrollViewer scrollViewer
+                ? ProductPerformanceScrollProbe.TryStart(ResultsList, scrollViewer)
+                : null;
+    }
+
+    private static T? FindDescendant<T>(DependencyObject root)
+        where T : DependencyObject
+    {
+        int count = VisualTreeHelper.GetChildrenCount(root);
+        for (int index = 0; index < count; index++)
+        {
+            DependencyObject child = VisualTreeHelper.GetChild(root, index);
+            if (child is T match)
+            {
+                return match;
+            }
+
+            if (FindDescendant<T>(child) is T nested)
+            {
+                return nested;
+            }
+        }
+
+        return null;
     }
 
     private void PageRoot_SizeChanged(object sender, SizeChangedEventArgs e) =>
@@ -132,7 +169,7 @@ public sealed partial class RepoSearchResultPage : Page
         }
 
         _searchDebounce?.Cancel();
-        _ = ViewModel.ApplySearchAsync(_lifetimeCancellation.Token);
+        UiTaskGuard.Observe(ViewModel.ApplySearchAsync(_lifetimeCancellation.Token), "ui-repo-search-result-page");
         e.Handled = true;
     }
 
@@ -142,7 +179,7 @@ public sealed partial class RepoSearchResultPage : Page
         _searchDebounce?.Dispose();
         CancellationTokenSource debounce = CancellationTokenSource.CreateLinkedTokenSource(_lifetimeCancellation.Token);
         _searchDebounce = debounce;
-        _ = DebounceSearchAsync(debounce, delayMilliseconds);
+        UiTaskGuard.Observe(DebounceSearchAsync(debounce, delayMilliseconds), "ui-repo-search-result-page");
     }
 
     private async Task DebounceSearchAsync(CancellationTokenSource debounce, int delayMilliseconds)
@@ -164,15 +201,18 @@ public sealed partial class RepoSearchResultPage : Page
         }
     }
 
-    private async void RetryButton_Click(object sender, RoutedEventArgs e)
+    private void RetryButton_Click(object sender, RoutedEventArgs e)
     {
-        await ViewModel.RefreshAsync(_lifetimeCancellation.Token);
+        UiTaskGuard.Run(async () =>
+        {
+            await ViewModel.RefreshAsync(_lifetimeCancellation.Token);
+        }, "ui-repo-search-result-page");
     }
 
     private void ClearFiltersButton_Click(object sender, RoutedEventArgs e)
     {
         ViewModel.ClearAllFilters();
-        _ = ViewModel.ApplySearchAsync(_lifetimeCancellation.Token);
+        UiTaskGuard.Observe(ViewModel.ApplySearchAsync(_lifetimeCancellation.Token), "ui-repo-search-result-page");
         FilterButton.Flyout?.Hide();
     }
 
@@ -181,7 +221,7 @@ public sealed partial class RepoSearchResultPage : Page
         if (sender is FrameworkElement { DataContext: RepositorySearchFilterChip chip })
         {
             ViewModel.ClearFilter(chip.Id);
-            _ = ViewModel.ApplySearchAsync(_lifetimeCancellation.Token);
+            UiTaskGuard.Observe(ViewModel.ApplySearchAsync(_lifetimeCancellation.Token), "ui-repo-search-result-page");
         }
     }
 
@@ -215,7 +255,7 @@ public sealed partial class RepoSearchResultPage : Page
         args.ItemContainer.PointerEntered += ResultContainer_PointerEntered;
         if (args.ItemIndex >= ViewModel.Results.Count - 8 && ViewModel.CanLoadMore)
         {
-            _ = ViewModel.LoadNextPageAsync(_lifetimeCancellation.Token);
+            UiTaskGuard.Observe(ViewModel.LoadNextPageAsync(_lifetimeCancellation.Token), "ui-repo-search-result-page");
         }
     }
 
@@ -223,9 +263,7 @@ public sealed partial class RepoSearchResultPage : Page
     {
         if (sender is FrameworkElement { DataContext: RepositorySearchResultItem item })
         {
-            _ = ((App)Application.Current)
-                .GetService<ShellPageViewModel>()
-                .PrefetchRepositoryCodeAsync(item.Repository, _lifetimeCancellation.Token);
+            UiTaskGuard.Observe(((App)Application.Current).GetService<ShellPageViewModel>().PrefetchRepositoryCodeAsync(item.Repository, _lifetimeCancellation.Token), "ui-repo-search-result-page");
         }
     }
 

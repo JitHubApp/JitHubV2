@@ -72,7 +72,7 @@ public static partial class CommitDiffParser
                 file.Additions,
                 file.Deletions,
                 file.Changes,
-                [new CommitDiffLine(CommitDiffLineKind.Binary, null, null, "Binary file or diff unavailable for this file.")],
+                (CommitDiffLine[])[new CommitDiffLine(CommitDiffLineKind.Binary, null, null, "Binary file or diff unavailable for this file.")],
                 isBinaryOrUnavailable: true);
         }
 

@@ -940,6 +940,7 @@ public sealed class GitHubPullRequestQueryService : IGitHubPullRequestQueryServi
         CancellationToken cancellationToken = default) =>
         _queryService.InvalidateTagsAsync(
             GitHubAccountPartition.Require(userId),
+            (string[])
             [
                 CreatePullRequestTag(owner, repositoryName, pullRequestNumber),
                 CreateRepositoryTag(owner, repositoryName)
@@ -1448,18 +1449,18 @@ public sealed class GitHubPullRequestQueryService : IGitHubPullRequestQueryServi
             Number = number,
             Title = number switch
             {
-                12 => "Polish adaptive pull request workspace",
-                11 => "Keep cached review threads visible during refresh",
-                _ => "Add compact inspector drawer"
+                12 => "Keep review context visible while files load",
+                11 => "Add keyboard shortcuts to pull request review",
+                _ => "Resolve Markdown images in nested comments"
             },
-            Body = "This preview pull request mirrors the production layout without calling GitHub.",
+            Body = "This pull request improves the repository review experience across long conversations and large changes.",
             State = "open",
             HtmlUrl = $"https://github.com/{owner}/{repositoryName}/pull/{number}",
             Comments = number % 4,
             CreatedAt = DateTimeOffset.UtcNow.AddDays(-number),
             UpdatedAt = DateTimeOffset.UtcNow.AddHours(-number),
-            User = new GitHubActor { Login = "preview-author" },
-            Head = new GitHubPullRequestBranch { GitRef = "feature/adaptive-pr", Label = $"{owner}:feature/adaptive-pr" },
+            User = new GitHubActor { Login = "jithub-contributor" },
+            Head = new GitHubPullRequestBranch { GitRef = "feature/review-context", Label = $"{owner}:feature/review-context" },
             Base = new GitHubPullRequestBranch { GitRef = "main", Label = $"{owner}:main" },
             Mergeable = true,
             MergeableState = "clean",
@@ -1478,24 +1479,30 @@ public sealed class GitHubPullRequestQueryService : IGitHubPullRequestQueryServi
             Comments = 2,
             CreatedAt = DateTimeOffset.UtcNow.AddDays(-3),
             UpdatedAt = DateTimeOffset.UtcNow.AddHours(-2),
-            User = new GitHubActor { Login = "preview-author" },
-            Assignees = [new GitHubActor { Login = "preview-author" }],
+            User = new GitHubActor { Login = "jithub-contributor" },
+            Assignees = [new GitHubActor { Login = "jithub-contributor" }],
             Labels = [new GitHubLabel { Name = "ui", Color = "7bc7a6" }],
             Reactions = new GitHubReactionSummary()
         };
 
     private static GitHubIssueComment[] CreatePreviewComments(int pullRequestNumber)
     {
-        int count = ProductPerformanceReadiness.IsEnabled ? 8 : 1;
+        int count = IsShyHeaderAutomationScenario()
+            ? 12
+            : ProductPerformanceReadiness.IsEnabled ? 8 : 1;
         return Enumerable.Range(0, count)
             .Select(index => new GitHubIssueComment
             {
                 Id = (pullRequestNumber * 100) + index,
                 NodeId = $"IC_preview_{pullRequestNumber}_{index}",
                 HtmlUrl = $"https://github.com/JitHubApp/JitHubV2/pull/{pullRequestNumber}#issuecomment-{(pullRequestNumber * 100) + index}",
-                Body = index == 0
-                    ? "The drawer alignment looks good in the compact breakpoint."
-                    : $"Performance conversation reply {index}: cached content remains stable while the detail workspace scrolls.",
+                Body = index switch
+                {
+                    0 => "I tested this with a long conversation and several changed files. The review context stays in place while each section loads.",
+                    1 => "The latest build also preserves the selected file when the conversation refreshes.",
+                    2 => "Keyboard navigation now reaches the review actions in the same order as the page.",
+                    _ => "The updated review is ready for another pass."
+                },
                 CreatedAt = DateTimeOffset.UtcNow.AddHours(-(index + 3)),
                 UpdatedAt = DateTimeOffset.UtcNow.AddHours(-(index + 3)),
                 Reactions = index == 0
@@ -1511,49 +1518,107 @@ public sealed class GitHubPullRequestQueryService : IGitHubPullRequestQueryServi
             .ToArray();
     }
 
-    private static GitHubCommit[] CreatePreviewCommits() =>
-    [
-        new()
+    private static GitHubCommit[] CreatePreviewCommits()
+    {
+        if (IsShyHeaderAutomationScenario())
         {
-            Sha = "3f9a1c2",
-            Commit = new GitHubCommitInfo
-            {
-                Message = "Polish pull request workspace",
-                Author = new GitHubCommitSignature { Name = "preview-author", Date = DateTimeOffset.UtcNow.AddHours(-2) }
-            }
+            return Enumerable.Range(1, 24)
+                .Select(index => new GitHubCommit
+                {
+                    Sha = $"3f9a{index:D3}",
+                    Commit = new GitHubCommitInfo
+                    {
+                        Message = $"Polish pull request workspace stage {index:D2}",
+                        Author = new GitHubCommitSignature
+                        {
+                            Name = index % 2 == 0 ? "preview-author" : "reviewer",
+                            Date = DateTimeOffset.UtcNow.AddMinutes(-index * 12)
+                        }
+                    }
+                })
+                .ToArray();
         }
-    ];
 
-    private static GitHubCommitFile[] CreatePreviewFiles() =>
-    [
-        new()
+        return
+        [
+            new GitHubCommit
+            {
+                Sha = "3f9a1c2",
+                Commit = new GitHubCommitInfo
+                {
+                    Message = "Polish pull request workspace",
+                    Author = new GitHubCommitSignature { Name = "preview-author", Date = DateTimeOffset.UtcNow.AddHours(-2) }
+                }
+            }
+        ];
+    }
+
+    private static GitHubCommitFile[] CreatePreviewFiles()
+    {
+        if (IsShyHeaderAutomationScenario())
         {
-            Filename = "JitHub.WinUI/Views/Pages/RepoPullRequestPage.xaml",
-            Status = "modified",
-            Additions = 3,
-            Deletions = 1,
-            Changes = 4,
-            Patch = "@@ -10,3 +10,5 @@\n <Grid>\n-  <TextBlock />\n+  <commit:CommitDiffViewer />\n+  <Button Content=\"Submit review\" />\n </Grid>"
+            string patch = string.Join(
+                '\n',
+                new[] { "@@ -10,3 +10,163 @@", " <Grid>", "-  <TextBlock />" }
+                    .Concat(Enumerable.Range(1, 160).Select(index => $"+  <TextBlock Text=\"Preview diff row {index:D3}\" />"))
+                    .Append(" </Grid>"));
+            return
+            [
+                new GitHubCommitFile
+                {
+                    Filename = "JitHub.WinUI/Views/Pages/RepoPullRequestPage.xaml",
+                    Status = "modified",
+                    Additions = 160,
+                    Deletions = 1,
+                    Changes = 161,
+                    Patch = patch
+                }
+            ];
         }
-    ];
+
+        return
+        [
+            new GitHubCommitFile
+            {
+                Filename = "JitHub.WinUI/Views/Pages/RepoPullRequestPage.xaml",
+                Status = "modified",
+                Additions = 3,
+                Deletions = 1,
+                Changes = 4,
+                Patch = "@@ -10,3 +10,5 @@\n <Grid>\n-  <TextBlock />\n+  <commit:CommitDiffViewer />\n+  <Button Content=\"Submit review\" />\n </Grid>"
+            }
+        ];
+    }
 
     private static GitHubPullRequestReview[] CreatePreviewReviews(bool includeIdentitylessItems)
     {
-        List<GitHubPullRequestReview> reviews =
-        [
-            new()
-            {
-                Id = 1,
-                Body = "Looks good after the responsive pass.",
-                State = "APPROVED",
-                SubmittedAt = DateTimeOffset.UtcNow.AddHours(-1),
-                User = new GitHubActor { Login = "reviewer" }
-            }
-        ];
+        List<GitHubPullRequestReview> reviews = IsShyHeaderAutomationScenario()
+            ? Enumerable.Range(1, 18)
+                .Select(index => new GitHubPullRequestReview
+                {
+                    Id = index,
+                    Body = $"Responsive review checkpoint {index:D2} remains readable while the section scrolls.",
+                    State = index % 3 == 0 ? "CHANGES_REQUESTED" : "APPROVED",
+                    SubmittedAt = DateTimeOffset.UtcNow.AddMinutes(-index * 18),
+                    User = new GitHubActor { Login = index % 2 == 0 ? "reviewer" : "maintainer" }
+                })
+                .ToList()
+            :
+            [
+                new GitHubPullRequestReview
+                {
+                    Id = 1,
+                    Body = "Looks good after the responsive pass.",
+                    State = "APPROVED",
+                    SubmittedAt = DateTimeOffset.UtcNow.AddHours(-1),
+                    User = new GitHubActor { Login = "reviewer" }
+                }
+            ];
         if (includeIdentitylessItems)
         {
             reviews.InsertRange(
                 0,
+                (GitHubPullRequestReview[])
                 [
                     new GitHubPullRequestReview
                     {
@@ -1625,6 +1690,7 @@ public sealed class GitHubPullRequestQueryService : IGitHubPullRequestQueryServi
         {
             comments.InsertRange(
                 0,
+                (GitHubPullRequestReviewComment[])
                 [
                     new GitHubPullRequestReviewComment
                     {
@@ -1659,15 +1725,39 @@ public sealed class GitHubPullRequestQueryService : IGitHubPullRequestQueryServi
             "pr-reply-identities",
             StringComparison.OrdinalIgnoreCase);
 
-    private static GitHubIssueEvent[] CreatePreviewEvents() =>
-    [
-        new()
+    private static bool IsShyHeaderAutomationScenario() =>
+        AppDataPathPolicy.TryGetAutomationRoots(out _, out _) &&
+        string.Equals(
+            Program.CurrentLaunchOptions.Scenario,
+            "pr-shy-header",
+            StringComparison.OrdinalIgnoreCase);
+
+    private static GitHubIssueEvent[] CreatePreviewEvents()
+    {
+        if (IsShyHeaderAutomationScenario())
         {
-            Id = 1,
-            Event = "review_requested",
-            CreatedAt = DateTimeOffset.UtcNow.AddHours(-4),
-            Actor = new GitHubActor { Login = "preview-author" },
-            RequestedReviewer = new GitHubActor { Login = "reviewer" }
+            return Enumerable.Range(1, 24)
+                .Select(index => new GitHubIssueEvent
+                {
+                    Id = index,
+                    Event = "review_requested",
+                    CreatedAt = DateTimeOffset.UtcNow.AddMinutes(-index * 20),
+                    Actor = new GitHubActor { Login = index % 2 == 0 ? "preview-author" : "maintainer" },
+                    RequestedReviewer = new GitHubActor { Login = $"reviewer-{index:D2}" }
+                })
+                .ToArray();
         }
-    ];
+
+        return
+        [
+            new GitHubIssueEvent
+            {
+                Id = 1,
+                Event = "review_requested",
+                CreatedAt = DateTimeOffset.UtcNow.AddHours(-4),
+                Actor = new GitHubActor { Login = "preview-author" },
+                RequestedReviewer = new GitHubActor { Login = "reviewer" }
+            }
+        ];
+    }
 }

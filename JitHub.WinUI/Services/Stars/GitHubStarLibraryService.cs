@@ -6,6 +6,7 @@ using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
 using JitHub.Models.GitHub;
+using JitHub.WinUI.Helpers;
 
 namespace JitHub.Services;
 
@@ -13,7 +14,7 @@ public sealed partial class GitHubStarLibraryService : IGitHubStarLibraryService
 {
     private static readonly TimeSpan CompleteReconciliationInterval = TimeSpan.FromHours(24);
     internal static readonly IReadOnlyList<string> StarMutationCacheTags =
-        ["me-stars", "star-library", "profile-stars", "dashboard-starred-repos"];
+        (string[])["me-stars", "star-library", "profile-stars", "dashboard-starred-repos"];
     private readonly IStarLibraryStore _store;
     private readonly IGitHubStarQueryService _queryService;
     private readonly IGitHubRepositoryQueryService _repositoryQueryService;
@@ -216,13 +217,18 @@ public sealed partial class GitHubStarLibraryService : IGitHubStarLibraryService
         Task<IReadOnlyList<string>> topicsTask = _store.GetFacetValuesAsync(userId, "topics", operationToken);
         Task<IReadOnlyDictionary<StarSmartList, int>> smartListCountsTask = _store.GetSmartListCountsAsync(userId, operationToken);
         await Task.WhenAll(categoriesTask, languagesTask, ownersTask, topicsTask, smartListCountsTask);
+        IReadOnlyList<StarCategory> categories = await categoriesTask;
+        IReadOnlyList<string> languages = await languagesTask;
+        IReadOnlyList<string> owners = await ownersTask;
+        IReadOnlyList<string> topics = await topicsTask;
+        IReadOnlyDictionary<StarSmartList, int> smartListCounts = await smartListCountsTask;
         return new StarLibrarySnapshot(
             page,
-            categoriesTask.Result,
-            languagesTask.Result,
-            ownersTask.Result,
-            topicsTask.Result,
-            smartListCountsTask.Result);
+            categories,
+            languages,
+            owners,
+            topics,
+            smartListCounts);
     }
 
     private async Task<StarLibraryPage> LoadCachedPageCoreAsync(
@@ -640,7 +646,7 @@ public sealed partial class GitHubStarLibraryService : IGitHubStarLibraryService
             }
             catch (Exception ex) when (ex is not OperationCanceledException)
             {
-                Debug.WriteLine($"Could not hydrate the newly starred repository before synchronization: {ex}");
+                HandledFailureReporter.Report(ex, "stars-hydrate-before-synchronization");
                 TrackEventSafely("stars.action.executed", new Dictionary<string, string?>
                 {
                     ["action"] = TelemetryTaxonomy.Actions.Hydrate,

@@ -10,6 +10,9 @@ public static class TelemetrySanitizer
     private static readonly HashSet<string> StoreEventAllowList = new(StringComparer.Ordinal)
     {
         "app.started",
+        "app.background_task.failed",
+        "app.exception.handled",
+        "app.exception.unhandled",
         "shell.search.submitted",
         "shell.search.completed",
         "shell.nav.opened",
@@ -42,12 +45,14 @@ public static class TelemetrySanitizer
         "issues.opened",
         "issues.list.loaded",
         "issues.selected",
+        "issues.filter.changed",
         "issues.prefetch.started",
         "issues.prefetch.completed",
         "issues.action.executed",
         "pull_requests.opened",
         "pull_requests.list.loaded",
         "pull_requests.selected",
+        "pull_requests.filter.changed",
         "pull_requests.section.opened",
         "pull_requests.prefetch.started",
         "pull_requests.prefetch.completed",
@@ -58,7 +63,9 @@ public static class TelemetrySanitizer
         "commits.filter.changed",
         "commits.section.opened",
         "commits.diff.mode.changed",
+        "commits.diff.prepared",
         "commits.compare.opened",
+        "commits.compare.refs_swapped",
         "commits.prefetch.started",
         "commits.prefetch.completed",
         "commits.action.executed",
@@ -137,6 +144,7 @@ public static class TelemetrySanitizer
         "widget",
         "filter_type",
         "view_mode",
+        "theme_palette",
         "sort",
         "count_bucket"
     };
@@ -168,7 +176,10 @@ public static class TelemetrySanitizer
         ["2000ms_plus"] = "gte_3s"
     };
 
-    public static bool IsStoreEventAllowed(string name) => StoreEventAllowList.Contains(name);
+    public static bool IsStoreEventAllowed(string name) =>
+        IsBaseStoreEventAllowed(name) || StoreTelemetryProjection.IsAllowed(name);
+
+    internal static bool IsBaseStoreEventAllowed(string name) => StoreEventAllowList.Contains(name);
 
     internal static IReadOnlyCollection<string> GetAllowedStoreEvents() => StoreEventAllowList.ToArray();
 
@@ -178,7 +189,7 @@ public static class TelemetrySanitizer
             ? "telemetry.unknown"
             : name.Trim().ToLowerInvariant();
 
-        return StoreEventAllowList.Contains(normalized)
+        return IsBaseStoreEventAllowed(normalized)
             ? normalized
             : "telemetry.unknown";
     }
@@ -249,6 +260,14 @@ public static class TelemetrySanitizer
 
     private static string NormalizePropertyValue(string key, string value)
     {
+        if (key == "theme_palette")
+        {
+            // Palette IDs are shared across settings, automation, and the website.
+            // Preserve their catalogued kebab-case form; the closed value catalog
+            // below still rejects every identifier that is not product-owned.
+            return value.Trim().ToLowerInvariant();
+        }
+
         string normalized = Regex.Replace(
                 value.Trim(),
                 @"(?<=[a-z0-9])(?=[A-Z])",
@@ -268,6 +287,7 @@ public static class TelemetrySanitizer
                 "task_canceled_exception" or "operation_canceled_exception" => "cancelled",
                 "invalid_operation_exception" => "invalid_operation",
                 "io_exception" => "io",
+                _ when normalized.EndsWith("_exception", StringComparison.Ordinal) => TelemetryTaxonomy.ErrorKinds.Unexpected,
                 _ => normalized
             };
         }

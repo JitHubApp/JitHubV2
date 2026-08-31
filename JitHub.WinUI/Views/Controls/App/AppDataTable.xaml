@@ -19,9 +19,9 @@
 
     <UserControl.Resources>
         <Style x:Key="AppDataTableListItemStyle" TargetType="ListViewItem" BasedOn="{StaticResource AppContentListRowStyle}">
-            <Setter Property="MinHeight" Value="34" />
-            <Setter Property="Margin" Value="0" />
-            <Setter Property="Padding" Value="0" />
+            <Setter Property="MinHeight" Value="{ThemeResource AppDimension34}" />
+            <Setter Property="Margin" Value="{ThemeResource AppMargin0}" />
+            <Setter Property="Padding" Value="{ThemeResource AppPadding0}" />
             <Setter Property="Background" Value="{ThemeResource AppTransparentBrush}" />
             <Setter Property="HorizontalContentAlignment" Value="Left" />
             <Setter Property="VerticalContentAlignment" Value="Stretch" />
@@ -29,36 +29,36 @@
         </Style>
 
         <Style x:Key="AppDataTableHeaderCellStyle" TargetType="Border">
-            <Setter Property="Height" Value="40" />
+            <Setter Property="Height" Value="{ThemeResource AppDimension40}" />
             <Setter Property="Background" Value="{ThemeResource AppSurfaceSubtleBrush}" />
             <Setter Property="BorderBrush" Value="{ThemeResource AppHairlineBrush}" />
-            <Setter Property="BorderThickness" Value="0,0,1,1" />
+            <Setter Property="BorderThickness" Value="{ThemeResource AppRightBottomHairlineBorderThickness}" />
         </Style>
 
         <Style x:Key="AppDataTableHeaderButtonStyle" TargetType="Button" BasedOn="{StaticResource AppStableButtonBaseStyle}">
-            <Setter Property="Height" Value="39" />
-            <Setter Property="Padding" Value="12,0,10,0" />
+            <Setter Property="Height" Value="{ThemeResource AppDimension39}" />
+            <Setter Property="Padding" Value="{ThemeResource AppPadding12_0_10_0}" />
             <Setter Property="Background" Value="{ThemeResource AppTransparentBrush}" />
             <Setter Property="Foreground" Value="{ThemeResource AppInkBrush}" />
-            <Setter Property="BorderThickness" Value="0" />
+            <Setter Property="BorderThickness" Value="{ThemeResource AppZeroThickness}" />
             <Setter Property="CornerRadius" Value="{ThemeResource AppRadiusNone}" />
             <Setter Property="HorizontalContentAlignment" Value="Stretch" />
             <Setter Property="VerticalContentAlignment" Value="Center" />
         </Style>
 
         <Style x:Key="AppDataTableResizeThumbStyle" TargetType="Thumb">
-            <Setter Property="Width" Value="8" />
+            <Setter Property="Width" Value="{ThemeResource AppDimension8}" />
             <Setter Property="HorizontalAlignment" Value="Right" />
             <Setter Property="VerticalAlignment" Value="Stretch" />
             <Setter Property="Background" Value="{ThemeResource AppTransparentBrush}" />
         </Style>
 
         <Style x:Key="AppDataTableCellStyle" TargetType="Border">
-            <Setter Property="MinHeight" Value="34" />
-            <Setter Property="Padding" Value="12,6" />
+            <Setter Property="MinHeight" Value="{ThemeResource AppDimension34}" />
+            <Setter Property="Padding" Value="{ThemeResource AppPadding12_6}" />
             <Setter Property="Background" Value="{ThemeResource AppRowBrush}" />
             <Setter Property="BorderBrush" Value="{ThemeResource AppHairlineBrush}" />
-            <Setter Property="BorderThickness" Value="0,0,1,1" />
+            <Setter Property="BorderThickness" Value="{ThemeResource AppRightBottomHairlineBorderThickness}" />
         </Style>
 
         <Style x:Key="AppDataTableHoverCellStyle" TargetType="Border" BasedOn="{StaticResource AppDataTableCellStyle}">
@@ -68,7 +68,7 @@
         <Style x:Key="AppDataTableSelectedCellStyle" TargetType="Border" BasedOn="{StaticResource AppDataTableCellStyle}">
             <Setter Property="Background" Value="{ThemeResource AppRowSelectedBrush}" />
             <Setter Property="BorderBrush" Value="{ThemeResource AppAccentBrush}" />
-            <Setter Property="BorderThickness" Value="1" />
+            <Setter Property="BorderThickness" Value="{ThemeResource AppHairlineBorderThickness}" />
         </Style>
 
         <Style x:Key="AppDataTableCellTextStyle" TargetType="TextBlock">
@@ -103,7 +103,7 @@
     <Border
         Background="{ThemeResource AppCanvasBrush}"
         BorderBrush="{ThemeResource AppOutlineBrush}"
-        BorderThickness="1">
+        BorderThickness="{ThemeResource AppHairlineBorderThickness}">
         <Grid>
             <Grid.RowDefinitions>
                 <RowDefinition Height="Auto" />
@@ -139,11 +139,11 @@
             <Grid
                 x:Name="StatusOverlay"
                 Grid.Row="1"
-                Padding="24"
+                Padding="{ThemeResource AppPadding24}"
                 Background="{ThemeResource AppCanvasBrush}">
                 <TextBlock
                     x:Name="StatusText"
-                    MaxWidth="520"
+                    MaxWidth="{ThemeResource AppDimension520}"
                     HorizontalAlignment="Center"
                     VerticalAlignment="Center"
                     Foreground="{ThemeResource AppInkMutedBrush}"

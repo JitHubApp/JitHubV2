@@ -832,17 +832,17 @@ public sealed class GitHubCommitQueryService : IGitHubCommitQueryService
             :
             [
                 CreatePreviewDetailedCommit("3f9a1c2"),
-                CreatePreviewCommit("a7d4b91", "Update iOS minimum deployment target to 13.0", "meiluo", -4),
-                CreatePreviewCommit("9c8fb77", "Add diagnostics for shader compilation failures", "johnpryan", -6),
-                CreatePreviewCommit("8e3d1aa", "Refactor Dart FFI bindings", "liyucian", -25),
-                CreatePreviewCommit("1b2c3d4", "Fix text selection on Windows", "Pinks", -28)
+                CreatePreviewCommit("a7d4b91", "Keep repository navigation responsive during refresh", "maria", -4),
+                CreatePreviewCommit("9c8fb77", "Add keyboard navigation to the CSV table", "devon", -6),
+                CreatePreviewCommit("8e3d1aa", "Refresh contribution history in the background", "sam", -25),
+                CreatePreviewCommit("1b2c3d4", "Handle stale pull request comments", "renan", -28)
             ];
 
     private static GitHubCommit CreatePreviewCommit(string sha, string message, string author, int hoursOffset) =>
         new()
         {
             Sha = sha,
-            HtmlUrl = $"https://github.com/flutter/flutter/commit/{sha}",
+            HtmlUrl = $"https://github.com/JitHubApp/JitHubV2/commit/{sha}",
             Author = new GitHubActor { Login = author, AvatarUrl = "ms-appx:///Assets/Octocat.png" },
             Commit = new GitHubCommitInfo
             {
@@ -859,30 +859,31 @@ public sealed class GitHubCommitQueryService : IGitHubCommitQueryService
     {
         GitHubCommit commit = CreatePreviewCommit(
             string.IsNullOrWhiteSpace(gitRef) ? "3f9a1c2" : gitRef,
-            "Fix Impeller texture memory leak on Metal\n\nEnsure transient textures are released when the backing store is recreated.",
-            "AlexDurham",
+            "Resolve repository Markdown images against the current file\n\nKeep relative image paths correct when Markdown is opened from nested folders.",
+            "RenanYoy",
             -2);
         commit.Files =
         [
             new GitHubCommitFile
             {
-                Filename = "impeller/renderer/texture_mtl.mm",
+                Filename = "JitHub.WinUI/Services/Markdown/GitHubMarkdownImageUrlResolver.cs",
                 Status = "modified",
-                Additions = 65,
-                Deletions = 10,
-                Changes = 75,
-                Patch = "@@ -96,7 +96,11 @@ void TextureMTL::SetContents(id<MTLTexture> new_texture) {\n   if (new_texture == _texture) {\n     return;\n   }\n-  _texture = new_texture;\n+  if (_texture && _owns_texture) {\n+    [_texture release];\n+  }\n+  _texture = [new_texture retain];\n+  _owns_texture = YES;\n }\n@@ -150,6 +154,10 @@ void TextureMTL::OnBackingStoreRecreated() {\n   // Recreate the transient texture.\n   id<MTLTexture> new_texture = [self CreateTexture];\n+  if (_texture && _owns_texture) {\n+    [_texture release];\n+    _texture = nil;\n+  }\n   _texture = [new_texture retain];\n }"
+                Additions = 12,
+                Deletions = 2,
+                Changes = 14,
+                Patch = "@@ -42,7 +42,12 @@ internal static Uri Resolve(string source, Uri repositoryBaseUri)\n   if (Uri.TryCreate(source, UriKind.Absolute, out Uri? absolute))\n   {\n     return absolute;\n   }\n-  return new Uri(repositoryBaseUri, source);\n+  Uri contentBaseUri = GitHubContentUri.ForCurrentFile(\n+      repositoryBaseUri);\n+  return new Uri(contentBaseUri, source);\n }"
             },
             new GitHubCommitFile
             {
-                Filename = "impeller/renderer/texture_mtl.h",
+                Filename = "JitHub.WinUI.Tests/Services/GitHubMarkdownImageUrlResolverTests.cs",
                 Status = "modified",
-                Additions = 8,
-                Deletions = 2,
-                Changes = 10,
-                Patch = "@@ -42,6 +42,7 @@ class TextureMTL final : public Texture {\n  private:\n   id<MTLTexture> _texture = nil;\n+  bool _owns_texture = false;\n };"
+                Additions = 9,
+                Deletions = 0,
+                Changes = 9,
+                Patch = "@@ -18,6 +18,15 @@ public sealed class GitHubMarkdownImageUrlResolverTests\n+  [Fact]\n+  public void Relative_image_uses_the_current_file_directory()\n+  {\n+    Uri resolved = Resolve(\"../assets/preview.png\");\n+    Assert.Equal(ExpectedPreviewUri, resolved);\n+  }"
             }
         ];
+        commit.Stats = new GitHubCommitStats { Additions = 21, Deletions = 2, Total = 23 };
         if (CommitDiffPerformanceFixture.IsEnabled)
         {
             commit.Files = CommitDiffPerformanceFixture.CreateFiles(commit.Sha);
@@ -898,8 +899,8 @@ public sealed class GitHubCommitQueryService : IGitHubCommitQueryService
         {
             Id = 1,
             CommitId = gitRef,
-            Body = "This cached preview comment demonstrates commit discussion without a network call.",
-            Path = "impeller/renderer/texture_mtl.mm",
+            Body = "This also fixes images in README files opened from nested folders.",
+            Path = "JitHub.WinUI/Services/Markdown/GitHubMarkdownImageUrlResolver.cs",
             Position = 5,
             CreatedAt = DateTimeOffset.UtcNow.AddHours(-1),
             UpdatedAt = DateTimeOffset.UtcNow.AddHours(-1),

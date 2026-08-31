@@ -559,6 +559,34 @@ public class RepoFileCacheServiceTests : IDisposable
     }
 
     [Fact]
+    public async Task GetAsync_EmptyMetadata_DeletesCorruptPairAndReturnsMiss()
+    {
+        RepoFileCacheService cache = CreateCache(memMaxEntries: 1);
+        RepoFileCacheKey key = Key("empty-metadata");
+        await cache.PutAsync(
+            key,
+            MakeEntry(key.Sha, Encoding.UTF8.GetBytes("content")),
+            CancellationToken.None);
+        await cache.PutAsync(
+            Key("memory-eviction"),
+            MakeEntry("memory-eviction", Encoding.UTF8.GetBytes("other")),
+            CancellationToken.None);
+
+        string metadataPath = Assert.Single(
+            Directory.GetFiles(_diskRoot, key.Sha + ".json", SearchOption.AllDirectories));
+        string contentPath = Assert.Single(
+            Directory.GetFiles(_diskRoot, key.Sha + ".bin", SearchOption.AllDirectories));
+        await File.WriteAllTextAsync(metadataPath, string.Empty);
+
+        Assert.Null(await cache.GetAsync(key, CancellationToken.None));
+        Assert.False(File.Exists(metadataPath));
+        Assert.False(File.Exists(contentPath));
+        Assert.DoesNotContain(
+            Directory.GetFiles(_diskRoot, "*.pending", SearchOption.AllDirectories),
+            static path => File.Exists(path));
+    }
+
+    [Fact]
     public async Task CancelledUniqueKeyWaiters_DoNotAccumulateKeyLocks()
     {
         RepoFileCacheService cache = CreateCache();

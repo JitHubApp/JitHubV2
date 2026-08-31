@@ -79,6 +79,8 @@ public sealed class RepositoryActionSurfaceContractTests
         Assert.Contains("RepoDetailCompactFork", pageCode, StringComparison.Ordinal);
         Assert.Contains("IRepositoryCompactCommandProvider", pageCode, StringComparison.Ordinal);
         Assert.Contains("MenuFlyoutItem identity", pageCode, StringComparison.Ordinal);
+        Assert.Contains("RepoDetailIdentityStatusBadge.Visibility = compact ? Visibility.Collapsed", pageCode, StringComparison.Ordinal);
+        Assert.Contains("RepoDetailIdentityChrome.Visibility = compact || !hideIdentity", pageCode, StringComparison.Ordinal);
         Assert.DoesNotContain("foreach (Branch branch in ViewModel.Branches)", pageCode, StringComparison.Ordinal);
 
         string pageXaml = File.ReadAllText(Path.Combine(
@@ -146,9 +148,53 @@ public sealed class RepositoryActionSurfaceContractTests
         Assert.Contains("if (RepositoryQueryRefreshPolicy.ShouldPromote(result))", viewModel, StringComparison.Ordinal);
         Assert.Contains("PromoteStarStateAsync", viewModel, StringComparison.Ordinal);
         Assert.Contains("PromoteWatchStateAsync", viewModel, StringComparison.Ordinal);
-        Assert.Contains("cached branches remain visible", viewModel, StringComparison.Ordinal);
-        Assert.Contains("cached state remains visible", viewModel, StringComparison.Ordinal);
+        Assert.Contains("HandledFailureReporter.Report(ex, \"repository-branch-refresh\")", viewModel, StringComparison.Ordinal);
+        Assert.Contains("HandledFailureReporter.Report(ex, \"repository-star-refresh\")", viewModel, StringComparison.Ordinal);
+        Assert.Contains("HandledFailureReporter.Report(ex, \"repository-watch-refresh\")", viewModel, StringComparison.Ordinal);
         Assert.DoesNotContain("Branches = merged", viewModel, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void OptionalActionStateLoadFailuresStayOutOfTheProminentStatusSurface()
+    {
+        string viewModel = File.ReadAllText(Path.Combine(
+            FindRepositoryRoot(),
+            "JitHub.WinUI",
+            "ViewModels",
+            "RepositoryViewModels",
+            "RepoDetailViewModel.cs"));
+        Assert.Contains(
+            "if (!GitHubAuthenticationConstants.IsPublicAccessToken(queryContext.AccessToken))",
+            viewModel,
+            StringComparison.Ordinal);
+        Assert.Contains("BackgroundTaskObserver.MarkFaultObserved(branchesTask)", viewModel, StringComparison.Ordinal);
+        Assert.Contains("BackgroundTaskObserver.MarkFaultObserved(starredTask)", viewModel, StringComparison.Ordinal);
+        Assert.Contains("BackgroundTaskObserver.MarkFaultObserved(watchingTask)", viewModel, StringComparison.Ordinal);
+        int starLoad = viewModel.IndexOf(
+            "CachedResult<GitHubResourceState> result = await starredTask;",
+            StringComparison.Ordinal);
+        int watchLoad = viewModel.IndexOf(
+            "CachedResult<GitHubRepositorySubscription> result = await watchingTask;",
+            starLoad,
+            StringComparison.Ordinal);
+        int loadBoundaryEnd = viewModel.IndexOf(
+            "private long BeginRepositoryTransition(",
+            watchLoad,
+            StringComparison.Ordinal);
+
+        Assert.True(starLoad >= 0 && watchLoad > starLoad && loadBoundaryEnd > watchLoad);
+        string starFailureBoundary = viewModel[starLoad..watchLoad];
+        string watchFailureBoundary = viewModel[watchLoad..loadBoundaryEnd];
+        Assert.Contains(
+            "HandledFailureReporter.Report(ex, \"repository-star-state-load\")",
+            starFailureBoundary,
+            StringComparison.Ordinal);
+        Assert.Contains(
+            "HandledFailureReporter.Report(ex, \"repository-watch-state-load\")",
+            watchFailureBoundary,
+            StringComparison.Ordinal);
+        Assert.DoesNotContain("ShowActionStatus(", starFailureBoundary, StringComparison.Ordinal);
+        Assert.DoesNotContain("ShowActionStatus(", watchFailureBoundary, StringComparison.Ordinal);
     }
 
     [Fact]
@@ -229,7 +275,7 @@ public sealed class RepositoryActionSurfaceContractTests
     private static string FindRepositoryRoot()
     {
         DirectoryInfo? directory = new(AppContext.BaseDirectory);
-        while (directory is not null && !File.Exists(Path.Combine(directory.FullName, "JitHub.slnx")))
+        while (directory is not null && !File.Exists(Path.Combine(directory.FullName, "Directory.Build.props")))
         {
             directory = directory.Parent;
         }

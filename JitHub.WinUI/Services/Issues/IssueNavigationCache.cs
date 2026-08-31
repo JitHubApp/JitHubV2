@@ -272,16 +272,7 @@ public sealed partial class IssueNavigationCache : IIssueNavigationCache
                 completion),
             new ApplicationTaskOptions("issues.prefetch.scheduled", normalizedPartition),
             cancellation.Token);
-        _ = scheduledTask.ContinueWith(
-            static (task, state) =>
-            {
-                _ = task.Exception;
-                ((ScheduledPrefetchCompletion<IssuePrefetchResult>)state!).Complete(IssuePrefetchResult.Cancelled);
-            },
-            completion,
-            CancellationToken.None,
-            TaskContinuationOptions.ExecuteSynchronously,
-            TaskScheduler.Default);
+        completion.Observe(scheduledTask, IssuePrefetchResult.Cancelled);
         return new DisposableAction(cancellation, scheduledTask);
     }
 

@@ -90,11 +90,13 @@ public sealed class ThemeTokenGovernanceTests
     {
         string productRoot = Path.Combine(FindRepositoryRoot(), "JitHub.WinUI");
         string palettePath = Path.Combine(productRoot, "Styles", "Foundation", "Tokens.Colors.xaml");
+        string paletteFolder = Path.Combine(productRoot, "Styles", "Foundation", "Palettes");
         List<string> violations = [];
 
         foreach (string path in Directory.EnumerateFiles(productRoot, "*.xaml", SearchOption.AllDirectories)
                      .Where(path => !path.Contains($"{Path.DirectorySeparatorChar}obj{Path.DirectorySeparatorChar}", StringComparison.OrdinalIgnoreCase))
-                     .Where(path => !string.Equals(path, palettePath, StringComparison.OrdinalIgnoreCase)))
+                     .Where(path => !string.Equals(path, palettePath, StringComparison.OrdinalIgnoreCase))
+                     .Where(path => !path.StartsWith(paletteFolder, StringComparison.OrdinalIgnoreCase)))
         {
             XDocument document = XDocument.Load(path, LoadOptions.SetLineInfo);
             foreach (XElement element in document.Descendants())
@@ -336,6 +338,62 @@ public sealed class ThemeTokenGovernanceTests
         Assert.Equal("{StaticResource AppSpace7}", (string?)iconPresenter.Attribute("Height"));
     }
 
+    [Fact]
+    public void SharedControlDictionariesAliasTheCanonicalSemanticBrushObjects()
+    {
+        string root = FindRepositoryRoot();
+        string stylesRoot = Path.Combine(root, "JitHub.WinUI", "Styles");
+        string canonicalBrushPath = Path.Combine(stylesRoot, "Foundation", "Tokens.Brushes.xaml");
+        XNamespace x = "http://schemas.microsoft.com/winfx/2006/xaml";
+        HashSet<string> canonicalBrushKeys = XDocument.Load(canonicalBrushPath).Root!
+            .Elements()
+            .Where(element => element.Name.LocalName.EndsWith("Brush", StringComparison.Ordinal))
+            .Select(element => (string?)element.Attribute(x + "Key"))
+            .Where(static key => !string.IsNullOrWhiteSpace(key))
+            .Select(static key => key!)
+            .ToHashSet(StringComparer.Ordinal);
+        List<string> duplicateBrushes = [];
+        List<string> missingAliases = [];
+
+        foreach (string path in Directory.EnumerateFiles(stylesRoot, "*.xaml", SearchOption.AllDirectories)
+                     .Where(path => !string.Equals(path, canonicalBrushPath, StringComparison.OrdinalIgnoreCase))
+                     .Where(path => !path.Contains(
+                         $"{Path.DirectorySeparatorChar}Palettes{Path.DirectorySeparatorChar}",
+                         StringComparison.OrdinalIgnoreCase)))
+        {
+            XDocument document = XDocument.Load(path, LoadOptions.SetLineInfo);
+            foreach (XElement brush in document.Descendants().Where(element =>
+                         element.Name.LocalName == "SolidColorBrush" &&
+                         ((string?)element.Attribute("Color"))?.StartsWith(
+                             "{ThemeResource App",
+                             StringComparison.Ordinal) == true))
+            {
+                IXmlLineInfo lineInfo = brush;
+                duplicateBrushes.Add($"{Path.GetRelativePath(root, path)}:{lineInfo.LineNumber}");
+            }
+
+            foreach (XElement alias in document.Descendants().Where(element =>
+                         element.Name.LocalName == "StaticResource" &&
+                         ((string?)element.Attribute("ResourceKey"))?.StartsWith("App", StringComparison.Ordinal) == true &&
+                         ((string?)element.Attribute("ResourceKey"))?.EndsWith("Brush", StringComparison.Ordinal) == true))
+            {
+                string resourceKey = (string)alias.Attribute("ResourceKey")!;
+                if (!canonicalBrushKeys.Contains(resourceKey))
+                {
+                    IXmlLineInfo lineInfo = alias;
+                    missingAliases.Add($"{Path.GetRelativePath(root, path)}:{lineInfo.LineNumber} -> {resourceKey}");
+                }
+            }
+        }
+
+        Assert.True(
+            duplicateBrushes.Count == 0,
+            $"Shared styles duplicate palette-bound brushes instead of retaining canonical brush identity:{Environment.NewLine}{string.Join(Environment.NewLine, duplicateBrushes)}");
+        Assert.True(
+            missingAliases.Count == 0,
+            $"Shared styles reference brush aliases outside the canonical token dictionary:{Environment.NewLine}{string.Join(Environment.NewLine, missingAliases)}");
+    }
+
     private static void AddViolation(string path, XElement element, string value, List<string> violations)
     {
         string candidate = value.Trim();
@@ -372,7 +430,7 @@ public sealed class ThemeTokenGovernanceTests
     private static string FindRepositoryRoot()
     {
         DirectoryInfo? directory = new(AppContext.BaseDirectory);
-        while (directory is not null && !File.Exists(Path.Combine(directory.FullName, "JitHub.slnx")))
+        while (directory is not null && !File.Exists(Path.Combine(directory.FullName, "Directory.Build.props")))
         {
             directory = directory.Parent;
         }

@@ -10,7 +10,7 @@
         Width="{Binding IconSize, ElementName=Root}"
         Height="{Binding IconSize, ElementName=Root}"
         Stretch="Uniform">
-        <Canvas Width="20" Height="20">
+        <Canvas Width="{ThemeResource AppDimension20}" Height="{ThemeResource AppDimension20}">
             <Path
                 x:Name="PrimaryPath"
             Fill="{ThemeResource AppTransparentBrush}"

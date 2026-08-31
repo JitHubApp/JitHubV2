@@ -79,10 +79,22 @@ public sealed partial class StarLibraryPageViewModel : ViewModelBase, IDisposabl
         SelectedLanguage = NormalizeSessionDefault(_sessionState.Language, "All languages", AllLanguagesText);
         SelectedOwner = NormalizeSessionDefault(_sessionState.Owner, "All owners", AllOwnersText);
         SelectedTopic = NormalizeSessionDefault(_sessionState.Topic, "All topics", AllTopicsText);
-        SelectedVisibility = NormalizeOption(_sessionState.Visibility, VisibilityOptions, ["All visibility", "Public", "Private"]);
-        SelectedKind = NormalizeOption(_sessionState.RepositoryKind, KindOptions, ["All repositories", "Sources", "Forks"]);
-        SelectedActivity = NormalizeOption(_sessionState.Activity, ActivityOptions, ["Active and archived", "Active", "Archived"]);
-        SelectedCategoryState = NormalizeOption(_sessionState.CategoryState, CategoryStateOptions, ["Any category", "Categorized", "Uncategorized"]);
+        SelectedVisibility = NormalizeOption(
+            _sessionState.Visibility,
+            VisibilityOptions,
+            (string[])["All visibility", "Public", "Private"]);
+        SelectedKind = NormalizeOption(
+            _sessionState.RepositoryKind,
+            KindOptions,
+            (string[])["All repositories", "Sources", "Forks"]);
+        SelectedActivity = NormalizeOption(
+            _sessionState.Activity,
+            ActivityOptions,
+            (string[])["Active and archived", "Active", "Archived"]);
+        SelectedCategoryState = NormalizeOption(
+            _sessionState.CategoryState,
+            CategoryStateOptions,
+            (string[])["Any category", "Categorized", "Uncategorized"]);
         _suppressQueryChanges = false;
         LanguageOptions.Add(AllLanguagesText);
         OwnerOptions.Add(AllOwnersText);

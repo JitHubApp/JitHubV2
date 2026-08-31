@@ -15,7 +15,7 @@
         <Style x:Key="RepoIssuesPanelStyle" TargetType="Border">
             <Setter Property="Background" Value="{ThemeResource AppSurfaceSubtleBrush}" />
             <Setter Property="BorderBrush" Value="{ThemeResource AppHairlineBrush}" />
-            <Setter Property="BorderThickness" Value="1" />
+            <Setter Property="BorderThickness" Value="{ThemeResource AppHairlineBorderThickness}" />
             <Setter Property="CornerRadius" Value="{ThemeResource AppRadiusSmall}" />
         </Style>
     </Page.Resources>
@@ -54,7 +54,7 @@
                         AutomationProperties.AccessibilityView="Control"
                         AutomationProperties.AutomationId="RepoIssuesDetailPreviewHost"
                         AutomationProperties.Name="Issue detail preview"
-                        Padding="18"
+                        Padding="{ThemeResource AppPadding18}"
                         Style="{StaticResource RepoIssuesPanelStyle}"
                         Visibility="{x:Bind ViewModel.IsIssueContentVisible, Converter={StaticResource BoolToVisibilityReverseConverter}, Mode=OneWay}">
                         <TextBlock

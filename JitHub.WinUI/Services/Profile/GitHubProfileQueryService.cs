@@ -1,15 +1,18 @@
 using System;
 using System.Collections.Generic;
 using System.Globalization;
+using System.IO;
 using System.Linq;
 using System.Net;
 using System.Net.Http;
 using System.Net.Http.Headers;
 using System.Net.Http.Json;
 using System.Text;
+using System.Text.Json;
 using System.Threading;
 using System.Threading.Tasks;
 using JitHub.Models.GitHub;
+using JitHub.Services.Markdown;
 
 namespace JitHub.Services;
 
@@ -156,7 +159,9 @@ public sealed class GitHubProfileQueryService : IGitHubProfileQueryService
             new GitHubProfileGraphQlData());
 
         await Task.WhenAll(readmeTask, organizationsTask, graphQlTask);
-        DashboardSectionResult<GitHubProfileGraphQlData> graphQl = graphQlTask.Result;
+        DashboardSectionResult<GitHubProfileReadme> readme = await readmeTask;
+        DashboardSectionResult<GitHubOrganization[]> organizations = await organizationsTask;
+        DashboardSectionResult<GitHubProfileGraphQlData> graphQl = await graphQlTask;
         GitHubProfileGraphQlUser? graphQlUser = forceAuthenticatedUser
             ? graphQl.Value.Viewer ?? graphQl.Value.User
             : graphQl.Value.User ?? graphQl.Value.Viewer;
@@ -168,7 +173,7 @@ public sealed class GitHubProfileQueryService : IGitHubProfileQueryService
 
         return new GitHubUserProfileSnapshot(
             user,
-            readmeTask.Result,
+            readme,
             contributions,
             pinned,
             DashboardSectionResult<GitHubRepository[]>.Empty([]),
@@ -176,7 +181,7 @@ public sealed class GitHubProfileQueryService : IGitHubProfileQueryService
             DashboardSectionResult<GitHubUser[]>.Empty([]),
             DashboardSectionResult<GitHubUser[]>.Empty([]),
             DashboardSectionResult<GitHubActivityEvent[]>.Empty([]),
-            organizationsTask.Result,
+            organizations,
             viewerState,
             highlights);
     }
@@ -225,7 +230,7 @@ public sealed class GitHubProfileQueryService : IGitHubProfileQueryService
 
                     await _cacheStore.InvalidateTagsAsync(
                         partition,
-                        ["profile", "profile-user"],
+                        (string[])["profile", "profile-user"],
                         mutationToken);
                     return user;
                 },
@@ -548,7 +553,7 @@ public sealed class GitHubProfileQueryService : IGitHubProfileQueryService
                     await EnsureSuccessAsync(response, mutationToken);
                     await _cacheStore.InvalidateTagsAsync(
                         partition,
-                        ["profile", "profile-user", "profile-graphql", "profile-followers", "profile-following"],
+                        (string[])["profile", "profile-user", "profile-graphql", "profile-followers", "profile-following"],
                         mutationToken);
                     return true;
                 },
@@ -867,6 +872,7 @@ public sealed class GitHubProfileQueryService : IGitHubProfileQueryService
                 markdown,
                 content.HtmlUrl ?? string.Empty,
                 $"{login}/{login}",
+                content.Path,
                 Exists: true);
     }
 
@@ -985,6 +991,7 @@ public sealed class GitHubProfileQueryService : IGitHubProfileQueryService
                     "## Building JitHub\n\nNative GitHub workflows for Windows developers. I care about fast tools, clean UI, and tiny details that make daily work feel calm.",
                     string.Empty,
                     $"{user.Login}/{user.Login}",
+                    MarkdownDocumentSourceFactory.RepositoryRootDocumentPath,
                     true),
                 CacheState.Fresh,
                 now,
@@ -1012,7 +1019,7 @@ public sealed class GitHubProfileQueryService : IGitHubProfileQueryService
         Id = 170190931,
         Login = string.IsNullOrWhiteSpace(login) ? "renanyoy" : login,
         Name = "Renan Yoy",
-        AvatarUrl = "https://avatars.githubusercontent.com/u/170190931",
+        AvatarUrl = "ms-appx:///Assets/Octocat.png",
         Bio = "Building careful native developer tools.",
         Company = "@JitHubApp",
         Location = "Seattle, WA",
@@ -1137,22 +1144,22 @@ public sealed class GitHubProfileQueryService : IGitHubProfileQueryService
         string language,
         int stars,
         int forks) => new()
-    {
-        Id = Math.Abs(HashCode.Combine(owner, name)),
-        Name = name,
-        FullName = $"{owner}/{name}",
-        Description = description,
-        HtmlUrl = $"https://github.com/{owner}/{name}",
-        Language = language,
-        StargazersCount = stars,
-        ForksCount = forks,
-        UpdatedAt = DateTimeOffset.UtcNow.AddHours(-stars % 48),
-        Owner = new GitHubRepositoryOwner
         {
-            Login = owner,
-            AvatarUrl = "https://avatars.githubusercontent.com/u/170190931"
-        }
-    };
+            Id = Math.Abs(HashCode.Combine(owner, name)),
+            Name = name,
+            FullName = $"{owner}/{name}",
+            Description = description,
+            HtmlUrl = $"https://github.com/{owner}/{name}",
+            Language = language,
+            StargazersCount = stars,
+            ForksCount = forks,
+            UpdatedAt = DateTimeOffset.UtcNow.AddHours(-stars % 48),
+            Owner = new GitHubRepositoryOwner
+            {
+                Login = owner,
+                AvatarUrl = "https://avatars.githubusercontent.com/u/170190931"
+            }
+        };
 
     private static GitHubOrganization[] CreatePreviewOrganizations() =>
     [
@@ -1221,18 +1228,18 @@ public sealed class GitHubProfileQueryService : IGitHubProfileQueryService
         string type,
         GitHubActivityRepository repo,
         DateTimeOffset createdAt) => new()
-    {
-        Id = id,
-        Type = type,
-        Public = true,
-        CreatedAt = createdAt,
-        Actor = new GitHubActor
         {
-            Login = repo.Name.Split('/')[0],
-            AvatarUrl = "https://avatars.githubusercontent.com/u/170190931"
-        },
-        Repo = repo
-    };
+            Id = id,
+            Type = type,
+            Public = true,
+            CreatedAt = createdAt,
+            Actor = new GitHubActor
+            {
+                Login = repo.Name.Split('/')[0],
+                AvatarUrl = "https://avatars.githubusercontent.com/u/170190931"
+            },
+            Repo = repo
+        };
 
     private async Task<T> RunTrackedMutationAsync<T>(
         string accountPartition,
@@ -1317,7 +1324,11 @@ public sealed class GitHubProfileQueryService : IGitHubProfileQueryService
                     "profile-api");
             }
         }
-        catch
+        catch (OperationCanceledException)
+        {
+            throw;
+        }
+        catch (Exception ex) when (ex is JsonException or NotSupportedException or IOException)
         {
         }
 

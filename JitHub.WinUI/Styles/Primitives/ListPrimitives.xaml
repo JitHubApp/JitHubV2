@@ -12,8 +12,8 @@
         <Setter Property="Foreground" Value="{ThemeResource AppInkBrush}" />
         <Setter Property="HorizontalContentAlignment" Value="Stretch" />
         <Setter Property="VerticalContentAlignment" Value="Center" />
-        <Setter Property="Padding" Value="0" />
-        <Setter Property="Margin" Value="0,0,0,8" />
+        <Setter Property="Padding" Value="{ThemeResource AppPadding0}" />
+        <Setter Property="Margin" Value="{ThemeResource AppMargin0_0_0_8}" />
         <Setter Property="CornerRadius" Value="{ThemeResource AppRadiusSmall}" />
     </Style>
     <Style TargetType="ProgressRing">

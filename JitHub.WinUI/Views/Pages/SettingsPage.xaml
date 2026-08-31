@@ -21,8 +21,8 @@
                     <VisualState.Setters>
                         <Setter Target="SettingsSectionRail.Visibility" Value="Collapsed" />
                         <Setter Target="CompactSectionPicker.Visibility" Value="Visible" />
-                        <Setter Target="CompactSectionPicker.MinWidth" Value="0" />
-                        <Setter Target="CompactSectionPicker.MaxWidth" Value="1000" />
+                        <Setter Target="CompactSectionPicker.MinWidth" Value="{ThemeResource AppDimension0}" />
+                        <Setter Target="CompactSectionPicker.MaxWidth" Value="{ThemeResource AppDimension1000}" />
                         <Setter Target="CompactSectionPicker.HorizontalAlignment" Value="Stretch" />
                         <Setter Target="CompactSectionPicker.(Grid.Row)" Value="1" />
                         <Setter Target="CompactSectionPicker.(Grid.Column)" Value="0" />
@@ -34,13 +34,13 @@
                 </VisualState>
                 <VisualState x:Name="NarrowSettingsState">
                     <VisualState.Setters>
-                        <Setter Target="SettingsRootGrid.Padding" Value="12" />
+                        <Setter Target="SettingsRootGrid.Padding" Value="{ThemeResource AppPadding12}" />
                         <Setter Target="SettingsLayout.RowSpacing" Value="0" />
                         <Setter Target="SettingsHeader.RowSpacing" Value="10" />
                         <Setter Target="SettingsSectionRail.Visibility" Value="Collapsed" />
                         <Setter Target="CompactSectionPicker.Visibility" Value="Visible" />
-                        <Setter Target="CompactSectionPicker.MinWidth" Value="0" />
-                        <Setter Target="CompactSectionPicker.MaxWidth" Value="1000" />
+                        <Setter Target="CompactSectionPicker.MinWidth" Value="{ThemeResource AppDimension0}" />
+                        <Setter Target="CompactSectionPicker.MaxWidth" Value="{ThemeResource AppDimension1000}" />
                         <Setter Target="CompactSectionPicker.HorizontalAlignment" Value="Stretch" />
                         <Setter Target="CompactSectionPicker.(Grid.Row)" Value="1" />
                         <Setter Target="CompactSectionPicker.(Grid.Column)" Value="0" />
@@ -48,7 +48,7 @@
                         <Setter Target="SettingsWorkspace.ColumnSpacing" Value="0" />
                         <Setter Target="SettingsContentPanel.(Grid.Column)" Value="0" />
                         <Setter Target="SettingsContentPanel.(Grid.ColumnSpan)" Value="2" />
-                        <Setter Target="SettingsContentScrollViewer.Padding" Value="12" />
+                        <Setter Target="SettingsContentScrollViewer.Padding" Value="{ThemeResource AppPadding12}" />
                         <Setter Target="ThemeOptionsGrid.ColumnSpacing" Value="0" />
                         <Setter Target="ThemeOptionsGrid.RowSpacing" Value="10" />
                         <Setter Target="SystemThemeButton.(Grid.Column)" Value="0" />
@@ -103,9 +103,9 @@
         </VisualStateManager.VisualStateGroups>
         <Grid
             x:Name="SettingsLayout"
-            MaxWidth="1080"
+            MaxWidth="{ThemeResource AppDimension1080}"
             HorizontalAlignment="Stretch"
-            RowSpacing="0">
+            RowSpacing="{ThemeResource AppGap0}">
             <Grid.RowDefinitions>
                 <RowDefinition Height="Auto" />
                 <RowDefinition Height="Auto" />
@@ -114,7 +114,7 @@
 
             <Grid
                 x:Name="SettingsHeader"
-                ColumnSpacing="16"
+                ColumnSpacing="{ThemeResource AppGap16}"
                 Style="{StaticResource AppWorkspaceHeaderStyle}">
                 <Grid.ColumnDefinitions>
                     <ColumnDefinition Width="*" />
@@ -132,8 +132,8 @@
                 <ComboBox
                     x:Uid="PagesSettingsPageSettingsCompactSectionPicker" x:Name="CompactSectionPicker"
                     Grid.Column="1"
-                    MinWidth="220"
-                    MaxWidth="280"
+                    MinWidth="{ThemeResource AppDimension220}"
+                    MaxWidth="{ThemeResource AppDimension280}"
                     HorizontalAlignment="Right"
                     AutomationProperties.AutomationId="SettingsCompactSectionPicker"
                     AutomationProperties.Name="{x:Bind ViewModel.SectionPickerAutomationName, Mode=OneWay}"
@@ -141,16 +141,27 @@
                     SelectionChanged="SettingsSectionSelectionChanged"
                     Style="{StaticResource AppCompactComboBoxStyle}"
                     Visibility="Collapsed">
+                    <ComboBox.ItemContainerStyle>
+                        <Style TargetType="ComboBoxItem">
+                            <Setter Property="MinHeight" Value="{ThemeResource AppDimension36}" />
+                            <Setter Property="HorizontalContentAlignment" Value="Stretch" />
+                            <Setter Property="VerticalContentAlignment" Value="Center" />
+                        </Style>
+                    </ComboBox.ItemContainerStyle>
                     <ComboBox.ItemTemplate>
                         <DataTemplate x:DataType="pageViewModels:SettingsSectionItem">
                             <Grid
-                                MinHeight="36"
-                                ColumnSpacing="10">
+                                VerticalAlignment="Center"
+                                ColumnSpacing="{ThemeResource AppGap10}">
                                 <Grid.ColumnDefinitions>
-                                    <ColumnDefinition Width="20" />
+                                    <ColumnDefinition Width="{ThemeResource AppGridLength20}" />
                                     <ColumnDefinition Width="*" />
                                 </Grid.ColumnDefinitions>
                                 <FontIcon
+                                    Width="{ThemeResource AppDimension20}"
+                                    Height="{ThemeResource AppDimension20}"
+                                    HorizontalAlignment="Center"
+                                    VerticalAlignment="Center"
                                     FontSize="{ThemeResource AppFontSize14}"
                                     Foreground="{ThemeResource AppInkMutedBrush}"
                                     Glyph="{x:Bind Glyph, Mode=OneWay}" />
@@ -169,7 +180,7 @@
 
             <InfoBar
                 Grid.Row="1"
-                Margin="0,8,0,0"
+                Margin="{ThemeResource AppMargin0_8_0_0}"
                 AutomationProperties.AutomationId="SettingsErrorBar"
                 IsClosable="False"
                 IsOpen="{x:Bind ViewModel.HasStatusError, Mode=OneWay}"
@@ -188,11 +199,11 @@
             <Grid
                 x:Name="SettingsWorkspace"
                 Grid.Row="2"
-                Margin="0,10,0,0"
-                MinHeight="0"
-                ColumnSpacing="16">
+                Margin="{ThemeResource AppMargin0_10_0_0}"
+                MinHeight="{ThemeResource AppDimension0}"
+                ColumnSpacing="{ThemeResource AppGap16}">
                 <Grid.ColumnDefinitions>
-                    <ColumnDefinition Width="220" />
+                    <ColumnDefinition Width="{ThemeResource AppGridLength220}" />
                     <ColumnDefinition Width="*" />
                 </Grid.ColumnDefinitions>
 
@@ -200,9 +211,9 @@
                     x:Name="SettingsSectionRail"
                     Background="{ThemeResource AppSurfaceBrush}"
                     BorderBrush="{ThemeResource AppOutlineBrush}"
-                    BorderThickness="1"
+                    BorderThickness="{ThemeResource AppHairlineBorderThickness}"
                     CornerRadius="{ThemeResource AppRadiusMedium}"
-                    Padding="8">
+                    Padding="{ThemeResource AppPadding8}">
                         <ListView
                             x:Uid="PagesSettingsPageSettingsSectionList" x:Name="SettingsSectionList"
                             AutomationProperties.AutomationId="SettingsSectionList"
@@ -218,15 +229,16 @@
                         <ListView.ItemTemplate>
                             <DataTemplate x:DataType="pageViewModels:SettingsSectionItem">
                                 <Grid
-                                    MinHeight="42"
-                                    ColumnSpacing="10"
-                                    Padding="8,6">
+                                    MinHeight="{ThemeResource AppDimension42}"
+                                    ColumnSpacing="{ThemeResource AppGap10}"
+                                    Padding="{ThemeResource AppPadding8_6}">
                                     <Grid.ColumnDefinitions>
-                                        <ColumnDefinition Width="24" />
+                                        <ColumnDefinition Width="{ThemeResource AppGridLength24}" />
                                         <ColumnDefinition Width="*" />
                                     </Grid.ColumnDefinitions>
                                     <FontIcon
                                         Grid.Column="0"
+                                        VerticalAlignment="Center"
                                         FontSize="{ThemeResource AppFontSize15}"
                                         Glyph="{x:Bind Glyph, Mode=OneWay}" />
                                     <TextBlock
@@ -247,11 +259,11 @@
                     Grid.Column="1"
                     Background="{ThemeResource AppCanvasInsetBrush}"
                     BorderBrush="{ThemeResource AppOutlineBrush}"
-                    BorderThickness="1"
+                    BorderThickness="{ThemeResource AppHairlineBorderThickness}"
                     CornerRadius="{ThemeResource AppRadiusMedium}">
                     <ScrollViewer
                         x:Name="SettingsContentScrollViewer"
-                        Padding="18"
+                        Padding="{ThemeResource AppPadding18}"
                         AutomationProperties.AutomationId="SettingsContentScrollViewer"
                         HorizontalScrollBarVisibility="Disabled"
                         HorizontalScrollMode="Disabled"
@@ -260,23 +272,23 @@
                         <Grid>
                             <StackPanel
                                 AutomationProperties.AutomationId="SettingsAppearanceSection"
-                                Spacing="14"
+                                Spacing="{ThemeResource AppGap14}"
                                 Visibility="{x:Bind ViewModel.IsAppearanceSelected, Converter={StaticResource BoolToVisibilityConverter}, Mode=OneWay}">
                                 <appcontrols:AppSectionHeader x:Uid="PagesSettingsPageAppSectionHeaderAppearance" Title="Appearance" />
                                 <Border
                                     Background="{ThemeResource AppSurfaceBrush}"
                                     BorderBrush="{ThemeResource AppOutlineBrush}"
-                                    BorderThickness="1"
+                                    BorderThickness="{ThemeResource AppHairlineBorderThickness}"
                                     CornerRadius="{ThemeResource AppRadiusMedium}"
-                                    Padding="16">
-                                    <StackPanel Spacing="16">
+                                    Padding="{ThemeResource AppPadding16}">
+                                    <StackPanel Spacing="{ThemeResource AppGap16}">
                                         <TextBlock
                                             x:Uid="PagesSettingsPageTextBlockTheme" Style="{StaticResource ListItemTitleTextBlockStyle}"
                                             AutomationProperties.AutomationId="SettingsThemeHeading"
                                             Text="Theme" />
                                         <Grid
                                             x:Name="ThemeOptionsGrid"
-                                            ColumnSpacing="12">
+                                            ColumnSpacing="{ThemeResource AppGap12}">
                                             <Grid.ColumnDefinitions>
                                                 <ColumnDefinition Width="*" />
                                                 <ColumnDefinition Width="*" />
@@ -295,30 +307,30 @@
                                                 Checked="SystemThemeButton_Checked"
                                                 GroupName="SettingsTheme"
                                                 HorizontalAlignment="Stretch"
-                                                MinWidth="0"
+                                                MinWidth="{ThemeResource AppDimension0}"
                                 Style="{StaticResource AppThemeCardRadioButtonStyle}">
                                                 <Border
-                                                    Height="140"
+                                                    Height="{ThemeResource AppDimension140}"
                                                     HorizontalAlignment="Stretch"
                                                     Background="{ThemeResource AppSurfaceSubtleBrush}"
                                                     BorderBrush="{ThemeResource AppOutlineBrush}"
-                                                    BorderThickness="1"
+                                                    BorderThickness="{ThemeResource AppHairlineBorderThickness}"
                                                     CornerRadius="{ThemeResource AppRadiusMedium}"
-                                                    Padding="16">
+                                                    Padding="{ThemeResource AppPadding16}">
                                                     <Grid>
                                                         <Border
                                                             Background="{ThemeResource AppAccentBrush}"
                                                             CornerRadius="{ThemeResource AppRadiusMedium}"
-                                                            Margin="-16"
-                                                            Opacity="0.08"
+                                                            Margin="{ThemeResource AppMarginNeg16}"
+                                                            Opacity="{ThemeResource AppOpacitySubtle}"
                                                             Visibility="{x:Bind ViewModel.IsSystemThemeSelected, Converter={StaticResource BoolToVisibilityConverter}, Mode=OneWay}" />
                                                         <Border
                                                             BorderBrush="{ThemeResource AppAccentBrush}"
-                                                            BorderThickness="2"
+                                                            BorderThickness="{ThemeResource AppStrongBorderThickness}"
                                                             CornerRadius="{ThemeResource AppRadiusMedium}"
-                                                            Margin="-16"
+                                                            Margin="{ThemeResource AppMarginNeg16}"
                                                             Visibility="{x:Bind ViewModel.IsSystemThemeSelected, Converter={StaticResource BoolToVisibilityConverter}, Mode=OneWay}" />
-                                                        <Grid RowSpacing="10">
+                                                        <Grid RowSpacing="{ThemeResource AppGap10}">
                                                             <Grid.RowDefinitions>
                                                                 <RowDefinition Height="Auto" />
                                                                 <RowDefinition Height="*" />
@@ -332,7 +344,7 @@
                                                             <StackPanel
                                                                 Grid.Row="1"
                                                                 VerticalAlignment="Center"
-                                                                Spacing="4">
+                                                                Spacing="{ThemeResource AppGap4}">
                                                                 <TextBlock
                                                                     x:Uid="PagesSettingsPageTextBlockSystem" FontSize="{ThemeResource AppFontSize15}"
                                                                     AutomationProperties.AutomationId="SettingsThemeSystemLabel"
@@ -343,17 +355,17 @@
                                                             </StackPanel>
                                                             <Grid Grid.Row="2">
                                                                 <Ellipse
-                                                                    Width="16"
-                                                                    Height="16"
+                                                                    Width="{ThemeResource AppDimension16}"
+                                                                    Height="{ThemeResource AppDimension16}"
                                                                     HorizontalAlignment="Left"
                                                                     Stroke="{ThemeResource AppOutlineStrongBrush}"
                                                                     StrokeThickness="1.4" />
                                                                 <Ellipse
-                                                                    Width="8"
-                                                                    Height="8"
+                                                                    Width="{ThemeResource AppDimension8}"
+                                                                    Height="{ThemeResource AppDimension8}"
                                                                     HorizontalAlignment="Left"
                                                                     Fill="{ThemeResource AppAccentBrush}"
-                                                                    Margin="4,0,0,0"
+                                                                    Margin="{ThemeResource AppMargin4_0_0_0}"
                                                                     Visibility="{x:Bind ViewModel.IsSystemThemeSelected, Converter={StaticResource BoolToVisibilityConverter}, Mode=OneWay}" />
                                                             </Grid>
                                                         </Grid>
@@ -369,30 +381,30 @@
                                                 Checked="LightThemeButton_Checked"
                                                 GroupName="SettingsTheme"
                                                 HorizontalAlignment="Stretch"
-                                                MinWidth="0"
+                                                MinWidth="{ThemeResource AppDimension0}"
                                 Style="{StaticResource AppThemeCardRadioButtonStyle}">
                                                 <Border
-                                                    Height="140"
+                                                    Height="{ThemeResource AppDimension140}"
                                                     HorizontalAlignment="Stretch"
                                                     Background="{ThemeResource AppSurfaceSubtleBrush}"
                                                     BorderBrush="{ThemeResource AppOutlineBrush}"
-                                                    BorderThickness="1"
+                                                    BorderThickness="{ThemeResource AppHairlineBorderThickness}"
                                                     CornerRadius="{ThemeResource AppRadiusMedium}"
-                                                    Padding="16">
+                                                    Padding="{ThemeResource AppPadding16}">
                                                     <Grid>
                                                         <Border
                                                             Background="{ThemeResource AppAccentBrush}"
                                                             CornerRadius="{ThemeResource AppRadiusMedium}"
-                                                            Margin="-16"
-                                                            Opacity="0.08"
+                                                            Margin="{ThemeResource AppMarginNeg16}"
+                                                            Opacity="{ThemeResource AppOpacitySubtle}"
                                                             Visibility="{x:Bind ViewModel.IsLightThemeSelected, Converter={StaticResource BoolToVisibilityConverter}, Mode=OneWay}" />
                                                         <Border
                                                             BorderBrush="{ThemeResource AppAccentBrush}"
-                                                            BorderThickness="2"
+                                                            BorderThickness="{ThemeResource AppStrongBorderThickness}"
                                                             CornerRadius="{ThemeResource AppRadiusMedium}"
-                                                            Margin="-16"
+                                                            Margin="{ThemeResource AppMarginNeg16}"
                                                             Visibility="{x:Bind ViewModel.IsLightThemeSelected, Converter={StaticResource BoolToVisibilityConverter}, Mode=OneWay}" />
-                                                        <Grid RowSpacing="10">
+                                                        <Grid RowSpacing="{ThemeResource AppGap10}">
                                                             <Grid.RowDefinitions>
                                                                 <RowDefinition Height="Auto" />
                                                                 <RowDefinition Height="*" />
@@ -406,7 +418,7 @@
                                                             <StackPanel
                                                                 Grid.Row="1"
                                                                 VerticalAlignment="Center"
-                                                                Spacing="4">
+                                                                Spacing="{ThemeResource AppGap4}">
                                                                 <TextBlock
                                                                     x:Uid="PagesSettingsPageTextBlockLight" FontSize="{ThemeResource AppFontSize15}"
                                                                     AutomationProperties.AutomationId="SettingsThemeLightLabel"
@@ -417,17 +429,17 @@
                                                             </StackPanel>
                                                             <Grid Grid.Row="2">
                                                                 <Ellipse
-                                                                    Width="16"
-                                                                    Height="16"
+                                                                    Width="{ThemeResource AppDimension16}"
+                                                                    Height="{ThemeResource AppDimension16}"
                                                                     HorizontalAlignment="Left"
                                                                     Stroke="{ThemeResource AppOutlineStrongBrush}"
                                                                     StrokeThickness="1.4" />
                                                                 <Ellipse
-                                                                    Width="8"
-                                                                    Height="8"
+                                                                    Width="{ThemeResource AppDimension8}"
+                                                                    Height="{ThemeResource AppDimension8}"
                                                                     HorizontalAlignment="Left"
                                                                     Fill="{ThemeResource AppAccentBrush}"
-                                                                    Margin="4,0,0,0"
+                                                                    Margin="{ThemeResource AppMargin4_0_0_0}"
                                                                     Visibility="{x:Bind ViewModel.IsLightThemeSelected, Converter={StaticResource BoolToVisibilityConverter}, Mode=OneWay}" />
                                                             </Grid>
                                                         </Grid>
@@ -443,30 +455,30 @@
                                                 Checked="DarkThemeButton_Checked"
                                                 GroupName="SettingsTheme"
                                                 HorizontalAlignment="Stretch"
-                                                MinWidth="0"
+                                                MinWidth="{ThemeResource AppDimension0}"
                                 Style="{StaticResource AppThemeCardRadioButtonStyle}">
                                                 <Border
-                                                    Height="140"
+                                                    Height="{ThemeResource AppDimension140}"
                                                     HorizontalAlignment="Stretch"
                                                     Background="{ThemeResource AppSurfaceSubtleBrush}"
                                                     BorderBrush="{ThemeResource AppOutlineBrush}"
-                                                    BorderThickness="1"
+                                                    BorderThickness="{ThemeResource AppHairlineBorderThickness}"
                                                     CornerRadius="{ThemeResource AppRadiusMedium}"
-                                                    Padding="16">
+                                                    Padding="{ThemeResource AppPadding16}">
                                                     <Grid>
                                                         <Border
                                                             Background="{ThemeResource AppAccentBrush}"
                                                             CornerRadius="{ThemeResource AppRadiusMedium}"
-                                                            Margin="-16"
-                                                            Opacity="0.08"
+                                                            Margin="{ThemeResource AppMarginNeg16}"
+                                                            Opacity="{ThemeResource AppOpacitySubtle}"
                                                             Visibility="{x:Bind ViewModel.IsDarkThemeSelected, Converter={StaticResource BoolToVisibilityConverter}, Mode=OneWay}" />
                                                         <Border
                                                             BorderBrush="{ThemeResource AppAccentBrush}"
-                                                            BorderThickness="2"
+                                                            BorderThickness="{ThemeResource AppStrongBorderThickness}"
                                                             CornerRadius="{ThemeResource AppRadiusMedium}"
-                                                            Margin="-16"
+                                                            Margin="{ThemeResource AppMarginNeg16}"
                                                             Visibility="{x:Bind ViewModel.IsDarkThemeSelected, Converter={StaticResource BoolToVisibilityConverter}, Mode=OneWay}" />
-                                                        <Grid RowSpacing="10">
+                                                        <Grid RowSpacing="{ThemeResource AppGap10}">
                                                             <Grid.RowDefinitions>
                                                                 <RowDefinition Height="Auto" />
                                                                 <RowDefinition Height="*" />
@@ -480,7 +492,7 @@
                                                             <StackPanel
                                                                 Grid.Row="1"
                                                                 VerticalAlignment="Center"
-                                                                Spacing="4">
+                                                                Spacing="{ThemeResource AppGap4}">
                                                                 <TextBlock
                                                                     x:Uid="PagesSettingsPageTextBlockDark" FontSize="{ThemeResource AppFontSize15}"
                                                                     AutomationProperties.AutomationId="SettingsThemeDarkLabel"
@@ -491,17 +503,17 @@
                                                             </StackPanel>
                                                             <Grid Grid.Row="2">
                                                                 <Ellipse
-                                                                    Width="16"
-                                                                    Height="16"
+                                                                    Width="{ThemeResource AppDimension16}"
+                                                                    Height="{ThemeResource AppDimension16}"
                                                                     HorizontalAlignment="Left"
                                                                     Stroke="{ThemeResource AppOutlineStrongBrush}"
                                                                     StrokeThickness="1.4" />
                                                                 <Ellipse
-                                                                    Width="8"
-                                                                    Height="8"
+                                                                    Width="{ThemeResource AppDimension8}"
+                                                                    Height="{ThemeResource AppDimension8}"
                                                                     HorizontalAlignment="Left"
                                                                     Fill="{ThemeResource AppAccentBrush}"
-                                                                    Margin="4,0,0,0"
+                                                                    Margin="{ThemeResource AppMargin4_0_0_0}"
                                                                     Visibility="{x:Bind ViewModel.IsDarkThemeSelected, Converter={StaticResource BoolToVisibilityConverter}, Mode=OneWay}" />
                                                             </Grid>
                                                         </Grid>
@@ -509,24 +521,195 @@
                                                 </Border>
                                             </RadioButton>
                                         </Grid>
+
+                                        <Rectangle
+                                            Height="{ThemeResource AppDimension1}"
+                                            Fill="{ThemeResource AppHairlineBrush}" />
+
+                                        <Grid ColumnSpacing="{ThemeResource AppGap12}">
+                                            <Grid.ColumnDefinitions>
+                                                <ColumnDefinition Width="*" />
+                                                <ColumnDefinition Width="Auto" />
+                                            </Grid.ColumnDefinitions>
+                                            <StackPanel Spacing="{ThemeResource AppGap4}">
+                                                <TextBlock
+                                                    x:Uid="PagesSettingsPageTextBlockColorTheme"
+                                                    AutomationProperties.AutomationId="SettingsPaletteHeading"
+                                                    Style="{StaticResource ListItemTitleTextBlockStyle}"
+                                                    Text="Color theme" />
+                                                <TextBlock
+                                                    x:Uid="PagesSettingsPageTextBlockColorThemeDescription"
+                                                    Style="{StaticResource SectionSecondaryTextBlockStyle}"
+                                                    Text="Choose the color family used throughout JitHub."
+                                                    TextWrapping="WrapWholeWords" />
+                                            </StackPanel>
+                                            <Button
+                                                x:Uid="PagesSettingsPageSettingsResetPaletteButton"
+                                                Grid.Column="1"
+                                                AutomationProperties.AutomationId="SettingsResetPaletteButton"
+                                                AutomationProperties.Name="Restore the default JitHub color theme"
+                                                Click="ResetPaletteButton_Click"
+                                                Content="Restore JitHub"
+                                                IsEnabled="{x:Bind ViewModel.CanResetPalette, Mode=OneWay}"
+                                                Style="{StaticResource AppCommandButtonStyle}" />
+                                        </Grid>
+
+                                        <ItemsRepeater
+                                            x:Name="ThemePaletteRepeater"
+                                            x:Uid="PagesSettingsPageThemePaletteRepeater"
+                                            AutomationProperties.AutomationId="SettingsPaletteOptions"
+                                            AutomationProperties.Name="Color theme"
+                                            ElementClearing="ThemePaletteRepeater_ElementClearing"
+                                            ElementPrepared="ThemePaletteRepeater_ElementPrepared">
+                                            <ItemsRepeater.Layout>
+                                                <appcontrols:AppResponsiveUniformGridLayout
+                                                    HorizontalSpacing="{ThemeResource AppGap12}"
+                                                    MinimumItemWidth="{ThemeResource AppDimension220}"
+                                                    VerticalSpacing="{ThemeResource AppGap12}" />
+                                            </ItemsRepeater.Layout>
+                                            <ItemsRepeater.ItemTemplate>
+                                                <DataTemplate x:DataType="pageViewModels:ThemePaletteOption">
+                                                    <RadioButton
+                                                        AutomationProperties.AutomationId="{x:Bind AutomationId}"
+                                                        AutomationProperties.HelpText="{x:Bind Description}"
+                                                        AutomationProperties.Name="{x:Bind Label}"
+                                                        GroupName="SettingsPalette"
+                                                        HorizontalAlignment="Stretch"
+                                                        IsChecked="{x:Bind IsSelected, Mode=OneWay}"
+                                                        MinWidth="{ThemeResource AppDimension0}"
+                                                        Style="{StaticResource AppThemeCardRadioButtonStyle}"
+                                                        Tag="{x:Bind Id}">
+                                                        <Grid
+                                                            Height="{ThemeResource AppDimension180}"
+                                                            Background="{ThemeResource AppSurfaceSubtleBrush}">
+                                                            <Border
+                                                                BorderBrush="{ThemeResource AppOutlineBrush}"
+                                                                BorderThickness="{ThemeResource AppHairlineBorderThickness}"
+                                                                CornerRadius="{ThemeResource AppRadiusMedium}" />
+                                                            <Border
+                                                                BorderBrush="{ThemeResource AppAccentBrush}"
+                                                                BorderThickness="{ThemeResource AppStrongBorderThickness}"
+                                                                CornerRadius="{ThemeResource AppRadiusMedium}"
+                                                                Visibility="{x:Bind IsSelected, Converter={StaticResource BoolToVisibilityConverter}, Mode=OneWay}" />
+                                                            <Grid
+                                                                Padding="{ThemeResource AppPadding12}"
+                                                                RowSpacing="{ThemeResource AppGap10}">
+                                                                <Grid.RowDefinitions>
+                                                                    <RowDefinition Height="Auto" />
+                                                                    <RowDefinition Height="Auto" />
+                                                                    <RowDefinition Height="*" />
+                                                                </Grid.RowDefinitions>
+                                                                <Border
+                                                                    Height="{ThemeResource AppDimension72}"
+                                                                    BorderBrush="{ThemeResource AppOutlineStrongBrush}"
+                                                                    BorderThickness="{ThemeResource AppHairlineBorderThickness}"
+                                                                    CornerRadius="{ThemeResource AppRadiusSmall}">
+                                                                    <Grid>
+                                                                        <Grid.ColumnDefinitions>
+                                                                            <ColumnDefinition Width="*" />
+                                                                            <ColumnDefinition Width="*" />
+                                                                        </Grid.ColumnDefinitions>
+                                                                        <Border Background="{x:Bind Light.Canvas, Converter={StaticResource HexColorToSolidBrushConverter}}">
+                                                                            <Grid>
+                                                                                <Border
+                                                                                    Width="{ThemeResource AppDimension16}"
+                                                                                    HorizontalAlignment="Left"
+                                                                                    Background="{x:Bind Light.Rail, Converter={StaticResource HexColorToSolidBrushConverter}}" />
+                                                                                <StackPanel
+                                                                                    Margin="{ThemeResource AppMargin8_8_8_4}"
+                                                                                    HorizontalAlignment="Stretch"
+                                                                                    Spacing="{ThemeResource AppGap4}">
+                                                                                    <Rectangle
+                                                                                        Height="{ThemeResource AppDimension4}"
+                                                                                        Fill="{x:Bind Light.Accent, Converter={StaticResource HexColorToSolidBrushConverter}}" />
+                                                                                    <Rectangle
+                                                                                        Height="{ThemeResource AppDimension2}"
+                                                                                        Fill="{x:Bind Light.Ink, Converter={StaticResource HexColorToSolidBrushConverter}}"
+                                                                                        Opacity="{ThemeResource AppOpacityDisabledSurface}" />
+                                                                                    <Rectangle
+                                                                                        Height="{ThemeResource AppDimension16}"
+                                                                                        Fill="{x:Bind Light.Surface, Converter={StaticResource HexColorToSolidBrushConverter}}" />
+                                                                                </StackPanel>
+                                                                            </Grid>
+                                                                        </Border>
+                                                                        <Border
+                                                                            Grid.Column="1"
+                                                                            Background="{x:Bind Dark.Canvas, Converter={StaticResource HexColorToSolidBrushConverter}}">
+                                                                            <Grid>
+                                                                                <Border
+                                                                                    Width="{ThemeResource AppDimension16}"
+                                                                                    HorizontalAlignment="Left"
+                                                                                    Background="{x:Bind Dark.Rail, Converter={StaticResource HexColorToSolidBrushConverter}}" />
+                                                                                <StackPanel
+                                                                                    Margin="{ThemeResource AppMargin8_8_8_4}"
+                                                                                    HorizontalAlignment="Stretch"
+                                                                                    Spacing="{ThemeResource AppGap4}">
+                                                                                    <Rectangle
+                                                                                        Height="{ThemeResource AppDimension4}"
+                                                                                        Fill="{x:Bind Dark.Accent, Converter={StaticResource HexColorToSolidBrushConverter}}" />
+                                                                                    <Rectangle
+                                                                                        Height="{ThemeResource AppDimension2}"
+                                                                                        Fill="{x:Bind Dark.Ink, Converter={StaticResource HexColorToSolidBrushConverter}}"
+                                                                                        Opacity="{ThemeResource AppOpacityDisabledSurface}" />
+                                                                                    <Rectangle
+                                                                                        Height="{ThemeResource AppDimension16}"
+                                                                                        Fill="{x:Bind Dark.Surface, Converter={StaticResource HexColorToSolidBrushConverter}}" />
+                                                                                </StackPanel>
+                                                                            </Grid>
+                                                                        </Border>
+                                                                    </Grid>
+                                                                </Border>
+                                                                <Grid
+                                                                    Grid.Row="1"
+                                                                    ColumnSpacing="{ThemeResource AppGap8}">
+                                                                    <Grid.ColumnDefinitions>
+                                                                        <ColumnDefinition Width="*" />
+                                                                        <ColumnDefinition Width="Auto" />
+                                                                    </Grid.ColumnDefinitions>
+                                                                    <TextBlock
+                                                                        VerticalAlignment="Center"
+                                                                        Style="{StaticResource ListItemTitleTextBlockStyle}"
+                                                                        Text="{x:Bind Label}"
+                                                                        TextTrimming="CharacterEllipsis" />
+                                                                    <FontIcon
+                                                                        Grid.Column="1"
+                                                                        VerticalAlignment="Center"
+                                                                        FontSize="{ThemeResource AppFontSize14}"
+                                                                        Foreground="{ThemeResource AppAccentBrush}"
+                                                                        Glyph="&#xE73E;"
+                                                                        Visibility="{x:Bind IsSelected, Converter={StaticResource BoolToVisibilityConverter}, Mode=OneWay}" />
+                                                                </Grid>
+                                                                <TextBlock
+                                                                    Grid.Row="2"
+                                                                    MaxLines="2"
+                                                                    Style="{StaticResource SectionSecondaryTextBlockStyle}"
+                                                                    Text="{x:Bind Description}"
+                                                                    TextTrimming="CharacterEllipsis"
+                                                                    TextWrapping="WrapWholeWords" />
+                                                            </Grid>
+                                                        </Grid>
+                                                    </RadioButton>
+                                                </DataTemplate>
+                                            </ItemsRepeater.ItemTemplate>
+                                        </ItemsRepeater>
                                     </StackPanel>
                                 </Border>
                             </StackPanel>
 
                             <StackPanel
                                 AutomationProperties.AutomationId="SettingsGeneralSection"
-                                Spacing="14"
+                                Spacing="{ThemeResource AppGap14}"
                                 Visibility="{x:Bind ViewModel.IsGeneralSelected, Converter={StaticResource BoolToVisibilityConverter}, Mode=OneWay}">
                                 <appcontrols:AppSectionHeader x:Uid="PagesSettingsPageAppSectionHeaderGeneral" Title="General" />
                                 <Border
                                     Background="{ThemeResource AppSurfaceBrush}"
                                     BorderBrush="{ThemeResource AppOutlineBrush}"
-                                    BorderThickness="1"
+                                    BorderThickness="{ThemeResource AppHairlineBorderThickness}"
                                     CornerRadius="{ThemeResource AppRadiusMedium}"
-                                    Padding="16">
+                                    Padding="{ThemeResource AppPadding16}">
                                     <Grid
                                         x:Name="SettingsDeveloperModeRow"
-                                        ColumnSpacing="16">
+                                        ColumnSpacing="{ThemeResource AppGap16}">
                                         <Grid.ColumnDefinitions>
                                             <ColumnDefinition Width="*" />
                                             <ColumnDefinition Width="Auto" />
@@ -535,7 +718,7 @@
                                             <RowDefinition Height="Auto" />
                                             <RowDefinition Height="Auto" />
                                         </Grid.RowDefinitions>
-                                        <StackPanel Spacing="4">
+                                        <StackPanel Spacing="{ThemeResource AppGap4}">
                                             <TextBlock
                                                 x:Uid="PagesSettingsPageTextBlockDeveloperMode" Style="{StaticResource ListItemTitleTextBlockStyle}"
                                                 Text="Developer mode" />
@@ -555,12 +738,12 @@
                                 <Border
                                     Background="{ThemeResource AppSurfaceBrush}"
                                     BorderBrush="{ThemeResource AppOutlineBrush}"
-                                    BorderThickness="1"
+                                    BorderThickness="{ThemeResource AppHairlineBorderThickness}"
                                     CornerRadius="{ThemeResource AppRadiusMedium}"
-                                    Padding="16">
+                                    Padding="{ThemeResource AppPadding16}">
                                     <Grid
                                         x:Name="SettingsSignOutRow"
-                                        ColumnSpacing="16">
+                                        ColumnSpacing="{ThemeResource AppGap16}">
                                         <Grid.ColumnDefinitions>
                                             <ColumnDefinition Width="*" />
                                             <ColumnDefinition Width="Auto" />
@@ -569,7 +752,7 @@
                                             <RowDefinition Height="Auto" />
                                             <RowDefinition Height="Auto" />
                                         </Grid.RowDefinitions>
-                                        <StackPanel Spacing="4">
+                                        <StackPanel Spacing="{ThemeResource AppGap4}">
                                             <TextBlock
                                                 x:Uid="PagesSettingsPageTextBlockSignOut" Style="{StaticResource ListItemTitleTextBlockStyle}"
                                                 Text="Sign out" />
@@ -591,19 +774,19 @@
 
                             <StackPanel
                                 AutomationProperties.AutomationId="SettingsPrivacySection"
-                                Spacing="14"
+                                Spacing="{ThemeResource AppGap14}"
                                 Visibility="{x:Bind ViewModel.IsPrivacySelected, Converter={StaticResource BoolToVisibilityConverter}, Mode=OneWay}">
                                 <appcontrols:AppSectionHeader x:Uid="PagesSettingsPageAppSectionHeaderPrivacy" Title="Privacy" />
                                 <Border
                                     Background="{ThemeResource AppSurfaceBrush}"
                                     BorderBrush="{ThemeResource AppOutlineBrush}"
-                                    BorderThickness="1"
+                                    BorderThickness="{ThemeResource AppHairlineBorderThickness}"
                                     CornerRadius="{ThemeResource AppRadiusMedium}"
-                                    Padding="16">
-                                    <StackPanel Spacing="16">
+                                    Padding="{ThemeResource AppPadding16}">
+                                    <StackPanel Spacing="{ThemeResource AppGap16}">
                                         <Grid
                                             x:Name="SettingsDiagnosticsRow"
-                                            ColumnSpacing="16">
+                                            ColumnSpacing="{ThemeResource AppGap16}">
                                             <Grid.ColumnDefinitions>
                                                 <ColumnDefinition Width="*" />
                                                 <ColumnDefinition Width="Auto" />
@@ -612,7 +795,7 @@
                                                 <RowDefinition Height="Auto" />
                                                 <RowDefinition Height="Auto" />
                                             </Grid.RowDefinitions>
-                                            <StackPanel Spacing="4">
+                                            <StackPanel Spacing="{ThemeResource AppGap4}">
                                                 <TextBlock
                                                     x:Uid="PagesSettingsPageTextBlockLocalDiagnostics" Style="{StaticResource ListItemTitleTextBlockStyle}"
                                                     Text="Local diagnostics" />
@@ -629,11 +812,11 @@
                                                 IsOn="{x:Bind ViewModel.DiagnosticsEnabled, Mode=TwoWay}" />
                                         </Grid>
 
-                                        <Rectangle Height="1" Fill="{ThemeResource AppHairlineBrush}" />
+                                        <Rectangle Height="{ThemeResource AppDimension1}" Fill="{ThemeResource AppHairlineBrush}" />
 
                                         <Grid
                                             x:Name="SettingsStoreTelemetryRow"
-                                            ColumnSpacing="16">
+                                            ColumnSpacing="{ThemeResource AppGap16}">
                                             <Grid.ColumnDefinitions>
                                                 <ColumnDefinition Width="*" />
                                                 <ColumnDefinition Width="Auto" />
@@ -642,7 +825,7 @@
                                                 <RowDefinition Height="Auto" />
                                                 <RowDefinition Height="Auto" />
                                             </Grid.RowDefinitions>
-                                            <StackPanel Spacing="4">
+                                            <StackPanel Spacing="{ThemeResource AppGap4}">
                                                 <TextBlock
                                                     x:Uid="PagesSettingsPageTextBlockMicrosoftStoreCustomEvents" Style="{StaticResource ListItemTitleTextBlockStyle}"
                                                     Text="Microsoft Store custom events" />
@@ -666,17 +849,17 @@
 
                             <StackPanel
                                 AutomationProperties.AutomationId="SettingsDataCacheSection"
-                                Spacing="14"
+                                Spacing="{ThemeResource AppGap14}"
                                 Visibility="{x:Bind ViewModel.IsDataCacheSelected, Converter={StaticResource BoolToVisibilityConverter}, Mode=OneWay}">
                                 <appcontrols:AppSectionHeader x:Uid="PagesSettingsPageAppSectionHeaderDataAmpCache" Title="Data &amp; Cache" />
                                 <Border
                                     Background="{ThemeResource AppSurfaceBrush}"
                                     BorderBrush="{ThemeResource AppOutlineBrush}"
-                                    BorderThickness="1"
+                                    BorderThickness="{ThemeResource AppHairlineBorderThickness}"
                                     CornerRadius="{ThemeResource AppRadiusMedium}"
-                                    Padding="16">
-                                    <StackPanel Spacing="14">
-                                        <Grid ColumnSpacing="16">
+                                    Padding="{ThemeResource AppPadding16}">
+                                    <StackPanel Spacing="{ThemeResource AppGap14}">
+                                        <Grid ColumnSpacing="{ThemeResource AppGap16}">
                                             <Grid.ColumnDefinitions>
                                                 <ColumnDefinition Width="*" />
                                                 <ColumnDefinition Width="Auto" />
@@ -689,7 +872,7 @@
                                                 Style="{StaticResource ListItemTitleTextBlockStyle}"
                                                 Text="{x:Bind ViewModel.TotalCacheSizeText, Mode=OneWay}" />
                                         </Grid>
-                                        <Grid ColumnSpacing="16">
+                                        <Grid ColumnSpacing="{ThemeResource AppGap16}">
                                             <Grid.ColumnDefinitions>
                                                 <ColumnDefinition Width="*" />
                                                 <ColumnDefinition Width="Auto" />
@@ -702,7 +885,7 @@
                                                 Style="{StaticResource ListItemTitleTextBlockStyle}"
                                                 Text="{x:Bind ViewModel.MetadataSizeText, Mode=OneWay}" />
                                         </Grid>
-                                        <Grid ColumnSpacing="16">
+                                        <Grid ColumnSpacing="{ThemeResource AppGap16}">
                                             <Grid.ColumnDefinitions>
                                                 <ColumnDefinition Width="*" />
                                                 <ColumnDefinition Width="Auto" />
@@ -715,7 +898,7 @@
                                                 Style="{StaticResource ListItemTitleTextBlockStyle}"
                                                 Text="{x:Bind ViewModel.PayloadSizeText, Mode=OneWay}" />
                                         </Grid>
-                                        <Grid ColumnSpacing="16">
+                                        <Grid ColumnSpacing="{ThemeResource AppGap16}">
                                             <Grid.ColumnDefinitions>
                                                 <ColumnDefinition Width="*" />
                                                 <ColumnDefinition Width="Auto" />
@@ -728,7 +911,7 @@
                                                 Style="{StaticResource ListItemTitleTextBlockStyle}"
                                                 Text="{x:Bind ViewModel.ImageSizeText, Mode=OneWay}" />
                                         </Grid>
-                                        <Grid ColumnSpacing="16">
+                                        <Grid ColumnSpacing="{ThemeResource AppGap16}">
                                             <Grid.ColumnDefinitions>
                                                 <ColumnDefinition Width="*" />
                                                 <ColumnDefinition Width="Auto" />
@@ -741,7 +924,7 @@
                                                 Style="{StaticResource ListItemTitleTextBlockStyle}"
                                                 Text="{x:Bind ViewModel.RepoFileCacheSizeText, Mode=OneWay}" />
                                         </Grid>
-                                        <Grid ColumnSpacing="16">
+                                        <Grid ColumnSpacing="{ThemeResource AppGap16}">
                                             <Grid.ColumnDefinitions>
                                                 <ColumnDefinition Width="*" />
                                                 <ColumnDefinition Width="Auto" />
@@ -760,13 +943,13 @@
                                 <Border
                                     Background="{ThemeResource AppSurfaceBrush}"
                                     BorderBrush="{ThemeResource AppOutlineBrush}"
-                                    BorderThickness="1"
+                                    BorderThickness="{ThemeResource AppHairlineBorderThickness}"
                                     CornerRadius="{ThemeResource AppRadiusMedium}"
-                                    Padding="16">
-                                    <StackPanel Spacing="14">
+                                    Padding="{ThemeResource AppPadding16}">
+                                    <StackPanel Spacing="{ThemeResource AppGap14}">
                                         <Grid
                                             x:Name="SettingsClearQueryCacheRow"
-                                            ColumnSpacing="16">
+                                            ColumnSpacing="{ThemeResource AppGap16}">
                                             <Grid.ColumnDefinitions>
                                                 <ColumnDefinition Width="*" />
                                                 <ColumnDefinition Width="Auto" />
@@ -775,7 +958,7 @@
                                                 <RowDefinition Height="Auto" />
                                                 <RowDefinition Height="Auto" />
                                             </Grid.RowDefinitions>
-                                            <StackPanel Spacing="4">
+                                            <StackPanel Spacing="{ThemeResource AppGap4}">
                                                 <TextBlock
                                                     x:Uid="PagesSettingsPageTextBlockGitHubQueryCache" Style="{StaticResource ListItemTitleTextBlockStyle}"
                                                     Text="GitHub query cache" />
@@ -794,10 +977,10 @@
                                                 Click="ClearQueryCacheButton_Click"
                                                 Content="Clear" />
                                         </Grid>
-                                        <Rectangle Height="1" Fill="{ThemeResource AppHairlineBrush}" />
+                                        <Rectangle Height="{ThemeResource AppDimension1}" Fill="{ThemeResource AppHairlineBrush}" />
                                         <Grid
                                             x:Name="SettingsClearStarLibraryRow"
-                                            ColumnSpacing="16">
+                                            ColumnSpacing="{ThemeResource AppGap16}">
                                             <Grid.ColumnDefinitions>
                                                 <ColumnDefinition Width="*" />
                                                 <ColumnDefinition Width="Auto" />
@@ -806,7 +989,7 @@
                                                 <RowDefinition Height="Auto" />
                                                 <RowDefinition Height="Auto" />
                                             </Grid.RowDefinitions>
-                                            <StackPanel Spacing="4">
+                                            <StackPanel Spacing="{ThemeResource AppGap4}">
                                                 <TextBlock
                                                     x:Uid="PagesSettingsPageTextBlockStarsLibraryAndCategories" Style="{StaticResource ListItemTitleTextBlockStyle}"
                                                     Text="Stars library and categories" />
@@ -825,10 +1008,10 @@
                                                 Click="ClearStarLibraryButton_Click"
                                                 Content="Clear" />
                                         </Grid>
-                                        <Rectangle Height="1" Fill="{ThemeResource AppHairlineBrush}" />
+                                        <Rectangle Height="{ThemeResource AppDimension1}" Fill="{ThemeResource AppHairlineBrush}" />
                                         <Grid
                                             x:Name="SettingsClearImageCacheRow"
-                                            ColumnSpacing="16">
+                                            ColumnSpacing="{ThemeResource AppGap16}">
                                             <Grid.ColumnDefinitions>
                                                 <ColumnDefinition Width="*" />
                                                 <ColumnDefinition Width="Auto" />
@@ -837,7 +1020,7 @@
                                                 <RowDefinition Height="Auto" />
                                                 <RowDefinition Height="Auto" />
                                             </Grid.RowDefinitions>
-                                            <StackPanel Spacing="4">
+                                            <StackPanel Spacing="{ThemeResource AppGap4}">
                                                 <TextBlock
                                                     x:Uid="PagesSettingsPageTextBlockAvatarAndImageCache" Style="{StaticResource ListItemTitleTextBlockStyle}"
                                                     Text="Avatar and image cache" />
@@ -856,10 +1039,10 @@
                                                 Click="ClearImageCacheButton_Click"
                                                 Content="Clear" />
                                         </Grid>
-                                        <Rectangle Height="1" Fill="{ThemeResource AppHairlineBrush}" />
+                                        <Rectangle Height="{ThemeResource AppDimension1}" Fill="{ThemeResource AppHairlineBrush}" />
                                         <Grid
                                             x:Name="SettingsClearRepoFileCacheRow"
-                                            ColumnSpacing="16">
+                                            ColumnSpacing="{ThemeResource AppGap16}">
                                             <Grid.ColumnDefinitions>
                                                 <ColumnDefinition Width="*" />
                                                 <ColumnDefinition Width="Auto" />
@@ -868,7 +1051,7 @@
                                                 <RowDefinition Height="Auto" />
                                                 <RowDefinition Height="Auto" />
                                             </Grid.RowDefinitions>
-                                            <StackPanel Spacing="4">
+                                            <StackPanel Spacing="{ThemeResource AppGap4}">
                                                 <TextBlock
                                                     x:Uid="PagesSettingsPageTextBlockRepositoryFileCache" Style="{StaticResource ListItemTitleTextBlockStyle}"
                                                     Text="Repository file cache" />
@@ -887,10 +1070,10 @@
                                                 Click="ClearRepoFileCacheButton_Click"
                                                 Content="Clear" />
                                         </Grid>
-                                        <Rectangle Height="1" Fill="{ThemeResource AppHairlineBrush}" />
+                                        <Rectangle Height="{ThemeResource AppDimension1}" Fill="{ThemeResource AppHairlineBrush}" />
                                         <Grid
                                             x:Name="SettingsClearAllCacheRow"
-                                            ColumnSpacing="16">
+                                            ColumnSpacing="{ThemeResource AppGap16}">
                                             <Grid.ColumnDefinitions>
                                                 <ColumnDefinition Width="*" />
                                                 <ColumnDefinition Width="Auto" />
@@ -899,7 +1082,7 @@
                                                 <RowDefinition Height="Auto" />
                                                 <RowDefinition Height="Auto" />
                                             </Grid.RowDefinitions>
-                                            <StackPanel Spacing="4">
+                                            <StackPanel Spacing="{ThemeResource AppGap4}">
                                                 <TextBlock
                                                     x:Uid="PagesSettingsPageTextBlockAllPhase0CacheData" Style="{StaticResource ListItemTitleTextBlockStyle}"
                                                     Text="All Phase 0 cache data" />
@@ -923,10 +1106,10 @@
                                     AutomationProperties.AutomationId="SettingsCacheOwnerHealth"
                                     Background="{ThemeResource AppSurfaceBrush}"
                                     BorderBrush="{ThemeResource AppOutlineBrush}"
-                                    BorderThickness="1"
+                                    BorderThickness="{ThemeResource AppHairlineBorderThickness}"
                                     CornerRadius="{ThemeResource AppRadiusMedium}"
-                                    Padding="12">
-                                    <StackPanel Spacing="4">
+                                    Padding="{ThemeResource AppPadding12}">
+                                    <StackPanel Spacing="{ThemeResource AppGap4}">
                                         <TextBlock
                                             x:Uid="PagesSettingsPageTextBlockCacheOwnerHealth" Style="{StaticResource ListItemTitleTextBlockStyle}"
                                             Text="Cache owner health" />
@@ -934,10 +1117,10 @@
                                             <ItemsControl.ItemTemplate>
                                                 <DataTemplate x:DataType="pageViewModels:SettingsCacheOwnerItem">
                                                     <Border
-                                                        Padding="0,6"
+                                                        Padding="{ThemeResource AppPadding0_6}"
                                                         BorderBrush="{ThemeResource AppHairlineBrush}"
-                                                        BorderThickness="0,0,0,1">
-                                                        <Grid ColumnSpacing="16" RowSpacing="2">
+                                                        BorderThickness="{ThemeResource AppBottomHairlineBorderThickness}">
+                                                        <Grid ColumnSpacing="{ThemeResource AppGap16}" RowSpacing="{ThemeResource AppGap2}">
                                                             <Grid.ColumnDefinitions>
                                                                 <ColumnDefinition Width="*" />
                                                                 <ColumnDefinition Width="Auto" />
@@ -966,7 +1149,7 @@
                                                             <TextBlock
                                                                 Grid.Row="2"
                                                                 Grid.ColumnSpan="2"
-                                                                MaxWidth="720"
+                                                                MaxWidth="{ThemeResource AppDimension720}"
                                                                 MaxLines="1"
                                                                 Style="{StaticResource SectionSecondaryTextBlockStyle}"
                                                                 Text="{x:Bind Policy}"
@@ -976,7 +1159,7 @@
                                                             <TextBlock
                                                                 Grid.Row="3"
                                                                 Grid.ColumnSpan="2"
-                                                                MaxWidth="720"
+                                                                MaxWidth="{ThemeResource AppDimension720}"
                                                                 Foreground="{ThemeResource SystemFillColorCriticalBrush}"
                                                                 Text="{x:Bind HealthDetail}"
                                                                 TextWrapping="WrapWholeWords" />
@@ -991,17 +1174,17 @@
 
                             <StackPanel
                                 AutomationProperties.AutomationId="SettingsDiagnosticsSection"
-                                Spacing="14"
+                                Spacing="{ThemeResource AppGap14}"
                                 Visibility="{x:Bind ViewModel.IsDiagnosticsSelected, Converter={StaticResource BoolToVisibilityConverter}, Mode=OneWay}">
                                 <appcontrols:AppSectionHeader x:Uid="PagesSettingsPageAppSectionHeaderDiagnostics" Title="Diagnostics" />
                                 <Border
                                     Background="{ThemeResource AppSurfaceBrush}"
                                     BorderBrush="{ThemeResource AppOutlineBrush}"
-                                    BorderThickness="1"
+                                    BorderThickness="{ThemeResource AppHairlineBorderThickness}"
                                     CornerRadius="{ThemeResource AppRadiusMedium}"
-                                    Padding="16">
-                                    <StackPanel Spacing="14">
-                                        <Grid ColumnSpacing="16">
+                                    Padding="{ThemeResource AppPadding16}">
+                                    <StackPanel Spacing="{ThemeResource AppGap14}">
+                                        <Grid ColumnSpacing="{ThemeResource AppGap16}">
                                             <Grid.ColumnDefinitions>
                                                 <ColumnDefinition Width="*" />
                                                 <ColumnDefinition Width="Auto" />
@@ -1014,7 +1197,7 @@
                                                 Style="{StaticResource ListItemTitleTextBlockStyle}"
                                                 Text="{x:Bind ViewModel.DiagnosticsSizeText, Mode=OneWay}" />
                                         </Grid>
-                                        <StackPanel Spacing="4">
+                                        <StackPanel Spacing="{ThemeResource AppGap4}">
                                             <TextBlock
                                                 x:Uid="PagesSettingsPageTextBlockDiagnosticsFile" Style="{StaticResource ListItemTitleTextBlockStyle}"
                                                 Text="Diagnostics file" />
@@ -1025,7 +1208,7 @@
                                                 Style="{StaticResource SectionSecondaryTextBlockStyle}"
                                                 Text="{x:Bind ViewModel.DiagnosticsPath, Mode=OneWay}" />
                                         </StackPanel>
-                                        <StackPanel Orientation="Horizontal" Spacing="10">
+                                        <StackPanel Orientation="Horizontal" Spacing="{ThemeResource AppGap10}">
                                             <Button
                                                 x:Uid="PagesSettingsPageSettingsExportDiagnosticsButton" x:Name="SettingsExportDiagnosticsButton"
                                                 AutomationProperties.AutomationId="SettingsExportDiagnosticsButton"
@@ -1045,18 +1228,18 @@
 
                             <StackPanel
                                 AutomationProperties.AutomationId="SettingsAboutSection"
-                                Spacing="14"
+                                Spacing="{ThemeResource AppGap14}"
                                 Visibility="{x:Bind ViewModel.IsAboutSelected, Converter={StaticResource BoolToVisibilityConverter}, Mode=OneWay}">
                                 <appcontrols:AppSectionHeader x:Uid="PagesSettingsPageAppSectionHeaderAbout" Title="About" />
                                 <Border
                                     Background="{ThemeResource AppSurfaceBrush}"
                                     BorderBrush="{ThemeResource AppOutlineBrush}"
-                                    BorderThickness="1"
+                                    BorderThickness="{ThemeResource AppHairlineBorderThickness}"
                                     CornerRadius="{ThemeResource AppRadiusMedium}"
-                                    Padding="16">
+                                    Padding="{ThemeResource AppPadding16}">
                                     <Grid
                                         x:Name="SettingsAboutVersionRow"
-                                        ColumnSpacing="16">
+                                        ColumnSpacing="{ThemeResource AppGap16}">
                                         <Grid.ColumnDefinitions>
                                             <ColumnDefinition Width="*" />
                                             <ColumnDefinition Width="Auto" />
@@ -1065,7 +1248,7 @@
                                             <RowDefinition Height="Auto" />
                                             <RowDefinition Height="Auto" />
                                         </Grid.RowDefinitions>
-                                        <StackPanel Spacing="4">
+                                        <StackPanel Spacing="{ThemeResource AppGap4}">
                                             <TextBlock
                                                 Style="{StaticResource ListItemTitleTextBlockStyle}"
                                                 Text="{x:Bind ViewModel.VersionText, Mode=OneWay}" />
@@ -1089,10 +1272,10 @@
                                 <Border
                                     Background="{ThemeResource AppSurfaceBrush}"
                                     BorderBrush="{ThemeResource AppOutlineBrush}"
-                                    BorderThickness="1"
+                                    BorderThickness="{ThemeResource AppHairlineBorderThickness}"
                                     CornerRadius="{ThemeResource AppRadiusMedium}"
-                                    Padding="16">
-                                    <StackPanel Spacing="12">
+                                    Padding="{ThemeResource AppPadding16}">
+                                    <StackPanel Spacing="{ThemeResource AppGap12}">
                                         <TextBlock
                                             x:Uid="PagesSettingsPageTextBlockDevelopers" Style="{StaticResource ListItemTitleTextBlockStyle}"
                                             Text="Developers" />
@@ -1103,10 +1286,10 @@
                                 <Border
                                     Background="{ThemeResource AppSurfaceBrush}"
                                     BorderBrush="{ThemeResource AppOutlineBrush}"
-                                    BorderThickness="1"
+                                    BorderThickness="{ThemeResource AppHairlineBorderThickness}"
                                     CornerRadius="{ThemeResource AppRadiusMedium}"
-                                    Padding="16">
-                                    <StackPanel Spacing="12">
+                                    Padding="{ThemeResource AppPadding16}">
+                                    <StackPanel Spacing="{ThemeResource AppGap12}">
                                         <TextBlock
                                             x:Uid="PagesSettingsPageTextBlockDesigners" Style="{StaticResource ListItemTitleTextBlockStyle}"
                                             Text="Designers" />

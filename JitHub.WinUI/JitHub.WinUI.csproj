@@ -3,6 +3,7 @@
     <OutputType>WinExe</OutputType>
     <Configurations>Debug;Release;AotDebug</Configurations>
     <TargetFramework>net10.0-windows10.0.26100.0</TargetFramework>
+    <WindowsSdkPackageVersion>10.0.26100.87</WindowsSdkPackageVersion>
     <TargetPlatformMinVersion>10.0.19041.0</TargetPlatformMinVersion>
     <RootNamespace>JitHub.WinUI</RootNamespace>
     <ApplicationManifest>app.manifest</ApplicationManifest>
@@ -44,7 +45,11 @@
     <DefineConstants>$(DefineConstants);PSEUDO_LOCALIZATION_BUILD</DefineConstants>
   </PropertyGroup>
 
-  <PropertyGroup Condition="'$(RuntimeIdentifier)' == 'win-x86' or '$(RuntimeIdentifier)' == 'win-x64'">
+  <PropertyGroup>
+    <GenerateProjectPriFileDependsOn>InvalidateProjectPriWhenPseudoLocalizationModeChanges;$(GenerateProjectPriFileDependsOn)</GenerateProjectPriFileDependsOn>
+  </PropertyGroup>
+
+  <PropertyGroup Condition="'$(RuntimeIdentifier)' == 'win-x86' or '$(RuntimeIdentifier)' == 'win-x64' or '$(RuntimeIdentifier)' == 'win-arm64'">
     <DefineConstants>$(DefineConstants);STORE_ENGAGEMENT_AVAILABLE</DefineConstants>
     <CsWinRTIncludes>Microsoft.Services.Store.Engagement</CsWinRTIncludes>
   </PropertyGroup>
@@ -119,11 +124,11 @@
     <PackageReference Include="Microsoft.Graphics.Win2D" Version="1.4.0" />
     <PackageReference Include="Microsoft.Data.Sqlite" Version="10.0.8" />
     <PackageReference Include="SQLitePCLRaw.bundle_e_sqlite3" Version="3.0.3" />
-    <PackageReference Include="Microsoft.Services.Store.Engagement" Version="10.1610.0" GeneratePathProperty="true" />
+    <PackageReference Include="Microsoft.Services.Store.Engagement" Version="10.2307.3001" GeneratePathProperty="true" />
     <PackageReference Include="Microsoft.Xaml.Behaviors.WinUI.Managed" Version="3.0.1" />
     <PackageReference Include="Microsoft.Windows.SDK.BuildTools" Version="10.0.28000.1721" />
-    <PackageReference Include="Microsoft.WindowsAppSDK" Version="1.8.260317003" />
-    <PackageReference Include="Microsoft.Windows.CsWinRT" Version="2.2.0" PrivateAssets="all" />
+    <PackageReference Include="Microsoft.WindowsAppSDK" Version="1.8.260710003" />
+    <PackageReference Include="Microsoft.Windows.CsWinRT" Version="2.3.1" PrivateAssets="all" />
     <PackageReference Include="Microsoft.CodeAnalysis.BannedApiAnalyzers" Version="5.6.0" PrivateAssets="all" />
     <PackageReference Include="WinUIEdit" Version="0.0.5-prerelease" GeneratePathProperty="true" />
     <PackageReference Include="SkiaSharp" Version="4.151.1" />
@@ -161,11 +166,11 @@
     <WindowsMetadataReference Include="$(PkgWinUIEdit)\lib\uap10.0\WinUIEditor.winmd"
                               Implementation="WinUIEditor.dll" />
     <SDKReference Include="Microsoft.Services.Store.Engagement, Version=10.0"
-                  Condition="'$(RuntimeIdentifier)' == 'win-x86' or '$(RuntimeIdentifier)' == 'win-x64'" />
+                  Condition="'$(RuntimeIdentifier)' == 'win-x86' or '$(RuntimeIdentifier)' == 'win-x64' or '$(RuntimeIdentifier)' == 'win-arm64'" />
     <SDKReference Include="Microsoft.VCLibs, Version=14.0"
-                  Condition="'$(RuntimeIdentifier)' == 'win-x86' or '$(RuntimeIdentifier)' == 'win-x64'" />
+                  Condition="'$(RuntimeIdentifier)' == 'win-x86' or '$(RuntimeIdentifier)' == 'win-x64' or '$(RuntimeIdentifier)' == 'win-arm64'" />
     <CsWinRTInputs Include="$(PkgMicrosoft_Services_Store_Engagement)\SDK\Windows Kits\10\ExtensionSDKs\Microsoft.Services.Store.Engagement\10.0\References\CommonConfiguration\neutral\Microsoft.Services.Store.Engagement.winmd"
-                    Condition="'$(RuntimeIdentifier)' == 'win-x86' or '$(RuntimeIdentifier)' == 'win-x64'" />
+                    Condition="'$(RuntimeIdentifier)' == 'win-x86' or '$(RuntimeIdentifier)' == 'win-x64' or '$(RuntimeIdentifier)' == 'win-arm64'" />
   </ItemGroup>
 
   <Target Name="RemoveDisabledAppxSymbolPayload"
@@ -185,10 +190,39 @@
     </ItemGroup>
   </Target>
 
+  <Target Name="InvalidateProjectPriWhenPseudoLocalizationModeChanges">
+    <PropertyGroup>
+      <_CurrentPseudoLocalizationMode>disabled</_CurrentPseudoLocalizationMode>
+      <_CurrentPseudoLocalizationMode Condition="'$(EnablePseudoLocalization)' == 'true'">enabled</_CurrentPseudoLocalizationMode>
+      <_PseudoLocalizationModeStamp>$(IntermediateOutputPath)jithub-pseudo-localization.mode</_PseudoLocalizationModeStamp>
+    </PropertyGroup>
+
+    <ReadLinesFromFile File="$(_PseudoLocalizationModeStamp)"
+                       Condition="Exists('$(_PseudoLocalizationModeStamp)')">
+      <Output TaskParameter="Lines" ItemName="_PreviousPseudoLocalizationMode" />
+    </ReadLinesFromFile>
+
+    <PropertyGroup>
+      <_PseudoLocalizationModeChanged Condition="'@(_PreviousPseudoLocalizationMode)' != '$(_CurrentPseudoLocalizationMode)'">true</_PseudoLocalizationModeChanged>
+    </PropertyGroup>
+
+    <!-- Removing a PRIResource is not itself an incremental-build timestamp change. -->
+    <Delete Condition="'$(_PseudoLocalizationModeChanged)' == 'true'"
+            Files="$(ProjectPriFullPath);$(_PriConfigXmlPath);$(_PriConfigXmlPath).intermediate;$(_UnfilteredLayoutResfilesPath);$(_UnfilteredLayoutResfilesPath).intermediate;$(_FilteredLayoutResfilesPath);$(_FilteredLayoutResfilesPath).intermediate;$(_ExcludedLayoutResfilesPath);$(_ExcludedLayoutResfilesPath).intermediate;$(_ResourcesResfilesPath);$(_ResourcesResfilesPath).intermediate;$(_PriResfilesPath);$(_PriResfilesPath).intermediate" />
+    <MakeDir Directories="$(IntermediateOutputPath)" />
+    <WriteLinesToFile File="$(_PseudoLocalizationModeStamp)"
+                      Lines="$(_CurrentPseudoLocalizationMode)"
+                      Overwrite="true"
+                      WriteOnlyWhenDifferent="true" />
+    <ItemGroup>
+      <FileWrites Include="$(_PseudoLocalizationModeStamp)" />
+    </ItemGroup>
+  </Target>
+
   <Target Name="RunReleaseSecurityGate"
           BeforeTargets="Build"
           Condition="'$(Configuration)' == 'Release' and '$(SkipReleaseSecurityGate)' != 'true' and '$(DesignTimeBuild)' != 'true'">
-    <Exec Command="powershell -NoProfile -ExecutionPolicy Bypass -File &quot;$(MSBuildThisFileDirectory)..\eng\Verify-DependencySecurity.ps1&quot; -Solution &quot;JitHub.slnx&quot;" />
+    <Exec Command="powershell -NoProfile -ExecutionPolicy Bypass -File &quot;$(MSBuildThisFileDirectory)..\eng\Verify-DependencySecurity.ps1&quot;" />
     <Exec Command="dotnet test &quot;$(MSBuildThisFileDirectory)..\JitHub.WinUI.Tests\JitHub.WinUI.Tests.csproj&quot; -c Release --no-restore --filter &quot;Category=ReleaseSecurity&quot; -p:SkipReleaseSecurityGate=true" />
   </Target>
 </Project>

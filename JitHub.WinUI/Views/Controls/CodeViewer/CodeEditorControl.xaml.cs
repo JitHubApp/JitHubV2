@@ -1,12 +1,14 @@
 using System;
-using System.Diagnostics;
+using System.Collections.Generic;
 using System.Runtime.InteropServices;
 using System.Text;
+using JitHub.Services;
 using JitHub.WinUI.Helpers;
 using JitHub.WinUI.Views.Controls.Common;
 using Microsoft.UI.Input;
 using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Automation;
+using Microsoft.UI.Xaml.Automation.Peers;
 using Microsoft.UI.Xaml.Controls;
 using Microsoft.UI.Xaml.Input;
 using Microsoft.UI.Xaml.Media;
@@ -33,10 +35,13 @@ public sealed partial class CodeEditorControl : UserControl
     private bool _isInnerReady;
     private bool _isThemeSubscribed;
     private bool _isSystemColorSubscribed;
+    private bool _isPaletteSubscribed;
     private int _allowedEditorHorizontalOffset;
     private string _appliedText = string.Empty;
     private readonly UISettings? _uiSettings;
-    private readonly AccessibilitySettings? _accessibilitySettings;
+    private AppThemeSettingsMonitor? _themeSettings;
+    private WinUIEditor.EditorBaseControl? _nativeEditorSurface;
+    private readonly HashSet<string> _reportedFailureCategories = new(StringComparer.Ordinal);
 
     public event EventHandler? FindRequested;
     public event EventHandler<int>? CurrentLineChanged;
@@ -208,7 +213,6 @@ public sealed partial class CodeEditorControl : UserControl
     {
         InitializeComponent();
         _uiSettings = TryCreate(static () => new UISettings());
-        _accessibilitySettings = TryCreate(static () => new AccessibilitySettings());
         InnerEditor.AddHandler(UIElement.PointerWheelChangedEvent, new PointerEventHandler(InnerEditor_PointerWheelChanged), true);
         InnerEditor.PreviewKeyDown += InnerEditor_PreviewKeyDown;
         InnerEditor.PointerReleased += (_, _) => PublishCurrentLine();
@@ -246,7 +250,7 @@ public sealed partial class CodeEditorControl : UserControl
         }
         catch (Exception ex)
         {
-            Debug.WriteLine($"[CodeEditorControl] Find failed: {ex.Message}");
+            ReportFailureOnce(ex, "ui-code-editor-find");
             return false;
         }
     }
@@ -263,11 +267,33 @@ public sealed partial class CodeEditorControl : UserControl
         }
         catch (Exception ex)
         {
-            Debug.WriteLine($"[CodeEditorControl] Go to line failed: {ex.Message}");
+            ReportFailureOnce(ex, "ui-code-editor-go-to-line");
         }
     }
 
     public bool FocusEditor() => InnerEditor.Focus(FocusState.Programmatic);
+
+    internal void MarkContentLoading() => SetEditorItemStatus(
+        LocalizedResourceText.GetString(
+            "RepoCode/EditorContentLoadingStatus",
+            "Loading source"));
+
+    internal void MarkContentReady() => SetEditorItemStatus(
+        LocalizedResourceText.GetString(
+            "RepoCode.EditorContentReadyStatus",
+            "Source loaded"));
+
+    internal void MarkContentReadyIfApplied(string? expectedText)
+    {
+        if (_isInnerReady &&
+            string.Equals(_appliedText, expectedText ?? string.Empty, StringComparison.Ordinal))
+        {
+            MarkContentReady();
+            return;
+        }
+
+        MarkContentLoading();
+    }
 
     private void InnerEditor_PreviewKeyDown(object sender, KeyRoutedEventArgs args)
     {
@@ -345,7 +371,7 @@ public sealed partial class CodeEditorControl : UserControl
         }
         catch (Exception ex)
         {
-            Debug.WriteLine($"[CodeEditorControl] Restore horizontal offset failed: {ex.Message}");
+            ReportFailureOnce(ex, "ui-code-editor-scroll-offset");
         }
     }
 
@@ -367,7 +393,7 @@ public sealed partial class CodeEditorControl : UserControl
         }
         catch (Exception ex)
         {
-            Debug.WriteLine($"[CodeEditorControl] Vertical wheel scroll failed: {ex.Message}");
+            ReportFailureOnce(ex, "ui-code-editor-vertical-scroll");
         }
     }
 
@@ -381,13 +407,15 @@ public sealed partial class CodeEditorControl : UserControl
         }
         catch (Exception ex)
         {
-            Debug.WriteLine($"[CodeEditorControl] Horizontal wheel scroll failed: {ex.Message}");
+            ReportFailureOnce(ex, "ui-code-editor-horizontal-scroll");
         }
     }
 
     private void OnInnerEditorLoaded(object sender, RoutedEventArgs e)
     {
         _isInnerReady = true;
+        ConfigureNativeEditorAutomation();
+        SubscribeSystemColors();
         ApplyLanguageId();      // sets up lexer + token colors (WinUIEdit may call StyleClearAll)
         ApplyFontSize();        // re-apply font sizes for all styles (after language reset)
         ApplyThemeColors();     // override bg/fg/linenumber with app theme
@@ -400,9 +428,75 @@ public sealed partial class CodeEditorControl : UserControl
             ActualThemeChanged += OnActualThemeChanged;
             _isThemeSubscribed = true;
         }
-
-        SubscribeSystemColors();
+        if (!_isPaletteSubscribed)
+        {
+            ThemePaletteRuntime.PaletteChanged += ThemePaletteRuntime_PaletteChanged;
+            _isPaletteSubscribed = true;
+        }
     }
+
+    private void ConfigureNativeEditorAutomation()
+    {
+        InnerEditor.ApplyTemplate();
+        if (FindNativeEditorSurface(InnerEditor) is not WinUIEditor.EditorBaseControl nativeEditor)
+        {
+            DispatcherQueue.TryEnqueue(() =>
+            {
+                if (IsLoaded && FindNativeEditorSurface(InnerEditor) is WinUIEditor.EditorBaseControl deferredEditor)
+                {
+                    ConfigureNativeEditorAutomation(deferredEditor);
+                }
+            });
+            return;
+        }
+
+        ConfigureNativeEditorAutomation(nativeEditor);
+    }
+
+    private void ConfigureNativeEditorAutomation(WinUIEditor.EditorBaseControl nativeEditor)
+    {
+        _nativeEditorSurface = nativeEditor;
+        AutomationProperties.SetAccessibilityView(nativeEditor, AccessibilityView.Raw);
+    }
+
+    private static WinUIEditor.EditorBaseControl? FindNativeEditorSurface(DependencyObject root)
+    {
+        int childCount = VisualTreeHelper.GetChildrenCount(root);
+        for (int index = 0; index < childCount; index++)
+        {
+            DependencyObject child = VisualTreeHelper.GetChild(root, index);
+            if (child is WinUIEditor.EditorBaseControl nativeEditor)
+            {
+                return nativeEditor;
+            }
+
+            if (FindNativeEditorSurface(child) is WinUIEditor.EditorBaseControl descendant)
+            {
+                return descendant;
+            }
+        }
+
+        return null;
+    }
+
+    internal AutomationPeer? GetNativeEditorAutomationPeer()
+    {
+        if (_nativeEditorSurface is null)
+        {
+            ConfigureNativeEditorAutomation();
+        }
+
+        return _nativeEditorSurface is null
+            ? null
+            : FrameworkElementAutomationPeer.FromElement(_nativeEditorSurface) ??
+              FrameworkElementAutomationPeer.CreatePeerForElement(_nativeEditorSurface);
+    }
+
+    internal bool HasNativeKeyboardFocus => _isInnerReady && InnerEditor.Editor.Focus;
+
+    internal void FocusNativeEditor() => InnerEditor.Focus(FocusState.Programmatic);
+
+    protected override AutomationPeer OnCreateAutomationPeer() => new CodeEditorAutomationPeer(this);
 
     private void OnControlUnloaded(object sender, RoutedEventArgs e)
     {
@@ -411,6 +505,11 @@ public sealed partial class CodeEditorControl : UserControl
         {
             ActualThemeChanged -= OnActualThemeChanged;
             _isThemeSubscribed = false;
+        }
+        if (_isPaletteSubscribed)
+        {
+            ThemePaletteRuntime.PaletteChanged -= ThemePaletteRuntime_PaletteChanged;
+            _isPaletteSubscribed = false;
         }
         UnsubscribeSystemColors();
     }
@@ -421,7 +520,12 @@ public sealed partial class CodeEditorControl : UserControl
     private void UISettings_ColorValuesChanged(UISettings sender, object args) =>
         DispatcherQueue.TryEnqueue(RefreshTheme);
 
-    private void AccessibilitySettings_HighContrastChanged(AccessibilitySettings sender, object args) =>
+    private void ThemeSettings_Changed(object? sender, EventArgs args) =>
+        DispatcherQueue.TryEnqueue(RefreshTheme);
+
+    private void ThemePaletteRuntime_PaletteChanged(
+        object? sender,
+        ThemePaletteChangedEventArgs args) =>
         DispatcherQueue.TryEnqueue(RefreshTheme);
 
     private void RefreshTheme()
@@ -436,21 +540,22 @@ public sealed partial class CodeEditorControl : UserControl
         if (_isSystemColorSubscribed) return;
         try
         {
+            _themeSettings ??= ThemeSettingsHelper.TryGetFor(this);
             if (_uiSettings is not null)
             {
                 _uiSettings.ColorValuesChanged += UISettings_ColorValuesChanged;
             }
 
-            if (_accessibilitySettings is not null)
+            if (_themeSettings is not null)
             {
-                _accessibilitySettings.HighContrastChanged += AccessibilitySettings_HighContrastChanged;
+                _themeSettings.Changed += ThemeSettings_Changed;
             }
 
             _isSystemColorSubscribed = true;
         }
         catch (Exception exception)
         {
-            Debug.WriteLine($"[CodeEditorControl] System color subscription failed: {exception.Message}");
+            ReportFailureOnce(exception, "ui-code-editor-system-colors-subscribe");
         }
     }
 
@@ -464,18 +569,19 @@ public sealed partial class CodeEditorControl : UserControl
                 _uiSettings.ColorValuesChanged -= UISettings_ColorValuesChanged;
             }
 
-            if (_accessibilitySettings is not null)
+            if (_themeSettings is not null)
             {
-                _accessibilitySettings.HighContrastChanged -= AccessibilitySettings_HighContrastChanged;
+                _themeSettings.Changed -= ThemeSettings_Changed;
             }
         }
         catch (Exception exception)
         {
-            Debug.WriteLine($"[CodeEditorControl] System color unsubscription failed: {exception.Message}");
+            ReportFailureOnce(exception, "ui-code-editor-system-colors-unsubscribe");
         }
         finally
         {
             _isSystemColorSubscribed = false;
+            _themeSettings = null;
         }
     }
 
@@ -490,27 +596,54 @@ public sealed partial class CodeEditorControl : UserControl
             string next = Text ?? string.Empty;
             if (string.Equals(next, _appliedText, StringComparison.Ordinal)) return;
 
-            if (Encoding.UTF8.GetByteCount(next) > MaximumSynchronousEditorBytes)
+            int expectedByteCount = Encoding.UTF8.GetByteCount(next);
+            if (expectedByteCount > MaximumSynchronousEditorBytes)
             {
-                AutomationProperties.SetItemStatus(
-                    InnerEditor,
-                    LocalizedResourceText.GetString(
-                        "RepoCode.EditorContentTooLargeStatus",
-                        "This file is available through the file actions menu."));
+                SetEditorItemStatus(LocalizedResourceText.GetString(
+                    "RepoCode.EditorContentTooLargeStatus",
+                    "This file is available through the file actions menu."));
                 return;
             }
 
-            InnerEditor.Editor.SetText(next);
+            var editor = InnerEditor.Editor;
+            bool restoreReadOnly = editor.ReadOnly;
+            try
+            {
+                if (restoreReadOnly)
+                {
+                    editor.ReadOnly = false;
+                }
+
+                editor.SetText(next);
+            }
+            finally
+            {
+                if (restoreReadOnly)
+                {
+                    editor.ReadOnly = true;
+                }
+            }
+
+            if (editor.Length != expectedByteCount)
+            {
+                throw new InvalidOperationException(
+                    $"The native editor accepted {editor.Length} of {expectedByteCount} source bytes.");
+            }
+
             _appliedText = next;
-            AutomationProperties.SetItemStatus(
-                InnerEditor,
-                LocalizedResourceText.GetString("RepoCode.EditorContentReadyStatus", "Source loaded"));
+            MarkContentReady();
             PublishCurrentLine();
         }
         catch (Exception ex)
         {
-            Debug.WriteLine($"[CodeEditorControl] ApplyText failed: {ex.Message}");
+            ReportFailureOnce(ex, "ui-code-editor-text");
         }
+    }
+
+    private void SetEditorItemStatus(string status)
+    {
+        AutomationProperties.SetItemStatus(this, status);
+        AutomationProperties.SetItemStatus(InnerEditor, status);
     }
 
     private void ApplyLanguageId()
@@ -564,7 +697,7 @@ public sealed partial class CodeEditorControl : UserControl
         }
         catch (Exception ex)
         {
-            Debug.WriteLine($"[CodeEditorControl] ApplyLanguageId({langId}) failed: {ex.Message}");
+            ReportFailureOnce(ex, "ui-code-editor-language");
         }
     }
 
@@ -576,7 +709,7 @@ public sealed partial class CodeEditorControl : UserControl
         }
         catch (Exception ex)
         {
-            Debug.WriteLine($"[CodeEditorControl] ApplyReadOnly failed: {ex.Message}");
+            ReportFailureOnce(ex, "ui-code-editor-read-only");
         }
     }
 
@@ -595,7 +728,7 @@ public sealed partial class CodeEditorControl : UserControl
         }
         catch (Exception ex)
         {
-            Debug.WriteLine($"[CodeEditorControl] ApplyFontSize failed: {ex.Message}");
+            ReportFailureOnce(ex, "ui-code-editor-font-size");
         }
     }
 
@@ -610,7 +743,7 @@ public sealed partial class CodeEditorControl : UserControl
         }
         catch (Exception ex)
         {
-            Debug.WriteLine($"[CodeEditorControl] ApplyShowLineNumbers failed: {ex.Message}");
+            ReportFailureOnce(ex, "ui-code-editor-line-numbers");
         }
     }
 
@@ -625,7 +758,7 @@ public sealed partial class CodeEditorControl : UserControl
         }
         catch (Exception ex)
         {
-            Debug.WriteLine($"[CodeEditorControl] ApplyWordWrap failed: {ex.Message}");
+            ReportFailureOnce(ex, "ui-code-editor-word-wrap");
         }
     }
 
@@ -671,16 +804,17 @@ public sealed partial class CodeEditorControl : UserControl
                 }
 
                 editor.SetSelFore(true, ToBgr(bgColor));
-                AutomationProperties.SetHelpText(
-                    InnerEditor,
-                    LocalizedResourceText.GetString(
-                        "RepoCode/EditorHighContrastStatus",
-                        "High contrast editor colors active"));
+                string highContrastStatus = LocalizedResourceText.GetString(
+                    "RepoCode/EditorHighContrastStatus",
+                    "High contrast editor colors active");
+                AutomationProperties.SetHelpText(InnerEditor, highContrastStatus);
+                AutomationProperties.SetHelpText(this, highContrastStatus);
             }
             else
             {
                 editor.SetSelFore(false, 0);
                 AutomationProperties.SetHelpText(InnerEditor, string.Empty);
+                AutomationProperties.SetHelpText(this, string.Empty);
             }
 
             // Override STYLE_DEFAULT bg/fg. We intentionally skip StyleClearAll() to
@@ -694,7 +828,14 @@ public sealed partial class CodeEditorControl : UserControl
 
             editor.SetSelBack(true, ToBgr(selColor));
             editor.CaretFore = ToBgr(fgColor);
-            try { editor.SetWhitespaceBack(true, ToBgr(bgColor)); } catch { }
+            try
+            {
+                editor.SetWhitespaceBack(true, ToBgr(bgColor));
+            }
+            catch (Exception ex)
+            {
+                ReportFailureOnce(ex, "ui-code-editor-whitespace-theme");
+            }
 
             EditorSurface.Background = new SolidColorBrush(bgColor);
             EditorSurface.BorderBrush = new SolidColorBrush(isHighContrast ? fgColor : GetBrushColor(resources, "AppOutlineBrush"));
@@ -702,7 +843,7 @@ public sealed partial class CodeEditorControl : UserControl
         }
         catch (Exception ex)
         {
-            Debug.WriteLine($"[CodeEditorControl] ApplyThemeColors failed: {ex.Message}");
+            ReportFailureOnce(ex, "ui-code-editor-theme");
         }
     }
 
@@ -731,7 +872,9 @@ public sealed partial class CodeEditorControl : UserControl
             IntPtr ptr = CreateLexer(lexerName);
             if (ptr == IntPtr.Zero)
             {
-                Debug.WriteLine($"[CodeEditorControl] Lexilla CreateLexer('{lexerName}') returned null.");
+                ReportFailureOnce(
+                    new InvalidOperationException("The native editor could not create the requested lexer."),
+                    "ui-code-editor-lexer");
                 return false;
             }
 
@@ -743,8 +886,16 @@ public sealed partial class CodeEditorControl : UserControl
         }
         catch (Exception ex)
         {
-            Debug.WriteLine($"[CodeEditorControl] TryLoadLexilla('{lexerName}') failed: {ex.Message}");
+            ReportFailureOnce(ex, "ui-code-editor-lexer");
             return false;
+        }
+    }
+
+    private void ReportFailureOnce(Exception exception, string category)
+    {
+        if (_reportedFailureCategories.Add(category))
+        {
+            JitHub.WinUI.App.LogHandledException(exception, category);
         }
     }
 
@@ -814,14 +965,7 @@ public sealed partial class CodeEditorControl : UserControl
             return true;
         }
 
-        try
-        {
-            return _accessibilitySettings?.HighContrast == true;
-        }
-        catch (Exception)
-        {
-            return false;
-        }
+        return ThemeSettingsHelper.IsHighContrastActive(_themeSettings);
     }
 
     private Windows.UI.Color GetSystemColor(UIColorType colorType, Windows.UI.Color fallback)

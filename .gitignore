@@ -58,7 +58,6 @@ BenchmarkDotNet.Artifacts/
 project.lock.json
 project.fragment.lock.json
 artifacts/*
-!artifacts/EditorAssets/
 
 # StyleCop
 StyleCopReport.xml
@@ -433,15 +432,14 @@ $RECYCLE.BIN/
 !.vscode/launch.json
 !.vscode/extensions.json
 .codex/
+.artifacts/
+.codex-artifacts/
 appsettings.json
 appsettings.development.json
 !JitHub.WinUI/appsettings.json
 **/dist
-artifacts/EditorAssets/dist/
-!artifacts/EditorAssets/README.md
 **/output
 JitHub.WinUI/artifacts/
-JitHub.WinUI/EditorAssets/
 JitHub.WinUI/JitHub.WinUI/
 .tools/
 **/obj-auth/
@@ -449,5 +447,6 @@ JitHub.WinUI/JitHub.WinUI/
 **/obj-security/
 JitHub.WinUI.Tests/artifacts/
 MarkdownRenderer/artifacts/
+MarkdownRenderer/MarkdownRenderer.PixelTests/artifacts/
 markdown-security-lifecycle-smoke/
 *.backup.png

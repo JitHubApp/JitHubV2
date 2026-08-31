@@ -62,7 +62,7 @@ public sealed class GitHubRepoCodeQueryServiceTests : IDisposable
         Assert.True(csvResult.Succeeded);
         Assert.Equal(5, csvResult.Document!.Headers.Count);
         Assert.Equal(7, csvResult.Document.Rows.Count);
-        Assert.Equal("First line\nSecond line", csvResult.Document.Rows[5].Values[4]);
+        Assert.Equal("First draft\nReview requested", csvResult.Document.Rows[5].Values[4]);
 
         string svg = await ReadPublicPreviewBlobAsync(service, "preview-svg");
         Assert.Contains("<linearGradient", svg, StringComparison.Ordinal);

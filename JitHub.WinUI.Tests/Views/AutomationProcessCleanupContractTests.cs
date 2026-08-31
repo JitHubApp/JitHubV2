@@ -10,11 +10,15 @@ public sealed class AutomationProcessCleanupContractTests
         string project = File.ReadAllText(FindRepositoryFile(
             "JitHub.WinUI.Automation",
             "JitHub.WinUI.Automation.csproj"));
+        string manifest = File.ReadAllText(FindRepositoryFile(
+            "JitHub.WinUI.Automation",
+            "app.manifest"));
         string source = File.ReadAllText(FindRepositoryFile(
             "JitHub.WinUI.Automation",
             "Program.cs"));
 
-        Assert.DoesNotContain("<ApplicationManifest>", project, StringComparison.Ordinal);
+        Assert.Contains("<ApplicationManifest>app.manifest</ApplicationManifest>", project, StringComparison.Ordinal);
+        Assert.Contains(">PerMonitorV2,PerMonitor</dpiAwareness>", manifest, StringComparison.Ordinal);
         Assert.DoesNotContain("EnablePerMonitorDpiAwareness", source, StringComparison.Ordinal);
         Assert.Contains("DwmGetWindowAttribute(", source, StringComparison.Ordinal);
         Assert.Contains("NativeMethods.GetPhysicalWindowBounds(GetNativeWindowHandle(window))", source, StringComparison.Ordinal);

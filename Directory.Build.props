@@ -3,10 +3,15 @@
     <RestorePackagesWithLockFile>true</RestorePackagesWithLockFile>
     <NuGetAudit>true</NuGetAudit>
     <NuGetAuditMode>all</NuGetAuditMode>
-    <WarningsAsErrors>$(WarningsAsErrors);NU1901;NU1902;NU1903;NU1904</WarningsAsErrors>
+    <WarningsAsErrors>$(WarningsAsErrors);NU1901;NU1902;NU1903;NU1904;CsWinRT1032</WarningsAsErrors>
   </PropertyGroup>
 
-  <PropertyGroup Condition="'$(Configuration)' == 'Release'">
+  <!-- Keep ordinary Visual Studio restores from rewriting the canonical Native AOT graph. -->
+  <PropertyGroup Condition="'$(Configuration)' != 'Release' and '$(Configuration)' != 'AotDebug'">
+    <NuGetLockFilePath>$(MSBuildProjectDirectory)\obj\$(Configuration)\packages.lock.json</NuGetLockFilePath>
+  </PropertyGroup>
+
+  <PropertyGroup Condition="'$(Configuration)' == 'Release' or '$(Configuration)' == 'AotDebug'">
     <RestoreLockedMode>true</RestoreLockedMode>
   </PropertyGroup>
 </Project>

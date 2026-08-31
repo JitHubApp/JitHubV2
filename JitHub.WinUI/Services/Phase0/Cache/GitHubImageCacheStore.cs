@@ -288,7 +288,7 @@ public sealed class GitHubImageCacheStore : IGitHubImageCacheStore
             {
                 throw new CacheClearPostconditionException(
                     CacheOwnerIds.GitHubImages,
-                    [new CacheClearResidual(_imageRootPath, $"{exception.GetType().Name}: {exception.Message}")]);
+                    (CacheClearResidual[])[new CacheClearResidual(_imageRootPath, $"{exception.GetType().Name}: {exception.Message}")]);
             }
 
             foreach (string existing in files)
@@ -503,8 +503,8 @@ public sealed class GitHubImageCacheStore : IGitHubImageCacheStore
             string? detail = CacheInspectionDetail.Format(
                 integrityProblems.Concat(
                     orphanBytes > 0
-                        ? ["Unreferenced image generations are awaiting cleanup."]
-                        : []));
+                        ? (string[])["Unreferenced image generations are awaiting cleanup."]
+                        : (string[])[]));
 
             return new CacheStoreInspection(
                 health,

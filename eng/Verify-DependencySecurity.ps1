@@ -1,11 +1,5 @@
-param(
-    [Parameter(Mandatory = $false)]
-    [string] $Solution = "JitHub.slnx"
-)
-
 $ErrorActionPreference = "Stop"
 $repositoryRoot = (Resolve-Path (Join-Path $PSScriptRoot "..")).Path
-$solutionPath = (Resolve-Path (Join-Path $repositoryRoot $Solution)).Path
 $appProjectPath = (Resolve-Path (Join-Path $repositoryRoot 'JitHub.WinUI\JitHub.WinUI.csproj')).Path
 
 function Invoke-CheckedDotNet {

@@ -22,7 +22,7 @@ public sealed partial class RepoPullRequestPageViewModel : ViewModelBase
 {
     private static readonly TimeSpan SelectionLoadDebounce = TimeSpan.FromMilliseconds(150);
     private static readonly TimeSpan InitialDetailLoadDelay = TimeSpan.FromSeconds(1);
-    private static readonly TimeSpan HoverPrefetchDebounce = TimeSpan.FromMilliseconds(120);
+    private static readonly TimeSpan HoverPrefetchDebounce = TimeSpan.FromMilliseconds(500);
     private readonly IAuthService _authService;
     private readonly IAccountService _accountService;
     private readonly IGitHubClientService _gitHubClientService;
@@ -430,6 +430,9 @@ public sealed partial class RepoPullRequestPageViewModel : ViewModelBase
     public partial string TogglePullRequestStateButtonText { get; set; } = string.Empty;
 
     [ObservableProperty]
+    public partial bool IsPullRequestListLoading { get; set; }
+
+    [ObservableProperty]
     public partial bool ArePullRequestActionsEnabled { get; set; }
 
     [ObservableProperty]
@@ -650,6 +653,7 @@ public sealed partial class RepoPullRequestPageViewModel : ViewModelBase
             return new PullRequestCreateDialogData(
                 "feature/automation",
                 defaultBase,
+                (GitHubBranch[])
                 [
                     new GitHubBranch { Name = defaultBase },
                     new GitHubBranch { Name = "feature/automation" }
@@ -841,6 +845,10 @@ public sealed partial class RepoPullRequestPageViewModel : ViewModelBase
                 _navArg.Repo.Owner.Login,
                 _navArg.Repo.Name);
             await Task.WhenAll(reviewersTask, assigneesTask, labelsTask, milestonesTask);
+            PullRequestPagedSection<GitHubActor> reviewers = await reviewersTask;
+            PullRequestPagedSection<GitHubActor> assignees = await assigneesTask;
+            PullRequestPagedSection<GitHubLabel> labels = await labelsTask;
+            PullRequestPagedSection<GitHubMilestone> milestones = await milestonesTask;
 
             if (requestId != _detailRequestId || SelectedPullRequest?.Number != pullRequestNumber)
             {
@@ -849,18 +857,18 @@ public sealed partial class RepoPullRequestPageViewModel : ViewModelBase
 
             PullRequestSectionState[] metadataStates =
             [
-                reviewersTask.Result.State,
-                assigneesTask.Result.State,
-                labelsTask.Result.State,
-                milestonesTask.Result.State
+                reviewers.State,
+                assignees.State,
+                labels.State,
+                milestones.State
             ];
             UpdateRepositoryMetadataScopeStatus(previousStatusText, metadataStates);
 
             return new PullRequestMetadataDialogData(
-                reviewersTask.Result.Items,
-                assigneesTask.Result.Items,
-                labelsTask.Result.Items,
-                milestonesTask.Result.Items,
+                reviewers.Items,
+                assignees.Items,
+                labels.Items,
+                milestones.Items,
                 CombineCompleteness(metadataStates));
         }
         catch (GitHubAuthenticationException)
@@ -1469,7 +1477,7 @@ public sealed partial class RepoPullRequestPageViewModel : ViewModelBase
         }
         catch (Exception ex)
         {
-            Debug.WriteLine($"Pull request comment mutation failed: {ex}");
+            JitHub.WinUI.App.LogHandledException(ex, "pull-request-comment-mutation");
             TrackPullRequestAction(action, TelemetryTaxonomy.Results.Error);
             if (IsSelectedPullRequest(currentPullRequest))
             {
@@ -1787,7 +1795,10 @@ public sealed partial class RepoPullRequestPageViewModel : ViewModelBase
             _neighborPrefetch?.Dispose();
             _neighborPrefetch = null;
             _pendingPullRequestSelectionState = null;
-            _ = ShowPullRequestAsync(null);
+            BackgroundTaskObserver.Run(
+                () => ShowPullRequestAsync(null),
+                "pull_requests",
+                _telemetryService);
             NotifySelectedPullRequestPropertiesChanged();
             return;
         }
@@ -1820,7 +1831,10 @@ public sealed partial class RepoPullRequestPageViewModel : ViewModelBase
         NotifySelectedPullRequestHeaderPropertiesChanged();
         CancellationTokenSource cancellationTokenSource = new();
         _selectionLoadCancellationTokenSource = cancellationTokenSource;
-        _ = ShowPullRequestAfterSelectionDelayAsync(value, cancellationTokenSource.Token);
+        BackgroundTaskObserver.Run(
+            () => ShowPullRequestAfterSelectionDelayAsync(value, cancellationTokenSource.Token),
+            "pull_requests",
+            _telemetryService);
     }
 
     partial void OnIsPullRequestReviewSubmissionInProgressChanged(bool value) =>
@@ -1896,6 +1910,7 @@ public sealed partial class RepoPullRequestPageViewModel : ViewModelBase
         PullRequestPageNavArg navigationArgs = _navArg;
 
         int requestId = ++_listRequestId;
+        IsPullRequestListLoading = true;
         bool previousArePullRequestActionsEnabled = ArePullRequestActionsEnabled;
         bool previousIsTogglePullRequestStateEnabled = IsTogglePullRequestStateEnabled;
         bool previousIsPullRequestCommentEnabled = IsPullRequestCommentEnabled;
@@ -1932,10 +1947,13 @@ public sealed partial class RepoPullRequestPageViewModel : ViewModelBase
                     ApplyPullRequestListProjection(progress.Items, progress.Completeness);
                     _pullRequestListState = progress.State;
                     UpdatePullRequestListScopeNotice();
-                    _ = ApplyPullRequestListFilterAsync(
-                        pullRequestNumberToSelect,
-                        refreshSelectionDetails: false,
-                        suppressDetailRefresh: true);
+                    BackgroundTaskObserver.Run(
+                        () => ApplyPullRequestListFilterAsync(
+                            pullRequestNumberToSelect,
+                            refreshSelectionDetails: false,
+                            suppressDetailRefresh: true),
+                        "pull_requests",
+                        _telemetryService);
                 });
             IReadOnlyList<GitHubPullRequest> pullRequests = pullRequestResult.Items;
 
@@ -2085,6 +2103,13 @@ public sealed partial class RepoPullRequestPageViewModel : ViewModelBase
         catch (OperationCanceledException)
         {
             TrackPullRequestListOutcome(TelemetryTaxonomy.Results.Cancelled, listDuration.Elapsed);
+        }
+        finally
+        {
+            if (requestId == _listRequestId)
+            {
+                IsPullRequestListLoading = false;
+            }
         }
     }
 
@@ -2783,7 +2808,13 @@ public sealed partial class RepoPullRequestPageViewModel : ViewModelBase
         CancelPendingSelectionLoad();
         CancellationTokenSource cancellationTokenSource = new();
         _selectionLoadCancellationTokenSource = cancellationTokenSource;
-        _ = ShowPullRequestAfterSelectionDelayAsync(pullRequest, cancellationTokenSource.Token, delay);
+        BackgroundTaskObserver.Run(
+            () => ShowPullRequestAfterSelectionDelayAsync(
+                pullRequest,
+                cancellationTokenSource.Token,
+                delay),
+            "pull_requests",
+            _telemetryService);
     }
 
     private async Task ShowPullRequestAfterSelectionDelayAsync(
@@ -2896,7 +2927,15 @@ public sealed partial class RepoPullRequestPageViewModel : ViewModelBase
         CommitDiffDocument document = PullRequestDiffDocument;
         string fileFilter = PullRequestFileFilterText;
         string search = PullRequestDiffSearchText;
-        _ = BuildPullRequestDiffProjectionAsync(document, fileFilter, search, requestVersion, debounce);
+        BackgroundTaskObserver.Run(
+            () => BuildPullRequestDiffProjectionAsync(
+                document,
+                fileFilter,
+                search,
+                requestVersion,
+                debounce),
+            "pull_requests",
+            _telemetryService);
     }
 
     private async Task BuildPullRequestDiffProjectionAsync(
@@ -3294,6 +3333,8 @@ public sealed partial class RepoPullRequestPageViewModel : ViewModelBase
             });
     }
 
+    public void CancelHoverPrefetch() => _hoverPrefetch.Cancel();
+
     public void CancelPredictivePrefetches()
     {
         _navigationRefresh?.Cancel();
@@ -3413,12 +3454,6 @@ public sealed partial class RepoPullRequestPageViewModel : ViewModelBase
         catch (GitHubAuthenticationException)
         {
             _authService.SignOut();
-        }
-        catch (GitHubApiException)
-        {
-        }
-        catch (HttpRequestException)
-        {
         }
     }
 
@@ -4016,7 +4051,10 @@ public sealed partial class RepoPullRequestPageViewModel : ViewModelBase
         GitHubPullRequest deniedPullRequest = SelectedPullRequest;
         if (TryGetActiveToken(out string token))
         {
-            _ = TryRecoverPullRequestCapabilitiesAfterForbiddenAsync(deniedPullRequest, token);
+            BackgroundTaskObserver.Run(
+                () => TryRecoverPullRequestCapabilitiesAfterForbiddenAsync(deniedPullRequest, token),
+                "pull_requests",
+                _telemetryService);
         }
     }
 

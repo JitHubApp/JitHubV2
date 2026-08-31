@@ -12,75 +12,77 @@
         <Style x:Key="RepoIssuesPanelStyle" TargetType="Border">
             <Setter Property="Background" Value="{ThemeResource AppSurfaceSubtleBrush}" />
             <Setter Property="BorderBrush" Value="{ThemeResource AppHairlineBrush}" />
-            <Setter Property="BorderThickness" Value="1" />
+            <Setter Property="BorderThickness" Value="{ThemeResource AppHairlineBorderThickness}" />
             <Setter Property="CornerRadius" Value="{ThemeResource AppRadiusSmall}" />
         </Style>
 
         <DataTemplate x:Key="RepoIssueCommentTemplate" x:DataType="github:GitHubIssueComment">
             <Border
-                Margin="0,0,0,12"
-                Padding="14"
+                Margin="{ThemeResource AppMargin0_0_0_12}"
+                Padding="{ThemeResource AppPadding14}"
                 Background="{ThemeResource AppCanvasInsetBrush}"
                 BorderBrush="{ThemeResource AppHairlineBrush}"
-                BorderThickness="1"
+                BorderThickness="{ThemeResource AppHairlineBorderThickness}"
                 CornerRadius="{ThemeResource AppRadiusSmall}">
-                <Grid RowSpacing="12">
+                <Grid RowSpacing="{ThemeResource AppGap12}">
                     <Grid.RowDefinitions>
                         <RowDefinition Height="Auto" />
                         <RowDefinition Height="Auto" />
-                        <RowDefinition Height="Auto" />
+                        <RowDefinition Height="Auto" MinHeight="{ThemeResource AppReactionIconButtonSize}" />
                     </Grid.RowDefinitions>
-                    <Grid ColumnSpacing="10">
+                    <Grid ColumnSpacing="{ThemeResource AppGap10}">
                         <Grid.ColumnDefinitions>
-                            <ColumnDefinition Width="32" />
+                            <ColumnDefinition Width="{ThemeResource AppGridLength32}" />
                             <ColumnDefinition Width="*" />
                             <ColumnDefinition Width="Auto" />
                         </Grid.ColumnDefinitions>
                         <common:Avatar
-                            AutomationInstanceId="{x:Bind AvatarAutomationId}"
-                            DisplayName="{x:Bind AuthorDisplayName}"
-                            Login="{x:Bind AuthorProfileLogin}"
+                            VerticalAlignment="Center"
+                            AutomationInstanceId="{x:Bind AvatarAutomationId, Mode=OneWay}"
+                            DisplayName="{x:Bind AuthorDisplayName, Mode=OneWay}"
+                            Login="{x:Bind AuthorProfileLogin, Mode=OneWay}"
                             NavigationSource="issue_comment"
                             ShowLogin="False"
                             Size="SMALL"
-                            Url="{x:Bind AuthorAvatarUrl}" />
+                            Url="{x:Bind AuthorAvatarUrl, Mode=OneWay}" />
                         <TextBlock
                             Grid.Column="1"
                             VerticalAlignment="Center"
                             FontFamily="{ThemeResource AppUiFontFamily}"
                             FontSize="{ThemeResource AppFontSize13}"
-                            FontWeight="SemiBold"
+                            FontWeight="{ThemeResource AppFontWeightSemibold}"
                             Foreground="{ThemeResource AppInkBrush}"
-                            Text="{x:Bind AuthorDisplayName}" />
+                            Text="{x:Bind AuthorDisplayName, Mode=OneWay}" />
                         <TextBlock
                             Grid.Column="2"
                             VerticalAlignment="Center"
                             Style="{StaticResource SectionSecondaryTextBlockStyle}"
-                            Text="{x:Bind CreatedAt, Converter={StaticResource TimeAgoConverter}}" />
+                            Text="{x:Bind CreatedAt, Converter={StaticResource TimeAgoConverter}, Mode=OneWay}" />
                     </Grid>
                     <common:MarkdownViewer
                         HostKind="Comment"
-                        AutomationInstanceId="{x:Bind MarkdownAutomationId}"
+                        AutomationInstanceId="{x:Bind MarkdownAutomationId, Mode=OneWay}"
                         Grid.Row="1"
                         BaseUrl="https://github.com/"
-                        DocumentSource="{x:Bind MarkdownSource}"
-                        Text="{x:Bind Body}" />
+                        DocumentSource="{x:Bind MarkdownSource, Mode=OneWay}"
+                        Text="{x:Bind Body, Mode=OneWay}" />
                     <common:CommentInteractionBar
                         Grid.Row="2"
+                        AutomationInstanceId="{x:Bind MarkdownAutomationId, Mode=OneWay}"
                         ActionRequested="CommentInteractionBar_ActionRequested"
-                        AuthorLogin="{x:Bind User.Login}"
-                        Body="{x:Bind Body}"
-                        CanModerate="{x:Bind CanViewerModerate}"
-                        CanReact="{x:Bind CanViewerReact}"
-                        CanReply="{x:Bind CanViewerReply}"
-                        HtmlUrl="{x:Bind HtmlUrl}"
-                        IsMinimized="{x:Bind IsMinimized}"
-                        IsPinned="{x:Bind IsPinned}"
-                        NodeId="{x:Bind NodeId}"
-                        TargetId="{x:Bind Id}"
+                        AuthorLogin="{x:Bind AuthorProfileLogin, Mode=OneWay}"
+                        Body="{x:Bind Body, Mode=OneWay}"
+                        CanModerate="{x:Bind CanViewerModerate, Mode=OneWay}"
+                        CanReact="{x:Bind CanViewerReact, Mode=OneWay}"
+                        CanReply="{x:Bind CanViewerReply, Mode=OneWay}"
+                        HtmlUrl="{x:Bind HtmlUrl, Mode=OneWay}"
+                        IsMinimized="{x:Bind IsMinimized, Mode=OneWay}"
+                        IsPinned="{x:Bind IsPinned, Mode=OneWay}"
+                        NodeId="{x:Bind NodeId, Mode=OneWay}"
+                        TargetId="{x:Bind Id, Mode=OneWay}"
                         TargetKind="IssueComment"
-                        Reactions="{x:Bind Reactions}"
-                        ViewerLogin="{x:Bind ViewerLogin}" />
+                        Reactions="{x:Bind Reactions, Mode=OneWay}"
+                        ViewerLogin="{x:Bind ViewerLogin, Mode=OneWay}" />
                 </Grid>
             </Border>
         </DataTemplate>
@@ -91,7 +93,7 @@
         AutomationProperties.AccessibilityView="Control"
         AutomationProperties.AutomationId="RepoIssuesDetailHost"
         AutomationProperties.Name="Issue detail pane"
-        Padding="0"
+        Padding="{ThemeResource AppPadding0}"
         Style="{StaticResource RepoIssuesPanelStyle}">
         <Grid>
             <TextBlock
@@ -111,23 +113,27 @@
                     </Grid.RowDefinitions>
                     <Grid
                         x:Name="RepoIssuesDetailHeader"
-                        Padding="10,10,16,12"
-                        labs:TransitionHelper.Id="IssueHeaderSurface"
-                        AutomationProperties.AutomationId="RepoIssuesDetailHeader"
-                        BorderBrush="{ThemeResource AppHairlineBrush}"
-                        BorderThickness="0,0,0,1"
-                        ColumnSpacing="12">
-                    <Grid.ColumnDefinitions>
-                        <ColumnDefinition Width="Auto" />
-                        <ColumnDefinition Width="*" />
-                        <ColumnDefinition Width="Auto" />
-                    </Grid.ColumnDefinitions>
+                        AutomationProperties.AutomationId="RepoIssuesDetailHeader">
+                        <Border
+                            labs:TransitionHelper.Id="IssueHeaderChrome"
+                            Background="{ThemeResource AppSurfaceSubtleBrush}"
+                            BorderBrush="{ThemeResource AppHairlineBrush}"
+                            BorderThickness="{ThemeResource AppBottomHairlineBorderThickness}"
+                            IsHitTestVisible="False" />
+                        <Grid
+                            Padding="{ThemeResource AppPadding10_10_16_12}"
+                            ColumnSpacing="{ThemeResource AppGap12}">
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="Auto" />
+                                <ColumnDefinition Width="*" />
+                                <ColumnDefinition Width="Auto" />
+                            </Grid.ColumnDefinitions>
                     <Button
                         x:Uid="PagesRepoIssuePageRepoIssuesOpenListPaneButton"
                         x:Name="RepoIssuesOpenListPaneButton"
-                        Width="36"
-                        Height="36"
-                        Padding="0"
+                        Width="{ThemeResource AppDimension36}"
+                        Height="{ThemeResource AppDimension36}"
+                        Padding="{ThemeResource AppPadding0}"
                         VerticalAlignment="Top"
                         labs:TransitionHelper.Id="IssueListButton"
                         AutomationProperties.AutomationId="RepoIssuesOpenListPaneButton"
@@ -141,7 +147,7 @@
                     <StackPanel
                         x:Name="RepoIssuesDetailTitleHost"
                         Grid.Column="1"
-                        Spacing="7">
+                        Spacing="{ThemeResource AppGap7}">
                         <TextBlock
                             x:Name="RepoIssuesDetailTitleText"
                             labs:TransitionHelper.Id="IssueTitle"
@@ -149,14 +155,14 @@
                             FontFamily="{ThemeResource AppDisplayFontFamily}"
                             FontSize="{ThemeResource AppFontSize25}"
                             Foreground="{ThemeResource AppInkBrush}"
-                            MinHeight="64"
+                            MinHeight="{ThemeResource AppDimension64}"
                             HorizontalAlignment="Stretch"
                             MaxLines="2"
                             Text="{x:Bind ViewModel.SelectedIssueTitle, Mode=OneWay}"
                             TextTrimming="CharacterEllipsis"
                             TextWrapping="WrapWholeWords"
                             ToolTipService.ToolTip="{x:Bind ViewModel.SelectedIssueTitle, Mode=OneWay}" />
-                        <Grid x:Name="RepoIssuesDetailMetadata" ColumnSpacing="8">
+                        <Grid x:Name="RepoIssuesDetailMetadata" ColumnSpacing="{ThemeResource AppGap8}">
                             <Grid.ColumnDefinitions>
                                 <ColumnDefinition Width="Auto" />
                                 <ColumnDefinition Width="Auto" />
@@ -184,11 +190,11 @@
                         VerticalAlignment="Top"
                         labs:TransitionHelper.Id="IssueActions"
                         Orientation="Horizontal"
-                        Spacing="8">
+                        Spacing="{ThemeResource AppGap8}">
                         <Button
                             x:Uid="PagesRepoIssuePageRepoIssuesEditButton"
-                            MinHeight="34"
-                            Padding="12,6"
+                            MinHeight="{ThemeResource AppDimension34}"
+                            Padding="{ThemeResource AppPadding12_6}"
                             AutomationProperties.AutomationId="RepoIssuesEditButton"
                             AutomationProperties.Name="Edit issue"
                             Click="EditIssueButton_Click"
@@ -197,8 +203,8 @@
                             Style="{StaticResource AppOutlineButtonStyle}"
                             ToolTipService.ToolTip="Edit issue" />
                         <Button
-                            MinHeight="34"
-                            Padding="12,6"
+                            MinHeight="{ThemeResource AppDimension34}"
+                            Padding="{ThemeResource AppPadding12_6}"
                             AutomationProperties.AutomationId="RepoIssuesToggleStateButton"
                             AutomationProperties.Name="{x:Bind ViewModel.ToggleIssueStateButtonText, Mode=OneWay}"
                             Click="ToggleIssueStateButton_Click"
@@ -206,16 +212,16 @@
                             Style="{StaticResource AppOutlineButtonStyle}"
                             ToolTipService.ToolTip="{x:Bind ViewModel.ToggleIssueStateButtonText, Mode=OneWay}">
                             <TextBlock
-                                MaxWidth="96"
+                                MaxWidth="{ThemeResource AppDimension96}"
                                 Text="{x:Bind ViewModel.ToggleIssueStateButtonText, Mode=OneWay}"
                                 TextTrimming="CharacterEllipsis" />
                         </Button>
                         <Button
                             x:Uid="PagesRepoIssuePageRepoIssuesOpenInspectorPaneButton"
                             x:Name="RepoIssuesOpenInspectorPaneButton"
-                            Width="36"
-                            Height="36"
-                            Padding="0"
+                            Width="{ThemeResource AppDimension36}"
+                            Height="{ThemeResource AppDimension36}"
+                            Padding="{ThemeResource AppPadding0}"
                             AutomationProperties.AutomationId="RepoIssuesOpenInspectorPaneButton"
                             AutomationProperties.Name="Open inspector"
                             Click="OpenInspectorPaneButton_Click"
@@ -230,14 +236,14 @@
                         Grid.Column="2"
                         VerticalAlignment="Top"
                         Orientation="Horizontal"
-                        Spacing="8"
+                        Spacing="{ThemeResource AppGap8}"
                         Visibility="Collapsed">
                         <DropDownButton
                             x:Uid="PagesRepoIssuePageRepoIssuesCompactActionOverflowButton"
                             x:Name="RepoIssuesCompactActionOverflowButton"
-                            Width="36"
-                            Height="36"
-                            Padding="0"
+                            Width="{ThemeResource AppDimension36}"
+                            Height="{ThemeResource AppDimension36}"
+                            Padding="{ThemeResource AppPadding0}"
                             AutomationProperties.AutomationId="RepoIssuesCompactActionOverflowButton"
                             AutomationProperties.Name="More issue actions"
                             Style="{StaticResource AppToolbarButtonStyle}"
@@ -272,9 +278,9 @@
                         <Button
                             x:Uid="PagesRepoIssuePageRepoIssuesCompactOpenInspectorPaneButt"
                             x:Name="RepoIssuesCompactOpenInspectorPaneButton"
-                            Width="36"
-                            Height="36"
-                            Padding="0"
+                            Width="{ThemeResource AppDimension36}"
+                            Height="{ThemeResource AppDimension36}"
+                            Padding="{ThemeResource AppPadding0}"
                             AutomationProperties.AutomationId="RepoIssuesCompactOpenInspectorPaneButton"
                             AutomationProperties.Name="Open inspector"
                             Click="OpenInspectorPaneButton_Click"
@@ -284,13 +290,14 @@
                             <FontIcon FontFamily="{StaticResource SegoeFluentIcons}" FontSize="{ThemeResource AppFontSize14}" Glyph="&#xE9D2;" />
                         </Button>
                     </StackPanel>
+                        </Grid>
                 </Grid>
 
                 <ScrollViewer
                     x:Uid="ControlsIssueRepoIssueDetailPaneConversationScrollViewer"
                     x:Name="IssueConversationScrollViewer"
                     Grid.Row="1"
-                    Padding="18"
+                    Padding="{ThemeResource AppPadding18}"
                     AutomationProperties.AutomationId="RepoIssuesConversationScrollViewer"
                     AutomationProperties.Name="Issue conversation"
                     HorizontalScrollBarVisibility="Disabled"
@@ -299,26 +306,27 @@
                     VerticalScrollBarVisibility="Auto">
                     <StackPanel
                         x:Name="IssueConversationStackPanel"
-                        Spacing="16">
+                        Spacing="{ThemeResource AppGap16}">
                         <Border
-                            Padding="16"
+                            Padding="{ThemeResource AppPadding16}"
                             Background="{ThemeResource AppCanvasInsetBrush}"
                             BorderBrush="{ThemeResource AppHairlineBrush}"
-                            BorderThickness="1"
+                            BorderThickness="{ThemeResource AppHairlineBorderThickness}"
                             CornerRadius="{ThemeResource AppRadiusSmall}">
-                            <Grid RowSpacing="12">
+                            <Grid RowSpacing="{ThemeResource AppGap12}">
                                 <Grid.RowDefinitions>
                                     <RowDefinition Height="Auto" />
                                     <RowDefinition Height="Auto" />
                                     <RowDefinition Height="Auto" />
                                 </Grid.RowDefinitions>
-                                <Grid ColumnSpacing="10">
+                                <Grid ColumnSpacing="{ThemeResource AppGap10}">
                                     <Grid.ColumnDefinitions>
-                                        <ColumnDefinition Width="32" />
+                                        <ColumnDefinition Width="{ThemeResource AppGridLength32}" />
                                         <ColumnDefinition Width="*" />
                                         <ColumnDefinition Width="Auto" />
                                     </Grid.ColumnDefinitions>
                                     <common:Avatar
+                                        VerticalAlignment="Center"
                                         AutomationInstanceId="{x:Bind ViewModel.SelectedIssueAuthorAutomationId, Mode=OneWay}"
                                         Login="{x:Bind ViewModel.SelectedIssueAuthorLogin, Mode=OneWay}"
                                         NavigationSource="issue_detail_author"
@@ -330,7 +338,7 @@
                                         VerticalAlignment="Center"
                                         FontFamily="{ThemeResource AppUiFontFamily}"
                                         FontSize="{ThemeResource AppFontSize13}"
-                                        FontWeight="SemiBold"
+                                        FontWeight="{ThemeResource AppFontWeightSemibold}"
                                         Foreground="{ThemeResource AppInkBrush}"
                                         Text="{x:Bind ViewModel.SelectedIssueAuthorDisplayName, Mode=OneWay}" />
                                     <TextBlock
@@ -350,6 +358,7 @@
                                 <common:CommentInteractionBar
                                     x:Uid="ControlsIssueRepoIssueDetailPaneBodyInteractionBar"
                                     Grid.Row="2"
+                                    AutomationInstanceId="RepoIssuesBody"
                                     AutomationProperties.AutomationId="RepoIssuesBodyInteractionBar"
                                     AutomationProperties.Name="Issue body actions"
                                     ActionRequested="CommentInteractionBar_ActionRequested"
@@ -366,21 +375,23 @@
                             </Grid>
                         </Border>
 
-                        <Grid ColumnSpacing="10">
+                        <Grid ColumnSpacing="{ThemeResource AppGap10}">
                             <Grid.ColumnDefinitions>
                                 <ColumnDefinition Width="*" />
                                 <ColumnDefinition Width="Auto" />
                             </Grid.ColumnDefinitions>
                             <TextBlock
                                 x:Uid="PagesRepoIssuePageTextBlockComments"
+                                VerticalAlignment="Center"
                                 FontFamily="{ThemeResource AppDisplayFontFamily}"
                                 FontSize="{ThemeResource AppFontSize20}"
                                 Foreground="{ThemeResource AppInkBrush}"
                                 Text="Comments" />
                             <ProgressRing
                                 Grid.Column="1"
-                                Width="22"
-                                Height="22"
+                                Width="{ThemeResource AppDimension22}"
+                                Height="{ThemeResource AppDimension22}"
+                                VerticalAlignment="Center"
                                 IsActive="{x:Bind ViewModel.IsDetailLoading, Mode=OneWay}"
                                 Visibility="{x:Bind ViewModel.IsDetailLoading, Converter={StaticResource BoolToVisibilityConverter}, Mode=OneWay}" />
                         </Grid>
@@ -400,21 +411,21 @@
                 <Border
                     x:Name="IssueCommentComposerHost"
                     Grid.Row="2"
-                    Padding="12,8"
+                    Padding="{ThemeResource AppPadding12_8}"
                     BorderBrush="{ThemeResource AppHairlineBrush}"
-                    BorderThickness="0,1,0,0">
+                    BorderThickness="{ThemeResource AppTopHairlineBorderThickness}">
                     <Button
                         x:Uid="ControlsIssueRepoIssueDetailPaneOpenCommentButton"
                         x:Name="RepoIssuesOpenCommentButton"
-                        MinHeight="36"
-                        MinWidth="112"
+                        MinHeight="{ThemeResource AppDimension36}"
+                        MinWidth="{ThemeResource AppDimension112}"
                         HorizontalAlignment="Right"
                         AutomationProperties.AutomationId="RepoIssuesOpenCommentButton"
                         AutomationProperties.Name="Open issue comment editor"
                         IsEnabled="{x:Bind ViewModel.IsAddCommentEnabled, Mode=OneWay}"
                         Style="{StaticResource AppAccentButtonStyle}">
-                        <StackPanel Orientation="Horizontal" Spacing="8">
-                            <SymbolIcon Foreground="{ThemeResource AppAccentForegroundBrush}" Symbol="Message" />
+                        <StackPanel Orientation="Horizontal" Spacing="{ThemeResource AppGap8}">
+                            <SymbolIcon VerticalAlignment="Center" Foreground="{ThemeResource AppAccentForegroundBrush}" Symbol="Message" />
                             <TextBlock
                                 x:Uid="ControlsIssueRepoIssueDetailPaneOpenCommentLabel"
                                 VerticalAlignment="Center"
@@ -429,12 +440,12 @@
                                 Placement="TopEdgeAlignedRight">
                                 <Flyout.FlyoutPresenterStyle>
                                     <Style TargetType="FlyoutPresenter">
-                                        <Setter Property="Padding" Value="0" />
-                                        <Setter Property="MinWidth" Value="0" />
-                                        <Setter Property="MaxWidth" Value="460" />
+                                        <Setter Property="Padding" Value="{ThemeResource AppPadding0}" />
+                                        <Setter Property="MinWidth" Value="{ThemeResource AppDimension0}" />
+                                        <Setter Property="MaxWidth" Value="{ThemeResource AppDimension460}" />
                                     </Style>
                                 </Flyout.FlyoutPresenterStyle>
-                                <Border Width="440" Padding="16">
+                                <Border Width="{ThemeResource AppDimension440}" Padding="{ThemeResource AppPadding16}">
                                     <common:MarkdownForm
                                         x:Uid="PagesRepoIssuePageRepoIssuesCommentBox"
                                         x:Name="IssueCommentForm"
@@ -448,8 +459,8 @@
                                         <common:MarkdownForm.ActionContent>
                                             <Button
                                                 x:Uid="PagesRepoIssuePageRepoIssuesCommentButton"
-                                                MinHeight="34"
-                                                MinWidth="96"
+                                                MinHeight="{ThemeResource AppDimension34}"
+                                                MinWidth="{ThemeResource AppDimension96}"
                                                 HorizontalAlignment="Right"
                                                 AutomationProperties.AutomationId="RepoIssuesCommentButton"
                                                 AutomationProperties.Name="Post issue comment"
@@ -468,28 +479,31 @@
 
                 <Grid
                     x:Name="RepoIssuesShyHeaderSurface"
-                    Padding="10"
                     VerticalAlignment="Top"
-                    labs:TransitionHelper.Id="IssueHeaderSurface"
                     AutomationProperties.AutomationId="RepoIssuesShyHeader"
-                    Background="{ThemeResource AppTransientOverlayBrush}"
-                    BorderBrush="{ThemeResource AppHairlineBrush}"
-                    BorderThickness="0,0,0,1"
                     Canvas.ZIndex="10"
-                    ColumnSpacing="10"
                     Visibility="Collapsed">
-                    <Grid.ColumnDefinitions>
-                        <ColumnDefinition Width="Auto" />
-                        <ColumnDefinition Width="*" />
-                        <ColumnDefinition Width="Auto" />
-                    </Grid.ColumnDefinitions>
+                    <Border
+                        labs:TransitionHelper.Id="IssueHeaderChrome"
+                        Background="{ThemeResource AppTransientOverlayBrush}"
+                        BorderBrush="{ThemeResource AppHairlineBrush}"
+                        BorderThickness="{ThemeResource AppBottomHairlineBorderThickness}"
+                        IsHitTestVisible="False" />
+                    <Grid
+                        Padding="{ThemeResource AppPadding10}"
+                        ColumnSpacing="{ThemeResource AppGap10}">
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="Auto" />
+                            <ColumnDefinition Width="*" />
+                            <ColumnDefinition Width="Auto" />
+                        </Grid.ColumnDefinitions>
 
                     <Button
                         x:Uid="PagesRepoIssuePageRepoIssuesOpenListPaneButton"
                         x:Name="RepoIssuesShyOpenListPaneButton"
-                        Width="36"
-                        Height="36"
-                        Padding="0"
+                        Width="{ThemeResource AppDimension36}"
+                        Height="{ThemeResource AppDimension36}"
+                        Padding="{ThemeResource AppPadding0}"
                         VerticalAlignment="Center"
                         labs:TransitionHelper.Id="IssueListButton"
                         AutomationProperties.AutomationId="RepoIssuesOpenListPaneButton"
@@ -522,13 +536,13 @@
                         VerticalAlignment="Center"
                         labs:TransitionHelper.Id="IssueActions"
                         Orientation="Horizontal"
-                        Spacing="8">
+                        Spacing="{ThemeResource AppGap8}">
                         <DropDownButton
                             x:Uid="PagesRepoIssuePageRepoIssuesCompactActionOverflowButton"
                             x:Name="RepoIssuesShyActionOverflowButton"
-                            Width="36"
-                            Height="36"
-                            Padding="0"
+                            Width="{ThemeResource AppDimension36}"
+                            Height="{ThemeResource AppDimension36}"
+                            Padding="{ThemeResource AppPadding0}"
                             AutomationProperties.AutomationId="RepoIssuesCompactActionOverflowButton"
                             AutomationProperties.Name="More issue actions"
                             Style="{StaticResource AppToolbarButtonStyle}"
@@ -546,9 +560,9 @@
                         <Button
                             x:Uid="PagesRepoIssuePageRepoIssuesCompactOpenInspectorPaneButt"
                             x:Name="RepoIssuesShyOpenInspectorPaneButton"
-                            Width="36"
-                            Height="36"
-                            Padding="0"
+                            Width="{ThemeResource AppDimension36}"
+                            Height="{ThemeResource AppDimension36}"
+                            Padding="{ThemeResource AppPadding0}"
                             AutomationProperties.AutomationId="RepoIssuesCompactOpenInspectorPaneButton"
                             AutomationProperties.Name="Open inspector"
                             Click="OpenInspectorPaneButton_Click"
@@ -558,6 +572,7 @@
                             <FontIcon FontFamily="{StaticResource SegoeFluentIcons}" FontSize="{ThemeResource AppFontSize14}" Glyph="&#xE9D2;" />
                         </Button>
                     </StackPanel>
+                    </Grid>
                 </Grid>
             </Grid>
         </Grid>

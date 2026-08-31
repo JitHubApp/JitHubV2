@@ -234,14 +234,15 @@ public sealed class ShellWorkspaceContractTests
         Assert.Null(expanded.Attribute(labs + "TransitionHelper.Id"));
         Assert.Null(compact.Attribute(labs + "TransitionHelper.Id"));
         Assert.Equal(
-            4,
+            5,
             expanded.Descendants().Count(element => element.Attribute(labs + "TransitionHelper.Id") is not null));
         Assert.Equal(
-            4,
+            5,
             compact.Descendants().Count(element => element.Attribute(labs + "TransitionHelper.Id") is not null));
         foreach (string id in new[]
         {
             "RepositoryHeaderTitle",
+            "RepositoryHeaderFilterSurface",
             "RepositoryHeaderFilterPublic",
             "RepositoryHeaderFilterPrivate",
             "RepositoryHeaderFilterForked"
@@ -258,14 +259,14 @@ public sealed class ShellWorkspaceContractTests
         Assert.Contains("x:Key=\"AppRailTransientOverlayBrush\"", brushes, StringComparison.Ordinal);
         Assert.Contains("TintColor=\"{ThemeResource AppRailMaterialTintColor}\"", brushes, StringComparison.Ordinal);
         Assert.Contains("FallbackColor=\"{ThemeResource AppRailColor}\"", brushes, StringComparison.Ordinal);
-        Assert.Equal("34", (string?)compact.Attribute("Height"));
+        Assert.Equal("{ThemeResource AppDimension34}", (string?)compact.Attribute("Height"));
         Assert.Equal("Top", (string?)compact.Attribute("VerticalAlignment"));
         Assert.Null(compact.Attribute("MinHeight"));
-        Assert.Equal(3, expandedFilter.Elements().Count(element => element.Name.LocalName == "SegmentedItem"));
+        Assert.Equal(3, expandedFilter.Elements().Count(element => element.Name.LocalName == "AppSegmentedItem"));
         Assert.Single(expandedFilter.Descendants(), element => element.Name.LocalName == "EqualPanel");
-        Assert.Equal("30", (string?)compactFilter.Attribute("Height"));
-        Assert.Equal("2", (string?)compactFilter.Attribute("Padding"));
-        Assert.Equal(3, compactFilter.Elements().Count(element => element.Name.LocalName == "SegmentedItem"));
+        Assert.Equal("{ThemeResource AppDimension30}", (string?)compactFilter.Attribute("Height"));
+        Assert.Equal("{ThemeResource AppPadding2}", (string?)compactFilter.Attribute("Padding"));
+        Assert.Equal(3, compactFilter.Elements().Count(element => element.Name.LocalName == "AppSegmentedItem"));
         Assert.Single(compactFilter.Descendants(), element => element.Name.LocalName == "EqualPanel");
         Assert.Equal("ShellRepositoryList_Loaded", (string?)list.Attribute("Loaded"));
         Assert.Equal("ShellRepositoryList_SizeChanged", (string?)list.Attribute("SizeChanged"));
@@ -277,6 +278,7 @@ public sealed class ShellWorkspaceContractTests
         Assert.Contains("Id = \"RepositoryHeaderFilterPublic\", ScaleMode = ScaleMode.Scale", source, StringComparison.Ordinal);
         Assert.Contains("Id = \"RepositoryHeaderFilterPrivate\", ScaleMode = ScaleMode.Scale", source, StringComparison.Ordinal);
         Assert.Contains("Id = \"RepositoryHeaderFilterForked\", ScaleMode = ScaleMode.Scale", source, StringComparison.Ordinal);
+        Assert.Contains("Id = \"RepositoryHeaderFilterSurface\", ScaleMode = ScaleMode.Scale", source, StringComparison.Ordinal);
         Assert.DoesNotContain(
             "Id = \"RepositoryHeaderFilter\", ScaleMode = ScaleMode.ScaleX",
             source,
@@ -286,9 +288,39 @@ public sealed class ShellWorkspaceContractTests
         Assert.Contains("RepositoryShyHeaderRestoreOffset", source, StringComparison.Ordinal);
         Assert.Contains("RepositoryShyHeaderRevealTravel", source, StringComparison.Ordinal);
         Assert.Contains("RepositoryShyHeaderRehideTravel", source, StringComparison.Ordinal);
+        Assert.Contains(
+            "_repositoryUpwardRevealTravel = Math.Max(0, _repositoryUpwardRevealTravel - delta);",
+            source,
+            StringComparison.Ordinal);
         Assert.Contains("RegisterPropertyChangedCallback", source, StringComparison.Ordinal);
+        Assert.Contains("forceUpdateAnimatedElements: true", source, StringComparison.Ordinal);
+        Assert.Contains(
+            "DefaultOpacityTransitionProgressKey = AppMotionTokens.ShyHeaderOpacityTransitionProgressKey",
+            source,
+            StringComparison.Ordinal);
+        Assert.Contains(
+            "_repositoryHeaderTransition.ReverseAsync(forceUpdateAnimatedElements: true);\n\n            if (isShy)",
+            source.ReplaceLineEndings("\n"),
+            StringComparison.Ordinal);
+        Assert.Contains("MorphTransitionSafety.TryStop(_repositoryHeaderTransition)", source, StringComparison.Ordinal);
+        Assert.DoesNotContain("TryPrepareIncomingSurface", source, StringComparison.Ordinal);
+        Assert.Contains("private const double RepositoryShyHeaderRevealTravel = 40;", source, StringComparison.Ordinal);
+        Assert.Contains("MorphTransitionSafety.TryResetVisibilityState", source, StringComparison.Ordinal);
+        Assert.Contains("MorphTransitionSafety.TrySetStableState", source, StringComparison.Ordinal);
+        Assert.Contains("ui-shell-repository-header-morph", source, StringComparison.Ordinal);
+        Assert.Contains("ShellRepositoryList.LayoutUpdated += ShellRepositoryList_LayoutUpdated;", source, StringComparison.Ordinal);
+        Assert.Contains("ShellRepositoryList.LayoutUpdated -= ShellRepositoryList_LayoutUpdated;", source, StringComparison.Ordinal);
         Assert.Contains("nameof(ShellPageViewModel.AreRepositoriesVisible)", source, StringComparison.Ordinal);
         Assert.Contains("AnimateRepositoryListReflow", source, StringComparison.Ordinal);
+        Assert.Contains("_isRepositoryHeaderLayoutTransitionActive", source, StringComparison.Ordinal);
+        int previousListTop = source.IndexOf("double previousListTop", StringComparison.Ordinal);
+        int startHeaderAnimation = source.IndexOf(
+            "Task headerAnimation = isShy",
+            previousListTop,
+            StringComparison.Ordinal);
+        Assert.True(previousListTop >= 0 && startHeaderAnimation > previousListTop);
+        Assert.Equal("{ThemeResource AppTransparentBrush}", (string?)expandedFilter.Attribute("Background"));
+        Assert.Equal("{ThemeResource AppTransparentBrush}", (string?)compactFilter.Attribute("Background"));
         Assert.Contains("ShellRepositoryExpandedFilter.SelectedIndex", source, StringComparison.Ordinal);
         Assert.Contains("ShellRepositoryCompactFilter.SelectedIndex", source, StringComparison.Ordinal);
     }
@@ -419,7 +451,10 @@ public sealed class ShellWorkspaceContractTests
         Assert.Contains("if (xamlRoot is null)", source, StringComparison.Ordinal);
         Assert.Contains("catch (ArgumentException)", source, StringComparison.Ordinal);
         Assert.Contains("exception.HResult == unchecked((int)0x80070057)", source, StringComparison.Ordinal);
-        Assert.Contains("if (!IsLoaded || XamlRoot is null || ShellContentFrame.Content", source, StringComparison.Ordinal);
+        Assert.Contains("TryGetCurrentRouteRoot(out DependencyObject pageRoot)", source, StringComparison.Ordinal);
+        Assert.Contains("ShellContentFrame.Content is FrameworkElement { IsLoaded: true } root", source, StringComparison.Ordinal);
+        Assert.Contains("ex is COMException or InvalidOperationException", source, StringComparison.Ordinal);
+        Assert.Contains("Task.Delay(attempt == 0 ? 16 : 50, cancellationToken)", source, StringComparison.Ordinal);
     }
 
     [Fact]
@@ -474,7 +509,7 @@ public sealed class ShellWorkspaceContractTests
     private static string FindRepositoryRoot()
     {
         DirectoryInfo? directory = new(AppContext.BaseDirectory);
-        while (directory is not null && !File.Exists(Path.Combine(directory.FullName, "JitHub.slnx")))
+        while (directory is not null && !File.Exists(Path.Combine(directory.FullName, "Directory.Build.props")))
         {
             directory = directory.Parent;
         }

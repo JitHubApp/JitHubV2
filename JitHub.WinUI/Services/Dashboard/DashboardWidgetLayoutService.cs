@@ -54,9 +54,9 @@ public sealed class DashboardWidgetLayoutService : IDashboardWidgetLayoutService
     public DashboardWidgetLayout CreateDefault() =>
         new(
             CurrentVersion,
-            [DashboardWidgetIds.RecentActivity, DashboardWidgetIds.Repositories, DashboardWidgetIds.QuickActions],
-            [DashboardWidgetIds.Overview, DashboardWidgetIds.RecommendedRepositories, DashboardWidgetIds.Notifications],
-            []);
+            (string[])[DashboardWidgetIds.RecentActivity, DashboardWidgetIds.Repositories, DashboardWidgetIds.QuickActions],
+            (string[])[DashboardWidgetIds.Overview, DashboardWidgetIds.RecommendedRepositories, DashboardWidgetIds.Notifications],
+            (string[])[]);
 
     public DashboardWidgetLayout Normalize(DashboardWidgetLayout? layout)
     {

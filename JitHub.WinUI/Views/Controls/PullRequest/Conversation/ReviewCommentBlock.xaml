@@ -17,7 +17,7 @@
     <Grid
         CornerRadius="{ThemeResource AppRadiusSmall}">
         <StackPanel
-            Spacing="8">
+            Spacing="{ThemeResource AppGap8}">
             <common:CommentBlock>
                 <common:CommentBlock.HeaderContent>
                     <TextBlock Text="{x:Bind ViewModel.Name, Mode=OneWay}"/>
@@ -43,13 +43,13 @@
                 </muxc:ItemsRepeater.ItemTemplate>
                 <muxc:ItemsRepeater.Layout>
                     <muxc:StackLayout
-                        Spacing="12">
+                        Spacing="{ThemeResource AppGap12}">
                     </muxc:StackLayout>
                 </muxc:ItemsRepeater.Layout>
             </muxc:ItemsRepeater>
             <muxc:Expander
                 x:Uid="ControlsPullRequestConversationReviewCommentBlockXBindVi" x:Name="ReplyBox"
-                Padding="8 0 8 8"
+                Padding="{ThemeResource AppPadding8_0_8_8}"
                 AutomationProperties.AutomationId="{x:Bind ViewModel.ReplyExpanderAutomationId, Mode=OneWay}"
                 AutomationProperties.Name="{x:Bind ViewModel.ReplyExpanderAutomationName, Mode=OneWay}"
                 IsExpanded="{x:Bind ViewModel.ReplyBoxExpanded, Mode=OneWay}"

@@ -22,10 +22,12 @@ public sealed partial class AppSvgViewport : UserControl
 {
     private const long MaximumCacheBytes = 64L * 1024 * 1024;
     private const double CanvasInset = 16;
+    private const double TileSeamOverlapPixels = 1;
     private static readonly TimeSpan ZoomSettleDelay = TimeSpan.FromMilliseconds(120);
 
     private readonly DispatcherQueueTimer _settleTimer;
     private readonly SvgTileCache _cache = new(MaximumCacheBytes);
+    private readonly SettledZoomTracker _zoomTracker = new();
     private IRepositorySvgRasterizer _rasterizer = new RepositorySvgRasterizer();
     private RepositorySvgDocument? _document;
     private ScrollViewer? _scrollHost;
@@ -33,8 +35,10 @@ public sealed partial class AppSvgViewport : UserControl
     private long _renderGeneration;
     private bool _eventsAttached;
     private string _renderStatus = "empty";
+    private double _lastReportedZoomPercent = 100;
 
     internal event EventHandler<AppSvgRenderFailedEventArgs>? RenderFailed;
+    internal event EventHandler? ZoomSettled;
 
     public AppSvgViewport()
     {
@@ -60,6 +64,8 @@ public sealed partial class AppSvgViewport : UserControl
 
         DetachEvents();
         _scrollHost = scrollHost;
+        _zoomTracker.Reset(scrollHost.ZoomFactor);
+        _lastReportedZoomPercent = scrollHost.ZoomFactor * 100;
         AttachEvents();
         UpdateSurfaceSize();
     }
@@ -75,6 +81,7 @@ public sealed partial class AppSvgViewport : UserControl
         CancelRender();
         _document = document;
         _rasterizer = rasterizer;
+        _zoomTracker.Reset(_scrollHost?.ZoomFactor ?? 1);
         _cache.Clear();
         TileCanvas.Children.Clear();
         DisposeDocument(previous);
@@ -86,6 +93,7 @@ public sealed partial class AppSvgViewport : UserControl
     {
         RepositorySvgDocument? previous = _document;
         _document = null;
+        _zoomTracker.ClearPending();
         CancelRender();
         _cache.Clear();
         TileCanvas.Children.Clear();
@@ -145,8 +153,25 @@ public sealed partial class AppSvgViewport : UserControl
         _eventsAttached = false;
     }
 
-    private void ScrollHost_ViewChanged(object? sender, ScrollViewerViewChangedEventArgs e) =>
+    private void ScrollHost_ViewChanged(object? sender, ScrollViewerViewChangedEventArgs e)
+    {
+        if (_scrollHost is not null)
+        {
+            _zoomTracker.Observe(_scrollHost.ZoomFactor);
+            double zoomPercent = _scrollHost.ZoomFactor * 100;
+            if (Math.Abs(zoomPercent - _lastReportedZoomPercent) > 0.001)
+            {
+                double previous = _lastReportedZoomPercent;
+                _lastReportedZoomPercent = zoomPercent;
+                if (FrameworkElementAutomationPeer.FromElement(this) is AppSvgViewportAutomationPeer peer)
+                {
+                    peer.RaiseZoomLevelChanged(previous, zoomPercent);
+                }
+            }
+        }
+
         ScheduleRender(immediate: false);
+    }
 
     private void ScrollHost_SizeChanged(object sender, SizeChangedEventArgs e)
     {
@@ -198,7 +223,17 @@ public sealed partial class AppSvgViewport : UserControl
         }
     }
 
-    private void SettleTimer_Tick(DispatcherQueueTimer sender, object args) => RenderNow();
+    private void SettleTimer_Tick(DispatcherQueueTimer sender, object args)
+    {
+        RenderNow();
+
+        if (!_zoomTracker.TrySettle(out _))
+        {
+            return;
+        }
+
+        ZoomSettled?.Invoke(this, EventArgs.Empty);
+    }
 
     private void RenderNow()
     {
@@ -213,7 +248,7 @@ public sealed partial class AppSvgViewport : UserControl
         CancellationTokenSource cancellation = new();
         _renderCancellation = cancellation;
         long generation = ++_renderGeneration;
-        _ = RenderAndPublishAsync(document, plan, generation, cancellation.Token);
+        UiTaskGuard.Observe(RenderAndPublishAsync(document, plan, generation, cancellation.Token), "ui-app-svg-viewport");
     }
 
     private async Task RenderAndPublishAsync(
@@ -341,6 +376,50 @@ public sealed partial class AppSvgViewport : UserControl
 
     internal string RenderStatus => _renderStatus;
 
+    internal bool CanZoom => _scrollHost is not null;
+
+    internal double MinimumZoomPercent => (_scrollHost?.MinZoomFactor ?? 0.1f) * 100;
+
+    internal double MaximumZoomPercent => (_scrollHost?.MaxZoomFactor ?? 8f) * 100;
+
+    internal double ZoomPercent => (_scrollHost?.ZoomFactor ?? 1f) * 100;
+
+    internal void ZoomToPercent(double zoomPercent)
+    {
+        if (_scrollHost is null || !double.IsFinite(zoomPercent))
+        {
+            return;
+        }
+
+        double clamped = Math.Clamp(zoomPercent, MinimumZoomPercent, MaximumZoomPercent);
+        double targetZoomFactor = clamped / 100;
+        ViewportZoomTarget target = ViewportZoomAnchor.PreserveCenter(
+            _scrollHost.HorizontalOffset,
+            _scrollHost.VerticalOffset,
+            _scrollHost.ViewportWidth,
+            _scrollHost.ViewportHeight,
+            _scrollHost.ZoomFactor,
+            targetZoomFactor);
+        _scrollHost.ChangeView(
+            horizontalOffset: target.HorizontalOffset,
+            verticalOffset: target.VerticalOffset,
+            zoomFactor: checked((float)targetZoomFactor),
+            disableAnimation: false);
+    }
+
+    internal void ZoomByUnit(ZoomUnit zoomUnit)
+    {
+        double target = zoomUnit switch
+        {
+            ZoomUnit.LargeDecrement => ZoomPercent / 1.5,
+            ZoomUnit.SmallDecrement => ZoomPercent / 1.1,
+            ZoomUnit.LargeIncrement => ZoomPercent * 1.5,
+            ZoomUnit.SmallIncrement => ZoomPercent * 1.1,
+            _ => ZoomPercent,
+        };
+        ZoomToPercent(target);
+    }
+
     protected override AutomationPeer OnCreateAutomationPeer() => new AppSvgViewportAutomationPeer(this);
 
     private void SetRenderStatus(string status)
@@ -412,6 +491,18 @@ public sealed partial class AppSvgViewport : UserControl
                 int pixelY = tileY * tileEdge;
                 int pixelWidth = Math.Min(tileEdge, outputWidth - pixelX);
                 int pixelHeight = Math.Min(tileEdge, outputHeight - pixelY);
+                double logicalWidth = pixelWidth / pixelsPerLogicalUnit;
+                double logicalHeight = pixelHeight / pixelsPerLogicalUnit;
+                if (pixelX + pixelWidth < outputWidth)
+                {
+                    logicalWidth += TileSeamOverlapPixels / pixelsPerLogicalUnit;
+                }
+
+                if (pixelY + pixelHeight < outputHeight)
+                {
+                    logicalHeight += TileSeamOverlapPixels / pixelsPerLogicalUnit;
+                }
+
                 RepositorySvgTileRequest request = new(
                     pixelX,
                     pixelY,
@@ -424,8 +515,8 @@ public sealed partial class AppSvgViewport : UserControl
                     request,
                     imageLeft + (pixelX / pixelsPerLogicalUnit),
                     imageTop + (pixelY / pixelsPerLogicalUnit),
-                    pixelWidth / pixelsPerLogicalUnit,
-                    pixelHeight / pixelsPerLogicalUnit));
+                    logicalWidth,
+                    logicalHeight));
             }
         }
 
@@ -449,7 +540,9 @@ public sealed partial class AppSvgViewport : UserControl
     {
         if (document is not null)
         {
-            _ = Task.Run(document.Dispose);
+            UiTaskGuard.Observe(
+                Task.Run(document.Dispose),
+                "ui-app-svg-viewport");
         }
     }
 

@@ -22,6 +22,7 @@ namespace JitHub.WinUI.ViewModels.Pages;
 public sealed partial class ProfilePageViewModel : ViewModelBase
 {
     private static readonly TimeSpan InitialOverviewDeferral = TimeSpan.FromMilliseconds(75);
+    private const int CompactOrganizationLimit = 6;
 
     private readonly IAuthService _authService;
     private readonly IAccountService _accountService;
@@ -79,6 +80,8 @@ public sealed partial class ProfilePageViewModel : ViewModelBase
     public KeyedObservableCollection<ProfileActivityItem, ProfileActivityItem> PublicActivity { get; } = [];
 
     public KeyedObservableCollection<ProfileOrganizationViewItem, ProfileOrganizationViewItem> Organizations { get; } = [];
+
+    public ObservableCollection<ProfileOrganizationViewItem> CompactOrganizations { get; } = [];
 
     public ObservableCollection<ProfileContributionWeekViewItem> ContributionWeeks { get; } = [];
 
@@ -195,6 +198,8 @@ public sealed partial class ProfilePageViewModel : ViewModelBase
 
     public bool IsStatusVisible => !string.IsNullOrWhiteSpace(StatusText);
 
+    public bool IsProfileLoading => IsLoading || IsOverviewLoading;
+
     public bool IsAuthenticatedProfile => IsEditVisible;
 
     public bool IsOverviewMode => ActiveMode == ProfileWorkspaceMode.Overview;
@@ -263,7 +268,14 @@ public sealed partial class ProfilePageViewModel : ViewModelBase
         OnPropertyChanged(nameof(IsAuthenticatedProfile));
     }
 
-    partial void OnIsLoadingChanged(bool value) => NotifyEmptyStates();
+    partial void OnIsLoadingChanged(bool value)
+    {
+        OnPropertyChanged(nameof(IsProfileLoading));
+        NotifyEmptyStates();
+    }
+
+    partial void OnIsOverviewLoadingChanged(bool value) =>
+        OnPropertyChanged(nameof(IsProfileLoading));
 
     partial void OnHasRecentRepositoriesChanged(bool value) => NotifyEmptyStates();
 
@@ -316,8 +328,10 @@ public sealed partial class ProfilePageViewModel : ViewModelBase
         CancelCurrentMutation();
         _loadCancellation?.Cancel();
         _loadCancellation?.Dispose();
-        _loadCancellation = new CancellationTokenSource();
-        CancellationToken cancellationToken = _loadCancellation.Token;
+        CancellationTokenSource loadCancellation = new();
+        _loadCancellation = loadCancellation;
+        _overviewLoadTask = null;
+        CancellationToken cancellationToken = loadCancellation.Token;
 
         IsLoading = !HasIdentity;
         IsOverviewLoading = true;
@@ -385,14 +399,20 @@ public sealed partial class ProfilePageViewModel : ViewModelBase
                     }
                     catch (OperationCanceledException) when (ownedToken.IsCancellationRequested)
                     {
+                        if (ReferenceEquals(_loadCancellation, loadCancellation))
+                        {
+                            IsOverviewLoading = false;
+                        }
                     }
-                    catch (Exception ex)
+                    catch (Exception)
                     {
-                        Debug.WriteLine($"Profile overview refresh failed: {ex}");
-                        StatusText = ProfileText.L(
-                            "Profile.Status.OverviewLoadFailed",
-                            "Some profile details could not be refreshed.");
-                        IsOverviewLoading = false;
+                        if (ReferenceEquals(_loadCancellation, loadCancellation))
+                        {
+                            StatusText = ProfileText.L(
+                                "Profile.Status.OverviewLoadFailed",
+                                "Some profile details could not be refreshed.");
+                            IsOverviewLoading = false;
+                        }
                         throw;
                     }
                 },
@@ -413,7 +433,7 @@ public sealed partial class ProfilePageViewModel : ViewModelBase
         }
         catch (Exception ex)
         {
-            Debug.WriteLine($"Profile load failed: {ex}");
+            HandledFailureReporter.Report(ex, "profile-load");
             StatusText = ProfileText.L(
                 "Profile.Status.LoadFailed",
                 "JitHub could not load this profile. Try again.");
@@ -421,9 +441,14 @@ public sealed partial class ProfilePageViewModel : ViewModelBase
         }
         finally
         {
-            if (!cancellationToken.IsCancellationRequested)
+            if (!cancellationToken.IsCancellationRequested &&
+                ReferenceEquals(_loadCancellation, loadCancellation))
             {
                 IsLoading = false;
+                if (_overviewLoadTask is null)
+                {
+                    IsOverviewLoading = false;
+                }
             }
         }
     }
@@ -444,7 +469,7 @@ public sealed partial class ProfilePageViewModel : ViewModelBase
                 login,
                 authenticatedView,
                 cancellationToken);
-            ApplySnapshot(snapshot, authenticatedView);
+            await ApplySnapshotAsync(snapshot, authenticatedView, cancellationToken);
             StatusText = BuildStatus(snapshot);
             bool hasError = snapshot.User.HasError ||
                 snapshot.Readme.HasError ||
@@ -552,7 +577,7 @@ public sealed partial class ProfilePageViewModel : ViewModelBase
         }
         catch (Exception ex)
         {
-            Debug.WriteLine($"Profile update failed: {ex}");
+            HandledFailureReporter.Report(ex, "profile-update");
             StatusText = ProfileText.L(
                 "Profile.Status.UpdateFailed",
                 "JitHub could not update your profile. Try again.");
@@ -668,7 +693,7 @@ public sealed partial class ProfilePageViewModel : ViewModelBase
 
     public void ShowSectionLoadError(Exception exception)
     {
-        Debug.WriteLine($"Profile section load failed: {exception}");
+        HandledFailureReporter.Report(exception, "profile-section-load");
         StatusText = ProfileText.L(
             "Profile.Status.SectionLoadFailed",
             "JitHub could not load this profile section. Try again.");
@@ -1044,7 +1069,7 @@ public sealed partial class ProfilePageViewModel : ViewModelBase
         }
         catch (Exception ex)
         {
-            Debug.WriteLine($"Profile relationship change failed: {ex}");
+            HandledFailureReporter.Report(ex, "profile-relationship-change");
             StatusText = ProfileText.L(
                 "Profile.Status.RelationshipChangeFailed",
                 "JitHub could not change the follow state. Try again.");
@@ -1116,7 +1141,7 @@ public sealed partial class ProfilePageViewModel : ViewModelBase
         }
         catch (Exception ex)
         {
-            Debug.WriteLine($"Profile external launch failed: {ex}");
+            HandledFailureReporter.Report(ex, "profile-external-launch");
             StatusText = ProfileText.LF(
                 "Profile.Status.FactOpenFailed",
                 "Could not open {0}.",
@@ -1215,7 +1240,10 @@ public sealed partial class ProfilePageViewModel : ViewModelBase
         _ => string.IsNullOrWhiteSpace(source) ? "direct" : "avatar"
     };
 
-    private void ApplySnapshot(GitHubUserProfileSnapshot snapshot, bool authenticatedView)
+    private async Task ApplySnapshotAsync(
+        GitHubUserProfileSnapshot snapshot,
+        bool authenticatedView,
+        CancellationToken cancellationToken)
     {
         GitHubUser user = snapshot.User.Value ?? new GitHubUser();
         ApplyIdentity(user, authenticatedView);
@@ -1226,15 +1254,34 @@ public sealed partial class ProfilePageViewModel : ViewModelBase
         IsFollowVisible = !authenticatedView && snapshot.ViewerState.Value.ViewerCanFollow;
         IsFollowing = snapshot.ViewerState.Value.ViewerIsFollowing;
 
-        ApplyReadme(snapshot.Readme.Value, user.Login);
+        await YieldOverviewFrameAsync(cancellationToken);
+
         ApplyContributions(snapshot.Contributions.Value);
+
+        await YieldOverviewFrameAsync(cancellationToken);
+
         ReplaceHighlights(snapshot.Highlights.Value);
         ReplacePinned(snapshot.PinnedItems.Value);
-        ApplyOrganizationSection(snapshot.Organizations);
-
         HasPinnedItems = PinnedItems.Count > 0;
-        HasOrganizations = Organizations.Count > 0;
         HasHighlights = Highlights.Count > 0;
+
+        await YieldOverviewFrameAsync(cancellationToken);
+
+        ApplyOrganizationSection(snapshot.Organizations);
+        HasOrganizations = Organizations.Count > 0;
+
+        await YieldOverviewFrameAsync(cancellationToken);
+
+        // Markdown is the most expensive optional surface. Publish it after the
+        // identity, graph, and bounded cards have had a chance to render.
+        ApplyReadme(snapshot.Readme.Value, user.Login);
+    }
+
+    private static async Task YieldOverviewFrameAsync(CancellationToken cancellationToken)
+    {
+        cancellationToken.ThrowIfCancellationRequested();
+        await Task.Yield();
+        cancellationToken.ThrowIfCancellationRequested();
     }
 
     private void ApplyIdentity(GitHubUser user, bool authenticatedView)
@@ -1285,6 +1332,7 @@ public sealed partial class ProfilePageViewModel : ViewModelBase
         Following.Clear();
         PublicActivity.Clear();
         Organizations.Clear();
+        CompactOrganizations.Clear();
         Highlights.Clear();
         HasPinnedItems = false;
         HasRecentRepositories = false;
@@ -1300,21 +1348,38 @@ public sealed partial class ProfilePageViewModel : ViewModelBase
     {
         HasReadme = readme.Exists && !string.IsNullOrWhiteSpace(readme.Markdown);
         ReadmeMarkdown = readme.Markdown;
+        string documentPath = string.IsNullOrWhiteSpace(readme.Path)
+            ? MarkdownDocumentSourceFactory.RepositoryRootDocumentPath
+            : readme.Path;
         string fallbackBase = string.IsNullOrWhiteSpace(login)
             ? "https://github.com/"
             : $"https://github.com/{login}/{login}/";
         ReadmeBaseUrl = string.IsNullOrWhiteSpace(readme.HtmlUrl)
             ? fallbackBase
             : readme.HtmlUrl;
+        MarkdownDocumentSource? repositoryFile = string.IsNullOrWhiteSpace(login)
+            ? null
+            : MarkdownDocumentSourceFactory.TryCreateRepositoryFile(
+                login,
+                readme.HtmlUrl,
+                documentPath);
         ReadmeDocumentSource = string.IsNullOrWhiteSpace(login)
             ? null
-            : MarkdownDocumentSourceFactory.CreateRepositoryDocument(
-                "profile-readme",
-                login,
-                login,
-                login,
-                "HEAD",
-                "README.md");
+            : repositoryFile is null
+                ? MarkdownDocumentSourceFactory.CreateRepositoryDocument(
+                    "profile-readme",
+                    login,
+                    login,
+                    login,
+                    "HEAD",
+                    documentPath)
+                : MarkdownDocumentSourceFactory.CreateRepositoryDocument(
+                    "profile-readme",
+                    login,
+                    repositoryFile.Owner!,
+                    repositoryFile.Repository!,
+                    repositoryFile.Ref,
+                    repositoryFile.Path);
         ReadmeEmptyText = ProfileText.LF(
             "Profile.Readme.RepositoryEmpty",
             "No profile README in {0}.",
@@ -1571,6 +1636,14 @@ public sealed partial class ProfilePageViewModel : ViewModelBase
             static item => item.Login,
             static item => item,
             static (existing, next) => existing.UpdateFrom(next));
+
+        ProfileOrganizationViewItem[] compactOrganizations = Organizations
+            .Take(CompactOrganizationLimit)
+            .ToArray();
+        ApplyIndexedSnapshot(
+            CompactOrganizations,
+            compactOrganizations,
+            static (current, next) => ReferenceEquals(current, next));
     }
 
     private string BuildStatus(GitHubUserProfileSnapshot snapshot)

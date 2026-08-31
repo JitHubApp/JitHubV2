@@ -209,13 +209,26 @@ public sealed partial class RepoFileCacheService : IRepoFileCacheService
                 return null;
 
             DiskEntryMeta? meta;
+            try
             {
                 await using var ms = new FileStream(metaPath, FileMode.Open, FileAccess.Read, FileShare.Read, 4096, true);
                 meta = await JsonSerializer.DeserializeAsync(ms, RepoFileCacheJsonContext.Default.DiskEntryMeta, ct).ConfigureAwait(false);
             }
-
-            if (meta is null)
+            catch (OperationCanceledException)
+            {
+                throw;
+            }
+            catch (Exception exception) when (exception is IOException or JsonException or UnauthorizedAccessException)
+            {
+                DeleteDiskFiles(key);
                 return null;
+            }
+
+            if (meta is null || meta.ByteLength < 0 || meta.CachedAt == default)
+            {
+                DeleteDiskFiles(key);
+                return null;
+            }
 
             if (DateTimeOffset.UtcNow - meta.CachedAt > _ttl)
             {
@@ -224,6 +237,11 @@ public sealed partial class RepoFileCacheService : IRepoFileCacheService
             }
 
             byte[] bytes = await File.ReadAllBytesAsync(binPath, ct).ConfigureAwait(false);
+            if (bytes.LongLength != meta.ByteLength)
+            {
+                DeleteDiskFiles(key);
+                return null;
+            }
 
             var entry = BuildEntry(key.Sha, meta, bytes);
             PromoteToMemory(MemKey(key), entry);
@@ -258,8 +276,8 @@ public sealed partial class RepoFileCacheService : IRepoFileCacheService
             string binPath = BinPath(key);
             string metaPath = MetaPath(key);
             Directory.CreateDirectory(Path.GetDirectoryName(binPath)!);
-
-            await File.WriteAllBytesAsync(binPath, effectiveEntry.Bytes, ct).ConfigureAwait(false);
+            string pendingBinPath = EnsureOwnedPath(binPath + ".pending");
+            string pendingMetaPath = EnsureOwnedPath(metaPath + ".pending");
 
             var meta = new DiskEntryMeta
             {
@@ -269,12 +287,26 @@ public sealed partial class RepoFileCacheService : IRepoFileCacheService
                 CachedAt = effectiveEntry.CachedAt,
             };
 
+            try
+            {
+                byte[] metadata = JsonSerializer.SerializeToUtf8Bytes(
+                    meta,
+                    RepoFileCacheJsonContext.Default.DiskEntryMeta);
+                await WritePendingFileAsync(pendingBinPath, effectiveEntry.Bytes, ct).ConfigureAwait(false);
+                await WritePendingFileAsync(pendingMetaPath, metadata, ct).ConfigureAwait(false);
+                ct.ThrowIfCancellationRequested();
+                File.Move(pendingBinPath, binPath, overwrite: true);
+                File.Move(pendingMetaPath, metaPath, overwrite: true);
+            }
+            finally
+            {
+                TryDeleteOwnedFile(pendingBinPath);
+                TryDeleteOwnedFile(pendingMetaPath);
+            }
+
             await _indexLock.WaitAsync(ct).ConfigureAwait(false);
             try
             {
-                await using var ms = new FileStream(metaPath, FileMode.Create, FileAccess.Write, FileShare.None, 4096, true);
-                await JsonSerializer.SerializeAsync(ms, meta, RepoFileCacheJsonContext.Default.DiskEntryMeta, ct).ConfigureAwait(false);
-
                 await AppendIndexEntryAsync(key, meta, ct).ConfigureAwait(false);
             }
             finally
@@ -458,8 +490,8 @@ public sealed partial class RepoFileCacheService : IRepoFileCacheService
                 string? detail = CacheInspectionDetail.Format(
                     integrityProblems.Concat(
                         orphanBytes > 0
-                            ? ["Unindexed repository file cache payloads are awaiting cleanup."]
-                            : []));
+                            ? (string[])["Unindexed repository file cache payloads are awaiting cleanup."]
+                            : (string[])[]));
                 return new CacheStoreInspection(
                     health,
                     physicalBytes,
@@ -703,8 +735,29 @@ public sealed partial class RepoFileCacheService : IRepoFileCacheService
 
     private void DeleteDiskFiles(RepoFileCacheKey key)
     {
-        TryDeleteOwnedFile(BinPath(key));
-        TryDeleteOwnedFile(MetaPath(key));
+        string binPath = BinPath(key);
+        string metaPath = MetaPath(key);
+        TryDeleteOwnedFile(binPath);
+        TryDeleteOwnedFile(metaPath);
+        TryDeleteOwnedFile(binPath + ".pending");
+        TryDeleteOwnedFile(metaPath + ".pending");
+    }
+
+    private static async Task WritePendingFileAsync(
+        string path,
+        ReadOnlyMemory<byte> contents,
+        CancellationToken cancellationToken)
+    {
+        await using FileStream stream = new(
+            path,
+            FileMode.Create,
+            FileAccess.Write,
+            FileShare.None,
+            4096,
+            FileOptions.Asynchronous | FileOptions.WriteThrough);
+        await stream.WriteAsync(contents, cancellationToken).ConfigureAwait(false);
+        await stream.FlushAsync(cancellationToken).ConfigureAwait(false);
+        stream.Flush(flushToDisk: true);
     }
 
     // ── Index management ─────────────────────────────────────────────────────

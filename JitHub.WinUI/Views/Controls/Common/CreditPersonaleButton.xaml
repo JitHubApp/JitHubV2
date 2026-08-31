@@ -10,34 +10,34 @@
     d:DesignWidth="400">
 
     <Button
-        Width="172"
-        Height="204"
-        Padding="0"
+        Width="{ThemeResource AppDimension172}"
+        Height="{ThemeResource AppDimension204}"
+        Padding="{ThemeResource AppPadding0}"
         AutomationProperties.AutomationId="{x:Bind Person.AutomationId, Mode=OneWay}"
         AutomationProperties.Name="{x:Bind Person.AccessibleName, Mode=OneWay}"
         Style="{StaticResource AppQuietButtonStyle}"
         HorizontalContentAlignment="Stretch"
         VerticalContentAlignment="Stretch"
         Background="{ThemeResource AppTransparentBrush}"
-        BorderThickness="0"
+        BorderThickness="{ThemeResource AppZeroThickness}"
         Click="{x:Bind OnClick, Mode=OneWay}">
         <Border
-            Width="172"
-            Height="204"
-            Padding="16"
+            Width="{ThemeResource AppDimension172}"
+            Height="{ThemeResource AppDimension204}"
+            Padding="{ThemeResource AppPadding16}"
             Background="{ThemeResource AppSurfaceBrush}"
             BorderBrush="{ThemeResource AppOutlineBrush}"
-            BorderThickness="1"
+            BorderThickness="{ThemeResource AppHairlineBorderThickness}"
             CornerRadius="{ThemeResource AppRadiusLarge}">
             <StackPanel
-                Width="140"
+                Width="{ThemeResource AppDimension140}"
                 HorizontalAlignment="Center"
                 VerticalAlignment="Center"
-                Spacing="6">
+                Spacing="{ThemeResource AppGap6}">
                 <PersonPicture
                     ProfilePicture="{x:Bind Person.ImageSource, Mode=OneWay}"
-                    Width="86"
-                    Margin="0 0 0 6"
+                    Width="{ThemeResource AppDimension86}"
+                    Margin="{ThemeResource AppMargin0_0_0_6}"
                     HorizontalAlignment="Center"/>
                 <TextBlock
                     HorizontalAlignment="Center"

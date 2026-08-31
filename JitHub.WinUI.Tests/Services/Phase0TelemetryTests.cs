@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.Diagnostics;
 using System.IO;
 using System.Linq;
 using System.Text;
@@ -7,8 +8,10 @@ using System.Text.Json;
 using System.Text.RegularExpressions;
 using System.Threading;
 using System.Threading.Tasks;
+using JitHub.Models;
 using JitHub.Services;
 using JitHub.Services.CodeViewer;
+using JitHub.WinUI.Tests.TestDoubles;
 using Xunit;
 
 namespace JitHub.WinUI.Tests.Services;
@@ -56,6 +59,9 @@ public sealed class Phase0TelemetryTests : IDisposable
     [Fact]
     public void StoreEventAllowlist_AllowsOnlyCanonicalEvents()
     {
+        Assert.True(TelemetrySanitizer.IsStoreEventAllowed("app.background_task.failed"));
+        Assert.True(TelemetrySanitizer.IsStoreEventAllowed("app.exception.handled"));
+        Assert.True(TelemetrySanitizer.IsStoreEventAllowed("app.exception.unhandled"));
         Assert.True(TelemetrySanitizer.IsStoreEventAllowed("shell.search.submitted"));
         Assert.True(TelemetrySanitizer.IsStoreEventAllowed("shell.nav.opened"));
         Assert.True(TelemetrySanitizer.IsStoreEventAllowed("shell.route.opened"));
@@ -76,8 +82,10 @@ public sealed class Phase0TelemetryTests : IDisposable
         Assert.True(TelemetrySanitizer.IsStoreEventAllowed("notifications.list.loaded"));
         Assert.True(TelemetrySanitizer.IsStoreEventAllowed("notifications.filter.changed"));
         Assert.True(TelemetrySanitizer.IsStoreEventAllowed("notifications.action.executed"));
+        Assert.True(TelemetrySanitizer.IsStoreEventAllowed("issues.filter.changed"));
         Assert.True(TelemetrySanitizer.IsStoreEventAllowed("pull_requests.opened"));
         Assert.True(TelemetrySanitizer.IsStoreEventAllowed("pull_requests.list.loaded"));
+        Assert.True(TelemetrySanitizer.IsStoreEventAllowed("pull_requests.filter.changed"));
         Assert.True(TelemetrySanitizer.IsStoreEventAllowed("pull_requests.selected"));
         Assert.True(TelemetrySanitizer.IsStoreEventAllowed("pull_requests.section.opened"));
         Assert.True(TelemetrySanitizer.IsStoreEventAllowed("pull_requests.prefetch.started"));
@@ -89,7 +97,9 @@ public sealed class Phase0TelemetryTests : IDisposable
         Assert.True(TelemetrySanitizer.IsStoreEventAllowed("commits.filter.changed"));
         Assert.True(TelemetrySanitizer.IsStoreEventAllowed("commits.section.opened"));
         Assert.True(TelemetrySanitizer.IsStoreEventAllowed("commits.diff.mode.changed"));
+        Assert.True(TelemetrySanitizer.IsStoreEventAllowed("commits.diff.prepared"));
         Assert.True(TelemetrySanitizer.IsStoreEventAllowed("commits.compare.opened"));
+        Assert.True(TelemetrySanitizer.IsStoreEventAllowed("commits.compare.refs_swapped"));
         Assert.True(TelemetrySanitizer.IsStoreEventAllowed("commits.prefetch.started"));
         Assert.True(TelemetrySanitizer.IsStoreEventAllowed("commits.prefetch.completed"));
         Assert.True(TelemetrySanitizer.IsStoreEventAllowed("commits.action.executed"));
@@ -130,8 +140,39 @@ public sealed class Phase0TelemetryTests : IDisposable
         Assert.True(TelemetrySanitizer.IsStoreEventAllowed("auth.action.executed"));
         Assert.True(TelemetrySanitizer.IsStoreEventAllowed("auth.error"));
         Assert.True(TelemetrySanitizer.IsStoreEventAllowed("repository.action.executed"));
+        Assert.True(TelemetrySanitizer.IsStoreEventAllowed(
+            "p.repo_code.action.executed.a.csv_sort.r.success.src.action"));
+        Assert.False(TelemetrySanitizer.IsStoreEventAllowed(
+            "p.repo_code.action.executed.a.owner_private_repo.r.success"));
         Assert.False(TelemetrySanitizer.IsStoreEventAllowed("shell.search.submitted.owner.repo"));
         Assert.Equal("telemetry.unknown", TelemetrySanitizer.NormalizeEventName("repo/opened/owner/repo"));
+    }
+
+    [Fact]
+    public async Task BackgroundTaskObserver_ContainsCancellationAndReportsUnexpectedFailure()
+    {
+        RecordingTelemetryService telemetry = new();
+
+        await BackgroundTaskObserver.ObserveAsync(
+            Task.FromCanceled(new CancellationToken(canceled: true)),
+            "dashboard",
+            telemetry);
+        Assert.Empty(telemetry.Events);
+
+        InvalidOperationException failure = new("test failure");
+        Exception? observedFailure = null;
+        await BackgroundTaskObserver.ObserveAsync(
+            Task.FromException(failure),
+            "dashboard",
+            telemetry,
+            exception => observedFailure = exception);
+
+        Assert.Same(failure, observedFailure);
+        RecordedTelemetryEvent recorded = Assert.Single(telemetry.Events);
+        Assert.Equal("app.background_task.failed", recorded.Name);
+        Assert.Equal("dashboard", recorded.Properties["feature"]);
+        Assert.Equal("InvalidOperationException", recorded.Properties["error_kind"]);
+        Assert.Equal("background", recorded.Properties["phase"]);
     }
 
     [Fact]
@@ -384,7 +425,13 @@ public sealed class Phase0TelemetryTests : IDisposable
             RepoCodeTelemetryActions.CsvReorder,
             RepoCodeTelemetryActions.CsvResize,
             RepoCodeTelemetryActions.CsvRichView,
-            RepoCodeTelemetryActions.CsvSort
+            RepoCodeTelemetryActions.CsvSort,
+            RepoCodeTelemetryActions.ImageZoom,
+            RepoCodeTelemetryActions.JsonPlainView,
+            RepoCodeTelemetryActions.JsonRichView,
+            RepoCodeTelemetryActions.SvgZoom,
+            RepoCodeTelemetryActions.XmlPlainView,
+            RepoCodeTelemetryActions.XmlRichView
         ]);
 
         IReadOnlyDictionary<string, string> sanitized = TelemetrySanitizer.SanitizeProperties(
@@ -435,9 +482,93 @@ public sealed class Phase0TelemetryTests : IDisposable
         trace.SetProperty("result", "success");
     }
 
+    [Fact]
+    public void TelemetryService_ProjectsSanitizedDimensionsForPartnerCenter()
+    {
+        NonBlockingDiagnosticsStore store = new();
+        CountingStoreTelemetrySink sink = new(isAvailable: true);
+        TelemetryService telemetry = new(store, sink, new MemorySettingService());
+
+        telemetry.TrackEvent(
+            "repo_code.action.executed",
+            new Dictionary<string, string?>
+            {
+                ["action"] = "csv_sort",
+                ["result"] = "success",
+                ["source"] = "action",
+                ["path"] = "private/repository/data.csv"
+            });
+
+        Assert.Equal(
+            [
+                "repo_code.action.executed",
+                "p.repo_code.action.executed.a.csv_sort.r.success.src.action"
+            ],
+            sink.Events);
+    }
+
+    [Fact]
+    public void ThemePaletteTelemetry_ProjectsTheSelectedFamilyForPartnerCenter()
+    {
+        NonBlockingDiagnosticsStore store = new();
+        CountingStoreTelemetrySink sink = new(isAvailable: true);
+        TelemetryService telemetry = new(store, sink, new MemorySettingService());
+
+        telemetry.TrackEvent(
+            "settings.action.executed",
+            new Dictionary<string, string?>
+            {
+                ["action"] = TelemetryTaxonomy.Actions.ThemePaletteChanged,
+                ["theme_palette"] = ThemePaletteIds.VisualStudioCode,
+                ["result"] = TelemetryTaxonomy.Results.Success
+            });
+
+        Assert.Equal(
+            [
+                "settings.action.executed",
+                "p.settings.action.executed.a.theme_palette_changed.r.success.tp.visual-studio-code"
+            ],
+            sink.Events);
+    }
+
+    [Theory]
+    [InlineData("ui-repo-pull-request-page", "pull_requests")]
+    [InlineData("ui-repo-file-tree-presentation", "code")]
+    [InlineData("content-dialog-presentation", "ui")]
+    [InlineData("task-unobserved", "runtime")]
+    [InlineData("diagnostics-shutdown", "telemetry")]
+    public void ExceptionCategoryClassifier_ProducesBoundedStoreFeatures(string category, string expected)
+    {
+        Assert.Equal(expected, TelemetryTaxonomy.FeatureForExceptionCategory(category));
+        AssertDimensionRoundTrips("feature", [expected]);
+    }
+
+    [Fact]
+    public void TelemetryService_ProjectsExceptionFeatureForPartnerCenter()
+    {
+        NonBlockingDiagnosticsStore store = new();
+        CountingStoreTelemetrySink sink = new(isAvailable: true);
+        TelemetryService telemetry = new(store, sink, new MemorySettingService());
+
+        telemetry.TrackEvent(
+            "app.exception.handled",
+            new Dictionary<string, string?>
+            {
+                ["error_kind"] = "XamlParseException",
+                ["feature"] = "code"
+            });
+
+        Assert.Equal(
+            [
+                "app.exception.handled",
+                "p.app.exception.handled.e.unexpected.ft.code"
+            ],
+            sink.Events);
+    }
+
     private static IEnumerable<string> ExtractTelemetryEventLiterals(string source)
     {
-        string[] methodNames = ["TrackEvent", "TrackEventSafely", "TrackStoreEvent", "TrackCategory", "TrackCacheEvent", "TrackMarkdownEvent", "StartTrace"];
+        string[] methodNames = ["TrackEvent", "TrackEventSafely", "TrackStoreEvent", "TrackCategory", "TrackCacheEvent", "TrackMarkdownEvent", "TrackExceptionTelemetry", "StartTrace"];
         foreach (string methodName in methodNames)
         {
             int searchStart = 0;
@@ -526,7 +657,7 @@ public sealed class Phase0TelemetryTests : IDisposable
         DirectoryInfo? directory = new(AppContext.BaseDirectory);
         while (directory is not null)
         {
-            if (File.Exists(Path.Combine(directory.FullName, "JitHub.slnx")) &&
+            if (File.Exists(Path.Combine(directory.FullName, "Directory.Build.props")) &&
                 Directory.Exists(Path.Combine(directory.FullName, "JitHub.WinUI")))
             {
                 return directory.FullName;
@@ -546,6 +677,75 @@ public sealed class Phase0TelemetryTests : IDisposable
         Assert.False(string.IsNullOrWhiteSpace(sink.AvailabilityStatus));
         sink.TrackEvent("shell.search.submitted");
         sink.TrackEvent("shell.search.submitted.owner.repo");
+    }
+
+    [Fact]
+    public async Task StoreTelemetrySink_PacesNativeLoggerCallsOffTheCallerThread()
+    {
+        List<long> dispatchTimes = [];
+        object dispatchGate = new();
+        Stopwatch stopwatch = Stopwatch.StartNew();
+        StoreTelemetrySink sink = new(
+            name =>
+            {
+                lock (dispatchGate)
+                {
+                    dispatchTimes.Add(stopwatch.ElapsedMilliseconds);
+                }
+            },
+            TimeSpan.FromMilliseconds(60),
+            queueCapacity: 4);
+
+        sink.TrackEvent("app.started");
+        sink.TrackEvent("shell.route.opened");
+        sink.TrackEvent("dashboard.opened");
+
+        Assert.True(await sink.WaitForIdleAsync(TimeSpan.FromSeconds(2)));
+        Assert.Equal(3, dispatchTimes.Count);
+        Assert.True(dispatchTimes[1] - dispatchTimes[0] >= 40);
+        Assert.True(dispatchTimes[2] - dispatchTimes[1] >= 40);
+    }
+
+    [Fact]
+    public async Task StoreTelemetrySink_CoalescesPendingNamesAndBoundsStartupBursts()
+    {
+        using ManualResetEventSlim firstDispatchStarted = new();
+        using ManualResetEventSlim releaseFirstDispatch = new();
+        List<string> dispatched = [];
+        object dispatchGate = new();
+        StoreTelemetrySink sink = new(
+            name =>
+            {
+                lock (dispatchGate)
+                {
+                    dispatched.Add(name);
+                }
+
+                if (name == "app.started")
+                {
+                    firstDispatchStarted.Set();
+                    Assert.True(releaseFirstDispatch.Wait(TimeSpan.FromSeconds(2)));
+                }
+            },
+            TimeSpan.Zero,
+            queueCapacity: 2);
+
+        sink.TrackEvent("app.started");
+        Assert.True(firstDispatchStarted.Wait(TimeSpan.FromSeconds(2)));
+        sink.TrackEvent("shell.route.opened");
+        sink.TrackEvent("shell.route.opened");
+        sink.TrackEvent("dashboard.opened");
+        sink.TrackEvent("dashboard.refresh.completed");
+
+        Assert.Equal(1, sink.CoalescedEventCount);
+        Assert.Equal(1, sink.DroppedEventCount);
+        Assert.Equal(3, sink.PendingEventCount);
+
+        releaseFirstDispatch.Set();
+        Assert.True(await sink.WaitForIdleAsync(TimeSpan.FromSeconds(2)));
+        Assert.Equal(
+            ["app.started", "shell.route.opened", "dashboard.opened"],
+            dispatched);
     }
 
     [Fact]
@@ -1016,9 +1216,12 @@ public sealed class Phase0TelemetryTests : IDisposable
 
         public int Count { get; private set; }
 
+        public List<string> Events { get; } = [];
+
         public void TrackEvent(string name)
         {
             Count++;
+            Events.Add(name);
         }
     }
 

@@ -564,7 +564,7 @@ public sealed partial class RepoManagePageViewModel : ViewModelBase
         }
         catch (Exception ex)
         {
-            Debug.WriteLine($"Repository deletion authorization failed: {ex}");
+            JitHub.WinUI.App.LogHandledException(ex, "repository-delete-authorization");
             StatusText = GetString(
                 "RepoManage.DeleteAuthorizationFailure",
                 "JitHub could not request repository deletion access. Try again.");
@@ -597,7 +597,7 @@ public sealed partial class RepoManagePageViewModel : ViewModelBase
 
     public void ShowUnexpectedError(Exception exception)
     {
-        Debug.WriteLine($"Repository management failed: {exception}");
+        JitHub.WinUI.App.LogHandledException(exception, "repository-management");
         StatusText = GetString(
             "RepoManage.UnexpectedErrorStatus",
             "JitHub could not manage repositories. Try again.");
@@ -927,6 +927,8 @@ public sealed partial class RepositoryLibraryViewItem : ObservableObject
 
     public string AutomationName => $"{Repository.FullName}, {KindText}";
 
+    public string OwnerAvatarUrl => Repository.Owner?.AvatarUrl ?? string.Empty;
+
     public string KindText => Repository.Archived
         ? "Archived"
         : Repository.Fork
@@ -965,6 +967,7 @@ public sealed partial class RepositoryLibraryViewItem : ObservableObject
         OnPropertyChanged(nameof(Key));
         OnPropertyChanged(nameof(AutomationId));
         OnPropertyChanged(nameof(AutomationName));
+        OnPropertyChanged(nameof(OwnerAvatarUrl));
         OnPropertyChanged(nameof(KindText));
         OnPropertyChanged(nameof(LanguageText));
         OnPropertyChanged(nameof(UpdatedText));
