@@ -47,6 +47,10 @@ jobs:
       APP_DISPLAY_NAME: ${{ vars.STORE_APP_DISPLAY_NAME }}
       BUNDLE_PLATFORMS: ${{ vars.JITHUB_STORE_BUNDLE_PLATFORMS }}
       PUBLISHER_DISPLAY_NAME: ${{ vars.STORE_PUBLISHER_DISPLAY_NAME }}
+      STORE_CLI_VERSION: v0.4.1
+      # v0.4.1 resolves an omitted --uploadTimeout to zero (microsoft/msstore-cli#162).
+      # Keep an explicit value until a release containing the upstream fix is validated.
+      STORE_UPLOAD_TIMEOUT_SECONDS: 900
       TARGET_PLATFORM_VERSION: 10.0.26100.0
       STORE_CLIENT_ID: ${{ secrets.STORE_CLIENT_ID }}
       STORE_CLIENT_SECRET: ${{ secrets.STORE_CLIENT_SECRET }}
@@ -70,11 +74,26 @@ jobs:
           global-json-file: ./global.json
 
       - name: Set up Microsoft Store CLI
-        uses: microsoft/microsoft-store-apppublisher@v1.3
+        uses: microsoft/microsoft-store-apppublisher@v1.4
+        with:
+          # v0.4.1 is the first release with the Native AOT upload progress fix.
+          # Keep this pinned until a newer CLI release is validated here.
+          version: ${{ env.STORE_CLI_VERSION }}
 
       - name: Verify Microsoft Store CLI
         shell: pwsh
-        run: msstore --help
+        run: |
+          $ErrorActionPreference = 'Stop'
+
+          & msstore --version
+          if ($LASTEXITCODE -ne 0) {
+            throw "msstore --version failed with exit code $LASTEXITCODE."
+          }
+
+          & msstore --help
+          if ($LASTEXITCODE -ne 0) {
+            throw "msstore --help failed with exit code $LASTEXITCODE."
+          }
 
       - name: Patch Store manifest values
         shell: pwsh
@@ -183,6 +202,11 @@ jobs:
           $submissionMode = '${{ inputs.store_submission_mode }}'
           $flightId = '${{ inputs.store_flight_id }}'
           $rolloutPercentage = '${{ inputs.package_rollout_percentage }}'
+          $uploadTimeoutSeconds = 0L
+
+          if (-not [long]::TryParse($env:STORE_UPLOAD_TIMEOUT_SECONDS, [ref]$uploadTimeoutSeconds) -or $uploadTimeoutSeconds -lt 100) {
+            throw 'STORE_UPLOAD_TIMEOUT_SECONDS must be an integer of at least 100 seconds.'
+          }
 
           if ($submissionMode -eq 'flight' -and [string]::IsNullOrWhiteSpace($flightId)) {
             throw 'store_flight_id is required when store_submission_mode is flight.'
@@ -197,7 +221,9 @@ jobs:
             'publish',
             $uploadPackage,
             '--appId',
-            "$env:STORE_PRODUCT_ID"
+            "$env:STORE_PRODUCT_ID",
+            '--uploadTimeout',
+            $uploadTimeoutSeconds.ToString([System.Globalization.CultureInfo]::InvariantCulture)
           )
 
           if ($submissionMode -in @('draft', 'public')) {
@@ -220,8 +246,9 @@ jobs:
           }
 
           & msstore @publishArgs
-          if ($LASTEXITCODE -ne 0) {
-            throw 'msstore publish failed.'
+          $publishExitCode = $LASTEXITCODE
+          if ($publishExitCode -ne 0) {
+            throw "msstore publish failed with exit code $publishExitCode."
           }
 
           if ($submissionMode -ne 'flight') {
