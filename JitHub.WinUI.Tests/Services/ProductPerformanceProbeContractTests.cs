@@ -118,7 +118,7 @@ public sealed class ProductPerformanceProbeContractTests
                 "Views",
                 "Pages",
                 fileName));
-            Assert.Contains(expectedProbe, source, StringComparison.Ordinal);
+            Assert.Contains(expectedProbe, source.ReplaceLineEndings("\n"), StringComparison.Ordinal);
             Assert.Contains("_performanceScrollProbe?.Dispose()", source, StringComparison.Ordinal);
         }
     }
@@ -900,7 +900,10 @@ public sealed class ProductPerformanceProbeContractTests
         Assert.Contains("DispatcherQueuePriority.Low", codePreviewSource, StringComparison.Ordinal);
         Assert.Contains("generation == Volatile.Read(ref _bindingUpdateGeneration)", codePreviewSource, StringComparison.Ordinal);
         Assert.Contains("e.PropertyName == nameof(RepoFilePreviewViewModel.Text)", codePreviewSource, StringComparison.Ordinal);
-        Assert.Contains("Interlocked.Increment(ref _bindingUpdateGeneration);\n            ApplyPreviewBindings();", codePreviewSource, StringComparison.Ordinal);
+        Assert.Contains(
+            "Interlocked.Increment(ref _bindingUpdateGeneration);\n            ApplyPreviewBindings();",
+            codePreviewSource.ReplaceLineEndings("\n"),
+            StringComparison.Ordinal);
 
         string pullRequestQueryService = File.ReadAllText(Path.Combine(
             root,
