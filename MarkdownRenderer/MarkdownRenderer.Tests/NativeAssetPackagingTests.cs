@@ -55,14 +55,31 @@ public class NativeAssetPackagingTests
 
     private static string FindCoreProjectRoot()
     {
-        var directory = new DirectoryInfo(AppContext.BaseDirectory);
-        while (directory is not null)
+        string[] searchRoots = [AppContext.BaseDirectory, Directory.GetCurrentDirectory()];
+        foreach (string searchRoot in searchRoots.Distinct(StringComparer.OrdinalIgnoreCase))
         {
-            string candidate = Path.Combine(directory.FullName, "MarkdownRenderer");
-            if (File.Exists(Path.Combine(candidate, "MarkdownRenderer.csproj")))
-                return candidate;
+            var directory = new DirectoryInfo(searchRoot);
+            while (directory is not null)
+            {
+                if (File.Exists(Path.Combine(directory.FullName, "MarkdownRenderer.csproj")))
+                {
+                    return directory.FullName;
+                }
 
-            directory = directory.Parent;
+                string candidate = Path.Combine(directory.FullName, "MarkdownRenderer");
+                if (File.Exists(Path.Combine(candidate, "MarkdownRenderer.csproj")))
+                {
+                    return candidate;
+                }
+
+                string nestedCandidate = Path.Combine(candidate, "MarkdownRenderer");
+                if (File.Exists(Path.Combine(nestedCandidate, "MarkdownRenderer.csproj")))
+                {
+                    return nestedCandidate;
+                }
+
+                directory = directory.Parent;
+            }
         }
 
         throw new DirectoryNotFoundException("Could not locate the MarkdownRenderer project root.");

@@ -1,5 +1,8 @@
 using System;
 using System.Text.Json.Serialization;
+using JitHub.Services;
+using JitHub.Services.Markdown;
+using MarkdownRenderer.Images;
 
 namespace JitHub.Models.GitHub;
 
@@ -30,6 +33,9 @@ public sealed partial class GitHubCommit
     [JsonPropertyName("files")]
     public GitHubCommitFile[] Files { get; set; } = [];
 
+    [JsonPropertyName("parents")]
+    public GitHubCommitParent[] Parents { get; set; } = [];
+
     [JsonIgnore]
     public string SummaryMessage
     {
@@ -51,10 +57,33 @@ public sealed partial class GitHubCommit
     public string AuthorDisplayName => Commit.Author.Name ?? Author?.Login ?? "Unknown author";
 
     [JsonIgnore]
+    public string? AuthorProfileLogin => UserIdentityNavigationPolicy.GetRoutableLogin(Author?.Login);
+
+    [JsonIgnore]
+    public string AuthorAvatarUrl => Author?.AvatarUrl ?? string.Empty;
+
+    [JsonIgnore]
+    public DateTimeOffset? AuthorDate => Commit.Author.Date;
+
+    [JsonIgnore]
     public string TimestampDisplayText => Commit.Author.Date?.LocalDateTime.ToString("g") ?? "Unknown time";
 
     [JsonIgnore]
     public string ShortSha => Sha[..Math.Min(7, Sha.Length)];
+
+    [JsonIgnore]
+    public string AutomationId => $"RepoCommitRow_{(string.IsNullOrWhiteSpace(Sha) ? "unknown" : Sha)}";
+
+    [JsonIgnore]
+    public string AutomationName => $"Commit {ShortSha}: {SummaryMessage}, by {AuthorDisplayName}";
+
+    [JsonIgnore]
+    public MarkdownDocumentSource? MarkdownSource =>
+        MarkdownDocumentSourceFactory.TryCreateFromGitHubUrl(
+            "commit-message",
+            Sha,
+            HtmlUrl,
+            Sha);
 }
 
 [WinRT.GeneratedBindableCustomProperty]
@@ -71,6 +100,9 @@ public sealed partial class GitHubCommitInfo
 
     [JsonPropertyName("committer")]
     public GitHubCommitSignature Committer { get; set; } = new();
+
+    [JsonPropertyName("verification")]
+    public GitHubCommitVerification Verification { get; set; } = new();
 }
 
 [WinRT.GeneratedBindableCustomProperty]
@@ -100,6 +132,36 @@ public sealed partial class GitHubCommitStats
 
     [JsonIgnore]
     public string SummaryText => $"+{Additions}  -{Deletions}  ({Total} changes)";
+}
+
+[WinRT.GeneratedBindableCustomProperty]
+public sealed partial class GitHubCommitVerification
+{
+    [JsonPropertyName("verified")]
+    public bool Verified { get; set; }
+
+    [JsonPropertyName("reason")]
+    public string? Reason { get; set; }
+
+    [JsonPropertyName("verified_at")]
+    public DateTimeOffset? VerifiedAt { get; set; }
+
+    [JsonIgnore]
+    public string DisplayText => Verified ? "Verified" : string.IsNullOrWhiteSpace(Reason) ? "Unverified" : Reason!;
+}
+
+[WinRT.GeneratedBindableCustomProperty]
+public sealed partial class GitHubCommitParent
+{
+    [JsonPropertyName("sha")]
+    public string Sha { get; set; } = string.Empty;
+
+    [JsonPropertyName("html_url")]
+    public string? HtmlUrl { get; set; }
+
+    [JsonIgnore]
+    public string ShortSha => Sha[..Math.Min(7, Sha.Length)];
+
 }
 
 [WinRT.GeneratedBindableCustomProperty]

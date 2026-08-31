@@ -6,12 +6,16 @@
         <StackPanel Orientation="Horizontal">
             <CheckBox
                 Grid.Column="0"
+                AutomationProperties.AutomationId="{Binding AutomationId}"
+                AutomationProperties.Name="{Binding AutomationName}"
                 Command="{Binding SelectionCommand, Mode=OneWay}"
                 CommandParameter="{Binding Item, Mode=OneWay}"
                 IsChecked="{Binding Selected, Mode=TwoWay}"
                 Visibility="{Binding Selectable, Converter={StaticResource BoolToVisibilityConverter}, Mode=OneWay}">
                 <common:Avatar
                     Grid.Column="1"
+                    AutomationInstanceId="{Binding AutomationId, Mode=OneWay}"
+                    IsProfileNavigationEnabled="False"
                     Login="{Binding Login, Mode=OneWay}"
                     ShowLogin="True"
                     Size="MEDIUM"
@@ -19,7 +23,9 @@
             </CheckBox>
             <common:Avatar
                 Grid.Column="1"
+                AutomationInstanceId="{Binding AutomationId, Mode=OneWay}"
                 Login="{Binding Login, Mode=OneWay}"
+                NavigationSource="selectable_user"
                 ShowLogin="True"
                 Size="MEDIUM"
                 Url="{Binding AvatarUrl, Mode=OneWay}"

@@ -2,7 +2,14 @@
     xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
     xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml">
     <CornerRadius x:Key="AppRadiusSmall">5</CornerRadius>
+    <CornerRadius x:Key="AppRadiusControl">6</CornerRadius>
+    <CornerRadius x:Key="AppRadiusSelectionIndicator">3</CornerRadius>
     <CornerRadius x:Key="AppRadiusMedium">8</CornerRadius>
     <CornerRadius x:Key="AppRadiusLarge">12</CornerRadius>
     <CornerRadius x:Key="AppRadiusPill">8</CornerRadius>
+    <CornerRadius x:Key="AppRadiusNone">0</CornerRadius>
+    <CornerRadius x:Key="AppRadiusTight">2</CornerRadius>
+    <CornerRadius x:Key="AppRadiusCircle">999</CornerRadius>
+    <CornerRadius x:Key="AppRadiusTopMedium">8,8,0,0</CornerRadius>
+    <CornerRadius x:Key="AppRadiusBottomMedium">0,0,8,8</CornerRadius>
 </ResourceDictionary>

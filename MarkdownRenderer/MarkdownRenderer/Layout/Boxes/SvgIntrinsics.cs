@@ -11,6 +11,24 @@ namespace MarkdownRenderer.Layout.Boxes;
 /// </summary>
 internal static class SvgIntrinsics
 {
+    public readonly record struct SvgRootGeometry(
+        double IntrinsicWidth,
+        double IntrinsicHeight,
+        double ViewBoxX,
+        double ViewBoxY,
+        double ViewBoxWidth,
+        double ViewBoxHeight)
+    {
+        public bool HasIntrinsicSize => IntrinsicWidth > 0 && IntrinsicHeight > 0;
+        public bool HasViewBox => ViewBoxWidth > 0 && ViewBoxHeight > 0;
+
+        public double UserUnitToViewportScaleX =>
+            HasViewBox && IntrinsicWidth > 0 ? IntrinsicWidth / ViewBoxWidth : 1;
+
+        public double UserUnitToViewportScaleY =>
+            HasViewBox && IntrinsicHeight > 0 ? IntrinsicHeight / ViewBoxHeight : 1;
+    }
+
     /// <summary>
     /// Returns true if the URL appears to refer to an SVG resource — either
     /// because its path ends with <c>.svg</c> (ignoring query/hash) or
@@ -32,33 +50,63 @@ internal static class SvgIntrinsics
     /// </summary>
     public static (double Width, double Height) TryExtractIntrinsicSize(byte[]? svgBytes)
     {
-        if (svgBytes is null || svgBytes.Length == 0) return (0, 0);
+        var geometry = TryExtractRootGeometry(svgBytes);
+        return (geometry.IntrinsicWidth, geometry.IntrinsicHeight);
+    }
+
+    /// <summary>
+    /// Parses the SVG root for both its displayed viewport size and its
+    /// internal viewBox coordinate space. Badge SVGs often declare a small
+    /// CSS viewport such as 154x20 while drawing in a 1540x200 viewBox; image
+    /// layout must use the viewport, while SVG text coordinates must use the
+    /// viewBox mapping.
+    /// </summary>
+    public static SvgRootGeometry TryExtractRootGeometry(byte[]? svgBytes)
+    {
+        if (svgBytes is null || svgBytes.Length == 0) return default;
         try
         {
             string xml = System.Text.Encoding.UTF8.GetString(svgBytes);
             int rootStart = xml.IndexOf("<svg", StringComparison.OrdinalIgnoreCase);
-            if (rootStart < 0) return (0, 0);
+            if (rootStart < 0) return default;
             int rootEnd = xml.IndexOf('>', rootStart);
-            if (rootEnd < 0) return (0, 0);
+            if (rootEnd < 0) return default;
             string opening = xml.Substring(rootStart, rootEnd - rootStart);
 
             double width = ParseAttribute(opening, "width");
             double height = ParseAttribute(opening, "height");
-            if (width > 0 && height > 0) return (width, height);
 
+            double viewBoxX = 0;
+            double viewBoxY = 0;
+            double viewBoxWidth = 0;
+            double viewBoxHeight = 0;
             string? vb = ParseStringAttribute(opening, "viewBox");
             if (vb is not null)
             {
                 var parts = vb.Split(new[] { ' ', ',' }, StringSplitOptions.RemoveEmptyEntries);
                 if (parts.Length == 4
+                    && double.TryParse(parts[0], System.Globalization.NumberStyles.Float, System.Globalization.CultureInfo.InvariantCulture, out var vx)
+                    && double.TryParse(parts[1], System.Globalization.NumberStyles.Float, System.Globalization.CultureInfo.InvariantCulture, out var vy)
                     && double.TryParse(parts[2], System.Globalization.NumberStyles.Float, System.Globalization.CultureInfo.InvariantCulture, out var vw)
                     && double.TryParse(parts[3], System.Globalization.NumberStyles.Float, System.Globalization.CultureInfo.InvariantCulture, out var vh)
                     && vw > 0 && vh > 0)
-                    return (vw, vh);
+                {
+                    viewBoxX = vx;
+                    viewBoxY = vy;
+                    viewBoxWidth = vw;
+                    viewBoxHeight = vh;
+                }
             }
-            return (0, 0);
+
+            if (width <= 0 || height <= 0)
+            {
+                width = viewBoxWidth;
+                height = viewBoxHeight;
+            }
+
+            return new SvgRootGeometry(width, height, viewBoxX, viewBoxY, viewBoxWidth, viewBoxHeight);
         }
-        catch { return (0, 0); }
+        catch { return default; }
     }
 
     private static double ParseAttribute(string element, string attr)

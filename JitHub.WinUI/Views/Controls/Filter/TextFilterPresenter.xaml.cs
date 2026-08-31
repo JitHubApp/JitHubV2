@@ -1,4 +1,5 @@
 using JitHub.Models.Filter;
+using System.Linq;
 using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Controls;
 
@@ -23,6 +24,8 @@ public sealed partial class TextFilterPresenter : UserControl
     private TextFilter? TypedFilter => Filter as TextFilter;
 
     public string Title => TypedFilter?.Title ?? string.Empty;
+
+    public string AutomationId => $"TextFilter_{string.Concat(Title.Where(char.IsLetterOrDigit))}";
 
     public string Text
     {

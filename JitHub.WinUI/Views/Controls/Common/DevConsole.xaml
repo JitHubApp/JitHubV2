@@ -13,12 +13,12 @@
         <viewmodels:DevConsoleViewModel x:Name="ViewModel"/>
     </UserControl.DataContext>
     <Grid
-        Padding="16"
-        MinHeight="240">
+        Padding="{ThemeResource AppPadding16}"
+        MinHeight="{ThemeResource AppDimension240}">
         <StackPanel>
             <TextBlock
                 IsTextSelectionEnabled="True">
-                <Run Text="Token: " FontWeight="ExtraBold"/>
+                <Run Text="Token: " FontWeight="{ThemeResource AppFontWeightExtraBold}"/>
                 <Run Text="{x:Bind ViewModel.Token, Mode=OneWay}"/>
             </TextBlock>
         </StackPanel>

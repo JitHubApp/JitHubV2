@@ -10,49 +10,66 @@
     x:DataType="viewmodels:LoginPageViewModel"
     mc:Ignorable="d">
     <Grid
-        AutomationProperties.AutomationId="LoginRoot"
+        x:Uid="PagesLoginPageLoginRoot" AutomationProperties.AutomationId="LoginRoot"
+        AutomationProperties.Name="GitHub sign in"
         Padding="{ThemeResource AppPagePadding}"
         Background="{ThemeResource AppCanvasBrush}">
         <ScrollViewer VerticalScrollBarVisibility="Auto">
             <Grid
                 MaxWidth="{ThemeResource AppLoginPageMaxWidth}"
-                Margin="0,40,0,40"
+                Margin="{ThemeResource AppMargin0_40_0_40}"
                 HorizontalAlignment="Center"
                 VerticalAlignment="Center">
                 <StackPanel
-                    MaxWidth="760"
-                    Spacing="24"
+                    MaxWidth="{ThemeResource AppDimension760}"
+                    Spacing="{ThemeResource AppGap24}"
                     VerticalAlignment="Center">
                     <StackPanel
-                        MaxWidth="640"
-                        Spacing="0">
+                        MaxWidth="{ThemeResource AppDimension640}"
+                        Spacing="{ThemeResource AppGap0}">
                         <TextBlock
                             Style="{StaticResource PageTitleTextBlockStyle}"
-                            Text="{Binding AppTitle}" />
+                            Text="{x:Bind ViewModel.AppTitle, Mode=OneWay}" />
                     </StackPanel>
 
                     <appcontrols:AppSurfaceCard
-                        MaxWidth="460"
+                        x:Uid="PagesLoginPageLoginCard" MaxWidth="{ThemeResource AppDimension460}"
                         HorizontalAlignment="Left"
-                        AutomationProperties.AutomationId="LoginCard">
+                        AutomationProperties.AutomationId="LoginCard"
+                        AutomationProperties.Name="GitHub sign in">
                         <appcontrols:AppSurfaceCard.Child>
-                            <StackPanel Spacing="16">
+                            <StackPanel Spacing="{ThemeResource AppGap16}">
                                 <TextBlock
                                     Style="{StaticResource SectionTitleTextBlockStyle}"
-                                    Text="{Binding SignInTitle}" />
+                                    Text="{x:Bind ViewModel.SignInTitle, Mode=OneWay}" />
                                 <TextBlock
+                                    AutomationProperties.AutomationId="LoginStatusText"
                                     Style="{StaticResource SectionSecondaryTextBlockStyle}"
-                                    Text="{Binding StatusText}"
+                                    Text="{x:Bind ViewModel.StatusText, Mode=OneWay}"
                                     TextWrapping="WrapWholeWords" />
+                                <InfoBar
+                                    x:Uid="PagesLoginPageLoginErrorInfoBar" x:Name="LoginErrorInfoBar"
+                                    AutomationProperties.AutomationId="LoginErrorInfoBar"
+                                    AutomationProperties.LiveSetting="Assertive"
+                                    AutomationProperties.Name="GitHub sign-in error"
+                                    IsClosable="False"
+                                    IsOpen="{x:Bind ViewModel.HasLoginError, Mode=OneWay}"
+                                    Message="{x:Bind ViewModel.LoginErrorMessage, Mode=OneWay}"
+                                    Severity="Error"
+                                    Style="{StaticResource AppErrorInfoBarStyle}"
+                                    Title="{x:Bind ViewModel.LoginErrorTitle, Mode=OneWay}" />
                                 <Button
+                                    x:Uid="PagesLoginPageLoginSignInButton" x:Name="LoginSignInButton"
+                                    AutomationProperties.AutomationId="LoginSignInButton"
+                                    AutomationProperties.Name="Continue with GitHub"
                                     Click="LoginButton_Click"
-                                    IsEnabled="{Binding IsLoginEnabled}"
+                                    IsEnabled="{x:Bind ViewModel.IsLoginEnabled, Mode=OneWay}"
                                     Style="{StaticResource PrimaryActionButtonStyle}">
                                     <StackPanel
                                         Orientation="Horizontal"
-                                        Spacing="8">
-                                        <FontIcon Glyph="&#xE72E;" />
-                                        <TextBlock Text="{Binding ContinueWithGitHubButtonText}" />
+                                        Spacing="{ThemeResource AppGap8}">
+                                        <FontIcon VerticalAlignment="Center" Glyph="&#xE72E;" />
+                                        <TextBlock VerticalAlignment="Center" Text="{x:Bind ViewModel.ContinueWithGitHubButtonText, Mode=OneWay}" />
                                     </StackPanel>
                                 </Button>
                             </StackPanel>

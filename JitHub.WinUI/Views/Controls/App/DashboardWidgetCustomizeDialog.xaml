@@ -1,0 +1,140 @@
+<?xml version="1.0" encoding="utf-8"?>
+<UserControl
+    x:Class="JitHub.WinUI.Views.Controls.App.DashboardWidgetCustomizeDialog"
+    xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+    xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+    xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+    xmlns:viewmodels="using:JitHub.WinUI.ViewModels.Pages"
+    x:DataType="viewmodels:DashboardPageViewModel"
+    mc:Ignorable="d">
+    <UserControl.Resources>
+        <DataTemplate x:Key="CustomizeWidgetTemplate" x:DataType="viewmodels:DashboardWidgetCustomizeItem">
+            <Border
+                Margin="{ThemeResource AppMargin0_0_0_8}"
+                Padding="{ThemeResource AppPadding12}"
+                Background="{ThemeResource AppSurfaceSubtleBrush}"
+                BorderBrush="{ThemeResource AppHairlineBrush}"
+                BorderThickness="{ThemeResource AppHairlineBorderThickness}"
+                CornerRadius="{ThemeResource AppRadiusSmall}">
+                <Grid ColumnSpacing="{ThemeResource AppGap12}" RowSpacing="{ThemeResource AppGap8}">
+                    <Grid.RowDefinitions>
+                        <RowDefinition Height="Auto" />
+                        <RowDefinition Height="Auto" />
+                    </Grid.RowDefinitions>
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="{ThemeResource AppGridLength32}" />
+                        <ColumnDefinition Width="*" />
+                        <ColumnDefinition Width="Auto" />
+                    </Grid.ColumnDefinitions>
+                    <FontIcon
+                        VerticalAlignment="Center"
+                        FontFamily="{StaticResource SegoeFluentIcons}"
+                        FontSize="{ThemeResource AppFontSize18}"
+                        Foreground="{ThemeResource AppAccentBrush}"
+                        Glyph="{x:Bind Glyph}" />
+                    <StackPanel Grid.Column="1" VerticalAlignment="Center" Spacing="{ThemeResource AppGap2}">
+                        <TextBlock
+                            FontWeight="{ThemeResource AppFontWeightSemibold}"
+                            Foreground="{ThemeResource AppInkBrush}"
+                            Text="{x:Bind Title, Mode=OneWay}"
+                            TextTrimming="CharacterEllipsis" />
+                        <TextBlock
+                            Style="{StaticResource SectionSecondaryTextBlockStyle}"
+                            Text="{x:Bind RailLabel, Mode=OneWay}" />
+                    </StackPanel>
+                    <StackPanel
+                        Grid.Row="1"
+                        Grid.Column="1"
+                        Grid.ColumnSpan="2"
+                        HorizontalAlignment="Right"
+                        Orientation="Horizontal"
+                        Spacing="{ThemeResource AppGap4}">
+                        <ToggleSwitch
+                            MinWidth="{ThemeResource AppDimension0}"
+                            AutomationProperties.AutomationId="{x:Bind VisibilityAutomationId}"
+                            AutomationProperties.Name="{x:Bind VisibilityAutomationName}"
+                            IsOn="{x:Bind IsVisible, Mode=TwoWay}" />
+                        <Button
+                            AutomationProperties.AutomationId="{x:Bind MoveUpAutomationId}"
+                            AutomationProperties.Name="{x:Bind MoveUpAutomationName}"
+                            Command="{x:Bind MoveUpCommand}"
+                            Style="{StaticResource AppToolbarButtonStyle}">
+                            <FontIcon FontFamily="{StaticResource SegoeFluentIcons}" Glyph="&#xE74A;" />
+                        </Button>
+                        <Button
+                            AutomationProperties.AutomationId="{x:Bind MoveDownAutomationId}"
+                            AutomationProperties.Name="{x:Bind MoveDownAutomationName}"
+                            Command="{x:Bind MoveDownCommand}"
+                            Style="{StaticResource AppToolbarButtonStyle}">
+                            <FontIcon FontFamily="{StaticResource SegoeFluentIcons}" Glyph="&#xE74B;" />
+                        </Button>
+                        <Button
+                            AutomationProperties.AutomationId="{x:Bind ToggleRailAutomationId}"
+                            AutomationProperties.Name="{x:Bind ToggleRailLabel}"
+                            Command="{x:Bind ToggleRailCommand}"
+                            Style="{StaticResource AppQuietButtonStyle}">
+                            <TextBlock Text="{x:Bind ToggleRailLabel, Mode=OneWay}" />
+                        </Button>
+                    </StackPanel>
+                </Grid>
+            </Border>
+        </DataTemplate>
+    </UserControl.Resources>
+
+    <Grid
+        x:Uid="DashboardCustomizeDialog" MinWidth="{ThemeResource AppDimension0}"
+        MaxWidth="{ThemeResource AppDimension720}"
+        MaxHeight="{ThemeResource AppDimension620}"
+        HorizontalAlignment="Stretch"
+        Padding="{ThemeResource AppPadding18}"
+        AutomationProperties.AutomationId="DashboardCustomizeDialog"
+        AutomationProperties.Name="Customize Home"
+        RowSpacing="{ThemeResource AppGap14}">
+        <Grid.RowDefinitions>
+            <RowDefinition Height="Auto" />
+            <RowDefinition Height="*" />
+            <RowDefinition Height="Auto" />
+        </Grid.RowDefinitions>
+        <StackPanel Spacing="{ThemeResource AppGap2}">
+            <TextBlock
+                x:Uid="ControlsAppDashboardWidgetCustomizeDialogTextBlockCustom" FontFamily="{ThemeResource AppDisplayFontFamily}"
+                FontSize="{ThemeResource AppFontSize24}"
+                Foreground="{ThemeResource AppInkBrush}"
+                Text="Customize Home" />
+            <TextBlock
+                x:Uid="ControlsAppDashboardWidgetCustomizeDialogTextBlockShowHi" Style="{StaticResource SectionSecondaryTextBlockStyle}"
+                Text="Show, hide, reorder, and move widgets between rails." />
+        </StackPanel>
+        <ScrollViewer Grid.Row="1" VerticalScrollBarVisibility="Auto" VerticalScrollMode="Auto">
+            <ItemsControl
+                ItemTemplate="{StaticResource CustomizeWidgetTemplate}"
+                ItemsSource="{Binding CustomizeItems}" />
+        </ScrollViewer>
+        <StackPanel
+            Grid.Row="2"
+            HorizontalAlignment="Right"
+            Orientation="Horizontal"
+            Spacing="{ThemeResource AppGap8}">
+            <Button
+                x:Uid="DashboardCustomizeResetButton" AutomationProperties.AutomationId="DashboardCustomizeResetButton"
+                AutomationProperties.Name="Reset dashboard widgets to defaults"
+                Command="{Binding ResetCustomizeCommand}"
+                Content="Reset defaults"
+                Style="{StaticResource AppQuietButtonStyle}" />
+            <Button
+                x:Uid="DashboardCustomizeCancelButton" AutomationProperties.AutomationId="DashboardCustomizeCancelButton"
+                AutomationProperties.Name="Cancel dashboard customization"
+                Command="{Binding CancelCustomizeCommand}"
+                Content="Cancel"
+                Style="{StaticResource AppQuietButtonStyle}" />
+            <Button
+                x:Uid="DashboardCustomizeSaveButton" x:Name="SaveButton"
+                AutomationProperties.AutomationId="DashboardCustomizeSaveButton"
+                AutomationProperties.Name="Save dashboard customization"
+                Click="SaveButton_Click"
+                Content="Save"
+                Style="{StaticResource AppAccentButtonStyle}" />
+        </StackPanel>
+    </Grid>
+</UserControl>

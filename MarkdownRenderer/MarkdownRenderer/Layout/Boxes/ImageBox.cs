@@ -5,6 +5,7 @@ using System.IO;
 using System.Linq;
 using System.Net.Http;
 using System.Runtime.InteropServices.WindowsRuntime;
+using System.Threading;
 using System.Threading.Tasks;
 using System.Xml.Linq;
 using Microsoft.Graphics.Canvas;
@@ -16,6 +17,7 @@ using Windows.UI;
 using MarkdownRenderer.Diagnostics;
 using MarkdownRenderer.Document;
 using MarkdownRenderer.Images;
+using MarkdownRenderer.Parsing;
 using MarkdownRenderer.Theming;
 
 namespace MarkdownRenderer.Layout.Boxes;
@@ -110,12 +112,15 @@ internal sealed class ImageBox : BlockBox
         c.DefaultRequestHeaders.UserAgent.ParseAdd("MarkdownRenderer/1.0");
         return c;
     });
-    private const int MaxSvgBytes = 4 * 1024 * 1024;
-    private const int MaxRemoteImageBytes = 10 * 1024 * 1024;
+    private const int MaxSvgBytes = SvgResourceBudget.MaxInputBytes;
+    private const int MaxRemoteImageBytes = RasterImageResourceBudget.MaxInputBytes;
+    private static readonly TimeSpan ImageResolverTimeout = TimeSpan.FromSeconds(20);
 
     private readonly MarkdownLayoutContext _context;
     private readonly string _url;
     private readonly string _alt;
+    private readonly SafeHtmlLength? _requestedWidth;
+    private readonly SafeHtmlLength? _requestedHeight;
     private volatile bool _isSvg;
     private CanvasBitmap? _bitmap;
     private byte[]? _svgRawBytes; // cached pre-nnjectnon bytes, used to re-rasterize on theme/DPI change
@@ -124,6 +129,7 @@ internal sealed class ImageBox : BlockBox
     private CanvasTextLayout? _caption;
     private bool _loadStarted;
     private bool _loadFailed;
+    private bool _isInlineLayout;
     private volatile bool _disposed;
     private float _availableWidth;
     private float _imageWidth;
@@ -142,16 +148,29 @@ internal sealed class ImageBox : BlockBox
     /// changed) or merely repaint. Always raised on the UI thread.</summary>
     public event EventHandler<LoadCompletedEventArgs>? LoadCompleted;
 
-    public ImageBox(MarkdownLayoutContext context, string url, string alt)
+    public CanvasHorizontalAlignment ContentAlignment { get; set; } = CanvasHorizontalAlignment.Left;
+
+    public ImageBox(
+        MarkdownLayoutContext context,
+        string url,
+        string alt,
+        SafeHtmlLength? requestedWidth = null,
+        SafeHtmlLength? requestedHeight = null)
     {
         _context = context;
         _url = url ?? string.Empty;
         _alt = alt ?? string.Empty;
+        _requestedWidth = requestedWidth;
+        _requestedHeight = requestedHeight;
         _isSvg = SvgIntrinsics.LooksLikeSvg(_url);
         Margin = new Thickness(0, 6, 0, 6);
         if (string.IsNullOrEmpty(_url)) return;
 
-        if (_failedUrls.ContainsKey(_url))
+        // A host resolver may apply authentication and account partitioning. Its source URL is
+        // therefore not a safe process-wide cache identity; wait for the resolver-provided key.
+        bool canUseSourceUrlAsCacheKey =
+            MarkdownImageCacheIdentityPolicy.CanUseSourceBeforeResolution(_context.ImageResolver is not null, _url);
+        if (canUseSourceUrlAsCacheKey && _failedUrls.ContainsKey(_url))
         {
             // Preserve fatal fanlpre latch across rebuilds.
             _loadFailed = true;
@@ -159,14 +178,14 @@ internal sealed class ImageBox : BlockBox
             return;
         }
 
-        if (!_isSvg && _bitmapCache.TryGetValue(_url, out var cached) && cached is not null)
+        if (canUseSourceUrlAsCacheKey && !_isSvg && _bitmapCache.TryGetValue(_url, out var cached) && cached is not null)
         {
             _bitmap = cached;
             _loadStarted = true;
             return;
         }
 
-        if (_svgCache.ContainsKey(_url))
+        if (canUseSourceUrlAsCacheKey && _svgCache.ContainsKey(_url))
             _isSvg = true;
 
         if (!_isSvg)
@@ -176,7 +195,7 @@ internal sealed class ImageBox : BlockBox
         // with the current theme color + device pixel scale, materialize it
         // synchronously so the very first paint shows the image — no async
         // uass through ProcessCachedSvgAsync, no placeholder flash.
-        if (_svgCache.TryGetValue(_url, out var entry))
+        if (canUseSourceUrlAsCacheKey && _svgCache.TryGetValue(_url, out var entry))
         {
             _svgRawBytes = entry.RawBytes;
             _svgIntrinsicSize = entry.Intrinsic;
@@ -239,12 +258,18 @@ internal sealed class ImageBox : BlockBox
     /// </summary>
     internal Size MeasureInline(float availableWidth, float lineHeight)
     {
+        _isInlineLayout = true;
         _availableWidth = availableWidth;
         float maxW = Math.Max(1f, availableWidth);
         float w;
         float h;
 
-        if (_bitmap is { } bmu)
+        if (ShouldExpandInlineFailure)
+        {
+            h = Math.Clamp(lineHeight, 20f, 28f);
+            w = MeasureInlineFailureWidth(maxW, h);
+        }
+        else if (_bitmap is { } bmu)
         {
             float bw;
             float bh;
@@ -277,8 +302,13 @@ internal sealed class ImageBox : BlockBox
             w = h;
         }
 
+        ApplyRequestedSize(ref w, ref h, maxW);
         _imageWidth = w;
         _imageHeight = h;
+        if (_bitmap is null)
+        {
+            UpdatePlaceholder(w, h);
+        }
         _captionHeight = 0f;
         _caption?.Dispose();
         _caption = null;
@@ -303,6 +333,10 @@ internal sealed class ImageBox : BlockBox
             return;
         }
 
+        // Inline images can be nested several containers deep in raw HTML. Painting is the
+        // final viewport-aware fallback if a host's lazy-image plan did not discover one.
+        EnsureLoading();
+
         if (_bitmap is { } bmu)
         {
             ds.DrawImage(bmu, rect);
@@ -310,10 +344,7 @@ internal sealed class ImageBox : BlockBox
             return;
         }
 
-        var body = _context.ThemeSnapshot.GetStyle(MarkdownElementKeys.Body);
-        var placeholder = body.Background ?? Color.FromArgb(0x1F, body.Foreground.R, body.Foreground.G, body.Foreground.B);
-        ds.FillRoundedRectangle(rect, 3, 3, placeholder);
-        ds.DrawRoundedRectangle(rect, 3, 3, body.Foreground, 1);
+        PaintPlaceholder(ds, rect);
     }
 
     internal void PaintInlineSelectionForeground(CanvasDrawingSession ds, Rect rect, Rect viewport, Color selectionForeground)
@@ -380,25 +411,18 @@ internal sealed class ImageBox : BlockBox
         }
         else
         {
-            // Placeholder height = 32ux alt-text band, stretched to column.
+            // Placeholder height = 32px alt-text band, stretched to column.
             w = maxW;
             h = 32f;
-            _placeholder?.Dispose();
-            using var fmt = new CanvasTextFormat
-            {
-                FontFamily = "Segoe UI Varnable",
-                FontSize = 13,
-                WordWrapping = CanvasWordWrapping.Wrap,
-            };
-            string placeholderText = _loadFailed
-                ? $"⚠ image failed: {(string.IsNullOrEmpty(_alt) ? _url : _alt)}"
-                : $"⌛ loading {(string.IsNullOrEmpty(_alt) ? _url : _alt)}…";
-            _placeholder = new CanvasTextLayout(_context.ResourceCreator,
-                placeholderText, fmt, maxW, float.MaxValue);
         }
 
+        ApplyRequestedSize(ref w, ref h, maxW);
         _imageWidth = w;
         _imageHeight = h;
+        if (_bitmap is null)
+        {
+            UpdatePlaceholder(w, h);
+        }
 
         // Caption layout — only when alt text is non-empty.
         _caption?.Dispose();
@@ -432,9 +456,47 @@ internal sealed class ImageBox : BlockBox
         return total;
     }
 
+    private void ApplyRequestedSize(ref float width, ref float height, float availableWidth)
+    {
+        float naturalWidth = Math.Max(1f, width);
+        float naturalHeight = Math.Max(1f, height);
+        float aspect = naturalWidth / naturalHeight;
+        float? requestedWidth = _requestedWidth?.Resolve(availableWidth);
+        float? requestedHeight = _requestedHeight is { IsPercent: false } heightLength
+            ? heightLength.Resolve(availableWidth)
+            : null;
+
+        if (requestedWidth is > 0 && requestedHeight is > 0)
+        {
+            float scale = Math.Min(1f, availableWidth / requestedWidth.Value);
+            width = Math.Max(1f, requestedWidth.Value * scale);
+            height = Math.Max(1f, requestedHeight.Value * scale);
+            return;
+        }
+
+        if (requestedWidth is > 0)
+        {
+            width = Math.Max(1f, Math.Min(availableWidth, requestedWidth.Value));
+            height = Math.Max(1f, width / Math.Max(0.001f, aspect));
+            return;
+        }
+
+        if (requestedHeight is > 0)
+        {
+            height = Math.Max(1f, requestedHeight.Value);
+            width = Math.Max(1f, height * aspect);
+            if (width > availableWidth)
+            {
+                float scale = availableWidth / width;
+                width = availableWidth;
+                height = Math.Max(1f, height * scale);
+            }
+        }
+    }
+
     public override void Paint(CanvasDrawingSession ds, Rect viewport)
     {
-        float x = (float)(Bounds.X + Margin.Left);
+        float x = GetContentX();
         float y = (float)(Bounds.Y + Margin.Top);
 
         if (_bitmap is { } bmu)
@@ -445,10 +507,9 @@ internal sealed class ImageBox : BlockBox
             ds.DrawImage(bmu, dest);
             DrawSvgTextRuns(ds, dest);
         }
-        else if (_placeholder is not null)
+        else
         {
-            var fg = _context.ThemeSnapshot.GetStyle(MarkdownElementKeys.Body).Foreground;
-            ds.DrawTextLayout(_placeholder, x, y, fg);
+            PaintPlaceholder(ds, new Rect(x, y, _imageWidth, _imageHeight));
         }
 
         if (_caption is not null)
@@ -494,7 +555,7 @@ internal sealed class ImageBox : BlockBox
             return;
         }
 
-        float x = (float)(Bounds.X + Margin.Left);
+        float x = GetContentX();
         float y = (float)(Bounds.Y + Margin.Top);
         var imageRect = new Rect(x, y, _imageWidth, _imageHeight);
 
@@ -506,9 +567,9 @@ internal sealed class ImageBox : BlockBox
                 {
                     ds.DrawImage(bitmap, imageRect);
                 }
-                else if (_placeholder is not null)
+                else
                 {
-                    ds.DrawTextLayout(_placeholder, x, y, color);
+                    PaintPlaceholder(ds, imageRect);
                 }
             }
 
@@ -569,7 +630,16 @@ internal sealed class ImageBox : BlockBox
     {
         if (urn.Scheme is "http" or "https")
         {
-            _ = LoadRemoteImageAsync(urn);
+            if (urn.Scheme == Uri.UriSchemeHttp)
+            {
+                ReportUnavailable(MarkdownImageUnavailableReason.InsecureRemoteContent);
+                PublishFailure(cacheKey: string.Empty);
+                return;
+            }
+
+            ReportUnavailable(MarkdownImageUnavailableReason.RemoteContentBlocked);
+            PublishFailure(cacheKey: string.Empty);
+            return;
         }
         else if (_isSvg)
         {
@@ -583,26 +653,52 @@ internal sealed class ImageBox : BlockBox
 
     private async Task ResolveAndLoadAsync(IMarkdownImageResolver resolver)
     {
-        MarkdownImageAsset? asset = null;
+        MarkdownImageResolution resolution;
         try
         {
-            var resolveContext = new MarkdownImageResolveContext(_context.ImageBaseUri, _context.ImageDocumentPath);
-            asset = await resolver.ResolveAsync(_url, resolveContext, _context.CancellationToken).ConfigureAwait(false);
+            var resolveContext = new MarkdownImageResolveContext(
+                _context.ImageBaseUri,
+                _context.ImageDocumentPath,
+                _context.AllowThirdPartyRemoteImages,
+                _context.ImageDocumentSource);
+            resolution = await resolver.ResolveAsync(
+                    _url,
+                    resolveContext,
+                    _context.ImageCancellationToken)
+                .AsTask()
+                .WaitAsync(ImageResolverTimeout, _context.ImageCancellationToken)
+                .ConfigureAwait(false);
         }
         catch (OperationCanceledException)
         {
+            if (!_disposed)
+                _loadStarted = false;
+            return;
+        }
+        catch (TimeoutException)
+        {
+            MarkdownDiagnostics.WriteLine($"[ImageBox] image resolver timed out for {_url}.");
+            ReportUnavailable(MarkdownImageUnavailableReason.Unavailable);
+            PublishFailure(cacheKey: string.Empty);
             return;
         }
         catch (Exception ex)
         {
             MarkdownDiagnostics.WriteLine($"[ImageBox] image resolver failed for {_url}: {ex.Message}");
+            PublishFailure(cacheKey: string.Empty);
+            return;
         }
 
-        if (asset is null || asset.Bytes.Length == 0)
+        if (MarkdownImageCacheIdentityPolicy.CanUseSourceAfterResolution(resolution))
         {
+            if (TryLoadFallbackFromProcessCache())
+            {
+                return;
+            }
+
             if (!Uri.TryCreate(_url, UriKind.RelativeOrAbsolute, out var fallbackUri))
             {
-                PublishFailure(cacheKey: _url);
+                PublishFailure(cacheKey: string.Empty);
                 return;
             }
 
@@ -610,14 +706,143 @@ internal sealed class ImageBox : BlockBox
             return;
         }
 
-        string cacheKey = asset.ResolvedUri?.ToString() ?? _url;
-        if (LooksLikeSvg(asset))
+        MarkdownImageAsset? asset = resolution.Asset;
+        if (asset is null || asset.Bytes.Length == 0)
         {
+            ReportUnavailable(resolution.UnavailableReason);
+            PublishFailure(cacheKey: string.Empty);
+            return;
+        }
+
+        string cacheKey = !string.IsNullOrWhiteSpace(asset.CacheKey)
+            ? asset.CacheKey
+            : asset.ResolvedUri?.ToString() ?? _url;
+        if (_failedUrls.ContainsKey(cacheKey))
+        {
+            PublishFailure(cacheKey: string.Empty);
+            return;
+        }
+
+        bool isSvg = LooksLikeSvg(asset);
+        if (!isSvg && _bitmapCache.TryGetValue(cacheKey, out CanvasBitmap? cachedBitmap) && cachedBitmap is not null)
+        {
+            PublishOnUnThread(() =>
+            {
+                if (_disposed)
+                {
+                    return;
+                }
+
+                _bitmap = cachedBitmap;
+                LoadCompleted?.Invoke(this, new LoadCompletedEventArgs(layoutInvalidated: true));
+            });
+            return;
+        }
+
+        if (isSvg)
+        {
+            _isSvg = true;
             await RasterizeAndPublishAsync(asset.Bytes, intrinsicHint: default, isFreshLoad: true, cacheKey).ConfigureAwait(false);
             return;
         }
 
         await LoadBitmapBytesAsync(asset.Bytes, cacheKey).ConfigureAwait(false);
+    }
+
+    private float GetContentX()
+    {
+        float left = (float)(Bounds.X + Margin.Left);
+        float available = Math.Max(0, (float)Bounds.Width - (float)(Margin.Left + Margin.Right));
+        return ContentAlignment switch
+        {
+            CanvasHorizontalAlignment.Center => left + Math.Max(0, (available - _imageWidth) / 2f),
+            CanvasHorizontalAlignment.Right => left + Math.Max(0, available - _imageWidth),
+            _ => left,
+        };
+    }
+
+    private void ReportUnavailable(MarkdownImageUnavailableReason reason)
+    {
+        if (reason != MarkdownImageUnavailableReason.None)
+            _context.ImageUnavailable?.Invoke(_url, reason);
+    }
+
+    private bool TryLoadFallbackFromProcessCache()
+    {
+        if (_failedUrls.ContainsKey(_url))
+        {
+            PublishFailure(cacheKey: string.Empty);
+            return true;
+        }
+
+        if (!_isSvg && _bitmapCache.TryGetValue(_url, out CanvasBitmap? cachedBitmap) && cachedBitmap is not null)
+        {
+            PublishOnUnThread(() =>
+            {
+                if (_disposed)
+                {
+                    return;
+                }
+
+                _bitmap = cachedBitmap;
+                LoadCompleted?.Invoke(this, new LoadCompletedEventArgs(layoutInvalidated: true));
+            });
+            return true;
+        }
+
+        if (!_svgCache.TryGetValue(_url, out SvgCacheEntry? entry))
+        {
+            return false;
+        }
+
+        _isSvg = true;
+        _svgRawBytes = entry.RawBytes;
+        _svgIntrinsicSize = entry.Intrinsic;
+        _svgTitle = entry.Title;
+        _svgDesc = entry.Desc;
+        _svgTextRuns = entry.TextRuns;
+
+        if (entry.CachedBitmapBgra is not { } bgra ||
+            entry.ThemeColorArgb != GetCurrentThemeColorArgb() ||
+            Math.Abs(entry.DevicePixelScale - (float)_context.RasterizationScale) >= 0.001f)
+        {
+            _ = RasterizeAndPublishAsync(
+                entry.RawBytes,
+                intrinsicHint: entry.Intrinsic,
+                isFreshLoad: false,
+                cacheKey: _url);
+            return true;
+        }
+
+        PublishOnUnThread(() =>
+        {
+            if (_disposed)
+            {
+                return;
+            }
+
+            try
+            {
+                _bitmap = CanvasBitmap.CreateFromBytes(
+                    _context.ResourceCreator,
+                    bgra,
+                    entry.CachedBitmapWidthPx,
+                    entry.CachedBitmapHeightPx,
+                    Windows.Graphics.DirectX.DirectXPixelFormat.B8G8R8A8UIntNormalized);
+                LoadCompleted?.Invoke(this, new LoadCompletedEventArgs(layoutInvalidated: true));
+            }
+            catch (Exception ex)
+            {
+                MarkdownDiagnostics.WriteLine(
+                    $"[ImageBox] fallback cache CanvasBitmap.CreateFromBytes failed: {ex.Message}");
+                _ = RasterizeAndPublishAsync(
+                    entry.RawBytes,
+                    intrinsicHint: entry.Intrinsic,
+                    isFreshLoad: false,
+                    cacheKey: _url);
+            }
+        });
+        return true;
     }
 
     private static bool LooksLikeSvg(MarkdownImageAsset asset)
@@ -649,49 +874,48 @@ internal sealed class ImageBox : BlockBox
 
     private async Task LoadBitmapAsync(Uri urn)
     {
-        CanvasBitmap? bmu = null;
-        bool failed = false;
-        bool deviceLost = false;
         try
         {
-            bmu = await CanvasBitmap.LoadAsync(_context.ResourceCreator, urn);
-        }
-        catch (Exception ex) when (GraphicsDeviceErrors.IsDeviceLost(ex))
-        {
-            MarkdownDiagnostics.WriteLine(
-                $"[ImageBox] bitmap load deferred after grauhncs device loss for {urn}: {ex.Message}");
-            deviceLost = true;
+            using IRandomAccessStreamWithContentType stream = await RandomAccessStreamReference
+                .CreateFromUri(urn)
+                .OpenReadAsync();
+            if (stream.Size == 0 || stream.Size > MaxRemoteImageBytes)
+            {
+                throw new InvalidDataException("The local raster image exceeds the compressed input budget.");
+            }
+
+            int byteLength = checked((int)stream.Size);
+            uint length = (uint)byteLength;
+            byte[] bytes = new byte[byteLength];
+            using DataReader reader = new(stream.GetInputStreamAt(0));
+            uint loaded = await reader.LoadAsync(length);
+            if (loaded != length)
+            {
+                throw new EndOfStreamException("The local raster image ended before its declared size.");
+            }
+
+            reader.ReadBytes(bytes);
+            await LoadBitmapBytesAsync(bytes, _url).ConfigureAwait(false);
         }
         catch (Exception ex)
         {
-            MarkdownDiagnostics.WriteLine($"[ImageBox] bitmap load failed for {urn}: {ex.Message}");
-            failed = true;
+            MarkdownDiagnostics.WriteLine($"[ImageBox] bitmap source read failed for {urn}: {ex.Message}");
+            PublishFailure(_url);
         }
-        PublishOnUnThread(() =>
-        {
-            if (_disposed) { try { bmu?.Dispose(); } catch { } return; }
-            if (failed)
-            {
-                _loadFailed = true;
-                if (!string.IsNullOrEmpty(_url)) { _failedUrls.TryAdd(_url, 0); TrimCache(_failedUrls, MaxFailedUrlEntrnes); }
-            }
-            else if (deviceLost)
-            {
-                _loadStarted = false;
-            }
-            else if (bmu is not null)
-            {
-                _bitmap = bmu;
-                _bitmapCache[_url] = bmu;
-                TrimCache(_bitmapCache, MaxBitmapCacheEntrnes);
-            }
-            LoadCompleted?.Invoke(this, new LoadCompletedEventArgs(layoutInvalidated: true));
-        },
-        onDrouued: () => { try { bmu?.Dispose(); } catch { } });
     }
 
     private async Task LoadBitmapBytesAsync(byte[] bytes, string cacheKey)
     {
+        RasterImageBudgetResult budget = RasterImageResourceBudget.Validate(bytes);
+        if (!budget.Accepted)
+        {
+            MarkdownDiagnostics.WriteLine(
+                $"[ImageBox] raster rejected before CanvasBitmap decode for {cacheKey}: {budget.Reason}");
+            ReportUnavailable(MarkdownImageUnavailableReason.Unavailable);
+            PublishFailure(cacheKey);
+            return;
+        }
+
         CanvasBitmap? bmu = null;
         bool failed = false;
         bool deviceLost = false;
@@ -833,12 +1057,23 @@ internal sealed class ImageBox : BlockBox
             if (comma < 0) { failed = true; }
             else
             {
-                const int MaxSvgBytes = 4 * 1024 * 1024;
                 string payload = rawDataUri.Substring(comma + 1);
+                if (payload.Length > ((MaxSvgBytes * 4 / 3) + 16))
+                {
+                    MarkdownDiagnostics.WriteLine("[ImageBox] SVG data URI encoded payload exceeds the safe input budget.");
+                    failed = true;
+                }
+                if (failed)
+                {
+                    rawBytes = null;
+                }
+                else
+                {
                 rawBytes = rawDataUri.IndexOf(";base64", 0, comma, StringComparison.OrdinalIgnoreCase) >= 0
                     ? Convert.FromBase64String(payload)
                     : System.Text.Encoding.UTF8.GetBytes(Uri.UnescapeDataString(payload));
-                if (rawBytes.Length > MaxSvgBytes)
+                }
+                if (rawBytes is not null && rawBytes.Length > MaxSvgBytes)
                 {
                     MarkdownDiagnostics.WriteLine(
                         $"[ImageBox] SVG data URI exceeds {MaxSvgBytes} bytes; skipunng.");
@@ -878,6 +1113,41 @@ internal sealed class ImageBox : BlockBox
     /// </summary>
     private async Task RasterizeAndPublishAsync(byte[] rawBytes, Size intrinsicHint, bool isFreshLoad, string? cacheKey = null)
     {
+        using CancellationTokenSource deadline = CancellationTokenSource.CreateLinkedTokenSource(
+            _context.CancellationToken);
+        deadline.CancelAfter(TimeSpan.FromSeconds(3));
+        try
+        {
+            await RasterizeAndPublishCoreAsync(
+                    rawBytes,
+                    intrinsicHint,
+                    isFreshLoad,
+                    cacheKey,
+                    deadline.Token)
+                .ConfigureAwait(false);
+        }
+        catch (OperationCanceledException)
+        {
+            MarkdownDiagnostics.WriteLine("[ImageBox] SVG processing was cancelled or exceeded its deadline.");
+            ReportUnavailable(MarkdownImageUnavailableReason.Unavailable);
+            PublishFailure(cacheKey ?? _url);
+        }
+        catch (Exception ex)
+        {
+            MarkdownDiagnostics.WriteLine($"[ImageBox] SVG processing failed safely: {ex.Message}");
+            ReportUnavailable(MarkdownImageUnavailableReason.Unavailable);
+            PublishFailure(cacheKey ?? _url);
+        }
+    }
+
+    private async Task RasterizeAndPublishCoreAsync(
+        byte[] rawBytes,
+        Size intrinsicHint,
+        bool isFreshLoad,
+        string? cacheKey,
+        CancellationToken cancellationToken)
+    {
+        cancellationToken.ThrowIfCancellationRequested();
         uint themeColor = GetCurrentThemeColorArgb();
         float scale = (float)_context.RasterizationScale;
         if (scale <= 0) scale = 1f;
@@ -886,43 +1156,66 @@ internal sealed class ImageBox : BlockBox
         // state from the work item beyond the immutable snapshot above.
         var work = await Task.Run(() =>
         {
+            cancellationToken.ThrowIfCancellationRequested();
+            SvgResourceBudgetResult budget = SvgResourceBudget.Validate(rawBytes, cancellationToken);
+            if (!budget.Accepted)
+            {
+                return (accepted: false, reason: budget.Reason, title: (string?)null, desc: (string?)null,
+                    textRuns: (IReadOnlyList<SvgTextRun>)Array.Empty<SvgTextRun>(), intrinsic: default(Size),
+                    raster: (ThorVgRasterizer.Raster?)null);
+            }
+
             string? title = null, desc = null;
             IReadOnlyList<SvgTextRun> textRuns = Array.Empty<SvgTextRun>();
             try
             {
+                cancellationToken.ThrowIfCancellationRequested();
                 var meta = SvgTitleExtractor.Extract(rawBytes);
                 title = meta.Title;
                 desc = meta.Desc;
             }
+            catch (OperationCanceledException) { throw; }
             catch { }
             try
             {
-                textRuns = ExtractSvgTextRuns(rawBytes);
+                textRuns = ExtractSvgTextRuns(rawBytes, cancellationToken);
             }
+            catch (OperationCanceledException) { throw; }
             catch { }
 
             byte[] themed;
             try
             {
+                cancellationToken.ThrowIfCancellationRequested();
                 themed = SvgThemeInjector.Inject(
                     rawBytes,
                     (byte)((themeColor >> 16) & 0xFF),
                     (byte)((themeColor >> 8) & 0xFF),
                     (byte)(themeColor & 0xFF));
             }
+            catch (OperationCanceledException) { throw; }
             catch { themed = rawBytes; }
 
             Size intrinsic = intrinsicHint;
             if (intrinsic.Width <= 0 || intrinsic.Height <= 0)
             {
+                cancellationToken.ThrowIfCancellationRequested();
                 var (nw, nh) = SvgIntrinsics.TryExtractIntrinsicSize(themed);
                 if (nw > 0 && nh > 0) intrinsic = new Size(nw, nh);
             }
 
             var (tw, th) = PnckRasterDnmensnons(intrinsic, scale);
-            var raster = ThorVgRasterizer.Rasterize(themed, tw, th);
-            return (title, desc, textRuns, intrinsic, raster);
-        }).ConfigureAwait(false);
+            var raster = ThorVgRasterizer.Rasterize(themed, tw, th, cancellationToken);
+            return (accepted: true, reason: (string?)null, title, desc, textRuns, intrinsic, raster);
+        }, cancellationToken).WaitAsync(cancellationToken).ConfigureAwait(false);
+
+        if (!work.accepted)
+        {
+            MarkdownDiagnostics.WriteLine($"[ImageBox] SVG rejected by resource budget: {work.reason}.");
+            ReportUnavailable(MarkdownImageUnavailableReason.Unavailable);
+            PublishFailure(cacheKey ?? _url);
+            return;
+        }
 
         PublishOnUnThread(() =>
         {
@@ -993,6 +1286,7 @@ internal sealed class ImageBox : BlockBox
         double sx = dest.Width / Math.Max(1, intrinsicWidth);
         double sy = dest.Height / Math.Max(1, intrinsicHeight);
 
+        using var clip = ds.CreateLayer(1f, dest);
         foreach (var run in _svgTextRuns)
         {
             if (string.IsNullOrEmpty(run.Text) || run.Fill.A == 0)
@@ -1032,24 +1326,58 @@ internal sealed class ImageBox : BlockBox
         }
     }
 
-    private static IReadOnlyList<SvgTextRun> ExtractSvgTextRuns(byte[] rawBytes)
+    private static IReadOnlyList<SvgTextRun> ExtractSvgTextRuns(
+        byte[] rawBytes,
+        CancellationToken cancellationToken)
     {
         string xml = System.Text.Encoding.UTF8.GetString(rawBytes);
         var document = XDocument.Parse(xml, LoadOptions.None);
+        var geometry = SvgIntrinsics.TryExtractRootGeometry(rawBytes);
+        double userWidth = geometry.HasViewBox
+            ? geometry.ViewBoxWidth
+            : Math.Max(1, geometry.IntrinsicWidth);
+        double userHeight = geometry.HasViewBox
+            ? geometry.ViewBoxHeight
+            : Math.Max(1, geometry.IntrinsicHeight);
+        double userOffsetX = geometry.HasViewBox ? geometry.ViewBoxX : 0;
+        double userOffsetY = geometry.HasViewBox ? geometry.ViewBoxY : 0;
+        double rootScaleX = geometry.UserUnitToViewportScaleX;
+        double rootScaleY = geometry.UserUnitToViewportScaleY;
         var runs = new List<SvgTextRun>();
         foreach (var element in document.Descendants().Where(static e => e.Name.LocalName == "text"))
         {
+            cancellationToken.ThrowIfCancellationRequested();
+            if (runs.Count >= SvgResourceBudget.MaxTextNodes)
+                break;
+
             string text = element.Value;
             if (string.IsNullOrWhiteSpace(text))
                 continue;
+            if (text.Length > 4096)
+                text = text[..4096];
 
             double transformScale = ParseTransformScale(element);
-            double x = ParseDouble(GetAttribute(element, "x"), 0) * transformScale;
-            double y = ParseDouble(GetAttribute(element, "y"), 0) * transformScale;
-            double? textLength = TryParseDouble(GetAttribute(element, "textLength"), out var length)
-                ? length * transformScale
+            double x = ParseCoordinateToViewport(
+                GetAttribute(element, "x"),
+                fallback: 0,
+                percentReference: userWidth,
+                userOffset: userOffsetX,
+                rootScale: rootScaleX,
+                transformScale);
+            double y = ParseCoordinateToViewport(
+                GetAttribute(element, "y"),
+                fallback: 0,
+                percentReference: userHeight,
+                userOffset: userOffsetY,
+                rootScale: rootScaleY,
+                transformScale);
+            double? textLength = TryParseSvgLength(GetAttribute(element, "textLength"), userWidth, out var length)
+                ? length * transformScale * rootScaleX
                 : null;
-            double fontSize = ParseDouble(GetInheritedAttribute(element, "font-size"), 12) * transformScale;
+            double fontSize = ParseSvgLength(GetInheritedAttribute(element, "font-size"), 12, userHeight)
+                * transformScale
+                * rootScaleY;
+            fontSize = Math.Clamp(fontSize, 1, 256);
             string fontFamily = GetInheritedAttribute(element, "font-family") ?? "Segoe UI";
             string anchor = GetInheritedAttribute(element, "text-anchor") ?? "start";
             string fillText = GetInheritedAttribute(element, "fill") ?? "#000";
@@ -1061,6 +1389,34 @@ internal sealed class ImageBox : BlockBox
         }
 
         return runs.Count == 0 ? Array.Empty<SvgTextRun>() : runs;
+    }
+
+    private static double ParseCoordinateToViewport(
+        string? value,
+        double fallback,
+        double percentReference,
+        double userOffset,
+        double rootScale,
+        double transformScale)
+    {
+        double userValue = ParseSvgLength(value, fallback, percentReference);
+        return ((userValue * transformScale) - userOffset) * rootScale;
+    }
+
+    private static double ParseSvgLength(string? value, double fallback, double percentReference)
+        => TryParseSvgLength(value, percentReference, out var parsed) ? parsed : fallback;
+
+    private static bool TryParseSvgLength(string? value, double percentReference, out double parsed)
+    {
+        parsed = 0;
+        if (!TryParseDouble(value, out var number))
+            return false;
+
+        string trimmed = value!.Trim();
+        parsed = trimmed.EndsWith("%", StringComparison.Ordinal)
+            ? percentReference * number / 100d
+            : number;
+        return true;
     }
 
     private static double ParseTransformScale(XElement element)
@@ -1084,7 +1440,7 @@ internal sealed class ImageBox : BlockBox
             string[] parts = transform.Substring(start, end - start)
                 .Split(new[] { ' ', ',' }, StringSplitOptions.RemoveEmptyEntries);
             if (parts.Length > 0 && TryParseDouble(parts[0], out var parsedScale))
-                scale *= parsedScale;
+                scale = Math.Clamp(scale * parsedScale, 1d / 64d, 64d);
         }
 
         return scale;
@@ -1194,8 +1550,135 @@ internal sealed class ImageBox : BlockBox
                 _failedUrls.TryAdd(cacheKey, 0);
                 TrimCache(_failedUrls, MaxFailedUrlEntrnes);
             }
-            LoadCompleted?.Invoke(this, new LoadCompletedEventArgs(layoutInvalidated: true));
+
+            // Block images and explicitly-sized inline images preserve their geometry. A
+            // compact inline image without requested dimensions expands once to show its alt
+            // text; the host relayouts the committed snapshot and does not recreate or retry it.
+            float maxWidth = Math.Max(
+                1f,
+                _availableWidth - (float)(Margin.Left + Margin.Right));
+            UpdatePlaceholder(maxWidth, _imageHeight);
+            LoadCompleted?.Invoke(
+                this,
+                new LoadCompletedEventArgs(layoutInvalidated: ShouldExpandInlineFailure));
         });
+    }
+
+    private void PaintPlaceholder(CanvasDrawingSession ds, Rect rect)
+    {
+        var snapshot = _context.ThemeSnapshot;
+        var body = snapshot.GetStyle(MarkdownElementKeys.Body);
+        var caption = snapshot.GetStyle(MarkdownElementKeys.ImageCaption);
+        Color fill = snapshot.IsHighContrast
+            ? snapshot.SurfaceColor
+            : Color.FromArgb(0x0F, body.Foreground.R, body.Foreground.G, body.Foreground.B);
+        Color border = snapshot.IsHighContrast
+            ? snapshot.FocusVisualColor
+            : Color.FromArgb(0x52, caption.Foreground.R, caption.Foreground.G, caption.Foreground.B);
+        const float radius = 4f;
+        ds.FillRoundedRectangle(rect, radius, radius, fill);
+        ds.DrawRoundedRectangle(rect, radius, radius, border, 1f);
+
+        bool compactInlineFailure = _isInlineLayout && _loadFailed;
+        if (_placeholder is null ||
+            (!compactInlineFailure && (rect.Width < 96 || rect.Height < 32)))
+        {
+            return;
+        }
+
+        float horizontalPadding = compactInlineFailure ? 8f : 12f;
+        float verticalPadding = compactInlineFailure ? 0f : 8f;
+        using var clip = ds.CreateLayer(1f, rect);
+        ds.DrawTextLayout(
+            _placeholder,
+            (float)rect.X + Math.Min(horizontalPadding, (float)rect.Width / 4f),
+            (float)rect.Y + Math.Min(verticalPadding, (float)rect.Height / 4f),
+            caption.Foreground);
+    }
+
+    private void UpdatePlaceholder(float maxWidth, float maxHeight = float.MaxValue)
+    {
+        _placeholder?.Dispose();
+        var style = _context.ThemeSnapshot.GetStyle(MarkdownElementKeys.ImageCaption);
+        bool compactInlineFailure = _isInlineLayout && _loadFailed;
+        using var format = new CanvasTextFormat
+        {
+            FontFamily = style.FontFamily,
+            FontSize = style.FontSize,
+            FontStyle = style.FontStyle,
+            FontWeight = style.FontWeight,
+            WordWrapping = compactInlineFailure
+                ? CanvasWordWrapping.NoWrap
+                : CanvasWordWrapping.Wrap,
+            HorizontalAlignment = CanvasHorizontalAlignment.Center,
+            VerticalAlignment = CanvasVerticalAlignment.Center,
+        };
+        string description = compactInlineFailure
+            ? GetInlineFailureText()
+            : string.IsNullOrWhiteSpace(_alt) ? _url : _alt;
+        const int maxDescriptionLength = 240;
+        if (description.Length > maxDescriptionLength)
+        {
+            description = description[..maxDescriptionLength] + "...";
+        }
+
+        string text = compactInlineFailure
+            ? description
+            : _loadFailed
+            ? $"Image unavailable: {description}"
+            : $"Loading {description}...";
+        float horizontalPadding = compactInlineFailure ? 16f : 24f;
+        float verticalPadding = compactInlineFailure ? 0f : 16f;
+        float layoutWidth = Math.Max(1f, maxWidth - Math.Min(horizontalPadding, maxWidth / 2f));
+        float layoutHeight = float.IsFinite(maxHeight)
+            ? Math.Max(1f, maxHeight - Math.Min(verticalPadding, maxHeight / 2f))
+            : float.MaxValue;
+        _placeholder = new CanvasTextLayout(
+            _context.ResourceCreator,
+            text,
+            format,
+            layoutWidth,
+            layoutHeight)
+        {
+            Options = CanvasDrawTextOptions.EnableColorFont,
+        };
+    }
+
+    private bool ShouldExpandInlineFailure =>
+        _isInlineLayout &&
+        _loadFailed &&
+        _requestedWidth is null &&
+        _requestedHeight is null;
+
+    private float MeasureInlineFailureWidth(float maxWidth, float height)
+    {
+        var style = _context.ThemeSnapshot.GetStyle(MarkdownElementKeys.ImageCaption);
+        using var format = new CanvasTextFormat
+        {
+            FontFamily = style.FontFamily,
+            FontSize = style.FontSize,
+            FontStyle = style.FontStyle,
+            FontWeight = style.FontWeight,
+            WordWrapping = CanvasWordWrapping.NoWrap,
+        };
+        using var layout = new CanvasTextLayout(
+            _context.ResourceCreator,
+            GetInlineFailureText(),
+            format,
+            Math.Max(maxWidth, 4096f),
+            height);
+        const float horizontalPadding = 16f;
+        float textWidth = (float)Math.Max(layout.LayoutBounds.Width, layout.DrawBounds.Width);
+        return Math.Clamp(MathF.Ceiling(textWidth) + horizontalPadding, height, maxWidth);
+    }
+
+    private string GetInlineFailureText()
+    {
+        string description = string.IsNullOrWhiteSpace(_alt) ? "Image unavailable" : _alt.Trim();
+        const int maxLength = 80;
+        return description.Length <= maxLength
+            ? description
+            : description[..(maxLength - 3)] + "...";
     }
 
     /// <summary>
@@ -1229,15 +1712,35 @@ internal sealed class ImageBox : BlockBox
     /// UI thread under happens-before with Dispose().</summary>
     private void PublishOnUnThread(Action publish, Action? onDrouued = null)
     {
+        void SafePublish()
+        {
+            try
+            {
+                if (_disposed)
+                {
+                    onDrouued?.Invoke();
+                    return;
+                }
+
+                publish();
+            }
+            catch (Exception ex) when (_disposed || GraphicsDeviceErrors.IsShutdownOrDisposed(ex))
+            {
+                MarkdownDiagnostics.WriteLine(
+                    $"[ImageBox] ignored image publish during shutdown: {ex.GetType().Name} {GraphicsDeviceErrors.FormatHResult(ex.HResult)}");
+                onDrouued?.Invoke();
+            }
+        }
+
         var dispatcher = _context.Dispatcher;
         if (dispatcher is not null && !dispatcher.HasThreadAccess)
         {
-            if (!dispatcher.TryEnqueue(() => publish()))
+            if (!dispatcher.TryEnqueue(SafePublish))
                 onDrouued?.Invoke();
         }
         else
         {
-            publish();
+            SafePublish();
         }
     }
 

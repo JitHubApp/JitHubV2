@@ -62,7 +62,7 @@ public class FilePreviewResolverTests
     public void Resolve_FileSizeExceedsMaximum_ReturnsTooLarge()
     {
         var resolver = CreateResolver();
-        long overMax = 5L * 1024 * 1024 + 1;
+        long overMax = FilePreviewResolver.MaximumInteractiveTextBytes + 1;
         var result = resolver.Resolve("file.txt", overMax, default);
         Assert.Equal(RepoFilePreviewKind.TooLarge, result.Kind);
     }
@@ -71,7 +71,7 @@ public class FilePreviewResolverTests
     public void Resolve_FileSizeExactlyAtMax_NotTooLarge()
     {
         var resolver = CreateResolver();
-        long atMax = 5L * 1024 * 1024;
+        long atMax = FilePreviewResolver.MaximumInteractiveTextBytes;
         var result = resolver.Resolve("file.txt", atMax, TextBytes("hello"));
         Assert.NotEqual(RepoFilePreviewKind.TooLarge, result.Kind);
     }
@@ -82,6 +82,12 @@ public class FilePreviewResolverTests
         var resolver = CreateResolver();
         var result = resolver.Resolve("file.txt", 100, TextBytes("hello"));
         Assert.NotEqual(RepoFilePreviewKind.TooLarge, result.Kind);
+    }
+
+    [Fact]
+    public void InteractiveTextBudget_ProtectsSynchronousEditorWork()
+    {
+        Assert.InRange(FilePreviewResolver.MaximumInteractiveTextBytes, 64 * 1024, 128 * 1024);
     }
 
     // ── Image extensions ─────────────────────────────────────────────────────

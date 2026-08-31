@@ -16,13 +16,13 @@
 
     <Border
         x:Name="TimelineCard"
-        Padding="4,8"
+        Padding="{ThemeResource AppPadding4_8}"
         HorizontalAlignment="Stretch"
-        Background="Transparent"
-        BorderThickness="0">
+            Background="{ThemeResource AppTransparentBrush}"
+        BorderThickness="{ThemeResource AppZeroThickness}">
         <Grid
             x:Name="Root"
-            ColumnSpacing="12">
+            ColumnSpacing="{ThemeResource AppGap12}">
             <Grid.ColumnDefinitions>
                 <ColumnDefinition Width="Auto" />
                 <ColumnDefinition Width="*" />
@@ -30,15 +30,16 @@
 
             <common:Avatar
                 x:Name="ActorAvatar"
-                Margin="0,2,0,0"
+                Margin="{ThemeResource AppMargin0_2_0_0}"
+                NavigationSource="pull_request_timeline"
                 VerticalAlignment="Top"
                 ShowLogin="False"
                 Size="SMALL" />
 
             <StackPanel
                 Grid.Column="1"
-                Spacing="7">
-                <Grid ColumnSpacing="8">
+                Spacing="{ThemeResource AppGap7}">
+                <Grid ColumnSpacing="{ThemeResource AppGap8}">
                     <Grid.ColumnDefinitions>
                         <ColumnDefinition Width="Auto" />
                         <ColumnDefinition Width="*" />
@@ -46,63 +47,63 @@
 
                     <Border
                         x:Name="IconBorder"
-                        Width="25"
-                        Height="25"
-                        Margin="0,1,0,0"
+                        Width="{ThemeResource AppDimension25}"
+                        Height="{ThemeResource AppDimension25}"
+                        Margin="{ThemeResource AppMargin0_1_0_0}"
                         VerticalAlignment="Top"
                         Background="{ThemeResource AppSurfaceBrush}"
-                        BorderThickness="1"
+                        BorderThickness="{ThemeResource AppHairlineBorderThickness}"
                         CornerRadius="{ThemeResource AppRadiusSmall}">
                         <FontIcon
                             x:Name="IconGlyph"
                             FontFamily="{StaticResource SegoeFluentIcons}"
-                            FontSize="12" />
+                            FontSize="{ThemeResource AppFontSize12}" />
                     </Border>
 
                     <RichTextBlock
                         x:Name="SentenceRichTextBlock"
                         Grid.Column="1"
                         FontFamily="{ThemeResource AppUiFontFamily}"
-                        FontSize="15"
+                        FontSize="{ThemeResource AppFontSize15}"
                         Foreground="{ThemeResource AppInkBrush}"
                         IsTextSelectionEnabled="False"
-                        LineHeight="24"
+                        LineHeight="{ThemeResource AppLineHeight24}"
                         TextWrapping="WrapWholeWords" />
                 </Grid>
 
                 <TextBlock
                     x:Name="TimestampTextBlock"
-                    Margin="33,-4,0,0"
+                    Margin="{ThemeResource AppMargin33_Neg4_0_0}"
                     Style="{StaticResource SectionSecondaryTextBlockStyle}" />
 
                 <Border
                     x:Name="DetailsBorder"
-                    Margin="33,0,0,0"
-                    Padding="10,0,0,0"
-                    BorderThickness="2,0,0,0"
+                    Margin="{ThemeResource AppMargin33_0_0_0}"
+                    Padding="{ThemeResource AppPadding10_0_0_0}"
+                    BorderThickness="{ThemeResource AppLeftStrongBorderThickness}"
                     Visibility="Collapsed">
                     <ItemsControl x:Name="DetailsItemsControl">
                         <ItemsControl.ItemsPanel>
                             <ItemsPanelTemplate>
-                                <StackPanel Spacing="4" />
+                                <StackPanel Spacing="{ThemeResource AppGap4}" />
                             </ItemsPanelTemplate>
                         </ItemsControl.ItemsPanel>
                         <ItemsControl.ItemTemplate>
                             <DataTemplate x:DataType="activities:ActivityCardDetailViewModel">
-                                <Grid ColumnSpacing="8">
+                                <Grid ColumnSpacing="{ThemeResource AppGap8}">
                                     <Grid.ColumnDefinitions>
                                         <ColumnDefinition Width="Auto" />
                                         <ColumnDefinition Width="*" />
                                     </Grid.ColumnDefinitions>
                                     <FontIcon
-                                        Margin="0,2,0,0"
-                                        VerticalAlignment="Top"
+                                        VerticalAlignment="Center"
                                         FontFamily="{StaticResource SegoeFluentIcons}"
-                                        FontSize="11"
+                                        FontSize="{ThemeResource AppFontSize11}"
                                         Foreground="{ThemeResource AppInkMutedBrush}"
                                         Glyph="{x:Bind Glyph, Mode=OneWay}" />
                                     <TextBlock
                                         Grid.Column="1"
+                                        VerticalAlignment="Center"
                                         Style="{StaticResource SectionSecondaryTextBlockStyle}"
                                         Text="{x:Bind Text, Mode=OneWay}"
                                         TextTrimming="CharacterEllipsis"

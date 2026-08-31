@@ -2,43 +2,336 @@
     x:Class="JitHub.WinUI.Views.Pages.RepoSearchResultPage"
     xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
     xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
-    xmlns:local="using:JitHub.WinUI.Views.Pages"
+    xmlns:common="using:JitHub.WinUI.Views.Controls.Common"
     xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
-    xmlns:muxc="using:Microsoft.UI.Xaml.Controls"
     xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
-    xmlns:repositoryviewmodels="using:JitHub.WinUI.ViewModels.RepositoryViewModels"
-    xmlns:helpers="using:JitHub.WinUI.Helpers"
-    mc:Ignorable="d"
-    Background="Transparent"
-    Loaded="Page_Loaded">
-    <Page.DataContext>
-        <repositoryviewmodels:RepoSearchResultViewModel x:Name="ViewModel"/>
-    </Page.DataContext>
+    xmlns:viewModels="using:JitHub.WinUI.ViewModels.Pages"
+    x:DataType="viewModels:RepoSearchResultPageViewModel"
+    Background="{ThemeResource AppCanvasBrush}"
+    SizeChanged="PageRoot_SizeChanged"
+    mc:Ignorable="d">
+
     <Page.Resources>
-        <helpers:RepoIconTemplateSelector
-            x:Key="RepoTemplate"
-            PublicTemplate="{StaticResource PublicRepoSearchResult}"
-            PrivateTemplate="{StaticResource PrivateRepoSearchResult}"
-            ForkTemplate="{StaticResource ForkRepoSearchResult}"/>
+        <DataTemplate x:Key="RepoSearchResultTemplate" x:DataType="viewModels:RepositorySearchResultItem">
+            <Border
+    Background="{ThemeResource AppTransparentBrush}"
+                BorderBrush="{ThemeResource AppHairlineBrush}"
+                BorderThickness="{ThemeResource AppBottomHairlineBorderThickness}"
+                Padding="{ThemeResource AppPadding12_11}">
+                <Grid ColumnSpacing="{ThemeResource AppGap12}">
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="{ThemeResource AppGridLength36}" />
+                        <ColumnDefinition Width="*" />
+                        <ColumnDefinition Width="Auto" />
+                    </Grid.ColumnDefinitions>
+                    <common:CachedImage
+                        Width="{ThemeResource AppDimension30}"
+                        Height="{ThemeResource AppDimension30}"
+                        AutomationProperties.Name="{x:Bind FullName, Mode=OneWay}"
+                        CornerRadius="{ThemeResource AppRadiusCircle}"
+                        FallbackUrl="ms-appx:///Assets/Octocat.png"
+                        SourceUrl="{x:Bind OwnerAvatarUrl, Mode=OneWay}" />
+                    <StackPanel Grid.Column="1" MinWidth="{ThemeResource AppDimension0}" Spacing="{ThemeResource AppGap4}">
+                        <StackPanel Orientation="Horizontal" Spacing="{ThemeResource AppGap8}">
+                            <TextBlock
+                                FontWeight="{ThemeResource AppFontWeightSemibold}"
+                                MaxLines="1"
+                                Style="{StaticResource ListItemTitleTextBlockStyle}"
+                                Text="{x:Bind FullName, Mode=OneWay}"
+                                TextTrimming="CharacterEllipsis" />
+                            <Border
+                                Background="{ThemeResource AppCanvasInsetBrush}"
+                                BorderBrush="{ThemeResource AppHairlineBrush}"
+                                BorderThickness="{ThemeResource AppHairlineBorderThickness}"
+                                CornerRadius="{ThemeResource AppRadiusSmall}"
+                                Padding="{ThemeResource AppPadding6_1}">
+                                <TextBlock FontSize="{ThemeResource AppFontSize11}" Text="{x:Bind VisibilityLabel, Mode=OneWay}" />
+                            </Border>
+                            <Border
+                                Background="{ThemeResource AppCanvasInsetBrush}"
+                                CornerRadius="{ThemeResource AppRadiusSmall}"
+                                Padding="{ThemeResource AppPadding6_1}"
+                                Visibility="{x:Bind IsFork, Converter={StaticResource BoolToVisibilityConverter}, Mode=OneWay}">
+                                <TextBlock x:Uid="PagesRepoSearchResultPageTextBlockFork" FontSize="{ThemeResource AppFontSize11}" Text="Fork" />
+                            </Border>
+                            <Border
+                                Background="{ThemeResource AppCanvasInsetBrush}"
+                                CornerRadius="{ThemeResource AppRadiusSmall}"
+                                Padding="{ThemeResource AppPadding6_1}"
+                                Visibility="{x:Bind IsArchived, Converter={StaticResource BoolToVisibilityConverter}, Mode=OneWay}">
+                                <TextBlock x:Uid="PagesRepoSearchResultPageTextBlockArchived" FontSize="{ThemeResource AppFontSize11}" Text="Archived" />
+                            </Border>
+                        </StackPanel>
+                        <TextBlock
+                            MaxLines="1"
+                            Style="{StaticResource ListItemSecondaryTextBlockStyle}"
+                            Text="{x:Bind Description, Mode=OneWay}"
+                            TextTrimming="CharacterEllipsis" />
+                        <StackPanel Orientation="Horizontal" Spacing="{ThemeResource AppGap14}">
+                            <StackPanel Orientation="Horizontal" Spacing="{ThemeResource AppGap6}" Visibility="{x:Bind HasLanguage, Converter={StaticResource BoolToVisibilityConverter}, Mode=OneWay}">
+                                <Ellipse Style="{StaticResource AppLanguageIndicatorDotStyle}" Fill="{x:Bind LanguageColor, Converter={StaticResource HexColorToSolidBrushConverter}, Mode=OneWay}" />
+                                <TextBlock VerticalAlignment="Center" Style="{StaticResource AppInlineMetadataTextBlockStyle}" Text="{x:Bind Language, Mode=OneWay}" />
+                            </StackPanel>
+                            <StackPanel Orientation="Horizontal" Spacing="{ThemeResource AppGap5}">
+                                <FontIcon VerticalAlignment="Center" FontSize="{ThemeResource AppFontSize12}" Glyph="&#xE734;" />
+                                <TextBlock VerticalAlignment="Center" Style="{StaticResource ListItemSecondaryTextBlockStyle}" Text="{x:Bind StarsText, Mode=OneWay}" />
+                            </StackPanel>
+                            <StackPanel Orientation="Horizontal" Spacing="{ThemeResource AppGap5}">
+                                <FontIcon VerticalAlignment="Center" FontSize="{ThemeResource AppFontSize12}" Glyph="&#xE8AB;" />
+                                <TextBlock VerticalAlignment="Center" Style="{StaticResource ListItemSecondaryTextBlockStyle}" Text="{x:Bind ForksText, Mode=OneWay}" />
+                            </StackPanel>
+                            <TextBlock Style="{StaticResource ListItemSecondaryTextBlockStyle}" Text="{x:Bind UpdatedText, Mode=OneWay}" />
+                        </StackPanel>
+                    </StackPanel>
+                    <FontIcon
+                        Grid.Column="2"
+                        Margin="{ThemeResource AppMargin8_0_0_0}"
+                        VerticalAlignment="Center"
+                        FontSize="{ThemeResource AppFontSize14}"
+                        Foreground="{ThemeResource AppInkMutedBrush}"
+                        Glyph="&#xE76C;" />
+                </Grid>
+            </Border>
+        </DataTemplate>
     </Page.Resources>
-    <Grid>
-        <muxc:ProgressRing
-            IsActive="True"
-            Height="50"
-            Width="50"
-            HorizontalAlignment="Center"
-            VerticalAlignment="Center"
-            Visibility="{x:Bind ViewModel.Loading, Converter={StaticResource BoolToVisibilityConverter}, Mode=OneWay}"/>
-        <ScrollViewer
-            Padding="10">
-            <muxc:ItemsRepeater
-                ItemsSource="{x:Bind ViewModel.Items, Mode=OneWay}"
-                ItemTemplate="{StaticResource RepoTemplate}">
-                <muxc:ItemsRepeater.Layout>
-                    <muxc:StackLayout Spacing="8"/>
-                </muxc:ItemsRepeater.Layout>
-            </muxc:ItemsRepeater>
-        </ScrollViewer>
+
+    <Grid
+        x:Uid="PagesRepoSearchResultPageRepoSearchPageRoot" x:Name="SearchWorkspace"
+        AutomationProperties.AccessibilityView="Control"
+        AutomationProperties.AutomationId="RepoSearchPageRoot"
+        AutomationProperties.Name="Repository search results"
+        Padding="{ThemeResource AppPagePadding}"
+        RowSpacing="{ThemeResource AppGap10}">
+        <Grid.RowDefinitions>
+            <RowDefinition Height="Auto" />
+            <RowDefinition Height="Auto" />
+            <RowDefinition Height="*" />
+        </Grid.RowDefinitions>
+
+        <Grid x:Name="SearchHeaderGrid" Style="{StaticResource AppWorkspaceHeaderStyle}">
+            <Grid.RowDefinitions>
+                <RowDefinition Height="Auto" />
+                <RowDefinition Height="Auto" />
+            </Grid.RowDefinitions>
+            <Grid.ColumnDefinitions>
+                <ColumnDefinition Width="*" />
+                <ColumnDefinition Width="Auto" />
+                <ColumnDefinition x:Name="SearchSortColumn" Width="{ThemeResource AppGridLength180}" />
+            </Grid.ColumnDefinitions>
+            <TextBox
+                x:Uid="PagesRepoSearchResultPageRepoSearchQueryTextBox" x:Name="QueryTextBox"
+                AutomationProperties.AutomationId="RepoSearchQueryTextBox"
+                AutomationProperties.Name="Search repositories"
+                KeyDown="QueryTextBox_KeyDown"
+                PlaceholderText="Search repositories..."
+                Style="{StaticResource AppCommandTextBoxStyle}"
+                Text="{x:Bind ViewModel.QueryText, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"
+                TextChanged="SearchCriteria_TextChanged" />
+            <Button
+                x:Uid="PagesRepoSearchResultPageRepoSearchFilterButton" x:Name="FilterButton"
+                Grid.Column="1"
+                Width="{ThemeResource AppDimension36}"
+                Height="{ThemeResource AppDimension36}"
+                AutomationProperties.AutomationId="RepoSearchFilterButton"
+                AutomationProperties.Name="Repository filters"
+                Style="{StaticResource AppToolbarButtonStyle}"
+                ToolTipService.ToolTip="Filters">
+                <FontIcon Glyph="&#xE71C;" />
+                <Button.Flyout>
+                    <Flyout Placement="BottomEdgeAlignedRight">
+                        <Grid Width="{ThemeResource AppDimension320}" RowSpacing="{ThemeResource AppGap10}">
+                            <Grid.RowDefinitions>
+                                <RowDefinition Height="Auto" />
+                                <RowDefinition Height="Auto" />
+                                <RowDefinition Height="Auto" />
+                                <RowDefinition Height="Auto" />
+                                <RowDefinition Height="Auto" />
+                                <RowDefinition Height="Auto" />
+                            </Grid.RowDefinitions>
+                            <TextBlock x:Uid="PagesRepoSearchResultPageTextBlockRepositoryFilters" Style="{StaticResource ListItemTitleTextBlockStyle}" Text="Repository filters" />
+                            <Grid Grid.Row="1" ColumnSpacing="{ThemeResource AppGap8}">
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="*" />
+                                    <ColumnDefinition Width="*" />
+                                </Grid.ColumnDefinitions>
+                                <TextBox
+                    x:Uid="PagesRepoSearchResultPageRepoSearchOwnerFilter" AutomationProperties.AutomationId="RepoSearchOwnerFilter"
+                    AutomationProperties.Name="Filter repositories by owner"
+                                    Header="Owner"
+                                    PlaceholderText="octocat"
+                                    Style="{StaticResource AppCommandTextBoxStyle}"
+                                    Text="{x:Bind ViewModel.OwnerFilter, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"
+                                    TextChanged="SearchCriteria_TextChanged" />
+                                <TextBox
+                                    x:Uid="PagesRepoSearchResultPageRepoSearchLanguageFilter" Grid.Column="1"
+                    AutomationProperties.AutomationId="RepoSearchLanguageFilter"
+                    AutomationProperties.Name="Filter repositories by language"
+                                    Header="Language"
+                                    PlaceholderText="C#"
+                                    Style="{StaticResource AppCommandTextBoxStyle}"
+                                    Text="{x:Bind ViewModel.LanguageFilter, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"
+                                    TextChanged="SearchCriteria_TextChanged" />
+                            </Grid>
+                            <TextBox
+                                x:Uid="PagesRepoSearchResultPageRepoSearchTopicFilter" Grid.Row="2"
+                    AutomationProperties.AutomationId="RepoSearchTopicFilter"
+                    AutomationProperties.Name="Filter repositories by topic"
+                                Header="Topic"
+                                PlaceholderText="winui"
+                                Style="{StaticResource AppCommandTextBoxStyle}"
+                                Text="{x:Bind ViewModel.TopicFilter, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"
+                                TextChanged="SearchCriteria_TextChanged" />
+                            <Grid Grid.Row="3" ColumnSpacing="{ThemeResource AppGap8}">
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="*" />
+                                    <ColumnDefinition Width="*" />
+                                </Grid.ColumnDefinitions>
+                                <ComboBox
+                    x:Uid="PagesRepoSearchResultPageRepoSearchVisibilityFilter" AutomationProperties.AutomationId="RepoSearchVisibilityFilter"
+                    AutomationProperties.Name="Filter repositories by visibility"
+                                    Header="Visibility"
+                                    ItemsSource="{x:Bind ViewModel.VisibilityOptions, Mode=OneWay}"
+                                    SelectedItem="{x:Bind ViewModel.SelectedVisibility, Mode=TwoWay}"
+                                    SelectionChanged="SearchCriteria_SelectionChanged"
+                                    Style="{StaticResource AppCompactComboBoxStyle}" />
+                                <ComboBox
+                                    x:Uid="PagesRepoSearchResultPageRepoSearchForkFilter" Grid.Column="1"
+                    AutomationProperties.AutomationId="RepoSearchForkFilter"
+                    AutomationProperties.Name="Filter source and fork repositories"
+                                    Header="Type"
+                                    ItemsSource="{x:Bind ViewModel.ForkOptions, Mode=OneWay}"
+                                    SelectedItem="{x:Bind ViewModel.SelectedForkScope, Mode=TwoWay}"
+                                    SelectionChanged="SearchCriteria_SelectionChanged"
+                                    Style="{StaticResource AppCompactComboBoxStyle}" />
+                            </Grid>
+                            <ComboBox
+                                x:Uid="PagesRepoSearchResultPageRepoSearchArchiveFilter" Grid.Row="4"
+                    AutomationProperties.AutomationId="RepoSearchArchiveFilter"
+                    AutomationProperties.Name="Filter archived repositories"
+                                Header="Archive state"
+                                ItemsSource="{x:Bind ViewModel.ArchiveOptions, Mode=OneWay}"
+                                SelectedItem="{x:Bind ViewModel.SelectedArchiveScope, Mode=TwoWay}"
+                                SelectionChanged="SearchCriteria_SelectionChanged"
+                                Style="{StaticResource AppCompactComboBoxStyle}" />
+                            <Button
+                                x:Uid="PagesRepoSearchResultPageRepoSearchClearFiltersButton" Grid.Row="5"
+                                HorizontalAlignment="Left"
+                    AutomationProperties.AutomationId="RepoSearchClearFiltersButton"
+                    AutomationProperties.Name="Clear repository search filters"
+                                Click="ClearFiltersButton_Click"
+                                Content="Clear filters"
+                                Style="{StaticResource AppQuietButtonStyle}" />
+                        </Grid>
+                    </Flyout>
+                </Button.Flyout>
+            </Button>
+            <ComboBox
+                x:Uid="PagesRepoSearchResultPageRepoSearchSortComboBox" x:Name="RepoSearchSortComboBox"
+                Grid.Column="2"
+                AutomationProperties.AutomationId="RepoSearchSortComboBox"
+                AutomationProperties.Name="Sort repository results"
+                ItemsSource="{x:Bind ViewModel.SortOptions, Mode=OneWay}"
+                SelectedItem="{x:Bind ViewModel.SelectedSort, Mode=TwoWay}"
+                SelectionChanged="SearchCriteria_SelectionChanged"
+                Style="{StaticResource AppCompactComboBoxStyle}" />
+        </Grid>
+
+        <Grid Grid.Row="1" MinHeight="{ThemeResource AppDimension28}" ColumnSpacing="{ThemeResource AppGap10}">
+            <Grid.ColumnDefinitions>
+                <ColumnDefinition Width="Auto" />
+                <ColumnDefinition Width="*" />
+                <ColumnDefinition Width="Auto" />
+            </Grid.ColumnDefinitions>
+            <TextBlock
+                AutomationProperties.AutomationId="RepoSearchResultSummary"
+                VerticalAlignment="Center"
+                Style="{StaticResource ListItemSecondaryTextBlockStyle}"
+                Text="{x:Bind ViewModel.ResultSummary, Mode=OneWay}" />
+            <ScrollViewer Grid.Column="1" HorizontalScrollBarVisibility="Hidden" HorizontalScrollMode="Auto" VerticalScrollMode="Disabled">
+                <ItemsControl ItemsSource="{x:Bind ViewModel.ActiveFilters, Mode=OneWay}">
+                    <ItemsControl.ItemsPanel>
+                        <ItemsPanelTemplate><StackPanel Orientation="Horizontal" Spacing="{ThemeResource AppGap6}" /></ItemsPanelTemplate>
+                    </ItemsControl.ItemsPanel>
+                    <ItemsControl.ItemTemplate>
+                        <DataTemplate x:DataType="viewModels:RepositorySearchFilterChip">
+                            <Button
+                                MinHeight="{ThemeResource AppDimension26}"
+                                Padding="{ThemeResource AppPadding8_3}"
+                                AutomationProperties.AutomationId="{x:Bind AutomationId, Mode=OneWay}"
+                                AutomationProperties.Name="{x:Bind Label, Mode=OneWay}"
+                                Click="FilterChip_Click"
+                                Style="{StaticResource AppQuietButtonStyle}">
+                                <StackPanel Orientation="Horizontal" Spacing="{ThemeResource AppGap6}">
+                                    <TextBlock VerticalAlignment="Center" Text="{x:Bind Label, Mode=OneWay}" />
+                                    <FontIcon VerticalAlignment="Center" FontSize="{ThemeResource AppFontSize10}" Glyph="&#xE711;" />
+                                </StackPanel>
+                            </Button>
+                        </DataTemplate>
+                    </ItemsControl.ItemTemplate>
+                </ItemsControl>
+            </ScrollViewer>
+            <ProgressRing
+                Grid.Column="2"
+                Width="{ThemeResource AppDimension18}"
+                Height="{ThemeResource AppDimension18}"
+                VerticalAlignment="Center"
+                AutomationProperties.AutomationId="RepoSearchProgress"
+                IsActive="{x:Bind ViewModel.IsLoading, Mode=OneWay}" />
+        </Grid>
+
+        <Border
+            Grid.Row="2"
+            MinHeight="{ThemeResource AppDimension0}"
+            Background="{ThemeResource AppSurfaceBrush}"
+            BorderBrush="{ThemeResource AppOutlineBrush}"
+            BorderThickness="{ThemeResource AppHairlineBorderThickness}"
+            CornerRadius="{ThemeResource AppRadiusMedium}">
+            <Grid>
+                <ListView
+                    x:Uid="PagesRepoSearchResultPageRepoSearchResultsList" x:Name="ResultsList"
+                    AutomationProperties.AutomationId="RepoSearchResultsList"
+                    AutomationProperties.Name="Repository search results"
+                    ContainerContentChanging="ResultsList_ContainerContentChanging"
+                    IsItemClickEnabled="True"
+                    ItemClick="ResultsList_ItemClick"
+                    ItemContainerStyle="{StaticResource AppSearchResultRowStyle}"
+                    ItemTemplate="{StaticResource RepoSearchResultTemplate}"
+                    ItemsSource="{x:Bind ViewModel.Results, Mode=OneWay}"
+                    SelectionMode="Single">
+                    <ListView.Footer>
+                        <ProgressRing
+                            Width="{ThemeResource AppDimension20}"
+                            Height="{ThemeResource AppDimension20}"
+                            Margin="{ThemeResource AppMargin0_10}"
+                            AutomationProperties.AutomationId="RepoSearchLoadMoreProgress"
+                            IsActive="{x:Bind ViewModel.IsLoadingMore, Mode=OneWay}" />
+                    </ListView.Footer>
+                </ListView>
+                <StackPanel
+                    Style="{StaticResource AppEmptyStatePanelStyle}"
+                    Visibility="{x:Bind ViewModel.IsEmpty, Converter={StaticResource BoolToVisibilityConverter}, Mode=OneWay}">
+                    <FontIcon FontSize="{ThemeResource AppFontSize28}" Foreground="{ThemeResource AppInkMutedBrush}" Glyph="&#xE721;" />
+                    <TextBlock x:Uid="PagesRepoSearchResultPageTextBlockNoRepositoriesMatched" Style="{StaticResource ListItemTitleTextBlockStyle}" Text="No repositories matched" />
+                    <TextBlock x:Uid="PagesRepoSearchResultPageTextBlockAdjustTheQueryOrRemove" Style="{StaticResource ListItemSecondaryTextBlockStyle}" Text="Adjust the query or remove a filter." />
+                </StackPanel>
+                <InfoBar
+                    Margin="{ThemeResource AppMargin12}"
+                    VerticalAlignment="Top"
+                    AutomationProperties.AutomationId="RepoSearchErrorBar"
+                    IsClosable="False"
+                    IsOpen="{x:Bind ViewModel.HasError, Mode=OneWay}"
+                    Message="{x:Bind ViewModel.ErrorText, Mode=OneWay}"
+                    Severity="Warning"
+                    Style="{StaticResource AppStatusInfoBarStyle}">
+                    <InfoBar.ActionButton>
+                        <Button
+                    x:Uid="PagesRepoSearchResultPageRepoSearchRetryButton" AutomationProperties.AutomationId="RepoSearchRetryButton"
+                    AutomationProperties.Name="Retry repository search"
+                            Click="RetryButton_Click"
+                            Content="Retry" />
+                    </InfoBar.ActionButton>
+                </InfoBar>
+            </Grid>
+        </Border>
     </Grid>
 </Page>
-

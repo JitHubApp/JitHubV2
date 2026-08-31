@@ -1,4 +1,4 @@
 200x60
-maxChannelDelta=212
-meanChannelDelta=1.232
-differingPixelFraction=0.0208
+maxChannelDelta=24
+meanChannelDelta=0.708
+differingPixelFraction=0.0082

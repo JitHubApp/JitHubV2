@@ -1,7 +1,9 @@
 <Project Sdk="Microsoft.NET.Sdk">
   <PropertyGroup>
     <OutputType>WinExe</OutputType>
+    <Configurations>Debug;Release;AotDebug</Configurations>
     <TargetFramework>net10.0-windows10.0.26100.0</TargetFramework>
+    <WindowsSdkPackageVersion>10.0.26100.87</WindowsSdkPackageVersion>
     <TargetPlatformMinVersion>10.0.19041.0</TargetPlatformMinVersion>
     <RootNamespace>JitHub.WinUI</RootNamespace>
     <ApplicationManifest>app.manifest</ApplicationManifest>
@@ -13,7 +15,6 @@
     <RuntimeIdentifier Condition="'$(RuntimeIdentifier)' == '' and '$(Platform)' == 'x64'">win-x64</RuntimeIdentifier>
     <RuntimeIdentifier Condition="'$(RuntimeIdentifier)' == '' and '$(Platform)' == 'ARM64'">win-arm64</RuntimeIdentifier>
     <RuntimeIdentifiers>win-x86;win-x64;win-arm64</RuntimeIdentifiers>
-    <PublishProfile>win-$(Platform).pubxml</PublishProfile>
     <UseWinUI>true</UseWinUI>
     <WinUISDKReferences>false</WinUISDKReferences>
     <EnableMsixTooling>true</EnableMsixTooling>
@@ -24,12 +25,43 @@
     <Nullable>enable</Nullable>
     <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
     <DefineConstants>$(DefineConstants);DISABLE_XAML_GENERATED_MAIN</DefineConstants>
-    <DefaultItemExcludes>$(DefaultItemExcludes);$(MSBuildProjectDirectory)\obj\**;$(MSBuildProjectDirectory)\bin\**;$(MSBuildProjectDirectory)\artifacts\**</DefaultItemExcludes>
+    <DefaultItemExcludes>$(DefaultItemExcludes);$(MSBuildProjectDirectory)\obj*\**;$(MSBuildProjectDirectory)\bin*\**;$(MSBuildProjectDirectory)\artifacts\**</DefaultItemExcludes>
     <NoWarn>$(NoWarn);WMC1506;WMC1510</NoWarn>
     <SuppressXamlWarnings>1506;1510</SuppressXamlWarnings>
-    <EnableXBindDiagnostics>false</EnableXBindDiagnostics>
-    <EnableBindingDiagnostics>false</EnableBindingDiagnostics>
+    <EnableXBindDiagnostics>true</EnableXBindDiagnostics>
+    <EnableBindingDiagnostics>true</EnableBindingDiagnostics>
+    <IsAotCompatible>true</IsAotCompatible>
+    <EnableAotAnalyzer>true</EnableAotAnalyzer>
+    <EnableTrimAnalyzer>true</EnableTrimAnalyzer>
+    <CsWinRTAotOptimizerEnabled>true</CsWinRTAotOptimizerEnabled>
+    <CsWinRTAotWarningLevel>2</CsWinRTAotWarningLevel>
+    <JsonSerializerIsReflectionEnabledByDefault>false</JsonSerializerIsReflectionEnabledByDefault>
+    <EnableConfigurationBindingGenerator>true</EnableConfigurationBindingGenerator>
+    <DefaultLanguage>en-US</DefaultLanguage>
+    <EnablePseudoLocalization>false</EnablePseudoLocalization>
   </PropertyGroup>
+
+  <PropertyGroup Condition="'$(EnablePseudoLocalization)' == 'true'">
+    <DefineConstants>$(DefineConstants);PSEUDO_LOCALIZATION_BUILD</DefineConstants>
+  </PropertyGroup>
+
+  <PropertyGroup>
+    <GenerateProjectPriFileDependsOn>InvalidateProjectPriWhenPseudoLocalizationModeChanges;$(GenerateProjectPriFileDependsOn)</GenerateProjectPriFileDependsOn>
+  </PropertyGroup>
+
+  <PropertyGroup Condition="'$(RuntimeIdentifier)' == 'win-x86' or '$(RuntimeIdentifier)' == 'win-x64' or '$(RuntimeIdentifier)' == 'win-arm64'">
+    <DefineConstants>$(DefineConstants);STORE_ENGAGEMENT_AVAILABLE</DefineConstants>
+    <CsWinRTIncludes>Microsoft.Services.Store.Engagement</CsWinRTIncludes>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <AppxManifest Include="Package.Debug.appxmanifest" Condition="'$(Configuration)' == 'Debug' or '$(Configuration)' == 'AotDebug'">
+      <SubType>Designer</SubType>
+    </AppxManifest>
+    <AppxManifest Include="Package.appxmanifest" Condition="'$(Configuration)' != 'Debug' and '$(Configuration)' != 'AotDebug'">
+      <SubType>Designer</SubType>
+    </AppxManifest>
+  </ItemGroup>
 
   <ItemGroup>
     <Content Include="Assets\AppIcon.ico" CopyToOutputDirectory="PreserveNewest" CopyToPublishDirectory="PreserveNewest" />
@@ -81,6 +113,7 @@
 
   <ItemGroup>
     <PackageReference Include="CommunityToolkit.Mvvm" Version="8.4.2" />
+    <PackageReference Include="CommunityToolkit.Labs.WinUI.TransitionHelper" Version="0.1.251217-build.2433" />
     <PackageReference Include="CommunityToolkit.WinUI.Animations" Version="8.2.251219" />
     <PackageReference Include="CommunityToolkit.WinUI.Controls.Primitives" Version="8.2.251219" />
     <PackageReference Include="CommunityToolkit.WinUI.Controls.Segmented" Version="8.2.251219" />
@@ -89,23 +122,25 @@
     <PackageReference Include="Microsoft.Extensions.Configuration.Json" Version="10.0.0" />
     <PackageReference Include="Microsoft.Extensions.DependencyInjection" Version="10.0.0" />
     <PackageReference Include="Microsoft.Graphics.Win2D" Version="1.4.0" />
+    <PackageReference Include="Microsoft.Data.Sqlite" Version="10.0.8" />
+    <PackageReference Include="SQLitePCLRaw.bundle_e_sqlite3" Version="3.0.3" />
+    <PackageReference Include="Microsoft.Services.Store.Engagement" Version="10.2307.3001" GeneratePathProperty="true" />
     <PackageReference Include="Microsoft.Xaml.Behaviors.WinUI.Managed" Version="3.0.1" />
     <PackageReference Include="Microsoft.Windows.SDK.BuildTools" Version="10.0.28000.1721" />
-    <PackageReference Include="Microsoft.WindowsAppSDK" Version="1.8.260317003" />
-    <PackageReference Include="System.Reactive.Linq" Version="5.0.0" />
-    <PackageReference Include="WinUIEdit" Version="0.0.4-prerelease" />
-    <PackageReference Include="SkiaSharp" Version="3.119.2" />
-    <PackageReference Include="SkiaSharp.Views.WinUI" Version="3.119.2" />
-    <PackageReference Include="Svg.Skia" Version="4.6.0" />
-    <PackageReference Include="CsvHelper" Version="33.1.0" />
-    <PackageReference Include="CommunityToolkit.WinUI.UI.Controls.DataGrid" Version="7.1.2" />
+    <PackageReference Include="Microsoft.WindowsAppSDK" Version="1.8.260710003" />
+    <PackageReference Include="Microsoft.Windows.CsWinRT" Version="2.3.1" PrivateAssets="all" />
+    <PackageReference Include="Microsoft.CodeAnalysis.BannedApiAnalyzers" Version="5.6.0" PrivateAssets="all" />
+    <PackageReference Include="WinUIEdit" Version="0.0.5-prerelease" GeneratePathProperty="true" />
+    <PackageReference Include="SkiaSharp" Version="4.151.1" />
+    <PackageReference Include="Svg.Skia" Version="5.2.1" />
     <PackageReference Include="CommunityToolkit.WinUI.Controls.Sizers" Version="8.2.250402" />
   </ItemGroup>
 
   <ItemGroup>
+    <AdditionalFiles Include="..\eng\BannedSymbols.txt" />
+    <Compile Include="..\Shared\OAuthHandoffProtocol.cs" Link="Security\OAuthHandoffProtocol.cs" />
     <ProjectReference Include="..\MarkdownRenderer\MarkdownRenderer\MarkdownRenderer.csproj" />
     <ProjectReference Include="..\MarkdownRenderer\MarkdownRenderer.Gfm\MarkdownRenderer.Gfm.csproj" />
-    <ProjectReference Include="..\MarkdownRenderer\MarkdownRenderer.SyntaxHighlighting.TextMate\MarkdownRenderer.SyntaxHighlighting.TextMate.csproj" />
   </ItemGroup>
 
   <PropertyGroup Condition="'$(DisableHasPackageAndPublishMenuAddedByProject)'!='true' and '$(EnableMsixTooling)'=='true'">
@@ -113,23 +148,11 @@
   </PropertyGroup>
 
   <PropertyGroup>
-    <PublishReadyToRun Condition="'$(Configuration)' == 'Debug'">False</PublishReadyToRun>
-    <PublishReadyToRun Condition="'$(Configuration)' != 'Debug'">True</PublishReadyToRun>
-    <PublishTrimmed Condition="'$(Configuration)' == 'Debug'">False</PublishTrimmed>
-    <PublishTrimmed Condition="'$(Configuration)' != 'Debug'">True</PublishTrimmed>
-    <PublishAot Condition="'$(Configuration)' != 'Debug'">True</PublishAot>
-    <SelfContained Condition="'$(Configuration)' != 'Debug'">True</SelfContained>
+    <PublishReadyToRun Condition="'$(Configuration)' == 'Debug'">false</PublishReadyToRun>
+    <AppxSymbolPackageEnabled>False</AppxSymbolPackageEnabled>
   </PropertyGroup>
 
-  <!--
-    WinUIEditorCsWinRT.dll (net8.0) and CommunityToolkit DataGrid (net5.0) were not built for AOT
-    or IL trimming. Preserve them entirely so the trimmer/AOT compiler doesn't remove types that
-    WinUI XAML resolves at runtime via XamlTypeInfo.
-  -->
-  <ItemGroup>
-    <TrimmerRootAssembly Include="WinUIEditorCsWinRT" />
-    <TrimmerRootAssembly Include="CommunityToolkit.WinUI.UI.Controls.DataGrid" />
-  </ItemGroup>
+  <Import Project="..\eng\NativeAot.props" />
 
   <!--
     WinUIEdit uses build\native\*.targets which is not imported for managed .NET projects, so the
@@ -140,7 +163,66 @@
     STATUS_STOWED_EXCEPTION (0xC000027B) in Microsoft.UI.Xaml.dll.
   -->
   <ItemGroup>
-    <WindowsMetadataReference Include="$(NuGetPackageRoot)\winuiedit\0.0.4-prerelease\lib\uap10.0\WinUIEditor.winmd"
+    <WindowsMetadataReference Include="$(PkgWinUIEdit)\lib\uap10.0\WinUIEditor.winmd"
                               Implementation="WinUIEditor.dll" />
+    <SDKReference Include="Microsoft.Services.Store.Engagement, Version=10.0"
+                  Condition="'$(RuntimeIdentifier)' == 'win-x86' or '$(RuntimeIdentifier)' == 'win-x64' or '$(RuntimeIdentifier)' == 'win-arm64'" />
+    <SDKReference Include="Microsoft.VCLibs, Version=14.0"
+                  Condition="'$(RuntimeIdentifier)' == 'win-x86' or '$(RuntimeIdentifier)' == 'win-x64' or '$(RuntimeIdentifier)' == 'win-arm64'" />
+    <CsWinRTInputs Include="$(PkgMicrosoft_Services_Store_Engagement)\SDK\Windows Kits\10\ExtensionSDKs\Microsoft.Services.Store.Engagement\10.0\References\CommonConfiguration\neutral\Microsoft.Services.Store.Engagement.winmd"
+                    Condition="'$(RuntimeIdentifier)' == 'win-x86' or '$(RuntimeIdentifier)' == 'win-x64' or '$(RuntimeIdentifier)' == 'win-arm64'" />
   </ItemGroup>
+
+  <Target Name="RemoveDisabledAppxSymbolPayload"
+          AfterTargets="_CalculateInputsForGenerateAppxPackageRecipe"
+          Condition="'$(AppxSymbolPackageEnabled)' != 'true'">
+    <ItemGroup>
+      <PDBPayload Remove="@(PDBPayload)" />
+    </ItemGroup>
+  </Target>
+
+  <Target Name="ExcludeNonProductLocalizationCatalogs" BeforeTargets="PrepareForBuild">
+    <ItemGroup>
+      <!-- Keep incomplete translation catalogs in source, but do not advertise or package them. -->
+      <PRIResource Remove="Strings\bn-BD\**\*;Strings\de\**\*;Strings\el\**\*;Strings\es\**\*;Strings\fr\**\*;Strings\hu-HU\**\*;Strings\it\**\*;Strings\pt\**\*;Strings\tr-TR\**\*;Strings\vi\**\*;Strings\zh-Hans\**\*" />
+      <!-- Pseudo-localized resources are test payload and must be explicitly opted into. -->
+      <PRIResource Remove="Strings\qps-ploc\**\*" Condition="'$(EnablePseudoLocalization)' != 'true'" />
+    </ItemGroup>
+  </Target>
+
+  <Target Name="InvalidateProjectPriWhenPseudoLocalizationModeChanges">
+    <PropertyGroup>
+      <_CurrentPseudoLocalizationMode>disabled</_CurrentPseudoLocalizationMode>
+      <_CurrentPseudoLocalizationMode Condition="'$(EnablePseudoLocalization)' == 'true'">enabled</_CurrentPseudoLocalizationMode>
+      <_PseudoLocalizationModeStamp>$(IntermediateOutputPath)jithub-pseudo-localization.mode</_PseudoLocalizationModeStamp>
+    </PropertyGroup>
+
+    <ReadLinesFromFile File="$(_PseudoLocalizationModeStamp)"
+                       Condition="Exists('$(_PseudoLocalizationModeStamp)')">
+      <Output TaskParameter="Lines" ItemName="_PreviousPseudoLocalizationMode" />
+    </ReadLinesFromFile>
+
+    <PropertyGroup>
+      <_PseudoLocalizationModeChanged Condition="'@(_PreviousPseudoLocalizationMode)' != '$(_CurrentPseudoLocalizationMode)'">true</_PseudoLocalizationModeChanged>
+    </PropertyGroup>
+
+    <!-- Removing a PRIResource is not itself an incremental-build timestamp change. -->
+    <Delete Condition="'$(_PseudoLocalizationModeChanged)' == 'true'"
+            Files="$(ProjectPriFullPath);$(_PriConfigXmlPath);$(_PriConfigXmlPath).intermediate;$(_UnfilteredLayoutResfilesPath);$(_UnfilteredLayoutResfilesPath).intermediate;$(_FilteredLayoutResfilesPath);$(_FilteredLayoutResfilesPath).intermediate;$(_ExcludedLayoutResfilesPath);$(_ExcludedLayoutResfilesPath).intermediate;$(_ResourcesResfilesPath);$(_ResourcesResfilesPath).intermediate;$(_PriResfilesPath);$(_PriResfilesPath).intermediate" />
+    <MakeDir Directories="$(IntermediateOutputPath)" />
+    <WriteLinesToFile File="$(_PseudoLocalizationModeStamp)"
+                      Lines="$(_CurrentPseudoLocalizationMode)"
+                      Overwrite="true"
+                      WriteOnlyWhenDifferent="true" />
+    <ItemGroup>
+      <FileWrites Include="$(_PseudoLocalizationModeStamp)" />
+    </ItemGroup>
+  </Target>
+
+  <Target Name="RunReleaseSecurityGate"
+          BeforeTargets="Build"
+          Condition="'$(Configuration)' == 'Release' and '$(SkipReleaseSecurityGate)' != 'true' and '$(DesignTimeBuild)' != 'true'">
+    <Exec Command="powershell -NoProfile -ExecutionPolicy Bypass -File &quot;$(MSBuildThisFileDirectory)..\eng\Verify-DependencySecurity.ps1&quot;" />
+    <Exec Command="dotnet test &quot;$(MSBuildThisFileDirectory)..\JitHub.WinUI.Tests\JitHub.WinUI.Tests.csproj&quot; -c Release --no-restore --filter &quot;Category=ReleaseSecurity&quot; -p:SkipReleaseSecurityGate=true" />
+  </Target>
 </Project>

@@ -2,15 +2,40 @@
     xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
     xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml">
     <SolidColorBrush x:Key="AppCanvasBrush" Color="{ThemeResource AppCanvasColor}" />
+    <SolidColorBrush x:Key="AppWindowBackgroundBrush" Color="{ThemeResource AppCanvasColor}" />
     <SolidColorBrush x:Key="AppCanvasRaisedBrush" Color="{ThemeResource AppCanvasRaisedColor}" />
     <SolidColorBrush x:Key="AppCanvasInsetBrush" Color="{ThemeResource AppCanvasInsetColor}" />
+    <SolidColorBrush x:Key="AppRailBrush" Color="{ThemeResource AppRailColor}" />
     <SolidColorBrush x:Key="AppSurfaceBrush" Color="{ThemeResource AppSurfaceColor}" />
     <SolidColorBrush x:Key="AppSurfaceSubtleBrush" Color="{ThemeResource AppSurfaceSubtleColor}" />
+    <SolidColorBrush x:Key="AppCardBrush" Color="{ThemeResource AppCardColor}" />
+    <SolidColorBrush x:Key="AppInputBrush" Color="{ThemeResource AppInputColor}" />
+    <SolidColorBrush x:Key="AppInputHoverBrush" Color="{ThemeResource AppInputHoverColor}" />
+    <SolidColorBrush x:Key="AppRowBrush" Color="{ThemeResource AppRowColor}" />
+    <SolidColorBrush x:Key="AppRowHoverBrush" Color="{ThemeResource AppRowHoverColor}" />
+    <SolidColorBrush x:Key="AppRowPressedBrush" Color="{ThemeResource AppRowPressedColor}" />
+    <SolidColorBrush x:Key="AppRowSelectedBrush" Color="{ThemeResource AppRowSelectedColor}" />
+    <SolidColorBrush x:Key="AppRowHoverForegroundBrush" Color="{ThemeResource AppRowHoverForegroundColor}" />
+    <SolidColorBrush x:Key="AppRowPressedForegroundBrush" Color="{ThemeResource AppRowPressedForegroundColor}" />
+    <SolidColorBrush x:Key="AppRowSelectedForegroundBrush" Color="{ThemeResource AppRowSelectedForegroundColor}" />
+    <SolidColorBrush x:Key="AppSelectionBrush" Color="{ThemeResource AppSelectionColor}" />
+    <SolidColorBrush x:Key="AppSelectionForegroundBrush" Color="{ThemeResource AppSelectionForegroundColor}" />
     <SolidColorBrush x:Key="AppOverlayBrush" Color="{ThemeResource AppOverlayColor}" />
+    <SolidColorBrush x:Key="AppTransparentBrush" Color="{ThemeResource AppTransparentColor}" />
+    <SolidColorBrush x:Key="AppPopupSurfaceBrush" Color="{ThemeResource AppPopupSurfaceColor}" />
+    <SolidColorBrush x:Key="AppPopupBorderBrush" Color="{ThemeResource AppPopupBorderColor}" />
+    <SolidColorBrush x:Key="AppReactionChipBackgroundBrush" Color="{ThemeResource AppReactionChipBackgroundColor}" />
+    <SolidColorBrush x:Key="AppReactionChipHoverBrush" Color="{ThemeResource AppReactionChipHoverColor}" />
+    <SolidColorBrush x:Key="AppReactionChipPressedBrush" Color="{ThemeResource AppReactionChipPressedColor}" />
+    <SolidColorBrush x:Key="AppReactionChipBorderBrush" Color="{ThemeResource AppReactionChipBorderColor}" />
+    <SolidColorBrush x:Key="AppReactionChipForegroundBrush" Color="{ThemeResource AppReactionChipForegroundColor}" />
+    <SolidColorBrush x:Key="AppReactionChipSelectedBrush" Color="{ThemeResource AppReactionChipSelectedColor}" />
     <SolidColorBrush x:Key="AppInkBrush" Color="{ThemeResource AppInkColor}" />
     <SolidColorBrush x:Key="AppInkMutedBrush" Color="{ThemeResource AppInkMutedColor}" />
     <SolidColorBrush x:Key="AppInkSubtleBrush" Color="{ThemeResource AppInkSubtleColor}" />
     <SolidColorBrush x:Key="AppInkInverseBrush" Color="{ThemeResource AppInkInverseColor}" />
+    <SolidColorBrush x:Key="AppLabelDarkTextBrush" Color="{ThemeResource AppLabelDarkTextColor}" />
+    <SolidColorBrush x:Key="AppLabelLightTextBrush" Color="{ThemeResource AppLabelLightTextColor}" />
     <SolidColorBrush x:Key="AppOutlineBrush" Color="{ThemeResource AppOutlineColor}" />
     <SolidColorBrush x:Key="AppOutlineStrongBrush" Color="{ThemeResource AppOutlineStrongColor}" />
     <SolidColorBrush x:Key="AppHairlineBrush" Color="{ThemeResource AppHairlineColor}" />
@@ -18,16 +43,46 @@
     <SolidColorBrush x:Key="AppAccentHoverBrush" Color="{ThemeResource AppAccentHoverColor}" />
     <SolidColorBrush x:Key="AppAccentPressedBrush" Color="{ThemeResource AppAccentPressedColor}" />
     <SolidColorBrush x:Key="AppAccentForegroundBrush" Color="{ThemeResource AppAccentForegroundColor}" />
+    <SolidColorBrush x:Key="AppAccentSelectionMutedBrush" Color="{ThemeResource AppAccentColor}" Opacity="{ThemeResource AppOpacityDisabledControl}" />
+    <SolidColorBrush x:Key="AppAccentForegroundSecondaryBrush" Color="{ThemeResource AppAccentForegroundColor}" Opacity="{ThemeResource AppOpacityOnAccentSecondary}" />
+    <SolidColorBrush x:Key="AppAccentLowBrush" Color="{ThemeResource AppAccentPressedColor}" Opacity="{ThemeResource AppOpacityAccentLow}" />
+    <SolidColorBrush x:Key="AppAccentMediumBrush" Color="{ThemeResource AppAccentColor}" Opacity="{ThemeResource AppOpacityAccentMedium}" />
+    <SolidColorBrush x:Key="AppPlaceholderBrush" Color="{ThemeResource AppRowHoverForegroundColor}" Opacity="{ThemeResource AppOpacityPlaceholder}" />
+    <SolidColorBrush x:Key="AppPlaceholderStrongBrush" Color="{ThemeResource AppRowHoverForegroundColor}" Opacity="{ThemeResource AppOpacityPlaceholderStrong}" />
+    <SolidColorBrush x:Key="AppPlaceholderSelectedStrongBrush" Color="{ThemeResource AppRowSelectedForegroundColor}" Opacity="{ThemeResource AppOpacityPlaceholderStrong}" />
     <SolidColorBrush x:Key="AppWarmAccentBrush" Color="{ThemeResource AppWarmAccentColor}" />
     <SolidColorBrush x:Key="AppWarmAccentForegroundBrush" Color="{ThemeResource AppWarmAccentForegroundColor}" />
     <SolidColorBrush x:Key="AppDangerBrush" Color="{ThemeResource AppDangerColor}" />
+    <SolidColorBrush x:Key="AppDangerForegroundBrush" Color="{ThemeResource AppDangerForegroundColor}" />
     <SolidColorBrush x:Key="AppSuccessBrush" Color="{ThemeResource AppSuccessColor}" />
+    <SolidColorBrush x:Key="AppSuccessForegroundBrush" Color="{ThemeResource AppSuccessForegroundColor}" />
     <SolidColorBrush x:Key="AppShadowBrush" Color="{ThemeResource AppShadowColor}" />
+    <SolidColorBrush x:Key="AppSmokeBrush" Color="{ThemeResource AppSmokeColor}" />
 
     <AcrylicBrush
         x:Key="AppTransientOverlayBrush"
         TintColor="{ThemeResource AppOverlayColor}"
-        TintOpacity="0.2"
-        TintLuminosityOpacity="0.85"
+        TintOpacity="{ThemeResource AppOpacityMaterialTint}"
+        TintLuminosityOpacity="{ThemeResource AppOpacityMaterialLuminosity}"
         FallbackColor="{ThemeResource AppOverlayColor}" />
+    <!-- Compensated tint keeps active acrylic visually continuous with the opaque canvas. -->
+    <AcrylicBrush
+        x:Key="AppCanvasTransientOverlayBrush"
+        TintColor="{ThemeResource AppCanvasMaterialTintColor}"
+        TintOpacity="{ThemeResource AppOpacityMaterial}"
+        TintLuminosityOpacity="{ThemeResource AppOpacityVisible}"
+        FallbackColor="{ThemeResource AppCanvasColor}" />
+    <AcrylicBrush
+        x:Key="AppTitleBarMaterialBrush"
+        TintColor="{ThemeResource AppCanvasMaterialTintColor}"
+        TintOpacity="{ThemeResource AppOpacityMaterial}"
+        TintLuminosityOpacity="{ThemeResource AppOpacityVisible}"
+        FallbackColor="{ThemeResource AppCanvasRaisedColor}" />
+    <!-- Compensated tint keeps active acrylic visually continuous with the opaque rail. -->
+    <AcrylicBrush
+        x:Key="AppRailTransientOverlayBrush"
+        TintColor="{ThemeResource AppRailMaterialTintColor}"
+        TintOpacity="{ThemeResource AppOpacityMaterial}"
+        TintLuminosityOpacity="{ThemeResource AppOpacityVisible}"
+        FallbackColor="{ThemeResource AppRailColor}" />
 </ResourceDictionary>

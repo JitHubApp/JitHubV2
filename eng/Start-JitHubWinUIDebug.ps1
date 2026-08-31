@@ -4,7 +4,8 @@ param(
     [string]$Platform = 'x64',
     [switch]$SkipBuild,
     [switch]$SkipDebugIdentity,
-    [switch]$KeepIdentity,
+    [switch]$SkipIdentityCleanup,
+    [switch]$EnablePseudoLocalization,
     [switch]$NoLaunch,
     [switch]$Wait,
     [string[]]$AppArguments = @()
@@ -43,6 +44,37 @@ function Get-RuntimeIdentifier {
     }
 }
 
+function Ensure-DebugIdentityAssetAliases {
+    param([Parameter(Mandatory = $true)][string]$ManifestPath)
+
+    $manifestDirectory = Split-Path -Parent $ManifestPath
+    $assetsDirectory = Join-Path $manifestDirectory 'Assets'
+    if (-not (Test-Path -LiteralPath $assetsDirectory)) {
+        return
+    }
+
+    $assetAliases = @{
+        'SplashScreen.png' = 'SplashScreen.scale-200.png'
+        'Square150x150Logo.png' = 'Square150x150Logo.scale-200.png'
+        'Square44x44Logo.png' = 'Square44x44Logo.scale-200.png'
+        'Wide310x150Logo.png' = 'Wide310x150Logo.scale-200.png'
+        'SmallTile.png' = 'SmallTile.scale-200.png'
+        'LargeTile.png' = 'LargeTile.scale-200.png'
+    }
+
+    foreach ($alias in $assetAliases.GetEnumerator()) {
+        $target = Join-Path $assetsDirectory $alias.Key
+        if (Test-Path -LiteralPath $target) {
+            continue
+        }
+
+        $source = Join-Path $assetsDirectory $alias.Value
+        if (Test-Path -LiteralPath $source) {
+            Copy-Item -LiteralPath $source -Destination $target -Force
+        }
+    }
+}
+
 Require-Command -Name 'dotnet'
 Require-Command -Name 'winapp'
 
@@ -57,14 +89,20 @@ if (-not (Test-Path -LiteralPath $manifestPath)) {
     throw "Package manifest not found: $manifestPath"
 }
 
-$editorAssetsIndexPath = Join-Path (Split-Path -Parent $projectDirectory) 'artifacts\EditorAssets\dist\index.html'
-if (-not $SkipBuild -and -not (Test-Path -LiteralPath $editorAssetsIndexPath)) {
-    throw "Embedded editor assets are missing at '$editorAssetsIndexPath'. Run .\sync-vscode-assets.ps1 before launching JitHub.WinUI."
-}
-
 if (-not $SkipBuild) {
     Write-Host "Building JitHub.WinUI Debug|$Platform..."
-    & dotnet build $resolvedProjectPath -c Debug -p:Platform=$Platform
+    $buildArguments = @(
+        'build',
+        $resolvedProjectPath,
+        '-c',
+        'Debug',
+        "-p:Platform=$Platform"
+    )
+    if ($EnablePseudoLocalization) {
+        $buildArguments += '-p:EnablePseudoLocalization=true'
+    }
+
+    & dotnet @buildArguments
     if ($LASTEXITCODE -ne 0) {
         throw 'dotnet build failed.'
     }
@@ -78,6 +116,17 @@ $targetName = [System.IO.Path]::GetFileNameWithoutExtension($resolvedProjectPath
 $outputDirectory = Join-Path $projectDirectory "bin\$Platform\Debug\$targetFramework\$runtimeIdentifier"
 $exePath = Join-Path $outputDirectory "$targetName.exe"
 if (-not (Test-Path -LiteralPath $exePath)) {
+    $looseLayoutAppHost = Join-Path $outputDirectory "AppX\$targetName.exe"
+    $currentAssembly = Join-Path $outputDirectory "$targetName.dll"
+    if ((Test-Path -LiteralPath $looseLayoutAppHost) -and (Test-Path -LiteralPath $currentAssembly)) {
+        # MSIX tooling can leave the freshly built managed payload in the root
+        # output while retaining the native apphost only in AppX. The apphost is
+        # generic; place it beside the current DLLs so launch/debug never falls
+        # back to an older loose-layout payload.
+        Copy-Item -LiteralPath $looseLayoutAppHost -Destination $exePath -Force
+    }
+}
+if (-not (Test-Path -LiteralPath $exePath)) {
     $exePath = Get-ChildItem -Path (Join-Path $projectDirectory 'bin') -Recurse -Filter "$targetName.exe" -File -ErrorAction SilentlyContinue |
         Where-Object { $_.FullName -like '*\Debug\*' -and $_.FullName -like "*\$runtimeIdentifier\*" } |
         Sort-Object LastWriteTime -Descending |
@@ -89,23 +138,57 @@ if ([string]::IsNullOrWhiteSpace($exePath) -or -not (Test-Path -LiteralPath $exe
 }
 
 Write-Host "Debug executable: $exePath"
+$generatedManifestPath = Join-Path $outputDirectory 'AppxManifest.xml'
+$looseLayoutManifestPath = Join-Path $outputDirectory 'AppX\AppxManifest.xml'
+if (Test-Path -LiteralPath $generatedManifestPath) {
+    Ensure-DebugIdentityAssetAliases -ManifestPath $generatedManifestPath
+    $manifestPath = $generatedManifestPath
+} elseif (Test-Path -LiteralPath $looseLayoutManifestPath) {
+    Ensure-DebugIdentityAssetAliases -ManifestPath $looseLayoutManifestPath
+    $manifestPath = $looseLayoutManifestPath
+}
+
+Write-Host "Debug identity manifest: $manifestPath"
 
 if (-not $SkipDebugIdentity) {
+    if (-not $SkipIdentityCleanup) {
+        Write-Host 'Removing stale JitHub development identities...'
+        & (Join-Path $PSScriptRoot 'Reset-JitHubWinUIDebugIdentity.ps1') -ProjectPath $resolvedProjectPath
+        if (-not $?) {
+            throw 'Reset-JitHubWinUIDebugIdentity.ps1 failed.'
+        }
+    }
+
     Write-Host 'Applying debug package identity with Windows App CLI...'
     $debugIdentityArguments = @(
         'create-debug-identity',
         $exePath,
         '--manifest',
-        $manifestPath
+        $manifestPath,
+        '--keep-identity'
     )
 
-    if ($KeepIdentity) {
-        $debugIdentityArguments += '--keep-identity'
+    # winapp generates a manifest-only resources.pri while registering the
+    # identity. Preserve the compiled MRT index so x:Uid localization remains
+    # available to the launched app, including explicit qps-ploc builds.
+    $resourceIndexPath = Join-Path $outputDirectory 'resources.pri'
+    $resourceIndexBackupPath = $null
+    if (Test-Path -LiteralPath $resourceIndexPath) {
+        $resourceIndexBackupPath = Join-Path ([System.IO.Path]::GetTempPath()) "JitHub-$([System.Guid]::NewGuid().ToString('N')).resources.pri"
+        Copy-Item -LiteralPath $resourceIndexPath -Destination $resourceIndexBackupPath -Force
     }
 
-    & winapp @debugIdentityArguments
-    if ($LASTEXITCODE -ne 0) {
-        throw 'winapp create-debug-identity failed.'
+    try {
+        & winapp @debugIdentityArguments
+        if ($LASTEXITCODE -ne 0) {
+            throw 'winapp create-debug-identity failed.'
+        }
+    }
+    finally {
+        if ($null -ne $resourceIndexBackupPath -and (Test-Path -LiteralPath $resourceIndexBackupPath)) {
+            Copy-Item -LiteralPath $resourceIndexBackupPath -Destination $resourceIndexPath -Force
+            Remove-Item -LiteralPath $resourceIndexBackupPath -Force
+        }
     }
 }
 

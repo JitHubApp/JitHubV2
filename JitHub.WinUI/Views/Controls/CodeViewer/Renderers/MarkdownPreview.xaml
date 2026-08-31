@@ -2,6 +2,7 @@
     x:Class="JitHub.WinUI.Views.Controls.CodeViewer.Renderers.MarkdownPreview"
     xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
     xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+    xmlns:app="using:JitHub.WinUI.Views.Controls.App"
     xmlns:codeviewer="using:JitHub.WinUI.Views.Controls.CodeViewer"
     xmlns:common="using:JitHub.WinUI.Views.Controls.Common"
     xmlns:controls="using:CommunityToolkit.WinUI.Controls"
@@ -23,18 +24,21 @@
         <!--  Toolbar  -->
         <Border
             Grid.Row="0"
-            Padding="8,6"
+            Padding="{ThemeResource AppPadding8_6}"
             Background="{ThemeResource AppSurfaceBrush}"
             BorderBrush="{ThemeResource AppOutlineBrush}"
-            BorderThickness="0,0,0,1">
-            <controls:Segmented
-                x:Name="ViewModeSegmented"
+            BorderThickness="{ThemeResource AppBottomHairlineBorderThickness}">
+            <app:AppSegmented
+                x:Uid="MarkdownPreviewViewMode" x:Name="ViewModeSegmented"
                 HorizontalAlignment="Left"
+                AutomationProperties.AutomationId="MarkdownPreviewViewMode"
+                AutomationProperties.Name="Markdown view mode"
                 SelectionChanged="ViewModeSegmented_SelectionChanged"
+                Style="{StaticResource AppContentSizedSegmentedStyle}"
                 SelectionMode="Single">
-                <controls:SegmentedItem Content="Rich" />
-                <controls:SegmentedItem Content="Plain" />
-            </controls:Segmented>
+                <app:AppSegmentedItem x:Uid="MarkdownPreviewViewModeRich" AutomationProperties.AutomationId="MarkdownPreviewViewMode_Rich" AutomationProperties.Name="Rendered Markdown view" Content="Rich" Style="{StaticResource AppContentSizedSegmentedItemStyle}" />
+                <app:AppSegmentedItem x:Uid="MarkdownPreviewViewModePlain" AutomationProperties.AutomationId="MarkdownPreviewViewMode_Plain" AutomationProperties.Name="Plain Markdown view" Content="Plain" Style="{StaticResource AppContentSizedSegmentedItemStyle}" />
+            </app:AppSegmented>
         </Border>
 
         <!--  Body  -->
@@ -42,14 +46,16 @@
 
             <!--  Rich: native markdown renderer  -->
             <common:MarkdownViewer
+                HostKind="RepositoryReadme"
+                AutomationInstanceId="RepoCodeReadme"
                 x:Name="RichPanel"
                 BaseUrl="{x:Bind CurrentBaseUrl, Mode=OneWay}"
                 ContentHorizontalAlignment="Center"
                 ContentMaxWidth="860"
                 ContentPadding="16"
+                DocumentSource="{x:Bind CurrentDocumentSource, Mode=OneWay}"
                 DocumentPath="{x:Bind CurrentDocumentPath, Mode=OneWay}"
                 HorizontalAlignment="Stretch"
-                SurfaceColorToken="AppCanvas"
                 Text="{x:Bind ViewModel.Text, Mode=OneWay}"
                 VerticalAlignment="Stretch"
                 Visibility="Visible" />

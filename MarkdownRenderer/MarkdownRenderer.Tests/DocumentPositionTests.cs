@@ -75,7 +75,9 @@ public class DocumentPositionTests
     public void GreaterThanOrEqual_EqualPositions_ReturnsTrue()
     {
         var a = new DocumentPosition(1, 2, 3);
-        Assert.True(a >= a);
+        var b = new DocumentPosition(1, 2, 3);
+        Assert.True(a >= b);
+        Assert.True(b >= a);
     }
 
     [Fact]

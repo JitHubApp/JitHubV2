@@ -3,8 +3,9 @@ using System.IO;
 using System.Text;
 using System.Text.Json;
 using System.Threading.Tasks;
+using JitHub.Services;
+using JitHub.Services.CodeViewer;
 using JitHub.WinUI.ViewModels.CodeViewer;
-using Microsoft.UI.Dispatching;
 using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Controls;
 
@@ -16,13 +17,13 @@ namespace JitHub.WinUI.Views.Controls.CodeViewer.Renderers;
 /// </summary>
 public sealed partial class JsonPreview : UserControl
 {
-    private readonly DispatcherQueue _dispatcher;
     private string? _lastText;
+
+    public event Action<string, string>? ActionCompleted;
 
     public JsonPreview()
     {
         InitializeComponent();
-        _dispatcher = DispatcherQueue.GetForCurrentThread();
         DataContextChanged += OnDataContextChanged;
     }
 
@@ -45,7 +46,12 @@ public sealed partial class JsonPreview : UserControl
         if (vm is null) return;
         bool wantsRich = ViewModeSegmented.SelectedIndex == 0;
         if (vm.ShowRichPreview != wantsRich)
+        {
             vm.ShowRichPreview = wantsRich;
+            ActionCompleted?.Invoke(
+                wantsRich ? RepoCodeTelemetryActions.JsonRichView : RepoCodeTelemetryActions.JsonPlainView,
+                TelemetryTaxonomy.Results.Success);
+        }
         UpdateContent();
     }
 
@@ -62,34 +68,31 @@ public sealed partial class JsonPreview : UserControl
             return;
         }
 
-        // Pretty-print on background thread
-        Task.Run(() =>
+        UiTaskGuard.Run(async () =>
         {
-            string pretty;
-            try
+            string pretty = await Task.Run(() =>
             {
-                using var doc = JsonDocument.Parse(text);
-                using var stream = new MemoryStream();
-                using (var writer = new Utf8JsonWriter(stream, new JsonWriterOptions { Indented = true }))
+                try
                 {
-                    doc.RootElement.WriteTo(writer);
-                }
+                    using var doc = JsonDocument.Parse(text);
+                    using var stream = new MemoryStream();
+                    using (var writer = new Utf8JsonWriter(stream, new JsonWriterOptions { Indented = true }))
+                    {
+                        doc.RootElement.WriteTo(writer);
+                    }
 
-                pretty = Encoding.UTF8.GetString(stream.ToArray());
-            }
-            catch
-            {
-                pretty = text; // fall back to raw on parse failure
-            }
-            return pretty;
-        }).ContinueWith(t =>
-        {
-            _dispatcher.TryEnqueue(() =>
-            {
-                // Only apply if the text hasn't changed while we were parsing
-                if (_lastText == text)
-                    Editor.Text = t.Result;
+                    return Encoding.UTF8.GetString(stream.ToArray());
+                }
+                catch (JsonException)
+                {
+                    return text;
+                }
             });
-        }, TaskScheduler.Default);
+
+            if (_lastText == text)
+            {
+                Editor.Text = pretty;
+            }
+        }, "ui-json-preview");
     }
 }

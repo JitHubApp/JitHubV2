@@ -1,110 +1,222 @@
 using System;
-using System.IO;
+using System.ComponentModel;
+using System.Threading;
 using System.Threading.Tasks;
+using JitHub.Services;
+using JitHub.Services.CodeViewer;
 using JitHub.WinUI.ViewModels.CodeViewer;
+using JitHub.WinUI.Views.Controls.App;
 using Microsoft.UI.Dispatching;
 using Microsoft.UI.Xaml;
+using Microsoft.UI.Xaml.Automation;
 using Microsoft.UI.Xaml.Controls;
-using SkiaSharp;
-using SkiaSharp.Views.Windows;
-using SvgSkia = Svg.Skia;
 
 namespace JitHub.WinUI.Views.Controls.CodeViewer.Renderers;
 
 /// <summary>
-/// Renders SVG files via Svg.Skia + SKXamlCanvas inside a zoomable ScrollViewer.
-/// DataContext must be a <see cref="RepoFilePreviewViewModel"/>.
+/// Renders validated repository SVG files through the app-owned tiled bitmap viewport.
 /// </summary>
 public sealed partial class SvgPreview : UserControl
 {
+    private static readonly TimeSpan ParseDeadline = TimeSpan.FromSeconds(2);
+
     private readonly DispatcherQueue _dispatcher;
-    private SvgSkia.SKSvg? _svg;
-    private byte[]? _lastBytes;
+    private readonly IRepositorySvgRasterizer _rasterizer = new RepositorySvgRasterizer();
+    private readonly SvgPreviewRequestGate _requestGate = new();
+    private RepoFilePreviewViewModel? _viewModel;
+    private bool _isAttached;
+
+    public event Action<string, string>? ActionCompleted;
 
     public SvgPreview()
     {
         InitializeComponent();
         _dispatcher = DispatcherQueue.GetForCurrentThread();
+        SvgViewport.RenderFailed += SvgViewport_RenderFailed;
+        SvgViewport.ZoomSettled += SvgViewport_ZoomSettled;
         DataContextChanged += OnDataContextChanged;
+        Loaded += OnLoaded;
+        Unloaded += OnUnloaded;
     }
-
-    private RepoFilePreviewViewModel? ViewModel => DataContext as RepoFilePreviewViewModel;
 
     private void OnDataContextChanged(FrameworkElement sender, DataContextChangedEventArgs args)
     {
-        LoadSvg();
+        SubscribeToViewModel(_isAttached ? DataContext as RepoFilePreviewViewModel : null);
+        QueueLoad();
     }
 
-    private void LoadSvg()
+    private void SubscribeToViewModel(RepoFilePreviewViewModel? viewModel)
     {
-        var vm = ViewModel;
-        var bytes = vm?.Bytes;
-        _lastBytes = bytes;
-        _svg = null;
-
-        if (bytes is not { Length: > 0 })
+        if (ReferenceEquals(_viewModel, viewModel))
         {
-            ShowError();
             return;
         }
 
-        Task.Run(() =>
+        if (_viewModel is not null)
         {
-            try
-            {
-                var svg = new SvgSkia.SKSvg();
-                svg.Load(new MemoryStream(bytes));
-                return svg.Picture is not null ? svg : null;
-            }
-            catch
-            {
-                return null;
-            }
-        }).ContinueWith(t =>
-        {
-            _dispatcher.TryEnqueue(() =>
-            {
-                if (_lastBytes != bytes) return;
+            _viewModel.PropertyChanged -= OnViewModelPropertyChanged;
+        }
 
-                if (t.Result is null)
+        _viewModel = viewModel;
+        if (_viewModel is not null)
+        {
+            _viewModel.PropertyChanged += OnViewModelPropertyChanged;
+        }
+    }
+
+    private void OnViewModelPropertyChanged(object? sender, PropertyChangedEventArgs args)
+    {
+        if (args.PropertyName == nameof(RepoFilePreviewViewModel.Bytes))
+        {
+            _dispatcher.TryEnqueue(QueueLoad);
+        }
+    }
+
+    private void OnLoaded(object sender, RoutedEventArgs args)
+    {
+        _isAttached = true;
+        SubscribeToViewModel(DataContext as RepoFilePreviewViewModel);
+        SvgViewport.AttachScrollHost(SvgScrollViewer);
+        QueueLoad();
+    }
+
+    private void OnUnloaded(object sender, RoutedEventArgs args)
+    {
+        _isAttached = false;
+        SubscribeToViewModel(null);
+        _requestGate.CancelCurrent();
+        SvgViewport.Clear();
+    }
+
+    private void QueueLoad()
+    {
+        if (!_isAttached)
+        {
+            return;
+        }
+
+        byte[]? bytes = _viewModel?.Bytes;
+        SvgPreviewRequest request = _requestGate.Begin();
+        SvgViewport.Clear();
+        ErrorText.Visibility = Visibility.Collapsed;
+        AutomationProperties.SetItemStatus(ErrorText, string.Empty);
+        AutomationProperties.SetHelpText(ErrorText, string.Empty);
+        SvgViewport.Visibility = Visibility.Collapsed;
+        UiTaskGuard.Observe(LoadSvgAsync(bytes, request), "ui-svg-preview");
+    }
+
+    private async Task LoadSvgAsync(byte[]? bytes, SvgPreviewRequest request)
+    {
+        RepositorySvgDocument? document = null;
+        try
+        {
+            using CancellationTokenSource deadline = CancellationTokenSource.CreateLinkedTokenSource(
+                request.CancellationToken);
+            deadline.CancelAfter(ParseDeadline);
+            document = await Task.Run(
+                () => _rasterizer.Load(bytes, deadline.Token),
+                deadline.Token).ConfigureAwait(false);
+
+            RepositorySvgDocument? published = document;
+            await RunOnUiAsync(() =>
+            {
+                if (!_isAttached || !_requestGate.IsCurrent(request) || published is null)
                 {
-                    ShowError();
                     return;
                 }
 
-                _svg = t.Result;
+                SvgViewport.SetDocument(published, _rasterizer);
+                document = null;
                 ErrorText.Visibility = Visibility.Collapsed;
-                SvgCanvas.Visibility = Visibility.Visible;
-                SvgCanvas.Invalidate();
-            });
-        }, TaskScheduler.Default);
+                SvgViewport.Visibility = Visibility.Visible;
+            }).ConfigureAwait(false);
+
+            if (published is null)
+            {
+                await RunOnUiAsync(() =>
+                {
+                    if (_requestGate.IsCurrent(request))
+                    {
+                        ShowUnavailable();
+                    }
+                }).ConfigureAwait(false);
+            }
+        }
+        catch (OperationCanceledException) when (request.CancellationToken.IsCancellationRequested)
+        {
+        }
+        catch (OperationCanceledException)
+        {
+            await ShowUnavailableIfCurrentAsync(request).ConfigureAwait(false);
+        }
+        catch
+        {
+            await ShowUnavailableIfCurrentAsync(request).ConfigureAwait(false);
+        }
+        finally
+        {
+            document?.Dispose();
+            _requestGate.Complete(request);
+        }
     }
 
-    private void SvgCanvas_PaintSurface(object? sender, SKPaintSurfaceEventArgs e)
+    private Task ShowUnavailableIfCurrentAsync(SvgPreviewRequest request) => RunOnUiAsync(() =>
     {
-        var canvas = e.Surface.Canvas;
-        canvas.Clear(SKColors.Transparent);
+        if (_requestGate.IsCurrent(request))
+        {
+            ShowUnavailable();
+        }
+    });
 
-        var picture = _svg?.Picture;
-        if (picture is null) return;
-
-        var cullRect = picture.CullRect;
-        if (cullRect.Width <= 0 || cullRect.Height <= 0) return;
-
-        float scaleX = e.Info.Width / cullRect.Width;
-        float scaleY = e.Info.Height / cullRect.Height;
-        float scale = Math.Min(scaleX, scaleY);
-
-        canvas.Save();
-        canvas.Scale(scale, scale);
-        canvas.DrawPicture(picture);
-        canvas.Restore();
+    private void SvgViewport_RenderFailed(object? sender, AppSvgRenderFailedEventArgs e)
+    {
+        if (_isAttached)
+        {
+            ShowUnavailable();
+            AutomationProperties.SetItemStatus(
+                ErrorText,
+                $"render-failed:{e.Exception.GetType().Name}:0x{e.Exception.HResult:x8}");
+            AutomationProperties.SetHelpText(ErrorText, e.Exception.Message);
+        }
     }
 
-    private void ShowError()
+    private void SvgViewport_ZoomSettled(object? sender, EventArgs e) =>
+        ActionCompleted?.Invoke(
+            RepoCodeTelemetryActions.SvgZoom,
+            TelemetryTaxonomy.Results.Success);
+
+    private void ShowUnavailable()
     {
-        _svg = null;
+        SvgViewport.Clear();
         ErrorText.Visibility = Visibility.Visible;
-        SvgCanvas.Visibility = Visibility.Collapsed;
+        SvgViewport.Visibility = Visibility.Collapsed;
+    }
+
+    private Task RunOnUiAsync(Action action)
+    {
+        if (_dispatcher.HasThreadAccess)
+        {
+            action();
+            return Task.CompletedTask;
+        }
+
+        TaskCompletionSource completion = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        if (!_dispatcher.TryEnqueue(() =>
+        {
+            try
+            {
+                action();
+                completion.SetResult();
+            }
+            catch (Exception exception)
+            {
+                completion.SetException(exception);
+            }
+        }))
+        {
+            completion.SetResult();
+        }
+
+        return completion.Task;
     }
 }

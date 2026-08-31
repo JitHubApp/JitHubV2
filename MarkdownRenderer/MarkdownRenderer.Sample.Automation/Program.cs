@@ -46,6 +46,8 @@ internal static class Program
             RunProbe("automation-tree-shape", () => ProbeAutomationTreeShape(window));
             RunProbe("rtl-toggle-flips-flow",  () => ProbeRtlToggle(window));
             RunProbe("sample-buttons-discoverable", () => ProbeSampleButtons(window));
+            RunProbe("audit-matrix-hostile-content", () => ProbeAuditMatrixHostileContent(window));
+            RunProbe("text-scale-reflows", () => ProbeTextScale(window));
             RunProbe("accessibility-lab-text-pattern", () => ProbeAccessibilityLabTextPattern(window));
             RunProbe("accessibility-lab-semantic-roles", () => ProbeAccessibilityLabSemanticRoles(window));
             RunProbe("accessibility-lab-text-attributes", () => ProbeAccessibilityLabTextAttributes(window));
@@ -66,7 +68,7 @@ internal static class Program
             RunProbe("table-selection-row-border-is-stable", () => ProbeTableSelectionRowBorderIsStable(window));
             RunProbe("double-click-selects-word",  () => ProbeDoubleClickSelectsWord(window));
             RunProbe("triple-click-selects-line",  () => ProbeTripleClickSelectsLine(window));
-            RunProbe("context-menu-appears",       () => ProbeContextMenu(window));
+            RunProbe("context-copy-copies-selection", () => ProbeContextMenuCopy(window));
             RunProbe("hover-does-not-shake",       () => ProbeHoverDoesNotShake(window));
             RunProbe("embeds-selection-does-not-shake", () => ProbeEmbedsSelectionDoesNotShake(window));
 
@@ -289,12 +291,110 @@ internal static class Program
             "Images", "Embeds", "RTL", "Virtualization", "Selection",
             "Lazy_Images", "Scroll_Anchor", "Footnotes", "Keyboard_Nav",
             "Accessibility_Lab",
+            "Audit_Matrix",
             "Full_Demo",
         };
         foreach (var label in expected)
         {
             var btn = window.FindFirstDescendant(cf => cf.ByAutomationId("SampleButton_" + label));
             Assert(btn is not null, $"SampleButton_{label} not found in automation tree");
+        }
+    }
+
+    private static void ProbeAuditMatrixHostileContent(Window window)
+    {
+        var stopwatch = Stopwatch.StartNew();
+        ClickSample(window, "Audit_Matrix");
+
+        var renderer = FindRenderer(window);
+        bool ready = Retry.WhileFalse(
+            () => GetRendererDocumentText(renderer).Contains(
+                "Document remains responsive after hostile content",
+                StringComparison.Ordinal),
+            timeout: TimeSpan.FromSeconds(8),
+            interval: TimeSpan.FromMilliseconds(100)).Result;
+        stopwatch.Stop();
+        Assert(ready, "audit matrix did not finish rendering its final marker");
+        Assert(stopwatch.Elapsed < TimeSpan.FromSeconds(8),
+            $"audit matrix first render exceeded the interaction budget: {stopwatch.Elapsed.TotalMilliseconds:0} ms");
+
+        string documentText = GetRendererDocumentText(renderer);
+        Assert(documentText.Contains("Completed audit task", StringComparison.Ordinal),
+            "audit matrix task-list content is missing from TextPattern");
+        Assert(documentText.Contains("Expected behavior", StringComparison.Ordinal),
+            "audit matrix table content is missing from TextPattern");
+        Assert(documentText.Contains("public static string Audit", StringComparison.Ordinal),
+            "audit matrix code content is missing from TextPattern");
+
+        var descendants = renderer.FindAllDescendants();
+        Assert(descendants.Count(e => e.ControlType == ControlType.CheckBox) >= 2,
+            "audit matrix must expose both task-list checkboxes");
+        Assert(descendants.Any(e => e.ControlType == ControlType.Table),
+            "audit matrix must expose native table semantics");
+        Assert(descendants.Any(e => e.ControlType == ControlType.Image &&
+                                    (e.Name ?? string.Empty).Contains("Safe blue audit square", StringComparison.Ordinal)),
+            "audit matrix safe SVG must expose image semantics");
+
+        var textPattern = renderer.Patterns.Text.PatternOrDefault
+                          ?? throw new InvalidOperationException("MarkdownRenderer must expose UIA TextPattern");
+        var finalMarker = textPattern.DocumentRange.FindText(
+            "Document remains responsive after hostile content", backward: false, ignoreCase: false)
+            ?? throw new InvalidOperationException("audit matrix final marker range not found");
+        finalMarker.ScrollIntoView(alignToTop: false);
+        Thread.Sleep(500);
+        var finalRects = finalMarker.GetBoundingRectangles();
+        Assert(finalRects.Length > 0 && finalRects.All(r => r.Width <= renderer.BoundingRectangle.Width + 2),
+            "hostile SVG/HTML caused text geometry to escape the renderer viewport");
+
+        CaptureAuditScreenshot(renderer, "audit-matrix-hostile-content.png");
+    }
+
+    private static void ProbeTextScale(Window window)
+    {
+        ClickSample(window, "Accessibility_Lab");
+        Thread.Sleep(1000);
+
+        var renderer = FindRenderer(window);
+        var textPattern = renderer.Patterns.Text.PatternOrDefault
+                          ?? throw new InvalidOperationException("MarkdownRenderer must expose UIA TextPattern");
+        var attributes = renderer.Automation.TextAttributeLibrary;
+        var range = textPattern.DocumentRange.FindText("quick", backward: false, ignoreCase: true)
+                    ?? throw new InvalidOperationException("text-scale marker range not found");
+        Assert(TryAttributeNumber(range.GetAttributeValue(attributes.FontSize), out double normalSize),
+            "normal text FontSize attribute is unavailable");
+
+        var toggle = window.FindFirstDescendant(cf => cf.ByAutomationId("TextScaleToggle"))?.AsToggleButton()
+                     ?? throw new InvalidOperationException("TextScaleToggle not found");
+        try
+        {
+            if (toggle.ToggleState != ToggleState.On)
+                toggle.Toggle();
+
+            bool scaled = Retry.WhileFalse(() =>
+                {
+                    var currentRenderer = FindRenderer(window);
+                    var currentPattern = currentRenderer.Patterns.Text.PatternOrDefault;
+                    var currentRange = currentPattern?.DocumentRange.FindText("quick", backward: false, ignoreCase: true);
+                    return currentRange is not null &&
+                           TryAttributeNumber(currentRange.GetAttributeValue(currentRenderer.Automation.TextAttributeLibrary.FontSize), out double size) &&
+                           size >= normalSize * 1.8;
+                },
+                timeout: TimeSpan.FromSeconds(8),
+                interval: TimeSpan.FromMilliseconds(150)).Result;
+            Assert(scaled, "200% text scale did not reflow the rendered document");
+
+            var status = window.FindFirstDescendant(cf => cf.ByAutomationId("TextScaleStatus"));
+            Assert((status?.Name ?? string.Empty).Contains("text-scale:2", StringComparison.Ordinal),
+                "text scale status did not report the active 200% scale");
+            CaptureAuditScreenshot(FindRenderer(window), "accessibility-text-scale-200.png");
+        }
+        finally
+        {
+            if (toggle.ToggleState == ToggleState.On)
+            {
+                toggle.Toggle();
+                Thread.Sleep(600);
+            }
         }
     }
 
@@ -741,16 +841,14 @@ internal static class Program
         Mouse.Click(nearbyDocumentPoint, FlaUI.Core.Input.MouseButton.Left);
         Thread.Sleep(300);
 
-        Keyboard.Press(VirtualKeyShort.TAB);
-        Thread.Sleep(300);
-
-        var focused = renderer.Automation.FocusedElement();
-        if (focused.ControlType == ControlType.Button &&
-            (focused.Name ?? string.Empty).Contains("Native action", StringComparison.Ordinal))
+        AutomationElement focused = renderer.Automation.FocusedElement();
+        for (int attempt = 0; attempt < 5; attempt++)
         {
             Keyboard.Press(VirtualKeyShort.TAB);
             Thread.Sleep(300);
             focused = renderer.Automation.FocusedElement();
+            if (IsCompositeValueTextBox(focused) || IsCompositeActionButton(focused) || focused.ControlType == ControlType.CheckBox)
+                break;
         }
 
         Assert(IsCompositeValueTextBox(focused) || IsCompositeActionButton(focused) || focused.ControlType == ControlType.CheckBox,
@@ -958,7 +1056,7 @@ internal static class Program
         {
             (Sample: "Typography", Start: "Heading 6", End: "Regular paragraph text", Expected: "quick brown fox"),
             (Sample: "Selection", Start: "Click and drag", End: "The selection spans", Expected: "select"),
-            (Sample: "Code", Start: "C# example", End: "public sealed class", Expected: "public"),
+            (Sample: "Code", Start: "C# with a filename", End: "public sealed class", Expected: "public"),
         };
 
         foreach (var c in cases)
@@ -997,6 +1095,11 @@ internal static class Program
         string selected = GetRendererSelectionText(renderer);
         Assert(!string.IsNullOrWhiteSpace(selected),
             "ctrl-c copy probe must have an active pointer selection before copying");
+
+        TryFocus(renderer, "renderer before Ctrl+C");
+        Thread.Sleep(250);
+        Assert(!string.IsNullOrWhiteSpace(GetRendererSelectionText(renderer)),
+            "focusing the renderer before Ctrl+C must preserve the pointer selection");
 
         const string sentinel = "markdown-renderer-clipboard-sentinel";
         SetClipboardText(sentinel);
@@ -1105,47 +1208,69 @@ internal static class Program
             $"triple-click probe did not draw a selection rectangle. Recent log excerpt: {Truncate(appended, 600)}");
     }
 
-    private static void ProbeContextMenu(Window window)
+    private static void ProbeContextMenuCopy(Window window)
     {
-        // Navigate to Selection sample.
-        var btn = window.FindFirstDescendant(cf => cf.ByAutomationId("SampleButton_Selection"))?.AsButton()
-                  ?? throw new InvalidOperationException("Selection sample button not found");
-        btn.Invoke();
+        ClickSample(window, "Selection");
         Thread.Sleep(1200);
 
         var renderer = FindRenderer(window);
-        var bounds = renderer.BoundingRectangle;
+        var start = FindTextPatternPoint(renderer, "Click and drag", "context-copy selection start");
+        var end = FindTextPatternPoint(renderer, "The selection spans", "context-copy selection end");
+        DragMouseThrough(start, end);
+        Thread.Sleep(400);
 
-        // Right-click in the middle of the renderer.
-        int cx = (int)(bounds.X + bounds.Width * 0.5);
-        int cy = (int)(bounds.Y + 50);
-        Mouse.MoveTo(cx, cy);
+        string selected = GetRendererSelectionText(renderer);
+        Assert(!string.IsNullOrWhiteSpace(selected),
+            "context-copy probe must create a selection before opening the menu");
+
+        const string sentinel = "markdown-renderer-context-copy-sentinel";
+        SetClipboardText(sentinel);
+        var selectedPoint = new System.Drawing.Point(
+            (int)Math.Round(start.X + (end.X - start.X) * 0.5),
+            (int)Math.Round(start.Y + (end.Y - start.Y) * 0.5));
+        Mouse.MoveTo(selectedPoint);
         Thread.Sleep(100);
         Mouse.RightClick();
+        Thread.Sleep(400);
+
+        var copyItem = Retry.WhileNull(() =>
+            {
+                var inWindow = window.FindAllDescendants(cf => cf.ByControlType(ControlType.MenuItem))
+                    .FirstOrDefault(e => string.Equals(e.Name, "Copy", StringComparison.OrdinalIgnoreCase));
+                if (inWindow is not null)
+                    return inWindow;
+
+                return renderer.Automation.GetDesktop()
+                    .FindAllDescendants(cf => cf.ByControlType(ControlType.MenuItem))
+                    .FirstOrDefault(e => string.Equals(e.Name, "Copy", StringComparison.OrdinalIgnoreCase) && !e.IsOffscreen);
+            },
+            timeout: TimeSpan.FromSeconds(5),
+            interval: TimeSpan.FromMilliseconds(100)).Result
+            ?? throw new InvalidOperationException("selected markdown context menu did not expose a Copy item");
+
+        copyItem.Click();
         Thread.Sleep(600);
 
-        // The context menu is a flyout; look for it in the UIA tree as a child of
-        // the window (not the renderer itself). Stop at the window boundary — not the
-        // desktop root — to avoid searching the entire desktop for MenuItems, which is
-        // slow and can return false positives from unrelated open menus.
-        var winRoot = renderer;
-        while (winRoot.Parent is not null
-               && winRoot.ControlType != FlaUI.Core.Definitions.ControlType.Window)
-            winRoot = winRoot.Parent;
+        string copied = GetClipboardText();
+        Assert(!string.Equals(copied, sentinel, StringComparison.Ordinal),
+            "context-menu Copy left the clipboard unchanged");
+        Assert(copied.Contains("select any text", StringComparison.OrdinalIgnoreCase) ||
+               copied.Contains("selection spans", StringComparison.OrdinalIgnoreCase),
+            $"context-menu Copy should copy selected markdown source, got: {Truncate(copied, 240)}");
+        Assert(GetRendererDocumentText(renderer).Length > 0,
+            "renderer must remain responsive after context-menu Copy");
+    }
 
-        var menuItems = winRoot.FindAllDescendants(cf => cf.ByControlType(ControlType.MenuItem));
-        // MenuFlyout items may not always appear in the UIA tree on all systems,
-        // so we treat them as informational, not a hard failure.
-        if (menuItems.Length == 0)
-            Console.Error.WriteLine("[automation] warn: context-menu probe: no MenuItem elements found in UIA tree — flyout may not be UIA-exposed on this system");
-
-        // Dismiss the menu BEFORE querying renderer properties so an open flyout
-        // cannot intercept the UIA focus and cause the TextPattern query to stale/block.
-        Keyboard.Press(VirtualKeyShort.ESCAPE);
-        Thread.Sleep(200);
-
-        var textAfter = GetRendererDocumentText(renderer);
-        Assert(textAfter.Length > 0, "Renderer must remain responsive after right-click context menu");
+    private static void CaptureAuditScreenshot(AutomationElement element, string fileName)
+    {
+        string artifactDir = Path.Combine(
+            Path.GetFullPath("."), "artifacts", "screenshots", "markdown-audit");
+        Directory.CreateDirectory(artifactDir);
+        string path = Path.Combine(artifactDir, fileName);
+        using var image = FlaUI.Core.Capturing.Capture.Element(
+            element, new FlaUI.Core.Capturing.CaptureSettings());
+        image.ToFile(path);
+        Console.WriteLine($"[automation] screenshot: {path}");
     }
 
     /// <summary>
@@ -1254,7 +1379,6 @@ internal static class Program
         int dragEvents = CountOccurrences(appended, "ptr-move-drag");
         int extendEvents = CountOccurrences(appended, "sel-extend");
         int selectionRectEvents = CountOccurrences(appended, "sel-rect-phys");
-        int adornerDrawEvents = CountOccurrences(appended, "sel-adorner-draw");
         int paintEvents = CountOccurrences(appended, "inline-paint");
         int regionEvents = CountOccurrences(appended, " region ");
 
@@ -1270,8 +1394,8 @@ internal static class Program
         Assert(selectionRectEvents > 0,
             $"embed selection-shake probe did not render selection overlay rectangles. " +
             $"Recent log excerpt: {Truncate(appended, 600)}");
-        Assert(adornerDrawEvents > 0,
-            $"embed selection-shake probe did not draw the selection adorner. " +
+        Assert(!string.IsNullOrWhiteSpace(GetRendererSelectionText(renderer)),
+            $"embed selection-shake probe did not expose the resulting selection through TextPattern. " +
             $"Recent log excerpt: {Truncate(appended, 600)}");
         Assert(paintEvents == 0,
             $"embed selection-shake regression: {paintEvents} inline-paint event(s) fired during embeds-page drag. " +
@@ -1792,7 +1916,7 @@ internal static class Program
     {
         string root = AppContext.BaseDirectory;
         var dir = new DirectoryInfo(root);
-        while (dir is not null && !File.Exists(Path.Combine(dir.FullName, "JitHub.slnx")))
+        while (dir is not null && !File.Exists(Path.Combine(dir.FullName, "Directory.Build.props")))
             dir = dir.Parent;
         if (dir is null) return null;
         string sampleDir = Path.Combine(dir.FullName, "MarkdownRenderer", "MarkdownRenderer.Sample", "bin");

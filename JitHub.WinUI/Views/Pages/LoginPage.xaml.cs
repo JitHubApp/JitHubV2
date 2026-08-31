@@ -1,4 +1,3 @@
-using System;
 using JitHub.Services;
 using JitHub.WinUI.ViewModels.Pages;
 using Microsoft.UI.Xaml;
@@ -31,15 +30,11 @@ public sealed partial class LoginPage : Page
         ViewModel.PrepareForDisplay();
     }
 
-    private async void LoginButton_Click(object sender, RoutedEventArgs e)
+    private void LoginButton_Click(object sender, RoutedEventArgs e)
     {
-        try
+        UiTaskGuard.Run(async () =>
         {
             await ViewModel.StartLoginAsync();
-        }
-        catch (Exception ex)
-        {
-            System.Diagnostics.Debug.WriteLine($"Failed to start login: {ex}");
-        }
+        }, "ui-login-page");
     }
 }

@@ -43,6 +43,7 @@ public static class GfmExtensions
         registry.RegisterRenderer<ListItemBlock>(new TaskListItemRenderer());
         registry.RegisterRenderer<QuoteBlock>(new AlertRenderer());
         registry.RegisterRenderer<FootnoteGroup>(new FootnoteRenderer());
+        registry.RegisterRenderer<HtmlBlock>(new HtmlBlockRenderer());
 
         return registry;
     }

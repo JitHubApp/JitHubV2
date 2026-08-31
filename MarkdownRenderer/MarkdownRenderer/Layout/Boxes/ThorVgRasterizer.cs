@@ -29,6 +29,9 @@ internal static class ThorVgRasterizer
     public readonly record struct Raster(byte[] Bgra, int WidthPx, int HeightPx);
 
     private static int _engineInitialized;
+    private static bool _shutdownRequested;
+    private static int _activeRasterizations;
+    private static readonly ManualResetEventSlim _idle = new(initialState: true);
     private static readonly object _engineLock = new();
 
     /// <summary>
@@ -37,39 +40,127 @@ internal static class ThorVgRasterizer
     /// cheap, but we keep a managed gate so the first failure is observable
     /// and we don't pay the P/Invoke overhead on every rasterize.
     /// </summary>
-    private static bool EnsureEngine()
+    private static bool EnsureEngineLocked()
     {
-        if (Volatile.Read(ref _engineInitialized) == 1) return true;
+        if (_shutdownRequested) return false;
+        if (_engineInitialized == 1) return true;
+
+        try
+        {
+            // 0 = let ThorVG pick a sensible default thread count for
+            // its task scheduler. Shutdown is coordinated explicitly by
+            // ShutdownForProcessExit(), not by finalizer/process-exit races.
+            var r = tvg_engine_init(0);
+            if (r != Tvg_Result.Success)
+            {
+                MarkdownDiagnostics.WriteLine(
+                    $"[ThorVgRasterizer] tvg_engine_init failed: {r}");
+                return false;
+            }
+            _engineInitialized = 1;
+            return true;
+        }
+        catch (DllNotFoundException ex)
+        {
+            MarkdownDiagnostics.WriteLine(
+                $"[ThorVgRasterizer] thorvg.dll not found: {ex.Message}");
+            return false;
+        }
+        catch (Exception ex)
+        {
+            MarkdownDiagnostics.WriteLine(
+                $"[ThorVgRasterizer] engine init threw: {ex}");
+            return false;
+        }
+    }
+
+    private static bool TryEnterRasterizer()
+    {
         lock (_engineLock)
         {
-            if (_engineInitialized == 1) return true;
+            if (!EnsureEngineLocked())
+                return false;
+
+            if (_activeRasterizations == 0)
+                _idle.Reset();
+
+            _activeRasterizations++;
+            return true;
+        }
+    }
+
+    private static void LeaveRasterizer()
+    {
+        if (Interlocked.Decrement(ref _activeRasterizations) == 0)
+            _idle.Set();
+    }
+
+    internal static void BeginShutdown()
+    {
+        lock (_engineLock)
+        {
+            _shutdownRequested = true;
+        }
+    }
+
+    /// <summary>
+    /// Stops new native SVG rasterization work, waits briefly for active
+    /// raster jobs, then terminates ThorVG before the CRT unload path runs.
+    /// </summary>
+    internal static void ShutdownForProcessExit(TimeSpan timeout)
+    {
+        bool shouldTerminate = false;
+
+        lock (_engineLock)
+        {
+            _shutdownRequested = true;
+            if (_engineInitialized == 0)
+                return;
+
+            shouldTerminate = _activeRasterizations == 0;
+        }
+
+        if (!shouldTerminate)
+        {
             try
             {
-                // 0 = let ThorVG pick a sensible default thread count for
-                // its task scheduler. We do not own that scheduler's
-                // lifetime here; tvg_engine_term() in a finalizer would be
-                // a footgun on app shutdown.
-                var r = tvg_engine_init(0);
+                shouldTerminate = _idle.Wait(timeout);
+            }
+            catch (ObjectDisposedException)
+            {
+                shouldTerminate = false;
+            }
+        }
+
+        if (!shouldTerminate)
+        {
+            MarkdownDiagnostics.WriteLine(
+                "[ThorVgRasterizer] skipped tvg_engine_term because rasterization did not become idle before shutdown.");
+            return;
+        }
+
+        lock (_engineLock)
+        {
+            if (_engineInitialized == 0 || _activeRasterizations != 0)
+                return;
+
+            try
+            {
+                var r = tvg_engine_term();
                 if (r != Tvg_Result.Success)
                 {
                     MarkdownDiagnostics.WriteLine(
-                        $"[ThorVgRasterizer] tvg_engine_init failed: {r}");
-                    return false;
+                        $"[ThorVgRasterizer] tvg_engine_term returned: {r}");
                 }
-                Volatile.Write(ref _engineInitialized, 1);
-                return true;
-            }
-            catch (DllNotFoundException ex)
-            {
-                MarkdownDiagnostics.WriteLine(
-                    $"[ThorVgRasterizer] thorvg.dll not found: {ex.Message}");
-                return false;
             }
             catch (Exception ex)
             {
                 MarkdownDiagnostics.WriteLine(
-                    $"[ThorVgRasterizer] engine init threw: {ex}");
-                return false;
+                    $"[ThorVgRasterizer] tvg_engine_term threw: {ex}");
+            }
+            finally
+            {
+                _engineInitialized = 0;
             }
         }
     }
@@ -86,8 +177,13 @@ internal static class ThorVgRasterizer
     /// The rasterized BGRA buffer, or <c>null</c> if the SVG could not be
     /// parsed (caller falls back to the alt-text placeholder).
     /// </returns>
-    public static unsafe Raster? Rasterize(byte[] svgBytes, int targetWidthPx, int targetHeightPx)
+    public static unsafe Raster? Rasterize(
+        byte[] svgBytes,
+        int targetWidthPx,
+        int targetHeightPx,
+        CancellationToken cancellationToken = default)
     {
+        cancellationToken.ThrowIfCancellationRequested();
         if (svgBytes is null || svgBytes.Length == 0) return null;
         if (targetWidthPx <= 0 || targetHeightPx <= 0) return null;
         // Guard against int32 overflow in the allocation below. A single
@@ -96,7 +192,7 @@ internal static class ThorVgRasterizer
         // adversarial intrinsic-size; reject before we wrap.
         long byteCount = (long)targetWidthPx * targetHeightPx * 4L;
         if (byteCount <= 0 || byteCount > 64L * 1024L * 1024L) return null;
-        if (!EnsureEngine()) return null;
+        if (!TryEnterRasterizer()) return null;
 
         IntPtr canvas = IntPtr.Zero;
         IntPtr picture = IntPtr.Zero;
@@ -107,6 +203,7 @@ internal static class ThorVgRasterizer
         try
         {
             canvas = tvg_swcanvas_create(Tvg_Engine_Option.Default);
+            cancellationToken.ThrowIfCancellationRequested();
             if (canvas == IntPtr.Zero)
             {
                 MarkdownDiagnostics.WriteLine("[ThorVgRasterizer] swcanvas_create returned null");
@@ -133,6 +230,7 @@ internal static class ThorVgRasterizer
                 }
 
                 picture = tvg_picture_new();
+                cancellationToken.ThrowIfCancellationRequested();
                 if (picture == IntPtr.Zero)
                 {
                     MarkdownDiagnostics.WriteLine("[ThorVgRasterizer] picture_new returned null");
@@ -154,6 +252,7 @@ internal static class ThorVgRasterizer
                 }
 
                 tvg_picture_set_size(picture, targetWidthPx, targetHeightPx);
+                cancellationToken.ThrowIfCancellationRequested();
 
                 // tvg_canvas_add transfers ownership of `picture` to the
                 // canvas — the canvas will destroy the picture when the
@@ -168,6 +267,7 @@ internal static class ThorVgRasterizer
                 pictureOwnedByCanvas = true;
 
                 var ur = tvg_canvas_update(canvas);
+                cancellationToken.ThrowIfCancellationRequested();
                 if (ur != Tvg_Result.Success && ur != Tvg_Result.InsufficientCondition)
                 {
                     MarkdownDiagnostics.WriteLine($"[ThorVgRasterizer] canvas_update returned: {ur}");
@@ -197,6 +297,10 @@ internal static class ThorVgRasterizer
             // which is exactly what CanvasBitmap waits for
             // B8G8R8A8UIntNormalized. No swizzle needed.
             return new Raster(bgra, targetWidthPx, targetHeightPx);
+        }
+        catch (OperationCanceledException)
+        {
+            throw;
         }
         catch (Exception ex)
         {
@@ -228,6 +332,8 @@ internal static class ThorVgRasterizer
                 }
                 catch { }
             }
+
+            LeaveRasterizer();
         }
     }
 }

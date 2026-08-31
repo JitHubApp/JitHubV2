@@ -8,9 +8,12 @@
     xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
     mc:Ignorable="d">
     <Button
+        x:Name="InteractiveButton"
         Style="{StaticResource AppStatButtonStyle}"
         Command="{Binding Command, ElementName=Root}"
-        AutomationProperties.AutomationId="{Binding AutomationId, ElementName=Root}">
+        IsEnabled="{Binding IsActionEnabled, ElementName=Root}"
+        AutomationProperties.AutomationId="{x:Bind EffectiveAutomationId, Mode=OneWay}"
+        AutomationProperties.Name="{x:Bind EffectiveAutomationName, Mode=OneWay}">
         <Button.Resources>
             <SolidColorBrush x:Key="ButtonBackgroundPointerOver" Color="{ThemeResource AppSurfaceColor}" />
             <SolidColorBrush x:Key="ButtonBackgroundPressed" Color="{ThemeResource AppSurfaceSubtleColor}" />
@@ -20,7 +23,7 @@
             <SolidColorBrush x:Key="ButtonForegroundPressed" Color="{ThemeResource AppInkColor}" />
         </Button.Resources>
         <Grid
-            ColumnSpacing="8"
+            ColumnSpacing="{ThemeResource AppGap8}"
             VerticalAlignment="Center">
             <Grid.ColumnDefinitions>
                 <ColumnDefinition Width="Auto" />
@@ -35,11 +38,11 @@
                 SelectedBrush="{Binding SelectedIconForeground, ElementName=Root}" />
             <TextBlock
                 Grid.Column="1"
-                Margin="0,1,0,0"
+                Margin="{ThemeResource AppMargin0_1_0_0}"
                 VerticalAlignment="Center"
                 FontFamily="{ThemeResource AppUiFontFamily}"
-                FontSize="14"
-                FontWeight="SemiBold"
+                FontSize="{ThemeResource AppFontSize14}"
+                FontWeight="{ThemeResource AppFontWeightSemibold}"
                 Foreground="{ThemeResource AppInkBrush}"
                 Text="{Binding ValueText, ElementName=Root}" />
         </Grid>

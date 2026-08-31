@@ -17,23 +17,24 @@
             <ColumnDefinition Width="*"/>
         </Grid.ColumnDefinitions>
         <common:Avatar
+            x:Name="ReviewerAvatar"
             Grid.Column="0"
-            Margin="0 0 8 0"
+            Margin="{ThemeResource AppMargin0_0_8_0}"
             VerticalAlignment="Top"
             HorizontalAlignment="Center"
+            NavigationSource="pull_request_review"
             Size="BIG"
-            Url="{x:Bind ViewModel.Reviewer.AvatarUrl, Mode=OneWay}"
-            Login="{x:Bind ViewModel.Reviewer.Login, Mode=OneWay}"/>
+            Url="{x:Bind ViewModel.ReviewerAvatarUrl, Mode=OneWay}"/>
         <Grid
             Grid.Column="1"
-            Style="{ThemeResource PlainContainer}"
-            Padding="8">
+        Style="{StaticResource PlainContainer}"
+            Padding="{ThemeResource AppPadding8}">
             <StackPanel
-                Spacing="8">
+                Spacing="{ThemeResource AppGap8}">
                 <TextBlock
                     VerticalAlignment="Center">
-                    <Run Text="{x:Bind ViewModel.Reviewer.Login, Mode=OneWay}"/>
-                    <Run Text="reviewed"/>
+                    <Run Text="{Binding ReviewerDisplayName, Mode=OneWay}"/>
+                    <Run x:Uid="ControlsPullRequestConversationReviewBlockRunReviewed" Text="reviewed"/>
                     <Run Text="{x:Bind ViewModel.SubmittedAt, Converter={StaticResource TimeAgoConverter}, ConverterParameter='', Mode=OneWay}"/>
                 </TextBlock>
                 <muxc:ItemsRepeater
@@ -47,7 +48,7 @@
                     </muxc:ItemsRepeater.ItemTemplate>
                     <muxc:ItemsRepeater.Layout>
                         <muxc:StackLayout
-                            Spacing="12">
+                            Spacing="{ThemeResource AppGap12}">
                         </muxc:StackLayout>
                     </muxc:ItemsRepeater.Layout>
                 </muxc:ItemsRepeater>

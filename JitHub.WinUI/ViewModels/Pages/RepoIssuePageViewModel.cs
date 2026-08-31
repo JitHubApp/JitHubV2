@@ -1,46 +1,84 @@
 using System;
 using System.Collections.Generic;
 using System.Collections.ObjectModel;
+using System.Diagnostics;
+using System.Globalization;
 using System.Linq;
 using System.Net.Http;
 using System.Threading;
 using System.Threading.Tasks;
+using CommunityToolkit.Mvvm.Input;
 using CommunityToolkit.Mvvm.ComponentModel;
 using JitHub.Models.GitHub;
 using JitHub.Models.NavArgs;
 using JitHub.Services;
+using JitHub.Services.Markdown;
+using JitHub.WinUI.Helpers;
+using JitHub.WinUI.ViewModels.Common;
+using MarkdownRenderer.Images;
 
 namespace JitHub.WinUI.ViewModels.Pages;
 
 public sealed partial class RepoIssuePageViewModel : ViewModelBase
 {
     private static readonly TimeSpan SelectionLoadDebounce = TimeSpan.FromMilliseconds(150);
+    private static readonly TimeSpan HoverPrefetchDebounce = TimeSpan.FromMilliseconds(120);
+    private static readonly TimeSpan CachedNavigationCommentQuietPeriod = TimeSpan.FromMilliseconds(500);
+    private static readonly TimeSpan CachedNavigationRefreshQuietPeriod = TimeSpan.FromSeconds(1);
     private readonly IAuthService _authService;
     private readonly IAccountService _accountService;
     private readonly IGitHubClientService _gitHubClientService;
+    private readonly IGitHubIssueQueryService _issueQueryService;
+    private readonly IGitHubRepositoryQueryService _repositoryQueryService;
+    private readonly IIssueNavigationCache _issueNavigationCache;
+    private readonly ITelemetryService _telemetryService;
     private IssueNavArg? _navArg;
     private int _detailRequestId;
     private int _listRequestId;
+    private int _navigationInitializationVersion;
+    private string? _loadedIssueQueryIdentity;
     private bool _suppressSelectionChanged;
+    private CancellationTokenSource? _listLoadCancellationTokenSource;
+    private CancellationTokenSource? _detailLoadCancellationTokenSource;
     private CancellationTokenSource? _selectionLoadCancellationTokenSource;
+    private IDisposable? _selectionDwellPrefetch;
+    private IDisposable? _neighborPrefetch;
+    private readonly LatestWinsPrefetchScheduler _hoverPrefetch = new();
     private readonly List<GitHubIssue> _loadedIssues = [];
     private readonly GitHubIssueQueryOptions _issueQuery = new();
     private int _pinnedIssueNumber;
     private int _lastFocusedIssueNumber;
     private IssueDetailSnapshot? _pendingIssueSelectionState;
     private bool _isIssueCommentSubmissionInProgress;
+    private bool _isIssueBodyDeferred;
+    private bool _isNavigationPreview;
+    private readonly IssueCapabilityDenialState _capabilityDenials = new();
+    private readonly IssueCapabilityRecoveryCoordinator _capabilityRecovery;
+    private IssueSectionState _issueListState = new(CacheState.Miss, Completeness: PagedDataCompleteness.Loading);
 
     public RepoIssuePageViewModel()
     {
+        _capabilityRecovery = new IssueCapabilityRecoveryCoordinator(_capabilityDenials);
         _authService = GetService<IAuthService>();
         _accountService = GetService<IAccountService>();
         _gitHubClientService = GetService<IGitHubClientService>();
+        _issueQueryService = GetService<IGitHubIssueQueryService>();
+        _repositoryQueryService = GetService<IGitHubRepositoryQueryService>();
+        _issueNavigationCache = GetService<IIssueNavigationCache>();
+        _telemetryService = SafeTelemetryService.Wrap(GetService<ITelemetryService>());
 
         StateOptions =
         [
             new QueryOption("open", GetString("RepoIssue.StateOpen", "Open")),
             new QueryOption("closed", GetString("RepoIssue.StateClosed", "Closed")),
             new QueryOption("all", GetString("RepoIssue.StateAll", "All"))
+        ];
+        ScopeOptions =
+        [
+            new QueryOption("all", GetString("RepoIssue.ScopeAll", "All")),
+            new QueryOption("assigned", GetString("RepoIssue.ScopeAssigned", "Mine")),
+            new QueryOption("created", GetString("RepoIssue.ScopeCreated", "Created")),
+            new QueryOption("mentioned", GetString("RepoIssue.ScopeMentioned", "Mentioned"))
         ];
         SortOptions =
         [
@@ -63,7 +101,13 @@ public sealed partial class RepoIssuePageViewModel : ViewModelBase
 
     public ObservableCollection<GitHubIssueComment> IssueComments { get; } = [];
 
+    public ObservableCollection<GitHubLabel> SelectedLabels { get; } = [];
+
+    public ObservableCollection<GitHubActor> SelectedAssignees { get; } = [];
+
     public List<QueryOption> StateOptions { get; }
+
+    public List<QueryOption> ScopeOptions { get; }
 
     public List<QueryOption> SortOptions { get; }
 
@@ -139,6 +183,76 @@ public sealed partial class RepoIssuePageViewModel : ViewModelBase
 
     public string LoadingStatusText => GetString("RepoIssue.LoadingStatus", "Loading issues...");
 
+    public string RepositoryFullName => _navArg is null
+        ? string.Empty
+        : string.IsNullOrWhiteSpace(_navArg.Repo.FullName)
+            ? $"{_navArg.Repo.Owner.Login}/{_navArg.Repo.Name}"
+            : _navArg.Repo.FullName;
+
+    public string PageTitle => string.IsNullOrWhiteSpace(RepositoryFullName) ? "Issues" : $"{RepositoryFullName} issues";
+
+    public bool HasSelectedIssue => SelectedIssue is not null;
+
+    public bool IsDetailPlaceholderVisible => SelectedIssue is null;
+
+    public bool IsIssueContentVisible => SelectedIssue is not null && !_isNavigationPreview;
+
+    public string SelectedIssueNumberText => SelectedIssue is null
+        ? string.Empty
+        : $"#{SelectedIssue.Number.ToString(CultureInfo.InvariantCulture)}";
+
+    public string SelectedIssueTitle => SelectedIssue?.Title ?? string.Empty;
+
+    public string SelectedIssueAuthorDisplayName => string.IsNullOrWhiteSpace(SelectedIssue?.User?.Login)
+        ? GetString("Common.UnknownUser", "unknown")
+        : SelectedIssue.User.Login;
+
+    public string? SelectedIssueAuthorLogin =>
+        UserIdentityNavigationPolicy.GetRoutableLogin(SelectedIssue?.User?.Login);
+
+    public string SelectedIssueAuthorAvatarUrl => SelectedIssue?.User?.AvatarUrl ?? string.Empty;
+
+    public string SelectedIssueAuthorAutomationId => SelectedIssue?.AutomationId ?? "RepoIssueSelected_none";
+
+    public string SelectedIssueStateText => SelectedIssue is null || _isNavigationPreview
+        ? string.Empty
+        : GetIssueStateDisplay(SelectedIssue.State);
+
+    public string SelectedIssueMetadataText => SelectedIssue is null || _isNavigationPreview
+        ? string.Empty
+        : $"opened {MeWorkItemViewItem.FormatTimeAgo(SelectedIssue.CreatedAt)} · updated {MeWorkItemViewItem.FormatTimeAgo(SelectedIssue.UpdatedAt)}";
+
+    public string SelectedIssueCommentText => SelectedIssue is null ? string.Empty : FormatCommentCount(SelectedIssue.Comments);
+
+    public long SelectedIssueReactionTargetId => SelectedIssue?.Number ?? 0;
+
+    public string SelectedIssueHtmlUrl => SelectedIssue?.HtmlUrl ?? string.Empty;
+
+    public GitHubReactionSummary SelectedIssueReactions => SelectedIssue?.Reactions ?? new();
+
+    public MarkdownDocumentSource? IssueBodyMarkdownSource => _isIssueBodyDeferred
+        ? null
+        : SelectedIssue?.MarkdownSource;
+
+    public MarkdownDocumentSource? IssueCommentMarkdownSource => _navArg is null || SelectedIssue is null
+        ? null
+        : MarkdownDocumentSourceFactory.CreateRepositoryDocument(
+            "issue-comment-draft",
+            SelectedIssue.Id.ToString(CultureInfo.InvariantCulture),
+            _navArg.Repo.Owner.Login,
+            _navArg.Repo.Name,
+            _navArg.Repo.DefaultBranch);
+
+    public string MilestoneTitle => SelectedIssue?.Milestone?.Title ?? GetString("RepoIssue.MilestoneNoneShort", "No milestone");
+
+    public bool HasLabels => SelectedLabels.Count > 0;
+
+    public bool HasNoLabels => SelectedLabels.Count == 0;
+
+    public bool HasAssignees => SelectedAssignees.Count > 0;
+
+    public bool HasNoAssignees => SelectedAssignees.Count == 0;
+
     public string FormatEditIssueDialogTitle(int issueNumber)
     {
         return FormatString("RepoIssue.EditIssueDialogTitleFormat", "Edit issue #{0}", issueNumber);
@@ -153,7 +267,15 @@ public sealed partial class RepoIssuePageViewModel : ViewModelBase
     public partial string StatusText { get; set; } = string.Empty;
 
     [ObservableProperty]
+    public partial string IssueListScopeNotice { get; set; } = string.Empty;
+
+    public bool HasIssueListScopeNotice => !string.IsNullOrWhiteSpace(IssueListScopeNotice);
+
+    [ObservableProperty]
     public partial QueryOption? SelectedStateOption { get; set; }
+
+    [ObservableProperty]
+    public partial QueryOption? SelectedScopeOption { get; set; }
 
     [ObservableProperty]
     public partial QueryOption? SelectedSortOption { get; set; }
@@ -198,17 +320,59 @@ public sealed partial class RepoIssuePageViewModel : ViewModelBase
     public partial bool IsAddCommentEnabled { get; set; }
 
     [ObservableProperty]
+    public partial bool CanCreateIssue { get; set; }
+
+    [ObservableProperty]
+    public partial bool CanEditIssue { get; set; }
+
+    [ObservableProperty]
+    public partial bool CanManageIssueMetadata { get; set; }
+
+    [ObservableProperty]
+    public partial bool CanChangeIssueState { get; set; }
+
+    [ObservableProperty]
+    public partial bool CanReactToIssue { get; set; }
+
+    [ObservableProperty]
     public partial bool IsIssueCommentsEmptyVisible { get; set; }
 
-    public async Task InitializeAsync(IssueNavArg? navArg)
+    [ObservableProperty]
+    public partial bool IsLoading { get; set; }
+
+    [ObservableProperty]
+    public partial bool IsEmpty { get; set; } = true;
+
+    [ObservableProperty]
+    public partial bool IsDetailLoading { get; set; }
+
+    public Task InitializeAsync(IssueNavArg? navArg) =>
+        InitializeCoreAsync(navArg, returnAfterCachedDetail: false);
+
+    public Task InitializeForNavigationAsync(IssueNavArg? navArg) =>
+        InitializeCoreAsync(navArg, returnAfterCachedDetail: true);
+
+    private async Task InitializeCoreAsync(IssueNavArg? navArg, bool returnAfterCachedDetail)
     {
+        int initializationVersion = ++_navigationInitializationVersion;
+        CancelActiveListLoad();
+        CancelActiveDetailLoad();
+        CancelPredictivePrefetches();
         _navArg = navArg;
+        _capabilityDenials.TrackTarget(GetRepositoryIdentity(navArg?.Repo), 0);
+        ApplyViewerCapabilities(null);
         _lastFocusedIssueNumber = 0;
         _pendingIssueSelectionState = null;
+        _selectionDwellPrefetch?.Dispose();
+        _selectionDwellPrefetch = null;
+        _neighborPrefetch?.Dispose();
+        _neighborPrefetch = null;
         _loadedIssues.Clear();
         Issues.Clear();
+        IsEmpty = true;
         SetSelectedIssue(null);
         ResetIssueDetails();
+        NotifyRepositoryPropertiesChanged();
 
         if (navArg is null)
         {
@@ -221,8 +385,61 @@ public sealed partial class RepoIssuePageViewModel : ViewModelBase
             return;
         }
 
+        IssueTelemetry.TrackOpened(_telemetryService);
         ResetFilters();
-        await LoadIssuesAsync(navArg.IssueId);
+        string navigationPartition = GetActiveUserPartition(GetActiveToken() ?? string.Empty);
+        if (returnAfterCachedDetail &&
+            navArg.IsNotificationHandoff &&
+            navArg.NavigationPreview is GitHubIssue notificationPreview)
+        {
+            IssueNavigationSnapshot previewSnapshot = new(
+                navArg.Repo.Owner.Login,
+                navArg.Repo.Name,
+                navArg.IssueId,
+                notificationPreview,
+                [],
+                DateTimeOffset.UtcNow,
+                "notification-preview");
+            ApplyNavigationSnapshot(
+                navArg,
+                previewSnapshot,
+                "Opening issue...",
+                deferComments: true);
+            BackgroundTaskObserver.Run(
+                () => CompleteCachedNavigationInitializationAsync(
+                    navArg,
+                    previewSnapshot,
+                    initializationVersion),
+                "issues",
+                _telemetryService);
+            return;
+        }
+
+        bool hasNavigationSnapshot = TryApplyNavigationSnapshot(
+            navigationPartition,
+            navArg,
+            navArg.IssueId,
+            "Showing cached issue while refreshing.",
+            deferComments: returnAfterCachedDetail,
+            out IssueNavigationSnapshot? navigationSnapshot);
+        if (hasNavigationSnapshot && returnAfterCachedDetail && navigationSnapshot is not null)
+        {
+            BackgroundTaskObserver.Run(
+                () => CompleteCachedNavigationInitializationAsync(
+                    navArg,
+                    navigationSnapshot,
+                    initializationVersion),
+                "issues",
+                _telemetryService);
+            return;
+        }
+
+        await LoadIssuesAsync(navArg.IssueId, preserveCurrentDetailDuringLoad: hasNavigationSnapshot);
+        if (TryGetActiveToken(out string token) &&
+            !GitHubAuthenticationConstants.IsPublicAccessToken(token))
+        {
+            await RefreshRepositoryCapabilitiesAsync(token, QueryFetchPolicy.StaleFirst);
+        }
     }
 
     public async Task ReloadAsync()
@@ -233,7 +450,27 @@ public sealed partial class RepoIssuePageViewModel : ViewModelBase
             return;
         }
 
-        await LoadIssuesAsync(SelectedIssue?.Number ?? _pinnedIssueNumber);
+        int preferredIssueNumber = SelectedIssue?.Number ?? _pinnedIssueNumber;
+        await LoadIssuesAsync(preferredIssueNumber);
+
+        GitHubIssue? selectedIssue = SelectedIssue;
+        if (selectedIssue is not null && TryGetActiveToken(out string token))
+        {
+            await RefreshIssueSelectionAsync(selectedIssue, token);
+        }
+
+        if (TryGetActiveToken(out token) &&
+            !GitHubAuthenticationConstants.IsPublicAccessToken(token))
+        {
+            if (_capabilityDenials.IsDenied(IssueDeniedCapability.Create))
+            {
+                await RefreshAuthoritativeRepositoryCapabilitiesAsync(token);
+            }
+            else
+            {
+                await RefreshRepositoryCapabilitiesAsync(token, QueryFetchPolicy.NetworkOnly);
+            }
+        }
     }
 
     public async Task ApplyFiltersAsync()
@@ -252,10 +489,13 @@ public sealed partial class RepoIssuePageViewModel : ViewModelBase
 
     public async Task CreateIssueAsync(string title, string? body)
     {
-        if (_navArg is null || !TryGetActiveToken(out string token))
+        LastDialogMutationSucceeded = false;
+        if (_navArg is null || !CanCreateIssue || !TryGetActiveToken(out string token))
         {
             return;
         }
+
+        IssueCapabilityTarget capabilityTarget = _capabilityDenials.CaptureTarget();
 
         try
         {
@@ -266,31 +506,43 @@ public sealed partial class RepoIssuePageViewModel : ViewModelBase
                 _navArg.Repo.Name,
                 title,
                 body);
+            LastDialogMutationSucceeded = true;
+            TrackIssueAction(IssueActionKind.Create, IssueActionOutcome.Success);
+            await _issueQueryService.InvalidateRepositoryIssuesAsync(
+                GetActiveUserPartition(token),
+                _navArg.Repo.Owner.Login,
+                _navArg.Repo.Name);
             StatusText = FormatString("RepoIssue.CreatedStatus", "Created issue #{0}.", issue.Number);
             await LoadIssuesAsync(issue.Number);
         }
         catch (GitHubAuthenticationException)
         {
+            TrackIssueAction(IssueActionKind.Create, IssueActionOutcome.AuthenticationError);
             _authService.SignOut();
         }
         catch (GitHubApiException ex)
         {
-            StatusText = ex.Message;
+            TrackIssueAction(IssueActionKind.Create, GetIssueActionOutcome(ex));
+            ApplyRepositoryPermissionFailure(capabilityTarget, IssueDeniedCapability.Create, ex);
+            StatusText = UserFacingError.For(ex, UserFacingErrorKind.Action, "issues");
         }
         catch (HttpRequestException)
         {
+            TrackIssueAction(IssueActionKind.Create, IssueActionOutcome.NetworkError);
             StatusText = GetString("RepoIssue.CreateNetworkError", "JitHub could not reach GitHub to create this issue.");
         }
     }
 
     public async Task UpdateSelectedIssueAsync(string title, string? body)
     {
-        if (_navArg is null || SelectedIssue is null || !AreIssueActionsEnabled || !TryGetActiveToken(out string token))
+        LastDialogMutationSucceeded = false;
+        if (_navArg is null || SelectedIssue is null || !CanEditIssue || !TryGetActiveToken(out string token))
         {
             return;
         }
 
         GitHubIssue currentIssue = SelectedIssue;
+        IssueCapabilityTarget capabilityTarget = _capabilityDenials.CaptureTarget();
 
         try
         {
@@ -302,6 +554,13 @@ public sealed partial class RepoIssuePageViewModel : ViewModelBase
                 currentIssue.Number,
                 title,
                 body);
+            LastDialogMutationSucceeded = true;
+            TrackIssueAction(IssueActionKind.Edit, IssueActionOutcome.Success);
+            await _issueQueryService.InvalidateIssueAsync(
+                GetActiveUserPartition(token),
+                _navArg.Repo.Owner.Login,
+                _navArg.Repo.Name,
+                currentIssue.Number);
             await TryRefreshIssueSelectionAfterMutationAsync(
                 updatedIssue,
                 token,
@@ -309,19 +568,23 @@ public sealed partial class RepoIssuePageViewModel : ViewModelBase
         }
         catch (GitHubAuthenticationException)
         {
+            TrackIssueAction(IssueActionKind.Edit, IssueActionOutcome.AuthenticationError);
             _authService.SignOut();
         }
         catch (GitHubApiException ex)
         {
+            TrackIssueAction(IssueActionKind.Edit, GetIssueActionOutcome(ex));
+            ApplyPermissionFailure(capabilityTarget, IssueDeniedCapability.Edit, ex);
             if (!IsSelectedIssue(currentIssue))
             {
                 return;
             }
 
-            StatusText = ex.Message;
+            StatusText = UserFacingError.For(ex, UserFacingErrorKind.Action, "issues");
         }
         catch (HttpRequestException)
         {
+            TrackIssueAction(IssueActionKind.Edit, IssueActionOutcome.NetworkError);
             if (!IsSelectedIssue(currentIssue))
             {
                 return;
@@ -333,42 +596,48 @@ public sealed partial class RepoIssuePageViewModel : ViewModelBase
 
     public async Task<IssueMetadataDialogData?> LoadSelectedIssueMetadataDialogDataAsync()
     {
-        if (_navArg is null || SelectedIssue is null || !AreIssueActionsEnabled || !TryGetActiveToken(out string token))
+        if (DialogMatrixAutomationScenario.IsEnabled && SelectedIssue is not null)
+        {
+            return new IssueMetadataDialogData(
+                SelectedAssignees.ToArray(),
+                SelectedLabels.ToArray(),
+                []);
+        }
+
+        if (_navArg is null || SelectedIssue is null || !CanManageIssueMetadata || !TryGetActiveToken(out string token))
         {
             return null;
         }
 
         int requestId = _detailRequestId;
         int issueNumber = SelectedIssue.Number;
+        IssueCapabilityTarget capabilityTarget = _capabilityDenials.CaptureTarget();
         string previousStatusText = StatusText;
         try
         {
             StatusText = FormatString("RepoIssue.LoadMetadataStatus", "Loading issue #{0} metadata...", issueNumber);
-            Task<IReadOnlyList<GitHubActor>> assigneesTask = _gitHubClientService.GetAssigneesAsync(
+            IssueRepositoryMetadata metadata = await _issueQueryService.GetRepositoryMetadataAsync(
                 token,
+                GetActiveUserPartition(token),
                 _navArg.Repo.Owner.Login,
                 _navArg.Repo.Name);
-            Task<IReadOnlyList<GitHubLabel>> labelsTask = _gitHubClientService.GetLabelsAsync(
-                token,
-                _navArg.Repo.Owner.Login,
-                _navArg.Repo.Name);
-            Task<IReadOnlyList<GitHubMilestone>> milestonesTask = _gitHubClientService.GetMilestonesAsync(
-                token,
-                _navArg.Repo.Owner.Login,
-                _navArg.Repo.Name);
-            await Task.WhenAll(assigneesTask, labelsTask, milestonesTask);
 
             if (requestId != _detailRequestId || SelectedIssue?.Number != issueNumber)
             {
                 return null;
             }
 
-            StatusText = previousStatusText;
+            bool metadataIsPartial = metadata.AssigneesState.Completeness != PagedDataCompleteness.Complete ||
+                metadata.LabelsState.Completeness != PagedDataCompleteness.Complete ||
+                metadata.MilestonesState.Completeness != PagedDataCompleteness.Complete;
+            StatusText = metadataIsPartial
+                ? GetString("RepoIssue.MetadataPartialStatus", "Some issue metadata could not be loaded. Available choices are shown.")
+                : previousStatusText;
 
             return new IssueMetadataDialogData(
-                await assigneesTask,
-                await labelsTask,
-                await milestonesTask);
+                metadata.Assignees,
+                metadata.Labels,
+                metadata.Milestones);
         }
         catch (GitHubAuthenticationException)
         {
@@ -376,9 +645,10 @@ public sealed partial class RepoIssuePageViewModel : ViewModelBase
         }
         catch (GitHubApiException ex)
         {
+            ApplyPermissionFailure(capabilityTarget, IssueDeniedCapability.Metadata, ex);
             if (requestId == _detailRequestId && SelectedIssue?.Number == issueNumber)
             {
-                StatusText = ex.Message;
+                StatusText = UserFacingError.For(ex, UserFacingErrorKind.Action, "issues");
             }
         }
         catch (HttpRequestException)
@@ -394,12 +664,14 @@ public sealed partial class RepoIssuePageViewModel : ViewModelBase
 
     public async Task UpdateSelectedIssueMetadataAsync(IssueMetadataUpdate update)
     {
-        if (_navArg is null || SelectedIssue is null || !AreIssueActionsEnabled || !TryGetActiveToken(out string token))
+        LastDialogMutationSucceeded = false;
+        if (_navArg is null || SelectedIssue is null || !CanManageIssueMetadata || !TryGetActiveToken(out string token))
         {
             return;
         }
 
         GitHubIssue currentIssue = SelectedIssue;
+        IssueCapabilityTarget capabilityTarget = _capabilityDenials.CaptureTarget();
 
         try
         {
@@ -412,6 +684,13 @@ public sealed partial class RepoIssuePageViewModel : ViewModelBase
                 update.Assignees,
                 update.Labels,
                 update.MilestoneNumber);
+            LastDialogMutationSucceeded = true;
+            TrackIssueAction(IssueActionKind.Metadata, IssueActionOutcome.Success);
+            await _issueQueryService.InvalidateIssueAsync(
+                GetActiveUserPartition(token),
+                _navArg.Repo.Owner.Login,
+                _navArg.Repo.Name,
+                currentIssue.Number);
             if (IsSelectedIssue(currentIssue))
             {
                 StatusText = FormatString("RepoIssue.UpdatedMetadataStatus", "Updated issue #{0} metadata.", updatedIssue.Number);
@@ -424,19 +703,23 @@ public sealed partial class RepoIssuePageViewModel : ViewModelBase
         }
         catch (GitHubAuthenticationException)
         {
+            TrackIssueAction(IssueActionKind.Metadata, IssueActionOutcome.AuthenticationError);
             _authService.SignOut();
         }
         catch (GitHubApiException ex)
         {
+            TrackIssueAction(IssueActionKind.Metadata, GetIssueActionOutcome(ex));
+            ApplyPermissionFailure(capabilityTarget, IssueDeniedCapability.Metadata, ex);
             if (!IsSelectedIssue(currentIssue))
             {
                 return;
             }
 
-            StatusText = ex.Message;
+            StatusText = UserFacingError.For(ex, UserFacingErrorKind.Action, "issues");
         }
         catch (HttpRequestException)
         {
+            TrackIssueAction(IssueActionKind.Metadata, IssueActionOutcome.NetworkError);
             if (!IsSelectedIssue(currentIssue))
             {
                 return;
@@ -448,12 +731,13 @@ public sealed partial class RepoIssuePageViewModel : ViewModelBase
 
     public async Task ToggleSelectedIssueStateAsync()
     {
-        if (_navArg is null || SelectedIssue is null || !AreIssueActionsEnabled || !TryGetActiveToken(out string token))
+        if (_navArg is null || SelectedIssue is null || !CanChangeIssueState || !TryGetActiveToken(out string token))
         {
             return;
         }
 
         GitHubIssue currentIssue = SelectedIssue;
+        IssueCapabilityTarget capabilityTarget = _capabilityDenials.CaptureTarget();
 
         string nextState = string.Equals(currentIssue.State, "closed", StringComparison.OrdinalIgnoreCase)
             ? "open"
@@ -472,6 +756,12 @@ public sealed partial class RepoIssuePageViewModel : ViewModelBase
                 null,
                 null,
                 nextState);
+            TrackIssueAction(IssueActionKind.ToggleState, IssueActionOutcome.Success);
+            await _issueQueryService.InvalidateIssueAsync(
+                GetActiveUserPartition(token),
+                _navArg.Repo.Owner.Login,
+                _navArg.Repo.Name,
+                currentIssue.Number);
             await TryRefreshIssueSelectionAfterMutationAsync(
                 updatedIssue,
                 token,
@@ -479,19 +769,23 @@ public sealed partial class RepoIssuePageViewModel : ViewModelBase
         }
         catch (GitHubAuthenticationException)
         {
+            TrackIssueAction(IssueActionKind.ToggleState, IssueActionOutcome.AuthenticationError);
             _authService.SignOut();
         }
         catch (GitHubApiException ex)
         {
+            TrackIssueAction(IssueActionKind.ToggleState, GetIssueActionOutcome(ex));
+            ApplyPermissionFailure(capabilityTarget, IssueDeniedCapability.State, ex);
             if (!IsSelectedIssue(currentIssue))
             {
                 return;
             }
 
-            StatusText = ex.Message;
+            StatusText = UserFacingError.For(ex, UserFacingErrorKind.Action, "issues");
         }
         catch (HttpRequestException)
         {
+            TrackIssueAction(IssueActionKind.ToggleState, IssueActionOutcome.NetworkError);
             if (!IsSelectedIssue(currentIssue))
             {
                 return;
@@ -509,6 +803,7 @@ public sealed partial class RepoIssuePageViewModel : ViewModelBase
         }
 
         GitHubIssue currentIssue = SelectedIssue;
+        IssueCapabilityTarget capabilityTarget = _capabilityDenials.CaptureTarget();
 
         string body = IssueCommentDraft;
         if (string.IsNullOrWhiteSpace(body))
@@ -529,9 +824,15 @@ public sealed partial class RepoIssuePageViewModel : ViewModelBase
                 _navArg.Repo.Name,
                 currentIssue.Number,
                 body);
+            TrackIssueAction(IssueActionKind.Comment, IssueActionOutcome.Success);
+            await _issueQueryService.InvalidateIssueAsync(
+                GetActiveUserPartition(token),
+                _navArg.Repo.Owner.Login,
+                _navArg.Repo.Name,
+                currentIssue.Number);
+            ClearSubmittedIssueDraft(currentIssue.Number);
             if (IsSelectedIssue(currentIssue))
             {
-                IssueCommentDraft = string.Empty;
                 StatusText = FormatString("RepoIssue.AddedCommentStatus", "Comment added to issue #{0}.", currentIssue.Number);
             }
 
@@ -542,19 +843,23 @@ public sealed partial class RepoIssuePageViewModel : ViewModelBase
         }
         catch (GitHubAuthenticationException)
         {
+            TrackIssueAction(IssueActionKind.Comment, IssueActionOutcome.AuthenticationError);
             _authService.SignOut();
         }
         catch (GitHubApiException ex)
         {
+            TrackIssueAction(IssueActionKind.Comment, GetIssueActionOutcome(ex));
+            ApplyPermissionFailure(capabilityTarget, IssueDeniedCapability.Comment, ex);
             if (!IsSelectedIssue(currentIssue))
             {
                 return;
             }
 
-            StatusText = ex.Message;
+            StatusText = UserFacingError.For(ex, UserFacingErrorKind.Action, "issues");
         }
         catch (HttpRequestException)
         {
+            TrackIssueAction(IssueActionKind.Comment, IssueActionOutcome.NetworkError);
             if (!IsSelectedIssue(currentIssue))
             {
                 return;
@@ -565,27 +870,38 @@ public sealed partial class RepoIssuePageViewModel : ViewModelBase
         finally
         {
             _isIssueCommentSubmissionInProgress = false;
-            if (IsSelectedIssue(currentIssue))
-            {
-                UpdateIssueCommentEnabledState();
-            }
+            UpdateIssueCommentEnabledState();
         }
     }
 
     public async Task<IReadOnlyList<GitHubReaction>?> GetSelectedIssueReactionsAsync()
     {
+        if (DialogMatrixAutomationScenario.IsEnabled && SelectedIssue is not null)
+        {
+            return [];
+        }
+
         if (_navArg is null || SelectedIssue is null || !AreIssueActionsEnabled || !TryGetActiveToken(out string token))
         {
             return null;
         }
 
+        int issueNumber = SelectedIssue.Number;
+        IssueCapabilityTarget capabilityTarget = _capabilityDenials.CaptureTarget();
         try
         {
-            return await _gitHubClientService.GetIssueReactionsAsync(
+            IssuePagedSection<GitHubReaction> reactions = await _issueQueryService.GetAllIssueReactionsAsync(
                 token,
+                GetActiveUserPartition(token),
                 _navArg.Repo.Owner.Login,
                 _navArg.Repo.Name,
-                SelectedIssue.Number);
+                issueNumber);
+            if (reactions.State.Completeness != PagedDataCompleteness.Complete && SelectedIssue?.Number == issueNumber)
+            {
+                StatusText = GetString("RepoIssue.ReactionsPartialStatus", "Some reactions could not be loaded.");
+            }
+
+            return reactions.Items;
         }
         catch (GitHubAuthenticationException)
         {
@@ -593,11 +909,18 @@ public sealed partial class RepoIssuePageViewModel : ViewModelBase
         }
         catch (GitHubApiException ex)
         {
-            StatusText = ex.Message;
+            ApplyPermissionFailure(capabilityTarget, IssueDeniedCapability.Reaction, ex);
+            if (SelectedIssue?.Number == issueNumber)
+            {
+                StatusText = UserFacingError.For(ex, UserFacingErrorKind.Action, "issues");
+            }
         }
         catch (HttpRequestException)
         {
-            StatusText = GetString("RepoIssue.ReactionsNetworkError", "JitHub could not reach GitHub to update reactions.");
+            if (SelectedIssue?.Number == issueNumber)
+            {
+                StatusText = GetString("RepoIssue.ReactionsNetworkError", "JitHub could not reach GitHub to update reactions.");
+            }
         }
 
         return null;
@@ -612,11 +935,18 @@ public sealed partial class RepoIssuePageViewModel : ViewModelBase
 
         try
         {
-            return await _gitHubClientService.GetIssueCommentReactionsAsync(
+            IssuePagedSection<GitHubReaction> reactions = await _issueQueryService.GetAllIssueCommentReactionsAsync(
                 token,
+                GetActiveUserPartition(token),
                 _navArg.Repo.Owner.Login,
                 _navArg.Repo.Name,
                 commentId);
+            if (reactions.State.Completeness != PagedDataCompleteness.Complete)
+            {
+                StatusText = GetString("RepoIssue.ReactionsPartialStatus", "Some reactions could not be loaded.");
+            }
+
+            return reactions.Items;
         }
         catch (GitHubAuthenticationException)
         {
@@ -624,7 +954,7 @@ public sealed partial class RepoIssuePageViewModel : ViewModelBase
         }
         catch (GitHubApiException ex)
         {
-            StatusText = ex.Message;
+            StatusText = UserFacingError.For(ex, UserFacingErrorKind.Action, "issues");
         }
         catch (HttpRequestException)
         {
@@ -638,12 +968,14 @@ public sealed partial class RepoIssuePageViewModel : ViewModelBase
         HashSet<string> selectedContents,
         Dictionary<string, long> existingReactionIds)
     {
-        if (_navArg is null || SelectedIssue is null || !AreIssueActionsEnabled || !TryGetActiveToken(out string token))
+        LastDialogMutationSucceeded = false;
+        if (_navArg is null || SelectedIssue is null || !CanReactToIssue || !TryGetActiveToken(out string token))
         {
             return;
         }
 
         GitHubIssue currentIssue = SelectedIssue;
+        IssueCapabilityTarget capabilityTarget = _capabilityDenials.CaptureTarget();
 
         try
         {
@@ -664,23 +996,36 @@ public sealed partial class RepoIssuePageViewModel : ViewModelBase
                     existingReactionIds[content]);
             }
 
+            LastDialogMutationSucceeded = true;
+
+            TrackIssueAction(IssueActionKind.Reaction, IssueActionOutcome.Success);
+            await _issueQueryService.InvalidateIssueAsync(
+                GetActiveUserPartition(token),
+                owner,
+                repoName,
+                currentIssue.Number);
+
             await RefreshIssueSelectionAsync(_loadedIssues.FirstOrDefault(issue => issue.Number == currentIssue.Number) ?? currentIssue, token);
         }
         catch (GitHubAuthenticationException)
         {
+            TrackIssueAction(IssueActionKind.Reaction, IssueActionOutcome.AuthenticationError);
             _authService.SignOut();
         }
         catch (GitHubApiException ex)
         {
+            TrackIssueAction(IssueActionKind.Reaction, GetIssueActionOutcome(ex));
+            ApplyPermissionFailure(capabilityTarget, IssueDeniedCapability.Reaction, ex);
             if (!IsSelectedIssue(currentIssue))
             {
                 return;
             }
 
-            StatusText = ex.Message;
+            StatusText = UserFacingError.For(ex, UserFacingErrorKind.Action, "issues");
         }
         catch (HttpRequestException)
         {
+            TrackIssueAction(IssueActionKind.Reaction, IssueActionOutcome.NetworkError);
             if (!IsSelectedIssue(currentIssue))
             {
                 return;
@@ -695,12 +1040,13 @@ public sealed partial class RepoIssuePageViewModel : ViewModelBase
         HashSet<string> selectedContents,
         Dictionary<string, long> existingReactionIds)
     {
-        if (_navArg is null || SelectedIssue is null || !AreIssueActionsEnabled || !TryGetActiveToken(out string token))
+        if (_navArg is null || SelectedIssue is null || !CanReactToIssue || !TryGetActiveToken(out string token))
         {
             return;
         }
 
         GitHubIssue currentIssue = SelectedIssue;
+        IssueCapabilityTarget capabilityTarget = _capabilityDenials.CaptureTarget();
 
         try
         {
@@ -721,23 +1067,34 @@ public sealed partial class RepoIssuePageViewModel : ViewModelBase
                     existingReactionIds[content]);
             }
 
+            TrackIssueAction(IssueActionKind.CommentReaction, IssueActionOutcome.Success);
+            await _issueQueryService.InvalidateIssueAsync(
+                GetActiveUserPartition(token),
+                owner,
+                repoName,
+                currentIssue.Number);
+
             await RefreshIssueSelectionAsync(_loadedIssues.FirstOrDefault(issue => issue.Number == currentIssue.Number) ?? currentIssue, token);
         }
         catch (GitHubAuthenticationException)
         {
+            TrackIssueAction(IssueActionKind.CommentReaction, IssueActionOutcome.AuthenticationError);
             _authService.SignOut();
         }
         catch (GitHubApiException ex)
         {
+            TrackIssueAction(IssueActionKind.CommentReaction, GetIssueActionOutcome(ex));
+            ApplyPermissionFailure(capabilityTarget, IssueDeniedCapability.Reaction, ex);
             if (!IsSelectedIssue(currentIssue))
             {
                 return;
             }
 
-            StatusText = ex.Message;
+            StatusText = UserFacingError.For(ex, UserFacingErrorKind.Action, "issues");
         }
         catch (HttpRequestException)
         {
+            TrackIssueAction(IssueActionKind.CommentReaction, IssueActionOutcome.NetworkError);
             if (!IsSelectedIssue(currentIssue))
             {
                 return;
@@ -747,13 +1104,142 @@ public sealed partial class RepoIssuePageViewModel : ViewModelBase
         }
     }
 
+    public Task<bool> UpdateIssueCommentAsync(long commentId, string body) =>
+        ExecuteIssueCommentMutationAsync(
+            (token, owner, repoName) => _gitHubClientService.UpdateIssueCommentAsync(
+                token,
+                owner,
+                repoName,
+                commentId,
+                body),
+            IssueActionKind.CommentEdit,
+            GetString("RepoIssue.CommentUpdatingStatus", "Updating comment..."));
+
+    public Task<bool> DeleteIssueCommentAsync(long commentId) =>
+        ExecuteIssueCommentMutationAsync(
+            (token, owner, repoName) => _gitHubClientService.DeleteIssueCommentAsync(
+                token,
+                owner,
+                repoName,
+                commentId),
+            IssueActionKind.CommentDelete,
+            GetString("RepoIssue.CommentDeletingStatus", "Deleting comment..."));
+
+    public Task<bool> SetIssueCommentPinnedAsync(long commentId, bool pinned)
+    {
+        if (!CanManageIssueMetadata)
+        {
+            return Task.FromResult(false);
+        }
+
+        return ExecuteIssueCommentMutationAsync(
+            (token, owner, repoName) => pinned
+                ? _gitHubClientService.PinIssueCommentAsync(token, owner, repoName, commentId)
+                : _gitHubClientService.UnpinIssueCommentAsync(token, owner, repoName, commentId),
+            pinned ? IssueActionKind.CommentPin : IssueActionKind.CommentUnpin,
+            pinned
+                ? GetString("RepoIssue.CommentPinningStatus", "Pinning comment...")
+                : GetString("RepoIssue.CommentUnpinningStatus", "Unpinning comment..."));
+    }
+
+    public Task<bool> SetIssueCommentMinimizedAsync(string nodeId, string? classifier)
+    {
+        if (!CanManageIssueMetadata || string.IsNullOrWhiteSpace(nodeId))
+        {
+            return Task.FromResult(false);
+        }
+
+        return ExecuteIssueCommentMutationAsync(
+            (token, _, _) => string.IsNullOrWhiteSpace(classifier)
+                ? _gitHubClientService.UnminimizeCommentAsync(token, nodeId)
+                : _gitHubClientService.MinimizeCommentAsync(token, nodeId, classifier),
+            string.IsNullOrWhiteSpace(classifier)
+                ? IssueActionKind.CommentUnhide
+                : IssueActionKind.CommentHide,
+            string.IsNullOrWhiteSpace(classifier)
+                ? GetString("RepoIssue.CommentUnhidingStatus", "Unhiding comment...")
+                : GetString("RepoIssue.CommentHidingStatus", "Hiding comment..."));
+    }
+
+    private async Task<bool> ExecuteIssueCommentMutationAsync(
+        Func<string, string, string, Task> mutation,
+        IssueActionKind action,
+        string status)
+    {
+        if (_navArg is null || SelectedIssue is null || !TryGetActiveToken(out string token))
+        {
+            return false;
+        }
+
+        GitHubIssue currentIssue = SelectedIssue;
+        try
+        {
+            string owner = _navArg.Repo.Owner.Login;
+            string repoName = _navArg.Repo.Name;
+            StatusText = status;
+            await mutation(token, owner, repoName);
+            await _issueQueryService.InvalidateIssueAsync(
+                GetActiveUserPartition(token),
+                owner,
+                repoName,
+                currentIssue.Number);
+            await RefreshIssueSelectionAsync(
+                _loadedIssues.FirstOrDefault(issue => issue.Number == currentIssue.Number) ?? currentIssue,
+                token);
+            TrackIssueAction(action, IssueActionOutcome.Success);
+            return true;
+        }
+        catch (GitHubAuthenticationException)
+        {
+            TrackIssueAction(action, IssueActionOutcome.AuthenticationError);
+            _authService.SignOut();
+        }
+        catch (GitHubApiException ex)
+        {
+            TrackIssueAction(action, GetIssueActionOutcome(ex));
+            if (IsSelectedIssue(currentIssue))
+            {
+                StatusText = UserFacingError.For(ex, UserFacingErrorKind.Action, "issues");
+            }
+        }
+        catch (HttpRequestException)
+        {
+            TrackIssueAction(action, IssueActionOutcome.NetworkError);
+            if (IsSelectedIssue(currentIssue))
+            {
+                StatusText = GetString("RepoIssue.CommentMutationNetworkError", "JitHub could not reach GitHub to update this comment.");
+            }
+        }
+        catch (OperationCanceledException)
+        {
+            TrackIssueAction(action, IssueActionOutcome.Cancelled);
+        }
+        catch (Exception ex)
+        {
+            JitHub.WinUI.App.LogHandledException(ex, "issue-comment-mutation");
+            TrackIssueAction(action, IssueActionOutcome.Failure);
+            if (IsSelectedIssue(currentIssue))
+            {
+                StatusText = GetString("RepoIssue.CommentMutationUnexpectedError", "JitHub could not update this comment.");
+            }
+        }
+
+        return false;
+    }
+
     partial void OnSelectedIssueChanged(GitHubIssue? value)
     {
+        NotifySelectedIssuePropertiesChanged();
         if (_suppressSelectionChanged)
         {
             return;
         }
 
+        CancelActiveDetailLoad();
+        _selectionDwellPrefetch?.Dispose();
+        _selectionDwellPrefetch = null;
+        _neighborPrefetch?.Dispose();
+        _neighborPrefetch = null;
         int clearedPinnedIssueNumber = 0;
         if (_pinnedIssueNumber > 0 && value?.Number != _pinnedIssueNumber)
         {
@@ -766,10 +1252,14 @@ public sealed partial class RepoIssuePageViewModel : ViewModelBase
         if (value is null)
         {
             _pendingIssueSelectionState = null;
-            _ = ShowIssueAsync(null);
+            BackgroundTaskObserver.Run(
+                () => ShowIssueAsync(null),
+                "issues",
+                _telemetryService);
             return;
         }
 
+        IssueTelemetry.TrackSelected(_telemetryService);
         int previousIssueNumber = _lastFocusedIssueNumber;
         RemoveClearedPinnedIssueFromVisibleList(clearedPinnedIssueNumber);
         if (TryRestorePendingIssueSelectionState(value.Number))
@@ -785,12 +1275,23 @@ public sealed partial class RepoIssuePageViewModel : ViewModelBase
 
         _lastFocusedIssueNumber = value.Number;
         PrepareIssueForSelectionLoad(value);
+        ScheduleIssuePrefetch(value, IssuePrefetchReason.Dwell, TimeSpan.FromSeconds(5), replaceDwell: true);
+        ScheduleNeighborPrefetch(value);
         CancellationTokenSource cancellationTokenSource = new();
         _selectionLoadCancellationTokenSource = cancellationTokenSource;
-        _ = ShowIssueAfterSelectionDelayAsync(value, cancellationTokenSource.Token);
+        BackgroundTaskObserver.Run(
+            () => ShowIssueAfterSelectionDelayAsync(
+                value,
+                cancellationTokenSource.Token,
+                _navigationInitializationVersion),
+            "issues",
+            _telemetryService);
     }
 
-    private async Task LoadIssuesAsync(int preferredIssueNumber = 0, bool preservePreferredIssueOutsideQuery = true)
+    private async Task LoadIssuesAsync(
+        int preferredIssueNumber = 0,
+        bool preservePreferredIssueOutsideQuery = true,
+        bool preserveCurrentDetailDuringLoad = false)
     {
         if (_navArg is null || !TryGetActiveToken(out string token))
         {
@@ -798,26 +1299,72 @@ public sealed partial class RepoIssuePageViewModel : ViewModelBase
         }
 
         IssueNavArg navigationArgs = _navArg;
+        Stopwatch loadStopwatch = Stopwatch.StartNew();
+        CacheState observedCacheState = CacheState.Miss;
+        string loadResult = "cancelled";
 
         int requestId = ++_listRequestId;
+        CancellationTokenSource listLoad = BeginListLoad();
+        CancellationToken cancellationToken = listLoad.Token;
         bool previousAreIssueActionsEnabled = AreIssueActionsEnabled;
         bool previousIsAddCommentEnabled = IsAddCommentEnabled;
         string? preferredIssueLoadFailureStatus = null;
-        StatusText = LoadingStatusText;
-        CancelPendingSelectionLoad();
-        _pendingIssueSelectionState = null;
-        _detailRequestId++;
-        AreIssueActionsEnabled = false;
-        IsAddCommentEnabled = false;
+        int issueNumberToSelect = preferredIssueNumber > 0 ? preferredIssueNumber : navigationArgs.IssueId;
+        string queryIdentity = IssueRefreshProjectionPolicy.CreateQueryIdentity(_issueQuery);
+        bool isSameQuery = string.Equals(
+            _loadedIssueQueryIdentity,
+            queryIdentity,
+            StringComparison.Ordinal);
+        IsLoading = Issues.Count == 0;
+        StatusText = preserveCurrentDetailDuringLoad
+            ? GetString("RepoIssue.RefreshingStatus", "Refreshing repository issues...")
+            : LoadingStatusText;
+        if (!preserveCurrentDetailDuringLoad)
+        {
+            CancelPendingSelectionLoad();
+            CancelActiveDetailLoad();
+            _pendingIssueSelectionState = null;
+            _detailRequestId++;
+            AreIssueActionsEnabled = false;
+            IsAddCommentEnabled = false;
+        }
 
         try
         {
-            IReadOnlyList<GitHubIssue> issues = await _gitHubClientService.GetIssuesAsync(
+            IssuePagedSection<GitHubIssue> issueSection = await _issueQueryService.GetAllIssuesProgressivelyAsync(
                 token,
+                GetActiveUserPartition(token),
                 navigationArgs.Repo.Owner.Login,
                 navigationArgs.Repo.Name,
-                50,
-                queryOptions: _issueQuery);
+                _issueQuery,
+                async (progress, progressCancellationToken) =>
+                {
+                    if (requestId != _listRequestId)
+                    {
+                        return;
+                    }
+
+                    await ApplyProgressiveIssueListAsync(
+                        progress,
+                        queryIdentity,
+                        isSameQuery,
+                        issueNumberToSelect,
+                        progressCancellationToken);
+                },
+                cancellationToken);
+            observedCacheState = issueSection.State.CacheState;
+            _issueListState = issueSection.State;
+            UpdateIssueListScopeNotice();
+            issueNumberToSelect = SelectedIssue?.Number ?? issueNumberToSelect;
+            loadResult = issueSection.State.Completeness == PagedDataCompleteness.Complete &&
+                string.IsNullOrWhiteSpace(issueSection.State.ErrorMessage)
+                    ? "success"
+                    : "partial";
+            IReadOnlyList<GitHubIssue> issues = IssueRefreshProjectionPolicy.PreserveExistingRowsOnPartialRefresh(
+                issueSection.Items,
+                _loadedIssues,
+                issueSection.State,
+                isSameQuery);
 
             if (requestId != _listRequestId)
             {
@@ -825,7 +1372,6 @@ public sealed partial class RepoIssuePageViewModel : ViewModelBase
             }
 
             List<GitHubIssue> loadedIssues = [.. issues];
-            int issueNumberToSelect = preferredIssueNumber > 0 ? preferredIssueNumber : navigationArgs.IssueId;
             int pinnedIssueNumber = 0;
             if (issueNumberToSelect > 0)
             {
@@ -834,11 +1380,14 @@ public sealed partial class RepoIssuePageViewModel : ViewModelBase
                 {
                     try
                     {
-                        selectedIssue = await _gitHubClientService.GetIssueAsync(
+                        CachedResult<GitHubIssue> selectedResult = await _issueQueryService.GetIssueAsync(
                             token,
+                            GetActiveUserPartition(token),
                             navigationArgs.Repo.Owner.Login,
                             navigationArgs.Repo.Name,
-                            issueNumberToSelect);
+                            issueNumberToSelect,
+                            cancellationToken);
+                        selectedIssue = selectedResult.Value;
                     }
                     catch (GitHubAuthenticationException)
                     {
@@ -887,6 +1436,7 @@ public sealed partial class RepoIssuePageViewModel : ViewModelBase
             _pinnedIssueNumber = pinnedIssueNumber;
             _loadedIssues.Clear();
             _loadedIssues.AddRange(loadedIssues);
+            _loadedIssueQueryIdentity = queryIdentity;
             await ApplyIssueListFilterAsync(issueNumberToSelect);
             if (!string.IsNullOrWhiteSpace(preferredIssueLoadFailureStatus) && requestId == _listRequestId)
             {
@@ -895,6 +1445,7 @@ public sealed partial class RepoIssuePageViewModel : ViewModelBase
         }
         catch (GitHubAuthenticationException)
         {
+            loadResult = "auth_error";
             if (requestId != _listRequestId)
             {
                 return;
@@ -906,6 +1457,7 @@ public sealed partial class RepoIssuePageViewModel : ViewModelBase
         }
         catch (GitHubApiException ex)
         {
+            loadResult = "error";
             if (requestId != _listRequestId)
             {
                 return;
@@ -913,10 +1465,11 @@ public sealed partial class RepoIssuePageViewModel : ViewModelBase
 
             AreIssueActionsEnabled = previousAreIssueActionsEnabled;
             IsAddCommentEnabled = previousIsAddCommentEnabled;
-            StatusText = ex.Message;
+            StatusText = UserFacingError.For(ex, UserFacingErrorKind.Action, "issues");
         }
         catch (HttpRequestException)
         {
+            loadResult = "network_error";
             if (requestId != _listRequestId)
             {
                 return;
@@ -925,6 +1478,24 @@ public sealed partial class RepoIssuePageViewModel : ViewModelBase
             AreIssueActionsEnabled = previousAreIssueActionsEnabled;
             IsAddCommentEnabled = previousIsAddCommentEnabled;
             StatusText = GetString("RepoIssue.LoadNetworkError", "JitHub could not reach GitHub to load issues.");
+        }
+        catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
+        {
+            loadResult = "cancelled";
+        }
+        finally
+        {
+            CompleteListLoad(listLoad);
+            IssueTelemetry.TrackListLoaded(
+                _telemetryService,
+                observedCacheState,
+                loadResult,
+                loadStopwatch.Elapsed);
+            if (requestId == _listRequestId)
+            {
+                IsLoading = false;
+                IsEmpty = Issues.Count == 0;
+            }
         }
     }
 
@@ -938,11 +1509,22 @@ public sealed partial class RepoIssuePageViewModel : ViewModelBase
         string preservedStatusText = StatusText;
         if (issue is null || _navArg is null)
         {
+            CancelActiveDetailLoad();
             ResetIssueDetails();
             return;
         }
 
         IssueNavArg navigationArgs = _navArg;
+
+        bool appliedSnapshot = TryApplyNavigationSnapshot(
+            GetActiveUserPartition(GetActiveToken() ?? string.Empty),
+            navigationArgs,
+            issue.Number,
+            preserveStatusText ? preservedStatusText : null);
+        if (appliedSnapshot)
+        {
+            preserveCurrentState = true;
+        }
 
         if (!preserveCurrentState)
         {
@@ -955,44 +1537,68 @@ public sealed partial class RepoIssuePageViewModel : ViewModelBase
         }
 
         int requestId = ++_detailRequestId;
+        CancellationTokenSource detailLoad = BeginDetailLoad();
+        CancellationToken cancellationToken = detailLoad.Token;
+        IsDetailLoading = true;
 
         try
         {
             if (!preserveStatusText)
             {
-                StatusText = FormatString("RepoIssue.LoadIssueStatus", "Loading issue #{0}...", issue.Number);
+                StatusText = appliedSnapshot
+                    ? FormatString("RepoIssue.RefreshIssueStatus", "Refreshing issue #{0}...", issue.Number)
+                    : FormatString("RepoIssue.LoadIssueStatus", "Loading issue #{0}...", issue.Number);
             }
 
-            GitHubIssue latestIssue = await _gitHubClientService.GetIssueAsync(
+            CachedResult<GitHubIssue> issueResult = await _issueQueryService.GetIssueAsync(
                 token,
+                GetActiveUserPartition(token),
                 navigationArgs.Repo.Owner.Login,
                 navigationArgs.Repo.Name,
-                issue.Number);
-            IReadOnlyList<GitHubIssueComment> comments = await _gitHubClientService.GetIssueCommentsAsync(
-                token,
-                navigationArgs.Repo.Owner.Login,
-                navigationArgs.Repo.Name,
-                issue.Number);
-
+                issue.Number,
+                cancellationToken);
+            GitHubIssue latestIssue = issueResult.Value
+                ?? throw new GitHubApiException(System.Net.HttpStatusCode.NotFound, "Issue is unavailable.");
+            cancellationToken.ThrowIfCancellationRequested();
             if (requestId != _detailRequestId)
             {
                 return;
             }
 
-            ReplaceIssueInCollection(latestIssue);
-            SetSelectedIssue(latestIssue);
-            PopulateIssue(latestIssue);
-            IssueComments.Clear();
+            GitHubIssue displayIssue = ReplaceIssueInCollection(latestIssue);
+            _isNavigationPreview = false;
+            _isIssueBodyDeferred = false;
+            SetSelectedIssue(displayIssue);
+            PopulateIssue(displayIssue);
+            StoreCurrentIssueSnapshot(navigationArgs, latestIssue, "repo-issue-detail");
 
-            foreach (GitHubIssueComment comment in comments)
+            IssuePagedSection<GitHubIssueComment> commentsSection =
+                await _issueQueryService.GetAllIssueCommentsProgressivelyAsync(
+                    token,
+                    GetActiveUserPartition(token),
+                    navigationArgs.Repo.Owner.Login,
+                    navigationArgs.Repo.Name,
+                    issue.Number,
+                    (progress, progressCancellationToken) => ApplyProgressiveIssueCommentsAsync(
+                        progress,
+                        navigationArgs,
+                        latestIssue,
+                        requestId,
+                        progressCancellationToken),
+                    cancellationToken);
+            cancellationToken.ThrowIfCancellationRequested();
+            if (requestId != _detailRequestId)
             {
-                IssueComments.Add(comment);
+                return;
             }
 
-            IsIssueCommentsEmptyVisible = IssueComments.Count == 0;
-            StatusText = preserveStatusText
-                ? preservedStatusText
-                : FormatString("RepoIssue.LoadedStatus", "Issue #{0} loaded.", latestIssue.Number);
+            bool preserveVisibleComments = commentsSection.State.Completeness != PagedDataCompleteness.Complete &&
+                IssueComments.Count > 0;
+            StatusText = preserveVisibleComments
+                ? GetString("RepoIssue.CommentsRefreshFailedCachedStatus", "Some comments may be out of date.")
+                : preserveStatusText
+                    ? preservedStatusText
+                    : FormatString("RepoIssue.LoadedStatus", "Issue #{0} loaded.", latestIssue.Number);
         }
         catch (GitHubAuthenticationException)
         {
@@ -1012,7 +1618,7 @@ public sealed partial class RepoIssuePageViewModel : ViewModelBase
 
             if (!preserveStatusText)
             {
-                StatusText = ex.Message;
+                StatusText = UserFacingError.For(ex, UserFacingErrorKind.Action, "issues");
             }
         }
         catch (HttpRequestException)
@@ -1027,18 +1633,54 @@ public sealed partial class RepoIssuePageViewModel : ViewModelBase
                 StatusText = GetString("RepoIssue.LoadDetailNetworkError", "JitHub could not reach GitHub to load issue details.");
             }
         }
+        catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
+        {
+        }
+        finally
+        {
+            CompleteDetailLoad(detailLoad);
+            if (requestId == _detailRequestId)
+            {
+                IsDetailLoading = false;
+            }
+        }
+    }
+
+    private Task ApplyProgressiveIssueCommentsAsync(
+        IssuePagedSection<GitHubIssueComment> progress,
+        IssueNavArg navigationArgs,
+        GitHubIssue issue,
+        int requestId,
+        CancellationToken cancellationToken)
+    {
+        cancellationToken.ThrowIfCancellationRequested();
+        if (requestId != _detailRequestId || SelectedIssue?.Number != issue.Number)
+        {
+            return Task.CompletedTask;
+        }
+
+        IReadOnlyList<GitHubIssueComment> comments =
+            IssueRefreshProjectionPolicy.PreserveExistingSectionOnPartialRefresh(
+                progress,
+                IssueComments,
+                static comment => comment.Id);
+        ApplyIssueComments(comments);
+        IsIssueCommentsEmptyVisible = IssueComments.Count == 0 &&
+            progress.State.Completeness != PagedDataCompleteness.Loading;
+        NotifyIssueCommentsChanged();
+        StoreCurrentIssueSnapshot(navigationArgs, issue, "repo-issue-detail");
+        return Task.CompletedTask;
     }
 
     private void PopulateIssue(GitHubIssue issue)
     {
-        AreIssueActionsEnabled = true;
-        UpdateIssueCommentEnabledState();
+        ApplyViewerCapabilities(issue);
         IssueTitleText = FormatString("RepoIssue.DetailTitleFormat", "#{0} {1}", issue.Number, issue.Title);
         IssueMetaText = FormatString(
             "RepoIssue.DetailMetaFormat",
             "{0}  •  @{1}  •  Updated {2:g}  •  {3}",
             GetIssueStateDisplay(issue.State),
-            issue.User.Login,
+            GetIssueAuthorDisplayName(issue),
             issue.UpdatedAt.LocalDateTime,
             FormatCommentCount(issue.Comments));
         IssueMetadataText = FormatIssueMetadataSummary(issue);
@@ -1049,13 +1691,16 @@ public sealed partial class RepoIssuePageViewModel : ViewModelBase
         ToggleIssueStateButtonText = string.Equals(issue.State, "closed", StringComparison.OrdinalIgnoreCase)
             ? GetString("RepoIssue.ReopenButton", "Reopen issue")
             : GetString("RepoIssue.CloseButton", "Close issue");
+        ReplaceInspectorCollections(issue);
+        NotifySelectedIssuePropertiesChanged();
     }
 
     private void ResetIssueDetails()
     {
         _detailRequestId++;
-        AreIssueActionsEnabled = false;
-        IsAddCommentEnabled = false;
+        _isNavigationPreview = false;
+        _isIssueBodyDeferred = false;
+        ApplyViewerCapabilities(null);
         IssueTitleText = GetString("RepoIssue.SelectIssueTitle", "Select an issue");
         IssueMetaText = GetString("RepoIssue.SelectIssueSubtitle", "Choose an issue to inspect its details.");
         IssueMetadataText = string.Empty;
@@ -1064,31 +1709,40 @@ public sealed partial class RepoIssuePageViewModel : ViewModelBase
         IssueCommentDraft = string.Empty;
         IssueComments.Clear();
         IsIssueCommentsEmptyVisible = false;
+        SelectedLabels.Clear();
+        SelectedAssignees.Clear();
         ToggleIssueStateButtonText = GetString("RepoIssue.CloseButton", "Close issue");
+        NotifyInspectorCollectionsChanged();
+        NotifyIssueCommentsChanged();
+        NotifySelectedIssuePropertiesChanged();
     }
 
     private void PrepareIssueForSelectionLoad(GitHubIssue issue)
     {
-        AreIssueActionsEnabled = false;
-        IsAddCommentEnabled = false;
+        ApplyViewerCapabilities(issue);
         IssueTitleText = FormatString("RepoIssue.DetailTitleFormat", "#{0} {1}", issue.Number, issue.Title);
         IssueMetaText = FormatString(
             "RepoIssue.DetailMetaFormat",
             "{0}  •  @{1}  •  Updated {2:g}  •  {3}",
             GetIssueStateDisplay(issue.State),
-            issue.User.Login,
+            GetIssueAuthorDisplayName(issue),
             issue.UpdatedAt.LocalDateTime,
             FormatCommentCount(issue.Comments));
         IssueMetadataText = FormatIssueMetadataSummary(issue);
         IssueReactionsText = issue.Reactions.DisplayText;
-        IssueBodyText = GetString("RepoIssue.LoadingBodyPlaceholder", "Loading issue details...");
+        IssueBodyText = string.IsNullOrWhiteSpace(issue.Body)
+            ? GetString("RepoIssue.LoadingBodyPlaceholder", "Loading issue details...")
+            : issue.Body;
         IssueCommentDraft = string.Empty;
         IssueComments.Clear();
         IsIssueCommentsEmptyVisible = false;
+        ReplaceInspectorCollections(issue);
         ToggleIssueStateButtonText = string.Equals(issue.State, "closed", StringComparison.OrdinalIgnoreCase)
             ? GetString("RepoIssue.ReopenButton", "Reopen issue")
             : GetString("RepoIssue.CloseButton", "Close issue");
         StatusText = FormatString("RepoIssue.LoadIssueStatus", "Loading issue #{0}...", issue.Number);
+        NotifyIssueCommentsChanged();
+        NotifySelectedIssuePropertiesChanged();
     }
 
     private void CaptureIssueDetailSnapshot(int issueNumber)
@@ -1146,6 +1800,265 @@ public sealed partial class RepoIssuePageViewModel : ViewModelBase
         }
 
         IsIssueCommentsEmptyVisible = snapshot.IsCommentsEmptyVisible;
+        if (SelectedIssue is not null)
+        {
+            ReplaceInspectorCollections(SelectedIssue);
+            ApplyViewerCapabilities(SelectedIssue);
+        }
+
+        NotifyIssueCommentsChanged();
+        NotifySelectedIssuePropertiesChanged();
+    }
+
+    public void PrefetchIssue(GitHubIssue? issue, IssuePrefetchReason reason)
+    {
+        if (issue is null)
+        {
+            return;
+        }
+
+        if (reason == IssuePrefetchReason.Hover)
+        {
+            _hoverPrefetch.Schedule(
+                HoverPrefetchDebounce,
+                () => ScheduleIssuePrefetch(issue, reason, TimeSpan.Zero, replaceDwell: false));
+            return;
+        }
+
+        _ = ScheduleIssuePrefetch(issue, reason, TimeSpan.Zero, replaceDwell: false);
+    }
+
+    public bool LastDialogMutationSucceeded { get; private set; }
+
+    public void CancelPredictivePrefetches()
+    {
+        _hoverPrefetch.Cancel();
+        _selectionDwellPrefetch?.Dispose();
+        _selectionDwellPrefetch = null;
+        _neighborPrefetch?.Dispose();
+        _neighborPrefetch = null;
+    }
+
+    public void CancelNavigationWork()
+    {
+        _navigationInitializationVersion++;
+        CancelActiveListLoad();
+        CancelActiveDetailLoad();
+        CancelPendingSelectionLoad();
+        CancelPredictivePrefetches();
+    }
+
+    private bool TryApplyNavigationSnapshot(
+        string accountPartition,
+        IssueNavArg navigationArgs,
+        int issueNumber,
+        string? statusText) =>
+        TryApplyNavigationSnapshot(
+            accountPartition,
+            navigationArgs,
+            issueNumber,
+            statusText,
+            deferComments: false,
+            out _);
+
+    private bool TryApplyNavigationSnapshot(
+        string accountPartition,
+        IssueNavArg navigationArgs,
+        int issueNumber,
+        string? statusText,
+        bool deferComments,
+        out IssueNavigationSnapshot? navigationSnapshot)
+    {
+        navigationSnapshot = null;
+        if (issueNumber <= 0 ||
+            !_issueNavigationCache.TryGet(
+                accountPartition,
+                navigationArgs.Repo.Owner.Login,
+                navigationArgs.Repo.Name,
+                issueNumber,
+                out IssueNavigationSnapshot snapshot))
+        {
+            return false;
+        }
+
+        navigationSnapshot = snapshot;
+
+        ApplyNavigationSnapshot(navigationArgs, snapshot, statusText, deferComments);
+        return true;
+    }
+
+    private void ApplyNavigationSnapshot(
+        IssueNavArg navigationArgs,
+        IssueNavigationSnapshot snapshot,
+        string? statusText,
+        bool deferComments)
+    {
+        _isNavigationPreview = string.Equals(
+            snapshot.Source,
+            "notification-preview",
+            StringComparison.Ordinal);
+        _isIssueBodyDeferred = deferComments || _isNavigationPreview;
+        GitHubIssue displayIssue = ReplaceIssueInCollectionOrAdd(snapshot.Issue);
+        SetSelectedIssue(displayIssue);
+        if (_isNavigationPreview)
+        {
+            ApplyViewerCapabilities(null);
+            IssueTitleText = FormatString("RepoIssue.DetailTitleFormat", "#{0} {1}", displayIssue.Number, displayIssue.Title);
+            IssueMetaText = string.Empty;
+            IssueMetadataText = string.Empty;
+            IssueBodyText = string.Empty;
+            IssueReactionsText = string.Empty;
+            IssueComments.Clear();
+            IsIssueCommentsEmptyVisible = false;
+            NotifySelectedIssuePropertiesChanged();
+        }
+        else
+        {
+            PopulateIssue(displayIssue);
+        }
+
+        if (!deferComments && !_isNavigationPreview)
+        {
+            ApplyIssueComments(snapshot.Comments);
+            IsIssueCommentsEmptyVisible = IssueComments.Count == 0;
+            NotifyIssueCommentsChanged();
+        }
+        else
+        {
+            IsIssueCommentsEmptyVisible = snapshot.Comments.Length == 0;
+        }
+
+        if (!string.IsNullOrWhiteSpace(statusText))
+        {
+            StatusText = statusText!;
+        }
+
+        IsEmpty = Issues.Count == 0;
+    }
+
+    private void ApplyDeferredNavigationComments(IssueNavigationSnapshot snapshot)
+    {
+        if (_navArg is null ||
+            SelectedIssue?.Number != snapshot.IssueNumber ||
+            string.Equals(snapshot.Source, "notification-preview", StringComparison.Ordinal) ||
+            !string.Equals(_navArg.Repo.Owner.Login, snapshot.Owner, StringComparison.OrdinalIgnoreCase) ||
+            !string.Equals(_navArg.Repo.Name, snapshot.RepositoryName, StringComparison.OrdinalIgnoreCase))
+        {
+            return;
+        }
+
+        _isIssueBodyDeferred = false;
+        OnPropertyChanged(nameof(IssueBodyMarkdownSource));
+        ApplyIssueComments(snapshot.Comments);
+        IsIssueCommentsEmptyVisible = IssueComments.Count == 0;
+        NotifyIssueCommentsChanged();
+    }
+
+    private void StoreCurrentIssueSnapshot(IssueNavArg navigationArgs, GitHubIssue issue, string source)
+    {
+        if (issue.Number <= 0)
+        {
+            return;
+        }
+
+        string accountPartition = GetActiveUserPartition(GetActiveToken() ?? string.Empty);
+        _issueNavigationCache.Store(accountPartition, new IssueNavigationSnapshot(
+            navigationArgs.Repo.Owner.Login,
+            navigationArgs.Repo.Name,
+            issue.Number,
+            issue,
+            IssueComments.ToArray(),
+            DateTimeOffset.UtcNow,
+            source));
+    }
+
+    private IDisposable? ScheduleIssuePrefetch(GitHubIssue issue, IssuePrefetchReason reason, TimeSpan delay, bool replaceDwell)
+    {
+        string? token = GetActiveToken();
+        if (_navArg is null || string.IsNullOrWhiteSpace(token))
+        {
+            return null;
+        }
+
+        string userPartition = GetActiveUserPartition(token);
+        IssueTelemetry.TrackPrefetchStarted(_telemetryService, reason);
+        IDisposable prefetch = _issueNavigationCache.SchedulePrefetch(
+            token,
+            userPartition,
+            _navArg.Repo.Owner.Login,
+            _navArg.Repo.Name,
+            issue.Number,
+            reason,
+            delay,
+            (result, duration) => IssueTelemetry.TrackPrefetchCompleted(
+                _telemetryService,
+                reason,
+                result,
+                duration));
+
+        if (replaceDwell)
+        {
+            _selectionDwellPrefetch?.Dispose();
+            _selectionDwellPrefetch = prefetch;
+        }
+
+        return prefetch;
+    }
+
+    private void ScheduleNeighborPrefetch(GitHubIssue issue)
+    {
+        int selectedIndex = Issues.IndexOf(issue);
+        if (selectedIndex < 0)
+        {
+            return;
+        }
+
+        GitHubIssue? nextIssue = selectedIndex + 1 < Issues.Count ? Issues[selectedIndex + 1] : null;
+        GitHubIssue? previousIssue = selectedIndex > 0 ? Issues[selectedIndex - 1] : null;
+        GitHubIssue? neighbor = nextIssue ?? previousIssue;
+        if (neighbor is null)
+        {
+            return;
+        }
+
+        _neighborPrefetch?.Dispose();
+        string? token = GetActiveToken();
+        if (_navArg is null || string.IsNullOrWhiteSpace(token))
+        {
+            return;
+        }
+
+        IssueTelemetry.TrackPrefetchStarted(_telemetryService, IssuePrefetchReason.Neighbor);
+        _neighborPrefetch = _issueNavigationCache.SchedulePrefetch(
+            token,
+            GetActiveUserPartition(token),
+            _navArg.Repo.Owner.Login,
+            _navArg.Repo.Name,
+            neighbor.Number,
+            IssuePrefetchReason.Neighbor,
+            TimeSpan.FromMilliseconds(650),
+            (result, duration) => IssueTelemetry.TrackPrefetchCompleted(
+                _telemetryService,
+                IssuePrefetchReason.Neighbor,
+                result,
+                duration));
+    }
+
+    private void ReplaceInspectorCollections(GitHubIssue issue)
+    {
+        SelectedLabels.Clear();
+        foreach (GitHubLabel label in issue.Labels)
+        {
+            SelectedLabels.Add(label);
+        }
+
+        SelectedAssignees.Clear();
+        foreach (GitHubActor assignee in issue.Assignees)
+        {
+            SelectedAssignees.Add(assignee);
+        }
+
+        NotifyInspectorCollectionsChanged();
     }
 
     private async Task ApplyIssueListFilterAsync(int preferredIssueNumber, bool refreshSelectionDetails = true)
@@ -1180,9 +2093,7 @@ public sealed partial class RepoIssuePageViewModel : ViewModelBase
 
         StatusText = visibleIssues.Count == 0
             ? GetString("RepoIssue.NoMatchesStatus", "No issues matched the current filters.")
-            : visibleIssues.Count == 1
-                ? FormatString("RepoIssue.ShowingSingleStatus", "Showing {0} issue.", visibleIssues.Count)
-                : FormatString("RepoIssue.ShowingPluralStatus", "Showing {0} issues.", visibleIssues.Count);
+            : BuildIssueListStatus(visibleIssues.Count);
 
         bool selectionChanged = previousSelectedIssue?.Number != selectedIssue?.Number;
         if (SelectedIssue?.Number != selectedIssue?.Number)
@@ -1193,12 +2104,18 @@ public sealed partial class RepoIssuePageViewModel : ViewModelBase
         _suppressSelectionChanged = true;
         try
         {
-            Issues.Clear();
-            foreach (GitHubIssue issue in visibleIssues)
+            KeyedObservableReconciler.ApplySnapshot(
+                Issues,
+                visibleIssues,
+                static issue => issue.Number.ToString(CultureInfo.InvariantCulture),
+                AreIssueListSnapshotsEquivalent);
+
+            if (!preserveFocusedDetails && selectedIssue is not null)
             {
-                Issues.Add(issue);
+                selectedIssue = Issues.FirstOrDefault(issue => issue.Number == selectedIssue.Number) ?? selectedIssue;
             }
 
+            IsEmpty = Issues.Count == 0;
             SelectedIssue = selectedIssue;
             if (selectedIssue is not null)
             {
@@ -1231,12 +2148,31 @@ public sealed partial class RepoIssuePageViewModel : ViewModelBase
         _issueQuery.Since = SelectedSinceDate is DateTimeOffset date
             ? CreateLocalMidnight(date)
             : null;
+        _issueQuery.Assignee = null;
+        _issueQuery.Creator = null;
+        _issueQuery.Mentioned = null;
+        if (!string.IsNullOrWhiteSpace(AuthenticatedLogin))
+        {
+            switch (SelectedScopeOption?.Value)
+            {
+                case "assigned":
+                    _issueQuery.Assignee = AuthenticatedLogin;
+                    break;
+                case "created":
+                    _issueQuery.Creator = AuthenticatedLogin;
+                    break;
+                case "mentioned":
+                    _issueQuery.Mentioned = AuthenticatedLogin;
+                    break;
+            }
+        }
     }
 
     private void ResetFilters()
     {
         SearchText = string.Empty;
         SelectedStateOption = StateOptions[0];
+        SelectedScopeOption = ScopeOptions[0];
         SelectedSortOption = SortOptions[0];
         SelectedDirectionOption = DirectionOptions[0];
         SelectedSinceDate = null;
@@ -1250,15 +2186,21 @@ public sealed partial class RepoIssuePageViewModel : ViewModelBase
             return false;
         }
 
+        IssueNavArg navigation = _navArg;
         int requestId = _listRequestId;
+        string repositoryIdentity = GetRepositoryIdentity(navigation.Repo);
+        IssueCapabilityTarget capabilityTarget = _capabilityDenials.CaptureTarget();
         GitHubIssue refreshedIssue;
         try
         {
-            refreshedIssue = await _gitHubClientService.GetIssueAsync(
+            CachedResult<GitHubIssue> refreshResult = await _issueQueryService.RefreshIssueAsync(
                 token,
-                _navArg.Repo.Owner.Login,
-                _navArg.Repo.Name,
+                GetActiveUserPartition(token),
+                navigation.Repo.Owner.Login,
+                navigation.Repo.Name,
                 issue.Number);
+            refreshedIssue = refreshResult.Value
+                ?? throw new GitHubApiException(System.Net.HttpStatusCode.NotFound, "Issue is unavailable.");
         }
         catch (GitHubAuthenticationException)
         {
@@ -1293,7 +2235,39 @@ public sealed partial class RepoIssuePageViewModel : ViewModelBase
             return false;
         }
 
+        IssueCapabilityRecoveryResult permissionRecovery = default;
+        if (_capabilityDenials.HasDenials)
+        {
+            permissionRecovery = await _capabilityRecovery.RecoverAfterIssueRefreshAsync(
+                capabilityTarget,
+                refreshedIssue.Number,
+                (fetchPolicy, cancellationToken) => TryGetAuthoritativeRepositoryAsync(
+                    navigation,
+                    token,
+                    repositoryIdentity,
+                    requestId,
+                    fetchPolicy,
+                    cancellationToken));
+        }
+
+        if (requestId != _listRequestId || !ReferenceEquals(_navArg, navigation))
+        {
+            return false;
+        }
+
         ReplaceIssueInCollection(refreshedIssue);
+        if (permissionRecovery.WasApplied &&
+            permissionRecovery.Repository is not null &&
+            ReferenceEquals(_navArg, navigation))
+        {
+            navigation.WithRepo(permissionRecovery.Repository);
+            if (permissionRecovery.DenialsCleared)
+            {
+                ApplyViewerCapabilities(SelectedIssue?.Number == refreshedIssue.Number
+                    ? refreshedIssue
+                    : SelectedIssue);
+            }
+        }
         if (_loadedIssues.All(existingIssue => existingIssue.Number != refreshedIssue.Number)
             && MatchesIssueQuery(refreshedIssue))
         {
@@ -1367,7 +2341,10 @@ public sealed partial class RepoIssuePageViewModel : ViewModelBase
         _suppressSelectionChanged = false;
     }
 
-    private async Task ShowIssueAfterSelectionDelayAsync(GitHubIssue issue, CancellationToken cancellationToken)
+    private async Task ShowIssueAfterSelectionDelayAsync(
+        GitHubIssue issue,
+        CancellationToken cancellationToken,
+        int navigationInitializationVersion)
     {
         try
         {
@@ -1378,7 +2355,9 @@ public sealed partial class RepoIssuePageViewModel : ViewModelBase
             return;
         }
 
-        if (cancellationToken.IsCancellationRequested)
+        if (cancellationToken.IsCancellationRequested ||
+            navigationInitializationVersion != _navigationInitializationVersion ||
+            _navArg is null)
         {
             return;
         }
@@ -1394,17 +2373,498 @@ public sealed partial class RepoIssuePageViewModel : ViewModelBase
         _selectionLoadCancellationTokenSource = null;
     }
 
+    private CancellationTokenSource BeginListLoad()
+    {
+        CancellationTokenSource current = new();
+        TryCancel(Interlocked.Exchange(ref _listLoadCancellationTokenSource, current));
+        return current;
+    }
+
+    private void CompleteListLoad(CancellationTokenSource current)
+    {
+        Interlocked.CompareExchange(ref _listLoadCancellationTokenSource, null, current);
+        current.Dispose();
+    }
+
+    private void CancelActiveListLoad()
+    {
+        TryCancel(Volatile.Read(ref _listLoadCancellationTokenSource));
+    }
+
+    private CancellationTokenSource BeginDetailLoad()
+    {
+        CancellationTokenSource current = new();
+        TryCancel(Interlocked.Exchange(ref _detailLoadCancellationTokenSource, current));
+        return current;
+    }
+
+    private void CompleteDetailLoad(CancellationTokenSource current)
+    {
+        Interlocked.CompareExchange(ref _detailLoadCancellationTokenSource, null, current);
+        current.Dispose();
+    }
+
+    private void CancelActiveDetailLoad()
+    {
+        TryCancel(Volatile.Read(ref _detailLoadCancellationTokenSource));
+    }
+
+    private static void TryCancel(CancellationTokenSource? cancellationTokenSource)
+    {
+        try
+        {
+            cancellationTokenSource?.Cancel();
+        }
+        catch (ObjectDisposedException)
+        {
+            // The operation that owns the source completed between the atomic read and cancel.
+        }
+    }
+
     private static bool MatchesIssueSearch(GitHubIssue issue, string searchText)
     {
         return issue.Title.Contains(searchText, StringComparison.OrdinalIgnoreCase)
             || (!string.IsNullOrWhiteSpace(issue.Body) && issue.Body.Contains(searchText, StringComparison.OrdinalIgnoreCase))
-            || issue.User.Login.Contains(searchText, StringComparison.OrdinalIgnoreCase)
+            || (issue.User?.Login?.Contains(searchText, StringComparison.OrdinalIgnoreCase) ?? false)
             || issue.Number.ToString().Contains(searchText, StringComparison.OrdinalIgnoreCase);
     }
 
     private void UpdateIssueCommentEnabledState()
     {
-        IsAddCommentEnabled = AreIssueActionsEnabled && !_isIssueCommentSubmissionInProgress;
+        IsAddCommentEnabled = CanCommentOnIssue() && !_isIssueCommentSubmissionInProgress;
+    }
+
+    private void ClearSubmittedIssueDraft(int issueNumber)
+    {
+        if (_pendingIssueSelectionState?.IssueNumber == issueNumber)
+        {
+            _pendingIssueSelectionState = _pendingIssueSelectionState with { CommentDraft = string.Empty };
+        }
+
+        if (SelectedIssue?.Number == issueNumber)
+        {
+            IssueCommentDraft = string.Empty;
+        }
+    }
+
+    private static bool AreIssueListSnapshotsEquivalent(GitHubIssue current, GitHubIssue incoming)
+    {
+        return current.Id == incoming.Id &&
+            current.Number == incoming.Number &&
+            string.Equals(current.Title, incoming.Title, StringComparison.Ordinal) &&
+            string.Equals(current.State, incoming.State, StringComparison.Ordinal) &&
+            current.Comments == incoming.Comments &&
+            current.UpdatedAt == incoming.UpdatedAt &&
+            current.Locked == incoming.Locked &&
+            string.Equals(current.User?.Login, incoming.User?.Login, StringComparison.Ordinal) &&
+            current.Milestone?.Number == incoming.Milestone?.Number &&
+            current.Labels.Select(static label => (label.Id, label.Name, label.Color))
+                .SequenceEqual(incoming.Labels.Select(static label => (label.Id, label.Name, label.Color))) &&
+            current.Assignees.Select(static actor => (actor.Id, actor.Login))
+                .SequenceEqual(incoming.Assignees.Select(static actor => (actor.Id, actor.Login)));
+    }
+
+    private string BuildIssueListStatus(int visibleCount) => _issueListState.Completeness switch
+    {
+        PagedDataCompleteness.Partial => FormatString(
+            "RepoIssue.ShowingPartialStatus",
+            "Showing {0} issues; some results could not be loaded.",
+            visibleCount),
+        PagedDataCompleteness.ApiLimited => FormatString(
+            "RepoIssue.ShowingLimitedStatus",
+            "Showing the first {0} issues available for this view.",
+            visibleCount),
+        _ when visibleCount == 1 => FormatString("RepoIssue.ShowingSingleStatus", "Showing {0} issue.", visibleCount),
+        _ => FormatString("RepoIssue.ShowingPluralStatus", "Showing {0} issues.", visibleCount)
+    };
+
+    private void UpdateIssueListScopeNotice()
+    {
+        IssueListScopeNotice = _issueListState.Completeness switch
+        {
+            PagedDataCompleteness.Partial => GetString(
+                "RepoIssue.PartialScopeNotice",
+                "Some issues could not be loaded. Available results remain visible."),
+            PagedDataCompleteness.ApiLimited => GetString(
+                "RepoIssue.LimitedScopeNotice",
+                "This view reached GitHub's result limit."),
+            _ => string.Empty
+        };
+        OnPropertyChanged(nameof(HasIssueListScopeNotice));
+    }
+
+    private void ApplyIssueComments(IReadOnlyList<GitHubIssueComment> comments)
+    {
+        Dictionary<long, GitHubIssueComment> existing = IssueComments
+            .GroupBy(static comment => comment.Id)
+            .ToDictionary(static group => group.Key, static group => group.First());
+        HashSet<long> incomingIds = [];
+        int targetIndex = 0;
+        foreach (GitHubIssueComment comment in comments)
+        {
+            comment.ViewerLogin = AuthenticatedLogin;
+            comment.CanViewerReact = CanReactToIssue;
+            comment.CanViewerReply = IsAddCommentEnabled;
+            comment.CanViewerModerate = CanManageIssueMetadata;
+            if (!incomingIds.Add(comment.Id))
+            {
+                continue;
+            }
+
+            int currentIndex = existing.TryGetValue(comment.Id, out GitHubIssueComment? current)
+                ? IssueComments.IndexOf(current)
+                : -1;
+            if (currentIndex < 0)
+            {
+                IssueComments.Insert(targetIndex, comment);
+            }
+            else
+            {
+                if (!ReferenceEquals(IssueComments[currentIndex], comment) &&
+                    !AreIssueCommentSnapshotsEquivalent(IssueComments[currentIndex], comment))
+                {
+                    IssueComments[currentIndex] = comment;
+                }
+
+                if (currentIndex != targetIndex)
+                {
+                    IssueComments.Move(currentIndex, targetIndex);
+                }
+            }
+
+            targetIndex++;
+        }
+
+        for (int index = IssueComments.Count - 1; index >= 0; index--)
+        {
+            if (!incomingIds.Contains(IssueComments[index].Id))
+            {
+                IssueComments.RemoveAt(index);
+            }
+        }
+    }
+
+    private static bool AreIssueCommentSnapshotsEquivalent(
+        GitHubIssueComment current,
+        GitHubIssueComment incoming)
+    {
+        GitHubReactionSummary currentReactions = current.Reactions;
+        GitHubReactionSummary incomingReactions = incoming.Reactions;
+        return current.Id == incoming.Id &&
+            string.Equals(current.NodeId, incoming.NodeId, StringComparison.Ordinal) &&
+            string.Equals(current.HtmlUrl, incoming.HtmlUrl, StringComparison.Ordinal) &&
+            string.Equals(current.Body, incoming.Body, StringComparison.Ordinal) &&
+            current.CreatedAt == incoming.CreatedAt &&
+            current.UpdatedAt == incoming.UpdatedAt &&
+            current.User.Id == incoming.User.Id &&
+            string.Equals(current.User.Login, incoming.User.Login, StringComparison.Ordinal) &&
+            string.Equals(current.User.AvatarUrl, incoming.User.AvatarUrl, StringComparison.Ordinal) &&
+            string.Equals(current.AuthorAssociation, incoming.AuthorAssociation, StringComparison.Ordinal) &&
+            currentReactions.TotalCount == incomingReactions.TotalCount &&
+            currentReactions.PlusOne == incomingReactions.PlusOne &&
+            currentReactions.MinusOne == incomingReactions.MinusOne &&
+            currentReactions.Laugh == incomingReactions.Laugh &&
+            currentReactions.Hooray == incomingReactions.Hooray &&
+            currentReactions.Confused == incomingReactions.Confused &&
+            currentReactions.Heart == incomingReactions.Heart &&
+            currentReactions.Rocket == incomingReactions.Rocket &&
+            currentReactions.Eyes == incomingReactions.Eyes;
+    }
+
+    private async Task ApplyProgressiveIssueListAsync(
+        IssuePagedSection<GitHubIssue> progress,
+        string queryIdentity,
+        bool isSameQuery,
+        int preferredIssueNumber,
+        CancellationToken cancellationToken)
+    {
+        cancellationToken.ThrowIfCancellationRequested();
+        if (progress.Items.Length == 0 &&
+            progress.State.CacheState == CacheState.Miss &&
+            Issues.Count > 0)
+        {
+            return;
+        }
+
+        IReadOnlyList<GitHubIssue> projectedIssues =
+            IssueRefreshProjectionPolicy.PreserveExistingRowsOnPartialRefresh(
+                progress.Items,
+                _loadedIssues,
+                progress.State,
+                isSameQuery);
+        _issueListState = progress.State;
+        UpdateIssueListScopeNotice();
+        _loadedIssues.Clear();
+        _loadedIssues.AddRange(projectedIssues);
+        _loadedIssueQueryIdentity = queryIdentity;
+        int selectionToPreserve = SelectedIssue?.Number ?? preferredIssueNumber;
+        await ApplyIssueListFilterAsync(selectionToPreserve, refreshSelectionDetails: false);
+        cancellationToken.ThrowIfCancellationRequested();
+    }
+
+    private async Task CompleteCachedNavigationInitializationAsync(
+        IssueNavArg navigationArgs,
+        IssueNavigationSnapshot snapshot,
+        int initializationVersion)
+    {
+        // Cached content is already local; reserve an input window before realizing the
+        // Markdown conversation and starting stale-list reconciliation.
+        TimeSpan commentDelay = CachedNavigationCommentQuietPeriod;
+        await Task.Delay(commentDelay);
+        if (initializationVersion != _navigationInitializationVersion ||
+            !ReferenceEquals(_navArg, navigationArgs))
+        {
+            return;
+        }
+
+        ApplyDeferredNavigationComments(snapshot);
+        TimeSpan refreshDelay = CachedNavigationRefreshQuietPeriod - commentDelay;
+        if (refreshDelay > TimeSpan.Zero)
+        {
+            // Cached content is already interactive. Reserve the rest of the first second
+            // for input before stale-list reconciliation can enqueue substantial UI work.
+            await Task.Delay(refreshDelay);
+            if (initializationVersion != _navigationInitializationVersion ||
+                !ReferenceEquals(_navArg, navigationArgs))
+            {
+                return;
+            }
+        }
+
+        await LoadIssuesAsync(
+            navigationArgs.IssueId,
+            preserveCurrentDetailDuringLoad: true);
+        if (initializationVersion == _navigationInitializationVersion &&
+            TryGetActiveToken(out string token) &&
+            !GitHubAuthenticationConstants.IsPublicAccessToken(token))
+        {
+            await RefreshRepositoryCapabilitiesAsync(token, QueryFetchPolicy.StaleFirst);
+        }
+    }
+
+    private void ApplyViewerCapabilities(GitHubIssue? issue)
+    {
+        int issueNumber = issue?.Number ?? 0;
+        _capabilityDenials.TrackTarget(GetRepositoryIdentity(_navArg?.Repo), issueNumber);
+
+        if (DialogMatrixAutomationScenario.IsEnabled)
+        {
+            bool hasIssue = issue is not null;
+            AreIssueActionsEnabled = hasIssue;
+            CanCreateIssue = true;
+            CanEditIssue = hasIssue;
+            CanManageIssueMetadata = hasIssue;
+            CanChangeIssueState = hasIssue;
+            CanReactToIssue = hasIssue;
+            IsAddCommentEnabled = hasIssue && !_isIssueCommentSubmissionInProgress;
+            return;
+        }
+
+        GitHubRepository? repository = _navArg?.Repo;
+        string? token = GetActiveToken();
+        IssueViewerCapabilities capabilities = IssuePermissionPolicy.Evaluate(
+            repository,
+            issue,
+            AuthenticatedLogin,
+            _authService.Authenticated,
+            token is not null && GitHubAuthenticationConstants.IsPublicAccessToken(token));
+        AreIssueActionsEnabled = issue is not null;
+        CanCreateIssue = capabilities.CanCreateIssue && !_capabilityDenials.IsDenied(IssueDeniedCapability.Create);
+        CanEditIssue = capabilities.CanEditIssue && !_capabilityDenials.IsDenied(IssueDeniedCapability.Edit);
+        CanManageIssueMetadata = capabilities.CanManageMetadata && !_capabilityDenials.IsDenied(IssueDeniedCapability.Metadata);
+        CanChangeIssueState = capabilities.CanChangeState && !_capabilityDenials.IsDenied(IssueDeniedCapability.State);
+        CanReactToIssue = capabilities.CanReact && !_capabilityDenials.IsDenied(IssueDeniedCapability.Reaction);
+        IsAddCommentEnabled = capabilities.CanComment &&
+            !_capabilityDenials.IsDenied(IssueDeniedCapability.Comment) &&
+            !_isIssueCommentSubmissionInProgress;
+    }
+
+    private bool CanCommentOnIssue()
+    {
+        if (_navArg is null || SelectedIssue is null)
+        {
+            return false;
+        }
+
+        string? token = GetActiveToken();
+        IssueViewerCapabilities capabilities = IssuePermissionPolicy.Evaluate(
+            _navArg.Repo,
+            SelectedIssue,
+            AuthenticatedLogin,
+            _authService.Authenticated,
+            token is not null && GitHubAuthenticationConstants.IsPublicAccessToken(token));
+        return capabilities.CanComment && !_capabilityDenials.IsDenied(IssueDeniedCapability.Comment);
+    }
+
+    private void ApplyPermissionFailure(
+        IssueCapabilityTarget target,
+        IssueDeniedCapability capability,
+        GitHubApiException exception)
+    {
+        if (!IssuePermissionPolicy.IsPermissionDenied(exception) ||
+            !_capabilityRecovery.RecordIssueFailure(target, capability, exception.StatusCode))
+        {
+            return;
+        }
+
+        ApplyViewerCapabilities(SelectedIssue);
+    }
+
+    private void ApplyRepositoryPermissionFailure(
+        IssueCapabilityTarget target,
+        IssueDeniedCapability capability,
+        GitHubApiException exception)
+    {
+        if (!IssuePermissionPolicy.IsPermissionDenied(exception) ||
+            !_capabilityRecovery.RecordRepositoryFailure(
+                target,
+                capability,
+                exception.StatusCode))
+        {
+            return;
+        }
+
+        ApplyViewerCapabilities(SelectedIssue);
+    }
+
+    private async Task RefreshAuthoritativeRepositoryCapabilitiesAsync(string token)
+    {
+        IssueNavArg? navigation = _navArg;
+        if (navigation is null)
+        {
+            return;
+        }
+
+        int requestId = _listRequestId;
+        string repositoryIdentity = GetRepositoryIdentity(navigation.Repo);
+        IssueCapabilityTarget capabilityTarget = _capabilityDenials.CaptureTarget();
+        IssueCapabilityRecoveryResult recovery = await _capabilityRecovery.RecoverRepositoryAsync(
+            capabilityTarget,
+            (fetchPolicy, cancellationToken) => TryGetAuthoritativeRepositoryAsync(
+                navigation,
+                token,
+                repositoryIdentity,
+                requestId,
+                fetchPolicy,
+                cancellationToken));
+        if (!recovery.WasApplied ||
+            recovery.Repository is null ||
+            requestId != _listRequestId ||
+            !ReferenceEquals(_navArg, navigation))
+        {
+            return;
+        }
+
+        navigation.WithRepo(recovery.Repository);
+        ApplyViewerCapabilities(SelectedIssue);
+    }
+
+    private async Task RefreshRepositoryCapabilitiesAsync(
+        string token,
+        QueryFetchPolicy fetchPolicy)
+    {
+        IssueNavArg? navigation = _navArg;
+        if (navigation is null)
+        {
+            return;
+        }
+
+        int requestId = _listRequestId;
+        string repositoryIdentity = GetRepositoryIdentity(navigation.Repo);
+        GitHubRepository? repository = await TryGetAuthoritativeRepositoryAsync(
+            navigation,
+            token,
+            repositoryIdentity,
+            requestId,
+            fetchPolicy,
+            CancellationToken.None);
+        if (repository is null ||
+            requestId != _listRequestId ||
+            !ReferenceEquals(_navArg, navigation))
+        {
+            return;
+        }
+
+        navigation.WithRepo(repository);
+        ApplyViewerCapabilities(SelectedIssue);
+    }
+
+    private async Task<GitHubRepository?> TryGetAuthoritativeRepositoryAsync(
+        IssueNavArg navigation,
+        string token,
+        string repositoryIdentity,
+        int requestId,
+        QueryFetchPolicy fetchPolicy,
+        CancellationToken cancellationToken)
+    {
+        try
+        {
+            CachedResult<GitHubRepository> result = await _repositoryQueryService.GetRepositoryAsync(
+                token,
+                GetActiveUserPartition(token),
+                navigation.Repo.Owner.Login,
+                navigation.Repo.Name,
+                fetchPolicy,
+                GitHubRequestPriority.Visible,
+                cancellationToken);
+            return requestId == _listRequestId &&
+                ReferenceEquals(_navArg, navigation) &&
+                string.Equals(
+                    GetRepositoryIdentity(navigation.Repo),
+                    repositoryIdentity,
+                    StringComparison.OrdinalIgnoreCase)
+                    ? result.Value
+                    : null;
+        }
+        catch (GitHubAuthenticationException)
+        {
+            throw;
+        }
+        catch (GitHubApiException)
+        {
+            return null;
+        }
+        catch (HttpRequestException)
+        {
+            return null;
+        }
+    }
+
+    private static string GetRepositoryIdentity(GitHubRepository? repository)
+    {
+        if (repository is null)
+        {
+            return string.Empty;
+        }
+
+        return !string.IsNullOrWhiteSpace(repository.FullName)
+            ? repository.FullName.Trim()
+            : $"{repository.Owner.Login}/{repository.Name}";
+    }
+
+    private void TrackIssueAction(IssueActionKind action, IssueActionOutcome outcome)
+    {
+        IssueTelemetry.TrackAction(_telemetryService, action, outcome);
+    }
+
+    public void TrackCommentQuoteReply() =>
+        TrackIssueAction(IssueActionKind.QuoteReply, IssueActionOutcome.Success);
+
+    public void TrackCommentCopyLink(bool succeeded) =>
+        TrackIssueAction(
+            IssueActionKind.CopyLink,
+            succeeded ? IssueActionOutcome.Success : IssueActionOutcome.Failure);
+
+    public void TrackCommentCopyMarkdown(bool succeeded) =>
+        TrackIssueAction(
+            IssueActionKind.CopyMarkdown,
+            succeeded ? IssueActionOutcome.Success : IssueActionOutcome.Failure);
+
+    private static IssueActionOutcome GetIssueActionOutcome(GitHubApiException exception)
+    {
+        return IssuePermissionPolicy.IsPermissionDenied(exception)
+            ? IssueActionOutcome.PermissionDenied
+            : IssueActionOutcome.Failure;
     }
 
     private bool IsSelectedIssue(GitHubIssue issue)
@@ -1483,6 +2943,21 @@ public sealed partial class RepoIssuePageViewModel : ViewModelBase
             return false;
         }
 
+        if (!MatchesLoginFilter(issue.Assignees.Select(assignee => assignee.Login), _issueQuery.Assignee))
+        {
+            return false;
+        }
+
+        if (!MatchesSingleLoginFilter(issue.User?.Login, _issueQuery.Creator))
+        {
+            return false;
+        }
+
+        if (!MatchesMentionedFilter(issue, _issueQuery.Mentioned))
+        {
+            return false;
+        }
+
         return !_issueQuery.Since.HasValue || issue.UpdatedAt >= _issueQuery.Since.Value;
     }
 
@@ -1493,6 +2968,36 @@ public sealed partial class RepoIssuePageViewModel : ViewModelBase
             || string.Equals(state, filter, StringComparison.OrdinalIgnoreCase);
     }
 
+    private static bool MatchesLoginFilter(IEnumerable<string> logins, string? filter)
+    {
+        return string.IsNullOrWhiteSpace(filter)
+            || logins.Any(login => string.Equals(login, filter, StringComparison.OrdinalIgnoreCase));
+    }
+
+    private static bool MatchesSingleLoginFilter(string? login, string? filter)
+    {
+        return string.IsNullOrWhiteSpace(filter)
+            || string.Equals(login, filter, StringComparison.OrdinalIgnoreCase);
+    }
+
+    private static bool MatchesMentionedFilter(GitHubIssue issue, string? filter)
+    {
+        if (string.IsNullOrWhiteSpace(filter))
+        {
+            return true;
+        }
+
+        return (!string.IsNullOrWhiteSpace(issue.Body) && issue.Body.Contains($"@{filter}", StringComparison.OrdinalIgnoreCase))
+            || issue.Assignees.Any(assignee => string.Equals(assignee.Login, filter, StringComparison.OrdinalIgnoreCase))
+            || string.Equals(issue.User?.Login, filter, StringComparison.OrdinalIgnoreCase);
+    }
+
+    private string GetIssueAuthorDisplayName(GitHubIssue issue) =>
+        UserIdentityNavigationPolicy.CreatePresentation(
+            issue.User?.Login,
+            displayName: null,
+            GetString("Common.UnknownUser", "unknown")).DisplayName;
+
     private static DateTimeOffset CreateLocalMidnight(DateTimeOffset date)
     {
         DateTime localMidnight = new(date.Year, date.Month, date.Day, 0, 0, 0, DateTimeKind.Unspecified);
@@ -1500,16 +3005,17 @@ public sealed partial class RepoIssuePageViewModel : ViewModelBase
         return new DateTimeOffset(localMidnight, localOffset);
     }
 
-    private void ReplaceIssueInCollection(GitHubIssue updatedIssue)
+    private GitHubIssue ReplaceIssueInCollection(GitHubIssue updatedIssue)
     {
         _suppressSelectionChanged = true;
         try
         {
+            int loadedIndex = -1;
             for (int index = 0; index < _loadedIssues.Count; index++)
             {
                 if (_loadedIssues[index].Number == updatedIssue.Number)
                 {
-                    _loadedIssues[index] = updatedIssue;
+                    loadedIndex = index;
                     break;
                 }
             }
@@ -1518,15 +3024,110 @@ public sealed partial class RepoIssuePageViewModel : ViewModelBase
             {
                 if (Issues[index].Number == updatedIssue.Number)
                 {
-                    Issues[index] = updatedIssue;
-                    return;
+                    GitHubIssue visibleIssue = Issues[index];
+                    CopyIssueValues(visibleIssue, updatedIssue);
+                    if (loadedIndex >= 0)
+                    {
+                        _loadedIssues[loadedIndex] = visibleIssue;
+                    }
+
+                    return visibleIssue;
                 }
             }
+
+            if (loadedIndex >= 0)
+            {
+                GitHubIssue loadedIssue = _loadedIssues[loadedIndex];
+                CopyIssueValues(loadedIssue, updatedIssue);
+                return loadedIssue;
+            }
+
+            return updatedIssue;
         }
         finally
         {
             _suppressSelectionChanged = false;
         }
+    }
+
+    private GitHubIssue ReplaceIssueInCollectionOrAdd(GitHubIssue updatedIssue)
+    {
+        GitHubIssue displayIssue = ReplaceIssueInCollection(updatedIssue);
+        if (_loadedIssues.All(issue => issue.Number != updatedIssue.Number))
+        {
+            _loadedIssues.Insert(0, displayIssue);
+        }
+
+        if (Issues.All(issue => issue.Number != updatedIssue.Number))
+        {
+            Issues.Insert(0, displayIssue);
+            IsEmpty = false;
+        }
+
+        return displayIssue;
+    }
+
+    private static void CopyIssueValues(GitHubIssue target, GitHubIssue source)
+    {
+        target.Id = source.Id;
+        target.Number = source.Number;
+        target.Title = source.Title;
+        target.Body = source.Body;
+        target.State = source.State;
+        target.HtmlUrl = source.HtmlUrl;
+        target.RepositoryUrl = source.RepositoryUrl;
+        target.Comments = source.Comments;
+        target.CreatedAt = source.CreatedAt;
+        target.UpdatedAt = source.UpdatedAt;
+        target.ClosedAt = source.ClosedAt;
+        target.User = source.User;
+        target.Assignees = source.Assignees;
+        target.Labels = source.Labels;
+        target.Milestone = source.Milestone;
+        target.Reactions = source.Reactions;
+        target.PullRequest = source.PullRequest;
+    }
+
+    private void NotifyRepositoryPropertiesChanged()
+    {
+        OnPropertyChanged(nameof(RepositoryFullName));
+        OnPropertyChanged(nameof(PageTitle));
+    }
+
+    private void NotifySelectedIssuePropertiesChanged()
+    {
+        OnPropertyChanged(nameof(HasSelectedIssue));
+        OnPropertyChanged(nameof(IsDetailPlaceholderVisible));
+        OnPropertyChanged(nameof(IsIssueContentVisible));
+        OnPropertyChanged(nameof(SelectedIssueNumberText));
+        OnPropertyChanged(nameof(SelectedIssueTitle));
+        OnPropertyChanged(nameof(SelectedIssueAuthorDisplayName));
+        OnPropertyChanged(nameof(SelectedIssueAuthorLogin));
+        OnPropertyChanged(nameof(SelectedIssueAuthorAvatarUrl));
+        OnPropertyChanged(nameof(SelectedIssueAuthorAutomationId));
+        OnPropertyChanged(nameof(SelectedIssueStateText));
+        OnPropertyChanged(nameof(SelectedIssueMetadataText));
+        OnPropertyChanged(nameof(SelectedIssueCommentText));
+        OnPropertyChanged(nameof(SelectedIssueReactionTargetId));
+        OnPropertyChanged(nameof(SelectedIssueHtmlUrl));
+        OnPropertyChanged(nameof(SelectedIssueReactions));
+        OnPropertyChanged(nameof(IssueBodyMarkdownSource));
+        OnPropertyChanged(nameof(IssueCommentMarkdownSource));
+        OnPropertyChanged(nameof(MilestoneTitle));
+    }
+
+    private void NotifyInspectorCollectionsChanged()
+    {
+        OnPropertyChanged(nameof(HasLabels));
+        OnPropertyChanged(nameof(HasNoLabels));
+        OnPropertyChanged(nameof(HasAssignees));
+        OnPropertyChanged(nameof(HasNoAssignees));
+        OnPropertyChanged(nameof(MilestoneTitle));
+    }
+
+    private void NotifyIssueCommentsChanged()
+    {
+        OnPropertyChanged(nameof(IsIssueCommentsEmptyVisible));
     }
 
     private bool TryGetActiveToken(out string token)
@@ -1545,6 +3146,17 @@ public sealed partial class RepoIssuePageViewModel : ViewModelBase
     {
         long userId = _authService.AuthenticatedUser?.Id ?? _accountService.GetUser();
         return _authService.GetToken(userId);
+    }
+
+    private string GetActiveUserPartition(string token)
+    {
+        if (GitHubAuthenticationConstants.IsPublicAccessToken(token))
+        {
+            return "public";
+        }
+
+        long userId = _authService.AuthenticatedUser?.Id ?? _accountService.GetUser();
+        return userId > 0 ? userId.ToString(CultureInfo.InvariantCulture) : string.Empty;
     }
 
     private string FormatIssueMetadataSummary(GitHubIssue issue)
@@ -1605,4 +3217,5 @@ public sealed partial class RepoIssuePageViewModel : ViewModelBase
         IReadOnlyList<string> Assignees,
         IReadOnlyList<string> Labels,
         int? MilestoneNumber);
+
 }

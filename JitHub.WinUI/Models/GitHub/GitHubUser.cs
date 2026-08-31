@@ -1,3 +1,4 @@
+using System;
 using System.Text.Json.Serialization;
 
 namespace JitHub.Models.GitHub;
@@ -7,6 +8,9 @@ public sealed partial class GitHubUser
 {
     [JsonPropertyName("id")]
     public long Id { get; init; }
+
+    [JsonPropertyName("node_id")]
+    public string? NodeId { get; init; }
 
     [JsonPropertyName("login")]
     public string Login { get; init; } = string.Empty;
@@ -29,6 +33,15 @@ public sealed partial class GitHubUser
     [JsonPropertyName("blog")]
     public string? Blog { get; init; }
 
+    [JsonPropertyName("email")]
+    public string? Email { get; init; }
+
+    [JsonPropertyName("twitter_username")]
+    public string? TwitterUsername { get; init; }
+
+    [JsonPropertyName("hireable")]
+    public bool? Hireable { get; init; }
+
     [JsonPropertyName("html_url")]
     public string? HtmlUrl { get; init; }
 
@@ -40,4 +53,19 @@ public sealed partial class GitHubUser
 
     [JsonPropertyName("following")]
     public int Following { get; init; }
+
+    [JsonPropertyName("public_gists")]
+    public int PublicGists { get; init; }
+
+    [JsonPropertyName("created_at")]
+    public DateTimeOffset? CreatedAt { get; init; }
+
+    [JsonPropertyName("updated_at")]
+    public DateTimeOffset? UpdatedAt { get; init; }
+
+    [JsonPropertyName("type")]
+    public string? Type { get; init; }
+
+    [JsonPropertyName("site_admin")]
+    public bool SiteAdmin { get; init; }
 }

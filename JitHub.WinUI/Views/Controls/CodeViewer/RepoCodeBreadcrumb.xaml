@@ -1,5 +1,6 @@
 <UserControl
     x:Class="JitHub.WinUI.Views.Controls.CodeViewer.RepoCodeBreadcrumb"
+    x:Uid="RepoCodeBreadcrumbBar"
     xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
     xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
     xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
@@ -9,13 +10,16 @@
     x:Name="Root"
     d:DesignHeight="44"
     d:DesignWidth="900"
+    AutomationProperties.AutomationId="RepoCodeBreadcrumbBar"
+    AutomationProperties.Name="Repository path and file actions"
+    SizeChanged="Root_SizeChanged"
     mc:Ignorable="d">
 
     <Grid
         Background="{ThemeResource AppSurfaceBrush}"
         BorderBrush="{ThemeResource AppOutlineBrush}"
-        BorderThickness="0,0,0,1"
-        Padding="8,6">
+        BorderThickness="{ThemeResource AppBottomHairlineBorderThickness}"
+        Padding="{ThemeResource AppPadding8_6}">
 
         <Grid.ColumnDefinitions>
             <ColumnDefinition Width="Auto" />
@@ -26,28 +30,58 @@
         <!--  Back / Forward navigation  -->
         <StackPanel
             Grid.Column="0"
-            Margin="0,0,4,0"
+            Margin="{ThemeResource AppMargin0_0_4_0}"
             Orientation="Horizontal"
-            Spacing="2"
+            Spacing="{ThemeResource AppGap2}"
             VerticalAlignment="Center">
             <Button
-                Command="{Binding ElementName=Root, Path=GoBackCommand}"
-                IsEnabled="{Binding ElementName=Root, Path=CanGoBack}"
+                x:Name="OpenFileTreeButton"
+                x:Uid="RepoCodeOpenFileTreeButton"
+                Width="{ThemeResource AppDimension36}"
+                Height="{ThemeResource AppDimension36}"
+                Padding="{ThemeResource AppPadding0}"
+                AutomationProperties.AutomationId="RepoCodeOpenFileTreeButton"
+                AutomationProperties.Name="Open repository files"
+                Click="OpenFileTreeButton_Click"
                 Style="{StaticResource AppToolbarButtonStyle}"
-                ToolTipService.ToolTip="Go back">
-                <FontIcon FontSize="16" Glyph="&#xE72B;" />
+                ToolTipService.ToolTip="Repository files"
+                Visibility="Collapsed">
+                <FontIcon
+                    FontFamily="{StaticResource SegoeFluentIcons}"
+                    FontSize="{ThemeResource AppFontSize14}"
+                    Glyph="&#xE8FD;" />
             </Button>
             <Button
-                Command="{Binding ElementName=Root, Path=GoForwardCommand}"
-                IsEnabled="{Binding ElementName=Root, Path=CanGoForward}"
+                x:Uid="RepoCodeBackButton"
+                Width="{ThemeResource AppDimension36}"
+                Height="{ThemeResource AppDimension36}"
+                Padding="{ThemeResource AppPadding0}"
+                AutomationProperties.AutomationId="RepoCodeBackButton"
+                AutomationProperties.Name="Go back to previous file"
+                Command="{x:Bind GoBackCommand, Mode=OneWay}"
+                IsEnabled="{x:Bind CanGoBack, Mode=OneWay}"
+                Style="{StaticResource AppToolbarButtonStyle}"
+                ToolTipService.ToolTip="Go back">
+                <FontIcon FontSize="{ThemeResource AppFontSize16}" Glyph="&#xE72B;" />
+            </Button>
+            <Button
+                x:Uid="RepoCodeForwardButton"
+                Width="{ThemeResource AppDimension36}"
+                Height="{ThemeResource AppDimension36}"
+                Padding="{ThemeResource AppPadding0}"
+                AutomationProperties.AutomationId="RepoCodeForwardButton"
+                AutomationProperties.Name="Go forward to next file"
+                Command="{x:Bind GoForwardCommand, Mode=OneWay}"
+                IsEnabled="{x:Bind CanGoForward, Mode=OneWay}"
                 Style="{StaticResource AppToolbarButtonStyle}"
                 ToolTipService.ToolTip="Go forward">
-                <FontIcon FontSize="16" Glyph="&#xE72A;" />
+                <FontIcon FontSize="{ThemeResource AppFontSize16}" Glyph="&#xE72A;" />
             </Button>
         </StackPanel>
 
         <!--  Path segments — scrollable horizontally  -->
         <ScrollViewer
+            x:Name="FullBreadcrumbHost"
             Grid.Column="1"
             HorizontalScrollBarVisibility="Hidden"
             HorizontalScrollMode="Auto"
@@ -66,48 +100,167 @@
                                 <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
                                     <!--  "›" separator — hidden for the root segment  -->
                                     <TextBlock
-                                        Margin="2,0"
+                                        Margin="{ThemeResource AppMargin2_0}"
                                         VerticalAlignment="Center"
                                         Foreground="{ThemeResource AppInkMutedBrush}"
                                         Text="›"
-                                        Visibility="{x:Bind local:RepoCodeBreadcrumb.NotRootVis(IsRoot)}" />
-                                    <TextBlock
-                                        Padding="4,2"
+                                        Visibility="{x:Bind local:RepoCodeBreadcrumb.NotRootVis(IsRoot), Mode=OneWay}" />
+                                    <Button
+                                        AutomationProperties.AutomationId="{x:Bind AutomationId}"
+                                        AutomationProperties.ItemStatus="{x:Bind AutomationPath}"
+                                        AutomationProperties.Name="{x:Bind AutomationName}"
+                                        Click="OnBreadcrumbSegmentClick"
+                                        MinHeight="{ThemeResource AppDimension28}"
+                                        Padding="{ThemeResource AppPadding4_2}"
                                         VerticalAlignment="Center"
                                         Foreground="{ThemeResource AppInkBrush}"
-                                        Text="{x:Bind Label}" />
+                                        Style="{StaticResource AppQuietButtonStyle}"
+                                        ToolTipService.ToolTip="{x:Bind Label}">
+                                        <TextBlock Text="{x:Bind Label}" />
+                                    </Button>
                                 </StackPanel>
                             </DataTemplate>
                         </ItemsControl.ItemTemplate>
             </ItemsControl>
         </ScrollViewer>
 
+        <TextBlock
+            x:Name="TransitionPathText"
+            Grid.Column="1"
+            MinWidth="{ThemeResource AppDimension0}"
+            VerticalAlignment="Center"
+            AutomationProperties.AutomationId="RepoCodeTransitionPath"
+            AutomationProperties.Name="{x:Bind ViewModel.CurrentPath, Mode=OneWay}"
+            FontFamily="{ThemeResource AppUiFontFamily}"
+            FontSize="{ThemeResource AppFontSize13}"
+            FontWeight="{ThemeResource AppFontWeightSemibold}"
+            Foreground="{ThemeResource AppInkBrush}"
+            Text="{x:Bind ViewModel.CurrentPath, Mode=OneWay}"
+            TextTrimming="CharacterEllipsis"
+            TextWrapping="NoWrap"
+            ToolTipService.ToolTip="{x:Bind ViewModel.CurrentPath, Mode=OneWay}"
+            Visibility="Collapsed" />
+
+        <TextBlock
+            x:Name="CompactFileName"
+            Grid.Column="1"
+            MinWidth="{ThemeResource AppDimension0}"
+            VerticalAlignment="Center"
+            AutomationProperties.AutomationId="RepoCodeCompactFileName"
+            AutomationProperties.Name="{x:Bind ViewModel.CurrentFileName, Mode=OneWay}"
+            FontFamily="{ThemeResource AppUiFontFamily}"
+            FontSize="{ThemeResource AppFontSize13}"
+            FontWeight="{ThemeResource AppFontWeightSemibold}"
+            Foreground="{ThemeResource AppInkBrush}"
+            Text="{x:Bind ViewModel.CurrentFileName, Mode=OneWay}"
+            TextTrimming="CharacterEllipsis"
+            TextWrapping="NoWrap"
+            ToolTipService.ToolTip="{x:Bind ViewModel.CurrentPath, Mode=OneWay}"
+            Visibility="Collapsed" />
+
         <!--  Action buttons: Copy path, Copy raw URL, Open on GitHub  -->
         <StackPanel
+            x:Name="DirectActionsHost"
             Grid.Column="2"
-            Margin="4,0,0,0"
+            Margin="{ThemeResource AppMargin4_0_0_0}"
             Orientation="Horizontal"
-            Spacing="2"
+            Spacing="{ThemeResource AppGap2}"
             VerticalAlignment="Center">
             <Button
+                x:Uid="RepoCodeCopyPathButton"
+                Width="{ThemeResource AppDimension36}"
+                Height="{ThemeResource AppDimension36}"
+                Padding="{ThemeResource AppPadding0}"
+                AutomationProperties.AutomationId="RepoCodeCopyPathButton"
+                AutomationProperties.Name="Copy current file path"
                 Command="{x:Bind ViewModel.CopyPathCommand, Mode=OneWay}"
                 Style="{StaticResource AppToolbarButtonStyle}"
                 ToolTipService.ToolTip="Copy path">
-                <FontIcon FontSize="16" Glyph="{x:Bind local:RepoCodeBreadcrumb.CopyPathGlyph(ViewModel.IsCopyPathDone), Mode=OneWay}" />
+                <FontIcon FontSize="{ThemeResource AppFontSize16}" Glyph="{x:Bind local:RepoCodeBreadcrumb.CopyPathGlyph(ViewModel.IsCopyPathDone), Mode=OneWay}" />
             </Button>
             <Button
+                x:Uid="RepoCodeCopyRawUrlButton"
+                Width="{ThemeResource AppDimension36}"
+                Height="{ThemeResource AppDimension36}"
+                Padding="{ThemeResource AppPadding0}"
+                AutomationProperties.AutomationId="RepoCodeCopyRawUrlButton"
+                AutomationProperties.Name="Copy raw file link"
                 Command="{x:Bind ViewModel.CopyRawUrlCommand, Mode=OneWay}"
                 Style="{StaticResource AppToolbarButtonStyle}"
                 ToolTipService.ToolTip="Copy raw URL">
-                <FontIcon FontSize="16" Glyph="{x:Bind local:RepoCodeBreadcrumb.CopyRawUrlGlyph(ViewModel.IsCopyRawUrlDone), Mode=OneWay}" />
+                <FontIcon FontSize="{ThemeResource AppFontSize16}" Glyph="{x:Bind local:RepoCodeBreadcrumb.CopyRawUrlGlyph(ViewModel.IsCopyRawUrlDone), Mode=OneWay}" />
             </Button>
             <Button
+                x:Uid="RepoCodeOpenOnGitHubButton"
+                Width="{ThemeResource AppDimension36}"
+                Height="{ThemeResource AppDimension36}"
+                Padding="{ThemeResource AppPadding0}"
+                AutomationProperties.AutomationId="RepoCodeOpenOnGitHubButton"
+                AutomationProperties.Name="Open current file on GitHub"
                 Command="{x:Bind ViewModel.OpenOnGitHubCommand, Mode=OneWay}"
                 Style="{StaticResource AppToolbarButtonStyle}"
                 ToolTipService.ToolTip="Open on GitHub">
-                <FontIcon FontSize="16" Glyph="&#xE8A7;" />
+                <FontIcon FontSize="{ThemeResource AppFontSize16}" Glyph="&#xE8A7;" />
             </Button>
         </StackPanel>
+
+        <Button
+            x:Name="FileActionsOverflowButton"
+            x:Uid="RepoCodeFileActionsOverflowButton"
+            Grid.Column="2"
+            Width="{ThemeResource AppDimension36}"
+            Height="{ThemeResource AppDimension36}"
+            Margin="{ThemeResource AppMargin4_0_0_0}"
+            Padding="{ThemeResource AppPadding0}"
+            VerticalAlignment="Center"
+            AutomationProperties.AutomationId="RepoCodeFileActionsOverflowButton"
+            AutomationProperties.Name="File actions"
+            Click="FileActionsOverflowButton_Click"
+            Style="{StaticResource AppToolbarButtonStyle}"
+            ToolTipService.ToolTip="File actions"
+            Visibility="Collapsed">
+            <FontIcon
+                FontFamily="{StaticResource SegoeFluentIcons}"
+                FontSize="{ThemeResource AppFontSize14}"
+                Glyph="&#xE712;" />
+            <Button.Flyout>
+                <MenuFlyout
+                    x:Name="FileActionsOverflowFlyout"
+                    Placement="BottomEdgeAlignedRight">
+                    <MenuFlyoutItem
+                        x:Uid="RepoCodeOverflowCopyPath"
+                        AutomationProperties.AutomationId="RepoCodeOverflowCopyPath"
+                        AutomationProperties.Name="Copy current file path"
+                        Command="{x:Bind ViewModel.CopyPathCommand, Mode=OneWay}"
+                        Text="Copy path">
+                        <MenuFlyoutItem.Icon>
+                            <FontIcon Glyph="&#xE8C8;" />
+                        </MenuFlyoutItem.Icon>
+                    </MenuFlyoutItem>
+                    <MenuFlyoutItem
+                        x:Uid="RepoCodeOverflowCopyRawLink"
+                        AutomationProperties.AutomationId="RepoCodeOverflowCopyRawLink"
+                        AutomationProperties.Name="Copy raw file link"
+                        Command="{x:Bind ViewModel.CopyRawUrlCommand, Mode=OneWay}"
+                        Text="Copy raw link">
+                        <MenuFlyoutItem.Icon>
+                            <FontIcon Glyph="&#xE71B;" />
+                        </MenuFlyoutItem.Icon>
+                    </MenuFlyoutItem>
+                    <MenuFlyoutSeparator />
+                    <MenuFlyoutItem
+                        x:Uid="RepoCodeOverflowOpenOnGitHub"
+                        AutomationProperties.AutomationId="RepoCodeOverflowOpenOnGitHub"
+                        AutomationProperties.Name="Open current file on GitHub"
+                        Command="{x:Bind ViewModel.OpenOnGitHubCommand, Mode=OneWay}"
+                        Text="Open on GitHub">
+                        <MenuFlyoutItem.Icon>
+                            <FontIcon Glyph="&#xE8A7;" />
+                        </MenuFlyoutItem.Icon>
+                    </MenuFlyoutItem>
+                </MenuFlyout>
+            </Button.Flyout>
+        </Button>
 
     </Grid>
 </UserControl>

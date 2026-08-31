@@ -5,15 +5,215 @@
     xmlns:codeviewer="using:JitHub.WinUI.Views.Controls.CodeViewer"
     xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
     xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+    xmlns:models="using:JitHub.Models.CodeViewer"
+    x:Name="Root"
     Background="{ThemeResource AppCanvasBrush}"
     d:DesignHeight="400"
     d:DesignWidth="800"
     mc:Ignorable="d">
 
-    <codeviewer:CodeEditorControl
-        FilePath="{x:Bind ViewModel.CurrentFile.Path, Mode=OneWay}"
-        IsReadOnlyEditor="True"
-        LanguageId="{x:Bind ViewModel.LanguageId, Mode=OneWay}"
-        Text="{x:Bind ViewModel.Text, Mode=OneWay}" />
+    <Grid>
+        <codeviewer:CodeEditorControl
+            x:Name="Editor"
+            FilePath="{x:Bind ViewModel.CurrentFilePath, Mode=OneWay}"
+            FindRequested="Editor_FindRequested"
+            IsReadOnlyEditor="True"
+            LanguageId="{x:Bind ViewModel.LanguageId, Mode=OneWay}"
+            Text="{x:Bind ViewModel.Text, Mode=OneWay}" />
 
+        <StackPanel
+            Margin="{ThemeResource AppMargin8}"
+            HorizontalAlignment="Right"
+            VerticalAlignment="Top"
+            Orientation="Horizontal"
+            Spacing="{ThemeResource AppGap2}">
+            <Button
+                x:Uid="RepoCodeFindButton"
+                Width="{ThemeResource AppDimension32}"
+                Height="{ThemeResource AppDimension32}"
+                Padding="{ThemeResource AppPadding0}"
+                AutomationProperties.AutomationId="RepoCodeFindButton"
+                AutomationProperties.Name="Find in file"
+                Click="FindButton_Click"
+                Style="{StaticResource AppToolbarButtonStyle}"
+                ToolTipService.ToolTip="Find in file (Ctrl+F)">
+                <FontIcon FontSize="{ThemeResource AppFontSize14}" Glyph="&#xE721;" />
+            </Button>
+            <Button
+                x:Name="SymbolsButton"
+                x:Uid="RepoCodeSymbolsButton"
+                Width="{ThemeResource AppDimension32}"
+                Height="{ThemeResource AppDimension32}"
+                Padding="{ThemeResource AppPadding0}"
+                AutomationProperties.AutomationId="RepoCodeSymbolsButton"
+                AutomationProperties.Name="File outline"
+                Click="SymbolsButton_Click"
+                Style="{StaticResource AppToolbarButtonStyle}"
+                ToolTipService.ToolTip="File outline">
+                <FontIcon FontSize="{ThemeResource AppFontSize14}" Glyph="&#xE8A9;" />
+                <Button.Flyout>
+                    <Flyout Placement="BottomEdgeAlignedRight">
+                        <Grid Width="{ThemeResource AppDimension300}" MaxHeight="{ThemeResource AppDimension420}">
+                            <Grid.RowDefinitions>
+                                <RowDefinition Height="Auto" />
+                                <RowDefinition Height="*" />
+                            </Grid.RowDefinitions>
+                            <TextBlock
+                                x:Uid="RepoCodeOutlineHeading"
+                                Margin="{ThemeResource AppMargin4_0_4_8}"
+                                Foreground="{ThemeResource AppInkBrush}"
+                                FontWeight="{ThemeResource AppFontWeightSemibold}"
+                                Text="File outline" />
+                            <ListView
+                                x:Name="SymbolsList"
+                                x:Uid="RepoCodeSymbolsList"
+                                Grid.Row="1"
+                                AutomationProperties.AutomationId="RepoCodeSymbolsList"
+                                AutomationProperties.Name="File symbols"
+                                ContainerContentChanging="SymbolsList_ContainerContentChanging"
+                                IsItemClickEnabled="True"
+                                ItemClick="SymbolsList_ItemClick"
+                                UseSystemFocusVisuals="True"
+                                SelectionMode="None">
+                                <ListView.ItemTemplate>
+                                    <DataTemplate x:DataType="models:CodeSymbol">
+                                        <Grid
+                                            Padding="{ThemeResource AppPadding8_6}"
+                                            AutomationProperties.AutomationId="{x:Bind AutomationId}"
+                                            AutomationProperties.Name="{x:Bind AutomationName}"
+                Background="{ThemeResource AppTransparentBrush}"
+                                            ColumnSpacing="{ThemeResource AppGap8}">
+                                            <Grid.ColumnDefinitions>
+                                                <ColumnDefinition Width="*" />
+                                                <ColumnDefinition Width="Auto" />
+                                            </Grid.ColumnDefinitions>
+                                            <StackPanel Spacing="{ThemeResource AppGap1}">
+                                                <TextBlock
+                                                    Foreground="{ThemeResource AppInkBrush}"
+                                                    Text="{x:Bind Name}"
+                                                    TextTrimming="CharacterEllipsis" />
+                                                <TextBlock
+                                                    Foreground="{ThemeResource AppInkMutedBrush}"
+                                                    Style="{StaticResource SectionSecondaryTextBlockStyle}"
+                                                    Text="{x:Bind Kind}" />
+                                            </StackPanel>
+                                            <TextBlock
+                                                Grid.Column="1"
+                                                VerticalAlignment="Center"
+                                                Foreground="{ThemeResource AppInkMutedBrush}"
+                                                FontFamily="{ThemeResource AppMonoFontFamily}"
+                                                Text="{x:Bind LocationText}" />
+                                        </Grid>
+                                    </DataTemplate>
+                                </ListView.ItemTemplate>
+                            </ListView>
+                            <TextBlock
+                                x:Name="NoSymbolsText"
+                                x:Uid="RepoCodeOutlineEmptyState"
+                                Grid.Row="1"
+                                Padding="{ThemeResource AppPadding8}"
+                                AutomationProperties.AutomationId="RepoCodeOutlineEmptyState"
+                                Foreground="{ThemeResource AppInkMutedBrush}"
+                                Text="Outline is not available for this file."
+                                TextWrapping="Wrap"
+                                Visibility="Collapsed" />
+                        </Grid>
+                    </Flyout>
+                </Button.Flyout>
+            </Button>
+            <Button
+                x:Uid="RepoCodeCopyLineLinkButton"
+                Width="{ThemeResource AppDimension32}"
+                Height="{ThemeResource AppDimension32}"
+                Padding="{ThemeResource AppPadding0}"
+                AutomationProperties.AutomationId="RepoCodeCopyLineLinkButton"
+                AutomationProperties.Name="Copy link to current line"
+                Click="CopyLineLinkButton_Click"
+                Style="{StaticResource AppToolbarButtonStyle}"
+                ToolTipService.ToolTip="Copy link to current line">
+                <FontIcon FontSize="{ThemeResource AppFontSize14}" Glyph="&#xE71B;" />
+            </Button>
+        </StackPanel>
+
+        <Border
+            x:Name="FindPanel"
+            Margin="{ThemeResource AppMargin8_44_8_8}"
+            Padding="{ThemeResource AppPadding6}"
+            HorizontalAlignment="Right"
+            VerticalAlignment="Top"
+            Background="{ThemeResource AppSurfaceBrush}"
+            BorderBrush="{ThemeResource AppOutlineBrush}"
+            BorderThickness="{ThemeResource AppHairlineBorderThickness}"
+            CornerRadius="{ThemeResource ControlCornerRadius}"
+            Visibility="Collapsed">
+            <Grid ColumnSpacing="{ThemeResource AppGap2}">
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="{ThemeResource AppGridLength220}" />
+                    <ColumnDefinition Width="{ThemeResource AppGridLength48}" />
+                    <ColumnDefinition Width="Auto" />
+                    <ColumnDefinition Width="Auto" />
+                    <ColumnDefinition Width="Auto" />
+                </Grid.ColumnDefinitions>
+                <TextBox
+                    x:Name="FindTextBox"
+                    x:Uid="RepoCodeFindTextBox"
+                    Height="{ThemeResource AppDimension32}"
+                    AutomationProperties.AutomationId="RepoCodeFindTextBox"
+                    AutomationProperties.Name="Find text"
+                    KeyDown="FindTextBox_KeyDown"
+                    PlaceholderText="Find in file"
+                    Style="{StaticResource AppTextBoxStyle}"
+                    TextChanged="FindTextBox_TextChanged" />
+                <TextBlock
+                    x:Name="FindStatus"
+                    x:Uid="RepoCodeFindStatus"
+                    Grid.Column="1"
+                    HorizontalAlignment="Center"
+                    VerticalAlignment="Center"
+                    AutomationProperties.AutomationId="RepoCodeFindStatus"
+                    AutomationProperties.LiveSetting="Polite"
+                    Foreground="{ThemeResource AppInkMutedBrush}"
+                    Style="{StaticResource SectionSecondaryTextBlockStyle}" />
+                <Button
+                    x:Uid="RepoCodePreviousMatchButton"
+                    Grid.Column="2"
+                    Width="{ThemeResource AppDimension32}"
+                    Height="{ThemeResource AppDimension32}"
+                    Padding="{ThemeResource AppPadding0}"
+                    AutomationProperties.AutomationId="RepoCodePreviousMatchButton"
+                    AutomationProperties.Name="Previous match"
+                    Click="PreviousMatchButton_Click"
+                    Style="{StaticResource AppToolbarButtonStyle}"
+                    ToolTipService.ToolTip="Previous match">
+                    <FontIcon FontSize="{ThemeResource AppFontSize13}" Glyph="&#xE70E;" />
+                </Button>
+                <Button
+                    x:Uid="RepoCodeNextMatchButton"
+                    Grid.Column="3"
+                    Width="{ThemeResource AppDimension32}"
+                    Height="{ThemeResource AppDimension32}"
+                    Padding="{ThemeResource AppPadding0}"
+                    AutomationProperties.AutomationId="RepoCodeNextMatchButton"
+                    AutomationProperties.Name="Next match"
+                    Click="NextMatchButton_Click"
+                    Style="{StaticResource AppToolbarButtonStyle}"
+                    ToolTipService.ToolTip="Next match">
+                    <FontIcon FontSize="{ThemeResource AppFontSize13}" Glyph="&#xE70D;" />
+                </Button>
+                <Button
+                    x:Uid="RepoCodeCloseFindButton"
+                    Grid.Column="4"
+                    Width="{ThemeResource AppDimension32}"
+                    Height="{ThemeResource AppDimension32}"
+                    Padding="{ThemeResource AppPadding0}"
+                    AutomationProperties.AutomationId="RepoCodeCloseFindButton"
+                    AutomationProperties.Name="Close find"
+                    Click="CloseFindButton_Click"
+                    Style="{StaticResource AppToolbarButtonStyle}"
+                    ToolTipService.ToolTip="Close find (Esc)">
+                    <FontIcon FontSize="{ThemeResource AppFontSize12}" Glyph="&#xE711;" />
+                </Button>
+            </Grid>
+        </Border>
+    </Grid>
 </UserControl>

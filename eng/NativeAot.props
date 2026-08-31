@@ -1,0 +1,36 @@
+<Project>
+  <!-- Keep the app's canonical AOT graph protected even when external tooling
+       injects a project-local Directory.Build.props and shadows the repository policy. -->
+  <PropertyGroup Condition="'$(Configuration)' != 'Release' and '$(Configuration)' != 'AotDebug'">
+    <NuGetLockFilePath>$(MSBuildProjectDirectory)\obj\$(Configuration)\packages.lock.json</NuGetLockFilePath>
+  </PropertyGroup>
+
+  <PropertyGroup Condition="'$(Configuration)' == 'Release' or '$(Configuration)' == 'AotDebug'">
+    <RestoreLockedMode>true</RestoreLockedMode>
+  </PropertyGroup>
+
+  <PropertyGroup Condition="'$(Configuration)' == 'Release' or '$(Configuration)' == 'AotDebug'">
+    <PublishAot>true</PublishAot>
+    <PublishTrimmed>true</PublishTrimmed>
+    <SelfContained>true</SelfContained>
+    <PublishReadyToRun>false</PublishReadyToRun>
+    <IsAotCompatible>true</IsAotCompatible>
+    <EnableAotAnalyzer>true</EnableAotAnalyzer>
+    <EnableTrimAnalyzer>true</EnableTrimAnalyzer>
+    <SuppressTrimAnalysisWarnings>false</SuppressTrimAnalysisWarnings>
+    <TrimmerSingleWarn>false</TrimmerSingleWarn>
+    <IlcTreatWarningsAsErrors>true</IlcTreatWarningsAsErrors>
+    <ILLinkTreatWarningsAsErrors>true</ILLinkTreatWarningsAsErrors>
+    <TreatWarningsAsErrors>true</TreatWarningsAsErrors>
+    <GenerateDependencyFile>false</GenerateDependencyFile>
+    <GenerateRuntimeConfigurationFiles>false</GenerateRuntimeConfigurationFiles>
+    <InvariantGlobalization>false</InvariantGlobalization>
+  </PropertyGroup>
+
+  <PropertyGroup Condition="'$(Configuration)' == 'AotDebug'">
+    <DebugSymbols>true</DebugSymbols>
+    <DebugType>portable</DebugType>
+    <!-- Unoptimized Native AOT is unsupported and can deadlock in the .NET 10 WinRT reference tracker. -->
+    <Optimize>true</Optimize>
+  </PropertyGroup>
+</Project>

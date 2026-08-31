@@ -1,0 +1,1062 @@
+<?xml version="1.0" encoding="utf-8"?>
+<Page
+    x:Class="JitHub.WinUI.Views.Pages.MyPullRequestsPage"
+    x:Name="Root"
+    xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+    xmlns:app="using:JitHub.WinUI.Views.Controls.App"
+    xmlns:common="using:JitHub.WinUI.Views.Controls.Common"
+    xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+    xmlns:github="using:JitHub.Models.GitHub"
+    xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+    xmlns:toolkit="using:CommunityToolkit.WinUI.Controls"
+    xmlns:viewmodels="using:JitHub.WinUI.ViewModels.Pages"
+    x:DataType="viewmodels:MyPullRequestsPageViewModel"
+    Background="{ThemeResource AppTransparentBrush}"
+    mc:Ignorable="d">
+    <Page.Resources>
+        <DataTemplate x:Key="PullRequestListItemTemplate" x:DataType="viewmodels:MeWorkItemViewItem">
+            <Grid
+                MinHeight="{ThemeResource AppDimension56}"
+                AutomationProperties.AutomationId="{x:Bind AutomationId, Mode=OneWay}"
+                AutomationProperties.Name="{x:Bind AutomationName, Mode=OneWay}"
+                PointerPressed="PullRequestListItem_PointerPressed"
+                RowSpacing="{ThemeResource AppGap5}">
+                <Grid.RowDefinitions>
+                    <RowDefinition Height="Auto" />
+                    <RowDefinition Height="Auto" />
+                    <RowDefinition Height="Auto" />
+                </Grid.RowDefinitions>
+                <TextBlock
+                    FontFamily="{ThemeResource AppBodyFontFamily}"
+                    FontSize="{ThemeResource AppFontSize13}"
+                    FontWeight="{ThemeResource AppFontWeightSemibold}"
+                    Foreground="{ThemeResource AppInkBrush}"
+                    MaxLines="2"
+                    Text="{x:Bind Title, Mode=OneWay}"
+                    TextTrimming="CharacterEllipsis"
+                    TextWrapping="WrapWholeWords" />
+                <TextBlock
+                    Grid.Row="1"
+                    Style="{StaticResource SectionSecondaryTextBlockStyle}"
+                    Text="{x:Bind RepositoryFullName, Mode=OneWay}"
+                    TextTrimming="CharacterEllipsis" />
+                <Grid Grid.Row="2" ColumnSpacing="{ThemeResource AppGap8}">
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="Auto" />
+                        <ColumnDefinition Width="*" />
+                    </Grid.ColumnDefinitions>
+                    <TextBlock
+                        VerticalAlignment="Center"
+                        FontFamily="{ThemeResource AppMonoFontFamily}"
+                        FontSize="{ThemeResource AppFontSize11}"
+                        Foreground="{ThemeResource AppAccentBrush}"
+                        Text="{x:Bind NumberText, Mode=OneWay}" />
+                    <TextBlock
+                        Grid.Column="1"
+                        Style="{StaticResource SectionSecondaryTextBlockStyle}"
+                        Text="{x:Bind UpdatedText, Mode=OneWay}"
+                        TextTrimming="CharacterEllipsis" />
+                </Grid>
+            </Grid>
+        </DataTemplate>
+
+        <DataTemplate x:Key="CommentTemplate" x:DataType="viewmodels:MeIssueCommentViewItem">
+            <Border
+                Margin="{ThemeResource AppMargin0_0_0_12}"
+                Padding="{ThemeResource AppPadding14}"
+                Background="{ThemeResource AppCanvasInsetBrush}"
+                BorderBrush="{ThemeResource AppHairlineBrush}"
+                BorderThickness="{ThemeResource AppHairlineBorderThickness}"
+                CornerRadius="{ThemeResource AppRadiusSmall}">
+                <Grid RowSpacing="{ThemeResource AppGap12}">
+                    <Grid.RowDefinitions>
+                        <RowDefinition Height="Auto" />
+                        <RowDefinition Height="Auto" />
+                    </Grid.RowDefinitions>
+                    <Grid ColumnSpacing="{ThemeResource AppGap10}">
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="{ThemeResource AppGridLength32}" />
+                            <ColumnDefinition Width="*" />
+                            <ColumnDefinition Width="Auto" />
+                        </Grid.ColumnDefinitions>
+                        <common:Avatar
+                            VerticalAlignment="Center"
+                            AutomationInstanceId="{x:Bind AutomationId, Mode=OneWay}"
+                            Login="{x:Bind AuthenticatedLogin, Mode=OneWay}"
+                            NavigationSource="pull_request_comment"
+                            ShowLogin="False"
+                            Size="SMALL"
+                            Url="{x:Bind AuthorAvatarUrl, Mode=OneWay}" />
+                        <TextBlock
+                            Grid.Column="1"
+                            VerticalAlignment="Center"
+                            FontFamily="{ThemeResource AppBodyFontFamily}"
+                            FontSize="{ThemeResource AppFontSize13}"
+                            FontWeight="{ThemeResource AppFontWeightSemibold}"
+                            Foreground="{ThemeResource AppInkBrush}"
+                            Text="{x:Bind AuthorDisplayName, Mode=OneWay}" />
+                        <TextBlock
+                            Grid.Column="2"
+                            VerticalAlignment="Center"
+                            Style="{StaticResource SectionSecondaryTextBlockStyle}"
+                            Text="{x:Bind CreatedText, Mode=OneWay}" />
+                    </Grid>
+                    <common:MarkdownViewer
+                        HostKind="Comment"
+                        AutomationInstanceId="{x:Bind MarkdownAutomationId, Mode=OneWay}"
+                        Grid.Row="1"
+                        BaseUrl="https://github.com/"
+                        DocumentSource="{x:Bind MarkdownSource, Mode=OneWay}"
+                        Text="{x:Bind Body, Mode=OneWay}" />
+                </Grid>
+            </Border>
+        </DataTemplate>
+
+        <DataTemplate x:Key="LabelTemplate" x:DataType="viewmodels:MeLabelViewItem">
+            <Border
+                Margin="{ThemeResource AppMargin0_0_6_6}"
+                Padding="{ThemeResource AppPadding8_4}"
+                Background="{ThemeResource AppCanvasInsetBrush}"
+                BorderBrush="{ThemeResource AppHairlineBrush}"
+                BorderThickness="{ThemeResource AppHairlineBorderThickness}"
+                CornerRadius="{ThemeResource AppRadiusSmall}">
+                <StackPanel Orientation="Horizontal" Spacing="{ThemeResource AppGap6}">
+                    <Ellipse
+                        Width="{ThemeResource AppDimension7}"
+                        Height="{ThemeResource AppDimension7}"
+                        VerticalAlignment="Center"
+                        Fill="{x:Bind Color, Converter={StaticResource HexColorToColorStringConverter}, Mode=OneWay}" />
+                    <TextBlock
+                        VerticalAlignment="Center"
+                        FontFamily="{ThemeResource AppMonoFontFamily}"
+                        FontSize="{ThemeResource AppFontSize11}"
+                        Foreground="{ThemeResource AppInkBrush}"
+                        Text="{x:Bind Name, Mode=OneWay}" />
+                </StackPanel>
+            </Border>
+        </DataTemplate>
+
+        <DataTemplate x:Key="ActorTemplate" x:DataType="viewmodels:MeActorViewItem">
+            <Grid
+                MinHeight="{ThemeResource AppDimension34}"
+                Margin="{ThemeResource AppMargin0_0_0_6}"
+                ColumnSpacing="{ThemeResource AppGap8}">
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="{ThemeResource AppGridLength28}" />
+                    <ColumnDefinition Width="*" />
+                </Grid.ColumnDefinitions>
+                <common:Avatar
+                    VerticalAlignment="Center"
+                    AutomationInstanceId="{x:Bind AutomationId, Mode=OneWay}"
+                    Login="{x:Bind AuthenticatedLogin, Mode=OneWay}"
+                    NavigationSource="my_pull_request_actor"
+                    ShowLogin="False"
+                    Size="SMALL"
+                    Url="{x:Bind AvatarUrl, Mode=OneWay}" />
+                <TextBlock
+                    Grid.Column="1"
+                    VerticalAlignment="Center"
+                    Style="{StaticResource SectionSecondaryTextBlockStyle}"
+                    Text="{x:Bind ActorDisplayName, Mode=OneWay}"
+                    TextTrimming="CharacterEllipsis" />
+            </Grid>
+        </DataTemplate>
+
+        <DataTemplate x:Key="PullRequestCommitTemplate" x:DataType="viewmodels:MePullRequestCommitViewItem">
+            <Grid
+                MinHeight="{ThemeResource AppDimension58}"
+                Padding="{ThemeResource AppPadding12_9}"
+                ColumnSpacing="{ThemeResource AppGap12}">
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="*" />
+                    <ColumnDefinition Width="Auto" />
+                </Grid.ColumnDefinitions>
+                <StackPanel Spacing="{ThemeResource AppGap4}">
+                    <TextBlock
+                        FontFamily="{ThemeResource AppBodyFontFamily}"
+                        FontSize="{ThemeResource AppFontSize13}"
+                        FontWeight="{ThemeResource AppFontWeightSemibold}"
+                        Foreground="{ThemeResource AppInkBrush}"
+                        MaxLines="2"
+                        Text="{x:Bind Summary, Mode=OneWay}"
+                        TextTrimming="CharacterEllipsis"
+                        TextWrapping="WrapWholeWords" />
+                    <TextBlock
+                        Style="{StaticResource SectionSecondaryTextBlockStyle}"
+                        Text="{x:Bind Author, Mode=OneWay}"
+                        TextTrimming="CharacterEllipsis" />
+                </StackPanel>
+                <StackPanel Grid.Column="1" HorizontalAlignment="Right" Spacing="{ThemeResource AppGap4}">
+                    <TextBlock
+                        HorizontalAlignment="Right"
+                        FontFamily="{ThemeResource AppMonoFontFamily}"
+                        FontSize="{ThemeResource AppFontSize11}"
+                        Foreground="{ThemeResource AppAccentBrush}"
+                        Text="{x:Bind ShortSha, Mode=OneWay}" />
+                    <TextBlock
+                        HorizontalAlignment="Right"
+                        Style="{StaticResource SectionSecondaryTextBlockStyle}"
+                        Text="{x:Bind Timestamp, Mode=OneWay}" />
+                </StackPanel>
+            </Grid>
+        </DataTemplate>
+
+        <DataTemplate x:Key="PullRequestReviewCommentTemplate" x:DataType="viewmodels:MePullRequestReviewCommentViewItem">
+            <Border
+                Margin="{ThemeResource AppMargin0_8_0_0}"
+                Padding="{ThemeResource AppPadding10}"
+                Background="{ThemeResource AppCanvasInsetBrush}"
+                CornerRadius="{ThemeResource AppRadiusSmall}">
+                <StackPanel Spacing="{ThemeResource AppGap5}">
+                    <Grid ColumnSpacing="{ThemeResource AppGap8}">
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="*" />
+                            <ColumnDefinition Width="Auto" />
+                        </Grid.ColumnDefinitions>
+                        <TextBlock
+                            FontFamily="{ThemeResource AppMonoFontFamily}"
+                            FontSize="{ThemeResource AppFontSize11}"
+                            Foreground="{ThemeResource AppInkBrush}"
+                            Text="{x:Bind Path, Mode=OneWay}"
+                            TextTrimming="CharacterEllipsis" />
+                        <TextBlock
+                            Grid.Column="1"
+                            Style="{StaticResource SectionSecondaryTextBlockStyle}"
+                            Text="{x:Bind CreatedText, Mode=OneWay}" />
+                    </Grid>
+                    <common:MarkdownViewer
+                        AutomationInstanceId="{x:Bind AutomationId, Mode=OneWay}"
+                        DocumentSource="{x:Bind MarkdownSource, Mode=OneWay}"
+                        HostKind="Comment"
+                        Text="{x:Bind Body, Mode=OneWay}" />
+                </StackPanel>
+            </Border>
+        </DataTemplate>
+
+        <DataTemplate x:Key="PullRequestReviewTemplate" x:DataType="viewmodels:MePullRequestReviewViewItem">
+            <Border
+                Margin="{ThemeResource AppMargin0_0_0_10}"
+                Padding="{ThemeResource AppPadding14}"
+                Background="{ThemeResource AppCanvasInsetBrush}"
+                BorderBrush="{ThemeResource AppHairlineBrush}"
+                BorderThickness="{ThemeResource AppHairlineBorderThickness}"
+                CornerRadius="{ThemeResource AppRadiusSmall}">
+                <StackPanel Spacing="{ThemeResource AppGap10}">
+                    <Grid ColumnSpacing="{ThemeResource AppGap10}">
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="*" />
+                            <ColumnDefinition Width="Auto" />
+                            <ColumnDefinition Width="Auto" />
+                        </Grid.ColumnDefinitions>
+                        <TextBlock
+                            FontFamily="{ThemeResource AppBodyFontFamily}"
+                            FontSize="{ThemeResource AppFontSize13}"
+                            FontWeight="{ThemeResource AppFontWeightSemibold}"
+                            Foreground="{ThemeResource AppInkBrush}"
+                            Text="{x:Bind Reviewer, Mode=OneWay}" />
+                        <TextBlock
+                            Grid.Column="1"
+                            FontFamily="{ThemeResource AppUiFontFamily}"
+                            FontSize="{ThemeResource AppFontSize11}"
+                            Foreground="{ThemeResource AppAccentBrush}"
+                            Text="{x:Bind State, Mode=OneWay}" />
+                        <TextBlock
+                            Grid.Column="2"
+                            Style="{StaticResource SectionSecondaryTextBlockStyle}"
+                            Text="{x:Bind SubmittedText, Mode=OneWay}" />
+                    </Grid>
+                    <common:MarkdownViewer
+                        AutomationInstanceId="{x:Bind AutomationId, Mode=OneWay}"
+                        DocumentSource="{x:Bind MarkdownSource, Mode=OneWay}"
+                        HostKind="Comment"
+                        Text="{x:Bind Body, Mode=OneWay}"
+                        Visibility="{x:Bind HasBody, Converter={StaticResource BoolToVisibilityConverter}, Mode=OneWay}" />
+                    <ItemsControl
+                        ItemTemplate="{StaticResource PullRequestReviewCommentTemplate}"
+                        ItemsSource="{x:Bind Comments, Mode=OneWay}" />
+                </StackPanel>
+            </Border>
+        </DataTemplate>
+
+        <DataTemplate x:Key="PullRequestTimelineTemplate" x:DataType="viewmodels:MePullRequestTimelineViewItem">
+            <Grid
+                MinHeight="{ThemeResource AppDimension52}"
+                Padding="{ThemeResource AppPadding12_9}"
+                ColumnSpacing="{ThemeResource AppGap12}">
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="*" />
+                    <ColumnDefinition Width="Auto" />
+                </Grid.ColumnDefinitions>
+                <TextBlock
+                    VerticalAlignment="Center"
+                    Foreground="{ThemeResource AppInkBrush}"
+                    Text="{x:Bind Summary, Mode=OneWay}"
+                    TextWrapping="WrapWholeWords" />
+                <TextBlock
+                    Grid.Column="1"
+                    VerticalAlignment="Center"
+                    Style="{StaticResource SectionSecondaryTextBlockStyle}"
+                    Text="{x:Bind MetaText, Mode=OneWay}" />
+            </Grid>
+        </DataTemplate>
+    </Page.Resources>
+
+    <Grid
+        x:Uid="PagesMyPullRequestsPageMyPullRequestsPageRoot" x:Name="PerformanceRoot"
+        AutomationProperties.AccessibilityView="Control"
+        AutomationProperties.AutomationId="MyPullRequestsPageRoot"
+        AutomationProperties.Name="My pull requests"
+        Padding="{ThemeResource AppPagePadding}">
+
+        <app:AdaptiveWorkspace
+            x:Uid="MyPullRequestsAdaptiveWorkspace"
+            x:Name="PullRequestsWorkspace"
+            AutomationProperties.AutomationId="MyPullRequestsAdaptiveWorkspace"
+            AutomationIdPrefix="MyPullRequests"
+            LeadingPaneLabel="Pull requests"
+            LeadingPaneWidth="336"
+            ModeChanged="PullRequestsWorkspace_ModeChanged"
+            ShowPaneButtons="False"
+            TrailingPaneLabel="Inspector"
+            TrailingPaneWidth="260"
+            WideBreakpoint="1260">
+            <app:AdaptiveWorkspace.LeadingPane>
+                <Border
+                    x:Uid="PagesMyPullRequestsPageMyPullRequestsListHost" x:Name="PullRequestListHost"
+                    AutomationProperties.AccessibilityView="Control"
+                    AutomationProperties.AutomationId="MyPullRequestsListHost"
+                    AutomationProperties.Name="My pull requests list pane"
+                    Padding="{ThemeResource AppPadding10}"
+                    Style="{StaticResource WorkspacePanelStyle}">
+                    <Grid RowSpacing="{ThemeResource AppGap10}">
+                        <Grid.RowDefinitions>
+                            <RowDefinition Height="Auto" />
+                            <RowDefinition Height="Auto" />
+                            <RowDefinition Height="*" />
+                        </Grid.RowDefinitions>
+
+                        <Grid ColumnSpacing="{ThemeResource AppGap8}">
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="Auto" />
+                                <ColumnDefinition Width="*" />
+                            </Grid.ColumnDefinitions>
+                            <Button
+                                x:Uid="MyPullRequestsCloseListButton"
+                                x:Name="MyPullRequestsCloseListPaneButton"
+                                Width="{ThemeResource AppDimension36}"
+                                Height="{ThemeResource AppDimension36}"
+                                Padding="{ThemeResource AppPadding0}"
+                                VerticalAlignment="Top"
+                                AutomationProperties.AutomationId="MyPullRequestsCloseListPaneButton"
+                                AutomationProperties.Name="Close pull request list"
+                                Click="CloseWorkspaceDrawerButton_Click"
+                                Style="{StaticResource AppToolbarButtonStyle}"
+                                ToolTipService.ToolTip="Close pull requests"
+                                Visibility="Collapsed">
+                                <FontIcon FontFamily="{StaticResource SegoeFluentIcons}" FontSize="{ThemeResource AppFontSize14}" Glyph="&#xE8FD;" />
+                            </Button>
+                            <Grid
+                                x:Name="PullRequestFilterHost"
+                                Grid.Column="1"
+                                SizeChanged="PullRequestFilterHost_SizeChanged">
+                                <StackPanel
+                                    x:Name="ExpandedPullRequestFilters"
+                                    Spacing="{ThemeResource AppGap8}">
+                                    <app:AppSegmented
+                                        x:Uid="PagesMyPullRequestsPageMyPullRequestsScopeSegmented"
+                                        x:Name="PullRequestScopeSegmented"
+                                        AutomationProperties.AutomationId="MyPullRequestsScopeSegmented"
+                                        AutomationProperties.Name="My pull requests relationship filter"
+                                        HorizontalAlignment="Stretch"
+                                        SelectedIndex="0"
+                                        SelectionChanged="PullRequestScopeSegmented_SelectionChanged">
+                                        <app:AppSegmentedItem x:Uid="PagesMyPullRequestsPageMyPullRequestsFilterInvolved" x:Name="InvolvedScopeSegment" MinWidth="{ThemeResource AppDimension0}" Padding="{ThemeResource AppPadding8_6}" AutomationProperties.AutomationId="MyPullRequestsFilter_Involved" AutomationProperties.Name="Show pull requests involving me" Content="{x:Bind ViewModel.PullRequestInvolvedFilterLabel, Mode=OneWay}" ToolTipService.ToolTip="{x:Bind ViewModel.PullRequestInvolvedFilterToolTip, Mode=OneWay}" />
+                                        <app:AppSegmentedItem x:Uid="PagesMyPullRequestsPageMyPullRequestsFilterReviewRequested" x:Name="ReviewRequestedScopeSegment" MinWidth="{ThemeResource AppDimension0}" Padding="{ThemeResource AppPadding8_6}" AutomationProperties.AutomationId="MyPullRequestsFilter_ReviewRequested" AutomationProperties.Name="Show pull requests requesting my review" Content="{x:Bind ViewModel.PullRequestReviewRequestedFilterLabel, Mode=OneWay}" ToolTipService.ToolTip="{x:Bind ViewModel.PullRequestReviewRequestedFilterToolTip, Mode=OneWay}" />
+                                        <app:AppSegmentedItem x:Uid="PagesMyPullRequestsPageMyPullRequestsFilterAuthored" x:Name="AuthoredScopeSegment" MinWidth="{ThemeResource AppDimension0}" Padding="{ThemeResource AppPadding8_6}" AutomationProperties.AutomationId="MyPullRequestsFilter_Authored" AutomationProperties.Name="Show pull requests I created" Content="{x:Bind ViewModel.PullRequestAuthoredFilterLabel, Mode=OneWay}" ToolTipService.ToolTip="{x:Bind ViewModel.PullRequestAuthoredFilterToolTip, Mode=OneWay}" />
+                                        <app:AppSegmentedItem x:Uid="PagesMyPullRequestsPageMyPullRequestsFilterAssigned" x:Name="AssignedScopeSegment" MinWidth="{ThemeResource AppDimension0}" Padding="{ThemeResource AppPadding8_6}" AutomationProperties.AutomationId="MyPullRequestsFilter_Assigned" AutomationProperties.Name="Show pull requests assigned to me" Content="{x:Bind ViewModel.PullRequestAssignedFilterLabel, Mode=OneWay}" ToolTipService.ToolTip="{x:Bind ViewModel.PullRequestAssignedFilterToolTip, Mode=OneWay}" />
+                                    </app:AppSegmented>
+                                <app:AppSegmented
+                                    x:Uid="PagesMyPullRequestsPageMyPullRequestsStateSegmented" x:Name="PullRequestStateSegmented"
+                                    AutomationProperties.AutomationId="MyPullRequestsStateSegmented"
+                                    AutomationProperties.Name="My pull requests state filter"
+                                    HorizontalAlignment="Stretch"
+                                    SelectedIndex="0"
+                                    SelectionChanged="PullRequestStateSegmented_SelectionChanged">
+                                    <app:AppSegmentedItem x:Uid="PagesMyPullRequestsPageMyPullRequestsStateOpen" x:Name="OpenStateSegment" MinWidth="{ThemeResource AppDimension0}" AutomationProperties.AutomationId="MyPullRequestsState_Open" AutomationProperties.Name="Show open pull requests" Content="{x:Bind PullRequestOpenStateLabel}" />
+                                    <app:AppSegmentedItem x:Uid="PagesMyPullRequestsPageMyPullRequestsStateClosed" x:Name="ClosedStateSegment" MinWidth="{ThemeResource AppDimension0}" AutomationProperties.AutomationId="MyPullRequestsState_Closed" AutomationProperties.Name="Show closed pull requests" Content="{x:Bind PullRequestClosedStateLabel}" />
+                                    <app:AppSegmentedItem x:Uid="PagesMyPullRequestsPageMyPullRequestsStateAll" x:Name="AllStateSegment" MinWidth="{ThemeResource AppDimension0}" AutomationProperties.AutomationId="MyPullRequestsState_All" AutomationProperties.Name="Show all pull requests" Content="{x:Bind PullRequestAllStateLabel}" />
+                                </app:AppSegmented>
+                                </StackPanel>
+
+                                <Grid
+                                    x:Name="CompactPullRequestFilters"
+                                    RowSpacing="{ThemeResource AppGap8}"
+                                    Visibility="Collapsed">
+                                    <Grid.RowDefinitions>
+                                        <RowDefinition Height="Auto" />
+                                        <RowDefinition Height="Auto" />
+                                    </Grid.RowDefinitions>
+                                    <ComboBox
+                                        x:Name="PullRequestScopeCompactPicker"
+                                        AutomationProperties.AutomationId="MyPullRequestsScopeCompactPicker"
+                                        AutomationProperties.Name="{x:Bind ViewModel.PullRequestScopePickerAutomationName, Mode=OneWay}"
+                                        HorizontalAlignment="Stretch"
+                                        SelectedIndex="0"
+                                        SelectionChanged="PullRequestScopeCompactPicker_SelectionChanged"
+                                        Style="{StaticResource AppCompactTextComboBoxStyle}">
+                                        <ComboBoxItem x:Uid="PagesMyPullRequestsPageMyPullRequestsScopeCompactInvolved" x:Name="InvolvedScopeCompactItem" AutomationProperties.AutomationId="MyPullRequestsScopeCompact_Involved" AutomationProperties.Name="Show pull requests involving me" Content="{x:Bind ViewModel.PullRequestInvolvedFilterLabel, Mode=OneWay}" ToolTipService.ToolTip="{x:Bind ViewModel.PullRequestInvolvedFilterToolTip, Mode=OneWay}" />
+                                        <ComboBoxItem x:Uid="PagesMyPullRequestsPageMyPullRequestsScopeCompactReviewRequested" x:Name="ReviewRequestedScopeCompactItem" AutomationProperties.AutomationId="MyPullRequestsScopeCompact_ReviewRequested" AutomationProperties.Name="Show pull requests requesting my review" Content="{x:Bind ViewModel.PullRequestReviewRequestedFilterLabel, Mode=OneWay}" ToolTipService.ToolTip="{x:Bind ViewModel.PullRequestReviewRequestedFilterToolTip, Mode=OneWay}" />
+                                        <ComboBoxItem x:Uid="PagesMyPullRequestsPageMyPullRequestsScopeCompactAuthored" x:Name="AuthoredScopeCompactItem" AutomationProperties.AutomationId="MyPullRequestsScopeCompact_Authored" AutomationProperties.Name="Show pull requests I created" Content="{x:Bind ViewModel.PullRequestAuthoredFilterLabel, Mode=OneWay}" ToolTipService.ToolTip="{x:Bind ViewModel.PullRequestAuthoredFilterToolTip, Mode=OneWay}" />
+                                        <ComboBoxItem x:Uid="PagesMyPullRequestsPageMyPullRequestsScopeCompactAssigned" x:Name="AssignedScopeCompactItem" AutomationProperties.AutomationId="MyPullRequestsScopeCompact_Assigned" AutomationProperties.Name="Show pull requests assigned to me" Content="{x:Bind ViewModel.PullRequestAssignedFilterLabel, Mode=OneWay}" ToolTipService.ToolTip="{x:Bind ViewModel.PullRequestAssignedFilterToolTip, Mode=OneWay}" />
+                                    </ComboBox>
+                                    <ComboBox
+                                        x:Name="PullRequestStateCompactPicker"
+                                        Grid.Row="1"
+                                        AutomationProperties.AutomationId="MyPullRequestsStateCompactPicker"
+                                        AutomationProperties.Name="{x:Bind ViewModel.PullRequestStatePickerAutomationName, Mode=OneWay}"
+                                        HorizontalAlignment="Stretch"
+                                        SelectedIndex="0"
+                                        SelectionChanged="PullRequestStateCompactPicker_SelectionChanged"
+                                        Style="{StaticResource AppCompactTextComboBoxStyle}">
+                                        <ComboBoxItem x:Uid="PagesMyPullRequestsPageMyPullRequestsStateCompactOpen" x:Name="OpenStateCompactItem" AutomationProperties.AutomationId="MyPullRequestsStateCompact_Open" AutomationProperties.Name="Show open pull requests" Content="{x:Bind PullRequestOpenStateLabel}" />
+                                        <ComboBoxItem x:Uid="PagesMyPullRequestsPageMyPullRequestsStateCompactClosed" x:Name="ClosedStateCompactItem" AutomationProperties.AutomationId="MyPullRequestsStateCompact_Closed" AutomationProperties.Name="Show closed pull requests" Content="{x:Bind PullRequestClosedStateLabel}" />
+                                        <ComboBoxItem x:Uid="PagesMyPullRequestsPageMyPullRequestsStateCompactAll" x:Name="AllStateCompactItem" AutomationProperties.AutomationId="MyPullRequestsStateCompact_All" AutomationProperties.Name="Show all pull requests" Content="{x:Bind PullRequestAllStateLabel}" />
+                                    </ComboBox>
+                                </Grid>
+                            </Grid>
+                        </Grid>
+
+                        <TextBlock
+                            Grid.Row="1"
+                            Style="{StaticResource SectionSecondaryTextBlockStyle}"
+                            Text="{x:Bind ViewModel.DetailStatusText, Mode=OneWay}"
+                            TextTrimming="CharacterEllipsis"
+                            Visibility="{x:Bind ViewModel.IsDetailStatusVisible, Converter={StaticResource BoolToVisibilityConverter}, Mode=OneWay}" />
+
+                        <Grid Grid.Row="2">
+                            <StackPanel
+                                Style="{StaticResource AppEmptyStatePanelStyle}"
+                                Visibility="{x:Bind ViewModel.IsEmpty, Converter={StaticResource BoolToVisibilityConverter}, Mode=OneWay}">
+                                <TextBlock
+                                    x:Uid="MyPullRequestsNoMatchesText"
+                                    Style="{StaticResource SectionSecondaryTextBlockStyle}"
+                                    Text="No pull requests match this view."
+                                    TextAlignment="Center" />
+                            </StackPanel>
+                            <ListView
+                                x:Uid="PagesMyPullRequestsPageMyPullRequestsList" x:Name="PullRequestsList"
+                                AutomationProperties.AutomationId="MyPullRequestsList"
+                                AutomationProperties.Name="My pull requests"
+                                            Background="{ThemeResource AppTransparentBrush}"
+                                BorderThickness="{ThemeResource AppZeroThickness}"
+                                ContainerContentChanging="PullRequestsList_ContainerContentChanging"
+                                IsItemClickEnabled="True"
+                                ItemClick="PullRequestsList_ItemClick"
+                                ItemContainerStyle="{StaticResource AppWorkspaceCardListRowStyle}"
+                                ItemTemplate="{StaticResource PullRequestListItemTemplate}"
+                                ItemsSource="{x:Bind ViewModel.Items, Mode=OneWay}"
+                                SelectedItem="{x:Bind ViewModel.SelectedItem, Mode=OneWay}"
+                                SelectionChanged="PullRequestsList_SelectionChanged"
+                                SelectionMode="Single" />
+                        </Grid>
+                    </Grid>
+                </Border>
+            </app:AdaptiveWorkspace.LeadingPane>
+
+            <app:AdaptiveWorkspace.PrimaryPane>
+                <Border
+                    x:Uid="PagesMyPullRequestsPageMyPullRequestsDetailHost" x:Name="PullRequestDetailHost"
+                    AutomationProperties.AccessibilityView="Control"
+                    AutomationProperties.AutomationId="MyPullRequestsDetailHost"
+                    AutomationProperties.Name="My pull request detail pane"
+                    Padding="{ThemeResource AppPadding0}"
+                    Style="{StaticResource WorkspacePanelStyle}">
+                    <Grid>
+                        <Grid.RowDefinitions>
+                            <RowDefinition Height="Auto" />
+                            <RowDefinition Height="*" />
+                        </Grid.RowDefinitions>
+                        <Grid
+                            Padding="{ThemeResource AppPadding10_10_10_8}"
+                            ColumnSpacing="{ThemeResource AppGap8}">
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="Auto" />
+                                <ColumnDefinition Width="*" />
+                                <ColumnDefinition Width="Auto" />
+                            </Grid.ColumnDefinitions>
+                            <Button
+                                x:Uid="MyPullRequestsOpenListButton"
+                                x:Name="MyPullRequestsOpenListPaneButton"
+                                Width="{ThemeResource AppDimension36}"
+                                Height="{ThemeResource AppDimension36}"
+                                Padding="{ThemeResource AppPadding0}"
+                                VerticalAlignment="Top"
+                                AutomationProperties.AutomationId="MyPullRequestsOpenListPaneButton"
+                                AutomationProperties.Name="Open pull request list"
+                                Click="OpenListPaneButton_Click"
+                                Style="{StaticResource AppToolbarButtonStyle}"
+                                ToolTipService.ToolTip="Pull requests"
+                                Visibility="Collapsed">
+                                <FontIcon FontFamily="{StaticResource SegoeFluentIcons}" FontSize="{ThemeResource AppFontSize14}" Glyph="&#xE8FD;" />
+                            </Button>
+                            <StackPanel Grid.Column="1" Spacing="{ThemeResource AppGap2}">
+                                <TextBlock
+                                    FontFamily="{ThemeResource AppDisplayFontFamily}"
+                                    FontSize="{ThemeResource AppFontSize30}"
+                                    Foreground="{ThemeResource AppInkBrush}"
+                                    Text="{x:Bind ViewModel.Title, Mode=OneWay}"
+                                    TextTrimming="CharacterEllipsis" />
+                                <Grid ColumnSpacing="{ThemeResource AppGap10}">
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition Width="*" />
+                                        <ColumnDefinition Width="Auto" />
+                                    </Grid.ColumnDefinitions>
+                                    <TextBlock
+                                        Style="{StaticResource SectionSecondaryTextBlockStyle}"
+                                        Text="{x:Bind ViewModel.StatusText, Mode=OneWay}"
+                                        TextTrimming="CharacterEllipsis"
+                                        Visibility="{x:Bind ViewModel.IsStatusVisible, Converter={StaticResource BoolToVisibilityConverter}, Mode=OneWay}" />
+                                    <TextBlock
+                                        Grid.Column="1"
+                                        Style="{StaticResource SectionSecondaryTextBlockStyle}"
+                                        Text="{x:Bind ViewModel.ResultCountText, Mode=OneWay}" />
+                                </Grid>
+                            </StackPanel>
+                            <StackPanel
+                                Grid.Column="2"
+                                VerticalAlignment="Top"
+                                Orientation="Horizontal"
+                                Spacing="{ThemeResource AppGap8}">
+                                <ProgressRing
+                                    Width="{ThemeResource AppDimension28}"
+                                    Height="{ThemeResource AppDimension28}"
+                                    VerticalAlignment="Center"
+                                    IsActive="{x:Bind ViewModel.IsLoading, Mode=OneWay}"
+                                    Visibility="{x:Bind ViewModel.IsLoading, Converter={StaticResource BoolToVisibilityConverter}, Mode=OneWay}" />
+                                <Button
+                                    x:Uid="MyPullRequestsOpenInspectorButton"
+                                    x:Name="MyPullRequestsOpenInspectorPaneButton"
+                                    Width="{ThemeResource AppDimension36}"
+                                    Height="{ThemeResource AppDimension36}"
+                                    Padding="{ThemeResource AppPadding0}"
+                                    VerticalAlignment="Top"
+                                    AutomationProperties.AutomationId="MyPullRequestsOpenInspectorPaneButton"
+                                    AutomationProperties.Name="Open inspector"
+                                    Click="OpenInspectorPaneButton_Click"
+                                    Style="{StaticResource AppToolbarButtonStyle}"
+                                    ToolTipService.ToolTip="Inspector"
+                                    Visibility="Collapsed">
+                                    <FontIcon FontFamily="{StaticResource SegoeFluentIcons}" FontSize="{ThemeResource AppFontSize14}" Glyph="&#xE9D2;" />
+                                </Button>
+                            </StackPanel>
+                        </Grid>
+
+                        <Grid Grid.Row="1">
+                        <TextBlock
+                            x:Uid="MyPullRequestsSelectDetailText"
+                            HorizontalAlignment="Center"
+                            VerticalAlignment="Center"
+                            Style="{StaticResource SectionSecondaryTextBlockStyle}"
+                            Text="Select a pull request to see details."
+                            Visibility="{x:Bind ViewModel.IsDetailPlaceholderVisible, Converter={StaticResource BoolToVisibilityConverter}, Mode=OneWay}" />
+
+                        <Grid Visibility="{x:Bind ViewModel.HasSelectedIssue, Converter={StaticResource BoolToVisibilityConverter}, Mode=OneWay}">
+                            <Grid.RowDefinitions>
+                                <RowDefinition Height="Auto" />
+                                <RowDefinition Height="Auto" />
+                                <RowDefinition Height="*" />
+                            </Grid.RowDefinitions>
+                            <Grid
+                                Padding="{ThemeResource AppPadding18_16_18_12}"
+                                BorderBrush="{ThemeResource AppHairlineBrush}"
+                                BorderThickness="{ThemeResource AppBottomHairlineBorderThickness}"
+                                ColumnSpacing="{ThemeResource AppGap12}">
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="*" />
+                                    <ColumnDefinition Width="Auto" />
+                                </Grid.ColumnDefinitions>
+                                <StackPanel Spacing="{ThemeResource AppGap7}">
+                                    <TextBlock
+                                        x:Name="MyPullRequestsDetailTitleText"
+                                        AutomationProperties.AutomationId="MyPullRequestsDetailTitle"
+                                        FontFamily="{ThemeResource AppDisplayFontFamily}"
+                                        FontSize="{ThemeResource AppFontSize25}"
+                                        Foreground="{ThemeResource AppInkBrush}"
+                                        HorizontalAlignment="Stretch"
+                                        MaxLines="2"
+                                        Text="{x:Bind ViewModel.SelectedIssueTitle, Mode=OneWay}"
+                                        TextTrimming="CharacterEllipsis"
+                                        TextWrapping="WrapWholeWords"
+                                        ToolTipService.ToolTip="{x:Bind ViewModel.SelectedIssueTitle, Mode=OneWay}" />
+                                    <Grid ColumnSpacing="{ThemeResource AppGap8}">
+                                        <Grid.ColumnDefinitions>
+                                            <ColumnDefinition Width="Auto" />
+                                            <ColumnDefinition Width="Auto" />
+                                            <ColumnDefinition Width="*" />
+                                        </Grid.ColumnDefinitions>
+                                        <TextBlock
+                                            FontFamily="{ThemeResource AppMonoFontFamily}"
+                                            FontSize="{ThemeResource AppFontSize12}"
+                                            Foreground="{ThemeResource AppAccentBrush}"
+                                            Text="{x:Bind ViewModel.SelectedIssueNumberText, Mode=OneWay}" />
+                                        <TextBlock
+                                            Grid.Column="1"
+                                            Style="{StaticResource SectionSecondaryTextBlockStyle}"
+                                            Text="{x:Bind ViewModel.SelectedIssueRepository, Mode=OneWay}"
+                                            TextTrimming="CharacterEllipsis" />
+                                        <TextBlock
+                                            Grid.Column="2"
+                                            Style="{StaticResource SectionSecondaryTextBlockStyle}"
+                                            Text="{x:Bind ViewModel.SelectedIssueMetadataText, Mode=OneWay}"
+                                            TextTrimming="CharacterEllipsis" />
+                                    </Grid>
+                                </StackPanel>
+                        <Button
+                            x:Uid="MyPullRequestsOpenRepositoryButton"
+                                    Grid.Column="1"
+                                    MinHeight="{ThemeResource AppDimension34}"
+                                    Padding="{ThemeResource AppPadding12_6}"
+                                    VerticalAlignment="Top"
+                                    AutomationProperties.AutomationId="MyPullRequestsOpenInRepositoryButton"
+                                    AutomationProperties.Name="Open pull request in repository"
+                                    Click="OpenSelectedInRepositoryButton_Click"
+                                    PointerEntered="OpenSelectedInRepositoryButton_PointerEntered"
+                                    ToolTipService.ToolTip="Open this pull request in its repository workspace"
+                                    Style="{StaticResource AppOutlineButtonStyle}">
+                                    <StackPanel Orientation="Horizontal" Spacing="{ThemeResource AppGap8}">
+                                        <FontIcon VerticalAlignment="Center" FontFamily="{StaticResource SegoeFluentIcons}" FontSize="{ThemeResource AppFontSize13}" Glyph="&#xE72A;" />
+                                    <TextBlock x:Uid="MyPullRequestsOpenRepositoryText" VerticalAlignment="Center" Text="Open pull request" />
+                                    </StackPanel>
+                                </Button>
+                            </Grid>
+
+                            <Grid
+                                Grid.Row="1"
+                                MinHeight="{ThemeResource AppDimension48}"
+                                Padding="{ThemeResource AppPadding12_4_12_4}"
+                                BorderBrush="{ThemeResource AppHairlineBrush}"
+                                BorderThickness="{ThemeResource AppBottomHairlineBorderThickness}"
+                                RowSpacing="{ThemeResource AppGap2}"
+                                ColumnSpacing="{ThemeResource AppGap10}">
+                                <Grid.RowDefinitions>
+                                    <RowDefinition Height="Auto" />
+                                    <RowDefinition Height="Auto" />
+                                </Grid.RowDefinitions>
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="*" />
+                                    <ColumnDefinition Width="Auto" />
+                                </Grid.ColumnDefinitions>
+                                <SelectorBar
+                                    x:Uid="PagesMyPullRequestsPageMyPullRequestsSectionSelector" x:Name="PullRequestSectionSelector"
+                                    AutomationProperties.AutomationId="MyPullRequestsSectionSelector"
+                                    AutomationProperties.Name="Pull request detail section"
+                                    SelectionChanged="PullRequestSectionSelector_SelectionChanged">
+                                    <SelectorBarItem x:Uid="PagesMyPullRequestsPageMyPullRequestsSectionConversation" x:Name="ConversationSectionItem" AutomationProperties.AutomationId="MyPullRequestsSection_Conversation" AutomationProperties.Name="Show pull request conversation" Text="{x:Bind ViewModel.ConversationSectionLabel, Mode=OneWay}" />
+                                    <SelectorBarItem x:Uid="PagesMyPullRequestsPageMyPullRequestsSectionCommits" x:Name="CommitsSectionItem" AutomationProperties.AutomationId="MyPullRequestsSection_Commits" AutomationProperties.Name="Show pull request commits" Text="{x:Bind ViewModel.CommitsSectionLabel, Mode=OneWay}" />
+                                    <SelectorBarItem x:Uid="PagesMyPullRequestsPageMyPullRequestsSectionReviews" x:Name="ReviewsSectionItem" AutomationProperties.AutomationId="MyPullRequestsSection_Reviews" AutomationProperties.Name="Show pull request reviews" Text="{x:Bind ViewModel.ReviewsSectionLabel, Mode=OneWay}" />
+                                    <SelectorBarItem x:Uid="PagesMyPullRequestsPageMyPullRequestsSectionTimeline" x:Name="TimelineSectionItem" AutomationProperties.AutomationId="MyPullRequestsSection_Timeline" AutomationProperties.Name="Show pull request timeline" Text="{x:Bind ViewModel.TimelineSectionLabel, Mode=OneWay}" />
+                                </SelectorBar>
+                                <TextBlock
+                                    Grid.Row="1"
+                                    Grid.ColumnSpan="2"
+                                    HorizontalAlignment="Right"
+                                    MaxWidth="{ThemeResource AppDimension420}"
+                                    VerticalAlignment="Center"
+                                    Style="{StaticResource SectionSecondaryTextBlockStyle}"
+                                    Text="{x:Bind ViewModel.PullRequestSectionStatusText, Mode=OneWay}"
+                                    TextTrimming="CharacterEllipsis"
+                                    ToolTipService.ToolTip="{x:Bind ViewModel.PullRequestSectionStatusText, Mode=OneWay}" />
+                                <ProgressRing
+                                    Grid.Column="1"
+                                    Width="{ThemeResource AppDimension20}"
+                                    Height="{ThemeResource AppDimension20}"
+                                    VerticalAlignment="Center"
+                                    IsActive="{x:Bind ViewModel.IsPullRequestSectionLoading, Mode=OneWay}"
+                                    Visibility="{x:Bind ViewModel.IsPullRequestSectionLoading, Converter={StaticResource BoolToVisibilityConverter}, Mode=OneWay}" />
+                            </Grid>
+
+                            <ListView
+                                x:Uid="PagesMyPullRequestsPageMyPullRequestsCommentsList" Grid.Row="2"
+                                Padding="{ThemeResource AppPadding18}"
+                                AutomationProperties.AutomationId="MyPullRequestsCommentsList"
+                                AutomationProperties.Name="Pull request conversation"
+                                                Background="{ThemeResource AppTransparentBrush}"
+                                BorderThickness="{ThemeResource AppZeroThickness}"
+                                ContainerContentChanging="PullRequestDetailList_ContainerContentChanging"
+                                HorizontalContentAlignment="Stretch"
+                                IsItemClickEnabled="False"
+                                ItemTemplate="{StaticResource CommentTemplate}"
+                                ItemsSource="{x:Bind ViewModel.Comments, Mode=OneWay}"
+                                SelectionMode="None"
+                                ScrollViewer.HorizontalScrollBarVisibility="Disabled"
+                                ScrollViewer.VerticalScrollBarVisibility="Auto"
+                                Visibility="{x:Bind ViewModel.IsPullRequestConversationSectionVisible, Converter={StaticResource BoolToVisibilityConverter}, Mode=OneWay}"
+                                >
+                                <ListView.Header>
+                                    <StackPanel Margin="{ThemeResource AppMargin0_0_0_16}" Spacing="{ThemeResource AppGap16}">
+                                    <Border
+                                        Padding="{ThemeResource AppPadding16}"
+                                        Background="{ThemeResource AppCanvasInsetBrush}"
+                                        BorderBrush="{ThemeResource AppHairlineBrush}"
+                                        BorderThickness="{ThemeResource AppHairlineBorderThickness}"
+                                        CornerRadius="{ThemeResource AppRadiusSmall}">
+                                        <Grid RowSpacing="{ThemeResource AppGap12}">
+                                            <Grid.RowDefinitions>
+                                                <RowDefinition Height="Auto" />
+                                                <RowDefinition Height="Auto" />
+                                            </Grid.RowDefinitions>
+                                            <Grid ColumnSpacing="{ThemeResource AppGap10}">
+                                                <Grid.ColumnDefinitions>
+                                                    <ColumnDefinition Width="{ThemeResource AppGridLength32}" />
+                                                    <ColumnDefinition Width="*" />
+                                                    <ColumnDefinition Width="Auto" />
+                                                </Grid.ColumnDefinitions>
+                                                <common:Avatar
+                                                    VerticalAlignment="Center"
+                                                    AutomationInstanceId="{x:Bind ViewModel.SelectedIssueAuthorAutomationId, Mode=OneWay}"
+                                                    Login="{x:Bind ViewModel.SelectedIssueAuthorLogin, Mode=OneWay}"
+                                                    NavigationSource="my_pull_request_detail_author"
+                                                    ShowLogin="False"
+                                                    Size="SMALL"
+                                                    Url="{x:Bind ViewModel.SelectedIssueAuthorAvatarUrl, Mode=OneWay}" />
+                                                <TextBlock
+                                                    Grid.Column="1"
+                                                    VerticalAlignment="Center"
+                                                    FontFamily="{ThemeResource AppBodyFontFamily}"
+                                                    FontSize="{ThemeResource AppFontSize13}"
+                                                    FontWeight="{ThemeResource AppFontWeightSemibold}"
+                                                    Foreground="{ThemeResource AppInkBrush}"
+                                                    Text="{x:Bind ViewModel.SelectedIssueAuthorDisplayName, Mode=OneWay}" />
+                                                <TextBlock
+                                                    x:Uid="MyWorkItemsAuthorLabel"
+                                                    Grid.Column="2"
+                                                    VerticalAlignment="Center"
+                                                    Style="{StaticResource SectionSecondaryTextBlockStyle}"
+                                                    Text="Author" />
+                                            </Grid>
+                                            <Grid Grid.Row="1">
+                                                <common:MarkdownViewer
+                                                    x:Name="MyPullRequestsBodyMarkdown"
+                                                    x:Load="{x:Bind ViewModel.IsDetailBodyMarkdownVisible, Mode=OneWay}"
+                                                    HostKind="Conversation"
+                                                    AutomationInstanceId="MyPullRequestsBody"
+                                                    BaseUrl="{x:Bind ViewModel.DetailBaseUrl, Mode=OneWay}"
+                                                    DocumentSource="{x:Bind ViewModel.DetailMarkdownSource, Mode=OneWay}"
+                                                    Text="{x:Bind ViewModel.DetailBodyText, Mode=OneWay}" />
+                                                <StackPanel
+                                                    x:Name="MyPullRequestsDeferredBody"
+                                                    x:Load="{x:Bind ViewModel.IsDetailBodyDeferred, Mode=OneWay}"
+                                                    AutomationProperties.AutomationId="MyPullRequestsDeferredBodyPreview"
+                                                    Spacing="{ThemeResource AppGap12}">
+                                                    <TextBlock
+                                                        IsTextSelectionEnabled="True"
+                                                        Style="{StaticResource SectionBodyTextBlockStyle}"
+                                                        Text="{x:Bind ViewModel.DetailBodyPreviewText, Mode=OneWay}"
+                                                        TextWrapping="Wrap" />
+                                                    <Button
+                                                        x:Uid="PagesMyPullRequestsPageMyPullRequestsExpandBodyButton" AutomationProperties.AutomationId="MyPullRequestsExpandBodyButton"
+                                                        AutomationProperties.Name="Expand pull request body"
+                                                        Command="{x:Bind ViewModel.ExpandDetailBodyCommand, Mode=OneTime}"
+                                                        Content="{x:Bind ViewModel.ShowFullBodyLabel, Mode=OneWay}"
+                                                        HorizontalAlignment="Left"
+                                                        Style="{StaticResource AppOutlineButtonStyle}" />
+                                                </StackPanel>
+                                            </Grid>
+                                        </Grid>
+                                    </Border>
+
+                                    <Grid ColumnSpacing="{ThemeResource AppGap10}">
+                                        <Grid.ColumnDefinitions>
+                                            <ColumnDefinition Width="*" />
+                                            <ColumnDefinition Width="Auto" />
+                                        </Grid.ColumnDefinitions>
+                                        <TextBlock
+                                            FontFamily="{ThemeResource AppDisplayFontFamily}"
+                                            FontSize="{ThemeResource AppFontSize20}"
+                                            Foreground="{ThemeResource AppInkBrush}"
+                                            VerticalAlignment="Center"
+                                            TextTrimming="CharacterEllipsis"
+                                            ToolTipService.ToolTip="{x:Bind ViewModel.DetailCollectionStatusText, Mode=OneWay}">
+                                            <Run Text="{x:Bind ViewModel.ConversationSectionLabel, Mode=OneWay}" />
+                                            <Run Text=" " />
+                                            <Run
+                                                FontFamily="{ThemeResource AppUiFontFamily}"
+                                                FontSize="{ThemeResource AppMetaFontSize}"
+                                                Foreground="{ThemeResource AppInkMutedBrush}"
+                                                Text="{x:Bind ViewModel.DetailCollectionStatusText, Mode=OneWay}" />
+                                        </TextBlock>
+                                        <ProgressRing
+                                            Grid.Column="1"
+                                            Width="{ThemeResource AppDimension22}"
+                                            Height="{ThemeResource AppDimension22}"
+                                            VerticalAlignment="Center"
+                                            IsActive="{x:Bind ViewModel.IsDetailLoading, Mode=OneWay}"
+                                            Visibility="{x:Bind ViewModel.IsDetailLoading, Converter={StaticResource BoolToVisibilityConverter}, Mode=OneWay}" />
+                                    </Grid>
+
+                                    <TextBlock
+                                        x:Uid="MyWorkItemsNoCommentsText"
+                                        Style="{StaticResource SectionSecondaryTextBlockStyle}"
+                                        Text="No comments yet."
+                                        Visibility="{x:Bind ViewModel.HasNoComments, Converter={StaticResource BoolToVisibilityConverter}, Mode=OneWay}" />
+                                    </StackPanel>
+                                </ListView.Header>
+                            </ListView>
+
+                            <Grid
+                                x:Name="MyPullRequestsCommitsSection"
+                                Grid.Row="2"
+                                x:Load="{x:Bind ViewModel.IsPullRequestCommitsSectionVisible, Mode=OneWay}">
+                                <TextBlock
+                                    x:Uid="MyPullRequestsNoCommitsText"
+                                    HorizontalAlignment="Center"
+                                    VerticalAlignment="Center"
+                                    Style="{StaticResource SectionSecondaryTextBlockStyle}"
+                                    Text="No commits are available."
+                                    Visibility="{x:Bind ViewModel.HasNoPullRequestCommits, Converter={StaticResource BoolToVisibilityConverter}, Mode=OneWay}" />
+                                <ListView
+                                    x:Uid="PagesMyPullRequestsPageMyPullRequestsCommitsList" AutomationProperties.AutomationId="MyPullRequestsCommitsList"
+                                    AutomationProperties.Name="Pull request commits"
+                                                Background="{ThemeResource AppTransparentBrush}"
+                                    BorderThickness="{ThemeResource AppZeroThickness}"
+                                    ContainerContentChanging="PullRequestDetailList_ContainerContentChanging"
+                                    HorizontalContentAlignment="Stretch"
+                                    ItemTemplate="{StaticResource PullRequestCommitTemplate}"
+                                    ItemsSource="{x:Bind ViewModel.PullRequestCommits, Mode=OneWay}"
+                                    Padding="{ThemeResource AppPadding8}"
+                                    SelectionMode="None"
+                                    ScrollViewer.HorizontalScrollBarVisibility="Disabled" />
+                            </Grid>
+
+                            <Grid
+                                x:Name="MyPullRequestsReviewsSection"
+                                Grid.Row="2"
+                                x:Load="{x:Bind ViewModel.IsPullRequestReviewsSectionVisible, Mode=OneWay}">
+                                <TextBlock
+                                    x:Uid="MyPullRequestsNoReviewsText"
+                                    HorizontalAlignment="Center"
+                                    VerticalAlignment="Center"
+                                    Style="{StaticResource SectionSecondaryTextBlockStyle}"
+                                    Text="No reviews are available."
+                                    Visibility="{x:Bind ViewModel.HasNoPullRequestReviews, Converter={StaticResource BoolToVisibilityConverter}, Mode=OneWay}" />
+                                <ListView
+                                    x:Uid="PagesMyPullRequestsPageMyPullRequestsReviewsList" AutomationProperties.AutomationId="MyPullRequestsReviewsList"
+                                    AutomationProperties.Name="Pull request reviews"
+                                                Background="{ThemeResource AppTransparentBrush}"
+                                    BorderThickness="{ThemeResource AppZeroThickness}"
+                                    ContainerContentChanging="PullRequestDetailList_ContainerContentChanging"
+                                    HorizontalContentAlignment="Stretch"
+                                    ItemTemplate="{StaticResource PullRequestReviewTemplate}"
+                                    ItemsSource="{x:Bind ViewModel.PullRequestReviews, Mode=OneWay}"
+                                    Padding="{ThemeResource AppPadding8}"
+                                    SelectionMode="None"
+                                    ScrollViewer.HorizontalScrollBarVisibility="Disabled" />
+                            </Grid>
+
+                            <Grid
+                                x:Name="MyPullRequestsTimelineSection"
+                                Grid.Row="2"
+                                x:Load="{x:Bind ViewModel.IsPullRequestTimelineSectionVisible, Mode=OneWay}">
+                                <TextBlock
+                                    x:Uid="MyPullRequestsNoTimelineText"
+                                    HorizontalAlignment="Center"
+                                    VerticalAlignment="Center"
+                                    Style="{StaticResource SectionSecondaryTextBlockStyle}"
+                                    Text="No timeline events are available."
+                                    Visibility="{x:Bind ViewModel.HasNoPullRequestTimelineEvents, Converter={StaticResource BoolToVisibilityConverter}, Mode=OneWay}" />
+                                <ListView
+                                    x:Uid="PagesMyPullRequestsPageMyPullRequestsTimelineList" AutomationProperties.AutomationId="MyPullRequestsTimelineList"
+                                    AutomationProperties.Name="Pull request timeline"
+                                                Background="{ThemeResource AppTransparentBrush}"
+                                    BorderThickness="{ThemeResource AppZeroThickness}"
+                                    ContainerContentChanging="PullRequestDetailList_ContainerContentChanging"
+                                    HorizontalContentAlignment="Stretch"
+                                    ItemTemplate="{StaticResource PullRequestTimelineTemplate}"
+                                    ItemsSource="{x:Bind ViewModel.PullRequestTimelineEvents, Mode=OneWay}"
+                                    Padding="{ThemeResource AppPadding8}"
+                                    SelectionMode="None"
+                                    ScrollViewer.HorizontalScrollBarVisibility="Disabled" />
+                            </Grid>
+                        </Grid>
+                        </Grid>
+                    </Grid>
+                </Border>
+            </app:AdaptiveWorkspace.PrimaryPane>
+
+            <app:AdaptiveWorkspace.TrailingPane>
+                <Border
+                    x:Uid="PagesMyPullRequestsPageMyPullRequestsInspector" x:Name="PullRequestInspectorHost"
+                    AutomationProperties.AccessibilityView="Control"
+                    AutomationProperties.AutomationId="MyPullRequestsInspector"
+                    AutomationProperties.Name="My pull request inspector"
+                    Padding="{ThemeResource AppPadding16}"
+                    Style="{StaticResource WorkspacePanelStyle}">
+                    <ScrollViewer
+                        x:Uid="MyWorkItemsInspectorContents"
+                        AutomationProperties.AutomationId="MyPullRequestsInspectorScrollViewer"
+                        AutomationProperties.Name="My pull request inspector contents"
+                        HorizontalScrollBarVisibility="Disabled"
+                        IsTabStop="True"
+                        TabFocusNavigation="Cycle"
+                        VerticalScrollBarVisibility="Auto">
+                        <StackPanel Spacing="{ThemeResource AppGap18}">
+                            <Grid ColumnSpacing="{ThemeResource AppGap8}">
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="*" />
+                                    <ColumnDefinition Width="Auto" />
+                                </Grid.ColumnDefinitions>
+                                <TextBlock
+                                    x:Uid="MyWorkItemsInspectorHeading"
+                                    AutomationProperties.AutomationId="MyPullRequestsInspectorTitle"
+                                    VerticalAlignment="Center"
+                                    FontFamily="{ThemeResource AppDisplayFontFamily}"
+                                    FontSize="{ThemeResource AppFontSize21}"
+                                    Foreground="{ThemeResource AppInkBrush}"
+                                    Text="Inspector" />
+                                <Button
+                                    x:Uid="MyPullRequestsCloseInspectorButton"
+                                    x:Name="MyPullRequestsCloseInspectorPaneButton"
+                                    Grid.Column="1"
+                                    Width="{ThemeResource AppDimension36}"
+                                    Height="{ThemeResource AppDimension36}"
+                                    Padding="{ThemeResource AppPadding0}"
+                                    AutomationProperties.AutomationId="MyPullRequestsCloseInspectorPaneButton"
+                                    AutomationProperties.Name="Close inspector"
+                                    Click="CloseWorkspaceDrawerButton_Click"
+                                    Style="{StaticResource AppToolbarButtonStyle}"
+                                    ToolTipService.ToolTip="Close inspector"
+                                    Visibility="Collapsed">
+                                    <FontIcon FontFamily="{StaticResource SegoeFluentIcons}" FontSize="{ThemeResource AppFontSize14}" Glyph="&#xE9D2;" />
+                                </Button>
+                            </Grid>
+
+                            <Grid RowSpacing="{ThemeResource AppGap8}">
+                                <Grid.RowDefinitions>
+                                    <RowDefinition Height="Auto" />
+                                    <RowDefinition Height="Auto" />
+                                    <RowDefinition Height="Auto" />
+                                </Grid.RowDefinitions>
+                            <TextBlock
+                                x:Uid="MyWorkItemsInspectorStatusHeading"
+                                    FontFamily="{ThemeResource AppBodyFontFamily}"
+                                    FontSize="{ThemeResource AppFontSize13}"
+                                    FontWeight="{ThemeResource AppFontWeightSemibold}"
+                                    Foreground="{ThemeResource AppInkBrush}"
+                                    Text="Status" />
+                                <StackPanel Grid.Row="1" Orientation="Horizontal" Spacing="{ThemeResource AppGap8}">
+                                    <Ellipse
+                                        Width="{ThemeResource AppDimension8}"
+                                        Height="{ThemeResource AppDimension8}"
+                                        VerticalAlignment="Center"
+                                        Fill="{ThemeResource AppAccentBrush}" />
+                            <TextBlock
+                                        VerticalAlignment="Center"
+                                        Style="{StaticResource SectionSecondaryTextBlockStyle}"
+                                        Text="{x:Bind ViewModel.SelectedIssueStateText, Mode=OneWay}" />
+                                </StackPanel>
+                            <TextBlock
+                                    Grid.Row="2"
+                                    Style="{StaticResource SectionSecondaryTextBlockStyle}"
+                                    Text="{x:Bind ViewModel.SelectedIssueCommentText, Mode=OneWay}" />
+                            </Grid>
+
+                            <Grid RowSpacing="{ThemeResource AppGap8}">
+                                <Grid.RowDefinitions>
+                                    <RowDefinition Height="Auto" />
+                                    <RowDefinition Height="Auto" />
+                                </Grid.RowDefinitions>
+                            <TextBlock
+                                x:Uid="MyPullRequestsInspectorReviewStateHeading"
+                                    FontFamily="{ThemeResource AppBodyFontFamily}"
+                                    FontSize="{ThemeResource AppFontSize13}"
+                                    FontWeight="{ThemeResource AppFontWeightSemibold}"
+                                    Foreground="{ThemeResource AppInkBrush}"
+                                    Text="Review state" />
+                            <TextBlock
+                                    Grid.Row="1"
+                                    Style="{StaticResource SectionSecondaryTextBlockStyle}"
+                                    Text="{x:Bind ViewModel.DetailStatusText, Mode=OneWay}"
+                                    TextWrapping="WrapWholeWords" />
+                            </Grid>
+
+                            <Grid RowSpacing="{ThemeResource AppGap8}">
+                                <Grid.RowDefinitions>
+                                    <RowDefinition Height="Auto" />
+                                    <RowDefinition Height="Auto" />
+                                </Grid.RowDefinitions>
+                            <TextBlock
+                                x:Uid="MyWorkItemsInspectorAssigneesHeading"
+                                    FontFamily="{ThemeResource AppBodyFontFamily}"
+                                    FontSize="{ThemeResource AppFontSize13}"
+                                    FontWeight="{ThemeResource AppFontWeightSemibold}"
+                                    Foreground="{ThemeResource AppInkBrush}"
+                                    Text="Assignees" />
+                            <TextBlock
+                                x:Uid="MyWorkItemsInspectorNoAssigneesText"
+                                    Grid.Row="1"
+                                    Style="{StaticResource SectionSecondaryTextBlockStyle}"
+                                    Text="No one assigned"
+                                    Visibility="{x:Bind ViewModel.HasNoAssignees, Converter={StaticResource BoolToVisibilityConverter}, Mode=OneWay}" />
+                                <ItemsControl
+                                    Grid.Row="1"
+                                    ItemTemplate="{StaticResource ActorTemplate}"
+                                    ItemsSource="{x:Bind ViewModel.SelectedAssignees, Mode=OneWay}"
+                                    Visibility="{x:Bind ViewModel.HasAssignees, Converter={StaticResource BoolToVisibilityConverter}, Mode=OneWay}" />
+                            </Grid>
+
+                            <Grid RowSpacing="{ThemeResource AppGap8}">
+                                <Grid.RowDefinitions>
+                                    <RowDefinition Height="Auto" />
+                                    <RowDefinition Height="Auto" />
+                                </Grid.RowDefinitions>
+                                <TextBlock
+                                    x:Uid="MyWorkItemsInspectorLabelsHeading"
+                                    FontFamily="{ThemeResource AppBodyFontFamily}"
+                                    FontSize="{ThemeResource AppFontSize13}"
+                                    FontWeight="{ThemeResource AppFontWeightSemibold}"
+                                    Foreground="{ThemeResource AppInkBrush}"
+                                    Text="Labels" />
+                                <TextBlock
+                                    x:Uid="MyWorkItemsInspectorNoLabelsText"
+                                    Grid.Row="1"
+                                    Style="{StaticResource SectionSecondaryTextBlockStyle}"
+                                    Text="No labels"
+                                    Visibility="{x:Bind ViewModel.HasNoLabels, Converter={StaticResource BoolToVisibilityConverter}, Mode=OneWay}" />
+                                <ItemsControl
+                                    Grid.Row="1"
+                                    ItemTemplate="{StaticResource LabelTemplate}"
+                                    ItemsSource="{x:Bind ViewModel.SelectedLabels, Mode=OneWay}"
+                                    Visibility="{x:Bind ViewModel.HasLabels, Converter={StaticResource BoolToVisibilityConverter}, Mode=OneWay}">
+                                    <ItemsControl.ItemsPanel>
+                                        <ItemsPanelTemplate>
+                                            <StackPanel Orientation="Vertical" />
+                                        </ItemsPanelTemplate>
+                                    </ItemsControl.ItemsPanel>
+                                </ItemsControl>
+                            </Grid>
+
+                            <Grid RowSpacing="{ThemeResource AppGap8}">
+                                <Grid.RowDefinitions>
+                                    <RowDefinition Height="Auto" />
+                                    <RowDefinition Height="Auto" />
+                                </Grid.RowDefinitions>
+                                <TextBlock
+                                    x:Uid="MyWorkItemsInspectorMilestoneHeading"
+                                    FontFamily="{ThemeResource AppBodyFontFamily}"
+                                    FontSize="{ThemeResource AppFontSize13}"
+                                    FontWeight="{ThemeResource AppFontWeightSemibold}"
+                                    Foreground="{ThemeResource AppInkBrush}"
+                                    Text="Milestone" />
+                                <TextBlock
+                                    Grid.Row="1"
+                                    Style="{StaticResource SectionSecondaryTextBlockStyle}"
+                                    Text="{x:Bind ViewModel.MilestoneTitle, Mode=OneWay}" />
+                            </Grid>
+                        </StackPanel>
+                    </ScrollViewer>
+                </Border>
+            </app:AdaptiveWorkspace.TrailingPane>
+        </app:AdaptiveWorkspace>
+    </Grid>
+</Page>

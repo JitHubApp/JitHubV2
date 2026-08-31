@@ -16,6 +16,7 @@ namespace JitHub.WinUI.Views.Controls.PullRequest
             ViewModel.Repo = repo;
             ViewModel.PullRequest = existingPullRequest;
             ViewModel.SuccessCallbackCommand = callback;
+            Bindings.Update();
         }
     }
 }

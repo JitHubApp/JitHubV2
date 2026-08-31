@@ -19,5 +19,9 @@ public sealed class IssueNavArg : PageNavArg
 
     public int IssueId { get; }
 
+    public bool IsNotificationHandoff { get; init; }
+
+    public GitHubIssue? NavigationPreview { get; init; }
+
     public bool NoDetail => IssueId <= 0;
 }

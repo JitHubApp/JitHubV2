@@ -9,8 +9,8 @@
         <Setter Property="Padding" Value="{ThemeResource TabViewHeaderPadding}" />
         <Setter Property="IsTabStop" Value="False" />
         <Setter Property="Background" Value="{ThemeResource TabViewBackground}" />
-        <Setter Property="BorderBrush" Value="Transparent" />
-        <Setter Property="BorderThickness" Value="0" />
+        <Setter Property="BorderBrush" Value="{ThemeResource AppTransparentBrush}" />
+        <Setter Property="BorderThickness" Value="{ThemeResource AppZeroThickness}" />
         <Setter Property="KeyboardAcceleratorPlacementMode" Value="Hidden" />
         <Setter Property="Template">
             <Setter.Value>
@@ -33,10 +33,10 @@
                             <Border
                                 Grid.Column="1"
                                 Grid.ColumnSpan="2"
-                                Height="1"
+                                Height="{ThemeResource AppDimension1}"
                                 VerticalAlignment="Bottom"
                                 BorderBrush="{ThemeResource TabViewBorderBrush}"
-                                BorderThickness="1"
+                                BorderThickness="{ThemeResource AppHairlineBorderThickness}"
                                 Visibility="Collapsed" />
                             <ContentPresenter
                                 x:Name="LeftContentPresenter"
@@ -182,7 +182,7 @@
                             <ScrollContentPresenter
                                 x:Name="ScrollContentPresenter"
                                 Grid.Column="1"
-                                Padding="1,0,0,0"
+                                Padding="{ThemeResource AppPadding1_0_0_0}"
                                 TabFocusNavigation="Once" />
                             <Border
                                 x:Name="ScrollIncreaseButtonContainer"
@@ -218,7 +218,7 @@
         <Setter Property="Foreground" Value="{ThemeResource TabViewItemHeaderCloseButtonForeground}" />
         <Setter Property="BorderBrush" Value="{ThemeResource TabViewItemHeaderCloseButtonBorderBrush}" />
         <Setter Property="BorderThickness" Value="{ThemeResource TabViewItemHeaderCloseButtonBorderThickness}" />
-        <Setter Property="FocusVisualMargin" Value="-3" />
+        <Setter Property="FocusVisualMargin" Value="{ThemeResource AppFocusMarginNeg3}" />
         <Setter Property="Template">
             <Setter.Value>
                 <ControlTemplate TargetType="Button">
@@ -281,7 +281,7 @@
         <Setter Property="CornerRadius" Value="{ThemeResource AppRadiusMedium}" />
         <Setter Property="BorderThickness" Value="{ThemeResource TabViewButtonBorderThickness}" />
         <Setter Property="BorderBrush" Value="{ThemeResource TabViewButtonBorderBrush}" />
-        <Setter Property="FocusVisualMargin" Value="-3" />
+        <Setter Property="FocusVisualMargin" Value="{ThemeResource AppFocusMarginNeg3}" />
         <Setter Property="Template">
             <Setter.Value>
                 <ControlTemplate TargetType="Button">
@@ -372,9 +372,9 @@
                         </Grid.RenderTransform>
                         <Path
                             x:Name="LeftRadiusRenderArc"
-                            Width="4"
-                            Height="4"
-                            Margin="-4,0,0,0"
+                            Width="{ThemeResource AppDimension4}"
+                            Height="{ThemeResource AppDimension4}"
+                            Margin="{ThemeResource AppMarginNeg4_0_0_0}"
                             VerticalAlignment="Bottom"
                             x:Load="False"
                             Data="M4 0C4 1.19469 3.47624 2.26706 2.64582 3H0C1.65685 3 3 1.65685 3 0H4Z"
@@ -382,7 +382,7 @@
                             Visibility="Collapsed" />
                         <Path
                             x:Name="LeftRadiusRenderTriangle"
-                            Margin="-4,0,0,0"
+                            Margin="{ThemeResource AppMarginNeg4_0_0_0}"
                             VerticalAlignment="Bottom"
                             x:Load="False"
                             Data="M0 4H4V0C4 2.20914 2.20914 4 0 4Z"
@@ -391,9 +391,9 @@
                         <Path
                             x:Name="RightRadiusRenderArc"
                             Grid.Column="2"
-                            Width="4"
-                            Height="4"
-                            Margin="0,0,-4,0"
+                            Width="{ThemeResource AppDimension4}"
+                            Height="{ThemeResource AppDimension4}"
+                            Margin="{ThemeResource AppMargin0_0_Neg4_0}"
                             VerticalAlignment="Bottom"
                             x:Load="False"
                             Data="M0 0C0 1.19469 0.523755 2.26706 1.35418 3H4C2.34315 3 1 1.65685 1 0H0Z"
@@ -402,7 +402,7 @@
                         <Path
                             x:Name="RightRadiusRenderTriangle"
                             Grid.Column="2"
-                            Margin="0,0,-4,0"
+                            Margin="{ThemeResource AppMargin0_0_Neg4_0}"
                             VerticalAlignment="Bottom"
                             x:Load="False"
                             Data="M4 4H0V0C0 2.20914 1.79086 4 4 4Z"
@@ -411,11 +411,11 @@
                         <Border
                             x:Name="TabSeparator"
                             Grid.Column="1"
-                            Width="1"
+                            Width="{ThemeResource AppDimension1}"
                             Margin="{ThemeResource TabViewItemSeparatorMargin}"
                             HorizontalAlignment="Right"
                             BorderBrush="{ThemeResource TabViewItemSeparator}"
-                            BorderThickness="1" />
+                            BorderThickness="{ThemeResource AppHairlineBorderThickness}" />
                         <Grid
                             x:Name="TabContainer"
                             Grid.Column="1"
@@ -476,7 +476,7 @@
                                         <Setter Target="IconControl.Foreground" Value="{ThemeResource TabViewItemIconForegroundPointerOver}" />
                                         <Setter Target="CloseButton.Background" Value="{ThemeResource TabViewItemHeaderPointerOverCloseButtonBackground}" />
                                         <Setter Target="CloseButton.Foreground" Value="{ThemeResource TabViewItemHeaderPointerOverCloseButtonForeground}" />
-                                        <Setter Target="TabSeparator.Opacity" Value="0" />
+                                        <Setter Target="TabSeparator.Opacity" Value="{ThemeResource AppOpacityTransparent}" />
                                     </VisualState.Setters>
                                 </VisualState>
                                 <VisualState x:Name="Pressed">
@@ -486,7 +486,7 @@
                                         <Setter Target="IconControl.Foreground" Value="{ThemeResource TabViewItemIconForegroundPressed}" />
                                         <Setter Target="CloseButton.Background" Value="{ThemeResource TabViewItemHeaderPressedCloseButtonBackground}" />
                                         <Setter Target="CloseButton.Foreground" Value="{ThemeResource TabViewItemHeaderPressedCloseButtonForeground}" />
-                                        <Setter Target="TabSeparator.Opacity" Value="0" />
+                                        <Setter Target="TabSeparator.Opacity" Value="{ThemeResource AppOpacityTransparent}" />
                                     </VisualState.Setters>
                                 </VisualState>
                                 <VisualState x:Name="Selected">
@@ -504,7 +504,7 @@
                                         <Setter Target="IconControl.Foreground" Value="{ThemeResource TabViewItemIconForegroundSelected}" />
                                         <Setter Target="CloseButton.Background" Value="{ThemeResource TabViewItemHeaderSelectedCloseButtonBackground}" />
                                         <Setter Target="CloseButton.Foreground" Value="{ThemeResource TabViewItemHeaderSelectedCloseButtonForeground}" />
-                                        <Setter Target="LayoutRoot.Background" Value="Transparent" />
+                                        <Setter Target="LayoutRoot.Background" Value="{ThemeResource AppTransparentBrush}" />
                                         <Setter Target="ContentPresenter.FontWeight" Value="SemiBold" />
                                     </VisualState.Setters>
                                 </VisualState>
@@ -523,7 +523,7 @@
                                         <Setter Target="IconControl.Foreground" Value="{ThemeResource TabViewItemIconForegroundSelected}" />
                                         <Setter Target="CloseButton.Background" Value="{ThemeResource TabViewItemHeaderSelectedCloseButtonBackground}" />
                                         <Setter Target="CloseButton.Foreground" Value="{ThemeResource TabViewItemHeaderSelectedCloseButtonForeground}" />
-                                        <Setter Target="LayoutRoot.Background" Value="Transparent" />
+                                        <Setter Target="LayoutRoot.Background" Value="{ThemeResource AppTransparentBrush}" />
                                         <Setter Target="ContentPresenter.FontWeight" Value="SemiBold" />
                                     </VisualState.Setters>
                                 </VisualState>
@@ -542,7 +542,7 @@
                                         <Setter Target="IconControl.Foreground" Value="{ThemeResource TabViewItemIconForegroundSelected}" />
                                         <Setter Target="CloseButton.Background" Value="{ThemeResource TabViewItemHeaderSelectedCloseButtonBackground}" />
                                         <Setter Target="CloseButton.Foreground" Value="{ThemeResource TabViewItemHeaderSelectedCloseButtonForeground}" />
-                                        <Setter Target="LayoutRoot.Background" Value="Transparent" />
+                                        <Setter Target="LayoutRoot.Background" Value="{ThemeResource AppTransparentBrush}" />
                                         <Setter Target="ContentPresenter.FontWeight" Value="SemiBold" />
                                     </VisualState.Setters>
                                 </VisualState>
@@ -674,7 +674,7 @@
                                 <VisualState x:Name="StandardWidth" />
                                 <VisualState x:Name="Compact">
                                     <VisualState.Setters>
-                                        <Setter Target="IconBox.Margin" Value="0,0,0,0" />
+                                        <Setter Target="IconBox.Margin" Value="{ThemeResource AppMargin0_0_0_0}" />
                                         <Setter Target="ContentPresenter.Visibility" Value="Collapsed" />
                                         <Setter Target="IconColumn.Width" Value="{ThemeResource TabViewItemHeaderIconSize}" />
                                     </VisualState.Setters>
@@ -704,7 +704,7 @@
         <Setter Property="CornerRadius" Value="{ThemeResource AppRadiusSmall}" />
         <Setter Property="BorderThickness" Value="{ThemeResource TabViewButtonBorderThickness}" />
         <Setter Property="BorderBrush" Value="{ThemeResource TabViewScrollButtonBorderBrush}" />
-        <Setter Property="FocusVisualMargin" Value="-3" />
+        <Setter Property="FocusVisualMargin" Value="{ThemeResource AppFocusMarginNeg3}" />
         <Setter Property="Template">
             <Setter.Value>
                 <ControlTemplate TargetType="RepeatButton">

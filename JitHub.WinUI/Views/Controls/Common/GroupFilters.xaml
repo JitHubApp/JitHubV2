@@ -10,7 +10,7 @@
     mc:Ignorable="d"
     d:DesignHeight="300"
     d:DesignWidth="400"
-    Background="Transparent">
+    Background="{ThemeResource AppTransparentBrush}">
     <UserControl.Resources>
         <helpers:FilterSelectionTemplateSelector
             x:Key="FilterSelectionTemplateSelector"
@@ -32,24 +32,28 @@
             VerticalScrollMode="Disabled">
             <muxc:ItemsRepeater
                 ItemsSource="{x:Bind Filters.Instance, Mode=OneWay}"
-                Margin="0 0 0 10"
+                Margin="{ThemeResource AppMargin0_0_0_10}"
                 ItemTemplate="{StaticResource FilterSelectionTemplateSelector}">
                 <muxc:ItemsRepeater.Layout>
-                    <muxc:StackLayout Orientation="Horizontal" Spacing="8"/>
+                    <muxc:StackLayout Orientation="Horizontal" Spacing="{ThemeResource AppGap8}"/>
                 </muxc:ItemsRepeater.Layout>
             </muxc:ItemsRepeater>
         </ScrollViewer>
         <Button
-            Grid.Column="1"
-            Margin="10 0 0 10"
+            x:Uid="ControlsCommonGroupFiltersGroupFiltersClearButton" Grid.Column="1"
+            Margin="{ThemeResource AppMargin10_0_0_10}"
+            AutomationProperties.AutomationId="GroupFiltersClearButton"
+            AutomationProperties.Name="Clear filters"
             Style="{StaticResource AppOutlineButtonStyle}"
             VerticalAlignment="Bottom"
             Click="OnClearButtonClick">
             Clear
         </Button>
         <Button
-            Grid.Column="2"
-            Margin="10 0 0 10"
+            x:Uid="ControlsCommonGroupFiltersGroupFiltersApplyButton" Grid.Column="2"
+            Margin="{ThemeResource AppMargin10_0_0_10}"
+            AutomationProperties.AutomationId="GroupFiltersApplyButton"
+            AutomationProperties.Name="Apply filters"
             Style="{StaticResource AppOutlineButtonStyle}"
             VerticalAlignment="Bottom"
             Click="OnFilterButtonClick">

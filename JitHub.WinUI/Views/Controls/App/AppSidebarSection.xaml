@@ -9,12 +9,12 @@
     <Border
         HorizontalAlignment="Stretch"
         VerticalAlignment="Stretch"
-        Background="{ThemeResource AppCanvasRaisedBrush}"
+        Background="{ThemeResource AppCardBrush}"
         BorderBrush="{ThemeResource AppOutlineBrush}"
-        BorderThickness="1"
+        BorderThickness="{ThemeResource AppHairlineBorderThickness}"
         CornerRadius="{ThemeResource AppRadiusLarge}"
-        Padding="16">
-        <Grid RowSpacing="12">
+        Padding="{ThemeResource AppPadding16}">
+        <Grid RowSpacing="{ThemeResource AppGap12}">
             <Grid.RowDefinitions>
                 <RowDefinition Height="Auto" />
                 <RowDefinition Height="*" />

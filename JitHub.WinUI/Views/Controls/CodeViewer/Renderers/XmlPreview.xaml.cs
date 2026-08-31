@@ -1,8 +1,9 @@
 using System;
 using System.Threading.Tasks;
 using System.Xml.Linq;
+using JitHub.Services;
+using JitHub.Services.CodeViewer;
 using JitHub.WinUI.ViewModels.CodeViewer;
-using Microsoft.UI.Dispatching;
 using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Controls;
 
@@ -14,13 +15,13 @@ namespace JitHub.WinUI.Views.Controls.CodeViewer.Renderers;
 /// </summary>
 public sealed partial class XmlPreview : UserControl
 {
-    private readonly DispatcherQueue _dispatcher;
     private string? _lastText;
+
+    public event Action<string, string>? ActionCompleted;
 
     public XmlPreview()
     {
         InitializeComponent();
-        _dispatcher = DispatcherQueue.GetForCurrentThread();
         DataContextChanged += OnDataContextChanged;
     }
 
@@ -43,7 +44,12 @@ public sealed partial class XmlPreview : UserControl
         if (vm is null) return;
         bool wantsRich = ViewModeSegmented.SelectedIndex == 0;
         if (vm.ShowRichPreview != wantsRich)
+        {
             vm.ShowRichPreview = wantsRich;
+            ActionCompleted?.Invoke(
+                wantsRich ? RepoCodeTelemetryActions.XmlRichView : RepoCodeTelemetryActions.XmlPlainView,
+                TelemetryTaxonomy.Results.Success);
+        }
         UpdateContent();
     }
 
@@ -60,25 +66,24 @@ public sealed partial class XmlPreview : UserControl
             return;
         }
 
-        Task.Run(() =>
+        UiTaskGuard.Run(async () =>
         {
-            string pretty;
-            try
+            string pretty = await Task.Run(() =>
             {
-                pretty = XDocument.Parse(text).ToString(SaveOptions.None);
-            }
-            catch
-            {
-                pretty = text;
-            }
-            return pretty;
-        }).ContinueWith(t =>
-        {
-            _dispatcher.TryEnqueue(() =>
-            {
-                if (_lastText == text)
-                    Editor.Text = t.Result;
+                try
+                {
+                    return XDocument.Parse(text).ToString(SaveOptions.None);
+                }
+                catch (System.Xml.XmlException)
+                {
+                    return text;
+                }
             });
-        }, TaskScheduler.Default);
+
+            if (_lastText == text)
+            {
+                Editor.Text = pretty;
+            }
+        }, "ui-xml-preview");
     }
 }

@@ -12,6 +12,8 @@
 
     <Grid>
         <Button
+            AutomationProperties.AutomationId="{x:Bind GetAutomationId(TextContent), Mode=OneWay}"
+            AutomationProperties.Name="{x:Bind TextContent, Mode=OneWay}"
             Style="{StaticResource AppOutlineButtonStyle}"
             HorizontalAlignment="Stretch"
             HorizontalContentAlignment="Stretch">

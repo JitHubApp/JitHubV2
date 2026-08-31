@@ -1,5 +1,6 @@
 <UserControl
     x:Class="JitHub.WinUI.Views.Controls.CodeViewer.RepoFileTreeView"
+    x:Uid="RepoCodeFileTreePane"
     xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
     xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
     xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
@@ -9,12 +10,12 @@
     xmlns:viewmodels="using:JitHub.WinUI.ViewModels.CodeViewer"
     d:DesignHeight="600"
     d:DesignWidth="280"
+    AutomationProperties.AutomationId="RepoCodeFileTreePane"
+    AutomationProperties.Name="Repository files"
     mc:Ignorable="d">
 
     <Grid
-        Background="{ThemeResource AppCanvasBrush}"
-        BorderBrush="{ThemeResource AppOutlineBrush}"
-        BorderThickness="1">
+        Background="{ThemeResource AppCanvasInsetBrush}">
 
         <Grid.RowDefinitions>
             <RowDefinition Height="Auto" />
@@ -25,12 +26,13 @@
         <!--  Truncated-tree banner  -->
         <Border
             Grid.Row="0"
-            Margin="8,8,8,0"
-            Padding="12,6"
+            Margin="{ThemeResource AppMargin8_8_8_0}"
+            Padding="{ThemeResource AppPadding12_6}"
             Background="{ThemeResource AppSurfaceBrush}"
             CornerRadius="{ThemeResource AppRadiusSmall}"
             Visibility="{x:Bind BoolToVis(ViewModel.IsTruncated), Mode=OneWay}">
             <TextBlock
+                x:Uid="RepoCodeTreeLargeStatus"
                 Style="{StaticResource SectionSecondaryTextBlockStyle}"
                 Text="Repository tree is large; some folders will load on expand."
                 TextWrapping="Wrap" />
@@ -38,9 +40,14 @@
 
         <!--  Filter TextBox  -->
         <TextBox
+            x:Name="FileFilter"
+            x:Uid="RepoCodeFileFilter"
             Grid.Row="1"
-            Margin="8,8,8,4"
+            Margin="{ThemeResource AppMargin8_8_8_4}"
+            AutomationProperties.AutomationId="RepoCodeFileFilter"
+            AutomationProperties.Name="Filter repository files"
             PlaceholderText="Filter files…"
+            Style="{StaticResource AppTextBoxStyle}"
             Text="{x:Bind ViewModel.FilterText, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" />
 
         <!--  Tree + loading overlay  -->
@@ -48,10 +55,15 @@
 
         <TreeView
             x:Name="FileTreeView"
+            x:Uid="RepoCodeFileTree"
+            AutomationProperties.AutomationId="RepoCodeFileTree"
+            AutomationProperties.ItemStatus="loading"
+            AutomationProperties.Name="Repository file tree"
             CanDragItems="False"
             Collapsed="OnCollapsed"
             Expanding="OnExpanding"
             ItemInvoked="OnItemInvoked"
+            SelectionChanged="OnSelectionChanged"
             SelectionMode="Single"
             ScrollViewer.HorizontalScrollBarVisibility="Auto"
             ScrollViewer.HorizontalScrollMode="Enabled">
@@ -65,7 +77,14 @@
                     <ContentControl Content="{x:Bind Content, Mode=OneWay}">
                         <ContentControl.ContentTemplate>
                             <DataTemplate x:DataType="viewmodels:RepoTreeNodeViewModel">
-                                <Grid ColumnSpacing="6" HorizontalAlignment="Left">
+                                <Grid
+                                    AutomationProperties.AccessibilityView="Raw"
+                                    Background="{ThemeResource AppTransparentBrush}"
+                                    ColumnSpacing="{ThemeResource AppGap6}"
+                                    HorizontalAlignment="Left"
+                                    Loaded="OnTreeItemContentLoaded"
+                                    PointerEntered="OnTreeItemPointerEntered"
+                                    PointerPressed="OnTreeItemPointerPressed">
                                     <Grid.ColumnDefinitions>
                                         <ColumnDefinition Width="Auto" />
                                         <ColumnDefinition Width="*" />
@@ -74,28 +93,31 @@
                                     <!--  Folder – open (&#xE188; = FolderOpen in Segoe Fluent Icons)  -->
                                     <FontIcon
                                         Grid.Column="0"
-                                        FontSize="14"
+                                        VerticalAlignment="Center"
+                                        FontSize="{ThemeResource AppFontSize14}"
                                         Glyph="&#xE188;"
                                         Visibility="{x:Bind local:RepoFileTreeView.FolderOpenVis(IsDirectory, IsExpanded), Mode=OneWay}" />
 
                                     <!--  Folder – closed (&#xE8B7; = Folder)  -->
                                     <FontIcon
                                         Grid.Column="0"
-                                        FontSize="14"
+                                        VerticalAlignment="Center"
+                                        FontSize="{ThemeResource AppFontSize14}"
                                         Glyph="&#xE8B7;"
                                         Visibility="{x:Bind local:RepoFileTreeView.FolderClosedVis(IsDirectory, IsExpanded), Mode=OneWay}" />
 
                                     <!--  File (&#xE8A5; = Document)  -->
                                     <FontIcon
                                         Grid.Column="0"
-                                        FontSize="14"
+                                        VerticalAlignment="Center"
+                                        FontSize="{ThemeResource AppFontSize14}"
                                         Glyph="&#xE8A5;"
                                         Visibility="{x:Bind local:RepoFileTreeView.FileVis(IsDirectory), Mode=OneWay}" />
 
-                                    <TextBlock
-                                        Grid.Column="1"
-                                        VerticalAlignment="Center"
-                                        Text="{x:Bind Name}" />
+                                            <TextBlock
+                                                Grid.Column="1"
+                                                VerticalAlignment="Center"
+                                                Text="{x:Bind Name}" />
                                 </Grid>
                             </DataTemplate>
                         </ContentControl.ContentTemplate>
@@ -105,13 +127,36 @@
         </TreeView>
 
             <!--  Loading overlay  -->
-            <ProgressRing
-                Width="40"
-                Height="40"
+            <Border
+                Margin="{ThemeResource AppMargin8}"
+                Padding="{ThemeResource AppPadding8}"
+                HorizontalAlignment="Right"
+                VerticalAlignment="Top"
+                Background="{ThemeResource AppSurfaceBrush}"
+                BorderBrush="{ThemeResource AppOutlineBrush}"
+                BorderThickness="{ThemeResource AppHairlineBorderThickness}"
+                CornerRadius="{ThemeResource ControlCornerRadius}"
+                Visibility="{x:Bind BoolToVis(ViewModel.IsLoading), Mode=OneWay}">
+                <ProgressRing
+                    Width="{ThemeResource AppDimension18}"
+                    Height="{ThemeResource AppDimension18}"
+                    IsActive="{x:Bind ViewModel.IsLoading, Mode=OneWay}" />
+            </Border>
+
+            <muxc:InfoBar
+                x:Name="TreeStatus"
+                x:Uid="RepoCodeFileTreeStatus"
+                MaxWidth="{ThemeResource AppDimension260}"
+                Margin="{ThemeResource AppMargin8}"
+                AutomationProperties.AutomationId="RepoCodeFileTreeStatus"
+                AutomationProperties.Name="Repository files status"
                 HorizontalAlignment="Center"
-                VerticalAlignment="Center"
-                IsActive="{x:Bind ViewModel.IsLoading, Mode=OneWay}"
-                Visibility="{x:Bind BoolToVis(ViewModel.IsLoading), Mode=OneWay}" />
+                VerticalAlignment="Top"
+                IsClosable="True"
+                IsOpen="False"
+                Severity="Warning"
+                Style="{StaticResource AppStatusInfoBarStyle}"
+                Title="Repository files" />
         </Grid>
     </Grid>
 </UserControl>

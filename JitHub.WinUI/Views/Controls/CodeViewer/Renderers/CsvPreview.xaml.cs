@@ -1,41 +1,89 @@
 using System;
-using System.Collections.Generic;
-using System.Globalization;
-using System.IO;
+using System.ComponentModel;
+using System.Threading;
 using System.Threading.Tasks;
-using CommunityToolkit.WinUI.UI.Controls;
-using CsvHelper;
-using CsvHelper.Configuration;
+using JitHub.Services;
+using JitHub.Services.CodeViewer;
+using JitHub.WinUI.Helpers;
 using JitHub.WinUI.ViewModels.CodeViewer;
-using Microsoft.UI.Dispatching;
 using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Controls;
-using Microsoft.UI.Xaml.Data;
 
 namespace JitHub.WinUI.Views.Controls.CodeViewer.Renderers;
 
 /// <summary>
-/// Renders CSV / TSV data in a DataGrid (rich) or raw code view (plain).
-/// DataContext must be a <see cref="RepoFilePreviewViewModel"/>.
+/// Renders bounded CSV and TSV data as a virtualized table or read-only source text.
 /// </summary>
 public sealed partial class CsvPreview : UserControl
 {
-    private readonly DispatcherQueue _dispatcher;
-    private string? _lastText;
+    private CancellationTokenSource? _parseCancellation;
+    private RepoFilePreviewViewModel? _subscribedViewModel;
+    private int _parseGeneration;
+
+    public event Action<string, string>? ActionCompleted;
 
     public CsvPreview()
     {
         InitializeComponent();
-        _dispatcher = DispatcherQueue.GetForCurrentThread();
         DataContextChanged += OnDataContextChanged;
+        Loaded += OnLoaded;
+        Unloaded += OnUnloaded;
+        DataTable.ActionCompleted += DataTable_ActionCompleted;
     }
 
     private RepoFilePreviewViewModel? ViewModel => DataContext as RepoFilePreviewViewModel;
 
-    private void OnDataContextChanged(FrameworkElement sender, DataContextChangedEventArgs args)
+    private void OnLoaded(object sender, RoutedEventArgs e)
     {
+        SubscribeToViewModel(ViewModel);
         SyncSegmented();
         UpdateContent();
+    }
+
+    private void OnUnloaded(object sender, RoutedEventArgs e)
+    {
+        SubscribeToViewModel(null);
+        CancelParse();
+    }
+
+    private void OnDataContextChanged(FrameworkElement sender, DataContextChangedEventArgs args)
+    {
+        SubscribeToViewModel(IsLoaded ? ViewModel : null);
+        SyncSegmented();
+        UpdateContent();
+    }
+
+    private void SubscribeToViewModel(RepoFilePreviewViewModel? viewModel)
+    {
+        if (ReferenceEquals(_subscribedViewModel, viewModel))
+        {
+            return;
+        }
+
+        if (_subscribedViewModel is not null)
+        {
+            _subscribedViewModel.PropertyChanged -= ViewModel_PropertyChanged;
+        }
+
+        _subscribedViewModel = viewModel;
+        if (_subscribedViewModel is not null)
+        {
+            _subscribedViewModel.PropertyChanged += ViewModel_PropertyChanged;
+        }
+    }
+
+    private void ViewModel_PropertyChanged(object? sender, PropertyChangedEventArgs e)
+    {
+        if (e.PropertyName == nameof(RepoFilePreviewViewModel.ShowRichPreview))
+        {
+            SyncSegmented();
+            UpdateContent();
+        }
+        else if (e.PropertyName is nameof(RepoFilePreviewViewModel.Text) or
+                 nameof(RepoFilePreviewViewModel.CurrentFile))
+        {
+            UpdateContent();
+        }
     }
 
     private void SyncSegmented()
@@ -45,95 +93,155 @@ public sealed partial class CsvPreview : UserControl
 
     private void ViewModeSegmented_SelectionChanged(object sender, SelectionChangedEventArgs e)
     {
-        var vm = ViewModel;
-        if (vm is null) return;
+        RepoFilePreviewViewModel? viewModel = ViewModel;
+        if (viewModel is null)
+        {
+            return;
+        }
+
         bool wantsRich = ViewModeSegmented.SelectedIndex == 0;
-        if (vm.ShowRichPreview != wantsRich)
-            vm.ShowRichPreview = wantsRich;
-        UpdateContent();
+        if (viewModel.ShowRichPreview != wantsRich)
+        {
+            viewModel.ShowRichPreview = wantsRich;
+            CompleteAction(
+                wantsRich ? RepoCodeTelemetryActions.CsvRichView : RepoCodeTelemetryActions.CsvPlainView,
+                TelemetryTaxonomy.Results.Success);
+        }
+        else
+        {
+            UpdateContent();
+        }
     }
 
     private void UpdateContent()
     {
-        var vm = ViewModel;
-        var text = vm?.Text ?? string.Empty;
-        var rich = vm?.ShowRichPreview ?? true;
-        _lastText = text;
+        CancelParse();
 
-        DataGrid.Visibility = rich ? Visibility.Visible : Visibility.Collapsed;
+        RepoFilePreviewViewModel? viewModel = ViewModel;
+        string text = viewModel?.Text ?? string.Empty;
+        bool rich = viewModel?.ShowRichPreview ?? true;
+        DataTable.Visibility = rich ? Visibility.Visible : Visibility.Collapsed;
         PlainEditor.Visibility = rich ? Visibility.Collapsed : Visibility.Visible;
+        PlainEditor.Text = text;
 
-        if (!rich)
+        if (!rich || !IsLoaded)
         {
-            PlainEditor.Text = text;
             return;
         }
 
-        // Detect delimiter from file extension
-        char delimiter = ',';
-        if (vm?.CurrentFile?.Path is { } path &&
-            path.EndsWith(".tsv", StringComparison.OrdinalIgnoreCase))
-        {
-            delimiter = '\t';
-        }
+        char delimiter = viewModel?.CurrentFile?.Path.EndsWith(
+            ".tsv",
+            StringComparison.OrdinalIgnoreCase) == true
+            ? '\t'
+            : ',';
 
-        Task.Run(() => ParseCsv(text, delimiter))
-            .ContinueWith(t =>
-            {
-                _dispatcher.TryEnqueue(() =>
-                {
-                    if (_lastText != text) return;
-                    if (t.Exception is not null) return;
+        DataTable.ShowStatus(L(
+            "RepoCode/Csv/Loading",
+            "Preparing table..."));
 
-                    var (headers, rows) = t.Result;
-                    PopulateDataGrid(headers, rows);
-                });
-            }, TaskScheduler.Default);
+        CancellationTokenSource cancellation = new();
+        _parseCancellation = cancellation;
+        int generation = ++_parseGeneration;
+        UiTaskGuard.Observe(
+            ParseAndPresentAsync(text, delimiter, generation, cancellation.Token),
+            "ui-csv-preview",
+            _ => ShowParseFailure(generation, cancellation.Token));
     }
 
-    private static (string[] Headers, List<string[]> Rows) ParseCsv(string text, char delimiter)
+    private void ShowParseFailure(int generation, CancellationToken cancellationToken)
     {
-        var config = new CsvConfiguration(CultureInfo.InvariantCulture)
+        if (cancellationToken.IsCancellationRequested ||
+            generation != _parseGeneration ||
+            !IsLoaded ||
+            ViewModel?.ShowRichPreview != true)
         {
-            Delimiter = delimiter.ToString(),
-            HasHeaderRecord = true,
-            MissingFieldFound = null,
-            BadDataFound = null,
-        };
-
-        using var reader = new StringReader(text);
-        using var csv = new CsvReader(reader, config);
-
-        csv.Read();
-        csv.ReadHeader();
-        var headers = csv.HeaderRecord ?? [];
-
-        var rows = new List<string[]>();
-        while (csv.Read())
-        {
-            var row = new string[headers.Length];
-            for (int i = 0; i < headers.Length; i++)
-                row[i] = csv.GetField(i) ?? string.Empty;
-            rows.Add(row);
+            return;
         }
 
-        return (headers, rows);
+        DataTable.ShowStatus(L(
+            "RepoCode/Csv/PreviewFailed",
+            "The table preview could not be prepared. Plain view is still available."));
+        CompleteAction(
+            RepoCodeTelemetryActions.CsvRichView,
+            TelemetryTaxonomy.Results.Error);
     }
 
-    private void PopulateDataGrid(string[] headers, List<string[]> rows)
+    private async Task ParseAndPresentAsync(
+        string text,
+        char delimiter,
+        int generation,
+        CancellationToken cancellationToken)
     {
-        DataGrid.Columns.Clear();
-
-        for (int i = 0; i < headers.Length; i++)
+        CsvParseResult result = await CsvDocumentParser.ParseAsync(
+            text,
+            delimiter,
+            cancellationToken);
+        if (result.WasCanceled ||
+            cancellationToken.IsCancellationRequested ||
+            generation != _parseGeneration ||
+            !IsLoaded ||
+            ViewModel?.ShowRichPreview != true)
         {
-            DataGrid.Columns.Add(new DataGridTextColumn
-            {
-                Header = headers[i],
-                Binding = new Binding { Path = new PropertyPath($"[{i}]") },
-                IsReadOnly = true,
-            });
+            return;
         }
 
-        DataGrid.ItemsSource = rows;
+        if (result.Succeeded)
+        {
+            DataTable.SetDocument(result.Document!);
+        }
+        else
+        {
+            DataTable.ShowStatus(GetFailureMessage(result.Failure));
+        }
     }
+
+    private void CancelParse()
+    {
+        _parseGeneration++;
+        CancellationTokenSource? cancellation = Interlocked.Exchange(ref _parseCancellation, null);
+        if (cancellation is null)
+        {
+            return;
+        }
+
+        cancellation.Cancel();
+        cancellation.Dispose();
+    }
+
+    private void DataTable_ActionCompleted(string action, string result) =>
+        CompleteAction(action, result);
+
+    private void CompleteAction(string action, string result) =>
+        ActionCompleted?.Invoke(action, result);
+
+    private static string GetFailureMessage(CsvParseFailure failure) => failure switch
+    {
+        CsvParseFailure.InputTooLarge => LF(
+            "RepoCode/Csv/InputTooLarge",
+            "Rich preview supports files up to {0} KiB. Plain view is still available.",
+            CsvDocumentParser.MaximumInputCharacters / 1024),
+        CsvParseFailure.TooManyColumns => LF(
+            "RepoCode/Csv/TooManyColumns",
+            "Rich preview supports up to {0} columns. Plain view is still available.",
+            CsvDocumentParser.MaximumColumns),
+        CsvParseFailure.TooManyRows => LF(
+            "RepoCode/Csv/TooManyRows",
+            "Rich preview supports up to {0:N0} rows. Plain view is still available.",
+            CsvDocumentParser.MaximumDataRows),
+        CsvParseFailure.UnterminatedQuotedField => L(
+            "RepoCode/Csv/UnterminatedQuotedField",
+            "A quoted field is not closed. Check the file in plain view."),
+        CsvParseFailure.InvalidQuote => L(
+            "RepoCode/Csv/InvalidQuote",
+            "A quote appears outside a valid quoted field. Check the file in plain view."),
+        _ => L(
+            "RepoCode/Csv/Empty",
+            "No rows to display."),
+    };
+
+    private static string L(string key, string fallback) =>
+        LocalizedResourceText.GetString(key, fallback);
+
+    private static string LF(string key, string fallback, params object?[] arguments) =>
+        LocalizedResourceText.Format(key, fallback, arguments);
 }

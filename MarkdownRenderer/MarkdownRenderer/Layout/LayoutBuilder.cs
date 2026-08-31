@@ -69,14 +69,64 @@ internal sealed class LayoutBuilder
     private List<BlockBox> BuildBlocks(MarkdownDocument document, CancellationToken cancellationToken)
     {
         var blocks = new List<BlockBox>();
+        var htmlScopes = new SafeHtmlBlockScopeTracker();
         foreach (var b in document)
         {
             cancellationToken.ThrowIfCancellationRequested();
+            bool suppressedBeforeBlock = htmlScopes.IsContentSuppressed;
+            if (b is HtmlBlock htmlBlock && htmlScopes.Process(
+                    htmlBlock.Lines.ToString(),
+                    htmlBlock.Span.Start,
+                    _context.DisclosureStates))
+            {
+                continue;
+            }
+
+            if (suppressedBeforeBlock)
+            {
+                continue;
+            }
+
             var box = BuildBlock(b);
-            if (box is not null) blocks.Add(box);
+            if (box is not null)
+            {
+                ApplyHtmlAlignment(box, htmlScopes.CurrentAlignment);
+                blocks.Add(box);
+            }
         }
 
         return blocks;
+    }
+
+    private static void ApplyHtmlAlignment(BlockBox box, SafeHtmlAlignment alignment)
+    {
+        if (alignment == SafeHtmlAlignment.Inherit)
+        {
+            return;
+        }
+
+        var canvasAlignment = alignment switch
+        {
+            SafeHtmlAlignment.Center => Microsoft.Graphics.Canvas.Text.CanvasHorizontalAlignment.Center,
+            SafeHtmlAlignment.Right => Microsoft.Graphics.Canvas.Text.CanvasHorizontalAlignment.Right,
+            _ => Microsoft.Graphics.Canvas.Text.CanvasHorizontalAlignment.Left,
+        };
+
+        switch (box)
+        {
+            case InlineContainerBox inline:
+                inline.TextAlignment = canvasAlignment;
+                break;
+            case ImageBox image:
+                image.ContentAlignment = canvasAlignment;
+                break;
+            case StackBox stack:
+                foreach (BlockBox child in stack.Children)
+                {
+                    ApplyHtmlAlignment(child, alignment);
+                }
+                break;
+        }
     }
 
     private BlockBox? BuildBlock(Block block)
@@ -421,12 +471,23 @@ internal sealed class LayoutBuilder
     private void AddInlines(InlineContainerBox box, ContainerInline? inline, int inheritedAliasStart = -1)
     {
         if (inline is null) return;
+        AddInlines(box, inline, new SafeHtmlInlineState(), inheritedAliasStart);
+    }
+
+    private void AddInlines(
+        InlineContainerBox box,
+        ContainerInline inline,
+        SafeHtmlInlineState htmlState,
+        int inheritedAliasStart)
+    {
         foreach (var n in inline)
         {
             _context.CancellationToken.ThrowIfCancellationRequested();
             int aliasStart = _context.StyleAliasCount;
             using var inlineAttrs = _context.PushMarkdownAttributes(n);
-            var run = BuildInline(n, box.BlockIndex);
+            InlineRun? run = n is HtmlInline html
+                ? htmlState.Process(html, _context)
+                : htmlState.Apply(BuildInline(n, box.BlockIndex));
             if (run is not null)
             {
                 int effectiveAliasStart = inheritedAliasStart >= 0 ? inheritedAliasStart : aliasStart;
@@ -438,7 +499,7 @@ internal sealed class LayoutBuilder
             {
                 _context.RegisterMarkdownAttributes(n, box.BlockIndex);
                 int effectiveAliasStart = inheritedAliasStart >= 0 ? inheritedAliasStart : aliasStart;
-                AddInlines(box, nested, effectiveAliasStart);
+                AddInlines(box, nested, htmlState, effectiveAliasStart);
             }
         }
     }
@@ -465,8 +526,11 @@ internal sealed class LayoutBuilder
                 return new LineBreakRun(lineBreak.IsHard) { SourceSpan = new SourceSpan(inline.Span.Start, inline.Span.Length) };
             case AutolinkInline al:
                 return new LinkRun(al.Url, al.Url) { SourceSpan = new SourceSpan(al.Span.Start, al.Span.Length) };
-            case HtmlInline html:
-                return new TextRun(html.Tag) { SourceSpan = new SourceSpan(html.Span.Start, html.Span.Length) };
+            case HtmlEntityInline entity:
+                return new TextRun(entity.Transcoded.ToString())
+                {
+                    SourceSpan = new SourceSpan(entity.Span.Start, entity.Span.Length)
+                };
             case AbbreviationInline abbreviation:
                 return new AbbreviationRun(
                     abbreviation.Abbreviation?.Label ?? string.Empty,

@@ -14,6 +14,10 @@ public partial class GitHubRepositorySelectionItem : ObservableObject
 
     public GitHubRepository Repository { get; }
 
+    public string AutomationId => $"RepositorySelection_{Repository.Id}";
+
+    public string AutomationName => $"Select repository {Repository.FullName}";
+
     public bool Selected
     {
         get => _selected;

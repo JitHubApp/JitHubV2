@@ -6,6 +6,7 @@ using System.Runtime.InteropServices.WindowsRuntime;
 using System.Threading;
 using System.Threading.Tasks;
 using CommunityToolkit.Common.Collections;
+using JitHub.WinUI.Behaviors;
 using Microsoft.UI.Xaml.Data;
 using Windows.Foundation;
 
@@ -16,7 +17,10 @@ public interface IIncrementalLoadingSourceState
     bool HasMoreItems { get; }
 }
 
-public partial class IncrementalLoadingCollection<TSource, TItem> : ObservableCollection<TItem>, ISupportIncrementalLoading
+public partial class IncrementalLoadingCollection<TSource, TItem> :
+    ObservableCollection<TItem>,
+    ISupportIncrementalLoading,
+    IIncrementalLoadingActivity
     where TSource : IIncrementalSource<TItem>
 {
     private readonly int _itemsPerPage;

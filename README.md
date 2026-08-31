@@ -4,7 +4,7 @@
 </p>
 
 <p align="center">
-  JitHub is a packaged Windows App SDK / WinUI 3 GitHub client for Windows. It brings repositories, issues, pull requests, activity, and code browsing into a calmer native desktop app.
+  JitHub is a native GitHub client for Windows. It brings repositories, issues, pull requests, code, commits, Stars, Gists, profiles, and notifications into one calmer desktop workspace.
 </p>
 
 <p align="center">
@@ -15,48 +15,48 @@
 
 ## What JitHub Does
 
-- Browse public, private, and forked repositories from a native Windows shell
-- Search GitHub repositories and open exact `owner/name` matches quickly
-- Read repository activity, issues, pull requests, comments, reactions, labels, and timelines
-- Star, fork, watch, create, edit, close, merge, and react without leaving the app
-- Browse files, branches, commits, and repository content in an embedded VS Code-based surface
-- Use a calm app-owned design system with light and dark themes, design-lab coverage, and screenshot automation
+- See recent activity, repositories, account overview, and useful shortcuts in a customizable Home workspace
+- Work through personal and repository issue and pull request queues with Markdown, reactions, replies, reviews, and merge flows
+- Browse branches and files with a native WinUIEdit editor, rich Markdown, secure SVG viewing, and virtualized CSV or TSV tables
+- Review commit history with changed-file navigation, virtualized diffs, search, comments, checks, and branch comparison
+- Organize Stars, create and edit Gists, inspect profiles and contributions, manage repositories, and triage notifications
+- Keep working from cached data when connectivity changes, with keyboard access, High Contrast, and five live color themes in both Light and Dark
+- Ship self-contained Native AOT Windows builds for x86, x64, and ARM64 with identifier-free diagnostics
 
 ## Screenshots
 
 <picture>
-  <source media="(prefers-color-scheme: dark)" srcset="JitHub.Web/wwwroot/ss1-dark.png">
-  <img src="JitHub.Web/wwwroot/ss1.png" alt="JitHub home dashboard and repository workspace." width="900">
+  <source media="(prefers-color-scheme: dark)" srcset="JitHub.Web/wwwroot/media/showcase/home-workspace-dark.png">
+  <img src="JitHub.Web/wwwroot/media/showcase/home-workspace-light.png" alt="JitHub's customizable Home workspace with global search, repository navigation, overview, and activity widgets." width="1100">
 </picture>
 
 <picture>
-  <source media="(prefers-color-scheme: dark)" srcset="JitHub.Web/wwwroot/ss2-dark.png">
-  <img src="JitHub.Web/wwwroot/ss2.png" alt="JitHub code page with the embedded VS Code experience." width="900">
+  <source media="(prefers-color-scheme: dark)" srcset="JitHub.Web/wwwroot/media/showcase/pull-request-conversation-dark.png">
+  <img src="JitHub.Web/wwwroot/media/showcase/pull-request-conversation-light.png" alt="A JitHub pull request conversation with Markdown, reactions, comments, and review actions." width="1100">
 </picture>
 
 <picture>
-  <source media="(prefers-color-scheme: dark)" srcset="JitHub.Web/wwwroot/ss3-dark.png">
-  <img src="JitHub.Web/wwwroot/ss3.png" alt="JitHub pull request and issue management surfaces." width="900">
+  <source media="(prefers-color-scheme: dark)" srcset="JitHub.Web/wwwroot/media/showcase/commit-diff-dark.png">
+  <img src="JitHub.Web/wwwroot/media/showcase/commit-diff-light.png" alt="JitHub's commit workspace with history, a changed-file tree, virtualized diff, comments, checks, and compare tools." width="1100">
 </picture>
 
 ## Tech Stack
 
 - `.NET 10` with `global.json` pinning SDK `10.0.202`
 - Windows App SDK and WinUI 3 for the packaged desktop app
-- Native AOT-friendly app services, models, and JSON paths
+- Self-contained Native AOT Release and Store builds for x86, x64, and ARM64
 - ASP.NET Core Blazor Web App with static server rendering for the public website and auth callback host
 - Lightweight JavaScript for the browser-to-app authorization handoff
 - FlaUI-based UI automation for screenshot proof and smoke checks
-- VS Code-derived editor assets generated from the companion `jithub-vs-code` project
+- Native WinUIEdit/Scintilla code editing with app-owned tokenized chrome
 
 ## Project Structure
 
 - `JitHub.WinUI`: the desktop app
-- `JitHub.Web`: the website, `/authorize` callback page, and `/api/GithubCodeToToken` token-exchange API
+- `JitHub.Web`: the website, `/authorize` callback page, and short-lived OAuth handoff APIs
 - `JitHub.WinUI.Automation`: screenshot and UI smoke-test harness for the app design lab
 - `MarkdownRenderer`: native WinUI markdown renderer library, documented in [`docs/markdown-renderer`](docs/markdown-renderer/README.md)
-- `artifacts/EditorAssets/dist`: generated editor assets used by the desktop app; this folder is intentionally not checked in
-- `eng`: local helper scripts for editor asset sync, app launch, screenshot capture, and build checks
+- `eng`: local helper scripts for app launch, screenshot capture, packaging, and build checks
 
 ## Runtime Shape
 
@@ -72,11 +72,7 @@ Use the latest Visual Studio 2022 with these workloads:
 - .NET desktop development
 - Windows application development
 
-You also need:
-
-- .NET 10 SDK
-- Node.js
-- Yarn
+You also need the .NET 10 SDK.
 
 Check optional local Windows CLI helpers with:
 
@@ -100,7 +96,7 @@ Use this callback URL for local development:
 https://localhost:7284/authorize
 ```
 
-The callback route is `/authorize`, not `/auth/callback`. The authorize page calls the same-origin `/api/GithubCodeToToken` endpoint and then launches the app through the `jithub://` protocol callback.
+The callback route is `/authorize`, not `/auth/callback`. The authorize page exchanges GitHub's temporary code for a short-lived, one-time handoff and launches the app through the `jithub://` protocol callback. The bearer token never enters browser JavaScript or the protocol URI; the app redeems the handoff directly with a verifier stored in Windows Credential Locker.
 
 Configure the desktop app with your OAuth app's client ID and callback URL. You can use `JitHub.WinUI/appsettings.json` for local development or override values with these environment variables:
 
@@ -111,13 +107,20 @@ $env:JITHUB_OAUTH_CALLBACK_URL = "https://localhost:7284/authorize"
 
 Configure the web project with the matching OAuth client credentials using your preferred ASP.NET Core configuration source. Keep credentials local to your machine and do not commit them.
 
-## Editor Assets
+Production web deployments also require a shared Redis connection and a Base64-encoded 32-byte handoff encryption key:
 
-Build the editor assets from [jithub-vs-code](https://github.com/nerocui/jithub-vs-code) by running `./sync-vscode-assets.ps1` in PowerShell.
+```text
+ConnectionStrings__OAuthHandoffRedis=<Redis connection string>
+OAuthHandoff__EncryptionKey=<Base64-encoded 32-byte key>
+JITHUB_OAUTH_CALLBACK_URL=https://your-jithub-host.example/authorize
+```
 
-The script looks for a local `jithub-vs-code` clone, runs `yarn --frozen-lockfile` and `yarn build`, then copies the generated `dist` output into `artifacts/EditorAssets/dist`. Those generated files are intentionally gitignored.
+Redis provides the two-minute distributed TTL and atomic one-time consume semantics across app instances. The encryption key protects GitHub tokens stored in Redis. Production startup fails when either setting is absent; the in-memory backend is limited to the Development environment.
+The callback URL is also required in production and is matched exactly before JitHub exchanges an OAuth code. Development accepts the documented local launch callbacks and any additional loopback callback explicitly listed under `GitHubOAuth:DevelopmentCallbackUrls`.
 
-`JitHub.WinUI` fails to build if `artifacts/EditorAssets/dist/index.html` is missing, and the app loads the copied files directly from `Assets/dist`.
+## Native Code Editor
+
+The desktop app uses the native WinUIEdit/Scintilla component through its first-party `CodeEditorControl` wrapper. No web editor bundle or Node.js asset build is required.
 
 ## Local Website Development
 
@@ -131,7 +134,7 @@ The website does not require `wasm-tools`. The landing page is static SSR, and t
 
 ## Running The App Locally
 
-After editor assets are present, open `JitHub.slnx` in Visual Studio and run the packaged `JitHub.WinUI` project.
+Open `JitHub.slnx` in Visual Studio and run the packaged `JitHub.WinUI` project.
 
 To build Debug, apply a debug package identity with the Windows App CLI, and launch the app from the terminal, run:
 
@@ -139,7 +142,7 @@ To build Debug, apply a debug package identity with the Windows App CLI, and lau
 .\eng\Start-JitHubWinUIDebug.ps1
 ```
 
-This builds `JitHub.WinUI` as `Debug|x64`, runs `winapp create-debug-identity` against the built executable, and launches `JitHub.WinUI.exe`.
+This builds `JitHub.WinUI` as `Debug|x64`, removes stale development registrations, registers the dedicated `JitHub.WinUI.Debug` identity, and launches `JitHub.WinUI.exe`. Debug OAuth callbacks use `jithub-dev://`; Store and Release builds remain the sole owners of `jithub://`.
 
 To launch a different platform or pass app arguments:
 
@@ -147,6 +150,8 @@ To launch a different platform or pass app arguments:
 .\eng\Start-JitHubWinUIDebug.ps1 -Platform ARM64
 .\eng\Start-JitHubWinUIDebug.ps1 -AppArguments '--page=design-lab', '--theme=dark'
 ```
+
+Remove stale development identities without launching the app with `eng\Reset-JitHubWinUIDebugIdentity.ps1`. The cleanup is limited to development-mode registrations and preserves the installed Store package.
 
 ## Design Lab And Screenshot Proof
 
@@ -166,6 +171,14 @@ Artifacts are written to:
 The capture script builds `JitHub.WinUI`, launches scenario-specific pages with launch arguments such as `--page=design-lab`, `--scenario=buttons`, and `--theme=dark`, and then uses the `JitHub.WinUI.Automation` project to capture deterministic UI states through FlaUI.
 
 `winapp ui` is also available as a lightweight command-line proof path. Use `./eng/Invoke-WinAppCliSmoke.ps1` for quick launch/wait/screenshot validation; keep the FlaUI design-lab harness for the full deterministic matrix.
+
+Regenerate the website's paired Light/Dark product media and Home motion clip with:
+
+```powershell
+.\eng\Capture-JitHubWebsiteMedia.ps1
+```
+
+The `website-showcase` probe uses synthetic public-preview data, blocks outbound networking, captures exact 3200x1800 physical DWM windows with at least a 1200x675 logical workspace, and writes a hash-verified media manifest before updating the tracked website assets.
 
 ## Contributing
 

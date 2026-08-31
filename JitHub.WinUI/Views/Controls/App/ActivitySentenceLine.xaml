@@ -1,0 +1,78 @@
+<UserControl
+    x:Class="JitHub.WinUI.Views.Controls.App.ActivitySentenceLine"
+    xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+    xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+    xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+    HorizontalAlignment="Stretch"
+    mc:Ignorable="d">
+    <UserControl.Resources>
+        <StaticResource x:Key="ActivityInlineLinkForegroundBrush" ResourceKey="AppAccentBrush" />
+    </UserControl.Resources>
+
+    <Grid
+        x:Name="LayoutRoot"
+        ColumnSpacing="{ThemeResource AppGap10}"
+        SizeChanged="LayoutRoot_SizeChanged">
+        <Grid.ColumnDefinitions>
+            <ColumnDefinition Width="{ThemeResource AppGridLength28}" />
+            <ColumnDefinition Width="*" />
+            <ColumnDefinition Width="{ThemeResource AppGridLength58}" />
+        </Grid.ColumnDefinitions>
+        <Grid.RowDefinitions>
+            <RowDefinition Height="Auto" />
+            <RowDefinition Height="Auto" />
+        </Grid.RowDefinitions>
+
+        <Border
+            Width="{ThemeResource AppDimension24}"
+            Height="{ThemeResource AppDimension24}"
+            VerticalAlignment="Center"
+            Translation="0,-2,0"
+            Background="{ThemeResource AppCanvasInsetBrush}"
+            BorderBrush="{x:Bind ViewModel.Tone, Converter={StaticResource ActivityToneToBrushConverter}, ConverterParameter=Border, Mode=OneWay}"
+            BorderThickness="{ThemeResource AppHairlineBorderThickness}"
+            CornerRadius="{ThemeResource AppRadiusSmall}">
+            <FontIcon
+                HorizontalAlignment="Center"
+                VerticalAlignment="Center"
+                FontFamily="{StaticResource SegoeFluentIcons}"
+                FontSize="{ThemeResource AppFontSize12}"
+                Foreground="{x:Bind ViewModel.Tone, Converter={StaticResource ActivityToneToBrushConverter}, Mode=OneWay}"
+                Glyph="{x:Bind ViewModel.Glyph, Mode=OneWay}" />
+        </Border>
+
+        <RichTextBlock
+            x:Name="SentenceRichTextBlock"
+            Grid.Column="1"
+            MinWidth="{ThemeResource AppDimension0}"
+            HorizontalAlignment="Left"
+            VerticalAlignment="Center"
+            FontFamily="{ThemeResource AppUiFontFamily}"
+            FontSize="{ThemeResource AppFontSize13}"
+            Foreground="{ThemeResource AppInkBrush}"
+            IsTextSelectionEnabled="False"
+            LineHeight="{ThemeResource AppLineHeight20}"
+            MaxLines="2"
+            TextWrapping="Wrap" />
+        <TextBlock
+            x:Name="SecondaryTextBlock"
+            Grid.Row="1"
+            Grid.Column="1"
+            MinWidth="{ThemeResource AppDimension0}"
+            Margin="{ThemeResource AppMargin0_3_0_0}"
+            HorizontalAlignment="Left"
+            Style="{StaticResource SectionSecondaryTextBlockStyle}"
+            MaxLines="1"
+            TextTrimming="CharacterEllipsis"
+            Visibility="Collapsed" />
+
+        <TextBlock
+            Grid.Column="2"
+            HorizontalAlignment="Right"
+            VerticalAlignment="Center"
+            Style="{StaticResource SectionSecondaryTextBlockStyle}"
+            Text="{x:Bind ViewModel.TimestampText, Mode=OneWay}"
+            TextTrimming="CharacterEllipsis" />
+    </Grid>
+</UserControl>

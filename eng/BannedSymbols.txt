@@ -1,0 +1,19 @@
+# Reflection invocation and runtime type construction are incompatible with the app's closed-world AOT contract.
+M:System.Reflection.MethodBase.Invoke(System.Object,System.Object[]);Use a typed call instead of reflection invocation.
+M:System.Reflection.MethodInfo.MakeGenericMethod(System.Type[]);Use a statically closed generic call.
+M:System.Type.MakeGenericType(System.Type[]);Use a statically closed generic type.
+T:System.Reflection.Emit.DynamicMethod;Runtime code generation is forbidden in product code.
+T:System.Reflection.Emit.AssemblyBuilder;Runtime assembly generation is forbidden in product code.
+M:System.Linq.Expressions.LambdaExpression.Compile;Use generated or handwritten code instead of runtime expression compilation.
+M:System.Activator.CreateInstance(System.Type);Construct a known type directly or through a typed factory.
+M:System.Reflection.Assembly.GetEntryAssembly;Use Environment.ProcessPath or packaged identity instead of assembly reflection.
+M:System.Reflection.Assembly.GetExecutingAssembly;Use Environment.ProcessPath or an explicit compile-time value instead of assembly reflection.
+
+# Reflection-backed System.Text.Json overloads are forbidden. Pass generated JsonTypeInfo or JsonSerializerContext metadata.
+M:System.Text.Json.JsonSerializer.Serialize``1(``0,System.Text.Json.JsonSerializerOptions);Pass generated JsonTypeInfo<T>.
+M:System.Text.Json.JsonSerializer.Serialize(System.Object,System.Type,System.Text.Json.JsonSerializerOptions);Pass generated JsonTypeInfo.
+M:System.Text.Json.JsonSerializer.SerializeToUtf8Bytes``1(``0,System.Text.Json.JsonSerializerOptions);Pass generated JsonTypeInfo<T>.
+M:System.Text.Json.JsonSerializer.SerializeToElement``1(``0,System.Text.Json.JsonSerializerOptions);Pass generated JsonTypeInfo<T>.
+M:System.Text.Json.JsonSerializer.Deserialize``1(System.String,System.Text.Json.JsonSerializerOptions);Pass generated JsonTypeInfo<T>.
+M:System.Text.Json.JsonSerializer.Deserialize``1(System.IO.Stream,System.Text.Json.JsonSerializerOptions);Pass generated JsonTypeInfo<T>.
+M:System.Text.Json.JsonSerializer.DeserializeAsync``1(System.IO.Stream,System.Text.Json.JsonSerializerOptions,System.Threading.CancellationToken);Pass generated JsonTypeInfo<T>.

@@ -12,7 +12,7 @@
 
     <Grid
         x:Name="Container"
-        Padding="10"
+        Padding="{ThemeResource AppPadding10}"
         Background="{StaticResource RegionBrush}">
         <TextBlock
             IsTextSelectionEnabled="True"

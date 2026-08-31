@@ -6,13 +6,13 @@
         <Setter Property="Background" Value="{ThemeResource NavigationViewBackButtonBackground}" />
         <Setter Property="Foreground" Value="{ThemeResource AppInkBrush}" />
         <Setter Property="FontFamily" Value="{ThemeResource SymbolThemeFontFamily}" />
-        <Setter Property="FontSize" Value="16" />
+        <Setter Property="FontSize" Value="{ThemeResource AppFontSize16}" />
         <Setter Property="Height" Value="{ThemeResource NavigationBackButtonHeight}" />
         <Setter Property="Width" Value="{ThemeResource NavigationBackButtonWidth}" />
         <Setter Property="HorizontalContentAlignment" Value="Center" />
         <Setter Property="VerticalContentAlignment" Value="Center" />
         <Setter Property="UseSystemFocusVisuals" Value="{StaticResource UseSystemFocusVisuals}" />
-        <Setter Property="FocusVisualMargin" Value="-3" />
+        <Setter Property="FocusVisualMargin" Value="{ThemeResource AppFocusMarginNeg3}" />
         <Setter Property="Content" Value="&#xE72B;" />
         <Setter Property="Template">
             <Setter.Value>
@@ -72,10 +72,10 @@
         <Setter Property="Template">
             <Setter.Value>
                 <ControlTemplate TargetType="muxc:NavigationView">
-                    <Grid x:Name="RootGrid" Background="Transparent">
+                            <Grid x:Name="RootGrid" Background="{ThemeResource AppTransparentBrush}">
                         <Grid
                             x:Name="PaneToggleButtonGrid"
-                            Margin="0,8,0,8"
+                            Margin="{ThemeResource AppMargin0_8_0_8}"
                             HorizontalAlignment="Left"
                             VerticalAlignment="Top"
                             Canvas.ZIndex="100">
@@ -109,20 +109,20 @@
                                     HorizontalAlignment="Center"
                                     VerticalAlignment="Top"
                                     AutomationProperties.LandmarkType="Navigation"
-                                    FocusVisualMargin="0"
+                                    FocusVisualMargin="{ThemeResource AppFocusMargin0}"
                                     MinWidth="{Binding TemplateSettings.SmallerPaneToggleButtonWidth, RelativeSource={RelativeSource Mode=TemplatedParent}}"
                                     Style="{TemplateBinding PaneToggleButtonStyle}"
                                     Visibility="{Binding TemplateSettings.PaneToggleButtonVisibility, RelativeSource={RelativeSource Mode=TemplatedParent}}">
                                     <TextBlock
                                         x:Name="PaneTitleTextBlock"
                                         Grid.Column="0"
-                                        Margin="0,-2,0,0"
+                                        Margin="{ThemeResource AppMargin0_Neg2_0_0}"
                                         HorizontalAlignment="Left"
                                         VerticalAlignment="Center"
                                         Style="{StaticResource NavigationViewItemHeaderTextStyle}"
                                         Text="{TemplateBinding PaneTitle}" />
                                 </Button>
-                                <Grid x:Name="PaneTitleHolder" Height="40" Visibility="Collapsed">
+                                <Grid x:Name="PaneTitleHolder" Height="{ThemeResource AppDimension40}" Visibility="Collapsed">
                                     <ContentControl
                                         x:Name="PaneTitlePresenter"
                                         Margin="{ThemeResource NavigationViewPaneTitlePresenterMargin}"
@@ -158,7 +158,7 @@
                                         <ColumnDefinition Width="Auto" />
                                         <ColumnDefinition Width="Auto" />
                                         <ColumnDefinition Width="Auto" />
-                                        <ColumnDefinition Width="*" MinWidth="48" />
+                                        <ColumnDefinition Width="*" MinWidth="{ThemeResource AppDimension48}" />
                                         <ColumnDefinition Width="Auto" />
                                         <ColumnDefinition Width="Auto" />
                                         <ColumnDefinition Width="Auto" />
@@ -166,7 +166,7 @@
                                     <Grid
                                         x:Name="TopNavLeftPadding"
                                         Grid.Column="1"
-                                        Width="0" />
+                                        Width="{ThemeResource AppDimension0}" />
                                     <ContentControl
                                         x:Name="PaneHeaderOnTopPane"
                                         Grid.Column="2"
@@ -207,7 +207,7 @@
                                             <Flyout ElementSoundMode="{Binding ElementSoundMode, RelativeSource={RelativeSource Mode=TemplatedParent}}" Placement="BottomEdgeAlignedRight">
                                                 <Flyout.FlyoutPresenterStyle>
                                                     <Style TargetType="FlyoutPresenter">
-                                                        <Setter Property="Padding" Value="0,8" />
+                                                        <Setter Property="Padding" Value="{ThemeResource AppPadding0_8}" />
                                                         <Setter Property="ScrollViewer.HorizontalScrollMode" Value="Auto" />
                                                         <Setter Property="ScrollViewer.HorizontalScrollBarVisibility" Value="Auto" />
                                                         <Setter Property="ScrollViewer.VerticalScrollMode" Value="Auto" />
@@ -267,7 +267,7 @@
                                         Height="{ThemeResource NavigationViewTopPaneHeight}">
                                         <ContentControl
                                             x:Name="TopPaneAutoSuggestBoxPresenter"
-                                            MinWidth="48"
+                                            MinWidth="{ThemeResource AppDimension48}"
                                             Margin="{ThemeResource TopNavigationViewAutoSuggestBoxMargin}"
                                             HorizontalContentAlignment="Stretch"
                                             VerticalContentAlignment="Center"
@@ -306,18 +306,18 @@
                                         Visibility="{Binding TemplateSettings.LeftPaneVisibility, RelativeSource={RelativeSource Mode=TemplatedParent}}">
                                         <Grid.RowDefinitions>
                                             <RowDefinition Height="Auto" />
-                                            <RowDefinition Height="0" />
+                                            <RowDefinition Height="{ThemeResource AppGridLength0}" />
                                             <RowDefinition
                                                 x:Name="PaneContentGridToggleButtonRow"
                                                 Height="Auto"
                                                 MinHeight="{StaticResource NavigationViewPaneHeaderRowMinHeight}" />
                                             <RowDefinition Height="Auto" />
                                             <RowDefinition Height="Auto" />
-                                            <RowDefinition Height="8" />
+                                            <RowDefinition Height="{ThemeResource AppGridLength8}" />
                                             <RowDefinition Height="*" />
                                             <RowDefinition Height="Auto" />
                                             <RowDefinition Height="Auto" />
-                                            <RowDefinition Height="8" />
+                                            <RowDefinition Height="{ThemeResource AppGridLength8}" />
                                         </Grid.RowDefinitions>
                                         <Grid x:Name="ContentPaneTopPadding" Height="{Binding TemplateSettings.TopPadding, RelativeSource={RelativeSource Mode=TemplatedParent}}" />
                                         <Grid Grid.Row="2">
@@ -340,7 +340,7 @@
                                             x:Name="AutoSuggestArea"
                                             Grid.Row="3"
                                             MinHeight="{ThemeResource NavigationViewAutoSuggestAreaHeight}"
-                                            Margin="0,0,0,8"
+                                            Margin="{ThemeResource AppMargin0_0_0_8}"
                                             VerticalAlignment="Center">
                                             <ContentControl
                                                 x:Name="PaneAutoSuggestBoxPresenter"
@@ -362,7 +362,7 @@
                                             IsTabStop="False" />
                                         <muxc:ItemsRepeaterScrollHost
                                             Grid.Row="6"
-                                            Margin="0,0,0,20"
+                                            Margin="{ThemeResource AppMargin0_0_0_20}"
                                             HorizontalAlignment="Stretch"
                                             VerticalAlignment="Top">
                                             <ScrollViewer TabNavigation="Once" VerticalScrollBarVisibility="Auto">
@@ -502,7 +502,7 @@
                                 <VisualState x:Name="TitleBarVisible" />
                                 <VisualState x:Name="TitleBarCollapsed">
                                     <VisualState.Setters>
-                                        <Setter Target="PaneContentGrid.Margin" Value="0,32,0,0" />
+                                        <Setter Target="PaneContentGrid.Margin" Value="{ThemeResource AppMargin0_32_0_0}" />
                                     </VisualState.Setters>
                                 </VisualState>
                             </VisualStateGroup>
@@ -518,7 +518,7 @@
                                 <VisualState x:Name="BackButtonVisible" />
                                 <VisualState x:Name="BackButtonCollapsed">
                                     <VisualState.Setters>
-                                        <Setter Target="BackButtonPlaceholderOnTopNav.Width" Value="0" />
+                                        <Setter Target="BackButtonPlaceholderOnTopNav.Width" Value="{ThemeResource AppGridLength0}" />
                                     </VisualState.Setters>
                                 </VisualState>
                             </VisualStateGroup>

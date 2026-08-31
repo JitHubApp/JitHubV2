@@ -7,6 +7,55 @@ public static class GitHubMarkdownImageUrlResolver
 {
     public static bool TryResolve(
         string source,
+        MarkdownRenderer.Images.MarkdownDocumentSource? documentSource,
+        out GitHubMarkdownImageReference reference)
+    {
+        reference = default;
+        source = source?.Trim() ?? string.Empty;
+        if (source.Length == 0)
+        {
+            return false;
+        }
+
+        if (Uri.TryCreate(source, UriKind.Absolute, out Uri? absoluteUri))
+        {
+            return TryParseRepositoryImageUri(absoluteUri, documentSource?.Path, out reference);
+        }
+
+        if (documentSource is null || !documentSource.HasRepositoryContext)
+        {
+            return false;
+        }
+
+        if (!TryGetRelativeSourcePath(source, out string relativeSourcePath))
+        {
+            return false;
+        }
+
+        string imagePath = relativeSourcePath.StartsWith("/", StringComparison.Ordinal)
+            ? NormalizeRepositoryPath(relativeSourcePath.TrimStart('/'))
+            : NormalizeRepositoryPath(JoinRepositoryPath(GetDirectoryName(documentSource.Path!), relativeSourcePath));
+        if (string.IsNullOrWhiteSpace(imagePath) || imagePath.StartsWith("../", StringComparison.Ordinal))
+        {
+            return false;
+        }
+
+        Uri sourceUri = CreateGitHubBlobUri(
+            documentSource.Owner!,
+            documentSource.Repository!,
+            documentSource.Ref!,
+            imagePath);
+        reference = new GitHubMarkdownImageReference(
+            documentSource.Owner!,
+            documentSource.Repository!,
+            documentSource.Ref!,
+            imagePath,
+            sourceUri);
+        return true;
+    }
+
+    public static bool TryResolve(
+        string source,
         Uri? baseUri,
         string? documentPath,
         out GitHubMarkdownImageReference reference)
@@ -28,9 +77,14 @@ public static class GitHubMarkdownImageUrlResolver
             return false;
         }
 
-        string imagePath = source.StartsWith("/", StringComparison.Ordinal)
-            ? NormalizeRepositoryPath(source.TrimStart('/'))
-            : NormalizeRepositoryPath(JoinRepositoryPath(GetDirectoryName(baseReference.Path), source));
+        if (!TryGetRelativeSourcePath(source, out string relativeSourcePath))
+        {
+            return false;
+        }
+
+        string imagePath = relativeSourcePath.StartsWith("/", StringComparison.Ordinal)
+            ? NormalizeRepositoryPath(relativeSourcePath.TrimStart('/'))
+            : NormalizeRepositoryPath(JoinRepositoryPath(GetDirectoryName(baseReference.Path), relativeSourcePath));
 
         if (string.IsNullOrWhiteSpace(imagePath) || imagePath.StartsWith("../", StringComparison.Ordinal))
         {
@@ -176,6 +230,39 @@ public static class GitHubMarkdownImageUrlResolver
         }
 
         return left.TrimEnd('/') + "/" + right;
+    }
+
+    private static bool TryGetRelativeSourcePath(string source, out string path)
+    {
+        path = string.Empty;
+        if (source.StartsWith("//", StringComparison.Ordinal))
+        {
+            return false;
+        }
+
+        int queryIndex = source.IndexOf('?');
+        int fragmentIndex = source.IndexOf('#');
+        int endIndex = queryIndex < 0
+            ? fragmentIndex
+            : fragmentIndex < 0
+                ? queryIndex
+                : Math.Min(queryIndex, fragmentIndex);
+        string encodedPath = (endIndex < 0 ? source : source[..endIndex]).Trim();
+        if (encodedPath.Length == 0)
+        {
+            return false;
+        }
+
+        try
+        {
+            path = Uri.UnescapeDataString(encodedPath);
+        }
+        catch (UriFormatException)
+        {
+            return false;
+        }
+
+        return path.Length > 0 && path.IndexOf('\0') < 0;
     }
 
     private static string GetDirectoryName(string path)

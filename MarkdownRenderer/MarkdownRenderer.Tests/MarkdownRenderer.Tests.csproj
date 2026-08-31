@@ -5,6 +5,7 @@
     <ImplicitUsings>enable</ImplicitUsings>
     <IsTestProject>true</IsTestProject>
     <IsPackable>false</IsPackable>
+    <TreatWarningsAsErrors>true</TreatWarningsAsErrors>
     <RootNamespace>MarkdownRenderer.Tests</RootNamespace>
     <Platforms>x64</Platforms>
     <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
@@ -31,10 +32,15 @@
     <Compile Include="..\MarkdownRenderer\Document\MarkdownSourceMap.cs" Link="Core\MarkdownSourceMap.cs" />
     <Compile Include="..\MarkdownRenderer\Parsing\MarkdigParser.cs" Link="Core\MarkdigParser.cs" />
     <Compile Include="..\MarkdownRenderer\Parsing\ForgivingDataUriFixer.cs" Link="Core\ForgivingDataUriFixer.cs" />
+    <Compile Include="..\MarkdownRenderer\Parsing\SafeHtmlParser.cs" Link="Core\SafeHtmlParser.cs" />
+    <Compile Include="..\MarkdownRenderer\Layout\SafeHtmlBlockScopeTracker.cs" Link="Core\SafeHtmlBlockScopeTracker.cs" />
     <Compile Include="..\MarkdownRenderer\Diagnostics\ShakeLogger.cs" Link="Core\ShakeLogger.cs" />
     <Compile Include="..\MarkdownRenderer\Diagnostics\MarkdownDiagnostics.cs" Link="Core\MarkdownDiagnostics.cs" />
     <Compile Include="..\MarkdownRenderer\Diagnostics\GraphicsDeviceErrors.cs" Link="Core\GraphicsDeviceErrors.cs" />
+    <Compile Include="..\MarkdownRenderer\Diagnostics\DrawCallbackCancellationGuard.cs" Link="Core\DrawCallbackCancellationGuard.cs" />
+    <Compile Include="..\MarkdownRenderer\Accessibility\AccessibilityGeometry.cs" Link="Core\AccessibilityGeometry.cs" />
     <Compile Include="..\MarkdownRenderer\Layout\Boxes\SvgIntrinsics.cs" Link="Core\SvgIntrinsics.cs" />
+    <Compile Include="..\MarkdownRenderer\Layout\Boxes\SvgResourceBudget.cs" Link="Core\SvgResourceBudget.cs" />
     <Compile Include="..\MarkdownRenderer\Layout\Boxes\SvgThemeInjector.cs" Link="Core\SvgThemeInjector.cs" />
     <Compile Include="..\MarkdownRenderer\Layout\Boxes\SvgTitleExtractor.cs" Link="Core\SvgTitleExtractor.cs" />
     <Compile Include="..\MarkdownRenderer\Layout\Boxes\ThorVgNative.cs" Link="Core\ThorVgNative.cs" />
@@ -55,6 +61,9 @@
     <Compile Include="..\MarkdownRenderer\CodeBlocks\ICodeBlockSyntaxHighlighter.cs" Link="Core\ICodeBlockSyntaxHighlighter.cs" />
     <Compile Include="..\MarkdownRenderer\Layout\CodeBlockMetadata.cs" Link="Core\CodeBlockMetadata.cs" />
     <Compile Include="..\MarkdownRenderer\Layout\FocusableItem.cs" Link="Core\FocusableItem.cs" />
+    <Compile Include="..\MarkdownRenderer\Images\IMarkdownImageResolver.cs" Link="Core\IMarkdownImageResolver.cs" />
+    <Compile Include="..\MarkdownRenderer\Images\MarkdownRemoteImageLoadingPolicy.cs" Link="Core\MarkdownRemoteImageLoadingPolicy.cs" />
+    <Compile Include="..\MarkdownRenderer\Images\MarkdownImageCacheIdentityPolicy.cs" Link="Core\MarkdownImageCacheIdentityPolicy.cs" />
     <Compile Include="..\MarkdownRenderer\Layout\FocusNavigationHelper.cs" Link="Core\FocusNavigationHelper.cs" />
     <Compile Include="..\MarkdownRenderer\Theming\MarkdownHighContrastDefaults.cs" Link="Core\MarkdownHighContrastDefaults.cs" />
     <Compile Include="..\MarkdownRenderer\Utilities\StringBuilderPool.cs" Link="Core\StringBuilderPool.cs" />

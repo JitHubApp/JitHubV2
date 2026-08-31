@@ -19,6 +19,8 @@ public sealed class MarkdownRendererControlBuilder
     private IMarkdownImageResolver? _imageResolver;
     private Uri? _imageBaseUri;
     private string? _imageDocumentPath;
+    private MarkdownDocumentSource? _imageDocumentSource;
+    private bool _allowThirdPartyRemoteImages;
     private bool _isSelectionEnabled = true;
     private bool _isCodeBlockCopyEnabled = true;
     private string? _codeBlockCopyButtonLabel;
@@ -101,6 +103,20 @@ public sealed class MarkdownRendererControlBuilder
         return this;
     }
 
+    /// <summary>Sets the stable identity and repository context of the source document.</summary>
+    public MarkdownRendererControlBuilder WithImageDocumentSource(MarkdownDocumentSource? documentSource)
+    {
+        _imageDocumentSource = documentSource;
+        return this;
+    }
+
+    /// <summary>Records explicit per-document consent for third-party image loading.</summary>
+    public MarkdownRendererControlBuilder WithThirdPartyRemoteImagesAllowed(bool allowed)
+    {
+        _allowThirdPartyRemoteImages = allowed;
+        return this;
+    }
+
     /// <summary>Sets whether text selection is enabled.</summary>
     /// <param name="isEnabled">True to allow text selection; false to disable selection gestures.</param>
     /// <returns>The current builder.</returns>
@@ -171,6 +187,8 @@ public sealed class MarkdownRendererControlBuilder
             ImageResolver = _imageResolver,
             ImageBaseUri = _imageBaseUri,
             ImageDocumentPath = _imageDocumentPath,
+            ImageDocumentSource = _imageDocumentSource,
+            AllowThirdPartyRemoteImages = _allowThirdPartyRemoteImages,
             IsSelectionEnabled = _isSelectionEnabled,
             IsCodeBlockCopyEnabled = _isCodeBlockCopyEnabled,
             CodeBlockCopyButtonLabel = _codeBlockCopyButtonLabel,

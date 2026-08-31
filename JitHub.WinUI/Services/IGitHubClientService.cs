@@ -8,7 +8,15 @@ namespace JitHub.Services;
 
 public interface IGitHubClientService
 {
-    Uri CreateLoginUri(string clientId, string? state = null, string? redirectUri = null);
+    Uri CreateLoginUri(
+        string clientId,
+        string? state = null,
+        string? redirectUri = null,
+        IReadOnlyCollection<string>? additionalScopes = null);
+
+    Task<IReadOnlySet<string>> GetTokenScopesAsync(
+        string token,
+        CancellationToken cancellationToken = default);
 
     Task<GitHubUser> GetCurrentUserAsync(string token, CancellationToken cancellationToken = default);
 
@@ -246,6 +254,46 @@ public interface IGitHubClientService
         string body,
         CancellationToken cancellationToken = default);
 
+    Task<GitHubIssueComment> UpdateIssueCommentAsync(
+        string token,
+        string owner,
+        string name,
+        long commentId,
+        string body,
+        CancellationToken cancellationToken = default);
+
+    Task DeleteIssueCommentAsync(
+        string token,
+        string owner,
+        string name,
+        long commentId,
+        CancellationToken cancellationToken = default);
+
+    Task<GitHubIssueComment> PinIssueCommentAsync(
+        string token,
+        string owner,
+        string name,
+        long commentId,
+        CancellationToken cancellationToken = default);
+
+    Task UnpinIssueCommentAsync(
+        string token,
+        string owner,
+        string name,
+        long commentId,
+        CancellationToken cancellationToken = default);
+
+    Task MinimizeCommentAsync(
+        string token,
+        string nodeId,
+        string classifier,
+        CancellationToken cancellationToken = default);
+
+    Task UnminimizeCommentAsync(
+        string token,
+        string nodeId,
+        CancellationToken cancellationToken = default);
+
     Task<IReadOnlyList<GitHubReaction>> GetIssueReactionsAsync(
         string token,
         string owner,
@@ -348,6 +396,29 @@ public interface IGitHubClientService
         string body,
         CancellationToken cancellationToken = default);
 
+    Task<GitHubPullRequestReviewComment> UpdatePullRequestReviewCommentAsync(
+        string token,
+        string owner,
+        string name,
+        long commentId,
+        string body,
+        CancellationToken cancellationToken = default);
+
+    Task DeletePullRequestReviewCommentAsync(
+        string token,
+        string owner,
+        string name,
+        long commentId,
+        CancellationToken cancellationToken = default);
+
+    Task<GitHubPullRequestReview> CreatePullRequestReviewAsync(
+        string token,
+        string owner,
+        string name,
+        int pullRequestNumber,
+        PullRequestReviewSubmission submission,
+        CancellationToken cancellationToken = default);
+
     Task<GitHubPullRequest> CreatePullRequestAsync(
         string token,
         string owner,
@@ -442,6 +513,16 @@ public interface IGitHubClientService
         string gitRef,
         int pageSize = 100,
         int pageNumber = 1,
+        CancellationToken cancellationToken = default);
+
+    Task<GitHubCommitComment> CreateCommitCommentAsync(
+        string token,
+        string owner,
+        string name,
+        string gitRef,
+        string body,
+        string? path = null,
+        int? position = null,
         CancellationToken cancellationToken = default);
 
     Task<GitHubRepositoryContent> GetRepositoryContentAsync(

@@ -34,7 +34,7 @@ namespace JitHub.WinUI.Converters
 
         public object ConvertBack(object value, Type targetType, object parameter, string language)
         {
-            throw new NotImplementedException();
+            return Microsoft.UI.Xaml.DependencyProperty.UnsetValue;
         }
     }
 }

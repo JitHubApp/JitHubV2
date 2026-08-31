@@ -1,5 +1,6 @@
 using Microsoft.UI.Xaml.Automation.Peers;
 using Microsoft.UI.Xaml.Automation.Provider;
+using Microsoft.UI.Xaml.Automation;
 using MarkdownRenderer.Controls;
 using MarkdownRenderer.Layout;
 
@@ -13,7 +14,7 @@ namespace MarkdownRenderer.Accessibility;
 /// but reporting the parent block is strictly better than reporting the
 /// whole renderer for spatial navigation).
 /// </summary>
-internal sealed partial class MarkdownLinkPeer : FrameworkElementAutomationPeer, IInvokeProvider
+internal sealed partial class MarkdownLinkPeer : FrameworkElementAutomationPeer, IInvokeProvider, IExpandCollapseProvider
 {
     private readonly MarkdownRendererControl _owner;
     private readonly MarkdownBlockPeer _parent;
@@ -28,10 +29,11 @@ internal sealed partial class MarkdownLinkPeer : FrameworkElementAutomationPeer,
 
     internal LinkRun Run => _run;
 
-    protected override string GetClassNameCore() => "MarkdownLink";
-    protected override AutomationControlType GetAutomationControlTypeCore() => AutomationControlType.Hyperlink;
-    protected override string GetNameCore() => _run.Text;
-    protected override string GetHelpTextCore() => _run.Url;
+    protected override string GetClassNameCore() => _run.IsDisclosure ? "MarkdownDisclosure" : "MarkdownLink";
+    protected override AutomationControlType GetAutomationControlTypeCore() =>
+        _run.IsDisclosure ? AutomationControlType.Button : AutomationControlType.Hyperlink;
+    protected override string GetNameCore() => _run.AccessibleText;
+    protected override string GetHelpTextCore() => _run.IsDisclosure ? string.Empty : _run.Url;
     protected override bool IsKeyboardFocusableCore() => true;
     protected override bool HasKeyboardFocusCore() => _owner.IsKeyboardFocusOnLink(_run);
 
@@ -42,7 +44,11 @@ internal sealed partial class MarkdownLinkPeer : FrameworkElementAutomationPeer,
 
     protected override object GetPatternCore(PatternInterface patternIinterface)
     {
-        if (patternIinterface == PatternInterface.Invoke) return this;
+        if (patternIinterface == PatternInterface.Invoke ||
+            (patternIinterface == PatternInterface.ExpandCollapse && _run.IsDisclosure))
+        {
+            return this;
+        }
         return base.GetPatternCore(patternIinterface);
     }
 
@@ -52,6 +58,14 @@ internal sealed partial class MarkdownLinkPeer : FrameworkElementAutomationPeer,
         // subscribers and keyboard / assistive-tech activation behave the same.
         _owner.RaiseLinkClickFromAutomation(_run);
     }
+
+    public ExpandCollapseState ExpandCollapseState => _run.IsExpanded
+        ? ExpandCollapseState.Expanded
+        : ExpandCollapseState.Collapsed;
+
+    public void Expand() => _owner.SetDisclosureExpanded(_run, expanded: true);
+
+    public void Collapse() => _owner.SetDisclosureExpanded(_run, expanded: false);
 
     protected override Windows.Foundation.Rect GetBoundingRectangleCore()
     {
@@ -70,6 +84,9 @@ internal sealed partial class MarkdownLinkPeer : FrameworkElementAutomationPeer,
             docRect.Width * scale,
             docRect.Height * scale);
     }
+
+    protected override bool IsOffscreenCore() =>
+        _parent.IsOffscreenForChild(GetBoundingRectangleCore());
 
     internal void RaiseAutomationFocusChanged()
     {

@@ -1,5 +1,7 @@
 using System;
 using System.Text.Json.Serialization;
+using JitHub.Services.Markdown;
+using MarkdownRenderer.Images;
 
 namespace JitHub.Models.GitHub;
 
@@ -36,8 +38,22 @@ public sealed partial class GitHubPullRequestReview
     [JsonPropertyName("author_association")]
     public string? AuthorAssociation { get; set; }
 
+    [JsonPropertyName("minimized")]
+    public GitHubIssueCommentMinimization? Minimized { get; set; }
+
+    [JsonIgnore]
+    public bool IsMinimized => Minimized is not null;
+
     [JsonPropertyName("reactions")]
     public GitHubReactionSummary Reactions { get; set; } = new();
+
+    [JsonIgnore]
+    public MarkdownDocumentSource? MarkdownSource =>
+        MarkdownDocumentSourceFactory.TryCreateFromGitHubUrl(
+            "pull-request-review",
+            Id > 0 ? Id.ToString() : NodeId ?? HtmlUrl,
+            HtmlUrl,
+            CommitId);
 }
 
 [WinRT.GeneratedBindableCustomProperty]
@@ -99,4 +115,18 @@ public sealed partial class GitHubPullRequestReviewComment
 
     [JsonPropertyName("author_association")]
     public string? AuthorAssociation { get; set; }
+
+    [JsonPropertyName("minimized")]
+    public GitHubIssueCommentMinimization? Minimized { get; set; }
+
+    [JsonIgnore]
+    public bool IsMinimized => Minimized is not null;
+
+    [JsonIgnore]
+    public MarkdownDocumentSource? MarkdownSource =>
+        MarkdownDocumentSourceFactory.TryCreateFromGitHubUrl(
+            "pull-request-review-comment",
+            Id > 0 ? Id.ToString() : NodeId ?? HtmlUrl,
+            HtmlUrl,
+            CommitId ?? OriginalCommitId);
 }

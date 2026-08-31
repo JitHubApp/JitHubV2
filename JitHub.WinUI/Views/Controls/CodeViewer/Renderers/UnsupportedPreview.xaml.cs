@@ -1,9 +1,12 @@
 using System;
+using System.Globalization;
 using JitHub.Models.CodeViewer;
+using JitHub.Services;
+using JitHub.Services.Markdown;
+using JitHub.WinUI.Helpers;
 using JitHub.WinUI.ViewModels.CodeViewer;
 using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Controls;
-using Windows.ApplicationModel.DataTransfer;
 
 namespace JitHub.WinUI.Views.Controls.CodeViewer.Renderers;
 
@@ -13,6 +16,8 @@ namespace JitHub.WinUI.Views.Controls.CodeViewer.Renderers;
 /// </summary>
 public sealed partial class UnsupportedPreview : UserControl
 {
+    public event Action<string, string>? ActionCompleted;
+
     public UnsupportedPreview()
     {
         InitializeComponent();
@@ -28,8 +33,12 @@ public sealed partial class UnsupportedPreview : UserControl
 
         BodyText.Text = vm.Kind switch
         {
-            RepoFilePreviewKind.TooLarge => "This file is too large to preview here.",
-            _ => "We don't support previewing this file type yet.",
+            RepoFilePreviewKind.TooLarge => LocalizedResourceText.GetString(
+                "RepoCode.Unsupported.TooLarge",
+                "This file is too large to preview here."),
+            _ => LocalizedResourceText.GetString(
+                "RepoCode.Unsupported.FileType",
+                "We don't support previewing this file type yet."),
         };
 
         var ext = string.Empty;
@@ -42,28 +51,45 @@ public sealed partial class UnsupportedPreview : UserControl
         MetaText.Text = $"{FormatBytes(vm.ByteSize)}{(ext.Length > 0 ? $"  ·  .{ext}" : string.Empty)}";
     }
 
-    private async void OpenOnGitHub_Click(object sender, RoutedEventArgs e)
+    private void OpenOnGitHub_Click(object sender, RoutedEventArgs e)
     {
-        var url = ViewModel?.GitHubBlobUrl;
-        if (!string.IsNullOrEmpty(url))
-            await Windows.System.Launcher.LaunchUriAsync(new Uri(url));
+        UiTaskGuard.Run(async () =>
+        {
+            string? url = ViewModel?.GitHubBlobUrl;
+            if (!Uri.TryCreate(url, UriKind.Absolute, out Uri? uri) || !MarkdownLinkNavigationPolicy.IsAllowedLaunchUri(uri))
+            {
+                CompleteAction(JitHub.Services.CodeViewer.RepoCodeTelemetryActions.ExternalOpen, succeeded: false);
+                return;
+            }
+
+            try
+            {
+                CompleteAction(JitHub.Services.CodeViewer.RepoCodeTelemetryActions.ExternalOpen, await Windows.System.Launcher.LaunchUriAsync(uri));
+            }
+            catch (Exception)
+            {
+                CompleteAction(JitHub.Services.CodeViewer.RepoCodeTelemetryActions.ExternalOpen, succeeded: false);
+            }
+        }, "ui-unsupported-preview");
     }
 
     private void CopyUrl_Click(object sender, RoutedEventArgs e)
     {
-        var url = ViewModel?.GitHubBlobUrl;
-        if (!string.IsNullOrEmpty(url))
-        {
-            var package = new DataPackage();
-            package.SetText(url);
-            Clipboard.SetContent(package);
-        }
+        string? url = ViewModel?.GitHubRawUrl;
+        CompleteAction(
+            JitHub.Services.CodeViewer.RepoCodeTelemetryActions.CopyRaw,
+            PlatformHelper.CopyString(url));
     }
+
+    private void CompleteAction(string action, bool succeeded) =>
+        ActionCompleted?.Invoke(
+            action,
+            succeeded ? TelemetryTaxonomy.Results.Success : TelemetryTaxonomy.Results.Error);
 
     private static string FormatBytes(long bytes)
     {
-        if (bytes < 1024) return $"{bytes} B";
-        if (bytes < 1024 * 1024) return $"{bytes / 1024.0:F1} KB";
-        return $"{bytes / (1024.0 * 1024):F1} MB";
+        if (bytes < 1024) return string.Format(CultureInfo.CurrentCulture, "{0:N0} B", bytes);
+        if (bytes < 1024 * 1024) return string.Format(CultureInfo.CurrentCulture, "{0:N1} KB", bytes / 1024.0);
+        return string.Format(CultureInfo.CurrentCulture, "{0:N1} MB", bytes / (1024.0 * 1024));
     }
 }

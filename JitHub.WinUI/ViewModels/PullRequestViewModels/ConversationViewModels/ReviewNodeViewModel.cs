@@ -1,17 +1,17 @@
 using JitHub.Models.PRConversation;
 using JitHub.WinUI.ViewModels.Base;
-using CommunityToolkit.Mvvm.Input;
 using JitHub.Models.LegacyGitHub;
 using System;
 using System.Collections.Generic;
 using System.Collections.ObjectModel;
+using JitHub.Services;
 
 namespace JitHub.WinUI.ViewModels.PullRequestViewModels.ConversationViewModels
 {
-    public class ReviewNodeViewModel : RepoViewModel
+public partial class ReviewNodeViewModel : RepoViewModel
     {
         private ObservableCollection<ReviewCommentViewModel> _blocks = [];
-        private User _reviewer = null!;
+        private User? _reviewer;
         private PullRequestReviewState _state;
         private DateTimeOffset _submittedAt;
         private ReviewNode _review = null!;
@@ -22,11 +22,40 @@ namespace JitHub.WinUI.ViewModels.PullRequestViewModels.ConversationViewModels
             set => SetProperty(ref _blocks, value);
         }
 
-        public User Reviewer
+        public User? Reviewer
         {
             get => _reviewer;
-            set => SetProperty(ref _reviewer, value);
+            set
+            {
+                if (!SetProperty(ref _reviewer, value))
+                    return;
+
+                OnPropertyChanged(nameof(ReviewerDisplayName));
+                OnPropertyChanged(nameof(AuthenticatedReviewerLogin));
+            }
         }
+
+        public string ReviewerDisplayName => UserIdentityNavigationPolicy.CreatePresentation(
+            Reviewer?.Login,
+            Reviewer?.Name,
+            "unknown").DisplayName;
+
+        public string? AuthenticatedReviewerLogin =>
+            UserIdentityNavigationPolicy.GetRoutableLogin(Reviewer?.Login);
+
+        public string ReviewerAvatarUrl => Reviewer?.AvatarUrl ?? string.Empty;
+
+        public string ReviewerAutomationId => _review is null
+            ? "PullRequestReview_unknown"
+            : PullRequestReviewAutomationIdentity.CreateScope(
+                "PullRequestReview",
+                _review.Id,
+                _review.NodeId,
+                reviewId: null,
+                position: null,
+                originalPosition: null,
+                createdAt: _review.SubmittedAt,
+                deterministicContext: $"pr:{_review.Number}:review:{_review.AutomationOrdinal}");
 
         public PullRequestReviewState State
         {
@@ -60,12 +89,14 @@ namespace JitHub.WinUI.ViewModels.PullRequestViewModels.ConversationViewModels
                 }
             }
             Blocks = new ObservableCollection<ReviewCommentViewModel>();
+            int threadOrdinal = 0;
             foreach (var comment in dict.Values)
             {
                 Blocks.Add(new ReviewCommentViewModel(
                     Repo,
                     comment,
-                    review.ScrollToElementCommand ?? new RelayCommand<Microsoft.UI.Xaml.UIElement?>(_ => { })));
+                    $"pr:{review.Number}:review:{review.AutomationOrdinal}:thread:{threadOrdinal}"));
+                threadOrdinal++;
             }
         }
     }

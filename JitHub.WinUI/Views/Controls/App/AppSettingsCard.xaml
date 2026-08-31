@@ -7,14 +7,14 @@
     xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
     mc:Ignorable="d">
     <Border
-        Background="{ThemeResource AppSurfaceBrush}"
+        Background="{ThemeResource AppCardBrush}"
         BorderBrush="{ThemeResource AppOutlineBrush}"
-        BorderThickness="1"
+        BorderThickness="{ThemeResource AppHairlineBorderThickness}"
         CornerRadius="{ThemeResource AppRadiusLarge}"
-        Padding="16">
+        Padding="{ThemeResource AppPadding16}">
         <Grid
-            ColumnSpacing="16"
-            RowSpacing="12">
+            ColumnSpacing="{ThemeResource AppGap16}"
+            RowSpacing="{ThemeResource AppGap12}">
             <Grid.ColumnDefinitions>
                 <ColumnDefinition Width="Auto" />
                 <ColumnDefinition Width="*" />
@@ -26,11 +26,14 @@
             <ContentPresenter
                 Grid.Column="0"
                 Grid.RowSpan="2"
+                Width="{StaticResource AppSpace7}"
+                Height="{StaticResource AppSpace7}"
+                HorizontalAlignment="Center"
                 VerticalAlignment="Top"
                 Content="{Binding HeaderIcon, ElementName=Root}" />
             <StackPanel
                 Grid.Column="1"
-                Spacing="4">
+                Spacing="{ThemeResource AppGap4}">
                 <TextBlock Style="{StaticResource ListItemTitleTextBlockStyle}" Text="{Binding Header, ElementName=Root}" />
                 <TextBlock Style="{StaticResource SectionSecondaryTextBlockStyle}" Text="{Binding Description, ElementName=Root}" />
             </StackPanel>

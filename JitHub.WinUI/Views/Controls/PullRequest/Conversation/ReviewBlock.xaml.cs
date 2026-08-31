@@ -16,10 +16,21 @@ namespace JitHub.WinUI.Views.Controls.PullRequest.Conversation
 
         private static void OnViewModelChange(DependencyObject d, DependencyPropertyChangedEventArgs e)
         {
-            if (d is ReviewBlock self && e.NewValue != null)
+            if (d is not ReviewBlock self)
+                return;
+
+            if (e.NewValue is ReviewNodeViewModel viewModel)
             {
-                self.DataContext = self.ViewModel;
+                self.DataContext = viewModel;
                 self.Bindings.Update();
+                self.ReviewerAvatar.Login = viewModel.AuthenticatedReviewerLogin;
+                self.ReviewerAvatar.AutomationInstanceId = viewModel.ReviewerAutomationId;
+            }
+            else
+            {
+                self.DataContext = null;
+                self.ReviewerAvatar.Login = null;
+                self.ReviewerAvatar.AutomationInstanceId = "PullRequestReview_unknown";
             }
         }
 

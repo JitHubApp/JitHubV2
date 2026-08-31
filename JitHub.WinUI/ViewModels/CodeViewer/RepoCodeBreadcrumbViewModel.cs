@@ -2,7 +2,10 @@ using System;
 using System.Collections.ObjectModel;
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
-using Windows.ApplicationModel.DataTransfer;
+using JitHub.Services.CodeViewer;
+using JitHub.Services;
+using JitHub.Services.Markdown;
+using JitHub.WinUI.Helpers;
 using Windows.System;
 
 namespace JitHub.WinUI.ViewModels.CodeViewer;
@@ -23,20 +26,32 @@ public sealed partial class RepoCodeBreadcrumbViewModel : ObservableObject
     [ObservableProperty]
     public partial bool IsCopyRawUrlDone { get; set; }
 
+    [ObservableProperty]
+    public partial string CurrentFileName { get; set; } = string.Empty;
+
+    [ObservableProperty]
+    public partial string CurrentPath { get; set; } = string.Empty;
+
+    [ObservableProperty]
+    public partial bool IsPathTransitioning { get; set; }
+
     /// <summary>
     /// Optional callback invoked when the user taps a breadcrumb segment.
     /// The page VM wires this to expand the tree to that folder.
     /// </summary>
-    public Action<BreadcrumbSegment>? OnNavigate { get; set; }
+    public Func<BreadcrumbSegment, System.Threading.CancellationToken, System.Threading.Tasks.Task>? OnNavigate { get; set; }
+
+    public Action<string, string>? OnActionCompleted { get; set; }
 
     [RelayCommand]
-    private async System.Threading.Tasks.Task NavigateToSegmentAsync(BreadcrumbSegment? segment)
+    private async System.Threading.Tasks.Task NavigateToSegmentAsync(
+        BreadcrumbSegment? segment,
+        System.Threading.CancellationToken ct)
     {
-        if (segment is not null)
+        if (segment is not null && OnNavigate is not null)
         {
-            OnNavigate?.Invoke(segment);
+            await OnNavigate(segment, ct);
         }
-        await System.Threading.Tasks.Task.CompletedTask;
     }
 
     [RelayCommand]
@@ -45,9 +60,9 @@ public sealed partial class RepoCodeBreadcrumbViewModel : ObservableObject
         string? path = GetCurrentFilePath();
         if (path is null) return;
 
-        var dp = new DataPackage();
-        dp.SetText(path);
-        Clipboard.SetContent(dp);
+        bool succeeded = PlatformHelper.CopyString(path);
+        CompleteAction(RepoCodeTelemetryActions.CopyPath, succeeded);
+        if (!succeeded) return;
 
         IsCopyPathDone = true;
         try { await System.Threading.Tasks.Task.Delay(1500, ct); } catch (OperationCanceledException) { }
@@ -59,9 +74,9 @@ public sealed partial class RepoCodeBreadcrumbViewModel : ObservableObject
     {
         if (CurrentRawUrl is null) return;
 
-        var dp = new DataPackage();
-        dp.SetText(CurrentRawUrl);
-        Clipboard.SetContent(dp);
+        bool succeeded = PlatformHelper.CopyString(CurrentRawUrl);
+        CompleteAction(RepoCodeTelemetryActions.CopyRaw, succeeded);
+        if (!succeeded) return;
 
         IsCopyRawUrlDone = true;
         try { await System.Threading.Tasks.Task.Delay(1500, ct); } catch (OperationCanceledException) { }
@@ -71,10 +86,39 @@ public sealed partial class RepoCodeBreadcrumbViewModel : ObservableObject
     [RelayCommand]
     private async System.Threading.Tasks.Task OpenOnGitHubAsync()
     {
-        if (CurrentGitHubUrl is not null && Uri.TryCreate(CurrentGitHubUrl, UriKind.Absolute, out Uri? uri))
+        if (CurrentGitHubUrl is null ||
+            !Uri.TryCreate(CurrentGitHubUrl, UriKind.Absolute, out Uri? uri) ||
+            !MarkdownLinkNavigationPolicy.IsAllowedLaunchUri(uri))
         {
-            await Launcher.LaunchUriAsync(uri);
+            CompleteAction(RepoCodeTelemetryActions.ExternalOpen, succeeded: false);
+            return;
         }
+
+        try
+        {
+            CompleteAction(
+                RepoCodeTelemetryActions.ExternalOpen,
+                await Launcher.LaunchUriAsync(uri));
+        }
+        catch (Exception)
+        {
+            CompleteAction(RepoCodeTelemetryActions.ExternalOpen, succeeded: false);
+        }
+    }
+
+    private void CompleteAction(string action, bool succeeded) =>
+        OnActionCompleted?.Invoke(
+            action,
+            succeeded ? TelemetryTaxonomy.Results.Success : TelemetryTaxonomy.Results.Error);
+
+    /// <summary>
+    /// Presents the selected path without rebuilding the interactive segments.
+    /// </summary>
+    internal void PrimePath(string repoName, string filePath)
+    {
+        CurrentPath = filePath;
+        CurrentFileName = GetFileName(repoName, filePath);
+        IsPathTransitioning = true;
     }
 
     /// <summary>
@@ -86,24 +130,31 @@ public sealed partial class RepoCodeBreadcrumbViewModel : ObservableObject
         Segments.Clear();
         Segments.Add(new BreadcrumbSegment(repoName, string.Empty, IsRoot: true));
 
-        if (string.IsNullOrEmpty(filePath)) return;
+        CurrentPath = filePath;
+        CurrentFileName = GetFileName(repoName, filePath);
 
-        string[] parts = filePath.Split('/');
+        if (string.IsNullOrEmpty(filePath))
+        {
+            IsPathTransitioning = false;
+            return;
+        }
+
+        string[] parts = filePath.Split('/', StringSplitOptions.RemoveEmptyEntries);
         string accumulated = string.Empty;
         foreach (string part in parts)
         {
             accumulated = accumulated.Length == 0 ? part : accumulated + "/" + part;
             Segments.Add(new BreadcrumbSegment(part, accumulated, IsRoot: false));
         }
+
+        IsPathTransitioning = false;
     }
 
-    private string? GetCurrentFilePath()
-    {
-        // The last non-root segment is the current file/folder path.
-        for (int i = Segments.Count - 1; i >= 0; i--)
-        {
-            if (!Segments[i].IsRoot) return Segments[i].Path;
-        }
-        return null;
-    }
+    private string? GetCurrentFilePath() =>
+        string.IsNullOrEmpty(CurrentPath) ? null : CurrentPath;
+
+    private static string GetFileName(string repoName, string filePath) =>
+        string.IsNullOrEmpty(filePath)
+            ? repoName
+            : filePath.Split('/', StringSplitOptions.RemoveEmptyEntries)[^1];
 }

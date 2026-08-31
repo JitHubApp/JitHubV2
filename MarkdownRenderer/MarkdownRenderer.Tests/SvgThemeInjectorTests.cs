@@ -78,7 +78,7 @@ public class SvgThemeInjectorTests
         // commented one — the comment text should be untouched.
         Assert.Contains("<!-- example: <svg fake='x'/> -->", s);
         // Exactly one occurrence of the color attribute we added.
-        Assert.Equal(1, System.Text.RegularExpressions.Regex.Matches(s, "color=\"#112233\"").Count);
+        Assert.Single(System.Text.RegularExpressions.Regex.Matches(s, "color=\"#112233\"").Cast<System.Text.RegularExpressions.Match>());
     }
 
     [Fact]
@@ -105,14 +105,14 @@ public class SvgThemeInjectorTests
     }
 
     [Fact]
-    public void Inject_HandlesSelfClosingRoot_NoHang()
+    public async System.Threading.Tasks.Task Inject_HandlesSelfClosingRoot_NoHang()
     {
         // Regression: HasColorAttribute used to infinite-loop on the
         // trailing '/' of a self-closing root <svg/> with no color attr.
         var bytes = Encoding.UTF8.GetBytes("<svg width=\"24\" height=\"24\"/>");
         var task = System.Threading.Tasks.Task.Run(() => SvgThemeInjector.Inject(bytes, 0xAA, 0xBB, 0xCC));
-        Assert.True(task.Wait(System.TimeSpan.FromSeconds(2)), "Inject hung on self-closing root <svg/>");
-        var s = Encoding.UTF8.GetString(task.Result);
+        byte[] result = await task.WaitAsync(System.TimeSpan.FromSeconds(2));
+        var s = Encoding.UTF8.GetString(result);
         Assert.Contains("color=\"#AABBCC\"", s);
     }
 }

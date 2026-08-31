@@ -46,7 +46,7 @@ Build Debug, apply package identity, and launch JitHub:
 .\eng\Start-JitHubWinUIDebug.ps1
 ```
 
-This command uses the documented .NET debug-identity flow: `dotnet build`, then `winapp create-debug-identity`, then direct executable launch. It keeps the normal Debug output shape while giving the app package identity for APIs and protocol registrations that need it.
+This command uses the documented .NET debug-identity flow: `dotnet build`, guarded cleanup of stale development registrations, `winapp create-debug-identity`, then direct executable launch. Debug builds use the dedicated `JitHub.WinUI.Debug` package identity and `jithub-dev://` OAuth callback. Store and Release builds retain `54742Neromarah.JitHub` and are the only builds that register `jithub://`.
 
 Useful variants:
 
@@ -54,10 +54,17 @@ Useful variants:
 .\eng\Start-JitHubWinUIDebug.ps1 -Platform ARM64
 .\eng\Start-JitHubWinUIDebug.ps1 -NoLaunch
 .\eng\Start-JitHubWinUIDebug.ps1 -SkipBuild
+.\eng\Start-JitHubWinUIDebug.ps1 -SkipIdentityCleanup
 .\eng\Start-JitHubWinUIDebug.ps1 -AppArguments '--page=design-lab', '--theme=dark'
 ```
 
-By default the script lets `winapp create-debug-identity` append its debug suffix so local Debug builds do not collide with an installed Store build. Use `-KeepIdentity` only when intentionally testing the exact manifest identity.
+To remove stale Debug registrations without building or launching the app, run:
+
+```powershell
+.\eng\Reset-JitHubWinUIDebugIdentity.ps1
+```
+
+The cleanup script removes development-mode JitHub packages only. It never removes a normally installed Store package.
 
 Build, launch, wait for the app, and capture a screenshot:
 
@@ -69,12 +76,6 @@ If you only want to verify command availability without launching the app:
 
 ```powershell
 .\eng\Invoke-WinAppCliSmoke.ps1 -SkipBuild -SkipLaunch
-```
-
-The smoke script assumes editor assets already exist under `artifacts/EditorAssets/dist`. If they do not, run:
-
-```powershell
-.\sync-vscode-assets.ps1
 ```
 
 Policy:

@@ -2,6 +2,8 @@ using System;
 using JitHub.Models;
 using JitHub.Models.Base;
 using JitHub.Models.LegacyGitHub;
+using JitHub.Services.Accessibility;
+using JitHub.WinUI.Helpers;
 using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Controls;
 using Microsoft.UI.Xaml.Media;
@@ -13,16 +15,15 @@ namespace JitHub.WinUI.Views.Controls.Common
 {
     public sealed partial class RepoLabel : UserControl
     {
-        private static readonly Brush TransparentBrush = new SolidColorBrush(Microsoft.UI.Colors.Transparent);
-        private static readonly Brush BlackBrush = new SolidColorBrush(Microsoft.UI.Colors.Black);
-        private static readonly Brush WhiteBrush = new SolidColorBrush(Microsoft.UI.Colors.White);
+        private AppThemeSettingsMonitor? _themeSettings;
+        private bool _isHighContrastSubscribed;
 
         public static DependencyProperty LabelProperty = DependencyProperty.Register(
             nameof(Label),
             typeof(object),
             typeof(RepoLabel),
             new PropertyMetadata(default(object), OnLabelChanged));
-        
+
         public object? Label
         {
             get => GetValue(LabelProperty);
@@ -32,6 +33,8 @@ namespace JitHub.WinUI.Views.Controls.Common
         public RepoLabel()
         {
             this.InitializeComponent();
+            Loaded += RepoLabel_Loaded;
+            Unloaded += RepoLabel_Unloaded;
         }
 
         private static void OnLabelChanged(DependencyObject d, DependencyPropertyChangedEventArgs e)
@@ -49,24 +52,85 @@ namespace JitHub.WinUI.Views.Controls.Common
             => ResolveLabel(label)?.Description ?? string.Empty;
 
         public Brush GetBackgroundBrush(object? label)
-            => TryParseColor(ResolveLabel(label)?.Color, out var color)
+        {
+            if (IsHighContrastActive())
+            {
+                return GetThemeBrush(HighContrastVisualPolicy.AccentBrushKey);
+            }
+
+            return TryParseColor(ResolveLabel(label)?.Color, out var color)
                 ? new SolidColorBrush(color)
-                : TransparentBrush;
+                : new SolidColorBrush(Microsoft.UI.Colors.Transparent);
+        }
 
         public Brush GetForegroundBrush(object? label)
         {
-            if (!TryParseColor(ResolveLabel(label)?.Color, out var color))
+            bool hasColor = TryParseColor(ResolveLabel(label)?.Color, out var color);
+            double perceivedBrightness = hasColor
+                ? Math.Sqrt(
+                    color.R * color.R * .299 +
+                    color.G * color.G * .587 +
+                    color.B * color.B * .114)
+                : double.MaxValue;
+            RepositoryLabelBrushPolicy policy = HighContrastVisualPolicy.GetRepositoryLabelPolicy(
+                IsHighContrastActive(),
+                hasColor,
+                useDarkText: perceivedBrightness > 130);
+            return GetThemeBrush(policy.ForegroundResourceKey);
+        }
+
+        private void RepoLabel_Loaded(object sender, RoutedEventArgs e)
+        {
+            _themeSettings ??= ThemeSettingsHelper.TryGetFor(this);
+            if (_themeSettings is not null && !_isHighContrastSubscribed)
             {
-                return BlackBrush;
+                try
+                {
+                    _themeSettings.Changed += ThemeSettings_Changed;
+                    _isHighContrastSubscribed = true;
+                }
+                catch (Exception)
+                {
+                    _isHighContrastSubscribed = false;
+                }
             }
 
-            var perceivedBrightness = Math.Sqrt(
-                color.R * color.R * .299 +
-                color.G * color.G * .587 +
-                color.B * color.B * .114);
-
-            return perceivedBrightness > 130 ? BlackBrush : WhiteBrush;
+            Bindings.Update();
         }
+
+        private void RepoLabel_Unloaded(object sender, RoutedEventArgs e)
+        {
+            if (_themeSettings is null || !_isHighContrastSubscribed)
+            {
+                _themeSettings = null;
+                return;
+            }
+
+            try
+            {
+                _themeSettings.Changed -= ThemeSettings_Changed;
+            }
+            catch (Exception)
+            {
+                // The system projection can already be unavailable during app shutdown.
+            }
+            finally
+            {
+                _isHighContrastSubscribed = false;
+                _themeSettings = null;
+            }
+        }
+
+        private void ThemeSettings_Changed(object? sender, EventArgs args) =>
+            DispatcherQueue.TryEnqueue(Bindings.Update);
+
+        private bool IsHighContrastActive() =>
+            ThemeSettingsHelper.IsHighContrastActive(_themeSettings);
+
+        private static Brush GetThemeBrush(string resourceKey) =>
+            Application.Current.Resources.TryGetValue(resourceKey, out object? resource) && resource is Brush brush
+                ? brush
+                : throw new InvalidOperationException($"Required theme brush '{resourceKey}' is unavailable.");
 
         private static Label? ResolveLabel(object? value)
             => value switch

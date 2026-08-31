@@ -8,7 +8,7 @@ using System.Windows.Input;
 
 namespace JitHub.WinUI.ViewModels.IssueViewModels
 {
-    public class ReactionBlockViewModel : RepoViewModel
+public partial class ReactionBlockViewModel : RepoViewModel
     {
         private MenuItem _copyLinkMenuItem = null!;
         private MenuItem _quoteReplyMenuItem = null!;

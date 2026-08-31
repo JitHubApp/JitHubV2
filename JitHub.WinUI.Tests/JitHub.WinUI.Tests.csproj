@@ -2,38 +2,169 @@
   <PropertyGroup>
     <TargetFramework>net10.0-windows10.0.19041.0</TargetFramework>
     <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
     <IsPackable>false</IsPackable>
     <IsTestProject>true</IsTestProject>
     <Platform Condition="'$(Platform)' == ''">x64</Platform>
     <Platforms>x86;x64;ARM64</Platforms>
+    <RuntimeIdentifiers>win-x86;win-x64;win-arm64</RuntimeIdentifiers>
     <RuntimeIdentifier Condition="'$(RuntimeIdentifier)' == '' and '$(Platform)' == 'x86'">win-x86</RuntimeIdentifier>
     <RuntimeIdentifier Condition="'$(RuntimeIdentifier)' == '' and '$(Platform)' == 'x64'">win-x64</RuntimeIdentifier>
     <RuntimeIdentifier Condition="'$(RuntimeIdentifier)' == '' and '$(Platform)' == 'ARM64'">win-arm64</RuntimeIdentifier>
+    <JsonSerializerIsReflectionEnabledByDefault>false</JsonSerializerIsReflectionEnabledByDefault>
     <!-- Suppress warnings about Windows-specific APIs in test context -->
     <NoWarn>$(NoWarn);CA1416</NoWarn>
+    <DefaultItemExcludes>$(DefaultItemExcludes);obj\**;obj-*\**;bin\**;bin-*\**;artifacts\**</DefaultItemExcludes>
   </PropertyGroup>
 
   <ItemGroup>
+    <Compile Include="..\Shared\OAuthHandoffProtocol.cs" Link="Security\OAuthHandoffProtocol.cs" />
+    <Compile Include="..\JitHub.Web\Services\OAuthHandoffStore.cs" Link="Services\OAuthHandoffStore.cs" />
     <!-- Link pure C# service/model source files from JitHub.WinUI (no WinUI/XAML deps) -->
     <Compile Include="..\JitHub.WinUI\Models\CodeViewer\*.cs" Link="Models\%(Filename)%(Extension)" />
+    <Compile Include="..\JitHub.WinUI\Models\ThemeConst.cs" Link="Models\%(Filename)%(Extension)" />
+    <Compile Include="..\JitHub.WinUI\Models\ThemePaletteCatalog.cs" Link="Models\%(Filename)%(Extension)" />
+    <Compile Include="..\JitHub.WinUI\LaunchOptions.cs" Link="%(Filename)%(Extension)" />
+    <Compile Include="..\JitHub.WinUI\Models\Credential.cs" Link="Models\%(Filename)%(Extension)" />
+    <Compile Include="..\JitHub.WinUI\Models\License.cs" Link="Models\%(Filename)%(Extension)" />
+    <Compile Include="..\JitHub.WinUI\Models\GitHub\*.cs" Link="Models\GitHub\%(Filename)%(Extension)" />
+    <Compile Include="..\JitHub.WinUI\Models\NavArgs\RepoPageType.cs" Link="Models\NavArgs\%(Filename)%(Extension)" />
+    <Compile Include="..\JitHub.WinUI\Helpers\LocalizedResourceText.cs" Link="Helpers\%(Filename)%(Extension)" />
+    <Compile Include="..\JitHub.WinUI\Helpers\CommentMarkdownFormatter.cs" Link="Helpers\%(Filename)%(Extension)" />
+    <Compile Include="..\JitHub.WinUI\Helpers\PlatformHelper.cs" Link="Helpers\%(Filename)%(Extension)" />
+    <Compile Include="..\JitHub.WinUI\Helpers\HandledFailureReporter.cs" Link="Helpers\%(Filename)%(Extension)" />
+    <Compile Include="..\JitHub.WinUI\Helpers\UserFacingError.cs" Link="Helpers\%(Filename)%(Extension)" />
+    <Compile Include="..\JitHub.WinUI\Helpers\ShyHeaderScrollPolicy.cs" Link="Helpers\%(Filename)%(Extension)" />
+    <Compile Include="..\JitHub.WinUI\Helpers\AppMaterialPolicy.cs" Link="Helpers\%(Filename)%(Extension)" />
+    <Compile Include="..\JitHub.WinUI\Services\ISettingService.cs" Link="Services\%(Filename)%(Extension)" />
+    <Compile Include="..\JitHub.WinUI\Services\IThemeService.cs" Link="Services\%(Filename)%(Extension)" />
+    <Compile Include="..\JitHub.WinUI\Services\ThemeService.cs" Link="Services\%(Filename)%(Extension)" />
+    <Compile Include="..\JitHub.WinUI\Services\IAccountService.cs" Link="Services\%(Filename)%(Extension)" />
+    <Compile Include="..\JitHub.WinUI\Services\IAuthService.cs" Link="Services\%(Filename)%(Extension)" />
+    <Compile Include="..\JitHub.WinUI\Services\IAppConfig.cs" Link="Services\%(Filename)%(Extension)" />
+    <Compile Include="..\JitHub.WinUI\Services\AuthCredentialStore.cs" Link="Services\%(Filename)%(Extension)" />
+    <Compile Include="..\JitHub.WinUI\Services\AuthHandoffClient.cs" Link="Services\%(Filename)%(Extension)" />
+    <Compile Include="..\JitHub.WinUI\Services\AuthService.cs" Link="Services\%(Filename)%(Extension)" />
+    <Compile Include="..\JitHub.WinUI\Services\AccountWorkQuiescence.cs" Link="Services\%(Filename)%(Extension)" />
+    <Compile Include="..\JitHub.WinUI\Services\AccountDataRemovalCoordinator.cs" Link="Services\%(Filename)%(Extension)" />
+    <Compile Include="..\JitHub.WinUI\Services\AccountDataRemovalJournal.cs" Link="Services\%(Filename)%(Extension)" />
+    <Compile Include="..\JitHub.WinUI\Services\ApplicationTaskCoordinator.cs" Link="Services\%(Filename)%(Extension)" />
+    <Compile Include="..\JitHub.WinUI\Services\ModalOperationGate.cs" Link="Services\%(Filename)%(Extension)" />
+    <Compile Include="..\JitHub.WinUI\Services\ModalSessionStateGate.cs" Link="Services\%(Filename)%(Extension)" />
+    <Compile Include="..\JitHub.WinUI\Services\DialogPresentationCoordinator.cs" Link="Services\%(Filename)%(Extension)" />
+    <Compile Include="..\JitHub.WinUI\Services\DialogSubmissionGate.cs" Link="Services\%(Filename)%(Extension)" />
+    <Compile Include="..\JitHub.WinUI\Services\DialogMutationOutcomePolicy.cs" Link="Services\%(Filename)%(Extension)" />
+    <Compile Include="..\JitHub.WinUI\Services\DialogLayoutPolicy.cs" Link="Services\%(Filename)%(Extension)" />
+    <Compile Include="..\JitHub.WinUI\Services\DialogFocusRestorationGate.cs" Link="Services\%(Filename)%(Extension)" />
+    <Compile Include="..\JitHub.WinUI\Services\LocalizationService.cs" Link="Services\%(Filename)%(Extension)" />
+    <Compile Include="..\JitHub.WinUI\Services\Accessibility\HighContrastVisualPolicy.cs" Link="Services\Accessibility\%(Filename)%(Extension)" />
+    <Compile Include="..\JitHub.WinUI\Services\AuthProtocolPolicy.cs" Link="Services\%(Filename)%(Extension)" />
+    <Compile Include="..\JitHub.WinUI\Services\AppDataPathPolicy.cs" Link="Services\%(Filename)%(Extension)" />
+    <Compile Include="..\JitHub.WinUI\Services\AuthLifecycleAutomation.cs" Link="Services\%(Filename)%(Extension)" />
+    <Compile Include="..\JitHub.WinUI\Services\DeveloperRoutePolicy.cs" Link="Services\%(Filename)%(Extension)" />
+    <Compile Include="..\JitHub.WinUI\Services\SettingsKeys.cs" Link="Services\%(Filename)%(Extension)" />
+    <Compile Include="..\JitHub.WinUI\Services\RepositoryForkReadinessPolicy.cs" Link="Services\%(Filename)%(Extension)" />
+    <Compile Include="..\JitHub.WinUI\Services\RepositoryForkOperation.cs" Link="Services\%(Filename)%(Extension)" />
+    <Compile Include="..\JitHub.WinUI\Services\RepositoryForkOwnershipStore.cs" Link="Services\%(Filename)%(Extension)" />
+    <Compile Include="..\JitHub.WinUI\Services\IGitHubClientService.cs" Link="Services\%(Filename)%(Extension)" />
+    <Compile Include="..\JitHub.WinUI\Services\GitHubClientService.cs" Link="Services\%(Filename)%(Extension)" />
     <Compile Include="..\JitHub.WinUI\Services\CodeViewer\IFilePreviewResolver.cs" Link="Services\%(Filename)%(Extension)" />
     <Compile Include="..\JitHub.WinUI\Services\CodeViewer\ILanguageIdResolver.cs" Link="Services\%(Filename)%(Extension)" />
     <Compile Include="..\JitHub.WinUI\Services\CodeViewer\IRepoFileCacheService.cs" Link="Services\%(Filename)%(Extension)" />
     <Compile Include="..\JitHub.WinUI\Services\CodeViewer\FilePreviewResolver.cs" Link="Services\%(Filename)%(Extension)" />
+    <Compile Include="..\JitHub.WinUI\Services\CodeViewer\RepositorySvgSecurityPolicy.cs" Link="Services\%(Filename)%(Extension)" />
+    <Compile Include="..\JitHub.WinUI\Services\CodeViewer\RepositorySvgRasterizer.cs" Link="Services\%(Filename)%(Extension)" />
+    <Compile Include="..\JitHub.WinUI\Services\CodeViewer\CsvDocumentParser.cs" Link="Services\%(Filename)%(Extension)" />
+    <Compile Include="..\JitHub.WinUI\Services\CodeViewer\SvgPreviewRequestGate.cs" Link="Services\%(Filename)%(Extension)" />
+    <Compile Include="..\JitHub.WinUI\Services\CodeViewer\SettledZoomTracker.cs" Link="Services\%(Filename)%(Extension)" />
+    <Compile Include="..\JitHub.WinUI\Services\CodeViewer\ViewportZoomAnchor.cs" Link="Services\%(Filename)%(Extension)" />
     <Compile Include="..\JitHub.WinUI\Services\CodeViewer\LanguageIdResolver.cs" Link="Services\%(Filename)%(Extension)" />
     <Compile Include="..\JitHub.WinUI\Services\CodeViewer\RepoFileCacheService.cs" Link="Services\%(Filename)%(Extension)" />
+    <Compile Include="..\JitHub.WinUI\Services\CodeViewer\GitHubRepoCodeQueryContracts.cs" Link="Services\%(Filename)%(Extension)" />
+    <Compile Include="..\JitHub.WinUI\Services\CodeViewer\GitHubRepoCodeQueryService.cs" Link="Services\%(Filename)%(Extension)" />
+    <Compile Include="..\JitHub.WinUI\Services\CodeViewer\GitHubCodeUrlBuilder.cs" Link="Services\%(Filename)%(Extension)" />
+    <Compile Include="..\JitHub.WinUI\Services\CodeViewer\GitReferencePolicy.cs" Link="Services\%(Filename)%(Extension)" />
+    <Compile Include="..\JitHub.WinUI\Services\CodeViewer\CodeSymbolExtractor.cs" Link="Services\%(Filename)%(Extension)" />
+    <Compile Include="..\JitHub.WinUI\Services\CodeViewer\UiWorkBudget.cs" Link="Services\%(Filename)%(Extension)" />
+    <Compile Include="..\JitHub.WinUI\Behaviors\IncrementalLoadingContracts.cs" Link="Behaviors\%(Filename)%(Extension)" />
+    <Compile Include="..\JitHub.WinUI\Behaviors\IncrementalLoadingSourceAdapter.cs" Link="Behaviors\%(Filename)%(Extension)" />
+    <Compile Include="..\JitHub.WinUI\Toolkit\IncrementalLoadingCollection.cs" Link="Toolkit\%(Filename)%(Extension)" />
+    <Compile Include="..\JitHub.WinUI\Services\CodeViewer\RepoCodeTelemetryActions.cs" Link="Services\%(Filename)%(Extension)" />
+    <Compile Include="..\JitHub.WinUI\Services\CodeViewer\IRepoTreeService.cs" Link="Services\%(Filename)%(Extension)" />
+    <Compile Include="..\JitHub.WinUI\Services\CodeViewer\RepoTreeService.cs" Link="Services\%(Filename)%(Extension)" />
+    <Compile Include="..\JitHub.WinUI\Services\GitHubApiException.cs" Link="Services\%(Filename)%(Extension)" />
+    <Compile Include="..\JitHub.WinUI\Services\Phase0\*.cs" Link="Services\Phase0\%(Filename)%(Extension)" />
+    <Compile Include="..\JitHub.WinUI\Services\Phase0\Cache\*.cs" Link="Services\Phase0\Cache\%(Filename)%(Extension)" />
+    <Compile Include="..\JitHub.WinUI\Services\Phase0\GitHub\*.cs" Link="Services\Phase0\GitHub\%(Filename)%(Extension)" />
+    <Compile Include="..\JitHub.WinUI\Services\Phase0\Telemetry\*.cs" Link="Services\Phase0\Telemetry\%(Filename)%(Extension)" />
+    <Compile Include="..\JitHub.WinUI\Services\Dashboard\*.cs" Link="Services\Dashboard\%(Filename)%(Extension)" />
+    <Compile Include="..\JitHub.WinUI\Services\Commits\*.cs" Link="Services\Commits\%(Filename)%(Extension)" />
+    <Compile Include="..\JitHub.WinUI\Services\Issues\*.cs" Link="Services\Issues\%(Filename)%(Extension)" />
+    <Compile Include="..\JitHub.WinUI\Services\Layout\*.cs" Link="Services\Layout\%(Filename)%(Extension)" />
+    <Compile Include="..\JitHub.WinUI\Services\Me\*.cs" Link="Services\Me\%(Filename)%(Extension)" />
+    <Compile Include="..\JitHub.WinUI\Services\Notifications\*.cs" Link="Services\Notifications\%(Filename)%(Extension)" />
+    <Compile Include="..\JitHub.WinUI\Services\Gists\*.cs" Link="Services\Gists\%(Filename)%(Extension)" />
+    <Compile Include="..\JitHub.WinUI\Services\Performance\*.cs" Link="Services\Performance\%(Filename)%(Extension)" />
+    <Compile Include="..\JitHub.WinUI\Services\Profile\*.cs" Link="Services\Profile\%(Filename)%(Extension)" />
+    <Compile Include="..\JitHub.WinUI\Services\PullRequests\*.cs" Link="Services\PullRequests\%(Filename)%(Extension)" />
+    <Compile Include="..\JitHub.WinUI\Services\Repositories\*.cs" Link="Services\Repositories\%(Filename)%(Extension)" />
+    <Compile Include="..\JitHub.WinUI\Services\Stars\*.cs" Link="Services\Stars\%(Filename)%(Extension)" />
+    <Compile Include="..\JitHub.WinUI\Services\Settings\SettingsDiagnosticsContracts.cs" Link="Services\Settings\%(Filename)%(Extension)" />
+    <Compile Include="..\JitHub.WinUI\Services\Settings\SettingsDiagnosticsService.cs" Link="Services\Settings\%(Filename)%(Extension)" />
+    <Compile Include="..\JitHub.WinUI\Services\Settings\SettingsPreferencesContracts.cs" Link="Services\Settings\%(Filename)%(Extension)" />
+    <Compile Include="..\JitHub.WinUI\Services\Settings\SettingsActionGate.cs" Link="Services\Settings\%(Filename)%(Extension)" />
+    <Compile Include="..\JitHub.WinUI\Services\Settings\SettingsSourceNavigationContracts.cs" Link="Services\Settings\%(Filename)%(Extension)" />
     <Compile Include="..\JitHub.WinUI\Services\Markdown\GitHubMarkdownImageReference.cs" Link="Services\Markdown\%(Filename)%(Extension)" />
     <Compile Include="..\JitHub.WinUI\Services\Markdown\GitHubMarkdownImageUrlResolver.cs" Link="Services\Markdown\%(Filename)%(Extension)" />
+    <Compile Include="..\JitHub.WinUI\Services\Markdown\GloballyRoutableAddressPolicy.cs" Link="Services\Markdown\%(Filename)%(Extension)" />
+    <Compile Include="..\JitHub.WinUI\Services\Markdown\MarkdownRemoteContentConsent.cs" Link="Services\Markdown\%(Filename)%(Extension)" />
+    <Compile Include="..\JitHub.WinUI\Services\Markdown\RuntimeEventSubscription.cs" Link="Services\Markdown\%(Filename)%(Extension)" />
+    <Compile Include="..\JitHub.WinUI\Services\Markdown\MarkdownLinkNavigationPolicy.cs" Link="Services\Markdown\%(Filename)%(Extension)" />
+    <Compile Include="..\JitHub.WinUI\Services\Markdown\MarkdownRemoteImagePolicy.cs" Link="Services\Markdown\%(Filename)%(Extension)" />
+    <Compile Include="..\JitHub.WinUI\Services\Markdown\DenyAllMarkdownImageResolver.cs" Link="Services\Markdown\%(Filename)%(Extension)" />
+    <Compile Include="..\JitHub.WinUI\Services\Markdown\MarkdownDocumentSourceFactory.cs" Link="Services\Markdown\%(Filename)%(Extension)" />
+    <Compile Include="..\JitHub.WinUI\Services\Markdown\MarkdownLifecycleAutomationBridge.cs" Link="Services\Markdown\%(Filename)%(Extension)" />
+    <Compile Include="..\JitHub.WinUI\Views\Controls\Common\MarkdownHostContract.cs" Link="Views\Controls\Common\%(Filename)%(Extension)" />
+    <Compile Include="..\JitHub.WinUI\Helpers\RepositoryLanguageColorPalette.cs" Link="Helpers\%(Filename)%(Extension)" />
+    <Compile Include="..\MarkdownRenderer\MarkdownRenderer\Images\IMarkdownImageResolver.cs" Link="MarkdownRenderer\Images\%(Filename)%(Extension)" />
+    <Compile Include="..\MarkdownRenderer\MarkdownRenderer\Layout\Boxes\RasterImageResourceBudget.cs" Link="MarkdownRenderer\Layout\Boxes\%(Filename)%(Extension)" />
+    <Compile Include="..\JitHub.WinUI\ViewModels\Pages\SettingsPageViewModel.cs" Link="ViewModels\Pages\%(Filename)%(Extension)" />
+    <Compile Include="..\JitHub.WinUI\ViewModels\Pages\LoginPageViewModel.cs" Link="ViewModels\Pages\%(Filename)%(Extension)" />
+    <Compile Include="..\JitHub.WinUI\ViewModels\Pages\NotificationsPageViewModel.cs" Link="ViewModels\Pages\%(Filename)%(Extension)" />
+    <Compile Include="..\JitHub.WinUI\ViewModels\Pages\GistsPageViewModel.cs" Link="ViewModels\Pages\%(Filename)%(Extension)" />
+    <Compile Include="..\JitHub.WinUI\ViewModels\Pages\RepoSearchResultPageViewModel.cs" Link="ViewModels\Pages\%(Filename)%(Extension)" />
+    <Compile Include="..\JitHub.WinUI\ViewModels\Pages\ShellModels.cs" Link="ViewModels\Pages\%(Filename)%(Extension)" />
+    <Compile Include="..\JitHub.WinUI\ViewModels\Pages\ShellStarLibraryProjection.cs" Link="ViewModels\Pages\%(Filename)%(Extension)" />
+    <Compile Include="..\JitHub.WinUI\ViewModels\Pages\ShellNavigationAttempt.cs" Link="ViewModels\Pages\%(Filename)%(Extension)" />
+    <Compile Include="..\JitHub.WinUI\ViewModels\Pages\MeIssueCommentViewItem.cs" Link="ViewModels\Pages\%(Filename)%(Extension)" />
+    <Compile Include="..\JitHub.WinUI\ViewModels\Pages\StarRepositoryViewItem.cs" Link="ViewModels\Pages\%(Filename)%(Extension)" />
+    <Compile Include="..\JitHub.WinUI\ViewModels\Common\*.cs" Link="ViewModels\Common\%(Filename)%(Extension)" />
+    <Compile Include="..\JitHub.WinUI\ViewModels\CodeViewer\BreadcrumbSegment.cs" Link="ViewModels\CodeViewer\%(Filename)%(Extension)" />
+    <Compile Include="..\JitHub.WinUI\ViewModels\CodeViewer\RepoTreeNodeViewModel.cs" Link="ViewModels\CodeViewer\%(Filename)%(Extension)" />
+    <Compile Include="..\JitHub.WinUI\ViewModels\CodeViewer\RepoFileTreeViewModel.cs" Link="ViewModels\CodeViewer\%(Filename)%(Extension)" />
+    <Compile Include="..\JitHub.WinUI\ViewModels\CodeViewer\RepoFilePreviewViewModel.cs" Link="ViewModels\CodeViewer\%(Filename)%(Extension)" />
+    <Compile Include="..\JitHub.WinUI\ViewModels\CodeViewer\RepoCodeBreadcrumbViewModel.cs" Link="ViewModels\CodeViewer\%(Filename)%(Extension)" />
+    <Compile Include="..\JitHub.WinUI\ViewModels\CodeViewer\RepoCodeNavigationPreparationCache.cs" Link="ViewModels\CodeViewer\%(Filename)%(Extension)" />
+    <Compile Include="..\JitHub.WinUI\ViewModels\CodeViewer\RepositoryRoutePrefetchCoordinator.cs" Link="ViewModels\CodeViewer\%(Filename)%(Extension)" />
+    <Compile Include="..\JitHub.WinUI\ViewModels\CodeViewer\RepoCodePageViewModel.cs" Link="ViewModels\CodeViewer\%(Filename)%(Extension)" />
+    <Compile Include="..\JitHub.WinUI\Views\Controls\Profile\ProfileContributionGraphNavigation.cs" Link="Views\Controls\Profile\%(Filename)%(Extension)" />
   </ItemGroup>
 
   <ItemGroup>
+    <PackageReference Include="CommunityToolkit.Mvvm" Version="8.4.2" />
+    <PackageReference Include="CommunityToolkit.Common" Version="8.2.1" />
+    <PackageReference Include="Microsoft.WindowsAppSDK" Version="1.8.260710003" />
     <PackageReference Include="xunit" Version="2.9.2" />
     <PackageReference Include="xunit.runner.visualstudio" Version="2.8.2">
       <IncludeAssets>runtime; build; native; contentfiles; analyzers; buildtransitive</IncludeAssets>
       <PrivateAssets>all</PrivateAssets>
     </PackageReference>
     <PackageReference Include="Microsoft.NET.Test.Sdk" Version="17.12.0" />
+    <PackageReference Include="Microsoft.Data.Sqlite" Version="10.0.8" />
+    <PackageReference Include="SQLitePCLRaw.bundle_e_sqlite3" Version="3.0.3" />
     <PackageReference Include="NSubstitute" Version="5.3.0" />
+    <PackageReference Include="SkiaSharp" Version="4.151.1" />
+    <PackageReference Include="Svg.Skia" Version="5.2.1" />
     <PackageReference Include="coverlet.collector" Version="6.0.2">
       <IncludeAssets>runtime; build; native; contentfiles; analyzers; buildtransitive</IncludeAssets>
       <PrivateAssets>all</PrivateAssets>

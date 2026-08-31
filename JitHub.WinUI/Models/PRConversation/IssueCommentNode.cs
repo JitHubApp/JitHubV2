@@ -2,8 +2,8 @@ using JitHub.Services;
 using CommunityToolkit.Mvvm.DependencyInjection;
 using CommunityToolkit.Mvvm.Input;
 using JitHub.Models.LegacyGitHub;
+using JitHub.WinUI.Helpers;
 using System.Windows.Input;
-using Windows.ApplicationModel.DataTransfer;
 
 namespace JitHub.Models.PRConversation
 {
@@ -32,11 +32,6 @@ namespace JitHub.Models.PRConversation
             CopyLinkCommand = new RelayCommand(CopyLink);
         }
 
-        private void CopyLink()
-        {
-            var dataPackage = new DataPackage();
-            dataPackage.SetText(Url);
-            Clipboard.SetContent(dataPackage);
-        }
+        private void CopyLink() => PlatformHelper.CopyString(Url);
     }
 }

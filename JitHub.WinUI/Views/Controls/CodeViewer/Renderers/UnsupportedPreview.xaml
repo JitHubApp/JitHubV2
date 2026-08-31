@@ -9,15 +9,16 @@
     d:DesignWidth="600"
     mc:Ignorable="d">
 
-    <Grid HorizontalAlignment="Center" VerticalAlignment="Center" MaxWidth="480" Padding="24">
-        <StackPanel Spacing="12">
+    <Grid HorizontalAlignment="Center" VerticalAlignment="Center" MaxWidth="{ThemeResource AppDimension480}" Padding="{ThemeResource AppPadding24}">
+        <StackPanel Spacing="{ThemeResource AppGap12}">
 
             <FontIcon
-                FontSize="48"
+                FontSize="{ThemeResource AppFontSize48}"
                 Foreground="{ThemeResource AppInkMutedBrush}"
                 Glyph="&#xE7BA;" />
 
             <TextBlock
+                x:Uid="RepoCodeUnsupportedTitle"
                 Style="{StaticResource SectionTitleTextBlockStyle}"
                 Text="Preview not available"
                 TextAlignment="Center" />
@@ -32,7 +33,7 @@
             <StackPanel
                 HorizontalAlignment="Center"
                 Orientation="Horizontal"
-                Spacing="8">
+                Spacing="{ThemeResource AppGap8}">
                 <TextBlock
                     x:Name="MetaText"
                     Foreground="{ThemeResource AppInkMutedBrush}"
@@ -41,16 +42,22 @@
 
             <StackPanel
                 HorizontalAlignment="Center"
-                Margin="0,8,0,0"
+                Margin="{ThemeResource AppMargin0_8_0_0}"
                 Orientation="Horizontal"
-                Spacing="8">
+                Spacing="{ThemeResource AppGap8}">
                 <Button
                     x:Name="OpenOnGitHubButton"
+                    x:Uid="RepoCodeUnsupportedOpenOnGitHubButton"
+                    AutomationProperties.AutomationId="RepoCodeUnsupportedOpenOnGitHubButton"
+                    AutomationProperties.Name="Open file on GitHub"
                     Click="OpenOnGitHub_Click"
                     Content="Open on github.com"
                     Style="{StaticResource AppAccentButtonStyle}" />
                 <Button
                     x:Name="CopyUrlButton"
+                    x:Uid="RepoCodeUnsupportedCopyRawUrlButton"
+                    AutomationProperties.AutomationId="RepoCodeUnsupportedCopyRawUrlButton"
+                    AutomationProperties.Name="Copy raw file link"
                     Click="CopyUrl_Click"
                     Content="Copy raw URL"
                     Style="{StaticResource AppQuietButtonStyle}" />

@@ -8,16 +8,14 @@
     xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
     mc:Ignorable="d">
     <Border
-        MaxWidth="520"
+        MaxWidth="{ThemeResource AppDimension520}"
         HorizontalAlignment="Left"
-        Padding="0"
-        Background="Transparent"
-        BorderThickness="0"
-        CornerRadius="0">
+        Padding="{ThemeResource AppPadding0}"
+    Background="{ThemeResource AppTransparentBrush}"
+        BorderThickness="{ThemeResource AppZeroThickness}"
+        CornerRadius="{ThemeResource AppRadiusNone}">
         <StackPanel
-            HorizontalAlignment="Left"
-            VerticalAlignment="Top"
-            Spacing="6">
+            Style="{StaticResource AppInlineEmptyStatePanelStyle}">
             <TextBlock
                 HorizontalAlignment="Left"
                 Style="{StaticResource SectionTitleTextBlockStyle}"

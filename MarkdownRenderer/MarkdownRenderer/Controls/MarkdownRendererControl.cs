@@ -37,7 +37,7 @@ namespace MarkdownRenderer.Controls;
 /// <see cref="CanvasVirtualControl"/> for paint and a sibling <see cref="Canvas"/>
 /// overlay for hosted WinUI embeds.
 /// </summary>
-public sealed partial class MarkdownRendererControl : UserControl
+public sealed partial class MarkdownRendererControl : UserControl, IDisposable
 {
     private CanvasVirtualControl? _canvas;
     private Canvas? _overlay;
@@ -46,13 +46,18 @@ public sealed partial class MarkdownRendererControl : UserControl
 
     private volatile LayoutSnapshot? _snapshot;
     private volatile CancellationTokenSource? _pipelineCts;
+    private CancellationTokenSource? _imageLifetimeCts;
+    private Task? _pipelineTask;
+    private long _pipelineGeneration;
     private bool _rebuildQueued;
     private bool _hasPendingRebuild;
+    private bool _imageRelayoutQueued;
     private RebuildReason _pendingRebuildReason = RebuildReason.Restyle;
     private float _lastWidth;
     private static readonly MarkdownTheme _defaultTheme = new();
     private static readonly MarkdownExtensionRegistry _defaultRegistry = new();
     private readonly object _parseCacheGate = new();
+    private readonly Dictionary<string, bool> _disclosureStates = new(StringComparer.Ordinal);
     private ParsedMarkdown? _parseCache;
     private string? _parseCacheSource;
     private MarkdownExtensionRegistry? _parseCacheRegistry;
@@ -61,14 +66,13 @@ public sealed partial class MarkdownRendererControl : UserControl
     private SizeChangedEventHandler? _sizeChangedHandler;
     private readonly SelectionController _selection = new();
     private DocumentPosition? _selectionAnchor;
+    private double _lastSelectionPointerViewportY = double.NaN;
 
-    // Single Win2D adorner for text selection. It draws both the native
-    // selection background and selected glyph foreground above the already
-    // painted document, while the base CanvasVirtualControl remains untouched
-    // during selection drag. Keeping this to one stable XAML child avoids the
-    // measure/compositor churn that caused the historical text-shake bug.
+    // Selection rectangles are retained for viewport and diagnostics work. The
+    // selected background and foreground are painted into invalidated document
+    // tiles, avoiding a second Win2D XAML control and its XamlRoot lifetime.
     private readonly List<Rect> _selectionAdornerRects = new();
-    private CanvasControl? _selectionAdorner;
+    private Canvas? _selectionAdorner;
     private double _selectionAdornerOffsetY;
     private Border? _selectionDragShield;
 
@@ -107,7 +111,13 @@ public sealed partial class MarkdownRendererControl : UserControl
     // when events arrive out of order or are routed through the drag shield.
     private PointerSession _pointerSession;
     // Set in OnUnloaded; checked in dispatcher lambdas to guard against post-unload execution.
-    private bool _isUnloaded;
+    private bool _isUnloaded = true;
+    private bool _isDisposed;
+    private bool _canvasRenderHandlersAttached;
+    private readonly PointerEventHandler _canvasPointerMovedHandler;
+    private readonly PointerEventHandler _canvasPointerReleasedHandler;
+    private readonly PointerEventHandler _canvasPointerCanceledHandler;
+    private readonly PointerEventHandler _canvasPointerCaptureLostHandler;
     // System double-click time; read from the Win32 API at first use.
     private static readonly int _doubleClickTimeMs = GetSystemDoubleClickTimeMs();
 
@@ -400,6 +410,8 @@ public sealed partial class MarkdownRendererControl : UserControl
     private readonly BoundedCodeBlockHighlightCache<CodeBlockHighlightCacheKey> _codeBlockHighlightCache = new(CodeBlockHighlightCacheMaxEntries);
     private readonly HashSet<CodeBlockHighlightCacheKey> _codeBlockHighlightInFlight = new();
     private readonly SemaphoreSlim _codeBlockHighlightSemaphore = new(2, 2);
+    private readonly object _codeBlockHighlightTasksGate = new();
+    private readonly HashSet<Task> _codeBlockHighlightTasks = new();
     private CancellationTokenSource? _codeBlockHighlightCts;
     private int _codeBlockHighlightGeneration;
     private bool _promotingKeyboardFocusEntry;
@@ -417,6 +429,7 @@ public sealed partial class MarkdownRendererControl : UserControl
     // viewport + LazyImageOverscanPx band.  Images already in the
     // in-memory cache start loading (no-op) immediately after build.
     private readonly List<Layout.Boxes.ImageBox> _imagePlans = new();
+    private readonly HashSet<Layout.Boxes.ImageBox> _subscribedImages = new();
 
     private readonly record struct CodeBlockHighlightCacheKey(
         string? Language,
@@ -441,6 +454,7 @@ public sealed partial class MarkdownRendererControl : UserControl
     // identity tracking (Narrator focus, "where am I"). Tied to the LinkRun
     // weakly so peers are released alongside the layout snapshot.
     private readonly System.Runtime.CompilerServices.ConditionalWeakTable<LinkRun, MarkdownLinkPeer> _linkPeerCache = new();
+    private readonly System.Runtime.CompilerServices.ConditionalWeakTable<InlineImageRun, MarkdownLinkedImagePeer> _linkedImagePeerCache = new();
 
     // Previous realised embed count — used to suppress redundant
     // EmbedsRealizationChanged fires on every scroll tick (UIA-friendly).
@@ -564,6 +578,34 @@ public sealed partial class MarkdownRendererControl : UserControl
         set => SetValue(ImageDocumentPathProperty, value);
     }
 
+    /// <summary>Dependency property backing <see cref="ImageDocumentSource"/>.</summary>
+    public static readonly DependencyProperty ImageDocumentSourceProperty =
+        DependencyProperty.Register(nameof(ImageDocumentSource), typeof(MarkdownDocumentSource),
+            typeof(MarkdownRendererControl),
+            new PropertyMetadata(null, (d, _) => ((MarkdownRendererControl)d).RequestRebuild()));
+
+    /// <summary>Gets or sets the stable identity and repository context of this document.</summary>
+    public MarkdownDocumentSource? ImageDocumentSource
+    {
+        get => (MarkdownDocumentSource?)GetValue(ImageDocumentSourceProperty);
+        set => SetValue(ImageDocumentSourceProperty, value);
+    }
+
+    /// <summary>Dependency property backing <see cref="AllowThirdPartyRemoteImages"/>.</summary>
+    public static readonly DependencyProperty AllowThirdPartyRemoteImagesProperty =
+        DependencyProperty.Register(
+            nameof(AllowThirdPartyRemoteImages),
+            typeof(bool),
+            typeof(MarkdownRendererControl),
+            new PropertyMetadata(false, (d, _) => ((MarkdownRendererControl)d).RequestRebuild()));
+
+    /// <summary>Gets or sets explicit per-document consent for third-party images.</summary>
+    public bool AllowThirdPartyRemoteImages
+    {
+        get => (bool)GetValue(AllowThirdPartyRemoteImagesProperty);
+        set => SetValue(AllowThirdPartyRemoteImagesProperty, value);
+    }
+
     /// <summary>Dependency property backing <see cref="IsSelectionEnabled"/>.</summary>
     public static readonly DependencyProperty IsSelectionEnabledProperty =
         DependencyProperty.Register(nameof(IsSelectionEnabled), typeof(bool),
@@ -616,6 +658,21 @@ public sealed partial class MarkdownRendererControl : UserControl
     {
         get => (string?)GetValue(CodeBlockCopiedButtonLabelProperty);
         set => SetValue(CodeBlockCopiedButtonLabelProperty, value);
+    }
+
+    /// <summary>Dependency property backing <see cref="CodeBlockCopyButtonStyle"/>.</summary>
+    public static readonly DependencyProperty CodeBlockCopyButtonStyleProperty =
+        DependencyProperty.Register(
+            nameof(CodeBlockCopyButtonStyle),
+            typeof(Style),
+            typeof(MarkdownRendererControl),
+            new PropertyMetadata(null, (d, _) => ((MarkdownRendererControl)d).UpdateCodeBlockCopyButtonStyles()));
+
+    /// <summary>Gets or sets the host-provided style for code-block copy buttons.</summary>
+    public Style? CodeBlockCopyButtonStyle
+    {
+        get => (Style?)GetValue(CodeBlockCopyButtonStyleProperty);
+        set => SetValue(CodeBlockCopyButtonStyleProperty, value);
     }
 
     /// <summary>Dependency property backing <see cref="IsCodeBlockSyntaxHighlightingEnabled"/>.</summary>
@@ -713,17 +770,41 @@ public sealed partial class MarkdownRendererControl : UserControl
         return _linkPeerCache.GetValue(run, r => new MarkdownLinkPeer(this, parent, r));
     }
 
+    internal MarkdownLinkedImagePeer GetOrCreateLinkedImagePeer(
+        MarkdownBlockPeer parent,
+        InlineImageRun run) =>
+        _linkedImagePeerCache.GetValue(run, r => new MarkdownLinkedImagePeer(this, parent, r));
+
     internal bool IsKeyboardFocusOnLink(LinkRun run)
     {
         return TryGetFocusedLink(out _, out var focusedRun) &&
-               ReferenceEquals(focusedRun, run);
+               AreEquivalentLinks(focusedRun, run);
     }
 
-    internal bool HasKeyboardFocusOnPaintedLink => TryGetFocusedLink(out _, out _);
+    internal bool IsKeyboardFocusOnLinkedImage(InlineImageRun run) =>
+        TryGetFocusedLinkedImage(out _, out var focusedRun) &&
+        ReferenceEquals(focusedRun, run);
+
+    internal bool HasKeyboardFocusOnPaintedLink =>
+        TryGetFocusedLink(out _, out _) || TryGetFocusedLinkedImage(out _, out _);
 
     internal bool FocusLinkFromAutomation(LinkRun run)
     {
         if (!TryGetFocusableIndexForLink(run, out var index))
+            return Focus(FocusState.Programmatic);
+
+        _focusedItemIndex = index;
+        _focusResumeItemIndex = -1;
+        ScrollFocusedItemIntoView();
+        bool focused = Focus(FocusState.Programmatic);
+        UpdateFocusRing();
+        NotifyFocusedItemAutomation();
+        return focused;
+    }
+
+    internal bool FocusLinkedImageFromAutomation(InlineImageRun run)
+    {
+        if (!TryGetFocusableIndexForLinkedImage(run, out var index))
             return Focus(FocusState.Programmatic);
 
         _focusedItemIndex = index;
@@ -755,20 +836,106 @@ public sealed partial class MarkdownRendererControl : UserControl
     internal void RaiseLinkClickFromAutomation(LinkRun run)
     {
         if (run is null) return;
-        var args = new MarkdownLinkClickEventArgs(run.Url, run.Title);
         var dispatcher = DispatcherQueue;
+        void Activate()
+        {
+            if (!TryActivateDisclosure(run))
+            {
+                LinkClick?.Invoke(this, new MarkdownLinkClickEventArgs(run.Url, run.Title));
+            }
+        }
         if (dispatcher is not null && !dispatcher.HasThreadAccess)
         {
-            dispatcher.TryEnqueue(() => LinkClick?.Invoke(this, args));
+            dispatcher.TryEnqueue(Activate);
         }
         else
         {
-            LinkClick?.Invoke(this, args);
+            Activate();
+        }
+    }
+
+    internal void RaiseLinkedImageClickFromAutomation(InlineImageRun run)
+    {
+        if (run is not { IsLinked: true, LinkUrl: { } url }) return;
+        var dispatcher = DispatcherQueue;
+        void Activate()
+        {
+            if (!url.StartsWith("#", StringComparison.Ordinal) || !HandleInternalAnchor(url))
+            {
+                LinkClick?.Invoke(this, new MarkdownLinkClickEventArgs(url, run.LinkTitle));
+            }
+        }
+
+        if (dispatcher is not null && !dispatcher.HasThreadAccess)
+        {
+            dispatcher.TryEnqueue(Activate);
+        }
+        else
+        {
+            Activate();
+        }
+    }
+
+    internal void SetDisclosureExpanded(LinkRun run, bool expanded)
+    {
+        if (run is not { IsDisclosure: true, DisclosureId: { Length: > 0 } id } ||
+            run.IsExpanded == expanded)
+        {
+            return;
+        }
+
+        void Apply()
+        {
+            _disclosureStates[id] = expanded;
+            DisclosureToggled?.Invoke(this, new MarkdownDisclosureToggledEventArgs(expanded));
+            RequestRebuild(RebuildReason.Restyle);
+        }
+
+        if (DispatcherQueue is { HasThreadAccess: false } dispatcher)
+        {
+            dispatcher.TryEnqueue(Apply);
+        }
+        else
+        {
+            Apply();
         }
     }
 
     /// <summary>Raised when the user activates a non-internal markdown link.</summary>
     public event EventHandler<MarkdownLinkClickEventArgs>? LinkClick;
+
+    /// <summary>Raised after a safe HTML disclosure is expanded or collapsed.</summary>
+    public event EventHandler<MarkdownDisclosureToggledEventArgs>? DisclosureToggled;
+
+    /// <summary>Raised after a selection or code block clipboard copy is attempted.</summary>
+    public event EventHandler<MarkdownCopyCompletedEventArgs>? CopyCompleted;
+
+    /// <summary>Raised when an image source is deliberately blocked or unavailable.</summary>
+    public event EventHandler<MarkdownImageUnavailableEventArgs>? ImageUnavailable;
+
+    /// <summary>Raised after the current Markdown document is rendered successfully.</summary>
+    public event EventHandler? RenderCompleted;
+
+    /// <summary>Raised when the current Markdown document cannot be rendered.</summary>
+    public event EventHandler<MarkdownRenderFailedEventArgs>? RenderFailed;
+
+    private void RaiseImageUnavailable(string source, MarkdownImageUnavailableReason reason)
+    {
+        if (_isDisposed || reason == MarkdownImageUnavailableReason.None)
+            return;
+
+        void Raise()
+        {
+            if (!_isDisposed)
+                ImageUnavailable?.Invoke(this, new MarkdownImageUnavailableEventArgs(source, reason));
+        }
+
+        var dispatcher = DispatcherQueue;
+        if (dispatcher is not null && !dispatcher.HasThreadAccess)
+            dispatcher.TryEnqueue(Raise);
+        else
+            Raise();
+    }
 
     /// <summary>
     /// Raised after every embed realisation pass (initial layout commit,
@@ -780,6 +947,53 @@ public sealed partial class MarkdownRendererControl : UserControl
 
     /// <summary>Current vertical scroll offset of the host scroll viewer.</summary>
     internal double CurrentScrollOffsetY => _scroll?.VerticalOffset ?? 0;
+
+    internal bool TryGetAutomationScrollMetrics(
+        out double verticalOffset,
+        out double viewportHeight,
+        out double extentHeight)
+    {
+        if (_scroll is null)
+        {
+            verticalOffset = 0;
+            viewportHeight = 0;
+            extentHeight = 0;
+            return false;
+        }
+
+        verticalOffset = _scroll.VerticalOffset;
+        viewportHeight = _scroll.ViewportHeight;
+        extentHeight = _scroll.ExtentHeight;
+        return true;
+    }
+
+    internal void ScrollFromAutomation(ScrollAmount amount)
+    {
+        if (_scroll is null || amount == ScrollAmount.NoAmount)
+            return;
+
+        double delta = amount switch
+        {
+            ScrollAmount.LargeDecrement => -Math.Max(48, _scroll.ViewportHeight * 0.8),
+            ScrollAmount.SmallDecrement => -48,
+            ScrollAmount.SmallIncrement => 48,
+            ScrollAmount.LargeIncrement => Math.Max(48, _scroll.ViewportHeight * 0.8),
+            _ => 0,
+        };
+        double maximum = Math.Max(0, _scroll.ExtentHeight - _scroll.ViewportHeight);
+        double target = Math.Clamp(_scroll.VerticalOffset + delta, 0, maximum);
+        _scroll.ChangeView(null, target, null, disableAnimation: true);
+    }
+
+    internal void SetAutomationVerticalScrollPercent(double percent)
+    {
+        if (_scroll is null)
+            return;
+
+        double maximum = Math.Max(0, _scroll.ExtentHeight - _scroll.ViewportHeight);
+        double target = maximum * (Math.Clamp(percent, 0, 100) / 100);
+        _scroll.ChangeView(null, target, null, disableAnimation: true);
+    }
 
     /// <summary>
     /// Offset applied between the scroll viewport and document content. The
@@ -824,6 +1038,7 @@ public sealed partial class MarkdownRendererControl : UserControl
         var button = new Button
         {
             Content = new SymbolIcon(Symbol.Copy),
+            Style = CodeBlockCopyButtonStyle,
             Padding = new Thickness(0),
             MinWidth = 0,
             MinHeight = 0,
@@ -867,18 +1082,44 @@ public sealed partial class MarkdownRendererControl : UserControl
         }
     }
 
+    private void UpdateCodeBlockCopyButtonStyles()
+    {
+        foreach (var plan in _codeBlockActionPlans)
+        {
+            if (plan.Realized is Button button)
+                button.Style = CodeBlockCopyButtonStyle;
+        }
+    }
+
     private void CopyCodeBlockToClipboard(CodeBlockActionPlan plan)
     {
+        bool succeeded = false;
         try
         {
             var package = new DataPackage();
             package.SetText(plan.Box.CodeText);
             Clipboard.SetContent(package);
+            Clipboard.Flush();
             plan.ShowCopiedFeedback(this);
+            succeeded = true;
         }
         catch (Exception ex)
         {
             MarkdownDiagnostics.WriteLine($"[MarkdownRendererControl] Code block copy failed: {ex.Message}");
+        }
+
+        RaiseCopyCompleted(MarkdownCopyKind.CodeBlock, succeeded);
+    }
+
+    private void RaiseCopyCompleted(MarkdownCopyKind kind, bool succeeded)
+    {
+        try
+        {
+            CopyCompleted?.Invoke(this, new MarkdownCopyCompletedEventArgs(kind, succeeded));
+        }
+        catch (Exception ex)
+        {
+            MarkdownDiagnostics.WriteLine($"[MarkdownRendererControl] Copy completion subscriber failed: {ex.Message}");
         }
     }
 
@@ -954,12 +1195,27 @@ public sealed partial class MarkdownRendererControl : UserControl
                 : rect.Bottom > _scroll.VerticalOffset + _scroll.ViewportHeight - margin
                     ? rect.Bottom - _scroll.ViewportHeight + margin
                     : _scroll.VerticalOffset;
-        _scroll.ChangeView(null, Math.Max(0, target), null, disableAnimation: false);
+        // UI Automation's ScrollIntoView contract is immediate. An animated
+        // change can be superseded by lazy-layout realization before its first
+        // frame, leaving the requested range offscreen.
+        if (ShakeLogger.IsEnabled)
+        {
+            ShakeLogger.Log(
+                "uia-scroll-request",
+                $"rect={rect.X:F2},{rect.Y:F2},{rect.Width:F2},{rect.Height:F2} " +
+                $"alignTop={alignToTop} current={_scroll.VerticalOffset:F2} target={Math.Max(0, target):F2} " +
+                $"viewport={_scroll.ViewportHeight:F2} extent={_scroll.ExtentHeight:F2}");
+        }
+        _scroll.ChangeView(null, Math.Max(0, target), null, disableAnimation: true);
     }
 
     /// <summary>Initializes a new markdown renderer control.</summary>
     public MarkdownRendererControl()
     {
+        _canvasPointerMovedHandler = OnPointerMoved;
+        _canvasPointerReleasedHandler = OnPointerReleased;
+        _canvasPointerCanceledHandler = OnPointerCanceledOrCaptureLost;
+        _canvasPointerCaptureLostHandler = OnPointerCanceledOrCaptureLost;
         IsTabStop = true;
         Background = new SolidColorBrush(Microsoft.UI.Colors.Transparent);
         Loaded += (_, _) => OnLoadedInternal();
@@ -1021,15 +1277,14 @@ public sealed partial class MarkdownRendererControl : UserControl
         _overlay.Children.Add(CreateSelectionDragShield());
         _scroll.Content = _root;
 
-        _canvas.RegionsInvalidated += OnRegionsInvalidated;
-        _canvas.CreateResources += OnCanvasCreateResources;
+        AttachCanvasRenderHandlers();
         _canvas.PointerPressed += OnPointerPressed;
-        _canvas.PointerMoved += OnPointerMoved;
-        _canvas.PointerReleased += OnPointerReleased;
         _canvas.PointerExited += OnPointerExited;
-        _canvas.PointerCanceled += OnPointerCanceledOrCaptureLost;
-        _canvas.PointerCaptureLost += OnPointerCanceledOrCaptureLost;
         _canvas.RightTapped += OnRightTapped;
+        _canvas.AddHandler(UIElement.PointerMovedEvent, _canvasPointerMovedHandler, handledEventsToo: true);
+        _canvas.AddHandler(UIElement.PointerReleasedEvent, _canvasPointerReleasedHandler, handledEventsToo: true);
+        _canvas.AddHandler(UIElement.PointerCanceledEvent, _canvasPointerCanceledHandler, handledEventsToo: true);
+        _canvas.AddHandler(UIElement.PointerCaptureLostEvent, _canvasPointerCaptureLostHandler, handledEventsToo: true);
         GettingFocus += OnGettingFocus;
         GotFocus += OnGotFocus;
         LosingFocus += OnLosingFocus;
@@ -1110,6 +1365,7 @@ public sealed partial class MarkdownRendererControl : UserControl
 
     private void OnMarkdownChanged()
     {
+        _disclosureStates.Clear();
         ClearCodeBlockHighlightCache();
         RequestRebuild();
     }
@@ -1199,7 +1455,9 @@ public sealed partial class MarkdownRendererControl : UserControl
             if (IsElementWithinCodeBlockAction(source))
                 return;
 
-            if (!IsPointerOverCanvasTextSurface(e, out var canvasPoint) || IsPointOverEmbed(canvasPoint))
+            bool overCanvas = IsPointerOverCanvasTextSurface(e, out var canvasPoint);
+            bool overEmbed = overCanvas && IsPointOverEmbed(canvasPoint);
+            if (!overCanvas || overEmbed)
                 ClearSelectionForExternalInteraction();
             return;
         }
@@ -1233,11 +1491,23 @@ public sealed partial class MarkdownRendererControl : UserControl
         if (snapshot is null || !_selection.IsActive)
             return false;
 
-        string? renderedText = null;
-        if ((options ?? MarkdownCopyOptions.Default).PlainTextMode == MarkdownPlainTextCopyMode.RenderedText)
-            renderedText = GetRenderedSelectionText(snapshot, _selection.Range);
+        bool succeeded;
+        try
+        {
+            string? renderedText = null;
+            if ((options ?? MarkdownCopyOptions.Default).PlainTextMode == MarkdownPlainTextCopyMode.RenderedText)
+                renderedText = GetRenderedSelectionText(snapshot, _selection.Range);
 
-        return MarkdownClipboardWriter.Copy(snapshot.SourceMap, _selection.Range, options, renderedText);
+            succeeded = MarkdownClipboardWriter.Copy(snapshot.SourceMap, _selection.Range, options, renderedText);
+        }
+        catch (Exception ex)
+        {
+            MarkdownDiagnostics.WriteLine($"[MarkdownRendererControl] Selection copy failed: {ex.Message}");
+            succeeded = false;
+        }
+
+        RaiseCopyCompleted(MarkdownCopyKind.Selection, succeeded);
+        return succeeded;
     }
 
     private static string GetRenderedSelectionText(LayoutSnapshot snapshot, DocumentRange range)
@@ -1312,7 +1582,16 @@ public sealed partial class MarkdownRendererControl : UserControl
 
     private void OnLoadedInternal()
     {
+        if (_isDisposed)
+            return;
+
         _isUnloaded = false;
+        AttachCanvasRenderHandlers();
+        if (_imageLifetimeCts is null || _imageLifetimeCts.IsCancellationRequested)
+        {
+            _imageLifetimeCts?.Dispose();
+            _imageLifetimeCts = new CancellationTokenSource();
+        }
         MarkdownSelectionCoordinator.Register(this);
         RegisterSelectionDismissalHook();
         EnsureThemeSettingsSubscription();
@@ -1337,10 +1616,27 @@ public sealed partial class MarkdownRendererControl : UserControl
 
     private void OnUnloaded()
     {
+        if (_isUnloaded)
+            return;
+
         // Set before any unsubscription so dispatcher-queued lambdas
         // (e.g. from OnImageLoadCompleted) that are already in-flight know
         // not to call RequestRebuild after we've torn down.
         _isUnloaded = true;
+        // Win2D can retain queued native draw/resource callbacks after XAML starts
+        // removing this control. Stop those callbacks before releasing any snapshot
+        // or DirectWrite resources they may reference.
+        DetachCanvasRenderHandlers();
+        // Win2D requires RemoveFromVisualTree from the containing control's
+        // Unloaded boundary. At this point XAML has begun detaching the renderer,
+        // so each Win2D child can unregister its XamlRoot callback without racing a
+        // subsequent window resize.
+        _canvas?.RemoveFromVisualTree();
+        ReleaseLoadedResources();
+    }
+
+    private void ReleaseLoadedResources()
+    {
         HideAbbreviationTooltip();
         ReleaseAbbreviationTooltipTimers();
         if (_sizeChangedHandler is not null)
@@ -1354,25 +1650,25 @@ public sealed partial class MarkdownRendererControl : UserControl
         }
         if (_themeSettings is not null)
         {
-            _themeSettings.Changed -= OnThemeSettingsChanged;
             _themeSettings = null;
         }
         UnregisterSelectionDismissalHook();
         MarkdownSelectionCoordinator.Unregister(this);
-        // Cancel and dispose the CTS. At unload no new RequestRebuild can be called
-        // (the control is being torn down), so there is no concurrent ContinueWith
-        // disposal race. Disposing explicitly avoids leaking the WaitHandle until GC.
         var oldCts = _pipelineCts;
+        var oldTask = _pipelineTask;
         _pipelineCts = null;
-        oldCts?.Cancel();
-        oldCts?.Dispose();
+        _pipelineTask = null;
+        RetireCancellationTokenSource(oldCts, oldTask);
+        var oldImageLifetimeCts = _imageLifetimeCts;
+        _imageLifetimeCts = null;
+        RetireCancellationTokenSource(oldImageLifetimeCts, lifetime: null);
         _rebuildQueued = false;
         _hasPendingRebuild = false;
         _pendingRebuildReason = RebuildReason.Restyle;
+        _imageRelayoutQueued = false;
         var oldHighlightCts = _codeBlockHighlightCts;
         _codeBlockHighlightCts = null;
-        oldHighlightCts?.Cancel();
-        oldHighlightCts?.Dispose();
+        RetireCancellationTokenSource(oldHighlightCts, DrainCodeBlockHighlightTasks());
         _codeBlockHighlightGeneration++;
         _codeBlockHighlightInFlight.Clear();
         // Unsubscribe scroll handler so scroll-inertia events after visual-tree
@@ -1382,7 +1678,7 @@ public sealed partial class MarkdownRendererControl : UserControl
         // list; otherwise an async load completing after unload fires
         // OnImageLoadCompleted → RequestRebuild on a torn-down control, causing a
         // zombie rebuild cycle that re-subscribes handlers indefinitely.
-        foreach (var img in _imagePlans) img.LoadCompleted -= OnImageLoadCompleted;
+        UnsubscribeAllImages();
         // Tear down embed plans before clearing the overlay so block embed
         // factories get RecycleBlock callbacks and inline embeds release
         // their Run.RealizedElement references — otherwise hosted controls
@@ -1410,7 +1706,7 @@ public sealed partial class MarkdownRendererControl : UserControl
         _selectionAdornerRects.Clear();
         if (_selectionAdorner is not null)
         {
-            _selectionAdorner.Draw -= OnSelectionAdornerDraw;
+            _selectionAdorner.Children.Clear();
             _selectionAdorner = null;
         }
         _focusRing = null; // evicted from overlay above; lazily re-created on re-attach
@@ -1419,8 +1715,82 @@ public sealed partial class MarkdownRendererControl : UserControl
         snap?.Dispose();
     }
 
+    /// <summary>
+    /// Releases renderer resources and detaches Win2D/XAML event handlers.
+    /// </summary>
+    public void Dispose()
+    {
+        if (_isDisposed)
+            return;
+
+        _isDisposed = true;
+        OnUnloaded();
+        DetachCanvasHandlers();
+        DetachSelectionDragShieldHandlers();
+        Content = null;
+        _canvas = null;
+        _overlay = null;
+        _scroll = null;
+        _root = null;
+    }
+
+    private void DetachCanvasHandlers()
+    {
+        DetachCanvasRenderHandlers();
+        if (_canvas is not null)
+        {
+            _canvas.PointerPressed -= OnPointerPressed;
+            _canvas.PointerExited -= OnPointerExited;
+            _canvas.RightTapped -= OnRightTapped;
+            _canvas.RemoveHandler(UIElement.PointerMovedEvent, _canvasPointerMovedHandler);
+            _canvas.RemoveHandler(UIElement.PointerReleasedEvent, _canvasPointerReleasedHandler);
+            _canvas.RemoveHandler(UIElement.PointerCanceledEvent, _canvasPointerCanceledHandler);
+            _canvas.RemoveHandler(UIElement.PointerCaptureLostEvent, _canvasPointerCaptureLostHandler);
+        }
+
+        GettingFocus -= OnGettingFocus;
+        GotFocus -= OnGotFocus;
+        LosingFocus -= OnLosingFocus;
+        KeyDown -= OnKeyDown;
+    }
+
+    private void AttachCanvasRenderHandlers()
+    {
+        if (_canvas is null || _canvasRenderHandlersAttached)
+            return;
+
+        _canvas.RegionsInvalidated += OnRegionsInvalidated;
+        _canvas.CreateResources += OnCanvasCreateResources;
+        _canvasRenderHandlersAttached = true;
+    }
+
+    private void DetachCanvasRenderHandlers()
+    {
+        if (_canvas is null || !_canvasRenderHandlersAttached)
+            return;
+
+        _canvas.RegionsInvalidated -= OnRegionsInvalidated;
+        _canvas.CreateResources -= OnCanvasCreateResources;
+        _canvasRenderHandlersAttached = false;
+    }
+
+    private void DetachSelectionDragShieldHandlers()
+    {
+        if (_selectionDragShield is null)
+            return;
+
+        _selectionDragShield.PointerMoved -= OnPointerMoved;
+        _selectionDragShield.PointerReleased -= OnPointerReleased;
+        _selectionDragShield.PointerCanceled -= OnPointerCanceledOrCaptureLost;
+        _selectionDragShield.PointerCaptureLost -= OnPointerCanceledOrCaptureLost;
+        _selectionDragShield = null;
+    }
+
     private void OnThemeChanged()
     {
+        if (_isDisposed || _isUnloaded)
+            return;
+
         // t.Invalidate() fires Theme.Changed → OnThemeRevisionChanged → RequestRebuild.
         // Do NOT call RequestRebuild() here again — that would start two simultaneous
         // builds and immediately cancel the first one on every theme change.
@@ -1446,14 +1816,11 @@ public sealed partial class MarkdownRendererControl : UserControl
 
     private void EnsureThemeSettingsSubscription()
     {
-        if (_themeSettings is not null) return;
-        try
-        {
-            if (XamlRoot?.ContentIslandEnvironment is null) return;
-            _themeSettings = ThemeSettings.CreateForWindowId(XamlRoot.ContentIslandEnvironment.AppWindowId);
-            _themeSettings.Changed += OnThemeSettingsChanged;
-        }
-        catch { }
+        // Avoid per-control native WinRT event subscriptions here. On app
+        // shutdown, ThemeSettings.Changed unsubscription can enter a native
+        // fail-fast path while XAML is unloading controls. Markdown still
+        // resolves current system colors during render, and app/theme changes
+        // are driven through the managed MarkdownTheme.Changed path.
     }
 
     private void OnThemeDpChanged(DependencyPropertyChangedEventArgs e)
@@ -1490,6 +1857,9 @@ public sealed partial class MarkdownRendererControl : UserControl
 
     private void RequestRebuild(RebuildReason reason)
     {
+        if (_isDisposed)
+            return;
+
         var dispatcher = DispatcherQueue;
         if (dispatcher is not null && !dispatcher.HasThreadAccess)
         {
@@ -1533,34 +1903,69 @@ public sealed partial class MarkdownRendererControl : UserControl
         if (_isUnloaded || !IsLoaded || !_hasPendingRebuild)
             return;
 
+        // Image completion, theme changes, and width changes may request a
+        // relayout while the user is actively selecting text. Releasing pointer
+        // capture here terminates the gesture and visibly drops the selection.
+        // Keep the latest merged rebuild request pending until pointer release.
+        if (_pointerSession.IsActive)
+            return;
+
         var reason = _pendingRebuildReason;
         _pendingRebuildReason = RebuildReason.Restyle;
         _hasPendingRebuild = false;
 
-        ResetTransientInteractionState(clearSelection: true);
+        bool sourceChanged = _snapshot is not { } currentSnapshot ||
+            !string.Equals(currentSnapshot.SourceMap.SourceText, Markdown ?? string.Empty, StringComparison.Ordinal);
+        ResetTransientInteractionState(clearSelection: sourceChanged);
 
-        // Cancel the in-flight build. Dispose is deferred to ContinueWith so the
-        // in-flight task (which may still be executing ct.Register() callbacks
-        // inside Task.Run/TaskScheduler internals) doesn't encounter a disposed
-        // CancellationTokenSource mid-flight.
         var oldCts = _pipelineCts;
-        oldCts?.Cancel();
+        var oldTask = _pipelineTask;
         _pipelineCts = new CancellationTokenSource();
         var cts = _pipelineCts;
-        _ = RebuildAsync(cts.Token, reason).ContinueWith(t =>
+        long generation = ++_pipelineGeneration;
+        var task = RebuildAsync(cts.Token, reason, generation);
+        _pipelineTask = task;
+        RetireCancellationTokenSource(oldCts, oldTask);
+        _ = task.ContinueWith(t =>
         {
-            // Dispose the superseded CTS now that its task has fully completed:
-            // no more ct.Register() calls can fire on it.
-            oldCts?.Dispose();
             if (t.IsFaulted)
                 MarkdownDiagnostics.WriteLine($"[MarkdownRendererControl] Rebuild faulted: {t.Exception}");
-        }, TaskScheduler.Default);
+        }, CancellationToken.None, TaskContinuationOptions.ExecuteSynchronously, TaskScheduler.Default);
+    }
+
+    private static void RetireCancellationTokenSource(CancellationTokenSource? cts, Task? lifetime)
+    {
+        if (cts is null)
+            return;
+
+        try
+        {
+            cts.Cancel();
+        }
+        catch (ObjectDisposedException)
+        {
+            return;
+        }
+
+        if (lifetime is null || lifetime.IsCompleted)
+        {
+            cts.Dispose();
+            return;
+        }
+
+        _ = lifetime.ContinueWith(
+            static (_, state) => ((CancellationTokenSource)state!).Dispose(),
+            cts,
+            CancellationToken.None,
+            TaskContinuationOptions.ExecuteSynchronously,
+            TaskScheduler.Default);
     }
 
     private void ResetTransientInteractionState(bool clearSelection)
     {
         _pointerSession = default;
         _selectionAnchor = null;
+        _lastSelectionPointerViewportY = double.NaN;
         _clickMode = ClickMode.Single;
         _dragAnchorStart = default;
         _dragAnchorEnd = default;
@@ -1590,16 +1995,51 @@ public sealed partial class MarkdownRendererControl : UserControl
         InvalidateSelectionAdorner();
     }
 
-    private async Task RebuildAsync(CancellationToken ct, RebuildReason reason)
+    private async Task RebuildAsync(CancellationToken ct, RebuildReason reason, long generation)
     {
         try
         {
             await RebuildInternalAsync(ct, reason).ConfigureAwait(true);
+            if (!ct.IsCancellationRequested)
+            {
+                RaiseRenderCompleted(generation);
+            }
         }
         catch (OperationCanceledException) { /* expected – a new build was requested */ }
         catch (Exception ex)
         {
             MarkdownDiagnostics.WriteLine($"[MarkdownRendererControl] Rebuild failed: {ex}");
+            RaiseRenderFailed(generation, ex);
+        }
+    }
+
+    private void RaiseRenderCompleted(long generation)
+    {
+        if (_isDisposed || _isUnloaded || generation != _pipelineGeneration)
+            return;
+
+        try
+        {
+            RenderCompleted?.Invoke(this, EventArgs.Empty);
+        }
+        catch (Exception ex)
+        {
+            MarkdownDiagnostics.WriteLine($"[MarkdownRendererControl] RenderCompleted subscriber failed: {ex.Message}");
+        }
+    }
+
+    private void RaiseRenderFailed(long generation, Exception exception)
+    {
+        if (_isDisposed || _isUnloaded || generation != _pipelineGeneration)
+            return;
+
+        try
+        {
+            RenderFailed?.Invoke(this, new MarkdownRenderFailedEventArgs(exception));
+        }
+        catch (Exception ex)
+        {
+            MarkdownDiagnostics.WriteLine($"[MarkdownRendererControl] RenderFailed subscriber failed: {ex.Message}");
         }
     }
 
@@ -1674,17 +2114,21 @@ public sealed partial class MarkdownRendererControl : UserControl
         var ctx = new MarkdownLayoutContext(device, themeSnapshot, sourceMap, registry, FlowDirection, DispatcherQueue)
         {
             RasterizationScale = rasterScale,
-            // Layout runs off the UI thread and its result is checked against
-            // the rebuild token before commit. Keep the layout context itself
-            // non-canceling so superseded navigations don't flood the debugger
-            // with first-chance OperationCanceledException/TaskCanceledException
-            // noise from every nested block and image.
-            CancellationToken = CancellationToken.None,
+            // Propagate the rebuild lifetime through layout and host image
+            // construction. Image resolution has a separate loaded-lifetime
+            // token so benign width/theme relayouts do not cancel committed
+            // image boxes before they can publish their result.
+            CancellationToken = ct,
+            ImageCancellationToken = _imageLifetimeCts?.Token ?? CancellationToken.None,
             IsCodeBlockCopyEnabled = IsCodeBlockCopyEnabled,
             CodeBlockLineNumberMode = CodeBlockLineNumberMode,
             ImageResolver = ImageResolver,
             ImageBaseUri = ImageBaseUri,
             ImageDocumentPath = ImageDocumentPath,
+            ImageDocumentSource = ImageDocumentSource,
+            AllowThirdPartyRemoteImages = AllowThirdPartyRemoteImages,
+            ImageUnavailable = RaiseImageUnavailable,
+            DisclosureStates = new Dictionary<string, bool>(_disclosureStates, StringComparer.Ordinal),
         };
         var builder = new LayoutBuilder(ctx, EmbedFactory);
 
@@ -1708,7 +2152,7 @@ public sealed partial class MarkdownRendererControl : UserControl
                 viewportTop,
                 viewportHeight,
                 useLazyLayout,
-                CancellationToken.None),
+                ct),
             CancellationToken.None).ConfigureAwait(true);
         if (snapshot is null || ct.IsCancellationRequested)
         {
@@ -1751,6 +2195,12 @@ public sealed partial class MarkdownRendererControl : UserControl
         // Atomically swap snapshots, then dispose the old one so its
         // CanvasTextLayout / placeholder handles are released.
         var old = _snapshot;
+        bool sameDocument = old is not null &&
+            string.Equals(old.SourceMap.SourceText, snapshot.SourceMap.SourceText, StringComparison.Ordinal);
+        bool preserveSelection = !_selection.Range.Normalized().IsEmpty && sameDocument;
+        LinkRun? focusedLink = null;
+        if (sameDocument && FocusState != FocusState.Unfocused && TryGetFocusedLink(out _, out var currentFocusedLink))
+            focusedLink = currentFocusedLink;
         _snapshot = snapshot;
         committed = true;
         _document = MarkdownRenderer.Document.MarkdownDocument.FromParsed(parsed.SourceText, parsed.Document);
@@ -1813,7 +2263,7 @@ public sealed partial class MarkdownRendererControl : UserControl
         _codeBlockActionRects.Clear();
         _embedPlans.Clear();
         _codeBlockActionPlans.Clear();
-        foreach (var img in _imagePlans) img.LoadCompleted -= OnImageLoadCompleted;
+        UnsubscribeAllImages();
         _imagePlans.Clear();
         // Identities change across rebuild even when the count happens to
         // match — reset so the first post-rebuild realisation always fires.
@@ -1821,11 +2271,16 @@ public sealed partial class MarkdownRendererControl : UserControl
         _selectionAdornerRects.Clear();
         EnsureSelectionAdorner();
         EnsureSelectionDragShield();
-        _selection.Clear();             // stale selection no longer valid after re-layout
-        _focusedItemIndex = -1;         // selection/focus stale after re-layout
-        _focusResumeItemIndex = -1;
-        _focusRing = null;              // evicted from overlay; will be lazily re-created on next Tab
+        if (preserveSelection)
+            UpdateSelectionOverlay();
+        else
+            _selection.Clear();
         _focusableItems = snapshot.CollectFocusableItems();
+        _focusedItemIndex = focusedLink is not null && TryGetFocusableIndexForLink(focusedLink, out var restoredFocusIndex)
+            ? restoredFocusIndex
+            : -1;
+        _focusResumeItemIndex = -1;
+        _focusRing = null;              // evicted from overlay; will be lazily re-created on demand
         RebuildRealizationPlans(snapshot, preserveRealized: false);
         if (_scroll is not null)
         {
@@ -1836,8 +2291,9 @@ public sealed partial class MarkdownRendererControl : UserControl
         RestartCodeBlockHighlighting();
         ScheduleVisibleCodeBlockHighlighting();
         UpdateSelectionAdornerViewport();
+        UpdateFocusRing();
 
-        _canvas.Invalidate();
+        InvalidateCanvas();
         } // end of snapshot try-block
         catch
         {
@@ -1874,6 +2330,13 @@ public sealed partial class MarkdownRendererControl : UserControl
 
     private void OnScrollViewChanged(object? sender, ScrollViewerViewChangedEventArgs e)
     {
+        if (ShakeLogger.IsEnabled && _scroll is not null)
+        {
+            ShakeLogger.Log(
+                "scroll-view-changed",
+                $"offset={_scroll.VerticalOffset:F2} viewport={_scroll.ViewportHeight:F2} " +
+                $"extent={_scroll.ExtentHeight:F2} intermediate={e.IsIntermediate}");
+        }
         EnsureLazyLayoutForViewport();
         UpdateSelectionAdornerViewport();
         InvalidateSelectionAdorner();
@@ -1888,8 +2351,7 @@ public sealed partial class MarkdownRendererControl : UserControl
     private void RestartCodeBlockHighlighting()
     {
         var old = _codeBlockHighlightCts;
-        old?.Cancel();
-        old?.Dispose();
+        RetireCancellationTokenSource(old, DrainCodeBlockHighlightTasks());
         _codeBlockHighlightCts = new CancellationTokenSource();
         _codeBlockHighlightGeneration++;
         _codeBlockHighlightInFlight.Clear();
@@ -1937,11 +2399,50 @@ public sealed partial class MarkdownRendererControl : UserControl
             if (!_codeBlockHighlightInFlight.Add(key))
                 continue;
 
-            _ = HighlightCodeBlockAsync(snapshot, block, key, variant, highlighter, providerIdentity, providerRevision, generation, cts.Token);
+            TrackCodeBlockHighlightTask(
+                HighlightCodeBlockAsync(snapshot, block, key, variant, highlighter, providerIdentity, providerRevision, generation, cts.Token));
         }
 
         if (appliedCached)
-            _canvas?.Invalidate();
+            InvalidateCanvas();
+    }
+
+    private void TrackCodeBlockHighlightTask(Task task)
+    {
+        lock (_codeBlockHighlightTasksGate)
+        {
+            _codeBlockHighlightTasks.Add(task);
+        }
+
+        _ = task.ContinueWith(
+            static (completed, state) =>
+            {
+                var owner = (MarkdownRendererControl)state!;
+                lock (owner._codeBlockHighlightTasksGate)
+                {
+                    owner._codeBlockHighlightTasks.Remove(completed);
+                }
+            },
+            this,
+            CancellationToken.None,
+            TaskContinuationOptions.ExecuteSynchronously,
+            TaskScheduler.Default);
+    }
+
+    private Task DrainCodeBlockHighlightTasks()
+    {
+        Task[] tasks;
+        lock (_codeBlockHighlightTasksGate)
+        {
+            if (_codeBlockHighlightTasks.Count == 0)
+                return Task.CompletedTask;
+
+            tasks = new Task[_codeBlockHighlightTasks.Count];
+            _codeBlockHighlightTasks.CopyTo(tasks);
+            _codeBlockHighlightTasks.Clear();
+        }
+
+        return Task.WhenAll(tasks);
     }
 
     private async Task HighlightCodeBlockAsync(
@@ -1982,7 +2483,7 @@ public sealed partial class MarkdownRendererControl : UserControl
                     _codeBlockHighlightCache.Set(key, result);
                     RemoveCodeBlockHighlightInFlight(key, generation);
                     ApplyCodeBlockHighlightResult(snapshot, key, variant, providerIdentity, providerRevision, result);
-                    _canvas?.Invalidate();
+                    InvalidateCanvas();
                     ScheduleVisibleCodeBlockHighlighting();
                 });
             }
@@ -2191,7 +2692,7 @@ public sealed partial class MarkdownRendererControl : UserControl
         UpdateSelectionAdornerViewport();
         UpdateFocusRing();
         if (invalidateCanvas)
-            _canvas?.Invalidate();
+            InvalidateCanvas();
     }
 
     private void DerealizeAllEmbeds()
@@ -2211,8 +2712,7 @@ public sealed partial class MarkdownRendererControl : UserControl
         var oldPlans = preserveRealized ? _embedPlans.ToArray() : Array.Empty<EmbedPlan>();
         var oldActionPlans = preserveRealized ? _codeBlockActionPlans.ToArray() : Array.Empty<CodeBlockActionPlan>();
 
-        foreach (var img in _imagePlans)
-            img.LoadCompleted -= OnImageLoadCompleted;
+        UnsubscribeAllImages();
         _imagePlans.Clear();
         _embedRects.Clear();
         _blockEmbedRects.Clear();
@@ -2425,6 +2925,16 @@ public sealed partial class MarkdownRendererControl : UserControl
             }
             case Layout.Boxes.InlineContainerBox icb:
             {
+                // Register completion before asking DirectWrite for rectangles. During the
+                // first commit an inline image can be measurable but not yet have a stable
+                // character region; paint will start it and completion must still reflow.
+                foreach (var run in icb.Runs)
+                {
+                    if (run is InlineImageRun imageRun)
+                    {
+                        RegisterImage(imageRun.Image);
+                    }
+                }
                 foreach (var (run, rect) in icb.EnumerateEmbedRects())
                 {
                     _embedPlans.Add(new InlineEmbedPlan { Icb = icb, Run = run, Rect = rect });
@@ -2456,19 +2966,36 @@ public sealed partial class MarkdownRendererControl : UserControl
 
     private void AddImagePlan(Layout.Boxes.ImageBox image)
     {
+        RegisterImage(image);
         if (_imagePlans.Contains(image))
             return;
 
-        image.LoadCompleted -= OnImageLoadCompleted;
-        image.LoadCompleted += OnImageLoadCompleted;
         _imagePlans.Add(image);
+    }
+
+    private void RegisterImage(Layout.Boxes.ImageBox image)
+    {
+        if (!_subscribedImages.Add(image))
+            return;
+
+        image.LoadCompleted += OnImageLoadCompleted;
+    }
+
+    private void UnsubscribeAllImages()
+    {
+        foreach (var image in _subscribedImages)
+        {
+            image.LoadCompleted -= OnImageLoadCompleted;
+        }
+
+        _subscribedImages.Clear();
     }
 
     private void OnImageLoadCompleted(object? sender, Layout.Boxes.LoadCompletedEventArgs e)
     {
-        // CanvasBitmap.LoadAsync continues on a thread-pool thread.  Always
-        // marshal to the UI thread — RequestRebuild manipulates the canvas
-        // and CTS state, both of which require thread-affinity.  Drop the
+        // CanvasBitmap.LoadAsync continues on a thread-pool thread. Always
+        // marshal to the UI thread because relayout and invalidation touch
+        // UI-owned state. Drop the
         // event silently if we have no dispatcher (control already unloaded).
         var dq = DispatcherQueue;
         if (dq is null) return;
@@ -2478,24 +3005,102 @@ public sealed partial class MarkdownRendererControl : UserControl
             // Guard against the TOCTOU window where this lambda was already
             // dispatched before OnUnloaded ran its unsubscription.
             if (_isUnloaded) return;
-            if (sender is Layout.Boxes.ImageBox image && !_imagePlans.Contains(image)) return;
+            if (sender is Layout.Boxes.ImageBox image && !_subscribedImages.Contains(image)) return;
             if (layoutInvalidated)
             {
-                // Initial load / intrinsic-size change → coalesce through the
-                // rebuild path. Subsequent calls cancel the prior CTS.
-                RequestRebuild();
+                QueueImageRelayout();
             }
             else
             {
                 // Paint-only (e.g. SVG re-parsed against current device). Don't
                 // rebuild: doing so would dispose the freshly-parsed _svg and
                 // start the reparse cycle over again.
-                _canvas?.Invalidate();
+                InvalidateCanvas();
             }
         });
     }
 
+    private void QueueImageRelayout()
+    {
+        if (_imageRelayoutQueued || _isDisposed || _isUnloaded)
+            return;
+
+        _imageRelayoutQueued = true;
+        Microsoft.UI.Dispatching.DispatcherQueue? dispatcher = DispatcherQueue;
+        if (dispatcher is null || !dispatcher.TryEnqueue(
+                Microsoft.UI.Dispatching.DispatcherQueuePriority.Low,
+                ProcessQueuedImageRelayout))
+        {
+            _imageRelayoutQueued = false;
+        }
+    }
+
+    private void ProcessQueuedImageRelayout()
+    {
+        if (!_imageRelayoutQueued)
+            return;
+
+        _imageRelayoutQueued = false;
+        LayoutSnapshot? snapshot = _snapshot;
+        if (_isDisposed || _isUnloaded || snapshot is null)
+            return;
+
+        try
+        {
+            (int BlockIndex, double OffsetFromTop)? anchor = _scroll is null
+                ? null
+                : CaptureScrollAnchor(snapshot, _scroll.VerticalOffset);
+            snapshot.RelayoutMeasuredBlocks((float)Math.Max(50, ActualWidth), CancellationToken.None);
+            if (!ReferenceEquals(snapshot, _snapshot))
+                return;
+
+            ApplySnapshotSize(snapshot);
+            RestoreScrollAnchor(snapshot, anchor);
+            RebuildRealizationPlans(snapshot, preserveRealized: true);
+            _focusableItems = snapshot.CollectFocusableItems();
+            RealizeVisibleEmbeds();
+            ScheduleVisibleCodeBlockHighlighting();
+            UpdateSelectionAdornerViewport();
+            UpdateFocusRing();
+            InvalidateCanvas();
+            InvalidateAutomationLayout();
+        }
+        catch (OperationCanceledException)
+        {
+            // A concurrent full rebuild owns the next committed layout.
+        }
+        catch (Exception ex)
+        {
+            MarkdownDiagnostics.WriteLine($"[MarkdownRendererControl] image relayout failed: {ex}");
+            RequestRebuild();
+        }
+    }
+
+    private void InvalidateAutomationLayout()
+    {
+        // Custom-drawn descendants do not receive XAML layout notifications of
+        // their own. Refresh an existing document peer after image reflow so UIA
+        // clients see the same bounds as the newly painted snapshot immediately.
+        FrameworkElementAutomationPeer.FromElement(this)?.InvalidatePeer();
+    }
+
     private void OnRegionsInvalidated(CanvasVirtualControl sender, CanvasRegionsInvalidatedEventArgs args)
+    {
+        if (_isDisposed || _isUnloaded || !IsLoaded || !ReferenceEquals(sender, _canvas))
+            return;
+
+        try
+        {
+            PaintInvalidatedRegions(sender, args);
+        }
+        catch (Exception ex) when (ShouldIgnoreShutdownException(ex))
+        {
+            MarkdownDiagnostics.WriteLine(
+                $"[MarkdownRendererControl] ignored canvas paint during shutdown: {ex.GetType().Name} {GraphicsDeviceErrors.FormatHResult(ex.HResult)}");
+        }
+    }
+
+    private void PaintInvalidatedRegions(CanvasVirtualControl sender, CanvasRegionsInvalidatedEventArgs args)
     {
         try
         {
@@ -2536,9 +3141,8 @@ public sealed partial class MarkdownRendererControl : UserControl
                 // different sub-pixel RGB values.  Switching to grayscale makes
                 // glyph edges background-independent.
                 ds.TextAntialiasing = Microsoft.Graphics.Canvas.Text.CanvasTextAntialiasing.Grayscale;
-                // Selection is rendered by the separate Win2D adorner, not here;
-                // base document tiles are never dirtied during a drag.
                 _snapshot.Paint(ds, region);
+                PaintInteractiveDocumentState(ds, region);
             }
             catch (Exception ex) when (GraphicsDeviceErrors.IsDeviceLost(ex))
             {
@@ -2579,7 +3183,7 @@ public sealed partial class MarkdownRendererControl : UserControl
 
                 _canvasDeviceRecoveryQueued = false;
                 RequestRebuild();
-                try { _canvas?.Invalidate(); } catch (Exception ex) when (GraphicsDeviceErrors.IsDeviceLost(ex)) { }
+                InvalidateCanvas();
                 InvalidateSelectionAdorner();
             });
         });
@@ -2589,6 +3193,9 @@ public sealed partial class MarkdownRendererControl : UserControl
         CanvasVirtualControl sender,
         Microsoft.Graphics.Canvas.UI.CanvasCreateResourcesEventArgs args)
     {
+        if (_isDisposed || _isUnloaded || !ReferenceEquals(sender, _canvas))
+            return;
+
         // Initial resource creation can be deferred until the first input frame in
         // packaged WinUI. Rebuilding there resets pointer capture and selection
         // state, which makes the first click/drag flash and get swallowed. Layout
@@ -2622,6 +3229,7 @@ public sealed partial class MarkdownRendererControl : UserControl
         if (!e.GetCurrentPoint(_canvas).Properties.IsLeftButtonPressed)
             return;
         var pt = e.GetCurrentPoint(_canvas).Position;
+        _lastSelectionPointerViewportY = pt.Y - (_scroll?.VerticalOffset ?? 0);
         RememberFocusResumePoint(pt);
 
         // Pressing renderer chrome (code-copy action) must not create or clear
@@ -2684,6 +3292,13 @@ public sealed partial class MarkdownRendererControl : UserControl
         FocusRendererForPointerInteraction();
         if (_snapshot.HitTest(pt, out var pos))
         {
+            if (ShakeLogger.IsEnabled)
+            {
+                ShakeLogger.Log(
+                    "ptr-press-hit",
+                    $"px={pt.X:F2} py={pt.Y:F2} scroll={(_scroll?.VerticalOffset ?? 0):F2} " +
+                    $"pos=blk{pos.BlockIndex}/inl{pos.InlineIndex}/c{pos.CharacterOffset}");
+            }
             // Advance clock/position only on successful text hits so a miss in the
             // same spot doesn't corrupt the double/triple-click timing window.
             _lastPressTickMs = nowMs;
@@ -2699,6 +3314,7 @@ public sealed partial class MarkdownRendererControl : UserControl
                 // sequence made while IsSelectionEnabled was true.
                 _clickMode = ClickMode.Single;
                 if (!_canvas.CapturePointer(e.Pointer)) _pointerSession = default;
+                else e.Handled = true;
                 return;
             }
 
@@ -2712,11 +3328,13 @@ public sealed partial class MarkdownRendererControl : UserControl
                 // Triple-click: select the entire block (line).
                 _clickMode = ClickMode.Block;
                 (_dragAnchorStart, _dragAnchorEnd) = ExpandSelectionToBlock(_snapshot, pos);
+                _selection.SetAnchor(_dragAnchorStart);
+                _selection.ExtendTo(_dragAnchorEnd);
                 // Selection is rendered by the XAML overlay; do not dirty canvas
                 // text during mouse-down. Repainting DirectWrite text here causes
                 // visible shake on selection starts, especially on the embeds page.
                 if (!_canvas.CapturePointer(e.Pointer)) { _pointerSession = default; _selectionAnchor = null; }
-                else SetSelectionDragShieldActive(true);
+                else e.Handled = true;
                 return;
             }
             if (_consecutiveClickCount == 2)
@@ -2724,18 +3342,21 @@ public sealed partial class MarkdownRendererControl : UserControl
                 // Double-click: select the word under the cursor.
                 _clickMode = ClickMode.Word;
                 (_dragAnchorStart, _dragAnchorEnd) = ExpandSelectionToWord(_snapshot, pos);
+                _selection.SetAnchor(_dragAnchorStart);
+                _selection.ExtendTo(_dragAnchorEnd);
                 // Selection is rendered by the XAML overlay; do not dirty canvas
                 // text during mouse-down.
                 if (!_canvas.CapturePointer(e.Pointer)) { _pointerSession = default; _selectionAnchor = null; }
-                else SetSelectionDragShieldActive(true);
+                else e.Handled = true;
                 return;
             }
             _clickMode = ClickMode.Single;
             _selection.SetAnchor(pos);
             // Selection is rendered by the XAML overlay; do not dirty canvas text
             // for the empty anchor state.
-            if (!_canvas.CapturePointer(e.Pointer)) { _pointerSession = default; _selectionAnchor = null; }
-            else SetSelectionDragShieldActive(true);
+            bool captured = _canvas.CapturePointer(e.Pointer);
+            if (!captured) { _pointerSession = default; _selectionAnchor = null; }
+            else e.Handled = true;
         }
         else
         {
@@ -2747,6 +3368,7 @@ public sealed partial class MarkdownRendererControl : UserControl
             _lastPressTickMs = 0;
             _lastPressPoint  = default;
             _selectionAnchor = null; // defensive: clear any stale anchor from a prior capture loss
+            _lastSelectionPointerViewportY = double.NaN;
             _selection.Clear();
             // No canvas invalidate: selection clear is overlay-only.
         }
@@ -2797,6 +3419,8 @@ public sealed partial class MarkdownRendererControl : UserControl
         {
             if (!IsActivePointerSessionEvent(e))
                 return;
+
+            e.Handled = true;
 
             HideAbbreviationTooltip();
             var dragPoint = PrepareSelectionDragPoint(pt);
@@ -3175,19 +3799,46 @@ public sealed partial class MarkdownRendererControl : UserControl
 
     private void InvalidateSelectionAdorner()
     {
+        if (_isDisposed || _isUnloaded)
+            return;
+
         try
         {
-            _selectionAdorner?.Invalidate();
+            _canvas?.Invalidate();
         }
         catch (Exception ex) when (GraphicsDeviceErrors.IsDeviceLost(ex))
         {
             HandleCanvasDeviceLost(ex);
         }
-        catch (System.Runtime.InteropServices.COMException ex)
+        catch (Exception ex) when (ShouldIgnoreShutdownException(ex))
         {
-            MarkdownDiagnostics.WriteLine($"[MarkdownRendererControl] selection adorner invalidate failed: {ex.Message}");
+            MarkdownDiagnostics.WriteLine(
+                $"[MarkdownRendererControl] ignored selection invalidate during shutdown: {ex.GetType().Name} {GraphicsDeviceErrors.FormatHResult(ex.HResult)}");
         }
     }
+
+    private void InvalidateCanvas()
+    {
+        if (_isDisposed || _isUnloaded || !IsLoaded)
+            return;
+
+        try
+        {
+            _canvas?.Invalidate();
+        }
+        catch (Exception ex) when (GraphicsDeviceErrors.IsDeviceLost(ex))
+        {
+            HandleCanvasDeviceLost(ex);
+        }
+        catch (Exception ex) when (ShouldIgnoreShutdownException(ex))
+        {
+            MarkdownDiagnostics.WriteLine(
+                $"[MarkdownRendererControl] ignored canvas invalidate during shutdown: {ex.GetType().Name} {GraphicsDeviceErrors.FormatHResult(ex.HResult)}");
+        }
+    }
+
+    private static bool ShouldIgnoreShutdownException(Exception ex)
+        => GraphicsDeviceErrors.IsShutdownOrDisposed(ex);
 
     private Point PrepareSelectionDragPoint(Point point)
     {
@@ -3196,7 +3847,13 @@ public sealed partial class MarkdownRendererControl : UserControl
 
         double viewportTop = _scroll.VerticalOffset;
         double viewportHeight = _scroll.ViewportHeight;
-        double delta = SelectionAutoScroll.ComputeDelta(point.Y, viewportTop, viewportHeight);
+        double pointerViewportY = point.Y - viewportTop;
+        double delta = SelectionAutoScroll.ComputeDirectionalDelta(
+            point.Y,
+            viewportTop,
+            viewportHeight,
+            _lastSelectionPointerViewportY);
+        _lastSelectionPointerViewportY = pointerViewportY;
         if (Math.Abs(delta) >= 0.5)
         {
             double maxOffset = Math.Max(0, _canvas.ActualHeight - viewportHeight);
@@ -3392,7 +4049,7 @@ public sealed partial class MarkdownRendererControl : UserControl
 
     /// <summary>
     /// Syncs the selection adorner geometry. The adorner is a single stable
-    /// Win2D child layered above the document text and below hosted controls.
+    /// image-source child layered above the document text and below hosted controls.
     /// Selection changes only mutate this in-memory rect list and invalidate
     /// the adorner; they never invalidate the base document canvas or mutate
     /// the XAML child tree during a drag.
@@ -3456,14 +4113,18 @@ public sealed partial class MarkdownRendererControl : UserControl
            (_lastHoveredRun is LinkRun && _lastHoveredBox is not null) ||
            TryGetFocusedLink(out _, out _);
 
-    private CanvasControl CreateSelectionAdorner()
+    private Canvas CreateSelectionAdorner()
     {
-        var adorner = new CanvasControl
+        var adorner = new Canvas
         {
+            Background = null,
             IsHitTestVisible = false,
             UseLayoutRounding = true,
+            // Keep the overlay inert until selection gives it viewport bounds.
+            Width = 1,
+            Height = 1,
+            Visibility = Visibility.Collapsed,
         };
-        adorner.Draw += OnSelectionAdornerDraw;
         Canvas.SetZIndex(adorner, 0);
         _selectionAdorner = adorner;
         return adorner;
@@ -3569,6 +4230,13 @@ public sealed partial class MarkdownRendererControl : UserControl
         if (_selectionAdorner is null)
             return;
 
+        bool hasContent = HasInteractiveTextAdornerContent();
+        if (!hasContent)
+        {
+            _selectionAdorner.Visibility = Visibility.Collapsed;
+            return;
+        }
+
         double width = GetSelectionOverlayWidth();
         double height = GetSelectionOverlayHeight();
         double top = _scroll?.VerticalOffset ?? 0.0;
@@ -3587,63 +4255,29 @@ public sealed partial class MarkdownRendererControl : UserControl
             Canvas.SetTop(_selectionAdorner, top);
 
         _selectionAdornerOffsetY = top;
+        _selectionAdorner.Visibility = Visibility.Visible;
     }
 
-    private void OnSelectionAdornerDraw(CanvasControl sender, CanvasDrawEventArgs args)
+    private void PaintInteractiveDocumentState(CanvasDrawingSession drawingSession, Rect viewport)
     {
-        args.DrawingSession.Clear(Color.FromArgb(0, 0, 0, 0));
-
-        var snapshot = _snapshot;
+        LayoutSnapshot? snapshot = _snapshot;
         if (snapshot is null)
             return;
 
-        bool hasSelection = _selection.IsActive && _selectionAdornerRects.Count > 0;
-        bool hasHoveredLink = _lastHoveredRun is LinkRun && _lastHoveredBox is not null;
-        bool hasFocusedLink = TryGetFocusedLink(out _, out _);
-        if (!hasSelection && !hasHoveredLink && !hasFocusedLink)
+        PaintLinkStateOverlay(drawingSession, viewport);
+        if (!_selection.IsActive || _selectionAdornerRects.Count == 0)
             return;
 
-        if (ShakeLogger.IsEnabled)
-            ShakeLogger.Log("sel-adorner-draw",
-                $"rects={_selectionAdornerRects.Count} actual={sender.ActualWidth:0.####}x{sender.ActualHeight:0.####} size={sender.Width:0.####}x{sender.Height:0.####}");
-
-        var selectedBackground = _themeSnapshot?.SelectionHighlightColor
-                                 ?? Color.FromArgb(0xFF, 0x66, 0xAA, 0xE8);
-        var selectedForeground = _themeSnapshot?.SelectionForegroundColor
-                                 ?? Color.FromArgb(0xFF, 0xFF, 0xFF, 0xFF);
-        var range = _selection.Range.Normalized();
-        double yOffset = _selectionAdornerOffsetY;
-        var viewport = new Rect(0, yOffset, sender.ActualWidth, sender.ActualHeight);
-
-        args.DrawingSession.TextAntialiasing = Microsoft.Graphics.Canvas.Text.CanvasTextAntialiasing.Grayscale;
-        args.DrawingSession.Transform = Matrix3x2.CreateTranslation(0, (float)-yOffset);
-
-        // Native text controls effectively cover the old glyph pixels with the
-        // selection fill and then draw selected glyphs on top. Doing both in this
-        // adorner gives the same visual ordering without repainting document text.
-        if (hasSelection)
-        {
-            foreach (var rect in _selectionAdornerRects)
-            {
-                if (rect.Right < viewport.Left || rect.Left > viewport.Right ||
-                    rect.Bottom < viewport.Top || rect.Top > viewport.Bottom)
-                {
-                    continue;
-                }
-
-                args.DrawingSession.FillRectangle(rect, selectedBackground);
-            }
-
-            // Selected text uses a masked foreground layout, so it can be drawn
-            // once for the visible viewport after the opaque highlight fill.
-            // This preserves the native text-selection look without creating a
-            // clipped Win2D layer for every selection stripe during drag/scroll.
-            snapshot.PaintSelectionForeground(args.DrawingSession, range, selectedForeground, viewport);
-        }
-
-        PaintLinkStateOverlay(args.DrawingSession, viewport);
-
-        args.DrawingSession.Transform = Matrix3x2.Identity;
+        Color selectedBackground = _themeSnapshot?.SelectionHighlightColor
+            ?? Color.FromArgb(0xFF, 0x66, 0xAA, 0xE8);
+        Color selectedForeground = _themeSnapshot?.SelectionForegroundColor
+            ?? Color.FromArgb(0xFF, 0xFF, 0xFF, 0xFF);
+        _selection.PaintHighlight(drawingSession, snapshot, selectedBackground);
+        snapshot.PaintSelectionForeground(
+            drawingSession,
+            _selection.Range.Normalized(),
+            selectedForeground,
+            viewport);
     }
 
     private void PaintLinkStateOverlay(CanvasDrawingSession drawingSession, Rect viewport)
@@ -3671,6 +4305,8 @@ public sealed partial class MarkdownRendererControl : UserControl
         if (!IsActivePointerSessionEvent(e))
             return;
 
+        e.Handled = true;
+
         // True interruption (system-level cancel or capture taken by another element):
         // tear down drag state so a phantom anchor doesn't survive into the next gesture.
         // We deliberately do NOT do this on plain PointerExited — with capture, the
@@ -3680,11 +4316,13 @@ public sealed partial class MarkdownRendererControl : UserControl
         // inline embed). PointerReleased handles the normal end-of-drag cleanup.
         _pointerSession = default;
         _selectionAnchor = null;
+        _lastSelectionPointerViewportY = double.NaN;
         _clickMode = ClickMode.Single;
         SetSelectionDragShieldActive(false);
         if (!_selection.Range.Normalized().IsEmpty)
             InvalidateSelectionAdorner();
         OnPointerExited(sender, e);
+        ResumePendingRebuildAfterPointerInteraction();
     }
 
     private void OnPointerExited(object sender, PointerRoutedEventArgs e)
@@ -3760,6 +4398,8 @@ public sealed partial class MarkdownRendererControl : UserControl
         if (!IsActivePointerSessionEvent(e))
             return;
 
+        e.Handled = true;
+
         // Snapshot BEFORE releasing capture: ReleasePointerCapture can dispatch
         // PointerCaptureLost synchronously, so read and clear the pointer session first.
         bool wasLeft = _pointerSession.IsActive &&
@@ -3767,8 +4407,10 @@ public sealed partial class MarkdownRendererControl : UserControl
             _pointerSession.IsPrimary;
         _pointerSession = default;
         _selectionAnchor = null;
+        _lastSelectionPointerViewportY = double.NaN;
         SetSelectionDragShieldActive(false);
         _canvas.ReleasePointerCapture(e.Pointer);
+        ResumePendingRebuildAfterPointerInteraction();
         if (!wasLeft) return;
 
         if (!_selection.Range.Normalized().IsEmpty)
@@ -3788,6 +4430,11 @@ public sealed partial class MarkdownRendererControl : UserControl
             var link = FindLinkTargetAt(pos, pt);
             if (link is not null)
             {
+                if (TryActivateDisclosure(link.Value.Run))
+                {
+                    return;
+                }
+
                 // Intercept internal fragment anchors (e.g. footnote back/forward
                 // links) and scroll without surfacing them to external subscribers.
                 if (!link.Value.Url.StartsWith("#", StringComparison.Ordinal) || !HandleInternalAnchor(link.Value.Url))
@@ -3798,6 +4445,12 @@ public sealed partial class MarkdownRendererControl : UserControl
         }
     }
 
+    private void ResumePendingRebuildAfterPointerInteraction()
+    {
+        if (_hasPendingRebuild && !_rebuildQueued && !_isUnloaded)
+            RequestRebuild(_pendingRebuildReason);
+    }
+
     /// <summary>
     /// Scrolls the document so the block with <paramref name="blockIndex"/>
     /// is near the top of the viewport.
@@ -3805,16 +4458,33 @@ public sealed partial class MarkdownRendererControl : UserControl
     public void ScrollToBlock(int blockIndex)
     {
         if (_scroll is null || _snapshot is null) return;
-        foreach (var b in _snapshot.Blocks)
+
+        BlockBox? targetTopLevelBlock = null;
+        foreach (var block in _snapshot.Blocks)
         {
-            double? y = FindBlockY(b, blockIndex);
-            if (y is { } top)
-            {
-                double targetY = Math.Max(0, top - 24);
-                _scroll.ChangeView(null, targetY, null, disableAnimation: false);
-                return;
-            }
+            if (FindBlockY(block, blockIndex) is null)
+                continue;
+
+            targetTopLevelBlock = block;
+            break;
         }
+
+        if (targetTopLevelBlock is null)
+            return;
+
+        if (_snapshot.IsLazyLayoutEnabled && !_snapshot.IsTopLevelBlockMeasured(targetTopLevelBlock))
+        {
+            double top = targetTopLevelBlock.Bounds.Top;
+            double bottom = Math.Max(top + 1, targetTopLevelBlock.Bounds.Bottom);
+            _ = EnsureLazyLayoutForBand(
+                _snapshot,
+                new LazyLayoutBand(top, bottom),
+                preserveScrollAnchor: false,
+                invalidateCanvas: true);
+        }
+
+        double targetTop = FindBlockY(targetTopLevelBlock, blockIndex) ?? targetTopLevelBlock.Bounds.Top;
+        _scroll.ChangeView(null, Math.Max(0, targetTop - 24), null, disableAnimation: true);
     }
 
     private static double? FindNearestScrollAnchor(LayoutSnapshot snapshot, int blockIndex, double offsetFromTop)
@@ -3925,6 +4595,12 @@ public sealed partial class MarkdownRendererControl : UserControl
                 _selection.SetAnchor(DocumentPosition.Zero);
                 _selection.ExtendTo(new DocumentPosition(int.MaxValue, int.MaxValue, int.MaxValue));
                 e.Handled = true;
+                return;
+            case VirtualKey.F10 when shift && _selection.IsActive:
+                e.Handled = ShowSelectionContextMenu(GetKeyboardContextMenuPoint());
+                return;
+            case VirtualKey.Application when _selection.IsActive:
+                e.Handled = ShowSelectionContextMenu(GetKeyboardContextMenuPoint());
                 return;
             case VirtualKey.Tab:
                 e.Handled = MoveFocus(reverse: shift);
@@ -4098,13 +4774,17 @@ public sealed partial class MarkdownRendererControl : UserControl
             return TryFocusHostedElement(item, reverse: false);
         }
 
-        // Find the LinkRun in the snapshot and fire LinkClick.
+        // Resolve either a text link or a linked inline image and use the same
+        // activation path as pointer input.
         if (_snapshot is null) return false;
         var pos = new DocumentPosition(item.BlockIndex, item.InlineIndex, 0);
-        if (FindLinkAt(pos) is { } lr)
+        if (FindLinkTargetAt(pos) is { } link)
         {
-            if (!lr.Url.StartsWith("#", StringComparison.Ordinal) || !HandleInternalAnchor(lr.Url))
-                LinkClick?.Invoke(this, new MarkdownLinkClickEventArgs(lr.Url, lr.Title));
+            if (TryActivateDisclosure(link.Run))
+                return true;
+
+            if (!link.Url.StartsWith("#", StringComparison.Ordinal) || !HandleInternalAnchor(link.Url))
+                LinkClick?.Invoke(this, new MarkdownLinkClickEventArgs(link.Url, link.Title));
             return true;
         }
         return false;
@@ -4133,14 +4813,18 @@ public sealed partial class MarkdownRendererControl : UserControl
 
     private void NotifyFocusedItemAutomation()
     {
-        if (!TryGetFocusedLink(out var inline, out var link))
-            return;
-
         void Raise()
         {
             var peer = FrameworkElementAutomationPeer.FromElement(this) as MarkdownAutomationPeer
                        ?? FrameworkElementAutomationPeer.CreatePeerForElement(this) as MarkdownAutomationPeer;
-            peer?.RaiseFocusForLink(inline, link);
+            if (TryGetFocusedLink(out var inline, out var link))
+            {
+                peer?.RaiseFocusForLink(inline, link);
+            }
+            else if (TryGetFocusedLinkedImage(out var imageInline, out var image))
+            {
+                peer?.RaiseFocusForLinkedImage(imageInline, image);
+            }
         }
 
         // Let WinUI finish the real focus transition to the renderer first,
@@ -4541,16 +5225,6 @@ public sealed partial class MarkdownRendererControl : UserControl
         }
     }
 
-    private LinkRun? FindLinkAt(DocumentPosition pos)
-    {
-        if (_snapshot is null) return null;
-        foreach (var b in _snapshot.Blocks)
-        {
-            if (FindLinkInBlock(b, pos) is { } found) return found;
-        }
-        return null;
-    }
-
     private LinkTarget? FindLinkTargetAt(DocumentPosition pos, Point? point = null)
     {
         if (_snapshot is null) return null;
@@ -4573,7 +5247,51 @@ public sealed partial class MarkdownRendererControl : UserControl
         return TryGetLinkForFocusable(items[_focusedItemIndex], out inline, out link);
     }
 
+    private bool TryGetFocusedLinkedImage(
+        out Layout.Boxes.InlineContainerBox inline,
+        out InlineImageRun image)
+    {
+        inline = null!;
+        image = null!;
+
+        var items = _focusableItems;
+        if (items is null || _focusedItemIndex < 0 || _focusedItemIndex >= items.Count)
+            return false;
+
+        return TryGetLinkedImageForFocusable(items[_focusedItemIndex], out inline, out image);
+    }
+
     private bool TryGetFocusableIndexForLink(LinkRun run, out int index)
+    {
+        index = -1;
+        var items = _focusableItems;
+        if (items is null) return false;
+
+        int equivalentIndex = -1;
+
+        for (int i = 0; i < items.Count; i++)
+        {
+            if (!items[i].IsLink)
+                continue;
+
+            if (!TryGetLinkForFocusable(items[i], out _, out var link))
+                continue;
+
+            if (ReferenceEquals(link, run))
+            {
+                index = i;
+                return true;
+            }
+
+            if (equivalentIndex < 0 && AreEquivalentLinks(link, run))
+                equivalentIndex = i;
+        }
+
+        index = equivalentIndex;
+        return index >= 0;
+    }
+
+    private bool TryGetFocusableIndexForLinkedImage(InlineImageRun run, out int index)
     {
         index = -1;
         var items = _focusableItems;
@@ -4581,11 +5299,9 @@ public sealed partial class MarkdownRendererControl : UserControl
 
         for (int i = 0; i < items.Count; i++)
         {
-            if (!items[i].IsLink)
-                continue;
-
-            if (TryGetLinkForFocusable(items[i], out _, out var link) &&
-                ReferenceEquals(link, run))
+            if (items[i].IsLink &&
+                TryGetLinkedImageForFocusable(items[i], out _, out var image) &&
+                ReferenceEquals(image, run))
             {
                 index = i;
                 return true;
@@ -4594,6 +5310,14 @@ public sealed partial class MarkdownRendererControl : UserControl
 
         return false;
     }
+
+    private static bool AreEquivalentLinks(LinkRun left, LinkRun right) =>
+        ReferenceEquals(left, right) ||
+        (left.IsDisclosure && right.IsDisclosure &&
+         string.Equals(left.DisclosureId, right.DisclosureId, StringComparison.Ordinal)) ||
+        (string.Equals(left.Text, right.Text, StringComparison.Ordinal) &&
+         string.Equals(left.Url, right.Url, StringComparison.Ordinal) &&
+         string.Equals(left.Title, right.Title, StringComparison.Ordinal));
 
     private bool TryGetLinkForFocusable(Layout.FocusableItem item, out Layout.Boxes.InlineContainerBox inline, out LinkRun link)
     {
@@ -4647,6 +5371,70 @@ public sealed partial class MarkdownRendererControl : UserControl
                 foreach (var c in sb.Children)
                 {
                     if (TryGetLinkForFocusable(c, item, out inline, out link))
+                        return true;
+                }
+                return false;
+            default:
+                return false;
+        }
+    }
+
+    private bool TryGetLinkedImageForFocusable(
+        Layout.FocusableItem item,
+        out Layout.Boxes.InlineContainerBox inline,
+        out InlineImageRun image)
+    {
+        inline = null!;
+        image = null!;
+        if (!item.IsLink || _snapshot is null)
+            return false;
+
+        foreach (var block in _snapshot.Blocks)
+        {
+            if (TryGetLinkedImageForFocusable(block, item, out inline, out image))
+                return true;
+        }
+
+        return false;
+    }
+
+    private static bool TryGetLinkedImageForFocusable(
+        BlockBox box,
+        Layout.FocusableItem item,
+        out Layout.Boxes.InlineContainerBox inline,
+        out InlineImageRun image)
+    {
+        inline = null!;
+        image = null!;
+
+        switch (box)
+        {
+            case Layout.Boxes.InlineContainerBox icb when icb.BlockIndex == item.BlockIndex:
+                foreach (var run in icb.Runs)
+                {
+                    if (run.InlineIndex == item.InlineIndex &&
+                        run is InlineImageRun { IsLinked: true } linkedImage)
+                    {
+                        inline = icb;
+                        image = linkedImage;
+                        return true;
+                    }
+                }
+                return false;
+            case Layout.Boxes.ListItemBox listItem:
+                return TryGetLinkedImageForFocusable(listItem.Marker, item, out inline, out image) ||
+                       TryGetLinkedImageForFocusable(listItem.Content, item, out inline, out image);
+            case Layout.Boxes.TableBox table:
+                foreach (var cell in table.GetCellBoxes())
+                {
+                    if (TryGetLinkedImageForFocusable(cell, item, out inline, out image))
+                        return true;
+                }
+                return false;
+            case Layout.Boxes.StackBox stack:
+                foreach (var child in stack.Children)
+                {
+                    if (TryGetLinkedImageForFocusable(child, item, out inline, out image))
                         return true;
                 }
                 return false;
@@ -4754,6 +5542,16 @@ public sealed partial class MarkdownRendererControl : UserControl
     {
         if (_canvas is null) return;
         var pt = e.GetPosition(_canvas);
+        e.Handled = ShowSelectionContextMenu(pt);
+    }
+
+    private bool ShowSelectionContextMenu(Point placementPoint)
+    {
+        if (_canvas is null)
+        {
+            return false;
+        }
+
         var menu = new MenuFlyout();
         _contextMenuOpen = true;
         menu.Closed += (_, _) => _contextMenuOpen = false;
@@ -4776,37 +5574,40 @@ public sealed partial class MarkdownRendererControl : UserControl
         };
         menu.Items.Add(selectAllItem);
 
-        menu.ShowAt(_canvas, pt);
-        e.Handled = true;
+        menu.ShowAt(_canvas, placementPoint);
+        return true;
     }
 
-    private static LinkRun? FindLinkInBlock(BlockBox box, DocumentPosition pos)
+    private Point GetKeyboardContextMenuPoint()
     {
-        switch (box)
+        double viewportTop = _scroll?.VerticalOffset ?? 0;
+        double viewportHeight = _scroll?.ViewportHeight > 0
+            ? _scroll.ViewportHeight
+            : Math.Max(ActualHeight, 1);
+        double viewportBottom = viewportTop + viewportHeight;
+        Rect selectionRect = default;
+        foreach (Rect rectangle in _selectionAdornerRects)
         {
-            case Layout.Boxes.InlineContainerBox icb when icb.BlockIndex == pos.BlockIndex:
-                foreach (var r in icb.Runs)
-                {
-                    if (r.InlineIndex == pos.InlineIndex && r is LinkRun lr) return lr;
-                }
-                return null;
-            case Layout.Boxes.ListItemBox lib:
-                if (FindLinkInBlock(lib.Marker, pos) is { } lm) return lm;
-                return FindLinkInBlock(lib.Content, pos);
-            case Layout.Boxes.TableBox tb:
-                foreach (var cell in tb.GetCellBoxes())
-                {
-                    if (FindLinkInBlock(cell, pos) is { } tf) return tf;
-                }
-                return null;
-            case Layout.Boxes.StackBox sb:
-                foreach (var c in sb.Children)
-                {
-                    if (FindLinkInBlock(c, pos) is { } f) return f;
-                }
-                return null;
+            if (rectangle.Bottom < viewportTop || rectangle.Top > viewportBottom)
+            {
+                continue;
+            }
+
+            selectionRect = rectangle;
+            break;
         }
-        return null;
+
+        if (selectionRect.Width <= 0 || selectionRect.Height <= 0)
+        {
+            return new Point(12, viewportTop + 12);
+        }
+
+        double viewportWidth = _scroll?.ViewportWidth > 0
+            ? _scroll.ViewportWidth
+            : Math.Max(ActualWidth, 1);
+        return new Point(
+            Math.Clamp(selectionRect.Left + 8, 0, Math.Max(0, viewportWidth - 1)),
+            Math.Clamp(selectionRect.Bottom, viewportTop, Math.Max(viewportTop, viewportBottom - 1)));
     }
 
     private static LinkTarget? FindLinkTargetInBlock(BlockBox box, DocumentPosition pos, Point? point)
@@ -4823,10 +5624,10 @@ public sealed partial class MarkdownRendererControl : UserControl
                         return null;
 
                     if (r is LinkRun lr)
-                        return new LinkTarget(lr.Url, lr.Title);
+                        return new LinkTarget(lr.Url, lr.Title, lr);
 
                     if (r is InlineImageRun { IsLinked: true } image)
-                        return new LinkTarget(image.LinkUrl!, image.LinkTitle);
+                        return new LinkTarget(image.LinkUrl!, image.LinkTitle, null);
                 }
                 return null;
             case Layout.Boxes.ListItemBox lib:
@@ -4851,7 +5652,18 @@ public sealed partial class MarkdownRendererControl : UserControl
     private static bool IsLinkedRun(InlineRun? run)
         => run is LinkRun or InlineImageRun { IsLinked: true };
 
-    private readonly record struct LinkTarget(string Url, string? Title);
+    private bool TryActivateDisclosure(LinkRun? run)
+    {
+        if (run is not { IsDisclosure: true })
+        {
+            return false;
+        }
+
+        SetDisclosureExpanded(run, !run.IsExpanded);
+        return true;
+    }
+
+    private readonly record struct LinkTarget(string Url, string? Title, LinkRun? Run);
 }
 
 /// <summary>Event data for markdown link activation.</summary>
@@ -4868,5 +5680,55 @@ public sealed class MarkdownLinkClickEventArgs : EventArgs
 
     /// <summary>Gets the optional link title.</summary>
     public string? Title { get; }
+}
+
+/// <summary>Event data for safe HTML disclosure activation.</summary>
+public sealed class MarkdownDisclosureToggledEventArgs : EventArgs
+{
+    /// <summary>Initializes disclosure event data.</summary>
+    public MarkdownDisclosureToggledEventArgs(bool isExpanded) => IsExpanded = isExpanded;
+
+    /// <summary>Gets whether the disclosure is expanded after activation.</summary>
+    public bool IsExpanded { get; }
+}
+
+/// <summary>Identifies the Markdown content copied to the clipboard.</summary>
+public enum MarkdownCopyKind
+{
+    /// <summary>The active text selection.</summary>
+    Selection,
+
+    /// <summary>An entire fenced or indented code block.</summary>
+    CodeBlock,
+}
+
+/// <summary>Event data for a Markdown clipboard copy attempt.</summary>
+public sealed class MarkdownCopyCompletedEventArgs : EventArgs
+{
+    /// <summary>Initializes clipboard copy event data.</summary>
+    public MarkdownCopyCompletedEventArgs(MarkdownCopyKind kind, bool succeeded)
+    {
+        Kind = kind;
+        Succeeded = succeeded;
+    }
+
+    /// <summary>Gets the copied content kind.</summary>
+    public MarkdownCopyKind Kind { get; }
+
+    /// <summary>Gets whether the clipboard accepted the content.</summary>
+    public bool Succeeded { get; }
+}
+
+/// <summary>Event data for a Markdown document render failure.</summary>
+public sealed class MarkdownRenderFailedEventArgs : EventArgs
+{
+    /// <summary>Initializes render-failure event data.</summary>
+    public MarkdownRenderFailedEventArgs(Exception exception)
+    {
+        Exception = exception ?? throw new ArgumentNullException(nameof(exception));
+    }
+
+    /// <summary>Gets the exception raised by the render pipeline.</summary>
+    public Exception Exception { get; }
 }
 

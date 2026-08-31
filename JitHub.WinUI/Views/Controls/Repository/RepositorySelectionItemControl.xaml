@@ -6,19 +6,21 @@
     xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
     mc:Ignorable="d">
     <Border
-        Margin="0,0,0,8"
+        Margin="{ThemeResource AppMargin0_0_0_8}"
         Style="{StaticResource InsetCardBorderStyle}">
-        <Grid ColumnSpacing="12">
+        <Grid ColumnSpacing="{ThemeResource AppGap12}">
             <Grid.ColumnDefinitions>
                 <ColumnDefinition Width="Auto" />
                 <ColumnDefinition Width="*" />
             </Grid.ColumnDefinitions>
             <CheckBox
                 VerticalAlignment="Top"
+                AutomationProperties.AutomationId="{Binding AutomationId}"
+                AutomationProperties.Name="{Binding AutomationName}"
                 IsChecked="{Binding Selected, Mode=TwoWay}" />
             <StackPanel
                 Grid.Column="1"
-                Spacing="4">
+                Spacing="{ThemeResource AppGap4}">
                 <TextBlock
                     Style="{StaticResource ListItemTitleTextBlockStyle}"
                     Text="{Binding Repository.FullName}" />
@@ -28,11 +30,11 @@
                 <TextBlock
                     Style="{StaticResource SectionSecondaryTextBlockStyle}">
                     <Run Text="{Binding Repository.StargazersCount}" />
-                    <Run Text=" stars  •  " />
+                    <Run x:Uid="ControlsRepositoryRepositorySelectionItemControlRunStars" Text=" stars  •  " />
                     <Run Text="{Binding Repository.ForksCount}" />
-                    <Run Text=" forks  •  " />
+                    <Run x:Uid="ControlsRepositoryRepositorySelectionItemControlRunForks" Text=" forks  •  " />
                     <Run Text="{Binding Repository.OpenIssuesCount}" />
-                    <Run Text=" open issues" />
+                    <Run x:Uid="ControlsRepositoryRepositorySelectionItemControlRunOpenI" Text=" open issues" />
                 </TextBlock>
             </StackPanel>
         </Grid>

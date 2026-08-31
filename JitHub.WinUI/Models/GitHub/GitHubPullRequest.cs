@@ -1,5 +1,8 @@
 using System;
+using System.Globalization;
 using System.Text.Json.Serialization;
+using JitHub.Services.Markdown;
+using MarkdownRenderer.Images;
 
 namespace JitHub.Models.GitHub;
 
@@ -56,6 +59,21 @@ public sealed partial class GitHubPullRequest
 
     [JsonPropertyName("requested_reviewers")]
     public GitHubActor[] RequestedReviewers { get; set; } = [];
+
+    [JsonIgnore]
+    public string AutomationId => $"RepoPullRequestRow_{(Id > 0 ? Id : Number).ToString(CultureInfo.InvariantCulture)}";
+
+    [JsonIgnore]
+    public string AutomationName => $"Pull request #{Number.ToString(CultureInfo.CurrentCulture)}: " +
+        (string.IsNullOrWhiteSpace(Title) ? "Untitled pull request" : Title.Trim());
+
+    [JsonIgnore]
+    public MarkdownDocumentSource? MarkdownSource =>
+        MarkdownDocumentSourceFactory.TryCreateFromGitHubUrl(
+            "pull-request-body",
+            Id > 0 ? Id.ToString() : Number.ToString(),
+            HtmlUrl,
+            Base.GitRef);
 }
 
 [WinRT.GeneratedBindableCustomProperty]

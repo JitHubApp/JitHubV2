@@ -3,7 +3,7 @@ using System.Windows.Input;
 
 namespace JitHub.WinUI.ViewModels
 {
-    public class MarkdownFormViewModel : ObservableObject
+public partial class MarkdownFormViewModel : ObservableObject
     {
         private string _text = string.Empty;
         private string _selectedBodyView = "Write";

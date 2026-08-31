@@ -17,19 +17,22 @@
 
         <!--  Zoomable image  -->
         <ScrollViewer
+            x:Name="PreviewScrollViewer"
             Grid.Row="0"
+            AutomationProperties.AutomationId="ImagePreviewScrollViewer"
             HorizontalScrollBarVisibility="Auto"
             MaxZoomFactor="8"
             MinZoomFactor="0.1"
             VerticalScrollBarVisibility="Auto"
+            ViewChanged="PreviewScrollViewer_ViewChanged"
             ZoomMode="Enabled">
-            <Grid HorizontalAlignment="Center" VerticalAlignment="Center" Padding="16">
+            <Grid HorizontalAlignment="Center" VerticalAlignment="Center" Padding="{ThemeResource AppPadding16}">
                 <Image
                     x:Name="PreviewImage"
                     HorizontalAlignment="Center"
                     VerticalAlignment="Center" />
                 <TextBlock
-                    x:Name="ErrorText"
+                    x:Uid="ErrorText" x:Name="ErrorText"
                     HorizontalAlignment="Center"
                     VerticalAlignment="Center"
                     Foreground="{ThemeResource AppInkMutedBrush}"
@@ -41,10 +44,10 @@
         <!--  Footer with metadata  -->
         <Border
             Grid.Row="1"
-            Padding="12,6"
+            Padding="{ThemeResource AppPadding12_6}"
             Background="{ThemeResource AppSurfaceBrush}"
             BorderBrush="{ThemeResource AppOutlineBrush}"
-            BorderThickness="0,1,0,0">
+            BorderThickness="{ThemeResource AppTopHairlineBorderThickness}">
             <TextBlock
                 x:Name="FooterText"
                 Foreground="{ThemeResource AppInkMutedBrush}"

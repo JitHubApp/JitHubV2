@@ -44,11 +44,3 @@ public sealed class RepoDetailPageArgs
 
     public RepoPageType Page { get; }
 }
-
-public enum RepoPageType
-{
-    CodePage,
-    IssuePage,
-    PullRequestPage,
-    CommitPage
-}

@@ -23,7 +23,7 @@ public static class IncrementalLoadingBehavior
     public static readonly DependencyProperty SourceProperty =
         DependencyProperty.RegisterAttached(
             "Source",
-            typeof(object),
+            typeof(ISupportIncrementalLoading),
             typeof(IncrementalLoadingBehavior),
             new PropertyMetadata(null, OnSourceChanged));
 
@@ -54,10 +54,10 @@ public static class IncrementalLoadingBehavior
     public static void SetIsEnabled(DependencyObject obj, bool value)
         => obj.SetValue(IsEnabledProperty, value);
 
-    public static object? GetSource(DependencyObject obj)
-        => obj.GetValue(SourceProperty);
+    public static ISupportIncrementalLoading? GetSource(DependencyObject obj)
+        => obj.GetValue(SourceProperty) as ISupportIncrementalLoading;
 
-    public static void SetSource(DependencyObject obj, object? value)
+    public static void SetSource(DependencyObject obj, ISupportIncrementalLoading? value)
         => obj.SetValue(SourceProperty, value);
 
     public static int GetPageSize(DependencyObject obj)
@@ -165,63 +165,71 @@ public static class IncrementalLoadingBehavior
         element.ClearValue(StateProperty);
     }
 
-    private static async void QueueLoadIfNeeded(FrameworkElement element, IncrementalLoadingState state)
+    private static void QueueLoadIfNeeded(FrameworkElement element, IncrementalLoadingState state)
     {
-        if (!GetIsEnabled(element) ||
-            !ReferenceEquals(element.GetValue(StateProperty), state) ||
-            state.IsLoading)
-            return;
-
-        if (ResolveSource(element) is not ISupportIncrementalLoading source || !source.HasMoreItems)
-            return;
-
-        if (IsSourceLoading(source))
+        UiTaskGuard.Run(async () =>
         {
-            ScheduleAfterCurrentSourceLoad(element, state);
-            return;
-        }
+            if (!GetIsEnabled(element) || !ReferenceEquals(element.GetValue(StateProperty), state) || state.IsLoading)
+                return;
+            if (ResolveSource(element) is not ISupportIncrementalLoading source || !source.HasMoreItems)
+                return;
+            if (IncrementalLoadingSourceAdapter.IsLoading(source))
+            {
+                ScheduleAfterCurrentSourceLoad(element, state);
+                return;
+            }
 
-        if (source is System.Collections.ICollection { Count: 0 })
-            return;
+            if (source is System.Collections.ICollection { Count: 0 })
+                return;
+            if (!state.ShouldLoad(GetThreshold(element)))
+                return;
+            state.IsLoading = true;
+            bool loadSucceeded = false;
+            try
+            {
+                uint pageSize = (uint)Math.Max(1, GetPageSize(element));
+                await source.LoadMoreItemsAsync(pageSize);
+                loadSucceeded = true;
+            }
+            catch (OperationCanceledException)
+            {
+            }
+            catch (Exception ex)
+            {
+                if (!state.HasReportedFailure)
+                {
+                    state.HasReportedFailure = true;
+                    JitHub.WinUI.App.LogHandledException(ex, "ui-incremental-loading-behavior");
+                }
+            }
+            finally
+            {
+                state.IsLoading = false;
+            }
 
-        if (!state.ShouldLoad(GetThreshold(element)))
-            return;
-
-        state.IsLoading = true;
-        try
-        {
-            uint pageSize = (uint)Math.Max(1, GetPageSize(element));
-            await source.LoadMoreItemsAsync(pageSize);
-        }
-        catch (Exception ex)
-        {
-            System.Diagnostics.Debug.WriteLine($"Incremental load failed: {ex}");
-        }
-        finally
-        {
-            state.IsLoading = false;
-        }
-
-        if (source.HasMoreItems && state.ShouldLoad(GetThreshold(element)))
-            _ = element.DispatcherQueue.TryEnqueue(() => QueueLoadIfNeeded(element, state));
+            if (loadSucceeded && source.HasMoreItems && state.ShouldLoad(GetThreshold(element)))
+                _ = element.DispatcherQueue.TryEnqueue(() => QueueLoadIfNeeded(element, state));
+        }, "ui-incremental-loading-behavior");
     }
 
-    private static async void ScheduleAfterCurrentSourceLoad(FrameworkElement element, IncrementalLoadingState state)
+    private static void ScheduleAfterCurrentSourceLoad(FrameworkElement element, IncrementalLoadingState state)
     {
-        if (state.IsWaitingForSource)
-            return;
-
-        state.IsWaitingForSource = true;
-        try
+        UiTaskGuard.Run(async () =>
         {
-            await Task.Delay(120);
-        }
-        finally
-        {
-            state.IsWaitingForSource = false;
-        }
+            if (state.IsWaitingForSource)
+                return;
+            state.IsWaitingForSource = true;
+            try
+            {
+                await Task.Delay(120);
+            }
+            finally
+            {
+                state.IsWaitingForSource = false;
+            }
 
-        QueueLoadIfNeeded(element, state);
+            QueueLoadIfNeeded(element, state);
+        }, "ui-incremental-loading-behavior");
     }
 
     private static void OnViewChanged(object? sender, ScrollViewerViewChangedEventArgs e)
@@ -234,21 +242,17 @@ public static class IncrementalLoadingBehavior
             QueueLoadIfNeeded(owner, state);
     }
 
-    private static object? ResolveSource(FrameworkElement element)
+    private static ISupportIncrementalLoading? ResolveSource(FrameworkElement element)
     {
-        object? explicitSource = GetSource(element);
+        ISupportIncrementalLoading? explicitSource = GetSource(element);
         if (explicitSource is not null)
             return explicitSource;
 
-        return element switch
-        {
-            ItemsControl itemsControl => itemsControl.ItemsSource,
-            _ => element.GetType().GetProperty("ItemsSource")?.GetValue(element)
-        };
+        object? itemsSource = element is ItemsControl itemsControl
+            ? itemsControl.ItemsSource
+            : null;
+        return IncrementalLoadingSourceAdapter.Resolve(explicitSource, itemsSource, element);
     }
-
-    private static bool IsSourceLoading(ISupportIncrementalLoading source)
-        => source.GetType().GetProperty("IsLoading")?.GetValue(source) is true;
 
     private static bool ShouldWaitForListHost(FrameworkElement element)
         => element is ItemsControl and not ListViewBase && ResolveSource(element) is not null;
@@ -301,6 +305,8 @@ public static class IncrementalLoadingBehavior
         public bool IsLoading { get; set; }
 
         public bool IsWaitingForSource { get; set; }
+
+        public bool HasReportedFailure { get; set; }
 
         public int ScrollViewerCount => _scrollViewers.Count;
 

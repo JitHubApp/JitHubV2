@@ -8,6 +8,7 @@ namespace JitHub.Services;
 public class ThemeService : IThemeService
 {
     public const string Key = "APPLICATION_KEY";
+    public const string PaletteKey = "APPLICATION_PALETTE_KEY";
 
     private readonly ISettingService _settings;
 
@@ -19,6 +20,11 @@ public class ThemeService : IThemeService
     public void SetTheme(string theme)
     {
         _settings.Save(Key, theme);
+    }
+
+    public void SetPalette(string paletteId)
+    {
+        _settings.Save(PaletteKey, ThemePaletteCatalog.Normalize(paletteId));
     }
 
     public static ApplicationTheme GetSystemThemeStatic()
@@ -51,5 +57,10 @@ public class ThemeService : IThemeService
     public string GetTheme()
     {
         return _settings.Get<string>(Key);
+    }
+
+    public string GetPalette()
+    {
+        return ThemePaletteCatalog.Normalize(_settings.Get<string>(PaletteKey));
     }
 }

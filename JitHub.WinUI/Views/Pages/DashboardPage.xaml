@@ -3,94 +3,850 @@
     x:Class="JitHub.WinUI.Views.Pages.DashboardPage"
     xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
     xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
-    xmlns:controls="using:JitHub.WinUI.Views.Controls.Common"
-    xmlns:behaviors="using:JitHub.WinUI.Behaviors"
-    xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
-    xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+    xmlns:activities="using:JitHub.Models.Activities"
     xmlns:appcontrols="using:JitHub.WinUI.Views.Controls.App"
-    xmlns:repo="using:JitHub.WinUI.Views.Controls"
+    xmlns:common="using:JitHub.WinUI.Views.Controls.Common"
+    xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+    xmlns:labs="using:CommunityToolkit.WinUI"
+    xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
     xmlns:viewmodels="using:JitHub.WinUI.ViewModels.Pages"
     x:DataType="viewmodels:DashboardPageViewModel"
-    Background="Transparent"
+    Background="{ThemeResource AppTransparentBrush}"
+    SizeChanged="Page_SizeChanged"
     mc:Ignorable="d">
-    <Grid Padding="{ThemeResource AppPagePadding}">
-        <Grid HorizontalAlignment="Stretch">
-            <Grid.ColumnDefinitions>
-                <ColumnDefinition Width="308" />
-                <ColumnDefinition Width="24" />
-                <ColumnDefinition Width="*" />
-            </Grid.ColumnDefinitions>
+    <Page.Resources>
+        <Style x:Key="DashboardWidgetCardStyle" TargetType="Border">
+            <Setter Property="Padding" Value="{ThemeResource AppPadding18}" />
+            <Setter Property="Background" Value="{ThemeResource AppSurfaceSubtleBrush}" />
+            <Setter Property="BorderBrush" Value="{ThemeResource AppHairlineBrush}" />
+            <Setter Property="BorderThickness" Value="{ThemeResource AppHairlineBorderThickness}" />
+            <Setter Property="CornerRadius" Value="{ThemeResource AppRadiusSmall}" />
+        </Style>
 
-            <repo:RepoSideBar Grid.Column="0" />
+        <Style
+            x:Key="DashboardHeaderActionButtonStyle"
+            BasedOn="{StaticResource AppOutlineButtonStyle}"
+            TargetType="Button">
+            <Setter Property="MinHeight" Value="{ThemeResource AppDimension36}" />
+            <Setter Property="Padding" Value="{ThemeResource AppPadding11_6}" />
+            <Setter Property="CornerRadius" Value="{ThemeResource AppRadiusSmall}" />
+            <Setter Property="FontWeight" Value="{ThemeResource AppFontWeightSemibold}" />
+        </Style>
 
-            <appcontrols:AppSurfaceCard
-                Grid.Column="2"
-                CardPadding="20">
-                <appcontrols:AppSurfaceCard.Child>
-                    <Grid>
+        <Style
+            x:Key="DashboardShyHeaderActionButtonStyle"
+            BasedOn="{StaticResource AppToolbarButtonStyle}"
+            TargetType="Button">
+            <Setter Property="Width" Value="{ThemeResource AppDimension32}" />
+            <Setter Property="Height" Value="{ThemeResource AppDimension32}" />
+            <Setter Property="MinWidth" Value="{ThemeResource AppDimension32}" />
+            <Setter Property="MinHeight" Value="{ThemeResource AppDimension32}" />
+            <Setter Property="Padding" Value="{ThemeResource AppPadding0}" />
+            <Setter Property="CornerRadius" Value="{ThemeResource AppRadiusSmall}" />
+        </Style>
+
+        <DataTemplate x:Key="DashboardActivityTemplate" x:DataType="activities:ActivityCardViewModel">
+            <Border
+                MinHeight="{ThemeResource AppDimension62}"
+                Padding="{ThemeResource AppPadding0_2_0_9}"
+                Margin="{ThemeResource AppMargin0_0_0_7}"
+                BorderBrush="{ThemeResource AppHairlineBrush}"
+                BorderThickness="{ThemeResource AppBottomHairlineBorderThickness}">
+                <appcontrols:ActivitySentenceLine VerticalAlignment="Center" />
+            </Border>
+        </DataTemplate>
+
+        <DataTemplate x:Key="DashboardMetricTemplate" x:DataType="viewmodels:DashboardMetricViewItem">
+            <Grid
+                MinHeight="{ThemeResource AppDimension46}"
+                AutomationProperties.AccessibilityView="Content"
+                AutomationProperties.AutomationId="{x:Bind TransitionId, Mode=OneWay}"
+                AutomationProperties.Name="{x:Bind AutomationName, Mode=OneWay}"
+                labs:TransitionHelper.Id="{x:Bind TransitionId, Mode=OneWay}"
+                ColumnSpacing="{ThemeResource AppGap12}">
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="{ThemeResource AppGridLength30}" />
+                    <ColumnDefinition Width="*" />
+                    <ColumnDefinition Width="Auto" />
+                </Grid.ColumnDefinitions>
+                <FontIcon
+                    VerticalAlignment="Center"
+                    Translation="0,-3,0"
+                    FontFamily="{StaticResource SegoeFluentIcons}"
+                    FontSize="{ThemeResource AppFontSize18}"
+                    Foreground="{ThemeResource AppAccentBrush}"
+                    Glyph="{x:Bind Glyph}" />
+                <TextBlock
+                    Grid.Column="1"
+                    VerticalAlignment="Center"
+                    Style="{StaticResource SectionSecondaryTextBlockStyle}"
+                    Text="{x:Bind Label}"
+                    TextTrimming="CharacterEllipsis" />
+                <TextBlock
+                    Grid.Column="2"
+                    VerticalAlignment="Center"
+                    FontFamily="{ThemeResource AppUiFontFamily}"
+                    FontSize="{ThemeResource AppFontSize15}"
+                    FontWeight="{ThemeResource AppFontWeightSemibold}"
+                    Foreground="{ThemeResource AppInkBrush}"
+                    Text="{x:Bind Value}" />
+            </Grid>
+        </DataTemplate>
+
+        <DataTemplate x:Key="DashboardCompactMetricTemplate" x:DataType="viewmodels:DashboardMetricViewItem">
+            <Grid
+                Width="{ThemeResource AppDimension76}"
+                Height="{ThemeResource AppDimension46}"
+                AutomationProperties.AccessibilityView="Raw"
+                labs:TransitionHelper.Id="{x:Bind TransitionId, Mode=OneWay}"
+                RowSpacing="{ThemeResource AppGap1}"
+                ToolTipService.ToolTip="{x:Bind Label}">
+                <Grid.RowDefinitions>
+                    <RowDefinition Height="Auto" />
+                    <RowDefinition Height="Auto" />
+                </Grid.RowDefinitions>
+                <StackPanel
+                    HorizontalAlignment="Center"
+                    VerticalAlignment="Center"
+                    Orientation="Horizontal"
+                    Spacing="{ThemeResource AppGap5}">
+                    <FontIcon
+                        VerticalAlignment="Center"
+                        FontFamily="{StaticResource SegoeFluentIcons}"
+                        FontSize="{ThemeResource AppFontSize13}"
+                        Foreground="{ThemeResource AppAccentBrush}"
+                        Glyph="{x:Bind Glyph}" />
+                    <TextBlock
+                        VerticalAlignment="Center"
+                        FontFamily="{ThemeResource AppUiFontFamily}"
+                        FontSize="{ThemeResource AppFontSize13}"
+                        FontWeight="{ThemeResource AppFontWeightSemibold}"
+                        Foreground="{ThemeResource AppInkBrush}"
+                        Text="{x:Bind Value}" />
+                </StackPanel>
+                <TextBlock
+                    Grid.Row="1"
+                    MaxWidth="{ThemeResource AppDimension72}"
+                    HorizontalAlignment="Center"
+                    FontFamily="{ThemeResource AppUiFontFamily}"
+                    FontSize="{ThemeResource AppFontSize11}"
+                    Foreground="{ThemeResource AppInkSubtleBrush}"
+                    Text="{x:Bind Label}"
+                    TextTrimming="CharacterEllipsis" />
+            </Grid>
+        </DataTemplate>
+
+        <DataTemplate x:Key="DashboardRepositoryTemplate" x:DataType="viewmodels:DashboardRepositoryCardItem">
+            <Button
+                MinHeight="{ThemeResource AppDimension94}"
+                Margin="{ThemeResource AppMargin0_0_10_10}"
+                Padding="{ThemeResource AppPadding0}"
+                HorizontalAlignment="Stretch"
+                HorizontalContentAlignment="Stretch"
+                AutomationProperties.AutomationId="{x:Bind AutomationId}"
+                AutomationProperties.Name="{x:Bind AutomationName}"
+                Command="{x:Bind Command}"
+                Style="{StaticResource AppQuietButtonStyle}">
+                <Border
+                    Padding="{ThemeResource AppPadding14_12}"
+                    Background="{ThemeResource AppCanvasInsetBrush}"
+                    BorderBrush="{ThemeResource AppHairlineBrush}"
+                    BorderThickness="{ThemeResource AppHairlineBorderThickness}"
+                    CornerRadius="{ThemeResource AppRadiusSmall}">
+                    <Grid RowSpacing="{ThemeResource AppGap6}">
                         <Grid.RowDefinitions>
                             <RowDefinition Height="Auto" />
-                            <RowDefinition Height="*" />
+                            <RowDefinition Height="Auto" />
+                            <RowDefinition Height="Auto" />
                         </Grid.RowDefinitions>
-
-                        <appcontrols:AppSectionHeader
-                            Margin="0,0,0,16"
-                            Eyebrow="RECENT"
-                            Title="All Activities"
-                            Description="The latest activity across the repositories you care about." />
-
-                        <ProgressRing
+                        <Grid ColumnSpacing="{ThemeResource AppGap8}">
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="{ThemeResource AppGridLength28}" />
+                                <ColumnDefinition Width="*" />
+                                <ColumnDefinition Width="Auto" />
+                            </Grid.ColumnDefinitions>
+                            <common:Avatar
+                                VerticalAlignment="Center"
+                                AutomationInstanceId="{x:Bind AutomationId, Mode=OneWay}"
+                                IsProfileNavigationEnabled="False"
+                                Login="{x:Bind Owner}"
+                                ShowLogin="False"
+                                Size="SMALL"
+                                Url="{x:Bind OwnerAvatarUrl}" />
+                            <TextBlock
+                                Grid.Column="1"
+                                VerticalAlignment="Center"
+                                FontFamily="{ThemeResource AppUiFontFamily}"
+                                FontSize="{ThemeResource AppFontSize13}"
+                                FontWeight="{ThemeResource AppFontWeightSemibold}"
+                                Foreground="{ThemeResource AppInkBrush}"
+                                Text="{x:Bind FullName}"
+                                TextTrimming="CharacterEllipsis" />
+                            <TextBlock
+                                Grid.Column="2"
+                                VerticalAlignment="Center"
+                                Style="{StaticResource SectionSecondaryTextBlockStyle}"
+                                Text="{x:Bind VisibilityText}" />
+                        </Grid>
+                        <TextBlock
                             Grid.Row="1"
-                            Width="50"
-                            Height="50"
+                            MaxLines="1"
+                            Style="{StaticResource SectionSecondaryTextBlockStyle}"
+                            Text="{x:Bind Description}"
+                            TextTrimming="CharacterEllipsis" />
+                        <StackPanel
+                            Grid.Row="2"
+                            Orientation="Horizontal"
+                            Spacing="{ThemeResource AppGap14}">
+                            <StackPanel Orientation="Horizontal" Spacing="{ThemeResource AppGap5}">
+                                <Ellipse
+                                    Style="{StaticResource AppLanguageIndicatorDotStyle}"
+                                    Fill="{x:Bind LanguageColor, Converter={StaticResource HexColorToSolidBrushConverter}}" />
+                                <TextBlock VerticalAlignment="Center" Style="{StaticResource AppInlineMetadataTextBlockStyle}" Text="{x:Bind Language}" />
+                            </StackPanel>
+                            <TextBlock Style="{StaticResource SectionSecondaryTextBlockStyle}" Text="{x:Bind StarsText}" />
+                            <TextBlock Style="{StaticResource SectionSecondaryTextBlockStyle}" Text="{x:Bind ForksText}" />
+                            <TextBlock Style="{StaticResource SectionSecondaryTextBlockStyle}" Text="{x:Bind UpdatedText}" />
+                        </StackPanel>
+                    </Grid>
+                </Border>
+            </Button>
+        </DataTemplate>
+
+        <DataTemplate x:Key="DashboardRecommendedRepositoryTemplate" x:DataType="viewmodels:DashboardRepositoryCardItem">
+            <Button
+                MinHeight="{ThemeResource AppDimension52}"
+                Margin="{ThemeResource AppMargin0_0_0_8}"
+                Padding="{ThemeResource AppPadding0}"
+                HorizontalAlignment="Stretch"
+                HorizontalContentAlignment="Stretch"
+                AutomationProperties.AutomationId="{x:Bind AutomationId}"
+                AutomationProperties.Name="{x:Bind AutomationName}"
+                Command="{x:Bind Command}"
+                Style="{StaticResource AppQuietButtonStyle}">
+                <Grid ColumnSpacing="{ThemeResource AppGap10}">
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="{ThemeResource AppGridLength30}" />
+                        <ColumnDefinition Width="*" />
+                        <ColumnDefinition Width="Auto" />
+                    </Grid.ColumnDefinitions>
+                    <Border
+                        Width="{ThemeResource AppDimension26}"
+                        Height="{ThemeResource AppDimension26}"
+                        Margin="{ThemeResource AppMargin0_1_0_0}"
+                        VerticalAlignment="Top"
+                        CornerRadius="{ThemeResource AppRadiusSmall}">
+                        <common:CachedImage
+                            SourceUrl="{x:Bind OwnerAvatarUrl}"
+                            Stretch="UniformToFill" />
+                    </Border>
+                    <StackPanel Grid.Column="1" VerticalAlignment="Top" Spacing="{ThemeResource AppGap3}">
+                        <TextBlock
+                            FontFamily="{ThemeResource AppUiFontFamily}"
+                            FontSize="{ThemeResource AppFontSize13}"
+                            FontWeight="{ThemeResource AppFontWeightSemibold}"
+                            Foreground="{ThemeResource AppInkBrush}"
+                            Text="{x:Bind FullName}"
+                            TextTrimming="CharacterEllipsis" />
+                        <StackPanel Orientation="Horizontal" Spacing="{ThemeResource AppGap5}">
+                            <Ellipse
+                                Style="{StaticResource AppLanguageIndicatorDotStyle}"
+                                Fill="{x:Bind LanguageColor, Converter={StaticResource HexColorToSolidBrushConverter}}" />
+                            <TextBlock VerticalAlignment="Center" Style="{StaticResource AppInlineMetadataTextBlockStyle}" Text="{x:Bind Language}" />
+                        </StackPanel>
+                    </StackPanel>
+                    <TextBlock
+                        Grid.Column="2"
+                        Margin="{ThemeResource AppMargin0_2_0_0}"
+                        VerticalAlignment="Top"
+                        Style="{StaticResource SectionSecondaryTextBlockStyle}"
+                        Text="{x:Bind StarsText}" />
+                </Grid>
+            </Button>
+        </DataTemplate>
+
+        <DataTemplate x:Key="DashboardNotificationTemplate" x:DataType="viewmodels:DashboardNotificationItem">
+            <Button
+                MinHeight="{ThemeResource AppDimension54}"
+                Margin="{ThemeResource AppMargin0_0_0_8}"
+                Padding="{ThemeResource AppPadding0}"
+                HorizontalAlignment="Stretch"
+                HorizontalContentAlignment="Stretch"
+                AutomationProperties.AutomationId="{x:Bind AutomationId}"
+                AutomationProperties.Name="{x:Bind AutomationName}"
+                Command="{x:Bind Command}"
+                Style="{StaticResource AppQuietButtonStyle}">
+                <Grid ColumnSpacing="{ThemeResource AppGap10}">
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="{ThemeResource AppGridLength30}" />
+                        <ColumnDefinition Width="*" />
+                    </Grid.ColumnDefinitions>
+                    <Border
+                        Width="{ThemeResource AppDimension30}"
+                        Height="{ThemeResource AppDimension30}"
+                        Margin="{ThemeResource AppMargin0_1_0_0}"
+                        VerticalAlignment="Top"
+                        Background="{ThemeResource AppCanvasInsetBrush}"
+                        BorderBrush="{ThemeResource AppHairlineBrush}"
+                        BorderThickness="{ThemeResource AppHairlineBorderThickness}"
+                        CornerRadius="{ThemeResource AppRadiusSmall}">
+                        <FontIcon
                             HorizontalAlignment="Center"
                             VerticalAlignment="Center"
-                            IsActive="{Binding IsActivityLoading}"
-                            Visibility="{Binding IsActivityLoading, Converter={StaticResource BoolToVisibilityConverter}}" />
-
-                        <controls:EmptyStateView
-                            Grid.Row="1"
-                            Description="{Binding RecentActivityEmptyStateDescription}"
-                            Title="{Binding RecentActivityEmptyStateTitle}"
-                            Visibility="{Binding IsActivityEmptyStateVisible, Converter={StaticResource BoolToVisibilityConverter}}" />
-
-                        <ListView
-                            Grid.Row="1"
-                            MaxWidth="960"
-                            HorizontalAlignment="Center"
-                            IsItemClickEnabled="False"
-                            ItemTemplateSelector="{StaticResource GitHubActivityCardTemplateSelector}"
-                            ItemsSource="{Binding RecentActivity}"
-                            behaviors:IncrementalLoadingBehavior.IsEnabled="True"
-                            behaviors:IncrementalLoadingBehavior.PageSize="20"
-                            behaviors:IncrementalLoadingBehavior.Source="{Binding RecentActivity}"
-                            behaviors:IncrementalLoadingBehavior.Threshold="1200"
-                            SelectionMode="None"
-                            Visibility="{Binding AreActivityItemsVisible, Converter={StaticResource BoolToVisibilityConverter}}">
-                            <ListView.ItemContainerStyle>
-                                <Style TargetType="ListViewItem">
-                                    <Setter Property="HorizontalContentAlignment" Value="Stretch" />
-                                    <Setter Property="Padding" Value="0" />
-                                    <Setter Property="Margin" Value="0" />
-                                    <Setter Property="Background" Value="Transparent" />
-                                </Style>
-                            </ListView.ItemContainerStyle>
-                        </ListView>
-
-                        <ProgressBar
-                            Grid.Row="1"
-                            Width="220"
-                            Height="2"
-                            Margin="0,0,0,4"
-                            HorizontalAlignment="Center"
-                            VerticalAlignment="Bottom"
-                            Background="{ThemeResource AppSurfaceSubtleBrush}"
+                            FontFamily="{StaticResource SegoeFluentIcons}"
+                            FontSize="{ThemeResource AppFontSize13}"
                             Foreground="{ThemeResource AppAccentBrush}"
-                            IsIndeterminate="True"
-                            Visibility="{Binding IsActivityIncrementalLoading, Converter={StaticResource BoolToVisibilityConverter}}" />
+                            Glyph="{x:Bind Glyph}" />
+                    </Border>
+                    <StackPanel Grid.Column="1" Spacing="{ThemeResource AppGap1}">
+                        <TextBlock
+                            FontFamily="{ThemeResource AppUiFontFamily}"
+                            FontSize="{ThemeResource AppFontSize13}"
+                            FontWeight="{ThemeResource AppFontWeightSemibold}"
+                            Foreground="{ThemeResource AppInkBrush}"
+                            MaxLines="1"
+                            Text="{x:Bind Title}"
+                            TextTrimming="CharacterEllipsis" />
+                        <TextBlock
+                            Style="{StaticResource SectionSecondaryTextBlockStyle}"
+                            Text="{x:Bind MetaText}"
+                            TextTrimming="CharacterEllipsis" />
+                    </StackPanel>
+                </Grid>
+            </Button>
+        </DataTemplate>
+
+        <DataTemplate x:Key="DashboardQuickActionTemplate" x:DataType="viewmodels:DashboardQuickActionItem">
+            <Button
+                Height="{ThemeResource AppDimension94}"
+                Margin="{ThemeResource AppMargin0_0_8_8}"
+                Padding="{ThemeResource AppPadding0}"
+                HorizontalAlignment="Stretch"
+                HorizontalContentAlignment="Stretch"
+                VerticalContentAlignment="Stretch"
+                AutomationProperties.AutomationId="{x:Bind AutomationId}"
+                AutomationProperties.Name="{x:Bind AutomationName}"
+                Command="{x:Bind Command}"
+                Style="{StaticResource AppQuietButtonStyle}">
+                <Border
+                    Padding="{ThemeResource AppPadding11}"
+                    VerticalAlignment="Stretch"
+                    Background="{ThemeResource AppCanvasInsetBrush}"
+                    BorderBrush="{ThemeResource AppHairlineBrush}"
+                    BorderThickness="{ThemeResource AppHairlineBorderThickness}"
+                    CornerRadius="{ThemeResource AppRadiusSmall}">
+                    <StackPanel Spacing="{ThemeResource AppGap8}">
+                        <FontIcon
+                            HorizontalAlignment="Left"
+                            FontFamily="{StaticResource SegoeFluentIcons}"
+                            FontSize="{ThemeResource AppFontSize19}"
+                            Foreground="{Binding Tone, Converter={StaticResource ActivityToneToBrushConverter}}"
+                            Glyph="{x:Bind Glyph}" />
+                        <TextBlock
+                            FontFamily="{ThemeResource AppUiFontFamily}"
+                            FontSize="{ThemeResource AppFontSize12}"
+                            FontWeight="{ThemeResource AppFontWeightSemibold}"
+                            Foreground="{ThemeResource AppInkBrush}"
+                            MaxLines="2"
+                            Text="{x:Bind Title}"
+                            TextWrapping="WrapWholeWords" />
+                    </StackPanel>
+                </Border>
+            </Button>
+        </DataTemplate>
+
+        <DataTemplate x:Key="DashboardWidgetTemplate" x:DataType="viewmodels:DashboardWidgetViewItem">
+            <Border
+                Height="{x:Bind Height}"
+                Margin="{ThemeResource AppMargin0_0_0_16}"
+                AutomationProperties.AccessibilityView="Control"
+                AutomationProperties.AutomationId="{x:Bind AutomationId}"
+                AutomationProperties.Name="{x:Bind Title}"
+                Loaded="DashboardWidgetCard_Loaded"
+                Tag="{x:Bind Id}"
+                Unloaded="DashboardWidgetCard_Unloaded"
+                Style="{StaticResource DashboardWidgetCardStyle}">
+                <Grid RowSpacing="{ThemeResource AppGap12}">
+                    <Grid.RowDefinitions>
+                        <RowDefinition Height="Auto" />
+                        <RowDefinition Height="*" />
+                        <RowDefinition Height="Auto" />
+                    </Grid.RowDefinitions>
+                    <Grid ColumnSpacing="{ThemeResource AppGap10}">
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="{ThemeResource AppGridLength28}" />
+                            <ColumnDefinition Width="*" />
+                        </Grid.ColumnDefinitions>
+                        <FontIcon
+                            VerticalAlignment="Center"
+                            FontFamily="{StaticResource SegoeFluentIcons}"
+                            FontSize="{ThemeResource AppFontSize23}"
+                            Foreground="{ThemeResource AppAccentBrush}"
+                            Glyph="{x:Bind Glyph}" />
+                        <TextBlock
+                            Grid.Column="1"
+                            VerticalAlignment="Center"
+                            FontFamily="{ThemeResource AppDisplayFontFamily}"
+                            FontSize="{ThemeResource AppFontSize22}"
+                            Foreground="{ThemeResource AppInkBrush}"
+                            Text="{x:Bind Title}" />
                     </Grid>
-                </appcontrols:AppSurfaceCard.Child>
-            </appcontrols:AppSurfaceCard>
+
+                    <Grid Grid.Row="1">
+                        <Grid Visibility="{x:Bind IsRecentActivity, Converter={StaticResource BoolToVisibilityConverter}}">
+                            <ItemsControl
+                                ItemTemplate="{StaticResource DashboardActivityTemplate}"
+                                ItemsSource="{x:Bind Dashboard.RecentActivityPreview, Mode=OneWay}" />
+                            <TextBlock
+                                x:Uid="PagesDashboardPageTextBlockActivityAppearsHereAfterYouWo" HorizontalAlignment="Center"
+                                VerticalAlignment="Center"
+                                Foreground="{ThemeResource AppInkMutedBrush}"
+                                Text="Activity appears here after you work with repositories."
+                                TextWrapping="Wrap"
+                                Visibility="{x:Bind Dashboard.IsActivityEmptyStateVisible, Converter={StaticResource BoolToVisibilityConverter}, Mode=OneWay}" />
+                        </Grid>
+                        <Grid Visibility="{x:Bind IsRepositories, Converter={StaticResource BoolToVisibilityConverter}}">
+                            <ItemsControl
+                                ItemTemplate="{StaticResource DashboardRepositoryTemplate}"
+                                ItemsSource="{x:Bind Dashboard.RecentRepositoriesPreview, Mode=OneWay}">
+                                <ItemsControl.ItemsPanel>
+                                    <ItemsPanelTemplate>
+                                        <VariableSizedWrapGrid ItemWidth="{Binding Dashboard.RepositoryCardWidth}" Orientation="Horizontal" />
+                                    </ItemsPanelTemplate>
+                                </ItemsControl.ItemsPanel>
+                            </ItemsControl>
+                            <TextBlock
+                                x:Uid="PagesDashboardPageTextBlockRecentRepositoriesAppearAfter" HorizontalAlignment="Center"
+                                VerticalAlignment="Center"
+                                Foreground="{ThemeResource AppInkMutedBrush}"
+                                Text="Recent repositories appear after your account syncs."
+                                TextWrapping="Wrap"
+                                Visibility="{x:Bind Dashboard.IsRepositoriesEmptyStateVisible, Converter={StaticResource BoolToVisibilityConverter}, Mode=OneWay}" />
+                        </Grid>
+                        <ItemsControl
+                            ItemTemplate="{StaticResource DashboardQuickActionTemplate}"
+                            ItemsSource="{x:Bind Dashboard.QuickActions, Mode=OneWay}"
+                            Visibility="{x:Bind IsQuickActions, Converter={StaticResource BoolToVisibilityConverter}}">
+                            <ItemsControl.ItemsPanel>
+                                <ItemsPanelTemplate>
+                                    <VariableSizedWrapGrid ItemWidth="{Binding Dashboard.QuickActionCardWidth}" Orientation="Horizontal" />
+                                </ItemsPanelTemplate>
+                            </ItemsControl.ItemsPanel>
+                        </ItemsControl>
+                        <ItemsControl
+                            ItemTemplate="{StaticResource DashboardMetricTemplate}"
+                            ItemsSource="{x:Bind Dashboard.Metrics, Mode=OneWay}"
+                            Visibility="{x:Bind IsOverview, Converter={StaticResource BoolToVisibilityConverter}}" />
+                        <Grid Visibility="{x:Bind IsRecommendedRepositories, Converter={StaticResource BoolToVisibilityConverter}}">
+                            <ItemsControl
+                                ItemTemplate="{StaticResource DashboardRecommendedRepositoryTemplate}"
+                                ItemsSource="{x:Bind Dashboard.RecommendedRepositoriesPreview, Mode=OneWay}" />
+                            <TextBlock
+                                HorizontalAlignment="Center"
+                                VerticalAlignment="Center"
+                                Foreground="{ThemeResource AppInkMutedBrush}"
+                                Text="{x:Bind Dashboard.RecommendationEmptyStateMessage, Mode=OneWay}"
+                                TextAlignment="Center"
+                                TextWrapping="Wrap"
+                                Visibility="{x:Bind Dashboard.IsRecommendationsEmptyStateVisible, Converter={StaticResource BoolToVisibilityConverter}, Mode=OneWay}" />
+                        </Grid>
+                        <Grid Visibility="{x:Bind IsNotifications, Converter={StaticResource BoolToVisibilityConverter}}">
+                            <ItemsControl
+                                ItemTemplate="{StaticResource DashboardNotificationTemplate}"
+                                ItemsSource="{x:Bind Dashboard.NotificationsPreview, Mode=OneWay}" />
+                            <TextBlock
+                                x:Uid="PagesDashboardPageTextBlockYouReAllCaughtUp" HorizontalAlignment="Center"
+                                VerticalAlignment="Center"
+                                Foreground="{ThemeResource AppInkMutedBrush}"
+                                Text="You're all caught up."
+                                Visibility="{x:Bind Dashboard.IsNotificationsEmptyStateVisible, Converter={StaticResource BoolToVisibilityConverter}, Mode=OneWay}" />
+                        </Grid>
+                    </Grid>
+
+                    <Button
+                        Grid.Row="2"
+                        Margin="{ThemeResource AppMargin0_0_0_Neg2}"
+                        HorizontalAlignment="Left"
+                        AutomationProperties.AutomationId="{x:Bind ViewAllAutomationId}"
+                        AutomationProperties.Name="{x:Bind ViewAllText}"
+                        Command="{x:Bind ViewAllCommand}"
+                        Style="{StaticResource AppQuietButtonStyle}"
+                        Visibility="{x:Bind HasViewAll, Converter={StaticResource BoolToVisibilityConverter}}">
+                        <TextBlock
+                            FontFamily="{ThemeResource AppUiFontFamily}"
+                            FontSize="{ThemeResource AppFontSize13}"
+                            Foreground="{ThemeResource AppInkMutedBrush}"
+                            Text="{x:Bind ViewAllText}" />
+                    </Button>
+                </Grid>
+            </Border>
+        </DataTemplate>
+
+    </Page.Resources>
+
+    <Grid
+        x:Uid="PagesDashboardPageDashboardPageRoot" x:Name="DashboardRoot"
+        AutomationProperties.AccessibilityView="Control"
+        AutomationProperties.AutomationId="DashboardPageRoot"
+        AutomationProperties.Name="Home dashboard"
+        Background="{ThemeResource AppCanvasBrush}"
+        Padding="{ThemeResource AppPagePadding}">
+        <Grid
+            x:Uid="PagesDashboardPageDashboardWidgetBoard" x:Name="DashboardWidgetBoard"
+            MaxWidth="{ThemeResource AppDimension1160}"
+            HorizontalAlignment="Center"
+            AutomationProperties.AccessibilityView="Control"
+            AutomationProperties.AutomationId="DashboardWidgetBoard"
+            AutomationProperties.Name="Dashboard widgets"
+            ColumnSpacing="{ThemeResource AppGap16}"
+            RowSpacing="{ThemeResource AppGap0}">
+            <Grid.ColumnDefinitions>
+                <ColumnDefinition Width="*" />
+                <ColumnDefinition x:Name="DashboardSideColumn" Width="{ThemeResource AppGridLength344}" />
+            </Grid.ColumnDefinitions>
+            <Grid.RowDefinitions>
+                <RowDefinition Height="Auto" />
+                <RowDefinition Height="*" />
+            </Grid.RowDefinitions>
+
+            <Grid
+                x:Name="DashboardMainRailHost"
+                Grid.Row="0"
+                Grid.RowSpan="2"
+                Grid.Column="0"
+                Canvas.ZIndex="0">
+                <ScrollViewer
+                    x:Name="DashboardMainRailScrollViewer"
+                    AutomationProperties.AutomationId="DashboardMainRailScrollViewer"
+                    HorizontalScrollBarVisibility="Disabled"
+                    HorizontalScrollMode="Disabled"
+                    VerticalScrollBarVisibility="Auto"
+                    VerticalScrollMode="Auto"
+                    ViewChanged="DashboardMainRailScrollViewer_ViewChanged">
+                    <StackPanel>
+                        <Border
+                            x:Name="DashboardHeaderScrollSpacer"
+                            Height="{ThemeResource AppWorkspaceHeaderMinHeight}"
+                            Margin="{ThemeResource AppMargin0_0_0_12}"
+                            AutomationProperties.AccessibilityView="Raw"
+                            IsHitTestVisible="False" />
+                        <InfoBar
+                            x:Uid="PagesDashboardPageInfoBarNotificationAccess"
+                            Margin="{ThemeResource AppMargin0_0_0_10}"
+                            IsClosable="False"
+                            IsOpen="{Binding IsReconnectBannerVisible}"
+                            Message="{Binding ReconnectBannerText}"
+                            Severity="Informational"
+                            Style="{StaticResource AppStatusInfoBarStyle}"
+                            Title="Notification access">
+                            <InfoBar.ActionButton>
+                                <Button
+                                    x:Uid="PagesDashboardPageDashboardReconnectButton"
+                                    AutomationProperties.AutomationId="DashboardReconnectButton"
+                                    AutomationProperties.Name="Reconnect notification access"
+                                    Command="{Binding ReconnectCommand}"
+                                    Content="Reconnect"
+                                    Style="{StaticResource AppQuietButtonStyle}" />
+                            </InfoBar.ActionButton>
+                        </InfoBar>
+                        <ItemsControl
+                            x:Uid="PagesDashboardPageDashboardMainRail"
+                            AutomationProperties.AccessibilityView="Control"
+                            AutomationProperties.AutomationId="DashboardMainRail"
+                            AutomationProperties.Name="Main dashboard widgets"
+                            ItemTemplate="{StaticResource DashboardWidgetTemplate}"
+                            ItemsSource="{x:Bind ViewModel.MainWidgets, Mode=OneWay}" />
+                    </StackPanel>
+                </ScrollViewer>
+            </Grid>
+
+            <Grid
+                x:Name="DashboardHeaderGrid"
+                Grid.Row="0"
+                Grid.Column="0"
+                Canvas.ZIndex="20"
+                ColumnSpacing="{ThemeResource AppGap12}"
+                RowSpacing="{ThemeResource AppGap10}"
+                SizeChanged="DashboardHeaderGrid_SizeChanged"
+                Style="{StaticResource AppWorkspaceHeaderStyle}">
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="*" />
+                    <ColumnDefinition Width="Auto" />
+                </Grid.ColumnDefinitions>
+                <Grid.RowDefinitions>
+                    <RowDefinition Height="Auto" />
+                    <RowDefinition Height="Auto" />
+                </Grid.RowDefinitions>
+                <Border
+                    Grid.RowSpan="2"
+                    Grid.ColumnSpan="2"
+                    labs:TransitionHelper.Id="DashboardHeaderChrome"
+                    Background="{ThemeResource AppCanvasBrush}"
+                    IsHitTestVisible="False" />
+                <StackPanel x:Name="DashboardGreetingStack" Spacing="{ThemeResource AppGap2}">
+                    <TextBlock
+                        x:Name="DashboardGreetingText"
+                        labs:TransitionHelper.Id="DashboardHeaderGreeting"
+                        Style="{StaticResource AppWorkspaceTitleTextBlockStyle}"
+                        Text="{x:Bind ViewModel.GreetingText, Mode=OneWay}"
+                        TextTrimming="CharacterEllipsis" />
+                    <TextBlock
+                        Style="{StaticResource SectionSecondaryTextBlockStyle}"
+                        Text="{Binding DashboardStatusText}"
+                        TextTrimming="CharacterEllipsis"
+                        Visibility="Collapsed" />
+                </StackPanel>
+                <StackPanel
+                    x:Name="DashboardHeaderActions"
+                    Grid.Column="1"
+                    Style="{StaticResource AppWorkspaceHeaderActionsStyle}">
+                    <Button
+                        x:Uid="PagesDashboardPageDashboardCustomizeButton" x:Name="DashboardCustomizeButton"
+                        labs:TransitionHelper.Id="DashboardHeaderCustomize"
+                        AutomationProperties.AutomationId="DashboardCustomizeButton"
+                        AutomationProperties.Name="Customize Home"
+                        Click="DashboardCustomizeButton_Click"
+                        Style="{StaticResource DashboardHeaderActionButtonStyle}"
+                        ToolTipService.ToolTip="Customize Home">
+                        <StackPanel Orientation="Horizontal" Spacing="{ThemeResource AppGap7}">
+                            <FontIcon VerticalAlignment="Center" FontFamily="{StaticResource SegoeFluentIcons}" FontSize="{ThemeResource AppFontSize13}" Glyph="&#xE771;" />
+                            <TextBlock x:Uid="PagesDashboardPageDashboardCustomizeButtonText" x:Name="DashboardCustomizeButtonText" VerticalAlignment="Center" Text="Customize" />
+                        </StackPanel>
+                    </Button>
+                    <Button
+                        x:Uid="PagesDashboardPageDashboardOverviewDrawerButton" x:Name="DashboardOverviewDrawerButton"
+                        labs:TransitionHelper.Id="DashboardHeaderOverview"
+                        AutomationProperties.AutomationId="DashboardOverviewDrawerButton"
+                        AutomationProperties.Name="Open overview panel"
+                        Click="DashboardOverviewDrawerButton_Click"
+                        Style="{StaticResource DashboardHeaderActionButtonStyle}"
+                        ToolTipService.ToolTip="Overview"
+                        Visibility="Collapsed">
+                        <StackPanel Orientation="Horizontal" Spacing="{ThemeResource AppGap7}">
+                            <FontIcon VerticalAlignment="Center" FontFamily="{StaticResource SegoeFluentIcons}" FontSize="{ThemeResource AppFontSize14}" Glyph="&#xE700;" />
+                            <TextBlock x:Uid="PagesDashboardPageDashboardOverviewButtonText" x:Name="DashboardOverviewButtonText" VerticalAlignment="Center" Text="Overview" Visibility="Collapsed" />
+                        </StackPanel>
+                    </Button>
+                </StackPanel>
+            </Grid>
+
+            <Grid
+                x:Name="DashboardShyHeaderSurface"
+                Grid.Row="0"
+                Grid.RowSpan="2"
+                Grid.Column="0"
+                Height="{ThemeResource AppDimension40}"
+                VerticalAlignment="Top"
+                AutomationProperties.AccessibilityView="Raw"
+                Canvas.ZIndex="20"
+                Visibility="Collapsed">
+                <Border
+                    labs:TransitionHelper.Id="DashboardHeaderChrome"
+                    Background="{ThemeResource AppCanvasTransientOverlayBrush}"
+                    BorderBrush="{ThemeResource AppHairlineBrush}"
+                    BorderThickness="{ThemeResource AppBottomHairlineBorderThickness}"
+                    IsHitTestVisible="False" />
+                <Grid
+                    Padding="{ThemeResource AppPadding4}"
+                    ColumnSpacing="{ThemeResource AppGap8}">
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="*" />
+                        <ColumnDefinition Width="Auto" />
+                    </Grid.ColumnDefinitions>
+                <TextBlock
+                    x:Name="DashboardShyGreetingText"
+                    VerticalAlignment="Center"
+                    labs:TransitionHelper.Id="DashboardHeaderGreeting"
+                    FontFamily="{ThemeResource AppDisplayFontFamily}"
+                    FontSize="{ThemeResource AppFontSize18}"
+                    Foreground="{ThemeResource AppInkBrush}"
+                    MaxLines="1"
+                    Text="{x:Bind ViewModel.GreetingText, Mode=OneWay}"
+                    TextTrimming="CharacterEllipsis"
+                    TextWrapping="NoWrap" />
+                <StackPanel
+                    x:Name="DashboardShyHeaderActions"
+                    Grid.Column="1"
+                    VerticalAlignment="Center"
+                    Orientation="Horizontal"
+                    Spacing="{ThemeResource AppGap8}">
+                    <Button
+                        x:Uid="PagesDashboardPageDashboardCustomizeButton"
+                        x:Name="DashboardShyCustomizeButton"
+                        labs:TransitionHelper.Id="DashboardHeaderCustomize"
+                        AutomationProperties.AutomationId="DashboardShyCustomizeButton"
+                        AutomationProperties.Name="Customize Home"
+                        Click="DashboardCustomizeButton_Click"
+                        Style="{StaticResource DashboardShyHeaderActionButtonStyle}"
+                        ToolTipService.ToolTip="Customize Home">
+                        <FontIcon
+                            FontFamily="{StaticResource SegoeFluentIcons}"
+                            FontSize="{ThemeResource AppFontSize13}"
+                            Glyph="&#xE771;" />
+                    </Button>
+                    <Button
+                        x:Uid="PagesDashboardPageDashboardOverviewDrawerButton"
+                        x:Name="DashboardShyOverviewDrawerButton"
+                        labs:TransitionHelper.Id="DashboardHeaderOverview"
+                        AutomationProperties.AutomationId="DashboardShyOverviewDrawerButton"
+                        AutomationProperties.Name="Open overview panel"
+                        Click="DashboardOverviewDrawerButton_Click"
+                        Style="{StaticResource DashboardShyHeaderActionButtonStyle}"
+                        ToolTipService.ToolTip="Overview"
+                        Visibility="Collapsed">
+                        <FontIcon
+                            FontFamily="{StaticResource SegoeFluentIcons}"
+                            FontSize="{ThemeResource AppFontSize14}"
+                            Glyph="&#xE700;" />
+                    </Button>
+                </StackPanel>
+                </Grid>
+            </Grid>
+
+            <Grid
+                x:Name="DashboardSideRailHost"
+                Grid.Row="0"
+                Grid.RowSpan="2"
+                Grid.Column="1"
+                Visibility="{x:Bind ViewModel.IsSideRailExpanded, Converter={StaticResource BoolToVisibilityConverter}, Mode=OneWay}">
+                <ScrollViewer
+                    x:Name="DashboardSideRailScrollViewer"
+                    AutomationProperties.AutomationId="DashboardSideRailScrollViewer"
+                    HorizontalScrollBarVisibility="Disabled"
+                    HorizontalScrollMode="Disabled"
+                    VerticalScrollBarVisibility="Auto"
+                    VerticalScrollMode="Auto"
+                    ViewChanged="DashboardSideRailScrollViewer_ViewChanged">
+                    <ItemsControl
+                        x:Uid="PagesDashboardPageDashboardSideRail"
+                        x:Name="DashboardSideRailItems"
+                        AutomationProperties.AccessibilityView="Control"
+                        AutomationProperties.AutomationId="DashboardSideRail"
+                        AutomationProperties.Name="Overview dashboard widgets"
+                        ItemTemplate="{StaticResource DashboardWidgetTemplate}"
+                        ItemsSource="{x:Bind ViewModel.SideWidgets, Mode=OneWay}">
+                        <ItemsControl.ItemsPanel>
+                            <ItemsPanelTemplate>
+                                <StackPanel />
+                            </ItemsPanelTemplate>
+                        </ItemsControl.ItemsPanel>
+                    </ItemsControl>
+                </ScrollViewer>
+                <Border
+                    x:Name="DashboardOverviewShySurface"
+                    Height="{ThemeResource AppDimension54}"
+                    Padding="{ThemeResource AppPadding4}"
+                    VerticalAlignment="Top"
+                    AutomationProperties.AccessibilityView="Raw"
+                    Background="{ThemeResource AppCanvasTransientOverlayBrush}"
+                    BorderBrush="{ThemeResource AppHairlineBrush}"
+                    BorderThickness="{ThemeResource AppBottomHairlineBorderThickness}"
+                    Canvas.ZIndex="10"
+                    IsHitTestVisible="False"
+                    Visibility="Collapsed">
+                    <ItemsControl
+                        HorizontalAlignment="Center"
+                        ItemTemplate="{StaticResource DashboardCompactMetricTemplate}"
+                        ItemsSource="{x:Bind ViewModel.Metrics, Mode=OneWay}">
+                        <ItemsControl.ItemsPanel>
+                            <ItemsPanelTemplate>
+                                <ItemsStackPanel Orientation="Horizontal" />
+                            </ItemsPanelTemplate>
+                        </ItemsControl.ItemsPanel>
+                    </ItemsControl>
+                </Border>
+            </Grid>
+            </Grid>
+
+        <Grid
+            x:Name="DashboardSideDrawer"
+            AutomationProperties.AccessibilityView="Raw"
+                                                Background="{ThemeResource AppTransparentBrush}"
+            PointerPressed="DashboardSideDrawer_PointerPressed"
+            Visibility="Collapsed">
+            <Border
+                x:Uid="PagesDashboardPageDashboardSideDrawerPanel" x:Name="DashboardSideDrawerPanel"
+                AutomationProperties.AutomationId="DashboardSideDrawerPanel"
+                AutomationProperties.Name="Overview panel"
+                Width="{ThemeResource AppDimension360}"
+                Padding="{ThemeResource AppPadding16}"
+                TabFocusNavigation="Cycle"
+                HorizontalAlignment="Right"
+                Background="{ThemeResource AppCanvasRaisedBrush}"
+                BorderBrush="{ThemeResource AppHairlineBrush}"
+                BorderThickness="{ThemeResource AppZeroThickness}">
+                <Border.RenderTransform>
+                    <TranslateTransform x:Name="DashboardSideDrawerTransform" X="360" />
+                </Border.RenderTransform>
+                <Grid RowSpacing="{ThemeResource AppGap12}">
+                    <Grid.RowDefinitions>
+                        <RowDefinition Height="Auto" />
+                        <RowDefinition Height="*" />
+                    </Grid.RowDefinitions>
+                    <Button
+                        x:Name="DashboardSideDrawerStartFocusSentinel"
+                        Width="{ThemeResource AppDimension1}"
+                        Height="{ThemeResource AppDimension1}"
+                        HorizontalAlignment="Left"
+                        VerticalAlignment="Top"
+                        AutomationProperties.AccessibilityView="Raw"
+                        GotFocus="DashboardSideDrawerStartFocusSentinel_GotFocus"
+                        IsTabStop="True"
+                        Opacity="{ThemeResource AppOpacityFocusSentinel}"
+                        TabIndex="0" />
+                    <Grid>
+                        <TextBlock
+                            x:Uid="PagesDashboardPageTextBlockOverview" VerticalAlignment="Center"
+                            FontFamily="{ThemeResource AppDisplayFontFamily}"
+                            FontSize="{ThemeResource AppFontSize22}"
+                            Foreground="{ThemeResource AppInkBrush}"
+                            Text="Overview" />
+                        <Button
+                            x:Uid="PagesDashboardPageDashboardSideDrawerCloseButton" x:Name="DashboardSideDrawerCloseButton"
+                            Width="{ThemeResource AppDimension38}"
+                            Height="{ThemeResource AppDimension36}"
+                            Padding="{ThemeResource AppPadding0}"
+                            HorizontalAlignment="Right"
+                            VerticalAlignment="Center"
+                            AutomationProperties.AutomationId="DashboardSideDrawerCloseButton"
+                            AutomationProperties.Name="Close overview panel"
+                            Click="DashboardSideDrawerCloseButton_Click"
+                            Style="{StaticResource AppToolbarButtonStyle}"
+                            TabIndex="1"
+                            ToolTipService.ToolTip="Close overview">
+                            <FontIcon
+                                FontFamily="{StaticResource SegoeFluentIcons}"
+                                FontSize="{ThemeResource AppFontSize13}"
+                                Foreground="{ThemeResource AppInkBrush}"
+                                Glyph="&#xE711;" />
+                        </Button>
+                    </Grid>
+                    <ScrollViewer
+                        x:Name="DashboardSideDrawerScrollViewer"
+                        Grid.Row="1"
+                        AutomationProperties.AutomationId="DashboardSideDrawerScrollViewer"
+                        VerticalScrollBarVisibility="Auto"
+                        VerticalScrollMode="Auto">
+                        <ItemsControl
+                            AutomationProperties.AutomationId="DashboardSideDrawerWidgets"
+                            ItemTemplate="{StaticResource DashboardWidgetTemplate}"
+                            ItemsSource="{x:Bind ViewModel.SideWidgets, Mode=OneWay}" />
+                    </ScrollViewer>
+                    <Button
+                        x:Name="DashboardSideDrawerEndFocusSentinel"
+                        Grid.Row="1"
+                        Width="{ThemeResource AppDimension1}"
+                        Height="{ThemeResource AppDimension1}"
+                        HorizontalAlignment="Right"
+                        VerticalAlignment="Bottom"
+                        AutomationProperties.AccessibilityView="Raw"
+                        GotFocus="DashboardSideDrawerEndFocusSentinel_GotFocus"
+                        IsTabStop="True"
+                        Opacity="{ThemeResource AppOpacityFocusSentinel}"
+                        TabIndex="2147483647" />
+                </Grid>
+            </Border>
         </Grid>
+
     </Grid>
 </Page>

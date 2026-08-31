@@ -1,7 +1,6 @@
 using JitHub.Models.LegacyGitHub;
 using System;
 using System.Collections.Generic;
-using System.Windows.Input;
 
 namespace JitHub.Models.PRConversation
 {
@@ -19,7 +18,7 @@ namespace JitHub.Models.PRConversation
         public StringEnum<AuthorAssociation> AuthorAssociation { get; set; }
         public DateTimeOffset SubmittedAt { get; set; }
         public ICollection<ReviewCommentNode> Comments { get; set; } = new List<ReviewCommentNode>();
-        public ICommand? ScrollToElementCommand { get; set; }
+        public int AutomationOrdinal { get; set; }
 
         public ReviewNode(PullRequestReview review, Repository repo, int number) : base(repo, number)
         {

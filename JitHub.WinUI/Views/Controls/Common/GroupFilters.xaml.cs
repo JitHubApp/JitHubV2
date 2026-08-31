@@ -83,7 +83,6 @@ namespace JitHub.WinUI.Views.Controls.Common
         private void OnClearButtonClick(object sender, RoutedEventArgs e)
         {
             CommitFilterPresenterValues(this);
-            //TODO: need to get the default dictionary
             foreach (var key in FiltersDictionary.Keys)
             {
                 FiltersDictionary[key].SetDefault();

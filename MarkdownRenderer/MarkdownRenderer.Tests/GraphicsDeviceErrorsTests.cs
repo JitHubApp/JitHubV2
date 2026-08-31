@@ -1,4 +1,5 @@
 using MarkdownRenderer.Diagnostics;
+using System;
 using System.Runtime.InteropServices;
 using Xunit;
 
@@ -32,6 +33,31 @@ public class GraphicsDeviceErrorsTests
     public void IsDeviceLostHResult_NonGraphicsFailure_ReturnsFalse()
     {
         Assert.False(GraphicsDeviceErrors.IsDeviceLostHResult(unchecked((int)0x80004005)));
+    }
+
+    [Theory]
+    [InlineData(GraphicsDeviceErrors.RpcErrorDisconnected)]
+    [InlineData(GraphicsDeviceErrors.RpcErrorServerDied)]
+    [InlineData(GraphicsDeviceErrors.RpcErrorServerDiedDne)]
+    [InlineData(GraphicsDeviceErrors.RoErrorClosed)]
+    [InlineData(GraphicsDeviceErrors.Win32ErrorInvalidHandle)]
+    [InlineData(GraphicsDeviceErrors.Win32ErrorInvalidWindowHandle)]
+    public void IsShutdownHResult_KnownTeardownFailures_ReturnsTrue(int hresult)
+    {
+        Assert.True(GraphicsDeviceErrors.IsShutdownHResult(hresult));
+    }
+
+    [Fact]
+    public void IsShutdownOrDisposed_TreatsObjectDisposedAsShutdown()
+    {
+        Assert.True(GraphicsDeviceErrors.IsShutdownOrDisposed(new ObjectDisposedException("canvas")));
+    }
+
+    [Fact]
+    public void IsShutdownOrDisposed_DoesNotHideUnrelatedComFailure()
+    {
+        Assert.False(GraphicsDeviceErrors.IsShutdownOrDisposed(
+            new COMException("unrelated failure", unchecked((int)0x80004005))));
     }
 
     [Fact]

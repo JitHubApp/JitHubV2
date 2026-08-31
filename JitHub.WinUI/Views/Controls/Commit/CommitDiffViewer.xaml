@@ -1,0 +1,225 @@
+<UserControl
+    x:Class="JitHub.WinUI.Views.Controls.Commit.CommitDiffViewer"
+    x:Name="Root"
+    xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+    xmlns:commonconverters="using:JitHub.WinUI.Converters.Common"
+    xmlns:commit="using:JitHub.WinUI.Views.Controls.Commit"
+    xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+    xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+    xmlns:services="using:JitHub.Services"
+    d:DesignHeight="640"
+    d:DesignWidth="960"
+    mc:Ignorable="d">
+    <UserControl.Resources>
+        <commonconverters:CommitDiffLineKindToBrushConverter x:Key="CommitDiffLineKindToBrushConverter" />
+
+        <MenuFlyout x:Key="CommitDiffLineFlyout">
+            <MenuFlyoutItem
+                x:Uid="ControlsCommitCommitDiffViewerBindingAutomationId" AutomationProperties.AutomationId="{Binding AutomationId}"
+                AutomationProperties.Name="Copy selected diff text"
+                Click="CopyDiffRowMenuItem_Click"
+                Text="Copy" />
+        </MenuFlyout>
+
+        <DataTemplate x:Key="CommitDiffFileHeaderTemplate" x:DataType="services:CommitDiffRow">
+            <Border
+                Margin="{ThemeResource AppMargin0_6_0_0}"
+                Padding="{ThemeResource AppPadding10_6}"
+                HorizontalAlignment="Stretch"
+                Background="{ThemeResource AppSurfaceSubtleBrush}"
+                BorderBrush="{ThemeResource AppHairlineBrush}"
+                BorderThickness="{ThemeResource AppHairlineBorderThickness}"
+                CornerRadius="{ThemeResource AppRadiusSmall}">
+                    <Grid ColumnSpacing="{ThemeResource AppGap10}">
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="*" />
+                            <ColumnDefinition Width="Auto" />
+                            <ColumnDefinition Width="Auto" />
+                            <ColumnDefinition Width="Auto" />
+                        </Grid.ColumnDefinitions>
+                        <StackPanel Spacing="{ThemeResource AppGap2}">
+                            <TextBlock
+                                x:Name="FileHeaderTextBlock"
+                                FontFamily="{ThemeResource AppMonoFontFamily}"
+                                FontSize="{ThemeResource AppFontSize12}"
+                                FontWeight="{ThemeResource AppFontWeightSemibold}"
+                                Foreground="{ThemeResource AppInkBrush}"
+                                Text="{x:Bind HeaderText, Mode=OneWay}"
+                                TextTrimming="CharacterEllipsis" />
+                            <TextBlock
+                                FontFamily="{ThemeResource AppMonoFontFamily}"
+                                FontSize="{ThemeResource AppFontSize11}"
+                                Foreground="{ThemeResource AppInkMutedBrush}"
+                                Text="{x:Bind Status, Mode=OneWay}" />
+                        </StackPanel>
+                        <TextBlock
+                            Grid.Column="1"
+                            VerticalAlignment="Center"
+                            FontFamily="{ThemeResource AppMonoFontFamily}"
+                            FontSize="{ThemeResource AppFontSize12}"
+                            Foreground="{ThemeResource AppSuccessBrush}"
+                            Text="{x:Bind SummaryText, Mode=OneWay}" />
+                        <Button
+                            Grid.Column="2"
+                            Width="{ThemeResource AppDimension32}"
+                            Height="{ThemeResource AppDimension32}"
+                            Padding="{ThemeResource AppPadding0}"
+                            AutomationProperties.AutomationId="{x:Bind ExpandFileAutomationId, Mode=OneWay}"
+                            AutomationProperties.Name="{x:Bind FileExpansionAutomationName, Mode=OneWay}"
+                            Click="ToggleFileExpansionButton_Click"
+                            Style="{StaticResource AppToolbarButtonStyle}"
+                            ToolTipService.ToolTip="{x:Bind FileExpansionAutomationName, Mode=OneWay}">
+                            <FontIcon FontFamily="{StaticResource SegoeFluentIcons}" FontSize="{ThemeResource AppFontSize12}" Glyph="{x:Bind FileExpansionGlyph, Mode=OneWay}" />
+                        </Button>
+                        <Button
+                            x:Uid="ControlsCommitCommitDiffViewerBindingCopyFileAutomationI" Grid.Column="3"
+                            Width="{ThemeResource AppDimension32}"
+                            Height="{ThemeResource AppDimension32}"
+                            Padding="{ThemeResource AppPadding0}"
+                            AutomationProperties.AutomationId="{x:Bind CopyFileAutomationId, Mode=OneWay}"
+                            AutomationProperties.Name="Copy file path"
+                            Click="CopyFilePathButton_Click"
+                            Style="{StaticResource AppToolbarButtonStyle}"
+                            ToolTipService.ToolTip="Copy file path">
+                            <FontIcon FontFamily="{StaticResource SegoeFluentIcons}" FontSize="{ThemeResource AppFontSize13}" Glyph="&#xE8C8;" />
+                        </Button>
+                    </Grid>
+            </Border>
+        </DataTemplate>
+
+        <DataTemplate x:Key="CommitDiffLineTemplate" x:DataType="services:CommitDiffRow">
+            <Grid
+                MinHeight="{ThemeResource AppDimension24}"
+                HorizontalAlignment="Stretch"
+                Background="{x:Bind LineKind, Converter={StaticResource CommitDiffLineKindToBrushConverter}, ConverterParameter=background, Mode=OneWay}"
+                ColumnSpacing="{ThemeResource AppGap0}"
+                ContextFlyout="{StaticResource CommitDiffLineFlyout}">
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="{ThemeResource AppGridLength122}" />
+                        <ColumnDefinition Width="*" />
+                    </Grid.ColumnDefinitions>
+                <TextBlock
+                        Padding="{ThemeResource AppPadding8_4}"
+                        FontFamily="{ThemeResource AppMonoFontFamily}"
+                        FontSize="{ThemeResource AppFontSize12}"
+                        Foreground="{x:Bind LineKind, Converter={StaticResource CommitDiffLineKindToBrushConverter}, ConverterParameter=foreground, Mode=OneWay}"
+                        Text="{x:Bind GutterText, Mode=OneWay}"
+                        TextAlignment="Right" />
+                <TextBlock
+                        x:Name="DiffLineTextBlock"
+                        Grid.Column="1"
+                        Padding="{ThemeResource AppPadding4_4_12_4}"
+                        FontFamily="{ThemeResource AppMonoFontFamily}"
+                        FontSize="{ThemeResource AppFontSize12}"
+                        Foreground="{x:Bind LineKind, Converter={StaticResource CommitDiffLineKindToBrushConverter}, ConverterParameter=foreground, Mode=OneWay}"
+                        Text="{x:Bind Text, Mode=OneWay}"
+                    TextWrapping="Wrap" />
+            </Grid>
+        </DataTemplate>
+
+        <DataTemplate x:Key="CommitDiffHunkHeaderTemplate" x:DataType="services:CommitDiffRow">
+            <Grid
+                MinHeight="{ThemeResource AppDimension26}"
+                Padding="{ThemeResource AppPadding0}"
+                HorizontalAlignment="Stretch"
+                Background="{x:Bind LineKind, Converter={StaticResource CommitDiffLineKindToBrushConverter}, ConverterParameter=background, Mode=OneWay}"
+                ColumnSpacing="{ThemeResource AppGap0}"
+                ContextFlyout="{StaticResource CommitDiffLineFlyout}">
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="{ThemeResource AppGridLength122}" />
+                        <ColumnDefinition Width="*" />
+                    </Grid.ColumnDefinitions>
+                <TextBlock
+                        Padding="{ThemeResource AppPadding10_5}"
+                        FontFamily="{ThemeResource AppMonoFontFamily}"
+                        FontSize="{ThemeResource AppFontSize12}"
+                        Foreground="{ThemeResource AppAccentBrush}"
+                        Text="@"
+                        TextAlignment="Right" />
+                <TextBlock
+                        x:Name="HunkTextBlock"
+                        Grid.Column="1"
+                        Padding="{ThemeResource AppPadding4_5_12_5}"
+                        FontFamily="{ThemeResource AppMonoFontFamily}"
+                        FontSize="{ThemeResource AppFontSize12}"
+                        Foreground="{ThemeResource AppAccentBrush}"
+                        Text="{x:Bind Text, Mode=OneWay}"
+                    TextWrapping="Wrap" />
+            </Grid>
+        </DataTemplate>
+
+        <DataTemplate x:Key="CommitDiffUnavailableTemplate" x:DataType="services:CommitDiffRow">
+            <Border
+                Margin="{ThemeResource AppMargin0_2_0_0}"
+                Padding="{ThemeResource AppPadding12_10}"
+                Background="{ThemeResource AppCanvasRaisedBrush}"
+                BorderBrush="{ThemeResource AppHairlineBrush}"
+                BorderThickness="{ThemeResource AppHairlineBorderThickness}"
+                CornerRadius="{ThemeResource AppRadiusSmall}">
+                <TextBlock
+                    x:Name="UnavailableTextBlock"
+                    FontFamily="{ThemeResource AppBodyFontFamily}"
+                    FontSize="{ThemeResource AppFontSize12}"
+                    Foreground="{ThemeResource AppInkMutedBrush}"
+                    Text="{x:Bind Text, Mode=OneWay}"
+                    TextWrapping="Wrap" />
+            </Border>
+        </DataTemplate>
+
+        <DataTemplate x:Key="CommitDiffSearchNoResultsTemplate" x:DataType="services:CommitDiffRow">
+            <Border
+                Padding="{ThemeResource AppPadding16}"
+                HorizontalAlignment="Stretch"
+                Background="{ThemeResource AppCanvasInsetBrush}"
+                BorderBrush="{ThemeResource AppHairlineBrush}"
+                BorderThickness="{ThemeResource AppHairlineBorderThickness}"
+                CornerRadius="{ThemeResource AppRadiusSmall}">
+                <TextBlock
+                    x:Name="SearchNoResultsTextBlock"
+                    HorizontalAlignment="Center"
+                    FontFamily="{ThemeResource AppBodyFontFamily}"
+                    FontSize="{ThemeResource AppFontSize12}"
+                    Foreground="{ThemeResource AppInkMutedBrush}"
+                    Text="{x:Bind Text, Mode=OneWay}"
+                    TextWrapping="Wrap" />
+            </Border>
+        </DataTemplate>
+
+        <commit:CommitDiffRowTemplateSelector
+            x:Key="CommitDiffRowTemplateSelector"
+            DiffLineTemplate="{StaticResource CommitDiffLineTemplate}"
+            FileHeaderTemplate="{StaticResource CommitDiffFileHeaderTemplate}"
+            HunkHeaderTemplate="{StaticResource CommitDiffHunkHeaderTemplate}"
+            SearchNoResultsTemplate="{StaticResource CommitDiffSearchNoResultsTemplate}"
+            UnavailableDiffTemplate="{StaticResource CommitDiffUnavailableTemplate}" />
+
+    </UserControl.Resources>
+
+    <Grid Background="{ThemeResource AppCanvasInsetBrush}">
+        <Border
+            BorderBrush="{ThemeResource AppHairlineBrush}"
+            BorderThickness="{ThemeResource AppHairlineBorderThickness}"
+            CornerRadius="{ThemeResource AppRadiusSmall}">
+            <ScrollViewer
+                x:Name="DiffRowsScrollViewer"
+                AutomationProperties.AutomationId="CommitDiffViewerRowsScrollViewer"
+                HorizontalScrollBarVisibility="Disabled"
+                HorizontalScrollMode="Disabled"
+                IsHorizontalScrollChainingEnabled="False"
+                IsVerticalScrollChainingEnabled="True"
+                VerticalScrollBarVisibility="Auto"
+                VerticalScrollMode="Enabled">
+                <ItemsRepeater
+                    x:Name="DiffRowsRepeater"
+                    AutomationProperties.AutomationId="CommitDiffViewerRows"
+                    ItemTemplate="{StaticResource CommitDiffRowTemplateSelector}"
+                    VerticalCacheLength="2">
+                    <ItemsRepeater.Layout>
+                        <StackLayout Orientation="Vertical" />
+                    </ItemsRepeater.Layout>
+                </ItemsRepeater>
+            </ScrollViewer>
+        </Border>
+    </Grid>
+</UserControl>

@@ -9,6 +9,8 @@ public sealed partial class RepoFilePreviewViewModel : ObservableObject
     [ObservableProperty]
     public partial RepoTreeNode? CurrentFile { get; set; }
 
+    public string CurrentFilePath => CurrentFile?.Path ?? string.Empty;
+
     [ObservableProperty]
     public partial RepoFilePreviewKind Kind { get; set; }
 
@@ -40,10 +42,33 @@ public sealed partial class RepoFilePreviewViewModel : ObservableObject
     public partial string? GitHubBlobUrl { get; set; }
 
     [ObservableProperty]
+    public partial string? GitHubRawUrl { get; set; }
+
+    [ObservableProperty]
     public partial bool ShowRichPreview { get; set; } = true;
 
     [RelayCommand]
     private void ToggleRichPreview() => ShowRichPreview = !ShowRichPreview;
+
+    partial void OnCurrentFileChanged(RepoTreeNode? value) =>
+        OnPropertyChanged(nameof(CurrentFilePath));
+
+    internal void BeginSelection(RepoTreeNode file)
+    {
+        IsLoading = true;
+        ErrorMessage = null;
+        Kind = RepoFilePreviewKind.Code;
+        LanguageId = string.Empty;
+        Text = null;
+        Bytes = null;
+        ImageMimeType = null;
+        ByteSize = 0;
+        Encoding = null;
+        GitHubBlobUrl = null;
+        GitHubRawUrl = null;
+        ShowRichPreview = true;
+        CurrentFile = file;
+    }
 
     internal void Reset()
     {
@@ -58,6 +83,7 @@ public sealed partial class RepoFilePreviewViewModel : ObservableObject
         IsLoading = false;
         ErrorMessage = null;
         GitHubBlobUrl = null;
+        GitHubRawUrl = null;
         ShowRichPreview = true;
     }
 }

@@ -25,8 +25,8 @@ namespace JitHub.Services
     {
         void SetAccessToken(string? token);
         Task<User> GetCurrentUser();
-        Task<Repository> GetRepository(string owner, string name);
-        Task<Repository> GetRepository(long id);
+        Task<Repository> GetRepository(string owner, string name, CancellationToken cancellationToken = default);
+        Task<Repository> GetRepository(long id, CancellationToken cancellationToken = default);
         Task<ICollection<ConversationNode>> GetPRConversationNodesAsync(Repository repo, PullRequest pr);
         Task<ICollection<PullRequest>> GetPullRequests(string owner, string name, PullRequestRequest requestParam, ApiOptions apiOptions);
         Task<PullRequest> GetPullRequest(string owner, string name, int num);
@@ -44,18 +44,27 @@ namespace JitHub.Services
         Task<ICollection<RepoContentNode>> GetRepoContents(string owner, string name, string path, string _ref);
         Task<JitHub.Models.CodeViewer.RepoTree> GetRepoTreeAsync(string owner, string name, string refOrSha, CancellationToken ct);
         Task<CompareResult> CompareCommits(string owner, string name, string @base, string head);
-        Task<ICollection<Branch>> GetRepoBranches(string owner, string name);
+        Task<ICollection<Branch>> GetRepoBranches(
+            string owner,
+            string name,
+            CancellationToken cancellationToken = default);
         Task<Branch> GetBranch(string owner, string name, string branch);
 
         Task<Repository> CreateNewRepo(NewRepository repo);
         Task DeleteRepo(long repoId);
         Task<bool> StarRepo(string owner, string name);
         Task<bool> UnstarRepo(string owner, string name);
-        Task<bool> IsRepoStarredByCurrentUser(string owner, string name);
-        Task<Repository> ForkRepo(long repoId, NewRepositoryFork fork);
+        Task<bool> IsRepoStarredByCurrentUser(
+            string owner,
+            string name,
+            CancellationToken cancellationToken = default);
+        Task<Repository> ForkRepo(
+            long repoId,
+            NewRepositoryFork fork,
+            CancellationToken cancellationToken = default);
         Task<Subscription> WatchRepo(long repoId);
         Task<bool> UnwatchRepo(long repoId);
-        Task<bool> IsCurrentUserWatchingRepo(long repoId);
+        Task<bool> IsCurrentUserWatchingRepo(long repoId, CancellationToken cancellationToken = default);
         Task PostNewIssue(string owner, string name, string title, string body);
         Task PostNewIssue(long id, string title, string body);
         Task SubmitComment(string owner, string name, int number, string text);

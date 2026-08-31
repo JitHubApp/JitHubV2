@@ -192,6 +192,14 @@ internal static class GfmChildBuilder
         ContainerInline inlines,
         System.Func<Inline, bool>? skipFirstIf = null,
         int inheritedAliasStart = -1)
+        => AddInlines(box, inlines, new SafeHtmlInlineState(), skipFirstIf, inheritedAliasStart);
+
+    private static void AddInlines(
+        InlineContainerBox box,
+        ContainerInline inlines,
+        SafeHtmlInlineState htmlState,
+        System.Func<Inline, bool>? skipFirstIf,
+        int inheritedAliasStart)
     {
         bool skippedFirst = skipFirstIf is null;
         foreach (var i in inlines)
@@ -204,7 +212,9 @@ internal static class GfmChildBuilder
             }
             int aliasStart = box.Context.StyleAliasCount;
             using var inlineAttrs = box.Context.PushMarkdownAttributes(i);
-            var run = BuildInline(i, box.Context);
+            InlineRun? run = i is HtmlInline html
+                ? htmlState.Process(html, box.Context)
+                : htmlState.Apply(BuildInline(i, box.Context));
             if (run is not null)
             {
                 int effectiveAliasStart = inheritedAliasStart >= 0 ? inheritedAliasStart : aliasStart;
@@ -216,7 +226,7 @@ internal static class GfmChildBuilder
             {
                 box.Context.RegisterMarkdownAttributes(i, box.BlockIndex);
                 int effectiveAliasStart = inheritedAliasStart >= 0 ? inheritedAliasStart : aliasStart;
-                AddInlines(box, nested, inheritedAliasStart: effectiveAliasStart);
+                AddInlines(box, nested, htmlState, skipFirstIf: null, inheritedAliasStart: effectiveAliasStart);
             }
         }
     }
@@ -247,6 +257,10 @@ internal static class GfmChildBuilder
         LineBreakInline lineBreak => new LineBreakRun(lineBreak.IsHard)
         {
             SourceSpan = new MarkdownRenderer.SourceSpan(inline.Span.Start, inline.Span.Length)
+        },
+        HtmlEntityInline entity => new TextRun(entity.Transcoded.ToString())
+        {
+            SourceSpan = new MarkdownRenderer.SourceSpan(entity.Span.Start, entity.Span.Length)
         },
         _ => null
     };

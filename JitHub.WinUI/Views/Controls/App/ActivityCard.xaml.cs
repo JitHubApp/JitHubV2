@@ -1,7 +1,11 @@
+using System;
 using System.Collections.Generic;
+using System.Linq;
 using JitHub.Models.Activities;
+using JitHub.WinUI.Helpers;
 using Microsoft.UI.Text;
 using Microsoft.UI.Xaml;
+using Microsoft.UI.Xaml.Automation;
 using Microsoft.UI.Xaml.Controls;
 using Microsoft.UI.Xaml.Documents;
 using Microsoft.UI.Xaml.Media;
@@ -46,6 +50,7 @@ public sealed partial class ActivityCard : UserControl
                 new ActivitySentencePartViewModel { Text = activity.Title, IsEmphasized = true }
             ];
 
+        int actionIndex = 0;
         foreach (ActivitySentencePartViewModel part in parts)
         {
             if (string.IsNullOrEmpty(part.Text))
@@ -55,7 +60,7 @@ public sealed partial class ActivityCard : UserControl
 
             if (part.IsAction)
             {
-                paragraph.Inlines.Add(CreateInlineAction(part));
+                paragraph.Inlines.Add(CreateInlineAction(part, actionIndex++));
                 continue;
             }
 
@@ -69,48 +74,53 @@ public sealed partial class ActivityCard : UserControl
         SentenceRichTextBlock.Blocks.Add(paragraph);
     }
 
-    private InlineUIContainer CreateInlineAction(ActivitySentencePartViewModel part)
+    private Inline CreateInlineAction(ActivitySentencePartViewModel part, int actionIndex)
     {
-        var linkText = new TextBlock
+        var hyperlink = new Hyperlink
         {
-            FontFamily = Resource<FontFamily>("AppUiFontFamily"),
-            FontSize = 15,
-            FontWeight = FontWeights.SemiBold,
             Foreground = Resource<Brush>("ActivityInlineLinkForegroundBrush"),
-            TextDecorations = Windows.UI.Text.TextDecorations.Underline,
-            VerticalAlignment = VerticalAlignment.Center,
-            Margin = new Thickness(0, -1, 0, 0)
         };
-
-        linkText.PointerEntered += (_, _) => linkText.Foreground = Resource<Brush>("ActivityInlineLinkForegroundPointerOverBrush");
-        linkText.PointerExited += (_, _) => linkText.Foreground = Resource<Brush>("ActivityInlineLinkForegroundBrush");
-        linkText.PointerPressed += (_, _) => linkText.Foreground = Resource<Brush>("ActivityInlineLinkForegroundPressedBrush");
-        linkText.PointerReleased += (_, _) => linkText.Foreground = Resource<Brush>("ActivityInlineLinkForegroundPointerOverBrush");
-        linkText.Tapped += (_, _) => ExecuteInlineAction(part);
+        AutomationProperties.SetAutomationId(
+            hyperlink,
+            AutomationIdentity.CreateScopedId(
+                "ActivityInlineAction",
+                ActivityScope(),
+                $"{actionIndex}_{AutomationToken(part.Text)}"));
+        AutomationProperties.SetName(hyperlink, part.Text);
+        hyperlink.Click += (_, _) => ExecuteInlineAction(part);
 
         if (!string.IsNullOrWhiteSpace(part.Glyph))
         {
-            linkText.Inlines.Add(new Run
+            hyperlink.Inlines.Add(new Run
             {
-                Text = $"{part.Glyph} ",
+                Text = $"{part.Glyph}\u00A0",
                 FontFamily = Resource<FontFamily>("SegoeFluentIcons"),
-                FontSize = 12,
+                FontSize = Resource<double>("AppFontSize12"),
                 FontWeight = FontWeights.Normal
             });
         }
 
-        linkText.Inlines.Add(new Run
+        hyperlink.Inlines.Add(new Run
         {
             Text = part.Text,
             FontFamily = Resource<FontFamily>("AppUiFontFamily"),
-            FontSize = 15,
+            FontSize = Resource<double>("AppFontSize15"),
             FontWeight = FontWeights.SemiBold,
         });
 
-        return new InlineUIContainer
-        {
-            Child = linkText
-        };
+        return hyperlink;
+    }
+
+    private string ActivityScope() => ViewModel is { } activity
+        ? !string.IsNullOrWhiteSpace(activity.EventId)
+            ? activity.EventId
+            : $"{activity.EventType}|{activity.TimestampText}|{activity.Title}"
+        : "unknown";
+
+    private static string AutomationToken(string value)
+    {
+        string token = string.Concat(value.Where(char.IsLetterOrDigit).Take(40));
+        return string.IsNullOrEmpty(token) ? "Action" : token;
     }
 
     private static void ExecuteInlineAction(ActivitySentencePartViewModel part)
@@ -122,7 +132,6 @@ public sealed partial class ActivityCard : UserControl
     }
 
     private T Resource<T>(string key)
-        where T : class
     {
         if (Resources.TryGetValue(key, out object localValue) && localValue is T localTyped)
         {
@@ -134,6 +143,6 @@ public sealed partial class ActivityCard : UserControl
             return typed;
         }
 
-        return null!;
+        return default!;
     }
 }

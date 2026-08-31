@@ -5,10 +5,12 @@
     <DataTemplate x:Key="LabeledEventTemplate">
         <Grid>
             <Grid.ColumnDefinitions>
-                <ColumnDefinition Width="48" />
+                <ColumnDefinition Width="{ThemeResource AppGridLength48}" />
                 <ColumnDefinition Width="*" />
             </Grid.ColumnDefinitions>
             <common:Avatar
+                AutomationInstanceId="{Binding ActorAutomationId, Mode=OneWay}"
+                NavigationSource="legacy_issue_timeline_actor"
                 Grid.Column="0"
                 HorizontalAlignment="Center"
                 Login="{Binding Actor.Login, Mode=OneWay}"
@@ -17,11 +19,11 @@
                 Grid.Column="1"
                 VerticalAlignment="Center"
                 Orientation="Horizontal"
-                Spacing="4">
-                <TextBlock Text="{Binding Actor.Login, Mode=OneWay}" />
-                <TextBlock Text="added a label" />
-                <common:RepoLabel Label="{Binding Label, Mode=OneWay}" />
-                <TextBlock Text="{Binding CreatedAt, Converter={StaticResource TimeAgoConverter}, ConverterParameter='', Mode=OneWay}" />
+                Spacing="{ThemeResource AppGap4}">
+                <TextBlock VerticalAlignment="Center" Text="{Binding Actor.Login, Mode=OneWay}" />
+                <TextBlock x:Uid="DataTemplatesIssueEventLabeledEventTextBlockAddedALabel" VerticalAlignment="Center" Text="added a label" />
+                <common:RepoLabel VerticalAlignment="Center" Label="{Binding Label, Mode=OneWay}" />
+                <TextBlock VerticalAlignment="Center" Text="{Binding CreatedAt, Converter={StaticResource TimeAgoConverter}, ConverterParameter='', Mode=OneWay}" />
             </StackPanel>
         </Grid>
     </DataTemplate>

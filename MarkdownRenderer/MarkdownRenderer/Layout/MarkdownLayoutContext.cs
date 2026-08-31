@@ -75,6 +75,14 @@ public sealed class MarkdownLayoutContext
     /// <summary>Cancellation token for the current background layout pass.</summary>
     public CancellationToken CancellationToken { get; init; }
 
+    /// <summary>
+    /// Cancellation token for asynchronous image resolution owned by the
+    /// renderer's loaded lifetime. Image work must survive routine layout
+    /// rebuild cancellation so a resize cannot strand a committed image box
+    /// in a permanently-started state.
+    /// </summary>
+    public CancellationToken ImageCancellationToken { get; init; }
+
     /// <summary>True when code block copy buttons should be included in layout metadata.</summary>
     public bool IsCodeBlockCopyEnabled { get; init; } = true;
 
@@ -89,6 +97,23 @@ public sealed class MarkdownLayoutContext
 
     /// <summary>Optional source document path used by host image resolvers.</summary>
     public string? ImageDocumentPath { get; init; }
+
+    /// <summary>Canonical identity and repository context for the rendered document.</summary>
+    public MarkdownDocumentSource? ImageDocumentSource { get; init; }
+
+    /// <summary>True when the host explicitly allowed third-party images for this document.</summary>
+    public bool AllowThirdPartyRemoteImages { get; init; }
+
+    /// <summary>Reports blocked or unavailable image sources to the host control.</summary>
+    public System.Action<string, MarkdownImageUnavailableReason>? ImageUnavailable { get; init; }
+
+    /// <summary>Snapshot of user-expanded HTML disclosure state for this layout pass.</summary>
+    public IReadOnlyDictionary<string, bool> DisclosureStates { get; init; } =
+        new Dictionary<string, bool>(StringComparer.Ordinal);
+
+    /// <summary>Returns the effective state of a safe HTML disclosure.</summary>
+    public bool IsDisclosureExpanded(string id, bool defaultExpanded) =>
+        DisclosureStates.TryGetValue(id, out bool expanded) ? expanded : defaultExpanded;
 
     /// <summary>Returns the next one-based block index for a custom block.</summary>
     public int NextBlockIndex() => ++_blockIndex;

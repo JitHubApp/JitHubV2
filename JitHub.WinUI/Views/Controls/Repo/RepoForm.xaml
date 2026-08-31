@@ -15,32 +15,46 @@
     </UserControl.DataContext>
     <Grid>
         <StackPanel
-            Margin="16 0 16 16"
-            Spacing="8"
+            Margin="{ThemeResource AppMargin16_0_16_16}"
+            Spacing="{ThemeResource AppGap8}"
             HorizontalAlignment="Stretch">
             <TextBlock
-                Text="Name"
-                FontWeight="SemiBold"/>
+                x:Uid="ControlsRepoRepoFormTextBlockName" Text="Name"
+                FontWeight="{ThemeResource AppFontWeightSemibold}"/>
             <TextBox
+                x:Uid="ControlsRepoRepoFormRepoFormNameTextBox" AutomationProperties.AutomationId="RepoFormNameTextBox"
+                AutomationProperties.Name="Repository name"
+                Style="{StaticResource AppTextBoxStyle}"
                 Text="{x:Bind ViewModel.Name, Mode=TwoWay}"
                 TextChanged="{x:Bind ViewModel.OnNameChange, Mode=OneWay}"/>
             <TextBlock
+                AutomationProperties.AutomationId="RepoFormValidationText"
+                AutomationProperties.LiveSetting="Polite"
                 Text="{x:Bind ViewModel.Error, Mode=OneWay}"
-                Foreground="{ThemeResource AppDangerBrush}"/>
+                Foreground="{ThemeResource AppDangerBrush}"
+                TextWrapping="Wrap"/>
             <TextBlock
-                Text="Description"
-                FontWeight="SemiBold"/>
+                x:Uid="ControlsRepoRepoFormTextBlockDescription" Text="Description"
+                FontWeight="{ThemeResource AppFontWeightSemibold}"/>
             <TextBox
+                x:Uid="ControlsRepoRepoFormRepoFormDescriptionTextBox" AutomationProperties.AutomationId="RepoFormDescriptionTextBox"
+                AutomationProperties.Name="Repository description"
+                Style="{StaticResource AppTextBoxStyle}"
                 Text="{x:Bind ViewModel.Description, Mode=TwoWay}"/>
             <CheckBox
+                x:Uid="ControlsRepoRepoFormRepoFormInitializeReadmeCheckBox" AutomationProperties.AutomationId="RepoFormInitializeReadmeCheckBox"
+                AutomationProperties.Name="Initialize repository with a README"
                 Content="Initialize Readme"
                 IsChecked="{x:Bind ViewModel.CreateReadme, Mode=TwoWay}"/>
             <TextBlock
-                Text="License Template"
-                FontWeight="SemiBold"/>
+                x:Uid="ControlsRepoRepoFormTextBlockLicenseTemplate" Text="License Template"
+                FontWeight="{ThemeResource AppFontWeightSemibold}"/>
             <ComboBox
+                x:Uid="ControlsRepoRepoFormRepoFormLicenseComboBox" AutomationProperties.AutomationId="RepoFormLicenseComboBox"
+                AutomationProperties.Name="License template"
                 ItemsSource="{x:Bind ViewModel.Licenses, Mode=OneWay}"
-                SelectedItem="{x:Bind ViewModel.SelectedLicense, Mode=TwoWay}">
+                SelectedItem="{x:Bind ViewModel.SelectedLicense, Mode=TwoWay}"
+                Style="{StaticResource AppCompactComboBoxStyle}">
                 <ComboBox.ItemTemplate>
                     <DataTemplate x:DataType="models:License">
                         <TextBlock Text="{x:Bind DiaplayName, Mode=OneWay}"/>
@@ -48,15 +62,25 @@
                 </ComboBox.ItemTemplate>
             </ComboBox>
             <TextBlock
-                Text="Visibility"
-                FontWeight="SemiBold"/>
+                Text="{x:Bind ViewModel.LicenseConsequenceText, Mode=OneWay}"
+                    Style="{StaticResource CaptionTextBlockStyle}"
+                Foreground="{ThemeResource TextFillColorSecondaryBrush}"
+                TextWrapping="Wrap"/>
+            <TextBlock
+                x:Uid="ControlsRepoRepoFormTextBlockVisibility" Text="Visibility"
+                FontWeight="{ThemeResource AppFontWeightSemibold}"/>
             <ComboBox
+                x:Uid="ControlsRepoRepoFormRepoFormVisibilityComboBox" AutomationProperties.AutomationId="RepoFormVisibilityComboBox"
+                AutomationProperties.Name="Repository visibility"
                 ItemsSource="{x:Bind ViewModel.Visibilities, Mode=OneWay}"
-                SelectedItem="{x:Bind ViewModel.SelectedVisibility, Mode=TwoWay}"/>
+                SelectedItem="{x:Bind ViewModel.SelectedVisibility, Mode=TwoWay}"
+                Style="{StaticResource AppCompactComboBoxStyle}"/>
             <Button
-                HorizontalAlignment="Right"
+                x:Uid="ControlsRepoRepoFormRepoFormCreateButton" HorizontalAlignment="Right"
+                AutomationProperties.AutomationId="RepoFormCreateButton"
+                AutomationProperties.Name="Create repository"
                 Content="Create"
-                Style="{ThemeResource AppAccentButtonStyle}"
+                Style="{StaticResource AppAccentButtonStyle}"
                 Command="{x:Bind ViewModel.CreateCommand, Mode=OneWay}"/>
         </StackPanel>
     </Grid>

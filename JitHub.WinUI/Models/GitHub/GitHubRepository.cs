@@ -30,11 +30,32 @@ public sealed partial class GitHubRepository
     [JsonPropertyName("fork")]
     public bool Fork { get; set; }
 
+    [JsonPropertyName("archived")]
+    public bool Archived { get; set; }
+
+    [JsonPropertyName("has_issues")]
+    public bool? HasIssues { get; set; }
+
+    [JsonPropertyName("allow_merge_commit")]
+    public bool? AllowMergeCommit { get; set; }
+
+    [JsonPropertyName("allow_squash_merge")]
+    public bool? AllowSquashMerge { get; set; }
+
+    [JsonPropertyName("allow_rebase_merge")]
+    public bool? AllowRebaseMerge { get; set; }
+
+    [JsonPropertyName("allow_auto_merge")]
+    public bool? AllowAutoMerge { get; set; }
+
     [JsonPropertyName("stargazers_count")]
     public int StargazersCount { get; set; }
 
     [JsonPropertyName("watchers_count")]
     public int WatchersCount { get; set; }
+
+    [JsonPropertyName("subscribers_count")]
+    public int SubscribersCount { get; set; }
 
     [JsonPropertyName("forks_count")]
     public int ForksCount { get; set; }
@@ -48,8 +69,49 @@ public sealed partial class GitHubRepository
     [JsonPropertyName("updated_at")]
     public DateTimeOffset? UpdatedAt { get; set; }
 
+    [JsonPropertyName("pushed_at")]
+    public DateTimeOffset? PushedAt { get; set; }
+
+    [JsonPropertyName("visibility")]
+    public string Visibility { get; set; } = string.Empty;
+
+    [JsonPropertyName("topics")]
+    public string[] Topics { get; set; } = [];
+
+    [JsonPropertyName("permissions")]
+    public GitHubRepositoryPermissions? Permissions { get; set; }
+
     [JsonPropertyName("owner")]
     public GitHubRepositoryOwner Owner { get; set; } = new();
+}
+
+[WinRT.GeneratedBindableCustomProperty]
+public sealed partial class GitHubRepositoryPermissions
+{
+    [JsonPropertyName("admin")]
+    public bool Admin { get; set; }
+
+    [JsonPropertyName("maintain")]
+    public bool Maintain { get; set; }
+
+    [JsonPropertyName("push")]
+    public bool Push { get; set; }
+
+    [JsonPropertyName("triage")]
+    public bool Triage { get; set; }
+
+    [JsonPropertyName("pull")]
+    public bool Pull { get; set; }
+}
+
+[WinRT.GeneratedBindableCustomProperty]
+public sealed partial class GitHubStarredRepository
+{
+    [JsonPropertyName("starred_at")]
+    public DateTimeOffset StarredAt { get; set; }
+
+    [JsonPropertyName("repo")]
+    public GitHubRepository Repository { get; set; } = new();
 }
 
 [WinRT.GeneratedBindableCustomProperty]

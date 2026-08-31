@@ -1,6 +1,5 @@
 using JitHub.Services;
 using JitHub.WinUI.ViewModels.Base;
-using CommunityToolkit.Mvvm.DependencyInjection;
 using JitHub.Models.LegacyGitHub;
 using MergePullRequest = JitHub.Models.LegacyGitHub.MergePullRequest;
 using PullRequestMergeMethod = JitHub.Models.LegacyGitHub.PullRequestMergeMethod;
@@ -8,10 +7,14 @@ using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Windows.Input;
+using System.Threading.Tasks;
+using CommunityToolkit.Mvvm.Input;
+using JitHub.Services.Markdown;
+using MarkdownRenderer.Images;
 
 namespace JitHub.WinUI.ViewModels.PullRequestViewModels
 {
-    public class MergeFormViewModel : RepoViewModel
+public partial class MergeFormViewModel : RepoViewModel
     {
         private string _title = string.Empty;
         private string _body = string.Empty;
@@ -19,7 +22,8 @@ namespace JitHub.WinUI.ViewModels.PullRequestViewModels
         private PullRequestMergeMethod _selectedItem;
         private PullRequest _pullRequest = null!;
         private ICommand? _callback;
-        private readonly ModalService _modalService;
+        private string _error = string.Empty;
+        private ModalSession? _modalSession;
 
         public string Title
         {
@@ -47,6 +51,25 @@ namespace JitHub.WinUI.ViewModels.PullRequestViewModels
             set => SetProperty(ref _pullRequest, value);
         }
 
+        public string Error
+        {
+            get => _error;
+            private set => SetProperty(ref _error, value);
+        }
+
+        public IAsyncRelayCommand MergeCommand { get; }
+
+        public MarkdownDocumentSource? MarkdownSource => Repo?.Owner?.Login is string owner &&
+            !string.IsNullOrWhiteSpace(owner) &&
+            !string.IsNullOrWhiteSpace(Repo.Name) && PullRequest is not null
+                ? MarkdownDocumentSourceFactory.CreateRepositoryDocument(
+                    "pull-request-merge-draft",
+                    PullRequest.Id.ToString(),
+                    owner,
+                    Repo.Name,
+                    PullRequest.Base?.Ref ?? Repo.DefaultBranch)
+                : null;
+
         public MergeFormViewModel()
         {
             Items = new List<PullRequestMergeMethod>
@@ -55,8 +78,7 @@ namespace JitHub.WinUI.ViewModels.PullRequestViewModels
                 PullRequestMergeMethod.Rebase,
                 PullRequestMergeMethod.Squash
             };
-            _modalService = Ioc.Default.GetService<ModalService>()
-                ?? throw new InvalidOperationException("ModalService is not registered.");
+            MergeCommand = new AsyncRelayCommand(MergeAsync);
         }
 
         public void Init(Repository repo, PullRequest pullRequest, PullRequestMergeMethod selectedItem, ICommand callback)
@@ -67,8 +89,17 @@ namespace JitHub.WinUI.ViewModels.PullRequestViewModels
             _callback = callback;
         }
 
-        public async void Merge()
+        public void AttachModalSession(ModalSession session) => _modalSession = session;
+
+        private async Task MergeAsync()
         {
+            if (_modalSession is not { } session || !session.TryBeginMutation())
+            {
+                return;
+            }
+
+            Error = string.Empty;
+            bool merged = false;
             try
             {
                 var mergeRequest = new MergePullRequest()
@@ -78,16 +109,37 @@ namespace JitHub.WinUI.ViewModels.PullRequestViewModels
                     MergeMethod = SelectedItem,
                 };
                 _ = await GitHubService.MergePullRequest(Repo.Id, PullRequest.Number, mergeRequest);
+                merged = true;
+            }
+            catch (Exception ex)
+            {
+                Error = JitHub.WinUI.Helpers.UserFacingError.For(
+                    ex,
+                    JitHub.WinUI.Helpers.UserFacingErrorKind.Action,
+                    "pull-request-merge");
+            }
+            finally
+            {
+                session.EndMutation();
+            }
+
+            if (!merged)
+            {
+                return;
+            }
+
+            _ = session.TryClose();
+            try
+            {
                 if (_callback?.CanExecute(null) == true)
                 {
                     _callback.Execute(null);
                 }
             }
-            catch (Exception ex)
+            catch (Exception refreshException)
             {
-                System.Diagnostics.Debug.WriteLine($"Failed to merge pull request from merge form: {ex}");
+                HandledFailureReporter.Report(refreshException, "pull-request-merge-refresh");
             }
-            _modalService.Close();
         }
     }
 }

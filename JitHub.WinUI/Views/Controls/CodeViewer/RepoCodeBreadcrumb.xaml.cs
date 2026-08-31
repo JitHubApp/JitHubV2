@@ -1,4 +1,6 @@
+using System;
 using System.Windows.Input;
+using JitHub.Services.Layout;
 using JitHub.WinUI.ViewModels.CodeViewer;
 using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Controls;
@@ -37,6 +39,11 @@ public sealed partial class RepoCodeBreadcrumb : UserControl
             nameof(CanGoForward), typeof(bool),
             typeof(RepoCodeBreadcrumb), new PropertyMetadata(false));
 
+    public static readonly DependencyProperty ShowFileTreeButtonProperty =
+        DependencyProperty.Register(
+            nameof(ShowFileTreeButton), typeof(bool),
+            typeof(RepoCodeBreadcrumb), new PropertyMetadata(false, OnShowFileTreeButtonChanged));
+
     public ICommand? GoBackCommand
     {
         get => (ICommand?)GetValue(GoBackCommandProperty);
@@ -61,13 +68,24 @@ public sealed partial class RepoCodeBreadcrumb : UserControl
         set => SetValue(CanGoForwardProperty, value);
     }
 
+    public bool ShowFileTreeButton
+    {
+        get => (bool)GetValue(ShowFileTreeButtonProperty);
+        set => SetValue(ShowFileTreeButtonProperty, value);
+    }
+
     // ── Constructor ───────────────────────────────────────────────────────
 
     public RepoCodeBreadcrumb()
     {
         InitializeComponent();
         DataContextChanged += OnDataContextChanged;
+        Loaded += OnLoaded;
+        Unloaded += OnUnloaded;
+        ApplyResponsiveLayout(ActualWidth);
     }
+
+    public event EventHandler? FileTreeRequested;
 
     // Typed accessor for x:Bind expressions on ViewModel members.
     // Private is fine — x:Bind generates code in the same partial class.
@@ -91,6 +109,26 @@ public sealed partial class RepoCodeBreadcrumb : UserControl
 
         // Re-evaluate all x:Bind expressions whenever the DataContext is replaced.
         Bindings.Update();
+        ApplyResponsiveLayout(ActualWidth);
+    }
+
+    private void OnLoaded(object sender, RoutedEventArgs e)
+    {
+        if (_subscribedViewModel is null && ViewModel is { } viewModel)
+        {
+            _subscribedViewModel = viewModel;
+            viewModel.PropertyChanged += OnViewModelPropertyChanged;
+            Bindings.Update();
+        }
+    }
+
+    private void OnUnloaded(object sender, RoutedEventArgs e)
+    {
+        if (_subscribedViewModel is not null)
+        {
+            _subscribedViewModel.PropertyChanged -= OnViewModelPropertyChanged;
+            _subscribedViewModel = null;
+        }
     }
 
     private void OnViewModelPropertyChanged(object? sender, System.ComponentModel.PropertyChangedEventArgs e)
@@ -100,7 +138,58 @@ public sealed partial class RepoCodeBreadcrumb : UserControl
         {
             Bindings.Update();
         }
+        else if (e.PropertyName is nameof(RepoCodeBreadcrumbViewModel.IsPathTransitioning)
+            or nameof(RepoCodeBreadcrumbViewModel.CurrentPath))
+        {
+            ApplyResponsiveLayout(ActualWidth);
+        }
     }
+
+    private void OnBreadcrumbSegmentClick(object sender, RoutedEventArgs e)
+    {
+        if (sender is Button { DataContext: BreadcrumbSegment segment })
+        {
+            ViewModel?.NavigateToSegmentCommand.Execute(segment);
+        }
+    }
+
+    private static void OnShowFileTreeButtonChanged(DependencyObject dependencyObject, DependencyPropertyChangedEventArgs args)
+        => ((RepoCodeBreadcrumb)dependencyObject).UpdateFileTreeButtonVisibility();
+
+    private void Root_SizeChanged(object sender, SizeChangedEventArgs e)
+        => ApplyResponsiveLayout(e.NewSize.Width);
+
+    private void OpenFileTreeButton_Click(object sender, RoutedEventArgs e)
+        => FileTreeRequested?.Invoke(this, EventArgs.Empty);
+
+    private void FileActionsOverflowButton_Click(object sender, RoutedEventArgs e)
+    {
+        if (!FileActionsOverflowFlyout.IsOpen)
+        {
+            FileActionsOverflowFlyout.ShowAt(FileActionsOverflowButton);
+        }
+    }
+
+    private void ApplyResponsiveLayout(double availableWidth)
+    {
+        RepoCodeBreadcrumbState state = RepoCodeResponsiveLayout.CalculateBreadcrumb(availableWidth);
+        bool isPathTransitioning = ViewModel?.IsPathTransitioning == true;
+        FullBreadcrumbHost.Visibility = state.ShowFullPath && !isPathTransitioning
+            ? Visibility.Visible
+            : Visibility.Collapsed;
+        TransitionPathText.Visibility = state.ShowFullPath && isPathTransitioning
+            ? Visibility.Visible
+            : Visibility.Collapsed;
+        DirectActionsHost.Visibility = state.ShowDirectActions ? Visibility.Visible : Visibility.Collapsed;
+        CompactFileName.Visibility = state.ShowFileName ? Visibility.Visible : Visibility.Collapsed;
+        FileActionsOverflowButton.Visibility = state.ShowActionsOverflow ? Visibility.Visible : Visibility.Collapsed;
+        UpdateFileTreeButtonVisibility();
+    }
+
+    private void UpdateFileTreeButtonVisibility()
+        => OpenFileTreeButton.Visibility = ShowFileTreeButton
+            ? Visibility.Visible
+            : Visibility.Collapsed;
 
     // ── Static helper for DataTemplate x:Bind expressions ────────────────
 

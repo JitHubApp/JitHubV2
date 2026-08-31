@@ -17,6 +17,14 @@ public class SettingService : ISettingService
 
     public SettingService()
     {
+        if (AppDataPathPolicy.TryGetAutomationRoots(out string localFolderPath, out _))
+        {
+            string settingsDirectory = Path.Combine(localFolderPath, "Settings");
+            Directory.CreateDirectory(settingsDirectory);
+            _settingsFilePath = Path.Combine(settingsDirectory, "settings.json");
+            return;
+        }
+
         try
         {
             _store = ApplicationData.Current.LocalSettings;
@@ -28,6 +36,27 @@ public class SettingService : ISettingService
                 "JitHub");
             Directory.CreateDirectory(settingsDirectory);
             _settingsFilePath = Path.Combine(settingsDirectory, "settings.json");
+        }
+    }
+
+    public bool Contains(string key)
+    {
+        try
+        {
+            if (_store is not null)
+            {
+                return _store.Values.ContainsKey(key);
+            }
+
+            lock (_fileGate)
+            {
+                EnsureFileValuesLoaded();
+                return _fileValues?.ContainsKey(key) == true;
+            }
+        }
+        catch (Exception ex) when (IsRecoverableSettingReadException(ex))
+        {
+            return false;
         }
     }
 

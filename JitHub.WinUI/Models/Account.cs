@@ -7,7 +7,7 @@ using System.Threading.Tasks;
 
 namespace JitHub.Models
 {
-    public class Account : ObservableObject
+public partial class Account : ObservableObject
     {
         private int _id;
         private string _login = string.Empty;

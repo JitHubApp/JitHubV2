@@ -9,14 +9,28 @@ namespace JitHub.Models
     [WinRT.GeneratedBindableCustomProperty]
     public partial class License
     {
+        private const string NoLicenseConsequence = "No license file will be created. You can add one later.";
+
         public string Name { get; set; } = string.Empty;
         public string DiaplayName { get; set; } = string.Empty;
         public string Url { get; set; } = string.Empty;
+
+        public bool IsNoLicense => string.IsNullOrWhiteSpace(Name);
+
+        public string? TemplateName => IsNoLicense ? null : Name;
+
+        public string ConsequenceText => IsNoLicense
+            ? NoLicenseConsequence
+            : $"GitHub will create a LICENSE file using {DiaplayName}.";
 
         public static ICollection<License> GetLicenses()
         {
             return new List<License>()
             {
+                new License()
+                {
+                  DiaplayName = "No license"
+                },
                 new License()
                 {
                   Name = "agpl-3.0",

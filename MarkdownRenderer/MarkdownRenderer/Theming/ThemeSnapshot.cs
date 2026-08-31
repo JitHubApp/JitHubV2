@@ -21,6 +21,7 @@ public sealed class ThemeSnapshot
         Color selectionHighlightColor,
         Color selectionForegroundColor,
         Color focusVisualColor,
+        bool isDark,
         bool isHighContrast)
     {
         _styles = styles ?? throw new ArgumentNullException(nameof(styles));
@@ -29,6 +30,7 @@ public sealed class ThemeSnapshot
         SelectionHighlightColor = selectionHighlightColor;
         SelectionForegroundColor = selectionForegroundColor;
         FocusVisualColor = focusVisualColor;
+        IsDark = isDark;
         IsHighContrast = isHighContrast;
     }
 
@@ -43,6 +45,9 @@ public sealed class ThemeSnapshot
 
     /// <summary>Resolved keyboard focus visual color.</summary>
     public Color FocusVisualColor { get; }
+
+    /// <summary>Gets whether the snapshot was captured from a dark theme.</summary>
+    public bool IsDark { get; }
 
     /// <summary>Gets whether the snapshot was captured in a high-contrast theme.</summary>
     public bool IsHighContrast { get; }

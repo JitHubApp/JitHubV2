@@ -9,9 +9,11 @@
     d:DesignWidth="172">
     <Grid>
         <TextBox
-            x:Name="FilterTextBox"
-            Width="172"
-            MinWidth="172"
+            x:Uid="ControlsFilterTextFilterPresenterXBindAutomationIdModeOn" x:Name="FilterTextBox"
+            Width="{ThemeResource AppDimension172}"
+            MinWidth="{ThemeResource AppDimension172}"
+            AutomationProperties.AutomationId="{x:Bind AutomationId, Mode=OneWay}"
+            AutomationProperties.Name="{x:Bind Title, Mode=OneWay}"
             Header="{x:Bind Title, Mode=OneWay}"
             PlaceholderText="Type to filter"
             Style="{StaticResource AppTextBoxStyle}"

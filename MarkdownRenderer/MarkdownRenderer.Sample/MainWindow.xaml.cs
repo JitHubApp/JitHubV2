@@ -7,6 +7,7 @@ using Microsoft.UI.Xaml.Controls.Primitives;
 using Microsoft.UI.Xaml.Media;
 using MarkdownRenderer.Controls;
 using MarkdownRenderer.Gfm;
+using MarkdownRenderer.Images;
 using MarkdownRenderer.Parsing;
 using MarkdownRenderer.SyntaxHighlighting.TextMate;
 using MarkdownRenderer.Theming;
@@ -20,6 +21,7 @@ public sealed partial class MainWindow : Window
     private TextBlock? _realizedCountStatus;
     private TextBlock? _flowDirectionStatus;
     private TextBlock? _highContrastStatus;
+    private TextBlock? _textScaleStatus;
 
     // Mapping from tab label → sample markdown for each feature
     private static readonly Dictionary<string, string> Samples = new()
@@ -42,6 +44,7 @@ public sealed partial class MainWindow : Window
         ["Footnotes"]     = FootnotesSample,
         ["Keyboard Nav"]  = KeyboardNavSample,
         ["Accessibility Lab"] = AccessibilityLabSample,
+        ["Audit Matrix"] = AuditMatrixSample,
         ["Full Demo"]  = FullDemoSample,
     };
 
@@ -136,6 +139,19 @@ public sealed partial class MainWindow : Window
         };
         toolbar.Children.Add(forcedHighContrastToggle);
 
+        var textScaleToggle = new ToggleButton
+        {
+            Content = "200% Text",
+            Margin = new Thickness(8, 0, 0, 0),
+            Padding = new Thickness(10, 4, 10, 4),
+            Name = "TextScaleToggle",
+        };
+        AutomationProperties.SetAutomationId(textScaleToggle, "TextScaleToggle");
+        AutomationProperties.SetName(textScaleToggle, "Two hundred percent text scale");
+        textScaleToggle.Checked += (_, _) => ApplyTextScale(2f);
+        textScaleToggle.Unchecked += (_, _) => ApplyTextScale(1f);
+        toolbar.Children.Add(textScaleToggle);
+
         Grid.SetRow(toolbar, 0);
         rootGrid.Children.Add(toolbar);
 
@@ -226,6 +242,17 @@ public sealed partial class MainWindow : Window
         AutomationProperties.SetAutomationId(_highContrastStatus, "HighContrastStatus");
         AutomationProperties.SetName(_highContrastStatus, "hc:off");
 
+        _textScaleStatus = new TextBlock
+        {
+            Text = "text-scale:1",
+            Opacity = 0,
+            IsHitTestVisible = false,
+            Width = 1,
+            Height = 1,
+        };
+        AutomationProperties.SetAutomationId(_textScaleStatus, "TextScaleStatus");
+        AutomationProperties.SetName(_textScaleStatus, "text-scale:1");
+
         Grid.SetColumn(_editor, 0);
         Grid.SetColumn(splitter, 1);
         Grid.SetColumn(_renderer, 2);
@@ -239,6 +266,7 @@ public sealed partial class MainWindow : Window
         rootGrid.Children.Add(_realizedCountStatus);
         rootGrid.Children.Add(_flowDirectionStatus);
         rootGrid.Children.Add(_highContrastStatus);
+        rootGrid.Children.Add(_textScaleStatus);
 
         Content = rootGrid;
     }
@@ -259,6 +287,48 @@ public sealed partial class MainWindow : Window
         string s = _renderer.FlowDirection == FlowDirection.RightToLeft ? "flow:rtl" : "flow:ltr";
         _flowDirectionStatus.Text = s;
         AutomationProperties.SetName(_flowDirectionStatus, s);
+    }
+
+    private void ApplyTextScale(float scale)
+    {
+        if (_renderer?.Theme is not { } theme)
+            return;
+
+        var sizes = new Dictionary<string, float>(StringComparer.Ordinal)
+        {
+            [MarkdownElementKeys.Heading1] = 32,
+            [MarkdownElementKeys.Heading2] = 26,
+            [MarkdownElementKeys.Heading3] = 22,
+            [MarkdownElementKeys.Heading4] = 18,
+            [MarkdownElementKeys.Heading5] = 15,
+            [MarkdownElementKeys.Heading6] = 14,
+            [MarkdownElementKeys.Body] = 14,
+            [MarkdownElementKeys.CodeInline] = 12,
+            [MarkdownElementKeys.CodeBlock] = 13,
+            [MarkdownElementKeys.CodeBlockLanguage] = 12,
+            [MarkdownElementKeys.CodeBlockLineNumber] = 12,
+            [MarkdownElementKeys.Link] = 14,
+            [MarkdownElementKeys.Strong] = 14,
+            [MarkdownElementKeys.Emphasis] = 14,
+            [MarkdownElementKeys.Strikethrough] = 14,
+            [MarkdownElementKeys.ListMarker] = 14,
+            [MarkdownElementKeys.TableHeader] = 14,
+            [MarkdownElementKeys.TableCell] = 14,
+            [MarkdownElementKeys.ImageCaption] = 12,
+        };
+
+        using (theme.BeginUpdate())
+        {
+            foreach (var (key, baseSize) in sizes)
+                theme.Overrides[key] = new ElementStyleOverride { FontSize = baseSize * scale };
+        }
+
+        if (_textScaleStatus is not null)
+        {
+            string status = $"text-scale:{scale:0.#}";
+            _textScaleStatus.Text = status;
+            AutomationProperties.SetName(_textScaleStatus, status);
+        }
     }
 
     private void OnSampleButtonClick(object sender, RoutedEventArgs e)
@@ -1122,6 +1192,46 @@ public sealed partial class MainWindow : Window
         Paragraph 4. More stable text for range movement.
 
         Paragraph 5. More stable text for range movement.
+        """;
+
+    private const string AuditMatrixSample = """
+        # Markdown audit matrix
+
+        This deterministic document exercises native rendering without requiring network access.
+
+        > A bounded quote containing **strong text**, `inline code`, and a
+        > [keyboard link](https://example.com/audit-link).
+
+        - [x] Completed audit task
+        - [ ] Pending audit task
+
+        | Surface | Expected behavior |
+        |---------|-------------------|
+        | Table | Remains readable and selectable |
+        | Images | Never escape the document viewport |
+
+        ```csharp
+        public static string Audit() => "selection and copy remain available";
+        ```
+
+        ## Safe inline image
+
+        ![Safe blue audit square](data:image/svg+xml;utf8,%3Csvg%20xmlns%3D%27http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg%27%20width%3D%2732%27%20height%3D%2732%27%20viewBox%3D%270%200%2032%2032%27%3E%3Crect%20width%3D%2732%27%20height%3D%2732%27%20fill%3D%27%230078D4%27%2F%3E%3C%2Fsvg%3E)
+
+        ## Animated image input
+
+        ![Animated image audit fixture](data:image/gif;base64,R0lGODlhAQABAIAAAAAAAP///yH/C05FVFNDQVBFMi4wAwEAAAAh+QQFCgAAACwAAAAAAQABAAACAkQBADs=)
+
+        ## Hostile and malformed content
+
+        ![Malformed SVG audit fixture](data:image/svg+xml;utf8,%3Csvg%20xmlns%3D%27http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg%27%20width%3D%279999999%27%20height%3D%279999999%27%3E%3Ctext%20style%3D%27font-size%3A999999px%27%3Eoversized%3C%2Ftext%3E)
+
+        <svg width="9999999" height="9999999"><text style="font-size:999999px">raw hostile svg text</text>
+        <img src="javascript:alert('blocked')" onerror="alert('blocked')">
+
+        ## Final marker
+
+        Document remains responsive after hostile content. Select this sentence and copy it.
         """;
 }
 

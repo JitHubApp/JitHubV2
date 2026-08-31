@@ -1,0 +1,105 @@
+name: Product performance gate
+
+on:
+  push:
+  pull_request:
+    branches: [main]
+  schedule:
+    - cron: '30 10 * * 1'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  contract-gate:
+    name: Validate performance budgets and executable plan
+    runs-on: windows-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-dotnet@v4
+        with:
+          global-json-file: ./global.json
+
+      - name: Restore performance projects
+        shell: pwsh
+        run: |
+          dotnet restore .\JitHub.WinUI.Tests\JitHub.WinUI.Tests.csproj -p:Platform=x64
+          dotnet restore .\JitHub.WinUI.PerformanceGate\JitHub.WinUI.PerformanceGate.csproj -p:Platform=x64
+          dotnet restore .\JitHub.WinUI.Automation\JitHub.WinUI.Automation.csproj
+
+      - name: Run performance contract tests
+        shell: pwsh
+        run: >
+          dotnet test .\JitHub.WinUI.Tests\JitHub.WinUI.Tests.csproj
+          -c Release -p:Platform=x64 --no-restore
+          --filter "FullyQualifiedName~ProductPerformance"
+          --logger "trx;LogFileName=product-performance-contracts.trx"
+
+      - name: Build performance gate
+        shell: pwsh
+        run: |
+          dotnet build .\JitHub.WinUI.PerformanceGate\JitHub.WinUI.PerformanceGate.csproj -c Release -p:Platform=x64 --no-restore
+          dotnet build .\JitHub.WinUI.Automation\JitHub.WinUI.Automation.csproj -c Release --no-restore
+
+      - name: Materialize canonical benchmark plan
+        shell: pwsh
+        run: >
+          .\eng\Invoke-ProductPerformanceGate.ps1
+          -PlanOnly -Configuration Release -Iterations 10
+          -OutputPath .\artifacts\performance\product-performance-plan.json
+          -SkipBuild
+
+      - name: Upload performance contracts
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: product-performance-contracts
+          path: |
+            **/product-performance-contracts.trx
+            artifacts/performance/product-performance-plan.json
+
+  live-gate:
+    name: Benchmark all routes and enforce p95 budgets
+    needs: contract-gate
+    runs-on: [self-hosted, Windows, X64, jithub-interactive]
+    timeout-minutes: 180
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-dotnet@v4
+        with:
+          global-json-file: ./global.json
+
+      - name: Build JitHub and performance gate
+        shell: pwsh
+        run: |
+          dotnet build .\JitHub.WinUI\JitHub.WinUI.csproj -c Release -p:Platform=x64
+          dotnet build .\JitHub.WinUI.PerformanceGate\JitHub.WinUI.PerformanceGate.csproj -c Release -p:Platform=x64
+
+      - name: Locate JitHub executable
+        id: app
+        shell: pwsh
+        run: |
+          $app = Get-ChildItem .\JitHub.WinUI\bin\x64\Release -Recurse -Filter JitHub.WinUI.exe |
+            Select-Object -First 1 -ExpandProperty FullName
+          if (-not $app) { throw 'Release JitHub.WinUI.exe was not found.' }
+          "path=$app" >> $env:GITHUB_OUTPUT
+
+      - name: Run canonical cold, warm, offline, and large-account benchmark
+        shell: pwsh
+        run: >
+          .\eng\Invoke-ProductPerformanceGate.ps1
+          -AppPath '${{ steps.app.outputs.path }}'
+          -Configuration Release -Iterations 10 -SkipBuild
+          -OutputPath .\artifacts\performance\product-performance-report.json
+          -ArtifactsPath .\artifacts\performance\runs
+
+      - name: Upload machine-readable performance report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: product-performance-report
+          path: artifacts/performance/**

@@ -11,23 +11,23 @@
 
     <Border
         CornerRadius="{ThemeResource AppRadiusSmall}"
-        Padding="8,0"
-        Height="22"
+        Padding="{ThemeResource AppPadding8_0}"
+        Height="{ThemeResource AppDimension22}"
         VerticalAlignment="Center"
         BorderBrush="{ThemeResource AppOutlineBrush}"
-        BorderThickness="1"
+        BorderThickness="{ThemeResource AppHairlineBorderThickness}"
         Width="auto"
         Background="{x:Bind GetBackgroundBrush(Label), Mode=OneWay}"
         ToolTipService.ToolTip="{x:Bind GetDescription(Label), Mode=OneWay}">
         <TextBlock
             VerticalAlignment="Center"
             Style="{StaticResource ListItemSecondaryTextBlockStyle}"
-            Height="16"
-            FontSize="12"
-            LineHeight="16"
+            Height="{ThemeResource AppDimension16}"
+            FontSize="{ThemeResource AppFontSize12}"
+            LineHeight="{ThemeResource AppLineHeight16}"
             LineStackingStrategy="BlockLineHeight"
             TextAlignment="Center"
-            Margin="0"
+            Margin="{ThemeResource AppMargin0}"
             Text="{x:Bind GetName(Label), Mode=OneWay}"
             Foreground="{x:Bind GetForegroundBrush(Label), Mode=OneWay}"/>
     </Border>

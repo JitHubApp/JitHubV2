@@ -5,6 +5,8 @@ using System.Windows.Input;
 using JitHub.Models.Activities;
 using JitHub.Models.LegacyGitHub;
 using JitHub.Models.PRConversation;
+using JitHub.Services;
+using JitHub.WinUI.Helpers;
 
 namespace JitHub.WinUI.ViewModels.PullRequestViewModels.ConversationViewModels;
 
@@ -39,7 +41,12 @@ public sealed partial class PullRequestTimelineInlinePartViewModel
 [WinRT.GeneratedBindableCustomProperty]
 public sealed partial class PullRequestTimelineItemViewModel
 {
-    public string ActorLogin { get; init; } = string.Empty;
+    public string AutomationScope { get; set; } = string.Empty;
+
+    public string AvatarAutomationId => $"PullRequestTimelineAvatar_{AutomationScope}";
+    public string ActorDisplayName { get; init; } = string.Empty;
+
+    public string? ActorLogin { get; init; }
 
     public string? ActorAvatarUrl { get; init; }
 
@@ -60,31 +67,47 @@ public static class PullRequestTimelineItemViewModelFactory
 {
     public static PullRequestTimelineItemViewModel Create(ConversationNode node, ICommand? actionCommand)
     {
-        return node switch
+        PullRequestTimelineItemViewModel viewModel = node switch
         {
             CommitNode commit => BuildCommit(commit, actionCommand),
             EventNode @event => BuildEvent(@event, actionCommand),
             _ => BuildFallback(node)
         };
+        viewModel.AutomationScope = CreateAutomationScope(node);
+        return viewModel;
     }
+
+    private static string CreateAutomationScope(ConversationNode node) => node switch
+    {
+        CommitNode commit when !string.IsNullOrWhiteSpace(commit.NodeId) => $"commit:{commit.NodeId}",
+        CommitNode commit when !string.IsNullOrWhiteSpace(commit.Sha) => $"commit:{commit.Sha}",
+        EventNode @event when !string.IsNullOrWhiteSpace(@event.NodeId) => $"event:{@event.NodeId}",
+        EventNode @event when @event.Id > 0 => $"event:{@event.Id}",
+        _ => $"{node.GetType().Name}:{node.Repo?.Id}:{node.Number}:{node.CreatedAt:O}"
+    };
 
     private static PullRequestTimelineItemViewModel BuildCommit(CommitNode node, ICommand? command)
     {
-        string actor = Actor(node.Author, node.Commit.Author.Name);
-        string message = FirstLine(node.Commit.Message, "Commit message unavailable");
+        UserIdentityPresentation actor = Actor(node.Author, node.Commit.Author.Name);
+        string message = FirstLine(
+            node.Commit.Message,
+            LocalizedResourceText.GetString(
+                "PullRequestTimeline.CommitMessageUnavailable",
+                "Commit message unavailable"));
 
         return new PullRequestTimelineItemViewModel
         {
-            ActorLogin = actor,
+            ActorDisplayName = actor.DisplayName,
+            ActorLogin = actor.AuthenticatedLogin,
             ActorAvatarUrl = node.Author?.AvatarUrl,
             CreatedAt = SafeCreatedAt(node.CreatedAt),
             Glyph = "\uE930",
             Tone = ActivityCardTone.Accent,
-            SentenceParts = Sentence(
-                Strong(actor),
-                Text(" added commit "),
+            SentenceParts = LocalizedSentence(
+                "CommitAdded",
+                "{0} added commit {1} {2}",
+                Strong(actor.DisplayName),
                 CommitLink(node, command),
-                Text(" "),
                 Strong(message)),
             Details = DetailList(("\uE8A7", node.Commit.Author.Email))
         };
@@ -92,7 +115,7 @@ public static class PullRequestTimelineItemViewModelFactory
 
     private static PullRequestTimelineItemViewModel BuildEvent(EventNode node, ICommand? command)
     {
-        string actor = Actor(node.Actor);
+        UserIdentityPresentation actor = Actor(node.Actor);
         EventInfoState state = node.State;
         string? reviewer = UserName(node.RequestedReviewer);
         string? assignee = UserName(node.Assignee);
@@ -101,101 +124,91 @@ public static class PullRequestTimelineItemViewModelFactory
 
         List<PullRequestTimelineInlinePartViewModel> sentence = state switch
         {
-            EventInfoState.Closed => Sentence(Strong(actor), Text(" closed this pull request")),
-            EventInfoState.Reopened => Sentence(Strong(actor), Text(" reopened this pull request")),
-            EventInfoState.Merged => Sentence(
-                Strong(actor),
-                Text(" merged this pull request"),
-                string.IsNullOrWhiteSpace(node.CommitId) ? null : Text(" at "),
-                CommitLink(node, command)),
-            EventInfoState.HeadRefForcePushed => Sentence(
-                Strong(actor),
-                Text(" force-pushed this branch"),
-                string.IsNullOrWhiteSpace(node.CommitId) ? null : Text(" to "),
-                CommitLink(node, command)),
-            EventInfoState.HeadRefDeleted => Sentence(Strong(actor), Text(" deleted the head branch")),
-            EventInfoState.HeadRefRestored => Sentence(Strong(actor), Text(" restored the head branch")),
-            EventInfoState.ReadyForReview => Sentence(Strong(actor), Text(" marked this pull request ready for review")),
-            EventInfoState.ReviewRequested => Sentence(
-                Strong(actor),
-                Text(" requested review from "),
-                Strong(reviewer ?? TeamName(node.RequestedTeam) ?? "a reviewer")),
-            EventInfoState.ReviewRequestRemoved => Sentence(
-                Strong(actor),
-                Text(" removed review request from "),
-                Strong(reviewer ?? TeamName(node.RequestedTeam) ?? "a reviewer")),
-            EventInfoState.ReviewDismissed => Sentence(Strong(actor), Text(" dismissed a review")),
-            EventInfoState.Reviewed => Sentence(Strong(actor), Text(" reviewed this pull request")),
-            EventInfoState.Labeled => Sentence(
-                Strong(actor),
-                Text(" added label "),
-                Label(node.Label)),
-            EventInfoState.Unlabeled => Sentence(
-                Strong(actor),
-                Text(" removed label "),
-                Label(node.Label)),
-            EventInfoState.Assigned => Sentence(
-                Strong(actor),
-                Text(" assigned "),
-                Strong(assignee ?? assigner ?? "someone")),
-            EventInfoState.Unassigned => Sentence(
-                Strong(actor),
-                Text(" unassigned "),
-                Strong(assignee ?? "someone")),
-            EventInfoState.Milestoned => Sentence(
-                Strong(actor),
-                Text(" added milestone "),
-                Strong(milestone ?? "a milestone")),
-            EventInfoState.Demilestoned => Sentence(
-                Strong(actor),
-                Text(" removed milestone "),
-                Strong(milestone ?? "a milestone")),
-            EventInfoState.Renamed => Sentence(
-                Strong(actor),
-                Text(" renamed this pull request from "),
-                Strong(Quote(node.RenameInfo?.From, "old title")),
-                Text(" to "),
-                Strong(Quote(node.RenameInfo?.To, "new title"))),
-            EventInfoState.Locked => Sentence(
-                Strong(actor),
-                Text(" locked this conversation"),
-                string.IsNullOrWhiteSpace(node.LockReason) ? null : Text(" as "),
-                string.IsNullOrWhiteSpace(node.LockReason) ? null : Strong(node.LockReason)),
-            EventInfoState.Unlocked => Sentence(Strong(actor), Text(" unlocked this conversation")),
-            EventInfoState.CommentDeleted => Sentence(Strong(actor), Text(" deleted a comment")),
-            EventInfoState.MarkedAsDuplicate => Sentence(Strong(actor), Text(" marked this as a duplicate")),
-            EventInfoState.UnmarkedAsDuplicate => Sentence(Strong(actor), Text(" removed duplicate status")),
-            EventInfoState.BaseRefChanged => Sentence(Strong(actor), Text(" changed the base branch")),
-            EventInfoState.Crossreferenced => Sentence(Strong(actor), Text(" cross-referenced this pull request")),
-            EventInfoState.Referenced => Sentence(
-                Strong(actor),
-                Text(" referenced this pull request"),
-                string.IsNullOrWhiteSpace(node.CommitId) ? null : Text(" from "),
-                CommitLink(node, command)),
-            EventInfoState.Mentioned => Sentence(Strong(actor), Text(" mentioned this pull request")),
-            EventInfoState.Pinned => Sentence(Strong(actor), Text(" pinned this pull request")),
-            EventInfoState.Unpinned => Sentence(Strong(actor), Text(" unpinned this pull request")),
-            EventInfoState.Connected => Sentence(Strong(actor), Text(" connected this pull request")),
-            EventInfoState.Disconnected => Sentence(Strong(actor), Text(" disconnected this pull request")),
-            EventInfoState.Commented => Sentence(Strong(actor), Text(" commented")),
-            EventInfoState.CommitCommented => Sentence(
-                Strong(actor),
-                Text(" commented on commit "),
-                CommitLink(node, command)),
-            EventInfoState.LineCommented => Sentence(Strong(actor), Text(" commented on a changed line")),
-            EventInfoState.AddedToProject => Sentence(Strong(actor), Text(" added this to a project")),
-            EventInfoState.MovedColumnsInProject => Sentence(Strong(actor), Text(" moved this in a project")),
-            EventInfoState.RemovedFromProject => Sentence(Strong(actor), Text(" removed this from a project")),
-            EventInfoState.ConvertedNoteToIssue => Sentence(Strong(actor), Text(" converted a project note to this item")),
-            EventInfoState.Subscribed => Sentence(Strong(actor), Text(" subscribed to updates")),
-            EventInfoState.Unsubscribed => Sentence(Strong(actor), Text(" unsubscribed from updates")),
-            EventInfoState.Transferred => Sentence(Strong(actor), Text(" transferred this pull request")),
-            _ => Sentence(Strong(actor), Text($" {Humanize(state)}"))
+            EventInfoState.Closed => LocalizedSentence("Closed", "{0} closed this pull request", Strong(actor.DisplayName)),
+            EventInfoState.Reopened => LocalizedSentence("Reopened", "{0} reopened this pull request", Strong(actor.DisplayName)),
+            EventInfoState.Merged => string.IsNullOrWhiteSpace(node.CommitId)
+                ? LocalizedSentence("Merged", "{0} merged this pull request", Strong(actor.DisplayName))
+                : LocalizedSentence("MergedAt", "{0} merged this pull request at {1}", Strong(actor.DisplayName), CommitLink(node, command)),
+            EventInfoState.HeadRefForcePushed => string.IsNullOrWhiteSpace(node.CommitId)
+                ? LocalizedSentence("ForcePushed", "{0} force-pushed this branch", Strong(actor.DisplayName))
+                : LocalizedSentence("ForcePushedTo", "{0} force-pushed this branch to {1}", Strong(actor.DisplayName), CommitLink(node, command)),
+            EventInfoState.HeadRefDeleted => LocalizedSentence("HeadRefDeleted", "{0} deleted the head branch", Strong(actor.DisplayName)),
+            EventInfoState.HeadRefRestored => LocalizedSentence("HeadRefRestored", "{0} restored the head branch", Strong(actor.DisplayName)),
+            EventInfoState.ReadyForReview => LocalizedSentence("ReadyForReview", "{0} marked this pull request ready for review", Strong(actor.DisplayName)),
+            EventInfoState.ReviewRequested => LocalizedSentence(
+                "ReviewRequested",
+                "{0} requested review from {1}",
+                Strong(actor.DisplayName),
+                Strong(reviewer ?? TeamName(node.RequestedTeam) ?? TimelineText("ReviewerFallback", "a reviewer"))),
+            EventInfoState.ReviewRequestRemoved => LocalizedSentence(
+                "ReviewRequestRemoved",
+                "{0} removed review request from {1}",
+                Strong(actor.DisplayName),
+                Strong(reviewer ?? TeamName(node.RequestedTeam) ?? TimelineText("ReviewerFallback", "a reviewer"))),
+            EventInfoState.ReviewDismissed => LocalizedSentence("ReviewDismissed", "{0} dismissed a review", Strong(actor.DisplayName)),
+            EventInfoState.Reviewed => LocalizedSentence("Reviewed", "{0} reviewed this pull request", Strong(actor.DisplayName)),
+            EventInfoState.Labeled => LocalizedSentence("Labeled", "{0} added label {1}", Strong(actor.DisplayName), Label(node.Label)),
+            EventInfoState.Unlabeled => LocalizedSentence("Unlabeled", "{0} removed label {1}", Strong(actor.DisplayName), Label(node.Label)),
+            EventInfoState.Assigned => LocalizedSentence(
+                "Assigned",
+                "{0} assigned {1}",
+                Strong(actor.DisplayName),
+                Strong(assignee ?? assigner ?? TimelineText("SomeoneFallback", "someone"))),
+            EventInfoState.Unassigned => LocalizedSentence(
+                "Unassigned",
+                "{0} unassigned {1}",
+                Strong(actor.DisplayName),
+                Strong(assignee ?? TimelineText("SomeoneFallback", "someone"))),
+            EventInfoState.Milestoned => LocalizedSentence(
+                "Milestoned",
+                "{0} added milestone {1}",
+                Strong(actor.DisplayName),
+                Strong(milestone ?? TimelineText("MilestoneFallback", "a milestone"))),
+            EventInfoState.Demilestoned => LocalizedSentence(
+                "Demilestoned",
+                "{0} removed milestone {1}",
+                Strong(actor.DisplayName),
+                Strong(milestone ?? TimelineText("MilestoneFallback", "a milestone"))),
+            EventInfoState.Renamed => LocalizedSentence(
+                "Renamed",
+                "{0} renamed this pull request from {1} to {2}",
+                Strong(actor.DisplayName),
+                Strong(Quote(node.RenameInfo?.From, TimelineText("OldTitleFallback", "old title"))),
+                Strong(Quote(node.RenameInfo?.To, TimelineText("NewTitleFallback", "new title")))),
+            EventInfoState.Locked => string.IsNullOrWhiteSpace(node.LockReason)
+                ? LocalizedSentence("Locked", "{0} locked this conversation", Strong(actor.DisplayName))
+                : LocalizedSentence("LockedAs", "{0} locked this conversation as {1}", Strong(actor.DisplayName), Strong(node.LockReason)),
+            EventInfoState.Unlocked => LocalizedSentence("Unlocked", "{0} unlocked this conversation", Strong(actor.DisplayName)),
+            EventInfoState.CommentDeleted => LocalizedSentence("CommentDeleted", "{0} deleted a comment", Strong(actor.DisplayName)),
+            EventInfoState.MarkedAsDuplicate => LocalizedSentence("MarkedAsDuplicate", "{0} marked this as a duplicate", Strong(actor.DisplayName)),
+            EventInfoState.UnmarkedAsDuplicate => LocalizedSentence("UnmarkedAsDuplicate", "{0} removed duplicate status", Strong(actor.DisplayName)),
+            EventInfoState.BaseRefChanged => LocalizedSentence("BaseRefChanged", "{0} changed the base branch", Strong(actor.DisplayName)),
+            EventInfoState.Crossreferenced => LocalizedSentence("Crossreferenced", "{0} cross-referenced this pull request", Strong(actor.DisplayName)),
+            EventInfoState.Referenced => string.IsNullOrWhiteSpace(node.CommitId)
+                ? LocalizedSentence("Referenced", "{0} referenced this pull request", Strong(actor.DisplayName))
+                : LocalizedSentence("ReferencedFrom", "{0} referenced this pull request from {1}", Strong(actor.DisplayName), CommitLink(node, command)),
+            EventInfoState.Mentioned => LocalizedSentence("Mentioned", "{0} mentioned this pull request", Strong(actor.DisplayName)),
+            EventInfoState.Pinned => LocalizedSentence("Pinned", "{0} pinned this pull request", Strong(actor.DisplayName)),
+            EventInfoState.Unpinned => LocalizedSentence("Unpinned", "{0} unpinned this pull request", Strong(actor.DisplayName)),
+            EventInfoState.Connected => LocalizedSentence("Connected", "{0} connected this pull request", Strong(actor.DisplayName)),
+            EventInfoState.Disconnected => LocalizedSentence("Disconnected", "{0} disconnected this pull request", Strong(actor.DisplayName)),
+            EventInfoState.Commented => LocalizedSentence("Commented", "{0} commented", Strong(actor.DisplayName)),
+            EventInfoState.CommitCommented => LocalizedSentence("CommitCommented", "{0} commented on commit {1}", Strong(actor.DisplayName), CommitLink(node, command)),
+            EventInfoState.LineCommented => LocalizedSentence("LineCommented", "{0} commented on a changed line", Strong(actor.DisplayName)),
+            EventInfoState.AddedToProject => LocalizedSentence("AddedToProject", "{0} added this to a project", Strong(actor.DisplayName)),
+            EventInfoState.MovedColumnsInProject => LocalizedSentence("MovedColumnsInProject", "{0} moved this in a project", Strong(actor.DisplayName)),
+            EventInfoState.RemovedFromProject => LocalizedSentence("RemovedFromProject", "{0} removed this from a project", Strong(actor.DisplayName)),
+            EventInfoState.ConvertedNoteToIssue => LocalizedSentence("ConvertedNoteToIssue", "{0} converted a project note to this item", Strong(actor.DisplayName)),
+            EventInfoState.Subscribed => LocalizedSentence("Subscribed", "{0} subscribed to updates", Strong(actor.DisplayName)),
+            EventInfoState.Unsubscribed => LocalizedSentence("Unsubscribed", "{0} unsubscribed from updates", Strong(actor.DisplayName)),
+            EventInfoState.Transferred => LocalizedSentence("Transferred", "{0} transferred this pull request", Strong(actor.DisplayName)),
+            _ => LocalizedSentence("Updated", "{0} updated this pull request", Strong(actor.DisplayName))
         };
 
         return new PullRequestTimelineItemViewModel
         {
-            ActorLogin = actor,
+            ActorDisplayName = actor.DisplayName,
+            ActorLogin = actor.AuthenticatedLogin,
             ActorAvatarUrl = node.Actor?.AvatarUrl,
             CreatedAt = SafeCreatedAt(node.CreatedAt),
             Glyph = GlyphFor(state),
@@ -209,11 +222,14 @@ public static class PullRequestTimelineItemViewModelFactory
     {
         return new PullRequestTimelineItemViewModel
         {
-            ActorLogin = "github",
+            ActorDisplayName = "GitHub",
+            ActorLogin = null,
             CreatedAt = SafeCreatedAt(node.CreatedAt),
             Glyph = "\uE946",
             Tone = ActivityCardTone.Neutral,
-            SentenceParts = Sentence(Text("GitHub updated this pull request"))
+            SentenceParts = LocalizedSentence(
+                "FallbackUpdated",
+                "GitHub updated this pull request")
         };
     }
 
@@ -276,16 +292,11 @@ public static class PullRequestTimelineItemViewModelFactory
         };
     }
 
-    private static string Actor(User? user, string? fallback = null)
-    {
-        string login = UserName(user);
-        if (!string.IsNullOrWhiteSpace(login))
-        {
-            return login;
-        }
-
-        return string.IsNullOrWhiteSpace(fallback) ? "someone" : fallback!;
-    }
+    private static UserIdentityPresentation Actor(User? user, string? fallback = null) =>
+        UserIdentityNavigationPolicy.CreatePresentation(
+            user?.Login,
+            user?.Name,
+            string.IsNullOrWhiteSpace(fallback) ? TimelineText("SomeoneFallback", "someone") : fallback!);
 
     private static string UserName(User? user) =>
         string.IsNullOrWhiteSpace(user?.Login)
@@ -389,7 +400,7 @@ public static class PullRequestTimelineItemViewModelFactory
     {
         if (label is null || string.IsNullOrWhiteSpace(label.Name))
         {
-            return Strong("label");
+            return Strong(TimelineText("LabelFallback", "label"));
         }
 
         return new PullRequestTimelineInlinePartViewModel
@@ -407,6 +418,51 @@ public static class PullRequestTimelineItemViewModelFactory
             .Where(part => part is not null && (!string.IsNullOrEmpty(part.Text) || part.Kind == PullRequestTimelineInlineKind.Label))
             .Cast<PullRequestTimelineInlinePartViewModel>()
             .ToList();
+    }
+
+    private static string TimelineText(string key, string fallback) =>
+        LocalizedResourceText.GetString($"PullRequestTimeline.{key}", fallback);
+
+    private static List<PullRequestTimelineInlinePartViewModel> LocalizedSentence(
+        string key,
+        string fallback,
+        params PullRequestTimelineInlinePartViewModel?[] arguments)
+    {
+        string template = TimelineText(key, fallback);
+        List<PullRequestTimelineInlinePartViewModel> parts = [];
+        int cursor = 0;
+        while (cursor < template.Length)
+        {
+            int open = template.IndexOf('{', cursor);
+            if (open < 0)
+            {
+                parts.Add(Text(template[cursor..]));
+                break;
+            }
+
+            if (open > cursor)
+            {
+                parts.Add(Text(template[cursor..open]));
+            }
+
+            int close = template.IndexOf('}', open + 1);
+            if (close < 0 ||
+                !int.TryParse(template[(open + 1)..close], out int argumentIndex) ||
+                argumentIndex < 0 ||
+                argumentIndex >= arguments.Length)
+            {
+                parts.Add(Text(template[open..]));
+                break;
+            }
+
+            if (arguments[argumentIndex] is { } argument)
+            {
+                parts.Add(argument);
+            }
+            cursor = close + 1;
+        }
+
+        return Sentence([.. parts]);
     }
 
     private static List<ActivityCardDetailViewModel> DetailList(params (string Glyph, string? Text)[] values)

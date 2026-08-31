@@ -25,16 +25,36 @@ public static class PixelComparer
     /// <summary>Loads a PNG from disk into a top-down RGBA8888 byte buffer.</summary>
     public static (byte[] Rgba, int Width, int Height) LoadPngAsRgba(string path)
     {
-        using var bmp = new Bitmap(path);
+        // Bitmap(string) still delegates path handling to GDI+, which rejects
+        // otherwise valid long worktree/CI paths. System.IO reads those paths
+        // correctly; keep the stream alive for the lifetime of the bitmap.
+        using var stream = new MemoryStream(File.ReadAllBytes(path), writable: false);
+        using var bmp = new Bitmap(stream);
         return BitmapToRgba(bmp);
     }
 
     /// <summary>Saves an RGBA8888 byte buffer as a PNG.</summary>
     public static void SaveRgbaAsPng(byte[] rgba, int width, int height, string path)
     {
-        var bmp = RgbaToBitmap(rgba, width, height);
-        bmp.Save(path, ImageFormat.Png);
-        bmp.Dispose();
+        string destination = Path.GetFullPath(path);
+        Directory.CreateDirectory(Path.GetDirectoryName(destination)!);
+
+        // GDI+ still uses legacy path handling even when the process and .NET
+        // file APIs are long-path aware. Encode through a short temporary path,
+        // then let System.IO move the completed PNG to a deep worktree/CI path.
+        string temporaryDirectory = Path.Combine(Path.GetTempPath(), "MarkdownRenderer.PixelTests");
+        Directory.CreateDirectory(temporaryDirectory);
+        string temporaryPath = Path.Combine(temporaryDirectory, $"{Guid.NewGuid():N}.png");
+        try
+        {
+            using var bmp = RgbaToBitmap(rgba, width, height);
+            bmp.Save(temporaryPath, ImageFormat.Png);
+            File.Move(temporaryPath, destination, overwrite: true);
+        }
+        finally
+        {
+            try { File.Delete(temporaryPath); } catch { }
+        }
     }
 
     /// <summary>Converts a BGRA premultiplied buffer (Skia output) to RGBA8888 unpremultiplied.</summary>
@@ -82,11 +102,31 @@ public static class PixelComparer
         return dst;
     }
 
+    public static byte[] CropToRequiredBounds(
+        byte[] rgba,
+        int sourceWidth,
+        int sourceHeight,
+        int requiredWidth,
+        int requiredHeight)
+    {
+        if (sourceWidth < requiredWidth || sourceHeight < requiredHeight)
+        {
+            throw new InvalidDataException(
+                $"Raster capture {sourceWidth}x{sourceHeight} does not cover the required " +
+                $"{requiredWidth}x{requiredHeight} comparison area.");
+        }
+
+        return sourceWidth == requiredWidth && sourceHeight == requiredHeight
+            ? rgba
+            : Crop(rgba, sourceWidth, sourceHeight, 0, 0, requiredWidth, requiredHeight);
+    }
+
     /// <summary>
-    /// Compares two RGBA buffers of identical dimensions. Per-channel L1
-    /// distance, ignores any difference ≤ <paramref name="channelTolerance"/>
-    /// (rasterizers commonly disagree by a few units near antialiased
-    /// edges). A pixel is "differing" if any channel exceeds the tolerance.
+    /// Compares two RGBA buffers of identical dimensions. RGB is compared in
+    /// premultiplied-alpha space because unpremultiplied color beneath a fully
+    /// transparent pixel is undefined and cannot affect the rendered image.
+    /// Alpha is compared directly. A pixel is "differing" if any resulting
+    /// channel exceeds <paramref name="channelTolerance"/>.
     /// </summary>
     public static DiffReport Compare(byte[] a, byte[] b, int width, int height, int channelTolerance = 6)
     {
@@ -103,7 +143,13 @@ public static class PixelComparer
             bool pixelDiffers = false;
             for (int c = 0; c < 4; c++)
             {
-                int delta = Math.Abs(a[baseIdx + c] - b[baseIdx + c]);
+                int aValue = c == 3
+                    ? a[baseIdx + c]
+                    : Premultiply(a[baseIdx + c], a[baseIdx + 3]);
+                int bValue = c == 3
+                    ? b[baseIdx + c]
+                    : Premultiply(b[baseIdx + c], b[baseIdx + 3]);
+                int delta = Math.Abs(aValue - bValue);
                 if (delta > maxDelta) maxDelta = delta;
                 sumDelta += delta;
                 if (delta > channelTolerance) pixelDiffers = true;
@@ -114,6 +160,9 @@ public static class PixelComparer
         double frac = (double)differing / (width * height);
         return new DiffReport(width, height, maxDelta, mean, frac);
     }
+
+    private static int Premultiply(byte color, byte alpha) =>
+        (color * alpha + 127) / 255;
 
     private static (byte[] Rgba, int Width, int Height) BitmapToRgba(Bitmap bmp)
     {

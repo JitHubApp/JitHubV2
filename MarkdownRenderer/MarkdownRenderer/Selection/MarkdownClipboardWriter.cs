@@ -35,7 +35,11 @@ internal static class MarkdownClipboardWriter
                 package.SetHtmlFormat(HtmlFormatHelper.CreateHtmlFormat(html));
         }
 
-        try { Clipboard.SetContent(package); }
+        try
+        {
+            Clipboard.SetContent(package);
+            Clipboard.Flush();
+        }
         catch (Exception) { return false; }
         return true;
     }

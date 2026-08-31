@@ -4,8 +4,9 @@ if (authRoot) {
     const states = Array.from(authRoot.querySelectorAll("[data-auth-state]"));
     const errorText = authRoot.querySelector("[data-auth-error]");
     const launchLink = authRoot.querySelector("[data-auth-launch]");
-    const tokenEndpoint = authRoot.getAttribute("data-token-endpoint") ?? "/api/GithubCodeToToken";
-    const protocolV2StatePrefix = "WINUI3V2_";
+    const handoffEndpoint = authRoot.getAttribute("data-handoff-endpoint") ?? "/api/GithubCodeToHandoff";
+    const protocolV3StatePrefix = "WINUI3V3_";
+    const debugProtocolV3StatePrefix = "WINUI3V3DEBUG_";
 
     const showState = (stateName) => {
         for (const state of states) {
@@ -39,40 +40,50 @@ if (authRoot) {
         showState("failed");
     };
 
-    const supportsProtocolV2 = (state) => state && state.startsWith(protocolV2StatePrefix);
+    const supportsProtocolV3 = (state) => state &&
+        (state.startsWith(protocolV3StatePrefix) || state.startsWith(debugProtocolV3StatePrefix));
+
+    const callbackScheme = (state) => state && state.startsWith(debugProtocolV3StatePrefix)
+        ? "jithub-dev"
+        : "jithub";
 
     const launchApp = async () => {
         const params = new URLSearchParams(window.location.search);
         const code = params.get("code");
         const state = params.get("state");
 
-        if (!code || !state) {
+        if (!code || !state || !supportsProtocolV3(state)) {
             fail(genericFailureMessage);
             return;
         }
 
         try {
             const redirectUri = `${window.location.origin}${window.location.pathname}`;
-            const response = await fetch(`${tokenEndpoint}?tempCode=${encodeURIComponent(code)}&redirectUri=${encodeURIComponent(redirectUri)}`, {
+            const response = await fetch(handoffEndpoint, {
+                method: "POST",
                 headers: {
-                    "Accept": "text/plain"
-                }
+                    "Accept": "application/json",
+                    "Content-Type": "application/json"
+                },
+                cache: "no-store",
+                credentials: "same-origin",
+                body: JSON.stringify({ tempCode: code, redirectUri, state })
             });
 
             if (!response.ok) {
                 throw new Error(await readErrorMessage(response));
             }
 
-            const token = (await response.text()).trim();
-            if (!token) {
-                throw new Error("GitHub returned an empty access token.");
+            const payload = await response.json();
+            const handoff = payload?.handoff ?? payload?.Handoff;
+            if (!handoff) {
+                throw new Error("The sign-in handoff was empty.");
             }
 
-            const escapedToken = encodeURIComponent(token);
+            const escapedHandoff = encodeURIComponent(handoff);
             const escapedState = encodeURIComponent(state);
-            const protocolUri = supportsProtocolV2(state)
-                ? `jithub://auth/v2?token=${escapedToken}&state=${escapedState}`
-                : `jithub://auth/?token=${escapedToken}&state=${escapedState}#state=${escapedState}`;
+            const scheme = callbackScheme(state);
+            const protocolUri = `${scheme}://auth/v3?handoff=${escapedHandoff}&state=${escapedState}`;
 
             if (launchLink) {
                 launchLink.setAttribute("href", protocolUri);

@@ -124,13 +124,18 @@ public sealed class SvgComplianceTests
         {
             var (browserRgba, bw, bh) = PixelComparer.LoadPngAsRgba(browserPng);
 
-            // The browser screenshot is windowed to the requested size, but
-            // Chromium sometimes pads or crops by a pixel; only compare the
-            // common rect.
-            int cw = Math.Min(w, bw);
-            int ch = Math.Min(h, bh);
-            byte[] oursCropped = (cw == w && ch == h) ? oursRgba : PixelComparer.Crop(oursRgba, w, h, 0, 0, cw, ch);
-            byte[] browserCropped = (cw == bw && ch == bh) ? browserRgba : PixelComparer.Crop(browserRgba, bw, bh, 0, 0, cw, ch);
+            // Extra browser-frame allowance can make the capture taller, but a
+            // capture smaller than the requested SVG is an invalid oracle.
+            // Never pass by comparing only a cropped common rectangle.
+            int cw = w;
+            int ch = h;
+            byte[] oursCropped = oursRgba;
+            byte[] browserCropped = PixelComparer.CropToRequiredBounds(
+                browserRgba,
+                bw,
+                bh,
+                w,
+                h);
 
             PixelComparer.SaveRgbaAsPng(browserCropped, cw, ch, Path.Combine(artifactsDir, "browser.png"));
 

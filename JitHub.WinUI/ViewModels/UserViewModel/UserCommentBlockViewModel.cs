@@ -3,14 +3,19 @@ using JitHub.Models;
 using JitHub.Models.PRConversation;
 using JitHub.WinUI.ViewModels.Base;
 using JitHub.WinUI.ViewModels.EmojiViewModels;
+using CommunityToolkit.Mvvm.DependencyInjection;
 using CommunityToolkit.Mvvm.Input;
 using JitHub.Models.LegacyGitHub;
 using System;
 using System.Collections.Generic;
+using System.Diagnostics;
 using System.Linq;
+using System.Threading;
 using System.Threading.Tasks;
 using System.Windows.Input;
-using Windows.ApplicationModel.DataTransfer;
+using JitHub.Services.Markdown;
+using JitHub.Services;
+using MarkdownRenderer.Images;
 
 namespace JitHub.WinUI.ViewModels.UserViewModel
 {
@@ -21,13 +26,20 @@ namespace JitHub.WinUI.ViewModels.UserViewModel
         public List<string> Users { get; set; } = [];
         public bool Voted { get; set; }
         public ICommand ReactionCommand { get; set; } = null!;
+        public string AutomationInstanceId { get; set; } = string.Empty;
 
-        public ReactionWithUsers(ReactionType type, IEnumerable<string> users, bool voted, ICommand reactionCommand)
+        public ReactionWithUsers(
+            ReactionType type,
+            IEnumerable<string> users,
+            bool voted,
+            ICommand reactionCommand,
+            string automationInstanceId)
         {
             Type = type;
             Users = users.ToList();
             Voted = voted;
             ReactionCommand = reactionCommand;
+            AutomationInstanceId = automationInstanceId;
         }
     }
 
@@ -49,6 +61,10 @@ namespace JitHub.WinUI.ViewModels.UserViewModel
         private EmojiPanelViewModel? _emojiPanelViewModel;
         private Dictionary<ReactionType, Reaction> _votesMap = [];
         private List<ReactionWithUsers> _reactionWithUsers = [];
+        private readonly IssueActionKind? _issueReactionAction;
+        private int _reactionLoadGeneration;
+        private bool _hasReactionError;
+        private string _reactionErrorText = string.Empty;
 
         public string Body
         {
@@ -80,24 +96,104 @@ namespace JitHub.WinUI.ViewModels.UserViewModel
         public User Commenter
         {
             get => _commenter;
-            set => SetProperty(ref _commenter, value);
+            set
+            {
+                if (!SetProperty(ref _commenter, value))
+                    return;
+
+                OnPropertyChanged(nameof(CommenterDisplayName));
+                OnPropertyChanged(nameof(AuthenticatedCommenterLogin));
+                OnPropertyChanged(nameof(CommenterAvatarUrl));
+            }
         }
 
-        public ICommand LoadCommand { get; }
+        public string CommenterDisplayName => string.IsNullOrWhiteSpace(Commenter?.Login)
+            ? LocalizedResourceText.GetString("Common.UnknownUser", "unknown")
+            : Commenter.Login;
 
-        public ICommand ReactionCommand { get; }
+        public string? AuthenticatedCommenterLogin =>
+            UserIdentityNavigationPolicy.GetRoutableLogin(Commenter?.Login);
+
+        public string CommenterAvatarUrl => Commenter?.AvatarUrl ?? string.Empty;
+
+        public string CommenterAvatarAutomationId => $"{MarkdownAutomationId}_Author";
+
+        public IAsyncRelayCommand LoadCommand { get; }
+
+        public bool HasReactionError
+        {
+            get => _hasReactionError;
+            set => SetProperty(ref _hasReactionError, value);
+        }
+
+        public string ReactionErrorText
+        {
+            get => _reactionErrorText;
+            private set => SetProperty(ref _reactionErrorText, value);
+        }
+
+        public string MarkdownAutomationId => $"LegacyComment_{_commentId}";
+
+        public string HeaderReactionAutomationId => $"{MarkdownAutomationId}_HeaderReactions";
+
+        public string SummaryReactionAutomationId => $"{MarkdownAutomationId}_SummaryReactions";
+
+        public string OverflowAutomationId => $"{MarkdownAutomationId}_Actions";
+
+        public string CopyLinkAutomationId => $"{MarkdownAutomationId}_CopyLink";
+
+        public string QuoteReplyAutomationId => $"{MarkdownAutomationId}_QuoteReply";
+
+        public MarkdownDocumentSource? MarkdownSource => Repo?.Owner?.Login is string owner &&
+            !string.IsNullOrWhiteSpace(owner) &&
+            !string.IsNullOrWhiteSpace(Repo.Name)
+                ? MarkdownDocumentSourceFactory.CreateRepositoryDocument(
+                    "legacy-comment",
+                    _commentId.ToString(),
+                    owner,
+                    Repo.Name,
+                    Repo.DefaultBranch)
+                : null;
+
+        public IAsyncRelayCommand<ReactionType> ReactionCommand { get; }
         public ICommand? RemoveReactionCommand { get; }
 
         public MenuItem CopyLinkMenuItem
         {
             get => _copyLinkMenuItem;
-            set => SetProperty(ref _copyLinkMenuItem, value);
+            set
+            {
+                if (!SetProperty(ref _copyLinkMenuItem, value))
+                    return;
+
+                OnPropertyChanged(nameof(CopyLinkCommand));
+                OnPropertyChanged(nameof(CopyLinkText));
+            }
         }
+
+        public ICommand? CopyLinkCommand => _copyLinkMenuItem?.Command;
+
+        public string CopyLinkText => _copyLinkMenuItem?.Text ?? string.Empty;
+
         public MenuItem QuoteReplyMenuItem
         {
             get => _quoteReplyMenuItem;
-            set => SetProperty(ref _quoteReplyMenuItem, value);
+            set
+            {
+                if (!SetProperty(ref _quoteReplyMenuItem, value))
+                    return;
+
+                OnPropertyChanged(nameof(QuoteReplyCommand));
+                OnPropertyChanged(nameof(QuoteReplyParameter));
+                OnPropertyChanged(nameof(QuoteReplyText));
+            }
         }
+
+        public ICommand? QuoteReplyCommand => _quoteReplyMenuItem?.Command;
+
+        public object? QuoteReplyParameter => _quoteReplyMenuItem?.Parameter;
+
+        public string QuoteReplyText => _quoteReplyMenuItem?.Text ?? string.Empty;
 
         public EmojiPanelViewModel? EmojiPanelViewModel
         {
@@ -113,135 +209,258 @@ namespace JitHub.WinUI.ViewModels.UserViewModel
 
         public UserCommentBlockViewModel(Repository repo, Issue issue, ICommand quoteReplyCommand)
         {
+            _issueReactionAction = IssueActionKind.Reaction;
             Model = repo;
             Body = issue.Body ?? string.Empty;
             CreatedAt = issue.CreatedAt;
             _number = issue.Number;
             _commentId = issue.Id;
-            Commenter = issue.User!;
-            var copyLinkCommand  = new RelayCommand(() => CopyLink(issue.HtmlUrl, issue.Id.ToString()));
-            CopyLinkMenuItem = new MenuItem("Copy Link", copyLinkCommand);
-            QuoteReplyMenuItem = new MenuItem("Quote Reply", quoteReplyCommand);
-            ReactionCommand = new AsyncRelayCommand<ReactionType>(async type => await ReactToIssue(type, Repo.Id, _number));
+            Commenter = issue.User ?? new User();
+            var copyLinkCommand = new RelayCommand(
+                () => CopyLink($"{issue.HtmlUrl}#issue-{issue.Id}"));
+            CopyLinkMenuItem = new MenuItem(
+                LocalizedResourceText.GetString("Comment.Menu.CopyLink", "Copy Link"),
+                copyLinkCommand);
+            QuoteReplyMenuItem = new MenuItem(
+                LocalizedResourceText.GetString("Comment.Menu.QuoteReply", "Quote Reply"),
+                quoteReplyCommand);
+            ReactionCommand = new AsyncRelayCommand<ReactionType>(
+                type => ReactToIssue(type, Repo.Id, _number),
+                AsyncRelayCommandOptions.None);
             LoadCommand = new AsyncRelayCommand(LoadFromIssue);
         }
 
         public UserCommentBlockViewModel(IssueCommentNode comment)
         {
+            _issueReactionAction = IssueActionKind.CommentReaction;
             Model = comment.Repo;
             Body = comment.Body ?? string.Empty;
             CreatedAt = comment.CreatedAt;
             _number = comment.Number;
             _commentId = comment.Id;
-            CopyLinkMenuItem = new MenuItem("Copy Link", comment.CopyLinkCommand);
+            CopyLinkMenuItem = new MenuItem(
+                LocalizedResourceText.GetString("Comment.Menu.CopyLink", "Copy Link"),
+                new RelayCommand(() => CopyLink(comment.Url)));
             QuoteReplyMenuItem = new MenuItem(
-                "Quote Reply",
+                LocalizedResourceText.GetString("Comment.Menu.QuoteReply", "Quote Reply"),
                 comment.QuoteReplyCommand ?? new RelayCommand<string?>(_ => { }),
                 comment.Body ?? string.Empty);
-            ReactionCommand = new AsyncRelayCommand<ReactionType>(async type => await ReactToIssueComment(type, Repo.Id, comment.Id));
-            Commenter = comment.User!;
+            ReactionCommand = new AsyncRelayCommand<ReactionType>(
+                type => ReactToIssueComment(type, Repo.Id, comment.Id),
+                AsyncRelayCommandOptions.None);
+            Commenter = comment.User ?? new User();
             LoadCommand = new AsyncRelayCommand(LoadFromIssueComment);
         }
 
         public UserCommentBlockViewModel(ReviewCommentNode comment, ICommand quoteReplyCommand)
         {
+            _issueReactionAction = null;
             Model = comment.Repo;
             Body = comment.Body ?? string.Empty;
             _number = comment.Number;
             _commentId = comment.Id;
             CreatedAt = comment.CreatedAt;
-            Commenter = comment.User!;
-            var copyCommand = new RelayCommand(() => PlatformHelper.CopyString(comment.HtmlUrl));
-            CopyLinkMenuItem = new MenuItem("Copy Link", copyCommand);
-            QuoteReplyMenuItem = new MenuItem("Quote Reply", quoteReplyCommand, comment.Body ?? string.Empty);
-            ReactionCommand = new RelayCommand<ReactionType>(async type => await ReactToReviewComment(type, Repo.Id, comment.Id));
+            Commenter = comment.User ?? new User();
+            var copyCommand = new RelayCommand(() => CopyLink(comment.HtmlUrl));
+            CopyLinkMenuItem = new MenuItem(
+                LocalizedResourceText.GetString("Comment.Menu.CopyLink", "Copy Link"),
+                copyCommand);
+            QuoteReplyMenuItem = new MenuItem(
+                LocalizedResourceText.GetString("Comment.Menu.QuoteReply", "Quote Reply"),
+                quoteReplyCommand,
+                comment.Body ?? string.Empty);
+            ReactionCommand = new AsyncRelayCommand<ReactionType>(
+                type => ReactToReviewComment(type, Repo.Id, comment.Id),
+                AsyncRelayCommandOptions.None);
             LoadCommand = new AsyncRelayCommand(LoadFromReviewComment);
         }
 
         private async Task ReactToIssue(ReactionType type, long repoId, int number)
         {
-            (string ownerLogin, string repoName) = GetRepoRoute();
-            if (!_votesMap.ContainsKey(type))
-            {
-                await GitHubService.ReactToIssue(repoId, number, type);
-            }
-            else
-            {
-                var reaction = _votesMap[type];
-                await GitHubService.DeleteIssueReaction(ownerLogin, repoName, number, reaction.Id);
-            }
-
-            LoadCommand.Execute(null);
+            await ExecuteReactionMutationAsync(
+                async () =>
+                {
+                    if (!_votesMap.TryGetValue(type, out Reaction? reaction))
+                    {
+                        await GitHubService.ReactToIssue(repoId, number, type);
+                    }
+                    else
+                    {
+                        (string ownerLogin, string repoName) = GetRepoRoute();
+                        await GitHubService.DeleteIssueReaction(ownerLogin, repoName, number, reaction.Id);
+                    }
+                },
+                RefreshIssueReactionsAsync);
         }
 
         private async Task ReactToIssueComment(ReactionType type, long repoId, long commentId)
         {
-            if (!_votesMap.ContainsKey(type))
-            {
-                await GitHubService.ReactToIssueComment(repoId, commentId, type);
-            }
-            else
-            {
-                var reaction = _votesMap[type];
-                await GitHubService.DeleteIssueCommentReaction(repoId, commentId, reaction.Id);
-            }
-            LoadCommand.Execute(null);
+            await ExecuteReactionMutationAsync(
+                async () =>
+                {
+                    if (!_votesMap.TryGetValue(type, out Reaction? reaction))
+                    {
+                        await GitHubService.ReactToIssueComment(repoId, commentId, type);
+                    }
+                    else
+                    {
+                        await GitHubService.DeleteIssueCommentReaction(repoId, commentId, reaction.Id);
+                    }
+                },
+                RefreshIssueCommentReactionsAsync);
         }
 
         private async Task ReactToReviewComment(ReactionType type, long repoId, long commentId)
         {
-            if (!_votesMap.ContainsKey(type))
+            await ExecuteReactionMutationAsync(
+                async () =>
+                {
+                    if (!_votesMap.TryGetValue(type, out Reaction? reaction))
+                    {
+                        await GitHubService.ReactToReviewComment(repoId, commentId, type);
+                    }
+                    else
+                    {
+                        await GitHubService.DeleteReviewCommentReaction(repoId, commentId, reaction.Id);
+                    }
+                },
+                RefreshReviewCommentReactionsAsync);
+        }
+
+        private async Task LoadFromIssueComment() =>
+            _ = await RefreshIssueCommentReactionsAsync();
+
+        private async Task LoadFromIssue() =>
+            _ = await RefreshIssueReactionsAsync();
+
+        private async Task LoadFromReviewComment() =>
+            _ = await RefreshReviewCommentReactionsAsync();
+
+        private Task<bool> RefreshIssueCommentReactionsAsync() =>
+            LoadReactionsAsync(() => GitHubService.GetReactionFromIssueComment(Repo.Id, _commentId));
+
+        private Task<bool> RefreshIssueReactionsAsync() =>
+            LoadReactionsAsync(() => GitHubService.GetReactionFromIssueAsync(Repo.Id, _number));
+
+        private Task<bool> RefreshReviewCommentReactionsAsync() =>
+            LoadReactionsAsync(() => GitHubService.GetReactionFromReviewComment(Repo.Id, _commentId));
+
+        private async Task<bool> LoadReactionsAsync(Func<Task<ICollection<Reaction>>> load)
+        {
+            int generation = Interlocked.Increment(ref _reactionLoadGeneration);
+            Loading = true;
+            try
             {
-                await GitHubService.ReactToReviewComment(repoId, commentId, type);
+                ICollection<Reaction> reactions = await load();
+                if (generation != Volatile.Read(ref _reactionLoadGeneration))
+                {
+                    return true;
+                }
+
+                SetReactions(reactions);
+                HasReactionError = false;
+                ReactionErrorText = string.Empty;
+                return true;
             }
-            else
+            catch (OperationCanceledException)
             {
-                var reaction = _votesMap[type];
-                await GitHubService.DeleteReviewCommentReaction(repoId, commentId, reaction.Id);
+                return false;
             }
-            LoadCommand.Execute(null);
+            catch (Exception exception)
+            {
+                JitHub.WinUI.App.LogHandledException(exception, "comment-reaction-load");
+                if (generation == Volatile.Read(ref _reactionLoadGeneration))
+                {
+                    ShowReactionError(
+                        "Comment.Reaction.LoadFailed",
+                        "JitHub could not load reactions. Try again.");
+                }
+
+                return false;
+            }
+            finally
+            {
+                if (generation == Volatile.Read(ref _reactionLoadGeneration))
+                {
+                    Loading = false;
+                }
+            }
         }
 
-        private async Task LoadFromIssueComment()
+        private async Task ExecuteReactionMutationAsync(
+            Func<Task> mutate,
+            Func<Task<bool>> refresh)
         {
+            Interlocked.Increment(ref _reactionLoadGeneration);
+            HasReactionError = false;
+            ReactionErrorText = string.Empty;
             Loading = true;
-
-            var reactions = await GitHubService.GetReactionFromIssueComment(Repo.Id, _commentId);
-            SetReactions(reactions);
-
-            Loading = false;
+            try
+            {
+                await mutate();
+                bool refreshed = await refresh();
+                TrackReaction(refreshed
+                    ? TelemetryTaxonomy.Results.Success
+                    : TelemetryTaxonomy.Results.Error);
+            }
+            catch (OperationCanceledException)
+            {
+                Loading = false;
+                TrackReaction(TelemetryTaxonomy.Results.Cancelled);
+            }
+            catch (Exception exception)
+            {
+                JitHub.WinUI.App.LogHandledException(exception, "comment-reaction-update");
+                Loading = false;
+                ShowReactionError(
+                    "Comment.Reaction.UpdateFailed",
+                    "JitHub could not update this reaction. Try again.");
+                TrackReaction(TelemetryTaxonomy.Results.Error);
+            }
         }
 
-        private async Task LoadFromIssue()
+        private void CopyLink(string link)
         {
-            Loading = true;
-
-            var reactions = await GitHubService.GetReactionFromIssueAsync(Repo.Id, _number);
-            SetReactions(reactions);
-
-            Loading = false;
+            bool copied = PlatformHelper.CopyString(link);
+            TrackCommentAction(
+                IssueActionKind.CopyLink,
+                TelemetryTaxonomy.Actions.CopyLink,
+                copied ? TelemetryTaxonomy.Results.Success : TelemetryTaxonomy.Results.Error);
         }
 
-        private async Task LoadFromReviewComment()
+        private void TrackReaction(string result) =>
+            TrackCommentAction(
+                _issueReactionAction ?? IssueActionKind.CommentReaction,
+                TelemetryTaxonomy.Actions.Reaction,
+                result);
+
+        private void TrackCommentAction(IssueActionKind issueAction, string pullRequestAction, string result)
         {
-            Loading = true;
+            if (Ioc.Default.GetService<ITelemetryService>() is not { } telemetry)
+            {
+                return;
+            }
 
-            var reactions = await GitHubService.GetReactionFromReviewComment(Repo.Id, _commentId);
-            SetReactions(reactions);
+            if (_issueReactionAction is not null)
+            {
+                IssueTelemetry.TrackAction(telemetry, issueAction, result switch
+                {
+                    TelemetryTaxonomy.Results.Success => IssueActionOutcome.Success,
+                    TelemetryTaxonomy.Results.Cancelled => IssueActionOutcome.Cancelled,
+                    _ => IssueActionOutcome.Failure
+                });
+                return;
+            }
 
-            Loading = false;
+            PullRequestTelemetry.TrackAction(telemetry, pullRequestAction, result);
         }
 
-        private void CopyLink(string htmlUrl, string id)
+        private void ShowReactionError(string resourceKey, string fallback)
         {
-            var dataPackage = new DataPackage();
-            dataPackage.SetText($"{htmlUrl}#issue-{id}");
-            Clipboard.SetContent(dataPackage);
+            ReactionErrorText = LocalizedResourceText.GetString(resourceKey, fallback);
+            HasReactionError = true;
         }
 
-        //TODO: this is getting called twice
-        //      second time is with old data.
-        //      sigh... we need functional programming
         private void SetReactions(ICollection<Reaction> reactions)
         {
             var userReactions = new Dictionary<ReactionType, ICollection<string>>();
@@ -271,10 +490,11 @@ namespace JitHub.WinUI.ViewModels.UserViewModel
                     userReaction.Key,
                     userReaction.Value,
                     votesMap.ContainsKey(userReaction.Key),
-                    ReactionCommand)
+                    ReactionCommand,
+                    SummaryReactionAutomationId)
                 )
                 .ToList();
-            
+
             HasReaction = userReactions.Count > 0;
             if (EmojiPanelViewModel == null)
             {

@@ -4,7 +4,7 @@ using System.Threading.Tasks;
 
 namespace JitHub.WinUI.ViewModels.Base
 {
-    public class RepoViewModel : LoadableViewModel<Repository>
+public partial class RepoViewModel : LoadableViewModel<Repository>
     {
         public Repository Repo
         {

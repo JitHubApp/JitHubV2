@@ -15,9 +15,9 @@
     d:DesignWidth="400">
 
     <Grid
-        CornerRadius="4">
+        CornerRadius="{ThemeResource AppRadiusSmall}">
         <StackPanel
-            Spacing="8">
+            Spacing="{ThemeResource AppGap8}">
             <common:CommentBlock>
                 <common:CommentBlock.HeaderContent>
                     <TextBlock Text="{x:Bind ViewModel.Name, Mode=OneWay}"/>
@@ -43,24 +43,31 @@
                 </muxc:ItemsRepeater.ItemTemplate>
                 <muxc:ItemsRepeater.Layout>
                     <muxc:StackLayout
-                        Spacing="12">
+                        Spacing="{ThemeResource AppGap12}">
                     </muxc:StackLayout>
                 </muxc:ItemsRepeater.Layout>
             </muxc:ItemsRepeater>
             <muxc:Expander
-                x:Name="ReplyBox"
-                Padding="8 0 8 8"
+                x:Uid="ControlsPullRequestConversationReviewCommentBlockXBindVi" x:Name="ReplyBox"
+                Padding="{ThemeResource AppPadding8_0_8_8}"
+                AutomationProperties.AutomationId="{x:Bind ViewModel.ReplyExpanderAutomationId, Mode=OneWay}"
+                AutomationProperties.Name="{x:Bind ViewModel.ReplyExpanderAutomationName, Mode=OneWay}"
                 IsExpanded="{x:Bind ViewModel.ReplyBoxExpanded, Mode=OneWay}"
                 HorizontalAlignment="Stretch"
                 HorizontalContentAlignment="Stretch"
                 Header="Reply">
                 <muxc:Expander.Content>
                     <common:MarkdownForm
+                        x:Name="ReplyMarkdownForm"
+                        AutomationInstanceId="{x:Bind ViewModel.ReplyFormAutomationId, Mode=OneWay}"
+                        DocumentSource="{x:Bind ViewModel.ReplyMarkdownSource, Mode=OneWay}"
                         Text="{x:Bind ViewModel.ReplyText, Mode=TwoWay}">
                         <common:MarkdownForm.ActionContent>
                             <StackPanel
                                 Style="{StaticResource ActionPanel}">
                                 <Button
+                                    x:Uid="ControlsPullRequestConversationReviewCommentBlockXBindVi2" AutomationProperties.AutomationId="{x:Bind ViewModel.ReplyAutomationId, Mode=OneWay}"
+                                    AutomationProperties.Name="Reply to review comment"
                                     Content="Comment"
                                     Style="{StaticResource AppAccentButtonStyle}"
                                     Command="{x:Bind ViewModel.ReplyCommand, Mode=OneWay}"/>
@@ -69,6 +76,13 @@
                     </common:MarkdownForm>
                 </muxc:Expander.Content>
             </muxc:Expander>
+            <InfoBar
+                x:Uid="ControlsPullRequestConversationReviewCommentBlockReplyError"
+                IsClosable="False"
+                IsOpen="{x:Bind ViewModel.HasReplyError, Mode=OneWay}"
+                Message="{x:Bind ViewModel.ReplyErrorMessage, Mode=OneWay}"
+                Severity="Error"
+                Style="{StaticResource AppErrorInfoBarStyle}" />
         </StackPanel>
     </Grid>
 </UserControl>

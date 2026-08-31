@@ -18,6 +18,7 @@ using SearchRepositoriesRequest = JitHub.Models.LegacyGitHub.SearchRepositoriesR
 using SortDirection = JitHub.Models.LegacyGitHub.SortDirection;
 using System;
 using System.Collections.Generic;
+using System.IO;
 using System.Linq;
 using System.Text;
 using System.Threading;
@@ -53,22 +54,18 @@ namespace JitHub.Services
         private const string PublicPreviewRepositoryName = "JitHubV2";
         private const string PublicPreviewDefaultBranch = "main";
         private readonly IGitHubClientService _gitHubClientService;
-        private INotificationService _notificationService = null!;
+        private readonly IGitHubImageService _gitHubImageService;
+        private readonly IMarkdownRemoteImagePolicy _markdownRemoteImagePolicy;
         private string? _accessToken;
 
-        public INotificationService NotificationService
-        {
-            get => _notificationService;
-            set
-            {
-                _notificationService = value;
-            }
-        }
-
-        public GitHubService(IGitHubClientService gitHubClientService, INotificationService notificationService)
+        public GitHubService(
+            IGitHubClientService gitHubClientService,
+            IGitHubImageService gitHubImageService,
+            IMarkdownRemoteImagePolicy markdownRemoteImagePolicy)
         {
             _gitHubClientService = gitHubClientService;
-            NotificationService = notificationService;
+            _gitHubImageService = gitHubImageService;
+            _markdownRemoteImagePolicy = markdownRemoteImagePolicy;
         }
 
         public void SetAccessToken(string? token)
@@ -322,14 +319,20 @@ namespace JitHub.Services
             };
         }
 
-        private async Task<(string Owner, string Name)> GetRepositoryIdentityAsync(string token, long repositoryId)
+        private async Task<(string Owner, string Name)> GetRepositoryIdentityAsync(
+            string token,
+            long repositoryId,
+            CancellationToken cancellationToken = default)
         {
             if (GitHubClientService.IsPublicAccessToken(token) && repositoryId == PublicPreviewRepositoryId)
             {
                 return (PublicPreviewOwner, PublicPreviewRepositoryName);
             }
 
-            RestGitHubRepository repository = await _gitHubClientService.GetRepositoryAsync(token, repositoryId);
+            RestGitHubRepository repository = await _gitHubClientService.GetRepositoryAsync(
+                token,
+                repositoryId,
+                cancellationToken);
             return (repository.Owner.Login, repository.Name);
         }
 
@@ -1062,11 +1065,12 @@ namespace JitHub.Services
 
         private static IssueEvent AdaptIssueEvent(RestGitHubIssueEvent issueEvent)
         {
-            EventInfoState? parsedEvent = ParseGitHubEnum<EventInfoState>(issueEvent.Event);
-            if (!parsedEvent.HasValue || parsedEvent.Value == EventInfoState.ConvertToDraft)
+            EventInfoState eventState =
+                ParseGitHubEnum<EventInfoState>(issueEvent.Event) ?? EventInfoState.Unknown;
+            StringEnum<EventInfoState> eventValue = new(eventState)
             {
-                throw new NotSupportedException($"Unsupported issue event '{issueEvent.Event}'.");
-            }
+                StringValue = issueEvent.Event ?? string.Empty
+            };
 
             return new IssueEvent(
                 issueEvent.Id,
@@ -1075,7 +1079,7 @@ namespace JitHub.Services
                 AdaptUser(issueEvent.Actor),
                 issueEvent.Assignee is null ? null : AdaptUser(issueEvent.Assignee),
                 issueEvent.Label is null ? null : AdaptLabel(issueEvent.Label),
-                parsedEvent.Value,
+                eventValue,
                 issueEvent.CommitId ?? string.Empty,
                 issueEvent.CreatedAt,
                 issueEvent.DismissedReview,
@@ -1101,7 +1105,10 @@ namespace JitHub.Services
             return AdaptUser(await _gitHubClientService.GetCurrentUserAsync(GetAccessTokenOrThrow()));
         }
 
-        public async Task<Repository> GetRepository(string owner, string name)
+        public async Task<Repository> GetRepository(
+            string owner,
+            string name,
+            CancellationToken cancellationToken = default)
         {
             if (IsPublicPreviewRepository(owner, name))
             {
@@ -1110,7 +1117,15 @@ namespace JitHub.Services
 
             try
             {
-                return AdaptRepository(await _gitHubClientService.GetRepositoryAsync(GetAccessTokenOrThrow(), owner, name));
+                return AdaptRepository(await _gitHubClientService.GetRepositoryAsync(
+                    GetAccessTokenOrThrow(),
+                    owner,
+                    name,
+                    cancellationToken));
+            }
+            catch (OperationCanceledException)
+            {
+                throw;
             }
             catch (Exception)
             {
@@ -1118,7 +1133,7 @@ namespace JitHub.Services
             }
         }
 
-        public async Task<Repository> GetRepository(long id)
+        public async Task<Repository> GetRepository(long id, CancellationToken cancellationToken = default)
         {
             if (IsPublicPreviewToken() && id == PublicPreviewRepositoryId)
             {
@@ -1127,7 +1142,14 @@ namespace JitHub.Services
 
             try
             {
-                return AdaptRepository(await _gitHubClientService.GetRepositoryAsync(GetAccessTokenOrThrow(), id));
+                return AdaptRepository(await _gitHubClientService.GetRepositoryAsync(
+                    GetAccessTokenOrThrow(),
+                    id,
+                    cancellationToken));
+            }
+            catch (OperationCanceledException)
+            {
+                throw;
             }
             catch (Exception)
             {
@@ -1219,9 +1241,17 @@ namespace JitHub.Services
                 }
             }
 
-            var reviewNodes = reviews.Select(review => new ReviewNode(AdaptPullRequestReview(review), repo, pr.Number)).ToList();
+            var reviewNodes = reviews
+                .Select((review, ordinal) => new ReviewNode(AdaptPullRequestReview(review), repo, pr.Number)
+                {
+                    AutomationOrdinal = ordinal
+                })
+                .ToList();
             var singleCommentNodes = reviewSingleComments
-                .Select(comment => new ReviewCommentNode(AdaptReviewComment(comment), repo, pr.Number))
+                .Select((comment, ordinal) => new ReviewCommentNode(AdaptReviewComment(comment), repo, pr.Number)
+                {
+                    AutomationOrdinal = ordinal
+                })
                 .ToList();
             singleCommentNodes.Sort((a, b) => DateTimeOffset.Compare(a.CreatedAt, b.CreatedAt));
             var reviewsDict = new Dictionary<long, ReviewNode>();
@@ -1382,54 +1412,46 @@ namespace JitHub.Services
             RepositoryIssueRequest repoIssueRequest,
             ApiOptions apiOptions)
         {
-            try
+            int pageSize = apiOptions?.PageSize ?? 100;
+            int startPage = apiOptions?.StartPage ?? 1;
+            int pageCount = apiOptions?.PageCount ?? 1;
+            pageSize = pageSize > 0 ? pageSize : 100;
+            startPage = startPage > 0 ? startPage : 1;
+            pageCount = pageCount > 0 ? pageCount : 1;
+
+            if (IsPublicPreviewRepository(owner, name))
             {
-                int pageSize = apiOptions?.PageSize ?? 100;
-                int startPage = apiOptions?.StartPage ?? 1;
-                int pageCount = apiOptions?.PageCount ?? 1;
-                pageSize = pageSize > 0 ? pageSize : 100;
-                startPage = startPage > 0 ? startPage : 1;
-                pageCount = pageCount > 0 ? pageCount : 1;
-
-                if (IsPublicPreviewRepository(owner, name))
-                {
-                    List<Issue> previewIssues = FilterPublicPreviewIssues(repoIssueRequest, pageSize, startPage, pageCount).ToList();
-                    return new PagedGitHubItems<Issue>(previewIssues, previewIssues.Count >= pageSize * pageCount);
-                }
-
-                string token = GetAccessTokenOrThrow();
-                List<Issue> issues = [];
-                bool hasMoreItems = false;
-
-                for (int offset = 0; offset < pageCount; offset++)
-                {
-                    int pageNumber = startPage + offset;
-                    IReadOnlyList<RestGitHubIssue> page = await _gitHubClientService.GetIssuesAsync(
-                        token,
-                        owner,
-                        name,
-                        pageSize,
-                        pageNumber,
-                        AdaptIssueQueryOptions(repoIssueRequest),
-                        includePullRequests: true);
-                    issues.AddRange(page
-                        .Where(static issue => !issue.IsPullRequest)
-                        .Select(issue => AdaptIssue(issue)));
-
-                    hasMoreItems = page.Count >= pageSize;
-                    if (!hasMoreItems)
-                    {
-                        break;
-                    }
-                }
-
-                return new PagedGitHubItems<Issue>(issues, hasMoreItems);
+                List<Issue> previewIssues = FilterPublicPreviewIssues(repoIssueRequest, pageSize, startPage, pageCount).ToList();
+                return new PagedGitHubItems<Issue>(previewIssues, previewIssues.Count >= pageSize * pageCount);
             }
-            catch (Exception e)
+
+            string token = GetAccessTokenOrThrow();
+            List<Issue> issues = [];
+            bool hasMoreItems = false;
+
+            for (int offset = 0; offset < pageCount; offset++)
             {
-                NotificationService.Push(e.Message);
-                throw new Exception(e.Message);
+                int pageNumber = startPage + offset;
+                IReadOnlyList<RestGitHubIssue> page = await _gitHubClientService.GetIssuesAsync(
+                    token,
+                    owner,
+                    name,
+                    pageSize,
+                    pageNumber,
+                    AdaptIssueQueryOptions(repoIssueRequest),
+                    includePullRequests: true);
+                issues.AddRange(page
+                    .Where(static issue => !issue.IsPullRequest)
+                    .Select(issue => AdaptIssue(issue)));
+
+                hasMoreItems = page.Count >= pageSize;
+                if (!hasMoreItems)
+                {
+                    break;
+                }
             }
+
+            return new PagedGitHubItems<Issue>(issues, hasMoreItems);
         }
 
         private static ICollection<Issue> FilterPublicPreviewIssues(
@@ -1485,7 +1507,7 @@ namespace JitHub.Services
 
             return AdaptIssue(await _gitHubClientService.GetIssueAsync(GetAccessTokenOrThrow(), owner, name, number));
         }
-        
+
         public async Task<Issue> GetIssue(long repositoryId, int number)
         {
             if (IsPublicPreviewToken() && repositoryId == PublicPreviewRepositoryId)
@@ -1632,7 +1654,7 @@ namespace JitHub.Services
                 .ToList();
             nodes.AddRange(dirs);
             nodes.AddRange(files);
-            
+
             return nodes;
         }
 
@@ -1737,7 +1759,10 @@ namespace JitHub.Services
             return AdaptCompareResult(await _gitHubClientService.CompareCommitsAsync(GetAccessTokenOrThrow(), owner, name, @base, head));
         }
 
-        public async Task<ICollection<Branch>> GetRepoBranches(string owner, string name)
+        public async Task<ICollection<Branch>> GetRepoBranches(
+            string owner,
+            string name,
+            CancellationToken cancellationToken = default)
         {
             if (IsPublicPreviewRepository(owner, name))
             {
@@ -1755,7 +1780,8 @@ namespace JitHub.Services
                     owner,
                     name,
                     pageSize,
-                    pageNumber);
+                    pageNumber,
+                    cancellationToken);
                 branches.AddRange(page.Select(AdaptBranch));
 
                 if (page.Count < pageSize)
@@ -1972,98 +1998,170 @@ namespace JitHub.Services
 
         public async Task<ICollection<Reaction>> GetReactionFromIssueAsync(long repoId, int number)
         {
-            try
-            {
-                string token = GetAccessTokenOrThrow();
-                (string owner, string name) = await GetRepositoryIdentityAsync(token, repoId);
-                IReadOnlyList<RestGitHubReaction> reactions = await _gitHubClientService.GetIssueReactionsAsync(token, owner, name, number);
-                return reactions.Select(AdaptReaction).ToList();
-            }
-            catch
-            {
-                var error = $"Failed to fetch reactions from issue: {number} in repo: {repoId}";
-                NotificationService.Push(error);
-                throw new Exception(error);
-            }
+            string token = GetAccessTokenOrThrow();
+            (string owner, string name) = await GetRepositoryIdentityAsync(token, repoId);
+            IReadOnlyList<RestGitHubReaction> reactions = await _gitHubClientService.GetIssueReactionsAsync(token, owner, name, number);
+            return reactions.Select(AdaptReaction).ToList();
         }
 
         public async Task<ICollection<Reaction>> GetReactionFromIssueComment(long repoId, long commentId)
         {
-            try
-            {
-                string token = GetAccessTokenOrThrow();
-                (string owner, string name) = await GetRepositoryIdentityAsync(token, repoId);
-                IReadOnlyList<RestGitHubReaction> reactions = await _gitHubClientService.GetIssueCommentReactionsAsync(token, owner, name, commentId);
-                return reactions.Select(AdaptReaction).ToList();
-            }
-            catch
-            {
-                var error = $"Failed to fetch reactions from comment: {commentId} in repo: {repoId}";
-                NotificationService.Push(error);
-                throw new Exception(error);
-            }
+            string token = GetAccessTokenOrThrow();
+            (string owner, string name) = await GetRepositoryIdentityAsync(token, repoId);
+            IReadOnlyList<RestGitHubReaction> reactions = await _gitHubClientService.GetIssueCommentReactionsAsync(token, owner, name, commentId);
+            return reactions.Select(AdaptReaction).ToList();
         }
 
         public async Task<ICollection<Reaction>> GetReactionFromReviewComment(long repoId, long commentId)
         {
-            try
-            {
-                string token = GetAccessTokenOrThrow();
-                (string owner, string name) = await GetRepositoryIdentityAsync(token, repoId);
-                IReadOnlyList<RestGitHubReaction> reactions = await _gitHubClientService.GetPullRequestReviewCommentReactionsAsync(token, owner, name, commentId);
-                return reactions.Select(AdaptReaction).ToList();
-            }
-            catch
-            {
-                var error = $"Failed to fetch reactions from review comment: {commentId} in repo: {repoId}";
-                NotificationService.Push(error);
-                throw new Exception(error);
-            }
+            string token = GetAccessTokenOrThrow();
+            (string owner, string name) = await GetRepositoryIdentityAsync(token, repoId);
+            IReadOnlyList<RestGitHubReaction> reactions = await _gitHubClientService.GetPullRequestReviewCommentReactionsAsync(token, owner, name, commentId);
+            return reactions.Select(AdaptReaction).ToList();
         }
 
-        public async ValueTask<MarkdownImageAsset?> ResolveAsync(
+        public async ValueTask<MarkdownImageResolution> ResolveAsync(
             string source,
             MarkdownImageResolveContext context,
             CancellationToken cancellationToken)
         {
-            if (!GitHubMarkdownImageUrlResolver.TryResolve(
+            GitHubMarkdownImageReference imageReference;
+            bool repositoryImageResolved = context.DocumentSource is not null
+                ? GitHubMarkdownImageUrlResolver.TryResolve(source, context.DocumentSource, out imageReference)
+                : GitHubMarkdownImageUrlResolver.TryResolve(
                     source,
                     context.BaseUri,
                     context.DocumentPath,
-                    out GitHubMarkdownImageReference imageReference))
+                    out imageReference);
+            if (!repositoryImageResolved)
             {
-                return null;
+                MarkdownImageSourceDisposition disposition =
+                    MarkdownImageSourcePolicy.ClassifyUnownedSource(source, out Uri? publicUri);
+                if (disposition == MarkdownImageSourceDisposition.NotHandled)
+                {
+                    return MarkdownImageResolution.NotHandled;
+                }
+
+                if (disposition == MarkdownImageSourceDisposition.BlockedInsecureRemote)
+                {
+                    return MarkdownImageResolution.Blocked(
+                        MarkdownImageUnavailableReason.InsecureRemoteContent);
+                }
+
+                System.Diagnostics.Debug.Assert(publicUri is not null);
+
+                MarkdownRemoteImageDecision publicDecision = _markdownRemoteImagePolicy.Evaluate(
+                    publicUri!,
+                    context.AllowThirdPartyRemoteImages);
+                if (publicDecision.Access == MarkdownRemoteImageAccess.Block)
+                {
+                    return MarkdownImageResolution.Blocked(publicDecision.UnavailableReason);
+                }
+
+                try
+                {
+                    GitHubImageFetchScope scope = publicDecision.IsThirdParty
+                        ? GitHubImageFetchScope.UserApprovedHttps
+                        : GitHubImageFetchScope.TrustedGitHub;
+                    GitHubCachedImage? publicImage = publicDecision.Access == MarkdownRemoteImageAccess.CacheOnly
+                        ? await _gitHubImageService.TryGetCachedAsync(
+                            publicUri!.ToString(),
+                            scope,
+                            cancellationToken).ConfigureAwait(false)
+                        : await _gitHubImageService.GetAsync(
+                            publicUri!.ToString(),
+                            scope,
+                            cancellationToken).ConfigureAwait(false);
+                    if (publicImage is null && publicDecision.Access == MarkdownRemoteImageAccess.CacheOnly)
+                    {
+                        return MarkdownImageResolution.Blocked(publicDecision.UnavailableReason);
+                    }
+
+                    MarkdownImageAsset? publicAsset = await ReadCachedMarkdownImageAsync(
+                            publicImage,
+                            publicUri,
+                            cancellationToken)
+                        .ConfigureAwait(false);
+                    return publicAsset is null
+                        ? MarkdownImageResolution.Unavailable
+                        : MarkdownImageResolution.Resolved(publicAsset);
+                }
+                catch (OperationCanceledException)
+                {
+                    throw;
+                }
+                catch (Exception ex)
+                {
+                    Console.WriteLine($"Failed to load public markdown image '{source}': {ex.Message}");
+                    return MarkdownImageResolution.Unavailable;
+                }
             }
 
             try
             {
-                string token = GetAccessTokenOrThrow();
-                RestGitHubRepositoryContent file = await _gitHubClientService.GetRepositoryContentAsync(
-                    token,
-                    imageReference.Owner,
-                    imageReference.Repository,
-                    imageReference.Path,
-                    imageReference.Ref,
-                    cancellationToken);
-                byte[] fileBytes = DecodeGitHubContent(file.Content, file.Encoding);
-
-                if (fileBytes.Length == 0 && !string.IsNullOrWhiteSpace(file.Sha))
+                Uri rawUri = GitHubMarkdownImageUrlResolver.CreateRawUri(imageReference);
+                MarkdownRemoteImageDecision repositoryDecision = _markdownRemoteImagePolicy.Evaluate(
+                    rawUri,
+                    context.AllowThirdPartyRemoteImages);
+                if (repositoryDecision.Access == MarkdownRemoteImageAccess.Block)
                 {
-                    RestGitHubBlob blob = await _gitHubClientService.GetBlobAsync(
-                        token,
-                        imageReference.Owner,
-                        imageReference.Repository,
-                        file.Sha,
-                        cancellationToken);
-                    fileBytes = DecodeGitHubContent(blob.Content, blob.Encoding);
+                    return MarkdownImageResolution.Blocked(repositoryDecision.UnavailableReason);
                 }
 
-                return fileBytes.Length == 0
-                    ? null
-                    : new MarkdownImageAsset(
-                        fileBytes,
-                        GuessImageContentType(imageReference.Path),
-                        GitHubMarkdownImageUrlResolver.CreateRawUri(imageReference));
+                GitHubCachedImage? cachedImage;
+                if (repositoryDecision.Access == MarkdownRemoteImageAccess.CacheOnly)
+                {
+                    cachedImage = await _gitHubImageService.TryGetCachedAsync(
+                        rawUri.ToString(),
+                        GitHubImageFetchScope.TrustedGitHub,
+                        cancellationToken).ConfigureAwait(false);
+                    if (cachedImage is null)
+                    {
+                        return MarkdownImageResolution.Blocked(repositoryDecision.UnavailableReason);
+                    }
+                }
+                else
+                {
+                    cachedImage = await _gitHubImageService.GetOrFetchAsync(
+                        rawUri.ToString(),
+                        async (_, token) =>
+                        {
+                            string accessToken = GetAccessTokenOrThrow();
+                            RestGitHubRepositoryContent file = await _gitHubClientService.GetRepositoryContentAsync(
+                                accessToken,
+                                imageReference.Owner,
+                                imageReference.Repository,
+                                imageReference.Path,
+                                imageReference.Ref,
+                                token).ConfigureAwait(false);
+                            byte[] fileBytes = DecodeGitHubContent(file.Content, file.Encoding);
+
+                            if (fileBytes.Length == 0 && !string.IsNullOrWhiteSpace(file.Sha))
+                            {
+                                RestGitHubBlob blob = await _gitHubClientService.GetBlobAsync(
+                                    accessToken,
+                                    imageReference.Owner,
+                                    imageReference.Repository,
+                                    file.Sha,
+                                    token).ConfigureAwait(false);
+                                fileBytes = DecodeGitHubContent(blob.Content, blob.Encoding);
+                            }
+
+                            return fileBytes.Length == 0
+                                ? null
+                                : new GitHubImageDownload(fileBytes, GuessImageContentType(imageReference.Path));
+                        },
+                        cancellationToken).ConfigureAwait(false);
+                }
+
+                MarkdownImageAsset? asset = await ReadCachedMarkdownImageAsync(
+                        cachedImage,
+                        rawUri,
+                        cancellationToken)
+                    .ConfigureAwait(false);
+                return asset is null
+                    ? MarkdownImageResolution.Unavailable
+                    : MarkdownImageResolution.Resolved(asset);
             }
             catch (OperationCanceledException)
             {
@@ -2072,8 +2170,27 @@ namespace JitHub.Services
             catch (Exception ex)
             {
                 Console.WriteLine($"Failed to load GitHub markdown image '{source}': {ex.Message}");
-                return null;
+                return MarkdownImageResolution.Unavailable;
             }
+        }
+
+        private static Task<MarkdownImageAsset?> ReadCachedMarkdownImageAsync(
+            GitHubCachedImage? cachedImage,
+            Uri resolvedUri,
+            CancellationToken cancellationToken)
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+            if (cachedImage?.Bytes is not { Length: > 0 } bytes)
+            {
+                return Task.FromResult<MarkdownImageAsset?>(null);
+            }
+
+            return Task.FromResult<MarkdownImageAsset?>(
+                new MarkdownImageAsset(
+                    bytes,
+                    cachedImage.ContentType,
+                    resolvedUri,
+                    CacheKey: cachedImage.FilePath));
         }
 
         private static string? GuessImageContentType(string path)

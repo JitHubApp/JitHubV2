@@ -5,10 +5,12 @@
     <DataTemplate x:Key="ClosedEventTemplate">
         <Grid>
             <Grid.ColumnDefinitions>
-                <ColumnDefinition Width="48" />
+                <ColumnDefinition Width="{ThemeResource AppGridLength48}" />
                 <ColumnDefinition Width="*" />
             </Grid.ColumnDefinitions>
             <common:Avatar
+                AutomationInstanceId="{Binding ActorAutomationId, Mode=OneWay}"
+                NavigationSource="legacy_issue_timeline_actor"
                 Grid.Column="0"
                 HorizontalAlignment="Center"
                 Login="{Binding Actor.Login, Mode=OneWay}"
@@ -17,9 +19,9 @@
                 Grid.Column="1"
                 VerticalAlignment="Center"
                 Orientation="Horizontal"
-                Spacing="4">
+                Spacing="{ThemeResource AppGap4}">
                 <TextBlock Text="{Binding Actor.Login, Mode=OneWay}" />
-                <TextBlock Text="closed this" />
+                <TextBlock x:Uid="DataTemplatesIssueEventClosedEventTextBlockClosedThis" Text="closed this" />
                 <TextBlock Text="{Binding CreatedAt, Converter={StaticResource TimeAgoConverter}, ConverterParameter='', Mode=OneWay}" />
             </StackPanel>
         </Grid>

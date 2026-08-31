@@ -1,0 +1,277 @@
+<?xml version="1.0" encoding="utf-8"?>
+<UserControl
+    x:Class="JitHub.WinUI.Views.Controls.Issue.RepoIssueListPane"
+    x:Name="Root"
+    xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+    xmlns:app="using:JitHub.WinUI.Views.Controls.App"
+    xmlns:common="using:JitHub.WinUI.Views.Controls.Common"
+    xmlns:github="using:JitHub.Models.GitHub"
+    xmlns:toolkit="using:CommunityToolkit.WinUI.Controls"
+    xmlns:viewmodels="using:JitHub.WinUI.ViewModels.Pages">
+    <UserControl.Resources>
+        <Style x:Key="RepoIssuesPanelStyle" TargetType="Border">
+            <Setter Property="Background" Value="{ThemeResource AppSurfaceSubtleBrush}" />
+            <Setter Property="BorderBrush" Value="{ThemeResource AppHairlineBrush}" />
+            <Setter Property="BorderThickness" Value="{ThemeResource AppHairlineBorderThickness}" />
+            <Setter Property="CornerRadius" Value="{ThemeResource AppRadiusSmall}" />
+        </Style>
+        <DataTemplate x:Key="RepoIssueListItemTemplate" x:DataType="github:GitHubIssue">
+            <Grid
+                MinHeight="{ThemeResource AppDimension50}"
+                AutomationProperties.AutomationId="{x:Bind AutomationId, Mode=OneWay}"
+                AutomationProperties.Name="{x:Bind AutomationName, Mode=OneWay}"
+    Background="{ThemeResource AppTransparentBrush}"
+                PointerEntered="IssueListItem_PointerEntered"
+                PointerPressed="IssueListItemContainer_PointerPressed"
+                RowSpacing="{ThemeResource AppGap5}">
+                <Grid.RowDefinitions>
+                    <RowDefinition Height="Auto" />
+                    <RowDefinition Height="Auto" />
+                </Grid.RowDefinitions>
+                <TextBlock
+                    FontFamily="{ThemeResource AppUiFontFamily}"
+                    FontSize="{ThemeResource AppFontSize13}"
+                    FontWeight="{ThemeResource AppFontWeightSemibold}"
+                    Foreground="{ThemeResource AppInkBrush}"
+                    MaxLines="2"
+                    Text="{x:Bind Title, Mode=OneWay}"
+                    TextTrimming="CharacterEllipsis"
+                    TextWrapping="WrapWholeWords" />
+                <Grid Grid.Row="1" ColumnSpacing="{ThemeResource AppGap8}">
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="Auto" />
+                        <ColumnDefinition Width="*" />
+                        <ColumnDefinition Width="Auto" />
+                    </Grid.ColumnDefinitions>
+                    <TextBlock
+                        VerticalAlignment="Center"
+                        FontFamily="{ThemeResource AppMonoFontFamily}"
+                        Foreground="{ThemeResource AppAccentBrush}"
+                        Style="{StaticResource AppInlineMetadataTextBlockStyle}">
+                        <Run Text="#" /><Run Text="{x:Bind Number, Mode=OneWay}" />
+                    </TextBlock>
+                    <common:Avatar
+                        Grid.Column="1"
+                        AutomationInstanceId="{x:Bind AutomationId, Mode=OneWay}"
+                        ContainerCornerRadius="{ThemeResource AppRadiusSmall}"
+                        DisplayName="{x:Bind AuthorDisplayName, Mode=OneWay}"
+                        LabelStyle="{StaticResource AppInlineIdentityTextBlockStyle}"
+                        Login="{x:Bind AuthorProfileLogin, Mode=OneWay}"
+                        MaxWidth="{ThemeResource AppDimension150}"
+                        NavigationSource="issue_list_author"
+                        ShowLogin="True"
+                        Size="SMALL"
+                        VerticalAlignment="Center"
+                        Url="{x:Bind AuthorAvatarUrl, Mode=OneWay}" />
+                    <TextBlock
+                        Grid.Column="2"
+                        VerticalAlignment="Center"
+                        Style="{StaticResource AppInlineMetadataTextBlockStyle}"
+                        Text="{x:Bind UpdatedAt, Converter={StaticResource TimeAgoConverter}, Mode=OneWay}" />
+                </Grid>
+            </Grid>
+        </DataTemplate>
+    </UserControl.Resources>
+
+    <Border
+        x:Uid="PagesRepoIssuePageRepoIssuesListHost"
+        AutomationProperties.AccessibilityView="Control"
+        AutomationProperties.AutomationId="RepoIssuesListHost"
+        AutomationProperties.Name="Issue list pane"
+        Padding="{ThemeResource AppPadding10}"
+        Style="{StaticResource RepoIssuesPanelStyle}">
+        <Grid RowSpacing="{ThemeResource AppGap10}">
+            <Grid.RowDefinitions>
+                <RowDefinition Height="Auto" />
+                <RowDefinition Height="*" />
+                <RowDefinition Height="Auto" />
+            </Grid.RowDefinitions>
+
+            <Grid RowSpacing="{ThemeResource AppGap8}">
+                <Grid.RowDefinitions>
+                    <RowDefinition Height="Auto" />
+                    <RowDefinition Height="Auto" />
+                </Grid.RowDefinitions>
+                <Grid ColumnSpacing="{ThemeResource AppGap0}" Style="{StaticResource AppWorkspaceHeaderStyle}">
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="Auto" />
+                        <ColumnDefinition Width="*" />
+                        <ColumnDefinition Width="Auto" />
+                    </Grid.ColumnDefinitions>
+                    <Button
+                        x:Uid="PagesRepoIssuePageRepoIssuesCloseListPaneButton"
+                        x:Name="CloseListPaneButton"
+                        Width="{ThemeResource AppDimension36}"
+                        Height="{ThemeResource AppDimension36}"
+                        Margin="{ThemeResource AppMargin0_0_8_0}"
+                        Padding="{ThemeResource AppPadding0}"
+                        VerticalAlignment="Top"
+                        AutomationProperties.AutomationId="RepoIssuesCloseListPaneButton"
+                        AutomationProperties.Name="Close issue list"
+                        Click="CloseListPaneButton_Click"
+                        Style="{StaticResource AppToolbarButtonStyle}"
+                        ToolTipService.ToolTip="Close issues"
+                        Visibility="Collapsed">
+                        <FontIcon FontFamily="{StaticResource SegoeFluentIcons}" FontSize="{ThemeResource AppFontSize14}" Glyph="&#xE8FD;" />
+                    </Button>
+                    <app:AppSegmented
+                        x:Uid="PagesRepoIssuePageRepoIssuesStateSegmented"
+                        x:Name="IssueStateSegmented"
+                        Grid.Column="1"
+                        AutomationProperties.AutomationId="RepoIssuesStateSegmented"
+                        AutomationProperties.Name="Issue state filter"
+                        SelectedIndex="0"
+                        SelectionChanged="IssueStateSegmented_SelectionChanged">
+                        <app:AppSegmentedItem x:Uid="PagesRepoIssuePageRepoIssuesStateOpen" AutomationProperties.AutomationId="RepoIssuesState_Open" AutomationProperties.Name="Show open issues" Content="Open" />
+                        <app:AppSegmentedItem x:Uid="PagesRepoIssuePageRepoIssuesStateClosed" AutomationProperties.AutomationId="RepoIssuesState_Closed" AutomationProperties.Name="Show closed issues" Content="Closed" />
+                        <app:AppSegmentedItem x:Uid="PagesRepoIssuePageRepoIssuesStateAll" AutomationProperties.AutomationId="RepoIssuesState_All" AutomationProperties.Name="Show all issues" Content="All" />
+                    </app:AppSegmented>
+                    <Button
+                        x:Uid="PagesRepoIssuePageRepoIssuesNewIssueButton"
+                        Grid.Column="2"
+                        MinWidth="{ThemeResource AppDimension58}"
+                        MinHeight="{ThemeResource AppDimension34}"
+                        Padding="{ThemeResource AppPadding12_6}"
+                        AutomationProperties.AutomationId="RepoIssuesNewIssueButton"
+                        AutomationProperties.Name="New issue"
+                        Click="NewIssueButton_Click"
+                        Content="New"
+                        IsEnabled="{x:Bind ViewModel.CanCreateIssue, Mode=OneWay}"
+                        Style="{StaticResource AppAccentButtonStyle}"
+                        ToolTipService.ToolTip="Create a new issue" />
+                </Grid>
+                <Grid Grid.Row="1" ColumnSpacing="{ThemeResource AppGap8}">
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="*" />
+                        <ColumnDefinition Width="Auto" />
+                        <ColumnDefinition Width="Auto" />
+                    </Grid.ColumnDefinitions>
+                    <AutoSuggestBox
+                        x:Uid="PagesRepoIssuePageRepoIssuesSearchBox"
+                        x:Name="IssueSearchBox"
+                        AutomationProperties.AutomationId="RepoIssuesSearchBox"
+                        AutomationProperties.Name="Filter repository issues"
+                        PlaceholderText="Filter issues..."
+                        QueryIcon="Find"
+                        Style="{StaticResource AppAutoSuggestBoxStyle}"
+                        TextChanged="IssueSearchBox_TextChanged" />
+                    <Button
+                        x:Uid="PagesRepoIssuePageRepoIssuesFilterButton"
+                        Grid.Column="1"
+                        Width="{ThemeResource AppDimension36}"
+                        Height="{ThemeResource AppDimension36}"
+                        Padding="{ThemeResource AppPadding0}"
+                        AutomationProperties.AutomationId="RepoIssuesFilterButton"
+                        AutomationProperties.Name="Issue filters"
+                        Style="{StaticResource AppToolbarButtonStyle}"
+                        ToolTipService.ToolTip="Filters">
+                        <FontIcon FontFamily="{StaticResource SegoeFluentIcons}" FontSize="{ThemeResource AppFontSize14}" Glyph="&#xE71C;" />
+                        <Button.Flyout>
+                            <Flyout Opened="IssueFiltersFlyout_Opened" Placement="BottomEdgeAlignedRight">
+                                <StackPanel Width="{ThemeResource AppDimension260}" Spacing="{ThemeResource AppGap10}">
+                                    <TextBlock
+                                        x:Uid="PagesRepoIssuePageTextBlockIssueFilters"
+                                        Style="{StaticResource ListItemTitleTextBlockStyle}"
+                                        Text="Issue filters" />
+                                    <StackPanel Spacing="{ThemeResource AppGap4}">
+                                        <TextBlock x:Uid="PagesRepoIssuePageTextBlockIssueScope" Style="{StaticResource SectionSecondaryTextBlockStyle}" Text="Scope" />
+                                        <ComboBox
+                                            x:Uid="PagesRepoIssuePageRepoIssuesScopeComboBox"
+                                            x:Name="IssueScopeComboBox"
+                                            MinWidth="{ThemeResource AppDimension0}"
+                                            HorizontalAlignment="Stretch"
+                                            AutomationProperties.AutomationId="RepoIssuesScopeComboBox"
+                                            AutomationProperties.Name="Issue scope"
+                                            SelectedIndex="0"
+                                            SelectionChanged="IssueFilterComboBox_SelectionChanged"
+                                            Style="{StaticResource AppCompactComboBoxStyle}">
+                                            <ComboBoxItem x:Uid="PagesRepoIssuePageRepoIssuesScopeAll" AutomationProperties.AutomationId="RepoIssuesScope_All" AutomationProperties.Name="All" Content="All" />
+                                            <ComboBoxItem x:Uid="PagesRepoIssuePageRepoIssuesScopeMine" AutomationProperties.AutomationId="RepoIssuesScope_Mine" AutomationProperties.Name="Mine" Content="Mine" />
+                                            <ComboBoxItem x:Uid="PagesRepoIssuePageRepoIssuesScopeCreated" AutomationProperties.AutomationId="RepoIssuesScope_Created" AutomationProperties.Name="Created" Content="Created" />
+                                            <ComboBoxItem x:Uid="PagesRepoIssuePageRepoIssuesScopeMentioned" AutomationProperties.AutomationId="RepoIssuesScope_Mentioned" AutomationProperties.Name="Mentioned" Content="Mentioned" />
+                                        </ComboBox>
+                                    </StackPanel>
+                                    <StackPanel Spacing="{ThemeResource AppGap4}">
+                                        <TextBlock x:Uid="PagesRepoIssuePageTextBlockIssueSort" Style="{StaticResource SectionSecondaryTextBlockStyle}" Text="Sort by" />
+                                        <ComboBox
+                                            x:Uid="PagesRepoIssuePageRepoIssuesSortComboBox"
+                                            x:Name="IssueSortComboBox"
+                                            MinWidth="{ThemeResource AppDimension0}"
+                                            HorizontalAlignment="Stretch"
+                                            AutomationProperties.AutomationId="RepoIssuesSortComboBox"
+                                            AutomationProperties.Name="Sort issues by"
+                                            SelectedIndex="0"
+                                            SelectionChanged="IssueFilterComboBox_SelectionChanged"
+                                            Style="{StaticResource AppCompactComboBoxStyle}">
+                                            <ComboBoxItem x:Uid="PagesRepoIssuePageRepoIssuesSortUpdated" AutomationProperties.AutomationId="RepoIssuesSort_Updated" AutomationProperties.Name="Updated" Content="Updated" />
+                                            <ComboBoxItem x:Uid="PagesRepoIssuePageRepoIssuesSortCreated" AutomationProperties.AutomationId="RepoIssuesSort_Created" AutomationProperties.Name="Created" Content="Created" />
+                                            <ComboBoxItem x:Uid="PagesRepoIssuePageRepoIssuesSortComments" AutomationProperties.AutomationId="RepoIssuesSort_Comments" AutomationProperties.Name="Comments" Content="Comments" />
+                                        </ComboBox>
+                                    </StackPanel>
+                                    <StackPanel Spacing="{ThemeResource AppGap4}">
+                                        <TextBlock x:Uid="PagesRepoIssuePageTextBlockIssueOrder" Style="{StaticResource SectionSecondaryTextBlockStyle}" Text="Order" />
+                                        <ComboBox
+                                            x:Uid="PagesRepoIssuePageRepoIssuesDirectionComboBox"
+                                            x:Name="IssueDirectionComboBox"
+                                            MinWidth="{ThemeResource AppDimension0}"
+                                            HorizontalAlignment="Stretch"
+                                            AutomationProperties.AutomationId="RepoIssuesDirectionComboBox"
+                                            AutomationProperties.Name="Issue sort direction"
+                                            SelectedIndex="0"
+                                            SelectionChanged="IssueFilterComboBox_SelectionChanged"
+                                            Style="{StaticResource AppCompactComboBoxStyle}">
+                                            <ComboBoxItem x:Uid="PagesRepoIssuePageRepoIssuesDirectionNewest" AutomationProperties.AutomationId="RepoIssuesDirection_Newest" AutomationProperties.Name="Newest first" Content="Newest first" />
+                                            <ComboBoxItem x:Uid="PagesRepoIssuePageRepoIssuesDirectionOldest" AutomationProperties.AutomationId="RepoIssuesDirection_Oldest" AutomationProperties.Name="Oldest first" Content="Oldest first" />
+                                        </ComboBox>
+                                    </StackPanel>
+                                </StackPanel>
+                            </Flyout>
+                        </Button.Flyout>
+                    </Button>
+                    <ProgressRing
+                        Grid.Column="2"
+                        Width="{ThemeResource AppDimension24}"
+                        Height="{ThemeResource AppDimension24}"
+                        VerticalAlignment="Center"
+                        IsActive="{x:Bind ViewModel.IsLoading, Mode=OneWay}"
+                        Visibility="{x:Bind ViewModel.IsLoading, Converter={StaticResource BoolToVisibilityConverter}, Mode=OneWay}" />
+                </Grid>
+            </Grid>
+
+            <Grid Grid.Row="1">
+                <StackPanel
+                    Style="{StaticResource AppEmptyStatePanelStyle}"
+                    Visibility="{x:Bind ViewModel.IsEmpty, Converter={StaticResource BoolToVisibilityConverter}, Mode=OneWay}">
+                    <TextBlock x:Uid="PagesRepoIssuePageTextBlockNoIssuesMatchThisView" Style="{StaticResource SectionSecondaryTextBlockStyle}" Text="No issues match this view." />
+                </StackPanel>
+                <ListView
+                    x:Uid="PagesRepoIssuePageRepoIssuesList"
+                    x:Name="IssuesList"
+                    AutomationProperties.AutomationId="RepoIssuesList"
+                    AutomationProperties.Name="Repository issues"
+                            Background="{ThemeResource AppTransparentBrush}"
+                    BorderThickness="{ThemeResource AppZeroThickness}"
+                    ContainerContentChanging="IssuesList_ContainerContentChanging"
+                    IsItemClickEnabled="True"
+                    ItemClick="IssuesList_ItemClick"
+                    SelectionChanged="IssuesList_SelectionChanged"
+                    ItemContainerStyle="{StaticResource AppWorkspaceCardListRowStyle}"
+                    ItemTemplate="{StaticResource RepoIssueListItemTemplate}"
+                    ItemsSource="{x:Bind ViewModel.Issues, Mode=OneWay}"
+                    SelectedItem="{x:Bind ViewModel.SelectedIssue, Mode=TwoWay}"
+                    SelectionMode="Single" />
+            </Grid>
+            <InfoBar
+                x:Uid="PagesRepoIssuePageRepoIssuesScopeNotice"
+                Grid.Row="2"
+                AutomationProperties.AutomationId="RepoIssuesScopeNotice"
+                AutomationProperties.Name="Issue result scope"
+                IsClosable="False"
+                IsOpen="{x:Bind ViewModel.HasIssueListScopeNotice, Mode=OneWay}"
+                Message="{x:Bind ViewModel.IssueListScopeNotice, Mode=OneWay}"
+                Severity="Warning"
+                Style="{StaticResource AppStatusInfoBarStyle}" />
+        </Grid>
+    </Border>
+</UserControl>

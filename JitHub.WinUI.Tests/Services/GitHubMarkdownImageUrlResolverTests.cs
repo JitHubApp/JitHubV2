@@ -54,6 +54,46 @@ public class GitHubMarkdownImageUrlResolverTests
         Assert.Equal("assets/logo.png", reference.Path);
     }
 
+    [Theory]
+    [InlineData("images/logo.png?raw=1", "docs/images/logo.png")]
+    [InlineData("images/logo.svg#gh-dark-mode-only", "docs/images/logo.svg")]
+    [InlineData("images/logo%20dark.png", "docs/images/logo dark.png")]
+    public void TryResolve_RelativeImage_RemovesPresentationSuffixAndDecodesPath(
+        string source,
+        string expectedPath)
+    {
+        var documentSource = new MarkdownRenderer.Images.MarkdownDocumentSource(
+            "repository-file:octo/repo:docs/readme.md",
+            "octo",
+            "repo",
+            "main",
+            "docs/readme.md");
+
+        bool resolved = GitHubMarkdownImageUrlResolver.TryResolve(
+            source,
+            documentSource,
+            out GitHubMarkdownImageReference reference);
+
+        Assert.True(resolved);
+        Assert.Equal(expectedPath, reference.Path);
+    }
+
+    [Fact]
+    public void TryResolve_NetworkPathReference_IsNotTreatedAsRepositoryContent()
+    {
+        var documentSource = new MarkdownRenderer.Images.MarkdownDocumentSource(
+            "repository-file:octo/repo:README.md",
+            "octo",
+            "repo",
+            "main",
+            "README.md");
+
+        Assert.False(GitHubMarkdownImageUrlResolver.TryResolve(
+            "//example.com/logo.png",
+            documentSource,
+            out _));
+    }
+
     [Fact]
     public void TryResolve_BranchNameWithSlash_UsesKnownDocumentPath()
     {

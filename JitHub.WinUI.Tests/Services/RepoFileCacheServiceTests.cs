@@ -1,9 +1,13 @@
 using System;
 using System.IO;
+using System.Linq;
+using System.Reflection;
 using System.Text;
+using System.Text.Json;
 using System.Threading;
 using System.Threading.Tasks;
 using JitHub.Models.CodeViewer;
+using JitHub.Services;
 using JitHub.Services.CodeViewer;
 using Xunit;
 
@@ -11,6 +15,12 @@ namespace JitHub.WinUI.Tests.Services;
 
 public class RepoFileCacheServiceTests : IDisposable
 {
+    [Fact]
+    public void ProductionCache_UsesThirtyDayImmutableBlobPolicy()
+    {
+        Assert.Equal(TimeSpan.FromDays(30), RepoFileCacheService.ImmutableBlobTtl);
+    }
+
     private readonly string _diskRoot;
 
     public RepoFileCacheServiceTests()
@@ -148,6 +158,57 @@ public class RepoFileCacheServiceTests : IDisposable
 
         var result = await cache.GetAsync(key1, CancellationToken.None);
         Assert.Null(result);
+    }
+
+    [Fact]
+    public async Task TryGet_TtlExpired_RemovesHotMemoryEntry()
+    {
+        RepoFileCacheService cache = CreateCache(ttl: TimeSpan.FromDays(1));
+        RepoFileCacheKey key = Key("sha-hot-expired");
+        byte[] data = Encoding.UTF8.GetBytes("expired");
+        RepoFileCacheEntry entry = new()
+        {
+            Sha = key.Sha,
+            ByteLength = data.Length,
+            IsBinary = false,
+            Bytes = data,
+            Text = "expired",
+            Encoding = "utf-8",
+            CachedAt = DateTimeOffset.UtcNow.AddDays(-2),
+        };
+
+        await cache.PutAsync(key, entry, CancellationToken.None);
+
+        Assert.False(cache.TryGet(key, out RepoFileCacheEntry? cached));
+        Assert.Null(cached);
+        Assert.Null(await cache.GetAsync(key, CancellationToken.None));
+    }
+
+    [Fact]
+    public async Task PutAsync_DefaultTimestampIsNormalizedForMemoryAndDisk()
+    {
+        RepoFileCacheService cache = CreateCache(memMaxEntries: 1);
+        RepoFileCacheKey key = Key("sha-default-time");
+        byte[] data = Encoding.UTF8.GetBytes("current");
+        RepoFileCacheEntry entry = new()
+        {
+            Sha = key.Sha,
+            ByteLength = data.Length,
+            IsBinary = false,
+            Bytes = data,
+            Text = "current",
+            Encoding = "utf-8",
+        };
+
+        await cache.PutAsync(key, entry, CancellationToken.None);
+
+        Assert.True(cache.TryGet(key, out RepoFileCacheEntry? hot));
+        Assert.NotEqual(default, hot.CachedAt);
+
+        await cache.PutAsync(Key("sha-evict-default-time"), MakeEntry("sha-evict-default-time", [1]), CancellationToken.None);
+        RepoFileCacheEntry? disk = await cache.GetAsync(key, CancellationToken.None);
+        Assert.NotNull(disk);
+        Assert.NotEqual(default, disk!.CachedAt);
     }
 
     [Fact]
@@ -391,6 +452,20 @@ public class RepoFileCacheServiceTests : IDisposable
         Assert.Equal("data-B", entry2.Text);
     }
 
+    [Fact]
+    public async Task PutAsync_DifferentUsersSameRepositoryAndSha_ArePartitioned()
+    {
+        var cache = CreateCache();
+        RepoFileCacheKey firstUser = new("owner", "private-repo", "same-sha", "user-1");
+        RepoFileCacheKey secondUser = new("owner", "private-repo", "same-sha", "user-2");
+
+        await cache.PutAsync(firstUser, MakeEntry("same-sha", Encoding.UTF8.GetBytes("first")), CancellationToken.None);
+        await cache.PutAsync(secondUser, MakeEntry("same-sha", Encoding.UTF8.GetBytes("second")), CancellationToken.None);
+
+        Assert.Equal("first", (await cache.GetAsync(firstUser, CancellationToken.None))!.Text);
+        Assert.Equal("second", (await cache.GetAsync(secondUser, CancellationToken.None))!.Text);
+    }
+
     // ── Text and binary entries ───────────────────────────────────────────────
 
     [Fact]
@@ -427,5 +502,358 @@ public class RepoFileCacheServiceTests : IDisposable
         Assert.True(result!.IsBinary);
         Assert.Equal(binaryData, result.Bytes);
         Assert.Null(result.Text);
+    }
+
+    [Fact]
+    public async Task GetAsync_CancelledWhileWaitingForMaintenance_ReleasesPerKeyLock()
+    {
+        RepoFileCacheService cache = CreateCache();
+        RepoFileCacheKey key = Key("cancelled-get");
+        SemaphoreSlim maintenanceLock = GetPrivateSemaphore(cache, "_maintenanceLock");
+        await maintenanceLock.WaitAsync();
+        try
+        {
+            using CancellationTokenSource cancellation = new();
+            Task<RepoFileCacheEntry?> pending = cache.GetAsync(key, cancellation.Token);
+            await WaitUntilAsync(() => GetKeyLockCount(cache) == 1);
+
+            cancellation.Cancel();
+            await Assert.ThrowsAnyAsync<OperationCanceledException>(() => pending);
+            await WaitUntilAsync(() => GetKeyLockCount(cache) == 0);
+        }
+        finally
+        {
+            maintenanceLock.Release();
+        }
+
+        using CancellationTokenSource timeout = new(TimeSpan.FromSeconds(2));
+        Assert.Null(await cache.GetAsync(key, timeout.Token));
+    }
+
+    [Fact]
+    public async Task PutAsync_CancelledWhileWaitingForMaintenance_ReleasesPerKeyLock()
+    {
+        RepoFileCacheService cache = CreateCache();
+        RepoFileCacheKey key = Key("cancelled-put");
+        RepoFileCacheEntry entry = MakeEntry(key.Sha, Encoding.UTF8.GetBytes("content"));
+        SemaphoreSlim maintenanceLock = GetPrivateSemaphore(cache, "_maintenanceLock");
+        await maintenanceLock.WaitAsync();
+        try
+        {
+            using CancellationTokenSource cancellation = new();
+            Task pending = cache.PutAsync(key, entry, cancellation.Token);
+            await WaitUntilAsync(() => GetKeyLockCount(cache) == 1);
+
+            cancellation.Cancel();
+            await Assert.ThrowsAnyAsync<OperationCanceledException>(() => pending);
+            await WaitUntilAsync(() => GetKeyLockCount(cache) == 0);
+        }
+        finally
+        {
+            maintenanceLock.Release();
+        }
+
+        using CancellationTokenSource timeout = new(TimeSpan.FromSeconds(2));
+        await cache.PutAsync(key, entry, timeout.Token);
+        Assert.Equal("content", (await cache.GetAsync(key, timeout.Token))!.Text);
+    }
+
+    [Fact]
+    public async Task GetAsync_EmptyMetadata_DeletesCorruptPairAndReturnsMiss()
+    {
+        RepoFileCacheService cache = CreateCache(memMaxEntries: 1);
+        RepoFileCacheKey key = Key("empty-metadata");
+        await cache.PutAsync(
+            key,
+            MakeEntry(key.Sha, Encoding.UTF8.GetBytes("content")),
+            CancellationToken.None);
+        await cache.PutAsync(
+            Key("memory-eviction"),
+            MakeEntry("memory-eviction", Encoding.UTF8.GetBytes("other")),
+            CancellationToken.None);
+
+        string metadataPath = Assert.Single(
+            Directory.GetFiles(_diskRoot, key.Sha + ".json", SearchOption.AllDirectories));
+        string contentPath = Assert.Single(
+            Directory.GetFiles(_diskRoot, key.Sha + ".bin", SearchOption.AllDirectories));
+        await File.WriteAllTextAsync(metadataPath, string.Empty);
+
+        Assert.Null(await cache.GetAsync(key, CancellationToken.None));
+        Assert.False(File.Exists(metadataPath));
+        Assert.False(File.Exists(contentPath));
+        Assert.DoesNotContain(
+            Directory.GetFiles(_diskRoot, "*.pending", SearchOption.AllDirectories),
+            static path => File.Exists(path));
+    }
+
+    [Fact]
+    public async Task CancelledUniqueKeyWaiters_DoNotAccumulateKeyLocks()
+    {
+        RepoFileCacheService cache = CreateCache();
+        SemaphoreSlim maintenanceLock = GetPrivateSemaphore(cache, "_maintenanceLock");
+        await maintenanceLock.WaitAsync();
+        try
+        {
+            using CancellationTokenSource cancellation = new();
+            Task<RepoFileCacheEntry?>[] pending = new Task<RepoFileCacheEntry?>[32];
+            for (int index = 0; index < pending.Length; index++)
+            {
+                pending[index] = cache.GetAsync(Key($"cancelled-{index}"), cancellation.Token);
+            }
+
+            await WaitUntilAsync(() => GetKeyLockCount(cache) == pending.Length);
+            cancellation.Cancel();
+            await Task.WhenAll(pending.Select(async task =>
+                await Assert.ThrowsAnyAsync<OperationCanceledException>(() => task)));
+            await WaitUntilAsync(() => GetKeyLockCount(cache) == 0);
+        }
+        finally
+        {
+            maintenanceLock.Release();
+        }
+    }
+
+    [Fact]
+    public async Task AccountQuiescence_RejectsLateWriterAndPartitionClearRemovesExistingBlob()
+    {
+        AccountWorkQuiescence accountWork = new();
+        RepoFileCacheService cache = new(
+            16,
+            4 * 1024 * 1024,
+            16 * 1024 * 1024,
+            TimeSpan.FromDays(7),
+            _diskRoot,
+            accountWork);
+        RepoFileCacheKey existingKey = new("owner", "repo", "existing", "42");
+        RepoFileCacheKey lateKey = new("owner", "repo", "late", "42");
+        await cache.PutAsync(
+            existingKey,
+            MakeEntry(existingKey.Sha, Encoding.UTF8.GetBytes("existing")),
+            CancellationToken.None);
+
+        using IAccountWorkLease activeProducer = accountWork.Enter("42");
+        Task quiesce = accountWork.QuiesceAsync("42");
+        await Task.Delay(20);
+        Assert.False(quiesce.IsCompleted);
+
+        await Assert.ThrowsAnyAsync<OperationCanceledException>(() => cache.PutAsync(
+            lateKey,
+            MakeEntry(lateKey.Sha, Encoding.UTF8.GetBytes("late")),
+            CancellationToken.None));
+
+        activeProducer.Dispose();
+        await quiesce.WaitAsync(TimeSpan.FromSeconds(2));
+        await cache.ClearPartitionAsync("42");
+
+        Assert.False(cache.TryGet(existingKey, out _));
+        Assert.False(cache.TryGet(lateKey, out _));
+        Assert.DoesNotContain(
+            Directory.EnumerateFiles(_diskRoot, "*", SearchOption.AllDirectories),
+            path => path.Contains($"{Path.DirectorySeparatorChar}42{Path.DirectorySeparatorChar}", StringComparison.Ordinal));
+    }
+
+    [Fact]
+    public async Task Inspection_DetectsCorruptEntryMetadata()
+    {
+        RepoFileCacheService cache = CreateCache();
+        await cache.PutAsync(
+            Key("inspect-corrupt"),
+            MakeEntry("inspect-corrupt", Encoding.UTF8.GetBytes("payload")),
+            CancellationToken.None);
+        string metadataPath = Assert.Single(
+            Directory.GetFiles(_diskRoot, "*.json", SearchOption.AllDirectories),
+            path => !string.Equals(Path.GetFileName(path), "index.json", StringComparison.OrdinalIgnoreCase));
+        await File.WriteAllTextAsync(metadataPath, "{not-json}");
+
+        CacheStoreInspection inspection = await cache.InspectAsync();
+
+        Assert.Equal(CacheOwnerHealth.Unhealthy, inspection.Health);
+        Assert.Contains("corrupt", inspection.Detail, StringComparison.OrdinalIgnoreCase);
+    }
+
+    [Fact]
+    public async Task Inspection_ReportsUnindexedFilesAsDegradedAndCountsPhysicalBytes()
+    {
+        RepoFileCacheService cache = CreateCache();
+        await cache.PutAsync(
+            Key("inspect-orphan"),
+            MakeEntry("inspect-orphan", Encoding.UTF8.GetBytes("payload")),
+            CancellationToken.None);
+        string orphan = Path.Combine(_diskRoot, "orphan.tmp");
+        await File.WriteAllTextAsync(orphan, "orphan");
+
+        CacheStoreInspection inspection = await cache.InspectAsync();
+
+        Assert.Equal(CacheOwnerHealth.Degraded, inspection.Health);
+        Assert.True(inspection.OrphanBytes >= new FileInfo(orphan).Length);
+        Assert.True(inspection.PhysicalBytes >= inspection.LogicalBytes + inspection.OrphanBytes);
+    }
+
+    [Theory]
+    [InlineData("..\\..\\outside", "repo", "safe-sha", "current")]
+    [InlineData("owner", "..\\outside", "safe-sha", "current")]
+    [InlineData("owner", "repo", "..\\..\\outside", "current")]
+    [InlineData("owner", "repo", "safe-sha", "..\\outside")]
+    [InlineData("CON", "repo", "safe-sha", "current")]
+    public async Task PublicOperations_RejectTraversalSegmentsWithoutReadingOrWritingOutsideRoot(
+        string owner,
+        string repo,
+        string sha,
+        string userId)
+    {
+        RepoFileCacheService cache = CreateCache();
+        string outsidePath = Path.Combine(Path.GetDirectoryName(_diskRoot)!, "outside-cache.bin");
+        await File.WriteAllTextAsync(outsidePath, "do-not-touch");
+        RepoFileCacheKey malicious = new(owner, repo, sha, userId);
+
+        Assert.Throws<ArgumentException>(() => cache.TryGet(malicious, out _));
+        await Assert.ThrowsAsync<ArgumentException>(() => cache.GetAsync(malicious, CancellationToken.None));
+        await Assert.ThrowsAsync<ArgumentException>(() => cache.PutAsync(
+            malicious,
+            MakeEntry(sha, Encoding.UTF8.GetBytes("malicious")),
+            CancellationToken.None));
+
+        Assert.Equal("do-not-touch", await File.ReadAllTextAsync(outsidePath));
+        Assert.Empty(Directory.EnumerateFiles(_diskRoot, "*.bin", SearchOption.AllDirectories));
+        File.Delete(outsidePath);
+    }
+
+    [Fact]
+    public async Task GetAsync_TraversalShaCannotReadMatchingPayloadOutsideCacheRoot()
+    {
+        RepoFileCacheService cache = CreateCache();
+        string outsideDirectory = Path.GetDirectoryName(_diskRoot)!;
+        string outsidePayload = Path.Combine(outsideDirectory, "outside-readable.bin");
+        string outsideMetadata = Path.Combine(outsideDirectory, "outside-readable.json");
+        byte[] secret = Encoding.UTF8.GetBytes("outside-secret");
+        await File.WriteAllBytesAsync(outsidePayload, secret);
+        await File.WriteAllTextAsync(
+            outsideMetadata,
+            $$"""
+            {
+              "byteLength": {{secret.Length}},
+              "isBinary": false,
+              "encoding": "utf-8",
+              "cachedAt": "{{DateTimeOffset.UtcNow:O}}"
+            }
+            """);
+
+        RepoFileCacheKey malicious = new("owner", "repo", "..\\..\\outside-readable", "current");
+        await Assert.ThrowsAsync<ArgumentException>(() => cache.GetAsync(malicious, CancellationToken.None));
+
+        Assert.Equal(secret, await File.ReadAllBytesAsync(outsidePayload));
+        Assert.Contains("outside-secret", Encoding.UTF8.GetString(await File.ReadAllBytesAsync(outsidePayload)));
+        File.Delete(outsidePayload);
+        File.Delete(outsideMetadata);
+    }
+
+    [Fact]
+    public async Task Purge_DropsTraversalEntriesFromCorruptIndexWithoutDeletingOutsideRoot()
+    {
+        RepoFileCacheService cache = CreateCache(diskMaxBytes: 1);
+        string outsidePath = Path.Combine(Path.GetDirectoryName(_diskRoot)!, "outside-victim.bin");
+        await File.WriteAllTextAsync(outsidePath, "still-owned-by-test");
+        string indexPath = Path.Combine(_diskRoot, "index.json");
+        string cachedAt = DateTimeOffset.UtcNow.AddDays(-30).ToString("O");
+        await File.WriteAllTextAsync(
+            indexPath,
+            $$"""
+            {
+              "entries": [
+                { "userId": "current", "owner": "owner", "repo": "repo", "sha": "..\\..\\outside-victim", "byteLength": 4096, "cachedAt": "{{cachedAt}}" },
+                { "userId": "..\\outside", "owner": "owner", "repo": "repo", "sha": "safe", "byteLength": 4096, "cachedAt": "{{cachedAt}}" }
+              ]
+            }
+            """);
+
+        await cache.PurgeAsync(CancellationToken.None);
+
+        Assert.Equal("still-owned-by-test", await File.ReadAllTextAsync(outsidePath));
+        using JsonDocument sanitizedIndex = JsonDocument.Parse(await File.ReadAllTextAsync(indexPath));
+        Assert.Empty(sanitizedIndex.RootElement.GetProperty("entries").EnumerateArray());
+        File.Delete(outsidePath);
+    }
+
+    [Fact]
+    public async Task Purge_ReplacesMalformedIndexWithoutTouchingOutsideFiles()
+    {
+        RepoFileCacheService cache = CreateCache();
+        string outsidePath = Path.Combine(Path.GetDirectoryName(_diskRoot)!, "malformed-index-victim.txt");
+        await File.WriteAllTextAsync(outsidePath, "untouched");
+        string indexPath = Path.Combine(_diskRoot, "index.json");
+        await File.WriteAllTextAsync(indexPath, "{ definitely-not-json");
+
+        await cache.PurgeAsync(CancellationToken.None);
+
+        Assert.Equal("untouched", await File.ReadAllTextAsync(outsidePath));
+        using JsonDocument sanitizedIndex = JsonDocument.Parse(await File.ReadAllTextAsync(indexPath));
+        Assert.Empty(sanitizedIndex.RootElement.GetProperty("entries").EnumerateArray());
+        File.Delete(outsidePath);
+    }
+
+    [Fact]
+    public async Task Purge_NormalizesNullEntriesCollectionWithoutTouchingOutsideFiles()
+    {
+        RepoFileCacheService cache = CreateCache();
+        string outsidePath = Path.Combine(Path.GetDirectoryName(_diskRoot)!, "null-index-victim.txt");
+        await File.WriteAllTextAsync(outsidePath, "untouched");
+        string indexPath = Path.Combine(_diskRoot, "index.json");
+        await File.WriteAllTextAsync(indexPath, "{\"entries\":null}");
+
+        await cache.PurgeAsync(CancellationToken.None);
+
+        Assert.Equal("untouched", await File.ReadAllTextAsync(outsidePath));
+        using JsonDocument sanitizedIndex = JsonDocument.Parse(await File.ReadAllTextAsync(indexPath));
+        Assert.Empty(sanitizedIndex.RootElement.GetProperty("entries").EnumerateArray());
+        File.Delete(outsidePath);
+    }
+
+    [Fact]
+    public async Task DiskCap_SaturatesCorruptByteLengthsAndDropsOnlyOwnedEntries()
+    {
+        RepoFileCacheService cache = CreateCache(diskMaxBytes: 1);
+        string outsidePath = Path.Combine(Path.GetDirectoryName(_diskRoot)!, "overflow-index-victim.txt");
+        await File.WriteAllTextAsync(outsidePath, "untouched");
+        string indexPath = Path.Combine(_diskRoot, "index.json");
+        string cachedAt = DateTimeOffset.UtcNow.ToString("O");
+        await File.WriteAllTextAsync(
+            indexPath,
+            $$"""
+            {
+              "entries": [
+                { "userId": "current", "owner": "owner", "repo": "repo", "sha": "first", "byteLength": {{long.MaxValue}}, "cachedAt": "{{cachedAt}}" },
+                { "userId": "current", "owner": "owner", "repo": "repo", "sha": "second", "byteLength": {{long.MaxValue}}, "cachedAt": "{{cachedAt}}" }
+              ]
+            }
+            """);
+
+        await cache.PurgeAsync(CancellationToken.None);
+
+        Assert.Equal("untouched", await File.ReadAllTextAsync(outsidePath));
+        using JsonDocument sanitizedIndex = JsonDocument.Parse(await File.ReadAllTextAsync(indexPath));
+        Assert.Empty(sanitizedIndex.RootElement.GetProperty("entries").EnumerateArray());
+        File.Delete(outsidePath);
+    }
+
+    private static SemaphoreSlim GetPrivateSemaphore(RepoFileCacheService cache, string fieldName) =>
+        (SemaphoreSlim)(typeof(RepoFileCacheService)
+            .GetField(fieldName, BindingFlags.Instance | BindingFlags.NonPublic)!
+            .GetValue(cache) ?? throw new InvalidOperationException($"Missing {fieldName}."));
+
+    private static int GetKeyLockCount(RepoFileCacheService cache)
+    {
+        object keyLocks = typeof(RepoFileCacheService)
+            .GetField("_keyLocks", BindingFlags.Instance | BindingFlags.NonPublic)!
+            .GetValue(cache) ?? throw new InvalidOperationException("Missing per-key locks.");
+        return (int)(keyLocks.GetType().GetProperty("Count")?.GetValue(keyLocks) ?? -1);
+    }
+
+    private static async Task WaitUntilAsync(Func<bool> predicate)
+    {
+        using CancellationTokenSource timeout = new(TimeSpan.FromSeconds(2));
+        while (!predicate())
+        {
+            await Task.Delay(10, timeout.Token);
+        }
     }
 }

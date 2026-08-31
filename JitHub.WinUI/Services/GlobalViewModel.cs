@@ -2,7 +2,7 @@ using CommunityToolkit.Mvvm.ComponentModel;
 
 namespace JitHub.Services;
 
-public sealed class GlobalViewModel : ObservableObject
+public sealed partial class GlobalViewModel : ObservableObject
 {
     private const string DevModeToggleKey = "DEV_MODE_KEY";
 

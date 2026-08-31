@@ -1,6 +1,8 @@
 using System;
 using System.Collections.Generic;
 using System.Collections.ObjectModel;
+using System.Diagnostics;
+using System.Globalization;
 using System.Linq;
 using System.Net.Http;
 using System.Threading;
@@ -9,6 +11,9 @@ using CommunityToolkit.Mvvm.ComponentModel;
 using JitHub.Models.GitHub;
 using JitHub.Models.NavArgs;
 using JitHub.Services;
+using JitHub.Services.Markdown;
+using JitHub.WinUI.Helpers;
+using MarkdownRenderer.Images;
 
 namespace JitHub.WinUI.ViewModels.Pages;
 
@@ -16,28 +21,53 @@ namespace JitHub.WinUI.ViewModels.Pages;
 public sealed partial class RepoPullRequestPageViewModel : ViewModelBase
 {
     private static readonly TimeSpan SelectionLoadDebounce = TimeSpan.FromMilliseconds(150);
+    private static readonly TimeSpan InitialDetailLoadDelay = TimeSpan.FromSeconds(1);
+    private static readonly TimeSpan HoverPrefetchDebounce = TimeSpan.FromMilliseconds(500);
     private readonly IAuthService _authService;
     private readonly IAccountService _accountService;
     private readonly IGitHubClientService _gitHubClientService;
+    private readonly IGitHubPullRequestQueryService _pullRequestQueryService;
+    private readonly IPullRequestNavigationCache _pullRequestNavigationCache;
+    private readonly ITelemetryService _telemetryService;
+    private readonly IApplicationTaskCoordinator _taskCoordinator;
+    private readonly PullRequestCapabilityDenialState _capabilityDenials = new();
     private PullRequestPageNavArg? _navArg;
+    private GitHubRepository? _capabilityRepository;
     private GitHubIssue? _selectedPullRequestIssue;
     private int _detailRequestId;
+    private int _projectedPullRequestDetailNumber;
     private int _listRequestId;
     private bool _suppressSelectionChanged;
     private CancellationTokenSource? _selectionLoadCancellationTokenSource;
+    private CancellationTokenSource? _pullRequestDiffBuildCancellationTokenSource;
     private readonly List<GitHubPullRequest> _loadedPullRequests = [];
     private readonly GitHubPullRequestQueryOptions _pullRequestQuery = new();
     private int _pinnedPullRequestNumber;
     private int _lastFocusedPullRequestNumber;
     private PullRequestDetailSnapshot? _pendingPullRequestSelectionState;
     private bool _isPullRequestCommentSubmissionInProgress;
+    private bool _canCommentOnPullRequest;
     private readonly HashSet<long> _inProgressReviewReplyCommentIds = [];
+    private readonly Dictionary<string, bool> _commentMinimizationOverrides = new(StringComparer.Ordinal);
+    private IDisposable? _selectionDwellPrefetch;
+    private IDisposable? _neighborPrefetch;
+    private CancellationTokenSource? _navigationRefresh;
+    private readonly LatestWinsPrefetchScheduler _hoverPrefetch = new();
+    private int _pullRequestDiffProjectionVersion;
+    private DateTimeOffset _lastSuccessfulListLoadAt;
+    private PullRequestSectionState _pullRequestListState = new(
+        CacheState.Miss,
+        Completeness: PagedDataCompleteness.Loading);
 
     public RepoPullRequestPageViewModel()
     {
         _authService = GetService<IAuthService>();
         _accountService = GetService<IAccountService>();
         _gitHubClientService = GetService<IGitHubClientService>();
+        _pullRequestQueryService = GetService<IGitHubPullRequestQueryService>();
+        _pullRequestNavigationCache = GetService<IPullRequestNavigationCache>();
+        _telemetryService = SafeTelemetryService.Wrap(GetService<ITelemetryService>());
+        _taskCoordinator = GetService<IApplicationTaskCoordinator>();
 
         StateOptions =
         [
@@ -60,6 +90,7 @@ public sealed partial class RepoPullRequestPageViewModel : ViewModelBase
 
         ResetFilters();
         ResetPullRequestDetails();
+        PullRequests.CollectionChanged += (_, _) => OnPropertyChanged(nameof(IsEmpty));
         StatusText = LoadingStatusText;
     }
 
@@ -73,6 +104,12 @@ public sealed partial class RepoPullRequestPageViewModel : ViewModelBase
 
     public ObservableCollection<GitHubIssueEvent> PullRequestTimelineEvents { get; } = [];
 
+    public ObservableCollection<GitHubLabel> SelectedLabels { get; } = [];
+
+    public ObservableCollection<GitHubActor> SelectedAssignees { get; } = [];
+
+    public ObservableCollection<GitHubActor> RequestedReviewers { get; } = [];
+
     public List<QueryOption> StateOptions { get; }
 
     public List<QueryOption> SortOptions { get; }
@@ -83,9 +120,111 @@ public sealed partial class RepoPullRequestPageViewModel : ViewModelBase
 
     public PullRequestPageNavArg? NavigationArgs => _navArg;
 
+    public string RepositoryFullName => _navArg?.Repo is null
+        ? string.Empty
+        : $"{_navArg.Repo.Owner.Login}/{_navArg.Repo.Name}";
+
+    public string PageTitle => string.IsNullOrWhiteSpace(RepositoryFullName)
+        ? GetString("RepoPullRequest.PageTitle", "Pull requests")
+        : FormatString("RepoPullRequest.PageTitleWithRepo", "{0} pull requests", RepositoryFullName);
+
     public GitHubPullRequest? CurrentPullRequest => SelectedPullRequest;
 
     public GitHubIssue? CurrentPullRequestIssue => _selectedPullRequestIssue;
+
+    public bool HasSelectedPullRequest => SelectedPullRequest is not null;
+
+    public bool CanSubmitPullRequestReview =>
+        !IsPullRequestReviewSubmissionInProgress &&
+        (CanSubmitReviewComment || CanApprovePullRequest || CanRequestPullRequestChanges);
+
+    public bool IsEmpty => PullRequests.Count == 0;
+
+    public bool IsDetailPlaceholderVisible => SelectedPullRequest is null;
+
+    public string SelectedPullRequestNumberText => SelectedPullRequest is null
+        ? string.Empty
+        : $"#{SelectedPullRequest.Number.ToString(CultureInfo.InvariantCulture)}";
+
+    public string SelectedPullRequestTitle => SelectedPullRequest?.Title ?? PullRequestTitleText;
+
+    public string SelectedPullRequestAuthorDisplayName => string.IsNullOrWhiteSpace(SelectedPullRequest?.User?.Login)
+        ? UnknownUserText
+        : SelectedPullRequest.User.Login;
+
+    public string? SelectedPullRequestAuthorLogin =>
+        GetRoutablePullRequestAuthorLogin(SelectedPullRequest?.User);
+
+    public string SelectedPullRequestAuthorAvatarUrl => SelectedPullRequest?.User?.AvatarUrl ?? string.Empty;
+
+    public string SelectedPullRequestAuthorAutomationId => SelectedPullRequest?.AutomationId ?? "RepoPullRequestSelected_none";
+
+    internal static string? GetRoutablePullRequestAuthorLogin(GitHubActor? author) =>
+        UserIdentityNavigationPolicy.GetRoutableLogin(author?.Login);
+
+    public string SelectedPullRequestStateText => SelectedPullRequest is null
+        ? string.Empty
+        : GetPullRequestStateDisplay(SelectedPullRequest);
+
+    public string SelectedPullRequestMetadataText => SelectedPullRequest is null
+        ? string.Empty
+        : FormatString(
+            "RepoPullRequest.SelectedMetadataFormat",
+            "@{0} opened {1:g}  •  updated {2:g}",
+            SelectedPullRequestAuthorDisplayName,
+            SelectedPullRequest.CreatedAt.LocalDateTime,
+            SelectedPullRequest.UpdatedAt.LocalDateTime);
+
+    public string BranchSummaryText => SelectedPullRequest is null
+        ? string.Empty
+        : $"{SelectedPullRequest.Head.GitRef} -> {SelectedPullRequest.Base.GitRef}";
+
+    public string SelectedPullRequestCommentText => SelectedPullRequest is null
+        ? string.Empty
+        : FormatCommentCount(SelectedPullRequest.Comments);
+
+    public long SelectedPullRequestReactionTargetId => SelectedPullRequest?.Number ?? 0;
+
+    public string SelectedPullRequestHtmlUrl => SelectedPullRequest?.HtmlUrl ?? string.Empty;
+
+    public GitHubReactionSummary PullRequestReactions => _selectedPullRequestIssue?.Reactions ?? new();
+
+    public MarkdownDocumentSource? PullRequestBodyMarkdownSource => SelectedPullRequest?.MarkdownSource;
+
+    public MarkdownDocumentSource? PullRequestCommentMarkdownSource => _navArg is null || SelectedPullRequest is null
+        ? null
+        : MarkdownDocumentSourceFactory.CreateRepositoryDocument(
+            "pull-request-comment-draft",
+            SelectedPullRequest.Id.ToString(CultureInfo.InvariantCulture),
+            _navArg.Repo.Owner.Login,
+            _navArg.Repo.Name,
+            SelectedPullRequest.Base.GitRef);
+
+    public string MilestoneTitle => _selectedPullRequestIssue?.Milestone?.Title ?? NoMilestoneText;
+
+    public bool HasLabels => SelectedLabels.Count > 0;
+
+    public bool HasNoLabels => SelectedLabels.Count == 0;
+
+    public bool HasAssignees => SelectedAssignees.Count > 0;
+
+    public bool HasNoAssignees => SelectedAssignees.Count == 0;
+
+    public bool HasRequestedReviewers => RequestedReviewers.Count > 0;
+
+    public bool HasNoRequestedReviewers => RequestedReviewers.Count == 0;
+
+    public bool IsConversationSectionVisible => SelectedSection == PullRequestWorkspaceSection.Conversation;
+
+    public bool IsFilesSectionVisible => SelectedSection == PullRequestWorkspaceSection.Files;
+
+    public bool IsScrollableContentSectionVisible => SelectedSection != PullRequestWorkspaceSection.Files;
+
+    public bool IsCommitsSectionVisible => SelectedSection == PullRequestWorkspaceSection.Commits;
+
+    public bool IsReviewsSectionVisible => SelectedSection == PullRequestWorkspaceSection.Reviews;
+
+    public bool IsTimelineSectionVisible => SelectedSection == PullRequestWorkspaceSection.Timeline;
 
     public string NewPullRequestButtonText => GetString("RepoPullRequest.NewButton", "New pull request");
 
@@ -238,6 +377,11 @@ public sealed partial class RepoPullRequestPageViewModel : ViewModelBase
     public partial string StatusText { get; set; } = string.Empty;
 
     [ObservableProperty]
+    public partial string PullRequestListScopeNotice { get; set; } = string.Empty;
+
+    public bool HasPullRequestListScopeNotice => !string.IsNullOrWhiteSpace(PullRequestListScopeNotice);
+
+    [ObservableProperty]
     public partial QueryOption? SelectedStateOption { get; set; }
 
     [ObservableProperty]
@@ -257,6 +401,9 @@ public sealed partial class RepoPullRequestPageViewModel : ViewModelBase
 
     [ObservableProperty]
     public partial GitHubPullRequest? SelectedPullRequest { get; set; }
+
+    [ObservableProperty]
+    public partial PullRequestWorkspaceSection SelectedSection { get; set; } = PullRequestWorkspaceSection.Conversation;
 
     [ObservableProperty]
     public partial string PullRequestTitleText { get; set; } = string.Empty;
@@ -283,6 +430,9 @@ public sealed partial class RepoPullRequestPageViewModel : ViewModelBase
     public partial string TogglePullRequestStateButtonText { get; set; } = string.Empty;
 
     [ObservableProperty]
+    public partial bool IsPullRequestListLoading { get; set; }
+
+    [ObservableProperty]
     public partial bool ArePullRequestActionsEnabled { get; set; }
 
     [ObservableProperty]
@@ -293,6 +443,36 @@ public sealed partial class RepoPullRequestPageViewModel : ViewModelBase
 
     [ObservableProperty]
     public partial bool IsPullRequestCommentEnabled { get; set; }
+
+    [ObservableProperty]
+    public partial bool CanEditPullRequest { get; set; }
+
+    [ObservableProperty]
+    public partial bool CanManagePullRequestMetadata { get; set; }
+
+    [ObservableProperty]
+    public partial bool CanReactToPullRequest { get; set; }
+
+    [ObservableProperty]
+    public partial bool CanSubmitReviewComment { get; set; }
+
+    [ObservableProperty]
+    public partial bool CanApprovePullRequest { get; set; }
+
+    [ObservableProperty]
+    public partial bool CanRequestPullRequestChanges { get; set; }
+
+    [ObservableProperty]
+    public partial bool IsPullRequestReviewSubmissionInProgress { get; set; }
+
+    [ObservableProperty]
+    public partial bool CanMergeWithMergeCommit { get; set; }
+
+    [ObservableProperty]
+    public partial bool CanMergeWithSquash { get; set; }
+
+    [ObservableProperty]
+    public partial bool CanMergeWithRebase { get; set; }
 
     [ObservableProperty]
     public partial bool IsPullRequestCommentsEmptyVisible { get; set; }
@@ -306,15 +486,56 @@ public sealed partial class RepoPullRequestPageViewModel : ViewModelBase
     [ObservableProperty]
     public partial bool IsPullRequestTimelineEmptyVisible { get; set; }
 
+    [ObservableProperty]
+    public partial CommitDiffDocument PullRequestDiffDocument { get; set; } = CommitDiffDocument.Empty;
+
+    [ObservableProperty]
+    public partial CommitDiffRowProjection PullRequestDiffRowProjection { get; set; } = CommitDiffRowProjection.Empty;
+
+    [ObservableProperty]
+    public partial string PullRequestFileFilterText { get; set; } = string.Empty;
+
+    [ObservableProperty]
+    public partial string PullRequestDiffSearchText { get; set; } = string.Empty;
+
+    [ObservableProperty]
+    public partial int SelectedPullRequestDiffSearchMatchIndex { get; set; } = -1;
+
+    public string PullRequestDiffSearchMatchCountText => PullRequestDiffRowProjection.MatchCountText;
+
+    public bool HasPullRequestDiffSearchMatches => PullRequestDiffRowProjection.MatchCount > 0;
+
+    public bool IsPullRequestSelectionCoherent(GitHubPullRequest pullRequest) =>
+        SelectedPullRequest?.Number == pullRequest.Number &&
+        (_projectedPullRequestDetailNumber == pullRequest.Number ||
+            !string.IsNullOrWhiteSpace(pullRequest.Body) &&
+            string.Equals(PullRequestBodyText, pullRequest.Body, StringComparison.Ordinal));
+
     public async Task InitializeAsync(PullRequestPageNavArg? navArg)
     {
+        CancelPredictivePrefetches();
+        if (CanReuseNavigationState(navArg))
+        {
+            _navArg = navArg;
+            _capabilityRepository = navArg!.Repo;
+            NotifyRepositoryPropertiesChanged();
+            ScheduleNavigationRefresh();
+            return;
+        }
+
         _navArg = navArg;
+        _capabilityRepository = navArg?.Repo;
         _lastFocusedPullRequestNumber = 0;
         _pendingPullRequestSelectionState = null;
+        _selectionDwellPrefetch?.Dispose();
+        _selectionDwellPrefetch = null;
+        _neighborPrefetch?.Dispose();
+        _neighborPrefetch = null;
         _loadedPullRequests.Clear();
         PullRequests.Clear();
         SetSelectedPullRequest(null);
         ResetPullRequestDetails();
+        NotifyRepositoryPropertiesChanged();
 
         if (navArg is null)
         {
@@ -328,7 +549,70 @@ public sealed partial class RepoPullRequestPageViewModel : ViewModelBase
         }
 
         ResetFilters();
+        PullRequestTelemetry.TrackOpened(
+            _telemetryService,
+            "repo",
+            TelemetryTaxonomy.Sources.Navigation);
+        if (navArg.PullRequestId > 0 &&
+            TryGetActiveToken(out string token) &&
+            TryApplyNavigationSnapshot(token, GetActiveUserPartition(token), navArg.Repo.Owner.Login, navArg.Repo.Name, navArg.PullRequestId))
+        {
+            await LoadPullRequestsAsync(
+                navArg.PullRequestId,
+                preservePreferredPullRequestOutsideQuery: true,
+                preserveCurrentDetailDuringLoad: true,
+                deferSelectedDetails: true);
+            return;
+        }
+
         await LoadPullRequestsAsync(navArg.PullRequestId);
+    }
+
+    private bool CanReuseNavigationState(PullRequestPageNavArg? navArg) =>
+        navArg is not null &&
+        _navArg is not null &&
+        PullRequests.Count > 0 &&
+        (navArg.PullRequestId <= 0 || SelectedPullRequest?.Number == navArg.PullRequestId) &&
+        string.Equals(
+            navArg.Repo.Owner.Login,
+            _navArg.Repo.Owner.Login,
+            StringComparison.OrdinalIgnoreCase) &&
+        string.Equals(
+            navArg.Repo.Name,
+            _navArg.Repo.Name,
+            StringComparison.OrdinalIgnoreCase);
+
+    private void ScheduleNavigationRefresh()
+    {
+        _navigationRefresh?.Cancel();
+        _navigationRefresh?.Dispose();
+        _navigationRefresh = null;
+        if (_lastSuccessfulListLoadAt != default &&
+            DateTimeOffset.UtcNow - _lastSuccessfulListLoadAt < TimeSpan.FromMinutes(5))
+        {
+            return;
+        }
+
+        if (_navArg is null || !TryGetActiveToken(out string token))
+        {
+            return;
+        }
+
+        string userPartition = GetActiveUserPartition(token);
+        CancellationTokenSource refresh = new();
+        _navigationRefresh = refresh;
+        _ = _taskCoordinator.RunAsync(
+            async cancellationToken =>
+            {
+                await Task.Delay(TimeSpan.FromSeconds(2), cancellationToken);
+                await LoadPullRequestsAsync(
+                    SelectedPullRequest?.Number ?? _pinnedPullRequestNumber,
+                    preservePreferredPullRequestOutsideQuery: true,
+                    preserveCurrentDetailDuringLoad: true,
+                    deferSelectedDetails: true);
+            },
+            new ApplicationTaskOptions("pull_requests.navigation_refresh", userPartition),
+            refresh.Token);
     }
 
     public async Task ReloadAsync()
@@ -361,6 +645,22 @@ public sealed partial class RepoPullRequestPageViewModel : ViewModelBase
 
     public async Task<PullRequestCreateDialogData?> LoadCreateDialogDataAsync()
     {
+        if (DialogMatrixAutomationScenario.IsEnabled && _navArg is not null)
+        {
+            string defaultBase = string.IsNullOrWhiteSpace(_navArg.Repo.DefaultBranch)
+                ? "main"
+                : _navArg.Repo.DefaultBranch;
+            return new PullRequestCreateDialogData(
+                "feature/automation",
+                defaultBase,
+                (GitHubBranch[])
+                [
+                    new GitHubBranch { Name = defaultBase },
+                    new GitHubBranch { Name = "feature/automation" }
+                ],
+                PagedDataCompleteness.Complete);
+        }
+
         if (_navArg is null || !TryGetActiveToken(out string token))
         {
             return null;
@@ -368,15 +668,21 @@ public sealed partial class RepoPullRequestPageViewModel : ViewModelBase
 
         try
         {
-            IReadOnlyList<GitHubBranch> branches = await _gitHubClientService.GetBranchesAsync(
+            PullRequestPagedSection<GitHubBranch> branches = await _pullRequestQueryService.GetAllRepositoryBranchesAsync(
                 token,
+                GetActiveUserPartition(token),
                 _navArg.Repo.Owner.Login,
                 _navArg.Repo.Name);
             string defaultBase = _navArg.Repo.DefaultBranch;
-            string defaultHead = branches
+            string defaultHead = branches.Items
                 .FirstOrDefault(branch => !string.Equals(branch.Name, defaultBase, StringComparison.OrdinalIgnoreCase))
                 ?.Name ?? string.Empty;
-            return new PullRequestCreateDialogData(defaultHead, defaultBase);
+            UpdateRepositoryMetadataScopeStatus(previousStatusText: string.Empty, branches.State);
+            return new PullRequestCreateDialogData(
+                defaultHead,
+                defaultBase,
+                branches.Items,
+                branches.Completeness);
         }
         catch (GitHubAuthenticationException)
         {
@@ -384,7 +690,7 @@ public sealed partial class RepoPullRequestPageViewModel : ViewModelBase
         }
         catch (GitHubApiException ex)
         {
-            StatusText = ex.Message;
+            StatusText = UserFacingError.For(ex, UserFacingErrorKind.Action, "pull-requests");
         }
         catch (HttpRequestException)
         {
@@ -413,25 +719,34 @@ public sealed partial class RepoPullRequestPageViewModel : ViewModelBase
                 baseBranch,
                 body);
             StatusText = FormatString("RepoPullRequest.CreatedStatus", "Created pull request #{0}.", pullRequest.Number);
+            await _pullRequestQueryService.InvalidatePullRequestAsync(
+                GetActiveUserPartition(token),
+                _navArg.Repo.Owner.Login,
+                _navArg.Repo.Name,
+                pullRequest.Number);
             await LoadPullRequestsAsync(pullRequest.Number);
+            TrackPullRequestAction(TelemetryTaxonomy.Actions.Create, TelemetryTaxonomy.Results.Success);
         }
         catch (GitHubAuthenticationException)
         {
+            TrackPullRequestAction(TelemetryTaxonomy.Actions.Create, TelemetryTaxonomy.Results.AuthError);
             _authService.SignOut();
         }
         catch (GitHubApiException ex)
         {
-            StatusText = ex.Message;
+            TrackPullRequestAction(TelemetryTaxonomy.Actions.Create, TelemetryTaxonomy.Results.Error);
+            StatusText = UserFacingError.For(ex, UserFacingErrorKind.Action, "pull-requests");
         }
         catch (HttpRequestException)
         {
+            TrackPullRequestAction(TelemetryTaxonomy.Actions.Create, TelemetryTaxonomy.Results.Error);
             StatusText = GetString("RepoPullRequest.CreateNetworkError", "JitHub could not reach GitHub to create this pull request.");
         }
     }
 
     public async Task UpdateSelectedPullRequestAsync(string title, string? body)
     {
-        if (_navArg is null || SelectedPullRequest is null || !ArePullRequestActionsEnabled || !TryGetActiveToken(out string token))
+        if (_navArg is null || SelectedPullRequest is null || !CanEditPullRequest || !TryGetActiveToken(out string token))
         {
             return;
         }
@@ -452,22 +767,27 @@ public sealed partial class RepoPullRequestPageViewModel : ViewModelBase
                 updatedPullRequest,
                 token,
                 GetString("RepoPullRequest.UpdateRefreshError", "Pull request updated, but JitHub could not refresh pull request details."));
+            TrackPullRequestAction(TelemetryTaxonomy.Actions.Edit, TelemetryTaxonomy.Results.Success);
         }
         catch (GitHubAuthenticationException)
         {
+            TrackPullRequestAction(TelemetryTaxonomy.Actions.Edit, TelemetryTaxonomy.Results.AuthError);
             _authService.SignOut();
         }
         catch (GitHubApiException ex)
         {
+            TrackPullRequestAction(TelemetryTaxonomy.Actions.Edit, TelemetryTaxonomy.Results.Error);
+            DisableRejectedCapability(ex, "edit", currentPullRequest.Number);
             if (!IsSelectedPullRequest(currentPullRequest))
             {
                 return;
             }
 
-            StatusText = ex.Message;
+            StatusText = UserFacingError.For(ex, UserFacingErrorKind.Action, "pull-requests");
         }
         catch (HttpRequestException)
         {
+            TrackPullRequestAction(TelemetryTaxonomy.Actions.Edit, TelemetryTaxonomy.Results.Error);
             if (!IsSelectedPullRequest(currentPullRequest))
             {
                 return;
@@ -479,10 +799,20 @@ public sealed partial class RepoPullRequestPageViewModel : ViewModelBase
 
     public async Task<PullRequestMetadataDialogData?> LoadSelectedPullRequestMetadataDialogDataAsync()
     {
+        if (DialogMatrixAutomationScenario.IsEnabled && SelectedPullRequest is not null)
+        {
+            return new PullRequestMetadataDialogData(
+                RequestedReviewers.ToArray(),
+                SelectedAssignees.ToArray(),
+                SelectedLabels.ToArray(),
+                [],
+                PagedDataCompleteness.Complete);
+        }
+
         if (_navArg is null
             || SelectedPullRequest is null
             || _selectedPullRequestIssue is null
-            || !ArePullRequestActionsEnabled
+            || !CanManagePullRequestMetadata
             || !TryGetActiveToken(out string token))
         {
             return null;
@@ -494,36 +824,52 @@ public sealed partial class RepoPullRequestPageViewModel : ViewModelBase
         try
         {
             StatusText = FormatString("RepoPullRequest.LoadMetadataStatus", "Loading pull request #{0} metadata...", pullRequestNumber);
-            Task<IReadOnlyList<GitHubActor>> reviewersTask = _gitHubClientService.GetCollaboratorsAsync(
+            Task<PullRequestPagedSection<GitHubActor>> reviewersTask = _pullRequestQueryService.GetAllRepositoryCollaboratorsAsync(
                 token,
+                GetActiveUserPartition(token),
                 _navArg.Repo.Owner.Login,
                 _navArg.Repo.Name);
-            Task<IReadOnlyList<GitHubActor>> assigneesTask = _gitHubClientService.GetAssigneesAsync(
+            Task<PullRequestPagedSection<GitHubActor>> assigneesTask = _pullRequestQueryService.GetAllRepositoryAssigneesAsync(
                 token,
+                GetActiveUserPartition(token),
                 _navArg.Repo.Owner.Login,
                 _navArg.Repo.Name);
-            Task<IReadOnlyList<GitHubLabel>> labelsTask = _gitHubClientService.GetLabelsAsync(
+            Task<PullRequestPagedSection<GitHubLabel>> labelsTask = _pullRequestQueryService.GetAllRepositoryLabelsAsync(
                 token,
+                GetActiveUserPartition(token),
                 _navArg.Repo.Owner.Login,
                 _navArg.Repo.Name);
-            Task<IReadOnlyList<GitHubMilestone>> milestonesTask = _gitHubClientService.GetMilestonesAsync(
+            Task<PullRequestPagedSection<GitHubMilestone>> milestonesTask = _pullRequestQueryService.GetAllRepositoryMilestonesAsync(
                 token,
+                GetActiveUserPartition(token),
                 _navArg.Repo.Owner.Login,
                 _navArg.Repo.Name);
             await Task.WhenAll(reviewersTask, assigneesTask, labelsTask, milestonesTask);
+            PullRequestPagedSection<GitHubActor> reviewers = await reviewersTask;
+            PullRequestPagedSection<GitHubActor> assignees = await assigneesTask;
+            PullRequestPagedSection<GitHubLabel> labels = await labelsTask;
+            PullRequestPagedSection<GitHubMilestone> milestones = await milestonesTask;
 
             if (requestId != _detailRequestId || SelectedPullRequest?.Number != pullRequestNumber)
             {
                 return null;
             }
 
-            StatusText = previousStatusText;
+            PullRequestSectionState[] metadataStates =
+            [
+                reviewers.State,
+                assignees.State,
+                labels.State,
+                milestones.State
+            ];
+            UpdateRepositoryMetadataScopeStatus(previousStatusText, metadataStates);
 
             return new PullRequestMetadataDialogData(
-                await reviewersTask,
-                await assigneesTask,
-                await labelsTask,
-                await milestonesTask);
+                reviewers.Items,
+                assignees.Items,
+                labels.Items,
+                milestones.Items,
+                CombineCompleteness(metadataStates));
         }
         catch (GitHubAuthenticationException)
         {
@@ -533,7 +879,7 @@ public sealed partial class RepoPullRequestPageViewModel : ViewModelBase
         {
             if (requestId == _detailRequestId && SelectedPullRequest?.Number == pullRequestNumber)
             {
-                StatusText = ex.Message;
+                StatusText = UserFacingError.For(ex, UserFacingErrorKind.Action, "pull-requests");
             }
         }
         catch (HttpRequestException)
@@ -552,7 +898,7 @@ public sealed partial class RepoPullRequestPageViewModel : ViewModelBase
         if (_navArg is null
             || SelectedPullRequest is null
             || _selectedPullRequestIssue is null
-            || !ArePullRequestActionsEnabled
+            || !CanManagePullRequestMetadata
             || !TryGetActiveToken(out string token))
         {
             return;
@@ -610,11 +956,14 @@ public sealed partial class RepoPullRequestPageViewModel : ViewModelBase
             }
             catch (GitHubAuthenticationException)
             {
+                TrackPullRequestAction(TelemetryTaxonomy.Actions.Metadata, TelemetryTaxonomy.Results.AuthError);
                 _authService.SignOut();
                 return;
             }
             catch (GitHubApiException ex)
             {
+                TrackPullRequestAction(TelemetryTaxonomy.Actions.Metadata, TelemetryTaxonomy.Results.Error);
+                DisableRejectedCapability(ex, "metadata", currentPullRequest.Number);
                 bool partialRefreshSucceeded = await TryRefreshPullRequestSelectionAfterMutationAsync(
                     currentPullRequest,
                     token,
@@ -626,13 +975,14 @@ public sealed partial class RepoPullRequestPageViewModel : ViewModelBase
                     StatusText = FormatString(
                         "RepoPullRequest.MetadataReviewerPartialError",
                         "Pull request metadata updated, but reviewer changes failed: {0}",
-                        ex.Message);
+                        UserFacingError.For(ex, UserFacingErrorKind.Action, "pull-request-reviewers"));
                 }
 
                 return;
             }
             catch (HttpRequestException)
             {
+                TrackPullRequestAction(TelemetryTaxonomy.Actions.Metadata, TelemetryTaxonomy.Results.Error);
                 bool partialRefreshSucceeded = await TryRefreshPullRequestSelectionAfterMutationAsync(
                     currentPullRequest,
                     token,
@@ -656,22 +1006,27 @@ public sealed partial class RepoPullRequestPageViewModel : ViewModelBase
             {
                 StatusText = FormatString("RepoPullRequest.UpdatedMetadataStatus", "Updated pull request #{0} metadata.", currentPullRequest.Number);
             }
+            TrackPullRequestAction(TelemetryTaxonomy.Actions.Metadata, TelemetryTaxonomy.Results.Success);
         }
         catch (GitHubAuthenticationException)
         {
+            TrackPullRequestAction(TelemetryTaxonomy.Actions.Metadata, TelemetryTaxonomy.Results.AuthError);
             _authService.SignOut();
         }
         catch (GitHubApiException ex)
         {
+            TrackPullRequestAction(TelemetryTaxonomy.Actions.Metadata, TelemetryTaxonomy.Results.Error);
+            DisableRejectedCapability(ex, "metadata", currentPullRequest.Number);
             if (!IsSelectedPullRequest(currentPullRequest))
             {
                 return;
             }
 
-            StatusText = ex.Message;
+            StatusText = UserFacingError.For(ex, UserFacingErrorKind.Action, "pull-requests");
         }
         catch (HttpRequestException)
         {
+            TrackPullRequestAction(TelemetryTaxonomy.Actions.Metadata, TelemetryTaxonomy.Results.Error);
             if (!IsSelectedPullRequest(currentPullRequest))
             {
                 return;
@@ -685,7 +1040,6 @@ public sealed partial class RepoPullRequestPageViewModel : ViewModelBase
     {
         if (_navArg is null
             || SelectedPullRequest is null
-            || !ArePullRequestActionsEnabled
             || !IsTogglePullRequestStateEnabled
             || !TryGetActiveToken(out string token))
         {
@@ -715,22 +1069,35 @@ public sealed partial class RepoPullRequestPageViewModel : ViewModelBase
                 updatedPullRequest,
                 token,
                 GetString("RepoPullRequest.StateRefreshError", "Pull request state updated, but JitHub could not refresh pull request details."));
+            TrackPullRequestAction(
+                nextState == "closed" ? TelemetryTaxonomy.Actions.Close : TelemetryTaxonomy.Actions.Reopen,
+                TelemetryTaxonomy.Results.Success);
         }
         catch (GitHubAuthenticationException)
         {
+            TrackPullRequestAction(
+                nextState == "closed" ? TelemetryTaxonomy.Actions.Close : TelemetryTaxonomy.Actions.Reopen,
+                TelemetryTaxonomy.Results.AuthError);
             _authService.SignOut();
         }
         catch (GitHubApiException ex)
         {
+            TrackPullRequestAction(
+                nextState == "closed" ? TelemetryTaxonomy.Actions.Close : TelemetryTaxonomy.Actions.Reopen,
+                TelemetryTaxonomy.Results.Error);
+            DisableRejectedCapability(ex, "state", currentPullRequest.Number);
             if (!IsSelectedPullRequest(currentPullRequest))
             {
                 return;
             }
 
-            StatusText = ex.Message;
+            StatusText = UserFacingError.For(ex, UserFacingErrorKind.Action, "pull-requests");
         }
         catch (HttpRequestException)
         {
+            TrackPullRequestAction(
+                nextState == "closed" ? TelemetryTaxonomy.Actions.Close : TelemetryTaxonomy.Actions.Reopen,
+                TelemetryTaxonomy.Results.Error);
             if (!IsSelectedPullRequest(currentPullRequest))
             {
                 return;
@@ -767,9 +1134,9 @@ public sealed partial class RepoPullRequestPageViewModel : ViewModelBase
                 _navArg.Repo.Name,
                 currentPullRequest.Number,
                 body);
+            ClearSubmittedPullRequestDraft(currentPullRequest.Number);
             if (IsSelectedPullRequest(currentPullRequest))
             {
-                PullRequestCommentDraft = string.Empty;
                 StatusText = FormatString("RepoPullRequest.AddedCommentStatus", "Comment added to pull request #{0}.", currentPullRequest.Number);
             }
 
@@ -777,22 +1144,27 @@ public sealed partial class RepoPullRequestPageViewModel : ViewModelBase
                 currentPullRequest,
                 token,
                 GetString("RepoPullRequest.CommentRefreshError", "Comment added, but JitHub could not refresh pull request details."));
+            TrackPullRequestAction(TelemetryTaxonomy.Actions.Comment, TelemetryTaxonomy.Results.Success);
         }
         catch (GitHubAuthenticationException)
         {
+            TrackPullRequestAction(TelemetryTaxonomy.Actions.Comment, TelemetryTaxonomy.Results.AuthError);
             _authService.SignOut();
         }
         catch (GitHubApiException ex)
         {
+            TrackPullRequestAction(TelemetryTaxonomy.Actions.Comment, TelemetryTaxonomy.Results.Error);
+            DisableRejectedCapability(ex, "comment", currentPullRequest.Number);
             if (!IsSelectedPullRequest(currentPullRequest))
             {
                 return;
             }
 
-            StatusText = ex.Message;
+            StatusText = UserFacingError.For(ex, UserFacingErrorKind.Action, "pull-requests");
         }
         catch (HttpRequestException)
         {
+            TrackPullRequestAction(TelemetryTaxonomy.Actions.Comment, TelemetryTaxonomy.Results.Error);
             if (!IsSelectedPullRequest(currentPullRequest))
             {
                 return;
@@ -803,27 +1175,39 @@ public sealed partial class RepoPullRequestPageViewModel : ViewModelBase
         finally
         {
             _isPullRequestCommentSubmissionInProgress = false;
-            if (IsSelectedPullRequest(currentPullRequest))
-            {
-                UpdatePullRequestCommentEnabledState();
-            }
+            UpdatePullRequestCommentEnabledState();
         }
     }
 
     public async Task<IReadOnlyList<GitHubReaction>?> GetSelectedPullRequestReactionsAsync()
     {
-        if (_navArg is null || SelectedPullRequest is null || !ArePullRequestActionsEnabled || !TryGetActiveToken(out string token))
+        if (DialogMatrixAutomationScenario.IsEnabled && SelectedPullRequest is not null)
+        {
+            return [];
+        }
+
+        if (_navArg is null || SelectedPullRequest is null || !CanReactToPullRequest || !TryGetActiveToken(out string token))
         {
             return null;
         }
 
+        int pullRequestNumber = SelectedPullRequest.Number;
         try
         {
-            return await _gitHubClientService.GetIssueReactionsAsync(
+            string userPartition = GetActiveUserPartition(token);
+            if (string.IsNullOrWhiteSpace(userPartition))
+            {
+                return null;
+            }
+
+            PullRequestPagedSection<GitHubReaction> section =
+                await _pullRequestQueryService.GetAllPullRequestReactionsAsync(
                 token,
+                userPartition,
                 _navArg.Repo.Owner.Login,
                 _navArg.Repo.Name,
-                SelectedPullRequest.Number);
+                pullRequestNumber);
+            return section.Items;
         }
         catch (GitHubAuthenticationException)
         {
@@ -831,7 +1215,11 @@ public sealed partial class RepoPullRequestPageViewModel : ViewModelBase
         }
         catch (GitHubApiException ex)
         {
-            StatusText = ex.Message;
+            DisableRejectedCapability(ex, "reaction", pullRequestNumber);
+            if (SelectedPullRequest?.Number == pullRequestNumber)
+            {
+                StatusText = UserFacingError.For(ex, UserFacingErrorKind.Action, "pull-requests");
+            }
         }
         catch (HttpRequestException)
         {
@@ -843,18 +1231,28 @@ public sealed partial class RepoPullRequestPageViewModel : ViewModelBase
 
     public async Task<IReadOnlyList<GitHubReaction>?> GetPullRequestCommentReactionsAsync(long commentId)
     {
-        if (_navArg is null || SelectedPullRequest is null || !ArePullRequestActionsEnabled || !TryGetActiveToken(out string token))
+        if (_navArg is null || SelectedPullRequest is null || !CanReactToPullRequest || !TryGetActiveToken(out string token))
         {
             return null;
         }
 
+        int pullRequestNumber = SelectedPullRequest.Number;
         try
         {
-            return await _gitHubClientService.GetIssueCommentReactionsAsync(
+            string userPartition = GetActiveUserPartition(token);
+            if (string.IsNullOrWhiteSpace(userPartition))
+            {
+                return null;
+            }
+
+            PullRequestPagedSection<GitHubReaction> section =
+                await _pullRequestQueryService.GetAllPullRequestCommentReactionsAsync(
                 token,
+                userPartition,
                 _navArg.Repo.Owner.Login,
                 _navArg.Repo.Name,
                 commentId);
+            return section.Items;
         }
         catch (GitHubAuthenticationException)
         {
@@ -862,7 +1260,11 @@ public sealed partial class RepoPullRequestPageViewModel : ViewModelBase
         }
         catch (GitHubApiException ex)
         {
-            StatusText = ex.Message;
+            DisableRejectedCapability(ex, "reaction", pullRequestNumber);
+            if (SelectedPullRequest?.Number == pullRequestNumber)
+            {
+                StatusText = UserFacingError.For(ex, UserFacingErrorKind.Action, "pull-requests");
+            }
         }
         catch (HttpRequestException)
         {
@@ -874,18 +1276,28 @@ public sealed partial class RepoPullRequestPageViewModel : ViewModelBase
 
     public async Task<IReadOnlyList<GitHubReaction>?> GetReviewCommentReactionsAsync(long commentId)
     {
-        if (_navArg is null || SelectedPullRequest is null || !ArePullRequestActionsEnabled || !TryGetActiveToken(out string token))
+        if (_navArg is null || SelectedPullRequest is null || !CanReactToPullRequest || !TryGetActiveToken(out string token))
         {
             return null;
         }
 
+        int pullRequestNumber = SelectedPullRequest.Number;
         try
         {
-            return await _gitHubClientService.GetPullRequestReviewCommentReactionsAsync(
+            string userPartition = GetActiveUserPartition(token);
+            if (string.IsNullOrWhiteSpace(userPartition))
+            {
+                return null;
+            }
+
+            PullRequestPagedSection<GitHubReaction> section =
+                await _pullRequestQueryService.GetAllPullRequestReviewCommentReactionsAsync(
                 token,
+                userPartition,
                 _navArg.Repo.Owner.Login,
                 _navArg.Repo.Name,
                 commentId);
+            return section.Items;
         }
         catch (GitHubAuthenticationException)
         {
@@ -893,7 +1305,11 @@ public sealed partial class RepoPullRequestPageViewModel : ViewModelBase
         }
         catch (GitHubApiException ex)
         {
-            StatusText = ex.Message;
+            DisableRejectedCapability(ex, "reaction", pullRequestNumber);
+            if (SelectedPullRequest?.Number == pullRequestNumber)
+            {
+                StatusText = UserFacingError.For(ex, UserFacingErrorKind.Action, "pull-requests");
+            }
         }
         catch (HttpRequestException)
         {
@@ -956,9 +1372,125 @@ public sealed partial class RepoPullRequestPageViewModel : ViewModelBase
             existingReactionIds);
     }
 
+    public Task<bool> UpdatePullRequestCommentAsync(long commentId, string body, bool isReviewComment) =>
+        ExecutePullRequestCommentMutationAsync(
+            (token, owner, repoName) => isReviewComment
+                ? _gitHubClientService.UpdatePullRequestReviewCommentAsync(token, owner, repoName, commentId, body)
+                : _gitHubClientService.UpdateIssueCommentAsync(token, owner, repoName, commentId, body),
+            TelemetryTaxonomy.Actions.CommentEdit,
+            GetString("RepoPullRequest.CommentUpdatingStatus", "Updating comment..."));
+
+    public Task<bool> DeletePullRequestCommentAsync(long commentId, bool isReviewComment) =>
+        ExecutePullRequestCommentMutationAsync(
+            (token, owner, repoName) => isReviewComment
+                ? _gitHubClientService.DeletePullRequestReviewCommentAsync(token, owner, repoName, commentId)
+                : _gitHubClientService.DeleteIssueCommentAsync(token, owner, repoName, commentId),
+            TelemetryTaxonomy.Actions.CommentDelete,
+            GetString("RepoPullRequest.CommentDeletingStatus", "Deleting comment..."));
+
+    public async Task<bool> SetPullRequestCommentMinimizedAsync(string nodeId, string? classifier)
+    {
+        if (!CanManagePullRequestMetadata || string.IsNullOrWhiteSpace(nodeId))
+        {
+            return false;
+        }
+
+        string normalizedNodeId = nodeId.Trim();
+        bool hadPreviousOverride = _commentMinimizationOverrides.TryGetValue(normalizedNodeId, out bool previousOverride);
+        _commentMinimizationOverrides[normalizedNodeId] = !string.IsNullOrWhiteSpace(classifier);
+        bool succeeded = await ExecutePullRequestCommentMutationAsync(
+            (token, _, _) => string.IsNullOrWhiteSpace(classifier)
+                ? _gitHubClientService.UnminimizeCommentAsync(token, normalizedNodeId)
+                : _gitHubClientService.MinimizeCommentAsync(token, normalizedNodeId, classifier),
+            string.IsNullOrWhiteSpace(classifier)
+                ? TelemetryTaxonomy.Actions.CommentUnhide
+                : TelemetryTaxonomy.Actions.CommentHide,
+            string.IsNullOrWhiteSpace(classifier)
+                ? GetString("RepoPullRequest.CommentUnhidingStatus", "Unhiding comment...")
+                : GetString("RepoPullRequest.CommentHidingStatus", "Hiding comment..."));
+        if (!succeeded)
+        {
+            if (hadPreviousOverride)
+            {
+                _commentMinimizationOverrides[normalizedNodeId] = previousOverride;
+            }
+            else
+            {
+                _commentMinimizationOverrides.Remove(normalizedNodeId);
+            }
+        }
+
+        return succeeded;
+    }
+
+    private async Task<bool> ExecutePullRequestCommentMutationAsync(
+        Func<string, string, string, Task> mutation,
+        string action,
+        string status)
+    {
+        if (_navArg is null || SelectedPullRequest is null || !TryGetActiveToken(out string token))
+        {
+            return false;
+        }
+
+        GitHubPullRequest currentPullRequest = SelectedPullRequest;
+        try
+        {
+            StatusText = status;
+            await mutation(token, _navArg.Repo.Owner.Login, _navArg.Repo.Name);
+            await TryRefreshPullRequestSelectionAfterMutationAsync(
+                currentPullRequest,
+                token,
+                GetString("RepoPullRequest.CommentRefreshError", "Comment updated, but JitHub could not refresh pull request details."));
+            TrackPullRequestAction(action, TelemetryTaxonomy.Results.Success);
+            return true;
+        }
+        catch (GitHubAuthenticationException)
+        {
+            TrackPullRequestAction(action, TelemetryTaxonomy.Results.AuthError);
+            _authService.SignOut();
+        }
+        catch (GitHubApiException ex)
+        {
+            TrackPullRequestAction(
+                action,
+                IssuePermissionPolicy.IsPermissionDenied(ex)
+                    ? TelemetryTaxonomy.Results.PermissionDenied
+                    : TelemetryTaxonomy.Results.Error);
+            DisableRejectedCapability(ex, "comment", currentPullRequest.Number);
+            if (IsSelectedPullRequest(currentPullRequest))
+            {
+                StatusText = UserFacingError.For(ex, UserFacingErrorKind.Action, "pull-requests");
+            }
+        }
+        catch (HttpRequestException)
+        {
+            TrackPullRequestAction(action, TelemetryTaxonomy.Results.NetworkError);
+            if (IsSelectedPullRequest(currentPullRequest))
+            {
+                StatusText = GetString("RepoPullRequest.CommentMutationNetworkError", "JitHub could not reach GitHub to update this comment.");
+            }
+        }
+        catch (OperationCanceledException)
+        {
+            TrackPullRequestAction(action, TelemetryTaxonomy.Results.Cancelled);
+        }
+        catch (Exception ex)
+        {
+            JitHub.WinUI.App.LogHandledException(ex, "pull-request-comment-mutation");
+            TrackPullRequestAction(action, TelemetryTaxonomy.Results.Error);
+            if (IsSelectedPullRequest(currentPullRequest))
+            {
+                StatusText = GetString("RepoPullRequest.CommentMutationUnexpectedError", "JitHub could not update this comment.");
+            }
+        }
+
+        return false;
+    }
+
     public async Task ReplyToReviewCommentAsync(PullRequestReviewThreadItem threadItem)
     {
-        if (_navArg is null || SelectedPullRequest is null || !ArePullRequestActionsEnabled || !TryGetActiveToken(out string token))
+        if (_navArg is null || SelectedPullRequest is null || !_canCommentOnPullRequest || !TryGetActiveToken(out string token))
         {
             return;
         }
@@ -998,22 +1530,27 @@ public sealed partial class RepoPullRequestPageViewModel : ViewModelBase
                 currentPullRequest,
                 token,
                 GetString("RepoPullRequest.ReplyRefreshError", "Reply posted, but JitHub could not refresh pull request details."));
+            TrackPullRequestAction(TelemetryTaxonomy.Actions.ReviewReply, TelemetryTaxonomy.Results.Success);
         }
         catch (GitHubAuthenticationException)
         {
+            TrackPullRequestAction(TelemetryTaxonomy.Actions.ReviewReply, TelemetryTaxonomy.Results.AuthError);
             _authService.SignOut();
         }
         catch (GitHubApiException ex)
         {
+            TrackPullRequestAction(TelemetryTaxonomy.Actions.ReviewReply, TelemetryTaxonomy.Results.Error);
+            DisableRejectedCapability(ex, "comment", currentPullRequest.Number);
             if (!IsSelectedPullRequest(currentPullRequest))
             {
                 return;
             }
 
-            StatusText = ex.Message;
+            StatusText = UserFacingError.For(ex, UserFacingErrorKind.Action, "pull-requests");
         }
         catch (HttpRequestException)
         {
+            TrackPullRequestAction(TelemetryTaxonomy.Actions.ReviewReply, TelemetryTaxonomy.Results.Error);
             if (!IsSelectedPullRequest(currentPullRequest))
             {
                 return;
@@ -1038,13 +1575,120 @@ public sealed partial class RepoPullRequestPageViewModel : ViewModelBase
         }
     }
 
+    private void ClearSubmittedPullRequestDraft(int pullRequestNumber)
+    {
+        if (_pendingPullRequestSelectionState?.PullRequestNumber == pullRequestNumber)
+        {
+            _pendingPullRequestSelectionState = _pendingPullRequestSelectionState with { CommentDraft = string.Empty };
+        }
+
+        if (SelectedPullRequest?.Number == pullRequestNumber)
+        {
+            PullRequestCommentDraft = string.Empty;
+        }
+    }
+
+    public async Task SubmitPullRequestReviewAsync(
+        PullRequestReviewDecision decision,
+        string? body)
+    {
+        if (_navArg is null ||
+            SelectedPullRequest is null ||
+            !CanSubmitReview(decision) ||
+            IsPullRequestReviewSubmissionInProgress ||
+            !TryGetActiveToken(out string token))
+        {
+            return;
+        }
+
+        PullRequestReviewSubmission submission = new(decision, body?.Trim());
+        try
+        {
+            PullRequestReviewSubmissionPolicy.Validate(submission);
+        }
+        catch (ArgumentException ex)
+        {
+            StatusText = UserFacingError.For(ex, UserFacingErrorKind.Action, "pull-requests");
+            return;
+        }
+
+        GitHubPullRequest currentPullRequest = SelectedPullRequest;
+        string action = decision switch
+        {
+            PullRequestReviewDecision.Approve => TelemetryTaxonomy.Actions.ReviewApprove,
+            PullRequestReviewDecision.RequestChanges => TelemetryTaxonomy.Actions.ReviewRequestChanges,
+            _ => TelemetryTaxonomy.Actions.ReviewComment
+        };
+
+        try
+        {
+            IsPullRequestReviewSubmissionInProgress = true;
+            StatusText = FormatString(
+                "RepoPullRequest.SubmitReviewStatus",
+                "Submitting review for pull request #{0}...",
+                currentPullRequest.Number);
+            await _gitHubClientService.CreatePullRequestReviewAsync(
+                token,
+                _navArg.Repo.Owner.Login,
+                _navArg.Repo.Name,
+                currentPullRequest.Number,
+                submission);
+
+            bool refreshed = await TryRefreshPullRequestSelectionAfterMutationAsync(
+                currentPullRequest,
+                token,
+                GetString(
+                    "RepoPullRequest.ReviewRefreshError",
+                    "Review submitted, but JitHub could not refresh pull request details."));
+            if (refreshed && IsSelectedPullRequest(currentPullRequest))
+            {
+                SetSection(PullRequestWorkspaceSection.Reviews);
+                StatusText = FormatString(
+                    "RepoPullRequest.ReviewSubmittedStatus",
+                    "Review submitted for pull request #{0}.",
+                    currentPullRequest.Number);
+            }
+
+            TrackPullRequestAction(action, TelemetryTaxonomy.Results.Success);
+        }
+        catch (GitHubAuthenticationException)
+        {
+            TrackPullRequestAction(action, TelemetryTaxonomy.Results.AuthError);
+            _authService.SignOut();
+        }
+        catch (GitHubApiException ex)
+        {
+            TrackPullRequestAction(action, TelemetryTaxonomy.Results.Error);
+            DisableRejectedCapability(ex, "review", currentPullRequest.Number);
+            if (IsSelectedPullRequest(currentPullRequest))
+            {
+                StatusText = UserFacingError.For(ex, UserFacingErrorKind.Action, "pull-requests");
+            }
+        }
+        catch (HttpRequestException)
+        {
+            TrackPullRequestAction(action, TelemetryTaxonomy.Results.Error);
+            if (IsSelectedPullRequest(currentPullRequest))
+            {
+                StatusText = GetString(
+                    "RepoPullRequest.ReviewNetworkError",
+                    "JitHub could not reach GitHub to submit this review.");
+            }
+        }
+        finally
+        {
+            IsPullRequestReviewSubmissionInProgress = false;
+        }
+    }
+
     public async Task MergeSelectedPullRequestAsync(
         string mergeMethod,
         string operationTitle,
         string? commitTitle,
         string? commitMessage)
     {
-        if (_navArg is null || SelectedPullRequest is null || !ArePullRequestActionsEnabled || !IsMergeEnabled || !TryGetActiveToken(out string token))
+        if (_navArg is null || SelectedPullRequest is null || !IsMergeEnabled ||
+            !IsMergeMethodAllowed(mergeMethod) || !TryGetActiveToken(out string token))
         {
             return;
         }
@@ -1064,11 +1708,15 @@ public sealed partial class RepoPullRequestPageViewModel : ViewModelBase
                 commitMessage);
             if (!mergeResult.Merged)
             {
+                TrackPullRequestAction(TelemetryTaxonomy.Actions.Merge, TelemetryTaxonomy.Results.Rejected);
                 if (IsSelectedPullRequest(currentPullRequest))
                 {
                     StatusText = string.IsNullOrWhiteSpace(mergeResult.Message)
                         ? GetString("RepoPullRequest.MergeDidNotCompleteStatus", "GitHub did not merge this pull request.")
-                        : mergeResult.Message;
+                        : UserFacingError.ForInternalMessage(
+                            mergeResult.Message,
+                            UserFacingErrorKind.Action,
+                            "pull-request-merge");
                 }
 
                 return;
@@ -1076,31 +1724,37 @@ public sealed partial class RepoPullRequestPageViewModel : ViewModelBase
 
             if (IsSelectedPullRequest(currentPullRequest))
             {
-                StatusText = string.IsNullOrWhiteSpace(mergeResult.Message)
-                    ? FormatString("RepoPullRequest.MergedStatus", "Merged pull request #{0}.", currentPullRequest.Number)
-                    : mergeResult.Message;
+                StatusText = FormatString(
+                    "RepoPullRequest.MergedStatus",
+                    "Merged pull request #{0}.",
+                    currentPullRequest.Number);
             }
 
             await TryRefreshPullRequestSelectionAfterMutationAsync(
                 currentPullRequest,
                 token,
                 GetString("RepoPullRequest.MergeRefreshError", "Pull request merged, but JitHub could not refresh pull request details."));
+            TrackPullRequestAction(TelemetryTaxonomy.Actions.Merge, TelemetryTaxonomy.Results.Success);
         }
         catch (GitHubAuthenticationException)
         {
+            TrackPullRequestAction(TelemetryTaxonomy.Actions.Merge, TelemetryTaxonomy.Results.AuthError);
             _authService.SignOut();
         }
         catch (GitHubApiException ex)
         {
+            TrackPullRequestAction(TelemetryTaxonomy.Actions.Merge, TelemetryTaxonomy.Results.Error);
+            DisableRejectedCapability(ex, "merge", currentPullRequest.Number);
             if (!IsSelectedPullRequest(currentPullRequest))
             {
                 return;
             }
 
-            StatusText = ex.Message;
+            StatusText = UserFacingError.For(ex, UserFacingErrorKind.Action, "pull-requests");
         }
         catch (HttpRequestException)
         {
+            TrackPullRequestAction(TelemetryTaxonomy.Actions.Merge, TelemetryTaxonomy.Results.Error);
             if (!IsSelectedPullRequest(currentPullRequest))
             {
                 return;
@@ -1133,13 +1787,23 @@ public sealed partial class RepoPullRequestPageViewModel : ViewModelBase
 
         _detailRequestId++;
         CancelPendingSelectionLoad();
+        CancelPullRequestDiffBuild();
         if (value is null)
         {
+            _selectionDwellPrefetch?.Dispose();
+            _selectionDwellPrefetch = null;
+            _neighborPrefetch?.Dispose();
+            _neighborPrefetch = null;
             _pendingPullRequestSelectionState = null;
-            _ = ShowPullRequestAsync(null);
+            BackgroundTaskObserver.Run(
+                () => ShowPullRequestAsync(null),
+                "pull_requests",
+                _telemetryService);
+            NotifySelectedPullRequestPropertiesChanged();
             return;
         }
 
+        _capabilityDenials.TrackPullRequest(value.Number);
         int previousPullRequestNumber = _lastFocusedPullRequestNumber;
         RemoveClearedPinnedPullRequestFromVisibleList(clearedPinnedPullRequestNumber);
         if (TryRestorePendingPullRequestSelectionState(value.Number))
@@ -1155,51 +1819,150 @@ public sealed partial class RepoPullRequestPageViewModel : ViewModelBase
 
         _lastFocusedPullRequestNumber = value.Number;
         PreparePullRequestForSelectionLoad(value);
+        TrackEvent(
+            "pull_requests.selected",
+            new Dictionary<string, string?>
+            {
+                ["page"] = "repo",
+                ["source"] = TelemetryTaxonomy.Sources.List
+            });
+        ScheduleSelectedPullRequestPrefetch(value, PullRequestPrefetchReason.Dwell, TimeSpan.FromSeconds(5));
+        ScheduleNeighborPrefetch(value);
+        NotifySelectedPullRequestHeaderPropertiesChanged();
         CancellationTokenSource cancellationTokenSource = new();
         _selectionLoadCancellationTokenSource = cancellationTokenSource;
-        _ = ShowPullRequestAfterSelectionDelayAsync(value, cancellationTokenSource.Token);
+        BackgroundTaskObserver.Run(
+            () => ShowPullRequestAfterSelectionDelayAsync(value, cancellationTokenSource.Token),
+            "pull_requests",
+            _telemetryService);
     }
 
-    private async Task LoadPullRequestsAsync(int preferredPullRequestNumber = 0, bool preservePreferredPullRequestOutsideQuery = true)
+    partial void OnIsPullRequestReviewSubmissionInProgressChanged(bool value) =>
+        OnPropertyChanged(nameof(CanSubmitPullRequestReview));
+
+    partial void OnSelectedSectionChanged(PullRequestWorkspaceSection value)
     {
-        if (_navArg is null || !TryGetActiveToken(out string token))
+        OnPropertyChanged(nameof(IsConversationSectionVisible));
+        OnPropertyChanged(nameof(IsFilesSectionVisible));
+        OnPropertyChanged(nameof(IsScrollableContentSectionVisible));
+        OnPropertyChanged(nameof(IsCommitsSectionVisible));
+        OnPropertyChanged(nameof(IsReviewsSectionVisible));
+        OnPropertyChanged(nameof(IsTimelineSectionVisible));
+        TrackEvent(
+            "pull_requests.section.opened",
+            new Dictionary<string, string?>
+            {
+                ["page"] = "repo",
+                ["section"] = TelemetryTaxonomy.EnumValue(value)
+            });
+    }
+
+    partial void OnPullRequestDiffDocumentChanged(CommitDiffDocument value) => QueuePullRequestDiffProjectionUpdate(false);
+
+    partial void OnPullRequestFileFilterTextChanged(string value) => QueuePullRequestDiffProjectionUpdate(true);
+
+    partial void OnPullRequestDiffSearchTextChanged(string value) => QueuePullRequestDiffProjectionUpdate(true);
+
+    partial void OnPullRequestDiffRowProjectionChanged(CommitDiffRowProjection value)
+    {
+        OnPropertyChanged(nameof(PullRequestDiffSearchMatchCountText));
+        OnPropertyChanged(nameof(HasPullRequestDiffSearchMatches));
+        SelectedPullRequestDiffSearchMatchIndex = value.MatchCount == 0 ? -1 : 0;
+    }
+
+    partial void OnPullRequestListScopeNoticeChanged(string value) =>
+        OnPropertyChanged(nameof(HasPullRequestListScopeNotice));
+
+    public void MovePullRequestDiffSearchMatch(int direction)
+    {
+        int count = PullRequestDiffRowProjection.MatchCount;
+        if (count == 0)
         {
+            SelectedPullRequestDiffSearchMatchIndex = -1;
+            return;
+        }
+
+        int current = SelectedPullRequestDiffSearchMatchIndex < 0 ? 0 : SelectedPullRequestDiffSearchMatchIndex;
+        SelectedPullRequestDiffSearchMatchIndex = (current + direction + count) % count;
+    }
+
+    private async Task LoadPullRequestsAsync(
+        int preferredPullRequestNumber = 0,
+        bool preservePreferredPullRequestOutsideQuery = true,
+        bool preserveCurrentDetailDuringLoad = false,
+        bool deferSelectedDetails = false)
+    {
+        if (_navArg is null)
+        {
+            return;
+        }
+
+        Stopwatch listDuration = Stopwatch.StartNew();
+        if (!TryGetActiveToken(out string token))
+        {
+            TrackPullRequestListOutcome(
+                TelemetryTaxonomy.Results.AuthError,
+                listDuration.Elapsed,
+                errorKind: "authentication");
             return;
         }
 
         PullRequestPageNavArg navigationArgs = _navArg;
 
         int requestId = ++_listRequestId;
+        IsPullRequestListLoading = true;
         bool previousArePullRequestActionsEnabled = ArePullRequestActionsEnabled;
         bool previousIsTogglePullRequestStateEnabled = IsTogglePullRequestStateEnabled;
         bool previousIsPullRequestCommentEnabled = IsPullRequestCommentEnabled;
         bool previousIsMergeEnabled = IsMergeEnabled;
         string? preferredPullRequestLoadFailureStatus = null;
         StatusText = LoadingStatusText;
-        CancelPendingSelectionLoad();
-        _pendingPullRequestSelectionState = null;
-        _detailRequestId++;
-        ArePullRequestActionsEnabled = false;
-        IsTogglePullRequestStateEnabled = false;
-        IsPullRequestCommentEnabled = false;
-        IsMergeEnabled = false;
+        if (!preserveCurrentDetailDuringLoad)
+        {
+            CancelPendingSelectionLoad();
+            _pendingPullRequestSelectionState = null;
+            _detailRequestId++;
+            ArePullRequestActionsEnabled = false;
+            IsTogglePullRequestStateEnabled = false;
+            IsPullRequestCommentEnabled = false;
+            IsMergeEnabled = false;
+        }
 
         try
         {
-            IReadOnlyList<GitHubPullRequest> pullRequests = await _gitHubClientService.GetPullRequestsAsync(
+            int pullRequestNumberToSelect = preferredPullRequestNumber > 0 ? preferredPullRequestNumber : navigationArgs.PullRequestId;
+            PullRequestPagedSection<GitHubPullRequest> pullRequestResult = await _pullRequestQueryService.GetAllPullRequestsAsync(
                 token,
+                GetActiveUserPartition(token),
                 navigationArgs.Repo.Owner.Login,
                 navigationArgs.Repo.Name,
-                50,
-                queryOptions: _pullRequestQuery);
+                _pullRequestQuery,
+                progress: progress =>
+                {
+                    if (requestId != _listRequestId)
+                    {
+                        return;
+                    }
 
-            if (requestId != _listRequestId)
+                    ApplyPullRequestListProjection(progress.Items, progress.Completeness);
+                    _pullRequestListState = progress.State;
+                    UpdatePullRequestListScopeNotice();
+                    BackgroundTaskObserver.Run(
+                        () => ApplyPullRequestListFilterAsync(
+                            pullRequestNumberToSelect,
+                            refreshSelectionDetails: false,
+                            suppressDetailRefresh: true),
+                        "pull_requests",
+                        _telemetryService);
+                });
+            IReadOnlyList<GitHubPullRequest> pullRequests = pullRequestResult.Items;
+
+            if (CompleteSupersededPullRequestListRead(requestId, listDuration.Elapsed))
             {
                 return;
             }
 
             List<GitHubPullRequest> loadedPullRequests = [.. pullRequests];
-            int pullRequestNumberToSelect = preferredPullRequestNumber > 0 ? preferredPullRequestNumber : navigationArgs.PullRequestId;
             int pinnedPullRequestNumber = 0;
             if (pullRequestNumberToSelect > 0)
             {
@@ -1208,11 +1971,13 @@ public sealed partial class RepoPullRequestPageViewModel : ViewModelBase
                 {
                     try
                     {
-                        selectedPullRequest = await _gitHubClientService.GetPullRequestAsync(
+                        CachedResult<GitHubPullRequest> selectedResult = await _pullRequestQueryService.GetPullRequestAsync(
                             token,
+                            GetActiveUserPartition(token),
                             navigationArgs.Repo.Owner.Login,
                             navigationArgs.Repo.Name,
                             pullRequestNumberToSelect);
+                        selectedPullRequest = selectedResult.Value;
                     }
                     catch (GitHubAuthenticationException)
                     {
@@ -1231,7 +1996,7 @@ public sealed partial class RepoPullRequestPageViewModel : ViewModelBase
                         preferredPullRequestLoadFailureStatus = GetString("RepoPullRequest.PreferredLoadNetworkError", "JitHub could not reach GitHub to load the requested pull request.");
                     }
 
-                    if (requestId != _listRequestId)
+                    if (CompleteSupersededPullRequestListRead(requestId, listDuration.Elapsed))
                     {
                         return;
                     }
@@ -1253,15 +2018,32 @@ public sealed partial class RepoPullRequestPageViewModel : ViewModelBase
                 }
             }
 
-            if (requestId != _listRequestId)
+            if (CompleteSupersededPullRequestListRead(requestId, listDuration.Elapsed))
             {
                 return;
             }
 
             _pinnedPullRequestNumber = pinnedPullRequestNumber;
-            _loadedPullRequests.Clear();
-            _loadedPullRequests.AddRange(loadedPullRequests);
-            await ApplyPullRequestListFilterAsync(pullRequestNumberToSelect);
+            ApplyPullRequestListProjection(loadedPullRequests, pullRequestResult.Completeness);
+            _pullRequestListState = pullRequestResult.State;
+            _lastSuccessfulListLoadAt = DateTimeOffset.UtcNow;
+            UpdatePullRequestListScopeNotice();
+            await ApplyPullRequestListFilterAsync(
+                pullRequestNumberToSelect,
+                refreshSelectionDetails: true,
+                deferDetailLoad: deferSelectedDetails);
+            if (CompleteSupersededPullRequestListRead(requestId, listDuration.Elapsed))
+            {
+                return;
+            }
+
+            PullRequestTelemetry.TrackListLoaded(
+                _telemetryService,
+                "repo",
+                PullRequestSectionProjectionPolicy.CreateListTelemetryResult(pullRequestResult.Completeness),
+                listDuration.Elapsed,
+                pullRequestResult.State.CacheState,
+                loadedPullRequests.Count);
             if (!string.IsNullOrWhiteSpace(preferredPullRequestLoadFailureStatus) && requestId == _listRequestId)
             {
                 StatusText = preferredPullRequestLoadFailureStatus;
@@ -1269,7 +2051,7 @@ public sealed partial class RepoPullRequestPageViewModel : ViewModelBase
         }
         catch (GitHubAuthenticationException)
         {
-            if (requestId != _listRequestId)
+            if (CompleteSupersededPullRequestListRead(requestId, listDuration.Elapsed))
             {
                 return;
             }
@@ -1278,11 +2060,15 @@ public sealed partial class RepoPullRequestPageViewModel : ViewModelBase
             IsTogglePullRequestStateEnabled = previousIsTogglePullRequestStateEnabled;
             IsPullRequestCommentEnabled = previousIsPullRequestCommentEnabled;
             IsMergeEnabled = previousIsMergeEnabled;
+            TrackPullRequestListOutcome(
+                TelemetryTaxonomy.Results.AuthError,
+                listDuration.Elapsed,
+                errorKind: "authentication");
             _authService.SignOut();
         }
         catch (GitHubApiException ex)
         {
-            if (requestId != _listRequestId)
+            if (CompleteSupersededPullRequestListRead(requestId, listDuration.Elapsed))
             {
                 return;
             }
@@ -1291,11 +2077,15 @@ public sealed partial class RepoPullRequestPageViewModel : ViewModelBase
             IsTogglePullRequestStateEnabled = previousIsTogglePullRequestStateEnabled;
             IsPullRequestCommentEnabled = previousIsPullRequestCommentEnabled;
             IsMergeEnabled = previousIsMergeEnabled;
-            StatusText = ex.Message;
+            StatusText = UserFacingError.For(ex, UserFacingErrorKind.Action, "pull-requests");
+            TrackPullRequestListOutcome(
+                TelemetryTaxonomy.Results.Error,
+                listDuration.Elapsed,
+                errorKind: "api");
         }
         catch (HttpRequestException)
         {
-            if (requestId != _listRequestId)
+            if (CompleteSupersededPullRequestListRead(requestId, listDuration.Elapsed))
             {
                 return;
             }
@@ -1305,6 +2095,21 @@ public sealed partial class RepoPullRequestPageViewModel : ViewModelBase
             IsPullRequestCommentEnabled = previousIsPullRequestCommentEnabled;
             IsMergeEnabled = previousIsMergeEnabled;
             StatusText = GetString("RepoPullRequest.LoadNetworkError", "JitHub could not reach GitHub to load pull requests.");
+            TrackPullRequestListOutcome(
+                TelemetryTaxonomy.Results.Error,
+                listDuration.Elapsed,
+                errorKind: "network");
+        }
+        catch (OperationCanceledException)
+        {
+            TrackPullRequestListOutcome(TelemetryTaxonomy.Results.Cancelled, listDuration.Elapsed);
+        }
+        finally
+        {
+            if (requestId == _listRequestId)
+            {
+                IsPullRequestListLoading = false;
+            }
         }
     }
 
@@ -1335,6 +2140,7 @@ public sealed partial class RepoPullRequestPageViewModel : ViewModelBase
         }
 
         int requestId = ++_detailRequestId;
+        CancellationTokenSource diffBuildCancellationTokenSource = BeginPullRequestDiffBuild();
 
         try
         {
@@ -1343,55 +2149,79 @@ public sealed partial class RepoPullRequestPageViewModel : ViewModelBase
                 StatusText = FormatString("RepoPullRequest.LoadDetailStatus", "Loading pull request #{0}...", pullRequest.Number);
             }
 
-            Task<GitHubPullRequest> pullRequestTask = _gitHubClientService.GetPullRequestAsync(
+            string accountPartition = GetActiveUserPartition(token);
+            PullRequestDetailAggregate? aggregate = await _pullRequestQueryService.GetPullRequestDetailAsync(
                 token,
+                accountPartition,
                 _navArg.Repo.Owner.Login,
                 _navArg.Repo.Name,
                 pullRequest.Number);
-            Task<GitHubIssue> issueTask = _gitHubClientService.GetIssueAsync(
-                token,
-                _navArg.Repo.Owner.Login,
-                _navArg.Repo.Name,
-                pullRequest.Number);
-            Task<IReadOnlyList<GitHubIssueComment>> commentsTask = _gitHubClientService.GetIssueCommentsAsync(
-                token,
-                _navArg.Repo.Owner.Login,
-                _navArg.Repo.Name,
-                pullRequest.Number);
-            Task<IReadOnlyList<GitHubIssueEvent>> eventsTask = _gitHubClientService.GetIssueEventsAsync(
-                token,
-                _navArg.Repo.Owner.Login,
-                _navArg.Repo.Name,
-                pullRequest.Number);
-            Task<IReadOnlyList<GitHubPullRequestReview>> reviewsTask = _gitHubClientService.GetPullRequestReviewsAsync(
-                token,
-                _navArg.Repo.Owner.Login,
-                _navArg.Repo.Name,
-                pullRequest.Number);
-            Task<IReadOnlyList<GitHubPullRequestReviewComment>> reviewCommentsTask = _gitHubClientService.GetPullRequestReviewCommentsAsync(
-                token,
-                _navArg.Repo.Owner.Login,
-                _navArg.Repo.Name,
-                pullRequest.Number);
-            Task<IReadOnlyList<GitHubCommit>> commitsTask = _gitHubClientService.GetPullRequestCommitsAsync(
-                token,
-                _navArg.Repo.Owner.Login,
-                _navArg.Repo.Name,
-                pullRequest.Number);
-            await Task.WhenAll(pullRequestTask, issueTask, commentsTask, eventsTask, reviewsTask, reviewCommentsTask, commitsTask);
+            if (aggregate is null)
+            {
+                if (!preserveStatusText)
+                {
+                    StatusText = GetString("RepoPullRequest.LoadDetailNetworkError", "JitHub could not reach GitHub to load pull request details.");
+                }
 
-            GitHubPullRequest latestPullRequest = await pullRequestTask;
-            GitHubIssue latestIssue = await issueTask;
-            IReadOnlyList<GitHubIssueComment> comments = await commentsTask;
-            IReadOnlyList<GitHubIssueEvent> timelineEvents = await eventsTask;
-            IReadOnlyList<GitHubPullRequestReview> reviews = await reviewsTask;
-            IReadOnlyList<GitHubPullRequestReviewComment> reviewComments = await reviewCommentsTask;
-            IReadOnlyList<GitHubCommit> commits = await commitsTask;
+                return;
+            }
 
             if (requestId != _detailRequestId)
             {
                 return;
             }
+
+            _pullRequestNavigationCache.TryGet(
+                accountPartition,
+                _navArg.Repo.Owner.Login,
+                _navArg.Repo.Name,
+                pullRequest.Number,
+                out PullRequestNavigationSnapshot existingSnapshot);
+            bool canPreserveVisibleSections = _projectedPullRequestDetailNumber == pullRequest.Number;
+
+            GitHubPullRequest latestPullRequest = aggregate.PullRequest;
+            GitHubIssue? latestIssue = aggregate.IssueState.ErrorMessage is null
+                ? aggregate.Issue
+                : aggregate.Issue ?? existingSnapshot?.Issue ?? _selectedPullRequestIssue;
+            IReadOnlyList<GitHubIssueComment> comments = PullRequestSectionProjectionPolicy.ProjectSection(
+                aggregate.Comments,
+                (IReadOnlyList<GitHubIssueComment>?)existingSnapshot?.Comments
+                    ?? (canPreserveVisibleSections ? PullRequestComments : []),
+                aggregate.CommentsState,
+                static comment => comment.Id.ToString(CultureInfo.InvariantCulture));
+            IReadOnlyList<GitHubIssueEvent> timelineEvents = PullRequestSectionProjectionPolicy.ProjectSection(
+                aggregate.TimelineEvents,
+                (IReadOnlyList<GitHubIssueEvent>?)existingSnapshot?.TimelineEvents
+                    ?? (canPreserveVisibleSections ? PullRequestTimelineEvents : []),
+                aggregate.TimelineState,
+                static timelineEvent => timelineEvent.Id.ToString(CultureInfo.InvariantCulture));
+            IReadOnlyList<GitHubPullRequestReview> reviews = PullRequestSectionProjectionPolicy.ProjectSection(
+                aggregate.Reviews,
+                existingSnapshot?.Reviews ?? [],
+                aggregate.ReviewsState,
+                static (review, ordinal) => review.Id > 0
+                    ? $"id:{review.Id.ToString(CultureInfo.InvariantCulture)}"
+                    : !string.IsNullOrWhiteSpace(review.NodeId)
+                        ? $"node:{review.NodeId}"
+                        : $"identityless:{ordinal.ToString(CultureInfo.InvariantCulture)}");
+            IReadOnlyList<GitHubPullRequestReviewComment> reviewComments = PullRequestSectionProjectionPolicy.ProjectSection(
+                aggregate.ReviewComments,
+                existingSnapshot?.ReviewComments ?? [],
+                aggregate.ReviewCommentsState,
+                static (comment, ordinal) => comment.Id > 0
+                    ? $"id:{comment.Id.ToString(CultureInfo.InvariantCulture)}"
+                    : !string.IsNullOrWhiteSpace(comment.NodeId)
+                        ? $"node:{comment.NodeId}"
+                        : $"identityless:{ordinal.ToString(CultureInfo.InvariantCulture)}");
+            IReadOnlyList<GitHubCommit> commits = PullRequestSectionProjectionPolicy.ProjectSection(
+                aggregate.Commits,
+                (IReadOnlyList<GitHubCommit>?)existingSnapshot?.Commits
+                    ?? (canPreserveVisibleSections ? PullRequestCommits : []),
+                aggregate.CommitsState,
+                static commit => commit.Sha);
+            Task<CommitDiffDocument> diffBuildTask = CommitDiffParser.ParseAsync(
+                aggregate.ChangedFiles,
+                diffBuildCancellationTokenSource.Token);
 
             ReplacePullRequestInCollection(latestPullRequest);
             _selectedPullRequestIssue = latestIssue;
@@ -1403,42 +2233,60 @@ public sealed partial class RepoPullRequestPageViewModel : ViewModelBase
                 preservedReplyDrafts = CaptureReviewReplyDrafts();
             }
 
-            PullRequestComments.Clear();
-            PullRequestCommits.Clear();
-            PullRequestReviews.Clear();
-            PullRequestTimelineEvents.Clear();
+            ConfigurePullRequestComments(comments);
+            ReplaceCollectionByKey(
+                PullRequestComments,
+                comments,
+                static comment => comment.Id.ToString(CultureInfo.InvariantCulture));
 
-            foreach (GitHubIssueComment comment in comments)
-            {
-                PullRequestComments.Add(comment);
-            }
-
-            IReadOnlyList<PullRequestReviewItem> reviewItems = BuildPullRequestReviewItems(reviews, reviewComments);
+            IReadOnlyList<PullRequestReviewItem> incomingReviewItems = BuildPullRequestReviewItems(reviews, reviewComments);
+            IReadOnlyList<PullRequestReviewItem> reviewItems = PullRequestSectionProjectionPolicy.ProjectSection(
+                incomingReviewItems,
+                canPreserveVisibleSections ? PullRequestReviews : [],
+                static review => review.AutomationId,
+                aggregate.ReviewsState,
+                aggregate.ReviewCommentsState);
             RestoreReviewReplyDrafts(reviewItems, preservedReplyDrafts);
             ApplyReviewReplyInProgressState(reviewItems);
-            foreach (PullRequestReviewItem reviewItem in reviewItems)
-            {
-                PullRequestReviews.Add(reviewItem);
-            }
-
-            foreach (GitHubIssueEvent timelineEvent in timelineEvents.OrderBy(item => item.CreatedAt))
-            {
-                PullRequestTimelineEvents.Add(timelineEvent);
-            }
-
-            foreach (GitHubCommit commit in commits)
-            {
-                PullRequestCommits.Add(commit);
-            }
+            ReplaceCollectionByKey(
+                PullRequestReviews,
+                reviewItems,
+                static review => review.AutomationId);
+            ReplaceCollectionByKey(
+                PullRequestTimelineEvents,
+                timelineEvents.OrderBy(item => item.CreatedAt),
+                static timelineEvent => timelineEvent.Id.ToString(CultureInfo.InvariantCulture));
+            ReplaceCollectionByKey(
+                PullRequestCommits,
+                commits,
+                static commit => commit.Sha);
 
             IsPullRequestCommentsEmptyVisible = PullRequestComments.Count == 0;
             IsPullRequestCommitsEmptyVisible = PullRequestCommits.Count == 0;
             IsPullRequestReviewsEmptyVisible = PullRequestReviews.Count == 0;
             IsPullRequestTimelineEmptyVisible = PullRequestTimelineEvents.Count == 0;
             PullRequestCommentDraft = preserveCurrentState ? preservedCommentDraft : string.Empty;
-            StatusText = preserveStatusText
-                ? preservedStatusText
-                : FormatString("RepoPullRequest.LoadedStatus", "Pull request #{0} loaded.", latestPullRequest.Number);
+            CommitDiffDocument incomingDiffDocument = await diffBuildTask;
+            if (requestId != _detailRequestId)
+            {
+                return;
+            }
+
+            PullRequestDiffDocument = PullRequestSectionProjectionPolicy.ProjectDiffDocument(
+                incomingDiffDocument,
+                canPreserveVisibleSections ? PullRequestDiffDocument : CommitDiffDocument.Empty,
+                aggregate.ChangedFilesState);
+            _projectedPullRequestDetailNumber = pullRequest.Number;
+            StoreNavigationSnapshot(latestPullRequest, latestIssue, comments, commits, reviews, reviewComments, timelineEvents, "selection");
+            string sectionErrorText = PullRequestSectionProjectionPolicy.CreateErrorText(aggregate);
+            StatusText = !string.IsNullOrWhiteSpace(sectionErrorText)
+                ? sectionErrorText
+                : preserveStatusText
+                    ? preservedStatusText
+                    : FormatString("RepoPullRequest.LoadedStatus", "Pull request #{0} loaded.", latestPullRequest.Number);
+        }
+        catch (OperationCanceledException) when (diffBuildCancellationTokenSource.IsCancellationRequested)
+        {
         }
         catch (GitHubAuthenticationException)
         {
@@ -1458,7 +2306,7 @@ public sealed partial class RepoPullRequestPageViewModel : ViewModelBase
 
             if (!preserveStatusText)
             {
-                StatusText = ex.Message;
+                StatusText = UserFacingError.For(ex, UserFacingErrorKind.Action, "pull-requests");
             }
         }
         catch (HttpRequestException)
@@ -1473,14 +2321,18 @@ public sealed partial class RepoPullRequestPageViewModel : ViewModelBase
                 StatusText = GetString("RepoPullRequest.LoadDetailNetworkError", "JitHub could not reach GitHub to load pull request details.");
             }
         }
+        finally
+        {
+            Interlocked.CompareExchange(
+                ref _pullRequestDiffBuildCancellationTokenSource,
+                null,
+                diffBuildCancellationTokenSource);
+            diffBuildCancellationTokenSource.Dispose();
+        }
     }
 
     private void PopulatePullRequest(GitHubPullRequest pullRequest)
     {
-        ArePullRequestActionsEnabled = true;
-        IsTogglePullRequestStateEnabled = CanTogglePullRequestState(pullRequest);
-        UpdatePullRequestCommentEnabledState();
-        IsMergeEnabled = CanMergePullRequest(pullRequest);
         PullRequestTitleText = FormatString("RepoPullRequest.DetailTitleFormat", "#{0} {1}", pullRequest.Number, pullRequest.Title);
         PullRequestMetaText = FormatString(
             "RepoPullRequest.DetailMetaFormat",
@@ -1503,16 +2355,37 @@ public sealed partial class RepoPullRequestPageViewModel : ViewModelBase
             : pullRequest.MergeableState is null
                 ? GetString("RepoPullRequest.MergeablePendingStatus", "GitHub is still calculating mergeability.")
                 : FormatString("RepoPullRequest.MergeableStateFormat", "Merge status: {0}.", pullRequest.MergeableState);
+        ApplyPullRequestCapabilities(pullRequest);
+        UpdatePullRequestCommentEnabledState();
+        ReplaceCollectionByKey(
+            RequestedReviewers,
+            pullRequest.RequestedReviewers,
+            static reviewer => reviewer.Login);
+        ApplyIssueInspectorMetadata(_selectedPullRequestIssue);
+        NotifySelectedPullRequestPropertiesChanged();
     }
 
     private void ResetPullRequestDetails()
     {
+        CancelPullRequestDiffBuild();
+        _projectedPullRequestDetailNumber = 0;
         _detailRequestId++;
         _selectedPullRequestIssue = null;
         ArePullRequestActionsEnabled = false;
         IsTogglePullRequestStateEnabled = false;
         IsMergeEnabled = false;
         IsPullRequestCommentEnabled = false;
+        CanEditPullRequest = false;
+        CanManagePullRequestMetadata = false;
+        CanReactToPullRequest = false;
+        CanSubmitReviewComment = false;
+        CanApprovePullRequest = false;
+        CanRequestPullRequestChanges = false;
+        OnPropertyChanged(nameof(CanSubmitPullRequestReview));
+        CanMergeWithMergeCommit = false;
+        CanMergeWithSquash = false;
+        CanMergeWithRebase = false;
+        _canCommentOnPullRequest = false;
         PullRequestTitleText = GetString("RepoPullRequest.SelectTitle", "Select a pull request");
         PullRequestMetaText = GetString("RepoPullRequest.SelectSubtitle", "Choose a pull request to inspect its details.");
         PullRequestMetadataText = string.Empty;
@@ -1520,15 +2393,23 @@ public sealed partial class RepoPullRequestPageViewModel : ViewModelBase
         MergeStatusText = GetString("RepoPullRequest.MergeDetailsPlaceholder", "Merge details will appear here.");
         PullRequestBodyText = string.Empty;
         PullRequestCommentDraft = string.Empty;
+        PullRequestDiffDocument = CommitDiffDocument.Empty;
+        PullRequestDiffRowProjection = CommitDiffRowProjection.Empty;
+        PullRequestFileFilterText = string.Empty;
+        PullRequestDiffSearchText = string.Empty;
         PullRequestComments.Clear();
         PullRequestCommits.Clear();
         PullRequestReviews.Clear();
         PullRequestTimelineEvents.Clear();
+        SelectedLabels.Clear();
+        SelectedAssignees.Clear();
+        RequestedReviewers.Clear();
         IsPullRequestCommentsEmptyVisible = false;
         IsPullRequestCommitsEmptyVisible = false;
         IsPullRequestReviewsEmptyVisible = false;
         IsPullRequestTimelineEmptyVisible = false;
         TogglePullRequestStateButtonText = GetString("RepoPullRequest.CloseButton", "Close pull request");
+        NotifySelectedPullRequestPropertiesChanged();
     }
 
     private void PreparePullRequestForSelectionLoad(GitHubPullRequest pullRequest)
@@ -1551,18 +2432,27 @@ public sealed partial class RepoPullRequestPageViewModel : ViewModelBase
         PullRequestMetadataText = FormatPullRequestMetadataSummary(null, pullRequest);
         PullRequestReactionsText = GetString("RepoPullRequest.ReactionsLoading", "Reactions: loading...");
         MergeStatusText = GetString("RepoPullRequest.MergeDetailsLoading", "Loading merge details...");
-        PullRequestBodyText = GetString("RepoPullRequest.BodyLoading", "Loading pull request details...");
+        PullRequestBodyText = string.IsNullOrWhiteSpace(pullRequest.Body)
+            ? GetString("RepoPullRequest.BodyLoading", "Loading pull request details...")
+            : pullRequest.Body;
         PullRequestCommentDraft = string.Empty;
         PullRequestComments.Clear();
         PullRequestCommits.Clear();
         PullRequestReviews.Clear();
         PullRequestTimelineEvents.Clear();
+        SelectedLabels.Clear();
+        SelectedAssignees.Clear();
+        ReplaceCollectionByKey(
+            RequestedReviewers,
+            pullRequest.RequestedReviewers,
+            static reviewer => reviewer.Login);
         IsPullRequestCommentsEmptyVisible = false;
         IsPullRequestCommitsEmptyVisible = false;
         IsPullRequestReviewsEmptyVisible = false;
         IsPullRequestTimelineEmptyVisible = false;
         TogglePullRequestStateButtonText = GetTogglePullRequestStateButtonText(pullRequest);
         StatusText = FormatString("RepoPullRequest.LoadDetailStatus", "Loading pull request #{0}...", pullRequest.Number);
+        NotifySelectedPullRequestPropertiesChanged();
     }
 
     private void CapturePullRequestDetailSnapshot(int pullRequestNumber)
@@ -1596,7 +2486,8 @@ public sealed partial class RepoPullRequestPageViewModel : ViewModelBase
             PullRequestComments.ToArray(),
             PullRequestCommits.ToArray(),
             PullRequestReviews.ToArray(),
-            PullRequestTimelineEvents.ToArray());
+            PullRequestTimelineEvents.ToArray(),
+            PullRequestDiffDocument);
     }
 
     private bool TryRestorePendingPullRequestSelectionState(int pullRequestNumber)
@@ -1627,37 +2518,43 @@ public sealed partial class RepoPullRequestPageViewModel : ViewModelBase
         IsTogglePullRequestStateEnabled = snapshot.IsToggleStateEnabled;
         IsMergeEnabled = snapshot.IsMergeEnabled;
         IsPullRequestCommentEnabled = snapshot.IsCommentEnabled;
-        PullRequestComments.Clear();
-        foreach (GitHubIssueComment comment in snapshot.Comments)
-        {
-            PullRequestComments.Add(comment);
-        }
-
-        PullRequestCommits.Clear();
-        foreach (GitHubCommit commit in snapshot.Commits)
-        {
-            PullRequestCommits.Add(commit);
-        }
-
-        PullRequestReviews.Clear();
-        foreach (PullRequestReviewItem review in snapshot.Reviews)
-        {
-            PullRequestReviews.Add(review);
-        }
-
-        PullRequestTimelineEvents.Clear();
-        foreach (GitHubIssueEvent timelineEvent in snapshot.TimelineEvents)
-        {
-            PullRequestTimelineEvents.Add(timelineEvent);
-        }
+        ConfigurePullRequestComments(snapshot.Comments);
+        ReplaceCollectionByKey(
+            PullRequestComments,
+            snapshot.Comments,
+            static comment => comment.Id.ToString(CultureInfo.InvariantCulture));
+        ReplaceCollectionByKey(
+            PullRequestCommits,
+            snapshot.Commits,
+            static commit => commit.Sha);
+        ReplaceCollectionByKey(
+            PullRequestReviews,
+            snapshot.Reviews,
+            static review => review.AutomationId);
+        ReplaceCollectionByKey(
+            PullRequestTimelineEvents,
+            snapshot.TimelineEvents,
+            static timelineEvent => timelineEvent.Id.ToString(CultureInfo.InvariantCulture));
 
         IsPullRequestCommentsEmptyVisible = snapshot.IsCommentsEmptyVisible;
         IsPullRequestCommitsEmptyVisible = snapshot.IsCommitsEmptyVisible;
         IsPullRequestReviewsEmptyVisible = snapshot.IsReviewsEmptyVisible;
         IsPullRequestTimelineEmptyVisible = snapshot.IsTimelineEmptyVisible;
+        PullRequestDiffDocument = snapshot.DiffDocument;
+        if (SelectedPullRequest is not null)
+        {
+            ApplyPullRequestCapabilities(SelectedPullRequest);
+            UpdatePullRequestCommentEnabledState();
+        }
+        ApplyIssueInspectorMetadata(_selectedPullRequestIssue);
+        NotifySelectedPullRequestPropertiesChanged();
     }
 
-    private async Task ApplyPullRequestListFilterAsync(int preferredPullRequestNumber, bool refreshSelectionDetails = true)
+    private async Task ApplyPullRequestListFilterAsync(
+        int preferredPullRequestNumber,
+        bool refreshSelectionDetails = true,
+        bool suppressDetailRefresh = false,
+        bool deferDetailLoad = false)
     {
         GitHubPullRequest? previousSelectedPullRequest = SelectedPullRequest;
         IEnumerable<GitHubPullRequest> filteredPullRequests = _loadedPullRequests.Where(
@@ -1683,6 +2580,11 @@ public sealed partial class RepoPullRequestPageViewModel : ViewModelBase
         bool preserveFocusedDetails = selectedPullRequest is null
             && visiblePullRequests.Count == 0
             && _lastFocusedPullRequestNumber > 0;
+        if (suppressDetailRefresh)
+        {
+            return;
+        }
+
         if (preserveFocusedDetails)
         {
             selectedPullRequest = _loadedPullRequests.FirstOrDefault(pullRequest => pullRequest.Number == _lastFocusedPullRequestNumber)
@@ -1703,11 +2605,10 @@ public sealed partial class RepoPullRequestPageViewModel : ViewModelBase
         _suppressSelectionChanged = true;
         try
         {
-            PullRequests.Clear();
-            foreach (GitHubPullRequest pullRequest in visiblePullRequests)
-            {
-                PullRequests.Add(pullRequest);
-            }
+            ReplaceCollectionByKey(
+                PullRequests,
+                visiblePullRequests,
+                static pullRequest => pullRequest.Number.ToString(CultureInfo.InvariantCulture));
 
             SelectedPullRequest = selectedPullRequest;
             if (selectedPullRequest is not null)
@@ -1729,7 +2630,15 @@ public sealed partial class RepoPullRequestPageViewModel : ViewModelBase
         }
         else if (refreshSelectionDetails || selectionChanged)
         {
-            await ShowPullRequestAsync(selectedPullRequest, preserveCurrentState: refreshSelectionDetails && !selectionChanged);
+            if (deferDetailLoad && selectedPullRequest is not null)
+            {
+                NotifySelectedPullRequestHeaderPropertiesChanged();
+                SchedulePullRequestDetailLoad(selectedPullRequest, InitialDetailLoadDelay);
+            }
+            else
+            {
+                await ShowPullRequestAsync(selectedPullRequest, preserveCurrentState: refreshSelectionDetails && !selectionChanged);
+            }
         }
     }
 
@@ -1761,14 +2670,24 @@ public sealed partial class RepoPullRequestPageViewModel : ViewModelBase
         }
 
         int requestId = _listRequestId;
-        GitHubPullRequest refreshedPullRequest;
+        PullRequestCapabilitySnapshot? snapshot;
         try
         {
-            refreshedPullRequest = await _gitHubClientService.GetPullRequestAsync(
-                token,
+            await _pullRequestQueryService.InvalidatePullRequestAsync(
+                GetActiveUserPartition(token),
                 _navArg.Repo.Owner.Login,
                 _navArg.Repo.Name,
                 pullRequest.Number);
+            snapshot = await _pullRequestQueryService.RefreshPullRequestCapabilitiesAsync(
+                token,
+                GetActiveUserPartition(token),
+                _navArg.Repo.Owner.Login,
+                _navArg.Repo.Name,
+                pullRequest.Number);
+            if (snapshot is null)
+            {
+                return false;
+            }
         }
         catch (GitHubAuthenticationException)
         {
@@ -1803,6 +2722,10 @@ public sealed partial class RepoPullRequestPageViewModel : ViewModelBase
             return false;
         }
 
+        GitHubPullRequest refreshedPullRequest = snapshot.PullRequest;
+        _capabilityRepository = snapshot.Repository;
+        _selectedPullRequestIssue = snapshot.Issue;
+        _capabilityDenials.ConfirmSuccessfulRefresh(refreshedPullRequest.Number);
         ReplacePullRequestInCollection(refreshedPullRequest);
         if (_loadedPullRequests.All(existingPullRequest => existingPullRequest.Number != refreshedPullRequest.Number)
             && MatchesPullRequestQuery(refreshedPullRequest))
@@ -1874,15 +2797,34 @@ public sealed partial class RepoPullRequestPageViewModel : ViewModelBase
         if (pullRequest is not null)
         {
             _lastFocusedPullRequestNumber = pullRequest.Number;
+            _capabilityDenials.TrackPullRequest(pullRequest.Number);
         }
         _suppressSelectionChanged = false;
+        NotifySelectedPullRequestPropertiesChanged();
     }
 
-    private async Task ShowPullRequestAfterSelectionDelayAsync(GitHubPullRequest pullRequest, CancellationToken cancellationToken)
+    private void SchedulePullRequestDetailLoad(GitHubPullRequest pullRequest, TimeSpan delay)
+    {
+        CancelPendingSelectionLoad();
+        CancellationTokenSource cancellationTokenSource = new();
+        _selectionLoadCancellationTokenSource = cancellationTokenSource;
+        BackgroundTaskObserver.Run(
+            () => ShowPullRequestAfterSelectionDelayAsync(
+                pullRequest,
+                cancellationTokenSource.Token,
+                delay),
+            "pull_requests",
+            _telemetryService);
+    }
+
+    private async Task ShowPullRequestAfterSelectionDelayAsync(
+        GitHubPullRequest pullRequest,
+        CancellationToken cancellationToken,
+        TimeSpan? delay = null)
     {
         try
         {
-            await Task.Delay(SelectionLoadDebounce, cancellationToken);
+            await Task.Delay(delay ?? SelectionLoadDebounce, cancellationToken);
         }
         catch (OperationCanceledException)
         {
@@ -1895,7 +2837,7 @@ public sealed partial class RepoPullRequestPageViewModel : ViewModelBase
         }
 
         _pendingPullRequestSelectionState = null;
-        await ShowPullRequestAsync(pullRequest);
+        await ShowPullRequestAsync(pullRequest, preserveCurrentState: true, preserveStatusText: true);
     }
 
     private void CancelPendingSelectionLoad()
@@ -1905,6 +2847,40 @@ public sealed partial class RepoPullRequestPageViewModel : ViewModelBase
         _selectionLoadCancellationTokenSource = null;
     }
 
+    private CancellationTokenSource BeginPullRequestDiffBuild()
+    {
+        CancellationTokenSource next = new();
+        CancellationTokenSource? previous = Interlocked.Exchange(
+            ref _pullRequestDiffBuildCancellationTokenSource,
+            next);
+        CancelWithoutDisposing(previous);
+        return next;
+    }
+
+    private void CancelPullRequestDiffBuild()
+    {
+        CancellationTokenSource? cancellationTokenSource = Interlocked.Exchange(
+            ref _pullRequestDiffBuildCancellationTokenSource,
+            null);
+        CancelWithoutDisposing(cancellationTokenSource);
+    }
+
+    private static void CancelWithoutDisposing(CancellationTokenSource? cancellationTokenSource)
+    {
+        if (cancellationTokenSource is null)
+        {
+            return;
+        }
+
+        try
+        {
+            cancellationTokenSource.Cancel();
+        }
+        catch (ObjectDisposedException)
+        {
+        }
+    }
+
     private static string? NormalizeFilterText(string? value)
     {
         return string.IsNullOrWhiteSpace(value) ? null : value.Trim();
@@ -1912,7 +2888,74 @@ public sealed partial class RepoPullRequestPageViewModel : ViewModelBase
 
     private void UpdatePullRequestCommentEnabledState()
     {
-        IsPullRequestCommentEnabled = ArePullRequestActionsEnabled && !_isPullRequestCommentSubmissionInProgress;
+        IsPullRequestCommentEnabled = _canCommentOnPullRequest && !_isPullRequestCommentSubmissionInProgress;
+    }
+
+    private void ConfigurePullRequestComments(IEnumerable<GitHubIssueComment> comments)
+    {
+        foreach (GitHubIssueComment comment in comments)
+        {
+            ApplyCommentMinimizationOverride(comment);
+            comment.ViewerLogin = AuthenticatedLogin;
+            comment.CanViewerReact = CanReactToPullRequest;
+            comment.CanViewerReply = _canCommentOnPullRequest;
+            comment.CanViewerModerate = CanManagePullRequestMetadata;
+        }
+    }
+
+    private void ApplyCommentMinimizationOverride(GitHubIssueComment comment)
+    {
+        if (!string.IsNullOrWhiteSpace(comment.NodeId) &&
+            _commentMinimizationOverrides.TryGetValue(comment.NodeId, out bool isMinimized))
+        {
+            comment.Minimized = isMinimized ? comment.Minimized ?? new GitHubIssueCommentMinimization() : null;
+        }
+    }
+
+    private void ApplyCommentMinimizationOverride(GitHubPullRequestReviewComment comment)
+    {
+        if (!string.IsNullOrWhiteSpace(comment.NodeId) &&
+            _commentMinimizationOverrides.TryGetValue(comment.NodeId, out bool isMinimized))
+        {
+            comment.Minimized = isMinimized ? comment.Minimized ?? new GitHubIssueCommentMinimization() : null;
+        }
+    }
+
+    private void QueuePullRequestDiffProjectionUpdate(bool debounce)
+    {
+        int requestVersion = Interlocked.Increment(ref _pullRequestDiffProjectionVersion);
+        CommitDiffDocument document = PullRequestDiffDocument;
+        string fileFilter = PullRequestFileFilterText;
+        string search = PullRequestDiffSearchText;
+        BackgroundTaskObserver.Run(
+            () => BuildPullRequestDiffProjectionAsync(
+                document,
+                fileFilter,
+                search,
+                requestVersion,
+                debounce),
+            "pull_requests",
+            _telemetryService);
+    }
+
+    private async Task BuildPullRequestDiffProjectionAsync(
+        CommitDiffDocument document,
+        string fileFilter,
+        string search,
+        int requestVersion,
+        bool debounce)
+    {
+        if (debounce)
+        {
+            await Task.Delay(160);
+        }
+
+        CommitDiffRowProjection projection = await Task.Run(() =>
+            CommitDiffRowProjection.Create(document, fileFilter, search));
+        if (requestVersion == _pullRequestDiffProjectionVersion)
+        {
+            PullRequestDiffRowProjection = projection;
+        }
     }
 
     private bool IsSelectedPullRequest(GitHubPullRequest pullRequest)
@@ -2070,14 +3113,36 @@ public sealed partial class RepoPullRequestPageViewModel : ViewModelBase
         IReadOnlyList<GitHubPullRequestReview> reviews,
         IReadOnlyList<GitHubPullRequestReviewComment> reviewComments)
     {
-        Dictionary<long, PullRequestReviewItem> reviewLookup = reviews.ToDictionary(
-            review => review.Id,
-            review => new PullRequestReviewItem(review, FormatReviewState(review.State), PendingReviewText, UnknownUserText, OpenButtonText));
+        int pullRequestNumber = SelectedPullRequest?.Number ?? _navArg?.PullRequestId ?? 0;
+        List<PullRequestReviewItem> projectedReviews = [];
+        Dictionary<long, PullRequestReviewItem> reviewLookup = [];
+        for (int reviewOrdinal = 0; reviewOrdinal < reviews.Count; reviewOrdinal++)
+        {
+            GitHubPullRequestReview review = reviews[reviewOrdinal];
+            PullRequestReviewItem reviewItem = new(
+                review,
+                FormatReviewState(review.State),
+                PendingReviewText,
+                UnknownUserText,
+                OpenButtonText,
+                $"pr:{pullRequestNumber}:review:{reviewOrdinal}");
+            projectedReviews.Add(reviewItem);
+            if (review.Id > 0)
+            {
+                reviewLookup.TryAdd(review.Id, reviewItem);
+            }
+        }
+
         Dictionary<long, PullRequestReviewThreadItem> threadLookup = [];
         List<PullRequestReviewItem> syntheticReviews = [];
 
-        foreach (GitHubPullRequestReviewComment comment in reviewComments.OrderBy(item => item.CreatedAt))
+        GitHubPullRequestReviewComment[] orderedComments = reviewComments
+            .OrderBy(item => item.CreatedAt)
+            .ToArray();
+        for (int commentOrdinal = 0; commentOrdinal < orderedComments.Length; commentOrdinal++)
         {
+            GitHubPullRequestReviewComment comment = orderedComments[commentOrdinal];
+            ApplyCommentMinimizationOverride(comment);
             if (comment.InReplyToId.HasValue && threadLookup.TryGetValue(comment.InReplyToId.Value, out PullRequestReviewThreadItem? existingThread))
             {
                 existingThread.AddReply(comment, comment.Reactions.DisplayText, UnknownUserText, ReplyPrefixText, OpenButtonText, ReactionsButtonText);
@@ -2093,8 +3158,16 @@ public sealed partial class RepoPullRequestPageViewModel : ViewModelBase
                 ReactionsButtonText,
                 ReplyPlaceholderText,
                 ReplyButtonText,
-                ReplyPrefixText);
-            threadLookup[comment.Id] = threadItem;
+                ReplyPrefixText,
+                $"pr:{pullRequestNumber}:thread:{commentOrdinal}");
+            threadItem.ViewerLogin = AuthenticatedLogin;
+            threadItem.CanReact = CanReactToPullRequest;
+            threadItem.CanReply = _canCommentOnPullRequest;
+            threadItem.CanModerate = CanManagePullRequestMetadata;
+            if (comment.Id > 0)
+            {
+                threadLookup[comment.Id] = threadItem;
+            }
 
             if (comment.PullRequestReviewId.HasValue && reviewLookup.TryGetValue(comment.PullRequestReviewId.Value, out PullRequestReviewItem? reviewItem))
             {
@@ -2102,12 +3175,17 @@ public sealed partial class RepoPullRequestPageViewModel : ViewModelBase
                 continue;
             }
 
-            PullRequestReviewItem syntheticReview = PullRequestReviewItem.CreateSynthetic(comment, ReviewCommentStateText, UnknownUserText, OpenButtonText);
+            PullRequestReviewItem syntheticReview = PullRequestReviewItem.CreateSynthetic(
+                comment,
+                ReviewCommentStateText,
+                UnknownUserText,
+                OpenButtonText,
+                $"pr:{pullRequestNumber}:synthetic-review:{commentOrdinal}");
             syntheticReview.Threads.Add(threadItem);
             syntheticReviews.Add(syntheticReview);
         }
 
-        return reviewLookup.Values
+        return projectedReviews
             .Concat(syntheticReviews)
             .OrderBy(review => review.SortKey)
             .ToList();
@@ -2151,7 +3229,7 @@ public sealed partial class RepoPullRequestPageViewModel : ViewModelBase
         HashSet<string> selectedContents,
         Dictionary<string, long> existingReactionIds)
     {
-        if (_navArg is null || SelectedPullRequest is null || !TryGetActiveToken(out string token))
+        if (_navArg is null || SelectedPullRequest is null || !CanReactToPullRequest || !TryGetActiveToken(out string token))
         {
             return;
         }
@@ -2194,22 +3272,27 @@ public sealed partial class RepoPullRequestPageViewModel : ViewModelBase
             }
 
             await RefreshPullRequestSelectionAsync(_loadedPullRequests.FirstOrDefault(pullRequest => pullRequest.Number == targetPullRequest.Number) ?? targetPullRequest, token);
+            TrackPullRequestAction(TelemetryTaxonomy.Actions.Reaction, TelemetryTaxonomy.Results.Success);
         }
         catch (GitHubAuthenticationException)
         {
+            TrackPullRequestAction(TelemetryTaxonomy.Actions.Reaction, TelemetryTaxonomy.Results.AuthError);
             _authService.SignOut();
         }
         catch (GitHubApiException ex)
         {
+            TrackPullRequestAction(TelemetryTaxonomy.Actions.Reaction, TelemetryTaxonomy.Results.Error);
+            DisableRejectedCapability(ex, "reaction", targetPullRequest.Number);
             if (!IsSelectedPullRequest(targetPullRequest))
             {
                 return;
             }
 
-            StatusText = ex.Message;
+            StatusText = UserFacingError.For(ex, UserFacingErrorKind.Action, "pull-requests");
         }
         catch (HttpRequestException)
         {
+            TrackPullRequestAction(TelemetryTaxonomy.Actions.Reaction, TelemetryTaxonomy.Results.Error);
             if (!IsSelectedPullRequest(targetPullRequest))
             {
                 return;
@@ -2217,6 +3300,491 @@ public sealed partial class RepoPullRequestPageViewModel : ViewModelBase
 
             StatusText = GetString("RepoPullRequest.ReactionsNetworkError", "JitHub could not reach GitHub to update reactions.");
         }
+    }
+
+    public void PrefetchPullRequest(GitHubPullRequest? pullRequest, PullRequestPrefetchReason reason)
+    {
+        if (_navArg is null || pullRequest is null || !TryGetActiveToken(out string token))
+        {
+            return;
+        }
+
+        string userPartition = GetActiveUserPartition(token);
+        string owner = _navArg.Repo.Owner.Login;
+        string repositoryName = _navArg.Repo.Name;
+        _hoverPrefetch.Schedule(
+            HoverPrefetchDebounce,
+            () =>
+            {
+                PullRequestTelemetry.TrackPrefetchStarted(_telemetryService, reason);
+                return _pullRequestNavigationCache.SchedulePrefetch(
+                    token,
+                    userPartition,
+                    owner,
+                    repositoryName,
+                    pullRequest.Number,
+                    reason,
+                    TimeSpan.Zero,
+                    (result, duration) => PullRequestTelemetry.TrackPrefetchCompleted(
+                        _telemetryService,
+                        reason,
+                        result,
+                        duration));
+            });
+    }
+
+    public void CancelHoverPrefetch() => _hoverPrefetch.Cancel();
+
+    public void CancelPredictivePrefetches()
+    {
+        _navigationRefresh?.Cancel();
+        _navigationRefresh?.Dispose();
+        _navigationRefresh = null;
+        _hoverPrefetch.Cancel();
+        _selectionDwellPrefetch?.Dispose();
+        _selectionDwellPrefetch = null;
+        _neighborPrefetch?.Dispose();
+        _neighborPrefetch = null;
+        CancelPullRequestDiffBuild();
+    }
+
+    public void SetSection(PullRequestWorkspaceSection section)
+    {
+        SelectedSection = section;
+    }
+
+    private bool TryApplyNavigationSnapshot(
+        string token,
+        string userPartition,
+        string owner,
+        string repositoryName,
+        int pullRequestNumber)
+    {
+        if (!_pullRequestNavigationCache.TryGet(
+                userPartition,
+                owner,
+                repositoryName,
+                pullRequestNumber,
+                out PullRequestNavigationSnapshot snapshot))
+        {
+            _ = PullRequestTelemetry.ObservePrefetchAsync(
+                _telemetryService,
+                PullRequestPrefetchReason.NavigationHandoff,
+                () => _pullRequestNavigationCache.PrefetchAsync(
+                    token,
+                    userPartition,
+                    owner,
+                    repositoryName,
+                    pullRequestNumber,
+                    PullRequestPrefetchReason.NavigationHandoff));
+            return false;
+        }
+
+        _selectedPullRequestIssue = snapshot.Issue;
+        if (_loadedPullRequests.All(existing => existing.Number != snapshot.PullRequestNumber))
+        {
+            _loadedPullRequests.Insert(0, snapshot.PullRequest);
+        }
+
+        if (PullRequests.All(existing => existing.Number != snapshot.PullRequestNumber))
+        {
+            PullRequests.Insert(0, snapshot.PullRequest);
+        }
+
+        SetSelectedPullRequest(snapshot.PullRequest);
+        PopulatePullRequest(snapshot.PullRequest);
+        ConfigurePullRequestComments(snapshot.Comments);
+        ReplaceCollectionByKey(
+            PullRequestComments,
+            snapshot.Comments,
+            static comment => comment.Id.ToString(CultureInfo.InvariantCulture));
+        ReplaceCollectionByKey(
+            PullRequestCommits,
+            snapshot.Commits,
+            static commit => commit.Sha);
+        IReadOnlyList<PullRequestReviewItem> reviewItems = BuildPullRequestReviewItems(snapshot.Reviews, snapshot.ReviewComments);
+        ReplaceCollectionByKey(
+            PullRequestReviews,
+            reviewItems,
+            static review => $"{review.ReviewerLogin}:{review.StateText}:{review.SortKey.ToUnixTimeMilliseconds().ToString(CultureInfo.InvariantCulture)}");
+        ReplaceCollectionByKey(
+            PullRequestTimelineEvents,
+            snapshot.TimelineEvents.OrderBy(item => item.CreatedAt),
+            static timelineEvent => timelineEvent.Id.ToString(CultureInfo.InvariantCulture));
+        IsPullRequestCommentsEmptyVisible = PullRequestComments.Count == 0;
+        IsPullRequestCommitsEmptyVisible = PullRequestCommits.Count == 0;
+        IsPullRequestReviewsEmptyVisible = PullRequestReviews.Count == 0;
+        IsPullRequestTimelineEmptyVisible = PullRequestTimelineEvents.Count == 0;
+        _projectedPullRequestDetailNumber = snapshot.PullRequestNumber;
+        StatusText = FormatString("RepoPullRequest.CachedStatus", "Showing cached pull request #{0}.", snapshot.PullRequestNumber);
+        ScheduleSelectedPullRequestPrefetch(snapshot.PullRequest, PullRequestPrefetchReason.Dwell, TimeSpan.FromSeconds(5));
+        return true;
+    }
+
+    private async Task TryRecoverPullRequestCapabilitiesAfterForbiddenAsync(
+        GitHubPullRequest pullRequest,
+        string token)
+    {
+        if (_navArg is null || !IsSelectedPullRequest(pullRequest))
+        {
+            return;
+        }
+
+        try
+        {
+            PullRequestCapabilitySnapshot? snapshot =
+                await _pullRequestQueryService.RefreshPullRequestCapabilitiesAsync(
+                    token,
+                    GetActiveUserPartition(token),
+                    _navArg.Repo.Owner.Login,
+                    _navArg.Repo.Name,
+                    pullRequest.Number);
+            if (snapshot is null || !IsSelectedPullRequest(pullRequest))
+            {
+                return;
+            }
+
+            _capabilityRepository = snapshot.Repository;
+            _selectedPullRequestIssue = snapshot.Issue;
+            _capabilityDenials.ConfirmSuccessfulRefresh(snapshot.PullRequest.Number);
+            ReplacePullRequestInCollection(snapshot.PullRequest);
+            SetSelectedPullRequest(snapshot.PullRequest);
+            PopulatePullRequest(snapshot.PullRequest);
+        }
+        catch (GitHubAuthenticationException)
+        {
+            _authService.SignOut();
+        }
+    }
+
+    private void StoreNavigationSnapshot(
+        GitHubPullRequest pullRequest,
+        GitHubIssue? issue,
+        IReadOnlyList<GitHubIssueComment> comments,
+        IReadOnlyList<GitHubCommit> commits,
+        IReadOnlyList<GitHubPullRequestReview> reviews,
+        IReadOnlyList<GitHubPullRequestReviewComment> reviewComments,
+        IReadOnlyList<GitHubIssueEvent> timelineEvents,
+        string source)
+    {
+        if (_navArg is null)
+        {
+            return;
+        }
+
+        string accountPartition = GetActiveUserPartition(GetActiveToken() ?? string.Empty);
+        _pullRequestNavigationCache.Store(accountPartition, new PullRequestNavigationSnapshot(
+            _navArg.Repo.Owner.Login,
+            _navArg.Repo.Name,
+            pullRequest.Number,
+            pullRequest,
+            issue,
+            [.. comments],
+            [.. commits],
+            [.. reviews],
+            [.. reviewComments],
+            [.. timelineEvents],
+            DateTimeOffset.UtcNow,
+            source));
+    }
+
+    private void ScheduleSelectedPullRequestPrefetch(
+        GitHubPullRequest pullRequest,
+        PullRequestPrefetchReason reason,
+        TimeSpan delay)
+    {
+        if (_navArg is null)
+        {
+            return;
+        }
+
+        if (!TryGetActiveToken(out string token))
+        {
+            return;
+        }
+
+        _selectionDwellPrefetch?.Dispose();
+        PullRequestTelemetry.TrackPrefetchStarted(_telemetryService, reason);
+        _selectionDwellPrefetch = _pullRequestNavigationCache.SchedulePrefetch(
+            token,
+            GetActiveUserPartition(token),
+            _navArg.Repo.Owner.Login,
+            _navArg.Repo.Name,
+            pullRequest.Number,
+            reason,
+            delay,
+            (result, duration) => PullRequestTelemetry.TrackPrefetchCompleted(
+                _telemetryService,
+                reason,
+                result,
+                duration));
+    }
+
+    private void ScheduleNeighborPrefetch(GitHubPullRequest pullRequest)
+    {
+        if (_navArg is null || !TryGetActiveToken(out string token))
+        {
+            return;
+        }
+
+        GitHubPullRequest? neighbor = PullRequests
+            .SkipWhile(item => item.Number != pullRequest.Number)
+            .Skip(1)
+            .FirstOrDefault()
+            ?? PullRequests
+                .TakeWhile(item => item.Number != pullRequest.Number)
+                .LastOrDefault();
+        if (neighbor is null)
+        {
+            return;
+        }
+
+        _neighborPrefetch?.Dispose();
+        PullRequestTelemetry.TrackPrefetchStarted(_telemetryService, PullRequestPrefetchReason.Neighbor);
+        _neighborPrefetch = _pullRequestNavigationCache.SchedulePrefetch(
+            token,
+            GetActiveUserPartition(token),
+            _navArg.Repo.Owner.Login,
+            _navArg.Repo.Name,
+            neighbor.Number,
+            PullRequestPrefetchReason.Neighbor,
+            TimeSpan.FromMilliseconds(350),
+            (result, duration) => PullRequestTelemetry.TrackPrefetchCompleted(
+                _telemetryService,
+                PullRequestPrefetchReason.Neighbor,
+                result,
+                duration));
+    }
+
+    private void ApplyIssueInspectorMetadata(GitHubIssue? issue)
+    {
+        if (issue is null)
+        {
+            SelectedLabels.Clear();
+            SelectedAssignees.Clear();
+        }
+        else
+        {
+            ReplaceCollectionByKey(
+                SelectedLabels,
+                issue.Labels,
+                static label => label.Name);
+            ReplaceCollectionByKey(
+                SelectedAssignees,
+                issue.Assignees,
+                static assignee => assignee.Login);
+        }
+
+        NotifyInspectorPropertiesChanged();
+    }
+
+    private void ApplyPullRequestListProjection(
+        IEnumerable<GitHubPullRequest> incoming,
+        PagedDataCompleteness completeness)
+    {
+        GitHubPullRequest[] projection = PagedRefreshProjectionPolicy.Merge(
+            incoming,
+            _loadedPullRequests,
+            static pullRequest => pullRequest.Number.ToString(CultureInfo.InvariantCulture),
+            completeness);
+        _loadedPullRequests.Clear();
+        _loadedPullRequests.AddRange(projection);
+    }
+
+    private void UpdatePullRequestListScopeNotice() =>
+        PullRequestListScopeNotice = PullRequestSectionProjectionPolicy.CreateListScopeNotice(
+            _pullRequestListState);
+
+    private void UpdateRepositoryMetadataScopeStatus(
+        string previousStatusText,
+        params PullRequestSectionState[] states)
+    {
+        PagedDataCompleteness completeness = CombineCompleteness(states);
+        StatusText = completeness switch
+        {
+            PagedDataCompleteness.ApiLimited => GetString(
+                "RepoPullRequest.MetadataApiLimitedStatus",
+                "Repository options reached GitHub's API limit. The available options remain usable."),
+            PagedDataCompleteness.Partial => GetString(
+                "RepoPullRequest.MetadataPartialStatus",
+                "Some repository options could not be loaded. Available options remain usable."),
+            _ => previousStatusText
+        };
+    }
+
+    private static PagedDataCompleteness CombineCompleteness(
+        IEnumerable<PullRequestSectionState> states)
+    {
+        PagedDataCompleteness[] values = states.Select(static state => state.Completeness).ToArray();
+        if (values.Contains(PagedDataCompleteness.ApiLimited))
+        {
+            return PagedDataCompleteness.ApiLimited;
+        }
+
+        if (values.Contains(PagedDataCompleteness.Partial))
+        {
+            return PagedDataCompleteness.Partial;
+        }
+
+        return values.Contains(PagedDataCompleteness.Loading)
+            ? PagedDataCompleteness.Loading
+            : PagedDataCompleteness.Complete;
+    }
+
+    private static void ReplaceCollectionByKey<T>(
+        ObservableCollection<T> collection,
+        IEnumerable<T> snapshot,
+        Func<T, string> keySelector)
+    {
+        List<T> items = snapshot.ToList();
+        for (int targetIndex = 0; targetIndex < items.Count; targetIndex++)
+        {
+            T item = items[targetIndex];
+            string key = keySelector(item);
+            int existingIndex = -1;
+            for (int index = targetIndex; index < collection.Count; index++)
+            {
+                if (string.Equals(keySelector(collection[index]), key, StringComparison.OrdinalIgnoreCase))
+                {
+                    existingIndex = index;
+                    break;
+                }
+            }
+
+            if (existingIndex < 0)
+            {
+                collection.Insert(targetIndex, item);
+                continue;
+            }
+
+            if (existingIndex != targetIndex)
+            {
+                collection.Move(existingIndex, targetIndex);
+            }
+
+            if (!ReferenceEquals(collection[targetIndex], item))
+            {
+                collection[targetIndex] = item;
+            }
+        }
+
+        for (int index = collection.Count - 1; index >= items.Count; index--)
+        {
+            collection.RemoveAt(index);
+        }
+    }
+
+    private void NotifySelectedPullRequestPropertiesChanged()
+    {
+        NotifySelectedPullRequestHeaderPropertiesChanged();
+        OnPropertyChanged(nameof(CurrentPullRequestIssue));
+        OnPropertyChanged(nameof(SelectedPullRequestMetadataText));
+        NotifyInspectorPropertiesChanged();
+    }
+
+    private void NotifySelectedPullRequestHeaderPropertiesChanged()
+    {
+        OnPropertyChanged(nameof(CurrentPullRequest));
+        OnPropertyChanged(nameof(HasSelectedPullRequest));
+        OnPropertyChanged(nameof(IsDetailPlaceholderVisible));
+        OnPropertyChanged(nameof(SelectedPullRequestNumberText));
+        OnPropertyChanged(nameof(SelectedPullRequestTitle));
+        OnPropertyChanged(nameof(SelectedPullRequestAuthorDisplayName));
+        OnPropertyChanged(nameof(SelectedPullRequestAuthorLogin));
+        OnPropertyChanged(nameof(SelectedPullRequestAuthorAvatarUrl));
+        OnPropertyChanged(nameof(SelectedPullRequestAuthorAutomationId));
+        OnPropertyChanged(nameof(SelectedPullRequestStateText));
+        OnPropertyChanged(nameof(BranchSummaryText));
+        OnPropertyChanged(nameof(SelectedPullRequestCommentText));
+        OnPropertyChanged(nameof(SelectedPullRequestReactionTargetId));
+        OnPropertyChanged(nameof(SelectedPullRequestHtmlUrl));
+        OnPropertyChanged(nameof(PullRequestReactions));
+        OnPropertyChanged(nameof(PullRequestBodyMarkdownSource));
+        OnPropertyChanged(nameof(PullRequestCommentMarkdownSource));
+    }
+
+    private void NotifyRepositoryPropertiesChanged()
+    {
+        OnPropertyChanged(nameof(RepositoryFullName));
+        OnPropertyChanged(nameof(PageTitle));
+    }
+
+    private void NotifyInspectorPropertiesChanged()
+    {
+        OnPropertyChanged(nameof(HasLabels));
+        OnPropertyChanged(nameof(HasNoLabels));
+        OnPropertyChanged(nameof(HasAssignees));
+        OnPropertyChanged(nameof(HasNoAssignees));
+        OnPropertyChanged(nameof(HasRequestedReviewers));
+        OnPropertyChanged(nameof(HasNoRequestedReviewers));
+        OnPropertyChanged(nameof(MilestoneTitle));
+    }
+
+    private void TrackEvent(string name, IReadOnlyDictionary<string, string?>? properties = null)
+    {
+        PullRequestTelemetry.TrackSafely(_telemetryService, name, properties);
+    }
+
+    private void TrackPullRequestListOutcome(
+        string result,
+        TimeSpan duration,
+        string? errorKind = null)
+    {
+        PullRequestTelemetry.TrackListLoaded(
+            _telemetryService,
+            "repo",
+            result,
+            duration,
+            errorKind: errorKind);
+    }
+
+    private bool CompleteSupersededPullRequestListRead(int requestId, TimeSpan duration)
+    {
+        if (requestId == _listRequestId)
+        {
+            return false;
+        }
+
+        TrackPullRequestListOutcome(TelemetryTaxonomy.Results.Cancelled, duration);
+        return true;
+    }
+
+    private void TrackPullRequestAction(string action, string result) =>
+        PullRequestTelemetry.TrackAction(_telemetryService, action, result);
+
+    public void TrackCommentQuoteReply() =>
+        TrackPullRequestAction(TelemetryTaxonomy.Actions.QuoteReply, TelemetryTaxonomy.Results.Success);
+
+    public void TrackCommentCopyLink(bool succeeded) =>
+        TrackPullRequestAction(
+            TelemetryTaxonomy.Actions.CopyLink,
+            succeeded ? TelemetryTaxonomy.Results.Success : TelemetryTaxonomy.Results.Error);
+
+    public void TrackCommentCopyMarkdown(bool succeeded) =>
+        TrackPullRequestAction(
+            TelemetryTaxonomy.Actions.CopyMarkdown,
+            succeeded ? TelemetryTaxonomy.Results.Success : TelemetryTaxonomy.Results.Error);
+
+    public void TrackDiffViewerAction(string action, string result)
+    {
+        if (action is not (TelemetryTaxonomy.Actions.CopyDiff or TelemetryTaxonomy.Actions.CopyPath) ||
+            result is not (TelemetryTaxonomy.Results.Success or TelemetryTaxonomy.Results.Error))
+        {
+            return;
+        }
+
+        TrackPullRequestAction(action, result);
+    }
+
+    private string GetActiveUserPartition(string token)
+    {
+        if (GitHubAuthenticationConstants.IsPublicAccessToken(token))
+        {
+            return "public";
+        }
+
+        long userId = _authService.AuthenticatedUser?.Id ?? _accountService.GetUser();
+        return userId > 0 ? userId.ToString(CultureInfo.InvariantCulture) : string.Empty;
     }
 
     private void ReplacePullRequestInCollection(GitHubPullRequest updatedPullRequest)
@@ -2317,16 +3885,177 @@ public sealed partial class RepoPullRequestPageViewModel : ViewModelBase
             : FormatString("RepoPullRequest.CommentCountPlural", "{0} comments", count);
     }
 
-    private bool CanMergePullRequest(GitHubPullRequest pullRequest)
+    private void ApplyPullRequestCapabilities(GitHubPullRequest pullRequest)
     {
-        return string.Equals(pullRequest.State, "open", StringComparison.OrdinalIgnoreCase)
-            && !pullRequest.Merged
-            && !pullRequest.Draft;
+        if (DialogMatrixAutomationScenario.IsEnabled)
+        {
+            CanEditPullRequest = true;
+            CanManagePullRequestMetadata = true;
+            IsTogglePullRequestStateEnabled = true;
+            _canCommentOnPullRequest = true;
+            IsPullRequestCommentEnabled = true;
+            CanReactToPullRequest = true;
+            CanSubmitReviewComment = true;
+            CanApprovePullRequest = true;
+            CanRequestPullRequestChanges = true;
+            IsMergeEnabled = true;
+            CanMergeWithMergeCommit = true;
+            CanMergeWithSquash = true;
+            CanMergeWithRebase = true;
+            ArePullRequestActionsEnabled = true;
+            OnPropertyChanged(nameof(CanSubmitPullRequestReview));
+            return;
+        }
+
+        GitHubRepository? repository = _capabilityRepository ?? _navArg?.Repo;
+        if (repository is null)
+        {
+            ResetPullRequestCapabilities();
+            return;
+        }
+
+        string? token = GetActiveToken();
+        PullRequestCapabilities capabilities = PullRequestPermissionPolicy.Evaluate(
+            repository,
+            pullRequest,
+            _selectedPullRequestIssue,
+            AuthenticatedLogin,
+            string.IsNullOrWhiteSpace(token) || GitHubAuthenticationConstants.IsPublicAccessToken(token));
+        CanEditPullRequest = capabilities.CanEdit && !_capabilityDenials.IsDenied(PullRequestDeniedCapability.Edit);
+        CanManagePullRequestMetadata = capabilities.CanManageMetadata && !_capabilityDenials.IsDenied(PullRequestDeniedCapability.Metadata);
+        IsTogglePullRequestStateEnabled = capabilities.CanChangeState && !_capabilityDenials.IsDenied(PullRequestDeniedCapability.State);
+        _canCommentOnPullRequest = capabilities.CanComment && !_capabilityDenials.IsDenied(PullRequestDeniedCapability.Comment);
+        CanReactToPullRequest = capabilities.CanReact && !_capabilityDenials.IsDenied(PullRequestDeniedCapability.Reaction);
+        CanSubmitReviewComment = capabilities.CanSubmitReviewComment && !_capabilityDenials.IsDenied(PullRequestDeniedCapability.Review);
+        CanApprovePullRequest = capabilities.CanApprove && !_capabilityDenials.IsDenied(PullRequestDeniedCapability.Review);
+        CanRequestPullRequestChanges = capabilities.CanRequestChanges && !_capabilityDenials.IsDenied(PullRequestDeniedCapability.Review);
+        IsMergeEnabled = capabilities.CanMerge && !_capabilityDenials.IsDenied(PullRequestDeniedCapability.Merge);
+        bool mergeDenied = _capabilityDenials.IsDenied(PullRequestDeniedCapability.Merge);
+        CanMergeWithMergeCommit = capabilities.CanMergeCommit && !mergeDenied;
+        CanMergeWithSquash = capabilities.CanSquashMerge && !mergeDenied;
+        CanMergeWithRebase = capabilities.CanRebaseMerge && !mergeDenied;
+        ArePullRequestActionsEnabled = CanEditPullRequest || CanManagePullRequestMetadata ||
+            IsTogglePullRequestStateEnabled || _canCommentOnPullRequest || CanReactToPullRequest ||
+            CanSubmitPullRequestReview || IsMergeEnabled;
+        OnPropertyChanged(nameof(CanSubmitPullRequestReview));
+        if (!capabilities.CanMerge && !string.IsNullOrWhiteSpace(capabilities.MergeUnavailableReason))
+        {
+            MergeStatusText = capabilities.MergeUnavailableReason;
+        }
     }
 
-    private bool CanTogglePullRequestState(GitHubPullRequest pullRequest)
+    private void ResetPullRequestCapabilities()
     {
-        return !pullRequest.Merged;
+        ArePullRequestActionsEnabled = false;
+        CanEditPullRequest = false;
+        CanManagePullRequestMetadata = false;
+        IsTogglePullRequestStateEnabled = false;
+        _canCommentOnPullRequest = false;
+        IsPullRequestCommentEnabled = false;
+        CanReactToPullRequest = false;
+        CanSubmitReviewComment = false;
+        CanApprovePullRequest = false;
+        CanRequestPullRequestChanges = false;
+        IsMergeEnabled = false;
+        CanMergeWithMergeCommit = false;
+        CanMergeWithSquash = false;
+        CanMergeWithRebase = false;
+        OnPropertyChanged(nameof(CanSubmitPullRequestReview));
+    }
+
+    private bool CanSubmitReview(PullRequestReviewDecision decision) => decision switch
+    {
+        PullRequestReviewDecision.Comment => CanSubmitReviewComment,
+        PullRequestReviewDecision.Approve => CanApprovePullRequest,
+        PullRequestReviewDecision.RequestChanges => CanRequestPullRequestChanges,
+        _ => false
+    };
+
+    private bool IsMergeMethodAllowed(string mergeMethod) => mergeMethod.Trim().ToLowerInvariant() switch
+    {
+        "merge" => CanMergeWithMergeCommit,
+        "squash" => CanMergeWithSquash,
+        "rebase" => CanMergeWithRebase,
+        _ => false
+    };
+
+    private void DisableRejectedCapability(
+        GitHubApiException exception,
+        string capability,
+        int pullRequestNumber)
+    {
+        if (SelectedPullRequest?.Number != pullRequestNumber)
+        {
+            return;
+        }
+
+        PullRequestDeniedCapability deniedCapability = capability switch
+        {
+            "edit" => PullRequestDeniedCapability.Edit,
+            "metadata" => PullRequestDeniedCapability.Metadata,
+            "state" => PullRequestDeniedCapability.State,
+            "comment" => PullRequestDeniedCapability.Comment,
+            "reaction" => PullRequestDeniedCapability.Reaction,
+            "merge" => PullRequestDeniedCapability.Merge,
+            "review" => PullRequestDeniedCapability.Review,
+            _ => PullRequestDeniedCapability.None
+        };
+        if (deniedCapability == PullRequestDeniedCapability.None ||
+            !_capabilityDenials.RecordFailureForCurrent(
+                pullRequestNumber,
+                deniedCapability,
+                exception.StatusCode))
+        {
+            return;
+        }
+
+        switch (capability)
+        {
+            case "edit":
+                CanEditPullRequest = false;
+                break;
+            case "metadata":
+                CanManagePullRequestMetadata = false;
+                break;
+            case "state":
+                IsTogglePullRequestStateEnabled = false;
+                break;
+            case "comment":
+                _canCommentOnPullRequest = false;
+                IsPullRequestCommentEnabled = false;
+                break;
+            case "reaction":
+                CanReactToPullRequest = false;
+                break;
+            case "review":
+                CanSubmitReviewComment = false;
+                CanApprovePullRequest = false;
+                CanRequestPullRequestChanges = false;
+                OnPropertyChanged(nameof(CanSubmitPullRequestReview));
+                break;
+            case "merge":
+                IsMergeEnabled = false;
+                CanMergeWithMergeCommit = false;
+                CanMergeWithSquash = false;
+                CanMergeWithRebase = false;
+                MergeStatusText = GetString(
+                    "RepoPullRequest.MergePermissionChanged",
+                    "GitHub no longer allows this account to merge the pull request.");
+                break;
+        }
+
+        ArePullRequestActionsEnabled = CanEditPullRequest || CanManagePullRequestMetadata ||
+            IsTogglePullRequestStateEnabled || _canCommentOnPullRequest || CanReactToPullRequest ||
+            CanSubmitPullRequestReview || IsMergeEnabled;
+
+        GitHubPullRequest deniedPullRequest = SelectedPullRequest;
+        if (TryGetActiveToken(out string token))
+        {
+            BackgroundTaskObserver.Run(
+                () => TryRecoverPullRequestCapabilitiesAfterForbiddenAsync(deniedPullRequest, token),
+                "pull_requests",
+                _telemetryService);
+        }
     }
 
     private string GetTogglePullRequestStateButtonText(GitHubPullRequest pullRequest)
@@ -2338,7 +4067,11 @@ public sealed partial class RepoPullRequestPageViewModel : ViewModelBase
                 : GetString("RepoPullRequest.CloseButton", "Close pull request");
     }
 
-    public sealed record PullRequestCreateDialogData(string DefaultHead, string DefaultBase);
+    public sealed record PullRequestCreateDialogData(
+        string DefaultHead,
+        string DefaultBase,
+        IReadOnlyList<GitHubBranch> AvailableBranches,
+        PagedDataCompleteness Completeness);
 
     private sealed record PullRequestDetailSnapshot(
         int PullRequestNumber,
@@ -2363,13 +4096,15 @@ public sealed partial class RepoPullRequestPageViewModel : ViewModelBase
         IReadOnlyList<GitHubIssueComment> Comments,
         IReadOnlyList<GitHubCommit> Commits,
         IReadOnlyList<PullRequestReviewItem> Reviews,
-        IReadOnlyList<GitHubIssueEvent> TimelineEvents);
+        IReadOnlyList<GitHubIssueEvent> TimelineEvents,
+        CommitDiffDocument DiffDocument);
 
     public sealed record PullRequestMetadataDialogData(
         IReadOnlyList<GitHubActor> AvailableReviewers,
         IReadOnlyList<GitHubActor> AvailableAssignees,
         IReadOnlyList<GitHubLabel> AvailableLabels,
-        IReadOnlyList<GitHubMilestone> AvailableMilestones);
+        IReadOnlyList<GitHubMilestone> AvailableMilestones,
+        PagedDataCompleteness Completeness);
 
     public sealed record PullRequestMetadataUpdate(
         IReadOnlyList<string> Reviewers,
@@ -2385,25 +4120,41 @@ public sealed partial class RepoPullRequestPageViewModel : ViewModelBase
     }
 
     [WinRT.GeneratedBindableCustomProperty]
-    public sealed partial class PullRequestReviewItem
+    public sealed partial class PullRequestReviewItem : IPullRequestReviewItem
     {
         public PullRequestReviewItem(
             GitHubPullRequestReview review,
             string stateText,
             string pendingText,
             string unknownUserText,
-            string openButtonText)
+            string openButtonText,
+            string deterministicContext)
         {
-            ReviewerLogin = string.IsNullOrWhiteSpace(review.User.Login) ? unknownUserText : review.User.Login;
+            PullRequestIdentityPresentation identity = PullRequestIdentityProjection.Create(
+                review,
+                unknownUserText,
+                "PullRequestReview",
+                deterministicContext);
+            AutomationId = identity.AutomationInstanceId;
+            ReviewerLogin = identity.DisplayName;
+            ReviewerProfileLogin = identity.ProfileLogin;
+            ReviewerAvatarUrl = identity.AvatarUrl;
             StateText = stateText;
             SubmittedAtText = review.SubmittedAt?.LocalDateTime.ToString("g") ?? pendingText;
             BodyText = review.Body ?? string.Empty;
             HtmlUrl = review.HtmlUrl;
+            MarkdownSource = review.MarkdownSource;
             OpenButtonText = openButtonText;
             SortKey = review.SubmittedAt ?? DateTimeOffset.MinValue;
         }
 
         public string ReviewerLogin { get; }
+
+        public string? ReviewerProfileLogin { get; }
+
+        public string ReviewerAvatarUrl { get; }
+
+        public string AutomationId { get; }
 
         public string StateText { get; }
 
@@ -2413,39 +4164,59 @@ public sealed partial class RepoPullRequestPageViewModel : ViewModelBase
 
         public string HtmlUrl { get; }
 
+        public MarkdownDocumentSource? MarkdownSource { get; }
+
         public string OpenButtonText { get; }
 
         public DateTimeOffset SortKey { get; }
 
         public ObservableCollection<PullRequestReviewThreadItem> Threads { get; } = [];
 
+        System.Collections.IEnumerable IPullRequestReviewItem.Threads => Threads;
+
         public static PullRequestReviewItem CreateSynthetic(
             GitHubPullRequestReviewComment comment,
             string stateText,
             string unknownUserText,
-            string openButtonText)
+            string openButtonText,
+            string deterministicContext)
         {
-            return new PullRequestReviewItem(comment, stateText, unknownUserText, openButtonText);
+            return new PullRequestReviewItem(
+                comment,
+                stateText,
+                unknownUserText,
+                openButtonText,
+                deterministicContext);
         }
 
         private PullRequestReviewItem(
             GitHubPullRequestReviewComment comment,
             string stateText,
             string unknownUserText,
-            string openButtonText)
+            string openButtonText,
+            string deterministicContext)
         {
-            ReviewerLogin = string.IsNullOrWhiteSpace(comment.User.Login) ? unknownUserText : comment.User.Login;
+            PullRequestIdentityPresentation identity = PullRequestIdentityProjection.Create(
+                comment,
+                unknownUserText,
+                "PullRequestReviewComment",
+                deterministicContext);
+            AutomationId = identity.AutomationInstanceId;
+            ReviewerLogin = identity.DisplayName;
+            ReviewerProfileLogin = identity.ProfileLogin;
+            ReviewerAvatarUrl = identity.AvatarUrl;
             StateText = stateText;
             SubmittedAtText = comment.CreatedAt.LocalDateTime.ToString("g");
             BodyText = string.Empty;
             HtmlUrl = comment.HtmlUrl;
+            MarkdownSource = comment.MarkdownSource;
             OpenButtonText = openButtonText;
             SortKey = comment.CreatedAt;
         }
     }
 
     [WinRT.GeneratedBindableCustomProperty]
-    public sealed partial class PullRequestReviewThreadItem : ObservableObject
+    public sealed partial class PullRequestReviewThreadItem : ObservableObject, IPullRequestReviewThreadItem
     {
         public PullRequestReviewThreadItem(
             GitHubPullRequestReviewComment comment,
@@ -2456,12 +4227,26 @@ public sealed partial class RepoPullRequestPageViewModel : ViewModelBase
             string reactionsButtonText,
             string replyPlaceholderText,
             string replyButtonText,
-            string replyPrefixText)
+            string replyPrefixText,
+            string deterministicContext)
         {
             CommentId = comment.Id;
-            CommentUserLogin = string.IsNullOrWhiteSpace(comment.User.Login) ? unknownUserText : comment.User.Login;
+            CommentNodeId = comment.NodeId ?? string.Empty;
+            PullRequestIdentityPresentation identity = PullRequestIdentityProjection.Create(
+                comment,
+                unknownUserText,
+                "PullRequestReviewThread",
+                deterministicContext);
+            AutomationId = identity.AutomationInstanceId;
+            CommentUserLogin = identity.DisplayName;
+            CommentAuthorLogin = comment.User?.Login ?? string.Empty;
+            CommentUserProfileLogin = identity.ProfileLogin;
+            CommentUserAvatarUrl = identity.AvatarUrl;
             CommentBody = comment.Body;
             CommentHtmlUrl = comment.HtmlUrl;
+            Reactions = comment.Reactions;
+            IsMinimized = comment.IsMinimized;
+            MarkdownSource = comment.MarkdownSource;
             PathDisplayText = string.IsNullOrWhiteSpace(comment.Path) ? changedFileText : comment.Path;
             CreatedAtText = comment.CreatedAt.LocalDateTime.ToString("g");
             DiffHunkText = TrimDiffHunk(comment.DiffHunk);
@@ -2475,11 +4260,43 @@ public sealed partial class RepoPullRequestPageViewModel : ViewModelBase
 
         public long CommentId { get; }
 
+        public string CommentNodeId { get; }
+
+        public string AutomationId { get; }
+
+        public string ReplyAutomationId => $"{AutomationId}_Reply";
+
+        public string ReplyFormAutomationId => $"{AutomationId}_ReplyForm";
+
         public string CommentUserLogin { get; }
+
+        public string CommentAuthorLogin { get; }
+
+        public string? CommentUserProfileLogin { get; }
+
+        public string CommentUserAvatarUrl { get; }
 
         public string CommentBody { get; }
 
         public string CommentHtmlUrl { get; }
+
+        public GitHubReactionSummary Reactions { get; }
+
+        public bool IsMinimized { get; }
+
+        public string ViewerLogin { get; set; } = string.Empty;
+
+        public bool CanReact { get; set; }
+
+        public bool CanReply { get; set; }
+
+        public bool CanModerate { get; set; }
+
+        public MarkdownDocumentSource? MarkdownSource { get; }
+
+        public MarkdownDocumentSource? ReplyMarkdownSource => MarkdownSource is null
+            ? null
+            : MarkdownSource with { DocumentId = $"pull-request-review-reply-draft:{AutomationId}" };
 
         public string PathDisplayText { get; }
 
@@ -2509,6 +4326,8 @@ public sealed partial class RepoPullRequestPageViewModel : ViewModelBase
 
         public ObservableCollection<PullRequestReviewReplyItem> Replies { get; } = [];
 
+        System.Collections.IEnumerable IPullRequestReviewThreadItem.Replies => Replies;
+
         public void AddReply(
             GitHubPullRequestReviewComment reply,
             string reactionText,
@@ -2517,7 +4336,18 @@ public sealed partial class RepoPullRequestPageViewModel : ViewModelBase
             string openButtonText,
             string reactionsButtonText)
         {
-            Replies.Add(new PullRequestReviewReplyItem(reply, reactionText, unknownUserText, replyPrefixText, openButtonText, reactionsButtonText));
+            Replies.Add(new PullRequestReviewReplyItem(
+                reply,
+                reactionText,
+                unknownUserText,
+                replyPrefixText,
+                openButtonText,
+                reactionsButtonText,
+                $"{AutomationId}:reply:{Replies.Count}",
+                ViewerLogin,
+                CanReact,
+                CanReply,
+                CanModerate));
         }
 
         partial void OnIsReplyInProgressChanged(bool value)
@@ -2535,28 +4365,62 @@ public sealed partial class RepoPullRequestPageViewModel : ViewModelBase
             string unknownUserText,
             string replyPrefixText,
             string openButtonText,
-            string reactionsButtonText)
+            string reactionsButtonText,
+            string deterministicContext,
+            string viewerLogin,
+            bool canReact,
+            bool canReply,
+            bool canModerate)
         {
             Id = comment.Id;
-            UserLogin = string.IsNullOrWhiteSpace(comment.User.Login) ? unknownUserText : comment.User.Login;
+            NodeId = comment.NodeId ?? string.Empty;
+            PullRequestIdentityPresentation identity = PullRequestIdentityProjection.Create(
+                comment,
+                unknownUserText,
+                "PullRequestReviewReply",
+                deterministicContext);
+            AutomationId = identity.AutomationInstanceId;
+            UserLogin = identity.DisplayName;
+            AuthorLogin = comment.User?.Login ?? string.Empty;
+            UserProfileLogin = identity.ProfileLogin;
+            UserAvatarUrl = identity.AvatarUrl;
             CreatedAtText = comment.CreatedAt.LocalDateTime.ToString("g");
             HtmlUrl = comment.HtmlUrl;
             Body = comment.Body;
+            MarkdownSource = comment.MarkdownSource;
             ReactionText = reactionText;
             ReplyPrefixText = replyPrefixText;
             OpenButtonText = openButtonText;
             ReactionsButtonText = reactionsButtonText;
+            Reactions = comment.Reactions;
+            IsMinimized = comment.IsMinimized;
+            ViewerLogin = viewerLogin;
+            CanReact = canReact;
+            CanReply = canReply;
+            CanModerate = canModerate;
         }
 
         public long Id { get; }
 
+        public string NodeId { get; }
+
+        public string AutomationId { get; }
+
         public string UserLogin { get; }
+
+        public string AuthorLogin { get; }
+
+        public string? UserProfileLogin { get; }
+
+        public string UserAvatarUrl { get; }
 
         public string CreatedAtText { get; }
 
         public string HtmlUrl { get; }
 
         public string Body { get; }
+
+        public MarkdownDocumentSource? MarkdownSource { get; }
 
         public string ReactionText { get; }
 
@@ -2565,5 +4429,17 @@ public sealed partial class RepoPullRequestPageViewModel : ViewModelBase
         public string OpenButtonText { get; }
 
         public string ReactionsButtonText { get; }
+
+        public GitHubReactionSummary Reactions { get; }
+
+        public bool IsMinimized { get; }
+
+        public string ViewerLogin { get; }
+
+        public bool CanReact { get; }
+
+        public bool CanReply { get; }
+
+        public bool CanModerate { get; }
     }
 }

@@ -10,11 +10,66 @@
 
     <Grid
         x:Name="RootGrid"
-        Background="Transparent"
+        Background="{ThemeResource AppTransparentBrush}"
         SizeChanged="RootGrid_SizeChanged">
+        <Grid.RowDefinitions>
+            <RowDefinition Height="Auto" />
+            <RowDefinition Height="*" />
+        </Grid.RowDefinitions>
+
+        <StackPanel
+            Grid.Row="0"
+            Spacing="{ThemeResource AppSpace3}">
+            <InfoBar
+                x:Name="RemoteImageInfoBar"
+                x:Uid="ControlsCommonMarkdownViewerMarkdownRemoteImageInfoBar"
+                Margin="{ThemeResource AppMarkdownBodyMargin}"
+                AutomationProperties.AutomationId="MarkdownRemoteImageInfoBar"
+                IsClosable="False"
+                IsOpen="False"
+                Severity="Informational"
+                Style="{StaticResource AppStatusInfoBarStyle}"
+                Title="Remote images are protected">
+                <InfoBar.ActionButton>
+                    <Button
+                        x:Name="LoadRemoteImagesButton"
+                        x:Uid="ControlsCommonMarkdownViewerMarkdownLoadRemoteImagesButt"
+                        AutomationProperties.AutomationId="MarkdownLoadRemoteImagesButton"
+                        AutomationProperties.Name="Load remote images for this document"
+                        Click="LoadRemoteImagesButton_Click"
+                        Content="Load images"
+                        Style="{StaticResource AppQuietButtonStyle}" />
+                </InfoBar.ActionButton>
+            </InfoBar>
+
+            <InfoBar
+                x:Name="RenderErrorInfoBar"
+                x:Uid="ControlsCommonMarkdownViewerMarkdownRenderErrorInfoBar"
+                Margin="{ThemeResource AppMarkdownBodyMargin}"
+                AutomationProperties.AutomationId="MarkdownRenderErrorInfoBar"
+                IsClosable="False"
+                IsOpen="False"
+                Message="Try again. The rest of the page is still available."
+                Severity="Error"
+                Style="{StaticResource AppErrorInfoBarStyle}"
+                Title="Markdown could not be displayed">
+                <InfoBar.ActionButton>
+                    <Button
+                        x:Name="RetryRenderButton"
+                        x:Uid="ControlsCommonMarkdownViewerMarkdownRetryRenderButton"
+                        AutomationProperties.AutomationId="MarkdownRetryRenderButton"
+                        AutomationProperties.Name="Try rendering Markdown again"
+                        Click="RetryRenderButton_Click"
+                        Content="Try again"
+                        Style="{StaticResource AppQuietButtonStyle}" />
+                </InfoBar.ActionButton>
+            </InfoBar>
+        </StackPanel>
+
         <Border
+            Grid.Row="1"
             Padding="{x:Bind ContentPadding, Mode=OneWay}"
-            Background="Transparent"
+            Background="{ThemeResource AppTransparentBrush}"
             HorizontalAlignment="Stretch"
             VerticalAlignment="Stretch">
             <Grid
