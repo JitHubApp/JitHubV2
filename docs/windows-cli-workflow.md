@@ -115,6 +115,8 @@ Never put Partner Center credentials in plain text files, checked-in scripts, or
 
 The Store release workflow is `.github/workflows/jithub-store-release.yml`.
 
+Store package versions use `Major.Minor.Build.0`. Microsoft reserves the fourth component for Store use, so release operators must increment Major, Minor, or Build and leave Revision at `0`. The workflow validates the version immediately after checkout, before restoring or building the Native AOT package.
+
 It now uses the Microsoft Store Developer CLI as the release control plane:
 
 - `microsoft/microsoft-store-apppublisher@v1.4` installs the pinned `msstore` version on the runner. The workflow passes an explicit upload timeout because `msstore` v0.4.1 otherwise resolves the omitted option to zero; keep the version pin and timeout until a newer CLI release is deliberately validated.
@@ -166,3 +168,4 @@ Do not use `store` as a publishing tool. It is a client-side Store surface, not 
 - Windows App CLI reference: https://learn.microsoft.com/en-us/windows/apps/dev-tools/winapp-cli/usage
 - Microsoft Store Developer CLI: https://learn.microsoft.com/en-us/windows/apps/publish/msstore-dev-cli/commands
 - Store publishing with GitHub Actions: https://learn.microsoft.com/en-us/windows/apps/publish/msstore-dev-cli/github-actions
+- Microsoft Store MSIX package and version requirements: https://learn.microsoft.com/en-us/windows/apps/publish/publish-your-app/msix/app-package-requirements

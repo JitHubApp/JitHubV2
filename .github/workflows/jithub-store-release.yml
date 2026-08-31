@@ -4,7 +4,7 @@ on:
   workflow_dispatch:
     inputs:
       release_version:
-        description: Four-part Store package version (for example 1.6.5.0)
+        description: Four-part Store package version ending in .0 (for example 3.0.2.0). Increment Major, Minor, or Build; Revision is reserved by Microsoft Store.
         required: true
         type: string
       use_signing_certificate:
@@ -48,6 +48,7 @@ jobs:
       BUNDLE_PLATFORMS: ${{ vars.JITHUB_STORE_BUNDLE_PLATFORMS }}
       PUBLISHER_DISPLAY_NAME: ${{ vars.STORE_PUBLISHER_DISPLAY_NAME }}
       STORE_CLI_VERSION: v0.4.1
+      STORE_RELEASE_VERSION: ${{ inputs.release_version }}
       # v0.4.1 resolves an omitted --uploadTimeout to zero (microsoft/msstore-cli#162).
       # Keep an explicit value until a release containing the upstream fix is validated.
       STORE_UPLOAD_TIMEOUT_SECONDS: 900
@@ -67,6 +68,10 @@ jobs:
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
+
+      - name: Validate Store package version
+        shell: pwsh
+        run: .\eng\Assert-JitHubStorePackageVersion.ps1 -Version "$env:STORE_RELEASE_VERSION"
 
       - name: Set up .NET SDK
         uses: actions/setup-dotnet@v4
@@ -100,7 +105,7 @@ jobs:
         run: >
           .\eng\Prepare-JitHubStoreRelease.ps1
           -ManifestPath "${{ env.MANIFEST_PATH }}"
-          -Version "${{ inputs.release_version }}"
+          -Version "$env:STORE_RELEASE_VERSION"
           -PackageIdentityName "$env:STORE_PACKAGE_IDENTITY_NAME"
           -PackagePublisher "$env:STORE_PACKAGE_PUBLISHER"
           -PublisherDisplayName "$env:PUBLISHER_DISPLAY_NAME"

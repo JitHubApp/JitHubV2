@@ -58,6 +58,31 @@ public sealed class SecurityReleaseGateTests
             "The Store package script must verify the canonical Release test lock file.");
     }
 
+    [Fact]
+    [Trait("Category", "ReleaseSecurity")]
+    public void StoreRelease_ValidatesPackageVersionBeforeToolchainSetup()
+    {
+        string root = FindRepositoryRoot();
+        string storeWorkflow = File.ReadAllText(Path.Combine(root, ".github", "workflows", "jithub-store-release.yml"));
+        string nativeAotWorkflow = File.ReadAllText(Path.Combine(root, ".github", "workflows", "native-aot.yml"));
+        string prepareScript = File.ReadAllText(Path.Combine(root, "eng", "Prepare-JitHubStoreRelease.ps1"));
+        string validatorScript = File.ReadAllText(Path.Combine(root, "eng", "Assert-JitHubStorePackageVersion.ps1"));
+        string validatorTests = File.ReadAllText(Path.Combine(root, "eng", "Test-JitHubStorePackageVersion.ps1"));
+
+        int validationIndex = storeWorkflow.IndexOf("- name: Validate Store package version", StringComparison.Ordinal);
+        int toolchainIndex = storeWorkflow.IndexOf("- name: Set up .NET SDK", StringComparison.Ordinal);
+
+        Assert.True(validationIndex >= 0 && toolchainIndex > validationIndex, "Store versions must be rejected before toolchain setup and packaging.");
+        Assert.Contains("STORE_RELEASE_VERSION: ${{ inputs.release_version }}", storeWorkflow, StringComparison.Ordinal);
+        Assert.Contains("Assert-JitHubStorePackageVersion.ps1 -Version \"$env:STORE_RELEASE_VERSION\"", storeWorkflow, StringComparison.Ordinal);
+        Assert.DoesNotContain("-Version \"${{ inputs.release_version }}\"", storeWorkflow, StringComparison.Ordinal);
+        Assert.Contains("Assert-JitHubStorePackageVersion.ps1", prepareScript, StringComparison.Ordinal);
+        Assert.Contains("must end in '.0'", validatorScript, StringComparison.Ordinal);
+        Assert.Contains("65535", validatorScript, StringComparison.Ordinal);
+        Assert.Contains("'3.0.0.2'", validatorTests, StringComparison.Ordinal);
+        Assert.Contains("Test-JitHubStorePackageVersion.ps1", nativeAotWorkflow, StringComparison.Ordinal);
+    }
+
     [Theory]
     [Trait("Category", "ReleaseSecurity")]
     [InlineData("javascript:alert(1)")]
