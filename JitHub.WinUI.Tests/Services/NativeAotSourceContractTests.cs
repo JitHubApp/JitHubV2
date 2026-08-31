@@ -253,6 +253,12 @@ public sealed class NativeAotSourceContractTests
         Assert.DoesNotContain("Require matching hardware validation", storeWorkflow, StringComparison.Ordinal);
         Assert.DoesNotContain("actions: read", storeWorkflow, StringComparison.Ordinal);
         Assert.Contains("'x86|x64|ARM64'", storeWorkflow, StringComparison.Ordinal);
+        Assert.Contains("microsoft/microsoft-store-apppublisher@v1.4", storeWorkflow, StringComparison.Ordinal);
+        Assert.Contains("STORE_CLI_VERSION: v0.4.1", storeWorkflow, StringComparison.Ordinal);
+        Assert.Contains("version: ${{ env.STORE_CLI_VERSION }}", storeWorkflow, StringComparison.Ordinal);
+        Assert.Contains("STORE_UPLOAD_TIMEOUT_SECONDS: 900", storeWorkflow, StringComparison.Ordinal);
+        Assert.Contains("'--uploadTimeout'", storeWorkflow, StringComparison.Ordinal);
+        Assert.DoesNotContain("msstore --verbose", storeWorkflow, StringComparison.Ordinal);
     }
 
     [Fact]
