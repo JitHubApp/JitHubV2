@@ -83,27 +83,32 @@ public partial class App : Application
     internal void HandleActivation(AppActivationArguments activationArguments)
     {
         Program.LogStartupPhase($"activation.received:thread-access={_dispatcherQueue.HasThreadAccess}");
-        ActivationRequest activationRequest = CreateActivationRequest(activationArguments);
 
         if (_dispatcherQueue.HasThreadAccess && _isStoredPaletteApplied)
         {
-            QueueActivation(activationRequest);
+            QueueActivation(activationArguments);
             return;
         }
 
         // Application.Resources is not projected safely until Application.Start's
         // initialization callback returns. The first queued turn applies the selected
         // palette before MainWindow resolves any theme resources.
-        if (!_dispatcherQueue.TryEnqueue(DispatcherQueuePriority.High, () => QueueActivation(activationRequest)))
+        if (!_dispatcherQueue.TryEnqueue(
+                DispatcherQueuePriority.High,
+                () => QueueActivation(activationArguments)))
         {
             LogActivationError(new InvalidOperationException("The activation dispatcher is unavailable."));
         }
     }
 
-    private void QueueActivation(ActivationRequest activationRequest)
+    private void QueueActivation(AppActivationArguments activationArguments)
     {
         try
         {
+            // AppLifecycle can raise redirected activations on a callback thread.
+            // Read the projected activation payload only after reaching WinUI's
+            // dispatcher so protocol callbacks are apartment-safe on every ABI.
+            ActivationRequest activationRequest = CreateActivationRequest(activationArguments);
             _ = GetOrCreateMainWindow();
             _services ??= BuildServices();
             _ = GetService<IApplicationTaskCoordinator>().RunAsync(

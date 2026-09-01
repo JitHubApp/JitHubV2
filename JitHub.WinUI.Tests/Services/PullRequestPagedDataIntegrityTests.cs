@@ -13,6 +13,28 @@ namespace JitHub.WinUI.Tests.Services;
 
 public sealed class PullRequestPagedDataIntegrityTests
 {
+    [Theory]
+    [InlineData(PagedDataCompleteness.Complete)]
+    [InlineData(PagedDataCompleteness.ApiLimited)]
+    public void TerminalListResult_AcceptsOnlyUsableCompletedStates(PagedDataCompleteness completeness)
+    {
+        Assert.True(PullRequestSectionProjectionPolicy.IsTerminalListResult(
+            new PullRequestSectionState(CacheState.Fresh, Completeness: completeness)));
+        Assert.False(PullRequestSectionProjectionPolicy.IsTerminalListResult(
+            new PullRequestSectionState(CacheState.Fresh, IsRefreshInProgress: true, Completeness: completeness)));
+        Assert.False(PullRequestSectionProjectionPolicy.IsTerminalListResult(
+            new PullRequestSectionState(CacheState.Error, ErrorMessage: "failed", Completeness: completeness)));
+    }
+
+    [Theory]
+    [InlineData(PagedDataCompleteness.Loading)]
+    [InlineData(PagedDataCompleteness.Partial)]
+    public void TerminalListResult_RejectsIncompletePublications(PagedDataCompleteness completeness)
+    {
+        Assert.False(PullRequestSectionProjectionPolicy.IsTerminalListResult(
+            new PullRequestSectionState(CacheState.Fresh, Completeness: completeness)));
+    }
+
     [Fact]
     public async Task CreateAndMetadataOptions_AutoPageBeyondOneHundred()
     {

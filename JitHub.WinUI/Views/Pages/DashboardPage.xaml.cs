@@ -29,7 +29,6 @@ public sealed partial class DashboardPage : Page
     private const double ShyHeaderRestoreOffset = 8;
     private const double ShyHeaderRevealTravel = 64;
     private const double ShyHeaderRehideTravel = 24;
-    private const double OverviewShyStartInset = 56;
     private const double OverviewShyRestoreInset = 8;
     private const double ScrollDirectionEpsilon = 0.5;
     private const double SideDrawerFallbackWidth = 360;
@@ -496,8 +495,18 @@ public sealed partial class DashboardPage : Page
         }
 
         double offset = scrollViewer.VerticalOffset;
-        double restoreOffset = Math.Max(0, sourceTop + OverviewShyRestoreInset);
-        double startOffset = Math.Max(restoreOffset, sourceTop + OverviewShyStartInset);
+        if (!ShyHeaderScrollPolicy.TryGetOverlayOffsets(
+                sourceTop,
+                source.ActualHeight,
+                DashboardOverviewShySurface.Height,
+                OverviewShyRestoreInset,
+                out double startOffset,
+                out double restoreOffset))
+        {
+            _isOverviewScrollHeaderShy = false;
+            SetOverviewShy(false, animate: false);
+            return;
+        }
 
         if (_isOverviewScrollHeaderShy)
         {

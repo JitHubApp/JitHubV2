@@ -50,7 +50,9 @@ public sealed class PredictivePrefetchLifecycleContractTests
         XDocument document = XDocument.Parse(xaml);
 
         Assert.Contains("protected override void OnNavigatedFrom", codeBehind, StringComparison.Ordinal);
-        string cancellationCall = string.Equals(pageName, "RepoIssuePage", StringComparison.Ordinal)
+        bool ownsNavigationLoad = string.Equals(pageName, "RepoIssuePage", StringComparison.Ordinal) ||
+            string.Equals(pageName, "RepoPullRequestPage", StringComparison.Ordinal);
+        string cancellationCall = ownsNavigationLoad
             ? "ViewModel.CancelNavigationWork();"
             : "ViewModel.CancelPredictivePrefetches();";
         Assert.Contains(cancellationCall, codeBehind, StringComparison.Ordinal);
@@ -65,6 +67,14 @@ public sealed class PredictivePrefetchLifecycleContractTests
                 "Interlocked.Increment(ref _selectionPresentationGeneration);",
                 codeBehind,
                 StringComparison.Ordinal);
+        }
+        else if (string.Equals(pageName, "RepoPullRequestPage", StringComparison.Ordinal))
+        {
+            string viewModel = ReadProductFile("ViewModels", "Pages", "RepoPullRequestPageViewModel.cs");
+            Assert.Contains("public void CancelNavigationWork()", viewModel, StringComparison.Ordinal);
+            Assert.Contains("CancelActiveListLoad(restoreUiState: true);", viewModel, StringComparison.Ordinal);
+            Assert.Contains("CancelPendingSelectionLoad();", viewModel, StringComparison.Ordinal);
+            Assert.Contains("CancelPredictivePrefetches();", viewModel, StringComparison.Ordinal);
         }
         else if (string.Equals(pageName, "RepoCommitsPage", StringComparison.Ordinal))
         {
