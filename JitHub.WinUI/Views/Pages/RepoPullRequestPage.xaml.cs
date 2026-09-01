@@ -62,6 +62,7 @@ public sealed partial class RepoPullRequestPage : Page
     private bool _isDetailHeaderShy;
     private bool _synchronizingSectionSelection;
     private int _headerTransitionGeneration;
+    private long _navigationGeneration;
 
     public RepoPullRequestPageViewModel ViewModel { get; }
 
@@ -96,6 +97,7 @@ public sealed partial class RepoPullRequestPage : Page
 
     protected override void OnNavigatedTo(NavigationEventArgs e)
     {
+        long navigationGeneration = Interlocked.Increment(ref _navigationGeneration);
         UiTaskGuard.Run(async () =>
         {
             _initialized = false;
@@ -111,6 +113,11 @@ public sealed partial class RepoPullRequestPage : Page
             }
 
             await ViewModel.InitializeAsync(arg);
+            if (navigationGeneration != Volatile.Read(ref _navigationGeneration))
+            {
+                return;
+            }
+
             if (DialogMatrixAutomationScenario.IsEnabled)
             {
                 bool hasSelection = ViewModel.SelectedPullRequest is not null;
@@ -146,9 +153,10 @@ public sealed partial class RepoPullRequestPage : Page
     protected override void OnNavigatedFrom(NavigationEventArgs e)
     {
         _initialized = false;
+        Interlocked.Increment(ref _navigationGeneration);
         _selectionRenderGeneration++;
         _pendingPointerHydrationNumber = null;
-        ViewModel.CancelPredictivePrefetches();
+        ViewModel.CancelNavigationWork();
         _searchDebounce?.Cancel();
         _searchDebounce?.Dispose();
         _searchDebounce = null;
@@ -596,7 +604,8 @@ public sealed partial class RepoPullRequestPage : Page
                 return;
             }
 
-            ViewModel.SelectedPullRequest = pullRequest;
+            ViewModel.RegisterPullRequestSelectionIntent(pullRequest);
+            ViewModel.CommitPullRequestSelection(pullRequest);
         }
     }
 
@@ -610,6 +619,11 @@ public sealed partial class RepoPullRequestPage : Page
         if (_pointerSelectionInProgress)
         {
             return;
+        }
+
+        if (ViewModel.SelectedPullRequest?.Number != pullRequest.Number)
+        {
+            ViewModel.RegisterPullRequestSelectionIntent(pullRequest);
         }
 
         int generation = BeginPullRequestTraversal(pullRequest);
@@ -646,6 +660,7 @@ public sealed partial class RepoPullRequestPage : Page
         }
 
         int generation = BeginPullRequestTraversal(pullRequest);
+        ViewModel.RegisterPullRequestSelectionIntent(pullRequest);
         ViewModel.CancelHoverPrefetch();
         ProductPerformanceReadiness.RecordTraversalStage("repo_pull_requests.hover.cancelled");
         ProductPerformanceReadiness.RecordTraversalStage("repo_pull_requests.pointer.selected");
@@ -745,7 +760,7 @@ public sealed partial class RepoPullRequestPage : Page
             () =>
             {
                 _pendingPointerHydrationNumber = null;
-                ViewModel.SelectedPullRequest = pullRequest;
+                ViewModel.CommitPullRequestSelection(pullRequest);
                 if (focusSelection &&
                     PullRequestsList.ContainerFromItem(pullRequest) is Control container)
                 {

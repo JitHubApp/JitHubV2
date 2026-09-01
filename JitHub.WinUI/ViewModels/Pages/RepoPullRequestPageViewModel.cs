@@ -37,7 +37,13 @@ public sealed partial class RepoPullRequestPageViewModel : ViewModelBase
     private int _detailRequestId;
     private int _projectedPullRequestDetailNumber;
     private int _listRequestId;
+    private long _selectionGeneration;
+    private int _selectionIntentNumber;
+    private int _selectionIntentPreviousPullRequestNumber;
     private bool _suppressSelectionChanged;
+    private CancellationTokenSource? _listLoadCancellationTokenSource;
+    private PullRequestListUiState? _listLoadUiState;
+    private int _listLoadUiStateRequestId;
     private CancellationTokenSource? _selectionLoadCancellationTokenSource;
     private CancellationTokenSource? _pullRequestDiffBuildCancellationTokenSource;
     private readonly List<GitHubPullRequest> _loadedPullRequests = [];
@@ -513,12 +519,23 @@ public sealed partial class RepoPullRequestPageViewModel : ViewModelBase
 
     public async Task InitializeAsync(PullRequestPageNavArg? navArg)
     {
+        _listRequestId++;
+        CancelActiveListLoad(restoreUiState: true);
         CancelPredictivePrefetches();
         if (CanReuseNavigationState(navArg))
         {
             _navArg = navArg;
             _capabilityRepository = navArg!.Repo;
             NotifyRepositoryPropertiesChanged();
+            if (SelectedPullRequest is GitHubPullRequest selectedPullRequest &&
+                _projectedPullRequestDetailNumber != selectedPullRequest.Number)
+            {
+                // Navigation cancellation stops any delayed/detail request. A cached
+                // list can still be reused, but an incomplete selected detail must be
+                // rehydrated instead of leaving its loading state disabled forever.
+                SchedulePullRequestDetailLoad(selectedPullRequest, TimeSpan.Zero);
+            }
+
             ScheduleNavigationRefresh();
             return;
         }
@@ -535,6 +552,10 @@ public sealed partial class RepoPullRequestPageViewModel : ViewModelBase
         PullRequests.Clear();
         SetSelectedPullRequest(null);
         ResetPullRequestDetails();
+        _lastSuccessfulListLoadAt = default;
+        _pullRequestListState = new PullRequestSectionState(
+            CacheState.Miss,
+            Completeness: PagedDataCompleteness.Loading);
         NotifyRepositoryPropertiesChanged();
 
         if (navArg is null)
@@ -587,7 +608,10 @@ public sealed partial class RepoPullRequestPageViewModel : ViewModelBase
         _navigationRefresh?.Cancel();
         _navigationRefresh?.Dispose();
         _navigationRefresh = null;
-        if (_lastSuccessfulListLoadAt != default &&
+        bool hasTerminalListResult = PullRequestSectionProjectionPolicy.IsTerminalListResult(
+            _pullRequestListState);
+        if (hasTerminalListResult &&
+            _lastSuccessfulListLoadAt != default &&
             DateTimeOffset.UtcNow - _lastSuccessfulListLoadAt < TimeSpan.FromMinutes(5))
         {
             return;
@@ -601,10 +625,11 @@ public sealed partial class RepoPullRequestPageViewModel : ViewModelBase
         string userPartition = GetActiveUserPartition(token);
         CancellationTokenSource refresh = new();
         _navigationRefresh = refresh;
+        TimeSpan refreshDelay = hasTerminalListResult ? TimeSpan.FromSeconds(2) : TimeSpan.Zero;
         _ = _taskCoordinator.RunAsync(
             async cancellationToken =>
             {
-                await Task.Delay(TimeSpan.FromSeconds(2), cancellationToken);
+                await Task.Delay(refreshDelay, cancellationToken);
                 await LoadPullRequestsAsync(
                     SelectedPullRequest?.Number ?? _pinnedPullRequestNumber,
                     preservePreferredPullRequestOutsideQuery: true,
@@ -1771,6 +1796,52 @@ public sealed partial class RepoPullRequestPageViewModel : ViewModelBase
             : CommitPageNavArg.CreateWithGitRef(_navArg.Repo, commit.Sha);
     }
 
+    public void RegisterPullRequestSelectionIntent(GitHubPullRequest pullRequest)
+    {
+        ArgumentNullException.ThrowIfNull(pullRequest);
+        if (_selectionIntentNumber == pullRequest.Number ||
+            _selectionIntentNumber == 0 && SelectedPullRequest?.Number == pullRequest.Number)
+        {
+            return;
+        }
+
+        int previousPullRequestNumber = _selectionIntentNumber > 0
+            ? _selectionIntentPreviousPullRequestNumber
+            : _lastFocusedPullRequestNumber;
+        _selectionIntentNumber = pullRequest.Number;
+        _selectionIntentPreviousPullRequestNumber = previousPullRequestNumber;
+        Interlocked.Increment(ref _selectionGeneration);
+        _detailRequestId++;
+        CancelPendingSelectionLoad();
+        CancelPullRequestDiffBuild();
+    }
+
+    public void CommitPullRequestSelection(GitHubPullRequest pullRequest)
+    {
+        ArgumentNullException.ThrowIfNull(pullRequest);
+        bool ownsSelectionIntent = _selectionIntentNumber == pullRequest.Number;
+        if (SelectedPullRequest?.Number != pullRequest.Number)
+        {
+            SelectedPullRequest = pullRequest;
+            return;
+        }
+
+        if (!ownsSelectionIntent)
+        {
+            return;
+        }
+
+        int previousPullRequestNumber = _selectionIntentPreviousPullRequestNumber;
+        ClearPullRequestSelectionIntent();
+        ApplySelectedPullRequestChange(pullRequest, previousPullRequestNumber);
+    }
+
+    private void ClearPullRequestSelectionIntent()
+    {
+        _selectionIntentNumber = 0;
+        _selectionIntentPreviousPullRequestNumber = 0;
+    }
+
     partial void OnSelectedPullRequestChanged(GitHubPullRequest? value)
     {
         if (_suppressSelectionChanged)
@@ -1778,6 +1849,25 @@ public sealed partial class RepoPullRequestPageViewModel : ViewModelBase
             return;
         }
 
+        int previousPullRequestNumber = _lastFocusedPullRequestNumber;
+        if (_selectionIntentNumber == value?.Number)
+        {
+            previousPullRequestNumber = _selectionIntentPreviousPullRequestNumber;
+            ClearPullRequestSelectionIntent();
+        }
+        else
+        {
+            ClearPullRequestSelectionIntent();
+            Interlocked.Increment(ref _selectionGeneration);
+        }
+
+        ApplySelectedPullRequestChange(value, previousPullRequestNumber);
+    }
+
+    private void ApplySelectedPullRequestChange(
+        GitHubPullRequest? value,
+        int previousPullRequestNumber)
+    {
         int clearedPinnedPullRequestNumber = 0;
         if (_pinnedPullRequestNumber > 0 && value?.Number != _pinnedPullRequestNumber)
         {
@@ -1804,7 +1894,6 @@ public sealed partial class RepoPullRequestPageViewModel : ViewModelBase
         }
 
         _capabilityDenials.TrackPullRequest(value.Number);
-        int previousPullRequestNumber = _lastFocusedPullRequestNumber;
         RemoveClearedPinnedPullRequestFromVisibleList(clearedPinnedPullRequestNumber);
         if (TryRestorePendingPullRequestSelectionState(value.Number))
         {
@@ -1910,15 +1999,26 @@ public sealed partial class RepoPullRequestPageViewModel : ViewModelBase
         PullRequestPageNavArg navigationArgs = _navArg;
 
         int requestId = ++_listRequestId;
+        long selectionGeneration = Volatile.Read(ref _selectionGeneration);
+        bool ownsDetailUi = !preserveCurrentDetailDuringLoad;
+        PullRequestListUiState previousUiState =
+            _listLoadUiState is { OwnsDetailUi: true } activeUiState &&
+            activeUiState.SelectionGeneration == selectionGeneration
+                ? activeUiState
+                : CapturePullRequestListUiState(selectionGeneration, ownsDetailUi);
+        CancellationTokenSource listLoad = BeginListLoad(requestId, previousUiState);
+        CancellationToken cancellationToken = listLoad.Token;
         IsPullRequestListLoading = true;
-        bool previousArePullRequestActionsEnabled = ArePullRequestActionsEnabled;
-        bool previousIsTogglePullRequestStateEnabled = IsTogglePullRequestStateEnabled;
-        bool previousIsPullRequestCommentEnabled = IsPullRequestCommentEnabled;
-        bool previousIsMergeEnabled = IsMergeEnabled;
+        _pullRequestListState = _pullRequestListState with
+        {
+            IsRefreshInProgress = true,
+            ErrorMessage = null,
+            Completeness = PagedDataCompleteness.Loading
+        };
         string? preferredPullRequestLoadFailureStatus = null;
-        StatusText = LoadingStatusText;
         if (!preserveCurrentDetailDuringLoad)
         {
+            StatusText = LoadingStatusText;
             CancelPendingSelectionLoad();
             _pendingPullRequestSelectionState = null;
             _detailRequestId++;
@@ -1947,14 +2047,22 @@ public sealed partial class RepoPullRequestPageViewModel : ViewModelBase
                     ApplyPullRequestListProjection(progress.Items, progress.Completeness);
                     _pullRequestListState = progress.State;
                     UpdatePullRequestListScopeNotice();
+                    int progressiveSelectionNumber = PullRequestProgressiveSelectionPolicy.ResolvePreferredNumber(
+                        selectionGeneration,
+                        Volatile.Read(ref _selectionGeneration),
+                        pullRequestNumberToSelect,
+                        GetProgressiveSelectionOwnerNumber());
                     BackgroundTaskObserver.Run(
                         () => ApplyPullRequestListFilterAsync(
-                            pullRequestNumberToSelect,
+                            progressiveSelectionNumber,
                             refreshSelectionDetails: false,
-                            suppressDetailRefresh: true),
+                            suppressDetailRefresh: true,
+                            updateStatusText: previousUiState.OwnsDetailUi &&
+                                selectionGeneration == Volatile.Read(ref _selectionGeneration)),
                         "pull_requests",
                         _telemetryService);
-                });
+                },
+                cancellationToken: cancellationToken);
             IReadOnlyList<GitHubPullRequest> pullRequests = pullRequestResult.Items;
 
             if (CompleteSupersededPullRequestListRead(requestId, listDuration.Elapsed))
@@ -1964,7 +2072,8 @@ public sealed partial class RepoPullRequestPageViewModel : ViewModelBase
 
             List<GitHubPullRequest> loadedPullRequests = [.. pullRequests];
             int pinnedPullRequestNumber = 0;
-            if (pullRequestNumberToSelect > 0)
+            if (pullRequestNumberToSelect > 0 &&
+                selectionGeneration == Volatile.Read(ref _selectionGeneration))
             {
                 GitHubPullRequest? selectedPullRequest = loadedPullRequests.FirstOrDefault(pullRequest => pullRequest.Number == pullRequestNumberToSelect);
                 if (selectedPullRequest is null)
@@ -1976,7 +2085,8 @@ public sealed partial class RepoPullRequestPageViewModel : ViewModelBase
                             GetActiveUserPartition(token),
                             navigationArgs.Repo.Owner.Login,
                             navigationArgs.Repo.Name,
-                            pullRequestNumberToSelect);
+                            pullRequestNumberToSelect,
+                            cancellationToken);
                         selectedPullRequest = selectedResult.Value;
                     }
                     catch (GitHubAuthenticationException)
@@ -2002,7 +2112,11 @@ public sealed partial class RepoPullRequestPageViewModel : ViewModelBase
                     }
                 }
 
-                if (selectedPullRequest is not null)
+                if (selectionGeneration != Volatile.Read(ref _selectionGeneration))
+                {
+                    preferredPullRequestLoadFailureStatus = null;
+                }
+                else if (selectedPullRequest is not null)
                 {
                     bool matchesQuery = MatchesPullRequestQuery(selectedPullRequest);
                     if (!matchesQuery && preservePreferredPullRequestOutsideQuery)
@@ -2026,12 +2140,22 @@ public sealed partial class RepoPullRequestPageViewModel : ViewModelBase
             _pinnedPullRequestNumber = pinnedPullRequestNumber;
             ApplyPullRequestListProjection(loadedPullRequests, pullRequestResult.Completeness);
             _pullRequestListState = pullRequestResult.State;
-            _lastSuccessfulListLoadAt = DateTimeOffset.UtcNow;
+            _lastSuccessfulListLoadAt = PullRequestSectionProjectionPolicy.IsTerminalListResult(
+                pullRequestResult.State)
+                    ? DateTimeOffset.UtcNow
+                    : default;
             UpdatePullRequestListScopeNotice();
-            await ApplyPullRequestListFilterAsync(
+            int finalSelectionNumber = PullRequestProgressiveSelectionPolicy.ResolvePreferredNumber(
+                selectionGeneration,
+                Volatile.Read(ref _selectionGeneration),
                 pullRequestNumberToSelect,
+                GetProgressiveSelectionOwnerNumber());
+            await ApplyPullRequestListFilterAsync(
+                finalSelectionNumber,
                 refreshSelectionDetails: true,
-                deferDetailLoad: deferSelectedDetails);
+                deferDetailLoad: deferSelectedDetails,
+                updateStatusText: previousUiState.OwnsDetailUi &&
+                    selectionGeneration == Volatile.Read(ref _selectionGeneration));
             if (CompleteSupersededPullRequestListRead(requestId, listDuration.Elapsed))
             {
                 return;
@@ -2044,7 +2168,9 @@ public sealed partial class RepoPullRequestPageViewModel : ViewModelBase
                 listDuration.Elapsed,
                 pullRequestResult.State.CacheState,
                 loadedPullRequests.Count);
-            if (!string.IsNullOrWhiteSpace(preferredPullRequestLoadFailureStatus) && requestId == _listRequestId)
+            if (!string.IsNullOrWhiteSpace(preferredPullRequestLoadFailureStatus) &&
+                requestId == _listRequestId &&
+                selectionGeneration == Volatile.Read(ref _selectionGeneration))
             {
                 StatusText = preferredPullRequestLoadFailureStatus;
             }
@@ -2056,10 +2182,8 @@ public sealed partial class RepoPullRequestPageViewModel : ViewModelBase
                 return;
             }
 
-            ArePullRequestActionsEnabled = previousArePullRequestActionsEnabled;
-            IsTogglePullRequestStateEnabled = previousIsTogglePullRequestStateEnabled;
-            IsPullRequestCommentEnabled = previousIsPullRequestCommentEnabled;
-            IsMergeEnabled = previousIsMergeEnabled;
+            RestorePullRequestListUiState(previousUiState, restoreStatusText: false);
+            MarkPullRequestListLoadIncomplete("Authentication failed.");
             TrackPullRequestListOutcome(
                 TelemetryTaxonomy.Results.AuthError,
                 listDuration.Elapsed,
@@ -2073,11 +2197,13 @@ public sealed partial class RepoPullRequestPageViewModel : ViewModelBase
                 return;
             }
 
-            ArePullRequestActionsEnabled = previousArePullRequestActionsEnabled;
-            IsTogglePullRequestStateEnabled = previousIsTogglePullRequestStateEnabled;
-            IsPullRequestCommentEnabled = previousIsPullRequestCommentEnabled;
-            IsMergeEnabled = previousIsMergeEnabled;
-            StatusText = UserFacingError.For(ex, UserFacingErrorKind.Action, "pull-requests");
+            RestorePullRequestListUiState(previousUiState, restoreStatusText: false);
+            MarkPullRequestListLoadIncomplete("Refresh failed.");
+            if (previousUiState.OwnsDetailUi &&
+                selectionGeneration == Volatile.Read(ref _selectionGeneration))
+            {
+                StatusText = UserFacingError.For(ex, UserFacingErrorKind.Action, "pull-requests");
+            }
             TrackPullRequestListOutcome(
                 TelemetryTaxonomy.Results.Error,
                 listDuration.Elapsed,
@@ -2090,25 +2216,56 @@ public sealed partial class RepoPullRequestPageViewModel : ViewModelBase
                 return;
             }
 
-            ArePullRequestActionsEnabled = previousArePullRequestActionsEnabled;
-            IsTogglePullRequestStateEnabled = previousIsTogglePullRequestStateEnabled;
-            IsPullRequestCommentEnabled = previousIsPullRequestCommentEnabled;
-            IsMergeEnabled = previousIsMergeEnabled;
-            StatusText = GetString("RepoPullRequest.LoadNetworkError", "JitHub could not reach GitHub to load pull requests.");
+            RestorePullRequestListUiState(previousUiState, restoreStatusText: false);
+            MarkPullRequestListLoadIncomplete("Network refresh failed.");
+            if (previousUiState.OwnsDetailUi &&
+                selectionGeneration == Volatile.Read(ref _selectionGeneration))
+            {
+                StatusText = GetString("RepoPullRequest.LoadNetworkError", "JitHub could not reach GitHub to load pull requests.");
+            }
             TrackPullRequestListOutcome(
                 TelemetryTaxonomy.Results.Error,
                 listDuration.Elapsed,
                 errorKind: "network");
         }
-        catch (OperationCanceledException)
+        catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
         {
             TrackPullRequestListOutcome(TelemetryTaxonomy.Results.Cancelled, listDuration.Elapsed);
         }
+        catch (OperationCanceledException)
+        {
+            if (CompleteSupersededPullRequestListRead(requestId, listDuration.Elapsed))
+            {
+                return;
+            }
+
+            RestorePullRequestListUiState(previousUiState, restoreStatusText: false);
+            MarkPullRequestListLoadIncomplete("Refresh timed out.");
+            if (previousUiState.OwnsDetailUi &&
+                selectionGeneration == Volatile.Read(ref _selectionGeneration))
+            {
+                StatusText = GetString(
+                    "RepoPullRequest.LoadTimeoutError",
+                    "GitHub took too long to load pull requests. Try again.");
+            }
+
+            TrackPullRequestListOutcome(
+                TelemetryTaxonomy.Results.Error,
+                listDuration.Elapsed,
+                errorKind: "timeout");
+        }
         finally
         {
-            if (requestId == _listRequestId)
+            bool completedCurrentLoad = CompleteListLoad(listLoad);
+            if (completedCurrentLoad)
             {
+                if (cancellationToken.IsCancellationRequested)
+                {
+                    RestorePullRequestListUiState(previousUiState, restoreStatusText: true);
+                }
+
                 IsPullRequestListLoading = false;
+                ClearPullRequestListUiState(requestId);
             }
         }
     }
@@ -2554,7 +2711,8 @@ public sealed partial class RepoPullRequestPageViewModel : ViewModelBase
         int preferredPullRequestNumber,
         bool refreshSelectionDetails = true,
         bool suppressDetailRefresh = false,
-        bool deferDetailLoad = false)
+        bool deferDetailLoad = false,
+        bool updateStatusText = true)
     {
         GitHubPullRequest? previousSelectedPullRequest = SelectedPullRequest;
         IEnumerable<GitHubPullRequest> filteredPullRequests = _loadedPullRequests.Where(
@@ -2576,27 +2734,30 @@ public sealed partial class RepoPullRequestPageViewModel : ViewModelBase
 
         GitHubPullRequest? selectedPullRequest = preferredPullRequestNumber > 0
             ? visiblePullRequests.FirstOrDefault(pullRequest => pullRequest.Number == preferredPullRequestNumber)
-            : visiblePullRequests.FirstOrDefault();
+            : preferredPullRequestNumber < 0
+                ? null
+                : visiblePullRequests.FirstOrDefault();
         bool preserveFocusedDetails = selectedPullRequest is null
             && visiblePullRequests.Count == 0
             && _lastFocusedPullRequestNumber > 0;
-        if (suppressDetailRefresh)
-        {
-            return;
-        }
-
         if (preserveFocusedDetails)
         {
             selectedPullRequest = _loadedPullRequests.FirstOrDefault(pullRequest => pullRequest.Number == _lastFocusedPullRequestNumber)
                 ?? previousSelectedPullRequest;
         }
-        StatusText = visiblePullRequests.Count == 0
-            ? GetString("RepoPullRequest.NoMatchesStatus", "No pull requests matched the current filters.")
-            : visiblePullRequests.Count == 1
-                ? FormatString("RepoPullRequest.ShowingSingleStatus", "Showing {0} pull request.", visiblePullRequests.Count)
-                : FormatString("RepoPullRequest.ShowingPluralStatus", "Showing {0} pull requests.", visiblePullRequests.Count);
+        if (updateStatusText)
+        {
+            StatusText = visiblePullRequests.Count == 0
+                ? GetString("RepoPullRequest.NoMatchesStatus", "No pull requests matched the current filters.")
+                : visiblePullRequests.Count == 1
+                    ? FormatString("RepoPullRequest.ShowingSingleStatus", "Showing {0} pull request.", visiblePullRequests.Count)
+                    : FormatString("RepoPullRequest.ShowingPluralStatus", "Showing {0} pull requests.", visiblePullRequests.Count);
+        }
 
         bool selectionChanged = previousSelectedPullRequest?.Number != selectedPullRequest?.Number;
+        bool selectionPresentationChanged = !ReferenceEquals(
+            previousSelectedPullRequest,
+            selectedPullRequest);
         if (SelectedPullRequest?.Number != selectedPullRequest?.Number)
         {
             CancelPendingSelectionLoad();
@@ -2611,7 +2772,7 @@ public sealed partial class RepoPullRequestPageViewModel : ViewModelBase
                 static pullRequest => pullRequest.Number.ToString(CultureInfo.InvariantCulture));
 
             SelectedPullRequest = selectedPullRequest;
-            if (selectedPullRequest is not null)
+            if (selectedPullRequest is not null && _selectionIntentNumber == 0)
             {
                 _lastFocusedPullRequestNumber = selectedPullRequest.Number;
             }
@@ -2619,6 +2780,16 @@ public sealed partial class RepoPullRequestPageViewModel : ViewModelBase
         finally
         {
             _suppressSelectionChanged = false;
+        }
+
+        if (selectionPresentationChanged)
+        {
+            NotifySelectedPullRequestHeaderPropertiesChanged();
+        }
+
+        if (suppressDetailRefresh)
+        {
+            return;
         }
 
         if (preserveFocusedDetails)
@@ -2845,6 +3016,104 @@ public sealed partial class RepoPullRequestPageViewModel : ViewModelBase
         _selectionLoadCancellationTokenSource?.Cancel();
         _selectionLoadCancellationTokenSource?.Dispose();
         _selectionLoadCancellationTokenSource = null;
+    }
+
+    private CancellationTokenSource BeginListLoad(int requestId, PullRequestListUiState uiState)
+    {
+        CancellationTokenSource current = new();
+        CancelWithoutDisposing(Interlocked.Exchange(ref _listLoadCancellationTokenSource, current));
+        _listLoadUiState = uiState;
+        _listLoadUiStateRequestId = requestId;
+        return current;
+    }
+
+    private bool CompleteListLoad(CancellationTokenSource current)
+    {
+        bool completedCurrentLoad = ReferenceEquals(
+            Interlocked.CompareExchange(ref _listLoadCancellationTokenSource, null, current),
+            current);
+        current.Dispose();
+        return completedCurrentLoad;
+    }
+
+    private void CancelActiveListLoad(bool restoreUiState)
+    {
+        CancellationTokenSource? current = Interlocked.Exchange(
+            ref _listLoadCancellationTokenSource,
+            null);
+        CancelWithoutDisposing(current);
+        if (!restoreUiState)
+        {
+            return;
+        }
+
+        if (_listLoadUiState is PullRequestListUiState uiState)
+        {
+            RestorePullRequestListUiState(uiState, restoreStatusText: true);
+        }
+
+        IsPullRequestListLoading = false;
+        _listLoadUiState = null;
+        _listLoadUiStateRequestId = 0;
+    }
+
+    private PullRequestListUiState CapturePullRequestListUiState(
+        long selectionGeneration,
+        bool ownsDetailUi) => new(
+        StatusText,
+        ArePullRequestActionsEnabled,
+        IsTogglePullRequestStateEnabled,
+        IsPullRequestCommentEnabled,
+        IsMergeEnabled,
+        selectionGeneration,
+        ownsDetailUi);
+
+    private void RestorePullRequestListUiState(
+        PullRequestListUiState uiState,
+        bool restoreStatusText)
+    {
+        if (!uiState.OwnsDetailUi ||
+            uiState.SelectionGeneration != Volatile.Read(ref _selectionGeneration))
+        {
+            return;
+        }
+
+        if (restoreStatusText)
+        {
+            StatusText = uiState.StatusText;
+        }
+
+        ArePullRequestActionsEnabled = uiState.AreActionsEnabled;
+        IsTogglePullRequestStateEnabled = uiState.IsToggleStateEnabled;
+        IsPullRequestCommentEnabled = uiState.IsCommentEnabled;
+        IsMergeEnabled = uiState.IsMergeEnabled;
+    }
+
+    private void ClearPullRequestListUiState(int requestId)
+    {
+        if (_listLoadUiStateRequestId != requestId)
+        {
+            return;
+        }
+
+        _listLoadUiState = null;
+        _listLoadUiStateRequestId = 0;
+    }
+
+    private int? GetProgressiveSelectionOwnerNumber() =>
+        _selectionIntentNumber > 0 ? _selectionIntentNumber : SelectedPullRequest?.Number;
+
+    private void MarkPullRequestListLoadIncomplete(string errorMessage)
+    {
+        _lastSuccessfulListLoadAt = default;
+        _pullRequestListState = _pullRequestListState with
+        {
+            IsRefreshInProgress = false,
+            ErrorMessage = errorMessage,
+            Completeness = PagedDataCompleteness.Partial,
+            LoadedItemCount = _loadedPullRequests.Count
+        };
+        UpdatePullRequestListScopeNotice();
     }
 
     private CancellationTokenSource BeginPullRequestDiffBuild()
@@ -3346,6 +3615,16 @@ public sealed partial class RepoPullRequestPageViewModel : ViewModelBase
         _neighborPrefetch?.Dispose();
         _neighborPrefetch = null;
         CancelPullRequestDiffBuild();
+    }
+
+    public void CancelNavigationWork()
+    {
+        _listRequestId++;
+        _detailRequestId++;
+        CancelActiveListLoad(restoreUiState: true);
+        CancelPendingSelectionLoad();
+        ClearPullRequestSelectionIntent();
+        CancelPredictivePrefetches();
     }
 
     public void SetSection(PullRequestWorkspaceSection section)
@@ -4098,6 +4377,15 @@ public sealed partial class RepoPullRequestPageViewModel : ViewModelBase
         IReadOnlyList<PullRequestReviewItem> Reviews,
         IReadOnlyList<GitHubIssueEvent> TimelineEvents,
         CommitDiffDocument DiffDocument);
+
+    private sealed record PullRequestListUiState(
+        string StatusText,
+        bool AreActionsEnabled,
+        bool IsToggleStateEnabled,
+        bool IsCommentEnabled,
+        bool IsMergeEnabled,
+        long SelectionGeneration,
+        bool OwnsDetailUi);
 
     public sealed record PullRequestMetadataDialogData(
         IReadOnlyList<GitHubActor> AvailableReviewers,

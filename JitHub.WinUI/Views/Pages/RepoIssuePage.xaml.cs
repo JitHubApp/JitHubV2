@@ -30,6 +30,7 @@ public sealed partial class RepoIssuePage : Page
     private RepoIssueInspectorPane? _issueInspectorPane;
     private RepoIssueDetailPane? _issueDetailPane;
     private long _issueTraversalGeneration;
+    private long _navigationGeneration;
 
     public RepoIssuePageViewModel ViewModel { get; }
 
@@ -39,7 +40,6 @@ public sealed partial class RepoIssuePage : Page
         ViewModel = ((App)Application.Current).GetService<RepoIssuePageViewModel>();
         InitializeComponent();
         DataContext = ViewModel;
-        Unloaded += RepoIssuePage_Unloaded;
         ViewModel.PropertyChanged += (_, args) =>
         {
             if (args.PropertyName == nameof(RepoIssuePageViewModel.IsIssueContentVisible) &&
@@ -50,19 +50,21 @@ public sealed partial class RepoIssuePage : Page
         };
     }
 
-    private void RepoIssuePage_Unloaded(object sender, RoutedEventArgs e)
-    {
-        Interlocked.Increment(ref _issueTraversalGeneration);
-        ViewModel.CancelNavigationWork();
-        _issueListPane?.CancelPendingWork();
-    }
-
     protected override void OnNavigatedTo(NavigationEventArgs e)
     {
+        long navigationGeneration = Interlocked.Increment(ref _navigationGeneration);
         UiTaskGuard.Run(async () =>
         {
+            _initialized = false;
             _openedInitialListDrawer = false;
             IssueNavArg? arg = e.Parameter as IssueNavArg;
+            if (arg?.IsNotificationHandoff != true)
+            {
+                // The progressive query can publish its first page before the full
+                // initialization completes, so its bound list must already exist.
+                EnsureIssueListPane();
+            }
+
             Task initialization = ViewModel.InitializeForNavigationAsync(arg);
             bool committedCachedDetail = ViewModel.SelectedIssue is not null;
             if (committedCachedDetail)
@@ -71,6 +73,11 @@ public sealed partial class RepoIssuePage : Page
             }
 
             await initialization;
+            if (navigationGeneration != Volatile.Read(ref _navigationGeneration))
+            {
+                return;
+            }
+
             if (DialogMatrixAutomationScenario.IsEnabled)
             {
                 ViewModel.CanCreateIssue = true;
@@ -100,6 +107,8 @@ public sealed partial class RepoIssuePage : Page
 
     protected override void OnNavigatedFrom(NavigationEventArgs e)
     {
+        _initialized = false;
+        Interlocked.Increment(ref _navigationGeneration);
         Interlocked.Increment(ref _issueTraversalGeneration);
         ViewModel.CancelNavigationWork();
         _issueListPane?.CancelPendingWork();

@@ -179,8 +179,10 @@ public sealed class DashboardWorkspaceContractTests
         Assert.Contains("transition.StartAsync(forceUpdateAnimatedElements: true)", source, StringComparison.Ordinal);
         Assert.Contains("transition.ReverseAsync(forceUpdateAnimatedElements: true)", source, StringComparison.Ordinal);
         Assert.Contains("DashboardOverviewMetricRepositories", source, StringComparison.Ordinal);
-        Assert.Contains("OverviewShyStartInset", source, StringComparison.Ordinal);
-        Assert.Contains("double restoreOffset = Math.Max(0, sourceTop + OverviewShyRestoreInset);", source, StringComparison.Ordinal);
+        Assert.DoesNotContain("OverviewShyStartInset", source, StringComparison.Ordinal);
+        Assert.Contains("ShyHeaderScrollPolicy.TryGetOverlayOffsets(", source, StringComparison.Ordinal);
+        Assert.Contains("source.ActualHeight", source, StringComparison.Ordinal);
+        Assert.Contains("DashboardOverviewShySurface.Height", source, StringComparison.Ordinal);
         Assert.Contains("if (offset <= restoreOffset)", source, StringComparison.Ordinal);
         Assert.Contains("if (offset >= startOffset)", source, StringComparison.Ordinal);
         Assert.DoesNotContain("_overviewUpwardRevealTravel", source, StringComparison.Ordinal);

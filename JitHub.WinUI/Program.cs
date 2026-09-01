@@ -8,6 +8,7 @@ using System.Collections.Generic;
 using System.IO;
 using System.Runtime.InteropServices;
 using System.Threading;
+using System.Threading.Tasks;
 using Windows.ApplicationModel.Activation;
 
 namespace JitHub.WinUI;
@@ -48,7 +49,7 @@ internal static class Program
 
             if (!keyInstance.IsCurrent)
             {
-                keyInstance.RedirectActivationToAsync(activationArguments).AsTask().GetAwaiter().GetResult();
+                RedirectActivationToCurrentInstance(keyInstance, activationArguments);
                 return 0;
             }
 
@@ -89,6 +90,21 @@ internal static class Program
             LogStartupException(ex);
             return Marshal.GetHRForException(ex);
         }
+    }
+
+    private static void RedirectActivationToCurrentInstance(
+        AppInstance keyInstance,
+        AppActivationArguments activationArguments)
+    {
+        // RedirectActivationToAsync must be started outside the STA entry point.
+        // Waiting for the outer worker keeps this secondary process alive until
+        // the registered instance has accepted the protocol activation.
+        Task.Run(async () =>
+        {
+            await keyInstance.RedirectActivationToAsync(activationArguments)
+                .AsTask()
+                .ConfigureAwait(false);
+        }).GetAwaiter().GetResult();
     }
 
     private static void OnActivated(object? sender, AppActivationArguments activationArguments)

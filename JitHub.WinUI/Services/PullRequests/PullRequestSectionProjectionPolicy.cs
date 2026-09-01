@@ -6,6 +6,12 @@ namespace JitHub.Services;
 
 public static class PullRequestSectionProjectionPolicy
 {
+    public static bool IsTerminalListResult(PullRequestSectionState state) =>
+        !state.IsRefreshInProgress &&
+        string.IsNullOrWhiteSpace(state.ErrorMessage) &&
+        state.CacheState != CacheState.Error &&
+        state.Completeness is PagedDataCompleteness.Complete or PagedDataCompleteness.ApiLimited;
+
     public static string CreateListTelemetryResult(PagedDataCompleteness completeness) => completeness switch
     {
         PagedDataCompleteness.Complete => "success",
