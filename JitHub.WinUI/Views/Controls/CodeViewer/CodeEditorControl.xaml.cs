@@ -12,6 +12,7 @@ using Microsoft.UI.Xaml.Automation.Peers;
 using Microsoft.UI.Xaml.Controls;
 using Microsoft.UI.Xaml.Input;
 using Microsoft.UI.Xaml.Media;
+using Windows.Foundation;
 using Windows.System;
 using Windows.UI.Core;
 using Windows.UI.ViewManagement;
@@ -25,6 +26,7 @@ namespace JitHub.WinUI.Views.Controls.CodeViewer;
 public sealed partial class CodeEditorControl : UserControl
 {
     internal const int MaximumSynchronousEditorBytes = 128 * 1024;
+    private const double TouchScrollActivationDistance = 8d;
     // Scintilla STYLE_DEFAULT = 32, STYLE_LINENUMBER = 33
     private const int StyleDefault = 32;
     private const int StyleLineNumber = 33;
@@ -38,6 +40,13 @@ public sealed partial class CodeEditorControl : UserControl
     private bool _isPaletteSubscribed;
     private int _allowedEditorHorizontalOffset;
     private string _appliedText = string.Empty;
+    private uint _touchPointerId = uint.MaxValue;
+    private Point _touchStartPosition;
+    private Point _touchLastPosition;
+    private double _touchVerticalRemainder;
+    private double _touchHorizontalRemainder;
+    private bool _touchScrollStarted;
+    private bool _touchCaptureOwned;
     private readonly UISettings? _uiSettings;
     private AppThemeSettingsMonitor? _themeSettings;
     private WinUIEditor.EditorBaseControl? _nativeEditorSurface;
@@ -214,6 +223,11 @@ public sealed partial class CodeEditorControl : UserControl
         InitializeComponent();
         _uiSettings = TryCreate(static () => new UISettings());
         InnerEditor.AddHandler(UIElement.PointerWheelChangedEvent, new PointerEventHandler(InnerEditor_PointerWheelChanged), true);
+        AddHandler(UIElement.PointerPressedEvent, new PointerEventHandler(CodeEditor_PointerPressed), true);
+        AddHandler(UIElement.PointerMovedEvent, new PointerEventHandler(CodeEditor_PointerMoved), true);
+        AddHandler(UIElement.PointerReleasedEvent, new PointerEventHandler(CodeEditor_PointerReleased), true);
+        AddHandler(UIElement.PointerCanceledEvent, new PointerEventHandler(CodeEditor_PointerCanceled), true);
+        AddHandler(UIElement.PointerCaptureLostEvent, new PointerEventHandler(CodeEditor_PointerCaptureLost), true);
         InnerEditor.PreviewKeyDown += InnerEditor_PreviewKeyDown;
         InnerEditor.PointerReleased += (_, _) => PublishCurrentLine();
         InnerEditor.Loaded += OnInnerEditorLoaded;
@@ -313,6 +327,193 @@ public sealed partial class CodeEditorControl : UserControl
         if (_isInnerReady)
         {
             CurrentLineChanged?.Invoke(this, CurrentLine);
+        }
+    }
+
+    private void CodeEditor_PointerPressed(object sender, PointerRoutedEventArgs args)
+    {
+        PointerPoint point = args.GetCurrentPoint(this);
+        if (_touchPointerId != uint.MaxValue ||
+            point.PointerDeviceType != PointerDeviceType.Touch)
+        {
+            return;
+        }
+
+        _touchPointerId = args.Pointer.PointerId;
+        _touchStartPosition = point.Position;
+        _touchLastPosition = point.Position;
+        _touchVerticalRemainder = 0;
+        _touchHorizontalRemainder = 0;
+        _touchScrollStarted = false;
+    }
+
+    private void CodeEditor_PointerMoved(object sender, PointerRoutedEventArgs args)
+    {
+        if (args.Pointer.PointerId != _touchPointerId)
+        {
+            return;
+        }
+
+        Point position = args.GetCurrentPoint(this).Position;
+        double totalDeltaX = position.X - _touchLastPosition.X;
+        double totalDeltaY = position.Y - _touchLastPosition.Y;
+        _touchLastPosition = position;
+
+        if (!_touchScrollStarted &&
+            (position.X - _touchStartPosition.X) * (position.X - _touchStartPosition.X) +
+            (position.Y - _touchStartPosition.Y) * (position.Y - _touchStartPosition.Y) <
+                TouchScrollActivationDistance * TouchScrollActivationDistance)
+        {
+            return;
+        }
+
+        if (!_touchScrollStarted)
+        {
+            _touchScrollStarted = true;
+            ClearNativeSelectionForTouchScroll();
+            _touchCaptureOwned = true;
+            _touchCaptureOwned = CapturePointer(args.Pointer);
+        }
+
+        args.Handled = true;
+        if (!_touchCaptureOwned)
+        {
+            // If WinUI cannot transfer capture away from the native surface,
+            // keep clearing its selection after each handled move so it cannot
+            // repaint a drag-selection underneath the scrolling gesture.
+            ClearNativeSelectionForTouchScroll();
+        }
+        ScrollEditorForTouch(totalDeltaX, totalDeltaY);
+    }
+
+    private void CodeEditor_PointerReleased(object sender, PointerRoutedEventArgs args)
+    {
+        if (args.Pointer.PointerId != _touchPointerId)
+        {
+            return;
+        }
+
+        if (_touchScrollStarted)
+        {
+            args.Handled = true;
+            ClearNativeSelectionForTouchScroll();
+            if (_touchCaptureOwned)
+            {
+                ReleasePointerCapture(args.Pointer);
+            }
+        }
+
+        ResetTouchScrollState();
+    }
+
+    private void CodeEditor_PointerCanceled(object sender, PointerRoutedEventArgs args)
+    {
+        if (args.Pointer.PointerId != _touchPointerId)
+        {
+            return;
+        }
+
+        if (_touchScrollStarted)
+        {
+            args.Handled = true;
+            ClearNativeSelectionForTouchScroll();
+            if (_touchCaptureOwned)
+            {
+                ReleasePointerCapture(args.Pointer);
+            }
+        }
+
+        ResetTouchScrollState();
+    }
+
+    private void CodeEditor_PointerCaptureLost(object sender, PointerRoutedEventArgs args)
+    {
+        if (args.Pointer.PointerId != _touchPointerId)
+        {
+            return;
+        }
+
+        // Capturing the pointer here transfers capture away from WinUIEdit. Its
+        // native surface raises PointerCaptureLost while the wrapper is taking
+        // ownership; only react to a loss of the wrapper's own capture.
+        if (_touchCaptureOwned && !ReferenceEquals(args.OriginalSource, this))
+        {
+            return;
+        }
+
+        if (_touchScrollStarted)
+        {
+            ClearNativeSelectionForTouchScroll();
+        }
+
+        ResetTouchScrollState();
+    }
+
+    private void ResetTouchScrollState()
+    {
+        _touchPointerId = uint.MaxValue;
+        _touchStartPosition = default;
+        _touchLastPosition = default;
+        _touchVerticalRemainder = 0;
+        _touchHorizontalRemainder = 0;
+        _touchScrollStarted = false;
+        _touchCaptureOwned = false;
+    }
+
+    private void ClearNativeSelectionForTouchScroll()
+    {
+        if (!_isInnerReady)
+        {
+            return;
+        }
+
+        try
+        {
+            InnerEditor.Editor.SetEmptySelection(InnerEditor.Editor.CurrentPos);
+        }
+        catch (Exception ex)
+        {
+            ReportFailureOnce(ex, "ui-code-editor-touch-selection");
+        }
+    }
+
+    private void ScrollEditorForTouch(double deltaX, double deltaY)
+    {
+        if (!_isInnerReady)
+        {
+            return;
+        }
+
+        try
+        {
+            var editor = InnerEditor.Editor;
+            _touchHorizontalRemainder -= deltaX;
+            int horizontalPixels = (int)Math.Truncate(_touchHorizontalRemainder);
+            if (horizontalPixels != 0)
+            {
+                _allowedEditorHorizontalOffset = Math.Max(
+                    0,
+                    _allowedEditorHorizontalOffset + horizontalPixels);
+                _touchHorizontalRemainder -= horizontalPixels;
+            }
+
+            _touchVerticalRemainder -= deltaY;
+            double lineHeight = Math.Max(1d, editor.TextHeight(Math.Clamp(
+                editor.FirstVisibleLine,
+                0,
+                Math.Max(0, editor.LineCount - 1))));
+            long lines = (long)Math.Truncate(_touchVerticalRemainder / lineHeight);
+            if (lines != 0)
+            {
+                editor.LineScroll(0, lines);
+                _touchVerticalRemainder -= lines * lineHeight;
+            }
+
+            editor.XOffset = _allowedEditorHorizontalOffset;
+        }
+        catch (Exception ex)
+        {
+            ReportFailureOnce(ex, "ui-code-editor-touch-scroll");
         }
     }
 
@@ -500,6 +701,7 @@ public sealed partial class CodeEditorControl : UserControl
 
     private void OnControlUnloaded(object sender, RoutedEventArgs e)
     {
+        ResetTouchScrollState();
         _isInnerReady = false;
         if (_isThemeSubscribed)
         {

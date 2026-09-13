@@ -88,9 +88,9 @@
       },
       "Microsoft.DotNet.ILCompiler": {
         "type": "Direct",
-        "requested": "[10.0.11, )",
-        "resolved": "10.0.11",
-        "contentHash": "yloFUsIQOzspIsn2cDHrbgikKaWHAZspzj0EWxnWJJpFC89IBW64OXgCECsrrnzGWQvy1iLX9r5/R4zBf7Am3g=="
+        "requested": "[10.0.12, )",
+        "resolved": "10.0.12",
+        "contentHash": "AawF393Q+VkdrnrnI1gu612zh5iqpa1AGSvnKCQ3IkMgSKJXIQbO1sXYRgEzOU4f0cPZ6MaCCF29xZSGWlmbuQ=="
       },
       "Microsoft.Extensions.Configuration.Binder": {
         "type": "Direct",
@@ -134,9 +134,9 @@
       },
       "Microsoft.NET.ILLink.Tasks": {
         "type": "Direct",
-        "requested": "[10.0.11, )",
-        "resolved": "10.0.11",
-        "contentHash": "IBf7lbovvjGWVWXZX5cJ/cO0WXbId0Zq4BuSeT94mGZuOAP66oMeH9PTBZ9Jpp3Jb6jtK0qm/NyUbPRo1gC/wQ=="
+        "requested": "[10.0.12, )",
+        "resolved": "10.0.12",
+        "contentHash": "xi+BDjFpW+Sb+MHFHaH6Y/gV9I8BluFwRXc1QyCdoZbIK26eNiBeFuMTe/FMwc33G1wdHCyDg7CVTmb8OdQrMQ=="
       },
       "Microsoft.Services.Store.Engagement": {
         "type": "Direct",
@@ -558,11 +558,11 @@
     "net10.0-windows10.0.26100/win-arm64": {
       "Microsoft.DotNet.ILCompiler": {
         "type": "Direct",
-        "requested": "[10.0.11, )",
-        "resolved": "10.0.11",
-        "contentHash": "yloFUsIQOzspIsn2cDHrbgikKaWHAZspzj0EWxnWJJpFC89IBW64OXgCECsrrnzGWQvy1iLX9r5/R4zBf7Am3g==",
+        "requested": "[10.0.12, )",
+        "resolved": "10.0.12",
+        "contentHash": "AawF393Q+VkdrnrnI1gu612zh5iqpa1AGSvnKCQ3IkMgSKJXIQbO1sXYRgEzOU4f0cPZ6MaCCF29xZSGWlmbuQ==",
         "dependencies": {
-          "runtime.win-arm64.Microsoft.DotNet.ILCompiler": "10.0.11"
+          "runtime.win-arm64.Microsoft.DotNet.ILCompiler": "10.0.12"
         }
       },
       "Microsoft.Graphics.Win2D": {
@@ -611,8 +611,8 @@
       },
       "runtime.win-arm64.Microsoft.DotNet.ILCompiler": {
         "type": "Transitive",
-        "resolved": "10.0.11",
-        "contentHash": "vy/AJM7NafhIa+4EsJrh//5Ba3HW3purZh+KR0Bpt/R20w3s06ZrUsdwHywUs+5E7PfEtbXBcLlebKFusSLBkQ=="
+        "resolved": "10.0.12",
+        "contentHash": "2qwg37KiPUnsvPjdLhAMjcRTxLFAC5BhIBkJd1HEBGzgSK4WT+gg/C+kh5Gwg53EQv6xTqF2oGks+c49JLa8jw=="
       },
       "SkiaSharp.NativeAssets.Win32": {
         "type": "Transitive",
@@ -628,11 +628,11 @@
     "net10.0-windows10.0.26100/win-x64": {
       "Microsoft.DotNet.ILCompiler": {
         "type": "Direct",
-        "requested": "[10.0.11, )",
-        "resolved": "10.0.11",
-        "contentHash": "yloFUsIQOzspIsn2cDHrbgikKaWHAZspzj0EWxnWJJpFC89IBW64OXgCECsrrnzGWQvy1iLX9r5/R4zBf7Am3g==",
+        "requested": "[10.0.12, )",
+        "resolved": "10.0.12",
+        "contentHash": "AawF393Q+VkdrnrnI1gu612zh5iqpa1AGSvnKCQ3IkMgSKJXIQbO1sXYRgEzOU4f0cPZ6MaCCF29xZSGWlmbuQ==",
         "dependencies": {
-          "runtime.win-x64.Microsoft.DotNet.ILCompiler": "10.0.11"
+          "runtime.win-x64.Microsoft.DotNet.ILCompiler": "10.0.12"
         }
       },
       "Microsoft.Graphics.Win2D": {
@@ -681,8 +681,8 @@
       },
       "runtime.win-x64.Microsoft.DotNet.ILCompiler": {
         "type": "Transitive",
-        "resolved": "10.0.11",
-        "contentHash": "D6ZKMo3NeTnos7l5S8bMmiPm4LK+y15Q/uduyPw7FX+xKbeWVWdwlcZGkLLPjLvW4ZO6o3ACanq5HsSXJgrt0g=="
+        "resolved": "10.0.12",
+        "contentHash": "clsgU9GnioCJ+PBzQTCoJHxLXRU+7O/BzYrwRT8CUP7jgyYjNgJmNsQ/kbzAA7MG5kDvFoFvIBGHGzYdINh/EQ=="
       },
       "SkiaSharp.NativeAssets.Win32": {
         "type": "Transitive",
@@ -698,11 +698,11 @@
     "net10.0-windows10.0.26100/win-x86": {
       "Microsoft.DotNet.ILCompiler": {
         "type": "Direct",
-        "requested": "[10.0.11, )",
-        "resolved": "10.0.11",
-        "contentHash": "yloFUsIQOzspIsn2cDHrbgikKaWHAZspzj0EWxnWJJpFC89IBW64OXgCECsrrnzGWQvy1iLX9r5/R4zBf7Am3g==",
+        "requested": "[10.0.12, )",
+        "resolved": "10.0.12",
+        "contentHash": "AawF393Q+VkdrnrnI1gu612zh5iqpa1AGSvnKCQ3IkMgSKJXIQbO1sXYRgEzOU4f0cPZ6MaCCF29xZSGWlmbuQ==",
         "dependencies": {
-          "runtime.win-x86.Microsoft.DotNet.ILCompiler": "10.0.11"
+          "runtime.win-x86.Microsoft.DotNet.ILCompiler": "10.0.12"
         }
       },
       "Microsoft.Graphics.Win2D": {
@@ -751,8 +751,8 @@
       },
       "runtime.win-x86.Microsoft.DotNet.ILCompiler": {
         "type": "Transitive",
-        "resolved": "10.0.11",
-        "contentHash": "Gm5p1Pg87zf+HDV0cS+niOwh4glMgZ5hnDvQ9rmXyY+tQtlKSsWcKOwHVE8rJx/eTiOiLUrbNZNw5uD//h0zlg=="
+        "resolved": "10.0.12",
+        "contentHash": "NTcKhVn2pZ2L+pOxi9GM9tL461gK61H0g+mHIz30f7SHqk1qTWrW4Fy66RItnjeK/K5RFr64hlFSEPWFbfHksg=="
       },
       "SkiaSharp.NativeAssets.Win32": {
         "type": "Transitive",

@@ -334,7 +334,7 @@
     },
     {
       "id": "Microsoft.DotNet.ILCompiler",
-      "version": "10.0.11",
+      "version": "10.0.12",
       "direct": true,
       "roles": [
         "build"
@@ -543,7 +543,7 @@
     },
     {
       "id": "Microsoft.NET.ILLink.Tasks",
-      "version": "10.0.11",
+      "version": "10.0.12",
       "direct": true,
       "roles": [
         "analyzer",
@@ -802,7 +802,7 @@
     },
     {
       "id": "runtime.win-arm64.Microsoft.DotNet.ILCompiler",
-      "version": "10.0.11",
+      "version": "10.0.12",
       "direct": false,
       "roles": [
         "metadata"
@@ -813,7 +813,7 @@
     },
     {
       "id": "runtime.win-x64.Microsoft.DotNet.ILCompiler",
-      "version": "10.0.11",
+      "version": "10.0.12",
       "direct": false,
       "roles": [
         "metadata"
@@ -824,7 +824,7 @@
     },
     {
       "id": "runtime.win-x86.Microsoft.DotNet.ILCompiler",
-      "version": "10.0.11",
+      "version": "10.0.12",
       "direct": false,
       "roles": [
         "metadata"
