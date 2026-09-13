@@ -47,10 +47,13 @@ jobs:
       APP_DISPLAY_NAME: ${{ vars.STORE_APP_DISPLAY_NAME }}
       BUNDLE_PLATFORMS: ${{ vars.JITHUB_STORE_BUNDLE_PLATFORMS }}
       PUBLISHER_DISPLAY_NAME: ${{ vars.STORE_PUBLISHER_DISPLAY_NAME }}
-      STORE_CLI_VERSION: v0.4.1
+      STORE_CLI_VERSION: v0.4.2
       STORE_RELEASE_VERSION: ${{ inputs.release_version }}
-      # v0.4.1 resolves an omitted --uploadTimeout to zero (microsoft/msstore-cli#162).
-      # Keep an explicit value until a release containing the upstream fix is validated.
+      # Not a workaround any more: v0.4.0/v0.4.1 resolved an omitted
+      # --uploadTimeout to zero (microsoft/msstore-cli#162), fixed by #163 and
+      # released in v0.4.2 above. The value stays because the CLI sets no
+      # StorageTransferOptions, so an .appxupload under 256 MiB is sent as a
+      # single PUT and this timeout must cover the whole transfer, not a chunk.
       STORE_UPLOAD_TIMEOUT_SECONDS: 900
       TARGET_PLATFORM_VERSION: 10.0.26100.0
       STORE_CLIENT_ID: ${{ secrets.STORE_CLIENT_ID }}
@@ -81,8 +84,10 @@ jobs:
       - name: Set up Microsoft Store CLI
         uses: microsoft/microsoft-store-apppublisher@v1.4
         with:
-          # v0.4.1 is the first release with the Native AOT upload progress fix.
-          # Keep this pinned until a newer CLI release is validated here.
+          # v0.4.1 was the first release with the Native AOT upload progress
+          # fix; v0.4.2 adds the fix for the --uploadTimeout default
+          # (microsoft/msstore-cli#162). Keep this pinned until a newer CLI
+          # release is validated here.
           version: ${{ env.STORE_CLI_VERSION }}
 
       - name: Verify Microsoft Store CLI
