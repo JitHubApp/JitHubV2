@@ -110,6 +110,57 @@ public sealed class SvgResourceBudgetTests
     }
 
     [Fact]
+    public void Validate_RejectsUnboundedEmbeddedImagesBeforeNativeRasterization()
+    {
+        string images = string.Concat(System.Linq.Enumerable.Repeat(
+            "<image href='data:image/png;base64,AAAA'/>",
+            SvgResourceBudget.MaxImageElements + 1));
+
+        SvgResourceBudgetResult result = SvgResourceBudget.Validate(
+            Bytes($"<svg>{images}</svg>"),
+            CancellationToken.None);
+
+        Assert.False(result.Accepted);
+        Assert.Equal("image-count", result.Reason);
+    }
+
+    [Fact]
+    public void Validate_AcceptsBoundedEmbeddedImageData()
+    {
+        SvgResourceBudgetResult result = SvgResourceBudget.Validate(
+            Bytes("<svg><image href='data:image/png;base64,AAAA'/></svg>"),
+            CancellationToken.None);
+
+        Assert.True(result.Accepted, result.Reason);
+    }
+
+    [Fact]
+    public void Validate_RejectsOversizedEmbeddedImageDataBeforeNativeRasterization()
+    {
+        string data = new('A', SvgResourceBudget.MaxEmbeddedImageDataUriCharacters);
+
+        SvgResourceBudgetResult result = SvgResourceBudget.Validate(
+            Bytes($"<svg><image href='data:image/png;base64,{data}'/></svg>"),
+            CancellationToken.None);
+
+        Assert.False(result.Accepted);
+        Assert.Equal("embedded-image-data", result.Reason);
+    }
+
+    [Theory]
+    [InlineData("https://example.test/avatar.png")]
+    [InlineData("file:///C:/avatar.png")]
+    public void Validate_RejectsExternalSvgImageReferences(string href)
+    {
+        SvgResourceBudgetResult result = SvgResourceBudget.Validate(
+            Bytes($"<svg><image href='{href}'/></svg>"),
+            CancellationToken.None);
+
+        Assert.False(result.Accepted);
+        Assert.Equal("external-image-reference", result.Reason);
+    }
+
+    [Fact]
     public void Validate_ObservesCancellation()
     {
         using CancellationTokenSource cancellation = new();

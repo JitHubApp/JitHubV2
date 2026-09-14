@@ -23,6 +23,8 @@ internal static class SvgResourceBudget
     public const int MaxFilterPrimitives = 256;
     public const int MaxTextNodes = 512;
     public const int MaxTextCharacters = 64 * 1024;
+    public const int MaxImageElements = 128;
+    public const int MaxEmbeddedImageDataUriCharacters = 512 * 1024;
     public const int MaxPathCharacters = 512 * 1024;
     public const int MaxTransformCharacters = 64 * 1024;
     public const double MaxDeclaredFontSize = 4096;
@@ -46,6 +48,8 @@ internal static class SvgResourceBudget
         int filterPrimitiveCount = 0;
         int textNodes = 0;
         int textCharacters = 0;
+        int imageElements = 0;
+        int embeddedImageDataUriCharacters = 0;
         int pathCharacters = 0;
         int transformCharacters = 0;
         bool sawSvgRoot = false;
@@ -108,6 +112,13 @@ internal static class SvgResourceBudget
                         }
                     }
 
+                    bool isSvgImage = IsSvgNamespace(reader.NamespaceURI) &&
+                        reader.LocalName.Equals("image", StringComparison.OrdinalIgnoreCase);
+                    if (isSvgImage && ++imageElements > MaxImageElements)
+                    {
+                        return SvgResourceBudgetResult.Reject("image-count");
+                    }
+
                     if (reader.HasAttributes)
                     {
                         while (reader.MoveToNextAttribute())
@@ -141,6 +152,22 @@ internal static class SvgResourceBudget
                                 Math.Abs(fontSize) > MaxDeclaredFontSize)
                             {
                                 return SvgResourceBudgetResult.Reject("font-size");
+                            }
+                            else if (isSvgImage && name.Equals("href", StringComparison.OrdinalIgnoreCase))
+                            {
+                                // Do not let a renderer-owned SVG initiate a nested network or
+                                // file load. Embedded raster data is safe only within a bounded
+                                // aggregate budget because every image can allocate a decoder.
+                                if (!value.StartsWith("data:", StringComparison.OrdinalIgnoreCase))
+                                {
+                                    return SvgResourceBudgetResult.Reject("external-image-reference");
+                                }
+
+                                embeddedImageDataUriCharacters += value.Length;
+                                if (embeddedImageDataUriCharacters > MaxEmbeddedImageDataUriCharacters)
+                                {
+                                    return SvgResourceBudgetResult.Reject("embedded-image-data");
+                                }
                             }
                         }
 
