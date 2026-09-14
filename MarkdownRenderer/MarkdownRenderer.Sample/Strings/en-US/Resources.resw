@@ -1,0 +1,69 @@
+<?xml version="1.0" encoding="utf-8"?>
+<root>
+  <resheader name="resmimetype"><value>text/microsoft-resx</value></resheader>
+  <resheader name="version"><value>2.0</value></resheader>
+  <resheader name="reader"><value>System.Resources.ResXResourceReader, System.Windows.Forms, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089</value></resheader>
+  <resheader name="writer"><value>System.Resources.ResXResourceWriter, System.Windows.Forms, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089</value></resheader>
+  <data name="AppTitle" xml:space="preserve"><value>MarkdownRenderer — Feature Showcase</value></data>
+  <data name="NavigationPaneTitle" xml:space="preserve"><value>Sample pages</value></data>
+  <data name="NavigationAutomationName" xml:space="preserve"><value>Markdown renderer feature pages</value></data>
+  <data name="EditorAutomationName" xml:space="preserve"><value>Markdown source editor</value></data>
+  <data name="RendererAutomationName" xml:space="preserve"><value>Rendered markdown preview</value></data>
+  <data name="DiagnosticsAutomationName" xml:space="preserve"><value>Renderer diagnostics</value></data>
+  <data name="DiagnosticsDetailsAutomationName" xml:space="preserve"><value>Diagnostic details</value></data>
+  <data name="DiagnosticsTitleFormat" xml:space="preserve"><value>Renderer diagnostics ({0})</value></data>
+  <data name="DiagnosticsAutomationSummaryFormat" xml:space="preserve"><value>{0}. {1}</value></data>
+  <data name="DiagnosticsClearedNotification" xml:space="preserve"><value>No renderer diagnostics.</value></data>
+  <data name="DiagnosticLineFormat" xml:space="preserve"><value>{0} {1} [{2}..{3}): {4}</value></data>
+  <data name="DiagnosticsRemainingFormat" xml:space="preserve"><value>Additional diagnostics not shown: {0}</value></data>
+  <data name="DiagnosticsInformation" xml:space="preserve"><value>Information</value></data>
+  <data name="DiagnosticsWarning" xml:space="preserve"><value>Warning</value></data>
+  <data name="DiagnosticsError" xml:space="preserve"><value>Error</value></data>
+  <data name="RenderFailedTitle" xml:space="preserve"><value>Render failed</value></data>
+  <data name="RenderFailureMessageFormat" xml:space="preserve"><value>{0}: {1}</value></data>
+  <data name="GroupOverview" xml:space="preserve"><value>Overview</value></data>
+  <data name="GroupMarkdown" xml:space="preserve"><value>Markdown</value></data>
+  <data name="GroupProfiles" xml:space="preserve"><value>Profiles</value></data>
+  <data name="GroupFeaturePacks" xml:space="preserve"><value>Feature packs</value></data>
+  <data name="GroupInteraction" xml:space="preserve"><value>Interaction</value></data>
+  <data name="GroupDiagnostics" xml:space="preserve"><value>Diagnostics and scale</value></data>
+  <data name="PageFullDemo" xml:space="preserve"><value>Full demo</value></data>
+  <data name="PageTypography" xml:space="preserve"><value>Typography</value></data>
+  <data name="PageLists" xml:space="preserve"><value>Lists</value></data>
+  <data name="PageTables" xml:space="preserve"><value>Tables</value></data>
+  <data name="PageCode" xml:space="preserve"><value>Code and TextMate</value></data>
+  <data name="PageImages" xml:space="preserve"><value>Images and SVG</value></data>
+  <data name="PageGitHubAlerts" xml:space="preserve"><value>GitHub alerts</value></data>
+  <data name="PageFootnotes" xml:space="preserve"><value>Footnotes</value></data>
+  <data name="PageMarkdownExtra" xml:space="preserve"><value>Markdown Extra</value></data>
+  <data name="PageHtml" xml:space="preserve"><value>Safe HTML</value></data>
+  <data name="PageMath" xml:space="preserve"><value>Math</value></data>
+  <data name="PageMermaid" xml:space="preserve"><value>Mermaid</value></data>
+  <data name="PageDiagrams" xml:space="preserve"><value>Diagram pipeline</value></data>
+  <data name="PageEmbeds" xml:space="preserve"><value>Hosted elements</value></data>
+  <data name="PageSelection" xml:space="preserve"><value>Selection and copy</value></data>
+  <data name="PageTouchSelection" xml:space="preserve"><value>Touch selection</value></data>
+  <data name="PageKeyboardNav" xml:space="preserve"><value>Keyboard navigation</value></data>
+  <data name="PageRtl" xml:space="preserve"><value>Right-to-left</value></data>
+  <data name="PageLazyImages" xml:space="preserve"><value>Lazy images</value></data>
+  <data name="PageScrollAnchor" xml:space="preserve"><value>Scroll anchoring</value></data>
+  <data name="PageVirtualization" xml:space="preserve"><value>Virtualization</value></data>
+  <data name="PageStress" xml:space="preserve"><value>Stress document</value></data>
+  <data name="PageAccessibilityLab" xml:space="preserve"><value>Accessibility lab</value></data>
+  <data name="PageAuditMatrix" xml:space="preserve"><value>Audit matrix</value></data>
+  <data name="DisplayControlsAutomationName" xml:space="preserve"><value>Preview display controls</value></data>
+  <data name="CommandTheme" xml:space="preserve"><value>Dark theme</value></data>
+  <data name="CommandThemeAutomationName" xml:space="preserve"><value>Use dark theme</value></data>
+  <data name="CommandRtl" xml:space="preserve"><value>Right-to-left</value></data>
+  <data name="CommandRtlAutomationName" xml:space="preserve"><value>Use right-to-left preview flow</value></data>
+  <data name="CommandHighContrast" xml:space="preserve"><value>Forced contrast</value></data>
+  <data name="CommandHighContrastAutomationName" xml:space="preserve"><value>Force high contrast preview colors</value></data>
+  <data name="CommandTextScale" xml:space="preserve"><value>200% text</value></data>
+  <data name="CommandTextScaleAutomationName" xml:space="preserve"><value>Use two hundred percent preview text scale</value></data>
+  <data name="CommandTaskEditing" xml:space="preserve"><value>Edit tasks</value></data>
+  <data name="CommandTaskEditingAutomationName" xml:space="preserve"><value>Enable task-list editing</value></data>
+  <data name="CommandAncestorViewport" xml:space="preserve"><value>Ancestor viewport</value></data>
+  <data name="CommandAncestorViewportAutomationName" xml:space="preserve"><value>Use a page-owned ScrollViewer for the touch sample</value></data>
+  <data name="AncestorViewportAutomationName" xml:space="preserve"><value>Page-owned markdown viewport</value></data>
+  <data name="ModifiedSuffix" xml:space="preserve"><value> — modified</value></data>
+</root>

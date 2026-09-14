@@ -63,7 +63,7 @@ internal static class MarkdownHighContrastDefaults
             AccentBar: MarkdownHighContrastColorRole.WindowText,
             Underline: true),
 
-        "Marked" or "DefinitionDescription" or "Figure" or "FigureCaption" or "Diagram" => new(
+        "Marked" or "DefinitionDescription" or "Figure" or "FigureCaption" or "Diagram" or "Math" => new(
             MarkdownHighContrastColorRole.WindowText,
             MarkdownHighContrastColorRole.Window),
 

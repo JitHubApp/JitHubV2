@@ -3,6 +3,7 @@ using System.Collections.Generic;
 using System.IO;
 using System.Linq;
 using MarkdownRenderer.Layout.Boxes;
+using MarkdownRenderer.Svg.ThorVG;
 using Xunit;
 
 namespace MarkdownRenderer.PixelTests;
@@ -31,20 +32,14 @@ public sealed class SvgComplianceTests
     private const double MaxMeanChannelDelta = 12.0;
     private const double MaxDifferingPixelFraction = 0.20;
 
-    // ThorVG 1.0.4 has documented gaps that don't have a clean workaround on
-    // the renderer side. Fixtures exercising these features are still required
-    // to (a) rasterize without crashing and (b) produce a buffer of the right
-    // shape; the per-pixel comparison against the browser ground truth is
-    // intentionally skipped so the suite stays green while the gap is open.
-    //
-    // Track upstream:
-    //   <pattern>     — https://github.com/thorvg/thorvg/issues (svg pattern)
-    //   feColorMatrix — partial; saturate() not implemented as of 1.0.4
-    private static readonly HashSet<string> KnownThorVgGaps = new(StringComparer.OrdinalIgnoreCase)
+    // ThorVG 1.1.1 silently ignores unsupported filter primitives. The public
+    // renderer deliberately rejects these inputs so callers get the atomic,
+    // accessible image fallback instead of a plausible but incorrect bitmap.
+    private static readonly HashSet<string> ExpectedAtomicFallbacks = new(StringComparer.OrdinalIgnoreCase)
     {
-        "07-patterns/dots.svg",
-        "07-patterns/stripes.svg",
+        "08-filters/drop-shadow.svg",
         "08-filters/color-matrix.svg",
+        "15-flying-pig/gradient-shadow.svg",
     };
 
     public static IEnumerable<object[]> Fixtures()
@@ -77,17 +72,30 @@ public sealed class SvgComplianceTests
         int h = (int)Math.Round(ih);
         Assert.True(w > 0 && h > 0, $"fixture {fixtureRelPath} has zero-sized intrinsic ({w}×{h})");
 
-        // 1) ThorVG render. Must succeed for every fixture — anything else
-        // is a rasterizer regression we want loud.
-        var raster = ThorVgRasterizer.Rasterize(svg, w, h);
-        Assert.NotNull(raster);
-        Assert.Equal(w * h * 4, raster!.Value.Bgra.Length);
+        if (ExpectedAtomicFallbacks.Contains(fixtureRelPath))
+        {
+            Assert.Null(ThorVgFeature.Rasterize(svg, w, h));
+            return;
+        }
 
-        byte[] oursRgba = PixelComparer.BgraPremulToRgba(raster.Value.Bgra, w, h);
+        // 1) ThorVG render. Every fixture in the explicitly supported subset
+        // must succeed; unsupported primitives are handled above.
+        var raster = ThorVgFeature.Rasterize(svg, w, h);
+        Assert.NotNull(raster);
+        Assert.Equal(w * h * 4, raster!.BgraPremultipliedPixels.Length);
+
+        byte[] oursRgba = PixelComparer.BgraPremulToRgba(
+            raster.BgraPremultipliedPixels.ToArray(),
+            w,
+            h);
 
         // Persist our render for inspection regardless of compare outcome.
-        var artifactsDir = Path.Combine(AppContext.BaseDirectory, "..", "..", "..", "..", "..",
-            "artifacts", "svg-pixel-diffs", fixtureRelPath.Replace('/', '_').Replace(".svg", ""));
+        string? artifactRoot = Environment.GetEnvironmentVariable("MARKDOWN_RENDERER_SVG_ARTIFACT_ROOT");
+        var artifactsDir = Path.Combine(
+            string.IsNullOrWhiteSpace(artifactRoot)
+                ? Path.Combine(AppContext.BaseDirectory, "..", "..", "..", "..", "..", "artifacts", "svg-pixel-diffs")
+                : Path.GetFullPath(artifactRoot),
+            fixtureRelPath.Replace('/', '_').Replace(".svg", ""));
         Directory.CreateDirectory(artifactsDir);
         PixelComparer.SaveRgbaAsPng(oursRgba, w, h, Path.Combine(artifactsDir, "ours.png"));
 
@@ -142,15 +150,6 @@ public sealed class SvgComplianceTests
             var diff = PixelComparer.Compare(oursCropped, browserCropped, cw, ch, channelTolerance: 12);
             File.WriteAllText(Path.Combine(artifactsDir, "diff-stats.txt"),
                 $"{cw}x{ch}\nmaxChannelDelta={diff.MaxChannelDelta}\nmeanChannelDelta={diff.MeanChannelDelta:F3}\ndifferingPixelFraction={diff.DifferingPixelFraction:F4}\n");
-
-            if (KnownThorVgGaps.Contains(fixtureRelPath))
-            {
-                // Soft check: rasterizer succeeded, buffer shape is correct.
-                // Pixel compare is intentionally skipped — see KnownThorVgGaps.
-                File.AppendAllText(Path.Combine(artifactsDir, "diff-stats.txt"),
-                    "knownGap=true (pixel comparison skipped)\n");
-                return;
-            }
 
             Assert.True(diff.MeanChannelDelta <= MaxMeanChannelDelta,
                 $"{fixtureRelPath}: mean channel delta {diff.MeanChannelDelta:F2} > {MaxMeanChannelDelta}");

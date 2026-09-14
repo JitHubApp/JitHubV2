@@ -14,8 +14,13 @@ namespace MarkdownRenderer.Layout.Boxes;
 /// Renders a GFM pipe table. Each cell is an <see cref="InlineContainerBox"/>
 /// so hit-testing, selection, and source-accurate copy all work out of the box.
 /// </summary>
-internal sealed class TableBox : BlockBox
+internal sealed class TableBox : BlockBox, IHorizontalOverflowBox
 {
+    private const float HorizontalScrollbarHeight = 12f;
+    private const float MinimumScrollbarThumbWidth = 24f;
+    private const float MinimumColumnWidth = 48f;
+    private const float MaximumPreferredColumnWidth = 720f;
+
     internal enum CellAlignment
     {
         Default,
@@ -34,6 +39,14 @@ internal sealed class TableBox : BlockBox
 
     private float[]? _colWidths;
     private float[]? _rowHeights;  // header rows first, then body rows
+    private double[] _rowBottomEdges = Array.Empty<double>();
+    private float _contentWidth;
+    private float _viewportWidth;
+    private double _horizontalOffset;
+    private float _arrangedX;
+    private float _arrangedY;
+    private float _arrangedWidth;
+    private bool _hasArrangement;
 
     public TableBox(
         MarkdownLayoutContext context,
@@ -55,16 +68,72 @@ internal sealed class TableBox : BlockBox
             cell.Margin = default;
         }
 
-        if (_headerCells.Length > 0 && _headerCells[0].Length > 0)
-            _colCount = _headerCells[0].Length;
-        else if (_bodyCells.Length > 0 && _bodyCells[0].Length > 0)
-            _colCount = _bodyCells[0].Length;
+        foreach (var row in _headerCells)
+            _colCount = Math.Max(_colCount, row.Length);
+        foreach (var row in _bodyCells)
+            _colCount = Math.Max(_colCount, row.Length);
     }
 
     public int HeaderRowCount => _headerCells.Length;
     public int BodyRowCount => _bodyCells.Length;
     public int RowCount => _headerCells.Length + _bodyCells.Length;
     public int ColumnCount => _colCount;
+    public double HorizontalOffset => _horizontalOffset;
+    public double HorizontalExtent => _contentWidth;
+    public double HorizontalViewport => _viewportWidth;
+    public bool CanScrollHorizontally => _contentWidth > _viewportWidth + 0.5f;
+    public bool IsRightToLeft => _context.FlowDirection == FlowDirection.RightToLeft;
+
+    public Rect HorizontalViewportBounds
+    {
+        get
+        {
+            double height = _rowHeights is null ? 0 : Sum(_rowHeights);
+            return new Rect(
+                Bounds.X + Margin.Left,
+                Bounds.Y + Margin.Top,
+                Math.Max(0, _viewportWidth),
+                Math.Max(0, height));
+        }
+    }
+
+    public Rect HorizontalScrollTrackBounds
+    {
+        get
+        {
+            if (!CanScrollHorizontally)
+                return Rect.Empty;
+
+            Rect viewport = HorizontalViewportBounds;
+            return new Rect(
+                viewport.X,
+                viewport.Bottom,
+                viewport.Width,
+                HorizontalScrollbarHeight);
+        }
+    }
+
+    public Rect HorizontalScrollThumbBounds
+    {
+        get
+        {
+            Rect track = HorizontalScrollTrackBounds;
+            if (track.IsEmpty || HorizontalExtent <= 0)
+                return Rect.Empty;
+
+            double thumbWidth = Math.Clamp(
+                track.Width * HorizontalViewport / HorizontalExtent,
+                Math.Min(MinimumScrollbarThumbWidth, track.Width),
+                track.Width);
+            double travel = Math.Max(0, track.Width - thumbWidth);
+            double maximum = Math.Max(0, HorizontalExtent - HorizontalViewport);
+            double fraction = maximum <= 0 ? 0 : HorizontalOffset / maximum;
+            double x = _context.FlowDirection == FlowDirection.RightToLeft
+                ? track.Right - thumbWidth - travel * fraction
+                : track.Left + travel * fraction;
+            return new Rect(x, track.Y, thumbWidth, track.Height);
+        }
+    }
 
     /// <summary>All cell boxes (header rows first, then body rows), left-to-right within each row.</summary>
     public IEnumerable<InlineContainerBox> GetCellBoxes()
@@ -102,14 +171,16 @@ internal sealed class TableBox : BlockBox
         var bodyPadding = EffectiveCellPadding(bodyStyle);
         Margin = tableStyle.Margin;
 
-        float innerWidth = availableWidth - (float)(Margin.Left + Margin.Right);
-        float colWidth = Math.Max(1f, innerWidth / _colCount);
+        _viewportWidth = Math.Max(1f, availableWidth - (float)(Margin.Left + Margin.Right));
+        _colWidths = ResolveColumnWidths(
+            _viewportWidth,
+            MeasureIntrinsicColumns(headerPadding, bodyPadding));
+        _contentWidth = Sum(_colWidths);
+        _horizontalOffset = Math.Clamp(
+            _horizontalOffset,
+            0,
+            Math.Max(0, _contentWidth - _viewportWidth));
 
-        _colWidths = new float[_colCount];
-        for (int i = 0; i < _colCount; i++) _colWidths[i] = colWidth;
-
-        float headerCellMeasureWidth = Math.Max(1f, colWidth - (float)(headerPadding.Left + headerPadding.Right));
-        float bodyCellMeasureWidth = Math.Max(1f, colWidth - (float)(bodyPadding.Left + bodyPadding.Right));
         int totalRows = _headerCells.Length + _bodyCells.Length;
         _rowHeights = new float[totalRows];
 
@@ -121,6 +192,9 @@ internal sealed class TableBox : BlockBox
             {
                 _context.CancellationToken.ThrowIfCancellationRequested();
                 _headerCells[r][c].TextAlignment = ToCanvasAlignment(GetColumnAlignment(c), _context.FlowDirection == FlowDirection.RightToLeft);
+                float headerCellMeasureWidth = Math.Max(
+                    1f,
+                    GetColumnWidth(c) - (float)(headerPadding.Left + headerPadding.Right));
                 maxH = Math.Max(maxH, _headerCells[r][c].Measure(headerCellMeasureWidth));
             }
             _rowHeights[r] = maxH + (float)(headerPadding.Top + headerPadding.Bottom);
@@ -133,6 +207,9 @@ internal sealed class TableBox : BlockBox
             {
                 _context.CancellationToken.ThrowIfCancellationRequested();
                 _bodyCells[r][c].TextAlignment = ToCanvasAlignment(GetColumnAlignment(c), _context.FlowDirection == FlowDirection.RightToLeft);
+                float bodyCellMeasureWidth = Math.Max(
+                    1f,
+                    GetColumnWidth(c) - (float)(bodyPadding.Left + bodyPadding.Right));
                 maxH = Math.Max(maxH, _bodyCells[r][c].Measure(bodyCellMeasureWidth));
             }
             _rowHeights[_headerCells.Length + r] = maxH + (float)(bodyPadding.Top + bodyPadding.Bottom);
@@ -140,6 +217,8 @@ internal sealed class TableBox : BlockBox
 
         float totalHeight = (float)(Margin.Top + Margin.Bottom);
         foreach (var h in _rowHeights) totalHeight += h;
+        if (CanScrollHorizontally)
+            totalHeight += HorizontalScrollbarHeight;
 
         Bounds = new Rect(0, 0, availableWidth, totalHeight);
         return totalHeight;
@@ -150,12 +229,26 @@ internal sealed class TableBox : BlockBox
         base.Arrange(x, y, width);
         if (_colWidths is null || _rowHeights is null) return;
 
+        _arrangedX = x;
+        _arrangedY = y;
+        _arrangedWidth = width;
+        _hasArrangement = true;
+        ArrangeCells();
+    }
+
+    private void ArrangeCells()
+    {
+        if (_colWidths is null || _rowHeights is null || !_hasArrangement)
+            return;
+
         var headerPadding = EffectiveCellPadding(GetHeaderStyle());
         var bodyPadding = EffectiveCellPadding(GetBodyStyle());
-        float colWidth = _colWidths[0];
-        float rowY = y + (float)Margin.Top;
+        float rowY = _arrangedY + (float)Margin.Top;
         bool rtl = _context.FlowDirection == FlowDirection.RightToLeft;
-        float innerW = (float)(width - Margin.Left - Margin.Right);
+        float innerW = Math.Max(1f, _arrangedWidth - (float)(Margin.Left + Margin.Right));
+        float contentOrigin = rtl
+            ? _arrangedX + (float)Margin.Left + innerW - _contentWidth + (float)_horizontalOffset
+            : _arrangedX + (float)Margin.Left - (float)_horizontalOffset;
 
         for (int r = 0; r < _headerCells.Length; r++)
         {
@@ -163,14 +256,8 @@ internal sealed class TableBox : BlockBox
             int nCols = _headerCells[r].Length;
             for (int c = 0; c < nCols; c++)
             {
-                int visCol = rtl ? (nCols - 1 - c) : c;
-                // In RTL, anchor the table to the right edge so the rightmost
-                // logical column sits flush with innerW when the total column
-                // span is narrower than innerW. Otherwise the table appears
-                // flush-left, which is incorrect for RTL.
-                float colX = rtl
-                    ? x + (float)Margin.Left + innerW - (nCols - visCol) * colWidth
-                    : x + (float)Margin.Left + visCol * colWidth;
+                float colWidth = GetColumnWidth(c);
+                float colX = contentOrigin + GetColumnStart(c, rtl);
                 _headerCells[r][c].TextAlignment = ToCanvasAlignment(GetColumnAlignment(c), rtl);
                 _headerCells[r][c].Arrange(
                     colX + (float)headerPadding.Left,
@@ -185,10 +272,8 @@ internal sealed class TableBox : BlockBox
             int nCols = _bodyCells[r].Length;
             for (int c = 0; c < nCols; c++)
             {
-                int visCol = rtl ? (nCols - 1 - c) : c;
-                float colX = rtl
-                    ? x + (float)Margin.Left + innerW - (nCols - visCol) * colWidth
-                    : x + (float)Margin.Left + visCol * colWidth;
+                float colWidth = GetColumnWidth(c);
+                float colX = contentOrigin + GetColumnStart(c, rtl);
                 _bodyCells[r][c].TextAlignment = ToCanvasAlignment(GetColumnAlignment(c), rtl);
                 _bodyCells[r][c].Arrange(
                     colX + (float)bodyPadding.Left,
@@ -197,6 +282,8 @@ internal sealed class TableBox : BlockBox
             }
             rowY += rh;
         }
+
+        RefreshRowBottomEdges();
     }
 
     public override void Paint(CanvasDrawingSession ds, Rect viewport)
@@ -215,55 +302,32 @@ internal sealed class TableBox : BlockBox
         float borderThickness = tableStyle.BorderThickness > 0 ? tableStyle.BorderThickness : 1f;
         float radius = Math.Max(0, tableStyle.CornerRadius);
 
-        float startX = (float)(Bounds.X + Margin.Left);
-        float innerWidth = (float)(Bounds.Width - Margin.Left - Margin.Right);
-        float colWidth = _colWidths[0];
+        float viewportX = (float)(Bounds.X + Margin.Left);
+        float innerWidth = Math.Max(0, _viewportWidth);
+        bool rtl = _context.FlowDirection == FlowDirection.RightToLeft;
+        float contentX = rtl
+            ? viewportX + innerWidth - _contentWidth + (float)_horizontalOffset
+            : viewportX - (float)_horizontalOffset;
         float headerStartY = (float)(Bounds.Y + Margin.Top);
-        float tableH = (float)(Bounds.Height - Margin.Top - Margin.Bottom);
-        var tableRect = new Rect(startX, headerStartY, innerWidth, tableH);
+        float tableH = Sum(_rowHeights);
+        var viewportRect = new Rect(viewportX, headerStartY, innerWidth, tableH);
+        var contentRect = new Rect(contentX, headerStartY, _contentWidth, tableH);
 
         float headerTotalH = 0;
         for (int i = 0; i < _headerCells.Length; i++) headerTotalH += _rowHeights[i];
 
-        if (radius > 0)
+        using (ds.CreateLayer(1.0f, viewportRect))
         {
-            using var clip = CanvasGeometry.CreateRoundedRectangle(_context.ResourceCreator, tableRect, radius, radius);
-            using (ds.CreateLayer(1.0f, clip))
-                PaintTableSurfaces(ds, tableRect, bodyBgColor, headerBgColor, headerTotalH);
-        }
-        else
-        {
-            PaintTableSurfaces(ds, tableRect, bodyBgColor, headerBgColor, headerTotalH);
-        }
-
-        // Paint all cell text layouts.
-        foreach (var cell in GetCellBoxes())
-            cell.Paint(ds, viewport);
-
-        // Separator after header.
-        float sepY = headerStartY + headerTotalH;
-        if (_headerCells.Length > 0)
-        {
-            var sep = _context.ThemeSnapshot.IsHighContrast ? borderColor : WithAlpha(borderColor, 0xC0);
-            ds.DrawLine(startX, sepY, startX + innerWidth, sepY, sep, 1f);
-        }
-
-        // Body row separators.
-        float rowY = sepY;
-        for (int r = 0; r < _bodyCells.Length; r++)
-        {
-            rowY += _rowHeights[_headerCells.Length + r];
-            var rowSep = _context.ThemeSnapshot.IsHighContrast ? borderColor : WithAlpha(borderColor, 0x70);
-            ds.DrawLine(startX, rowY, startX + innerWidth, rowY, rowSep, 0.5f);
-        }
-
-        // Column separators.
-        var colSep = _context.ThemeSnapshot.IsHighContrast ? borderColor : WithAlpha(borderColor, 0x40);
-        float colSepX = startX;
-        for (int c = 1; c < _colCount; c++)
-        {
-            colSepX += colWidth;
-            ds.DrawLine(colSepX, headerStartY, colSepX, headerStartY + tableH, colSep, 0.5f);
+            if (radius > 0)
+            {
+                using var clip = CanvasGeometry.CreateRoundedRectangle(_context.ResourceCreator, viewportRect, radius, radius);
+                using (ds.CreateLayer(1.0f, clip))
+                    PaintTableContent(ds, viewport, contentRect, bodyBgColor, headerBgColor, borderColor, headerTotalH, tableH);
+            }
+            else
+            {
+                PaintTableContent(ds, viewport, contentRect, bodyBgColor, headerBgColor, borderColor, headerTotalH, tableH);
+            }
         }
 
         if (borderThickness > 0)
@@ -271,19 +335,73 @@ internal sealed class TableBox : BlockBox
             float inset = borderThickness / 2f;
             ds.DrawRoundedRectangle(
                 new Rect(
-                    tableRect.X + inset,
-                    tableRect.Y + inset,
-                    Math.Max(0, tableRect.Width - borderThickness),
-                    Math.Max(0, tableRect.Height - borderThickness)),
+                    viewportRect.X + inset,
+                    viewportRect.Y + inset,
+                    Math.Max(0, viewportRect.Width - borderThickness),
+                    Math.Max(0, viewportRect.Height - borderThickness)),
                 radius,
                 radius,
                 borderColor,
                 borderThickness);
         }
+
+        PaintHorizontalScrollbar(ds, borderColor);
+    }
+
+    private void PaintTableContent(
+        CanvasDrawingSession ds,
+        Rect viewport,
+        Rect contentRect,
+        Color bodyBgColor,
+        Color headerBgColor,
+        Color borderColor,
+        float headerTotalH,
+        float tableH)
+    {
+        PaintTableSurfaces(ds, viewport, contentRect, bodyBgColor, headerBgColor, headerTotalH);
+
+        int firstVisibleRow = FindFirstVisibleRow(viewport.Top);
+        for (int row = firstVisibleRow; row < RowCount; row++)
+        {
+            if (GetRowTop(row) > viewport.Bottom)
+                break;
+            foreach (InlineContainerBox cell in GetRowCells(row))
+                cell.Paint(ds, viewport);
+        }
+
+        float sepY = (float)contentRect.Y + headerTotalH;
+        if (_headerCells.Length > 0 && sepY >= viewport.Top && sepY <= viewport.Bottom)
+        {
+            var sep = _context.ThemeSnapshot.IsHighContrast ? borderColor : WithAlpha(borderColor, 0xC0);
+            ds.DrawLine((float)contentRect.Left, sepY, (float)contentRect.Right, sepY, sep, 1f);
+        }
+
+        int firstBodyRow = Math.Max(_headerCells.Length, firstVisibleRow);
+        for (int logicalRow = firstBodyRow; logicalRow < RowCount; logicalRow++)
+        {
+            float rowY = (float)_rowBottomEdges[logicalRow];
+            if (rowY > viewport.Bottom)
+                break;
+            if (rowY < viewport.Top)
+                continue;
+            var rowSep = _context.ThemeSnapshot.IsHighContrast ? borderColor : WithAlpha(borderColor, 0x70);
+            ds.DrawLine((float)contentRect.Left, rowY, (float)contentRect.Right, rowY, rowSep, 0.5f);
+        }
+
+        var colSep = _context.ThemeSnapshot.IsHighContrast ? borderColor : WithAlpha(borderColor, 0x40);
+        float colSepX = (float)contentRect.Left;
+        bool rtl = _context.FlowDirection == FlowDirection.RightToLeft;
+        for (int visualColumn = 0; visualColumn < _colCount - 1; visualColumn++)
+        {
+            int logicalColumn = rtl ? _colCount - 1 - visualColumn : visualColumn;
+            colSepX += GetColumnWidth(logicalColumn);
+            ds.DrawLine(colSepX, (float)contentRect.Top, colSepX, (float)contentRect.Top + tableH, colSep, 0.5f);
+        }
     }
 
     private void PaintTableSurfaces(
         CanvasDrawingSession ds,
+        Rect viewport,
         Rect tableRect,
         Color bodyBgColor,
         Color headerBgColor,
@@ -297,14 +415,17 @@ internal sealed class TableBox : BlockBox
         if (_context.ThemeSnapshot.IsHighContrast)
             return;
 
-        float rowY = (float)(tableRect.Y + headerTotalH);
         var stripe = WithAlpha(GetBodyStyle().Foreground, 0x08);
-        for (int r = 0; r < _bodyCells.Length; r++)
+        int firstVisibleRow = Math.Max(_headerCells.Length, FindFirstVisibleRow(viewport.Top));
+        for (int logicalRow = firstVisibleRow; logicalRow < RowCount; logicalRow++)
         {
-            float rowH = _rowHeights![_headerCells.Length + r];
-            if (r % 2 == 1)
+            float rowY = (float)GetRowTop(logicalRow);
+            if (rowY > viewport.Bottom)
+                break;
+            float rowH = _rowHeights![logicalRow];
+            int bodyRow = logicalRow - _headerCells.Length;
+            if (bodyRow % 2 == 1)
                 ds.FillRectangle(new Rect(tableRect.X, rowY, tableRect.Width, rowH), stripe);
-            rowY += rowH;
         }
     }
 
@@ -314,10 +435,14 @@ internal sealed class TableBox : BlockBox
         Color color,
         Rect viewport)
     {
-        foreach (var cell in GetCellBoxes())
+        using var clip = ds.CreateLayer(1.0f, HorizontalViewportBounds);
+        int firstVisibleRow = FindFirstVisibleRow(viewport.Top);
+        for (int row = firstVisibleRow; row < RowCount; row++)
         {
-            if (cell.Bounds.Bottom < viewport.Top || cell.Bounds.Top > viewport.Bottom) continue;
-            cell.PaintSelectionForeground(ds, range, color, viewport);
+            if (GetRowTop(row) > viewport.Bottom)
+                break;
+            foreach (InlineContainerBox cell in GetRowCells(row))
+                cell.PaintSelectionForeground(ds, range, color, viewport);
         }
     }
 
@@ -328,24 +453,39 @@ internal sealed class TableBox : BlockBox
             position = new DocumentPosition(BlockIndex, 0, 0);
             return false;
         }
-        foreach (var cell in GetCellBoxes())
+        if (!HorizontalViewportBounds.Contains(point))
         {
-            if (cell.HitTest(point, out position)) return true;
+            position = new DocumentPosition(BlockIndex, 0, 0);
+            return false;
+        }
+        int logicalRow = FindFirstVisibleRow(point.Y);
+        if (logicalRow < RowCount && GetRowTop(logicalRow) <= point.Y)
+        {
+            foreach (InlineContainerBox cell in GetRowCells(logicalRow))
+            {
+                if (cell.HitTest(point, out position)) return true;
+            }
         }
 
-        if (TryHitTestNearestCell(point, out position))
+        if (TryHitTestNearestCell(point, logicalRow, out position))
             return true;
 
         position = new DocumentPosition(BlockIndex, 0, 0);
         return false;
     }
 
-    private bool TryHitTestNearestCell(Point point, out DocumentPosition position)
+    private bool TryHitTestNearestCell(Point point, int logicalRow, out DocumentPosition position)
     {
         InlineContainerBox? nearest = null;
         double nearestDistance = double.PositiveInfinity;
 
-        foreach (var cell in GetCellBoxes())
+        if (logicalRow < 0 || logicalRow >= RowCount)
+        {
+            position = default;
+            return false;
+        }
+
+        foreach (InlineContainerBox cell in GetRowCells(logicalRow))
         {
             var r = cell.Bounds;
             if (r.Width <= 0 || r.Height <= 0)
@@ -440,6 +580,169 @@ internal sealed class TableBox : BlockBox
                 ? Microsoft.Graphics.Canvas.Text.CanvasHorizontalAlignment.Right
                 : Microsoft.Graphics.Canvas.Text.CanvasHorizontalAlignment.Left,
         };
+
+    public bool ScrollHorizontal(double delta)
+        => SetHorizontalOffset(HorizontalOffset + delta);
+
+    public bool SetHorizontalOffset(double offset)
+    {
+        double maximum = Math.Max(0, HorizontalExtent - HorizontalViewport);
+        double next = Math.Clamp(offset, 0, maximum);
+        if (Math.Abs(next - _horizontalOffset) <= 0.1)
+            return false;
+
+        _horizontalOffset = next;
+        ArrangeCells();
+        return true;
+    }
+
+    private int FindFirstVisibleRow(double viewportTop)
+        => VerticalViewportIndex.FindFirstIntersecting(_rowBottomEdges, viewportTop);
+
+    internal (int First, int EndExclusive) GetVisibleRowRange(
+        double viewportTop,
+        double viewportBottom)
+    {
+        int first = FindFirstVisibleRow(viewportTop);
+        int end = first;
+        while (end < RowCount && GetRowTop(end) <= viewportBottom)
+            end++;
+        return (first, end);
+    }
+
+    private double GetRowTop(int logicalRow)
+        => logicalRow <= 0
+            ? _arrangedY + Margin.Top
+            : _rowBottomEdges[logicalRow - 1];
+
+    private InlineContainerBox[] GetRowCells(int logicalRow)
+        => logicalRow < _headerCells.Length
+            ? _headerCells[logicalRow]
+            : _bodyCells[logicalRow - _headerCells.Length];
+
+    private void RefreshRowBottomEdges()
+    {
+        int count = RowCount;
+        if (_rowBottomEdges.Length != count)
+            _rowBottomEdges = new double[count];
+
+        double bottom = _arrangedY + Margin.Top;
+        for (int row = 0; row < count; row++)
+        {
+            bottom += _rowHeights![row];
+            _rowBottomEdges[row] = bottom;
+        }
+    }
+
+    private (float[] Minimum, float[] Preferred) MeasureIntrinsicColumns(
+        Thickness headerPadding,
+        Thickness bodyPadding)
+    {
+        var minimum = new float[_colCount];
+        var preferred = new float[_colCount];
+        for (int c = 0; c < _colCount; c++)
+        {
+            minimum[c] = MinimumColumnWidth;
+            preferred[c] = MinimumColumnWidth;
+        }
+
+        MeasureIntrinsicRows(_headerCells, headerPadding, minimum, preferred);
+        MeasureIntrinsicRows(_bodyCells, bodyPadding, minimum, preferred);
+        return (minimum, preferred);
+    }
+
+    private void MeasureIntrinsicRows(
+        InlineContainerBox[][] rows,
+        Thickness padding,
+        float[] minimum,
+        float[] preferred)
+    {
+        float horizontalPadding = (float)(padding.Left + padding.Right);
+        foreach (var row in rows)
+        {
+            _context.CancellationToken.ThrowIfCancellationRequested();
+            int count = Math.Min(row.Length, _colCount);
+            for (int c = 0; c < count; c++)
+            {
+                IntrinsicWidthMetrics metrics = row[c].MeasureIntrinsicWidths(MaximumPreferredColumnWidth);
+                minimum[c] = Math.Max(minimum[c], Math.Min(MaximumPreferredColumnWidth, metrics.Minimum + horizontalPadding));
+                preferred[c] = Math.Max(preferred[c], Math.Min(MaximumPreferredColumnWidth, metrics.Preferred + horizontalPadding));
+            }
+        }
+    }
+
+    private static float[] ResolveColumnWidths(
+        float availableWidth,
+        (float[] Minimum, float[] Preferred) intrinsic)
+    {
+        int count = intrinsic.Minimum.Length;
+        var result = new float[count];
+        float minimumTotal = Sum(intrinsic.Minimum);
+        float preferredTotal = Sum(intrinsic.Preferred);
+
+        if (preferredTotal <= availableWidth)
+        {
+            float extra = availableWidth - preferredTotal;
+            float weightTotal = Math.Max(1f, preferredTotal);
+            for (int c = 0; c < count; c++)
+                result[c] = intrinsic.Preferred[c] + extra * intrinsic.Preferred[c] / weightTotal;
+            return result;
+        }
+
+        if (minimumTotal >= availableWidth)
+        {
+            Array.Copy(intrinsic.Minimum, result, count);
+            return result;
+        }
+
+        float distributable = availableWidth - minimumTotal;
+        float flexibility = Math.Max(0.001f, preferredTotal - minimumTotal);
+        for (int c = 0; c < count; c++)
+        {
+            float columnFlex = Math.Max(0, intrinsic.Preferred[c] - intrinsic.Minimum[c]);
+            result[c] = intrinsic.Minimum[c] + distributable * columnFlex / flexibility;
+        }
+        return result;
+    }
+
+    private float GetColumnWidth(int column)
+        => _colWidths is not null && column >= 0 && column < _colWidths.Length
+            ? _colWidths[column]
+            : 1f;
+
+    private float GetColumnStart(int logicalColumn, bool rtl)
+    {
+        float start = 0;
+        if (rtl)
+        {
+            for (int c = _colCount - 1; c > logicalColumn; c--)
+                start += GetColumnWidth(c);
+        }
+        else
+        {
+            for (int c = 0; c < logicalColumn; c++)
+                start += GetColumnWidth(c);
+        }
+        return start;
+    }
+
+    private void PaintHorizontalScrollbar(CanvasDrawingSession ds, Color foreground)
+    {
+        HorizontalOverflowVisual.Paint(
+            ds,
+            HorizontalScrollTrackBounds,
+            HorizontalScrollThumbBounds,
+            _context.ThemeSnapshot,
+            foreground);
+    }
+
+    private static float Sum(float[] values)
+    {
+        float sum = 0;
+        for (int i = 0; i < values.Length; i++)
+            sum += values[i];
+        return sum;
+    }
 
     public override void Dispose()
     {

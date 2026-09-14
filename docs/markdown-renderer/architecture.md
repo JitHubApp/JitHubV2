@@ -1,99 +1,58 @@
 # Architecture
 
-`MarkdownRendererControl` is a WinUI `UserControl` with two coordinated visual
-layers:
-
-1. a `CanvasVirtualControl` for Win2D/DirectWrite painting;
-2. a transparent XAML `Canvas` overlay for hosted WinUI embeds, selection
-   rectangles, and focus rings.
-
-The control owns parsing, layout, paint invalidation, selection, hosted control
-realization, image loading, keyboard navigation, and UI Automation peers.
-
-## High-level flow
+MarkdownRenderer separates parse ownership from view ownership.
 
 ```text
-Markdown string
-  -> Markdig pipeline
-  -> Markdig AST
-  -> LayoutBuilder
-  -> BlockBox / InlineRun tree
-  -> LayoutSnapshot
-  -> CanvasVirtualControl paint regions
-  -> XAML overlay for selection, focus, and hosted controls
+MarkdownEngineBuilder
+  -> immutable MarkdownEngine
+  -> ParseAsync(source)
+  -> immutable MarkdownDocument
+  -> MarkdownScrollView or MarkdownDocumentView
+  -> native Win2D/DirectWrite paint plus a WinUI interaction layer
 ```
 
-## Main object responsibilities
+## Public layers
 
-| Type | Responsibility |
+| Layer | Responsibility |
 | --- | --- |
-| `MarkdownRendererControl` | Public WinUI control, dependency properties, rebuild pipeline, input, scrolling, overlays, and event surface. |
-| `MarkdigParser` | Runs Markdig parsing and data-URI fixing. |
-| `MarkdownExtensionRegistry` | Holds Markdig pipeline customizations and AOT-safe node renderer registrations. |
-| `LayoutBuilder` | Converts Markdig AST nodes into layout boxes and inline runs. |
-| `LayoutSnapshot` | Immutable-ish committed layout tree plus source map and footnote metadata. |
-| `BlockBox` | Base class for block layout, paint, hit-test, selection rects, and disposal. |
-| `InlineContainerBox` | Text-heavy block for paragraphs, headings, list markers, code blocks, table cells, etc. |
-| `ImageBox` | Async bitmap/SVG image loading, measurement, painting, caption, and image cache integration. |
-| `EmbedBox` | Reserves space for a hosted block-level WinUI `FrameworkElement`. |
-| `SelectionController` | Owns the active `DocumentRange` and yields highlight rectangles. |
-| `MarkdownSourceMap` | Maps rendered positions back to markdown source spans for source-accurate copy. |
-| `MarkdownAutomationPeer` | UI Automation root peer for document traversal. |
+| `MarkdownRenderer.Core` | Profiles, immutable engines/documents, diagnostics, UTF-16 source maps, and declarative extensions. |
+| `MarkdownRenderer` | Native WinUI views, Fluent defaults, selection, accessibility, images, host services, and rendering. |
+| Feature packs | GFM, GitHub README behavior, safe HTML, Math, Mermaid, ThorVG SVG, and TextMate syntax highlighting. |
+| Host application | Viewport composition, URI/image policy, commands, localization, optional hosted elements, and selected feature packs. |
 
-## Rebuild pipeline
+## Viewport ownership
 
-`RequestRebuild()` cancels any in-flight pipeline and starts a new async rebuild.
-The rebuild:
+`MarkdownScrollView` creates and owns its vertical viewport. It is appropriate
+for a standalone document surface. `MarkdownDocumentView` creates no internal
+vertical `ScrollViewer`; it observes the effective viewport supplied by the page
+or workspace shell. This avoids nested scrolling and lets a native app keep page
+layout stable.
 
-1. builds a Markdig pipeline from `ExtensionRegistry`;
-2. parses markdown through `MarkdigParser`;
-3. creates a `MarkdownSourceMap`;
-4. resolves a `ThemeSnapshot` against the current WinUI theme;
-5. builds a layout tree with `LayoutBuilder`;
-6. swaps the committed `LayoutSnapshot`;
-7. updates canvas and overlay dimensions;
-8. restores scroll anchor when possible;
-9. rebuilds embed and image plans;
-10. invalidates the virtual canvas.
+## Immutable configuration
 
-Theme-only rebuilds reuse the cached parsed AST when the markdown source and
-extension registry revision are unchanged. A fresh `ThemeSnapshot` still rebuilds
-layout/text metrics because font, border, padding, and list-indent changes can
-affect geometry.
+`MarkdownEngineBuilder` is mutable only while configuration is being assembled.
+`Build()` creates a frozen engine containing a profile, extension set, and parse
+cache budget. The engine can parse concurrently. A resulting
+`MarkdownDocument` preserves source text, semantic queries, diagnostics, and
+half-open UTF-16 source ranges and can be shared by several views.
+Dispose ordinary engines when their application scope ends. Only the built-in
+process-wide shared engines ignore disposal; derived engines own independent
+feature-pack resources and are always disposable.
 
-## Layout model
+## Declarative extension boundary
 
-The layout tree is a hierarchy of `BlockBox` objects. Leaf text blocks hold
-`InlineRun` instances. Containers such as lists, block quotes, and tables recurse
-through child boxes.
+An `IMarkdownExtension` configures `MarkdownExtensionBuilder` with features and
+exact syntax-kind renderers. A renderer receives a `MarkdownSyntaxNode` and emits
+`MarkdownContent`. The native view translates that content into its private
+layout and paint representation. This boundary keeps extensions deterministic,
+AOT-friendly, and independent of Win2D implementation details.
 
-Every selectable/rendered box receives a `BlockIndex`. Source spans are recorded
-against `(blockIndex, inlineIndex, characterOffset)` ranges, allowing selection to
-copy the exact source markdown that produced a rendered visual range.
+## Native view internals
 
-## Visual layering
+The viewer paints document content through Win2D/DirectWrite and uses WinUI for
+input, focus visuals, commands, and viewport-realized hosted elements. Long
+documents extend measured regions around the effective viewport, while immutable
+document semantics remain available independently of visual realization.
 
-```text
-ScrollViewer
-  Grid
-    CanvasVirtualControl        // DirectWrite/Win2D text, rules, tables, images
-    Canvas overlay
-      selection rectangles      // pooled, low z-index
-      hosted WinUI embeds       // buttons, checkboxes, custom controls
-      focus ring                // keyboard navigation
-```
-
-Selection is intentionally drawn on the overlay. Repainting DirectWrite text on
-every pointer move caused visible text shake at fractional DPI. Overlay
-rectangles avoid canvas invalidation during drag.
-
-## Ownership and lifetime
-
-- The committed `LayoutSnapshot` owns native text layout resources.
-- Old snapshots are disposed after an atomic swap.
-- In-flight rebuilds are cancelled when new input arrives.
-- Hosted controls are realized only near the viewport and derealized outside a
-  wider overscan band.
-- `ImageBox` instances unsubscribe load-completion handlers on unload to avoid
-  zombie rebuilds.
-- Cursor objects are cached and disposed on unload.
+Internal layout, paint, and compatibility adapter types are not public
+extension contracts and should not appear in application code.

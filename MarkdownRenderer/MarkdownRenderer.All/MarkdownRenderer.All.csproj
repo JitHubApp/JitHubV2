@@ -1,0 +1,38 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <TargetFramework>net10.0-windows10.0.26100.0</TargetFramework>
+    <TargetPlatformMinVersion>10.0.19041.0</TargetPlatformMinVersion>
+    <Nullable>enable</Nullable>
+    <Platforms>x86;x64;ARM64</Platforms>
+    <Platform Condition="'$(Platform)' == '' or '$(Platform)' == 'AnyCPU' or '$(Platform)' == 'Any CPU'">x64</Platform>
+    <RuntimeIdentifiers>win-x86;win-x64;win-arm64</RuntimeIdentifiers>
+    <IncludeBuildOutput>false</IncludeBuildOutput>
+    <NoWarn>$(NoWarn);NU5128</NoWarn>
+    <PackageId>MarkdownRenderer.All</PackageId>
+    <Version>1.0.0-preview.1</Version>
+    <Authors>nerocui</Authors>
+    <Description>Explicit opt-in meta-package containing every MarkdownRenderer feature pack and all TextMate grammars.</Description>
+    <PackageTags>markdown;winui;gfm;html;math;mermaid;svg;textmate;all</PackageTags>
+    <PackageLicenseExpression>MIT</PackageLicenseExpression>
+    <RepositoryUrl>https://github.com/JitHubApp/JitHubV2</RepositoryUrl>
+    <RepositoryType>git</RepositoryType>
+    <PackageProjectUrl>https://github.com/JitHubApp/JitHubV2/tree/main/docs/markdown-renderer</PackageProjectUrl>
+    <PackageReadmeFile>README.md</PackageReadmeFile>
+    <PackageIcon>icon-192.png</PackageIcon>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\MarkdownRenderer.Package\MarkdownRenderer.Package.csproj" />
+    <ProjectReference Include="..\MarkdownRenderer.Gfm\MarkdownRenderer.Gfm.csproj" />
+    <ProjectReference Include="..\MarkdownRenderer.GitHub\MarkdownRenderer.GitHub.csproj" />
+    <ProjectReference Include="..\MarkdownRenderer.Html\MarkdownRenderer.Html.csproj" />
+    <ProjectReference Include="..\MarkdownRenderer.Math\MarkdownRenderer.Math.csproj" />
+    <ProjectReference Include="..\MarkdownRenderer.Mermaid\MarkdownRenderer.Mermaid.csproj" />
+    <ProjectReference Include="..\MarkdownRenderer.Svg.ThorVG\MarkdownRenderer.Svg.ThorVG.csproj" />
+    <ProjectReference Include="..\MarkdownRenderer.SyntaxHighlighting.TextMate\MarkdownRenderer.SyntaxHighlighting.TextMate.csproj" />
+    <ProjectReference Include="..\MarkdownRenderer.SyntaxHighlighting.TextMate.Grammars.All\MarkdownRenderer.SyntaxHighlighting.TextMate.Grammars.All.csproj" />
+    <None Include="README.md" Pack="true" PackagePath="" />
+    <None Include="..\..\LICENSE" Pack="true" PackagePath="" Visible="false" />
+    <None Include="..\..\JitHub.Web\wwwroot\icon-192.png" Pack="true" PackagePath="icon-192.png" Visible="false" />
+  </ItemGroup>
+</Project>

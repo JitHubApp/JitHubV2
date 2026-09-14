@@ -10,19 +10,19 @@ using JitHub.Services;
 using JitHub.Services.Markdown;
 using JitHub.WinUI.Helpers;
 using JitHub.WinUI.ViewModels.Pages;
+using MarkdownRenderer;
 using MarkdownRenderer.Controls;
-using MarkdownRenderer.Gfm;
+using MarkdownRenderer.GitHub;
 using MarkdownRenderer.Images;
-using MarkdownRenderer.Parsing;
+using MarkdownRenderer.SyntaxHighlighting.TextMate;
+using MarkdownRenderer.SyntaxHighlighting.TextMate.Grammars.Common;
 using MarkdownRenderer.Theming;
 using Microsoft.UI;
-using Microsoft.UI.Text;
 using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Automation;
 using Microsoft.UI.Xaml.Controls;
 using Microsoft.UI.Xaml.Media;
 using Windows.System;
-using Windows.UI;
 using Windows.UI.ViewManagement;
 
 namespace JitHub.WinUI.Views.Controls.Common;
@@ -31,30 +31,130 @@ namespace JitHub.WinUI.Views.Controls.Common;
 public sealed partial class MarkdownViewer : UserControl
 {
     private static readonly Uri DefaultBaseUri = new("https://github.com/", UriKind.Absolute);
-    private static readonly Lazy<MarkdownExtensionRegistry> SharedGfmRegistry = new(CreateGfmRegistry);
+    private static readonly MarkdownEngine SharedGitHubEngine =
+        GitHubReadmeMarkdownRenderer.SharedEngine;
+
+    private static readonly string[] HostSurfaceRoles =
+    [
+        MarkdownElementKeys.Body,
+        MarkdownElementKeys.DefinitionDescription,
+        MarkdownElementKeys.Figure,
+        MarkdownElementKeys.FigureCaption,
+        MarkdownElementKeys.AlertNote,
+        MarkdownElementKeys.AlertTip,
+        MarkdownElementKeys.AlertImportant,
+        MarkdownElementKeys.AlertWarning,
+        MarkdownElementKeys.AlertCaution,
+    ];
+
+    private static readonly string[] StyledRoles =
+    [
+        MarkdownElementKeys.Body,
+        MarkdownElementKeys.Heading1,
+        MarkdownElementKeys.Heading2,
+        MarkdownElementKeys.Heading3,
+        MarkdownElementKeys.Heading4,
+        MarkdownElementKeys.Heading5,
+        MarkdownElementKeys.Heading6,
+        MarkdownElementKeys.Link,
+        MarkdownElementKeys.Strong,
+        MarkdownElementKeys.Emphasis,
+        MarkdownElementKeys.Strikethrough,
+        MarkdownElementKeys.Subscript,
+        MarkdownElementKeys.Superscript,
+        MarkdownElementKeys.Inserted,
+        MarkdownElementKeys.Marked,
+        MarkdownElementKeys.Abbreviation,
+        MarkdownElementKeys.CodeInline,
+        MarkdownElementKeys.CodeBlock,
+        MarkdownElementKeys.CodeBlockHeader,
+        MarkdownElementKeys.CodeBlockLanguage,
+        MarkdownElementKeys.CodeBlockGutter,
+        MarkdownElementKeys.CodeBlockLineNumber,
+        MarkdownElementKeys.Quote,
+        MarkdownElementKeys.ListMarker,
+        MarkdownElementKeys.ThematicBreak,
+        MarkdownElementKeys.ImageCaption,
+        MarkdownElementKeys.DefinitionTerm,
+        MarkdownElementKeys.DefinitionDescription,
+        MarkdownElementKeys.Figure,
+        MarkdownElementKeys.FigureCaption,
+        MarkdownElementKeys.Diagram,
+        MarkdownElementKeys.Math,
+        MarkdownElementKeys.Table,
+        MarkdownElementKeys.TableHeader,
+        MarkdownElementKeys.TableCell,
+        MarkdownElementKeys.AlertNote,
+        MarkdownElementKeys.AlertTip,
+        MarkdownElementKeys.AlertImportant,
+        MarkdownElementKeys.AlertWarning,
+        MarkdownElementKeys.AlertCaution,
+    ];
+
+    private static readonly (string Role, string Token, double Fallback)[] ScalableRoleFonts =
+    [
+        (MarkdownElementKeys.Body, "AppMarkdownBodyFontSize", 15),
+        (MarkdownElementKeys.Heading1, "AppMarkdownHeading1FontSize", 30),
+        (MarkdownElementKeys.Heading2, "AppMarkdownHeading2FontSize", 24),
+        (MarkdownElementKeys.Heading3, "AppMarkdownHeading3FontSize", 20),
+        (MarkdownElementKeys.Heading4, "AppMarkdownHeading4FontSize", 17),
+        (MarkdownElementKeys.Heading5, "AppMarkdownHeading5FontSize", 15),
+        (MarkdownElementKeys.Heading6, "AppMarkdownHeading6FontSize", 14),
+        (MarkdownElementKeys.Link, "AppMarkdownBodyFontSize", 15),
+        (MarkdownElementKeys.Strong, "AppMarkdownBodyFontSize", 15),
+        (MarkdownElementKeys.Emphasis, "AppMarkdownBodyFontSize", 15),
+        (MarkdownElementKeys.Strikethrough, "AppMarkdownBodyFontSize", 15),
+        (MarkdownElementKeys.Subscript, "AppMarkdownScriptFontSize", 12),
+        (MarkdownElementKeys.Superscript, "AppMarkdownScriptFontSize", 12),
+        (MarkdownElementKeys.Inserted, "AppMarkdownBodyFontSize", 15),
+        (MarkdownElementKeys.Marked, "AppMarkdownBodyFontSize", 15),
+        (MarkdownElementKeys.Abbreviation, "AppMarkdownBodyFontSize", 15),
+        (MarkdownElementKeys.CodeInline, "AppMarkdownCodeFontSize", 13),
+        (MarkdownElementKeys.CodeBlock, "AppMarkdownCodeFontSize", 13),
+        (MarkdownElementKeys.CodeBlockHeader, "AppMarkdownMetaFontSize", 13),
+        (MarkdownElementKeys.CodeBlockLanguage, "AppMarkdownMetaFontSize", 13),
+        (MarkdownElementKeys.CodeBlockGutter, "AppMarkdownMetaFontSize", 13),
+        (MarkdownElementKeys.CodeBlockLineNumber, "AppMarkdownMetaFontSize", 13),
+        (MarkdownElementKeys.Quote, "AppMarkdownBodyFontSize", 15),
+        (MarkdownElementKeys.ListMarker, "AppMarkdownBodyFontSize", 15),
+        (MarkdownElementKeys.ImageCaption, "AppMarkdownMetaFontSize", 13),
+        (MarkdownElementKeys.DefinitionTerm, "AppMarkdownBodyFontSize", 15),
+        (MarkdownElementKeys.DefinitionDescription, "AppMarkdownBodyFontSize", 15),
+        (MarkdownElementKeys.Figure, "AppMarkdownBodyFontSize", 15),
+        (MarkdownElementKeys.FigureCaption, "AppMarkdownMetaFontSize", 13),
+        (MarkdownElementKeys.Diagram, "AppMarkdownCodeFontSize", 13),
+        (MarkdownElementKeys.Math, "AppMarkdownBodyFontSize", 15),
+        (MarkdownElementKeys.Table, "AppMarkdownBodyFontSize", 15),
+        (MarkdownElementKeys.TableHeader, "AppMarkdownBodyFontSize", 15),
+        (MarkdownElementKeys.TableCell, "AppMarkdownBodyFontSize", 15),
+        (MarkdownElementKeys.AlertNote, "AppMarkdownBodyFontSize", 15),
+        (MarkdownElementKeys.AlertTip, "AppMarkdownBodyFontSize", 15),
+        (MarkdownElementKeys.AlertImportant, "AppMarkdownBodyFontSize", 15),
+        (MarkdownElementKeys.AlertWarning, "AppMarkdownBodyFontSize", 15),
+        (MarkdownElementKeys.AlertCaution, "AppMarkdownBodyFontSize", 15),
+    ];
 
     private readonly MarkdownTheme _theme = new();
     private readonly IMarkdownImageResolver _imageResolver;
     private readonly ITelemetryService? _telemetryService;
     private readonly MarkdownRemoteContentConsent _remoteContentConsent = new();
     private readonly HashSet<MarkdownImageUnavailableReason> _reportedImageUnavailableReasons = [];
-    private readonly UISettings? _uiSettings = RuntimeEventSubscription.TryCreate(
-        static () => new UISettings(),
-        nameof(UISettings));
-    private AppThemeSettingsMonitor? _themeSettings;
+#pragma warning disable MR1001 // Common storage for the two explicit viewport control types; never constructed directly.
     private MarkdownRendererControl? _renderer;
+#pragma warning restore MR1001
     private bool _isLoaded;
     private bool _rendererCreationQueued;
-    private bool _colorValuesSubscribed;
-    private bool _textScaleSubscribed;
-    private bool _highContrastSubscribed;
     private bool _paletteSubscribed;
-    private double _appliedTextScaleFactor = 1;
     private Microsoft.UI.Dispatching.DispatcherQueueTimer? _lifecycleRuntimeSettingsTimer;
     private int _lifecycleRuntimeSettingsRevision;
     private string? _lastAppliedMarkdown;
     private bool _renderFailureReportedForDocument;
     private bool _retryRenderPending;
+    private readonly MarkdownSyntaxHighlightingSession<TextMateCodeBlockSyntaxHighlighter>
+        _syntaxHighlighting = new(static () => new TextMateCodeBlockSyntaxHighlighter(
+            new CommonTextMateGrammarProvider(),
+            options: null,
+            ownsProvider: true));
 
     public static readonly DependencyProperty TextProperty = DependencyProperty.Register(
         nameof(Text),
@@ -133,6 +233,12 @@ public sealed partial class MarkdownViewer : UserControl
         typeof(bool),
         typeof(MarkdownViewer),
         new PropertyMetadata(false, OnRendererPropertyChanged));
+
+    public static readonly DependencyProperty OwnsScrollViewportProperty = DependencyProperty.Register(
+        nameof(OwnsScrollViewport),
+        typeof(bool),
+        typeof(MarkdownViewer),
+        new PropertyMetadata(false, OnViewportOwnershipChanged));
 
     public string? Text
     {
@@ -213,6 +319,17 @@ public sealed partial class MarkdownViewer : UserControl
         set => SetValue(IsSyntaxHighlightingEnabledProperty, value);
     }
 
+    /// <summary>
+    /// Gets or sets whether this viewer owns its vertical scrolling surface.
+    /// Page and conversation shells leave this false and provide the viewport;
+    /// standalone previews opt in explicitly.
+    /// </summary>
+    public bool OwnsScrollViewport
+    {
+        get => (bool)GetValue(OwnsScrollViewportProperty);
+        set => SetValue(OwnsScrollViewportProperty, value);
+    }
+
     public MarkdownViewer()
     {
         InitializeComponent();
@@ -222,13 +339,11 @@ public sealed partial class MarkdownViewer : UserControl
         _imageResolver = MarkdownLifecycleAutomationBridge.IsEnabled
             ? new MarkdownLifecycleImageResolver(imageResolver)
             : imageResolver;
-        ApplyTheme();
 
         Loaded += (_, _) =>
         {
             _isLoaded = true;
             SubscribeRuntimeSettings();
-            ApplyTheme();
             UpdateHostLayout();
             EnsureRenderer();
             ApplyRendererSettings();
@@ -240,7 +355,6 @@ public sealed partial class MarkdownViewer : UserControl
             _rendererCreationQueued = false;
             DisposeRenderer();
         };
-        ActualThemeChanged += MarkdownViewer_ActualThemeChanged;
         DataContextChanged += (_, _) =>
         {
             if (DocumentSource is null)
@@ -263,8 +377,16 @@ public sealed partial class MarkdownViewer : UserControl
         }
     }
 
-    private static MarkdownExtensionRegistry CreateGfmRegistry()
-        => new MarkdownExtensionRegistry().UseGitHubFlavoredMarkdown();
+    private static void OnViewportOwnershipChanged(DependencyObject d, DependencyPropertyChangedEventArgs e)
+    {
+        if (d is not MarkdownViewer viewer || viewer._renderer is null)
+        {
+            return;
+        }
+
+        viewer.DisposeRenderer();
+        viewer.QueueRendererCreation();
+    }
 
     private static void OnRendererPropertyChanged(DependencyObject d, DependencyPropertyChangedEventArgs e)
     {
@@ -295,20 +417,12 @@ public sealed partial class MarkdownViewer : UserControl
     {
         if (d is MarkdownViewer viewer)
         {
-            viewer.ApplyTheme();
+            viewer.ApplyRendererResources();
         }
     }
 
     private void RootGrid_SizeChanged(object sender, SizeChangedEventArgs e)
     {
-        double textScaleFactor = GetTextScaleFactor();
-        if (Math.Abs(textScaleFactor - _appliedTextScaleFactor) > 0.001 ||
-            MarkdownLifecycleAutomationBridge.IsEnabled)
-        {
-            ApplyTheme();
-            ApplyRendererSettings();
-        }
-
         UpdateHostLayout();
     }
 
@@ -327,25 +441,6 @@ public sealed partial class MarkdownViewer : UserControl
 
     private void SubscribeRuntimeSettings()
     {
-        if (_uiSettings is not null && !_colorValuesSubscribed)
-        {
-            _colorValuesSubscribed = RuntimeEventSubscription.TrySubscribe(
-                () => _uiSettings.ColorValuesChanged += UISettings_ColorValuesChanged,
-                nameof(UISettings.ColorValuesChanged));
-        }
-        if (_uiSettings is not null && !_textScaleSubscribed)
-        {
-            _textScaleSubscribed = RuntimeEventSubscription.TrySubscribe(
-                () => _uiSettings.TextScaleFactorChanged += UISettings_TextScaleFactorChanged,
-                nameof(UISettings.TextScaleFactorChanged));
-        }
-        _themeSettings ??= ThemeSettingsHelper.TryGetFor(this);
-        if (_themeSettings is not null && !_highContrastSubscribed)
-        {
-            _highContrastSubscribed = RuntimeEventSubscription.TrySubscribe(
-                () => _themeSettings.Changed += ThemeSettings_Changed,
-                nameof(AppThemeSettingsMonitor.Changed));
-        }
         if (!_paletteSubscribed)
         {
             _paletteSubscribed = RuntimeEventSubscription.TrySubscribe(
@@ -365,36 +460,12 @@ public sealed partial class MarkdownViewer : UserControl
 
     private void UnsubscribeRuntimeSettings()
     {
-        if (_uiSettings is not null)
-        {
-            RuntimeEventSubscription.TryUnsubscribe(
-                () => _uiSettings.ColorValuesChanged -= UISettings_ColorValuesChanged,
-                _colorValuesSubscribed,
-                nameof(UISettings.ColorValuesChanged));
-            RuntimeEventSubscription.TryUnsubscribe(
-                () => _uiSettings.TextScaleFactorChanged -= UISettings_TextScaleFactorChanged,
-                _textScaleSubscribed,
-                nameof(UISettings.TextScaleFactorChanged));
-        }
-
-        if (_themeSettings is not null)
-        {
-            RuntimeEventSubscription.TryUnsubscribe(
-                () => _themeSettings.Changed -= ThemeSettings_Changed,
-                _highContrastSubscribed,
-                nameof(AppThemeSettingsMonitor.Changed));
-        }
-
         RuntimeEventSubscription.TryUnsubscribe(
             () => ThemePaletteRuntime.PaletteChanged -= ThemePaletteRuntime_PaletteChanged,
             _paletteSubscribed,
             nameof(ThemePaletteRuntime.PaletteChanged));
 
-        _colorValuesSubscribed = false;
-        _textScaleSubscribed = false;
-        _highContrastSubscribed = false;
         _paletteSubscribed = false;
-        _themeSettings = null;
         if (_lifecycleRuntimeSettingsTimer is not null)
         {
             _lifecycleRuntimeSettingsTimer.Stop();
@@ -414,27 +485,15 @@ public sealed partial class MarkdownViewer : UserControl
         }
 
         _lifecycleRuntimeSettingsRevision = revision;
-        QueueRuntimeThemeRefresh();
+        QueueRendererResourceRefresh();
     }
-
-    private void MarkdownViewer_ActualThemeChanged(FrameworkElement sender, object args) =>
-        QueueRuntimeThemeRefresh();
-
-    private void UISettings_ColorValuesChanged(UISettings sender, object args) =>
-        QueueRuntimeThemeRefresh();
-
-    private void UISettings_TextScaleFactorChanged(UISettings sender, object args) =>
-        QueueRuntimeThemeRefresh();
-
-    private void ThemeSettings_Changed(object? sender, EventArgs args) =>
-        QueueRuntimeThemeRefresh();
 
     private void ThemePaletteRuntime_PaletteChanged(
         object? sender,
         ThemePaletteChangedEventArgs args) =>
-        QueueRuntimeThemeRefresh();
+        QueueRendererResourceRefresh();
 
-    private void QueueRuntimeThemeRefresh()
+    private void QueueRendererResourceRefresh()
     {
         Microsoft.UI.Dispatching.DispatcherQueue? dispatcher = DispatcherQueue;
         if (dispatcher is null)
@@ -449,8 +508,7 @@ public sealed partial class MarkdownViewer : UserControl
                 return;
             }
 
-            ApplyTheme();
-            ApplyRendererSettings();
+            ApplyRendererResources();
         }
 
         if (dispatcher.HasThreadAccess)
@@ -539,17 +597,24 @@ public sealed partial class MarkdownViewer : UserControl
             return;
         }
 
-        _renderer = new MarkdownRendererControlBuilder()
-            .WithExtensionRegistry(SharedGfmRegistry.Value)
-            .WithTheme(_theme)
-            .WithSelectionEnabled(IsSelectionEnabled)
-            .WithCodeBlockCopyEnabled(IsCodeBlockCopyEnabled)
-            .WithImageResolver(_imageResolver)
-            .WithImageBaseUri(GetBaseUri())
-            .WithImageDocumentPath(DocumentPath)
-            .WithImageDocumentSource(DocumentSource)
-            .WithThirdPartyRemoteImagesAllowed(_remoteContentConsent.IsGranted)
-            .Build();
+        if (OwnsScrollViewport)
+        {
+            _renderer = new MarkdownScrollView().UseGitHubReadme(SharedGitHubEngine);
+        }
+        else
+        {
+            _renderer = new MarkdownDocumentView().UseGitHubReadme(SharedGitHubEngine);
+        }
+        _renderer.Theme = _theme;
+        _renderer.StringProvider = JitHubMarkdownStringProvider.Instance;
+        ApplyRendererResources();
+        _renderer.IsSelectionEnabled = IsSelectionEnabled;
+        _renderer.IsCodeBlockCopyEnabled = IsCodeBlockCopyEnabled;
+        _renderer.ImageResolver = _imageResolver;
+        _renderer.ImageBaseUri = GetBaseUri();
+        _renderer.ImageDocumentPath = DocumentPath;
+        _renderer.ImageDocumentSource = DocumentSource;
+        _renderer.AllowThirdPartyRemoteImages = _remoteContentConsent.IsGranted;
         _renderer.LinkClick += OnRendererLinkClick;
         _renderer.DisclosureToggled += OnRendererDisclosureToggled;
         _renderer.CopyCompleted += OnRendererCopyCompleted;
@@ -582,6 +647,7 @@ public sealed partial class MarkdownViewer : UserControl
         RendererHost.Children.Remove(_renderer);
         _renderer.Dispose();
         _renderer = null;
+        _syntaxHighlighting.Reset();
     }
 
     private void UpdateHostLayout()
@@ -637,10 +703,10 @@ public sealed partial class MarkdownViewer : UserControl
         _renderer.CodeBlockCopyButtonStyle = TryResolveResource("AppToolbarButtonStyle", out object? copyStyle)
             ? copyStyle as Style
             : null;
-        // Keep JitHub's production markdown surfaces off TextMate/Onig for now.
-        // The native Onig runtime can fail-fast during packaged WinUI shutdown,
-        // and the package does not expose a safe registry/scanner disposal path.
-        _renderer.IsCodeBlockSyntaxHighlightingEnabled = false;
+        MarkdownSyntaxHighlightingState<TextMateCodeBlockSyntaxHighlighter> highlighting =
+            _syntaxHighlighting.Apply(IsSyntaxHighlightingEnabled);
+        _renderer.CodeHighlighter = highlighting.Provider;
+        _renderer.IsCodeBlockSyntaxHighlightingEnabled = highlighting.IsEnabled;
 
         _renderer.ImageResolver = _imageResolver;
         _renderer.ImageBaseUri = GetBaseUri();
@@ -1141,353 +1207,218 @@ public sealed partial class MarkdownViewer : UserControl
             out uri,
             out mayNavigateInternally);
 
-    private void ApplyTheme()
+    private void ApplyRendererResources()
     {
-        var colors = ResolveThemeColors();
-        double textScaleFactor = GetTextScaleFactor();
-        string bodyFont = ResolveFontFamily("AppBodyFontFamily", "Segoe UI Variable Text");
-        string monoFont = IsHighContrastActive()
-            ? ResolveFontFamily("AppHighContrastMonoFontFamily", "Consolas")
-            : ResolveFontFamily("AppMonoFontFamily", "Cascadia Mono");
-        float bodySize = ScaledToken("AppMarkdownBodyFontSize", 15, textScaleFactor);
-        float codeSize = ScaledToken("AppMarkdownCodeFontSize", 13, textScaleFactor);
-        float metaSize = ScaledToken("AppMarkdownMetaFontSize", 13, textScaleFactor);
-        float scriptSize = ScaledToken("AppMarkdownScriptFontSize", 12, textScaleFactor);
-        float bodyLineHeight = (float)ResolveDouble("AppMarkdownBodyLineHeight", 1.42);
-        float headingLineHeight = (float)ResolveDouble("AppMarkdownHeadingLineHeight", 1.25);
-        float smallRadius = ResolveCornerRadius("AppRadiusSmall", 5);
-        float mediumRadius = ResolveCornerRadius("AppRadiusMedium", 8);
-        float borderThickness = (float)ResolveThickness("AppHairlineBorderThickness", new Thickness(1)).Left;
-        float listIndent = (float)ResolveDouble("AppMarkdownListIndent", 24);
-        float nestedListIndent = (float)ResolveDouble("AppMarkdownNestedListIndent", 20);
-        _appliedTextScaleFactor = textScaleFactor;
-        using (_theme.BeginUpdate())
+        if (_renderer is null)
         {
-            _theme.AccentColor = colors.Accent;
-            _theme.SurfaceColor = colors.MarkdownSurface;
-            _theme.Overrides.Clear();
-
-            _theme.Overrides[MarkdownElementKeys.Body] = new ElementStyleOverride
-            {
-                FontFamily = bodyFont,
-                FontSize = bodySize,
-                Foreground = colors.Ink,
-                Background = colors.MarkdownSurface,
-                LineHeightMultiplier = bodyLineHeight,
-                ListIndent = listIndent,
-                NestedListIndent = nestedListIndent,
-                Margin = ResolveThickness("AppMarkdownBodyMargin", new Thickness(0, 0, 0, 8)),
-            };
-            _theme.Overrides[MarkdownElementKeys.Heading1] = Heading(bodyFont, colors.Ink, ScaledToken("AppMarkdownHeading1FontSize", 30, textScaleFactor), ResolveThickness("AppMarkdownHeading1Margin", new Thickness(0, 16, 0, 8)), headingLineHeight);
-            _theme.Overrides[MarkdownElementKeys.Heading2] = Heading(bodyFont, colors.Ink, ScaledToken("AppMarkdownHeading2FontSize", 24, textScaleFactor), ResolveThickness("AppMarkdownHeading2Margin", new Thickness(0, 16, 0, 8)), headingLineHeight);
-            _theme.Overrides[MarkdownElementKeys.Heading3] = Heading(bodyFont, colors.Ink, ScaledToken("AppMarkdownHeading3FontSize", 20, textScaleFactor), ResolveThickness("AppMarkdownHeading3Margin", new Thickness(0, 12, 0, 4)), headingLineHeight);
-            _theme.Overrides[MarkdownElementKeys.Heading4] = Heading(bodyFont, colors.Ink, ScaledToken("AppMarkdownHeading4FontSize", 17, textScaleFactor), ResolveThickness("AppMarkdownHeading4Margin", new Thickness(0, 12, 0, 4)), headingLineHeight);
-            _theme.Overrides[MarkdownElementKeys.Heading5] = Heading(bodyFont, colors.Ink, ScaledToken("AppMarkdownHeading5FontSize", 15, textScaleFactor), ResolveThickness("AppMarkdownHeading5Margin", new Thickness(0, 8, 0, 4)), headingLineHeight);
-            _theme.Overrides[MarkdownElementKeys.Heading6] = Heading(bodyFont, colors.InkSubtle, ScaledToken("AppMarkdownHeading6FontSize", 14, textScaleFactor), ResolveThickness("AppMarkdownHeading6Margin", new Thickness(0, 8, 0, 4)), headingLineHeight);
-            _theme.Overrides[MarkdownElementKeys.Link] = new ElementStyleOverride
-            {
-                FontFamily = bodyFont,
-                FontSize = bodySize,
-                Foreground = colors.Accent,
-                HoverForeground = colors.AccentHover,
-                FocusForeground = colors.AccentHover,
-                Underline = true,
-            };
-            _theme.Overrides[MarkdownElementKeys.Strong] = new ElementStyleOverride
-            {
-                FontFamily = bodyFont,
-                FontSize = bodySize,
-                FontWeight = FontWeights.SemiBold,
-                Foreground = colors.Ink,
-            };
-            _theme.Overrides[MarkdownElementKeys.Emphasis] = InlineTextStyle(bodyFont, bodySize, colors.Ink, fontStyle: Windows.UI.Text.FontStyle.Italic);
-            _theme.Overrides[MarkdownElementKeys.Strikethrough] = InlineTextStyle(bodyFont, bodySize, colors.Ink, strikethrough: true);
-            _theme.Overrides[MarkdownElementKeys.Subscript] = InlineTextStyle(bodyFont, scriptSize, colors.Ink);
-            _theme.Overrides[MarkdownElementKeys.Superscript] = InlineTextStyle(bodyFont, scriptSize, colors.Ink);
-            _theme.Overrides[MarkdownElementKeys.Inserted] = InlineTextStyle(bodyFont, bodySize, colors.Ink, underline: true);
-            _theme.Overrides[MarkdownElementKeys.Marked] = new ElementStyleOverride
-            {
-                FontFamily = bodyFont,
-                FontSize = bodySize,
-                Foreground = colors.Ink,
-                Background = colors.SurfaceSubtle,
-            };
-            _theme.Overrides[MarkdownElementKeys.Abbreviation] = InlineTextStyle(bodyFont, bodySize, colors.Ink, underline: true);
-            _theme.Overrides[MarkdownElementKeys.CodeInline] = new ElementStyleOverride
-            {
-                FontFamily = monoFont,
-                FontSize = codeSize,
-                Foreground = colors.Ink,
-                Background = colors.CodeInlineBackground,
-                CornerRadius = smallRadius,
-                Padding = ResolveThickness("AppMarkdownInlineCodePadding", new Thickness(4, 0, 4, 0)),
-            };
-            _theme.Overrides[MarkdownElementKeys.CodeBlock] = new ElementStyleOverride
-            {
-                FontFamily = monoFont,
-                FontSize = codeSize,
-                Foreground = colors.Ink,
-                Background = colors.CodeBlockBackground,
-                BorderBrush = colors.Outline,
-                BorderThickness = borderThickness,
-                CornerRadius = mediumRadius,
-                Padding = ResolveThickness("AppMarkdownCodeBlockPadding", new Thickness(12, 8, 12, 8)),
-                Margin = ResolveThickness("AppMarkdownCodeBlockMargin", new Thickness(0, 4, 0, 12)),
-            };
-            _theme.Overrides[MarkdownElementKeys.CodeBlockHeader] = new ElementStyleOverride
-            {
-                FontFamily = bodyFont,
-                FontSize = metaSize,
-                Foreground = colors.InkSubtle,
-                Background = colors.SurfaceSubtle,
-                BorderBrush = colors.Outline,
-            };
-            _theme.Overrides[MarkdownElementKeys.CodeBlockLanguage] = new ElementStyleOverride
-            {
-                FontFamily = bodyFont,
-                FontSize = metaSize,
-                Foreground = colors.InkSubtle,
-                FontWeight = FontWeights.SemiBold,
-            };
-            _theme.Overrides[MarkdownElementKeys.CodeBlockGutter] = new ElementStyleOverride
-            {
-                FontFamily = monoFont,
-                FontSize = metaSize,
-                Foreground = colors.InkSubtle,
-                Background = colors.SurfaceSubtle,
-            };
-            _theme.Overrides[MarkdownElementKeys.CodeBlockLineNumber] = new ElementStyleOverride
-            {
-                FontFamily = monoFont,
-                FontSize = metaSize,
-                Foreground = colors.InkSubtle,
-            };
-            _theme.Overrides[MarkdownElementKeys.Quote] = new ElementStyleOverride
-            {
-                FontFamily = bodyFont,
-                FontSize = bodySize,
-                Foreground = colors.InkMuted,
-                AccentBar = colors.Accent,
-                Padding = ResolveThickness("AppMarkdownQuotePadding", new Thickness(12, 4, 8, 4)),
-                Margin = ResolveThickness("AppMarkdownQuoteMargin", new Thickness(0, 4, 0, 8)),
-            };
-            _theme.Overrides[MarkdownElementKeys.ListMarker] = new ElementStyleOverride
-            {
-                FontFamily = bodyFont,
-                FontSize = bodySize,
-                Foreground = colors.InkSubtle,
-                ListIndent = listIndent,
-                NestedListIndent = nestedListIndent,
-            };
-            _theme.Overrides[MarkdownElementKeys.ThematicBreak] = new ElementStyleOverride
-            {
-                Foreground = colors.Outline,
-                Margin = ResolveThickness("AppMarkdownThematicBreakMargin", new Thickness(0, 12, 0, 12)),
-            };
-            _theme.Overrides[MarkdownElementKeys.ImageCaption] = new ElementStyleOverride
-            {
-                FontFamily = bodyFont,
-                FontSize = metaSize,
-                FontStyle = Windows.UI.Text.FontStyle.Italic,
-                Foreground = colors.InkSubtle,
-                Margin = ResolveThickness("AppMarkdownCaptionMargin", new Thickness(0, 4, 0, 8)),
-            };
-            _theme.Overrides[MarkdownElementKeys.DefinitionTerm] = new ElementStyleOverride
-            {
-                FontFamily = bodyFont,
-                FontSize = bodySize,
-                FontWeight = FontWeights.SemiBold,
-                Foreground = colors.Ink,
-                Margin = ResolveThickness("AppMarkdownDefinitionTermMargin", new Thickness(0, 4, 0, 0)),
-            };
-            _theme.Overrides[MarkdownElementKeys.DefinitionDescription] = new ElementStyleOverride
-            {
-                FontFamily = bodyFont,
-                FontSize = bodySize,
-                Foreground = colors.Ink,
-                Background = colors.MarkdownSurface,
-                Margin = ResolveThickness("AppMarkdownDefinitionDescriptionMargin", new Thickness(20, 0, 0, 8)),
-            };
-            _theme.Overrides[MarkdownElementKeys.Figure] = new ElementStyleOverride
-            {
-                FontFamily = bodyFont,
-                FontSize = bodySize,
-                Foreground = colors.Ink,
-                Background = colors.MarkdownSurface,
-                Margin = ResolveThickness("AppMarkdownFigureMargin", new Thickness(0, 8, 0, 12)),
-            };
-            _theme.Overrides[MarkdownElementKeys.FigureCaption] = new ElementStyleOverride
-            {
-                FontFamily = bodyFont,
-                FontSize = metaSize,
-                FontStyle = Windows.UI.Text.FontStyle.Italic,
-                Foreground = colors.InkSubtle,
-                Background = colors.MarkdownSurface,
-                Margin = ResolveThickness("AppMarkdownCaptionMargin", new Thickness(0, 4, 0, 8)),
-            };
-            _theme.Overrides[MarkdownElementKeys.Diagram] = new ElementStyleOverride
-            {
-                FontFamily = monoFont,
-                FontSize = codeSize,
-                Foreground = colors.Ink,
-                Background = colors.CodeBlockBackground,
-                BorderBrush = colors.Outline,
-                BorderThickness = borderThickness,
-                CornerRadius = mediumRadius,
-                Padding = ResolveThickness("AppMarkdownDiagramPadding", new Thickness(12, 8, 12, 8)),
-                Margin = ResolveThickness("AppMarkdownDiagramMargin", new Thickness(0, 8, 0, 12)),
-            };
-            _theme.Overrides[MarkdownElementKeys.Table] = new ElementStyleOverride
-            {
-                FontFamily = bodyFont,
-                FontSize = bodySize,
-                Foreground = colors.Ink,
-                Background = colors.Surface,
-                BorderBrush = colors.Outline,
-                BorderThickness = borderThickness,
-                CornerRadius = mediumRadius,
-                Margin = ResolveThickness("AppMarkdownTableMargin", new Thickness(0, 8, 0, 12)),
-            };
-            _theme.Overrides[MarkdownElementKeys.TableHeader] = new ElementStyleOverride
-            {
-                FontFamily = bodyFont,
-                FontSize = bodySize,
-                Foreground = colors.Ink,
-                Background = colors.SurfaceSubtle,
-                BorderBrush = colors.Outline,
-                FontWeight = FontWeights.SemiBold,
-                Padding = ResolveThickness("AppMarkdownTableCellPadding", new Thickness(12, 8, 12, 8)),
-            };
-            _theme.Overrides[MarkdownElementKeys.TableCell] = new ElementStyleOverride
-            {
-                FontFamily = bodyFont,
-                FontSize = bodySize,
-                Foreground = colors.Ink,
-                Background = colors.Surface,
-                BorderBrush = colors.Outline,
-                Padding = ResolveThickness("AppMarkdownTableCellPadding", new Thickness(12, 8, 12, 8)),
-            };
-            AddAlertOverride(MarkdownElementKeys.AlertNote, colors.Accent, bodyFont, bodySize, colors);
-            AddAlertOverride(MarkdownElementKeys.AlertTip, colors.Success, bodyFont, bodySize, colors);
-            AddAlertOverride(MarkdownElementKeys.AlertImportant, colors.AccentHover, bodyFont, bodySize, colors);
-            AddAlertOverride(MarkdownElementKeys.AlertWarning, colors.WarmAccent, bodyFont, bodySize, colors);
-            AddAlertOverride(MarkdownElementKeys.AlertCaution, colors.Danger, bodyFont, bodySize, colors);
-        }
-    }
-
-    private static float ScaleFont(float fontSize, double textScaleFactor) =>
-        (float)(fontSize * textScaleFactor);
-
-    private static float ScaledToken(string tokenName, double fallback, double textScaleFactor) =>
-        ScaleFont((float)ResolveDouble(tokenName, fallback), textScaleFactor);
-
-    private double GetTextScaleFactor()
-    {
-        double? lifecycleScale = MarkdownLifecycleAutomationBridge.GetTextScaleFactor();
-        if (lifecycleScale is not null)
-        {
-            return lifecycleScale.Value;
+            return;
         }
 
-        if (string.Equals(
-                Environment.GetEnvironmentVariable("JITHUB_MARKDOWN_LIFECYCLE_FIXTURE"),
-                "1",
-                StringComparison.Ordinal) &&
-            double.TryParse(
-                Environment.GetEnvironmentVariable("JITHUB_AUTOMATION_TEXT_SCALE_FACTOR"),
-                System.Globalization.NumberStyles.Float,
-                System.Globalization.CultureInfo.InvariantCulture,
-                out double automationScale))
+        ResourceDictionary resources = _renderer.Resources;
+        RemoveLocalRendererResources(resources);
+
+        if (TryResolveHostSurfaceBrush(out SolidColorBrush? hostSurface))
         {
-            return Math.Clamp(automationScale, 1, 3);
+            resources[MarkdownResourceKeys.DocumentSurfaceBrush] = hostSurface;
+            foreach (string role in HostSurfaceRoles)
+            {
+                resources[MarkdownResourceKeys.ForRole(
+                    MarkdownStyleRole.FromElementKey(role),
+                    MarkdownStyleProperty.BackgroundBrush)] = hostSurface;
+            }
         }
 
-        try
+        if (MarkdownLifecycleAutomationBridge.GetTextScaleFactor() is double requestedScale)
         {
-            return Math.Clamp(_uiSettings?.TextScaleFactor ?? 1, 1, 3);
+            double tokenScale = GetLifecycleTokenScaleFactor(requestedScale);
+            foreach ((string role, string token, double fallback) in ScalableRoleFonts)
+            {
+                resources[MarkdownResourceKeys.ForRole(
+                    MarkdownStyleRole.FromElementKey(role),
+                    MarkdownStyleProperty.FontSize)] =
+                    ResolveDouble(token, fallback) * tokenScale;
+            }
         }
-        catch (System.Runtime.InteropServices.COMException)
-        {
-            return 1;
-        }
-    }
 
-    private bool IsHighContrastActive()
-    {
         if (MarkdownLifecycleAutomationBridge.IsHighContrastEnabled)
         {
+            ApplyLifecycleHighContrastResources(resources);
+        }
+
+        // The renderer recompiles one immutable style snapshot. Its shared
+        // environment monitor remains the sole owner of real theme, accent,
+        // High Contrast, text scale, language, flow direction, and DPI events.
+        _theme.Invalidate();
+    }
+
+    private static void RemoveLocalRendererResources(ResourceDictionary resources)
+    {
+        resources.Remove(MarkdownResourceKeys.DocumentSurfaceBrush);
+        resources.Remove(MarkdownResourceKeys.SelectionBackgroundBrush);
+        resources.Remove(MarkdownResourceKeys.SelectionForegroundBrush);
+        resources.Remove(MarkdownResourceKeys.FocusVisualBrush);
+        resources.Remove(MarkdownResourceKeys.OverflowIndicatorBrush);
+
+        foreach (string roleName in StyledRoles)
+        {
+            MarkdownStyleRole role = MarkdownStyleRole.FromElementKey(roleName);
+            resources.Remove(MarkdownResourceKeys.ForRole(role, MarkdownStyleProperty.ForegroundBrush));
+            resources.Remove(MarkdownResourceKeys.ForRole(role, MarkdownStyleProperty.HoverForegroundBrush));
+            resources.Remove(MarkdownResourceKeys.ForRole(role, MarkdownStyleProperty.FocusForegroundBrush));
+            resources.Remove(MarkdownResourceKeys.ForRole(role, MarkdownStyleProperty.BackgroundBrush));
+            resources.Remove(MarkdownResourceKeys.ForRole(role, MarkdownStyleProperty.AccentBrush));
+            resources.Remove(MarkdownResourceKeys.ForRole(role, MarkdownStyleProperty.BorderBrush));
+            resources.Remove(MarkdownResourceKeys.ForRole(role, MarkdownStyleProperty.FontFamily));
+            resources.Remove(MarkdownResourceKeys.ForRole(role, MarkdownStyleProperty.FontSize));
+        }
+    }
+
+    private bool TryResolveHostSurfaceBrush(out SolidColorBrush? brush)
+    {
+        string token = string.IsNullOrWhiteSpace(SurfaceColorToken)
+            ? MarkdownHostContract.GetSurfaceColorToken(HostKind)
+            : SurfaceColorToken.Trim();
+
+        if (TryResolveResource(token + "Brush", out object? value) &&
+            value is SolidColorBrush resolvedBrush)
+        {
+            brush = resolvedBrush;
             return true;
         }
 
-        return ThemeSettingsHelper.IsHighContrastActive(_themeSettings);
-    }
-
-    private void AddAlertOverride(
-        string elementKey,
-        Color accent,
-        string fontFamily,
-        float fontSize,
-        MarkdownThemeColors colors)
-    {
-        _theme.Overrides[elementKey] = new ElementStyleOverride
+        if (TryResolveResource(token + "Color", out value) &&
+            value is Windows.UI.Color color)
         {
-            FontFamily = fontFamily,
-            FontSize = fontSize,
-            Foreground = colors.Ink,
-            Background = colors.MarkdownSurface,
-            AccentBar = accent,
-            Padding = ResolveThickness("AppMarkdownQuotePadding", new Thickness(12, 4, 8, 4)),
-            Margin = ResolveThickness("AppMarkdownQuoteMargin", new Thickness(0, 4, 0, 8)),
-        };
-    }
-
-    private static ElementStyleOverride InlineTextStyle(
-        string fontFamily,
-        float fontSize,
-        Color foreground,
-        Windows.UI.Text.FontStyle? fontStyle = null,
-        bool? underline = null,
-        bool? strikethrough = null) => new()
-        {
-            FontFamily = fontFamily,
-            FontSize = fontSize,
-            FontStyle = fontStyle,
-            Foreground = foreground,
-            Underline = underline,
-            Strikethrough = strikethrough,
-        };
-
-    private static ElementStyleOverride Heading(
-        string fontFamily,
-        Color foreground,
-        float fontSize,
-        Thickness margin,
-        float lineHeight)
-    {
-        return new ElementStyleOverride
-        {
-            FontFamily = fontFamily,
-            FontSize = fontSize,
-            FontWeight = FontWeights.SemiBold,
-            Foreground = foreground,
-            Margin = margin,
-            LineHeightMultiplier = lineHeight,
-        };
-    }
-
-    private static string ResolveFontFamily(string tokenName, string fallback)
-    {
-        if (TryResolveResource(tokenName, out object? value))
-        {
-            return value switch
-            {
-                FontFamily family when !string.IsNullOrWhiteSpace(family.Source) => family.Source,
-                string text when !string.IsNullOrWhiteSpace(text) => text,
-                _ => fallback,
-            };
+            brush = new SolidColorBrush(color);
+            return true;
         }
 
-        return fallback;
+        brush = null;
+        return false;
+    }
+
+    private static double GetLifecycleTokenScaleFactor(double requestedScale)
+    {
+        // The lifecycle fixture asks for a final effective scale. Divide out
+        // the real Windows scale because MarkdownEnvironmentMonitor applies it
+        // after resolving these test-only font resources.
+        double systemScale = 1;
+        UISettings? settings = RuntimeEventSubscription.TryCreate(
+            static () => new UISettings(),
+            nameof(UISettings));
+        try
+        {
+            double observedScale = settings?.TextScaleFactor ?? 1;
+            systemScale = double.IsFinite(observedScale) && observedScale > 0
+                ? Math.Clamp(observedScale, 1, 3)
+                : 1;
+        }
+        catch (System.Runtime.InteropServices.COMException)
+        {
+            systemScale = 1;
+        }
+
+        return Math.Clamp(requestedScale, 1, 3) / systemScale;
+    }
+
+    private static void ApplyLifecycleHighContrastResources(ResourceDictionary resources)
+    {
+        SolidColorBrush window = new(Colors.Black);
+        SolidColorBrush text = new(Colors.White);
+        SolidColorBrush link = new(Colors.Yellow);
+        SolidColorBrush focus = new(Colors.Cyan);
+
+        resources[MarkdownResourceKeys.DocumentSurfaceBrush] = window;
+        resources[MarkdownResourceKeys.SelectionBackgroundBrush] = link;
+        resources[MarkdownResourceKeys.SelectionForegroundBrush] = window;
+        resources[MarkdownResourceKeys.FocusVisualBrush] = focus;
+        resources[MarkdownResourceKeys.OverflowIndicatorBrush] = text;
+
+        foreach (string roleName in StyledRoles)
+        {
+            resources[MarkdownResourceKeys.ForRole(
+                MarkdownStyleRole.FromElementKey(roleName),
+                MarkdownStyleProperty.ForegroundBrush)] = text;
+        }
+
+        foreach (string roleName in new[]
+        {
+            MarkdownElementKeys.Body,
+            MarkdownElementKeys.CodeInline,
+            MarkdownElementKeys.CodeBlock,
+            MarkdownElementKeys.CodeBlockHeader,
+            MarkdownElementKeys.CodeBlockGutter,
+            MarkdownElementKeys.Marked,
+            MarkdownElementKeys.DefinitionDescription,
+            MarkdownElementKeys.Figure,
+            MarkdownElementKeys.FigureCaption,
+            MarkdownElementKeys.Diagram,
+            MarkdownElementKeys.Table,
+            MarkdownElementKeys.TableHeader,
+            MarkdownElementKeys.TableCell,
+            MarkdownElementKeys.AlertNote,
+            MarkdownElementKeys.AlertTip,
+            MarkdownElementKeys.AlertImportant,
+            MarkdownElementKeys.AlertWarning,
+            MarkdownElementKeys.AlertCaution,
+        })
+        {
+            resources[MarkdownResourceKeys.ForRole(
+                MarkdownStyleRole.FromElementKey(roleName),
+                MarkdownStyleProperty.BackgroundBrush)] = window;
+        }
+
+        foreach (string roleName in new[]
+        {
+            MarkdownElementKeys.CodeBlock,
+            MarkdownElementKeys.CodeBlockHeader,
+            MarkdownElementKeys.Diagram,
+            MarkdownElementKeys.Table,
+            MarkdownElementKeys.TableHeader,
+            MarkdownElementKeys.TableCell,
+        })
+        {
+            resources[MarkdownResourceKeys.ForRole(
+                MarkdownStyleRole.FromElementKey(roleName),
+                MarkdownStyleProperty.BorderBrush)] = text;
+        }
+
+        if (TryResolveResource("AppHighContrastMonoFontFamily", out object? monoFont))
+        {
+            foreach (string roleName in new[]
+            {
+                MarkdownElementKeys.CodeInline,
+                MarkdownElementKeys.CodeBlock,
+                MarkdownElementKeys.CodeBlockGutter,
+                MarkdownElementKeys.CodeBlockLineNumber,
+                MarkdownElementKeys.Diagram,
+            })
+            {
+                resources[MarkdownResourceKeys.ForRole(
+                    MarkdownStyleRole.FromElementKey(roleName),
+                    MarkdownStyleProperty.FontFamily)] = monoFont;
+            }
+        }
+
+        MarkdownStyleRole linkRole = MarkdownStyleRole.FromElementKey(MarkdownElementKeys.Link);
+        resources[MarkdownResourceKeys.ForRole(linkRole, MarkdownStyleProperty.ForegroundBrush)] = link;
+        resources[MarkdownResourceKeys.ForRole(linkRole, MarkdownStyleProperty.HoverForegroundBrush)] = link;
+        resources[MarkdownResourceKeys.ForRole(linkRole, MarkdownStyleProperty.FocusForegroundBrush)] = focus;
+
+        foreach (string roleName in new[]
+        {
+            MarkdownElementKeys.Quote,
+            MarkdownElementKeys.AlertNote,
+            MarkdownElementKeys.AlertTip,
+            MarkdownElementKeys.AlertImportant,
+            MarkdownElementKeys.AlertWarning,
+            MarkdownElementKeys.AlertCaution,
+        })
+        {
+            resources[MarkdownResourceKeys.ForRole(
+                MarkdownStyleRole.FromElementKey(roleName),
+                MarkdownStyleProperty.AccentBrush)] = link;
+        }
     }
 
     private static double ResolveDouble(string tokenName, double fallback)
@@ -1506,16 +1437,6 @@ public sealed partial class MarkdownViewer : UserControl
         return fallback;
     }
 
-    private static Thickness ResolveThickness(string tokenName, Thickness fallback) =>
-        TryResolveResource(tokenName, out object? value) && value is Thickness thickness
-            ? thickness
-            : fallback;
-
-    private static float ResolveCornerRadius(string tokenName, float fallback) =>
-        TryResolveResource(tokenName, out object? value) && value is CornerRadius radius
-            ? (float)radius.TopLeft
-            : fallback;
-
     private static bool TryResolveResource(string tokenName, out object? value)
     {
         value = null;
@@ -1523,134 +1444,4 @@ public sealed partial class MarkdownViewer : UserControl
             resources.TryGetValue(tokenName, out value);
     }
 
-    private MarkdownThemeColors ResolveThemeColors()
-    {
-        if (MarkdownLifecycleAutomationBridge.IsHighContrastEnabled)
-        {
-            Color window = Colors.Black;
-            Color text = Colors.White;
-            Color link = Colors.Yellow;
-            return new MarkdownThemeColors(
-                text,
-                text,
-                text,
-                window,
-                window,
-                window,
-                window,
-                text,
-                link,
-                Colors.Cyan,
-                window,
-                window,
-                link,
-                link,
-                link);
-        }
-
-        bool dark = ActualTheme == ElementTheme.Dark;
-        Color ink = ResolveColor("AppInk", dark ? "#F0F2EA" : "#1B1B1B");
-        Color inkMuted = ResolveColor("AppInkMuted", dark ? "#C7CDBF" : "#4F4F4F");
-        Color inkSubtle = ResolveColor("AppInkSubtle", dark ? "#99A294" : "#6B6B6B");
-        string markdownSurfaceToken = string.IsNullOrWhiteSpace(SurfaceColorToken)
-            ? MarkdownHostContract.GetSurfaceColorToken(HostKind)
-            : SurfaceColorToken.Trim();
-        Color markdownSurface = ResolveColor(
-            markdownSurfaceToken,
-            MarkdownHostContract.GetSurfaceFallback(HostKind, dark));
-        Color surface = ResolveColor("AppSurface", dark ? "#212621" : "#FAFAFA");
-        Color surfaceSubtle = ResolveColor("AppSurfaceSubtle", dark ? "#252B25" : "#F0F0F0");
-        Color canvasInset = ResolveColor("AppCanvasInset", dark ? "#11130F" : "#EDEDED");
-        Color outline = ResolveColor("AppOutline", dark ? "#3C463E" : "#D2D2D2");
-        Color accent = ResolveColor("AppAccent", dark ? "#77B59A" : "#256B52");
-        Color accentHover = ResolveColor("AppAccentHover", dark ? "#8BC2AA" : "#2F7C60");
-        Color success = ResolveColor("AppSuccess", dark ? "#5FAF82" : "#2B7A50");
-        Color warmAccent = ResolveColor("AppWarmAccent", dark ? "#D9AA63" : "#9B5F18");
-        Color danger = ResolveColor("AppDanger", dark ? "#F08C86" : "#B42318");
-        Color codeInlineBackground = ResolveColor("AppCanvasInset", dark ? "#303830" : "#E9E9E9");
-        Color codeBlockBackground = ResolveColor("AppCanvasInset", dark ? "#1C221C" : "#EDEDED");
-
-        return new MarkdownThemeColors(
-            ink,
-            inkMuted,
-            inkSubtle,
-            markdownSurface,
-            surface,
-            surfaceSubtle,
-            canvasInset,
-            outline,
-            accent,
-            accentHover,
-            codeInlineBackground,
-            codeBlockBackground,
-            success,
-            warmAccent,
-            danger);
-    }
-
-    private static Color ResolveColor(string tokenName, string fallbackHex)
-    {
-        if (Application.Current?.Resources is { } resources)
-        {
-            if (TryResolveResourceColor(resources, tokenName + "Brush", out Color brushColor))
-            {
-                return brushColor;
-            }
-
-            if (TryResolveResourceColor(resources, tokenName + "Color", out Color color))
-            {
-                return color;
-            }
-        }
-
-        return ParseColor(fallbackHex);
-    }
-
-    private static bool TryResolveResourceColor(ResourceDictionary resources, string key, out Color color)
-    {
-        color = default;
-        if (!resources.TryGetValue(key, out object value))
-        {
-            return false;
-        }
-
-        switch (value)
-        {
-            case Color resourceColor:
-                color = resourceColor;
-                return true;
-            case SolidColorBrush brush:
-                color = brush.Color;
-                return true;
-            default:
-                return false;
-        }
-    }
-
-    private static Color ParseColor(string hex)
-    {
-        hex = hex.TrimStart('#');
-        return Color.FromArgb(
-            0xFF,
-            Convert.ToByte(hex[0..2], 16),
-            Convert.ToByte(hex[2..4], 16),
-            Convert.ToByte(hex[4..6], 16));
-    }
-
-    private readonly record struct MarkdownThemeColors(
-        Color Ink,
-        Color InkMuted,
-        Color InkSubtle,
-        Color MarkdownSurface,
-        Color Surface,
-        Color SurfaceSubtle,
-        Color CanvasInset,
-        Color Outline,
-        Color Accent,
-        Color AccentHover,
-        Color CodeInlineBackground,
-        Color CodeBlockBackground,
-        Color Success,
-        Color WarmAccent,
-        Color Danger);
 }

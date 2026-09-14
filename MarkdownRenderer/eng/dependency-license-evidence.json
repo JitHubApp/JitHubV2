@@ -1,0 +1,21 @@
+{
+  "schemaVersion": 1,
+  "packages": [
+    {
+      "id": "Microsoft.Graphics.Win2D",
+      "version": "1.4.0",
+      "packageSha256": "e13866088b3c50205aae36e9e4cb3c23b21d11c4b4590ddcbeaafa9ea2c79f48",
+      "licenseExpression": "MIT",
+      "evidenceUrl": "https://github.com/microsoft/Win2D/blob/winappsdk/main/LICENSE.txt",
+      "reviewNote": "The signed NuGet package uses a legacy licenseUrl; the official upstream repository declares MIT. The package hash binds this reviewed exception to 1.4.0."
+    },
+    {
+      "id": "Microsoft.Windows.SDK.BuildTools",
+      "version": "10.0.26100.4654",
+      "packageSha256": "5f5783658a200f83ea2addfd406e2303a901b27ad7c49b0347c34aefcc21883d",
+      "licenseExpression": "LicenseRef-Microsoft-Windows-SDK",
+      "evidenceUrl": "https://aka.ms/WinSDKLicenseURL",
+      "reviewNote": "The signed package declares this license URL but no SPDX expression or embedded license file. The package hash binds the LicenseRef to the exact restored archive."
+    }
+  ]
+}

@@ -1,92 +1,44 @@
 # Tech stack and decisions
 
-## Core technologies
+| Technology | Role |
+| --- | --- |
+| .NET | Immutable engine/document model and host contracts. |
+| Markdig | Internal CommonMark/GFM parsing implementation. |
+| WinUI / Windows App SDK | Native views, input, theme resources, hosted elements, and UI Automation. |
+| Win2D / DirectWrite | Native paint, shaping, measurement, and hit testing. |
+| ThorVG | Optional native SVG rasterization feature pack. |
+| TextMate | Optional syntax-highlighting integration with separate grammar packs. |
 
-| Technology | Use | Reason |
-| --- | --- | --- |
-| WinUI / Windows App SDK | Control, visual tree, input, theme, UIA, hosted controls | Native Windows 11 integration. |
-| Markdig | Markdown parsing and extension pipeline | Mature, extensible CommonMark/GFM parser for .NET. |
-| Win2D | Virtual canvas and drawing API | Efficient Direct2D/DirectWrite-backed rendering from WinUI. |
-| DirectWrite via Win2D text layouts | Text shaping, metrics, hit testing | Native text quality, glyph metrics, RTL support path. |
-| ThorVG native DLL | SVG rasterization | Broad SVG feature support through one raster path. |
-| FlaUI | Sample app UI automation | End-to-end automation of WinUI behavior. |
-| xUnit | Unit tests | Standard .NET test infrastructure. |
+## Native viewer instead of WebView
 
-## Why not WebView?
+The viewer does not depend on browser DOM, script, or CSS layout. This keeps
+focus, theme, DPI, input, packaging, and UI Automation in the native WinUI model.
+It also means HTML must be an explicitly bounded native subset rather than an
+implicit browser capability.
 
-A WebView would provide mature HTML/CSS/layout/selection quickly, but it would
-also bring:
+## Immutable boundary
 
-- larger process and memory footprint;
-- browser-specific styling and focus behavior;
-- less direct WinUI theme integration;
-- harder native hosted-control composition;
-- harder deterministic paint invalidation;
-- reduced control over text selection/copy semantics;
-- dependency on web accessibility semantics rather than UIA-native peers.
+`MarkdownEngineBuilder` freezes profiles and declarative extensions into a
+thread-safe engine. `ParseAsync` returns immutable documents that preserve
+half-open UTF-16 source spans, diagnostics, and semantic queries. Views consume
+documents without exposing their private layout or drawing implementation.
 
-The library chooses native implementation complexity in exchange for control over
-Windows integration and performance.
+## Optional capabilities
 
-## Why Markdig?
+The base `MarkdownRenderer` package stays lean. GitHub behavior, safe HTML, Math,
+Mermaid, ThorVG, TextMate, and grammar payloads require explicit package choices.
+The default presentation follows WinUI/Fluent resources; GitHub behavior is not
+silently imposed on every app.
 
-Markdig provides:
+ThorVG is kept out of the base package because native architecture payloads are
+a real size and deployment decision. TextMate grammar resources are split for
+the same reason. Math and Mermaid provide bounded native implementations with
+accessible, atomic source fallbacks; their physical-device and release-evidence
+matrices remain separate 1.0 gates.
 
-- CommonMark-compatible parsing;
-- GFM extensions such as pipe tables, task lists, autolinks, emphasis extras,
-  footnotes, emoji, and generic attributes;
-- AST access suitable for custom layout;
-- an extensible pipeline that lets consumers opt into additional syntax.
+## Extensibility and AOT
 
-The renderer does not use Markdig's HTML renderer. It consumes the AST and builds
-native boxes instead.
-
-## Why Win2D and DirectWrite?
-
-Win2D provides a WinUI-friendly wrapper over Direct2D and DirectWrite. It supports
-`CanvasVirtualControl`, which lets the renderer repaint only invalidated regions.
-DirectWrite text layouts provide the text metrics needed for:
-
-- line wrapping;
-- hit testing;
-- selection rectangles;
-- baseline and font metrics;
-- RTL and mixed-direction text support path.
-
-## Why a XAML overlay?
-
-Win2D paints pixels. It cannot host interactive WinUI controls or expose rich
-control-specific UI Automation peers by itself. The overlay solves this by placing
-real XAML elements above the paint surface while the renderer still owns their
-layout slot.
-
-The overlay is also used for selection and focus visuals because those visuals
-can change every pointer move. Keeping them out of the DirectWrite canvas avoids
-expensive text repaint and fractional-DPI glyph jitter.
-
-## Why ThorVG for SVG?
-
-The current design uses ThorVG as the single SVG rasterizer. SVG payloads are
-converted to BGRA bitmaps and then painted through the same `CanvasBitmap` branch
-as raster images.
-
-Benefits:
-
-- one image paint path;
-- broad SVG support, including features beyond simple Win2D SVG;
-- cached raster output for theme/DPI combinations;
-- no runtime tier classifier.
-
-The core package ships ThorVG native DLLs for x86, x64, and ARM64. Repo builds
-copy the selected architecture's DLL to the output root, and NuGet packages place
-all three assets under RID-native runtime folders.
-
-## AOT and trimming posture
-
-The projects enable trim, single-file, and AOT analyzers. Reflection-heavy plugin
-discovery is avoided. `MarkdownExtensionRegistry` dispatches custom renderers by
-concrete Markdig AST node type using a dictionary.
-
-Public XML docs, package metadata, versioning policy, and cross-architecture
-native asset packaging are part of the package contract and are validated during
-release.
+Extensions register exact syntax-kind strings and emit declarative semantic
+content. This avoids reflection-based discovery and prevents public API coupling
+to Markdig node classes or viewer layout objects. Trim/AOT and package-matrix
+validation are still required 1.0 gates, not completed guarantees.

@@ -152,6 +152,45 @@ internal sealed class CodeBlockMetadata
             stableKey);
     }
 
+    internal static CodeBlockMetadata FromDeclarative(
+        SourceSpan sourceSpan,
+        string displayedCodeText,
+        string? language,
+        IReadOnlyDictionary<string, string> attributes)
+    {
+        ArgumentNullException.ThrowIfNull(attributes);
+
+        string? normalizedLanguage = NormalizeLanguage(language);
+        bool? showLineNumbers = null;
+        if (attributes.TryGetValue(Extensions.MarkdownContentAttributes.CodeShowLineNumbers, out string? rawLineNumbers) &&
+            TryParseBoolean(rawLineNumbers, out bool parsedLineNumbers))
+        {
+            showLineNumbers = parsedLineNumbers;
+        }
+
+        int startLine = 1;
+        if (attributes.TryGetValue(Extensions.MarkdownContentAttributes.CodeStartLine, out string? rawStartLine) &&
+            int.TryParse(rawStartLine, NumberStyles.Integer, CultureInfo.InvariantCulture, out int parsedStartLine))
+        {
+            startLine = Math.Max(1, parsedStartLine);
+        }
+
+        string code = CopyPayload(displayedCodeText);
+        string stableKey = string.Create(
+            CultureInfo.InvariantCulture,
+            $"{sourceSpan.Start}:{sourceSpan.Length}:{Fnv1A(code):X16}");
+        return new CodeBlockMetadata(
+            normalizedLanguage,
+            DisplayLanguage(normalizedLanguage),
+            title: null,
+            fileName: null,
+            CodeLineRangeSet.Empty,
+            showLineNumbers,
+            startLine,
+            isDiff: string.Equals(normalizedLanguage, "diff", StringComparison.OrdinalIgnoreCase),
+            stableKey);
+    }
+
     public static string CopyPayload(string? displayedCodeText) => NormalizeCodeLineEndings(displayedCodeText);
 
     public static string NormalizeCodeLineEndings(string? displayedCodeText)

@@ -1,4 +1,5 @@
 using System.Text;
+using System.Collections.Generic;
 using Markdig.Syntax;
 using Markdig.Syntax.Inlines;
 using Markdig.Extensions.Abbreviations;
@@ -192,7 +193,12 @@ internal static class GfmChildBuilder
         ContainerInline inlines,
         System.Func<Inline, bool>? skipFirstIf = null,
         int inheritedAliasStart = -1)
-        => AddInlines(box, inlines, new SafeHtmlInlineState(), skipFirstIf, inheritedAliasStart);
+        => AddInlines(
+            box,
+            inlines,
+            new SafeHtmlInlineState(box.Context.Registry.SafeHtmlPolicy),
+            skipFirstIf,
+            inheritedAliasStart);
 
     private static void AddInlines(
         InlineContainerBox box,
@@ -218,7 +224,9 @@ internal static class GfmChildBuilder
             if (run is not null)
             {
                 int effectiveAliasStart = inheritedAliasStart >= 0 ? inheritedAliasStart : aliasStart;
-                run.SetStyleAliases(box.Context.CreateStyleAliasSnapshotFrom(effectiveAliasStart));
+                run.SetStyleAliases(CombineAliases(
+                    run.StyleAliases,
+                    box.Context.CreateStyleAliasSnapshotFrom(effectiveAliasStart)));
                 box.Context.RegisterMarkdownAttributes(i, box.BlockIndex);
                 box.Add(run);
             }
@@ -229,6 +237,23 @@ internal static class GfmChildBuilder
                 AddInlines(box, nested, htmlState, skipFirstIf: null, inheritedAliasStart: effectiveAliasStart);
             }
         }
+    }
+
+    private static IReadOnlyList<string> CombineAliases(
+        IReadOnlyList<string> first,
+        IReadOnlyList<string> second)
+    {
+        if (first.Count == 0)
+            return second;
+        if (second.Count == 0)
+            return first;
+
+        var result = new string[first.Count + second.Count];
+        for (int index = 0; index < first.Count; index++)
+            result[index] = first[index];
+        for (int index = 0; index < second.Count; index++)
+            result[first.Count + index] = second[index];
+        return result;
     }
 
     private static InlineRun? BuildInline(Inline inline, MarkdownLayoutContext context) => inline switch

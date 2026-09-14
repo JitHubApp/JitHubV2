@@ -1,99 +1,83 @@
 # Troubleshooting
 
-This page collects production integration problems that are easier to diagnose
-with concrete symptoms.
+## The page has nested or unstable scrolling
+
+Use `MarkdownScrollView` only when the markdown component owns vertical
+scrolling. Inside a page or workspace that already owns a `ScrollViewer`, use
+`MarkdownDocumentView` so the renderer observes the ancestor's effective
+viewport.
+
+## A document is parsed repeatedly
+
+Create one immutable `MarkdownEngine`, call `ParseAsync`, and assign the returned
+`MarkdownDocument` to one or more views. Reassigning `Markdown` is a convenience
+path that transfers parse ownership back to each view.
+
+## GFM or GitHub syntax is missing
+
+The lean package defaults to CommonMark. Install `MarkdownRenderer.Gfm` and call
+`UseGitHubFlavoredMarkdown()` for strict GFM. Install `MarkdownRenderer.GitHub`
+and call `UseGitHubReadme()` for the broader GitHub README profile. Neither is
+enabled merely because the base viewer is installed.
 
 ## SVGs render as placeholders
 
-Check the selected architecture first. The core package and repo build support:
+ThorVG is optional. Confirm that `MarkdownRenderer.Svg.ThorVG` is installed and
+that the selected x86, x64, or ARM64 output contains the matching RID-native
+asset. Also verify image resolver policy, document/base URI, third-party remote
+image consent, SVG validity, and graphics-device recovery.
 
-- `win-x86`
-- `win-x64`
-- `win-arm64`
+## Math or Mermaid content falls back to source
 
-The selected output should contain `thorvg.dll`. Package builds should contain:
+Check extension registration, input validity, configured budgets, capability
+results and diagnostics. Math includes its formula processor; Mermaid requires
+the matching selected-RID native payload. Missing payloads, unsupported syntax
+or layout (including ELK), and exceeded limits retain fallback deliberately.
+Keep fallback visible rather than treating package installation as proof that
+every input can render.
 
-- `runtimes\win-x86\native\thorvg.dll`
-- `runtimes\win-x64\native\thorvg.dll`
-- `runtimes\win-arm64\native\thorvg.dll`
+Invalid TeX returns `InvalidSource` with diagnostic `MATH100` and source fallback;
+it does not throw an internal validation exception. The Audit matrix deliberately
+includes `\notacommand{sample}` to exercise this path, while the primary Math page
+is a clean valid-input showcase. Its display summation should render as a vector
+equation, including after editing in a WinUI TextBox, which can return CR-only line
+endings. Display extraction supports LF, CRLF and CR without normalizing the
+original UTF-16 source ranges.
 
-If the file is missing, the build should fail. If the file is present but SVGs
-still do not render, verify that the SVG bytes are valid and that the app is not
-blocking file/URL access for the image source.
+## Mermaid labels or arrowheads are displaced
 
-## Driver install, monitor reset, or sleep/resume causes graphics errors
+Rebuild and deploy the native Mermaid payload together with the managed pack.
+The scene converter must retain text-run positions, centered measurement
+extents, marker instances, curved paths, and the SVG canvas background. A
+successful native status or a `MarkdownDiagram` automation peer does not prove
+that the pixels are correct. Use `eng/Test-MermaidSampleUi.ps1` and inspect its
+screenshots. Only the Audit matrix's explicitly labeled negative ELK fixture should
+fall back; the primary Mermaid and Diagram pipeline pages should not emit `MMR0002`.
 
-Win2D can throw transient DXGI/D2D device-loss exceptions when the GPU device is
-recreated. The control catches known device-loss HRESULTs from virtual-canvas
-paint paths, logs them, and schedules a delayed rebuild/invalidate retry.
+## Normal Copy produces rendered text
 
-The machine may still need a driver restart or reboot if the whole desktop stack
-is degraded. Unknown paint exceptions still surface because they usually point to
-renderer bugs.
-
-## Theme override changes do not appear
-
-Direct mutations should invalidate automatically:
-
-```csharp
-theme.Overrides[MarkdownElementKeys.Link] = new ElementStyleOverride
-{
-    Foreground = Colors.DodgerBlue,
-};
-```
-
-For advanced integrations that mutate external objects referenced by a theme,
-call `theme.Invalidate()` after the external state changes.
-
-## Selected images look different from selected text
-
-Text selection is drawn on a lightweight overlay so pointer drag does not repaint
-the base DirectWrite canvas. Images remain visible under a translucent selection
-tint and receive a selected outline instead of being fully covered by an opaque
-rectangle. This is expected and keeps the selected image recognizable.
-
-## Hosted controls steal selection drags
-
-Normal clicks over hosted controls go to the hosted WinUI element. Once a
-markdown selection drag starts, the renderer enables a temporary transparent
-drag shield so pointer moves continue extending selection. If an app-hosted
-control captures input permanently, make sure it releases capture on cancel/lost
-capture and does not hold pointer capture after the drag ends.
-
-## Embed factory throws thread exceptions
-
-`IMarkdownEmbedFactory.CanCreate` and `MeasureHeight` run on the background
-layout thread. They must not instantiate WinUI controls, access dependency
-properties, read `ActualTheme`, or call the dispatcher.
-
-Move WinUI work to `CreateBlock` and keep background callbacks based on Markdig
-block data and primitive values only.
-
-## Large documents feel slow
-
-The renderer uses viewport-relative top-level lazy layout and cooperative
-cancellation. Remaining hot spots usually come from:
-
-- one enormous table or list item that still measures as a single top-level block;
-- an embed factory doing expensive work from `CanCreate` or `MeasureHeight`;
-- image sources that block or retry slowly;
-- app code forcing repeated `Markdown` assignment instead of batching source changes.
-
-Use the stress sample and diagnostics from [Testing and diagnostics](testing-and-diagnostics.md)
-to isolate whether the cost is parse, layout, paint, image load, or hosted
-control realization.
-
-## Clipboard output is markdown, not rendered text
-
-This is the default. Source markdown is the document of record, so keyboard and
-context-menu copy write the exact markdown source slice as plain text plus an
-HTML payload.
-
-Use rendered plain text explicitly:
+Rendered semantic text plus `CF_HTML` is the default. Use the explicit source
+path when markdown is required:
 
 ```csharp
-control.CopySelectionToClipboard(new MarkdownCopyOptions
+view.CopySelectionToClipboard(new MarkdownCopyOptions
 {
-    PlainTextMode = MarkdownPlainTextCopyMode.RenderedText,
+    PlainTextMode = MarkdownPlainTextCopyMode.SourceMarkdown,
 });
 ```
+
+`CopySelectionAsMarkdown()` is the convenience method.
+
+## A hosted element is not realized
+
+Confirm that the extension emitted a hosted-element request with the expected
+factory key and that the view's `HostedElementFactory` handles it. Creation is
+viewport-aware and cancellation-aware; elements outside the realization band
+may not exist, and recycled elements must not retain stale app state.
+
+## Theme changes do not appear
+
+The viewer follows WinUI/Fluent environment resources by default. Check the
+view's `StyleSheet`, `Theme`, application resources, actual theme, contrast mode,
+text scale, and flow direction. GitHub-specific behavior must be opted into; it
+is not the base default.

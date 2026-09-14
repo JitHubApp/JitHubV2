@@ -1,0 +1,72 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <TargetFramework>net10.0-windows10.0.26100.0</TargetFramework>
+    <TargetPlatformMinVersion>10.0.19041.0</TargetPlatformMinVersion>
+    <RootNamespace>MarkdownRenderer.Mermaid</RootNamespace>
+    <AssemblyName>MarkdownRenderer.Mermaid</AssemblyName>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <LangVersion>latest</LangVersion>
+    <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
+    <Platforms>x86;x64;ARM64</Platforms>
+    <RuntimeIdentifiers>win-x86;win-x64;win-arm64</RuntimeIdentifiers>
+    <Platform Condition="'$(Platform)' == '' or '$(Platform)' == 'AnyCPU' or '$(Platform)' == 'Any CPU'">x64</Platform>
+    <PlatformTarget>AnyCPU</PlatformTarget>
+    <Prefer32Bit>false</Prefer32Bit>
+    <IsTrimmable>true</IsTrimmable>
+    <IsAotCompatible>true</IsAotCompatible>
+    <EnablePackageValidation>true</EnablePackageValidation>
+    <EnableTrimAnalyzer>true</EnableTrimAnalyzer>
+    <EnableSingleFileAnalyzer>true</EnableSingleFileAnalyzer>
+    <EnableAotAnalyzer>true</EnableAotAnalyzer>
+    <TreatWarningsAsErrors>true</TreatWarningsAsErrors>
+    <NoWarn>$(NoWarn);CS1591</NoWarn>
+    <GenerateDocumentationFile>true</GenerateDocumentationFile>
+    <PackageId>MarkdownRenderer.Mermaid</PackageId>
+    <Version>0.1.0-preview.1</Version>
+    <Authors>nerocui</Authors>
+    <Description>Native Mermaid scene contracts and hardened MMIR interop for MarkdownRenderer.</Description>
+    <PackageTags>markdown;winui;mermaid;diagram;native;windows</PackageTags>
+    <PackageLicenseExpression>MIT</PackageLicenseExpression>
+    <RepositoryUrl>https://github.com/JitHubApp/JitHubV2</RepositoryUrl>
+    <RepositoryType>git</RepositoryType>
+    <PublishRepositoryUrl>true</PublishRepositoryUrl>
+    <EmbedUntrackedSources>true</EmbedUntrackedSources>
+    <PackageProjectUrl>https://github.com/JitHubApp/JitHubV2/tree/main/docs/markdown-renderer</PackageProjectUrl>
+    <PackageReadmeFile>README.md</PackageReadmeFile>
+    <PackageIcon>icon-192.png</PackageIcon>
+    <DefaultItemExcludes>$(DefaultItemExcludes);obj\**;obj-*\**;bin\**;bin-*\**;artifacts\**</DefaultItemExcludes>
+    <!-- RuntimeIdentifier is the consumer's deployment architecture and must
+         win over the solution's default x64 Platform during `dotnet publish -r`. -->
+    <MarkdownRendererMermaidNativeRid Condition="'$(RuntimeIdentifier)' == 'win-x86'">win-x86</MarkdownRendererMermaidNativeRid>
+    <MarkdownRendererMermaidNativeRid Condition="'$(RuntimeIdentifier)' == 'win-x64'">win-x64</MarkdownRendererMermaidNativeRid>
+    <MarkdownRendererMermaidNativeRid Condition="'$(RuntimeIdentifier)' == 'win-arm64'">win-arm64</MarkdownRendererMermaidNativeRid>
+    <MarkdownRendererMermaidNativeRid Condition="'$(MarkdownRendererMermaidNativeRid)' == '' and '$(Platform)' == 'x86'">win-x86</MarkdownRendererMermaidNativeRid>
+    <MarkdownRendererMermaidNativeRid Condition="'$(MarkdownRendererMermaidNativeRid)' == '' and ('$(Platform)' == 'ARM64' or '$(Platform)' == 'arm64')">win-arm64</MarkdownRendererMermaidNativeRid>
+    <MarkdownRendererMermaidNativeRid Condition="'$(MarkdownRendererMermaidNativeRid)' == ''">win-x64</MarkdownRendererMermaidNativeRid>
+  </PropertyGroup>
+  <ItemGroup>
+    <ProjectReference Include="..\MarkdownRenderer.Core\MarkdownRenderer.Core.csproj" />
+  </ItemGroup>
+  <ItemGroup>
+    <None Include="..\..\LICENSE" Pack="true" PackagePath="" Visible="false" />
+    <None Include="..\..\JitHub.Web\wwwroot\icon-192.png" Pack="true" PackagePath="icon-192.png" Visible="false" />
+    <None Include="README.md" Pack="true" PackagePath="" />
+    <None Update="MERMAN_PROVENANCE.json" Pack="true" PackagePath="provenance\MERMAN_PROVENANCE.json" />
+    <None Update="MERMAN_PATCH_LEDGER.md" Pack="true" PackagePath="provenance\MERMAN_PATCH_LEDGER.md" />
+    <None Update="MERMAN_PARITY_BASELINE.md" Pack="true" PackagePath="provenance\MERMAN_PARITY_BASELINE.md" />
+    <None Update="MMIR_FORMAT.md" Pack="true" PackagePath="build\native\MMIR_FORMAT.md" />
+    <None Update="NATIVE_RUST_DEPENDENCIES.json" Pack="true" PackagePath="provenance\NATIVE_RUST_DEPENDENCIES.json" />
+    <None Update="licenses\MERMAN-LICENSE-MIT.txt" Pack="true" PackagePath="licenses\MERMAN-LICENSE-MIT.txt" />
+    <None Update="licenses\MERMAN-THIRD-PARTY-NOTICES.md" Pack="true" PackagePath="licenses\MERMAN-THIRD-PARTY-NOTICES.md" />
+    <None Update="native\abi\mmir-v1.json" Pack="true" PackagePath="build\native\abi\mmir-v1.json" />
+    <None Update="native\include\markdown_renderer_mermaid.h" Pack="true" PackagePath="build\native\include\markdown_renderer_mermaid.h" />
+    <None Update="native\Cargo.lock" Pack="true" PackagePath="provenance\native\Cargo.lock" />
+    <None Update="runtimes\win-x86\native\MarkdownRenderer.Mermaid.Native.dll" Pack="true" PackagePath="runtimes\win-x86\native\MarkdownRenderer.Mermaid.Native.dll" />
+    <None Update="runtimes\win-x64\native\MarkdownRenderer.Mermaid.Native.dll" Pack="true" PackagePath="runtimes\win-x64\native\MarkdownRenderer.Mermaid.Native.dll" />
+    <None Update="runtimes\win-arm64\native\MarkdownRenderer.Mermaid.Native.dll" Pack="true" PackagePath="runtimes\win-arm64\native\MarkdownRenderer.Mermaid.Native.dll" />
+    <None Update="runtimes\win-x86\native\MarkdownRenderer.Mermaid.Native.dll" Condition="'$(MarkdownRendererMermaidNativeRid)' == 'win-x86'" CopyToOutputDirectory="PreserveNewest" CopyToPublishDirectory="PreserveNewest" TargetPath="MarkdownRenderer.Mermaid.Native.dll" />
+    <None Update="runtimes\win-x64\native\MarkdownRenderer.Mermaid.Native.dll" Condition="'$(MarkdownRendererMermaidNativeRid)' == 'win-x64'" CopyToOutputDirectory="PreserveNewest" CopyToPublishDirectory="PreserveNewest" TargetPath="MarkdownRenderer.Mermaid.Native.dll" />
+    <None Update="runtimes\win-arm64\native\MarkdownRenderer.Mermaid.Native.dll" Condition="'$(MarkdownRendererMermaidNativeRid)' == 'win-arm64'" CopyToOutputDirectory="PreserveNewest" CopyToPublishDirectory="PreserveNewest" TargetPath="MarkdownRenderer.Mermaid.Native.dll" />
+  </ItemGroup>
+</Project>

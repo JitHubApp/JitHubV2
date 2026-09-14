@@ -406,7 +406,8 @@ public sealed class AutomationHarnessSourceContractTests
 
         Assert.Contains("PaintPlaceholder(ds, rect);", source, StringComparison.Ordinal);
         Assert.Contains("EnsureLoading();", source, StringComparison.Ordinal);
-        Assert.Contains("WaitAsync(ImageResolverTimeout", source, StringComparison.Ordinal);
+        Assert.Contains("ImageResolverDeadline.RunAsync", source, StringComparison.Ordinal);
+        Assert.Contains("ImageResolverTimeout", source, StringComparison.Ordinal);
         Assert.Contains("compactInlineFailure", source, StringComparison.Ordinal);
         Assert.Contains("MeasureInlineFailureWidth", source, StringComparison.Ordinal);
         Assert.Contains("GetInlineFailureText()", source, StringComparison.Ordinal);
@@ -467,7 +468,50 @@ public sealed class AutomationHarnessSourceContractTests
 
         Assert.Contains("case VirtualKey.F10 when shift && _selection.IsActive", source, StringComparison.Ordinal);
         Assert.Contains("ShowSelectionContextMenu(GetKeyboardContextMenuPoint())", source, StringComparison.Ordinal);
-        Assert.Contains("ShowSelectionContextMenu(pt)", source, StringComparison.Ordinal);
+        Assert.Contains("ShowSelectionContextMenu(pt, touchSelection: touchOrPen)", source, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void MarkdownTouchHandleUpdatesAreFrameCoalescedAndOverlayOnly()
+    {
+        string source = File.ReadAllText(Path.Combine(
+            FindRepositoryRoot(),
+            "MarkdownRenderer",
+            "MarkdownRenderer",
+            "Controls",
+            "MarkdownRendererControl.cs"));
+
+        int moveStart = source.IndexOf(
+            "private void ProcessSelectionHandlePointerMoved",
+            StringComparison.Ordinal);
+        int releaseStart = source.IndexOf(
+            "private void ProcessSelectionHandlePointerReleased",
+            moveStart,
+            StringComparison.Ordinal);
+        int frameStart = source.IndexOf(
+            "private void OnSelectionHandleFrame",
+            releaseStart,
+            StringComparison.Ordinal);
+        int applyStart = source.IndexOf(
+            "private bool ApplyPendingSelectionHandleMove",
+            frameStart,
+            StringComparison.Ordinal);
+        int applyEnd = source.IndexOf(
+            "private bool IsSelectionHandleInAutoScrollBand",
+            applyStart,
+            StringComparison.Ordinal);
+        Assert.True(moveStart >= 0 && releaseStart > moveStart &&
+            frameStart > releaseStart && applyStart > frameStart && applyEnd > applyStart);
+
+        string pointerMove = source[moveStart..releaseStart];
+        string frameUpdate = source[frameStart..applyEnd];
+        Assert.Contains("_selectionHandleMovePending = true", pointerMove, StringComparison.Ordinal);
+        Assert.DoesNotContain("ApplyPendingSelectionHandleMove", pointerMove, StringComparison.Ordinal);
+        Assert.Contains("CompositionTarget.Rendering", source, StringComparison.Ordinal);
+        Assert.Contains("ApplyPendingSelectionHandleMove", frameUpdate, StringComparison.Ordinal);
+        Assert.DoesNotContain("RequestRebuild", frameUpdate, StringComparison.Ordinal);
+        Assert.DoesNotContain("InvalidateCanvas", frameUpdate, StringComparison.Ordinal);
+        Assert.DoesNotContain("_canvas.Invalidate", frameUpdate, StringComparison.Ordinal);
     }
 
     [Fact]

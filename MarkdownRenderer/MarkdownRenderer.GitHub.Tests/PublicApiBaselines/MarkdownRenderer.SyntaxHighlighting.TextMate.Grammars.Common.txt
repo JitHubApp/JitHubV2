@@ -1,0 +1,14 @@
+# MarkdownRenderer public API baseline
+# Format: 1
+# Assembly: MarkdownRenderer.SyntaxHighlighting.TextMate.Grammars.Common
+# Generated from compiled assembly metadata; update with eng/Update-PublicApiBaselines.ps1.
+
+assembly MarkdownRenderer.SyntaxHighlighting.TextMate.Grammars.Common
+
+public sealed class MarkdownRenderer.SyntaxHighlighting.TextMate.Grammars.Common.CommonTextMateGrammarProvider : MarkdownRenderer.SyntaxHighlighting.TextMate.ITextMateGrammarProvider, System.IDisposable
+  public CommonTextMateGrammarProvider();
+  public CommonTextMateGrammarProvider(MarkdownRenderer.SyntaxHighlighting.TextMate.TextMateHighlighterOptions? options);
+  public System.Threading.Tasks.ValueTask<MarkdownRenderer.SyntaxHighlighting.TextMate.TextMateGrammarHighlightResult?> HighlightAsync(MarkdownRenderer.SyntaxHighlighting.TextMate.TextMateGrammarHighlightRequest request, System.Threading.CancellationToken cancellationToken);
+  public int Revision { get; }
+  public static System.Collections.Generic.IReadOnlyList<string> SupportedLanguageIds { get; }
+  public void Dispose();

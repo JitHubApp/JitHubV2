@@ -1,0 +1,588 @@
+# MarkdownRenderer public API baseline
+# Format: 1
+# Assembly: MarkdownRenderer
+# Generated from compiled assembly metadata; update with eng/Update-PublicApiBaselines.ps1.
+
+assembly MarkdownRenderer
+
+public sealed class MarkdownRenderer.CodeBlocks.CodeBlockHighlightRequest
+  public CodeBlockHighlightRequest(string? language, string code, MarkdownRenderer.CodeBlocks.CodeBlockThemeVariant themeVariant, System.Threading.CancellationToken cancellationToken);
+  public MarkdownRenderer.CodeBlocks.CodeBlockThemeVariant ThemeVariant { get; }
+  public System.Threading.CancellationToken CancellationToken { get; }
+  public string Code { get; }
+  public string? Language { get; }
+
+public sealed class MarkdownRenderer.CodeBlocks.CodeBlockHighlightResult
+  public CodeBlockHighlightResult(System.Collections.Generic.IReadOnlyList<MarkdownRenderer.CodeBlocks.CodeBlockHighlightSpan>? spans);
+  public System.Collections.Generic.IReadOnlyList<MarkdownRenderer.CodeBlocks.CodeBlockHighlightSpan> Spans { get; }
+  public static MarkdownRenderer.CodeBlocks.CodeBlockHighlightResult Empty { get; }
+
+public readonly struct MarkdownRenderer.CodeBlocks.CodeBlockHighlightSpan : System.IEquatable<MarkdownRenderer.CodeBlocks.CodeBlockHighlightSpan> [layout: Sequential; pack: 0; size: 0; charset: Ansi]
+  public CodeBlockHighlightSpan(int Start, int Length, Windows.UI.Color Foreground);
+  public Windows.UI.Color Foreground { get; init; }
+  public bool Equals(MarkdownRenderer.CodeBlocks.CodeBlockHighlightSpan other);
+  public int Length { get; init; }
+  public int Start { get; init; }
+  public override bool Equals(object obj);
+  public override int GetHashCode();
+  public override string ToString();
+  public static bool op_Equality(MarkdownRenderer.CodeBlocks.CodeBlockHighlightSpan left, MarkdownRenderer.CodeBlocks.CodeBlockHighlightSpan right);
+  public static bool op_Inequality(MarkdownRenderer.CodeBlocks.CodeBlockHighlightSpan left, MarkdownRenderer.CodeBlocks.CodeBlockHighlightSpan right);
+  public void Deconstruct(out int Start, out int Length, out Windows.UI.Color Foreground);
+
+public enum MarkdownRenderer.CodeBlocks.CodeBlockLineNumberMode
+  Always = 1,
+  AutoMultiline = 0,
+  Never = 2,
+
+public enum MarkdownRenderer.CodeBlocks.CodeBlockThemeVariant
+  Dark = 1,
+  HighContrast = 2,
+  Light = 0,
+
+public enum MarkdownRenderer.CodeBlocks.CodeBlockWrappingMode
+  NoWrap = 0,
+  Wrap = 1,
+
+[Obsolete("Use MarkdownRenderer.Hosting.ICodeHighlighter for explicit cancellation support.")] public interface MarkdownRenderer.CodeBlocks.ICodeBlockSyntaxHighlighter
+  public abstract System.Threading.Tasks.ValueTask<MarkdownRenderer.CodeBlocks.CodeBlockHighlightResult?> HighlightAsync(MarkdownRenderer.CodeBlocks.CodeBlockHighlightRequest request);
+  public virtual int Revision { get; }
+
+public static class MarkdownRenderer.Controls.EmbedVisibility
+  public static bool IsInDerealizeBand(double planTop, double planBottom, double viewportTop, double viewportBottom, double derealizeOverscan);
+  public static bool IsInRealizeBand(double planTop, double planBottom, double viewportTop, double viewportBottom, double overscan);
+
+public sealed class MarkdownRenderer.Controls.MarkdownCopyCompletedEventArgs : System.EventArgs
+  public MarkdownCopyCompletedEventArgs(MarkdownRenderer.Controls.MarkdownCopyKind kind, bool succeeded);
+  public MarkdownRenderer.Controls.MarkdownCopyKind Kind { get; }
+  public bool Succeeded { get; }
+
+public enum MarkdownRenderer.Controls.MarkdownCopyKind
+  CodeBlock = 1,
+  Selection = 0,
+
+public sealed class MarkdownRenderer.Controls.MarkdownDisclosureToggledEventArgs : System.EventArgs
+  public MarkdownDisclosureToggledEventArgs(bool isExpanded);
+  public bool IsExpanded { get; }
+
+public sealed class MarkdownRenderer.Controls.MarkdownDocumentView : MarkdownRenderer.Controls.MarkdownRendererControl
+  public MarkdownDocumentView();
+
+[Flags] public enum MarkdownRenderer.Controls.MarkdownInputModifiers
+  Alt = 4,
+  Control = 1,
+  None = 0,
+  Shift = 2,
+  Windows = 8,
+
+public sealed class MarkdownRenderer.Controls.MarkdownLinkClickEventArgs : System.EventArgs
+  public MarkdownLinkClickEventArgs(string url, string? title);
+  public MarkdownLinkClickEventArgs(string url, string? title, MarkdownRenderer.SourceSpan sourceRange, MarkdownRenderer.Controls.MarkdownLinkInputKind inputKind, MarkdownRenderer.Controls.MarkdownInputModifiers modifiers, MarkdownRenderer.Controls.MarkdownLinkDisposition requestedDisposition, string? action = null);
+  public MarkdownRenderer.Controls.MarkdownInputModifiers Modifiers { get; }
+  public MarkdownRenderer.Controls.MarkdownLinkDisposition RequestedDisposition { get; }
+  public MarkdownRenderer.Controls.MarkdownLinkInputKind InputKind { get; }
+  public MarkdownRenderer.SourceSpan SourceRange { get; }
+  public System.Uri? Uri { get; }
+  public bool Handled { get; set; }
+  public string Url { get; }
+  public string? Action { get; }
+  public string? Title { get; }
+
+public enum MarkdownRenderer.Controls.MarkdownLinkDisposition
+  BackgroundView = 2,
+  CurrentView = 0,
+  External = 3,
+  NewView = 1,
+
+public enum MarkdownRenderer.Controls.MarkdownLinkInputKind
+  Automation = 5,
+  Keyboard = 4,
+  Mouse = 1,
+  Pen = 3,
+  Programmatic = 0,
+  Touch = 2,
+
+public sealed class MarkdownRenderer.Controls.MarkdownRenderFailedEventArgs : System.EventArgs
+  public MarkdownRenderFailedEventArgs(System.Exception exception);
+  public System.Exception Exception { get; }
+
+[Obsolete("Use MarkdownScrollView for an owned viewport or MarkdownDocumentView for an ancestor-owned viewport.", DiagnosticId = "MR1001", UrlFormat = "https://github.com/JitHubApp/JitHubV2/tree/main/docs/markdown-renderer#{0}")] public class MarkdownRenderer.Controls.MarkdownRendererControl : Microsoft.UI.Xaml.Controls.UserControl, System.IDisposable
+  protected MarkdownRendererControl(bool ownsScrollViewport);
+  protected override Microsoft.UI.Xaml.Automation.Peers.AutomationPeer OnCreateAutomationPeer();
+  public MarkdownRenderer.CodeBlocks.CodeBlockLineNumberMode CodeBlockLineNumberMode { get; set; }
+  public MarkdownRenderer.CodeBlocks.CodeBlockWrappingMode CodeBlockWrappingMode { get; set; }
+  public MarkdownRenderer.CodeBlocks.ICodeBlockSyntaxHighlighter? CodeBlockSyntaxHighlighter { get; set; } [Obsolete("Use CodeHighlighter for explicit cancellation support.")]
+  public MarkdownRenderer.Document.MarkdownDocument? Document { get; set; }
+  public MarkdownRenderer.Hosting.ICodeHighlighter? CodeHighlighter { get; set; }
+  public MarkdownRenderer.Hosting.IMarkdownCommandProvider? CommandProvider { get; set; }
+  public MarkdownRenderer.Hosting.IMarkdownHostedElementFactory? HostedElementFactory { get; set; }
+  public MarkdownRenderer.Hosting.IMarkdownStringProvider? StringProvider { get; set; }
+  public MarkdownRenderer.Images.IMarkdownImageResolver? ImageResolver { get; set; }
+  public MarkdownRenderer.Images.MarkdownDocumentSource? ImageDocumentSource { get; set; }
+  public MarkdownRenderer.MarkdownEngine? Engine { get; set; }
+  public MarkdownRenderer.Theming.MarkdownStyleSheet? StyleSheet { get; set; }
+  public MarkdownRenderer.Theming.MarkdownTheme? Theme { get; set; }
+  public MarkdownRendererControl();
+  public Microsoft.UI.Xaml.Style? CodeBlockCopyButtonStyle { get; set; }
+  public System.Uri? ImageBaseUri { get; set; }
+  public bool AllowThirdPartyRemoteImages { get; set; }
+  public bool CopySelectionAsMarkdown();
+  public bool CopySelectionToClipboard(MarkdownRenderer.Selection.MarkdownCopyOptions? options = null);
+  public bool IsCodeBlockCopyEnabled { get; set; }
+  public bool IsCodeBlockSyntaxHighlightingEnabled { get; set; }
+  public bool IsSelectionEnabled { get; set; }
+  public bool IsTaskListEditingEnabled { get; set; }
+  public const double EmbedVirtualizationDerealizeOverscanPx = 1200D;
+  public const double EmbedVirtualizationOverscanPx = 400D;
+  public const double LazyImageOverscanPx = 800D;
+  public event System.EventHandler<MarkdownRenderer.Controls.MarkdownCopyCompletedEventArgs>? CopyCompleted { add; remove; }
+  public event System.EventHandler<MarkdownRenderer.Controls.MarkdownDisclosureToggledEventArgs>? DisclosureToggled { add; remove; }
+  public event System.EventHandler<MarkdownRenderer.Controls.MarkdownLinkClickEventArgs>? LinkClick { add; remove; }
+  public event System.EventHandler<MarkdownRenderer.Controls.MarkdownRenderFailedEventArgs>? RenderFailed { add; remove; }
+  public event System.EventHandler<MarkdownRenderer.Images.MarkdownImageUnavailableEventArgs>? ImageUnavailable { add; remove; }
+  public event System.EventHandler? EmbedsRealizationChanged { add; remove; }
+  public event System.EventHandler? RenderCompleted { add; remove; }
+  public int RealizedEmbedCount { get; }
+  public static MarkdownRenderer.Controls.MarkdownScrollView CreateDefault(string? markdown = null, MarkdownRenderer.Theming.MarkdownTheme? theme = null, bool isSelectionEnabled = true, bool isCodeBlockCopyEnabled = true, MarkdownRenderer.CodeBlocks.ICodeBlockSyntaxHighlighter? codeBlockSyntaxHighlighter = null, string? codeBlockCopyButtonLabel = null, string? codeBlockCopiedButtonLabel = null, MarkdownRenderer.Images.IMarkdownImageResolver? imageResolver = null, System.Uri? imageBaseUri = null, string? imageDocumentPath = null, MarkdownRenderer.CodeBlocks.CodeBlockWrappingMode codeBlockWrappingMode = MarkdownRenderer.CodeBlocks.CodeBlockWrappingMode.NoWrap);
+  public static readonly Microsoft.UI.Xaml.DependencyProperty AllowThirdPartyRemoteImagesProperty;
+  public static readonly Microsoft.UI.Xaml.DependencyProperty CodeBlockCopiedButtonLabelProperty;
+  public static readonly Microsoft.UI.Xaml.DependencyProperty CodeBlockCopyButtonLabelProperty;
+  public static readonly Microsoft.UI.Xaml.DependencyProperty CodeBlockCopyButtonStyleProperty;
+  public static readonly Microsoft.UI.Xaml.DependencyProperty CodeBlockLineNumberModeProperty;
+  public static readonly Microsoft.UI.Xaml.DependencyProperty CodeBlockSyntaxHighlighterProperty [Obsolete("Use CodeHighlighterProperty. This compatibility alias shares the same provider backing.")];
+  public static readonly Microsoft.UI.Xaml.DependencyProperty CodeBlockWrappingModeProperty;
+  public static readonly Microsoft.UI.Xaml.DependencyProperty CodeHighlighterProperty;
+  public static readonly Microsoft.UI.Xaml.DependencyProperty CommandProviderProperty;
+  public static readonly Microsoft.UI.Xaml.DependencyProperty DocumentProperty;
+  public static readonly Microsoft.UI.Xaml.DependencyProperty EngineProperty;
+  public static readonly Microsoft.UI.Xaml.DependencyProperty HostedElementFactoryProperty;
+  public static readonly Microsoft.UI.Xaml.DependencyProperty ImageBaseUriProperty;
+  public static readonly Microsoft.UI.Xaml.DependencyProperty ImageDocumentPathProperty;
+  public static readonly Microsoft.UI.Xaml.DependencyProperty ImageDocumentSourceProperty;
+  public static readonly Microsoft.UI.Xaml.DependencyProperty ImageResolverProperty;
+  public static readonly Microsoft.UI.Xaml.DependencyProperty IsCodeBlockCopyEnabledProperty;
+  public static readonly Microsoft.UI.Xaml.DependencyProperty IsCodeBlockSyntaxHighlightingEnabledProperty;
+  public static readonly Microsoft.UI.Xaml.DependencyProperty IsSelectionEnabledProperty;
+  public static readonly Microsoft.UI.Xaml.DependencyProperty IsTaskListEditingEnabledProperty;
+  public static readonly Microsoft.UI.Xaml.DependencyProperty MarkdownProperty;
+  public static readonly Microsoft.UI.Xaml.DependencyProperty StringProviderProperty;
+  public static readonly Microsoft.UI.Xaml.DependencyProperty StyleSheetProperty;
+  public static readonly Microsoft.UI.Xaml.DependencyProperty ThemeProperty;
+  public string Markdown { get; set; }
+  public string? CodeBlockCopiedButtonLabel { get; set; }
+  public string? CodeBlockCopyButtonLabel { get; set; }
+  public string? ImageDocumentPath { get; set; }
+  public void Dispose();
+  public void InvalidateThemeResources();
+  public void RequestRebuild();
+  public void ScrollToBlock(int blockIndex);
+
+public sealed class MarkdownRenderer.Controls.MarkdownRendererControlBuilder
+  public MarkdownRenderer.Controls.MarkdownDocumentView BuildDocumentView();
+  public MarkdownRenderer.Controls.MarkdownRendererControl Build() [Obsolete("Use BuildScrollView or BuildDocumentView to make viewport ownership explicit.")];
+  public MarkdownRenderer.Controls.MarkdownRendererControlBuilder AddProfile(MarkdownRenderer.MarkdownProfile profile);
+  public MarkdownRenderer.Controls.MarkdownRendererControlBuilder WithCodeBlockCopiedButtonLabel(string? label);
+  public MarkdownRenderer.Controls.MarkdownRendererControlBuilder WithCodeBlockCopyButtonLabel(string? label);
+  public MarkdownRenderer.Controls.MarkdownRendererControlBuilder WithCodeBlockCopyEnabled(bool enabled = true);
+  public MarkdownRenderer.Controls.MarkdownRendererControlBuilder WithCodeBlockLineNumberMode(MarkdownRenderer.CodeBlocks.CodeBlockLineNumberMode mode);
+  public MarkdownRenderer.Controls.MarkdownRendererControlBuilder WithCodeBlockSyntaxHighlighter(MarkdownRenderer.CodeBlocks.ICodeBlockSyntaxHighlighter? highlighter) [Obsolete("Use WithCodeHighlighter(ICodeHighlighter?) for cancellation-aware highlighting.")];
+  public MarkdownRenderer.Controls.MarkdownRendererControlBuilder WithCodeBlockSyntaxHighlightingEnabled(bool enabled = true);
+  public MarkdownRenderer.Controls.MarkdownRendererControlBuilder WithCodeBlockWrappingMode(MarkdownRenderer.CodeBlocks.CodeBlockWrappingMode mode);
+  public MarkdownRenderer.Controls.MarkdownRendererControlBuilder WithCodeHighlighter(MarkdownRenderer.Hosting.ICodeHighlighter? highlighter);
+  public MarkdownRenderer.Controls.MarkdownRendererControlBuilder WithCommandProvider(MarkdownRenderer.Hosting.IMarkdownCommandProvider? provider);
+  public MarkdownRenderer.Controls.MarkdownRendererControlBuilder WithEngine(MarkdownRenderer.MarkdownEngine? engine);
+  public MarkdownRenderer.Controls.MarkdownRendererControlBuilder WithHostedElementFactory(MarkdownRenderer.Hosting.IMarkdownHostedElementFactory? hostedElementFactory);
+  public MarkdownRenderer.Controls.MarkdownRendererControlBuilder WithImageBaseUri(System.Uri? baseUri);
+  public MarkdownRenderer.Controls.MarkdownRendererControlBuilder WithImageDocumentPath(string? documentPath);
+  public MarkdownRenderer.Controls.MarkdownRendererControlBuilder WithImageDocumentSource(MarkdownRenderer.Images.MarkdownDocumentSource? documentSource);
+  public MarkdownRenderer.Controls.MarkdownRendererControlBuilder WithImageResolver(MarkdownRenderer.Images.IMarkdownImageResolver? imageResolver);
+  public MarkdownRenderer.Controls.MarkdownRendererControlBuilder WithMarkdown(string? markdown);
+  public MarkdownRenderer.Controls.MarkdownRendererControlBuilder WithSelectionEnabled(bool isEnabled);
+  public MarkdownRenderer.Controls.MarkdownRendererControlBuilder WithStringProvider(MarkdownRenderer.Hosting.IMarkdownStringProvider? provider);
+  public MarkdownRenderer.Controls.MarkdownRendererControlBuilder WithStyleSheet(MarkdownRenderer.Theming.MarkdownStyleSheet? styleSheet);
+  public MarkdownRenderer.Controls.MarkdownRendererControlBuilder WithTaskListEditingEnabled(bool enabled = true);
+  public MarkdownRenderer.Controls.MarkdownRendererControlBuilder WithTheme(MarkdownRenderer.Theming.MarkdownTheme? theme);
+  public MarkdownRenderer.Controls.MarkdownRendererControlBuilder WithThirdPartyRemoteImagesAllowed(bool allowed);
+  public MarkdownRenderer.Controls.MarkdownScrollView BuildScrollView();
+  public MarkdownRendererControlBuilder();
+
+public sealed class MarkdownRenderer.Controls.MarkdownScrollView : MarkdownRenderer.Controls.MarkdownRendererControl
+  public MarkdownScrollView();
+
+public static class MarkdownRenderer.Controls.MarkdownSystemIntegration
+  public static Microsoft.UI.Xaml.FlowDirection GetSystemFlowDirection();
+  public static bool GetUseSystemFlowDirection(Microsoft.UI.Xaml.FrameworkElement element);
+  public static readonly Microsoft.UI.Xaml.DependencyProperty UseSystemFlowDirectionProperty;
+  public static void ApplySystemFlowDirection(Microsoft.UI.Xaml.FrameworkElement element);
+  public static void SetUseSystemFlowDirection(Microsoft.UI.Xaml.FrameworkElement element, bool value);
+
+public interface MarkdownRenderer.Hosting.ICodeHighlighter : MarkdownRenderer.CodeBlocks.ICodeBlockSyntaxHighlighter
+  public abstract System.Threading.Tasks.ValueTask<MarkdownRenderer.CodeBlocks.CodeBlockHighlightResult?> HighlightAsync(MarkdownRenderer.CodeBlocks.CodeBlockHighlightRequest request, System.Threading.CancellationToken cancellationToken);
+
+public interface MarkdownRenderer.Hosting.IImageResolver : MarkdownRenderer.Images.IMarkdownImageResolver
+
+public interface MarkdownRenderer.Hosting.IMarkdownCommandProvider
+  public abstract System.Windows.Input.ICommand? GetCommand(MarkdownRenderer.Hosting.MarkdownCommandContext context);
+
+public interface MarkdownRenderer.Hosting.IMarkdownHostedElementFactory
+  public abstract System.Threading.Tasks.ValueTask<Microsoft.UI.Xaml.FrameworkElement?> CreateAsync(MarkdownRenderer.Hosting.MarkdownHostedElementRequest request, System.Threading.CancellationToken cancellationToken);
+  public virtual void Recycle(MarkdownRenderer.Hosting.MarkdownHostedElementRequest request, Microsoft.UI.Xaml.FrameworkElement element);
+
+public interface MarkdownRenderer.Hosting.IMarkdownStringProvider
+  public abstract string? GetString(string key, System.Globalization.CultureInfo culture);
+
+public sealed class MarkdownRenderer.Hosting.MarkdownCommandContext
+  public MarkdownCommandContext(MarkdownRenderer.Hosting.MarkdownCommandKind kind, MarkdownRenderer.SourceSpan sourceRange, string? target = null, string? language = null);
+  public MarkdownRenderer.Hosting.MarkdownCommandKind Kind { get; }
+  public MarkdownRenderer.SourceSpan SourceRange { get; }
+  public string? Language { get; }
+  public string? Target { get; }
+
+public enum MarkdownRenderer.Hosting.MarkdownCommandKind
+  Activate = 6,
+  CopyCode = 4,
+  CopyImage = 3,
+  CopyLink = 2,
+  CopyMarkdown = 1,
+  CopyRendered = 0,
+  CopyTable = 5,
+  ToggleTask = 7,
+
+public sealed class MarkdownRenderer.Hosting.MarkdownHostedElementRequest
+  public MarkdownHostedElementRequest(string factoryKey, MarkdownRenderer.SourceSpan sourceRange, Windows.Foundation.Rect layoutBounds, Windows.Foundation.Rect effectiveViewport, System.Collections.Generic.IReadOnlyDictionary<string, string>? attributes = null, MarkdownRenderer.Extensions.MarkdownAccessibilityRole accessibilityRole = MarkdownRenderer.Extensions.MarkdownAccessibilityRole.Group, string? accessibilityName = null, string? accessibilityDescription = null, string? semanticText = null, string? automationId = null);
+  public MarkdownRenderer.Extensions.MarkdownAccessibilityRole AccessibilityRole { get; }
+  public MarkdownRenderer.SourceSpan SourceRange { get; }
+  public System.Collections.Generic.IReadOnlyDictionary<string, string> Attributes { get; }
+  public Windows.Foundation.Rect EffectiveViewport { get; }
+  public Windows.Foundation.Rect LayoutBounds { get; }
+  public string FactoryKey { get; }
+  public string? AccessibilityDescription { get; }
+  public string? AccessibilityName { get; }
+  public string? AutomationId { get; }
+  public string? SemanticText { get; }
+
+public static class MarkdownRenderer.Hosting.MarkdownStringKeys
+  public const string CodeCopied = "Feedback.CodeCopied";
+  public const string CodeLanguageHelp = "Code.LanguageHelp";
+  public const string Copy = "Command.Copy";
+  public const string CopyCode = "Command.CopyCode";
+  public const string CopyImage = "Command.CopyImage";
+  public const string CopyLink = "Command.CopyLink";
+  public const string CopyMarkdown = "Command.CopyMarkdown";
+  public const string CopyTable = "Command.CopyTable";
+  public const string DiagramName = "Diagram.Name";
+  public const string DocumentName = "Document.Name";
+  public const string EmbeddedContentName = "EmbeddedContent.Name";
+  public const string HtmlBudgetExceeded = "Html.BudgetExceeded";
+  public const string HtmlDetails = "Html.Details";
+  public const string ImageError = "Image.Error";
+  public const string ImageLoading = "Image.Loading";
+  public const string ImageName = "Image.Name";
+  public const string ListName = "List.Name";
+  public const string SelectAll = "Command.SelectAll";
+  public const string SelectionEndHandle = "Selection.EndHandle";
+  public const string SelectionHandleHelp = "Selection.HandleHelp";
+  public const string SelectionStartHandle = "Selection.StartHandle";
+  public const string StyleAbbreviation = "Style.Abbreviation";
+  public const string StyleBody = "Style.Body";
+  public const string StyleCodeBlock = "Style.CodeBlock";
+  public const string StyleDefinitionDescription = "Style.DefinitionDescription";
+  public const string StyleDefinitionTerm = "Style.DefinitionTerm";
+  public const string StyleDiagram = "Style.Diagram";
+  public const string StyleEmphasis = "Style.Emphasis";
+  public const string StyleFigure = "Style.Figure";
+  public const string StyleFigureCaption = "Style.FigureCaption";
+  public const string StyleHeading1 = "Style.Heading1";
+  public const string StyleHeading2 = "Style.Heading2";
+  public const string StyleHeading3 = "Style.Heading3";
+  public const string StyleHeading4 = "Style.Heading4";
+  public const string StyleHeading5 = "Style.Heading5";
+  public const string StyleHeading6 = "Style.Heading6";
+  public const string StyleInlineCode = "Style.InlineCode";
+  public const string StyleInserted = "Style.Inserted";
+  public const string StyleLink = "Style.Link";
+  public const string StyleListMarker = "Style.ListMarker";
+  public const string StyleMarked = "Style.Marked";
+  public const string StyleQuote = "Style.Quote";
+  public const string StyleStrikethrough = "Style.Strikethrough";
+  public const string StyleStrong = "Style.Strong";
+  public const string StyleSubscript = "Style.Subscript";
+  public const string StyleSuperscript = "Style.Superscript";
+  public const string StyleTable = "Style.Table";
+  public const string StyleTableCell = "Style.TableCell";
+  public const string StyleTableHeader = "Style.TableHeader";
+  public const string TableName = "Table.Name";
+  public const string TaskCompleted = "Task.Completed";
+  public const string TaskIncomplete = "Task.Incomplete";
+  public const string TaskReadOnly = "Task.ReadOnly";
+  public const string TaskToggle = "Task.Toggle";
+
+public interface MarkdownRenderer.Images.IMarkdownImageResolver
+  public abstract System.Threading.Tasks.ValueTask<MarkdownRenderer.Images.MarkdownImageResolution> ResolveAsync(string source, MarkdownRenderer.Images.MarkdownImageResolveContext context, System.Threading.CancellationToken cancellationToken);
+
+public sealed class MarkdownRenderer.Images.MarkdownDocumentSource : System.IEquatable<MarkdownRenderer.Images.MarkdownDocumentSource>
+  public MarkdownDocumentSource(string DocumentId, string? Owner = null, string? Repository = null, string? Ref = null, string? Path = null);
+  public MarkdownRenderer.Images.MarkdownDocumentSource <Clone>$();
+  public bool Equals(MarkdownRenderer.Images.MarkdownDocumentSource? other);
+  public bool HasRepositoryContext { get; }
+  public override bool Equals(object? obj);
+  public override int GetHashCode();
+  public override string ToString();
+  public static bool op_Equality(MarkdownRenderer.Images.MarkdownDocumentSource? left, MarkdownRenderer.Images.MarkdownDocumentSource? right);
+  public static bool op_Inequality(MarkdownRenderer.Images.MarkdownDocumentSource? left, MarkdownRenderer.Images.MarkdownDocumentSource? right);
+  public string DocumentId { get; init; }
+  public string GetConsentIdentity();
+  public string? Owner { get; init; }
+  public string? Path { get; init; }
+  public string? Ref { get; init; }
+  public string? Repository { get; init; }
+  public void Deconstruct(out string DocumentId, out string? Owner, out string? Repository, out string? Ref, out string? Path);
+
+public sealed class MarkdownRenderer.Images.MarkdownImageAsset : System.IEquatable<MarkdownRenderer.Images.MarkdownImageAsset>
+  public MarkdownImageAsset(byte[] Bytes, string? ContentType = null, System.Uri? ResolvedUri = null, string? CacheKey = null);
+  public MarkdownRenderer.Images.MarkdownImageAsset <Clone>$();
+  public System.Uri? ResolvedUri { get; init; }
+  public bool Equals(MarkdownRenderer.Images.MarkdownImageAsset? other);
+  public byte[] Bytes { get; init; }
+  public override bool Equals(object? obj);
+  public override int GetHashCode();
+  public override string ToString();
+  public static bool op_Equality(MarkdownRenderer.Images.MarkdownImageAsset? left, MarkdownRenderer.Images.MarkdownImageAsset? right);
+  public static bool op_Inequality(MarkdownRenderer.Images.MarkdownImageAsset? left, MarkdownRenderer.Images.MarkdownImageAsset? right);
+  public string? CacheKey { get; init; }
+  public string? ContentType { get; init; }
+  public void Deconstruct(out byte[] Bytes, out string? ContentType, out System.Uri? ResolvedUri, out string? CacheKey);
+
+public readonly struct MarkdownRenderer.Images.MarkdownImageResolution : System.IEquatable<MarkdownRenderer.Images.MarkdownImageResolution> [layout: Sequential; pack: 0; size: 0; charset: Ansi]
+  public MarkdownImageResolution(bool IsHandled, MarkdownRenderer.Images.MarkdownImageAsset? Asset, MarkdownRenderer.Images.MarkdownImageUnavailableReason UnavailableReason = MarkdownRenderer.Images.MarkdownImageUnavailableReason.None);
+  public MarkdownRenderer.Images.MarkdownImageAsset? Asset { get; init; }
+  public MarkdownRenderer.Images.MarkdownImageUnavailableReason UnavailableReason { get; init; }
+  public bool Equals(MarkdownRenderer.Images.MarkdownImageResolution other);
+  public bool IsHandled { get; init; }
+  public override bool Equals(object obj);
+  public override int GetHashCode();
+  public override string ToString();
+  public static MarkdownRenderer.Images.MarkdownImageResolution Blocked(MarkdownRenderer.Images.MarkdownImageUnavailableReason reason);
+  public static MarkdownRenderer.Images.MarkdownImageResolution NotHandled { get; }
+  public static MarkdownRenderer.Images.MarkdownImageResolution Resolved(MarkdownRenderer.Images.MarkdownImageAsset asset);
+  public static MarkdownRenderer.Images.MarkdownImageResolution Unavailable { get; }
+  public static bool op_Equality(MarkdownRenderer.Images.MarkdownImageResolution left, MarkdownRenderer.Images.MarkdownImageResolution right);
+  public static bool op_Inequality(MarkdownRenderer.Images.MarkdownImageResolution left, MarkdownRenderer.Images.MarkdownImageResolution right);
+  public void Deconstruct(out bool IsHandled, out MarkdownRenderer.Images.MarkdownImageAsset? Asset, out MarkdownRenderer.Images.MarkdownImageUnavailableReason UnavailableReason);
+
+public sealed class MarkdownRenderer.Images.MarkdownImageResolveContext : System.IEquatable<MarkdownRenderer.Images.MarkdownImageResolveContext>
+  public MarkdownImageResolveContext(System.Uri? BaseUri, string? DocumentPath = null, bool AllowThirdPartyRemoteImages = false, MarkdownRenderer.Images.MarkdownDocumentSource? DocumentSource = null);
+  public MarkdownRenderer.Images.MarkdownDocumentSource? DocumentSource { get; init; }
+  public MarkdownRenderer.Images.MarkdownImageResolveContext <Clone>$();
+  public System.Uri? BaseUri { get; init; }
+  public bool AllowThirdPartyRemoteImages { get; init; }
+  public bool Equals(MarkdownRenderer.Images.MarkdownImageResolveContext? other);
+  public override bool Equals(object? obj);
+  public override int GetHashCode();
+  public override string ToString();
+  public static bool op_Equality(MarkdownRenderer.Images.MarkdownImageResolveContext? left, MarkdownRenderer.Images.MarkdownImageResolveContext? right);
+  public static bool op_Inequality(MarkdownRenderer.Images.MarkdownImageResolveContext? left, MarkdownRenderer.Images.MarkdownImageResolveContext? right);
+  public string? DocumentPath { get; init; }
+  public void Deconstruct(out System.Uri? BaseUri, out string? DocumentPath, out bool AllowThirdPartyRemoteImages, out MarkdownRenderer.Images.MarkdownDocumentSource? DocumentSource);
+
+public sealed class MarkdownRenderer.Images.MarkdownImageUnavailableEventArgs : System.EventArgs
+  public MarkdownImageUnavailableEventArgs(string source, MarkdownRenderer.Images.MarkdownImageUnavailableReason reason);
+  public MarkdownRenderer.Images.MarkdownImageUnavailableReason Reason { get; }
+  public string Source { get; }
+
+public enum MarkdownRenderer.Images.MarkdownImageUnavailableReason
+  InsecureRemoteContent = 3,
+  MeteredConnection = 5,
+  None = 0,
+  Offline = 4,
+  RemoteContentBlocked = 2,
+  Unavailable = 1,
+
+public static class MarkdownRenderer.MarkdownRendererRuntime
+  public static bool IsShutdownInProgress { get; }
+  public static void BeginShutdown();
+  public static void Shutdown(System.TimeSpan? timeout = null);
+
+public sealed class MarkdownRenderer.Selection.MarkdownCopyOptions
+  public MarkdownCopyOptions();
+  public MarkdownRenderer.Selection.MarkdownPlainTextCopyMode PlainTextMode { get; init; }
+  public bool IncludeHtml { get; init; }
+  public static MarkdownRenderer.Selection.MarkdownCopyOptions Default { get; }
+
+public enum MarkdownRenderer.Selection.MarkdownPlainTextCopyMode
+  RenderedText = 1,
+  SourceMarkdown = 0,
+
+public sealed class MarkdownRenderer.Theming.ElementStyle
+  public ElementStyle();
+  public Microsoft.UI.Xaml.Thickness Margin { get; init; }
+  public Microsoft.UI.Xaml.Thickness Padding { get; init; }
+  public Windows.UI.Color Foreground { get; init; }
+  public Windows.UI.Color? AccentBar { get; init; }
+  public Windows.UI.Color? Background { get; init; }
+  public Windows.UI.Color? BorderBrush { get; init; }
+  public Windows.UI.Color? FocusForeground { get; init; }
+  public Windows.UI.Color? HoverForeground { get; init; }
+  public Windows.UI.Text.FontStyle FontStyle { get; init; }
+  public Windows.UI.Text.FontWeight FontWeight { get; init; }
+  public bool Strikethrough { get; init; }
+  public bool Underline { get; init; }
+  public float BorderThickness { get; init; }
+  public float CornerRadius { get; init; }
+  public float FontSize { get; init; }
+  public float LineHeightMultiplier { get; init; }
+  public float ListIndent { get; init; }
+  public float NestedListIndent { get; init; }
+  public string FontFamily { get; init; }
+
+public sealed class MarkdownRenderer.Theming.ElementStyleOverride
+  public ElementStyleOverride();
+  public Microsoft.UI.Xaml.Thickness? Margin { get; init; }
+  public Microsoft.UI.Xaml.Thickness? Padding { get; init; }
+  public Windows.UI.Color? AccentBar { get; init; }
+  public Windows.UI.Color? Background { get; init; }
+  public Windows.UI.Color? BorderBrush { get; init; }
+  public Windows.UI.Color? FocusForeground { get; init; }
+  public Windows.UI.Color? Foreground { get; init; }
+  public Windows.UI.Color? HoverForeground { get; init; }
+  public Windows.UI.Text.FontStyle? FontStyle { get; init; }
+  public Windows.UI.Text.FontWeight? FontWeight { get; init; }
+  public bool? Strikethrough { get; init; }
+  public bool? Underline { get; init; }
+  public float? BorderThickness { get; init; }
+  public float? CornerRadius { get; init; }
+  public float? FontSize { get; init; }
+  public float? LineHeightMultiplier { get; init; }
+  public float? ListIndent { get; init; }
+  public float? NestedListIndent { get; init; }
+  public string? FontFamily { get; init; }
+
+public static class MarkdownRenderer.Theming.MarkdownElementKeys
+  public const string Abbreviation = "Abbreviation";
+  public const string AlertCaution = "AlertCaution";
+  public const string AlertImportant = "AlertImportant";
+  public const string AlertNote = "AlertNote";
+  public const string AlertTip = "AlertTip";
+  public const string AlertWarning = "AlertWarning";
+  public const string Body = "Body";
+  public const string CodeBlock = "CodeBlock";
+  public const string CodeBlockGutter = "CodeBlockGutter";
+  public const string CodeBlockHeader = "CodeBlockHeader";
+  public const string CodeBlockLanguage = "CodeBlockLanguage";
+  public const string CodeBlockLineNumber = "CodeBlockLineNumber";
+  public const string CodeInline = "CodeInline";
+  public const string DefinitionDescription = "DefinitionDescription";
+  public const string DefinitionTerm = "DefinitionTerm";
+  public const string Diagram = "Diagram";
+  public const string Emphasis = "Emphasis";
+  public const string Figure = "Figure";
+  public const string FigureCaption = "FigureCaption";
+  public const string Heading1 = "Heading1";
+  public const string Heading2 = "Heading2";
+  public const string Heading3 = "Heading3";
+  public const string Heading4 = "Heading4";
+  public const string Heading5 = "Heading5";
+  public const string Heading6 = "Heading6";
+  public const string ImageCaption = "ImageCaption";
+  public const string Inserted = "Inserted";
+  public const string Link = "Link";
+  public const string ListMarker = "ListMarker";
+  public const string Marked = "Marked";
+  public const string Math = "Math";
+  public const string Quote = "Quote";
+  public const string Strikethrough = "Strikethrough";
+  public const string Strong = "Strong";
+  public const string Subscript = "Subscript";
+  public const string Superscript = "Superscript";
+  public const string Table = "Table";
+  public const string TableCell = "TableCell";
+  public const string TableHeader = "TableHeader";
+  public const string ThematicBreak = "ThematicBreak";
+  public static string Class(string className);
+  public static string Context(string ancestorKey, string elementKey);
+  public static string Id(string id);
+  public static string ListDepth(int depth);
+
+public static class MarkdownRenderer.Theming.MarkdownResourceKeys
+  public const string BlockSpacing = "MarkdownRenderer.Document.BlockSpacing";
+  public const string BodyFontFamily = "MarkdownRenderer.Body.FontFamily";
+  public const string BodyFontSize = "MarkdownRenderer.Body.FontSize";
+  public const string BodyForegroundBrush = "MarkdownRenderer.Body.ForegroundBrush";
+  public const string CodeBlockBackgroundBrush = "MarkdownRenderer.CodeBlock.BackgroundBrush";
+  public const string CodeFontFamily = "MarkdownRenderer.CodeBlock.FontFamily";
+  public const string DocumentPadding = "MarkdownRenderer.Document.Padding";
+  public const string DocumentSurfaceBrush = "MarkdownRenderer.Document.SurfaceBrush";
+  public const string FocusVisualBrush = "MarkdownRenderer.FocusVisual.Brush";
+  public const string LinkForegroundBrush = "MarkdownRenderer.Link.ForegroundBrush";
+  public const string LinkHoverForegroundBrush = "MarkdownRenderer.Link.HoverForegroundBrush";
+  public const string MinimumInteractiveSize = "MarkdownRenderer.Interaction.MinimumSize";
+  public const string OverflowIndicatorBrush = "MarkdownRenderer.Overflow.IndicatorBrush";
+  public const string Prefix = "MarkdownRenderer.";
+  public const string QuoteAccentBrush = "MarkdownRenderer.Quote.AccentBrush";
+  public const string SelectionBackgroundBrush = "MarkdownRenderer.Selection.BackgroundBrush";
+  public const string SelectionForegroundBrush = "MarkdownRenderer.Selection.ForegroundBrush";
+  public const string TableBorderBrush = "MarkdownRenderer.Table.BorderBrush";
+  public const string TableCellPadding = "MarkdownRenderer.TableCell.Padding";
+  public static string ForRole(MarkdownRenderer.Theming.MarkdownStyleRole role, MarkdownRenderer.Theming.MarkdownStyleProperty property);
+
+public readonly struct MarkdownRenderer.Theming.MarkdownStyleContext [layout: Sequential; pack: 0; size: 0; charset: Ansi]
+  public MarkdownRenderer.Theming.MarkdownStyleRole Role { get; }
+  public MarkdownStyleContext(MarkdownRenderer.Theming.MarkdownStyleRole role, int nestingDepth = 0, string? language = null, string? state = null, System.Collections.Generic.IEnumerable<string>? classNames = null);
+  public System.Collections.Generic.IReadOnlyList<string> ClassNames { get; }
+  public int NestingDepth { get; }
+  public string? Language { get; }
+  public string? State { get; }
+
+public enum MarkdownRenderer.Theming.MarkdownStyleProperty
+  AccentBrush = 4,
+  BackgroundBrush = 3,
+  BorderBrush = 5,
+  BorderThickness = 12,
+  CornerRadius = 13,
+  FocusForegroundBrush = 2,
+  FontFamily = 6,
+  FontSize = 7,
+  FontStyle = 9,
+  FontWeight = 8,
+  ForegroundBrush = 0,
+  HoverForegroundBrush = 1,
+  LineHeightMultiplier = 14,
+  ListIndent = 15,
+  Margin = 10,
+  NestedListIndent = 16,
+  Padding = 11,
+  TextDecorations = 17,
+
+public sealed class MarkdownRenderer.Theming.MarkdownStyleRule
+  public MarkdownRenderer.Theming.ElementStyleOverride Style { get; }
+  public MarkdownRenderer.Theming.MarkdownStyleSelector Selector { get; }
+  public MarkdownStyleRule(MarkdownRenderer.Theming.MarkdownStyleSelector selector, MarkdownRenderer.Theming.ElementStyleOverride style);
+
+public sealed class MarkdownRenderer.Theming.MarkdownStyleSelector
+  public MarkdownRenderer.Theming.MarkdownStyleRole Role { get; }
+  public MarkdownStyleSelector(MarkdownRenderer.Theming.MarkdownStyleRole role, int minimumNestingDepth = 0, int maximumNestingDepth = 2147483647, string? language = null, string? state = null, string? className = null);
+  public bool Matches(MarkdownRenderer.Theming.MarkdownStyleContext context);
+  public int MaximumNestingDepth { get; }
+  public int MinimumNestingDepth { get; }
+  public string? ClassName { get; }
+  public string? Language { get; }
+  public string? State { get; }
+
+public sealed class MarkdownRenderer.Theming.MarkdownStyleSheet
+  public MarkdownRenderer.Theming.ElementStyle Resolve(MarkdownRenderer.Theming.ElementStyle baseStyle, MarkdownRenderer.Theming.MarkdownStyleContext context);
+  public MarkdownRenderer.Theming.MarkdownStyleSheet WithRule(MarkdownRenderer.Theming.MarkdownStyleRule rule);
+  public MarkdownStyleSheet(System.Collections.Generic.IEnumerable<MarkdownRenderer.Theming.MarkdownStyleRule> rules);
+  public System.Collections.Generic.IReadOnlyList<MarkdownRenderer.Theming.MarkdownStyleRule> Rules { get; }
+  public static MarkdownRenderer.Theming.MarkdownStyleSheet Empty { get; }
+
+public sealed class MarkdownRenderer.Theming.MarkdownTheme : Microsoft.UI.Xaml.DependencyObject
+  public MarkdownTheme();
+  public System.Collections.Generic.IDictionary<string, MarkdownRenderer.Theming.ElementStyleOverride> Overrides { get; }
+  public System.IDisposable BeginUpdate();
+  public Windows.UI.Color? AccentColor { get; set; }
+  public Windows.UI.Color? SurfaceColor { get; set; }
+  public event System.EventHandler? Changed { add; remove; }
+  public int Revision { get; }
+  public static readonly Microsoft.UI.Xaml.DependencyProperty AccentColorProperty;
+  public static readonly Microsoft.UI.Xaml.DependencyProperty SurfaceColorProperty;
+  public void Invalidate();

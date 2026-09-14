@@ -1,132 +1,42 @@
 # Rendering pipeline
 
-The rendering pipeline turns markdown source into native layout boxes and paints
-those boxes through Win2D.
+## Stages
 
-## Pipeline stages
+1. Configure and freeze a `MarkdownEngine` with `MarkdownEngineBuilder`.
+2. Parse source asynchronously into an immutable `MarkdownDocument`.
+3. Assign the document to `MarkdownScrollView` or `MarkdownDocumentView`.
+4. Resolve the current Fluent environment, application style sheet, images,
+   code-highlighting service, and enabled feature-pack capabilities.
+5. Build and measure private native layout for the effective viewport.
+6. Commit a view snapshot on the UI thread and paint through Win2D/DirectWrite.
+7. Realize WinUI interaction elements only where the effective viewport needs
+   them.
 
-1. `MarkdownRendererControl.Markdown` changes.
-2. `RequestRebuild()` cancels any prior rebuild.
-3. `MarkdownExtensionRegistry.BuildPipeline()` creates a Markdig pipeline.
-4. `MarkdigParser` fixes forgiving data URIs and parses the markdown.
-5. `LayoutBuilder` walks the Markdig AST and builds `BlockBox` objects.
-6. Small documents measure every block; large documents measure only the initial
-   viewport band and keep estimates for the rest.
-7. Blocks are arranged vertically into a `LayoutSnapshot`.
-8. The snapshot is committed on the UI thread.
-9. `CanvasVirtualControl` paints invalidated regions.
-10. The XAML overlay hosts embeds, selection rectangles, and focus visuals.
+Assigning `Markdown` asks the view's engine to perform steps 2-7 for convenience.
+Assigning a previously parsed `Document` skips repeated parse ownership and makes
+sharing explicit.
 
-Large-document snapshots extend measured bands on scroll. The source map and
-cheap block tree are complete from the start, while native text layouts and
-inline image/embed geometry are created as their top-level blocks approach the
-viewport.
+## Feature composition
 
-## Core markdown support
+The default engine uses the CommonMark profile. Optional packs add profiles or
+services without changing the base package's dependency footprint:
 
-Implemented in the core project:
+- `MarkdownRenderer.Gfm` for strict GFM and opt-in Markdown Extra;
+- `MarkdownRenderer.GitHub` for the GitHub README profile;
+- `MarkdownRenderer.Html` for bounded native safe-HTML rendering;
+- `MarkdownRenderer.Math` and `MarkdownRenderer.Mermaid` for bounded native
+  processing, vector scenes and fallbacks;
+- `MarkdownRenderer.Svg.ThorVG` for native SVG rasterization;
+- `MarkdownRenderer.SyntaxHighlighting.TextMate` plus a selected grammar pack.
 
-- headings H1-H6;
-- paragraphs;
-- fenced and indented code blocks;
-- block quotes;
-- ordered and unordered lists;
-- ordered-list start numbers;
-- thematic breaks;
-- inline literal text;
-- inline code;
-- emphasis and strong emphasis;
-- emphasis extras: strikethrough, subscript, superscript, inserted text, and
-  marked text when the pipeline enables them;
-- links;
-- autolinks;
-- line breaks;
-- standalone image paragraphs;
-- inline image cells;
-- footnote forward links when GFM footnotes are enabled.
+Math uses CSharpMath-based typesetting, while Mermaid uses a selected-RID Merman
+engine and validated MMIR scenes. Safe HTML uses a restricted native parser and
+painter. No browser or JavaScript runtime is introduced by these packs.
 
-## GitHub-flavored markdown support
+## Source and diagnostics
 
-`MarkdownRenderer.Gfm` registers:
-
-- pipe tables;
-- task lists;
-- autolinks;
-- emphasis extras;
-- footnotes;
-- emoji and smiley parsing;
-- generic attributes;
-- custom renderers for tables, task-list items, alerts, and footnote groups.
-
-Call:
-
-```csharp
-var registry = new MarkdownExtensionRegistry()
-    .UseGitHubFlavoredMarkdown();
-
-renderer.ExtensionRegistry = registry;
-```
-
-`MarkdownRenderer.Gfm` also provides `UseMarkdownExtra()` for opt-in non-GFM
-Markdig extras: definition lists, abbreviations, and figures. It registers
-native renderers for definition lists and figures while keeping the strict GFM
-helper unchanged.
-
-## Block dispatch
-
-`LayoutBuilder.BuildBlock` handles built-in Markdig block types first through
-custom extensions, then core node types:
-
-- `HeadingBlock` -> `InlineContainerBox` with heading element key;
-- `ParagraphBlock` -> paragraph or promoted `ImageBox`;
-- `FencedCodeBlock` / `CodeBlock` -> code `InlineContainerBox`, or a segmented
-  `StackBox` when the block is too large for one monolithic text layout;
-- `QuoteBlock` -> `StackBox` with quote styling;
-- `ListBlock` -> `StackBox` containing `ListItemBox` children;
-- `ThematicBreakBlock` -> `ThematicBreakBox`;
-- `ContainerBlock` -> generic `StackBox`;
-- custom registered Markdig node -> custom renderer output.
-
-## Inline dispatch
-
-The inline builder handles:
-
-- `LiteralInline` -> `TextRun`;
-- `CodeInline` -> `CodeInlineRun`;
-- `EmphasisInline` -> `EmphasisRun`, `StrongRun`, `StrikethroughRun`,
-  `SubscriptRun`, `SuperscriptRun`, `InsertedRun`, or `MarkedRun`;
-- `LinkInline` -> `LinkRun` or atomic inline image cell;
-- `LineBreakInline` -> `LineBreakRun`;
-- `AutolinkInline` -> `LinkRun`;
-- `HtmlInline` -> raw tag text fallback;
-- `AbbreviationInline` -> `AbbreviationRun` with accessible expansion text;
-- GFM footnote links -> superscript internal `LinkRun`;
-- unknown container inline -> flattened text fallback.
-
-## Known rendering limitations
-
-- Raw HTML is not rendered as HTML.
-- HTML blocks are intentionally outside the native renderer's 1.0 support scope.
-- LaTeX/math is intentionally out of scope for the 1.0 non-HTML/non-LaTeX plan.
-- Mermaid/diagram support is sample/documentation only through
-  `IMarkdownEmbedFactory`; no built-in diagram engine is shipped.
-
-## Painting
-
-Blocks implement `Paint(CanvasDrawingSession ds, Rect viewport)`. The virtual
-canvas requests paint for invalidated regions, and each box decides whether it
-intersects the viewport.
-
-Text-heavy boxes use DirectWrite text layouts through Win2D. Images paint
-`CanvasBitmap`. Hosted WinUI controls do not paint on the canvas; they are placed
-on the overlay.
-
-## Image loading
-
-`ImageBox` loads images asynchronously. Until load completion, it displays an alt
-text placeholder. When load completes:
-
-- if intrinsic size changed, the control rebuilds layout;
-- otherwise it repaints the affected region.
-
-Images are lazy-loaded when their bounds enter the viewport plus an overscan band.
+Source ranges use half-open UTF-16 offsets. The immutable document retains
+semantic query results, diagnostics, and source-map entries regardless of which
+visual bands are currently realized. Render or capability failures should be
+reported through diagnostics/events and fall back to usable text or source
+content instead of executing browser behavior.

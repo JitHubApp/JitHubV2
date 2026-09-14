@@ -48,6 +48,7 @@
             <common:MarkdownViewer
                 HostKind="RepositoryReadme"
                 AutomationInstanceId="RepoCodeReadme"
+                OwnsScrollViewport="True"
                 x:Name="RichPanel"
                 BaseUrl="{x:Bind CurrentBaseUrl, Mode=OneWay}"
                 ContentHorizontalAlignment="Center"

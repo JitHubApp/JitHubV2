@@ -1,4 +1,4 @@
 100x60
-maxChannelDelta=42
-meanChannelDelta=0.148
-differingPixelFraction=0.0112
+maxChannelDelta=40
+meanChannelDelta=0.142
+differingPixelFraction=0.0092

@@ -118,6 +118,7 @@
     <Compile Include="..\JitHub.WinUI\Services\Markdown\GitHubMarkdownImageUrlResolver.cs" Link="Services\Markdown\%(Filename)%(Extension)" />
     <Compile Include="..\JitHub.WinUI\Services\Markdown\GloballyRoutableAddressPolicy.cs" Link="Services\Markdown\%(Filename)%(Extension)" />
     <Compile Include="..\JitHub.WinUI\Services\Markdown\MarkdownRemoteContentConsent.cs" Link="Services\Markdown\%(Filename)%(Extension)" />
+    <Compile Include="..\JitHub.WinUI\Services\Markdown\MarkdownSyntaxHighlightingSession.cs" Link="Services\Markdown\%(Filename)%(Extension)" />
     <Compile Include="..\JitHub.WinUI\Services\Markdown\RuntimeEventSubscription.cs" Link="Services\Markdown\%(Filename)%(Extension)" />
     <Compile Include="..\JitHub.WinUI\Services\Markdown\MarkdownLinkNavigationPolicy.cs" Link="Services\Markdown\%(Filename)%(Extension)" />
     <Compile Include="..\JitHub.WinUI\Services\Markdown\MarkdownRemoteImagePolicy.cs" Link="Services\Markdown\%(Filename)%(Extension)" />

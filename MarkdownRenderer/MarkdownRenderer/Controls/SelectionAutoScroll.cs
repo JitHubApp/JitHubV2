@@ -8,33 +8,81 @@ namespace MarkdownRenderer.Controls;
 /// </summary>
 internal static class SelectionAutoScroll
 {
-    public const double EdgeThresholdPx = 48.0;
-    public const double MaxStepPx = 36.0;
+    // Pointer and viewport coordinates are XAML device-independent pixels.
+    public const double EdgeThresholdDip = 48.0;
+    public const double MaximumVelocityDipPerSecond = 2160.0;
+    public const double MinimumVelocityDipPerSecond = 60.0;
+    public const double MaximumFrameDurationSeconds = 1.0 / 15.0;
 
-    public static double ComputeDelta(
+    public static double ComputeVelocity(
         double pointerY,
         double viewportTop,
         double viewportHeight,
-        double edgeThreshold = EdgeThresholdPx,
-        double maxStep = MaxStepPx)
+        double edgeThreshold = EdgeThresholdDip,
+        double maximumVelocity = MaximumVelocityDipPerSecond)
     {
-        if (viewportHeight <= 0 || edgeThreshold <= 0 || maxStep <= 0)
+        double signedPressure = ComputeSignedPressure(
+            pointerY,
+            viewportTop,
+            viewportHeight,
+            edgeThreshold);
+        if (signedPressure == 0 || !double.IsFinite(maximumVelocity) || maximumVelocity <= 0)
+            return 0;
+
+        double speed = Math.Max(
+            Math.Min(MinimumVelocityDipPerSecond, maximumVelocity),
+            Math.Abs(signedPressure) * maximumVelocity);
+        return Math.CopySign(speed, signedPressure);
+    }
+
+    private static double ComputeSignedPressure(
+        double pointerY,
+        double viewportTop,
+        double viewportHeight,
+        double edgeThreshold)
+    {
+        if (!double.IsFinite(pointerY) || !double.IsFinite(viewportTop) ||
+            !double.IsFinite(viewportHeight) || !double.IsFinite(edgeThreshold) ||
+            viewportHeight <= 0 || edgeThreshold <= 0)
             return 0;
 
         double viewportBottom = viewportTop + viewportHeight;
-        if (pointerY < viewportTop + edgeThreshold)
-        {
-            double pressure = Math.Clamp((viewportTop + edgeThreshold - pointerY) / edgeThreshold, 0, 1);
-            return -Math.Max(1, pressure * maxStep);
-        }
+        double topPressure = Math.Clamp(
+            (viewportTop + edgeThreshold - pointerY) / edgeThreshold,
+            0,
+            1);
+        double bottomPressure = Math.Clamp(
+            (pointerY - (viewportBottom - edgeThreshold)) / edgeThreshold,
+            0,
+            1);
 
-        if (pointerY > viewportBottom - edgeThreshold)
-        {
-            double pressure = Math.Clamp((pointerY - (viewportBottom - edgeThreshold)) / edgeThreshold, 0, 1);
-            return Math.Max(1, pressure * maxStep);
-        }
+        // On very short viewports the edge bands overlap. Resolve the stronger
+        // pressure instead of always preferring the top band.
+        double pressure = Math.Max(topPressure, bottomPressure);
+        if (pressure <= 0 || Math.Abs(topPressure - bottomPressure) < 0.0001)
+            return 0;
 
-        return 0;
+        return topPressure > bottomPressure ? -pressure : pressure;
+    }
+
+    public static double ComputeFrameDelta(
+        double pointerY,
+        double viewportTop,
+        double viewportHeight,
+        double elapsedSeconds,
+        double edgeThreshold = EdgeThresholdDip,
+        double maximumVelocity = MaximumVelocityDipPerSecond)
+    {
+        if (!double.IsFinite(elapsedSeconds) || elapsedSeconds <= 0)
+            return 0;
+
+        double boundedDuration = Math.Min(elapsedSeconds, MaximumFrameDurationSeconds);
+        return ComputeVelocity(
+            pointerY,
+            viewportTop,
+            viewportHeight,
+            edgeThreshold,
+            maximumVelocity) * boundedDuration;
     }
 
     public static double ComputeDirectionalDelta(
@@ -42,17 +90,19 @@ internal static class SelectionAutoScroll
         double viewportTop,
         double viewportHeight,
         double previousPointerViewportY,
-        double edgeThreshold = EdgeThresholdPx,
-        double maxStep = MaxStepPx)
+        double edgeThreshold = EdgeThresholdDip,
+        double maximumStep = 36.0)
     {
-        double delta = ComputeDelta(
+        double signedPressure = ComputeSignedPressure(
             pointerY,
             viewportTop,
             viewportHeight,
-            edgeThreshold,
-            maxStep);
-        if (delta == 0 || double.IsNaN(previousPointerViewportY))
+            edgeThreshold);
+        if (signedPressure == 0 || !double.IsFinite(maximumStep) || maximumStep <= 0 ||
+            double.IsNaN(previousPointerViewportY))
             return 0;
+
+        double delta = Math.CopySign(Math.Max(1, Math.Abs(signedPressure) * maximumStep), signedPressure);
 
         double pointerViewportY = pointerY - viewportTop;
         double movement = pointerViewportY - previousPointerViewportY;

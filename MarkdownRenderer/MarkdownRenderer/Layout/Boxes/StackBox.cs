@@ -1,3 +1,4 @@
+using System;
 using System.Collections.Generic;
 using Microsoft.Graphics.Canvas;
 using Microsoft.UI.Xaml;
@@ -13,6 +14,7 @@ namespace MarkdownRenderer.Layout.Boxes;
 internal class StackBox : BlockBox
 {
     private readonly List<BlockBox> _children = new();
+    private double[] _childBottomEdges = Array.Empty<double>();
     public IReadOnlyList<BlockBox> Children => _children;
 
     public Thickness ContentPadding { get; set; }
@@ -50,6 +52,7 @@ internal class StackBox : BlockBox
         }
         y += (float)(ContentPadding.Bottom + Margin.Bottom);
         Bounds = new Rect(0, 0, availableWidth, y);
+        RefreshChildBottomEdges();
         return y;
     }
 
@@ -66,6 +69,7 @@ internal class StackBox : BlockBox
         foreach (var c in _children)
             c.Arrange((float)c.Bounds.X + dx, (float)c.Bounds.Y + dy, (float)c.Bounds.Width);
         Bounds = new Rect(x, y, width, Bounds.Height);
+        RefreshChildBottomEdges();
     }
 
     public override void Paint(CanvasDrawingSession ds, Rect viewport)
@@ -103,8 +107,11 @@ internal class StackBox : BlockBox
                                 3, Bounds.Height - Margin.Top - Margin.Bottom);
             ds.FillRectangle(rect, bar);
         }
-        foreach (var c in _children)
+        int first = VerticalViewportIndex.FindFirstIntersecting(_childBottomEdges, viewport.Top);
+        for (int index = first; index < _children.Count; index++)
         {
+            BlockBox c = _children[index];
+            if (c.Bounds.Top > viewport.Bottom) break;
             if (c.Bounds.Bottom < viewport.Top || c.Bounds.Top > viewport.Bottom) continue;
             c.Paint(ds, viewport);
         }
@@ -116,8 +123,11 @@ internal class StackBox : BlockBox
         Windows.UI.Color color,
         Rect viewport)
     {
-        foreach (var c in _children)
+        int first = VerticalViewportIndex.FindFirstIntersecting(_childBottomEdges, viewport.Top);
+        for (int index = first; index < _children.Count; index++)
         {
+            BlockBox c = _children[index];
+            if (c.Bounds.Top > viewport.Bottom) break;
             if (c.Bounds.Bottom < viewport.Top || c.Bounds.Top > viewport.Bottom) continue;
             c.PaintSelectionForeground(ds, range, color, viewport);
         }
@@ -125,8 +135,11 @@ internal class StackBox : BlockBox
 
     public override bool HitTest(Point point, out DocumentPosition position)
     {
-        foreach (var c in _children)
+        int first = VerticalViewportIndex.FindFirstIntersecting(_childBottomEdges, point.Y);
+        for (int index = first; index < _children.Count; index++)
         {
+            BlockBox c = _children[index];
+            if (c.Bounds.Top > point.Y) break;
             if (c.HitTest(point, out position)) return true;
         }
         // Padding-area hits return false — the StackBox itself has no source-map
@@ -136,8 +149,30 @@ internal class StackBox : BlockBox
         return false;
     }
 
+    internal override bool HitTestSelectionEndpoint(Point point, out DocumentPosition position)
+    {
+        int first = VerticalViewportIndex.FindFirstIntersecting(_childBottomEdges, point.Y);
+        for (int index = first; index < _children.Count; index++)
+        {
+            BlockBox child = _children[index];
+            if (child.Bounds.Top > point.Y) break;
+            if (child.HitTestSelectionEndpoint(point, out position)) return true;
+        }
+
+        position = new DocumentPosition(BlockIndex, 0, 0);
+        return false;
+    }
+
     public override void Dispose()
     {
         foreach (var c in _children) c.Dispose();
+    }
+
+    private void RefreshChildBottomEdges()
+    {
+        if (_childBottomEdges.Length != _children.Count)
+            _childBottomEdges = new double[_children.Count];
+        for (int index = 0; index < _children.Count; index++)
+            _childBottomEdges[index] = _children[index].Bounds.Bottom;
     }
 }

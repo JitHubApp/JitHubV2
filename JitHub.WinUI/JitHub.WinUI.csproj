@@ -25,7 +25,7 @@
     <Nullable>enable</Nullable>
     <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
     <DefineConstants>$(DefineConstants);DISABLE_XAML_GENERATED_MAIN</DefineConstants>
-    <DefaultItemExcludes>$(DefaultItemExcludes);$(MSBuildProjectDirectory)\obj*\**;$(MSBuildProjectDirectory)\bin*\**;$(MSBuildProjectDirectory)\artifacts\**</DefaultItemExcludes>
+    <DefaultItemExcludes>$(DefaultItemExcludes);obj\**;obj-*\**;bin\**;bin-*\**;artifacts\**</DefaultItemExcludes>
     <NoWarn>$(NoWarn);WMC1506;WMC1510</NoWarn>
     <SuppressXamlWarnings>1506;1510</SuppressXamlWarnings>
     <EnableXBindDiagnostics>true</EnableXBindDiagnostics>
@@ -39,6 +39,7 @@
     <EnableConfigurationBindingGenerator>true</EnableConfigurationBindingGenerator>
     <DefaultLanguage>en-US</DefaultLanguage>
     <EnablePseudoLocalization>false</EnablePseudoLocalization>
+    <EnableStoreEngagementSdk Condition="'$(EnableStoreEngagementSdk)' == ''">true</EnableStoreEngagementSdk>
   </PropertyGroup>
 
   <PropertyGroup Condition="'$(EnablePseudoLocalization)' == 'true'">
@@ -49,7 +50,7 @@
     <GenerateProjectPriFileDependsOn>InvalidateProjectPriWhenPseudoLocalizationModeChanges;$(GenerateProjectPriFileDependsOn)</GenerateProjectPriFileDependsOn>
   </PropertyGroup>
 
-  <PropertyGroup Condition="'$(RuntimeIdentifier)' == 'win-x86' or '$(RuntimeIdentifier)' == 'win-x64' or '$(RuntimeIdentifier)' == 'win-arm64'">
+  <PropertyGroup Condition="('$(RuntimeIdentifier)' == 'win-x86' or '$(RuntimeIdentifier)' == 'win-x64' or '$(RuntimeIdentifier)' == 'win-arm64') and '$(EnableStoreEngagementSdk)' != 'false'">
     <DefineConstants>$(DefineConstants);STORE_ENGAGEMENT_AVAILABLE</DefineConstants>
     <CsWinRTIncludes>Microsoft.Services.Store.Engagement</CsWinRTIncludes>
   </PropertyGroup>
@@ -126,7 +127,7 @@
     <PackageReference Include="SQLitePCLRaw.bundle_e_sqlite3" Version="3.0.3" />
     <PackageReference Include="Microsoft.Services.Store.Engagement" Version="10.2307.3001" GeneratePathProperty="true" />
     <PackageReference Include="Microsoft.Xaml.Behaviors.WinUI.Managed" Version="3.0.1" />
-    <PackageReference Include="Microsoft.Windows.SDK.BuildTools" Version="10.0.28000.1721" />
+    <PackageReference Include="Microsoft.Windows.SDK.BuildTools" Version="$(JitHubWindowsSdkBuildToolsVersion)" />
     <PackageReference Include="Microsoft.WindowsAppSDK" Version="1.8.260710003" />
     <PackageReference Include="Microsoft.Windows.CsWinRT" Version="2.3.1" PrivateAssets="all" />
     <PackageReference Include="Microsoft.CodeAnalysis.BannedApiAnalyzers" Version="5.6.0" PrivateAssets="all" />
@@ -140,7 +141,10 @@
     <AdditionalFiles Include="..\eng\BannedSymbols.txt" />
     <Compile Include="..\Shared\OAuthHandoffProtocol.cs" Link="Security\OAuthHandoffProtocol.cs" />
     <ProjectReference Include="..\MarkdownRenderer\MarkdownRenderer\MarkdownRenderer.csproj" />
-    <ProjectReference Include="..\MarkdownRenderer\MarkdownRenderer.Gfm\MarkdownRenderer.Gfm.csproj" />
+    <ProjectReference Include="..\MarkdownRenderer\MarkdownRenderer.GitHub\MarkdownRenderer.GitHub.csproj" />
+    <ProjectReference Include="..\MarkdownRenderer\MarkdownRenderer.Svg.ThorVG\MarkdownRenderer.Svg.ThorVG.csproj" />
+    <ProjectReference Include="..\MarkdownRenderer\MarkdownRenderer.SyntaxHighlighting.TextMate\MarkdownRenderer.SyntaxHighlighting.TextMate.csproj" />
+    <ProjectReference Include="..\MarkdownRenderer\MarkdownRenderer.SyntaxHighlighting.TextMate.Grammars.Common\MarkdownRenderer.SyntaxHighlighting.TextMate.Grammars.Common.csproj" />
   </ItemGroup>
 
   <PropertyGroup Condition="'$(DisableHasPackageAndPublishMenuAddedByProject)'!='true' and '$(EnableMsixTooling)'=='true'">
@@ -166,11 +170,11 @@
     <WindowsMetadataReference Include="$(PkgWinUIEdit)\lib\uap10.0\WinUIEditor.winmd"
                               Implementation="WinUIEditor.dll" />
     <SDKReference Include="Microsoft.Services.Store.Engagement, Version=10.0"
-                  Condition="'$(RuntimeIdentifier)' == 'win-x86' or '$(RuntimeIdentifier)' == 'win-x64' or '$(RuntimeIdentifier)' == 'win-arm64'" />
+                  Condition="('$(RuntimeIdentifier)' == 'win-x86' or '$(RuntimeIdentifier)' == 'win-x64' or '$(RuntimeIdentifier)' == 'win-arm64') and '$(EnableStoreEngagementSdk)' != 'false'" />
     <SDKReference Include="Microsoft.VCLibs, Version=14.0"
                   Condition="'$(RuntimeIdentifier)' == 'win-x86' or '$(RuntimeIdentifier)' == 'win-x64' or '$(RuntimeIdentifier)' == 'win-arm64'" />
     <CsWinRTInputs Include="$(PkgMicrosoft_Services_Store_Engagement)\SDK\Windows Kits\10\ExtensionSDKs\Microsoft.Services.Store.Engagement\10.0\References\CommonConfiguration\neutral\Microsoft.Services.Store.Engagement.winmd"
-                    Condition="'$(RuntimeIdentifier)' == 'win-x86' or '$(RuntimeIdentifier)' == 'win-x64' or '$(RuntimeIdentifier)' == 'win-arm64'" />
+                    Condition="('$(RuntimeIdentifier)' == 'win-x86' or '$(RuntimeIdentifier)' == 'win-x64' or '$(RuntimeIdentifier)' == 'win-arm64') and '$(EnableStoreEngagementSdk)' != 'false'" />
   </ItemGroup>
 
   <Target Name="RemoveDisabledAppxSymbolPayload"
@@ -223,6 +227,6 @@
           BeforeTargets="Build"
           Condition="'$(Configuration)' == 'Release' and '$(SkipReleaseSecurityGate)' != 'true' and '$(DesignTimeBuild)' != 'true'">
     <Exec Command="powershell -NoProfile -ExecutionPolicy Bypass -File &quot;$(MSBuildThisFileDirectory)..\eng\Verify-DependencySecurity.ps1&quot;" />
-    <Exec Command="dotnet test &quot;$(MSBuildThisFileDirectory)..\JitHub.WinUI.Tests\JitHub.WinUI.Tests.csproj&quot; -c Release --no-restore --filter &quot;Category=ReleaseSecurity&quot; -p:SkipReleaseSecurityGate=true" />
+    <Exec Command="dotnet test &quot;$(MSBuildThisFileDirectory)..\JitHub.WinUI.Tests\JitHub.WinUI.Tests.csproj&quot; -c Release --filter &quot;Category=ReleaseSecurity&quot; -p:RestoreLockedMode=true -p:SkipReleaseSecurityGate=true" />
   </Target>
 </Project>

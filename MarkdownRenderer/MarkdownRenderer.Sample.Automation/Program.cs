@@ -12,12 +12,18 @@ namespace MarkdownRenderer.Sample.Automation;
 internal static class Program
 {
     private const string DiagnosticsEnvironmentVariable = "MARKDOWN_RENDERER_DIAGNOSTICS";
+    private static readonly string DisposalEvidencePath = Environment.GetEnvironmentVariable("MARKDOWN_RENDERER_DISPOSAL_EVIDENCE") ?? Path.Combine(
+        Path.GetTempPath(), $"MarkdownRenderer-disposal-{Guid.NewGuid():N}.json");
 
     private static readonly List<string> Failures = new();
     private static readonly List<string> Passes = new();
 
     private static int Main(string[] args)
     {
+        int attachIndex = Array.IndexOf(args, "--attach-lifecycle-pid");
+        if (attachIndex >= 0)
+            return RunAttachedLifecycleProbe(int.Parse(args[attachIndex + 1]));
+
         string appPath = ParseAppPath(args)
             ?? FindDefaultAppPath()
             ?? throw new InvalidOperationException(
@@ -25,6 +31,8 @@ internal static class Program
 
         if (args.Contains("--narrator-smoke", StringComparer.OrdinalIgnoreCase))
             return RunNarratorSmoke(appPath);
+
+        string? requestedProbe = ParseRequestedProbe(args);
 
         Console.WriteLine($"[automation] launching {appPath}");
         KillExistingApplicationInstances(appPath);
@@ -43,36 +51,49 @@ internal static class Program
             TryFocus(window, "main window");
             Thread.Sleep(750);
 
-            RunProbe("automation-tree-shape", () => ProbeAutomationTreeShape(window));
-            RunProbe("rtl-toggle-flips-flow",  () => ProbeRtlToggle(window));
-            RunProbe("sample-buttons-discoverable", () => ProbeSampleButtons(window));
-            RunProbe("audit-matrix-hostile-content", () => ProbeAuditMatrixHostileContent(window));
-            RunProbe("text-scale-reflows", () => ProbeTextScale(window));
-            RunProbe("accessibility-lab-text-pattern", () => ProbeAccessibilityLabTextPattern(window));
-            RunProbe("accessibility-lab-semantic-roles", () => ProbeAccessibilityLabSemanticRoles(window));
-            RunProbe("accessibility-lab-text-attributes", () => ProbeAccessibilityLabTextAttributes(window));
-            RunProbe("accessibility-lab-forced-high-contrast", () => ProbeAccessibilityLabForcedHighContrast(window));
-            RunProbe("accessibility-lab-keyboard-order", () => ProbeAccessibilityLabKeyboardOrder(window));
-            RunProbe("accessibility-lab-pointer-resume", () => ProbeAccessibilityLabPointerResume(window));
-            RunProbe("virtualization-bounded-realization", () => ProbeVirtualization(window));
-            RunProbe("images-sample-loads", () => ProbeImagesSample(window));
-            RunProbe("lazy-images-sample-loads", () => ProbeLazyImagesSample(window));
-            RunProbe("scroll-anchor-sample-loads", () => ProbeScrollAnchorSample(window));
-            RunProbe("footnotes-sample-loads", () => ProbeFootnotesSample(window));
-            RunProbe("keyboard-nav-tab-traversal", () => ProbeKeyboardNav(window));
-            RunProbe("click-dismisses-focus-ring", () => ProbeClickDismissesFocus(window));
-            RunProbe("selection-dismisses-on-external-pointer", () => ProbeSelectionDismissesOnExternalPointer(window));
-            RunProbe("selection-dismisses-on-hosted-control-pointer", () => ProbeSelectionDismissesOnHostedControlPointer(window));
-            RunProbe("selection-persists-after-pointer-release", () => ProbeSelectionPersistsAfterPointerRelease(window));
-            RunProbe("ctrl-c-copies-pointer-selection", () => ProbeCtrlCCopiesPointerSelection(window));
-            RunProbe("table-selection-row-border-is-stable", () => ProbeTableSelectionRowBorderIsStable(window));
-            RunProbe("double-click-selects-word",  () => ProbeDoubleClickSelectsWord(window));
-            RunProbe("triple-click-selects-line",  () => ProbeTripleClickSelectsLine(window));
-            RunProbe("context-copy-copies-selection", () => ProbeContextMenuCopy(window));
-            RunProbe("hover-does-not-shake",       () => ProbeHoverDoesNotShake(window));
-            RunProbe("embeds-selection-does-not-shake", () => ProbeEmbedsSelectionDoesNotShake(window));
-
-            try { window.Close(); } catch { /* window may already be gone */ }
+            if (requestedProbe is not null)
+            {
+                RunRequestedProbe(requestedProbe, window);
+            }
+            else
+            {
+                RunProbe("automation-tree-shape", () => ProbeAutomationTreeShape(window));
+                RunProbe("rtl-toggle-flips-flow",  () => ProbeRtlToggle(window));
+                RunProbe("sample-navigation-discoverable", () => ProbeSampleNavigation(window));
+                RunProbe("navigation-resets-document-position", () => ProbeNavigationResetsDocumentPosition(window));
+                RunProbe("safe-html-native-and-inert", () => ProbeSafeHtmlSample(window));
+                RunProbe("math-native-clean-page", () => ProbeMathSample(window));
+                RunProbe("audit-matrix-hostile-content", () => ProbeAuditMatrixHostileContent(window));
+                RunProbe("host-link-scheme-allowlist", () => ProbeHostLinkSchemeAllowlist(window));
+                RunProbe("plain-horizontal-overflow-keyboard", () => ProbePlainHorizontalOverflowKeyboard(window));
+                RunProbe("text-scale-reflows", () => ProbeTextScale(window));
+                RunProbe("accessibility-lab-text-pattern", () => ProbeAccessibilityLabTextPattern(window));
+                RunProbe("accessibility-lab-semantic-roles", () => ProbeAccessibilityLabSemanticRoles(window));
+                RunProbe("accessibility-lab-text-attributes", () => ProbeAccessibilityLabTextAttributes(window));
+                RunProbe("accessibility-lab-forced-high-contrast", () => ProbeAccessibilityLabForcedHighContrast(window));
+                RunProbe("accessibility-lab-keyboard-order", () => ProbeAccessibilityLabKeyboardOrder(window));
+                RunProbe("mermaid-vector-scene-hit-and-uia-invoke", () => ProbeMermaidVectorScene(window));
+                RunProbe("accessibility-lab-pointer-resume", () => ProbeAccessibilityLabPointerResume(window));
+                RunProbe("virtualization-bounded-realization", () => ProbeVirtualization(window));
+                RunProbe("images-sample-loads", () => ProbeImagesSample(window));
+                RunProbe("lazy-images-sample-loads", () => ProbeLazyImagesSample(window));
+                RunProbe("scroll-anchor-sample-loads", () => ProbeScrollAnchorSample(window));
+                RunProbe("footnotes-sample-loads", () => ProbeFootnotesSample(window));
+                RunProbe("keyboard-nav-tab-traversal", () => ProbeKeyboardNav(window));
+                RunProbe("click-dismisses-focus-ring", () => ProbeClickDismissesFocus(window));
+                RunProbe("selection-dismisses-on-external-pointer", () => ProbeSelectionDismissesOnExternalPointer(window));
+                RunProbe("selection-dismisses-on-hosted-control-pointer", () => ProbeSelectionDismissesOnHostedControlPointer(window));
+                RunProbe("selection-persists-after-pointer-release", () => ProbeSelectionPersistsAfterPointerRelease(window));
+                RunProbe("ctrl-c-copies-pointer-selection", () => ProbeCtrlCCopiesPointerSelection(window));
+                RunProbe("table-selection-row-border-is-stable", () => ProbeTableSelectionRowBorderIsStable(window));
+                RunProbe("double-click-selects-word",  () => ProbeDoubleClickSelectsWord(window));
+                RunProbe("triple-click-selects-line",  () => ProbeTripleClickSelectsLine(window));
+                RunProbe("context-copy-copies-selection", () => ProbeContextMenuCopy(window));
+                RunProbe("target-aware-context-commands", () => ProbeTargetAwareContextCommands(window));
+                RunProbe("hover-does-not-shake",       () => ProbeHoverDoesNotShake(window));
+                RunProbe("embeds-selection-does-not-shake", () => ProbeEmbedsSelectionDoesNotShake(window));
+                RunProbe("window-close-unloads-renderer", () => ProbeWindowCloseLifecycle(window, app));
+            }
         }
         finally
         {
@@ -88,6 +109,121 @@ internal static class Program
         foreach (var f in Failures) Console.WriteLine($"  FAIL {f}");
         Console.WriteLine($"{Passes.Count} passed, {Failures.Count} failed");
         return Failures.Count == 0 ? 0 : 1;
+    }
+
+    private static void ProbeWindowCloseLifecycle(Window window, FlaUI.Core.Application app)
+    {
+        // Retain the native handle before closing: GetProcessById after exit
+        // cannot recover a reliable exit code and PID reuse is not evidence.
+        using var process = Process.GetProcessById(app.ProcessId);
+        _ = process.Handle;
+        window.Close();
+        bool exited = process.WaitForExit(10_000);
+        bool disposalObserved = false;
+        if (File.Exists(DisposalEvidencePath))
+        {
+            using var evidence = System.Text.Json.JsonDocument.Parse(File.ReadAllText(DisposalEvidencePath));
+            disposalObserved = evidence.RootElement.GetProperty("processId").GetInt32() == process.Id &&
+                evidence.RootElement.GetProperty("disposalCompleted").GetBoolean();
+        }
+        string? failure = ProcessExitValidation.GetFailure(exited, exited ? process.ExitCode : null, disposalObserved);
+        Assert(failure is null, failure ?? string.Empty);
+    }
+
+    private static int RunAttachedLifecycleProbe(int processId)
+    {
+        // The caller launches through project-mode winapp run. Never terminate
+        // unrelated sample instances or substitute UIA selection for mouse input.
+        using var app = Application.Attach(processId);
+        using var automation = new UIA3Automation();
+        var window = app.GetMainWindow(automation) ?? throw new InvalidOperationException("Probe window missing.");
+        var status = Retry.WhileNull(() => window.FindFirstDescendant(cf => cf.ByAutomationId("LifecycleStatus")),
+            TimeSpan.FromSeconds(15)).Result ?? throw new InvalidOperationException("Lifecycle status missing.");
+        RunProbe("both-viewports-three-native-reloads", () =>
+        {
+            Retry.WhileTrue(() => status.Name.StartsWith("Running", StringComparison.Ordinal), TimeSpan.FromSeconds(30));
+            Assert(status.Name.StartsWith("PASS:", StringComparison.Ordinal), status.Name);
+        });
+        TryFocus(window, "lifecycle window");
+        foreach (string id in new[] { "OwnedRenderer", "AncestorRenderer" })
+        {
+            RunProbe(id + "-mouse-selection-after-reload", () =>
+            {
+                var renderer = window.FindFirstDescendant(cf => cf.ByAutomationId(id))
+                    ?? throw new InvalidOperationException(id + " missing.");
+                var range = renderer.Patterns.Text.Pattern.DocumentRange.FindText("quick brown fox", false, false)
+                    ?? throw new InvalidOperationException("Text range missing.");
+                var rects = range.GetBoundingRectangles();
+                Assert(rects.Length > 0, "Text has no rendered bounds after reload.");
+                var rect = rects[0];
+                var start = new System.Drawing.Point((int)rect.Left + 1, (int)(rect.Top + rect.Height / 2));
+                Mouse.Position = start;
+                Thread.Sleep(100);
+                Assert(Mouse.Position == start, $"Desktop pointer did not reach text: requested={start}, actual={Mouse.Position}, bounds={rect}");
+                Console.WriteLine($"[automation] {id} pointer start={start}, bounds={rect}");
+                Mouse.Down(MouseButton.Left);
+                try
+                {
+                    for (int step = 1; step <= 12; step++)
+                    {
+                        var next = new System.Drawing.Point((int)(rect.Left + rect.Width * step / 12), (int)(rect.Top + rect.Height / 2));
+                        Mouse.Position = next;
+                        Assert(Mouse.Position == next, $"Desktop pointer left drag path: requested={next}, actual={Mouse.Position}");
+                        Thread.Sleep(30);
+                    }
+                }
+                finally { Mouse.Up(MouseButton.Left); }
+                Thread.Sleep(500);
+                string selected = GetRendererSelectionText(renderer);
+                Assert(selected.Contains("brown", StringComparison.Ordinal), "Mouse selection was lost: " + selected);
+            });
+        }
+        RunProbe("clean-exit-and-all-view-disposal", () => ProbeWindowCloseLifecycle(window, app));
+        Console.WriteLine($"{Passes.Count} passed, {Failures.Count} failed");
+        return Failures.Count == 0 ? 0 : 1;
+    }
+
+    private static string? ParseRequestedProbe(string[] args)
+    {
+        int index = Array.IndexOf(args, "--probe");
+        if (index < 0)
+            return null;
+        if (index + 1 >= args.Length || string.IsNullOrWhiteSpace(args[index + 1]))
+            throw new ArgumentException("--probe requires a probe name.");
+        return args[index + 1];
+    }
+
+    private static void RunRequestedProbe(string name, Window window)
+    {
+        if (name.Equals("accessibility-residuals", StringComparison.OrdinalIgnoreCase))
+        {
+            RunProbe("accessibility-lab-text-pattern", () => ProbeAccessibilityLabTextPattern(window));
+            RunProbe("accessibility-lab-semantic-roles", () => ProbeAccessibilityLabSemanticRoles(window));
+            RunProbe("accessibility-lab-text-attributes", () => ProbeAccessibilityLabTextAttributes(window));
+            RunProbe("mermaid-vector-scene-hit-and-uia-invoke", () => ProbeMermaidVectorScene(window));
+            return;
+        }
+
+        if (name.Equals("embeds-selection-does-not-shake", StringComparison.OrdinalIgnoreCase))
+        {
+            RunProbe("embeds-selection-does-not-shake", () => ProbeEmbedsSelectionDoesNotShake(window));
+            return;
+        }
+
+        if (name.Equals("hover-does-not-shake", StringComparison.OrdinalIgnoreCase))
+        {
+            RunProbe("hover-does-not-shake", () => ProbeHoverDoesNotShake(window));
+            return;
+        }
+
+        if (name.Equals("keyboard-input-residuals", StringComparison.OrdinalIgnoreCase))
+        {
+            RunProbe("plain-horizontal-overflow-keyboard", () => ProbePlainHorizontalOverflowKeyboard(window));
+            return;
+        }
+
+        throw new ArgumentException(
+            $"Unknown focused probe '{name}'. Supported probes: accessibility-residuals, embeds-selection-does-not-shake, hover-does-not-shake, keyboard-input-residuals.");
     }
 
     private static int RunNarratorSmoke(string appPath)
@@ -110,7 +246,7 @@ internal static class Program
                 ?? throw new InvalidOperationException("Main window did not appear.");
             WaitForSampleContent(window, app);
 
-            ClickSample(window, "Accessibility_Lab");
+            SelectSample(window, "AccessibilityLab");
             Thread.Sleep(1500);
 
             var renderer = FindRenderer(window);
@@ -275,7 +411,7 @@ internal static class Program
 
     private static string ReadFlowDirection(Window window)
     {
-        var el = window.FindFirstDescendant(cf => cf.ByAutomationId("FlowDirectionStatus"));
+        var el = FindFirstRawDescendantByAutomationId(window, "FlowDirectionStatus");
         string? text = el?.Name ?? el?.Properties.Name.ValueOrDefault;
         if (string.IsNullOrEmpty(text)) return string.Empty;
         const string prefix = "flow:";
@@ -283,28 +419,176 @@ internal static class Program
         return idx < 0 ? string.Empty : text.Substring(idx + prefix.Length).Trim();
     }
 
-    private static void ProbeSampleButtons(Window window)
+    private static void ProbeSampleNavigation(Window window)
     {
+        Assert(
+            window.FindFirstDescendant(cf => cf.ByAutomationId("SampleNavigation")) is not null,
+            "SampleNavigation not found in automation tree");
+
+        AutomationElement pageTitle = window.FindFirstDescendant(
+            cf => cf.ByAutomationId("SamplePageTitle"))
+            ?? throw new InvalidOperationException("SamplePageTitle not found in automation tree");
+        Assert(pageTitle.Properties.HeadingLevel.ValueOrDefault == HeadingLevel.Level1,
+            "SamplePageTitle must expose heading level 1");
+
+        foreach (string statusId in new[]
+                 {
+                     "RealizedEmbedCount", "FlowDirectionStatus", "HighContrastStatus",
+                     "TextScaleStatus", "LinkActivationStatus", "ThemeStatus", "CurrentSamplePage",
+                 })
+        {
+            AutomationElement status = FindFirstRawDescendantByAutomationId(window, statusId)
+                ?? throw new InvalidOperationException($"{statusId} raw automation status not found");
+            Assert(!status.Properties.IsControlElement.ValueOrDefault &&
+                   !status.Properties.IsContentElement.ValueOrDefault,
+                $"{statusId} must remain outside the assistive-technology control/content views");
+        }
+
         string[] expected =
         {
-            "Typography", "Lists", "Tables", "Code", "GFM_Alerts",
-            "Images", "Embeds", "RTL", "Virtualization", "Selection",
-            "Lazy_Images", "Scroll_Anchor", "Footnotes", "Keyboard_Nav",
-            "Accessibility_Lab",
-            "Audit_Matrix",
-            "Full_Demo",
+            "FullDemo", "Typography", "Lists", "Tables", "Code", "Images",
+            "GitHubAlerts", "Footnotes", "MarkdownExtra", "Html", "Math",
+            "Mermaid", "Diagrams", "Embeds", "Selection", "KeyboardNav",
+            "Rtl", "LazyImages", "ScrollAnchor", "Virtualization", "Stress",
+            "AccessibilityLab", "AuditMatrix",
         };
-        foreach (var label in expected)
+        foreach (string key in expected)
         {
-            var btn = window.FindFirstDescendant(cf => cf.ByAutomationId("SampleButton_" + label));
-            Assert(btn is not null, $"SampleButton_{label} not found in automation tree");
+            var item = window.FindFirstDescendant(cf => cf.ByAutomationId("SampleNav_" + key))
+                ?? throw new InvalidOperationException($"SampleNav_{key} not found in automation tree");
+            Assert(item.Patterns.SelectionItem.IsSupported,
+                $"SampleNav_{key} must expose SelectionItem semantics");
         }
+    }
+
+    private static void ProbeNavigationResetsDocumentPosition(Window window)
+    {
+        SelectSample(window, "FullDemo");
+        AutomationElement renderer = FindRenderer(window);
+        var scroll = renderer.Patterns.Scroll.PatternOrDefault
+                     ?? throw new InvalidOperationException("Markdown renderer must expose ScrollPattern");
+        Assert(scroll.VerticallyScrollable.ValueOrDefault,
+            "Full demo must be vertically scrollable for the navigation reset probe");
+
+        scroll.SetScrollPercent(-1, 100);
+        bool reachedBottom = Retry.WhileFalse(
+            () => scroll.VerticalScrollPercent.ValueOrDefault >= 95,
+            timeout: TimeSpan.FromSeconds(3),
+            interval: TimeSpan.FromMilliseconds(50)).Result;
+        Assert(reachedBottom, "Could not move the Full demo preview to the bottom");
+
+        SelectSample(window, "Mermaid");
+        bool rendered = Retry.WhileFalse(
+            () => GetRendererDocumentText(renderer).Contains("Native Mermaid", StringComparison.Ordinal),
+            timeout: TimeSpan.FromSeconds(10),
+            interval: TimeSpan.FromMilliseconds(100)).Result;
+        Assert(rendered, "Mermaid page did not render after navigation");
+
+        bool reset = Retry.WhileFalse(
+            () =>
+            {
+                double percent = scroll.VerticalScrollPercent.ValueOrDefault;
+                return percent < 0 || percent <= 0.5;
+            },
+            timeout: TimeSpan.FromSeconds(5),
+            interval: TimeSpan.FromMilliseconds(100)).Result;
+        Assert(reset, "Navigation carried the previous document's scroll position into Mermaid");
+    }
+
+    private static void ProbeSafeHtmlSample(Window window)
+    {
+        SelectSample(window, "Html");
+        var renderer = FindRenderer(window);
+        bool ready = Retry.WhileFalse(
+            () => GetRendererDocumentText(renderer).Contains(
+                "Native safe HTML",
+                StringComparison.Ordinal),
+            timeout: TimeSpan.FromSeconds(10),
+            interval: TimeSpan.FromMilliseconds(100)).Result;
+        Assert(ready, "Safe HTML sample did not render");
+
+        string documentText = GetRendererDocumentText(renderer);
+        Assert(documentText.Contains("HTML disclosure body", StringComparison.Ordinal),
+            "expanded HTML details content is missing from TextPattern");
+        Assert(documentText.Contains("<custom-card>", StringComparison.Ordinal),
+            "unknown HTML element was not retained as inert literal source");
+        Assert(documentText.Contains(
+                "<script>unsafe-script-sentinel</script>",
+                StringComparison.Ordinal),
+            "tag-filtered script did not remain visible as inert literal source");
+        Assert(!documentText.Contains("unsafe-frame-sentinel", StringComparison.Ordinal) &&
+               !documentText.Contains("unsafe-form-sentinel", StringComparison.Ordinal),
+            "interactive HTML leaked into the rendered document");
+
+        AutomationElement[] descendants = renderer.FindAllDescendants();
+        AutomationElement disclosure = descendants.FirstOrDefault(element =>
+            ClassNameOrEmpty(element) == "MarkdownDisclosure")
+            ?? throw new InvalidOperationException("HTML details summary did not expose MarkdownDisclosure");
+        Assert(disclosure.Patterns.ExpandCollapse.IsSupported,
+            "HTML details summary must expose ExpandCollapsePattern");
+        Assert(descendants.Any(element => ClassNameOrEmpty(element) == "MarkdownTable"),
+            "HTML table did not retain native table semantics");
+        Assert(descendants.Any(element =>
+                ClassNameOrEmpty(element) == "MarkdownLink" &&
+                NameOrEmpty(element).Contains("safe HTML example", StringComparison.Ordinal)),
+            "safe HTML link did not retain native hyperlink semantics");
+
+        disclosure.Patterns.ExpandCollapse.Pattern.Collapse();
+        bool collapsed = Retry.WhileFalse(
+            () => !GetRendererDocumentText(renderer).Contains(
+                "HTML disclosure body",
+                StringComparison.Ordinal),
+            timeout: TimeSpan.FromSeconds(5),
+            interval: TimeSpan.FromMilliseconds(100)).Result;
+        Assert(collapsed, "collapsing HTML details did not update the document text surface");
+
+        disclosure = renderer.FindAllDescendants().First(element =>
+            ClassNameOrEmpty(element) == "MarkdownDisclosure");
+        disclosure.Patterns.ExpandCollapse.Pattern.Expand();
+        bool expanded = Retry.WhileFalse(
+            () => GetRendererDocumentText(renderer).Contains(
+                "HTML disclosure body",
+                StringComparison.Ordinal),
+            timeout: TimeSpan.FromSeconds(5),
+            interval: TimeSpan.FromMilliseconds(100)).Result;
+        Assert(expanded, "expanding HTML details did not restore its document text");
+    }
+
+    private static void ProbeMathSample(Window window)
+    {
+        const int ExpectedFormulaCount = 27;
+        SelectSample(window, "Math");
+        AutomationElement renderer = FindRenderer(window);
+        bool ready = Retry.WhileFalse(
+            () =>
+            {
+                string documentText = GetRendererDocumentText(renderer);
+                int nativeFormulaCount = renderer.FindAllDescendants()
+                    .Count(element => ClassNameOrEmpty(element) == "MarkdownMath");
+                return documentText.Contains("Native mathematics", StringComparison.Ordinal) &&
+                       documentText.Contains("Matrix multiplication", StringComparison.Ordinal) &&
+                       documentText.Contains("Aligned derivation", StringComparison.Ordinal) &&
+                       nativeFormulaCount == ExpectedFormulaCount;
+            },
+            timeout: TimeSpan.FromSeconds(10),
+            interval: TimeSpan.FromMilliseconds(100)).Result;
+        Assert(ready, $"Math page must expose {ExpectedFormulaCount} native formulas");
+
+        string renderedText = GetRendererDocumentText(renderer);
+        Assert(!renderedText.Contains("\\notacommand{sample}", StringComparison.Ordinal),
+            "the primary Math page must not contain the invalid-formula diagnostics fixture");
+        AutomationElement? diagnostics = window.FindFirstDescendant(
+            cf => cf.ByAutomationId("SampleDiagnosticsMessage"));
+        Assert(diagnostics is null ||
+               diagnostics.IsOffscreen ||
+               string.IsNullOrEmpty(GetAutomationElementText(diagnostics)),
+            "the primary Math page must commit without renderer diagnostics");
     }
 
     private static void ProbeAuditMatrixHostileContent(Window window)
     {
         var stopwatch = Stopwatch.StartNew();
-        ClickSample(window, "Audit_Matrix");
+        SelectSample(window, "AuditMatrix");
 
         var renderer = FindRenderer(window);
         bool ready = Retry.WhileFalse(
@@ -325,10 +609,14 @@ internal static class Program
             "audit matrix table content is missing from TextPattern");
         Assert(documentText.Contains("public static string Audit", StringComparison.Ordinal),
             "audit matrix code content is missing from TextPattern");
+        Assert(documentText.Contains("\\notacommand{sample}", StringComparison.Ordinal),
+            "audit matrix must preserve the invalid formula as exact fallback source");
+        Assert(documentText.Contains("layout: elk", StringComparison.Ordinal),
+            "audit matrix must preserve the unsupported ELK request as exact fallback source");
 
         var descendants = renderer.FindAllDescendants();
-        Assert(descendants.Count(e => e.ControlType == ControlType.CheckBox) >= 2,
-            "audit matrix must expose both task-list checkboxes");
+        Assert(descendants.All(e => e.ControlType != ControlType.CheckBox),
+            "read-only task state must not be exposed as an interactive checkbox");
         Assert(descendants.Any(e => e.ControlType == ControlType.Table),
             "audit matrix must expose native table semantics");
         Assert(descendants.Any(e => e.ControlType == ControlType.Image &&
@@ -347,11 +635,210 @@ internal static class Program
             "hostile SVG/HTML caused text geometry to escape the renderer viewport");
 
         CaptureAuditScreenshot(renderer, "audit-matrix-hostile-content.png");
+
+        AutomationElement diagnostics = WaitForDiagnostics(window, "MATH100");
+        string diagnosticText = GetAutomationElementText(diagnostics);
+        Assert(diagnosticText.Contains("Error MATH100", StringComparison.Ordinal),
+            $"Math diagnostic must expose severity and code, got '{diagnosticText}'");
+        string? mermaidDiagnosticLine = diagnosticText
+            .Split(['\r', '\n'], StringSplitOptions.RemoveEmptyEntries)
+            .FirstOrDefault(static line => line.Contains("MMR0002", StringComparison.Ordinal));
+        Assert(mermaidDiagnosticLine is not null &&
+               mermaidDiagnosticLine.Contains("Error MMR0002", StringComparison.Ordinal) &&
+               mermaidDiagnosticLine.Contains("[", StringComparison.Ordinal) &&
+               mermaidDiagnosticLine.Contains("..", StringComparison.Ordinal) &&
+               mermaidDiagnosticLine.Contains("): ", StringComparison.Ordinal),
+            $"Mermaid diagnostic must expose severity, code, and a half-open UTF-16 source span, got '{diagnosticText}'");
+        Assert(diagnosticText.Contains("[", StringComparison.Ordinal) &&
+               diagnosticText.Contains("..", StringComparison.Ordinal) &&
+               diagnosticText.Contains("): ", StringComparison.Ordinal),
+            $"Math diagnostic must expose a half-open UTF-16 source span, got '{diagnosticText}'");
+        Assert(diagnostics.Patterns.Text.IsSupported,
+            "diagnostic details must expose selectable TextPattern content");
+
+        AutomationElement diagnosticsBar = window.FindFirstDescendant(
+            cf => cf.ByAutomationId("SampleDiagnostics"))
+            ?? throw new InvalidOperationException("open diagnostics InfoBar not found");
+        Assert(NameOrEmpty(diagnosticsBar).Contains("MATH100", StringComparison.Ordinal),
+            "diagnostics live-region summary must include the actionable diagnostic code");
+
+        using var diagnosticsResolved = new ManualResetEventSlim(false);
+        string resolutionNotification = string.Empty;
+        var notificationHandler = diagnosticsBar.RegisterNotificationEvent(
+            TreeScope.Element,
+            (_, kind, processing, displayString, activityId) =>
+            {
+                if (kind == NotificationKind.ActionCompleted &&
+                    processing == NotificationProcessing.MostRecent &&
+                    string.Equals(activityId, "RendererDiagnostics", StringComparison.Ordinal))
+                {
+                    resolutionNotification = displayString;
+                    diagnosticsResolved.Set();
+                }
+            });
+        try
+        {
+            SelectSample(window, "Typography");
+            Assert(diagnosticsResolved.Wait(TimeSpan.FromSeconds(5)),
+                "clearing committed diagnostics did not raise an accessibility resolution notification");
+            Assert(resolutionNotification.Contains("No renderer diagnostics", StringComparison.Ordinal),
+                $"diagnostics resolution notification was not actionable, got '{resolutionNotification}'");
+
+            bool cleared = Retry.WhileFalse(
+                () =>
+                {
+                    AutomationElement? current = window.FindFirstDescendant(
+                        cf => cf.ByAutomationId("SampleDiagnosticsMessage"));
+                    return current is null ||
+                           current.IsOffscreen ||
+                           string.IsNullOrEmpty(GetAutomationElementText(current));
+                },
+                timeout: TimeSpan.FromSeconds(5),
+                interval: TimeSpan.FromMilliseconds(100)).Result;
+            Assert(cleared, "audit diagnostics persisted after a valid document committed");
+        }
+        finally
+        {
+            diagnosticsBar.FrameworkAutomationElement.UnregisterNotificationEventHandler(notificationHandler);
+        }
+    }
+
+    private static void ProbeHostLinkSchemeAllowlist(Window window)
+    {
+        SelectSample(window, "Typography");
+        var editor = window.FindFirstDescendant(cf => cf.ByAutomationId("MarkdownEditor"))?.AsTextBox()
+            ?? throw new InvalidOperationException("Markdown source editor not found");
+        editor.Text = "# Host link policy\n\n[Blocked custom URI](jithub-unsafe://example/path)";
+
+        AutomationElement renderer = FindRenderer(window);
+        bool ready = Retry.WhileFalse(
+            () => GetRendererDocumentText(renderer).Contains("Blocked custom URI", StringComparison.Ordinal),
+            timeout: TimeSpan.FromSeconds(5),
+            interval: TimeSpan.FromMilliseconds(100)).Result;
+        Assert(ready, "custom-scheme link did not render for the host policy probe");
+
+        AutomationElement blockedLink = renderer.FindAllDescendants().FirstOrDefault(element =>
+            ClassNameOrEmpty(element) == "MarkdownLink" &&
+            NameOrEmpty(element).Contains("Blocked custom URI", StringComparison.Ordinal))
+            ?? throw new InvalidOperationException("custom-scheme hyperlink peer not found");
+        blockedLink.Patterns.Invoke.Pattern.Invoke();
+
+        bool blocked = Retry.WhileFalse(
+            () => (FindFirstRawDescendantByAutomationId(window, "LinkActivationStatus")?.Name ?? string.Empty)
+                .Contains("jithub-unsafe://example/path::blocked", StringComparison.Ordinal),
+            timeout: TimeSpan.FromSeconds(3),
+            interval: TimeSpan.FromMilliseconds(50)).Result;
+        Assert(blocked, "sample host did not reject a non-allowlisted URI scheme");
+
+        SelectSample(window, "Lists");
+    }
+
+    private static void ProbePlainHorizontalOverflowKeyboard(Window window)
+    {
+        SelectSample(window, "AuditMatrix");
+        AutomationElement renderer = FindRenderer(window);
+        bool ready = Retry.WhileFalse(
+            () => GetRendererDocumentText(renderer).Contains(
+                "Document remains responsive after hostile content",
+                StringComparison.Ordinal),
+            timeout: TimeSpan.FromSeconds(8),
+            interval: TimeSpan.FromMilliseconds(100)).Result;
+        Assert(ready, "audit matrix did not finish rendering before the overflow keyboard probe");
+
+        AutomationElement overflow = FindPlainHorizontalOverflow(renderer);
+        var scroll = overflow.Patterns.Scroll.PatternOrDefault
+                     ?? throw new InvalidOperationException("plain overflow table must expose ScrollPattern");
+        scroll.SetScrollPercent(0, -1);
+        bool atStart = Retry.WhileFalse(
+            () => ReadPlainHorizontalScrollPercent(window) <= 0.5,
+            timeout: TimeSpan.FromSeconds(2),
+            interval: TimeSpan.FromMilliseconds(40)).Result;
+        Assert(atStart,
+            $"overflow table did not reset to the start, percent={ReadPlainHorizontalScrollPercent(window):0.##}");
+
+        overflow.Focus();
+        bool focused = Retry.WhileFalse(
+            () => overflow.Properties.HasKeyboardFocus.ValueOrDefault,
+            timeout: TimeSpan.FromSeconds(2),
+            interval: TimeSpan.FromMilliseconds(40)).Result;
+        Assert(focused, "plain overflow peer did not take keyboard focus");
+
+        Keyboard.Press(VirtualKeyShort.RIGHT);
+        bool movedRight = Retry.WhileFalse(
+            () => ReadPlainHorizontalScrollPercent(window) > 0.5,
+            timeout: TimeSpan.FromSeconds(2),
+            interval: TimeSpan.FromMilliseconds(40)).Result;
+        Assert(movedRight,
+            $"Right must scroll a focused plain overflow before spatial navigation, percent={ReadPlainHorizontalScrollPercent(window):0.##}");
+        Assert(ReadPlainHorizontalOverflowFocus(window),
+            "Right moved focus away from the plain overflow surface");
+
+        Keyboard.Press(VirtualKeyShort.END);
+        bool atEnd = Retry.WhileFalse(
+            () => ReadPlainHorizontalScrollPercent(window) >= 99.5,
+            timeout: TimeSpan.FromSeconds(2),
+            interval: TimeSpan.FromMilliseconds(40)).Result;
+        Assert(atEnd,
+            $"End must move plain overflow to its trailing edge, percent={ReadPlainHorizontalScrollPercent(window):0.##}");
+
+        Keyboard.Press(VirtualKeyShort.LEFT);
+        bool movedLeft = Retry.WhileFalse(
+            () => ReadPlainHorizontalScrollPercent(window) < 99.5,
+            timeout: TimeSpan.FromSeconds(2),
+            interval: TimeSpan.FromMilliseconds(40)).Result;
+        Assert(movedLeft,
+            $"Left must scroll a focused plain overflow before spatial navigation, percent={ReadPlainHorizontalScrollPercent(window):0.##}");
+        Assert(ReadPlainHorizontalOverflowFocus(window),
+            "Left moved focus away from the plain overflow surface");
+
+        Keyboard.Press(VirtualKeyShort.HOME);
+        bool returnedHome = Retry.WhileFalse(
+            () => ReadPlainHorizontalScrollPercent(window) <= 0.5,
+            timeout: TimeSpan.FromSeconds(2),
+            interval: TimeSpan.FromMilliseconds(40)).Result;
+        Assert(returnedHome,
+            $"Home must move plain overflow to its leading edge, percent={ReadPlainHorizontalScrollPercent(window):0.##}");
+    }
+
+    private static AutomationElement FindPlainHorizontalOverflow(AutomationElement renderer) =>
+        renderer.FindAllDescendants(cf => cf.ByControlType(ControlType.Table))
+            .FirstOrDefault(element =>
+                element.Patterns.Scroll.PatternOrDefault?.HorizontallyScrollable.ValueOrDefault == true)
+        ?? throw new InvalidOperationException(
+            "audit matrix must expose a link-free horizontally scrollable table");
+
+    private static double ReadPlainHorizontalScrollPercent(Window window)
+    {
+        try
+        {
+            return FindPlainHorizontalOverflow(FindRenderer(window))
+                .Patterns.Scroll.PatternOrDefault?
+                .HorizontalScrollPercent.ValueOrDefault ?? double.NaN;
+        }
+        catch (Exception ex) when (
+            ex is System.Runtime.InteropServices.COMException or InvalidOperationException)
+        {
+            return double.NaN;
+        }
+    }
+
+    private static bool ReadPlainHorizontalOverflowFocus(Window window)
+    {
+        try
+        {
+            return FindPlainHorizontalOverflow(FindRenderer(window))
+                .Properties.HasKeyboardFocus.ValueOrDefault;
+        }
+        catch (Exception ex) when (
+            ex is System.Runtime.InteropServices.COMException or InvalidOperationException)
+        {
+            return false;
+        }
     }
 
     private static void ProbeTextScale(Window window)
     {
-        ClickSample(window, "Accessibility_Lab");
+        SelectSample(window, "AccessibilityLab");
         Thread.Sleep(1000);
 
         var renderer = FindRenderer(window);
@@ -383,7 +870,7 @@ internal static class Program
                 interval: TimeSpan.FromMilliseconds(150)).Result;
             Assert(scaled, "200% text scale did not reflow the rendered document");
 
-            var status = window.FindFirstDescendant(cf => cf.ByAutomationId("TextScaleStatus"));
+            var status = FindFirstRawDescendantByAutomationId(window, "TextScaleStatus");
             Assert((status?.Name ?? string.Empty).Contains("text-scale:2", StringComparison.Ordinal),
                 "text scale status did not report the active 200% scale");
             CaptureAuditScreenshot(FindRenderer(window), "accessibility-text-scale-200.png");
@@ -398,9 +885,403 @@ internal static class Program
         }
     }
 
+    private static void ProbeMermaidVectorScene(Window window)
+    {
+        const int ExpectedDiagramCount = 17;
+        SelectSample(window, "Mermaid");
+        var renderer = FindRenderer(window);
+        bool ready = Retry.WhileFalse(
+            () => renderer.FindAllDescendants().Any(element =>
+                element.ControlType == ControlType.Hyperlink &&
+                (element.Name ?? string.Empty).Contains("Invokable Mermaid node", StringComparison.Ordinal)),
+            timeout: TimeSpan.FromSeconds(10),
+            interval: TimeSpan.FromMilliseconds(100)).Result;
+        Assert(
+            ready,
+            "native Mermaid hyperlink did not appear in the UIA tree; document=" +
+            GetRendererDocumentText(renderer) +
+            "; descendants=" +
+            string.Join(" | ", renderer.FindAllDescendants().Select(static element =>
+                $"{element.ControlType}/{NameOrEmpty(element)}/id={AutomationIdOrEmpty(element)}/class={ClassNameOrEmpty(element)}")));
+
+        AutomationElement? diagnostics = window.FindFirstDescendant(
+            cf => cf.ByAutomationId("SampleDiagnosticsMessage"));
+        Assert(diagnostics is null ||
+               diagnostics.IsOffscreen ||
+               string.IsNullOrEmpty(GetAutomationElementText(diagnostics)),
+            "the primary Mermaid page must commit without renderer diagnostics");
+
+        AutomationElement[] pageDescendants = renderer.FindAllDescendants();
+        int diagramCount = pageDescendants.Count(element =>
+            ClassNameOrEmpty(element) == "MarkdownDiagram");
+        Assert(
+            diagramCount == ExpectedDiagramCount,
+            $"Mermaid page must expose {ExpectedDiagramCount} native diagrams, got {diagramCount}");
+        string initialDocumentText = GetRendererDocumentText(renderer);
+        Assert(
+            initialDocumentText.Contains("Class diagram", StringComparison.Ordinal) &&
+            initialDocumentText.Contains("XY chart", StringComparison.Ordinal) &&
+            initialDocumentText.Contains("Kanban", StringComparison.Ordinal),
+            "Mermaid page is missing representative standard or beta grammar families");
+
+        AutomationElement link = pageDescendants
+            .First(element => element.ControlType == ControlType.Hyperlink &&
+                (element.Name ?? string.Empty).Contains("Invokable Mermaid node", StringComparison.Ordinal));
+        Assert(link.Patterns.Invoke.IsSupported, "Mermaid hyperlink must expose InvokePattern");
+
+        var linkBounds = link.BoundingRectangle;
+        Assert(linkBounds.Width > 1 && linkBounds.Height > 1,
+            $"Mermaid hyperlink must expose non-empty hit-test bounds, got {FormatRect(linkBounds)}");
+        var textPattern = renderer.Patterns.Text.PatternOrDefault
+                          ?? throw new InvalidOperationException("MarkdownRenderer must expose UIA TextPattern");
+        var attributes = renderer.Automation.TextAttributeLibrary;
+        var linkRange = textPattern.RangeFromChild(link);
+        Assert(
+            string.Equals(linkRange.GetText(-1).Trim(), "Invokable Mermaid node", StringComparison.Ordinal),
+            $"Mermaid RangeFromChild must be child-granular, got '{linkRange.GetText(-1)}'");
+        Assert(
+            (linkRange.GetAttributeValue(attributes.StyleName)?.ToString() ?? string.Empty)
+                .Contains("Diagram", StringComparison.Ordinal),
+            "Mermaid child text must expose the block-vector Diagram style");
+        Assert(
+            TryAttributeNumber(linkRange.GetAttributeValue(attributes.FontSize), out double normalDiagramFontSize),
+            "Mermaid child text must expose a numeric FontSize");
+        Assert(
+            (linkRange.GetAttributeValue(attributes.FontName)?.ToString() ?? string.Empty)
+                .Contains("Cascadia Mono", StringComparison.OrdinalIgnoreCase),
+            "Diagram.FontFamily resource customization must reach Mermaid vector text");
+        var formatRange = linkRange.Clone();
+        formatRange.ExpandToEnclosingUnit(TextUnit.Format);
+        Assert(
+            formatRange.GetText(-1).Contains("Invokable Mermaid node", StringComparison.Ordinal) &&
+            !formatRange.GetText(-1).Contains("Native scene", StringComparison.Ordinal),
+            "TextUnit.Format must stop at the semantic vector-child boundary");
+        var pointRange = textPattern.RangeFromPoint(new System.Drawing.Point(
+            linkBounds.Left + linkBounds.Width / 3,
+            linkBounds.Top + linkBounds.Height / 2));
+        pointRange.ExpandToEnclosingUnit(TextUnit.Format);
+        Assert(
+            pointRange.GetText(-1).Contains("Invokable Mermaid node", StringComparison.Ordinal),
+            "TextPattern.RangeFromPoint must resolve linked-only Mermaid semantics");
+
+        var textScaleToggle = window.FindFirstDescendant(cf => cf.ByAutomationId("TextScaleToggle"))?.AsToggleButton()
+                              ?? throw new InvalidOperationException("TextScaleToggle not found");
+        string committedThemeStatus =
+            FindFirstRawDescendantByAutomationId(window, "ThemeStatus")?.Name ?? string.Empty;
+        Assert(
+            committedThemeStatus.StartsWith("theme:", StringComparison.Ordinal) &&
+            !string.Equals(committedThemeStatus, "theme:pending", StringComparison.Ordinal),
+            $"Mermaid theme was not committed before the scale probe: '{committedThemeStatus}'");
+        try
+        {
+            if (textScaleToggle.ToggleState != ToggleState.On)
+                textScaleToggle.Toggle();
+
+            bool vectorScaled = Retry.WhileFalse(() =>
+                {
+                    AutomationElement? currentLink = FindMermaidLink(renderer);
+                    if (currentLink is null)
+                        return false;
+                    var currentPattern = renderer.Patterns.Text.PatternOrDefault;
+                    var currentRange = currentPattern?.RangeFromChild(currentLink);
+                    return currentRange is not null &&
+                           TryAttributeNumber(currentRange.GetAttributeValue(attributes.FontSize), out double scaledFontSize) &&
+                           scaledFontSize >= normalDiagramFontSize * 1.8d &&
+                           currentLink.BoundingRectangle.Height >= linkBounds.Height * 1.8;
+                },
+                timeout: TimeSpan.FromSeconds(8),
+                interval: TimeSpan.FromMilliseconds(150)).Result;
+            Assert(vectorScaled, "200% text scale did not resize the Mermaid block and semantic link bounds");
+        }
+        finally
+        {
+            if (textScaleToggle.ToggleState == ToggleState.On)
+            {
+                textScaleToggle.Toggle();
+                bool scaleResetCommitted = Retry.WhileFalse(
+                    () => string.Equals(
+                        FindFirstRawDescendantByAutomationId(window, "ThemeStatus")?.Name,
+                        committedThemeStatus,
+                        StringComparison.Ordinal),
+                    timeout: TimeSpan.FromSeconds(8),
+                    interval: TimeSpan.FromMilliseconds(100)).Result;
+                Assert(
+                    scaleResetCommitted,
+                    "text-scale reset did not commit before pointer bounds were reacquired");
+            }
+        }
+
+        link = FindMermaidLink(renderer)
+               ?? throw new InvalidOperationException("Mermaid hyperlink disappeared after text-scale rebuild");
+        linkBounds = link.BoundingRectangle;
+        var linkPoint = new System.Drawing.Point(
+            // Stay inside the first text half. The vector text hit-test changes
+            // its insertion position at the exact horizontal midpoint, so a
+            // one-pixel press/release rounding difference there can look like a
+            // drag selection and correctly suppress link activation.
+            linkBounds.Left + linkBounds.Width / 3,
+            linkBounds.Top + linkBounds.Height / 2);
+        window.SetForeground();
+        window.FocusNative();
+        PositionPointerOnWritableInputDesktop(linkPoint);
+        Mouse.Click(linkPoint, FlaUI.Core.Input.MouseButton.Left);
+        bool pointerActivated = Retry.WhileFalse(
+            () => (FindFirstRawDescendantByAutomationId(window, "LinkActivationStatus")?.Name ?? string.Empty)
+                .Contains("link:Mouse:https://example.invalid/mermaid-node", StringComparison.Ordinal),
+            timeout: TimeSpan.FromSeconds(5),
+            interval: TimeSpan.FromMilliseconds(50)).Result;
+        Assert(
+            pointerActivated,
+            "pointer hit testing did not raise the renderer's host LinkClick event; " +
+            $"bounds={linkBounds}, point={linkPoint}, status='{FindFirstRawDescendantByAutomationId(window, "LinkActivationStatus")?.Name}'");
+
+        link.Patterns.Invoke.Pattern.Invoke();
+
+        bool activated = Retry.WhileFalse(
+            () => (FindFirstRawDescendantByAutomationId(window, "LinkActivationStatus")?.Name ?? string.Empty)
+                .Contains("link:Automation:https://example.invalid/mermaid-node", StringComparison.Ordinal),
+            timeout: TimeSpan.FromSeconds(5),
+            interval: TimeSpan.FromMilliseconds(50)).Result;
+        Assert(activated, "UIA Invoke did not raise the renderer's host LinkClick event");
+
+        link.Focus();
+        bool focused = Retry.WhileFalse(
+            () => link.Properties.HasKeyboardFocus.ValueOrDefault,
+            timeout: TimeSpan.FromSeconds(3),
+            interval: TimeSpan.FromMilliseconds(50)).Result;
+        Assert(focused, "UIA SetFocus did not report keyboard focus on the Mermaid semantic hyperlink");
+        Keyboard.Press(VirtualKeyShort.RETURN);
+        bool keyboardActivated = Retry.WhileFalse(
+            () => (FindFirstRawDescendantByAutomationId(window, "LinkActivationStatus")?.Name ?? string.Empty)
+                .Contains("link:Keyboard:https://example.invalid/mermaid-node", StringComparison.Ordinal),
+            timeout: TimeSpan.FromSeconds(5),
+            interval: TimeSpan.FromMilliseconds(50)).Result;
+        Assert(keyboardActivated, "keyboard activation did not use the same Mermaid link path as pointer/UIA");
+
+        string documentText = GetRendererDocumentText(renderer);
+        Assert(documentText.Contains("Invokable Mermaid node", StringComparison.Ordinal),
+            "Mermaid semantic labels must contribute to TextPattern");
+        Assert(!documentText.Contains("layout: elk", StringComparison.Ordinal),
+            "the primary Mermaid page must not contain the unsupported-layout diagnostics fixture");
+        Assert(renderer.FindAllDescendants().Any(element => element.ControlType == ControlType.Image),
+            "Mermaid diagram root must expose an image/diagram UIA peer");
+
+        ProbeMermaidHighContrastPixelsAndTextAttributes(window);
+    }
+
+    private static void ProbeMermaidHighContrastPixelsAndTextAttributes(Window window)
+    {
+        var toggle = window.FindFirstDescendant(cf => cf.ByAutomationId("ForcedHighContrastToggle"))?.AsToggleButton()
+                     ?? throw new InvalidOperationException("ForcedHighContrastToggle not found");
+
+        try
+        {
+            if (toggle.ToggleState != ToggleState.On)
+            {
+                toggle.Toggle();
+                Thread.Sleep(1200);
+            }
+
+            AutomationElement renderer = FindRenderer(window);
+            bool ready = Retry.WhileFalse(
+                () => FindMermaidLink(renderer) is not null &&
+                      FindMermaidSemantic(renderer, "Native scene") is not null,
+                timeout: TimeSpan.FromSeconds(8),
+                interval: TimeSpan.FromMilliseconds(100)).Result;
+            Assert(ready, "High Contrast Mermaid semantic nodes did not become available");
+
+            // The keyboard-invoke portion of this probe leaves the linked
+            // semantic focused. Move real focus outside the renderer so its
+            // LosingFocus path clears the logical vector focus before pixel
+            // capture; focusing an already-focused renderer can be a UIA no-op.
+            // This keeps the Hotlight assertion on glyph paint rather than a
+            // cyan focus rectangle.
+            toggle.Focus();
+            bool vectorFocusCleared = Retry.WhileFalse(
+                () => FindMermaidLink(renderer)?.Properties.HasKeyboardFocus.ValueOrDefault != true,
+                timeout: TimeSpan.FromSeconds(3),
+                interval: TimeSpan.FromMilliseconds(50)).Result;
+            Assert(vectorFocusCleared, "Mermaid vector focus remained active before High Contrast capture");
+
+            AutomationElement linked = FindMermaidLink(renderer)
+                                       ?? throw new InvalidOperationException("High Contrast Mermaid link not found");
+            AutomationElement plain = FindMermaidSemantic(renderer, "Native scene")
+                                      ?? throw new InvalidOperationException("High Contrast Mermaid non-link node not found");
+            var textPattern = renderer.Patterns.Text.PatternOrDefault
+                              ?? throw new InvalidOperationException("MarkdownRenderer must expose UIA TextPattern");
+            var attributes = renderer.Automation.TextAttributeLibrary;
+            var linkedRange = textPattern.RangeFromChild(linked);
+            var plainRange = textPattern.RangeFromChild(plain);
+
+            Assert(
+                (linkedRange.GetAttributeValue(attributes.StyleName)?.ToString() ?? string.Empty)
+                    .Contains("Diagram", StringComparison.Ordinal),
+                "linked vector text must retain its Diagram semantic style context");
+            Assert(
+                (plainRange.GetAttributeValue(attributes.StyleName)?.ToString() ?? string.Empty)
+                    .Contains("Diagram", StringComparison.Ordinal),
+                "non-linked vector text must retain its Diagram semantic style context");
+            Assert(
+                ToColorRefValue(linkedRange.GetAttributeValue(attributes.ForegroundColor)) ==
+                ColorRef(0x00, 0xFF, 0xFF),
+                "linked High Contrast vector text must expose the draw-time Hotlight foreground");
+            Assert(
+                ToColorRefValue(plainRange.GetAttributeValue(attributes.ForegroundColor)) ==
+                ColorRef(0xFF, 0xFF, 0xFF),
+                "non-linked High Contrast vector text must expose the draw-time WindowText foreground");
+            Assert(
+                ToColorRefValue(linkedRange.GetAttributeValue(attributes.BackgroundColor)) ==
+                ColorRef(0x00, 0x00, 0x00) &&
+                ToColorRefValue(plainRange.GetAttributeValue(attributes.BackgroundColor)) ==
+                ColorRef(0x00, 0x00, 0x00),
+                "High Contrast vector TextPattern backgrounds must expose the Window surface");
+
+            AssertHighContrastVectorPixels(
+                linked,
+                expectHotlight: true,
+                "mermaid-high-contrast-linked-node.png");
+            AssertHighContrastVectorPixels(
+                plain,
+                expectHotlight: false,
+                "mermaid-high-contrast-plain-node.png");
+        }
+        finally
+        {
+            if (toggle.ToggleState == ToggleState.On)
+            {
+                toggle.Toggle();
+                Thread.Sleep(800);
+            }
+        }
+    }
+
+    private static AutomationElement? FindMermaidSemantic(
+        AutomationElement renderer,
+        string accessibleName) =>
+        renderer.FindAllDescendants().FirstOrDefault(element =>
+            string.Equals(NameOrEmpty(element).Trim(), accessibleName, StringComparison.Ordinal));
+
+    private static void AssertHighContrastVectorPixels(
+        AutomationElement semantic,
+        bool expectHotlight,
+        string fileName)
+    {
+        string artifactDir = Path.Combine(
+            Path.GetFullPath("."), "artifacts", "screenshots", "markdown-audit");
+        Directory.CreateDirectory(artifactDir);
+        string path = Path.Combine(artifactDir, fileName);
+        using var capture = FlaUI.Core.Capturing.Capture.Element(
+            semantic,
+            new FlaUI.Core.Capturing.CaptureSettings());
+        capture.ToFile(path);
+
+        System.Drawing.Bitmap bitmap = capture.Bitmap;
+        Assert(bitmap.Width > 2 && bitmap.Height > 2,
+            $"High Contrast vector capture is empty: {bitmap.Width}x{bitmap.Height}");
+
+        // Ignore the outer focus-border band even after focus has been cleared.
+        // Requiring Hotlight/WindowText pixels in this interior makes a cyan
+        // perimeter alone insufficient to pass the rendered-paint gate.
+        int interiorInset = Math.Min(
+            4,
+            Math.Max(1, (Math.Min(bitmap.Width, bitmap.Height) - 1) / 4));
+        int interiorWidth = bitmap.Width - (interiorInset * 2);
+        int interiorHeight = bitmap.Height - (interiorInset * 2);
+        Assert(interiorWidth > 0 && interiorHeight > 0,
+            $"High Contrast vector capture has no testable interior: {bitmap.Width}x{bitmap.Height}");
+
+        int surfacePixels = 0;
+        int semanticPixels = 0;
+        long surfaceRed = 0;
+        long surfaceGreen = 0;
+        long surfaceBlue = 0;
+        long semanticRed = 0;
+        long semanticGreen = 0;
+        long semanticBlue = 0;
+        for (int y = interiorInset; y < bitmap.Height - interiorInset; y++)
+        {
+            for (int x = interiorInset; x < bitmap.Width - interiorInset; x++)
+            {
+                System.Drawing.Color pixel = bitmap.GetPixel(x, y);
+                if (pixel.R <= 48 && pixel.G <= 48 && pixel.B <= 48)
+                {
+                    surfacePixels++;
+                    surfaceRed += pixel.R;
+                    surfaceGreen += pixel.G;
+                    surfaceBlue += pixel.B;
+                    continue;
+                }
+
+                bool isSemantic = expectHotlight
+                    ? pixel.R <= 80 && pixel.G >= 160 && pixel.B >= 160
+                    : pixel.R >= 160 && pixel.G >= 160 && pixel.B >= 160;
+                if (!isSemantic)
+                    continue;
+                semanticPixels++;
+                semanticRed += pixel.R;
+                semanticGreen += pixel.G;
+                semanticBlue += pixel.B;
+            }
+        }
+
+        int interiorPixels = interiorWidth * interiorHeight;
+        Assert(surfacePixels >= Math.Max(16, interiorPixels / 5),
+            $"High Contrast vector surface is not visibly present in the capture interior; " +
+            $"black-like={surfacePixels}/{interiorPixels}. " +
+            "A solid foreground rectangle must fail this rendered-pixel gate.");
+        Assert(semanticPixels >= Math.Max(8, (interiorWidth + interiorHeight) / 8),
+            $"High Contrast vector {(expectHotlight ? "Hotlight" : "WindowText")} glyph paint is not visibly present " +
+            $"inside the focus-border mask; semantic={semanticPixels}/{interiorPixels}");
+
+        System.Drawing.Color surface = System.Drawing.Color.FromArgb(
+            (int)(surfaceRed / surfacePixels),
+            (int)(surfaceGreen / surfacePixels),
+            (int)(surfaceBlue / surfacePixels));
+        System.Drawing.Color foreground = System.Drawing.Color.FromArgb(
+            (int)(semanticRed / semanticPixels),
+            (int)(semanticGreen / semanticPixels),
+            (int)(semanticBlue / semanticPixels));
+        double contrast = ContrastRatio(surface, foreground);
+        Assert(contrast >= 4.5,
+            $"Rendered High Contrast vector contrast {contrast:F2}:1 is below 4.5:1; " +
+            $"surface={surface}, foreground={foreground}");
+        Console.WriteLine(
+            $"[automation] rendered HC vector interior pixels: {fileName}; inset={interiorInset}; " +
+            $"surface={surfacePixels}/{interiorPixels}; semantic={semanticPixels}/{interiorPixels}; " +
+            $"contrast={contrast:F2}:1; screenshot={path}");
+    }
+
+    private static double ContrastRatio(System.Drawing.Color first, System.Drawing.Color second)
+    {
+        double firstLuminance = RelativeLuminance(first);
+        double secondLuminance = RelativeLuminance(second);
+        return (Math.Max(firstLuminance, secondLuminance) + 0.05) /
+               (Math.Min(firstLuminance, secondLuminance) + 0.05);
+    }
+
+    private static double RelativeLuminance(System.Drawing.Color color)
+    {
+        static double Linearize(byte channel)
+        {
+            double value = channel / 255d;
+            return value <= 0.04045
+                ? value / 12.92
+                : Math.Pow((value + 0.055) / 1.055, 2.4);
+        }
+
+        return 0.2126 * Linearize(color.R) +
+               0.7152 * Linearize(color.G) +
+               0.0722 * Linearize(color.B);
+    }
+
+    private static AutomationElement? FindMermaidLink(AutomationElement renderer) =>
+        renderer.FindAllDescendants().FirstOrDefault(element =>
+            element.ControlType == ControlType.Hyperlink &&
+            (element.Name ?? string.Empty).Contains("Invokable Mermaid node", StringComparison.Ordinal));
+
     private static void ProbeAccessibilityLabTextPattern(Window window)
     {
-        ClickSample(window, "Accessibility_Lab");
+        SelectSample(window, "AccessibilityLab");
         Thread.Sleep(1200);
 
         var renderer = FindRenderer(window);
@@ -413,10 +1294,14 @@ internal static class Program
             "TextPattern document text must include paragraph content");
         Assert(text.Contains("Console.WriteLine", StringComparison.Ordinal),
             "TextPattern document text must include fenced code content");
+        Assert(text.Contains("native hosted fallback marker", StringComparison.Ordinal),
+            "a declined hosted factory key must restore the original native markdown block");
 
         var word = textPattern.DocumentRange.FindText("quick", backward: false, ignoreCase: true)
                    ?? throw new InvalidOperationException("TextPattern FindText('quick') returned null");
         word.ExpandToEnclosingUnit(TextUnit.Word);
+        word.ScrollIntoView(alignToTop: true);
+        Thread.Sleep(250);
         var rects = word.GetBoundingRectangles();
         Assert(rects.Length > 0, "TextPattern word range must expose at least one bounding rectangle");
         Assert(rects.All(r => r.Width < renderer.BoundingRectangle.Width / 3 &&
@@ -444,6 +1329,19 @@ internal static class Program
         Assert(blockWordRects.All(r => r.Width < blockTextPeer.BoundingRectangle.Width / 2 &&
                                        r.Height < blockTextPeer.BoundingRectangle.Height),
             "Paragraph TextPattern word rectangles must be smaller than the paragraph peer rectangle");
+        AutomationElement wordEnclosing = blockWord.GetEnclosingElement();
+        Assert(
+            string.Equals(
+                AutomationIdOrEmpty(wordEnclosing),
+                AutomationIdOrEmpty(blockTextPeer),
+                StringComparison.Ordinal),
+            "TextPattern ranges must return their innermost semantic block as GetEnclosingElement");
+
+        var page = blockWord.Clone();
+        page.ExpandToEnclosingUnit(TextUnit.Page);
+        Assert(
+            page.Compare(textPattern.DocumentRange),
+            "unsupported TextUnit.Page must promote to the supported Document unit");
 
         var movedWord = textPattern.DocumentRange.Clone();
         int moved = movedWord.Move(TextUnit.Word, 1);
@@ -453,6 +1351,8 @@ internal static class Program
                movedWordText.Length <= 32 &&
                !movedWordText.Contains('\n'),
             $"TextPattern Move(Word, 1) must produce a word-sized range, got '{movedWordText}'");
+        movedWord.ScrollIntoView(alignToTop: true);
+        Thread.Sleep(250);
         var movedWordRects = movedWord.GetBoundingRectangles();
         Assert(movedWordRects.Length > 0, "Moved word range must expose bounding rectangles");
         Assert(movedWordRects.Sum(r => r.Width) < renderer.BoundingRectangle.Width / 2,
@@ -477,13 +1377,16 @@ internal static class Program
 
     private static void ProbeAccessibilityLabSemanticRoles(Window window)
     {
-        ClickSample(window, "Accessibility_Lab");
+        SelectSample(window, "AccessibilityLab");
         Thread.Sleep(1200);
 
         var renderer = FindRenderer(window);
         var descendants = renderer.FindAllDescendants();
         Assert(descendants.Any(e => e.ControlType == ControlType.Header), "Accessibility lab must expose heading/header peers");
-        Assert(descendants.Any(e => e.ControlType == ControlType.Hyperlink), "Accessibility lab must expose hyperlink peers");
+        var hyperlinks = descendants.Where(e => e.ControlType == ControlType.Hyperlink).ToArray();
+        Assert(hyperlinks.Length > 0, "Accessibility lab must expose hyperlink peers");
+        Assert(hyperlinks.All(link => link.FindAllChildren().Length == 0),
+            "Synthetic hyperlink peers must remain semantic leaves and must not cycle into the renderer visual tree");
         Assert(descendants.Any(e => e.ControlType == ControlType.List), "Accessibility lab must expose list peer");
         Assert(descendants.Any(e => e.ControlType == ControlType.ListItem), "Accessibility lab must expose list item peers");
         Assert(descendants.Any(e => e.ControlType == ControlType.Table), "Accessibility lab must expose table peer");
@@ -495,7 +1398,16 @@ internal static class Program
             "Inline markdown image must expose an image peer instead of flattening to plain paragraph text");
         Assert(descendants.Any(e => e.ControlType == ControlType.Button && (e.Name ?? string.Empty).Contains("Native action", StringComparison.Ordinal)),
             "Accessibility lab must expose hosted native button");
-        Assert(descendants.Any(e => e.ControlType == ControlType.CheckBox), "Accessibility lab must expose hosted task checkbox");
+        Assert(descendants.All(e => e.ControlType != ControlType.CheckBox),
+            "Accessibility lab read-only task state must not expose checkbox semantics");
+
+        AutomationElement ordinaryList = descendants.First(e => e.ControlType == ControlType.List);
+        Assert(!ordinaryList.Properties.IsKeyboardFocusable.ValueOrDefault,
+            "ordinary synthetic semantic nodes must not inherit renderer focusability");
+        renderer.Focus();
+        ordinaryList.Focus();
+        Assert(!ordinaryList.Properties.HasKeyboardFocus.ValueOrDefault,
+            "SetFocus on an ordinary synthetic semantic node must not focus its shared renderer owner");
 
         var table = descendants.First(e => e.ControlType == ControlType.Table);
         var grid = table.Patterns.Grid.PatternOrDefault
@@ -507,7 +1419,7 @@ internal static class Program
 
     private static void ProbeAccessibilityLabTextAttributes(Window window)
     {
-        ClickSample(window, "Accessibility_Lab");
+        SelectSample(window, "AccessibilityLab");
         Thread.Sleep(1200);
 
         var renderer = FindRenderer(window);
@@ -520,12 +1432,56 @@ internal static class Program
         var hyperlinkRange = textPattern.RangeFromChild(hyperlink);
         Assert(hyperlinkRange.GetText(-1).Contains(hyperlink.Name ?? string.Empty, StringComparison.Ordinal),
             "TextPattern.RangeFromChild(hyperlink) must return the hyperlink text range");
+        Assert(
+            string.Equals(
+                AutomationIdOrEmpty(hyperlinkRange.GetEnclosingElement()),
+                AutomationIdOrEmpty(hyperlink),
+                StringComparison.Ordinal),
+            "an exact hyperlink range must return the hyperlink as its innermost enclosing element");
+        AutomationElement hyperlinkParent = hyperlink.Parent
+            ?? throw new InvalidOperationException("hyperlink semantic parent not found");
+        var parentTextPattern = hyperlinkParent.Patterns.Text.PatternOrDefault
+            ?? throw new InvalidOperationException("hyperlink parent must expose TextPattern");
+        AutomationElement[] immediateChildren = parentTextPattern.DocumentRange.GetChildren();
+        Assert(
+            immediateChildren.Any(child => string.Equals(
+                AutomationIdOrEmpty(child),
+                AutomationIdOrEmpty(hyperlink),
+                StringComparison.Ordinal)),
+            "TextPattern.GetChildren must return immediate inline semantic children");
+        Assert(
+            immediateChildren.All(child =>
+                child.Parent is { } parent
+                && string.Equals(
+                    AutomationIdOrEmpty(parent),
+                    AutomationIdOrEmpty(hyperlinkParent),
+                    StringComparison.Ordinal)),
+            "TextPattern.GetChildren must not flatten deeper semantic descendants");
 
         var image = descendants.First(e => e.ControlType == ControlType.Image &&
                                            (e.Name ?? string.Empty).Contains("Accessibility lab blue square", StringComparison.Ordinal));
         var imageRange = textPattern.RangeFromChild(image);
         Assert(imageRange.GetText(-1).Contains("Accessibility lab blue square", StringComparison.Ordinal),
             "TextPattern.RangeFromChild(image) must return image alt text");
+
+        var customStyleRange = textPattern.DocumentRange.FindText(
+            "Ancestor-scoped extension style",
+            backward: false,
+            ignoreCase: false)
+            ?? throw new InvalidOperationException("custom extension style marker range not found");
+        Assert(
+            string.Equals(
+                customStyleRange.GetAttributeValue(attributes.StyleName)?.ToString(),
+                "SampleExtensionCallout",
+                StringComparison.Ordinal),
+            "a non-built-in extension role must remain visible through UIA StyleName");
+        Assert(
+            TryAttributeNumber(customStyleRange.GetAttributeValue(attributes.FontSize), out double customFontSize) &&
+            Math.Abs(customFontSize - 19d) < 0.1d,
+            $"ancestor-scoped custom role FontSize must be 19, got {customFontSize}");
+        Assert(
+            ToColorRefValue(customStyleRange.GetAttributeValue(attributes.ForegroundColor)) == ColorRef(0x8A, 0x2B, 0xE2),
+            "ancestor-scoped custom role foreground was not applied");
 
         var hostedButton = descendants.First(e => e.ControlType == ControlType.Button &&
             (e.Name ?? string.Empty).Contains("Native action", StringComparison.Ordinal));
@@ -541,6 +1497,14 @@ internal static class Program
         Assert((paintedLinkRange.GetAttributeValue(attributes.StyleName)?.ToString() ?? string.Empty)
                .Contains("Link", StringComparison.Ordinal),
             "painted link must expose StyleName=Link");
+        var collapsedLinkStart = paintedLinkRange.Clone();
+        collapsedLinkStart.MoveEndpointByRange(
+            TextPatternRangeEndpoint.End,
+            collapsedLinkStart,
+            TextPatternRangeEndpoint.Start);
+        Assert(
+            IsNonNoneTextDecoration(collapsedLinkStart.GetAttributeValue(attributes.UnderlineStyle)),
+            "a collapsed caret at a half-open format boundary must choose the following run, not Mixed");
 
         var codeRange = textPattern.DocumentRange.FindText("Console.WriteLine", backward: false, ignoreCase: false)
                         ?? throw new InvalidOperationException("code range not found");
@@ -558,6 +1522,26 @@ internal static class Program
         Assert(findUnderline.GetText(-1).Contains("painted link", StringComparison.Ordinal) ||
                findUnderline.GetText(-1).Contains("second painted link", StringComparison.Ordinal),
             "FindAttribute(UnderlineStyle) must return an underlined markdown link range");
+
+        var text2 = renderer.Patterns.Text2.PatternOrDefault
+                    ?? throw new InvalidOperationException("MarkdownRenderer must expose UIA TextPattern2");
+        renderer.Focus();
+        _ = text2.GetCaretRange(out bool documentCaretActive);
+        Assert(documentCaretActive, "focused selectable document must expose an active caret range");
+        hyperlink.Focus();
+        Retry.WhileFalse(
+            () => hyperlink.Properties.HasKeyboardFocus.ValueOrDefault,
+            timeout: TimeSpan.FromSeconds(2),
+            interval: TimeSpan.FromMilliseconds(50));
+        Assert(hyperlink.Properties.HasKeyboardFocus.ValueOrDefault,
+            "the virtual hyperlink must own UIA keyboard focus before caret activity is evaluated");
+        Thread.Sleep(500);
+        Assert(hyperlink.Properties.HasKeyboardFocus.ValueOrDefault,
+            "the virtual hyperlink must retain UIA keyboard focus through deferred layout/focus notifications");
+        var childCaretRange = text2.GetCaretRange(out _);
+        Assert(
+            !IsTrueAttribute(childCaretRange.GetAttributeValue(attributes.IsActive)),
+            "the caret range returned by TextPattern2 must expose IsActive=false while a virtual hyperlink child owns keyboard focus");
     }
 
     private static void ProbeAccessibilityLabForcedHighContrast(Window window)
@@ -573,10 +1557,10 @@ internal static class Program
                 Thread.Sleep(1200);
             }
 
-            ClickSample(window, "Accessibility_Lab");
+        SelectSample(window, "AccessibilityLab");
             Thread.Sleep(1200);
 
-            var status = window.FindFirstDescendant(cf => cf.ByAutomationId("HighContrastStatus"));
+            var status = FindFirstRawDescendantByAutomationId(window, "HighContrastStatus");
             var statusText = status?.Name ?? status?.Properties.Name.ValueOrDefault ?? string.Empty;
             Assert(statusText.Contains("hc:on", StringComparison.Ordinal),
                 $"forced high contrast status must be on, got '{statusText}'");
@@ -605,6 +1589,19 @@ internal static class Program
             Assert(ToColorRefValue(inlineCodeRange.GetAttributeValue(attributes.BackgroundColor)) == ColorRef(0x00, 0x00, 0x00),
                 "forced high contrast inline code background must resolve to Window");
 
+            var customStyleRange = textPattern.DocumentRange.FindText(
+                "Ancestor-scoped extension style",
+                backward: false,
+                ignoreCase: false)
+                ?? throw new InvalidOperationException("custom extension style marker range not found in high contrast");
+            Assert(
+                TryAttributeNumber(customStyleRange.GetAttributeValue(attributes.FontSize), out double customFontSize) &&
+                Math.Abs(customFontSize - 23d) < 0.1d,
+                $"High Contrast theme-dictionary FontSize must be 23, got {customFontSize}");
+            Assert(
+                ToColorRefValue(customStyleRange.GetAttributeValue(attributes.ForegroundColor)) == ColorRef(0xFF, 0xFF, 0xFF),
+                "High Contrast must map the custom authored foreground to WindowText");
+
             var tableHeaderRange = textPattern.DocumentRange.FindText("Feature", backward: false, ignoreCase: false)
                                    ?? throw new InvalidOperationException("table header range not found");
             Assert(ToColorRefValue(tableHeaderRange.GetAttributeValue(attributes.ForegroundColor)) == ColorRef(0x00, 0x00, 0x00),
@@ -624,7 +1621,7 @@ internal static class Program
 
     private static void ProbeAccessibilityLabKeyboardOrder(Window window)
     {
-        ClickSample(window, "Accessibility_Lab");
+        SelectSample(window, "AccessibilityLab");
         Thread.Sleep(1200);
 
         var renderer = FindRenderer(window);
@@ -651,17 +1648,19 @@ internal static class Program
         Assert(IsCompositeActionButton(focusedCompositeButton),
             $"Fourth Tab should stay inside the composite hosted embed and land on its button, focused={DescribeFocus(focusedCompositeButton)}");
 
-        Keyboard.Press(VirtualKeyShort.TAB); // hosted checkbox
+        Keyboard.Press(VirtualKeyShort.TAB); // copy button for the declined hosted-element fallback
         Thread.Sleep(250);
-        var focusedCheckbox = renderer.Automation.FocusedElement();
-        Assert(focusedCheckbox.ControlType == ControlType.CheckBox,
-            $"Fifth Tab should land on hosted task checkbox, focused={DescribeFocus(focusedCheckbox)}");
+        var focusedCopyButton = renderer.Automation.FocusedElement();
+        Assert(
+            string.Equals(NameOrEmpty(focusedCopyButton), "Copy code", StringComparison.Ordinal) &&
+            AutomationIdOrEmpty(focusedCopyButton).StartsWith("MarkdownCodeCopy-", StringComparison.Ordinal),
+            $"Fifth Tab should land on the fallback code-block copy button, focused={DescribeFocus(focusedCopyButton)}");
 
         var focusedSecondPaintedLink = PressTabExpectPaintedLink(renderer, "Sixth Tab");
         Assert(IsPaintedLinkFocus(focusedSecondPaintedLink),
             $"Sixth Tab should land on second painted hyperlink, focused={DescribeFocus(focusedSecondPaintedLink)}");
 
-        Keyboard.Press(VirtualKeyShort.TAB); // leave markdown
+        Keyboard.Press(VirtualKeyShort.TAB); // seventh Tab leaves markdown
         Thread.Sleep(300);
         var focusedAfterExit = renderer.Automation.FocusedElement();
         Assert(!IsAccessibilityLabInternalFocus(focusedAfterExit),
@@ -689,8 +1688,8 @@ internal static class Program
             }
         });
 
-        var source = window.FindFirstDescendant(cf => cf.ByAutomationId("SampleButton_Accessibility_Lab"))?.AsButton()
-                     ?? throw new InvalidOperationException("Accessibility Lab sample button not found");
+        var source = window.FindFirstDescendant(cf => cf.ByAutomationId("SampleNav_AccessibilityLab"))
+                     ?? throw new InvalidOperationException("Accessibility Lab navigation item not found");
         try
         {
             source.Focus();
@@ -804,8 +1803,7 @@ internal static class Program
                IsRendererOrDocumentFocus(focused) ||
                IsNativeActionButton(focused) ||
                IsCompositeValueTextBox(focused) ||
-               IsCompositeActionButton(focused) ||
-               focused.ControlType == ControlType.CheckBox;
+               IsCompositeActionButton(focused);
     }
 
     private static string DescribeFocus(AutomationElement focused)
@@ -814,18 +1812,36 @@ internal static class Program
     private static string NameOrEmpty(AutomationElement element)
     {
         try { return element.Name ?? string.Empty; }
-        catch { return element.Properties.Name.ValueOrDefault ?? string.Empty; }
+        catch
+        {
+            try { return element.Properties.Name.ValueOrDefault ?? string.Empty; }
+            catch { return string.Empty; }
+        }
     }
 
     private static string AutomationIdOrEmpty(AutomationElement element)
     {
         try { return element.AutomationId ?? string.Empty; }
-        catch { return element.Properties.AutomationId.ValueOrDefault ?? string.Empty; }
+        catch
+        {
+            try { return element.Properties.AutomationId.ValueOrDefault ?? string.Empty; }
+            catch { return string.Empty; }
+        }
+    }
+
+    private static string ClassNameOrEmpty(AutomationElement element)
+    {
+        try { return element.ClassName ?? string.Empty; }
+        catch
+        {
+            try { return element.Properties.ClassName.ValueOrDefault ?? string.Empty; }
+            catch { return string.Empty; }
+        }
     }
 
     private static void ProbeAccessibilityLabPointerResume(Window window)
     {
-        ClickSample(window, "Accessibility_Lab");
+        SelectSample(window, "AccessibilityLab");
         Thread.Sleep(1200);
 
         var renderer = FindRenderer(window);
@@ -847,19 +1863,17 @@ internal static class Program
             Keyboard.Press(VirtualKeyShort.TAB);
             Thread.Sleep(300);
             focused = renderer.Automation.FocusedElement();
-            if (IsCompositeValueTextBox(focused) || IsCompositeActionButton(focused) || focused.ControlType == ControlType.CheckBox)
+            if (IsCompositeValueTextBox(focused) || IsCompositeActionButton(focused))
                 break;
         }
 
-        Assert(IsCompositeValueTextBox(focused) || IsCompositeActionButton(focused) || focused.ControlType == ControlType.CheckBox,
+        Assert(IsCompositeValueTextBox(focused) || IsCompositeActionButton(focused),
             $"Tab after pointer dismissal near hosted controls should resume within markdown focus order, focused={DescribeFocus(focused)}");
     }
 
     private static void ProbeVirtualization(Window window)
     {
-        var btn = window.FindFirstDescendant(cf => cf.ByAutomationId("SampleButton_Virtualization"))?.AsButton()
-                  ?? throw new InvalidOperationException("Virtualization sample button not found");
-        btn.Invoke();
+        SelectSample(window, "Virtualization");
         Thread.Sleep(1500);
 
         var renderer = FindRenderer(window);
@@ -880,9 +1894,7 @@ internal static class Program
 
     private static void ProbeImagesSample(Window window)
     {
-        var btn = window.FindFirstDescendant(cf => cf.ByAutomationId("SampleButton_Images"))?.AsButton()
-                  ?? throw new InvalidOperationException("Images sample button not found");
-        btn.Invoke();
+        SelectSample(window, "Images");
         Thread.Sleep(1500);
         var renderer = FindRenderer(window);
         var text = GetRendererDocumentText(renderer);
@@ -891,9 +1903,7 @@ internal static class Program
 
     private static void ProbeLazyImagesSample(Window window)
     {
-        var btn = window.FindFirstDescendant(cf => cf.ByAutomationId("SampleButton_Lazy_Images"))?.AsButton()
-                  ?? throw new InvalidOperationException("Lazy_Images sample button not found");
-        btn.Invoke();
+        SelectSample(window, "LazyImages");
         Thread.Sleep(1500);
         var renderer = FindRenderer(window);
         var text = GetRendererDocumentText(renderer);
@@ -905,9 +1915,7 @@ internal static class Program
 
     private static void ProbeScrollAnchorSample(Window window)
     {
-        var btn = window.FindFirstDescendant(cf => cf.ByAutomationId("SampleButton_Scroll_Anchor"))?.AsButton()
-                  ?? throw new InvalidOperationException("Scroll_Anchor sample button not found");
-        btn.Invoke();
+        SelectSample(window, "ScrollAnchor");
         Thread.Sleep(1000);
         var renderer = FindRenderer(window);
         var text = GetRendererDocumentText(renderer);
@@ -924,9 +1932,7 @@ internal static class Program
 
     private static void ProbeFootnotesSample(Window window)
     {
-        var btn = window.FindFirstDescendant(cf => cf.ByAutomationId("SampleButton_Footnotes"))?.AsButton()
-                  ?? throw new InvalidOperationException("Footnotes sample button not found");
-        btn.Invoke();
+        SelectSample(window, "Footnotes");
         Thread.Sleep(1200);
         var renderer = FindRenderer(window);
         var text = GetRendererDocumentText(renderer);
@@ -941,9 +1947,7 @@ internal static class Program
 
     private static void ProbeKeyboardNav(Window window)
     {
-        var btn = window.FindFirstDescendant(cf => cf.ByAutomationId("SampleButton_Keyboard_Nav"))?.AsButton()
-                  ?? throw new InvalidOperationException("Keyboard_Nav sample button not found");
-        btn.Invoke();
+        SelectSample(window, "KeyboardNav");
         Thread.Sleep(1200);
 
         var renderer = FindRenderer(window);
@@ -976,10 +1980,8 @@ internal static class Program
 
     private static void ProbeClickDismissesFocus(Window window)
     {
-        // Navigate to Keyboard_Nav sample which has keyboard-focusable links.
-        var btn = window.FindFirstDescendant(cf => cf.ByAutomationId("SampleButton_Keyboard_Nav"))?.AsButton()
-                  ?? throw new InvalidOperationException("Keyboard_Nav sample button not found");
-        btn.Invoke();
+        // Navigate to the Keyboard Nav page, which has keyboard-focusable links.
+        SelectSample(window, "KeyboardNav");
         Thread.Sleep(1200);
 
         var renderer = FindRenderer(window);
@@ -1004,7 +2006,7 @@ internal static class Program
 
     private static void ProbeSelectionDismissesOnExternalPointer(Window window)
     {
-        ClickSample(window, "Selection");
+        SelectSample(window, "Selection");
         Thread.Sleep(1200);
 
         var renderer = FindRenderer(window);
@@ -1030,7 +2032,7 @@ internal static class Program
 
     private static void ProbeSelectionDismissesOnHostedControlPointer(Window window)
     {
-        ClickSample(window, "Accessibility_Lab");
+        SelectSample(window, "AccessibilityLab");
         Thread.Sleep(1200);
 
         var renderer = FindRenderer(window);
@@ -1061,7 +2063,7 @@ internal static class Program
 
         foreach (var c in cases)
         {
-            ClickSample(window, c.Sample);
+            SelectSample(window, c.Sample);
             Thread.Sleep(1200);
 
             var renderer = FindRenderer(window);
@@ -1083,7 +2085,7 @@ internal static class Program
 
     private static void ProbeCtrlCCopiesPointerSelection(Window window)
     {
-        ClickSample(window, "Selection");
+        SelectSample(window, "Selection");
         Thread.Sleep(1200);
 
         var renderer = FindRenderer(window);
@@ -1096,27 +2098,36 @@ internal static class Program
         Assert(!string.IsNullOrWhiteSpace(selected),
             "ctrl-c copy probe must have an active pointer selection before copying");
 
-        TryFocus(renderer, "renderer before Ctrl+C");
-        Thread.Sleep(250);
+        bool rendererFocused = Retry.WhileFalse(
+            () =>
+            {
+                TryFocus(renderer, "renderer before Ctrl+C");
+                return renderer.Properties.HasKeyboardFocus.ValueOrDefault;
+            },
+            timeout: TimeSpan.FromSeconds(3),
+            interval: TimeSpan.FromMilliseconds(100)).Result;
+        Assert(rendererFocused, "renderer did not acquire keyboard focus before Ctrl+C");
         Assert(!string.IsNullOrWhiteSpace(GetRendererSelectionText(renderer)),
             "focusing the renderer before Ctrl+C must preserve the pointer selection");
 
         const string sentinel = "markdown-renderer-clipboard-sentinel";
         SetClipboardText(sentinel);
         Keyboard.TypeSimultaneously(VirtualKeyShort.CONTROL, VirtualKeyShort.KEY_C);
-        Thread.Sleep(700);
-
-        string copied = GetClipboardText();
-        Assert(!string.Equals(copied, sentinel, StringComparison.Ordinal),
+        bool clipboardChanged = Retry.WhileFalse(
+            () => !string.Equals(GetClipboardText(), sentinel, StringComparison.Ordinal),
+            timeout: TimeSpan.FromSeconds(5),
+            interval: TimeSpan.FromMilliseconds(100)).Result;
+        Assert(clipboardChanged,
             "Ctrl+C left the clipboard unchanged; renderer likely did not handle the key event");
+        string copied = GetClipboardText();
         Assert(copied.Contains("select any text", StringComparison.OrdinalIgnoreCase) ||
                copied.Contains("selection spans", StringComparison.OrdinalIgnoreCase),
-            $"Ctrl+C should copy selected markdown source, got: {Truncate(copied, 240)}");
+            $"Ctrl+C should copy selected rendered text, got: {Truncate(copied, 240)}");
     }
 
     private static void ProbeTableSelectionRowBorderIsStable(Window window)
     {
-        ClickSample(window, "Tables");
+        SelectSample(window, "Tables");
         Thread.Sleep(1200);
 
         var renderer = FindRenderer(window);
@@ -1152,9 +2163,7 @@ internal static class Program
     private static void ProbeDoubleClickSelectsWord(Window window)
     {
         // Navigate to Typography sample which has plain paragraphs.
-        var btn = window.FindFirstDescendant(cf => cf.ByAutomationId("SampleButton_Typography"))?.AsButton()
-                  ?? throw new InvalidOperationException("Typography sample button not found");
-        btn.Invoke();
+        SelectSample(window, "Typography");
         Thread.Sleep(1200);
 
         var renderer = FindRenderer(window);
@@ -1179,9 +2188,7 @@ internal static class Program
     private static void ProbeTripleClickSelectsLine(Window window)
     {
         // Navigate to Selection sample which has plain paragraphs.
-        var btn = window.FindFirstDescendant(cf => cf.ByAutomationId("SampleButton_Selection"))?.AsButton()
-                  ?? throw new InvalidOperationException("Selection sample button not found");
-        btn.Invoke();
+        SelectSample(window, "Selection");
         Thread.Sleep(1200);
 
         var renderer = FindRenderer(window);
@@ -1210,7 +2217,7 @@ internal static class Program
 
     private static void ProbeContextMenuCopy(Window window)
     {
-        ClickSample(window, "Selection");
+        SelectSample(window, "Selection");
         Thread.Sleep(1200);
 
         var renderer = FindRenderer(window);
@@ -1248,6 +2255,23 @@ internal static class Program
             interval: TimeSpan.FromMilliseconds(100)).Result
             ?? throw new InvalidOperationException("selected markdown context menu did not expose a Copy item");
 
+        var copyMarkdownItem = Retry.WhileNull(() =>
+            {
+                var inWindow = window.FindAllDescendants(cf => cf.ByControlType(ControlType.MenuItem))
+                    .FirstOrDefault(e => string.Equals(e.Name, "Copy as Markdown", StringComparison.OrdinalIgnoreCase));
+                if (inWindow is not null)
+                    return inWindow;
+
+                return renderer.Automation.GetDesktop()
+                    .FindAllDescendants(cf => cf.ByControlType(ControlType.MenuItem))
+                    .FirstOrDefault(e => string.Equals(e.Name, "Copy as Markdown", StringComparison.OrdinalIgnoreCase) && !e.IsOffscreen);
+            },
+            timeout: TimeSpan.FromSeconds(5),
+            interval: TimeSpan.FromMilliseconds(100)).Result
+            ?? throw new InvalidOperationException("selected markdown context menu did not expose a Copy as Markdown item");
+        Assert(copyMarkdownItem.IsEnabled,
+            "Copy as Markdown must be enabled for a non-empty selection");
+
         copyItem.Click();
         Thread.Sleep(600);
 
@@ -1256,9 +2280,134 @@ internal static class Program
             "context-menu Copy left the clipboard unchanged");
         Assert(copied.Contains("select any text", StringComparison.OrdinalIgnoreCase) ||
                copied.Contains("selection spans", StringComparison.OrdinalIgnoreCase),
-            $"context-menu Copy should copy selected markdown source, got: {Truncate(copied, 240)}");
+            $"context-menu Copy should copy selected rendered text, got: {Truncate(copied, 240)}");
         Assert(GetRendererDocumentText(renderer).Length > 0,
             "renderer must remain responsive after context-menu Copy");
+    }
+
+    private static void ProbeTargetAwareContextCommands(Window window)
+    {
+        SelectSample(window, "AuditMatrix");
+        Thread.Sleep(1200);
+
+        var renderer = FindRenderer(window);
+        Assert(GetRendererDocumentText(renderer).Contains(
+                "Document remains responsive after hostile content",
+                StringComparison.Ordinal),
+            "target-aware context probe requires the complete audit matrix");
+
+        string copiedLink = InvokeTargetContextCommand(
+            window,
+            renderer,
+            FindTextPatternPointAfterScroll(renderer, "keyboard link", "Copy link target"),
+            "MarkdownContextCopyLink",
+            "Copy link");
+        Assert(string.Equals(copiedLink, "https://example.com/audit-link", StringComparison.Ordinal),
+            $"Copy link returned an unexpected target: {Truncate(copiedLink, 240)}");
+
+        string copiedTable = InvokeTargetContextCommand(
+            window,
+            renderer,
+            FindTextPatternPointAfterScroll(renderer, "Surface", "Copy table target"),
+            "MarkdownContextCopyTable",
+            "Copy table");
+        Assert(copiedTable.Contains("Surface\tExpected behavior", StringComparison.Ordinal) &&
+               copiedTable.Contains("Table\tRemains readable and selectable", StringComparison.Ordinal),
+            $"Copy table did not provide rendered TSV: {Truncate(copiedTable, 320)}");
+
+        string copiedCode = InvokeTargetContextCommand(
+            window,
+            renderer,
+            FindTextPatternPointAfterScroll(renderer, "public static string Audit", "Copy code target"),
+            "MarkdownContextCopyCode",
+            "Copy code");
+        Assert(copiedCode.Contains(
+                "public static string Audit() => \"selection and copy remain available\";",
+                StringComparison.Ordinal) &&
+               !copiedCode.Contains("```", StringComparison.Ordinal),
+            $"Copy code did not provide fence-free source: {Truncate(copiedCode, 320)}");
+
+        _ = FindTextPatternPointAfterScroll(renderer, "Safe inline image", "Copy image viewport anchor");
+        var image = Retry.WhileNull(
+            () => renderer.FindAllDescendants(cf => cf.ByControlType(ControlType.Image))
+                .FirstOrDefault(element =>
+                    (element.Name ?? string.Empty).Contains(
+                        "Safe blue audit square",
+                        StringComparison.Ordinal) &&
+                    !element.IsOffscreen),
+            timeout: TimeSpan.FromSeconds(5),
+            interval: TimeSpan.FromMilliseconds(100)).Result
+            ?? throw new InvalidOperationException("Copy image target was not exposed in the visible UIA tree");
+        var imageBounds = image.BoundingRectangle;
+        string copiedImage = InvokeTargetContextCommand(
+            window,
+            renderer,
+            new System.Drawing.Point(
+                imageBounds.Left + imageBounds.Width / 2,
+                imageBounds.Top + imageBounds.Height / 2),
+            "MarkdownContextCopyImage",
+            "Copy image");
+        Assert(copiedImage.StartsWith("data:image/svg+xml", StringComparison.OrdinalIgnoreCase),
+            $"Copy image did not retain its source fallback: {Truncate(copiedImage, 240)}");
+    }
+
+    private static string InvokeTargetContextCommand(
+        Window window,
+        AutomationElement renderer,
+        System.Drawing.Point point,
+        string automationId,
+        string localizedName)
+    {
+        string sentinel = $"markdown-renderer-{automationId}-sentinel";
+        SetClipboardText(sentinel);
+        Mouse.MoveTo(point);
+        Thread.Sleep(100);
+        Mouse.RightClick();
+
+        var item = Retry.WhileNull(
+            () =>
+            {
+                var inWindow = window.FindAllDescendants(cf => cf.ByControlType(ControlType.MenuItem))
+                    .FirstOrDefault(element =>
+                        string.Equals(AutomationIdOrEmpty(element), automationId, StringComparison.Ordinal) &&
+                        !element.IsOffscreen);
+                if (inWindow is not null)
+                    return inWindow;
+
+                return renderer.Automation.GetDesktop()
+                    .FindAllDescendants(cf => cf.ByControlType(ControlType.MenuItem))
+                    .FirstOrDefault(element =>
+                        string.Equals(AutomationIdOrEmpty(element), automationId, StringComparison.Ordinal) &&
+                        string.Equals(NameOrEmpty(element), localizedName, StringComparison.OrdinalIgnoreCase) &&
+                        !element.IsOffscreen);
+            },
+            timeout: TimeSpan.FromSeconds(5),
+            interval: TimeSpan.FromMilliseconds(100)).Result
+            ?? throw new InvalidOperationException(
+                $"target context menu did not expose localized '{localizedName}' ({automationId})");
+        Assert(item.IsEnabled, $"{localizedName} must be enabled for its rendered target");
+        item.Click();
+
+        bool copied = Retry.WhileFalse(
+            () => !string.Equals(GetClipboardText(), sentinel, StringComparison.Ordinal),
+            timeout: TimeSpan.FromSeconds(5),
+            interval: TimeSpan.FromMilliseconds(100)).Result;
+        Assert(copied, $"{localizedName} left the clipboard unchanged");
+        return GetClipboardText();
+    }
+
+    private static System.Drawing.Point FindTextPatternPointAfterScroll(
+        AutomationElement renderer,
+        string text,
+        string description)
+    {
+        var textPattern = renderer.Patterns.Text.PatternOrDefault
+                          ?? throw new InvalidOperationException($"{description}: renderer does not expose TextPattern");
+        var range = textPattern.DocumentRange.FindText(text, backward: false, ignoreCase: true)
+                    ?? throw new InvalidOperationException($"{description}: TextPattern could not find '{text}'");
+        range.ScrollIntoView(alignToTop: false);
+        Thread.Sleep(400);
+        return FindTextPatternPoint(renderer, text, description);
     }
 
     private static void CaptureAuditScreenshot(AutomationElement element, string fileName)
@@ -1287,9 +2436,7 @@ internal static class Program
     {
         // Pick a sample with mixed text + links so hover crosses link/text
         // boundaries (the original repro condition).
-        var btn = window.FindFirstDescendant(cf => cf.ByAutomationId("SampleButton_Typography"))?.AsButton()
-                  ?? throw new InvalidOperationException("Typography sample button not found");
-        btn.Invoke();
+        SelectSample(window, "Typography");
         Thread.Sleep(1200);
 
         var renderer = FindRenderer(window);
@@ -1349,9 +2496,7 @@ internal static class Program
     /// </summary>
     private static void ProbeEmbedsSelectionDoesNotShake(Window window)
     {
-        var btn = window.FindFirstDescendant(cf => cf.ByAutomationId("SampleButton_Embeds"))?.AsButton()
-                  ?? throw new InvalidOperationException("Embeds sample button not found");
-        btn.Invoke();
+        SelectSample(window, "Embeds");
         Thread.Sleep(1500);
 
         var renderer = FindRenderer(window);
@@ -1363,8 +2508,8 @@ internal static class Program
         string logPath = FindShakeLog()
             ?? throw new InvalidOperationException("text_shaking2.log not found — sample may not have ShakeLogger enabled");
 
-        var start = FindSelectableTextPatternPoint(logPath, renderer, "The renderer hosts", "embeds drag start");
-        var end = FindSelectableTextPatternPoint(logPath, renderer, "Anything else", "embeds drag end");
+        var start = FindSelectableTextPatternPoint(logPath, renderer, "Stable extensions never receive", "embeds drag start");
+        var end = FindSelectableTextPatternPoint(logPath, renderer, "content.AddHostedElement", "embeds drag end");
         Assert(Math.Abs(end.X - start.X) + Math.Abs(end.Y - start.Y) >= 80,
             $"embeds selection probe did not find a meaningful in-text drag range: start={start}, end={end}");
         Thread.Sleep(900);
@@ -1379,6 +2524,7 @@ internal static class Program
         int dragEvents = CountOccurrences(appended, "ptr-move-drag");
         int extendEvents = CountOccurrences(appended, "sel-extend");
         int selectionRectEvents = CountOccurrences(appended, "sel-rect-phys");
+        int adornerDrawEvents = CountOccurrences(appended, "sel-adorner-draw");
         int paintEvents = CountOccurrences(appended, "inline-paint");
         int regionEvents = CountOccurrences(appended, " region ");
 
@@ -1393,6 +2539,9 @@ internal static class Program
             $"Recent log excerpt: {Truncate(appended, 600)}");
         Assert(selectionRectEvents > 0,
             $"embed selection-shake probe did not render selection overlay rectangles. " +
+            $"Recent log excerpt: {Truncate(appended, 600)}");
+        Assert(adornerDrawEvents > 0,
+            $"embed selection-shake probe did not render through the dedicated selection adorner. " +
             $"Recent log excerpt: {Truncate(appended, 600)}");
         Assert(!string.IsNullOrWhiteSpace(GetRendererSelectionText(renderer)),
             $"embed selection-shake probe did not expose the resulting selection through TextPattern. " +
@@ -1787,6 +2936,69 @@ internal static class Program
         => window.FindFirstDescendant(cf => cf.ByAutomationId("MarkdownRenderer"))
            ?? throw new InvalidOperationException("MarkdownRenderer not found in automation tree");
 
+    private static AutomationElement? FindFirstRawDescendantByAutomationId(
+        AutomationElement root,
+        string automationId)
+    {
+        var walker = root.Automation.TreeWalkerFactory.GetRawViewWalker();
+        var pending = new Queue<AutomationElement>();
+        EnqueueChildren(root);
+        while (pending.Count > 0)
+        {
+            AutomationElement current = pending.Dequeue();
+            if (string.Equals(
+                    AutomationIdOrEmpty(current),
+                    automationId,
+                    StringComparison.Ordinal))
+            {
+                return current;
+            }
+
+            EnqueueChildren(current);
+        }
+
+        return null;
+
+        void EnqueueChildren(AutomationElement parent)
+        {
+            AutomationElement? child;
+            try { child = walker.GetFirstChild(parent); }
+            catch { return; }
+
+            while (child is not null)
+            {
+                pending.Enqueue(child);
+                try { child = walker.GetNextSibling(child); }
+                catch { return; }
+            }
+        }
+    }
+
+    private static AutomationElement WaitForDiagnostics(Window window, string expectedCode)
+    {
+        AutomationElement? diagnostics = null;
+        bool ready = Retry.WhileFalse(
+            () =>
+            {
+                diagnostics = window.FindFirstDescendant(
+                    cf => cf.ByAutomationId("SampleDiagnosticsMessage"));
+                return diagnostics is not null &&
+                       GetAutomationElementText(diagnostics).Contains(expectedCode, StringComparison.Ordinal);
+            },
+            timeout: TimeSpan.FromSeconds(10),
+            interval: TimeSpan.FromMilliseconds(100)).Result;
+        Assert(ready, $"renderer diagnostics did not expose {expectedCode}");
+        return diagnostics!;
+    }
+
+    private static string GetAutomationElementText(AutomationElement element)
+    {
+        var textPattern = element.Patterns.Text.PatternOrDefault;
+        return textPattern is null
+            ? NameOrEmpty(element)
+            : textPattern.DocumentRange.GetText(-1);
+    }
+
     private static string GetRendererDocumentText(AutomationElement renderer)
     {
         var textPattern = renderer.Patterns.Text.PatternOrDefault
@@ -1801,11 +3013,40 @@ internal static class Program
         return string.Concat(textPattern.GetSelection().Select(range => range.GetText(-1)));
     }
 
-    private static void ClickSample(Window window, string automationIdSuffix)
+    private static void SelectSample(Window window, string key)
     {
-        var btn = window.FindFirstDescendant(cf => cf.ByAutomationId("SampleButton_" + automationIdSuffix))?.AsButton()
-                  ?? throw new InvalidOperationException($"{automationIdSuffix} sample button not found");
-        btn.Invoke();
+        AutomationElement item = window.FindFirstDescendant(
+            cf => cf.ByAutomationId("SampleNav_" + key))
+            ?? throw new InvalidOperationException($"{key} sample navigation item not found");
+
+        if (item.Patterns.ScrollItem.IsSupported)
+        {
+            try { item.Patterns.ScrollItem.Pattern.ScrollIntoView(); }
+            catch { }
+        }
+
+        if (item.Patterns.SelectionItem.IsSupported)
+        {
+            item.Patterns.SelectionItem.Pattern.Select();
+        }
+        else if (item.Patterns.Invoke.IsSupported)
+        {
+            item.Patterns.Invoke.Pattern.Invoke();
+        }
+        else
+        {
+            item.Click();
+        }
+
+        string expectedStatus = "page:" + key;
+        bool selected = Retry.WhileFalse(
+            () => string.Equals(
+                FindFirstRawDescendantByAutomationId(window, "CurrentSamplePage")?.Name,
+                expectedStatus,
+                StringComparison.Ordinal),
+            timeout: TimeSpan.FromSeconds(10),
+            interval: TimeSpan.FromMilliseconds(100)).Result;
+        Assert(selected, $"{key} sample page did not become current");
     }
 
     private static int CountEmbedButtons(AutomationElement renderer)
@@ -1830,7 +3071,7 @@ internal static class Program
             while (root.Parent is not null
                    && root.ControlType != FlaUI.Core.Definitions.ControlType.Window)
                 root = root.Parent;
-            var status = root.FindFirstDescendant(cf => cf.ByAutomationId("RealizedEmbedCount"));
+            var status = FindFirstRawDescendantByAutomationId(root, "RealizedEmbedCount");
             string? text = status?.Name ?? status?.Properties.Name.ValueOrDefault;
             if (string.IsNullOrEmpty(text)) return 0;
             const string prefix = "realized:";
@@ -1870,6 +3111,30 @@ internal static class Program
         }
     }
 
+    private static void PositionPointerOnWritableInputDesktop(System.Drawing.Point target)
+    {
+        System.Drawing.Point original = Mouse.Position;
+        var probe = new System.Drawing.Point(
+            target.X == int.MaxValue ? target.X - 1 : target.X + 1,
+            target.Y);
+        Mouse.Position = probe;
+        Thread.Sleep(50);
+        System.Drawing.Point actual = Mouse.Position;
+        if (actual != probe)
+            throw new InvalidOperationException(
+                "Pointer-input infrastructure precondition failed: the automation process cannot move " +
+                $"the desktop cursor from {original} to {probe} (actual={actual}). " +
+                "Run this probe on an interactive, unlocked, writable input desktop.");
+
+        Mouse.Position = target;
+        Thread.Sleep(50);
+        actual = Mouse.Position;
+        if (actual != target)
+            throw new InvalidOperationException(
+                "Pointer-input infrastructure precondition failed: the automation process moved a probe cursor " +
+                $"but could not position it on the Mermaid link at {target} (actual={actual}).");
+    }
+
     private static void WaitForSampleContent(Window window, Application app)
     {
         var ready = Retry.WhileFalse(() =>
@@ -1877,8 +3142,9 @@ internal static class Program
                 if (app.HasExited) return true;
                 try
                 {
-                    return window.FindFirstDescendant(cf => cf.ByAutomationId("MarkdownRenderer")) is not null ||
-                           window.FindFirstDescendant(cf => cf.ByAutomationId("SampleButton_Typography")) is not null;
+                    return window.FindFirstDescendant(cf => cf.ByAutomationId("MarkdownRenderer")) is not null &&
+                           window.FindFirstDescendant(cf => cf.ByAutomationId("SampleNavigation")) is not null &&
+                           window.FindFirstDescendant(cf => cf.ByAutomationId("SampleNav_FullDemo")) is not null;
                 }
                 catch { return false; }
             },
@@ -1888,7 +3154,7 @@ internal static class Program
         if (app.HasExited)
             throw new InvalidOperationException("Sample app exited before UIA content became available.");
         if (!ready)
-            throw new InvalidOperationException("Sample app did not expose MarkdownRenderer or sample buttons within 20 seconds.");
+            throw new InvalidOperationException("Sample app did not expose its renderer and side navigation within 20 seconds.");
     }
 
     private static string? ParseAppPath(string[] args)
@@ -1908,6 +3174,7 @@ internal static class Program
 
         if (enableDiagnostics)
             startInfo.Environment[DiagnosticsEnvironmentVariable] = "1";
+        startInfo.Environment["MARKDOWN_RENDERER_DISPOSAL_EVIDENCE"] = DisposalEvidencePath;
 
         return Application.Launch(startInfo);
     }

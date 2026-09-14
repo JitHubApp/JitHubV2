@@ -79,11 +79,25 @@ internal static class SvgResourceBudget
                 {
                     if (elementCount == 0)
                     {
-                        sawSvgRoot = reader.LocalName.Equals("svg", StringComparison.OrdinalIgnoreCase);
+                        sawSvgRoot =
+                            reader.LocalName.Equals("svg", StringComparison.OrdinalIgnoreCase) &&
+                            IsSvgNamespace(reader.NamespaceURI);
                     }
                     if (++elementCount > MaxElements)
                     {
                         return SvgResourceBudgetResult.Reject("element-count");
+                    }
+
+                    // ThorVG 1.1.1 implements feGaussianBlur but silently
+                    // ignores the other SVG filter primitives. A successful
+                    // raster containing unprocessed effects is a misleading,
+                    // lossy result, so reject those inputs before native work
+                    // and let the renderer use its accessible atomic fallback.
+                    if (IsSvgNamespace(reader.NamespaceURI) &&
+                        reader.LocalName.StartsWith("fe", StringComparison.OrdinalIgnoreCase) &&
+                        !reader.LocalName.Equals("feGaussianBlur", StringComparison.OrdinalIgnoreCase))
+                    {
+                        return SvgResourceBudgetResult.Reject("unsupported-filter-primitive");
                     }
 
                     if (reader.HasAttributes)
@@ -157,6 +171,10 @@ internal static class SvgResourceBudget
             ? SvgResourceBudgetResult.Reject("missing-root")
             : SvgResourceBudgetResult.Success;
     }
+
+    private static bool IsSvgNamespace(string? namespaceUri) =>
+        string.IsNullOrEmpty(namespaceUri) ||
+        string.Equals(namespaceUri, "http://www.w3.org/2000/svg", StringComparison.Ordinal);
 
     private static bool TryReadLeadingNumber(string? value, out double result)
     {

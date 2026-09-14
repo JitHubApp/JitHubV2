@@ -68,6 +68,8 @@ public static class MarkdownElementKeys
     public const string FigureCaption = "FigureCaption";
     /// <summary>Sample or extension-provided diagram block.</summary>
     public const string Diagram = "Diagram";
+    /// <summary>Inline or display mathematical expression.</summary>
+    public const string Math = "Math";
     /// <summary>List bullet or ordinal marker.</summary>
     public const string ListMarker = "ListMarker";
     /// <summary>Thematic break separator.</summary>
@@ -117,7 +119,7 @@ public static class MarkdownElementKeys
     /// Returns the override key for a one-based list nesting depth.
     /// </summary>
     public static string ListDepth(int depth)
-        => $"ListDepth{Math.Max(1, depth)}";
+        => $"ListDepth{System.Math.Max(1, depth)}";
 
     private static string NormalizeAlias(string value)
     {
@@ -142,11 +144,11 @@ public sealed class ElementStyle
     /// <summary>Font size in device-independent pixels.</summary>
     public float FontSize { get; init; } = 14f;
     /// <summary>Font weight.</summary>
-    public Windows.UI.Text.FontWeight FontWeight { get; init; } = Microsoft.UI.Text.FontWeights.Normal;
+    public Windows.UI.Text.FontWeight FontWeight { get; init; } = new() { Weight = 400 };
     /// <summary>Font style.</summary>
     public Windows.UI.Text.FontStyle FontStyle { get; init; } = Windows.UI.Text.FontStyle.Normal;
     /// <summary>Primary foreground color.</summary>
-    public Color Foreground { get; init; } = Microsoft.UI.Colors.Black;
+    public Color Foreground { get; init; } = Color.FromArgb(0xFF, 0, 0, 0);
     /// <summary>Optional foreground color for hovered links.</summary>
     public Color? HoverForeground { get; init; }
     /// <summary>Optional foreground color for keyboard-focused links.</summary>
