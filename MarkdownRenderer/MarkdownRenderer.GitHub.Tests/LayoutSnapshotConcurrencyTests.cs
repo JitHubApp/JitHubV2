@@ -135,6 +135,25 @@ public sealed class LayoutSnapshotConcurrencyTests
     }
 
     [Fact]
+    public async Task RetiredSnapshotsCannotStartAnotherPaint()
+    {
+        var snapshot = new LayoutSnapshot(
+            Array.Empty<BlockBox>(),
+            new MarkdownSourceMap(string.Empty),
+            100,
+            100);
+
+        Task retirement = snapshot.Retire();
+        bool beganPaint = snapshot.TryBeginPaint();
+        if (beganPaint)
+            snapshot.EndPaint();
+
+        Assert.False(beganPaint);
+        await retirement.WaitAsync(TimeSpan.FromSeconds(2));
+        Assert.False(snapshot.TryBeginPaint());
+    }
+
+    [Fact]
     public async Task LazyCancellation_ReachesADeepNestedMeasureCheckpoint()
     {
         var leaf = new CancellationAwareLeafBox();

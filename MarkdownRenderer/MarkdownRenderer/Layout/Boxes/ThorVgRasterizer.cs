@@ -47,9 +47,11 @@ internal static class ThorVgRasterizer
 
         try
         {
-            // 0 = let ThorVG pick a sensible default thread count for
-            // its task scheduler. Shutdown is coordinated explicitly by
-            // ShutdownForProcessExit(), not by finalizer/process-exit races.
+            // Zero keeps ThorVG on the calling thread. Even in this mode the
+            // C API requires every draw to be followed by canvas_sync before
+            // the target buffer is unpinned or the canvas is destroyed.
+            // Shutdown is coordinated explicitly by ShutdownForProcessExit(),
+            // not by finalizer/process-exit races.
             var r = tvg_engine_init(0);
             if (r != Tvg_Result.Success)
             {
@@ -270,30 +272,38 @@ internal static class ThorVgRasterizer
                 }
                 picture.RelinquishOwnership();
 
-                var ur = tvg_canvas_update(canvas.DangerousGetHandle());
-                cancellationToken.ThrowIfCancellationRequested();
-                if (ur != Tvg_Result.Success && ur != Tvg_Result.InsufficientCondition)
+                // draw performs an implicit update. Keep draw and sync in one
+                // non-cancelable native lifetime: ThorVG requires sync after
+                // every draw regardless of its configured worker count. A
+                // cancellation observed between these calls could otherwise
+                // unpin bgra and destroy the canvas while native code still
+                // references them, which is a process-fatal CFG violation.
+                Tvg_Result dr = Tvg_Result.Unknown;
+                Tvg_Result sr = Tvg_Result.Unknown;
+                bool drawEntered = false;
+                try
                 {
-                    MarkdownDiagnostics.WriteLine($"[ThorVgRasterizer] canvas_update returned: {ur}");
-                    // Continue — InsufficientCondition can mean "nothing to update".
+                    drawEntered = true;
+                    dr = tvg_canvas_draw(canvas.DangerousGetHandle(), clear: true);
+                }
+                finally
+                {
+                    if (drawEntered)
+                        sr = tvg_canvas_sync(canvas.DangerousGetHandle());
                 }
 
-                var dr = tvg_canvas_draw(canvas.DangerousGetHandle(), clear: true);
                 if (dr != Tvg_Result.Success)
                 {
                     MarkdownDiagnostics.WriteLine($"[ThorVgRasterizer] canvas_draw failed: {dr}");
                     return null;
                 }
-
-                // canvas_sync blocks until the (possibly threaded) rasterize
-                // completes. Until this returns, the output buffer is
-                // owned by the engine and must not be read.
-                var sr = tvg_canvas_sync(canvas.DangerousGetHandle());
                 if (sr != Tvg_Result.Success)
                 {
                     MarkdownDiagnostics.WriteLine($"[ThorVgRasterizer] canvas_sync failed: {sr}");
                     return null;
                 }
+
+                cancellationToken.ThrowIfCancellationRequested();
             }
 
             // ThorVG writes ARGB8888 premultiplied = native-endian uint32.

@@ -1169,16 +1169,22 @@ internal sealed class LayoutSnapshot : System.IDisposable
     /// realization can hold the mutation lock while native text layout runs; a
     /// frame should retain its existing tile instead of blocking behind it.
     /// </summary>
-    internal bool TryBeginPaint() => Monitor.TryEnter(_layoutLock);
+    internal bool TryBeginPaint() => TryBeginRead();
 
     // Pointer handlers use this before touching any mutable block/native layout
     // state. A busy snapshot is a retry, never a text hit-test miss.
-    internal bool TryBeginInteraction()
+    internal bool TryBeginInteraction() => TryBeginRead();
+
+    private bool TryBeginRead()
     {
         if (!Monitor.TryEnter(_layoutLock))
             return false;
-        if (Volatile.Read(ref _retirementRequested) == 0)
+        if (Volatile.Read(ref _retirementRequested) == 0 &&
+            Volatile.Read(ref _disposed) == 0)
+        {
             return true;
+        }
+
         Monitor.Exit(_layoutLock);
         return false;
     }

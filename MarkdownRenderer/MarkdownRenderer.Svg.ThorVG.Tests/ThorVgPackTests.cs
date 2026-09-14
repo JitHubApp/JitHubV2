@@ -127,6 +127,40 @@ public sealed class ThorVgPackTests
     }
 
     [Fact]
+    public async Task NativeOwnership_RemainsStableWhenCancellationRacesRendering()
+    {
+        string circles = string.Concat(Enumerable.Range(0, 512).Select(index =>
+            $"<circle cx='{index % 64}' cy='{index / 8}' r='3' fill='#{index % 0xFFFFFF:X6}'/>"));
+        byte[] source = Svg(
+            $"<svg xmlns='http://www.w3.org/2000/svg' width='64' height='64'>{circles}</svg>");
+
+        for (int iteration = 0; iteration < 16; iteration++)
+        {
+            using var cancellation = new CancellationTokenSource();
+            Task<ThorVgRaster?> rendering = Task.Run(() =>
+                ThorVgFeature.Rasterize(source, 512, 512, cancellation.Token));
+            await Task.Delay(1);
+            cancellation.Cancel();
+
+            try
+            {
+                _ = await rendering.WaitAsync(TimeSpan.FromSeconds(5));
+            }
+            catch (OperationCanceledException)
+            {
+                // Cancellation may win at any managed checkpoint. The native
+                // draw/sync lifetime still has to quiesce before this escapes.
+            }
+        }
+
+        ThorVgRaster? followUp = ThorVgFeature.Rasterize(
+            Svg("<svg xmlns='http://www.w3.org/2000/svg' width='8' height='8'><rect width='8' height='8' fill='#0078d4'/></svg>"),
+            8,
+            8);
+        Assert.NotNull(followUp);
+    }
+
+    [Fact]
     public void CompiledInterop_UsesLibraryImportCdeclAndSafeHandles()
     {
         Assembly winui = typeof(global::MarkdownRenderer.Controls.MarkdownScrollView).Assembly;
