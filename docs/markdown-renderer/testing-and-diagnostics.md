@@ -36,7 +36,23 @@ dotnet test MarkdownRenderer\MarkdownRenderer.Tests\MarkdownRenderer.Tests.cspro
 
 Current automation checks include:
 
+- sample-shell discovery through `SampleNavigation`;
+- all grouped destinations through stable `SampleNav_<page-key>` automation IDs
+  and `SelectionItem` semantics;
+- navigation completion through test-only raw-UIA `CurrentSamplePage` values of
+  `page:<page-key>`; raw status probes are excluded from the assistive-technology
+  control/content views;
+- independent page navigation resetting the preview viewport to the top;
 - automation tree shape;
+- the Safe HTML page's native rendering and security boundary, including
+  TextPattern content, native table and link peers, disclosure
+  `ExpandCollapsePattern`, collapse/expand text updates, inert literal fallback
+  for script and an unknown element, and suppression of frame and form content;
+- the sample host's URI-scheme allowlist, including rejection of custom protocols;
+- the Math page's three native formula peers and zero-diagnostic clean render;
+- the Audit matrix's exact invalid-Math and unsupported-ELK fallbacks, selectable
+  visible `MATH100` and `MMR0002` diagnostics with half-open source spans, and an
+  accessibility notification when the diagnostic page is left;
 - Accessibility Lab TextPattern text/ranges/bounds;
 - Accessibility Lab `RangeFromChild` for hyperlinks, images, and hosted WinUI
   embedded controls;
@@ -50,16 +66,16 @@ Current automation checks include:
 - pointer-dismiss resume within the markdown focus order;
 - selection dismissal when clicking another app control or a hosted WinUI
   control inside the markdown surface;
-- RTL flow toggle;
-- sample button discoverability;
+- RTL flow toggle on the active page;
+- sample navigation discoverability;
 - embed virtualization bounded realization;
 - images sample load;
 - lazy image sample load;
 - scroll anchoring sample load;
 - footnotes sample load;
-- Markdown Extra sample load;
-- diagram embed sample load;
-- long-document stress sample load;
+- a clean primary Mermaid page with native-scene semantics, pointer/UIA/keyboard
+  link activation, vector text scaling, forced-high-contrast pixel/text-attribute
+  evidence, and zero diagnostics;
 - keyboard Tab traversal;
 - focus-ring dismissal on click;
 - double-click word selection;
@@ -83,6 +99,32 @@ such as:
 
 The Embeds shake probe also asserts that no `region` or `inline-paint` events
 occur during the measured selection drag.
+
+### Sample navigation contracts
+
+Automation selects feature pages by stable identity rather than localized labels.
+The helper first locates `SampleNav_<page-key>`, scrolls the item into view when
+`ScrollItemPattern` is available, and selects it through `SelectionItemPattern`
+with invoke/click fallbacks. It then waits for `CurrentSamplePage` to publish
+`page:<page-key>` before inspecting the persistent `MarkdownRenderer` surface.
+`CurrentSamplePage` is deliberately a raw-tree test hook, not user-facing UIA
+content; automation clients must search the raw tree for it.
+
+The renderer, editor, and display-command contracts remain stable across page
+selection: `MarkdownRenderer`, `MarkdownEditor`, `ThemeToggle`, `RtlToggle`,
+`ForcedHighContrastToggle`, and `TextScaleToggle`. Tests should not locate a
+destination by its localized `NavigationViewItem.Content` or assume it exposes
+the Button control type.
+
+The visible `SampleDiagnostics` region reports committed
+`MarkdownDocument.Diagnostics` without reparsing. `SampleDiagnosticsMessage` is
+selectable and uses polite live-region semantics; each line exposes localized
+severity, diagnostic code, message, and a half-open UTF-16 source span.
+During editor-driven replacement renders, the previous region remains associated
+with the displayed snapshot until a new render commits. Page navigation clears the
+previous destination's region immediately. Clearing an open region emits an
+`ActionCompleted` notification before it closes so assistive technology can announce
+that the diagnostic no longer applies.
 
 ## ShakeLogger
 
@@ -118,6 +160,6 @@ Run these before declaring a 1.0 package ready:
 - rapid theme switching during scroll, image/SVG load completion, and selection;
 - concurrent scroll + selection + hosted-control drag-through;
 - monitor disconnect/reconnect or graphics-device reset smoke;
-- x86, x64, and ARM64 sample launch with SVG rendering;
+- x86, x64, and ARM64 sample launch, including SVG only when the ThorVG pack is selected;
 - package inspection for XML docs, README, icon, license metadata, source docs,
-  and all native ThorVG runtime assets.
+  and, for the optional ThorVG package, all native runtime assets.

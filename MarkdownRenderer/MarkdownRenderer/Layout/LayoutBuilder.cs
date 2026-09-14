@@ -1,29 +1,51 @@
 using System;
 using System.Collections.Generic;
 using System.Threading;
+using Microsoft.Graphics.Canvas.Text;
+using Microsoft.UI.Xaml;
 using Markdig.Syntax;
 using Markdig.Syntax.Inlines;
 using Markdig.Extensions.Abbreviations;
 using Markdig.Extensions.Footnotes;
 using MarkdownRenderer.CodeBlocks;
+using MarkdownRenderer.Accessibility;
 using MarkdownRenderer.Hosting;
 using MarkdownRenderer.Layout.Boxes;
 using MarkdownRenderer.Parsing;
 using MarkdownRenderer.Theming;
+using MarkdownRenderer.Extensions;
 
 namespace MarkdownRenderer.Layout;
 
 internal sealed class LayoutBuilder
 {
     private const int MaxMonolithicTextLayoutLength = 32_768;
+    private const int MaxCodeBlockLinesPerChunk = 128;
 
     private readonly MarkdownLayoutContext _context;
     private readonly IMarkdownEmbedFactory? _embedFactory;
+    private readonly bool _enableDeclarativeHostedElements;
+    private readonly MarkdownRenderer.Document.MarkdownDocument? _semanticDocument;
+    private readonly IReadOnlySet<HostedElementFallbackKey> _hostedElementFallbacks;
+    private readonly MarkdownEngine? _sharedLayoutEngine;
+    private readonly SharedLayoutMetricsKey? _sharedLayoutMetricsKey;
 
-    public LayoutBuilder(MarkdownLayoutContext context, IMarkdownEmbedFactory? embedFactory = null)
+    public LayoutBuilder(
+        MarkdownLayoutContext context,
+        IMarkdownEmbedFactory? embedFactory = null,
+        bool enableDeclarativeHostedElements = false,
+        MarkdownRenderer.Document.MarkdownDocument? semanticDocument = null,
+        IReadOnlySet<HostedElementFallbackKey>? hostedElementFallbacks = null,
+        MarkdownEngine? sharedLayoutEngine = null,
+        SharedLayoutMetricsKey? sharedLayoutMetricsKey = null)
     {
         _context = context;
         _embedFactory = embedFactory;
+        _enableDeclarativeHostedElements = enableDeclarativeHostedElements;
+        _semanticDocument = semanticDocument;
+        _hostedElementFallbacks = hostedElementFallbacks ?? new HashSet<HostedElementFallbackKey>();
+        _sharedLayoutEngine = sharedLayoutEngine;
+        _sharedLayoutMetricsKey = sharedLayoutMetricsKey;
     }
 
     public LayoutSnapshot Build(MarkdownDocument document, float availableWidth)
@@ -32,20 +54,42 @@ internal sealed class LayoutBuilder
     public LayoutSnapshot Build(MarkdownDocument document, float availableWidth, CancellationToken cancellationToken)
     {
         var blocks = BuildBlocks(document, cancellationToken);
+        SharedLayoutMetrics? sharedMetrics = AcquireSharedMetrics(blocks.Count);
 
-        float y = 0;
-        foreach (var b in blocks)
+        Thickness documentPadding = _context.ThemeSnapshot.DocumentPadding;
+        float contentX = (float)documentPadding.Left;
+        float contentWidth = (float)Math.Max(
+            1,
+            availableWidth - documentPadding.Left - documentPadding.Right);
+        float blockSpacing = (float)_context.ThemeSnapshot.BlockSpacing;
+        float y = (float)documentPadding.Top;
+        for (int blockOrdinal = 0; blockOrdinal < blocks.Count; blockOrdinal++)
         {
             cancellationToken.ThrowIfCancellationRequested();
+            BlockBox b = blocks[blockOrdinal];
             b.ThrowIfCancellationRequested();
-            float h = b.Measure(availableWidth);
-            b.Arrange(0, y, availableWidth);
+            float h = b.Measure(contentWidth);
+            b.Arrange(contentX, y, contentWidth);
+            sharedMetrics?.RecordHeight(blockOrdinal, h);
             y += h;
+            if (blockOrdinal < blocks.Count - 1)
+                y += blockSpacing;
         }
+        y += (float)documentPadding.Bottom;
 
         var (defs, refs) = _context.SnapshotFootnoteRegistry();
         var fragments = _context.SnapshotFragmentTargets();
-        return new LayoutSnapshot(blocks, _context.SourceMap, availableWidth, y, defs, refs, fragments);
+        return new LayoutSnapshot(
+            blocks,
+            _context.SourceMap,
+            availableWidth,
+            y,
+            defs,
+            refs,
+            fragments,
+            sharedMetrics,
+            documentPadding,
+            blockSpacing);
     }
 
     public LayoutSnapshot BuildLazy(
@@ -58,26 +102,67 @@ internal sealed class LayoutBuilder
     {
         var blocks = BuildBlocks(document, cancellationToken);
         cancellationToken.ThrowIfCancellationRequested();
+        SharedLayoutMetrics? sharedMetrics = AcquireSharedMetrics(blocks.Count);
 
         var (defs, refs) = _context.SnapshotFootnoteRegistry();
         var fragments = _context.SnapshotFragmentTargets();
-        var snapshot = new LayoutSnapshot(blocks, _context.SourceMap, availableWidth, 0, defs, refs, fragments);
+        var snapshot = new LayoutSnapshot(
+            blocks,
+            _context.SourceMap,
+            availableWidth,
+            0,
+            defs,
+            refs,
+            fragments,
+            sharedMetrics,
+            _context.ThemeSnapshot.DocumentPadding,
+            _context.ThemeSnapshot.BlockSpacing);
         snapshot.EnableLazyLayout(availableWidth, viewportTop, viewportHeight, overscan, cancellationToken);
         return snapshot;
+    }
+
+    private SharedLayoutMetrics? AcquireSharedMetrics(int topLevelBlockCount)
+    {
+        if (_sharedLayoutMetricsKey is null)
+            return null;
+
+        return SharedLayoutMetricsCache.Acquire(
+            _sharedLayoutEngine,
+            _sharedLayoutMetricsKey,
+            topLevelBlockCount);
     }
 
     private List<BlockBox> BuildBlocks(MarkdownDocument document, CancellationToken cancellationToken)
     {
         var blocks = new List<BlockBox>();
-        var htmlScopes = new SafeHtmlBlockScopeTracker();
+        SafeHtmlBlockScopeTracker? htmlScopes = _context.Registry.SafeHtmlPolicy is null
+            ? null
+            : new SafeHtmlBlockScopeTracker(_context.Registry.SafeHtmlPolicy.Limits);
+        bool htmlBudgetNoticeAdded = false;
         foreach (var b in document)
         {
             cancellationToken.ThrowIfCancellationRequested();
-            bool suppressedBeforeBlock = htmlScopes.IsContentSuppressed;
-            if (b is HtmlBlock htmlBlock && htmlScopes.Process(
+            bool suppressedBeforeBlock = htmlScopes?.IsContentSuppressed == true;
+            bool scopeOnly = b is HtmlBlock htmlBlock && htmlScopes?.Process(
                     htmlBlock.Lines.ToString(),
                     htmlBlock.Span.Start,
-                    _context.DisclosureStates))
+                    _context.DisclosureStates,
+                    cancellationToken) == true;
+            if (b is HtmlBlock && htmlScopes?.BudgetExceeded == true)
+            {
+                if (!htmlBudgetNoticeAdded)
+                {
+                    var notice = new InlineContainerBox(_context, MarkdownElementKeys.Body)
+                    {
+                        BlockIndex = _context.NextBlockIndex(),
+                    };
+                    AddHtmlBudgetNotice(notice);
+                    blocks.Add(notice);
+                    htmlBudgetNoticeAdded = true;
+                }
+                continue;
+            }
+            if (scopeOnly)
             {
                 continue;
             }
@@ -90,7 +175,8 @@ internal sealed class LayoutBuilder
             var box = BuildBlock(b);
             if (box is not null)
             {
-                ApplyHtmlAlignment(box, htmlScopes.CurrentAlignment);
+                if (htmlScopes is not null)
+                    ApplyHtmlAlignment(box, htmlScopes.CurrentAlignment);
                 blocks.Add(box);
             }
         }
@@ -135,7 +221,17 @@ internal sealed class LayoutBuilder
         using var attrScope = _context.PushMarkdownAttributes(block);
         BlockBox? box = null;
 
-        if (_embedFactory is { } ef)
+        if (_semanticDocument is { } document &&
+            DeclarativeBlockSelection.TryGetContent(
+                document,
+                block,
+                _hostedElementFallbacks,
+                out var extensionFragment))
+        {
+            box = TryBuildDeclarativeBlock(extensionFragment!);
+        }
+
+        if (box is null && _embedFactory is { } ef)
         {
             _context.ThrowIfEmbedLayoutCallbackIsOnUiThread(nameof(IMarkdownEmbedFactory.CanCreate));
             if (!ef.CanCreate(block))
@@ -174,6 +270,7 @@ internal sealed class LayoutBuilder
             QuoteBlock qb => BuildQuote(qb),
             ListBlock lb => BuildList(lb),
             ThematicBreakBlock => MakeThematicBreak(),
+            HtmlBlock html => BuildLiteralHtmlBlock(html),
             ContainerBlock cb => BuildGenericContainer(cb),
             _ => null
         };
@@ -182,6 +279,517 @@ internal sealed class LayoutBuilder
             _context.RegisterMarkdownAttributes(block, box.BlockIndex);
 
         return box;
+    }
+
+    private InlineContainerBox BuildLiteralHtmlBlock(HtmlBlock block)
+    {
+        var box = new InlineContainerBox(_context, MarkdownElementKeys.Body)
+        {
+            BlockIndex = _context.NextBlockIndex(),
+        };
+        string source = block.Lines.ToString();
+        box.Add(new TextRun(source)
+        {
+            SourceSpan = new SourceSpan(block.Span.Start, Math.Max(0, block.Span.Length)),
+        });
+        return box;
+    }
+
+    private BlockBox? TryBuildDeclarativeBlock(MarkdownContentFragment fragment)
+    {
+        // Validate the complete fragment before allocating block indices or
+        // recording source-map entries. Unsupported output must fall back to
+        // the built-in renderer atomically, without leaving partial layout
+        // state behind.
+        if (fragment.Items.Count == 0)
+            return null;
+        foreach (MarkdownContent content in fragment.Items)
+        {
+            if (!CanBuildDeclarativeContent(content))
+                return null;
+        }
+
+        var fallbackKey = new HostedElementFallbackKey(fragment);
+
+        if (fragment.Items.Count == 1)
+            return TryBuildDeclarativeContent(fragment.Items[0], fallbackKey);
+
+        var stack = new StackBox
+        {
+            FlowDirection = _context.FlowDirection,
+            BlockIndex = _context.NextBlockIndex(),
+        };
+        foreach (MarkdownContent content in fragment.Items)
+        {
+            var child = TryBuildDeclarativeContent(content, fallbackKey);
+            if (child is null)
+                return null;
+            stack.Add(child);
+        }
+
+        return stack.Children.Count > 0 ? stack : null;
+    }
+
+    private bool CanBuildDeclarativeContent(MarkdownContent content) => content.Kind switch
+    {
+        MarkdownContentKind.Text => content.Text is not null,
+        MarkdownContentKind.CodeBlock => content.Text is not null,
+        MarkdownContentKind.Image => !string.IsNullOrWhiteSpace(content.Destination),
+        MarkdownContentKind.VectorScene => content.VectorScene is not null,
+        MarkdownContentKind.HostedElement =>
+            _enableDeclarativeHostedElements && !string.IsNullOrWhiteSpace(content.FactoryKey),
+        MarkdownContentKind.Link =>
+            !string.IsNullOrWhiteSpace(content.Destination) &&
+            content.Children.Count > 0 &&
+            AllChildren(content, CanBuildDeclarativeInlineContent),
+        MarkdownContentKind.Container =>
+            content.Children.Count > 0 &&
+            (AllChildren(content, CanBuildDeclarativeInlineContent) ||
+             AllChildren(content, CanBuildDeclarativeContent)),
+        MarkdownContentKind.List =>
+            content.Children.Count > 0 &&
+            AllChildren(content, static child => child.Kind == MarkdownContentKind.ListItem) &&
+            AllChildren(content, CanBuildDeclarativeListItem),
+        MarkdownContentKind.ListItem => CanBuildDeclarativeListItem(content),
+        MarkdownContentKind.Table => CanBuildDeclarativeTable(content),
+        _ => false,
+    };
+
+    private bool CanBuildDeclarativeListItem(MarkdownContent content) =>
+        content.Kind == MarkdownContentKind.ListItem &&
+        content.Children.Count > 0 &&
+        AllChildren(content, CanBuildDeclarativeContent);
+
+    private bool CanBuildDeclarativeInlineContent(MarkdownContent content) => content.Kind switch
+    {
+        MarkdownContentKind.Text => content.Text is not null,
+        MarkdownContentKind.Image => !string.IsNullOrWhiteSpace(content.Destination),
+        MarkdownContentKind.VectorScene => content.VectorScene is not null,
+        MarkdownContentKind.Link =>
+            !string.IsNullOrWhiteSpace(content.Destination) &&
+            content.Children.Count > 0 &&
+            AllChildren(content, CanBuildDeclarativeInlineContent),
+        MarkdownContentKind.Container =>
+            content.Children.Count > 0 && AllChildren(content, CanBuildDeclarativeInlineContent),
+        _ => false,
+    };
+
+    private bool CanBuildDeclarativeTable(MarkdownContent content)
+    {
+        if (content.Children.Count == 0 ||
+            !AllChildren(content, static child => child.Kind == MarkdownContentKind.TableRow))
+        {
+            return false;
+        }
+
+        int columnCount = content.Children[0].Children.Count;
+        if (columnCount == 0)
+            return false;
+
+        foreach (MarkdownContent row in content.Children)
+        {
+            if (row.Children.Count != columnCount ||
+                !AllChildren(row, static child => child.Kind == MarkdownContentKind.TableCell))
+            {
+                return false;
+            }
+
+            foreach (MarkdownContent cell in row.Children)
+            {
+                if (!AllChildren(cell, CanBuildDeclarativeInlineContent))
+                    return false;
+            }
+        }
+
+        return true;
+    }
+
+    private static bool AllChildren(
+        MarkdownContent content,
+        Func<MarkdownContent, bool> predicate)
+    {
+        foreach (MarkdownContent child in content.Children)
+        {
+            if (!predicate(child))
+                return false;
+        }
+
+        return true;
+    }
+
+    private BlockBox? TryBuildDeclarativeContent(
+        MarkdownContent content,
+        HostedElementFallbackKey fallbackKey)
+    {
+        if (content.Kind == MarkdownContentKind.HostedElement)
+        {
+            var box = new DeclarativeHostedElementBox(_context, content, fallbackKey)
+            {
+                BlockIndex = _context.NextBlockIndex(),
+            };
+            if (!content.SourceSpan.IsEmpty)
+                _context.SourceMap.Add(box.BlockIndex, 0, 1, content.SourceSpan);
+            return box;
+        }
+
+        if (content.Kind == MarkdownContentKind.VectorScene && content.VectorScene is not null)
+        {
+            var vector = new VectorSceneBox(
+                _context,
+                content,
+                GetElementKey(
+                    content,
+                    content.AccessibilityRole == MarkdownAccessibilityRole.Math
+                        ? MarkdownElementKeys.Math
+                        : MarkdownElementKeys.Diagram))
+            {
+                BlockIndex = _context.NextBlockIndex(),
+            };
+            if (!content.SourceSpan.IsEmpty)
+                _context.SourceMap.Add(vector.BlockIndex, 0, 1, content.SourceSpan);
+            return vector;
+        }
+
+        if (content.Kind == MarkdownContentKind.Text ||
+            content.Kind == MarkdownContentKind.Link ||
+            (content.Kind == MarkdownContentKind.Container &&
+             AllChildren(content, CanBuildDeclarativeInlineContent)))
+        {
+            return BuildDeclarativeInlineBlock(content);
+        }
+
+        if (content.Kind == MarkdownContentKind.Image)
+            return BuildDeclarativeImage(content);
+
+        if (content.Kind == MarkdownContentKind.CodeBlock)
+            return BuildDeclarativeCodeBlock(content);
+
+        if (content.Kind == MarkdownContentKind.List)
+            return BuildDeclarativeList(content, fallbackKey);
+
+        if (content.Kind == MarkdownContentKind.Table)
+            return BuildDeclarativeTable(content);
+
+        if ((content.Kind == MarkdownContentKind.Container ||
+             content.Kind == MarkdownContentKind.ListItem) &&
+            content.Children.Count > 0)
+        {
+            var stack = new StackBox
+            {
+                FlowDirection = _context.FlowDirection,
+                BlockIndex = _context.NextBlockIndex(),
+            };
+            foreach (MarkdownContent childContent in content.Children)
+            {
+                var child = TryBuildDeclarativeContent(childContent, fallbackKey);
+                if (child is null)
+                    return null;
+                stack.Add(child);
+            }
+            return stack;
+        }
+
+        return null;
+    }
+
+    private InlineContainerBox BuildDeclarativeInlineBlock(MarkdownContent content)
+    {
+        var box = new InlineContainerBox(_context, GetElementKey(content, MarkdownElementKeys.Body))
+        {
+            BlockIndex = _context.NextBlockIndex(),
+            TextAlignment = content.AccessibilityRole == MarkdownAccessibilityRole.Math
+                ? CanvasHorizontalAlignment.Center
+                : CanvasHorizontalAlignment.Left,
+        };
+        var runs = new List<InlineRun>();
+        AppendDeclarativeInline(content, runs);
+        foreach (InlineRun run in runs)
+            box.Add(run);
+        return box;
+    }
+
+    private ImageBox BuildDeclarativeImage(MarkdownContent content)
+    {
+        TryGetDeclarativeLength(content, MarkdownContentAttributes.ImageWidth, out SafeHtmlLength width);
+        TryGetDeclarativeLength(content, MarkdownContentAttributes.ImageHeight, out SafeHtmlLength height);
+        var box = new ImageBox(
+            _context,
+            content.Destination ?? string.Empty,
+            content.Text ?? string.Empty,
+            width.Value > 0 ? width : null,
+            height.Value > 0 ? height : null)
+        {
+            BlockIndex = _context.NextBlockIndex(),
+        };
+        if (!content.SourceSpan.IsEmpty)
+            _context.SourceMap.Add(box.BlockIndex, 0, 1, content.SourceSpan);
+        return box;
+    }
+
+    private BlockBox BuildDeclarativeList(
+        MarkdownContent content,
+        HostedElementFallbackKey fallbackKey)
+    {
+        using var listScope = _context.PushListDepth();
+        var stack = new StackBox
+        {
+            BlockIndex = _context.NextBlockIndex(),
+            FlowDirection = _context.FlowDirection,
+        };
+        bool ordered = GetBooleanAttribute(content, MarkdownContentAttributes.ListOrdered);
+        int ordinal = GetPositiveIntegerAttribute(content, MarkdownContentAttributes.ListStart, 1);
+        foreach (MarkdownContent item in content.Children)
+        {
+            stack.Add(BuildDeclarativeListItem(item, fallbackKey, ordered, ordinal));
+            ordinal++;
+        }
+
+        return stack;
+    }
+
+    private ListItemBox BuildDeclarativeListItem(
+        MarkdownContent item,
+        HostedElementFallbackKey fallbackKey,
+        bool ordered,
+        int ordinal)
+    {
+        ElementStyle listStyle = _context.ThemeSnapshot.GetStyle(
+            MarkdownElementKeys.ListMarker,
+            _context.CreateStyleContextSnapshot(),
+            _context.CreateStyleAliasSnapshot());
+        float markerWidth = Math.Max(
+            1f,
+            listStyle.ListIndent + Math.Max(0, _context.ListDepth - 1) * listStyle.NestedListIndent);
+        var marker = new InlineContainerBox(_context, MarkdownElementKeys.ListMarker)
+        {
+            BlockIndex = _context.NextBlockIndex(),
+        };
+        marker.Add(new TextRun(ordered ? $"{ordinal}." : "\u2022")
+        {
+            ElementKey = MarkdownElementKeys.ListMarker,
+            SourceSpan = new SourceSpan(item.SourceSpan.Start, 0),
+        });
+
+        var body = new StackBox
+        {
+            BlockIndex = _context.NextBlockIndex(),
+            FlowDirection = _context.FlowDirection,
+        };
+        foreach (MarkdownContent childContent in item.Children)
+            body.Add(TryBuildDeclarativeContent(childContent, fallbackKey)!);
+
+        return new ListItemBox(marker, body, markerWidth)
+        {
+            BlockIndex = _context.NextBlockIndex(),
+            FlowDirection = _context.FlowDirection,
+        };
+    }
+
+    private TableBox BuildDeclarativeTable(MarkdownContent content)
+    {
+        var headerRows = new List<InlineContainerBox[]>();
+        var bodyRows = new List<InlineContainerBox[]>();
+        foreach (MarkdownContent row in content.Children)
+        {
+            bool isHeader = GetBooleanAttribute(row, MarkdownContentAttributes.TableHeaderRow) ||
+                row.Children.Count > 0 &&
+                AllChildren(row, static cell => cell.StyleRole == MarkdownStyleRole.TableHeader);
+            var cells = new InlineContainerBox[row.Children.Count];
+            for (int index = 0; index < cells.Length; index++)
+                cells[index] = BuildDeclarativeTableCell(row.Children[index], isHeader);
+
+            (isHeader ? headerRows : bodyRows).Add(cells);
+        }
+
+        return new TableBox(_context, headerRows.ToArray(), bodyRows.ToArray())
+        {
+            BlockIndex = _context.NextBlockIndex(),
+        };
+    }
+
+    private InlineContainerBox BuildDeclarativeTableCell(MarkdownContent cell, bool isHeader)
+    {
+        string elementKey = GetElementKey(
+            cell,
+            isHeader ? MarkdownElementKeys.TableHeader : MarkdownElementKeys.TableCell);
+        var box = new InlineContainerBox(_context, elementKey)
+        {
+            BlockIndex = _context.NextBlockIndex(),
+        };
+        var runs = new List<InlineRun>();
+        foreach (MarkdownContent child in cell.Children)
+            AppendDeclarativeInline(child, runs);
+        foreach (InlineRun run in runs)
+            box.Add(run);
+        return box;
+    }
+
+    private bool TryCreateDeclarativeInlineRuns(
+        MarkdownContentFragment fragment,
+        out IReadOnlyList<InlineRun> runs)
+    {
+        foreach (MarkdownContent item in fragment.Items)
+        {
+            if (!CanBuildDeclarativeInlineContent(item))
+            {
+                runs = Array.Empty<InlineRun>();
+                return false;
+            }
+        }
+
+        var result = new List<InlineRun>();
+        foreach (MarkdownContent item in fragment.Items)
+            AppendDeclarativeInline(item, result);
+        runs = result;
+        return result.Count > 0;
+    }
+
+    private void AppendDeclarativeInline(MarkdownContent content, List<InlineRun> destination)
+    {
+        switch (content.Kind)
+        {
+            case MarkdownContentKind.Text:
+                destination.Add(new TextRun(content.Text ?? string.Empty)
+                {
+                    ElementKey = GetElementKey(content, string.Empty),
+                    SourceSpan = content.SourceSpan,
+                });
+                break;
+            case MarkdownContentKind.Image:
+                destination.Add(CreateDeclarativeImageRun(content, linkUrl: null, linkTitle: null));
+                break;
+            case MarkdownContentKind.VectorScene:
+                if (content.VectorScene is not null)
+                {
+                    string elementKey = GetElementKey(
+                        content,
+                        content.AccessibilityRole == MarkdownAccessibilityRole.Math
+                            ? MarkdownElementKeys.Math
+                            : MarkdownElementKeys.Diagram);
+                    destination.Add(new InlineVectorSceneRun(
+                        _context,
+                        content.VectorScene,
+                        content.SemanticText ?? string.Empty,
+                        content.AccessibilityName ?? content.SemanticText ?? string.Empty,
+                        content.AccessibilityDescription,
+                        elementKey)
+                    {
+                        ElementKey = elementKey,
+                        SourceSpan = content.SourceSpan,
+                    });
+                }
+                break;
+            case MarkdownContentKind.Link:
+                if (content.Children.Count == 1 && content.Children[0].Kind == MarkdownContentKind.Image)
+                {
+                    destination.Add(CreateDeclarativeImageRun(
+                        content.Children[0],
+                        content.Destination,
+                        GetAttribute(content, MarkdownContentAttributes.Title)));
+                    break;
+                }
+
+                destination.Add(new LinkRun(
+                    CollectDeclarativeText(content),
+                    content.Destination ?? string.Empty,
+                    GetAttribute(content, MarkdownContentAttributes.Title))
+                {
+                    AccessibilityName = content.AccessibilityName,
+                    ElementKey = GetElementKey(content, MarkdownElementKeys.Link),
+                    SourceSpan = content.SourceSpan,
+                });
+                break;
+            case MarkdownContentKind.Container:
+                foreach (MarkdownContent child in content.Children)
+                    AppendDeclarativeInline(child, destination);
+                break;
+        }
+    }
+
+    private InlineImageRun CreateDeclarativeImageRun(
+        MarkdownContent image,
+        string? linkUrl,
+        string? linkTitle)
+    {
+        TryGetDeclarativeLength(image, MarkdownContentAttributes.ImageWidth, out SafeHtmlLength width);
+        TryGetDeclarativeLength(image, MarkdownContentAttributes.ImageHeight, out SafeHtmlLength height);
+        return new InlineImageRun(
+            _context,
+            image.Text ?? string.Empty,
+            image.Destination ?? string.Empty,
+            GetAttribute(image, MarkdownContentAttributes.Title),
+            linkUrl,
+            linkTitle,
+            width.Value > 0 ? width : null,
+            height.Value > 0 ? height : null)
+        {
+            SourceSpan = image.SourceSpan,
+        };
+    }
+
+    private static string CollectDeclarativeText(MarkdownContent content)
+    {
+        var builder = new System.Text.StringBuilder();
+        Append(content, builder);
+        return builder.Length == 0 ? content.SemanticText ?? string.Empty : builder.ToString();
+
+        static void Append(MarkdownContent node, System.Text.StringBuilder target)
+        {
+            if (node.Kind == MarkdownContentKind.Text || node.Kind == MarkdownContentKind.Image)
+                target.Append(node.Text);
+            foreach (MarkdownContent child in node.Children)
+                Append(child, target);
+        }
+    }
+
+    private static string GetElementKey(MarkdownContent content, string fallback) =>
+        content.StyleRole.IsEmpty ? fallback : content.StyleRole.Name;
+
+    private static string? GetAttribute(MarkdownContent content, string name) =>
+        content.Attributes.TryGetValue(name, out string? value) ? value : null;
+
+    private static bool GetBooleanAttribute(MarkdownContent content, string name) =>
+        content.Attributes.TryGetValue(name, out string? value) &&
+        bool.TryParse(value, out bool parsed) && parsed;
+
+    private static int GetPositiveIntegerAttribute(MarkdownContent content, string name, int fallback) =>
+        content.Attributes.TryGetValue(name, out string? value) &&
+        int.TryParse(
+            value,
+            System.Globalization.NumberStyles.Integer,
+            System.Globalization.CultureInfo.InvariantCulture,
+            out int parsed)
+            ? Math.Max(1, parsed)
+            : fallback;
+
+    private static bool TryGetDeclarativeLength(
+        MarkdownContent content,
+        string name,
+        out SafeHtmlLength length)
+    {
+        length = default;
+        if (!content.Attributes.TryGetValue(name, out string? raw))
+            return false;
+
+        string value = raw.Trim();
+        bool percent = value.EndsWith('%');
+        if (percent)
+            value = value[..^1].Trim();
+        if (!float.TryParse(
+                value,
+                System.Globalization.NumberStyles.Float,
+                System.Globalization.CultureInfo.InvariantCulture,
+                out float parsed) ||
+            !float.IsFinite(parsed) ||
+            parsed <= 0)
+        {
+            return false;
+        }
+
+        length = new SafeHtmlLength(
+            percent ? Math.Min(parsed, 100f) : Math.Min(parsed, 8192f),
+            percent);
+        return true;
     }
 
     private BlockBox BuildParagraphOrImage(ParagraphBlock u)
@@ -255,6 +863,28 @@ internal sealed class LayoutBuilder
     {
         text = CodeBlockMetadata.NormalizeCodeLineEndings(text);
         var metadata = CodeBlockMetadata.FromBlock(block, text);
+        SourceSpan sourceSpan = block.Span.Start >= 0 && block.Span.Length > 0
+            ? new SourceSpan(block.Span.Start, block.Span.Length)
+            : SourceSpan.Empty;
+        return BuildCodeBlock(metadata, text, sourceSpan);
+    }
+
+    private BlockBox BuildDeclarativeCodeBlock(MarkdownContent content)
+    {
+        string text = CodeBlockMetadata.NormalizeCodeLineEndings(content.Text);
+        CodeBlockMetadata metadata = CodeBlockMetadata.FromDeclarative(
+            content.SourceSpan,
+            text,
+            content.Language,
+            content.Attributes);
+        return BuildCodeBlock(metadata, text, content.SourceSpan);
+    }
+
+    private BlockBox BuildCodeBlock(
+        CodeBlockMetadata metadata,
+        string text,
+        SourceSpan sourceSpan)
+    {
         int lineCount = CountLogicalLines(text);
         bool showLineNumbers = metadata.ShowLineNumbers ?? _context.CodeBlockLineNumberMode switch
         {
@@ -272,9 +902,10 @@ internal sealed class LayoutBuilder
             BlockIndex = _context.NextBlockIndex(),
         };
 
-        if (text.Length <= MaxMonolithicTextLayoutLength)
+        if (text.Length <= MaxMonolithicTextLayoutLength &&
+            lineCount <= MaxCodeBlockLinesPerChunk)
         {
-            codeBox.AddChunk(BuildCodeBlockChunk(block, metadata, text, 0, text.Length));
+            codeBox.AddChunk(BuildCodeBlockChunk(metadata, text, 0, text.Length, sourceSpan));
             return codeBox;
         }
 
@@ -282,33 +913,62 @@ internal sealed class LayoutBuilder
         while (offset < text.Length)
         {
             _context.CancellationToken.ThrowIfCancellationRequested();
-            int length = Math.Min(MaxMonolithicTextLayoutLength, text.Length - offset);
-            if (offset + length < text.Length)
-            {
-                int newline = text.LastIndexOf('\n', offset + length - 1, length);
-                if (newline > offset)
-                    length = newline - offset + 1;
-            }
+            int length = GetCodeBlockChunkLength(text, offset);
 
-            codeBox.AddChunk(BuildCodeBlockChunk(block, metadata, text.Substring(offset, length), offset, text.Length));
+            codeBox.AddChunk(BuildCodeBlockChunk(
+                metadata,
+                text.Substring(offset, length),
+                offset,
+                text.Length,
+                sourceSpan));
             offset += length;
         }
 
         return codeBox;
     }
 
+    private static int GetCodeBlockChunkLength(string text, int offset)
+    {
+        int maximumLength = Math.Min(MaxMonolithicTextLayoutLength, text.Length - offset);
+        int maximumEnd = offset + maximumLength;
+        int searchStart = offset;
+        int lineBreaks = 0;
+        while (searchStart < maximumEnd)
+        {
+            int newline = text.IndexOf('\n', searchStart, maximumEnd - searchStart);
+            if (newline < 0)
+                break;
+            lineBreaks++;
+            searchStart = newline + 1;
+            if (lineBreaks >= MaxCodeBlockLinesPerChunk)
+                return searchStart - offset;
+        }
+
+        if (maximumEnd < text.Length)
+        {
+            int newline = text.LastIndexOf('\n', maximumEnd - 1, maximumLength);
+            if (newline > offset)
+                return newline - offset + 1;
+        }
+
+        return maximumLength;
+    }
+
     private InlineContainerBox BuildCodeBlockChunk(
-        LeafBlock block,
         CodeBlockMetadata metadata,
         string text,
         int textOffset,
-        int totalTextLength)
+        int totalTextLength,
+        SourceSpan sourceSpan)
     {
         var box = new InlineContainerBox(_context, MarkdownElementKeys.CodeBlock)
         {
             CodeLanguage = metadata.Language,
             CodeBlockTextOffset = textOffset,
             CodeBlockTextLength = text.Length,
+            WordWrapping = _context.CodeBlockWrappingMode == CodeBlockWrappingMode.Wrap
+                ? Microsoft.Graphics.Canvas.Text.CanvasWordWrapping.Wrap
+                : Microsoft.Graphics.Canvas.Text.CanvasWordWrapping.NoWrap,
         };
         box.BlockIndex = _context.NextBlockIndex();
         // No ElementKey on the run: it inherits the container's CodeBlock style.
@@ -316,7 +976,7 @@ internal sealed class LayoutBuilder
         // per-run background on top of the container-level background (double bg).
         var run = new TextRun(text)
         {
-            SourceSpan = SliceSourceSpan(block, textOffset, text.Length, totalTextLength)
+            SourceSpan = SliceSourceSpan(sourceSpan, textOffset, text.Length, totalTextLength)
         };
         box.Add(run);
         return box;
@@ -337,14 +997,18 @@ internal sealed class LayoutBuilder
         return text.EndsWith("\n", StringComparison.Ordinal) && lines > 1 ? lines - 1 : lines;
     }
 
-    private static SourceSpan SliceSourceSpan(LeafBlock block, int textOffset, int textLength, int totalTextLength)
+    private static SourceSpan SliceSourceSpan(
+        SourceSpan sourceSpan,
+        int textOffset,
+        int textLength,
+        int totalTextLength)
     {
-        if (block.Span.Start < 0 || block.Span.Length <= 0 || totalTextLength <= 0)
+        if (sourceSpan.IsEmpty || totalTextLength <= 0)
             return SourceSpan.Empty;
 
-        double scale = block.Span.Length / (double)totalTextLength;
-        int start = block.Span.Start + (int)Math.Round(textOffset * scale);
-        int end = block.Span.Start + (int)Math.Round((textOffset + textLength) * scale);
+        double scale = sourceSpan.Length / (double)totalTextLength;
+        int start = sourceSpan.Start + (int)Math.Round(textOffset * scale);
+        int end = sourceSpan.Start + (int)Math.Round((textOffset + textLength) * scale);
         return new SourceSpan(start, Math.Max(0, end - start));
     }
 
@@ -401,7 +1065,19 @@ internal sealed class LayoutBuilder
             BlockBox? itemBox = null;
             using (var itemAttrs = _context.PushMarkdownAttributes(ln))
             {
-                if (_context.Registry.TryGetRenderer(typeof(ListItemBlock), out var itemRenderer) && itemRenderer is not null)
+                if (_semanticDocument is { } document &&
+                    DeclarativeBlockSelection.TryGetContent(
+                        document,
+                        ln,
+                        _hostedElementFallbacks,
+                        out var extensionFragment))
+                {
+                    itemBox = TryBuildDeclarativeBlock(extensionFragment!);
+                }
+
+                if (itemBox is null &&
+                    _context.Registry.TryGetRenderer(typeof(ListItemBlock), out var itemRenderer) &&
+                    itemRenderer is not null)
                     itemBox = itemRenderer.BuildBlock(ln, _context);
 
                 itemBox ??= BuildDefaultListItem(ln, list.IsOrdered, index);
@@ -471,8 +1147,21 @@ internal sealed class LayoutBuilder
     private void AddInlines(InlineContainerBox box, ContainerInline? inline, int inheritedAliasStart = -1)
     {
         if (inline is null) return;
-        AddInlines(box, inline, new SafeHtmlInlineState(), inheritedAliasStart);
+        var htmlState = new SafeHtmlInlineState(_context.Registry.SafeHtmlPolicy);
+        AddInlines(
+            box,
+            inline,
+            htmlState,
+            inheritedAliasStart);
+        if (htmlState.BudgetExceeded)
+            AddHtmlBudgetNotice(box);
     }
+
+    private void AddHtmlBudgetNotice(InlineContainerBox box) => box.Add(new TextRun(
+        _context.ResolveString(MarkdownStringKeys.HtmlBudgetExceeded, MarkdownLocalizedStrings.HtmlBudgetExceeded))
+    {
+        SourceSpan = SourceSpan.Empty,
+    });
 
     private void AddInlines(
         InlineContainerBox box,
@@ -483,15 +1172,36 @@ internal sealed class LayoutBuilder
         foreach (var n in inline)
         {
             _context.CancellationToken.ThrowIfCancellationRequested();
+            if (!htmlState.TryAcceptNode(n))
+                break;
             int aliasStart = _context.StyleAliasCount;
             using var inlineAttrs = _context.PushMarkdownAttributes(n);
+
+            if (_semanticDocument is { } semanticDocument &&
+                semanticDocument.TryGetInlineExtensionContent(n, out var declarativeFragment) &&
+                declarativeFragment is not null &&
+                TryCreateDeclarativeInlineRuns(declarativeFragment, out var declarativeRuns))
+            {
+                int declarativeAliasStart = inheritedAliasStart >= 0 ? inheritedAliasStart : aliasStart;
+                IReadOnlyList<string> aliases = _context.CreateStyleAliasSnapshotFrom(declarativeAliasStart);
+                _context.RegisterMarkdownAttributes(n, box.BlockIndex);
+                foreach (InlineRun declarativeRun in declarativeRuns)
+                {
+                    declarativeRun.StyleAliases = aliases;
+                    box.Add(declarativeRun);
+                }
+                continue;
+            }
+
             InlineRun? run = n is HtmlInline html
                 ? htmlState.Process(html, _context)
                 : htmlState.Apply(BuildInline(n, box.BlockIndex));
             if (run is not null)
             {
                 int effectiveAliasStart = inheritedAliasStart >= 0 ? inheritedAliasStart : aliasStart;
-                run.StyleAliases = _context.CreateStyleAliasSnapshotFrom(effectiveAliasStart);
+                run.StyleAliases = CombineStyleAliases(
+                    run.StyleAliases,
+                    _context.CreateStyleAliasSnapshotFrom(effectiveAliasStart));
                 _context.RegisterMarkdownAttributes(n, box.BlockIndex);
                 box.Add(run);
             }
@@ -502,6 +1212,23 @@ internal sealed class LayoutBuilder
                 AddInlines(box, nested, htmlState, effectiveAliasStart);
             }
         }
+    }
+
+    private static IReadOnlyList<string> CombineStyleAliases(
+        IReadOnlyList<string> first,
+        IReadOnlyList<string> second)
+    {
+        if (first.Count == 0)
+            return second;
+        if (second.Count == 0)
+            return first;
+
+        var combined = new string[first.Count + second.Count];
+        for (int index = 0; index < first.Count; index++)
+            combined[index] = first[index];
+        for (int index = 0; index < second.Count; index++)
+            combined[first.Count + index] = second[index];
+        return combined;
     }
 
     private InlineRun? BuildInline(Inline inline, int parentBlockIndex = -1)
@@ -613,7 +1340,9 @@ internal sealed class LayoutBuilder
     {
         var alt = new System.Text.StringBuilder();
         FlattenContainer(imageLink, alt);
-        string altText = alt.Length > 0 ? alt.ToString() : "image";
+        // Preserve explicitly empty alt text. The semantic layer omits an
+        // unlinked empty-alt image instead of inventing an accessible name.
+        string altText = alt.ToString();
         return new InlineImageRun(_context, altText, imageLink.Url ?? string.Empty, imageLink.Title, linkUrl, linkTitle)
         {
             SourceSpan = new SourceSpan(sourceStart, sourceLength)

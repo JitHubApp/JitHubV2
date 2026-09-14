@@ -20,8 +20,11 @@ internal static class SvgResourceBudget
     public const int MaxElements = 4096;
     public const int MaxDepth = 64;
     public const int MaxAttributes = 32768;
+    public const int MaxFilterPrimitives = 256;
     public const int MaxTextNodes = 512;
     public const int MaxTextCharacters = 64 * 1024;
+    public const int MaxImageElements = 128;
+    public const int MaxEmbeddedImageDataUriCharacters = 512 * 1024;
     public const int MaxPathCharacters = 512 * 1024;
     public const int MaxTransformCharacters = 64 * 1024;
     public const double MaxDeclaredFontSize = 4096;
@@ -42,8 +45,11 @@ internal static class SvgResourceBudget
         long started = Stopwatch.GetTimestamp();
         int elementCount = 0;
         int attributeCount = 0;
+        int filterPrimitiveCount = 0;
         int textNodes = 0;
         int textCharacters = 0;
+        int imageElements = 0;
+        int embeddedImageDataUriCharacters = 0;
         int pathCharacters = 0;
         int transformCharacters = 0;
         bool sawSvgRoot = false;
@@ -79,11 +85,38 @@ internal static class SvgResourceBudget
                 {
                     if (elementCount == 0)
                     {
-                        sawSvgRoot = reader.LocalName.Equals("svg", StringComparison.OrdinalIgnoreCase);
+                        sawSvgRoot =
+                            reader.LocalName.Equals("svg", StringComparison.OrdinalIgnoreCase) &&
+                            IsSvgNamespace(reader.NamespaceURI);
                     }
                     if (++elementCount > MaxElements)
                     {
                         return SvgResourceBudgetResult.Reject("element-count");
+                    }
+
+                    // Keep the filter surface finite and self-contained. This
+                    // allowlist covers the bounded shadow pipelines emitted by
+                    // Microsoft Store badges while excluding primitives such
+                    // as feImage that can introduce another resource load.
+                    if (IsSvgNamespace(reader.NamespaceURI) &&
+                        reader.LocalName.StartsWith("fe", StringComparison.OrdinalIgnoreCase))
+                    {
+                        if (!IsSupportedFilterPrimitive(reader.LocalName))
+                        {
+                            return SvgResourceBudgetResult.Reject("unsupported-filter-primitive");
+                        }
+
+                        if (++filterPrimitiveCount > MaxFilterPrimitives)
+                        {
+                            return SvgResourceBudgetResult.Reject("filter-complexity");
+                        }
+                    }
+
+                    bool isSvgImage = IsSvgNamespace(reader.NamespaceURI) &&
+                        reader.LocalName.Equals("image", StringComparison.OrdinalIgnoreCase);
+                    if (isSvgImage && ++imageElements > MaxImageElements)
+                    {
+                        return SvgResourceBudgetResult.Reject("image-count");
                     }
 
                     if (reader.HasAttributes)
@@ -119,6 +152,22 @@ internal static class SvgResourceBudget
                                 Math.Abs(fontSize) > MaxDeclaredFontSize)
                             {
                                 return SvgResourceBudgetResult.Reject("font-size");
+                            }
+                            else if (isSvgImage && name.Equals("href", StringComparison.OrdinalIgnoreCase))
+                            {
+                                // Do not let a renderer-owned SVG initiate a nested network or
+                                // file load. Embedded raster data is safe only within a bounded
+                                // aggregate budget because every image can allocate a decoder.
+                                if (!value.StartsWith("data:", StringComparison.OrdinalIgnoreCase))
+                                {
+                                    return SvgResourceBudgetResult.Reject("external-image-reference");
+                                }
+
+                                embeddedImageDataUriCharacters += value.Length;
+                                if (embeddedImageDataUriCharacters > MaxEmbeddedImageDataUriCharacters)
+                                {
+                                    return SvgResourceBudgetResult.Reject("embedded-image-data");
+                                }
                             }
                         }
 
@@ -157,6 +206,18 @@ internal static class SvgResourceBudget
             ? SvgResourceBudgetResult.Reject("missing-root")
             : SvgResourceBudgetResult.Success;
     }
+
+    private static bool IsSvgNamespace(string? namespaceUri) =>
+        string.IsNullOrEmpty(namespaceUri) ||
+        string.Equals(namespaceUri, "http://www.w3.org/2000/svg", StringComparison.Ordinal);
+
+    private static bool IsSupportedFilterPrimitive(string localName) =>
+        localName.Equals("feBlend", StringComparison.OrdinalIgnoreCase) ||
+        localName.Equals("feColorMatrix", StringComparison.OrdinalIgnoreCase) ||
+        localName.Equals("feDropShadow", StringComparison.OrdinalIgnoreCase) ||
+        localName.Equals("feFlood", StringComparison.OrdinalIgnoreCase) ||
+        localName.Equals("feGaussianBlur", StringComparison.OrdinalIgnoreCase) ||
+        localName.Equals("feOffset", StringComparison.OrdinalIgnoreCase);
 
     private static bool TryReadLeadingNumber(string? value, out double result)
     {

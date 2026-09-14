@@ -4,7 +4,39 @@ This file tracks the work between the current state and a fully production-matur
 open-source-ready control. Items are grouped by area and roughly ordered by priority
 within each group.
 
+Implementation ledger, not release certification. The authoritative outstanding
+validation gates are in [the release checklist](../docs/markdown-renderer/release-checklist.md).
+Completed entries may retain historical problem descriptions for context.
+
 Legend: 🔴 blocks release · 🟠 must fix before 1.0 · 🟡 v1.1 candidate
+
+## Automated evidence recorded
+
+- ✅ The offline official CommonMark 0.31.2 and GFM 0.29 run passed all
+  1,322 examples with no exceptions. Retain the
+  [conformance report](artifacts/conformance/report-fix-all-official-20260910-postreview.json)
+  with the release evidence.
+- ✅ Stable public-API baseline tests pass and guard the intended exported
+  surface. Formal API approval is still a release decision, not an automated
+  test result.
+- ✅ The canonical x64 Release build and x64 live sample automation pass;
+  the 32/32 live scenarios include observed renderer disposal rather than only
+  process exit. Retain the
+  [disposal evidence](artifacts/live-final/disposal-app-release-matrix-postreview-20260910.json).
+  This is not physical x86 or ARM64 evidence.
+- ✅ A prior x64 absolute performance baseline met the documented latency,
+  allocation, scrolling, cancellation, lifecycle, and memory budgets. The
+  schema-10 [quick smoke](artifacts/performance/performance-quick-schema10-deployment-bound-r3-20260910.json)
+  passes its Williams schedule, pinned-thread, cache-proof, monotonic chronology,
+  residual-envelope, GC-hierarchy, active-topology, full-runtime-output identity,
+  and frozen-runtime structural validation. The first full schema-10
+  [absolute baseline](artifacts/performance/performance-baseline-schema10-deployment-bound-r1-20260910.json)
+  is retained but failed viewport stationarity, the 1 MiB cache-disabled absolute
+  budget, warm-scroll cadence/stall, and refresh qualification (240 Hz configured,
+  117.72 Hz observed). It is failed diagnostic evidence, not release evidence. A
+  passing full baseline/candidate, true different-build cross-revision comparison,
+  and counterbalanced execution remain open; schema-8 and schema-9 r8 reports are
+  methodology evidence only.
 
 ---
 
@@ -57,26 +89,25 @@ Legend: 🔴 blocks release · 🟠 must fix before 1.0 · 🟡 v1.1 candidate
 
 ## Rendering
 
-> 1.0-ready for the non-HTML/non-LaTeX scope. Raw HTML and LaTeX/math are tracked
-> separately and intentionally excluded from this release plan.
+> Native rendering includes opt-in safe HTML, Math and Mermaid. Implementation
+> coverage does not close the physical-device and release-validation matrix.
 
 - ✅ **Fix inline image rendering**
   `LayoutBuilder.cs:333–339` falls back to alt-text for images embedded in text.
   Only standalone image paragraphs become `ImageBox`. Inline `![alt](url)` inside
   paragraphs must also render as an image, not alt-text.
 
-- ↪️ **Fix HTML block / inline rendering** *(tracked outside 1.0 non-HTML plan)*
-  HTML inline renders the raw tag string (e.g. `<br>`). HTML blocks are silently
-  dropped. Implement sanitized plain-text rendering or a safe HTML sub-renderer.
+- ✅ **Implement bounded safe HTML block / inline rendering**
+  The optional HTML pack includes the native subset parser/painter. Configured
+  limits also apply to inline tags and cross-block scopes; browser HTML is out of scope.
 
 - ✅ **Add definition list renderer**
   Markdig supports definition lists; no renderer exists. Add a GFM/extension
   renderer for `<dl>/<dt>/<dd>`.
 
-- ↪️ **Add math / LaTeX block support** *(tracked outside 1.0 non-LaTeX plan)*
-  Wire `UseMathematics()` into the Markdig pipeline and add a `MathBox` renderer.
-  Initial implementation can render the raw LaTeX as styled code with a note that
-  a math engine can be injected via `IMarkdownEmbedFactory`.
+- ✅ **Add native Math support**
+  The optional Math pack typesets dollar-delimited TeX into immutable vector
+  scenes using CSharpMath, with bounded processing and invalid-source fallback.
 
 - ✅ **Add abbreviations extension**
   Wire `UseAbbreviations()` and render abbreviations with a tooltip/title
@@ -92,8 +123,8 @@ Legend: 🔴 blocks release · 🟠 must fix before 1.0 · 🟡 v1.1 candidate
   without changing ordinary image behavior.
 
 - ✅ **Document diagram extension pattern**
-  Mermaid/diagram support is sample/documentation only through
-  `IMarkdownEmbedFactory`; no built-in diagram engine is shipped.
+  The optional Mermaid pack includes the selected-RID Merman engine and MMIR
+  adapter. Hosted controls remain available for custom interactive diagrams.
 
 - ✅ **Apply generic attributes to styled elements**
   `UseGenericAttributes()` is parsed but `id`/`class` attributes are never applied.
@@ -148,8 +179,8 @@ Legend: 🔴 blocks release · 🟠 must fix before 1.0 · 🟡 v1.1 candidate
 
 ## Text Selection
 
-> 1.0-ready. Core selection, embed selection, drag auto-scroll, HTML clipboard,
-> and opt-in rendered plain-text copy are implemented. Remaining work is manual
+> Core selection, embed selection, drag auto-scroll, HTML clipboard,
+> and rendered plain-text copy are implemented. Remaining work is manual
 > release smoke across target paste apps.
 
 - ✅ **Make embedded WinUI elements participatory in selection**
@@ -163,20 +194,29 @@ Legend: 🔴 blocks release · 🟠 must fix before 1.0 · 🟡 v1.1 candidate
   viewport bounds.
 
 - ✅ **Copy-as-HTML / copy formatted text**
-  Copy always writes raw markdown source to the clipboard. Add a `CF_HTML`
-  clipboard format path and optionally a rendered plain-text path.
+  Normal Copy writes rendered text and `CF_HTML`; Copy Markdown preserves source.
 
-- ✅ **Add opt-in rendered plain-text copy**
+- ✅ **Make rendered plain-text copy the default**
   `MarkdownCopyOptions` and `CopySelectionToClipboard(MarkdownCopyOptions?)`
-  preserve source-markdown defaults while allowing rendered semantic text.
+  default to rendered semantic text plus HTML, with explicit source-markdown copy.
 
 ---
 
 ## Performance
 
-> 1.0-ready for known non-HTML/non-LaTeX workloads. Core async pipeline, lazy
-> large-document layout, cancellation, safe hot-path pooling, code-block
-> segmentation, and embed/image virtualization are implemented.
+> Core async pipeline, lazy large-document layout, cancellation, safe hot-path
+> pooling, code-block segmentation, and embed/image virtualization are
+> implemented. The schema-10 evidence contract adds a balanced six-condition
+> Williams schedule, six-trial first-viewport Hodges-Lehmann estimates, MAD,
+> Theil-Sen drift, boundary and residual-envelope checks, monotonic UTC chronology,
+> cache-path and active-processor proof, metric-specific noise floors,
+> independently qualified refresh rate, raw scroll evidence, five 40-sample
+> cancellation trials, eight source-lookup warmups, and a canonical digest over the
+> complete private runtime output. Automated absolute-budget evidence has passed
+> once and the deployment-bound schema-10 quick smoke is green. The retained first
+> full schema-10 baseline failed stationarity, one first-viewport absolute budget,
+> warm-scroll cadence/stall, and refresh qualification; a passing full same-machine
+> baseline/candidate and different-build comparison are still pending.
 
 - ✅ **Lazy / viewport-relative layout for large documents**
   All block bounds are computed before first paint. For large documents (10K+
@@ -202,12 +242,26 @@ Legend: 🔴 blocks release · 🟠 must fix before 1.0 · 🟡 v1.1 candidate
   layout threshold so one pasted block cannot force a single enormous DirectWrite
   layout.
 
+- ✅ **Make regression evidence robust to measured machine noise**
+  Schema 10 recomputes raw trial evidence, uses the Hodges-Lehmann location of six
+  first-viewport trial p95s (five for the other repeated metrics), rejects
+  excessive consistency-scaled MAD, ordered drift, boundary movement, and isolated
+  residuals as inconclusive, and gates
+  each stable increase against `max(relative allowance, absolute noise floor)`.
+  The +5% latency and +2% allocation limits remain frozen, and every absolute
+  performance budget remains mandatory. Cancellation now records five trials of
+  40 supersessions with one distinct warmup per trial; source lookup uses eight
+  fixed warmup passes. This implementation item does not close the outstanding
+  full-run or true cross-revision release gates.
+
 ---
 
 ## Packaging & Public API
 
-> Complete. Core and GFM package metadata, XML docs, quick-start APIs, document
-> queries, public-surface cleanup, and x86/x64/ARM64 ThorVG assets are in place.
+> Implementation complete. Core and optional-pack metadata, XML docs,
+> quick-start APIs, document queries, public-surface cleanup, and
+> x86/x64/ARM64 native assets are in place. Final release validation remains a
+> separate gate.
 
 - ✅ **Add XML documentation to all public surface**
   `CS1591` is enabled for core and GFM; builds pass with `-warnaserror:CS1591`.
@@ -241,8 +295,16 @@ Legend: 🔴 blocks release · 🟠 must fix before 1.0 · 🟡 v1.1 candidate
 Remaining tracked debt for 1.0 is validation-oriented rather than known code
 blockers:
 
-- **Raw HTML policy** — intentionally out of scope for this plan.
-- **LaTeX/math support** — intentionally out of scope for this plan.
-- **Manual release smoke** — Narrator, real Windows contrast themes, customized
-  contrast theme, system language/RTL, graphics-device reset, and x86/x64/ARM64
-  sample launch still need human verification before shipping.
+- ✅ **Raw HTML policy** — `MarkdownRenderer.Html` provides an opt-in,
+  non-executable safe-HTML subset with bounded parsing and explicit link/image
+  policy.
+- ✅ **LaTeX/math support** — `MarkdownRenderer.Math` provides bounded native
+  inline and display math with diagnostics and literal-code fallback for invalid
+  input.
+- **Manual and external release gates** — physical x86 and ARM64 execution and
+  install; Narrator; real and customized Windows contrast themes; system
+  language, mixed RTL/LTR, and text scaling; actual graphics-device loss plus
+  ETW review; every promised trim/Native AOT package combination; clean package
+  install; signing; staging publish; and production publishing still require
+  separate evidence before shipping. The completed x64 developer-machine build
+  and live automation do not substitute for those gates.

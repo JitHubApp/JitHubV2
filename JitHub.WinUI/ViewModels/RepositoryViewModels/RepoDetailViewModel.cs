@@ -67,6 +67,8 @@ namespace JitHub.WinUI.ViewModels.RepositoryViewModels
         private readonly ITelemetryService _telemetryService;
         private long _starMutationVersion;
         private long _watchMutationVersion;
+        private string? _currentCodeBranch;
+        private bool _currentCodeFollowsDefaultBranch;
 
         public event EventHandler<RepositoryNavigationRequest>? RepositoryNavigationRequested;
 
@@ -329,21 +331,21 @@ namespace JitHub.WinUI.ViewModels.RepositoryViewModels
 
         private void GoToCodePage(CodeViewerNavArg arg)
         {
+            _currentCodeBranch = arg.IsBranch ? arg.Branch : null;
+            _currentCodeFollowsDefaultBranch = arg.FollowsDefaultBranch;
             NavigateRepositoryView(RepositoryWorkspaceSection.Code, arg.WithRepo(Model));
         }
 
         private void GoToCodePage()
         {
-            NavigateRepositoryView(
-                RepositoryWorkspaceSection.Code,
-                CodeViewerNavArg.CreateWithBranch(Model, SelectedBranch?.Name ?? Model.DefaultBranch));
+            GoToCodePage(CodeViewerNavArg.CreateWithBranch(
+                Model,
+                SelectedBranch?.Name ?? Model.DefaultBranch));
         }
 
         private void GoToCodePageWithBranch(string branch)
         {
-            NavigateRepositoryView(
-                RepositoryWorkspaceSection.Code,
-                CodeViewerNavArg.CreateWithBranch(Model, branch));
+            GoToCodePage(CodeViewerNavArg.CreateWithBranch(Model, branch));
         }
 
         private void GoToIssuesPage(IssueNavArg arg)
@@ -536,6 +538,7 @@ namespace JitHub.WinUI.ViewModels.RepositoryViewModels
                     owner,
                     name,
                     resolvedRepository.Id,
+                    args,
                     generation,
                     Volatile.Read(ref _starMutationVersion),
                     Volatile.Read(ref _watchMutationVersion),
@@ -862,7 +865,7 @@ namespace JitHub.WinUI.ViewModels.RepositoryViewModels
                     if (pageBranches.Length > 0)
                     {
                         ApplyBranchSnapshot(pageBranches, removeMissing: false);
-                        SelectedBranch ??= ResolveSelectedBranchForCurrentModel();
+                        AlignSelectedBranchWithCurrentCodeBranch();
                     }
 
                     if (RepositoryQueryRefreshPolicy.ShouldPromote(result))
@@ -877,7 +880,7 @@ namespace JitHub.WinUI.ViewModels.RepositoryViewModels
                         _repositoryLoadCoordinator.ThrowIfStale(generation, cancellationToken);
                         pageBranches = refreshed.Value ?? [];
                         ApplyBranchSnapshot(pageBranches, removeMissing: false);
-                        SelectedBranch ??= ResolveSelectedBranchForCurrentModel();
+                        AlignSelectedBranchWithCurrentCodeBranch();
                     }
 
                     foreach (GitHubBranch branch in pageBranches)
@@ -925,6 +928,7 @@ namespace JitHub.WinUI.ViewModels.RepositoryViewModels
             string owner,
             string name,
             long repositoryId,
+            RepoDetailPageArgs args,
             long generation,
             long starMutationVersion,
             long watchMutationVersion,
@@ -955,10 +959,14 @@ namespace JitHub.WinUI.ViewModels.RepositoryViewModels
                 _repositoryLoadCoordinator.PublishIfCurrent(
                     generation,
                     refreshed,
-                    value => MergeRepositoryModel(
-                        value,
-                        preserveStarState: starMutationVersion != Volatile.Read(ref _starMutationVersion),
-                        preserveWatchState: watchMutationVersion != Volatile.Read(ref _watchMutationVersion)),
+                    value =>
+                    {
+                        MergeRepositoryModel(
+                            value,
+                            preserveStarState: starMutationVersion != Volatile.Read(ref _starMutationVersion),
+                            preserveWatchState: watchMutationVersion != Volatile.Read(ref _watchMutationVersion));
+                        EnsureCodePageBranchAlignment(args);
+                    },
                     cancellationToken);
             }
             catch (OperationCanceledException)
@@ -975,6 +983,7 @@ namespace JitHub.WinUI.ViewModels.RepositoryViewModels
             string owner,
             string name,
             long repositoryId,
+            RepoDetailPageArgs args,
             long generation,
             long starMutationVersion,
             long watchMutationVersion,
@@ -990,6 +999,7 @@ namespace JitHub.WinUI.ViewModels.RepositoryViewModels
                     owner,
                     name,
                     repositoryId,
+                    args,
                     generation,
                     starMutationVersion,
                     watchMutationVersion,
@@ -1037,6 +1047,8 @@ namespace JitHub.WinUI.ViewModels.RepositoryViewModels
                         string? selectedName = SelectedBranch?.Name;
                         RemoveMissingBranches(seen);
                         SelectedBranch = Branches.FirstOrDefault(branch =>
+                                string.Equals(branch.Name, _currentCodeBranch, StringComparison.Ordinal))
+                            ?? Branches.FirstOrDefault(branch =>
                                 string.Equals(branch.Name, selectedName, StringComparison.Ordinal))
                             ?? ResolveSelectedBranchForCurrentModel();
                         _repositoryLoadCoordinator.MarkBranchStateKnown(generation);
@@ -1234,6 +1246,14 @@ namespace JitHub.WinUI.ViewModels.RepositoryViewModels
             ?? Branches.FirstOrDefault(branch => string.Equals(branch.Name, "master", StringComparison.Ordinal))
             ?? Branches.FirstOrDefault();
 
+        private void AlignSelectedBranchWithCurrentCodeBranch()
+        {
+            SelectedBranch = Branches.FirstOrDefault(branch =>
+                    string.Equals(branch.Name, _currentCodeBranch, StringComparison.Ordinal))
+                ?? SelectedBranch
+                ?? ResolveSelectedBranchForCurrentModel();
+        }
+
         private static bool IsSameRepository(RepoDetailPageArgs args, Repository? current)
         {
             if (current is null)
@@ -1375,22 +1395,30 @@ namespace JitHub.WinUI.ViewModels.RepositoryViewModels
                 return CodeViewerNavArg.CreateWithGitRef(Model, arg.GitRef);
             }
 
-            string originalDefaultBranch = arg.Repo.DefaultBranch;
-            string targetBranch = arg.Branch ?? string.Empty;
+            string targetBranch = RepositoryBranchNavigationPolicy.ResolveTargetBranch(
+                arg.FollowsDefaultBranch,
+                arg.Branch,
+                Model.DefaultBranch);
 
-            if (string.IsNullOrWhiteSpace(targetBranch) ||
-                string.Equals(targetBranch, originalDefaultBranch, StringComparison.OrdinalIgnoreCase))
-            {
-                targetBranch = Model.DefaultBranch;
-            }
-
-            return CodeViewerNavArg.CreateWithBranch(Model, targetBranch);
+            return arg.FollowsDefaultBranch
+                ? CodeViewerNavArg.CreateWithRepo(Model)
+                : CodeViewerNavArg.CreateWithBranch(Model, targetBranch);
         }
 
         private Branch? ResolveSelectedBranch(RepoDetailPageArgs args)
         {
             string? requestedBranch = GetRequestedCodeBranch(args);
             string? fallbackDefaultBranch = args.Repo?.DefaultBranch;
+
+            if (args.Ref is CodeViewerNavArg { FollowsDefaultBranch: true })
+            {
+                return Branches.FirstOrDefault(branch => string.Equals(branch.Name, Model.DefaultBranch, StringComparison.Ordinal))
+                    ?? Branches.FirstOrDefault(branch => string.Equals(branch.Name, requestedBranch, StringComparison.Ordinal))
+                    ?? Branches.FirstOrDefault(branch => string.Equals(branch.Name, fallbackDefaultBranch, StringComparison.Ordinal))
+                    ?? Branches.FirstOrDefault(branch => string.Equals(branch.Name, "master", StringComparison.Ordinal))
+                    ?? Branches.FirstOrDefault(branch => string.Equals(branch.Name, "main", StringComparison.Ordinal))
+                    ?? Branches.FirstOrDefault();
+            }
 
             return Branches.FirstOrDefault(branch => string.Equals(branch.Name, requestedBranch, StringComparison.Ordinal))
                 ?? Branches.FirstOrDefault(branch => string.Equals(branch.Name, Model.DefaultBranch, StringComparison.Ordinal))
@@ -1410,25 +1438,32 @@ namespace JitHub.WinUI.ViewModels.RepositoryViewModels
                 return;
             }
 
-            string? resolvedBranch = SelectedBranch?.Name ?? Model.DefaultBranch;
+            string? resolvedBranch = RepositoryBranchNavigationPolicy.ResolveAlignmentBranch(
+                _currentCodeFollowsDefaultBranch,
+                SelectedBranch?.Name,
+                Model.DefaultBranch);
             if (string.IsNullOrWhiteSpace(resolvedBranch))
             {
                 return;
             }
 
-            string incomingBranch = arg.Branch ?? string.Empty;
-            string requestedDefaultBranch = args.Repo?.DefaultBranch ?? string.Empty;
-            bool isDefaultBranchNavigation =
-                string.IsNullOrWhiteSpace(incomingBranch) ||
-                string.Equals(incomingBranch, requestedDefaultBranch, StringComparison.OrdinalIgnoreCase);
+            if (_currentCodeFollowsDefaultBranch)
+            {
+                Branch? refreshedDefault = Branches.FirstOrDefault(
+                    branch => string.Equals(branch.Name, resolvedBranch, StringComparison.Ordinal));
+                if (refreshedDefault is not null)
+                    SelectedBranch = refreshedDefault;
+            }
 
-            if (!isDefaultBranchNavigation ||
-                string.Equals(incomingBranch, resolvedBranch, StringComparison.Ordinal))
+            if (!RepositoryBranchNavigationPolicy.ShouldRealign(
+                _currentCodeFollowsDefaultBranch,
+                _currentCodeBranch,
+                resolvedBranch))
             {
                 return;
             }
 
-            GoToCodePage(CodeViewerNavArg.CreateWithBranch(Model, resolvedBranch));
+            GoToCodePage(CodeViewerNavArg.CreateWithRepo(Model));
         }
 
         private static string? GetRequestedCodeBranch(RepoDetailPageArgs args)

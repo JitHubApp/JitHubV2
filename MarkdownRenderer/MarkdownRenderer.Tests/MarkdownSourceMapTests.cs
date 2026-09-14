@@ -144,6 +144,65 @@ public class MarkdownSourceMapTests
     }
 
     [Fact]
+    public void Slice_LinkLabel_UsesPiecewiseSourceMapping()
+    {
+        const string source = "[alpha](https://example.test)";
+        var map = new MarkdownSourceMap(source);
+        map.Add(0, 0, 5, new SourceSpan(0, source.Length), "alpha");
+
+        Assert.Equal("lph", map.Slice(new DocumentRange(
+            new DocumentPosition(0, 0, 1),
+            new DocumentPosition(0, 0, 4))));
+        Assert.Equal(source, map.Slice(new DocumentRange(
+            new DocumentPosition(0, 0, 0),
+            new DocumentPosition(0, 0, 5))));
+    }
+
+    [Fact]
+    public void Slice_DecodedEntity_MapsRenderedUnitToWholeEntity()
+    {
+        const string source = "A&amp;B";
+        var map = new MarkdownSourceMap(source);
+        map.Add(0, 0, 3, new SourceSpan(0, source.Length), "A&B");
+
+        Assert.Equal("&amp;", map.Slice(new DocumentRange(
+            new DocumentPosition(0, 0, 1),
+            new DocumentPosition(0, 0, 2))));
+    }
+
+    [Fact]
+    public void Slice_EscapedPunctuation_MapsRenderedUnitToEscapeSequence()
+    {
+        const string source = @"left \* right";
+        const string rendered = "left * right";
+        var map = new MarkdownSourceMap(source);
+        map.Add(0, 0, rendered.Length, new SourceSpan(0, source.Length), rendered);
+
+        Assert.Equal(@"\*", map.Slice(new DocumentRange(
+            new DocumentPosition(0, 0, 5),
+            new DocumentPosition(0, 0, 6))));
+    }
+
+    [Fact]
+    public void Slice_EmojiSurrogateHalves_MapAtomicallyToShortcode()
+    {
+        const string source = "before :rocket: after";
+        const string rendered = "before 🚀 after";
+        var map = new MarkdownSourceMap(source);
+        map.Add(0, 0, rendered.Length, new SourceSpan(0, source.Length), rendered);
+
+        var highSurrogate = new DocumentRange(
+            new DocumentPosition(0, 0, 7),
+            new DocumentPosition(0, 0, 8));
+        var lowSurrogate = new DocumentRange(
+            new DocumentPosition(0, 0, 8),
+            new DocumentPosition(0, 0, 9));
+
+        Assert.Equal(":rocket:", map.Slice(highSurrogate));
+        Assert.Equal(":rocket:", map.Slice(lowSurrogate));
+    }
+
+    [Fact]
     public void Slice_ReversedRange_NormalizesFirst()
     {
         var map = BuildMap("hello", (0, 0, 5, 0, 5));

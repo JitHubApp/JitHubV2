@@ -1,0 +1,76 @@
+# MarkdownRenderer public API baseline
+# Format: 1
+# Assembly: MarkdownRenderer.Html
+# Generated from compiled assembly metadata; update with eng/Update-PublicApiBaselines.ps1.
+
+assembly MarkdownRenderer.Html
+
+public interface MarkdownRenderer.Html.ISafeHtmlCapabilityMarker
+  public abstract MarkdownRenderer.Html.SafeHtmlCapabilityDescriptor SafeHtmlCapabilities { get; }
+  public abstract MarkdownRenderer.Html.SafeHtmlOptions SafeHtmlOptions { get; }
+
+public sealed class MarkdownRenderer.Html.SafeHtmlBudgets : System.IEquatable<MarkdownRenderer.Html.SafeHtmlBudgets>
+  public MarkdownRenderer.Html.SafeHtmlBudgets LoweredTo(MarkdownRenderer.Html.SafeHtmlBudgets ceilings);
+  public SafeHtmlBudgets(int maxInputLength = 4194304, int maxNodeCount = 20000, int maxNestingDepth = 64, int maxAttributeCount = 32, int maxAttributeValueLength = 16384, int maxTagLength = 65536);
+  public bool Equals(MarkdownRenderer.Html.SafeHtmlBudgets? other);
+  public const int DefaultMaxAttributeCount = 32;
+  public const int DefaultMaxAttributeValueLength = 16384;
+  public const int DefaultMaxInputLength = 4194304;
+  public const int DefaultMaxNestingDepth = 64;
+  public const int DefaultMaxNodeCount = 20000;
+  public const int DefaultMaxTagLength = 65536;
+  public int MaxAttributeCount { get; }
+  public int MaxAttributeValueLength { get; }
+  public int MaxInputLength { get; }
+  public int MaxNestingDepth { get; }
+  public int MaxNodeCount { get; }
+  public int MaxTagLength { get; }
+  public override bool Equals(object? obj);
+  public override int GetHashCode();
+  public static MarkdownRenderer.Html.SafeHtmlBudgets Default { get; }
+
+public sealed class MarkdownRenderer.Html.SafeHtmlCapabilityDescriptor
+  public MarkdownRenderer.Html.SafeHtmlExternalResourceRouting ImageRouting { get; }
+  public MarkdownRenderer.Html.SafeHtmlExternalResourceRouting LinkRouting { get; }
+  public bool AppliesCssLayout { get; }
+  public bool ExecutesScript { get; }
+  public bool ExposesBrowserDom { get; }
+  public bool HasDirectNetworkAccess { get; }
+  public bool HasFilesystemAccess { get; }
+  public bool IsNativeSubset { get; }
+  public bool UsesHalfOpenUtf16SourceRanges { get; }
+  public int ContractVersion { get; }
+  public string PackageId { get; }
+
+public sealed class MarkdownRenderer.Html.SafeHtmlCapabilityMarker : MarkdownRenderer.Html.ISafeHtmlCapabilityMarker
+  public MarkdownRenderer.Html.SafeHtmlCapabilityDescriptor SafeHtmlCapabilities { get; }
+  public MarkdownRenderer.Html.SafeHtmlOptions SafeHtmlOptions { get; }
+  public SafeHtmlCapabilityMarker(MarkdownRenderer.Html.SafeHtmlOptions? options = null);
+
+public static class MarkdownRenderer.Html.SafeHtmlExtensions
+  public static MarkdownRenderer.Controls.MarkdownDocumentView UseSafeHtml(this MarkdownRenderer.Controls.MarkdownDocumentView view, MarkdownRenderer.Html.SafeHtmlOptions? options = null);
+  public static MarkdownRenderer.Controls.MarkdownRendererControlBuilder UseSafeHtml(this MarkdownRenderer.Controls.MarkdownRendererControlBuilder builder, MarkdownRenderer.Html.SafeHtmlOptions? options = null);
+  public static MarkdownRenderer.Controls.MarkdownScrollView UseSafeHtml(this MarkdownRenderer.Controls.MarkdownScrollView view, MarkdownRenderer.Html.SafeHtmlOptions? options = null);
+  public static MarkdownRenderer.MarkdownEngineBuilder UseSafeHtml(this MarkdownRenderer.MarkdownEngineBuilder builder, MarkdownRenderer.Html.SafeHtmlOptions? options = null);
+
+public enum MarkdownRenderer.Html.SafeHtmlExternalResourceRouting
+  Disabled = 0,
+  HostMediated = 1,
+
+public static class MarkdownRenderer.Html.SafeHtmlFeature
+  public const int ContractVersion = 1;
+  public const string PackageId = "MarkdownRenderer.Html";
+  public static MarkdownRenderer.Html.SafeHtmlCapabilityDescriptor Capabilities { get; }
+
+public sealed class MarkdownRenderer.Html.SafeHtmlOptions
+  public MarkdownRenderer.Html.SafeHtmlBudgets Budgets { get; }
+  public MarkdownRenderer.Html.SafeHtmlUnknownElementBehavior UnknownElementBehavior { get; }
+  public SafeHtmlOptions(MarkdownRenderer.Html.SafeHtmlBudgets? budgets = null, bool enableLinks = true, bool enableImages = true, MarkdownRenderer.Html.SafeHtmlUnknownElementBehavior unknownElementBehavior = MarkdownRenderer.Html.SafeHtmlUnknownElementBehavior.RenderLiteral, System.Collections.Generic.IEnumerable<string>? allowedStyleClasses = null);
+  public System.Collections.Immutable.ImmutableHashSet<string> AllowedStyleClasses { get; }
+  public bool EnableImages { get; }
+  public bool EnableLinks { get; }
+  public static MarkdownRenderer.Html.SafeHtmlOptions Default { get; }
+
+public enum MarkdownRenderer.Html.SafeHtmlUnknownElementBehavior
+  KeepTextContent = 1,
+  RenderLiteral = 0,

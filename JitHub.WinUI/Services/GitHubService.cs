@@ -2092,7 +2092,7 @@ namespace JitHub.Services
                 }
                 catch (Exception ex)
                 {
-                    Console.WriteLine($"Failed to load public markdown image '{source}': {ex.Message}");
+                    HandledFailureReporter.Report(ex, "markdown-image-public-fetch");
                     return MarkdownImageResolution.Unavailable;
                 }
             }
@@ -2169,7 +2169,7 @@ namespace JitHub.Services
             }
             catch (Exception ex)
             {
-                Console.WriteLine($"Failed to load GitHub markdown image '{source}': {ex.Message}");
+                HandledFailureReporter.Report(ex, "markdown-image-github-fetch");
                 return MarkdownImageResolution.Unavailable;
             }
         }

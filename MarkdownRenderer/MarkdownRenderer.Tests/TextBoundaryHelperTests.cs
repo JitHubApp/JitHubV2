@@ -1,4 +1,5 @@
 using MarkdownRenderer.Layout;
+using System.Globalization;
 using Xunit;
 
 namespace MarkdownRenderer.Tests;
@@ -192,5 +193,60 @@ public class TextBoundaryHelperTests
         var (start, end) = TextBoundaryHelper.FindWordBoundaries("aa   bb   ", 3);
         Assert.Equal(5, start);
         Assert.Equal(7, end);
+    }
+
+    [Fact]
+    public void TextElementBoundariesDoNotSplitEmojiOrCombiningSequences()
+    {
+        const string text = "A👩🏽‍💻e\u0301Z";
+        int emojiStart = 1;
+        int emojiEnd = TextBoundaryHelper.FindNextTextElementStart(text, emojiStart);
+        int combiningStart = emojiEnd;
+        int combiningEnd = TextBoundaryHelper.FindNextTextElementStart(text, combiningStart);
+
+        Assert.Equal((emojiStart, emojiEnd), TextBoundaryHelper.FindTextElementBoundaries(text, emojiStart + 1));
+        Assert.Equal((combiningStart, combiningEnd), TextBoundaryHelper.FindTextElementBoundaries(text, combiningStart + 1));
+        Assert.Equal(emojiStart, TextBoundaryHelper.FindPreviousTextElementStart(text, emojiEnd));
+        Assert.Equal(combiningStart, TextBoundaryHelper.FindPreviousTextElementStart(text, combiningEnd));
+
+        Assert.Equal(combiningEnd, TextBoundaryHelper.MoveByTextElements(text, emojiStart, 2, out int movedForward));
+        Assert.Equal(2, movedForward);
+        Assert.Equal(emojiStart, TextBoundaryHelper.MoveByTextElements(text, combiningEnd, -2, out int movedBackward));
+        Assert.Equal(-2, movedBackward);
+
+        Assert.Equal(text.Length, TextBoundaryHelper.MoveByTextElements(text, 0, int.MaxValue, out int movedToEnd));
+        Assert.Equal(StringInfo.ParseCombiningCharacters(text).Length, movedToEnd);
+    }
+
+    [Fact]
+    public void CachedTextElementIndexSupportsAllocationFreeRepeatedNavigation()
+    {
+        string text = string.Concat(Enumerable.Repeat("A👩🏽‍💻e\u0301 ", 20_000));
+        var index = new TextElementBoundaryIndex(text);
+        int offset = 0;
+        int wordOffset = 0;
+
+        // Warm the JIT and all relevant binary-search paths before measuring.
+        offset = index.Move(offset, 1, out _);
+        _ = index.FindBoundaries(offset);
+        _ = index.FindPreviousStart(offset);
+        wordOffset = index.FindNextWordStart(wordOffset);
+        _ = index.FindWordBoundaries(wordOffset);
+
+        long before = GC.GetAllocatedBytesForCurrentThread();
+        for (int i = 0; i < 10_000; i++)
+        {
+            offset = index.Move(offset, 1, out _);
+            _ = index.FindBoundaries(offset);
+            _ = index.FindPreviousStart(offset);
+            wordOffset = index.FindNextWordStart(wordOffset);
+            if (wordOffset == text.Length)
+                wordOffset = 0;
+            _ = index.FindWordBoundaries(wordOffset);
+        }
+        long allocated = GC.GetAllocatedBytesForCurrentThread() - before;
+
+        Assert.Equal(0, allocated);
+        Assert.InRange(offset, 0, text.Length);
     }
 }

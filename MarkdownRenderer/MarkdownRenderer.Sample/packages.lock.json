@@ -147,34 +147,68 @@
           "Onigwrap": "1.0.10"
         }
       },
-      "TextMateSharp.Grammars": {
-        "type": "Transitive",
-        "resolved": "2.0.3",
-        "contentHash": "qkI1ogusuyGCGTgeyhljDM+GEfATOexoUTqLIgSb5P0ojmfhRXWfSTRXXJRpZkLDErShJ7RWOb+p10lHfhhO+Q==",
-        "dependencies": {
-          "TextMateSharp": "2.0.3"
-        }
-      },
-      "markdownrenderer": {
+      "markdownrenderer.core": {
         "type": "Project",
         "dependencies": {
-          "Markdig": "[0.42.0, )",
-          "Microsoft.Graphics.Win2D": "[1.4.0, )",
-          "Microsoft.Windows.SDK.BuildTools": "[10.0.28000.1721, )",
-          "Microsoft.WindowsAppSDK": "[1.8.260710003, )"
+          "Markdig": "[0.42.0, )"
         }
       },
       "markdownrenderer.gfm": {
         "type": "Project",
         "dependencies": {
-          "MarkdownRenderer": "[0.1.0, )"
+          "MarkdownRenderer.WinUI": "[1.0.0-preview.1, )"
+        }
+      },
+      "markdownrenderer.github": {
+        "type": "Project",
+        "dependencies": {
+          "MarkdownRenderer.Gfm": "[1.0.0-preview.1, )",
+          "MarkdownRenderer.Html": "[0.1.0-preview.1, )"
+        }
+      },
+      "markdownrenderer.html": {
+        "type": "Project",
+        "dependencies": {
+          "MarkdownRenderer.WinUI": "[1.0.0-preview.1, )"
+        }
+      },
+      "markdownrenderer.math": {
+        "type": "Project",
+        "dependencies": {
+          "MarkdownRenderer.Core": "[1.0.0-preview.1, )"
+        }
+      },
+      "markdownrenderer.mermaid": {
+        "type": "Project",
+        "dependencies": {
+          "MarkdownRenderer.Core": "[1.0.0-preview.1, )"
+        }
+      },
+      "markdownrenderer.svg.thorvg": {
+        "type": "Project",
+        "dependencies": {
+          "MarkdownRenderer.WinUI": "[1.0.0-preview.1, )"
         }
       },
       "markdownrenderer.syntaxhighlighting.textmate": {
         "type": "Project",
         "dependencies": {
-          "MarkdownRenderer": "[0.1.0, )",
-          "TextMateSharp.Grammars": "[2.0.3, )"
+          "MarkdownRenderer.WinUI": "[1.0.0-preview.1, )"
+        }
+      },
+      "markdownrenderer.syntaxhighlighting.textmate.grammars.common": {
+        "type": "Project",
+        "dependencies": {
+          "MarkdownRenderer.SyntaxHighlighting.TextMate": "[1.0.0-preview.1, )",
+          "TextMateSharp": "[2.0.3, )"
+        }
+      },
+      "MarkdownRenderer.WinUI": {
+        "type": "Project",
+        "dependencies": {
+          "Markdig": "[0.42.0, )",
+          "MarkdownRenderer.Core": "[1.0.0-preview.1, )",
+          "Microsoft.Graphics.Win2D": "[1.4.0, )"
         }
       }
     },

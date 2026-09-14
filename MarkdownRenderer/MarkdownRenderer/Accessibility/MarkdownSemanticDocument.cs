@@ -3,6 +3,8 @@ using System.Collections.Generic;
 using System.Text;
 using Windows.Foundation;
 using MarkdownRenderer.Document;
+using MarkdownRenderer.Extensions;
+using MarkdownRenderer.Hosting;
 using MarkdownRenderer.Layout;
 using MarkdownRenderer.Layout.Boxes;
 using MarkdownRenderer.Theming;
@@ -22,6 +24,8 @@ internal enum MarkdownSemanticRole
     Table,
     TableCell,
     Image,
+    Math,
+    Diagram,
     Embed,
     Abbreviation,
 }
@@ -41,6 +45,11 @@ internal sealed class MarkdownSemanticNode
     public InlineContainerBox? InlineBox { get; init; }
     public ImageBox? ImageBox { get; init; }
     public EmbedBox? EmbedBox { get; init; }
+    public DeclarativeHostedElementBox? HostedElementBox { get; init; }
+    public VectorSceneBox? VectorSceneBox { get; init; }
+    public int VectorSemanticIndex { get; init; } = -1;
+    public MarkdownVectorSemanticRole? VectorSemanticRole { get; init; }
+    public MarkdownVectorSemanticFlags VectorSemanticFlags { get; init; }
     public TableBox? TableBox { get; init; }
     public InlineRun? InlineRun { get; init; }
     public MarkdownSemanticNode? Parent { get; private set; }
@@ -56,7 +65,14 @@ internal sealed class MarkdownSemanticNode
     public int ColumnSpan { get; init; } = 1;
     public int RowCount { get; init; }
     public int ColumnCount { get; init; }
+    public int Level { get; set; }
+    public int PositionInSet { get; set; }
+    public int SizeOfSet { get; set; }
     public bool IsHeader { get; init; }
+    public MarkdownAccessibilityRole AccessibilityRole { get; init; }
+    public string? AccessibilityName { get; init; }
+    public string? AccessibilityDescription { get; init; }
+    public string? AutomationId { get; init; }
 
     public Rect Bounds
     {
@@ -69,7 +85,10 @@ internal sealed class MarkdownSemanticNode
                     return runRect;
             }
 
-            return Box?.Bounds ?? InlineBox?.Bounds ?? ImageBox?.Bounds ?? EmbedBox?.Bounds ?? default;
+            if (VectorSceneBox is { } vector)
+                return VectorSemanticIndex >= 0 ? vector.GetSemanticBounds(VectorSemanticIndex) : vector.Bounds;
+
+            return Box?.Bounds ?? InlineBox?.Bounds ?? ImageBox?.Bounds ?? EmbedBox?.Bounds ?? HostedElementBox?.Bounds ?? default;
         }
     }
 
@@ -86,19 +105,63 @@ internal sealed record MarkdownTextSpan(
     InlineContainerBox? InlineBox,
     InlineRun? InlineRun,
     ImageBox? ImageBox,
-    EmbedBox? EmbedBox);
+    EmbedBox? EmbedBox,
+    DeclarativeHostedElementBox? HostedElementBox,
+    VectorSceneBox? VectorSceneBox = null,
+    int VectorSemanticIndex = -1);
 
 internal sealed class MarkdownSemanticDocument
 {
+    private readonly IReadOnlyDictionary<(int BlockIndex, int InlineIndex), MarkdownTextSpan> _spanByPosition;
+    private readonly IReadOnlyDictionary<InlineContainerBox, MarkdownSemanticNode> _nodeByInlineBox;
+    private readonly IReadOnlyDictionary<IHorizontalOverflowBox, MarkdownSemanticNode> _nodeByHorizontalOverflow;
+
+    public static MarkdownSemanticDocument Empty { get; } = new(
+        new MarkdownSemanticNode(MarkdownSemanticRole.Document)
+        {
+            TextStart = 0,
+            TextEnd = 0,
+        },
+        string.Empty,
+        Array.Empty<MarkdownTextSpan>());
+
     private MarkdownSemanticDocument(MarkdownSemanticNode root, string text, IReadOnlyList<MarkdownTextSpan> spans)
     {
         Root = root;
         Text = text;
+        TextElementBoundaries = new TextElementBoundaryIndex(text);
         TextSpans = spans;
+        var spanByPosition = new Dictionary<(int BlockIndex, int InlineIndex), MarkdownTextSpan>();
+        for (int i = 0; i < spans.Count; i++)
+        {
+            MarkdownTextSpan span = spans[i];
+            if (span.InlineBox is { } inline && span.InlineRun is { } run)
+                spanByPosition.TryAdd((inline.BlockIndex, run.InlineIndex), span);
+            else if (span.VectorSceneBox is { } vector)
+                spanByPosition.TryAdd((vector.BlockIndex, span.VectorSemanticIndex), span);
+        }
+        _spanByPosition = spanByPosition;
+
+        var nodeByInlineBox = new Dictionary<InlineContainerBox, MarkdownSemanticNode>();
+        var nodeByHorizontalOverflow = new Dictionary<IHorizontalOverflowBox, MarkdownSemanticNode>(
+            ReferenceEqualityComparer.Instance);
+        foreach (MarkdownSemanticNode node in EnumerateDepthFirst(root))
+        {
+            // Inline semantic descendants share their parent's layout box. Index
+            // only the block node so its TextProvider owns the full paragraph or
+            // heading range instead of whichever inline span happened to be first.
+            if (node.InlineBox is { } inline && node.InlineRun is null)
+                nodeByInlineBox.TryAdd(inline, node);
+            if (node.VectorSemanticIndex < 0 && node.Box is IHorizontalOverflowBox overflow)
+                nodeByHorizontalOverflow.TryAdd(overflow, node);
+        }
+        _nodeByInlineBox = nodeByInlineBox;
+        _nodeByHorizontalOverflow = nodeByHorizontalOverflow;
     }
 
     public MarkdownSemanticNode Root { get; }
     public string Text { get; }
+    public TextElementBoundaryIndex TextElementBoundaries { get; }
     public IReadOnlyList<MarkdownTextSpan> TextSpans { get; }
 
     public static MarkdownSemanticDocument Build(LayoutSnapshot snapshot)
@@ -116,6 +179,25 @@ internal sealed class MarkdownSemanticDocument
 
     public int TextOffsetFromDocumentPosition(DocumentPosition position)
     {
+        if (_spanByPosition.TryGetValue((position.BlockIndex, position.InlineIndex), out var indexedSpan))
+        {
+            if (indexedSpan.InlineRun is { } indexedRun)
+            {
+                return Math.Clamp(
+                    indexedSpan.TextStart + ProjectRenderedOffsetToText(
+                        indexedRun,
+                        position.CharacterOffset,
+                        indexedSpan.TextEnd - indexedSpan.TextStart),
+                    indexedSpan.TextStart,
+                    indexedSpan.TextEnd);
+            }
+
+            return position.CharacterOffset <= 0 ? indexedSpan.TextStart : indexedSpan.TextEnd;
+        }
+
+        // Non-run positions (images/embeds) and deliberately unbounded
+        // selection sentinels are uncommon. Preserve the compatibility
+        // fallback without putting normal copy/UIA lookups on a linear path.
         foreach (var span in TextSpans)
         {
             if (span.InlineBox is { } icb && icb.BlockIndex == position.BlockIndex)
@@ -141,7 +223,10 @@ internal sealed class MarkdownSemanticDocument
         {
             if (span.InlineBox?.BlockIndex == position.BlockIndex ||
                 span.ImageBox?.BlockIndex == position.BlockIndex ||
-                span.EmbedBox?.BlockIndex == position.BlockIndex)
+                span.EmbedBox?.BlockIndex == position.BlockIndex ||
+                span.HostedElementBox?.BlockIndex == position.BlockIndex ||
+                (span.VectorSceneBox?.BlockIndex == position.BlockIndex &&
+                 (span.VectorSemanticIndex == position.InlineIndex || span.VectorSemanticIndex < 0)))
             {
                 return span.TextStart;
             }
@@ -167,38 +252,67 @@ internal sealed class MarkdownSemanticDocument
     public DocumentPosition? PositionFromTextOffset(int textOffset)
     {
         textOffset = Math.Clamp(textOffset, 0, Text.Length);
-        MarkdownTextSpan? previous = null;
-        foreach (var span in TextSpans)
+        if (TextSpans.Count == 0)
+            return DocumentPosition.Zero;
+
+        int spanIndex = GetTextSpanStartIndex(textOffset);
+        if (spanIndex >= TextSpans.Count)
+            return PositionFromSpanEnd(TextSpans[^1]);
+
+        MarkdownTextSpan span = TextSpans[spanIndex];
+        if (textOffset < span.TextStart)
         {
-            if (textOffset >= span.TextStart && textOffset <= span.TextEnd)
-            {
-                if (span.InlineBox is { } icb)
-                {
-                    if (span.InlineRun is { } run)
-                    {
-                        int accessibleOffset = Math.Clamp(textOffset - span.TextStart, 0, Math.Max(0, span.TextEnd - span.TextStart));
-                        int renderedOffset = ProjectTextOffsetToRendered(run, accessibleOffset, span.TextEnd - span.TextStart);
-                        return new DocumentPosition(icb.BlockIndex, run.InlineIndex, renderedOffset);
-                    }
-
-                    int bufferOffset = Math.Clamp(textOffset - span.TextStart, 0, Math.Max(0, span.TextEnd - span.TextStart));
-                    return icb.GetPositionFromBufferOffset(bufferOffset);
-                }
-
-                if (span.ImageBox is { } image)
-                    return new DocumentPosition(image.BlockIndex, 0, textOffset <= span.TextStart ? 0 : 1);
-
-                if (span.EmbedBox is { } embed)
-                    return new DocumentPosition(embed.BlockIndex, 0, textOffset <= span.TextStart ? 0 : 1);
-            }
-
-            if (textOffset < span.TextStart && previous is not null)
-                return PositionFromSpanEnd(previous);
-
-            previous = span;
+            return spanIndex > 0
+                ? PositionFromSpanEnd(TextSpans[spanIndex - 1])
+                : PositionFromSpanEnd(span) with { CharacterOffset = 0 };
         }
 
-        return previous is not null ? PositionFromSpanEnd(previous) : DocumentPosition.Zero;
+        if (span.InlineBox is { } icb)
+        {
+            if (span.InlineRun is { } run)
+            {
+                int accessibleOffset = Math.Clamp(textOffset - span.TextStart, 0, Math.Max(0, span.TextEnd - span.TextStart));
+                int renderedOffset = ProjectTextOffsetToRendered(run, accessibleOffset, span.TextEnd - span.TextStart);
+                return new DocumentPosition(icb.BlockIndex, run.InlineIndex, renderedOffset);
+            }
+
+            int bufferOffset = Math.Clamp(textOffset - span.TextStart, 0, Math.Max(0, span.TextEnd - span.TextStart));
+            return icb.GetPositionFromBufferOffset(bufferOffset);
+        }
+
+        if (span.ImageBox is { } image)
+            return new DocumentPosition(image.BlockIndex, 0, textOffset <= span.TextStart ? 0 : 1);
+
+        if (span.EmbedBox is { } embed)
+            return new DocumentPosition(embed.BlockIndex, 0, textOffset <= span.TextStart ? 0 : 1);
+
+        if (span.HostedElementBox is { } hosted)
+            return new DocumentPosition(hosted.BlockIndex, 0, textOffset <= span.TextStart ? 0 : 1);
+
+        if (span.VectorSceneBox is { } vector)
+            return new DocumentPosition(
+                vector.BlockIndex,
+                span.VectorSemanticIndex,
+                textOffset <= span.TextStart ? 0 : 1);
+
+        return DocumentPosition.Zero;
+    }
+
+    /// <summary>Finds the first text span whose end is after the requested offset.</summary>
+    internal int GetTextSpanStartIndex(int textOffset)
+    {
+        int low = 0;
+        int high = TextSpans.Count;
+        while (low < high)
+        {
+            int middle = low + ((high - low) >> 1);
+            if (TextSpans[middle].TextEnd <= textOffset)
+                low = middle + 1;
+            else
+                high = middle;
+        }
+
+        return low;
     }
 
     public IEnumerable<Rect> GetDocumentRects(int textStart, int textEnd, bool expandDegenerate = false)
@@ -287,6 +401,16 @@ internal sealed class MarkdownSemanticDocument
         {
             yield return embed.Bounds;
         }
+        else if (span.HostedElementBox is { } hosted)
+        {
+            yield return hosted.Bounds;
+        }
+        else if (span.VectorSceneBox is { } vector)
+        {
+            yield return span.VectorSemanticIndex >= 0
+                ? vector.GetVisibleSemanticBounds(span.VectorSemanticIndex)
+                : vector.VisibleContentBounds;
+        }
     }
 
     public IEnumerable<ImageBox> GetImagesIntersectingTextRange(int textStart, int textEnd)
@@ -318,12 +442,106 @@ internal sealed class MarkdownSemanticDocument
         {
             if (node == Root) continue;
             if (node.TextEnd < textStart || node.TextStart > textEnd) continue;
-            if (node.Role is MarkdownSemanticRole.Link or MarkdownSemanticRole.Image or MarkdownSemanticRole.Embed or MarkdownSemanticRole.Abbreviation or
+            if ((node.VectorSceneBox is not null && node.VectorSemanticIndex >= 0) ||
+                node.Role is MarkdownSemanticRole.Link or MarkdownSemanticRole.Image or MarkdownSemanticRole.Embed or MarkdownSemanticRole.Abbreviation or
                 MarkdownSemanticRole.Table or MarkdownSemanticRole.TableCell or MarkdownSemanticRole.List or MarkdownSemanticRole.ListItem)
             {
                 yield return node;
             }
         }
+    }
+
+    internal MarkdownSemanticNode GetInnermostNodeContainingTextRange(
+        int textStart,
+        int textEnd)
+    {
+        textStart = Math.Clamp(textStart, 0, Text.Length);
+        textEnd = Math.Clamp(textEnd, textStart, Text.Length);
+        MarkdownSemanticNode enclosing = Root;
+        while (true)
+        {
+            MarkdownSemanticNode? next = null;
+            foreach (MarkdownSemanticNode child in enclosing.Children)
+            {
+                if (ContainsTextRange(child, textStart, textEnd, Text.Length))
+                {
+                    next = child;
+                    break;
+                }
+            }
+
+            if (next is null)
+                return enclosing;
+            enclosing = next;
+        }
+    }
+
+    internal MarkdownSemanticNode GetEnclosingNodeForTextRange(
+        int textStart,
+        int textEnd,
+        InlineContainerBox? exactRangeScope)
+    {
+        textStart = Math.Clamp(textStart, 0, Text.Length);
+        textEnd = Math.Clamp(textEnd, textStart, Text.Length);
+        if (exactRangeScope is not null &&
+            _nodeByInlineBox.TryGetValue(exactRangeScope, out MarkdownSemanticNode? scopedNode) &&
+            textStart == scopedNode.TextStart &&
+            textEnd == scopedNode.TextEnd)
+        {
+            return scopedNode;
+        }
+
+        return GetInnermostNodeContainingTextRange(textStart, textEnd);
+    }
+
+    internal bool TryGetInlineContainerNode(
+        InlineContainerBox inlineBox,
+        out MarkdownSemanticNode node)
+    {
+        ArgumentNullException.ThrowIfNull(inlineBox);
+        return _nodeByInlineBox.TryGetValue(inlineBox, out node!);
+    }
+
+    internal bool TryGetHorizontalOverflowNode(
+        IHorizontalOverflowBox overflow,
+        out MarkdownSemanticNode node)
+    {
+        ArgumentNullException.ThrowIfNull(overflow);
+        return _nodeByHorizontalOverflow.TryGetValue(overflow, out node!);
+    }
+
+    internal IEnumerable<MarkdownSemanticNode> GetImmediateChildrenIntersectingTextRange(
+        MarkdownSemanticNode enclosing,
+        int textStart,
+        int textEnd)
+    {
+        ArgumentNullException.ThrowIfNull(enclosing);
+        textStart = Math.Clamp(textStart, 0, Text.Length);
+        textEnd = Math.Clamp(textEnd, textStart, Text.Length);
+        if (textStart == textEnd)
+            yield break;
+
+        foreach (MarkdownSemanticNode child in enclosing.Children)
+        {
+            if (child.TextEnd > textStart && child.TextStart < textEnd)
+                yield return child;
+        }
+    }
+
+    private static bool ContainsTextRange(
+        MarkdownSemanticNode node,
+        int textStart,
+        int textEnd,
+        int documentLength)
+    {
+        if (textStart != textEnd)
+            return node.TextStart <= textStart && textEnd <= node.TextEnd;
+
+        // Text offsets are half-open. A caret at a shared boundary belongs to
+        // the following node; only the final node may contain document end.
+        return node.TextStart <= textStart &&
+               (textStart < node.TextEnd ||
+                (textStart == documentLength && textStart == node.TextEnd));
     }
 
     public static IEnumerable<MarkdownSemanticNode> EnumerateDepthFirst(MarkdownSemanticNode node)
@@ -348,6 +566,10 @@ internal sealed class MarkdownSemanticDocument
             return new DocumentPosition(image.BlockIndex, 0, 1);
         if (span.EmbedBox is { } embed)
             return new DocumentPosition(embed.BlockIndex, 0, 1);
+        if (span.HostedElementBox is { } hosted)
+            return new DocumentPosition(hosted.BlockIndex, 0, 1);
+        if (span.VectorSceneBox is { } vector)
+            return new DocumentPosition(vector.BlockIndex, span.VectorSemanticIndex, 1);
         return DocumentPosition.Zero;
     }
 
@@ -357,7 +579,7 @@ internal sealed class MarkdownSemanticDocument
             return 0;
 
         renderedOffset = Math.Clamp(renderedOffset, 0, run.RenderedLength);
-        if (run is InlineImageRun or InlineEmbedRun)
+        if (run is InlineImageRun or InlineEmbedRun or InlineVectorSceneRun)
             return renderedOffset <= 0 ? 0 : textLength;
 
         if (run.RenderedLength == textLength)
@@ -372,7 +594,7 @@ internal sealed class MarkdownSemanticDocument
             return 0;
 
         textOffset = Math.Clamp(textOffset, 0, Math.Max(0, textLength));
-        if (run is InlineImageRun or InlineEmbedRun)
+        if (run is InlineImageRun or InlineEmbedRun or InlineVectorSceneRun)
             return textOffset <= 0 ? 0 : run.RenderedLength;
 
         if (run.RenderedLength == textLength)
@@ -388,6 +610,7 @@ internal sealed class MarkdownSemanticDocument
     {
         private readonly StringBuilder _text = new();
         private readonly List<MarkdownTextSpan> _spans = new();
+        private int _listDepth;
 
         public MarkdownSemanticDocument Build(LayoutSnapshot snapshot)
         {
@@ -415,6 +638,8 @@ internal sealed class MarkdownSemanticDocument
                 CodeBlockBox codeBlock => BuildCodeBlock(codeBlock),
                 ImageBox image => BuildImage(image),
                 EmbedBox embed => BuildEmbed(embed),
+                DeclarativeHostedElementBox hosted => BuildHostedElement(hosted),
+                VectorSceneBox vector => BuildVectorScene(vector),
                 ListItemBox listItem => BuildListItem(listItem),
                 TableBox table => BuildTable(table),
                 StackBox stack when IsListStack(stack) => BuildList(stack),
@@ -437,30 +662,42 @@ internal sealed class MarkdownSemanticDocument
                 HeadingLevel = GetHeadingLevel(inline.ElementKey),
                 CodeLanguage = inline.CodeLanguage,
                 HelpText = inline.ElementKey == MarkdownElementKeys.CodeBlock && !string.IsNullOrWhiteSpace(inline.CodeLanguage)
-                    ? MarkdownLocalizedStrings.CodeLanguageHelp(inline.CodeLanguage)
+                    ? inline.Context.ResolveFormattedString(
+                        MarkdownStringKeys.CodeLanguageHelp,
+                        MarkdownLocalizedStrings.CodeLanguageHelpFormat,
+                        inline.CodeLanguage)
                     : null,
             };
 
             foreach (var run in inline.Runs)
             {
-                int runStart = _text.Length;
-                _text.Append(run.AccessibleText);
-                int runEnd = _text.Length;
-                _spans.Add(new MarkdownTextSpan(runStart, runEnd, inline, run, null, null));
-            }
-            node.TextEnd = _text.Length;
+                string accessibleText = run is InlineImageRun candidateImageRun
+                    ? MarkdownImageSemanticPolicy.GetInlineAccessibleName(
+                        candidateImageRun.AltText,
+                        candidateImageRun.IsLinked,
+                        candidateImageRun.LinkTitle,
+                        inline.Context.ResolveString(
+                            MarkdownStringKeys.ImageName,
+                            MarkdownLocalizedStrings.ImageName)) ?? string.Empty
+                    : run.AccessibleText;
 
-            foreach (var run in inline.Runs)
-            {
-                var runSpan = FindRunTextSpan(inline, run);
+                // An unlinked image with empty alternative text is decorative. It must
+                // contribute neither a text span nor an element to the UIA document.
+                if (run is InlineImageRun { IsLinked: false } && accessibleText.Length == 0)
+                    continue;
+
+                int runStart = _text.Length;
+                _text.Append(accessibleText);
+                int runEnd = _text.Length;
+                _spans.Add(new MarkdownTextSpan(runStart, runEnd, inline, run, null, null, null));
                 if (run is LinkRun link)
                 {
                     node.Add(new MarkdownSemanticNode(MarkdownSemanticRole.Link, inline)
                     {
                         InlineBox = inline,
                         InlineRun = link,
-                        TextStart = runSpan.Start,
-                        TextEnd = runSpan.End,
+                        TextStart = runStart,
+                        TextEnd = runEnd,
                         HelpText = link.Url,
                     });
                 }
@@ -470,8 +707,11 @@ internal sealed class MarkdownSemanticDocument
                     {
                         InlineBox = inline,
                         InlineRun = embedRun,
-                        TextStart = runSpan.Start,
-                        TextEnd = runSpan.End,
+                        TextStart = runStart,
+                        TextEnd = runEnd,
+                        AccessibilityName = embedRun.AutomationMetadata?.CurrentName,
+                        AccessibilityDescription = embedRun.AutomationMetadata?.ReadOnlyHelpText,
+                        AutomationId = embedRun.AutomationMetadata?.AutomationId,
                     });
                 }
                 else if (run is InlineImageRun imageRun)
@@ -479,16 +719,35 @@ internal sealed class MarkdownSemanticDocument
                     node.Add(new MarkdownSemanticNode(MarkdownSemanticRole.Image, inline)
                     {
                         InlineBox = inline,
+                        ImageBox = imageRun.Image,
                         InlineRun = imageRun,
-                        TextStart = runSpan.Start,
-                        TextEnd = runSpan.End,
+                        TextStart = runStart,
+                        TextEnd = runEnd,
                         HelpText = imageRun.IsLinked
                             ? !string.IsNullOrWhiteSpace(imageRun.LinkTitle)
                                 ? imageRun.LinkTitle
                                 : imageRun.LinkUrl
                             : !string.IsNullOrWhiteSpace(imageRun.Title)
                                 ? imageRun.Title
-                                : imageRun.Url,
+                            : imageRun.Url,
+                    });
+                }
+                else if (run is InlineVectorSceneRun vectorRun)
+                {
+                    node.Add(new MarkdownSemanticNode(MarkdownSemanticRole.Math, inline)
+                    {
+                        InlineBox = inline,
+                        InlineRun = vectorRun,
+                        TextStart = runStart,
+                        TextEnd = runEnd,
+                        AccessibilityRole = MarkdownAccessibilityRole.Math,
+                        AccessibilityName = vectorRun.AccessibilityName,
+                        AccessibilityDescription = vectorRun.AccessibilityDescription,
+                        AutomationId = string.Concat(
+                            "MarkdownMath_",
+                            vectorRun.SourceSpan.Start.ToString(System.Globalization.CultureInfo.InvariantCulture),
+                            "_",
+                            vectorRun.SourceSpan.Length.ToString(System.Globalization.CultureInfo.InvariantCulture)),
                     });
                 }
                 else if (run is AbbreviationRun abbreviationRun)
@@ -497,12 +756,13 @@ internal sealed class MarkdownSemanticDocument
                     {
                         InlineBox = inline,
                         InlineRun = abbreviationRun,
-                        TextStart = runSpan.Start,
-                        TextEnd = runSpan.End,
+                        TextStart = runStart,
+                        TextEnd = runEnd,
                         HelpText = abbreviationRun.Expansion,
                     });
                 }
             }
+            node.TextEnd = _text.Length;
 
             AppendBlockSeparator();
             return node;
@@ -516,7 +776,10 @@ internal sealed class MarkdownSemanticDocument
                 TextStart = _text.Length,
                 CodeLanguage = hasLanguage ? codeBlock.LanguageDisplay : null,
                 HelpText = hasLanguage
-                    ? MarkdownLocalizedStrings.CodeLanguageHelp(codeBlock.LanguageDisplay)
+                    ? codeBlock.Context.ResolveFormattedString(
+                        MarkdownStringKeys.CodeLanguageHelp,
+                        MarkdownLocalizedStrings.CodeLanguageHelpFormat,
+                        codeBlock.LanguageDisplay)
                     : null,
             };
 
@@ -527,7 +790,7 @@ internal sealed class MarkdownSemanticDocument
                     int runStart = _text.Length;
                     _text.Append(run.AccessibleText);
                     int runEnd = _text.Length;
-                    _spans.Add(new MarkdownTextSpan(runStart, runEnd, chunk, run, null, null));
+                _spans.Add(new MarkdownTextSpan(runStart, runEnd, chunk, run, null, null, null));
                 }
             }
 
@@ -536,19 +799,11 @@ internal sealed class MarkdownSemanticDocument
             return node;
         }
 
-        private (int Start, int End) FindRunTextSpan(InlineContainerBox inline, InlineRun run)
+        private MarkdownSemanticNode? BuildImage(ImageBox image)
         {
-            foreach (var span in _spans)
-            {
-                if (ReferenceEquals(span.InlineBox, inline) && ReferenceEquals(span.InlineRun, run))
-                    return (span.TextStart, span.TextEnd);
-            }
+            if (MarkdownImageSemanticPolicy.IsDecorativeBlock(image.Alt))
+                return null;
 
-            return (_text.Length, _text.Length);
-        }
-
-        private MarkdownSemanticNode BuildImage(ImageBox image)
-        {
             var node = new MarkdownSemanticNode(MarkdownSemanticRole.Image, image)
             {
                 ImageBox = image,
@@ -556,15 +811,11 @@ internal sealed class MarkdownSemanticDocument
                 HelpText = image.SvgDesc,
             };
 
-            string name = !string.IsNullOrWhiteSpace(image.Alt)
-                ? image.Alt
-                : !string.IsNullOrWhiteSpace(image.SvgTitle)
-                    ? image.SvgTitle!
-                    : MarkdownLocalizedStrings.ImageName;
+            string name = image.Alt;
             int start = _text.Length;
             _text.Append(name);
             int end = _text.Length;
-            _spans.Add(new MarkdownTextSpan(start, end, null, null, image, null));
+            _spans.Add(new MarkdownTextSpan(start, end, null, null, image, null, null));
             node.TextEnd = _text.Length;
             AppendBlockSeparator();
             return node;
@@ -580,7 +831,180 @@ internal sealed class MarkdownSemanticDocument
             int start = _text.Length;
             _text.Append(InlineEmbedRun.PlaceholderChar);
             int end = _text.Length;
-            _spans.Add(new MarkdownTextSpan(start, end, null, null, null, embed));
+            _spans.Add(new MarkdownTextSpan(start, end, null, null, null, embed, null));
+            node.TextEnd = _text.Length;
+            AppendBlockSeparator();
+            return node;
+        }
+
+        private MarkdownSemanticNode BuildVectorScene(VectorSceneBox vector)
+        {
+            MarkdownContent content = vector.Content;
+            int start = _text.Length;
+            var semanticRanges = new (int Start, int End)?[vector.Scene.Semantics.Count];
+            for (int i = 0; i < vector.Scene.Semantics.Count; i++)
+            {
+                MarkdownVectorSemanticItem item = vector.Scene.Semantics[i];
+                if (!MarkdownVectorSemanticPolicy.IsExposed(item.Flags) ||
+                    (item.ParentIndex < 0 && item.Role == MarkdownVectorSemanticRole.Diagram) ||
+                    string.IsNullOrWhiteSpace(item.Name))
+                {
+                    continue;
+                }
+
+                semanticRanges[i] = AppendVectorText(vector, i, item.Name!, start);
+            }
+
+            if (vector.Scene.Semantics.Count == 0 &&
+                !string.IsNullOrWhiteSpace(content.SemanticText))
+            {
+                // Math and other unstructured vector scenes deliberately expose
+                // their semantic source as one exact range. Structured scenes expose
+                // each named, non-decorative child as an exact range above; Selectable
+                // independently controls application selection and pointer hit testing.
+                AppendVectorText(vector, -1, content.SemanticText, start);
+            }
+
+            if (vector.Scene.Semantics.Count == 0 &&
+                _text.Length == start &&
+                !string.IsNullOrWhiteSpace(content.AccessibilityName))
+            {
+                AppendVectorText(vector, -1, content.AccessibilityName!, start);
+            }
+            int end = _text.Length;
+
+            string? accessibilityName = content.AccessibilityName;
+            if (string.IsNullOrWhiteSpace(accessibilityName))
+            {
+                for (int i = 0; i < vector.Scene.Semantics.Count; i++)
+                {
+                    MarkdownVectorSemanticItem candidate = vector.Scene.Semantics[i];
+                    if (MarkdownVectorSemanticPolicy.IsExposed(candidate.Flags) &&
+                        candidate.ParentIndex < 0 &&
+                        candidate.Role == MarkdownVectorSemanticRole.Diagram &&
+                        !string.IsNullOrWhiteSpace(candidate.Name))
+                    {
+                        accessibilityName = candidate.Name;
+                        break;
+                    }
+                }
+            }
+
+            var node = new MarkdownSemanticNode(
+                content.AccessibilityRole == MarkdownAccessibilityRole.Math
+                    ? MarkdownSemanticRole.Math
+                    : MarkdownSemanticRole.Diagram,
+                vector)
+            {
+                VectorSceneBox = vector,
+                TextStart = start,
+                TextEnd = end,
+                AccessibilityRole = content.AccessibilityRole,
+                AccessibilityName = accessibilityName,
+                AccessibilityDescription = content.AccessibilityDescription,
+                AutomationId = string.Concat(
+                    content.AccessibilityRole == MarkdownAccessibilityRole.Math ? "MarkdownMath_" : "MarkdownDiagram_",
+                    content.SourceSpan.Start.ToString(System.Globalization.CultureInfo.InvariantCulture),
+                    "_",
+                    content.SourceSpan.Length.ToString(System.Globalization.CultureInfo.InvariantCulture)),
+            };
+
+            var semanticNodes = new MarkdownSemanticNode?[vector.Scene.Semantics.Count];
+            for (int i = 0; i < semanticNodes.Length; i++)
+            {
+                MarkdownVectorSemanticItem item = vector.Scene.Semantics[i];
+                if (!MarkdownVectorSemanticPolicy.IsExposed(item.Flags) ||
+                    (item.ParentIndex < 0 && item.Role == MarkdownVectorSemanticRole.Diagram))
+                {
+                    continue;
+                }
+                MarkdownVectorLinkAction? link = vector.Scene.GetLinkAction(i);
+                bool invokable = MarkdownVectorSemanticPolicy.IsInvokable(item.Flags, link is not null);
+                var child = new MarkdownSemanticNode(invokable
+                    ? MarkdownSemanticRole.Link
+                    : MarkdownSemanticRole.Group, vector)
+                {
+                    VectorSceneBox = vector,
+                    VectorSemanticIndex = i,
+                    VectorSemanticRole = item.Role,
+                    VectorSemanticFlags = item.Flags,
+                    TextStart = semanticRanges[i]?.Start ?? start,
+                    TextEnd = semanticRanges[i]?.End ?? start,
+                    AccessibilityRole = invokable
+                        ? MarkdownAccessibilityRole.Link
+                        : MarkdownAccessibilityRole.Group,
+                    AccessibilityName = item.Name,
+                    AccessibilityDescription = item.Description,
+                    HelpText = link?.Target ?? link?.Action,
+                    AutomationId = string.Concat(
+                        "MarkdownDiagramItem_",
+                        content.SourceSpan.Start.ToString(System.Globalization.CultureInfo.InvariantCulture),
+                        "_",
+                        item.SourceId.ToString("X8", System.Globalization.CultureInfo.InvariantCulture)),
+                };
+                semanticNodes[i] = child;
+            }
+
+            for (int i = 0; i < semanticNodes.Length; i++)
+            {
+                MarkdownSemanticNode? child = semanticNodes[i];
+                if (child is null)
+                    continue;
+                int parent = vector.Scene.Semantics[i].ParentIndex;
+                while (parent >= 0 && parent < semanticNodes.Length && semanticNodes[parent] is null)
+                    parent = vector.Scene.Semantics[parent].ParentIndex;
+                if (parent >= 0 && parent < semanticNodes.Length && semanticNodes[parent] is { } parentNode)
+                    parentNode.Add(child);
+                else
+                    node.Add(child);
+            }
+
+            AppendBlockSeparator();
+            return node;
+        }
+
+        private (int Start, int End) AppendVectorText(
+            VectorSceneBox vector,
+            int semanticIndex,
+            string value,
+            int blockStart)
+        {
+            if (_text.Length > blockStart)
+                _text.Append('\n');
+            int start = _text.Length;
+            _text.Append(value);
+            int end = _text.Length;
+            _spans.Add(new MarkdownTextSpan(
+                start,
+                end,
+                null,
+                null,
+                null,
+                null,
+                null,
+                vector,
+                semanticIndex));
+            return (start, end);
+        }
+
+        private MarkdownSemanticNode BuildHostedElement(DeclarativeHostedElementBox hosted)
+        {
+            var node = new MarkdownSemanticNode(MarkdownSemanticRole.Embed, hosted)
+            {
+                HostedElementBox = hosted,
+                TextStart = _text.Length,
+                AccessibilityRole = hosted.AccessibilityRole,
+                AccessibilityName = hosted.AccessibilityName,
+                AccessibilityDescription = hosted.AccessibilityDescription,
+                AutomationId = hosted.AutomationId,
+            };
+            int start = _text.Length;
+            if (hosted.SemanticText is { } semanticText)
+                _text.Append(semanticText);
+            else
+                _text.Append(InlineEmbedRun.PlaceholderChar);
+            int end = _text.Length;
+            _spans.Add(new MarkdownTextSpan(start, end, null, null, null, null, hosted));
             node.TextEnd = _text.Length;
             AppendBlockSeparator();
             return node;
@@ -588,15 +1012,41 @@ internal sealed class MarkdownSemanticDocument
 
         private MarkdownSemanticNode BuildList(StackBox stack)
         {
+            int level = ++_listDepth;
             var node = new MarkdownSemanticNode(MarkdownSemanticRole.List, stack)
             {
                 TextStart = _text.Length,
+                Level = level,
             };
 
+            int sizeOfSet = 0;
             foreach (var child in stack.Children)
             {
-                var childNode = BuildBlock(child);
-                if (childNode is not null) node.Add(childNode);
+                if (child is ListItemBox)
+                    sizeOfSet++;
+            }
+
+            int position = 0;
+            try
+            {
+                foreach (var child in stack.Children)
+                {
+                    var childNode = BuildBlock(child);
+                    if (childNode is null)
+                        continue;
+
+                    if (childNode.Role == MarkdownSemanticRole.ListItem)
+                    {
+                        childNode.Level = level;
+                        childNode.PositionInSet = ++position;
+                        childNode.SizeOfSet = sizeOfSet;
+                    }
+                    node.Add(childNode);
+                }
+            }
+            finally
+            {
+                _listDepth--;
             }
 
             node.TextEnd = _text.Length;

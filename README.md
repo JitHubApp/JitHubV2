@@ -55,7 +55,7 @@
 - `JitHub.WinUI`: the desktop app
 - `JitHub.Web`: the website, `/authorize` callback page, and short-lived OAuth handoff APIs
 - `JitHub.WinUI.Automation`: screenshot and UI smoke-test harness for the app design lab
-- `MarkdownRenderer`: native WinUI markdown renderer library, documented in [`docs/markdown-renderer`](docs/markdown-renderer/README.md)
+- `MarkdownRenderer`: preview native WinUI markdown renderer with immutable documents and opt-in feature packs, documented in [`docs/markdown-renderer`](docs/markdown-renderer/README.md)
 - `eng`: local helper scripts for app launch, screenshot capture, packaging, and build checks
 
 ## Runtime Shape

@@ -406,7 +406,8 @@ public sealed class AutomationHarnessSourceContractTests
 
         Assert.Contains("PaintPlaceholder(ds, rect);", source, StringComparison.Ordinal);
         Assert.Contains("EnsureLoading();", source, StringComparison.Ordinal);
-        Assert.Contains("WaitAsync(ImageResolverTimeout", source, StringComparison.Ordinal);
+        Assert.Contains("ImageResolverDeadline.RunAsync", source, StringComparison.Ordinal);
+        Assert.Contains("ImageResolverTimeout", source, StringComparison.Ordinal);
         Assert.Contains("compactInlineFailure", source, StringComparison.Ordinal);
         Assert.Contains("MeasureInlineFailureWidth", source, StringComparison.Ordinal);
         Assert.Contains("GetInlineFailureText()", source, StringComparison.Ordinal);
@@ -429,7 +430,7 @@ public sealed class AutomationHarnessSourceContractTests
 
         Assert.Contains("if (run is InlineImageRun imageRun)", source, StringComparison.Ordinal);
         Assert.Contains("RegisterImage(imageRun.Image);", source, StringComparison.Ordinal);
-        Assert.Contains("_subscribedImages.Contains(image)", source, StringComparison.Ordinal);
+        Assert.Contains("_subscribedImages.Contains(completedImage)", source, StringComparison.Ordinal);
         Assert.Contains("UnsubscribeAllImages();", source, StringComparison.Ordinal);
     }
 
@@ -449,10 +450,26 @@ public sealed class AutomationHarnessSourceContractTests
             "Layout",
             "LayoutSnapshot.cs"));
 
-        Assert.Contains("QueueImageRelayout();", controlSource, StringComparison.Ordinal);
-        Assert.Contains("snapshot.RelayoutMeasuredBlocks", controlSource, StringComparison.Ordinal);
+        Assert.Contains("QueueImageRelayout(completedImage.BlockIndex);", controlSource, StringComparison.Ordinal);
+        Assert.Contains("snapshot.RelayoutChangedBlocks", controlSource, StringComparison.Ordinal);
         Assert.DoesNotContain("Initial load / intrinsic-size change", controlSource, StringComparison.Ordinal);
-        Assert.Contains("internal void RelayoutMeasuredBlocks", snapshotSource, StringComparison.Ordinal);
+        Assert.Contains("internal void RelayoutChangedBlocks", snapshotSource, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void MarkdownThemeSnapshotsUseFinitePointLookupsInsteadOfEnumeratingApplicationResources()
+    {
+        string source = File.ReadAllText(Path.Combine(
+            FindRepositoryRoot(),
+            "MarkdownRenderer",
+            "MarkdownRenderer",
+            "Theming",
+            "ThemeResolver.cs"));
+
+        Assert.Contains("applicationResources.TryGetValue(resourceKey, out value)", source, StringComparison.Ordinal);
+        Assert.Contains("IReadOnlyCollection<string>? additionalElementKeys", source, StringComparison.Ordinal);
+        Assert.DoesNotContain("CaptureMarkdownResources()", source, StringComparison.Ordinal);
+        Assert.DoesNotContain("TryCollectResourceRoleNames", source, StringComparison.Ordinal);
     }
 
     [Fact]
@@ -467,7 +484,50 @@ public sealed class AutomationHarnessSourceContractTests
 
         Assert.Contains("case VirtualKey.F10 when shift && _selection.IsActive", source, StringComparison.Ordinal);
         Assert.Contains("ShowSelectionContextMenu(GetKeyboardContextMenuPoint())", source, StringComparison.Ordinal);
-        Assert.Contains("ShowSelectionContextMenu(pt)", source, StringComparison.Ordinal);
+        Assert.Contains("ShowSelectionContextMenu(pt, touchSelection: touchOrPen)", source, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void MarkdownTouchHandleUpdatesAreFrameCoalescedAndOverlayOnly()
+    {
+        string source = File.ReadAllText(Path.Combine(
+            FindRepositoryRoot(),
+            "MarkdownRenderer",
+            "MarkdownRenderer",
+            "Controls",
+            "MarkdownRendererControl.cs"));
+
+        int moveStart = source.IndexOf(
+            "private void ProcessSelectionHandlePointerMoved",
+            StringComparison.Ordinal);
+        int releaseStart = source.IndexOf(
+            "private void ProcessSelectionHandlePointerReleased",
+            moveStart,
+            StringComparison.Ordinal);
+        int frameStart = source.IndexOf(
+            "private void OnSelectionHandleFrame",
+            releaseStart,
+            StringComparison.Ordinal);
+        int applyStart = source.IndexOf(
+            "private bool ApplyPendingSelectionHandleMove",
+            frameStart,
+            StringComparison.Ordinal);
+        int applyEnd = source.IndexOf(
+            "private bool IsSelectionHandleInAutoScrollBand",
+            applyStart,
+            StringComparison.Ordinal);
+        Assert.True(moveStart >= 0 && releaseStart > moveStart &&
+            frameStart > releaseStart && applyStart > frameStart && applyEnd > applyStart);
+
+        string pointerMove = source[moveStart..releaseStart];
+        string frameUpdate = source[frameStart..applyEnd];
+        Assert.Contains("_selectionHandleMovePending = true", pointerMove, StringComparison.Ordinal);
+        Assert.DoesNotContain("ApplyPendingSelectionHandleMove", pointerMove, StringComparison.Ordinal);
+        Assert.Contains("CompositionTarget.Rendering", source, StringComparison.Ordinal);
+        Assert.Contains("ApplyPendingSelectionHandleMove", frameUpdate, StringComparison.Ordinal);
+        Assert.DoesNotContain("RequestRebuild", frameUpdate, StringComparison.Ordinal);
+        Assert.DoesNotContain("InvalidateCanvas", frameUpdate, StringComparison.Ordinal);
+        Assert.DoesNotContain("_canvas.Invalidate", frameUpdate, StringComparison.Ordinal);
     }
 
     [Fact]

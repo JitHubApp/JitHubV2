@@ -1,132 +1,58 @@
 # Packaging and distribution
 
-The renderer is packaged as two NuGet packages: `MarkdownRenderer` for the core
-control and `MarkdownRenderer.Gfm` for GitHub-flavored markdown helpers and
-renderers.
+MarkdownRenderer is intentionally split so a basic viewer does not pull every
+syntax feature, native DLL, or grammar into an application.
 
-## Current project structure
+| Package | Payload |
+| --- | --- |
+| `MarkdownRenderer.Core` | Immutable document and extension API with no WinUI or native payload. |
+| `MarkdownRenderer` | Lean Core + native WinUI viewer convenience package. |
+| `MarkdownRenderer.Gfm` | Strict GFM and separately opt-in Markdown Extra. |
+| `MarkdownRenderer.GitHub` | GitHub README profile and safe-HTML composition. |
+| `MarkdownRenderer.Html` | Native safe-HTML subset parser/painter and budgets. |
+| `MarkdownRenderer.Math` | Managed CSharpMath-based vector typesetter and bundled hash-locked math fonts. |
+| `MarkdownRenderer.Mermaid` | Selected-RID Merman native engine plus validated MMIR scene contracts. |
+| `MarkdownRenderer.Svg.ThorVG` | Architecture-specific native ThorVG SVG assets. |
+| `MarkdownRenderer.SyntaxHighlighting.TextMate` | Async TextMate integration, cancellation/deduplication, budgets, and provider contracts; no grammar or native payload. |
+| `MarkdownRenderer.SyntaxHighlighting.TextMate.Grammars.Common` | Curated C/C++, C#, web, JVM, Go, Rust, scripting, data, Docker, and shader grammars. |
+| `MarkdownRenderer.SyntaxHighlighting.TextMate.Grammars.All` | Complete pinned upstream TextMateSharp grammar/resource corpus. |
+| `MarkdownRenderer.All` | Explicit meta-package for all features and large payloads. |
 
-```text
-MarkdownRenderer/
-  MarkdownRenderer/                  core control
-  MarkdownRenderer.Gfm/              GFM extension package
-  MarkdownRenderer.Sample/           WinUI sample app
-  MarkdownRenderer.Sample.Automation/ UI automation
-  MarkdownRenderer.Tests/            unit tests
-  MarkdownRenderer.PixelTests/       SVG/pixel tests
-```
+Most applications should reference `MarkdownRenderer` plus the smallest set of
+optional packs they actually use. `MarkdownRenderer.All` is a convenience for
+apps that consciously accept the full dependency and size cost.
 
-## Target frameworks and platforms
+## Platform packages
 
-Core and GFM projects target:
-
-- `net10.0-windows10.0.26100.0`
-- `TargetPlatformMinVersion` `10.0.19041.0`
-- `Platforms`: `x86;x64;ARM64`
-- `UseWinUI`: `true`
-
-## Dependencies
-
-Core package references:
-
-- `Markdig`
-- `Microsoft.Graphics.Win2D`
-- `Microsoft.WindowsAppSDK`
-- `Microsoft.Windows.SDK.BuildTools`
-
-`MarkdownRenderer.Gfm` references the core project and uses Markdig extension
-APIs.
-
-## Native assets
-
-The core project includes ThorVG native SVG rasterizer assets for:
-
-- `native\win-x86\thorvg.dll`;
-- `native\win-x64\thorvg.dll`;
-- `native\win-arm64\thorvg.dll`.
-
-The default repo build copies the selected architecture's `thorvg.dll` to the
-output root, including app outputs that reference the renderer project. The core
-project packs all three binaries under `runtimes\win-x86\native`,
-`runtimes\win-x64\native`, and `runtimes\win-arm64\native`. Builds fail if a
-selected architecture's native asset is missing.
+The native viewer targets WinUI on Windows and builds for x86, x64, and ARM64.
+`MarkdownRenderer.Core` carries no WinUI or native payload. ThorVG assets belong
+to the optional `MarkdownRenderer.Svg.ThorVG` package and must be validated for
+each architecture only when that pack is selected.
 
 ## AOT and trimming
 
-The projects enable:
+Immutable profiles, exact syntax-kind dispatch, and declarative extension output
+avoid reflection-based plug-in discovery. Each selected package still needs its
+own trim/AOT verification, including native asset resolution and TextMate grammar
+resource loading where applicable.
 
-- `IsTrimmable`;
-- `IsAotCompatible`;
-- trim analyzer;
-- single-file analyzer;
-- AOT analyzer;
-- selected IL warnings as errors.
+Trimmed and NativeAOT consumers should construct `CommonTextMateGrammarProvider`
+or `AllTextMateGrammarProvider` explicitly. Reflection-based optional-pack
+discovery remains available only as a compatibility convenience and is annotated
+with `RequiresUnreferencedCode` and `Obsolete`. The parameterless view helpers
+transfer the discovered highlighter/provider to the view, which disposes them.
+Provider-taking compatibility helpers borrow the caller's provider but transfer
+their adapter to the view. Explicit highlighter overloads remain caller-owned.
 
-Custom renderer dispatch is designed to avoid reflection-heavy discovery.
+Each grammar pack carries the deterministic `GRAMMAR-PROVENANCE.json` inventory
+and third-party notices. Run `eng/Invoke-TextMateReleaseEvidence.ps1` to verify
+the exact upstream archives/resources, package reproducibility, the Common
+6 MiB selected-RID cap, AnyCPU managed assets, SBOM/notices, and x86/x64/ARM64
+trimmed and NativeAOT package consumers.
 
-## Package metadata
+## Preview and versioning
 
-Both packages include package IDs, descriptions, author metadata, MIT license
-expression, repository/project URLs, tags, README, and the existing repository
-icon. XML documentation is generated with `CS1591` enabled.
-
-## Package split
-
-| Package | Contents |
-| --- | --- |
-| `MarkdownRenderer` | Core control, base rendering, theming, selection, images, SVG, hosted controls. |
-| `MarkdownRenderer.Gfm` | GFM pipeline helper and GFM renderers. |
-| `MarkdownRenderer.Samples` | Optional sample package or repository-only samples. |
-
-Keeping GFM separate lets the core remain minimal while still making GFM easy to
-opt into.
-
-## Quick-start APIs
-
-Core CommonMark:
-
-```csharp
-var control = MarkdownRendererControl.CreateDefault(markdownSource);
-```
-
-Recommended GFM:
-
-```csharp
-var control = GfmMarkdownRenderer.CreateDefault(markdownSource);
-```
-
-Fluent configuration:
-
-```csharp
-var control = new MarkdownRendererControlBuilder()
-    .UseGitHubFlavoredMarkdown()
-    .UseMarkdownExtra()
-    .WithMarkdown(markdownSource)
-    .WithTheme(theme)
-    .WithEmbedFactory(embedFactory)
-    .WithSelectionEnabled(true)
-    .Build();
-```
-
-The committed parsed-document facade is available through `control.Document`
-with `GetHeadings()`, `GetLinks()`, `GetCodeBlocks()`, `GetImages()`,
-`GetFootnotes()`, `GetDefinitionItems()`, `GetAbbreviations()`, and
-`GetFragments()`.
-
-## Versioning policy
-
-Before 1.0, source-breaking cleanup is allowed when it removes accidental public
-internals or stabilizes the extension-author boundary. Starting at 1.0, public
-APIs follow semantic versioning.
-
-## Bundle size considerations
-
-Primary bundle-size contributors:
-
-- Windows App SDK dependencies;
-- Win2D;
-- Markdig;
-- ThorVG native DLLs for x86, x64, and ARM64.
-
-The control should avoid adding broad general-purpose dependencies. New features
-should prefer small, optional packages or extension points.
+The packages use preview versions while the supported API and conformance gates
+are being completed. Do not infer 1.0 readiness from the presence of package
+metadata. Full conformance, API compatibility, accessibility, architecture,
+packaging, and publishing checks remain release gates.

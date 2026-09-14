@@ -22,13 +22,17 @@
     </PackageReference>
     <PackageReference Include="Microsoft.NET.Test.Sdk" Version="17.13.0" />
     <PackageReference Include="Markdig" Version="0.42.0" />
-    <PackageReference Include="TextMateSharp.Grammars" Version="2.0.3" />
   </ItemGroup>
   <!-- Include only the source files that have no WinUI / Win2D dependencies -->
   <ItemGroup>
     <Compile Include="..\MarkdownRenderer\SourceSpan.cs" Link="Core\SourceSpan.cs" />
+    <Compile Include="..\MarkdownRenderer\Engine\*.cs" Link="Core\Engine\%(Filename)%(Extension)" />
+    <Compile Include="..\MarkdownRenderer\Extensions\*.cs" Link="Core\Extensions\%(Filename)%(Extension)" />
+    <Compile Include="..\MarkdownRenderer\Theming\MarkdownStyleRole.cs" Link="Core\Theming\MarkdownStyleRole.cs" />
+    <Compile Include="..\MarkdownRenderer\Theming\MarkdownResourceKeys.cs" Link="Core\Theming\MarkdownResourceKeys.cs" />
     <Compile Include="..\MarkdownRenderer\Document\DocumentPosition.cs" Link="Core\DocumentPosition.cs" />
     <Compile Include="..\MarkdownRenderer\Document\MarkdownDocument.cs" Link="Core\MarkdownDocument.cs" />
+    <Compile Include="..\MarkdownRenderer\Document\MarkdownSyntaxAdapter.cs" Link="Core\MarkdownSyntaxAdapter.cs" />
     <Compile Include="..\MarkdownRenderer\Document\MarkdownSourceMap.cs" Link="Core\MarkdownSourceMap.cs" />
     <Compile Include="..\MarkdownRenderer\Parsing\MarkdigParser.cs" Link="Core\MarkdigParser.cs" />
     <Compile Include="..\MarkdownRenderer\Parsing\ForgivingDataUriFixer.cs" Link="Core\ForgivingDataUriFixer.cs" />
@@ -39,6 +43,11 @@
     <Compile Include="..\MarkdownRenderer\Diagnostics\GraphicsDeviceErrors.cs" Link="Core\GraphicsDeviceErrors.cs" />
     <Compile Include="..\MarkdownRenderer\Diagnostics\DrawCallbackCancellationGuard.cs" Link="Core\DrawCallbackCancellationGuard.cs" />
     <Compile Include="..\MarkdownRenderer\Accessibility\AccessibilityGeometry.cs" Link="Core\AccessibilityGeometry.cs" />
+    <Compile Include="..\MarkdownRenderer\Accessibility\HostedElementAutomationIdentity.cs" Link="Core\HostedElementAutomationIdentity.cs" />
+    <Compile Include="..\MarkdownRenderer\Accessibility\MarkdownImageSemanticPolicy.cs" Link="Core\MarkdownImageSemanticPolicy.cs" />
+    <Compile Include="..\MarkdownRenderer\Accessibility\MarkdownHorizontalScrollPolicy.cs" Link="Core\MarkdownHorizontalScrollPolicy.cs" />
+    <Compile Include="..\MarkdownRenderer\Hosting\HostedElementRealizationGate.cs" Link="Core\HostedElementRealizationGate.cs" />
+    <Compile Include="..\MarkdownRenderer\Hosting\HostedElementFallbackKey.cs" Link="Core\HostedElementFallbackKey.cs" />
     <Compile Include="..\MarkdownRenderer\Layout\Boxes\SvgIntrinsics.cs" Link="Core\SvgIntrinsics.cs" />
     <Compile Include="..\MarkdownRenderer\Layout\Boxes\SvgResourceBudget.cs" Link="Core\SvgResourceBudget.cs" />
     <Compile Include="..\MarkdownRenderer\Layout\Boxes\SvgThemeInjector.cs" Link="Core\SvgThemeInjector.cs" />
@@ -47,8 +56,22 @@
     <Compile Include="..\MarkdownRenderer\Layout\Boxes\ThorVgRasterizer.cs" Link="Core\ThorVgRasterizer.cs" />
     <Compile Include="..\MarkdownRenderer\Layout\Boxes\LoadCompletedEventArgs.cs" Link="Core\LoadCompletedEventArgs.cs" />
     <Compile Include="..\MarkdownRenderer\Layout\LazyLayoutBand.cs" Link="Core\LazyLayoutBand.cs" />
+    <Compile Include="..\MarkdownRenderer\Layout\LayoutPassCancellation.cs" Link="Core\LayoutPassCancellation.cs" />
+    <Compile Include="..\MarkdownRenderer\Layout\DeclarativeBlockSelection.cs" Link="Core\DeclarativeBlockSelection.cs" />
+    <Compile Include="..\MarkdownRenderer\Layout\ViewportBandIndex.cs" Link="Core\ViewportBandIndex.cs" />
+    <Compile Include="..\MarkdownRenderer\Layout\VerticalViewportIndex.cs" Link="Core\VerticalViewportIndex.cs" />
     <Compile Include="..\MarkdownRenderer\Controls\EmbedVisibility.cs" Link="Core\EmbedVisibility.cs" />
+    <Compile Include="..\MarkdownRenderer\Controls\DeferredInputQueue.cs" Link="Core\DeferredInputQueue.cs" />
+    <Compile Include="..\MarkdownRenderer\Controls\MarkdownKeyboardInputPolicy.cs" Link="Core\MarkdownKeyboardInputPolicy.cs" />
+    <Compile Include="..\MarkdownRenderer\Controls\MarkdownCanvasInvalidationPolicy.cs" Link="Core\MarkdownCanvasInvalidationPolicy.cs" />
+    <Compile Include="..\MarkdownRenderer\Controls\MarkdownLazyLayoutPolicy.cs" Link="Core\MarkdownLazyLayoutPolicy.cs" />
+    <Compile Include="..\MarkdownRenderer\Controls\MarkdownRebuildDispatchPolicy.cs" Link="Core\MarkdownRebuildDispatchPolicy.cs" />
+    <Compile Include="..\MarkdownRenderer\Controls\SnapshotRetirementTracker.cs" Link="Core\SnapshotRetirementTracker.cs" />
+    <Compile Include="..\MarkdownRenderer\Controls\OwnedResourceRetirement.cs" Link="Core\OwnedResourceRetirement.cs" />
+    <Compile Include="..\MarkdownRenderer.Sample.Automation\ProcessExitValidation.cs" Link="Core\ProcessExitValidation.cs" />
     <Compile Include="..\MarkdownRenderer\Controls\SelectionAutoScroll.cs" Link="Core\SelectionAutoScroll.cs" />
+    <Compile Include="..\MarkdownRenderer\Controls\MarkdownTouchSelectionSession.cs" Link="Core\MarkdownTouchSelectionSession.cs" />
+    <Compile Include="..\MarkdownRenderer\Controls\TouchSelectionEndpointPolicy.cs" Link="Core\TouchSelectionEndpointPolicy.cs" />
     <Compile Include="..\MarkdownRenderer\Selection\MarkdownCopyOptions.cs" Link="Core\MarkdownCopyOptions.cs" />
     <Compile Include="..\MarkdownRenderer\Selection\MarkdownClipboardWriter.cs" Link="Core\MarkdownClipboardWriter.cs" />
     <Compile Include="..\MarkdownRenderer\Layout\TextBoundaryHelper.cs" Link="Core\TextBoundaryHelper.cs" />
@@ -59,17 +82,69 @@
     <Compile Include="..\MarkdownRenderer\CodeBlocks\CodeBlockLineNumberMode.cs" Link="Core\CodeBlockLineNumberMode.cs" />
     <Compile Include="..\MarkdownRenderer\CodeBlocks\CodeBlockThemeVariant.cs" Link="Core\CodeBlockThemeVariant.cs" />
     <Compile Include="..\MarkdownRenderer\CodeBlocks\ICodeBlockSyntaxHighlighter.cs" Link="Core\ICodeBlockSyntaxHighlighter.cs" />
+    <Compile Include="..\MarkdownRenderer\CodeBlocks\OwnedCodeHighlighterAssignment.cs" Link="Core\OwnedCodeHighlighterAssignment.cs" />
+    <Compile Include="..\MarkdownRenderer\CodeBlocks\CodeBlockHighlightPublicationFence.cs" Link="Core\CodeBlockHighlightPublicationFence.cs" />
     <Compile Include="..\MarkdownRenderer\Layout\CodeBlockMetadata.cs" Link="Core\CodeBlockMetadata.cs" />
     <Compile Include="..\MarkdownRenderer\Layout\FocusableItem.cs" Link="Core\FocusableItem.cs" />
     <Compile Include="..\MarkdownRenderer\Images\IMarkdownImageResolver.cs" Link="Core\IMarkdownImageResolver.cs" />
     <Compile Include="..\MarkdownRenderer\Images\MarkdownRemoteImageLoadingPolicy.cs" Link="Core\MarkdownRemoteImageLoadingPolicy.cs" />
     <Compile Include="..\MarkdownRenderer\Images\MarkdownImageCacheIdentityPolicy.cs" Link="Core\MarkdownImageCacheIdentityPolicy.cs" />
+    <Compile Include="..\MarkdownRenderer\Images\MarkdownBuiltInImageSourcePolicy.cs" Link="Core\MarkdownBuiltInImageSourcePolicy.cs" />
+    <Compile Include="..\MarkdownRenderer\Images\ImageResolverDeadline.cs" Link="Core\ImageResolverDeadline.cs" />
     <Compile Include="..\MarkdownRenderer\Layout\FocusNavigationHelper.cs" Link="Core\FocusNavigationHelper.cs" />
     <Compile Include="..\MarkdownRenderer\Theming\MarkdownHighContrastDefaults.cs" Link="Core\MarkdownHighContrastDefaults.cs" />
+    <Compile Include="..\MarkdownRenderer\Theming\MarkdownEnvironmentSnapshot.cs" Link="Core\MarkdownEnvironmentSnapshot.cs" />
     <Compile Include="..\MarkdownRenderer\Utilities\StringBuilderPool.cs" Link="Core\StringBuilderPool.cs" />
-    <Compile Include="..\MarkdownRenderer.SyntaxHighlighting.TextMate\TextMateCodeBlockSyntaxHighlighter.cs" Link="TextMate\TextMateCodeBlockSyntaxHighlighter.cs" />
+    <Compile Include="..\MarkdownRenderer\Utilities\WeightedLruCache.cs" Link="Core\WeightedLruCache.cs" />
+    <Compile Include="..\MarkdownRenderer.PerformanceHarness\PerformanceDocumentFactory.cs"
+             Link="Performance\PerformanceDocumentFactory.cs" />
+    <Compile Include="..\MarkdownRenderer.PerformanceHarness\PerformanceParsePolicy.cs"
+             Link="Performance\PerformanceParsePolicy.cs" />
+    <Compile Include="..\MarkdownRenderer.PerformanceHarness\CancellationMeasurementPlan.cs"
+             Link="Performance\CancellationMeasurementPlan.cs" />
+    <Compile Include="..\MarkdownRenderer.PerformanceHarness\PerformanceMeasurementContract.cs"
+             Link="Performance\PerformanceMeasurementContract.cs" />
+    <Compile Include="..\MarkdownRenderer.PerformanceHarness\MonotonicUtcClock.cs"
+             Link="Performance\MonotonicUtcClock.cs" />
+    <Compile Include="..\MarkdownRenderer.PerformanceHarness\PinnedMeasurementThreadScope.cs"
+             Link="Performance\PinnedMeasurementThreadScope.cs" />
+    <Compile Include="..\MarkdownRenderer.PerformanceHarness\ScrollEvidenceValidator.cs"
+             Link="Performance\ScrollEvidenceValidator.cs" />
+    <Compile Include="..\MarkdownRenderer.PerformanceHarness\CancellationEvidenceValidator.cs"
+             Link="Performance\CancellationEvidenceValidator.cs" />
+    <Compile Include="..\MarkdownRenderer.PerformanceHarness\PerformanceReleaseEvidenceValidator.cs"
+             Link="Performance\PerformanceReleaseEvidenceValidator.cs" />
+    <Compile Include="..\MarkdownRenderer.PerformanceHarness\PerformanceArtifactContract.cs"
+             Link="Performance\PerformanceArtifactContract.cs" />
+    <Compile Include="..\MarkdownRenderer.PerformanceHarness\PerformanceDeploymentIdentity.cs"
+             Link="Performance\PerformanceDeploymentIdentity.cs" />
+    <Compile Include="..\MarkdownRenderer.PerformanceHarness\PerformanceRuntimeContract.cs"
+             Link="Performance\PerformanceRuntimeContract.cs" />
+    <Compile Include="..\MarkdownRenderer.PerformanceHarness\PerformanceOptions.cs"
+             Link="Performance\PerformanceOptions.cs" />
+    <Compile Include="..\MarkdownRenderer.PerformanceHarness\PerformanceReport.cs"
+             Link="Performance\PerformanceReport.cs" />
+    <Compile Include="..\MarkdownRenderer.PerformanceHarness\PerformanceReportWriter.cs"
+             Link="Performance\PerformanceReportWriter.cs" />
+    <Compile Include="..\MarkdownRenderer.PerformanceHarness\PerformanceStatistics.cs"
+             Link="Performance\PerformanceStatistics.cs" />
+    <Compile Include="..\MarkdownRenderer.PerformanceHarness\QuickPerformanceSmokeValidator.cs"
+             Link="Performance\QuickPerformanceSmokeValidator.cs" />
+    <Compile Include="..\MarkdownRenderer.PerformanceHarness\RegressionEvaluator.cs"
+             Link="Performance\RegressionEvaluator.cs" />
+    <!-- TextMate integration is assembly-tested in its dedicated package test project. -->
+    <Compile Remove="TextMateCodeBlockSyntaxHighlighterTests.cs" />
   </ItemGroup>
   <ItemGroup>
+    <Content Include="Fixtures\performance-gate-schema10-values.json">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+      <TargetPath>PerformanceFixtures\performance-gate-schema10-values.json</TargetPath>
+    </Content>
+    <Content Include="..\eng\Test-MarkdownWinUIPerformanceGates.ps1">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+      <TargetPath>PerformanceFixtures\Test-MarkdownWinUIPerformanceGates.ps1</TargetPath>
+      <Link>PerformanceFixtures\Test-MarkdownWinUIPerformanceGates.ps1</Link>
+    </Content>
     <Content Include="..\MarkdownRenderer\native\win-$(MarkdownRendererNativeArch)\thorvg.dll"
              Condition="'$(MarkdownRendererNativeArch)' != '' and Exists('..\MarkdownRenderer\native\win-$(MarkdownRendererNativeArch)\thorvg.dll')">
       <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>

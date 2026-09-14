@@ -184,6 +184,68 @@ public sealed class SafeHtmlParserTests
         Assert.True(oversizedDocument.IsTruncated);
     }
 
+    [Fact]
+    public async Task MalformedTagRetriesStopAtALinearScanWorkCeiling()
+    {
+        string source = string.Concat(Enumerable.Repeat("<a'", 50_000));
+        var limits = new SafeHtmlParseLimits(
+            MaxInputLength: source.Length,
+            MaxNodeCount: 1_000_000,
+            MaxNestingDepth: SafeHtmlParser.MaxNestingDepth,
+            MaxAttributeCount: SafeHtmlParser.MaxAttributeCount,
+            MaxAttributeValueLength: SafeHtmlParser.MaxAttributeValueLength,
+            MaxTagLength: SafeHtmlParser.MaxTagLength);
+
+        SafeHtmlDocument document = await Task.Run(() => SafeHtmlParser.Parse(source, limits))
+            .WaitAsync(TimeSpan.FromSeconds(5));
+        (IReadOnlyList<SafeHtmlTag> Tags, bool ScanBudgetExceeded) tagResult = await Task.Run(() =>
+            {
+                IReadOnlyList<SafeHtmlTag> parsed = SafeHtmlParser.ParseTags(
+                    source,
+                    limits,
+                    CancellationToken.None,
+                    out bool scanBudgetExceeded);
+                return (parsed, scanBudgetExceeded);
+            })
+            .WaitAsync(TimeSpan.FromSeconds(5));
+
+        Assert.True(document.IsTruncated);
+        Assert.InRange(document.Root.Children.Count, 1, 32);
+        Assert.True(tagResult.ScanBudgetExceeded);
+        Assert.Empty(tagResult.Tags);
+    }
+
+    [Fact]
+    public void ParserEntryPointsObserveCancellationBeforeScanning()
+    {
+        using var cancellation = new CancellationTokenSource();
+        cancellation.Cancel();
+        SafeHtmlParseLimits limits = SafeHtmlParseLimits.Default;
+
+        Assert.ThrowsAny<OperationCanceledException>(() =>
+            SafeHtmlParser.Parse("<p>ignored</p>", limits, cancellation.Token));
+        Assert.ThrowsAny<OperationCanceledException>(() =>
+            SafeHtmlParser.TryParseSingleTag(
+                "<p>",
+                limits,
+                cancellation.Token,
+                out _,
+                out _));
+        Assert.ThrowsAny<OperationCanceledException>(() =>
+            SafeHtmlParser.TryParseTagSequence(
+                "<p></p>",
+                limits,
+                cancellation.Token,
+                out _,
+                out _));
+        Assert.ThrowsAny<OperationCanceledException>(() =>
+            SafeHtmlParser.ParseTags(
+                "<p></p>",
+                limits,
+                cancellation.Token,
+                out _));
+    }
+
     private static SafeHtmlLength GetLength(SafeHtmlElement element, string name)
     {
         Assert.True(SafeHtmlParser.TryGetLength(element, name, out SafeHtmlLength length));

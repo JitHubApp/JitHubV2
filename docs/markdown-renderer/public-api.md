@@ -1,192 +1,135 @@
 # Public API
 
-This page summarizes the consumer-facing API. Implementation classes for layout,
-painting, and source-map internals are intentionally not the consumer path.
+The supported API is organized around immutable parsing, explicit viewport
+ownership, declarative extensions, and host services. Layout and painting types
+are implementation details.
 
 ## Packages
 
 | Package | Purpose |
 | --- | --- |
-| `MarkdownRenderer` | Core WinUI control, CommonMark rendering, theming, selection, accessibility, images/SVG, hosted-control support, and document queries. |
-| `MarkdownRenderer.Gfm` | GitHub-flavored markdown helpers and renderers, plus opt-in Markdown Extra helpers. |
-| `MarkdownRenderer.SyntaxHighlighting.TextMate` | Optional TextMate grammar provider for broad code-block syntax highlighting. |
+| `MarkdownRenderer.Core` | Immutable engines, documents, profiles, diagnostics, UTF-16 source maps, and declarative extension contracts; no WinUI or native payload. |
+| `MarkdownRenderer` | Lean convenience package containing Core plus the native WinUI viewer. |
+| `MarkdownRenderer.Gfm` | Strict GFM 0.29 plus separately opt-in Markdown Extra helpers. |
+| `MarkdownRenderer.GitHub` | Opt-in GitHub README profile: GFM plus alerts, footnotes, emoji, attributes, and safe HTML. |
+| `MarkdownRenderer.Html` | Bounded native safe-HTML subset parser/painter and immutable options. |
+| `MarkdownRenderer.Math` | CSharpMath-based TeX processor, immutable vector scenes, fallback and accessibility. |
+| `MarkdownRenderer.Mermaid` | Selected-RID Merman engine, validated MMIR scenes, bounded processing and fallback. |
+| `MarkdownRenderer.Svg.ThorVG` | Optional native ThorVG SVG rasterizer assets. |
+| `MarkdownRenderer.SyntaxHighlighting.TextMate` | Lean TextMate integration and provider contracts; grammar packs are separate. |
+| `MarkdownRenderer.All` | Explicit, deliberately large meta-package for every feature and payload. |
 
-## Core namespaces
+Most apps should install `MarkdownRenderer` and only the packs they need.
 
-| Namespace | Public surface |
-| --- | --- |
-| `MarkdownRenderer.Controls` | `MarkdownRendererControl`, `MarkdownRendererControlBuilder`, link events, copy and rebuild entry points. |
-| `MarkdownRenderer.Document` | Stable parsed-document facade and query result records. |
-| `MarkdownRenderer.Hosting` | `IMarkdownEmbedFactory` for app-owned hosted WinUI controls. |
-| `MarkdownRenderer.Parsing` | `MarkdownExtensionRegistry` and advanced renderer registration. |
-| `MarkdownRenderer.Selection` | `MarkdownCopyOptions` and plain-text copy mode. |
-| `MarkdownRenderer.Theming` | `MarkdownTheme`, `ElementStyle`, `ElementStyleOverride`, and `MarkdownElementKeys`. |
-| `MarkdownRenderer.Gfm` | GFM factory and builder extension methods. |
-| `MarkdownRenderer.CodeBlocks` | Code-block syntax-highlighting provider contracts and line-number options. |
-| `MarkdownRenderer.SyntaxHighlighting.TextMate` | TextMate highlighter and builder/control extension methods. |
-
-## Creating controls
-
-CommonMark-only:
+## Engines and documents
 
 ```csharp
-using MarkdownRenderer.Controls;
-
-var control = MarkdownRendererControl.CreateDefault(markdownSource);
-```
-
-Recommended GitHub-flavored setup:
-
-```csharp
-using MarkdownRenderer.Gfm;
-
-var control = GfmMarkdownRenderer.CreateDefault(markdownSource);
-```
-
-Fluent setup:
-
-```csharp
-using MarkdownRenderer.Controls;
-using MarkdownRenderer.CodeBlocks;
-using MarkdownRenderer.Gfm;
-using MarkdownRenderer.SyntaxHighlighting.TextMate;
-
-var control = new MarkdownRendererControlBuilder()
-    .UseGitHubFlavoredMarkdown()
-    .UseMarkdownExtra()
-    .UseTextMateSyntaxHighlighting()
-    .WithMarkdown(markdownSource)
-    .WithTheme(theme)
-    .WithEmbedFactory(embedFactory)
-    .WithSelectionEnabled(true)
-    .WithCodeBlockCopyEnabled(true)
-    .WithCodeBlockCopyButtonLabel("Copy code")
-    .WithCodeBlockCopiedButtonLabel("Copied")
-    .WithCodeBlockLineNumberMode(CodeBlockLineNumberMode.AutoMultiline)
+using MarkdownEngine engine = new MarkdownEngineBuilder()
+    .UseProfile(MarkdownProfiles.CommonMark)
+    .WithParseCacheBudgetBytes(16 * 1024 * 1024)
+    .WithParseLimits(new MarkdownParseLimits(
+        maximumSourceLength: 4 * 1024 * 1024,
+        maximumConcurrentParseCount: 4,
+        maximumOutstandingParseCount: 16,
+        maximumOutstandingSourceBytes: 64L * 1024 * 1024))
     .Build();
+
+MarkdownDocument document = await engine.ParseAsync(source, cancellationToken);
 ```
 
-`UseGitHubFlavoredMarkdown()` is strict to GFM. `UseMarkdownExtra()` adds
-definition lists, abbreviations, figures, and extra inline variants.
+`MarkdownEngine` configuration and `MarkdownDocument` values are immutable;
+engine admission and caches are thread-safe. Custom extension callbacks may run
+concurrently and remain responsible for the safety of captured services.
+An engine admits bounded concurrent/outstanding unique work, deduplicates
+same-source in-flight work, and reuses completed documents within its configured
+cache budget. Dispose every ordinary engine. The built-in `MarkdownEngine.Default` and GFM/GitHub
+shared engines explicitly ignore disposal so a consumer cannot poison a global
+singleton. Every ordinary engine becomes unusable after disposal, even if it
+owns no optional service. `UseExtension()` borrows stateless or externally owned
+extension state. Stateful feature packs can use `UseOwnedExtensionFactory()` and
+`MarkdownOwnedExtension` to store a reusable per-engine factory rather than a
+one-shot service instance: a builder or frozen extension set can create fresh,
+independently disposable engines before or after earlier engines are disposed.
+Documents expose source text,
+diagnostics, source-map entries, and stable queries such as `GetHeadings()`,
+`GetLinks()`, `GetCodeBlocks()`, and `GetImages()`. Extension hosts can use
+`GetBlockExtensionContent()` or `GetInlineExtensionContent()` to retrieve every
+fragment associated with a source range; this preserves nested syntax nodes
+whose half-open UTF-16 ranges are identical.
 
-## MarkdownRendererControl
+`ICodeHighlighter` is the canonical syntax-highlighting contract. Its revision
+and callbacks can be queried concurrently for different blocks and controls;
+implementations and captured state must be thread-safe and UI-context independent.
+`ICodeBlockSyntaxHighlighter` remains an obsolete compatibility alias and is
+adapted to the same single provider backing without sync-over-async blocking.
 
-Common consumer properties and methods:
+## Views
 
-| Member | Purpose |
+| Type | Use when |
 | --- | --- |
-| `Markdown` | Source markdown string. Null input is treated as empty. |
-| `Theme` | Optional `MarkdownTheme`; null uses the renderer default. |
-| `ExtensionRegistry` | Optional parser/renderer registry. Null uses core CommonMark behavior. |
-| `EmbedFactory` | Optional block-level hosted WinUI control factory. |
-| `IsSelectionEnabled` | Enables pointer/keyboard text selection. |
-| `IsCodeBlockCopyEnabled` | Shows always-visible native copy buttons on fenced and indented code blocks. Defaults to true. |
-| `CodeBlockCopyButtonLabel` | Accessible name and tooltip for icon-only code-block copy buttons. Null uses the localized default. |
-| `CodeBlockCopiedButtonLabel` | Accessible name and tooltip used briefly after a successful code-block copy. Null uses the localized default. |
-| `IsCodeBlockSyntaxHighlightingEnabled` | Allows a configured highlighter provider to color code blocks. Defaults to true. |
-| `CodeBlockSyntaxHighlighter` | Optional syntax-highlighting provider. Null keeps code plain. |
-| `CodeBlockLineNumberMode` | Controls line-number defaults. Defaults to `AutoMultiline`. |
-| `Document` | Immutable public parsed-document snapshot for queries. |
-| `RequestRebuild()` | Explicitly schedules a rebuild when an advanced integration changes external state. |
-| `CopySelectionToClipboard(MarkdownCopyOptions? options = null)` | Copies the current selection with source-markdown defaults and optional rendered text. |
+| `MarkdownScrollView` | The markdown component owns the vertical viewport. |
+| `MarkdownDocumentView` | An ancestor page or workspace owns scrolling and supplies the effective viewport. |
 
-Link activation is surfaced through `LinkClick`. Internal fragments and footnote
-backlinks are handled by the control when possible.
+Both views expose `Markdown`, `Document`, `Engine`, `StyleSheet`, `Theme`, image
+policy, selection, code highlighting, commands, localization, and hosted-element
+services. `MarkdownRendererControl` is obsolete compatibility surface; new code
+should not derive from or construct it.
 
-## Document facade
-
-`MarkdownRenderer.Document.MarkdownDocument` exposes stable queries that do not
-require consumers to inspect layout boxes:
+GFM, GitHub README, Markdown Extra, and safe-HTML helpers freeze their native
+presentation registrations into the engine. Parsed documents retain that
+snapshot internally, so assigning a reusable document to a bare view preserves
+the same tables, tasks, alerts, and safe-HTML policy without rebuilding registries.
 
 ```csharp
-var document = control.Document;
-
-var headings = document.GetHeadings();
-var links = document.GetLinks();
-var codeBlocks = document.GetCodeBlocks();
-var images = document.GetImages();
-var footnotes = document.GetFootnotes();
-var definitions = document.GetDefinitionItems();
-var abbreviations = document.GetAbbreviations();
-var fragments = document.GetFragments();
+var view = new MarkdownRendererControlBuilder()
+    .WithEngine(engine)
+    .WithMarkdown(source)
+    .WithSelectionEnabled(true)
+    .BuildScrollView();
 ```
 
-Query records include display text, source span, block index, and syntax-specific
-metadata such as heading level, URL/title, code language, image source/alt text,
-footnote label/order, definition marker, abbreviation expansion, and fragment id.
+Use `BuildDocumentView()` for an ancestor-owned viewport. The builder's `Build()`
+method is obsolete.
 
-The facade is a snapshot. Read it again after `Markdown` or registry changes
-commit a rebuild.
+## Themes and host services
 
-## Clipboard API
+The base visual design follows WinUI/Fluent resources, including light, dark,
+high-contrast, text-scale, and flow-direction changes. The GitHub profile and
+GitHub-themed presentation are opt-in through `MarkdownRenderer.GitHub`;
+applications can further customize
+roles through `MarkdownStyleSheet`, `MarkdownStyleRole`, and
+`MarkdownResourceKeys`.
 
-Default keyboard and context-menu copy writes:
+Stable host contracts include:
 
-- plain text: exact selected markdown source;
-- HTML: formatted clipboard payload.
+- `IImageResolver` / `IMarkdownImageResolver` for application image policy;
+- `ICodeHighlighter` for asynchronous code highlighting;
+- `IMarkdownStringProvider` for localization;
+- `IMarkdownCommandProvider` for target-aware actions;
+- `IMarkdownHostedElementFactory` for viewport-aware WinUI elements requested
+  by declarative extensions.
 
-Apps that want semantic rendered text as the plain-text payload can opt in:
+## Clipboard
 
-```csharp
-using MarkdownRenderer.Selection;
+`CopySelectionToClipboard()` uses `MarkdownCopyOptions.Default`: rendered
+semantic text plus `CF_HTML`. Set `PlainTextMode` to `SourceMarkdown`, or call
+`CopySelectionAsMarkdown()`, when exact markdown source is the desired explicit
+action. `IncludeHtml` defaults to `true`.
 
-control.CopySelectionToClipboard(new MarkdownCopyOptions
-{
-    PlainTextMode = MarkdownPlainTextCopyMode.RenderedText,
-    IncludeHtml = true,
-});
-```
+## Extension boundary
 
-Use `MarkdownPlainTextCopyMode.SourceMarkdown` when the markdown source remains
-the document of record.
+Extensions implement `IMarkdownExtension` and configure a
+`MarkdownExtensionBuilder`. They register exact, stable syntax-kind strings and
+return declarative `MarkdownContent` through `MarkdownNodeRenderer` delegates.
+They do not receive the viewer's internal layout tree or paint context.
 
-## Theme API
+The WinUI adapter consumes block and inline text, code, images, links, lists,
+tables, containers, hosted elements and registered custom scene primitives.
+Unsupported fragments retain atomic fallback to built-in rendering.
 
-`MarkdownTheme` contains an observable `Overrides` dictionary. Direct indexer,
-add, remove, and clear operations raise `Changed` and trigger theme invalidation
-when assigned to a control.
+See [Extensibility API](extensibility-api.md) for the supported model.
 
-```csharp
-using MarkdownRenderer.Theming;
+## Preview status
 
-theme.Overrides[MarkdownElementKeys.Link] = new ElementStyleOverride
-{
-    Foreground = Colors.DodgerBlue,
-    HoverForeground = Colors.DeepSkyBlue,
-    Underline = false,
-};
-```
-
-Style resolution order is deterministic:
-
-1. Win11/light/dark/high-contrast defaults;
-2. semantic element key;
-3. ancestor/context keys;
-4. generic attribute class aliases such as `.warning`;
-5. generic attribute id aliases such as `#intro`.
-
-See [Theming and customization](theming-and-customization.md).
-
-## Extension author API
-
-Advanced extension authors can register Markdig pipeline mutations and native
-node renderers through `MarkdownExtensionRegistry`. These callbacks run during
-background parse/layout and must not touch WinUI dispatcher-affine state.
-
-Use `IMarkdownEmbedFactory` for real WinUI controls. Its threading contract is:
-
-| Method | Thread | Requirement |
-| --- | --- | --- |
-| `CanCreate` | Background layout thread | Pure, thread-safe, WinUI-free. |
-| `MeasureHeight` | Background layout thread | Pure, deterministic, WinUI-free. |
-| `CreateBlock` | UI thread | Create the hosted `FrameworkElement`. |
-| `RecycleBlock` | UI thread | Detach handlers and release app resources. |
-
-See [Extensibility API](extensibility-api.md) and [Native integration and hosted controls](native-integration-and-hosted-controls.md).
-
-## Versioning
-
-The library is in pre-1.0 cleanup while the public surface is being finalized.
-Source-breaking changes are allowed before 1.0 when they remove accidental public
-internals or clarify the extension boundary. Starting at 1.0, public APIs follow
-semantic versioning.
+The packages are still previews. These implementations exist, but full 1.0 conformance, API,
+accessibility, packaging, and release gates have not all passed.

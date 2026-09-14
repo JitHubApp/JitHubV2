@@ -987,6 +987,7 @@ public partial class App : Application
             LogUnhandledException(exception, "diagnostics-shutdown");
         }
 
+        JitHubMarkdownRuntime.Shutdown();
         MarkdownRenderer.MarkdownRendererRuntime.Shutdown(TimeSpan.FromSeconds(1));
     }
 

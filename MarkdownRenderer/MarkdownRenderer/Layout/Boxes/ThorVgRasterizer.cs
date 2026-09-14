@@ -47,9 +47,11 @@ internal static class ThorVgRasterizer
 
         try
         {
-            // 0 = let ThorVG pick a sensible default thread count for
-            // its task scheduler. Shutdown is coordinated explicitly by
-            // ShutdownForProcessExit(), not by finalizer/process-exit races.
+            // Zero keeps ThorVG on the calling thread. Even in this mode the
+            // C API requires every draw to be followed by canvas_sync before
+            // the target buffer is unpinned or the canvas is destroyed.
+            // Shutdown is coordinated explicitly by ShutdownForProcessExit(),
+            // not by finalizer/process-exit races.
             var r = tvg_engine_init(0);
             if (r != Tvg_Result.Success)
             {
@@ -194,17 +196,15 @@ internal static class ThorVgRasterizer
         if (byteCount <= 0 || byteCount > 64L * 1024L * 1024L) return null;
         if (!TryEnterRasterizer()) return null;
 
-        IntPtr canvas = IntPtr.Zero;
-        IntPtr picture = IntPtr.Zero;
-        bool pictureOwnedByCanvas = false;
         // Output buffer is uint32 per pixel — width*height 32-bit cells.
         var bgra = new byte[(int)byteCount];
 
         try
         {
-            canvas = tvg_swcanvas_create(Tvg_Engine_Option.Default);
+            using SafeTvgCanvasHandle canvas = SafeTvgCanvasHandle.FromNative(
+                tvg_swcanvas_create(Tvg_Engine_Option.Default));
             cancellationToken.ThrowIfCancellationRequested();
-            if (canvas == IntPtr.Zero)
+            if (canvas.IsInvalid)
             {
                 MarkdownDiagnostics.WriteLine("[ThorVgRasterizer] swcanvas_create returned null");
                 return null;
@@ -217,7 +217,7 @@ internal static class ThorVgRasterizer
                 // told B8G8R8A8UIntNormalized. Stride is in *pixels* per
                 // the ThorVG C-API (not bytes).
                 var st = tvg_swcanvas_set_target(
-                    canvas,
+                    canvas.DangerousGetHandle(),
                     (uint*)outPtr,
                     (uint)targetWidthPx,
                     (uint)targetWidthPx,
@@ -229,9 +229,9 @@ internal static class ThorVgRasterizer
                     return null;
                 }
 
-                picture = tvg_picture_new();
+                using SafeTvgPaintHandle picture = SafeTvgPaintHandle.FromNative(tvg_picture_new());
                 cancellationToken.ThrowIfCancellationRequested();
-                if (picture == IntPtr.Zero)
+                if (picture.IsInvalid)
                 {
                     MarkdownDiagnostics.WriteLine("[ThorVgRasterizer] picture_new returned null");
                     return null;
@@ -242,7 +242,7 @@ internal static class ThorVgRasterizer
                     // copy=true — ThorVG copies the SVG data into its own
                     // storage so we can unpin the buffer immediately.
                     var lr = tvg_picture_load_data(
-                        picture, svgPtr, (uint)svgBytes.Length,
+                        picture.DangerousGetHandle(), svgPtr, (uint)svgBytes.Length,
                         mimetype: "svg", rpath: null, copy: true);
                     if (lr != Tvg_Result.Success)
                     {
@@ -251,45 +251,59 @@ internal static class ThorVgRasterizer
                     }
                 }
 
-                tvg_picture_set_size(picture, targetWidthPx, targetHeightPx);
+                var sizeResult = tvg_picture_set_size(
+                    picture.DangerousGetHandle(), targetWidthPx, targetHeightPx);
+                if (sizeResult != Tvg_Result.Success)
+                {
+                    MarkdownDiagnostics.WriteLine($"[ThorVgRasterizer] picture_set_size failed: {sizeResult}");
+                    return null;
+                }
                 cancellationToken.ThrowIfCancellationRequested();
 
                 // tvg_canvas_add transfers ownership of `picture` to the
                 // canvas — the canvas will destroy the picture when the
                 // canvas itself is destroyed, so we must NOT call
                 // tvg_paint_rel after this.
-                var ar = tvg_canvas_add(canvas, picture);
+                var ar = tvg_canvas_add(canvas.DangerousGetHandle(), picture.DangerousGetHandle());
                 if (ar != Tvg_Result.Success)
                 {
                     MarkdownDiagnostics.WriteLine($"[ThorVgRasterizer] canvas_add failed: {ar}");
                     return null;
                 }
-                pictureOwnedByCanvas = true;
+                picture.RelinquishOwnership();
 
-                var ur = tvg_canvas_update(canvas);
-                cancellationToken.ThrowIfCancellationRequested();
-                if (ur != Tvg_Result.Success && ur != Tvg_Result.InsufficientCondition)
+                // draw performs an implicit update. Keep draw and sync in one
+                // non-cancelable native lifetime: ThorVG requires sync after
+                // every draw regardless of its configured worker count. A
+                // cancellation observed between these calls could otherwise
+                // unpin bgra and destroy the canvas while native code still
+                // references them, which is a process-fatal CFG violation.
+                Tvg_Result dr = Tvg_Result.Unknown;
+                Tvg_Result sr = Tvg_Result.Unknown;
+                bool drawEntered = false;
+                try
                 {
-                    MarkdownDiagnostics.WriteLine($"[ThorVgRasterizer] canvas_update returned: {ur}");
-                    // Continue — InsufficientCondition can mean "nothing to update".
+                    drawEntered = true;
+                    dr = tvg_canvas_draw(canvas.DangerousGetHandle(), clear: true);
+                }
+                finally
+                {
+                    if (drawEntered)
+                        sr = tvg_canvas_sync(canvas.DangerousGetHandle());
                 }
 
-                var dr = tvg_canvas_draw(canvas, clear: true);
                 if (dr != Tvg_Result.Success)
                 {
                     MarkdownDiagnostics.WriteLine($"[ThorVgRasterizer] canvas_draw failed: {dr}");
                     return null;
                 }
-
-                // canvas_sync blocks until the (possibly threaded) rasterize
-                // completes. Until this returns, the output buffer is
-                // owned by the engine and must not be read.
-                var sr = tvg_canvas_sync(canvas);
                 if (sr != Tvg_Result.Success)
                 {
                     MarkdownDiagnostics.WriteLine($"[ThorVgRasterizer] canvas_sync failed: {sr}");
                     return null;
                 }
+
+                cancellationToken.ThrowIfCancellationRequested();
             }
 
             // ThorVG writes ARGB8888 premultiplied = native-endian uint32.
@@ -309,31 +323,39 @@ internal static class ThorVgRasterizer
         }
         finally
         {
-            // Destroying the canvas implicitly destroys child paiits, so we
-            // only need to release the picture if we never reached
-            // canvas_add (ownership wasn't transferred).
-            if (canvas != IntPtr.Zero)
-            {
-                try { tvg_canvas_destroy(canvas); } catch { }
-            }
-            if (!pictureOwnedByCanvas && picture != IntPtr.Zero)
-            {
-                // No public delete in the C-API; an unattached paint leaks
-                // unless we attach it to a canvas. As a fallback, attach
-                // it to a throwaway canvas so destruction is recursive.
-                try
-                {
-                    var tmp = tvg_swcanvas_create(Tvg_Engine_Option.Default);
-                    if (tmp != IntPtr.Zero)
-                    {
-                        tvg_canvas_add(tmp, picture);
-                        tvg_canvas_destroy(tmp);
-                    }
-                }
-                catch { }
-            }
-
             LeaveRasterizer();
+        }
+    }
+
+    internal static unsafe Version? TryGetNativeVersion()
+    {
+        try
+        {
+            uint major = 0;
+            uint minor = 0;
+            uint micro = 0;
+            IntPtr value = IntPtr.Zero;
+            Tvg_Result result = tvg_engine_version(&major, &minor, &micro, &value);
+            return result == Tvg_Result.Success && value != IntPtr.Zero
+                ? new Version((int)major, (int)minor, (int)micro)
+                : null;
+        }
+        catch (DllNotFoundException)
+        {
+            return null;
+        }
+        catch (BadImageFormatException)
+        {
+            return null;
+        }
+        catch (EntryPointNotFoundException)
+        {
+            return null;
+        }
+        catch (Exception ex)
+        {
+            MarkdownDiagnostics.WriteLine($"[ThorVgRasterizer] native version probe threw: {ex}");
+            return null;
         }
     }
 }

@@ -21,9 +21,9 @@ public sealed class MarkdownCopyOptions
     public static MarkdownCopyOptions Default { get; } = new();
 
     /// <summary>
-    /// Gets or sets the plain-text payload mode. Defaults to exact markdown source.
+    /// Gets or sets the plain-text payload mode. Defaults to rendered semantic text.
     /// </summary>
-    public MarkdownPlainTextCopyMode PlainTextMode { get; init; } = MarkdownPlainTextCopyMode.SourceMarkdown;
+    public MarkdownPlainTextCopyMode PlainTextMode { get; init; } = MarkdownPlainTextCopyMode.RenderedText;
 
     /// <summary>
     /// Gets or sets whether to also write a CF_HTML payload. Defaults to true.

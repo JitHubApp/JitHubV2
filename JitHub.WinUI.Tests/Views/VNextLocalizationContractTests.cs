@@ -271,7 +271,8 @@ public sealed class VNextLocalizationContractTests
         Assert.Contains("Path.Combine(AppContext.BaseDirectory, \"resources.pri\")", localizedResourceText, StringComparison.Ordinal);
         Assert.Contains("new ResourceManager(resourceFilePath)", localizedResourceText, StringComparison.Ordinal);
         Assert.Contains("TryGetSubtree(\"Resources\")", localizedResourceText, StringComparison.Ordinal);
-        Assert.Contains("resourceContext.QualifierValues[\"Language\"] = languageOverride", localizedResourceText, StringComparison.Ordinal);
+        Assert.Contains("string language = culture?.Name ?? ApplicationLanguages.PrimaryLanguageOverride", localizedResourceText, StringComparison.Ordinal);
+        Assert.Contains("resourceContext.QualifierValues[\"Language\"] = language", localizedResourceText, StringComparison.Ordinal);
         Assert.Contains("resourceMap.TryGetValue(resourceKey, resourceContext)", localizedResourceText, StringComparison.Ordinal);
         Assert.DoesNotContain("ResourceLoader", localizedResourceText, StringComparison.Ordinal);
         Assert.DoesNotContain("using Windows.ApplicationModel.Resources;", localizedResourceText, StringComparison.Ordinal);

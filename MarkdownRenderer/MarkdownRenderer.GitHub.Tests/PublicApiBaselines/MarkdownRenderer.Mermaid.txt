@@ -1,0 +1,437 @@
+# MarkdownRenderer public API baseline
+# Format: 1
+# Assembly: MarkdownRenderer.Mermaid
+# Generated from compiled assembly metadata; update with eng/Update-PublicApiBaselines.ps1.
+
+assembly MarkdownRenderer.Mermaid
+
+public interface MarkdownRenderer.Mermaid.IMermaidStringProvider
+  public abstract string? GetString(string resourceKey, System.Globalization.CultureInfo culture, System.Collections.Generic.IReadOnlyList<object?> arguments);
+
+public sealed class MarkdownRenderer.Mermaid.MermaidCodeBlockFallback : System.IEquatable<MarkdownRenderer.Mermaid.MermaidCodeBlockFallback>
+  public MarkdownRenderer.Mermaid.MermaidCodeBlockFallback <Clone>$();
+  public MermaidCodeBlockFallback(string Language, string Source);
+  public bool Equals(MarkdownRenderer.Mermaid.MermaidCodeBlockFallback? other);
+  public override bool Equals(object? obj);
+  public override int GetHashCode();
+  public override string ToString();
+  public static bool op_Equality(MarkdownRenderer.Mermaid.MermaidCodeBlockFallback? left, MarkdownRenderer.Mermaid.MermaidCodeBlockFallback? right);
+  public static bool op_Inequality(MarkdownRenderer.Mermaid.MermaidCodeBlockFallback? left, MarkdownRenderer.Mermaid.MermaidCodeBlockFallback? right);
+  public string Language { get; init; }
+  public string Source { get; init; }
+  public void Deconstruct(out string Language, out string Source);
+
+public sealed class MarkdownRenderer.Mermaid.MermaidDiagnostic : System.IEquatable<MarkdownRenderer.Mermaid.MermaidDiagnostic>
+  public MarkdownRenderer.Mermaid.MermaidDiagnostic <Clone>$();
+  public MarkdownRenderer.Mermaid.MermaidDiagnosticSeverity Severity { get; init; }
+  public MarkdownRenderer.Mermaid.MermaidSourceRange? SourceRange { get; init; }
+  public MermaidDiagnostic(string Code, MarkdownRenderer.Mermaid.MermaidDiagnosticSeverity Severity, string Message, MarkdownRenderer.Mermaid.MermaidSourceRange? SourceRange = null);
+  public bool Equals(MarkdownRenderer.Mermaid.MermaidDiagnostic? other);
+  public override bool Equals(object? obj);
+  public override int GetHashCode();
+  public override string ToString();
+  public static bool op_Equality(MarkdownRenderer.Mermaid.MermaidDiagnostic? left, MarkdownRenderer.Mermaid.MermaidDiagnostic? right);
+  public static bool op_Inequality(MarkdownRenderer.Mermaid.MermaidDiagnostic? left, MarkdownRenderer.Mermaid.MermaidDiagnostic? right);
+  public string Code { get; init; }
+  public string Message { get; init; }
+  public void Deconstruct(out string Code, out MarkdownRenderer.Mermaid.MermaidDiagnosticSeverity Severity, out string Message, out MarkdownRenderer.Mermaid.MermaidSourceRange? SourceRange);
+
+public enum MarkdownRenderer.Mermaid.MermaidDiagnosticSeverity
+  Error = 2,
+  Information = 0,
+  Warning = 1,
+
+public readonly struct MarkdownRenderer.Mermaid.MermaidDrawCommand : System.IEquatable<MarkdownRenderer.Mermaid.MermaidDrawCommand> [layout: Sequential; pack: 0; size: 0; charset: Ansi]
+  public MarkdownRenderer.Mermaid.MermaidDrawFlags Flags { get; init; }
+  public MarkdownRenderer.Mermaid.MermaidDrawOpcode Opcode { get; init; }
+  public MarkdownRenderer.Mermaid.MermaidTextFlags TextFlags { get; init; }
+  public MermaidDrawCommand(MarkdownRenderer.Mermaid.MermaidDrawOpcode Opcode, MarkdownRenderer.Mermaid.MermaidDrawFlags Flags, int StyleIndex, int SemanticIndex, int TextIndex, int GeometryStart, int GeometryCount, int FontFamilyIndex, MarkdownRenderer.Mermaid.MermaidTextFlags TextFlags);
+  public bool Equals(MarkdownRenderer.Mermaid.MermaidDrawCommand other);
+  public int FontFamilyIndex { get; init; }
+  public int GeometryCount { get; init; }
+  public int GeometryStart { get; init; }
+  public int SemanticIndex { get; init; }
+  public int StyleIndex { get; init; }
+  public int TextIndex { get; init; }
+  public override bool Equals(object obj);
+  public override int GetHashCode();
+  public override string ToString();
+  public static bool op_Equality(MarkdownRenderer.Mermaid.MermaidDrawCommand left, MarkdownRenderer.Mermaid.MermaidDrawCommand right);
+  public static bool op_Inequality(MarkdownRenderer.Mermaid.MermaidDrawCommand left, MarkdownRenderer.Mermaid.MermaidDrawCommand right);
+  public void Deconstruct(out MarkdownRenderer.Mermaid.MermaidDrawOpcode Opcode, out MarkdownRenderer.Mermaid.MermaidDrawFlags Flags, out int StyleIndex, out int SemanticIndex, out int TextIndex, out int GeometryStart, out int GeometryCount, out int FontFamilyIndex, out MarkdownRenderer.Mermaid.MermaidTextFlags TextFlags);
+
+[Flags] public enum MarkdownRenderer.Mermaid.MermaidDrawFlags : ushort
+  ClosedGeometry = 2,
+  Decorative = 4,
+  EvenOddFill = 1,
+  None = 0,
+
+public enum MarkdownRenderer.Mermaid.MermaidDrawOpcode : ushort
+  ClipBegin = 3,
+  ClipEnd = 4,
+  Ellipse = 9,
+  FillPath = 5,
+  GroupBegin = 1,
+  GroupEnd = 2,
+  Line = 7,
+  Rectangle = 8,
+  StrokePath = 6,
+  Text = 10,
+
+public sealed class MarkdownRenderer.Mermaid.MermaidFontCatalog
+  public MermaidFontCatalog(System.Collections.Generic.IEnumerable<string> families);
+  public System.Collections.Generic.IReadOnlyList<string> Families { get; }
+  public static MarkdownRenderer.Mermaid.MermaidFontCatalog Default { get; }
+  public string Fingerprint { get; }
+
+public enum MarkdownRenderer.Mermaid.MermaidLayoutMode
+  Dagre = 1,
+  Elk = 4,
+  ForceDirected = 3,
+  NativeDefault = 0,
+  TidyTree = 2,
+
+[Flags] public enum MarkdownRenderer.Mermaid.MermaidLinkFlags : uint
+  Action = 2,
+  External = 1,
+  None = 0,
+
+public static class MarkdownRenderer.Mermaid.MermaidMarkdownExtensions
+  public static MarkdownRenderer.MarkdownEngineBuilder UseMermaid(this MarkdownRenderer.MarkdownEngineBuilder builder, MarkdownRenderer.Mermaid.MermaidRenderOptions? options = null, MarkdownRenderer.Mermaid.MermaidFontCatalog? fontCatalog = null);
+  public static MarkdownRenderer.MarkdownEngineBuilder UseMermaid(this MarkdownRenderer.MarkdownEngineBuilder builder, MarkdownRenderer.Mermaid.MermaidRenderer renderer);
+
+public readonly struct MarkdownRenderer.Mermaid.MermaidNativeAbiVersion : System.IEquatable<MarkdownRenderer.Mermaid.MermaidNativeAbiVersion> [layout: Sequential; pack: 0; size: 0; charset: Ansi]
+  public MermaidNativeAbiVersion(ushort Major, ushort Minor);
+  public bool Equals(MarkdownRenderer.Mermaid.MermaidNativeAbiVersion other);
+  public override bool Equals(object obj);
+  public override int GetHashCode();
+  public override string ToString();
+  public static bool op_Equality(MarkdownRenderer.Mermaid.MermaidNativeAbiVersion left, MarkdownRenderer.Mermaid.MermaidNativeAbiVersion right);
+  public static bool op_Inequality(MarkdownRenderer.Mermaid.MermaidNativeAbiVersion left, MarkdownRenderer.Mermaid.MermaidNativeAbiVersion right);
+  public ushort Major { get; init; }
+  public ushort Minor { get; init; }
+  public void Deconstruct(out ushort Major, out ushort Minor);
+
+public static class MarkdownRenderer.Mermaid.MermaidNativeRuntime
+  public static MarkdownRenderer.Mermaid.MermaidNativeRuntimeInfo Probe();
+
+public sealed class MarkdownRenderer.Mermaid.MermaidNativeRuntimeInfo : System.IEquatable<MarkdownRenderer.Mermaid.MermaidNativeRuntimeInfo>
+  public MarkdownRenderer.Mermaid.MermaidNativeAbiVersion AbiVersion { get; init; }
+  public MarkdownRenderer.Mermaid.MermaidNativeRuntimeInfo <Clone>$();
+  public MarkdownRenderer.Mermaid.MermaidNativeRuntimeStatus Status { get; init; }
+  public MermaidNativeRuntimeInfo(MarkdownRenderer.Mermaid.MermaidNativeRuntimeStatus Status, MarkdownRenderer.Mermaid.MermaidNativeAbiVersion AbiVersion, string Message);
+  public bool Equals(MarkdownRenderer.Mermaid.MermaidNativeRuntimeInfo? other);
+  public bool IsAvailable { get; }
+  public override bool Equals(object? obj);
+  public override int GetHashCode();
+  public override string ToString();
+  public static bool op_Equality(MarkdownRenderer.Mermaid.MermaidNativeRuntimeInfo? left, MarkdownRenderer.Mermaid.MermaidNativeRuntimeInfo? right);
+  public static bool op_Inequality(MarkdownRenderer.Mermaid.MermaidNativeRuntimeInfo? left, MarkdownRenderer.Mermaid.MermaidNativeRuntimeInfo? right);
+  public string Message { get; init; }
+  public void Deconstruct(out MarkdownRenderer.Mermaid.MermaidNativeRuntimeStatus Status, out MarkdownRenderer.Mermaid.MermaidNativeAbiVersion AbiVersion, out string Message);
+
+public enum MarkdownRenderer.Mermaid.MermaidNativeRuntimeStatus
+  Available = 0,
+  IncompatibleAbi = 4,
+  IncompatibleArchitecture = 2,
+  LoadFailure = 5,
+  MissingExport = 3,
+  NotInstalled = 1,
+
+public sealed class MarkdownRenderer.Mermaid.MermaidRenderBudgets : System.IEquatable<MarkdownRenderer.Mermaid.MermaidRenderBudgets>
+  public MarkdownRenderer.Mermaid.MermaidRenderBudgets <Clone>$();
+  public MermaidRenderBudgets();
+  public System.TimeSpan Deadline { get; init; }
+  public bool Equals(MarkdownRenderer.Mermaid.MermaidRenderBudgets? other);
+  public const int DefaultMaxConcurrentRenders = 4;
+  public const int DefaultMaxDepth = 64;
+  public const int DefaultMaxEdges = 4000;
+  public const int DefaultMaxLabelBytes = 16384;
+  public const int DefaultMaxNodes = 2000;
+  public const int DefaultMaxOutstandingRenders = 16;
+  public const int DefaultMaxSceneBytes = 16777216;
+  public const int DefaultMaxSourceBytes = 262144;
+  public const long DefaultMaxOutstandingSourceBytes = 4194304;
+  public const long DefaultMaxWorkingMemoryBytes = 67108864;
+  public int MaxConcurrentRenders { get; init; }
+  public int MaxDepth { get; init; }
+  public int MaxEdges { get; init; }
+  public int MaxLabelBytes { get; init; }
+  public int MaxNodes { get; init; }
+  public int MaxOutstandingRenders { get; init; }
+  public int MaxSceneBytes { get; init; }
+  public int MaxSourceBytes { get; init; }
+  public long MaxOutstandingSourceBytes { get; init; }
+  public long MaxWorkingMemoryBytes { get; init; }
+  public override bool Equals(object? obj);
+  public override int GetHashCode();
+  public override string ToString();
+  public static MarkdownRenderer.Mermaid.MermaidRenderBudgets Default { get; }
+  public static bool op_Equality(MarkdownRenderer.Mermaid.MermaidRenderBudgets? left, MarkdownRenderer.Mermaid.MermaidRenderBudgets? right);
+  public static bool op_Inequality(MarkdownRenderer.Mermaid.MermaidRenderBudgets? left, MarkdownRenderer.Mermaid.MermaidRenderBudgets? right);
+
+public sealed class MarkdownRenderer.Mermaid.MermaidRenderOptions : System.IEquatable<MarkdownRenderer.Mermaid.MermaidRenderOptions>
+  public MarkdownRenderer.Mermaid.IMermaidStringProvider? StringProvider { get; init; }
+  public MarkdownRenderer.Mermaid.MermaidLayoutMode Layout { get; init; }
+  public MarkdownRenderer.Mermaid.MermaidRenderBudgets Budgets { get; init; }
+  public MarkdownRenderer.Mermaid.MermaidRenderOptions <Clone>$();
+  public MarkdownRenderer.Mermaid.MermaidThemeVariant Theme { get; init; }
+  public MermaidRenderOptions();
+  public System.Globalization.CultureInfo? DiagnosticCulture { get; init; }
+  public bool AllowBudgetIncreases { get; init; }
+  public bool Equals(MarkdownRenderer.Mermaid.MermaidRenderOptions? other);
+  public bool TryValidate(out string? error);
+  public const long DefaultSceneCacheBudgetBytes = 33554432;
+  public long SceneCacheBudgetBytes { get; init; }
+  public override bool Equals(object? obj);
+  public override int GetHashCode();
+  public override string ToString();
+  public static MarkdownRenderer.Mermaid.MermaidRenderOptions Default { get; }
+  public static bool op_Equality(MarkdownRenderer.Mermaid.MermaidRenderOptions? left, MarkdownRenderer.Mermaid.MermaidRenderOptions? right);
+  public static bool op_Inequality(MarkdownRenderer.Mermaid.MermaidRenderOptions? left, MarkdownRenderer.Mermaid.MermaidRenderOptions? right);
+
+public sealed class MarkdownRenderer.Mermaid.MermaidRenderResult
+  public MarkdownRenderer.Mermaid.MermaidCodeBlockFallback Fallback { get; }
+  public MarkdownRenderer.Mermaid.MermaidRenderStatus Status { get; }
+  public MarkdownRenderer.Mermaid.MermaidScene? Scene { get; }
+  public System.Collections.Generic.IReadOnlyList<MarkdownRenderer.Mermaid.MermaidDiagnostic> Diagnostics { get; }
+  public bool ShouldUseFallback { get; }
+
+public enum MarkdownRenderer.Mermaid.MermaidRenderStatus
+  BudgetExceeded = 4,
+  Cancelled = 5,
+  EngineUnavailable = 1,
+  InvalidInput = 2,
+  InvalidOptions = 3,
+  InvalidScene = 8,
+  NativeFailure = 9,
+  Overloaded = 10,
+  Success = 0,
+  TimedOut = 6,
+  UnsupportedLayout = 7,
+
+public sealed class MarkdownRenderer.Mermaid.MermaidRenderer : System.IDisposable
+  public MarkdownRenderer.Mermaid.MermaidFontCatalog FontCatalog { get; }
+  public MarkdownRenderer.Mermaid.MermaidNativeRuntimeInfo RuntimeInfo { get; }
+  public MarkdownRenderer.Mermaid.MermaidRenderOptions Options { get; }
+  public MermaidRenderer(MarkdownRenderer.Mermaid.MermaidRenderOptions? options = null, MarkdownRenderer.Mermaid.MermaidFontCatalog? fontCatalog = null);
+  public System.Threading.Tasks.ValueTask<MarkdownRenderer.Mermaid.MermaidRenderResult> RenderAsync(string source, System.Threading.CancellationToken cancellationToken = null);
+  public void Dispose();
+
+public readonly struct MarkdownRenderer.Mermaid.MermaidRgba32 : System.IEquatable<MarkdownRenderer.Mermaid.MermaidRgba32> [layout: Sequential; pack: 0; size: 0; charset: Ansi]
+  public MermaidRgba32(byte Red, byte Green, byte Blue, byte Alpha);
+  public bool Equals(MarkdownRenderer.Mermaid.MermaidRgba32 other);
+  public byte Alpha { get; init; }
+  public byte Blue { get; init; }
+  public byte Green { get; init; }
+  public byte Red { get; init; }
+  public override bool Equals(object obj);
+  public override int GetHashCode();
+  public override string ToString();
+  public static bool op_Equality(MarkdownRenderer.Mermaid.MermaidRgba32 left, MarkdownRenderer.Mermaid.MermaidRgba32 right);
+  public static bool op_Inequality(MarkdownRenderer.Mermaid.MermaidRgba32 left, MarkdownRenderer.Mermaid.MermaidRgba32 right);
+  public void Deconstruct(out byte Red, out byte Green, out byte Blue, out byte Alpha);
+
+public sealed class MarkdownRenderer.Mermaid.MermaidScene
+  public MarkdownRenderer.Mermaid.MermaidSceneVersion Version { get; }
+  public MarkdownRenderer.Mermaid.MermaidViewport Viewport { get; }
+  public System.Collections.ObjectModel.ReadOnlyCollection<MarkdownRenderer.Mermaid.MermaidDiagnostic> Diagnostics { get; }
+  public System.Collections.ObjectModel.ReadOnlyCollection<MarkdownRenderer.Mermaid.MermaidDrawCommand> Commands { get; }
+  public System.Collections.ObjectModel.ReadOnlyCollection<MarkdownRenderer.Mermaid.MermaidSceneLink> Links { get; }
+  public System.Collections.ObjectModel.ReadOnlyCollection<MarkdownRenderer.Mermaid.MermaidSceneSourceMapping> SourceMappings { get; }
+  public System.Collections.ObjectModel.ReadOnlyCollection<MarkdownRenderer.Mermaid.MermaidSceneStyle> Styles { get; }
+  public System.Collections.ObjectModel.ReadOnlyCollection<MarkdownRenderer.Mermaid.MermaidSemanticItem> Semantics { get; }
+  public System.Collections.ObjectModel.ReadOnlyCollection<float> Geometry { get; }
+  public System.Collections.ObjectModel.ReadOnlyCollection<string> Strings { get; }
+
+public sealed class MarkdownRenderer.Mermaid.MermaidSceneDecodeResult
+  public MarkdownRenderer.Mermaid.MermaidScene? Scene { get; }
+  public MarkdownRenderer.Mermaid.MermaidSceneDecodeStatus Status { get; }
+  public bool IsSuccess { get; }
+  public int ErrorOffset { get; }
+  public string? Error { get; }
+
+public enum MarkdownRenderer.Mermaid.MermaidSceneDecodeStatus
+  BadMagic = 3,
+  BudgetExceeded = 7,
+  BufferTooSmall = 2,
+  DuplicateSection = 9,
+  InvalidBudget = 1,
+  InvalidDirectory = 8,
+  InvalidHeader = 5,
+  InvalidReference = 14,
+  InvalidSection = 12,
+  InvalidSourceMapping = 16,
+  InvalidUtf8 = 13,
+  MissingSection = 11,
+  NonFiniteNumber = 15,
+  OverlappingSections = 10,
+  SizeMismatch = 6,
+  Success = 0,
+  UnsupportedVersion = 4,
+
+public static class MarkdownRenderer.Mermaid.MermaidSceneDecoder
+  public static MarkdownRenderer.Mermaid.MermaidSceneDecodeResult Decode(System.ReadOnlySpan<byte> buffer, string source, MarkdownRenderer.Mermaid.MermaidRenderBudgets? budgets = null);
+  public static MarkdownRenderer.Mermaid.MermaidSceneDecodeResult Decode(System.ReadOnlySpan<byte> buffer, string source, MarkdownRenderer.Mermaid.MermaidRenderBudgets? budgets, System.Threading.CancellationToken cancellationToken);
+
+public readonly struct MarkdownRenderer.Mermaid.MermaidSceneLink : System.IEquatable<MarkdownRenderer.Mermaid.MermaidSceneLink> [layout: Sequential; pack: 0; size: 0; charset: Ansi]
+  public MarkdownRenderer.Mermaid.MermaidLinkFlags Flags { get; init; }
+  public MermaidSceneLink(int SemanticIndex, int TargetIndex, int ActionIndex, MarkdownRenderer.Mermaid.MermaidLinkFlags Flags);
+  public bool Equals(MarkdownRenderer.Mermaid.MermaidSceneLink other);
+  public int ActionIndex { get; init; }
+  public int SemanticIndex { get; init; }
+  public int TargetIndex { get; init; }
+  public override bool Equals(object obj);
+  public override int GetHashCode();
+  public override string ToString();
+  public static bool op_Equality(MarkdownRenderer.Mermaid.MermaidSceneLink left, MarkdownRenderer.Mermaid.MermaidSceneLink right);
+  public static bool op_Inequality(MarkdownRenderer.Mermaid.MermaidSceneLink left, MarkdownRenderer.Mermaid.MermaidSceneLink right);
+  public void Deconstruct(out int SemanticIndex, out int TargetIndex, out int ActionIndex, out MarkdownRenderer.Mermaid.MermaidLinkFlags Flags);
+
+public readonly struct MarkdownRenderer.Mermaid.MermaidSceneSourceMapping : System.IEquatable<MarkdownRenderer.Mermaid.MermaidSceneSourceMapping> [layout: Sequential; pack: 0; size: 0; charset: Ansi]
+  public MarkdownRenderer.Mermaid.MermaidSourceRange SourceRange { get; init; }
+  public MermaidSceneSourceMapping(uint SourceId, MarkdownRenderer.Mermaid.MermaidSourceRange SourceRange, int SemanticIndex);
+  public bool Equals(MarkdownRenderer.Mermaid.MermaidSceneSourceMapping other);
+  public int SemanticIndex { get; init; }
+  public override bool Equals(object obj);
+  public override int GetHashCode();
+  public override string ToString();
+  public static bool op_Equality(MarkdownRenderer.Mermaid.MermaidSceneSourceMapping left, MarkdownRenderer.Mermaid.MermaidSceneSourceMapping right);
+  public static bool op_Inequality(MarkdownRenderer.Mermaid.MermaidSceneSourceMapping left, MarkdownRenderer.Mermaid.MermaidSceneSourceMapping right);
+  public uint SourceId { get; init; }
+  public void Deconstruct(out uint SourceId, out MarkdownRenderer.Mermaid.MermaidSourceRange SourceRange, out int SemanticIndex);
+
+public readonly struct MarkdownRenderer.Mermaid.MermaidSceneStyle : System.IEquatable<MarkdownRenderer.Mermaid.MermaidSceneStyle> [layout: Sequential; pack: 0; size: 0; charset: Ansi]
+  public MarkdownRenderer.Mermaid.MermaidRgba32 Fill { get; init; }
+  public MarkdownRenderer.Mermaid.MermaidRgba32 Stroke { get; init; }
+  public MarkdownRenderer.Mermaid.MermaidStyleFlags Flags { get; init; }
+  public MermaidSceneStyle(MarkdownRenderer.Mermaid.MermaidRgba32 Stroke, MarkdownRenderer.Mermaid.MermaidRgba32 Fill, float StrokeWidth, float Opacity, MarkdownRenderer.Mermaid.MermaidStyleFlags Flags, uint DashGeometryStart, uint DashGeometryCount);
+  public bool Equals(MarkdownRenderer.Mermaid.MermaidSceneStyle other);
+  public float Opacity { get; init; }
+  public float StrokeWidth { get; init; }
+  public override bool Equals(object obj);
+  public override int GetHashCode();
+  public override string ToString();
+  public static bool op_Equality(MarkdownRenderer.Mermaid.MermaidSceneStyle left, MarkdownRenderer.Mermaid.MermaidSceneStyle right);
+  public static bool op_Inequality(MarkdownRenderer.Mermaid.MermaidSceneStyle left, MarkdownRenderer.Mermaid.MermaidSceneStyle right);
+  public uint DashGeometryCount { get; init; }
+  public uint DashGeometryStart { get; init; }
+  public void Deconstruct(out MarkdownRenderer.Mermaid.MermaidRgba32 Stroke, out MarkdownRenderer.Mermaid.MermaidRgba32 Fill, out float StrokeWidth, out float Opacity, out MarkdownRenderer.Mermaid.MermaidStyleFlags Flags, out uint DashGeometryStart, out uint DashGeometryCount);
+
+public readonly struct MarkdownRenderer.Mermaid.MermaidSceneVersion : System.IEquatable<MarkdownRenderer.Mermaid.MermaidSceneVersion> [layout: Sequential; pack: 0; size: 0; charset: Ansi]
+  public MermaidSceneVersion(ushort Major, ushort Minor);
+  public bool Equals(MarkdownRenderer.Mermaid.MermaidSceneVersion other);
+  public override bool Equals(object obj);
+  public override int GetHashCode();
+  public override string ToString();
+  public static MarkdownRenderer.Mermaid.MermaidSceneVersion Current { get; }
+  public static bool op_Equality(MarkdownRenderer.Mermaid.MermaidSceneVersion left, MarkdownRenderer.Mermaid.MermaidSceneVersion right);
+  public static bool op_Inequality(MarkdownRenderer.Mermaid.MermaidSceneVersion left, MarkdownRenderer.Mermaid.MermaidSceneVersion right);
+  public ushort Major { get; init; }
+  public ushort Minor { get; init; }
+  public void Deconstruct(out ushort Major, out ushort Minor);
+
+[Flags] public enum MarkdownRenderer.Mermaid.MermaidSemanticFlags : uint
+  Decorative = 8,
+  Focusable = 1,
+  Linked = 4,
+  None = 0,
+  Selectable = 2,
+
+public readonly struct MarkdownRenderer.Mermaid.MermaidSemanticItem : System.IEquatable<MarkdownRenderer.Mermaid.MermaidSemanticItem> [layout: Sequential; pack: 0; size: 0; charset: Ansi]
+  public MarkdownRenderer.Mermaid.MermaidSemanticFlags Flags { get; init; }
+  public MarkdownRenderer.Mermaid.MermaidSemanticRole Role { get; init; }
+  public MermaidSemanticItem(uint SourceId, MarkdownRenderer.Mermaid.MermaidSemanticRole Role, int NameIndex, int DescriptionIndex, int ParentIndex, int SourceMappingIndex, MarkdownRenderer.Mermaid.MermaidSemanticFlags Flags);
+  public bool Equals(MarkdownRenderer.Mermaid.MermaidSemanticItem other);
+  public int DescriptionIndex { get; init; }
+  public int NameIndex { get; init; }
+  public int ParentIndex { get; init; }
+  public int SourceMappingIndex { get; init; }
+  public override bool Equals(object obj);
+  public override int GetHashCode();
+  public override string ToString();
+  public static bool op_Equality(MarkdownRenderer.Mermaid.MermaidSemanticItem left, MarkdownRenderer.Mermaid.MermaidSemanticItem right);
+  public static bool op_Inequality(MarkdownRenderer.Mermaid.MermaidSemanticItem left, MarkdownRenderer.Mermaid.MermaidSemanticItem right);
+  public uint SourceId { get; init; }
+  public void Deconstruct(out uint SourceId, out MarkdownRenderer.Mermaid.MermaidSemanticRole Role, out int NameIndex, out int DescriptionIndex, out int ParentIndex, out int SourceMappingIndex, out MarkdownRenderer.Mermaid.MermaidSemanticFlags Flags);
+
+public enum MarkdownRenderer.Mermaid.MermaidSemanticRole : uint
+  Diagram = 1,
+  Edge = 4,
+  Group = 2,
+  Label = 5,
+  Legend = 6,
+  Node = 3,
+
+public readonly struct MarkdownRenderer.Mermaid.MermaidSourceRange : System.IEquatable<MarkdownRenderer.Mermaid.MermaidSourceRange> [layout: Sequential; pack: 0; size: 0; charset: Ansi]
+  public MermaidSourceRange(int Start, int Length);
+  public bool Equals(MarkdownRenderer.Mermaid.MermaidSourceRange other);
+  public bool IsValid { get; }
+  public int End { get; }
+  public int Length { get; init; }
+  public int Start { get; init; }
+  public override bool Equals(object obj);
+  public override int GetHashCode();
+  public override string ToString();
+  public static bool op_Equality(MarkdownRenderer.Mermaid.MermaidSourceRange left, MarkdownRenderer.Mermaid.MermaidSourceRange right);
+  public static bool op_Inequality(MarkdownRenderer.Mermaid.MermaidSourceRange left, MarkdownRenderer.Mermaid.MermaidSourceRange right);
+  public void Deconstruct(out int Start, out int Length);
+
+public static class MarkdownRenderer.Mermaid.MermaidStringKeys
+  public const string DiagramRenderFailed = "Mermaid.Diagnostic.DiagramRenderFailed";
+  public const string ElkLayoutUnavailable = "Mermaid.Diagnostic.ElkLayoutUnavailable";
+  public const string EngineBecameUnavailable = "Mermaid.Diagnostic.EngineBecameUnavailable";
+  public const string EngineIncompatibleAbi = "Mermaid.Diagnostic.EngineIncompatibleAbi";
+  public const string EngineUnavailable = "Mermaid.Diagnostic.EngineUnavailable";
+  public const string EngineWrongArchitecture = "Mermaid.Diagnostic.EngineWrongArchitecture";
+  public const string InvalidOptions = "Mermaid.Diagnostic.InvalidOptions";
+  public const string NativeBudgetExceeded = "Mermaid.Diagnostic.NativeBudgetExceeded";
+  public const string NativeDiagnostic = "Mermaid.Diagnostic.NativeDiagnostic";
+  public const string NativeFailure = "Mermaid.Diagnostic.NativeFailure";
+  public const string NativeLayoutUnsupported = "Mermaid.Diagnostic.NativeLayoutUnsupported";
+  public const string NativeSourceRejected = "Mermaid.Diagnostic.NativeSourceRejected";
+  public const string RenderCancelled = "Mermaid.Diagnostic.RenderCancelled";
+  public const string RenderOverloaded = "Mermaid.Diagnostic.RenderOverloaded";
+  public const string RenderTimedOut = "Mermaid.Diagnostic.RenderTimedOut";
+  public const string RendererUnavailable = "Mermaid.Diagnostic.RendererUnavailable";
+  public const string SceneInvalid = "Mermaid.Diagnostic.SceneInvalid";
+  public const string SceneRepresentationFailed = "Mermaid.Diagnostic.SceneRepresentationFailed";
+  public const string SceneTooLarge = "Mermaid.Diagnostic.SceneTooLarge";
+  public const string SourceInvalidUtf16 = "Mermaid.Diagnostic.SourceInvalidUtf16";
+  public const string SourceNull = "Mermaid.Diagnostic.SourceNull";
+  public const string SourceTooLarge = "Mermaid.Diagnostic.SourceTooLarge";
+
+[Flags] public enum MarkdownRenderer.Mermaid.MermaidStyleFlags : uint
+  NonScalingStroke = 1,
+  None = 0,
+  RoundLineCap = 2,
+  RoundLineJoin = 4,
+
+[Flags] public enum MarkdownRenderer.Mermaid.MermaidTextFlags : uint
+  AnchorEnd = 8,
+  AnchorMiddle = 4,
+  Italic = 1,
+  None = 0,
+  RightToLeft = 2,
+
+public enum MarkdownRenderer.Mermaid.MermaidThemeVariant
+  Dark = 2,
+  Default = 0,
+  Forest = 4,
+  HighContrast = 3,
+  Light = 1,
+  Neutral = 5,
+
+public readonly struct MarkdownRenderer.Mermaid.MermaidViewport : System.IEquatable<MarkdownRenderer.Mermaid.MermaidViewport> [layout: Sequential; pack: 0; size: 0; charset: Ansi]
+  public MermaidViewport(float X, float Y, float Width, float Height);
+  public bool Equals(MarkdownRenderer.Mermaid.MermaidViewport other);
+  public float Height { get; init; }
+  public float Width { get; init; }
+  public float X { get; init; }
+  public float Y { get; init; }
+  public override bool Equals(object obj);
+  public override int GetHashCode();
+  public override string ToString();
+  public static bool op_Equality(MarkdownRenderer.Mermaid.MermaidViewport left, MarkdownRenderer.Mermaid.MermaidViewport right);
+  public static bool op_Inequality(MarkdownRenderer.Mermaid.MermaidViewport left, MarkdownRenderer.Mermaid.MermaidViewport right);
+  public void Deconstruct(out float X, out float Y, out float Width, out float Height);

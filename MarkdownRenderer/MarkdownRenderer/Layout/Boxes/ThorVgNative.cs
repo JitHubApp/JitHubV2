@@ -8,8 +8,10 @@
 //   4. Drive a single draw+sync cycle,
 //   5. Tear everything down deterministically.
 //
-// The native binary ships as `thorvg.dll` next to the managed assembly
-// (see MarkdownRenderer.csproj — Content item under native\win-x64\).
+// The native binary is supplied only by the optional
+// MarkdownRenderer.Svg.ThorVG package. The lean WinUI package deliberately
+// contains no native payload and this layer treats a missing library as an
+// ordinary feature-unavailable result.
 //
 // Marshaling notes:
 //  * Tvg_Canvas / Tvg_Paint are opaque `void*` handles → IntPtr.
@@ -24,6 +26,7 @@ using System;
 using System.Collections.Generic;
 using System.IO;
 using System.Reflection;
+using System.Runtime.CompilerServices;
 using System.Runtime.InteropServices;
 
 namespace MarkdownRenderer.Layout.Boxes;
@@ -100,42 +103,126 @@ internal static partial class ThorVgNative
         Unknown = 255,
     }
 
+    internal sealed class SafeTvgCanvasHandle : SafeHandle
+    {
+        private SafeTvgCanvasHandle()
+            : base(IntPtr.Zero, ownsHandle: true)
+        {
+        }
+
+        public override bool IsInvalid => handle == IntPtr.Zero;
+
+        internal static SafeTvgCanvasHandle FromNative(IntPtr value)
+        {
+            var result = new SafeTvgCanvasHandle();
+            result.SetHandle(value);
+            return result;
+        }
+
+        protected override bool ReleaseHandle()
+        {
+            try
+            {
+                return tvg_canvas_destroy(handle) == Tvg_Result.Success;
+            }
+            catch
+            {
+                return false;
+            }
+        }
+    }
+
+    internal sealed class SafeTvgPaintHandle : SafeHandle
+    {
+        private SafeTvgPaintHandle()
+            : base(IntPtr.Zero, ownsHandle: true)
+        {
+        }
+
+        public override bool IsInvalid => handle == IntPtr.Zero;
+
+        internal static SafeTvgPaintHandle FromNative(IntPtr value)
+        {
+            var result = new SafeTvgPaintHandle();
+            result.SetHandle(value);
+            return result;
+        }
+
+        /// <summary>Transfers picture ownership to a canvas after a successful add.</summary>
+        internal void RelinquishOwnership() => SetHandleAsInvalid();
+
+        protected override bool ReleaseHandle()
+        {
+            try
+            {
+                tvg_paint_rel(handle);
+                return true;
+            }
+            catch
+            {
+                return false;
+            }
+        }
+    }
+
     // -- Engine -----------------------------------------------------------
 
     [LibraryImport(DllName)]
+    [UnmanagedCallConv(CallConvs = new[] { typeof(CallConvCdecl) })]
     public static partial Tvg_Result tvg_engine_init(uint threads);
 
     [LibraryImport(DllName)]
+    [UnmanagedCallConv(CallConvs = new[] { typeof(CallConvCdecl) })]
     public static partial Tvg_Result tvg_engine_term();
+
+    [LibraryImport(DllName)]
+    [UnmanagedCallConv(CallConvs = new[] { typeof(CallConvCdecl) })]
+    public static unsafe partial Tvg_Result tvg_engine_version(
+        uint* major,
+        uint* minor,
+        uint* micro,
+        IntPtr* version);
 
     // -- Canvas (software backend) ----------------------------------------
 
     [LibraryImport(DllName)]
+    [UnmanagedCallConv(CallConvs = new[] { typeof(CallConvCdecl) })]
     public static partial IntPtr tvg_swcanvas_create(Tvg_Engine_Option op);
 
     [LibraryImport(DllName)]
+    [UnmanagedCallConv(CallConvs = new[] { typeof(CallConvCdecl) })]
     public static unsafe partial Tvg_Result tvg_swcanvas_set_target(
         IntPtr canvas, uint* buffer, uint stride, uint w, uint h, Tvg_Colorspace cs);
 
     [LibraryImport(DllName)]
+    [UnmanagedCallConv(CallConvs = new[] { typeof(CallConvCdecl) })]
     public static partial Tvg_Result tvg_canvas_destroy(IntPtr canvas);
 
     [LibraryImport(DllName)]
+    [UnmanagedCallConv(CallConvs = new[] { typeof(CallConvCdecl) })]
     public static partial Tvg_Result tvg_canvas_add(IntPtr canvas, IntPtr paint);
 
     [LibraryImport(DllName)]
+    [UnmanagedCallConv(CallConvs = new[] { typeof(CallConvCdecl) })]
     public static partial Tvg_Result tvg_canvas_update(IntPtr canvas);
 
     [LibraryImport(DllName)]
+    [UnmanagedCallConv(CallConvs = new[] { typeof(CallConvCdecl) })]
     public static partial Tvg_Result tvg_canvas_draw(IntPtr canvas, [MarshalAs(UnmanagedType.U1)] bool clear);
 
     [LibraryImport(DllName)]
+    [UnmanagedCallConv(CallConvs = new[] { typeof(CallConvCdecl) })]
     public static partial Tvg_Result tvg_canvas_sync(IntPtr canvas);
 
     // -- Picture (SVG payload owner) --------------------------------------
 
     [LibraryImport(DllName)]
+    [UnmanagedCallConv(CallConvs = new[] { typeof(CallConvCdecl) })]
     public static partial IntPtr tvg_picture_new();
+
+    [LibraryImport(DllName)]
+    [UnmanagedCallConv(CallConvs = new[] { typeof(CallConvCdecl) })]
+    public static partial void tvg_paint_rel(IntPtr paint);
 
     /// <summary>
     /// Loads an SVG from raw bytes. The <paramref name="mimetype"/> argument
@@ -147,13 +234,16 @@ internal static partial class ThorVgNative
     /// internal storage so the caller can free/unpin immediately on return.
     /// </summary>
     [LibraryImport(DllName, StringMarshalling = StringMarshalling.Utf8)]
+    [UnmanagedCallConv(CallConvs = new[] { typeof(CallConvCdecl) })]
     public static unsafe partial Tvg_Result tvg_picture_load_data(
         IntPtr picture, byte* data, uint size, string? mimetype, string? rpath,
         [MarshalAs(UnmanagedType.U1)] bool copy);
 
     [LibraryImport(DllName)]
+    [UnmanagedCallConv(CallConvs = new[] { typeof(CallConvCdecl) })]
     public static partial Tvg_Result tvg_picture_set_size(IntPtr picture, float w, float h);
 
     [LibraryImport(DllName)]
+    [UnmanagedCallConv(CallConvs = new[] { typeof(CallConvCdecl) })]
     public static unsafe partial Tvg_Result tvg_picture_get_size(IntPtr picture, float* w, float* h);
 }

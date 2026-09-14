@@ -657,4 +657,58 @@
   <data name="toastEnabled.Text" xml:space="preserve">
     <value>Enable toast notification</value>
   </data>
+  <data name="MarkdownRenderer/Document/Name" xml:space="preserve"><value>Markdown 文档</value></data>
+  <data name="MarkdownRenderer/Command/Copy" xml:space="preserve"><value>复制</value></data>
+  <data name="MarkdownRenderer/Command/CopyMarkdown" xml:space="preserve"><value>复制为 Markdown</value></data>
+  <data name="MarkdownRenderer/Command/CopyLink" xml:space="preserve"><value>复制链接</value></data>
+  <data name="MarkdownRenderer/Command/CopyImage" xml:space="preserve"><value>复制图像</value></data>
+  <data name="MarkdownRenderer/Command/CopyTable" xml:space="preserve"><value>复制表格</value></data>
+  <data name="MarkdownRenderer/Command/SelectAll" xml:space="preserve"><value>全选</value></data>
+  <data name="MarkdownRenderer/Command/CopyCode" xml:space="preserve"><value>复制代码</value></data>
+  <data name="MarkdownRenderer/Selection/StartHandle" xml:space="preserve"><value>选择起始手柄</value></data>
+  <data name="MarkdownRenderer/Selection/EndHandle" xml:space="preserve"><value>选择结束手柄</value></data>
+  <data name="MarkdownRenderer/Selection/HandleHelp" xml:space="preserve"><value>拖动以调整选择范围。使用箭头键进行精确调整。</value></data>
+  <data name="MarkdownRenderer/Feedback/CodeCopied" xml:space="preserve"><value>已复制</value></data>
+  <data name="MarkdownRenderer/Image/Loading" xml:space="preserve"><value>正在加载 {0}...</value></data>
+  <data name="MarkdownRenderer/Image/Error" xml:space="preserve"><value>图像不可用：{0}</value></data>
+  <data name="MarkdownRenderer/Image/Name" xml:space="preserve"><value>图像</value></data>
+  <data name="MarkdownRenderer/Task/Completed" xml:space="preserve"><value>已完成的任务</value></data>
+  <data name="MarkdownRenderer/Task/Incomplete" xml:space="preserve"><value>未完成的任务</value></data>
+  <data name="MarkdownRenderer/Task/ReadOnly" xml:space="preserve"><value>只读任务状态</value></data>
+  <data name="MarkdownRenderer/Task/Toggle" xml:space="preserve"><value>切换任务状态</value></data>
+  <data name="MarkdownRenderer/Table/Name" xml:space="preserve"><value>表格</value></data>
+  <data name="MarkdownRenderer/List/Name" xml:space="preserve"><value>列表</value></data>
+  <data name="MarkdownRenderer/EmbeddedContent/Name" xml:space="preserve"><value>嵌入内容</value></data>
+  <data name="MarkdownRenderer/Diagram/Name" xml:space="preserve"><value>图表</value></data>
+  <data name="MarkdownRenderer/Code/LanguageHelp" xml:space="preserve"><value>语言：{0}</value></data>
+  <data name="MarkdownRenderer/Html/Details" xml:space="preserve"><value>详细信息</value></data>
+  <data name="MarkdownRenderer/Html/BudgetExceeded" xml:space="preserve"><value>其他 HTML 内容因超出渲染器安全限制而被省略。</value></data>
+  <data name="MarkdownRenderer/Style/Body" xml:space="preserve"><value>正文</value></data>
+  <data name="MarkdownRenderer/Style/Heading1" xml:space="preserve"><value>标题 1</value></data>
+  <data name="MarkdownRenderer/Style/Heading2" xml:space="preserve"><value>标题 2</value></data>
+  <data name="MarkdownRenderer/Style/Heading3" xml:space="preserve"><value>标题 3</value></data>
+  <data name="MarkdownRenderer/Style/Heading4" xml:space="preserve"><value>标题 4</value></data>
+  <data name="MarkdownRenderer/Style/Heading5" xml:space="preserve"><value>标题 5</value></data>
+  <data name="MarkdownRenderer/Style/Heading6" xml:space="preserve"><value>标题 6</value></data>
+  <data name="MarkdownRenderer/Style/CodeBlock" xml:space="preserve"><value>代码块</value></data>
+  <data name="MarkdownRenderer/Style/InlineCode" xml:space="preserve"><value>内联代码</value></data>
+  <data name="MarkdownRenderer/Style/Quote" xml:space="preserve"><value>引用</value></data>
+  <data name="MarkdownRenderer/Style/Link" xml:space="preserve"><value>链接</value></data>
+  <data name="MarkdownRenderer/Style/Strong" xml:space="preserve"><value>粗体</value></data>
+  <data name="MarkdownRenderer/Style/Emphasis" xml:space="preserve"><value>强调</value></data>
+  <data name="MarkdownRenderer/Style/Strikethrough" xml:space="preserve"><value>删除线</value></data>
+  <data name="MarkdownRenderer/Style/Subscript" xml:space="preserve"><value>下标</value></data>
+  <data name="MarkdownRenderer/Style/Superscript" xml:space="preserve"><value>上标</value></data>
+  <data name="MarkdownRenderer/Style/Inserted" xml:space="preserve"><value>插入内容</value></data>
+  <data name="MarkdownRenderer/Style/Marked" xml:space="preserve"><value>标记内容</value></data>
+  <data name="MarkdownRenderer/Style/Abbreviation" xml:space="preserve"><value>缩写</value></data>
+  <data name="MarkdownRenderer/Style/DefinitionTerm" xml:space="preserve"><value>定义术语</value></data>
+  <data name="MarkdownRenderer/Style/DefinitionDescription" xml:space="preserve"><value>定义</value></data>
+  <data name="MarkdownRenderer/Style/Figure" xml:space="preserve"><value>插图</value></data>
+  <data name="MarkdownRenderer/Style/FigureCaption" xml:space="preserve"><value>插图说明</value></data>
+  <data name="MarkdownRenderer/Style/Diagram" xml:space="preserve"><value>图表</value></data>
+  <data name="MarkdownRenderer/Style/ListMarker" xml:space="preserve"><value>列表标记</value></data>
+  <data name="MarkdownRenderer/Style/Table" xml:space="preserve"><value>表格</value></data>
+  <data name="MarkdownRenderer/Style/TableHeader" xml:space="preserve"><value>表头</value></data>
+  <data name="MarkdownRenderer/Style/TableCell" xml:space="preserve"><value>表格单元格</value></data>
 </root>

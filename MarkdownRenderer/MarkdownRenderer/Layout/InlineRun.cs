@@ -228,7 +228,7 @@ internal sealed class InlineImageRun : InlineRun
 
     public override string Text => InlineEmbedRun.PlaceholderChar;
 
-    public override string AccessibleText => string.IsNullOrWhiteSpace(AltText) ? "image" : AltText;
+    public override string AccessibleText => AltText;
 
     internal void Measure(float maxWidth, float lineHeight)
     {

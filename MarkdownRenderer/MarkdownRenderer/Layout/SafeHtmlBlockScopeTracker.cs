@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using System.Linq;
+using System.Threading;
 using MarkdownRenderer.Parsing;
 
 namespace MarkdownRenderer.Layout;
@@ -8,6 +9,14 @@ namespace MarkdownRenderer.Layout;
 internal sealed class SafeHtmlBlockScopeTracker
 {
     private readonly List<Scope> _scopes = [];
+    private readonly SafeHtmlParseLimits _limits;
+    private long _inputLength;
+    private int _nodeCount;
+
+    internal SafeHtmlBlockScopeTracker(SafeHtmlParseLimits? limits = null)
+        => _limits = limits ?? SafeHtmlParseLimits.Default;
+
+    internal bool BudgetExceeded { get; private set; }
 
     public SafeHtmlAlignment CurrentAlignment
     {
@@ -30,10 +39,35 @@ internal sealed class SafeHtmlBlockScopeTracker
     public bool Process(
         string? html,
         int sourceOffset,
-        IReadOnlyDictionary<string, bool> disclosureStates)
+        IReadOnlyDictionary<string, bool> disclosureStates,
+        CancellationToken cancellationToken = default)
     {
-        bool isTagSequence = SafeHtmlParser.TryParseTagSequence(html, out IReadOnlyList<SafeHtmlTag> sequence);
-        IReadOnlyList<SafeHtmlTag> tags = isTagSequence ? sequence : SafeHtmlParser.ParseTags(html);
+        cancellationToken.ThrowIfCancellationRequested();
+        if (BudgetExceeded)
+            return false;
+        _inputLength += html?.Length ?? 0;
+        if (_inputLength > _limits.MaxInputLength)
+            return ExceedBudget();
+
+        bool isTagSequence = SafeHtmlParser.TryParseTagSequence(
+            html,
+            _limits,
+            cancellationToken,
+            out IReadOnlyList<SafeHtmlTag> sequence,
+            out bool sequenceScanBudgetExceeded);
+        if (sequenceScanBudgetExceeded)
+            return ExceedBudget();
+
+        bool tagScanBudgetExceeded = false;
+        IReadOnlyList<SafeHtmlTag> tags = isTagSequence
+            ? sequence
+            : SafeHtmlParser.ParseTags(
+                html,
+                _limits,
+                cancellationToken,
+                out tagScanBudgetExceeded);
+        if (!isTagSequence && tagScanBudgetExceeded)
+            return ExceedBudget();
         if (tags.Count == 0)
         {
             return false;
@@ -42,6 +76,10 @@ internal sealed class SafeHtmlBlockScopeTracker
         bool containsDetailsOpening = false;
         foreach (SafeHtmlTag tag in tags)
         {
+            cancellationToken.ThrowIfCancellationRequested();
+            if (_nodeCount >= _limits.MaxNodeCount)
+                return ExceedBudget();
+            _nodeCount++;
             if (tag.Kind == SafeHtmlTagKind.Closing)
             {
                 if (tag.Name is "details" or "div" or "p" or "center")
@@ -56,6 +94,9 @@ internal sealed class SafeHtmlBlockScopeTracker
             {
                 continue;
             }
+
+            if (_scopes.Count >= _limits.MaxNestingDepth)
+                return ExceedBudget();
 
             if (tag.Name == "details")
             {
@@ -79,6 +120,13 @@ internal sealed class SafeHtmlBlockScopeTracker
         return isTagSequence &&
             !containsDetailsOpening &&
             tags.All(static tag => tag.Name is "div" or "p" or "center" or "details" or "summary");
+    }
+
+    private bool ExceedBudget()
+    {
+        BudgetExceeded = true;
+        _scopes.Clear();
+        return false;
     }
 
     private void PopThrough(string name)

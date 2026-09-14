@@ -670,4 +670,58 @@
   <data name="liveTilesBadgeEnabled.Text" xml:space="preserve">
     <value>লাইভ টাইলের ব্যাজ আপডেটগুলি সক্ষম করুন</value>
   </data>
+  <data name="MarkdownRenderer/Document/Name" xml:space="preserve"><value>মার্কডাউন নথি</value></data>
+  <data name="MarkdownRenderer/Command/Copy" xml:space="preserve"><value>অনুলিপি করুন</value></data>
+  <data name="MarkdownRenderer/Command/CopyMarkdown" xml:space="preserve"><value>মার্কডাউন হিসেবে অনুলিপি করুন</value></data>
+  <data name="MarkdownRenderer/Command/CopyLink" xml:space="preserve"><value>লিংক অনুলিপি করুন</value></data>
+  <data name="MarkdownRenderer/Command/CopyImage" xml:space="preserve"><value>ছবি অনুলিপি করুন</value></data>
+  <data name="MarkdownRenderer/Command/CopyTable" xml:space="preserve"><value>সারণি অনুলিপি করুন</value></data>
+  <data name="MarkdownRenderer/Command/SelectAll" xml:space="preserve"><value>সব নির্বাচন করুন</value></data>
+  <data name="MarkdownRenderer/Command/CopyCode" xml:space="preserve"><value>কোড অনুলিপি করুন</value></data>
+  <data name="MarkdownRenderer/Selection/StartHandle" xml:space="preserve"><value>নির্বাচনের শুরুর হ্যান্ডেল</value></data>
+  <data name="MarkdownRenderer/Selection/EndHandle" xml:space="preserve"><value>নির্বাচনের শেষের হ্যান্ডেল</value></data>
+  <data name="MarkdownRenderer/Selection/HandleHelp" xml:space="preserve"><value>নির্বাচন সামঞ্জস্য করতে টেনে আনুন। সুনির্দিষ্টভাবে সামঞ্জস্য করতে তীরচিহ্ন কীগুলি ব্যবহার করুন।</value></data>
+  <data name="MarkdownRenderer/Feedback/CodeCopied" xml:space="preserve"><value>অনুলিপি করা হয়েছে</value></data>
+  <data name="MarkdownRenderer/Image/Loading" xml:space="preserve"><value>{0} লোড হচ্ছে...</value></data>
+  <data name="MarkdownRenderer/Image/Error" xml:space="preserve"><value>ছবি পাওয়া যাচ্ছে না: {0}</value></data>
+  <data name="MarkdownRenderer/Image/Name" xml:space="preserve"><value>ছবি</value></data>
+  <data name="MarkdownRenderer/Task/Completed" xml:space="preserve"><value>সম্পন্ন কাজ</value></data>
+  <data name="MarkdownRenderer/Task/Incomplete" xml:space="preserve"><value>অসম্পন্ন কাজ</value></data>
+  <data name="MarkdownRenderer/Task/ReadOnly" xml:space="preserve"><value>শুধু-পঠনযোগ্য কাজের অবস্থা</value></data>
+  <data name="MarkdownRenderer/Task/Toggle" xml:space="preserve"><value>কাজের অবস্থা পরিবর্তন করুন</value></data>
+  <data name="MarkdownRenderer/Table/Name" xml:space="preserve"><value>সারণি</value></data>
+  <data name="MarkdownRenderer/List/Name" xml:space="preserve"><value>তালিকা</value></data>
+  <data name="MarkdownRenderer/EmbeddedContent/Name" xml:space="preserve"><value>এম্বেড করা বিষয়বস্তু</value></data>
+  <data name="MarkdownRenderer/Diagram/Name" xml:space="preserve"><value>ডায়াগ্রাম</value></data>
+  <data name="MarkdownRenderer/Code/LanguageHelp" xml:space="preserve"><value>ভাষা: {0}</value></data>
+  <data name="MarkdownRenderer/Html/Details" xml:space="preserve"><value>বিস্তারিত</value></data>
+  <data name="MarkdownRenderer/Html/BudgetExceeded" xml:space="preserve"><value>রেন্ডারারের নিরাপত্তা সীমা অতিক্রম করায় অতিরিক্ত HTML বিষয়বস্তু বাদ দেওয়া হয়েছে।</value></data>
+  <data name="MarkdownRenderer/Style/Body" xml:space="preserve"><value>মূলপাঠ</value></data>
+  <data name="MarkdownRenderer/Style/Heading1" xml:space="preserve"><value>শিরোনাম ১</value></data>
+  <data name="MarkdownRenderer/Style/Heading2" xml:space="preserve"><value>শিরোনাম ২</value></data>
+  <data name="MarkdownRenderer/Style/Heading3" xml:space="preserve"><value>শিরোনাম ৩</value></data>
+  <data name="MarkdownRenderer/Style/Heading4" xml:space="preserve"><value>শিরোনাম ৪</value></data>
+  <data name="MarkdownRenderer/Style/Heading5" xml:space="preserve"><value>শিরোনাম ৫</value></data>
+  <data name="MarkdownRenderer/Style/Heading6" xml:space="preserve"><value>শিরোনাম ৬</value></data>
+  <data name="MarkdownRenderer/Style/CodeBlock" xml:space="preserve"><value>কোড ব্লক</value></data>
+  <data name="MarkdownRenderer/Style/InlineCode" xml:space="preserve"><value>ইনলাইন কোড</value></data>
+  <data name="MarkdownRenderer/Style/Quote" xml:space="preserve"><value>উদ্ধৃতি</value></data>
+  <data name="MarkdownRenderer/Style/Link" xml:space="preserve"><value>লিংক</value></data>
+  <data name="MarkdownRenderer/Style/Strong" xml:space="preserve"><value>গাঢ়</value></data>
+  <data name="MarkdownRenderer/Style/Emphasis" xml:space="preserve"><value>গুরুত্ব</value></data>
+  <data name="MarkdownRenderer/Style/Strikethrough" xml:space="preserve"><value>কাটা লেখা</value></data>
+  <data name="MarkdownRenderer/Style/Subscript" xml:space="preserve"><value>অধোলিপি</value></data>
+  <data name="MarkdownRenderer/Style/Superscript" xml:space="preserve"><value>ঊর্ধ্বলিপি</value></data>
+  <data name="MarkdownRenderer/Style/Inserted" xml:space="preserve"><value>সন্নিবেশিত</value></data>
+  <data name="MarkdownRenderer/Style/Marked" xml:space="preserve"><value>চিহ্নিত</value></data>
+  <data name="MarkdownRenderer/Style/Abbreviation" xml:space="preserve"><value>সংক্ষিপ্ত রূপ</value></data>
+  <data name="MarkdownRenderer/Style/DefinitionTerm" xml:space="preserve"><value>সংজ্ঞার পদ</value></data>
+  <data name="MarkdownRenderer/Style/DefinitionDescription" xml:space="preserve"><value>সংজ্ঞা</value></data>
+  <data name="MarkdownRenderer/Style/Figure" xml:space="preserve"><value>চিত্র</value></data>
+  <data name="MarkdownRenderer/Style/FigureCaption" xml:space="preserve"><value>চিত্রের ক্যাপশন</value></data>
+  <data name="MarkdownRenderer/Style/Diagram" xml:space="preserve"><value>ডায়াগ্রাম</value></data>
+  <data name="MarkdownRenderer/Style/ListMarker" xml:space="preserve"><value>তালিকা চিহ্ন</value></data>
+  <data name="MarkdownRenderer/Style/Table" xml:space="preserve"><value>সারণি</value></data>
+  <data name="MarkdownRenderer/Style/TableHeader" xml:space="preserve"><value>সারণির শিরোনাম</value></data>
+  <data name="MarkdownRenderer/Style/TableCell" xml:space="preserve"><value>সারণির ঘর</value></data>
 </root>

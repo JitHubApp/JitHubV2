@@ -8,6 +8,7 @@ public class CodeViewerNavArg : PageNavArg
     private CodeRefType _type;
     private string? _branch;
     private string? _gitRef;
+    private bool _followsDefaultBranch;
 
     public CodeViewerNavArg(GitHubRepository? repo)
         : base(repo)
@@ -29,12 +30,19 @@ public class CodeViewerNavArg : PageNavArg
 
     public bool IsGitRef => _type == CodeRefType.GitRef;
 
+    /// <summary>
+    /// Gets whether navigation should follow the repository's current default
+    /// branch when cached metadata is refreshed.
+    /// </summary>
+    public bool FollowsDefaultBranch => _followsDefaultBranch;
+
     public static CodeViewerNavArg CreateWithRepo(GitHubRepository? repo)
     {
         return new CodeViewerNavArg(repo)
         {
             _branch = repo?.DefaultBranch,
-            _type = CodeRefType.Branch
+            _type = CodeRefType.Branch,
+            _followsDefaultBranch = true
         };
     }
 
@@ -43,7 +51,8 @@ public class CodeViewerNavArg : PageNavArg
         return new CodeViewerNavArg(repo)
         {
             _branch = repo?.DefaultBranch,
-            _type = CodeRefType.Branch
+            _type = CodeRefType.Branch,
+            _followsDefaultBranch = true
         };
     }
 

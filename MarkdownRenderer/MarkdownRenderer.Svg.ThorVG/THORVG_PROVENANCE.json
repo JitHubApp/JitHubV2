@@ -1,0 +1,44 @@
+{
+  "schemaVersion": 1,
+  "component": "ThorVG",
+  "version": "1.1.1",
+  "source": "https://github.com/thorvg/thorvg",
+  "sourceTag": "v1.1.1",
+  "sourceCommit": "f9a618047bc31360d921dd05dcc0979c01fc8cf8",
+  "license": "MIT",
+  "build": {
+    "compiler": "Microsoft C/C++ Optimizing Compiler 19.51.36257",
+    "linker": "Microsoft Incremental Linker 14.51.36257.0",
+    "meson": "1.12.0",
+    "ninja": "1.13.2",
+    "options": "--buildtype=release -Ddefault_library=shared -Dengines=cpu -Dloaders=svg -Dsavers= -Dbindings=capi -Dtools= -Dtests=false -Dthreads=true -Dpartial=true -Dsimd=false -Dlog=false -Dfile=false -Dextra=",
+    "architectures": {
+      "win-x86": "vcvarsall.bat x86",
+      "win-x64": "vcvarsall.bat x64",
+      "win-arm64": "vcvarsall.bat x64_arm64 with a Meson aarch64 Windows cross file and needs_exe_wrapper=true"
+    }
+  },
+  "assets": [
+    {
+      "rid": "win-x86",
+      "path": "runtimes/win-x86/native/thorvg.dll",
+      "peMachine": "x86",
+      "bytes": 312832,
+      "sha256": "deb2f2d61a2f982ea6f72595acdfa132091d1bf256a86abbf56fb48269f15983"
+    },
+    {
+      "rid": "win-x64",
+      "path": "runtimes/win-x64/native/thorvg.dll",
+      "peMachine": "x64",
+      "bytes": 361472,
+      "sha256": "90eee828a4eefba196df314b19977f03a046293c92fddd364a0967ee53d0b91b"
+    },
+    {
+      "rid": "win-arm64",
+      "path": "runtimes/win-arm64/native/thorvg.dll",
+      "peMachine": "arm64",
+      "bytes": 355840,
+      "sha256": "5e888beaec53a7a8d082e3ffaee9854bcb00e9c19ea7eb90a22d3c4d0428ec5f"
+    }
+  ]
+}
