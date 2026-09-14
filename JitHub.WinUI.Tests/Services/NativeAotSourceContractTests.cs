@@ -42,6 +42,8 @@ public sealed class NativeAotSourceContractTests
         Assert.Contains("<CsWinRTAotWarningLevel>2</CsWinRTAotWarningLevel>", project, StringComparison.Ordinal);
         Assert.Contains("CsWinRT1032", directoryProps, StringComparison.Ordinal);
         Assert.Contains("<RuntimeIdentifiers>win-x86;win-x64;win-arm64</RuntimeIdentifiers>", project, StringComparison.Ordinal);
+        Assert.Contains("MarkdownRenderer.Math\\MarkdownRenderer.Math.csproj", project, StringComparison.Ordinal);
+        Assert.Contains("MarkdownRenderer.Mermaid\\MarkdownRenderer.Mermaid.csproj", project, StringComparison.Ordinal);
         Assert.Contains("JitHub.WinUI (AotDebug)", launchSettings, StringComparison.Ordinal);
         Assert.Contains("\"nativeDebugging\": true", launchSettings, StringComparison.Ordinal);
     }
@@ -75,13 +77,16 @@ public sealed class NativeAotSourceContractTests
 
     [Fact]
     [Trait("Category", "ReleaseSecurity")]
-    public void LockedNativeAotRestore_AlwaysRegeneratesTheAssetsGraph()
+    public void LockedNativeAotRestore_KeepsProjectReferenceLocksOrdinary()
     {
         string root = FindRepositoryRoot();
         string restoreScript = File.ReadAllText(Path.Combine(root, "eng", "Restore-NativeAot.ps1"));
+        string nativeAotProps = File.ReadAllText(Path.Combine(root, "eng", "NativeAot.props"));
 
         Assert.Contains("$arguments += '--locked-mode'", restoreScript, StringComparison.Ordinal);
         Assert.Contains("$arguments += '--force'", restoreScript, StringComparison.Ordinal);
+        Assert.DoesNotContain("'-p:PublishAot=true'", restoreScript, StringComparison.Ordinal);
+        Assert.Contains("<PublishAot>true</PublishAot>", nativeAotProps, StringComparison.Ordinal);
     }
 
     [Fact]

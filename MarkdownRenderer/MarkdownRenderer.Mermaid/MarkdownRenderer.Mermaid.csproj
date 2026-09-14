@@ -59,6 +59,7 @@
     <None Update="NATIVE_RUST_DEPENDENCIES.json" Pack="true" PackagePath="provenance\NATIVE_RUST_DEPENDENCIES.json" />
     <None Update="licenses\MERMAN-LICENSE-MIT.txt" Pack="true" PackagePath="licenses\MERMAN-LICENSE-MIT.txt" />
     <None Update="licenses\MERMAN-THIRD-PARTY-NOTICES.md" Pack="true" PackagePath="licenses\MERMAN-THIRD-PARTY-NOTICES.md" />
+    <None Update="licenses\MPL2-SOURCE.md" Pack="true" PackagePath="licenses\MPL2-SOURCE.md" />
     <None Update="native\abi\mmir-v1.json" Pack="true" PackagePath="build\native\abi\mmir-v1.json" />
     <None Update="native\include\markdown_renderer_mermaid.h" Pack="true" PackagePath="build\native\include\markdown_renderer_mermaid.h" />
     <None Update="native\Cargo.lock" Pack="true" PackagePath="provenance\native\Cargo.lock" />

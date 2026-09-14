@@ -293,6 +293,21 @@ internal sealed class RelevantResourceKeyCache<TNode>
         return entry.GetOrRefresh(node, _getKeyCount, _enumerateKeys, _isRelevant);
     }
 
+    /// <summary>
+    /// Tests whether a relevant key is declared by the node without repeatedly
+    /// enumerating a projected platform dictionary. The cached array is sorted
+    /// so repeated per-property lookups remain logarithmic after one discovery
+    /// pass, while values themselves are still read live by the caller.
+    /// </summary>
+    internal bool ContainsRelevantKey(TNode node, string key)
+    {
+        ArgumentNullException.ThrowIfNull(node);
+        ArgumentNullException.ThrowIfNull(key);
+        CacheEntry entry = _entries.GetValue(node, static _ => new CacheEntry());
+        string[] relevantKeys = entry.GetOrRefresh(node, _getKeyCount, _enumerateKeys, _isRelevant);
+        return Array.BinarySearch(relevantKeys, key, StringComparer.Ordinal) >= 0;
+    }
+
     internal void Invalidate() => _entries.Clear();
 
     private sealed class CacheEntry
@@ -301,7 +316,7 @@ internal sealed class RelevantResourceKeyCache<TNode>
         private int _observedKeyCount = -1;
         private string[] _relevantKeys = [];
 
-        internal IReadOnlyList<string> GetOrRefresh(
+        internal string[] GetOrRefresh(
             TNode node,
             Func<TNode, int> getKeyCount,
             Func<TNode, IEnumerable<string>> enumerateKeys,
@@ -321,6 +336,7 @@ internal sealed class RelevantResourceKeyCache<TNode>
                 }
 
                 _relevantKeys = relevantKeys.ToArray();
+                Array.Sort(_relevantKeys, StringComparer.Ordinal);
                 _observedKeyCount = currentKeyCount;
                 return _relevantKeys;
             }

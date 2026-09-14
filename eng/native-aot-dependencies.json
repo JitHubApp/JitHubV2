@@ -6,7 +6,7 @@
     "win-x64",
     "win-arm64"
   ],
-  "packageCount": 69,
+  "packageCount": 71,
   "packages": [
     {
       "id": "CommunityToolkit.Common",
@@ -801,6 +801,24 @@
       ]
     },
     {
+      "id": "Onigwrap",
+      "version": "1.0.10",
+      "direct": false,
+      "roles": [
+        "build",
+        "compile",
+        "native",
+        "runtime",
+        "runtimeTargets"
+      ],
+      "targets": [
+        "net10.0-windows10.0.26100.0",
+        "net10.0-windows10.0.26100.0/win-arm64",
+        "net10.0-windows10.0.26100.0/win-x64",
+        "net10.0-windows10.0.26100.0/win-x86"
+      ]
+    },
+    {
       "id": "runtime.win-arm64.Microsoft.DotNet.ILCompiler",
       "version": "10.0.12",
       "direct": false,
@@ -1039,6 +1057,21 @@
       "direct": false,
       "roles": [
         "build",
+        "compile",
+        "runtime"
+      ],
+      "targets": [
+        "net10.0-windows10.0.26100.0",
+        "net10.0-windows10.0.26100.0/win-arm64",
+        "net10.0-windows10.0.26100.0/win-x64",
+        "net10.0-windows10.0.26100.0/win-x86"
+      ]
+    },
+    {
+      "id": "TextMateSharp",
+      "version": "2.0.3",
+      "direct": false,
+      "roles": [
         "compile",
         "runtime"
       ],

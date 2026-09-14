@@ -1118,7 +1118,12 @@ public partial class MarkdownRendererControl : UserControl, IDisposable, IMarkdo
             typeof(MarkdownRendererControl),
             new PropertyMetadata(false, (d, _) => ((MarkdownRendererControl)d).RequestRebuild()));
 
-    /// <summary>Gets or sets explicit per-document consent for third-party images.</summary>
+    /// <summary>
+    /// Gets or sets whether the host's image policy permits third-party HTTPS images.
+    /// The default is <see langword="false"/>. A host can set this once as an application
+    /// policy or enable it after obtaining per-document consent. Insecure HTTP images
+    /// remain blocked regardless of this value.
+    /// </summary>
     public bool AllowThirdPartyRemoteImages
     {
         get => (bool)GetValue(AllowThirdPartyRemoteImagesProperty);

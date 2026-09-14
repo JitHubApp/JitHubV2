@@ -91,6 +91,32 @@ try {
     catch { $strictFailed = $true }
     Assert-True $strictFailed 'strict license mode must fail on dependency license NOASSERTION'
 
+    $compatibilityFailed = $false
+    try {
+        & (Join-Path $PSScriptRoot 'Test-LicenseCompatibility.ps1') -ComplianceDirectory $outputA
+    }
+    catch { $compatibilityFailed = $true }
+    Assert-True $compatibilityFailed 'compatibility mode must fail on dependency license NOASSERTION'
+
+    $sbom.packages[1].licenseDeclared = 'MIT'
+    [IO.File]::WriteAllText(
+        $sbomPath,
+        ($sbom | ConvertTo-Json -Depth 100) + "`n",
+        [Text.UTF8Encoding]::new($false))
+    & (Join-Path $PSScriptRoot 'Test-LicenseCompatibility.ps1') -ComplianceDirectory $outputA
+
+    $sbom.packages[0].licenseDeclared = 'GPL-3.0-only'
+    [IO.File]::WriteAllText(
+        $sbomPath,
+        ($sbom | ConvertTo-Json -Depth 100) + "`n",
+        [Text.UTF8Encoding]::new($false))
+    $incompatibleFailed = $false
+    try {
+        & (Join-Path $PSScriptRoot 'Test-LicenseCompatibility.ps1') -ComplianceDirectory $outputA
+    }
+    catch { $incompatibleFailed = $true }
+    Assert-True $incompatibleFailed 'compatibility mode must reject a known but unapproved license'
+
     $referenceManifest = Join-Path $temporaryRoot 'reference.json'
     $candidateManifest = Join-Path $temporaryRoot 'candidate.json'
     & (Join-Path $PSScriptRoot 'New-PackageReproducibilityManifest.ps1') -PackageDirectory $packages -OutputPath $referenceManifest

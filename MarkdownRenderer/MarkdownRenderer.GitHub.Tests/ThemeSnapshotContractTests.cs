@@ -335,6 +335,23 @@ public sealed class ThemeSnapshotContractTests
         Assert.Contains(addedKey, cache.GetRelevantKeys(resources));
     }
 
+    [Fact]
+    public void RelevantResourceKeyCache_RepeatedMembershipChecksEnumerateOnlyOnce()
+    {
+        const string firstKey = "MarkdownRenderer.First.ForegroundBrush";
+        const string secondKey = "MarkdownRenderer.Second.ForegroundBrush";
+        var resources = new TestResourceDictionary();
+        resources.Values[secondKey] = "second";
+        resources.Values["Unrelated"] = "ignored";
+        resources.Values[firstKey] = "first";
+        var cache = CreateRelevantResourceKeyCache();
+
+        Assert.True(cache.ContainsRelevantKey(resources, firstKey));
+        Assert.True(cache.ContainsRelevantKey(resources, secondKey));
+        Assert.False(cache.ContainsRelevantKey(resources, "MarkdownRenderer.Missing.ForegroundBrush"));
+        Assert.Equal(1, resources.KeyEnumerationCount);
+    }
+
     [Theory]
     [InlineData("TextControlForegroundFocused")]
     [InlineData("TextControlForeground")]

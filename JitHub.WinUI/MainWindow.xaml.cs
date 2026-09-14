@@ -6,6 +6,7 @@ using System.Runtime.InteropServices;
 using System.Threading.Tasks;
 using JitHub.Models;
 using JitHub.Services;
+using JitHub.Services.Markdown;
 using JitHub.WinUI.Helpers;
 using JitHub.WinUI.Performance;
 using Microsoft.UI.Composition.SystemBackdrops;
@@ -193,6 +194,7 @@ public sealed partial class MainWindow : Window
         Closed += (_, _) =>
         {
             _productPerformanceVisualProbe?.Dispose();
+            JitHubMarkdownRuntime.Shutdown();
             MarkdownRenderer.MarkdownRendererRuntime.Shutdown();
             _ = RemoveWindowSubclass(_hwnd, _keyboardSubclassProc, KeyboardSubclassId);
             _rootLayout.Loaded -= RootLayout_Loaded;

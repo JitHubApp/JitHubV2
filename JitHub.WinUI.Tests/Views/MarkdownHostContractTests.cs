@@ -202,7 +202,7 @@ public sealed class MarkdownHostContractTests
         Assert.Contains("\"markdown.error\"", source, StringComparison.Ordinal);
         Assert.Contains("TelemetryTaxonomy.Actions.Retry", source, StringComparison.Ordinal);
         Assert.Contains("e.Reason == MarkdownImageUnavailableReason.RemoteContentBlocked", source, StringComparison.Ordinal);
-        Assert.Contains("_remoteContentConsent.IsGranted", source, StringComparison.Ordinal);
+        Assert.Contains("ShouldAllowThirdPartyRemoteImages()", source, StringComparison.Ordinal);
         Assert.DoesNotContain("e.Exception.Message", source, StringComparison.Ordinal);
     }
 
@@ -281,7 +281,7 @@ public sealed class MarkdownHostContractTests
     }
 
     [Fact]
-    public void MarkdownViewer_UsesPerDocumentConsentAndCanonicalSourceContext()
+    public void MarkdownViewer_DefaultsToExternalHttpsImagesAndRetainsOptInConsentMode()
     {
         string source = File.ReadAllText(Path.Combine(
             FindRepositoryRoot(),
@@ -295,7 +295,73 @@ public sealed class MarkdownHostContractTests
         Assert.Contains("DocumentSourceProperty", source, StringComparison.Ordinal);
         Assert.Contains("_renderer.ImageDocumentSource = DocumentSource", source, StringComparison.Ordinal);
         Assert.Contains("_remoteContentConsent.Grant()", source, StringComparison.Ordinal);
+        Assert.Contains("AllowThirdPartyRemoteImagesByDefaultProperty", source, StringComparison.Ordinal);
+        Assert.Contains("new PropertyMetadata(true, OnRendererPropertyChanged)", source, StringComparison.Ordinal);
+        Assert.Contains(
+            "AllowThirdPartyRemoteImagesByDefault || _remoteContentConsent.IsGranted",
+            source,
+            StringComparison.Ordinal);
+        Assert.Contains("AllowThirdPartyRemoteImagesByDefault = false", source, StringComparison.Ordinal);
+        Assert.Contains(
+            "_renderer.AllowThirdPartyRemoteImages = ShouldAllowThirdPartyRemoteImages();",
+            source,
+            StringComparison.Ordinal);
+        Assert.Contains(
+            "e.Property == AllowThirdPartyRemoteImagesByDefaultProperty",
+            source,
+            StringComparison.Ordinal);
+        Assert.Contains("viewer.RemoteImageInfoBar.IsOpen = false;", source, StringComparison.Ordinal);
         Assert.DoesNotContain("_allowRemoteImagesForDocument", source, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void JitHubMarkdownRuntime_ComposesEveryShippingRendererFeatureOnce()
+    {
+        string root = FindRepositoryRoot();
+        string project = File.ReadAllText(Path.Combine(root, "JitHub.WinUI", "JitHub.WinUI.csproj"));
+        string runtime = File.ReadAllText(Path.Combine(
+            root,
+            "JitHub.WinUI",
+            "Services",
+            "Markdown",
+            "JitHubMarkdownRuntime.cs"));
+        string viewer = File.ReadAllText(Path.Combine(
+            root,
+            "JitHub.WinUI",
+            "Views",
+            "Controls",
+            "Common",
+            "MarkdownViewer.xaml.cs"));
+
+        foreach (string projectName in new[]
+        {
+            "MarkdownRenderer.GitHub",
+            "MarkdownRenderer.Math",
+            "MarkdownRenderer.Mermaid",
+            "MarkdownRenderer.Svg.ThorVG",
+            "MarkdownRenderer.SyntaxHighlighting.TextMate",
+            "MarkdownRenderer.SyntaxHighlighting.TextMate.Grammars.Common",
+        })
+        {
+            Assert.Contains(projectName + "\\" + projectName + ".csproj", project, StringComparison.Ordinal);
+        }
+
+        Assert.Contains(".UseGitHubReadme()", runtime, StringComparison.Ordinal);
+        Assert.Contains(".UseMathematics()", runtime, StringComparison.Ordinal);
+        Assert.Contains(".UseMermaid()", runtime, StringComparison.Ordinal);
+        Assert.Contains("new CommonTextMateGrammarProvider()", runtime, StringComparison.Ordinal);
+        Assert.Contains("ownsProvider: true", runtime, StringComparison.Ordinal);
+        Assert.Contains("JitHubMarkdownRuntime.CodeHighlighter", viewer, StringComparison.Ordinal);
+        Assert.Contains("new PropertyMetadata(true, OnRendererPropertyChanged)", viewer, StringComparison.Ordinal);
+        Assert.Contains("JitHubMarkdownRuntime.Shutdown()", File.ReadAllText(Path.Combine(root, "JitHub.WinUI", "App.xaml.cs")), StringComparison.Ordinal);
+        Assert.Contains("JitHubMarkdownRuntime.Shutdown()", File.ReadAllText(Path.Combine(root, "JitHub.WinUI", "MainWindow.xaml.cs")), StringComparison.Ordinal);
+        Assert.Contains("THIRD-PARTY-NOTICES.md", project, StringComparison.Ordinal);
+        Assert.Contains("MPL2-SOURCE.md", project, StringComparison.Ordinal);
+        Assert.Contains("NATIVE_RUST_DEPENDENCIES.json", project, StringComparison.Ordinal);
+        Assert.Contains("Microsoft.Web.WebView2\\LICENSE.txt", project, StringComparison.Ordinal);
+        Assert.Contains("Microsoft.Web.WebView2\\NOTICE.txt", project, StringComparison.Ordinal);
+        Assert.Contains("Microsoft.WindowsAppSDK\\Base-LICENSE.txt", project, StringComparison.Ordinal);
+        Assert.Contains("Microsoft.WindowsAppSDK\\WinUI-NOTICE.txt", project, StringComparison.Ordinal);
     }
 
     [Fact]

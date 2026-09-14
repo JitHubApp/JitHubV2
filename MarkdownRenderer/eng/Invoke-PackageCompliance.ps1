@@ -9,6 +9,9 @@ param(
     [Parameter(Mandatory = $false)]
     [string] $ReferenceManifest,
 
+    [Parameter(Mandatory = $false)]
+    [string] $LicensePolicyPath = (Join-Path $PSScriptRoot 'license-compatibility-policy.json'),
+
     [switch] $FailOnUnknownLicense,
 
     [switch] $SkipSizeGates
@@ -30,6 +33,10 @@ if ($FailOnUnknownLicense) {
     $artifactArguments.FailOnUnknownLicense = $true
 }
 & (Join-Path $PSScriptRoot 'New-PackageComplianceArtifacts.ps1') @artifactArguments
+
+& (Join-Path $PSScriptRoot 'Test-LicenseCompatibility.ps1') `
+    -ComplianceDirectory $OutputDirectory `
+    -PolicyPath $LicensePolicyPath
 
 & (Join-Path $PSScriptRoot 'Test-NativePackageCompliance.ps1') `
     -PackageDirectory $PackageDirectory `

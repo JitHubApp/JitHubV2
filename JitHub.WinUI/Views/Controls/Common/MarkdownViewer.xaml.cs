@@ -14,8 +14,6 @@ using MarkdownRenderer;
 using MarkdownRenderer.Controls;
 using MarkdownRenderer.GitHub;
 using MarkdownRenderer.Images;
-using MarkdownRenderer.SyntaxHighlighting.TextMate;
-using MarkdownRenderer.SyntaxHighlighting.TextMate.Grammars.Common;
 using MarkdownRenderer.Theming;
 using Microsoft.UI;
 using Microsoft.UI.Xaml;
@@ -31,8 +29,7 @@ namespace JitHub.WinUI.Views.Controls.Common;
 public sealed partial class MarkdownViewer : UserControl
 {
     private static readonly Uri DefaultBaseUri = new("https://github.com/", UriKind.Absolute);
-    private static readonly MarkdownEngine SharedGitHubEngine =
-        GitHubReadmeMarkdownRenderer.SharedEngine;
+    private static MarkdownEngine SharedGitHubEngine => JitHubMarkdownRuntime.Engine;
 
     private static readonly string[] HostSurfaceRoles =
     [
@@ -150,12 +147,6 @@ public sealed partial class MarkdownViewer : UserControl
     private string? _lastAppliedMarkdown;
     private bool _renderFailureReportedForDocument;
     private bool _retryRenderPending;
-    private readonly MarkdownSyntaxHighlightingSession<TextMateCodeBlockSyntaxHighlighter>
-        _syntaxHighlighting = new(static () => new TextMateCodeBlockSyntaxHighlighter(
-            new CommonTextMateGrammarProvider(),
-            options: null,
-            ownsProvider: true));
-
     public static readonly DependencyProperty TextProperty = DependencyProperty.Register(
         nameof(Text),
         typeof(string),
@@ -232,7 +223,13 @@ public sealed partial class MarkdownViewer : UserControl
         nameof(IsSyntaxHighlightingEnabled),
         typeof(bool),
         typeof(MarkdownViewer),
-        new PropertyMetadata(false, OnRendererPropertyChanged));
+        new PropertyMetadata(true, OnRendererPropertyChanged));
+
+    public static readonly DependencyProperty AllowThirdPartyRemoteImagesByDefaultProperty = DependencyProperty.Register(
+        nameof(AllowThirdPartyRemoteImagesByDefault),
+        typeof(bool),
+        typeof(MarkdownViewer),
+        new PropertyMetadata(true, OnRendererPropertyChanged));
 
     public static readonly DependencyProperty OwnsScrollViewportProperty = DependencyProperty.Register(
         nameof(OwnsScrollViewport),
@@ -320,6 +317,18 @@ public sealed partial class MarkdownViewer : UserControl
     }
 
     /// <summary>
+    /// Gets or sets whether secure third-party HTTPS images load without asking
+    /// for per-document consent. JitHub enables this because repository content
+    /// commonly depends on external badges and screenshots. Setting it to false
+    /// restores the privacy prompt; insecure HTTP content remains blocked.
+    /// </summary>
+    public bool AllowThirdPartyRemoteImagesByDefault
+    {
+        get => (bool)GetValue(AllowThirdPartyRemoteImagesByDefaultProperty);
+        set => SetValue(AllowThirdPartyRemoteImagesByDefaultProperty, value);
+    }
+
+    /// <summary>
     /// Gets or sets whether this viewer owns its vertical scrolling surface.
     /// Page and conversation shells leave this false and provide the viewport;
     /// standalone previews opt in explicitly.
@@ -333,6 +342,14 @@ public sealed partial class MarkdownViewer : UserControl
     public MarkdownViewer()
     {
         InitializeComponent();
+
+        // The production app defaults to trusted HTTPS image loading. Lifecycle
+        // automation opts into the configurable privacy mode so that the prompt,
+        // consent, and retry path remain covered as well.
+        if (MarkdownLifecycleAutomationBridge.IsEnabled)
+        {
+            AllowThirdPartyRemoteImagesByDefault = false;
+        }
 
         _telemetryService = ResolveTelemetryService();
         IMarkdownImageResolver imageResolver = ResolveImageResolver();
@@ -398,6 +415,14 @@ public sealed partial class MarkdownViewer : UserControl
                 {
                     viewer.ResetRemoteContentConsent();
                 }
+            }
+
+            if (e.Property == AllowThirdPartyRemoteImagesByDefaultProperty &&
+                viewer.ShouldAllowThirdPartyRemoteImages())
+            {
+                // A host can promote its policy at runtime. Do not leave a stale
+                // consent prompt visible while the renderer rebuilds its images.
+                viewer.RemoteImageInfoBar.IsOpen = false;
             }
 
             viewer.ApplyRendererSettings();
@@ -614,7 +639,7 @@ public sealed partial class MarkdownViewer : UserControl
         _renderer.ImageBaseUri = GetBaseUri();
         _renderer.ImageDocumentPath = DocumentPath;
         _renderer.ImageDocumentSource = DocumentSource;
-        _renderer.AllowThirdPartyRemoteImages = _remoteContentConsent.IsGranted;
+        _renderer.AllowThirdPartyRemoteImages = ShouldAllowThirdPartyRemoteImages();
         _renderer.LinkClick += OnRendererLinkClick;
         _renderer.DisclosureToggled += OnRendererDisclosureToggled;
         _renderer.CopyCompleted += OnRendererCopyCompleted;
@@ -647,7 +672,6 @@ public sealed partial class MarkdownViewer : UserControl
         RendererHost.Children.Remove(_renderer);
         _renderer.Dispose();
         _renderer = null;
-        _syntaxHighlighting.Reset();
     }
 
     private void UpdateHostLayout()
@@ -703,16 +727,16 @@ public sealed partial class MarkdownViewer : UserControl
         _renderer.CodeBlockCopyButtonStyle = TryResolveResource("AppToolbarButtonStyle", out object? copyStyle)
             ? copyStyle as Style
             : null;
-        MarkdownSyntaxHighlightingState<TextMateCodeBlockSyntaxHighlighter> highlighting =
-            _syntaxHighlighting.Apply(IsSyntaxHighlightingEnabled);
-        _renderer.CodeHighlighter = highlighting.Provider;
-        _renderer.IsCodeBlockSyntaxHighlightingEnabled = highlighting.IsEnabled;
+        _renderer.CodeHighlighter = IsSyntaxHighlightingEnabled
+            ? JitHubMarkdownRuntime.CodeHighlighter
+            : null;
+        _renderer.IsCodeBlockSyntaxHighlightingEnabled = IsSyntaxHighlightingEnabled;
 
         _renderer.ImageResolver = _imageResolver;
         _renderer.ImageBaseUri = GetBaseUri();
         _renderer.ImageDocumentPath = DocumentPath;
         _renderer.ImageDocumentSource = DocumentSource;
-        _renderer.AllowThirdPartyRemoteImages = _remoteContentConsent.IsGranted;
+        _renderer.AllowThirdPartyRemoteImages = ShouldAllowThirdPartyRemoteImages();
         AutomationProperties.SetName(_renderer, MarkdownHostContract.GetAutomationName(HostKind));
         AutomationProperties.SetAutomationId(_renderer, MarkdownHostContract.GetAutomationId(HostKind, AutomationInstanceId));
     }
@@ -889,7 +913,7 @@ public sealed partial class MarkdownViewer : UserControl
     private void OnRendererImageUnavailable(object? sender, MarkdownImageUnavailableEventArgs e)
     {
         if (e.Reason == MarkdownImageUnavailableReason.RemoteContentBlocked &&
-            _remoteContentConsent.IsGranted)
+            ShouldAllowThirdPartyRemoteImages())
         {
             return;
         }
@@ -1055,6 +1079,9 @@ public sealed partial class MarkdownViewer : UserControl
             "allowed",
             resource: "remote_image");
     }
+
+    private bool ShouldAllowThirdPartyRemoteImages() =>
+        AllowThirdPartyRemoteImagesByDefault || _remoteContentConsent.IsGranted;
 
     private Uri GetBaseUri()
     {

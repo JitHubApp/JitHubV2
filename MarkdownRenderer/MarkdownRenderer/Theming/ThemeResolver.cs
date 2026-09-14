@@ -852,15 +852,7 @@ internal sealed class ThemeResolver
     }
 
     private static bool HasExplicitResourceKey(ResourceDictionary resources, string resourceKey)
-    {
-        foreach (object candidate in resources.Keys)
-        {
-            if (candidate is string key && string.Equals(key, resourceKey, StringComparison.Ordinal))
-                return true;
-        }
-
-        return false;
-    }
+        => RelevantResourceKeys.ContainsRelevantKey(resources, resourceKey);
 
     private Dictionary<string, object>? CaptureMarkdownResources()
     {
@@ -1021,10 +1013,9 @@ internal sealed class ThemeResolver
         if (!visited.Add(resources))
             return;
 
-        foreach (object key in resources.Keys)
+        foreach (string resourceKey in EnumerateRelevantResourceKeys(resources))
         {
-            if (key is string resourceKey &&
-                MarkdownResourceKeys.TryGetStyleRoleName(resourceKey, out string roleName))
+            if (MarkdownResourceKeys.TryGetStyleRoleName(resourceKey, out string roleName))
                 roles.Add(roleName);
         }
 

@@ -66,6 +66,32 @@
 
   <ItemGroup>
     <Content Include="Assets\AppIcon.ico" CopyToOutputDirectory="PreserveNewest" CopyToPublishDirectory="PreserveNewest" />
+    <Content Include="THIRD-PARTY-NOTICES.md" CopyToOutputDirectory="PreserveNewest" CopyToPublishDirectory="PreserveNewest" />
+    <Content Include="..\LICENSE" Link="ThirdPartyNotices\JitHub-MIT.txt" CopyToOutputDirectory="PreserveNewest" CopyToPublishDirectory="PreserveNewest" />
+    <Content Include="..\MarkdownRenderer\MarkdownRenderer.Math\THIRD-PARTY-NOTICES.md" Link="ThirdPartyNotices\MarkdownRenderer.Math\THIRD-PARTY-NOTICES.md" CopyToOutputDirectory="PreserveNewest" CopyToPublishDirectory="PreserveNewest" />
+    <Content Include="..\MarkdownRenderer\MarkdownRenderer.Math\ThirdParty\CSHARPMATH-LICENSE.txt" Link="ThirdPartyNotices\MarkdownRenderer.Math\CSHARPMATH-LICENSE.txt" CopyToOutputDirectory="PreserveNewest" CopyToPublishDirectory="PreserveNewest" />
+    <Content Include="..\MarkdownRenderer\MarkdownRenderer.Math\ThirdParty\TYPOGRAPHY-LICENSE.md" Link="ThirdPartyNotices\MarkdownRenderer.Math\TYPOGRAPHY-LICENSE.md" CopyToOutputDirectory="PreserveNewest" CopyToPublishDirectory="PreserveNewest" />
+    <Content Include="..\MarkdownRenderer\MarkdownRenderer.Math\ThirdParty\GUST-FONT-LICENSE.txt" Link="ThirdPartyNotices\MarkdownRenderer.Math\GUST-FONT-LICENSE.txt" CopyToOutputDirectory="PreserveNewest" CopyToPublishDirectory="PreserveNewest" />
+    <Content Include="..\MarkdownRenderer\MarkdownRenderer.Math\ThirdParty\OFL-1.1.txt" Link="ThirdPartyNotices\MarkdownRenderer.Math\OFL-1.1.txt" CopyToOutputDirectory="PreserveNewest" CopyToPublishDirectory="PreserveNewest" />
+    <Content Include="..\MarkdownRenderer\MarkdownRenderer.Math\ThirdParty\PROVENANCE.json" Link="ThirdPartyNotices\MarkdownRenderer.Math\PROVENANCE.json" CopyToOutputDirectory="PreserveNewest" CopyToPublishDirectory="PreserveNewest" />
+    <Content Include="..\MarkdownRenderer\MarkdownRenderer.Mermaid\licenses\MERMAN-LICENSE-MIT.txt" Link="ThirdPartyNotices\MarkdownRenderer.Mermaid\MERMAN-LICENSE-MIT.txt" CopyToOutputDirectory="PreserveNewest" CopyToPublishDirectory="PreserveNewest" />
+    <Content Include="..\MarkdownRenderer\MarkdownRenderer.Mermaid\licenses\MERMAN-THIRD-PARTY-NOTICES.md" Link="ThirdPartyNotices\MarkdownRenderer.Mermaid\MERMAN-THIRD-PARTY-NOTICES.md" CopyToOutputDirectory="PreserveNewest" CopyToPublishDirectory="PreserveNewest" />
+    <Content Include="..\MarkdownRenderer\MarkdownRenderer.Mermaid\licenses\MPL2-SOURCE.md" Link="ThirdPartyNotices\MarkdownRenderer.Mermaid\MPL2-SOURCE.md" CopyToOutputDirectory="PreserveNewest" CopyToPublishDirectory="PreserveNewest" />
+    <Content Include="..\MarkdownRenderer\MarkdownRenderer.Mermaid\MERMAN_PROVENANCE.json" Link="ThirdPartyNotices\MarkdownRenderer.Mermaid\MERMAN_PROVENANCE.json" CopyToOutputDirectory="PreserveNewest" CopyToPublishDirectory="PreserveNewest" />
+    <Content Include="..\MarkdownRenderer\MarkdownRenderer.Mermaid\NATIVE_RUST_DEPENDENCIES.json" Link="ThirdPartyNotices\MarkdownRenderer.Mermaid\NATIVE_RUST_DEPENDENCIES.json" CopyToOutputDirectory="PreserveNewest" CopyToPublishDirectory="PreserveNewest" />
+    <Content Include="..\MarkdownRenderer\MarkdownRenderer.Svg.ThorVG\THIRD-PARTY-NOTICES.md" Link="ThirdPartyNotices\MarkdownRenderer.Svg.ThorVG\THIRD-PARTY-NOTICES.md" CopyToOutputDirectory="PreserveNewest" CopyToPublishDirectory="PreserveNewest" />
+    <Content Include="..\MarkdownRenderer\MarkdownRenderer\native\THORVG_LICENSE" Link="ThirdPartyNotices\MarkdownRenderer.Svg.ThorVG\THORVG_LICENSE.txt" CopyToOutputDirectory="PreserveNewest" CopyToPublishDirectory="PreserveNewest" />
+    <Content Include="..\MarkdownRenderer\MarkdownRenderer.Svg.ThorVG\THORVG_PROVENANCE.json" Link="ThirdPartyNotices\MarkdownRenderer.Svg.ThorVG\THORVG_PROVENANCE.json" CopyToOutputDirectory="PreserveNewest" CopyToPublishDirectory="PreserveNewest" />
+    <Content Include="..\MarkdownRenderer\eng\textmate\THIRD-PARTY-NOTICES.md" Link="ThirdPartyNotices\MarkdownRenderer.TextMate\THIRD-PARTY-NOTICES.md" CopyToOutputDirectory="PreserveNewest" CopyToPublishDirectory="PreserveNewest" />
+    <Content Include="..\MarkdownRenderer\eng\textmate\GRAMMAR-PROVENANCE.v2.0.3.json" Link="ThirdPartyNotices\MarkdownRenderer.TextMate\GRAMMAR-PROVENANCE.json" CopyToOutputDirectory="PreserveNewest" CopyToPublishDirectory="PreserveNewest" />
+    <Content Include="ThirdParty\Microsoft.Web.WebView2\LICENSE.txt" Link="ThirdPartyNotices\Microsoft.Web.WebView2\LICENSE.txt" CopyToOutputDirectory="PreserveNewest" CopyToPublishDirectory="PreserveNewest" />
+    <Content Include="ThirdParty\Microsoft.Web.WebView2\NOTICE.txt" Link="ThirdPartyNotices\Microsoft.Web.WebView2\NOTICE.txt" CopyToOutputDirectory="PreserveNewest" CopyToPublishDirectory="PreserveNewest" />
+    <Content Include="$(NuGetPackageRoot)\microsoft.windowsappsdk.base\1.8.251216001\license.txt" Link="ThirdPartyNotices\Microsoft.WindowsAppSDK\Base-LICENSE.txt" CopyToOutputDirectory="PreserveNewest" CopyToPublishDirectory="PreserveNewest" />
+    <Content Include="$(NuGetPackageRoot)\microsoft.windowsappsdk.base\1.8.251216001\NOTICE.txt" Link="ThirdPartyNotices\Microsoft.WindowsAppSDK\Base-NOTICE.txt" CopyToOutputDirectory="PreserveNewest" CopyToPublishDirectory="PreserveNewest" />
+    <Content Include="$(NuGetPackageRoot)\microsoft.windowsappsdk.foundation\1.8.260709000\license.txt" Link="ThirdPartyNotices\Microsoft.WindowsAppSDK\Foundation-LICENSE.txt" CopyToOutputDirectory="PreserveNewest" CopyToPublishDirectory="PreserveNewest" />
+    <Content Include="$(NuGetPackageRoot)\microsoft.windowsappsdk.interactiveexperiences\1.8.260708001\license.txt" Link="ThirdPartyNotices\Microsoft.WindowsAppSDK\InteractiveExperiences-LICENSE.txt" CopyToOutputDirectory="PreserveNewest" CopyToPublishDirectory="PreserveNewest" />
+    <Content Include="$(NuGetPackageRoot)\microsoft.windowsappsdk.winui\1.8.260709004\license.txt" Link="ThirdPartyNotices\Microsoft.WindowsAppSDK\WinUI-LICENSE.txt" CopyToOutputDirectory="PreserveNewest" CopyToPublishDirectory="PreserveNewest" />
+    <Content Include="$(NuGetPackageRoot)\microsoft.windowsappsdk.winui\1.8.260709004\NOTICE.txt" Link="ThirdPartyNotices\Microsoft.WindowsAppSDK\WinUI-NOTICE.txt" CopyToOutputDirectory="PreserveNewest" CopyToPublishDirectory="PreserveNewest" />
     <Content Include="Assets\JitHubLogo.png" CopyToOutputDirectory="PreserveNewest" CopyToPublishDirectory="PreserveNewest" />
     <Content Include="Assets\JitHubLogoTitleBar.png" CopyToOutputDirectory="PreserveNewest" CopyToPublishDirectory="PreserveNewest" />
     <Content Include="Assets\SplashScreen*.png" CopyToOutputDirectory="PreserveNewest" CopyToPublishDirectory="PreserveNewest" />
@@ -142,6 +168,8 @@
     <Compile Include="..\Shared\OAuthHandoffProtocol.cs" Link="Security\OAuthHandoffProtocol.cs" />
     <ProjectReference Include="..\MarkdownRenderer\MarkdownRenderer\MarkdownRenderer.csproj" />
     <ProjectReference Include="..\MarkdownRenderer\MarkdownRenderer.GitHub\MarkdownRenderer.GitHub.csproj" />
+    <ProjectReference Include="..\MarkdownRenderer\MarkdownRenderer.Math\MarkdownRenderer.Math.csproj" />
+    <ProjectReference Include="..\MarkdownRenderer\MarkdownRenderer.Mermaid\MarkdownRenderer.Mermaid.csproj" />
     <ProjectReference Include="..\MarkdownRenderer\MarkdownRenderer.Svg.ThorVG\MarkdownRenderer.Svg.ThorVG.csproj" />
     <ProjectReference Include="..\MarkdownRenderer\MarkdownRenderer.SyntaxHighlighting.TextMate\MarkdownRenderer.SyntaxHighlighting.TextMate.csproj" />
     <ProjectReference Include="..\MarkdownRenderer\MarkdownRenderer.SyntaxHighlighting.TextMate.Grammars.Common\MarkdownRenderer.SyntaxHighlighting.TextMate.Grammars.Common.csproj" />

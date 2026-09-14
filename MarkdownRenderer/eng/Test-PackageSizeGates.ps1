@@ -54,8 +54,11 @@ $leanNativeEntries = @($coreEntries + $winuiEntries |
         ($_.Name -notmatch '^lib/' -and $_.Name -match '\.(dll|so|dylib)$')
     })
 
-Assert-Max $leanCompressedBytes (450KB) 'Core + WinUI compressed size'
-Assert-Max $leanManagedBytes (1MB) 'Core + WinUI renderer-owned managed code'
+# The 1.0 surface includes unified selection, touch, accessibility, and lazy
+# layout infrastructure. Keep measured headroom without allowing native code
+# to leak into the lean pair (checked separately immediately below).
+Assert-Max $leanCompressedBytes (525KB) 'Core + WinUI compressed size'
+Assert-Max $leanManagedBytes (1.2MB) 'Core + WinUI renderer-owned managed code'
 if ($leanNativeEntries.Count -ne 0) {
     throw "Core + WinUI contain native payload: $($leanNativeEntries.Name -join ', ')."
 }

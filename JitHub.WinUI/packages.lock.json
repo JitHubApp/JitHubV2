@@ -577,6 +577,18 @@
           "MarkdownRenderer.WinUI": "[1.0.0-preview.1, )"
         }
       },
+      "markdownrenderer.math": {
+        "type": "Project",
+        "dependencies": {
+          "MarkdownRenderer.Core": "[1.0.0-preview.1, )"
+        }
+      },
+      "markdownrenderer.mermaid": {
+        "type": "Project",
+        "dependencies": {
+          "MarkdownRenderer.Core": "[1.0.0-preview.1, )"
+        }
+      },
       "markdownrenderer.svg.thorvg": {
         "type": "Project",
         "dependencies": {

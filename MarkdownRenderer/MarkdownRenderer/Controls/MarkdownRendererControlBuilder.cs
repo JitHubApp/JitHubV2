@@ -151,7 +151,11 @@ public sealed class MarkdownRendererControlBuilder
         return this;
     }
 
-    /// <summary>Records explicit per-document consent for third-party image loading.</summary>
+    /// <summary>
+    /// Sets whether the host's image policy permits third-party HTTPS images. This can
+    /// represent an application-wide default or explicit per-document consent. Insecure
+    /// HTTP images remain blocked regardless of this value.
+    /// </summary>
     public MarkdownRendererControlBuilder WithThirdPartyRemoteImagesAllowed(bool allowed)
     {
         _allowThirdPartyRemoteImages = allowed;

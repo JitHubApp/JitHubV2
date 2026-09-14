@@ -132,58 +132,6 @@ public sealed partial class MarkdownLocalizationContractTests
             StringComparison.Ordinal);
     }
 
-    [Fact]
-    public void MarkdownViewer_SyntaxHighlightingToggleOwnsAndDisposesItsProvider()
-    {
-        int factoryCalls = 0;
-        var session = new MarkdownSyntaxHighlightingSession<RecordingDisposable>(() =>
-        {
-            factoryCalls++;
-            return new RecordingDisposable();
-        });
-
-        MarkdownSyntaxHighlightingState<RecordingDisposable> initiallyDisabled =
-            session.Apply(isEnabled: false);
-        Assert.False(initiallyDisabled.IsEnabled);
-        Assert.Null(initiallyDisabled.Provider);
-        Assert.Equal(0, factoryCalls);
-
-        MarkdownSyntaxHighlightingState<RecordingDisposable> enabled =
-            session.Apply(isEnabled: true);
-        Assert.True(enabled.IsEnabled);
-        RecordingDisposable provider = Assert.IsType<RecordingDisposable>(enabled.Provider);
-        Assert.Equal(1, factoryCalls);
-
-        MarkdownSyntaxHighlightingState<RecordingDisposable> disabled =
-            session.Apply(isEnabled: false);
-        Assert.False(disabled.IsEnabled);
-        Assert.Same(provider, disabled.Provider);
-        Assert.False(provider.IsDisposed);
-
-        MarkdownSyntaxHighlightingState<RecordingDisposable> reenabled =
-            session.Apply(isEnabled: true);
-        Assert.True(reenabled.IsEnabled);
-        Assert.Same(provider, reenabled.Provider);
-        Assert.Equal(1, factoryCalls);
-
-        session.Reset();
-        Assert.True(provider.IsDisposed);
-
-        MarkdownSyntaxHighlightingState<RecordingDisposable> enabledAfterReset =
-            session.Apply(isEnabled: true);
-        Assert.True(enabledAfterReset.IsEnabled);
-        Assert.NotSame(provider, enabledAfterReset.Provider);
-        Assert.Equal(2, factoryCalls);
-        session.Reset();
-    }
-
-    private sealed class RecordingDisposable : IDisposable
-    {
-        public bool IsDisposed { get; private set; }
-
-        public void Dispose() => IsDisposed = true;
-    }
-
     private static HashSet<string> LoadCatalog(string root, string language) =>
         LoadCatalogValues(root, language).Keys.ToHashSet(StringComparer.Ordinal);
 
