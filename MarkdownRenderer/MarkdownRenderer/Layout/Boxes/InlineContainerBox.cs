@@ -311,9 +311,25 @@ internal sealed class InlineContainerBox : BlockBox
 
         float widest = 0;
         int tokenStart = -1;
+        int runIndex = 0;
+        int runStart = 0;
+        int runEnd = _runs.Count > 0 ? _runs[0].Text.Length : 0;
         for (int index = 0; index <= _buffer.Length; index++)
         {
-            bool boundary = index == _buffer.Length || IsIntrinsicBreakOpportunity(_buffer[index]);
+            while (runIndex < _runs.Count && index >= runEnd)
+            {
+                runStart = runEnd;
+                runIndex++;
+                if (runIndex < _runs.Count)
+                    runEnd = Math.Min(_buffer.Length, runStart + _runs[runIndex].Text.Length);
+            }
+
+            InlineRun? currentRun = index < _buffer.Length && runIndex < _runs.Count &&
+                index >= runStart && index < runEnd
+                    ? _runs[runIndex]
+                    : null;
+            bool responsiveImage = currentRun is InlineImageRun;
+            bool boundary = index == _buffer.Length || responsiveImage || IsIntrinsicBreakOpportunity(_buffer[index]);
             if (!boundary)
             {
                 if (tokenStart < 0)
@@ -334,15 +350,29 @@ internal sealed class InlineContainerBox : BlockBox
                 tokenStart = -1;
             }
 
-            // Atomic image/hosted-element placeholders are deliberately kept
-            // indivisible and therefore contribute their full desired width.
+            // Hosted controls and vector scenes are genuinely atomic, so they
+            // contribute their full desired width. Images are also atomic for
+            // selection and line layout, but their rendering contract is
+            // max-width:100%: they may shrink while preserving aspect ratio.
+            // Giving an image its full width as a min-content contribution
+            // makes an image table column impossible to shrink and pushes its
+            // sibling columns out of the viewport.
             if (index < _buffer.Length && _buffer[index] == InlineEmbedRun.PlaceholderChar[0])
             {
-                var regions = layout.GetCharacterRegions(index, 1);
-                if (regions is not null)
+                if (currentRun is InlineImageRun image)
                 {
-                    foreach (var region in regions)
-                        widest = Math.Max(widest, (float)region.LayoutBounds.Width);
+                    widest = Math.Max(
+                        widest,
+                        Math.Min(image.DesiredWidth, Math.Max(1f, fallbackFontSize * 2f)));
+                }
+                else
+                {
+                    var regions = layout.GetCharacterRegions(index, 1);
+                    if (regions is not null)
+                    {
+                        foreach (var region in regions)
+                            widest = Math.Max(widest, (float)region.LayoutBounds.Width);
+                    }
                 }
             }
         }

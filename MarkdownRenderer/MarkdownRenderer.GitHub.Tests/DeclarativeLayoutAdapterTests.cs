@@ -144,6 +144,83 @@ public sealed class DeclarativeLayoutAdapterTests
         Assert.False(table.HorizontalScrollThumbBounds.IsEmpty);
     }
 
+    [Theory]
+    [InlineData(1d)]
+    [InlineData(1.5d)]
+    [InlineData(2d)]
+    public async Task ResponsiveImageColumnShrinksAndKeepsSiblingColumnsVisible(double rasterizationScale)
+    {
+        const string onePixelPng =
+            "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+A8AAQUBAScY42YAAAAASUVORK5CYII=";
+        var engine = CreateEngine(builder =>
+            builder.RegisterBlock(MarkdownSyntaxKinds.Block.Paragraph, (context, content) =>
+            {
+                SourceSpan span = context.Node.SourceSpan;
+                content.AddContainer(
+                    MarkdownContentKind.Table,
+                    MarkdownStyleRole.Table,
+                    span,
+                    MarkdownAccessibilityRole.Table,
+                    table => table.AddContainer(
+                        MarkdownContentKind.TableRow,
+                        MarkdownStyleRole.Table,
+                        span,
+                        MarkdownAccessibilityRole.Row,
+                        row =>
+                        {
+                            row.AddContainer(
+                                MarkdownContentKind.TableCell,
+                                MarkdownStyleRole.TableCell,
+                                span,
+                                MarkdownAccessibilityRole.Cell,
+                                cell => cell.AddText("Lists", span));
+                            row.AddContainer(
+                                MarkdownContentKind.TableCell,
+                                MarkdownStyleRole.TableCell,
+                                span,
+                                MarkdownAccessibilityRole.Cell,
+                                cell => cell.AddImage(
+                                    onePixelPng,
+                                    "List rendering test sheet",
+                                    span,
+                                    attributes: new Dictionary<string, string>
+                                    {
+                                        [MarkdownContentAttributes.ImageWidth] = "1280",
+                                        [MarkdownContentAttributes.ImageHeight] = "1024",
+                                    }));
+                            row.AddContainer(
+                                MarkdownContentKind.TableCell,
+                                MarkdownStyleRole.TableCell,
+                                span,
+                                MarkdownAccessibilityRole.Cell,
+                                cell => cell.AddText(
+                                    "Unordered, ordered, definition, nested, and mixed lists",
+                                    span));
+                        }));
+            }));
+        MarkdownRenderer.Document.MarkdownDocument document = await engine.ParseAsync("image table");
+
+        using LayoutSnapshot snapshot = Build(
+            document,
+            width: 734,
+            rasterizationScale: rasterizationScale);
+
+        var table = Assert.IsType<TableBox>(Assert.Single(snapshot.Blocks));
+        TableBox.CellInfo[] cells = [.. table.GetCellInfos()];
+        Assert.Equal(3, cells.Length);
+        Assert.False(table.CanScrollHorizontally);
+        Assert.InRange(table.HorizontalExtent, 1, table.HorizontalViewport + 0.5);
+
+        var image = Assert.IsType<InlineImageRun>(Assert.Single(cells[1].Box.Runs));
+        Assert.InRange(image.DesiredWidth, 1, cells[1].Box.Bounds.Width + 0.5);
+        Assert.True(image.DesiredWidth < 720);
+        Assert.InRange(image.DesiredWidth / image.DesiredHeight, 1.249f, 1.251f);
+        Assert.InRange(
+            cells[2].Box.Bounds.Right,
+            table.HorizontalViewportBounds.Left,
+            table.HorizontalViewportBounds.Right + 0.5);
+    }
+
     [Fact]
     public async Task CodeBlockDefaultsToNoWrapWithLocalHorizontalOverflow()
     {
@@ -313,7 +390,8 @@ public sealed class DeclarativeLayoutAdapterTests
 
     private static LayoutSnapshot Build(
         MarkdownRenderer.Document.MarkdownDocument document,
-        float width = 800)
+        float width = 800,
+        double rasterizationScale = 1)
     {
         var style = new ElementStyle();
         string[] keys =
@@ -350,7 +428,10 @@ public sealed class DeclarativeLayoutAdapterTests
             snapshot,
             sourceMap,
             new MarkdownExtensionRegistry(),
-            FlowDirection.LeftToRight);
+            FlowDirection.LeftToRight)
+        {
+            RasterizationScale = rasterizationScale,
+        };
         return new LayoutBuilder(
             context,
             enableDeclarativeHostedElements: false,
