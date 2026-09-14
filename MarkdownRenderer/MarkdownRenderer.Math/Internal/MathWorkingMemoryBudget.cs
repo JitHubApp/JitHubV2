@@ -25,6 +25,15 @@ internal sealed class MathWorkingMemoryBudget
     internal static long EstimateSourceBytes(int sourceLength) =>
         checked(FixedFormulaBytes + (sourceLength * BytesPerSourceCodeUnit));
 
+    internal static int GetMaximumSourceLength(long maximumBytes)
+    {
+        if (maximumBytes <= FixedFormulaBytes)
+            return 0;
+
+        long length = (maximumBytes - FixedFormulaBytes) / BytesPerSourceCodeUnit;
+        return (int)System.Math.Min(int.MaxValue, length);
+    }
+
     internal void Reserve(long byteCount)
     {
         ArgumentOutOfRangeException.ThrowIfNegative(byteCount);

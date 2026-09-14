@@ -6,6 +6,7 @@ namespace MarkdownRenderer.Layout.Boxes;
 
 internal sealed record RasterImageBudgetResult(
     bool Accepted,
+    bool CanRenderStaticPreview,
     string? Format,
     int Width,
     int Height,
@@ -15,7 +16,17 @@ internal sealed record RasterImageBudgetResult(
     string? Reason)
 {
     public static RasterImageBudgetResult Reject(string reason) =>
-        new(false, null, 0, 0, 0, 0, 0, reason);
+        new(false, false, null, 0, 0, 0, 0, 0, reason);
+
+    public static RasterImageBudgetResult RejectAnimation(
+        string format,
+        int width,
+        int height,
+        int frameCount,
+        long totalPixels,
+        long decodedBytes,
+        string reason) =>
+        new(false, true, format, width, height, frameCount, totalPixels, decodedBytes, reason);
 }
 
 internal static class RasterImageResourceBudget
@@ -56,7 +67,7 @@ internal static class RasterImageResourceBudget
             return RasterImageBudgetResult.Reject("The raster image dimensions exceed the safe budget.");
         }
 
-        if (header.FrameCount <= 0 || header.FrameCount > MaxFrameCount)
+        if (header.FrameCount <= 0)
         {
             return RasterImageBudgetResult.Reject("The raster animation frame count exceeds the safe budget.");
         }
@@ -80,13 +91,40 @@ internal static class RasterImageResourceBudget
             return RasterImageBudgetResult.Reject("The raster image pixel count exceeds the safe budget.");
         }
 
-        if (totalPixels < pixelsPerFrame || decodedBytes > MaxDecodedBytes)
+        if (header.FrameCount > MaxFrameCount)
+        {
+            return RasterImageBudgetResult.RejectAnimation(
+                header.Format,
+                header.Width,
+                header.Height,
+                header.FrameCount,
+                totalPixels,
+                decodedBytes,
+                "The raster animation frame count exceeds the safe budget.");
+        }
+
+        if (totalPixels < pixelsPerFrame)
         {
             return RasterImageBudgetResult.Reject("The raster image decoded-memory budget is exceeded.");
         }
 
+        if (decodedBytes > MaxDecodedBytes)
+        {
+            return header.FrameCount > 1
+                ? RasterImageBudgetResult.RejectAnimation(
+                    header.Format,
+                    header.Width,
+                    header.Height,
+                    header.FrameCount,
+                    totalPixels,
+                    decodedBytes,
+                    "The raster image decoded-memory budget is exceeded.")
+                : RasterImageBudgetResult.Reject("The raster image decoded-memory budget is exceeded.");
+        }
+
         return new RasterImageBudgetResult(
             true,
+            false,
             header.Format,
             header.Width,
             header.Height,

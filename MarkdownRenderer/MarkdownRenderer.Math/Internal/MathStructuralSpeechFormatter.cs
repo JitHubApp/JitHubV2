@@ -128,6 +128,9 @@ internal static class MathStructuralSpeechFormatter
                     case '\u00f7':
                         Append(output, Resolve(MathStringKeys.DividedBy));
                         break;
+                    case '&':
+                        // Alignment tabs are TeX layout syntax, not spoken content.
+                        break;
                     default:
                         if (!char.IsWhiteSpace(value))
                             Append(output, value.ToString());
@@ -183,8 +186,12 @@ internal static class MathStructuralSpeechFormatter
             string command = _tex[start.._position];
             return command switch
             {
+                "begin" => ReadEnvironmentName(),
+                "end" => ConsumeEnvironmentName(),
                 "frac" => ReadFraction(),
                 "sqrt" => ReadRoot(),
+                "tag" => ReadEquationTag(),
+                @"\" => string.Empty,
                 "cdot" or "times" => Resolve(MathStringKeys.Times),
                 "div" => Resolve(MathStringKeys.DividedBy),
                 "pm" => Compose(Resolve(MathStringKeys.Plus), "or", Resolve(MathStringKeys.Minus)),
@@ -209,6 +216,48 @@ internal static class MathStructuralSpeechFormatter
                 "," or ";" or ":" or "!" => string.Empty,
                 _ => command.Replace('-', ' '),
             };
+        }
+
+        private string ReadEnvironmentName()
+        {
+            string name = ReadRawGroupArgument();
+            return name is "align" or "align*" or "aligned" or "eqalign" or "split"
+                ? string.Empty
+                : name.Replace('-', ' ');
+        }
+
+        private string ConsumeEnvironmentName()
+        {
+            _ = ReadRawGroupArgument();
+            return string.Empty;
+        }
+
+        private string ReadEquationTag()
+        {
+            if (_position < _tex.Length && _tex[_position] == '*')
+                _position++;
+            string label = ReadArgument();
+            return string.IsNullOrWhiteSpace(label)
+                ? string.Empty
+                : Compose("equation", label);
+        }
+
+        private string ReadRawGroupArgument()
+        {
+            SkipWhitespace();
+            if (_position >= _tex.Length || _tex[_position] != '{')
+                return string.Empty;
+
+            int start = ++_position;
+            while (_position < _tex.Length && _tex[_position] != '}')
+            {
+                Checkpoint();
+                _position++;
+            }
+
+            string value = _tex[start.._position].Trim();
+            Consume('}');
+            return value;
         }
 
         private string ReadFraction()

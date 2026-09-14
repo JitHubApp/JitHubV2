@@ -42,6 +42,7 @@ public sealed class RasterImageResourceBudgetTests
         RasterImageBudgetResult result = RasterImageResourceBudget.Validate(hostileApng);
 
         Assert.False(result.Accepted);
+        Assert.True(result.CanRenderStaticPreview);
         Assert.Contains("decoded-memory", result.Reason, StringComparison.OrdinalIgnoreCase);
     }
 
@@ -54,6 +55,9 @@ public sealed class RasterImageResourceBudgetTests
         RasterImageBudgetResult result = RasterImageResourceBudget.Validate(frameBomb);
 
         Assert.False(result.Accepted);
+        Assert.True(result.CanRenderStaticPreview);
+        Assert.Equal("GIF", result.Format);
+        Assert.Equal(RasterImageResourceBudget.MaxFrameCount + 1, result.FrameCount);
         Assert.Contains("frame count", result.Reason, StringComparison.OrdinalIgnoreCase);
     }
 
@@ -66,6 +70,7 @@ public sealed class RasterImageResourceBudgetTests
         RasterImageBudgetResult result = RasterImageResourceBudget.Validate(frameBomb);
 
         Assert.False(result.Accepted);
+        Assert.True(result.CanRenderStaticPreview);
         Assert.Contains("frame count", result.Reason, StringComparison.OrdinalIgnoreCase);
     }
 
@@ -92,6 +97,8 @@ public sealed class RasterImageResourceBudgetTests
 
         Assert.False(jpeg.Accepted);
         Assert.False(bmp.Accepted);
+        Assert.False(jpeg.CanRenderStaticPreview);
+        Assert.False(bmp.CanRenderStaticPreview);
         Assert.Contains("budget", jpeg.Reason, StringComparison.OrdinalIgnoreCase);
         Assert.Contains("budget", bmp.Reason, StringComparison.OrdinalIgnoreCase);
     }

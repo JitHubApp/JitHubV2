@@ -18,9 +18,17 @@ internal static class CSharpMathSceneCompiler
             MathCancellationScope.Enter(
                 cancellationToken,
                 options.MaximumParserRecursionDepth);
+        int maximumCompilerSourceLength = MathWorkingMemoryBudget.GetMaximumSourceLength(
+            options.MaximumWorkingMemoryBytes);
+        if (maximumCompilerSourceLength <= 0)
+            throw new MathSceneBudgetException(MathSceneBudget.WorkingMemory);
+        string compilerSource = MathCompatibilityPreprocessor.Normalize(
+            request.TexSource,
+            maximumCompilerSourceLength,
+            cancellationToken);
         var memoryBudget = new MathWorkingMemoryBudget(
             options.MaximumWorkingMemoryBytes,
-            request.TexSource.Length);
+            compilerSource.Length);
 
         var painter = new RecordingMathPainter
         {
@@ -29,7 +37,7 @@ internal static class CSharpMathSceneCompiler
             LineStyle = request.DisplayMode == MathFormulaDisplayMode.Display
                 ? LineStyle.Display
                 : LineStyle.Text,
-            LaTeX = request.TexSource,
+            LaTeX = compilerSource,
         };
 
         cancellationToken.ThrowIfCancellationRequested();

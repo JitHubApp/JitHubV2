@@ -10,6 +10,7 @@ using System.Xml.Linq;
 using Microsoft.Graphics.Canvas;
 using Microsoft.Graphics.Canvas.Text;
 using Microsoft.UI.Xaml;
+using Windows.Graphics.Imaging;
 using Windows.Storage.Streams;
 using Windows.Foundation;
 using Windows.UI;
@@ -1004,7 +1005,7 @@ internal sealed class ImageBox : BlockBox
     private async Task LoadBitmapBytesAsync(byte[] bytes, string cacheKey)
     {
         RasterImageBudgetResult budget = RasterImageResourceBudget.Validate(bytes);
-        if (!budget.Accepted)
+        if (!budget.Accepted && !budget.CanRenderStaticPreview)
         {
             MarkdownDiagnostics.WriteLine(
                 $"[ImageBox] raster rejected before CanvasBitmap decode for {cacheKey}: {budget.Reason}");
@@ -1045,7 +1046,26 @@ internal sealed class ImageBox : BlockBox
                     using InMemoryRandomAccessStream stream = new();
                     await stream.WriteAsync(bytes.AsBuffer());
                     stream.Seek(0);
-                    ownedBitmap = await CanvasBitmap.LoadAsync(_context.ResourceCreator, stream);
+                    if (budget.CanRenderStaticPreview)
+                    {
+                        BitmapDecoder decoder = await BitmapDecoder.CreateAsync(stream);
+                        if (decoder.PixelWidth != budget.Width || decoder.PixelHeight != budget.Height)
+                        {
+                            throw new InvalidDataException("The decoded raster dimensions do not match its validated header.");
+                        }
+
+                        using SoftwareBitmap firstFrame = await decoder.GetSoftwareBitmapAsync(
+                            BitmapPixelFormat.Bgra8,
+                            BitmapAlphaMode.Premultiplied);
+                        ownedBitmap = CanvasBitmap.CreateFromSoftwareBitmap(_context.ResourceCreator, firstFrame);
+                        MarkdownDiagnostics.WriteLine(
+                            $"[ImageBox] rendered a bounded first-frame preview for {cacheKey}; " +
+                            $"the {budget.FrameCount}-frame animation exceeds the animation budget.");
+                    }
+                    else
+                    {
+                        ownedBitmap = await CanvasBitmap.LoadAsync(_context.ResourceCreator, stream);
+                    }
 
                     if (!string.IsNullOrEmpty(cacheKey))
                     {

@@ -17,6 +17,53 @@ namespace MarkdownRenderer.GitHub.Tests;
 public sealed class SafeHtmlRenderingTests
 {
     [Fact]
+    public void GitHubPictureMarkupUsesThemeMatchedSourceWithoutLeakingHtml()
+    {
+        const string source = """
+            <picture>
+              <source media="(prefers-color-scheme: dark)" srcset="dark.svg">
+              <source media="(prefers-color-scheme: light)" srcset="light.svg">
+              <img src="fallback.svg" alt="Project logo" width="240">
+            </picture>
+            """;
+
+        using LayoutSnapshot snapshot = Build(source, SafeHtmlOptions.Default);
+        InlineRun[] runs = FlattenRuns(snapshot).ToArray();
+
+        InlineImageRun image = Assert.Single(runs.OfType<InlineImageRun>());
+        Assert.Equal("light.svg", image.Url);
+        Assert.Equal("Project logo", image.AltText);
+        Assert.DoesNotContain("<picture", string.Concat(runs.Select(static run => run.Text)));
+    }
+
+    [Fact]
+    public void GitHubDetailsAndSummaryKeepNestedMarkdownReadable()
+    {
+        const string source = """
+            <details open>
+            <summary>Installation notes</summary>
+
+            Use **stable** packages and review the table below.
+
+            | Channel | Status |
+            | --- | --- |
+            | Stable | Ready |
+
+            </details>
+            """;
+
+        using LayoutSnapshot snapshot = Build(source, SafeHtmlOptions.Default);
+        string rendered = string.Concat(FlattenRuns(snapshot).Select(static run => run.Text));
+
+        Assert.Contains("Installation notes", rendered, StringComparison.Ordinal);
+        Assert.Contains("stable", rendered, StringComparison.Ordinal);
+        Assert.Contains("Stable", rendered, StringComparison.Ordinal);
+        Assert.Contains("Ready", rendered, StringComparison.Ordinal);
+        Assert.DoesNotContain("<details", rendered, StringComparison.Ordinal);
+        Assert.DoesNotContain("<summary", rendered, StringComparison.Ordinal);
+    }
+
+    [Fact]
     public void DerivedEngineSafeHtmlOptionsReplaceTheExistingFeatureRenderer()
     {
         const string source =
