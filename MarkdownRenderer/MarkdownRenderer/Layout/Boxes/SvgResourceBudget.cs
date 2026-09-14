@@ -20,6 +20,7 @@ internal static class SvgResourceBudget
     public const int MaxElements = 4096;
     public const int MaxDepth = 64;
     public const int MaxAttributes = 32768;
+    public const int MaxFilterPrimitives = 256;
     public const int MaxTextNodes = 512;
     public const int MaxTextCharacters = 64 * 1024;
     public const int MaxPathCharacters = 512 * 1024;
@@ -42,6 +43,7 @@ internal static class SvgResourceBudget
         long started = Stopwatch.GetTimestamp();
         int elementCount = 0;
         int attributeCount = 0;
+        int filterPrimitiveCount = 0;
         int textNodes = 0;
         int textCharacters = 0;
         int pathCharacters = 0;
@@ -88,16 +90,22 @@ internal static class SvgResourceBudget
                         return SvgResourceBudgetResult.Reject("element-count");
                     }
 
-                    // ThorVG 1.1.1 implements feGaussianBlur but silently
-                    // ignores the other SVG filter primitives. A successful
-                    // raster containing unprocessed effects is a misleading,
-                    // lossy result, so reject those inputs before native work
-                    // and let the renderer use its accessible atomic fallback.
+                    // Keep the filter surface finite and self-contained. This
+                    // allowlist covers the bounded shadow pipelines emitted by
+                    // Microsoft Store badges while excluding primitives such
+                    // as feImage that can introduce another resource load.
                     if (IsSvgNamespace(reader.NamespaceURI) &&
-                        reader.LocalName.StartsWith("fe", StringComparison.OrdinalIgnoreCase) &&
-                        !reader.LocalName.Equals("feGaussianBlur", StringComparison.OrdinalIgnoreCase))
+                        reader.LocalName.StartsWith("fe", StringComparison.OrdinalIgnoreCase))
                     {
-                        return SvgResourceBudgetResult.Reject("unsupported-filter-primitive");
+                        if (!IsSupportedFilterPrimitive(reader.LocalName))
+                        {
+                            return SvgResourceBudgetResult.Reject("unsupported-filter-primitive");
+                        }
+
+                        if (++filterPrimitiveCount > MaxFilterPrimitives)
+                        {
+                            return SvgResourceBudgetResult.Reject("filter-complexity");
+                        }
                     }
 
                     if (reader.HasAttributes)
@@ -175,6 +183,14 @@ internal static class SvgResourceBudget
     private static bool IsSvgNamespace(string? namespaceUri) =>
         string.IsNullOrEmpty(namespaceUri) ||
         string.Equals(namespaceUri, "http://www.w3.org/2000/svg", StringComparison.Ordinal);
+
+    private static bool IsSupportedFilterPrimitive(string localName) =>
+        localName.Equals("feBlend", StringComparison.OrdinalIgnoreCase) ||
+        localName.Equals("feColorMatrix", StringComparison.OrdinalIgnoreCase) ||
+        localName.Equals("feDropShadow", StringComparison.OrdinalIgnoreCase) ||
+        localName.Equals("feFlood", StringComparison.OrdinalIgnoreCase) ||
+        localName.Equals("feGaussianBlur", StringComparison.OrdinalIgnoreCase) ||
+        localName.Equals("feOffset", StringComparison.OrdinalIgnoreCase);
 
     private static bool TryReadLeadingNumber(string? value, out double result)
     {

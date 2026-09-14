@@ -39,7 +39,12 @@
     <EnableConfigurationBindingGenerator>true</EnableConfigurationBindingGenerator>
     <DefaultLanguage>en-US</DefaultLanguage>
     <EnablePseudoLocalization>false</EnablePseudoLocalization>
-    <EnableStoreEngagementSdk Condition="'$(EnableStoreEngagementSdk)' == ''">true</EnableStoreEngagementSdk>
+    <!-- Store engagement performs receipt-backed initialization and is useful
+         only for the Store-associated production package. Keep local Debug and
+         AOT diagnostic builds free of that network/receipt work; developers can
+         still opt in explicitly with -p:EnableStoreEngagementSdk=true. -->
+    <EnableStoreEngagementSdk Condition="'$(EnableStoreEngagementSdk)' == '' and '$(Configuration)' == 'Release'">true</EnableStoreEngagementSdk>
+    <EnableStoreEngagementSdk Condition="'$(EnableStoreEngagementSdk)' == ''">false</EnableStoreEngagementSdk>
   </PropertyGroup>
 
   <PropertyGroup Condition="'$(EnablePseudoLocalization)' == 'true'">

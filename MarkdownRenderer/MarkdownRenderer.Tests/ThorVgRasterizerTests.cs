@@ -79,4 +79,25 @@ public class ThorVgRasterizerTests
         Assert.NotNull(r);
         Assert.Equal(64 * 64 * 4, r!.Value.Bgra.Length);
     }
+
+    [Fact]
+    public void Rasterize_StandardFilterPipeline_ProducesVisibleFallbackArtwork()
+    {
+        var svg = Svg(@"<svg xmlns='http://www.w3.org/2000/svg' width='64' height='32'>
+  <defs>
+    <filter id='shadow'>
+      <feFlood flood-color='#000000' flood-opacity='.25' result='color'/>
+      <feColorMatrix in='color' values='1 0 0 0 0 0 1 0 0 0 0 0 1 0 0 0 0 0 .25 0'/>
+      <feOffset dx='1' dy='1'/>
+      <feBlend in='SourceGraphic'/>
+    </filter>
+  </defs>
+  <rect width='64' height='32' rx='4' fill='#0078d4' filter='url(#shadow)'/>
+</svg>");
+
+        var result = ThorVgRasterizer.Rasterize(svg, 64, 32);
+
+        Assert.NotNull(result);
+        Assert.Contains(result.Value.Bgra, static channel => channel != 0);
+    }
 }

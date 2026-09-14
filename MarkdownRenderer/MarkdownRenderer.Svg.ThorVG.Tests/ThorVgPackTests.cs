@@ -60,6 +60,20 @@ public sealed class ThorVgPackTests
     [Theory]
     [InlineData("<feColorMatrix type='saturate' values='0'/>")]
     [InlineData("<feDropShadow dx='2' dy='2'/>")]
+    public void PublicRasterizer_RendersBaseArtworkForBoundedStandardFilters(string primitive)
+    {
+        ThorVgRaster? raster = ThorVgFeature.Rasterize(
+            Svg($"<svg xmlns='http://www.w3.org/2000/svg' width='16' height='16'><defs><filter id='f'>{primitive}</filter></defs><rect width='16' height='16' fill='#0078d4' filter='url(#f)'/></svg>"),
+            16,
+            16);
+
+        Assert.NotNull(raster);
+        Assert.Contains(raster!.BgraPremultipliedPixels.ToArray(), static channel => channel != 0);
+    }
+
+    [Theory]
+    [InlineData("<feImage href='https://example.test/image.png'/>")]
+    [InlineData("<feDisplacementMap scale='20'/>")]
     public void PublicRasterizer_UsesAtomicFallbackForUnsupportedFilterPrimitives(string primitive)
     {
         ThorVgRaster? raster = ThorVgFeature.Rasterize(

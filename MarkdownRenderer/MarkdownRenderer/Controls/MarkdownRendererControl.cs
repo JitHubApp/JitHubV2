@@ -92,6 +92,7 @@ public partial class MarkdownRendererControl : UserControl, IDisposable, IMarkdo
     private long _lastRebuildDispatchTicket;
     private bool _hasPendingRebuild;
     private bool _imageRelayoutQueued;
+    private readonly HashSet<int> _pendingImageRelayoutBlockIndices = [];
     private bool _selectionAutomationEventQueued;
     private bool _horizontalOverflowAutomationEventQueued;
     private readonly Dictionary<IHorizontalOverflowBox, PendingHorizontalOverflowAutomationChange>
@@ -2910,6 +2911,7 @@ public partial class MarkdownRendererControl : UserControl, IDisposable, IMarkdo
         _hasPendingRebuild = false;
         _pendingRebuildReason = RebuildReason.Restyle;
         _imageRelayoutQueued = false;
+        _pendingImageRelayoutBlockIndices.Clear();
         _selectionAutomationEventQueued = false;
         _horizontalOverflowAutomationEventQueued = false;
         _pendingHorizontalOverflowAutomationChanges.Clear();
@@ -3656,7 +3658,8 @@ public partial class MarkdownRendererControl : UserControl, IDisposable, IMarkdo
             : 1.0;
         var themeSnapshot = new ThemeResolver(this, theme).CreateSnapshot(
             styleSheetSnapshot,
-            textScaleFactor);
+            textScaleFactor,
+            semanticDocument.GetExtensionStyleRoleNames());
         // Use the shared CanvasDevice (always available, no visual-tree required).
         // CanvasVirtualControl only has a device after CreateResources fires, so
         // passing _canvas directly would crash if layout runs before first draw.
@@ -5125,17 +5128,28 @@ public partial class MarkdownRendererControl : UserControl, IDisposable, IMarkdo
             // Guard against the TOCTOU window where this lambda was already
             // dispatched before OnUnloaded ran its unsubscription.
             if (_isUnloaded) return;
-            if (sender is Layout.Boxes.ImageBox image)
+            Layout.Boxes.ImageBox? completedImage = sender as Layout.Boxes.ImageBox;
+            if (completedImage is not null)
             {
-                if (!_subscribedImages.Contains(image))
+                if (!_subscribedImages.Contains(completedImage))
                     return;
 
                 (FrameworkElementAutomationPeer.FromElement(this) as MarkdownAutomationPeer)?
-                    .NotifyImageStatusChanged(image);
+                    .NotifyImageStatusChanged(completedImage);
             }
             if (layoutInvalidated)
             {
-                QueueImageRelayout();
+                if (completedImage is not null)
+                {
+                    QueueImageRelayout(completedImage.BlockIndex);
+                }
+                else
+                {
+                    // The normal event contract always supplies its ImageBox.
+                    // Fall back to a rebuild if a custom source violates it;
+                    // guessing a dirty block could leave stale geometry behind.
+                    RequestRebuild();
+                }
             }
             else
             {
@@ -5148,9 +5162,13 @@ public partial class MarkdownRendererControl : UserControl, IDisposable, IMarkdo
         });
     }
 
-    private void QueueImageRelayout()
+    private void QueueImageRelayout(int blockIndex)
     {
-        if (_imageRelayoutQueued || _isDisposed || _isUnloaded)
+        if (_isDisposed || _isUnloaded)
+            return;
+
+        _pendingImageRelayoutBlockIndices.Add(blockIndex);
+        if (_imageRelayoutQueued)
             return;
 
         _imageRelayoutQueued = true;
@@ -5170,15 +5188,21 @@ public partial class MarkdownRendererControl : UserControl, IDisposable, IMarkdo
 
         _imageRelayoutQueued = false;
         LayoutSnapshot? snapshot = _snapshot;
-        if (_isDisposed || _isUnloaded || snapshot is null)
+        if (_isDisposed || _isUnloaded || snapshot is null ||
+            _pendingImageRelayoutBlockIndices.Count == 0)
             return;
 
         try
         {
+            int[] dirtyBlockIndices = [.. _pendingImageRelayoutBlockIndices];
+            _pendingImageRelayoutBlockIndices.Clear();
             (int BlockIndex, double OffsetFromTop)? anchor = _scroll is null
                 ? null
                 : CaptureScrollAnchor(snapshot, _scroll.VerticalOffset);
-            snapshot.RelayoutMeasuredBlocks((float)Math.Max(50, ActualWidth), CancellationToken.None);
+            snapshot.RelayoutChangedBlocks(
+                dirtyBlockIndices,
+                (float)Math.Max(50, ActualWidth),
+                CancellationToken.None);
             if (!ReferenceEquals(snapshot, _snapshot))
                 return;
 

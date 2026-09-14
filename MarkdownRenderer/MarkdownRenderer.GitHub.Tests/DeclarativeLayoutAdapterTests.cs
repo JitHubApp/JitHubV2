@@ -16,6 +16,30 @@ namespace MarkdownRenderer.GitHub.Tests;
 public sealed class DeclarativeLayoutAdapterTests
 {
     [Fact]
+    public async Task DocumentReportsEveryNestedDeclarativeStyleRoleWithoutResourceDiscovery()
+    {
+        var outerRole = new MarkdownStyleRole("TestOuter");
+        var innerRole = new MarkdownStyleRole("TestInner");
+        var engine = CreateEngine(builder =>
+            builder.RegisterBlock(MarkdownSyntaxKinds.Block.Paragraph, (context, content) =>
+                content.AddContainer(
+                    MarkdownContentKind.Container,
+                    outerRole,
+                    context.Node.SourceSpan,
+                    MarkdownAccessibilityRole.Group,
+                    children => children.AddText(
+                        "nested",
+                        context.Node.SourceSpan,
+                        innerRole))));
+
+        MarkdownRenderer.Document.MarkdownDocument document = await engine.ParseAsync("source");
+
+        Assert.Equal(
+            ["TestInner", "TestOuter"],
+            document.GetExtensionStyleRoleNames().Order(StringComparer.Ordinal));
+    }
+
+    [Fact]
     public async Task InlineExtensionOutputReplacesTheExactInlineNode()
     {
         var engine = CreateEngine((builder) =>

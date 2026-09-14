@@ -144,7 +144,9 @@ public sealed class AccessibilityReleaseGateTests
             static node => node.Role == MarkdownSemanticRole.Image);
 
         Assert.Equal("Localized image", snapshot.SemanticDocument.GetText(linkedImage));
-        Assert.True(Assert.IsType<InlineImageRun>(linkedImage.InlineRun).IsLinked);
+        InlineImageRun linkedRun = Assert.IsType<InlineImageRun>(linkedImage.InlineRun);
+        Assert.True(linkedRun.IsLinked);
+        Assert.Equal(paragraph.BlockIndex, linkedRun.Image.BlockIndex);
     }
 
     [Fact]

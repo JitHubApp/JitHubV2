@@ -53,6 +53,7 @@ public sealed class MarkdownDocument
     private readonly IReadOnlyDictionary<SourceSpan, IReadOnlyList<MarkdownContentFragment>> _extensionInlines;
     private readonly IReadOnlyDictionary<Block, MarkdownContentFragment> _extensionBlockNodes;
     private readonly IReadOnlyDictionary<Inline, MarkdownContentFragment> _extensionInlineNodes;
+    private readonly IReadOnlyCollection<string> _extensionStyleRoleNames;
 
     private MarkdownDocument(
         string sourceText,
@@ -87,6 +88,9 @@ public sealed class MarkdownDocument
         _extensionInlines = FreezeExtensionContent(extensionInlines);
         _extensionBlockNodes = FreezeExtensionNodeContent(extensionBlockNodes);
         _extensionInlineNodes = FreezeExtensionNodeContent(extensionInlineNodes);
+        _extensionStyleRoleNames = CollectExtensionStyleRoleNames(
+            _extensionBlockNodes,
+            _extensionInlineNodes);
         PresentationConfiguration = presentationConfiguration;
         _sourceMap = BuildSourceMap(
             _headings,
@@ -167,6 +171,43 @@ public sealed class MarkdownDocument
 
     internal IReadOnlyDictionary<Inline, MarkdownContentFragment> ExtensionInlineNodeContent
         => _extensionInlineNodes;
+
+    /// <summary>
+    /// Returns the style roles emitted by declarative extensions in this
+    /// document. The UI adapter uses this finite set to resolve resource-backed
+    /// custom roles without scanning the application's complete XAML resource
+    /// graph.
+    /// </summary>
+    internal IReadOnlyCollection<string> GetExtensionStyleRoleNames()
+        => _extensionStyleRoleNames;
+
+    private static IReadOnlyCollection<string> CollectExtensionStyleRoleNames(
+        IReadOnlyDictionary<Block, MarkdownContentFragment> blockNodes,
+        IReadOnlyDictionary<Inline, MarkdownContentFragment> inlineNodes)
+    {
+        if (blockNodes.Count == 0 && inlineNodes.Count == 0)
+            return Array.Empty<string>();
+
+        var roles = new HashSet<string>(StringComparer.Ordinal);
+        foreach (MarkdownContentFragment fragment in blockNodes.Values)
+            CollectStyleRoleNames(fragment.Items, roles);
+        foreach (MarkdownContentFragment fragment in inlineNodes.Values)
+            CollectStyleRoleNames(fragment.Items, roles);
+        return roles.Count == 0 ? Array.Empty<string>() : [.. roles];
+    }
+
+    private static void CollectStyleRoleNames(
+        IReadOnlyList<MarkdownContent> content,
+        HashSet<string> roles)
+    {
+        foreach (MarkdownContent item in content)
+        {
+            if (!item.StyleRole.IsEmpty)
+                roles.Add(item.StyleRole.Name);
+            if (item.Children.Count > 0)
+                CollectStyleRoleNames(item.Children, roles);
+        }
+    }
 
     internal static MarkdownDocument FromParsed(string sourceText, Markdig.Syntax.MarkdownDocument document)
         => FromParsed(sourceText, document, [], CancellationToken.None);

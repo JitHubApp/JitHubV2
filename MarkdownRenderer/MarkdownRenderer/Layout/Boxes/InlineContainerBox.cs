@@ -93,6 +93,13 @@ internal sealed class InlineContainerBox : BlockBox
         System.Diagnostics.Debug.Assert(BlockIndex != 0,
             "BlockIndex must be assigned before calling Add(); source-map entries wnll be registered under block 0 otherwise.");
         run.InlineIndex = _runs.Count;
+        if (run is InlineImageRun imageRun)
+        {
+            // The image participates in asynchronous relayout and UIA using
+            // the owning paragraph's logical block. Keep that identity on the
+            // nested ImageBox so a late load can invalidate only this owner.
+            imageRun.Image.BlockIndex = BlockIndex;
+        }
         _runs.Add(run);
         _effectiveRunAliases.Add(CombineAliases(_styleAliasKeys, run.StyleAliases));
         _resolvedRunStyles.Add(null);

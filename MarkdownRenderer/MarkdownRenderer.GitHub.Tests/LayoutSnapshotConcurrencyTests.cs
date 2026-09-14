@@ -214,6 +214,59 @@ public sealed class LayoutSnapshotConcurrencyTests
     }
 
     [Fact]
+    public void ImageRelayoutRemeasuresOnlyTheChangedTopLevelOwner()
+    {
+        var first = new CountingMeasureBox(30) { BlockIndex = 10 };
+        var changed = new CountingMeasureBox(50) { BlockIndex = 20 };
+        var trailing = new CountingMeasureBox(70) { BlockIndex = 30 };
+        foreach (BlockBox block in new BlockBox[] { first, changed, trailing })
+        {
+            float height = block.Measure(200);
+            block.Arrange(0, block.BlockIndex, 200);
+            Assert.True(height > 0);
+        }
+
+        using var snapshot = new LayoutSnapshot(
+            new BlockBox[] { first, changed, trailing },
+            new MarkdownSourceMap(string.Empty),
+            width: 200,
+            height: 180,
+            blockSpacing: 8);
+
+        snapshot.RelayoutChangedBlocks([changed.BlockIndex], 200, CancellationToken.None);
+
+        Assert.Equal(1, first.MeasureCount);
+        Assert.Equal(2, changed.MeasureCount);
+        Assert.Equal(1, trailing.MeasureCount);
+        Assert.Equal(changed.Bounds.Bottom + 8, trailing.Bounds.Top);
+    }
+
+    [Fact]
+    public void ImageRelayoutFallsBackToFullMeasurementForAnUnknownOwner()
+    {
+        var first = new CountingMeasureBox(30) { BlockIndex = 10 };
+        var second = new CountingMeasureBox(50) { BlockIndex = 20 };
+        foreach (BlockBox block in new BlockBox[] { first, second })
+        {
+            block.Measure(200);
+            block.Arrange(0, block.BlockIndex, 200);
+        }
+
+        using var snapshot = new LayoutSnapshot(
+            new BlockBox[] { first, second },
+            new MarkdownSourceMap(string.Empty),
+            width: 200,
+            height: 88,
+            blockSpacing: 8);
+
+        snapshot.RelayoutChangedBlocks([999], 200, CancellationToken.None);
+
+        Assert.Equal(2, first.MeasureCount);
+        Assert.Equal(2, second.MeasureCount);
+        Assert.Equal(first.Bounds.Bottom + 8, second.Bounds.Top);
+    }
+
+    [Fact]
     public async Task RetirementDisposesLaterBlocksAfterASingleDisposalFailure()
     {
         var failure = new InvalidOperationException("expected disposal failure");
@@ -364,6 +417,20 @@ public sealed class LayoutSnapshotConcurrencyTests
         public override void Paint(CanvasDrawingSession drawingSession, Rect viewport) { }
 
         public override void Dispose() => Disposed.Set();
+    }
+
+    private sealed class CountingMeasureBox(float height) : BlockBox
+    {
+        internal int MeasureCount { get; private set; }
+
+        public override float Measure(float availableWidth)
+        {
+            MeasureCount++;
+            Bounds = new Rect(0, 0, availableWidth, height);
+            return height;
+        }
+
+        public override void Paint(CanvasDrawingSession drawingSession, Rect viewport) { }
     }
 
     private sealed class ThrowingDisposeBox : BlockBox

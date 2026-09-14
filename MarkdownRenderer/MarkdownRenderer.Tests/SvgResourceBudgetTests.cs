@@ -65,8 +65,8 @@ public sealed class SvgResourceBudgetTests
     [InlineData("<svg><text font-size='999999'>large</text></svg>", "font-size")]
     [InlineData("<!DOCTYPE svg [<!ENTITY x 'boom'>]><svg><text>&x;</text></svg>", "invalid-xml")]
     [InlineData("<html><body>not svg</body></html>", "missing-root")]
-    [InlineData("<svg><filter><feColorMatrix type='saturate' values='0'/></filter></svg>", "unsupported-filter-primitive")]
-    [InlineData("<svg><filter><feDropShadow dx='2' dy='2'/></filter></svg>", "unsupported-filter-primitive")]
+    [InlineData("<svg><filter><feImage href='https://example.test/image.png'/></filter></svg>", "unsupported-filter-primitive")]
+    [InlineData("<svg><filter><feDisplacementMap scale='20'/></filter></svg>", "unsupported-filter-primitive")]
     public void Validate_RejectsHostileXml(string svg, string expectedReason)
     {
         SvgResourceBudgetResult result = SvgResourceBudget.Validate(Bytes(svg), CancellationToken.None);
@@ -83,6 +83,30 @@ public sealed class SvgResourceBudgetTests
             CancellationToken.None);
 
         Assert.True(result.Accepted, result.Reason);
+    }
+
+    [Fact]
+    public void Validate_AcceptsBoundedStandardFilterPipeline()
+    {
+        SvgResourceBudgetResult result = SvgResourceBudget.Validate(
+            Bytes("<svg><filter><feFlood/><feColorMatrix/><feOffset/><feGaussianBlur/><feBlend/><feDropShadow/></filter></svg>"),
+            CancellationToken.None);
+
+        Assert.True(result.Accepted, result.Reason);
+    }
+
+    [Fact]
+    public void Validate_RejectsExcessiveFilterPipeline()
+    {
+        string primitives = string.Concat(
+            System.Linq.Enumerable.Repeat("<feColorMatrix/>", SvgResourceBudget.MaxFilterPrimitives + 1));
+
+        SvgResourceBudgetResult result = SvgResourceBudget.Validate(
+            Bytes($"<svg><filter>{primitives}</filter></svg>"),
+            CancellationToken.None);
+
+        Assert.False(result.Accepted);
+        Assert.Equal("filter-complexity", result.Reason);
     }
 
     [Fact]

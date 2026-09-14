@@ -32,14 +32,12 @@ public sealed class SvgComplianceTests
     private const double MaxMeanChannelDelta = 12.0;
     private const double MaxDifferingPixelFraction = 0.20;
 
-    // ThorVG 1.1.1 silently ignores unsupported filter primitives. The public
-    // renderer deliberately rejects these inputs so callers get the atomic,
-    // accessible image fallback instead of a plausible but incorrect bitmap.
-    private static readonly HashSet<string> ExpectedAtomicFallbacks = new(StringComparer.OrdinalIgnoreCase)
+    // ThorVG 1.1.1 renders the base artwork but omits feColorMatrix. Keeping
+    // that bounded, self-contained degradation is preferable to replacing an
+    // otherwise usable image with an unavailable placeholder.
+    private static readonly HashSet<string> ExpectedVisualFallbacks = new(StringComparer.OrdinalIgnoreCase)
     {
-        "08-filters/drop-shadow.svg",
         "08-filters/color-matrix.svg",
-        "15-flying-pig/gradient-shadow.svg",
     };
 
     public static IEnumerable<object[]> Fixtures()
@@ -72,17 +70,18 @@ public sealed class SvgComplianceTests
         int h = (int)Math.Round(ih);
         Assert.True(w > 0 && h > 0, $"fixture {fixtureRelPath} has zero-sized intrinsic ({w}×{h})");
 
-        if (ExpectedAtomicFallbacks.Contains(fixtureRelPath))
-        {
-            Assert.Null(ThorVgFeature.Rasterize(svg, w, h));
-            return;
-        }
-
         // 1) ThorVG render. Every fixture in the explicitly supported subset
-        // must succeed; unsupported primitives are handled above.
+        // must succeed. The resource budget rejects unsupported or excessive
+        // filter graphs before rasterization; bounded standard filters are
+        // compared against the browser like every other supported fixture.
         var raster = ThorVgFeature.Rasterize(svg, w, h);
         Assert.NotNull(raster);
         Assert.Equal(w * h * 4, raster!.BgraPremultipliedPixels.Length);
+        if (ExpectedVisualFallbacks.Contains(fixtureRelPath))
+        {
+            Assert.Contains(raster.BgraPremultipliedPixels.ToArray(), static channel => channel != 0);
+            return;
+        }
 
         byte[] oursRgba = PixelComparer.BgraPremulToRgba(
             raster.BgraPremultipliedPixels.ToArray(),

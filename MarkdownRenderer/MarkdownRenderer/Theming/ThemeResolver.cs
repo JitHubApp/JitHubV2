@@ -60,7 +60,8 @@ internal sealed class ThemeResolver
     private readonly IMarkdownSystemThemeProvider _systemTheme;
     private readonly bool _isHighContrast;
     private PlatformThemeColors? _platformThemeColors;
-    private Dictionary<string, object>? _capturedMarkdownResources;
+    private Dictionary<string, object>? _resolvedResourceValues;
+    private HashSet<string>? _missingResourceKeys;
 
     internal static IMarkdownSystemThemeProvider? SystemThemeProviderOverride { get; set; }
 
@@ -90,9 +91,17 @@ internal sealed class ThemeResolver
     /// </summary>
     public ThemeSnapshot CreateSnapshot(
         MarkdownStyleSheet? styleSheet = null,
-        double textScaleFactor = 1.0)
+        double textScaleFactor = 1.0,
+        IReadOnlyCollection<string>? additionalElementKeys = null)
     {
-        _capturedMarkdownResources = CaptureMarkdownResources();
+        // ResourceDictionary.Keys is a WinRT projection. Enumerating an app-level
+        // dictionary also projects the keys from every merged dictionary,
+        // including the very large XamlControlsResources graph. A one-time
+        // "discovery" pass can therefore block the UI thread for seconds. Resolve
+        // only the finite keys needed by the active document and memoize those
+        // point lookups for this immutable snapshot instead.
+        _resolvedResourceValues = new Dictionary<string, object>(StringComparer.Ordinal);
+        _missingResourceKeys = new HashSet<string>(StringComparer.Ordinal);
         var overrides = _theme.GetOverridesSnapshot();
         var allKeys = new HashSet<string>(BuiltInElementKeys, StringComparer.Ordinal);
         foreach (string key in overrides.Keys)
@@ -107,17 +116,13 @@ internal sealed class ThemeResolver
                 allKeys.Add(rule.Selector.Role.Name);
         }
 
-        if (_capturedMarkdownResources is { } capturedResources)
+        if (additionalElementKeys is not null)
         {
-            foreach (string resourceKey in capturedResources.Keys)
+            foreach (string elementKey in additionalElementKeys)
             {
-                if (MarkdownResourceKeys.TryGetStyleRoleName(resourceKey, out string roleName))
-                    allKeys.Add(roleName);
+                if (!string.IsNullOrWhiteSpace(elementKey))
+                    allKeys.Add(elementKey);
             }
-        }
-        else
-        {
-            TryCollectResourceRoleNames(allKeys);
         }
 
         var dict = new Dictionary<string, ElementStyle>(allKeys.Count, StringComparer.Ordinal);
@@ -613,17 +618,27 @@ internal sealed class ThemeResolver
 
     private bool TryResolveResourceValue(string resourceKey, out object value)
     {
-        if (_capturedMarkdownResources is { } capturedResources &&
+        if (_resolvedResourceValues is { } resolvedResources &&
             resourceKey.StartsWith(MarkdownResourceKeys.Prefix, StringComparison.Ordinal))
         {
-            return capturedResources.TryGetValue(resourceKey, out value!);
+            if (resolvedResources.TryGetValue(resourceKey, out value!))
+                return true;
+            if (_missingResourceKeys?.Contains(resourceKey) == true)
+            {
+                value = null!;
+                return false;
+            }
         }
 
         try
         {
             if (TryResolveScopedResourceValue(resourceKey, out value) ||
                 TryResolveApplicationResourceValue(resourceKey, out value))
+            {
+                if (resourceKey.StartsWith(MarkdownResourceKeys.Prefix, StringComparison.Ordinal))
+                    _resolvedResourceValues?[resourceKey] = value;
                 return true;
+            }
         }
         catch (Exception ex)
         {
@@ -632,6 +647,8 @@ internal sealed class ThemeResolver
         }
 
         value = null!;
+        if (resourceKey.StartsWith(MarkdownResourceKeys.Prefix, StringComparison.Ordinal))
+            _missingResourceKeys?.Add(resourceKey);
         return false;
     }
 
@@ -657,10 +674,16 @@ internal sealed class ThemeResolver
 
     private bool TryResolveExplicitScopedResourceValue(string resourceKey, out object value)
     {
-        if (_capturedMarkdownResources is { } capturedResources &&
+        if (_resolvedResourceValues is { } resolvedResources &&
             IsScopedPlatformResourceKey(resourceKey))
         {
-            return capturedResources.TryGetValue(resourceKey, out value!);
+            if (resolvedResources.TryGetValue(resourceKey, out value!))
+                return true;
+            if (_missingResourceKeys?.Contains(resourceKey) == true)
+            {
+                value = null!;
+                return false;
+            }
         }
 
         try
@@ -678,6 +701,8 @@ internal sealed class ThemeResolver
                         visited,
                         out value))
                 {
+                    if (IsScopedPlatformResourceKey(resourceKey))
+                        _resolvedResourceValues?[resourceKey] = value;
                     return true;
                 }
 
@@ -691,6 +716,8 @@ internal sealed class ThemeResolver
         }
 
         value = null!;
+        if (IsScopedPlatformResourceKey(resourceKey))
+            _missingResourceKeys?.Add(resourceKey);
         return false;
     }
 
@@ -698,14 +725,10 @@ internal sealed class ThemeResolver
     {
         if (Application.Current?.Resources is { } applicationResources)
         {
-            IReadOnlyList<string> themeKeys = GetThemeDictionaryKeys();
-            var visited = new HashSet<ResourceDictionary>(ReferenceEqualityComparer.Instance);
-            return TryResolveExplicitFromDictionary(
-                applicationResources,
-                themeKeys,
-                resourceKey,
-                visited,
-                out value);
+            // ResourceDictionary performs its own indexed lookup across merged
+            // dictionaries and the active application theme. Avoid manually
+            // walking and enumerating the app graph for every renderer snapshot.
+            return applicationResources.TryGetValue(resourceKey, out value);
         }
 
         value = null!;
@@ -854,82 +877,6 @@ internal sealed class ThemeResolver
     private static bool HasExplicitResourceKey(ResourceDictionary resources, string resourceKey)
         => RelevantResourceKeys.ContainsRelevantKey(resources, resourceKey);
 
-    private Dictionary<string, object>? CaptureMarkdownResources()
-    {
-        try
-        {
-            IReadOnlyList<string> themeKeys = GetThemeDictionaryKeys();
-            var values = new Dictionary<string, object>(StringComparer.Ordinal);
-            var visited = new HashSet<ResourceDictionary>(ReferenceEqualityComparer.Instance);
-            DependencyObject? current = _host;
-            while (current is not null)
-            {
-                if (current is FrameworkElement element)
-                {
-                    CaptureMarkdownResources(
-                        element.Resources,
-                        themeKeys,
-                        visited,
-                        values,
-                        IncludeScopedRendererResource);
-                }
-                current = VisualTreeHelper.GetParent(current);
-            }
-
-            if (Application.Current?.Resources is { } applicationResources)
-            {
-                CaptureMarkdownResources(
-                    applicationResources,
-                    themeKeys,
-                    visited,
-                    values,
-                    IncludeMarkdownResource);
-            }
-
-            return values;
-        }
-        catch (Exception ex)
-        {
-            // A custom ResourceDictionary projection can fail while it is being
-            // mutated. Preserve the prior per-key resolver as a correctness
-            // fallback for this one immutable snapshot.
-            MarkdownDiagnostics.WriteLine(
-                $"[ThemeResolver] Bulk markdown-resource capture failed: {ex.Message}");
-            return null;
-        }
-    }
-
-    private static void CaptureMarkdownResources(
-        ResourceDictionary resources,
-        IReadOnlyList<string> themeKeys,
-        HashSet<ResourceDictionary> visited,
-        IDictionary<string, object> values,
-        Predicate<string> includeKey)
-    {
-        ResourceDictionaryGraphResolver.CaptureResolvedValues(
-            resources,
-            themeKeys,
-            visited,
-            static (dictionary, key) =>
-                dictionary.ThemeDictionaries.TryGetValue(key, out object? selected) &&
-                selected is ResourceDictionary selectedDictionary
-                    ? selectedDictionary
-                    : null,
-            EnumerateRelevantResourceKeys,
-            static (ResourceDictionary dictionary, string key, out object result) =>
-                dictionary.TryGetValue(key, out result),
-            static dictionary => dictionary.MergedDictionaries.Count,
-            static (dictionary, index) => dictionary.MergedDictionaries[index],
-            includeKey,
-            values);
-    }
-
-    private static bool IncludeMarkdownResource(string key)
-        => key.StartsWith(MarkdownResourceKeys.Prefix, StringComparison.Ordinal);
-
-    private static bool IncludeScopedRendererResource(string key)
-        => IncludeMarkdownResource(key) || IsScopedPlatformResourceKey(key);
-
     internal static bool IsScopedPlatformResourceKey(string key)
         => key is
             "TextControlForegroundFocused" or
@@ -958,6 +905,10 @@ internal sealed class ThemeResolver
             "SystemControlFocusVisualPrimaryBrush" or
             "FocusVisualPrimaryBrush";
 
+    private static bool IncludeScopedRendererResource(string key)
+        => key.StartsWith(MarkdownResourceKeys.Prefix, StringComparison.Ordinal) ||
+            IsScopedPlatformResourceKey(key);
+
     internal static void InvalidateResourceKeyCache()
         => RelevantResourceKeys.Invalidate();
 
@@ -971,78 +922,6 @@ internal sealed class ThemeResolver
             if (key is string text)
                 yield return text;
         }
-    }
-
-    private void TryCollectResourceRoleNames(HashSet<string> roles)
-    {
-        try
-        {
-            IReadOnlyList<string> themeKeys = GetThemeDictionaryKeys();
-            var visited = new HashSet<ResourceDictionary>(ReferenceEqualityComparer.Instance);
-            DependencyObject? current = _host;
-            while (current is not null)
-            {
-                if (current is FrameworkElement element)
-                    CollectResourceRoleNames(element.Resources, themeKeys, roles, visited);
-                current = VisualTreeHelper.GetParent(current);
-            }
-
-            if (Application.Current?.Resources is { } applicationResources)
-                CollectResourceRoleNames(applicationResources, themeKeys, roles, visited);
-        }
-        catch (Exception ex)
-        {
-            // Keep the built-in, theme-override, and style-sheet roles already
-            // collected. Per-key lookup is independently guarded, so a custom
-            // dictionary being mutated cannot abort the whole snapshot.
-            MarkdownDiagnostics.WriteLine(
-                $"[ThemeResolver] Markdown resource-role discovery failed: {ex.Message}");
-        }
-    }
-
-    private static void CollectResourceRoleNames(
-        ResourceDictionary resources,
-        IReadOnlyList<string> themeKeys,
-        HashSet<string> roles,
-        HashSet<ResourceDictionary> visited)
-    {
-        // Resource dictionaries may be shared by several ancestor scopes and
-        // custom hosts can construct cyclic merged-dictionary graphs in code.
-        // Walk each dictionary once so one restyle remains bounded by the
-        // number of distinct dictionaries rather than paths through the graph.
-        if (!visited.Add(resources))
-            return;
-
-        foreach (string resourceKey in EnumerateRelevantResourceKeys(resources))
-        {
-            if (MarkdownResourceKeys.TryGetStyleRoleName(resourceKey, out string roleName))
-                roles.Add(roleName);
-        }
-
-        // Match WinUI's dictionary search: local, reverse merged, then exactly
-        // one active theme dictionary selected from the ordered fallback keys.
-        for (int index = resources.MergedDictionaries.Count - 1; index >= 0; index--)
-        {
-            CollectResourceRoleNames(
-                resources.MergedDictionaries[index],
-                themeKeys,
-                roles,
-                visited);
-        }
-
-        ResourceDictionary? themeDictionary = null;
-        for (int index = 0; index < themeKeys.Count; index++)
-        {
-            if (resources.ThemeDictionaries.TryGetValue(themeKeys[index], out object? selectedTheme) &&
-                selectedTheme is ResourceDictionary selectedDictionary)
-            {
-                themeDictionary = selectedDictionary;
-                break;
-            }
-        }
-
-        if (themeDictionary is not null)
-            CollectResourceRoleNames(themeDictionary, themeKeys, roles, visited);
     }
 
     private static bool TryExtractColor(object value, out Color color)

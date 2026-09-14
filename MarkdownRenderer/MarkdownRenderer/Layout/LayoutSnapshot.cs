@@ -551,6 +551,106 @@ internal sealed class LayoutSnapshot : System.IDisposable
         }
     }
 
+    /// <summary>
+    /// Remeasures only the top-level owners of asynchronously changed content,
+    /// then repositions their trailing siblings using already committed heights.
+    /// This keeps a late image from rebuilding every DirectWrite text layout in
+    /// the document while preserving exact downstream geometry.
+    /// </summary>
+    internal void RelayoutChangedBlocks(
+        IReadOnlyCollection<int> changedBlockIndices,
+        float availableWidth,
+        CancellationToken cancellationToken)
+    {
+        ArgumentNullException.ThrowIfNull(changedBlockIndices);
+        if (changedBlockIndices.Count == 0)
+            return;
+
+        using var cancellationScope = LayoutPassCancellation.Push(cancellationToken);
+        lock (_layoutLock)
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+            float normalizedWidth = Math.Max(1f, availableWidth);
+            if (Math.Abs(normalizedWidth - _availableWidth) > 0.5f)
+            {
+                // Width changes affect line wrapping in every measured block
+                // and therefore still require the complete relayout contract.
+                RelayoutMeasuredBlocks(normalizedWidth, cancellationToken);
+                return;
+            }
+
+            var changedOrdinals = new HashSet<int>();
+            int firstChangedOrdinal = Blocks.Count;
+            bool hasUnknownOwner = false;
+            foreach (int blockIndex in changedBlockIndices)
+            {
+                if (!_topLevelOrdinalByBlockIndex.TryGetValue(blockIndex, out int ordinal))
+                {
+                    hasUnknownOwner = true;
+                    continue;
+                }
+
+                changedOrdinals.Add(ordinal);
+                firstChangedOrdinal = Math.Min(firstChangedOrdinal, ordinal);
+            }
+
+            if (hasUnknownOwner)
+            {
+                // A custom box can raise completion without participating in
+                // the normal block-index contract. Preserve its loaded state,
+                // but fall back to the established whole-tree relayout so its
+                // new intrinsic size cannot leave committed geometry stale.
+                RelayoutMeasuredBlocks(normalizedWidth, cancellationToken);
+                return;
+            }
+
+            if (changedOrdinals.Count == 0)
+                return;
+
+            float contentWidth = GetContentWidthNoLock();
+            float contentX = (float)_documentPadding.Left;
+            float y = firstChangedOrdinal == 0
+                ? (float)_documentPadding.Top
+                : (float)Blocks[firstChangedOrdinal - 1].Bounds.Bottom + _blockSpacing;
+
+            for (int n = firstChangedOrdinal; n < Blocks.Count; n++)
+            {
+                cancellationToken.ThrowIfCancellationRequested();
+                BlockBox block = Blocks[n];
+                bool measured = !_lazyLayoutEnabled ||
+                    (_measuredTopLevelBlocks is not null && _measuredTopLevelBlocks[n]);
+                float height;
+                if (measured)
+                {
+                    if (changedOrdinals.Contains(n))
+                    {
+                        block.ThrowIfCancellationRequested();
+                        height = block.Measure(contentWidth);
+                        _sharedLayoutMetrics?.RecordHeight(n, height);
+                    }
+                    else
+                    {
+                        height = (float)block.Bounds.Height;
+                    }
+
+                    block.Arrange(contentX, y, contentWidth);
+                }
+                else
+                {
+                    height = EstimateHeight(block, n);
+                    block.ArrangeEstimated(contentX, y, contentWidth, height);
+                }
+
+                AdvanceBlock(ref y, height, n);
+            }
+
+            y += (float)_documentPadding.Bottom;
+            _size = new Size(_availableWidth, y);
+            RefreshViewportIndexNoLock();
+            _layoutRevision++;
+        }
+    }
+
     internal bool IsTopLevelBlockMeasured(BlockBox block)
     {
         lock (_layoutLock)
