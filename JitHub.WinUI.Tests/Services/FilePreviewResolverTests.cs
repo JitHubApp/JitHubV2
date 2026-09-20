@@ -105,6 +105,7 @@ public class FilePreviewResolverTests
     [InlineData(".heic", "image/heif")]
     [InlineData(".heif", "image/heif")]
     [InlineData(".webp", "image/webp")]
+    [InlineData(".avif", "image/avif")]
     public void Resolve_ImageExtension_ReturnsImageKindWithCorrectMime(string ext, string expectedMime)
     {
         var resolver = CreateResolver();
@@ -156,6 +157,31 @@ public class FilePreviewResolverTests
         var result = resolver.Resolve("README.md", size, TextBytes("# large readme"));
 
         Assert.Equal(RepoFilePreviewKind.Markdown, result.Kind);
+    }
+
+    [Theory]
+    [InlineData("README.rst")]
+    [InlineData("readme.adoc")]
+    [InlineData("README.asciidoc")]
+    [InlineData("README.org")]
+    [InlineData("README.textile")]
+    public void Resolve_GitHubMarkupReadme_UsesNativeRichPreview(string path)
+    {
+        FilePreviewDescriptor result = CreateResolver().Resolve(path, 100, TextBytes("heading"));
+
+        Assert.Equal(RepoFilePreviewKind.Markdown, result.Kind);
+        Assert.Equal("github-readme-html", result.LanguageId);
+    }
+
+    [Fact]
+    public void Resolve_NonReadmeRst_RemainsCode()
+    {
+        FilePreviewDescriptor result = CreateResolver().Resolve(
+            "docs/guide.rst",
+            100,
+            TextBytes("Guide"));
+
+        Assert.Equal(RepoFilePreviewKind.Code, result.Kind);
     }
 
     [Fact]

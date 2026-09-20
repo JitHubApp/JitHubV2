@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using System.Numerics;
+using System.Runtime.InteropServices;
 using System.Threading;
 using Microsoft.Graphics.Canvas;
 using Microsoft.Graphics.Canvas.Geometry;
@@ -19,6 +20,13 @@ namespace MarkdownRenderer.Layout;
 /// </summary>
 internal sealed class VectorSceneDrawing : IDisposable
 {
+    // DirectWrite rejects extremely large requested layout dimensions even
+    // when they are finite.  float.MaxValue also makes its internal glyph
+    // arithmetic overflow for sufficiently long labels.  Vector scenes are
+    // already bounded, so use a generous finite canvas instead of pretending
+    // that the text has an infinite layout surface.
+    private const float MaximumTextLayoutDimension = 1_000_000f;
+
     private readonly MarkdownVectorScene _scene;
     private readonly CanvasGeometry?[] _geometries;
     private readonly CanvasTextLayout?[] _textLayouts;
@@ -81,12 +89,29 @@ internal sealed class VectorSceneDrawing : IDisposable
                     };
                     try
                     {
-                        _textLayouts[i] = new CanvasTextLayout(
-                            resourceCreator,
+                        (float layoutWidth, float layoutHeight) = ResolveTextLayoutSize(
+                            scene,
                             text,
-                            format,
-                            float.MaxValue,
-                            float.MaxValue);
+                            textStyle);
+                        try
+                        {
+                            _textLayouts[i] = new CanvasTextLayout(
+                                resourceCreator,
+                                text,
+                                format,
+                                layoutWidth,
+                                layoutHeight);
+                        }
+                        catch (Exception exception) when (
+                            exception is ArgumentException or COMException)
+                        {
+                            throw new ArgumentException(
+                                $"Win2D rejected vector text command {i} " +
+                                $"(length={text.Length}, family='{format.FontFamily}', " +
+                                $"size={format.FontSize}, weight={format.FontWeight.Weight}, " +
+                                $"layout={layoutWidth}x{layoutHeight}).",
+                                exception);
+                        }
                     }
                     finally
                     {
@@ -528,10 +553,36 @@ internal sealed class VectorSceneDrawing : IDisposable
         string? hostFontFamily)
     {
         ArgumentNullException.ThrowIfNull(style);
-        return style.FontRole == MarkdownVectorFontRole.Host &&
+        string selected = style.FontRole == MarkdownVectorFontRole.Host &&
                !string.IsNullOrWhiteSpace(hostFontFamily)
             ? hostFontFamily.Trim()
             : style.FontFamily;
+        return SharedCanvasTextFormatCache.NormalizeFontFamilyForCanvas(selected);
+    }
+
+    internal static (float Width, float Height) ResolveTextLayoutSize(
+        MarkdownVectorScene scene,
+        string text,
+        MarkdownVectorTextStyle style)
+    {
+        ArgumentNullException.ThrowIfNull(scene);
+        ArgumentNullException.ThrowIfNull(text);
+        ArgumentNullException.ThrowIfNull(style);
+
+        // NoWrap keeps the authored line intact.  The estimate merely gives
+        // DirectWrite enough finite measuring space; it does not scale or
+        // otherwise alter the scene.  Use double arithmetic so adversarially
+        // long labels cannot overflow before the clamp is applied.
+        double estimatedTextWidth = checked((double)text.Length) * style.FontSize * 2d + 64d;
+        double width = Math.Max(
+            Math.Max(scene.Width, scene.Viewport.Width),
+            estimatedTextWidth);
+        double height = Math.Max(
+            Math.Max(scene.Height, scene.Viewport.Height),
+            style.FontSize * 4d + 64d);
+        return (
+            (float)Math.Clamp(width, 1d, MaximumTextLayoutDimension),
+            (float)Math.Clamp(height, 1d, MaximumTextLayoutDimension));
     }
 
     private static bool TryResolveColor(

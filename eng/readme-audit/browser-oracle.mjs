@@ -156,13 +156,32 @@ try {
         try {
           const url = new URL(value, location.href);
           url.hash = "";
+          if (url.searchParams.size === 1 && url.searchParams.get("raw") === "true") {
+            url.search = "";
+          }
+          const host = url.hostname.toLowerCase();
+          const segments = url.pathname.split("/").filter(Boolean);
+          if (host === "github.com" && segments.length >= 5 &&
+              (segments[2] === "blob" || segments[2] === "raw")) {
+            return "github-asset://" + segments[0].toLowerCase() + "/" +
+              segments[1].toLowerCase() + "/" + segments[3] + "/" + segments.slice(4).join("/");
+          }
+          if (host === "raw.githubusercontent.com" && segments.length >= 4) {
+            return "github-asset://" + segments[0].toLowerCase() + "/" +
+              segments[1].toLowerCase() + "/" + segments[2] + "/" + segments.slice(3).join("/");
+          }
           return url.href;
         } catch {
           return "";
         }
       };
       const href = normalized(node.href);
-      return href && [image.currentSrc, image.src]
+      return href && [
+        image.currentSrc,
+        image.src,
+        image.getAttribute("src"),
+        image.getAttribute("data-canonical-src"),
+      ]
         .map(normalized)
         .some(source => source === href);
     };
@@ -172,6 +191,7 @@ try {
         const bounds = image.getBoundingClientRect();
         return {
           alt: image.getAttribute("alt") || "",
+          hasExplicitAlt: image.hasAttribute("alt"),
           source: image.getAttribute("src") || "",
           currentSource: image.currentSrc || "",
           complete: image.complete,
@@ -194,7 +214,9 @@ try {
     // rendered images' alt values to compare equivalent accessible documents.
     const accessibleText = clean([
       article.innerText,
-      ...images.map(image => image.alt).filter(Boolean),
+      ...images
+        .map(image => image.alt || (!image.hasExplicitAlt ? "Image" : ""))
+        .filter(Boolean),
     ].join(" "));
     return {
       finalUrl: location.href,

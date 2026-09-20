@@ -73,7 +73,18 @@ internal static class SvgStaticSnapshot
             foreach (XmlElement foreignObject in foreignObjects)
             {
                 cancellationToken.ThrowIfCancellationRequested();
-                if (TryCreatePlainTextReplacement(document, foreignObject, out XmlElement replacement))
+                if (HasSwitchFallback(foreignObject))
+                {
+                    // Draw.io and similar exporters put an XHTML label first in
+                    // <switch> and a native SVG <text> fallback second. The
+                    // XHTML branch is executable web content and never crosses
+                    // the renderer boundary; retaining the authored SVG branch
+                    // gives resvg the same safe fallback a non-HTML user agent
+                    // selects.
+                    foreignObject.ParentNode?.RemoveChild(foreignObject);
+                    changed = true;
+                }
+                else if (TryCreatePlainTextReplacement(document, foreignObject, out XmlElement replacement))
                 {
                     foreignObject.ParentNode?.ReplaceChild(replacement, foreignObject);
                     changed = true;
@@ -83,7 +94,7 @@ internal static class SvgStaticSnapshot
             foreach (XmlElement style in styleElements)
             {
                 cancellationToken.ThrowIfCancellationRequested();
-                if (TryRemoveFontFaceRules(style.InnerText, out string sanitizedCss))
+                if (TryCreateStaticStyleSheet(style.InnerText, out string sanitizedCss))
                 {
                     style.InnerText = sanitizedCss;
                     changed = true;
@@ -113,6 +124,31 @@ internal static class SvgStaticSnapshot
             // report its normal typed invalid-XML failure.
             return bytes;
         }
+    }
+
+    private static bool HasSwitchFallback(XmlElement foreignObject)
+    {
+        if (foreignObject.ParentNode is not XmlElement parent ||
+            (!string.IsNullOrEmpty(parent.NamespaceURI) &&
+                !parent.NamespaceURI.Equals(SvgNamespace, StringComparison.Ordinal)) ||
+            !parent.LocalName.Equals("switch", StringComparison.OrdinalIgnoreCase))
+        {
+            return false;
+        }
+
+        foreach (XmlNode sibling in parent.ChildNodes)
+        {
+            if (ReferenceEquals(sibling, foreignObject) || sibling is not XmlElement element)
+                continue;
+            if ((string.IsNullOrEmpty(element.NamespaceURI) ||
+                    element.NamespaceURI.Equals(SvgNamespace, StringComparison.Ordinal)) &&
+                !element.LocalName.Equals("foreignObject", StringComparison.OrdinalIgnoreCase))
+            {
+                return true;
+            }
+        }
+
+        return false;
     }
 
     private static List<XmlElement> FindAnimationElements(
@@ -202,38 +238,164 @@ internal static class SvgStaticSnapshot
         return result;
     }
 
-    private static bool TryRemoveFontFaceRules(string css, out string sanitized)
+    private static bool TryCreateStaticStyleSheet(string css, out string sanitized)
     {
-        const string directive = "@font-face";
-        var result = new StringBuilder(css.Length);
-        int cursor = 0;
-        bool removed = false;
-        while (TryFindCssToken(css, directive, cursor, out int start))
+        var removals = new List<(int Start, int Length)>();
+        foreach (string directive in new[] { "@font-face", "@keyframes", "@-webkit-keyframes" })
         {
-            int openingBrace = start + directive.Length;
-            while (openingBrace < css.Length && char.IsWhiteSpace(css[openingBrace]))
-                openingBrace++;
-            if (openingBrace >= css.Length || css[openingBrace] != '{' ||
-                !TryFindCssBlockEnd(css, openingBrace, out int end))
+            int cursor = 0;
+            while (TryFindCssToken(css, directive, cursor, out int start))
             {
-                sanitized = css;
-                return false;
-            }
+                int openingBrace = start + directive.Length;
+                while (openingBrace < css.Length && css[openingBrace] != '{')
+                    openingBrace++;
+                if (openingBrace >= css.Length ||
+                    !TryFindCssBlockEnd(css, openingBrace, out int end))
+                {
+                    sanitized = css;
+                    return false;
+                }
 
-            result.Append(css, cursor, start - cursor);
-            cursor = end + 1;
-            removed = true;
+                removals.Add((start, end + 1 - start));
+                cursor = end + 1;
+            }
         }
 
-        if (!removed)
+        if (!TryFindMotionDeclarations(css, removals))
         {
             sanitized = css;
             return false;
         }
 
-        result.Append(css, cursor, css.Length - cursor);
-        sanitized = result.ToString();
+        if (removals.Count == 0)
+        {
+            sanitized = css;
+            return false;
+        }
+
+        char[] result = css.ToCharArray();
+        foreach ((int start, int length) in removals)
+            Array.Fill(result, ' ', start, length);
+        sanitized = new string(result);
         return true;
+    }
+
+    private static bool TryFindMotionDeclarations(
+        string css,
+        List<(int Start, int Length)> removals)
+    {
+        int cursor = 0;
+        while (cursor < css.Length)
+        {
+            if (TrySkipCssTrivia(css, ref cursor))
+                continue;
+
+            int nameStart = cursor;
+            while (cursor < css.Length &&
+                (char.IsAsciiLetter(css[cursor]) || css[cursor] is '-' or '_'))
+            {
+                cursor++;
+            }
+            if (cursor == nameStart)
+            {
+                cursor++;
+                continue;
+            }
+
+            string property = css[nameStart..cursor];
+            int separator = cursor;
+            while (separator < css.Length && char.IsWhiteSpace(css[separator]))
+                separator++;
+            if (separator >= css.Length || css[separator] != ':')
+                continue;
+
+            bool isMotion = property.Equals("animation", StringComparison.OrdinalIgnoreCase) ||
+                property.StartsWith("animation-", StringComparison.OrdinalIgnoreCase) ||
+                property.Equals("transition", StringComparison.OrdinalIgnoreCase) ||
+                property.StartsWith("transition-", StringComparison.OrdinalIgnoreCase);
+            if (!isMotion)
+            {
+                cursor = separator + 1;
+                continue;
+            }
+
+            int end = separator + 1;
+            char quote = '\0';
+            int parentheses = 0;
+            bool encounteredNestedRule = false;
+            while (end < css.Length)
+            {
+                char current = css[end];
+                if (quote != '\0')
+                {
+                    if (current == '\\' && end + 1 < css.Length)
+                        end += 2;
+                    else
+                    {
+                        if (current == quote)
+                            quote = '\0';
+                        end++;
+                    }
+                    continue;
+                }
+                if (current is '\'' or '"')
+                    quote = current;
+                else if (current == '(')
+                    parentheses++;
+                else if (current == ')' && parentheses > 0)
+                    parentheses--;
+                else if (parentheses == 0 && current == '{')
+                {
+                    // A block opener before a declaration terminator means the
+                    // token was part of a selector or an at-rule prelude (for
+                    // example `.animation:hover { ... }`), not a property.
+                    encounteredNestedRule = true;
+                    break;
+                }
+                else if (parentheses == 0 && current is (';' or '}'))
+                    break;
+                end++;
+            }
+            if (quote != '\0' || parentheses != 0)
+                return false;
+            if (encounteredNestedRule)
+            {
+                cursor = end + 1;
+                continue;
+            }
+
+            if (end < css.Length && css[end] == ';')
+                end++;
+            removals.Add((nameStart, end - nameStart));
+            cursor = Math.Max(end, separator + 1);
+        }
+
+        return true;
+    }
+
+    private static bool TrySkipCssTrivia(string css, ref int cursor)
+    {
+        if (char.IsWhiteSpace(css[cursor]))
+        {
+            cursor++;
+            return true;
+        }
+        if (cursor + 1 < css.Length && css[cursor] == '/' && css[cursor + 1] == '*')
+        {
+            int end = css.IndexOf("*/", cursor + 2, StringComparison.Ordinal);
+            cursor = end < 0 ? css.Length : end + 2;
+            return true;
+        }
+        if (css[cursor] is '\'' or '"')
+        {
+            char quote = css[cursor++];
+            while (cursor < css.Length && css[cursor] != quote)
+                cursor += css[cursor] == '\\' && cursor + 1 < css.Length ? 2 : 1;
+            if (cursor < css.Length)
+                cursor++;
+            return true;
+        }
+        return false;
     }
 
     private static bool TryFindCssToken(string css, string token, int start, out int index)
@@ -769,13 +931,21 @@ internal static class SvgStaticSnapshot
         ReadOnlySpan<byte> discardMarker = "<discard"u8;
         ReadOnlySpan<byte> foreignObjectMarker = "<foreignObject"u8;
         ReadOnlySpan<byte> fontFaceMarker = "@font-face"u8;
+        ReadOnlySpan<byte> keyframesMarker = "@keyframes"u8;
+        ReadOnlySpan<byte> webkitKeyframesMarker = "@-webkit-keyframes"u8;
+        ReadOnlySpan<byte> animationMarker = "animation"u8;
+        ReadOnlySpan<byte> transitionMarker = "transition"u8;
         for (int index = 0; index < bytes.Length; index++)
         {
             if (AsciiStartsWithIgnoreCase(bytes[index..], marker) ||
                 AsciiStartsWithIgnoreCase(bytes[index..], setMarker) ||
                 AsciiStartsWithIgnoreCase(bytes[index..], discardMarker) ||
                 AsciiStartsWithIgnoreCase(bytes[index..], foreignObjectMarker) ||
-                AsciiStartsWithIgnoreCase(bytes[index..], fontFaceMarker))
+                AsciiStartsWithIgnoreCase(bytes[index..], fontFaceMarker) ||
+                AsciiStartsWithIgnoreCase(bytes[index..], keyframesMarker) ||
+                AsciiStartsWithIgnoreCase(bytes[index..], webkitKeyframesMarker) ||
+                AsciiStartsWithIgnoreCase(bytes[index..], animationMarker) ||
+                AsciiStartsWithIgnoreCase(bytes[index..], transitionMarker))
             {
                 return true;
             }

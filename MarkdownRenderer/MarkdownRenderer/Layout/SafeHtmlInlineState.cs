@@ -199,7 +199,8 @@ internal sealed class SafeHtmlInlineState
             return null;
         }
 
-        string alt = tag.TryGetAttribute("alt", out string altValue)
+        bool hasExplicitAlt = tag.TryGetAttribute("alt", out string altValue);
+        string alt = hasExplicitAlt
             ? altValue
             : context.ResolveString(MarkdownStringKeys.ImageName, MarkdownLocalizedStrings.ImageName);
         if (!_policy.EnableImages)
@@ -224,9 +225,7 @@ internal sealed class SafeHtmlInlineState
         Scope? link = FindLinkScope();
         return ApplyAliases(new InlineImageRun(
             context,
-            string.IsNullOrWhiteSpace(alt)
-                ? context.ResolveString(MarkdownStringKeys.ImageName, MarkdownLocalizedStrings.ImageName)
-                : alt,
+            alt,
             source,
             string.IsNullOrWhiteSpace(title) ? null : title,
             _policy.EnableLinks ? containingLinkUrl ?? link?.LinkUrl : null,

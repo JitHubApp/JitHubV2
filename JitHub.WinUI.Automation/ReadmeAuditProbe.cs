@@ -488,7 +488,10 @@ internal static partial class ReadmeAuditProbe
                 window,
                 TimeSpan.FromSeconds(60),
                 Path.Combine(output, "host-timeout.png"));
-            WaitForSignal(renderComplete, TimeSpan.FromSeconds(45));
+            WaitForRenderSignal(
+                renderComplete,
+                renderFailure,
+                TimeSpan.FromSeconds(45));
             double coldStartToFirstRenderMs = wall.Elapsed.TotalMilliseconds;
             double experienceFirstRenderMs = coldStartToFirstRenderMs - appReadyElapsedMs;
             double firstRenderMs = ReadSignalElapsedMilliseconds(hostReady, renderComplete);
@@ -739,19 +742,27 @@ internal static partial class ReadmeAuditProbe
             .OrderBy(group => group.Key, StringComparer.Ordinal)
             .ToDictionary(group => group.Key, group => group.Count(), StringComparer.Ordinal);
         WriteJson(Path.Combine(output, "automation-semantics.json"), automationSemanticHistogram);
-        WriteJson(
-            Path.Combine(output, "automation-links.json"),
-            descendants
-                .Where(element => element.ControlType == ControlType.Hyperlink)
-                .Select(element => new
-                {
-                    element.Name,
-                    element.ClassName,
-                    HelpText = element.Properties.HelpText.ValueOrDefault,
-                })
-                .ToArray());
+        var nativeLinks = descendants
+            .Where(element => element.ControlType == ControlType.Hyperlink)
+            .Select(element => new
+            {
+                Name = ReadAutomationString(() => element.Name),
+                ClassName = ReadAutomationString(() => element.ClassName),
+                HelpText = ReadAutomationString(
+                    () => element.Properties.HelpText.ValueOrDefault),
+            })
+            .ToArray();
+        WriteJson(Path.Combine(output, "automation-links.json"), nativeLinks);
         headingObservations = descendants.Count(element => element.ControlType == ControlType.Header);
-        linkObservations = descendants.Count(element => element.ControlType == ControlType.Hyperlink);
+        // A single authored anchor can expose multiple UIA hyperlink fragments
+        // (for example, linked text adjacent to a linked image). Compare logical
+        // destinations rather than raw peers so accessibility fragmentation is
+        // retained as evidence without being mistaken for extra document links.
+        linkObservations = nativeLinks
+            .Select(link => link.HelpText)
+            .Where(destination => !string.IsNullOrWhiteSpace(destination))
+            .Distinct(StringComparer.OrdinalIgnoreCase)
+            .Count();
         imageObservations = descendants.Count(element => element.ControlType == ControlType.Image);
         tableObservations = descendants.Count(element => element.ControlType == ControlType.Table);
         codeBlockObservations = descendants.Count(element =>
@@ -859,18 +870,23 @@ internal static partial class ReadmeAuditProbe
             ? double.PositiveInfinity
             : native.FullTraversalMs / browser.Timing.SettledReadmeMs;
         int browserDistinctImages = browser.Semantic.Images
-            .Where(image => image.Complete && image.NaturalWidth > 0)
+            .Where(IsVisibleRenderedBrowserImage)
             .Select(image => string.IsNullOrWhiteSpace(image.CurrentSource)
                 ? image.Source
                 : image.CurrentSource)
             .Where(source => !string.IsNullOrWhiteSpace(source))
             .Distinct(StringComparer.Ordinal)
             .Count();
+        int browserDistinctLinks = browser.Semantic.Links
+            .Select(link => link.Href)
+            .Where(destination => !string.IsNullOrWhiteSpace(destination))
+            .Distinct(StringComparer.OrdinalIgnoreCase)
+            .Count();
         double headingFidelity = CountFidelity(
             browser.Semantic.Headings.Count,
             native.HeadingObservations);
         double linkFidelity = CountFidelity(
-            browser.Semantic.Links.Count,
+            browserDistinctLinks,
             native.LinkObservations);
         // Browser image failures remain reference evidence, but a transient Edge
         // download failure must not penalize JitHub for successfully rendering the
@@ -923,7 +939,7 @@ internal static partial class ReadmeAuditProbe
             NativeImageSourceCount = native.ImageSourceCount,
             BrowserHeadingCount = browser.Semantic.Headings.Count,
             NativeHeadingObservations = native.HeadingObservations,
-            BrowserLinkCount = browser.Semantic.Links.Count,
+            BrowserLinkCount = browserDistinctLinks,
             NativeLinkObservations = native.LinkObservations,
             BrowserTableCount = browser.Semantic.Tables,
             NativeTableObservations = native.TableObservations,
@@ -1458,6 +1474,30 @@ internal static partial class ReadmeAuditProbe
         throw new TimeoutException($"Timed out waiting for '{Path.GetFileName(path)}'.");
     }
 
+    private static void WaitForRenderSignal(
+        string completionPath,
+        string failurePath,
+        TimeSpan timeout)
+    {
+        Stopwatch stopwatch = Stopwatch.StartNew();
+        while (stopwatch.Elapsed < timeout)
+        {
+            if (File.Exists(completionPath))
+                return;
+            if (File.Exists(failurePath))
+            {
+                string details;
+                try { details = File.ReadAllText(failurePath); }
+                catch (IOException) { details = "The renderer reported a failure."; }
+                throw new InvalidOperationException(
+                    $"Native Markdown rendering failed before completion.{Environment.NewLine}{details}");
+            }
+            Thread.Sleep(50);
+        }
+        throw new TimeoutException(
+            $"Timed out waiting for '{Path.GetFileName(completionPath)}'.");
+    }
+
     private static bool TryReadProcessId(string path, out int processId)
     {
         processId = 0;
@@ -1652,7 +1692,7 @@ internal static partial class ReadmeAuditProbe
         }
 
         string[] visibleSources = renderedBrowserImages
-            .Where(image => image.Complete && image.NaturalWidth > 0)
+            .Where(IsVisibleRenderedBrowserImage)
             .SelectMany(image => new[] { image.Source, image.CurrentSource })
             .Where(source => !string.IsNullOrWhiteSpace(source))
             .Distinct(StringComparer.OrdinalIgnoreCase)
@@ -1689,6 +1729,31 @@ internal static partial class ReadmeAuditProbe
         }
 
         return count;
+    }
+
+    private static bool IsVisibleRenderedBrowserImage(BrowserImage image) =>
+        image.Complete &&
+        image.NaturalWidth > 0 &&
+        image.NaturalHeight > 0 &&
+        image.RenderedWidth > 0 &&
+        image.RenderedHeight > 0;
+
+    private static string ReadAutomationString(Func<string?> read)
+    {
+        try
+        {
+            return read() ?? string.Empty;
+        }
+        catch (Exception exception) when (
+            exception is System.Runtime.InteropServices.COMException or
+            InvalidOperationException or
+            FlaUI.Core.Exceptions.PropertyNotSupportedException)
+        {
+            // UIA providers may expose a hyperlink while omitting one optional
+            // string property. Evidence collection must retain the element and
+            // leave that field empty instead of aborting the full-page audit.
+            return string.Empty;
+        }
     }
 
     private static bool ImageSourcesReferToSameAsset(string left, string right)

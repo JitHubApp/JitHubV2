@@ -8,6 +8,7 @@
     <WinUISDKReferences>false</WinUISDKReferences>
     <Nullable>enable</Nullable>
     <ImplicitUsings>enable</ImplicitUsings>
+    <DefineConstants>$(DefineConstants);MARKDOWNRENDERER_HTML</DefineConstants>
     <LangVersion>latest</LangVersion>
     <Platforms>x86;x64;ARM64</Platforms>
     <RuntimeIdentifiers>win-x86;win-x64;win-arm64</RuntimeIdentifiers>
@@ -36,6 +37,10 @@
   </PropertyGroup>
   <ItemGroup>
     <ProjectReference Include="..\MarkdownRenderer\MarkdownRenderer.csproj" />
+    <!-- Shared extension-child construction is compiled internally so the safe
+         HTML renderer can lower GitHub Markdown fragments without introducing a
+         package dependency from MarkdownRenderer.Html to MarkdownRenderer.Gfm. -->
+    <Compile Include="..\MarkdownRenderer.Gfm\GfmChildBuilder.cs" Link="Internal\GfmChildBuilder.cs" />
     <Compile Include="..\MarkdownRenderer.Gfm\Renderers\HtmlBlockRenderer.cs" Link="Renderers\HtmlBlockRenderer.cs" />
     <None Include="README.md" Pack="true" PackagePath="" />
     <None Include="..\..\LICENSE" Pack="true" PackagePath="" Visible="false" />

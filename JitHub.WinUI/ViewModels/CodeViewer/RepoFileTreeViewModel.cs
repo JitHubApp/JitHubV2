@@ -347,6 +347,28 @@ public sealed partial class RepoFileTreeViewModel : ObservableObject
         }
     }
 
+    internal async Task AwaitPendingReconciliationSettledAsync(CancellationToken token)
+    {
+        while (true)
+        {
+            Task pending;
+            lock (_reconciliationTaskGate)
+            {
+                pending = _ownedReconciliationTask;
+            }
+
+            await pending.WaitAsync(token).ConfigureAwait(false);
+
+            lock (_reconciliationTaskGate)
+            {
+                if (ReferenceEquals(pending, _ownedReconciliationTask))
+                {
+                    return;
+                }
+            }
+        }
+    }
+
     internal Task PrefetchNodeAsync(RepoTreeNodeViewModel node, CancellationToken ct) =>
         OnPrefetchNode?.Invoke(node, ct) ?? Task.CompletedTask;
 

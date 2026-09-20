@@ -1,5 +1,7 @@
 using System;
+using System.Collections.Generic;
 using MarkdownRenderer.Extensions;
+using MarkdownPipelineBuilder = Markdig.MarkdownPipelineBuilder;
 
 namespace MarkdownRenderer;
 
@@ -7,6 +9,7 @@ namespace MarkdownRenderer;
 public sealed class MarkdownEngineBuilder
 {
     private readonly MarkdownExtensionBuilder _extensions = new();
+    private readonly List<Action<MarkdownPipelineBuilder>> _pipelineConfigurations = [];
     private long _parseCacheBudgetBytes = MarkdownEngine.DefaultParseCacheBudgetBytes;
     private MarkdownParseLimits _parseLimits = MarkdownParseLimits.Default;
     private MarkdownProfile _profile = MarkdownProfiles.CommonMark;
@@ -27,6 +30,7 @@ public sealed class MarkdownEngineBuilder
         ArgumentNullException.ThrowIfNull(engine);
         _profile = engine.Profile;
         _extensions.Include(engine.Extensions);
+        _pipelineConfigurations.AddRange(engine.PipelineConfigurations);
         _parseCacheBudgetBytes = engine.ParseCacheBudgetBytes;
         _parseLimits = engine.ParseLimits;
         _presentationConfiguration = engine.PresentationConfiguration;
@@ -139,6 +143,19 @@ public sealed class MarkdownEngineBuilder
         return this;
     }
 
+    /// <summary>
+    /// Adds an AOT-safe parser pipeline contribution owned by an optional
+    /// feature pack. Presentation callbacks remain separate from syntax so the
+    /// engine and every control builder parse the same document shape.
+    /// </summary>
+    internal MarkdownEngineBuilder ConfigureParser(Action<MarkdownPipelineBuilder> configure)
+    {
+        ArgumentNullException.ThrowIfNull(configure);
+        if (!_pipelineConfigurations.Contains(configure))
+            _pipelineConfigurations.Add(configure);
+        return this;
+    }
+
     /// <summary>Includes a presentation snapshot when deriving another engine.</summary>
     internal MarkdownEngineBuilder IncludePresentation(
         IMarkdownPresentationConfiguration? configuration)
@@ -200,6 +217,7 @@ public sealed class MarkdownEngineBuilder
                 runtime.Extensions,
                 runtime.OwnedResources,
                 runtime.CallbackLifetime,
+                _pipelineConfigurations.ToArray(),
                 _parseCacheBudgetBytes,
                 _parseLimits,
                 presentation,

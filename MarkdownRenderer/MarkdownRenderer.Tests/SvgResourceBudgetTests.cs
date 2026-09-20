@@ -112,6 +112,21 @@ public sealed class SvgResourceBudgetTests
     }
 
     [Fact]
+    public void Validate_AcceptsMotionNamedSelectorsButRejectsMotionDeclarations()
+    {
+        SvgResourceBudgetResult selector = SvgResourceBudget.Validate(
+            Bytes("<svg><style>.animation:hover{fill:green}.transition[data-state='ready']{stroke:blue}</style></svg>"),
+            CancellationToken.None);
+        SvgResourceBudgetResult declaration = SvgResourceBudget.Validate(
+            Bytes("<svg><style>.a{animation : pulse 1s infinite}</style></svg>"),
+            CancellationToken.None);
+
+        Assert.True(selector.Accepted, selector.Reason);
+        Assert.False(declaration.Accepted);
+        Assert.Equal("active-content", declaration.Reason);
+    }
+
+    [Fact]
     public void Validate_CssNamespaceDoesNotHideAFollowingExternalResource()
     {
         byte[] bytes = Bytes(
@@ -328,6 +343,62 @@ public sealed class SvgResourceBudgetTests
         Assert.Contains("GITHUB TRENDING", text, StringComparison.Ordinal);
         Assert.Contains("text-anchor=\"middle\"", text, StringComparison.Ordinal);
         Assert.Contains("fill=\"rgb(67, 39, 135)\"", text, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void StaticSnapshot_SelectsNativeSvgFallbackFromSwitch()
+    {
+        byte[] source = Bytes(
+            "<svg xmlns='http://www.w3.org/2000/svg'><switch>" +
+            "<foreignObject width='100%' height='100%' requiredFeatures='http://www.w3.org/TR/SVG11/feature#Extensibility'>" +
+            "<div xmlns='http://www.w3.org/1999/xhtml' onclick='alert(1)'>web label</div>" +
+            "</foreignObject><text x='4' y='12'>safe fallback</text></switch></svg>");
+
+        byte[] snapshot = SvgStaticSnapshot.Create(source, CancellationToken.None);
+        string text = Encoding.UTF8.GetString(snapshot);
+        SvgResourceBudgetResult result = SvgResourceBudget.Validate(snapshot, CancellationToken.None);
+
+        Assert.True(result.Accepted, result.Reason);
+        Assert.DoesNotContain("foreignObject", text, StringComparison.OrdinalIgnoreCase);
+        Assert.DoesNotContain("onclick", text, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("safe fallback", text, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void StaticSnapshot_RemovesCssMotionAndKeepsStaticRules()
+    {
+        byte[] source = Bytes(
+            "<svg xmlns='http://www.w3.org/2000/svg'><style>" +
+            ".sprite{fill:#e07c4c;animation:jump .5s infinite;transition:opacity .2s}" +
+            "@keyframes jump{0%{transform:translateY(0)}50%{transform:translateY(-10px)}}" +
+            "</style><rect class='sprite' width='10' height='10'/></svg>");
+
+        byte[] snapshot = SvgStaticSnapshot.Create(source, CancellationToken.None);
+        string text = Encoding.UTF8.GetString(snapshot);
+        SvgResourceBudgetResult result = SvgResourceBudget.Validate(snapshot, CancellationToken.None);
+
+        Assert.True(result.Accepted, result.Reason);
+        Assert.DoesNotContain("@keyframes", text, StringComparison.OrdinalIgnoreCase);
+        Assert.DoesNotContain("animation", text, StringComparison.OrdinalIgnoreCase);
+        Assert.DoesNotContain("transition", text, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("fill:#e07c4c", text, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void StaticSnapshot_DoesNotTreatMotionNamedSelectorsAsDeclarations()
+    {
+        byte[] source = Bytes(
+            "<svg xmlns='http://www.w3.org/2000/svg'><style>" +
+            ".animation:hover{fill:#123456}.transition[data-state='ready']{stroke:#abcdef}" +
+            "</style><rect class='animation transition' data-state='ready' width='10' height='10'/></svg>");
+
+        byte[] snapshot = SvgStaticSnapshot.Create(source, CancellationToken.None);
+        string text = Encoding.UTF8.GetString(snapshot);
+        SvgResourceBudgetResult result = SvgResourceBudget.Validate(snapshot, CancellationToken.None);
+
+        Assert.True(result.Accepted, result.Reason);
+        Assert.Contains(".animation:hover{fill:#123456}", text, StringComparison.Ordinal);
+        Assert.Contains(".transition[data-state='ready']{stroke:#abcdef}", text, StringComparison.Ordinal);
     }
 
     [Theory]

@@ -22,12 +22,18 @@ public sealed class FilePreviewResolver : IFilePreviewResolver
     private static readonly HashSet<string> ImageExtensions = new(StringComparer.OrdinalIgnoreCase)
     {
         ".png", ".jpg", ".jpeg", ".gif", ".bmp", ".ico",
-        ".tif", ".tiff", ".heic", ".heif", ".webp",
+        ".tif", ".tiff", ".heic", ".heif", ".webp", ".avif",
     };
 
     private static readonly HashSet<string> MarkdownExtensions = new(StringComparer.OrdinalIgnoreCase)
     {
         ".md", ".markdown", ".mdx",
+    };
+
+    private static readonly HashSet<string> GitHubRenderedReadmeExtensions = new(StringComparer.OrdinalIgnoreCase)
+    {
+        ".adoc", ".asc", ".asciidoc", ".creole", ".mediawiki", ".org",
+        ".pod", ".rdoc", ".rest", ".rst", ".textile", ".wiki",
     };
 
     private readonly ILanguageIdResolver _languageResolver;
@@ -78,6 +84,16 @@ public sealed class FilePreviewResolver : IFilePreviewResolver
         {
             return byteSize <= MaximumMarkdownBytes
                 ? new FilePreviewDescriptor(RepoFilePreviewKind.Markdown, "markdown", null, false)
+                : new FilePreviewDescriptor(RepoFilePreviewKind.TooLarge, "text", null, false);
+        }
+
+        // GitHub Markup supports several README formats beyond Markdown. Their
+        // repository README endpoint returns inert rendered HTML, which the same
+        // native safe-HTML pipeline can display without hosting a browser.
+        if (IsGitHubRenderedReadmePath(path))
+        {
+            return byteSize <= MaximumMarkdownBytes
+                ? new FilePreviewDescriptor(RepoFilePreviewKind.Markdown, "github-readme-html", null, false)
                 : new FilePreviewDescriptor(RepoFilePreviewKind.TooLarge, "text", null, false);
         }
 
@@ -135,6 +151,14 @@ public sealed class FilePreviewResolver : IFilePreviewResolver
         return (double)nonPrintable / span.Length > NonPrintableThreshold;
     }
 
+    public static bool IsGitHubRenderedReadmePath(string path)
+    {
+        string fileName = Path.GetFileNameWithoutExtension(path);
+        string extension = Path.GetExtension(path);
+        return fileName.Equals("README", StringComparison.OrdinalIgnoreCase) &&
+            GitHubRenderedReadmeExtensions.Contains(extension);
+    }
+
     private static string GetImageMime(string ext) => ext.ToLowerInvariant() switch
     {
         ".png"  => "image/png",
@@ -148,6 +172,7 @@ public sealed class FilePreviewResolver : IFilePreviewResolver
         ".heic" => "image/heif",
         ".heif" => "image/heif",
         ".webp" => "image/webp",
+        ".avif" => "image/avif",
         _       => "application/octet-stream",
     };
 }

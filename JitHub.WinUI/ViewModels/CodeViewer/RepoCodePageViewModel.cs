@@ -904,7 +904,7 @@ public sealed partial class RepoCodePageViewModel : ObservableObject
         }
     }
 
-    private async Task AwaitReconciliationSettledAsync(CancellationToken token)
+    internal async Task AwaitReconciliationSettledAsync(CancellationToken token)
     {
         while (true)
         {
@@ -1118,11 +1118,27 @@ public sealed partial class RepoCodePageViewModel : ObservableObject
             node.Path,
             entry.ByteLength,
             entry.Bytes.AsMemory(0, sniffLength));
+        string? renderedText = null;
+        if (descriptor.Kind == RepoFilePreviewKind.Markdown &&
+            descriptor.LanguageId == "github-readme-html")
+        {
+            RepoCodeLoadResult<RepoReadmeFile>? readme = await _treeService.LoadReadmeAsync(
+                owner,
+                repositoryName,
+                gitRef,
+                token).ConfigureAwait(false);
+            if (readme?.Value is { } readmeFile &&
+                string.Equals(readmeFile.Path, node.Path, StringComparison.Ordinal))
+            {
+                renderedText = readmeFile.RenderedHtml;
+            }
+        }
         return new PreparedFilePreview(
             entry,
             descriptor,
             GitHubCodeUrlBuilder.BuildBlobUrl(owner, repositoryName, gitRef, node.Path),
-            GitHubCodeUrlBuilder.BuildRawUrl(owner, repositoryName, gitRef, node.Path));
+            GitHubCodeUrlBuilder.BuildRawUrl(owner, repositoryName, gitRef, node.Path),
+            renderedText);
     }
 
     private (RepoTreeNode Node, PreparedFilePreview Preview)? PrepareNavigationReadme(
@@ -1241,7 +1257,8 @@ public sealed partial class RepoCodePageViewModel : ObservableObject
             entry,
             descriptor,
             GitHubCodeUrlBuilder.BuildBlobUrl(owner, repositoryName, gitRef, node.Path),
-            GitHubCodeUrlBuilder.BuildRawUrl(owner, repositoryName, gitRef, node.Path));
+            GitHubCodeUrlBuilder.BuildRawUrl(owner, repositoryName, gitRef, node.Path),
+            readme.RenderedHtml);
         return (node, preview);
     }
 
@@ -1266,7 +1283,15 @@ public sealed partial class RepoCodePageViewModel : ObservableObject
             entry,
             descriptor,
             GitHubCodeUrlBuilder.BuildBlobUrl(_owner, _repositoryName, _ref, node.Path),
-            GitHubCodeUrlBuilder.BuildRawUrl(_owner, _repositoryName, _ref, node.Path));
+            GitHubCodeUrlBuilder.BuildRawUrl(_owner, _repositoryName, _ref, node.Path),
+            RichText: null);
+        if (descriptor.Kind == RepoFilePreviewKind.Markdown &&
+            descriptor.LanguageId == "github-readme-html")
+        {
+            // The source blob cache intentionally does not persist server-rendered
+            // HTML. Continue through the asynchronous README path to retrieve it.
+            return false;
+        }
         return true;
     }
 
@@ -1346,6 +1371,9 @@ public sealed partial class RepoCodePageViewModel : ObservableObject
         Preview.Text = descriptor.Kind is RepoFilePreviewKind.TooLarge or RepoFilePreviewKind.Unsupported || descriptor.IsLikelyBinary
             ? null
             : entry.Text;
+        Preview.RenderedText = descriptor.Kind is RepoFilePreviewKind.TooLarge or RepoFilePreviewKind.Unsupported || descriptor.IsLikelyBinary
+            ? null
+            : prepared.RichText ?? entry.Text;
         Preview.Bytes = descriptor.Kind is RepoFilePreviewKind.TooLarge or RepoFilePreviewKind.Unsupported
             ? null
             : entry.Bytes;
@@ -2171,7 +2199,8 @@ public sealed partial class RepoCodePageViewModel : ObservableObject
         RepoFileCacheEntry Entry,
         FilePreviewDescriptor Descriptor,
         string GitHubUrl,
-        string RawUrl);
+        string RawUrl,
+        string? RichText = null);
 
     private sealed partial class RequestCancellation : IDisposable
     {

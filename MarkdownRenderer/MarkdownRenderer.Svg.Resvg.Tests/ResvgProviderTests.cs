@@ -108,6 +108,71 @@ public sealed class ResvgProviderTests
     }
 
     [Fact]
+    public async Task MislabeledGifDataUriWithPngBytes_IsSniffedAndRendered()
+    {
+        byte[] png = CreatePng(24, 120, 220, byte.MaxValue);
+        string source = $"<svg xmlns='http://www.w3.org/2000/svg' width='1' height='1'><image width='1' height='1' href='data:image/gif;base64,{Convert.ToBase64String(png)}'/></svg>";
+        await using var renderer = new ResvgMarkdownSvgRenderer();
+
+        using IMarkdownSvgDocument document = await renderer.OpenAsync(new MarkdownSvgOpenRequest(Svg(source)));
+        using MarkdownSvgRaster raster = await document.RenderAsync(new MarkdownSvgRenderRequest(1, 1));
+
+        Assert.InRange(raster.Pixels.Span[0], (byte)20, (byte)28);
+        Assert.InRange(raster.Pixels.Span[1], (byte)116, (byte)124);
+        Assert.InRange(raster.Pixels.Span[2], (byte)216, (byte)224);
+    }
+
+    [Fact]
+    public async Task NaturalLanguageMetadataWithApostrophe_IsNotParsedAsCss()
+    {
+        const string source =
+            "<svg xmlns='http://www.w3.org/2000/svg' width='10' height='10' " +
+            "aria-label=\"OmniRoute's routing diagram\"><rect width='10' height='10' fill='green'/></svg>";
+        await using var renderer = new ResvgMarkdownSvgRenderer();
+
+        using IMarkdownSvgDocument document = await renderer.OpenAsync(
+            new MarkdownSvgOpenRequest(Svg(source)));
+        using MarkdownSvgRaster raster = await document.RenderAsync(new MarkdownSvgRenderRequest(10, 10));
+
+        Assert.Equal(10, raster.WidthPixels);
+        Assert.Equal(10, raster.HeightPixels);
+    }
+
+    [Fact]
+    public async Task MotionNamedCssSelectorsRemainStaticContent()
+    {
+        const string source =
+            "<svg xmlns='http://www.w3.org/2000/svg' width='10' height='10'><style>" +
+            ".animation:hover{fill:#123456}.transition[data-state='ready']{stroke:#abcdef}" +
+            "</style><rect class='animation transition' data-state='ready' width='10' height='10'/></svg>";
+        await using var renderer = new ResvgMarkdownSvgRenderer();
+
+        using IMarkdownSvgDocument document = await renderer.OpenAsync(
+            new MarkdownSvgOpenRequest(Svg(source)));
+        using MarkdownSvgRaster raster = await document.RenderAsync(new MarkdownSvgRenderRequest(10, 10));
+
+        Assert.Equal(10, raster.WidthPixels);
+        Assert.Equal(10, raster.HeightPixels);
+    }
+
+    [Theory]
+    [InlineData("animation : pulse 1s infinite")]
+    [InlineData("animation-name : pulse")]
+    [InlineData("transition : opacity 1s")]
+    [InlineData("-webkit-animation : pulse 1s infinite")]
+    public async Task MotionDeclarationsWithWhitespaceRemainRejected(string declaration)
+    {
+        string source =
+            $"<svg xmlns='http://www.w3.org/2000/svg'><style>.a{{{declaration}}}</style></svg>";
+        await using var renderer = new ResvgMarkdownSvgRenderer();
+
+        MarkdownSvgException failure = await Assert.ThrowsAsync<MarkdownSvgException>(async () =>
+            await renderer.OpenAsync(new MarkdownSvgOpenRequest(Svg(source))));
+
+        Assert.Equal(MarkdownSvgFailureReason.UnsupportedContent, failure.Reason);
+    }
+
+    [Fact]
     public async Task UnknownMediaTypeWithoutRecognizedRasterSignature_RemainsRejected()
     {
         string source = "<svg xmlns='http://www.w3.org/2000/svg' width='1' height='1'><image width='1' height='1' href='data:false;base64,AAECAwQ='/></svg>";
@@ -277,7 +342,7 @@ public sealed class ResvgProviderTests
         await using var renderer = new ResvgMarkdownSvgRenderer(options);
         string[] sources =
         [
-            $"<svg xmlns='http://www.w3.org/2000/svg'><path d='M0 0 {string.Concat(Enumerable.Repeat("1 1 ", 250))}'/></svg>",
+            $"<svg xmlns='http://www.w3.org/2000/svg'><path d='M0 0 {string.Concat(Enumerable.Repeat("1 1 ", 1_000))}'/></svg>",
             $"<svg xmlns='http://www.w3.org/2000/svg'><text>{new string('x', 6_500)}</text></svg>",
             $"<svg xmlns='http://www.w3.org/2000/svg'><style>{string.Concat(Enumerable.Repeat(".a{fill:red}", 700))}</style></svg>",
         ];

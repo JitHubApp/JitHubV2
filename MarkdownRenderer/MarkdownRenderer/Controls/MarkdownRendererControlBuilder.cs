@@ -1,3 +1,4 @@
+using Markdig;
 using MarkdownRenderer.CodeBlocks;
 using MarkdownRenderer.Hosting;
 using MarkdownRenderer.Images;
@@ -89,13 +90,16 @@ public sealed class MarkdownRendererControlBuilder
     /// </summary>
     internal MarkdownRendererControlBuilder AddProfileWithPresentation(
         MarkdownProfile profile,
-        Action<MarkdownExtensionRegistry> configure)
+        Action<MarkdownExtensionRegistry> configure,
+        Action<MarkdownPipelineBuilder>? configureParser = null)
     {
         ArgumentNullException.ThrowIfNull(profile);
         ArgumentNullException.ThrowIfNull(configure);
-        GetOrCreateDerivedEngineBuilder()
-            .AddProfile(profile)
-            .ConfigurePresentation(
+        MarkdownEngineBuilder engineBuilder = GetOrCreateDerivedEngineBuilder()
+            .AddProfile(profile);
+        if (configureParser is not null)
+            engineBuilder.ConfigureParser(configureParser);
+        engineBuilder.ConfigurePresentation(
                 static () => new MarkdownExtensionRegistry(),
                 configure);
         return this;

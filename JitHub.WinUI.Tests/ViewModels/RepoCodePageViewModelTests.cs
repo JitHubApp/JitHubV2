@@ -33,6 +33,26 @@ public sealed class RepoCodePageViewModelTests
     }
 
     [Fact]
+    public async Task Initialize_NonMarkdownReadmeUsesGitHubRenderedSafeHtml()
+    {
+        RepoTreeNode readme = File("README.rst", "readme-sha");
+        RootFirstTreeService service = new(
+            readme,
+            Blob("readme-sha", "Raw reStructuredText"),
+            "<h1>Rendered heading</h1><p>Rendered body</p>");
+        RepoCodePageViewModel viewModel = CreateViewModel(service);
+
+        await viewModel.InitializeAsync("owner", "repo", "main", default);
+        await viewModel.DefaultPreviewTask;
+
+        Assert.Equal(RepoFilePreviewKind.Markdown, viewModel.Preview.Kind);
+        Assert.Equal("github-readme-html", viewModel.Preview.LanguageId);
+        Assert.Equal("Raw reStructuredText", viewModel.Preview.Text);
+        Assert.Equal("<h1>Rendered heading</h1><p>Rendered body</p>", viewModel.Preview.RenderedText);
+        Assert.Equal(0, service.BlobRequestCount);
+    }
+
+    [Fact]
     public async Task Initialize_ImmutableSymlinkReadmeUsesDereferencedEndpointBlob()
     {
         const string commitSha = "0123456789abcdef0123456789abcdef01234567";
@@ -509,8 +529,8 @@ public sealed class RepoCodePageViewModelTests
         await viewModel.Tree.RootReconciliationTask;
         blob.SetResult(Fresh(Blob("removed", "obsolete")));
         await selection;
-        await viewModel.Tree.PendingReconciliationTask;
-        await viewModel.ReconciliationTask;
+        await viewModel.Tree.AwaitPendingReconciliationSettledAsync(default);
+        await viewModel.AwaitReconciliationSettledAsync(default);
 
         Assert.Empty(viewModel.Tree.RootNodes);
         Assert.Null(viewModel.Preview.CurrentFile);
@@ -898,10 +918,12 @@ public sealed class RepoCodePageViewModelTests
     {
         private readonly RepoTreeNode _readme;
         private readonly RepoFileBlob _blob;
-        public RootFirstTreeService(RepoTreeNode readme, RepoFileBlob blob)
+        private readonly string? _renderedHtml;
+        public RootFirstTreeService(RepoTreeNode readme, RepoFileBlob blob, string? renderedHtml = null)
         {
             _readme = readme;
             _blob = blob;
+            _renderedHtml = renderedHtml;
         }
 
         public int RecursiveTreeRequestCount { get; private set; }
@@ -946,7 +968,7 @@ public sealed class RepoCodePageViewModelTests
             CancellationToken ct,
             QueryFetchPolicy fetchPolicy = QueryFetchPolicy.StaleFirst) =>
             Task.FromResult<RepoCodeLoadResult<RepoReadmeFile>?>(new RepoCodeLoadResult<RepoReadmeFile>(
-                new RepoReadmeFile(_readme.Name, _readme.Path, _blob),
+                new RepoReadmeFile(_readme.Name, _readme.Path, _blob, _renderedHtml),
                 CacheState.Fresh));
     }
 

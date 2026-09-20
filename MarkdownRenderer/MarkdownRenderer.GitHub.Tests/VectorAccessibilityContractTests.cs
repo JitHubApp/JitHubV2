@@ -194,6 +194,11 @@ public sealed class VectorAccessibilityContractTests
         Assert.Equal(
             "Authored Face",
             VectorSceneDrawing.ResolveFontFamily(authoredText, "Host Diagram Face"));
+        Assert.Equal(
+            "ms-appx:///Assets/Fonts/JetBrainsMono-Variable.ttf",
+            VectorSceneDrawing.ResolveFontFamily(
+                hostText,
+                "ms-appx:///Assets/Fonts/JetBrainsMono-Variable.ttf#JetBrains Mono"));
     }
 
     [Fact]

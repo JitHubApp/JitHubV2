@@ -19,6 +19,7 @@ public sealed class RepoTreeService : IRepoTreeService
     private readonly IGitHubRepoCodeQueryService _queryService;
     private readonly IAuthService _authService;
     private readonly IAccountService _accountService;
+    private readonly IGitHubClientService? _gitHubClientService;
     private readonly object _treeCacheGate = new();
     private readonly Dictionary<string, LinkedListNode<TreeMemoryEntry>> _treeCache = new(StringComparer.Ordinal);
     private readonly LinkedList<TreeMemoryEntry> _treeLru = new();
@@ -28,11 +29,13 @@ public sealed class RepoTreeService : IRepoTreeService
     public RepoTreeService(
         IGitHubRepoCodeQueryService queryService,
         IAuthService authService,
-        IAccountService accountService)
+        IAccountService accountService,
+        IGitHubClientService? gitHubClientService = null)
     {
         _queryService = queryService;
         _authService = authService;
         _accountService = accountService;
+        _gitHubClientService = gitHubClientService;
     }
 
     public async Task<RepoCodeLoadResult<RepoTree>> LoadTreeAsync(
@@ -428,9 +431,23 @@ public sealed class RepoTreeService : IRepoTreeService
             () => DecodeBlob(content.Content, content.Encoding),
             ct).ConfigureAwait(false);
         bool isBinary = IsBinaryContent(bytes);
+        string? renderedHtml = null;
+        string readmePath = content.Path ?? string.Empty;
+        if (!isBinary &&
+            _gitHubClientService is not null &&
+            !GitHubAuthenticationConstants.IsPublicAccessToken(token) &&
+            FilePreviewResolver.IsGitHubRenderedReadmePath(readmePath))
+        {
+            renderedHtml = await _gitHubClientService.GetRenderedReadmeHtmlAsync(
+                token,
+                owner,
+                name,
+                refOrSha,
+                ct).ConfigureAwait(false);
+        }
         RepoReadmeFile readme = new(
             content.Name ?? string.Empty,
-            content.Path ?? string.Empty,
+            readmePath,
             new RepoFileBlob
             {
                 Sha = content.Sha,
@@ -438,7 +455,8 @@ public sealed class RepoTreeService : IRepoTreeService
                 Bytes = bytes,
                 Text = isBinary ? null : DecodeText(bytes),
                 IsBinary = isBinary
-            });
+            },
+            renderedHtml);
         return MapResult(result, readme);
     }
 

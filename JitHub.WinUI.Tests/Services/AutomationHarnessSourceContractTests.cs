@@ -162,9 +162,16 @@ public sealed class AutomationHarnessSourceContractTests
             "JitHub.WinUI.Automation",
             "ReadmeAuditProbe.cs"));
 
-        Assert.Contains("...images.map(image => image.alt).filter(Boolean)", browserOracle, StringComparison.Ordinal);
+        Assert.Contains("hasExplicitAlt: image.hasAttribute(\"alt\")", browserOracle, StringComparison.Ordinal);
+        Assert.Contains("!image.hasExplicitAlt ? \"Image\" : \"\"", browserOracle, StringComparison.Ordinal);
         Assert.Contains("text: accessibleText", browserOracle, StringComparison.Ordinal);
+        Assert.Contains("isImageSelfLink", browserOracle, StringComparison.Ordinal);
+        Assert.Contains("data-canonical-src", browserOracle, StringComparison.Ordinal);
+        Assert.Contains("github-asset://", browserOracle, StringComparison.Ordinal);
         Assert.Contains("WaitForVisibleImages(host", nativeProbe, StringComparison.Ordinal);
+        Assert.Contains("IsVisibleRenderedBrowserImage", nativeProbe, StringComparison.Ordinal);
+        Assert.Contains("ReadAutomationString", nativeProbe, StringComparison.Ordinal);
+        Assert.Contains("browserDistinctLinks", nativeProbe, StringComparison.Ordinal);
         Assert.Contains("MarkdownLinkedImage", nativeProbe, StringComparison.Ordinal);
         Assert.Contains("Rectangle.Intersect(", nativeProbe, StringComparison.Ordinal);
         Assert.Contains("hostBounds.Left - windowBounds.Left", nativeProbe, StringComparison.Ordinal);

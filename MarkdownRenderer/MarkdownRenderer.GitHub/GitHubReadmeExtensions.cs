@@ -2,6 +2,7 @@ using System;
 using System.Linq;
 using Markdig;
 using Markdig.Extensions.Footnotes;
+using Markdig.Parsers;
 using Markdig.Syntax;
 using MarkdownRenderer.Controls;
 using MarkdownRenderer.Gfm;
@@ -18,6 +19,8 @@ namespace MarkdownRenderer.GitHub;
 public static class GitHubReadmeExtensions
 {
     private const string GitHubReadmePresentationFeature = "MarkdownRenderer.GitHubReadme.Presentation";
+    private const string GitHubMarkdownContainersFeature =
+        "MarkdownRenderer.GitHub.MarkdownInHtmlContainers";
 
     /// <summary>Configures an immutable engine for GitHub README documents.</summary>
     public static MarkdownEngineBuilder UseGitHubReadme(this MarkdownEngineBuilder builder)
@@ -93,13 +96,20 @@ public static class GitHubReadmeExtensions
         registry.ConfigureGfmRegistry();
         registry.ConfigurePipeline(static pipeline =>
         {
+            if (!pipeline.BlockParsers.Contains<GitHubDetailsBlockParser>())
+            {
+                pipeline.BlockParsers.InsertBefore<HtmlBlockParser>(new GitHubDetailsBlockParser());
+            }
             pipeline.UseFootnotes();
             pipeline.UseEmojiAndSmiley();
+            ConfigureGitHubImageEmojiParser(pipeline);
             pipeline.UseGenericAttributes();
         });
 
         registry.RegisterRendererIfAbsent<QuoteBlock>(new AlertRenderer());
         registry.RegisterRendererIfAbsent<FootnoteGroup>(new FootnoteRenderer());
+        registry.RegisterRendererIfAbsent<GitHubDetailsBlock>(new GitHubDetailsBlockRenderer());
+        registry.AddPresentationFeature(GitHubMarkdownContainersFeature);
         if (safeHtmlOptions is not null || !registry.HasSafeHtmlPresentation())
             registry.ConfigureSafeHtmlRegistry(safeHtmlOptions);
         registry.AddPresentationFeature(GitHubReadmePresentationFeature);
@@ -148,7 +158,8 @@ public static class GitHubReadmeExtensions
         ArgumentNullException.ThrowIfNull(builder);
         return builder.AddProfileWithPresentation(
             MarkdownProfiles.GitHubReadme,
-            registry => registry.ConfigureGitHubReadmeRegistry(safeHtmlOptions));
+            registry => registry.ConfigureGitHubReadmeRegistry(safeHtmlOptions),
+            ConfigureGitHubImageEmojiParser);
     }
 
     private static MarkdownEngineBuilder ConfigureGitHubReadme(
@@ -156,9 +167,16 @@ public static class GitHubReadmeExtensions
         SafeHtmlOptions? safeHtmlOptions)
         => builder
             .AddProfile(MarkdownProfiles.GitHubReadme)
+            .ConfigureParser(ConfigureGitHubImageEmojiParser)
             .ConfigurePresentation(
                 static () => new MarkdownExtensionRegistry(),
                 registry => registry.ConfigureGitHubReadmeRegistry(safeHtmlOptions));
+
+    private static void ConfigureGitHubImageEmojiParser(MarkdownPipelineBuilder pipeline)
+    {
+        if (!pipeline.Extensions.Contains<GitHubImageEmojiExtension>())
+            pipeline.Extensions.Add(new GitHubImageEmojiExtension());
+    }
 
     private static EngineSelection SelectGitHubEngine(
         MarkdownEngine? current,

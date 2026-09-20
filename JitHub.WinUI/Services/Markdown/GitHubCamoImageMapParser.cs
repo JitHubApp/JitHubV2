@@ -30,7 +30,8 @@ internal static partial class GitHubCamoImageMapParser
             string original = WebUtility.HtmlDecode(encodedOriginal);
             string camo = WebUtility.HtmlDecode(encodedCamo);
             if (Uri.TryCreate(original, UriKind.Absolute, out Uri? originalUri) &&
-                originalUri.Scheme == Uri.UriSchemeHttps &&
+                (originalUri.Scheme == Uri.UriSchemeHttp ||
+                    originalUri.Scheme == Uri.UriSchemeHttps) &&
                 Uri.TryCreate(camo, UriKind.Absolute, out Uri? camoUri) &&
                 camoUri.Scheme == Uri.UriSchemeHttps &&
                 camoUri.Host.Equals("camo.githubusercontent.com", StringComparison.OrdinalIgnoreCase))

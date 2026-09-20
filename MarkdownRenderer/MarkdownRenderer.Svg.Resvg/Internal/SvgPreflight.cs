@@ -191,14 +191,21 @@ internal static class SvgPreflight
                                 ref embeddedBytes,
                                 ref embeddedPixels);
                         }
-                        // Inspect every value. CSS escape sequences can spell
-                        // `url` without containing those literal characters.
-                        InspectCss(
-                            value,
-                            options,
-                            resources,
-                            ref embeddedBytes,
-                            ref embeddedPixels);
+                        // Only CSS-bearing values use CSS quoting rules. Treating
+                        // arbitrary metadata (for example an aria-label containing
+                        // an apostrophe) as a stylesheet caused valid SVGs to fail
+                        // with an unterminated-string diagnostic. Decode escapes
+                        // first so resource-bearing presentation attributes still
+                        // cannot hide url() or active CSS directives.
+                        if (MayContainCssResourceOrActiveContent(attributeName, value))
+                        {
+                            InspectCss(
+                                value,
+                                options,
+                                resources,
+                                ref embeddedBytes,
+                                ref embeddedPixels);
+                        }
                     }
                     reader.MoveToElement();
                 }
@@ -258,6 +265,7 @@ internal static class SvgPreflight
         // to the native parser. Remove the already-validated, inert external
         // declaration here; internal subsets never reach this point.
         source = StripInertDoctype(source);
+        source = NormalizeEmbeddedRasterMediaTypes(source);
         byte[] hash = SHA256.HashData(source);
         double? ratio = width > 0 && height > 0 ? width / height : null;
         return new SvgPreflightResult(
@@ -306,6 +314,116 @@ internal static class SvgPreflight
         source.AsSpan(0, start).CopyTo(sanitized);
         source.AsSpan(end).CopyTo(sanitized.AsSpan(start));
         return sanitized;
+    }
+
+    private static byte[] NormalizeEmbeddedRasterMediaTypes(byte[] source)
+    {
+        // resvg intentionally honors the declared data-URI media type. Browsers
+        // sniff common image signatures, and generated contributor cards in the
+        // wild occasionally label PNG avatars as GIF. The payload was already
+        // decoded, bounded, and signature-validated above; canonicalize only
+        // those admitted raster references before hashing and worker dispatch.
+        if (IndexOfAsciiIgnoreCase(source, "data:"u8) < 0)
+            return source;
+
+        var document = new XmlDocument
+        {
+            PreserveWhitespace = true,
+            XmlResolver = null,
+        };
+        using (var input = new MemoryStream(source, writable: false))
+        using (XmlReader reader = XmlReader.Create(input, new XmlReaderSettings
+        {
+            DtdProcessing = DtdProcessing.Prohibit,
+            XmlResolver = null,
+            MaxCharactersInDocument = ResvgMarkdownSvgRendererOptions.HardMaxSourceBytes,
+            MaxCharactersFromEntities = 0,
+        }))
+        {
+            document.Load(reader);
+        }
+
+        bool changed = false;
+        var pending = new Stack<XmlNode>();
+        if (document.DocumentElement is not null)
+            pending.Push(document.DocumentElement);
+        while (pending.Count > 0)
+        {
+            XmlNode node = pending.Pop();
+            if (node is XmlElement element &&
+                (element.LocalName.Equals("image", StringComparison.OrdinalIgnoreCase) ||
+                    element.LocalName.Equals("feImage", StringComparison.OrdinalIgnoreCase)))
+            {
+                foreach (XmlAttribute attribute in element.Attributes)
+                {
+                    if (!attribute.LocalName.Equals("href", StringComparison.OrdinalIgnoreCase) ||
+                        !TryNormalizeRasterDataUri(attribute.Value, out string normalized))
+                    {
+                        continue;
+                    }
+
+                    attribute.Value = normalized;
+                    changed = true;
+                }
+            }
+
+            for (XmlNode? child = node.LastChild; child is not null; child = child.PreviousSibling)
+                pending.Push(child);
+        }
+
+        if (!changed)
+            return source;
+
+        using var output = new MemoryStream(source.Length);
+        using (XmlWriter writer = XmlWriter.Create(output, new XmlWriterSettings
+        {
+            Encoding = new UTF8Encoding(encoderShouldEmitUTF8Identifier: false),
+            Indent = false,
+            NewLineHandling = NewLineHandling.None,
+            OmitXmlDeclaration = document.FirstChild?.NodeType != XmlNodeType.XmlDeclaration,
+        }))
+        {
+            document.Save(writer);
+        }
+        return output.ToArray();
+    }
+
+    private static bool TryNormalizeRasterDataUri(string value, out string normalized)
+    {
+        normalized = value;
+        if (!value.StartsWith("data:", StringComparison.OrdinalIgnoreCase))
+            return false;
+        int comma = value.IndexOf(',');
+        if (comma <= 5)
+            return false;
+
+        string header = value[5..comma];
+        string payload = value[(comma + 1)..];
+        byte[] decoded;
+        try
+        {
+            decoded = header.Contains(";base64", StringComparison.OrdinalIgnoreCase)
+                ? Convert.FromBase64String(payload)
+                : PercentDecode(payload);
+        }
+        catch (FormatException)
+        {
+            return false;
+        }
+
+        string? actual = SniffEmbeddedImageMediaType(decoded);
+        if (actual is null)
+            return false;
+        int parameters = header.IndexOf(';');
+        string declared = (parameters < 0 ? header : header[..parameters]).Trim();
+        if (declared.Equals("image/jpg", StringComparison.OrdinalIgnoreCase))
+            declared = "image/jpeg";
+        if (declared.Equals(actual, StringComparison.OrdinalIgnoreCase))
+            return false;
+
+        string suffix = parameters < 0 ? string.Empty : header[parameters..];
+        normalized = string.Concat("data:", actual, suffix, ",", payload);
+        return true;
     }
 
     private static int IndexOfAsciiIgnoreCase(ReadOnlySpan<byte> source, ReadOnlySpan<byte> value)
@@ -378,16 +496,31 @@ internal static class SvgPreflight
     private static string? NormalizeEmbeddedImageMediaType(string declaredMediaType, byte[] decoded)
     {
         if (declaredMediaType == "image/jpg")
-            return "image/jpeg";
-        if (declaredMediaType is "image/png" or "image/jpeg" or "image/gif" or "image/webp" or "image/svg+xml")
-            return declaredMediaType;
+            declaredMediaType = "image/jpeg";
+
+        // The byte signature is authoritative. Several real contributor-card
+        // generators label PNG avatars as image/gif; browsers sniff these and
+        // render them, while trusting the declaration made our bounded dimension
+        // parser reject otherwise valid content.
+        string? sniffed = SniffEmbeddedImageMediaType(decoded);
+        if (sniffed is not null)
+            return sniffed;
+        if (declaredMediaType.Equals("image/svg+xml", StringComparison.OrdinalIgnoreCase) &&
+            LooksLikeSvg(decoded))
+        {
+            return "image/svg+xml";
+        }
 
         // Browsers tolerate missing and invalid data-URI media types when the
         // payload has an unambiguous raster signature. OpenCollective emits
         // contributor avatars as `data:false;base64,...`; accepting only
         // positively identified bounded raster formats preserves that useful
         // compatibility without turning arbitrary payloads into nested SVG.
-        ReadOnlySpan<byte> data = decoded;
+        return null;
+    }
+
+    private static string? SniffEmbeddedImageMediaType(ReadOnlySpan<byte> data)
+    {
         if (data.Length >= 8 && data[..8].SequenceEqual(PngSignature))
             return "image/png";
         if (data.Length >= 3 && data[0] == 0xff && data[1] == 0xd8 && data[2] == 0xff)
@@ -400,6 +533,20 @@ internal static class SvgPreflight
         if (data.Length >= 12 && data[..4].SequenceEqual("RIFF"u8) && data[8..12].SequenceEqual("WEBP"u8))
             return "image/webp";
         return null;
+    }
+
+    private static bool LooksLikeSvg(ReadOnlySpan<byte> data)
+    {
+        int index = 0;
+        if (data.Length >= 3 && data[0] == 0xef && data[1] == 0xbb && data[2] == 0xbf)
+            index = 3;
+        while (index < data.Length && data[index] is (byte)' ' or (byte)'\t' or (byte)'\r' or (byte)'\n')
+            index++;
+        int inspectLength = Math.Min(512, data.Length - index);
+        string prefix = Encoding.UTF8.GetString(data.Slice(index, inspectLength));
+        return prefix.StartsWith("<svg", StringComparison.OrdinalIgnoreCase) ||
+            (prefix.StartsWith("<?xml", StringComparison.OrdinalIgnoreCase) &&
+                prefix.Contains("<svg", StringComparison.OrdinalIgnoreCase));
     }
 
     private static void InspectElementReference(
@@ -517,8 +664,32 @@ internal static class SvgPreflight
         }
 
         long payload = (Encoding.UTF8.GetByteCount(pathData) + 63L) / 64L;
-        long cost = commands + ((numbers + 1) / 2) + payload;
+        // Commands and coordinates are much cheaper than independent DOM
+        // elements in resvg. Keep a weighted charge so adversarial paths remain
+        // bounded, but do not price a legitimate chart or outlined-font path as
+        // hundreds of thousands of elements. The 8 MiB source ceiling and the
+        // payload charge still reject a maximally dense path before admission.
+        long cost = ((commands + 7) / 8) + ((numbers + 15) / 16) + payload;
         return cost > int.MaxValue ? int.MaxValue : (int)cost;
+    }
+
+    private static bool MayContainCssResourceOrActiveContent(string attributeName, string value)
+    {
+        if (attributeName.Equals("style", StringComparison.OrdinalIgnoreCase))
+            return true;
+
+        string normalized = DecodeCssEscapes(value);
+        if (normalized.Contains("url", StringComparison.OrdinalIgnoreCase) ||
+            normalized.Contains("@import", StringComparison.OrdinalIgnoreCase) ||
+            normalized.Contains("@font-face", StringComparison.OrdinalIgnoreCase) ||
+            normalized.Contains("@keyframes", StringComparison.OrdinalIgnoreCase) ||
+            normalized.Contains("animation", StringComparison.OrdinalIgnoreCase) ||
+            normalized.Contains("transition", StringComparison.OrdinalIgnoreCase))
+        {
+            return true;
+        }
+
+        return false;
     }
 
     private static string RemoveInertNamespaceDeclarations(string css)
@@ -623,9 +794,7 @@ internal static class SvgPreflight
         if (normalized.Contains("@import", StringComparison.OrdinalIgnoreCase) ||
             normalized.Contains("@font-face", StringComparison.OrdinalIgnoreCase) ||
             normalized.Contains("@keyframes", StringComparison.OrdinalIgnoreCase) ||
-            normalized.Contains("animation:", StringComparison.OrdinalIgnoreCase) ||
-            normalized.Contains("animation-name:", StringComparison.OrdinalIgnoreCase) ||
-            normalized.Contains("transition:", StringComparison.OrdinalIgnoreCase))
+            ContainsMotionDeclaration(normalized))
         {
             throw Unsupported("External fonts, imports, and animation are forbidden.");
         }
@@ -686,6 +855,87 @@ internal static class SvgPreflight
             InspectReference(target, options, resources, ref embeddedBytes, ref embeddedPixels);
         }
     }
+
+    private static bool ContainsMotionDeclaration(string css)
+    {
+        int cursor = 0;
+        while (cursor < css.Length)
+        {
+            if (char.IsWhiteSpace(css[cursor]))
+            {
+                cursor++;
+                continue;
+            }
+            if (TrySkipCssComment(css, ref cursor) || TrySkipCssString(css, ref cursor))
+                continue;
+
+            int nameStart = cursor;
+            while (cursor < css.Length &&
+                (char.IsAsciiLetterOrDigit(css[cursor]) || css[cursor] is '-' or '_'))
+            {
+                cursor++;
+            }
+            if (cursor == nameStart)
+            {
+                cursor++;
+                continue;
+            }
+
+            string property = css[nameStart..cursor];
+            int separator = cursor;
+            while (separator < css.Length && char.IsWhiteSpace(css[separator]))
+                separator++;
+            if (separator >= css.Length || css[separator] != ':' || !IsMotionProperty(property))
+                continue;
+
+            int end = separator + 1;
+            char quote = '\0';
+            int parentheses = 0;
+            while (end < css.Length)
+            {
+                char current = css[end];
+                if (quote != '\0')
+                {
+                    if (current == '\\' && end + 1 < css.Length)
+                        end += 2;
+                    else
+                    {
+                        if (current == quote)
+                            quote = '\0';
+                        end++;
+                    }
+                    continue;
+                }
+                if (current is '\'' or '"')
+                    quote = current;
+                else if (current == '(')
+                    parentheses++;
+                else if (current == ')' && parentheses > 0)
+                    parentheses--;
+                else if (parentheses == 0 && current == '{')
+                    break;
+                else if (parentheses == 0 && current is (';' or '}'))
+                    return true;
+                end++;
+            }
+
+            if (end >= css.Length)
+                return true;
+            cursor = end + 1;
+        }
+
+        return false;
+    }
+
+    private static bool IsMotionProperty(string property)
+        => property.Equals("animation", StringComparison.OrdinalIgnoreCase) ||
+            property.StartsWith("animation-", StringComparison.OrdinalIgnoreCase) ||
+            property.Equals("transition", StringComparison.OrdinalIgnoreCase) ||
+            property.StartsWith("transition-", StringComparison.OrdinalIgnoreCase) ||
+            property.Equals("-webkit-animation", StringComparison.OrdinalIgnoreCase) ||
+            property.StartsWith("-webkit-animation-", StringComparison.OrdinalIgnoreCase) ||
+            property.Equals("-webkit-transition", StringComparison.OrdinalIgnoreCase) ||
+            property.StartsWith("-webkit-transition-", StringComparison.OrdinalIgnoreCase);
 
     private static string DecodeCssEscapes(string value)
     {

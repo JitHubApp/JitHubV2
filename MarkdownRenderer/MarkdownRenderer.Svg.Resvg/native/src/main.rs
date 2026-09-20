@@ -72,7 +72,7 @@ struct CacheKey {
 }
 
 struct CacheEntry {
-    tree: usvg::Tree,
+    tree: Arc<usvg::Tree>,
     metadata: Metadata,
     cost: u64,
     touched: u64,
@@ -103,8 +103,10 @@ struct WorkerState {
 
 #[derive(Clone)]
 struct DocumentEntry {
-    key: CacheKey,
+    cache_key: Option<CacheKey>,
     hash: [u8; 32],
+    tree: Arc<usvg::Tree>,
+    metadata: Metadata,
 }
 
 #[derive(Debug)]
@@ -326,13 +328,13 @@ fn process(state: &mut WorkerState, request: &Request) -> Result<Response, Rejec
     if document.hash != request.hash {
         return Err(Reject::Worker("document token hash mismatch"));
     }
-    let entry = state
-        .cache
-        .get_mut(&document.key)
-        .ok_or(Reject::DocumentMissing("document tree was evicted"))?;
-    state.tick = state.tick.wrapping_add(1);
-    entry.touched = state.tick;
-    let metadata = entry.metadata;
+    if let Some(key) = &document.cache_key {
+        if let Some(entry) = state.cache.get_mut(key) {
+            state.tick = state.tick.wrapping_add(1);
+            entry.touched = state.tick;
+        }
+    }
+    let metadata = document.metadata;
 
     let mapping_length = mapping_length(request)?;
     let mut mapping = SharedMapping::open(&request.mapping_name, mapping_length)?;
@@ -341,7 +343,7 @@ fn process(state: &mut WorkerState, request: &Request) -> Result<Response, Rejec
         .map_err(|_| Reject::Resource("output length overflow"))?;
     let output = &mut bytes[..output_length];
     let (width, height) = output_dimensions(request);
-    render(&entry.tree, metadata, request, output, width, height)?;
+    render(&document.tree, metadata, request, output, width, height)?;
     Ok(Response::ok(
         request,
         metadata,
@@ -374,19 +376,14 @@ fn open_document(state: &mut WorkerState, request: &Request) -> Result<Response,
 
     let security = inspect_svg(source, request)?;
     let key = cache_key(request, &security.metadata);
-    ensure_tree(state, request, source, &security, key.clone())?;
-    let entry = state
-        .cache
-        .get_mut(&key)
-        .ok_or(Reject::Worker("parsed tree unavailable"))?;
-    state.tick = state.tick.wrapping_add(1);
-    entry.touched = state.tick;
-    let metadata = entry.metadata;
+    let (tree, metadata, cache_key) = acquire_tree(state, request, source, &security, key)?;
     state.documents.insert(
         request.document_id,
         DocumentEntry {
-            key,
+            cache_key,
             hash: request.hash,
+            tree,
+            metadata,
         },
     );
     Ok(Response::ok(request, metadata, 0, 0, 0))
@@ -637,7 +634,7 @@ fn inspect_svg(source: &[u8], request: &Request) -> Result<Inspection, Reject> {
                     &mut structural_cost,
                     &mut metadata,
                 )?;
-            } else {
+            } else if may_contain_css_resource_or_active_content(attribute_name, value)? {
                 inspect_css(
                     value,
                     request,
@@ -791,7 +788,8 @@ fn path_complexity(path: &str) -> u64 {
     }
 
     commands
-        .saturating_add(numbers.div_ceil(2))
+        .div_ceil(8)
+        .saturating_add(numbers.div_ceil(16))
         .saturating_add(payload_cost(path))
 }
 
@@ -1143,7 +1141,7 @@ fn inspect_nested_svg(
                     structural_cost,
                     metadata,
                 )?;
-            } else {
+            } else if may_contain_css_resource_or_active_content(attribute.name(), value)? {
                 inspect_css(
                     value,
                     request,
@@ -1187,6 +1185,28 @@ fn inspect_nested_svg(
 }
 
 #[allow(clippy::too_many_arguments)]
+fn may_contain_css_resource_or_active_content(
+    attribute_name: &str,
+    value: &str,
+) -> Result<bool, Reject> {
+    if attribute_name.eq_ignore_ascii_case("style") {
+        return Ok(true);
+    }
+
+    // Decode first so presentation attributes cannot hide url() or active
+    // directives behind CSS escapes. Arbitrary metadata is not a stylesheet;
+    // skipping it avoids treating a natural-language apostrophe as an
+    // unterminated CSS string.
+    let normalized = decode_css_escapes(value)?;
+    let lower = normalized.to_ascii_lowercase();
+    Ok(lower.contains("url")
+        || lower.contains("@import")
+        || lower.contains("@font-face")
+        || lower.contains("@keyframes")
+        || lower.contains("animation")
+        || lower.contains("transition"))
+}
+
 fn inspect_css(
     value: &str,
     request: &Request,
@@ -1202,9 +1222,7 @@ fn inspect_css(
     if lower.contains("@import")
         || lower.contains("@font-face")
         || lower.contains("@keyframes")
-        || lower.contains("animation:")
-        || lower.contains("animation-name:")
-        || lower.contains("transition:")
+        || contains_motion_declaration(&normalized)
     {
         return Err(Reject::Unsupported(
             "external or executable CSS is forbidden",
@@ -1228,6 +1246,107 @@ fn inspect_css(
         )?;
     }
     Ok(())
+}
+
+fn contains_motion_declaration(css: &str) -> bool {
+    let bytes = css.as_bytes();
+    let mut cursor = 0usize;
+    while cursor < bytes.len() {
+        if bytes[cursor].is_ascii_whitespace() {
+            cursor += 1;
+            continue;
+        }
+        if cursor + 1 < bytes.len() && bytes[cursor] == b'/' && bytes[cursor + 1] == b'*' {
+            cursor += 2;
+            while cursor + 1 < bytes.len() && !(bytes[cursor] == b'*' && bytes[cursor + 1] == b'/')
+            {
+                cursor += 1;
+            }
+            cursor = (cursor + 2).min(bytes.len());
+            continue;
+        }
+        if bytes[cursor] == b'\'' || bytes[cursor] == b'"' {
+            let quote = bytes[cursor];
+            cursor += 1;
+            while cursor < bytes.len() {
+                if bytes[cursor] == b'\\' && cursor + 1 < bytes.len() {
+                    cursor += 2;
+                } else {
+                    let current = bytes[cursor];
+                    cursor += 1;
+                    if current == quote {
+                        break;
+                    }
+                }
+            }
+            continue;
+        }
+
+        let name_start = cursor;
+        while cursor < bytes.len()
+            && (bytes[cursor].is_ascii_alphanumeric() || matches!(bytes[cursor], b'-' | b'_'))
+        {
+            cursor += 1;
+        }
+        if cursor == name_start {
+            cursor += 1;
+            continue;
+        }
+
+        let property = &css[name_start..cursor];
+        let mut separator = cursor;
+        while separator < bytes.len() && bytes[separator].is_ascii_whitespace() {
+            separator += 1;
+        }
+        if separator >= bytes.len() || bytes[separator] != b':' || !is_motion_property(property) {
+            continue;
+        }
+
+        let mut end = separator + 1;
+        let mut quote = 0u8;
+        let mut parentheses = 0u32;
+        while end < bytes.len() {
+            let current = bytes[end];
+            if quote != 0 {
+                if current == b'\\' && end + 1 < bytes.len() {
+                    end += 2;
+                } else {
+                    if current == quote {
+                        quote = 0;
+                    }
+                    end += 1;
+                }
+                continue;
+            }
+            match current {
+                b'\'' | b'"' => quote = current,
+                b'(' => parentheses = parentheses.saturating_add(1),
+                b')' if parentheses > 0 => parentheses -= 1,
+                b'{' if parentheses == 0 => break,
+                b';' | b'}' if parentheses == 0 => return true,
+                _ => {}
+            }
+            end += 1;
+        }
+
+        if end >= bytes.len() {
+            return true;
+        }
+        cursor = end + 1;
+    }
+    false
+}
+
+fn is_motion_property(property: &str) -> bool {
+    let lower = property.to_ascii_lowercase();
+    lower == "animation"
+        || lower.starts_with("animation-")
+        || lower == "transition"
+        || lower.starts_with("transition-")
+        || lower == "-webkit-animation"
+        || lower.starts_with("-webkit-animation-")
+        || lower == "-webkit-transition"
+        || lower.starts_with("-webkit-transition-")
 }
 
 fn strip_inert_namespace_declarations(css: &str) -> Result<String, Reject> {
@@ -1508,15 +1627,17 @@ fn cache_key(request: &Request, metadata: &Metadata) -> CacheKey {
     }
 }
 
-fn ensure_tree(
+fn acquire_tree(
     state: &mut WorkerState,
     request: &Request,
     source: &[u8],
     inspection: &Inspection,
     key: CacheKey,
-) -> Result<(), Reject> {
-    if state.cache.contains_key(&key) {
-        return Ok(());
+) -> Result<(Arc<usvg::Tree>, Metadata, Option<CacheKey>), Reject> {
+    if let Some(entry) = state.cache.get_mut(&key) {
+        state.tick = state.tick.wrapping_add(1);
+        entry.touched = state.tick;
+        return Ok((entry.tree.clone(), entry.metadata, Some(key)));
     }
     let font_database = if inspection.metadata.has_text {
         if state.font_database.is_none() {
@@ -1547,15 +1668,20 @@ fn ensure_tree(
     if let Some(database) = font_database {
         options.fontdb = database;
     }
-    let tree = usvg::Tree::from_data(&transformed, &options)
-        .map_err(|_| Reject::Unsupported("SVG parsing failed"))?;
+    let tree = Arc::new(
+        usvg::Tree::from_data(&transformed, &options)
+            .map_err(|_| Reject::Unsupported("SVG parsing failed"))?,
+    );
     let size = tree.size();
     let mut metadata = inspection.metadata;
     metadata.width = f64::from(size.width());
     metadata.height = f64::from(size.height());
     let cost = parsed_resource_cost(source.len(), inspection);
     if cost > request.max_cache_bytes {
-        return Err(Reject::Resource("parsed resource exceeds cache budget"));
+        // Cache size is a retention policy, not an admission ceiling. Keep an
+        // over-budget but otherwise admitted tree only for the live document
+        // handle; it is released on CLOSE and never displaces reusable entries.
+        return Ok((tree, metadata, None));
     }
     while state.cache_cost.saturating_add(cost) > request.max_cache_bytes {
         let Some(oldest) = state
@@ -1572,16 +1698,16 @@ fn ensure_tree(
     }
     state.tick = state.tick.wrapping_add(1);
     state.cache.insert(
-        key,
+        key.clone(),
         CacheEntry {
-            tree,
+            tree: tree.clone(),
             metadata,
             cost,
             touched: state.tick,
         },
     );
     state.cache_cost = state.cache_cost.saturating_add(cost);
-    Ok(())
+    Ok((tree, metadata, Some(key)))
 }
 
 fn parsed_resource_cost(source_length: usize, inspection: &Inspection) -> u64 {
@@ -2202,7 +2328,7 @@ mod tests {
         request.max_structural_cost = 100;
         let path = format!(
             "<svg xmlns='http://www.w3.org/2000/svg'><path d='M0 0 {}'/></svg>",
-            "1 1 ".repeat(250)
+            "1 1 ".repeat(1_000)
         );
         assert!(matches!(
             inspect_svg(path.as_bytes(), &request),
@@ -2308,7 +2434,7 @@ mod tests {
 
         request.hash = Sha256::digest(first).into();
         let first_key = cache_key(&request, &first_inspection.metadata);
-        ensure_tree(
+        acquire_tree(
             &mut state,
             &request,
             first,
@@ -2320,7 +2446,7 @@ mod tests {
 
         request.hash = Sha256::digest(second).into();
         let second_key = cache_key(&request, &second_inspection.metadata);
-        ensure_tree(
+        acquire_tree(
             &mut state,
             &request,
             second,
@@ -2332,6 +2458,35 @@ mod tests {
         assert!(!state.cache.contains_key(&first_key));
         assert!(state.cache.contains_key(&second_key));
         assert!(state.cache_cost <= request.max_cache_bytes);
+    }
+
+    #[test]
+    fn admitted_tree_larger_than_cache_budget_remains_live_but_uncached() {
+        let (font_sender, font_receiver) = mpsc::channel();
+        drop(font_sender);
+        let mut state = WorkerState {
+            cache: HashMap::new(),
+            documents: HashMap::new(),
+            cache_cost: 0,
+            tick: 0,
+            font_database: None,
+            font_database_receiver: font_receiver,
+        };
+        let source = b"<svg xmlns='http://www.w3.org/2000/svg' width='2' height='2'><rect width='2' height='2'/></svg>";
+        let mut request = test_request(4);
+        request.max_cache_bytes = 1;
+        request.hash = Sha256::digest(source).into();
+        let inspection = inspect_svg(source, &request).unwrap();
+        let key = cache_key(&request, &inspection.metadata);
+
+        let (tree, metadata, cache_key) =
+            acquire_tree(&mut state, &request, source, &inspection, key).unwrap();
+
+        assert_eq!(tree.size().width(), 2.0);
+        assert_eq!(metadata.width, 2.0);
+        assert!(cache_key.is_none());
+        assert!(state.cache.is_empty());
+        assert_eq!(state.cache_cost, 0);
     }
 
     #[test]

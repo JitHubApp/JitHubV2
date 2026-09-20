@@ -44,7 +44,11 @@ internal static class RasterImageResourceBudget
     // This is a compressed-source ceiling, not a decoded-memory allowance.
     // The independent pixel/frame/decoded-byte checks below remain authoritative.
     internal const int MaxInputBytes = 32 * 1024 * 1024;
-    internal const int MaxDimension = 8192;
+    // D3D feature level 10+ supports 16,384-pixel textures, and a number of
+    // real README screenshots are narrow, tall images just above 8K. Pixel
+    // and decoded-byte ceilings remain the authoritative memory limits, so a
+    // 16K edge does not admit a dimension bomb by itself.
+    internal const int MaxDimension = 16_384;
     internal const long MaxPixelsPerFrame = 16_777_216;
     internal const long MaxDownsampleSourcePixels = 40_000_000;
     internal const int MaxFrameCount = 60;
@@ -68,6 +72,7 @@ internal static class RasterImageResourceBudget
             TryReadJpeg(bytes) ??
             TryReadBmp(bytes) ??
             TryReadWebP(bytes) ??
+            TryReadAvif(bytes) ??
             TryReadIcon(bytes);
         if (header is null)
         {
@@ -209,6 +214,118 @@ internal static class RasterImageResourceBudget
         }
 
         return new HeaderInfo("PNG", width, height, frames);
+    }
+
+    private static HeaderInfo? TryReadAvif(ReadOnlySpan<byte> bytes)
+    {
+        if (bytes.Length < 16 || !bytes.Slice(4, 4).SequenceEqual("ftyp"u8))
+            return null;
+
+        uint firstBoxSize = ReadUInt32BigEndian(bytes, 0);
+        if (firstBoxSize < 16 || firstBoxSize > bytes.Length)
+            return null;
+
+        int brandEnd = checked((int)firstBoxSize);
+        bool isAvif = false;
+        bool isSequence = false;
+        for (int offset = 8; offset <= brandEnd - 4; offset += 4)
+        {
+            ReadOnlySpan<byte> brand = bytes.Slice(offset, 4);
+            isAvif |= brand.SequenceEqual("avif"u8) || brand.SequenceEqual("avis"u8);
+            isSequence |= brand.SequenceEqual("avis"u8);
+        }
+        if (!isAvif || isSequence)
+            return null;
+
+        int width = 0;
+        int height = 0;
+        if (!TryReadAvifBoxes(bytes, 0, bytes.Length, depth: 0, ref width, ref height) ||
+            width <= 0 || height <= 0)
+        {
+            return null;
+        }
+
+        return new HeaderInfo("AVIF", width, height, FrameCount: 1);
+    }
+
+    private static bool TryReadAvifBoxes(
+        ReadOnlySpan<byte> bytes,
+        int start,
+        int end,
+        int depth,
+        ref int maximumWidth,
+        ref int maximumHeight)
+    {
+        if (depth > 16 || start < 0 || end < start || end > bytes.Length)
+            return false;
+
+        int offset = start;
+        while (offset <= end - 8)
+        {
+            uint compactSize = ReadUInt32BigEndian(bytes, offset);
+            ReadOnlySpan<byte> type = bytes.Slice(offset + 4, 4);
+            int headerSize = 8;
+            ulong boxSize = compactSize;
+            if (compactSize == 1)
+            {
+                if (offset > end - 16)
+                    return false;
+                boxSize = BinaryPrimitives.ReadUInt64BigEndian(bytes.Slice(offset + 8, 8));
+                headerSize = 16;
+            }
+            else if (compactSize == 0)
+            {
+                boxSize = checked((ulong)(end - offset));
+            }
+
+            if (boxSize < (ulong)headerSize || boxSize > int.MaxValue)
+                return false;
+            int boxEnd;
+            try
+            {
+                boxEnd = checked(offset + (int)boxSize);
+            }
+            catch (OverflowException)
+            {
+                return false;
+            }
+            if (boxEnd > end)
+                return false;
+
+            int payload = offset + headerSize;
+            if (type.SequenceEqual("ispe"u8))
+            {
+                if (payload > boxEnd - 12)
+                    return false;
+                uint width = ReadUInt32BigEndian(bytes, payload + 4);
+                uint height = ReadUInt32BigEndian(bytes, payload + 8);
+                if (width is 0 or > int.MaxValue || height is 0 or > int.MaxValue)
+                    return false;
+                if ((ulong)width * height >
+                    (ulong)Math.Max(1, maximumWidth) * (ulong)Math.Max(1, maximumHeight))
+                {
+                    maximumWidth = (int)width;
+                    maximumHeight = (int)height;
+                }
+            }
+            else if (type.SequenceEqual("meta"u8))
+            {
+                if (payload > boxEnd - 4 ||
+                    !TryReadAvifBoxes(bytes, payload + 4, boxEnd, depth + 1, ref maximumWidth, ref maximumHeight))
+                {
+                    return false;
+                }
+            }
+            else if (type.SequenceEqual("iprp"u8) || type.SequenceEqual("ipco"u8))
+            {
+                if (!TryReadAvifBoxes(bytes, payload, boxEnd, depth + 1, ref maximumWidth, ref maximumHeight))
+                    return false;
+            }
+
+            offset = boxEnd;
+        }
+
+        return offset == end;
     }
 
     private static HeaderInfo? TryReadGif(ReadOnlySpan<byte> bytes)

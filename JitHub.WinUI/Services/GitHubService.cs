@@ -2130,6 +2130,29 @@ namespace JitHub.Services
 
                 if (disposition == MarkdownImageSourceDisposition.BlockedInsecureRemote)
                 {
+                    // Never fetch plaintext content directly. GitHub's rendered
+                    // README representation may map the same authored HTTP URL
+                    // to its trusted HTTPS Camo proxy; use that exact server-
+                    // supplied mapping when available, otherwise preserve the
+                    // insecure-content rejection.
+                    try
+                    {
+                        MarkdownImageAsset? camoAsset = await TryResolveViaGitHubCamoAsync(
+                            source,
+                            context,
+                            cancellationToken).ConfigureAwait(false);
+                        if (camoAsset is not null)
+                            return MarkdownImageResolution.Resolved(camoAsset);
+                    }
+                    catch (OperationCanceledException)
+                    {
+                        throw;
+                    }
+                    catch (Exception ex)
+                    {
+                        HandledFailureReporter.Report(ex, "markdown-image-http-camo-fallback");
+                    }
+
                     return MarkdownImageResolution.Blocked(
                         MarkdownImageUnavailableReason.InsecureRemoteContent);
                 }
@@ -2346,7 +2369,8 @@ namespace JitHub.Services
             if (document is null ||
                 !document.HasRepositoryContext ||
                 !Uri.TryCreate(source, UriKind.Absolute, out Uri? sourceUri) ||
-                sourceUri.Scheme != Uri.UriSchemeHttps ||
+                (sourceUri.Scheme != Uri.UriSchemeHttp &&
+                    sourceUri.Scheme != Uri.UriSchemeHttps) ||
                 MarkdownRemoteImagePolicy.IsTrustedGitHubHost(sourceUri.Host))
             {
                 return null;
@@ -2436,6 +2460,7 @@ namespace JitHub.Services
                 ".gif" => "image/gif",
                 ".bmp" => "image/bmp",
                 ".webp" => "image/webp",
+                ".avif" => "image/avif",
                 ".ico" => "image/x-icon",
                 ".tif" or ".tiff" => "image/tiff",
                 _ => null,

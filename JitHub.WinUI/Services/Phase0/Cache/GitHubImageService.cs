@@ -1,4 +1,5 @@
 using System;
+using System.Buffers.Binary;
 using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.IO;
@@ -699,6 +700,12 @@ public sealed partial class GitHubImageService : IGitHubImageService, IDisposabl
             return true;
         }
 
+        if (IsStillAvif(bytes))
+        {
+            contentType = "image/avif";
+            return true;
+        }
+
         if (bytes.Length >= 2 && bytes[0] == (byte)'B' && bytes[1] == (byte)'M')
         {
             contentType = "image/bmp";
@@ -734,6 +741,36 @@ public sealed partial class GitHubImageService : IGitHubImageService, IDisposabl
 
         contentType = string.Empty;
         return false;
+    }
+
+    private static bool IsStillAvif(ReadOnlySpan<byte> bytes)
+    {
+        if (bytes.Length < 16 || !bytes.Slice(4, 4).SequenceEqual("ftyp"u8))
+        {
+            return false;
+        }
+
+        uint boxSize = BinaryPrimitives.ReadUInt32BigEndian(bytes);
+        if (boxSize < 16 || boxSize > bytes.Length || (boxSize & 3) != 0)
+        {
+            return false;
+        }
+
+        bool hasStillBrand = false;
+        for (int offset = 8; offset <= boxSize - 4; offset += 4)
+        {
+            ReadOnlySpan<byte> brand = bytes.Slice(offset, 4);
+            if (brand.SequenceEqual("avis"u8))
+            {
+                // Animated AVIF has a different resource and decode budget. Do
+                // not admit it through the bounded still-image path.
+                return false;
+            }
+
+            hasStillBrand |= brand.SequenceEqual("avif"u8);
+        }
+
+        return hasStillBrand;
     }
 
     private static HttpClient CreateHttpClient()
@@ -798,6 +835,7 @@ public sealed partial class GitHubImageService : IGitHubImageService, IDisposabl
             "image/jpeg" => ".jpg",
             "image/gif" => ".gif",
             "image/webp" => ".webp",
+            "image/avif" => ".avif",
             "image/svg+xml" => ".svg",
             "image/bmp" => ".bmp",
             "image/x-icon" or "image/vnd.microsoft.icon" => ".ico",

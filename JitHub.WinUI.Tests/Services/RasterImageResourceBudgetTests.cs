@@ -120,8 +120,9 @@ public sealed class RasterImageResourceBudgetTests
     [Trait("Category", "ReleaseSecurity")]
     public void Validate_RejectsHostileJpegAndBmpDimensions()
     {
-        RasterImageBudgetResult jpeg = RasterImageResourceBudget.Validate(CreateJpeg(9000, 1));
-        RasterImageBudgetResult bmp = RasterImageResourceBudget.Validate(CreateBmp(9000, 1));
+        int hostileDimension = RasterImageResourceBudget.MaxDimension + 1;
+        RasterImageBudgetResult jpeg = RasterImageResourceBudget.Validate(CreateJpeg(hostileDimension, 1));
+        RasterImageBudgetResult bmp = RasterImageResourceBudget.Validate(CreateBmp(hostileDimension, 1));
 
         Assert.False(jpeg.Accepted);
         Assert.False(bmp.Accepted);
@@ -148,8 +149,9 @@ public sealed class RasterImageResourceBudgetTests
     [Trait("Category", "ReleaseSecurity")]
     public void Validate_RejectsIcoDirectoryThatHidesOversizedEmbeddedImages()
     {
-        byte[] hiddenPng = CreateIco([(1, 1, CompletePng(CreatePng(9000, 1)))]);
-        byte[] hiddenDib = CreateIco([(1, 1, CreateIconDib(9000, 1))]);
+        int hostileDimension = RasterImageResourceBudget.MaxDimension + 1;
+        byte[] hiddenPng = CreateIco([(1, 1, CompletePng(CreatePng(hostileDimension, 1)))]);
+        byte[] hiddenDib = CreateIco([(1, 1, CreateIconDib(hostileDimension, 1))]);
 
         Assert.False(RasterImageResourceBudget.Validate(hiddenPng).Accepted);
         Assert.False(RasterImageResourceBudget.Validate(hiddenDib).Accepted);

@@ -81,6 +81,89 @@ public sealed class SafeHtmlRenderingTests
     }
 
     [Fact]
+    public void ExplicitEmptyImageAltRemainsDecorative()
+    {
+        const string source = "<img src='decoration.png' alt=''>";
+
+        using LayoutSnapshot snapshot = Build(source, SafeHtmlOptions.Default);
+        InlineImageRun image = Assert.Single(FlattenRuns(snapshot).OfType<InlineImageRun>());
+
+        Assert.Empty(image.AltText);
+        Assert.Empty(image.AccessibleText);
+    }
+
+    [Fact]
+    public void PercentageImagesThatFitShareTheSameTableCellLine()
+    {
+        const string source = """
+            | Name | License | Demo |
+            | --- | --- | --- |
+            | Example | MIT | <img src="first.gif" alt="" width="46%"> <img src="second.gif" alt="" width="46%"> |
+            """;
+
+        using LayoutSnapshot snapshot = BuildGitHub(source);
+        InlineContainerBox cell = FlattenBoxes(snapshot)
+            .OfType<InlineContainerBox>()
+            .Single(box => box.Runs.OfType<InlineImageRun>().Count() == 2);
+        var images = cell.EnumerateInlineImageRects().ToArray();
+
+        Assert.Equal(2, images.Length);
+        double verticalDelta = System.Math.Abs(images[0].Rect.Y - images[1].Rect.Y);
+        Assert.True(
+            verticalDelta <= 0.5,
+            $"Expected same line; cell={cell.Bounds}, first={images[0].Rect}, second={images[1].Rect}.");
+        Assert.True(images[0].Rect.Right <= images[1].Rect.Left);
+        Assert.True(images[1].Rect.Right <= cell.Bounds.Right + 0.5);
+    }
+
+    [Fact]
+    public void GitHubImageEmojiUsesTheNormalSizedInlineImagePipeline()
+    {
+        const string source = "Native :rocket: emoji and custom :octocat: image.";
+
+        using LayoutSnapshot snapshot = BuildGitHub(source);
+        InlineContainerBox paragraph = Assert.Single(snapshot.Blocks.OfType<InlineContainerBox>());
+        InlineImageRun image = Assert.Single(paragraph.Runs.OfType<InlineImageRun>());
+        var placement = Assert.Single(paragraph.EnumerateInlineImageRects());
+
+        Assert.Equal(":octocat:", image.AltText);
+        Assert.Equal(
+            "https://github.githubassets.com/images/icons/emoji/octocat.png",
+            image.Url);
+        Assert.Equal(20, placement.Rect.Width, precision: 1);
+        Assert.Equal(20, placement.Rect.Height, precision: 1);
+        Assert.Contains(
+            paragraph.Runs.OfType<TextRun>(),
+            static run => run.Text.Contains("🚀", StringComparison.Ordinal));
+    }
+
+    [Fact]
+    public void GitHubInlineSvgUsesTheIsolatedSvgImagePipeline()
+    {
+        const string source = """
+            <a href="https://applitools.example/">
+            <svg width="170" height="32" viewBox="0 0 170 32" xmlns="http://www.w3.org/2000/svg">
+              <title>Applitools</title>
+              <path d="M0 0h170v32H0z" fill="#00A298"></path>
+            </svg>
+            </a>
+            """;
+
+        using LayoutSnapshot snapshot = Build(source, SafeHtmlOptions.Default);
+        InlineRun[] runs = FlattenRuns(snapshot).ToArray();
+
+        InlineImageRun image = Assert.Single(runs.OfType<InlineImageRun>());
+        Assert.StartsWith("data:image/svg+xml;base64,", image.Url, StringComparison.Ordinal);
+        Assert.Equal("Applitools", image.AltText);
+        Assert.Equal("https://applitools.example/", image.LinkUrl);
+        Assert.Equal(170, image.Image.MeasuredImageWidth);
+        string markup = System.Text.Encoding.UTF8.GetString(
+            Convert.FromBase64String(image.Url[(image.Url.IndexOf(',') + 1)..]));
+        Assert.Contains("<path", markup, StringComparison.Ordinal);
+        Assert.DoesNotContain("<svg", string.Concat(runs.Select(static run => run.Text)));
+    }
+
+    [Fact]
     public void GitHubDetailsAndSummaryKeepNestedMarkdownReadable()
     {
         const string source = """
@@ -105,6 +188,87 @@ public sealed class SafeHtmlRenderingTests
         Assert.Contains("Ready", rendered, StringComparison.Ordinal);
         Assert.DoesNotContain("<details", rendered, StringComparison.Ordinal);
         Assert.DoesNotContain("<summary", rendered, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void GitHubProfileParsesMarkdownInsidePresentationDiv()
+    {
+        const string source = """
+            <div align="center">
+
+            ### Homepage - [example](https://example.test)
+
+            [![Community](badge.png)](https://example.test/community)
+
+            </div>
+            """;
+
+        using LayoutSnapshot snapshot = BuildGitHub(source);
+        InlineRun[] runs = FlattenRuns(snapshot).ToArray();
+
+        Assert.Contains(runs, static run => run is LinkRun { Text: "example" });
+        InlineImageRun image = Assert.Single(runs.OfType<InlineImageRun>());
+        Assert.Equal("badge.png", image.Url);
+        Assert.Equal("https://example.test/community", image.LinkUrl);
+        Assert.DoesNotContain("[![", string.Concat(runs.Select(static run => run.Text)));
+    }
+
+    [Fact]
+    public void GitHubProfileKeepsCollapsedDetailsBodiesOutOfLayout()
+    {
+        string source = string.Join(
+            "\n\n",
+            Enumerable.Range(0, 200).Select(index => $$"""
+                <details>
+                <summary>Section {{index}}</summary>
+
+                Hidden body {{index}} with ![deferred](hidden-{{index}}.png).
+
+                </details>
+                """));
+
+        using LayoutSnapshot snapshot = BuildGitHub(source);
+        InlineRun[] runs = FlattenRuns(snapshot).ToArray();
+
+        Assert.Equal(200, runs.OfType<LinkRun>().Count(static run => run.DisclosureId is not null));
+        Assert.DoesNotContain(runs, static run => run is InlineImageRun);
+        Assert.DoesNotContain("Hidden body", string.Concat(runs.Select(static run => run.Text)));
+    }
+
+    [Fact]
+    public void CollapsedDetailsInsideListItemsDoNotLayoutOrLoadTheirBodies()
+    {
+        const string source = """
+            - [AutoMute](https://example.test/automute) - Automatically mute audio.
+
+              **Languages:** Objective-C
+
+              <details>
+              <summary>Screenshots</summary>
+              <p>
+
+              Hidden body marker.
+
+              <img src="https://example.test/hidden.png" alt="Hidden screenshot" width="400">
+
+              </p>
+              </details>
+
+            - Next visible item
+            """;
+
+        using LayoutSnapshot snapshot = BuildGitHub(source);
+        InlineRun[] runs = FlattenRuns(snapshot).ToArray();
+        LinkRun disclosure = Assert.Single(
+            runs.OfType<LinkRun>(),
+            static run => run.DisclosureId is not null);
+
+        Assert.Equal("Screenshots", disclosure.AccessibilityName);
+        Assert.False(disclosure.IsExpanded);
+        Assert.DoesNotContain(runs, static run => run is InlineImageRun);
+        string text = string.Concat(runs.Select(static run => run.Text));
+        Assert.DoesNotContain("Hidden body marker", text, StringComparison.Ordinal);
+        Assert.Contains("Next visible item", text, StringComparison.Ordinal);
     }
 
     [Fact]
@@ -484,6 +648,15 @@ public sealed class SafeHtmlRenderingTests
         return new LayoutBuilder(context).Build(document, 800);
     }
 
+    private static LayoutSnapshot BuildGitHub(string source)
+    {
+        using MarkdownEngine engine = new MarkdownEngineBuilder()
+            .UseGitHubReadme()
+            .Build();
+        var registry = Assert.IsType<MarkdownExtensionRegistry>(engine.PresentationConfiguration);
+        return Build(source, registry);
+    }
+
     private static void AssertDisabledLinkAndImageFallback(LayoutSnapshot snapshot)
     {
         InlineRun[] runs = FlattenRuns(snapshot).ToArray();
@@ -503,6 +676,37 @@ public sealed class SafeHtmlRenderingTests
         }
     }
 
+    private static IEnumerable<BlockBox> FlattenBoxes(LayoutSnapshot snapshot)
+    {
+        foreach (BlockBox block in snapshot.Blocks)
+        {
+            yield return block;
+            if (block is StackBox stack)
+            {
+                foreach (BlockBox child in FlattenBoxes(stack))
+                    yield return child;
+            }
+            else if (block is TableBox table)
+            {
+                foreach (InlineContainerBox cell in table.GetCellBoxes())
+                    yield return cell;
+            }
+        }
+    }
+
+    private static IEnumerable<BlockBox> FlattenBoxes(StackBox stack)
+    {
+        foreach (BlockBox child in stack.Children)
+        {
+            yield return child;
+            if (child is StackBox nested)
+            {
+                foreach (BlockBox descendant in FlattenBoxes(nested))
+                    yield return descendant;
+            }
+        }
+    }
+
     private static IEnumerable<InlineRun> FlattenRuns(BlockBox block)
     {
         if (block is InlineContainerBox inline)
@@ -517,6 +721,13 @@ public sealed class SafeHtmlRenderingTests
                 foreach (InlineRun run in FlattenRuns(child))
                     yield return run;
             }
+        }
+        else if (block is ListItemBox listItem)
+        {
+            foreach (InlineRun run in FlattenRuns(listItem.Marker))
+                yield return run;
+            foreach (InlineRun run in FlattenRuns(listItem.Content))
+                yield return run;
         }
     }
 

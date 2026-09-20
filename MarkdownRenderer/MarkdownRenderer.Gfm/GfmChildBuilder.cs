@@ -3,12 +3,19 @@ using System.Collections.Generic;
 using Markdig.Syntax;
 using Markdig.Syntax.Inlines;
 using Markdig.Extensions.Abbreviations;
+using MarkdownRenderer.Accessibility;
 using MarkdownRenderer.CodeBlocks;
+using MarkdownRenderer.Hosting;
 using MarkdownRenderer.Layout;
 using MarkdownRenderer.Layout.Boxes;
+using MarkdownRenderer.Parsing;
 using MarkdownRenderer.Theming;
 
+#if MARKDOWNRENDERER_HTML
+namespace MarkdownRenderer.Html.Internal;
+#else
 namespace MarkdownRenderer.Gfm;
+#endif
 
 /// <summary>
 /// Lightweight block/inline builder for GFM extension renderers. Handles common
@@ -21,11 +28,76 @@ internal static class GfmChildBuilder
     /// <summary>Builds child blocks from <paramref name="container"/> and adds them to <paramref name="stack"/>.</summary>
     internal static void PopulateChildren(StackBox stack, ContainerBlock container, MarkdownLayoutContext context)
     {
-        foreach (var child in container)
+        SafeHtmlBlockScopeTracker? htmlScopes = context.Registry.SafeHtmlPolicy is null
+            ? null
+            : new SafeHtmlBlockScopeTracker(context.Registry.SafeHtmlPolicy.Limits);
+        bool htmlBudgetNoticeAdded = false;
+        foreach (Block child in container)
         {
             context.CancellationToken.ThrowIfCancellationRequested();
-            var box = TryBuildBlock(child, context);
-            if (box is not null) stack.Add(box);
+            bool suppressedBeforeBlock = htmlScopes?.IsContentSuppressed == true;
+            bool scopeOnly = child is HtmlBlock htmlBlock && htmlScopes?.Process(
+                    htmlBlock.Lines.ToString(),
+                    htmlBlock.Span.Start,
+                    context.DisclosureStates,
+                    context.CancellationToken) == true;
+            if (child is HtmlBlock && htmlScopes?.BudgetExceeded == true)
+            {
+                if (!htmlBudgetNoticeAdded)
+                {
+                    var notice = new InlineContainerBox(context, MarkdownElementKeys.Body)
+                    {
+                        BlockIndex = context.NextBlockIndex(),
+                    };
+                    notice.Add(new TextRun(context.ResolveString(
+                        MarkdownStringKeys.HtmlBudgetExceeded,
+                        MarkdownLocalizedStrings.HtmlBudgetExceeded))
+                    {
+                        SourceSpan = MarkdownRenderer.SourceSpan.Empty,
+                    });
+                    stack.Add(notice);
+                    htmlBudgetNoticeAdded = true;
+                }
+
+                continue;
+            }
+
+            if (scopeOnly || suppressedBeforeBlock)
+                continue;
+
+            BlockBox? box = TryBuildBlock(child, context);
+            if (box is null)
+                continue;
+
+            if (htmlScopes is not null)
+                ApplyHtmlAlignment(box, htmlScopes.CurrentAlignment);
+            stack.Add(box);
+        }
+    }
+
+    private static void ApplyHtmlAlignment(BlockBox box, SafeHtmlAlignment alignment)
+    {
+        if (alignment == SafeHtmlAlignment.Inherit)
+            return;
+
+        var canvasAlignment = alignment switch
+        {
+            SafeHtmlAlignment.Center => Microsoft.Graphics.Canvas.Text.CanvasHorizontalAlignment.Center,
+            SafeHtmlAlignment.Right => Microsoft.Graphics.Canvas.Text.CanvasHorizontalAlignment.Right,
+            _ => Microsoft.Graphics.Canvas.Text.CanvasHorizontalAlignment.Left,
+        };
+        switch (box)
+        {
+            case InlineContainerBox inline:
+                inline.TextAlignment = canvasAlignment;
+                break;
+            case ImageBox image:
+                image.ContentAlignment = canvasAlignment;
+                break;
+            case StackBox nested:
+                foreach (BlockBox child in nested.Children)
+                    ApplyHtmlAlignment(child, alignment);
+                break;
         }
     }
 
@@ -517,13 +589,23 @@ internal static class GfmChildBuilder
     {
         var alt = new StringBuilder();
         FlattenInlines(imageLink, alt);
+        SafeHtmlLength? requestedWidth = null;
+        SafeHtmlLength? requestedHeight = null;
+        if (imageLink is SizedImageLinkInline sizedImage)
+        {
+            requestedWidth = sizedImage.RequestedWidth;
+            requestedHeight = sizedImage.RequestedHeight;
+        }
+
         return new InlineImageRun(
             context,
             alt.Length > 0 ? alt.ToString() : "image",
             imageLink.Url ?? string.Empty,
             imageLink.Title,
             linkUrl,
-            linkTitle)
+            linkTitle,
+            requestedWidth,
+            requestedHeight)
         {
             SourceSpan = new MarkdownRenderer.SourceSpan(sourceStart, sourceLength)
         };

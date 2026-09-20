@@ -142,6 +142,45 @@ public sealed class GitHubImageServiceTests : IDisposable
     }
 
     [Fact]
+    public async Task GetAsync_AdmitsStillAvifFromValidatedSignature()
+    {
+        byte[] avif =
+        [
+            0, 0, 0, 24, (byte)'f', (byte)'t', (byte)'y', (byte)'p',
+            (byte)'a', (byte)'v', (byte)'i', (byte)'f', 0, 0, 0, 0,
+            (byte)'a', (byte)'v', (byte)'i', (byte)'f', (byte)'m', (byte)'i', (byte)'f', (byte)'1',
+        ];
+        GitHubImageCacheStore store = new(_root, GitHubCachePolicy.Default);
+        using HttpClient client = new(new RawImageHandler("application/octet-stream", avif));
+        using GitHubImageService service = new(store, client);
+
+        GitHubCachedImage? image = await service.GetAsync(
+            "https://camo.githubusercontent.com/hash/contributor.avif");
+
+        Assert.NotNull(image);
+        Assert.Equal("image/avif", image!.ContentType);
+        Assert.Equal(".img", Path.GetExtension(image.FilePath));
+        Assert.Equal(avif, image.Bytes);
+    }
+
+    [Fact]
+    public async Task GetAsync_RejectsAnimatedAvifSequence()
+    {
+        byte[] avis =
+        [
+            0, 0, 0, 24, (byte)'f', (byte)'t', (byte)'y', (byte)'p',
+            (byte)'a', (byte)'v', (byte)'i', (byte)'f', 0, 0, 0, 0,
+            (byte)'a', (byte)'v', (byte)'i', (byte)'f', (byte)'a', (byte)'v', (byte)'i', (byte)'s',
+        ];
+        GitHubImageCacheStore store = new(_root, GitHubCachePolicy.Default);
+        using HttpClient client = new(new RawImageHandler("image/avif", avis));
+        using GitHubImageService service = new(store, client);
+
+        await Assert.ThrowsAsync<InvalidDataException>(() => service.GetAsync(
+            "https://camo.githubusercontent.com/hash/animated.avif"));
+    }
+
+    [Fact]
     public async Task GetAsync_CancelsSharedTransferOnlyAfterAllWaitersLeave()
     {
         GitHubImageCacheStore store = new(_root, GitHubCachePolicy.Default);
@@ -798,19 +837,20 @@ public sealed class GitHubImageServiceTests : IDisposable
     }
 
     [Fact]
-    public void ParseGitHubCamoImageMap_AdmitsOnlyCanonicalHttpsCamoPairs()
+    public void ParseGitHubCamoImageMap_AdmitsHttpOrHttpsOriginalOnlyThroughCanonicalHttpsCamo()
     {
         const string source = "https://assets.example.test/image.png?one=1&two=2";
         const string camo = "https://camo.githubusercontent.com/hash/encoded";
         string html =
             $"<img data-canonical-src='https://assets.example.test/image.png?one=1&amp;two=2' src='{camo}'>" +
+            $"<img data-canonical-src='http://legacy.example.test/image.gif' src='{camo}/legacy'>" +
             "<img src=\"https://evil.example.test/image.png\" data-canonical-src=\"https://assets.example.test/evil.png\">";
 
         IReadOnlyDictionary<string, string> map = GitHubCamoImageMapParser.Parse(html);
 
-        KeyValuePair<string, string> pair = Assert.Single(map);
-        Assert.Equal(source, pair.Key);
-        Assert.Equal(camo, pair.Value);
+        Assert.Equal(2, map.Count);
+        Assert.Equal(camo, map[source]);
+        Assert.Equal($"{camo}/legacy", map["http://legacy.example.test/image.gif"]);
     }
 
     public void Dispose()

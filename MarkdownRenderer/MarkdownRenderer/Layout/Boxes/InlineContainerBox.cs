@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.Numerics;
 using Microsoft.Graphics.Canvas;
 using Microsoft.Graphics.Canvas.Text;
 using Microsoft.UI.Xaml;
@@ -21,7 +22,7 @@ internal readonly record struct IntrinsicWidthMetrics(float Minimum, float Prefe
 /// Owns a <see cref="CanvasTextLayout"/> built from a single concatenated buffer
 /// with per-run style spans.
 /// </summary>
-internal sealed class InlineContainerBox : BlockBox
+internal sealed partial class InlineContainerBox : BlockBox
 {
     private readonly List<InlineRun> _runs = new();
     private readonly List<IReadOnlyList<string>> _effectiveRunAliases = new();
@@ -1404,41 +1405,80 @@ internal sealed class InlineContainerBox : BlockBox
             {
                 try
                 {
-                    layout.SetCharacterSpacing(cumulative, len, 0, 0, emb.DesiredWidth);
+                    layout.SetInlineObject(
+                        cumulative,
+                        len,
+                        new LayoutInlineObject(emb.DesiredWidth, emb.DesiredHeight));
                 }
                 catch (Exception ex)
                 {
-                    MarkdownDiagnostics.WriteLine($"[InlineContainerBox] SetCharacterSpacing failed: {ex.Message}");
+                    MarkdownDiagnostics.WriteLine($"[InlineContainerBox] inline embed layout failed: {ex.Message}");
                 }
-                layout.SetColor(cumulative, len, Color.FromArgb(0, 0, 0, 0));
             }
             else if (run is InlineImageRun image && len > 0)
             {
                 try
                 {
-                    layout.SetCharacterSpacing(cumulative, len, 0, 0, image.DesiredWidth);
-                    layout.SetFontSize(cumulative, len, Math.Max(1f, image.DesiredHeight));
+                    layout.SetInlineObject(
+                        cumulative,
+                        len,
+                        new LayoutInlineObject(image.DesiredWidth, image.DesiredHeight));
                 }
                 catch (Exception ex)
                 {
-                    MarkdownDiagnostics.WriteLine($"[InlineContainerBox] inline image spacing failed: {ex.Message}");
+                    MarkdownDiagnostics.WriteLine($"[InlineContainerBox] inline image layout failed: {ex.Message}");
                 }
-                layout.SetColor(cumulative, len, Color.FromArgb(0, 0, 0, 0));
             }
             else if (run is InlineVectorSceneRun vector && len > 0)
             {
                 try
                 {
-                    layout.SetCharacterSpacing(cumulative, len, 0, 0, vector.DesiredWidth);
-                    layout.SetFontSize(cumulative, len, Math.Max(1f, vector.DesiredHeight));
+                    layout.SetInlineObject(
+                        cumulative,
+                        len,
+                        new LayoutInlineObject(vector.DesiredWidth, vector.DesiredHeight));
                 }
                 catch (Exception ex)
                 {
-                    MarkdownDiagnostics.WriteLine($"[InlineContainerBox] vector scene spacing failed: {ex.Message}");
+                    MarkdownDiagnostics.WriteLine($"[InlineContainerBox] vector scene layout failed: {ex.Message}");
                 }
-                layout.SetColor(cumulative, len, Color.FromArgb(0, 0, 0, 0));
             }
             cumulative += len;
+        }
+    }
+
+    /// <summary>
+    /// Supplies DirectWrite with the exact advance and line height of an
+    /// atomic Markdown run. Painting remains owned by the renderer so the
+    /// callback is intentionally empty. Using a real inline object avoids the
+    /// font-dependent U+FFFC glyph advance that previously made tall images
+    /// consume hundreds of extra horizontal DIPs and wrap unnecessarily.
+    /// </summary>
+    private sealed partial class LayoutInlineObject : ICanvasTextInlineObject
+    {
+        public LayoutInlineObject(float width, float height)
+        {
+            float safeWidth = Math.Max(1f, width);
+            float safeHeight = Math.Max(1f, height);
+            Size = new Size(safeWidth, safeHeight);
+            DrawBounds = new Rect(0, 0, safeWidth, safeHeight);
+            Baseline = safeHeight;
+        }
+
+        public Size Size { get; }
+        public float Baseline { get; }
+        public bool SupportsSideways => false;
+        public Rect DrawBounds { get; }
+        public CanvasLineBreakCondition BreakBefore => CanvasLineBreakCondition.Neutral;
+        public CanvasLineBreakCondition BreakAfter => CanvasLineBreakCondition.Neutral;
+
+        public void Draw(
+            ICanvasTextRenderer textRenderer,
+            Vector2 point,
+            bool isSideways,
+            bool isRightToLeft,
+            object brush)
+        {
         }
     }
 

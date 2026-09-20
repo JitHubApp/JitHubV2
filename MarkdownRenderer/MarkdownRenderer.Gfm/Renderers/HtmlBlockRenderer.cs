@@ -2,7 +2,11 @@ using System;
 using System.Collections.Generic;
 using System.Globalization;
 using System.Linq;
+using System.Text;
+using Markdig;
 using Markdig.Syntax;
+using Markdig.Syntax.Inlines;
+using MarkdownRenderer.Html.Internal;
 using MarkdownRenderer.Layout;
 using MarkdownRenderer.Layout.Boxes;
 using MarkdownRenderer.Parsing;
@@ -22,6 +26,11 @@ namespace MarkdownRenderer.Html.Renderers;
 internal sealed class HtmlBlockRenderer : MarkdownNodeRenderer<HtmlBlock>
 {
     private const int MaxTableColumns = 64;
+    private const int MaxNestedMarkdownDepth = 4;
+    private const string GitHubMarkdownContainersFeature =
+        "MarkdownRenderer.GitHub.MarkdownInHtmlContainers";
+    [ThreadStatic]
+    private static int s_nestedMarkdownDepth;
     private readonly SafeHtmlOptions _options;
 
     internal HtmlBlockRenderer(SafeHtmlOptions? options = null)
@@ -176,6 +185,16 @@ internal sealed class HtmlBlockRenderer : MarkdownNodeRenderer<HtmlBlock>
         int sourceOffset,
         SafeHtmlAlignment alignment)
     {
+        BlockBox? markdownContainer = TryBuildMarkdownContainer(
+            element,
+            context,
+            sourceOffset,
+            alignment);
+        if (markdownContainer is not null)
+        {
+            return markdownContainer;
+        }
+
         if (!element.Children.Any(node => node is SafeHtmlElement child && IsBlockElement(child.Name)))
         {
             InlineContainerBox inline = CreateInlineBox(context, MarkdownElementKeys.Body, alignment);
@@ -186,6 +205,113 @@ internal sealed class HtmlBlockRenderer : MarkdownNodeRenderer<HtmlBlock>
         var stack = CreateStack(context);
         AppendBlocks(stack, element.Children, context, sourceOffset, alignment);
         return stack.Children.Count == 0 ? null : stack;
+    }
+
+    private static BlockBox? TryBuildMarkdownContainer(
+        SafeHtmlElement element,
+        MarkdownLayoutContext context,
+        int sourceOffset,
+        SafeHtmlAlignment alignment)
+    {
+        if (!context.Registry.HasPresentationFeature(GitHubMarkdownContainersFeature) ||
+            element.Name is not ("article" or "aside" or "center" or "div" or "main" or "section") ||
+            element.Children.Count != 1 ||
+            element.Children[0] is not SafeHtmlText text ||
+            string.IsNullOrWhiteSpace(text.RawText) ||
+            s_nestedMarkdownDepth >= MaxNestedMarkdownDepth)
+        {
+            return null;
+        }
+
+        // CommonMark deliberately treats the contents of a type-6 HTML block as
+        // raw text. GitHub README rendering permits Markdown in these inert
+        // presentation containers, which is heavily used for centered badge and
+        // sponsor groups. Reparse only the text child, under the same immutable
+        // pipeline and a strict recursion ceiling; active HTML remains governed
+        // by the safe-HTML policy on every nested pass.
+        s_nestedMarkdownDepth++;
+        try
+        {
+            MarkdownDocument fragment = Markdown.Parse(
+                text.RawText,
+                context.Registry.BuildPipeline());
+            OffsetMarkdownSpans(fragment, sourceOffset + text.SourceStart);
+            var stack = CreateStack(context);
+            GfmChildBuilder.PopulateChildren(stack, fragment, context);
+            ApplyTextAlignment(stack, ToCanvasAlignment(alignment));
+            return stack.Children.Count == 0 ? null : stack;
+        }
+        finally
+        {
+            s_nestedMarkdownDepth--;
+        }
+    }
+
+    private static void OffsetMarkdownSpans(ContainerBlock container, int offset)
+    {
+        OffsetMarkdownSpan(container, offset);
+        foreach (Block block in container)
+        {
+            if (block is ContainerBlock childContainer)
+            {
+                OffsetMarkdownSpans(childContainer, offset);
+            }
+            else
+            {
+                OffsetMarkdownSpan(block, offset);
+                if (block is LeafBlock { Inline: not null } leaf)
+                {
+                    OffsetInlineSpans(leaf.Inline, offset);
+                }
+            }
+        }
+    }
+
+    private static void OffsetInlineSpans(ContainerInline container, int offset)
+    {
+        OffsetMarkdownSpan(container, offset);
+        foreach (Inline inline in container)
+        {
+            if (inline is ContainerInline child)
+            {
+                OffsetInlineSpans(child, offset);
+            }
+            else
+            {
+                OffsetMarkdownSpan(inline, offset);
+            }
+        }
+    }
+
+    private static void ApplyTextAlignment(BlockBox block, CanvasHorizontalAlignment alignment)
+    {
+        if (block is InlineContainerBox inline)
+        {
+            inline.TextAlignment = alignment;
+            return;
+        }
+
+        if (block is not StackBox stack)
+        {
+            return;
+        }
+
+        foreach (BlockBox child in stack.Children)
+        {
+            ApplyTextAlignment(child, alignment);
+        }
+    }
+
+    private static void OffsetMarkdownSpan(MarkdownObject node, int offset)
+    {
+        if (node.Span.Start < 0)
+        {
+            return;
+        }
+
+        node.Span = new Markdig.Syntax.SourceSpan(
+            checked(node.Span.Start + offset),
+            checked(node.Span.End + offset));
     }
 
     private BlockBox? BuildDetails(
@@ -557,6 +683,13 @@ internal sealed class HtmlBlockRenderer : MarkdownNodeRenderer<HtmlBlock>
             return;
         }
 
+        if (element.Name == "svg")
+        {
+            if (_options.EnableImages)
+                AddInlineSvgRun(box, element, context, sourceOffset, inlineContext);
+            return;
+        }
+
         if (element.Name == "source")
         {
             return;
@@ -638,13 +771,13 @@ internal sealed class HtmlBlockRenderer : MarkdownNodeRenderer<HtmlBlock>
             return;
         }
 
-        image.TryGetAttribute("alt", out string alt);
+        bool hasExplicitAlt = image.TryGetAttribute("alt", out string alt);
         image.TryGetAttribute("title", out string title);
         SafeHtmlLength? width = GetImageLength(selectedSource, image, "width");
         SafeHtmlLength? height = GetImageLength(selectedSource, image, "height");
         var run = new InlineImageRun(
             context,
-            string.IsNullOrWhiteSpace(alt)
+            !hasExplicitAlt
                 ? context.ResolveString(MarkdownStringKeys.ImageName, MarkdownLocalizedStrings.ImageName)
                 : alt,
             source,
@@ -658,6 +791,85 @@ internal sealed class HtmlBlockRenderer : MarkdownNodeRenderer<HtmlBlock>
         };
         run.SetStyleAliases(inlineContext.StyleAliases);
         box.Add(run);
+    }
+
+    private static void AddInlineSvgRun(
+        InlineContainerBox box,
+        SafeHtmlElement svg,
+        MarkdownLayoutContext context,
+        int sourceOffset,
+        HtmlInlineContext inlineContext)
+    {
+        // Inline SVG is inert image content, not HTML UI. Preserve the exact
+        // authored bytes and route them through the same bounded SVG preflight
+        // and isolated renderer as ordinary Markdown images. This keeps script,
+        // foreignObject, nested network/file references, and resource bombs
+        // subject to one security policy instead of duplicating an SVG parser
+        // in the safe-HTML layer.
+        if (svg.RawOpeningTag.Length == 0 || svg.RawClosingTag.Length == 0)
+            return;
+
+        var markup = new StringBuilder(Math.Max(64, svg.SourceLength));
+        AppendRawMarkup(markup, svg);
+        if (markup.Length == 0)
+            return;
+
+        string dataUri = "data:image/svg+xml;base64," +
+            Convert.ToBase64String(Encoding.UTF8.GetBytes(markup.ToString()));
+        string accessibilityName = GetSvgAccessibilityName(svg);
+        SafeHtmlLength? width = SafeHtmlParser.TryGetLength(svg, "width", out SafeHtmlLength parsedWidth)
+            ? parsedWidth
+            : null;
+        SafeHtmlLength? height = SafeHtmlParser.TryGetLength(svg, "height", out SafeHtmlLength parsedHeight)
+            ? parsedHeight
+            : null;
+        var run = new InlineImageRun(
+            context,
+            accessibilityName,
+            dataUri,
+            title: null,
+            inlineContext.LinkUrl,
+            inlineContext.LinkTitle,
+            width,
+            height)
+        {
+            SourceSpan = new SourceSpan(sourceOffset + svg.SourceStart, svg.SourceLength),
+        };
+        run.SetStyleAliases(inlineContext.StyleAliases);
+        box.Add(run);
+    }
+
+    private static void AppendRawMarkup(StringBuilder destination, SafeHtmlElement element)
+    {
+        destination.Append(element.RawOpeningTag);
+        if (element.RawTrailingMarkup.Length > 0)
+        {
+            destination.Append(element.RawTrailingMarkup);
+            return;
+        }
+
+        foreach (SafeHtmlNode child in element.Children)
+        {
+            if (child is SafeHtmlText text)
+                destination.Append(text.RawText);
+            else if (child is SafeHtmlElement nested)
+                AppendRawMarkup(destination, nested);
+        }
+        destination.Append(element.RawClosingTag);
+    }
+
+    private static string GetSvgAccessibilityName(SafeHtmlElement svg)
+    {
+        if (svg.TryGetAttribute("aria-label", out string ariaLabel) &&
+            !string.IsNullOrWhiteSpace(ariaLabel))
+        {
+            return ariaLabel.Trim();
+        }
+
+        SafeHtmlElement? title = FindDescendant(svg, "title");
+        return title is null
+            ? string.Empty
+            : string.Concat(DescendantText(title).Select(static text => text.DecodedText)).Trim();
     }
 
     private static SafeHtmlLength? GetImageLength(
@@ -795,7 +1007,7 @@ internal sealed class HtmlBlockRenderer : MarkdownNodeRenderer<HtmlBlock>
         "h2" or "h3" or "h4" or "h5" or "h6" or "header" or "hr" or "i" or "img" or
         "ins" or "kbd" or "li" or "main" or "mark" or "nav" or "ol" or "p" or
         "picture" or "pre" or "s" or "samp" or "section" or "small" or "source" or
-        "span" or "strike" or "strong" or "sub" or "summary" or "sup" or "table" or
+        "span" or "strike" or "strong" or "sub" or "summary" or "sup" or "svg" or "table" or
         "tbody" or "td" or "tfoot" or "th" or "thead" or "tr" or "u" or "ul" or "var";
 
     private static void AddLiteralElement(

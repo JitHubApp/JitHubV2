@@ -312,7 +312,7 @@ internal static class SvgResourceBudget
         if (css.IndexOf("@import", StringComparison.OrdinalIgnoreCase) >= 0 ||
             css.IndexOf("@font-face", StringComparison.OrdinalIgnoreCase) >= 0 ||
             css.IndexOf("@keyframes", StringComparison.OrdinalIgnoreCase) >= 0 ||
-            css.IndexOf("animation", StringComparison.OrdinalIgnoreCase) >= 0)
+            ContainsMotionDeclaration(css))
         {
             return SvgResourceBudgetResult.Reject("active-content");
         }
@@ -320,6 +320,113 @@ internal static class SvgResourceBudget
         return TryRemoveInertNamespaceDeclarations(css, out string inspectable)
             ? ValidateCssUrls(inspectable)
             : SvgResourceBudgetResult.Reject("invalid-css-namespace");
+    }
+
+    private static bool ContainsMotionDeclaration(string css)
+    {
+        int cursor = 0;
+        while (cursor < css.Length)
+        {
+            if (char.IsWhiteSpace(css[cursor]))
+            {
+                cursor++;
+                continue;
+            }
+            if (cursor + 1 < css.Length && css[cursor] == '/' && css[cursor + 1] == '*')
+            {
+                int commentEnd = css.IndexOf("*/", cursor + 2, StringComparison.Ordinal);
+                if (commentEnd < 0)
+                    return false;
+                cursor = commentEnd + 2;
+                continue;
+            }
+            if (css[cursor] is '\'' or '"')
+            {
+                SkipCssString(css, ref cursor);
+                continue;
+            }
+
+            int nameStart = cursor;
+            while (cursor < css.Length &&
+                (char.IsAsciiLetterOrDigit(css[cursor]) || css[cursor] is '-' or '_'))
+            {
+                cursor++;
+            }
+            if (cursor == nameStart)
+            {
+                cursor++;
+                continue;
+            }
+
+            string property = css[nameStart..cursor];
+            int separator = cursor;
+            while (separator < css.Length && char.IsWhiteSpace(css[separator]))
+                separator++;
+            if (separator >= css.Length || css[separator] != ':' || !IsMotionProperty(property))
+                continue;
+
+            int end = separator + 1;
+            char quote = '\0';
+            int parentheses = 0;
+            while (end < css.Length)
+            {
+                char current = css[end];
+                if (quote != '\0')
+                {
+                    if (current == '\\' && end + 1 < css.Length)
+                        end += 2;
+                    else
+                    {
+                        if (current == quote)
+                            quote = '\0';
+                        end++;
+                    }
+                    continue;
+                }
+                if (current is '\'' or '"')
+                    quote = current;
+                else if (current == '(')
+                    parentheses++;
+                else if (current == ')' && parentheses > 0)
+                    parentheses--;
+                else if (parentheses == 0 && current == '{')
+                    break;
+                else if (parentheses == 0 && current is (';' or '}'))
+                    return true;
+                end++;
+            }
+
+            if (end >= css.Length)
+                return true;
+            cursor = end + 1;
+        }
+
+        return false;
+    }
+
+    private static bool IsMotionProperty(string property)
+        => property.Equals("animation", StringComparison.OrdinalIgnoreCase) ||
+            property.StartsWith("animation-", StringComparison.OrdinalIgnoreCase) ||
+            property.Equals("transition", StringComparison.OrdinalIgnoreCase) ||
+            property.StartsWith("transition-", StringComparison.OrdinalIgnoreCase) ||
+            property.Equals("-webkit-animation", StringComparison.OrdinalIgnoreCase) ||
+            property.StartsWith("-webkit-animation-", StringComparison.OrdinalIgnoreCase) ||
+            property.Equals("-webkit-transition", StringComparison.OrdinalIgnoreCase) ||
+            property.StartsWith("-webkit-transition-", StringComparison.OrdinalIgnoreCase);
+
+    private static void SkipCssString(string css, ref int cursor)
+    {
+        char quote = css[cursor++];
+        while (cursor < css.Length)
+        {
+            if (css[cursor] == '\\' && cursor + 1 < css.Length)
+            {
+                cursor += 2;
+                continue;
+            }
+            if (css[cursor++] == quote)
+                return;
+        }
     }
 
     private static bool TryRemoveInertNamespaceDeclarations(string css, out string inspectable)

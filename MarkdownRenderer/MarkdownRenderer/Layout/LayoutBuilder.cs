@@ -1031,12 +1031,7 @@ internal sealed class LayoutBuilder
         };
         stack.BlockIndex = _context.NextBlockIndex();
         using var quoteScoue = _context.PushStyleContext(MarkdownElementKeys.Quote);
-        foreach (var child in qb)
-        {
-            _context.CancellationToken.ThrowIfCancellationRequested();
-            var b = BuildBlock(child);
-            if (b is not null) stack.Add(b);
-        }
+        PopulateBlockChildren(stack, qb);
         return stack;
     }
 
@@ -1115,12 +1110,7 @@ internal sealed class LayoutBuilder
             FlowDirection = _context.FlowDirection,
         };
         content.BlockIndex = _context.NextBlockIndex();
-        foreach (var child in ln)
-        {
-            _context.CancellationToken.ThrowIfCancellationRequested();
-            var cb = BuildBlock(child);
-            if (cb is not null) content.Add(cb);
-        }
+        PopulateBlockChildren(content, ln);
 
         return new ListItemBox(marker, content, markerWidth)
         {
@@ -1135,13 +1125,52 @@ internal sealed class LayoutBuilder
             FlowDirection = _context.FlowDirection,
         };
         stack.BlockIndex = _context.NextBlockIndex();
-        foreach (var child in cb)
+        PopulateBlockChildren(stack, cb);
+        return stack;
+    }
+
+    private void PopulateBlockChildren(StackBox destination, ContainerBlock container)
+    {
+        SafeHtmlBlockScopeTracker? htmlScopes = _context.Registry.SafeHtmlPolicy is null
+            ? null
+            : new SafeHtmlBlockScopeTracker(_context.Registry.SafeHtmlPolicy.Limits);
+        bool htmlBudgetNoticeAdded = false;
+        foreach (Block child in container)
         {
             _context.CancellationToken.ThrowIfCancellationRequested();
-            var b = BuildBlock(child);
-            if (b is not null) stack.Add(b);
+            bool suppressedBeforeBlock = htmlScopes?.IsContentSuppressed == true;
+            bool scopeOnly = child is HtmlBlock htmlBlock && htmlScopes?.Process(
+                    htmlBlock.Lines.ToString(),
+                    htmlBlock.Span.Start,
+                    _context.DisclosureStates,
+                    _context.CancellationToken) == true;
+            if (child is HtmlBlock && htmlScopes?.BudgetExceeded == true)
+            {
+                if (!htmlBudgetNoticeAdded)
+                {
+                    var notice = new InlineContainerBox(_context, MarkdownElementKeys.Body)
+                    {
+                        BlockIndex = _context.NextBlockIndex(),
+                    };
+                    AddHtmlBudgetNotice(notice);
+                    destination.Add(notice);
+                    htmlBudgetNoticeAdded = true;
+                }
+
+                continue;
+            }
+
+            if (scopeOnly || suppressedBeforeBlock)
+                continue;
+
+            BlockBox? box = BuildBlock(child);
+            if (box is null)
+                continue;
+
+            if (htmlScopes is not null)
+                ApplyHtmlAlignment(box, htmlScopes.CurrentAlignment);
+            destination.Add(box);
         }
-        return stack;
     }
 
     private void AddInlines(InlineContainerBox box, ContainerInline? inline, int inheritedAliasStart = -1)
@@ -1506,7 +1535,23 @@ internal sealed class LayoutBuilder
         // Preserve explicitly empty alt text. The semantic layer omits an
         // unlinked empty-alt image instead of inventing an accessible name.
         string altText = alt.ToString();
-        return new InlineImageRun(_context, altText, imageLink.Url ?? string.Empty, imageLink.Title, linkUrl, linkTitle)
+        SafeHtmlLength? requestedWidth = null;
+        SafeHtmlLength? requestedHeight = null;
+        if (imageLink is SizedImageLinkInline sizedImage)
+        {
+            requestedWidth = sizedImage.RequestedWidth;
+            requestedHeight = sizedImage.RequestedHeight;
+        }
+
+        return new InlineImageRun(
+            _context,
+            altText,
+            imageLink.Url ?? string.Empty,
+            imageLink.Title,
+            linkUrl,
+            linkTitle,
+            requestedWidth,
+            requestedHeight)
         {
             SourceSpan = new SourceSpan(sourceStart, sourceLength)
         };

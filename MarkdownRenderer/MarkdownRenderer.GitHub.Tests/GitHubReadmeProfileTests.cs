@@ -73,6 +73,30 @@ public sealed class GitHubReadmeProfileTests
     }
 
     [Fact]
+    public async Task GitHubReadmeEngine_ParsesImageBackedEmojiWithItsPresentationSize()
+    {
+        using MarkdownEngine engine = new MarkdownEngineBuilder()
+            .UseGitHubReadme()
+            .Build();
+
+        MarkdownRenderer.Document.MarkdownDocument document =
+            await engine.ParseAsync("Custom :octocat: and Unicode :rocket:");
+        MarkdownDocument parsedDocument = document.ParsedDocument ??
+            throw new InvalidOperationException("The engine did not retain its parsed document.");
+        SizedImageLinkInline image = Assert.Single(
+            parsedDocument.Descendants<SizedImageLinkInline>());
+
+        Assert.Equal(
+            "https://github.githubassets.com/images/icons/emoji/octocat.png",
+            image.Url);
+        Assert.Equal(20, image.RequestedWidth?.Value);
+        Assert.Equal(20, image.RequestedHeight?.Value);
+        Assert.Contains(
+            parsedDocument.Descendants<Markdig.Syntax.Inlines.LiteralInline>(),
+            static inline => inline.Content.ToString().Contains("🚀", StringComparison.Ordinal));
+    }
+
+    [Fact]
     public void GitHubOnlyRenderers_AreShippedByGitHubAssembly()
     {
         Assembly gfmAssembly = typeof(GfmExtensions).Assembly;

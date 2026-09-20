@@ -45,6 +45,7 @@ public sealed class MarkdownEngine : IDisposable
     private readonly LinkedList<InFlightParse> _queuedParses = new();
     private readonly MarkdownPipeline _pipeline;
     private readonly IReadOnlyList<IDisposable> _ownedResources;
+    private readonly IReadOnlyList<Action<MarkdownPipelineBuilder>> _pipelineConfigurations;
     private readonly MarkdownExtensionCallbackLifetime? _extensionCallbackLifetime;
     private readonly bool _isSharedSingleton;
     private MarkdownPipeline? _specificationValidationPipeline;
@@ -66,6 +67,7 @@ public sealed class MarkdownEngine : IDisposable
         MarkdownExtensionSet extensions,
         IReadOnlyList<IDisposable> ownedResources,
         MarkdownExtensionCallbackLifetime? extensionCallbackLifetime,
+        IReadOnlyList<Action<MarkdownPipelineBuilder>> pipelineConfigurations,
         long parseCacheBudgetBytes,
         MarkdownParseLimits parseLimits,
         IMarkdownPresentationConfiguration? presentationConfiguration,
@@ -78,9 +80,11 @@ public sealed class MarkdownEngine : IDisposable
         PresentationConfiguration = presentationConfiguration;
         _isSharedSingleton = isSharedSingleton;
         _ownedResources = ownedResources ?? throw new ArgumentNullException(nameof(ownedResources));
+        _pipelineConfigurations = pipelineConfigurations ??
+            throw new ArgumentNullException(nameof(pipelineConfigurations));
         _extensionCallbackLifetime = extensionCallbackLifetime;
         _extensionCallbacksRetired = extensionCallbackLifetime is null;
-        _pipeline = BuildPipeline(profile, extensions);
+        _pipeline = BuildPipeline(profile, extensions, _pipelineConfigurations);
     }
 
     /// <summary>Gets an engine configured for strict CommonMark.</summary>
@@ -119,6 +123,9 @@ public sealed class MarkdownEngine : IDisposable
                 return _activeParseCount;
         }
     }
+
+    internal IReadOnlyList<Action<MarkdownPipelineBuilder>> PipelineConfigurations =>
+        _pipelineConfigurations;
 
     internal int CompletedParseCount
     {
@@ -460,6 +467,7 @@ public sealed class MarkdownEngine : IDisposable
             BuildPipeline(
                 Profile,
                 MarkdownExtensionSet.Empty,
+                _pipelineConfigurations,
                 enforceHtmlPolicy: false);
         bool isGfm029 =
             (Profile.FeatureFlags & MarkdownProfileFeatures.Gfm029Marker) != 0;
@@ -951,6 +959,7 @@ public sealed class MarkdownEngine : IDisposable
     private static MarkdownPipeline BuildPipeline(
         MarkdownProfile profile,
         MarkdownExtensionSet extensions,
+        IReadOnlyList<Action<MarkdownPipelineBuilder>> pipelineConfigurations,
         bool enforceHtmlPolicy = true)
     {
         var features = profile.FeatureFlags;
@@ -990,6 +999,9 @@ public sealed class MarkdownEngine : IDisposable
         // declarative renderer without making the core AST public.
         if (enforceHtmlPolicy && profile.HtmlMode == MarkdownHtmlMode.Literal)
             builder.DisableHtml();
+
+        for (int index = 0; index < pipelineConfigurations.Count; index++)
+            pipelineConfigurations[index](builder);
 
         return builder.Build();
     }

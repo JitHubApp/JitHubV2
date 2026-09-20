@@ -56,7 +56,7 @@
                 DocumentSource="{x:Bind CurrentDocumentSource, Mode=OneWay}"
                 DocumentPath="{x:Bind CurrentDocumentPath, Mode=OneWay}"
                 HorizontalAlignment="Stretch"
-                Text="{x:Bind ViewModel.Text, Mode=OneWay}"
+                Text="{x:Bind ViewModel.RenderedText, Mode=OneWay}"
                 VerticalAlignment="Stretch"
                 Visibility="Visible" />
 

@@ -40,6 +40,45 @@ public class GitHubMarkdownImageUrlResolverTests
     }
 
     [Fact]
+    public void TryResolve_ParentBeyondRepositoryRoot_UsesGitHubAssetBranchConvention()
+    {
+        var documentSource = new MarkdownRenderer.Images.MarkdownDocumentSource(
+            "repository-file:jesseduffield/lazygit:README.md",
+            "jesseduffield",
+            "lazygit",
+            "master",
+            "README.md");
+
+        bool resolved = GitHubMarkdownImageUrlResolver.TryResolve(
+            "../assets/demo.gif",
+            documentSource,
+            out GitHubMarkdownImageReference reference);
+
+        Assert.True(resolved);
+        Assert.Equal("assets", reference.Ref);
+        Assert.Equal("demo.gif", reference.Path);
+        Assert.Equal(
+            "https://raw.githubusercontent.com/jesseduffield/lazygit/assets/demo.gif",
+            GitHubMarkdownImageUrlResolver.CreateRawUri(reference).ToString());
+    }
+
+    [Fact]
+    public void TryResolve_MultipleParentsBeyondRepositoryRoot_IsRejected()
+    {
+        var documentSource = new MarkdownRenderer.Images.MarkdownDocumentSource(
+            "repository-file:octo/repo:README.md",
+            "octo",
+            "repo",
+            "main",
+            "README.md");
+
+        Assert.False(GitHubMarkdownImageUrlResolver.TryResolve(
+            "../../outside/image.png",
+            documentSource,
+            out _));
+    }
+
+    [Fact]
     public void TryResolve_RootRelativeImage_UsesRepositoryRoot()
     {
         var baseUri = new Uri("https://github.com/octo/repo/blob/main/docs/readme.md");
