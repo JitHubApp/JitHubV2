@@ -28,7 +28,7 @@
                       Condition="'$(ManagedPacksOnly)' != 'true'" />
     <ProjectReference Include="..\MarkdownRenderer.Mermaid\MarkdownRenderer.Mermaid.csproj"
                       Condition="'$(ManagedPacksOnly)' != 'true'" />
-    <ProjectReference Include="..\MarkdownRenderer.Svg.ThorVG\MarkdownRenderer.Svg.ThorVG.csproj"
+    <ProjectReference Include="..\MarkdownRenderer.Svg.Resvg\MarkdownRenderer.Svg.Resvg.csproj"
                       Condition="'$(ManagedPacksOnly)' != 'true'" />
     <ProjectReference Include="..\MarkdownRenderer.SyntaxHighlighting.TextMate\MarkdownRenderer.SyntaxHighlighting.TextMate.csproj"
                       Condition="'$(ManagedPacksOnly)' != 'true'" />

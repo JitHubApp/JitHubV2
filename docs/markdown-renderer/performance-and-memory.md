@@ -210,9 +210,11 @@ cancellation-aware; `Recycle` should release app-owned handlers and state.
 
 ## Optional payloads
 
-ThorVG and TextMate grammar packs are not costs of the lean package. Select only
-the SVG capability and grammar resources the application needs. Math and Mermaid
-also retain independent source, scene, time, and working-memory budgets.
+The resvg worker and TextMate grammar packs are not costs of the lean package.
+Select only the SVG capability and grammar resources the application needs. The
+provider bounds its parsed-resource and GPU caches by architecture, deduplicates
+in-flight work, and discards CPU rasters after upload. Math and Mermaid also
+retain independent source, scene, time, and working-memory budgets.
 
 ## Remaining validation
 

@@ -26,7 +26,7 @@ For the complete documentation table of contents, see [Summary](SUMMARY.md).
 `MarkdownRenderer.Core` contains immutable engines and documents without WinUI.
 The `MarkdownRenderer` convenience package is deliberately lean: Core plus the
 native WinUI viewer. GFM, the GitHub README profile, safe HTML, Math, Mermaid,
-ThorVG SVG rasterization, TextMate integration, and grammar resources are
+resvg SVG rasterization, TextMate integration, and grammar resources are
 optional packages. `MarkdownRenderer.All` is an explicit opt-in to every feature
 and payload.
 

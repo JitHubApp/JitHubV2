@@ -117,6 +117,7 @@ internal sealed class SharedLayoutMetricsKey : IEquatable<SharedLayoutMetricsKey
         object? embedFactory,
         object? hostedElementFactory,
         object? imageResolver,
+        object? svgRenderer,
         object? commandProvider,
         object? stringProvider)
     {
@@ -142,6 +143,7 @@ internal sealed class SharedLayoutMetricsKey : IEquatable<SharedLayoutMetricsKey
         EmbedFactory = embedFactory;
         HostedElementFactory = hostedElementFactory;
         ImageResolver = imageResolver;
+        SvgRenderer = svgRenderer;
         CommandProvider = commandProvider;
         StringProvider = stringProvider;
 
@@ -164,6 +166,7 @@ internal sealed class SharedLayoutMetricsKey : IEquatable<SharedLayoutMetricsKey
         AddReferenceHash(ref hash, embedFactory);
         AddReferenceHash(ref hash, hostedElementFactory);
         AddReferenceHash(ref hash, imageResolver);
+        AddReferenceHash(ref hash, svgRenderer);
         AddReferenceHash(ref hash, commandProvider);
         AddReferenceHash(ref hash, stringProvider);
         _hashCode = hash.ToHashCode();
@@ -205,6 +208,8 @@ internal sealed class SharedLayoutMetricsKey : IEquatable<SharedLayoutMetricsKey
 
     internal object? ImageResolver { get; }
 
+    internal object? SvgRenderer { get; }
+
     internal object? CommandProvider { get; }
 
     internal object? StringProvider { get; }
@@ -232,6 +237,7 @@ internal sealed class SharedLayoutMetricsKey : IEquatable<SharedLayoutMetricsKey
         ReferenceEquals(EmbedFactory, other.EmbedFactory) &&
         ReferenceEquals(HostedElementFactory, other.HostedElementFactory) &&
         ReferenceEquals(ImageResolver, other.ImageResolver) &&
+        ReferenceEquals(SvgRenderer, other.SvgRenderer) &&
         ReferenceEquals(CommandProvider, other.CommandProvider) &&
         ReferenceEquals(StringProvider, other.StringProvider);
 

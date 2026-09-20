@@ -1,5 +1,6 @@
 using System;
 using System.Runtime.CompilerServices;
+using System.Runtime.InteropServices;
 using System.Threading;
 using Microsoft.Graphics.Canvas;
 using MarkdownRenderer.Utilities;
@@ -13,7 +14,9 @@ namespace MarkdownRenderer.Layout.Boxes;
 /// </summary>
 internal static class SharedCanvasBitmapCache
 {
-    internal const long DefaultBudgetBytes = 96L * 1024 * 1024;
+    internal static readonly long DefaultBudgetBytes = Environment.Is64BitProcess
+        ? 64L * 1024 * 1024
+        : 32L * 1024 * 1024;
     private const int DecodeStripeCount = 64;
 
     private static readonly WeightedLruCache<CacheKey, Entry> Cache = new(
@@ -22,6 +25,20 @@ internal static class SharedCanvasBitmapCache
         static entry => entry.ReleaseCacheReference());
 
     private static readonly SemaphoreSlim[] DecodeStripes = CreateDecodeStripes();
+
+    static SharedCanvasBitmapCache()
+    {
+        try
+        {
+            Windows.System.MemoryManager.AppMemoryUsageIncreased += OnAppMemoryUsageIncreased;
+        }
+        catch (Exception exception) when (
+            exception is COMException or PlatformNotSupportedException or TypeInitializationException)
+        {
+            // MemoryManager is unavailable in some unpackaged and test hosts.
+            // The hard LRU budget and explicit device-loss cleanup still apply.
+        }
+    }
 
     internal static bool TryAcquire(CanvasDevice device, string identity, out Lease? lease)
     {
@@ -79,6 +96,12 @@ internal static class SharedCanvasBitmapCache
     internal static long RetainedBytesForTests => Cache.RetainedBytes;
 
     internal static int CountForTests => Cache.Count;
+
+    private static void OnAppMemoryUsageIncreased(object? sender, object args)
+    {
+        Cache.Clear();
+        ImageBox.TrimSharedCachesForMemoryPressure();
+    }
 
     private static long EstimateWeightBytes(CanvasBitmap bitmap)
     {

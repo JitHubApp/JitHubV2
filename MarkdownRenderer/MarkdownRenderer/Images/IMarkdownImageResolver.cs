@@ -1,4 +1,5 @@
 using System;
+using System.Collections.Generic;
 using System.Threading;
 using System.Threading.Tasks;
 
@@ -67,7 +68,10 @@ public enum MarkdownImageUnavailableReason
 /// </summary>
 /// <param name="Bytes">The decoded image bytes.</param>
 /// <param name="ContentType">Optional image MIME type, such as image/png or image/svg+xml.</param>
-/// <param name="ResolvedUri">Optional canonical URI used for diagnostics and cache identity.</param>
+/// <param name="ResolvedUri">
+/// Optional canonical URI used for diagnostics and cache identity. Its file extension does not
+/// override the format identified by <paramref name="Bytes"/> and <paramref name="ContentType"/>.
+/// </param>
 /// <param name="CacheKey">
 /// Optional host-partitioned in-process cache identity. Authenticated hosts must include the
 /// account/session partition so private image resources can never cross account boundaries.
@@ -117,6 +121,23 @@ public interface IMarkdownImageResolver
     /// </summary>
     ValueTask<MarkdownImageResolution> ResolveAsync(
         string source,
+        MarkdownImageResolveContext context,
+        CancellationToken cancellationToken);
+}
+
+/// <summary>
+/// Optional capability for hosts that can safely warm image source bytes without decoding
+/// or realizing off-screen bitmaps. The renderer supplies only sources admitted by its parsed
+/// Markdown and safe-HTML pipeline. Implementations must remain bounded and honor cancellation.
+/// </summary>
+public interface IMarkdownImagePrefetcher
+{
+    /// <summary>
+    /// Warms a deduplicated set of image sources for a document. Prefetching is best-effort;
+    /// normal <see cref="IMarkdownImageResolver.ResolveAsync"/> calls remain authoritative.
+    /// </summary>
+    ValueTask PrefetchAsync(
+        IReadOnlyList<string> sources,
         MarkdownImageResolveContext context,
         CancellationToken cancellationToken);
 }

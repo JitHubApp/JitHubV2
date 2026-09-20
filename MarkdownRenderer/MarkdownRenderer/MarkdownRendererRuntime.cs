@@ -1,8 +1,6 @@
 // SPDX-License-Identifier: MIT
 
 using System;
-using MarkdownRenderer.Layout.Boxes;
-
 namespace MarkdownRenderer;
 
 /// <summary>
@@ -23,10 +21,7 @@ public static class MarkdownRendererRuntime
     /// </summary>
     public static void BeginShutdown()
     {
-        if (System.Threading.Interlocked.Exchange(ref _shutdownStarted, 1) == 0)
-        {
-            ThorVgRasterizer.BeginShutdown();
-        }
+        System.Threading.Interlocked.Exchange(ref _shutdownStarted, 1);
     }
 
     /// <summary>
@@ -35,7 +30,7 @@ public static class MarkdownRendererRuntime
     /// </summary>
     public static void Shutdown(TimeSpan? timeout = null)
     {
+        _ = timeout;
         BeginShutdown();
-        ThorVgRasterizer.ShutdownForProcessExit(timeout ?? TimeSpan.FromSeconds(2));
     }
 }

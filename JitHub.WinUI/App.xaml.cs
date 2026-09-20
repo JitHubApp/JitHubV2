@@ -915,7 +915,23 @@ public partial class App : Application
 
         if (Program.CurrentLaunchOptions.IsPublicPreviewOverride)
         {
-            GetService<IGitHubService>().SetAccessToken(GitHubClientService.PublicAccessToken);
+            string previewAccessToken = Program.CurrentLaunchOptions.ResolvePreviewAccessToken(
+                GitHubClientService.PublicAccessToken);
+            GetService<IGitHubService>().SetAccessToken(previewAccessToken);
+            if (Program.CurrentLaunchOptions.ReadmeProductionAudit)
+            {
+                // The production audit deliberately injects a short-lived token
+                // without writing it to the user's credential store. Supply the
+                // matching stable, opaque account partition explicitly so every
+                // production query/cache path retains normal account isolation.
+                IAuthService authService = GetService<IAuthService>();
+                authService.AuthenticatedUser = new JitHub.Models.GitHub.GitHubUser
+                {
+                    Id = Program.CurrentLaunchOptions.ResolveReadmeAuditAccountId(),
+                    Login = "readme-render-audit"
+                };
+                authService.Authenticated = true;
+            }
             if (string.Equals(Program.CurrentLaunchOptions.Page, "profile", StringComparison.OrdinalIgnoreCase))
             {
                 GetOrCreateMainWindow().ContentFrameHost.Navigate(
@@ -987,7 +1003,7 @@ public partial class App : Application
             LogUnhandledException(exception, "diagnostics-shutdown");
         }
 
-        JitHubMarkdownRuntime.Shutdown();
+        JitHubMarkdownRuntime.ShutdownForProcessExit();
         MarkdownRenderer.MarkdownRendererRuntime.Shutdown(TimeSpan.FromSeconds(1));
     }
 

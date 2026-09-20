@@ -3,6 +3,7 @@ using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.Globalization;
 using System.Linq;
+using System.Net;
 using System.Text;
 using System.Threading;
 using System.Threading.Tasks;
@@ -394,6 +395,51 @@ public sealed class RepoTreeService : IRepoTreeService
             .ThenBy(static node => node.Name, StringComparer.OrdinalIgnoreCase)
             .ToArray();
         return MapResult(result, nodes);
+    }
+
+    public async Task<RepoCodeLoadResult<RepoReadmeFile>?> LoadReadmeAsync(
+        string owner,
+        string name,
+        string refOrSha,
+        CancellationToken ct,
+        QueryFetchPolicy fetchPolicy = QueryFetchPolicy.StaleFirst)
+    {
+        (string token, string userId) = GetAuthenticationContext();
+        CachedResult<GitHubRepositoryContent> result;
+        try
+        {
+            result = await _queryService.GetReadmeAsync(
+                token,
+                userId,
+                owner,
+                name,
+                refOrSha,
+                fetchPolicy,
+                ct).ConfigureAwait(false);
+        }
+        catch (GitHubApiException exception) when (exception.StatusCode == HttpStatusCode.NotFound)
+        {
+            return null;
+        }
+
+        GitHubRepositoryContent content = result.Value
+            ?? throw new InvalidOperationException("GitHub returned no repository README.");
+        byte[] bytes = await Task.Run(
+            () => DecodeBlob(content.Content, content.Encoding),
+            ct).ConfigureAwait(false);
+        bool isBinary = IsBinaryContent(bytes);
+        RepoReadmeFile readme = new(
+            content.Name ?? string.Empty,
+            content.Path ?? string.Empty,
+            new RepoFileBlob
+            {
+                Sha = content.Sha,
+                Encoding = content.Encoding,
+                Bytes = bytes,
+                Text = isBinary ? null : DecodeText(bytes),
+                IsBinary = isBinary
+            });
+        return MapResult(result, readme);
     }
 
     public async Task<RepoCodeLoadResult<RepoFileBlob>> LoadBlobAsync(

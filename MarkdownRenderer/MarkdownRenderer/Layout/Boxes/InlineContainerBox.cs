@@ -415,8 +415,92 @@ internal sealed class InlineContainerBox : BlockBox
             _effectiveRunAliases[run.InlineIndex],
             CodeLanguage,
             StyleState);
+        int modifierStart = 0;
+        if (string.IsNullOrEmpty(run.ElementKey) && run.StyleModifierKeys.Count > 0)
+        {
+            resolved = _context.ThemeSnapshot.GetStyle(
+                run.StyleModifierKeys[0],
+                _styleContextKeys,
+                _effectiveRunAliases[run.InlineIndex],
+                CodeLanguage,
+                StyleState);
+            modifierStart = 1;
+        }
+
+        for (int index = modifierStart; index < run.StyleModifierKeys.Count; index++)
+        {
+            string modifierKey = run.StyleModifierKeys[index];
+            ElementStyle modifier = _context.ThemeSnapshot.GetStyle(
+                modifierKey,
+                _styleContextKeys,
+                _effectiveRunAliases[run.InlineIndex],
+                CodeLanguage,
+                StyleState);
+            resolved = ApplyNestedStyleModifier(resolved, modifier, modifierKey);
+        }
         _resolvedRunStyles[run.InlineIndex] = resolved;
         return resolved;
+    }
+
+    private static ElementStyle ApplyNestedStyleModifier(
+        ElementStyle basis,
+        ElementStyle modifier,
+        string modifierKey)
+    {
+        Windows.UI.Text.FontWeight fontWeight = basis.FontWeight;
+        Windows.UI.Text.FontStyle fontStyle = basis.FontStyle;
+        float fontSize = basis.FontSize;
+        bool underline = basis.Underline;
+        bool strikethrough = basis.Strikethrough;
+        Color? background = basis.Background;
+        float cornerRadius = basis.CornerRadius;
+
+        switch (modifierKey)
+        {
+            case MarkdownElementKeys.Strong:
+                fontWeight = modifier.FontWeight;
+                break;
+            case MarkdownElementKeys.Emphasis:
+                fontStyle = modifier.FontStyle;
+                break;
+            case MarkdownElementKeys.Strikethrough:
+                strikethrough |= modifier.Strikethrough;
+                break;
+            case MarkdownElementKeys.Subscript:
+            case MarkdownElementKeys.Superscript:
+                fontSize = modifier.FontSize;
+                break;
+            case MarkdownElementKeys.Inserted:
+                underline |= modifier.Underline;
+                break;
+            case MarkdownElementKeys.Marked:
+                background = modifier.Background;
+                cornerRadius = modifier.CornerRadius;
+                break;
+        }
+
+        return new ElementStyle
+        {
+            FontFamily = basis.FontFamily,
+            FontSize = fontSize,
+            FontWeight = fontWeight,
+            FontStyle = fontStyle,
+            Foreground = basis.Foreground,
+            HoverForeground = basis.HoverForeground,
+            FocusForeground = basis.FocusForeground,
+            Background = background,
+            AccentBar = basis.AccentBar,
+            BorderBrush = basis.BorderBrush,
+            BorderThickness = basis.BorderThickness,
+            CornerRadius = cornerRadius,
+            ListIndent = basis.ListIndent,
+            NestedListIndent = basis.NestedListIndent,
+            Underline = underline,
+            Strikethrough = strikethrough,
+            Margin = basis.Margin,
+            Padding = basis.Padding,
+            LineHeightMultiplier = basis.LineHeightMultiplier,
+        };
     }
 
     private Thickness GetEffectivePadding(ElementStyle style)
@@ -1242,6 +1326,8 @@ internal sealed class InlineContainerBox : BlockBox
             SubscriptRun => CanvasTypographyFeatureName.Subscript,
             SuperscriptRun => CanvasTypographyFeatureName.Superscript,
             LinkRun { IsSuperscript: true } => CanvasTypographyFeatureName.Superscript,
+            _ when run.HasStyleModifier(MarkdownElementKeys.Subscript) => CanvasTypographyFeatureName.Subscript,
+            _ when run.HasStyleModifier(MarkdownElementKeys.Superscript) => CanvasTypographyFeatureName.Superscript,
             _ => null,
         };
 
@@ -1798,7 +1884,8 @@ internal sealed class InlineContainerBox : BlockBox
     private bool HasRunSpecificStyle(InlineRun run)
     {
         return (!string.IsNullOrEmpty(run.ElementKey) && run.ElementKey != _elementKey) ||
-            run.StyleAliases.Count > 0;
+            run.StyleAliases.Count > 0 ||
+            run.StyleModifierKeys.Count > 0;
     }
 
     private static bool IsHeadingElement(string elementKey)

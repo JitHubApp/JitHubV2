@@ -12,7 +12,7 @@ GitHub-specific parsing and presentation are deliberate opt-ins.
 - **Explicit viewport ownership.** `MarkdownScrollView` owns scrolling;
   `MarkdownDocumentView` participates in an ancestor-owned effective viewport.
 - **Lean by default.** The `MarkdownRenderer` package contains Core plus the
-  native viewer. GFM, GitHub, safe HTML, Math, Mermaid, ThorVG, TextMate, and
+  native viewer. GFM, GitHub, safe HTML, Math, Mermaid, isolated resvg, TextMate, and
   grammar resources are optional packs.
 - **Declarative extensibility.** Extensions emit semantic content and source
   spans. They do not construct or inherit viewer layout objects.

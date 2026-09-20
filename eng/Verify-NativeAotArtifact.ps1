@@ -26,10 +26,9 @@ $requiredNativeFiles = @(
     'JitHub.WinUI.exe',
     'e_sqlite3.dll',
     'libHarfBuzzSharp.dll',
-    'libSkiaSharp.dll',
     'Microsoft.Graphics.Canvas.dll',
     'Microsoft.Web.WebView2.Core.dll',
-    'thorvg.dll',
+    'MarkdownRenderer.Svg.Resvg.Worker.exe',
     'WebView2Loader.dll',
     'WinUIEditor.dll'
 )

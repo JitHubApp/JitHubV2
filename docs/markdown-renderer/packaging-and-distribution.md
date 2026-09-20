@@ -12,7 +12,7 @@ syntax feature, native DLL, or grammar into an application.
 | `MarkdownRenderer.Html` | Native safe-HTML subset parser/painter and budgets. |
 | `MarkdownRenderer.Math` | Managed CSharpMath-based vector typesetter and bundled hash-locked math fonts. |
 | `MarkdownRenderer.Mermaid` | Selected-RID Merman native engine plus validated MMIR scene contracts. |
-| `MarkdownRenderer.Svg.ThorVG` | Architecture-specific native ThorVG SVG assets. |
+| `MarkdownRenderer.Svg.Resvg` | Isolated, architecture-specific resvg 0.48.1 static-SVG worker. |
 | `MarkdownRenderer.SyntaxHighlighting.TextMate` | Async TextMate integration, cancellation/deduplication, budgets, and provider contracts; no grammar or native payload. |
 | `MarkdownRenderer.SyntaxHighlighting.TextMate.Grammars.Common` | Curated C/C++, C#, web, JVM, Go, Rust, scripting, data, Docker, and shader grammars. |
 | `MarkdownRenderer.SyntaxHighlighting.TextMate.Grammars.All` | Complete pinned upstream TextMateSharp grammar/resource corpus. |
@@ -25,9 +25,11 @@ apps that consciously accept the full dependency and size cost.
 ## Platform packages
 
 The native viewer targets WinUI on Windows and builds for x86, x64, and ARM64.
-`MarkdownRenderer.Core` carries no WinUI or native payload. ThorVG assets belong
-to the optional `MarkdownRenderer.Svg.ThorVG` package and must be validated for
-each architecture only when that pack is selected.
+`MarkdownRenderer.Core` carries no WinUI or native payload. The resvg worker
+belongs to the optional `MarkdownRenderer.Svg.Resvg` package and must be
+validated for each architecture only when that pack is selected. Provider
+registration is explicit; trimming and NativeAOT never probe assemblies or load
+an engine dynamically.
 
 ## AOT and trimming
 

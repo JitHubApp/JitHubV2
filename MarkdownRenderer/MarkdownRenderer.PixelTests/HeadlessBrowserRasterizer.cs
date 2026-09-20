@@ -80,7 +80,11 @@ public static class HeadlessBrowserRasterizer
         var args = new System.Collections.Generic.List<string>
         {
             "--headless=new",
-            "--disable-gpu",
+            // PR fidelity uses Edge's deterministic WARP path. `--disable-gpu`
+            // is not equivalent: it selects a different software raster path
+            // with measurably different edge coverage.
+            "--use-angle=warp",
+            "--use-gl=angle",
             "--no-sandbox",
             "--no-first-run",
             "--no-default-browser-check",
@@ -93,6 +97,7 @@ public static class HeadlessBrowserRasterizer
             "--disable-features=msEdgeFirstRunExperience,EdgeFirstRunExperience",
             "--hide-scrollbars",
             "--default-background-color=00000000",
+            "--force-color-profile=srgb",
             "--virtual-time-budget=5000",
             $"--user-data-dir=\"{profilePath}\"",
             $"--screenshot=\"{pngPath}\"",

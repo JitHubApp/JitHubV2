@@ -96,6 +96,20 @@ internal sealed partial class MarkdownAutomationPeer : FrameworkElementAutomatio
             MarkdownLocalizedStrings.MarkdownDocumentName);
     }
 
+    protected override string GetItemStatusCore()
+    {
+        if (!_owner.HasVisibleLoadingImagesForAutomation())
+            return base.GetItemStatusCore();
+
+        string imageName = _owner.ResolveLocalizedString(
+            MarkdownStringKeys.ImageName,
+            MarkdownLocalizedStrings.ImageName);
+        return _owner.ResolveFormattedLocalizedString(
+            MarkdownStringKeys.ImageLoading,
+            MarkdownLocalizedStrings.ImageLoadingFormat,
+            imageName);
+    }
+
     protected override IList<AutomationPeer> GetChildrenCore()
     {
         var doc = GetSemanticDocumentOrNull();
@@ -320,25 +334,23 @@ internal sealed partial class MarkdownAutomationPeer : FrameworkElementAutomatio
     internal IList<AutomationPeer> GetInlineChildPeers(InlineContainerBox box)
     {
         var doc = GetSemanticDocumentOrNull();
-        if (doc is null) return new List<AutomationPeer>();
-
-        foreach (var node in EnumerateSemanticNodes(doc.Root))
+        if (doc is null ||
+            !doc.TryGetInlineContainerNode(box, out MarkdownSemanticNode node) ||
+            node.Role is not (MarkdownSemanticRole.Paragraph or
+                MarkdownSemanticRole.Heading or
+                MarkdownSemanticRole.CodeBlock))
         {
-            if (ReferenceEquals(node.InlineBox, box) &&
-                node.Role is MarkdownSemanticRole.Paragraph or MarkdownSemanticRole.Heading or MarkdownSemanticRole.CodeBlock)
-            {
-                var peers = new List<AutomationPeer>();
-                foreach (var child in node.Children)
-                {
-                    if (TryGetPeerForSemanticNode(child, out var peer))
-                        peers.Add(peer);
-                }
-
-                return peers;
-            }
+            return new List<AutomationPeer>();
         }
 
-        return new List<AutomationPeer>();
+        var peers = new List<AutomationPeer>(node.Children.Count);
+        foreach (MarkdownSemanticNode child in node.Children)
+        {
+            if (TryGetPeerForSemanticNode(child, out AutomationPeer peer))
+                peers.Add(peer);
+        }
+
+        return peers;
     }
 
     internal bool TryGetProviderForSemanticNode(MarkdownSemanticNode node, out IRawElementProviderSimple provider)

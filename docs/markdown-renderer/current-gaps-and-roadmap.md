@@ -7,7 +7,7 @@ MarkdownRenderer is a preview, not a completed 1.0 release.
 - immutable `MarkdownEngineBuilder` -> `MarkdownEngine` ->
   `MarkdownDocument` model;
 - explicit `MarkdownScrollView` and `MarkdownDocumentView` viewport ownership;
-- lean base package and optional GFM, GitHub, HTML, Math, Mermaid, ThorVG, and
+- lean base package and optional GFM, GitHub, HTML, Math, Mermaid, resvg, and
   TextMate packs;
 - Fluent default behavior with GitHub-specific behavior opt-in;
 - rendered-text plus `CF_HTML` default copy and explicit Copy Markdown;

@@ -46,7 +46,7 @@ using RestGitHubUser = JitHub.Models.GitHub.GitHubUser;
 
 namespace JitHub.Services
 {
-    public partial class GitHubService : IGitHubService, IMarkdownImageResolver
+    public partial class GitHubService : IGitHubService, IMarkdownImageResolver, IMarkdownImagePrefetcher
     {
         private const long PublicPreviewRepositoryId = 623352671;
         private const long PublicPreviewOwnerId = 170190931;
@@ -2018,6 +2018,74 @@ namespace JitHub.Services
             (string owner, string name) = await GetRepositoryIdentityAsync(token, repoId);
             IReadOnlyList<RestGitHubReaction> reactions = await _gitHubClientService.GetPullRequestReviewCommentReactionsAsync(token, owner, name, commentId);
             return reactions.Select(AdaptReaction).ToList();
+        }
+
+        public async ValueTask PrefetchAsync(
+            IReadOnlyList<string> sources,
+            MarkdownImageResolveContext context,
+            CancellationToken cancellationToken)
+        {
+            ArgumentNullException.ThrowIfNull(sources);
+            List<string> smallAvatars = [];
+            List<string> generalImages = [];
+            foreach (string source in sources)
+            {
+                (IsSmallGitHubAvatar(source) ? smallAvatars : generalImages).Add(source);
+            }
+
+            // GitHub contributor grids can contain hundreds of independently cached,
+            // explicitly thumbnail-sized avatars. They are safe to multiplex widely over
+            // HTTP/2. Unknown and potentially 10 MiB resources retain a conservative lane
+            // so hostile documents cannot multiply their byte ceiling by the avatar fanout.
+            const int avatarConcurrency = 96;
+            const int generalImageConcurrency = 16;
+            await Task.WhenAll(
+                PrefetchGroupAsync(smallAvatars, avatarConcurrency, context, cancellationToken),
+                PrefetchGroupAsync(generalImages, generalImageConcurrency, context, cancellationToken))
+                .ConfigureAwait(false);
+        }
+
+        private async Task PrefetchGroupAsync(
+            IReadOnlyList<string> sources,
+            int maximumConcurrency,
+            MarkdownImageResolveContext context,
+            CancellationToken cancellationToken)
+        {
+            await Parallel.ForEachAsync(
+                sources,
+                new ParallelOptions
+                {
+                    CancellationToken = cancellationToken,
+                    MaxDegreeOfParallelism = maximumConcurrency
+                },
+                async (source, token) =>
+                {
+                    _ = await ResolveAsync(source, context, token).ConfigureAwait(false);
+                }).ConfigureAwait(false);
+        }
+
+        private static bool IsSmallGitHubAvatar(string source)
+        {
+            if (!Uri.TryCreate(source, UriKind.Absolute, out Uri? uri) ||
+                !uri.Host.Equals("avatars.githubusercontent.com", StringComparison.OrdinalIgnoreCase))
+            {
+                return false;
+            }
+
+            foreach (string parameter in uri.Query.TrimStart('?').Split('&', StringSplitOptions.RemoveEmptyEntries))
+            {
+                int separator = parameter.IndexOf('=');
+                if (separator <= 0 ||
+                    !parameter[..separator].Equals("s", StringComparison.OrdinalIgnoreCase) ||
+                    !int.TryParse(parameter[(separator + 1)..], out int size))
+                {
+                    continue;
+                }
+
+                return size is > 0 and <= 256;
+            }
+
+            return false;
         }
 
         public async ValueTask<MarkdownImageResolution> ResolveAsync(

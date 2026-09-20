@@ -1,7 +1,7 @@
 # MarkdownRenderer.All
 
 This is the deliberately large, explicit opt-in package for applications that
-want every MarkdownRenderer feature pack, the ThorVG native SVG payload, and the
+want every MarkdownRenderer feature pack, the isolated resvg SVG workers, and the
 complete TextMate grammar resources.
 
 This meta-package includes the current preview implementations, including the

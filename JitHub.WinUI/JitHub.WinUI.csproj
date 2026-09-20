@@ -84,9 +84,11 @@
     <Content Include="..\MarkdownRenderer\MarkdownRenderer.Mermaid\licenses\MPL2-SOURCE.md" Link="ThirdPartyNotices\MarkdownRenderer.Mermaid\MPL2-SOURCE.md" CopyToOutputDirectory="PreserveNewest" CopyToPublishDirectory="PreserveNewest" />
     <Content Include="..\MarkdownRenderer\MarkdownRenderer.Mermaid\MERMAN_PROVENANCE.json" Link="ThirdPartyNotices\MarkdownRenderer.Mermaid\MERMAN_PROVENANCE.json" CopyToOutputDirectory="PreserveNewest" CopyToPublishDirectory="PreserveNewest" />
     <Content Include="..\MarkdownRenderer\MarkdownRenderer.Mermaid\NATIVE_RUST_DEPENDENCIES.json" Link="ThirdPartyNotices\MarkdownRenderer.Mermaid\NATIVE_RUST_DEPENDENCIES.json" CopyToOutputDirectory="PreserveNewest" CopyToPublishDirectory="PreserveNewest" />
-    <Content Include="..\MarkdownRenderer\MarkdownRenderer.Svg.ThorVG\THIRD-PARTY-NOTICES.md" Link="ThirdPartyNotices\MarkdownRenderer.Svg.ThorVG\THIRD-PARTY-NOTICES.md" CopyToOutputDirectory="PreserveNewest" CopyToPublishDirectory="PreserveNewest" />
-    <Content Include="..\MarkdownRenderer\MarkdownRenderer\native\THORVG_LICENSE" Link="ThirdPartyNotices\MarkdownRenderer.Svg.ThorVG\THORVG_LICENSE.txt" CopyToOutputDirectory="PreserveNewest" CopyToPublishDirectory="PreserveNewest" />
-    <Content Include="..\MarkdownRenderer\MarkdownRenderer.Svg.ThorVG\THORVG_PROVENANCE.json" Link="ThirdPartyNotices\MarkdownRenderer.Svg.ThorVG\THORVG_PROVENANCE.json" CopyToOutputDirectory="PreserveNewest" CopyToPublishDirectory="PreserveNewest" />
+    <Content Include="..\MarkdownRenderer\MarkdownRenderer.Svg.Resvg\THIRD-PARTY-NOTICES.md" Link="ThirdPartyNotices\MarkdownRenderer.Svg.Resvg\THIRD-PARTY-NOTICES.md" CopyToOutputDirectory="PreserveNewest" CopyToPublishDirectory="PreserveNewest" />
+    <Content Include="..\MarkdownRenderer\MarkdownRenderer.Svg.Resvg\licenses\RESVG-LICENSE-MIT.txt" Link="ThirdPartyNotices\MarkdownRenderer.Svg.Resvg\RESVG-LICENSE-MIT.txt" CopyToOutputDirectory="PreserveNewest" CopyToPublishDirectory="PreserveNewest" />
+    <Content Include="..\MarkdownRenderer\MarkdownRenderer.Svg.Resvg\licenses\RUST-DEPENDENCY-LICENSES.txt" Link="ThirdPartyNotices\MarkdownRenderer.Svg.Resvg\RUST-DEPENDENCY-LICENSES.txt" CopyToOutputDirectory="PreserveNewest" CopyToPublishDirectory="PreserveNewest" />
+    <Content Include="..\MarkdownRenderer\MarkdownRenderer.Svg.Resvg\RESVG_PROVENANCE.json" Link="ThirdPartyNotices\MarkdownRenderer.Svg.Resvg\RESVG_PROVENANCE.json" CopyToOutputDirectory="PreserveNewest" CopyToPublishDirectory="PreserveNewest" />
+    <Content Include="..\MarkdownRenderer\MarkdownRenderer.Svg.Resvg\NATIVE_RUST_DEPENDENCIES.json" Link="ThirdPartyNotices\MarkdownRenderer.Svg.Resvg\NATIVE_RUST_DEPENDENCIES.json" CopyToOutputDirectory="PreserveNewest" CopyToPublishDirectory="PreserveNewest" />
     <Content Include="..\MarkdownRenderer\eng\textmate\THIRD-PARTY-NOTICES.md" Link="ThirdPartyNotices\MarkdownRenderer.TextMate\THIRD-PARTY-NOTICES.md" CopyToOutputDirectory="PreserveNewest" CopyToPublishDirectory="PreserveNewest" />
     <Content Include="..\MarkdownRenderer\eng\textmate\GRAMMAR-PROVENANCE.v2.0.3.json" Link="ThirdPartyNotices\MarkdownRenderer.TextMate\GRAMMAR-PROVENANCE.json" CopyToOutputDirectory="PreserveNewest" CopyToPublishDirectory="PreserveNewest" />
     <Content Include="ThirdParty\Microsoft.Web.WebView2\LICENSE.txt" Link="ThirdPartyNotices\Microsoft.Web.WebView2\LICENSE.txt" CopyToOutputDirectory="PreserveNewest" CopyToPublishDirectory="PreserveNewest" />
@@ -163,8 +165,6 @@
     <PackageReference Include="Microsoft.Windows.CsWinRT" Version="2.3.1" PrivateAssets="all" />
     <PackageReference Include="Microsoft.CodeAnalysis.BannedApiAnalyzers" Version="5.6.0" PrivateAssets="all" />
     <PackageReference Include="WinUIEdit" Version="0.0.5-prerelease" GeneratePathProperty="true" />
-    <PackageReference Include="SkiaSharp" Version="4.151.1" />
-    <PackageReference Include="Svg.Skia" Version="5.2.1" />
     <PackageReference Include="CommunityToolkit.WinUI.Controls.Sizers" Version="8.2.250402" />
   </ItemGroup>
 
@@ -175,7 +175,7 @@
     <ProjectReference Include="..\MarkdownRenderer\MarkdownRenderer.GitHub\MarkdownRenderer.GitHub.csproj" />
     <ProjectReference Include="..\MarkdownRenderer\MarkdownRenderer.Math\MarkdownRenderer.Math.csproj" />
     <ProjectReference Include="..\MarkdownRenderer\MarkdownRenderer.Mermaid\MarkdownRenderer.Mermaid.csproj" />
-    <ProjectReference Include="..\MarkdownRenderer\MarkdownRenderer.Svg.ThorVG\MarkdownRenderer.Svg.ThorVG.csproj" />
+    <ProjectReference Include="..\MarkdownRenderer\MarkdownRenderer.Svg.Resvg\MarkdownRenderer.Svg.Resvg.csproj" />
     <ProjectReference Include="..\MarkdownRenderer\MarkdownRenderer.SyntaxHighlighting.TextMate\MarkdownRenderer.SyntaxHighlighting.TextMate.csproj" />
     <ProjectReference Include="..\MarkdownRenderer\MarkdownRenderer.SyntaxHighlighting.TextMate.Grammars.Common\MarkdownRenderer.SyntaxHighlighting.TextMate.Grammars.Common.csproj" />
   </ItemGroup>

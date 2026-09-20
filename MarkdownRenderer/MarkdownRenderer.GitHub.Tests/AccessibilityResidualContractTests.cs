@@ -63,6 +63,37 @@ public sealed class AccessibilityResidualContractTests
     }
 
     [Fact]
+    public void TableCellInlineIndexTargetsParagraphSoLinksRemainNavigable()
+    {
+        MarkdownLayoutContext context = CreateContext();
+        var cell = new InlineContainerBox(context, MarkdownElementKeys.TableCell)
+        {
+            BlockIndex = context.NextBlockIndex(),
+        };
+        cell.Add(new LinkRun("linked API", "https://example.test/api")
+        {
+            SourceSpan = new SourceSpan(0, 10),
+        });
+        var table = new TableBox(
+            context,
+            headerCells: Array.Empty<InlineContainerBox[]>(),
+            bodyCells: new[] { new[] { cell } });
+
+        using var snapshot = new LayoutSnapshot(
+            new BlockBox[] { table },
+            context.SourceMap,
+            width: 300,
+            height: 80);
+        MarkdownSemanticDocument document = snapshot.SemanticDocument;
+
+        Assert.True(document.TryGetInlineContainerNode(cell, out MarkdownSemanticNode indexed));
+        Assert.Equal(MarkdownSemanticRole.Paragraph, indexed.Role);
+        MarkdownSemanticNode link = Assert.Single(indexed.Children);
+        Assert.Equal(MarkdownSemanticRole.Link, link.Role);
+        Assert.Equal("linked API", document.GetText(link));
+    }
+
+    [Fact]
     public void ExactBlockRangeScopePreservesImmediateHierarchyWhenOnlyChildSharesOffsets()
     {
         MarkdownLayoutContext context = CreateContext();

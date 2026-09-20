@@ -126,6 +126,27 @@ public class GitHubMarkdownImageUrlResolverTests
         Assert.Equal("assets/logo.png", reference.Path);
     }
 
+    [Theory]
+    [InlineData("heads", "main")]
+    [InlineData("tags", "v2.1.0")]
+    public void TryResolve_CanonicalRawGitHubRef_KeepsTheQualifiedRef(
+        string refKind,
+        string refName)
+    {
+        bool resolved = GitHubMarkdownImageUrlResolver.TryResolve(
+            $"https://raw.githubusercontent.com/octo/repo/refs/{refKind}/{refName}/assets/logo.png",
+            null,
+            null,
+            out GitHubMarkdownImageReference reference);
+
+        Assert.True(resolved);
+        Assert.Equal($"refs/{refKind}/{refName}", reference.Ref);
+        Assert.Equal("assets/logo.png", reference.Path);
+        Assert.Equal(
+            $"https://raw.githubusercontent.com/octo/repo/refs/{refKind}/{refName}/assets/logo.png",
+            GitHubMarkdownImageUrlResolver.CreateRawUri(reference).ToString());
+    }
+
     [Fact]
     public void TryResolve_NonGitHubAbsoluteUrl_ReturnsFalse()
     {

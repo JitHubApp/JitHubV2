@@ -20,7 +20,9 @@ public static class PixelComparer
         int HeightPx,
         long MaxChannelDelta,
         double MeanChannelDelta,
-        double DifferingPixelFraction);
+        double DifferingPixelFraction,
+        double StructuralSimilarity,
+        double AlphaIntersectionOverUnion);
 
     /// <summary>Loads a PNG from disk into a top-down RGBA8888 byte buffer.</summary>
     public static (byte[] Rgba, int Width, int Height) LoadPngAsRgba(string path)
@@ -83,6 +85,27 @@ public static class PixelComparer
         return rgba;
     }
 
+    /// <summary>Converts an RGBA premultiplied buffer to RGBA8888 unpremultiplied.</summary>
+    public static byte[] RgbaPremulToRgba(ReadOnlySpan<byte> premultiplied, int width, int height)
+    {
+        if (premultiplied.Length != checked(width * height * 4))
+            throw new ArgumentException("dimensions mismatch buffer length", nameof(premultiplied));
+
+        byte[] rgba = premultiplied.ToArray();
+        for (int index = 0; index < width * height; index++)
+        {
+            int offset = index * 4;
+            byte alpha = rgba[offset + 3];
+            if (alpha is > 0 and < 255)
+            {
+                rgba[offset] = (byte)Math.Min(255, (rgba[offset] * 255) / alpha);
+                rgba[offset + 1] = (byte)Math.Min(255, (rgba[offset + 1] * 255) / alpha);
+                rgba[offset + 2] = (byte)Math.Min(255, (rgba[offset + 2] * 255) / alpha);
+            }
+        }
+        return rgba;
+    }
+
     /// <summary>
     /// Crops <paramref name="rgba"/> to a sub-rect. Useful when the headless
     /// browser screenshot is padded to the window size with transparent
@@ -136,6 +159,8 @@ public static class PixelComparer
         long maxDelta = 0;
         long sumDelta = 0;
         long differing = 0;
+        double alphaIntersection = 0;
+        double alphaUnion = 0;
         long totalChannels = (long)width * height * 4;
         for (int i = 0; i < width * height; i++)
         {
@@ -155,10 +180,80 @@ public static class PixelComparer
                 if (delta > channelTolerance) pixelDiffers = true;
             }
             if (pixelDiffers) differing++;
+            alphaIntersection += Math.Min(a[baseIdx + 3], b[baseIdx + 3]);
+            alphaUnion += Math.Max(a[baseIdx + 3], b[baseIdx + 3]);
         }
         double mean = (double)sumDelta / totalChannels;
         double frac = (double)differing / (width * height);
-        return new DiffReport(width, height, maxDelta, mean, frac);
+        double alphaIou = alphaUnion == 0 ? 1 : alphaIntersection / alphaUnion;
+        double ssim = CalculateWindowedSsim(a, b, width, height);
+        return new DiffReport(width, height, maxDelta, mean, frac, ssim, alphaIou);
+    }
+
+    private static double CalculateWindowedSsim(byte[] a, byte[] b, int width, int height)
+    {
+        const int windowSize = 8;
+        const double c1 = 6.5025;   // (0.01 * 255)^2
+        const double c2 = 58.5225;  // (0.03 * 255)^2
+        double total = 0;
+        int windows = 0;
+
+        for (int top = 0; top < height; top += windowSize)
+        {
+            int bottom = Math.Min(height, top + windowSize);
+            for (int left = 0; left < width; left += windowSize)
+            {
+                int right = Math.Min(width, left + windowSize);
+                int count = (right - left) * (bottom - top);
+                double meanA = 0;
+                double meanB = 0;
+                for (int y = top; y < bottom; y++)
+                {
+                    for (int x = left; x < right; x++)
+                    {
+                        int offset = ((y * width) + x) * 4;
+                        meanA += PremultipliedLuminance(a, offset);
+                        meanB += PremultipliedLuminance(b, offset);
+                    }
+                }
+                meanA /= count;
+                meanB /= count;
+
+                double varianceA = 0;
+                double varianceB = 0;
+                double covariance = 0;
+                for (int y = top; y < bottom; y++)
+                {
+                    for (int x = left; x < right; x++)
+                    {
+                        int offset = ((y * width) + x) * 4;
+                        double deltaA = PremultipliedLuminance(a, offset) - meanA;
+                        double deltaB = PremultipliedLuminance(b, offset) - meanB;
+                        varianceA += deltaA * deltaA;
+                        varianceB += deltaB * deltaB;
+                        covariance += deltaA * deltaB;
+                    }
+                }
+                double denominator = Math.Max(1, count - 1);
+                varianceA /= denominator;
+                varianceB /= denominator;
+                covariance /= denominator;
+                total += ((2 * meanA * meanB + c1) * (2 * covariance + c2)) /
+                    ((meanA * meanA + meanB * meanB + c1) * (varianceA + varianceB + c2));
+                windows++;
+            }
+        }
+
+        return windows == 0 ? 1 : total / windows;
+    }
+
+    private static double PremultipliedLuminance(byte[] rgba, int offset)
+    {
+        int alpha = rgba[offset + 3];
+        double red = Premultiply(rgba[offset], (byte)alpha);
+        double green = Premultiply(rgba[offset + 1], (byte)alpha);
+        double blue = Premultiply(rgba[offset + 2], (byte)alpha);
+        return (0.2126 * red) + (0.7152 * green) + (0.0722 * blue);
     }
 
     private static int Premultiply(byte color, byte alpha) =>

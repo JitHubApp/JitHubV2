@@ -8,8 +8,8 @@ using System.Text.Json.Serialization.Metadata;
 namespace JitHub.Services.Markdown;
 
 /// <summary>
-/// File-backed lifecycle coordination used only by isolated Markdown automation runs.
-/// Production behavior is unchanged unless the explicit lifecycle fixture is enabled.
+/// File-backed coordination for isolated Markdown lifecycle and production-content audits.
+/// Production behavior is unchanged unless an explicit automation launch mode is enabled.
 /// </summary>
 internal static partial class MarkdownLifecycleAutomationBridge
 {
@@ -20,7 +20,9 @@ internal static partial class MarkdownLifecycleAutomationBridge
     private const string RuntimeSettingsPathVariable = "JITHUB_MARKDOWN_RUNTIME_SETTINGS_PATH";
     private const string LinkEvidencePathVariable = "JITHUB_MARKDOWN_LINK_EVIDENCE_PATH";
     private const string ImageEvidencePathVariable = "JITHUB_MARKDOWN_IMAGE_EVIDENCE_PATH";
+    private const string ImageResolutionEvidencePathVariable = "JITHUB_MARKDOWN_IMAGE_RESOLUTION_EVIDENCE_PATH";
     private const string RenderFailureEvidencePathVariable = "JITHUB_MARKDOWN_RENDER_FAILURE_EVIDENCE_PATH";
+    private const string RenderCompleteEvidencePathVariable = "JITHUB_MARKDOWN_RENDER_COMPLETE_EVIDENCE_PATH";
     private const string HighContrastVariable = "JITHUB_AUTOMATION_HIGH_CONTRAST";
     private const string ResourceMapAbsentVariable = "JITHUB_AUTOMATION_RESOURCE_MAP_ABSENT";
     private const string ResourceMapEvidencePathVariable = "JITHUB_AUTOMATION_RESOURCE_MAP_EVIDENCE_PATH";
@@ -28,33 +30,40 @@ internal static partial class MarkdownLifecycleAutomationBridge
     private static readonly object SignalGate = new();
     private static string? _signaledHost;
     private static bool _launchFixtureEnabled;
+    private static bool _productionAuditEnabled;
     private static string? _launchTargetHost;
 
     public static bool IsEnabled => _launchFixtureEnabled || IsOne(FixtureVariable);
+
+    public static bool IsEvidenceEnabled => IsEnabled || _productionAuditEnabled;
 
     public static bool IsHighContrastEnabled => IsEnabled && IsOne(HighContrastVariable);
 
     public static bool IsResourceMapForcedAbsent => IsEnabled && IsOne(ResourceMapAbsentVariable);
 
-    public static string? TargetHost => IsEnabled
+    public static string? TargetHost => IsEvidenceEnabled
         ? _launchTargetHost ?? Environment.GetEnvironmentVariable(TargetHostVariable)
         : null;
 
-    public static void ConfigureLaunchOptions(bool fixtureEnabled, string? targetHost)
+    public static void ConfigureLaunchOptions(
+        bool fixtureEnabled,
+        string? targetHost,
+        bool productionAuditEnabled = false)
     {
         _launchFixtureEnabled = fixtureEnabled;
+        _productionAuditEnabled = productionAuditEnabled;
         _launchTargetHost = string.IsNullOrWhiteSpace(targetHost) ? null : targetHost.Trim();
     }
 
     public static bool TargetsHost(string automationId) =>
-        IsEnabled &&
+        IsEvidenceEnabled &&
         !string.IsNullOrWhiteSpace(automationId) &&
         (string.IsNullOrWhiteSpace(TargetHost) ||
          automationId.StartsWith(TargetHost, StringComparison.Ordinal));
 
     public static void SignalAppReady()
     {
-        if (!IsEnabled)
+        if (!IsEvidenceEnabled)
         {
             return;
         }
@@ -67,7 +76,7 @@ internal static partial class MarkdownLifecycleAutomationBridge
 
     public static void SignalHostReady(string automationId)
     {
-        if (!IsEnabled || string.IsNullOrWhiteSpace(automationId))
+        if (!IsEvidenceEnabled || string.IsNullOrWhiteSpace(automationId))
         {
             return;
         }
@@ -254,10 +263,71 @@ internal static partial class MarkdownLifecycleAutomationBridge
         }
     }
 
+    public static void RecordImageResolution(
+        string source,
+        MarkdownRenderer.Images.MarkdownImageResolution resolution)
+    {
+        if (!IsEvidenceEnabled)
+        {
+            return;
+        }
+
+        string? path = Environment.GetEnvironmentVariable(ImageResolutionEvidencePathVariable);
+        if (string.IsNullOrWhiteSpace(path))
+        {
+            return;
+        }
+
+        lock (SignalGate)
+        {
+            try
+            {
+                string fullPath = Path.GetFullPath(path);
+                Directory.CreateDirectory(Path.GetDirectoryName(fullPath)!);
+                string entry = JsonSerializer.Serialize(
+                    new ImageResolutionSignal(
+                        Environment.ProcessId,
+                        source,
+                        resolution.IsHandled,
+                        resolution.Asset is not null,
+                        resolution.Asset?.Bytes.Length ?? 0,
+                        resolution.Asset?.ContentType,
+                        resolution.Asset?.ResolvedUri?.AbsoluteUri,
+                        resolution.UnavailableReason.ToString(),
+                        DateTimeOffset.UtcNow),
+                    MarkdownLifecycleJsonContext.Default.ImageResolutionSignal);
+                File.AppendAllText(fullPath, entry + Environment.NewLine);
+            }
+            catch (IOException)
+            {
+            }
+            catch (UnauthorizedAccessException)
+            {
+            }
+        }
+    }
+
     public static void RecordRenderFailure(string automationId, Exception exception)
     {
         ArgumentNullException.ThrowIfNull(exception);
         if (!TargetsHost(automationId))
+        {
+            return;
+        }
+
+        RecordAuditFailure("markdown-render", exception);
+    }
+
+    /// <summary>
+    /// Records a production-audit failure that prevents the targeted Markdown
+    /// surface from being created. This is inert outside explicit automation
+    /// launches and preserves the original exception for the audit report.
+    /// </summary>
+    public static void RecordAuditFailure(string stage, Exception exception)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(stage);
+        ArgumentNullException.ThrowIfNull(exception);
+        if (!IsEvidenceEnabled)
         {
             return;
         }
@@ -274,7 +344,7 @@ internal static partial class MarkdownLifecycleAutomationBridge
             {
                 string fullPath = Path.GetFullPath(path);
                 Directory.CreateDirectory(Path.GetDirectoryName(fullPath)!);
-                File.WriteAllText(fullPath, exception.ToString());
+                File.WriteAllText(fullPath, $"Stage: {stage}{Environment.NewLine}{exception}");
             }
             catch (IOException)
             {
@@ -283,6 +353,19 @@ internal static partial class MarkdownLifecycleAutomationBridge
             {
             }
         }
+    }
+
+    public static void RecordRenderComplete(string automationId)
+    {
+        if (!TargetsHost(automationId))
+        {
+            return;
+        }
+
+        WriteSignal(
+            Environment.GetEnvironmentVariable(RenderCompleteEvidencePathVariable),
+            new RenderCompleteSignal(Environment.ProcessId, automationId, DateTimeOffset.UtcNow),
+            MarkdownLifecycleJsonContext.Default.RenderCompleteSignal);
     }
 
     private static bool IsOne(string variable) => string.Equals(
@@ -331,12 +414,27 @@ internal static partial class MarkdownLifecycleAutomationBridge
         string Reason,
         DateTimeOffset Timestamp);
 
+    private sealed record ImageResolutionSignal(
+        int ProcessId,
+        string Source,
+        bool IsHandled,
+        bool HasAsset,
+        int ByteLength,
+        string? ContentType,
+        string? ResolvedUri,
+        string Reason,
+        DateTimeOffset Timestamp);
+
+    private sealed record RenderCompleteSignal(int ProcessId, string Host, DateTimeOffset Timestamp);
+
     private sealed record MarkdownLifecycleRuntimeSettings(double TextScaleFactor, int Revision);
 
     [JsonSerializable(typeof(LifecycleReadySignal), TypeInfoPropertyName = "LifecycleReadySignal")]
     [JsonSerializable(typeof(ResourceMapFallbackSignal), TypeInfoPropertyName = "ResourceMapFallbackSignal")]
     [JsonSerializable(typeof(LinkRouteSignal), TypeInfoPropertyName = "LinkRouteSignal")]
     [JsonSerializable(typeof(ImageUnavailableSignal), TypeInfoPropertyName = "ImageUnavailableSignal")]
+    [JsonSerializable(typeof(ImageResolutionSignal), TypeInfoPropertyName = "ImageResolutionSignal")]
+    [JsonSerializable(typeof(RenderCompleteSignal), TypeInfoPropertyName = "RenderCompleteSignal")]
     [JsonSerializable(typeof(MarkdownLifecycleRuntimeSettings), TypeInfoPropertyName = "RuntimeSettings")]
     private sealed partial class MarkdownLifecycleJsonContext : JsonSerializerContext
     {

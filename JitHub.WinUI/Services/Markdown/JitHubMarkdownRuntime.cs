@@ -1,8 +1,13 @@
 using System;
+using System.Threading;
+using System.Threading.Tasks;
+using JitHub.Services.CodeViewer;
 using MarkdownRenderer;
 using MarkdownRenderer.GitHub;
+using MarkdownRenderer.Images;
 using MarkdownRenderer.Math;
 using MarkdownRenderer.Mermaid;
+using MarkdownRenderer.Svg.Resvg;
 using MarkdownRenderer.SyntaxHighlighting.TextMate;
 using MarkdownRenderer.SyntaxHighlighting.TextMate.Grammars.Common;
 
@@ -18,6 +23,9 @@ internal static class JitHubMarkdownRuntime
     private static readonly object Gate = new();
     private static MarkdownEngine? _engine;
     private static TextMateCodeBlockSyntaxHighlighter? _codeHighlighter;
+    private static ResvgMarkdownSvgRenderer? _svgRenderer;
+    private static Task? _fontChangeTask;
+    private static Task? _shutdownTask;
     private static bool _isShuttingDown;
 
     internal static MarkdownEngine Engine
@@ -51,14 +59,109 @@ internal static class JitHubMarkdownRuntime
         }
     }
 
+    /// <summary>
+    /// Gets the process-wide SVG renderer borrowed by markdown controls and the
+    /// standalone repository preview. JitHub alone owns its lifetime.
+    /// </summary>
+    internal static IMarkdownSvgRenderer SvgRenderer
+    {
+        get
+        {
+            lock (Gate)
+            {
+                ObjectDisposedException.ThrowIf(_isShuttingDown, typeof(JitHubMarkdownRuntime));
+                return _svgRenderer ??= new ResvgMarkdownSvgRenderer();
+            }
+        }
+    }
+
+    /// <summary>Starts the isolated SVG worker without blocking the shell's first frame.</summary>
+    internal static async Task WarmUpSvgRendererAsync(CancellationToken cancellationToken = default)
+    {
+        ResvgMarkdownSvgRenderer renderer;
+        lock (Gate)
+        {
+            ObjectDisposedException.ThrowIf(_isShuttingDown, typeof(JitHubMarkdownRuntime));
+            renderer = _svgRenderer ??= new ResvgMarkdownSvgRenderer();
+        }
+
+        await renderer.WarmUpAsync(cancellationToken).ConfigureAwait(false);
+    }
+
+    /// <summary>
+    /// Advances the worker font generation without doing process teardown in the
+    /// window procedure or starting a renderer that has not otherwise been used.
+    /// Repeated font notifications are coalesced while invalidation is pending.
+    /// </summary>
+    internal static Task NotifyFontsChangedAsync()
+    {
+        lock (Gate)
+        {
+            if (_isShuttingDown || _svgRenderer is null)
+            {
+                return Task.CompletedTask;
+            }
+
+            if (_fontChangeTask is { IsCompleted: false })
+            {
+                return _fontChangeTask;
+            }
+
+            ResvgMarkdownSvgRenderer renderer = _svgRenderer;
+            return _fontChangeTask = Task.Run(() =>
+            {
+                lock (Gate)
+                {
+                    if (!_isShuttingDown && ReferenceEquals(renderer, _svgRenderer))
+                    {
+                        renderer.NotifyFontsChanged();
+                    }
+                }
+            });
+        }
+    }
+
     /// <summary>Stops new work and releases shared native and grammar resources once.</summary>
-    internal static void Shutdown()
+    internal static Task ShutdownAsync()
     {
         MarkdownEngine? engine;
         TextMateCodeBlockSyntaxHighlighter? codeHighlighter;
+        ResvgMarkdownSvgRenderer? svgRenderer;
+        TaskCompletionSource completion = new(TaskCreationOptions.RunContinuationsAsynchronously);
         lock (Gate)
         {
-            if (_isShuttingDown)
+            if (_shutdownTask is not null)
+            {
+                return _shutdownTask;
+            }
+
+            _isShuttingDown = true;
+            engine = _engine;
+            _engine = null;
+            codeHighlighter = _codeHighlighter;
+            _codeHighlighter = null;
+            svgRenderer = _svgRenderer;
+            _svgRenderer = null;
+            _fontChangeTask = null;
+            _shutdownTask = completion.Task;
+        }
+
+        _ = Task.Run(() => ShutdownCoreAsync(engine, codeHighlighter, svgRenderer, completion));
+        return completion.Task;
+    }
+
+    /// <summary>
+    /// Synchronously tears down any remaining owners during CLR process exit,
+    /// where awaiting asynchronous cleanup is no longer reliable.
+    /// </summary>
+    internal static void ShutdownForProcessExit()
+    {
+        MarkdownEngine? engine;
+        TextMateCodeBlockSyntaxHighlighter? codeHighlighter;
+        ResvgMarkdownSvgRenderer? svgRenderer;
+        lock (Gate)
+        {
+            if (_shutdownTask is not null)
             {
                 return;
             }
@@ -68,11 +171,41 @@ internal static class JitHubMarkdownRuntime
             _engine = null;
             codeHighlighter = _codeHighlighter;
             _codeHighlighter = null;
+            svgRenderer = _svgRenderer;
+            _svgRenderer = null;
+            _fontChangeTask = null;
+            _shutdownTask = Task.CompletedTask;
         }
 
-        // Both owners defer their final provider/native release until admitted
-        // callbacks retire, so shutdown does not race active parse/highlight work.
         codeHighlighter?.Dispose();
         engine?.Dispose();
+        RepositorySvgGpuCache.Shutdown();
+        svgRenderer?.Dispose();
+    }
+
+    private static async Task ShutdownCoreAsync(
+        MarkdownEngine? engine,
+        TextMateCodeBlockSyntaxHighlighter? codeHighlighter,
+        ResvgMarkdownSvgRenderer? svgRenderer,
+        TaskCompletionSource completion)
+    {
+        try
+        {
+            // Shared owners defer their final provider/native release until admitted
+            // callbacks retire, so shutdown does not race active work.
+            codeHighlighter?.Dispose();
+            engine?.Dispose();
+            RepositorySvgGpuCache.Shutdown();
+            if (svgRenderer is not null)
+            {
+                await svgRenderer.DisposeAsync().ConfigureAwait(false);
+            }
+
+            completion.SetResult();
+        }
+        catch (Exception exception)
+        {
+            completion.SetException(exception);
+        }
     }
 }

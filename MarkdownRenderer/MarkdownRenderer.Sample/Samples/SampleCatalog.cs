@@ -44,6 +44,7 @@ internal static class SampleCatalog
         [
             new("Math", "PageMath", "Math", "\uE8EF", static () => SampleDocuments.MathSample),
             new("Mermaid", "PageMermaid", "Mermaid", "\uE8A0", static () => SampleDocuments.MermaidSample),
+            new("SvgStress", "PageSvgStress", "SVG rendering", "\uEB9F", static () => SampleDocuments.SvgStressSample),
             new("Diagrams", "PageDiagrams", "Diagram pipeline", "\uE9D2", static () => SampleDocuments.DiagramEmbedSample),
             new("Embeds", "PageEmbeds", "Hosted elements", "\uEDE3", static () => SampleDocuments.EmbedsSample),
         ]),

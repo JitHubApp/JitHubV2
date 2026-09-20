@@ -22,10 +22,13 @@ enabled merely because the base viewer is installed.
 
 ## SVGs render as placeholders
 
-ThorVG is optional. Confirm that `MarkdownRenderer.Svg.ThorVG` is installed and
-that the selected x86, x64, or ARM64 output contains the matching RID-native
-asset. Also verify image resolver policy, document/base URI, third-party remote
-image consent, SVG validity, and graphics-device recovery.
+The resvg provider is optional. Confirm that `MarkdownRenderer.Svg.Resvg` is
+installed, one shared `ResvgMarkdownSvgRenderer` is assigned to `SvgRenderer`,
+and the selected x86, x64, or ARM64 output contains the matching worker. Also
+verify image resolver policy, document/base URI, third-party remote-image
+configuration, static-SVG validity and resource limits, worker diagnostics, and
+graphics-device recovery. A typed placeholder is expected for executable,
+external, over-budget, quarantined, or unsupported content.
 
 ## Math or Mermaid content falls back to source
 

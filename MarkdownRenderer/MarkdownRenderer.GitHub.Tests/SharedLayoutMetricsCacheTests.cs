@@ -129,6 +129,7 @@ public sealed class SharedLayoutMetricsCacheTests
             embedFactory: null,
             hostedElementFactory: null,
             imageResolver,
+            svgRenderer: null,
             commandProvider: null,
             stringProvider: null);
 }

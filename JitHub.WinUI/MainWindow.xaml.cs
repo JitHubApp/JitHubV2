@@ -35,6 +35,7 @@ public sealed partial class MainWindow : Window
     private const uint ImageIcon = 1;
     private const uint LrLoadFromFile = 0x00000010;
     private const uint WmClose = 0x0010;
+    private const uint WmFontChange = 0x001D;
     private const uint WmSetIcon = 0x0080;
     private const uint WmKeyDown = 0x0100;
     private const uint WmSysKeyDown = 0x0104;
@@ -194,7 +195,6 @@ public sealed partial class MainWindow : Window
         Closed += (_, _) =>
         {
             _productPerformanceVisualProbe?.Dispose();
-            JitHubMarkdownRuntime.Shutdown();
             MarkdownRenderer.MarkdownRendererRuntime.Shutdown();
             _ = RemoveWindowSubclass(_hwnd, _keyboardSubclassProc, KeyboardSubclassId);
             _rootLayout.Loaded -= RootLayout_Loaded;
@@ -768,6 +768,15 @@ public sealed partial class MainWindow : Window
         }
         finally
         {
+            try
+            {
+                await JitHubMarkdownRuntime.ShutdownAsync();
+            }
+            catch (Exception exception)
+            {
+                App.LogHandledException(exception, "markdown-runtime-shutdown");
+            }
+
             _allowCloseAfterDiagnostics = true;
             Close();
         }
@@ -875,6 +884,13 @@ public sealed partial class MainWindow : Window
         if (message == WmClose)
         {
             MarkdownRenderer.MarkdownRendererRuntime.BeginShutdown();
+        }
+
+        if (message == WmFontChange)
+        {
+            UiTaskGuard.Observe(
+                JitHubMarkdownRuntime.NotifyFontsChangedAsync(),
+                "ui-markdown-svg-font-change");
         }
 
         if ((message == WmKeyDown || message == WmSysKeyDown) &&

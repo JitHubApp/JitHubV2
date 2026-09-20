@@ -320,7 +320,9 @@ public sealed partial class MarkdownViewer : UserControl
     /// Gets or sets whether secure third-party HTTPS images load without asking
     /// for per-document consent. JitHub enables this because repository content
     /// commonly depends on external badges and screenshots. Setting it to false
-    /// restores the privacy prompt; insecure HTTP content remains blocked.
+    /// restores the privacy prompt. Legacy HTTP references are never sent over
+    /// plaintext: the production resolver attempts the same origin over HTTPS
+    /// and fails closed when TLS is unavailable.
     /// </summary>
     public bool AllowThirdPartyRemoteImagesByDefault
     {
@@ -356,6 +358,10 @@ public sealed partial class MarkdownViewer : UserControl
         _imageResolver = MarkdownLifecycleAutomationBridge.IsEnabled
             ? new MarkdownLifecycleImageResolver(imageResolver)
             : imageResolver;
+        if (MarkdownLifecycleAutomationBridge.IsEvidenceEnabled)
+        {
+            _imageResolver = new MarkdownAuditImageResolver(_imageResolver);
+        }
 
         Loaded += (_, _) =>
         {
@@ -636,6 +642,7 @@ public sealed partial class MarkdownViewer : UserControl
         _renderer.IsSelectionEnabled = IsSelectionEnabled;
         _renderer.IsCodeBlockCopyEnabled = IsCodeBlockCopyEnabled;
         _renderer.ImageResolver = _imageResolver;
+        _renderer.SvgRenderer = JitHubMarkdownRuntime.SvgRenderer;
         _renderer.ImageBaseUri = GetBaseUri();
         _renderer.ImageDocumentPath = DocumentPath;
         _renderer.ImageDocumentSource = DocumentSource;
@@ -733,6 +740,7 @@ public sealed partial class MarkdownViewer : UserControl
         _renderer.IsCodeBlockSyntaxHighlightingEnabled = IsSyntaxHighlightingEnabled;
 
         _renderer.ImageResolver = _imageResolver;
+        _renderer.SvgRenderer = JitHubMarkdownRuntime.SvgRenderer;
         _renderer.ImageBaseUri = GetBaseUri();
         _renderer.ImageDocumentPath = DocumentPath;
         _renderer.ImageDocumentSource = DocumentSource;
@@ -1003,6 +1011,8 @@ public sealed partial class MarkdownViewer : UserControl
 
     private void OnRendererRenderCompleted(object? sender, EventArgs e)
     {
+        MarkdownLifecycleAutomationBridge.RecordRenderComplete(
+            MarkdownHostContract.GetAutomationId(HostKind, AutomationInstanceId));
         RenderErrorInfoBar.IsOpen = false;
         if (!_retryRenderPending)
         {

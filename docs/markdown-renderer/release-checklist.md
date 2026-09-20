@@ -27,14 +27,19 @@ below.
 ## Package matrix
 
 - [ ] Inspect `MarkdownRenderer.Core` and the lean `MarkdownRenderer` package.
-- [ ] Inspect each selected GFM, GitHub, HTML, Math, Mermaid, ThorVG, TextMate, and
+- [ ] Inspect each selected GFM, GitHub, HTML, Math, Mermaid, resvg, TextMate, and
   grammar pack independently.
 - [ ] Confirm `MarkdownRenderer.All` is the only deliberate all-feature/all-payload
   dependency path.
 - [ ] Verify README, license, icon, repository metadata, symbols, source link, XML
   documentation, lock files, and dependency closure.
-- [ ] When ThorVG is selected, validate the x86, x64, and ARM64 RID-native DLLs and
-  matching PE machine types. The base package must not contain those assets.
+- [ ] When resvg is selected, validate the signed x86, x64, and ARM64 RID workers,
+  worker isolation/fault recovery, package size, SBOM/license closure, and
+  matching PE machine types. Run
+  `eng/Invoke-SvgResvgReleaseEvidence.ps1 -Mode Release` with every required
+  pinned-machine evidence input and retain its JSON,
+  TRX, Edge raster, package, signing, NativeAOT/trim, and fallback evidence. The
+  base package must not contain those assets.
 - [ ] Confirm the lean TextMate integration does not silently contain the complete
   grammar set. Run `eng/Invoke-TextMateReleaseEvidence.ps1` and retain its
   contract-test, provenance, reproducibility, SBOM/notice, selected-RID size,

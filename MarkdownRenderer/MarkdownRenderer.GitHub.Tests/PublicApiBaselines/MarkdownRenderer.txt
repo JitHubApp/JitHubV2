@@ -118,6 +118,7 @@ public sealed class MarkdownRenderer.Controls.MarkdownRenderFailedEventArgs : Sy
   public MarkdownRenderer.Hosting.IMarkdownHostedElementFactory? HostedElementFactory { get; set; }
   public MarkdownRenderer.Hosting.IMarkdownStringProvider? StringProvider { get; set; }
   public MarkdownRenderer.Images.IMarkdownImageResolver? ImageResolver { get; set; }
+  public MarkdownRenderer.Images.IMarkdownSvgRenderer? SvgRenderer { get; set; }
   public MarkdownRenderer.Images.MarkdownDocumentSource? ImageDocumentSource { get; set; }
   public MarkdownRenderer.MarkdownEngine? Engine { get; set; }
   public MarkdownRenderer.Theming.MarkdownStyleSheet? StyleSheet { get; set; }
@@ -167,6 +168,7 @@ public sealed class MarkdownRenderer.Controls.MarkdownRenderFailedEventArgs : Sy
   public static readonly Microsoft.UI.Xaml.DependencyProperty MarkdownProperty;
   public static readonly Microsoft.UI.Xaml.DependencyProperty StringProviderProperty;
   public static readonly Microsoft.UI.Xaml.DependencyProperty StyleSheetProperty;
+  public static readonly Microsoft.UI.Xaml.DependencyProperty SvgRendererProperty;
   public static readonly Microsoft.UI.Xaml.DependencyProperty ThemeProperty;
   public string Markdown { get; set; }
   public string? CodeBlockCopiedButtonLabel { get; set; }
@@ -200,6 +202,7 @@ public sealed class MarkdownRenderer.Controls.MarkdownRendererControlBuilder
   public MarkdownRenderer.Controls.MarkdownRendererControlBuilder WithSelectionEnabled(bool isEnabled);
   public MarkdownRenderer.Controls.MarkdownRendererControlBuilder WithStringProvider(MarkdownRenderer.Hosting.IMarkdownStringProvider? provider);
   public MarkdownRenderer.Controls.MarkdownRendererControlBuilder WithStyleSheet(MarkdownRenderer.Theming.MarkdownStyleSheet? styleSheet);
+  public MarkdownRenderer.Controls.MarkdownRendererControlBuilder WithSvgRenderer(MarkdownRenderer.Images.IMarkdownSvgRenderer? svgRenderer);
   public MarkdownRenderer.Controls.MarkdownRendererControlBuilder WithTaskListEditingEnabled(bool enabled = true);
   public MarkdownRenderer.Controls.MarkdownRendererControlBuilder WithTheme(MarkdownRenderer.Theming.MarkdownTheme? theme);
   public MarkdownRenderer.Controls.MarkdownRendererControlBuilder WithThirdPartyRemoteImagesAllowed(bool allowed);
@@ -317,8 +320,20 @@ public static class MarkdownRenderer.Hosting.MarkdownStringKeys
   public const string TaskReadOnly = "Task.ReadOnly";
   public const string TaskToggle = "Task.Toggle";
 
+public interface MarkdownRenderer.Images.IMarkdownImagePrefetcher
+  public abstract System.Threading.Tasks.ValueTask PrefetchAsync(System.Collections.Generic.IReadOnlyList<string> sources, MarkdownRenderer.Images.MarkdownImageResolveContext context, System.Threading.CancellationToken cancellationToken);
+
 public interface MarkdownRenderer.Images.IMarkdownImageResolver
   public abstract System.Threading.Tasks.ValueTask<MarkdownRenderer.Images.MarkdownImageResolution> ResolveAsync(string source, MarkdownRenderer.Images.MarkdownImageResolveContext context, System.Threading.CancellationToken cancellationToken);
+
+public interface MarkdownRenderer.Images.IMarkdownSvgDocument : System.IDisposable
+  public abstract MarkdownRenderer.Images.MarkdownSvgDocumentInfo Info { get; }
+  public abstract System.Threading.Tasks.ValueTask<MarkdownRenderer.Images.MarkdownSvgRaster> RenderAsync(MarkdownRenderer.Images.MarkdownSvgRenderRequest request, System.Threading.CancellationToken cancellationToken = null);
+
+public interface MarkdownRenderer.Images.IMarkdownSvgRenderer
+  public abstract System.Threading.Tasks.ValueTask<MarkdownRenderer.Images.IMarkdownSvgDocument> OpenAsync(MarkdownRenderer.Images.MarkdownSvgOpenRequest request, System.Threading.CancellationToken cancellationToken = null);
+  public virtual event System.EventHandler? CacheInvalidated { add; remove; }
+  public virtual long CacheGeneration { get; }
 
 public sealed class MarkdownRenderer.Images.MarkdownDocumentSource : System.IEquatable<MarkdownRenderer.Images.MarkdownDocumentSource>
   public MarkdownDocumentSource(string DocumentId, string? Owner = null, string? Repository = null, string? Ref = null, string? Path = null);
@@ -397,6 +412,118 @@ public enum MarkdownRenderer.Images.MarkdownImageUnavailableReason
   Offline = 4,
   RemoteContentBlocked = 2,
   Unavailable = 1,
+
+public readonly struct MarkdownRenderer.Images.MarkdownSvgColor : System.IEquatable<MarkdownRenderer.Images.MarkdownSvgColor> [layout: Sequential; pack: 0; size: 0; charset: Ansi]
+  public MarkdownSvgColor(byte Red, byte Green, byte Blue, byte Alpha = 255);
+  public bool Equals(MarkdownRenderer.Images.MarkdownSvgColor other);
+  public byte Alpha { get; init; }
+  public byte Blue { get; init; }
+  public byte Green { get; init; }
+  public byte Red { get; init; }
+  public override bool Equals(object obj);
+  public override int GetHashCode();
+  public override string ToString();
+  public static bool op_Equality(MarkdownRenderer.Images.MarkdownSvgColor left, MarkdownRenderer.Images.MarkdownSvgColor right);
+  public static bool op_Inequality(MarkdownRenderer.Images.MarkdownSvgColor left, MarkdownRenderer.Images.MarkdownSvgColor right);
+  public void Deconstruct(out byte Red, out byte Green, out byte Blue, out byte Alpha);
+
+public enum MarkdownRenderer.Images.MarkdownSvgColorScheme
+  Dark = 1,
+  Light = 0,
+
+public sealed class MarkdownRenderer.Images.MarkdownSvgDocumentInfo : System.IEquatable<MarkdownRenderer.Images.MarkdownSvgDocumentInfo>
+  public MarkdownRenderer.Images.MarkdownSvgDocumentInfo <Clone>$();
+  public MarkdownSvgDocumentInfo(double? IntrinsicWidthDips = null, double? IntrinsicHeightDips = null, double? IntrinsicAspectRatio = null, string? Description = null, bool HasText = false, bool UsesCurrentColor = false, bool UsesColorScheme = false);
+  public bool Equals(MarkdownRenderer.Images.MarkdownSvgDocumentInfo? other);
+  public bool HasText { get; init; }
+  public bool UsesColorScheme { get; init; }
+  public bool UsesCurrentColor { get; init; }
+  public double? IntrinsicAspectRatio { get; init; }
+  public double? IntrinsicHeightDips { get; init; }
+  public double? IntrinsicWidthDips { get; init; }
+  public override bool Equals(object? obj);
+  public override int GetHashCode();
+  public override string ToString();
+  public static bool op_Equality(MarkdownRenderer.Images.MarkdownSvgDocumentInfo? left, MarkdownRenderer.Images.MarkdownSvgDocumentInfo? right);
+  public static bool op_Inequality(MarkdownRenderer.Images.MarkdownSvgDocumentInfo? left, MarkdownRenderer.Images.MarkdownSvgDocumentInfo? right);
+  public string? Description { get; init; }
+  public void Deconstruct(out double? IntrinsicWidthDips, out double? IntrinsicHeightDips, out double? IntrinsicAspectRatio, out string? Description, out bool HasText, out bool UsesCurrentColor, out bool UsesColorScheme);
+
+public sealed class MarkdownRenderer.Images.MarkdownSvgException : System.Exception
+  public MarkdownRenderer.Images.MarkdownSvgFailureReason Reason { get; }
+  public MarkdownSvgException(MarkdownRenderer.Images.MarkdownSvgFailureReason reason, string? message = null, System.Exception? innerException = null);
+
+public enum MarkdownRenderer.Images.MarkdownSvgFailureReason
+  ArchitectureMismatch = 4,
+  Canceled = 5,
+  ResourceLimitExceeded = 1,
+  Timeout = 2,
+  UnsupportedContent = 0,
+  WorkerFailure = 3,
+
+public sealed class MarkdownRenderer.Images.MarkdownSvgOpenRequest : System.IEquatable<MarkdownRenderer.Images.MarkdownSvgOpenRequest>
+  public MarkdownRenderer.Images.MarkdownSvgColor? SemanticColor { get; init; }
+  public MarkdownRenderer.Images.MarkdownSvgColorScheme ColorScheme { get; init; }
+  public MarkdownRenderer.Images.MarkdownSvgOpenRequest <Clone>$();
+  public MarkdownRenderer.Images.MarkdownSvgRenderPriority Priority { get; init; }
+  public MarkdownSvgOpenRequest(System.ReadOnlyMemory<byte> SanitizedSvgBytes, string? Locale = null, MarkdownRenderer.Images.MarkdownSvgColorScheme ColorScheme = MarkdownRenderer.Images.MarkdownSvgColorScheme.Light, MarkdownRenderer.Images.MarkdownSvgColor? SemanticColor = null, MarkdownRenderer.Images.MarkdownSvgRenderPriority Priority = MarkdownRenderer.Images.MarkdownSvgRenderPriority.Visible);
+  public System.ReadOnlyMemory<byte> SanitizedSvgBytes { get; init; }
+  public bool Equals(MarkdownRenderer.Images.MarkdownSvgOpenRequest? other);
+  public override bool Equals(object? obj);
+  public override int GetHashCode();
+  public override string ToString();
+  public static bool op_Equality(MarkdownRenderer.Images.MarkdownSvgOpenRequest? left, MarkdownRenderer.Images.MarkdownSvgOpenRequest? right);
+  public static bool op_Inequality(MarkdownRenderer.Images.MarkdownSvgOpenRequest? left, MarkdownRenderer.Images.MarkdownSvgOpenRequest? right);
+  public string? Locale { get; init; }
+  public void Deconstruct(out System.ReadOnlyMemory<byte> SanitizedSvgBytes, out string? Locale, out MarkdownRenderer.Images.MarkdownSvgColorScheme ColorScheme, out MarkdownRenderer.Images.MarkdownSvgColor? SemanticColor, out MarkdownRenderer.Images.MarkdownSvgRenderPriority Priority);
+
+public enum MarkdownRenderer.Images.MarkdownSvgPixelFormat
+  Bgra8Premultiplied = 1,
+  Rgba8Premultiplied = 0,
+
+public sealed class MarkdownRenderer.Images.MarkdownSvgRaster : System.IDisposable
+  public MarkdownRenderer.Images.MarkdownSvgPixelFormat PixelFormat { get; }
+  public MarkdownSvgRaster(System.Buffers.IMemoryOwner<byte> owner, int lengthBytes, int widthPixels, int heightPixels, int strideBytes, MarkdownRenderer.Images.MarkdownSvgPixelFormat pixelFormat);
+  public System.ReadOnlyMemory<byte> Pixels { get; }
+  public int HeightPixels { get; }
+  public int LengthBytes { get; }
+  public int StrideBytes { get; }
+  public int WidthPixels { get; }
+  public void Dispose();
+
+public enum MarkdownRenderer.Images.MarkdownSvgRenderPriority
+  Overscan = 0,
+  Visible = 1,
+
+public sealed class MarkdownRenderer.Images.MarkdownSvgRenderRequest : System.IEquatable<MarkdownRenderer.Images.MarkdownSvgRenderRequest>
+  public MarkdownRenderer.Images.MarkdownSvgPixelFormat PixelFormat { get; init; }
+  public MarkdownRenderer.Images.MarkdownSvgRenderPriority Priority { get; init; }
+  public MarkdownRenderer.Images.MarkdownSvgRenderRequest <Clone>$();
+  public MarkdownRenderer.Images.MarkdownSvgTileRegion? TileRegion { get; init; }
+  public MarkdownSvgRenderRequest(int TargetWidthPixels, int TargetHeightPixels, MarkdownRenderer.Images.MarkdownSvgTileRegion? TileRegion = null, MarkdownRenderer.Images.MarkdownSvgPixelFormat PixelFormat = MarkdownRenderer.Images.MarkdownSvgPixelFormat.Rgba8Premultiplied, MarkdownRenderer.Images.MarkdownSvgRenderPriority Priority = MarkdownRenderer.Images.MarkdownSvgRenderPriority.Visible);
+  public bool Equals(MarkdownRenderer.Images.MarkdownSvgRenderRequest? other);
+  public int TargetHeightPixels { get; init; }
+  public int TargetWidthPixels { get; init; }
+  public override bool Equals(object? obj);
+  public override int GetHashCode();
+  public override string ToString();
+  public static bool op_Equality(MarkdownRenderer.Images.MarkdownSvgRenderRequest? left, MarkdownRenderer.Images.MarkdownSvgRenderRequest? right);
+  public static bool op_Inequality(MarkdownRenderer.Images.MarkdownSvgRenderRequest? left, MarkdownRenderer.Images.MarkdownSvgRenderRequest? right);
+  public void Deconstruct(out int TargetWidthPixels, out int TargetHeightPixels, out MarkdownRenderer.Images.MarkdownSvgTileRegion? TileRegion, out MarkdownRenderer.Images.MarkdownSvgPixelFormat PixelFormat, out MarkdownRenderer.Images.MarkdownSvgRenderPriority Priority);
+
+public readonly struct MarkdownRenderer.Images.MarkdownSvgTileRegion : System.IEquatable<MarkdownRenderer.Images.MarkdownSvgTileRegion> [layout: Sequential; pack: 0; size: 0; charset: Ansi]
+  public MarkdownSvgTileRegion(int X, int Y, int Width, int Height);
+  public bool Equals(MarkdownRenderer.Images.MarkdownSvgTileRegion other);
+  public int Height { get; init; }
+  public int Width { get; init; }
+  public int X { get; init; }
+  public int Y { get; init; }
+  public override bool Equals(object obj);
+  public override int GetHashCode();
+  public override string ToString();
+  public static bool op_Equality(MarkdownRenderer.Images.MarkdownSvgTileRegion left, MarkdownRenderer.Images.MarkdownSvgTileRegion right);
+  public static bool op_Inequality(MarkdownRenderer.Images.MarkdownSvgTileRegion left, MarkdownRenderer.Images.MarkdownSvgTileRegion right);
+  public void Deconstruct(out int X, out int Y, out int Width, out int Height);
 
 public static class MarkdownRenderer.MarkdownRendererRuntime
   public static bool IsShutdownInProgress { get; }

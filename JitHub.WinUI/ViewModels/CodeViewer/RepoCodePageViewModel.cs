@@ -14,6 +14,7 @@ using CommunityToolkit.Mvvm.Input;
 using JitHub.Models.CodeViewer;
 using JitHub.Services;
 using JitHub.Services.CodeViewer;
+using JitHub.Services.Markdown;
 using JitHub.WinUI.Helpers;
 using Microsoft.UI.Dispatching;
 
@@ -214,13 +215,29 @@ public sealed partial class RepoCodePageViewModel : ObservableObject
                 Tree.ErrorMessage = LoadError;
             }, request.Token).ConfigureAwait(false);
 
-            long sourceGeneration = Tree.BeginSourceRequest();
+            // Repository pages need only the root listing for their initial file rail and
+            // README. Directories are loaded when expanded; a 50,000-entry recursive tree
+            // must never compete with document rendering for CPU, network, or memory.
+            Task<RepoCodeLoadResult<RepoReadmeFile>?> readmeTask =
+                _navigationPreparationCache.GetReadmeAsync(owner, name, @ref, request.Token);
+            Task<RepoCodeNavigationPreparationCache.PreparedRepoCodeNavigation> navigationTask =
+                _navigationPreparationCache.TakeOrPrepareAsync(owner, name, @ref, request.Token);
+            RepoCodeLoadResult<RepoReadmeFile>? earlyReadme =
+                await readmeTask.ConfigureAwait(false);
+            if (!hadCommittedState && earlyReadme is not null)
+            {
+                await PublishEarlyReadmeAsync(
+                    owner,
+                    name,
+                    @ref,
+                    generation,
+                    earlyReadme,
+                    request.Token).ConfigureAwait(false);
+            }
+
             RepoCodeNavigationPreparationCache.PreparedRepoCodeNavigation navigationPreparation =
-                await _navigationPreparationCache.TakeOrPrepareAsync(
-                owner,
-                name,
-                @ref,
-                request.Token).ConfigureAwait(false);
+                await navigationTask.ConfigureAwait(false);
+            long sourceGeneration = Tree.BeginSourceRequest();
             RepoCodeLoadResult<RepoTree> result = navigationPreparation.Result;
             if (!IsCurrentInitialize(generation)) return;
 
@@ -231,9 +248,11 @@ public sealed partial class RepoCodePageViewModel : ObservableObject
                 @ref,
                 generation,
                 sourceGeneration,
-                sourceIsAuthoritative: GitReferencePolicy.IsImmutableObjectId(@ref),
+                sourceIsAuthoritative: result.Value.RootIsAuthoritative,
                 request.Token,
-                navigationPreparation.PreparedTree)
+                navigationPreparation.PreparedTree,
+                reconcileTruncatedRoot: !result.Value.RootIsAuthoritative && !result.IsRefreshInProgress,
+                preparedReadme: navigationPreparation.Readme)
                 .ConfigureAwait(false);
             TrackLoadResult(result, loadTimer.Elapsed);
 
@@ -263,6 +282,7 @@ public sealed partial class RepoCodePageViewModel : ObservableObject
         }
         catch (Exception exception)
         {
+            MarkdownLifecycleAutomationBridge.RecordAuditFailure("repository-code-load", exception);
             TrackError(
                 exception,
                 TelemetryTaxonomy.Results.Error,
@@ -350,12 +370,15 @@ public sealed partial class RepoCodePageViewModel : ObservableObject
         try
         {
             long refreshSourceGeneration = Tree.BeginSourceRequest();
-            RepoCodeLoadResult<RepoTree> refreshed = await _treeService.LoadTreeAsync(
+            RepoCodeLoadResult<IReadOnlyList<RepoTreeNode>> refreshedRoot =
+                await _treeService.LoadDirectoryAsync(
                 owner,
                 name,
+                string.Empty,
                 gitRef,
                 routeToken,
                 QueryFetchPolicy.NetworkOnly).ConfigureAwait(false);
+            RepoCodeLoadResult<RepoTree> refreshed = RepoRootTreeProjection.Create(refreshedRoot);
             if (!IsCurrentInitialize(generation)) return;
             await ApplyTreeAsync(
                 refreshed,
@@ -365,7 +388,8 @@ public sealed partial class RepoCodePageViewModel : ObservableObject
                 generation,
                 refreshSourceGeneration,
                 sourceIsAuthoritative: true,
-                routeToken).ConfigureAwait(false);
+                routeToken,
+                reconcileTruncatedRoot: false).ConfigureAwait(false);
             await AwaitReconciliationSettledAsync(routeToken).ConfigureAwait(false);
             await AwaitDefaultPreviewSettledAsync(routeToken).ConfigureAwait(false);
             TrackLoadResult(refreshed, refreshTimer.Elapsed);
@@ -621,6 +645,44 @@ public sealed partial class RepoCodePageViewModel : ObservableObject
 
     public void CancelTreeNodePrefetch() => _treeNodePrefetch.Cancel();
 
+    private async Task PublishEarlyReadmeAsync(
+        string owner,
+        string name,
+        string gitRef,
+        long generation,
+        RepoCodeLoadResult<RepoReadmeFile> readme,
+        CancellationToken cancellationToken)
+    {
+        (RepoTreeNode Node, PreparedFilePreview Preview)? prepared =
+            PrepareEarlyReadme(owner, name, gitRef, readme);
+        if (prepared is null)
+        {
+            return;
+        }
+
+        await RunOnUiAsync(() =>
+        {
+            if (!IsCurrentInitialize(generation) ||
+                Preview.CurrentFile is not null ||
+                Tree.RootNodes.Count > 0 ||
+                !string.IsNullOrEmpty(GetPendingVisiblePath(generation)))
+            {
+                return;
+            }
+
+            // Commit only the document identity. The root rail remains in its loading
+            // state and joins this preview when its independent request completes.
+            _owner = owner;
+            _repositoryName = name;
+            _ref = gitRef;
+            _backStack.Clear();
+            _forwardStack.Clear();
+            UpdateNavigation();
+            ResetBreadcrumb(name);
+            ApplyPreparedFilePreview(prepared.Value.Node, prepared.Value.Preview, push: true);
+        }, cancellationToken).ConfigureAwait(false);
+    }
+
     private async Task ApplyTreeAsync(
         RepoCodeLoadResult<RepoTree> result,
         string owner,
@@ -630,10 +692,14 @@ public sealed partial class RepoCodePageViewModel : ObservableObject
         long sourceGeneration,
         bool sourceIsAuthoritative,
         CancellationToken ct,
-        RepoFileTreeViewModel.PreparedTree? preparedTree = null)
+        RepoFileTreeViewModel.PreparedTree? preparedTree = null,
+        bool reconcileTruncatedRoot = true,
+        RepoCodeLoadResult<RepoReadmeFile>? preparedReadme = null)
     {
         RepoFileTreeViewModel.PreparedTree prepared = preparedTree ??
             await Tree.PrepareLoadAsync(result.Value, ct).ConfigureAwait(false);
+        (RepoTreeNode Node, PreparedFilePreview Preview)? defaultReadme =
+            PrepareNavigationReadme(owner, name, @ref, prepared, preparedReadme);
         RepoTreeNode? currentFile = null;
         string? visiblePath = null;
         bool identityChanged = false;
@@ -675,7 +741,8 @@ public sealed partial class RepoCodePageViewModel : ObservableObject
                 @ref,
                 sourceGeneration,
                 sourceIsAuthoritative,
-                ct);
+                ct,
+                reconcileTruncatedRoot);
             if (!treeApplied)
             {
                 Tree.IsLoading = false;
@@ -719,6 +786,7 @@ public sealed partial class RepoCodePageViewModel : ObservableObject
                 if (!shouldReloadFile)
                 {
                     Preview.CurrentFile = fileToRestore;
+                    Tree.SelectedNode = restored;
                     PushBackStack(fileToRestore);
                     ClearPendingVisiblePath(generation);
                 }
@@ -738,11 +806,25 @@ public sealed partial class RepoCodePageViewModel : ObservableObject
                 }
 
                 ResetBreadcrumb(name);
-                shouldOpenReadme = true;
+                if (defaultReadme is { } readyReadme)
+                {
+                    ApplyPreparedFilePreview(readyReadme.Node, readyReadme.Preview, push: true);
+                }
+                else
+                {
+                    shouldOpenReadme = true;
+                }
             }
         }, ct).ConfigureAwait(false);
 
         if (!IsCurrentInitialize(generation)) return;
+        if (result.Value.RootIsAuthoritative && !string.IsNullOrEmpty(visiblePath))
+        {
+            // Queue only after the page identity has committed. RepoFileTreeViewModel
+            // cannot safely raise this while ApplyTreeAsync still exposes the old route.
+            QueueVisibleFileReconciliation();
+        }
+
         if (!identityChanged && fileToRestore is not null && shouldReloadFile)
         {
             bool restored = await SelectFileWithNewGenerationAsync(fileToRestore, ct, push: true).ConfigureAwait(false);
@@ -1027,6 +1109,104 @@ public sealed partial class RepoCodePageViewModel : ObservableObject
             descriptor,
             GitHubCodeUrlBuilder.BuildBlobUrl(owner, repositoryName, gitRef, node.Path),
             GitHubCodeUrlBuilder.BuildRawUrl(owner, repositoryName, gitRef, node.Path));
+    }
+
+    private (RepoTreeNode Node, PreparedFilePreview Preview)? PrepareNavigationReadme(
+        string owner,
+        string repositoryName,
+        string gitRef,
+        RepoFileTreeViewModel.PreparedTree preparedTree,
+        RepoCodeLoadResult<RepoReadmeFile>? preparedReadme)
+    {
+        RepoReadmeFile? readme = preparedReadme?.Value;
+        RepoFileBlob? blob = readme?.Blob;
+        if (readme is null ||
+            blob is null ||
+            string.IsNullOrWhiteSpace(readme.Path) ||
+            string.IsNullOrWhiteSpace(blob.Sha) ||
+            !preparedTree.NodesByPath.TryGetValue(readme.Path, out RepoTreeNodeViewModel? candidate) ||
+            candidate.IsDirectory ||
+            !string.Equals(candidate.Sha, blob.Sha, StringComparison.Ordinal))
+        {
+            // A mutable branch can advance between the two parallel responses. Never pair
+            // bytes from one commit with a tree node from another; the normal blob path
+            // will resolve the authoritative SHA instead.
+            return null;
+        }
+
+        return CreatePreparedReadmePreview(
+            owner,
+            repositoryName,
+            gitRef,
+            ToModelNode(candidate),
+            readme,
+            preparedReadme?.FetchedAt);
+    }
+
+    private (RepoTreeNode Node, PreparedFilePreview Preview)? PrepareEarlyReadme(
+        string owner,
+        string repositoryName,
+        string gitRef,
+        RepoCodeLoadResult<RepoReadmeFile> preparedReadme)
+    {
+        RepoReadmeFile readme = preparedReadme.Value;
+        RepoFileBlob blob = readme.Blob;
+        if (string.IsNullOrWhiteSpace(readme.Name) ||
+            string.IsNullOrWhiteSpace(readme.Path) ||
+            string.IsNullOrWhiteSpace(blob.Sha))
+        {
+            return null;
+        }
+
+        RepoTreeNode node = new()
+        {
+            Name = readme.Name,
+            Path = readme.Path,
+            Sha = blob.Sha,
+            Size = blob.Bytes?.LongLength,
+            IsDirectory = false,
+            Children = []
+        };
+        return CreatePreparedReadmePreview(
+            owner,
+            repositoryName,
+            gitRef,
+            node,
+            readme,
+            preparedReadme.FetchedAt);
+    }
+
+    private (RepoTreeNode Node, PreparedFilePreview Preview) CreatePreparedReadmePreview(
+        string owner,
+        string repositoryName,
+        string gitRef,
+        RepoTreeNode node,
+        RepoReadmeFile readme,
+        DateTimeOffset? fetchedAt)
+    {
+        RepoFileBlob blob = readme.Blob;
+        byte[] bytes = blob.Bytes ?? [];
+        RepoFileCacheEntry entry = new()
+        {
+            Sha = node.Sha!,
+            ByteLength = bytes.LongLength,
+            IsBinary = blob.IsBinary,
+            Bytes = bytes,
+            Text = blob.Text,
+            Encoding = blob.Encoding,
+            CachedAt = fetchedAt ?? DateTimeOffset.UtcNow
+        };
+        int sniffLength = (int)Math.Min(bytes.LongLength, 8192L);
+        FilePreviewDescriptor descriptor = _previewResolver.Resolve(
+            readme.Path,
+            entry.ByteLength,
+            bytes.AsMemory(0, sniffLength));
+        PreparedFilePreview preview = new(
+            entry,
+            descriptor,
+            GitHubCodeUrlBuilder.BuildBlobUrl(owner, repositoryName, gitRef, node.Path),
+            GitHubCodeUrlBuilder.BuildRawUrl(owner, repositoryName, gitRef, node.Path));
+        return (node, preview);
     }
 
     private bool TryPrepareFilePreviewFromMemory(

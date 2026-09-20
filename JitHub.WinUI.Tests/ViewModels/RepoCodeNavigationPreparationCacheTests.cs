@@ -17,9 +17,10 @@ public sealed class RepoCodeNavigationPreparationCacheTests
     public async Task Prefetch_TransfersPreparedProjectionToForegroundOnce()
     {
         IRepoTreeService trees = Substitute.For<IRepoTreeService>();
-        trees.LoadTreeAsync(
+        trees.LoadDirectoryAsync(
                 "octo",
                 "app",
+                string.Empty,
                 "main",
                 Arg.Any<CancellationToken>(),
                 QueryFetchPolicy.StaleFirst)
@@ -30,26 +31,72 @@ public sealed class RepoCodeNavigationPreparationCacheTests
         RepoCodeNavigationPreparationCache.PreparedRepoCodeNavigation prepared =
             await cache.TakeOrPrepareAsync("octo", "app", "main", CancellationToken.None);
 
-        Assert.Equal("one", prepared.Result.Value.Sha);
-        Assert.Equal(2, prepared.PreparedTree.NodesByPath.Count);
+        Assert.Equal("one", Assert.Single(prepared.Result.Value.Root.Children).Sha);
+        Assert.Single(prepared.PreparedTree.NodesByPath);
         Assert.Equal(0, cache.Count);
-        await trees.Received(1).LoadTreeAsync(
+        await trees.Received(1).LoadDirectoryAsync(
             "octo",
             "app",
+            string.Empty,
             "main",
             Arg.Any<CancellationToken>(),
             QueryFetchPolicy.StaleFirst);
     }
 
     [Fact]
-    public async Task CancelledHover_DoesNotCancelOrDiscardSharedPreparation()
+    public async Task Prefetch_LoadsCanonicalReadmeBesideRootAndTransfersMatchingBytes()
     {
-        TaskCompletionSource<RepoCodeLoadResult<RepoTree>> source =
+        TaskCompletionSource<RepoCodeLoadResult<IReadOnlyList<RepoTreeNode>>> root =
+            new(TaskCreationOptions.RunContinuationsAsynchronously);
+        TaskCompletionSource<RepoCodeLoadResult<RepoReadmeFile>?> readme =
             new(TaskCreationOptions.RunContinuationsAsynchronously);
         IRepoTreeService trees = Substitute.For<IRepoTreeService>();
-        trees.LoadTreeAsync(
+        trees.LoadDirectoryAsync(
+                "octo", "app", string.Empty, "main", Arg.Any<CancellationToken>(), QueryFetchPolicy.StaleFirst)
+            .Returns(root.Task);
+        trees.LoadReadmeAsync(
+                "octo", "app", "main", Arg.Any<CancellationToken>(), QueryFetchPolicy.StaleFirst)
+            .Returns(readme.Task);
+        RepoCodeNavigationPreparationCache cache = CreateCache(trees);
+
+        Task prefetch = cache.PrefetchAsync("octo", "app", "main");
+        await trees.Received(1).LoadDirectoryAsync(
+            "octo", "app", string.Empty, "main", Arg.Any<CancellationToken>(), QueryFetchPolicy.StaleFirst);
+        await trees.Received(1).LoadReadmeAsync(
+            "octo", "app", "main", Arg.Any<CancellationToken>(), QueryFetchPolicy.StaleFirst);
+
+        root.SetResult(CreateReadmeRootResult());
+        readme.SetResult(new RepoCodeLoadResult<RepoReadmeFile>(
+            new RepoReadmeFile(
+                "README.md",
+                "README.md",
+                new RepoFileBlob
+                {
+                    Sha = "readme-sha",
+                    Encoding = "base64",
+                    Bytes = [1, 2, 3],
+                    Text = "# Ready"
+                }),
+            CacheState.Fresh));
+        await prefetch;
+
+        RepoCodeNavigationPreparationCache.PreparedRepoCodeNavigation prepared =
+            await cache.TakeOrPrepareAsync("octo", "app", "main", CancellationToken.None);
+        Assert.NotNull(prepared.Readme);
+        Assert.Equal("# Ready", prepared.Readme!.Value.Blob.Text);
+        Assert.Contains("README.md", prepared.PreparedTree.NodesByPath.Keys);
+    }
+
+    [Fact]
+    public async Task CancelledHover_DoesNotCancelOrDiscardSharedPreparation()
+    {
+        TaskCompletionSource<RepoCodeLoadResult<IReadOnlyList<RepoTreeNode>>> source =
+            new(TaskCreationOptions.RunContinuationsAsynchronously);
+        IRepoTreeService trees = Substitute.For<IRepoTreeService>();
+        trees.LoadDirectoryAsync(
                 "octo",
                 "app",
+                string.Empty,
                 "main",
                 Arg.Any<CancellationToken>(),
                 QueryFetchPolicy.StaleFirst)
@@ -64,10 +111,11 @@ public sealed class RepoCodeNavigationPreparationCacheTests
         RepoCodeNavigationPreparationCache.PreparedRepoCodeNavigation prepared =
             await cache.TakeOrPrepareAsync("octo", "app", "main", CancellationToken.None);
 
-        Assert.Equal("shared", prepared.Result.Value.Sha);
-        await trees.Received(1).LoadTreeAsync(
+        Assert.Equal("shared", Assert.Single(prepared.Result.Value.Root.Children).Sha);
+        await trees.Received(1).LoadDirectoryAsync(
             "octo",
             "app",
+            string.Empty,
             "main",
             Arg.Any<CancellationToken>(),
             QueryFetchPolicy.StaleFirst);
@@ -77,9 +125,10 @@ public sealed class RepoCodeNavigationPreparationCacheTests
     public async Task Prefetch_IsBoundedAndPartitionsByAccount()
     {
         IRepoTreeService trees = Substitute.For<IRepoTreeService>();
-        trees.LoadTreeAsync(
+        trees.LoadDirectoryAsync(
                 Arg.Any<string>(),
                 Arg.Any<string>(),
+                string.Empty,
                 Arg.Any<string>(),
                 Arg.Any<CancellationToken>(),
                 QueryFetchPolicy.StaleFirst)
@@ -98,9 +147,10 @@ public sealed class RepoCodeNavigationPreparationCacheTests
         account.GetUser().Returns(84);
         await cache.PrefetchAsync("octo", "repo-9", "main");
         Assert.Equal(8, cache.Count);
-        await trees.Received(11).LoadTreeAsync(
+        await trees.Received(11).LoadDirectoryAsync(
             Arg.Any<string>(),
             Arg.Any<string>(),
+            string.Empty,
             Arg.Any<string>(),
             Arg.Any<CancellationToken>(),
             QueryFetchPolicy.StaleFirst);
@@ -109,19 +159,20 @@ public sealed class RepoCodeNavigationPreparationCacheTests
     [Fact]
     public async Task RouteCancellation_CancelsUnderlyingPreparationAndRemovesEntry()
     {
-        TaskCompletionSource<RepoCodeLoadResult<RepoTree>> source =
+        TaskCompletionSource<RepoCodeLoadResult<IReadOnlyList<RepoTreeNode>>> source =
             new(TaskCreationOptions.RunContinuationsAsynchronously);
         CancellationToken workToken = default;
         IRepoTreeService trees = Substitute.For<IRepoTreeService>();
-        trees.LoadTreeAsync(
+        trees.LoadDirectoryAsync(
                 "octo",
                 "app",
+                string.Empty,
                 "main",
                 Arg.Any<CancellationToken>(),
                 QueryFetchPolicy.StaleFirst)
             .Returns(call =>
             {
-                workToken = call.ArgAt<CancellationToken>(3);
+                workToken = call.ArgAt<CancellationToken>(4);
                 return source.Task;
             });
         RepoCodeNavigationPreparationCache cache = CreateCache(trees);
@@ -139,19 +190,20 @@ public sealed class RepoCodeNavigationPreparationCacheTests
     [Fact]
     public async Task ForegroundClaim_PreservesSharedPreparationWhenRouteIsCancelled()
     {
-        TaskCompletionSource<RepoCodeLoadResult<RepoTree>> source =
+        TaskCompletionSource<RepoCodeLoadResult<IReadOnlyList<RepoTreeNode>>> source =
             new(TaskCreationOptions.RunContinuationsAsynchronously);
         CancellationToken workToken = default;
         IRepoTreeService trees = Substitute.For<IRepoTreeService>();
-        trees.LoadTreeAsync(
+        trees.LoadDirectoryAsync(
                 "octo",
                 "app",
+                string.Empty,
                 "main",
                 Arg.Any<CancellationToken>(),
                 QueryFetchPolicy.StaleFirst)
             .Returns(call =>
             {
-                workToken = call.ArgAt<CancellationToken>(3);
+                workToken = call.ArgAt<CancellationToken>(4);
                 return source.Task;
             });
         RepoCodeNavigationPreparationCache cache = CreateCache(trees);
@@ -166,7 +218,7 @@ public sealed class RepoCodeNavigationPreparationCacheTests
         Assert.False(workToken.IsCancellationRequested);
         source.SetResult(CreateResult("foreground"));
         RepoCodeNavigationPreparationCache.PreparedRepoCodeNavigation prepared = await foreground;
-        Assert.Equal("foreground", prepared.Result.Value.Sha);
+        Assert.Equal("foreground", Assert.Single(prepared.Result.Value.Root.Children).Sha);
         Assert.Equal(0, cache.Count);
     }
 
@@ -176,16 +228,17 @@ public sealed class RepoCodeNavigationPreparationCacheTests
         TaskCompletionSource release = new(TaskCreationOptions.RunContinuationsAsynchronously);
         Dictionary<string, CancellationToken> workTokens = new(StringComparer.Ordinal);
         IRepoTreeService trees = Substitute.For<IRepoTreeService>();
-        trees.LoadTreeAsync(
+        trees.LoadDirectoryAsync(
                 "octo",
                 Arg.Any<string>(),
+                string.Empty,
                 "main",
                 Arg.Any<CancellationToken>(),
                 QueryFetchPolicy.StaleFirst)
             .Returns(async call =>
             {
                 string repository = call.ArgAt<string>(1);
-                CancellationToken token = call.ArgAt<CancellationToken>(3);
+                CancellationToken token = call.ArgAt<CancellationToken>(4);
                 lock (workTokens)
                 {
                     workTokens[repository] = token;
@@ -216,41 +269,39 @@ public sealed class RepoCodeNavigationPreparationCacheTests
         return new RepoCodeNavigationPreparationCache(trees, new LanguageIdResolver(), account);
     }
 
-    private static RepoCodeLoadResult<RepoTree> CreateResult(string sha)
+    private static RepoCodeLoadResult<IReadOnlyList<RepoTreeNode>> CreateResult(string sha)
     {
-        RepoTree tree = new()
-        {
-            Sha = sha,
-            Root = new RepoTreeNode
+        IReadOnlyList<RepoTreeNode> nodes =
+        [
+            new RepoTreeNode
             {
-                Name = string.Empty,
-                Path = string.Empty,
+                Name = "src",
+                Path = "src",
+                Sha = sha,
                 IsDirectory = true,
-                Children = new List<RepoTreeNode>
-                {
-                    new()
-                    {
-                        Name = "src",
-                        Path = "src",
-                        Sha = "directory",
-                        IsDirectory = true,
-                        Children = new List<RepoTreeNode>
-                        {
-                            new()
-                            {
-                                Name = "App.cs",
-                                Path = "src/App.cs",
-                                Sha = "file"
-                            }
-                        }
-                    }
-                }
+                Children = []
             }
-        };
-        return new RepoCodeLoadResult<RepoTree>(
-            tree,
+        ];
+        return new RepoCodeLoadResult<IReadOnlyList<RepoTreeNode>>(
+            nodes,
             CacheState.Fresh,
             FetchedAt: DateTimeOffset.UtcNow,
             StaleAfter: DateTimeOffset.UtcNow.AddMinutes(30));
     }
+
+    private static RepoCodeLoadResult<IReadOnlyList<RepoTreeNode>> CreateReadmeRootResult() => new(
+        [
+            new RepoTreeNode
+            {
+                Name = "README.md",
+                Path = "README.md",
+                Sha = "readme-sha",
+                Size = 7,
+                IsDirectory = false,
+                Children = []
+            }
+        ],
+        CacheState.Fresh,
+        FetchedAt: DateTimeOffset.UtcNow,
+        StaleAfter: DateTimeOffset.UtcNow.AddMinutes(30));
 }

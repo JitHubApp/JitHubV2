@@ -11,6 +11,7 @@ public sealed class LaunchOptionsTests
             [],
             "--page=repo --theme=dark --palette=github --repo=sindresorhus/awesome " +
             "--markdown-lifecycle-fixture " +
+            "--readme-production-audit " +
             "--markdown-lifecycle-host=MarkdownHost_RepositoryReadme " +
             "--markdown-corpus=\"C:\\readmes\\awesome README.md\"");
 
@@ -19,8 +20,36 @@ public sealed class LaunchOptionsTests
         Assert.Equal("github", options.Palette);
         Assert.Equal("sindresorhus/awesome", options.RepositoryFullName);
         Assert.True(options.MarkdownLifecycleFixture);
+        Assert.True(options.ReadmeProductionAudit);
         Assert.Equal("MarkdownHost_RepositoryReadme", options.MarkdownLifecycleHost);
         Assert.Equal("C:\\readmes\\awesome README.md", options.MarkdownCorpusPath);
+    }
+
+    [Fact]
+    public void Parse_ReadmeProductionAuditRequiresExplicitFlag()
+    {
+        Assert.True(LaunchOptions.Parse(["--readme-production-audit"]).ReadmeProductionAudit);
+        Assert.False(LaunchOptions.Parse([]).ReadmeProductionAudit);
+    }
+
+    [Fact]
+    public void ReadmeProductionAudit_RequiresStablePositiveAccountPartition()
+    {
+        const string variable = "JITHUB_README_AUDIT_GITHUB_ACCOUNT_ID";
+        string? previous = System.Environment.GetEnvironmentVariable(variable);
+        try
+        {
+            LaunchOptions options = LaunchOptions.Parse(["--readme-production-audit"]);
+            System.Environment.SetEnvironmentVariable(variable, "9843127");
+            Assert.Equal(9_843_127, options.ResolveReadmeAuditAccountId());
+
+            System.Environment.SetEnvironmentVariable(variable, "current");
+            Assert.Throws<System.InvalidOperationException>(() => options.ResolveReadmeAuditAccountId());
+        }
+        finally
+        {
+            System.Environment.SetEnvironmentVariable(variable, previous);
+        }
     }
 
     [Fact]

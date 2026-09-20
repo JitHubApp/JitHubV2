@@ -15,6 +15,7 @@ using MarkdownRenderer.Html;
 using MarkdownRenderer.Hosting;
 using MarkdownRenderer.Math;
 using MarkdownRenderer.Mermaid;
+using MarkdownRenderer.Svg.Resvg;
 using MarkdownRenderer.SyntaxHighlighting.TextMate;
 using MarkdownRenderer.SyntaxHighlighting.TextMate.Grammars.Common;
 using MarkdownRenderer.Theming;
@@ -34,6 +35,7 @@ public sealed partial class MainWindow : Window
         .UseMermaid()
         .UseExtension(SampleHostedElementExtension.Instance)
         .Build();
+    private readonly ResvgMarkdownSvgRenderer _svgRenderer = new();
 
     private MarkdownRendererControl _renderer;
     private readonly Grid _rendererHost;
@@ -350,6 +352,7 @@ public sealed partial class MainWindow : Window
             _renderer.Dispose();
             _textMateHighlighter.Dispose();
             _engine.Dispose();
+            _svgRenderer.Dispose();
         };
 
         // Hidden status TextBlock that mirrors RealizedEmbedCount so UI
@@ -504,9 +507,36 @@ public sealed partial class MainWindow : Window
         navigationView.SelectedItem = initialItem;
         navigationView.SelectionChanged += OnSampleNavigationChanged;
         Content = navigationView;
+        navigationView.Loaded += OnNavigationLoaded;
 
         if (initialPage is not null)
             NavigateToSample(initialPage);
+    }
+
+    private void OnNavigationLoaded(object sender, RoutedEventArgs e)
+    {
+        if (sender is not FrameworkElement root)
+            return;
+
+        root.Loaded -= OnNavigationLoaded;
+        _ = root.DispatcherQueue.TryEnqueue(
+            Microsoft.UI.Dispatching.DispatcherQueuePriority.Low,
+            WarmSvgRenderer);
+    }
+
+    private void WarmSvgRenderer() => _ = WarmSvgRendererCoreAsync();
+
+    private async System.Threading.Tasks.Task WarmSvgRendererCoreAsync()
+    {
+        try
+        {
+            await _svgRenderer.WarmUpAsync();
+        }
+        catch (Exception)
+        {
+            // The sample keeps its accessible SVG fallbacks. Opening a sample
+            // must never fail because an optional architecture worker is absent.
+        }
     }
 
     private MarkdownRendererControl CreateRenderer(bool ownsViewport)
@@ -518,6 +548,7 @@ public sealed partial class MainWindow : Window
             () => _editor.Text ?? string.Empty,
             value => _editor.Text = value);
         renderer.Engine = _engine;
+        renderer.SvgRenderer = _svgRenderer;
         renderer.HostedElementFactory = SampleHostedElementFactory.Instance;
         renderer.Markdown = string.Empty;
         renderer.Theme = new MarkdownTheme();

@@ -15,20 +15,34 @@ incompatible trust boundary.
 
 ## SVG is optional
 
-The lean `MarkdownRenderer` package does not include ThorVG native binaries.
-Install `MarkdownRenderer.Svg.ThorVG` when the app wants native SVG
-rasterization. That feature pack supplies architecture-specific assets for x86,
-x64, and ARM64 and routes rasterized output through the normal bitmap paint path.
+The lean `MarkdownRenderer` package does not include an SVG engine. Install
+`MarkdownRenderer.Svg.Resvg` and explicitly assign one shared
+`ResvgMarkdownSvgRenderer` to `SvgRenderer`, or register it with
+`WithResvgSvgRenderer(...)`. The control borrows the renderer; the host owns and
+disposes it after all document surfaces have stopped using it.
 
-When the ThorVG pack is selected, release validation must inspect the matching
-RID-native DLL, PE machine type, package placement, device-loss recovery, theme
-color handling, DPI changes, and malformed/untrusted SVG limits. Without the
-optional capability, the viewer must retain an accessible placeholder/fallback
-rather than assuming the native DLL exists.
+The optional package runs pinned resvg 0.48.1 in an architecture-specific,
+job-contained worker for x86, x64, and ARM64. Source and premultiplied raster
+bytes travel through shared memory; the pipe carries only fixed-size protocol
+messages. SVG parsing and rendering never execute inside the app process and
+there is no in-process fallback.
+
+The admitted subset is static and self-contained. Scripts, event handlers,
+animation, `foreignObject`, DTD/entities, external CSS/fonts, and nested
+network/file references fail as typed, accessible placeholders. Bounded data-URI
+PNG, JPEG, GIF, WebP, and nested SVG images are allowed and deduplicated by
+content. Remote top-level markdown images still obey the host's ordinary image
+policy before any SVG bytes reach the provider.
+
+Release validation inspects every RID worker, protocol and resource ceilings,
+package placement and signatures, crash/hang containment, device-loss recovery,
+theme dependencies, DPI changes, package size, and deterministic Edge-relative
+fidelity. Without a registered provider, SVGs remain accessible fallbacks.
 
 ## Accessibility
 
-Explicit markdown alt text is the primary accessible name. SVG title and
-description metadata can provide fallback context when the optional rasterizer
-is active. Applications should still provide meaningful alt text because a
-preview may run without the SVG capability.
+Explicit markdown/HTML alt text is the accessible name; an explicitly empty alt
+keeps the image decorative. The root SVG `<desc>` is exposed as help text. SVGs
+remain atomic images for selection and UI Automation, so inner SVG text is not
+duplicated as document text. Applications should still provide meaningful alt
+text because a preview may run without the optional capability.

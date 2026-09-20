@@ -271,13 +271,13 @@ Legend: 🔴 blocks release · 🟠 must fix before 1.0 · 🟡 v1.1 candidate
   `MarkdownRendererControlBuilder`; GFM exposes `GfmMarkdownRenderer.CreateDefault()`
   plus `MarkdownRendererControlBuilder.UseGitHubFlavoredMarkdown()`.
 
-- ✅ **ARM64 SVG native asset support**
-  ThorVG ships for x64 and ARM64, default repo builds copy the selected DLL to
-  the output root, and the runtime resolver probes app-root, project-reference,
-  and RID-native layouts.
+- ✅ **ARM64 SVG worker support**
+  The optional resvg provider packages an isolated ARM64 worker alongside x64,
+  selects it deterministically from the process architecture, and never falls
+  back to an in-process native engine.
 
-- ✅ **x86 SVG native asset support**
-  ThorVG ships and is PE-validated for x86, x64, and ARM64.
+- ✅ **x86 SVG worker support**
+  The resvg provider packages and PE-validates x86, x64, and ARM64 workers.
 
 - ✅ **Clean up and stabilise public API surface**
   Layout snapshots and concrete renderer boxes are internal implementation

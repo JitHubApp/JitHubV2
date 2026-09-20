@@ -21,6 +21,7 @@ public sealed class MarkdownRendererControlBuilder
     private IMarkdownEmbedFactory? _embedFactory;
     private IMarkdownHostedElementFactory? _hostedElementFactory;
     private IMarkdownImageResolver? _imageResolver;
+    private IMarkdownSvgRenderer? _svgRenderer;
     private Uri? _imageBaseUri;
     private string? _imageDocumentPath;
     private MarkdownDocumentSource? _imageDocumentSource;
@@ -123,6 +124,18 @@ public sealed class MarkdownRendererControlBuilder
     public MarkdownRendererControlBuilder WithImageResolver(IMarkdownImageResolver? imageResolver)
     {
         _imageResolver = imageResolver;
+        return this;
+    }
+
+    /// <summary>Sets the optional provider used to render admitted static SVG images.</summary>
+    /// <param name="svgRenderer">
+    /// Shared renderer to borrow, or null to disable provider-backed SVG rendering.
+    /// Controls created by this builder never dispose the renderer.
+    /// </param>
+    /// <returns>The current builder.</returns>
+    public MarkdownRendererControlBuilder WithSvgRenderer(IMarkdownSvgRenderer? svgRenderer)
+    {
+        _svgRenderer = svgRenderer;
         return this;
     }
 
@@ -339,6 +352,7 @@ public sealed class MarkdownRendererControlBuilder
             control.EmbedFactory = _embedFactory;
             control.HostedElementFactory = _hostedElementFactory;
             control.ImageResolver = _imageResolver;
+            control.SvgRenderer = _svgRenderer;
             control.ImageBaseUri = _imageBaseUri;
             control.ImageDocumentPath = _imageDocumentPath;
             control.ImageDocumentSource = _imageDocumentSource;

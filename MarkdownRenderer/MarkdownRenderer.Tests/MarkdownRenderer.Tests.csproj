@@ -50,10 +50,9 @@
     <Compile Include="..\MarkdownRenderer\Hosting\HostedElementFallbackKey.cs" Link="Core\HostedElementFallbackKey.cs" />
     <Compile Include="..\MarkdownRenderer\Layout\Boxes\SvgIntrinsics.cs" Link="Core\SvgIntrinsics.cs" />
     <Compile Include="..\MarkdownRenderer\Layout\Boxes\SvgResourceBudget.cs" Link="Core\SvgResourceBudget.cs" />
+    <Compile Include="..\MarkdownRenderer\Layout\Boxes\RasterImageResourceBudget.cs" Link="Core\RasterImageResourceBudget.cs" />
     <Compile Include="..\MarkdownRenderer\Layout\Boxes\SvgThemeInjector.cs" Link="Core\SvgThemeInjector.cs" />
     <Compile Include="..\MarkdownRenderer\Layout\Boxes\SvgTitleExtractor.cs" Link="Core\SvgTitleExtractor.cs" />
-    <Compile Include="..\MarkdownRenderer\Layout\Boxes\ThorVgNative.cs" Link="Core\ThorVgNative.cs" />
-    <Compile Include="..\MarkdownRenderer\Layout\Boxes\ThorVgRasterizer.cs" Link="Core\ThorVgRasterizer.cs" />
     <Compile Include="..\MarkdownRenderer\Layout\Boxes\LoadCompletedEventArgs.cs" Link="Core\LoadCompletedEventArgs.cs" />
     <Compile Include="..\MarkdownRenderer\Layout\LazyLayoutBand.cs" Link="Core\LazyLayoutBand.cs" />
     <Compile Include="..\MarkdownRenderer\Layout\LayoutPassCancellation.cs" Link="Core\LayoutPassCancellation.cs" />
@@ -87,6 +86,7 @@
     <Compile Include="..\MarkdownRenderer\Layout\CodeBlockMetadata.cs" Link="Core\CodeBlockMetadata.cs" />
     <Compile Include="..\MarkdownRenderer\Layout\FocusableItem.cs" Link="Core\FocusableItem.cs" />
     <Compile Include="..\MarkdownRenderer\Images\IMarkdownImageResolver.cs" Link="Core\IMarkdownImageResolver.cs" />
+    <Compile Include="..\MarkdownRenderer\Images\IMarkdownSvgRenderer.cs" Link="Core\IMarkdownSvgRenderer.cs" />
     <Compile Include="..\MarkdownRenderer\Images\MarkdownRemoteImageLoadingPolicy.cs" Link="Core\MarkdownRemoteImageLoadingPolicy.cs" />
     <Compile Include="..\MarkdownRenderer\Images\MarkdownImageCacheIdentityPolicy.cs" Link="Core\MarkdownImageCacheIdentityPolicy.cs" />
     <Compile Include="..\MarkdownRenderer\Images\MarkdownBuiltInImageSourcePolicy.cs" Link="Core\MarkdownBuiltInImageSourcePolicy.cs" />
@@ -144,12 +144,6 @@
       <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
       <TargetPath>PerformanceFixtures\Test-MarkdownWinUIPerformanceGates.ps1</TargetPath>
       <Link>PerformanceFixtures\Test-MarkdownWinUIPerformanceGates.ps1</Link>
-    </Content>
-    <Content Include="..\MarkdownRenderer\native\win-$(MarkdownRendererNativeArch)\thorvg.dll"
-             Condition="'$(MarkdownRendererNativeArch)' != '' and Exists('..\MarkdownRenderer\native\win-$(MarkdownRendererNativeArch)\thorvg.dll')">
-      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
-      <TargetPath>thorvg.dll</TargetPath>
-      <Link>thorvg.dll</Link>
     </Content>
   </ItemGroup>
 </Project>

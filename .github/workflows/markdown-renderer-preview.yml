@@ -75,6 +75,30 @@ jobs:
         with:
           global-json-file: ./global.json
 
+      - name: Rebuild and verify the pinned x64 resvg worker
+        run: |
+          $manifest = '.\MarkdownRenderer\MarkdownRenderer.Svg.Resvg\native\Cargo.toml'
+          $target = 'x86_64-pc-windows-msvc'
+          & rustup toolchain install 1.96.0 --profile minimal --component clippy --target $target
+          if ($LASTEXITCODE -ne 0) { throw 'The pinned Rust 1.96.0 toolchain could not be installed.' }
+
+          & cargo +1.96.0 fetch --manifest-path $manifest --locked --target $target
+          if ($LASTEXITCODE -ne 0) { throw 'The pinned resvg dependency graph could not be fetched.' }
+          & cargo +1.96.0 test --manifest-path $manifest --locked --target $target
+          if ($LASTEXITCODE -ne 0) { throw 'The isolated resvg worker tests failed.' }
+          & cargo +1.96.0 clippy --manifest-path $manifest --locked --target $target --all-targets -- -D warnings
+          if ($LASTEXITCODE -ne 0) { throw 'The isolated resvg worker failed Clippy.' }
+          & cargo +1.96.0 build --manifest-path $manifest --release --locked --target $target
+          if ($LASTEXITCODE -ne 0) { throw 'The pinned x64 resvg worker build failed.' }
+
+          $rebuilt = '.\MarkdownRenderer\MarkdownRenderer.Svg.Resvg\native\target\x86_64-pc-windows-msvc\release\markdown-renderer-resvg-worker.exe'
+          $shipping = '.\MarkdownRenderer\MarkdownRenderer.Svg.Resvg\runtimes\win-x64\native\MarkdownRenderer.Svg.Resvg.Worker.exe'
+          if ((Get-FileHash -LiteralPath $rebuilt -Algorithm SHA256).Hash -cne
+              (Get-FileHash -LiteralPath $shipping -Algorithm SHA256).Hash) {
+            throw 'The checked-in x64 resvg worker does not match its pinned reproducible source build.'
+          }
+          .\MarkdownRenderer\MarkdownRenderer.Svg.Resvg\eng\Verify-ResvgSupplyChain.ps1
+
       - name: Prepare fresh artifact directories
         run: |
           $artifactRoot = [IO.Path]::GetFullPath((Join-Path $env:RUNNER_TEMP 'markdownrenderer-preview'))
@@ -106,6 +130,7 @@ jobs:
             '.\MarkdownRenderer\MarkdownRenderer.Html.Tests\MarkdownRenderer.Html.Tests.csproj'
             '.\MarkdownRenderer\MarkdownRenderer.Math.Tests\MarkdownRenderer.Math.Tests.csproj'
             '.\MarkdownRenderer\MarkdownRenderer.Mermaid.Tests\MarkdownRenderer.Mermaid.Tests.csproj'
+            '.\MarkdownRenderer\MarkdownRenderer.Svg.Resvg.Tests\MarkdownRenderer.Svg.Resvg.Tests.csproj'
             '.\MarkdownRenderer\MarkdownRenderer.SyntaxHighlighting.TextMate.Tests\MarkdownRenderer.SyntaxHighlighting.TextMate.Tests.csproj'
             '.\MarkdownRenderer\MarkdownRenderer.Conformance.Tests\MarkdownRenderer.Conformance.Tests.csproj'
             '.\MarkdownRenderer\MarkdownRenderer.PixelTests\MarkdownRenderer.PixelTests.csproj'
@@ -127,6 +152,7 @@ jobs:
             '.\MarkdownRenderer\MarkdownRenderer.Html.Tests\MarkdownRenderer.Html.Tests.csproj'
             '.\MarkdownRenderer\MarkdownRenderer.Math.Tests\MarkdownRenderer.Math.Tests.csproj'
             '.\MarkdownRenderer\MarkdownRenderer.Mermaid.Tests\MarkdownRenderer.Mermaid.Tests.csproj'
+            '.\MarkdownRenderer\MarkdownRenderer.Svg.Resvg.Tests\MarkdownRenderer.Svg.Resvg.Tests.csproj'
             '.\MarkdownRenderer\MarkdownRenderer.SyntaxHighlighting.TextMate.Tests\MarkdownRenderer.SyntaxHighlighting.TextMate.Tests.csproj'
             '.\MarkdownRenderer\MarkdownRenderer.Conformance.Tests\MarkdownRenderer.Conformance.Tests.csproj'
             '.\MarkdownRenderer\MarkdownRenderer.PixelTests\MarkdownRenderer.PixelTests.csproj'
@@ -141,7 +167,7 @@ jobs:
             if ($LASTEXITCODE -ne 0) { throw "Build failed for '$project'." }
           }
 
-      - name: Run Core, GitHub, HTML, Math, Mermaid, TextMate, and conformance tests
+      - name: Run Core, GitHub, HTML, Math, Mermaid, SVG, TextMate, and conformance tests
         run: |
           $tests = [ordered]@{
             core = '.\MarkdownRenderer\MarkdownRenderer.Tests\MarkdownRenderer.Tests.csproj'
@@ -149,6 +175,7 @@ jobs:
             html = '.\MarkdownRenderer\MarkdownRenderer.Html.Tests\MarkdownRenderer.Html.Tests.csproj'
             math = '.\MarkdownRenderer\MarkdownRenderer.Math.Tests\MarkdownRenderer.Math.Tests.csproj'
             mermaid = '.\MarkdownRenderer\MarkdownRenderer.Mermaid.Tests\MarkdownRenderer.Mermaid.Tests.csproj'
+            svg = '.\MarkdownRenderer\MarkdownRenderer.Svg.Resvg.Tests\MarkdownRenderer.Svg.Resvg.Tests.csproj'
             textmate = '.\MarkdownRenderer\MarkdownRenderer.SyntaxHighlighting.TextMate.Tests\MarkdownRenderer.SyntaxHighlighting.TextMate.Tests.csproj'
             conformance = '.\MarkdownRenderer\MarkdownRenderer.Conformance.Tests\MarkdownRenderer.Conformance.Tests.csproj'
           }
@@ -207,6 +234,10 @@ jobs:
           if ($LASTEXITCODE -ne 0) { throw 'JitHub consumer tests failed.' }
 
       - name: Run pixel tests
+        env:
+          # The per-PR x64 fidelity lane must never turn green by silently
+          # substituting Chrome or skipping the browser oracle.
+          MARKDOWN_RENDERER_REQUIRE_EDGE_ORACLE: "1"
         run: |
           $results = Join-Path $env:RUNNER_TEMP 'markdownrenderer-preview\test-results'
           & dotnet test '.\MarkdownRenderer\MarkdownRenderer.PixelTests\MarkdownRenderer.PixelTests.csproj' `
@@ -349,12 +380,25 @@ jobs:
             --disable-build-servers
           if ($LASTEXITCODE -ne 0) { throw "NativeAOT restore failed for '$mermaidSmoke'." }
 
-      - name: Publish and run Core and Mermaid NativeAOT smokes for win-x64
+          $svgSmoke = '.\MarkdownRenderer\MarkdownRenderer.Svg.Resvg.AotSmoke\MarkdownRenderer.Svg.Resvg.AotSmoke.csproj'
+          $svgLock = Join-Path $nativeAotRoot 'MarkdownRenderer.Svg.Resvg.AotSmoke-disabled.lock.json'
+          & dotnet restore $svgSmoke `
+            -p:Configuration=$env:CONFIGURATION `
+            -p:Platform=$env:PLATFORM `
+            --runtime $env:RID `
+            -p:RestorePackagesWithLockFile=false `
+            "-p:NuGetLockFilePath=$svgLock" `
+            -p:RestoreLockedMode=false `
+            --disable-build-servers
+          if ($LASTEXITCODE -ne 0) { throw "NativeAOT restore failed for '$svgSmoke'." }
+
+      - name: Publish and run Core, Mermaid, and SVG NativeAOT smokes for win-x64
         run: |
           $artifactRoot = Join-Path $env:RUNNER_TEMP 'markdownrenderer-preview\native-aot'
           $smokes = @(
             @{ Name = 'MarkdownRenderer.Core.AotSmoke'; Project = '.\MarkdownRenderer\MarkdownRenderer.Core.AotSmoke\MarkdownRenderer.Core.AotSmoke.csproj' }
             @{ Name = 'MarkdownRenderer.Mermaid.AotSmoke'; Project = '.\MarkdownRenderer\MarkdownRenderer.Mermaid.AotSmoke\MarkdownRenderer.Mermaid.AotSmoke.csproj' }
+            @{ Name = 'MarkdownRenderer.Svg.Resvg.AotSmoke'; Project = '.\MarkdownRenderer\MarkdownRenderer.Svg.Resvg.AotSmoke\MarkdownRenderer.Svg.Resvg.AotSmoke.csproj' }
           )
           foreach ($smoke in $smokes) {
             $output = Join-Path $artifactRoot $smoke.Name
@@ -398,7 +442,7 @@ jobs:
             '.\MarkdownRenderer\MarkdownRenderer.Html\MarkdownRenderer.Html.csproj'
             '.\MarkdownRenderer\MarkdownRenderer.Math\MarkdownRenderer.Math.csproj'
             '.\MarkdownRenderer\MarkdownRenderer.Mermaid\MarkdownRenderer.Mermaid.csproj'
-            '.\MarkdownRenderer\MarkdownRenderer.Svg.ThorVG\MarkdownRenderer.Svg.ThorVG.csproj'
+            '.\MarkdownRenderer\MarkdownRenderer.Svg.Resvg\MarkdownRenderer.Svg.Resvg.csproj'
             '.\MarkdownRenderer\MarkdownRenderer.SyntaxHighlighting.TextMate\MarkdownRenderer.SyntaxHighlighting.TextMate.csproj'
             '.\MarkdownRenderer\MarkdownRenderer.SyntaxHighlighting.TextMate.Grammars.Common\MarkdownRenderer.SyntaxHighlighting.TextMate.Grammars.Common.csproj'
             '.\MarkdownRenderer\MarkdownRenderer.SyntaxHighlighting.TextMate.Grammars.All\MarkdownRenderer.SyntaxHighlighting.TextMate.Grammars.All.csproj'
@@ -428,7 +472,7 @@ jobs:
             '.\MarkdownRenderer\MarkdownRenderer.Html\MarkdownRenderer.Html.csproj'
             '.\MarkdownRenderer\MarkdownRenderer.Math\MarkdownRenderer.Math.csproj'
             '.\MarkdownRenderer\MarkdownRenderer.Mermaid\MarkdownRenderer.Mermaid.csproj'
-            '.\MarkdownRenderer\MarkdownRenderer.Svg.ThorVG\MarkdownRenderer.Svg.ThorVG.csproj'
+            '.\MarkdownRenderer\MarkdownRenderer.Svg.Resvg\MarkdownRenderer.Svg.Resvg.csproj'
             '.\MarkdownRenderer\MarkdownRenderer.SyntaxHighlighting.TextMate\MarkdownRenderer.SyntaxHighlighting.TextMate.csproj'
             '.\MarkdownRenderer\MarkdownRenderer.SyntaxHighlighting.TextMate.Grammars.Common\MarkdownRenderer.SyntaxHighlighting.TextMate.Grammars.Common.csproj'
             '.\MarkdownRenderer\MarkdownRenderer.SyntaxHighlighting.TextMate.Grammars.All\MarkdownRenderer.SyntaxHighlighting.TextMate.Grammars.All.csproj'

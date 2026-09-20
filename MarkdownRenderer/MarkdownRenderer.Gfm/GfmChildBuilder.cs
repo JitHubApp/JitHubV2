@@ -198,14 +198,16 @@ internal static class GfmChildBuilder
             inlines,
             new SafeHtmlInlineState(box.Context.Registry.SafeHtmlPolicy),
             skipFirstIf,
-            inheritedAliasStart);
+            inheritedAliasStart,
+            System.Array.Empty<string>());
 
     private static void AddInlines(
         InlineContainerBox box,
         ContainerInline inlines,
         SafeHtmlInlineState htmlState,
         System.Func<Inline, bool>? skipFirstIf,
-        int inheritedAliasStart)
+        int inheritedAliasStart,
+        IReadOnlyList<string> inheritedStyleModifiers)
     {
         bool skippedFirst = skipFirstIf is null;
         foreach (var i in inlines)
@@ -218,11 +220,46 @@ internal static class GfmChildBuilder
             }
             int aliasStart = box.Context.StyleAliasCount;
             using var inlineAttrs = box.Context.PushMarkdownAttributes(i);
-            InlineRun? run = i is HtmlInline html
-                ? htmlState.Process(html, box.Context)
-                : htmlState.Apply(BuildInline(i, box.Context));
+            if (i is EmphasisInline emphasis && ContainsLink(emphasis))
+            {
+                box.Context.RegisterMarkdownAttributes(i, box.BlockIndex);
+                int effectiveAliasStart = inheritedAliasStart >= 0 ? inheritedAliasStart : aliasStart;
+                AddInlines(
+                    box,
+                    emphasis,
+                    htmlState,
+                    skipFirstIf: null,
+                    inheritedAliasStart: effectiveAliasStart,
+                    inheritedStyleModifiers: AppendStyleModifier(
+                        inheritedStyleModifiers,
+                        GetEmphasisElementKey(emphasis)));
+                continue;
+            }
+            InlineRun? run;
+            if (i is HtmlInline html)
+            {
+                run = htmlState.Process(html, box.Context);
+            }
+            else if (i is LinkInline link &&
+                     TryGetOnlyHtmlImageChild(link, out HtmlInline? linkedHtmlImage) &&
+                     htmlState.IsStandaloneImage(linkedHtmlImage, box.Context))
+            {
+                run = htmlState.Process(
+                    linkedHtmlImage,
+                    box.Context,
+                    link.Url,
+                    link.Title,
+                    GetLinkedHtmlImageSourceSpan(link, linkedHtmlImage, box.Context));
+            }
+            else
+            {
+                run = htmlState.Apply(BuildInline(i, box.Context));
+            }
             if (run is not null)
             {
+                run.StyleModifierKeys = CombineAliases(
+                    run.StyleModifierKeys,
+                    inheritedStyleModifiers);
                 int effectiveAliasStart = inheritedAliasStart >= 0 ? inheritedAliasStart : aliasStart;
                 run.SetStyleAliases(CombineAliases(
                     run.StyleAliases,
@@ -234,9 +271,56 @@ internal static class GfmChildBuilder
             {
                 box.Context.RegisterMarkdownAttributes(i, box.BlockIndex);
                 int effectiveAliasStart = inheritedAliasStart >= 0 ? inheritedAliasStart : aliasStart;
-                AddInlines(box, nested, htmlState, skipFirstIf: null, inheritedAliasStart: effectiveAliasStart);
+                AddInlines(
+                    box,
+                    nested,
+                    htmlState,
+                    skipFirstIf: null,
+                    inheritedAliasStart: effectiveAliasStart,
+                    inheritedStyleModifiers: inheritedStyleModifiers);
             }
         }
+    }
+
+    private static bool ContainsLink(ContainerInline container)
+    {
+        foreach (Inline child in container)
+        {
+            if (child is LinkInline)
+                return true;
+            if (child is ContainerInline nested && ContainsLink(nested))
+                return true;
+        }
+
+        return false;
+    }
+
+    private static string GetEmphasisElementKey(EmphasisInline emphasis)
+    {
+        if (emphasis.DelimiterChar == '~' && emphasis.DelimiterCount >= 2)
+            return MarkdownElementKeys.Strikethrough;
+        if (emphasis.DelimiterChar == '~')
+            return MarkdownElementKeys.Subscript;
+        if (emphasis.DelimiterChar == '^')
+            return MarkdownElementKeys.Superscript;
+        if (emphasis.DelimiterChar == '+')
+            return MarkdownElementKeys.Inserted;
+        if (emphasis.DelimiterChar == '=')
+            return MarkdownElementKeys.Marked;
+        return emphasis.DelimiterCount >= 2
+            ? MarkdownElementKeys.Strong
+            : MarkdownElementKeys.Emphasis;
+    }
+
+    private static IReadOnlyList<string> AppendStyleModifier(
+        IReadOnlyList<string> modifiers,
+        string elementKey)
+    {
+        var result = new string[modifiers.Count + 1];
+        for (int index = 0; index < modifiers.Count; index++)
+            result[index] = modifiers[index];
+        result[^1] = elementKey;
+        return result;
     }
 
     private static IReadOnlyList<string> CombineAliases(
@@ -387,6 +471,94 @@ internal static class GfmChildBuilder
         }
 
         return imageLink is not null;
+    }
+
+    private static bool TryGetOnlyHtmlImageChild(
+        ContainerInline container,
+        out HtmlInline htmlImage)
+    {
+        htmlImage = null!;
+        int count = 0;
+        foreach (Inline child in container)
+        {
+            if (++count > 1 || child is not HtmlInline html)
+            {
+                htmlImage = null!;
+                return false;
+            }
+
+            htmlImage = html;
+        }
+
+        return htmlImage is not null;
+    }
+
+    private static MarkdownRenderer.SourceSpan GetLinkedHtmlImageSourceSpan(
+        LinkInline link,
+        HtmlInline htmlImage,
+        MarkdownLayoutContext context)
+    {
+        string source = context.SourceMap.SourceText;
+        int tagStart = source.IndexOf(
+            htmlImage.Tag,
+            System.Math.Clamp(link.Span.Start, 0, source.Length),
+            System.StringComparison.Ordinal);
+        if (tagStart >= 0)
+        {
+            int sourceStart = tagStart > 0 && source[tagStart - 1] == '[' ? tagStart - 1 : tagStart;
+            int endExclusive = tagStart + htmlImage.Tag.Length;
+            if (endExclusive + 1 < source.Length &&
+                source[endExclusive] == ']' &&
+                source[endExclusive + 1] == '(')
+            {
+                int closingParenthesis = FindLinkClosingParenthesis(source, endExclusive + 2);
+                if (closingParenthesis >= 0)
+                    endExclusive = closingParenthesis + 1;
+            }
+
+            return new MarkdownRenderer.SourceSpan(sourceStart, endExclusive - sourceStart);
+        }
+
+        int start = System.Math.Max(0, System.Math.Min(link.Span.Start, htmlImage.Span.Start));
+        int inclusiveEnd = System.Math.Max(link.Span.End, htmlImage.Span.End);
+        if (!link.UrlSpan.IsEmpty)
+            inclusiveEnd = System.Math.Max(inclusiveEnd, link.UrlSpan.End);
+
+        inclusiveEnd = System.Math.Min(inclusiveEnd, source.Length - 1);
+        if (inclusiveEnd + 1 < source.Length && source[inclusiveEnd + 1] == ')')
+            inclusiveEnd++;
+
+        return new MarkdownRenderer.SourceSpan(
+            start,
+            System.Math.Max(0, inclusiveEnd - start + 1));
+    }
+
+    private static int FindLinkClosingParenthesis(string source, int destinationStart)
+    {
+        int depth = 1;
+        bool escaped = false;
+        for (int index = destinationStart; index < source.Length; index++)
+        {
+            char current = source[index];
+            if (escaped)
+            {
+                escaped = false;
+                continue;
+            }
+
+            if (current == '\\')
+            {
+                escaped = true;
+                continue;
+            }
+
+            if (current == '(')
+                depth++;
+            else if (current == ')' && --depth == 0)
+                return index;
+        }
+
+        return -1;
     }
 
     internal static void FlattenInlines(ContainerInline container, StringBuilder sb)

@@ -17,6 +17,50 @@ namespace MarkdownRenderer.GitHub.Tests;
 public sealed class SafeHtmlRenderingTests
 {
     [Fact]
+    public void GitHubStandaloneHtmlCommentsAreNotRendered()
+    {
+        const string source = """
+            Before
+
+            <!-- generated-section:start -->
+
+            After
+            """;
+
+        using LayoutSnapshot snapshot = Build(source, SafeHtmlOptions.Default);
+        string rendered = string.Concat(FlattenRuns(snapshot).Select(static run => run.Text));
+
+        Assert.Contains("Before", rendered, StringComparison.Ordinal);
+        Assert.Contains("After", rendered, StringComparison.Ordinal);
+        Assert.DoesNotContain("generated-section", rendered, StringComparison.Ordinal);
+        Assert.DoesNotContain("<!--", rendered, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void GitHubMultilineHtmlCommentsSuppressContainedMarkdownAndImages()
+    {
+        const string source = """
+            Visible before
+
+            <!-- hidden:start
+            ![must not load](https://example.test/hidden.png)
+            **hidden contributor**
+            hidden:end -->
+
+            Visible after
+            """;
+
+        using LayoutSnapshot snapshot = Build(source, SafeHtmlOptions.Default);
+        InlineRun[] runs = FlattenRuns(snapshot).ToArray();
+        string rendered = string.Concat(runs.Select(static run => run.Text));
+
+        Assert.Contains("Visible before", rendered, StringComparison.Ordinal);
+        Assert.Contains("Visible after", rendered, StringComparison.Ordinal);
+        Assert.DoesNotContain("hidden contributor", rendered, StringComparison.Ordinal);
+        Assert.DoesNotContain(runs, static run => run is InlineImageRun);
+    }
+
+    [Fact]
     public void GitHubPictureMarkupUsesThemeMatchedSourceWithoutLeakingHtml()
     {
         const string source = """
@@ -157,6 +201,23 @@ public sealed class SafeHtmlRenderingTests
         Assert.Contains(MarkdownElementKeys.Class("approved"), linked.StyleAliases);
         Assert.DoesNotContain(MarkdownElementKeys.Class("rejected"), linked.StyleAliases);
         Assert.Contains("diagram", string.Concat(runs.Select(static run => run.Text)), StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void MarkdownLinkContainingInlineHtmlImageRemainsAVisibleLinkedImage()
+    {
+        const string source =
+            "[<img src=\"https://run.pstmn.io/button.svg\" alt=\"Run In Postman\" " +
+            "style=\"width: 128px; height: 32px;\">](https://example.test/collection)";
+
+        using LayoutSnapshot snapshot = Build(source, SafeHtmlOptions.Default);
+        InlineImageRun image = Assert.Single(FlattenRuns(snapshot).OfType<InlineImageRun>());
+
+        Assert.Equal("https://run.pstmn.io/button.svg", image.Url);
+        Assert.Equal("Run In Postman", image.AltText);
+        Assert.Equal("https://example.test/collection", image.LinkUrl);
+        Assert.True(image.IsLinked);
+        Assert.Equal(new SourceSpan(0, source.Length), image.SourceSpan);
     }
 
     [Fact]

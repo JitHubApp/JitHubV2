@@ -125,6 +125,22 @@ public sealed class GitHubImageServiceTests : IDisposable
     }
 
     [Fact]
+    public async Task GetAsync_NormalizesMislabeledRasterContentFromValidatedSignature()
+    {
+        GitHubImageCacheStore store = new(_root, GitHubCachePolicy.Default);
+        using HttpClient client = new(new RawImageHandler("image/gif", PngBytes));
+        using GitHubImageService service = new(store, client);
+
+        GitHubCachedImage? image = await service.GetAsync(
+            "https://avatars.githubusercontent.com/u/11906529?v=4&s=48");
+
+        Assert.NotNull(image);
+        Assert.Equal("image/png", image!.ContentType);
+        Assert.Equal(".img", Path.GetExtension(image.FilePath));
+        Assert.Equal(PngBytes, image.Bytes);
+    }
+
+    [Fact]
     public async Task GetAsync_CancelsSharedTransferOnlyAfterAllWaitersLeave()
     {
         GitHubImageCacheStore store = new(_root, GitHubCachePolicy.Default);
@@ -331,6 +347,48 @@ public sealed class GitHubImageServiceTests : IDisposable
     }
 
     [Fact]
+    public async Task CacheStore_ConcurrentDistinctWritesRemainReadableAndInspectable()
+    {
+        GitHubImageCacheStore store = new(_root, GitHubCachePolicy.Default);
+        const int entryCount = 128;
+
+        await Task.WhenAll(Enumerable.Range(0, entryCount).Select(index =>
+            store.PutAsync(
+                $"account:parallel:{index}",
+                PngBytes.Concat(BitConverter.GetBytes(index)).ToArray(),
+                ".png",
+                new GitHubImageCacheWriteMetadata($"\"{index}\"", null, "image/png"))));
+
+        GitHubImageCacheRead?[] reads = await Task.WhenAll(Enumerable.Range(0, entryCount).Select(index =>
+            store.TryReadAsync($"account:parallel:{index}")));
+        Assert.All(reads, Assert.NotNull);
+        Assert.Equal(entryCount, reads.Select(static read => read!.Entry.FilePath).Distinct().Count());
+        Assert.Equal(CacheOwnerHealth.Healthy, (await store.InspectAsync()).Health);
+        Assert.Empty(Directory.GetFiles(_root, "*.tmp", SearchOption.TopDirectoryOnly));
+    }
+
+    [Fact]
+    public async Task CacheStore_ConcurrentSameKeyWritesCommitOneCompleteGeneration()
+    {
+        GitHubImageCacheStore store = new(_root, GitHubCachePolicy.Default);
+        byte[][] payloads = Enumerable.Range(0, 32)
+            .Select(index => PngBytes.Concat(BitConverter.GetBytes(index)).ToArray())
+            .ToArray();
+
+        await Task.WhenAll(payloads.Select((bytes, index) => store.PutAsync(
+            "account:same-key",
+            bytes,
+            ".png",
+            new GitHubImageCacheWriteMetadata($"\"{index}\"", null, "image/png"))));
+
+        GitHubImageCacheRead? current = await store.TryReadAsync("account:same-key");
+        Assert.NotNull(current);
+        Assert.Contains(payloads, payload => payload.SequenceEqual(current!.Bytes));
+        Assert.Equal(CacheOwnerHealth.Degraded, (await store.InspectAsync()).Health);
+        Assert.Empty(Directory.GetFiles(_root, "*.tmp", SearchOption.TopDirectoryOnly));
+    }
+
+    [Fact]
     public async Task CacheStore_ClearReadOnlyFileReportsPartialFailureAndPassesAfterAttributeReset()
     {
         GitHubImageCacheStore store = new(_root, GitHubCachePolicy.Default);
@@ -373,11 +431,11 @@ public sealed class GitHubImageServiceTests : IDisposable
     }
 
     [Theory]
-    [InlineData("http://example.test/image.png", "BlockedInsecureRemote")]
+    [InlineData("http://example.test/image.png", "SharedHttps")]
     [InlineData("https://example.test/image.png", "SharedHttps")]
     [InlineData("images/local.png", "NotHandled")]
     [InlineData("ms-appx:///Assets/image.png", "NotHandled")]
-    public void MarkdownImageSourcePolicy_PreventsHttpFallback(
+    public void MarkdownImageSourcePolicy_UsesHttpsOnly(
         string source,
         string expectedName)
     {
@@ -387,6 +445,11 @@ public sealed class GitHubImageServiceTests : IDisposable
 
         Assert.Equal(expected, actual);
         Assert.Equal(Uri.TryCreate(source, UriKind.Absolute, out _), absoluteUri is not null);
+        if (source.StartsWith("http://", StringComparison.Ordinal))
+        {
+            Assert.Equal(Uri.UriSchemeHttps, absoluteUri!.Scheme);
+            Assert.Equal("https://example.test/image.png", absoluteUri.AbsoluteUri);
+        }
     }
 
     [Fact]

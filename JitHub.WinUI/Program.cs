@@ -37,7 +37,8 @@ internal static class Program
                 CurrentLaunchOptions.WebsiteShowcase);
             MarkdownLifecycleAutomationBridge.ConfigureLaunchOptions(
                 CurrentLaunchOptions.MarkdownLifecycleFixture,
-                CurrentLaunchOptions.MarkdownLifecycleHost);
+                CurrentLaunchOptions.MarkdownLifecycleHost,
+                CurrentLaunchOptions.ReadmeProductionAudit);
             ConfigureAutomationLanguageOverride();
             LogStartupPhase("main.launch-options-ready");
 

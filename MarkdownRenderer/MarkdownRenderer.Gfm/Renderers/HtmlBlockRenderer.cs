@@ -58,7 +58,11 @@ internal sealed class HtmlBlockRenderer : MarkdownNodeRenderer<HtmlBlock>
             root.Add(notice);
         }
 
-        return root.Children.Count == 0 ? null : root;
+        // A configured safe-HTML renderer owns every HtmlBlock, including blocks
+        // that intentionally produce no visual content (comments, declarations,
+        // and suppressed active elements). Returning null would invoke the core
+        // literal fallback and leak that hidden markup into the document.
+        return root;
     }
 
     private static StackBox CreateStack(MarkdownLayoutContext context) => new()

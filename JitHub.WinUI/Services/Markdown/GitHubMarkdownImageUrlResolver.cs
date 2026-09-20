@@ -210,6 +210,19 @@ public static class GitHubMarkdownImageUrlResolver
             }
         }
 
+        // GitHub emits canonical raw URLs with an explicit refs/heads or
+        // refs/tags prefix. Treat that prefix as part of the ref rather than
+        // misclassifying "heads/..." as the repository path.
+        if (refAndPathSegments.Length >= 4 &&
+            refAndPathSegments[0].Equals("refs", StringComparison.OrdinalIgnoreCase) &&
+            (refAndPathSegments[1].Equals("heads", StringComparison.OrdinalIgnoreCase) ||
+             refAndPathSegments[1].Equals("tags", StringComparison.OrdinalIgnoreCase)))
+        {
+            gitRef = string.Join('/', refAndPathSegments.Take(3));
+            path = string.Join('/', refAndPathSegments.Skip(3));
+            return !string.IsNullOrWhiteSpace(path);
+        }
+
         gitRef = refAndPathSegments[0];
         path = string.Join('/', refAndPathSegments.Skip(1));
         return !string.IsNullOrWhiteSpace(gitRef) && !string.IsNullOrWhiteSpace(path);

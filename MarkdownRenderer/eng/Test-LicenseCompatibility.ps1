@@ -178,16 +178,34 @@ $reviewedSubjects.Add([pscustomobject][ordered]@{
     status = 'allowed'
 })
 
-$thorVgPath = Join-Path $repositoryRoot 'MarkdownRenderer\MarkdownRenderer.Svg.ThorVG\THORVG_PROVENANCE.json'
-$thorVg = Get-Content -LiteralPath $thorVgPath -Raw | ConvertFrom-Json -Depth 100
+$resvgRoot = Join-Path $repositoryRoot 'MarkdownRenderer\MarkdownRenderer.Svg.Resvg'
+$resvgProvenancePath = Join-Path $resvgRoot 'RESVG_PROVENANCE.json'
+$resvg = Get-Content -LiteralPath $resvgProvenancePath -Raw | ConvertFrom-Json -Depth 100
 Assert-LicenseExpressionAllowed `
-    -Expression ([string] $thorVg.license) `
-    -Subject 'ThorVG native dependency' `
+    -Expression ([string] $resvg.selectedLicense) `
+    -Subject 'resvg native dependency' `
     -AllowedIdentifiers $allowedSpdx `
     -Policy $policy
+if ([string] $resvg.version -cne '0.48.1' -or
+    [string] $resvg.commit -cne '68b14c4c3bccdb60344c777406486b54c36ec1a4' -or
+    [string] $resvg.selectedLicense -cne 'MIT') {
+    throw 'The resvg source pin or reviewed MIT license selection changed.'
+}
+$resvgLicense = Join-Path $resvgRoot 'licenses\RESVG-LICENSE-MIT.txt'
+$resvgLicenseText = if (Test-Path -LiteralPath $resvgLicense -PathType Leaf) {
+    Get-Content -LiteralPath $resvgLicense -Raw
+} else {
+    ''
+}
+if ($resvgLicenseText -notmatch '(?m)^Copyright 2017 the Resvg Authors\s*$' -or
+    $resvgLicenseText -notmatch 'Permission is hereby granted, free of charge' -or
+    $resvgLicenseText -notmatch 'THE SOFTWARE IS PROVIDED "AS IS"') {
+    throw 'The redistributed resvg MIT license text is missing or invalid.'
+}
+& (Join-Path $resvgRoot 'eng\Verify-ResvgSupplyChain.ps1') | Write-Host
 $reviewedSubjects.Add([pscustomobject][ordered]@{
-    subject = 'ThorVG native dependency'
-    count = @($thorVg.assets).Count
+    subject = 'Pinned resvg Rust dependency closure'
+    count = [int] (Get-Content -LiteralPath (Join-Path $resvgRoot 'NATIVE_RUST_DEPENDENCIES.json') -Raw | ConvertFrom-Json -Depth 100).packageCount
     status = 'allowed'
 })
 

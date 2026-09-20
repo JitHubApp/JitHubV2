@@ -23,23 +23,23 @@
       ]
     },
     {
-      "packageId": "MarkdownRenderer.Svg.ThorVG",
+      "packageId": "MarkdownRenderer.Svg.Resvg",
       "allowNoNative": false,
       "assets": [
         {
-          "path": "runtimes/win-arm64/native/thorvg.dll",
+          "path": "runtimes/win-arm64/native/MarkdownRenderer.Svg.Resvg.Worker.exe",
           "machine": "arm64",
-          "exportsFile": "native-abi-thorvg-exports-x64-arm64.txt"
+          "exports": []
         },
         {
-          "path": "runtimes/win-x64/native/thorvg.dll",
+          "path": "runtimes/win-x64/native/MarkdownRenderer.Svg.Resvg.Worker.exe",
           "machine": "x64",
-          "exportsFile": "native-abi-thorvg-exports-x64-arm64.txt"
+          "exports": []
         },
         {
-          "path": "runtimes/win-x86/native/thorvg.dll",
+          "path": "runtimes/win-x86/native/MarkdownRenderer.Svg.Resvg.Worker.exe",
           "machine": "x86",
-          "exportsFile": "native-abi-thorvg-exports-x86.txt"
+          "exports": []
         }
       ]
     }

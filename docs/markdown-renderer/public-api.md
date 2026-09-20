@@ -15,7 +15,7 @@ are implementation details.
 | `MarkdownRenderer.Html` | Bounded native safe-HTML subset parser/painter and immutable options. |
 | `MarkdownRenderer.Math` | CSharpMath-based TeX processor, immutable vector scenes, fallback and accessibility. |
 | `MarkdownRenderer.Mermaid` | Selected-RID Merman engine, validated MMIR scenes, bounded processing and fallback. |
-| `MarkdownRenderer.Svg.ThorVG` | Optional native ThorVG SVG rasterizer assets. |
+| `MarkdownRenderer.Svg.Resvg` | Optional isolated resvg static-SVG provider and RID workers. |
 | `MarkdownRenderer.SyntaxHighlighting.TextMate` | Lean TextMate integration and provider contracts; grammar packs are separate. |
 | `MarkdownRenderer.All` | Explicit, deliberately large meta-package for every feature and payload. |
 

@@ -72,9 +72,14 @@ public interface IGitHubImageCacheStore
 
 public sealed class GitHubImageCacheStore : IGitHubImageCacheStore
 {
+    private const int GateStripeCount = 64;
     private readonly string _imageRootPath;
     private readonly GitHubCachePolicy _policy;
-    private readonly SemaphoreSlim _gate = new(1, 1);
+    private readonly SemaphoreSlim[] _gateStripes = CreateGateStripes();
+    private readonly object _estimatedPayloadBytesGate = new();
+    private long _estimatedPayloadBytes = -1;
+
+    internal event Action? CacheContentInvalidated;
 
     public GitHubImageCacheStore(IAppStoragePathProvider pathProvider)
         : this(pathProvider.ImageRootPath, GitHubCachePolicy.Default)
@@ -93,14 +98,15 @@ public sealed class GitHubImageCacheStore : IGitHubImageCacheStore
         CancellationToken cancellationToken = default)
     {
         cancellationToken.ThrowIfCancellationRequested();
-        await _gate.WaitAsync(cancellationToken);
+        SemaphoreSlim gate = GetGate(cacheKey);
+        await gate.WaitAsync(cancellationToken);
         try
         {
             return await TryGetCoreAsync(cacheKey, cancellationToken).ConfigureAwait(false);
         }
         finally
         {
-            _gate.Release();
+            gate.Release();
         }
     }
 
@@ -134,10 +140,14 @@ public sealed class GitHubImageCacheStore : IGitHubImageCacheStore
         string payloadFileName = $"{prefix}.{generation}.img";
         string filePath = Path.Combine(_imageRootPath, payloadFileName);
         string temporaryPath = filePath + ".tmp";
+        GitHubImageCacheEntry stored;
+        bool enforceCap;
 
-        await _gate.WaitAsync(cancellationToken);
+        SemaphoreSlim gate = GetGateForPrefix(prefix);
+        await gate.WaitAsync(cancellationToken);
         try
         {
+            _ = GetOrInitializeEstimatedPayloadBytes();
             bool manifestCommitted = false;
             try
             {
@@ -147,11 +157,10 @@ public sealed class GitHubImageCacheStore : IGitHubImageCacheStore
                     FileAccess.Write,
                     FileShare.None,
                     81920,
-                    FileOptions.Asynchronous | FileOptions.WriteThrough))
+                    FileOptions.Asynchronous | FileOptions.SequentialScan))
                 {
                     await stream.WriteAsync(bytes, cancellationToken).ConfigureAwait(false);
                     await stream.FlushAsync(cancellationToken).ConfigureAwait(false);
-                    stream.Flush(flushToDisk: true);
                 }
 
                 cancellationToken.ThrowIfCancellationRequested();
@@ -172,6 +181,7 @@ public sealed class GitHubImageCacheStore : IGitHubImageCacheStore
                         cancellationToken)
                     .ConfigureAwait(false);
                 manifestCommitted = true;
+                AddEstimatedPayloadBytes(bytes.LongLength);
             }
             finally
             {
@@ -182,18 +192,29 @@ public sealed class GitHubImageCacheStore : IGitHubImageCacheStore
                 }
             }
 
-            await EnforceCapCoreAsync(cancellationToken);
-            return CreateEntry(cacheKey, new FileInfo(filePath), metadata);
+            stored = CreateEntry(cacheKey, new FileInfo(filePath), metadata);
+            enforceCap = GetEstimatedPayloadBytes() > _policy.AvatarImageSoftCapBytes;
         }
         finally
         {
-            _gate.Release();
+            gate.Release();
         }
+
+        // Cap enforcement needs an exclusive cache view. Run it only after releasing the
+        // key stripe so unrelated downloads can commit concurrently and the exclusive
+        // operation cannot deadlock while acquiring every stripe.
+        if (enforceCap)
+        {
+            await EnforceCapAsync(cancellationToken).ConfigureAwait(false);
+        }
+
+        return stored;
     }
 
     public async Task MarkFreshAsync(string cacheKey, CancellationToken cancellationToken = default)
     {
-        await _gate.WaitAsync(cancellationToken).ConfigureAwait(false);
+        SemaphoreSlim gate = GetGate(cacheKey);
+        await gate.WaitAsync(cancellationToken).ConfigureAwait(false);
         try
         {
             string prefix = HashKey(cacheKey);
@@ -211,7 +232,7 @@ public sealed class GitHubImageCacheStore : IGitHubImageCacheStore
         }
         finally
         {
-            _gate.Release();
+            gate.Release();
         }
     }
 
@@ -220,7 +241,8 @@ public sealed class GitHubImageCacheStore : IGitHubImageCacheStore
         CancellationToken cancellationToken = default)
     {
         cancellationToken.ThrowIfCancellationRequested();
-        await _gate.WaitAsync(cancellationToken).ConfigureAwait(false);
+        SemaphoreSlim gate = GetGate(cacheKey);
+        await gate.WaitAsync(cancellationToken).ConfigureAwait(false);
         try
         {
             GitHubImageCacheEntry? entry = await TryGetCoreAsync(cacheKey, cancellationToken)
@@ -247,30 +269,40 @@ public sealed class GitHubImageCacheStore : IGitHubImageCacheStore
         }
         finally
         {
-            _gate.Release();
+            gate.Release();
         }
     }
 
     public async Task InvalidateAsync(string cacheKey, CancellationToken cancellationToken = default)
     {
-        await _gate.WaitAsync(cancellationToken);
+        SemaphoreSlim gate = GetGate(cacheKey);
+        await gate.WaitAsync(cancellationToken);
         try
         {
             string prefix = HashKey(cacheKey);
+            long removedPayloadBytes = 0;
             foreach (string existing in Directory.EnumerateFiles(_imageRootPath, $"{prefix}.*"))
             {
+                if (IsPayloadPath(existing))
+                {
+                    removedPayloadBytes += TryGetLength(existing);
+                }
+
                 TryDelete(existing);
             }
+
+            AddEstimatedPayloadBytes(-removedPayloadBytes);
+            CacheContentInvalidated?.Invoke();
         }
         finally
         {
-            _gate.Release();
+            gate.Release();
         }
     }
 
     public async Task ClearAllAsync(CancellationToken cancellationToken = default)
     {
-        await _gate.WaitAsync(cancellationToken);
+        int acquiredGates = await AcquireAllGatesAsync(cancellationToken).ConfigureAwait(false);
         try
         {
             if (!Directory.Exists(_imageRootPath))
@@ -328,44 +360,49 @@ public sealed class GitHubImageCacheStore : IGitHubImageCacheStore
 
             if (residuals.Count > 0)
             {
+                SetEstimatedPayloadBytes(-1);
                 throw new CacheClearPostconditionException(CacheOwnerIds.GitHubImages, residuals);
             }
+
+            SetEstimatedPayloadBytes(0);
+            CacheContentInvalidated?.Invoke();
         }
         finally
         {
-            _gate.Release();
+            ReleaseGates(acquiredGates);
         }
     }
 
     public async Task EnforceCapAsync(CancellationToken cancellationToken = default)
     {
-        await _gate.WaitAsync(cancellationToken);
+        int acquiredGates = await AcquireAllGatesAsync(cancellationToken).ConfigureAwait(false);
         try
         {
-            await EnforceCapCoreAsync(cancellationToken);
+            if (GetOrInitializeEstimatedPayloadBytes() > _policy.AvatarImageSoftCapBytes)
+            {
+                await EnforceCapCoreAsync(cancellationToken);
+                SetEstimatedPayloadBytes(CalculatePayloadBytes());
+            }
         }
         finally
         {
-            _gate.Release();
+            ReleaseGates(acquiredGates);
         }
     }
 
     public async Task<long> GetTotalBytesAsync(CancellationToken cancellationToken = default)
     {
-        await _gate.WaitAsync(cancellationToken).ConfigureAwait(false);
+        int acquiredGates = await AcquireAllGatesAsync(cancellationToken).ConfigureAwait(false);
         try
         {
             cancellationToken.ThrowIfCancellationRequested();
-            return Directory.Exists(_imageRootPath)
-                ? Directory
-                    .EnumerateFiles(_imageRootPath)
-                    .Where(static path => IsPayloadPath(path))
-                    .Sum(static path => TryGetLength(path))
-                : 0;
+            long total = CalculatePayloadBytes();
+            SetEstimatedPayloadBytes(total);
+            return total;
         }
         finally
         {
-            _gate.Release();
+            ReleaseGates(acquiredGates);
         }
     }
 
@@ -374,7 +411,7 @@ public sealed class GitHubImageCacheStore : IGitHubImageCacheStore
         CancellationToken cancellationToken = default)
     {
         string partition = GitHubAccountPartition.Require(accountPartition);
-        await _gate.WaitAsync(cancellationToken).ConfigureAwait(false);
+        int acquiredGates = await AcquireAllGatesAsync(cancellationToken).ConfigureAwait(false);
         try
         {
             if (!Directory.Exists(_imageRootPath))
@@ -420,18 +457,22 @@ public sealed class GitHubImageCacheStore : IGitHubImageCacheStore
 
             if (residuals.Count > 0)
             {
+                SetEstimatedPayloadBytes(-1);
                 throw new CacheClearPostconditionException(CacheOwnerIds.GitHubImages, residuals);
             }
+
+            SetEstimatedPayloadBytes(-1);
+            CacheContentInvalidated?.Invoke();
         }
         finally
         {
-            _gate.Release();
+            ReleaseGates(acquiredGates);
         }
     }
 
     public async Task<CacheStoreInspection> InspectAsync(CancellationToken cancellationToken = default)
     {
-        await _gate.WaitAsync(cancellationToken).ConfigureAwait(false);
+        int acquiredGates = await AcquireAllGatesAsync(cancellationToken).ConfigureAwait(false);
         try
         {
             if (!Directory.Exists(_imageRootPath))
@@ -521,9 +562,57 @@ public sealed class GitHubImageCacheStore : IGitHubImageCacheStore
         }
         finally
         {
-            _gate.Release();
+            ReleaseGates(acquiredGates);
         }
     }
+
+    private static SemaphoreSlim[] CreateGateStripes()
+    {
+        SemaphoreSlim[] gates = new SemaphoreSlim[GateStripeCount];
+        for (int index = 0; index < gates.Length; index++)
+        {
+            gates[index] = new SemaphoreSlim(1, 1);
+        }
+
+        return gates;
+    }
+
+    private SemaphoreSlim GetGate(string cacheKey) => GetGateForPrefix(HashKey(cacheKey));
+
+    private SemaphoreSlim GetGateForPrefix(string prefix)
+    {
+        int stripe = ((GetHexValue(prefix[0]) << 4) | GetHexValue(prefix[1])) % GateStripeCount;
+        return _gateStripes[stripe];
+    }
+
+    private async Task<int> AcquireAllGatesAsync(CancellationToken cancellationToken)
+    {
+        int acquired = 0;
+        try
+        {
+            for (; acquired < _gateStripes.Length; acquired++)
+            {
+                await _gateStripes[acquired].WaitAsync(cancellationToken).ConfigureAwait(false);
+            }
+
+            return acquired;
+        }
+        catch
+        {
+            ReleaseGates(acquired);
+            throw;
+        }
+    }
+
+    private void ReleaseGates(int acquired)
+    {
+        for (int index = acquired - 1; index >= 0; index--)
+        {
+            _gateStripes[index].Release();
+        }
+    }
+
+    private static int GetHexValue(char value) => value <= '9' ? value - '0' : value - 'a' + 10;
 
     private static long TryGetLength(string path)
     {
@@ -536,6 +625,61 @@ public sealed class GitHubImageCacheStore : IGitHubImageCacheStore
             return 0;
         }
     }
+
+    private long GetOrInitializeEstimatedPayloadBytes()
+    {
+        lock (_estimatedPayloadBytesGate)
+        {
+            if (_estimatedPayloadBytes < 0)
+            {
+                _estimatedPayloadBytes = CalculatePayloadBytes();
+            }
+
+            return _estimatedPayloadBytes;
+        }
+    }
+
+    private long GetEstimatedPayloadBytes()
+    {
+        lock (_estimatedPayloadBytesGate)
+        {
+            return _estimatedPayloadBytes;
+        }
+    }
+
+    private void AddEstimatedPayloadBytes(long delta)
+    {
+        lock (_estimatedPayloadBytesGate)
+        {
+            if (_estimatedPayloadBytes < 0)
+            {
+                return;
+            }
+
+            if (delta > 0 && _estimatedPayloadBytes > long.MaxValue - delta)
+            {
+                _estimatedPayloadBytes = long.MaxValue;
+                return;
+            }
+
+            _estimatedPayloadBytes = Math.Max(0, _estimatedPayloadBytes + delta);
+        }
+    }
+
+    private void SetEstimatedPayloadBytes(long value)
+    {
+        lock (_estimatedPayloadBytesGate)
+        {
+            _estimatedPayloadBytes = value;
+        }
+    }
+
+    private long CalculatePayloadBytes() => Directory.Exists(_imageRootPath)
+        ? Directory
+            .EnumerateFiles(_imageRootPath, "*", SearchOption.TopDirectoryOnly)
+            .Where(static path => IsPayloadPath(path))
+            .Sum(static path => TryGetLength(path))
+        : 0;
 
     private async Task EnforceCapCoreAsync(CancellationToken cancellationToken)
     {
@@ -763,7 +907,7 @@ public sealed class GitHubImageCacheStore : IGitHubImageCacheStore
                 FileAccess.Write,
                 FileShare.None,
                 4096,
-                FileOptions.Asynchronous | FileOptions.WriteThrough))
+                FileOptions.Asynchronous | FileOptions.SequentialScan))
             await using (StreamWriter writer = new(stream, Encoding.UTF8))
             {
                 foreach (string line in lines)
@@ -773,7 +917,6 @@ public sealed class GitHubImageCacheStore : IGitHubImageCacheStore
 
                 await writer.FlushAsync(cancellationToken).ConfigureAwait(false);
                 await stream.FlushAsync(cancellationToken).ConfigureAwait(false);
-                stream.Flush(flushToDisk: true);
             }
 
             cancellationToken.ThrowIfCancellationRequested();

@@ -12,7 +12,7 @@ not implicitly enable every syntax or native payload.
 | Safe HTML | `MarkdownRenderer.Html` | Bounded native subset parser and painter, including inline tags and cross-block scopes. No script, CSS layout, browser DOM, or direct I/O capability. |
 | Math | `MarkdownRenderer.Math` | CSharpMath-based native vector typesetting, dollar delimiters, immutable scenes, accessibility, and lossless invalid-source fallback. |
 | Mermaid | `MarkdownRenderer.Mermaid` | Selected-RID Merman engine, validated MMIR vector scenes, bounded processing and fallback. ELK is excluded. |
-| SVG | `MarkdownRenderer.Svg.ThorVG` | Optional native ThorVG 1.1.1 rasterization payload for supported Windows architectures. Static geometry, text, gradients, patterns, masks, clips, reuse, transforms, and Gaussian blur are supported; unsupported filter primitives use the atomic accessible fallback. |
+| SVG | `MarkdownRenderer.Svg.Resvg` | Optional isolated resvg 0.48.1 provider for x86, x64, and ARM64. The admitted static subset includes geometry, CSS/presentation attributes, text, gradients, patterns, markers, clipping, masks, filters, embedded data images, transforms, `viewBox`, `preserveAspectRatio`, `currentColor`, and inline light/dark color-scheme rules. Executable, external, unsupported, or over-budget input uses the atomic accessible fallback. |
 | Syntax highlighting | `MarkdownRenderer.SyntaxHighlighting.TextMate` | Optional provider integration. Choose a separate grammar pack or provide your own grammar source. |
 
 ## Configure profiles

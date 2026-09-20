@@ -2,6 +2,7 @@ using System;
 using System.Collections.Generic;
 using System.IO;
 using JitHub.Models.CodeViewer;
+using MarkdownRenderer;
 
 namespace JitHub.Services.CodeViewer;
 
@@ -11,6 +12,7 @@ namespace JitHub.Services.CodeViewer;
 public sealed class FilePreviewResolver : IFilePreviewResolver
 {
     public const long MaximumInteractiveTextBytes = 128 * 1024;
+    public const long MaximumMarkdownBytes = MarkdownParseLimits.DefaultMaximumSourceLength;
     public const long MaximumSvgBytes = RepositorySvgSecurityPolicy.MaxInputBytes;
     private const long MaximumImageBytes = 10 * 1024 * 1024;
     private const long MaxHexBytes = 256 * 1024;          // 256 KB
@@ -68,15 +70,22 @@ public sealed class FilePreviewResolver : IFilePreviewResolver
                 : new FilePreviewDescriptor(RepoFilePreviewKind.TooLarge, "text", null, false);
         }
 
+        // Markdown uses the renderer's asynchronous, bounded parse and lazy
+        // layout pipeline rather than Scintilla. Admit it against that
+        // pipeline's audited source ceiling before applying the synchronous
+        // editor budget used by ordinary text files.
+        if (MarkdownExtensions.Contains(ext))
+        {
+            return byteSize <= MaximumMarkdownBytes
+                ? new FilePreviewDescriptor(RepoFilePreviewKind.Markdown, "markdown", null, false)
+                : new FilePreviewDescriptor(RepoFilePreviewKind.TooLarge, "text", null, false);
+        }
+
         // Scintilla SetText is synchronous. Route large text to the lightweight
         // native fallback before creating an editor so navigation never monopolizes
         // the UI thread. The fallback keeps open/copy-link access to the full file.
         if (byteSize > MaximumInteractiveTextBytes)
             return new FilePreviewDescriptor(RepoFilePreviewKind.TooLarge, "text", null, false);
-
-        // Markdown.
-        if (MarkdownExtensions.Contains(ext))
-            return new FilePreviewDescriptor(RepoFilePreviewKind.Markdown, "markdown", null, false);
 
         // CSV / TSV.
         if (string.Equals(ext, ".csv", StringComparison.OrdinalIgnoreCase))

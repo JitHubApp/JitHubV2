@@ -184,7 +184,7 @@
           "MarkdownRenderer.Core": "[1.0.0-preview.1, )"
         }
       },
-      "markdownrenderer.svg.thorvg": {
+      "markdownrenderer.svg.resvg": {
         "type": "Project",
         "dependencies": {
           "MarkdownRenderer.WinUI": "[1.0.0-preview.1, )"

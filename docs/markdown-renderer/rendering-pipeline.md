@@ -26,7 +26,7 @@ services without changing the base package's dependency footprint:
 - `MarkdownRenderer.Html` for bounded native safe-HTML rendering;
 - `MarkdownRenderer.Math` and `MarkdownRenderer.Mermaid` for bounded native
   processing, vector scenes and fallbacks;
-- `MarkdownRenderer.Svg.ThorVG` for native SVG rasterization;
+- `MarkdownRenderer.Svg.Resvg` for isolated static SVG rasterization;
 - `MarkdownRenderer.SyntaxHighlighting.TextMate` plus a selected grammar pack.
 
 Math uses CSharpMath-based typesetting, while Mermaid uses a selected-RID Merman

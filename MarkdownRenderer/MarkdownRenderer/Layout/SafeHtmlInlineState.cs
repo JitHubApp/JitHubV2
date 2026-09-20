@@ -58,9 +58,29 @@ internal sealed class SafeHtmlInlineState
         _policy = policy;
     }
 
-    public InlineRun? Process(HtmlInline html, MarkdownLayoutContext context)
+    internal bool IsStandaloneImage(HtmlInline html, MarkdownLayoutContext context)
     {
-        var span = new SourceSpan(html.Span.Start, html.Span.Length);
+        if (_policy is null || html.Tag.Length > _policy.Limits.MaxTagLength)
+            return false;
+
+        return SafeHtmlParser.TryParseSingleTag(
+                   html.Tag,
+                   _policy.Limits,
+                   context.CancellationToken,
+                   out SafeHtmlTag tag,
+                   out _) &&
+               tag.Name == "img" &&
+               tag.Kind is SafeHtmlTagKind.Opening or SafeHtmlTagKind.SelfClosing;
+    }
+
+    public InlineRun? Process(
+        HtmlInline html,
+        MarkdownLayoutContext context,
+        string? containingLinkUrl = null,
+        string? containingLinkTitle = null,
+        SourceSpan? containingSourceSpan = null)
+    {
+        SourceSpan span = containingSourceSpan ?? new SourceSpan(html.Span.Start, html.Span.Length);
         if (_policy is null)
         {
             return new TextRun(html.Tag) { SourceSpan = span };
@@ -184,16 +204,18 @@ internal sealed class SafeHtmlInlineState
             : context.ResolveString(MarkdownStringKeys.ImageName, MarkdownLocalizedStrings.ImageName);
         if (!_policy.EnableImages)
         {
-            return string.IsNullOrWhiteSpace(alt)
+            InlineRun? fallback = string.IsNullOrWhiteSpace(alt)
                 ? null
                 : Apply(new TextRun(alt) { SourceSpan = span });
+            return ApplyContainingLink(fallback, containingLinkUrl, containingLinkTitle);
         }
 
         if (!SafeHtmlParser.TryGetSafeImageSource(tag, out string source))
         {
-            return string.IsNullOrWhiteSpace(alt)
+            InlineRun? fallback = string.IsNullOrWhiteSpace(alt)
                 ? null
                 : Apply(new TextRun(alt) { SourceSpan = span });
+            return ApplyContainingLink(fallback, containingLinkUrl, containingLinkTitle);
         }
 
         tag.TryGetAttribute("title", out string title);
@@ -207,12 +229,31 @@ internal sealed class SafeHtmlInlineState
                 : alt,
             source,
             string.IsNullOrWhiteSpace(title) ? null : title,
-            link?.LinkUrl,
-            link?.LinkTitle,
+            _policy.EnableLinks ? containingLinkUrl ?? link?.LinkUrl : null,
+            _policy.EnableLinks ? containingLinkTitle ?? link?.LinkTitle : null,
             width.Value > 0 ? width : null,
             height.Value > 0 ? height : null)
         {
             SourceSpan = span,
+        });
+    }
+
+    private InlineRun? ApplyContainingLink(
+        InlineRun? run,
+        string? containingLinkUrl,
+        string? containingLinkTitle)
+    {
+        if (run is null ||
+            !_policy!.EnableLinks ||
+            string.IsNullOrWhiteSpace(containingLinkUrl) ||
+            run is LinkRun)
+        {
+            return run;
+        }
+
+        return ApplyAliases(new LinkRun(run.Text, containingLinkUrl, containingLinkTitle)
+        {
+            SourceSpan = run.SourceSpan,
         });
     }
 

@@ -160,6 +160,6 @@ Run these before declaring a 1.0 package ready:
 - rapid theme switching during scroll, image/SVG load completion, and selection;
 - concurrent scroll + selection + hosted-control drag-through;
 - monitor disconnect/reconnect or graphics-device reset smoke;
-- x86, x64, and ARM64 sample launch, including SVG only when the ThorVG pack is selected;
+- x86, x64, and ARM64 sample launch, including SVG only when the resvg provider is selected;
 - package inspection for XML docs, README, icon, license metadata, source docs,
-  and, for the optional ThorVG package, all native runtime assets.
+  and, for the optional resvg package, every worker, SBOM, notice, and provenance asset.

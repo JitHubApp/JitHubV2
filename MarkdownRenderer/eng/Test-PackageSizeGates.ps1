@@ -51,7 +51,7 @@ $leanManagedBytes = @($coreEntries + $winuiEntries |
 $leanNativeEntries = @($coreEntries + $winuiEntries |
     Where-Object {
         $_.Name -match '(^|/)runtimes/.+/native/' -or
-        ($_.Name -notmatch '^lib/' -and $_.Name -match '\.(dll|so|dylib)$')
+        ($_.Name -notmatch '^lib/' -and $_.Name -match '\.(dll|exe|so|dylib)$')
     })
 
 # The 1.0 surface includes unified selection, touch, accessibility, and lazy
@@ -64,7 +64,7 @@ if ($leanNativeEntries.Count -ne 0) {
 }
 
 $optionalCaps = [ordered]@{
-    'MarkdownRenderer.Svg.ThorVG' = 400KB
+    'MarkdownRenderer.Svg.Resvg' = 5MB
     'MarkdownRenderer.Math' = 2.3MB
     'MarkdownRenderer.SyntaxHighlighting.TextMate.Grammars.Common' = 6MB
     'MarkdownRenderer.Mermaid' = 12MB
@@ -73,15 +73,24 @@ $optionalCaps = [ordered]@{
 foreach ($entry in $optionalCaps.GetEnumerator()) {
     $package = Get-LatestPackage $entry.Key
     $entries = Get-PackageEntries $package
-    if ($entry.Key -eq 'MarkdownRenderer.Svg.ThorVG' -or $entry.Key -eq 'MarkdownRenderer.Mermaid') {
-        $nativeName = if ($entry.Key -eq 'MarkdownRenderer.Svg.ThorVG') { 'thorvg\.dll' } else { 'MarkdownRenderer\.Mermaid\.Native\.dll' }
-        $displayName = if ($entry.Key -eq 'MarkdownRenderer.Svg.ThorVG') { 'ThorVG' } else { 'Mermaid' }
+    if ($entry.Key -eq 'MarkdownRenderer.Svg.Resvg' -or $entry.Key -eq 'MarkdownRenderer.Mermaid') {
+        $isResvg = $entry.Key -eq 'MarkdownRenderer.Svg.Resvg'
+        $nativeName = if ($isResvg) { 'MarkdownRenderer\.Svg\.Resvg\.Worker\.exe' } else { 'MarkdownRenderer\.Mermaid\.Native\.dll' }
+        $displayName = if ($isResvg) { 'resvg' } else { 'Mermaid' }
         $nativeAssets = @($entries | Where-Object { $_.Name -match "^runtimes/win-(x86|x64|arm64)/native/$nativeName$" })
         if ($nativeAssets.Count -ne 3) {
             throw "$displayName must contain exactly one native asset for x86, x64, and ARM64."
         }
         foreach ($asset in $nativeAssets) {
-            Assert-Max $asset.CompressedLength $entry.Value "$displayName selected-RID asset '$($asset.Name)'"
+            if ($isResvg) {
+                Assert-Max $asset.Length (3.5MB) "$displayName selected deployment asset '$($asset.Name)'"
+            }
+            else {
+                Assert-Max $asset.CompressedLength $entry.Value "$displayName selected-RID asset '$($asset.Name)'"
+            }
+        }
+        if ($isResvg) {
+            Assert-Max $package.Length $entry.Value 'resvg all-RID compressed package'
         }
     }
     else {

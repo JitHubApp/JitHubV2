@@ -28,7 +28,7 @@
     <ProjectReference Include="..\MarkdownRenderer.Html\MarkdownRenderer.Html.csproj" />
     <ProjectReference Include="..\MarkdownRenderer.Math\MarkdownRenderer.Math.csproj" />
     <ProjectReference Include="..\MarkdownRenderer.Mermaid\MarkdownRenderer.Mermaid.csproj" />
-    <ProjectReference Include="..\MarkdownRenderer.Svg.ThorVG\MarkdownRenderer.Svg.ThorVG.csproj" />
+    <ProjectReference Include="..\MarkdownRenderer.Svg.Resvg\MarkdownRenderer.Svg.Resvg.csproj" />
     <ProjectReference Include="..\MarkdownRenderer.SyntaxHighlighting.TextMate\MarkdownRenderer.SyntaxHighlighting.TextMate.csproj" />
     <ProjectReference Include="..\MarkdownRenderer.SyntaxHighlighting.TextMate.Grammars.All\MarkdownRenderer.SyntaxHighlighting.TextMate.Grammars.All.csproj" />
     <None Include="README.md" Pack="true" PackagePath="" />

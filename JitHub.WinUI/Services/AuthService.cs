@@ -620,7 +620,7 @@ public sealed class AuthService : IAuthService
     {
         if (Program.CurrentLaunchOptions.IsPublicPreviewOverride)
         {
-            return GitHubClientService.PublicAccessToken;
+            return Program.CurrentLaunchOptions.ResolvePreviewAccessToken(GitHubClientService.PublicAccessToken);
         }
 
         if (userId <= 0)

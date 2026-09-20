@@ -150,7 +150,11 @@ internal sealed class MarkdownSemanticDocument
             // Inline semantic descendants share their parent's layout box. Index
             // only the block node so its TextProvider owns the full paragraph or
             // heading range instead of whichever inline span happened to be first.
-            if (node.InlineBox is { } inline && node.InlineRun is null)
+            if (node.InlineBox is { } inline &&
+                node.InlineRun is null &&
+                node.Role is MarkdownSemanticRole.Paragraph or
+                    MarkdownSemanticRole.Heading or
+                    MarkdownSemanticRole.CodeBlock)
                 nodeByInlineBox.TryAdd(inline, node);
             if (node.VectorSemanticIndex < 0 && node.Box is IHorizontalOverflowBox overflow)
                 nodeByHorizontalOverflow.TryAdd(overflow, node);

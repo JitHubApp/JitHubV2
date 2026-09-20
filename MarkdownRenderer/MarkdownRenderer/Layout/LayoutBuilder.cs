@@ -1152,7 +1152,8 @@ internal sealed class LayoutBuilder
             box,
             inline,
             htmlState,
-            inheritedAliasStart);
+            inheritedAliasStart,
+            Array.Empty<string>());
         if (htmlState.BudgetExceeded)
             AddHtmlBudgetNotice(box);
     }
@@ -1167,7 +1168,8 @@ internal sealed class LayoutBuilder
         InlineContainerBox box,
         ContainerInline inline,
         SafeHtmlInlineState htmlState,
-        int inheritedAliasStart)
+        int inheritedAliasStart,
+        IReadOnlyList<string> inheritedStyleModifiers)
     {
         foreach (var n in inline)
         {
@@ -1193,11 +1195,46 @@ internal sealed class LayoutBuilder
                 continue;
             }
 
-            InlineRun? run = n is HtmlInline html
-                ? htmlState.Process(html, _context)
-                : htmlState.Apply(BuildInline(n, box.BlockIndex));
+            if (n is EmphasisInline emphasis && ContainsLink(emphasis))
+            {
+                _context.RegisterMarkdownAttributes(n, box.BlockIndex);
+                int effectiveAliasStart = inheritedAliasStart >= 0 ? inheritedAliasStart : aliasStart;
+                AddInlines(
+                    box,
+                    emphasis,
+                    htmlState,
+                    effectiveAliasStart,
+                    AppendStyleModifier(
+                        inheritedStyleModifiers,
+                        GetEmphasisElementKey(emphasis)));
+                continue;
+            }
+
+            InlineRun? run;
+            if (n is HtmlInline html)
+            {
+                run = htmlState.Process(html, _context);
+            }
+            else if (n is LinkInline link &&
+                     TryGetOnlyHtmlImageChild(link, out HtmlInline? linkedHtmlImage) &&
+                     htmlState.IsStandaloneImage(linkedHtmlImage, _context))
+            {
+                run = htmlState.Process(
+                    linkedHtmlImage,
+                    _context,
+                    link.Url,
+                    link.Title,
+                    GetLinkedHtmlImageSourceSpan(link, linkedHtmlImage, _context));
+            }
+            else
+            {
+                run = htmlState.Apply(BuildInline(n, box.BlockIndex));
+            }
             if (run is not null)
             {
+                run.StyleModifierKeys = CombineStyleAliases(
+                    run.StyleModifierKeys,
+                    inheritedStyleModifiers);
                 int effectiveAliasStart = inheritedAliasStart >= 0 ? inheritedAliasStart : aliasStart;
                 run.StyleAliases = CombineStyleAliases(
                     run.StyleAliases,
@@ -1209,9 +1246,55 @@ internal sealed class LayoutBuilder
             {
                 _context.RegisterMarkdownAttributes(n, box.BlockIndex);
                 int effectiveAliasStart = inheritedAliasStart >= 0 ? inheritedAliasStart : aliasStart;
-                AddInlines(box, nested, htmlState, effectiveAliasStart);
+                AddInlines(
+                    box,
+                    nested,
+                    htmlState,
+                    effectiveAliasStart,
+                    inheritedStyleModifiers);
             }
         }
+    }
+
+    private static bool ContainsLink(ContainerInline container)
+    {
+        foreach (Inline child in container)
+        {
+            if (child is LinkInline)
+                return true;
+            if (child is ContainerInline nested && ContainsLink(nested))
+                return true;
+        }
+
+        return false;
+    }
+
+    private static string GetEmphasisElementKey(EmphasisInline emphasis)
+    {
+        if (emphasis.DelimiterChar == '~' && emphasis.DelimiterCount >= 2)
+            return MarkdownElementKeys.Strikethrough;
+        if (emphasis.DelimiterChar == '~')
+            return MarkdownElementKeys.Subscript;
+        if (emphasis.DelimiterChar == '^')
+            return MarkdownElementKeys.Superscript;
+        if (emphasis.DelimiterChar == '+')
+            return MarkdownElementKeys.Inserted;
+        if (emphasis.DelimiterChar == '=')
+            return MarkdownElementKeys.Marked;
+        return emphasis.DelimiterCount >= 2
+            ? MarkdownElementKeys.Strong
+            : MarkdownElementKeys.Emphasis;
+    }
+
+    private static IReadOnlyList<string> AppendStyleModifier(
+        IReadOnlyList<string> modifiers,
+        string elementKey)
+    {
+        var result = new string[modifiers.Count + 1];
+        for (int index = 0; index < modifiers.Count; index++)
+            result[index] = modifiers[index];
+        result[^1] = elementKey;
+        return result;
     }
 
     private static IReadOnlyList<string> CombineStyleAliases(
@@ -1373,6 +1456,92 @@ internal sealed class LayoutBuilder
         }
 
         return imageLink is not null;
+    }
+
+    private static bool TryGetOnlyHtmlImageChild(
+        ContainerInline container,
+        out HtmlInline htmlImage)
+    {
+        htmlImage = null!;
+        int count = 0;
+        foreach (Inline child in container)
+        {
+            if (++count > 1 || child is not HtmlInline html)
+            {
+                htmlImage = null!;
+                return false;
+            }
+
+            htmlImage = html;
+        }
+
+        return htmlImage is not null;
+    }
+
+    private static SourceSpan GetLinkedHtmlImageSourceSpan(
+        LinkInline link,
+        HtmlInline htmlImage,
+        MarkdownLayoutContext context)
+    {
+        string source = context.SourceMap.SourceText;
+        int tagStart = source.IndexOf(
+            htmlImage.Tag,
+            Math.Clamp(link.Span.Start, 0, source.Length),
+            StringComparison.Ordinal);
+        if (tagStart >= 0)
+        {
+            int sourceStart = tagStart > 0 && source[tagStart - 1] == '[' ? tagStart - 1 : tagStart;
+            int endExclusive = tagStart + htmlImage.Tag.Length;
+            if (endExclusive + 1 < source.Length &&
+                source[endExclusive] == ']' &&
+                source[endExclusive + 1] == '(')
+            {
+                int closingParenthesis = FindLinkClosingParenthesis(source, endExclusive + 2);
+                if (closingParenthesis >= 0)
+                    endExclusive = closingParenthesis + 1;
+            }
+
+            return new SourceSpan(sourceStart, endExclusive - sourceStart);
+        }
+
+        int start = Math.Max(0, Math.Min(link.Span.Start, htmlImage.Span.Start));
+        int inclusiveEnd = Math.Max(link.Span.End, htmlImage.Span.End);
+        if (!link.UrlSpan.IsEmpty)
+            inclusiveEnd = Math.Max(inclusiveEnd, link.UrlSpan.End);
+
+        inclusiveEnd = Math.Min(inclusiveEnd, source.Length - 1);
+        if (inclusiveEnd + 1 < source.Length && source[inclusiveEnd + 1] == ')')
+            inclusiveEnd++;
+
+        return new SourceSpan(start, Math.Max(0, inclusiveEnd - start + 1));
+    }
+
+    private static int FindLinkClosingParenthesis(string source, int destinationStart)
+    {
+        int depth = 1;
+        bool escaped = false;
+        for (int index = destinationStart; index < source.Length; index++)
+        {
+            char current = source[index];
+            if (escaped)
+            {
+                escaped = false;
+                continue;
+            }
+
+            if (current == '\\')
+            {
+                escaped = true;
+                continue;
+            }
+
+            if (current == '(')
+                depth++;
+            else if (current == ')' && --depth == 0)
+                return index;
+        }
+
+        return -1;
     }
 
     private static void FlattenContainer(ContainerInline container, System.Text.StringBuilder sb)

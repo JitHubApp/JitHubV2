@@ -17,7 +17,7 @@ MarkdownEngineBuilder
 | --- | --- |
 | `MarkdownRenderer.Core` | Profiles, immutable engines/documents, diagnostics, UTF-16 source maps, and declarative extensions. |
 | `MarkdownRenderer` | Native WinUI views, Fluent defaults, selection, accessibility, images, host services, and rendering. |
-| Feature packs | GFM, GitHub README behavior, safe HTML, Math, Mermaid, ThorVG SVG, and TextMate syntax highlighting. |
+| Feature packs | GFM, GitHub README behavior, safe HTML, Math, Mermaid, isolated resvg SVG, and TextMate syntax highlighting. |
 | Host application | Viewport composition, URI/image policy, commands, localization, optional hosted elements, and selected feature packs. |
 
 ## Viewport ownership

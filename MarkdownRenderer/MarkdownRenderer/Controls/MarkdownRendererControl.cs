@@ -184,6 +184,10 @@ public partial class MarkdownRendererControl : UserControl, IDisposable, IMarkdo
     // Set in OnUnloaded; checked in dispatcher lambdas to guard against post-unload execution.
     private bool _isUnloaded = true;
     private bool _isDisposed;
+    // The provider may raise CacheInvalidated from a worker or system-event
+    // callback. Keep the subscribed instance outside DependencyObject storage
+    // so the callback never reads a thread-affine dependency property.
+    private IMarkdownSvgRenderer? _subscribedSvgRenderer;
     private bool _canvasRenderHandlersAttached;
     private readonly PointerEventHandler _canvasPointerMovedHandler;
     private readonly PointerEventHandler _canvasPointerReleasedHandler;
@@ -554,6 +558,18 @@ public partial class MarkdownRendererControl : UserControl, IDisposable, IMarkdo
     // in-memory cache start loading (no-op) immediately after build.
     private readonly List<Layout.Boxes.ImageBox> _imagePlans = new();
     private readonly HashSet<Layout.Boxes.ImageBox> _subscribedImages = new();
+    private string? _prefetchedMarkdownSource;
+    private IMarkdownImagePrefetcher? _activeImagePrefetcher;
+    private MarkdownImageResolveContext? _activeImagePrefetchContext;
+    private int _prefetchedImageRegistryRevision = -1;
+    private PendingImagePrefetch? _pendingImagePrefetch;
+
+    private sealed record PendingImagePrefetch(
+        Markdig.Syntax.MarkdownDocument Document,
+        SafeHtmlRenderPolicy? SafeHtmlPolicy,
+        IMarkdownImagePrefetcher Prefetcher,
+        MarkdownImageResolveContext Context,
+        CancellationToken CancellationToken);
 
     private readonly record struct CodeBlockHighlightCacheKey(
         string? Language,
@@ -1070,6 +1086,60 @@ public partial class MarkdownRendererControl : UserControl, IDisposable, IMarkdo
     {
         get => (IMarkdownImageResolver?)GetValue(ImageResolverProperty);
         set => SetValue(ImageResolverProperty, value);
+    }
+
+    /// <summary>Dependency property backing <see cref="SvgRenderer"/>.</summary>
+    public static readonly DependencyProperty SvgRendererProperty =
+        DependencyProperty.Register(nameof(SvgRenderer), typeof(IMarkdownSvgRenderer),
+            typeof(MarkdownRendererControl),
+            new PropertyMetadata(null, static (d, e) =>
+                ((MarkdownRendererControl)d).OnSvgRendererChanged(e)));
+
+    /// <summary>
+    /// Gets or sets the shared provider used to render admitted static SVG
+    /// images. The control borrows this service and never disposes it.
+    /// </summary>
+    public IMarkdownSvgRenderer? SvgRenderer
+    {
+        get => (IMarkdownSvgRenderer?)GetValue(SvgRendererProperty);
+        set => SetValue(SvgRendererProperty, value);
+    }
+
+    private void OnSvgRendererChanged(DependencyPropertyChangedEventArgs args)
+    {
+        IMarkdownSvgRenderer? previous = Interlocked.Exchange(ref _subscribedSvgRenderer, null);
+        if (previous is not null)
+            previous.CacheInvalidated -= OnSvgRendererCacheInvalidated;
+        if (!_isUnloaded && args.NewValue is IMarkdownSvgRenderer current)
+        {
+            current.CacheInvalidated -= OnSvgRendererCacheInvalidated;
+            Volatile.Write(ref _subscribedSvgRenderer, current);
+            current.CacheInvalidated += OnSvgRendererCacheInvalidated;
+        }
+        RequestRebuild();
+    }
+
+    private void OnSvgRendererCacheInvalidated(object? sender, EventArgs args)
+    {
+        if (!ReferenceEquals(sender, Volatile.Read(ref _subscribedSvgRenderer)) ||
+            Volatile.Read(ref _isDisposed) ||
+            Volatile.Read(ref _isUnloaded))
+            return;
+
+        void InvalidateProviderRasters()
+        {
+            if (!ReferenceEquals(sender, Volatile.Read(ref _subscribedSvgRenderer)) ||
+                _isDisposed ||
+                _isUnloaded)
+                return;
+            RequestRebuild();
+            InvalidateCanvas();
+        }
+
+        if (DispatcherQueue.HasThreadAccess)
+            InvalidateProviderRasters();
+        else
+            _ = DispatcherQueue.TryEnqueue(InvalidateProviderRasters);
     }
 
     /// <summary>Dependency property backing <see cref="ImageBaseUri"/>.</summary>
@@ -2013,6 +2083,32 @@ public partial class MarkdownRendererControl : UserControl, IDisposable, IMarkdo
         return hasViewport;
     }
 
+    internal bool HasVisibleLoadingImagesForAutomation()
+    {
+        if (_imagePlans.Count == 0)
+            return false;
+
+        bool hasViewport = TryGetVisibleDocumentRect(out Windows.Foundation.Rect viewport);
+        foreach (Layout.Boxes.ImageBox image in _imagePlans)
+        {
+            if (image.AccessibilityState != MarkdownImageAccessibilityState.Loading)
+                continue;
+
+            if (!hasViewport ||
+                (image.Bounds.Width > 0 &&
+                 image.Bounds.Height > 0 &&
+                 image.Bounds.Right > viewport.Left &&
+                 image.Bounds.Left < viewport.Right &&
+                 image.Bounds.Bottom > viewport.Top &&
+                 image.Bounds.Top < viewport.Bottom))
+            {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
     internal void ScrollDocumentRectIntoView(Windows.Foundation.Rect rect, bool alignToTop)
     {
         if (_scroll is null)
@@ -2847,6 +2943,12 @@ public partial class MarkdownRendererControl : UserControl, IDisposable, IMarkdo
             t.Changed -= OnThemeRevisionChanged;
             t.Changed += OnThemeRevisionChanged;
         }
+        if (SvgRenderer is { } svgRenderer)
+        {
+            svgRenderer.CacheInvalidated -= OnSvgRendererCacheInvalidated;
+            Volatile.Write(ref _subscribedSvgRenderer, svgRenderer);
+            svgRenderer.CacheInvalidated += OnSvgRendererCacheInvalidated;
+        }
         RequestRebuild();
     }
 
@@ -2893,6 +2995,8 @@ public partial class MarkdownRendererControl : UserControl, IDisposable, IMarkdo
         {
             t.Changed -= OnThemeRevisionChanged;
         }
+        if (Interlocked.Exchange(ref _subscribedSvgRenderer, null) is { } svgRenderer)
+            svgRenderer.CacheInvalidated -= OnSvgRendererCacheInvalidated;
         _environmentSubscription?.Dispose();
         _environmentSubscription = null;
         UnregisterSelectionDismissalHook();
@@ -2933,6 +3037,11 @@ public partial class MarkdownRendererControl : UserControl, IDisposable, IMarkdo
         _codeBlockActionPlans.Clear();
         _codeBlockCopyButtonPool.Clear();
         _imagePlans.Clear();
+        _prefetchedMarkdownSource = null;
+        _activeImagePrefetcher = null;
+        _activeImagePrefetchContext = null;
+        _prefetchedImageRegistryRevision = -1;
+        _pendingImagePrefetch = null;
         _embedRects.Clear();
         _blockEmbedRects.Clear();
         ResetSelectionHandleDrag();
@@ -3515,6 +3624,17 @@ public partial class MarkdownRendererControl : UserControl, IDisposable, IMarkdo
         {
             MarkdownDiagnostics.WriteLine($"[MarkdownRendererControl] RenderCompleted subscriber failed: {ex.Message}");
         }
+
+        PendingImagePrefetch? pending = Interlocked.Exchange(ref _pendingImagePrefetch, null);
+        if (pending is not null)
+        {
+            _ = PrefetchImageSourcesObservedAsync(
+                pending.Document,
+                pending.SafeHtmlPolicy,
+                pending.Prefetcher,
+                pending.Context,
+                pending.CancellationToken);
+        }
     }
 
     private void RaiseRenderFailed(long generation, Exception exception)
@@ -3638,10 +3758,21 @@ public partial class MarkdownRendererControl : UserControl, IDisposable, IMarkdo
         var embedFactorySnapshot = EmbedFactory;
         var hostedElementFactorySnapshot = HostedElementFactory;
         var imageResolverSnapshot = ImageResolver;
+        var svgRendererSnapshot = SvgRenderer;
         Uri? imageBaseUriSnapshot = ImageBaseUri;
         string? imageDocumentPathSnapshot = ImageDocumentPath;
         MarkdownDocumentSource? imageDocumentSourceSnapshot = ImageDocumentSource;
         bool allowThirdPartyRemoteImagesSnapshot = AllowThirdPartyRemoteImages;
+        QueueImageSourcePrefetch(
+            parsed.Document,
+            parsed.SourceText,
+            layoutRegistry,
+            imageResolverSnapshot,
+            new MarkdownImageResolveContext(
+                imageBaseUriSnapshot,
+                imageDocumentPathSnapshot,
+                allowThirdPartyRemoteImagesSnapshot,
+                imageDocumentSourceSnapshot));
         bool codeBlockCopyEnabledSnapshot = IsCodeBlockCopyEnabled;
         bool taskListEditingEnabledSnapshot = IsTaskListEditingEnabled;
         var commandProviderSnapshot = CommandProvider;
@@ -3692,6 +3823,7 @@ public partial class MarkdownRendererControl : UserControl, IDisposable, IMarkdo
             CodeBlockLineNumberMode = lineNumberModeSnapshot,
             CodeBlockWrappingMode = wrappingModeSnapshot,
             ImageResolver = imageResolverSnapshot,
+            SvgRenderer = svgRendererSnapshot,
             ImageBaseUri = imageBaseUriSnapshot,
             ImageDocumentPath = imageDocumentPathSnapshot,
             ImageDocumentSource = imageDocumentSourceSnapshot,
@@ -3731,6 +3863,7 @@ public partial class MarkdownRendererControl : UserControl, IDisposable, IMarkdo
                 embedFactorySnapshot,
                 hostedElementFactorySnapshot,
                 imageResolverSnapshot,
+                svgRendererSnapshot,
                 commandProviderSnapshot,
                 stringProviderSnapshot);
         var builder = new LayoutBuilder(
@@ -5094,6 +5227,70 @@ public partial class MarkdownRendererControl : UserControl, IDisposable, IMarkdo
             return;
 
         _imagePlans.Add(image);
+    }
+
+    private void QueueImageSourcePrefetch(
+        Markdig.Syntax.MarkdownDocument document,
+        string markdownSource,
+        MarkdownExtensionRegistry registry,
+        IMarkdownImageResolver? resolver,
+        MarkdownImageResolveContext context)
+    {
+        if (resolver is not IMarkdownImagePrefetcher prefetcher ||
+            _imageLifetimeCts is not { IsCancellationRequested: false } imageLifetime)
+        {
+            return;
+        }
+
+        if (ReferenceEquals(_activeImagePrefetcher, prefetcher) &&
+            string.Equals(_prefetchedMarkdownSource, markdownSource, StringComparison.Ordinal) &&
+            Equals(_activeImagePrefetchContext, context) &&
+            _prefetchedImageRegistryRevision == registry.Revision)
+        {
+            return;
+        }
+
+        _activeImagePrefetcher = prefetcher;
+        _prefetchedMarkdownSource = markdownSource;
+        _activeImagePrefetchContext = context;
+        _prefetchedImageRegistryRevision = registry.Revision;
+        _pendingImagePrefetch = new PendingImagePrefetch(
+            document,
+            registry.SafeHtmlPolicy,
+            prefetcher,
+            context,
+            imageLifetime.Token);
+    }
+
+    private static async Task PrefetchImageSourcesObservedAsync(
+        Markdig.Syntax.MarkdownDocument document,
+        SafeHtmlRenderPolicy? safeHtmlPolicy,
+        IMarkdownImagePrefetcher prefetcher,
+        MarkdownImageResolveContext context,
+        CancellationToken cancellationToken)
+    {
+        try
+        {
+            IReadOnlyList<string> sources = await Task.Run(
+                    () => MarkdownImagePrefetchSourceCollector.Collect(
+                        document,
+                        safeHtmlPolicy,
+                        cancellationToken),
+                    cancellationToken)
+                .ConfigureAwait(false);
+            if (sources.Count > 0)
+            {
+                await prefetcher.PrefetchAsync(sources, context, cancellationToken)
+                    .ConfigureAwait(false);
+            }
+        }
+        catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
+        {
+        }
+        catch (Exception exception)
+        {
+            MarkdownDiagnostics.WriteLine($"[MarkdownRenderer] image prefetch failed: {exception.Message}");
+        }
     }
 
     private void RegisterImage(Layout.Boxes.ImageBox image)

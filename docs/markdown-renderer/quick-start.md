@@ -12,7 +12,7 @@ dotnet add package MarkdownRenderer
 
 Optional packages include `MarkdownRenderer.Gfm`, `MarkdownRenderer.GitHub`,
 `MarkdownRenderer.Html`, `MarkdownRenderer.Math`, `MarkdownRenderer.Mermaid`,
-`MarkdownRenderer.Svg.ThorVG`, and
+`MarkdownRenderer.Svg.Resvg`, and
 `MarkdownRenderer.SyntaxHighlighting.TextMate`. Add
 `MarkdownRenderer.SyntaxHighlighting.TextMate.Grammars.Common` for the curated
 language set or `.Grammars.All` for the complete pinned corpus. The integration

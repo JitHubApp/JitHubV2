@@ -32,15 +32,7 @@
   </ItemGroup>
   <ItemGroup>
     <!-- Rasterization is exercised through the compiled optional package. -->
-    <ProjectReference Include="..\MarkdownRenderer.Svg.ThorVG\MarkdownRenderer.Svg.ThorVG.csproj" />
-  </ItemGroup>
-  <ItemGroup>
-    <Content Include="..\MarkdownRenderer\native\win-$(MarkdownRendererNativeArch)\thorvg.dll"
-             Condition="'$(MarkdownRendererNativeArch)' != '' and Exists('..\MarkdownRenderer\native\win-$(MarkdownRendererNativeArch)\thorvg.dll')">
-      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
-      <TargetPath>thorvg.dll</TargetPath>
-      <Link>thorvg.dll</Link>
-    </Content>
+    <ProjectReference Include="..\MarkdownRenderer.Svg.Resvg\MarkdownRenderer.Svg.Resvg.csproj" />
   </ItemGroup>
   <ItemGroup>
     <None Update="Fixtures\**\*">

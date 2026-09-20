@@ -142,6 +142,12 @@ internal sealed class MarkdownLayoutContext
     /// <summary>Optional host-specific image resolver used before public URI loading.</summary>
     public IMarkdownImageResolver? ImageResolver { get; init; }
 
+    /// <summary>
+    /// Shared static-SVG provider borrowed from the host control. Image boxes
+    /// may own documents opened from it, but never the renderer itself.
+    /// </summary>
+    public IMarkdownSvgRenderer? SvgRenderer { get; init; }
+
     /// <summary>Optional base URI used to resolve relative image sources.</summary>
     public Uri? ImageBaseUri { get; init; }
 

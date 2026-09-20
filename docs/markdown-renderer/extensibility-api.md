@@ -214,7 +214,7 @@ diagram without distorting its internal layout.
 
 ## Feature packs
 
-The official GFM, GitHub, HTML, Math, Mermaid, ThorVG, and TextMate packages use
+The official GFM, GitHub, HTML, Math, Mermaid, resvg, and TextMate packages use
 the same opt-in packaging principle. Their presence must not be inferred from the
 lean base package. Math supplies CSharpMath-based vector typesetting; Mermaid
 supplies a selected-RID Merman engine with validated MMIR scene output. Both

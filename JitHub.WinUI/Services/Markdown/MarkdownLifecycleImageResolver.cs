@@ -1,4 +1,6 @@
 using System;
+using System.Collections.Generic;
+using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
 using MarkdownRenderer.Images;
@@ -9,13 +11,35 @@ namespace JitHub.Services.Markdown;
 /// Keeps lifecycle automation deterministic without changing production image resolution.
 /// Every source except the fixture's repository-relative image uses the real resolver.
 /// </summary>
-internal sealed class MarkdownLifecycleImageResolver(IMarkdownImageResolver inner) : IMarkdownImageResolver
+internal sealed class MarkdownLifecycleImageResolver(IMarkdownImageResolver inner) :
+    IMarkdownImageResolver,
+    IMarkdownImagePrefetcher
 {
     private const string RelativeFixturePath = "docs/images/lifecycle-relative.png";
     private const string BlockedRemoteFixtureUrl =
         "https://example.invalid/jithub-markdown-lifecycle.png";
     private static readonly byte[] RelativeFixtureBytes = Convert.FromBase64String(
         "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk+M/wHwAFAgI/azstAAAAAElFTkSuQmCC");
+
+    public ValueTask PrefetchAsync(
+        IReadOnlyList<string> sources,
+        MarkdownImageResolveContext context,
+        CancellationToken cancellationToken)
+    {
+        if (inner is not IMarkdownImagePrefetcher prefetcher)
+        {
+            return ValueTask.CompletedTask;
+        }
+
+        string[] forwarded = sources
+            .Where(source =>
+                !string.Equals(source.Trim(), RelativeFixturePath, StringComparison.Ordinal) &&
+                !string.Equals(source.Trim(), BlockedRemoteFixtureUrl, StringComparison.Ordinal))
+            .ToArray();
+        return forwarded.Length == 0
+            ? ValueTask.CompletedTask
+            : prefetcher.PrefetchAsync(forwarded, context, cancellationToken);
+    }
 
     public ValueTask<MarkdownImageResolution> ResolveAsync(
         string source,

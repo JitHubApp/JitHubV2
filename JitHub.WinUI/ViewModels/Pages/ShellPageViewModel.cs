@@ -502,9 +502,17 @@ public sealed partial class ShellPageViewModel : ViewModelBase
             return;
         }
 
-        EnsureHomeTab();
         RefreshUserDisplay();
-        SelectNavigationItem("home");
+        // A direct repository route must not instantiate Home first. Besides
+        // flashing unrelated content, that starts dashboard requests which
+        // contend with the visible repository and README downloads. The Home
+        // tab is still created on demand when the route closes or the user
+        // explicitly navigates there.
+        if (!Program.CurrentLaunchOptions.IsRepositoryPageOverride)
+        {
+            EnsureHomeTab();
+            SelectNavigationItem("home");
+        }
     }
 
     public async Task InitializeAsync(CancellationToken cancellationToken = default)
@@ -1316,7 +1324,9 @@ public sealed partial class ShellPageViewModel : ViewModelBase
             RepoPageType.CommitPage => CommitPageNavArg.CreateWithBranch(repository, branch),
             _ => string.IsNullOrWhiteSpace(branch)
                 ? CodeViewerNavArg.CreateWithRepo(repository)
-                : CodeViewerNavArg.CreateWithBranch(repository, branch)
+                : GitReferencePolicy.IsImmutableObjectId(branch)
+                    ? CodeViewerNavArg.CreateWithGitRef(repository, branch)
+                    : CodeViewerNavArg.CreateWithBranch(repository, branch)
         };
 
         return OpenRepositoryPage(repository, pageType, pageArg, branch);

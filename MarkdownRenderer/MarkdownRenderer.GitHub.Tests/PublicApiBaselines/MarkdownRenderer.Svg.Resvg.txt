@@ -1,0 +1,48 @@
+# MarkdownRenderer public API baseline
+# Format: 1
+# Assembly: MarkdownRenderer.Svg.Resvg
+# Generated from compiled assembly metadata; update with eng/Update-PublicApiBaselines.ps1.
+
+assembly MarkdownRenderer.Svg.Resvg
+
+public sealed class MarkdownRenderer.Svg.Resvg.ResvgMarkdownSvgRenderer : MarkdownRenderer.Images.IMarkdownSvgRenderer, System.IAsyncDisposable, System.IDisposable
+  public ResvgMarkdownSvgRenderer();
+  public ResvgMarkdownSvgRenderer(MarkdownRenderer.Svg.Resvg.ResvgMarkdownSvgRendererOptions options);
+  public System.Threading.Tasks.Task TrimCachesAsync(System.Threading.CancellationToken cancellationToken = null);
+  public System.Threading.Tasks.Task WarmUpAsync(System.Threading.CancellationToken cancellationToken = null);
+  public System.Threading.Tasks.ValueTask DisposeAsync();
+  public System.Threading.Tasks.ValueTask<MarkdownRenderer.Images.IMarkdownSvgDocument> OpenAsync(MarkdownRenderer.Images.MarkdownSvgOpenRequest request, System.Threading.CancellationToken cancellationToken = null);
+  public const string ResvgCommit = "68b14c4c3bccdb60344c777406486b54c36ec1a4";
+  public const string ResvgVersion = "0.48.1";
+  public event System.EventHandler? CacheInvalidated { add; remove; }
+  public long CacheGeneration { get; }
+  public void Dispose();
+  public void NotifyFontsChanged();
+
+public static class MarkdownRenderer.Svg.Resvg.ResvgMarkdownSvgRendererExtensions
+  public static MarkdownRenderer.Controls.MarkdownRendererControlBuilder WithResvgSvgRenderer(this MarkdownRenderer.Controls.MarkdownRendererControlBuilder builder, MarkdownRenderer.Svg.Resvg.ResvgMarkdownSvgRenderer renderer);
+
+public sealed class MarkdownRenderer.Svg.Resvg.ResvgMarkdownSvgRendererOptions
+  public ResvgMarkdownSvgRendererOptions(int maxSourceBytes = 8388608, int maxXmlDepth = 128, int maxNestedSvgDepth = 4, int maxStructuralCost = 100000, long maxEmbeddedImageBytes = 67108864, long maxEmbeddedImagePixels = 16777216, long maxOutputRasterBytes = 67108864, long maxFilterIntermediateBytes = 134217728, System.TimeSpan? requestDeadline = null, int queueCapacity = 32, long? parsedResourceCacheBytes = null, long? workerCommitBytes = null, string? workerExecutablePath = null);
+  public System.TimeSpan RequestDeadline { get; }
+  public const int HardMaxNestedSvgDepth = 4;
+  public const int HardMaxSourceBytes = 8388608;
+  public const int HardMaxStructuralCost = 100000;
+  public const int HardMaxXmlDepth = 128;
+  public const long HardMaxEmbeddedImageBytes = 67108864;
+  public const long HardMaxEmbeddedImagePixels = 16777216;
+  public const long HardMaxFilterIntermediateBytes = 134217728;
+  public const long HardMaxOutputRasterBytes = 67108864;
+  public int MaxNestedSvgDepth { get; }
+  public int MaxSourceBytes { get; }
+  public int MaxStructuralCost { get; }
+  public int MaxXmlDepth { get; }
+  public int QueueCapacity { get; }
+  public long MaxEmbeddedImageBytes { get; }
+  public long MaxEmbeddedImagePixels { get; }
+  public long MaxFilterIntermediateBytes { get; }
+  public long MaxOutputRasterBytes { get; }
+  public long ParsedResourceCacheBytes { get; }
+  public long WorkerCommitBytes { get; }
+  public static readonly System.TimeSpan HardMaxRequestDeadline;
+  public string? WorkerExecutablePath { get; }

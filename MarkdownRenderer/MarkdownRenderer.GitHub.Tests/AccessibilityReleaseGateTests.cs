@@ -1,5 +1,6 @@
 using MarkdownRenderer.Accessibility;
 using MarkdownRenderer.Document;
+using MarkdownRenderer.Gfm;
 using MarkdownRenderer.Gfm.Renderers;
 using MarkdownRenderer.Hosting;
 using MarkdownRenderer.Layout;
@@ -9,6 +10,7 @@ using MarkdownRenderer.Theming;
 using Markdig;
 using Markdig.Extensions.TaskLists;
 using Markdig.Syntax;
+using Markdig.Syntax.Inlines;
 using Microsoft.Graphics.Canvas;
 using Microsoft.UI.Xaml;
 using Windows.UI;
@@ -181,6 +183,42 @@ public sealed class AccessibilityReleaseGateTests
         Assert.Equal("Completed task", metadata.CurrentName);
         Assert.Equal(metadata.CurrentName, marker.AccessibleText);
         Assert.StartsWith("MarkdownTask_", metadata.AutomationId, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void GfmStrongContainerPreservesNestedLinkSemanticsAndFormatting()
+    {
+        Markdig.Syntax.MarkdownDocument parsed = Markdig.Markdown.Parse(
+            "**before [linked text](https://example.test) after**",
+            new MarkdownPipelineBuilder().Build());
+        var paragraph = Assert.IsType<ParagraphBlock>(Assert.Single(parsed));
+        Assert.IsType<EmphasisInline>(Assert.Single(paragraph.Inline!));
+
+        MarkdownLayoutContext context = CreateContext("en-US");
+        var box = new InlineContainerBox(context, MarkdownElementKeys.Body)
+        {
+            BlockIndex = context.NextBlockIndex(),
+        };
+        GfmChildBuilder.AddInlines(box, paragraph.Inline!);
+
+        Assert.Equal(3, box.Runs.Count);
+        LinkRun link = Assert.IsType<LinkRun>(box.Runs[1]);
+        Assert.Equal("linked text", link.Text);
+        Assert.Equal("https://example.test", link.Url);
+        Assert.All(
+            box.Runs,
+            static run => Assert.Contains(MarkdownElementKeys.Strong, run.StyleModifierKeys));
+
+        using var snapshot = new LayoutSnapshot(
+            new BlockBox[] { box },
+            context.SourceMap,
+            width: 300,
+            height: 40);
+        MarkdownSemanticNode semanticParagraph = Assert.Single(snapshot.SemanticDocument.Root.Children);
+        MarkdownSemanticNode semanticLink = Assert.Single(
+            semanticParagraph.Children,
+            static node => node.Role == MarkdownSemanticRole.Link);
+        Assert.Equal("linked text", snapshot.SemanticDocument.GetText(semanticLink));
     }
 
     [Fact]

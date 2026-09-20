@@ -4,7 +4,9 @@ JitHub is distributed under the MIT License. The MarkdownRenderer feature stack
 used by JitHub includes the following reviewed components:
 
 - MarkdownRenderer libraries: MIT
-- ThorVG 1.1.1 native SVG rasterizer: MIT
+- resvg 0.48.1 isolated SVG renderer and its reviewed Rust dependencies: MIT,
+  Apache-2.0, BSD, ISC, and other permissive licenses recorded in the packaged
+  resvg notice, provenance, and native dependency inventory
 - TextMateSharp, Onigwrap, and the curated TextMate grammars: MIT, BSD,
   Apache-2.0, and other permissive bundle licenses recorded in the packaged
   TextMate notice and provenance inventory

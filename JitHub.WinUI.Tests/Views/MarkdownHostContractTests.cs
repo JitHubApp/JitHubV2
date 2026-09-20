@@ -12,6 +12,52 @@ namespace JitHub.WinUI.Tests.Views;
 public sealed class MarkdownHostContractTests
 {
     [Fact]
+    public void DirectRepositoryLaunchDoesNotStartUnrelatedHomeOrRailWork()
+    {
+        string root = FindRepositoryRoot();
+        string shellViewModel = File.ReadAllText(Path.Combine(
+            root,
+            "JitHub.WinUI",
+            "ViewModels",
+            "Pages",
+            "ShellPageViewModel.cs"));
+        string shellPage = File.ReadAllText(Path.Combine(
+            root,
+            "JitHub.WinUI",
+            "Views",
+            "Pages",
+            "ShellPage.xaml.cs"));
+
+        Assert.Contains(
+            "if (!Program.CurrentLaunchOptions.IsRepositoryPageOverride)",
+            shellViewModel,
+            StringComparison.Ordinal);
+        Assert.Contains("EnsureHomeTab();", shellViewModel, StringComparison.Ordinal);
+        Assert.Contains(
+            "if (!Program.CurrentLaunchOptions.IsRepositoryPageOverride)",
+            shellPage,
+            StringComparison.Ordinal);
+        Assert.Contains(
+            "QueueShellWork(\"shell.initialize\", InitializeShellAsync);",
+            shellPage,
+            StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void DirectRepositorySnapshotLaunchUsesAnImmutableGitRef()
+    {
+        string source = File.ReadAllText(Path.Combine(
+            FindRepositoryRoot(),
+            "JitHub.WinUI",
+            "ViewModels",
+            "Pages",
+            "ShellPageViewModel.cs"));
+
+        Assert.Contains("GitReferencePolicy.IsImmutableObjectId(branch)", source, StringComparison.Ordinal);
+        Assert.Contains("CodeViewerNavArg.CreateWithGitRef(repository, branch)", source, StringComparison.Ordinal);
+    }
+
+    [Fact]
     public void EveryXamlMarkdownHost_DeclaresCanonicalHostKind()
     {
         string root = FindRepositoryRoot();
@@ -332,13 +378,20 @@ public sealed class MarkdownHostContractTests
             "Controls",
             "Common",
             "MarkdownViewer.xaml.cs"));
+        string shell = File.ReadAllText(Path.Combine(
+            root,
+            "JitHub.WinUI",
+            "Views",
+            "Pages",
+            "ShellPage.xaml.cs"));
+        string mainWindow = File.ReadAllText(Path.Combine(root, "JitHub.WinUI", "MainWindow.xaml.cs"));
 
         foreach (string projectName in new[]
         {
             "MarkdownRenderer.GitHub",
             "MarkdownRenderer.Math",
             "MarkdownRenderer.Mermaid",
-            "MarkdownRenderer.Svg.ThorVG",
+            "MarkdownRenderer.Svg.Resvg",
             "MarkdownRenderer.SyntaxHighlighting.TextMate",
             "MarkdownRenderer.SyntaxHighlighting.TextMate.Grammars.Common",
         })
@@ -352,9 +405,18 @@ public sealed class MarkdownHostContractTests
         Assert.Contains("new CommonTextMateGrammarProvider()", runtime, StringComparison.Ordinal);
         Assert.Contains("ownsProvider: true", runtime, StringComparison.Ordinal);
         Assert.Contains("JitHubMarkdownRuntime.CodeHighlighter", viewer, StringComparison.Ordinal);
+        Assert.Contains("JitHubMarkdownRuntime.SvgRenderer", viewer, StringComparison.Ordinal);
+        Assert.Contains("_renderer.ImageResolver = _imageResolver", viewer, StringComparison.Ordinal);
+        Assert.Contains("_renderer.AllowThirdPartyRemoteImages = ShouldAllowThirdPartyRemoteImages()", viewer, StringComparison.Ordinal);
+        Assert.Contains("new ResvgMarkdownSvgRenderer()", runtime, StringComparison.Ordinal);
+        Assert.Contains("DeferredFrameAction.Schedule", shell, StringComparison.Ordinal);
+        Assert.Contains("WarmUpSvgRendererAsync", shell, StringComparison.Ordinal);
+        Assert.Contains("NotifyFontsChangedAsync", mainWindow, StringComparison.Ordinal);
+        Assert.Contains("WmFontChange", mainWindow, StringComparison.Ordinal);
+        Assert.Contains("Task.Run(() => ShutdownCoreAsync", runtime, StringComparison.Ordinal);
         Assert.Contains("new PropertyMetadata(true, OnRendererPropertyChanged)", viewer, StringComparison.Ordinal);
-        Assert.Contains("JitHubMarkdownRuntime.Shutdown()", File.ReadAllText(Path.Combine(root, "JitHub.WinUI", "App.xaml.cs")), StringComparison.Ordinal);
-        Assert.Contains("JitHubMarkdownRuntime.Shutdown()", File.ReadAllText(Path.Combine(root, "JitHub.WinUI", "MainWindow.xaml.cs")), StringComparison.Ordinal);
+        Assert.Contains("JitHubMarkdownRuntime.ShutdownForProcessExit()", File.ReadAllText(Path.Combine(root, "JitHub.WinUI", "App.xaml.cs")), StringComparison.Ordinal);
+        Assert.Contains("await JitHubMarkdownRuntime.ShutdownAsync()", mainWindow, StringComparison.Ordinal);
         Assert.Contains("THIRD-PARTY-NOTICES.md", project, StringComparison.Ordinal);
         Assert.Contains("MPL2-SOURCE.md", project, StringComparison.Ordinal);
         Assert.Contains("NATIVE_RUST_DEPENDENCIES.json", project, StringComparison.Ordinal);
@@ -722,6 +784,29 @@ public sealed class MarkdownHostContractTests
             .ToArray();
 
         Assert.Empty(offenders);
+    }
+
+    [Fact]
+    public void RepositoryMarkdownPreview_LazilyCreatesTheInactivePlainEditor()
+    {
+        string root = FindRepositoryRoot();
+        string previewRoot = Path.Combine(
+            root,
+            "JitHub.WinUI",
+            "Views",
+            "Controls",
+            "CodeViewer",
+            "Renderers");
+        XDocument xaml = XDocument.Load(Path.Combine(previewRoot, "MarkdownPreview.xaml"));
+        string source = File.ReadAllText(Path.Combine(previewRoot, "MarkdownPreview.xaml.cs"));
+
+        Assert.DoesNotContain(
+            xaml.Descendants(),
+            element => element.Name.LocalName == "CodeEditorControl");
+        Assert.Contains("x:Name=\"PlainPanelHost\"", File.ReadAllText(Path.Combine(previewRoot, "MarkdownPreview.xaml")), StringComparison.Ordinal);
+        Assert.Contains("private void EnsurePlainPanel()", source, StringComparison.Ordinal);
+        Assert.Contains("if (!rich)", source, StringComparison.Ordinal);
+        Assert.Contains("_plainPanel = new CodeEditorControl", source, StringComparison.Ordinal);
     }
 
     private static string FindRepositoryRoot()

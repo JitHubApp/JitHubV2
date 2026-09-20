@@ -147,7 +147,7 @@ $failures = [Collections.Generic.List[string]]::new()
 foreach ($evidence in $packageEvidence) {
     $archive = [IO.Compression.ZipFile]::OpenRead($evidence.PackagePath)
     try {
-        $nativeEntries = @($archive.Entries | Where-Object { $_.FullName -match '(?i)^runtimes/win-(x86|x64|arm64)/native/.+\.dll$' } | Sort-Object FullName)
+        $nativeEntries = @($archive.Entries | Where-Object { $_.FullName -match '(?i)^runtimes/win-(x86|x64|arm64)/native/.+\.(dll|exe)$' } | Sort-Object FullName)
         $packageRule = @($allowlistPackages | Where-Object { $_.packageId -eq $evidence.Id }) | Select-Object -First 1
         $packageResults.Add([pscustomobject][ordered]@{
             packageId = $evidence.Id
@@ -163,7 +163,7 @@ foreach ($evidence in $packageEvidence) {
             continue
         }
         if ($null -eq $packageRule) {
-            $failures.Add("$($evidence.Id): package contains native DLLs but has no ABI allowlist rule.")
+            $failures.Add("$($evidence.Id): package contains native executables but has no ABI allowlist rule.")
         }
 
         foreach ($entry in $nativeEntries) {

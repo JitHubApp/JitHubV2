@@ -1,0 +1,157 @@
+name: Top 500 README browser parity
+
+on:
+  schedule:
+    - cron: "17 7 * * 1"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: markdown-readme-top500-${{ github.ref }}
+  cancel-in-progress: false
+
+env:
+  DOTNET_CLI_TELEMETRY_OPTOUT: "true"
+  DOTNET_CLI_USE_MSBUILD_SERVER: "0"
+  DOTNET_NOLOGO: "true"
+  MSBUILDDISABLENODEREUSE: "1"
+  NUGET_XMLDOC_MODE: skip
+  GH_TOKEN: ${{ github.token }}
+
+jobs:
+  corpus:
+    name: Pin the current top-500 corpus
+    runs-on: windows-latest
+    timeout-minutes: 20
+    defaults:
+      run:
+        shell: pwsh
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+
+      - name: Generate immutable repository and README manifest
+        run: |
+          $output = Join-Path $env:RUNNER_TEMP 'readme-corpus\top-repositories.json'
+          New-Item -ItemType Directory -Force -Path (Split-Path -Parent $output) | Out-Null
+          .\eng\readme-audit\New-TopReadmeManifest.ps1 -Count 500 -OutputPath $output
+
+      - name: Upload pinned corpus
+        uses: actions/upload-artifact@v4
+        with:
+          name: readme-top500-corpus
+          path: ${{ runner.temp }}/readme-corpus/top-repositories.json
+          if-no-files-found: error
+          retention-days: 14
+
+  audit:
+    name: Audit ranks ${{ matrix.start }}-${{ matrix.end }}
+    needs: corpus
+    runs-on: windows-latest
+    timeout-minutes: 360
+    strategy:
+      fail-fast: false
+      max-parallel: 4
+      matrix:
+        include:
+          - { start: 1, end: 50 }
+          - { start: 51, end: 100 }
+          - { start: 101, end: 150 }
+          - { start: 151, end: 200 }
+          - { start: 201, end: 250 }
+          - { start: 251, end: 300 }
+          - { start: 301, end: 350 }
+          - { start: 351, end: 400 }
+          - { start: 401, end: 450 }
+          - { start: 451, end: 500 }
+    defaults:
+      run:
+        shell: pwsh
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+
+      - name: Set up .NET 10
+        uses: actions/setup-dotnet@v4
+        with:
+          global-json-file: ./global.json
+
+      - name: Set up Node.js 22 for the Edge oracle
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      - name: Download pinned corpus
+        uses: actions/download-artifact@v4
+        with:
+          name: readme-top500-corpus
+          path: ${{ runner.temp }}/readme-corpus
+
+      - name: Compare every README with GitHub in Edge
+        run: |
+          $output = Join-Path $env:RUNNER_TEMP 'readme-audit'
+          .\eng\Invoke-TopReadmeAudit.ps1 `
+            -StartRank ${{ matrix.start }} `
+            -Count 50 `
+            -Configuration Release `
+            -ManifestPath (Join-Path $env:RUNNER_TEMP 'readme-corpus\top-repositories.json') `
+            -OutputRoot $output
+
+      - name: Upload full-page evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: readme-audit-${{ matrix.start }}-${{ matrix.end }}
+          path: |
+            ${{ runner.temp }}/readme-audit/summary.json
+            ${{ runner.temp }}/readme-audit/summary.md
+            ${{ runner.temp }}/readme-audit/cases/**/result.json
+            ${{ runner.temp }}/readme-audit/cases/**/browser/**
+            ${{ runner.temp }}/readme-audit/cases/**/native/**
+            !${{ runner.temp }}/readme-audit/cases/**/.runtime/**
+          if-no-files-found: warn
+          retention-days: 14
+
+  consolidate:
+    name: Consolidate all 500 results
+    if: always()
+    needs: audit
+    runs-on: windows-latest
+    timeout-minutes: 20
+    defaults:
+      run:
+        shell: pwsh
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+
+      - name: Download every audit shard
+        uses: actions/download-artifact@v4
+        with:
+          pattern: readme-audit-*
+          path: ${{ runner.temp }}/readme-audit-shards
+          merge-multiple: true
+
+      - name: Require one complete top-500 verdict
+        run: |
+          .\eng\readme-audit\Merge-TopReadmeAudit.ps1 `
+            -EvidenceRoot (Join-Path $env:RUNNER_TEMP 'readme-audit-shards') `
+            -ExpectedCount 500 `
+            -OutputDirectory (Join-Path $env:RUNNER_TEMP 'readme-audit-consolidated')
+
+      - name: Upload consolidated verdict
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: readme-audit-consolidated
+          path: ${{ runner.temp }}/readme-audit-consolidated/**
+          if-no-files-found: warn
+          retention-days: 30

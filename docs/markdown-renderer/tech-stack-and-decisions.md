@@ -6,7 +6,7 @@
 | Markdig | Internal CommonMark/GFM parsing implementation. |
 | WinUI / Windows App SDK | Native views, input, theme resources, hosted elements, and UI Automation. |
 | Win2D / DirectWrite | Native paint, shaping, measurement, and hit testing. |
-| ThorVG | Optional native SVG rasterization feature pack. |
+| resvg 0.48.1 | Optional isolated static-SVG rendering provider. |
 | TextMate | Optional syntax-highlighting integration with separate grammar packs. |
 
 ## Native viewer instead of WebView
@@ -26,11 +26,11 @@ documents without exposing their private layout or drawing implementation.
 ## Optional capabilities
 
 The base `MarkdownRenderer` package stays lean. GitHub behavior, safe HTML, Math,
-Mermaid, ThorVG, TextMate, and grammar payloads require explicit package choices.
+Mermaid, resvg, TextMate, and grammar payloads require explicit package choices.
 The default presentation follows WinUI/Fluent resources; GitHub behavior is not
 silently imposed on every app.
 
-ThorVG is kept out of the base package because native architecture payloads are
+resvg is kept out of the base package because architecture-specific workers are
 a real size and deployment decision. TextMate grammar resources are split for
 the same reason. Math and Mermaid provide bounded native implementations with
 accessible, atomic source fallbacks; their physical-device and release-evidence

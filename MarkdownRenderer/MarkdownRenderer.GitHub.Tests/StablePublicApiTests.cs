@@ -7,7 +7,7 @@ using MarkdownRenderer.Html;
 using MarkdownRenderer.Hosting;
 using MarkdownRenderer.Math;
 using MarkdownRenderer.Mermaid;
-using MarkdownRenderer.Svg.ThorVG;
+using MarkdownRenderer.Svg.Resvg;
 using MarkdownRenderer.SyntaxHighlighting.TextMate;
 using MarkdownRenderer.SyntaxHighlighting.TextMate.Grammars.All;
 using MarkdownRenderer.SyntaxHighlighting.TextMate.Grammars.Common;
@@ -39,7 +39,7 @@ public sealed class StablePublicApiTests
             typeof(SafeHtmlFeature).Assembly,
             typeof(MathFeature).Assembly,
             typeof(MermaidRenderer).Assembly,
-            typeof(ThorVgFeature).Assembly,
+            typeof(ResvgMarkdownSvgRenderer).Assembly,
             typeof(TextMateSyntaxHighlightingExtensions).Assembly,
             typeof(CommonTextMateGrammarProvider).Assembly,
             typeof(AllTextMateGrammarProvider).Assembly,

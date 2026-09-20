@@ -1,4 +1,6 @@
+using System.Buffers;
 using MarkdownRenderer.Document;
+using MarkdownRenderer.Images;
 using MarkdownRenderer.Layout;
 using MarkdownRenderer.Layout.Boxes;
 using MarkdownRenderer.Parsing;
@@ -149,6 +151,7 @@ public sealed class ImageBaseUriIntegrationTests
         {
             ImageBaseUri = imageBaseUri,
             ImageCancellationToken = CancellationToken.None,
+            SvgRenderer = TestSvgRenderer.Instance,
         };
     }
 
@@ -165,4 +168,43 @@ public sealed class ImageBaseUriIntegrationTests
     private static string CreateSvg(string title) =>
         $"<svg xmlns='http://www.w3.org/2000/svg' width='12' height='8'>" +
         $"<title>{title}</title><rect width='12' height='8' fill='#336699'/></svg>";
+
+    private sealed class TestSvgRenderer : IMarkdownSvgRenderer
+    {
+        internal static TestSvgRenderer Instance { get; } = new();
+
+        public ValueTask<IMarkdownSvgDocument> OpenAsync(
+            MarkdownSvgOpenRequest request,
+            CancellationToken cancellationToken = default)
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+            return ValueTask.FromResult<IMarkdownSvgDocument>(new TestSvgDocument());
+        }
+    }
+
+    private sealed class TestSvgDocument : IMarkdownSvgDocument
+    {
+        public MarkdownSvgDocumentInfo Info { get; } = new();
+
+        public ValueTask<MarkdownSvgRaster> RenderAsync(
+            MarkdownSvgRenderRequest request,
+            CancellationToken cancellationToken = default)
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+            int length = checked(request.TargetWidthPixels * request.TargetHeightPixels * 4);
+            IMemoryOwner<byte> owner = MemoryPool<byte>.Shared.Rent(length);
+            owner.Memory.Span[..length].Clear();
+            return ValueTask.FromResult(new MarkdownSvgRaster(
+                owner,
+                length,
+                request.TargetWidthPixels,
+                request.TargetHeightPixels,
+                checked(request.TargetWidthPixels * 4),
+                request.PixelFormat));
+        }
+
+        public void Dispose()
+        {
+        }
+    }
 }
