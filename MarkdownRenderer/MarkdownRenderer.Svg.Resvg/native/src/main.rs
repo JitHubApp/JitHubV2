@@ -1184,7 +1184,6 @@ fn inspect_nested_svg(
     Ok(())
 }
 
-#[allow(clippy::too_many_arguments)]
 fn may_contain_css_resource_or_active_content(
     attribute_name: &str,
     value: &str,
@@ -1207,6 +1206,7 @@ fn may_contain_css_resource_or_active_content(
         || lower.contains("transition"))
 }
 
+#[allow(clippy::too_many_arguments)]
 fn inspect_css(
     value: &str,
     request: &Request,
