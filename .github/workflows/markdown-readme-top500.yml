@@ -4,6 +4,7 @@ on:
   push:
     paths:
       - ".github/workflows/markdown-readme-top500.yml"
+      - "eng/readme-audit/New-TopReadmeManifest.ps1"
   schedule:
     - cron: "17 7 * * 1"
   workflow_dispatch:

@@ -54,6 +54,11 @@ rendered `article.markdown-body`, JitHub must make the same choice. Such a case
 still gates process stability, content presence, and unavailable resources, but
 is excluded from rich-render fidelity and timing percentiles.
 
+A top-ranked repository with no README remains in the corpus; it is not silently
+replaced by a lower-ranked repository. The audit requires both GitHub and JitHub
+to expose no rendered README for that immutable commit, while still enforcing
+clean startup, navigation, and shutdown.
+
 The scheduled/manual workflow runs ten isolated 50-repository shards and then
 requires a consolidated, duplicate-free set of ranks 1–500. Missing shards or
 case files fail the final job; a partial run cannot be reported as a top-500

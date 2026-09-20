@@ -139,6 +139,10 @@ internal static partial class ReadmeAuditProbe
         try
         {
             browser = RunBrowserOracle(options, browserScript, repository, caseDirectory);
+            if (!repository.Readme.Available && browser.ReadmeRendered != false)
+            {
+                failures.Add("GitHub unexpectedly rendered a README for a repository without one.");
+            }
             if (browser.Semantic.UnavailableImages != 0)
             {
                 failures.Add($"GitHub web reference has {browser.Semantic.UnavailableImages} unavailable image(s).");
@@ -235,7 +239,7 @@ internal static partial class ReadmeAuditProbe
             string snapshotUrl = GetSnapshotUrl(repository);
             if (cached.SchemaVersion != 2 ||
                 !string.Equals(cached.RepositoryUrl, snapshotUrl, StringComparison.OrdinalIgnoreCase) ||
-                !string.Equals(cached.ReadmeSha, repository.Readme.Sha, StringComparison.Ordinal))
+                !string.Equals(cached.ReadmeSha, GetReadmeEvidenceIdentity(repository), StringComparison.Ordinal))
             {
                 throw new InvalidDataException(
                     "Cached Edge README oracle report does not match the requested repository.");
@@ -253,7 +257,7 @@ internal static partial class ReadmeAuditProbe
         };
         startInfo.ArgumentList.Add(browserScript);
         startInfo.ArgumentList.Add($"--url={GetSnapshotUrl(repository)}");
-        startInfo.ArgumentList.Add($"--readme-sha={repository.Readme.Sha}");
+        startInfo.ArgumentList.Add($"--readme-sha={GetReadmeEvidenceIdentity(repository)}");
         startInfo.ArgumentList.Add($"--out={output}");
         startInfo.ArgumentList.Add($"--width={ViewportWidth}");
         startInfo.ArgumentList.Add("--height=700");
@@ -285,6 +289,9 @@ internal static partial class ReadmeAuditProbe
 
     private static string GetSnapshotUrl(ReadmeAuditRepository repository) =>
         $"{repository.Url.TrimEnd('/')}/tree/{repository.CommitSha}";
+
+    private static string GetReadmeEvidenceIdentity(ReadmeAuditRepository repository) =>
+        repository.Readme.Available ? repository.Readme.Sha : "absent";
 
     private static NativeAuditResult RunNativeAudit(
         CaptureOptions options,
@@ -363,6 +370,59 @@ internal static partial class ReadmeAuditProbe
             NativeMethods.ResizeWindow(windowHandle, ViewportWidth, ViewportHeight);
             NativeMethods.ActivateForKeyboard(windowHandle);
             Thread.Sleep(300);
+
+            if (!repository.Readme.Available)
+            {
+                AutomationElement tree = WaitForAutomationElement(
+                    window,
+                    "RepoCodeFileTree",
+                    TimeSpan.FromSeconds(60),
+                    Path.Combine(output, "missing-readme-timeout.png"));
+                Stopwatch treeProbe = Stopwatch.StartNew();
+                string treeText = WaitForRepositoryTreeReady(tree, TimeSpan.FromSeconds(45));
+                treeProbe.Stop();
+                if (window.FindFirstDescendant(cf => cf.ByAutomationId(HostAutomationId)) is not null)
+                {
+                    throw new InvalidOperationException(
+                        "JitHub exposed a rendered README for a repository without one.");
+                }
+
+                double absentColdStartMs = wall.Elapsed.TotalMilliseconds;
+                double absentReadyMs = absentColdStartMs - appReadyElapsedMs;
+                Stopwatch capture = Stopwatch.StartNew();
+                (int width, int height) = CaptureHost(
+                    window,
+                    tree,
+                    Path.Combine(output, "missing-readme-view.png"));
+                capture.Stop();
+                appProcess.Refresh();
+                double absentCpuMs = Math.Max(
+                    0,
+                    appProcess.TotalProcessorTime.TotalMilliseconds - cpuAtReadyMs);
+                int absentRawUnavailable = CountNonEmptyLines(imageEvidence);
+                string? absentFailure = File.Exists(renderFailure) ? File.ReadAllText(renderFailure) : null;
+                long absentPeakWorkingSetBytes = appProcess.PeakWorkingSet64;
+                bool absentCleanExit = CloseAndWait(window, appProcess, launcher);
+                window = null;
+                return new NativeAuditResult
+                {
+                    FirstRenderMs = absentReadyMs,
+                    ExperienceFirstRenderMs = absentReadyMs,
+                    ColdStartToFirstRenderMs = absentColdStartMs,
+                    FullTraversalMs = absentReadyMs,
+                    AuditOverheadMs = treeProbe.Elapsed.TotalMilliseconds + capture.Elapsed.TotalMilliseconds,
+                    FirstRenderCpuMs = absentCpuMs,
+                    CpuMs = absentCpuMs,
+                    PeakWorkingSetBytes = absentPeakWorkingSetBytes,
+                    Text = treeText,
+                    Width = width,
+                    EstimatedContentHeight = height,
+                    UnavailableImages = absentRawUnavailable,
+                    RawUnavailableImages = absentRawUnavailable,
+                    RenderFailure = absentFailure,
+                    CleanExit = absentCleanExit,
+                };
+            }
 
             TryOpenReadme(window, repository.Readme.Path, TimeSpan.FromSeconds(45));
             if (!expectRenderedReadme)
@@ -1008,6 +1068,39 @@ internal static partial class ReadmeAuditProbe
             $"The last window surface was saved to '{timeoutScreenshotPath}'.");
     }
 
+    private static string WaitForRepositoryTreeReady(
+        AutomationElement tree,
+        TimeSpan timeout)
+    {
+        Stopwatch stopwatch = Stopwatch.StartNew();
+        string previous = string.Empty;
+        int stable = 0;
+        while (stopwatch.Elapsed < timeout)
+        {
+            AutomationElement[] items = tree.FindAllDescendants(cf =>
+                cf.ByControlType(ControlType.TreeItem));
+            string current = NormalizeText(string.Join(
+                '\n',
+                items.Select(item => item.Name).Where(name => !string.IsNullOrWhiteSpace(name))));
+            if (current.Length > 0 && string.Equals(current, previous, StringComparison.Ordinal))
+            {
+                if (++stable >= 3)
+                {
+                    return current;
+                }
+            }
+            else
+            {
+                previous = current;
+                stable = 0;
+            }
+
+            Thread.Sleep(150);
+        }
+
+        throw new TimeoutException("JitHub did not expose a stable repository file tree.");
+    }
+
     private static string WaitForStableText(AutomationElement host, TimeSpan timeout)
     {
         var textPattern = host.Patterns.Text.PatternOrDefault
@@ -1554,6 +1647,7 @@ internal sealed class ReadmeAuditRepository
 
 internal sealed class ReadmeAuditReadme
 {
+    public bool Available { get; init; }
     public string Path { get; init; } = string.Empty;
     public string Sha { get; init; } = string.Empty;
     public string HtmlUrl { get; init; } = string.Empty;

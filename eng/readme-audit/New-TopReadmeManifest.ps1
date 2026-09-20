@@ -62,31 +62,43 @@ $rankedRepositories = for ($index = 0; $index -lt $repositories.Count; $index++)
 # both GitHub's API and constrained CI hosts, then restore deterministic rank
 # order before writing the manifest.
 $manifestRepositories = @(@($rankedRepositories | ForEach-Object -Parallel {
+    function Invoke-GitHubJson([string]$route, [string]$ref, [bool]$allowNotFound) {
+        for ($attempt = 1; $attempt -le 4; $attempt++) {
+            $apiOutput = if ([string]::IsNullOrWhiteSpace($ref)) {
+                & gh api -X GET $route 2>&1
+            }
+            else {
+                & gh api -X GET $route -f "ref=$ref" 2>&1
+            }
+            $exitCode = $LASTEXITCODE
+            $text = $apiOutput -join [Environment]::NewLine
+            if ($exitCode -eq 0 -and -not [string]::IsNullOrWhiteSpace($text)) {
+                return $text | ConvertFrom-Json
+            }
+
+            if ($allowNotFound -and $text -match 'HTTP 404') {
+                return $null
+            }
+
+            if ($attempt -lt 4) {
+                Start-Sleep -Milliseconds (250 * [Math]::Pow(2, $attempt - 1))
+                continue
+            }
+
+            throw "GitHub API failed after $attempt attempts for '$route': $text"
+        }
+    }
+
     $ranked = $_
     $repository = $ranked.Repository
-    $commit = $null
-    $readme = $null
-    $response = $null
-    try {
-        $commitResponse = & gh api -X GET `
-            "repos/$($repository.full_name)/commits/$($repository.default_branch)" 2>$null
-        $commitText = $commitResponse -join [Environment]::NewLine
-        if ($LASTEXITCODE -eq 0 -and -not [string]::IsNullOrWhiteSpace($commitText)) {
-            $commit = $commitText | ConvertFrom-Json
-        }
-
-        if ($null -ne $commit) {
-            $response = & gh api -X GET "repos/$($repository.full_name)/readme" `
-                -f "ref=$($commit.sha)" 2>$null
-        }
-        $responseText = $response -join [Environment]::NewLine
-        if ($LASTEXITCODE -eq 0 -and -not [string]::IsNullOrWhiteSpace($responseText)) {
-            $readme = $responseText | ConvertFrom-Json
-        }
-    }
-    catch {
-        $readme = $null
-    }
+    $commit = Invoke-GitHubJson `
+        "repos/$($repository.full_name)/commits/$($repository.default_branch)" `
+        "" `
+        $false
+    $readme = Invoke-GitHubJson `
+        "repos/$($repository.full_name)/readme" `
+        ([string]$commit.sha) `
+        $true
 
     [pscustomobject][ordered]@{
         rank = [int]$ranked.Rank
@@ -106,14 +118,14 @@ $manifestRepositories = @(@($rankedRepositories | ForEach-Object -Parallel {
             downloadUrl = if ($null -ne $readme) { [string]$readme.download_url } else { "" }
         }
     }
-} -ThrottleLimit 8) | Sort-Object rank)
+} -ThrottleLimit 6) | Sort-Object rank)
 
-$missingSnapshots = @($manifestRepositories | Where-Object {
-    [string]::IsNullOrWhiteSpace($_.commitSha) -or -not $_.readme.available
+$missingCommits = @($manifestRepositories | Where-Object {
+    [string]::IsNullOrWhiteSpace($_.commitSha)
 })
-if ($missingSnapshots.Count -ne 0) {
-    $names = ($missingSnapshots | Select-Object -First 10 -ExpandProperty fullName) -join ", "
-    throw "Could not pin a commit and README for $($missingSnapshots.Count) repositories: $names"
+if ($missingCommits.Count -ne 0) {
+    $names = ($missingCommits | Select-Object -First 10 -ExpandProperty fullName) -join ", "
+    throw "Could not pin a commit for $($missingCommits.Count) repositories: $names"
 }
 
 $manifest = [ordered]@{
@@ -127,4 +139,5 @@ $manifest = [ordered]@{
 $temporaryPath = "$OutputPath.tmp"
 $manifest | ConvertTo-Json -Depth 8 | Set-Content -LiteralPath $temporaryPath -Encoding utf8
 Move-Item -LiteralPath $temporaryPath -Destination $OutputPath -Force
-Write-Host "Pinned $Count repositories to '$OutputPath'."
+$withoutReadme = @($manifestRepositories | Where-Object { -not $_.readme.available }).Count
+Write-Host "Pinned $Count repositories to '$OutputPath' ($withoutReadme without a README)."

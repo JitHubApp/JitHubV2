@@ -124,6 +124,11 @@ public sealed class AutomationHarnessSourceContractTests
             "eng",
             "readme-audit",
             "Merge-TopReadmeAudit.ps1"));
+        string manifestGenerator = File.ReadAllText(Path.Combine(
+            root,
+            "eng",
+            "readme-audit",
+            "New-TopReadmeManifest.ps1"));
 
         Assert.Contains("Consolidate all 500 results", workflow, StringComparison.Ordinal);
         Assert.Contains("merge-multiple: true", workflow, StringComparison.Ordinal);
@@ -131,6 +136,10 @@ public sealed class AutomationHarnessSourceContractTests
         Assert.Contains("$cases.Count -ne $ExpectedCount", merger, StringComparison.Ordinal);
         Assert.Contains("Native first-render p95", merger, StringComparison.Ordinal);
         Assert.Contains("Native full-page p95", merger, StringComparison.Ordinal);
+        Assert.Contains("$attempt -le 4", manifestGenerator, StringComparison.Ordinal);
+        Assert.Contains("$allowNotFound -and $text -match 'HTTP 404'", manifestGenerator, StringComparison.Ordinal);
+        Assert.Contains("Could not pin a commit", manifestGenerator, StringComparison.Ordinal);
+        Assert.DoesNotContain("Could not pin a commit and README", manifestGenerator, StringComparison.Ordinal);
     }
 
     [Fact]
@@ -153,6 +162,8 @@ public sealed class AutomationHarnessSourceContractTests
         Assert.Contains("MarkdownLinkedImage", nativeProbe, StringComparison.Ordinal);
         Assert.Contains("Rectangle.Intersect(", nativeProbe, StringComparison.Ordinal);
         Assert.Contains("hostBounds.Left - windowBounds.Left", nativeProbe, StringComparison.Ordinal);
+        Assert.Contains("if (!repository.Readme.Available)", nativeProbe, StringComparison.Ordinal);
+        Assert.Contains("RepoCodeFileTree", nativeProbe, StringComparison.Ordinal);
     }
 
     [Fact]
