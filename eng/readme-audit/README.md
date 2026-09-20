@@ -68,3 +68,10 @@ The scheduled/manual workflow runs ten isolated 50-repository shards and then
 requires a consolidated, duplicate-free set of ranks 1–500. Missing shards or
 case files fail the final job; a partial run cannot be reported as a top-500
 pass.
+
+JitHub's audit build remains framework-dependent, matching the production
+deployment model. Each hosted runner installs the exact x64 Windows App Runtime
+1.8.10 release used by the app through Microsoft's silent installer, after
+verifying its pinned SHA-256. Native launch failures preserve isolated startup
+phase/error logs and abort the shard immediately because they occur before any
+repository-specific work and cannot produce meaningful per-case comparisons.

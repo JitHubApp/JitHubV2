@@ -163,15 +163,50 @@ internal static class Program
     {
         try
         {
-            string logDirectory = Path.Combine(
+            LogStartupExceptionCore(ex);
+        }
+        catch
+        {
+        }
+    }
+
+    private static void LogStartupExceptionCore(Exception ex)
+    {
+        string entry =
+            $"[{DateTimeOffset.Now:O}]{Environment.NewLine}{ex}{Environment.NewLine}{new string('-', 80)}{Environment.NewLine}";
+        AppendStartupLog(
+            Path.Combine(
                 Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
                 "JitHub",
-                "logs");
-            Directory.CreateDirectory(logDirectory);
-            string logPath = Path.Combine(logDirectory, "startup-error.log");
-            string entry =
-                $"[{DateTimeOffset.Now:O}]{Environment.NewLine}{ex}{Environment.NewLine}{new string('-', 80)}{Environment.NewLine}";
-            File.AppendAllText(logPath, entry);
+                "logs",
+                "startup-error.log"),
+            entry);
+
+        string? automationRoot = Environment.GetEnvironmentVariable("JITHUB_AUTOMATION_DATA_ROOT");
+        if (!string.IsNullOrWhiteSpace(automationRoot))
+        {
+            try
+            {
+                AppendStartupLog(
+                    Path.Combine(
+                        Path.GetFullPath(automationRoot),
+                        "Local",
+                        "logs",
+                        "startup-error.log"),
+                    entry);
+            }
+            catch
+            {
+            }
+        }
+    }
+
+    private static void AppendStartupLog(string path, string entry)
+    {
+        try
+        {
+            Directory.CreateDirectory(Path.GetDirectoryName(path)!);
+            File.AppendAllText(path, entry);
         }
         catch
         {

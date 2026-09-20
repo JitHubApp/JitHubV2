@@ -1,10 +1,14 @@
 name: Top 500 README browser parity
 
 on:
-  push:
+  pull_request:
     paths:
       - ".github/workflows/markdown-readme-top500.yml"
-      - "eng/readme-audit/New-TopReadmeManifest.ps1"
+      - "eng/Invoke-TopReadmeAudit.ps1"
+      - "eng/readme-audit/**"
+      - "JitHub.WinUI/**"
+      - "JitHub.WinUI.Automation/**"
+      - "MarkdownRenderer/**"
   schedule:
     - cron: "17 7 * * 1"
   workflow_dispatch:
@@ -34,7 +38,7 @@ jobs:
         shell: pwsh
     steps:
       - name: Checkout repository
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7
         with:
           persist-credentials: false
 
@@ -45,7 +49,7 @@ jobs:
           .\eng\readme-audit\New-TopReadmeManifest.ps1 -Count 500 -OutputPath $output
 
       - name: Upload pinned corpus
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: readme-top500-corpus
           path: ${{ runner.temp }}/readme-corpus/top-repositories.json
@@ -77,22 +81,61 @@ jobs:
         shell: pwsh
     steps:
       - name: Checkout repository
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7
         with:
           persist-credentials: false
 
       - name: Set up .NET 10
-        uses: actions/setup-dotnet@v4
+        uses: actions/setup-dotnet@v6
         with:
           global-json-file: ./global.json
 
       - name: Set up Node.js 22 for the Edge oracle
-        uses: actions/setup-node@v4
+        uses: actions/setup-node@v7
         with:
           node-version: 22
 
+      - name: Install pinned Windows App Runtime 1.8.10
+        run: |
+          # JitHub is framework-dependent in production. GitHub-hosted Windows
+          # images do not guarantee the matching Windows App Runtime, and the
+          # bootstrapper's missing-runtime UI cannot satisfy an unattended job.
+          # Microsoft documents --quiet as the supported silent deployment path:
+          # https://learn.microsoft.com/windows/apps/windows-app-sdk/deploy-unpackaged-apps
+          $uri = 'https://aka.ms/windowsappsdk/1.8/1.8.260710003/windowsappruntimeinstall-x64.exe'
+          $expectedSha256 = 'B8CDA840267AB72797F654F801F9A064AB6D9E508CEDEE3DF79F772F104DB6D6'
+          $installer = Join-Path $env:RUNNER_TEMP 'WindowsAppRuntimeInstall-1.8.260710003-x64.exe'
+          Invoke-WebRequest -Uri $uri -OutFile $installer
+          $actualSha256 = (Get-FileHash -LiteralPath $installer -Algorithm SHA256).Hash
+          if ($actualSha256 -ne $expectedSha256) {
+            throw "Windows App Runtime installer hash mismatch: $actualSha256"
+          }
+          $process = Start-Process -FilePath $installer -ArgumentList '--quiet' -WindowStyle Hidden -Wait -PassThru
+          if ($process.ExitCode -ne 0) {
+            throw "Windows App Runtime installer failed with exit code $($process.ExitCode)."
+          }
+          $runtime = Get-AppxPackage -Name 'Microsoft.WindowsAppRuntime.1.8' |
+            Where-Object Architecture -eq 'X64' |
+            Sort-Object Version -Descending |
+            Select-Object -First 1
+          if ($null -eq $runtime -or [version]$runtime.Version -lt [version]'8000.921.1539.0') {
+            throw 'The pinned x64 Windows App Runtime 1.8.10 was not installed.'
+          }
+          $packageFamilies = @(Get-AppxPackage | Select-Object -ExpandProperty PackageFamilyName -Unique)
+          $requiredFamilies = @(
+            'Microsoft.WindowsAppRuntime.1.8_8wekyb3d8bbwe',
+            'MicrosoftCorporationII.WinAppRuntime.Main.1.8_8wekyb3d8bbwe',
+            'MicrosoftCorporationII.WinAppRuntime.Singleton_8wekyb3d8bbwe',
+            'Microsoft.WinAppRuntime.DDLM.8000.921.1539.0-x6_8wekyb3d8bbwe'
+          )
+          $missingFamilies = @($requiredFamilies | Where-Object { $_ -notin $packageFamilies })
+          if ($missingFamilies.Count -ne 0) {
+            throw "Windows App Runtime installation is incomplete: $($missingFamilies -join ', ')"
+          }
+          Write-Host "Using Windows App Runtime $($runtime.Version) ($($runtime.Architecture))."
+
       - name: Download pinned corpus
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@v8
         with:
           name: readme-top500-corpus
           path: ${{ runner.temp }}/readme-corpus
@@ -109,7 +152,7 @@ jobs:
 
       - name: Upload full-page evidence
         if: always()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: readme-audit-${{ matrix.start }}-${{ matrix.end }}
           path: |
@@ -133,12 +176,12 @@ jobs:
         shell: pwsh
     steps:
       - name: Checkout repository
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7
         with:
           persist-credentials: false
 
       - name: Download every audit shard
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@v8
         with:
           pattern: readme-audit-*
           path: ${{ runner.temp }}/readme-audit-shards
@@ -153,7 +196,7 @@ jobs:
 
       - name: Upload consolidated verdict
         if: always()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: readme-audit-consolidated
           path: ${{ runner.temp }}/readme-audit-consolidated/**

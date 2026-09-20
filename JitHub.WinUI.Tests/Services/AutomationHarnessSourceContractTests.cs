@@ -131,11 +131,15 @@ public sealed class AutomationHarnessSourceContractTests
             "New-TopReadmeManifest.ps1"));
 
         Assert.Contains("Consolidate all 500 results", workflow, StringComparison.Ordinal);
+        Assert.Contains("pull_request:", workflow, StringComparison.Ordinal);
         Assert.Contains("merge-multiple: true", workflow, StringComparison.Ordinal);
         Assert.Contains("-ExpectedCount 500", workflow, StringComparison.Ordinal);
         Assert.Contains("$cases.Count -ne $ExpectedCount", merger, StringComparison.Ordinal);
         Assert.Contains("Native first-render p95", merger, StringComparison.Ordinal);
         Assert.Contains("Native full-page p95", merger, StringComparison.Ordinal);
+        Assert.Contains("windowsappsdk/1.8/1.8.260710003/windowsappruntimeinstall-x64.exe", workflow, StringComparison.Ordinal);
+        Assert.Contains("B8CDA840267AB72797F654F801F9A064AB6D9E508CEDEE3DF79F772F104DB6D6", workflow, StringComparison.Ordinal);
+        Assert.Contains("Get-AppxPackage -Name 'Microsoft.WindowsAppRuntime.1.8'", workflow, StringComparison.Ordinal);
         Assert.Contains("$attempt -le 4", manifestGenerator, StringComparison.Ordinal);
         Assert.Contains("$allowNotFound -and $text -match 'HTTP 404'", manifestGenerator, StringComparison.Ordinal);
         Assert.Contains("$text -match 'IP allow list enabled'", manifestGenerator, StringComparison.Ordinal);
@@ -166,6 +170,9 @@ public sealed class AutomationHarnessSourceContractTests
         Assert.Contains("hostBounds.Left - windowBounds.Left", nativeProbe, StringComparison.Ordinal);
         Assert.Contains("if (!repository.Readme.Available)", nativeProbe, StringComparison.Ordinal);
         Assert.Contains("RepoCodeFileTree", nativeProbe, StringComparison.Ordinal);
+        Assert.Contains("if (result.InfrastructureFailure)", nativeProbe, StringComparison.Ordinal);
+        Assert.Contains("PreserveStartupDiagnostics(dataRoot, output, launcher)", nativeProbe, StringComparison.Ordinal);
+        Assert.Contains("startup-process.txt", nativeProbe, StringComparison.Ordinal);
     }
 
     [Fact]

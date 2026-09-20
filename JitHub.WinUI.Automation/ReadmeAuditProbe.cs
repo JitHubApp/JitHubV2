@@ -112,6 +112,15 @@ internal static partial class ReadmeAuditProbe
                 $"README audit {repository.FullName}: {result.Status}; " +
                 $"text={result.Comparison?.TextTokenCoverage:P2}; structure={result.Comparison?.VisualStructureScore:P2}; " +
                 $"native unavailable={result.Native?.UnavailableImages ?? -1}.");
+            if (result.InfrastructureFailure)
+            {
+                ReadmeAuditSummary partial = BuildSummary(manifest, selected, results);
+                WriteJson(Path.Combine(options.OutputDirectory, "summary.json"), partial);
+                WriteSummaryMarkdown(Path.Combine(options.OutputDirectory, "summary.md"), partial, results);
+                throw new InvalidOperationException(
+                    $"Native README audit infrastructure failed at rank {repository.Rank} " +
+                    $"({repository.FullName}); the remaining repositories cannot produce valid comparisons.");
+            }
         }
 
         ReadmeAuditSummary summary = BuildSummary(manifest, selected, results);
@@ -135,6 +144,7 @@ internal static partial class ReadmeAuditProbe
     {
         BrowserAuditResult? browser = null;
         NativeAuditResult? native = null;
+        bool infrastructureFailure = false;
         var failures = new List<string>();
         try
         {
@@ -179,6 +189,11 @@ internal static partial class ReadmeAuditProbe
                 failures.Add($"JitHub still exposed {native.LoadingImagesAfterTraversal} loading image(s) after traversal.");
             }
         }
+        catch (NativeAuditInfrastructureException exception)
+        {
+            infrastructureFailure = true;
+            failures.Add("Native JitHub audit infrastructure failed: " + exception);
+        }
         catch (Exception exception)
         {
             failures.Add("Native JitHub audit failed: " + exception);
@@ -215,6 +230,7 @@ internal static partial class ReadmeAuditProbe
             ReadmeSha = repository.Readme.Sha,
             Status = failures.Count == 0 ? "passed" : "failed",
             Failures = failures,
+            InfrastructureFailure = infrastructureFailure,
             Browser = browser,
             Native = native,
             Comparison = comparison,
@@ -545,6 +561,11 @@ internal static partial class ReadmeAuditProbe
                 RenderFailure = failure,
                 CleanExit = cleanExit,
             };
+        }
+        catch
+        {
+            PreserveStartupDiagnostics(dataRoot, output, launcher);
+            throw;
         }
         finally
         {
@@ -1301,7 +1322,8 @@ internal static partial class ReadmeAuditProbe
             catch (InvalidOperationException) { }
             Thread.Sleep(100);
         }
-        throw new TimeoutException("JitHub main window did not become available.");
+        throw new NativeAuditInfrastructureException(
+            "JitHub main window did not become available to UI Automation.");
     }
 
     private static int WaitForReadySignal(string path, Process launcher, TimeSpan timeout)
@@ -1312,12 +1334,73 @@ internal static partial class ReadmeAuditProbe
             if (TryReadProcessId(path, out int processId)) return processId;
             if (launcher.HasExited)
             {
-                throw new InvalidOperationException(
+                throw new NativeAuditInfrastructureException(
                     $"JitHub exited before readiness with code 0x{unchecked((uint)launcher.ExitCode):X8}.");
             }
             Thread.Sleep(50);
         }
-        throw new TimeoutException("JitHub did not publish app readiness in time.");
+        throw new NativeAuditInfrastructureException(
+            $"JitHub process {launcher.Id} did not publish app readiness in time " +
+            $"(session {TryGetProcessSessionId(launcher)}, responding {TryGetProcessResponding(launcher)}, " +
+            $"main window 0x{TryGetMainWindowHandle(launcher).ToInt64():X}).");
+    }
+
+    private static void PreserveStartupDiagnostics(
+        string dataRoot,
+        string output,
+        Process launcher)
+    {
+        try
+        {
+            string source = Path.Combine(dataRoot, "Local", "logs");
+            if (Directory.Exists(source))
+            {
+                foreach (string path in Directory.EnumerateFiles(source))
+                {
+                    File.Copy(path, Path.Combine(output, Path.GetFileName(path)), overwrite: true);
+                }
+            }
+
+            File.WriteAllLines(
+                Path.Combine(output, "startup-process.txt"),
+                [
+                    $"ProcessId={launcher.Id}",
+                    $"HasExited={launcher.HasExited}",
+                    $"ExitCode={(launcher.HasExited ? $"0x{unchecked((uint)launcher.ExitCode):X8}" : "running")}",
+                    $"SessionId={TryGetProcessSessionId(launcher)}",
+                    $"Responding={TryGetProcessResponding(launcher)}",
+                    $"MainWindowHandle=0x{TryGetMainWindowHandle(launcher).ToInt64():X}",
+                ]);
+        }
+        catch
+        {
+            // Diagnostics must never hide the launch failure they describe.
+        }
+    }
+
+    private static int TryGetProcessSessionId(Process process)
+    {
+        try { return process.SessionId; }
+        catch { return -1; }
+    }
+
+    private static bool TryGetProcessResponding(Process process)
+    {
+        try { return process.Responding; }
+        catch { return false; }
+    }
+
+    private static IntPtr TryGetMainWindowHandle(Process process)
+    {
+        try
+        {
+            process.Refresh();
+            return process.MainWindowHandle;
+        }
+        catch
+        {
+            return IntPtr.Zero;
+        }
     }
 
     private static void WaitForSignal(string path, TimeSpan timeout)
@@ -1583,6 +1666,7 @@ internal static partial class ReadmeAuditProbe
             if (!File.Exists(path)) return false;
             result = JsonSerializer.Deserialize<ReadmeAuditCaseResult>(File.ReadAllText(path), JsonOptions);
             return result is not null &&
+                !result.InfrastructureFailure &&
                 result.SchemaVersion == 1 &&
                 result.CorpusGeneratedAtUtc == manifest.GeneratedAtUtc &&
                 result.Rank == repository.Rank &&
@@ -1805,11 +1889,14 @@ internal sealed class ReadmeAuditCaseResult
     public string ReadmeSha { get; init; } = string.Empty;
     public string Status { get; init; } = string.Empty;
     public IReadOnlyList<string> Failures { get; init; } = [];
+    public bool InfrastructureFailure { get; init; }
     public BrowserAuditResult? Browser { get; init; }
     public NativeAuditResult? Native { get; init; }
     public ReadmeAuditComparison? Comparison { get; init; }
     public DateTimeOffset CompletedAtUtc { get; init; }
 }
+
+internal sealed class NativeAuditInfrastructureException(string message) : Exception(message);
 
 internal sealed class ReadmeAuditSummary
 {
