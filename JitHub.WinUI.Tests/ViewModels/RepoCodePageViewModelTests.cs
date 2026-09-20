@@ -33,6 +33,26 @@ public sealed class RepoCodePageViewModelTests
     }
 
     [Fact]
+    public async Task Initialize_ImmutableSymlinkReadmeUsesDereferencedEndpointBlob()
+    {
+        const string commitSha = "0123456789abcdef0123456789abcdef01234567";
+        RepoTreeNode symlink = File("readme.md", "symlink-blob-sha");
+        RootFirstTreeService service = new(
+            symlink,
+            Blob("dereferenced-target-sha", "resolved target readme"));
+        RepoCodePageViewModel viewModel = CreateViewModel(service);
+
+        await viewModel.InitializeAsync("owner", "repo", commitSha, default);
+        await viewModel.ReconciliationTask;
+        await viewModel.DefaultPreviewTask;
+
+        Assert.Equal("readme.md", viewModel.Tree.SelectedNode?.Path);
+        Assert.Equal("dereferenced-target-sha", viewModel.Preview.CurrentFile?.Sha);
+        Assert.Equal("resolved target readme", viewModel.Preview.Text);
+        Assert.Equal(0, service.BlobRequestCount);
+    }
+
+    [Fact]
     public async Task Initialize_PublishesReadmeBeforeRootRailCompletes()
     {
         EarlyReadmeTreeService service = new();

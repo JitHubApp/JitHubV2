@@ -1,10 +1,13 @@
 using System;
+using System.Buffers;
 using System.Collections.Generic;
 using System.Globalization;
+using System.IO;
 using System.Net;
 using System.Net.Http;
 using System.Net.Http.Headers;
 using System.Net.Http.Json;
+using System.Text;
 using System.Text.Json;
 using System.Text.Json.Serialization.Metadata;
 using System.Threading;
@@ -1760,6 +1763,65 @@ public sealed class GitHubClientService : IGitHubClientService
             GitHubJsonSerializerContext.Default.GitHubRepositoryContent,
             "repository content",
             cancellationToken);
+    }
+
+    public async Task<string> GetRenderedReadmeHtmlAsync(
+        string token,
+        string owner,
+        string name,
+        string? gitRef = null,
+        CancellationToken cancellationToken = default)
+    {
+        string path = $"repos/{Uri.EscapeDataString(owner)}/{Uri.EscapeDataString(name)}/readme";
+        if (!string.IsNullOrWhiteSpace(gitRef))
+        {
+            path += $"?ref={Uri.EscapeDataString(gitRef)}";
+        }
+
+        using HttpRequestMessage request = CreateAuthenticatedRequest(HttpMethod.Get, path, token);
+        request.Headers.Accept.Add(new MediaTypeWithQualityHeaderValue("application/vnd.github.html+json"));
+        using HttpResponseMessage response = await _httpClient.SendAsync(
+            request,
+            HttpCompletionOption.ResponseHeadersRead,
+            cancellationToken).ConfigureAwait(false);
+        await EnsureSuccessAsync(response, cancellationToken).ConfigureAwait(false);
+
+        const int maximumRenderedReadmeBytes = 8 * 1024 * 1024;
+        if (response.Content.Headers.ContentLength is long contentLength &&
+            contentLength > maximumRenderedReadmeBytes)
+        {
+            throw new InvalidDataException("Rendered README exceeds the safe response budget.");
+        }
+
+        await using Stream stream = await response.Content
+            .ReadAsStreamAsync(cancellationToken)
+            .ConfigureAwait(false);
+        using var buffer = new MemoryStream(
+            response.Content.Headers.ContentLength is long knownLength
+                ? checked((int)Math.Min(knownLength, maximumRenderedReadmeBytes))
+                : 16 * 1024);
+        byte[] rented = ArrayPool<byte>.Shared.Rent(64 * 1024);
+        try
+        {
+            while (true)
+            {
+                int read = await stream.ReadAsync(rented, cancellationToken).ConfigureAwait(false);
+                if (read == 0)
+                    break;
+                if (buffer.Length + read > maximumRenderedReadmeBytes)
+                {
+                    throw new InvalidDataException("Rendered README exceeds the safe response budget.");
+                }
+
+                buffer.Write(rented, 0, read);
+            }
+        }
+        finally
+        {
+            ArrayPool<byte>.Shared.Return(rented, clearArray: true);
+        }
+
+        return Encoding.UTF8.GetString(buffer.GetBuffer(), 0, checked((int)buffer.Length));
     }
 
     public async Task<IReadOnlyList<GitHubRepositoryContent>> GetRepositoryContentsAsync(

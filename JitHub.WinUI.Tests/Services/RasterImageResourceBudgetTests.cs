@@ -18,6 +18,20 @@ public sealed class RasterImageResourceBudgetTests
         Assert.Equal(3L * 1024 * 1024, result.DecodedBytes);
     }
 
+    [Fact]
+    [Trait("Category", "ReleaseSecurity")]
+    public void Validate_AcceptsLargeCompressedSourceWithinIndependentDecodedBudget()
+    {
+        byte[] png = CreatePng(1024, 768);
+        Array.Resize(ref png, 11 * 1024 * 1024);
+
+        RasterImageBudgetResult result = RasterImageResourceBudget.Validate(png);
+
+        Assert.True(result.Accepted);
+        Assert.True(png.Length < RasterImageResourceBudget.MaxInputBytes);
+        Assert.Equal(3L * 1024 * 1024, result.DecodedBytes);
+    }
+
     [Theory]
     [Trait("Category", "ReleaseSecurity")]
     [InlineData(100_000, 1)]
@@ -31,6 +45,20 @@ public sealed class RasterImageResourceBudgetTests
         Assert.True(compressedBombHeader.Length < 64);
         Assert.False(result.Accepted);
         Assert.Contains("budget", result.Reason, StringComparison.OrdinalIgnoreCase);
+    }
+
+    [Fact]
+    [Trait("Category", "ReleaseSecurity")]
+    public void Validate_AdmitsCommonHighResolutionPngOnlyForBoundedDownsampling()
+    {
+        RasterImageBudgetResult result = RasterImageResourceBudget.Validate(CreatePng(5422, 6201));
+
+        Assert.False(result.Accepted);
+        Assert.True(result.CanRenderStaticPreview);
+        Assert.Equal("PNG", result.Format);
+        Assert.Equal(5422, result.Width);
+        Assert.Equal(6201, result.Height);
+        Assert.Contains("downsampled", result.Reason, StringComparison.OrdinalIgnoreCase);
     }
 
     [Fact]

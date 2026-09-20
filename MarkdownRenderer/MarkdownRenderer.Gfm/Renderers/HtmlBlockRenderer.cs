@@ -464,6 +464,22 @@ internal sealed class HtmlBlockRenderer : MarkdownNodeRenderer<HtmlBlock>
         HtmlInlineContext context)
     {
         string value = SafeHtmlParser.CollapseWhitespace(text.RawText);
+        string decoded = text.DecodedText;
+        bool leadingWhitespace = decoded.Length > 0 && IsCollapsibleWhitespace(decoded[0]);
+        bool trailingWhitespace = decoded.Length > 0 && IsCollapsibleWhitespace(decoded[^1]);
+        bool atLineStart = box.Runs.Count == 0 || box.Runs[^1] is LineBreakRun;
+        bool previousEndsWithWhitespace = !atLineStart &&
+            box.Runs[^1].Text.Length > 0 &&
+            char.IsWhiteSpace(box.Runs[^1].Text[^1]);
+
+        // HTML collapses whitespace across element boundaries, not separately
+        // inside each text node. Retain one boundary space around styled/link
+        // elements while still discarding indentation at the start of a block.
+        if (leadingWhitespace && !atLineStart && !previousEndsWithWhitespace)
+            value = " " + value;
+        if (trailingWhitespace && value.Length > 0 && !char.IsWhiteSpace(value[^1]))
+            value += " ";
+
         if (value.Length == 0)
         {
             return;
@@ -480,6 +496,9 @@ internal sealed class HtmlBlockRenderer : MarkdownNodeRenderer<HtmlBlock>
         run.SetStyleAliases(context.StyleAliases);
         box.Add(run);
     }
+
+    private static bool IsCollapsibleWhitespace(char value) =>
+        value != '\u00A0' && char.IsWhiteSpace(value);
 
     private void AddInlineElement(
         InlineContainerBox box,

@@ -1153,7 +1153,9 @@ internal sealed class LayoutBuilder
             inline,
             htmlState,
             inheritedAliasStart,
-            Array.Empty<string>());
+            Array.Empty<string>(),
+            containingLinkUrl: null,
+            containingLinkTitle: null);
         if (htmlState.BudgetExceeded)
             AddHtmlBudgetNotice(box);
     }
@@ -1169,7 +1171,9 @@ internal sealed class LayoutBuilder
         ContainerInline inline,
         SafeHtmlInlineState htmlState,
         int inheritedAliasStart,
-        IReadOnlyList<string> inheritedStyleModifiers)
+        IReadOnlyList<string> inheritedStyleModifiers,
+        string? containingLinkUrl,
+        string? containingLinkTitle)
     {
         foreach (var n in inline)
         {
@@ -1206,14 +1210,20 @@ internal sealed class LayoutBuilder
                     effectiveAliasStart,
                     AppendStyleModifier(
                         inheritedStyleModifiers,
-                        GetEmphasisElementKey(emphasis)));
+                        GetEmphasisElementKey(emphasis)),
+                    containingLinkUrl,
+                    containingLinkTitle);
                 continue;
             }
 
             InlineRun? run;
             if (n is HtmlInline html)
             {
-                run = htmlState.Process(html, _context);
+                run = htmlState.Process(
+                    html,
+                    _context,
+                    containingLinkUrl,
+                    containingLinkTitle);
             }
             else if (n is LinkInline link &&
                      TryGetOnlyHtmlImageChild(link, out HtmlInline? linkedHtmlImage) &&
@@ -1226,9 +1236,36 @@ internal sealed class LayoutBuilder
                     link.Title,
                     GetLinkedHtmlImageSourceSpan(link, linkedHtmlImage, _context));
             }
+            else if (n is LinkInline mixedLink &&
+                     !mixedLink.IsImage &&
+                     ContainsRenderableImage(mixedLink, htmlState, _context))
+            {
+                _context.RegisterMarkdownAttributes(n, box.BlockIndex);
+                int effectiveAliasStart = inheritedAliasStart >= 0 ? inheritedAliasStart : aliasStart;
+                AddInlines(
+                    box,
+                    mixedLink,
+                    htmlState,
+                    effectiveAliasStart,
+                    inheritedStyleModifiers,
+                    mixedLink.Url,
+                    mixedLink.Title);
+                continue;
+            }
+            else if (!string.IsNullOrWhiteSpace(containingLinkUrl) &&
+                     n is LinkInline { IsImage: true } containedImage)
+            {
+                run = BuildImageRun(
+                    containedImage,
+                    containingLinkUrl,
+                    containingLinkTitle,
+                    containedImage.Span.Start,
+                    containedImage.Span.Length);
+            }
             else
             {
                 run = htmlState.Apply(BuildInline(n, box.BlockIndex));
+                run = ApplyContainingLink(run, containingLinkUrl, containingLinkTitle);
             }
             if (run is not null)
             {
@@ -1251,9 +1288,52 @@ internal sealed class LayoutBuilder
                     nested,
                     htmlState,
                     effectiveAliasStart,
-                    inheritedStyleModifiers);
+                    inheritedStyleModifiers,
+                    containingLinkUrl,
+                    containingLinkTitle);
             }
         }
+    }
+
+    private static bool ContainsRenderableImage(
+        ContainerInline container,
+        SafeHtmlInlineState htmlState,
+        MarkdownLayoutContext context)
+    {
+        foreach (Inline child in container)
+        {
+            if (child is LinkInline { IsImage: true })
+                return true;
+            if (child is HtmlInline html && htmlState.IsStandaloneImage(html, context))
+                return true;
+            if (child is ContainerInline nested && ContainsRenderableImage(nested, htmlState, context))
+                return true;
+        }
+
+        return false;
+    }
+
+    private static InlineRun? ApplyContainingLink(
+        InlineRun? run,
+        string? containingLinkUrl,
+        string? containingLinkTitle)
+    {
+        if (run is null ||
+            run is LinkRun or InlineImageRun ||
+            string.IsNullOrWhiteSpace(containingLinkUrl))
+        {
+            return run;
+        }
+
+        var linked = new LinkRun(run.Text, containingLinkUrl, containingLinkTitle)
+        {
+            SourceSpan = run.SourceSpan,
+            StyleAliases = run.StyleAliases,
+        };
+        linked.StyleModifierKeys = string.IsNullOrEmpty(run.ElementKey)
+            ? run.StyleModifierKeys
+            : AppendStyleModifier(run.StyleModifierKeys, run.ElementKey);
+        return linked;
     }
 
     private static bool ContainsLink(ContainerInline container)

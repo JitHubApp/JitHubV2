@@ -63,7 +63,11 @@ public interface IGitHubImageService
 
 public sealed partial class GitHubImageService : IGitHubImageService, IDisposable
 {
-    private const int MaxImageBytes = 10 * 1024 * 1024;
+    // Large project READMEs commonly contain optimized screenshots and animated
+    // demonstrations above 10 MiB. Compressed bytes remain bounded here while
+    // RasterImageResourceBudget independently caps dimensions, frames, pixels,
+    // and decoded memory before the renderer admits the payload.
+    private const int MaxImageBytes = 32 * 1024 * 1024;
     private const long MemoryCacheByteBudget = 64L * 1024 * 1024;
     private const int MemoryCacheEntryBudget = 2048;
     private static readonly TimeSpan Freshness =
@@ -340,8 +344,6 @@ public sealed partial class GitHubImageService : IGitHubImageService, IDisposabl
 
             if (download?.Bytes is not { Length: > 0 } bytes ||
                 bytes.Length > MaxImageBytes ||
-                download.ContentType is null ||
-                !download.ContentType.StartsWith("image/", StringComparison.OrdinalIgnoreCase) ||
                 !TryDetectSupportedImageContentType(bytes, download.ContentType, out string contentType))
             {
                 throw new InvalidDataException("Remote content is not a supported image.");
@@ -433,7 +435,7 @@ public sealed partial class GitHubImageService : IGitHubImageService, IDisposabl
                 }
 
                 Uri nextUri = location.IsAbsoluteUri ? location : new Uri(currentUri, location);
-                if (!IsAllowedSource(nextUri.ToString(), scope))
+                if (!IsAllowedRedirect(currentUri, nextUri, scope))
                 {
                     throw new InvalidDataException("Remote image redirect violates the source policy.");
                 }
@@ -444,11 +446,6 @@ public sealed partial class GitHubImageService : IGitHubImageService, IDisposabl
 
             response.EnsureSuccessStatusCode();
             string? contentType = response.Content.Headers.ContentType?.MediaType;
-            if (contentType is null || !contentType.StartsWith("image/", StringComparison.OrdinalIgnoreCase))
-            {
-                throw new InvalidDataException("Remote content is not an image.");
-            }
-
             byte[] bytes = await ReadBoundedAsync(response.Content, cancellationToken).ConfigureAwait(false);
             return new GitHubImageDownload(
                 bytes,
@@ -573,6 +570,53 @@ public sealed partial class GitHubImageService : IGitHubImageService, IDisposabl
             MarkdownRemoteImagePolicy.IsTrustedGitHubHost(sourceUri.Host);
     }
 
+    private static bool IsAllowedRedirect(
+        Uri currentUri,
+        Uri nextUri,
+        GitHubImageFetchScope scope)
+    {
+        if (IsAllowedSource(nextUri.ToString(), scope))
+            return true;
+
+        // GitHub serves README user attachments through a short-lived,
+        // query-signed S3 URL. Keep the normal trusted-host boundary intact
+        // and admit only this exact GitHub-owned transition; subsequent
+        // redirects are evaluated independently and cannot inherit it.
+        return scope == GitHubImageFetchScope.TrustedGitHub &&
+            currentUri.Host.Equals("github.com", StringComparison.OrdinalIgnoreCase) &&
+            IsGitHubUserAssetPath(currentUri.AbsolutePath) &&
+            nextUri.Scheme == Uri.UriSchemeHttps &&
+            string.IsNullOrEmpty(nextUri.UserInfo) &&
+            nextUri.Host.Equals(
+                "github-production-user-asset-6210df.s3.amazonaws.com",
+                StringComparison.OrdinalIgnoreCase) &&
+            nextUri.Query.Contains("X-Amz-Credential=", StringComparison.OrdinalIgnoreCase) &&
+            nextUri.Query.Contains("X-Amz-Signature=", StringComparison.OrdinalIgnoreCase) &&
+            IsGloballyRoutableDestination(nextUri);
+    }
+
+    private static bool IsGitHubUserAssetPath(string absolutePath)
+    {
+        if (absolutePath.StartsWith(
+                "/user-attachments/assets/",
+                StringComparison.OrdinalIgnoreCase))
+        {
+            return Guid.TryParse(absolutePath["/user-attachments/assets/".Length..], out _);
+        }
+
+        // GitHub's legacy README attachment form is
+        // /{owner}/{repository}/assets/{numeric-user-id}/{asset-id}. It is
+        // still used by many high-traffic repositories and redirects through
+        // the same query-signed, GitHub-owned S3 endpoint as the newer form.
+        string[] segments = absolutePath.Split('/', StringSplitOptions.RemoveEmptyEntries);
+        return segments.Length == 5 &&
+            segments[0].Length > 0 &&
+            segments[1].Length > 0 &&
+            segments[2].Equals("assets", StringComparison.OrdinalIgnoreCase) &&
+            long.TryParse(segments[3], NumberStyles.None, CultureInfo.InvariantCulture, out _) &&
+            Guid.TryParse(segments[4], out _);
+    }
+
     private static bool IsGloballyRoutableDestination(Uri uri)
     {
         string host = uri.Host.TrimEnd('.');
@@ -621,7 +665,7 @@ public sealed partial class GitHubImageService : IGitHubImageService, IDisposabl
 
     private static bool TryDetectSupportedImageContentType(
         byte[] bytes,
-        string declaredContentType,
+        string? declaredContentType,
         out string contentType)
     {
         if (bytes.Length >= 8 &&
@@ -678,7 +722,7 @@ public sealed partial class GitHubImageService : IGitHubImageService, IDisposabl
         // XML is not self-identifying enough to admit under an arbitrary image
         // label. SVG retains the stricter declared-type check before its existing
         // sandboxed parser and resource policy run.
-        if (declaredContentType.Equals("image/svg+xml", StringComparison.OrdinalIgnoreCase))
+        if (string.Equals(declaredContentType, "image/svg+xml", StringComparison.OrdinalIgnoreCase))
         {
             string prefix = System.Text.Encoding.UTF8.GetString(bytes, 0, Math.Min(bytes.Length, 4096));
             if (prefix.Contains("<svg", StringComparison.OrdinalIgnoreCase))

@@ -730,6 +730,7 @@ public sealed partial class RepoCodePageViewModel : ObservableObject
         RepoTreeNode? fileToRestore = null;
         bool shouldReloadFile = false;
         bool shouldOpenReadme = false;
+        bool retainedResolvedReadme = false;
         await RunOnUiAsync(async () =>
         {
             if (!IsCurrentInitialize(generation)) return;
@@ -779,15 +780,24 @@ public sealed partial class RepoCodePageViewModel : ObservableObject
             if (!string.IsNullOrEmpty(visiblePath) && Tree.FindNodeByPath(visiblePath) is { IsDirectory: false } restored)
             {
                 fileToRestore = ToModelNode(restored);
-                shouldReloadFile = identityChanged ||
+                RepoTreeNode? resolvedReadmeNode = defaultReadme?.Node;
+                retainedResolvedReadme =
+                    resolvedReadmeNode is not null &&
+                    GitReferencePolicy.IsImmutableObjectId(@ref) &&
+                    string.Equals(currentFile?.Path, resolvedReadmeNode.Path, StringComparison.Ordinal) &&
+                    string.Equals(currentFile?.Sha, resolvedReadmeNode.Sha, StringComparison.Ordinal);
+                shouldReloadFile = !retainedResolvedReadme && (identityChanged ||
                     currentFile is null ||
                     !string.Equals(currentFile.Path, fileToRestore.Path, StringComparison.Ordinal) ||
-                    !string.Equals(currentFile?.Sha, fileToRestore.Sha, StringComparison.Ordinal);
+                    !string.Equals(currentFile?.Sha, fileToRestore.Sha, StringComparison.Ordinal));
                 if (!shouldReloadFile)
                 {
-                    Preview.CurrentFile = fileToRestore;
+                    RepoTreeNode committedNode = retainedResolvedReadme
+                        ? resolvedReadmeNode!
+                        : fileToRestore;
+                    Preview.CurrentFile = committedNode;
                     Tree.SelectedNode = restored;
-                    PushBackStack(fileToRestore);
+                    PushBackStack(committedNode);
                     ClearPendingVisiblePath(generation);
                 }
             }
@@ -818,10 +828,14 @@ public sealed partial class RepoCodePageViewModel : ObservableObject
         }, ct).ConfigureAwait(false);
 
         if (!IsCurrentInitialize(generation)) return;
-        if (result.Value.RootIsAuthoritative && !string.IsNullOrEmpty(visiblePath))
+        if (result.Value.RootIsAuthoritative &&
+            !string.IsNullOrEmpty(visiblePath) &&
+            !retainedResolvedReadme)
         {
             // Queue only after the page identity has committed. RepoFileTreeViewModel
             // cannot safely raise this while ApplyTreeAsync still exposes the old route.
+            // An immutable README symlink is already reconciled against its authoritative
+            // endpoint response; comparing it again to the link blob would discard it.
             QueueVisibleFileReconciliation();
         }
 
@@ -1125,8 +1139,13 @@ public sealed partial class RepoCodePageViewModel : ObservableObject
             string.IsNullOrWhiteSpace(readme.Path) ||
             string.IsNullOrWhiteSpace(blob.Sha) ||
             !preparedTree.NodesByPath.TryGetValue(readme.Path, out RepoTreeNodeViewModel? candidate) ||
-            candidate.IsDirectory ||
-            !string.Equals(candidate.Sha, blob.Sha, StringComparison.Ordinal))
+            candidate.IsDirectory)
+        {
+            return null;
+        }
+
+        bool shaMatches = string.Equals(candidate.Sha, blob.Sha, StringComparison.Ordinal);
+        if (!shaMatches && !GitReferencePolicy.IsImmutableObjectId(gitRef))
         {
             // A mutable branch can advance between the two parallel responses. Never pair
             // bytes from one commit with a tree node from another; the normal blob path
@@ -1134,11 +1153,28 @@ public sealed partial class RepoCodePageViewModel : ObservableObject
             return null;
         }
 
+        RepoTreeNode node = ToModelNode(candidate);
+        if (!shaMatches)
+        {
+            // Git trees store the blob SHA of a symbolic link, while GitHub's README
+            // endpoint dereferences it and returns the target blob SHA. At an immutable
+            // commit there is no response race, so retain the tree path for selection
+            // and use the dereferenced SHA as the preview/cache identity.
+            node = new RepoTreeNode
+            {
+                Name = candidate.Name,
+                Path = candidate.Path,
+                Sha = blob.Sha,
+                Size = blob.Bytes?.LongLength ?? candidate.Size,
+                IsDirectory = false,
+            };
+        }
+
         return CreatePreparedReadmePreview(
             owner,
             repositoryName,
             gitRef,
-            ToModelNode(candidate),
+            node,
             readme,
             preparedReadme?.FetchedAt);
     }

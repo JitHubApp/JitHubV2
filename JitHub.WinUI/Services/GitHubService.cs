@@ -17,6 +17,7 @@ using RepositoryIssueRequest = JitHub.Models.LegacyGitHub.RepositoryIssueRequest
 using SearchRepositoriesRequest = JitHub.Models.LegacyGitHub.SearchRepositoriesRequest;
 using SortDirection = JitHub.Models.LegacyGitHub.SortDirection;
 using System;
+using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.IO;
 using System.Linq;
@@ -56,6 +57,8 @@ namespace JitHub.Services
         private readonly IGitHubClientService _gitHubClientService;
         private readonly IGitHubImageService _gitHubImageService;
         private readonly IMarkdownRemoteImagePolicy _markdownRemoteImagePolicy;
+        private readonly ConcurrentDictionary<string, Task<IReadOnlyDictionary<string, string>>>
+            _renderedReadmeImageMaps = new(StringComparer.Ordinal);
         private string? _accessToken;
 
         public GitHubService(
@@ -70,7 +73,15 @@ namespace JitHub.Services
 
         public void SetAccessToken(string? token)
         {
-            _accessToken = string.IsNullOrWhiteSpace(token) ? null : token;
+            string? normalized = string.IsNullOrWhiteSpace(token) ? null : token;
+            if (!string.Equals(_accessToken, normalized, StringComparison.Ordinal))
+            {
+                // Rendered README HTML can originate from a private repository.
+                // Never retain its source-to-Camo map across account boundaries.
+                _renderedReadmeImageMaps.Clear();
+            }
+
+            _accessToken = normalized;
         }
 
         private string GetAccessTokenOrThrow()
@@ -2088,6 +2099,13 @@ namespace JitHub.Services
             return false;
         }
 
+        private static bool IsAbsoluteRawGitHubSource(
+            string source,
+            GitHubMarkdownImageReference reference) =>
+            Uri.TryCreate(source, UriKind.Absolute, out Uri? sourceUri) &&
+            sourceUri.Host.Equals("raw.githubusercontent.com", StringComparison.OrdinalIgnoreCase) &&
+            reference.SourceUri.Host.Equals("raw.githubusercontent.com", StringComparison.OrdinalIgnoreCase);
+
         public async ValueTask<MarkdownImageResolution> ResolveAsync(
             string source,
             MarkdownImageResolveContext context,
@@ -2150,6 +2168,13 @@ namespace JitHub.Services
                             publicUri,
                             cancellationToken)
                         .ConfigureAwait(false);
+                    if (publicAsset is null && publicDecision.Access == MarkdownRemoteImageAccess.AllowNetwork)
+                    {
+                        publicAsset = await TryResolveViaGitHubCamoAsync(
+                            source,
+                            context,
+                            cancellationToken).ConfigureAwait(false);
+                    }
                     return publicAsset is null
                         ? MarkdownImageResolution.Unavailable
                         : MarkdownImageResolution.Resolved(publicAsset);
@@ -2161,7 +2186,27 @@ namespace JitHub.Services
                 catch (Exception ex)
                 {
                     HandledFailureReporter.Report(ex, "markdown-image-public-fetch");
-                    return MarkdownImageResolution.Unavailable;
+                    try
+                    {
+                        MarkdownImageAsset? camoAsset = await TryResolveViaGitHubCamoAsync(
+                            source,
+                            context,
+                            cancellationToken).ConfigureAwait(false);
+                        return camoAsset is null
+                            ? MarkdownImageResolution.Unavailable
+                            : MarkdownImageResolution.Resolved(camoAsset);
+                    }
+                    catch (OperationCanceledException)
+                    {
+                        throw;
+                    }
+                    catch (Exception fallbackException)
+                    {
+                        HandledFailureReporter.Report(
+                            fallbackException,
+                            "markdown-image-github-camo-fallback");
+                        return MarkdownImageResolution.Unavailable;
+                    }
                 }
             }
 
@@ -2190,36 +2235,57 @@ namespace JitHub.Services
                 }
                 else
                 {
-                    cachedImage = await _gitHubImageService.GetOrFetchAsync(
-                        rawUri.ToString(),
-                        async (_, token) =>
-                        {
-                            string accessToken = GetAccessTokenOrThrow();
-                            RestGitHubRepositoryContent file = await _gitHubClientService.GetRepositoryContentAsync(
-                                accessToken,
-                                imageReference.Owner,
-                                imageReference.Repository,
-                                imageReference.Path,
-                                imageReference.Ref,
-                                token).ConfigureAwait(false);
-                            byte[] fileBytes = DecodeGitHubContent(file.Content, file.Encoding);
-
-                            if (fileBytes.Length == 0 && !string.IsNullOrWhiteSpace(file.Sha))
+                    try
+                    {
+                        cachedImage = await _gitHubImageService.GetOrFetchAsync(
+                            rawUri.ToString(),
+                            async (_, token) =>
                             {
-                                RestGitHubBlob blob = await _gitHubClientService.GetBlobAsync(
+                                string accessToken = GetAccessTokenOrThrow();
+                                RestGitHubRepositoryContent file = await _gitHubClientService.GetRepositoryContentAsync(
                                     accessToken,
                                     imageReference.Owner,
                                     imageReference.Repository,
-                                    file.Sha,
+                                    imageReference.Path,
+                                    imageReference.Ref,
                                     token).ConfigureAwait(false);
-                                fileBytes = DecodeGitHubContent(blob.Content, blob.Encoding);
-                            }
+                                byte[] fileBytes = DecodeGitHubContent(file.Content, file.Encoding);
 
-                            return fileBytes.Length == 0
-                                ? null
-                                : new GitHubImageDownload(fileBytes, GuessImageContentType(imageReference.Path));
-                        },
-                        cancellationToken).ConfigureAwait(false);
+                                if (fileBytes.Length == 0 && !string.IsNullOrWhiteSpace(file.Sha))
+                                {
+                                    RestGitHubBlob blob = await _gitHubClientService.GetBlobAsync(
+                                        accessToken,
+                                        imageReference.Owner,
+                                        imageReference.Repository,
+                                        file.Sha,
+                                        token).ConfigureAwait(false);
+                                    fileBytes = DecodeGitHubContent(blob.Content, blob.Encoding);
+                                }
+
+                                return fileBytes.Length == 0
+                                    ? null
+                                    : new GitHubImageDownload(fileBytes, GuessImageContentType(imageReference.Path));
+                            },
+                            cancellationToken).ConfigureAwait(false);
+                    }
+                    catch (OperationCanceledException)
+                    {
+                        throw;
+                    }
+                    catch when (IsAbsoluteRawGitHubSource(source, imageReference))
+                    {
+                        // A README may intentionally reference a raw asset through
+                        // a branch name that no longer resolves through the Contents
+                        // API even though GitHub's raw CDN still serves the immutable
+                        // object. Only an explicitly authored, trusted raw URL gets
+                        // this fallback; relative/private repository assets continue
+                        // to use the authenticated repository API path exclusively.
+                        Uri directRawUri = CreateRawFallbackUri(imageReference.SourceUri);
+                        cachedImage = await _gitHubImageService.GetAsync(
+                            directRawUri.ToString(),
+                            GitHubImageFetchScope.TrustedGitHub,
+                            cancellationToken).ConfigureAwait(false);
+                    }
                 }
 
                 MarkdownImageAsset? asset = await ReadCachedMarkdownImageAsync(
@@ -2259,6 +2325,104 @@ namespace JitHub.Services
                     cachedImage.ContentType,
                     resolvedUri,
                     CacheKey: cachedImage.FilePath));
+        }
+
+        private static Uri CreateRawFallbackUri(Uri sourceUri)
+        {
+            var builder = new UriBuilder(sourceUri);
+            string existing = builder.Query.TrimStart('?');
+            builder.Query = string.IsNullOrEmpty(existing)
+                ? "jithub-raw-fallback=1"
+                : existing + "&jithub-raw-fallback=1";
+            return builder.Uri;
+        }
+
+        private async Task<MarkdownImageAsset?> TryResolveViaGitHubCamoAsync(
+            string source,
+            MarkdownImageResolveContext context,
+            CancellationToken cancellationToken)
+        {
+            MarkdownDocumentSource? document = context.DocumentSource;
+            if (document is null ||
+                !document.HasRepositoryContext ||
+                !Uri.TryCreate(source, UriKind.Absolute, out Uri? sourceUri) ||
+                sourceUri.Scheme != Uri.UriSchemeHttps ||
+                MarkdownRemoteImagePolicy.IsTrustedGitHubHost(sourceUri.Host))
+            {
+                return null;
+            }
+
+            IReadOnlyDictionary<string, string> map = await GetRenderedReadmeImageMapAsync(
+                document,
+                cancellationToken).ConfigureAwait(false);
+            if (!map.TryGetValue(sourceUri.AbsoluteUri, out string? camoSource) ||
+                !Uri.TryCreate(camoSource, UriKind.Absolute, out Uri? camoUri) ||
+                !camoUri.Host.Equals("camo.githubusercontent.com", StringComparison.OrdinalIgnoreCase))
+            {
+                return null;
+            }
+
+            GitHubCachedImage? image = await _gitHubImageService.GetAsync(
+                camoUri.AbsoluteUri,
+                GitHubImageFetchScope.TrustedGitHub,
+                cancellationToken).ConfigureAwait(false);
+            return await ReadCachedMarkdownImageAsync(image, camoUri, cancellationToken)
+                .ConfigureAwait(false);
+        }
+
+        private async Task<IReadOnlyDictionary<string, string>> GetRenderedReadmeImageMapAsync(
+            MarkdownDocumentSource document,
+            CancellationToken cancellationToken)
+        {
+            string key = $"{document.Owner}/{document.Repository}/{document.Ref}/{document.Path}";
+            Task<IReadOnlyDictionary<string, string>> task = _renderedReadmeImageMaps.GetOrAdd(
+                key,
+                _ => LoadRenderedReadmeImageMapAsync(document, cancellationToken));
+            try
+            {
+                IReadOnlyDictionary<string, string> result = await task
+                    .WaitAsync(cancellationToken)
+                    .ConfigureAwait(false);
+                TrimRenderedReadmeImageMaps(key);
+                return result;
+            }
+            catch
+            {
+                _renderedReadmeImageMaps.TryRemove(
+                    new KeyValuePair<string, Task<IReadOnlyDictionary<string, string>>>(key, task));
+                throw;
+            }
+        }
+
+        private async Task<IReadOnlyDictionary<string, string>> LoadRenderedReadmeImageMapAsync(
+            MarkdownDocumentSource document,
+            CancellationToken cancellationToken)
+        {
+            string html = await _gitHubClientService.GetRenderedReadmeHtmlAsync(
+                GetAccessTokenOrThrow(),
+                document.Owner!,
+                document.Repository!,
+                document.Ref,
+                cancellationToken).ConfigureAwait(false);
+            return GitHubCamoImageMapParser.Parse(html);
+        }
+
+        private void TrimRenderedReadmeImageMaps(string retainedKey)
+        {
+            const int entryBudget = 32;
+            if (_renderedReadmeImageMaps.Count <= entryBudget)
+                return;
+
+            foreach (KeyValuePair<string, Task<IReadOnlyDictionary<string, string>>> pair in
+                     _renderedReadmeImageMaps)
+            {
+                if (_renderedReadmeImageMaps.Count <= entryBudget)
+                    break;
+                if (!pair.Key.Equals(retainedKey, StringComparison.Ordinal) && pair.Value.IsCompleted)
+                {
+                    _renderedReadmeImageMaps.TryRemove(pair);
+                }
+            }
         }
 
         private static string? GuessImageContentType(string path)

@@ -2,6 +2,7 @@ using System;
 using System.Buffers;
 using System.Collections.Generic;
 using System.Collections.Concurrent;
+using System.Globalization;
 using System.IO;
 using System.Linq;
 using System.Runtime.CompilerServices;
@@ -179,6 +180,7 @@ internal sealed class ImageBox : BlockBox
     private bool _svgCancellationDisposed;
     private int _svgBitmapWidthPixels;
     private int _svgBitmapHeightPixels;
+    private Size _rasterIntrinsicSize;
     private MarkdownSvgFailureReason? _svgFailureReason;
     private string? _svgFailureDescription;
     private readonly Dictionary<SvgTileKey, SvgTileBitmap> _svgTiles = new();
@@ -433,6 +435,11 @@ internal sealed class ImageBox : BlockBox
                 bw = (float)_svgIntrinsicSize.Width;
                 bh = (float)_svgIntrinsicSize.Height;
             }
+            else if (!_isSvg && _rasterIntrinsicSize.Width > 0 && _rasterIntrinsicSize.Height > 0)
+            {
+                bw = (float)_rasterIntrinsicSize.Width;
+                bh = (float)_rasterIntrinsicSize.Height;
+            }
             else
             {
                 bw = (float)bmu.Size.Width;
@@ -542,6 +549,11 @@ internal sealed class ImageBox : BlockBox
             {
                 bw = (float)_svgIntrinsicSize.Width;
                 bh = (float)_svgIntrinsicSize.Height;
+            }
+            else if (!_isSvg && _rasterIntrinsicSize.Width > 0 && _rasterIntrinsicSize.Height > 0)
+            {
+                bw = (float)_rasterIntrinsicSize.Width;
+                bh = (float)_rasterIntrinsicSize.Height;
             }
             else
             {
@@ -1132,6 +1144,18 @@ internal sealed class ImageBox : BlockBox
             return;
         }
 
+        (int Width, int Height) previewSize = budget.CanRenderStaticPreview
+            ? GetRasterPreviewPixelSize(budget)
+            : default;
+        string bitmapCacheKey = budget.CanRenderStaticPreview && cacheKey.Length > 0
+            ? string.Concat(
+                cacheKey,
+                "\u001Fstatic-preview:",
+                previewSize.Width.ToString(CultureInfo.InvariantCulture),
+                "x",
+                previewSize.Height.ToString(CultureInfo.InvariantCulture))
+            : cacheKey;
+
         CanvasBitmap? ownedBitmap = null;
         SharedCanvasBitmapCache.Lease? bitmapLease = null;
         SemaphoreSlim? decodeGate = null;
@@ -1141,22 +1165,22 @@ internal sealed class ImageBox : BlockBox
         try
         {
             CanvasDevice device = _context.ResourceCreator.Device;
-            if (!string.IsNullOrEmpty(cacheKey) &&
-                SharedCanvasBitmapCache.TryAcquire(device, cacheKey, out bitmapLease))
+            if (!string.IsNullOrEmpty(bitmapCacheKey) &&
+                SharedCanvasBitmapCache.TryAcquire(device, bitmapCacheKey, out bitmapLease))
             {
                 // Warm cache hit. No stream, decoder, or GPU allocation.
             }
             else
             {
-                if (!string.IsNullOrEmpty(cacheKey))
+                if (!string.IsNullOrEmpty(bitmapCacheKey))
                 {
-                    decodeGate = SharedCanvasBitmapCache.GetDecodeGate(device, cacheKey);
+                    decodeGate = SharedCanvasBitmapCache.GetDecodeGate(device, bitmapCacheKey);
                     await decodeGate.WaitAsync(_context.ImageCancellationToken).ConfigureAwait(false);
                     decodeGateHeld = true;
 
                     // Another request may have populated the cache while this
                     // request waited on the fixed-size keyed decode gate.
-                    _ = SharedCanvasBitmapCache.TryAcquire(device, cacheKey, out bitmapLease);
+                    _ = SharedCanvasBitmapCache.TryAcquire(device, bitmapCacheKey, out bitmapLease);
                 }
 
                 if (bitmapLease is null)
@@ -1172,22 +1196,32 @@ internal sealed class ImageBox : BlockBox
                             throw new InvalidDataException("The decoded raster dimensions do not match its validated header.");
                         }
 
+                        var transform = new BitmapTransform
+                        {
+                            ScaledWidth = checked((uint)previewSize.Width),
+                            ScaledHeight = checked((uint)previewSize.Height),
+                            InterpolationMode = BitmapInterpolationMode.Fant,
+                        };
                         using SoftwareBitmap firstFrame = await decoder.GetSoftwareBitmapAsync(
                             BitmapPixelFormat.Bgra8,
-                            BitmapAlphaMode.Premultiplied);
+                            BitmapAlphaMode.Premultiplied,
+                            transform,
+                            ExifOrientationMode.RespectExifOrientation,
+                            ColorManagementMode.ColorManageToSRgb);
                         ownedBitmap = CanvasBitmap.CreateFromSoftwareBitmap(_context.ResourceCreator, firstFrame);
                         MarkdownDiagnostics.WriteLine(
                             $"[ImageBox] rendered a bounded first-frame preview for {cacheKey}; " +
-                            $"the {budget.FrameCount}-frame animation exceeds the animation budget.");
+                            $"source={budget.Width}x{budget.Height}, " +
+                            $"preview={previewSize.Width}x{previewSize.Height}, frames={budget.FrameCount}.");
                     }
                     else
                     {
                         ownedBitmap = await CanvasBitmap.LoadAsync(_context.ResourceCreator, stream);
                     }
 
-                    if (!string.IsNullOrEmpty(cacheKey))
+                    if (!string.IsNullOrEmpty(bitmapCacheKey))
                     {
-                        bitmapLease = SharedCanvasBitmapCache.StoreAndAcquire(device, cacheKey, ownedBitmap);
+                        bitmapLease = SharedCanvasBitmapCache.StoreAndAcquire(device, bitmapCacheKey, ownedBitmap);
                         ownedBitmap = null; // lease now owns the decoded handle
                     }
                 }
@@ -1249,10 +1283,14 @@ internal sealed class ImageBox : BlockBox
             }
             else if (publishedLease is not null)
             {
+                if (budget.CanRenderStaticPreview)
+                    _rasterIntrinsicSize = new Size(budget.Width, budget.Height);
                 ReplaceBitmap(publishedLease.Bitmap, publishedLease, ownsBitmap: false);
             }
             else if (publishedOwnedBitmap is not null)
             {
+                if (budget.CanRenderStaticPreview)
+                    _rasterIntrinsicSize = new Size(budget.Width, budget.Height);
                 ReplaceBitmap(publishedOwnedBitmap, lease: null, ownsBitmap: true);
             }
 
@@ -1263,6 +1301,38 @@ internal sealed class ImageBox : BlockBox
             publishedLease?.Dispose();
             try { publishedOwnedBitmap?.Dispose(); } catch { }
         });
+    }
+
+    private (int Width, int Height) GetRasterPreviewPixelSize(RasterImageBudgetResult budget)
+    {
+        double available = Math.Max(1, _availableWidth - Margin.Left - Margin.Right);
+        double sourceAspect = budget.Width / (double)Math.Max(1, budget.Height);
+        double width = _requestedWidth?.Resolve((float)available) ?? Math.Min(budget.Width, available);
+        double height;
+        if (_requestedHeight is { IsPercent: false } requestedHeight)
+        {
+            height = requestedHeight.Resolve((float)available);
+            if (_requestedWidth is null)
+                width = height * sourceAspect;
+        }
+        else
+        {
+            height = width / sourceAspect;
+        }
+
+        double rasterScale = Math.Max(1, _context.RasterizationScale);
+        width = Math.Clamp(Math.Ceiling(width * rasterScale), 1, budget.Width);
+        height = Math.Clamp(Math.Ceiling(height * rasterScale), 1, budget.Height);
+
+        double pixels = width * height;
+        if (pixels > RasterImageResourceBudget.MaxPixelsPerFrame)
+        {
+            double scale = Math.Sqrt(RasterImageResourceBudget.MaxPixelsPerFrame / pixels);
+            width = Math.Max(1, Math.Floor(width * scale));
+            height = Math.Max(1, Math.Floor(height * scale));
+        }
+
+        return (checked((int)width), checked((int)height));
     }
 
     private async Task LoadSvgAsync(MarkdownBuiltInImageSource source)
@@ -1537,6 +1607,11 @@ internal sealed class ImageBox : BlockBox
 
         try
         {
+            // The provider accepts only static SVG. Declarative animation is
+            // resolved to a deterministic initial frame on this background
+            // path, then the sanitized bytes pass through the unchanged host
+            // and worker security preflights.
+            rawBytes = SvgStaticSnapshot.Create(rawBytes, cancellationToken);
             providerCacheGeneration = renderer.CacheGeneration;
             SvgPreflight preflight;
             if (ReferenceEquals(rawBytes, _svgRawBytes) &&

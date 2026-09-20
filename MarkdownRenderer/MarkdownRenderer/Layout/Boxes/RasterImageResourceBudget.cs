@@ -27,13 +27,26 @@ internal sealed record RasterImageBudgetResult(
         long decodedBytes,
         string reason) =>
         new(false, true, format, width, height, frameCount, totalPixels, decodedBytes, reason);
+
+    public static RasterImageBudgetResult RequireStaticPreview(
+        string format,
+        int width,
+        int height,
+        int frameCount,
+        long totalPixels,
+        long decodedBytes,
+        string reason) =>
+        new(false, true, format, width, height, frameCount, totalPixels, decodedBytes, reason);
 }
 
 internal static class RasterImageResourceBudget
 {
-    internal const int MaxInputBytes = 10 * 1024 * 1024;
+    // This is a compressed-source ceiling, not a decoded-memory allowance.
+    // The independent pixel/frame/decoded-byte checks below remain authoritative.
+    internal const int MaxInputBytes = 32 * 1024 * 1024;
     internal const int MaxDimension = 8192;
     internal const long MaxPixelsPerFrame = 16_777_216;
+    internal const long MaxDownsampleSourcePixels = 40_000_000;
     internal const int MaxFrameCount = 60;
     internal const long MaxDecodedBytes = 64L * 1024 * 1024;
     private const int BytesPerDecodedPixel = 4;
@@ -88,7 +101,16 @@ internal static class RasterImageResourceBudget
 
         if (pixelsPerFrame > MaxPixelsPerFrame)
         {
-            return RasterImageBudgetResult.Reject("The raster image pixel count exceeds the safe budget.");
+            return header.FrameCount == 1 && pixelsPerFrame <= MaxDownsampleSourcePixels
+                ? RasterImageBudgetResult.RequireStaticPreview(
+                    header.Format,
+                    header.Width,
+                    header.Height,
+                    header.FrameCount,
+                    totalPixels,
+                    decodedBytes,
+                    "The raster image requires a bounded downsampled preview.")
+                : RasterImageBudgetResult.Reject("The raster image pixel count exceeds the safe budget.");
         }
 
         if (header.FrameCount > MaxFrameCount)

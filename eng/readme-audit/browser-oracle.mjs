@@ -139,7 +139,35 @@ try {
       return [...node.getClientRects()]
         .some(bounds => bounds.width > 0 && bounds.height > 0);
     };
+    const isImageSelfLink = node => {
+      // GitHub automatically wraps otherwise unlinked README images in a
+      // lightbox anchor whose target is that same rendered image. This is
+      // repository-page chrome, not an authored Markdown link, so exclude it
+      // from parity counts while retaining authored linked images whose target
+      // leads somewhere else.
+      if (clean(node.innerText)) return false;
+      if (node.children.length !== 1 ||
+          !["IMG", "PICTURE"].includes(node.children[0].tagName)) return false;
+      const image = node.children[0].tagName === "IMG"
+        ? node.children[0]
+        : node.children[0].querySelector("img");
+      if (!image) return false;
+      const normalized = value => {
+        try {
+          const url = new URL(value, location.href);
+          url.hash = "";
+          return url.href;
+        } catch {
+          return "";
+        }
+      };
+      const href = normalized(node.href);
+      return href && [image.currentSrc, image.src]
+        .map(normalized)
+        .some(source => source === href);
+    };
     const images = [...article.querySelectorAll("img")]
+      .filter(isRendered)
       .map(image => {
         const bounds = image.getBoundingClientRect();
         return {
@@ -156,7 +184,11 @@ try {
       // GitHub can retain failed or inactive <picture> candidates with no
       // layout box. They are not part of the rendered README and therefore
       // must not create a false "unavailable" result or image-count mismatch.
-      .filter(image => image.renderedWidth > 0 && image.renderedHeight > 0);
+      .filter(image => image.renderedWidth > 0 && image.renderedHeight > 0)
+      // GitHub uses empty-src spacer <img> elements in a few READMEs. They have
+      // layout boxes but no image resource, so they are neither a rendered image
+      // nor an unavailable resource JitHub could be expected to reproduce.
+      .filter(image => image.source || image.currentSource);
     // JitHub's UIA TextPattern represents an atomic image by its accessible
     // alt text. innerText intentionally omits image alternatives, so append the
     // rendered images' alt values to compare equivalent accessible documents.
@@ -179,6 +211,7 @@ try {
         })),
       links: [...article.querySelectorAll("a[href]")]
         .filter(isRendered)
+        .filter(node => !isImageSelfLink(node))
         .filter(node => {
           const text = clean(node.innerText);
           return text || !node.href.includes("#");

@@ -673,22 +673,24 @@ internal sealed class MarkdownSemanticDocument
                     : null,
             };
 
-            foreach (var run in inline.Runs)
+            for (int runIndex = 0; runIndex < inline.Runs.Count; runIndex++)
             {
-                string accessibleText = run is InlineImageRun candidateImageRun
-                    ? MarkdownImageSemanticPolicy.GetInlineAccessibleName(
-                        candidateImageRun.AltText,
-                        candidateImageRun.IsLinked,
-                        candidateImageRun.LinkTitle,
-                        inline.Context.ResolveString(
-                            MarkdownStringKeys.ImageName,
-                            MarkdownLocalizedStrings.ImageName)) ?? string.Empty
-                    : run.AccessibleText;
+                InlineRun run = inline.Runs[runIndex];
+                string accessibleText = GetInlineAccessibleText(run, inline.Context);
 
                 // An unlinked image with empty alternative text is decorative. It must
                 // contribute neither a text span nor an element to the UIA document.
                 if (run is InlineImageRun { IsLinked: false } && accessibleText.Length == 0)
                     continue;
+
+                bool atomic = IsAtomicInline(run);
+                if (atomic &&
+                    accessibleText.Length > 0 &&
+                    _text.Length > node.TextStart &&
+                    NeedsSemanticBoundary(_text[^1], accessibleText[0]))
+                {
+                    AppendInlineSemanticBoundary(inline, run);
+                }
 
                 int runStart = _text.Length;
                 _text.Append(accessibleText);
@@ -765,11 +767,61 @@ internal sealed class MarkdownSemanticDocument
                         HelpText = abbreviationRun.Expansion,
                     });
                 }
+
+                if (atomic &&
+                    accessibleText.Length > 0 &&
+                    TryGetNextInlineAccessibleText(inline, runIndex + 1, out string nextText) &&
+                    NeedsSemanticBoundary(accessibleText[^1], nextText[0]))
+                {
+                    AppendInlineSemanticBoundary(inline, run);
+                }
             }
             node.TextEnd = _text.Length;
 
             AppendBlockSeparator();
             return node;
+        }
+
+        private static string GetInlineAccessibleText(
+            InlineRun run,
+            MarkdownLayoutContext context) =>
+            run is InlineImageRun imageRun
+                ? MarkdownImageSemanticPolicy.GetInlineAccessibleName(
+                    imageRun.AltText,
+                    imageRun.IsLinked,
+                    imageRun.LinkTitle,
+                    context.ResolveString(
+                        MarkdownStringKeys.ImageName,
+                        MarkdownLocalizedStrings.ImageName)) ?? string.Empty
+                : run.AccessibleText;
+
+        private static bool IsAtomicInline(InlineRun run) =>
+            run is InlineImageRun or InlineEmbedRun or InlineVectorSceneRun;
+
+        private static bool NeedsSemanticBoundary(char left, char right) =>
+            char.IsLetterOrDigit(left) && char.IsLetterOrDigit(right);
+
+        private static bool TryGetNextInlineAccessibleText(
+            InlineContainerBox inline,
+            int startIndex,
+            out string text)
+        {
+            for (int index = startIndex; index < inline.Runs.Count; index++)
+            {
+                text = GetInlineAccessibleText(inline.Runs[index], inline.Context);
+                if (text.Length > 0)
+                    return true;
+            }
+
+            text = string.Empty;
+            return false;
+        }
+
+        private void AppendInlineSemanticBoundary(InlineContainerBox inline, InlineRun run)
+        {
+            int start = _text.Length;
+            _text.Append(' ');
+            _spans.Add(new MarkdownTextSpan(start, start + 1, inline, run, null, null, null));
         }
 
         private MarkdownSemanticNode BuildCodeBlock(CodeBlockBox codeBlock)

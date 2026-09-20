@@ -50,6 +50,7 @@
     <Compile Include="..\MarkdownRenderer\Hosting\HostedElementFallbackKey.cs" Link="Core\HostedElementFallbackKey.cs" />
     <Compile Include="..\MarkdownRenderer\Layout\Boxes\SvgIntrinsics.cs" Link="Core\SvgIntrinsics.cs" />
     <Compile Include="..\MarkdownRenderer\Layout\Boxes\SvgResourceBudget.cs" Link="Core\SvgResourceBudget.cs" />
+    <Compile Include="..\MarkdownRenderer\Layout\Boxes\SvgStaticSnapshot.cs" Link="Core\SvgStaticSnapshot.cs" />
     <Compile Include="..\MarkdownRenderer\Layout\Boxes\RasterImageResourceBudget.cs" Link="Core\RasterImageResourceBudget.cs" />
     <Compile Include="..\MarkdownRenderer\Layout\Boxes\SvgThemeInjector.cs" Link="Core\SvgThemeInjector.cs" />
     <Compile Include="..\MarkdownRenderer\Layout\Boxes\SvgTitleExtractor.cs" Link="Core\SvgTitleExtractor.cs" />

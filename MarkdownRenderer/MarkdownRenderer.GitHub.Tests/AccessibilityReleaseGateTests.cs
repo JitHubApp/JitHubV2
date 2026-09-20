@@ -152,6 +152,36 @@ public sealed class AccessibilityReleaseGateTests
     }
 
     [Fact]
+    public void ConsecutiveAtomicInlineAlternativesHaveSemanticWordBoundaries()
+    {
+        MarkdownLayoutContext context = CreateContext("en-US");
+        var paragraph = new InlineContainerBox(context, MarkdownElementKeys.Body)
+        {
+            BlockIndex = context.NextBlockIndex(),
+        };
+        paragraph.Add(new TextRun("Before"));
+        paragraph.Add(new InlineImageRun(context, "First badge", "first.png"));
+        paragraph.Add(new InlineImageRun(context, "Second badge", "second.png"));
+        paragraph.Add(new TextRun("After"));
+
+        using var snapshot = new LayoutSnapshot(
+            new BlockBox[] { paragraph },
+            context.SourceMap,
+            width: 300,
+            height: 40);
+        MarkdownSemanticNode semanticParagraph = Assert.Single(snapshot.SemanticDocument.Root.Children);
+
+        Assert.Equal(
+            "Before First badge Second badge After",
+            snapshot.SemanticDocument.GetText(semanticParagraph));
+        Assert.Equal(
+            new[] { "First badge", "Second badge" },
+            semanticParagraph.Children
+                .Where(static child => child.Role == MarkdownSemanticRole.Image)
+                .Select(snapshot.SemanticDocument.GetText));
+    }
+
+    [Fact]
     public void TaskMarkerIdentityTracksItsUtf16SourceRange()
     {
         var range = new SourceSpan(17, 3);

@@ -6,6 +6,7 @@ using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
 using JitHub.Services;
+using JitHub.Services.Markdown;
 using Xunit;
 
 namespace JitHub.WinUI.Tests.Services;
@@ -550,6 +551,80 @@ public sealed class GitHubImageServiceTests : IDisposable
     }
 
     [Fact]
+    public async Task GetAsync_TrustedUserAttachmentCanFollowGitHubSignedAssetRedirect()
+    {
+        const string signedAsset =
+            "https://github-production-user-asset-6210df.s3.amazonaws.com/1/2.svg" +
+            "?X-Amz-Credential=github%2Frequest&X-Amz-Signature=abc123";
+        GitHubImageCacheStore store = new(_root, GitHubCachePolicy.Default);
+        RedirectThenImageHandler handler = new(signedAsset, PngBytes);
+        using HttpClient client = new(handler);
+        using GitHubImageService service = new(store, client);
+
+        GitHubCachedImage? image = await service.GetAsync(
+            "https://github.com/user-attachments/assets/9955dda9-1234-5678-9abc-def012345678");
+
+        Assert.NotNull(image);
+        Assert.Equal("image/png", image.ContentType);
+        Assert.Equal(2, handler.RequestCount);
+    }
+
+    [Fact]
+    public async Task GetAsync_TrustedLegacyRepositoryAssetCanFollowGitHubSignedAssetRedirect()
+    {
+        const string signedAsset =
+            "https://github-production-user-asset-6210df.s3.amazonaws.com/1/2.svg" +
+            "?X-Amz-Credential=github%2Frequest&X-Amz-Signature=abc123";
+        GitHubImageCacheStore store = new(_root, GitHubCachePolicy.Default);
+        RedirectThenImageHandler handler = new(signedAsset, PngBytes);
+        using HttpClient client = new(handler);
+        using GitHubImageService service = new(store, client);
+
+        GitHubCachedImage? image = await service.GetAsync(
+            "https://github.com/owner/repository/assets/13230914/5a17bdbe-097a-4100-8363-40255b70f6e3");
+
+        Assert.NotNull(image);
+        Assert.Equal("image/png", image.ContentType);
+        Assert.Equal(2, handler.RequestCount);
+    }
+
+    [Theory]
+    [InlineData("https://github.com/owner/repository/assets/not-a-number/5a17bdbe-097a-4100-8363-40255b70f6e3")]
+    [InlineData("https://github.com/owner/repository/assets/13230914/not-a-guid")]
+    [InlineData("https://github.com/owner/repository/issues/assets/13230914/5a17bdbe-097a-4100-8363-40255b70f6e3")]
+    public async Task GetAsync_TrustedMalformedLegacyRepositoryAssetRejectsSignedRedirect(string source)
+    {
+        const string signedAsset =
+            "https://github-production-user-asset-6210df.s3.amazonaws.com/1/2.svg" +
+            "?X-Amz-Credential=github%2Frequest&X-Amz-Signature=abc123";
+        GitHubImageCacheStore store = new(_root, GitHubCachePolicy.Default);
+        RedirectHandler handler = new(signedAsset);
+        using HttpClient client = new(handler);
+        using GitHubImageService service = new(store, client);
+
+        await Assert.ThrowsAsync<InvalidDataException>(() => service.GetAsync(source));
+        Assert.Equal(1, handler.RequestCount);
+    }
+
+    [Theory]
+    [InlineData("https://github-production-user-asset-6210df.s3.amazonaws.com/1/2.svg")]
+    [InlineData("https://github-production-user-asset-6210df.s3.amazonaws.com/1/2.svg?X-Amz-Signature=abc123")]
+    [InlineData("https://github-production-user-asset-evil.s3.amazonaws.com/1/2.svg?X-Amz-Credential=x&X-Amz-Signature=y")]
+    public async Task GetAsync_TrustedUserAttachmentRejectsUnsignedOrUnknownAssetRedirect(
+        string destination)
+    {
+        GitHubImageCacheStore store = new(_root, GitHubCachePolicy.Default);
+        RedirectHandler handler = new(destination);
+        using HttpClient client = new(handler);
+        using GitHubImageService service = new(store, client);
+
+        await Assert.ThrowsAsync<InvalidDataException>(() => service.GetAsync(
+            "https://github.com/user-attachments/assets/9955dda9-1234-5678-9abc-def012345678"));
+
+        Assert.Equal(1, handler.RequestCount);
+    }
+
+    [Fact]
     public async Task GetAsync_UserApprovedRequestCannotRedirectToPrivateAddress()
     {
         GitHubImageCacheStore store = new(_root, GitHubCachePolicy.Default);
@@ -668,6 +743,74 @@ public sealed class GitHubImageServiceTests : IDisposable
         await Assert.ThrowsAsync<InvalidDataException>(() => service.GetAsync(
             "https://images.example.com/malformed",
             GitHubImageFetchScope.UserApprovedHttps));
+    }
+
+    [Fact]
+    public async Task GetAsync_AcceptsSignatureValidatedJpegWithGenericMediaType()
+    {
+        GitHubImageCacheStore store = new(_root, GitHubCachePolicy.Default);
+        byte[] jpeg = [0xFF, 0xD8, 0xFF, 0xD9];
+        using HttpClient client = new(new RawImageHandler("application/octet-stream", jpeg));
+        using GitHubImageService service = new(store, client);
+
+        GitHubCachedImage? image = await service.GetAsync(
+            "https://images.example.com/release-asset",
+            GitHubImageFetchScope.UserApprovedHttps);
+
+        Assert.NotNull(image);
+        Assert.Equal("image/jpeg", image!.ContentType);
+        Assert.Equal(jpeg, image.Bytes);
+    }
+
+    [Fact]
+    public async Task GetAsync_RejectsGenericMediaTypeWithoutSupportedImageSignature()
+    {
+        GitHubImageCacheStore store = new(_root, GitHubCachePolicy.Default);
+        using HttpClient client = new(new RawImageHandler(
+            "application/octet-stream",
+            "<html>not an image</html>"u8.ToArray()));
+        using GitHubImageService service = new(store, client);
+
+        await Assert.ThrowsAsync<InvalidDataException>(() => service.GetAsync(
+            "https://images.example.com/release-asset",
+            GitHubImageFetchScope.UserApprovedHttps));
+    }
+
+    [Fact]
+    public async Task GetRenderedReadmeHtmlAsync_RequestsGitHubRenderedRepresentation()
+    {
+        const string html = "<article><img src=\"rendered.png\"></article>";
+        var handler = new RenderedReadmeHandler(html);
+        using HttpClient client = new(handler);
+        var service = new GitHubClientService(client);
+
+        string result = await service.GetRenderedReadmeHtmlAsync(
+            "token",
+            "owner",
+            "repository",
+            "immutable-sha");
+
+        Assert.Equal(html, result);
+        Assert.Equal(
+            "https://api.github.com/repos/owner/repository/readme?ref=immutable-sha",
+            handler.RequestUri);
+        Assert.Contains("application/vnd.github.html+json", handler.Accept);
+    }
+
+    [Fact]
+    public void ParseGitHubCamoImageMap_AdmitsOnlyCanonicalHttpsCamoPairs()
+    {
+        const string source = "https://assets.example.test/image.png?one=1&two=2";
+        const string camo = "https://camo.githubusercontent.com/hash/encoded";
+        string html =
+            $"<img data-canonical-src='https://assets.example.test/image.png?one=1&amp;two=2' src='{camo}'>" +
+            "<img src=\"https://evil.example.test/image.png\" data-canonical-src=\"https://assets.example.test/evil.png\">";
+
+        IReadOnlyDictionary<string, string> map = GitHubCamoImageMapParser.Parse(html);
+
+        KeyValuePair<string, string> pair = Assert.Single(map);
+        Assert.Equal(source, pair.Key);
+        Assert.Equal(camo, pair.Value);
     }
 
     public void Dispose()
@@ -839,7 +982,7 @@ public sealed class GitHubImageServiceTests : IDisposable
         {
             ByteArrayContent content = new(PngBytes);
             content.Headers.ContentType = new("image/png");
-            content.Headers.ContentLength = 10L * 1024 * 1024 + 1;
+            content.Headers.ContentLength = 32L * 1024 * 1024 + 1;
             return Task.FromResult(new HttpResponseMessage(HttpStatusCode.OK) { Content = content });
         }
     }
@@ -853,6 +996,48 @@ public sealed class GitHubImageServiceTests : IDisposable
             ByteArrayContent content = new(bytes);
             content.Headers.ContentType = new(contentType);
             return Task.FromResult(new HttpResponseMessage(HttpStatusCode.OK) { Content = content });
+        }
+    }
+
+    private sealed class RedirectThenImageHandler(string destination, byte[] bytes) : HttpMessageHandler
+    {
+        private int _requestCount;
+
+        public int RequestCount => Volatile.Read(ref _requestCount);
+
+        protected override Task<HttpResponseMessage> SendAsync(
+            HttpRequestMessage request,
+            CancellationToken cancellationToken)
+        {
+            int requestNumber = Interlocked.Increment(ref _requestCount);
+            if (requestNumber == 1)
+            {
+                HttpResponseMessage redirect = new(HttpStatusCode.Redirect);
+                redirect.Headers.Location = new Uri(destination);
+                return Task.FromResult(redirect);
+            }
+
+            ByteArrayContent content = new(bytes);
+            content.Headers.ContentType = new("application/octet-stream");
+            return Task.FromResult(new HttpResponseMessage(HttpStatusCode.OK) { Content = content });
+        }
+    }
+
+    private sealed class RenderedReadmeHandler(string html) : HttpMessageHandler
+    {
+        public string? RequestUri { get; private set; }
+        public string Accept { get; private set; } = string.Empty;
+
+        protected override Task<HttpResponseMessage> SendAsync(
+            HttpRequestMessage request,
+            CancellationToken cancellationToken)
+        {
+            RequestUri = request.RequestUri?.AbsoluteUri;
+            Accept = request.Headers.Accept.ToString();
+            return Task.FromResult(new HttpResponseMessage(HttpStatusCode.OK)
+            {
+                Content = new StringContent(html, System.Text.Encoding.UTF8, "text/html"),
+            });
         }
     }
 }

@@ -199,7 +199,9 @@ internal static class GfmChildBuilder
             new SafeHtmlInlineState(box.Context.Registry.SafeHtmlPolicy),
             skipFirstIf,
             inheritedAliasStart,
-            System.Array.Empty<string>());
+            System.Array.Empty<string>(),
+            containingLinkUrl: null,
+            containingLinkTitle: null);
 
     private static void AddInlines(
         InlineContainerBox box,
@@ -207,7 +209,9 @@ internal static class GfmChildBuilder
         SafeHtmlInlineState htmlState,
         System.Func<Inline, bool>? skipFirstIf,
         int inheritedAliasStart,
-        IReadOnlyList<string> inheritedStyleModifiers)
+        IReadOnlyList<string> inheritedStyleModifiers,
+        string? containingLinkUrl,
+        string? containingLinkTitle)
     {
         bool skippedFirst = skipFirstIf is null;
         foreach (var i in inlines)
@@ -232,13 +236,19 @@ internal static class GfmChildBuilder
                     inheritedAliasStart: effectiveAliasStart,
                     inheritedStyleModifiers: AppendStyleModifier(
                         inheritedStyleModifiers,
-                        GetEmphasisElementKey(emphasis)));
+                        GetEmphasisElementKey(emphasis)),
+                    containingLinkUrl,
+                    containingLinkTitle);
                 continue;
             }
             InlineRun? run;
             if (i is HtmlInline html)
             {
-                run = htmlState.Process(html, box.Context);
+                run = htmlState.Process(
+                    html,
+                    box.Context,
+                    containingLinkUrl,
+                    containingLinkTitle);
             }
             else if (i is LinkInline link &&
                      TryGetOnlyHtmlImageChild(link, out HtmlInline? linkedHtmlImage) &&
@@ -251,9 +261,38 @@ internal static class GfmChildBuilder
                     link.Title,
                     GetLinkedHtmlImageSourceSpan(link, linkedHtmlImage, box.Context));
             }
+            else if (i is LinkInline mixedLink &&
+                     !mixedLink.IsImage &&
+                     ContainsRenderableImage(mixedLink, htmlState, box.Context))
+            {
+                box.Context.RegisterMarkdownAttributes(i, box.BlockIndex);
+                int effectiveAliasStart = inheritedAliasStart >= 0 ? inheritedAliasStart : aliasStart;
+                AddInlines(
+                    box,
+                    mixedLink,
+                    htmlState,
+                    skipFirstIf: null,
+                    inheritedAliasStart: effectiveAliasStart,
+                    inheritedStyleModifiers,
+                    mixedLink.Url,
+                    mixedLink.Title);
+                continue;
+            }
+            else if (!string.IsNullOrWhiteSpace(containingLinkUrl) &&
+                     i is LinkInline { IsImage: true } containedImage)
+            {
+                run = BuildImageRun(
+                    containedImage,
+                    box.Context,
+                    containingLinkUrl,
+                    containingLinkTitle,
+                    containedImage.Span.Start,
+                    containedImage.Span.Length);
+            }
             else
             {
                 run = htmlState.Apply(BuildInline(i, box.Context));
+                run = ApplyContainingLink(run, containingLinkUrl, containingLinkTitle);
             }
             if (run is not null)
             {
@@ -277,9 +316,52 @@ internal static class GfmChildBuilder
                     htmlState,
                     skipFirstIf: null,
                     inheritedAliasStart: effectiveAliasStart,
-                    inheritedStyleModifiers: inheritedStyleModifiers);
+                    inheritedStyleModifiers: inheritedStyleModifiers,
+                    containingLinkUrl,
+                    containingLinkTitle);
             }
         }
+    }
+
+    private static bool ContainsRenderableImage(
+        ContainerInline container,
+        SafeHtmlInlineState htmlState,
+        MarkdownLayoutContext context)
+    {
+        foreach (Inline child in container)
+        {
+            if (child is LinkInline { IsImage: true })
+                return true;
+            if (child is HtmlInline html && htmlState.IsStandaloneImage(html, context))
+                return true;
+            if (child is ContainerInline nested && ContainsRenderableImage(nested, htmlState, context))
+                return true;
+        }
+
+        return false;
+    }
+
+    private static InlineRun? ApplyContainingLink(
+        InlineRun? run,
+        string? containingLinkUrl,
+        string? containingLinkTitle)
+    {
+        if (run is null ||
+            run is LinkRun or InlineImageRun ||
+            string.IsNullOrWhiteSpace(containingLinkUrl))
+        {
+            return run;
+        }
+
+        var linked = new LinkRun(run.Text, containingLinkUrl, containingLinkTitle)
+        {
+            SourceSpan = run.SourceSpan,
+        };
+        linked.SetStyleAliases(run.StyleAliases);
+        linked.StyleModifierKeys = string.IsNullOrEmpty(run.ElementKey)
+            ? run.StyleModifierKeys
+            : AppendStyleModifier(run.StyleModifierKeys, run.ElementKey);
+        return linked;
     }
 
     private static bool ContainsLink(ContainerInline container)

@@ -204,6 +204,25 @@ public sealed class SafeHtmlRenderingTests
     }
 
     [Fact]
+    public void HtmlBlockCollapsesWhitespaceAcrossInlineFormattingBoundaries()
+    {
+        const string source =
+            "<p align='center'><strong>Codex CLI</strong> is a coding agent. " +
+            "For an IDE, <a href='https://example.test/install'>install the extension</a>." +
+            "<br>If you prefer, run <code>codex app</code> or visit " +
+            "<a href='https://example.test/app'>the Codex App page</a>.</p>";
+
+        using LayoutSnapshot snapshot = Build(source, SafeHtmlOptions.Default);
+        string rendered = string.Concat(FlattenRuns(snapshot).Select(static run => run.Text));
+
+        Assert.Equal(
+            "Codex CLI is a coding agent. For an IDE, install the extension.\n" +
+            "If you prefer, run codex app or visit the Codex App page.",
+            rendered);
+        Assert.Equal(2, FlattenRuns(snapshot).OfType<LinkRun>().Count());
+    }
+
+    [Fact]
     public void MarkdownLinkContainingInlineHtmlImageRemainsAVisibleLinkedImage()
     {
         const string source =
@@ -218,6 +237,25 @@ public sealed class SafeHtmlRenderingTests
         Assert.Equal("https://example.test/collection", image.LinkUrl);
         Assert.True(image.IsLinked);
         Assert.Equal(new SourceSpan(0, source.Length), image.SourceSpan);
+    }
+
+    [Fact]
+    public void MarkdownLinkContainingHtmlImageAndTextPreservesBothLinkedContents()
+    {
+        const string source =
+            "[<img src=\"doc/images/icons/AdvancedPaste.png\" alt=\"Advanced Paste icon\" width=\"32\"> " +
+            "Advanced Paste](https://learn.microsoft.com/windows/powertoys/advanced-paste)";
+
+        using LayoutSnapshot snapshot = Build(source, SafeHtmlOptions.Default);
+        InlineRun[] runs = FlattenRuns(snapshot).ToArray();
+
+        InlineImageRun image = Assert.Single(runs.OfType<InlineImageRun>());
+        LinkRun label = Assert.Single(runs.OfType<LinkRun>());
+        Assert.Equal("doc/images/icons/AdvancedPaste.png", image.Url);
+        Assert.Equal("Advanced Paste icon", image.AltText);
+        Assert.Equal("https://learn.microsoft.com/windows/powertoys/advanced-paste", image.LinkUrl);
+        Assert.Equal(" Advanced Paste", label.Text);
+        Assert.Equal(image.LinkUrl, label.Url);
     }
 
     [Fact]

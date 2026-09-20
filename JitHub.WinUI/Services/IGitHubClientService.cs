@@ -533,6 +533,13 @@ public interface IGitHubClientService
         string? gitRef = null,
         CancellationToken cancellationToken = default);
 
+    Task<string> GetRenderedReadmeHtmlAsync(
+        string token,
+        string owner,
+        string name,
+        string? gitRef = null,
+        CancellationToken cancellationToken = default);
+
     Task<IReadOnlyList<GitHubRepositoryContent>> GetRepositoryContentsAsync(
         string token,
         string owner,

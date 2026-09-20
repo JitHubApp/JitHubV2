@@ -278,6 +278,135 @@ public sealed class SvgResourceBudgetTests
     }
 
     [Fact]
+    public void StaticSnapshot_ConvertsSmilToDeterministicInitialFrame()
+    {
+        byte[] source = Bytes(
+            "<svg xmlns='http://www.w3.org/2000/svg'>" +
+            "<g opacity='0'><animate attributeName='opacity' values='0;0;1;1' keyTimes='0;0;0;.5'/></g>" +
+            "<g transform='translate(1 1)'><animateTransform attributeName='transform' type='translate' values='0,48;0,48;0,0' keyTimes='0;0;0' additive='sum'/></g>" +
+            "</svg>");
+
+        byte[] snapshot = SvgStaticSnapshot.Create(source, CancellationToken.None);
+        string text = Encoding.UTF8.GetString(snapshot);
+        SvgResourceBudgetResult result = SvgResourceBudget.Validate(snapshot, CancellationToken.None);
+
+        Assert.True(result.Accepted, result.Reason);
+        Assert.DoesNotContain("<animate", text, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("opacity=\"1\"", text, StringComparison.Ordinal);
+        Assert.Contains("transform=\"translate(1 1) translate(0,0)\"", text, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void StaticSnapshot_DoesNotRemoveOtherRejectedActiveContent()
+    {
+        byte[] source = Bytes(
+            "<svg><script>alert(1)</script><rect><animate attributeName='opacity' from='0'/></rect></svg>");
+
+        byte[] snapshot = SvgStaticSnapshot.Create(source, CancellationToken.None);
+        SvgResourceBudgetResult result = SvgResourceBudget.Validate(snapshot, CancellationToken.None);
+
+        Assert.False(result.Accepted);
+        Assert.Equal("active-content", result.Reason);
+    }
+
+    [Fact]
+    public void StaticSnapshot_ConvertsTextOnlyHtmlForeignObject()
+    {
+        byte[] source = Bytes(
+            "<svg xmlns='http://www.w3.org/2000/svg'>" +
+            "<foreignObject x='6' y='10' width='198' height='17' " +
+            "selection='true' style='font-size:9px;color:rgb(67, 39, 135);font-family:Arial;font-weight:400;text-align:center;letter-spacing:0em;line-height:1.5'>" +
+            "<div xmlns='http://www.w3.org/1999/xhtml'>GITHUB TRENDING</div>" +
+            "</foreignObject></svg>");
+
+        byte[] snapshot = SvgStaticSnapshot.Create(source, CancellationToken.None);
+        string text = Encoding.UTF8.GetString(snapshot);
+        SvgResourceBudgetResult result = SvgResourceBudget.Validate(snapshot, CancellationToken.None);
+
+        Assert.True(result.Accepted, result.Reason);
+        Assert.DoesNotContain("foreignObject", text, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("GITHUB TRENDING", text, StringComparison.Ordinal);
+        Assert.Contains("text-anchor=\"middle\"", text, StringComparison.Ordinal);
+        Assert.Contains("fill=\"rgb(67, 39, 135)\"", text, StringComparison.Ordinal);
+    }
+
+    [Theory]
+    [InlineData("<img xmlns='http://www.w3.org/1999/xhtml' src='https://example.test/a.png'/>")]
+    [InlineData("<script xmlns='http://www.w3.org/1999/xhtml'>alert(1)</script>")]
+    [InlineData("<div xmlns='http://www.w3.org/1999/xhtml' onclick='alert(1)'>unsafe</div>")]
+    public void StaticSnapshot_DoesNotConvertInteractiveForeignObject(string content)
+    {
+        byte[] source = Bytes(
+            $"<svg xmlns='http://www.w3.org/2000/svg'><foreignObject width='100' height='20'>{content}</foreignObject></svg>");
+
+        byte[] snapshot = SvgStaticSnapshot.Create(source, CancellationToken.None);
+        SvgResourceBudgetResult result = SvgResourceBudget.Validate(snapshot, CancellationToken.None);
+
+        Assert.False(result.Accepted);
+        Assert.Equal("active-content", result.Reason);
+    }
+
+    [Theory]
+    [InlineData("onload='alert(1)'")]
+    [InlineData("data-unknown='discarded styling'")]
+    [InlineData("style='background:url(https://example.test/a.png)'")]
+    public void StaticSnapshot_DoesNotHideUnsupportedForeignObjectAttributes(string attributes)
+    {
+        byte[] source = Bytes(
+            $"<svg xmlns='http://www.w3.org/2000/svg'><foreignObject width='100' height='20' {attributes}>" +
+            "<div xmlns='http://www.w3.org/1999/xhtml'>text</div></foreignObject></svg>");
+
+        byte[] snapshot = SvgStaticSnapshot.Create(source, CancellationToken.None);
+        SvgResourceBudgetResult result = SvgResourceBudget.Validate(snapshot, CancellationToken.None);
+
+        Assert.False(result.Accepted);
+        Assert.Equal("active-content", result.Reason);
+    }
+
+    [Fact]
+    public void StaticSnapshot_RemovesEmbeddedFontFaceAndKeepsChartStyles()
+    {
+        byte[] source = Bytes(
+            "<svg xmlns='http://www.w3.org/2000/svg'><style>" +
+            "@font-face{font-family:xkcd;src:url(data:application/font-woff;base64,AAAA)}" +
+            ".label{font-family:xkcd;fill:#123456}" +
+            "</style><text class='label'>History</text></svg>");
+
+        byte[] snapshot = SvgStaticSnapshot.Create(source, CancellationToken.None);
+        string text = Encoding.UTF8.GetString(snapshot);
+        SvgResourceBudgetResult result = SvgResourceBudget.Validate(snapshot, CancellationToken.None);
+
+        Assert.True(result.Accepted, result.Reason);
+        Assert.DoesNotContain("@font-face", text, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains(".label{font-family:xkcd;fill:#123456}", text, StringComparison.Ordinal);
+        Assert.Contains("History", text, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void StaticSnapshot_DoesNotHideMalformedFontFaceRule()
+    {
+        byte[] source = Bytes(
+            "<svg xmlns='http://www.w3.org/2000/svg'><style>@font-face{font-family:xkcd</style></svg>");
+
+        byte[] snapshot = SvgStaticSnapshot.Create(source, CancellationToken.None);
+        SvgResourceBudgetResult result = SvgResourceBudget.Validate(snapshot, CancellationToken.None);
+
+        Assert.False(result.Accepted);
+        Assert.Equal("active-content", result.Reason);
+    }
+
+    [Fact]
+    public void StaticSnapshot_ObservesCancellation()
+    {
+        using CancellationTokenSource cancellation = new();
+        cancellation.Cancel();
+
+        Assert.Throws<OperationCanceledException>(() => SvgStaticSnapshot.Create(
+            Bytes("<svg><animate attributeName='opacity' from='0'/></svg>"),
+            cancellation.Token));
+    }
+
+    [Fact]
     public void Validate_ObservesCancellation()
     {
         using CancellationTokenSource cancellation = new();
