@@ -59,6 +59,11 @@ replaced by a lower-ranked repository. The audit requires both GitHub and JitHub
 to expose no rendered README for that immutable commit, while still enforcing
 clean startup, navigation, and shutdown.
 
+Manifest API calls use the workflow token normally. If a public repository's
+organization IP allow list rejects that token, the generator falls back only
+that request to GitHub's unauthenticated public API. Other authorization errors
+remain fatal, and only an explicit README 404 is treated as an absent README.
+
 The scheduled/manual workflow runs ten isolated 50-repository shards and then
 requires a consolidated, duplicate-free set of ranks 1–500. Missing shards or
 case files fail the final job; a partial run cannot be reported as a top-500

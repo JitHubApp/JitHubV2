@@ -138,6 +138,8 @@ public sealed class AutomationHarnessSourceContractTests
         Assert.Contains("Native full-page p95", merger, StringComparison.Ordinal);
         Assert.Contains("$attempt -le 4", manifestGenerator, StringComparison.Ordinal);
         Assert.Contains("$allowNotFound -and $text -match 'HTTP 404'", manifestGenerator, StringComparison.Ordinal);
+        Assert.Contains("$text -match 'IP allow list enabled'", manifestGenerator, StringComparison.Ordinal);
+        Assert.Contains("Invoke-PublicGitHubJson $route $ref $allowNotFound", manifestGenerator, StringComparison.Ordinal);
         Assert.Contains("Could not pin a commit", manifestGenerator, StringComparison.Ordinal);
         Assert.DoesNotContain("Could not pin a commit and README", manifestGenerator, StringComparison.Ordinal);
     }

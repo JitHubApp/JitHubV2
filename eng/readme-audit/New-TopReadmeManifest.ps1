@@ -62,6 +62,35 @@ $rankedRepositories = for ($index = 0; $index -lt $repositories.Count; $index++)
 # both GitHub's API and constrained CI hosts, then restore deterministic rank
 # order before writing the manifest.
 $manifestRepositories = @(@($rankedRepositories | ForEach-Object -Parallel {
+    function Invoke-PublicGitHubJson([string]$route, [string]$ref, [bool]$allowNotFound) {
+        $uri = "https://api.github.com/$route"
+        if (-not [string]::IsNullOrWhiteSpace($ref)) {
+            $uri += "?ref=$([Uri]::EscapeDataString($ref))"
+        }
+
+        $headers = @{
+            Accept = "application/vnd.github+json"
+            "X-GitHub-Api-Version" = "2022-11-28"
+            "User-Agent" = "JitHub-Readme-Audit"
+        }
+        try {
+            return Invoke-RestMethod -Method Get -Uri $uri -Headers $headers -ErrorAction Stop
+        }
+        catch {
+            $statusCode = if ($null -ne $_.Exception.Response) {
+                [int]$_.Exception.Response.StatusCode
+            }
+            else {
+                0
+            }
+            if ($allowNotFound -and $statusCode -eq 404) {
+                return $null
+            }
+
+            throw "Public GitHub API fallback failed for '$route' (HTTP $statusCode): $($_.Exception.Message)"
+        }
+    }
+
     function Invoke-GitHubJson([string]$route, [string]$ref, [bool]$allowNotFound) {
         for ($attempt = 1; $attempt -le 4; $attempt++) {
             $apiOutput = if ([string]::IsNullOrWhiteSpace($ref)) {
@@ -78,6 +107,14 @@ $manifestRepositories = @(@($rankedRepositories | ForEach-Object -Parallel {
 
             if ($allowNotFound -and $text -match 'HTTP 404') {
                 return $null
+            }
+
+            # GitHub organization IP allow lists can reject the workflow's
+            # installation token for public repositories. Anonymous public
+            # access is still valid and avoids weakening the organization
+            # policy or silently dropping the repository from the corpus.
+            if ($text -match 'IP allow list enabled') {
+                return Invoke-PublicGitHubJson $route $ref $allowNotFound
             }
 
             if ($attempt -lt 4) {
