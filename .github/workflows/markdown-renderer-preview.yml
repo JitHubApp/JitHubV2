@@ -75,27 +75,35 @@ jobs:
         with:
           global-json-file: ./global.json
 
-      - name: Rebuild and verify the pinned x64 resvg worker
+      - name: Rebuild and verify every pinned resvg worker
         run: |
           $manifest = '.\MarkdownRenderer\MarkdownRenderer.Svg.Resvg\native\Cargo.toml'
-          $target = 'x86_64-pc-windows-msvc'
-          & rustup toolchain install 1.96.0 --profile minimal --component clippy --target $target
+          $validationTarget = 'x86_64-pc-windows-msvc'
+          $workerTargets = [ordered]@{
+            'i686-pc-windows-msvc' = 'win-x86'
+            'x86_64-pc-windows-msvc' = 'win-x64'
+            'aarch64-pc-windows-msvc' = 'win-arm64'
+          }
+          & rustup toolchain install 1.96.0 --profile minimal --component clippy --target $validationTarget
           if ($LASTEXITCODE -ne 0) { throw 'The pinned Rust 1.96.0 toolchain could not be installed.' }
+          foreach ($target in $workerTargets.Keys) {
+            & rustup target add --toolchain 1.96.0 $target
+            if ($LASTEXITCODE -ne 0) { throw "The pinned Rust target $target could not be installed." }
+          }
 
-          & cargo +1.96.0 fetch --manifest-path $manifest --locked --target $target
+          & cargo +1.96.0 fetch --manifest-path $manifest --locked --target $validationTarget
           if ($LASTEXITCODE -ne 0) { throw 'The pinned resvg dependency graph could not be fetched.' }
-          & cargo +1.96.0 test --manifest-path $manifest --locked --target $target
+          & cargo +1.96.0 test --manifest-path $manifest --locked --target $validationTarget
           if ($LASTEXITCODE -ne 0) { throw 'The isolated resvg worker tests failed.' }
-          & cargo +1.96.0 clippy --manifest-path $manifest --locked --target $target --all-targets -- -D warnings
+          & cargo +1.96.0 clippy --manifest-path $manifest --locked --target $validationTarget --all-targets -- -D warnings
           if ($LASTEXITCODE -ne 0) { throw 'The isolated resvg worker failed Clippy.' }
-          & cargo +1.96.0 build --manifest-path $manifest --release --locked --target $target
-          if ($LASTEXITCODE -ne 0) { throw 'The pinned x64 resvg worker build failed.' }
-
-          $rebuilt = '.\MarkdownRenderer\MarkdownRenderer.Svg.Resvg\native\target\x86_64-pc-windows-msvc\release\markdown_renderer_resvg_worker.exe'
-          $shipping = '.\MarkdownRenderer\MarkdownRenderer.Svg.Resvg\runtimes\win-x64\native\MarkdownRenderer.Svg.Resvg.Worker.exe'
-          if ((Get-FileHash -LiteralPath $rebuilt -Algorithm SHA256).Hash -cne
-              (Get-FileHash -LiteralPath $shipping -Algorithm SHA256).Hash) {
-            throw 'The checked-in x64 resvg worker does not match its pinned reproducible source build.'
+          foreach ($worker in $workerTargets.GetEnumerator()) {
+            $rebuilt = .\MarkdownRenderer\MarkdownRenderer.Svg.Resvg\eng\Build-ResvgWorker.ps1 `
+              -Target $worker.Key
+            $shipping = ".\MarkdownRenderer\MarkdownRenderer.Svg.Resvg\runtimes\$($worker.Value)\native\MarkdownRenderer.Svg.Resvg.Worker.exe"
+            .\MarkdownRenderer\MarkdownRenderer.Svg.Resvg\eng\Compare-ResvgWorkerBinary.ps1 `
+              -Expected $shipping `
+              -Actual $rebuilt
           }
           .\MarkdownRenderer\MarkdownRenderer.Svg.Resvg\eng\Verify-ResvgSupplyChain.ps1
 

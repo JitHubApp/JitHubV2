@@ -26,3 +26,9 @@ a typed `MarkdownSvgException`.
 Worker binaries are RID assets for `win-x86`, `win-x64`, and `win-arm64`.
 Production packaging must Authenticode-sign all three executables before NuGet
 packing. The project deliberately fails `Pack` if an architecture is absent.
+
+Build workers with `eng/Build-ResvgWorker.ps1`. It pins Rust 1.96.0's bundled
+`rust-lld`, remaps checkout and Cargo paths, and enables reproducible PE output.
+CI rebuilds x64 and compares the complete executable payload after normalizing
+only standard PE timestamp/checksum and CodeView identity fields; executable
+sections, imports, resources, and linker version must match byte-for-byte.

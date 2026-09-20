@@ -23,6 +23,8 @@
   ],
   "lockFile": "native/Cargo.lock",
   "protocol": "native/PROTOCOL.md",
-  "reproducibleBuild": "cargo build --release --locked --target <target>",
+  "reproducibleBuild": "eng/Build-ResvgWorker.ps1 -Target <target>",
+  "linker": "rust-lld from Rust 1.96.0",
+  "verification": "normalized PE payload SHA-256 via eng/Compare-ResvgWorkerBinary.ps1",
   "authenticode": "required-before-production-pack"
 }
