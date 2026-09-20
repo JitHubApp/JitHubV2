@@ -509,6 +509,8 @@ public sealed class RepoCodePageViewModelTests
         await viewModel.Tree.RootReconciliationTask;
         blob.SetResult(Fresh(Blob("removed", "obsolete")));
         await selection;
+        await viewModel.Tree.PendingReconciliationTask;
+        await viewModel.ReconciliationTask;
 
         Assert.Empty(viewModel.Tree.RootNodes);
         Assert.Null(viewModel.Preview.CurrentFile);

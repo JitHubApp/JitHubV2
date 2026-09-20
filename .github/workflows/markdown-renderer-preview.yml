@@ -91,7 +91,7 @@ jobs:
           & cargo +1.96.0 build --manifest-path $manifest --release --locked --target $target
           if ($LASTEXITCODE -ne 0) { throw 'The pinned x64 resvg worker build failed.' }
 
-          $rebuilt = '.\MarkdownRenderer\MarkdownRenderer.Svg.Resvg\native\target\x86_64-pc-windows-msvc\release\markdown-renderer-resvg-worker.exe'
+          $rebuilt = '.\MarkdownRenderer\MarkdownRenderer.Svg.Resvg\native\target\x86_64-pc-windows-msvc\release\markdown_renderer_resvg_worker.exe'
           $shipping = '.\MarkdownRenderer\MarkdownRenderer.Svg.Resvg\runtimes\win-x64\native\MarkdownRenderer.Svg.Resvg.Worker.exe'
           if ((Get-FileHash -LiteralPath $rebuilt -Algorithm SHA256).Hash -cne
               (Get-FileHash -LiteralPath $shipping -Algorithm SHA256).Hash) {
