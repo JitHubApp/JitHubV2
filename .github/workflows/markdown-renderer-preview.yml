@@ -16,6 +16,7 @@ on:
       - JitHub.slnx
       - .github/workflows/markdown-renderer-preview.yml
       - Directory.Build.props
+      - .gitattributes
       - global.json
       - LICENSE
       - NuGet.config
@@ -31,6 +32,7 @@ on:
       - JitHub.slnx
       - .github/workflows/markdown-renderer-preview.yml
       - Directory.Build.props
+      - .gitattributes
       - global.json
       - LICENSE
       - NuGet.config
