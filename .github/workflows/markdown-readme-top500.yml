@@ -1,6 +1,9 @@
 name: Top 500 README browser parity
 
 on:
+  push:
+    paths:
+      - ".github/workflows/markdown-readme-top500.yml"
   schedule:
     - cron: "17 7 * * 1"
   workflow_dispatch:
