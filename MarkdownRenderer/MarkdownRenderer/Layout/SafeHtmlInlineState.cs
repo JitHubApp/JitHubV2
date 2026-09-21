@@ -194,6 +194,54 @@ internal sealed class SafeHtmlInlineState
             return new LineBreakRun(isHard: true) { SourceSpan = span };
         }
 
+        if (tag.Name == "input")
+        {
+            if (!tag.TryGetAttribute("type", out string type) ||
+                !type.Equals("checkbox", StringComparison.OrdinalIgnoreCase))
+            {
+                return null;
+            }
+
+            return TaskMarkerControlFactory.CreateReadOnlyRun(
+                context,
+                tag.TryGetAttribute("checked", out _),
+                span);
+        }
+
+        if (tag.Name is "video" or "audio")
+        {
+            SafeHtmlParser.TryGetSafeImageSource(tag, out string mediaSource);
+            string? posterSource = tag.TryGetAttribute("poster", out string poster) &&
+                SafeHtmlParser.TryNormalizeImageSource(poster, out string safePoster)
+                    ? safePoster
+                    : null;
+            string? accessibilityName = tag.TryGetAttribute("aria-label", out string ariaLabel) &&
+                !string.IsNullOrWhiteSpace(ariaLabel)
+                    ? ariaLabel
+                    : tag.TryGetAttribute("title", out string mediaTitle) &&
+                        !string.IsNullOrWhiteSpace(mediaTitle)
+                            ? mediaTitle
+                            : null;
+            SafeHtmlLength? mediaWidth = SafeHtmlParser.TryGetLength(tag, "width", out SafeHtmlLength parsedWidth)
+                ? parsedWidth
+                : null;
+            SafeHtmlLength? mediaHeight = SafeHtmlParser.TryGetLength(tag, "height", out SafeHtmlLength parsedHeight)
+                ? parsedHeight
+                : null;
+            Scope? containingScope = FindLinkScope();
+            return ApplyAliases(SafeHtmlMediaRunFactory.Create(
+                context,
+                tag.Name == "video",
+                accessibilityName,
+                mediaSource,
+                posterSource,
+                mediaWidth,
+                mediaHeight,
+                span,
+                _policy.EnableLinks ? containingLinkUrl ?? containingScope?.LinkUrl : null,
+                _policy.EnableLinks ? containingLinkTitle ?? containingScope?.LinkTitle : null));
+        }
+
         if (tag.Name != "img")
         {
             return null;
@@ -389,9 +437,9 @@ internal sealed class SafeHtmlInlineState
         "details" or "div" or "em" or "figcaption" or "figure" or "footer" or "h1" or
         "h2" or "h3" or "h4" or "h5" or "h6" or "header" or "hr" or "i" or "img" or
         "ins" or "kbd" or "li" or "main" or "mark" or "nav" or "ol" or "p" or
-        "picture" or "pre" or "s" or "samp" or "section" or "small" or "source" or
+        "audio" or "input" or "picture" or "pre" or "s" or "samp" or "section" or "small" or "source" or
         "span" or "strike" or "strong" or "sub" or "summary" or "sup" or "table" or
-        "tbody" or "td" or "tfoot" or "th" or "thead" or "tr" or "u" or "ul" or "var";
+        "tbody" or "td" or "tfoot" or "th" or "thead" or "tr" or "u" or "ul" or "var" or "video";
 
     private void PopThrough(string name)
     {

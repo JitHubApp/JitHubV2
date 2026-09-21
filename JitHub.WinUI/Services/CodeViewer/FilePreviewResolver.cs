@@ -159,6 +159,19 @@ public sealed class FilePreviewResolver : IFilePreviewResolver
             GitHubRenderedReadmeExtensions.Contains(extension);
     }
 
+    /// <summary>
+    /// Returns whether GitHub's README endpoint can provide the authoritative,
+    /// inert rendered representation for this repository root README.
+    /// </summary>
+    public static bool IsGitHubReadmePath(string path)
+    {
+        string fileName = Path.GetFileNameWithoutExtension(path);
+        string extension = Path.GetExtension(path);
+        return fileName.Equals("README", StringComparison.OrdinalIgnoreCase) &&
+            (MarkdownExtensions.Contains(extension) ||
+             GitHubRenderedReadmeExtensions.Contains(extension));
+    }
+
     private static string GetImageMime(string ext) => ext.ToLowerInvariant() switch
     {
         ".png"  => "image/png",

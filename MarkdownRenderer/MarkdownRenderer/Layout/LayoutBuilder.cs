@@ -148,7 +148,15 @@ internal sealed class LayoutBuilder
                     htmlBlock.Span.Start,
                     _context.DisclosureStates,
                     cancellationToken) == true;
-            if (b is HtmlBlock && htmlScopes?.BudgetExceeded == true)
+            if (suppressedBeforeBlock && b is not HtmlBlock)
+            {
+                htmlScopes?.ObserveBlockTags(
+                    b,
+                    _context.DisclosureStates,
+                    cancellationToken);
+            }
+
+            if (htmlScopes?.BudgetExceeded == true)
             {
                 if (!htmlBudgetNoticeAdded)
                 {
@@ -160,7 +168,8 @@ internal sealed class LayoutBuilder
                     blocks.Add(notice);
                     htmlBudgetNoticeAdded = true;
                 }
-                continue;
+                if (b is HtmlBlock || suppressedBeforeBlock)
+                    continue;
             }
             if (scopeOnly)
             {
@@ -178,6 +187,24 @@ internal sealed class LayoutBuilder
                 if (htmlScopes is not null)
                     ApplyHtmlAlignment(box, htmlScopes.CurrentAlignment);
                 blocks.Add(box);
+            }
+
+            if (!suppressedBeforeBlock && b is not HtmlBlock)
+            {
+                htmlScopes?.ObserveBlockTags(
+                    b,
+                    _context.DisclosureStates,
+                    cancellationToken);
+                if (htmlScopes?.BudgetExceeded == true && !htmlBudgetNoticeAdded)
+                {
+                    var notice = new InlineContainerBox(_context, MarkdownElementKeys.Body)
+                    {
+                        BlockIndex = _context.NextBlockIndex(),
+                    };
+                    AddHtmlBudgetNotice(notice);
+                    blocks.Add(notice);
+                    htmlBudgetNoticeAdded = true;
+                }
             }
         }
 
@@ -1144,7 +1171,15 @@ internal sealed class LayoutBuilder
                     htmlBlock.Span.Start,
                     _context.DisclosureStates,
                     _context.CancellationToken) == true;
-            if (child is HtmlBlock && htmlScopes?.BudgetExceeded == true)
+            if (suppressedBeforeBlock && child is not HtmlBlock)
+            {
+                htmlScopes?.ObserveBlockTags(
+                    child,
+                    _context.DisclosureStates,
+                    _context.CancellationToken);
+            }
+
+            if (htmlScopes?.BudgetExceeded == true)
             {
                 if (!htmlBudgetNoticeAdded)
                 {
@@ -1157,7 +1192,8 @@ internal sealed class LayoutBuilder
                     htmlBudgetNoticeAdded = true;
                 }
 
-                continue;
+                if (child is HtmlBlock || suppressedBeforeBlock)
+                    continue;
             }
 
             if (scopeOnly || suppressedBeforeBlock)
@@ -1170,6 +1206,24 @@ internal sealed class LayoutBuilder
             if (htmlScopes is not null)
                 ApplyHtmlAlignment(box, htmlScopes.CurrentAlignment);
             destination.Add(box);
+
+            if (!suppressedBeforeBlock && child is not HtmlBlock)
+            {
+                htmlScopes?.ObserveBlockTags(
+                    child,
+                    _context.DisclosureStates,
+                    _context.CancellationToken);
+                if (htmlScopes?.BudgetExceeded == true && !htmlBudgetNoticeAdded)
+                {
+                    var notice = new InlineContainerBox(_context, MarkdownElementKeys.Body)
+                    {
+                        BlockIndex = _context.NextBlockIndex(),
+                    };
+                    AddHtmlBudgetNotice(notice);
+                    destination.Add(notice);
+                    htmlBudgetNoticeAdded = true;
+                }
+            }
         }
     }
 

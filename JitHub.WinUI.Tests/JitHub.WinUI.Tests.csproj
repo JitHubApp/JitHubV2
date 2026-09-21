@@ -86,6 +86,7 @@
     <Compile Include="..\JitHub.WinUI\Services\CodeViewer\GitHubRepoCodeQueryContracts.cs" Link="Services\%(Filename)%(Extension)" />
     <Compile Include="..\JitHub.WinUI\Services\CodeViewer\GitHubRepoCodeQueryService.cs" Link="Services\%(Filename)%(Extension)" />
     <Compile Include="..\JitHub.WinUI\Services\CodeViewer\GitHubCodeUrlBuilder.cs" Link="Services\%(Filename)%(Extension)" />
+    <Compile Include="..\JitHub.WinUI\Services\CodeViewer\GitHubRenderedReadmeHtmlNormalizer.cs" Link="Services\%(Filename)%(Extension)" />
     <Compile Include="..\JitHub.WinUI\Services\CodeViewer\GitReferencePolicy.cs" Link="Services\%(Filename)%(Extension)" />
     <Compile Include="..\JitHub.WinUI\Services\CodeViewer\CodeSymbolExtractor.cs" Link="Services\%(Filename)%(Extension)" />
     <Compile Include="..\JitHub.WinUI\Services\CodeViewer\UiWorkBudget.cs" Link="Services\%(Filename)%(Extension)" />
@@ -118,6 +119,7 @@
     <Compile Include="..\JitHub.WinUI\Services\Settings\SettingsActionGate.cs" Link="Services\Settings\%(Filename)%(Extension)" />
     <Compile Include="..\JitHub.WinUI\Services\Settings\SettingsSourceNavigationContracts.cs" Link="Services\Settings\%(Filename)%(Extension)" />
     <Compile Include="..\JitHub.WinUI\Services\Markdown\GitHubMarkdownImageReference.cs" Link="Services\Markdown\%(Filename)%(Extension)" />
+    <Compile Include="..\JitHub.WinUI\Services\Markdown\GitLfsPointer.cs" Link="Services\Markdown\%(Filename)%(Extension)" />
     <Compile Include="..\JitHub.WinUI\Services\Markdown\GitHubMarkdownImageUrlResolver.cs" Link="Services\Markdown\%(Filename)%(Extension)" />
     <Compile Include="..\JitHub.WinUI\Services\Markdown\GitHubCamoImageMapParser.cs" Link="Services\Markdown\%(Filename)%(Extension)" />
     <Compile Include="..\JitHub.WinUI\Services\Markdown\GloballyRoutableAddressPolicy.cs" Link="Services\Markdown\%(Filename)%(Extension)" />

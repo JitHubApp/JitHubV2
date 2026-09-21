@@ -10,3 +10,4 @@ using System.Runtime.CompilerServices;
 [assembly: InternalsVisibleTo("MarkdownRenderer.Sample")]
 [assembly: InternalsVisibleTo("MarkdownRenderer.PerformanceHarness")]
 [assembly: InternalsVisibleTo("MarkdownRenderer.SyntaxHighlighting.TextMate")]
+[assembly: InternalsVisibleTo("JitHub.WinUI")]

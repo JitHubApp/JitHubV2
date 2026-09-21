@@ -41,7 +41,15 @@ internal static class GfmChildBuilder
                     htmlBlock.Span.Start,
                     context.DisclosureStates,
                     context.CancellationToken) == true;
-            if (child is HtmlBlock && htmlScopes?.BudgetExceeded == true)
+            if (suppressedBeforeBlock && child is not HtmlBlock)
+            {
+                htmlScopes?.ObserveBlockTags(
+                    child,
+                    context.DisclosureStates,
+                    context.CancellationToken);
+            }
+
+            if (htmlScopes?.BudgetExceeded == true)
             {
                 if (!htmlBudgetNoticeAdded)
                 {
@@ -59,7 +67,8 @@ internal static class GfmChildBuilder
                     htmlBudgetNoticeAdded = true;
                 }
 
-                continue;
+                if (child is HtmlBlock || suppressedBeforeBlock)
+                    continue;
             }
 
             if (scopeOnly || suppressedBeforeBlock)
@@ -72,6 +81,29 @@ internal static class GfmChildBuilder
             if (htmlScopes is not null)
                 ApplyHtmlAlignment(box, htmlScopes.CurrentAlignment);
             stack.Add(box);
+
+            if (!suppressedBeforeBlock && child is not HtmlBlock)
+            {
+                htmlScopes?.ObserveBlockTags(
+                    child,
+                    context.DisclosureStates,
+                    context.CancellationToken);
+                if (htmlScopes?.BudgetExceeded == true && !htmlBudgetNoticeAdded)
+                {
+                    var notice = new InlineContainerBox(context, MarkdownElementKeys.Body)
+                    {
+                        BlockIndex = context.NextBlockIndex(),
+                    };
+                    notice.Add(new TextRun(context.ResolveString(
+                        MarkdownStringKeys.HtmlBudgetExceeded,
+                        MarkdownLocalizedStrings.HtmlBudgetExceeded))
+                    {
+                        SourceSpan = MarkdownRenderer.SourceSpan.Empty,
+                    });
+                    stack.Add(notice);
+                    htmlBudgetNoticeAdded = true;
+                }
+            }
         }
     }
 

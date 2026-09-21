@@ -184,6 +184,18 @@ public class FilePreviewResolverTests
         Assert.Equal(RepoFilePreviewKind.Code, result.Kind);
     }
 
+    [Theory]
+    [InlineData("README.md", true)]
+    [InlineData("readme.markdown", true)]
+    [InlineData("README.asciidoc", true)]
+    [InlineData("docs/README.md", true)]
+    [InlineData("CONTRIBUTING.md", false)]
+    [InlineData("README.txt", false)]
+    public void IsGitHubReadmePath_RecognizesSupportedReadmeMarkup(string path, bool expected)
+    {
+        Assert.Equal(expected, FilePreviewResolver.IsGitHubReadmePath(path));
+    }
+
     [Fact]
     public void Resolve_MarkdownAboveRendererAdmissionLimit_ReturnsTooLarge()
     {

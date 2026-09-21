@@ -23,6 +23,8 @@ internal static partial class MarkdownLifecycleAutomationBridge
     private const string ImageResolutionEvidencePathVariable = "JITHUB_MARKDOWN_IMAGE_RESOLUTION_EVIDENCE_PATH";
     private const string RenderFailureEvidencePathVariable = "JITHUB_MARKDOWN_RENDER_FAILURE_EVIDENCE_PATH";
     private const string RenderCompleteEvidencePathVariable = "JITHUB_MARKDOWN_RENDER_COMPLETE_EVIDENCE_PATH";
+    private const string CaptureRequestPathVariable = "JITHUB_MARKDOWN_CAPTURE_REQUEST_PATH";
+    private const string CaptureResponsePathVariable = "JITHUB_MARKDOWN_CAPTURE_RESPONSE_PATH";
     private const string HighContrastVariable = "JITHUB_AUTOMATION_HIGH_CONTRAST";
     private const string ResourceMapAbsentVariable = "JITHUB_AUTOMATION_RESOURCE_MAP_ABSENT";
     private const string ResourceMapEvidencePathVariable = "JITHUB_AUTOMATION_RESOURCE_MAP_EVIDENCE_PATH";
@@ -368,6 +370,64 @@ internal static partial class MarkdownLifecycleAutomationBridge
             MarkdownLifecycleJsonContext.Default.RenderCompleteSignal);
     }
 
+    public static bool TryReadCaptureRequest(
+        string automationId,
+        out MarkdownAuditCaptureRequest? request)
+    {
+        request = null;
+        if (!TargetsHost(automationId))
+            return false;
+
+        string? path = Environment.GetEnvironmentVariable(CaptureRequestPathVariable);
+        if (string.IsNullOrWhiteSpace(path) || !File.Exists(path))
+            return false;
+
+        try
+        {
+            using FileStream stream = new(
+                Path.GetFullPath(path),
+                FileMode.Open,
+                FileAccess.Read,
+                FileShare.ReadWrite | FileShare.Delete);
+            request = JsonSerializer.Deserialize(
+                stream,
+                MarkdownLifecycleJsonContext.Default.MarkdownAuditCaptureRequest);
+            return request is { RequestId.Length: > 0 };
+        }
+        catch (IOException)
+        {
+            return false;
+        }
+        catch (UnauthorizedAccessException)
+        {
+            return false;
+        }
+        catch (JsonException)
+        {
+            return false;
+        }
+    }
+
+    public static void RecordCaptureResponse(
+        string requestId,
+        bool succeeded,
+        int width,
+        int height,
+        double documentTop,
+        string? error)
+    {
+        WriteSignal(
+            Environment.GetEnvironmentVariable(CaptureResponsePathVariable),
+            new MarkdownAuditCaptureResponse(
+                requestId,
+                succeeded,
+                width,
+                height,
+                documentTop,
+                error),
+            MarkdownLifecycleJsonContext.Default.MarkdownAuditCaptureResponse);
+    }
+
     private static bool IsOne(string variable) => string.Equals(
         Environment.GetEnvironmentVariable(variable),
         "1",
@@ -427,6 +487,19 @@ internal static partial class MarkdownLifecycleAutomationBridge
 
     private sealed record RenderCompleteSignal(int ProcessId, string Host, DateTimeOffset Timestamp);
 
+    internal sealed record MarkdownAuditCaptureRequest(
+        string RequestId,
+        string? OutputPath,
+        bool Save);
+
+    private sealed record MarkdownAuditCaptureResponse(
+        string RequestId,
+        bool Succeeded,
+        int Width,
+        int Height,
+        double DocumentTop,
+        string? Error);
+
     private sealed record MarkdownLifecycleRuntimeSettings(double TextScaleFactor, int Revision);
 
     [JsonSerializable(typeof(LifecycleReadySignal), TypeInfoPropertyName = "LifecycleReadySignal")]
@@ -435,6 +508,8 @@ internal static partial class MarkdownLifecycleAutomationBridge
     [JsonSerializable(typeof(ImageUnavailableSignal), TypeInfoPropertyName = "ImageUnavailableSignal")]
     [JsonSerializable(typeof(ImageResolutionSignal), TypeInfoPropertyName = "ImageResolutionSignal")]
     [JsonSerializable(typeof(RenderCompleteSignal), TypeInfoPropertyName = "RenderCompleteSignal")]
+    [JsonSerializable(typeof(MarkdownAuditCaptureRequest), TypeInfoPropertyName = "MarkdownAuditCaptureRequest")]
+    [JsonSerializable(typeof(MarkdownAuditCaptureResponse), TypeInfoPropertyName = "MarkdownAuditCaptureResponse")]
     [JsonSerializable(typeof(MarkdownLifecycleRuntimeSettings), TypeInfoPropertyName = "RuntimeSettings")]
     private sealed partial class MarkdownLifecycleJsonContext : JsonSerializerContext
     {

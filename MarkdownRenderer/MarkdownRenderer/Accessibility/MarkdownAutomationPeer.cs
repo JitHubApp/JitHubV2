@@ -319,6 +319,7 @@ internal sealed partial class MarkdownAutomationPeer : FrameworkElementAutomatio
                 continue;
 
             if (child.Role is MarkdownSemanticRole.Paragraph or MarkdownSemanticRole.Heading or MarkdownSemanticRole.CodeBlock &&
+                child.InlineRun is null &&
                 child.InlineBox is { } inline)
             {
                 list.Add(GetOrCreateBlockPeer(inline));
@@ -378,6 +379,7 @@ internal sealed partial class MarkdownAutomationPeer : FrameworkElementAutomatio
         }
 
         if (node.Role is MarkdownSemanticRole.Paragraph or MarkdownSemanticRole.Heading or MarkdownSemanticRole.CodeBlock &&
+            node.InlineRun is null &&
             node.InlineBox is { } blockInline)
         {
             peer = GetOrCreateBlockPeer(blockInline);

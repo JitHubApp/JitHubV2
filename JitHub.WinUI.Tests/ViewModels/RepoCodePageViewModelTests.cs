@@ -53,6 +53,26 @@ public sealed class RepoCodePageViewModelTests
     }
 
     [Fact]
+    public async Task Initialize_MarkdownReadmePrefersGitHubRenderedSafeHtml()
+    {
+        RepoTreeNode readme = File("README.md", "readme-sha");
+        RootFirstTreeService service = new(
+            readme,
+            Blob("readme-sha", "# Raw heading"),
+            "<h1>GitHub-rendered heading</h1>");
+        RepoCodePageViewModel viewModel = CreateViewModel(service);
+
+        await viewModel.InitializeAsync("owner", "repo", "main", default);
+        await viewModel.DefaultPreviewTask;
+
+        Assert.Equal(RepoFilePreviewKind.Markdown, viewModel.Preview.Kind);
+        Assert.Equal("markdown", viewModel.Preview.LanguageId);
+        Assert.Equal("# Raw heading", viewModel.Preview.Text);
+        Assert.Equal("<h1>GitHub-rendered heading</h1>", viewModel.Preview.RenderedText);
+        Assert.Equal(0, service.BlobRequestCount);
+    }
+
+    [Fact]
     public async Task Initialize_ImmutableSymlinkReadmeUsesDereferencedEndpointBlob()
     {
         const string commitSha = "0123456789abcdef0123456789abcdef01234567";

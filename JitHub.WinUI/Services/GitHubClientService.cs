@@ -1784,7 +1784,50 @@ public sealed class GitHubClientService : IGitHubClientService
             request,
             HttpCompletionOption.ResponseHeadersRead,
             cancellationToken).ConfigureAwait(false);
+
+        // A GitHub App or fine-grained token can be denied access to a public
+        // organization by an IP allow-list even though the same public README
+        // is available without authentication. The rendered endpoint is also
+        // how GitHub supplies its Camo substitutions, so treating that policy
+        // denial as final leaves otherwise valid README images unavailable.
+        // Retry only this read-only public representation, never an exhausted
+        // or explicitly throttled request, and preserve the authenticated
+        // error when the anonymous request cannot satisfy it.
+        if (ShouldRetryRenderedReadmeAnonymously(response, token))
+        {
+            using HttpRequestMessage publicRequest = CreateAuthenticatedRequest(
+                HttpMethod.Get,
+                path,
+                PublicAccessToken);
+            publicRequest.Headers.Accept.Add(
+                new MediaTypeWithQualityHeaderValue("application/vnd.github.html+json"));
+            using HttpResponseMessage publicResponse = await _httpClient.SendAsync(
+                publicRequest,
+                HttpCompletionOption.ResponseHeadersRead,
+                cancellationToken).ConfigureAwait(false);
+            if (publicResponse.IsSuccessStatusCode)
+            {
+                return await ReadRenderedReadmeHtmlAsync(publicResponse, cancellationToken)
+                    .ConfigureAwait(false);
+            }
+        }
+
         await EnsureSuccessAsync(response, cancellationToken).ConfigureAwait(false);
+        return await ReadRenderedReadmeHtmlAsync(response, cancellationToken).ConfigureAwait(false);
+    }
+
+    private static bool ShouldRetryRenderedReadmeAnonymously(
+        HttpResponseMessage response,
+        string token) =>
+        !IsPublicAccessToken(token) &&
+        response.StatusCode == HttpStatusCode.Forbidden &&
+        response.Headers.RetryAfter is null &&
+        (!TryGetInt64Header(response, "X-RateLimit-Remaining", out long remaining) || remaining > 0);
+
+    private static async Task<string> ReadRenderedReadmeHtmlAsync(
+        HttpResponseMessage response,
+        CancellationToken cancellationToken)
+    {
 
         const int maximumRenderedReadmeBytes = 8 * 1024 * 1024;
         if (response.Content.Headers.ContentLength is long contentLength &&

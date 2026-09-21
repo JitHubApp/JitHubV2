@@ -17,6 +17,48 @@ namespace MarkdownRenderer.GitHub.Tests;
 public sealed class SafeHtmlRenderingTests
 {
     [Fact]
+    public void GitHubRenderedHtmlPreservesCodeBlocksAndNestedListStructure()
+    {
+        const string source = "<ol><li><p>First</p><ul><li>Nested</li></ul><pre><code>echo ok\n</code></pre></li></ol>";
+
+        using LayoutSnapshot snapshot = Build(source, SafeHtmlOptions.Default);
+        ListItemBox outer = Assert.Single(FlattenBoxes(snapshot).OfType<ListItemBox>(),
+            item => item.Marker.Runs.Any(run => run.Text == "1."));
+        ListItemBox nested = Assert.Single(
+            outer.Content.Children
+                .OfType<StackBox>()
+                .SelectMany(static list => list.Children.OfType<ListItemBox>()));
+        Assert.Contains(nested.Marker.Runs, run => run.Text == "\u2022");
+        CodeBlockBox code = Assert.Single(outer.Content.Children.OfType<CodeBlockBox>());
+        Assert.Equal("echo ok\n", code.CodeText);
+        Assert.Contains(outer.Content.Children, child => child is StackBox);
+        Assert.Contains(
+            MarkdownRenderer.Accessibility.MarkdownSemanticDocument
+                .EnumerateDepthFirst(snapshot.SemanticDocument.Root),
+            node => node.Role == MarkdownRenderer.Accessibility.MarkdownSemanticRole.CodeBlock);
+    }
+
+    [Fact]
+    public void HtmlHeadingsInsideTableCellsRetainHeadingStyleAndSemantics()
+    {
+        const string source = "<table><tr><td><h3>Agentic <a href='https://example.test'>Task Manager</a></h3></td></tr></table>";
+
+        using LayoutSnapshot snapshot = Build(source, SafeHtmlOptions.Default);
+        InlineRun[] runs = FlattenRuns(snapshot).ToArray();
+        MarkdownRenderer.Accessibility.MarkdownSemanticNode heading = Assert.Single(
+            MarkdownRenderer.Accessibility.MarkdownSemanticDocument
+                .EnumerateDepthFirst(snapshot.SemanticDocument.Root),
+            static node => node.Role == MarkdownRenderer.Accessibility.MarkdownSemanticRole.Heading);
+
+        Assert.Equal(3, heading.HeadingLevel);
+        Assert.Equal("Agentic Task Manager", snapshot.SemanticDocument.GetText(heading));
+        Assert.All(runs.Where(static run => run.Text.Trim().Length > 0),
+            static run => Assert.Equal(MarkdownElementKeys.Heading3, run.SemanticHeadingKey));
+        Assert.Single(heading.Children,
+            static child => child.Role == MarkdownRenderer.Accessibility.MarkdownSemanticRole.Link);
+    }
+
+    [Fact]
     public void GitHubStandaloneHtmlCommentsAreNotRendered()
     {
         const string source = """
@@ -90,6 +132,54 @@ public sealed class SafeHtmlRenderingTests
 
         Assert.Empty(image.AltText);
         Assert.Empty(image.AccessibleText);
+    }
+
+    [Fact]
+    public void GitHubVideoAttachmentUsesAtomicSafePlaceholderWithoutLeakingSignedMarkup()
+    {
+        const string source =
+            "<video src='https://private-user-images.githubusercontent.com/demo.mp4?jwt=secret' " +
+            "width='640' height='360' controls muted></video>";
+
+        using LayoutSnapshot snapshot = Build(source, SafeHtmlOptions.Default);
+        InlineImageRun media = Assert.Single(FlattenRuns(snapshot).OfType<InlineImageRun>());
+        string rendered = string.Concat(FlattenRuns(snapshot).Select(static run => run.Text));
+
+        Assert.StartsWith("data:image/svg+xml;base64,", media.Url, StringComparison.Ordinal);
+        Assert.Null(media.LinkUrl);
+        media.Measure(800, 20);
+        Assert.InRange(media.DesiredWidth, 639, 641);
+        Assert.InRange(media.DesiredHeight, 359, 361);
+        Assert.DoesNotContain("jwt", rendered, StringComparison.OrdinalIgnoreCase);
+        Assert.DoesNotContain("<video", rendered, StringComparison.OrdinalIgnoreCase);
+    }
+
+    [Fact]
+    public void GitHubRenderedTaskInputUsesNativeReadOnlyCheckboxSemantics()
+    {
+        const string source = "<ul><li><input type='checkbox' checked disabled> complete</li></ul>";
+
+        using LayoutSnapshot snapshot = Build(source, SafeHtmlOptions.Default);
+        InlineEmbedRun task = Assert.Single(FlattenRuns(snapshot).OfType<InlineEmbedRun>());
+
+        Assert.NotNull(task.AutomationMetadata);
+        Assert.True(task.AutomationMetadata!.IsChecked);
+        Assert.False(task.AutomationMetadata.CanToggle);
+    }
+
+    [Fact]
+    public void HeadingInsideDisclosureSummaryRetainsHeadingSemantics()
+    {
+        const string source = "<details><summary><div class='markdown-heading'><h3>Browser &amp; Automation</h3><a href='#browser'>Permalink</a></div></summary><p>Body</p></details>";
+
+        using LayoutSnapshot snapshot = Build(source, SafeHtmlOptions.Default);
+        MarkdownRenderer.Accessibility.MarkdownSemanticNode heading = Assert.Single(
+            MarkdownRenderer.Accessibility.MarkdownSemanticDocument
+                .EnumerateDepthFirst(snapshot.SemanticDocument.Root),
+            static node => node.Role == MarkdownRenderer.Accessibility.MarkdownSemanticRole.Heading);
+
+        Assert.Equal(3, heading.HeadingLevel);
+        Assert.Contains("Browser & Automation", snapshot.SemanticDocument.GetText(heading), StringComparison.Ordinal);
     }
 
     [Fact]
@@ -214,6 +304,33 @@ public sealed class SafeHtmlRenderingTests
     }
 
     [Fact]
+    public void GitHubProfileResolvesReferenceImagesInsidePresentationDiv()
+    {
+        const string source = """
+            <div align="center">
+
+            [![Community]][community-destination]
+            [![Source]][source-destination]
+
+            [Community]: community.png (Community)
+            [Source]: source.png (Source)
+            [community-destination]: https://example.test/community
+            [source-destination]: https://example.test/source
+
+            </div>
+            """;
+
+        using LayoutSnapshot snapshot = BuildGitHub(source);
+        InlineImageRun[] images = FlattenRuns(snapshot).OfType<InlineImageRun>().ToArray();
+
+        Assert.Equal(2, images.Length);
+        Assert.Equal("community.png", images[0].Url);
+        Assert.Equal("https://example.test/community", images[0].LinkUrl);
+        Assert.Equal("source.png", images[1].Url);
+        Assert.Equal("https://example.test/source", images[1].LinkUrl);
+    }
+
+    [Fact]
     public void GitHubProfileKeepsCollapsedDetailsBodiesOutOfLayout()
     {
         string source = string.Join(
@@ -233,6 +350,95 @@ public sealed class SafeHtmlRenderingTests
         Assert.Equal(200, runs.OfType<LinkRun>().Count(static run => run.DisclosureId is not null));
         Assert.DoesNotContain(runs, static run => run is InlineImageRun);
         Assert.DoesNotContain("Hidden body", string.Concat(runs.Select(static run => run.Text)));
+    }
+
+    [Fact]
+    public void GitHubProfileClosesBlockDetailsFromInlineFormattedClosingTags()
+    {
+        string source = string.Join(
+            "\n\n",
+            Enumerable.Range(0, 32).Select(index => $$"""
+                <details>
+                <summary>Section {{index}}</summary><br><b>
+
+                Hidden body {{index}} with ![deferred](hidden-{{index}}.png).
+
+                </b></details>
+                """));
+        var options = new SafeHtmlOptions(
+            budgets: new SafeHtmlBudgets(maxNestingDepth: 16));
+
+        using LayoutSnapshot snapshot = Build(source, options, new TestStringProvider());
+        InlineRun[] runs = FlattenRuns(snapshot).ToArray();
+        string rendered = string.Concat(runs.Select(static run => run.Text));
+
+        Assert.Equal(32, runs.OfType<LinkRun>().Count(static run => run.DisclosureId is not null));
+        Assert.DoesNotContain(runs, static run => run is InlineImageRun);
+        Assert.DoesNotContain("Hidden body", rendered, StringComparison.Ordinal);
+        Assert.DoesNotContain("omitted", rendered, StringComparison.OrdinalIgnoreCase);
+    }
+
+    [Fact]
+    public void GitHubProfileClosesDetailsFromTagsNestedInsideListContainers()
+    {
+        string source = string.Join(
+            "\n\n",
+            Enumerable.Range(0, 32).Select(index => $$"""
+                <details>
+                <summary>Section {{index}}:
+
+                  * First item
+                  * Second item</summary><br><b>
+
+                Hidden answer
+                </b></details>
+                """));
+        var options = new SafeHtmlOptions(
+            budgets: new SafeHtmlBudgets(maxNestingDepth: 16));
+
+        using LayoutSnapshot snapshot = Build(source, options, new TestStringProvider());
+        InlineRun[] runs = FlattenRuns(snapshot).ToArray();
+        string rendered = string.Concat(runs.Select(static run => run.Text));
+
+        Assert.Equal(32, runs.OfType<LinkRun>().Count(static run => run.DisclosureId is not null));
+        Assert.Contains("First item", rendered, StringComparison.Ordinal);
+        Assert.Contains("Second item", rendered, StringComparison.Ordinal);
+        Assert.DoesNotContain("Hidden answer", rendered, StringComparison.Ordinal);
+        Assert.DoesNotContain("omitted", rendered, StringComparison.OrdinalIgnoreCase);
+    }
+
+    [Fact]
+    public void GitHubProfileKeepsSummaryImagesVisibleWhenDetailsAreCollapsed()
+    {
+        const string source = """
+            <details><summary>Inspect this diagram<br>
+            <img src="diagram.png" alt="Architecture" width="500" height="350">
+            </summary><p>Hidden explanation</p></details>
+            """;
+
+        SafeHtmlDocument parsed = SafeHtmlParser.Parse(source);
+        SafeHtmlElement details = Assert.IsType<SafeHtmlElement>(Assert.Single(parsed.Root.Children));
+        SafeHtmlElement summary = Assert.Single(
+            details.Children.OfType<SafeHtmlElement>(),
+            static element => element.Name == "summary");
+        Assert.Contains(
+            summary.Children.OfType<SafeHtmlElement>(),
+            static element => element.Name == "img");
+
+        using LayoutSnapshot snapshot = BuildGitHub(source);
+        InlineRun[] runs = FlattenRuns(snapshot).ToArray();
+
+        LinkRun disclosure = Assert.Single(
+            runs.OfType<LinkRun>(),
+            static run => run.DisclosureId is not null);
+        Assert.Equal("Inspect this diagram", disclosure.AccessibilityName);
+        InlineImageRun image = Assert.Single(runs.OfType<InlineImageRun>());
+        Assert.Equal("diagram.png", image.Url);
+        Assert.Equal("Architecture", image.AltText);
+        Assert.DoesNotContain(
+            "Hidden explanation",
+            string.Concat(runs.Select(static run => run.Text)),
+            StringComparison.Ordinal);
     }
 
     [Fact]
@@ -384,6 +590,20 @@ public sealed class SafeHtmlRenderingTests
             "If you prefer, run codex app or visit the Codex App page.",
             rendered);
         Assert.Equal(2, FlattenRuns(snapshot).OfType<LinkRun>().Count());
+    }
+
+    [Fact]
+    public void GitHubHeadingPermalinkAriaHiddenSvgIsNotRenderedAsLinkedImage()
+    {
+        const string source = """
+            <div class="markdown-heading"><h2 id="user-content-help">Help</h2><a class="anchor" aria-label="Permalink: Help" href="#help"><svg viewBox="0 0 16 16" width="16" height="16" aria-hidden="true"><path d="M0 0h1v1z"></path></svg></a></div>
+            """;
+
+        using LayoutSnapshot snapshot = Build(source, SafeHtmlOptions.Default);
+        InlineRun[] runs = FlattenRuns(snapshot).ToArray();
+
+        Assert.Equal("Help", string.Concat(runs.Select(static run => run.Text)).Trim());
+        Assert.DoesNotContain(runs, static run => run is InlineImageRun or LinkRun);
     }
 
     [Fact]

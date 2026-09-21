@@ -213,18 +213,24 @@ public sealed class InlineAlignmentContractTests
     [Fact]
     public void MarkdownTaskMarkersUseCenteredScaleAwareSlots()
     {
-        string source = File.ReadAllText(Path.Combine(
+        string rendererSource = File.ReadAllText(Path.Combine(
             FindRepositoryRoot(),
             "MarkdownRenderer",
             "MarkdownRenderer.Gfm",
             "Renderers",
             "TaskListItemRenderer.cs"));
+        string factorySource = File.ReadAllText(Path.Combine(
+            FindRepositoryRoot(),
+            "MarkdownRenderer",
+            "MarkdownRenderer",
+            "Layout",
+            "TaskMarkerControlFactory.cs"));
 
-        Assert.Contains("GetTaskMarkerSize(context.ThemeSnapshot, editableRequested)", source, StringComparison.Ordinal);
-        Assert.Contains("snapshot.MinimumInteractiveSize", source, StringComparison.Ordinal);
-        Assert.Contains("snapshot.TextScaleFactor", source, StringComparison.Ordinal);
-        Assert.Contains("VerticalAlignment = VerticalAlignment.Center", source, StringComparison.Ordinal);
-        Assert.DoesNotContain("new InlineEmbedRun(20f", source, StringComparison.Ordinal);
+        Assert.Contains("GetTaskMarkerSize(context.ThemeSnapshot, editableRequested)", rendererSource, StringComparison.Ordinal);
+        Assert.Contains("snapshot.MinimumInteractiveSize", factorySource, StringComparison.Ordinal);
+        Assert.Contains("snapshot.TextScaleFactor", factorySource, StringComparison.Ordinal);
+        Assert.Contains("VerticalAlignment = VerticalAlignment.Center", factorySource, StringComparison.Ordinal);
+        Assert.DoesNotContain("new InlineEmbedRun(20f", rendererSource, StringComparison.Ordinal);
     }
 
     [Theory]

@@ -1120,7 +1120,7 @@ public sealed partial class RepoCodePageViewModel : ObservableObject
             entry.Bytes.AsMemory(0, sniffLength));
         string? renderedText = null;
         if (descriptor.Kind == RepoFilePreviewKind.Markdown &&
-            descriptor.LanguageId == "github-readme-html")
+            FilePreviewResolver.IsGitHubReadmePath(node.Path))
         {
             RepoCodeLoadResult<RepoReadmeFile>? readme = await _treeService.LoadReadmeAsync(
                 owner,
@@ -1286,7 +1286,7 @@ public sealed partial class RepoCodePageViewModel : ObservableObject
             GitHubCodeUrlBuilder.BuildRawUrl(_owner, _repositoryName, _ref, node.Path),
             RichText: null);
         if (descriptor.Kind == RepoFilePreviewKind.Markdown &&
-            descriptor.LanguageId == "github-readme-html")
+            FilePreviewResolver.IsGitHubReadmePath(node.Path))
         {
             // The source blob cache intentionally does not persist server-rendered
             // HTML. Continue through the asynchronous README path to retrieve it.

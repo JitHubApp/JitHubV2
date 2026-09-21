@@ -165,6 +165,35 @@ public class GitHubMarkdownImageUrlResolverTests
         Assert.Equal("assets/logo.png", reference.Path);
     }
 
+    [Fact]
+    public void GitLfsPointer_RecognizesCanonicalPointer_AndBuildsTrustedMediaRoute()
+    {
+        byte[] pointer = System.Text.Encoding.UTF8.GetBytes(
+            "version https://git-lfs.github.com/spec/v1\n" +
+            "oid sha256:db80c1464c7cbde6ef77682431a3baec4ba27b94485dea0b341623da7e4d1fad\n" +
+            "size 591868\n");
+        var reference = new GitHubMarkdownImageReference(
+            "microsoft",
+            "autogen",
+            "027ecf0a379bcc1d09956d46d12d44a3ad9cee14",
+            "autogen-landing.jpg",
+            new Uri("https://github.com/microsoft/autogen/blob/main/autogen-landing.jpg"));
+
+        Assert.True(GitLfsPointer.IsPointer(pointer));
+        Assert.Equal(
+            "https://github.com/microsoft/autogen/raw/027ecf0a379bcc1d09956d46d12d44a3ad9cee14/autogen-landing.jpg",
+            GitHubMarkdownImageUrlResolver.CreateGitHubRawRouteUri(reference).AbsoluteUri);
+    }
+
+    [Theory]
+    [InlineData("version https://git-lfs.github.com/spec/v1\noid sha256:not-a-hash\nsize 1\n")]
+    [InlineData("version https://git-lfs.github.com/spec/v1\noid sha256:db80c1464c7cbde6ef77682431a3baec4ba27b94485dea0b341623da7e4d1fad\nsize -1\n")]
+    [InlineData("ordinary image bytes")]
+    public void GitLfsPointer_RejectsMalformedOrUnrelatedContent(string value)
+    {
+        Assert.False(GitLfsPointer.IsPointer(System.Text.Encoding.UTF8.GetBytes(value)));
+    }
+
     [Theory]
     [InlineData("heads", "main")]
     [InlineData("tags", "v2.1.0")]

@@ -17,7 +17,8 @@ internal sealed class GitHubDetailsBlockParser : BlockParser
 
     public override BlockState TryOpen(BlockProcessor processor)
     {
-        if (processor.IsCodeIndent || !TryReadOpening(processor.Line.ToString(), out bool isOpen, out string summary))
+        if (processor.IsCodeIndent ||
+            !TryReadOpening(processor.Line.ToString(), out bool isOpen, out string remainder))
         {
             return BlockState.None;
         }
@@ -27,8 +28,14 @@ internal sealed class GitHubDetailsBlockParser : BlockParser
             Column = processor.Column,
             Span = new Markdig.Syntax.SourceSpan(processor.Start, processor.Line.End),
             IsOpenByDefault = isOpen,
-            SummaryMarkup = summary,
         };
+        if (TryReadSummaryStart(remainder, out string summary, out bool summaryClosed))
+        {
+            block.HasSummary = true;
+            block.IsReadingSummary = !summaryClosed;
+            block.SummarySourceStart = processor.Start;
+            block.AppendSummaryLine(summary);
+        }
         processor.NewBlocks.Push(block);
         return BlockState.ContinueDiscard;
     }
@@ -37,15 +44,36 @@ internal sealed class GitHubDetailsBlockParser : BlockParser
     {
         var details = (GitHubDetailsBlock)block;
         string line = processor.Line.ToString().Trim();
+        if (details.IsReadingSummary)
+        {
+            int closingStart = line.IndexOf("</summary", StringComparison.OrdinalIgnoreCase);
+            if (closingStart >= 0)
+            {
+                details.AppendSummaryLine(line[..closingStart]);
+                details.IsReadingSummary = false;
+            }
+            else
+            {
+                details.AppendSummaryLine(line);
+            }
+
+            details.UpdateSpanEnd(processor.Line.End);
+            return BlockState.ContinueDiscard;
+        }
+
         if (StartsWithTag(line, "</details"))
         {
             details.UpdateSpanEnd(processor.Line.End);
             return BlockState.BreakDiscard;
         }
 
-        if (details.SummaryMarkup.Length == 0 && TryReadSummary(line, out string summary))
+        if (!details.HasSummary &&
+            TryReadSummaryStart(line, out string summary, out bool summaryClosed))
         {
-            details.SummaryMarkup = summary;
+            details.HasSummary = true;
+            details.IsReadingSummary = !summaryClosed;
+            details.SummarySourceStart = processor.Start;
+            details.AppendSummaryLine(summary);
             details.UpdateSpanEnd(processor.Line.End);
             return BlockState.ContinueDiscard;
         }
@@ -54,10 +82,10 @@ internal sealed class GitHubDetailsBlockParser : BlockParser
         return BlockState.Continue;
     }
 
-    private static bool TryReadOpening(string line, out bool isOpen, out string summary)
+    private static bool TryReadOpening(string line, out bool isOpen, out string remainder)
     {
         isOpen = false;
-        summary = string.Empty;
+        remainder = string.Empty;
         string trimmed = line.Trim();
         if (!StartsWithTag(trimmed, "<details"))
         {
@@ -72,24 +100,23 @@ internal sealed class GitHubDetailsBlockParser : BlockParser
 
         string openingTag = trimmed[..(tagEnd + 1)];
         isOpen = HasBooleanAttribute(openingTag, "open");
-        string remainder = trimmed[(tagEnd + 1)..].Trim();
+        remainder = trimmed[(tagEnd + 1)..].Trim();
         if (remainder.Contains("</details", StringComparison.OrdinalIgnoreCase))
         {
             // Let the safe-HTML renderer handle compact single-line elements;
             // this block parser is intentionally for Markdown-bearing containers.
             return false;
         }
-        if (remainder.Length > 0)
-        {
-            _ = TryReadSummary(remainder, out summary);
-        }
-
         return true;
     }
 
-    private static bool TryReadSummary(string line, out string summary)
+    private static bool TryReadSummaryStart(
+        string line,
+        out string summary,
+        out bool isClosed)
     {
         summary = string.Empty;
+        isClosed = false;
         if (!line.StartsWith("<summary", StringComparison.OrdinalIgnoreCase))
         {
             return false;
@@ -97,12 +124,15 @@ internal sealed class GitHubDetailsBlockParser : BlockParser
 
         int openingEnd = line.IndexOf('>');
         int closingStart = line.IndexOf("</summary", StringComparison.OrdinalIgnoreCase);
-        if (openingEnd < 0 || closingStart <= openingEnd)
+        if (openingEnd < 0)
         {
             return false;
         }
 
-        summary = line[(openingEnd + 1)..closingStart];
+        isClosed = closingStart > openingEnd;
+        summary = isClosed
+            ? line[(openingEnd + 1)..closingStart]
+            : line[(openingEnd + 1)..];
         return true;
     }
 

@@ -10,9 +10,9 @@ repository:
 
 - complete browser and native vertical tile sets;
 - browser DOM and native UI Automation text/structure inventories;
-- browser and native image completion evidence;
+- browser and native image/media completion evidence;
 - JitHub render exceptions, process exit state, and resource timing;
-- normalized text coverage, semantic counts for headings, links, images,
+- normalized text coverage, semantic counts for headings, links, images/media,
   tables, code blocks, task checkboxes, and disclosures, styled-viewport SSIM,
   and same-machine Edge-relative timing ratios;
 - pre-screenshot Edge CPU/layout/heap metrics and isolated JitHub process
@@ -41,7 +41,8 @@ and are not charged to the renderer. Cold-start and app-ready-to-content timing
 remain in each case result for user-experience diagnosis.
 
 The run fails when JitHub throws, exits abnormally, leaves an image loading,
-reports an unavailable image, resolves fewer distinct image sources than Edge,
+reports an unavailable image, represents fewer distinct atomic image/media
+items than Edge,
 falls below 98.5% browser text-token coverage, or falls below 95% full-page
 structural fidelity. Each native viewport is compared with the corresponding
 width-normalized Edge viewport; its SSIM remains a diagnostic because JitHub

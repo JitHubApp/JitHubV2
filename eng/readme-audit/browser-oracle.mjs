@@ -63,14 +63,17 @@ try {
     features: [{ name: "prefers-color-scheme", value: "light" }],
   });
 
-  const loadEvent = cdp.once("Page.loadEventFired", 45_000);
   const navigationStarted = performance.now();
   const navigation = await cdp.send("Page.navigate", { url: repositoryUrl });
   if (navigation.errorText) {
     throw new Error(`Edge navigation failed: ${navigation.errorText}`);
   }
-  await loadEvent;
-  await waitForExpression(cdp, `document.readyState === "complete"`, 20_000);
+  // Page.loadEventFired is not a reliable readiness boundary for a GitHub
+  // repository page. A slow or failed third-party README image can postpone
+  // it indefinitely even though the article is already complete and usable,
+  // and the event can race the waiter across redirects. Observe the document
+  // itself instead; image settlement is handled separately and is bounded.
+  await waitForDocumentReady(cdp, 60_000);
   const readmeRendered = await waitForOptionalExpression(
     cdp,
     `Boolean(document.querySelector("#readme article.markdown-body, article.markdown-body"))`,
@@ -79,14 +82,14 @@ try {
     const elapsed = performance.now() - navigationStarted;
     const reportPath = path.join(outputDirectory, "browser.json");
     await writeFile(reportPath, JSON.stringify({
-      schemaVersion: 2,
+      schemaVersion: 3,
       repositoryUrl,
       readmeSha,
       readmeRendered: false,
       capturedAtUtc: new Date().toISOString(),
       viewport: { width: viewportWidth, height: viewportHeight, deviceScaleFactor: 1 },
       timing: { firstReadmeMs: elapsed, settledReadmeMs: elapsed, fullCaptureMs: elapsed, wallMs: performance.now() - wall },
-      semantic: { text: "", headings: [], links: [], images: [], unavailableImages: 0, tables: 0, codeBlocks: 0, taskCheckboxes: 0, details: 0 },
+      semantic: { text: "", headings: [], links: [], images: [], media: [], unavailableImages: 0, tables: 0, codeBlocks: 0, taskCheckboxes: 0, details: 0 },
       tiles: [],
     }, null, 2));
     process.stdout.write(JSON.stringify({ ok: true, readmeRendered: false, report: reportPath }) + "\n");
@@ -185,6 +188,14 @@ try {
         .map(normalized)
         .some(source => source === href);
     };
+    const isAuthoredDisclosure = node => {
+      // GitHub wraps bare video-attachment URLs in its own media-player
+      // <details class="details-reset ..."> shell. That wrapper is repository
+      // page chrome, not an authored Markdown disclosure, and JitHub must not
+      // be penalized for omitting GitHub's web-only player controls. Genuine
+      // README <details> elements do not carry this class.
+      return !node.classList.contains("details-reset");
+    };
     const images = [...article.querySelectorAll("img")]
       .filter(isRendered)
       .map(image => {
@@ -209,6 +220,21 @@ try {
       // layout boxes but no image resource, so they are neither a rendered image
       // nor an unavailable resource JitHub could be expected to reproduce.
       .filter(image => image.source || image.currentSource);
+    const media = [...article.querySelectorAll("video,audio")]
+      .filter(isRendered)
+      .map(node => {
+        const bounds = node.getBoundingClientRect();
+        return {
+          kind: node.tagName.toLowerCase(),
+          source: node.getAttribute("src") || "",
+          currentSource: node.currentSrc || "",
+          renderedWidth: bounds.width,
+          renderedHeight: bounds.height,
+          accessibleName: clean(node.getAttribute("aria-label") || node.getAttribute("title")) || "Embedded content",
+        };
+      })
+      .filter(item => item.renderedWidth > 0 && item.renderedHeight > 0)
+      .filter(item => item.source || item.currentSource);
     // JitHub's UIA TextPattern represents an atomic image by its accessible
     // alt text. innerText intentionally omits image alternatives, so append the
     // rendered images' alt values to compare equivalent accessible documents.
@@ -217,6 +243,7 @@ try {
       ...images
         .map(image => image.alt || (!image.hasExplicitAlt ? "Image" : ""))
         .filter(Boolean),
+      ...media.map(item => item.accessibleName),
     ].join(" "));
     return {
       finalUrl: location.href,
@@ -242,12 +269,15 @@ try {
         text: clean(node.innerText), href: node.href,
       })),
       images,
+      media,
       unavailableImages: images.filter(image => !image.complete || image.naturalWidth <= 0).length,
       tables: [...article.querySelectorAll("table")].filter(isRendered).length,
       codeBlocks: [...article.querySelectorAll("pre")].filter(isRendered).length,
       taskCheckboxes: [...article.querySelectorAll('input[type="checkbox"]')]
         .filter(isRendered).length,
-      details: [...article.querySelectorAll("details")].filter(isRendered).length,
+      details: [...article.querySelectorAll("details")]
+        .filter(isRendered)
+        .filter(isAuthoredDisclosure).length,
     };
   })()`);
   const settledReadmeMs = performance.now() - navigationStarted;
@@ -306,7 +336,7 @@ try {
   const fullCaptureMetricMap = Object.fromEntries(
     fullCaptureMetrics.metrics.map(metric => [metric.name, metric.value]));
   const report = {
-    schemaVersion: 2,
+    schemaVersion: 3,
     repositoryUrl,
     readmeSha,
     readmeRendered: true,
@@ -478,6 +508,24 @@ async function waitForExpression(cdpClient, expression, timeoutMs) {
     await delay(100);
   }
   throw new Error(`Timed out waiting for browser condition: ${expression}`);
+}
+
+async function waitForDocumentReady(cdpClient, timeoutMs) {
+  const deadline = Date.now() + timeoutMs;
+  while (Date.now() < deadline) {
+    try {
+      const ready = await evaluate(
+        cdpClient,
+        `location.href !== "about:blank" && (document.readyState === "interactive" || document.readyState === "complete")`);
+      if (ready) return;
+    } catch {
+      // Navigation replaces the JavaScript execution context. Retry against
+      // the next context instead of treating that normal transition as a
+      // failed oracle run.
+    }
+    await delay(100);
+  }
+  throw new Error("Timed out waiting for the GitHub document to become interactive.");
 }
 
 async function waitForOptionalExpression(cdpClient, expression, timeoutMs) {

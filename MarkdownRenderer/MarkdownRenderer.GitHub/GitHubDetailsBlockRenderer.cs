@@ -1,5 +1,8 @@
 using System.Globalization;
 using System.Linq;
+using Markdig;
+using Markdig.Syntax;
+using Markdig.Syntax.Inlines;
 using MarkdownRenderer.Gfm;
 using MarkdownRenderer.Accessibility;
 using MarkdownRenderer.Hosting;
@@ -40,6 +43,8 @@ internal sealed class GitHubDetailsBlockRenderer : MarkdownNodeRenderer<GitHubDe
         });
         stack.Add(summary);
 
+        AppendSummarySupplementalContent(stack, details, context);
+
         if (!expanded)
         {
             return stack;
@@ -73,13 +78,104 @@ internal sealed class GitHubDetailsBlockRenderer : MarkdownNodeRenderer<GitHubDe
             return fallback;
         }
 
+        int paragraphBreak = markup.IndexOf("\n\n", System.StringComparison.Ordinal);
+        string primaryMarkup = paragraphBreak >= 0 ? markup[..paragraphBreak] : markup;
         SafeHtmlDocument document = SafeHtmlParser.Parse(
-            markup,
+            primaryMarkup,
             SafeHtmlParseLimits.Default,
             context.CancellationToken);
         string text = SafeHtmlParser.CollapseWhitespace(string.Concat(
             document.Root.Children.SelectMany(DescendantText))).Trim();
         return text.Length == 0 ? fallback : text;
+    }
+
+    private static void AppendSummarySupplementalContent(
+        StackBox destination,
+        GitHubDetailsBlock details,
+        MarkdownLayoutContext context)
+    {
+        if (string.IsNullOrWhiteSpace(details.SummaryMarkup))
+            return;
+
+        MarkdownDocument fragment = Markdown.Parse(
+            details.SummaryMarkup,
+            context.Registry.BuildPipeline());
+        int sourceOffset = details.SummarySourceStart >= 0
+            ? details.SummarySourceStart
+            : details.Span.Start;
+        OffsetMarkdownSpans(fragment, sourceOffset);
+
+        var rendered = new StackBox
+        {
+            BlockIndex = context.NextBlockIndex(),
+            FlowDirection = context.FlowDirection,
+        };
+        GfmChildBuilder.PopulateChildren(rendered, fragment, context);
+
+        bool first = true;
+        foreach (BlockBox child in rendered.Children)
+        {
+            if (first && child is InlineContainerBox leading)
+            {
+                first = false;
+                InlineImageRun[] images = leading.Runs.OfType<InlineImageRun>().ToArray();
+                if (images.Length == 0)
+                    continue;
+
+                var media = new InlineContainerBox(context, MarkdownElementKeys.Body)
+                {
+                    BlockIndex = context.NextBlockIndex(),
+                    TextAlignment = leading.TextAlignment,
+                };
+                foreach (InlineImageRun image in images)
+                    media.Add(image);
+                destination.Add(media);
+                continue;
+            }
+
+            first = false;
+            destination.Add(child);
+        }
+    }
+
+    private static void OffsetMarkdownSpans(ContainerBlock container, int offset)
+    {
+        OffsetMarkdownSpan(container, offset);
+        foreach (Block block in container)
+        {
+            if (block is ContainerBlock childContainer)
+            {
+                OffsetMarkdownSpans(childContainer, offset);
+            }
+            else
+            {
+                OffsetMarkdownSpan(block, offset);
+                if (block is LeafBlock { Inline: not null } leaf)
+                    OffsetInlineSpans(leaf.Inline, offset);
+            }
+        }
+    }
+
+    private static void OffsetInlineSpans(ContainerInline container, int offset)
+    {
+        OffsetMarkdownSpan(container, offset);
+        foreach (Inline inline in container)
+        {
+            if (inline is ContainerInline child)
+                OffsetInlineSpans(child, offset);
+            else
+                OffsetMarkdownSpan(inline, offset);
+        }
+    }
+
+    private static void OffsetMarkdownSpan(MarkdownObject node, int offset)
+    {
+        if (node.Span.Start < 0)
+            return;
+
+        node.Span = new Markdig.Syntax.SourceSpan(
+            checked(node.Span.Start + offset),
+            checked(node.Span.End + offset));
     }
 
     private static System.Collections.Generic.IEnumerable<string> DescendantText(SafeHtmlNode node)

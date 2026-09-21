@@ -5188,17 +5188,28 @@ public partial class MarkdownRendererControl : UserControl, IDisposable, IMarkdo
                 {
                     if (run is InlineImageRun imageRun)
                     {
-                        RegisterImage(imageRun.Image);
+                        // Image registration must not depend on DirectWrite
+                        // returning a character rectangle for the object
+                        // replacement slot. In particular, a linked image on
+                        // an otherwise empty line can temporarily have no
+                        // region during the first layout pass. Keeping it out
+                        // of _imagePlans in that state leaves it permanently
+                        // "Loading" because no later viewport pass can start
+                        // it. A missing first-pass rectangle has the default
+                        // origin, which deliberately starts the bounded load;
+                        // EnumerateInlineImageRects synchronizes the real
+                        // bounds as soon as DirectWrite publishes them.
+                        AddImagePlan(imageRun.Image);
                     }
                 }
                 foreach (var (run, rect) in icb.EnumerateEmbedRects())
                 {
                     _embedPlans.Add(new InlineEmbedPlan { Icb = icb, Run = run, Rect = rect });
                 }
-                foreach (var (run, _) in icb.EnumerateInlineImageRects())
-                {
-                    AddImagePlan(run.Image);
-                }
+                // Force enumeration so each ImageBox receives its document
+                // bounds. Images were already added above, independently of
+                // whether this geometry query succeeds.
+                foreach (var _ in icb.EnumerateInlineImageRects()) { }
                 break;
             }
             case Layout.Boxes.CodeBlockBox codeBlock:
@@ -5607,6 +5618,69 @@ public partial class MarkdownRendererControl : UserControl, IDisposable, IMarkdo
                 platformSessionBytes,
                 snapshotPaintBytes,
                 interactivePaintBytes);
+        }
+    }
+
+    /// <summary>
+    /// Paints the current realized viewport through the production snapshot
+    /// renderer for deterministic visual-audit evidence. This deliberately
+    /// bypasses desktop capture, which cannot see Win2D/DirectComposition
+    /// surfaces in several CI, RDP, and headless configurations.
+    /// </summary>
+    internal async Task<(int Width, int Height, double DocumentTop)> CaptureAuditViewportAsync(
+        string? outputPath,
+        bool save)
+    {
+        if (_isDisposed || _snapshot is not { } snapshot)
+            throw new InvalidOperationException("The Markdown renderer has no active layout snapshot.");
+
+        TryGetViewport(out double top, out double viewportHeight, out double viewportWidth);
+        int width = Math.Max(1, checked((int)Math.Ceiling(viewportWidth)));
+        int height = Math.Max(1, checked((int)Math.Ceiling(viewportHeight)));
+        var viewport = new Rect(0, Math.Max(0, top), width, height);
+        if (!snapshot.TryBeginPaint())
+            throw new InvalidOperationException("The Markdown layout is being updated; retry the audit capture.");
+
+        try
+        {
+            using var target = new CanvasRenderTarget(
+                _canvas?.Device ?? CanvasDevice.GetSharedDevice(),
+                width,
+                height,
+                96);
+            using (CanvasDrawingSession drawingSession = target.CreateDrawingSession())
+            {
+                drawingSession.Clear(_canvasBackground);
+                drawingSession.TextAntialiasing = Microsoft.Graphics.Canvas.Text.CanvasTextAntialiasing.Grayscale;
+                drawingSession.Transform = Matrix3x2.CreateTranslation(0, (float)-viewport.Top);
+                snapshot.Paint(drawingSession, viewport);
+            }
+
+            if (save)
+            {
+                ArgumentException.ThrowIfNullOrWhiteSpace(outputPath);
+                string fullPath = System.IO.Path.GetFullPath(outputPath);
+                System.IO.Directory.CreateDirectory(System.IO.Path.GetDirectoryName(fullPath)!);
+                using var stream = new InMemoryRandomAccessStream();
+                await target.SaveAsync(stream, CanvasBitmapFileFormat.Png, 1f);
+                if (stream.Size > int.MaxValue)
+                    throw new InvalidOperationException("The Markdown audit tile exceeds the managed evidence budget.");
+                stream.Seek(0);
+                using var reader = new DataReader(stream.GetInputStreamAt(0));
+                uint byteLength = checked((uint)stream.Size);
+                uint loaded = await reader.LoadAsync(byteLength);
+                if (loaded != byteLength)
+                    throw new System.IO.EndOfStreamException("The Markdown audit tile ended before its declared size.");
+                byte[] bytes = new byte[checked((int)byteLength)];
+                reader.ReadBytes(bytes);
+                await System.IO.File.WriteAllBytesAsync(fullPath, bytes);
+            }
+
+            return (width, height, viewport.Top);
+        }
+        finally
+        {
+            snapshot.EndPaint();
         }
     }
 

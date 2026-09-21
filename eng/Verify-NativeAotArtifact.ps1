@@ -25,7 +25,6 @@ $forbiddenRuntimeFiles = [System.Collections.Generic.HashSet[string]]::new(
 $requiredNativeFiles = @(
     'JitHub.WinUI.exe',
     'e_sqlite3.dll',
-    'libHarfBuzzSharp.dll',
     'Microsoft.Graphics.Canvas.dll',
     'Microsoft.Web.WebView2.Core.dll',
     'MarkdownRenderer.Svg.Resvg.Worker.exe',

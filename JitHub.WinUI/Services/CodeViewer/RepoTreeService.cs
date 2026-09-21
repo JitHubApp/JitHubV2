@@ -435,15 +435,15 @@ public sealed class RepoTreeService : IRepoTreeService
         string readmePath = content.Path ?? string.Empty;
         if (!isBinary &&
             _gitHubClientService is not null &&
-            !GitHubAuthenticationConstants.IsPublicAccessToken(token) &&
-            FilePreviewResolver.IsGitHubRenderedReadmePath(readmePath))
+            FilePreviewResolver.IsGitHubReadmePath(readmePath))
         {
-            renderedHtml = await _gitHubClientService.GetRenderedReadmeHtmlAsync(
-                token,
-                owner,
-                name,
-                refOrSha,
-                ct).ConfigureAwait(false);
+            renderedHtml = GitHubRenderedReadmeHtmlNormalizer.NormalizeForMarkdownPipeline(
+                await _gitHubClientService.GetRenderedReadmeHtmlAsync(
+                    token,
+                    owner,
+                    name,
+                    refOrSha,
+                    ct).ConfigureAwait(false));
         }
         RepoReadmeFile readme = new(
             content.Name ?? string.Empty,

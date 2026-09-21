@@ -80,6 +80,7 @@ internal sealed partial class MarkdownNodePeer : FrameworkElementAutomationPeer,
 
         return _node.Role switch
         {
+            MarkdownSemanticRole.Heading => "MarkdownHeading",
             MarkdownSemanticRole.CodeBlock => "MarkdownCodeBlock",
             MarkdownSemanticRole.List => "MarkdownList",
             MarkdownSemanticRole.ListItem => "MarkdownListItem",
@@ -179,6 +180,7 @@ internal sealed partial class MarkdownNodePeer : FrameworkElementAutomationPeer,
 
         return _node.Role switch
         {
+            MarkdownSemanticRole.Heading => AutomationControlType.Header,
             MarkdownSemanticRole.CodeBlock => AutomationControlType.Group,
             MarkdownSemanticRole.List => AutomationControlType.List,
             MarkdownSemanticRole.ListItem => AutomationControlType.ListItem,
@@ -193,6 +195,17 @@ internal sealed partial class MarkdownNodePeer : FrameworkElementAutomationPeer,
             _ => AutomationControlType.Group,
         };
     }
+
+    protected override AutomationHeadingLevel GetHeadingLevelCore() => _node.HeadingLevel switch
+    {
+        1 => AutomationHeadingLevel.Level1,
+        2 => AutomationHeadingLevel.Level2,
+        3 => AutomationHeadingLevel.Level3,
+        4 => AutomationHeadingLevel.Level4,
+        5 => AutomationHeadingLevel.Level5,
+        6 => AutomationHeadingLevel.Level6,
+        _ => AutomationHeadingLevel.None,
+    };
 
     protected override string GetNameCore()
     {

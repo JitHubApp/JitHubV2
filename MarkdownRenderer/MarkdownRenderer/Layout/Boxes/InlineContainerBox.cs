@@ -409,7 +409,10 @@ internal sealed partial class InlineContainerBox : BlockBox
         if (resolved is not null)
             return resolved;
 
-        var key = string.IsNullOrEmpty(run.ElementKey) ? _elementKey : run.ElementKey;
+        bool hasFlattenedHeading = !string.IsNullOrEmpty(run.SemanticHeadingKey);
+        var key = hasFlattenedHeading
+            ? run.SemanticHeadingKey
+            : string.IsNullOrEmpty(run.ElementKey) ? _elementKey : run.ElementKey;
         resolved = _context.ThemeSnapshot.GetStyle(
             key,
             _styleContextKeys,
@@ -417,7 +420,17 @@ internal sealed partial class InlineContainerBox : BlockBox
             CodeLanguage,
             StyleState);
         int modifierStart = 0;
-        if (string.IsNullOrEmpty(run.ElementKey) && run.StyleModifierKeys.Count > 0)
+        if (hasFlattenedHeading && !string.IsNullOrEmpty(run.ElementKey))
+        {
+            ElementStyle ownStyle = _context.ThemeSnapshot.GetStyle(
+                run.ElementKey,
+                _styleContextKeys,
+                _effectiveRunAliases[run.InlineIndex],
+                CodeLanguage,
+                StyleState);
+            resolved = ApplyNestedStyleModifier(resolved, ownStyle, run.ElementKey);
+        }
+        else if (string.IsNullOrEmpty(run.ElementKey) && run.StyleModifierKeys.Count > 0)
         {
             resolved = _context.ThemeSnapshot.GetStyle(
                 run.StyleModifierKeys[0],
@@ -458,6 +471,27 @@ internal sealed partial class InlineContainerBox : BlockBox
 
         switch (modifierKey)
         {
+            case MarkdownElementKeys.Link:
+                return new ElementStyle
+                {
+                    FontFamily = basis.FontFamily,
+                    FontSize = basis.FontSize,
+                    FontWeight = basis.FontWeight,
+                    FontStyle = basis.FontStyle,
+                    Foreground = modifier.Foreground,
+                    HoverForeground = modifier.HoverForeground,
+                    FocusForeground = modifier.FocusForeground,
+                    Background = basis.Background,
+                    AccentBar = basis.AccentBar,
+                    BorderBrush = basis.BorderBrush,
+                    BorderThickness = basis.BorderThickness,
+                    CornerRadius = basis.CornerRadius,
+                    ListIndent = basis.ListIndent,
+                    NestedListIndent = basis.NestedListIndent,
+                    Underline = modifier.Underline,
+                    Strikethrough = basis.Strikethrough,
+                    Margin = basis.Margin,
+                };
             case MarkdownElementKeys.Strong:
                 fontWeight = modifier.FontWeight;
                 break;

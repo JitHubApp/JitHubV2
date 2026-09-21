@@ -199,6 +199,18 @@ internal static class RasterImageResourceBudget
             }
 
             ReadOnlySpan<byte> type = bytes.Slice(offset + 4, 4);
+            if (type.SequenceEqual("IEND"u8))
+            {
+                // PNG decoders, including WIC and Chromium, terminate at IEND.
+                // Some real repository assets contain harmless encoder debris
+                // after that required marker. Do not reinterpret the trailer as
+                // another chunk (which can turn four arbitrary bytes into a
+                // fictitious multi-gigabyte length and reject a decodable PNG).
+                if (chunkLength != 0)
+                    return null;
+                break;
+            }
+
             if (type.SequenceEqual("acTL"u8))
             {
                 if (chunkLength != 8)

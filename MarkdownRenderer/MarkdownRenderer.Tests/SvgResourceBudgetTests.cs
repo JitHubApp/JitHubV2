@@ -207,6 +207,16 @@ public sealed class SvgResourceBudgetTests
     }
 
     [Fact]
+    public void Validate_AcceptsMislabeledSupportedRasterPayload()
+    {
+        SvgResourceBudgetResult result = SvgResourceBudget.Validate(
+            Bytes($"<svg><image href='data:image/gif;base64,{Convert.ToBase64String(CreatePngHeader(128, 128, 1))}'/></svg>"),
+            CancellationToken.None);
+
+        Assert.True(result.Accepted, result.Reason);
+    }
+
+    [Fact]
     public void Validate_DeduplicatesRepeatedEmbeddedImagePayloads()
     {
         string data = Convert.ToBase64String(CreatePngHeader(4096, 4096, 7));
@@ -346,6 +356,29 @@ public sealed class SvgResourceBudgetTests
     }
 
     [Fact]
+    public void StaticSnapshot_ConvertsSafeD2TableForeignObject()
+    {
+        byte[] source = Bytes(
+            "<svg xmlns='http://www.w3.org/2000/svg'><foreignObject " +
+            "requiredFeatures='http://www.w3.org/TR/SVG11/feature#Extensibility' " +
+            "x='30' y='40' width='382' height='113'>" +
+            "<div xmlns='http://www.w3.org/1999/xhtml' class='md color-N1'><table>" +
+            "<tbody><tr><td style='width:100%'><h6 style='margin:0;font-size:1em;color:inherit'>Core</h6></td>" +
+            "<td align='right' style='white-space:nowrap'>Rust</td></tr>" +
+            "<tr><td colspan='2'>/packages/core/</td></tr>" +
+            "<tr><td colspan='2'>LocalSend protocol library</td></tr>" +
+            "</tbody></table></div></foreignObject></svg>");
+
+        byte[] snapshot = SvgStaticSnapshot.Create(source, CancellationToken.None);
+        string text = Encoding.UTF8.GetString(snapshot);
+        SvgResourceBudgetResult result = SvgResourceBudget.Validate(snapshot, CancellationToken.None);
+
+        Assert.True(result.Accepted, result.Reason);
+        Assert.DoesNotContain("foreignObject", text, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("Core Rust /packages/core/ LocalSend protocol library", text, StringComparison.Ordinal);
+    }
+
+    [Fact]
     public void StaticSnapshot_SelectsNativeSvgFallbackFromSwitch()
     {
         byte[] source = Bytes(
@@ -382,6 +415,25 @@ public sealed class SvgResourceBudgetTests
         Assert.DoesNotContain("animation", text, StringComparison.OrdinalIgnoreCase);
         Assert.DoesNotContain("transition", text, StringComparison.OrdinalIgnoreCase);
         Assert.Contains("fill:#e07c4c", text, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void StaticSnapshot_RemovesInlineMotionAndKeepsStaticDeclarations()
+    {
+        byte[] source = Bytes(
+            "<svg xmlns='http://www.w3.org/2000/svg'><style>" +
+            "@keyframes fade{from{opacity:0}to{opacity:1}}" +
+            ".point{animation:fade .5s ease-out forwards}" +
+            "</style><circle class='point' style='fill:#6b63ff; animation-delay: 1.50s' r='4'/></svg>");
+
+        byte[] snapshot = SvgStaticSnapshot.Create(source, CancellationToken.None);
+        string text = Encoding.UTF8.GetString(snapshot);
+        SvgResourceBudgetResult result = SvgResourceBudget.Validate(snapshot, CancellationToken.None);
+
+        Assert.True(result.Accepted, result.Reason);
+        Assert.DoesNotContain("@keyframes", text, StringComparison.OrdinalIgnoreCase);
+        Assert.DoesNotContain("animation", text, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("fill:#6b63ff", text, StringComparison.Ordinal);
     }
 
     [Fact]
@@ -451,6 +503,25 @@ public sealed class SvgResourceBudgetTests
         Assert.DoesNotContain("@font-face", text, StringComparison.OrdinalIgnoreCase);
         Assert.Contains(".label{font-family:xkcd;fill:#123456}", text, StringComparison.Ordinal);
         Assert.Contains("History", text, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void StaticSnapshot_RemovesExternalFontImportAndKeepsFallbackText()
+    {
+        byte[] source = Bytes(
+            "<svg xmlns='http://www.w3.org/2000/svg'><style>" +
+            "@import url(https://example.test/font.css);" +
+            ".label{font-family:'Source Sans 3',sans-serif;fill:#123456}" +
+            "</style><text class='label'>Translations</text></svg>");
+
+        byte[] snapshot = SvgStaticSnapshot.Create(source, CancellationToken.None);
+        string text = Encoding.UTF8.GetString(snapshot);
+        SvgResourceBudgetResult result = SvgResourceBudget.Validate(snapshot, CancellationToken.None);
+
+        Assert.True(result.Accepted, result.Reason);
+        Assert.DoesNotContain("@import", text, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("sans-serif", text, StringComparison.Ordinal);
+        Assert.Contains("Translations", text, StringComparison.Ordinal);
     }
 
     [Fact]

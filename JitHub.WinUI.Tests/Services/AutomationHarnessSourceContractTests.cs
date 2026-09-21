@@ -174,12 +174,17 @@ public sealed class AutomationHarnessSourceContractTests
         Assert.Contains("browserDistinctLinks", nativeProbe, StringComparison.Ordinal);
         Assert.Contains("MarkdownLinkedImage", nativeProbe, StringComparison.Ordinal);
         Assert.Contains("Rectangle.Intersect(", nativeProbe, StringComparison.Ordinal);
-        Assert.Contains("hostBounds.Left - windowBounds.Left", nativeProbe, StringComparison.Ordinal);
+        Assert.Contains("RequestRendererCapture", nativeProbe, StringComparison.Ordinal);
+        Assert.Contains("save: false", nativeProbe, StringComparison.Ordinal);
+        Assert.Contains("WaitForVisibleImages(host", nativeProbe, StringComparison.Ordinal);
         Assert.Contains("if (!repository.Readme.Available)", nativeProbe, StringComparison.Ordinal);
         Assert.Contains("RepoCodeFileTree", nativeProbe, StringComparison.Ordinal);
         Assert.Contains("if (result.InfrastructureFailure)", nativeProbe, StringComparison.Ordinal);
         Assert.Contains("PreserveStartupDiagnostics(dataRoot, output, launcher)", nativeProbe, StringComparison.Ordinal);
         Assert.Contains("startup-process.txt", nativeProbe, StringComparison.Ordinal);
+        Assert.Contains("waitForDocumentReady(cdp, 60_000)", browserOracle, StringComparison.Ordinal);
+        Assert.DoesNotContain("cdp.once(\"Page.loadEventFired\"", browserOracle, StringComparison.Ordinal);
+        Assert.Contains("process.WaitForExit(600_000)", nativeProbe, StringComparison.Ordinal);
     }
 
     [Fact]
@@ -520,7 +525,8 @@ public sealed class AutomationHarnessSourceContractTests
             "MarkdownRendererControl.cs"));
 
         Assert.Contains("if (run is InlineImageRun imageRun)", source, StringComparison.Ordinal);
-        Assert.Contains("RegisterImage(imageRun.Image);", source, StringComparison.Ordinal);
+        Assert.Contains("AddImagePlan(imageRun.Image);", source, StringComparison.Ordinal);
+        Assert.Contains("RegisterImage(image);", source, StringComparison.Ordinal);
         Assert.Contains("_subscribedImages.Contains(completedImage)", source, StringComparison.Ordinal);
         Assert.Contains("UnsubscribeAllImages();", source, StringComparison.Ordinal);
     }

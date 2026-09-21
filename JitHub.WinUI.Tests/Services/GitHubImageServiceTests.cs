@@ -837,6 +837,28 @@ public sealed class GitHubImageServiceTests : IDisposable
     }
 
     [Fact]
+    public async Task GetRenderedReadmeHtmlAsync_PublicReadmeRetriesWithoutTokenAfterPolicyForbidden()
+    {
+        const string html = "<article><img src=\"camo.png\"></article>";
+        var handler = new AuthPolicyRenderedReadmeHandler(html);
+        using HttpClient client = new(handler);
+        var service = new GitHubClientService(client);
+
+        string result = await service.GetRenderedReadmeHtmlAsync(
+            "installation-token",
+            "public-owner",
+            "public-repository",
+            "immutable-sha");
+
+        Assert.Equal(html, result);
+        Assert.Equal(2, handler.AuthorizationSchemes.Count);
+        Assert.Equal("Bearer", handler.AuthorizationSchemes[0]);
+        Assert.Null(handler.AuthorizationSchemes[1]);
+        Assert.All(handler.AcceptValues, static accept =>
+            Assert.Contains("application/vnd.github.html+json", accept));
+    }
+
+    [Fact]
     public void ParseGitHubCamoImageMap_AdmitsHttpOrHttpsOriginalOnlyThroughCanonicalHttpsCamo()
     {
         const string source = "https://assets.example.test/image.png?one=1&two=2";
@@ -1074,6 +1096,37 @@ public sealed class GitHubImageServiceTests : IDisposable
         {
             RequestUri = request.RequestUri?.AbsoluteUri;
             Accept = request.Headers.Accept.ToString();
+            return Task.FromResult(new HttpResponseMessage(HttpStatusCode.OK)
+            {
+                Content = new StringContent(html, System.Text.Encoding.UTF8, "text/html"),
+            });
+        }
+    }
+
+    private sealed class AuthPolicyRenderedReadmeHandler(string html) : HttpMessageHandler
+    {
+        public List<string?> AuthorizationSchemes { get; } = [];
+        public List<string> AcceptValues { get; } = [];
+
+        protected override Task<HttpResponseMessage> SendAsync(
+            HttpRequestMessage request,
+            CancellationToken cancellationToken)
+        {
+            AuthorizationSchemes.Add(request.Headers.Authorization?.Scheme);
+            AcceptValues.Add(request.Headers.Accept.ToString());
+            if (AuthorizationSchemes.Count == 1)
+            {
+                var forbidden = new HttpResponseMessage(HttpStatusCode.Forbidden)
+                {
+                    Content = new StringContent(
+                        "{\"message\":\"Resource not accessible by integration\"}",
+                        System.Text.Encoding.UTF8,
+                        "application/json"),
+                };
+                forbidden.Headers.TryAddWithoutValidation("X-RateLimit-Remaining", "4999");
+                return Task.FromResult(forbidden);
+            }
+
             return Task.FromResult(new HttpResponseMessage(HttpStatusCode.OK)
             {
                 Content = new StringContent(html, System.Text.Encoding.UTF8, "text/html"),

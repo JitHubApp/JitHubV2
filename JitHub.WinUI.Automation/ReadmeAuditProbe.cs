@@ -3,6 +3,7 @@ using System.Drawing;
 using System.Drawing.Drawing2D;
 using System.Drawing.Imaging;
 using System.Globalization;
+using System.Text;
 using System.Text.Json;
 using FlaUI.Core;
 using FlaUI.Core.AutomationElements;
@@ -210,11 +211,11 @@ internal static partial class ReadmeAuditProbe
                     $"Full-page structural fidelity was {comparison.VisualStructureScore:P2}, below 95%. " +
                     $"(raw cross-style SSIM {comparison.MeanTileSsim:F3}).");
             }
-            if (comparison.NativeImageSourceCount < comparison.BrowserDistinctImageCount)
+            if (comparison.NativeImageSourceCount < comparison.BrowserDistinctAtomicMediaCount)
             {
                 failures.Add(
-                    $"JitHub audited {comparison.NativeImageSourceCount} distinct image sources, " +
-                    $"but Edge rendered {comparison.BrowserDistinctImageCount}.");
+                    $"JitHub audited {comparison.NativeImageSourceCount} distinct image/media sources, " +
+                    $"but Edge rendered {comparison.BrowserDistinctAtomicMediaCount}.");
             }
         }
 
@@ -250,7 +251,7 @@ internal static partial class ReadmeAuditProbe
                 File.ReadAllText(reportPath),
                 JsonOptions) ?? throw new InvalidDataException("Cached Edge README oracle report is empty.");
             string snapshotUrl = GetSnapshotUrl(repository);
-            if (cached.SchemaVersion != 2 ||
+            if (cached.SchemaVersion != 3 ||
                 !string.Equals(cached.RepositoryUrl, snapshotUrl, StringComparison.OrdinalIgnoreCase) ||
                 !string.Equals(cached.ReadmeSha, GetReadmeEvidenceIdentity(repository), StringComparison.Ordinal))
             {
@@ -284,10 +285,15 @@ internal static partial class ReadmeAuditProbe
             ?? throw new InvalidOperationException("Could not start the Edge README oracle.");
         Task<string> stdout = process.StandardOutput.ReadToEndAsync();
         Task<string> stderr = process.StandardError.ReadToEndAsync();
-        if (!process.WaitForExit(180_000))
+        // Full-page evidence for unusually tall READMEs can contain hundreds
+        // of 8K screenshot tiles. That capture is deliberately complete and
+        // must not be truncated merely because audit overhead exceeds the
+        // ordinary three-minute render budget. Per-page renderer timings are
+        // captured before screenshotting and remain independently enforced.
+        if (!process.WaitForExit(600_000))
         {
             process.Kill(entireProcessTree: true);
-            throw new TimeoutException("Edge README oracle exceeded its 180-second deadline.");
+            throw new TimeoutException("Edge README oracle exceeded its 10-minute full-page evidence deadline.");
         }
         Task.WaitAll(stdout, stderr);
         if (process.ExitCode != 0)
@@ -328,7 +334,13 @@ internal static partial class ReadmeAuditProbe
         string renderFailure = Path.Combine(runtime, "render-failure.txt");
         string imageEvidence = Path.Combine(runtime, "image-unavailable.ndjson");
         string imageResolutionEvidence = Path.Combine(runtime, "image-resolution.ndjson");
-        foreach (string stale in new[] { appReady, hostReady, renderComplete, renderFailure, imageEvidence, imageResolutionEvidence })
+        string captureRequest = Path.Combine(runtime, "capture-request.json");
+        string captureResponse = Path.Combine(runtime, "capture-response.json");
+        foreach (string stale in new[]
+        {
+            appReady, hostReady, renderComplete, renderFailure, imageEvidence,
+            imageResolutionEvidence, captureRequest, captureResponse,
+        })
         {
             if (File.Exists(stale)) File.Delete(stale);
         }
@@ -362,6 +374,8 @@ internal static partial class ReadmeAuditProbe
         startInfo.Environment["JITHUB_MARKDOWN_RENDER_FAILURE_EVIDENCE_PATH"] = renderFailure;
         startInfo.Environment["JITHUB_MARKDOWN_IMAGE_EVIDENCE_PATH"] = imageEvidence;
         startInfo.Environment["JITHUB_MARKDOWN_IMAGE_RESOLUTION_EVIDENCE_PATH"] = imageResolutionEvidence;
+        startInfo.Environment["JITHUB_MARKDOWN_CAPTURE_REQUEST_PATH"] = captureRequest;
+        startInfo.Environment["JITHUB_MARKDOWN_CAPTURE_RESPONSE_PATH"] = captureResponse;
 
         Stopwatch wall = Stopwatch.StartNew();
         using Process launcher = Process.Start(startInfo)
@@ -406,7 +420,10 @@ internal static partial class ReadmeAuditProbe
                 (int width, int height) = CaptureHost(
                     window,
                     tree,
-                    Path.Combine(output, "missing-readme-view.png"));
+                    Path.Combine(output, "missing-readme-view.png"),
+                    captureRequest,
+                    captureResponse,
+                    useRendererCapture: false);
                 capture.Stop();
                 appProcess.Refresh();
                 double absentCpuMs = Math.Max(
@@ -454,7 +471,10 @@ internal static partial class ReadmeAuditProbe
                 (int width, int height) = CaptureHost(
                     window,
                     sourceEditor,
-                    Path.Combine(output, "source-view.png"));
+                    Path.Combine(output, "source-view.png"),
+                    captureRequest,
+                    captureResponse,
+                    useRendererCapture: false);
                 capture.Stop();
                 appProcess.Refresh();
                 double sourceCpuMs = Math.Max(
@@ -508,7 +528,9 @@ internal static partial class ReadmeAuditProbe
                 host,
                 output,
                 renderFailure,
-                appProcess);
+                appProcess,
+                captureRequest,
+                captureResponse);
             // Keep repository navigation, API loading, UIA stability checks, and
             // screenshot capture out of the renderer comparison. The lifecycle
             // signals measure initial Markdown host publication, while elapsed
@@ -529,7 +551,12 @@ internal static partial class ReadmeAuditProbe
             int unavailable = CountRenderedUnavailableImages(
                 imageEvidence,
                 renderedBrowserImages);
-            int imageSourceCount = CountDistinctImageSources(imageResolutionEvidence);
+            // Resolver evidence covers remote assets; self-contained data SVGs
+            // (including inert HTML-media placeholders) intentionally bypass
+            // the resolver. UIA observes both paths after full traversal.
+            int imageSourceCount = Math.Max(
+                CountDistinctImageSources(imageResolutionEvidence),
+                traversal.Images);
             PreserveEvidenceFile(imageEvidence, Path.Combine(output, "image-unavailable.ndjson"));
             PreserveEvidenceFile(imageResolutionEvidence, Path.Combine(output, "image-resolution.ndjson"));
 
@@ -594,7 +621,9 @@ internal static partial class ReadmeAuditProbe
         AutomationElement host,
         string output,
         string renderFailurePath,
-        Process appProcess)
+        Process appProcess,
+        string captureRequestPath,
+        string captureResponsePath)
     {
         if (!host.Patterns.Scroll.IsSupported)
         {
@@ -649,7 +678,12 @@ internal static partial class ReadmeAuditProbe
             string file = $"tile-{index:D4}.png";
             string path = Path.Combine(output, file);
             Stopwatch capture = Stopwatch.StartNew();
-            (int tileWidth, int tileHeight) = CaptureHost(window, host, path);
+            (int tileWidth, int tileHeight) = CaptureHost(
+                window,
+                host,
+                path,
+                captureRequestPath,
+                captureResponsePath);
             capture.Stop();
             auditOverheadMs += capture.Elapsed.TotalMilliseconds;
             width = Math.Max(width, tileWidth);
@@ -763,7 +797,9 @@ internal static partial class ReadmeAuditProbe
             .Where(destination => !string.IsNullOrWhiteSpace(destination))
             .Distinct(StringComparer.OrdinalIgnoreCase)
             .Count();
-        imageObservations = descendants.Count(element => element.ControlType == ControlType.Image);
+        imageObservations = descendants.Count(element =>
+            element.ControlType == ControlType.Image ||
+            string.Equals(element.ClassName, "MarkdownLinkedImage", StringComparison.Ordinal));
         tableObservations = descendants.Count(element => element.ControlType == ControlType.Table);
         codeBlockObservations = descendants.Count(element =>
             string.Equals(element.ClassName, "MarkdownCodeBlock", StringComparison.Ordinal));
@@ -877,6 +913,14 @@ internal static partial class ReadmeAuditProbe
             .Where(source => !string.IsNullOrWhiteSpace(source))
             .Distinct(StringComparer.Ordinal)
             .Count();
+        int browserDistinctMedia = browser.Semantic.Media
+            .Select(media => string.IsNullOrWhiteSpace(media.CurrentSource)
+                ? media.Source
+                : media.CurrentSource)
+            .Where(source => !string.IsNullOrWhiteSpace(source))
+            .Distinct(StringComparer.Ordinal)
+            .Count();
+        int browserDistinctAtomicMedia = browserDistinctImages + browserDistinctMedia;
         int browserDistinctLinks = browser.Semantic.Links
             .Select(link => link.Href)
             .Where(destination => !string.IsNullOrWhiteSpace(destination))
@@ -891,7 +935,7 @@ internal static partial class ReadmeAuditProbe
         // Browser image failures remain reference evidence, but a transient Edge
         // download failure must not penalize JitHub for successfully rendering the
         // same authored source. Missing native coverage is still a hard failure below.
-        double imageFidelity = CoverageFidelity(browserDistinctImages, native.ImageSourceCount);
+        double imageFidelity = CoverageFidelity(browserDistinctAtomicMedia, native.ImageSourceCount);
         double tableFidelity = CountFidelity(browser.Semantic.Tables, native.TableObservations);
         double codeBlockFidelity = CountFidelity(browser.Semantic.CodeBlocks, native.CodeBlockObservations);
         double taskCheckboxFidelity = CountFidelity(
@@ -936,6 +980,8 @@ internal static partial class ReadmeAuditProbe
             BrowserImageCount = browser.Semantic.Images.Count,
             NativeImageObservations = native.ImageObservations,
             BrowserDistinctImageCount = browserDistinctImages,
+            BrowserMediaCount = browser.Semantic.Media.Count,
+            BrowserDistinctAtomicMediaCount = browserDistinctAtomicMedia,
             NativeImageSourceCount = native.ImageSourceCount,
             BrowserHeadingCount = browser.Semantic.Headings.Count,
             NativeHeadingObservations = native.HeadingObservations,
@@ -1152,7 +1198,7 @@ internal static partial class ReadmeAuditProbe
         int stable = 0;
         while (stopwatch.Elapsed < timeout)
         {
-            string current = NormalizeText(textPattern.DocumentRange.GetText(-1));
+            string current = NormalizeText(ReadDocumentTextInBoundedChunks(textPattern.DocumentRange));
             if (current.Length > 0 && string.Equals(current, previous, StringComparison.Ordinal))
             {
                 if (++stable >= 3) return current;
@@ -1166,6 +1212,47 @@ internal static partial class ReadmeAuditProbe
         }
         if (previous.Length > 0) return previous;
         throw new TimeoutException("README UIA text remained empty after rendering.");
+    }
+
+    private static string ReadDocumentTextInBoundedChunks(ITextRange documentRange)
+    {
+        const int chunkCharacters = 32 * 1024;
+        const int maximumDocumentCharacters = 16 * 1024 * 1024;
+        ITextRange cursor = documentRange.Clone();
+        cursor.MoveEndpointByRange(
+            TextPatternRangeEndpoint.End,
+            cursor,
+            TextPatternRangeEndpoint.Start);
+        var result = new StringBuilder(Math.Min(chunkCharacters, maximumDocumentCharacters));
+        while (result.Length < maximumDocumentCharacters &&
+               cursor.CompareEndpoints(
+                   TextPatternRangeEndpoint.Start,
+                   documentRange,
+                   TextPatternRangeEndpoint.End) < 0)
+        {
+            ITextRange chunk = cursor.Clone();
+            int moved = chunk.MoveEndpointByUnit(
+                TextPatternRangeEndpoint.End,
+                TextUnit.Character,
+                Math.Min(chunkCharacters, maximumDocumentCharacters - result.Length));
+            if (moved <= 0)
+                break;
+
+            string value = chunk.GetText(-1);
+            if (value.Length == 0)
+                break;
+            result.Append(value);
+            cursor.MoveEndpointByRange(
+                TextPatternRangeEndpoint.Start,
+                chunk,
+                TextPatternRangeEndpoint.End);
+            cursor.MoveEndpointByRange(
+                TextPatternRangeEndpoint.End,
+                chunk,
+                TextPatternRangeEndpoint.End);
+        }
+
+        return result.ToString();
     }
 
     private static double WaitForVisibleImages(
@@ -1345,8 +1432,32 @@ internal static partial class ReadmeAuditProbe
     private static (int Width, int Height) CaptureHost(
         Window window,
         AutomationElement host,
-        string path)
+        string path,
+        string captureRequestPath,
+        string captureResponsePath,
+        bool useRendererCapture = true)
     {
+        if (useRendererCapture)
+        {
+            // The warm paint triggers any viewport-tiled SVG work that a
+            // compositor-owned CanvasVirtualControl would normally request.
+            // Wait for those resources, then save the authoritative repaint.
+            _ = RequestRendererCapture(
+                captureRequestPath,
+                captureResponsePath,
+                outputPath: null,
+                save: false);
+            _ = WaitForVisibleImages(host, TimeSpan.FromSeconds(20));
+            RendererCaptureResponse capture = RequestRendererCapture(
+                captureRequestPath,
+                captureResponsePath,
+                path,
+                save: true);
+            if (!File.Exists(path))
+                throw new InvalidOperationException("The Markdown renderer did not publish its requested audit tile.");
+            return (capture.Width, capture.Height);
+        }
+
         IntPtr handle = new(window.Properties.NativeWindowHandle.ValueOrDefault);
         NativeMethods.ActivateForKeyboard(handle);
         Thread.Sleep(70);
@@ -1367,6 +1478,64 @@ internal static partial class ReadmeAuditProbe
         using Bitmap hostBitmap = windowBitmap.Clone(crop, PixelFormat.Format32bppArgb);
         hostBitmap.Save(path, ImageFormat.Png);
         return (hostBitmap.Width, hostBitmap.Height);
+    }
+
+    private static RendererCaptureResponse RequestRendererCapture(
+        string requestPath,
+        string responsePath,
+        string? outputPath,
+        bool save)
+    {
+        Exception? lastFailure = null;
+        for (int attempt = 0; attempt < 5; attempt++)
+        {
+            string requestId = Guid.NewGuid().ToString("N");
+            if (File.Exists(responsePath))
+                File.Delete(responsePath);
+            var request = new RendererCaptureRequest(requestId, outputPath, save);
+            string temporaryPath = requestPath + $".{Environment.ProcessId}.tmp";
+            File.WriteAllText(temporaryPath, JsonSerializer.Serialize(request, JsonOptions));
+            File.Move(temporaryPath, requestPath, overwrite: true);
+
+            Stopwatch stopwatch = Stopwatch.StartNew();
+            while (stopwatch.Elapsed < TimeSpan.FromSeconds(30))
+            {
+                try
+                {
+                    if (File.Exists(responsePath))
+                    {
+                        RendererCaptureResponse? response = JsonSerializer.Deserialize<RendererCaptureResponse>(
+                            File.ReadAllText(responsePath),
+                            JsonOptions);
+                        if (response is not null &&
+                            string.Equals(response.RequestId, requestId, StringComparison.Ordinal))
+                        {
+                            if (response.Succeeded && response.Width > 0 && response.Height > 0)
+                                return response;
+
+                            lastFailure = new InvalidOperationException(
+                                response.Error ?? "The Markdown renderer rejected the audit capture request.");
+                            break;
+                        }
+                    }
+                }
+                catch (IOException exception)
+                {
+                    lastFailure = exception;
+                }
+                catch (JsonException exception)
+                {
+                    lastFailure = exception;
+                }
+                Thread.Sleep(25);
+            }
+
+            Thread.Sleep(50 * (attempt + 1));
+        }
+
+        throw new TimeoutException(
+            "The Markdown renderer did not complete its internal audit capture request.",
+            lastFailure);
     }
 
     private static Window WaitForWindow(Application application, UIA3Automation automation, TimeSpan timeout)
@@ -1877,6 +2046,19 @@ internal static partial class ReadmeAuditProbe
         bool Succeeded,
         double ProbeOverheadMs,
         double ElapsedMs);
+
+    private sealed record RendererCaptureRequest(
+        string RequestId,
+        string? OutputPath,
+        bool Save);
+
+    private sealed record RendererCaptureResponse(
+        string RequestId,
+        bool Succeeded,
+        int Width,
+        int Height,
+        double DocumentTop,
+        string? Error);
 }
 
 internal sealed class ReadmeAuditManifest
@@ -1943,6 +2125,7 @@ internal sealed class BrowserSemantic
     public List<BrowserHeading> Headings { get; init; } = [];
     public List<BrowserLink> Links { get; init; } = [];
     public List<BrowserImage> Images { get; init; } = [];
+    public List<BrowserMedia> Media { get; init; } = [];
     public int UnavailableImages { get; init; }
     public int Tables { get; init; }
     public int CodeBlocks { get; init; }
@@ -1972,6 +2155,16 @@ internal sealed class BrowserImage
     public int NaturalHeight { get; init; }
     public double RenderedWidth { get; init; }
     public double RenderedHeight { get; init; }
+}
+
+internal sealed class BrowserMedia
+{
+    public string Kind { get; init; } = string.Empty;
+    public string Source { get; init; } = string.Empty;
+    public string CurrentSource { get; init; } = string.Empty;
+    public double RenderedWidth { get; init; }
+    public double RenderedHeight { get; init; }
+    public string AccessibleName { get; init; } = string.Empty;
 }
 
 internal sealed class AuditTile
@@ -2034,6 +2227,8 @@ internal sealed class ReadmeAuditComparison
     public int BrowserImageCount { get; init; }
     public int NativeImageObservations { get; init; }
     public int BrowserDistinctImageCount { get; init; }
+    public int BrowserMediaCount { get; init; }
+    public int BrowserDistinctAtomicMediaCount { get; init; }
     public int NativeImageSourceCount { get; init; }
     public int BrowserHeadingCount { get; init; }
     public int NativeHeadingObservations { get; init; }

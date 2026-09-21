@@ -60,6 +60,10 @@ internal static class SvgStaticSnapshot
                 document,
                 "style",
                 cancellationToken);
+            List<XmlElement> inlineStyleElements = FindElementsWithAttribute(
+                document,
+                "style",
+                cancellationToken);
             bool changed = false;
 
             foreach (XmlElement animation in animationElements)
@@ -99,6 +103,20 @@ internal static class SvgStaticSnapshot
                     style.InnerText = sanitizedCss;
                     changed = true;
                 }
+            }
+
+            foreach (XmlElement element in inlineStyleElements)
+            {
+                cancellationToken.ThrowIfCancellationRequested();
+                string inlineStyle = element.GetAttribute("style");
+                if (!TryCreateStaticStyleSheet(inlineStyle, out string sanitizedCss))
+                    continue;
+
+                if (string.IsNullOrWhiteSpace(sanitizedCss))
+                    element.RemoveAttribute("style");
+                else
+                    element.SetAttribute("style", sanitizedCss);
+                changed = true;
             }
 
             if (!changed)
@@ -238,9 +256,47 @@ internal static class SvgStaticSnapshot
         return result;
     }
 
+    private static List<XmlElement> FindElementsWithAttribute(
+        XmlDocument document,
+        string attributeName,
+        CancellationToken cancellationToken)
+    {
+        var result = new List<XmlElement>();
+        if (document.DocumentElement is not XmlElement root)
+            return result;
+
+        var pending = new Stack<XmlNode>();
+        pending.Push(root);
+        while (pending.Count > 0)
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+            XmlNode node = pending.Pop();
+            if (node is XmlElement element && element.HasAttribute(attributeName))
+                result.Add(element);
+
+            for (XmlNode? child = node.LastChild; child is not null; child = child.PreviousSibling)
+                pending.Push(child);
+        }
+
+        return result;
+    }
+
     private static bool TryCreateStaticStyleSheet(string css, out string sanitized)
     {
         var removals = new List<(int Start, int Length)>();
+        int importCursor = 0;
+        while (TryFindCssToken(css, "@import", importCursor, out int importStart))
+        {
+            if (!TryFindCssStatementEnd(css, importStart + "@import".Length, out int importEnd))
+            {
+                sanitized = css;
+                return false;
+            }
+
+            removals.Add((importStart, importEnd - importStart));
+            importCursor = importEnd;
+        }
+
         foreach (string directive in new[] { "@font-face", "@keyframes", "@-webkit-keyframes" })
         {
             int cursor = 0;
@@ -278,6 +334,59 @@ internal static class SvgStaticSnapshot
             Array.Fill(result, ' ', start, length);
         sanitized = new string(result);
         return true;
+    }
+
+    private static bool TryFindCssStatementEnd(string css, int start, out int end)
+    {
+        char quote = '\0';
+        bool comment = false;
+        int parentheses = 0;
+        for (int cursor = start; cursor < css.Length; cursor++)
+        {
+            char current = css[cursor];
+            if (comment)
+            {
+                if (current == '*' && cursor + 1 < css.Length && css[cursor + 1] == '/')
+                {
+                    comment = false;
+                    cursor++;
+                }
+                continue;
+            }
+            if (quote != '\0')
+            {
+                if (current == '\\' && cursor + 1 < css.Length)
+                    cursor++;
+                else if (current == quote)
+                    quote = '\0';
+                continue;
+            }
+            if (current == '/' && cursor + 1 < css.Length && css[cursor + 1] == '*')
+            {
+                comment = true;
+                cursor++;
+                continue;
+            }
+            if (current is '\'' or '"')
+                quote = current;
+            else if (current == '(')
+                parentheses++;
+            else if (current == ')' && parentheses > 0)
+                parentheses--;
+            else if (current == ';' && parentheses == 0)
+            {
+                end = cursor + 1;
+                return true;
+            }
+            else if (current == '{' && parentheses == 0)
+            {
+                end = -1;
+                return false;
+            }
+        }
+
+        end = -1;
+        return false;
     }
 
     private static bool TryFindMotionDeclarations(
@@ -631,6 +740,14 @@ internal static class SvgStaticSnapshot
             {
                 return false;
             }
+
+            if (attribute.LocalName.Equals("requiredFeatures", StringComparison.OrdinalIgnoreCase) &&
+                !attribute.Value.Equals(
+                    "http://www.w3.org/TR/SVG11/feature#Extensibility",
+                    StringComparison.Ordinal))
+            {
+                return false;
+            }
         }
 
         return true;
@@ -644,6 +761,7 @@ internal static class SvgStaticSnapshot
         name.Equals("style", StringComparison.OrdinalIgnoreCase) ||
         name.Equals("transform", StringComparison.OrdinalIgnoreCase) ||
         name.Equals("opacity", StringComparison.OrdinalIgnoreCase) ||
+        name.Equals("requiredFeatures", StringComparison.OrdinalIgnoreCase) ||
         // Generated Trendshift cards use this inert authoring hint.
         name.Equals("selection", StringComparison.OrdinalIgnoreCase);
 
@@ -670,7 +788,7 @@ internal static class SvgStaticSnapshot
         }
 
         text = CollapseWhitespace(builder.ToString());
-        return text.Length > 0;
+        return text.Length is > 0 and <= 16_384;
     }
 
     private static bool AppendPlainHtmlText(XmlNode node, StringBuilder builder)
@@ -689,15 +807,17 @@ internal static class SvgStaticSnapshot
             return false;
         }
 
-        foreach (XmlAttribute attribute in element.Attributes)
-        {
-            if (!attribute.NamespaceURI.Equals("http://www.w3.org/2000/xmlns/", StringComparison.Ordinal))
-                return false;
-        }
+        if (!HasOnlySafeHtmlTextAttributes(element))
+            return false;
 
         bool addsBoundary = element.LocalName.Equals("div", StringComparison.OrdinalIgnoreCase) ||
             element.LocalName.Equals("p", StringComparison.OrdinalIgnoreCase) ||
-            element.LocalName.Equals("br", StringComparison.OrdinalIgnoreCase);
+            element.LocalName.Equals("br", StringComparison.OrdinalIgnoreCase) ||
+            element.LocalName.Equals("tr", StringComparison.OrdinalIgnoreCase) ||
+            element.LocalName.Equals("li", StringComparison.OrdinalIgnoreCase) ||
+            (element.LocalName.Length == 2 &&
+                (element.LocalName[0] is 'h' or 'H') &&
+                element.LocalName[1] is >= '1' and <= '6');
         if (addsBoundary)
             builder.Append(' ');
         foreach (XmlNode child in element.ChildNodes)
@@ -718,7 +838,81 @@ internal static class SvgStaticSnapshot
         localName.Equals("strong", StringComparison.OrdinalIgnoreCase) ||
         localName.Equals("b", StringComparison.OrdinalIgnoreCase) ||
         localName.Equals("em", StringComparison.OrdinalIgnoreCase) ||
-        localName.Equals("i", StringComparison.OrdinalIgnoreCase);
+        localName.Equals("i", StringComparison.OrdinalIgnoreCase) ||
+        localName.Equals("small", StringComparison.OrdinalIgnoreCase) ||
+        localName.Equals("code", StringComparison.OrdinalIgnoreCase) ||
+        localName.Equals("table", StringComparison.OrdinalIgnoreCase) ||
+        localName.Equals("thead", StringComparison.OrdinalIgnoreCase) ||
+        localName.Equals("tbody", StringComparison.OrdinalIgnoreCase) ||
+        localName.Equals("tfoot", StringComparison.OrdinalIgnoreCase) ||
+        localName.Equals("tr", StringComparison.OrdinalIgnoreCase) ||
+        localName.Equals("td", StringComparison.OrdinalIgnoreCase) ||
+        localName.Equals("th", StringComparison.OrdinalIgnoreCase) ||
+        localName.Equals("ul", StringComparison.OrdinalIgnoreCase) ||
+        localName.Equals("ol", StringComparison.OrdinalIgnoreCase) ||
+        localName.Equals("li", StringComparison.OrdinalIgnoreCase) ||
+        localName is "h1" or "h2" or "h3" or "h4" or "h5" or "h6";
+
+    private static bool HasOnlySafeHtmlTextAttributes(XmlElement element)
+    {
+        foreach (XmlAttribute attribute in element.Attributes)
+        {
+            if (attribute.NamespaceURI.Equals("http://www.w3.org/2000/xmlns/", StringComparison.Ordinal))
+                continue;
+            if (attribute.NamespaceURI.Length != 0)
+                return false;
+
+            string value = attribute.Value.Trim();
+            if (attribute.LocalName.Equals("class", StringComparison.OrdinalIgnoreCase))
+            {
+                if (!IsSafeCssToken(value, 512))
+                    return false;
+                continue;
+            }
+            if (attribute.LocalName.Equals("align", StringComparison.OrdinalIgnoreCase))
+            {
+                if (!value.Equals("left", StringComparison.OrdinalIgnoreCase) &&
+                    !value.Equals("right", StringComparison.OrdinalIgnoreCase) &&
+                    !value.Equals("center", StringComparison.OrdinalIgnoreCase))
+                    return false;
+                continue;
+            }
+            if (attribute.LocalName.Equals("colspan", StringComparison.OrdinalIgnoreCase) ||
+                attribute.LocalName.Equals("rowspan", StringComparison.OrdinalIgnoreCase))
+            {
+                if (!int.TryParse(value, NumberStyles.None, CultureInfo.InvariantCulture, out int span) ||
+                    span is < 1 or > 64)
+                {
+                    return false;
+                }
+                continue;
+            }
+            if (attribute.LocalName.Equals("style", StringComparison.OrdinalIgnoreCase) &&
+                IsSafeDiscardedHtmlTextStyle(value))
+            {
+                continue;
+            }
+
+            return false;
+        }
+
+        return true;
+    }
+
+    private static bool IsSafeDiscardedHtmlTextStyle(string value)
+    {
+        if (!IsSafeCssToken(value, 1024) || value.IndexOfAny(['{', '}', '@']) >= 0)
+            return false;
+
+        string[] declarations = value.Split(';', StringSplitOptions.RemoveEmptyEntries);
+        Dictionary<string, string> style = ParseStyle(value);
+        return declarations.Length > 0 && style.Count == declarations.Length &&
+            style.All(static declaration =>
+            (declaration.Key is "width" or "white-space" or "margin" or "font-size" or
+                "color" or "font-family" or "font-weight" or "font-style" or
+                "text-align" or "letter-spacing" or "line-height") &&
+            IsSafeCssToken(declaration.Value, 256));
+    }
 
     private static Dictionary<string, string> ParseStyle(string value)
     {
@@ -931,6 +1125,7 @@ internal static class SvgStaticSnapshot
         ReadOnlySpan<byte> discardMarker = "<discard"u8;
         ReadOnlySpan<byte> foreignObjectMarker = "<foreignObject"u8;
         ReadOnlySpan<byte> fontFaceMarker = "@font-face"u8;
+        ReadOnlySpan<byte> importMarker = "@import"u8;
         ReadOnlySpan<byte> keyframesMarker = "@keyframes"u8;
         ReadOnlySpan<byte> webkitKeyframesMarker = "@-webkit-keyframes"u8;
         ReadOnlySpan<byte> animationMarker = "animation"u8;
@@ -942,6 +1137,7 @@ internal static class SvgStaticSnapshot
                 AsciiStartsWithIgnoreCase(bytes[index..], discardMarker) ||
                 AsciiStartsWithIgnoreCase(bytes[index..], foreignObjectMarker) ||
                 AsciiStartsWithIgnoreCase(bytes[index..], fontFaceMarker) ||
+                AsciiStartsWithIgnoreCase(bytes[index..], importMarker) ||
                 AsciiStartsWithIgnoreCase(bytes[index..], keyframesMarker) ||
                 AsciiStartsWithIgnoreCase(bytes[index..], webkitKeyframesMarker) ||
                 AsciiStartsWithIgnoreCase(bytes[index..], animationMarker) ||

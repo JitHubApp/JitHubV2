@@ -144,6 +144,8 @@ public sealed partial class MarkdownViewer : UserControl
     private bool _paletteSubscribed;
     private Microsoft.UI.Dispatching.DispatcherQueueTimer? _lifecycleRuntimeSettingsTimer;
     private int _lifecycleRuntimeSettingsRevision;
+    private string? _lastAuditCaptureRequestId;
+    private bool _auditCapturePending;
     private string? _lastAppliedMarkdown;
     private bool _renderFailureReportedForDocument;
     private bool _retryRenderPending;
@@ -478,7 +480,7 @@ public sealed partial class MarkdownViewer : UserControl
                 () => ThemePaletteRuntime.PaletteChanged += ThemePaletteRuntime_PaletteChanged,
                 nameof(ThemePaletteRuntime.PaletteChanged));
         }
-        if (MarkdownLifecycleAutomationBridge.IsEnabled && _lifecycleRuntimeSettingsTimer is null)
+        if (MarkdownLifecycleAutomationBridge.IsEvidenceEnabled && _lifecycleRuntimeSettingsTimer is null)
         {
             _lifecycleRuntimeSettingsRevision = MarkdownLifecycleAutomationBridge.GetRuntimeSettingsRevision();
             _lifecycleRuntimeSettingsTimer = DispatcherQueue.CreateTimer();
@@ -509,15 +511,74 @@ public sealed partial class MarkdownViewer : UserControl
         Microsoft.UI.Dispatching.DispatcherQueueTimer sender,
         object args)
     {
-        int revision = MarkdownLifecycleAutomationBridge.GetRuntimeSettingsRevision();
-        if (revision <= 0 || revision == _lifecycleRuntimeSettingsRevision)
+        if (MarkdownLifecycleAutomationBridge.IsEnabled)
+        {
+            int revision = MarkdownLifecycleAutomationBridge.GetRuntimeSettingsRevision();
+            if (revision > 0 && revision != _lifecycleRuntimeSettingsRevision)
+            {
+                _lifecycleRuntimeSettingsRevision = revision;
+                QueueRendererResourceRefresh();
+            }
+        }
+
+        QueueAuditCaptureRequest();
+    }
+
+    private void QueueAuditCaptureRequest()
+    {
+        if (_auditCapturePending || _renderer is null)
+            return;
+
+        string automationId = MarkdownHostContract.GetAutomationId(HostKind, AutomationInstanceId);
+        if (!MarkdownLifecycleAutomationBridge.TryReadCaptureRequest(
+                automationId,
+                out MarkdownLifecycleAutomationBridge.MarkdownAuditCaptureRequest? request) ||
+            request is null ||
+            string.Equals(request.RequestId, _lastAuditCaptureRequestId, StringComparison.Ordinal))
         {
             return;
         }
 
-        _lifecycleRuntimeSettingsRevision = revision;
-        QueueRendererResourceRefresh();
+        _lastAuditCaptureRequestId = request.RequestId;
+        _auditCapturePending = true;
+        UiTaskGuard.Run(
+            () => CaptureAuditViewportAsync(_renderer, request),
+            "markdown-audit-capture");
     }
+
+#pragma warning disable MR1001 // Shared base for the two explicit renderer viewport types.
+    private async System.Threading.Tasks.Task CaptureAuditViewportAsync(
+        MarkdownRendererControl renderer,
+        MarkdownLifecycleAutomationBridge.MarkdownAuditCaptureRequest request)
+    {
+        try
+        {
+            (int width, int height, double documentTop) =
+                await renderer.CaptureAuditViewportAsync(request.OutputPath, request.Save);
+            MarkdownLifecycleAutomationBridge.RecordCaptureResponse(
+                request.RequestId,
+                succeeded: true,
+                width,
+                height,
+                documentTop,
+                error: null);
+        }
+        catch (Exception exception)
+        {
+            MarkdownLifecycleAutomationBridge.RecordCaptureResponse(
+                request.RequestId,
+                succeeded: false,
+                width: 0,
+                height: 0,
+                documentTop: 0,
+                error: exception.ToString());
+        }
+        finally
+        {
+            _auditCapturePending = false;
+        }
+    }
+#pragma warning restore MR1001
 
     private void ThemePaletteRuntime_PaletteChanged(
         object? sender,

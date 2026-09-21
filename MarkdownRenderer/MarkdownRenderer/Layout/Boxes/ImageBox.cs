@@ -140,6 +140,11 @@ internal sealed class ImageBox : BlockBox
     private static readonly ConditionalWeakTable<IMarkdownSvgRenderer, SvgRendererCacheIdentity>
         _svgRendererIdentities = new();
     private static readonly SemaphoreSlim[] _svgOpenGates = CreateSvgOpenGates();
+    // Keep aggregate host admission below the optional provider's default
+    // bounded queue. Queue wait is not rendering work and must never consume a
+    // document's hard worker deadline or turn a large badge wall into hundreds
+    // of false resource-limit failures.
+    private static readonly SemaphoreSlim _svgProviderAdmissionGate = new(16, 16);
     private static long _nextSvgRendererIdentity;
 
     // URLs that have permanently failed to load/uarse. New ImageBox instances
@@ -1589,16 +1594,15 @@ internal sealed class ImageBox : BlockBox
             return;
         }
 
-        using CancellationTokenSource deadline = CancellationTokenSource.CreateLinkedTokenSource(
-            lifetimeToken);
-        deadline.CancelAfter(TimeSpan.FromSeconds(3));
-        CancellationToken cancellationToken = deadline.Token;
+        CancellationTokenSource? deadline = null;
+        CancellationToken cancellationToken = lifetimeToken;
         IMarkdownSvgDocument? openedDocument = null;
         SharedCanvasBitmapCache.Lease? bitmapLease = null;
         SemaphoreSlim? renderGate = null;
         bool renderGateHeld = false;
         SemaphoreSlim? openGate = null;
         bool openGateHeld = false;
+        bool providerAdmissionHeld = false;
         bool keepOpenedDocument = false;
         bool metadataWasKnown = ReferenceEquals(rawBytes, _svgRawBytes) && _svgInfo is not null;
         long providerCacheGeneration = 0;
@@ -1703,6 +1707,12 @@ internal sealed class ImageBox : BlockBox
             {
                 return;
             }
+
+            await _svgProviderAdmissionGate.WaitAsync(lifetimeToken).ConfigureAwait(false);
+            providerAdmissionHeld = true;
+            deadline = CancellationTokenSource.CreateLinkedTokenSource(lifetimeToken);
+            deadline.CancelAfter(TimeSpan.FromSeconds(3));
+            cancellationToken = deadline.Token;
 
             var openRequest = new MarkdownSvgOpenRequest(
                 rawBytes,
@@ -1974,6 +1984,9 @@ internal sealed class ImageBox : BlockBox
                 renderGate!.Release();
             if (openGateHeld)
                 openGate!.Release();
+            if (providerAdmissionHeld)
+                _svgProviderAdmissionGate.Release();
+            deadline?.Dispose();
 
             if (openedDocument is not null && !keepOpenedDocument)
                 ReleaseSvgDocument(openedDocument);
@@ -2262,13 +2275,18 @@ internal sealed class ImageBox : BlockBox
         SharedCanvasBitmapCache.Lease? bitmapLease = null;
         SemaphoreSlim? renderGate = null;
         bool renderGateHeld = false;
-        using CancellationTokenSource deadline = CancellationTokenSource.CreateLinkedTokenSource(
+        bool providerAdmissionHeld = false;
+        using CancellationTokenSource admissionCancellation = CancellationTokenSource.CreateLinkedTokenSource(
             lifetimeWork.Token,
             workCancellation.Token);
-        deadline.CancelAfter(TimeSpan.FromSeconds(3));
+        CancellationTokenSource? deadline = null;
 
         try
         {
+            await _svgProviderAdmissionGate.WaitAsync(admissionCancellation.Token).ConfigureAwait(false);
+            providerAdmissionHeld = true;
+            deadline = CancellationTokenSource.CreateLinkedTokenSource(admissionCancellation.Token);
+            deadline.CancelAfter(TimeSpan.FromSeconds(3));
             CancellationToken cancellationToken = deadline.Token;
             CanvasDevice device = _context.ResourceCreator.Device;
             if (!SharedCanvasBitmapCache.TryAcquire(device, identity, out bitmapLease))
@@ -2413,6 +2431,9 @@ internal sealed class ImageBox : BlockBox
             bitmapLease?.Dispose();
             if (renderGateHeld)
                 renderGate!.Release();
+            if (providerAdmissionHeld)
+                _svgProviderAdmissionGate.Release();
+            deadline?.Dispose();
             CompleteSvgTileWork(key, workCancellation);
             lifetimeWork.Dispose();
         }

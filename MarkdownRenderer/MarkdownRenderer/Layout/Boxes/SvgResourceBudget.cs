@@ -573,16 +573,20 @@ internal static class SvgResourceBudget
             if (payload.Length == 0 || payload.Length > MaxInputBytes)
                 return false;
 
-            if (IsSupportedEmbeddedMediaType(mediaType))
-                return true;
-
             // Match browser data-URI tolerance without weakening the resource
-            // boundary: only a positively identified supported raster payload
-            // can replace a missing or invalid MIME label. In particular, this
-            // admits OpenCollective's `data:false;base64,...` PNG avatars while
-            // arbitrary bytes and undeclared nested SVG remain rejected.
-            mediaType = DetectEmbeddedRasterMediaType(payload) ?? string.Empty;
-            return mediaType.Length != 0;
+            // boundary: a positively identified supported raster payload is
+            // authoritative even when a generator mislabeled it (for example,
+            // a PNG avatar declared as image/gif). This also admits
+            // OpenCollective's `data:false;base64,...` PNG avatars. Arbitrary
+            // bytes and undeclared nested SVG remain rejected.
+            string? detectedRasterType = DetectEmbeddedRasterMediaType(payload);
+            if (detectedRasterType is not null)
+            {
+                mediaType = detectedRasterType;
+                return true;
+            }
+
+            return mediaType.Equals("image/svg+xml", StringComparison.OrdinalIgnoreCase);
         }
         catch (Exception ex) when (ex is FormatException or EncoderFallbackException)
         {

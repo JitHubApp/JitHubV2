@@ -238,6 +238,13 @@ public static class GitHubMarkdownImageUrlResolver
         return new Uri(uri, UriKind.Absolute);
     }
 
+    internal static Uri CreateGitHubRawRouteUri(GitHubMarkdownImageReference reference)
+    {
+        string uri =
+            $"https://github.com/{Uri.EscapeDataString(reference.Owner)}/{Uri.EscapeDataString(reference.Repository)}/raw/{EscapePath(reference.Ref)}/{EscapePath(reference.Path)}";
+        return new Uri(uri, UriKind.Absolute);
+    }
+
     private static bool TryResolveRelativeRepositoryLocation(
         string relativeSourcePath,
         string documentPath,

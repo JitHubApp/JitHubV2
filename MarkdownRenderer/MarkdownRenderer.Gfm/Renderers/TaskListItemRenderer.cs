@@ -24,8 +24,6 @@ namespace MarkdownRenderer.Gfm.Renderers;
 /// </summary>
 internal sealed partial class TaskListItemRenderer : MarkdownNodeRenderer<ListItemBlock>
 {
-    private const float BaseTaskMarkerSize = 20f;
-
     /// <inheritdoc />
     public override BlockBox? BuildBlock(ListItemBlock listItem, MarkdownLayoutContext context)
     {
@@ -172,7 +170,7 @@ internal sealed partial class TaskListItemRenderer : MarkdownNodeRenderer<ListIt
                 selectionForeground);
         }
 
-        return new ReadOnlyTaskCheckBox(
+        return TaskMarkerControlFactory.CreateReadOnly(
             automationMetadata,
             markerSize,
             selectionAccent,
@@ -181,17 +179,12 @@ internal sealed partial class TaskListItemRenderer : MarkdownNodeRenderer<ListIt
 
     internal static float GetTaskMarkerSize(ThemeSnapshot snapshot, bool editableRequested)
     {
-        float scaledGlyphSlot = Math.Max(
-            BaseTaskMarkerSize,
-            BaseTaskMarkerSize * (float)snapshot.TextScaleFactor);
-        return editableRequested
-            ? Math.Max(scaledGlyphSlot, (float)snapshot.MinimumInteractiveSize)
-            : scaledGlyphSlot;
+        return TaskMarkerControlFactory.GetMarkerSize(snapshot, editableRequested);
     }
 
     internal static (Windows.UI.Color Accent, Windows.UI.Color Foreground) GetTaskMarkerColors(
         ThemeSnapshot snapshot)
-        => (snapshot.SelectionHighlightColor, snapshot.SelectionForegroundColor);
+        => TaskMarkerControlFactory.GetColors(snapshot);
 
     private static MarkdownCommandContext CreateCommandContext(SourceSpan sourceRange, bool isChecked)
         => new(
@@ -199,100 +192,13 @@ internal sealed partial class TaskListItemRenderer : MarkdownNodeRenderer<ListIt
             sourceRange,
             target: isChecked ? "checked" : "unchecked");
 
-    internal static string CreateTaskMarkerAutomationId(SourceSpan sourceRange) => string.Concat(
-        "MarkdownTask_",
-        sourceRange.Start.ToString("X8", CultureInfo.InvariantCulture),
-        "_",
-        sourceRange.Length.ToString("X8", CultureInfo.InvariantCulture));
+    internal static string CreateTaskMarkerAutomationId(SourceSpan sourceRange) =>
+        TaskMarkerControlFactory.CreateAutomationId(sourceRange);
 
     private static string ResolveString(
         MarkdownLayoutContext context,
         string key,
         string fallback) => context.ResolveString(key, fallback);
-
-    private static void ConfigureTaskCheckBox(
-        CheckBox checkBox,
-        bool isInteractive,
-        bool isChecked,
-        float markerSize,
-        Windows.UI.Color selectionAccent,
-        Windows.UI.Color selectionForeground)
-    {
-        checkBox.IsChecked = isChecked;
-        checkBox.IsThreeState = false;
-        checkBox.IsEnabled = true;
-        checkBox.IsHitTestVisible = isInteractive;
-        checkBox.IsTabStop = isInteractive;
-        checkBox.Width = markerSize;
-        checkBox.Height = markerSize;
-        checkBox.MinWidth = markerSize;
-        checkBox.MinHeight = markerSize;
-        checkBox.Padding = new Thickness(0);
-        checkBox.Margin = new Thickness(0);
-        checkBox.HorizontalContentAlignment = HorizontalAlignment.Center;
-        checkBox.VerticalContentAlignment = VerticalAlignment.Center;
-        checkBox.HorizontalAlignment = HorizontalAlignment.Center;
-        checkBox.VerticalAlignment = VerticalAlignment.Center;
-
-        var accentBrush = new SolidColorBrush(selectionAccent);
-        var foregroundBrush = new SolidColorBrush(selectionForeground);
-        checkBox.Resources["CheckBoxCheckBackgroundFillChecked"] = accentBrush;
-        checkBox.Resources["CheckBoxCheckBackgroundFillCheckedPointerOver"] = accentBrush;
-        checkBox.Resources["CheckBoxCheckBackgroundFillCheckedPressed"] = accentBrush;
-        checkBox.Resources["CheckBoxCheckBackgroundStrokeChecked"] = accentBrush;
-        checkBox.Resources["CheckBoxCheckBackgroundStrokeCheckedPointerOver"] = accentBrush;
-        checkBox.Resources["CheckBoxCheckBackgroundStrokeCheckedPressed"] = accentBrush;
-        checkBox.Resources["CheckBoxCheckBackgroundStrokeUncheckedPointerOver"] = accentBrush;
-        checkBox.Resources["CheckBoxCheckBackgroundStrokeUncheckedPressed"] = accentBrush;
-        checkBox.Resources["CheckBoxCheckGlyphForegroundChecked"] = foregroundBrush;
-        checkBox.Resources["CheckBoxCheckGlyphForegroundCheckedPointerOver"] = foregroundBrush;
-        checkBox.Resources["CheckBoxCheckGlyphForegroundCheckedPressed"] = foregroundBrush;
-    }
-
-    private sealed partial class ReadOnlyTaskCheckBox : CheckBox
-    {
-        public ReadOnlyTaskCheckBox(
-            InlineEmbedAutomationMetadata automationMetadata,
-            float markerSize,
-            Windows.UI.Color selectionAccent,
-            Windows.UI.Color selectionForeground)
-        {
-            ConfigureTaskCheckBox(
-                this,
-                isInteractive: false,
-                automationMetadata.IsChecked,
-                markerSize,
-                selectionAccent,
-                selectionForeground);
-            AutomationProperties.SetAccessibilityView(this, AccessibilityView.Raw);
-            AutomationProperties.SetAutomationId(this, automationMetadata.AutomationId);
-            AutomationProperties.SetName(this, automationMetadata.CurrentName);
-            AutomationProperties.SetHelpText(this, automationMetadata.ReadOnlyHelpText);
-        }
-
-        protected override AutomationPeer OnCreateAutomationPeer() =>
-            new ReadOnlyTaskCheckBoxAutomationPeer(this);
-    }
-
-    private sealed partial class ReadOnlyTaskCheckBoxAutomationPeer(ReadOnlyTaskCheckBox owner)
-        : FrameworkElementAutomationPeer(owner)
-    {
-        protected override string GetClassNameCore() => nameof(CheckBox);
-
-        protected override AutomationControlType GetAutomationControlTypeCore() =>
-            AutomationControlType.CheckBox;
-
-        protected override bool IsControlElementCore() => false;
-
-        protected override bool IsContentElementCore() => false;
-
-        protected override bool IsKeyboardFocusableCore() => false;
-
-        protected override object GetPatternCore(PatternInterface patternInterface) =>
-            patternInterface == PatternInterface.Toggle
-                ? null!
-                : base.GetPatternCore(patternInterface);
-    }
 
     private sealed partial class EditableTaskCheckBox : CheckBox, IDisposable
     {
@@ -317,7 +223,7 @@ internal sealed partial class TaskListItemRenderer : MarkdownNodeRenderer<ListIt
             _taskCommands = taskCommands;
             _committedState = automationMetadata.IsChecked;
 
-            ConfigureTaskCheckBox(
+            TaskMarkerControlFactory.Configure(
                 this,
                 isInteractive: true,
                 _committedState,

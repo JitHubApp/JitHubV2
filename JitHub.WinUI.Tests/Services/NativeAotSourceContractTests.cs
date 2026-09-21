@@ -56,6 +56,7 @@ public sealed class NativeAotSourceContractTests
         string root = FindRepositoryRoot();
         string project = File.ReadAllText(Path.Combine(root, "JitHub.WinUI", "JitHub.WinUI.csproj"));
         string ledger = File.ReadAllText(Path.Combine(root, "eng", "native-aot-dependencies.json"));
+        string verifier = File.ReadAllText(Path.Combine(root, "eng", "Verify-NativeAotArtifact.ps1"));
         string graph = project + Environment.NewLine + ledger;
 
         Assert.Contains("WinUIEdit" + "\" Version=\"0.0.5-prerelease", project, StringComparison.OrdinalIgnoreCase);
@@ -76,6 +77,8 @@ public sealed class NativeAotSourceContractTests
         {
             Assert.DoesNotContain(removedPackage, graph, StringComparison.OrdinalIgnoreCase);
         }
+
+        Assert.DoesNotContain("libHarfBuzzSharp.dll", verifier, StringComparison.OrdinalIgnoreCase);
     }
 
     [Fact]

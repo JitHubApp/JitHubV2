@@ -673,6 +673,8 @@ internal sealed class MarkdownSemanticDocument
                     : null,
             };
 
+            MarkdownSemanticNode? flattenedHeading = null;
+
             for (int runIndex = 0; runIndex < inline.Runs.Count; runIndex++)
             {
                 InlineRun run = inline.Runs[runIndex];
@@ -696,9 +698,35 @@ internal sealed class MarkdownSemanticDocument
                 _text.Append(accessibleText);
                 int runEnd = _text.Length;
                 _spans.Add(new MarkdownTextSpan(runStart, runEnd, inline, run, null, null, null));
+                int flattenedHeadingLevel = GetHeadingLevel(run.SemanticHeadingKey);
+                if (flattenedHeadingLevel > 0)
+                {
+                    if (flattenedHeading is null || flattenedHeading.HeadingLevel != flattenedHeadingLevel)
+                    {
+                        flattenedHeading = new MarkdownSemanticNode(MarkdownSemanticRole.Heading, inline)
+                        {
+                            InlineBox = inline,
+                            InlineRun = run,
+                            TextStart = runStart,
+                            TextEnd = runEnd,
+                            HeadingLevel = flattenedHeadingLevel,
+                        };
+                        node.Add(flattenedHeading);
+                    }
+                    else
+                    {
+                        flattenedHeading.TextEnd = runEnd;
+                    }
+                }
+                else
+                {
+                    flattenedHeading = null;
+                }
+
+                MarkdownSemanticNode semanticParent = flattenedHeading ?? node;
                 if (run is LinkRun link)
                 {
-                    node.Add(new MarkdownSemanticNode(MarkdownSemanticRole.Link, inline)
+                    semanticParent.Add(new MarkdownSemanticNode(MarkdownSemanticRole.Link, inline)
                     {
                         InlineBox = inline,
                         InlineRun = link,
@@ -709,7 +737,7 @@ internal sealed class MarkdownSemanticDocument
                 }
                 else if (run is InlineEmbedRun embedRun)
                 {
-                    node.Add(new MarkdownSemanticNode(MarkdownSemanticRole.Embed, inline)
+                    semanticParent.Add(new MarkdownSemanticNode(MarkdownSemanticRole.Embed, inline)
                     {
                         InlineBox = inline,
                         InlineRun = embedRun,
@@ -722,7 +750,7 @@ internal sealed class MarkdownSemanticDocument
                 }
                 else if (run is InlineImageRun imageRun)
                 {
-                    node.Add(new MarkdownSemanticNode(MarkdownSemanticRole.Image, inline)
+                    semanticParent.Add(new MarkdownSemanticNode(MarkdownSemanticRole.Image, inline)
                     {
                         InlineBox = inline,
                         ImageBox = imageRun.Image,
@@ -740,7 +768,7 @@ internal sealed class MarkdownSemanticDocument
                 }
                 else if (run is InlineVectorSceneRun vectorRun)
                 {
-                    node.Add(new MarkdownSemanticNode(MarkdownSemanticRole.Math, inline)
+                    semanticParent.Add(new MarkdownSemanticNode(MarkdownSemanticRole.Math, inline)
                     {
                         InlineBox = inline,
                         InlineRun = vectorRun,
@@ -758,7 +786,7 @@ internal sealed class MarkdownSemanticDocument
                 }
                 else if (run is AbbreviationRun abbreviationRun)
                 {
-                    node.Add(new MarkdownSemanticNode(MarkdownSemanticRole.Abbreviation, inline)
+                    semanticParent.Add(new MarkdownSemanticNode(MarkdownSemanticRole.Abbreviation, inline)
                     {
                         InlineBox = inline,
                         InlineRun = abbreviationRun,

@@ -2285,6 +2285,23 @@ namespace JitHub.Services
                                     fileBytes = DecodeGitHubContent(blob.Content, blob.Encoding);
                                 }
 
+                                if (GitLfsPointer.IsPointer(fileBytes))
+                                {
+                                    // The Contents API and raw.githubusercontent.com expose
+                                    // the LFS pointer itself. GitHub's repository /raw route
+                                    // performs the bounded, trusted redirect to the media CDN
+                                    // and yields the same bytes rendered by github.com.
+                                    Uri lfsRoute = GitHubMarkdownImageUrlResolver
+                                        .CreateGitHubRawRouteUri(imageReference);
+                                    GitHubCachedImage? lfsImage = await _gitHubImageService.GetAsync(
+                                        lfsRoute.AbsoluteUri,
+                                        GitHubImageFetchScope.TrustedGitHub,
+                                        token).ConfigureAwait(false);
+                                    return lfsImage?.Bytes is { Length: > 0 } lfsBytes
+                                        ? new GitHubImageDownload(lfsBytes, lfsImage.ContentType)
+                                        : null;
+                                }
+
                                 return fileBytes.Length == 0
                                     ? null
                                     : new GitHubImageDownload(fileBytes, GuessImageContentType(imageReference.Path));

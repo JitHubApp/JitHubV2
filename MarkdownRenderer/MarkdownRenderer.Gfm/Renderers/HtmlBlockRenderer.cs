@@ -142,17 +142,21 @@ internal sealed class HtmlBlockRenderer : MarkdownNodeRenderer<HtmlBlock>
             return null;
         }
 
-        if (element.Name is "form" or "input" or "button")
+        if (element.Name is "form" or "button")
             return null;
 
         if (!IsSupportedElement(element.Name))
         {
-            var unknown = CreateInlineBox(context, MarkdownElementKeys.Body, inheritedAlignment);
             if (_options.UnknownElementBehavior == SafeHtmlUnknownElementBehavior.RenderLiteral)
+            {
+                var unknown = CreateInlineBox(context, MarkdownElementKeys.Body, inheritedAlignment);
                 AddLiteralElement(unknown, element, sourceOffset, HtmlInlineContext.Empty);
-            else
-                PopulateInline(unknown, element.Children, context, sourceOffset, HtmlInlineContext.Empty);
-            return unknown.Runs.Count == 0 ? null : unknown;
+                return unknown.Runs.Count == 0 ? null : unknown;
+            }
+
+            var inline = CreateInlineBox(context, MarkdownElementKeys.Body, inheritedAlignment);
+            PopulateInline(inline, element.Children, context, sourceOffset, HtmlInlineContext.Empty);
+            return inline.Runs.Count == 0 ? null : inline;
         }
 
         using var classScope = context.PushStyleAliases(GetAllowedClassAliases(element));
@@ -164,6 +168,16 @@ internal sealed class HtmlBlockRenderer : MarkdownNodeRenderer<HtmlBlock>
             InlineContainerBox heading = CreateInlineBox(context, headingKey, alignment);
             PopulateInline(heading, element.Children, context, sourceOffset, HtmlInlineContext.Empty);
             return heading.Runs.Count == 0 ? null : heading;
+        }
+
+        if (element.Name is "video" or "audio")
+        {
+            InlineContainerBox media = CreateInlineBox(
+                context,
+                MarkdownElementKeys.Body,
+                alignment);
+            AddMediaRun(media, element, context, sourceOffset, HtmlInlineContext.Empty);
+            return media.Runs.Count == 0 ? null : media;
         }
 
         return element.Name switch
@@ -339,20 +353,57 @@ internal sealed class HtmlBlockRenderer : MarkdownNodeRenderer<HtmlBlock>
             summaryText = defaultSummary;
         }
 
-        InlineContainerBox summaryBox = CreateInlineBox(context, MarkdownElementKeys.Strong, alignment);
+        string? summaryHeadingKey = summary is null
+            ? null
+            : FindDescendantHeadingKey(summary);
+        string summaryStyleKey = summaryHeadingKey ?? MarkdownElementKeys.Strong;
+        InlineContainerBox summaryBox = CreateInlineBox(context, summaryStyleKey, alignment);
         summaryBox.Add(new LinkRun(
             $"{(expanded ? "\u25BE" : "\u25B8")} {summaryText}",
             $"markdown-disclosure:{disclosureId}")
         {
             AccessibilityName = summaryText,
             DisclosureId = disclosureId,
-            ElementKey = MarkdownElementKeys.Strong,
+            ElementKey = summaryStyleKey,
             IsExpanded = expanded,
             SourceSpan = new SourceSpan(
                 sourceOffset + (summary?.SourceStart ?? details.SourceStart),
                 summary?.SourceLength ?? details.SourceLength),
         });
         stack.Add(summaryBox);
+
+        if (summary is not null && _options.EnableImages)
+        {
+            // A disclosure summary may contain diagrams or badges. They remain
+            // visible when <details> is closed, just like multiline Markdown
+            // content in the summary. Build the inline content once to retain
+            // picture selection and link metadata, then publish only its atomic
+            // media runs because textual descendants are already represented by
+            // the disclosure control above.
+            InlineContainerBox summaryContent = CreateInlineBox(
+                context,
+                MarkdownElementKeys.Body,
+                alignment);
+            PopulateInline(
+                summaryContent,
+                summary.Children,
+                context,
+                sourceOffset,
+                HtmlInlineContext.Empty);
+            InlineImageRun[] summaryImages = summaryContent.Runs
+                .OfType<InlineImageRun>()
+                .ToArray();
+            if (summaryImages.Length > 0)
+            {
+                InlineContainerBox summaryMedia = CreateInlineBox(
+                    context,
+                    MarkdownElementKeys.Body,
+                    alignment);
+                foreach (InlineImageRun image in summaryImages)
+                    summaryMedia.Add(image);
+                stack.Add(summaryMedia);
+            }
+        }
 
         if (!expanded)
         {
@@ -413,12 +464,32 @@ internal sealed class HtmlBlockRenderer : MarkdownNodeRenderer<HtmlBlock>
             return null;
         }
 
-        InlineContainerBox box = CreateInlineBox(context, MarkdownElementKeys.CodeBlock, alignment);
-        box.Add(new TextRun(text)
+        text = CodeBlockMetadata.NormalizeCodeLineEndings(text);
+        var sourceSpan = new SourceSpan(sourceOffset + pre.SourceStart, pre.SourceLength);
+        CodeBlockMetadata metadata = CodeBlockMetadata.FromDeclarative(
+            sourceSpan,
+            text,
+            language: null,
+            new Dictionary<string, string>());
+        var codeBlock = new CodeBlockBox(
+            context,
+            metadata,
+            text,
+            context.IsCodeBlockCopyEnabled,
+            showLineNumbers: false)
         {
-            SourceSpan = new SourceSpan(sourceOffset + pre.SourceStart, pre.SourceLength),
-        });
-        return box;
+            BlockIndex = context.NextBlockIndex(),
+        };
+        var chunk = new InlineContainerBox(context, MarkdownElementKeys.CodeBlock)
+        {
+            BlockIndex = context.NextBlockIndex(),
+            TextAlignment = ToCanvasAlignment(alignment),
+            CodeBlockTextOffset = 0,
+            CodeBlockTextLength = text.Length,
+        };
+        chunk.Add(new TextRun(text) { SourceSpan = sourceSpan });
+        codeBlock.AddChunk(chunk);
+        return codeBlock;
     }
 
     private BlockBox? BuildHtmlList(
@@ -428,21 +499,45 @@ internal sealed class HtmlBlockRenderer : MarkdownNodeRenderer<HtmlBlock>
         SafeHtmlAlignment alignment,
         bool ordered)
     {
+        using var listScope = context.PushListDepth();
         var stack = CreateStack(context);
         int index = 1;
+        if (ordered &&
+            list.TryGetAttribute("start", out string rawStart) &&
+            int.TryParse(rawStart, NumberStyles.Integer, CultureInfo.InvariantCulture, out int parsedStart))
+        {
+            index = parsedStart;
+        }
+
+        ElementStyle listStyle = context.ThemeSnapshot.GetStyle(
+            MarkdownElementKeys.ListMarker,
+            context.CreateStyleContextSnapshot(),
+            context.CreateStyleAliasSnapshot());
+        float markerWidth = Math.Max(
+            1f,
+            listStyle.ListIndent +
+            Math.Max(0, context.ListDepth - 1) * listStyle.NestedListIndent);
         foreach (SafeHtmlElement item in list.Children.OfType<SafeHtmlElement>().Where(element => element.Name == "li"))
         {
-            InlineContainerBox box = CreateInlineBox(context, MarkdownElementKeys.Body, alignment);
-            string marker = ordered ? $"{index}. " : "\u2022 ";
-            box.Add(new TextRun(marker)
+            InlineContainerBox marker = CreateInlineBox(
+                context,
+                MarkdownElementKeys.ListMarker,
+                alignment);
+            marker.Add(new TextRun(ordered ? $"{index}." : "\u2022")
             {
                 ElementKey = MarkdownElementKeys.ListMarker,
                 SourceSpan = new SourceSpan(sourceOffset + item.SourceStart, 0),
             });
-            PopulateInline(box, item.Children, context, sourceOffset, HtmlInlineContext.Empty);
-            if (box.Runs.Count > 1)
+
+            StackBox content = CreateStack(context);
+            AppendBlocks(content, item.Children, context, sourceOffset, alignment);
+            if (content.Children.Count > 0)
             {
-                stack.Add(box);
+                stack.Add(new ListItemBox(marker, content, markerWidth)
+                {
+                    BlockIndex = context.NextBlockIndex(),
+                    FlowDirection = context.FlowDirection,
+                });
             }
 
             index++;
@@ -619,6 +714,9 @@ internal sealed class HtmlBlockRenderer : MarkdownNodeRenderer<HtmlBlock>
             }
             : CreateStyledTextRun(value, context.StyleKey);
         run.SourceSpan = span;
+        run.SemanticHeadingKey = context.HeadingKey ?? string.Empty;
+        if (run is LinkRun && !string.IsNullOrEmpty(context.StyleKey))
+            run.StyleModifierKeys = new[] { context.StyleKey };
         run.SetStyleAliases(context.StyleAliases);
         box.Add(run);
     }
@@ -633,8 +731,14 @@ internal sealed class HtmlBlockRenderer : MarkdownNodeRenderer<HtmlBlock>
         int sourceOffset,
         HtmlInlineContext inlineContext)
     {
-        if (SafeHtmlParser.IsSuppressedElement(element.Name) || element.Name is "form" or "input" or "button")
+        if (SafeHtmlParser.IsSuppressedElement(element.Name) || element.Name is "form" or "button")
         {
+            return;
+        }
+
+        if (element.Name == "input")
+        {
+            AddInputRun(box, element, context, sourceOffset);
             return;
         }
 
@@ -683,9 +787,22 @@ internal sealed class HtmlBlockRenderer : MarkdownNodeRenderer<HtmlBlock>
             return;
         }
 
+        if (element.Name is "video" or "audio")
+        {
+            AddMediaRun(box, element, context, sourceOffset, inlineContext);
+            return;
+        }
+
         if (element.Name == "svg")
         {
-            if (_options.EnableImages)
+            // GitHub appends a decorative permalink Octicon to every rendered
+            // heading. It is explicitly excluded from the accessibility tree
+            // and is browser chrome rather than README content; materializing
+            // it as an atomic linked image adds a visible replacement glyph
+            // and a duplicate hyperlink to the native document.
+            bool isAriaHidden = element.TryGetAttribute("aria-hidden", out string ariaHidden) &&
+                ariaHidden.Equals("true", StringComparison.OrdinalIgnoreCase);
+            if (_options.EnableImages && !isAriaHidden)
                 AddInlineSvgRun(box, element, context, sourceOffset, inlineContext);
             return;
         }
@@ -722,6 +839,10 @@ internal sealed class HtmlBlockRenderer : MarkdownNodeRenderer<HtmlBlock>
         {
             childContext = childContext with { StyleKey = styleKey };
         }
+
+        string? headingKey = HeadingKey(element.Name);
+        if (!string.IsNullOrEmpty(headingKey))
+            childContext = childContext with { HeadingKey = headingKey };
 
         bool blockBoundary = IsBlockElement(element.Name);
         if (blockBoundary && box.Runs.Count > 0 && box.Runs[^1] is not LineBreakRun)
@@ -789,6 +910,73 @@ internal sealed class HtmlBlockRenderer : MarkdownNodeRenderer<HtmlBlock>
         {
             SourceSpan = new SourceSpan(sourceOffset + image.SourceStart, image.SourceLength),
         };
+        run.SetStyleAliases(inlineContext.StyleAliases);
+        box.Add(run);
+    }
+
+    private static void AddInputRun(
+        InlineContainerBox box,
+        SafeHtmlElement input,
+        MarkdownLayoutContext context,
+        int sourceOffset)
+    {
+        if (!input.TryGetAttribute("type", out string type) ||
+            !type.Equals("checkbox", StringComparison.OrdinalIgnoreCase))
+        {
+            return;
+        }
+
+        bool isChecked = input.TryGetAttribute("checked", out _);
+        var sourceRange = new SourceSpan(sourceOffset + input.SourceStart, input.SourceLength);
+        box.Add(TaskMarkerControlFactory.CreateReadOnlyRun(
+            context,
+            isChecked,
+            sourceRange));
+    }
+
+    private static void AddMediaRun(
+        InlineContainerBox box,
+        SafeHtmlElement media,
+        MarkdownLayoutContext context,
+        int sourceOffset,
+        HtmlInlineContext inlineContext)
+    {
+        SafeHtmlElement sourceElement = media;
+        if (!SafeHtmlParser.TryGetSafeImageSource(sourceElement, out string mediaSource))
+        {
+            sourceElement = FindDescendant(media, "source") ?? media;
+            if (!SafeHtmlParser.TryGetSafeImageSource(sourceElement, out mediaSource))
+                mediaSource = string.Empty;
+        }
+
+        string? accessibilityName = media.TryGetAttribute("aria-label", out string ariaLabel) &&
+            !string.IsNullOrWhiteSpace(ariaLabel)
+                ? ariaLabel.Trim()
+                : media.TryGetAttribute("title", out string title) && !string.IsNullOrWhiteSpace(title)
+                    ? title.Trim()
+                    : null;
+        bool isVideo = media.Name == "video";
+        SafeHtmlLength? width = SafeHtmlParser.TryGetLength(media, "width", out SafeHtmlLength parsedWidth)
+            ? parsedWidth
+            : null;
+        SafeHtmlLength? height = SafeHtmlParser.TryGetLength(media, "height", out SafeHtmlLength parsedHeight)
+            ? parsedHeight
+            : null;
+        string? posterSource = media.TryGetAttribute("poster", out string poster) &&
+            SafeHtmlParser.TryNormalizeImageSource(poster, out string safePoster)
+                ? safePoster
+                : null;
+        InlineImageRun run = SafeHtmlMediaRunFactory.Create(
+            context,
+            isVideo,
+            accessibilityName,
+            mediaSource,
+            posterSource,
+            width,
+            height,
+            new SourceSpan(sourceOffset + media.SourceStart, media.SourceLength),
+            inlineContext.LinkUrl,
+            inlineContext.LinkTitle);
         run.SetStyleAliases(inlineContext.StyleAliases);
         box.Add(run);
     }
@@ -998,7 +1186,7 @@ internal sealed class HtmlBlockRenderer : MarkdownNodeRenderer<HtmlBlock>
         "address" or "article" or "aside" or "blockquote" or "center" or "details" or "div" or
         "figcaption" or "figure" or "footer" or "h1" or "h2" or "h3" or "h4" or "h5" or
         "h6" or "header" or "hr" or "main" or "nav" or "ol" or "p" or "pre" or "section" or
-        "summary" or "table" or "ul";
+        "summary" or "table" or "ul" or "video" or "audio";
 
     private static bool IsSupportedElement(string name) => name is
         "a" or "address" or "article" or "aside" or "b" or "blockquote" or "br" or
@@ -1008,7 +1196,8 @@ internal sealed class HtmlBlockRenderer : MarkdownNodeRenderer<HtmlBlock>
         "ins" or "kbd" or "li" or "main" or "mark" or "nav" or "ol" or "p" or
         "picture" or "pre" or "s" or "samp" or "section" or "small" or "source" or
         "span" or "strike" or "strong" or "sub" or "summary" or "sup" or "svg" or "table" or
-        "tbody" or "td" or "tfoot" or "th" or "thead" or "tr" or "u" or "ul" or "var";
+        "tbody" or "td" or "tfoot" or "th" or "thead" or "tr" or "u" or "ul" or "var" or
+        "video" or "audio" or "input";
 
     private static void AddLiteralElement(
         InlineContainerBox box,
@@ -1109,9 +1298,26 @@ internal sealed class HtmlBlockRenderer : MarkdownNodeRenderer<HtmlBlock>
         string? LinkUrl,
         string? LinkTitle,
         string? StyleKey,
+        string? HeadingKey,
         IReadOnlyList<string> StyleAliases)
     {
-        public static HtmlInlineContext Empty => new(null, null, null, Array.Empty<string>());
+        public static HtmlInlineContext Empty => new(null, null, null, null, Array.Empty<string>());
+    }
+
+    private static string? FindDescendantHeadingKey(SafeHtmlElement parent)
+    {
+        foreach (SafeHtmlElement child in parent.Children.OfType<SafeHtmlElement>())
+        {
+            string? key = HeadingKey(child.Name);
+            if (key is not null)
+                return key;
+
+            key = FindDescendantHeadingKey(child);
+            if (key is not null)
+                return key;
+        }
+
+        return null;
     }
 
     private sealed record HtmlTableCell(SafeHtmlElement Element, int ColumnSpan);

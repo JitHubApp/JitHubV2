@@ -35,6 +35,13 @@ internal abstract class InlineRun
     /// </summary>
     internal IReadOnlyList<string> StyleModifierKeys { get; set; } = Array.Empty<string>();
 
+    /// <summary>
+    /// Heading style/semantics inherited from safe HTML that is flattened into
+    /// an inline-only host such as a table cell. Ordinary Markdown headings
+    /// remain block containers and leave this empty.
+    /// </summary>
+    internal string SemanticHeadingKey { get; set; } = string.Empty;
+
     public void SetStyleAliases(IReadOnlyList<string> styleAliases)
         => StyleAliases = styleAliases ?? Array.Empty<string>();
 
