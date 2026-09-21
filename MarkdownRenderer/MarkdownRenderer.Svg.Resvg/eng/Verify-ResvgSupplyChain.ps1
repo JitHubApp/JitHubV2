@@ -1,10 +1,17 @@
-param()
+param(
+    [string]$LockFilePath = ''
+)
 
 $ErrorActionPreference = 'Stop'
 $provider = Split-Path -Parent $PSScriptRoot
 $repositoryPolicyPath = Join-Path (Split-Path -Parent $provider) 'eng\license-compatibility-policy.json'
 $manifest = Join-Path $provider 'native\Cargo.toml'
-$lockFile = Join-Path $provider 'native\Cargo.lock'
+$lockFile = if ([string]::IsNullOrWhiteSpace($LockFilePath)) {
+    Join-Path $provider 'native\Cargo.lock'
+}
+else {
+    [IO.Path]::GetFullPath($LockFilePath)
+}
 $sbomPath = Join-Path $provider 'NATIVE_RUST_DEPENDENCIES.json'
 $licenseNoticesPath = Join-Path $provider 'licenses\RUST-DEPENDENCY-LICENSES.txt'
 
@@ -13,13 +20,13 @@ function Get-LockedPackages([string] $path) {
     $result = @{}
     foreach ($match in [regex]::Matches($text, '(?ms)^\[\[package\]\]\r?\n(?<body>.*?)(?=^\[\[package\]\]|\z)')) {
         $body = $match.Groups['body'].Value
-        $nameMatch = [regex]::Match($body, '(?m)^name = "(?<value>[^"]+)"$')
-        $versionMatch = [regex]::Match($body, '(?m)^version = "(?<value>[^"]+)"$')
+        $nameMatch = [regex]::Match($body, '(?m)^name = "(?<value>[^"]+)"\r?$')
+        $versionMatch = [regex]::Match($body, '(?m)^version = "(?<value>[^"]+)"\r?$')
         if (-not $nameMatch.Success -or -not $versionMatch.Success) {
             throw 'Cargo.lock contains a package without a name or version.'
         }
-        $sourceMatch = [regex]::Match($body, '(?m)^source = "(?<value>[^"]+)"$')
-        $checksumMatch = [regex]::Match($body, '(?m)^checksum = "(?<value>[0-9a-f]+)"$')
+        $sourceMatch = [regex]::Match($body, '(?m)^source = "(?<value>[^"]+)"\r?$')
+        $checksumMatch = [regex]::Match($body, '(?m)^checksum = "(?<value>[0-9a-f]+)"\r?$')
         $identity = "$($nameMatch.Groups['value'].Value)@$($versionMatch.Groups['value'].Value)"
         if ($result.ContainsKey($identity)) {
             throw "Cargo.lock contains ambiguous duplicate identity $identity."
