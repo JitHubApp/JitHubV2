@@ -590,6 +590,113 @@ public sealed class GitHubImageServiceTests : IDisposable
     }
 
     [Fact]
+    public async Task GetAsync_RetriesOneTransientStatusAndCachesSuccessfulResponse()
+    {
+        GitHubImageCacheStore store = new(_root, GitHubCachePolicy.Default);
+        TransientStatusThenImageHandler handler = new(PngBytes);
+        using HttpClient client = new(handler);
+        using GitHubImageService service = new(store, client);
+
+        GitHubCachedImage? image = await service.GetAsync(
+            "https://github.com/owner/repository/releases/download/assets/image.png");
+
+        Assert.NotNull(image);
+        Assert.Equal(PngBytes, image!.Bytes);
+        Assert.Equal(2, handler.RequestCount);
+    }
+
+    [Fact]
+    public async Task GetAsync_RetriesOneTransportFailureAndCachesSuccessfulResponse()
+    {
+        GitHubImageCacheStore store = new(_root, GitHubCachePolicy.Default);
+        TransientExceptionThenImageHandler handler = new(PngBytes);
+        using HttpClient client = new(handler);
+        using GitHubImageService service = new(store, client);
+
+        GitHubCachedImage? image = await service.GetAsync(
+            "https://raw.githubusercontent.com/owner/repository/main/image.png");
+
+        Assert.NotNull(image);
+        Assert.Equal(PngBytes, image!.Bytes);
+        Assert.Equal(2, handler.RequestCount);
+    }
+
+    [Fact]
+    public async Task GetAsync_DoesNotRetryPermanentHttpStatus()
+    {
+        GitHubImageCacheStore store = new(_root, GitHubCachePolicy.Default);
+        AlwaysStatusHandler handler = new(HttpStatusCode.NotFound);
+        using HttpClient client = new(handler);
+        using GitHubImageService service = new(store, client);
+
+        await Assert.ThrowsAsync<HttpRequestException>(() => service.GetAsync(
+            "https://raw.githubusercontent.com/owner/repository/main/missing.png"));
+
+        Assert.Equal(1, handler.RequestCount);
+    }
+
+    [Fact]
+    public async Task GetAsync_StopsAfterOneTransientRetry()
+    {
+        GitHubImageCacheStore store = new(_root, GitHubCachePolicy.Default);
+        AlwaysStatusHandler handler = new(HttpStatusCode.ServiceUnavailable);
+        using HttpClient client = new(handler);
+        using GitHubImageService service = new(store, client);
+
+        await Assert.ThrowsAsync<HttpRequestException>(() => service.GetAsync(
+            "https://raw.githubusercontent.com/owner/repository/main/unavailable.png"));
+
+        Assert.Equal(2, handler.RequestCount);
+    }
+
+    [Fact]
+    public async Task GetOrFetchAsync_RetriesTransientGitHubApiFailure()
+    {
+        GitHubImageCacheStore store = new(_root, GitHubCachePolicy.Default);
+        using HttpClient client = new(new CountingHandler(PngBytes));
+        using GitHubImageService service = new(store, client);
+        int attempts = 0;
+
+        GitHubCachedImage? image = await service.GetOrFetchAsync(
+            "https://raw.githubusercontent.com/owner/repository/ref/assets/banner.png",
+            (_, _) =>
+            {
+                if (Interlocked.Increment(ref attempts) == 1)
+                {
+                    throw new GitHubApiException(
+                        HttpStatusCode.ServiceUnavailable,
+                        "Transient repository content failure.");
+                }
+
+                return Task.FromResult<GitHubImageDownload?>(
+                    new GitHubImageDownload(PngBytes, "image/png"));
+            });
+
+        Assert.NotNull(image);
+        Assert.Equal(PngBytes, image!.Bytes);
+        Assert.Equal(2, attempts);
+    }
+
+    [Fact]
+    public async Task GetOrFetchAsync_DoesNotRetryPermanentGitHubApiFailure()
+    {
+        GitHubImageCacheStore store = new(_root, GitHubCachePolicy.Default);
+        using HttpClient client = new(new CountingHandler(PngBytes));
+        using GitHubImageService service = new(store, client);
+        int attempts = 0;
+
+        await Assert.ThrowsAsync<GitHubApiException>(() => service.GetOrFetchAsync(
+            "https://raw.githubusercontent.com/owner/repository/ref/assets/missing.png",
+            (_, _) =>
+            {
+                Interlocked.Increment(ref attempts);
+                throw new GitHubApiException(HttpStatusCode.NotFound, "Not found.");
+            }));
+
+        Assert.Equal(1, attempts);
+    }
+
+    [Fact]
     public async Task GetAsync_TrustedUserAttachmentCanFollowGitHubSignedAssetRedirect()
     {
         const string signedAsset =
@@ -1068,6 +1175,64 @@ public sealed class GitHubImageServiceTests : IDisposable
             ByteArrayContent content = new(bytes);
             content.Headers.ContentType = new("image/png");
             return Task.FromResult(new HttpResponseMessage(HttpStatusCode.OK) { Content = content });
+        }
+    }
+
+    private sealed class TransientStatusThenImageHandler(byte[] bytes) : HttpMessageHandler
+    {
+        private int _requestCount;
+
+        public int RequestCount => Volatile.Read(ref _requestCount);
+
+        protected override Task<HttpResponseMessage> SendAsync(
+            HttpRequestMessage request,
+            CancellationToken cancellationToken)
+        {
+            if (Interlocked.Increment(ref _requestCount) == 1)
+            {
+                return Task.FromResult(new HttpResponseMessage(HttpStatusCode.ServiceUnavailable));
+            }
+
+            ByteArrayContent content = new(bytes);
+            content.Headers.ContentType = new("image/png");
+            return Task.FromResult(new HttpResponseMessage(HttpStatusCode.OK) { Content = content });
+        }
+    }
+
+    private sealed class TransientExceptionThenImageHandler(byte[] bytes) : HttpMessageHandler
+    {
+        private int _requestCount;
+
+        public int RequestCount => Volatile.Read(ref _requestCount);
+
+        protected override Task<HttpResponseMessage> SendAsync(
+            HttpRequestMessage request,
+            CancellationToken cancellationToken)
+        {
+            if (Interlocked.Increment(ref _requestCount) == 1)
+            {
+                return Task.FromException<HttpResponseMessage>(
+                    new HttpRequestException("Simulated HTTP/2 stream reset."));
+            }
+
+            ByteArrayContent content = new(bytes);
+            content.Headers.ContentType = new("image/png");
+            return Task.FromResult(new HttpResponseMessage(HttpStatusCode.OK) { Content = content });
+        }
+    }
+
+    private sealed class AlwaysStatusHandler(HttpStatusCode statusCode) : HttpMessageHandler
+    {
+        private int _requestCount;
+
+        public int RequestCount => Volatile.Read(ref _requestCount);
+
+        protected override Task<HttpResponseMessage> SendAsync(
+            HttpRequestMessage request,
+            CancellationToken cancellationToken)
+        {
+            Interlocked.Increment(ref _requestCount);
+            return Task.FromResult(new HttpResponseMessage(statusCode));
         }
     }
 

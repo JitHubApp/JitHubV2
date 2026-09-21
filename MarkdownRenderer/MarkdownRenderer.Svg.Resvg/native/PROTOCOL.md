@@ -27,8 +27,9 @@ cropped tile. `TrimCache` discards parsed trees and decoded resources, and
 `CloseDocument` forgets the token.
 
 `Hello` is the text-readiness barrier: it completes only after the background
-Windows font catalog is available. Process warm-up does not send it. The host
-uses it before the first text-bearing request and gives this one-time,
+Windows font catalog is available and the fixed usvg/resvg text-shaping and
+glyph-raster pipeline has been primed. Process warm-up does not send it. The
+host uses it before the first text-bearing request and gives this one-time,
 content-independent initialization its own deadline. SVGs without text bypass
 the barrier and can render while the catalog is still loading.
 

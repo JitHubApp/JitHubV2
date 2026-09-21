@@ -137,6 +137,10 @@ public sealed class AutomationHarnessSourceContractTests
         Assert.Contains("$cases.Count -ne $ExpectedCount", merger, StringComparison.Ordinal);
         Assert.Contains("Native first-render p95", merger, StringComparison.Ordinal);
         Assert.Contains("Native full-page p95", merger, StringComparison.Ordinal);
+        Assert.Contains("enforceAggregateGates", File.ReadAllText(Path.Combine(
+            root,
+            "JitHub.WinUI.Automation",
+            "ReadmeAuditProbe.cs")), StringComparison.Ordinal);
         Assert.Contains("windowsappsdk/1.8/1.8.260710003/windowsappruntimeinstall-x64.exe", workflow, StringComparison.Ordinal);
         Assert.Contains("B8CDA840267AB72797F654F801F9A064AB6D9E508CEDEE3DF79F772F104DB6D6", workflow, StringComparison.Ordinal);
         Assert.Contains("Get-AppxPackage -Name 'Microsoft.WindowsAppRuntime.1.8'", workflow, StringComparison.Ordinal);
@@ -186,6 +190,8 @@ public sealed class AutomationHarnessSourceContractTests
         Assert.Contains("PreserveStartupDiagnostics(dataRoot, output, launcher)", nativeProbe, StringComparison.Ordinal);
         Assert.Contains("startup-process.txt", nativeProbe, StringComparison.Ordinal);
         Assert.Contains("waitForDocumentReady(cdp, 60_000)", browserOracle, StringComparison.Ordinal);
+        Assert.Contains("await Promise.race([", browserOracle, StringComparison.Ordinal);
+        Assert.Contains("cdp.send(\"Browser.close\")", browserOracle, StringComparison.Ordinal);
         Assert.DoesNotContain("cdp.once(\"Page.loadEventFired\"", browserOracle, StringComparison.Ordinal);
         Assert.Contains("process.WaitForExit(600_000)", nativeProbe, StringComparison.Ordinal);
     }

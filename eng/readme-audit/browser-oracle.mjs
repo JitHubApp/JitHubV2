@@ -379,7 +379,17 @@ try {
   process.exitCode = 1;
   }
 } finally {
-  try { await cdp?.send("Browser.close"); } catch {}
+  // Browser.close can terminate Edge before DevTools sends its response. Never
+  // leave the oracle's top-level await attached to that response indefinitely;
+  // the process wait/kill path below remains the authoritative cleanup.
+  try {
+    if (cdp) {
+      await Promise.race([
+        cdp.send("Browser.close"),
+        delay(1000),
+      ]);
+    }
+  } catch {}
   try { cdp?.close(); } catch {}
   if (edge && edge.exitCode === null) {
     await Promise.race([

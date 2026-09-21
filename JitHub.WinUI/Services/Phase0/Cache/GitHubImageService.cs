@@ -69,8 +69,10 @@ public sealed partial class GitHubImageService : IGitHubImageService, IDisposabl
     // RasterImageResourceBudget independently caps dimensions, frames, pixels,
     // and decoded memory before the renderer admits the payload.
     private const int MaxImageBytes = 32 * 1024 * 1024;
+    private const int MaxHttpAttempts = 2;
     private const long MemoryCacheByteBudget = 64L * 1024 * 1024;
     private const int MemoryCacheEntryBudget = 2048;
+    private static readonly TimeSpan TransientRetryDelay = TimeSpan.FromMilliseconds(125);
     private static readonly TimeSpan Freshness =
         GitHubCachePolicy.TtlForResource(GitHubCachePolicy.AvatarImageResource);
 
@@ -187,7 +189,7 @@ public sealed partial class GitHubImageService : IGitHubImageService, IDisposabl
         CancellationToken cancellationToken = default)
         => await GetOrFetchCoreAsync(
             sourceUrl,
-            fetcher,
+            (cached, token) => FetchWithRetryAsync(fetcher, cached, token),
             GitHubImageFetchScope.UserApprovedHttps,
             cancellationToken).ConfigureAwait(false);
 
@@ -397,6 +399,64 @@ public sealed partial class GitHubImageService : IGitHubImageService, IDisposabl
         GitHubImageFetchScope scope,
         CancellationToken cancellationToken)
     {
+        for (int attempt = 1; attempt <= MaxHttpAttempts; attempt++)
+        {
+            try
+            {
+                return await FetchHttpAttemptAsync(
+                    sourceUrl,
+                    cached,
+                    scope,
+                    cancellationToken).ConfigureAwait(false);
+            }
+            catch (Exception exception) when (
+                attempt < MaxHttpAttempts &&
+                !cancellationToken.IsCancellationRequested &&
+                IsTransientHttpFailure(exception))
+            {
+                // README image storms occasionally lose one otherwise healthy
+                // CDN/release-asset transfer. A single bounded retry matches the
+                // resilience users expect from a browser without multiplying a
+                // permanent error, policy rejection, or canceled navigation.
+                await Task.Delay(TransientRetryDelay, cancellationToken).ConfigureAwait(false);
+            }
+        }
+
+        throw new InvalidOperationException("The bounded image retry loop completed unexpectedly.");
+    }
+
+    private static async Task<GitHubImageDownload?> FetchWithRetryAsync(
+        GitHubImageFetcher fetcher,
+        GitHubImageCacheEntry? cached,
+        CancellationToken cancellationToken)
+    {
+        for (int attempt = 1; attempt <= MaxHttpAttempts; attempt++)
+        {
+            try
+            {
+                return await fetcher(cached, cancellationToken).ConfigureAwait(false);
+            }
+            catch (Exception exception) when (
+                attempt < MaxHttpAttempts &&
+                !cancellationToken.IsCancellationRequested &&
+                IsTransientFetchFailure(exception))
+            {
+                // Repository-relative images use an authenticated GitHub API
+                // fetcher rather than FetchHttpAsync. Give that idempotent GET
+                // the same single bounded recovery opportunity as CDN images.
+                await Task.Delay(TransientRetryDelay, cancellationToken).ConfigureAwait(false);
+            }
+        }
+
+        throw new InvalidOperationException("The bounded image fetch retry loop completed unexpectedly.");
+    }
+
+    private async Task<GitHubImageDownload?> FetchHttpAttemptAsync(
+        string sourceUrl,
+        GitHubImageCacheEntry? cached,
+        GitHubImageFetchScope scope,
+        CancellationToken cancellationToken)
+    {
         Uri currentUri = new(sourceUrl, UriKind.Absolute);
         const int maxRedirects = 3;
         for (int redirectCount = 0; redirectCount <= maxRedirects; redirectCount++)
@@ -456,6 +516,55 @@ public sealed partial class GitHubImageService : IGitHubImageService, IDisposabl
         }
 
         throw new InvalidDataException("Remote image exceeded the redirect limit.");
+    }
+
+    private static bool IsTransientHttpFailure(Exception exception)
+    {
+        if (exception is OperationCanceledException)
+        {
+            // The caller token is checked by the catch filter. Reaching this path
+            // therefore means HttpClient's own per-attempt timeout elapsed.
+            return true;
+        }
+
+        if (exception is IOException)
+        {
+            return true;
+        }
+
+        if (exception is not HttpRequestException requestException)
+        {
+            return false;
+        }
+
+        if (requestException.StatusCode is not HttpStatusCode statusCode)
+        {
+            // Connection resets, DNS races, and HTTP/2 stream failures do not
+            // carry a response status but are safe to retry for an idempotent GET.
+            return true;
+        }
+
+        int status = (int)statusCode;
+        return status is 408 or 425 or 429 ||
+            (status >= 500 && status <= 599 && status is not (501 or 505));
+    }
+
+    private static bool IsTransientFetchFailure(Exception exception)
+    {
+        if (IsTransientHttpFailure(exception))
+        {
+            return true;
+        }
+
+        if (exception is not GitHubApiException apiException ||
+            exception is GitHubAuthenticationException or GitHubRateLimitException)
+        {
+            return false;
+        }
+
+        int status = (int)apiException.StatusCode;
+        return status is 408 or 425 or 429 ||
+            (status >= 500 && status <= 599 && status is not (501 or 505));
     }
 
     private async Task<byte[]> ReadBoundedAsync(HttpContent content, CancellationToken cancellationToken)

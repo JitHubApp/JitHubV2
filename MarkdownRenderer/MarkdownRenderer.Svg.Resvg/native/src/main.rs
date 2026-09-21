@@ -1706,13 +1706,37 @@ fn acquire_tree(
 
 fn ensure_font_database(state: &mut WorkerState) -> Result<(), Reject> {
     if state.font_database.is_none() {
-        state.font_database = Some(
-            state
-                .font_database_receiver
-                .recv()
-                .map_err(|_| Reject::Worker("font catalog failed"))?,
-        );
+        let database = state
+            .font_database_receiver
+            .recv()
+            .map_err(|_| Reject::Worker("font catalog failed"))?;
+        warm_text_pipeline(&database)?;
+        state.font_database = Some(database);
     }
+    Ok(())
+}
+
+fn warm_text_pipeline(database: &Arc<usvg::fontdb::Database>) -> Result<(), Reject> {
+    // Loading Windows' font catalog is only part of the cold cost. The first
+    // usvg text conversion and resvg glyph raster also initialize shaping and
+    // fallback state. Prime that fixed engine work behind HELLO's independent
+    // initialization deadline so the immutable per-content deadline measures
+    // only work attributable to the admitted SVG.
+    const WARMUP_SVG: &[u8] = br#"<svg xmlns='http://www.w3.org/2000/svg' width='256' height='32'><text x='1' y='24' font-family='Segoe UI' font-size='16'>JitHub &#x0645;&#x0631;&#x062d;&#x0628;&#x0627; e&#x0301; &#x1f600;</text></svg>"#;
+    let options = usvg::Options {
+        resources_dir: None,
+        dpi: 96.0,
+        font_family: "Segoe UI".to_owned(),
+        languages: vec!["en".to_owned()],
+        fontdb: database.clone(),
+        ..Default::default()
+    };
+    let tree = usvg::Tree::from_data(WARMUP_SVG, &options)
+        .map_err(|_| Reject::Worker("text pipeline initialization failed"))?;
+    let mut pixels = [0_u8; 256 * 32 * 4];
+    let mut pixmap = tiny_skia::PixmapMut::from_bytes(&mut pixels, 256, 32)
+        .ok_or(Reject::Worker("text pipeline raster initialization failed"))?;
+    resvg::render(&tree, tiny_skia::Transform::identity(), &mut pixmap);
     Ok(())
 }
 

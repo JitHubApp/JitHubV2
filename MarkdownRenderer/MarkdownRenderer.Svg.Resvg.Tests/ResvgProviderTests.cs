@@ -20,6 +20,25 @@ public sealed class ResvgProviderTests
         await renderer.WarmUpAsync();
     }
 
+    [Fact]
+    public async Task FirstTextOpen_DoesNotChargeColdTextPipelineToContentDeadline()
+    {
+        var options = new ResvgMarkdownSvgRendererOptions(
+            requestDeadline: TimeSpan.FromMilliseconds(500));
+        await using var renderer = new ResvgMarkdownSvgRenderer(options);
+
+        using IMarkdownSvgDocument document = await renderer.OpenAsync(
+            new MarkdownSvgOpenRequest(Svg(
+                "<svg xmlns='http://www.w3.org/2000/svg' width='96' height='24'>" +
+                "<text x='1' y='18'>Cold text</text></svg>")));
+        using MarkdownSvgRaster raster = await document.RenderAsync(
+            new MarkdownSvgRenderRequest(96, 24));
+
+        Assert.True(document.Info.HasText);
+        Assert.Equal(96, raster.WidthPixels);
+        Assert.Equal(24, raster.HeightPixels);
+    }
+
     private static byte[] Svg(string value) => Encoding.UTF8.GetBytes(value);
 
     [Fact]

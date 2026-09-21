@@ -1108,11 +1108,18 @@ internal static partial class ReadmeAuditProbe
         var aggregateFailures = new List<string>();
         double firstP95 = Percentile(firstRatios, 0.95);
         double fullP95 = Percentile(fullRatios, 0.95);
-        if (results.Count >= 20 && firstP95 > 1.10)
+        // A percentile gate must describe the requested corpus, not an
+        // arbitrary CI shard. Matrix jobs still fail every individual fidelity,
+        // exception, unavailable-content, and clean-exit violation; the merger
+        // recomputes these performance gates across exactly all 500 results.
+        bool enforceAggregateGates =
+            selected.Count == manifest.Repositories.Count &&
+            results.Count == manifest.Repositories.Count;
+        if (enforceAggregateGates && firstP95 > 1.10)
         {
             aggregateFailures.Add($"Native first-render p95 was {firstP95:P1} of Edge, above 110%.");
         }
-        if (results.Count >= 20 && fullP95 > 1.10)
+        if (enforceAggregateGates && fullP95 > 1.10)
         {
             aggregateFailures.Add($"Native full-page p95 was {fullP95:P1} of Edge, above 110%.");
         }
