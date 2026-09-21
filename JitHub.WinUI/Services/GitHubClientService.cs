@@ -1765,6 +1765,26 @@ public sealed class GitHubClientService : IGitHubClientService
             cancellationToken);
     }
 
+    public async Task<GitHubRepositoryContent> GetReadmeAsync(
+        string token,
+        string owner,
+        string name,
+        string? gitRef = null,
+        CancellationToken cancellationToken = default)
+    {
+        string path = BuildReadmePath(owner, name, gitRef);
+        using HttpRequestMessage request = CreateAuthenticatedRequest(HttpMethod.Get, path, token);
+        using HttpResponseMessage response =
+            await _httpClient.SendAsync(request, HttpCompletionOption.ResponseHeadersRead, cancellationToken);
+        await EnsureSuccessAsync(response, cancellationToken);
+
+        return await ReadResponseAsync(
+            response,
+            GitHubJsonSerializerContext.Default.GitHubRepositoryContent,
+            "repository README",
+            cancellationToken);
+    }
+
     public async Task<string> GetRenderedReadmeHtmlAsync(
         string token,
         string owner,
@@ -1772,11 +1792,7 @@ public sealed class GitHubClientService : IGitHubClientService
         string? gitRef = null,
         CancellationToken cancellationToken = default)
     {
-        string path = $"repos/{Uri.EscapeDataString(owner)}/{Uri.EscapeDataString(name)}/readme";
-        if (!string.IsNullOrWhiteSpace(gitRef))
-        {
-            path += $"?ref={Uri.EscapeDataString(gitRef)}";
-        }
+        string path = BuildReadmePath(owner, name, gitRef);
 
         using HttpRequestMessage request = CreateAuthenticatedRequest(HttpMethod.Get, path, token);
         request.Headers.Accept.Add(new MediaTypeWithQualityHeaderValue("application/vnd.github.html+json"));
@@ -1823,6 +1839,17 @@ public sealed class GitHubClientService : IGitHubClientService
         response.StatusCode == HttpStatusCode.Forbidden &&
         response.Headers.RetryAfter is null &&
         (!TryGetInt64Header(response, "X-RateLimit-Remaining", out long remaining) || remaining > 0);
+
+    private static string BuildReadmePath(string owner, string name, string? gitRef)
+    {
+        string path = $"repos/{Uri.EscapeDataString(owner)}/{Uri.EscapeDataString(name)}/readme";
+        if (!string.IsNullOrWhiteSpace(gitRef))
+        {
+            path += $"?ref={Uri.EscapeDataString(gitRef)}";
+        }
+
+        return path;
+    }
 
     private static async Task<string> ReadRenderedReadmeHtmlAsync(
         HttpResponseMessage response,

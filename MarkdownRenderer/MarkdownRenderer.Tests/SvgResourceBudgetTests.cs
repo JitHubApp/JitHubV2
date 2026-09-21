@@ -235,7 +235,7 @@ public sealed class SvgResourceBudgetTests
     public void Validate_RejectsAggregateDecodedEmbeddedImageBudget()
     {
         var images = new StringBuilder();
-        for (int index = 0; index < 17; index++)
+        for (int index = 0; index < 25; index++)
         {
             string data = Convert.ToBase64String(CreatePngHeader(1024, 1024, index));
             images.Append("<image href='data:image/png;base64,")
@@ -376,6 +376,42 @@ public sealed class SvgResourceBudgetTests
         Assert.True(result.Accepted, result.Reason);
         Assert.DoesNotContain("foreignObject", text, StringComparison.OrdinalIgnoreCase);
         Assert.Contains("Core Rust /packages/core/ LocalSend protocol library", text, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void StaticSnapshot_ConvertsBoundedMetricsCardForeignObject()
+    {
+        byte[] source = Bytes(
+            "<svg xmlns='http://www.w3.org/2000/svg' width='720' height='110' viewBox='0 0 720 110'>" +
+            "<foreignObject x='0' y='0' width='100%' height='100%'>" +
+            "<div xmlns='http://www.w3.org/1999/xhtml'><section><h2>Status</h2>" +
+            "<svg xmlns='http://www.w3.org/2000/svg' width='16' height='16'><path d='M0 0h16v16z'/></svg>" +
+            "<span>461 open 1309 closed</span></section><div id='metrics-end'></div></div></foreignObject></svg>");
+
+        byte[] snapshot = SvgStaticSnapshot.Create(source, CancellationToken.None);
+        string text = Encoding.UTF8.GetString(snapshot);
+        SvgResourceBudgetResult result = SvgResourceBudget.Validate(snapshot, CancellationToken.None);
+
+        Assert.True(result.Accepted, result.Reason);
+        Assert.DoesNotContain("foreignObject", text, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("Status 461 open 1309 closed", text, StringComparison.Ordinal);
+        Assert.Contains("x=\"0\"", text, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void StaticSnapshot_DoesNotHideActiveContentInsideNestedSvgFallback()
+    {
+        byte[] source = Bytes(
+            "<svg xmlns='http://www.w3.org/2000/svg' width='100' height='20'><foreignObject width='100%' height='100%'>" +
+            "<div xmlns='http://www.w3.org/1999/xhtml'>text" +
+            "<svg xmlns='http://www.w3.org/2000/svg'><script>alert(1)</script></svg>" +
+            "</div></foreignObject></svg>");
+
+        byte[] snapshot = SvgStaticSnapshot.Create(source, CancellationToken.None);
+        SvgResourceBudgetResult result = SvgResourceBudget.Validate(snapshot, CancellationToken.None);
+
+        Assert.False(result.Accepted);
+        Assert.Equal("active-content", result.Reason);
     }
 
     [Fact]

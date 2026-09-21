@@ -875,6 +875,41 @@ public sealed class GitHubImageServiceTests : IDisposable
         Assert.Equal($"{camo}/legacy", map["http://legacy.example.test/image.gif"]);
     }
 
+    [Fact]
+    public void DecodeGitHubCamoCanonicalSource_RecoversBoundedHttpsOrigin()
+    {
+        const string origin = "https://asciinema.org/a/736339.svg?download=1";
+        string encoded = Convert.ToHexString(System.Text.Encoding.UTF8.GetBytes(origin)).ToLowerInvariant();
+        var camo = new Uri(
+            "https://camo.githubusercontent.com/" + new string('a', 64) + "/" + encoded);
+
+        Assert.True(GitHubCamoImageMapParser.TryDecodeCanonicalSource(camo, out Uri decoded));
+        Assert.Equal(origin, decoded.AbsoluteUri);
+    }
+
+    [Fact]
+    public void DecodeGitHubCamoCanonicalSource_UpgradesLegacyHttpOriginToHttps()
+    {
+        const string origin = "http://hits.dwyl.com/996icu/996ICU.svg";
+        string encoded = Convert.ToHexString(System.Text.Encoding.UTF8.GetBytes(origin)).ToLowerInvariant();
+        var camo = new Uri(
+            "https://camo.githubusercontent.com/" + new string('a', 64) + "/" + encoded);
+
+        Assert.True(GitHubCamoImageMapParser.TryDecodeCanonicalSource(camo, out Uri decoded));
+        Assert.Equal("https://hits.dwyl.com/996icu/996ICU.svg", decoded.AbsoluteUri);
+    }
+
+    [Theory]
+    [InlineData("http://camo.githubusercontent.com/aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa/68747470733a2f2f6578616d706c652e746573742f612e706e67")]
+    [InlineData("https://evil.example/aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa/68747470733a2f2f6578616d706c652e746573742f612e706e67")]
+    [InlineData("https://camo.githubusercontent.com/short/68747470733a2f2f6578616d706c652e746573742f612e706e67")]
+    [InlineData("https://camo.githubusercontent.com/aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa/6674703a2f2f6578616d706c652e746573742f612e706e67")]
+    [InlineData("https://camo.githubusercontent.com/aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa/not-hex")]
+    public void DecodeGitHubCamoCanonicalSource_RejectsNonCanonicalOrInsecureValues(string value)
+    {
+        Assert.False(GitHubCamoImageMapParser.TryDecodeCanonicalSource(new Uri(value), out _));
+    }
+
     public void Dispose()
     {
         if (Directory.Exists(_root))

@@ -37,7 +37,7 @@ internal static class SvgResourceBudget
     public const int MaxPathCharacters = 4 * 1024 * 1024;
     public const int MaxTransformCharacters = 1024 * 1024;
     public const int MaxNestedSvgDepth = 4;
-    public const long MaxDecodedEmbeddedImageBytes = 64L * 1024 * 1024;
+    public const long MaxDecodedEmbeddedImageBytes = 96L * 1024 * 1024;
     public const long MaxEmbeddedCompressedBytes = 32L * 1024 * 1024;
     public const long MaxComplexityUnits = 100_000;
     public const double MaxDeclaredFontSize = 4096;

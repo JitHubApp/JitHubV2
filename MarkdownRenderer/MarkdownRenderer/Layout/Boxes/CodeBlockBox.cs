@@ -592,8 +592,7 @@ internal sealed class CodeBlockBox : BlockBox, IHorizontalOverflowBox
     {
         if (_chunks.Count == 0 || _lines.Count == 0)
         {
-            _visualLines = Array.Empty<CodeVisualLineInfo>();
-            _visualLineBottomEdges = Array.Empty<double>();
+            ClearVisualLineIndex();
             return;
         }
 
@@ -603,22 +602,37 @@ internal sealed class CodeBlockBox : BlockBox, IHorizontalOverflowBox
             CanvasLineMetrics[]? metrics = chunk.GetLineMetricsSnapshot();
             if (metrics is null || metrics.Length == 0)
             {
-                _visualLines = Array.Empty<CodeVisualLineInfo>();
-                _visualLineBottomEdges = Array.Empty<double>();
+                ClearVisualLineIndex();
                 return;
             }
 
             int localOffset = 0;
             double top = chunk.GetTextOriginY();
+            if (!double.IsFinite(top))
+            {
+                ClearVisualLineIndex();
+                return;
+            }
             foreach (CanvasLineMetrics metric in metrics)
             {
                 int globalOffset = chunk.CodeBlockTextOffset + localOffset;
                 int logicalLine = FindFirstLineEndingAtOrAfter(globalOffset);
                 if (logicalLine >= _lines.Count)
                     logicalLine = _lines.Count - 1;
+                if (!double.IsFinite(metric.Height))
+                {
+                    ClearVisualLineIndex();
+                    return;
+                }
+
                 double height = Math.Max(1, metric.Height);
+                if (!double.IsFinite(top + height))
+                {
+                    ClearVisualLineIndex();
+                    return;
+                }
                 visualLines.Add(new CodeVisualLineInfo(logicalLine, top, height));
-                top += metric.Height;
+                top += height;
                 localOffset += Math.Max(0, metric.CharacterCount);
             }
         }
@@ -628,6 +642,29 @@ internal sealed class CodeBlockBox : BlockBox, IHorizontalOverflowBox
         for (int index = 0; index < _visualLines.Length; index++)
             _visualLineBottomEdges[index] = _visualLines[index].Top + _visualLines[index].Height;
     }
+
+    private void ClearVisualLineIndex()
+    {
+        _visualLines = Array.Empty<CodeVisualLineInfo>();
+        _visualLineBottomEdges = Array.Empty<double>();
+    }
+
+    internal static bool IsDrawableRectangle(Rect rectangle)
+    {
+        double right = rectangle.X + rectangle.Width;
+        double bottom = rectangle.Y + rectangle.Height;
+        return IsCanvasCoordinate(rectangle.X) &&
+               IsCanvasCoordinate(rectangle.Y) &&
+               IsCanvasCoordinate(rectangle.Width) &&
+               IsCanvasCoordinate(rectangle.Height) &&
+               IsCanvasCoordinate(right) &&
+               IsCanvasCoordinate(bottom) &&
+               rectangle.Width > 0 &&
+               rectangle.Height > 0;
+    }
+
+    private static bool IsCanvasCoordinate(double value) =>
+        double.IsFinite(value) && Math.Abs(value) <= float.MaxValue;
 
     private DocumentPosition CodeStartPosition()
     {
@@ -812,9 +849,13 @@ internal sealed class CodeBlockBox : BlockBox, IHorizontalOverflowBox
                 };
                 if (bg is { A: > 0 } lineBg)
                 {
-                    ds.FillRectangle(
-                        new Rect(fullLeft, visual.Top, fullRight - fullLeft, visual.Height),
-                        lineBg);
+                    var backgroundRect = new Rect(
+                        fullLeft,
+                        visual.Top,
+                        fullRight - fullLeft,
+                        visual.Height);
+                    if (IsDrawableRectangle(backgroundRect))
+                        ds.FillRectangle(backgroundRect, lineBg);
                 }
 
                 if (line.Number == previousLogicalLine)
@@ -823,11 +864,15 @@ internal sealed class CodeBlockBox : BlockBox, IHorizontalOverflowBox
 
                 if (ShowLineNumbers)
                 {
-                    ds.DrawText(
-                        line.Label,
-                        new Rect(numberLeft, visual.Top, numberWidth, visual.Height),
-                        lineNumberStyle.Foreground,
-                        lineNumberFormat);
+                    var numberRect = new Rect(numberLeft, visual.Top, numberWidth, visual.Height);
+                    if (IsDrawableRectangle(numberRect))
+                    {
+                        ds.DrawText(
+                            line.Label,
+                            numberRect,
+                            lineNumberStyle.Foreground,
+                            lineNumberFormat);
+                    }
                 }
 
                 if (Metadata.IsDiff && line.DiffKind is not CodeLineDiffKind.None)
@@ -836,11 +881,19 @@ internal sealed class CodeBlockBox : BlockBox, IHorizontalOverflowBox
                     Color markerColor = line.DiffKind == CodeLineDiffKind.Added
                         ? Color.FromArgb(0xFF, 0x2E, 0xC2, 0x7E)
                         : Color.FromArgb(0xFF, 0xF8, 0x51, 0x49);
-                    ds.DrawText(
-                        marker,
-                        new Rect(outer.Left + 4, visual.Top, DiffMarkerWidth - 4, visual.Height),
-                        _context.ThemeSnapshot.IsHighContrast ? lineNumberStyle.Foreground : markerColor,
-                        lineNumberFormat);
+                    var markerRect = new Rect(
+                        outer.Left + 4,
+                        visual.Top,
+                        DiffMarkerWidth - 4,
+                        visual.Height);
+                    if (IsDrawableRectangle(markerRect))
+                    {
+                        ds.DrawText(
+                            marker,
+                            markerRect,
+                            _context.ThemeSnapshot.IsHighContrast ? lineNumberStyle.Foreground : markerColor,
+                            lineNumberFormat);
+                    }
                 }
             }
 
@@ -871,6 +924,9 @@ internal sealed class CodeBlockBox : BlockBox, IHorizontalOverflowBox
             Rect first = Rect.Empty;
             foreach (var rect in rects)
             {
+                if (!IsDrawableRectangle(rect))
+                    continue;
+
                 double top = rect.Top;
                 double bottom = rect.Bottom;
                 if (bottom < viewport.Top || top > viewport.Bottom)
@@ -885,16 +941,32 @@ internal sealed class CodeBlockBox : BlockBox, IHorizontalOverflowBox
                     _ => Metadata.HighlightedLines.Contains(line.Number) ? highlightBg : null,
                 };
                 if (bg is { A: > 0 } lineBg)
-                    ds.FillRectangle(new Rect(fullLeft, top, fullRight - fullLeft, Math.Max(1, bottom - top)), lineBg);
+                {
+                    var backgroundRect = new Rect(
+                        fullLeft,
+                        top,
+                        fullRight - fullLeft,
+                        Math.Max(1, bottom - top));
+                    if (IsDrawableRectangle(backgroundRect))
+                        ds.FillRectangle(backgroundRect, lineBg);
+                }
             }
 
             if (!first.IsEmpty && ShowLineNumbers)
             {
-                ds.DrawText(
-                    line.Label,
-                    new Rect(numberLeft, first.Top, numberWidth, Math.Max(1, first.Height)),
-                    lineNumberStyle.Foreground,
-                    lineNumberFormat);
+                var numberRect = new Rect(
+                    numberLeft,
+                    first.Top,
+                    numberWidth,
+                    Math.Max(1, first.Height));
+                if (IsDrawableRectangle(numberRect))
+                {
+                    ds.DrawText(
+                        line.Label,
+                        numberRect,
+                        lineNumberStyle.Foreground,
+                        lineNumberFormat);
+                }
             }
 
             if (!first.IsEmpty && Metadata.IsDiff && line.DiffKind is not CodeLineDiffKind.None)
@@ -903,11 +975,19 @@ internal sealed class CodeBlockBox : BlockBox, IHorizontalOverflowBox
                 var markerColor = line.DiffKind == CodeLineDiffKind.Added
                     ? Color.FromArgb(0xFF, 0x2E, 0xC2, 0x7E)
                     : Color.FromArgb(0xFF, 0xF8, 0x51, 0x49);
-                ds.DrawText(
-                    marker,
-                    new Rect(outer.Left + 4, first.Top, DiffMarkerWidth - 4, Math.Max(1, first.Height)),
-                    _context.ThemeSnapshot.IsHighContrast ? lineNumberStyle.Foreground : markerColor,
-                    lineNumberFormat);
+                var markerRect = new Rect(
+                    outer.Left + 4,
+                    first.Top,
+                    DiffMarkerWidth - 4,
+                    Math.Max(1, first.Height));
+                if (IsDrawableRectangle(markerRect))
+                {
+                    ds.DrawText(
+                        marker,
+                        markerRect,
+                        _context.ThemeSnapshot.IsHighContrast ? lineNumberStyle.Foreground : markerColor,
+                        lineNumberFormat);
+                }
             }
         }
     }

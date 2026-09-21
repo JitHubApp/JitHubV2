@@ -611,8 +611,8 @@ internal static class SvgStaticSnapshot
         if (!HasOnlySafeForeignObjectAttributes(foreignObject) ||
             !TryReadLength(foreignObject.GetAttribute("x"), defaultValue: 0, out double x) ||
             !TryReadLength(foreignObject.GetAttribute("y"), defaultValue: 0, out double y) ||
-            !TryReadLength(foreignObject.GetAttribute("width"), defaultValue: double.NaN, out double width) ||
-            !TryReadLength(foreignObject.GetAttribute("height"), defaultValue: double.NaN, out double height) ||
+            !TryReadForeignObjectExtent(document, foreignObject.GetAttribute("width"), horizontal: true, out double width) ||
+            !TryReadForeignObjectExtent(document, foreignObject.GetAttribute("height"), horizontal: false, out double height) ||
             width <= 0 ||
             height <= 0 ||
             !TryExtractPlainHtmlText(foreignObject, out string text))
@@ -723,6 +723,53 @@ internal static class SvgStaticSnapshot
         return true;
     }
 
+    private static bool TryReadForeignObjectExtent(
+        XmlDocument document,
+        string value,
+        bool horizontal,
+        out double extent)
+    {
+        if (TryReadLength(value, defaultValue: double.NaN, out extent))
+            return true;
+
+        value = value.Trim();
+        if (!value.EndsWith('%') ||
+            !double.TryParse(value.AsSpan(0, value.Length - 1), NumberStyles.Float,
+                CultureInfo.InvariantCulture, out double percentage) ||
+            percentage is <= 0 or > 100 ||
+            !TryReadSvgViewportExtent(document.DocumentElement, horizontal, out double viewport))
+        {
+            extent = double.NaN;
+            return false;
+        }
+
+        extent = viewport * percentage / 100;
+        return double.IsFinite(extent) && extent > 0;
+    }
+
+    private static bool TryReadSvgViewportExtent(
+        XmlElement? root,
+        bool horizontal,
+        out double extent)
+    {
+        extent = double.NaN;
+        if (root is null)
+            return false;
+
+        string dimension = root.GetAttribute(horizontal ? "width" : "height");
+        if (TryReadLength(dimension, defaultValue: double.NaN, out extent) && extent > 0)
+            return true;
+
+        string[] viewBox = root.GetAttribute("viewBox").Split(
+            [' ', ','],
+            StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
+        return viewBox.Length == 4 &&
+            double.TryParse(viewBox[horizontal ? 2 : 3], NumberStyles.Float,
+                CultureInfo.InvariantCulture, out extent) &&
+            double.IsFinite(extent) &&
+            extent > 0;
+    }
+
     private static bool HasOnlySafeForeignObjectAttributes(XmlElement foreignObject)
     {
         foreach (XmlAttribute attribute in foreignObject.Attributes)
@@ -800,6 +847,12 @@ internal static class SvgStaticSnapshot
             return true;
         }
 
+        if (node is XmlElement svgElement &&
+            svgElement.NamespaceURI.Equals(SvgNamespace, StringComparison.Ordinal))
+        {
+            return IsSafeDiscardedSvgGraphic(svgElement);
+        }
+
         if (node is not XmlElement element ||
             !element.NamespaceURI.Equals("http://www.w3.org/1999/xhtml", StringComparison.Ordinal) ||
             !IsSafeTextContainer(element.LocalName))
@@ -830,8 +883,49 @@ internal static class SvgStaticSnapshot
         return true;
     }
 
+    private static bool IsSafeDiscardedSvgGraphic(XmlElement element)
+    {
+        if (element.LocalName is not (
+                "svg" or "g" or "defs" or "mask" or "path" or "rect" or
+                "circle" or "ellipse" or "line" or "polyline" or "polygon" or
+                "title" or "desc"))
+        {
+            return false;
+        }
+
+        foreach (XmlAttribute attribute in element.Attributes)
+        {
+            if (attribute.NamespaceURI.Equals("http://www.w3.org/2000/xmlns/", StringComparison.Ordinal))
+                continue;
+            if (attribute.LocalName.StartsWith("on", StringComparison.OrdinalIgnoreCase) ||
+                attribute.LocalName is "href" or "src" ||
+                attribute.LocalName.Equals("style", StringComparison.OrdinalIgnoreCase))
+            {
+                return false;
+            }
+        }
+
+        foreach (XmlNode child in element.ChildNodes)
+        {
+            if (child.NodeType is XmlNodeType.Text or XmlNodeType.CDATA or
+                XmlNodeType.Whitespace or XmlNodeType.SignificantWhitespace)
+            {
+                continue;
+            }
+            if (child is not XmlElement childElement ||
+                !childElement.NamespaceURI.Equals(SvgNamespace, StringComparison.Ordinal) ||
+                !IsSafeDiscardedSvgGraphic(childElement))
+            {
+                return false;
+            }
+        }
+
+        return true;
+    }
+
     private static bool IsSafeTextContainer(string localName) =>
         localName.Equals("div", StringComparison.OrdinalIgnoreCase) ||
+        localName.Equals("section", StringComparison.OrdinalIgnoreCase) ||
         localName.Equals("span", StringComparison.OrdinalIgnoreCase) ||
         localName.Equals("p", StringComparison.OrdinalIgnoreCase) ||
         localName.Equals("br", StringComparison.OrdinalIgnoreCase) ||
@@ -863,7 +957,8 @@ internal static class SvgStaticSnapshot
                 return false;
 
             string value = attribute.Value.Trim();
-            if (attribute.LocalName.Equals("class", StringComparison.OrdinalIgnoreCase))
+            if (attribute.LocalName.Equals("class", StringComparison.OrdinalIgnoreCase) ||
+                attribute.LocalName.Equals("id", StringComparison.OrdinalIgnoreCase))
             {
                 if (!IsSafeCssToken(value, 512))
                     return false;

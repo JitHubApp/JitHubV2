@@ -11,13 +11,13 @@ public interface MarkdownRenderer.Html.ISafeHtmlCapabilityMarker
 
 public sealed class MarkdownRenderer.Html.SafeHtmlBudgets : System.IEquatable<MarkdownRenderer.Html.SafeHtmlBudgets>
   public MarkdownRenderer.Html.SafeHtmlBudgets LoweredTo(MarkdownRenderer.Html.SafeHtmlBudgets ceilings);
-  public SafeHtmlBudgets(int maxInputLength = 4194304, int maxNodeCount = 20000, int maxNestingDepth = 64, int maxAttributeCount = 32, int maxAttributeValueLength = 16384, int maxTagLength = 65536);
+  public SafeHtmlBudgets(int maxInputLength = 4194304, int maxNodeCount = 100000, int maxNestingDepth = 64, int maxAttributeCount = 32, int maxAttributeValueLength = 16384, int maxTagLength = 65536);
   public bool Equals(MarkdownRenderer.Html.SafeHtmlBudgets? other);
   public const int DefaultMaxAttributeCount = 32;
   public const int DefaultMaxAttributeValueLength = 16384;
   public const int DefaultMaxInputLength = 4194304;
   public const int DefaultMaxNestingDepth = 64;
-  public const int DefaultMaxNodeCount = 20000;
+  public const int DefaultMaxNodeCount = 100000;
   public const int DefaultMaxTagLength = 65536;
   public int MaxAttributeCount { get; }
   public int MaxAttributeValueLength { get; }

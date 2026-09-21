@@ -6,6 +6,24 @@ namespace JitHub.WinUI.Tests.Services;
 public sealed class GitHubRenderedReadmeHtmlNormalizerTests
 {
     [Fact]
+    public void NormalizeForMarkdownPipelineRemovesRootTagIndentation()
+    {
+        const string html = """
+            <p>Logo</p>
+                <p align="center">
+            <a href="https://example.test"><img src="badge.svg" alt="Badge"></a>
+            </p>
+            <h2>Description</h2>
+            """;
+
+        string normalized = GitHubRenderedReadmeHtmlNormalizer.NormalizeForMarkdownPipeline(html);
+
+        Assert.DoesNotContain("\n    <p", normalized, StringComparison.Ordinal);
+        Assert.Contains("<p align=\"center\">&#10;<a", normalized, StringComparison.Ordinal);
+        Assert.Contains("\n\n<h2>Description</h2>", normalized, StringComparison.Ordinal);
+    }
+
+    [Fact]
     public void MultilineQuotedAttributeCannotSplitRenderedHtmlBlock()
     {
         const string source = """
@@ -103,6 +121,67 @@ public sealed class GitHubRenderedReadmeHtmlNormalizerTests
         Assert.Contains("srcset=\"dark.png\"", normalized, StringComparison.Ordinal);
         Assert.Contains("src=\"light.png\"", normalized, StringComparison.Ordinal);
         Assert.Contains("alt=\"Project logo\"", normalized, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void GitHubEmojiTransportWrapperIsRemovedWithoutLosingItsFallback()
+    {
+        const string source = "<p>Use <g-emoji class=\"g-emoji\" alias=\"warning\">⚠</g-emoji> carefully.</p>";
+
+        string normalized = GitHubRenderedReadmeHtmlNormalizer.NormalizeForMarkdownPipeline(source);
+
+        Assert.Equal("<p>Use ⚠ carefully.</p>", normalized);
+    }
+
+    [Fact]
+    public void GitHubHeadingPermalinkOcticonIsRemoved()
+    {
+        const string source = "<h2>Documentation</h2><a id=\"user-content-documentation\" class=\"anchor\" aria-label=\"Permalink: Documentation\" href=\"#documentation\"><svg data-component=\"Octicon\" aria-hidden=\"true\"><path d=\"M0 0\"></path></svg></a>";
+
+        string normalized = GitHubRenderedReadmeHtmlNormalizer.NormalizeForMarkdownPipeline(source);
+
+        Assert.Equal("<h2>Documentation</h2>", normalized);
+    }
+
+    [Fact]
+    public void EmptyTransportAnchorIsRemovedButNamedAnchorRemains()
+    {
+        const string source = "<a href=\"https://example.test/empty\"> \n </a>" +
+            "<a href=\"https://example.test/accessible\" aria-label=\"Accessible destination\"> </a>" +
+            "<a href=\"https://example.test/docs\">Docs</a>";
+
+        string normalized = GitHubRenderedReadmeHtmlNormalizer.NormalizeForMarkdownPipeline(source);
+
+        Assert.Equal(
+            "<a href=\"https://example.test/accessible\" aria-label=\"Accessible destination\"> </a>" +
+            "<a href=\"https://example.test/docs\">Docs</a>",
+            normalized);
+    }
+
+    [Fact]
+    public void GitHubGeneratedStaticImageSelfLinkIsUnwrapped()
+    {
+        const string source = "<a target=\"_blank\" rel=\"noopener noreferrer nofollow\" href=\"https://camo.githubusercontent.com/hash/image\"><img src=\"https://camo.githubusercontent.com/hash/image\" alt=\"Badge\"></a>";
+
+        string normalized = GitHubRenderedReadmeHtmlNormalizer.NormalizeForMarkdownPipeline(source);
+
+        Assert.Equal(
+            "<img src=\"https://camo.githubusercontent.com/hash/image\" alt=\"Badge\">",
+            normalized);
+    }
+
+    [Fact]
+    public void AuthoredAndAnimatedImageLinksRemainInteractive()
+    {
+        const string authored = "<a href=\"https://example.test/docs\"><img src=\"https://example.test/image.png\"></a>";
+        const string animated = "<a target=\"_blank\" rel=\"noopener noreferrer\" href=\"https://camo.githubusercontent.com/hash/image\"><img src=\"https://camo.githubusercontent.com/hash/image\" data-animated-image=\"\"></a>";
+
+        Assert.Equal(
+            authored,
+            GitHubRenderedReadmeHtmlNormalizer.NormalizeForMarkdownPipeline(authored));
+        Assert.Equal(
+            animated,
+            GitHubRenderedReadmeHtmlNormalizer.NormalizeForMarkdownPipeline(animated));
     }
 
     [Fact]

@@ -250,7 +250,9 @@ internal sealed class SafeHtmlInlineState
         bool hasExplicitAlt = tag.TryGetAttribute("alt", out string altValue);
         string alt = hasExplicitAlt
             ? altValue
-            : context.ResolveString(MarkdownStringKeys.ImageName, MarkdownLocalizedStrings.ImageName);
+            : SafeHtmlParser.ResolveMissingImageAlternative(
+                tag.TryGetAttribute("src", out string sourceAttribute) ? sourceAttribute : string.Empty,
+                context.ResolveString(MarkdownStringKeys.ImageName, MarkdownLocalizedStrings.ImageName));
         if (!_policy.EnableImages)
         {
             InlineRun? fallback = string.IsNullOrWhiteSpace(alt)

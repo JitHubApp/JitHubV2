@@ -17,6 +17,27 @@ namespace MarkdownRenderer.GitHub.Tests;
 public sealed class SafeHtmlRenderingTests
 {
     [Fact]
+    public void LargeGitHubRenderedHtmlDoesNotHitTheFormerTwentyThousandNodeLimit()
+    {
+        const int highlightedSpanCount = 25_000;
+        var sourceBuilder = new System.Text.StringBuilder(highlightedSpanCount * 15);
+        sourceBuilder.Append("<div>");
+        for (int index = 0; index < highlightedSpanCount; index++)
+            sourceBuilder.Append("<span>x</span>");
+        sourceBuilder.Append("<strong>tail marker</strong></div>");
+
+        string source = sourceBuilder.ToString();
+        using LayoutSnapshot snapshot = BuildGitHub(source);
+        string rendered = string.Concat(FlattenRuns(snapshot).Select(static run => run.Text));
+
+        Assert.Contains("tail marker", rendered, StringComparison.Ordinal);
+        Assert.DoesNotContain(
+            "Additional HTML content was omitted because it exceeded the renderer safety limit.",
+            rendered,
+            StringComparison.Ordinal);
+    }
+
+    [Fact]
     public void GitHubRenderedHtmlPreservesCodeBlocksAndNestedListStructure()
     {
         const string source = "<ol><li><p>First</p><ul><li>Nested</li></ul><pre><code>echo ok\n</code></pre></li></ol>";
@@ -39,6 +60,43 @@ public sealed class SafeHtmlRenderingTests
     }
 
     [Fact]
+    public void PreformattedCodeInsideHtmlTableRetainsCodeSemanticsAndLineBreaks()
+    {
+        const string source = "<table><tr><td><div><pre><span>const</span> value = 1;\nreturn value;</pre></div></td><td>Result</td></tr></table>";
+
+        using LayoutSnapshot snapshot = Build(source, SafeHtmlOptions.Default);
+        InlineContainerBox code = Assert.Single(
+            FlattenBoxes(snapshot).OfType<InlineContainerBox>(),
+            static box => box.ElementKey == MarkdownElementKeys.CodeBlock);
+        MarkdownRenderer.Accessibility.MarkdownSemanticNode semantic = Assert.Single(
+            MarkdownRenderer.Accessibility.MarkdownSemanticDocument
+                .EnumerateDepthFirst(snapshot.SemanticDocument.Root),
+            static node => node.Role == MarkdownRenderer.Accessibility.MarkdownSemanticRole.CodeBlock);
+
+        Assert.Equal("const value = 1;\nreturn value;", string.Concat(code.Runs.Select(static run => run.Text)));
+        Assert.Equal("const value = 1;\nreturn value;", snapshot.SemanticDocument.GetText(semantic));
+    }
+
+    [Fact]
+    public void LinkedHtmlImageDoesNotCreateASecondWhitespaceOnlyLink()
+    {
+        const string source = "<p><a href='https://example.test'>\n  <img src='badge.svg' alt='Badge'>\n</a></p>";
+
+        using LayoutSnapshot snapshot = Build(source, SafeHtmlOptions.Default);
+        MarkdownRenderer.Accessibility.MarkdownSemanticNode[] links =
+            MarkdownRenderer.Accessibility.MarkdownSemanticDocument
+                .EnumerateDepthFirst(snapshot.SemanticDocument.Root)
+                .Where(static node => node.Role == MarkdownRenderer.Accessibility.MarkdownSemanticRole.Link)
+                .ToArray();
+
+        Assert.Empty(links);
+        Assert.Single(
+            MarkdownRenderer.Accessibility.MarkdownSemanticDocument
+                .EnumerateDepthFirst(snapshot.SemanticDocument.Root),
+            static node => node.Role == MarkdownRenderer.Accessibility.MarkdownSemanticRole.Image);
+    }
+
+    [Fact]
     public void HtmlHeadingsInsideTableCellsRetainHeadingStyleAndSemantics()
     {
         const string source = "<table><tr><td><h3>Agentic <a href='https://example.test'>Task Manager</a></h3></td></tr></table>";
@@ -56,6 +114,50 @@ public sealed class SafeHtmlRenderingTests
             static run => Assert.Equal(MarkdownElementKeys.Heading3, run.SemanticHeadingKey));
         Assert.Single(heading.Children,
             static child => child.Role == MarkdownRenderer.Accessibility.MarkdownSemanticRole.Link);
+    }
+
+    [Fact]
+    public void ImageOnlyHtmlHeadingRetainsHeadingSemantics()
+    {
+        const string source = "<table><tr><td><h1><picture><img src='logo.png' alt='Project logo'></picture></h1></td></tr></table>";
+
+        using LayoutSnapshot snapshot = Build(source, SafeHtmlOptions.Default);
+        InlineImageRun image = Assert.Single(
+            FlattenBoxes(snapshot)
+                .OfType<InlineContainerBox>()
+                .SelectMany(static box => box.Runs)
+                .OfType<InlineImageRun>());
+        MarkdownRenderer.Accessibility.MarkdownSemanticNode heading = Assert.Single(
+            MarkdownRenderer.Accessibility.MarkdownSemanticDocument
+                .EnumerateDepthFirst(snapshot.SemanticDocument.Root),
+            static node => node.Role == MarkdownRenderer.Accessibility.MarkdownSemanticRole.Heading);
+
+        Assert.Equal(MarkdownElementKeys.Heading1, image.SemanticHeadingKey);
+        Assert.Equal(1, heading.HeadingLevel);
+        Assert.Equal("Project logo", snapshot.SemanticDocument.GetText(heading));
+    }
+
+    [Fact]
+    public void MissingAltAnimatedImageUsesItsFileNameLikeGitHub()
+    {
+        const string source = "<p><img src='/art/android-PullRefreshLayout.gif' width='49%'></p>";
+
+        using LayoutSnapshot snapshot = Build(source, SafeHtmlOptions.Default);
+        InlineImageRun image = Assert.Single(FlattenRuns(snapshot).OfType<InlineImageRun>());
+
+        Assert.Equal("android-PullRefreshLayout.gif", image.AltText);
+        Assert.Contains("android-PullRefreshLayout.gif", snapshot.SemanticDocument.Text, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void MissingAltStaticImageKeepsTheLocalizedGenericName()
+    {
+        const string source = "<p><img src='/art/preview.webp'></p>";
+
+        using LayoutSnapshot snapshot = Build(source, SafeHtmlOptions.Default);
+        InlineImageRun image = Assert.Single(FlattenRuns(snapshot).OfType<InlineImageRun>());
+
+        Assert.Equal("Image", image.AltText);
     }
 
     [Fact]
@@ -923,6 +1025,11 @@ public sealed class SafeHtmlRenderingTests
             {
                 foreach (BlockBox descendant in FlattenBoxes(nested))
                     yield return descendant;
+            }
+            else if (child is TableBox table)
+            {
+                foreach (InlineContainerBox cell in table.GetCellBoxes())
+                    yield return cell;
             }
         }
     }

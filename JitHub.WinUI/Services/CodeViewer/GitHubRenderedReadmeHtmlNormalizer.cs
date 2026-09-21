@@ -34,15 +34,26 @@ internal static class GitHubRenderedReadmeHtmlNormalizer
         char quote = '\0';
         int tagStart = -1;
         int elementDepth = 0;
+        bool atRootLineStart = true;
         for (int index = 0; index < html.Length; index++)
         {
             char value = html[index];
             if (!inTag)
             {
+                if (elementDepth == 0 &&
+                    atRootLineStart &&
+                    value is ' ' or '\t' &&
+                    RootLineContinuesWithTag(html, index))
+                {
+                    normalized ??= new StringBuilder(html.Length + 16).Append(html, 0, index);
+                    continue;
+                }
+
                 if (value == '<')
                 {
                     inTag = true;
                     tagStart = index;
+                    atRootLineStart = false;
                     normalized?.Append(value);
                     continue;
                 }
@@ -53,12 +64,19 @@ internal static class GitHubRenderedReadmeHtmlNormalizer
                     if (value == '\r' && index + 1 < html.Length && html[index + 1] == '\n')
                         index++;
                     if (elementDepth == 0)
+                    {
                         AppendBlockBoundary(normalized);
+                        atRootLineStart = true;
+                    }
                     else
+                    {
                         normalized.Append("&#10;");
+                    }
                     continue;
                 }
 
+                if (!char.IsWhiteSpace(value))
+                    atRootLineStart = false;
                 normalized?.Append(value);
                 continue;
             }
@@ -105,6 +123,14 @@ internal static class GitHubRenderedReadmeHtmlNormalizer
         return ConvertGitHubMermaidTransports(normalized?.ToString() ?? html);
     }
 
+    private static bool RootLineContinuesWithTag(string html, int whitespaceStart)
+    {
+        int index = whitespaceStart;
+        while (index < html.Length && html[index] is ' ' or '\t')
+            index++;
+        return index < html.Length && html[index] == '<';
+    }
+
     private static string UnwrapGitHubReadmeShell(string html)
     {
         int divStart = SkipWhitespaceForward(html, 0);
@@ -148,7 +174,156 @@ internal static class GitHubRenderedReadmeHtmlNormalizer
         // HTML/Markdown parser can otherwise treat the unknown custom element
         // as literal text and never expose its image to the renderer.
         html = RemoveTags(html, "themed-picture");
+        // GitHub's emoji transport preserves an ordinary Unicode fallback as
+        // its text content. The custom wrapper is page chrome and must not be
+        // exposed literally by the safe-HTML renderer.
+        html = RemoveTags(html, "g-emoji");
+        // GitHub appends a decorative, aria-hidden Octicon permalink after
+        // every heading. It is page chrome, not README text or navigation.
+        html = RemoveGeneratedHeadingPermalinks(html);
+        // Markdown containing a whitespace-only authored link can become an
+        // empty transport anchor. Browsers expose no usable link for it and it
+        // must not create duplicate blank UIA hyperlinks.
+        html = RemoveEmptyAnchors(html);
+        // GitHub automatically lightbox-wraps otherwise unlinked static images
+        // with an anchor back to the image itself. That anchor is not authored
+        // README navigation and would create duplicate, misleading UIA links.
+        html = UnwrapGeneratedImageSelfLinks(html);
         return UnwrapGeneratedMediaDisclosures(html);
+    }
+
+    private static string RemoveGeneratedHeadingPermalinks(string html) =>
+        RewriteAnchors(
+            html,
+            static (openingTag, content) =>
+                TryGetAttribute(openingTag, "class", out string className) &&
+                HasClassToken(className, "anchor") &&
+                TryGetAttribute(openingTag, "aria-label", out string ariaLabel) &&
+                WebUtility.HtmlDecode(ariaLabel).StartsWith("Permalink:", StringComparison.OrdinalIgnoreCase) &&
+                content.Contains("<svg", StringComparison.OrdinalIgnoreCase) &&
+                content.Contains("aria-hidden=\"true\"", StringComparison.OrdinalIgnoreCase),
+            keepContent: false);
+
+    private static string RemoveEmptyAnchors(string html) =>
+        RewriteAnchors(
+            html,
+            static (openingTag, content) =>
+                string.IsNullOrWhiteSpace(WebUtility.HtmlDecode(content)) &&
+                !TryGetAttribute(openingTag, "aria-label", out _) &&
+                !TryGetAttribute(openingTag, "title", out _),
+            keepContent: false);
+
+    private static string RewriteAnchors(
+        string html,
+        Func<string, string, bool> shouldRewrite,
+        bool keepContent)
+    {
+        StringBuilder? result = null;
+        int copiedThrough = 0;
+        int searchFrom = 0;
+        while (TryFindOpeningTag(html, "a", searchFrom, out int start, out int openingEnd))
+        {
+            if (!TryFindMatchingElement(html, "a", openingEnd, out int closingStart, out int closingEnd))
+                break;
+
+            string openingTag = html.Substring(start, openingEnd - start);
+            string content = html.Substring(openingEnd, closingStart - openingEnd);
+            if (!shouldRewrite(openingTag, content))
+            {
+                searchFrom = openingEnd;
+                continue;
+            }
+
+            result ??= new StringBuilder(html.Length);
+            if (start > copiedThrough)
+                result.Append(html, copiedThrough, start - copiedThrough);
+            if (keepContent)
+                result.Append(html, openingEnd, closingStart - openingEnd);
+            copiedThrough = closingEnd;
+            searchFrom = closingEnd;
+        }
+
+        if (result is null)
+            return html;
+
+        result.Append(html, copiedThrough, html.Length - copiedThrough);
+        return result.ToString();
+    }
+
+    private static string UnwrapGeneratedImageSelfLinks(string html)
+    {
+        StringBuilder? result = null;
+        int copiedThrough = 0;
+        int searchFrom = 0;
+        while (TryFindOpeningTag(html, "a", searchFrom, out int start, out int openingEnd))
+        {
+            if (!TryFindMatchingElement(html, "a", openingEnd, out int closingStart, out int closingEnd))
+                break;
+
+            string openingTag = html.Substring(start, openingEnd - start);
+            ReadOnlySpan<char> content = html.AsSpan(openingEnd, closingStart - openingEnd);
+            if (!IsGeneratedImageSelfLink(openingTag, content))
+            {
+                searchFrom = openingEnd;
+                continue;
+            }
+
+            result ??= new StringBuilder(html.Length);
+            if (start > copiedThrough)
+                result.Append(html, copiedThrough, start - copiedThrough);
+            result.Append(html, openingEnd, closingStart - openingEnd);
+            copiedThrough = closingEnd;
+            searchFrom = closingEnd;
+        }
+
+        if (result is null)
+            return html;
+
+        result.Append(html, copiedThrough, html.Length - copiedThrough);
+        return result.ToString();
+    }
+
+    private static bool IsGeneratedImageSelfLink(string openingTag, ReadOnlySpan<char> content)
+    {
+        if (!TryGetAttribute(openingTag, "target", out string target) ||
+            !target.Equals("_blank", StringComparison.OrdinalIgnoreCase) ||
+            !TryGetAttribute(openingTag, "rel", out string rel) ||
+            !HasClassToken(rel, "noopener") ||
+            !HasClassToken(rel, "noreferrer") ||
+            !TryGetAttribute(openingTag, "href", out string encodedHref))
+        {
+            return false;
+        }
+
+        string candidate = content.Trim().ToString();
+        if (candidate.Contains("data-animated-image", StringComparison.OrdinalIgnoreCase))
+            return false;
+
+        int imageStart = candidate.IndexOf("<img", StringComparison.OrdinalIgnoreCase);
+        if (imageStart < 0 ||
+            !TryReadOpeningTag(candidate, imageStart, "img", out int imageEnd))
+        {
+            return false;
+        }
+
+        string imageTag = candidate.Substring(imageStart, imageEnd - imageStart);
+        if (!TryGetAttribute(imageTag, "src", out string encodedSource))
+            return false;
+
+        bool onlyImage = imageStart == 0 &&
+            string.IsNullOrWhiteSpace(candidate[imageEnd..]);
+        bool onlyPicture = candidate.StartsWith("<picture", StringComparison.OrdinalIgnoreCase) &&
+            TryReadOpeningTag(candidate, 0, "picture", out int pictureOpeningEnd) &&
+            TryFindMatchingElement(candidate, "picture", pictureOpeningEnd, out _, out int pictureEnd) &&
+            pictureEnd == candidate.Length;
+        if (!onlyImage && !onlyPicture)
+            return false;
+
+        string href = WebUtility.HtmlDecode(encodedHref) ?? string.Empty;
+        string source = WebUtility.HtmlDecode(encodedSource) ?? string.Empty;
+        return Uri.TryCreate(href, UriKind.Absolute, out Uri? hrefUri) &&
+            Uri.TryCreate(source, UriKind.Absolute, out Uri? sourceUri) &&
+            hrefUri.Equals(sourceUri);
     }
 
     private static string ConvertGitHubMermaidTransports(string html)

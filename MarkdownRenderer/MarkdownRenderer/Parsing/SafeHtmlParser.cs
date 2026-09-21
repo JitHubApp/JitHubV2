@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using System.Globalization;
+using System.IO;
 using System.Net;
 using System.Threading;
 
@@ -197,7 +198,12 @@ internal readonly record struct SafeHtmlParseLimits(
 internal static class SafeHtmlParser
 {
     internal const int MaxInputLength = 4 * 1024 * 1024;
-    internal const int MaxNodeCount = 20_000;
+    // GitHub's rendered form of large but ordinary READMEs can exceed 20,000
+    // nodes after syntax highlighting (airbnb/javascript is one example).
+    // Input length, tag length, depth, and attribute ceilings remain the
+    // primary allocation bounds; this ceiling prevents valid documents from
+    // being cut off merely because GitHub emitted many small <span> nodes.
+    internal const int MaxNodeCount = 100_000;
     internal const int MaxNestingDepth = 64;
     internal const int MaxAttributeCount = 32;
     internal const int MaxAttributeValueLength = 16 * 1024;
@@ -1188,5 +1194,36 @@ internal static class SafeHtmlParser
 
         normalized = string.Empty;
         return false;
+    }
+
+    internal static string ResolveMissingImageAlternative(
+        string source,
+        string localizedImageName)
+    {
+        // GitHub assigns the file name as the accessible alternative for
+        // authored animated images that omit alt text. Matching that behavior
+        // keeps large animation galleries useful to screen readers while
+        // leaving ordinary missing-alt images on the localized generic name.
+        // Camo URLs do not expose the original extension in their path, so
+        // remote GIFs continue to receive the same generic name as GitHub.
+        string path = source ?? string.Empty;
+        int suffix = path.IndexOfAny(['?', '#']);
+        if (suffix >= 0)
+            path = path[..suffix];
+
+        string fileName;
+        try
+        {
+            fileName = Uri.UnescapeDataString(Path.GetFileName(path.Replace('\\', '/')));
+        }
+        catch (UriFormatException)
+        {
+            return localizedImageName;
+        }
+
+        return fileName.Length is > 0 and <= 256 &&
+               Path.GetExtension(fileName).Equals(".gif", StringComparison.OrdinalIgnoreCase)
+            ? fileName
+            : localizedImageName;
     }
 }

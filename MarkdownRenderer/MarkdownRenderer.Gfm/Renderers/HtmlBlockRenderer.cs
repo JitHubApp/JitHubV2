@@ -335,6 +335,8 @@ internal sealed class HtmlBlockRenderer : MarkdownNodeRenderer<HtmlBlock>
         SafeHtmlAlignment alignment)
     {
         var stack = CreateStack(context);
+        Thickness bodyMargin = context.ThemeSnapshot.GetStyle(MarkdownElementKeys.Body).Margin;
+        stack.Margin = new Thickness(0, 0, 0, Math.Max(0, bodyMargin.Bottom * 2));
         SafeHtmlElement? summary = details.Children
             .OfType<SafeHtmlElement>()
             .FirstOrDefault(element => element.Name == "summary");
@@ -576,8 +578,16 @@ internal sealed class HtmlBlockRenderer : MarkdownNodeRenderer<HtmlBlock>
                 }
 
                 string key = row.IsHeader ? MarkdownElementKeys.TableHeader : MarkdownElementKeys.TableCell;
-                InlineContainerBox box = CreateInlineBox(context, key, SafeHtmlParser.GetAlignment(cell.Element));
-                PopulateInline(box, cell.Element.Children, context, sourceOffset, HtmlInlineContext.Empty);
+                SafeHtmlElement? preformatted = FindDescendant(cell.Element, "pre");
+                InlineContainerBox box = preformatted is null
+                    ? CreateInlineBox(context, key, SafeHtmlParser.GetAlignment(cell.Element))
+                    : BuildPreformattedTableCell(
+                        preformatted,
+                        context,
+                        sourceOffset,
+                        SafeHtmlParser.GetAlignment(cell.Element));
+                if (preformatted is null)
+                    PopulateInline(box, cell.Element.Children, context, sourceOffset, HtmlInlineContext.Empty);
                 cells[column] = box;
                 if (alignments[column] == TableBox.CellAlignment.Default)
                 {
@@ -606,6 +616,34 @@ internal sealed class HtmlBlockRenderer : MarkdownNodeRenderer<HtmlBlock>
         {
             BlockIndex = context.NextBlockIndex(),
         };
+    }
+
+    private static InlineContainerBox BuildPreformattedTableCell(
+        SafeHtmlElement pre,
+        MarkdownLayoutContext context,
+        int sourceOffset,
+        SafeHtmlAlignment alignment)
+    {
+        string text = CodeBlockMetadata.NormalizeCodeLineEndings(
+            string.Concat(DescendantText(pre).Select(static node => node.DecodedText)));
+        var sourceSpan = new SourceSpan(sourceOffset + pre.SourceStart, pre.SourceLength);
+        var box = new InlineContainerBox(context, MarkdownElementKeys.CodeBlock)
+        {
+            BlockIndex = context.NextBlockIndex(),
+            TextAlignment = ToCanvasAlignment(alignment),
+            CodeBlockTextOffset = 0,
+            CodeBlockTextLength = text.Length,
+        };
+        if (text.Length > 0)
+        {
+            box.Add(new TextRun(text)
+            {
+                ElementKey = MarkdownElementKeys.CodeBlock,
+                SourceSpan = sourceSpan,
+            });
+        }
+
+        return box;
     }
 
     private static void CollectRows(SafeHtmlElement element, bool inHeaderGroup, List<HtmlTableRow> rows)
@@ -702,6 +740,14 @@ internal sealed class HtmlBlockRenderer : MarkdownNodeRenderer<HtmlBlock>
             value += " ";
 
         if (value.Length == 0)
+        {
+            return;
+        }
+
+        // Indentation around an image inside an anchor is layout whitespace,
+        // not a second hyperlink. Keeping it as a LinkRun creates a blank UIA
+        // link beside the linked-image peer and inflates link navigation.
+        if (context.LinkUrl is { Length: > 0 } && string.IsNullOrWhiteSpace(value))
         {
             return;
         }
@@ -899,7 +945,9 @@ internal sealed class HtmlBlockRenderer : MarkdownNodeRenderer<HtmlBlock>
         var run = new InlineImageRun(
             context,
             !hasExplicitAlt
-                ? context.ResolveString(MarkdownStringKeys.ImageName, MarkdownLocalizedStrings.ImageName)
+                ? SafeHtmlParser.ResolveMissingImageAlternative(
+                    source,
+                    context.ResolveString(MarkdownStringKeys.ImageName, MarkdownLocalizedStrings.ImageName))
                 : alt,
             source,
             string.IsNullOrWhiteSpace(title) ? null : title,
@@ -909,6 +957,7 @@ internal sealed class HtmlBlockRenderer : MarkdownNodeRenderer<HtmlBlock>
             height)
         {
             SourceSpan = new SourceSpan(sourceOffset + image.SourceStart, image.SourceLength),
+            SemanticHeadingKey = inlineContext.HeadingKey ?? string.Empty,
         };
         run.SetStyleAliases(inlineContext.StyleAliases);
         box.Add(run);

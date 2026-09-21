@@ -77,12 +77,12 @@ try {
   const readmeRendered = await waitForOptionalExpression(
     cdp,
     `Boolean(document.querySelector("#readme article.markdown-body, article.markdown-body"))`,
-    5_000);
+    30_000);
   if (!readmeRendered) {
     const elapsed = performance.now() - navigationStarted;
     const reportPath = path.join(outputDirectory, "browser.json");
     await writeFile(reportPath, JSON.stringify({
-      schemaVersion: 3,
+      schemaVersion: 4,
       repositoryUrl,
       readmeSha,
       readmeRendered: false,
@@ -132,12 +132,10 @@ try {
       // Chromium can retain layout rectangles for descendants hidden by a
       // closed <details>. Match what a user can actually see, including links
       // inside the visible summary, rather than counting clipped descendants.
-      const containingDetails = node.matches("details")
-        ? node.parentElement?.closest("details")
-        : node.closest("details");
-      for (let details = containingDetails; details; details = details.parentElement?.closest("details")) {
-        const summary = details.querySelector(":scope > summary");
-        if (!details.open && !summary?.contains(node)) return false;
+      for (let ancestor = node.parentElement; ancestor && ancestor !== article; ancestor = ancestor.parentElement) {
+        if (ancestor.tagName !== "DETAILS" || ancestor.hasAttribute("open")) continue;
+        const summary = ancestor.querySelector(":scope > summary");
+        if (!summary?.contains(node)) return false;
       }
       return [...node.getClientRects()]
         .some(bounds => bounds.width > 0 && bounds.height > 0);
@@ -155,6 +153,10 @@ try {
         ? node.children[0]
         : node.children[0].querySelector("img");
       if (!image) return false;
+      // GitHub's animated-image wrapper is an actual interaction that opens
+      // the full animation. JitHub deliberately preserves that link while
+      // removing the inert lightbox wrapper around static images.
+      if (image.hasAttribute("data-animated-image")) return false;
       const normalized = value => {
         try {
           const url = new URL(value, location.href);
@@ -336,7 +338,7 @@ try {
   const fullCaptureMetricMap = Object.fromEntries(
     fullCaptureMetrics.metrics.map(metric => [metric.name, metric.value]));
   const report = {
-    schemaVersion: 3,
+    schemaVersion: 4,
     repositoryUrl,
     readmeSha,
     readmeRendered: true,

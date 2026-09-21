@@ -152,6 +152,15 @@ internal static partial class ReadmeAuditProbe
             {
                 failures.Add("GitHub unexpectedly rendered a README for a repository without one.");
             }
+            else if (repository.Readme.Available && browser.ReadmeRendered == false)
+            {
+                // Every entry in the pinned corpus has a README that GitHub
+                // renders on the repository page (Markdown, RST, AsciiDoc, or
+                // extensionless README). A missing article is therefore an
+                // incomplete browser oracle, not evidence that JitHub should
+                // switch to its source editor and skip the fidelity checks.
+                failures.Add("Edge did not expose the available rendered README; browser evidence is incomplete.");
+            }
             // Broken resources in the reference page remain evidence, but do not
             // fail JitHub. Native parity is evaluated only against image resources
             // Edge actually loaded and rendered successfully.
@@ -169,7 +178,7 @@ internal static partial class ReadmeAuditProbe
                 caseDirectory,
                 accessToken,
                 browser?.Semantic.Images,
-                expectRenderedReadme: browser?.ReadmeRendered != false);
+                expectRenderedReadme: repository.Readme.Available);
             if (native.UnavailableImages != 0)
             {
                 failures.Add($"JitHub reported {native.UnavailableImages} unavailable image(s).");
@@ -251,7 +260,7 @@ internal static partial class ReadmeAuditProbe
                 File.ReadAllText(reportPath),
                 JsonOptions) ?? throw new InvalidDataException("Cached Edge README oracle report is empty.");
             string snapshotUrl = GetSnapshotUrl(repository);
-            if (cached.SchemaVersion != 3 ||
+            if (cached.SchemaVersion != 4 ||
                 !string.Equals(cached.RepositoryUrl, snapshotUrl, StringComparison.OrdinalIgnoreCase) ||
                 !string.Equals(cached.ReadmeSha, GetReadmeEvidenceIdentity(repository), StringComparison.Ordinal))
             {
@@ -1490,12 +1499,29 @@ internal static partial class ReadmeAuditProbe
         for (int attempt = 0; attempt < 5; attempt++)
         {
             string requestId = Guid.NewGuid().ToString("N");
-            if (File.Exists(responsePath))
-                File.Delete(responsePath);
-            var request = new RendererCaptureRequest(requestId, outputPath, save);
-            string temporaryPath = requestPath + $".{Environment.ProcessId}.tmp";
-            File.WriteAllText(temporaryPath, JsonSerializer.Serialize(request, JsonOptions));
-            File.Move(temporaryPath, requestPath, overwrite: true);
+            string temporaryPath = requestPath + $".{requestId}.tmp";
+            try
+            {
+                if (File.Exists(responsePath))
+                    File.Delete(responsePath);
+                var request = new RendererCaptureRequest(requestId, outputPath, save);
+                File.WriteAllText(temporaryPath, JsonSerializer.Serialize(request, JsonOptions));
+                File.Move(temporaryPath, requestPath, overwrite: true);
+            }
+            catch (IOException exception)
+            {
+                lastFailure = exception;
+                TryDeleteAuditFile(temporaryPath);
+                Thread.Sleep(50 * (attempt + 1));
+                continue;
+            }
+            catch (UnauthorizedAccessException exception)
+            {
+                lastFailure = exception;
+                TryDeleteAuditFile(temporaryPath);
+                Thread.Sleep(50 * (attempt + 1));
+                continue;
+            }
 
             Stopwatch stopwatch = Stopwatch.StartNew();
             while (stopwatch.Elapsed < TimeSpan.FromSeconds(30))
@@ -1527,6 +1553,10 @@ internal static partial class ReadmeAuditProbe
                 {
                     lastFailure = exception;
                 }
+                catch (UnauthorizedAccessException exception)
+                {
+                    lastFailure = exception;
+                }
                 Thread.Sleep(25);
             }
 
@@ -1536,6 +1566,20 @@ internal static partial class ReadmeAuditProbe
         throw new TimeoutException(
             "The Markdown renderer did not complete its internal audit capture request.",
             lastFailure);
+    }
+
+    private static void TryDeleteAuditFile(string path)
+    {
+        try
+        {
+            File.Delete(path);
+        }
+        catch (IOException)
+        {
+        }
+        catch (UnauthorizedAccessException)
+        {
+        }
     }
 
     private static Window WaitForWindow(Application application, UIA3Automation automation, TimeSpan timeout)

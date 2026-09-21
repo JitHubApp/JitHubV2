@@ -5631,15 +5631,36 @@ public partial class MarkdownRendererControl : UserControl, IDisposable, IMarkdo
         string? outputPath,
         bool save)
     {
-        if (_isDisposed || _snapshot is not { } snapshot)
+        if (_isDisposed || _snapshot is null)
             throw new InvalidOperationException("The Markdown renderer has no active layout snapshot.");
+
+        // Lazy layout mutation and audit painting share the snapshot lock. A
+        // large document can legitimately hold it for longer than a single UI
+        // frame, so wait asynchronously for a current snapshot instead of
+        // turning normal background realization into an audit failure. Re-read
+        // _snapshot on every attempt because a relayout may retire and replace
+        // the original candidate while this method is yielding.
+        LayoutSnapshot? snapshot = null;
+        long acquireStarted = Stopwatch.GetTimestamp();
+        while (!_isDisposed && Stopwatch.GetElapsedTime(acquireStarted) < TimeSpan.FromSeconds(5))
+        {
+            LayoutSnapshot? candidate = _snapshot;
+            if (candidate is not null && candidate.TryBeginPaint())
+            {
+                snapshot = candidate;
+                break;
+            }
+
+            await Task.Delay(16);
+        }
+
+        if (snapshot is null)
+            throw new InvalidOperationException("The Markdown layout remained busy while capturing audit evidence.");
 
         TryGetViewport(out double top, out double viewportHeight, out double viewportWidth);
         int width = Math.Max(1, checked((int)Math.Ceiling(viewportWidth)));
         int height = Math.Max(1, checked((int)Math.Ceiling(viewportHeight)));
         var viewport = new Rect(0, Math.Max(0, top), width, height);
-        if (!snapshot.TryBeginPaint())
-            throw new InvalidOperationException("The Markdown layout is being updated; retry the audit capture.");
 
         try
         {

@@ -155,6 +155,11 @@ internal sealed class ImageBox : BlockBox
 
     private const int MaxSvgBytes = SvgResourceBudget.MaxInputBytes;
     private const long MaxSvgOutputRasterBytes = 64L * 1024 * 1024;
+    // Direct2D bitmap limits vary by feature level and a recovering/WARP
+    // device can transiently report a larger capability than it can allocate.
+    // Keep the untiled path within the Windows-wide guaranteed ceiling so the
+    // decision is deterministic across hardware, WARP, and CI machines.
+    private const int MaxUntiledSvgDimensionPixels = 16_384;
     private const int MaxPooledSvgUploadBytes = 1024 * 1024;
     private const int SvgTileSizePixels = 1024;
     private const int MaxRemoteImageBytes = RasterImageResourceBudget.MaxInputBytes;
@@ -2968,6 +2973,8 @@ internal sealed class ImageBox : BlockBox
             height,
             UsesTiles:
                 outputBytes > MaxSvgOutputRasterBytes ||
+                width > MaxUntiledSvgDimensionPixels ||
+                height > MaxUntiledSvgDimensionPixels ||
                 width > _context.ResourceCreator.Device.MaximumBitmapSizeInPixels ||
                 height > _context.ResourceCreator.Device.MaximumBitmapSizeInPixels);
     }

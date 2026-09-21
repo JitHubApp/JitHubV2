@@ -4,6 +4,7 @@ using System.Collections.Generic;
 using System.Globalization;
 using System.Linq;
 using System.Net;
+using System.Runtime.ExceptionServices;
 using System.Text;
 using System.Threading;
 using System.Threading.Tasks;
@@ -251,14 +252,32 @@ public sealed class RepoTreeService : IRepoTreeService
         Task.Run(
             async () =>
             {
-                CachedResult<GitHubTree> result = await _queryService.GetTreeAsync(
-                    token,
-                    userId,
-                    owner,
-                    name,
-                    refOrSha,
-                    fetchPolicy,
-                    ct).ConfigureAwait(false);
+                CachedResult<GitHubTree> result;
+                try
+                {
+                    result = await _queryService.GetTreeAsync(
+                        token,
+                        userId,
+                        owner,
+                        name,
+                        refOrSha,
+                        fetchPolicy,
+                        ct).ConfigureAwait(false);
+                }
+                catch (GitHubRateLimitException exception) when (CanRetryPublicDataAnonymously(exception, token))
+                {
+                    result = CreateFreshResult(await ExecuteAnonymousFallbackAsync(
+                        exception,
+                        cancellationToken => _gitHubClientService!.GetTreeAsync(
+                            GitHubAuthenticationConstants.PublicAccessToken,
+                            owner,
+                            name,
+                            refOrSha,
+                            recursive: true,
+                            cancellationToken),
+                        ct).ConfigureAwait(false));
+                }
+
                 GitHubTree tree = result.Value ?? throw new InvalidOperationException("GitHub returned no repository tree.");
                 return MapResult(result, BuildRepoTree(tree));
             },
@@ -375,15 +394,34 @@ public sealed class RepoTreeService : IRepoTreeService
         QueryFetchPolicy fetchPolicy = QueryFetchPolicy.StaleFirst)
     {
         (string token, string userId) = GetAuthenticationContext();
-        CachedResult<GitHubRepositoryContent[]> result = await _queryService.GetDirectoryAsync(
-            token,
-            userId,
-            owner,
-            name,
-            path,
-            refOrSha,
-            fetchPolicy,
-            ct).ConfigureAwait(false);
+        CachedResult<GitHubRepositoryContent[]> result;
+        try
+        {
+            result = await _queryService.GetDirectoryAsync(
+                token,
+                userId,
+                owner,
+                name,
+                path,
+                refOrSha,
+                fetchPolicy,
+                ct).ConfigureAwait(false);
+        }
+        catch (GitHubRateLimitException exception) when (CanRetryPublicDataAnonymously(exception, token))
+        {
+            IReadOnlyList<GitHubRepositoryContent> publicContents = await ExecuteAnonymousFallbackAsync(
+                exception,
+                cancellationToken => _gitHubClientService!.GetRepositoryContentsAsync(
+                    GitHubAuthenticationConstants.PublicAccessToken,
+                    owner,
+                    name,
+                    path,
+                    refOrSha,
+                    cancellationToken),
+                ct).ConfigureAwait(false);
+            result = CreateFreshResult(publicContents.ToArray());
+        }
+
         GitHubRepositoryContent[] contents = result.Value ?? [];
         IReadOnlyList<RepoTreeNode> nodes = contents
             .Select(static content => new RepoTreeNode
@@ -423,6 +461,19 @@ public sealed class RepoTreeService : IRepoTreeService
         catch (GitHubApiException exception) when (exception.StatusCode == HttpStatusCode.NotFound)
         {
             return null;
+        }
+        catch (GitHubRateLimitException exception) when (CanRetryPublicDataAnonymously(exception, token))
+        {
+            GitHubRepositoryContent publicContent = await ExecuteAnonymousFallbackAsync(
+                exception,
+                cancellationToken => _gitHubClientService!.GetReadmeAsync(
+                    GitHubAuthenticationConstants.PublicAccessToken,
+                    owner,
+                    name,
+                    refOrSha,
+                    cancellationToken),
+                ct).ConfigureAwait(false);
+            result = CreateFreshResult(publicContent);
         }
 
         GitHubRepositoryContent content = result.Value
@@ -483,15 +534,32 @@ public sealed class RepoTreeService : IRepoTreeService
         QueryFetchPolicy fetchPolicy = QueryFetchPolicy.StaleFirst)
     {
         (string token, string userId) = GetAuthenticationContext();
-        CachedResult<GitHubBlob> result = await _queryService.GetBlobAsync(
-            token,
-            userId,
-            owner,
-            name,
-            sha,
-            priority,
-            fetchPolicy,
-            ct).ConfigureAwait(false);
+        CachedResult<GitHubBlob> result;
+        try
+        {
+            result = await _queryService.GetBlobAsync(
+                token,
+                userId,
+                owner,
+                name,
+                sha,
+                priority,
+                fetchPolicy,
+                ct).ConfigureAwait(false);
+        }
+        catch (GitHubRateLimitException exception) when (CanRetryPublicDataAnonymously(exception, token))
+        {
+            result = CreateFreshResult(await ExecuteAnonymousFallbackAsync(
+                exception,
+                cancellationToken => _gitHubClientService!.GetBlobAsync(
+                    GitHubAuthenticationConstants.PublicAccessToken,
+                    owner,
+                    name,
+                    sha,
+                    cancellationToken),
+                ct).ConfigureAwait(false));
+        }
+
         GitHubBlob blob = result.Value ?? throw new InvalidOperationException("GitHub returned no repository blob.");
         byte[] bytes = await Task.Run(() => DecodeBlob(blob.Content, blob.Encoding), ct).ConfigureAwait(false);
         bool isBinary = IsBinaryContent(bytes);
@@ -504,6 +572,45 @@ public sealed class RepoTreeService : IRepoTreeService
             IsBinary = isBinary
         };
         return MapResult(result, mapped);
+    }
+
+    internal static bool IsPublicDataAuthenticationPolicyDenial(GitHubRateLimitException exception) =>
+        exception.StatusCode == HttpStatusCode.Forbidden &&
+        exception.RetryAfter is null &&
+        exception.RateLimitRemaining is not 0 &&
+        (exception.Message.Contains("IP allow list", StringComparison.OrdinalIgnoreCase) ||
+         exception.Message.Contains("Resource not accessible by integration", StringComparison.OrdinalIgnoreCase));
+
+    private bool CanRetryPublicDataAnonymously(GitHubRateLimitException exception, string token) =>
+        _gitHubClientService is not null &&
+        !GitHubAuthenticationConstants.IsPublicAccessToken(token) &&
+        IsPublicDataAuthenticationPolicyDenial(exception);
+
+    private static CachedResult<T> CreateFreshResult<T>(T value)
+        where T : class
+    {
+        DateTimeOffset fetchedAt = DateTimeOffset.UtcNow;
+        return new CachedResult<T>(value, CacheState.Fresh, fetchedAt, fetchedAt.AddHours(1));
+    }
+
+    private static async Task<T> ExecuteAnonymousFallbackAsync<T>(
+        GitHubRateLimitException authenticatedFailure,
+        Func<CancellationToken, Task<T>> operation,
+        CancellationToken cancellationToken)
+    {
+        try
+        {
+            return await operation(cancellationToken).ConfigureAwait(false);
+        }
+        catch (OperationCanceledException)
+        {
+            throw;
+        }
+        catch
+        {
+            ExceptionDispatchInfo.Capture(authenticatedFailure).Throw();
+            throw;
+        }
     }
 
     private (string Token, string UserId) GetAuthenticationContext()

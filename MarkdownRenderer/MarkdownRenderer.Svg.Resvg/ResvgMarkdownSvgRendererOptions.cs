@@ -8,7 +8,7 @@ public sealed class ResvgMarkdownSvgRendererOptions
     public const int HardMaxNestedSvgDepth = 4;
     public const int HardMaxStructuralCost = 100_000;
     public const long HardMaxEmbeddedImageBytes = 64L * 1024 * 1024;
-    public const long HardMaxEmbeddedImagePixels = HardMaxEmbeddedImageBytes / 4;
+    public const long HardMaxEmbeddedImagePixels = 24L * 1024 * 1024;
     public const long HardMaxOutputRasterBytes = 64L * 1024 * 1024;
     public const long HardMaxFilterIntermediateBytes = 128L * 1024 * 1024;
     public static readonly TimeSpan HardMaxRequestDeadline = TimeSpan.FromSeconds(3);

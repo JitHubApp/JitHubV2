@@ -26,6 +26,7 @@ internal sealed class GitHubDetailsBlockRenderer : MarkdownNodeRenderer<GitHubDe
         {
             BlockIndex = context.NextBlockIndex(),
             FlowDirection = context.FlowDirection,
+            Margin = GetDisclosureMargin(context),
         };
         var summary = new InlineContainerBox(context, MarkdownElementKeys.Strong)
         {
@@ -66,6 +67,12 @@ internal sealed class GitHubDetailsBlockRenderer : MarkdownNodeRenderer<GitHubDe
         }
 
         return stack;
+    }
+
+    private static Thickness GetDisclosureMargin(MarkdownLayoutContext context)
+    {
+        Thickness bodyMargin = context.ThemeSnapshot.GetStyle(MarkdownElementKeys.Body).Margin;
+        return new Thickness(0, 0, 0, System.Math.Max(0, bodyMargin.Bottom * 2));
     }
 
     private static string ParseSummary(string markup, MarkdownLayoutContext context)

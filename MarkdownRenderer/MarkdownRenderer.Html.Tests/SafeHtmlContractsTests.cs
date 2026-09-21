@@ -28,7 +28,7 @@ public sealed class SafeHtmlContractsTests
         SafeHtmlBudgets budgets = SafeHtmlBudgets.Default;
 
         Assert.Equal(4 * 1024 * 1024, budgets.MaxInputLength);
-        Assert.Equal(20_000, budgets.MaxNodeCount);
+        Assert.Equal(100_000, budgets.MaxNodeCount);
         Assert.Equal(64, budgets.MaxNestingDepth);
         Assert.Equal(32, budgets.MaxAttributeCount);
         Assert.Equal(16 * 1024, budgets.MaxAttributeValueLength);

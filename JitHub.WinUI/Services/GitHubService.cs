@@ -2193,6 +2193,13 @@ namespace JitHub.Services
                         .ConfigureAwait(false);
                     if (publicAsset is null && publicDecision.Access == MarkdownRemoteImageAccess.AllowNetwork)
                     {
+                        publicAsset = await TryResolveViaGitHubCamoOriginAsync(
+                            publicUri!,
+                            context,
+                            cancellationToken).ConfigureAwait(false);
+                    }
+                    if (publicAsset is null && publicDecision.Access == MarkdownRemoteImageAccess.AllowNetwork)
+                    {
                         publicAsset = await TryResolveViaGitHubCamoAsync(
                             source,
                             context,
@@ -2211,13 +2218,17 @@ namespace JitHub.Services
                     HandledFailureReporter.Report(ex, "markdown-image-public-fetch");
                     try
                     {
-                        MarkdownImageAsset? camoAsset = await TryResolveViaGitHubCamoAsync(
+                        MarkdownImageAsset? fallbackAsset = await TryResolveViaGitHubCamoOriginAsync(
+                            publicUri!,
+                            context,
+                            cancellationToken).ConfigureAwait(false);
+                        fallbackAsset ??= await TryResolveViaGitHubCamoAsync(
                             source,
                             context,
                             cancellationToken).ConfigureAwait(false);
-                        return camoAsset is null
+                        return fallbackAsset is null
                             ? MarkdownImageResolution.Unavailable
-                            : MarkdownImageResolution.Resolved(camoAsset);
+                            : MarkdownImageResolution.Resolved(fallbackAsset);
                     }
                     catch (OperationCanceledException)
                     {
@@ -2408,6 +2419,36 @@ namespace JitHub.Services
                 GitHubImageFetchScope.TrustedGitHub,
                 cancellationToken).ConfigureAwait(false);
             return await ReadCachedMarkdownImageAsync(image, camoUri, cancellationToken)
+                .ConfigureAwait(false);
+        }
+
+        private async Task<MarkdownImageAsset?> TryResolveViaGitHubCamoOriginAsync(
+            Uri sourceUri,
+            MarkdownImageResolveContext context,
+            CancellationToken cancellationToken)
+        {
+            if (!GitHubCamoImageMapParser.TryDecodeCanonicalSource(sourceUri, out Uri originUri))
+                return null;
+
+            MarkdownRemoteImageDecision decision = _markdownRemoteImagePolicy.Evaluate(
+                originUri,
+                context.AllowThirdPartyRemoteImages);
+            if (decision.Access == MarkdownRemoteImageAccess.Block)
+                return null;
+
+            // The decoded origin is untrusted even when its hostname resembles
+            // a GitHub host. Never attach credentials or inherit Camo's trusted
+            // fetch scope to this fallback request.
+            GitHubCachedImage? image = decision.Access == MarkdownRemoteImageAccess.CacheOnly
+                ? await _gitHubImageService.TryGetCachedAsync(
+                    originUri.AbsoluteUri,
+                    GitHubImageFetchScope.UserApprovedHttps,
+                    cancellationToken).ConfigureAwait(false)
+                : await _gitHubImageService.GetAsync(
+                    originUri.AbsoluteUri,
+                    GitHubImageFetchScope.UserApprovedHttps,
+                    cancellationToken).ConfigureAwait(false);
+            return await ReadCachedMarkdownImageAsync(image, originUri, cancellationToken)
                 .ConfigureAwait(false);
         }
 

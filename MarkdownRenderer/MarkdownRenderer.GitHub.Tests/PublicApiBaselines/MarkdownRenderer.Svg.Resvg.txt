@@ -23,14 +23,14 @@ public static class MarkdownRenderer.Svg.Resvg.ResvgMarkdownSvgRendererExtension
   public static MarkdownRenderer.Controls.MarkdownRendererControlBuilder WithResvgSvgRenderer(this MarkdownRenderer.Controls.MarkdownRendererControlBuilder builder, MarkdownRenderer.Svg.Resvg.ResvgMarkdownSvgRenderer renderer);
 
 public sealed class MarkdownRenderer.Svg.Resvg.ResvgMarkdownSvgRendererOptions
-  public ResvgMarkdownSvgRendererOptions(int maxSourceBytes = 8388608, int maxXmlDepth = 128, int maxNestedSvgDepth = 4, int maxStructuralCost = 100000, long maxEmbeddedImageBytes = 67108864, long maxEmbeddedImagePixels = 16777216, long maxOutputRasterBytes = 67108864, long maxFilterIntermediateBytes = 134217728, System.TimeSpan? requestDeadline = null, int queueCapacity = 32, long? parsedResourceCacheBytes = null, long? workerCommitBytes = null, string? workerExecutablePath = null);
+  public ResvgMarkdownSvgRendererOptions(int maxSourceBytes = 8388608, int maxXmlDepth = 128, int maxNestedSvgDepth = 4, int maxStructuralCost = 100000, long maxEmbeddedImageBytes = 67108864, long maxEmbeddedImagePixels = 25165824, long maxOutputRasterBytes = 67108864, long maxFilterIntermediateBytes = 134217728, System.TimeSpan? requestDeadline = null, int queueCapacity = 32, long? parsedResourceCacheBytes = null, long? workerCommitBytes = null, string? workerExecutablePath = null);
   public System.TimeSpan RequestDeadline { get; }
   public const int HardMaxNestedSvgDepth = 4;
   public const int HardMaxSourceBytes = 8388608;
   public const int HardMaxStructuralCost = 100000;
   public const int HardMaxXmlDepth = 128;
   public const long HardMaxEmbeddedImageBytes = 67108864;
-  public const long HardMaxEmbeddedImagePixels = 16777216;
+  public const long HardMaxEmbeddedImagePixels = 25165824;
   public const long HardMaxFilterIntermediateBytes = 134217728;
   public const long HardMaxOutputRasterBytes = 67108864;
   public int MaxNestedSvgDepth { get; }

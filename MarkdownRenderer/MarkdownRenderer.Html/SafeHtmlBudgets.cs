@@ -9,7 +9,7 @@ public sealed class SafeHtmlBudgets : IEquatable<SafeHtmlBudgets>
     /// <summary>Default maximum HTML input length in UTF-16 code units.</summary>
     public const int DefaultMaxInputLength = 4 * 1024 * 1024;
     /// <summary>Default maximum parsed node count.</summary>
-    public const int DefaultMaxNodeCount = 20_000;
+    public const int DefaultMaxNodeCount = 100_000;
     /// <summary>Default maximum element nesting depth.</summary>
     public const int DefaultMaxNestingDepth = 64;
     /// <summary>Default maximum attributes retained per element.</summary>
