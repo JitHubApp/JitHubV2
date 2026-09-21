@@ -67,6 +67,11 @@ jobs:
               -OutputPath $output `
               -ExpectedCount 500 `
               -MaximumAgeDays 14
+
+            # PowerShell preserves the most recent native process exit code
+            # even after its exception is handled and later cmdlets succeed.
+            # Do this only after snapshot validation has completed.
+            $global:LASTEXITCODE = 0
           }
 
       - name: Upload pinned corpus
