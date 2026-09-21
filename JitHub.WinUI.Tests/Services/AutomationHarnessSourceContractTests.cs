@@ -185,6 +185,7 @@ public sealed class AutomationHarnessSourceContractTests
         Assert.Contains("save: false", nativeProbe, StringComparison.Ordinal);
         Assert.Contains("WaitForVisibleImages(host", nativeProbe, StringComparison.Ordinal);
         Assert.Contains("if (!repository.Readme.Available)", nativeProbe, StringComparison.Ordinal);
+        Assert.Contains("WaitForSourceEditorOrRenderedHost", nativeProbe, StringComparison.Ordinal);
         Assert.Contains("RepoCodeFileTree", nativeProbe, StringComparison.Ordinal);
         Assert.Contains("if (result.InfrastructureFailure)", nativeProbe, StringComparison.Ordinal);
         Assert.Contains("PreserveStartupDiagnostics(dataRoot, output, launcher)", nativeProbe, StringComparison.Ordinal);

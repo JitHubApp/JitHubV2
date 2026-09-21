@@ -175,9 +175,10 @@ internal static partial class ReadmeAuditProbe
                 accessToken,
                 browser?.Semantic.Images,
                 // GitHub intentionally displays some available README files as
-                // source (for example, extensionless READMEs it cannot classify).
-                // Exercise the same JitHub surface the Edge oracle observed
-                // instead of assuming that "available" means "rendered".
+                // source (for example, extensionless or over-sized Markdown).
+                // Such cases have no comparable browser article. JitHub may
+                // still render them richly; its chosen native surface must
+                // remain complete and healthy even though ratios are omitted.
                 expectRenderedReadme: browser?.ReadmeRendered is not false);
             if (native.UnavailableImages != 0)
             {
@@ -466,51 +467,53 @@ internal static partial class ReadmeAuditProbe
             TryOpenReadme(window, repository.Readme.Path, TimeSpan.FromSeconds(45));
             if (!expectRenderedReadme)
             {
-                AutomationElement sourceEditor = WaitForAutomationElement(
+                AutomationElement? sourceEditor = WaitForSourceEditorOrRenderedHost(
                     window,
-                    "RepoCodeEditor",
                     TimeSpan.FromSeconds(60),
-                    Path.Combine(output, "source-timeout.png"));
-                Stopwatch sourceTextProbe = Stopwatch.StartNew();
-                string sourceText = WaitForStableText(sourceEditor, TimeSpan.FromSeconds(30));
-                sourceTextProbe.Stop();
-                double sourceColdStartMs = wall.Elapsed.TotalMilliseconds;
-                double sourceFirstRenderMs = sourceColdStartMs - appReadyElapsedMs;
-                Stopwatch capture = Stopwatch.StartNew();
-                (int width, int height) = CaptureHost(
-                    window,
-                    sourceEditor,
-                    Path.Combine(output, "source-view.png"),
-                    captureRequest,
-                    captureResponse,
-                    useRendererCapture: false);
-                capture.Stop();
-                appProcess.Refresh();
-                double sourceCpuMs = Math.Max(
-                    0,
-                    appProcess.TotalProcessorTime.TotalMilliseconds - cpuAtReadyMs);
-                string? sourceFailure = File.Exists(renderFailure) ? File.ReadAllText(renderFailure) : null;
-                long sourcePeakWorkingSetBytes = appProcess.PeakWorkingSet64;
-                bool sourceCleanExit = CloseAndWait(window, appProcess, launcher);
-                window = null;
-                return new NativeAuditResult
+                    Path.Combine(output, "source-or-rendered-timeout.png"));
+                if (sourceEditor is not null)
                 {
-                    FirstRenderMs = sourceFirstRenderMs,
-                    ExperienceFirstRenderMs = sourceFirstRenderMs,
-                    ColdStartToFirstRenderMs = sourceColdStartMs,
-                    FullTraversalMs = sourceFirstRenderMs,
-                    AuditOverheadMs = sourceTextProbe.Elapsed.TotalMilliseconds + capture.Elapsed.TotalMilliseconds,
-                    FirstRenderCpuMs = sourceCpuMs,
-                    CpuMs = sourceCpuMs,
-                    PeakWorkingSetBytes = sourcePeakWorkingSetBytes,
-                    Text = NormalizeText(sourceText),
-                    Width = width,
-                    EstimatedContentHeight = height,
-                    UnavailableImages = 0,
-                    RawUnavailableImages = 0,
-                    RenderFailure = sourceFailure,
-                    CleanExit = sourceCleanExit,
-                };
+                    Stopwatch sourceTextProbe = Stopwatch.StartNew();
+                    string sourceText = WaitForStableText(sourceEditor, TimeSpan.FromSeconds(30));
+                    sourceTextProbe.Stop();
+                    double sourceColdStartMs = wall.Elapsed.TotalMilliseconds;
+                    double sourceFirstRenderMs = sourceColdStartMs - appReadyElapsedMs;
+                    Stopwatch capture = Stopwatch.StartNew();
+                    (int width, int height) = CaptureHost(
+                        window,
+                        sourceEditor,
+                        Path.Combine(output, "source-view.png"),
+                        captureRequest,
+                        captureResponse,
+                        useRendererCapture: false);
+                    capture.Stop();
+                    appProcess.Refresh();
+                    double sourceCpuMs = Math.Max(
+                        0,
+                        appProcess.TotalProcessorTime.TotalMilliseconds - cpuAtReadyMs);
+                    string? sourceFailure = File.Exists(renderFailure) ? File.ReadAllText(renderFailure) : null;
+                    long sourcePeakWorkingSetBytes = appProcess.PeakWorkingSet64;
+                    bool sourceCleanExit = CloseAndWait(window, appProcess, launcher);
+                    window = null;
+                    return new NativeAuditResult
+                    {
+                        FirstRenderMs = sourceFirstRenderMs,
+                        ExperienceFirstRenderMs = sourceFirstRenderMs,
+                        ColdStartToFirstRenderMs = sourceColdStartMs,
+                        FullTraversalMs = sourceFirstRenderMs,
+                        AuditOverheadMs = sourceTextProbe.Elapsed.TotalMilliseconds + capture.Elapsed.TotalMilliseconds,
+                        FirstRenderCpuMs = sourceCpuMs,
+                        CpuMs = sourceCpuMs,
+                        PeakWorkingSetBytes = sourcePeakWorkingSetBytes,
+                        Text = NormalizeText(sourceText),
+                        Width = width,
+                        EstimatedContentHeight = height,
+                        UnavailableImages = 0,
+                        RawUnavailableImages = 0,
+                        RenderFailure = sourceFailure,
+                        CleanExit = sourceCleanExit,
+                    };
+                }
             }
 
             AutomationElement host = WaitForHost(
@@ -1216,6 +1219,49 @@ internal static partial class ReadmeAuditProbe
             }
             Thread.Sleep(150);
         }
+    }
+
+    private static AutomationElement? WaitForSourceEditorOrRenderedHost(
+        Window window,
+        TimeSpan timeout,
+        string timeoutScreenshotPath)
+    {
+        Stopwatch stopwatch = Stopwatch.StartNew();
+        while (stopwatch.Elapsed < timeout)
+        {
+            AutomationElement? sourceEditor = window.FindFirstDescendant(
+                cf => cf.ByAutomationId("RepoCodeEditor"));
+            if (sourceEditor is not null &&
+                sourceEditor.BoundingRectangle.Width > 0 &&
+                sourceEditor.BoundingRectangle.Height > 0)
+            {
+                return sourceEditor;
+            }
+
+            AutomationElement? renderedHost = window.FindFirstDescendant(
+                cf => cf.ByAutomationId(HostAutomationId));
+            if (renderedHost is not null &&
+                renderedHost.BoundingRectangle.Width > 0 &&
+                renderedHost.BoundingRectangle.Height > 0)
+            {
+                return null;
+            }
+
+            Thread.Sleep(100);
+        }
+
+        try
+        {
+            IntPtr handle = new(window.Properties.NativeWindowHandle.ValueOrDefault);
+            using Bitmap screenshot = NativeMethods.CaptureWindowSurface(handle);
+            screenshot.Save(timeoutScreenshotPath, ImageFormat.Png);
+        }
+        catch
+        {
+        }
+
+        throw new TimeoutException(
+            "JitHub did not expose a source editor or rendered README within the deadline.");
     }
 
     private static AutomationElement WaitForHost(
