@@ -11,7 +11,10 @@ namespace MarkdownRenderer.Images;
 /// </summary>
 /// <remarks>
 /// Implementations must be safe to share between controls and to call
-/// concurrently. A control borrows this service and never disposes it.
+/// concurrently. They must honor cancellation promptly and enforce their own
+/// immutable active-operation deadlines; host queue time is deliberately not
+/// charged to an active-render deadline. A control borrows this service and
+/// never disposes it.
 /// </remarks>
 public interface IMarkdownSvgRenderer
 {

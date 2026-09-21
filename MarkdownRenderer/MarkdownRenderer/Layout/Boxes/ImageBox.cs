@@ -1599,7 +1599,6 @@ internal sealed class ImageBox : BlockBox
             return;
         }
 
-        CancellationTokenSource? deadline = null;
         CancellationToken cancellationToken = lifetimeToken;
         IMarkdownSvgDocument? openedDocument = null;
         SharedCanvasBitmapCache.Lease? bitmapLease = null;
@@ -1715,9 +1714,12 @@ internal sealed class ImageBox : BlockBox
 
             await _svgProviderAdmissionGate.WaitAsync(lifetimeToken).ConfigureAwait(false);
             providerAdmissionHeld = true;
-            deadline = CancellationTokenSource.CreateLinkedTokenSource(lifetimeToken);
-            deadline.CancelAfter(TimeSpan.FromSeconds(3));
-            cancellationToken = deadline.Token;
+
+            // The provider owns the hard deadline for each active worker
+            // transaction. Do not start a second wall-clock deadline around
+            // provider queueing plus Open + Render: a visible badge burst can
+            // legitimately wait behind earlier visible work even though every
+            // individual worker request stays inside its immutable ceiling.
 
             var openRequest = new MarkdownSvgOpenRequest(
                 rawBytes,
@@ -1940,13 +1942,11 @@ internal sealed class ImageBox : BlockBox
         }
         catch (OperationCanceledException)
         {
-            PublishSvgFailure(
-                new MarkdownSvgException(
-                    MarkdownSvgFailureReason.Timeout,
-                    "The SVG renderer exceeded its three-second deadline."),
-                resolvedCacheKey,
-                cachePermanently: false,
-                renderGeneration: renderGeneration);
+            PublishSvgGenerationInvalidated(renderGeneration);
+        }
+        catch (MarkdownSvgException ex) when (ex.Reason == MarkdownSvgFailureReason.Canceled)
+        {
+            PublishSvgGenerationInvalidated(renderGeneration);
         }
         catch (MarkdownSvgException ex)
         {
@@ -1991,7 +1991,6 @@ internal sealed class ImageBox : BlockBox
                 openGate!.Release();
             if (providerAdmissionHeld)
                 _svgProviderAdmissionGate.Release();
-            deadline?.Dispose();
 
             if (openedDocument is not null && !keepOpenedDocument)
                 ReleaseSvgDocument(openedDocument);
@@ -2284,15 +2283,12 @@ internal sealed class ImageBox : BlockBox
         using CancellationTokenSource admissionCancellation = CancellationTokenSource.CreateLinkedTokenSource(
             lifetimeWork.Token,
             workCancellation.Token);
-        CancellationTokenSource? deadline = null;
 
         try
         {
             await _svgProviderAdmissionGate.WaitAsync(admissionCancellation.Token).ConfigureAwait(false);
             providerAdmissionHeld = true;
-            deadline = CancellationTokenSource.CreateLinkedTokenSource(admissionCancellation.Token);
-            deadline.CancelAfter(TimeSpan.FromSeconds(3));
-            CancellationToken cancellationToken = deadline.Token;
+            CancellationToken cancellationToken = admissionCancellation.Token;
             CanvasDevice device = _context.ResourceCreator.Device;
             if (!SharedCanvasBitmapCache.TryAcquire(device, identity, out bitmapLease))
             {
@@ -2389,12 +2385,9 @@ internal sealed class ImageBox : BlockBox
         }
         catch (OperationCanceledException)
         {
-            PublishSvgTileFailure(
-                key,
-                renderGeneration,
-                new MarkdownSvgException(
-                    MarkdownSvgFailureReason.Timeout,
-                    "The SVG tile renderer exceeded its three-second deadline."));
+            // A provider-generation transition can cancel work without
+            // canceling this box. Leave the tile absent so the next paint can
+            // request it against the current generation.
         }
         catch (MarkdownSvgException ex) when (
             ex.Reason == MarkdownSvgFailureReason.Canceled &&
@@ -2404,13 +2397,8 @@ internal sealed class ImageBox : BlockBox
         }
         catch (MarkdownSvgException ex) when (ex.Reason == MarkdownSvgFailureReason.Canceled)
         {
-            PublishSvgTileFailure(
-                key,
-                renderGeneration,
-                new MarkdownSvgException(
-                    MarkdownSvgFailureReason.Timeout,
-                    "The SVG tile renderer exceeded its three-second deadline.",
-                    ex));
+            // A disposed or invalidated document is retryable against the
+            // replacement document and is not an unavailable image.
         }
         catch (MarkdownSvgException ex)
         {
@@ -2438,7 +2426,6 @@ internal sealed class ImageBox : BlockBox
                 renderGate!.Release();
             if (providerAdmissionHeld)
                 _svgProviderAdmissionGate.Release();
-            deadline?.Dispose();
             CompleteSvgTileWork(key, workCancellation);
             lifetimeWork.Dispose();
         }
