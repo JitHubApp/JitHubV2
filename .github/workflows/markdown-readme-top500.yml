@@ -50,11 +50,18 @@ jobs:
             .\eng\readme-audit\New-TopReadmeManifest.ps1 -Count 500 -OutputPath $output
           }
           catch {
-            if ($_.Exception.ToString() -notmatch 'rate limit exceeded') {
+            # The ephemeral GITHUB_TOKEN can occasionally be unavailable to
+            # gh even though Actions injected it (for example while GitHub is
+            # rotating an installation token). Treat that the same as a
+            # metadata rate limit: use only the recent, rigorously validated
+            # immutable snapshot. Parsing, validation, and integrity failures
+            # remain fatal and cannot silently fall back.
+            if ($_.Exception.ToString() -notmatch '(?i)(rate limit exceeded|GitHub CLI must be authenticated)') {
               throw
             }
 
-            Write-Warning 'GitHub rate-limited public corpus metadata; using the recent checked-in immutable snapshot.'
+            Write-Warning "Live GitHub corpus metadata is temporarily unavailable: $($_.Exception.Message)"
+            Write-Warning 'Using the recent checked-in immutable snapshot after strict validation.'
             .\eng\readme-audit\Copy-ValidatedTopReadmeManifest.ps1 `
               -SourcePath '.\eng\readme-audit\pinned-top500.json' `
               -OutputPath $output `

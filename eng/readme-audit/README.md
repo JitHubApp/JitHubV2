@@ -64,8 +64,9 @@ Manifest API calls use the workflow token normally. If a public repository's
 organization IP allow list rejects that token, the generator falls back only
 that request to GitHub's unauthenticated public API. Other authorization errors
 remain fatal, and only an explicit README 404 is treated as an absent README.
-If GitHub then rate-limits that anonymous public metadata path, CI may use the
-checked-in immutable `pinned-top500.json` snapshot only after validating its
+If GitHub rate-limits public metadata or its ephemeral Actions token is
+temporarily unavailable to the GitHub CLI, CI may use the checked-in immutable
+`pinned-top500.json` snapshot only after validating its
 schema, age (14 days or newer), exact rank coverage, uniqueness, commit/blob
 identities, and trusted GitHub URLs. No repository is skipped or substituted;
 stale or malformed fallback data fails the corpus job.
