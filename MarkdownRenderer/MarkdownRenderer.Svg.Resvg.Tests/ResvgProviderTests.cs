@@ -10,6 +10,16 @@ namespace MarkdownRenderer.Svg.Resvg.Tests;
 
 public sealed class ResvgProviderTests
 {
+    [Fact]
+    public async Task WarmUp_UsesInitializationDeadlineInsteadOfContentDeadline()
+    {
+        var options = new ResvgMarkdownSvgRendererOptions(
+            requestDeadline: TimeSpan.FromMilliseconds(1));
+        await using var renderer = new ResvgMarkdownSvgRenderer(options);
+
+        await renderer.WarmUpAsync();
+    }
+
     private static byte[] Svg(string value) => Encoding.UTF8.GetBytes(value);
 
     [Fact]

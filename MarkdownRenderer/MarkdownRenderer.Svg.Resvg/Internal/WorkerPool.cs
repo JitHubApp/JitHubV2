@@ -57,25 +57,8 @@ internal sealed class WorkerPool : IAsyncDisposable, IDisposable
             WorkerOperation.Hello,
             MarkdownSvgRenderPriority.Overscan,
             cancellationToken).ConfigureAwait(false);
-        WindowsWorkerProcess worker = await EnsureWorkerAsync(lease).ConfigureAwait(false);
-        WorkerRequest request = CreateControlRequest(WorkerOperation.Hello, worker);
-        try
-        {
-            WorkerResponse response = await worker.ExchangeAsync(
-                request,
-                _options.RequestDeadline,
-                CancellationToken.None).ConfigureAwait(false);
-            cancellationToken.ThrowIfCancellationRequested();
-            if (response.Status != WorkerStatus.Ok || response.OutputLength != 0)
-                throw new WorkerProtocolException("The resvg worker rejected its handshake.");
-        }
-        catch (Exception exception) when (IsWorkerTransportFailure(exception))
-        {
-            Invalidate(lease.Slot, worker);
-            if (cancellationToken.IsCancellationRequested)
-                throw new OperationCanceledException(cancellationToken);
-            throw;
-        }
+        _ = await EnsureWorkerAsync(lease).ConfigureAwait(false);
+        cancellationToken.ThrowIfCancellationRequested();
     }
 
     public async Task<WorkerOpenResult> OpenDocumentAsync(
@@ -90,6 +73,8 @@ internal sealed class WorkerPool : IAsyncDisposable, IDisposable
             openRequest.Priority,
             cancellationToken).ConfigureAwait(false);
         WindowsWorkerProcess worker = await EnsureWorkerAsync(lease).ConfigureAwait(false);
+        if (preflight.Info.HasText)
+            await EnsureFontCatalogReadyAsync(lease, worker, cancellationToken).ConfigureAwait(false);
         WorkerResponse response = await AttachDocumentAsync(
             lease,
             worker,
@@ -119,6 +104,9 @@ internal sealed class WorkerPool : IAsyncDisposable, IDisposable
             cancellationToken).ConfigureAwait(false);
         cancellationToken.ThrowIfCancellationRequested();
         WindowsWorkerProcess worker = await EnsureWorkerAsync(lease).ConfigureAwait(false);
+        cancellationToken.ThrowIfCancellationRequested();
+        if (preflight.Info.HasText)
+            await EnsureFontCatalogReadyAsync(lease, worker, cancellationToken).ConfigureAwait(false);
         cancellationToken.ThrowIfCancellationRequested();
         long started = _timeProvider.GetTimestamp();
         long requestGeneration = FontGeneration;
@@ -532,6 +520,43 @@ internal sealed class WorkerPool : IAsyncDisposable, IDisposable
             throw new ObjectDisposedException(nameof(WorkerPool));
         }
         return created;
+    }
+
+    private async Task EnsureFontCatalogReadyAsync(
+        WorkerLease lease,
+        WindowsWorkerProcess worker,
+        CancellationToken cancellationToken)
+    {
+        if (worker.IsFontCatalogReady)
+            return;
+
+        try
+        {
+            WorkerResponse response = await worker.ExchangeAsync(
+                CreateControlRequest(WorkerOperation.Hello, worker),
+                WorkerSchedulingPolicy.InitializationDeadline,
+                CancellationToken.None).ConfigureAwait(false);
+            cancellationToken.ThrowIfCancellationRequested();
+            if (response.Status != WorkerStatus.Ok || response.OutputLength != 0)
+                throw new WorkerProtocolException("The resvg worker rejected font-catalog initialization.");
+            worker.MarkFontCatalogReady();
+        }
+        catch (Exception exception) when (IsWorkerTransportFailure(exception))
+        {
+            Invalidate(lease.Slot, worker);
+            RecordStartupFailure();
+            if (cancellationToken.IsCancellationRequested)
+                throw new OperationCanceledException(cancellationToken);
+            if (exception is WorkerDeadlineException)
+            {
+                throw new WorkerInitializationDeadlineException(
+                    "The resvg worker did not initialize its font catalog before the initialization deadline.",
+                    exception);
+            }
+            throw new WorkerInitializationException(
+                "The resvg worker could not initialize its font catalog.",
+                exception);
+        }
     }
 
     private void Release(WorkerSlot slot, PendingWork pending)

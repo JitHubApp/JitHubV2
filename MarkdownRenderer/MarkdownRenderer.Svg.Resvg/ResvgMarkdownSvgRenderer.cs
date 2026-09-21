@@ -154,6 +154,16 @@ public sealed class ResvgMarkdownSvgRenderer : IMarkdownSvgRenderer, IDisposable
         {
             throw new MarkdownSvgException(MarkdownSvgFailureReason.Canceled, innerException: exception);
         }
+        catch (WorkerInitializationDeadlineException exception)
+        {
+            // Initialization is process-specific, not evidence that this SVG is
+            // hostile. Never quarantine a content hash for a cold-start timeout.
+            throw new MarkdownSvgException(MarkdownSvgFailureReason.Timeout, innerException: exception);
+        }
+        catch (WorkerInitializationException exception)
+        {
+            throw new MarkdownSvgException(MarkdownSvgFailureReason.WorkerFailure, innerException: exception);
+        }
         catch (WorkerDeadlineException exception)
         {
             _quarantine.TryAdd(identity, 0);

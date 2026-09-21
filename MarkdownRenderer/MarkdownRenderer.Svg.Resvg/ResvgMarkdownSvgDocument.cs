@@ -91,6 +91,16 @@ internal sealed class ResvgMarkdownSvgDocument : IMarkdownSvgDocument
                 {
                     throw new MarkdownSvgException(MarkdownSvgFailureReason.Canceled, innerException: exception);
                 }
+                catch (WorkerInitializationDeadlineException exception)
+                {
+                    // A secondary worker can be created lazily for this render.
+                    // Its cold-start state says nothing about the SVG content.
+                    throw new MarkdownSvgException(MarkdownSvgFailureReason.Timeout, innerException: exception);
+                }
+                catch (WorkerInitializationException exception)
+                {
+                    throw new MarkdownSvgException(MarkdownSvgFailureReason.WorkerFailure, innerException: exception);
+                }
                 catch (WorkerDeadlineException exception)
                 {
                     _renderer.QuarantineWorkerFailure(_identity);

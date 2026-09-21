@@ -17,6 +17,7 @@ internal sealed partial class WindowsWorkerProcess : IAsyncDisposable, IDisposab
     private readonly SemaphoreSlim _transactions = new(1, 1);
     private readonly int _queueCapacity;
     private int _queued;
+    private int _fontCatalogReady;
     private int _disposed;
 
     private WindowsWorkerProcess(
@@ -37,6 +38,7 @@ internal sealed partial class WindowsWorkerProcess : IAsyncDisposable, IDisposab
     public ulong NonceLow { get; }
     public ulong NonceHigh { get; }
     public long InstanceId { get; }
+    public bool IsFontCatalogReady => Volatile.Read(ref _fontCatalogReady) != 0;
     public bool HasExited
     {
         get
@@ -98,14 +100,16 @@ internal sealed partial class WindowsWorkerProcess : IAsyncDisposable, IDisposab
                 job);
 
             using var startup = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
-            startup.CancelAfter(options.RequestDeadline);
+            startup.CancelAfter(WorkerSchedulingPolicy.InitializationDeadline);
             try
             {
                 await pipe.WaitForConnectionAsync(startup.Token).ConfigureAwait(false);
             }
             catch (OperationCanceledException exception) when (!cancellationToken.IsCancellationRequested)
             {
-                throw new WorkerDeadlineException("The resvg worker did not complete startup before its deadline.", exception);
+                throw new WorkerInitializationDeadlineException(
+                    "The resvg worker did not complete startup before its initialization deadline.",
+                    exception);
             }
 
             var worker = new WindowsWorkerProcess(
@@ -128,6 +132,8 @@ internal sealed partial class WindowsWorkerProcess : IAsyncDisposable, IDisposab
             pipe?.Dispose();
         }
     }
+
+    public void MarkFontCatalogReady() => Volatile.Write(ref _fontCatalogReady, 1);
 
     public async Task<WorkerResponse> ExchangeAsync(
         WorkerRequest request,
@@ -714,9 +720,25 @@ internal sealed partial class WindowsWorkerProcess : IAsyncDisposable, IDisposab
     private static partial bool CloseHandle(nint handle);
 }
 
-internal sealed class WorkerDeadlineException : Exception
+internal class WorkerDeadlineException : Exception
 {
     public WorkerDeadlineException(string message, Exception inner)
+        : base(message, inner)
+    {
+    }
+}
+
+internal sealed class WorkerInitializationDeadlineException : WorkerDeadlineException
+{
+    public WorkerInitializationDeadlineException(string message, Exception inner)
+        : base(message, inner)
+    {
+    }
+}
+
+internal sealed class WorkerInitializationException : Exception
+{
+    public WorkerInitializationException(string message, Exception inner)
         : base(message, inner)
     {
     }

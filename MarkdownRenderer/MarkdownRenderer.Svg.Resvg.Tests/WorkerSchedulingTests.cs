@@ -85,6 +85,11 @@ public sealed class WorkerSchedulingTests
     [Fact]
     public void TimePolicies_UseExactThirtySecondAndHundredMillisecondBoundaries()
     {
+        Assert.Equal(TimeSpan.FromSeconds(15), WorkerSchedulingPolicy.InitializationDeadline);
+        Assert.True(
+            WorkerSchedulingPolicy.InitializationDeadline >
+            ResvgMarkdownSvgRendererOptions.HardMaxRequestDeadline);
+
         DateTimeOffset origin = DateTimeOffset.UnixEpoch;
         Assert.False(WorkerSchedulingPolicy.ShouldRetireSecondary(
             origin,

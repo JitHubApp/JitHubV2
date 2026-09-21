@@ -208,7 +208,8 @@ fn run() -> Result<(), String> {
         let response = match request.kind {
             KIND_HELLO => {
                 validate_control_request(&request, false)?;
-                Ok(Response::ok(&request, Metadata::default(), 0, 0, 0))
+                ensure_font_database(&mut state)
+                    .map(|()| Response::ok(&request, Metadata::default(), 0, 0, 0))
             }
             KIND_OPEN | KIND_RENDER => process(&mut state, &request),
             KIND_TRIM_CACHE => {
@@ -1640,14 +1641,7 @@ fn acquire_tree(
         return Ok((entry.tree.clone(), entry.metadata, Some(key)));
     }
     let font_database = if inspection.metadata.has_text {
-        if state.font_database.is_none() {
-            state.font_database = Some(
-                state
-                    .font_database_receiver
-                    .recv()
-                    .map_err(|_| Reject::Worker("font catalog failed"))?,
-            );
-        }
+        ensure_font_database(state)?;
         state.font_database.clone()
     } else {
         None
@@ -1708,6 +1702,18 @@ fn acquire_tree(
     );
     state.cache_cost = state.cache_cost.saturating_add(cost);
     Ok((tree, metadata, Some(key)))
+}
+
+fn ensure_font_database(state: &mut WorkerState) -> Result<(), Reject> {
+    if state.font_database.is_none() {
+        state.font_database = Some(
+            state
+                .font_database_receiver
+                .recv()
+                .map_err(|_| Reject::Worker("font catalog failed"))?,
+        );
+    }
+    Ok(())
 }
 
 fn parsed_resource_cost(source_length: usize, inspection: &Inspection) -> u64 {
