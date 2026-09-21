@@ -60,7 +60,11 @@ jobs:
   preview-validation:
     name: Test, benchmark, consume, NativeAOT, pack, and inspect
     runs-on: windows-latest
-    timeout-minutes: 90
+    # The external-gate fixture deliberately validates hundreds of hostile
+    # report mutations in isolated PowerShell processes. Hosted Windows
+    # runners can spend more than an hour in that exhaustive contract suite,
+    # so leave enough time for the independent package/AOT gates that follow.
+    timeout-minutes: 180
     defaults:
       run:
         shell: pwsh
@@ -209,6 +213,30 @@ jobs:
               --no-restore `
               --disable-build-servers
             if ($LASTEXITCODE -ne 0) { throw "Build failed for '$project'." }
+          }
+
+      - name: Prime the external performance-gate script
+        run: |
+          # The first child PowerShell parse on a fresh hosted runner may be
+          # delayed by script scanning. Prime that exact immutable script
+          # before the fixture's bounded child-process checks begin.
+          $script = Resolve-Path '.\MarkdownRenderer\eng\Test-MarkdownWinUIPerformanceGates.ps1'
+          $missingReport = Join-Path $env:RUNNER_TEMP 'expected-missing-performance-report.json'
+          $process = Start-Process `
+            -FilePath 'pwsh' `
+            -ArgumentList @(
+              '-NoLogo',
+              '-NoProfile',
+              '-NonInteractive',
+              '-File',
+              $script.Path,
+              '-ReportPath',
+              $missingReport) `
+            -PassThru `
+            -Wait `
+            -WindowStyle Hidden
+          if ($process.ExitCode -eq 0) {
+            throw 'The performance-gate priming invocation unexpectedly accepted a missing report.'
           }
 
       - name: Run Core, GitHub, HTML, Math, Mermaid, SVG, TextMate, and conformance tests
