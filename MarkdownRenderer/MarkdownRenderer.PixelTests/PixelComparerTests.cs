@@ -129,6 +129,97 @@ public sealed class PixelComparerTests
     }
 
     [Fact]
+    public void Compare_ToleratesFractionalAlphaRedistributionAlongSameBoundary()
+    {
+        PixelComparer.DiffReport report = PixelComparer.Compare(
+            [255, 255, 255, 48, 255, 255, 255, 207],
+            [255, 255, 255, 207, 255, 255, 255, 48],
+            2,
+            1,
+            channelTolerance: 0);
+
+        Assert.Equal(1, report.AlphaIntersectionOverUnion);
+        Assert.True(report.MeanChannelDelta > 0);
+        Assert.Equal(1, report.StructuralSimilarity);
+    }
+
+    [Fact]
+    public void Compare_SsimStillRejectsVisibleColorChanges()
+    {
+        PixelComparer.DiffReport report = PixelComparer.Compare(
+            [255, 255, 255, 255, 255, 255, 255, 255],
+            [0, 0, 0, 255, 0, 0, 0, 255],
+            2,
+            1,
+            channelTolerance: 0);
+
+        Assert.True(report.StructuralSimilarity < 0.01);
+        Assert.Equal(1, report.AlphaIntersectionOverUnion);
+    }
+
+    [Fact]
+    public void Compare_AlphaIouStillRejectsMissingVisibleRegions()
+    {
+        byte[] ours = new byte[5 * 4];
+        byte[] browser = new byte[5 * 4];
+        ours[3] = 255;
+        browser[3] = 255;
+        browser[(4 * 4) + 3] = 255;
+
+        PixelComparer.DiffReport report = PixelComparer.Compare(
+            ours,
+            browser,
+            5,
+            1,
+            channelTolerance: 0);
+
+        Assert.Equal(0.5, report.AlphaIntersectionOverUnion, precision: 12);
+    }
+
+    [Fact]
+    public void Compare_AlphaIouDoesNotHideGeometryBeyondBoundaryTolerance()
+    {
+        byte[] ours = new byte[3 * 4];
+        byte[] browser = new byte[3 * 4];
+        ours[3] = 255;
+        browser[(2 * 4) + 3] = 255;
+
+        PixelComparer.DiffReport report = PixelComparer.Compare(
+            ours,
+            browser,
+            3,
+            1,
+            channelTolerance: 0);
+
+        Assert.Equal(0, report.AlphaIntersectionOverUnion);
+    }
+
+    [Fact]
+    public void Compare_BoundaryToleranceDoesNotHideOnePixelTranslationFromExactDelta()
+    {
+        byte[] ours = new byte[2 * 4];
+        byte[] browser = new byte[2 * 4];
+        ours[0] = 255;
+        ours[1] = 255;
+        ours[2] = 255;
+        ours[3] = 255;
+        browser[4] = 255;
+        browser[5] = 255;
+        browser[6] = 255;
+        browser[7] = 255;
+
+        PixelComparer.DiffReport report = PixelComparer.Compare(
+            ours,
+            browser,
+            2,
+            1,
+            channelTolerance: 0);
+
+        Assert.Equal(1, report.AlphaIntersectionOverUnion);
+        Assert.True(report.MeanChannelDelta > 2);
+    }
+
+    [Fact]
     public void SaveRgbaAsPng_SupportsDeepArtifactPaths()
     {
         string root = Path.Combine(Path.GetTempPath(), $"mdr-pixel-path-{Guid.NewGuid():N}");

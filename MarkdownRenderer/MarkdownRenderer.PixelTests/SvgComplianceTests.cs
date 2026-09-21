@@ -18,8 +18,9 @@ namespace MarkdownRenderer.PixelTests;
 /// so manual inspection is possible after the run.
 ///
 /// The enforced gates are the 1.0 browser-relative contract: geometry/raster
-/// fixtures require mean channel delta ≤ 2, SSIM ≥ .995, and alpha IoU ≥ .995;
-/// text/filter fixtures require mean delta ≤ 5, SSIM ≥ .980, and alpha IoU ≥ .980.
+/// fixtures require mean channel delta ≤ 2, SSIM ≥ .995, and one-pixel
+/// boundary-tolerant alpha IoU ≥ .995; text/filter fixtures require mean
+/// delta ≤ 5, SSIM ≥ .980, and tolerant alpha IoU ≥ .980.
 ///
 /// Tests self-skip when no headless browser is installed (CI machines without
 /// Chrome/Edge) — the resvg render still runs end-to-end so worker deployment,
@@ -154,14 +155,15 @@ public sealed class SvgComplianceTests
             File.WriteAllText(Path.Combine(artifactsDir, "diff-stats.txt"),
                 $"{cw}x{ch}\nmaxChannelDelta={diff.MaxChannelDelta}\nmeanChannelDelta={diff.MeanChannelDelta:F3}\n" +
                 $"differingPixelFraction={diff.DifferingPixelFraction:F4}\nssim={diff.StructuralSimilarity:F6}\n" +
-                $"alphaIoU={diff.AlphaIntersectionOverUnion:F6}\n");
+                $"alphaBoundaryTolerancePx=1\nalphaIoU={diff.AlphaIntersectionOverUnion:F6}\n");
 
             Assert.True(diff.MeanChannelDelta <= maxMeanChannelDelta,
                 $"{fixtureRelPath}: mean channel delta {diff.MeanChannelDelta:F3} > {maxMeanChannelDelta}");
             Assert.True(diff.StructuralSimilarity >= minimumSsim,
                 $"{fixtureRelPath}: SSIM {diff.StructuralSimilarity:F6} < {minimumSsim:F3}");
             Assert.True(diff.AlphaIntersectionOverUnion >= minimumAlphaIou,
-                $"{fixtureRelPath}: alpha IoU {diff.AlphaIntersectionOverUnion:F6} < {minimumAlphaIou:F3}");
+                $"{fixtureRelPath}: boundary-tolerant alpha IoU " +
+                $"{diff.AlphaIntersectionOverUnion:F6} < {minimumAlphaIou:F3}");
         }
         finally
         {
