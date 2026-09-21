@@ -322,16 +322,39 @@ public sealed class SvgResourceBudgetTests
     }
 
     [Fact]
-    public void StaticSnapshot_DoesNotRemoveOtherRejectedActiveContent()
+    public void StaticSnapshot_RemovesSvgScriptAndAnimationBeforeProviderAdmission()
     {
         byte[] source = Bytes(
             "<svg><script>alert(1)</script><rect><animate attributeName='opacity' from='0'/></rect></svg>");
 
         byte[] snapshot = SvgStaticSnapshot.Create(source, CancellationToken.None);
+        string text = Encoding.UTF8.GetString(snapshot);
         SvgResourceBudgetResult result = SvgResourceBudget.Validate(snapshot, CancellationToken.None);
 
-        Assert.False(result.Accepted);
-        Assert.Equal("active-content", result.Reason);
+        Assert.True(result.Accepted, result.Reason);
+        Assert.DoesNotContain("<script", text, StringComparison.OrdinalIgnoreCase);
+        Assert.DoesNotContain("<animate", text, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("opacity=\"0\"", text, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void StaticSnapshot_RendersInertBrowserImageBadgeWithoutExecutingItsSizingScript()
+    {
+        byte[] source = Bytes(
+            "<svg xmlns='http://www.w3.org/2000/svg' width='119.46' height='20'>" +
+            "<rect width='119.46' height='20' fill='#555'/>" +
+            "<text x='32.07' y='14'>user base</text>" +
+            "<script type='text/javascript'>document.currentScript.closest('svg').setAttribute('width', 1)</script>" +
+            "</svg>");
+
+        byte[] snapshot = SvgStaticSnapshot.Create(source, CancellationToken.None);
+        string text = Encoding.UTF8.GetString(snapshot);
+        SvgResourceBudgetResult result = SvgResourceBudget.Validate(snapshot, CancellationToken.None);
+
+        Assert.True(result.Accepted, result.Reason);
+        Assert.DoesNotContain("<script", text, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("width=\"119.46\"", text, StringComparison.Ordinal);
+        Assert.Contains("user base", text, StringComparison.Ordinal);
     }
 
     [Fact]
@@ -396,6 +419,29 @@ public sealed class SvgResourceBudgetTests
         Assert.DoesNotContain("foreignObject", text, StringComparison.OrdinalIgnoreCase);
         Assert.Contains("Status 461 open 1309 closed", text, StringComparison.Ordinal);
         Assert.Contains("x=\"0\"", text, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void StaticSnapshot_ConvertsStylesheetBackedBadgeForeignObject()
+    {
+        byte[] source = Bytes(
+            "<svg xmlns='http://www.w3.org/2000/svg' width='132' height='20'>" +
+            "<foreignObject class='star-svg-obj' x='0' y='0' width='100%' height='100%'>" +
+            "<style>.box{display:flex;background:#fbefd8}.label{font:12px Arial}</style>" +
+            "<div xmlns='http://www.w3.org/1999/xhtml' class='box'>" +
+            "<div><svg xmlns='http://www.w3.org/2000/svg' width='61' height='16'>" +
+            "<rect width='61' height='16' fill='#e9a014'/></svg></div>" +
+            "<div class='label'><span>472</span><span> Stars</span></div>" +
+            "</div></foreignObject></svg>");
+
+        byte[] snapshot = SvgStaticSnapshot.Create(source, CancellationToken.None);
+        string text = Encoding.UTF8.GetString(snapshot);
+        SvgResourceBudgetResult result = SvgResourceBudget.Validate(snapshot, CancellationToken.None);
+
+        Assert.True(result.Accepted, result.Reason);
+        Assert.DoesNotContain("foreignObject", text, StringComparison.OrdinalIgnoreCase);
+        Assert.DoesNotContain("<style", text, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("472 Stars", text, StringComparison.Ordinal);
     }
 
     [Fact]

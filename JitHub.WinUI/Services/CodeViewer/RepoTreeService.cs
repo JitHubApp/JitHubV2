@@ -446,6 +446,7 @@ public sealed class RepoTreeService : IRepoTreeService
         QueryFetchPolicy fetchPolicy = QueryFetchPolicy.StaleFirst)
     {
         (string token, string userId) = GetAuthenticationContext();
+        string readmeToken = token;
         CachedResult<GitHubRepositoryContent> result;
         try
         {
@@ -474,6 +475,7 @@ public sealed class RepoTreeService : IRepoTreeService
                     cancellationToken),
                 ct).ConfigureAwait(false);
             result = CreateFreshResult(publicContent);
+            readmeToken = GitHubAuthenticationConstants.PublicAccessToken;
         }
 
         GitHubRepositoryContent content = result.Value
@@ -489,8 +491,8 @@ public sealed class RepoTreeService : IRepoTreeService
             FilePreviewResolver.IsGitHubReadmePath(readmePath))
         {
             renderedHtml = GitHubRenderedReadmeHtmlNormalizer.NormalizeForMarkdownPipeline(
-                await _gitHubClientService.GetRenderedReadmeHtmlAsync(
-                    token,
+                await GetRenderedReadmeHtmlWithPublicFallbackAsync(
+                    readmeToken,
                     owner,
                     name,
                     refOrSha,
@@ -574,17 +576,58 @@ public sealed class RepoTreeService : IRepoTreeService
         return MapResult(result, mapped);
     }
 
-    internal static bool IsPublicDataAuthenticationPolicyDenial(GitHubRateLimitException exception) =>
-        exception.StatusCode == HttpStatusCode.Forbidden &&
-        exception.RetryAfter is null &&
-        exception.RateLimitRemaining is not 0 &&
-        (exception.Message.Contains("IP allow list", StringComparison.OrdinalIgnoreCase) ||
-         exception.Message.Contains("Resource not accessible by integration", StringComparison.OrdinalIgnoreCase));
+    internal static bool IsAnonymousPublicDataFallbackCandidate(GitHubRateLimitException exception)
+    {
+        if (exception.RetryAfter is not null ||
+            exception.StatusCode is not (HttpStatusCode.Forbidden or HttpStatusCode.TooManyRequests))
+        {
+            return false;
+        }
+
+        bool authenticationPolicyDenial =
+            exception.RateLimitRemaining is not 0 &&
+            (exception.Message.Contains("IP allow list", StringComparison.OrdinalIgnoreCase) ||
+             exception.Message.Contains("Resource not accessible by integration", StringComparison.OrdinalIgnoreCase));
+        bool authenticatedQuotaExhausted =
+            exception.Message.Contains("API rate limit exceeded", StringComparison.OrdinalIgnoreCase) &&
+            exception.RateLimitRemaining is null or 0;
+        return authenticationPolicyDenial || authenticatedQuotaExhausted;
+    }
 
     private bool CanRetryPublicDataAnonymously(GitHubRateLimitException exception, string token) =>
         _gitHubClientService is not null &&
         !GitHubAuthenticationConstants.IsPublicAccessToken(token) &&
-        IsPublicDataAuthenticationPolicyDenial(exception);
+        IsAnonymousPublicDataFallbackCandidate(exception);
+
+    private async Task<string> GetRenderedReadmeHtmlWithPublicFallbackAsync(
+        string token,
+        string owner,
+        string name,
+        string refOrSha,
+        CancellationToken cancellationToken)
+    {
+        try
+        {
+            return await _gitHubClientService!.GetRenderedReadmeHtmlAsync(
+                token,
+                owner,
+                name,
+                refOrSha,
+                cancellationToken).ConfigureAwait(false);
+        }
+        catch (GitHubRateLimitException exception) when (CanRetryPublicDataAnonymously(exception, token))
+        {
+            return await ExecuteAnonymousFallbackAsync(
+                exception,
+                ct => _gitHubClientService!.GetRenderedReadmeHtmlAsync(
+                    GitHubAuthenticationConstants.PublicAccessToken,
+                    owner,
+                    name,
+                    refOrSha,
+                    ct),
+                cancellationToken).ConfigureAwait(false);
+        }
+    }
 
     private static CachedResult<T> CreateFreshResult<T>(T value)
         where T : class

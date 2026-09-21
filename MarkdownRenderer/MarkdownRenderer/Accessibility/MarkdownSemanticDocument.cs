@@ -674,6 +674,7 @@ internal sealed class MarkdownSemanticDocument
             };
 
             MarkdownSemanticNode? flattenedHeading = null;
+            MarkdownSemanticNode? flattenedCodeBlock = null;
 
             for (int runIndex = 0; runIndex < inline.Runs.Count; runIndex++)
             {
@@ -699,6 +700,9 @@ internal sealed class MarkdownSemanticDocument
                 int runEnd = _text.Length;
                 _spans.Add(new MarkdownTextSpan(runStart, runEnd, inline, run, null, null, null));
                 int flattenedHeadingLevel = GetHeadingLevel(run.SemanticHeadingKey);
+                bool isFlattenedCodeBlock =
+                    inline.ElementKey != MarkdownElementKeys.CodeBlock &&
+                    run.ElementKey == MarkdownElementKeys.CodeBlock;
                 if (flattenedHeadingLevel > 0)
                 {
                     if (flattenedHeading is null || flattenedHeading.HeadingLevel != flattenedHeadingLevel)
@@ -723,7 +727,30 @@ internal sealed class MarkdownSemanticDocument
                     flattenedHeading = null;
                 }
 
-                MarkdownSemanticNode semanticParent = flattenedHeading ?? node;
+                if (isFlattenedCodeBlock)
+                {
+                    if (flattenedCodeBlock is null)
+                    {
+                        flattenedCodeBlock = new MarkdownSemanticNode(MarkdownSemanticRole.CodeBlock, inline)
+                        {
+                            InlineBox = inline,
+                            InlineRun = run,
+                            TextStart = runStart,
+                            TextEnd = runEnd,
+                        };
+                        node.Add(flattenedCodeBlock);
+                    }
+                    else
+                    {
+                        flattenedCodeBlock.TextEnd = runEnd;
+                    }
+                }
+                else
+                {
+                    flattenedCodeBlock = null;
+                }
+
+                MarkdownSemanticNode semanticParent = flattenedCodeBlock ?? flattenedHeading ?? node;
                 if (run is LinkRun link)
                 {
                     semanticParent.Add(new MarkdownSemanticNode(MarkdownSemanticRole.Link, inline)

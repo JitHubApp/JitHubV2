@@ -10,10 +10,10 @@ using System.Xml;
 namespace MarkdownRenderer.Layout.Boxes;
 
 /// <summary>
-/// Converts declarative SVG animation into a deterministic static first frame.
-/// The renderer remains a static-SVG renderer: animation nodes never cross the
-/// host/worker boundary, and the normal security preflight validates the
-/// resulting document before it is opened by the provider.
+/// Converts browser-image SVG features into a deterministic, inert first frame.
+/// The renderer remains a static-SVG renderer: scripts and animation nodes never
+/// cross the host/worker boundary, and the normal security preflight validates
+/// the resulting document before it is opened by the provider.
 /// </summary>
 internal static class SvgStaticSnapshot
 {
@@ -53,6 +53,9 @@ internal static class SvgStaticSnapshot
             List<XmlElement> animationElements = FindAnimationElements(
                 document,
                 cancellationToken);
+            List<XmlElement> scriptElements = FindSanitizableScriptElements(
+                document,
+                cancellationToken);
             List<XmlElement> foreignObjects = FindForeignObjectElements(
                 document,
                 cancellationToken);
@@ -65,6 +68,19 @@ internal static class SvgStaticSnapshot
                 "style",
                 cancellationToken);
             bool changed = false;
+
+            foreach (XmlElement script in scriptElements)
+            {
+                cancellationToken.ThrowIfCancellationRequested();
+                // Script is never executed for an SVG loaded through a browser
+                // image element. Removing SVG-namespace scripts reproduces that
+                // inert static-image surface while ensuring executable bytes do
+                // not reach either host preflight or the isolated worker. XHTML
+                // scripts inside foreignObject are deliberately not matched and
+                // keep the entire unsupported branch rejected.
+                script.ParentNode?.RemoveChild(script);
+                changed = true;
+            }
 
             foreach (XmlElement animation in animationElements)
             {
@@ -224,6 +240,29 @@ internal static class SvgStaticSnapshot
         }
 
         return result;
+    }
+
+    private static List<XmlElement> FindSanitizableScriptElements(
+        XmlDocument document,
+        CancellationToken cancellationToken)
+    {
+        List<XmlElement> scripts = FindElements(document, "script", cancellationToken);
+        scripts.RemoveAll(script =>
+        {
+            for (XmlNode? ancestor = script.ParentNode; ancestor is XmlElement element; ancestor = ancestor.ParentNode)
+            {
+                cancellationToken.ThrowIfCancellationRequested();
+                if ((string.IsNullOrEmpty(element.NamespaceURI) ||
+                        element.NamespaceURI.Equals(SvgNamespace, StringComparison.Ordinal)) &&
+                    element.LocalName.Equals("foreignObject", StringComparison.OrdinalIgnoreCase))
+                {
+                    return true;
+                }
+            }
+
+            return false;
+        });
+        return scripts;
     }
 
     private static List<XmlElement> FindElements(
@@ -782,6 +821,13 @@ internal static class SvgStaticSnapshot
                 return false;
             }
 
+            if ((attribute.LocalName.Equals("class", StringComparison.OrdinalIgnoreCase) ||
+                    attribute.LocalName.Equals("id", StringComparison.OrdinalIgnoreCase)) &&
+                !IsSafeCssToken(attribute.Value.Trim(), 512))
+            {
+                return false;
+            }
+
             if (attribute.LocalName.Equals("selection", StringComparison.OrdinalIgnoreCase) &&
                 !bool.TryParse(attribute.Value, out _))
             {
@@ -808,6 +854,8 @@ internal static class SvgStaticSnapshot
         name.Equals("style", StringComparison.OrdinalIgnoreCase) ||
         name.Equals("transform", StringComparison.OrdinalIgnoreCase) ||
         name.Equals("opacity", StringComparison.OrdinalIgnoreCase) ||
+        name.Equals("class", StringComparison.OrdinalIgnoreCase) ||
+        name.Equals("id", StringComparison.OrdinalIgnoreCase) ||
         name.Equals("requiredFeatures", StringComparison.OrdinalIgnoreCase) ||
         // Generated Trendshift cards use this inert authoring hint.
         name.Equals("selection", StringComparison.OrdinalIgnoreCase);
@@ -850,6 +898,13 @@ internal static class SvgStaticSnapshot
         if (node is XmlElement svgElement &&
             svgElement.NamespaceURI.Equals(SvgNamespace, StringComparison.Ordinal))
         {
+            // CSS inside an SVG image's foreignObject is inert once the entire
+            // HTML branch is replaced by native SVG text. Accept only a
+            // stylesheet whose XML children are text; discard it rather than
+            // forwarding CSS or executable web content to the worker.
+            if (svgElement.LocalName.Equals("style", StringComparison.OrdinalIgnoreCase))
+                return HasOnlyTextChildren(svgElement);
+
             return IsSafeDiscardedSvgGraphic(svgElement);
         }
 
@@ -880,6 +935,23 @@ internal static class SvgStaticSnapshot
         }
         if (addsBoundary)
             builder.Append(' ');
+        return true;
+    }
+
+    private static bool HasOnlyTextChildren(XmlElement element)
+    {
+        foreach (XmlNode child in element.ChildNodes)
+        {
+            if (child.NodeType is not (
+                    XmlNodeType.Text or
+                    XmlNodeType.CDATA or
+                    XmlNodeType.Whitespace or
+                    XmlNodeType.SignificantWhitespace))
+            {
+                return false;
+            }
+        }
+
         return true;
     }
 
@@ -1216,6 +1288,7 @@ internal static class SvgStaticSnapshot
     private static bool MayRequireStaticSnapshot(ReadOnlySpan<byte> bytes)
     {
         ReadOnlySpan<byte> marker = "<animate"u8;
+        ReadOnlySpan<byte> scriptMarker = "<script"u8;
         ReadOnlySpan<byte> setMarker = "<set"u8;
         ReadOnlySpan<byte> discardMarker = "<discard"u8;
         ReadOnlySpan<byte> foreignObjectMarker = "<foreignObject"u8;
@@ -1228,6 +1301,7 @@ internal static class SvgStaticSnapshot
         for (int index = 0; index < bytes.Length; index++)
         {
             if (AsciiStartsWithIgnoreCase(bytes[index..], marker) ||
+                AsciiStartsWithIgnoreCase(bytes[index..], scriptMarker) ||
                 AsciiStartsWithIgnoreCase(bytes[index..], setMarker) ||
                 AsciiStartsWithIgnoreCase(bytes[index..], discardMarker) ||
                 AsciiStartsWithIgnoreCase(bytes[index..], foreignObjectMarker) ||

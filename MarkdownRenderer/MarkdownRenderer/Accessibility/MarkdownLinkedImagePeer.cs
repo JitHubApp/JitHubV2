@@ -42,6 +42,11 @@ internal sealed partial class MarkdownLinkedImagePeer : FrameworkElementAutomati
 
     protected override string GetHelpTextCore() => _run.LinkUrl ?? string.Empty;
 
+    protected override string GetItemStatusCore() =>
+        _run.Image.AccessibilityState == MarkdownImageAccessibilityState.Loading
+            ? GetImageName(MarkdownImageAccessibilityState.Loading)
+            : string.Empty;
+
     protected override string GetAutomationIdCore() =>
         MarkdownAutomationIdentity.ForRun("LinkedImage", _parent.Box, _run);
 
@@ -102,8 +107,11 @@ internal sealed partial class MarkdownLinkedImagePeer : FrameworkElementAutomati
 
         string oldName = GetImageName(_lastImageState);
         string newName = GetImageName(current);
+        string oldStatus = _lastImageState == MarkdownImageAccessibilityState.Loading ? oldName : string.Empty;
+        string newStatus = current == MarkdownImageAccessibilityState.Loading ? newName : string.Empty;
         _lastImageState = current;
         RaisePropertyChangedEvent(AutomationElementIdentifiers.NameProperty, oldName, newName);
+        RaisePropertyChangedEvent(AutomationElementIdentifiers.ItemStatusProperty, oldStatus, newStatus);
         RaiseAutomationEvent(AutomationEvents.LiveRegionChanged);
     }
 

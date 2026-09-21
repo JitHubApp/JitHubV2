@@ -56,6 +56,7 @@ public sealed class MarkdownEngine : IDisposable
     private long _outstandingSourceBytes;
     private long _completedParseWeightBytes;
     private long _sourceKeyHashCount;
+    private long _parseGeneration;
     private CompletedParse? _lastCompletedParse;
     private WeakReference<string>? _lastCompletedSourceIdentity;
     private bool _disposeRequested;
@@ -236,7 +237,10 @@ public sealed class MarkdownEngine : IDisposable
                         "The markdown parse admission limit is full. Retry after an outstanding parse completes."));
                 }
 
-                inFlight = new InFlightParse(sourceKey, sourceBytes);
+                inFlight = new InFlightParse(
+                    sourceKey,
+                    sourceBytes,
+                    unchecked(++_parseGeneration));
                 _inFlightParses[sourceKey] = inFlight;
                 _outstandingParseCount++;
                 _outstandingSourceBytes += sourceBytes;
@@ -342,16 +346,25 @@ public sealed class MarkdownEngine : IDisposable
         InFlightParse inFlight,
         CancellationToken cancellationToken)
     {
+        bool receivedDocument = false;
         try
         {
             if (!cancellationToken.CanBeCanceled)
-                return await inFlight.ParseTask.ConfigureAwait(false);
+            {
+                MarkdownDocument document = await inFlight.ParseTask.ConfigureAwait(false);
+                receivedDocument = true;
+                return document;
+            }
 
-            return await inFlight.ParseTask.WaitAsync(cancellationToken).ConfigureAwait(false);
+            MarkdownDocument cancelableDocument = await inFlight.ParseTask
+                .WaitAsync(cancellationToken)
+                .ConfigureAwait(false);
+            receivedDocument = true;
+            return cancelableDocument;
         }
         finally
         {
-            ReleaseWaiter(inFlight);
+            ReleaseWaiter(inFlight, receivedDocument);
         }
     }
 
@@ -494,7 +507,7 @@ public sealed class MarkdownEngine : IDisposable
                 (Profile.FeatureFlags & MarkdownProfileFeatures.GfmTagFilter) != 0);
     }
 
-    private void ReleaseWaiter(InFlightParse inFlight)
+    private void ReleaseWaiter(InFlightParse inFlight, bool receivedDocument)
     {
         bool cancelAbandonedWork = false;
         bool completeQueuedCancellation = false;
@@ -503,8 +516,30 @@ public sealed class MarkdownEngine : IDisposable
         {
             if (inFlight.WaiterCount > 0)
                 inFlight.WaiterCount--;
+            if (receivedDocument)
+                inFlight.SuccessfulWaiterCount++;
 
-            if (inFlight.WaiterCount != 0 || inFlight.IsCompleted || inFlight.IsAbandoned)
+            if (inFlight.WaiterCount != 0)
+                return;
+
+            if (inFlight.IsCompleted)
+            {
+                // Completion and caller cancellation can race after the parsed
+                // document has been admitted but before the completion source
+                // is published. If every waiter observed cancellation/failure,
+                // retire only the entry created by this operation. A newer
+                // same-source parse must never be evicted by the older caller.
+                if (inFlight.SuccessfulWaiterCount == 0 &&
+                    _completedParses.TryGetValue(inFlight.Key, out CompletedParse? completed) &&
+                    completed.ParseGeneration == inFlight.ParseGeneration &&
+                    !completed.WasObserved)
+                {
+                    RemoveCompletedParse(completed);
+                }
+                return;
+            }
+
+            if (inFlight.IsAbandoned)
                 return;
 
             inFlight.IsAbandoned = true;
@@ -571,7 +606,11 @@ public sealed class MarkdownEngine : IDisposable
                 !inFlight.IsAbandoned &&
                 !inFlight.CancellationToken.IsCancellationRequested)
             {
-                AddCompletedParse(inFlight.Key, document, documentWeight);
+                AddCompletedParse(
+                    inFlight.Key,
+                    document,
+                    documentWeight,
+                    inFlight.ParseGeneration);
             }
 
             while (!_disposeRequested && _queuedParses.First is { } first)
@@ -770,6 +809,7 @@ public sealed class MarkdownEngine : IDisposable
 
     private void TouchCompletedParse(CompletedParse completed, string lookupSource)
     {
+        completed.WasObserved = true;
         if (!ReferenceEquals(_completedRecency.First, completed.RecencyNode))
         {
             _completedRecency.Remove(completed.RecencyNode);
@@ -788,7 +828,11 @@ public sealed class MarkdownEngine : IDisposable
             _lastCompletedSourceIdentity.SetTarget(lookupSource);
     }
 
-    private void AddCompletedParse(SourceKey sourceKey, MarkdownDocument document, long weight)
+    private void AddCompletedParse(
+        SourceKey sourceKey,
+        MarkdownDocument document,
+        long weight,
+        long parseGeneration)
     {
         if (ParseCacheBudgetBytes == 0)
             return;
@@ -807,7 +851,7 @@ public sealed class MarkdownEngine : IDisposable
             RemoveCompletedParse(leastRecent.Value);
         }
 
-        var completed = new CompletedParse(sourceKey, document, weight);
+        var completed = new CompletedParse(sourceKey, document, weight, parseGeneration);
         completed.RecencyNode = _completedRecency.AddFirst(completed);
         _completedParses.Add(sourceKey, completed);
         _completedParseWeightBytes += weight;
@@ -1008,20 +1052,29 @@ public sealed class MarkdownEngine : IDisposable
 
     private sealed class CompletedParse
     {
-        internal CompletedParse(SourceKey key, MarkdownDocument document, long weightBytes)
+        internal CompletedParse(
+            SourceKey key,
+            MarkdownDocument document,
+            long weightBytes,
+            long parseGeneration)
         {
             Key = key;
             Document = document;
             WeightBytes = weightBytes;
+            ParseGeneration = parseGeneration;
         }
 
         internal MarkdownDocument Document { get; }
 
         internal SourceKey Key { get; }
 
+        internal long ParseGeneration { get; }
+
         internal LinkedListNode<CompletedParse> RecencyNode { get; set; } = null!;
 
         internal long WeightBytes { get; }
+
+        internal bool WasObserved { get; set; }
     }
 
     private sealed class InFlightParse
@@ -1031,10 +1084,11 @@ public sealed class MarkdownEngine : IDisposable
         private Task _cancellationCallbacks = Task.CompletedTask;
         private Task _cancellationRetirement = Task.CompletedTask;
 
-        internal InFlightParse(SourceKey key, long sourceBytes)
+        internal InFlightParse(SourceKey key, long sourceBytes, long parseGeneration)
         {
             Key = key;
             SourceBytes = sourceBytes;
+            ParseGeneration = parseGeneration;
             CancellationToken = _cancellation.Token;
         }
 
@@ -1053,11 +1107,15 @@ public sealed class MarkdownEngine : IDisposable
 
         internal Task<MarkdownDocument> ParseTask => Completion.Task;
 
+        internal long ParseGeneration { get; }
+
         internal LinkedListNode<InFlightParse>? QueueNode { get; set; }
 
         internal string Source => Key.Source;
 
         internal long SourceBytes { get; }
+
+        internal int SuccessfulWaiterCount { get; set; }
 
         internal int WaiterCount { get; set; }
 

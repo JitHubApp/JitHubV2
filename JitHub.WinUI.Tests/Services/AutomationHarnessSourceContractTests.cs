@@ -165,6 +165,7 @@ public sealed class AutomationHarnessSourceContractTests
         Assert.Contains("hasExplicitAlt: image.hasAttribute(\"alt\")", browserOracle, StringComparison.Ordinal);
         Assert.Contains("!image.hasExplicitAlt ? \"Image\" : \"\"", browserOracle, StringComparison.Ordinal);
         Assert.Contains("text: accessibleText", browserOracle, StringComparison.Ordinal);
+        Assert.Contains("visibleText: clean(article.innerText)", browserOracle, StringComparison.Ordinal);
         Assert.Contains("isImageSelfLink", browserOracle, StringComparison.Ordinal);
         Assert.Contains("data-canonical-src", browserOracle, StringComparison.Ordinal);
         Assert.Contains("github-asset://", browserOracle, StringComparison.Ordinal);
@@ -173,6 +174,8 @@ public sealed class AutomationHarnessSourceContractTests
         Assert.Contains("ReadAutomationString", nativeProbe, StringComparison.Ordinal);
         Assert.Contains("browserDistinctLinks", nativeProbe, StringComparison.Ordinal);
         Assert.Contains("MarkdownLinkedImage", nativeProbe, StringComparison.Ordinal);
+        Assert.Contains("link => !string.IsNullOrWhiteSpace(link.Text)", nativeProbe, StringComparison.Ordinal);
+        Assert.Contains("double textFidelity = textCoverage", nativeProbe, StringComparison.Ordinal);
         Assert.Contains("Rectangle.Intersect(", nativeProbe, StringComparison.Ordinal);
         Assert.Contains("RequestRendererCapture", nativeProbe, StringComparison.Ordinal);
         Assert.Contains("save: false", nativeProbe, StringComparison.Ordinal);

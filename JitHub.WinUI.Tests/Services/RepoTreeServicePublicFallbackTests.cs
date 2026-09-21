@@ -15,10 +15,15 @@ namespace JitHub.WinUI.Tests.Services;
 
 public sealed class RepoTreeServicePublicFallbackTests
 {
-    [Fact]
-    public async Task PublicRepositoryData_RetriesAnonymouslyWhenIntegrationIsBlockedByOrganizationPolicy()
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public async Task PublicRepositoryData_RetriesAnonymouslyWhenAuthenticatedAccessCannotReadPublicData(
+        bool quotaExhausted)
     {
-        GitHubRateLimitException policyFailure = CreatePolicyFailure();
+        GitHubRateLimitException policyFailure = quotaExhausted
+            ? CreateQuotaFailure()
+            : CreatePolicyFailure();
         IGitHubRepoCodeQueryService query = Substitute.For<IGitHubRepoCodeQueryService>();
         query.GetTreeAsync(
                 Arg.Any<string>(),
@@ -89,7 +94,7 @@ public sealed class RepoTreeServicePublicFallbackTests
                 Arg.Any<CancellationToken>())
             .Returns(CreateReadmeContent());
         client.GetRenderedReadmeHtmlAsync(
-                "authenticated-token",
+                GitHubAuthenticationConstants.PublicAccessToken,
                 "xai-org",
                 "grok-1",
                 "main",
@@ -130,13 +135,63 @@ public sealed class RepoTreeServicePublicFallbackTests
         Assert.Equal(CacheState.Fresh, blob.CacheState);
     }
 
+    [Fact]
+    public async Task RenderedReadme_RetriesAnonymouslyWhenAuthenticatedQuotaExpiresAfterSourceLoad()
+    {
+        IGitHubRepoCodeQueryService query = Substitute.For<IGitHubRepoCodeQueryService>();
+        query.GetReadmeAsync(
+                "authenticated-token",
+                "42",
+                "xai-org",
+                "grok-1",
+                "main",
+                Arg.Any<QueryFetchPolicy>(),
+                Arg.Any<CancellationToken>())
+            .Returns(new CachedResult<GitHubRepositoryContent>(
+                CreateReadmeContent(),
+                CacheState.Fresh,
+                DateTimeOffset.UtcNow,
+                DateTimeOffset.UtcNow.AddHours(1)));
+
+        IGitHubClientService client = Substitute.For<IGitHubClientService>();
+        client.GetRenderedReadmeHtmlAsync(
+                "authenticated-token",
+                "xai-org",
+                "grok-1",
+                "main",
+                Arg.Any<CancellationToken>())
+            .Returns(Task.FromException<string>(CreateQuotaFailure()));
+        client.GetRenderedReadmeHtmlAsync(
+                GitHubAuthenticationConstants.PublicAccessToken,
+                "xai-org",
+                "grok-1",
+                "main",
+                Arg.Any<CancellationToken>())
+            .Returns("<h1>Public fallback</h1>");
+
+        RepoTreeService service = CreateService(query, client);
+
+        RepoCodeLoadResult<RepoReadmeFile>? readme =
+            await service.LoadReadmeAsync("xai-org", "grok-1", "main", CancellationToken.None);
+
+        Assert.Equal("<h1>Public fallback</h1>", readme?.Value.RenderedHtml);
+        await client.Received(1).GetRenderedReadmeHtmlAsync(
+            GitHubAuthenticationConstants.PublicAccessToken,
+            "xai-org",
+            "grok-1",
+            "main",
+            Arg.Any<CancellationToken>());
+    }
+
     [Theory]
     [InlineData("IP allow list enabled", null, null, true)]
     [InlineData("Resource not accessible by integration", 42, null, true)]
-    [InlineData("API rate limit exceeded", 0, null, false)]
+    [InlineData("API rate limit exceeded for installation", 0, null, true)]
+    [InlineData("API rate limit exceeded", null, null, true)]
+    [InlineData("API rate limit exceeded", 0, 30, false)]
     [InlineData("Resource not accessible by integration", 42, 30, false)]
     [InlineData("Some other forbidden response", 42, null, false)]
-    public void AnonymousFallback_OnlyAdmitsNonThrottledAuthenticationPolicyFailures(
+    public void AnonymousFallback_OnlyAdmitsSafeAuthenticatedPublicReadFailures(
         string message,
         int? remaining,
         int? retryAfterSeconds,
@@ -151,7 +206,7 @@ public sealed class RepoTreeServicePublicFallbackTests
             retryAfterSeconds is int seconds ? TimeSpan.FromSeconds(seconds) : null,
             null);
 
-        Assert.Equal(expected, RepoTreeService.IsPublicDataAuthenticationPolicyDenial(exception));
+        Assert.Equal(expected, RepoTreeService.IsAnonymousPublicDataFallbackCandidate(exception));
     }
 
     private static RepoTreeService CreateService(
@@ -173,6 +228,16 @@ public sealed class RepoTreeServicePublicFallbackTests
             TimeSpan.FromMinutes(1),
             42,
             null,
+            null,
+            "core");
+
+    private static GitHubRateLimitException CreateQuotaFailure() =>
+        new(
+            HttpStatusCode.Forbidden,
+            "API rate limit exceeded for installation.",
+            TimeSpan.FromMinutes(1),
+            0,
+            DateTimeOffset.UtcNow.AddMinutes(1),
             null,
             "core");
 

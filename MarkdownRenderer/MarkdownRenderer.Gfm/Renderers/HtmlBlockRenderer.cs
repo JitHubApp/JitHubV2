@@ -349,7 +349,8 @@ internal sealed class HtmlBlockRenderer : MarkdownNodeRenderer<HtmlBlock>
             MarkdownLocalizedStrings.HtmlDetails);
         string summaryText = summary is null
             ? defaultSummary
-            : SafeHtmlParser.CollapseWhitespace(string.Concat(DescendantText(summary).Select(node => node.DecodedText))).Trim();
+            : SafeHtmlParser.CollapseWhitespace(string.Concat(
+                DescendantSummaryLabelText(summary).Select(node => node.DecodedText))).Trim();
         if (summaryText.Length == 0)
         {
             summaryText = defaultSummary;
@@ -373,6 +374,26 @@ internal sealed class HtmlBlockRenderer : MarkdownNodeRenderer<HtmlBlock>
                 summary?.SourceLength ?? details.SourceLength),
         });
         stack.Add(summaryBox);
+
+        if (summary is not null)
+        {
+            // GitHub permits fenced Markdown inside <summary> and emits it as a
+            // nested <pre>. A closed disclosure still displays the complete
+            // summary, so flattening that code into the disclosure label both
+            // loses its layout and removes its code-block accessibility
+            // semantics. Keep the compact textual label as the toggle and
+            // publish each visible preformatted descendant exactly once.
+            foreach (SafeHtmlElement preformatted in DescendantPreformatted(summary))
+            {
+                BlockBox? codeBlock = BuildPreformatted(
+                    preformatted,
+                    context,
+                    sourceOffset,
+                    alignment);
+                if (codeBlock is not null)
+                    stack.Add(codeBlock);
+            }
+        }
 
         if (summary is not null && _options.EnableImages)
         {
@@ -579,14 +600,16 @@ internal sealed class HtmlBlockRenderer : MarkdownNodeRenderer<HtmlBlock>
 
                 string key = row.IsHeader ? MarkdownElementKeys.TableHeader : MarkdownElementKeys.TableCell;
                 SafeHtmlElement? preformatted = FindDescendant(cell.Element, "pre");
-                InlineContainerBox box = preformatted is null
+                bool hasMixedContent = preformatted is not null &&
+                    HasRenderableContentOutside(cell.Element, preformatted);
+                InlineContainerBox box = preformatted is null || hasMixedContent
                     ? CreateInlineBox(context, key, SafeHtmlParser.GetAlignment(cell.Element))
                     : BuildPreformattedTableCell(
                         preformatted,
                         context,
                         sourceOffset,
                         SafeHtmlParser.GetAlignment(cell.Element));
-                if (preformatted is null)
+                if (preformatted is null || hasMixedContent)
                     PopulateInline(box, cell.Element.Children, context, sourceOffset, HtmlInlineContext.Empty);
                 cells[column] = box;
                 if (alignments[column] == TableBox.CellAlignment.Default)
@@ -644,6 +667,38 @@ internal sealed class HtmlBlockRenderer : MarkdownNodeRenderer<HtmlBlock>
         }
 
         return box;
+    }
+
+    private static bool HasRenderableContentOutside(
+        SafeHtmlElement root,
+        SafeHtmlElement excludedPreformatted)
+    {
+        foreach (SafeHtmlNode child in root.Children)
+        {
+            if (ReferenceEquals(child, excludedPreformatted))
+                continue;
+
+            if (child is SafeHtmlText text)
+            {
+                if (!string.IsNullOrWhiteSpace(text.DecodedText))
+                    return true;
+                continue;
+            }
+
+            if (child is not SafeHtmlElement element ||
+                SafeHtmlParser.IsSuppressedElement(element.Name))
+            {
+                continue;
+            }
+
+            if (element.Name is "img" or "picture" or "video" or "audio" or "svg" or "input" or "hr" ||
+                HasRenderableContentOutside(element, excludedPreformatted))
+            {
+                return true;
+            }
+        }
+
+        return false;
     }
 
     private static void CollectRows(SafeHtmlElement element, bool inHeaderGroup, List<HtmlTableRow> rows)
@@ -810,6 +865,12 @@ internal sealed class HtmlBlockRenderer : MarkdownNodeRenderer<HtmlBlock>
             return;
         }
 
+        if (element.Name == "pre")
+        {
+            AddPreformattedInline(box, element, sourceOffset, inlineContext);
+            return;
+        }
+
         if (element.Name is "img" or "picture")
         {
             if (!_options.EnableImages)
@@ -902,6 +963,34 @@ internal sealed class HtmlBlockRenderer : MarkdownNodeRenderer<HtmlBlock>
         {
             box.Add(new LineBreakRun(isHard: true) { SourceSpan = span });
         }
+    }
+
+    private static void AddPreformattedInline(
+        InlineContainerBox box,
+        SafeHtmlElement pre,
+        int sourceOffset,
+        HtmlInlineContext inlineContext)
+    {
+        var span = new SourceSpan(sourceOffset + pre.SourceStart, pre.SourceLength);
+        if (box.Runs.Count > 0 && box.Runs[^1] is not LineBreakRun)
+            box.Add(new LineBreakRun(isHard: true) { SourceSpan = span });
+
+        string text = CodeBlockMetadata.NormalizeCodeLineEndings(
+            string.Concat(DescendantText(pre).Select(static node => node.DecodedText)));
+        if (text.Length > 0)
+        {
+            var run = new TextRun(text)
+            {
+                ElementKey = MarkdownElementKeys.CodeBlock,
+                SourceSpan = span,
+                SemanticHeadingKey = inlineContext.HeadingKey ?? string.Empty,
+            };
+            run.SetStyleAliases(inlineContext.StyleAliases);
+            box.Add(run);
+        }
+
+        if (box.Runs.Count > 0 && box.Runs[^1] is not LineBreakRun)
+            box.Add(new LineBreakRun(isHard: true) { SourceSpan = span });
     }
 
     private void AddImageRun(
@@ -1176,6 +1265,46 @@ internal sealed class HtmlBlockRenderer : MarkdownNodeRenderer<HtmlBlock>
                     yield return nested;
                 }
             }
+        }
+    }
+
+    private static IEnumerable<SafeHtmlText> DescendantSummaryLabelText(SafeHtmlElement parent)
+    {
+        foreach (SafeHtmlNode child in parent.Children)
+        {
+            if (child is SafeHtmlText text)
+            {
+                yield return text;
+                continue;
+            }
+
+            if (child is not SafeHtmlElement element ||
+                SafeHtmlParser.IsSuppressedElement(element.Name) ||
+                element.Name == "pre")
+            {
+                continue;
+            }
+
+            foreach (SafeHtmlText nested in DescendantSummaryLabelText(element))
+                yield return nested;
+        }
+    }
+
+    private static IEnumerable<SafeHtmlElement> DescendantPreformatted(SafeHtmlElement parent)
+    {
+        foreach (SafeHtmlElement child in parent.Children.OfType<SafeHtmlElement>())
+        {
+            if (SafeHtmlParser.IsSuppressedElement(child.Name))
+                continue;
+
+            if (child.Name == "pre")
+            {
+                yield return child;
+                continue;
+            }
+
+            foreach (SafeHtmlElement nested in DescendantPreformatted(child))
+                yield return nested;
         }
     }
 

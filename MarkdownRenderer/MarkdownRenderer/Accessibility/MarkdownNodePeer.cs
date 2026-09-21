@@ -276,6 +276,18 @@ internal sealed partial class MarkdownNodePeer : FrameworkElementAutomationPeer,
                string.Empty;
     }
 
+    protected override string GetItemStatusCore()
+    {
+        if (_node.Role == MarkdownSemanticRole.Image &&
+            _node.ImageBox?.AccessibilityState == MarkdownImageAccessibilityState.Loading)
+        {
+            string text = _root.GetSemanticDocument().GetText(_node);
+            return GetImageName(text, MarkdownImageAccessibilityState.Loading);
+        }
+
+        return string.Empty;
+    }
+
     protected override string GetAutomationIdCore() =>
         _node.AutomationId ?? MarkdownAutomationIdentity.ForNode(_node);
 
@@ -541,8 +553,11 @@ internal sealed partial class MarkdownNodePeer : FrameworkElementAutomationPeer,
         string text = _root.GetSemanticDocument().GetText(_node);
         string oldName = GetImageName(text, previous);
         string newName = GetImageName(text, current);
+        string oldStatus = previous == MarkdownImageAccessibilityState.Loading ? oldName : string.Empty;
+        string newStatus = current == MarkdownImageAccessibilityState.Loading ? newName : string.Empty;
         _lastImageState = current;
         RaisePropertyChangedEvent(AutomationElementIdentifiers.NameProperty, oldName, newName);
+        RaisePropertyChangedEvent(AutomationElementIdentifiers.ItemStatusProperty, oldStatus, newStatus);
         RaiseAutomationEvent(AutomationEvents.LiveRegionChanged);
     }
 

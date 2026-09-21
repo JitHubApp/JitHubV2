@@ -78,6 +78,30 @@ public sealed class SafeHtmlRenderingTests
     }
 
     [Fact]
+    public void MixedHtmlTableCellRetainsContentAroundPreformattedCode()
+    {
+        const string source = "<table><tr><td><h3>CLI</h3><p>Command-line agent</p><pre><code>npm i -g cline</code></pre><p><a href='https://example.test/cli'>Learn more</a></p></td></tr></table>";
+
+        using LayoutSnapshot snapshot = Build(source, SafeHtmlOptions.Default);
+        InlineContainerBox cell = Assert.Single(
+            FlattenBoxes(snapshot).OfType<InlineContainerBox>(),
+            static box => box.ElementKey == MarkdownElementKeys.TableCell);
+        MarkdownRenderer.Accessibility.MarkdownSemanticNode[] semantics =
+            MarkdownRenderer.Accessibility.MarkdownSemanticDocument
+                .EnumerateDepthFirst(snapshot.SemanticDocument.Root)
+                .ToArray();
+
+        string rendered = string.Concat(cell.Runs.Select(static run => run.Text));
+        Assert.Contains("CLI", rendered, StringComparison.Ordinal);
+        Assert.Contains("Command-line agent", rendered, StringComparison.Ordinal);
+        Assert.Contains("npm i -g cline", rendered, StringComparison.Ordinal);
+        Assert.Contains("Learn more", rendered, StringComparison.Ordinal);
+        Assert.Single(semantics, static node => node.Role == MarkdownRenderer.Accessibility.MarkdownSemanticRole.Heading);
+        Assert.Single(semantics, static node => node.Role == MarkdownRenderer.Accessibility.MarkdownSemanticRole.CodeBlock);
+        Assert.Single(semantics, static node => node.Role == MarkdownRenderer.Accessibility.MarkdownSemanticRole.Link);
+    }
+
+    [Fact]
     public void LinkedHtmlImageDoesNotCreateASecondWhitespaceOnlyLink()
     {
         const string source = "<p><a href='https://example.test'>\n  <img src='badge.svg' alt='Badge'>\n</a></p>";
@@ -282,6 +306,30 @@ public sealed class SafeHtmlRenderingTests
 
         Assert.Equal(3, heading.HeadingLevel);
         Assert.Contains("Browser & Automation", snapshot.SemanticDocument.GetText(heading), StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void CollapsedDisclosureSummaryRetainsPreformattedCodeWithoutDuplicatingItsText()
+    {
+        const string source = "<details><summary>What does this print?<div><pre><code>echo one\necho two</code></pre></div></summary><p>Hidden answer</p></details>";
+
+        using LayoutSnapshot snapshot = Build(source, SafeHtmlOptions.Default);
+        LinkRun disclosure = Assert.Single(
+            FlattenRuns(snapshot).OfType<LinkRun>(),
+            static run => run.DisclosureId is not null);
+        CodeBlockBox code = Assert.Single(FlattenBoxes(snapshot).OfType<CodeBlockBox>());
+        MarkdownRenderer.Accessibility.MarkdownSemanticNode semantic = Assert.Single(
+            MarkdownRenderer.Accessibility.MarkdownSemanticDocument
+                .EnumerateDepthFirst(snapshot.SemanticDocument.Root),
+            static node => node.Role == MarkdownRenderer.Accessibility.MarkdownSemanticRole.CodeBlock);
+        string rendered = snapshot.SemanticDocument.Text;
+
+        Assert.Equal("What does this print?", disclosure.AccessibilityName);
+        Assert.False(disclosure.IsExpanded);
+        Assert.Equal("echo one\necho two", code.CodeText);
+        Assert.Equal("echo one\necho two", snapshot.SemanticDocument.GetText(semantic));
+        Assert.Equal(1, rendered.Split("echo one", StringSplitOptions.None).Length - 1);
+        Assert.DoesNotContain("Hidden answer", rendered, StringComparison.Ordinal);
     }
 
     [Fact]

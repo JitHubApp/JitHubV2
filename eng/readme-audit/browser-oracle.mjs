@@ -251,6 +251,7 @@ try {
       finalUrl: location.href,
       title: document.title,
       text: accessibleText,
+      visibleText: clean(article.innerText),
       documentX: rect.left + scrollX,
       documentY: rect.top + scrollY,
       width: rect.width,
