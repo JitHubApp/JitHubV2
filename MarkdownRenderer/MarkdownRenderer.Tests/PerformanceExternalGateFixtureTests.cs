@@ -599,6 +599,13 @@ public sealed class PerformanceExternalGateFixtureTests
 
     private sealed class GateEvidence : IDisposable
     {
+        // This watchdog bounds a test-only PowerShell process, not a product
+        // performance budget. Hosted Windows runners can occasionally spend
+        // more than 30 seconds in process launch/script scanning while several
+        // architecture and browser jobs share the host. The gate's measured
+        // latency limits remain unchanged inside the script.
+        private const int ExternalGateProcessTimeoutMilliseconds = 60_000;
+
         private readonly string _directory;
         private readonly string _scriptPath;
         private readonly string _executableArtifactPath;
@@ -2546,7 +2553,7 @@ public sealed class PerformanceExternalGateFixtureTests
                 ?? throw new InvalidOperationException("Could not start PowerShell for the external gate fixture.");
             Task<string> standardOutput = process.StandardOutput.ReadToEndAsync();
             Task<string> standardError = process.StandardError.ReadToEndAsync();
-            if (!process.WaitForExit(30_000))
+            if (!process.WaitForExit(ExternalGateProcessTimeoutMilliseconds))
             {
                 process.Kill(entireProcessTree: true);
                 throw new TimeoutException("The external performance gate fixture timed out.");
