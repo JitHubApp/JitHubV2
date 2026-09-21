@@ -46,7 +46,21 @@ jobs:
         run: |
           $output = Join-Path $env:RUNNER_TEMP 'readme-corpus\top-repositories.json'
           New-Item -ItemType Directory -Force -Path (Split-Path -Parent $output) | Out-Null
-          .\eng\readme-audit\New-TopReadmeManifest.ps1 -Count 500 -OutputPath $output
+          try {
+            .\eng\readme-audit\New-TopReadmeManifest.ps1 -Count 500 -OutputPath $output
+          }
+          catch {
+            if ($_.Exception.ToString() -notmatch 'rate limit exceeded') {
+              throw
+            }
+
+            Write-Warning 'GitHub rate-limited public corpus metadata; using the recent checked-in immutable snapshot.'
+            .\eng\readme-audit\Copy-ValidatedTopReadmeManifest.ps1 `
+              -SourcePath '.\eng\readme-audit\pinned-top500.json' `
+              -OutputPath $output `
+              -ExpectedCount 500 `
+              -MaximumAgeDays 14
+          }
 
       - name: Upload pinned corpus
         uses: actions/upload-artifact@v7

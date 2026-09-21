@@ -64,6 +64,11 @@ Manifest API calls use the workflow token normally. If a public repository's
 organization IP allow list rejects that token, the generator falls back only
 that request to GitHub's unauthenticated public API. Other authorization errors
 remain fatal, and only an explicit README 404 is treated as an absent README.
+If GitHub then rate-limits that anonymous public metadata path, CI may use the
+checked-in immutable `pinned-top500.json` snapshot only after validating its
+schema, age (14 days or newer), exact rank coverage, uniqueness, commit/blob
+identities, and trusted GitHub URLs. No repository is skipped or substituted;
+stale or malformed fallback data fails the corpus job.
 
 The scheduled/manual workflow runs ten isolated 50-repository shards and then
 requires a consolidated, duplicate-free set of ranks 1–500. Missing shards or
