@@ -99,15 +99,46 @@ jobs:
           if ($LASTEXITCODE -ne 0) { throw 'The isolated resvg worker tests failed.' }
           & cargo +1.96.0 clippy --manifest-path $manifest --locked --target $validationTarget --all-targets -- -D warnings
           if ($LASTEXITCODE -ne 0) { throw 'The isolated resvg worker failed Clippy.' }
+          $rebuildRoot = Join-Path $env:RUNNER_TEMP 'resvg-worker-rebuilds'
+          $targetRoot = Join-Path $env:RUNNER_TEMP 'resvg-worker-target'
+          New-Item -ItemType Directory -Path $rebuildRoot -Force | Out-Null
+          $rebuiltWorkers = [ordered]@{}
           foreach ($worker in $workerTargets.GetEnumerator()) {
             $rebuilt = .\MarkdownRenderer\MarkdownRenderer.Svg.Resvg\eng\Build-ResvgWorker.ps1 `
-              -Target $worker.Key
+              -Target $worker.Key `
+              -TargetDirectory $targetRoot
+            $rebuiltDirectory = Join-Path $rebuildRoot $worker.Value
+            New-Item -ItemType Directory -Path $rebuiltDirectory -Force | Out-Null
+            $rebuiltCopy = Join-Path $rebuiltDirectory 'MarkdownRenderer.Svg.Resvg.Worker.exe'
+            Copy-Item -LiteralPath $rebuilt -Destination $rebuiltCopy -Force
+            $rebuiltWorkers[$worker.Value] = $rebuiltCopy
+          }
+
+          $mismatches = [Collections.Generic.List[string]]::new()
+          foreach ($worker in $workerTargets.GetEnumerator()) {
             $shipping = ".\MarkdownRenderer\MarkdownRenderer.Svg.Resvg\runtimes\$($worker.Value)\native\MarkdownRenderer.Svg.Resvg.Worker.exe"
-            .\MarkdownRenderer\MarkdownRenderer.Svg.Resvg\eng\Compare-ResvgWorkerBinary.ps1 `
-              -Expected $shipping `
-              -Actual $rebuilt
+            try {
+              .\MarkdownRenderer\MarkdownRenderer.Svg.Resvg\eng\Compare-ResvgWorkerBinary.ps1 `
+                -Expected $shipping `
+                -Actual $rebuiltWorkers[$worker.Value]
+            }
+            catch {
+              $mismatches.Add("$($worker.Value): $($_.Exception.Message)")
+            }
+          }
+          if ($mismatches.Count -ne 0) {
+            throw "One or more checked-in resvg workers were not reproduced:`n$($mismatches -join "`n")"
           }
           .\MarkdownRenderer\MarkdownRenderer.Svg.Resvg\eng\Verify-ResvgSupplyChain.ps1
+
+      - name: Upload rebuilt resvg workers
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: resvg-worker-rebuilds
+          path: ${{ runner.temp }}/resvg-worker-rebuilds/**
+          if-no-files-found: warn
+          retention-days: 7
 
       - name: Prepare fresh artifact directories
         run: |
