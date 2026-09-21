@@ -2,8 +2,10 @@ using System;
 using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.Globalization;
+using System.IO;
 using System.Linq;
 using System.Net;
+using System.Net.Http;
 using System.Runtime.ExceptionServices;
 using System.Text;
 using System.Threading;
@@ -447,6 +449,7 @@ public sealed class RepoTreeService : IRepoTreeService
     {
         (string token, string userId) = GetAuthenticationContext();
         string readmeToken = token;
+        bool sourceCameFromRawFallback = false;
         CachedResult<GitHubRepositoryContent> result;
         try
         {
@@ -463,18 +466,19 @@ public sealed class RepoTreeService : IRepoTreeService
         {
             return null;
         }
-        catch (GitHubRateLimitException exception) when (CanRetryPublicDataAnonymously(exception, token))
+        catch (GitHubRateLimitException exception) when (CanRecoverReadmeFromPublicRaw(exception))
         {
-            GitHubRepositoryContent publicContent = await ExecuteAnonymousFallbackAsync(
-                exception,
-                cancellationToken => _gitHubClientService!.GetReadmeAsync(
-                    GitHubAuthenticationConstants.PublicAccessToken,
+            (GitHubRepositoryContent Content, bool CameFromRaw) recovered =
+                await RecoverPublicReadmeAsync(
+                    exception,
+                    token,
                     owner,
                     name,
                     refOrSha,
-                    cancellationToken),
-                ct).ConfigureAwait(false);
-            result = CreateFreshResult(publicContent);
+                    ct).ConfigureAwait(false);
+
+            result = CreateFreshResult(recovered.Content);
+            sourceCameFromRawFallback = recovered.CameFromRaw;
             readmeToken = GitHubAuthenticationConstants.PublicAccessToken;
         }
 
@@ -488,15 +492,31 @@ public sealed class RepoTreeService : IRepoTreeService
         string readmePath = content.Path ?? string.Empty;
         if (!isBinary &&
             _gitHubClientService is not null &&
-            FilePreviewResolver.IsGitHubReadmePath(readmePath))
+            FilePreviewResolver.IsGitHubReadmePath(readmePath) &&
+            !sourceCameFromRawFallback)
         {
-            renderedHtml = GitHubRenderedReadmeHtmlNormalizer.NormalizeForMarkdownPipeline(
-                await GetRenderedReadmeHtmlWithPublicFallbackAsync(
-                    readmeToken,
-                    owner,
-                    name,
-                    refOrSha,
-                    ct).ConfigureAwait(false));
+            try
+            {
+                renderedHtml = GitHubRenderedReadmeHtmlNormalizer.NormalizeForMarkdownPipeline(
+                    await GetRenderedReadmeHtmlWithPublicFallbackAsync(
+                        readmeToken,
+                        owner,
+                        name,
+                        refOrSha,
+                        ct).ConfigureAwait(false));
+            }
+            catch (OperationCanceledException) when (!ct.IsCancellationRequested)
+            {
+                // Rendered HTML improves GitHub-specific fidelity but is not required
+                // to display source Markdown. A transport timeout must not suppress a
+                // successfully downloaded README.
+            }
+            catch (Exception renderedFailure) when (IsOptionalRenderedReadmeFailure(renderedFailure))
+            {
+                // Source Markdown remains authoritative and the renderer resolves its
+                // relative links and images directly when GitHub's HTML representation
+                // is unavailable or over budget.
+            }
         }
         RepoReadmeFile readme = new(
             content.Name ?? string.Empty,
@@ -598,6 +618,68 @@ public sealed class RepoTreeService : IRepoTreeService
         _gitHubClientService is not null &&
         !GitHubAuthenticationConstants.IsPublicAccessToken(token) &&
         IsAnonymousPublicDataFallbackCandidate(exception);
+
+    private bool CanRecoverReadmeFromPublicRaw(GitHubRateLimitException exception) =>
+        _gitHubClientService is not null &&
+        IsAnonymousPublicDataFallbackCandidate(exception);
+
+    private async Task<(GitHubRepositoryContent Content, bool CameFromRaw)> RecoverPublicReadmeAsync(
+        GitHubRateLimitException originalFailure,
+        string token,
+        string owner,
+        string name,
+        string refOrSha,
+        CancellationToken cancellationToken)
+    {
+        if (!GitHubAuthenticationConstants.IsPublicAccessToken(token))
+        {
+            try
+            {
+                GitHubRepositoryContent publicContent = await _gitHubClientService!.GetReadmeAsync(
+                    GitHubAuthenticationConstants.PublicAccessToken,
+                    owner,
+                    name,
+                    refOrSha,
+                    cancellationToken).ConfigureAwait(false);
+                return (publicContent, false);
+            }
+            catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
+            {
+                throw;
+            }
+            catch (OperationCanceledException)
+            {
+                // A transport timeout is recoverable; caller cancellation was
+                // handled above and must never start additional network work.
+            }
+            catch (Exception exception) when (IsRecoverableReadRepresentationFailure(exception))
+            {
+                // Continue with the public CDN fallback below.
+            }
+        }
+
+        // Anonymous REST traffic shares a small, IP-scoped quota on hosted
+        // runners and enterprise networks. raw.githubusercontent.com serves
+        // the same public, immutable source without that API quota. The client
+        // probes only GitHub's canonical README locations/names and applies the
+        // same bounded streaming limit as rendered README responses.
+        GitHubRepositoryContent? rawContent = await _gitHubClientService!
+            .GetPublicReadmeSourceAsync(owner, name, refOrSha, cancellationToken)
+            .ConfigureAwait(false);
+        if (rawContent is null)
+        {
+            ExceptionDispatchInfo.Capture(originalFailure).Throw();
+            throw new InvalidOperationException("Unreachable after rethrowing the original README failure.");
+        }
+
+        return (rawContent, true);
+    }
+
+    private static bool IsOptionalRenderedReadmeFailure(Exception exception) =>
+        IsRecoverableReadRepresentationFailure(exception);
+
+    private static bool IsRecoverableReadRepresentationFailure(Exception exception) =>
+        exception is GitHubApiException or HttpRequestException or InvalidDataException or FormatException or NotSupportedException;
 
     private async Task<string> GetRenderedReadmeHtmlWithPublicFallbackAsync(
         string token,

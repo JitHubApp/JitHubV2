@@ -7,6 +7,7 @@ using System.Net;
 using System.Net.Http;
 using System.Net.Http.Headers;
 using System.Net.Http.Json;
+using System.Security.Cryptography;
 using System.Text;
 using System.Text.Json;
 using System.Text.Json.Serialization.Metadata;
@@ -21,6 +22,25 @@ public sealed class GitHubClientService : IGitHubClientService
 {
     public const string PublicAccessToken = GitHubAuthenticationConstants.PublicAccessToken;
     private const string CommentApiVersion = "2026-03-10";
+    private const int MaximumPublicReadmeBytes = 8 * 1024 * 1024;
+    private static readonly string[] PublicReadmeLocations = [".github/", "", "docs/"];
+    private static readonly string[] PublicReadmeCandidates =
+    [
+        "README.md",
+        "README",
+        "README.rst",
+        "README.txt",
+        "README.adoc",
+        "README.markdown",
+        "README.asciidoc",
+        "readme.md",
+        "readme",
+        "readme.rst",
+        "readme.txt",
+        "readme.adoc",
+        "readme.markdown",
+        "readme.asciidoc"
+    ];
 
     private readonly HttpClient _httpClient;
 
@@ -1785,6 +1805,58 @@ public sealed class GitHubClientService : IGitHubClientService
             cancellationToken);
     }
 
+    public async Task<GitHubRepositoryContent?> GetPublicReadmeSourceAsync(
+        string owner,
+        string name,
+        string gitRef,
+        CancellationToken cancellationToken = default)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(owner);
+        ArgumentException.ThrowIfNullOrWhiteSpace(name);
+        ArgumentException.ThrowIfNullOrWhiteSpace(gitRef);
+
+        string root =
+            $"https://raw.githubusercontent.com/{Uri.EscapeDataString(owner)}/{Uri.EscapeDataString(name)}/{Uri.EscapeDataString(gitRef)}/";
+        foreach (string location in PublicReadmeLocations)
+        {
+            foreach (string candidate in PublicReadmeCandidates)
+            {
+                string path = location + candidate;
+                using HttpRequestMessage request = new(HttpMethod.Get, new Uri(root + path, UriKind.Absolute));
+                request.Headers.Accept.Clear();
+                request.Headers.Accept.Add(new MediaTypeWithQualityHeaderValue("text/plain"));
+                using HttpResponseMessage response = await _httpClient.SendAsync(
+                    request,
+                    HttpCompletionOption.ResponseHeadersRead,
+                    cancellationToken).ConfigureAwait(false);
+                if (response.StatusCode == HttpStatusCode.NotFound)
+                {
+                    continue;
+                }
+
+                await EnsureSuccessAsync(response, cancellationToken).ConfigureAwait(false);
+                ArraySegment<byte> bytes = await ReadBoundedBufferAsync(
+                    response,
+                    MaximumPublicReadmeBytes,
+                    "Public README",
+                    cancellationToken).ConfigureAwait(false);
+                return new GitHubRepositoryContent
+                {
+                    Type = "file",
+                    Encoding = "base64",
+                    Size = bytes.Count,
+                    Name = candidate,
+                    Path = path,
+                    Content = Convert.ToBase64String(bytes.Array!, bytes.Offset, bytes.Count),
+                    Sha = ComputeGitBlobSha(bytes.AsSpan()),
+                    DownloadUrl = root + path
+                };
+            }
+        }
+
+        return null;
+    }
+
     public async Task<string> GetRenderedReadmeHtmlAsync(
         string token,
         string owner,
@@ -1855,12 +1927,25 @@ public sealed class GitHubClientService : IGitHubClientService
         HttpResponseMessage response,
         CancellationToken cancellationToken)
     {
-
         const int maximumRenderedReadmeBytes = 8 * 1024 * 1024;
+        ArraySegment<byte> bytes = await ReadBoundedBufferAsync(
+            response,
+            maximumRenderedReadmeBytes,
+            "Rendered README",
+            cancellationToken).ConfigureAwait(false);
+        return Encoding.UTF8.GetString(bytes.AsSpan());
+    }
+
+    private static async Task<ArraySegment<byte>> ReadBoundedBufferAsync(
+        HttpResponseMessage response,
+        int maximumBytes,
+        string resourceName,
+        CancellationToken cancellationToken)
+    {
         if (response.Content.Headers.ContentLength is long contentLength &&
-            contentLength > maximumRenderedReadmeBytes)
+            contentLength > maximumBytes)
         {
-            throw new InvalidDataException("Rendered README exceeds the safe response budget.");
+            throw new InvalidDataException($"{resourceName} exceeds the safe response budget.");
         }
 
         await using Stream stream = await response.Content
@@ -1868,7 +1953,7 @@ public sealed class GitHubClientService : IGitHubClientService
             .ConfigureAwait(false);
         using var buffer = new MemoryStream(
             response.Content.Headers.ContentLength is long knownLength
-                ? checked((int)Math.Min(knownLength, maximumRenderedReadmeBytes))
+                ? checked((int)Math.Min(knownLength, maximumBytes))
                 : 16 * 1024);
         byte[] rented = ArrayPool<byte>.Shared.Rent(64 * 1024);
         try
@@ -1878,9 +1963,9 @@ public sealed class GitHubClientService : IGitHubClientService
                 int read = await stream.ReadAsync(rented, cancellationToken).ConfigureAwait(false);
                 if (read == 0)
                     break;
-                if (buffer.Length + read > maximumRenderedReadmeBytes)
+                if (buffer.Length + read > maximumBytes)
                 {
-                    throw new InvalidDataException("Rendered README exceeds the safe response budget.");
+                    throw new InvalidDataException($"{resourceName} exceeds the safe response budget.");
                 }
 
                 buffer.Write(rented, 0, read);
@@ -1891,7 +1976,21 @@ public sealed class GitHubClientService : IGitHubClientService
             ArrayPool<byte>.Shared.Return(rented, clearArray: true);
         }
 
-        return Encoding.UTF8.GetString(buffer.GetBuffer(), 0, checked((int)buffer.Length));
+        if (!buffer.TryGetBuffer(out ArraySegment<byte> bytes))
+        {
+            throw new InvalidOperationException("The bounded response buffer is not accessible.");
+        }
+
+        return bytes;
+    }
+
+    private static string ComputeGitBlobSha(ReadOnlySpan<byte> bytes)
+    {
+        byte[] header = Encoding.ASCII.GetBytes($"blob {bytes.Length}\0");
+        using IncrementalHash hash = IncrementalHash.CreateHash(HashAlgorithmName.SHA1);
+        hash.AppendData(header);
+        hash.AppendData(bytes);
+        return Convert.ToHexStringLower(hash.GetHashAndReset());
     }
 
     public async Task<IReadOnlyList<GitHubRepositoryContent>> GetRepositoryContentsAsync(

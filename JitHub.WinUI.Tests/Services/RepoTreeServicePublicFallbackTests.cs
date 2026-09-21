@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using System.Net;
+using System.Net.Http;
 using System.Text;
 using System.Threading;
 using System.Threading.Tasks;
@@ -181,6 +182,233 @@ public sealed class RepoTreeServicePublicFallbackTests
             "grok-1",
             "main",
             Arg.Any<CancellationToken>());
+    }
+
+    [Fact]
+    public async Task Readme_UsesBoundedRawSourceWhenAuthenticatedAndAnonymousApiAccessFail()
+    {
+        IGitHubRepoCodeQueryService query = Substitute.For<IGitHubRepoCodeQueryService>();
+        query.GetReadmeAsync(
+                "authenticated-token",
+                "42",
+                "xai-org",
+                "grok-1",
+                "commit-sha",
+                Arg.Any<QueryFetchPolicy>(),
+                Arg.Any<CancellationToken>())
+            .Returns(Task.FromException<CachedResult<GitHubRepositoryContent>>(CreatePolicyFailure()));
+
+        IGitHubClientService client = Substitute.For<IGitHubClientService>();
+        client.GetReadmeAsync(
+                GitHubAuthenticationConstants.PublicAccessToken,
+                "xai-org",
+                "grok-1",
+                "commit-sha",
+                Arg.Any<CancellationToken>())
+            .Returns(Task.FromException<GitHubRepositoryContent>(CreateQuotaFailure()));
+        client.GetPublicReadmeSourceAsync(
+                "xai-org",
+                "grok-1",
+                "commit-sha",
+                Arg.Any<CancellationToken>())
+            .Returns(CreateReadmeContent());
+
+        RepoTreeService service = CreateService(query, client);
+
+        RepoCodeLoadResult<RepoReadmeFile>? readme =
+            await service.LoadReadmeAsync("xai-org", "grok-1", "commit-sha", CancellationToken.None);
+
+        Assert.Equal("# Hello", readme?.Value.Blob.Text);
+        Assert.Null(readme?.Value.RenderedHtml);
+        await client.Received(1).GetPublicReadmeSourceAsync(
+            "xai-org",
+            "grok-1",
+            "commit-sha",
+            Arg.Any<CancellationToken>());
+        await client.DidNotReceiveWithAnyArgs().GetRenderedReadmeHtmlAsync(
+            default!, default!, default!, default, default);
+    }
+
+    [Fact]
+    public async Task Readme_UsesRawSourceWhenAnonymousApiTransportTimesOut()
+    {
+        IGitHubRepoCodeQueryService query = Substitute.For<IGitHubRepoCodeQueryService>();
+        query.GetReadmeAsync(
+                Arg.Any<string>(),
+                Arg.Any<string>(),
+                "xai-org",
+                "grok-1",
+                "commit-sha",
+                Arg.Any<QueryFetchPolicy>(),
+                Arg.Any<CancellationToken>())
+            .Returns(Task.FromException<CachedResult<GitHubRepositoryContent>>(CreatePolicyFailure()));
+
+        IGitHubClientService client = Substitute.For<IGitHubClientService>();
+        client.GetReadmeAsync(
+                GitHubAuthenticationConstants.PublicAccessToken,
+                "xai-org",
+                "grok-1",
+                "commit-sha",
+                Arg.Any<CancellationToken>())
+            .Returns(Task.FromException<GitHubRepositoryContent>(new TaskCanceledException("transport timeout")));
+        client.GetPublicReadmeSourceAsync(
+                "xai-org",
+                "grok-1",
+                "commit-sha",
+                Arg.Any<CancellationToken>())
+            .Returns(CreateReadmeContent());
+
+        RepoTreeService service = CreateService(query, client);
+
+        RepoCodeLoadResult<RepoReadmeFile>? readme =
+            await service.LoadReadmeAsync("xai-org", "grok-1", "commit-sha", CancellationToken.None);
+
+        Assert.Equal("# Hello", readme?.Value.Blob.Text);
+    }
+
+    [Fact]
+    public async Task Readme_DoesNotMaskUnexpectedAnonymousApiFailure()
+    {
+        IGitHubRepoCodeQueryService query = Substitute.For<IGitHubRepoCodeQueryService>();
+        query.GetReadmeAsync(
+                Arg.Any<string>(),
+                Arg.Any<string>(),
+                "xai-org",
+                "grok-1",
+                "commit-sha",
+                Arg.Any<QueryFetchPolicy>(),
+                Arg.Any<CancellationToken>())
+            .Returns(Task.FromException<CachedResult<GitHubRepositoryContent>>(CreatePolicyFailure()));
+
+        IGitHubClientService client = Substitute.For<IGitHubClientService>();
+        client.GetReadmeAsync(
+                GitHubAuthenticationConstants.PublicAccessToken,
+                "xai-org",
+                "grok-1",
+                "commit-sha",
+                Arg.Any<CancellationToken>())
+            .Returns(Task.FromException<GitHubRepositoryContent>(new InvalidOperationException("invariant")));
+        RepoTreeService service = CreateService(query, client);
+
+        InvalidOperationException error = await Assert.ThrowsAsync<InvalidOperationException>(() =>
+            service.LoadReadmeAsync("xai-org", "grok-1", "commit-sha", CancellationToken.None));
+
+        Assert.Equal("invariant", error.Message);
+        await client.DidNotReceiveWithAnyArgs().GetPublicReadmeSourceAsync(
+            default!, default!, default!, default);
+    }
+
+    [Fact]
+    public async Task Readme_DoesNotStartRawFallbackAfterCallerCancellation()
+    {
+        IGitHubRepoCodeQueryService query = Substitute.For<IGitHubRepoCodeQueryService>();
+        query.GetReadmeAsync(
+                Arg.Any<string>(),
+                Arg.Any<string>(),
+                "xai-org",
+                "grok-1",
+                "commit-sha",
+                Arg.Any<QueryFetchPolicy>(),
+                Arg.Any<CancellationToken>())
+            .Returns(Task.FromException<CachedResult<GitHubRepositoryContent>>(CreatePolicyFailure()));
+
+        using CancellationTokenSource cancellation = new();
+        IGitHubClientService client = Substitute.For<IGitHubClientService>();
+        client.GetReadmeAsync(
+                GitHubAuthenticationConstants.PublicAccessToken,
+                "xai-org",
+                "grok-1",
+                "commit-sha",
+                Arg.Any<CancellationToken>())
+            .Returns(_ =>
+            {
+                cancellation.Cancel();
+                return Task.FromCanceled<GitHubRepositoryContent>(cancellation.Token);
+            });
+
+        RepoTreeService service = CreateService(query, client);
+
+        await Assert.ThrowsAnyAsync<OperationCanceledException>(() =>
+            service.LoadReadmeAsync("xai-org", "grok-1", "commit-sha", cancellation.Token));
+        await client.DidNotReceiveWithAnyArgs().GetPublicReadmeSourceAsync(
+            default!, default!, default!, default);
+    }
+
+    [Fact]
+    public async Task Readme_UsesRawSourceWhenAlreadyAnonymousApiQuotaIsExhausted()
+    {
+        IGitHubRepoCodeQueryService query = Substitute.For<IGitHubRepoCodeQueryService>();
+        query.GetReadmeAsync(
+                GitHubAuthenticationConstants.PublicAccessToken,
+                "current",
+                "octo",
+                "app",
+                "main",
+                Arg.Any<QueryFetchPolicy>(),
+                Arg.Any<CancellationToken>())
+            .Returns(Task.FromException<CachedResult<GitHubRepositoryContent>>(CreateQuotaFailure()));
+
+        IGitHubClientService client = Substitute.For<IGitHubClientService>();
+        client.GetPublicReadmeSourceAsync(
+                "octo",
+                "app",
+                "main",
+                Arg.Any<CancellationToken>())
+            .Returns(CreateReadmeContent());
+        IAuthService auth = Substitute.For<IAuthService>();
+        auth.AuthenticatedUser.Returns((GitHubUser?)null);
+        auth.GetToken(0).Returns((string?)null);
+        IAccountService account = Substitute.For<IAccountService>();
+        account.GetUser().Returns(0);
+        RepoTreeService service = new(query, auth, account, client);
+
+        RepoCodeLoadResult<RepoReadmeFile>? readme =
+            await service.LoadReadmeAsync("octo", "app", "main", CancellationToken.None);
+
+        Assert.Equal("# Hello", readme?.Value.Blob.Text);
+        await client.DidNotReceiveWithAnyArgs().GetReadmeAsync(
+            default!, default!, default!, default, default);
+        await client.Received(1).GetPublicReadmeSourceAsync(
+            "octo",
+            "app",
+            "main",
+            Arg.Any<CancellationToken>());
+    }
+
+    [Fact]
+    public async Task Readme_KeepsSourceWhenRenderedHtmlEnhancementFails()
+    {
+        IGitHubRepoCodeQueryService query = Substitute.For<IGitHubRepoCodeQueryService>();
+        query.GetReadmeAsync(
+                "authenticated-token",
+                "42",
+                "octo",
+                "app",
+                "main",
+                Arg.Any<QueryFetchPolicy>(),
+                Arg.Any<CancellationToken>())
+            .Returns(new CachedResult<GitHubRepositoryContent>(
+                CreateReadmeContent(),
+                CacheState.Fresh,
+                DateTimeOffset.UtcNow,
+                DateTimeOffset.UtcNow.AddHours(1)));
+
+        IGitHubClientService client = Substitute.For<IGitHubClientService>();
+        client.GetRenderedReadmeHtmlAsync(
+                "authenticated-token",
+                "octo",
+                "app",
+                "main",
+                Arg.Any<CancellationToken>())
+            .Returns(Task.FromException<string>(new HttpRequestException("offline")));
+
+        RepoTreeService service = CreateService(query, client);
+
+        RepoCodeLoadResult<RepoReadmeFile>? readme =
+            await service.LoadReadmeAsync("octo", "app", "main", CancellationToken.None);
+
+        Assert.Equal("# Hello", readme?.Value.Blob.Text);
+        Assert.Null(readme?.Value.RenderedHtml);
     }
 
     [Theory]
