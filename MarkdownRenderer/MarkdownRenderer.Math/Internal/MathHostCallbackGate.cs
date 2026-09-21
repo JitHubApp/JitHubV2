@@ -1,3 +1,5 @@
+using System.Collections.Concurrent;
+
 namespace MarkdownRenderer.Math.Internal;
 
 /// <summary>
@@ -10,6 +12,8 @@ internal static class MathHostCallbackGate
     private static readonly SemaphoreSlim Admission = new(
         MaximumConcurrentWorkers,
         MaximumConcurrentWorkers);
+    private static readonly TaskScheduler CallbackScheduler =
+        new DedicatedTaskScheduler(MaximumConcurrentWorkers);
 
     internal static async ValueTask<Task<T>> StartAsync<T>(
         Func<CancellationToken, ValueTask<T>> callback,
@@ -22,20 +26,17 @@ internal static class MathHostCallbackGate
         try
         {
             cancellationToken.ThrowIfCancellationRequested();
-            Task<T> callbackTask = Task.Run(
-                async () =>
-                {
-                    try
-                    {
-                        cancellationToken.ThrowIfCancellationRequested();
-                        return await callback(cancellationToken).ConfigureAwait(false);
-                    }
-                    finally
-                    {
-                        Admission.Release();
-                    }
-                },
-                CancellationToken.None);
+            // A host callback may block synchronously and ignore cancellation.
+            // Keep that entry point off the shared thread pool: saturating the
+            // callback gate must not also starve the timer callback that enforces
+            // MaximumProcessingTime. The fixed scheduler avoids creating a new
+            // operating-system thread for every localized formula.
+            Task<T> callbackTask = Task.Factory.StartNew(
+                    () => InvokeAsync(callback, cancellationToken),
+                    CancellationToken.None,
+                    TaskCreationOptions.DenyChildAttach,
+                    CallbackScheduler)
+                .Unwrap();
             leaseTransferred = true;
             ObserveFault(callbackTask);
             return callbackTask;
@@ -44,6 +45,21 @@ internal static class MathHostCallbackGate
         {
             if (!leaseTransferred)
                 Admission.Release();
+        }
+    }
+
+    private static async Task<T> InvokeAsync<T>(
+        Func<CancellationToken, ValueTask<T>> callback,
+        CancellationToken cancellationToken)
+    {
+        try
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+            return await callback(cancellationToken).ConfigureAwait(false);
+        }
+        finally
+        {
+            Admission.Release();
         }
     }
 
@@ -61,5 +77,40 @@ internal static class MathHostCallbackGate
             TaskContinuationOptions.ExecuteSynchronously |
                 TaskContinuationOptions.OnlyOnFaulted,
             TaskScheduler.Default);
+    }
+
+    private sealed class DedicatedTaskScheduler : TaskScheduler
+    {
+        private readonly BlockingCollection<Task> _tasks = new();
+
+        internal DedicatedTaskScheduler(int concurrency)
+        {
+            MaximumConcurrencyLevel = concurrency;
+            for (int index = 0; index < concurrency; index++)
+            {
+                var worker = new Thread(ConsumeTasks)
+                {
+                    IsBackground = true,
+                    Name = $"Markdown math host callback {index + 1}",
+                };
+                worker.Start();
+            }
+        }
+
+        public override int MaximumConcurrencyLevel { get; }
+
+        protected override IEnumerable<Task> GetScheduledTasks() => _tasks.ToArray();
+
+        protected override void QueueTask(Task task) => _tasks.Add(task);
+
+        protected override bool TryExecuteTaskInline(
+            Task task,
+            bool taskWasPreviouslyQueued) => false;
+
+        private void ConsumeTasks()
+        {
+            foreach (Task task in _tasks.GetConsumingEnumerable())
+                _ = TryExecuteTask(task);
+        }
     }
 }
