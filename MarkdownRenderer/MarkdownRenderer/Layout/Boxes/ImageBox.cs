@@ -163,7 +163,12 @@ internal sealed class ImageBox : BlockBox
     private const int MaxPooledSvgUploadBytes = 1024 * 1024;
     private const int SvgTileSizePixels = 1024;
     private const int MaxRemoteImageBytes = RasterImageResourceBudget.MaxInputBytes;
-    private static readonly TimeSpan ImageResolverTimeout = TimeSpan.FromSeconds(20);
+    // Resolver implementations can have their own bounded network attempt and
+    // then switch to a safe alternate representation (for example, from
+    // GitHub Camo to the canonical HTTPS origin).  Keep this document-level
+    // guard outside two 20-second transport attempts so it remains the final
+    // safety net instead of racing the resolver's recovery path.
+    private static readonly TimeSpan ImageResolverTimeout = TimeSpan.FromSeconds(45);
 
     private readonly MarkdownLayoutContext _context;
     private readonly string _url;

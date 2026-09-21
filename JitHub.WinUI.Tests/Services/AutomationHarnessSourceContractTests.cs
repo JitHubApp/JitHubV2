@@ -507,6 +507,7 @@ public sealed class AutomationHarnessSourceContractTests
         Assert.Contains("EnsureLoading();", source, StringComparison.Ordinal);
         Assert.Contains("ImageResolverDeadline.RunAsync", source, StringComparison.Ordinal);
         Assert.Contains("ImageResolverTimeout", source, StringComparison.Ordinal);
+        Assert.Contains("TimeSpan.FromSeconds(45)", source, StringComparison.Ordinal);
         Assert.Contains("compactInlineFailure", source, StringComparison.Ordinal);
         Assert.Contains("MeasureInlineFailureWidth", source, StringComparison.Ordinal);
         Assert.Contains("GetInlineFailureText()", source, StringComparison.Ordinal);

@@ -2071,7 +2071,27 @@ namespace JitHub.Services
                 },
                 async (source, token) =>
                 {
-                    _ = await ResolveAsync(source, context, token).ConfigureAwait(false);
+                    try
+                    {
+                        _ = await ResolveAsync(source, context, token).ConfigureAwait(false);
+                    }
+                    catch (OperationCanceledException) when (!cancellationToken.IsCancellationRequested)
+                    {
+                        // A transport or account-lifetime cancellation for one
+                        // speculative resource must not abandon unrelated image
+                        // prefetches. A later viewport-owned resolve gets a fresh
+                        // bounded attempt.
+                    }
+                    catch (OperationCanceledException)
+                    {
+                        throw;
+                    }
+                    catch (Exception exception)
+                    {
+                        HandledFailureReporter.Report(
+                            exception,
+                            "markdown-image-prefetch-item");
+                    }
                 }).ConfigureAwait(false);
         }
 
@@ -2193,14 +2213,8 @@ namespace JitHub.Services
                         .ConfigureAwait(false);
                     if (publicAsset is null && publicDecision.Access == MarkdownRemoteImageAccess.AllowNetwork)
                     {
-                        publicAsset = await TryResolveViaGitHubCamoOriginAsync(
+                        publicAsset = await TryResolvePublicImageFallbacksAsync(
                             publicUri!,
-                            context,
-                            cancellationToken).ConfigureAwait(false);
-                    }
-                    if (publicAsset is null && publicDecision.Access == MarkdownRemoteImageAccess.AllowNetwork)
-                    {
-                        publicAsset = await TryResolveViaGitHubCamoAsync(
                             source,
                             context,
                             cancellationToken).ConfigureAwait(false);
@@ -2209,38 +2223,21 @@ namespace JitHub.Services
                         ? MarkdownImageResolution.Unavailable
                         : MarkdownImageResolution.Resolved(publicAsset);
                 }
-                catch (OperationCanceledException)
+                catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
                 {
                     throw;
                 }
                 catch (Exception ex)
                 {
                     HandledFailureReporter.Report(ex, "markdown-image-public-fetch");
-                    try
-                    {
-                        MarkdownImageAsset? fallbackAsset = await TryResolveViaGitHubCamoOriginAsync(
-                            publicUri!,
-                            context,
-                            cancellationToken).ConfigureAwait(false);
-                        fallbackAsset ??= await TryResolveViaGitHubCamoAsync(
-                            source,
-                            context,
-                            cancellationToken).ConfigureAwait(false);
-                        return fallbackAsset is null
-                            ? MarkdownImageResolution.Unavailable
-                            : MarkdownImageResolution.Resolved(fallbackAsset);
-                    }
-                    catch (OperationCanceledException)
-                    {
-                        throw;
-                    }
-                    catch (Exception fallbackException)
-                    {
-                        HandledFailureReporter.Report(
-                            fallbackException,
-                            "markdown-image-github-camo-fallback");
-                        return MarkdownImageResolution.Unavailable;
-                    }
+                    MarkdownImageAsset? fallbackAsset = await TryResolvePublicImageFallbacksAsync(
+                        publicUri!,
+                        source,
+                        context,
+                        cancellationToken).ConfigureAwait(false);
+                    return fallbackAsset is null
+                        ? MarkdownImageResolution.Unavailable
+                        : MarkdownImageResolution.Resolved(fallbackAsset);
                 }
             }
 
@@ -2319,7 +2316,7 @@ namespace JitHub.Services
                             },
                             cancellationToken).ConfigureAwait(false);
                     }
-                    catch (OperationCanceledException)
+                    catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
                     {
                         throw;
                     }
@@ -2348,7 +2345,7 @@ namespace JitHub.Services
                     ? MarkdownImageResolution.Unavailable
                     : MarkdownImageResolution.Resolved(asset);
             }
-            catch (OperationCanceledException)
+            catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
             {
                 throw;
             }
@@ -2420,6 +2417,32 @@ namespace JitHub.Services
                 cancellationToken).ConfigureAwait(false);
             return await ReadCachedMarkdownImageAsync(image, camoUri, cancellationToken)
                 .ConfigureAwait(false);
+        }
+
+        private async Task<MarkdownImageAsset?> TryResolvePublicImageFallbacksAsync(
+            Uri publicUri,
+            string authoredSource,
+            MarkdownImageResolveContext context,
+            CancellationToken cancellationToken)
+        {
+            // A Camo endpoint, its canonical HTTPS origin, and GitHub's
+            // server-rendered source map are independent transports. A timeout
+            // or reset on one must not suppress the remaining safe alternative.
+            return await MarkdownImageFallbackPipeline.FirstSuccessfulAsync(
+                token => TryResolveViaGitHubCamoOriginAsync(
+                    publicUri,
+                    context,
+                    token),
+                token => TryResolveViaGitHubCamoAsync(
+                    authoredSource,
+                    context,
+                    token),
+                static (attempt, exception) => HandledFailureReporter.Report(
+                    exception,
+                    attempt == 0
+                        ? "markdown-image-camo-origin-fallback"
+                        : "markdown-image-github-camo-fallback"),
+                cancellationToken).ConfigureAwait(false);
         }
 
         private async Task<MarkdownImageAsset?> TryResolveViaGitHubCamoOriginAsync(

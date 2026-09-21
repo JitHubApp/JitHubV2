@@ -888,6 +888,55 @@ public sealed class GitHubImageServiceTests : IDisposable
     }
 
     [Fact]
+    public async Task MarkdownImageFallback_TransportTimeoutContinuesToIndependentOrigin()
+    {
+        int attempts = 0;
+        int reportedAttempt = -1;
+
+        string? result = await MarkdownImageFallbackPipeline.FirstSuccessfulAsync(
+            _ =>
+            {
+                attempts++;
+                return Task.FromException<string?>(
+                    new TaskCanceledException("Simulated HttpClient timeout."));
+            },
+            _ =>
+            {
+                attempts++;
+                return Task.FromResult<string?>("canonical-origin");
+            },
+            (attempt, _) => reportedAttempt = attempt,
+            CancellationToken.None);
+
+        Assert.Equal("canonical-origin", result);
+        Assert.Equal(2, attempts);
+        Assert.Equal(0, reportedAttempt);
+    }
+
+    [Fact]
+    public async Task MarkdownImageFallback_CallerCancellationNeverStartsNextAttempt()
+    {
+        using CancellationTokenSource cancellation = new();
+        bool secondStarted = false;
+        await Assert.ThrowsAnyAsync<OperationCanceledException>(async () =>
+            await MarkdownImageFallbackPipeline.FirstSuccessfulAsync(
+                token =>
+                {
+                    cancellation.Cancel();
+                    return Task.FromCanceled<string?>(token);
+                },
+                _ =>
+                {
+                    secondStarted = true;
+                    return Task.FromResult<string?>("must-not-run");
+                },
+                (_, _) => { },
+                cancellation.Token));
+
+        Assert.False(secondStarted);
+    }
+
+    [Fact]
     public void DecodeGitHubCamoCanonicalSource_UpgradesLegacyHttpOriginToHttps()
     {
         const string origin = "http://hits.dwyl.com/996icu/996ICU.svg";
