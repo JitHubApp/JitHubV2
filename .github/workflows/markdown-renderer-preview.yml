@@ -93,7 +93,10 @@ jobs:
             if ($LASTEXITCODE -ne 0) { throw "The pinned Rust target $target could not be installed." }
           }
 
-          & cargo +1.96.0 fetch --manifest-path $manifest --locked --target $validationTarget
+          # The offline SBOM verifier inventories every target-conditional
+          # dependency in Cargo.lock, not only packages selected by the x64
+          # validation build. Preload the complete locked graph accordingly.
+          & cargo +1.96.0 fetch --manifest-path $manifest --locked
           if ($LASTEXITCODE -ne 0) { throw 'The pinned resvg dependency graph could not be fetched.' }
           & cargo +1.96.0 test --manifest-path $manifest --locked --target $validationTarget
           if ($LASTEXITCODE -ne 0) { throw 'The isolated resvg worker tests failed.' }
