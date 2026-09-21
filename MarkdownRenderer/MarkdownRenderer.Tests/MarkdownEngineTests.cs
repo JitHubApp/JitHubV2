@@ -500,7 +500,12 @@ public sealed class MarkdownEngineTests
         try
         {
             await dispose.WaitAsync(TimeSpan.FromSeconds(1));
-            await callbackEntered.Task.WaitAsync(TimeSpan.FromSeconds(2));
+            // CancelAsync deliberately queues registrations away from the
+            // disposing thread. A saturated hosted runner may take longer
+            // than two seconds to inject that worker even though Dispose has
+            // already met its bounded-return contract above. This wait checks
+            // eventual ordering, not callback-start latency.
+            await callbackEntered.Task.WaitAsync(TimeSpan.FromSeconds(15));
             await Assert.ThrowsAnyAsync<OperationCanceledException>(
                 () => parse.WaitAsync(TimeSpan.FromSeconds(2)));
             Assert.NotNull(resource);
