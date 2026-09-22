@@ -55,8 +55,12 @@ try {
         'linker=rust-lld.exe'
         '-C'
         'link-arg=/Brepro'
+        # Panic locations retain source paths even in stripped release workers.
+        # Remap every source root so developer and hosted-runner profiles do
+        # not change .rdata, relocation records, or the signed PE payload.
         "--remap-path-prefix=$nativeRoot=/jithub/svg-native"
         "--remap-path-prefix=$cargoHome=/cargo"
+        "--remap-path-prefix=$sysroot=/rust-toolchain"
     )
     # Cargo's encoded form preserves checkout paths that contain spaces.
     $env:RUSTFLAGS = $null
