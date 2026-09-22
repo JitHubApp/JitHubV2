@@ -57,7 +57,7 @@ internal static class MermaidVectorSceneAdapter
                     MarkdownVectorCommand.DrawEllipse(ellipse, style, command.SemanticIndex),
                 MermaidDrawOpcode.Text when TryPoint(source, command, out MarkdownVectorPoint baseline) && command.TextIndex >= 0 =>
                     MarkdownVectorCommand.DrawText(
-                        source.Strings[command.TextIndex],
+                        NormalizeLabelText(source.Strings[command.TextIndex]),
                         baseline,
                         new MarkdownVectorTextStyle(
                             MarkdownVectorFontRole.Host,
@@ -99,7 +99,7 @@ internal static class MermaidVectorSceneAdapter
                 item.SourceId,
                 ToSemanticRole(item.Role),
                 semanticNames[i],
-                GetString(source, item.DescriptionIndex),
+                NormalizeOptionalLabelText(GetString(source, item.DescriptionIndex)),
                 item.ParentIndex,
                 mapped,
                 bounds.HasValue
@@ -150,7 +150,7 @@ internal static class MermaidVectorSceneAdapter
             if (scene.Semantics[i].Role == MermaidSemanticRole.Diagram &&
                 GetString(scene, scene.Semantics[i].NameIndex) is { Length: > 0 } name)
             {
-                return name;
+                return NormalizeLabelText(name);
             }
         }
         return null;
@@ -177,7 +177,8 @@ internal static class MermaidVectorSceneAdapter
             ThrowIfCancellationRequestedPeriodically(cancellationToken, i);
             MermaidDrawCommand command = scene.Commands[i];
             if (command.Opcode != MermaidDrawOpcode.Text ||
-                GetString(scene, command.TextIndex) is not { Length: > 0 } text ||
+                GetString(scene, command.TextIndex) is not { Length: > 0 } rawText ||
+                NormalizeLabelText(rawText) is not { Length: > 0 } text ||
                 !seen.Add(text))
             {
                 continue;
@@ -197,7 +198,7 @@ internal static class MermaidVectorSceneAdapter
         for (int i = 0; i < names.Length; i++)
         {
             ThrowIfCancellationRequestedPeriodically(cancellationToken, i);
-            names[i] = GetString(scene, scene.Semantics[i].NameIndex);
+            names[i] = NormalizeOptionalLabelText(GetString(scene, scene.Semantics[i].NameIndex));
         }
 
         // Merman sometimes places a visual label under a semantic SVG group
@@ -212,7 +213,8 @@ internal static class MermaidVectorSceneAdapter
                 command.SemanticIndex < 0 ||
                 scene.Semantics[command.SemanticIndex].Role == MermaidSemanticRole.Diagram ||
                 names[command.SemanticIndex] is { Length: > 0 } ||
-                GetString(scene, command.TextIndex) is not { Length: > 0 } text)
+                GetString(scene, command.TextIndex) is not { Length: > 0 } rawText ||
+                NormalizeLabelText(rawText) is not { Length: > 0 } text)
             {
                 continue;
             }
@@ -604,6 +606,115 @@ internal static class MermaidVectorSceneAdapter
 
     private static string? GetString(MermaidScene scene, int index) =>
         index >= 0 ? scene.Strings[index] : null;
+
+    private static string? NormalizeOptionalLabelText(string? text) =>
+        text is null ? null : NormalizeLabelText(text);
+
+    /// <summary>
+    /// Mermaid's SVG text projection can retain inert HTML formatting wrappers
+    /// when htmlLabels is disabled. They are presentation markup, not label
+    /// content, so do not paint or announce them. Unknown tags remain literal:
+    /// this deliberately is not a permissive HTML parser.
+    /// </summary>
+    internal static string NormalizeLabelText(string text)
+    {
+        ArgumentNullException.ThrowIfNull(text);
+        int marker = text.IndexOf('<', StringComparison.Ordinal);
+        if (marker < 0)
+            return text;
+
+        StringBuilder? builder = null;
+        int copiedThrough = 0;
+        while (marker >= 0 && marker < text.Length)
+        {
+            if (TryReadFormattingTag(text, marker, out int end))
+            {
+                builder ??= new StringBuilder(text.Length);
+                builder.Append(text, copiedThrough, marker - copiedThrough);
+                copiedThrough = end;
+                marker = text.IndexOf('<', end);
+                continue;
+            }
+
+            marker = text.IndexOf('<', marker + 1);
+        }
+
+        if (builder is null)
+            return text;
+        builder.Append(text, copiedThrough, text.Length - copiedThrough);
+        return builder.ToString();
+    }
+
+    private static bool TryReadFormattingTag(string text, int start, out int end)
+    {
+        end = start;
+        int close = FindTagClose(text, start + 1);
+        if (close < 0)
+            return false;
+
+        ReadOnlySpan<char> tag = text.AsSpan(start + 1, close - start - 1);
+        if (tag.IsEmpty || char.IsWhiteSpace(tag[0]))
+            return false;
+        if (!tag.IsEmpty && tag[0] == '/')
+        {
+            tag = tag[1..];
+            if (tag.IsEmpty || char.IsWhiteSpace(tag[0]))
+                return false;
+        }
+        if (!tag.IsEmpty && tag[^1] == '/')
+            tag = tag[..^1].TrimEnd();
+
+        int nameLength = 0;
+        while (nameLength < tag.Length && char.IsAsciiLetter(tag[nameLength]))
+            nameLength++;
+        if (nameLength == 0 ||
+            (nameLength < tag.Length && !char.IsWhiteSpace(tag[nameLength])))
+        {
+            return false;
+        }
+
+        ReadOnlySpan<char> name = tag[..nameLength];
+        bool recognized =
+            name.Equals("b", StringComparison.OrdinalIgnoreCase) ||
+            name.Equals("strong", StringComparison.OrdinalIgnoreCase) ||
+            name.Equals("i", StringComparison.OrdinalIgnoreCase) ||
+            name.Equals("em", StringComparison.OrdinalIgnoreCase) ||
+            name.Equals("u", StringComparison.OrdinalIgnoreCase) ||
+            name.Equals("s", StringComparison.OrdinalIgnoreCase) ||
+            name.Equals("strike", StringComparison.OrdinalIgnoreCase) ||
+            name.Equals("del", StringComparison.OrdinalIgnoreCase) ||
+            name.Equals("sub", StringComparison.OrdinalIgnoreCase) ||
+            name.Equals("sup", StringComparison.OrdinalIgnoreCase) ||
+            name.Equals("small", StringComparison.OrdinalIgnoreCase) ||
+            name.Equals("mark", StringComparison.OrdinalIgnoreCase) ||
+            name.Equals("span", StringComparison.OrdinalIgnoreCase);
+        if (!recognized)
+            return false;
+
+        end = close + 1;
+        return true;
+    }
+
+    private static int FindTagClose(string text, int start)
+    {
+        char quote = '\0';
+        for (int i = start; i < text.Length; i++)
+        {
+            char value = text[i];
+            if (quote != '\0')
+            {
+                if (value == quote)
+                    quote = '\0';
+                continue;
+            }
+
+            if (value is '\'' or '"')
+                quote = value;
+            else if (value == '>')
+                return i;
+        }
+        return -1;
+    }
 
     private static int GetIntAttribute(MarkdownSyntaxNode node, string key, int fallback) =>
         node.Attributes.TryGetValue(key, out string? value) && int.TryParse(value, out int parsed) && parsed >= 0

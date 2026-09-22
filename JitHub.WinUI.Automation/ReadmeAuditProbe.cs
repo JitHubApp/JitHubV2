@@ -231,7 +231,7 @@ internal static partial class ReadmeAuditProbe
 
         return new ReadmeAuditCaseResult
         {
-            SchemaVersion = 1,
+            SchemaVersion = 2,
             CorpusGeneratedAtUtc = manifest.GeneratedAtUtc,
             Rank = repository.Rank,
             FullName = repository.FullName,
@@ -261,7 +261,7 @@ internal static partial class ReadmeAuditProbe
                 File.ReadAllText(reportPath),
                 JsonOptions) ?? throw new InvalidDataException("Cached Edge README oracle report is empty.");
             string snapshotUrl = GetSnapshotUrl(repository);
-            if (cached.SchemaVersion != 4 ||
+            if (cached.SchemaVersion != 5 ||
                 !string.Equals(cached.RepositoryUrl, snapshotUrl, StringComparison.OrdinalIgnoreCase) ||
                 !string.Equals(cached.ReadmeSha, GetReadmeEvidenceIdentity(repository), StringComparison.Ordinal))
             {
@@ -585,6 +585,7 @@ internal static partial class ReadmeAuditProbe
                 CpuMs = cpuMs,
                 PeakWorkingSetBytes = peakWorkingSetBytes,
                 Text = NormalizeText(text),
+                MermaidSources = traversal.MermaidSources,
                 Width = traversal.Width,
                 EstimatedContentHeight = traversal.EstimatedContentHeight,
                 Tiles = traversal.Tiles,
@@ -823,6 +824,16 @@ internal static partial class ReadmeAuditProbe
             })
             .ToArray();
         WriteJson(Path.Combine(output, "automation-links.json"), nativeLinks);
+        string[] nativeMermaidSources = descendants
+            .Where(element => string.Equals(
+                ReadAutomationString(() => element.ClassName),
+                "MarkdownDiagram",
+                StringComparison.Ordinal))
+            .Select(element => ReadAutomationString(
+                () => element.Properties.HelpText.ValueOrDefault))
+            .Where(source => !string.IsNullOrWhiteSpace(source))
+            .ToArray();
+        WriteJson(Path.Combine(output, "automation-mermaid-sources.json"), nativeMermaidSources);
         headingObservations = descendants.Count(element => element.ControlType == ControlType.Header);
         // Compare textual link destinations independently from atomic linked
         // images. GitHub's live DOM removes or rewrites many generated
@@ -841,8 +852,9 @@ internal static partial class ReadmeAuditProbe
             .Distinct(StringComparer.OrdinalIgnoreCase)
             .Count();
         AutomationElement[] nativeImages = descendants.Where(element =>
-            element.ControlType == ControlType.Image ||
-            string.Equals(element.ClassName, "MarkdownLinkedImage", StringComparison.Ordinal)).ToArray();
+            string.Equals(element.ClassName, "MarkdownImage", StringComparison.Ordinal) ||
+            string.Equals(element.ClassName, "MarkdownLinkedImage", StringComparison.Ordinal) ||
+            string.Equals(element.ClassName, "MarkdownHostedImage", StringComparison.Ordinal)).ToArray();
         imageObservations = nativeImages.Length;
         tableObservations = descendants.Count(element => element.ControlType == ControlType.Table);
         codeBlockObservations = descendants.Count(element =>
@@ -869,6 +881,7 @@ internal static partial class ReadmeAuditProbe
             codeBlockObservations,
             taskCheckboxObservations,
             disclosureObservations,
+            nativeMermaidSources,
             loadingAfterTraversal,
             auditOverheadMs);
     }
@@ -921,6 +934,12 @@ internal static partial class ReadmeAuditProbe
         string browserVisibleText = string.IsNullOrWhiteSpace(browser.Semantic.VisibleText)
             ? browser.Semantic.Text
             : browser.Semantic.VisibleText;
+        IReadOnlyList<string> matchedVisibleMermaidSources = MatchEquivalentMermaidSources(
+            browser.Semantic.VisibleMermaidSources,
+            native.MermaidSources);
+        string comparableNativeText = matchedVisibleMermaidSources.Count == 0
+            ? native.Text
+            : string.Concat(native.Text, " ", string.Join(' ', matchedVisibleMermaidSources));
         // Coverage answers the page-fidelity question: every piece of text
         // visibly rendered by Edge must exist in JitHub's document. Native UIA
         // intentionally also includes names for atomic images. Since TextPattern
@@ -928,7 +947,7 @@ internal static partial class ReadmeAuditProbe
         // precision is retained as diagnostic evidence while the structural
         // score uses the comparable visible-text coverage. Image-name and image
         // source correctness are gated independently below.
-        double textCoverage = TokenCoverage(browserVisibleText, native.Text);
+        double textCoverage = TokenCoverage(browserVisibleText, comparableNativeText);
         double textPrecision = TokenCoverage(native.Text, browser.Semantic.Text);
         double textFidelity = textCoverage;
         var similarities = new List<double>();
@@ -1032,7 +1051,10 @@ internal static partial class ReadmeAuditProbe
         // same authored source. Missing native coverage is still a hard failure below.
         double imageFidelity = CoverageFidelity(browserDistinctAtomicMedia, native.ImageSourceCount);
         double tableFidelity = CountFidelity(browser.Semantic.Tables, native.TableObservations);
-        double codeBlockFidelity = CountFidelity(browser.Semantic.CodeBlocks, native.CodeBlockObservations);
+        int comparableBrowserCodeBlocks = Math.Max(
+            0,
+            browser.Semantic.CodeBlocks - matchedVisibleMermaidSources.Count);
+        double codeBlockFidelity = CountFidelity(comparableBrowserCodeBlocks, native.CodeBlockObservations);
         double taskCheckboxFidelity = CountFidelity(
             browser.Semantic.TaskCheckboxes,
             native.TaskCheckboxObservations);
@@ -1090,8 +1112,41 @@ internal static partial class ReadmeAuditProbe
             NativeTaskCheckboxObservations = native.TaskCheckboxObservations,
             BrowserDetailsCount = browser.Semantic.Details,
             NativeDisclosureObservations = native.DisclosureObservations,
+            BrowserVisibleMermaidSources = browser.Semantic.VisibleMermaidSources.Count,
+            NativeMermaidDiagrams = native.MermaidSources.Count,
+            MatchedMermaidTransformations = matchedVisibleMermaidSources.Count,
         };
     }
+
+    private static IReadOnlyList<string> MatchEquivalentMermaidSources(
+        IReadOnlyList<string> browserSources,
+        IReadOnlyList<string> nativeSources)
+    {
+        var available = new Dictionary<string, int>(StringComparer.Ordinal);
+        for (int i = 0; i < nativeSources.Count; i++)
+        {
+            string key = NormalizeMermaidSource(nativeSources[i]);
+            if (key.Length > 0)
+                available[key] = available.GetValueOrDefault(key) + 1;
+        }
+
+        var matched = new List<string>();
+        for (int i = 0; i < browserSources.Count; i++)
+        {
+            string key = NormalizeMermaidSource(browserSources[i]);
+            if (key.Length == 0 || available.GetValueOrDefault(key) <= 0)
+                continue;
+            available[key]--;
+            matched.Add(browserSources[i]);
+        }
+        return matched;
+    }
+
+    private static string NormalizeMermaidSource(string source) =>
+        (source ?? string.Empty)
+            .Replace("\r\n", "\n", StringComparison.Ordinal)
+            .Replace('\r', '\n')
+            .Trim();
 
     private static ReadmeAuditSummary BuildSummary(
         ReadmeAuditManifest manifest,
@@ -2188,7 +2243,7 @@ internal static partial class ReadmeAuditProbe
             result = JsonSerializer.Deserialize<ReadmeAuditCaseResult>(File.ReadAllText(path), JsonOptions);
             return result is not null &&
                 !result.InfrastructureFailure &&
-                result.SchemaVersion == 1 &&
+                result.SchemaVersion == 2 &&
                 result.CorpusGeneratedAtUtc == manifest.GeneratedAtUtc &&
                 result.Rank == repository.Rank &&
                 string.Equals(result.ReadmeSha, repository.Readme.Sha, StringComparison.Ordinal);
@@ -2219,6 +2274,7 @@ internal static partial class ReadmeAuditProbe
         int CodeBlocks,
         int TaskCheckboxes,
         int Disclosures,
+        IReadOnlyList<string> MermaidSources,
         int LoadingImages,
         double AuditOverheadMs);
 
@@ -2307,6 +2363,7 @@ internal sealed class BrowserSemantic
     public List<BrowserLink> Links { get; init; } = [];
     public List<BrowserImage> Images { get; init; } = [];
     public List<BrowserMedia> Media { get; init; } = [];
+    public List<string> VisibleMermaidSources { get; init; } = [];
     public int UnavailableImages { get; init; }
     public int Tables { get; init; }
     public int CodeBlocks { get; init; }
@@ -2369,6 +2426,7 @@ internal sealed class NativeAuditResult
     public double CpuMs { get; init; }
     public long PeakWorkingSetBytes { get; init; }
     public string Text { get; init; } = string.Empty;
+    public IReadOnlyList<string> MermaidSources { get; init; } = [];
     public int Width { get; init; }
     public int EstimatedContentHeight { get; init; }
     public IReadOnlyList<AuditTile> Tiles { get; init; } = [];
@@ -2423,6 +2481,9 @@ internal sealed class ReadmeAuditComparison
     public int NativeTaskCheckboxObservations { get; init; }
     public int BrowserDetailsCount { get; init; }
     public int NativeDisclosureObservations { get; init; }
+    public int BrowserVisibleMermaidSources { get; init; }
+    public int NativeMermaidDiagrams { get; init; }
+    public int MatchedMermaidTransformations { get; init; }
 }
 
 internal sealed class ReadmeAuditCaseResult

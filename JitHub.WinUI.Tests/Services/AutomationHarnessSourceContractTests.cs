@@ -170,6 +170,9 @@ public sealed class AutomationHarnessSourceContractTests
         Assert.Contains("!image.hasExplicitAlt ? \"Image\" : \"\"", browserOracle, StringComparison.Ordinal);
         Assert.Contains("text: accessibleText", browserOracle, StringComparison.Ordinal);
         Assert.Contains("visibleText: clean(article.innerText)", browserOracle, StringComparison.Ordinal);
+        Assert.Contains("visibleMermaidSources", browserOracle, StringComparison.Ordinal);
+        Assert.Contains("schemaVersion: 5", browserOracle, StringComparison.Ordinal);
+        Assert.Contains("data-type=\"mermaid\"", browserOracle, StringComparison.Ordinal);
         Assert.Contains("isImageSelfLink", browserOracle, StringComparison.Ordinal);
         Assert.Contains("data-canonical-src", browserOracle, StringComparison.Ordinal);
         Assert.Contains("github-asset://", browserOracle, StringComparison.Ordinal);
@@ -178,6 +181,9 @@ public sealed class AutomationHarnessSourceContractTests
         Assert.Contains("ReadAutomationString", nativeProbe, StringComparison.Ordinal);
         Assert.Contains("browserDistinctLinks", nativeProbe, StringComparison.Ordinal);
         Assert.Contains("MarkdownLinkedImage", nativeProbe, StringComparison.Ordinal);
+        Assert.Contains("automation-mermaid-sources.json", nativeProbe, StringComparison.Ordinal);
+        Assert.Contains("MatchEquivalentMermaidSources", nativeProbe, StringComparison.Ordinal);
+        Assert.Contains("MatchedMermaidTransformations", nativeProbe, StringComparison.Ordinal);
         Assert.Contains("link => !string.IsNullOrWhiteSpace(link.Text)", nativeProbe, StringComparison.Ordinal);
         Assert.Contains("double textFidelity = textCoverage", nativeProbe, StringComparison.Ordinal);
         Assert.Contains("Rectangle.Intersect(", nativeProbe, StringComparison.Ordinal);

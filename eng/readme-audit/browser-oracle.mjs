@@ -82,7 +82,7 @@ try {
     const elapsed = performance.now() - navigationStarted;
     const reportPath = path.join(outputDirectory, "browser.json");
     await writeFile(reportPath, JSON.stringify({
-      schemaVersion: 4,
+      schemaVersion: 5,
       repositoryUrl,
       readmeSha,
       readmeRendered: false,
@@ -237,6 +237,41 @@ try {
       })
       .filter(item => item.renderedWidth > 0 && item.renderedHeight > 0)
       .filter(item => item.source || item.currentSource);
+    const visibleMermaidSources = [];
+    const readMermaidPayload = container => {
+      const payload = container.querySelector("[data-json]")?.getAttribute("data-json");
+      if (!payload) return "";
+      try {
+        const parsed = JSON.parse(payload);
+        return typeof parsed?.data === "string" ? parsed.data : "";
+      } catch {
+        return "";
+      }
+    };
+    const addVisibleMermaidSource = (container, source) => {
+      const sourceNode = [...container.querySelectorAll("pre,code")]
+        .find(node => isRendered(node));
+      if (!sourceNode) return;
+      const visibleSource = source || sourceNode.innerText || sourceNode.textContent || "";
+      // Count only GitHub's visible source fallback. A successfully enriched
+      // Mermaid diagram can retain the original source in data-json, but that
+      // source is not part of the browser's visible-text oracle.
+      if (source && !clean(sourceNode.innerText).includes(clean(source))) return;
+      if (visibleSource) visibleMermaidSources.push(visibleSource);
+    };
+    for (const section of article.querySelectorAll('section[data-type="mermaid"]')) {
+      addVisibleMermaidSource(section, readMermaidPayload(section));
+    }
+    for (const container of article.querySelectorAll(".highlight-source-mermaid")) {
+      if (!container.closest('section[data-type="mermaid"]')) {
+        addVisibleMermaidSource(container, "");
+      }
+    }
+    for (const pre of article.querySelectorAll('pre[lang="mermaid"],pre[data-language="mermaid"]')) {
+      if (!pre.closest('section[data-type="mermaid"],.highlight-source-mermaid') && isRendered(pre)) {
+        visibleMermaidSources.push(pre.innerText || pre.textContent || "");
+      }
+    }
     // JitHub's UIA TextPattern represents an atomic image by its accessible
     // alt text. innerText intentionally omits image alternatives, so append the
     // rendered images' alt values to compare equivalent accessible documents.
@@ -273,6 +308,7 @@ try {
       })),
       images,
       media,
+      visibleMermaidSources,
       unavailableImages: images.filter(image => !image.complete || image.naturalWidth <= 0).length,
       tables: [...article.querySelectorAll("table")].filter(isRendered).length,
       codeBlocks: [...article.querySelectorAll("pre")].filter(isRendered).length,
@@ -339,7 +375,7 @@ try {
   const fullCaptureMetricMap = Object.fromEntries(
     fullCaptureMetrics.metrics.map(metric => [metric.name, metric.value]));
   const report = {
-    schemaVersion: 4,
+    schemaVersion: 5,
     repositoryUrl,
     readmeSha,
     readmeRendered: true,

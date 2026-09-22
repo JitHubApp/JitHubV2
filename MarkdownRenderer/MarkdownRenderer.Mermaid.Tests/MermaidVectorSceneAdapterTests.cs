@@ -111,6 +111,68 @@ public sealed class MermaidVectorSceneAdapterTests
         Assert.Same(first.Style, second.Style);
     }
 
+    [Theory]
+    [InlineData("<b>Bold</b>", "Bold")]
+    [InlineData("<STRONG class='label'>Strong</STRONG>", "Strong")]
+    [InlineData("<span title='a>b'>quoted</span>", "quoted")]
+    [InlineData("<i>one</i> and <em>two</em>", "one and two")]
+    [InlineData("x<sub>1</sub> + y<sup>2</sup>", "x1 + y2")]
+    [InlineData("<custom>literal</custom>", "<custom>literal</custom>")]
+    [InlineData("comparison: a < b > c", "comparison: a < b > c")]
+    public void NormalizeLabelTextRemovesOnlyKnownFormattingWrappers(string source, string expected)
+    {
+        Assert.Equal(expected, MermaidVectorSceneAdapter.NormalizeLabelText(source));
+    }
+
+    [Fact]
+    public void ConvertAndSemanticTextUseTheSameNormalizedLabel()
+    {
+        var style = new MermaidSceneStyle(
+            new MermaidRgba32(0, 0, 0, 0),
+            new MermaidRgba32(0, 0, 0, 255),
+            0,
+            1,
+            MermaidStyleFlags.None,
+            0,
+            0);
+        MermaidScene scene = new(
+            MermaidSceneVersion.Current,
+            new MermaidViewport(0, 0, 100, 100),
+            ["<b>Agent</b>", "Segoe UI"],
+            [style],
+            [10, 20, 30, 40],
+            [new MermaidDrawCommand(
+                MermaidDrawOpcode.Text,
+                MermaidDrawFlags.None,
+                0,
+                0,
+                0,
+                0,
+                4,
+                1,
+                MermaidTextFlags.None)],
+            [new MermaidSemanticItem(
+                1,
+                MermaidSemanticRole.Node,
+                0,
+                -1,
+                -1,
+                -1,
+                MermaidSemanticFlags.None)],
+            [],
+            [],
+            []);
+
+        MarkdownVectorScene converted = MermaidVectorSceneAdapter.Convert(
+            scene,
+            new MarkdownSyntaxNode("fencedCodeBlock", new SourceSpan(0, 3)),
+            "abc");
+
+        Assert.Equal("Agent", Assert.Single(converted.Commands).Text);
+        Assert.Equal("Agent", Assert.Single(converted.Semantics).Name);
+        Assert.Equal("Agent", MermaidVectorSceneAdapter.GetSemanticText(scene));
+    }
+
     private static MermaidScene CreateScene(
         MermaidSemanticItem[] semantics,
         int semanticIndex)
