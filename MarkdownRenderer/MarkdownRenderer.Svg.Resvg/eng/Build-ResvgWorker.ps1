@@ -29,6 +29,11 @@ $hostTarget = @($verboseVersion | Where-Object { $_ -like 'host: *' } |
 if ($hostTarget.Count -ne 1 -or [string]::IsNullOrWhiteSpace($hostTarget[0])) {
     throw 'The pinned Rust 1.96.0 host target could not be resolved.'
 }
+$rustCommitHash = @($verboseVersion | Where-Object { $_ -like 'commit-hash: *' } |
+    ForEach-Object { $_.Substring('commit-hash: '.Length).Trim() })
+if ($rustCommitHash.Count -ne 1 -or $rustCommitHash[0] -notmatch '^[0-9a-f]{40}$') {
+    throw 'The pinned Rust 1.96.0 commit hash could not be resolved.'
+}
 $lldDirectory = Join-Path $sysroot "lib\rustlib\$($hostTarget[0])\bin"
 $lld = Join-Path $lldDirectory 'rust-lld.exe'
 if (-not (Test-Path -LiteralPath $lld -PathType Leaf)) {
@@ -42,6 +47,10 @@ else {
     $env:CARGO_HOME
 }
 $cargoHome = [IO.Path]::GetFullPath($cargoHome)
+# rustc reports rust-src paths with the same mixed separators used by its
+# virtual source map on Windows; preserve that spelling for prefix matching.
+$rustLibrarySource = "$sysroot\lib/rustlib/src/rust\library"
+$canonicalRustLibrarySource = "/rustc/$($rustCommitHash[0])/library"
 
 $previousPath = $env:PATH
 $previousRustFlags = $env:RUSTFLAGS
@@ -56,11 +65,13 @@ try {
         '-C'
         'link-arg=/Brepro'
         # Panic locations retain source paths even in stripped release workers.
-        # Remap every source root so developer and hosted-runner profiles do
-        # not change .rdata, relocation records, or the signed PE payload.
+        # rust-src installations resolve standard-library locations through
+        # the local toolchain, whereas minimal CI toolchains retain rustc's
+        # canonical /rustc/<commit>/library paths. Normalize both forms so
+        # developer and hosted-runner profiles produce the same PE payload.
         "--remap-path-prefix=$nativeRoot=/jithub/svg-native"
         "--remap-path-prefix=$cargoHome=/cargo"
-        "--remap-path-prefix=$sysroot=/rust-toolchain"
+        "--remap-path-prefix=$rustLibrarySource=$canonicalRustLibrarySource"
     )
     # Cargo's encoded form preserves checkout paths that contain spaces.
     $env:RUSTFLAGS = $null
