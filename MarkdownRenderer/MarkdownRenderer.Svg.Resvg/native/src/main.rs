@@ -1718,11 +1718,21 @@ fn ensure_font_database(state: &mut WorkerState) -> Result<(), Reject> {
 
 fn warm_text_pipeline(database: &Arc<usvg::fontdb::Database>) -> Result<(), Reject> {
     // Loading Windows' font catalog is only part of the cold cost. The first
-    // usvg text conversion and resvg glyph raster also initialize shaping and
-    // fallback state. Prime that fixed engine work behind HELLO's independent
-    // initialization deadline so the immutable per-content deadline measures
-    // only work attributable to the admitted SVG.
-    const WARMUP_SVG: &[u8] = br#"<svg xmlns='http://www.w3.org/2000/svg' width='256' height='32'><text x='1' y='24' font-family='Segoe UI' font-size='16'>JitHub &#x0645;&#x0631;&#x062d;&#x0628;&#x0627; e&#x0301; &#x1f600;</text></svg>"#;
+    // usvg text conversion and resvg glyph raster also initialize per-face
+    // parsing, shaping, generic-family fallback, and color-glyph state. Prime
+    // the Windows and browser-compatible families that static SVG commonly
+    // requests behind HELLO's independent initialization deadline. Otherwise
+    // the first SVG that asks for Arial, Times, or a monospace face can be
+    // charged for engine initialization and exceed the immutable per-content
+    // deadline on a cold or contended machine.
+    const WARMUP_SVG: &[u8] = br#"<svg xmlns='http://www.w3.org/2000/svg' width='768' height='192'>
+<text x='1' y='24' font-family='Segoe UI, sans-serif' font-size='16'>JitHub &#x0645;&#x0631;&#x062d;&#x0628;&#x0627; e&#x0301; &#x1f600;</text>
+<text x='1' y='54' font-family='Helvetica, Arial, sans-serif' font-size='16'>Browser SVG text 0123456789</text>
+<text x='1' y='84' font-family='Verdana, Tahoma, sans-serif' font-size='16'>Windows sans-serif fallback</text>
+<text x='1' y='114' font-family='Times New Roman, Georgia, serif' font-size='16'>Windows serif fallback</text>
+<text x='1' y='144' font-family='Consolas, Courier New, monospace' font-size='16'>Monospace SVG text</text>
+<text x='1' y='174' font-family='Segoe UI Symbol, Segoe UI Emoji, sans-serif' font-size='16'>&#x2192; &#x2713; &#x1f600;</text>
+</svg>"#;
     let options = usvg::Options {
         resources_dir: None,
         dpi: 96.0,
@@ -1733,8 +1743,8 @@ fn warm_text_pipeline(database: &Arc<usvg::fontdb::Database>) -> Result<(), Reje
     };
     let tree = usvg::Tree::from_data(WARMUP_SVG, &options)
         .map_err(|_| Reject::Worker("text pipeline initialization failed"))?;
-    let mut pixels = [0_u8; 256 * 32 * 4];
-    let mut pixmap = tiny_skia::PixmapMut::from_bytes(&mut pixels, 256, 32)
+    let mut pixels = vec![0_u8; 768 * 192 * 4];
+    let mut pixmap = tiny_skia::PixmapMut::from_bytes(&mut pixels, 768, 192)
         .ok_or(Reject::Worker("text pipeline raster initialization failed"))?;
     resvg::render(&tree, tiny_skia::Transform::identity(), &mut pixmap);
     Ok(())

@@ -39,6 +39,47 @@ public sealed class ResvgProviderTests
         Assert.Equal(24, raster.HeightPixels);
     }
 
+    [Fact]
+    public async Task BrowserFontFallbackAndCssNamespace_AreWarmBeforeContentDeadline()
+    {
+        const string source = """
+            <svg viewBox="0 0 800 130" xmlns="http://www.w3.org/2000/svg">
+              <style>
+                @namespace svg url(http://www.w3.org/2000/svg);
+                svg { font-family: Helvetica, Arial, sans-serif; text-rendering: geometricPrecision; }
+                svg|a:link, svg|a:visited { cursor: pointer; }
+                .message { fill: white; font-size: 18px; }
+                .call { fill: black; font-size: 22px; }
+              </style>
+              <defs><clipPath id="round-corners"><rect width="100%" height="100%" rx="3" /></clipPath></defs>
+              <a href="https://example.invalid">
+                <g clip-path="url(#round-corners)">
+                  <rect width="100%" height="100%" fill="#ffd700"/>
+                  <rect width="100%" height="90" fill="#0056b3"/>
+                </g>
+                <text x="0" y="25" class="message">
+                  <tspan x="30" dy="0.8em">Static SVG text must not pay cold Arial initialization.</tspan>
+                  <tspan x="30" dy="1.2em">The content deadline covers this document only.</tspan>
+                </text>
+                <text x="50%" y="86%" dominant-baseline="middle" text-anchor="middle" class="call">Help Now ➔</text>
+              </a>
+            </svg>
+            """;
+        var options = new ResvgMarkdownSvgRendererOptions(
+            requestDeadline: TimeSpan.FromMilliseconds(500));
+        await using var renderer = new ResvgMarkdownSvgRenderer(options);
+
+        using IMarkdownSvgDocument document = await renderer.OpenAsync(
+            new MarkdownSvgOpenRequest(Svg(source)));
+        using MarkdownSvgRaster raster = await document.RenderAsync(
+            new MarkdownSvgRenderRequest(800, 130));
+
+        Assert.True(document.Info.HasText);
+        Assert.Equal(800, raster.WidthPixels);
+        Assert.Equal(130, raster.HeightPixels);
+        Assert.True(HasVisiblePixel(raster.Pixels.Span));
+    }
+
     private static byte[] Svg(string value) => Encoding.UTF8.GetBytes(value);
 
     [Fact]
