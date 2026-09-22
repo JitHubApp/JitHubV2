@@ -108,7 +108,6 @@ internal sealed class WorkerPool : IAsyncDisposable, IDisposable
         if (preflight.Info.HasText)
             await EnsureFontCatalogReadyAsync(lease, worker, cancellationToken).ConfigureAwait(false);
         cancellationToken.ThrowIfCancellationRequested();
-        long started = _timeProvider.GetTimestamp();
         long requestGeneration = FontGeneration;
         WorkerRequest request = new(
             WorkerOperation.Render,
@@ -132,9 +131,14 @@ internal sealed class WorkerPool : IAsyncDisposable, IDisposable
             _options);
         try
         {
+            // A document can be opened on one worker and rendered on the other.
+            // The missing-document probe, the authoritative attach/parse, and
+            // the raster operation are separate bounded worker transactions.
+            // Charging all three to one shared stopwatch makes an otherwise
+            // valid SVG fail nondeterministically during visible image bursts.
             WorkerResponse response = await worker.ExchangeAsync(
                 request,
-                RemainingDeadline(started),
+                _options.RequestDeadline,
                 CancellationToken.None).ConfigureAwait(false);
             cancellationToken.ThrowIfCancellationRequested();
             if (preflight.Info.HasText && requestGeneration != FontGeneration)
@@ -149,7 +153,7 @@ internal sealed class WorkerPool : IAsyncDisposable, IDisposable
                 preflight,
                 openRequest,
                 sourceMemory,
-                RemainingDeadline(started),
+                _options.RequestDeadline,
                 cancellationToken).ConfigureAwait(false);
             if (attachment.Status != WorkerStatus.Ok)
                 return attachment;
@@ -158,7 +162,7 @@ internal sealed class WorkerPool : IAsyncDisposable, IDisposable
             request = request with { RequestId = NextRequestId() };
             response = await worker.ExchangeAsync(
                 request,
-                RemainingDeadline(started),
+                _options.RequestDeadline,
                 CancellationToken.None).ConfigureAwait(false);
             cancellationToken.ThrowIfCancellationRequested();
             if (preflight.Info.HasText && requestGeneration != FontGeneration)
@@ -265,16 +269,6 @@ internal sealed class WorkerPool : IAsyncDisposable, IDisposable
         {
             Invalidate(worker);
         }
-    }
-
-    private TimeSpan RemainingDeadline(long started)
-    {
-        TimeSpan remaining = _options.RequestDeadline - _timeProvider.GetElapsedTime(started);
-        if (remaining <= TimeSpan.Zero)
-            throw new WorkerDeadlineException(
-                "The resvg worker exceeded its request deadline.",
-                new TimeoutException());
-        return remaining;
     }
 
     private static WorkerResponse Stamp(WorkerResponse response, WindowsWorkerProcess worker) =>
