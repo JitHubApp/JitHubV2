@@ -4,6 +4,15 @@ export function metricMap(response) {
   return Object.fromEntries(response.metrics.map(metric => [metric.name, metric.value]));
 }
 
+// Performance.getMetrics counters can reset if navigation swaps the renderer
+// process. In that case the new counter already represents the successful
+// attempt and subtracting the old process's baseline would undercount it.
+export function metricDelta(currentMetrics, baselineMetrics, name) {
+  const current = currentMetrics[name] || 0;
+  const baseline = baselineMetrics[name] || 0;
+  return Math.max(0, current >= baseline ? current - baseline : current);
+}
+
 // A timed-out GitHub document may be an upstream delivery stall. Make exactly
 // one fresh attempt, preserving the failed attempt in wall time while keeping
 // its CPU/layout work out of the successful navigation's comparison metrics.

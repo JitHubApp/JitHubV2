@@ -3,7 +3,7 @@ import { mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { existsSync } from "node:fs";
 import os from "node:os";
 import path from "node:path";
-import { DocumentReadinessTimeout, metricMap, navigateReadme } from "./browser-navigation.mjs";
+import { DocumentReadinessTimeout, metricDelta, metricMap, navigateReadme } from "./browser-navigation.mjs";
 
 const options = parseArguments(process.argv.slice(2));
 const outputDirectory = path.resolve(required("out"));
@@ -321,8 +321,8 @@ try {
   // work; including them made the native/Edge CPU comparison meaningless.
   const settledMetrics = await cdp.send("Performance.getMetrics");
   const settledMetricMap = metricMap(settledMetrics);
-  const metricDelta = name => Math.max(0,
-    (settledMetricMap[name] || 0) - (retryMetricBaseline[name] || 0));
+  const settledMetricDelta = name => metricDelta(
+    settledMetricMap, retryMetricBaseline, name);
 
   if (!(semantic.width > 0) || !(semantic.height > 0)) {
     throw new Error(`GitHub README has invalid bounds ${semantic.width}x${semantic.height}.`);
@@ -384,18 +384,17 @@ try {
       wallMs: performance.now() - wall,
       navigationRetries,
       navigation: navigationTiming,
-      taskDurationMs: metricDelta("TaskDuration") * 1000,
-      scriptDurationMs: metricDelta("ScriptDuration") * 1000,
-      layoutDurationMs: metricDelta("LayoutDuration") * 1000,
-      recalcStyleDurationMs: metricDelta("RecalcStyleDuration") * 1000,
-      layoutCount: metricDelta("LayoutCount"),
-      recalcStyleCount: metricDelta("RecalcStyleCount"),
+      taskDurationMs: settledMetricDelta("TaskDuration") * 1000,
+      scriptDurationMs: settledMetricDelta("ScriptDuration") * 1000,
+      layoutDurationMs: settledMetricDelta("LayoutDuration") * 1000,
+      recalcStyleDurationMs: settledMetricDelta("RecalcStyleDuration") * 1000,
+      layoutCount: settledMetricDelta("LayoutCount"),
+      recalcStyleCount: settledMetricDelta("RecalcStyleCount"),
       domNodes: settledMetricMap.Nodes || 0,
       documents: settledMetricMap.Documents || 0,
       jsHeapUsedBytes: settledMetricMap.JSHeapUsedSize || 0,
-      fullCaptureTaskDurationMs: Math.max(0,
-        (fullCaptureMetricMap.TaskDuration || 0) -
-        (retryMetricBaseline.TaskDuration || 0)) * 1000,
+      fullCaptureTaskDurationMs: metricDelta(
+        fullCaptureMetricMap, retryMetricBaseline, "TaskDuration") * 1000,
     },
     semantic,
     tiles,

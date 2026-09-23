@@ -1,6 +1,12 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { DocumentReadinessTimeout, navigateReadme } from "./browser-navigation.mjs";
+import { DocumentReadinessTimeout, metricDelta, navigateReadme } from "./browser-navigation.mjs";
+
+test("retry metric deltas preserve work after a renderer counter reset", () => {
+  assert.equal(metricDelta({ TaskDuration: 10 }, { TaskDuration: 7 }, "TaskDuration"), 3);
+  assert.equal(metricDelta({ TaskDuration: 3 }, { TaskDuration: 7 }, "TaskDuration"), 3);
+  assert.equal(metricDelta({ TaskDuration: 3 }, {}, "TaskDuration"), 3);
+});
 
 function fakeCdp(responses = {}) {
   const calls = [];

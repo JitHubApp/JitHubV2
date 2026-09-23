@@ -120,8 +120,10 @@ complete before claiming this plan or the 1.0 performance goal is met.
   failing conditions are fixed. The Edge audit now makes one bounded fresh
   navigation attempt only after a document-readiness timeout, records the
   retry and full wall time, and excludes first-attempt CPU/layout counters
-  from the successful-attempt browser comparison. This does not waive a
-  second timeout or the unresolved rank-401 native SVG failure. The full
+  from the successful-attempt browser comparison. Renderer-process counter
+  resets use the fresh counter rather than subtracting an unrelated old
+  process baseline. This does not waive a second timeout or the unresolved
+  rank-401 native SVG failure. The full
   current-head 500-case audit must pass again.
 - The `d4bdd27` audit exposed another valid SVG failure at rank 153
   (`louislam/uptime-kuma`): Edge loaded a 1,877,124-byte, 1200×8120 sponsor
