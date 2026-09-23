@@ -31,6 +31,7 @@ using MarkdownRenderer.Hosting;
 using MarkdownRenderer.Images;
 using MarkdownRenderer.Layout;
 using MarkdownRenderer.Parsing;
+using MarkdownRenderer.Performance;
 using MarkdownRenderer.Selection;
 using MarkdownRenderer.Theming;
 using Markdig;
@@ -88,10 +89,16 @@ public partial class MarkdownRendererControl : UserControl, IDisposable, IMarkdo
     private bool _pendingLazyLayoutPreserveScrollAnchor;
     private long _lazyLayoutGeneration;
     private long _appliedLazyLayoutRevision;
+    private double _lastLazyViewportTop;
+    private long _lastLazyViewportTimestamp;
+    private double _lazyScrollVelocityPixelsPerSecond;
     private MarkdownRebuildDispatchState _rebuildDispatchState;
     private long _lastRebuildDispatchTicket;
     private bool _hasPendingRebuild;
     private bool _imageRelayoutQueued;
+    private bool _imageRelayoutActive;
+    private CancellationTokenSource? _imageRelayoutCts;
+    private Task? _imageRelayoutTask;
     private readonly HashSet<int> _pendingImageRelayoutBlockIndices = [];
     private bool _selectionAutomationEventQueued;
     private bool _horizontalOverflowAutomationEventQueued;
@@ -277,6 +284,7 @@ public partial class MarkdownRendererControl : UserControl, IDisposable, IMarkdo
     {
         public Rect Rect;
         public FrameworkElement? Realized;
+        public abstract object LogicalOwner { get; }
         public abstract void Realize(MarkdownRendererControl owner);
         public abstract void Derealize(MarkdownRendererControl owner);
         public abstract bool IsSameLogicalEmbed(EmbedPlan other);
@@ -285,6 +293,7 @@ public partial class MarkdownRendererControl : UserControl, IDisposable, IMarkdo
     private sealed class BlockEmbedPlan : EmbedPlan
     {
         public Layout.Boxes.EmbedBox Box = null!;
+        public override object LogicalOwner => Box;
         public override void Realize(MarkdownRendererControl owner)
         {
             if (Realized is not null) return;
@@ -334,6 +343,7 @@ public partial class MarkdownRendererControl : UserControl, IDisposable, IMarkdo
     {
         public Layout.Boxes.InlineContainerBox Icb = null!;
         public InlineEmbedRun Run = null!;
+        public override object LogicalOwner => Icb;
         public override void Realize(MarkdownRendererControl owner)
         {
             if (Realized is not null) return;
@@ -563,6 +573,10 @@ public partial class MarkdownRendererControl : UserControl, IDisposable, IMarkdo
     private MarkdownImageResolveContext? _activeImagePrefetchContext;
     private int _prefetchedImageRegistryRevision = -1;
     private PendingImagePrefetch? _pendingImagePrefetch;
+    private MarkdownPerformanceSession.DocumentScope? _performanceDocumentScope;
+    private string? _performanceDocumentSource;
+    private int _performanceRegistryRevision = -1;
+    private bool _performancePrefetchStarted;
 
     private sealed record PendingImagePrefetch(
         Markdig.Syntax.MarkdownDocument Document,
@@ -643,6 +657,7 @@ public partial class MarkdownRendererControl : UserControl, IDisposable, IMarkdo
 
         public Layout.Boxes.DeclarativeHostedElementBox Box = null!;
         public IMarkdownHostedElementFactory Factory = null!;
+        public override object LogicalOwner => Box;
 
         public override void Realize(MarkdownRendererControl owner)
         {
@@ -1103,6 +1118,22 @@ public partial class MarkdownRendererControl : UserControl, IDisposable, IMarkdo
     {
         get => (IMarkdownSvgRenderer?)GetValue(SvgRendererProperty);
         set => SetValue(SvgRendererProperty, value);
+    }
+
+    /// <summary>Dependency property backing <see cref="PerformanceSession"/>.</summary>
+    public static readonly DependencyProperty PerformanceSessionProperty =
+        DependencyProperty.Register(nameof(PerformanceSession), typeof(MarkdownPerformanceSession),
+            typeof(MarkdownRendererControl),
+            new PropertyMetadata(null, (d, _) => ((MarkdownRendererControl)d).RequestRebuild()));
+
+    /// <summary>
+    /// Gets or sets the optional, host-owned resource preparation session. The
+    /// control borrows this session and never disposes it.
+    /// </summary>
+    public MarkdownPerformanceSession? PerformanceSession
+    {
+        get => (MarkdownPerformanceSession?)GetValue(PerformanceSessionProperty);
+        set => SetValue(PerformanceSessionProperty, value);
     }
 
     private void OnSvgRendererChanged(DependencyPropertyChangedEventArgs args)
@@ -3015,6 +3046,12 @@ public partial class MarkdownRendererControl : UserControl, IDisposable, IMarkdo
         _hasPendingRebuild = false;
         _pendingRebuildReason = RebuildReason.Restyle;
         _imageRelayoutQueued = false;
+        _imageRelayoutActive = false;
+        RetireCancellationTokenSource(_imageRelayoutCts, _imageRelayoutTask);
+        _imageRelayoutCts = null;
+        _imageRelayoutTask = null;
+        _lastLazyViewportTimestamp = 0;
+        _lazyScrollVelocityPixelsPerSecond = 0;
         _pendingImageRelayoutBlockIndices.Clear();
         _selectionAutomationEventQueued = false;
         _horizontalOverflowAutomationEventQueued = false;
@@ -3042,6 +3079,11 @@ public partial class MarkdownRendererControl : UserControl, IDisposable, IMarkdo
         _activeImagePrefetchContext = null;
         _prefetchedImageRegistryRevision = -1;
         _pendingImagePrefetch = null;
+        _performanceDocumentScope?.Dispose();
+        _performanceDocumentScope = null;
+        _performanceDocumentSource = null;
+        _performanceRegistryRevision = -1;
+        _performancePrefetchStarted = false;
         _embedRects.Clear();
         _blockEmbedRects.Clear();
         ResetSelectionHandleDrag();
@@ -3464,6 +3506,8 @@ public partial class MarkdownRendererControl : UserControl, IDisposable, IMarkdo
         _pendingRebuildReason = RebuildReason.Restyle;
         _hasPendingRebuild = false;
         CancelLazyLayoutRealization();
+        if (_imageRelayoutCts is { } imageRelayoutCancellation)
+            _ = CancellationTokenSourceRetirement.RequestCancellation(imageRelayoutCancellation);
 
         string effectiveSource = _hasExplicitDocument
             ? Document?.Source ?? string.Empty
@@ -3758,21 +3802,57 @@ public partial class MarkdownRendererControl : UserControl, IDisposable, IMarkdo
         var embedFactorySnapshot = EmbedFactory;
         var hostedElementFactorySnapshot = HostedElementFactory;
         var imageResolverSnapshot = ImageResolver;
+        MarkdownPerformanceSession? performanceSessionSnapshot = PerformanceSession;
+        if (performanceSessionSnapshot?.IsDisposed == true)
+            performanceSessionSnapshot = null;
         var svgRendererSnapshot = SvgRenderer;
         Uri? imageBaseUriSnapshot = ImageBaseUri;
         string? imageDocumentPathSnapshot = ImageDocumentPath;
         MarkdownDocumentSource? imageDocumentSourceSnapshot = ImageDocumentSource;
         bool allowThirdPartyRemoteImagesSnapshot = AllowThirdPartyRemoteImages;
-        QueueImageSourcePrefetch(
-            parsed.Document,
-            parsed.SourceText,
-            layoutRegistry,
-            imageResolverSnapshot,
-            new MarkdownImageResolveContext(
-                imageBaseUriSnapshot,
-                imageDocumentPathSnapshot,
-                allowThirdPartyRemoteImagesSnapshot,
-                imageDocumentSourceSnapshot));
+        var imageResolveContext = new MarkdownImageResolveContext(
+            imageBaseUriSnapshot,
+            imageDocumentPathSnapshot,
+            allowThirdPartyRemoteImagesSnapshot,
+            imageDocumentSourceSnapshot);
+        if (performanceSessionSnapshot is not null && imageResolverSnapshot is not null)
+        {
+            if (_performanceDocumentScope is not { } currentScope ||
+                !currentScope.Matches(performanceSessionSnapshot, imageResolverSnapshot, imageResolveContext) ||
+                !string.Equals(_performanceDocumentSource, parsed.SourceText, StringComparison.Ordinal) ||
+                _performanceRegistryRevision != layoutRegistry.Revision)
+            {
+                _performanceDocumentScope?.Dispose();
+                _performanceDocumentScope = performanceSessionSnapshot.OpenDocument(
+                    imageResolverSnapshot, imageResolveContext);
+                _performanceDocumentSource = parsed.SourceText;
+                _performanceRegistryRevision = layoutRegistry.Revision;
+                _performancePrefetchStarted = false;
+            }
+
+            MarkdownPerformanceSession.DocumentScope scope = _performanceDocumentScope;
+            imageResolverSnapshot = scope;
+            if (!_performancePrefetchStarted && performanceSessionSnapshot.Options.PrefetchDocumentImages)
+            {
+                _performancePrefetchStarted = true;
+                _ = PrefetchPerformanceImagesObservedAsync(
+                    parsed.Document, layoutRegistry.SafeHtmlPolicy, scope);
+            }
+        }
+        else
+        {
+            _performanceDocumentScope?.Dispose();
+            _performanceDocumentScope = null;
+            _performanceDocumentSource = null;
+            _performanceRegistryRevision = -1;
+            _performancePrefetchStarted = false;
+            QueueImageSourcePrefetch(
+                parsed.Document,
+                parsed.SourceText,
+                layoutRegistry,
+                imageResolverSnapshot,
+                imageResolveContext);
+        }
         bool codeBlockCopyEnabledSnapshot = IsCodeBlockCopyEnabled;
         bool taskListEditingEnabledSnapshot = IsTaskListEditingEnabled;
         var commandProviderSnapshot = CommandProvider;
@@ -3823,6 +3903,7 @@ public partial class MarkdownRendererControl : UserControl, IDisposable, IMarkdo
             CodeBlockLineNumberMode = lineNumberModeSnapshot,
             CodeBlockWrappingMode = wrappingModeSnapshot,
             ImageResolver = imageResolverSnapshot,
+            PerformanceSession = performanceSessionSnapshot,
             SvgRenderer = svgRendererSnapshot,
             ImageBaseUri = imageBaseUriSnapshot,
             ImageDocumentPath = imageDocumentPathSnapshot,
@@ -3887,6 +3968,12 @@ public partial class MarkdownRendererControl : UserControl, IDisposable, IMarkdo
             parsed.Document.Count,
             parsed.SourceText.Length,
             hasCustomBlockEmbedMeasurement: embedFactorySnapshot is not null);
+        double initialLazyOverscan = performanceSessionSnapshot is null
+            ? LazyLayoutOverscanPx
+            : Math.Clamp(
+                viewportHeight * performanceSessionSnapshot.Options.LookAheadViewports,
+                0,
+                6000);
         var snapshot = await Task.Run(
             () => BuildSnapshotOrNullOnCancellation(
                 builder,
@@ -3895,6 +3982,7 @@ public partial class MarkdownRendererControl : UserControl, IDisposable, IMarkdo
                 viewportTop,
                 viewportHeight,
                 useLazyLayout,
+                initialLazyOverscan,
                 ct),
             CancellationToken.None).ConfigureAwait(true);
         if (snapshot is null || ct.IsCancellationRequested || generation != _pipelineGeneration)
@@ -4104,6 +4192,7 @@ public partial class MarkdownRendererControl : UserControl, IDisposable, IMarkdo
         double viewportTop,
         double viewportHeight,
         bool useLazyLayout,
+        double overscan,
         CancellationToken ct)
     {
         if (ct.IsCancellationRequested)
@@ -4112,7 +4201,7 @@ public partial class MarkdownRendererControl : UserControl, IDisposable, IMarkdo
         try
         {
             return useLazyLayout
-                ? builder.BuildLazy(document, width, viewportTop, viewportHeight, LazyLayoutOverscanPx, ct)
+                ? builder.BuildLazy(document, width, viewportTop, viewportHeight, overscan, ct)
                 : builder.Build(document, width, ct);
         }
         catch (OperationCanceledException) when (ct.IsCancellationRequested)
@@ -4529,10 +4618,33 @@ public partial class MarkdownRendererControl : UserControl, IDisposable, IMarkdo
             return;
 
         TryGetViewport(out double viewportTop, out double viewportHeight, out _);
-        var band = LazyLayoutBand.FromViewport(
-            viewportTop,
-            viewportHeight,
-            LazyLayoutOverscanPx);
+        LazyLayoutBand band;
+        if (PerformanceSession is { } performanceSession)
+        {
+            long now = Stopwatch.GetTimestamp();
+            if (_lastLazyViewportTimestamp > 0)
+            {
+                double elapsedSeconds = (now - _lastLazyViewportTimestamp) /
+                    (double)Stopwatch.Frequency;
+                if (elapsedSeconds is > 0.002 and < 1)
+                {
+                    _lazyScrollVelocityPixelsPerSecond =
+                        (viewportTop - _lastLazyViewportTop) / elapsedSeconds;
+                }
+            }
+            _lastLazyViewportTop = viewportTop;
+            _lastLazyViewportTimestamp = now;
+            band = LazyLayoutBand.FromDirectionalViewport(
+                viewportTop,
+                viewportHeight,
+                performanceSession.Options.LookAheadViewports,
+                _lazyScrollVelocityPixelsPerSecond);
+        }
+        else
+        {
+            band = LazyLayoutBand.FromViewport(
+                viewportTop, viewportHeight, LazyLayoutOverscanPx);
+        }
 
         if (snapshot.IsBandMeasured(band))
             return;
@@ -4546,7 +4658,13 @@ public partial class MarkdownRendererControl : UserControl, IDisposable, IMarkdo
         if (snapshot is null || !snapshot.IsLazyLayoutEnabled)
             return;
 
-        var band = LazyLayoutBand.FromViewport(region.Top, region.Height, LazyLayoutOverscanPx);
+        var band = PerformanceSession is { } performanceSession
+            ? LazyLayoutBand.FromDirectionalViewport(
+                region.Top,
+                region.Height,
+                performanceSession.Options.LookAheadViewports,
+                _lazyScrollVelocityPixelsPerSecond)
+            : LazyLayoutBand.FromViewport(region.Top, region.Height, LazyLayoutOverscanPx);
         if (snapshot.IsBandMeasured(band))
             return;
 
@@ -4826,13 +4944,28 @@ public partial class MarkdownRendererControl : UserControl, IDisposable, IMarkdo
 
         if (oldPlans.Length > 0)
         {
-            var adopted = new HashSet<EmbedPlan>();
+            // Only plans owned by the same immutable box can be the same
+            // logical embed. Index realized plans once: a long document can
+            // otherwise spend O(n²) UI-thread work after every lazy-layout or
+            // image-size publication.
+            var oldByOwner = new Dictionary<object, List<EmbedPlan>>(
+                ReferenceEqualityComparer.Instance);
+            foreach (EmbedPlan oldPlan in oldPlans)
+            {
+                if (oldPlan.Realized is null)
+                    continue;
+                if (!oldByOwner.TryGetValue(oldPlan.LogicalOwner, out var candidates))
+                    oldByOwner.Add(oldPlan.LogicalOwner, candidates = []);
+                candidates.Add(oldPlan);
+            }
+
             foreach (var newPlan in _embedPlans)
             {
-                foreach (var oldPlan in oldPlans)
+                if (!oldByOwner.TryGetValue(newPlan.LogicalOwner, out var candidates))
+                    continue;
+                for (int index = 0; index < candidates.Count; index++)
                 {
-                    if (adopted.Contains(oldPlan) || oldPlan.Realized is null)
-                        continue;
+                    EmbedPlan oldPlan = candidates[index];
                     if (!newPlan.IsSameLogicalEmbed(oldPlan))
                         continue;
 
@@ -4848,7 +4981,7 @@ public partial class MarkdownRendererControl : UserControl, IDisposable, IMarkdo
                         AttachRealizedElement(newPlan);
                     }
                     newPlan.UpdatePlacement();
-                    adopted.Add(oldPlan);
+                    candidates.RemoveAt(index);
                     break;
                 }
             }
@@ -4861,18 +4994,29 @@ public partial class MarkdownRendererControl : UserControl, IDisposable, IMarkdo
 
         if (oldActionPlans.Length > 0)
         {
-            var adopted = new HashSet<CodeBlockActionPlan>();
+            var oldByBox = new Dictionary<Layout.Boxes.CodeBlockBox, List<CodeBlockActionPlan>>(
+                ReferenceEqualityComparer.Instance);
+            foreach (CodeBlockActionPlan oldPlan in oldActionPlans)
+            {
+                if (oldPlan.Realized is null)
+                    continue;
+                if (!oldByBox.TryGetValue(oldPlan.Box, out var candidates))
+                    oldByBox.Add(oldPlan.Box, candidates = []);
+                candidates.Add(oldPlan);
+            }
+
             foreach (var newPlan in _codeBlockActionPlans)
             {
-                foreach (var oldPlan in oldActionPlans)
+                if (!oldByBox.TryGetValue(newPlan.Box, out var candidates))
+                    continue;
+                for (int index = 0; index < candidates.Count; index++)
                 {
-                    if (adopted.Contains(oldPlan) || oldPlan.Realized is null)
-                        continue;
+                    CodeBlockActionPlan oldPlan = candidates[index];
                     if (!newPlan.IsSameLogicalAction(oldPlan))
                         continue;
 
                     newPlan.AdoptRealizedFrom(oldPlan, this);
-                    adopted.Add(oldPlan);
+                    candidates.RemoveAt(index);
                     break;
                 }
             }
@@ -4916,8 +5060,15 @@ public partial class MarkdownRendererControl : UserControl, IDisposable, IMarkdo
         // Lazy image loading: trigger EnsureLoading for images within the
         // viewport + LazyImageOverscanPx band.  Images already started (cached
         // or previously triggered) are silently skipped by EnsureLoading().
-        double imgLoadTop    = top    - LazyImageOverscanPx;
-        double imgLoadBottom = bottom + LazyImageOverscanPx;
+        LazyLayoutBand imageBand = PerformanceSession is { } performanceSession
+            ? LazyLayoutBand.FromDirectionalViewport(
+                top,
+                viewportHeight,
+                performanceSession.Options.LookAheadViewports,
+                _lazyScrollVelocityPixelsPerSecond)
+            : LazyLayoutBand.FromViewport(top, viewportHeight, LazyImageOverscanPx);
+        double imgLoadTop = imageBand.Top;
+        double imgLoadBottom = imageBand.Bottom;
         foreach (var img in _imagePlans)
         {
             if (img.Bounds.Bottom >= imgLoadTop && img.Bounds.Top <= imgLoadBottom)
@@ -5304,6 +5455,32 @@ public partial class MarkdownRendererControl : UserControl, IDisposable, IMarkdo
         }
     }
 
+    private static async Task PrefetchPerformanceImagesObservedAsync(
+        Markdig.Syntax.MarkdownDocument document,
+        SafeHtmlRenderPolicy? safeHtmlPolicy,
+        MarkdownPerformanceSession.DocumentScope scope)
+    {
+        try
+        {
+            CancellationToken cancellationToken = scope.CancellationToken;
+            IReadOnlyList<string> sources = await Task.Run(
+                () => MarkdownImagePrefetchSourceCollector.Collect(
+                    document, safeHtmlPolicy, cancellationToken),
+                cancellationToken).ConfigureAwait(false);
+            await scope.PrefetchAsync(sources, cancellationToken).ConfigureAwait(false);
+        }
+        catch (OperationCanceledException)
+        {
+        }
+        catch (ObjectDisposedException)
+        {
+        }
+        catch (Exception exception)
+        {
+            MarkdownDiagnostics.WriteLine($"[MarkdownRenderer] performance prefetch failed: {exception.Message}");
+        }
+    }
+
     private void RegisterImage(Layout.Boxes.ImageBox image)
     {
         if (!_subscribedImages.Add(image))
@@ -5376,7 +5553,7 @@ public partial class MarkdownRendererControl : UserControl, IDisposable, IMarkdo
             return;
 
         _pendingImageRelayoutBlockIndices.Add(blockIndex);
-        if (_imageRelayoutQueued)
+        if (_imageRelayoutQueued || _imageRelayoutActive)
             return;
 
         _imageRelayoutQueued = true;
@@ -5399,6 +5576,33 @@ public partial class MarkdownRendererControl : UserControl, IDisposable, IMarkdo
         if (_isDisposed || _isUnloaded || snapshot is null ||
             _pendingImageRelayoutBlockIndices.Count == 0)
             return;
+
+        if (PerformanceSession is not null)
+        {
+            int[] changed = [.. _pendingImageRelayoutBlockIndices];
+            _pendingImageRelayoutBlockIndices.Clear();
+            (int BlockIndex, double OffsetFromTop)? anchor = null;
+            if (_scroll is { VerticalOffset: > 0 } scroll &&
+                snapshot.TryCaptureScrollAnchor(scroll.VerticalOffset, out var captured) &&
+                captured.BlockIndex is { } blockIndex)
+            {
+                anchor = (blockIndex, captured.OffsetFromTop);
+            }
+
+            var cancellation = CancellationTokenSource.CreateLinkedTokenSource(
+                _pipelineCts?.Token ?? CancellationToken.None);
+            _imageRelayoutActive = true;
+            _imageRelayoutCts = cancellation;
+            _imageRelayoutTask = RunImageRelayoutAsync(
+                snapshot,
+                changed,
+                (float)Math.Max(50, ActualWidth),
+                anchor,
+                _pipelineGeneration,
+                cancellation,
+                DispatcherQueue);
+            return;
+        }
 
         try
         {
@@ -5619,6 +5823,104 @@ public partial class MarkdownRendererControl : UserControl, IDisposable, IMarkdo
                 snapshotPaintBytes,
                 interactivePaintBytes);
         }
+    }
+
+    private async Task RunImageRelayoutAsync(
+        LayoutSnapshot snapshot,
+        int[] changed,
+        float width,
+        (int BlockIndex, double OffsetFromTop)? anchor,
+        long generation,
+        CancellationTokenSource cancellation,
+        Microsoft.UI.Dispatching.DispatcherQueue? dispatcher)
+    {
+        Exception? failure = null;
+        long started = MarkdownPerformanceEventSource.Log.IsMeasurementEnabled()
+            ? Stopwatch.GetTimestamp()
+            : 0;
+        try
+        {
+            await Task.Run(
+                () => snapshot.RelayoutChangedBlocks(changed, width, cancellation.Token),
+                CancellationToken.None).ConfigureAwait(false);
+        }
+        catch (OperationCanceledException) when (cancellation.IsCancellationRequested)
+        {
+        }
+        catch (Exception exception)
+        {
+            failure = exception;
+        }
+
+        if (started != 0)
+            MarkdownPerformanceEventSource.Log.ResourceWork(
+                3, Stopwatch.GetTimestamp() - started, changed.Length);
+
+        if (dispatcher is null || !dispatcher.TryEnqueue(() =>
+                CompleteImageRelayout(snapshot, anchor, generation, cancellation, failure)))
+        {
+            cancellation.Dispose();
+        }
+    }
+
+    private void CompleteImageRelayout(
+        LayoutSnapshot snapshot,
+        (int BlockIndex, double OffsetFromTop)? anchor,
+        long generation,
+        CancellationTokenSource cancellation,
+        Exception? failure)
+    {
+        bool current = ReferenceEquals(_imageRelayoutCts, cancellation);
+        long started = MarkdownPerformanceEventSource.Log.IsMeasurementEnabled()
+            ? Stopwatch.GetTimestamp()
+            : 0;
+        if (current)
+        {
+            _imageRelayoutCts = null;
+            _imageRelayoutTask = null;
+            _imageRelayoutActive = false;
+        }
+
+        bool canceled = cancellation.IsCancellationRequested;
+        cancellation.Dispose();
+        if (current && !_isDisposed && !_isUnloaded && !canceled &&
+            generation == _pipelineGeneration && ReferenceEquals(snapshot, _snapshot))
+        {
+            if (failure is not null)
+            {
+                MarkdownDiagnostics.WriteLine($"[MarkdownRendererControl] image relayout failed: {failure}");
+                RequestRebuild();
+            }
+            else
+            {
+                _appliedLazyLayoutRevision = snapshot.LayoutRevision;
+                ApplySnapshotSize(snapshot);
+                RestoreScrollAnchor(snapshot, anchor);
+                RebuildRealizationPlans(snapshot, preserveRealized: true);
+                _focusableItems = snapshot.CollectFocusableItems();
+                RealizeVisibleEmbeds();
+                ScheduleVisibleCodeBlockHighlighting();
+                UpdateFocusRing();
+                RefreshInteractiveTextAdornerAfterLayoutChange();
+                InvalidateCanvas();
+                InvalidateAutomationLayout();
+            }
+        }
+
+        if (current && _pendingImageRelayoutBlockIndices.Count > 0 && !_isDisposed && !_isUnloaded)
+        {
+            int next = -1;
+            foreach (int pending in _pendingImageRelayoutBlockIndices)
+            {
+                next = pending;
+                break;
+            }
+            if (next >= 0)
+                QueueImageRelayout(next);
+        }
+        if (started != 0)
+            MarkdownPerformanceEventSource.Log.ResourceWork(
+                4, Stopwatch.GetTimestamp() - started, 1);
     }
 
     /// <summary>

@@ -91,6 +91,33 @@ var view = new MarkdownRendererControlBuilder()
 Use `BuildDocumentView()` for an ancestor-owned viewport. The builder's `Build()`
 method is obsolete.
 
+For the opt-in progressive image pipeline, create one session per account or
+security partition and share it between views. Controls borrow it; the host
+disposes it after those views stop using it:
+
+```csharp
+using MarkdownRenderer.Performance;
+
+var performance = new MarkdownPerformanceSession(
+    MarkdownPerformanceOptions.Progressive);
+var view = new MarkdownRendererControlBuilder()
+    .WithEngine(engine)
+    .WithPerformanceSession(performance)
+    .WithMarkdown(source)
+    .BuildScrollView();
+
+// ... keep the view alive while the host uses it ...
+// After every view borrowing the session has unloaded:
+await performance.DisposeAsync();
+```
+
+This currently shares bounded image-source retention, reserves fetch capacity
+for visible images, decodes ordinary rasters to display size, and enables
+directional viewport preparation and off-thread image reflow. A null session
+keeps the established behavior. `GetSnapshot()` reports aggregate counters
+without URLs or image bytes, and `Trim()` drops retained source bytes. See the
+[performance plan](progressive-performance-plan.md) for the remaining 1.0 gates.
+
 ## Themes and host services
 
 The base visual design follows WinUI/Fluent resources, including light, dark,

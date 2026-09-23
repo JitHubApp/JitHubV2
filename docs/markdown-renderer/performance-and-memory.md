@@ -208,6 +208,18 @@ blocking work in host services, or returning heavyweight hosted elements for
 large repeated sets. Hosted-element creation is asynchronous and
 cancellation-aware; `Recycle` should release app-owned handlers and state.
 
+The opt-in `MarkdownPerformanceSession` starts admitted image-source requests
+after parsing while layout proceeds, shares source bytes within one security
+partition, and keeps unkeyed assets local to a document. Its source LRU is
+bounded to 64 MiB on x64/ARM64 and 32 MiB on x86 by default. Visible requests
+have reserved fetch capacity and can supersede a queued speculative request.
+The session also bounds concurrent static-raster preparation, decodes to the
+displayed physical size (at most 8.4 million output pixels on x64/ARM64 or
+4.2 million on x86 by default), and records aggregate privacy-safe counters. JitHub
+enables this session for its Markdown views. This does not yet constitute the
+complete browser-relative performance gate described in the
+[progressive plan](progressive-performance-plan.md).
+
 ## Optional payloads
 
 The resvg worker and TextMate grammar packs are not costs of the lean package.

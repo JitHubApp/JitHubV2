@@ -7,6 +7,7 @@ using MarkdownRenderer.GitHub;
 using MarkdownRenderer.Images;
 using MarkdownRenderer.Math;
 using MarkdownRenderer.Mermaid;
+using MarkdownRenderer.Performance;
 using MarkdownRenderer.Svg.Resvg;
 using MarkdownRenderer.SyntaxHighlighting.TextMate;
 using MarkdownRenderer.SyntaxHighlighting.TextMate.Grammars.Common;
@@ -20,10 +21,17 @@ namespace JitHub.Services.Markdown;
 /// </summary>
 internal static class JitHubMarkdownRuntime
 {
+    static JitHubMarkdownRuntime()
+    {
+        AuthService.AuthenticationCleared += ResetPerformanceSession;
+    }
+
     private static readonly object Gate = new();
     private static MarkdownEngine? _engine;
     private static TextMateCodeBlockSyntaxHighlighter? _codeHighlighter;
     private static ResvgMarkdownSvgRenderer? _svgRenderer;
+    private static MarkdownPerformanceSession? _performanceSession;
+    private static long _performanceAccountId = long.MinValue;
     private static Task? _fontChangeTask;
     private static Task? _shutdownTask;
     private static bool _isShuttingDown;
@@ -73,6 +81,42 @@ internal static class JitHubMarkdownRuntime
                 return _svgRenderer ??= new ResvgMarkdownSvgRenderer();
             }
         }
+    }
+
+    /// <summary>Gets one shared opt-in preparation session for the active account.</summary>
+    internal static MarkdownPerformanceSession GetPerformanceSession(long accountId)
+    {
+        MarkdownPerformanceSession? retired = null;
+        MarkdownPerformanceSession current;
+        lock (Gate)
+        {
+            ObjectDisposedException.ThrowIf(_isShuttingDown, typeof(JitHubMarkdownRuntime));
+            if (_performanceSession is null || _performanceAccountId != accountId)
+            {
+                retired = _performanceSession;
+                _performanceSession = new MarkdownPerformanceSession(MarkdownPerformanceOptions.Progressive);
+                _performanceAccountId = accountId;
+            }
+
+            current = _performanceSession;
+        }
+
+        retired?.Dispose();
+        return current;
+    }
+
+    /// <summary>Forgets prepared account-scoped bytes as soon as authentication ends.</summary>
+    internal static void ResetPerformanceSession()
+    {
+        MarkdownPerformanceSession? retired;
+        lock (Gate)
+        {
+            retired = _performanceSession;
+            _performanceSession = null;
+            _performanceAccountId = long.MinValue;
+        }
+
+        retired?.Dispose();
     }
 
     /// <summary>Starts the isolated SVG worker without blocking the shell's first frame.</summary>
@@ -127,6 +171,7 @@ internal static class JitHubMarkdownRuntime
         MarkdownEngine? engine;
         TextMateCodeBlockSyntaxHighlighter? codeHighlighter;
         ResvgMarkdownSvgRenderer? svgRenderer;
+        MarkdownPerformanceSession? performanceSession;
         TaskCompletionSource completion = new(TaskCreationOptions.RunContinuationsAsynchronously);
         lock (Gate)
         {
@@ -142,11 +187,14 @@ internal static class JitHubMarkdownRuntime
             _codeHighlighter = null;
             svgRenderer = _svgRenderer;
             _svgRenderer = null;
+            performanceSession = _performanceSession;
+            _performanceSession = null;
+            _performanceAccountId = long.MinValue;
             _fontChangeTask = null;
             _shutdownTask = completion.Task;
         }
 
-        _ = Task.Run(() => ShutdownCoreAsync(engine, codeHighlighter, svgRenderer, completion));
+        _ = Task.Run(() => ShutdownCoreAsync(engine, codeHighlighter, svgRenderer, performanceSession, completion));
         return completion.Task;
     }
 
@@ -159,6 +207,7 @@ internal static class JitHubMarkdownRuntime
         MarkdownEngine? engine;
         TextMateCodeBlockSyntaxHighlighter? codeHighlighter;
         ResvgMarkdownSvgRenderer? svgRenderer;
+        MarkdownPerformanceSession? performanceSession;
         lock (Gate)
         {
             if (_shutdownTask is not null)
@@ -173,11 +222,15 @@ internal static class JitHubMarkdownRuntime
             _codeHighlighter = null;
             svgRenderer = _svgRenderer;
             _svgRenderer = null;
+            performanceSession = _performanceSession;
+            _performanceSession = null;
+            _performanceAccountId = long.MinValue;
             _fontChangeTask = null;
             _shutdownTask = Task.CompletedTask;
         }
 
         codeHighlighter?.Dispose();
+        performanceSession?.Dispose();
         engine?.Dispose();
         RepositorySvgGpuCache.Shutdown();
         svgRenderer?.Dispose();
@@ -187,6 +240,7 @@ internal static class JitHubMarkdownRuntime
         MarkdownEngine? engine,
         TextMateCodeBlockSyntaxHighlighter? codeHighlighter,
         ResvgMarkdownSvgRenderer? svgRenderer,
+        MarkdownPerformanceSession? performanceSession,
         TaskCompletionSource completion)
     {
         try
@@ -194,6 +248,8 @@ internal static class JitHubMarkdownRuntime
             // Shared owners defer their final provider/native release until admitted
             // callbacks retire, so shutdown does not race active work.
             codeHighlighter?.Dispose();
+            if (performanceSession is not null)
+                await performanceSession.DisposeAsync().ConfigureAwait(false);
             engine?.Dispose();
             RepositorySvgGpuCache.Shutdown();
             if (svgRenderer is not null)

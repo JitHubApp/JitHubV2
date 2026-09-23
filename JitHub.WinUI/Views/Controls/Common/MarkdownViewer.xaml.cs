@@ -30,6 +30,9 @@ public sealed partial class MarkdownViewer : UserControl
 {
     private static readonly Uri DefaultBaseUri = new("https://github.com/", UriKind.Absolute);
     private static MarkdownEngine SharedGitHubEngine => JitHubMarkdownRuntime.Engine;
+    private static MarkdownRenderer.Performance.MarkdownPerformanceSession SharedPerformanceSession =>
+        JitHubMarkdownRuntime.GetPerformanceSession(
+            Ioc.Default.GetService<IAccountService>()?.GetUser() ?? 0);
 
     private static readonly string[] HostSurfaceRoles =
     [
@@ -704,6 +707,7 @@ public sealed partial class MarkdownViewer : UserControl
         _renderer.IsCodeBlockCopyEnabled = IsCodeBlockCopyEnabled;
         _renderer.ImageResolver = _imageResolver;
         _renderer.SvgRenderer = JitHubMarkdownRuntime.SvgRenderer;
+        _renderer.PerformanceSession = SharedPerformanceSession;
         _renderer.ImageBaseUri = GetBaseUri();
         _renderer.ImageDocumentPath = DocumentPath;
         _renderer.ImageDocumentSource = DocumentSource;
@@ -802,6 +806,7 @@ public sealed partial class MarkdownViewer : UserControl
 
         _renderer.ImageResolver = _imageResolver;
         _renderer.SvgRenderer = JitHubMarkdownRuntime.SvgRenderer;
+        _renderer.PerformanceSession = SharedPerformanceSession;
         _renderer.ImageBaseUri = GetBaseUri();
         _renderer.ImageDocumentPath = DocumentPath;
         _renderer.ImageDocumentSource = DocumentSource;

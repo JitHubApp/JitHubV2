@@ -3,6 +3,7 @@ using MarkdownRenderer.CodeBlocks;
 using MarkdownRenderer.Hosting;
 using MarkdownRenderer.Images;
 using MarkdownRenderer.Parsing;
+using MarkdownRenderer.Performance;
 using MarkdownRenderer.Theming;
 using System;
 
@@ -23,6 +24,7 @@ public sealed class MarkdownRendererControlBuilder
     private IMarkdownHostedElementFactory? _hostedElementFactory;
     private IMarkdownImageResolver? _imageResolver;
     private IMarkdownSvgRenderer? _svgRenderer;
+    private MarkdownPerformanceSession? _performanceSession;
     private Uri? _imageBaseUri;
     private string? _imageDocumentPath;
     private MarkdownDocumentSource? _imageDocumentSource;
@@ -140,6 +142,15 @@ public sealed class MarkdownRendererControlBuilder
     public MarkdownRendererControlBuilder WithSvgRenderer(IMarkdownSvgRenderer? svgRenderer)
     {
         _svgRenderer = svgRenderer;
+        return this;
+    }
+
+    /// <summary>Uses a host-owned progressive resource preparation session.</summary>
+    /// <param name="session">Session to borrow, or null to keep the existing renderer behavior.</param>
+    /// <returns>The current builder.</returns>
+    public MarkdownRendererControlBuilder WithPerformanceSession(MarkdownPerformanceSession? session)
+    {
+        _performanceSession = session;
         return this;
     }
 
@@ -357,6 +368,7 @@ public sealed class MarkdownRendererControlBuilder
             control.HostedElementFactory = _hostedElementFactory;
             control.ImageResolver = _imageResolver;
             control.SvgRenderer = _svgRenderer;
+            control.PerformanceSession = _performanceSession;
             control.ImageBaseUri = _imageBaseUri;
             control.ImageDocumentPath = _imageDocumentPath;
             control.ImageDocumentSource = _imageDocumentSource;

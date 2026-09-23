@@ -1,4 +1,5 @@
 using Markdig;
+using System.Text;
 using MarkdownRenderer.Images;
 using MarkdownRenderer.Parsing;
 using Xunit;
@@ -62,5 +63,20 @@ public sealed class MarkdownImagePrefetchSourceCollectorTests
             CancellationToken.None);
 
         Assert.Equal(["https://images.example/visible.png"], images);
+    }
+
+    [Fact]
+    public void Collect_DoesNotDiscardSourcesAfterTwoThousandImages()
+    {
+        var source = new StringBuilder();
+        for (int index = 0; index < 2100; index++)
+            source.AppendLine($"![{index}](https://images.example/{index}.png)");
+
+        var document = Markdown.Parse(source.ToString());
+        IReadOnlyList<string> images = MarkdownImagePrefetchSourceCollector.Collect(
+            document, safeHtmlPolicy: null, CancellationToken.None);
+
+        Assert.Equal(2100, images.Count);
+        Assert.Equal("https://images.example/2099.png", images[^1]);
     }
 }

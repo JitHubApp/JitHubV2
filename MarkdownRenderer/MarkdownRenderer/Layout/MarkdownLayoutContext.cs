@@ -14,6 +14,7 @@ using MarkdownRenderer.CodeBlocks;
 using MarkdownRenderer.Images;
 using MarkdownRenderer.Hosting;
 using MarkdownRenderer.Parsing;
+using MarkdownRenderer.Performance;
 using MarkdownRenderer.Theming;
 using MarkdownRenderer.Accessibility;
 
@@ -141,6 +142,9 @@ internal sealed class MarkdownLayoutContext
 
     /// <summary>Optional host-specific image resolver used before public URI loading.</summary>
     public IMarkdownImageResolver? ImageResolver { get; init; }
+
+    /// <summary>Optional host-owned preparation policy captured for this layout generation.</summary>
+    internal MarkdownPerformanceSession? PerformanceSession { get; init; }
 
     /// <summary>
     /// Shared static-SVG provider borrowed from the host control. Image boxes

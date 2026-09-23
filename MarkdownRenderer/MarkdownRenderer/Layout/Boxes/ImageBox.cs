@@ -2,6 +2,7 @@ using System;
 using System.Buffers;
 using System.Collections.Generic;
 using System.Collections.Concurrent;
+using System.Diagnostics;
 using System.Globalization;
 using System.IO;
 using System.Linq;
@@ -1159,20 +1160,25 @@ internal sealed class ImageBox : BlockBox
             return;
         }
 
-        (int Width, int Height) previewSize = budget.CanRenderStaticPreview
+        bool displaySized = _context.PerformanceSession?.Options.UseDisplaySizedRasterDecode == true;
+        bool sessionPixelCapApplies = _context.PerformanceSession is { } performanceSession &&
+            (long)budget.Width * budget.Height > performanceSession.Options.MaxRasterOutputPixels;
+        bool transformedDecode = displaySized || budget.CanRenderStaticPreview || sessionPixelCapApplies;
+        (int Width, int Height) rasterSize = transformedDecode
             ? GetRasterPreviewPixelSize(budget)
             : default;
-        string bitmapCacheKey = budget.CanRenderStaticPreview && cacheKey.Length > 0
+        string bitmapCacheKey = transformedDecode && cacheKey.Length > 0
             ? string.Concat(
                 cacheKey,
-                "\u001Fstatic-preview:",
-                previewSize.Width.ToString(CultureInfo.InvariantCulture),
+                displaySized ? "\u001Fdisplay:" : "\u001Fstatic-preview:",
+                rasterSize.Width.ToString(CultureInfo.InvariantCulture),
                 "x",
-                previewSize.Height.ToString(CultureInfo.InvariantCulture))
+                rasterSize.Height.ToString(CultureInfo.InvariantCulture))
             : cacheKey;
 
         CanvasBitmap? ownedBitmap = null;
         SharedCanvasBitmapCache.Lease? bitmapLease = null;
+        Size intrinsicSize = new(budget.Width, budget.Height);
         SemaphoreSlim? decodeGate = null;
         bool decodeGateHeld = false;
         bool failed = false;
@@ -1200,10 +1206,17 @@ internal sealed class ImageBox : BlockBox
 
                 if (bitmapLease is null)
                 {
+                    long decodeStarted = MarkdownPerformanceEventSource.Log.IsMeasurementEnabled()
+                        ? Stopwatch.GetTimestamp()
+                        : 0;
+                    using IDisposable? preparationSlot = _context.PerformanceSession is { IsDisposed: false } session
+                        ? await session.EnterCpuPreparationAsync(_context.ImageCancellationToken)
+                            .ConfigureAwait(false)
+                        : null;
                     using InMemoryRandomAccessStream stream = new();
                     await stream.WriteAsync(bytes.AsBuffer());
                     stream.Seek(0);
-                    if (budget.CanRenderStaticPreview)
+                    if (transformedDecode)
                     {
                         BitmapDecoder decoder = await BitmapDecoder.CreateAsync(stream);
                         if (decoder.PixelWidth != budget.Width || decoder.PixelHeight != budget.Height)
@@ -1211,10 +1224,25 @@ internal sealed class ImageBox : BlockBox
                             throw new InvalidDataException("The decoded raster dimensions do not match its validated header.");
                         }
 
+                        intrinsicSize = new Size(decoder.OrientedPixelWidth, decoder.OrientedPixelHeight);
+                        if (decoder.OrientedPixelWidth != decoder.PixelWidth ||
+                            decoder.OrientedPixelHeight != decoder.PixelHeight)
+                        {
+                            // WIC applies scaling before EXIF rotation. Plan the
+                            // displayed dimensions against the oriented aspect,
+                            // then swap the transform axes back to source space.
+                            var orientedBudget = budget with
+                            {
+                                Width = checked((int)decoder.OrientedPixelWidth),
+                                Height = checked((int)decoder.OrientedPixelHeight),
+                            };
+                            var orientedSize = GetRasterPreviewPixelSize(orientedBudget);
+                            rasterSize = (orientedSize.Height, orientedSize.Width);
+                        }
                         var transform = new BitmapTransform
                         {
-                            ScaledWidth = checked((uint)previewSize.Width),
-                            ScaledHeight = checked((uint)previewSize.Height),
+                            ScaledWidth = checked((uint)rasterSize.Width),
+                            ScaledHeight = checked((uint)rasterSize.Height),
                             InterpolationMode = BitmapInterpolationMode.Fant,
                         };
                         using SoftwareBitmap firstFrame = await decoder.GetSoftwareBitmapAsync(
@@ -1224,10 +1252,13 @@ internal sealed class ImageBox : BlockBox
                             ExifOrientationMode.RespectExifOrientation,
                             ColorManagementMode.ColorManageToSRgb);
                         ownedBitmap = CanvasBitmap.CreateFromSoftwareBitmap(_context.ResourceCreator, firstFrame);
-                        MarkdownDiagnostics.WriteLine(
-                            $"[ImageBox] rendered a bounded first-frame preview for {cacheKey}; " +
-                            $"source={budget.Width}x{budget.Height}, " +
-                            $"preview={previewSize.Width}x{previewSize.Height}, frames={budget.FrameCount}.");
+                        if (budget.CanRenderStaticPreview)
+                        {
+                            MarkdownDiagnostics.WriteLine(
+                                $"[ImageBox] rendered a bounded first-frame preview for {cacheKey}; " +
+                                $"source={budget.Width}x{budget.Height}, " +
+                                $"preview={rasterSize.Width}x{rasterSize.Height}, frames={budget.FrameCount}.");
+                        }
                     }
                     else
                     {
@@ -1236,8 +1267,18 @@ internal sealed class ImageBox : BlockBox
 
                     if (!string.IsNullOrEmpty(bitmapCacheKey))
                     {
-                        bitmapLease = SharedCanvasBitmapCache.StoreAndAcquire(device, bitmapCacheKey, ownedBitmap);
+                        bitmapLease = SharedCanvasBitmapCache.StoreAndAcquire(
+                            device, bitmapCacheKey, ownedBitmap,
+                            transformedDecode ? intrinsicSize : null);
                         ownedBitmap = null; // lease now owns the decoded handle
+                    }
+                    if (decodeStarted != 0)
+                    {
+                        MarkdownPerformanceEventSource.Log.ResourceWork(
+                            2,
+                            Stopwatch.GetTimestamp() - decodeStarted,
+                            (long)(transformedDecode ? rasterSize.Width : budget.Width) *
+                                (transformedDecode ? rasterSize.Height : budget.Height));
                     }
                 }
             }
@@ -1277,6 +1318,8 @@ internal sealed class ImageBox : BlockBox
 
         SharedCanvasBitmapCache.Lease? publishedLease = bitmapLease;
         CanvasBitmap? publishedOwnedBitmap = ownedBitmap;
+        if (transformedDecode && publishedLease?.IntrinsicSize is { } cachedIntrinsicSize)
+            intrinsicSize = cachedIntrinsicSize;
 
         PublishOnUiThread(() =>
         {
@@ -1287,6 +1330,10 @@ internal sealed class ImageBox : BlockBox
                 return;
             }
 
+            bool layoutChanged = _bitmap is null ||
+                (transformedDecode &&
+                 (_rasterIntrinsicSize.Width != intrinsicSize.Width ||
+                  _rasterIntrinsicSize.Height != intrinsicSize.Height));
             if (failed)
             {
                 _loadFailed = true;
@@ -1298,18 +1345,18 @@ internal sealed class ImageBox : BlockBox
             }
             else if (publishedLease is not null)
             {
-                if (budget.CanRenderStaticPreview)
-                    _rasterIntrinsicSize = new Size(budget.Width, budget.Height);
+                if (transformedDecode)
+                    _rasterIntrinsicSize = intrinsicSize;
                 ReplaceBitmap(publishedLease.Bitmap, publishedLease, ownsBitmap: false);
             }
             else if (publishedOwnedBitmap is not null)
             {
-                if (budget.CanRenderStaticPreview)
-                    _rasterIntrinsicSize = new Size(budget.Width, budget.Height);
+                if (transformedDecode)
+                    _rasterIntrinsicSize = intrinsicSize;
                 ReplaceBitmap(publishedOwnedBitmap, lease: null, ownsBitmap: true);
             }
 
-            LoadCompleted?.Invoke(this, new LoadCompletedEventArgs(layoutInvalidated: true));
+            LoadCompleted?.Invoke(this, new LoadCompletedEventArgs(layoutInvalidated: layoutChanged));
         },
         onDropped: () =>
         {
@@ -1340,9 +1387,13 @@ internal sealed class ImageBox : BlockBox
         height = Math.Clamp(Math.Ceiling(height * rasterScale), 1, budget.Height);
 
         double pixels = width * height;
-        if (pixels > RasterImageResourceBudget.MaxPixelsPerFrame)
+        long maxPixels = Math.Min(
+            RasterImageResourceBudget.MaxPixelsPerFrame,
+            _context.PerformanceSession?.Options.MaxRasterOutputPixels ??
+                RasterImageResourceBudget.MaxPixelsPerFrame);
+        if (pixels > maxPixels)
         {
-            double scale = Math.Sqrt(RasterImageResourceBudget.MaxPixelsPerFrame / pixels);
+            double scale = Math.Sqrt(maxPixels / pixels);
             width = Math.Max(1, Math.Floor(width * scale));
             height = Math.Max(1, Math.Floor(height * scale));
         }

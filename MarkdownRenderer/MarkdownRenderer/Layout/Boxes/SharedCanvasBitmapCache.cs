@@ -4,6 +4,7 @@ using System.Runtime.InteropServices;
 using System.Threading;
 using Microsoft.Graphics.Canvas;
 using MarkdownRenderer.Utilities;
+using Windows.Foundation;
 
 namespace MarkdownRenderer.Layout.Boxes;
 
@@ -63,7 +64,8 @@ internal static class SharedCanvasBitmapCache
     internal static Lease StoreAndAcquire(
         CanvasDevice device,
         string identity,
-        CanvasBitmap bitmap)
+        CanvasBitmap bitmap,
+        Size? intrinsicSize = null)
     {
         ArgumentNullException.ThrowIfNull(device);
         ArgumentNullException.ThrowIfNull(identity);
@@ -72,7 +74,7 @@ internal static class SharedCanvasBitmapCache
         // The entry starts with one reference owned by the returned lease.
         // Add a distinct cache reference before insertion; an over-budget
         // insertion immediately releases only that cache reference.
-        var entry = new Entry(bitmap, EstimateWeightBytes(bitmap));
+        var entry = new Entry(bitmap, EstimateWeightBytes(bitmap), intrinsicSize);
         entry.AddCacheReference();
         Cache.Set(new CacheKey(device, identity), entry);
         return new Lease(entry);
@@ -155,15 +157,18 @@ internal static class SharedCanvasBitmapCache
     {
         private int _referenceCount = 1;
 
-        internal Entry(CanvasBitmap bitmap, long weightBytes)
+        internal Entry(CanvasBitmap bitmap, long weightBytes, Size? intrinsicSize)
         {
             Bitmap = bitmap;
             WeightBytes = weightBytes;
+            IntrinsicSize = intrinsicSize;
         }
 
         internal CanvasBitmap Bitmap { get; }
 
         internal long WeightBytes { get; }
+
+        internal Size? IntrinsicSize { get; }
 
         internal void AddCacheReference() => Interlocked.Increment(ref _referenceCount);
 
@@ -208,6 +213,8 @@ internal static class SharedCanvasBitmapCache
         internal CanvasBitmap Bitmap =>
             Volatile.Read(ref _entry)?.Bitmap ??
             throw new ObjectDisposedException(nameof(Lease));
+
+        internal Size? IntrinsicSize => Volatile.Read(ref _entry)?.IntrinsicSize;
 
         public void Dispose()
         {

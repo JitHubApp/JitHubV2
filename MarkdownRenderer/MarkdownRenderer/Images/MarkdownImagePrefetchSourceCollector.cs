@@ -9,10 +9,6 @@ namespace MarkdownRenderer.Images;
 
 internal static class MarkdownImagePrefetchSourceCollector
 {
-    // A renderer must never turn an adversarial document into an unbounded network queue.
-    // This is intentionally above ordinary README image counts while remaining finite.
-    private const int MaximumSourceCount = 2048;
-
     internal static IReadOnlyList<string> Collect(
         MarkdownDocument document,
         SafeHtmlRenderPolicy? safeHtmlPolicy,
@@ -34,11 +30,6 @@ internal static class MarkdownImagePrefetchSourceCollector
         foreach (Block block in container)
         {
             cancellationToken.ThrowIfCancellationRequested();
-            if (sources.Count >= MaximumSourceCount)
-            {
-                return;
-            }
-
             if (block is HtmlBlock htmlBlock && safeHtmlPolicy is { EnableImages: true })
             {
                 CollectHtmlSources(
@@ -72,11 +63,6 @@ internal static class MarkdownImagePrefetchSourceCollector
         foreach (Inline inline in container)
         {
             cancellationToken.ThrowIfCancellationRequested();
-            if (sources.Count >= MaximumSourceCount)
-            {
-                return;
-            }
-
             if (inline is LinkInline { IsImage: true } image && suppressedElements.Count == 0)
             {
                 Add(image.Url, seen, sources);
@@ -114,11 +100,6 @@ internal static class MarkdownImagePrefetchSourceCollector
                      cancellationToken,
                      out _))
         {
-            if (sources.Count >= MaximumSourceCount)
-            {
-                return;
-            }
-
             if (tag.Kind == SafeHtmlTagKind.Closing)
             {
                 for (int index = suppressedElements.Count - 1; index >= 0; index--)

@@ -15,6 +15,8 @@ namespace JitHub.Services;
 
 public sealed class AuthService : IAuthService
 {
+    internal static event Action? AuthenticationCleared;
+
     internal const string PendingAuthStateSettingKey = "Auth.PendingState";
     internal const string ProtocolCallbackV3StatePrefix = OAuthHandoffProtocol.ProductionStatePrefix;
     internal const string DebugProtocolCallbackV3StatePrefix = OAuthHandoffProtocol.DevelopmentStatePrefix;
@@ -889,6 +891,14 @@ public sealed class AuthService : IAuthService
         AuthenticatedUser = null;
         _gitHubService.SetAccessToken(null);
         _initializeTask = Task.CompletedTask;
+        try
+        {
+            AuthenticationCleared?.Invoke();
+        }
+        catch (Exception exception)
+        {
+            Debug.WriteLine($"Failed to retire Markdown account resources: {exception}");
+        }
     }
 
     private bool HasPendingAuthorization()

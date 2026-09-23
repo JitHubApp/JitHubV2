@@ -164,6 +164,18 @@ internal sealed class MarkdownPerformanceEventSource : EventSource
         if (IsEnabled())
             WriteEvent(10, generation);
     }
+
+    /// <summary>
+    /// Stage identifiers: 1 source fetch, 2 raster decode/upload,
+    /// 3 background image reflow, 4 UI image-reflow publication.
+    /// No source URLs or content are included in this event.
+    /// </summary>
+    [Event(11, Level = EventLevel.Informational)]
+    internal void ResourceWork(int stage, long elapsedStopwatchTicks, long workUnits)
+    {
+        if (IsEnabled())
+            WriteEvent(11, stage, elapsedStopwatchTicks, workUnits);
+    }
 }
 
 /// <summary>

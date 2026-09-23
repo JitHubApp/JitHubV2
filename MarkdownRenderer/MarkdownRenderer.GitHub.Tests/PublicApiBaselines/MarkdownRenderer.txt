@@ -121,6 +121,7 @@ public sealed class MarkdownRenderer.Controls.MarkdownRenderFailedEventArgs : Sy
   public MarkdownRenderer.Images.IMarkdownSvgRenderer? SvgRenderer { get; set; }
   public MarkdownRenderer.Images.MarkdownDocumentSource? ImageDocumentSource { get; set; }
   public MarkdownRenderer.MarkdownEngine? Engine { get; set; }
+  public MarkdownRenderer.Performance.MarkdownPerformanceSession? PerformanceSession { get; set; }
   public MarkdownRenderer.Theming.MarkdownStyleSheet? StyleSheet { get; set; }
   public MarkdownRenderer.Theming.MarkdownTheme? Theme { get; set; }
   public MarkdownRendererControl();
@@ -166,6 +167,7 @@ public sealed class MarkdownRenderer.Controls.MarkdownRenderFailedEventArgs : Sy
   public static readonly Microsoft.UI.Xaml.DependencyProperty IsSelectionEnabledProperty;
   public static readonly Microsoft.UI.Xaml.DependencyProperty IsTaskListEditingEnabledProperty;
   public static readonly Microsoft.UI.Xaml.DependencyProperty MarkdownProperty;
+  public static readonly Microsoft.UI.Xaml.DependencyProperty PerformanceSessionProperty;
   public static readonly Microsoft.UI.Xaml.DependencyProperty StringProviderProperty;
   public static readonly Microsoft.UI.Xaml.DependencyProperty StyleSheetProperty;
   public static readonly Microsoft.UI.Xaml.DependencyProperty SvgRendererProperty;
@@ -199,6 +201,7 @@ public sealed class MarkdownRenderer.Controls.MarkdownRendererControlBuilder
   public MarkdownRenderer.Controls.MarkdownRendererControlBuilder WithImageDocumentSource(MarkdownRenderer.Images.MarkdownDocumentSource? documentSource);
   public MarkdownRenderer.Controls.MarkdownRendererControlBuilder WithImageResolver(MarkdownRenderer.Images.IMarkdownImageResolver? imageResolver);
   public MarkdownRenderer.Controls.MarkdownRendererControlBuilder WithMarkdown(string? markdown);
+  public MarkdownRenderer.Controls.MarkdownRendererControlBuilder WithPerformanceSession(MarkdownRenderer.Performance.MarkdownPerformanceSession? session);
   public MarkdownRenderer.Controls.MarkdownRendererControlBuilder WithSelectionEnabled(bool isEnabled);
   public MarkdownRenderer.Controls.MarkdownRendererControlBuilder WithStringProvider(MarkdownRenderer.Hosting.IMarkdownStringProvider? provider);
   public MarkdownRenderer.Controls.MarkdownRendererControlBuilder WithStyleSheet(MarkdownRenderer.Theming.MarkdownStyleSheet? styleSheet);
@@ -529,6 +532,46 @@ public static class MarkdownRenderer.MarkdownRendererRuntime
   public static bool IsShutdownInProgress { get; }
   public static void BeginShutdown();
   public static void Shutdown(System.TimeSpan? timeout = null);
+
+public sealed class MarkdownRenderer.Performance.MarkdownPerformanceOptions : System.IEquatable<MarkdownRenderer.Performance.MarkdownPerformanceOptions>
+  public MarkdownPerformanceOptions();
+  public MarkdownRenderer.Performance.MarkdownPerformanceOptions <Clone>$();
+  public bool Equals(MarkdownRenderer.Performance.MarkdownPerformanceOptions? other);
+  public bool PrefetchDocumentImages { get; init; }
+  public bool UseDisplaySizedRasterDecode { get; init; }
+  public int LookAheadViewports { get; init; }
+  public int MaxConcurrentCpuPreparations { get; init; }
+  public int MaxConcurrentImageFetches { get; init; }
+  public int ReservedVisibleImageFetches { get; init; }
+  public long MaxRasterOutputPixels { get; init; }
+  public long SourceCacheBudgetBytes { get; init; }
+  public override bool Equals(object? obj);
+  public override int GetHashCode();
+  public override string ToString();
+  public static MarkdownRenderer.Performance.MarkdownPerformanceOptions Progressive { get; }
+  public static bool op_Equality(MarkdownRenderer.Performance.MarkdownPerformanceOptions? left, MarkdownRenderer.Performance.MarkdownPerformanceOptions? right);
+  public static bool op_Inequality(MarkdownRenderer.Performance.MarkdownPerformanceOptions? left, MarkdownRenderer.Performance.MarkdownPerformanceOptions? right);
+
+public sealed class MarkdownRenderer.Performance.MarkdownPerformanceSession : System.IAsyncDisposable, System.IDisposable
+  public MarkdownPerformanceSession(MarkdownRenderer.Performance.MarkdownPerformanceOptions options);
+  public MarkdownRenderer.Performance.MarkdownPerformanceOptions Options { get; }
+  public MarkdownRenderer.Performance.MarkdownPerformanceSnapshot GetSnapshot();
+  public System.Threading.Tasks.ValueTask DisposeAsync();
+  public void Dispose();
+  public void Trim();
+
+public sealed class MarkdownRenderer.Performance.MarkdownPerformanceSnapshot
+  public int ActiveImageFetches { get; }
+  public int PendingImageFetches { get; }
+  public long CpuPreparationMilliseconds { get; }
+  public long CpuPreparations { get; }
+  public long ImageFetchCancellations { get; }
+  public long ImageFetchFailures { get; }
+  public long ImageFetchMilliseconds { get; }
+  public long ImageFetches { get; }
+  public long SourceCacheBytes { get; }
+  public long SourceCacheEvictions { get; }
+  public long SourceCacheHits { get; }
 
 public sealed class MarkdownRenderer.Selection.MarkdownCopyOptions
   public MarkdownCopyOptions();
