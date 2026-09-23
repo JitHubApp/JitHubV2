@@ -894,6 +894,25 @@ public sealed class GitHubImageServiceTests : IDisposable
     }
 
     [Theory]
+    [InlineData(5)]
+    [InlineData(20)]
+    public async Task GetAsync_RejectsIncorrectDeclaredImageLength(int declaredLength)
+    {
+        GitHubImageCacheStore store = new(_root, GitHubCachePolicy.Default);
+        using HttpClient client = new(new DeclaredLengthImageHandler(declaredLength));
+        using GitHubImageService service = new(store, client);
+
+        Task<GitHubCachedImage?> fetch = service.GetAsync(
+            $"https://images.example.com/length-{declaredLength}.png",
+            GitHubImageFetchScope.UserApprovedHttps);
+        if (declaredLength < PngBytes.Length)
+            await Assert.ThrowsAsync<InvalidDataException>(() => fetch);
+        else
+            await Assert.ThrowsAsync<EndOfStreamException>(() => fetch);
+        Assert.Empty(Directory.GetFiles(_root, "*", SearchOption.TopDirectoryOnly));
+    }
+
+    [Theory]
     [InlineData("image/svg+xml", "<html><body>not svg</body></html>")]
     [InlineData("image/png", "not a png")]
     public async Task GetAsync_RejectsMismatchedImageSignatures(string contentType, string body)
@@ -1324,6 +1343,19 @@ public sealed class GitHubImageServiceTests : IDisposable
         {
             ByteArrayContent content = new(bytes);
             content.Headers.ContentType = new(contentType);
+            return Task.FromResult(new HttpResponseMessage(HttpStatusCode.OK) { Content = content });
+        }
+    }
+
+    private sealed class DeclaredLengthImageHandler(int declaredLength) : HttpMessageHandler
+    {
+        protected override Task<HttpResponseMessage> SendAsync(
+            HttpRequestMessage request,
+            CancellationToken cancellationToken)
+        {
+            ByteArrayContent content = new(PngBytes);
+            content.Headers.ContentType = new("image/png");
+            content.Headers.ContentLength = declaredLength;
             return Task.FromResult(new HttpResponseMessage(HttpStatusCode.OK) { Content = content });
         }
     }

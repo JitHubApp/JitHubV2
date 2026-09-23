@@ -578,6 +578,17 @@ public sealed partial class GitHubImageService : IGitHubImageService, IDisposabl
         }
 
         await using Stream input = await content.ReadAsStreamAsync(cancellationToken).ConfigureAwait(false);
+        if (content.Headers.ContentLength is long knownLength)
+        {
+            // Most image responses provide a length. Read directly into the final
+            // array instead of growing a MemoryStream and copying it with ToArray.
+            byte[] bytes = new byte[checked((int)knownLength)];
+            await input.ReadExactlyAsync(bytes, cancellationToken).ConfigureAwait(false);
+            if (await input.ReadAsync(new byte[1], cancellationToken).ConfigureAwait(false) != 0)
+                throw new InvalidDataException("Remote image exceeds its declared content length.");
+            return bytes;
+        }
+
         using MemoryStream output = new();
         byte[] buffer = new byte[81920];
         while (true)

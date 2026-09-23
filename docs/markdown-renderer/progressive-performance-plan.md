@@ -53,6 +53,12 @@ complete before claiming this plan or the 1.0 performance goal is met.
   before consuming authenticated Contents API budget, retaining the existing
   private/LFS fallback. The audit captures per-tile native traversal clocks and
   no longer charges a five-second UIA no-op scroll as renderer work.
+- Locally verified, pending CI: JitHub now reads a known-length image response
+  directly into its final bounded byte array, avoiding MemoryStream growth and
+  a second full-size `ToArray` copy. The 83 image-service tests cover the normal
+  path and reject both short and excess bodies relative to the declared length;
+  all 3,048 JitHub unit tests passed. This is an allocation reduction, not the
+  still-open 64 MiB in-flight source-byte admission gate.
 - Locally verified, pending PR CI: the progressive source session now ships in
   an explicit optional managed pack, and resvg's inert-image normalization and
   security preflight travel with its optional provider. The Core + WinUI lean
