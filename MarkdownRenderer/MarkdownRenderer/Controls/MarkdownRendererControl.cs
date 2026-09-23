@@ -4590,7 +4590,7 @@ public partial class MarkdownRendererControl : UserControl, IDisposable, IMarkdo
         CodeBlockThemeVariant variant,
         int providerIdentity,
         int providerRevision)
-        => new(block.CodeLanguage, Fnv1A64(block.CodeText), block.CodeText.Length, variant, providerIdentity, providerRevision);
+        => new(block.CodeLanguage, block.Metadata.CodeTextHash, block.CodeText.Length, variant, providerIdentity, providerRevision);
 
     private void ClearCodeBlockHighlightCache()
         => _codeBlockHighlightCache.Clear();

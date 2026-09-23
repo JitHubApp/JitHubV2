@@ -29,7 +29,9 @@ complete before claiming this plan or the 1.0 performance goal is met.
   independent `UseCachedRasterPreview` opt-out.
 - Locally verified, pending current-head CI and benchmark: cached code-block
   highlighting now skips repeat span reconstruction/repaint for an unchanged
-  block. A completed highlight publishes through the visible-band scheduler;
+  block and reuses the stable text hash already computed while building code
+  metadata instead of rehashing the code on every scroll. A completed highlight
+  publishes through the visible-band scheduler;
   an oversized, uncacheable result publishes directly to matching blocks in
   that band, without immediately requeuing the same work. The previous
   whole-measured-document completion scan remains only in the non-progressive
@@ -43,7 +45,7 @@ complete before claiming this plan or the 1.0 performance goal is met.
   an explicit optional managed pack, and resvg's inert-image normalization and
   security preflight travel with its optional provider. The Core + WinUI lean
   pair remains below the unchanged 525 KiB compressed and 1.2 MiB managed
-  gates (525,603 and 1,249,792 bytes from a fresh local `a176bab` pack); the
+  gates (525,642 and 1,249,792 bytes from a fresh local pack); the
   pack retains public XML API docs.
   All 14 shipping packages passed local size/license/native-asset compliance,
   normalized two-pack reproducibility, x64 NativeAOT managed-pack smoke from
