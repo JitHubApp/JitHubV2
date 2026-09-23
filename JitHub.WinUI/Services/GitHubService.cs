@@ -2252,6 +2252,26 @@ namespace JitHub.Services
                     return MarkdownImageResolution.Blocked(repositoryDecision.UnavailableReason);
                 }
 
+                if (repositoryDecision.Access == MarkdownRemoteImageAccess.AllowNetwork)
+                {
+                    // Public repository media is already served by GitHub's raw
+                    // CDN. Fetching every badge through the authenticated
+                    // Contents API first exhausts its shared rate budget on
+                    // image-heavy READMEs. This request carries no account
+                    // credential; private/LFS/missing assets still fall back
+                    // to the authenticated repository path below.
+                    GitHubCachedImage? rawImage = await GitHubRepositoryImageFetchPipeline.TryGetRawAsync(
+                        _gitHubImageService,
+                        rawUri,
+                        static exception => HandledFailureReporter.Report(
+                            exception, "markdown-image-raw-cdn-fallback"),
+                        cancellationToken).ConfigureAwait(false);
+                    MarkdownImageAsset? rawAsset = await ReadCachedMarkdownImageAsync(
+                        rawImage, rawUri, cancellationToken).ConfigureAwait(false);
+                    if (rawAsset is not null)
+                        return MarkdownImageResolution.Resolved(rawAsset);
+                }
+
                 GitHubCachedImage? cachedImage;
                 if (repositoryDecision.Access == MarkdownRemoteImageAccess.CacheOnly)
                 {

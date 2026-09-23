@@ -1782,6 +1782,7 @@ internal static partial class ReadmeAuditProbe
     private static Window WaitForWindow(Application application, UIA3Automation automation, TimeSpan timeout)
     {
         Stopwatch stopwatch = Stopwatch.StartNew();
+        Exception? lastLookupFailure = null;
         while (stopwatch.Elapsed < timeout)
         {
             try
@@ -1790,10 +1791,22 @@ internal static partial class ReadmeAuditProbe
                 if (window is not null) return window;
             }
             catch (InvalidOperationException) { }
+            catch (TimeoutException exception)
+            {
+                // UIA's out-of-process ElementFromHandle lookup can time out
+                // once during WinUI startup while the process already has a
+                // responsive HWND. Retry only within the original deadline;
+                // repeated timeouts remain a recorded infrastructure failure.
+                lastLookupFailure = exception;
+            }
             Thread.Sleep(100);
         }
         throw new NativeAuditInfrastructureException(
-            "JitHub main window did not become available to UI Automation.");
+            "JitHub main window did not become available to UI Automation" +
+            (lastLookupFailure is null
+                ? "."
+                : $" (last lookup: {lastLookupFailure.GetType().Name}, " +
+                  $"0x{unchecked((uint)lastLookupFailure.HResult):X8})."));
     }
 
     private static int WaitForReadySignal(string path, Process launcher, TimeSpan timeout)

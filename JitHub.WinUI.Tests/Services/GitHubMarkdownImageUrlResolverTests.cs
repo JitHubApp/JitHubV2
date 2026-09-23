@@ -7,6 +7,22 @@ namespace JitHub.WinUI.Tests.Services;
 public class GitHubMarkdownImageUrlResolverTests
 {
     [Fact]
+    public void TryResolve_ExclamationDirectoryPreservesRepositoryAssetPath()
+    {
+        var documentSource = new MarkdownRenderer.Images.MarkdownDocumentSource(
+            "repository-readme:owner/repository:main",
+            "owner", "repository", "main", "README.md");
+
+        Assert.True(GitHubMarkdownImageUrlResolver.TryResolve(
+            "!/tags/implemented.svg", documentSource,
+            out GitHubMarkdownImageReference reference));
+        Assert.Equal("!/tags/implemented.svg", reference.Path);
+        Assert.Equal(
+            "https://raw.githubusercontent.com/owner/repository/main/%21/tags/implemented.svg",
+            GitHubMarkdownImageUrlResolver.CreateRawUri(reference).AbsoluteUri);
+    }
+
+    [Fact]
     public void TryResolve_RelativeImage_UsesMarkdownFileDirectory()
     {
         var baseUri = new Uri("https://github.com/octo/repo/blob/main/docs/readme.md");

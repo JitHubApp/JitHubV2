@@ -538,6 +538,7 @@ public sealed class MarkdownRenderer.Performance.MarkdownPerformanceOptions : Sy
   public MarkdownRenderer.Performance.MarkdownPerformanceOptions <Clone>$();
   public bool Equals(MarkdownRenderer.Performance.MarkdownPerformanceOptions? other);
   public bool PrefetchDocumentImages { get; init; }
+  public bool UseCachedRasterPreview { get; init; }
   public bool UseDisplaySizedRasterDecode { get; init; }
   public int LookAheadViewports { get; init; }
   public int MaxConcurrentCpuPreparations { get; init; }

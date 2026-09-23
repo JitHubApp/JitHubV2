@@ -19,8 +19,13 @@ public sealed class DisplaySizedRasterDecodeTests
 {
     [Theory]
     [InlineData(1.0, 200, 100)]
+    [InlineData(1.25, 250, 125)]
     [InlineData(1.5, 300, 150)]
+    [InlineData(1.75, 350, 175)]
     [InlineData(2.0, 400, 200)]
+    [InlineData(2.25, 450, 225)]
+    [InlineData(3.0, 600, 300)]
+    [InlineData(4.0, 800, 400)]
     public async Task OptedInRasterUsesPhysicalDisplayDimensions(
         double rasterizationScale,
         int expectedWidth,
@@ -147,6 +152,42 @@ public sealed class DisplaySizedRasterDecodeTests
         {
             portrait.Dispose();
             landscape.Dispose();
+        }
+    }
+
+    [Fact]
+    public async Task CachedRasterPreviewCanBeDisabledIndependently()
+    {
+        byte[] source = CreatePng(1024, 512);
+        var resolver = new ByteResolver(source, $"preview-opt-out-{Guid.NewGuid():N}");
+        using var previewSession = new MarkdownPerformanceSession(MarkdownPerformanceOptions.Progressive);
+        using var exactOnlySession = new MarkdownPerformanceSession(
+            MarkdownPerformanceOptions.Progressive with { UseCachedRasterPreview = false });
+        var cached = new ImageBox(CreateContext(resolver, previewSession, 1),
+            "https://images.example/large.png", string.Empty);
+        var exactOnly = new ImageBox(CreateContext(resolver, exactOnlySession, 1),
+            "https://images.example/large.png", string.Empty);
+        try
+        {
+            cached.Measure(400);
+            await WaitForLoadAsync(cached);
+            Assert.Equal(400u, cached.Bitmap!.SizeInPixels.Width);
+
+            var widths = new List<uint>();
+            exactOnly.LoadCompleted += (_, _) =>
+            {
+                if (exactOnly.Bitmap is { } bitmap)
+                    widths.Add(bitmap.SizeInPixels.Width);
+            };
+            exactOnly.Measure(800);
+            await WaitForLoadAsync(exactOnly);
+
+            Assert.Equal([800u], widths);
+        }
+        finally
+        {
+            cached.Dispose();
+            exactOnly.Dispose();
         }
     }
 

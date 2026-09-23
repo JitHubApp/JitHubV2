@@ -25,7 +25,12 @@ complete before claiming this plan or the 1.0 performance goal is met.
   relayout, removing the quadratic UI-thread match on image-heavy documents.
 - Done: code-block highlighting queries measured viewport bands rather than
   scanning every measured block on each progressive scroll; a cached smaller
-  raster remains visible until the exact larger bitmap is ready.
+  raster remains visible until the exact larger bitmap is ready, with an
+  independent `UseCachedRasterPreview` opt-out.
+- Done: JitHub tries the credential-free GitHub raw CDN for repository media
+  before consuming authenticated Contents API budget, retaining the existing
+  private/LFS fallback. The audit captures per-tile native traversal clocks and
+  no longer charges a five-second UIA no-op scroll as renderer work.
 - Open: actual source-byte in-flight admission (a host resolver currently owns
   its download buffer), global queue fairness across documents, and copy-on-write
   layout publication with a measured ≤2 ms UI commit.

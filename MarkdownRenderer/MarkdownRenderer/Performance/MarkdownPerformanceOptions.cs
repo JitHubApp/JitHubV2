@@ -29,6 +29,9 @@ public sealed record MarkdownPerformanceOptions
     /// <summary>Decodes static raster images at their displayed physical size.</summary>
     public bool UseDisplaySizedRasterDecode { get; init; } = true;
 
+    /// <summary>Shows a cached smaller raster while an exact larger raster is prepared.</summary>
+    public bool UseCachedRasterPreview { get; init; } = true;
+
     /// <summary>Allows admitted image sources throughout the document to be fetched in spare capacity.</summary>
     public bool PrefetchDocumentImages { get; init; } = true;
 

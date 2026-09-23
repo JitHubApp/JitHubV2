@@ -1203,7 +1203,9 @@ internal sealed class ImageBox : BlockBox
                 // image already uploaded for this source. Keep that cached
                 // bitmap visible while the exact replacement is decoded. An
                 // exact cache hit above never incurs this variant search.
-                if (displaySized && cacheKey.Length > 0 &&
+                if (displaySized &&
+                    _context.PerformanceSession?.Options.UseCachedRasterPreview == true &&
+                    cacheKey.Length > 0 &&
                     (long)rasterSize.Width * rasterSize.Height >= 65_536 &&
                     SharedCanvasBitmapCache.TryAcquireBestRasterPreview(
                         device,
