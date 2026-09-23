@@ -307,6 +307,14 @@ public sealed class RepositorySvgRasterizerTests
 
         public MarkdownSvgOpenRequest? LastOpenRequest { get; private set; }
 
+        public MarkdownSvgSourcePreparation PrepareSource(
+            byte[] source,
+            CancellationToken cancellationToken)
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+            return MarkdownSvgSourcePreparation.Admit(source);
+        }
+
         public ValueTask<IMarkdownSvgDocument> OpenAsync(
             MarkdownSvgOpenRequest request,
             CancellationToken cancellationToken = default)
