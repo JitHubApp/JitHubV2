@@ -585,14 +585,6 @@ public partial class MarkdownRendererControl : UserControl, IDisposable, IMarkdo
         MarkdownImageResolveContext Context,
         CancellationToken CancellationToken);
 
-    private readonly record struct CodeBlockHighlightCacheKey(
-        string? Language,
-        ulong CodeHash,
-        int CodeLength,
-        CodeBlockThemeVariant ThemeVariant,
-        int ProviderIdentity,
-        int ProviderRevision);
-
     private const int CodeBlockHighlightCacheMaxEntries = 128;
     private const long CodeBlockHighlightCacheBudgetBytes = 8L * 1024 * 1024;
     private const double CodeBlockHighlightOverscanPx = 1600;
@@ -4372,10 +4364,11 @@ public partial class MarkdownRendererControl : UserControl, IDisposable, IMarkdo
                 continue;
 
             var key = CreateHighlightCacheKey(block, variant, providerIdentity, providerRevision);
+            if (block.HasAppliedSyntaxHighlighting(key))
+                continue;
             if (_codeBlockHighlightCache.TryGetValue(key, out var cached))
             {
-                block.ApplySyntaxHighlighting(cached.Spans);
-                appliedCached = true;
+                appliedCached |= block.ApplySyntaxHighlighting(key, cached.Spans);
                 continue;
             }
 
@@ -4475,9 +4468,20 @@ public partial class MarkdownRendererControl : UserControl, IDisposable, IMarkdo
                     }
                     _codeBlockHighlightCache.Set(key, result);
                     RemoveCodeBlockHighlightInFlight(key, generation);
-                    ApplyCodeBlockHighlightResult(snapshot, key, variant, providerIdentity, providerRevision, result);
-                    InvalidateCanvas();
-                    ScheduleVisibleCodeBlockHighlighting();
+                    if (_codeBlockHighlightCache.TryGetValue(key, out _))
+                    {
+                        // The visible-band scheduler applies the retained
+                        // result to matching blocks without a document scan.
+                        ScheduleVisibleCodeBlockHighlighting();
+                    }
+                    else if (ApplyUncachedCodeBlockHighlightResult(
+                        snapshot, key, variant, providerIdentity, providerRevision, result))
+                    {
+                        // Oversized results cannot enter the bounded cache.
+                        // Publish to the current band directly, without
+                        // immediately requeuing the same expensive request.
+                        InvalidateCanvas();
+                    }
                 });
             }
             finally
@@ -4502,7 +4506,7 @@ public partial class MarkdownRendererControl : UserControl, IDisposable, IMarkdo
             _codeBlockHighlightInFlight.Remove(key);
     }
 
-    private void ApplyCodeBlockHighlightResult(
+    private bool ApplyUncachedCodeBlockHighlightResult(
         LayoutSnapshot snapshot,
         CodeBlockHighlightCacheKey key,
         CodeBlockThemeVariant variant,
@@ -4510,11 +4514,36 @@ public partial class MarkdownRendererControl : UserControl, IDisposable, IMarkdo
         int providerRevision,
         CodeBlockHighlightResult result)
     {
-        foreach (var candidate in EnumerateCodeBlocks(snapshot))
+        IEnumerable<Layout.Boxes.CodeBlockBox> candidates;
+        LazyLayoutBand band = default;
+        if (PerformanceSession is null)
         {
-            if (CreateHighlightCacheKey(candidate, variant, providerIdentity, providerRevision).Equals(key))
-                candidate.ApplySyntaxHighlighting(result.Spans);
+            candidates = EnumerateCodeBlocks(snapshot);
         }
+        else
+        {
+            TryGetViewport(out double viewportTop, out double viewportHeight, out _);
+            band = LazyLayoutBand.FromDirectionalViewport(
+                viewportTop,
+                viewportHeight,
+                PerformanceSession.Options.LookAheadViewports,
+                _lazyScrollVelocityPixelsPerSecond);
+            if (!snapshot.TryGetMeasuredTopLevelBlocksInBand(
+                    band.Top, band.Bottom, out IReadOnlyList<BlockBox> bandBlocks))
+                return false;
+            candidates = EnumerateCodeBlocks(bandBlocks);
+        }
+
+        bool changed = false;
+        foreach (var candidate in candidates)
+        {
+            if (PerformanceSession is not null &&
+                !IsCodeBlockInHighlightBand(candidate, band.Top, band.Bottom))
+                continue;
+            if (CreateHighlightCacheKey(candidate, variant, providerIdentity, providerRevision).Equals(key))
+                changed |= candidate.ApplySyntaxHighlighting(key, result.Spans);
+        }
+        return changed;
     }
 
     private static bool IsCodeBlockInHighlightBand(Layout.Boxes.CodeBlockBox block, double top, double bottom)

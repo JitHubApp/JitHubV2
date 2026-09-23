@@ -27,6 +27,7 @@ internal sealed class CodeBlockBox : BlockBox, IHorizontalOverflowBox
 
     private readonly MarkdownLayoutContext _context;
     private readonly List<InlineContainerBox> _chunks = new();
+    private CodeBlockHighlightCacheKey? _appliedHighlightKey;
     private double[] _chunkBottomEdges = Array.Empty<double>();
     private CodeVisualLineInfo[] _visualLines = Array.Empty<CodeVisualLineInfo>();
     private double[] _visualLineBottomEdges = Array.Empty<double>();
@@ -135,6 +136,7 @@ internal sealed class CodeBlockBox : BlockBox, IHorizontalOverflowBox
 
     public void AddChunk(InlineContainerBox chunk)
     {
+        _appliedHighlightKey = null;
         chunk.DrawContainerChrome = false;
         chunk.UseContainerPadding = false;
         chunk.UseContainerMargin = false;
@@ -142,8 +144,16 @@ internal sealed class CodeBlockBox : BlockBox, IHorizontalOverflowBox
         _chunks.Add(chunk);
     }
 
-    internal void ApplySyntaxHighlighting(IReadOnlyList<CodeBlockHighlightSpan>? spans)
+    internal bool HasAppliedSyntaxHighlighting(CodeBlockHighlightCacheKey key)
+        => _appliedHighlightKey == key;
+
+    internal bool ApplySyntaxHighlighting(
+        CodeBlockHighlightCacheKey key,
+        IReadOnlyList<CodeBlockHighlightSpan>? spans)
     {
+        if (_appliedHighlightKey == key)
+            return false;
+
         var allSpans = spans ?? Array.Empty<CodeBlockHighlightSpan>();
         foreach (var chunk in _chunks)
         {
@@ -160,6 +170,9 @@ internal sealed class CodeBlockBox : BlockBox, IHorizontalOverflowBox
 
             chunk.SetForegroundSpans(local);
         }
+
+        _appliedHighlightKey = key;
+        return true;
     }
 
     public override float Measure(float availableWidth)

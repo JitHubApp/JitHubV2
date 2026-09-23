@@ -27,6 +27,14 @@ complete before claiming this plan or the 1.0 performance goal is met.
   scanning every measured block on each progressive scroll; a cached smaller
   raster remains visible until the exact larger bitmap is ready, with an
   independent `UseCachedRasterPreview` opt-out.
+- Locally verified, pending current-head CI and benchmark: cached code-block
+  highlighting now skips repeat span reconstruction/repaint for an unchanged
+  block. A completed highlight publishes through the visible-band scheduler;
+  an oversized, uncacheable result publishes directly to matching blocks in
+  that band, without immediately requeuing the same work. The previous
+  whole-measured-document completion scan remains only in the non-progressive
+  path. This removes avoidable scroll/publication work, but it is not evidence
+  that the full 60/120 Hz release gate passes.
 - Done: JitHub tries the credential-free GitHub raw CDN for repository media
   before consuming authenticated Contents API budget, retaining the existing
   private/LFS fallback. The audit captures per-tile native traversal clocks and
@@ -43,6 +51,12 @@ complete before claiming this plan or the 1.0 performance goal is met.
   mutation fixture, and the 389 GitHub plus 56 resvg tests. The full Core
   external-gate fixture remains for CI; this is package/architecture evidence,
   not a performance benchmark or release pass.
+- The first CI run after the optional-package split found a test-only SVG
+  renderer missing the new source-preparation contract. Commit `4a5a373`
+  updates that fake; the code-viewer, NativeAOT contract, and product-plan
+  validation jobs passed on that revision. Package validation, architecture
+  publish jobs, and the current-head top-500 audit remain pending; these
+  earlier passing jobs do not establish a release verdict for newer changes.
 - Verified: the pinned top-500 live README audit at renderer commit `a200b59`
   passed 500/500 with zero valid image-unavailable cases. Native/Edge p95 ratios
   were 0.491 first render and 0.364 full traversal. Five individual full-page
