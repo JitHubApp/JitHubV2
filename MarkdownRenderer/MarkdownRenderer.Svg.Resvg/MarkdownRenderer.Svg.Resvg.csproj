@@ -44,6 +44,8 @@
 
   <ItemGroup>
     <ProjectReference Include="..\MarkdownRenderer\MarkdownRenderer.csproj" />
+    <Compile Include="..\MarkdownRenderer\Layout\Boxes\SvgResourceBudget.cs" Link="Internal\SvgResourceBudget.cs" />
+    <Compile Include="..\MarkdownRenderer\Layout\Boxes\SvgStaticSnapshot.cs" Link="Internal\SvgStaticSnapshot.cs" />
   </ItemGroup>
 
   <ItemGroup>

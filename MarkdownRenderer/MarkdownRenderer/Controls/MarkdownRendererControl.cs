@@ -573,7 +573,7 @@ public partial class MarkdownRendererControl : UserControl, IDisposable, IMarkdo
     private MarkdownImageResolveContext? _activeImagePrefetchContext;
     private int _prefetchedImageRegistryRevision = -1;
     private PendingImagePrefetch? _pendingImagePrefetch;
-    private MarkdownPerformanceSession.DocumentScope? _performanceDocumentScope;
+    private IMarkdownPerformanceDocumentScope? _performanceDocumentScope;
     private string? _performanceDocumentSource;
     private int _performanceRegistryRevision = -1;
     private bool _performancePrefetchStarted;
@@ -1122,18 +1122,31 @@ public partial class MarkdownRendererControl : UserControl, IDisposable, IMarkdo
 
     /// <summary>Dependency property backing <see cref="PerformanceSession"/>.</summary>
     public static readonly DependencyProperty PerformanceSessionProperty =
-        DependencyProperty.Register(nameof(PerformanceSession), typeof(MarkdownPerformanceSession),
+        DependencyProperty.Register(nameof(PerformanceSession), typeof(IMarkdownPerformanceSession),
             typeof(MarkdownRendererControl),
-            new PropertyMetadata(null, (d, _) => ((MarkdownRendererControl)d).RequestRebuild()));
+            new PropertyMetadata(null, (d, e) =>
+                ((MarkdownRendererControl)d).OnPerformanceSessionChanged(e)));
 
     /// <summary>
     /// Gets or sets the optional, host-owned resource preparation session. The
     /// control borrows this session and never disposes it.
     /// </summary>
-    public MarkdownPerformanceSession? PerformanceSession
+    public IMarkdownPerformanceSession? PerformanceSession
     {
-        get => (MarkdownPerformanceSession?)GetValue(PerformanceSessionProperty);
+        get => (IMarkdownPerformanceSession?)GetValue(PerformanceSessionProperty);
         set => SetValue(PerformanceSessionProperty, value);
+    }
+
+    private void OnPerformanceSessionChanged(DependencyPropertyChangedEventArgs args)
+    {
+        if (args.NewValue is not null and not IMarkdownPerformanceSessionInternal)
+        {
+            SetValue(PerformanceSessionProperty, args.OldValue);
+            throw new ArgumentException(
+                "The performance session must be supplied by the optional MarkdownRenderer.Performance package.",
+                nameof(PerformanceSession));
+        }
+        RequestRebuild();
     }
 
     private void OnSvgRendererChanged(DependencyPropertyChangedEventArgs args)
@@ -3802,7 +3815,8 @@ public partial class MarkdownRendererControl : UserControl, IDisposable, IMarkdo
         var embedFactorySnapshot = EmbedFactory;
         var hostedElementFactorySnapshot = HostedElementFactory;
         var imageResolverSnapshot = ImageResolver;
-        MarkdownPerformanceSession? performanceSessionSnapshot = PerformanceSession;
+        IMarkdownPerformanceSessionInternal? performanceSessionSnapshot =
+            PerformanceSession as IMarkdownPerformanceSessionInternal;
         if (performanceSessionSnapshot?.IsDisposed == true)
             performanceSessionSnapshot = null;
         var svgRendererSnapshot = SvgRenderer;
@@ -3830,7 +3844,7 @@ public partial class MarkdownRendererControl : UserControl, IDisposable, IMarkdo
                 _performancePrefetchStarted = false;
             }
 
-            MarkdownPerformanceSession.DocumentScope scope = _performanceDocumentScope;
+            IMarkdownPerformanceDocumentScope scope = _performanceDocumentScope;
             imageResolverSnapshot = scope;
             if (!_performancePrefetchStarted && performanceSessionSnapshot.Options.PrefetchDocumentImages)
             {
@@ -5487,7 +5501,7 @@ public partial class MarkdownRendererControl : UserControl, IDisposable, IMarkdo
     private static async Task PrefetchPerformanceImagesObservedAsync(
         Markdig.Syntax.MarkdownDocument document,
         SafeHtmlRenderPolicy? safeHtmlPolicy,
-        MarkdownPerformanceSession.DocumentScope scope)
+        IMarkdownPerformanceDocumentScope scope)
     {
         try
         {

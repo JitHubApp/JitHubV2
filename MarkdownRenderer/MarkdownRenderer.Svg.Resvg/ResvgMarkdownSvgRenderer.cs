@@ -1,6 +1,7 @@
 using System.Collections.Concurrent;
 using System.Runtime.InteropServices;
 using MarkdownRenderer.Images;
+using MarkdownRenderer.Layout.Boxes;
 using MarkdownRenderer.Svg.Resvg.Internal;
 
 namespace MarkdownRenderer.Svg.Resvg;
@@ -10,6 +11,38 @@ namespace MarkdownRenderer.Svg.Resvg;
 /// </summary>
 public sealed class ResvgMarkdownSvgRenderer : IMarkdownSvgRenderer, IDisposable, IAsyncDisposable
 {
+    /// <inheritdoc />
+    public MarkdownSvgSourcePreparation PrepareSource(byte[] source, CancellationToken cancellationToken)
+    {
+        ThrowIfDisposed();
+        ArgumentNullException.ThrowIfNull(source);
+        byte[] prepared = SvgStaticSnapshot.Create(source, cancellationToken);
+        SvgResourceBudgetResult budget = SvgResourceBudget.Validate(prepared, cancellationToken);
+        if (budget.Accepted)
+            return MarkdownSvgSourcePreparation.Admit(prepared);
+
+        string reason = budget.Reason ?? "invalid-content";
+        MarkdownSvgFailureReason failureReason = IsResourceLimitReason(reason)
+            ? MarkdownSvgFailureReason.ResourceLimitExceeded
+            : MarkdownSvgFailureReason.UnsupportedContent;
+        return MarkdownSvgSourcePreparation.Reject(
+            failureReason,
+            $"The SVG was rejected by host preflight ({reason}).");
+    }
+
+    private static bool IsResourceLimitReason(string reason) =>
+        reason.Contains("limit", StringComparison.OrdinalIgnoreCase) ||
+        reason.Contains("budget", StringComparison.OrdinalIgnoreCase) ||
+        reason.Contains("large", StringComparison.OrdinalIgnoreCase) ||
+        reason.Contains("depth", StringComparison.OrdinalIgnoreCase) ||
+        reason.Contains("count", StringComparison.OrdinalIgnoreCase) ||
+        reason.Contains("bytes", StringComparison.OrdinalIgnoreCase) ||
+        reason.Contains("complexity", StringComparison.OrdinalIgnoreCase) ||
+        reason.Contains("size", StringComparison.OrdinalIgnoreCase) ||
+        reason.Contains("length", StringComparison.OrdinalIgnoreCase) ||
+        reason.Contains("deadline", StringComparison.OrdinalIgnoreCase) ||
+        reason.Equals("embedded-image-data", StringComparison.OrdinalIgnoreCase);
+
     /// <summary>The exact upstream resvg release used by the worker.</summary>
     public const string ResvgVersion = "0.48.1";
 

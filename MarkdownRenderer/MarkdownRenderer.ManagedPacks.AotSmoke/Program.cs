@@ -2,6 +2,7 @@ using MarkdownRenderer;
 using MarkdownRenderer.Gfm;
 using MarkdownRenderer.GitHub;
 using MarkdownRenderer.Html;
+using MarkdownRenderer.Performance;
 
 const string source = "# Native Markdown\n\n- [x] accessible\n\n| Pack | State |\n|---|---|\n| HTML | safe |\n\n<span>native</span>";
 
@@ -15,6 +16,7 @@ MarkdownEngine githubReadme = new MarkdownEngineBuilder()
 var strictDocument = await strictGfm.ParseAsync(source).ConfigureAwait(false);
 var githubDocument = await githubReadme.ParseAsync(source).ConfigureAwait(false);
 SafeHtmlCapabilityDescriptor safeHtml = SafeHtmlFeature.Capabilities;
+using var performanceSession = new MarkdownPerformanceSession(MarkdownPerformanceOptions.Progressive);
 
 if (strictDocument.GetHeadings().Count != 1 ||
     githubDocument.GetHeadings().Count != 1 ||
@@ -27,7 +29,8 @@ if (strictDocument.GetHeadings().Count != 1 ||
     safeHtml.HasDirectNetworkAccess ||
     safeHtml.LinkRouting != SafeHtmlExternalResourceRouting.HostMediated ||
     safeHtml.ImageRouting != SafeHtmlExternalResourceRouting.HostMediated ||
-    !safeHtml.UsesHalfOpenUtf16SourceRanges)
+    !safeHtml.UsesHalfOpenUtf16SourceRanges ||
+    performanceSession.GetSnapshot().SourceCacheBytes != 0)
 {
     return 1;
 }

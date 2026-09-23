@@ -19,6 +19,14 @@ namespace MarkdownRenderer.Images;
 public interface IMarkdownSvgRenderer
 {
     /// <summary>
+    /// Produces inert, bounded SVG bytes for host metadata inspection and
+    /// provider opening. Implementations must reject active content, external
+    /// references, and over-budget input before returning. This runs off the
+    /// UI thread; the provider must still repeat its authoritative checks.
+    /// </summary>
+    MarkdownSvgSourcePreparation PrepareSource(byte[] source, CancellationToken cancellationToken);
+
+    /// <summary>
     /// Gets a monotonic token that changes when environment state can alter a
     /// rendered result, such as the installed-font generation.
     /// </summary>
@@ -42,6 +50,48 @@ public interface IMarkdownSvgRenderer
     ValueTask<IMarkdownSvgDocument> OpenAsync(
         MarkdownSvgOpenRequest request,
         CancellationToken cancellationToken = default);
+}
+
+/// <summary>Inert SVG bytes or a typed host-preflight rejection.</summary>
+public sealed class MarkdownSvgSourcePreparation
+{
+    private MarkdownSvgSourcePreparation(
+        byte[]? sanitizedBytes,
+        MarkdownSvgFailureReason? failureReason,
+        string? failureDescription)
+    {
+        SanitizedBytes = sanitizedBytes;
+        FailureReason = failureReason;
+        FailureDescription = failureDescription;
+    }
+
+    /// <summary>Gets the admitted static source, or null for a rejection.</summary>
+    public byte[]? SanitizedBytes { get; }
+
+    /// <summary>Gets the typed reason for a rejection.</summary>
+    public MarkdownSvgFailureReason? FailureReason { get; }
+
+    /// <summary>Gets a safe, human-readable rejection description.</summary>
+    public string? FailureDescription { get; }
+
+    /// <summary>Creates an admitted static source.</summary>
+    public static MarkdownSvgSourcePreparation Admit(byte[] sanitizedBytes)
+    {
+        ArgumentNullException.ThrowIfNull(sanitizedBytes);
+        return new MarkdownSvgSourcePreparation(sanitizedBytes, null, null);
+    }
+
+    /// <summary>Creates a deterministic rejection without throwing.</summary>
+    public static MarkdownSvgSourcePreparation Reject(
+        MarkdownSvgFailureReason reason,
+        string description)
+    {
+        if (reason is not (MarkdownSvgFailureReason.UnsupportedContent or
+            MarkdownSvgFailureReason.ResourceLimitExceeded))
+            throw new ArgumentOutOfRangeException(nameof(reason));
+        ArgumentException.ThrowIfNullOrWhiteSpace(description);
+        return new MarkdownSvgSourcePreparation(null, reason, description);
+    }
 }
 
 /// <summary>

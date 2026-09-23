@@ -519,7 +519,12 @@ public sealed class ImageBoxSvgRendererTests
         var renderer = new RecordingSvgRenderer(new MarkdownSvgDocumentInfo(
             IntrinsicWidthDips: 80,
             IntrinsicHeightDips: 40,
-            IntrinsicAspectRatio: 2));
+            IntrinsicAspectRatio: 2))
+        {
+            SourcePreparationOverride = MarkdownSvgSourcePreparation.Reject(
+                MarkdownSvgFailureReason.UnsupportedContent,
+                "The SVG was rejected by host preflight (external-image-reference)."),
+        };
         string svg =
             "<svg xmlns='http://www.w3.org/2000/svg' width='80' height='40'>" +
             "<image href='https://example.test/avatar.png' width='40' height='40'/>" +
@@ -704,6 +709,14 @@ public sealed class ImageBoxSvgRendererTests
         TimeSpan? openDelay = null)
         : IMarkdownSvgRenderer
     {
+        internal MarkdownSvgSourcePreparation? SourcePreparationOverride { get; init; }
+
+        public MarkdownSvgSourcePreparation PrepareSource(byte[] source, CancellationToken cancellationToken)
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+            return SourcePreparationOverride ?? MarkdownSvgSourcePreparation.Admit(source);
+        }
+
         private int _openCount;
         private long _cacheGeneration;
 
@@ -764,6 +777,12 @@ public sealed class ImageBoxSvgRendererTests
         bool reject)
         : IMarkdownSvgRenderer
     {
+        public MarkdownSvgSourcePreparation PrepareSource(byte[] source, CancellationToken cancellationToken)
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+            return MarkdownSvgSourcePreparation.Admit(source);
+        }
+
         private long _cacheGeneration;
         private int _reject = reject ? 1 : 0;
 
@@ -796,6 +815,12 @@ public sealed class ImageBoxSvgRendererTests
 
     private sealed class BlockingSvgRenderer : IMarkdownSvgRenderer
     {
+        public MarkdownSvgSourcePreparation PrepareSource(byte[] source, CancellationToken cancellationToken)
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+            return MarkdownSvgSourcePreparation.Admit(source);
+        }
+
         internal TaskCompletionSource Opened { get; } = new(
             TaskCreationOptions.RunContinuationsAsynchronously);
 

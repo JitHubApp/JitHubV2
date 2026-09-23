@@ -64,6 +64,7 @@ if ($leanNativeEntries.Count -ne 0) {
 }
 
 $optionalCaps = [ordered]@{
+    'MarkdownRenderer.Performance' = 128KB
     'MarkdownRenderer.Svg.Resvg' = 5MB
     'MarkdownRenderer.Math' = 2.3MB
     'MarkdownRenderer.SyntaxHighlighting.TextMate.Grammars.Common' = 6MB

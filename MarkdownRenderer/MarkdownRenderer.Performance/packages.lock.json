@@ -8,12 +8,6 @@
         "resolved": "10.0.12",
         "contentHash": "xi+BDjFpW+Sb+MHFHaH6Y/gV9I8BluFwRXc1QyCdoZbIK26eNiBeFuMTe/FMwc33G1wdHCyDg7CVTmb8OdQrMQ=="
       },
-      "Microsoft.Windows.SDK.BuildTools": {
-        "type": "Direct",
-        "requested": "[10.0.28000.1721, )",
-        "resolved": "10.0.28000.1721",
-        "contentHash": "uZvcBnNFklWdlZXuXtb+opS5oi4TdMAsEDT9r2nbWeG1WhkWh2B6IFyHyYYLEhINkVz1HMPGKckJvNq0AaVW+w=="
-      },
       "Markdig": {
         "type": "Transitive",
         "resolved": "0.42.0",
@@ -78,31 +72,6 @@
         "type": "Project",
         "dependencies": {
           "Markdig": "[0.42.0, )"
-        }
-      },
-      "markdownrenderer.gfm": {
-        "type": "Project",
-        "dependencies": {
-          "MarkdownRenderer.WinUI": "[1.0.0-preview.1, )"
-        }
-      },
-      "markdownrenderer.github": {
-        "type": "Project",
-        "dependencies": {
-          "MarkdownRenderer.Gfm": "[1.0.0-preview.1, )",
-          "MarkdownRenderer.Html": "[0.1.0-preview.1, )"
-        }
-      },
-      "markdownrenderer.html": {
-        "type": "Project",
-        "dependencies": {
-          "MarkdownRenderer.WinUI": "[1.0.0-preview.1, )"
-        }
-      },
-      "markdownrenderer.performance": {
-        "type": "Project",
-        "dependencies": {
-          "MarkdownRenderer.WinUI": "[1.0.0-preview.1, )"
         }
       },
       "MarkdownRenderer.WinUI": {

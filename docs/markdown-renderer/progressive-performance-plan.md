@@ -31,6 +31,18 @@ complete before claiming this plan or the 1.0 performance goal is met.
   before consuming authenticated Contents API budget, retaining the existing
   private/LFS fallback. The audit captures per-tile native traversal clocks and
   no longer charges a five-second UIA no-op scroll as renderer work.
+- Locally verified, pending PR CI: the progressive source session now ships in
+  an explicit optional managed pack, and resvg's inert-image normalization and
+  security preflight travel with its optional provider. The Core + WinUI lean
+  pair remains below the unchanged 525 KiB compressed and 1.2 MiB managed
+  gates (525,357 and 1,249,280 bytes); the pack retains public XML API docs.
+  All 14 shipping packages passed local size/license/native-asset compliance,
+  normalized two-pack reproducibility, x64 NativeAOT managed-pack smoke from
+  both project references and the newly packed NuGet artifacts,
+  x86/ARM64 provider builds, 937 Core tests outside the slow external-gate
+  mutation fixture, and the 389 GitHub plus 56 resvg tests. The full Core
+  external-gate fixture remains for CI; this is package/architecture evidence,
+  not a performance benchmark or release pass.
 - Verified: the pinned top-500 live README audit at renderer commit `a200b59`
   passed 500/500 with zero valid image-unavailable cases. Native/Edge p95 ratios
   were 0.491 first render and 0.364 full traversal. Five individual full-page

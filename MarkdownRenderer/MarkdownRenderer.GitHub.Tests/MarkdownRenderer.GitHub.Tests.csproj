@@ -22,6 +22,7 @@
     <PackageReference Include="Microsoft.WindowsAppSDK" Version="1.8.260317003" />
     <PackageReference Include="Microsoft.WindowsAppSDK.Runtime" Version="1.8.260317003" />
     <ProjectReference Include="..\MarkdownRenderer.GitHub\MarkdownRenderer.GitHub.csproj" />
+    <ProjectReference Include="..\MarkdownRenderer.Performance\MarkdownRenderer.Performance.csproj" />
     <!-- The managed-pack release lane intentionally exercises only Core, WinUI,
          GFM, safe HTML, and GitHub. Public API baselines still run against every
          shipping pack in the default build. -->

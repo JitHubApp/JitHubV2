@@ -51,10 +51,14 @@
     <ProjectReference Include="..\MarkdownRenderer.Html\MarkdownRenderer.Html.csproj">
       <GlobalPropertiesToRemove>PublishSingleFile;EnableMsixTooling</GlobalPropertiesToRemove>
     </ProjectReference>
+    <ProjectReference Include="..\MarkdownRenderer.Performance\MarkdownRenderer.Performance.csproj">
+      <GlobalPropertiesToRemove>PublishSingleFile;EnableMsixTooling</GlobalPropertiesToRemove>
+    </ProjectReference>
   </ItemGroup>
 
   <ItemGroup Condition="'$(ManagedPacksPackageVersion)' != ''">
     <PackageReference Include="MarkdownRenderer" Version="$(ManagedPacksPackageVersion)" />
     <PackageReference Include="MarkdownRenderer.GitHub" Version="$(ManagedPacksPackageVersion)" />
+    <PackageReference Include="MarkdownRenderer.Performance" Version="$(ManagedPacksPackageVersion)" />
   </ItemGroup>
 </Project>

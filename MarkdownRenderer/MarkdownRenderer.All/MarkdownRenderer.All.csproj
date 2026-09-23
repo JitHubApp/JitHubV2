@@ -26,6 +26,7 @@
     <ProjectReference Include="..\MarkdownRenderer.Gfm\MarkdownRenderer.Gfm.csproj" />
     <ProjectReference Include="..\MarkdownRenderer.GitHub\MarkdownRenderer.GitHub.csproj" />
     <ProjectReference Include="..\MarkdownRenderer.Html\MarkdownRenderer.Html.csproj" />
+    <ProjectReference Include="..\MarkdownRenderer.Performance\MarkdownRenderer.Performance.csproj" />
     <ProjectReference Include="..\MarkdownRenderer.Math\MarkdownRenderer.Math.csproj" />
     <ProjectReference Include="..\MarkdownRenderer.Mermaid\MarkdownRenderer.Mermaid.csproj" />
     <ProjectReference Include="..\MarkdownRenderer.Svg.Resvg\MarkdownRenderer.Svg.Resvg.csproj" />

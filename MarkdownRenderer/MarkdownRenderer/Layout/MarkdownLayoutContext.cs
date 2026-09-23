@@ -144,7 +144,7 @@ internal sealed class MarkdownLayoutContext
     public IMarkdownImageResolver? ImageResolver { get; init; }
 
     /// <summary>Optional host-owned preparation policy captured for this layout generation.</summary>
-    internal MarkdownPerformanceSession? PerformanceSession { get; init; }
+    internal IMarkdownPerformanceSessionInternal? PerformanceSession { get; init; }
 
     /// <summary>
     /// Shared static-SVG provider borrowed from the host control. Image boxes

@@ -13,6 +13,7 @@ are implementation details.
 | `MarkdownRenderer.Gfm` | Strict GFM 0.29 plus separately opt-in Markdown Extra helpers. |
 | `MarkdownRenderer.GitHub` | Opt-in GitHub README profile: GFM plus alerts, footnotes, emoji, attributes, and safe HTML. |
 | `MarkdownRenderer.Html` | Bounded native safe-HTML subset parser/painter and immutable options. |
+| `MarkdownRenderer.Performance` | Optional host-owned progressive preparation session; the WinUI controls borrow it through the engine-neutral session contract. |
 | `MarkdownRenderer.Math` | CSharpMath-based TeX processor, immutable vector scenes, fallback and accessibility. |
 | `MarkdownRenderer.Mermaid` | Selected-RID Merman engine, validated MMIR scenes, bounded processing and fallback. |
 | `MarkdownRenderer.Svg.Resvg` | Optional isolated resvg static-SVG provider and RID workers. |
@@ -91,9 +92,9 @@ var view = new MarkdownRendererControlBuilder()
 Use `BuildDocumentView()` for an ancestor-owned viewport. The builder's `Build()`
 method is obsolete.
 
-For the opt-in progressive image pipeline, create one session per account or
-security partition and share it between views. Controls borrow it; the host
-disposes it after those views stop using it:
+For the opt-in progressive image pipeline, install `MarkdownRenderer.Performance`,
+create one session per account or security partition, and share it between
+views. Controls borrow it; the host disposes it after those views stop using it:
 
 ```csharp
 using MarkdownRenderer.Performance;

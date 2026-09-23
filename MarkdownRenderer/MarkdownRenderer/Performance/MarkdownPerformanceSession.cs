@@ -11,64 +11,11 @@ using Windows.System.Power;
 
 namespace MarkdownRenderer.Performance;
 
-/// <summary>Aggregate, privacy-safe resource-preparation counters.</summary>
-public sealed class MarkdownPerformanceSnapshot
-{
-    internal MarkdownPerformanceSnapshot(
-        long sourceCacheBytes,
-        long sourceCacheHits,
-        long imageFetches,
-        long imageFetchMilliseconds,
-        long imageFetchFailures,
-        long imageFetchCancellations,
-        long sourceCacheEvictions,
-        int pendingImageFetches,
-        int activeImageFetches,
-        long cpuPreparations,
-        long cpuPreparationMilliseconds)
-    {
-        SourceCacheBytes = sourceCacheBytes;
-        SourceCacheHits = sourceCacheHits;
-        ImageFetches = imageFetches;
-        ImageFetchMilliseconds = imageFetchMilliseconds;
-        ImageFetchFailures = imageFetchFailures;
-        ImageFetchCancellations = imageFetchCancellations;
-        SourceCacheEvictions = sourceCacheEvictions;
-        PendingImageFetches = pendingImageFetches;
-        ActiveImageFetches = activeImageFetches;
-        CpuPreparations = cpuPreparations;
-        CpuPreparationMilliseconds = cpuPreparationMilliseconds;
-    }
-
-    /// <summary>Retained source bytes.</summary>
-    public long SourceCacheBytes { get; }
-    /// <summary>Successful reads from the source cache.</summary>
-    public long SourceCacheHits { get; }
-    /// <summary>Source resolutions begun by the session.</summary>
-    public long ImageFetches { get; }
-    /// <summary>Total elapsed source-resolution time, rounded to milliseconds.</summary>
-    public long ImageFetchMilliseconds { get; }
-    /// <summary>Source resolutions that faulted for a reason other than cancellation.</summary>
-    public long ImageFetchFailures { get; }
-    /// <summary>Queued or active resolutions canceled before completion.</summary>
-    public long ImageFetchCancellations { get; }
-    /// <summary>Source cache entries evicted to respect the byte budget.</summary>
-    public long SourceCacheEvictions { get; }
-    /// <summary>Resolutions waiting for admission or a speculative-work policy.</summary>
-    public int PendingImageFetches { get; }
-    /// <summary>Resolutions currently inside a host resolver.</summary>
-    public int ActiveImageFetches { get; }
-    /// <summary>Raster preparation slots admitted.</summary>
-    public long CpuPreparations { get; }
-    /// <summary>Total elapsed raster preparation-slot time, rounded to milliseconds.</summary>
-    public long CpuPreparationMilliseconds { get; }
-}
-
 /// <summary>
 /// Shares bounded image preparation between document views in one security partition.
 /// The host owns this service; controls borrow it and own their document scopes.
 /// </summary>
-public sealed class MarkdownPerformanceSession : IDisposable, IAsyncDisposable
+public sealed class MarkdownPerformanceSession : IMarkdownPerformanceSessionInternal, IDisposable, IAsyncDisposable
 {
     private readonly object _cacheGate = new();
     private readonly Dictionary<SourceKey, CachedSource> _sourceCache = new(SourceKeyComparer.Instance);
@@ -126,6 +73,15 @@ public sealed class MarkdownPerformanceSession : IDisposable, IAsyncDisposable
     public MarkdownPerformanceOptions Options { get; }
 
     internal bool IsDisposed => Volatile.Read(ref _disposed) != 0;
+
+    bool IMarkdownPerformanceSessionInternal.IsDisposed => IsDisposed;
+
+    IMarkdownPerformanceDocumentScope IMarkdownPerformanceSessionInternal.OpenDocument(
+        IMarkdownImageResolver resolver,
+        MarkdownImageResolveContext context) => OpenDocument(resolver, context);
+
+    ValueTask<IDisposable> IMarkdownPerformanceSessionInternal.EnterCpuPreparationAsync(
+        CancellationToken cancellationToken) => EnterCpuPreparationAsync(cancellationToken);
 
     /// <summary>Returns aggregate counts without source URLs or content.</summary>
     public MarkdownPerformanceSnapshot GetSnapshot()
@@ -584,7 +540,7 @@ public sealed class MarkdownPerformanceSession : IDisposable, IAsyncDisposable
             completed.TrySetException(failure);
     }
 
-    internal sealed class DocumentScope : IMarkdownImageResolver, IDisposable
+    internal sealed class DocumentScope : IMarkdownPerformanceDocumentScope
     {
         private readonly MarkdownPerformanceSession _session;
         private readonly IMarkdownImageResolver _resolver;
@@ -609,7 +565,7 @@ public sealed class MarkdownPerformanceSession : IDisposable, IAsyncDisposable
         }
 
         internal bool Matches(
-            MarkdownPerformanceSession session,
+            IMarkdownPerformanceSessionInternal session,
             IMarkdownImageResolver resolver,
             MarkdownImageResolveContext context) =>
             ReferenceEquals(_session, session) &&
@@ -620,6 +576,16 @@ public sealed class MarkdownPerformanceSession : IDisposable, IAsyncDisposable
         internal CancellationToken CancellationToken => _token;
 
         internal bool IsDisposed => Volatile.Read(ref _disposed) != 0;
+
+        bool IMarkdownPerformanceDocumentScope.IsDisposed => IsDisposed;
+        CancellationToken IMarkdownPerformanceDocumentScope.CancellationToken => CancellationToken;
+        bool IMarkdownPerformanceDocumentScope.Matches(
+            IMarkdownPerformanceSessionInternal session,
+            IMarkdownImageResolver resolver,
+            MarkdownImageResolveContext context) => Matches(session, resolver, context);
+        Task IMarkdownPerformanceDocumentScope.PrefetchAsync(
+            IReadOnlyList<string> sources,
+            CancellationToken cancellationToken) => PrefetchAsync(sources, cancellationToken);
 
         /// <inheritdoc />
         public async ValueTask<MarkdownImageResolution> ResolveAsync(

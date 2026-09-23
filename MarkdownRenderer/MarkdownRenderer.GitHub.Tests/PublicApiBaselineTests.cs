@@ -5,6 +5,7 @@ using MarkdownRenderer.GitHub;
 using MarkdownRenderer.Html;
 using MarkdownRenderer.Math;
 using MarkdownRenderer.Mermaid;
+using MarkdownRenderer.Performance;
 using MarkdownRenderer.Svg.Resvg;
 using MarkdownRenderer.SyntaxHighlighting.TextMate;
 using MarkdownRenderer.SyntaxHighlighting.TextMate.Grammars.All;
@@ -30,6 +31,7 @@ public sealed class PublicApiBaselineTests
             ["MarkdownRenderer.GitHub"] = typeof(GitHubReadmeExtensions).Assembly,
             ["MarkdownRenderer.Math"] = typeof(MathFeature).Assembly,
             ["MarkdownRenderer.Mermaid"] = typeof(MermaidRenderer).Assembly,
+            ["MarkdownRenderer.Performance"] = typeof(MarkdownPerformanceSession).Assembly,
             ["MarkdownRenderer.Svg.Resvg"] = typeof(ResvgMarkdownSvgRenderer).Assembly,
             ["MarkdownRenderer.SyntaxHighlighting.TextMate"] = typeof(TextMateSyntaxHighlightingExtensions).Assembly,
             ["MarkdownRenderer.SyntaxHighlighting.TextMate.Grammars.Common"] = typeof(CommonTextMateGrammarProvider).Assembly,
@@ -112,6 +114,7 @@ public sealed class PublicApiBaselineTests
             "MarkdownRenderer.Html",
             "MarkdownRenderer.Math",
             "MarkdownRenderer.Mermaid",
+            "MarkdownRenderer.Performance",
             "MarkdownRenderer.Svg.Resvg",
             "MarkdownRenderer.SyntaxHighlighting.TextMate",
             "MarkdownRenderer.SyntaxHighlighting.TextMate.Grammars.All",

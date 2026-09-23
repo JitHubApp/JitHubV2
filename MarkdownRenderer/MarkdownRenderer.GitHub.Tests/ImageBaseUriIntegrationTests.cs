@@ -171,6 +171,12 @@ public sealed class ImageBaseUriIntegrationTests
 
     private sealed class TestSvgRenderer : IMarkdownSvgRenderer
     {
+        public MarkdownSvgSourcePreparation PrepareSource(byte[] source, CancellationToken cancellationToken)
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+            return MarkdownSvgSourcePreparation.Admit(source);
+        }
+
         internal static TestSvgRenderer Instance { get; } = new();
 
         public ValueTask<IMarkdownSvgDocument> OpenAsync(

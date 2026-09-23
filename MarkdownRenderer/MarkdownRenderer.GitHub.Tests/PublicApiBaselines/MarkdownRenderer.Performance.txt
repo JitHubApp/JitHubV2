@@ -1,0 +1,14 @@
+# MarkdownRenderer public API baseline
+# Format: 1
+# Assembly: MarkdownRenderer.Performance
+# Generated from compiled assembly metadata; update with eng/Update-PublicApiBaselines.ps1.
+
+assembly MarkdownRenderer.Performance
+
+public sealed class MarkdownRenderer.Performance.MarkdownPerformanceSession : MarkdownRenderer.Performance.IMarkdownPerformanceSession, System.IAsyncDisposable, System.IDisposable
+  public MarkdownPerformanceSession(MarkdownRenderer.Performance.MarkdownPerformanceOptions options);
+  public MarkdownRenderer.Performance.MarkdownPerformanceOptions Options { get; }
+  public MarkdownRenderer.Performance.MarkdownPerformanceSnapshot GetSnapshot();
+  public System.Threading.Tasks.ValueTask DisposeAsync();
+  public void Dispose();
+  public void Trim();

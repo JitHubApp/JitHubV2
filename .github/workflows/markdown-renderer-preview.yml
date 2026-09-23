@@ -509,6 +509,7 @@ jobs:
           $projects = @(
             '.\MarkdownRenderer\MarkdownRenderer.Core\MarkdownRenderer.Core.csproj'
             '.\MarkdownRenderer\MarkdownRenderer\MarkdownRenderer.csproj'
+            '.\MarkdownRenderer\MarkdownRenderer.Performance\MarkdownRenderer.Performance.csproj'
             '.\MarkdownRenderer\MarkdownRenderer.Package\MarkdownRenderer.Package.csproj'
             '.\MarkdownRenderer\MarkdownRenderer.Gfm\MarkdownRenderer.Gfm.csproj'
             '.\MarkdownRenderer\MarkdownRenderer.Html\MarkdownRenderer.Html.csproj'
@@ -539,6 +540,7 @@ jobs:
           $projects = @(
             '.\MarkdownRenderer\MarkdownRenderer.Core\MarkdownRenderer.Core.csproj'
             '.\MarkdownRenderer\MarkdownRenderer\MarkdownRenderer.csproj'
+            '.\MarkdownRenderer\MarkdownRenderer.Performance\MarkdownRenderer.Performance.csproj'
             '.\MarkdownRenderer\MarkdownRenderer.Package\MarkdownRenderer.Package.csproj'
             '.\MarkdownRenderer\MarkdownRenderer.Gfm\MarkdownRenderer.Gfm.csproj'
             '.\MarkdownRenderer\MarkdownRenderer.Html\MarkdownRenderer.Html.csproj'
@@ -608,6 +610,7 @@ jobs:
             'MarkdownRenderer'
             'MarkdownRenderer.Core'
             'MarkdownRenderer.WinUI'
+            'MarkdownRenderer.Performance'
             'MarkdownRenderer.Gfm'
             'MarkdownRenderer.GitHub'
             'MarkdownRenderer.Html'

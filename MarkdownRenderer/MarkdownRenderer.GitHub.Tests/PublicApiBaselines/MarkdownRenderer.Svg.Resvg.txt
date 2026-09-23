@@ -6,6 +6,7 @@
 assembly MarkdownRenderer.Svg.Resvg
 
 public sealed class MarkdownRenderer.Svg.Resvg.ResvgMarkdownSvgRenderer : MarkdownRenderer.Images.IMarkdownSvgRenderer, System.IAsyncDisposable, System.IDisposable
+  public MarkdownRenderer.Images.MarkdownSvgSourcePreparation PrepareSource(byte[] source, System.Threading.CancellationToken cancellationToken);
   public ResvgMarkdownSvgRenderer();
   public ResvgMarkdownSvgRenderer(MarkdownRenderer.Svg.Resvg.ResvgMarkdownSvgRendererOptions options);
   public System.Threading.Tasks.Task TrimCachesAsync(System.Threading.CancellationToken cancellationToken = null);

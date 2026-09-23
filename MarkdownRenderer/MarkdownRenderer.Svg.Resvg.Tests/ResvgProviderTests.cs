@@ -11,6 +11,24 @@ namespace MarkdownRenderer.Svg.Resvg.Tests;
 public sealed class ResvgProviderTests
 {
     [Fact]
+    public void HostPreparationAdmitsStaticSvgAndReturnsOrdinaryRejectionWithoutThrowing()
+    {
+        using var renderer = new ResvgMarkdownSvgRenderer();
+        MarkdownSvgSourcePreparation admitted = renderer.PrepareSource(
+            Svg("<svg xmlns='http://www.w3.org/2000/svg'><rect width='1' height='1'/></svg>"),
+            CancellationToken.None);
+        Assert.NotNull(admitted.SanitizedBytes);
+        Assert.Null(admitted.FailureReason);
+
+        MarkdownSvgSourcePreparation rejected = renderer.PrepareSource(
+            Svg("<svg xmlns='http://www.w3.org/2000/svg'><image href='https://example.test/a.png'/></svg>"),
+            CancellationToken.None);
+        Assert.Null(rejected.SanitizedBytes);
+        Assert.Equal(MarkdownSvgFailureReason.UnsupportedContent, rejected.FailureReason);
+        Assert.Contains("external-image-reference", rejected.FailureDescription, StringComparison.Ordinal);
+    }
+
+    [Fact]
     public async Task WarmUp_UsesInitializationDeadlineInsteadOfContentDeadline()
     {
         var options = new ResvgMarkdownSvgRendererOptions(

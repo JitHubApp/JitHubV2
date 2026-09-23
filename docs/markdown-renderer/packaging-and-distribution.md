@@ -10,6 +10,7 @@ syntax feature, native DLL, or grammar into an application.
 | `MarkdownRenderer.Gfm` | Strict GFM and separately opt-in Markdown Extra. |
 | `MarkdownRenderer.GitHub` | GitHub README profile and safe-HTML composition. |
 | `MarkdownRenderer.Html` | Native safe-HTML subset parser/painter and budgets. |
+| `MarkdownRenderer.Performance` | Opt-in progressive image-source preparation and bounded per-account resource session. |
 | `MarkdownRenderer.Math` | Managed CSharpMath-based vector typesetter and bundled hash-locked math fonts. |
 | `MarkdownRenderer.Mermaid` | Selected-RID Merman native engine plus validated MMIR scene contracts. |
 | `MarkdownRenderer.Svg.Resvg` | Isolated, architecture-specific resvg 0.48.1 static-SVG worker. |

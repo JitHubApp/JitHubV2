@@ -15,6 +15,7 @@ Set-StrictMode -Version Latest
 $rendererRoot = [IO.Path]::GetFullPath((Join-Path $PSScriptRoot '..'))
 $targetFramework = 'net10.0-windows10.0.26100.0'
 $rendererProject = Join-Path $rendererRoot 'MarkdownRenderer\MarkdownRenderer.csproj'
+$performanceProject = Join-Path $rendererRoot 'MarkdownRenderer.Performance\MarkdownRenderer.Performance.csproj'
 $harnessProject = Join-Path $rendererRoot 'MarkdownRenderer.PerformanceHarness\MarkdownRenderer.PerformanceHarness.csproj'
 $sampleProject = Join-Path $rendererRoot 'MarkdownRenderer.Sample\MarkdownRenderer.Sample.csproj'
 
@@ -33,6 +34,7 @@ function Invoke-CheckedBuild {
 if (-not $NoBuild) {
     foreach ($platform in @('x86', 'x64', 'ARM64')) {
         Invoke-CheckedBuild -Project $rendererProject -Platform $platform
+        Invoke-CheckedBuild -Project $performanceProject -Platform $platform
     }
     Invoke-CheckedBuild -Project $sampleProject -Platform 'x86'
     foreach ($platform in @('x64', 'ARM64')) {
@@ -115,6 +117,11 @@ foreach ($platform in @('x86', 'x64', 'ARM64')) {
     $libraryDirectory = Join-Path $rendererRoot "MarkdownRenderer\bin\$platform\$Configuration\$targetFramework"
     Add-PeEvidence -Platform $platform -Component 'MarkdownRenderer.WinUI' `
         -Path (Join-Path $libraryDirectory 'MarkdownRenderer.dll') `
+        -ExpectedMachine 'I386' -ExpectedKind 'AnyCpuLibrary'
+
+    $libraryDirectory = Join-Path $rendererRoot "MarkdownRenderer.Performance\bin\$platform\$Configuration\$targetFramework"
+    Add-PeEvidence -Platform $platform -Component 'MarkdownRenderer.Performance' `
+        -Path (Join-Path $libraryDirectory 'MarkdownRenderer.Performance.dll') `
         -ExpectedMachine 'I386' -ExpectedKind 'AnyCpuLibrary'
 }
 

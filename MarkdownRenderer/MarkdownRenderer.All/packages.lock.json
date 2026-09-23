@@ -127,6 +127,12 @@
           "MarkdownRenderer.Core": "[1.0.0-preview.1, )"
         }
       },
+      "markdownrenderer.performance": {
+        "type": "Project",
+        "dependencies": {
+          "MarkdownRenderer.WinUI": "[1.0.0-preview.1, )"
+        }
+      },
       "markdownrenderer.svg.resvg": {
         "type": "Project",
         "dependencies": {

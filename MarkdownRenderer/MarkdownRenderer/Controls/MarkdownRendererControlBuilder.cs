@@ -24,7 +24,7 @@ public sealed class MarkdownRendererControlBuilder
     private IMarkdownHostedElementFactory? _hostedElementFactory;
     private IMarkdownImageResolver? _imageResolver;
     private IMarkdownSvgRenderer? _svgRenderer;
-    private MarkdownPerformanceSession? _performanceSession;
+    private IMarkdownPerformanceSession? _performanceSession;
     private Uri? _imageBaseUri;
     private string? _imageDocumentPath;
     private MarkdownDocumentSource? _imageDocumentSource;
@@ -148,7 +148,7 @@ public sealed class MarkdownRendererControlBuilder
     /// <summary>Uses a host-owned progressive resource preparation session.</summary>
     /// <param name="session">Session to borrow, or null to keep the existing renderer behavior.</param>
     /// <returns>The current builder.</returns>
-    public MarkdownRendererControlBuilder WithPerformanceSession(MarkdownPerformanceSession? session)
+    public MarkdownRendererControlBuilder WithPerformanceSession(IMarkdownPerformanceSession? session)
     {
         _performanceSession = session;
         return this;

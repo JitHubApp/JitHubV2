@@ -121,7 +121,7 @@ public sealed class MarkdownRenderer.Controls.MarkdownRenderFailedEventArgs : Sy
   public MarkdownRenderer.Images.IMarkdownSvgRenderer? SvgRenderer { get; set; }
   public MarkdownRenderer.Images.MarkdownDocumentSource? ImageDocumentSource { get; set; }
   public MarkdownRenderer.MarkdownEngine? Engine { get; set; }
-  public MarkdownRenderer.Performance.MarkdownPerformanceSession? PerformanceSession { get; set; }
+  public MarkdownRenderer.Performance.IMarkdownPerformanceSession? PerformanceSession { get; set; }
   public MarkdownRenderer.Theming.MarkdownStyleSheet? StyleSheet { get; set; }
   public MarkdownRenderer.Theming.MarkdownTheme? Theme { get; set; }
   public MarkdownRendererControl();
@@ -201,7 +201,7 @@ public sealed class MarkdownRenderer.Controls.MarkdownRendererControlBuilder
   public MarkdownRenderer.Controls.MarkdownRendererControlBuilder WithImageDocumentSource(MarkdownRenderer.Images.MarkdownDocumentSource? documentSource);
   public MarkdownRenderer.Controls.MarkdownRendererControlBuilder WithImageResolver(MarkdownRenderer.Images.IMarkdownImageResolver? imageResolver);
   public MarkdownRenderer.Controls.MarkdownRendererControlBuilder WithMarkdown(string? markdown);
-  public MarkdownRenderer.Controls.MarkdownRendererControlBuilder WithPerformanceSession(MarkdownRenderer.Performance.MarkdownPerformanceSession? session);
+  public MarkdownRenderer.Controls.MarkdownRendererControlBuilder WithPerformanceSession(MarkdownRenderer.Performance.IMarkdownPerformanceSession? session);
   public MarkdownRenderer.Controls.MarkdownRendererControlBuilder WithSelectionEnabled(bool isEnabled);
   public MarkdownRenderer.Controls.MarkdownRendererControlBuilder WithStringProvider(MarkdownRenderer.Hosting.IMarkdownStringProvider? provider);
   public MarkdownRenderer.Controls.MarkdownRendererControlBuilder WithStyleSheet(MarkdownRenderer.Theming.MarkdownStyleSheet? styleSheet);
@@ -334,6 +334,7 @@ public interface MarkdownRenderer.Images.IMarkdownSvgDocument : System.IDisposab
   public abstract System.Threading.Tasks.ValueTask<MarkdownRenderer.Images.MarkdownSvgRaster> RenderAsync(MarkdownRenderer.Images.MarkdownSvgRenderRequest request, System.Threading.CancellationToken cancellationToken = null);
 
 public interface MarkdownRenderer.Images.IMarkdownSvgRenderer
+  public abstract MarkdownRenderer.Images.MarkdownSvgSourcePreparation PrepareSource(byte[] source, System.Threading.CancellationToken cancellationToken);
   public abstract System.Threading.Tasks.ValueTask<MarkdownRenderer.Images.IMarkdownSvgDocument> OpenAsync(MarkdownRenderer.Images.MarkdownSvgOpenRequest request, System.Threading.CancellationToken cancellationToken = null);
   public virtual event System.EventHandler? CacheInvalidated { add; remove; }
   public virtual long CacheGeneration { get; }
@@ -514,6 +515,13 @@ public sealed class MarkdownRenderer.Images.MarkdownSvgRenderRequest : System.IE
   public static bool op_Inequality(MarkdownRenderer.Images.MarkdownSvgRenderRequest? left, MarkdownRenderer.Images.MarkdownSvgRenderRequest? right);
   public void Deconstruct(out int TargetWidthPixels, out int TargetHeightPixels, out MarkdownRenderer.Images.MarkdownSvgTileRegion? TileRegion, out MarkdownRenderer.Images.MarkdownSvgPixelFormat PixelFormat, out MarkdownRenderer.Images.MarkdownSvgRenderPriority Priority);
 
+public sealed class MarkdownRenderer.Images.MarkdownSvgSourcePreparation
+  public MarkdownRenderer.Images.MarkdownSvgFailureReason? FailureReason { get; }
+  public byte[]? SanitizedBytes { get; }
+  public static MarkdownRenderer.Images.MarkdownSvgSourcePreparation Admit(byte[] sanitizedBytes);
+  public static MarkdownRenderer.Images.MarkdownSvgSourcePreparation Reject(MarkdownRenderer.Images.MarkdownSvgFailureReason reason, string description);
+  public string? FailureDescription { get; }
+
 public readonly struct MarkdownRenderer.Images.MarkdownSvgTileRegion : System.IEquatable<MarkdownRenderer.Images.MarkdownSvgTileRegion> [layout: Sequential; pack: 0; size: 0; charset: Ansi]
   public MarkdownSvgTileRegion(int X, int Y, int Width, int Height);
   public bool Equals(MarkdownRenderer.Images.MarkdownSvgTileRegion other);
@@ -532,6 +540,11 @@ public static class MarkdownRenderer.MarkdownRendererRuntime
   public static bool IsShutdownInProgress { get; }
   public static void BeginShutdown();
   public static void Shutdown(System.TimeSpan? timeout = null);
+
+public interface MarkdownRenderer.Performance.IMarkdownPerformanceSession
+  public abstract MarkdownRenderer.Performance.MarkdownPerformanceOptions Options { get; }
+  public abstract MarkdownRenderer.Performance.MarkdownPerformanceSnapshot GetSnapshot();
+  public abstract void Trim();
 
 public sealed class MarkdownRenderer.Performance.MarkdownPerformanceOptions : System.IEquatable<MarkdownRenderer.Performance.MarkdownPerformanceOptions>
   public MarkdownPerformanceOptions();
@@ -552,14 +565,6 @@ public sealed class MarkdownRenderer.Performance.MarkdownPerformanceOptions : Sy
   public static MarkdownRenderer.Performance.MarkdownPerformanceOptions Progressive { get; }
   public static bool op_Equality(MarkdownRenderer.Performance.MarkdownPerformanceOptions? left, MarkdownRenderer.Performance.MarkdownPerformanceOptions? right);
   public static bool op_Inequality(MarkdownRenderer.Performance.MarkdownPerformanceOptions? left, MarkdownRenderer.Performance.MarkdownPerformanceOptions? right);
-
-public sealed class MarkdownRenderer.Performance.MarkdownPerformanceSession : System.IAsyncDisposable, System.IDisposable
-  public MarkdownPerformanceSession(MarkdownRenderer.Performance.MarkdownPerformanceOptions options);
-  public MarkdownRenderer.Performance.MarkdownPerformanceOptions Options { get; }
-  public MarkdownRenderer.Performance.MarkdownPerformanceSnapshot GetSnapshot();
-  public System.Threading.Tasks.ValueTask DisposeAsync();
-  public void Dispose();
-  public void Trim();
 
 public sealed class MarkdownRenderer.Performance.MarkdownPerformanceSnapshot
   public int ActiveImageFetches { get; }

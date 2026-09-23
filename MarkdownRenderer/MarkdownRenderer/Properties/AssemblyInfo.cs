@@ -9,5 +9,7 @@ using System.Runtime.CompilerServices;
 [assembly: InternalsVisibleTo("MarkdownRenderer.PixelTests")]
 [assembly: InternalsVisibleTo("MarkdownRenderer.Sample")]
 [assembly: InternalsVisibleTo("MarkdownRenderer.PerformanceHarness")]
+[assembly: InternalsVisibleTo("MarkdownRenderer.Performance")]
+[assembly: InternalsVisibleTo("MarkdownRenderer.Svg.Resvg")]
 [assembly: InternalsVisibleTo("MarkdownRenderer.SyntaxHighlighting.TextMate")]
 [assembly: InternalsVisibleTo("JitHub.WinUI")]

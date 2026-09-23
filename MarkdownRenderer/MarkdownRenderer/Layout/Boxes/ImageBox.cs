@@ -154,7 +154,7 @@ internal sealed class ImageBox : BlockBox
     private static readonly ConcurrentDictionary<string, byte> _failedUrls = new();
     private static readonly ConcurrentDictionary<string, SvgFailure> _svgFailures = new();
 
-    private const int MaxSvgBytes = SvgResourceBudget.MaxInputBytes;
+    private const int MaxSvgBytes = 8 * 1024 * 1024;
     private const long MaxSvgOutputRasterBytes = 64L * 1024 * 1024;
     // Direct2D bitmap limits vary by feature level and a recovering/WARP
     // device can transiently report a larger capability than it can allocate.
@@ -1709,14 +1709,29 @@ internal sealed class ImageBox : BlockBox
 
         try
         {
-            // The provider accepts only static SVG. Declarative animation is
-            // resolved to a deterministic initial frame on this background
-            // path, then the sanitized bytes pass through the unchanged host
-            // and worker security preflights.
-            rawBytes = SvgStaticSnapshot.Create(rawBytes, cancellationToken);
+            // The optional provider prepares a bounded inert static image on
+            // this background path. The host inspects its metadata and the
+            // provider repeats authoritative checks before worker admission.
+            MarkdownSvgSourcePreparation preparation = await Task.Run(
+                () => renderer.PrepareSource(rawBytes, cancellationToken),
+                cancellationToken).ConfigureAwait(false);
+            if (preparation is null)
+                throw new MarkdownSvgException(
+                    MarkdownSvgFailureReason.WorkerFailure,
+                    "The SVG provider returned no source preparation result.");
+            if (preparation.SanitizedBytes is { Length: 0 } or { Length: > MaxSvgBytes })
+                preparation = MarkdownSvgSourcePreparation.Reject(
+                    MarkdownSvgFailureReason.ResourceLimitExceeded,
+                    "The SVG provider returned an empty or over-budget source.");
+            if (preparation.SanitizedBytes is null && preparation.FailureReason is null)
+                preparation = MarkdownSvgSourcePreparation.Reject(
+                    MarkdownSvgFailureReason.UnsupportedContent,
+                    "The SVG provider did not admit this source.");
+            rawBytes = preparation.SanitizedBytes ?? rawBytes;
             providerCacheGeneration = renderer.CacheGeneration;
             SvgPreflight preflight;
-            if (ReferenceEquals(rawBytes, _svgRawBytes) &&
+            if (preparation.SanitizedBytes is not null &&
+                ReferenceEquals(rawBytes, _svgRawBytes) &&
                 _svgContentHash is { } cachedContentHash &&
                 _svgSecurityPartitionHash is { } cachedPartitionHash)
             {
@@ -1730,7 +1745,12 @@ internal sealed class ImageBox : BlockBox
             else
             {
                 preflight = await Task.Run(
-                    () => PreflightSvg(rawBytes, intrinsicHint, resolvedCacheKey, cancellationToken),
+                    () => PreflightSvg(
+                        rawBytes,
+                        preparation,
+                        intrinsicHint,
+                        resolvedCacheKey,
+                        cancellationToken),
                     cancellationToken).ConfigureAwait(false);
             }
 
@@ -2736,6 +2756,7 @@ internal sealed class ImageBox : BlockBox
 
     private static SvgPreflight PreflightSvg(
         byte[] rawBytes,
+        MarkdownSvgSourcePreparation preparation,
         Size intrinsicHint,
         string securityPartition,
         CancellationToken cancellationToken)
@@ -2746,23 +2767,16 @@ internal sealed class ImageBox : BlockBox
             SHA256.HashData(Encoding.UTF8.GetBytes(securityPartition ?? string.Empty)));
 
         cancellationToken.ThrowIfCancellationRequested();
-        SvgResourceBudgetResult budget = SvgResourceBudget.Validate(rawBytes, cancellationToken);
-        if (!budget.Accepted)
-        {
-            MarkdownSvgFailureReason reason = IsResourceLimitReason(budget.Reason)
-                ? MarkdownSvgFailureReason.ResourceLimitExceeded
-                : MarkdownSvgFailureReason.UnsupportedContent;
+        if (preparation.FailureReason is { } failureReason)
             return new SvgPreflight(
                 intrinsicHint,
                 Title: null,
                 Desc: null,
                 contentHash,
                 partitionHash,
-                reason,
-                $"The SVG was rejected by host preflight ({budget.Reason ?? "invalid-content"}).");
-        }
+                failureReason,
+                preparation.FailureDescription);
 
-        cancellationToken.ThrowIfCancellationRequested();
         SvgTitleExtractor.Metadata metadata = SvgTitleExtractor.Extract(rawBytes);
         Size intrinsic = intrinsicHint;
         if (intrinsic.Width <= 0 || intrinsic.Height <= 0)
@@ -2779,24 +2793,6 @@ internal sealed class ImageBox : BlockBox
             string.IsNullOrWhiteSpace(metadata.Desc) ? null : TrimSvgMetadata(metadata.Desc),
             contentHash,
             partitionHash);
-    }
-
-    private static bool IsResourceLimitReason(string? reason)
-    {
-        if (string.IsNullOrEmpty(reason))
-            return false;
-
-        return reason.Contains("limit", StringComparison.OrdinalIgnoreCase) ||
-               reason.Contains("budget", StringComparison.OrdinalIgnoreCase) ||
-               reason.Contains("large", StringComparison.OrdinalIgnoreCase) ||
-               reason.Contains("depth", StringComparison.OrdinalIgnoreCase) ||
-               reason.Contains("count", StringComparison.OrdinalIgnoreCase) ||
-               reason.Contains("bytes", StringComparison.OrdinalIgnoreCase) ||
-               reason.Contains("complexity", StringComparison.OrdinalIgnoreCase) ||
-               reason.Contains("size", StringComparison.OrdinalIgnoreCase) ||
-               reason.Contains("length", StringComparison.OrdinalIgnoreCase) ||
-               reason.Contains("deadline", StringComparison.OrdinalIgnoreCase) ||
-               reason.Equals("embedded-image-data", StringComparison.OrdinalIgnoreCase);
     }
 
     private bool IsSvgProviderCurrent(

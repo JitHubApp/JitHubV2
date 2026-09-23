@@ -54,6 +54,10 @@
     <Compile Remove="Engine\**\*.cs" />
     <Compile Remove="Extensions\**\*.cs" />
     <Compile Remove="Theming\MarkdownStyleRole.cs" />
+    <Compile Remove="Performance\MarkdownPerformanceSession.cs" />
+    <Compile Remove="Layout\Boxes\SvgResourceBudget.cs" />
+    <Compile Remove="Layout\Boxes\SvgStaticSnapshot.cs" />
+    <Compile Remove="Layout\Boxes\SvgThemeInjector.cs" />
   </ItemGroup>
 
   <ItemGroup>
@@ -61,5 +65,10 @@
     <None Include="..\..\docs\markdown-renderer\README.md" Pack="true" PackagePath="README.md" Visible="false" />
     <None Include="..\..\JitHub.Web\wwwroot\icon-192.png" Pack="true" PackagePath="icon-192.png" Visible="false" />
   </ItemGroup>
+
+  <Target Name="FilterPublicXmlDocumentationForPack" BeforeTargets="GenerateNuspec"
+          Condition="Exists('$(TargetPath)') and Exists('$(TargetDir)$(AssemblyName).xml')">
+    <Exec Command="pwsh -NoProfile -NonInteractive -File &quot;$(MSBuildProjectDirectory)\..\eng\Filter-PublicXmlDocumentation.ps1&quot; -AssemblyPath &quot;$(TargetPath)&quot; -XmlPath &quot;$(TargetDir)$(AssemblyName).xml&quot;" />
+  </Target>
 
 </Project>

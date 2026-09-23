@@ -172,6 +172,7 @@
     <AdditionalFiles Include="..\eng\BannedSymbols.txt" />
     <Compile Include="..\Shared\OAuthHandoffProtocol.cs" Link="Security\OAuthHandoffProtocol.cs" />
     <ProjectReference Include="..\MarkdownRenderer\MarkdownRenderer\MarkdownRenderer.csproj" />
+    <ProjectReference Include="..\MarkdownRenderer\MarkdownRenderer.Performance\MarkdownRenderer.Performance.csproj" />
     <ProjectReference Include="..\MarkdownRenderer\MarkdownRenderer.GitHub\MarkdownRenderer.GitHub.csproj" />
     <ProjectReference Include="..\MarkdownRenderer\MarkdownRenderer.Math\MarkdownRenderer.Math.csproj" />
     <ProjectReference Include="..\MarkdownRenderer\MarkdownRenderer.Mermaid\MarkdownRenderer.Mermaid.csproj" />
