@@ -703,7 +703,7 @@ jobs:
                 )
               }
 
-              & dotnet restore $smoke --configuration $env:CONFIGURATION --runtime $target.Rid `
+              & dotnet restore $smoke -p:Configuration=$env:CONFIGURATION --runtime $target.Rid `
                 @publishProperties --no-cache --disable-parallel --disable-build-servers
               if ($LASTEXITCODE -ne 0) { throw "Managed package restore failed for '$lane'." }
 

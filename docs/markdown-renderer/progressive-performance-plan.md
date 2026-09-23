@@ -31,6 +31,22 @@ complete before claiming this plan or the 1.0 performance goal is met.
   before consuming authenticated Contents API budget, retaining the existing
   private/LFS fallback. The audit captures per-tile native traversal clocks and
   no longer charges a five-second UIA no-op scroll as renderer work.
+- Verified: the pinned top-500 live README audit at renderer commit `a200b59`
+  passed 500/500 with zero valid image-unavailable cases. Native/Edge p95 ratios
+  were 0.491 first render and 0.364 full traversal. Five individual full-page
+  ratios exceeded 1.10; their per-tile timelines coincide with delayed
+  external Camo/OpenCollective image responses (including a browser-broken Vue
+  contributor image). A same-byte replay is still needed to isolate client
+  work conclusively. This does not substitute for the same-byte offline
+  Edge oracle or the architecture/device release matrix below.
+- Measured: the full x64 repeated-construction release benchmark is not yet
+  qualified. Both reference and candidate failed its stationarity contract;
+  the candidate's full run dropped to about 121 observed Hz on a configured
+  240 Hz display and exceeded the 1 MiB first-viewport budget. A controlled
+  12,000-frame scroll run with fewer first-viewport constructions sustained
+  about 240 Hz at 4.46 ms frame p95, while a 20-presentation diagnostic
+  allocated about 28-35 MiB per 1 MiB presentation. Reduce construction and
+  native-object/GC pressure, then rerun the frozen full counterbalanced gate.
 - Open: actual source-byte in-flight admission (a host resolver currently owns
   its download buffer), global queue fairness across documents, and copy-on-write
   layout publication with a measured ≤2 ms UI commit.
