@@ -24,8 +24,8 @@ public sealed class MarkdownPerformanceSession : IMarkdownPerformanceSessionInte
     private readonly object _flightGate = new();
     private readonly Dictionary<SourceKey, SharedFetch> _sharedFlights = new(SourceKeyComparer.Instance);
     private readonly SemaphoreSlim _fetchSlots;
-    private readonly FairBackgroundFetchAdmission _backgroundAdmission;
-    private readonly SemaphoreSlim _cpuPreparationSlots;
+    private readonly FairDocumentAdmission _backgroundAdmission;
+    private readonly FairDocumentAdmission _cpuPreparationAdmission;
     private readonly CancellationTokenSource _lifetime = new();
     private readonly CancellationToken _lifetimeToken;
     private readonly bool _memoryPressureSubscribed;
@@ -53,9 +53,9 @@ public sealed class MarkdownPerformanceSession : IMarkdownPerformanceSessionInte
         options.Validate();
         _lifetimeToken = _lifetime.Token;
         _fetchSlots = new SemaphoreSlim(options.MaxConcurrentImageFetches);
-        _backgroundAdmission = new FairBackgroundFetchAdmission(
+        _backgroundAdmission = new FairDocumentAdmission(
             options.MaxConcurrentImageFetches - options.ReservedVisibleImageFetches);
-        _cpuPreparationSlots = new SemaphoreSlim(options.MaxConcurrentCpuPreparations);
+        _cpuPreparationAdmission = new FairDocumentAdmission(options.MaxConcurrentCpuPreparations);
         try
         {
             Windows.System.MemoryManager.AppMemoryUsageIncreased += OnAppMemoryUsageIncreased;
@@ -81,7 +81,9 @@ public sealed class MarkdownPerformanceSession : IMarkdownPerformanceSessionInte
         MarkdownImageResolveContext context) => OpenDocument(resolver, context);
 
     ValueTask<IDisposable> IMarkdownPerformanceSessionInternal.EnterCpuPreparationAsync(
-        CancellationToken cancellationToken) => EnterCpuPreparationAsync(cancellationToken);
+        object documentOwner,
+        CancellationToken cancellationToken) =>
+        EnterCpuPreparationAsync(documentOwner, cancellationToken);
 
     /// <summary>Returns aggregate counts without source URLs or content.</summary>
     public MarkdownPerformanceSnapshot GetSnapshot()
@@ -128,16 +130,19 @@ public sealed class MarkdownPerformanceSession : IMarkdownPerformanceSessionInte
         }
     }
 
-    internal async ValueTask<IDisposable> EnterCpuPreparationAsync(CancellationToken cancellationToken)
+    internal async ValueTask<IDisposable> EnterCpuPreparationAsync(
+        object documentOwner,
+        CancellationToken cancellationToken)
     {
         RegisterWork();
         try
         {
             using CancellationTokenSource linked = CancellationTokenSource.CreateLinkedTokenSource(
                 cancellationToken, _lifetimeToken);
-            await _cpuPreparationSlots.WaitAsync(linked.Token).ConfigureAwait(false);
+            IDisposable admissionLease = await _cpuPreparationAdmission.EnterAsync(
+                documentOwner, linked.Token).ConfigureAwait(false);
             Interlocked.Increment(ref _cpuPreparations);
-            return new SemaphoreLease(_cpuPreparationSlots, this, Stopwatch.GetTimestamp());
+            return new CpuPreparationLease(admissionLease, this, Stopwatch.GetTimestamp());
         }
         catch
         {
@@ -535,7 +540,6 @@ public sealed class MarkdownPerformanceSession : IMarkdownPerformanceSessionInte
         finally
         {
             _fetchSlots.Dispose();
-            _cpuPreparationSlots.Dispose();
             _lifetime.Dispose();
         }
 
@@ -761,20 +765,26 @@ public sealed class MarkdownPerformanceSession : IMarkdownPerformanceSessionInte
         internal LinkedListNode<CachedSource> Node { get; set; } = null!;
     }
 
-    private sealed class SemaphoreLease(
-        SemaphoreSlim semaphore,
+    private sealed class CpuPreparationLease(
+        IDisposable admissionLease,
         MarkdownPerformanceSession session,
         long started) : IDisposable
     {
-        private SemaphoreSlim? _semaphore = semaphore;
+        private IDisposable? _admissionLease = admissionLease;
         public void Dispose()
         {
-            if (Interlocked.Exchange(ref _semaphore, null) is not { } held)
+            if (Interlocked.Exchange(ref _admissionLease, null) is not { } held)
                 return;
-            held.Release();
-            Interlocked.Add(ref session._cpuPreparationMilliseconds,
-                (long)Stopwatch.GetElapsedTime(started).TotalMilliseconds);
-            session.RetireWork();
+            try
+            {
+                held.Dispose();
+            }
+            finally
+            {
+                Interlocked.Add(ref session._cpuPreparationMilliseconds,
+                    (long)Stopwatch.GetElapsedTime(started).TotalMilliseconds);
+                session.RetireWork();
+            }
         }
     }
 }

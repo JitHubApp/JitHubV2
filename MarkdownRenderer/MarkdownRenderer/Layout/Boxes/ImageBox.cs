@@ -1247,8 +1247,10 @@ internal sealed class ImageBox : BlockBox
                     long decodeStarted = MarkdownPerformanceEventSource.Log.IsMeasurementEnabled()
                         ? Stopwatch.GetTimestamp()
                         : 0;
-                    using IDisposable? preparationSlot = _context.PerformanceSession is { IsDisposed: false } session
-                        ? await session.EnterCpuPreparationAsync(_context.ImageCancellationToken)
+                    using IDisposable? preparationSlot = _context.PerformanceSession is { IsDisposed: false } session &&
+                        _context.PerformanceDocumentOwner is { } documentOwner
+                        ? await session.EnterCpuPreparationAsync(
+                                documentOwner, _context.ImageCancellationToken)
                             .ConfigureAwait(false)
                         : null;
                     using InMemoryRandomAccessStream stream = new();

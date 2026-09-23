@@ -82,7 +82,9 @@ internal interface IMarkdownPerformanceSessionInternal : IMarkdownPerformanceSes
     IMarkdownPerformanceDocumentScope OpenDocument(
         IMarkdownImageResolver resolver,
         MarkdownImageResolveContext context);
-    ValueTask<IDisposable> EnterCpuPreparationAsync(CancellationToken cancellationToken);
+    ValueTask<IDisposable> EnterCpuPreparationAsync(
+        object documentOwner,
+        CancellationToken cancellationToken);
 }
 
 internal interface IMarkdownPerformanceDocumentScope : IMarkdownImageResolver, IDisposable

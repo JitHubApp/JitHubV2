@@ -3,12 +3,12 @@ using Xunit;
 
 namespace MarkdownRenderer.GitHub.Tests;
 
-public sealed class FairBackgroundFetchAdmissionTests
+public sealed class FairDocumentAdmissionTests
 {
     [Fact]
     public async Task OneDocumentCanFillAllSpeculativeSlots()
     {
-        var admission = new FairBackgroundFetchAdmission(2);
+        var admission = new FairDocumentAdmission(2);
         var owner = new object();
         using IDisposable first = await admission.EnterAsync(owner, CancellationToken.None);
         using IDisposable second = await admission.EnterAsync(owner, CancellationToken.None);
@@ -22,7 +22,7 @@ public sealed class FairBackgroundFetchAdmissionTests
     [Fact]
     public async Task QueuedDocumentsReceiveSlotsInRoundRobinOrder()
     {
-        var admission = new FairBackgroundFetchAdmission(1);
+        var admission = new FairDocumentAdmission(1);
         var firstOwner = new object();
         var secondOwner = new object();
         using IDisposable initial = await admission.EnterAsync(firstOwner, CancellationToken.None);
@@ -47,7 +47,7 @@ public sealed class FairBackgroundFetchAdmissionTests
     [Fact]
     public async Task CanceledWaiterIsRemovedWithoutConsumingTheNextSlot()
     {
-        var admission = new FairBackgroundFetchAdmission(1);
+        var admission = new FairDocumentAdmission(1);
         using IDisposable initial = await admission.EnterAsync(new object(), CancellationToken.None);
         using var cancellation = new CancellationTokenSource();
         Task<IDisposable> canceled = admission.EnterAsync(new object(), cancellation.Token).AsTask();
@@ -64,7 +64,7 @@ public sealed class FairBackgroundFetchAdmissionTests
     {
         for (int iteration = 0; iteration < 100; iteration++)
         {
-            var admission = new FairBackgroundFetchAdmission(1);
+            var admission = new FairDocumentAdmission(1);
             using IDisposable initial = await admission.EnterAsync(new object(), CancellationToken.None);
             using var cancellation = new CancellationTokenSource();
             Task<IDisposable> racing = admission.EnterAsync(new object(), cancellation.Token).AsTask();

@@ -6,11 +6,10 @@ using System.Threading.Tasks;
 namespace MarkdownRenderer.Performance;
 
 /// <summary>
-/// Admits speculative fetches round-robin by document. A lone document can
-/// fill every background slot, but new slots rotate between queued documents.
-/// Visible fetches do not enter this queue and retain their reserved slots.
+/// Admits bounded work round-robin by document. A lone document can fill all
+/// slots, but newly available slots rotate between queued documents.
 /// </summary>
-internal sealed class FairBackgroundFetchAdmission
+internal sealed class FairDocumentAdmission
 {
     private readonly object _gate = new();
     private readonly int _capacity;
@@ -19,7 +18,7 @@ internal sealed class FairBackgroundFetchAdmission
     private readonly LinkedList<OwnerQueue> _rotation = new();
     private int _active;
 
-    internal FairBackgroundFetchAdmission(int capacity)
+    internal FairDocumentAdmission(int capacity)
     {
         ArgumentOutOfRangeException.ThrowIfNegativeOrZero(capacity);
         _capacity = capacity;
@@ -107,7 +106,7 @@ internal sealed class FairBackgroundFetchAdmission
         lock (_gate)
         {
             if (_active <= 0)
-                throw new InvalidOperationException("A background fetch slot was released twice.");
+                throw new InvalidOperationException("A document work slot was released twice.");
             _active--;
             DispatchNoLock();
         }
@@ -159,9 +158,9 @@ internal sealed class FairBackgroundFetchAdmission
 
     private enum WaiterState { Queued, Granted, Canceled }
 
-    private sealed class Lease(FairBackgroundFetchAdmission owner) : IDisposable
+    private sealed class Lease(FairDocumentAdmission owner) : IDisposable
     {
-        private FairBackgroundFetchAdmission? _owner = owner;
+        private FairDocumentAdmission? _owner = owner;
         public void Dispose() => Interlocked.Exchange(ref _owner, null)?.Release();
     }
 }

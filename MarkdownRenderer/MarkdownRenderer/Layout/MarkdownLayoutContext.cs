@@ -146,6 +146,9 @@ internal sealed class MarkdownLayoutContext
     /// <summary>Optional host-owned preparation policy captured for this layout generation.</summary>
     internal IMarkdownPerformanceSessionInternal? PerformanceSession { get; init; }
 
+    /// <summary>Stable identity of the document viewport for fair CPU preparation.</summary>
+    internal object? PerformanceDocumentOwner { get; init; }
+
     /// <summary>
     /// Shared static-SVG provider borrowed from the host control. Image boxes
     /// may own documents opened from it, but never the renderer itself.

@@ -199,8 +199,11 @@ public sealed class MarkdownPerformanceSessionTests
         Task firstA = first.PrefetchAsync(["a1"], CancellationToken.None);
         Assert.Equal("a1", await resolver.NextStartedAsync());
         Task secondA = first.PrefetchAsync(["a2"], CancellationToken.None);
+        await WaitForPendingFetchesAsync(session, 1);
         Task thirdA = first.PrefetchAsync(["a3"], CancellationToken.None);
+        await WaitForPendingFetchesAsync(session, 2);
         Task firstB = second.PrefetchAsync(["b1"], CancellationToken.None);
+        await WaitForPendingFetchesAsync(session, 3);
         Task secondB = second.PrefetchAsync(["b2"], CancellationToken.None);
         await WaitForPendingFetchesAsync(session, 4);
 
@@ -217,6 +220,56 @@ public sealed class MarkdownPerformanceSessionTests
         resolver.ReleaseOne();
         await Task.WhenAll(firstA, secondA, thirdA, firstB, secondB)
             .WaitAsync(TimeSpan.FromSeconds(5));
+    }
+
+    [Fact]
+    public async Task RasterPreparations_RotateBetweenDocumentOwners()
+    {
+        await using var session = new MarkdownPerformanceSession(
+            MarkdownPerformanceOptions.Progressive with { MaxConcurrentCpuPreparations = 1 });
+        var firstOwner = new object();
+        var secondOwner = new object();
+        using IDisposable initial = await session.EnterCpuPreparationAsync(
+            firstOwner, CancellationToken.None);
+        Task<IDisposable> firstA = session.EnterCpuPreparationAsync(
+            firstOwner, CancellationToken.None).AsTask();
+        Task<IDisposable> secondA = session.EnterCpuPreparationAsync(
+            firstOwner, CancellationToken.None).AsTask();
+        Task<IDisposable> firstB = session.EnterCpuPreparationAsync(
+            secondOwner, CancellationToken.None).AsTask();
+        Task<IDisposable> secondB = session.EnterCpuPreparationAsync(
+            secondOwner, CancellationToken.None).AsTask();
+
+        initial.Dispose();
+        using IDisposable leaseA1 = await firstA.WaitAsync(TimeSpan.FromSeconds(5));
+        Assert.False(firstB.IsCompleted);
+        leaseA1.Dispose();
+        using IDisposable leaseB1 = await firstB.WaitAsync(TimeSpan.FromSeconds(5));
+        Assert.False(secondA.IsCompleted);
+        leaseB1.Dispose();
+        using IDisposable leaseA2 = await secondA.WaitAsync(TimeSpan.FromSeconds(5));
+        Assert.False(secondB.IsCompleted);
+        leaseA2.Dispose();
+        using IDisposable leaseB2 = await secondB.WaitAsync(TimeSpan.FromSeconds(5));
+        Assert.Equal(5, session.GetSnapshot().CpuPreparations);
+    }
+
+    [Fact]
+    public async Task SessionRetirement_CancelsQueuedRasterPreparationAndDrainsActiveWork()
+    {
+        var session = new MarkdownPerformanceSession(
+            MarkdownPerformanceOptions.Progressive with { MaxConcurrentCpuPreparations = 1 });
+        using IDisposable active = await session.EnterCpuPreparationAsync(
+            new object(), CancellationToken.None);
+        Task<IDisposable> queued = session.EnterCpuPreparationAsync(
+            new object(), CancellationToken.None).AsTask();
+
+        Task retirement = session.DisposeAsync().AsTask();
+        await Assert.ThrowsAnyAsync<OperationCanceledException>(
+            () => queued.WaitAsync(TimeSpan.FromSeconds(5)));
+        Assert.False(retirement.IsCompleted);
+        active.Dispose();
+        await retirement.WaitAsync(TimeSpan.FromSeconds(5));
     }
 
     private static async Task WaitForPendingFetchesAsync(

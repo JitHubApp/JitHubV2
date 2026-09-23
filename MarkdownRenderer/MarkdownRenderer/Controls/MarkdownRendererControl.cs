@@ -3910,6 +3910,7 @@ public partial class MarkdownRendererControl : UserControl, IDisposable, IMarkdo
             CodeBlockWrappingMode = wrappingModeSnapshot,
             ImageResolver = imageResolverSnapshot,
             PerformanceSession = performanceSessionSnapshot,
+            PerformanceDocumentOwner = this,
             SvgRenderer = svgRendererSnapshot,
             ImageBaseUri = imageBaseUriSnapshot,
             ImageDocumentPath = imageDocumentPathSnapshot,

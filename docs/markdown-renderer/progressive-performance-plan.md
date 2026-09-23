@@ -20,10 +20,13 @@ complete before claiming this plan or the 1.0 performance goal is met.
   document to monopolize newly freed slots. Visible fetches still bypass this
   queue; paused remote work does not hold a speculative slot. Cancellation and
   grant races, queue order, the 1,800-image storm, and a two-document session
-  scenario passed 395 GitHub renderer tests. The optional performance assembly
-  built without warnings for x86, x64, and ARM64; its local compressed pack is
-  25,574 bytes against the unchanged 128 KiB cap. This addresses source-fetch
-  fairness only; the decode/scene scheduler remains open.
+  scenario passed locally. Raster CPU preparation now uses the same document-
+  fair admission without changing the public API or the visible fetch reserve;
+  session retirement cancels queued preparations and drains active leases.
+  The full 397-test GitHub renderer suite and five repeated cross-document
+  fetch-order trials passed, as did the x64 Release app and x86/ARM64 optional
+  assembly builds. The optional compressed pack is 25,527 bytes against the
+  unchanged 128 KiB cap. Scene preparation fairness remains open.
 - Done: opt-in display-sized WIC raster decode with EXIF orientation, color
   management, a lowerable output-pixel cap, bounded concurrent preparations,
   bitmap-cache metadata, and paint-only publication when geometry is unchanged.
@@ -65,10 +68,10 @@ complete before claiming this plan or the 1.0 performance goal is met.
   not a performance benchmark or release pass.
 - The first CI run after the optional-package split found a test-only SVG
   renderer missing the new source-preparation contract. Commit `4a5a373`
-  updates that fake; the code-viewer, NativeAOT contract, and product-plan
-  validation jobs passed on that revision. Package validation, architecture
-  publish jobs, and the current-head top-500 audit remain pending; these
-  earlier passing jobs do not establish a release verdict for newer changes.
+  updates that fake. On later head `8d5fb9f`, code-viewer, NativeAOT contract,
+  product-plan validation, and x86/x64/ARM64 publish jobs passed; the preview
+  package job was still running and the interactive benchmark jobs were queued.
+  These earlier-head checks do not establish a release verdict for newer changes.
 - Verified: the pinned top-500 live README audit at renderer commit `a200b59`
   passed 500/500 with zero valid image-unavailable cases. Native/Edge p95 ratios
   were 0.491 first render and 0.364 full traversal. Five individual full-page
@@ -85,6 +88,13 @@ complete before claiming this plan or the 1.0 performance goal is met.
   an infrastructure failure if all attempts are rejected. This is not counted
   as a renderer pass or as qualified 500/500 evidence; the full current-head
   audit must pass again.
+- The `a376a47` live audit failed rank 348 (`marktext/marktext`) because one
+  Shields/Camo SVG badge was unavailable natively. The resolver successfully
+  returned 469 SVG bytes; Edge showed that badge, and the same URL later served
+  1,303 bytes. A one-case pinned Release replay at `8d5fb9f` passed with zero
+  unavailable images. This suggests changing upstream/CDN content, but the
+  failing bytes were not captured, so the cause is not proven and no exception
+  is granted. The current-head 500-case audit must pass in full.
 - Measured: the full x64 repeated-construction release benchmark is not yet
   qualified. Both reference and candidate failed its stationarity contract;
   the candidate's full run dropped to about 121 observed Hz on a configured
@@ -94,7 +104,7 @@ complete before claiming this plan or the 1.0 performance goal is met.
   allocated about 28-35 MiB per 1 MiB presentation. Reduce construction and
   native-object/GC pressure, then rerun the frozen full counterbalanced gate.
 - Open: actual source-byte in-flight admission (a host resolver currently owns
-  its download buffer), global decode/scene queue fairness across documents,
+  its download buffer), global scene queue fairness across documents,
   and copy-on-write layout publication with a measured ≤2 ms UI commit.
 - Open: oversized raster tiling and session-owned SVG/document/GPU preparation
   caches.
