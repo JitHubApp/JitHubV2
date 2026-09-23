@@ -121,6 +121,9 @@ jobs:
         with:
           node-version: 22
 
+      - name: Verify bounded Edge navigation retry contract
+        run: node --test .\eng\readme-audit\browser-navigation.test.mjs
+
       - name: Install pinned Windows App Runtime 1.8.10
         run: |
           # JitHub is framework-dependent in production. GitHub-hosted Windows

@@ -3,6 +3,7 @@ import { mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { existsSync } from "node:fs";
 import os from "node:os";
 import path from "node:path";
+import { DocumentReadinessTimeout, metricMap, navigateReadme } from "./browser-navigation.mjs";
 
 const options = parseArguments(process.argv.slice(2));
 const outputDirectory = path.resolve(required("out"));
@@ -63,17 +64,12 @@ try {
     features: [{ name: "prefers-color-scheme", value: "light" }],
   });
 
-  const navigationStarted = performance.now();
-  const navigation = await cdp.send("Page.navigate", { url: repositoryUrl });
-  if (navigation.errorText) {
-    throw new Error(`Edge navigation failed: ${navigation.errorText}`);
-  }
-  // Page.loadEventFired is not a reliable readiness boundary for a GitHub
-  // repository page. A slow or failed third-party README image can postpone
-  // it indefinitely even though the article is already complete and usable,
-  // and the event can race the waiter across redirects. Observe the document
-  // itself instead; image settlement is handled separately and is bounded.
-  await waitForDocumentReady(cdp, 60_000);
+  const { navigationStarted, navigationRetries, retryMetricBaseline } =
+    await navigateReadme(
+      cdp,
+      repositoryUrl,
+      waitForDocumentReady,
+      () => evaluate(cdp, "performance.timeOrigin"));
   const readmeRendered = await waitForOptionalExpression(
     cdp,
     `Boolean(document.querySelector("#readme article.markdown-body, article.markdown-body"))`,
@@ -88,7 +84,7 @@ try {
       readmeRendered: false,
       capturedAtUtc: new Date().toISOString(),
       viewport: { width: viewportWidth, height: viewportHeight, deviceScaleFactor: 1 },
-      timing: { firstReadmeMs: elapsed, settledReadmeMs: elapsed, fullCaptureMs: elapsed, wallMs: performance.now() - wall },
+      timing: { firstReadmeMs: elapsed, settledReadmeMs: elapsed, fullCaptureMs: elapsed, wallMs: performance.now() - wall, navigationRetries },
       semantic: { text: "", headings: [], links: [], images: [], media: [], unavailableImages: 0, tables: 0, codeBlocks: 0, taskCheckboxes: 0, details: 0 },
       tiles: [],
     }, null, 2));
@@ -324,8 +320,9 @@ try {
   // captures can be expensive and are audit overhead, not GitHub rendering
   // work; including them made the native/Edge CPU comparison meaningless.
   const settledMetrics = await cdp.send("Performance.getMetrics");
-  const settledMetricMap = Object.fromEntries(
-    settledMetrics.metrics.map(metric => [metric.name, metric.value]));
+  const settledMetricMap = metricMap(settledMetrics);
+  const metricDelta = name => Math.max(0,
+    (settledMetricMap[name] || 0) - (retryMetricBaseline[name] || 0));
 
   if (!(semantic.width > 0) || !(semantic.height > 0)) {
     throw new Error(`GitHub README has invalid bounds ${semantic.width}x${semantic.height}.`);
@@ -372,8 +369,7 @@ try {
     } : null;
   })()`);
   const fullCaptureMetrics = await cdp.send("Performance.getMetrics");
-  const fullCaptureMetricMap = Object.fromEntries(
-    fullCaptureMetrics.metrics.map(metric => [metric.name, metric.value]));
+  const fullCaptureMetricMap = metricMap(fullCaptureMetrics);
   const report = {
     schemaVersion: 5,
     repositoryUrl,
@@ -386,17 +382,20 @@ try {
       settledReadmeMs,
       fullCaptureMs: performance.now() - navigationStarted,
       wallMs: performance.now() - wall,
+      navigationRetries,
       navigation: navigationTiming,
-      taskDurationMs: (settledMetricMap.TaskDuration || 0) * 1000,
-      scriptDurationMs: (settledMetricMap.ScriptDuration || 0) * 1000,
-      layoutDurationMs: (settledMetricMap.LayoutDuration || 0) * 1000,
-      recalcStyleDurationMs: (settledMetricMap.RecalcStyleDuration || 0) * 1000,
-      layoutCount: settledMetricMap.LayoutCount || 0,
-      recalcStyleCount: settledMetricMap.RecalcStyleCount || 0,
+      taskDurationMs: metricDelta("TaskDuration") * 1000,
+      scriptDurationMs: metricDelta("ScriptDuration") * 1000,
+      layoutDurationMs: metricDelta("LayoutDuration") * 1000,
+      recalcStyleDurationMs: metricDelta("RecalcStyleDuration") * 1000,
+      layoutCount: metricDelta("LayoutCount"),
+      recalcStyleCount: metricDelta("RecalcStyleCount"),
       domNodes: settledMetricMap.Nodes || 0,
       documents: settledMetricMap.Documents || 0,
       jsHeapUsedBytes: settledMetricMap.JSHeapUsedSize || 0,
-      fullCaptureTaskDurationMs: (fullCaptureMetricMap.TaskDuration || 0) * 1000,
+      fullCaptureTaskDurationMs: Math.max(0,
+        (fullCaptureMetricMap.TaskDuration || 0) -
+        (retryMetricBaseline.TaskDuration || 0)) * 1000,
     },
     semantic,
     tiles,
@@ -559,13 +558,13 @@ async function waitForExpression(cdpClient, expression, timeoutMs) {
   throw new Error(`Timed out waiting for browser condition: ${expression}`);
 }
 
-async function waitForDocumentReady(cdpClient, timeoutMs) {
+async function waitForDocumentReady(cdpClient, previousTimeOrigin, timeoutMs) {
   const deadline = Date.now() + timeoutMs;
   while (Date.now() < deadline) {
     try {
       const ready = await evaluate(
         cdpClient,
-        `location.href !== "about:blank" && (document.readyState === "interactive" || document.readyState === "complete")`);
+        `location.href !== "about:blank" && performance.timeOrigin !== ${JSON.stringify(previousTimeOrigin)} && (document.readyState === "interactive" || document.readyState === "complete")`);
       if (ready) return;
     } catch {
       // Navigation replaces the JavaScript execution context. Retry against
@@ -574,7 +573,7 @@ async function waitForDocumentReady(cdpClient, timeoutMs) {
     }
     await delay(100);
   }
-  throw new Error("Timed out waiting for the GitHub document to become interactive.");
+  throw new DocumentReadinessTimeout("Timed out waiting for the GitHub document to become interactive.");
 }
 
 async function waitForOptionalExpression(cdpClient, expression, timeoutMs) {

@@ -2404,6 +2404,7 @@ internal sealed class BrowserTiming
     public double SettledReadmeMs { get; init; }
     public double FullCaptureMs { get; init; }
     public double WallMs { get; init; }
+    public int NavigationRetries { get; init; }
     public double TaskDurationMs { get; init; }
     public double ScriptDurationMs { get; init; }
     public double LayoutDurationMs { get; init; }

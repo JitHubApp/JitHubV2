@@ -59,12 +59,15 @@ complete before claiming this plan or the 1.0 performance goal is met.
   path and reject both short and excess bodies relative to the declared length;
   all 3,048 JitHub unit tests passed. This is an allocation reduction, not the
   still-open 64 MiB in-flight source-byte admission gate.
-- Current-head CI at `d4bdd27` found one failure in the unrelated
+- CI at `d4bdd27` found one failure in the unrelated
   `RepoFileCacheService` cancellation test: after proving the per-key lock had
   been released, its follow-up disk write exceeded the test's two-second
   cancellation timer. The paired Get/Put follow-up operations now use a bounded
   ten-second timer; lock-release and cancellation checks remain unchanged.
-  All 3,048 Debug x64 tests passed locally. CI confirmation is pending.
+  All 3,048 Debug x64 tests passed locally. At `3b46860`, the NativeAOT
+  contract/unit tests and x86/x64/ARM64 publish, code-viewer tests, and
+  product-plan validation passed; the full preview suite and interactive
+  benchmark were still running/queued. This is not a release verdict.
 - Locally verified, pending PR CI: the progressive source session now ships in
   an explicit optional managed pack, and resvg's inert-image normalization and
   security preflight travel with its optional provider. The Core + WinUI lean
@@ -107,6 +110,19 @@ complete before claiming this plan or the 1.0 performance goal is met.
   unavailable images. This suggests changing upstream/CDN content, but the
   failing bytes were not captured, so the cause is not proven and no exception
   is granted. The current-head 500-case audit must pass in full.
+- The later `bab176b` top-500 run failed 2 of 500 cases. At rank 401
+  (`Textualize/rich`), seven SVG assets resolved to nonempty bytes but became
+  natively unavailable roughly 16 seconds later; the typed SVG failure was
+  not recorded, so a cold-worker deadline is only a hypothesis. At rank 402
+  (`twentyhq/twenty`), the native render had zero unavailable images but Edge
+  timed out waiting for the GitHub document to become interactive. Separate
+  pinned Release one-case replays passed both cases, which does not prove the
+  failing conditions are fixed. The Edge audit now makes one bounded fresh
+  navigation attempt only after a document-readiness timeout, records the
+  retry and full wall time, and excludes first-attempt CPU/layout counters
+  from the successful-attempt browser comparison. This does not waive a
+  second timeout or the unresolved rank-401 native SVG failure. The full
+  current-head 500-case audit must pass again.
 - Measured: the full x64 repeated-construction release benchmark is not yet
   qualified. Both reference and candidate failed its stationarity contract;
   the candidate's full run dropped to about 121 observed Hz on a configured
