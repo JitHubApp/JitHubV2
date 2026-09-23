@@ -43,7 +43,8 @@ complete before claiming this plan or the 1.0 performance goal is met.
   an explicit optional managed pack, and resvg's inert-image normalization and
   security preflight travel with its optional provider. The Core + WinUI lean
   pair remains below the unchanged 525 KiB compressed and 1.2 MiB managed
-  gates (525,357 and 1,249,280 bytes); the pack retains public XML API docs.
+  gates (525,603 and 1,249,792 bytes from a fresh local `a176bab` pack); the
+  pack retains public XML API docs.
   All 14 shipping packages passed local size/license/native-asset compliance,
   normalized two-pack reproducibility, x64 NativeAOT managed-pack smoke from
   both project references and the newly packed NuGet artifacts,
