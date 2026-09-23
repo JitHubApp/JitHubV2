@@ -482,6 +482,10 @@ Test-State 'links-task-checkboxes-and-hosted-controls-remain-direct-targets' {
             $_.type -eq 'CheckBox' -and $_.automationId -like 'MarkdownTask_*'
         } | Select-Object -First 1)
         if ($taskCheckbox.Count -ne 1) { throw 'Native task checkbox was not realized.' }
+        $taskEnabled = winapp ui get-property $taskCheckbox[0].automationId -a $AppPid --property IsEnabled --json | ConvertFrom-Json
+        if ($LASTEXITCODE -ne 0 -or [string]$taskEnabled.properties.IsEnabled -ne 'True') {
+            throw 'Native task checkbox is disabled; its command source may not match the rendered source.'
+        }
         winapp ui scroll-into-view $taskCheckbox[0].automationId -a $AppPid
         if ($LASTEXITCODE -ne 0) { throw 'Native task checkbox could not be scrolled into view.' }
         winapp ui touch $taskCheckbox[0].automationId -a $AppPid --gesture tap

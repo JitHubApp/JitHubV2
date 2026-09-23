@@ -2256,9 +2256,9 @@ public partial class MarkdownRendererControl : UserControl, IDisposable, IMarkdo
             VerticalAlignment = VerticalAlignment.Top,
         };
         _root.Children.Add(_overlay);
-        _overlay.Children.Add(CreateSelectionAdorner());
-        _overlay.Children.Add(CreateSelectionDragShield());
-        CreateSelectionHandles();
+        // Selection, hover and drag chrome is created only when used. A new
+        // document does not need an Image, Border and two Button handles in
+        // its XAML tree merely to paint its first viewport.
         if (_scroll is not null)
             _scroll.Content = _root;
 
@@ -4149,9 +4149,9 @@ public partial class MarkdownRendererControl : UserControl, IDisposable, IMarkdo
         // match — reset so the first post-rebuild realisation always fires.
         _lastFiredRealizedCount = -1;
         _selectionAdornerRects.Clear();
-        EnsureSelectionAdorner();
-        EnsureSelectionDragShield();
-        EnsureSelectionHandles();
+        // Rebuild detaches selection chrome with the other overlay children.
+        // Surviving selection reattaches what it needs below; inactive chrome
+        // stays detached until the next interaction.
         if (preserveSelection)
             UpdateSelectionOverlay();
         else

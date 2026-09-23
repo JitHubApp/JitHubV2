@@ -148,9 +148,27 @@ complete before claiming this plan or the 1.0 performance goal is met.
   about 240 Hz at 4.46 ms frame p95, while a 20-presentation diagnostic
   allocated about 28-35 MiB per 1 MiB presentation. Reduce construction and
   native-object/GC pressure, then rerun the frozen full counterbalanced gate.
+- Locally verified, pending current-head CI and a qualified benchmark:
+  ordinary document construction and relayout no longer create the collapsed
+  selection Image, drag-shield Border, or two native Button handles and glyphs.
+  They are allocated only when selection, hover/focus, or dragging needs them.
+  The x64 Release sample build and all 11 scripted touch-selection checks pass,
+  including handle creation, drag, RTL relayout, unload, native task controls,
+  and ancestor-owned viewports; a mouse-drag selection also rendered correctly.
+  The 938 fast managed and 398 GitHub tests pass; the slow external-gate
+  mutation fixture is still running separately. The sample gives the renderer
+  the TextBox-normalized source used by its task command; previously CRLF-to-CR
+  normalization shifted task source ranges and disabled the checkbox. The
+  test explicitly asserts the editable checkbox is enabled before tapping it.
+  This avoids native control construction on the common path; it does not yet
+  measure or establish a passing first-viewport allocation or frame-time gate.
 - Open: actual source-byte in-flight admission (a host resolver currently owns
-  its download buffer), global scene queue fairness across documents,
-  and copy-on-write layout publication with a measured ≤2 ms UI commit.
+  its download buffer). It needs priority-aware byte admission across the
+  renderer session and JitHub's HTTP/authenticated fetches, not a per-request
+  semaphore: the authenticated Git LFS fallback calls the same image service
+  recursively, so holding a whole-request permit can deadlock. Global scene
+  queue fairness across documents and copy-on-write layout publication with a
+  measured ≤2 ms UI commit also remain open.
 - Open: oversized raster tiling and session-owned SVG/document/GPU preparation
   caches.
 - Open: defer Math/Mermaid scenes and ahead-of-viewport highlighting without

@@ -709,7 +709,11 @@ public sealed partial class MainWindow : Window
             // anchoring cannot carry a position from one page into another.
             _renderer.ScrollToBlock(FirstDocumentBlockIndex);
             _resetPreviewScrollOnRender = true;
-            _renderer.Markdown = source;
+            // The TextBox normalizes CRLF line endings to CR. Commands use its
+            // text as their source, so the renderer must parse that same text;
+            // otherwise source spans after the first newline no longer address
+            // the task marker that a native CheckBox is trying to toggle.
+            _renderer.Markdown = _currentSampleSource;
         }
         finally
         {
