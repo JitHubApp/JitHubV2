@@ -1656,7 +1656,10 @@ public partial class MarkdownRendererControl : UserControl, IDisposable, IMarkdo
     /// <summary>Raised when the current Markdown document cannot be rendered.</summary>
     public event EventHandler<MarkdownRenderFailedEventArgs>? RenderFailed;
 
-    private void RaiseImageUnavailable(string source, MarkdownImageUnavailableReason reason)
+    private void RaiseImageUnavailable(
+        string source,
+        MarkdownImageUnavailableReason reason,
+        MarkdownSvgFailureReason? svgFailureReason)
     {
         if (_isDisposed || reason == MarkdownImageUnavailableReason.None)
             return;
@@ -1664,7 +1667,7 @@ public partial class MarkdownRendererControl : UserControl, IDisposable, IMarkdo
         void Raise()
         {
             if (!_isDisposed)
-                ImageUnavailable?.Invoke(this, new MarkdownImageUnavailableEventArgs(source, reason));
+                ImageUnavailable?.Invoke(this, new MarkdownImageUnavailableEventArgs(source, reason, svgFailureReason));
         }
 
         var dispatcher = DispatcherQueue;

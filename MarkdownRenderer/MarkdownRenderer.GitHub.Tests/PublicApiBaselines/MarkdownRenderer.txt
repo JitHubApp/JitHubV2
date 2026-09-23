@@ -406,7 +406,9 @@ public sealed class MarkdownRenderer.Images.MarkdownImageResolveContext : System
 
 public sealed class MarkdownRenderer.Images.MarkdownImageUnavailableEventArgs : System.EventArgs
   public MarkdownImageUnavailableEventArgs(string source, MarkdownRenderer.Images.MarkdownImageUnavailableReason reason);
+  public MarkdownImageUnavailableEventArgs(string source, MarkdownRenderer.Images.MarkdownImageUnavailableReason reason, MarkdownRenderer.Images.MarkdownSvgFailureReason? svgFailureReason);
   public MarkdownRenderer.Images.MarkdownImageUnavailableReason Reason { get; }
+  public MarkdownRenderer.Images.MarkdownSvgFailureReason? SvgFailureReason { get; }
   public string Source { get; }
 
 public enum MarkdownRenderer.Images.MarkdownImageUnavailableReason

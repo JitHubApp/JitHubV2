@@ -196,7 +196,14 @@ public sealed class AutomationHarnessSourceContractTests
         Assert.Contains("if (result.InfrastructureFailure)", nativeProbe, StringComparison.Ordinal);
         Assert.Contains("PreserveStartupDiagnostics(dataRoot, output, launcher)", nativeProbe, StringComparison.Ordinal);
         Assert.Contains("startup-process.txt", nativeProbe, StringComparison.Ordinal);
-        Assert.Contains("waitForDocumentReady(cdp, 60_000)", browserOracle, StringComparison.Ordinal);
+        Assert.Contains("await navigateReadme(", browserOracle, StringComparison.Ordinal);
+        string browserNavigation = File.ReadAllText(Path.Combine(
+            root,
+            "eng",
+            "readme-audit",
+            "browser-navigation.mjs"));
+        Assert.Contains("attempt < 2", browserNavigation, StringComparison.Ordinal);
+        Assert.Contains("previousTimeOrigin, 60_000", browserNavigation, StringComparison.Ordinal);
         Assert.Contains("await Promise.race([", browserOracle, StringComparison.Ordinal);
         Assert.Contains("cdp.send(\"Browser.close\")", browserOracle, StringComparison.Ordinal);
         Assert.DoesNotContain("cdp.once(\"Page.loadEventFired\"", browserOracle, StringComparison.Ordinal);

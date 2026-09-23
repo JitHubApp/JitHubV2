@@ -1030,10 +1030,12 @@ internal sealed class ImageBox : BlockBox
         };
     }
 
-    private void ReportUnavailable(MarkdownImageUnavailableReason reason)
+    private void ReportUnavailable(
+        MarkdownImageUnavailableReason reason,
+        MarkdownSvgFailureReason? svgFailureReason = null)
     {
         if (reason != MarkdownImageUnavailableReason.None)
-            _context.ImageUnavailable?.Invoke(_url, reason);
+            _context.ImageUnavailable?.Invoke(_url, reason, svgFailureReason);
     }
 
     private bool TryLoadFallbackFromProcessCache(string cacheKey)
@@ -2554,7 +2556,6 @@ internal sealed class ImageBox : BlockBox
     {
         MarkdownDiagnostics.WriteLine(
             $"[ImageBox] SVG tile failure {exception.Reason}: {exception.Message}");
-        ReportUnavailable(MarkdownImageUnavailableReason.Unavailable);
         PublishOnUiThread(() =>
         {
             if (_disposed || renderGeneration != Volatile.Read(ref _svgRenderGeneration))
@@ -2573,6 +2574,7 @@ internal sealed class ImageBox : BlockBox
             _loadFailed = !hasPreviousGoodBitmap;
             if (_loadFailed)
             {
+                ReportUnavailable(MarkdownImageUnavailableReason.Unavailable, exception.Reason);
                 float maxWidth = Math.Max(
                     1f,
                     _availableWidth - (float)(Margin.Left + Margin.Right));
@@ -2929,7 +2931,6 @@ internal sealed class ImageBox : BlockBox
     {
         MarkdownDiagnostics.WriteLine(
             $"[ImageBox] SVG failure {reason}: {description}");
-        ReportUnavailable(MarkdownImageUnavailableReason.Unavailable);
         PublishOnUiThread(() =>
         {
             if (_disposed || renderGeneration != Volatile.Read(ref _svgRenderGeneration))
@@ -2947,6 +2948,7 @@ internal sealed class ImageBox : BlockBox
 
             if (_loadFailed)
             {
+                ReportUnavailable(MarkdownImageUnavailableReason.Unavailable, reason);
                 float maxWidth = Math.Max(
                     1f,
                     _availableWidth - (float)(Margin.Left + Margin.Right));

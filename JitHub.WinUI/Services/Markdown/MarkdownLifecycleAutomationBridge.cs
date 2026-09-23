@@ -227,7 +227,8 @@ internal static partial class MarkdownLifecycleAutomationBridge
     public static void RecordImageUnavailable(
         string automationId,
         string source,
-        MarkdownRenderer.Images.MarkdownImageUnavailableReason reason)
+        MarkdownRenderer.Images.MarkdownImageUnavailableReason reason,
+        MarkdownRenderer.Images.MarkdownSvgFailureReason? svgFailureReason = null)
     {
         if (!TargetsHost(automationId))
         {
@@ -252,6 +253,7 @@ internal static partial class MarkdownLifecycleAutomationBridge
                         automationId,
                         source,
                         reason.ToString(),
+                        svgFailureReason?.ToString(),
                         DateTimeOffset.UtcNow),
                     MarkdownLifecycleJsonContext.Default.ImageUnavailableSignal);
                 File.AppendAllText(fullPath, entry + Environment.NewLine);
@@ -472,6 +474,7 @@ internal static partial class MarkdownLifecycleAutomationBridge
         string Host,
         string Source,
         string Reason,
+        string? SvgFailureReason,
         DateTimeOffset Timestamp);
 
     private sealed record ImageResolutionSignal(

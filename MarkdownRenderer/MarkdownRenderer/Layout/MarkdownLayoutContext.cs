@@ -168,7 +168,7 @@ internal sealed class MarkdownLayoutContext
     public bool AllowThirdPartyRemoteImages { get; init; }
 
     /// <summary>Reports blocked or unavailable image sources to the host control.</summary>
-    public System.Action<string, MarkdownImageUnavailableReason>? ImageUnavailable { get; init; }
+    public System.Action<string, MarkdownImageUnavailableReason, MarkdownSvgFailureReason?>? ImageUnavailable { get; init; }
 
     /// <summary>Snapshot of user-expanded HTML disclosure state for this layout pass.</summary>
     public IReadOnlyDictionary<string, bool> DisclosureStates { get; init; } =

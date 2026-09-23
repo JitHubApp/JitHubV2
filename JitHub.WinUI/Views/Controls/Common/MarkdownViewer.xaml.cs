@@ -995,7 +995,8 @@ public sealed partial class MarkdownViewer : UserControl
         MarkdownLifecycleAutomationBridge.RecordImageUnavailable(
             MarkdownHostContract.GetAutomationId(HostKind, AutomationInstanceId),
             e.Source,
-            e.Reason);
+            e.Reason,
+            e.SvgFailureReason);
 
         if (_reportedImageUnavailableReasons.Add(e.Reason))
         {

@@ -123,6 +123,21 @@ complete before claiming this plan or the 1.0 performance goal is met.
   from the successful-attempt browser comparison. This does not waive a
   second timeout or the unresolved rank-401 native SVG failure. The full
   current-head 500-case audit must pass again.
+- The `d4bdd27` audit exposed another valid SVG failure at rank 153
+  (`louislam/uptime-kuma`): Edge loaded a 1,877,124-byte, 1200×8120 sponsor
+  SVG and JitHub resolved a payload of the same length, then reported it
+  unavailable about seven seconds later. A separate translation badge was
+  broken in Edge too (zero natural size) and correctly excluded by the audit.
+  A pinned one-case Release replay loaded the sponsor SVG successfully, but
+  byte identity and the original native failure category were not recorded.
+  The image-unavailable event now carries an optional typed SVG failure
+  category into the automation evidence, so the next full audit can identify
+  whether a repeat is a timeout, resource limit, unsupported content, or
+  worker fault. SVG failure publication also reports unavailability only
+  after verifying the image is still current and lacks a retained good bitmap;
+  stale/disposed failures previously raised the event before that check.
+  This removes a false-unavailable path, but neither this change nor the
+  one-case replay establishes the original cause or a 500/500 pass.
 - Measured: the full x64 repeated-construction release benchmark is not yet
   qualified. Both reference and candidate failed its stationarity contract;
   the candidate's full run dropped to about 121 observed Hz on a configured

@@ -18,6 +18,19 @@ namespace MarkdownRenderer.GitHub.Tests;
 
 public sealed class ImageBoxSvgRendererTests
 {
+    [Fact]
+    public void UnavailableEventArgsPreserveOptionalSvgFailureCategory()
+    {
+        var ordinary = new MarkdownImageUnavailableEventArgs(
+            "image.png", MarkdownImageUnavailableReason.Unavailable);
+        var svg = new MarkdownImageUnavailableEventArgs(
+            "image.svg", MarkdownImageUnavailableReason.Unavailable,
+            MarkdownSvgFailureReason.Timeout);
+
+        Assert.Null(ordinary.SvgFailureReason);
+        Assert.Equal(MarkdownSvgFailureReason.Timeout, svg.SvgFailureReason);
+    }
+
     [Theory]
     [InlineData(1.0, 125, 63)]
     [InlineData(1.25, 157, 79)]
@@ -492,8 +505,9 @@ public sealed class ImageBoxSvgRendererTests
     [Fact]
     public async Task MissingProviderProducesTypedAccessibleFailure()
     {
+        var unavailable = new ConcurrentQueue<MarkdownSvgFailureReason?>();
         var image = new ImageBox(
-            CreateContext(renderer: null),
+            CreateContext(renderer: null, imageUnavailable: (_, _, svgReason) => unavailable.Enqueue(svgReason)),
             CreateSvgDataUri("missing-provider"),
             "Unavailable diagram");
         try
@@ -506,6 +520,7 @@ public sealed class ImageBoxSvgRendererTests
                 image.SvgFailureReason);
             Assert.Equal(MarkdownImageAccessibilityState.Error, image.AccessibilityState);
             Assert.Contains("No static SVG renderer", image.SvgDesc, StringComparison.Ordinal);
+            Assert.Equal(MarkdownSvgFailureReason.ArchitectureMismatch, Assert.Single(unavailable));
         }
         finally
         {
@@ -658,7 +673,8 @@ public sealed class ImageBoxSvgRendererTests
     private static MarkdownLayoutContext CreateContext(
         IMarkdownSvgRenderer? renderer,
         double rasterizationScale = 1,
-        IMarkdownImageResolver? imageResolver = null)
+        IMarkdownImageResolver? imageResolver = null,
+        Action<string, MarkdownImageUnavailableReason, MarkdownSvgFailureReason?>? imageUnavailable = null)
     {
         var body = new ElementStyle
         {
@@ -690,6 +706,7 @@ public sealed class ImageBoxSvgRendererTests
             language: "en-US")
         {
             ImageResolver = imageResolver,
+            ImageUnavailable = imageUnavailable,
             SvgRenderer = renderer,
             ImageCancellationToken = CancellationToken.None,
             RasterizationScale = rasterizationScale,
