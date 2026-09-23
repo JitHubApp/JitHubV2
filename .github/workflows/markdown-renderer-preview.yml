@@ -615,13 +615,23 @@ jobs:
 
           $archives = @()
           foreach ($id in $managedPackageIds) {
-            $matches = @(Get-ChildItem -LiteralPath $packageDirectory -Filter "$id.*.nupkg" -File |
-              Where-Object { $_.Name -notlike '*.symbols.nupkg' })
+            # The package ID must be followed by a numeric version. A glob
+            # for MarkdownRenderer.* also matches every subpackage and makes
+            # the meta-package look duplicated.
+            $escapedId = [regex]::Escape($id)
+            $matches = @(Get-ChildItem -LiteralPath $packageDirectory -Filter '*.nupkg' -File |
+              Where-Object {
+                $_.Name -notlike '*.symbols.nupkg' -and
+                $_.Name -match "^${escapedId}\.[0-9][0-9A-Za-z.+-]*\.nupkg$"
+              })
             if ($matches.Count -ne 1) {
               throw "Expected exactly one managed package for '$id'; found $($matches.Count)."
             }
             $archive = [IO.Compression.ZipFile]::OpenRead($matches[0].FullName)
             try {
+              if (-not @($archive.Entries | Where-Object { $_.FullName -eq "$id.nuspec" }).Count) {
+                throw "Managed package '$id' does not contain its exact-ID nuspec."
+              }
               $nativePayload = @($archive.Entries | Where-Object { $_.FullName -match '^runtimes/.+/native/' })
               if ($nativePayload.Count -ne 0) {
                 throw "Managed package '$id' unexpectedly contains native payload: $($nativePayload.FullName -join ', ')."
