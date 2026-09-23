@@ -59,6 +59,12 @@ complete before claiming this plan or the 1.0 performance goal is met.
   path and reject both short and excess bodies relative to the declared length;
   all 3,048 JitHub unit tests passed. This is an allocation reduction, not the
   still-open 64 MiB in-flight source-byte admission gate.
+- Current-head CI at `d4bdd27` found one failure in the unrelated
+  `RepoFileCacheService` cancellation test: after proving the per-key lock had
+  been released, its follow-up disk write exceeded the test's two-second
+  cancellation timer. The paired Get/Put follow-up operations now use a bounded
+  ten-second timer; lock-release and cancellation checks remain unchanged.
+  All 3,048 Debug x64 tests passed locally. CI confirmation is pending.
 - Locally verified, pending PR CI: the progressive source session now ships in
   an explicit optional managed pack, and resvg's inert-image normalization and
   security preflight travel with its optional provider. The Core + WinUI lean
