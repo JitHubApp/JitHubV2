@@ -75,7 +75,7 @@ public sealed class OwnedResourceRetirementTests
         {
             owner.ThrowIfDisposed();
             callbackEntered.TrySetResult();
-            if (!releaseCallback.Wait(TimeSpan.FromSeconds(5)))
+            if (!releaseCallback.Wait(TimeSpan.FromSeconds(20)))
                 throw new TimeoutException("Cancellation callback was not released.");
             owner.ThrowIfDisposed();
         });
@@ -83,7 +83,7 @@ public sealed class OwnedResourceRetirementTests
         Task work = Task.Run(async () =>
         {
             while (!token.IsCancellationRequested)
-                await Task.Yield();
+                await Task.Delay(1);
             workReturned.TrySetResult();
         });
 
@@ -95,9 +95,12 @@ public sealed class OwnedResourceRetirementTests
 
         try
         {
-            await callbackEntered.Task.WaitAsync(TimeSpan.FromSeconds(2));
-            await workReturned.Task.WaitAsync(TimeSpan.FromSeconds(2));
-            await work.WaitAsync(TimeSpan.FromSeconds(2));
+            // Thread-pool callbacks are not subject to a two-second latency
+            // contract. The test concerns the retirement ordering once they
+            // run, and must not flood a busy CI pool with Task.Yield work.
+            await callbackEntered.Task.WaitAsync(TimeSpan.FromSeconds(10));
+            await workReturned.Task.WaitAsync(TimeSpan.FromSeconds(10));
+            await work.WaitAsync(TimeSpan.FromSeconds(10));
             Assert.False(owner.IsDisposed);
             Assert.False(generationRetirement.IsCompleted);
             Assert.False(ownerRetirement.IsCompleted);
@@ -107,8 +110,8 @@ public sealed class OwnedResourceRetirementTests
             releaseCallback.Set();
         }
 
-        await generationRetirement.WaitAsync(TimeSpan.FromSeconds(2));
-        await ownerRetirement.WaitAsync(TimeSpan.FromSeconds(2));
+        await generationRetirement.WaitAsync(TimeSpan.FromSeconds(10));
+        await ownerRetirement.WaitAsync(TimeSpan.FromSeconds(10));
         Assert.True(owner.IsDisposed);
     }
 
