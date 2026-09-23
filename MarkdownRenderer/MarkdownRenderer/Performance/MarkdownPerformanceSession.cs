@@ -24,7 +24,7 @@ public sealed class MarkdownPerformanceSession : IMarkdownPerformanceSessionInte
     private readonly object _flightGate = new();
     private readonly Dictionary<SourceKey, SharedFetch> _sharedFlights = new(SourceKeyComparer.Instance);
     private readonly SemaphoreSlim _fetchSlots;
-    private readonly SemaphoreSlim _backgroundSlots;
+    private readonly FairBackgroundFetchAdmission _backgroundAdmission;
     private readonly SemaphoreSlim _cpuPreparationSlots;
     private readonly CancellationTokenSource _lifetime = new();
     private readonly CancellationToken _lifetimeToken;
@@ -53,7 +53,7 @@ public sealed class MarkdownPerformanceSession : IMarkdownPerformanceSessionInte
         options.Validate();
         _lifetimeToken = _lifetime.Token;
         _fetchSlots = new SemaphoreSlim(options.MaxConcurrentImageFetches);
-        _backgroundSlots = new SemaphoreSlim(
+        _backgroundAdmission = new FairBackgroundFetchAdmission(
             options.MaxConcurrentImageFetches - options.ReservedVisibleImageFetches);
         _cpuPreparationSlots = new SemaphoreSlim(options.MaxConcurrentCpuPreparations);
         try
@@ -248,6 +248,7 @@ public sealed class MarkdownPerformanceSession : IMarkdownPerformanceSessionInte
     }
 
     private async Task<MarkdownImageResolution> FetchAsync(
+        DocumentScope owner,
         SourceKey key,
         IMarkdownImageResolver resolver,
         MarkdownImageResolveContext context,
@@ -257,23 +258,27 @@ public sealed class MarkdownPerformanceSession : IMarkdownPerformanceSessionInte
     {
         RegisterWork();
         Interlocked.Increment(ref _pendingImageFetches);
-        bool backgroundAcquired = false;
+        IDisposable? backgroundLease = null;
         bool fetchAcquired = false;
         bool resolverStarted = false;
         try
         {
             if (background)
             {
-                await _backgroundSlots.WaitAsync(cancellationToken).ConfigureAwait(false);
-                backgroundAcquired = true;
-                if (IsRemoteSource(key.Source, context))
+                bool remote = IsRemoteSource(key.Source, context);
+                while (true)
                 {
-                    // A constrained connection or Energy Saver is not a resource
-                    // failure. Keep the bounded request pending and resume when
-                    // the environment permits speculative network work again.
-                    while (ShouldPauseRemotePrefetch())
+                    // Paused remote work must not hold a speculative slot that
+                    // another document could use for local resources.
+                    while (remote && ShouldPauseRemotePrefetch())
                         await Task.Delay(TimeSpan.FromSeconds(15), cancellationToken)
                             .ConfigureAwait(false);
+                    backgroundLease = await _backgroundAdmission.EnterAsync(
+                        owner, cancellationToken).ConfigureAwait(false);
+                    if (!remote || !ShouldPauseRemotePrefetch())
+                        break;
+                    backgroundLease.Dispose();
+                    backgroundLease = null;
                 }
             }
             await _fetchSlots.WaitAsync(cancellationToken).ConfigureAwait(false);
@@ -324,12 +329,13 @@ public sealed class MarkdownPerformanceSession : IMarkdownPerformanceSessionInte
             if (!resolverStarted)
                 Interlocked.Decrement(ref _pendingImageFetches);
             if (fetchAcquired) _fetchSlots.Release();
-            if (backgroundAcquired) _backgroundSlots.Release();
+            backgroundLease?.Dispose();
             RetireWork();
         }
     }
 
     private async Task<MarkdownImageResolution> ResolveSharedAsync(
+        DocumentScope owner,
         SourceKey key,
         IMarkdownImageResolver resolver,
         MarkdownImageResolveContext context,
@@ -355,7 +361,7 @@ public sealed class MarkdownPerformanceSession : IMarkdownPerformanceSessionInte
                 var source = CancellationTokenSource.CreateLinkedTokenSource(_lifetimeToken);
                 flight = new SharedFetch(source, background);
                 flight.Task = FetchAsync(
-                    key, resolver, context, background, flight.MarkResolutionStarted,
+                    owner, key, resolver, context, background, flight.MarkResolutionStarted,
                     source.Token);
                 _sharedFlights.Add(key, flight);
                 _ = flight.Task.ContinueWith(
@@ -529,7 +535,6 @@ public sealed class MarkdownPerformanceSession : IMarkdownPerformanceSessionInte
         finally
         {
             _fetchSlots.Dispose();
-            _backgroundSlots.Dispose();
             _cpuPreparationSlots.Dispose();
             _lifetime.Dispose();
         }
@@ -665,7 +670,7 @@ public sealed class MarkdownPerformanceSession : IMarkdownPerformanceSessionInte
                     var linked = CancellationTokenSource.CreateLinkedTokenSource(_token);
                     request = new InflightRequest(linked, background);
                     request.Task = _session.ResolveSharedAsync(
-                        key, _resolver, _context, background, linked.Token);
+                        this, key, _resolver, _context, background, linked.Token);
                     _inFlight.Add(source, request);
                     _ = request.Task.ContinueWith(
                         static (completed, state) =>

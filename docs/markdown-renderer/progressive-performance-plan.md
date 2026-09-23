@@ -15,6 +15,15 @@ complete before claiming this plan or the 1.0 performance goal is met.
   cutoff; bounded fetch slots with visible reservation and queued-prefetch
   promotion; partitioned source LRU, document-local unkeyed entries, cancellation,
   cross-document single-flight, memory-pressure trim, and privacy-safe counters.
+- Locally verified, pending current-head CI: speculative image-source fetch
+  admission now rotates between documents instead of allowing the first
+  document to monopolize newly freed slots. Visible fetches still bypass this
+  queue; paused remote work does not hold a speculative slot. Cancellation and
+  grant races, queue order, the 1,800-image storm, and a two-document session
+  scenario passed 395 GitHub renderer tests. The optional performance assembly
+  built without warnings for x86, x64, and ARM64; its local compressed pack is
+  25,574 bytes against the unchanged 128 KiB cap. This addresses source-fetch
+  fairness only; the decode/scene scheduler remains open.
 - Done: opt-in display-sized WIC raster decode with EXIF orientation, color
   management, a lowerable output-pixel cap, bounded concurrent preparations,
   bitmap-cache metadata, and paint-only publication when geometry is unchanged.
@@ -85,8 +94,8 @@ complete before claiming this plan or the 1.0 performance goal is met.
   allocated about 28-35 MiB per 1 MiB presentation. Reduce construction and
   native-object/GC pressure, then rerun the frozen full counterbalanced gate.
 - Open: actual source-byte in-flight admission (a host resolver currently owns
-  its download buffer), global queue fairness across documents, and copy-on-write
-  layout publication with a measured ≤2 ms UI commit.
+  its download buffer), global decode/scene queue fairness across documents,
+  and copy-on-write layout publication with a measured ≤2 ms UI commit.
 - Open: oversized raster tiling and session-owned SVG/document/GPU preparation
   caches.
 - Open: defer Math/Mermaid scenes and ahead-of-viewport highlighting without

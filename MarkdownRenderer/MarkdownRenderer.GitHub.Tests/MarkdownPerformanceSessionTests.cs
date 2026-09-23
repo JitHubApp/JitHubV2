@@ -1,5 +1,6 @@
 using MarkdownRenderer.Images;
 using MarkdownRenderer.Performance;
+using System.Threading.Channels;
 using Xunit;
 
 namespace MarkdownRenderer.GitHub.Tests;
@@ -182,6 +183,51 @@ public sealed class MarkdownPerformanceSessionTests
     }
 
     [Fact]
+    public async Task SpeculativeFetches_RotateBetweenDocumentsWithoutDelayingVisibleWork()
+    {
+        var resolver = new SequencedBlockingResolver();
+        await using var session = new MarkdownPerformanceSession(
+            MarkdownPerformanceOptions.Progressive with
+            {
+                MaxConcurrentImageFetches = 2,
+                ReservedVisibleImageFetches = 1,
+            });
+        var context = new MarkdownImageResolveContext(null);
+        using var first = session.OpenDocument(resolver, context);
+        using var second = session.OpenDocument(resolver, context);
+
+        Task firstA = first.PrefetchAsync(["a1"], CancellationToken.None);
+        Assert.Equal("a1", await resolver.NextStartedAsync());
+        Task secondA = first.PrefetchAsync(["a2"], CancellationToken.None);
+        Task thirdA = first.PrefetchAsync(["a3"], CancellationToken.None);
+        Task firstB = second.PrefetchAsync(["b1"], CancellationToken.None);
+        Task secondB = second.PrefetchAsync(["b2"], CancellationToken.None);
+        await WaitForPendingFetchesAsync(session, 4);
+
+        MarkdownImageResolution visible = await second.ResolveAsync(
+            "visible", context, CancellationToken.None).AsTask()
+            .WaitAsync(TimeSpan.FromSeconds(5));
+        Assert.True(visible.IsHandled);
+
+        foreach (string expected in new[] { "a2", "b1", "a3", "b2" })
+        {
+            resolver.ReleaseOne();
+            Assert.Equal(expected, await resolver.NextStartedAsync());
+        }
+        resolver.ReleaseOne();
+        await Task.WhenAll(firstA, secondA, thirdA, firstB, secondB)
+            .WaitAsync(TimeSpan.FromSeconds(5));
+    }
+
+    private static async Task WaitForPendingFetchesAsync(
+        MarkdownPerformanceSession session, int expected)
+    {
+        using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(5));
+        while (session.GetSnapshot().PendingImageFetches != expected)
+            await Task.Delay(10, timeout.Token);
+    }
+
+    [Fact]
     public async Task DisposeAsync_CancelsAndDrainsAdmittedFetches()
     {
         var resolver = new BlockingResolver();
@@ -286,6 +332,31 @@ public sealed class MarkdownPerformanceSessionTests
             Interlocked.Increment(ref _callCount);
             return ValueTask.FromResult(MarkdownImageResolution.Resolved(
                 new MarkdownImageAsset([1, 2, 3], "image/png", CacheKey: source)));
+        }
+    }
+
+    private sealed class SequencedBlockingResolver : IMarkdownImageResolver
+    {
+        private readonly Channel<string> _started = Channel.CreateUnbounded<string>();
+        private readonly SemaphoreSlim _releases = new(0);
+
+        internal async Task<string> NextStartedAsync() =>
+            await _started.Reader.ReadAsync().AsTask().WaitAsync(TimeSpan.FromSeconds(5));
+
+        internal void ReleaseOne() => _releases.Release();
+
+        public async ValueTask<MarkdownImageResolution> ResolveAsync(
+            string source,
+            MarkdownImageResolveContext context,
+            CancellationToken cancellationToken)
+        {
+            if (source != "visible")
+            {
+                await _started.Writer.WriteAsync(source, cancellationToken);
+                await _releases.WaitAsync(cancellationToken);
+            }
+            return MarkdownImageResolution.Resolved(
+                new MarkdownImageAsset([1, 2, 3], "image/png", CacheKey: source));
         }
     }
 
