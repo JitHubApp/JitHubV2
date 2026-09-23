@@ -80,6 +80,50 @@ internal sealed class WeightedLruCache<TKey, TValue> where TKey : notnull
         }
     }
 
+    /// <summary>
+    /// Finds the highest-scoring matching entry under the same recency lock as
+    /// ordinary lookups. Intended for small, byte-bounded variant sets such as
+    /// already-uploaded image previews; this does not change the cache budget.
+    /// </summary>
+    internal bool TryGetBestMatch(
+        Func<TKey, TValue, bool> matches,
+        Func<TValue, long> score,
+        out TValue value)
+    {
+        ArgumentNullException.ThrowIfNull(matches);
+        ArgumentNullException.ThrowIfNull(score);
+
+        lock (_gate)
+        {
+            LinkedListNode<Entry>? best = null;
+            long bestScore = long.MinValue;
+            for (LinkedListNode<Entry>? node = _recency.First; node is not null; node = node.Next)
+            {
+                if (!matches(node.Value.Key, node.Value.Value))
+                    continue;
+                long candidateScore = score(node.Value.Value);
+                if (candidateScore <= bestScore)
+                    continue;
+                best = node;
+                bestScore = candidateScore;
+            }
+
+            if (best is null)
+            {
+                value = default!;
+                return false;
+            }
+
+            if (!ReferenceEquals(_recency.First, best))
+            {
+                _recency.Remove(best);
+                _recency.AddFirst(best);
+            }
+            value = best.Value.Value;
+            return true;
+        }
+    }
+
     public void Set(TKey key, TValue value)
     {
         long weight = NormalizeWeight(_weightSelector(value));

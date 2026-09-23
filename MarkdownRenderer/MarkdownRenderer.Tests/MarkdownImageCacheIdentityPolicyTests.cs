@@ -35,7 +35,7 @@ public sealed class MarkdownImageCacheIdentityPolicyTests
     }
 
     [Fact]
-    public void ResolverAssetRequiresAnExplicitOrAbsoluteIdentityForSharedCaching()
+    public void ResolverAssetRequiresAnExplicitPartitionedIdentityForSharedCaching()
     {
         Assert.Equal(
             "account-a:https://images.example.test/a.png",
@@ -44,8 +44,7 @@ public sealed class MarkdownImageCacheIdentityPolicyTests
                 "image/png",
                 new Uri("https://images.example.test/a.png"),
                 "account-a:https://images.example.test/a.png")));
-        Assert.Equal(
-            "https://images.example.test/a.png",
+        Assert.Empty(
             MarkdownImageCacheIdentityPolicy.GetResolvedAssetKey(new MarkdownImageAsset(
                 [1],
                 "image/png",

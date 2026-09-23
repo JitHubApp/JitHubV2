@@ -67,6 +67,30 @@ public sealed class WeightedLruCacheTests
     }
 
     [Fact]
+    public void BestMatch_SelectsLargestAdmittedVariantAndRefreshesItsRecency()
+    {
+        var cache = new WeightedLruCache<string, byte[]>(12, static value => value.Length);
+        cache.Set("image/2", new byte[2]);
+        cache.Set("other/4", new byte[4]);
+        cache.Set("image/4", new byte[4]);
+
+        Assert.True(cache.TryGetBestMatch(
+            static (key, value) => key.StartsWith("image/", StringComparison.Ordinal) &&
+                value.Length <= 4,
+            static value => value.Length,
+            out byte[] best));
+        Assert.Equal(4, best.Length);
+
+        cache.Set("new/4", new byte[4]);
+        Assert.True(cache.TryGetValue("image/4", out _));
+        Assert.False(cache.TryGetValue("image/2", out _));
+        Assert.False(cache.TryGetBestMatch(
+            static (key, _) => key.StartsWith("missing/", StringComparison.Ordinal),
+            static value => value.Length,
+            out _));
+    }
+
+    [Fact]
     public void ConcurrentReadersAndWriters_NeverExceedByteBudget()
     {
         const int budget = 4 * 1024;

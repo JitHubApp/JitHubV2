@@ -10,6 +10,7 @@ using JitHub.Models;
 using JitHub.Models.GitHub;
 using JitHub.Security;
 using JitHub.WinUI;
+using JitHub.WinUI.Helpers;
 
 namespace JitHub.Services;
 
@@ -897,7 +898,7 @@ public sealed class AuthService : IAuthService
         }
         catch (Exception exception)
         {
-            Debug.WriteLine($"Failed to retire Markdown account resources: {exception}");
+            HandledFailureReporter.Report(exception, "markdown-account-resource-retirement");
         }
     }
 

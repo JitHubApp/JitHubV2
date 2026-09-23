@@ -78,6 +78,79 @@ public sealed class DisplaySizedRasterDecodeTests
     }
 
     [Fact]
+    public async Task LargerRasterShowsCachedPreviewBeforePaintOnlyUpgrade()
+    {
+        byte[] source = CreatePng(width: 1024, height: 512);
+        var resolver = new ByteResolver(source, $"display-upgrade-{Guid.NewGuid():N}");
+        using var session = new MarkdownPerformanceSession(MarkdownPerformanceOptions.Progressive);
+        var preview = new ImageBox(CreateContext(resolver, session, 1),
+            "https://images.example/large.png", string.Empty);
+        var larger = new ImageBox(CreateContext(resolver, session, 1),
+            "https://images.example/large.png", string.Empty);
+        try
+        {
+            preview.Measure(400);
+            await WaitForLoadAsync(preview);
+            Assert.Equal(400u, preview.Bitmap!.SizeInPixels.Width);
+            preview.Dispose();
+
+            var observations = new List<(uint Width, bool LayoutInvalidated)>();
+            var upgraded = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+            larger.LoadCompleted += (_, result) =>
+            {
+                if (larger.Bitmap is not { } bitmap)
+                    return;
+                uint width = bitmap.SizeInPixels.Width;
+                observations.Add((width, result.LayoutInvalidated));
+                if (width == 800)
+                    upgraded.TrySetResult();
+            };
+            larger.Measure(800);
+            larger.EnsureLoading();
+            await upgraded.Task.WaitAsync(TimeSpan.FromSeconds(10));
+
+            Assert.Equal(
+                [(400u, true), (800u, false)],
+                observations);
+        }
+        finally
+        {
+            preview.Dispose();
+            larger.Dispose();
+        }
+    }
+
+    [Fact]
+    public async Task ResolvedUriWithoutPartitionKeyDoesNotShareRasterAcrossResolvers()
+    {
+        Uri resolvedUri = new("https://images.example/account/avatar.png");
+        using var session = new MarkdownPerformanceSession(MarkdownPerformanceOptions.Progressive);
+        var portrait = new ImageBox(
+            CreateContext(new UnkeyedResolver(CreatePng(512, 1024), resolvedUri), session, 1),
+            resolvedUri.AbsoluteUri, string.Empty);
+        var landscape = new ImageBox(
+            CreateContext(new UnkeyedResolver(CreatePng(1024, 512), resolvedUri), session, 1),
+            resolvedUri.AbsoluteUri, string.Empty);
+        try
+        {
+            portrait.Measure(200);
+            await WaitForLoadAsync(portrait);
+            landscape.Measure(200);
+            await WaitForLoadAsync(landscape);
+
+            Assert.Equal(200u, portrait.Bitmap!.SizeInPixels.Width);
+            Assert.Equal(400u, portrait.Bitmap.SizeInPixels.Height);
+            Assert.Equal(200u, landscape.Bitmap!.SizeInPixels.Width);
+            Assert.Equal(100u, landscape.Bitmap.SizeInPixels.Height);
+        }
+        finally
+        {
+            portrait.Dispose();
+            landscape.Dispose();
+        }
+    }
+
+    [Fact]
     public async Task LoweredRasterPixelCeilingBoundsThePreparedBitmap()
     {
         byte[] source = CreatePng(width: 1024, height: 512);
@@ -195,5 +268,15 @@ public sealed class DisplaySizedRasterDecodeTests
             CancellationToken cancellationToken) =>
             ValueTask.FromResult(MarkdownImageResolution.Resolved(
                 new MarkdownImageAsset(bytes, "image/png", CacheKey: cacheKey)));
+    }
+
+    private sealed class UnkeyedResolver(byte[] bytes, Uri resolvedUri) : IMarkdownImageResolver
+    {
+        public ValueTask<MarkdownImageResolution> ResolveAsync(
+            string source,
+            MarkdownImageResolveContext context,
+            CancellationToken cancellationToken) =>
+            ValueTask.FromResult(MarkdownImageResolution.Resolved(
+                new MarkdownImageAsset(bytes, "image/png", ResolvedUri: resolvedUri)));
     }
 }

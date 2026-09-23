@@ -606,6 +606,22 @@ public sealed class GitHubImageServiceTests : IDisposable
     }
 
     [Fact]
+    public async Task GetAsync_RecoversAfterTwoTransientStatuses()
+    {
+        GitHubImageCacheStore store = new(_root, GitHubCachePolicy.Default);
+        TransientStatusThenImageHandler handler = new(PngBytes, failuresBeforeSuccess: 2);
+        using HttpClient client = new(handler);
+        using GitHubImageService service = new(store, client);
+
+        GitHubCachedImage? image = await service.GetAsync(
+            "https://camo.githubusercontent.com/retry-example/image.png");
+
+        Assert.NotNull(image);
+        Assert.Equal(PngBytes, image!.Bytes);
+        Assert.Equal(3, handler.RequestCount);
+    }
+
+    [Fact]
     public async Task GetAsync_RetriesOneTransportFailureAndCachesSuccessfulResponse()
     {
         GitHubImageCacheStore store = new(_root, GitHubCachePolicy.Default);
@@ -636,7 +652,7 @@ public sealed class GitHubImageServiceTests : IDisposable
     }
 
     [Fact]
-    public async Task GetAsync_StopsAfterOneTransientRetry()
+    public async Task GetAsync_StopsAfterTwoTransientRetries()
     {
         GitHubImageCacheStore store = new(_root, GitHubCachePolicy.Default);
         AlwaysStatusHandler handler = new(HttpStatusCode.ServiceUnavailable);
@@ -646,7 +662,7 @@ public sealed class GitHubImageServiceTests : IDisposable
         await Assert.ThrowsAsync<HttpRequestException>(() => service.GetAsync(
             "https://raw.githubusercontent.com/owner/repository/main/unavailable.png"));
 
-        Assert.Equal(2, handler.RequestCount);
+        Assert.Equal(3, handler.RequestCount);
     }
 
     [Fact]
@@ -1178,7 +1194,9 @@ public sealed class GitHubImageServiceTests : IDisposable
         }
     }
 
-    private sealed class TransientStatusThenImageHandler(byte[] bytes) : HttpMessageHandler
+    private sealed class TransientStatusThenImageHandler(
+        byte[] bytes,
+        int failuresBeforeSuccess = 1) : HttpMessageHandler
     {
         private int _requestCount;
 
@@ -1188,7 +1206,7 @@ public sealed class GitHubImageServiceTests : IDisposable
             HttpRequestMessage request,
             CancellationToken cancellationToken)
         {
-            if (Interlocked.Increment(ref _requestCount) == 1)
+            if (Interlocked.Increment(ref _requestCount) <= failuresBeforeSuccess)
             {
                 return Task.FromResult(new HttpResponseMessage(HttpStatusCode.ServiceUnavailable));
             }

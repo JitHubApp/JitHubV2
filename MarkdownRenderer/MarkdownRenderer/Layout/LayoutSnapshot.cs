@@ -552,6 +552,47 @@ internal sealed class LayoutSnapshot : System.IDisposable
     }
 
     /// <summary>
+    /// Returns only measured top-level blocks intersecting a viewport band.
+    /// Scene preparation uses this index instead of scanning every measured
+    /// block whenever the reader scrolls a long document.
+    /// </summary>
+    internal bool TryGetMeasuredTopLevelBlocksInBand(
+        double top,
+        double bottom,
+        out IReadOnlyList<BlockBox> blocks)
+    {
+        blocks = Array.Empty<BlockBox>();
+        if (!Monitor.TryEnter(_layoutLock))
+            return false;
+        try
+        {
+            var range = FindViewportRangeNoLock(top, bottom);
+            if (range.Start == range.End)
+                return true;
+
+            var matches = new List<BlockBox>(range.End - range.Start);
+            for (int index = range.Start; index < range.End; index++)
+            {
+                int ordinal = _viewportIndex.GetBlockOrdinal(index);
+                if (_lazyLayoutEnabled && _measuredTopLevelBlocks is not null &&
+                    !_measuredTopLevelBlocks[ordinal])
+                    continue;
+
+                BlockBox block = Blocks[ordinal];
+                if (block.Bounds.Bottom >= top && block.Bounds.Top <= bottom)
+                    matches.Add(block);
+            }
+
+            blocks = matches;
+            return true;
+        }
+        finally
+        {
+            Monitor.Exit(_layoutLock);
+        }
+    }
+
+    /// <summary>
     /// Remeasures only the top-level owners of asynchronously changed content,
     /// then repositions their trailing siblings using already committed heights.
     /// This keeps a late image from rebuilding every DirectWrite text layout in

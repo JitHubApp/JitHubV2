@@ -973,14 +973,10 @@ internal sealed class ImageBox : BlockBox
         // supplied the actual representation. This also covers warm raster-cache
         // hits, which return before the decode path below.
         _isSvg = isSvg;
-        string resolvedAssetKey = MarkdownImageCacheIdentityPolicy.GetResolvedAssetKey(asset);
-        // SVG source caching after a handled resolution requires the resolver's
-        // explicit security-partitioned key. A URI alone is not an account or
-        // session boundary. Content hashes still permit safe GPU deduplication
-        // within this instance when the host intentionally omits a cache key.
-        string cacheKey = isSvg && string.IsNullOrWhiteSpace(asset.CacheKey)
-            ? string.Empty
-            : resolvedAssetKey;
+        // Both SVG and raster cache reuse require the resolver's explicit
+        // security-partitioned identity. ResolvedUri is metadata, not an
+        // account boundary; an unkeyed asset remains local to this box.
+        string cacheKey = MarkdownImageCacheIdentityPolicy.GetResolvedAssetKey(asset);
         _activeCacheKey = cacheKey;
         if (cacheKey.Length > 0 && _failedUrls.ContainsKey(cacheKey))
         {
@@ -1148,7 +1144,17 @@ internal sealed class ImageBox : BlockBox
         }
     }
 
-    private async Task LoadBitmapBytesAsync(byte[] bytes, string cacheKey)
+    private Task LoadBitmapBytesAsync(byte[] bytes, string cacheKey)
+    {
+        // A session source-cache hit can complete synchronously inside the
+        // viewport's EnsureLoading call. Keep header validation, preview-cache
+        // search, WIC decode, and GPU upload off that UI callback even then.
+        return _context.Dispatcher?.HasThreadAccess == true
+            ? Task.Run(() => LoadBitmapBytesCoreAsync(bytes, cacheKey), CancellationToken.None)
+            : LoadBitmapBytesCoreAsync(bytes, cacheKey);
+    }
+
+    private async Task LoadBitmapBytesCoreAsync(byte[] bytes, string cacheKey)
     {
         RasterImageBudgetResult budget = RasterImageResourceBudget.Validate(bytes);
         if (!budget.Accepted && !budget.CanRenderStaticPreview)
@@ -1193,6 +1199,36 @@ internal sealed class ImageBox : BlockBox
             }
             else
             {
+                // A resize or DPI transition may need a larger raster than an
+                // image already uploaded for this source. Keep that cached
+                // bitmap visible while the exact replacement is decoded. An
+                // exact cache hit above never incurs this variant search.
+                if (displaySized && cacheKey.Length > 0 &&
+                    (long)rasterSize.Width * rasterSize.Height >= 65_536 &&
+                    SharedCanvasBitmapCache.TryAcquireBestRasterPreview(
+                        device,
+                        cacheKey,
+                        rasterSize.Width,
+                        rasterSize.Height,
+                        out SharedCanvasBitmapCache.Lease? previewLease) &&
+                    previewLease is not null)
+                {
+                    SharedCanvasBitmapCache.Lease cachedPreview = previewLease;
+                    PublishOnUiThread(() =>
+                    {
+                        if (_bitmap is not null)
+                        {
+                            cachedPreview.Dispose();
+                            return;
+                        }
+
+                        Size previewIntrinsic = cachedPreview.IntrinsicSize!.Value;
+                        _rasterIntrinsicSize = previewIntrinsic;
+                        ReplaceBitmap(cachedPreview.Bitmap, cachedPreview, ownsBitmap: false);
+                        LoadCompleted?.Invoke(this, new LoadCompletedEventArgs(layoutInvalidated: true));
+                    }, cachedPreview.Dispose);
+                }
+
                 if (!string.IsNullOrEmpty(bitmapCacheKey))
                 {
                     decodeGate = SharedCanvasBitmapCache.GetDecodeGate(device, bitmapCacheKey);
@@ -1334,7 +1370,7 @@ internal sealed class ImageBox : BlockBox
                 (transformedDecode &&
                  (_rasterIntrinsicSize.Width != intrinsicSize.Width ||
                   _rasterIntrinsicSize.Height != intrinsicSize.Height));
-            if (failed)
+            if (failed && _bitmap is null)
             {
                 _loadFailed = true;
                 if (!string.IsNullOrEmpty(cacheKey)) { _failedUrls.TryAdd(cacheKey, 0); TrimCache(_failedUrls, MaxFailedUrlEntrnes); }

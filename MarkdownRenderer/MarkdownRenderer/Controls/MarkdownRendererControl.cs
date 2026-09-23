@@ -4322,11 +4322,36 @@ public partial class MarkdownRendererControl : UserControl, IDisposable, IMarkdo
         int providerRevision = highlighter.Revision;
         bool appliedCached = false;
         TryGetViewport(out double viewportTop, out double viewportHeight, out _);
-        double highlightTop = viewportTop - CodeBlockHighlightOverscanPx;
-        double highlightBottom = viewportTop + viewportHeight + CodeBlockHighlightOverscanPx;
-        foreach (var block in EnumerateCodeBlocks(snapshot))
+        LazyLayoutBand highlightBand = PerformanceSession is { } performanceSession
+            ? LazyLayoutBand.FromDirectionalViewport(
+                viewportTop,
+                viewportHeight,
+                performanceSession.Options.LookAheadViewports,
+                _lazyScrollVelocityPixelsPerSecond)
+            : LazyLayoutBand.FromViewport(
+                viewportTop,
+                viewportHeight,
+                CodeBlockHighlightOverscanPx);
+        IEnumerable<Layout.Boxes.CodeBlockBox> candidates;
+        if (PerformanceSession is null)
         {
-            if (!IsCodeBlockInHighlightBand(block, highlightTop, highlightBottom))
+            candidates = EnumerateCodeBlocks(snapshot);
+        }
+        else
+        {
+            // The background layout worker can own this snapshot. Scrolling
+            // must not wait for its native text measurement merely to queue
+            // syntax highlighting; completion reschedules the visible band.
+            if (!snapshot.TryGetMeasuredTopLevelBlocksInBand(
+                    highlightBand.Top,
+                    highlightBand.Bottom,
+                    out IReadOnlyList<BlockBox> bandBlocks))
+                return;
+            candidates = EnumerateCodeBlocks(bandBlocks);
+        }
+        foreach (var block in candidates)
+        {
+            if (!IsCodeBlockInHighlightBand(block, highlightBand.Top, highlightBand.Bottom))
                 continue;
 
             if (block.CodeText.Length > 200_000 || block.LineCount > 5_000)
@@ -4482,8 +4507,12 @@ public partial class MarkdownRendererControl : UserControl, IDisposable, IMarkdo
         => block.Bounds.Bottom >= top && block.Bounds.Top <= bottom;
 
     private static IEnumerable<Layout.Boxes.CodeBlockBox> EnumerateCodeBlocks(LayoutSnapshot snapshot)
+        => EnumerateCodeBlocks(snapshot.GetMeasuredTopLevelBlocks());
+
+    private static IEnumerable<Layout.Boxes.CodeBlockBox> EnumerateCodeBlocks(
+        IReadOnlyList<BlockBox> blocks)
     {
-        foreach (var block in snapshot.GetMeasuredTopLevelBlocks())
+        foreach (var block in blocks)
         {
             foreach (var codeBlock in EnumerateCodeBlocks(block))
                 yield return codeBlock;

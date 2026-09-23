@@ -1,10 +1,10 @@
 # Opt-in progressive performance pipeline for MarkdownRenderer
 
 Status: in progress. The opt-in image-source, bounded raster decode, directional
-lookahead, background image reflow, and JitHub session wiring are implemented.
-The scene scheduler, copy-on-write layout publication, expanded corpus, and
-browser-relative release gates below remain work to complete before claiming
-this plan or the 1.0 performance goal is met.
+lookahead, cached raster previews, background image reflow, and JitHub session
+wiring are implemented. The scene scheduler, copy-on-write layout publication,
+expanded corpus, and browser-relative release gates below remain work to
+complete before claiming this plan or the 1.0 performance goal is met.
 
 ## Implementation checkpoint
 
@@ -23,11 +23,14 @@ this plan or the 1.0 performance goal is met.
   ARM64 library builds, and x64 JitHub NativeAOT publish.
 - Done: indexed adoption of realized hosted-element and code-action plans during
   relayout, removing the quadratic UI-thread match on image-heavy documents.
+- Done: code-block highlighting queries measured viewport bands rather than
+  scanning every measured block on each progressive scroll; a cached smaller
+  raster remains visible until the exact larger bitmap is ready.
 - Open: actual source-byte in-flight admission (a host resolver currently owns
   its download buffer), global queue fairness across documents, and copy-on-write
   layout publication with a measured ≤2 ms UI commit.
-- Open: cached-preview replacement on growth, oversized raster tiling, and
-  session-owned SVG/document/GPU preparation caches.
+- Open: oversized raster tiling and session-owned SVG/document/GPU preparation
+  caches.
 - Open: defer Math/Mermaid scenes and ahead-of-viewport highlighting without
   changing public eager `ParseAsync` semantics or losing diagnostics/UIA.
 - Open: expanded deterministic corpus and live top-500/Edge same-byte release

@@ -61,6 +61,62 @@ internal static class SharedCanvasBitmapCache
         return false;
     }
 
+    internal static bool TryAcquireBestRasterPreview(
+        CanvasDevice device,
+        string sourceIdentity,
+        int targetWidth,
+        int targetHeight,
+        out Lease? lease)
+    {
+        ArgumentNullException.ThrowIfNull(device);
+        ArgumentNullException.ThrowIfNull(sourceIdentity);
+        lease = null;
+        if (sourceIdentity.Length == 0 || targetWidth <= 0 || targetHeight <= 0)
+            return false;
+
+        string variantPrefix = string.Concat(sourceIdentity, "\u001Fdisplay:");
+        if (!Cache.TryGetBestMatch(
+                (key, entry) => ReferenceEquals(key.Device, device) &&
+                    IsExactDisplayVariantKey(key.Identity, variantPrefix) &&
+                    entry.PixelWidth > 0 &&
+                    entry.PixelHeight > 0 &&
+                    entry.PixelWidth <= targetWidth &&
+                    entry.PixelHeight <= targetHeight &&
+                    (entry.PixelWidth < targetWidth || entry.PixelHeight < targetHeight) &&
+                    entry.IntrinsicSize is not null,
+                static entry => (long)entry.PixelWidth * entry.PixelHeight,
+                out Entry? preview) ||
+            preview is null || !preview.TryAcquire())
+        {
+            return false;
+        }
+
+        lease = new Lease(preview);
+        return true;
+    }
+
+    private static bool IsExactDisplayVariantKey(string identity, string prefix)
+    {
+        if (!identity.StartsWith(prefix, StringComparison.Ordinal))
+            return false;
+
+        ReadOnlySpan<char> dimensions = identity.AsSpan(prefix.Length);
+        int separator = dimensions.IndexOf('x');
+        if (separator is <= 0 || separator == dimensions.Length - 1)
+            return false;
+        foreach (char digit in dimensions[..separator])
+        {
+            if (!char.IsAsciiDigit(digit))
+                return false;
+        }
+        foreach (char digit in dimensions[(separator + 1)..])
+        {
+            if (!char.IsAsciiDigit(digit))
+                return false;
+        }
+        return true;
+    }
+
     internal static Lease StoreAndAcquire(
         CanvasDevice device,
         string identity,
@@ -139,7 +195,7 @@ internal static class SharedCanvasBitmapCache
 
         internal CanvasDevice Device { get; }
 
-        private string Identity { get; }
+        internal string Identity { get; }
 
         public bool Equals(CacheKey? other) =>
             other is not null &&
@@ -162,6 +218,17 @@ internal static class SharedCanvasBitmapCache
             Bitmap = bitmap;
             WeightBytes = weightBytes;
             IntrinsicSize = intrinsicSize;
+            try
+            {
+                var pixels = bitmap.SizeInPixels;
+                PixelWidth = (int)pixels.Width;
+                PixelHeight = (int)pixels.Height;
+            }
+            catch
+            {
+                // A device-lost entry may still need normal lease retirement,
+                // but it must never be chosen as a preview candidate.
+            }
         }
 
         internal CanvasBitmap Bitmap { get; }
@@ -169,6 +236,10 @@ internal static class SharedCanvasBitmapCache
         internal long WeightBytes { get; }
 
         internal Size? IntrinsicSize { get; }
+
+        internal int PixelWidth { get; }
+
+        internal int PixelHeight { get; }
 
         internal void AddCacheReference() => Interlocked.Increment(ref _referenceCount);
 

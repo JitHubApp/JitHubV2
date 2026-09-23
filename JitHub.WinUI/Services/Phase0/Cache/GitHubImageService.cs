@@ -69,7 +69,10 @@ public sealed partial class GitHubImageService : IGitHubImageService, IDisposabl
     // RasterImageResourceBudget independently caps dimensions, frames, pixels,
     // and decoded memory before the renderer admits the payload.
     private const int MaxImageBytes = 32 * 1024 * 1024;
-    private const int MaxHttpAttempts = 2;
+    // Two consecutive CDN/HTTP2 stream failures were observed in the live
+    // README corpus. A third idempotent GET is bounded and only reached for
+    // errors classified as transient; policy and permanent responses fail fast.
+    private const int MaxHttpAttempts = 3;
     private const long MemoryCacheByteBudget = 64L * 1024 * 1024;
     private const int MemoryCacheEntryBudget = 2048;
     private static readonly TimeSpan TransientRetryDelay = TimeSpan.FromMilliseconds(125);
@@ -414,11 +417,10 @@ public sealed partial class GitHubImageService : IGitHubImageService, IDisposabl
                 !cancellationToken.IsCancellationRequested &&
                 IsTransientHttpFailure(exception))
             {
-                // README image storms occasionally lose one otherwise healthy
-                // CDN/release-asset transfer. A single bounded retry matches the
-                // resilience users expect from a browser without multiplying a
-                // permanent error, policy rejection, or canceled navigation.
-                await Task.Delay(TransientRetryDelay, cancellationToken).ConfigureAwait(false);
+                // Only transient failures reach this point. Back off the second
+                // retry to avoid immediately repeating a throttled CDN request.
+                await Task.Delay(TransientRetryDelay * attempt, cancellationToken)
+                    .ConfigureAwait(false);
             }
         }
 
@@ -444,7 +446,8 @@ public sealed partial class GitHubImageService : IGitHubImageService, IDisposabl
                 // Repository-relative images use an authenticated GitHub API
                 // fetcher rather than FetchHttpAsync. Give that idempotent GET
                 // the same single bounded recovery opportunity as CDN images.
-                await Task.Delay(TransientRetryDelay, cancellationToken).ConfigureAwait(false);
+                await Task.Delay(TransientRetryDelay * attempt, cancellationToken)
+                    .ConfigureAwait(false);
             }
         }
 

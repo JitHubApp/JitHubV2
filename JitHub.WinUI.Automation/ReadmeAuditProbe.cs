@@ -701,6 +701,7 @@ internal static partial class ReadmeAuditProbe
             auditOverheadMs += capture.Elapsed.TotalMilliseconds;
             width = Math.Max(width, tileWidth);
             viewportHeight = Math.Max(viewportHeight, tileHeight);
+            double elapsedAtCaptureMs = traversalWall.Elapsed.TotalMilliseconds;
             tiles.Add(new AuditTile
             {
                 Index = index,
@@ -708,6 +709,8 @@ internal static partial class ReadmeAuditProbe
                 Width = tileWidth,
                 Height = tileHeight,
                 File = file,
+                NativeTraversalElapsedAtCaptureMs = elapsedAtCaptureMs,
+                NativeChargedAtCaptureMs = Math.Max(0, elapsedAtCaptureMs - auditOverheadMs),
             });
 
             automationProbe.Restart();
@@ -724,9 +727,12 @@ internal static partial class ReadmeAuditProbe
             scroll.Scroll(ScrollAmount.NoAmount, ScrollAmount.LargeIncrement);
             automationProbe.Stop();
             auditOverheadMs += automationProbe.Elapsed.TotalMilliseconds;
-            TimeSpan scrollChangeTimeout = actual >= 99.5
-                ? TimeSpan.FromMilliseconds(250)
-                : TimeSpan.FromSeconds(5);
+            // WinUI's UIA LargeIncrement can be a no-op on the first request
+            // even though SetScrollPercent works. Probe it briefly, then use
+            // the explicit-percent fallback below. The fallback still waits
+            // up to five seconds for actual movement and fails if none occurs;
+            // a no-op command must not add a fixed five-second renderer charge.
+            TimeSpan scrollChangeTimeout = TimeSpan.FromMilliseconds(250);
             ScrollWaitResult scrollChange = WaitForScrollChange(
                 scroll,
                 actual,
@@ -2413,6 +2419,10 @@ internal sealed class AuditTile
     public double Width { get; init; }
     public double Height { get; init; }
     public string File { get; init; } = string.Empty;
+    // Cumulative clocks make each scroll step's renderer charge auditable
+    // without timing screenshot or UIA evidence capture as rendering work.
+    public double NativeTraversalElapsedAtCaptureMs { get; init; }
+    public double NativeChargedAtCaptureMs { get; init; }
 }
 
 internal sealed class NativeAuditResult
