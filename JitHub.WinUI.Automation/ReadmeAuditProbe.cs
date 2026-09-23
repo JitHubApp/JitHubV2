@@ -168,18 +168,49 @@ internal static partial class ReadmeAuditProbe
 
         try
         {
-            native = RunNativeAudit(
-                options,
-                repository,
-                caseDirectory,
-                accessToken,
-                browser?.Semantic.Images,
-                // GitHub intentionally displays some available README files as
-                // source (for example, extensionless or over-sized Markdown).
-                // Such cases have no comparable browser article. JitHub may
-                // still render them richly; its chosen native surface must
-                // remain complete and healthy even though ratios are omitted.
-                expectRenderedReadme: browser?.ReadmeRendered is not false);
+            // Each native attempt is a fresh production-app process. GitHub can
+            // temporarily reject an otherwise valid repository-tree request
+            // with its secondary "gitmon" network limit during a parallel audit.
+            // Retry only that upstream admission failure; never reinterpret a
+            // renderer failure, incomplete image, or failed comparison as a pass.
+            for (int attempt = 0; attempt < 3; attempt++)
+            {
+                try
+                {
+                    native = RunNativeAudit(
+                        options,
+                        repository,
+                        caseDirectory,
+                        accessToken,
+                        browser?.Semantic.Images,
+                        // GitHub intentionally displays some available README files as
+                        // source (for example, extensionless or over-sized Markdown).
+                        // Such cases have no comparable browser article. JitHub may
+                        // still render them richly; its chosen native surface must
+                        // remain complete and healthy even though ratios are omitted.
+                        expectRenderedReadme: browser?.ReadmeRendered is not false);
+                    break;
+                }
+                catch (Exception exception) when (IsTransientGitHubAdmissionFailure(exception))
+                {
+                    if (attempt == 2)
+                        throw new NativeAuditInfrastructureException(
+                            "GitHub rejected all three native repository-tree attempts " +
+                            "with its transient network admission limit.", exception);
+
+                    TimeSpan delay = attempt == 0
+                        ? TimeSpan.FromSeconds(15)
+                        : TimeSpan.FromSeconds(45);
+                    Console.WriteLine(
+                        $"README audit {repository.FullName}: GitHub temporarily rejected " +
+                        $"the native repository request; retrying in {delay.TotalSeconds:F0}s " +
+                        $"({attempt + 1}/2).");
+                    Thread.Sleep(delay);
+                }
+            }
+
+            if (native is null)
+                throw new InvalidOperationException("Native README audit produced no result.");
             if (native.UnavailableImages != 0)
             {
                 failures.Add($"JitHub reported {native.UnavailableImages} unavailable image(s).");
@@ -244,6 +275,19 @@ internal static partial class ReadmeAuditProbe
             Comparison = comparison,
             CompletedAtUtc = DateTimeOffset.UtcNow,
         };
+    }
+
+    private static bool IsTransientGitHubAdmissionFailure(Exception exception)
+    {
+        // The app writes the original exception and its stack into the audit
+        // failure signal; it crosses a process boundary as message text. Match
+        // both the typed transport error and GitHub's distinctive response so
+        // unrelated API, UI, or Markdown failures never enter this retry path.
+        string message = exception.ToString();
+        return message.Contains("GitHubRateLimitException:", StringComparison.Ordinal) &&
+            message.Contains(
+                "gitmon refuses to schedule us: fail-fast:network",
+                StringComparison.OrdinalIgnoreCase);
     }
 
     private static BrowserAuditResult RunBrowserOracle(
@@ -2525,7 +2569,12 @@ internal sealed class ReadmeAuditCaseResult
     public DateTimeOffset CompletedAtUtc { get; init; }
 }
 
-internal sealed class NativeAuditInfrastructureException(string message) : Exception(message);
+internal sealed class NativeAuditInfrastructureException : Exception
+{
+    internal NativeAuditInfrastructureException(string message) : base(message) { }
+    internal NativeAuditInfrastructureException(string message, Exception innerException)
+        : base(message, innerException) { }
+}
 
 internal sealed class ReadmeAuditSummary
 {

@@ -39,6 +39,14 @@ complete before claiming this plan or the 1.0 performance goal is met.
   contributor image). A same-byte replay is still needed to isolate client
   work conclusively. This does not substitute for the same-byte offline
   Edge oracle or the architecture/device release matrix below.
+- The subsequent `69c89fc` live audit encountered GitHub's secondary
+  `gitmon ... fail-fast:network` rejection while JitHub loaded the
+  `NousResearch/hermes-agent` repository tree (rank 19); Edge had rendered
+  the page, but native Markdown rendering had not begun. The audit now retries
+  only this exact upstream admission failure with bounded delays and reports
+  an infrastructure failure if all attempts are rejected. This is not counted
+  as a renderer pass or as qualified 500/500 evidence; the full current-head
+  audit must pass again.
 - Measured: the full x64 repeated-construction release benchmark is not yet
   qualified. Both reference and candidate failed its stationarity contract;
   the candidate's full run dropped to about 121 observed Hz on a configured
