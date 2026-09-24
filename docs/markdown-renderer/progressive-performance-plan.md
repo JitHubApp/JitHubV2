@@ -396,6 +396,16 @@ complete before claiming this plan or the 1.0 performance goal is met.
   these page-level measurements neither waive the missing image nor establish
   the mandatory same-byte Edge parity or qualified release benchmark. The
   `9a94a7a` full rerun (`36007051224`) is in progress.
+- That `9a94a7a` rerun's ranks 101-125 shard reported 24/25 passing. Rank
+  101 (`immich-app/immich`) had two small, valid Camo SVG badges resolve to
+  622 and 2,561 bytes in about 61 and 367 ms respectively, then both became
+  unavailable after separate **font-catalog** initialization timeouts at the
+  unchanged 15-second deadline. This is neither image transport nor the
+  three-second content-open timeout. The affected full-page native/Edge ratio
+  was 1.252. The audit-only worker CPU evidence landed at `00f5c68`, after
+  this run; the next current-head recurrence must distinguish CPU-heavy font
+  enumeration/warmup from off-CPU stalling before changing the font path or
+  its deadline. The 750 ms responsive cold-text target remains open.
 - Worker deadline evidence now includes the isolated worker process's CPU
   milliseconds during each timed-out transaction, with `-1` when Windows
   cannot provide a reading. CPU sampling is enabled only when an audit event
