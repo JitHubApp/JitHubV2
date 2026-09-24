@@ -567,6 +567,7 @@ public partial class MarkdownRendererControl : UserControl, IDisposable, IMarkdo
     // viewport + LazyImageOverscanPx band.  Images already in the
     // in-memory cache start loading (no-op) immediately after build.
     private readonly List<Layout.Boxes.ImageBox> _imagePlans = new();
+    private ViewportBandIndex? _imagePlanIndex;
     private readonly HashSet<Layout.Boxes.ImageBox> _subscribedImages = new();
     private string? _prefetchedMarkdownSource;
     private IMarkdownImagePrefetcher? _activeImagePrefetcher;
@@ -3082,6 +3083,7 @@ public partial class MarkdownRendererControl : UserControl, IDisposable, IMarkdo
         _codeBlockActionPlans.Clear();
         _codeBlockCopyButtonPool.Clear();
         _imagePlans.Clear();
+        _imagePlanIndex = null;
         _prefetchedMarkdownSource = null;
         _activeImagePrefetcher = null;
         _activeImagePrefetchContext = null;
@@ -4145,6 +4147,7 @@ public partial class MarkdownRendererControl : UserControl, IDisposable, IMarkdo
         _codeBlockActionPlans.Clear();
         UnsubscribeAllImages();
         _imagePlans.Clear();
+        _imagePlanIndex = null;
         // Identities change across rebuild even when the count happens to
         // match — reset so the first post-rebuild realisation always fires.
         _lastFiredRealizedCount = -1;
@@ -5009,6 +5012,7 @@ public partial class MarkdownRendererControl : UserControl, IDisposable, IMarkdo
 
         UnsubscribeAllImages();
         _imagePlans.Clear();
+        _imagePlanIndex = null;
         _embedRects.Clear();
         _blockEmbedRects.Clear();
         _codeBlockActionRects.Clear();
@@ -5017,6 +5021,20 @@ public partial class MarkdownRendererControl : UserControl, IDisposable, IMarkdo
 
         foreach (var b in snapshot.GetMeasuredTopLevelBlocks())
             CollectEmbedPlans(b);
+
+        // Image plans are immutable until the next layout publication. Keep
+        // their document order in the list, but query the measured viewport
+        // through a vertical index instead of walking every image on a scroll.
+        if (_imagePlans.Count > 0)
+        {
+            _imagePlanIndex = new ViewportBandIndex(_imagePlans.Count);
+            for (int index = 0; index < _imagePlans.Count; index++)
+            {
+                Rect bounds = _imagePlans[index].Bounds;
+                _imagePlanIndex.SetEntry(index, index, bounds.Top, bounds.Bottom);
+            }
+            _imagePlanIndex.Commit();
+        }
 
         if (oldPlans.Length > 0)
         {
@@ -5145,8 +5163,10 @@ public partial class MarkdownRendererControl : UserControl, IDisposable, IMarkdo
             : LazyLayoutBand.FromViewport(top, viewportHeight, LazyImageOverscanPx);
         double imgLoadTop = imageBand.Top;
         double imgLoadBottom = imageBand.Bottom;
-        foreach (var img in _imagePlans)
+        ViewportRange imageRange = _imagePlanIndex?.Find(imgLoadTop, imgLoadBottom) ?? default;
+        for (int index = imageRange.Start; index < imageRange.End; index++)
         {
+            var img = _imagePlans[_imagePlanIndex!.GetBlockOrdinal(index)];
             if (img.Bounds.Bottom >= imgLoadTop && img.Bounds.Top <= imgLoadBottom)
                 img.EnsureLoading();
         }
@@ -5460,8 +5480,7 @@ public partial class MarkdownRendererControl : UserControl, IDisposable, IMarkdo
 
     private void AddImagePlan(Layout.Boxes.ImageBox image)
     {
-        RegisterImage(image);
-        if (_imagePlans.Contains(image))
+        if (!RegisterImage(image))
             return;
 
         _imagePlans.Add(image);
@@ -5557,12 +5576,13 @@ public partial class MarkdownRendererControl : UserControl, IDisposable, IMarkdo
         }
     }
 
-    private void RegisterImage(Layout.Boxes.ImageBox image)
+    private bool RegisterImage(Layout.Boxes.ImageBox image)
     {
         if (!_subscribedImages.Add(image))
-            return;
+            return false;
 
         image.LoadCompleted += OnImageLoadCompleted;
+        return true;
     }
 
     private void UnsubscribeAllImages()

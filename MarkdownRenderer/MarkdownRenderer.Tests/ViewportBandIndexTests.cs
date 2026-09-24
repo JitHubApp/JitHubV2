@@ -84,6 +84,35 @@ public sealed class ViewportBandIndexTests
         Assert.False(ContainsBlock(index, range, 2));
     }
 
+    [Fact]
+    public void ImageStormViewportQueryKeepsOnlyNearbyImagesAndTracksReflow()
+    {
+        const int imageCount = 1_800;
+        var index = new ViewportBandIndex(imageCount);
+        for (int image = 0; image < imageCount; image++)
+            index.SetEntry(image, image, image * 120, image * 120 + 80);
+        index.Commit();
+
+        ViewportRange range = index.Find(120_000, 120_600);
+        Assert.True(range.End - range.Start <= 7);
+        Assert.True(ContainsBlock(index, range, 1_000));
+        Assert.False(ContainsBlock(index, range, 1_400));
+
+        // A measured image can change height after its intrinsic size arrives.
+        // Replacing the index at layout publication must not strand later images.
+        for (int image = 0; image < imageCount; image++)
+        {
+            double top = image < 1_000 ? image * 120 : image * 120 + 500;
+            index.SetEntry(image, image, top, top + 80);
+        }
+        index.Commit();
+
+        range = index.Find(120_500, 121_100);
+        Assert.True(range.End - range.Start <= 7);
+        Assert.True(ContainsBlock(index, range, 1_000));
+        Assert.False(ContainsBlock(index, range, 1_400));
+    }
+
     private static void Refresh(ViewportBandIndex index, int blockCount, int heightBias)
     {
         double y = 0;

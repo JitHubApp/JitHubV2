@@ -160,8 +160,22 @@ complete before claiming this plan or the 1.0 performance goal is met.
   the TextBox-normalized source used by its task command; previously CRLF-to-CR
   normalization shifted task source ranges and disabled the checkbox. The
   test explicitly asserts the editable checkbox is enabled before tapping it.
-  This avoids native control construction on the common path; it does not yet
-  measure or establish a passing first-viewport allocation or frame-time gate.
+  This avoids native control construction on the common path. A later
+  20-presentation diagnostic at `21e96fd` still allocated about 36.8 MiB per
+  uncached 1 MiB presentation and 29.4 MiB with a parse-cache hit. Its timing
+  failed stationarity while the external-gate mutation suite also ran on the
+  machine; neither its timing nor the difference from an older diagnostic is
+  qualified release evidence. The construction/layout bottleneck remains open.
+- Locally verified, pending current-head CI and a qualified benchmark:
+  measured image plans now use the existing subscription identity
+  set for constant-time deduplication and a reusable vertical viewport index.
+  Scroll-time source activation visits only nearby images rather than every
+  measured image, including after image-driven relayout. This targets the
+  1,800-image storm and long fully traversed READMEs. The x64 Release renderer
+  and sample build, 939 fast managed tests (including the indexed 1,800-image
+  reflow case), and all 11 scripted touch/hosted-control UI checks passed;
+  one High Contrast screenshot was inspected. This does not establish the
+  first-viewport, frame, or memory release gates by itself.
 - Open: actual source-byte in-flight admission (a host resolver currently owns
   its download buffer). It needs priority-aware byte admission across the
   renderer session and JitHub's HTTP/authenticated fetches, not a per-request
