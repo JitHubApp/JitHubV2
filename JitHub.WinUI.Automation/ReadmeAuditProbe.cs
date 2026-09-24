@@ -498,6 +498,8 @@ internal static partial class ReadmeAuditProbe
                 string? absentFailure = File.Exists(renderFailure) ? File.ReadAllText(renderFailure) : null;
                 long absentPeakWorkingSetBytes = appProcess.PeakWorkingSet64;
                 ReadmeAuditCloseResult absentClose = CloseAndWait(window, appProcess, launcher);
+                if (!absentClose.CleanExit)
+                    PreserveShutdownExceptionDiagnostics(dataRoot, output);
                 PreserveEvidenceFile(shutdownStageEvidence, Path.Combine(output, "shutdown-stage.json"));
                 PreserveEvidenceFile(svgPreflightEvidence, Path.Combine(output, "svg-preflight-rejections.ndjson"));
                 window = null;
@@ -552,6 +554,8 @@ internal static partial class ReadmeAuditProbe
                     string? sourceFailure = File.Exists(renderFailure) ? File.ReadAllText(renderFailure) : null;
                     long sourcePeakWorkingSetBytes = appProcess.PeakWorkingSet64;
                     ReadmeAuditCloseResult sourceClose = CloseAndWait(window, appProcess, launcher);
+                    if (!sourceClose.CleanExit)
+                        PreserveShutdownExceptionDiagnostics(dataRoot, output);
                     PreserveEvidenceFile(shutdownStageEvidence, Path.Combine(output, "shutdown-stage.json"));
                     PreserveEvidenceFile(svgPreflightEvidence, Path.Combine(output, "svg-preflight-rejections.ndjson"));
                     window = null;
@@ -638,6 +642,8 @@ internal static partial class ReadmeAuditProbe
             PreserveEvidenceFile(svgPreflightEvidence, Path.Combine(output, "svg-preflight-rejections.ndjson"));
 
             ReadmeAuditCloseResult close = CloseAndWait(window, appProcess, launcher);
+            if (!close.CleanExit)
+                PreserveShutdownExceptionDiagnostics(dataRoot, output);
             PreserveEvidenceFile(shutdownStageEvidence, Path.Combine(output, "shutdown-stage.json"));
             window = null;
             return new NativeAuditResult
@@ -1988,6 +1994,30 @@ internal static partial class ReadmeAuditProbe
         catch
         {
             // Diagnostics must never hide the launch failure they describe.
+        }
+    }
+
+    private static void PreserveShutdownExceptionDiagnostics(string dataRoot, string output)
+    {
+        // Audit artifacts may be public. Preserve only exception categories
+        // relevant to a nonzero exit, not every account/session log.
+        string logs = Path.Combine(dataRoot, "Local", "logs");
+        foreach (string name in new[]
+        {
+            "xaml-unhandled.log",
+            "appdomain-unhandled.log",
+            "task-unobserved.log",
+            "markdown-runtime-shutdown.log",
+        })
+        {
+            try
+            {
+                string source = Path.Combine(logs, name);
+                if (File.Exists(source))
+                    File.Copy(source, Path.Combine(output, name), overwrite: true);
+            }
+            catch (IOException) { }
+            catch (UnauthorizedAccessException) { }
         }
     }
 

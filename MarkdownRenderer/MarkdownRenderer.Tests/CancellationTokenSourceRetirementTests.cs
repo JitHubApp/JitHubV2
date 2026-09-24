@@ -72,7 +72,10 @@ public sealed class CancellationTokenSourceRetirementTests
             source,
             callbacks);
 
-        await retirement.WaitAsync(TimeSpan.FromSeconds(2));
+        // CancelAsync schedules registered callbacks on the thread pool. This
+        // is a lifetime-ordering assertion, not a latency gate: a busy CI host
+        // may delay that callback beyond two seconds without losing it.
+        await retirement.WaitAsync(TimeSpan.FromSeconds(10));
         Assert.True(callbacks.IsFaulted);
         Assert.NotNull(callbacks.Exception);
         Assert.Throws<ObjectDisposedException>(() =>

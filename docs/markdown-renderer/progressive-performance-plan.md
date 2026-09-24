@@ -485,6 +485,24 @@ complete before claiming this plan or the 1.0 performance goal is met.
   builds and all 35 focused source-contract tests pass locally. A new hosted
   500-case run is required; the failed run provides no valid renderer or
   performance pass count.
+- The corrected `c9dc3c3` top-500 run (`36057504209`, first attempt) reached
+  499/500 passes. Rank 348's badge passed on this run, but that does not explain
+  its previous 469-byte response. Rank 371
+  (`CorentinJ/Real-Time-Voice-Cloning`) had complete text/structure, its one
+  image rendered, and zero unavailable images; the app then exited with
+  `0xC000027B` during SVG-renderer shutdown, with the last audit stage at
+  `svg-renderer-disposal-started`. Twenty exact pinned-README local native
+  replays closed cleanly, so this intermittent hosted crash is not yet fixed.
+  The audit now retains the app's existing exception logs whenever shutdown is
+  unclean, not only when the harness itself throws; the strict clean-exit gate
+  remains. A failed-shard rerun of the original commit is in progress. The
+  current-head Preview Validation separately failed one cancellation-retirement
+  ordering test because its arbitrary two-second callback-scheduling timeout
+  elapsed under CI load. That non-performance timeout is now ten seconds; the
+  product performance deadlines are unchanged. Twenty focused Release x64 test
+  iterations,
+  automation-harness build, and 35 harness contract tests pass locally. Neither
+  a local replay nor an incomplete rerun establishes a 500/500 release verdict.
 - Measured: the full x64 repeated-construction release benchmark is not yet
   qualified. Both reference and candidate failed its stationarity contract;
   the candidate's full run dropped to about 121 observed Hz on a configured

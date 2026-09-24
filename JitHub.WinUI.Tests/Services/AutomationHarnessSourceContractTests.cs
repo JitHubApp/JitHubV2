@@ -218,6 +218,9 @@ public sealed class AutomationHarnessSourceContractTests
         Assert.Contains("RepoCodeFileTree", nativeProbe, StringComparison.Ordinal);
         Assert.Contains("if (result.InfrastructureFailure)", nativeProbe, StringComparison.Ordinal);
         Assert.Contains("PreserveStartupDiagnostics(dataRoot, output, launcher)", nativeProbe, StringComparison.Ordinal);
+        Assert.Equal(3, Regex.Matches(
+            nativeProbe,
+            "PreserveShutdownExceptionDiagnostics\\(dataRoot, output\\)").Count);
         Assert.Contains("app-exit-timeout-12s", nativeProbe, StringComparison.Ordinal);
         Assert.Contains("app-exit-code-0x", nativeProbe, StringComparison.Ordinal);
         Assert.Contains("OpenProcessExitHandle(appProcess.Id)", nativeProbe, StringComparison.Ordinal);
