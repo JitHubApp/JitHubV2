@@ -327,8 +327,25 @@ complete before claiming this plan or the 1.0 performance goal is met.
   cancel/await the losing waiter without canceling other shared callers.
   The six focused fallback tests, all 3,057 x64 Release app tests, and the
   x64 Release app build pass locally. This is not yet a rank-189 pass: the
-  current-head top-500 run predates the hedge, and source/worker completion
-  must be verified on a new full audit.
+  earlier completed audit predates the hedge, and source/worker completion
+  must be verified in the pending latest-head full audit.
+- The older-head `398e132` top-500 run (`35975382655`) failed rank 54
+  (`langgenius/dify`): 17 valid Camo SVGs resolved to nonempty bytes, but one
+  worker **open** exceeded the unchanged three-second deadline and 16 others
+  reported `WorkerFailure` immediately afterward. This is a failure cascade,
+  not 17 independent invalid images. Windows documents that `TerminateProcess`
+  [returns before termination completes](https://learn.microsoft.com/en-us/windows/win32/api/processthreadsapi/nf-processthreadsapi-terminateprocess);
+  the worker pool previously launched replacements immediately against its
+  one/two-process Job Object limit. Exceptional worker disposal now waits
+  boundedly for the terminated process before the slot is reused, including
+  startup cleanup. All 59 x64 Release provider tests pass, including a
+  repeated one-process-job restart test. The job-limit race is a plausible
+  cause, not proven from the existing audit (which recorded only typed image
+  failures); a full hosted recurrence must establish whether the cascade is
+  gone. The initiating three-second SVG open timeout also remains a separate
+  release blocker even if unrelated queued images recover.
+  The x86 and ARM64 Release provider builds also pass locally; architecture
+  runtime and fault-injection evidence remain outstanding.
 - Measured: the full x64 repeated-construction release benchmark is not yet
   qualified. Both reference and candidate failed its stationarity contract;
   the candidate's full run dropped to about 121 observed Hz on a configured

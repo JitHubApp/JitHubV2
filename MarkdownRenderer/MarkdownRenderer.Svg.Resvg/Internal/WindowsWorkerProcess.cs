@@ -130,6 +130,7 @@ internal sealed partial class WindowsWorkerProcess : IAsyncDisposable, IDisposab
             if (process is not null)
             {
                 _ = TerminateProcess(process, WorkerTerminationExitCode);
+                _ = WaitForSingleObject(process, WorkerTerminationWaitMilliseconds);
                 process.Dispose();
             }
             pipe?.Dispose();
@@ -177,17 +178,17 @@ internal sealed partial class WindowsWorkerProcess : IAsyncDisposable, IDisposab
                 WorkerTimeoutEvents.Log.Timeout(
                     stage: (int)request.Operation,
                     deadlineMilliseconds: (int)deadline.TotalMilliseconds);
-                Dispose();
+                DisposeForRestart();
                 throw new WorkerDeadlineException("The resvg worker exceeded its request deadline.", exception);
             }
             catch (OperationCanceledException)
             {
-                Dispose();
+                DisposeForRestart();
                 throw;
             }
             catch (Exception exception) when (exception is IOException or InvalidOperationException)
             {
-                Dispose();
+                DisposeForRestart();
                 throw new WorkerProtocolException("The resvg worker transport failed.", exception);
             }
 
@@ -205,12 +206,24 @@ internal sealed partial class WindowsWorkerProcess : IAsyncDisposable, IDisposab
         }
     }
 
-    public void Dispose()
+    public void Dispose() => DisposeCore(waitForExit: false);
+
+    internal void DisposeForRestart() => DisposeCore(waitForExit: true);
+
+    private void DisposeCore(bool waitForExit)
     {
         if (Interlocked.Exchange(ref _disposed, 1) != 0)
             return;
         _pipe.Dispose();
         _ = TerminateProcess(_process, WorkerTerminationExitCode);
+        if (waitForExit)
+        {
+            // TerminateProcess is asynchronous. The job counts a dying process
+            // until it is signaled; immediately launching its replacement can
+            // exceed the one/two-process job limit and fail unrelated queued
+            // images in a cascade after one content timeout.
+            _ = WaitForSingleObject(_process, WorkerTerminationWaitMilliseconds);
+        }
         _process.Dispose();
         // An active ExchangeAsync releases this gate in its finally block.
         // SemaphoreSlim owns no native handle, so retaining it avoids masking
@@ -366,6 +379,7 @@ internal sealed partial class WindowsWorkerProcess : IAsyncDisposable, IDisposab
                                 catch
                                 {
                                     _ = TerminateProcess(process, WorkerTerminationExitCode);
+                                    _ = WaitForSingleObject(process, WorkerTerminationWaitMilliseconds);
                                     process.Dispose();
                                     throw;
                                 }
@@ -467,6 +481,7 @@ internal sealed partial class WindowsWorkerProcess : IAsyncDisposable, IDisposab
     private const uint SeGroupIntegrity = 0x00000020;
     private const uint WaitTimeout = 0x00000102;
     private const uint WorkerTerminationExitCode = 0xE0000001;
+    private const uint WorkerTerminationWaitMilliseconds = 3_000;
     private const nuint ProcThreadAttributeMitigationPolicy = 0x00020007;
     private const ulong MitigationDepEnable = 0x00000001;
     private const ulong MitigationSehopEnable = 0x00000004;

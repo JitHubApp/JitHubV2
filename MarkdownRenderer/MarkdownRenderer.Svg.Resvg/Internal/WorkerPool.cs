@@ -470,7 +470,7 @@ internal sealed class WorkerPool : IAsyncDisposable, IDisposable
             stale = lease.Slot.Worker;
             lease.Slot.Worker = null;
         }
-        stale?.Dispose();
+        stale?.DisposeForRestart();
 
         WindowsWorkerProcess created;
         try
@@ -778,7 +778,7 @@ internal sealed class WorkerPool : IAsyncDisposable, IDisposable
             if (ReferenceEquals(slot.Worker, worker))
                 slot.Worker = null;
         }
-        worker.Dispose();
+        worker.DisposeForRestart();
     }
 
     private void Invalidate(WindowsWorkerProcess worker)
@@ -790,7 +790,7 @@ internal sealed class WorkerPool : IAsyncDisposable, IDisposable
             if (_secondary is not null && ReferenceEquals(_secondary.Worker, worker))
                 _secondary.Worker = null;
         }
-        worker.Dispose();
+        worker.DisposeForRestart();
     }
 
     private void RecordStartupFailure()

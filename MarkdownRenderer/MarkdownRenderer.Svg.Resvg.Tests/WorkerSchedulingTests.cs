@@ -10,6 +10,27 @@ namespace MarkdownRenderer.Svg.Resvg.Tests;
 public sealed class WorkerSchedulingTests
 {
     [Fact]
+    public async Task RestartReleasesTheSingleProcessJobSlotBeforeStartingAnotherWorker()
+    {
+        var options = new ResvgMarkdownSvgRendererOptions();
+        using var job = WindowsWorkerProcess.CreateConstrainedJob(
+            options.WorkerCommitBytes,
+            activeProcessLimit: 1);
+        string executable = Path.Combine(AppContext.BaseDirectory, WorkerProtocol.WorkerFileName);
+
+        for (int attempt = 0; attempt < 4; attempt++)
+        {
+            WindowsWorkerProcess worker = await WindowsWorkerProcess.StartAsync(
+                executable,
+                options,
+                job,
+                CancellationToken.None);
+            Assert.False(worker.HasExited);
+            worker.DisposeForRestart();
+        }
+    }
+
+    [Fact]
     public void WorkerTimeoutEvidenceContainsOnlyPhaseAndBoundedDeadline()
     {
         using var listener = new TimeoutListener();
