@@ -180,6 +180,38 @@ complete before claiming this plan or the 1.0 performance goal is met.
   render and 1.79 full-page ratios with 4,969 ms first-render CPU, so native
   client work remains a concrete suspect. Preserve both as same-byte replay
   targets; do not infer parity from the aggregate p95.
+- Locally verified at `199050d` plus audit instrumentation: the production
+  README audit now records privacy-safe `MarkdownPerformanceSession` counters
+  at first render and after the last native traversal tile, plus each resolved
+  image's start and elapsed resolver time. Its rank-203
+  (`d2l-ai/d2l-zh`) focused Release replay passed with zero unavailable images,
+  100% text coverage, 99.65% structure, and native/Edge timings of 557/1102 ms
+  first render and 588/1926 ms full traversal. At first render, five source
+  resolutions had begun and two remained active; cumulative resolver time was
+  628 ms across requests. By traversal completion, resolver time was 1500 ms,
+  cumulative raster-preparation slot time 150 ms, and scene-preparation slot
+  time 1 ms. This was a live-network replay on a different run, not an
+  identical-byte proof that the earlier 7.2-second outlier was external. A
+  second focused rank-203 run after the image-duration change passed at 524 ms
+  first render and 583 ms full traversal; all five image resolutions began
+  within about 80 ms of each other and took 247-354 ms each. The same final
+  build passed rank 60 (`anthropics/claude-code`) at 456 ms first render and
+  488 ms full traversal, versus Edge's 1151/2586 ms. Its 11,002,760-byte GIF
+  started alongside the badges and resolved in 801 ms, whereas the earlier
+  run had it arriving about six seconds late. This supports transient delivery
+  as an explanation but cannot prove it without identical-byte replay. Keep
+  both ranks in that set. The diagnostic audit counters are not a substitute
+  for the qualified release benchmark.
+- The older-head `cd45168` top-500 run (`35947027862`) failed its 201-250
+  shard at rank 247 (`666ghj/MiroFish`): the valid 20,087-byte
+  `star-history-light.svg` resolved, then the isolated resvg path reported a
+  `Timeout` and JitHub showed one unavailable image. The other 49 shard cases
+  passed. A focused Release rerun of the same pinned rank on the later local
+  build passed with 21/21 image/media observations and no unavailable image,
+  but this is not a waiver for the hosted timeout. It may be a cold font/worker
+  initialization or a three-second content-render deadline; current audit
+  evidence does not distinguish them. Preserve the failing artifact and add
+  phase-specific SVG timing/failure evidence before attributing or fixing it.
 - Measured: the full x64 repeated-construction release benchmark is not yet
   qualified. Both reference and candidate failed its stationarity contract;
   the candidate's full run dropped to about 121 observed Hz on a configured

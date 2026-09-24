@@ -14,6 +14,7 @@ using MarkdownRenderer;
 using MarkdownRenderer.Controls;
 using MarkdownRenderer.GitHub;
 using MarkdownRenderer.Images;
+using MarkdownRenderer.Performance;
 using MarkdownRenderer.Theming;
 using Microsoft.UI;
 using Microsoft.UI.Xaml;
@@ -564,7 +565,8 @@ public sealed partial class MarkdownViewer : UserControl
                 width,
                 height,
                 documentTop,
-                error: null);
+                error: null,
+                performance: CaptureAuditPerformance(renderer));
         }
         catch (Exception exception)
         {
@@ -574,12 +576,39 @@ public sealed partial class MarkdownViewer : UserControl
                 width: 0,
                 height: 0,
                 documentTop: 0,
-                error: exception.ToString());
+                error: exception.ToString(),
+                performance: CaptureAuditPerformance(renderer));
         }
         finally
         {
             _auditCapturePending = false;
         }
+    }
+
+    private static MarkdownLifecycleAutomationBridge.MarkdownAuditPerformanceSnapshot?
+        CaptureAuditPerformance(MarkdownRendererControl? renderer)
+    {
+        if (!MarkdownLifecycleAutomationBridge.IsEvidenceEnabled ||
+            renderer?.PerformanceSession is not { } session)
+        {
+            return null;
+        }
+
+        MarkdownPerformanceSnapshot snapshot = session.GetSnapshot();
+        return new MarkdownLifecycleAutomationBridge.MarkdownAuditPerformanceSnapshot(
+            snapshot.SourceCacheBytes,
+            snapshot.SourceCacheHits,
+            snapshot.ImageFetches,
+            snapshot.ImageFetchMilliseconds,
+            snapshot.ImageFetchFailures,
+            snapshot.ImageFetchCancellations,
+            snapshot.SourceCacheEvictions,
+            snapshot.PendingImageFetches,
+            snapshot.ActiveImageFetches,
+            snapshot.CpuPreparations,
+            snapshot.CpuPreparationMilliseconds,
+            snapshot.ScenePreparations,
+            snapshot.ScenePreparationMilliseconds);
     }
 #pragma warning restore MR1001
 
@@ -1078,8 +1107,14 @@ public sealed partial class MarkdownViewer : UserControl
 
     private void OnRendererRenderCompleted(object? sender, EventArgs e)
     {
-        MarkdownLifecycleAutomationBridge.RecordRenderComplete(
-            MarkdownHostContract.GetAutomationId(HostKind, AutomationInstanceId));
+        if (MarkdownLifecycleAutomationBridge.IsEvidenceEnabled)
+        {
+            DateTimeOffset completedAt = DateTimeOffset.UtcNow;
+            MarkdownLifecycleAutomationBridge.RecordRenderComplete(
+                MarkdownHostContract.GetAutomationId(HostKind, AutomationInstanceId),
+                completedAt,
+                CaptureAuditPerformance(_renderer));
+        }
         RenderErrorInfoBar.IsOpen = false;
         if (!_retryRenderPending)
         {

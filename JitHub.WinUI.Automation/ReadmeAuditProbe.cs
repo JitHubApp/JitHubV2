@@ -571,6 +571,7 @@ internal static partial class ReadmeAuditProbe
             double coldStartToFirstRenderMs = wall.Elapsed.TotalMilliseconds;
             double experienceFirstRenderMs = coldStartToFirstRenderMs - appReadyElapsedMs;
             double firstRenderMs = ReadSignalElapsedMilliseconds(hostReady, renderComplete);
+            ReadmeAuditPerformanceSnapshot firstPerformance = ReadPerformanceSnapshot(renderComplete);
             appProcess.Refresh();
             double firstRenderCpuMs = Math.Max(
                 0,
@@ -587,6 +588,7 @@ internal static partial class ReadmeAuditProbe
                 appProcess,
                 captureRequest,
                 captureResponse);
+            ReadmeAuditPerformanceSnapshot fullPerformance = ReadPerformanceSnapshot(captureResponse);
             // Keep repository navigation, API loading, UIA stability checks, and
             // screenshot capture out of the renderer comparison. The lifecycle
             // signals measure initial Markdown host publication, while elapsed
@@ -627,6 +629,8 @@ internal static partial class ReadmeAuditProbe
                 AuditOverheadMs = textProbe.Elapsed.TotalMilliseconds + traversal.AuditOverheadMs,
                 FirstRenderCpuMs = firstRenderCpuMs,
                 CpuMs = cpuMs,
+                FirstPerformance = firstPerformance,
+                FullPerformance = fullPerformance,
                 PeakWorkingSetBytes = peakWorkingSetBytes,
                 Text = NormalizeText(text),
                 MermaidSources = traversal.MermaidSources,
@@ -1591,6 +1595,32 @@ internal static partial class ReadmeAuditProbe
         return value;
     }
 
+    private static ReadmeAuditPerformanceSnapshot ReadPerformanceSnapshot(string path)
+    {
+        using JsonDocument document = JsonDocument.Parse(File.ReadAllText(path));
+        if (!document.RootElement.TryGetProperty("Performance", out JsonElement performance) ||
+            performance.ValueKind != JsonValueKind.Object)
+        {
+            throw new InvalidDataException(
+                $"Markdown audit signal '{path}' did not include performance counters.");
+        }
+
+        ReadmeAuditPerformanceSnapshot? snapshot = performance.Deserialize<ReadmeAuditPerformanceSnapshot>(JsonOptions);
+        if (snapshot is null || snapshot.SourceCacheBytes < 0 || snapshot.SourceCacheHits < 0 ||
+            snapshot.ImageFetches < 0 || snapshot.ImageFetchMilliseconds < 0 ||
+            snapshot.ImageFetchFailures < 0 || snapshot.ImageFetchCancellations < 0 ||
+            snapshot.SourceCacheEvictions < 0 || snapshot.PendingImageFetches < 0 ||
+            snapshot.ActiveImageFetches < 0 || snapshot.CpuPreparations < 0 ||
+            snapshot.CpuPreparationMilliseconds < 0 || snapshot.ScenePreparations < 0 ||
+            snapshot.ScenePreparationMilliseconds < 0)
+        {
+            throw new InvalidDataException(
+                $"Markdown audit signal '{path}' contained invalid performance counters.");
+        }
+
+        return snapshot;
+    }
+
     private static void SetScrollPercentWithRetry(
         AutomationElement host,
         ref IScrollPattern scroll,
@@ -2357,7 +2387,25 @@ internal static partial class ReadmeAuditProbe
         int Width,
         int Height,
         double DocumentTop,
-        string? Error);
+        string? Error,
+        ReadmeAuditPerformanceSnapshot? Performance);
+}
+
+internal sealed class ReadmeAuditPerformanceSnapshot
+{
+    public required long SourceCacheBytes { get; init; }
+    public required long SourceCacheHits { get; init; }
+    public required long ImageFetches { get; init; }
+    public required long ImageFetchMilliseconds { get; init; }
+    public required long ImageFetchFailures { get; init; }
+    public required long ImageFetchCancellations { get; init; }
+    public required long SourceCacheEvictions { get; init; }
+    public required int PendingImageFetches { get; init; }
+    public required int ActiveImageFetches { get; init; }
+    public required long CpuPreparations { get; init; }
+    public required long CpuPreparationMilliseconds { get; init; }
+    public required long ScenePreparations { get; init; }
+    public required long ScenePreparationMilliseconds { get; init; }
 }
 
 internal sealed class ReadmeAuditManifest
@@ -2492,6 +2540,8 @@ internal sealed class NativeAuditResult
     public double AuditOverheadMs { get; init; }
     public double FirstRenderCpuMs { get; init; }
     public double CpuMs { get; init; }
+    public ReadmeAuditPerformanceSnapshot? FirstPerformance { get; init; }
+    public ReadmeAuditPerformanceSnapshot? FullPerformance { get; init; }
     public long PeakWorkingSetBytes { get; init; }
     public string Text { get; init; } = string.Empty;
     public IReadOnlyList<string> MermaidSources { get; init; } = [];

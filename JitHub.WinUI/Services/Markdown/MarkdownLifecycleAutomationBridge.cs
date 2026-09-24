@@ -269,7 +269,9 @@ internal static partial class MarkdownLifecycleAutomationBridge
 
     public static void RecordImageResolution(
         string source,
-        MarkdownRenderer.Images.MarkdownImageResolution resolution)
+        MarkdownRenderer.Images.MarkdownImageResolution resolution,
+        DateTimeOffset startedAt,
+        double elapsedMilliseconds)
     {
         if (!IsEvidenceEnabled)
         {
@@ -298,6 +300,8 @@ internal static partial class MarkdownLifecycleAutomationBridge
                         resolution.Asset?.ContentType,
                         resolution.Asset?.ResolvedUri?.AbsoluteUri,
                         resolution.UnavailableReason.ToString(),
+                        startedAt,
+                        elapsedMilliseconds,
                         DateTimeOffset.UtcNow),
                     MarkdownLifecycleJsonContext.Default.ImageResolutionSignal);
                 File.AppendAllText(fullPath, entry + Environment.NewLine);
@@ -359,7 +363,10 @@ internal static partial class MarkdownLifecycleAutomationBridge
         }
     }
 
-    public static void RecordRenderComplete(string automationId)
+    public static void RecordRenderComplete(
+        string automationId,
+        DateTimeOffset completedAt,
+        MarkdownAuditPerformanceSnapshot? performance)
     {
         if (!TargetsHost(automationId))
         {
@@ -368,7 +375,11 @@ internal static partial class MarkdownLifecycleAutomationBridge
 
         WriteSignal(
             Environment.GetEnvironmentVariable(RenderCompleteEvidencePathVariable),
-            new RenderCompleteSignal(Environment.ProcessId, automationId, DateTimeOffset.UtcNow),
+            new RenderCompleteSignal(
+                Environment.ProcessId,
+                automationId,
+                completedAt,
+                performance),
             MarkdownLifecycleJsonContext.Default.RenderCompleteSignal);
     }
 
@@ -416,7 +427,8 @@ internal static partial class MarkdownLifecycleAutomationBridge
         int width,
         int height,
         double documentTop,
-        string? error)
+        string? error,
+        MarkdownAuditPerformanceSnapshot? performance)
     {
         WriteSignal(
             Environment.GetEnvironmentVariable(CaptureResponsePathVariable),
@@ -426,7 +438,8 @@ internal static partial class MarkdownLifecycleAutomationBridge
                 width,
                 height,
                 documentTop,
-                error),
+                error,
+                performance),
             MarkdownLifecycleJsonContext.Default.MarkdownAuditCaptureResponse);
     }
 
@@ -486,9 +499,30 @@ internal static partial class MarkdownLifecycleAutomationBridge
         string? ContentType,
         string? ResolvedUri,
         string Reason,
+        DateTimeOffset StartedAt,
+        double ElapsedMilliseconds,
         DateTimeOffset Timestamp);
 
-    private sealed record RenderCompleteSignal(int ProcessId, string Host, DateTimeOffset Timestamp);
+    private sealed record RenderCompleteSignal(
+        int ProcessId,
+        string Host,
+        DateTimeOffset Timestamp,
+        MarkdownAuditPerformanceSnapshot? Performance);
+
+    internal sealed record MarkdownAuditPerformanceSnapshot(
+        long SourceCacheBytes,
+        long SourceCacheHits,
+        long ImageFetches,
+        long ImageFetchMilliseconds,
+        long ImageFetchFailures,
+        long ImageFetchCancellations,
+        long SourceCacheEvictions,
+        int PendingImageFetches,
+        int ActiveImageFetches,
+        long CpuPreparations,
+        long CpuPreparationMilliseconds,
+        long ScenePreparations,
+        long ScenePreparationMilliseconds);
 
     internal sealed record MarkdownAuditCaptureRequest(
         string RequestId,
@@ -501,7 +535,8 @@ internal static partial class MarkdownLifecycleAutomationBridge
         int Width,
         int Height,
         double DocumentTop,
-        string? Error);
+        string? Error,
+        MarkdownAuditPerformanceSnapshot? Performance);
 
     private sealed record MarkdownLifecycleRuntimeSettings(double TextScaleFactor, int Revision);
 
@@ -511,6 +546,7 @@ internal static partial class MarkdownLifecycleAutomationBridge
     [JsonSerializable(typeof(ImageUnavailableSignal), TypeInfoPropertyName = "ImageUnavailableSignal")]
     [JsonSerializable(typeof(ImageResolutionSignal), TypeInfoPropertyName = "ImageResolutionSignal")]
     [JsonSerializable(typeof(RenderCompleteSignal), TypeInfoPropertyName = "RenderCompleteSignal")]
+    [JsonSerializable(typeof(MarkdownAuditPerformanceSnapshot), TypeInfoPropertyName = "MarkdownAuditPerformanceSnapshot")]
     [JsonSerializable(typeof(MarkdownAuditCaptureRequest), TypeInfoPropertyName = "MarkdownAuditCaptureRequest")]
     [JsonSerializable(typeof(MarkdownAuditCaptureResponse), TypeInfoPropertyName = "MarkdownAuditCaptureResponse")]
     [JsonSerializable(typeof(MarkdownLifecycleRuntimeSettings), TypeInfoPropertyName = "RuntimeSettings")]

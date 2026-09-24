@@ -16,7 +16,12 @@ repository:
   tables, code blocks, task checkboxes, and disclosures, styled-viewport SSIM,
   and same-machine Edge-relative timing ratios;
 - pre-screenshot Edge CPU/layout/heap metrics and isolated JitHub process
-  CPU/working-set evidence, so evidence capture is not mistaken for rendering.
+  CPU/working-set evidence, so evidence capture is not mistaken for rendering;
+- privacy-safe, aggregate Markdown preparation counters at first render and
+  after the final native tile (source fetches, cache hits/bytes, raster and
+  scene preparation, failures, and cancellations). These diagnose outliers;
+  each resolved image also records its resolver start and elapsed time. These
+  do not prove same-byte parity or replace the release benchmark.
 
 Run an optimized smoke audit (Release is the default and is required for
 browser-relative performance evidence):
