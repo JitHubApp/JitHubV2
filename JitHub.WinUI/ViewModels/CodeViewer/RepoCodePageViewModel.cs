@@ -251,7 +251,8 @@ public sealed partial class RepoCodePageViewModel : ObservableObject
                 sourceIsAuthoritative: result.Value.RootIsAuthoritative,
                 request.Token,
                 navigationPreparation.PreparedTree,
-                reconcileTruncatedRoot: !result.Value.RootIsAuthoritative && !result.IsRefreshInProgress,
+                reconcileTruncatedRoot: !navigationPreparation.RootListingUnavailable &&
+                    !result.Value.RootIsAuthoritative && !result.IsRefreshInProgress,
                 preparedReadme: navigationPreparation.Readme)
                 .ConfigureAwait(false);
             TrackLoadResult(result, loadTimer.Elapsed);

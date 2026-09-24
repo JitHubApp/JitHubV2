@@ -2,6 +2,7 @@ using System;
 using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.Diagnostics;
+using System.Net;
 using System.Threading;
 using System.Threading.Tasks;
 using JitHub.Models.CodeViewer;
@@ -9,6 +10,7 @@ using JitHub.Services;
 using JitHub.Services.CodeViewer;
 using JitHub.WinUI.Tests.TestDoubles;
 using JitHub.WinUI.ViewModels.CodeViewer;
+using NSubstitute;
 using Xunit;
 
 namespace JitHub.WinUI.Tests.ViewModels;
@@ -30,6 +32,39 @@ public sealed class RepoCodePageViewModelTests
         Assert.Equal("root-first readme", viewModel.Preview.Text);
         Assert.Equal(0, service.RecursiveTreeRequestCount);
         Assert.Equal(0, service.BlobRequestCount);
+    }
+
+    [Fact]
+    public async Task Initialize_KeepsFreshPublicReadmeWhenRootListingIsDenied()
+    {
+        IRepoTreeService service = Substitute.For<IRepoTreeService>();
+        service.LoadDirectoryAsync(
+                "owner", "repo", string.Empty, "main", Arg.Any<CancellationToken>(), QueryFetchPolicy.StaleFirst)
+            .Returns(Task.FromException<RepoCodeLoadResult<IReadOnlyList<RepoTreeNode>>>(
+                new GitHubRateLimitException(
+                    HttpStatusCode.Forbidden,
+                    "The organization has an IP allow list enabled.",
+                    TimeSpan.Zero)));
+        service.LoadReadmeAsync(
+                "owner", "repo", "main", Arg.Any<CancellationToken>(), QueryFetchPolicy.StaleFirst)
+            .Returns(Task.FromResult<RepoCodeLoadResult<RepoReadmeFile>?>(
+                new RepoCodeLoadResult<RepoReadmeFile>(
+                    new RepoReadmeFile(
+                        "README.md",
+                        "README.md",
+                        Blob("readme-sha", "# Available README")),
+                    CacheState.Fresh)));
+        RepoCodePageViewModel viewModel = CreateViewModel(service);
+
+        await viewModel.InitializeAsync("owner", "repo", "main", default);
+        await viewModel.DefaultPreviewTask;
+
+        Assert.Equal("# Available README", viewModel.Preview.Text);
+        Assert.Equal("README.md", Assert.Single(viewModel.Tree.RootNodes).Path);
+        Assert.True(viewModel.Tree.IsTruncated);
+        Assert.False(viewModel.Tree.IsRootAuthoritative);
+        Assert.False(string.IsNullOrWhiteSpace(viewModel.LoadError));
+        Assert.True(viewModel.ReconciliationTask.IsCompleted);
     }
 
     [Fact]

@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.Net;
 using System.Threading;
 using System.Threading.Tasks;
 using JitHub.Models.CodeViewer;
@@ -85,6 +86,62 @@ public sealed class RepoCodeNavigationPreparationCacheTests
         Assert.NotNull(prepared.Readme);
         Assert.Equal("# Ready", prepared.Readme!.Value.Blob.Text);
         Assert.Contains("README.md", prepared.PreparedTree.NodesByPath.Keys);
+    }
+
+    [Fact]
+    public async Task PublicReadmeSurvivesAuthenticatedRootListingIpDenialWithoutClaimingCompleteTree()
+    {
+        IRepoTreeService trees = Substitute.For<IRepoTreeService>();
+        GitHubRateLimitException denial = new(
+            HttpStatusCode.Forbidden,
+            "The organization has an IP allow list enabled.",
+            TimeSpan.Zero);
+        trees.LoadDirectoryAsync(
+                "octo", "app", string.Empty, "main", Arg.Any<CancellationToken>(), QueryFetchPolicy.StaleFirst)
+            .Returns(Task.FromException<RepoCodeLoadResult<IReadOnlyList<RepoTreeNode>>>(denial));
+        trees.LoadReadmeAsync(
+                "octo", "app", "main", Arg.Any<CancellationToken>(), QueryFetchPolicy.StaleFirst)
+            .Returns(Task.FromResult<RepoCodeLoadResult<RepoReadmeFile>?>(
+                new RepoCodeLoadResult<RepoReadmeFile>(
+                    new RepoReadmeFile(
+                        "README.md",
+                        "README.md",
+                        new RepoFileBlob
+                        {
+                            Sha = "readme-sha",
+                            Encoding = "base64",
+                            Bytes = [1, 2, 3],
+                            Text = "# Public"
+                        }),
+                    CacheState.Fresh)));
+
+        RepoCodeNavigationPreparationCache.PreparedRepoCodeNavigation prepared =
+            await CreateCache(trees).TakeOrPrepareAsync("octo", "app", "main", CancellationToken.None);
+
+        Assert.True(prepared.RootListingUnavailable);
+        Assert.Equal(CacheState.Error, prepared.Result.CacheState);
+        Assert.True(prepared.Result.Value.Truncated);
+        Assert.False(prepared.Result.Value.RootIsAuthoritative);
+        Assert.NotNull(prepared.Result.RefreshError);
+        Assert.Equal("README.md", Assert.Single(prepared.Result.Value.Root.Children).Path);
+        Assert.Contains("README.md", prepared.PreparedTree.NodesByPath.Keys);
+        Assert.Equal("# Public", prepared.Readme!.Value.Blob.Text);
+    }
+
+    [Fact]
+    public async Task RootListingDenialWithoutFreshReadmeRemainsFailure()
+    {
+        IRepoTreeService trees = Substitute.For<IRepoTreeService>();
+        trees.LoadDirectoryAsync(
+                "octo", "app", string.Empty, "main", Arg.Any<CancellationToken>(), QueryFetchPolicy.StaleFirst)
+            .Returns(Task.FromException<RepoCodeLoadResult<IReadOnlyList<RepoTreeNode>>>(
+                new GitHubRateLimitException(
+                    HttpStatusCode.Forbidden,
+                    "The organization has an IP allow list enabled.",
+                    TimeSpan.Zero)));
+
+        await Assert.ThrowsAsync<GitHubRateLimitException>(() =>
+            CreateCache(trees).TakeOrPrepareAsync("octo", "app", "main", CancellationToken.None));
     }
 
     [Fact]

@@ -7,6 +7,7 @@ using System.Threading;
 using System.Threading.Tasks;
 using JitHub.Services;
 using JitHub.Services.CodeViewer;
+using JitHub.WinUI.Helpers;
 
 namespace JitHub.WinUI.ViewModels.CodeViewer;
 
@@ -195,19 +196,64 @@ public sealed partial class RepoCodeNavigationPreparationCache
         Task<RepoCodeLoadResult<Models.CodeViewer.RepoReadmeFile>?> readmeTask,
         CancellationToken cancellationToken)
     {
-        RepoCodeLoadResult<IReadOnlyList<Models.CodeViewer.RepoTreeNode>> root =
-            await rootTask.ConfigureAwait(false);
         RepoCodeLoadResult<Models.CodeViewer.RepoReadmeFile>? readme =
             await readmeTask.ConfigureAwait(false);
-        RepoCodeLoadResult<Models.CodeViewer.RepoTree> result =
-            RepoRootTreeProjection.Create(root);
+        RepoCodeLoadResult<Models.CodeViewer.RepoTree> result;
+        bool rootListingUnavailable = false;
+        try
+        {
+            RepoCodeLoadResult<IReadOnlyList<Models.CodeViewer.RepoTreeNode>> root =
+                await rootTask.ConfigureAwait(false);
+            result = RepoRootTreeProjection.Create(root);
+        }
+        catch (GitHubRateLimitException exception) when (
+            readme is { CacheState: CacheState.Fresh } &&
+            readme.Value.Blob.Text is not null &&
+            RepoTreeService.IsAnonymousPublicDataFallbackCandidate(exception))
+        {
+            // Some public organizations deny the authenticated root-listing API
+            // to the current IP even while the canonical README is available.
+            // Keep that fetched document usable, but never present its one file
+            // as an authoritative or complete repository tree.
+            Models.CodeViewer.RepoReadmeFile file = readme.Value;
+            result = new RepoCodeLoadResult<Models.CodeViewer.RepoTree>(
+                new Models.CodeViewer.RepoTree
+                {
+                    Truncated = true,
+                    RootIsAuthoritative = false,
+                    Root = new Models.CodeViewer.RepoTreeNode
+                    {
+                        Name = string.Empty,
+                        Path = string.Empty,
+                        IsDirectory = true,
+                        Children =
+                        [
+                            new Models.CodeViewer.RepoTreeNode
+                            {
+                                Name = file.Name,
+                                Path = file.Path,
+                                Sha = file.Blob.Sha,
+                                Size = file.Blob.Bytes?.Length ?? 0,
+                                IsDirectory = false,
+                                Children = []
+                            }
+                        ]
+                    }
+                },
+                CacheState.Error,
+                RefreshError: UserFacingError.For(
+                    exception,
+                    UserFacingErrorKind.Loading,
+                    "repository-code-root-listing"));
+            rootListingUnavailable = true;
+        }
         RepoFileTreeViewModel.PreparedTree prepared = await Task.Run(
             () => RepoFileTreeViewModel.PrepareTree(
                 result.Value,
                 _languageResolver,
                 cancellationToken),
             cancellationToken).ConfigureAwait(false);
-        return new PreparedRepoCodeNavigation(result, prepared, readme);
+        return new PreparedRepoCodeNavigation(result, prepared, readme, rootListingUnavailable);
     }
 
     private async Task<RepoCodeLoadResult<Models.CodeViewer.RepoReadmeFile>?> TryLoadReadmeAsync(
@@ -404,7 +450,8 @@ public sealed partial class RepoCodeNavigationPreparationCache
     internal sealed record PreparedRepoCodeNavigation(
         RepoCodeLoadResult<Models.CodeViewer.RepoTree> Result,
         RepoFileTreeViewModel.PreparedTree PreparedTree,
-        RepoCodeLoadResult<Models.CodeViewer.RepoReadmeFile>? Readme);
+        RepoCodeLoadResult<Models.CodeViewer.RepoReadmeFile>? Readme,
+        bool RootListingUnavailable);
 
     private sealed record PreparationWork(
         Task<PreparedRepoCodeNavigation> Preparation,

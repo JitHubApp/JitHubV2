@@ -140,6 +140,23 @@ complete before claiming this plan or the 1.0 performance goal is met.
   stale/disposed failures previously raised the event before that check.
   This removes a false-unavailable path, but neither this change nor the
   one-case replay establishes the original cause or a 500/500 pass.
+- The `51ab849` top-500 audit reported 499/500 passes. Rank 465
+  (`xai-org/grok-1`) failed before Markdown rendering: its authenticated
+  repository-root API request was rejected by the organization's IP allow
+  list, and the anonymous root retry did not recover. Edge rendered the pinned
+  README. JitHub now permits a freshly retrieved canonical, nonbinary README
+  to populate a clearly incomplete one-file navigation view when that exact
+  public-data authorization/quota failure affects only the root listing;
+  missing/stale READMEs still fail, and the app does not claim a complete tree.
+  The focused navigation/page-view-model tests and all 3,051 app unit tests
+  passed, including an end-to-end view-model assertion that the README remains
+  visible, the root is not authoritative, and reconciliation does not retry
+  the denied listing; a local
+  pinned one-case Release replay passed with zero unavailable images, but it
+  did not reproduce the CI runner's IP policy. A full current-head 500/500
+  audit is still required. The one-case report's styled-viewport SSIM was
+  0.050 despite 100% text and 99.90% structure, so it is not proof of visual
+  fidelity parity either.
 - Measured: the full x64 repeated-construction release benchmark is not yet
   qualified. Both reference and candidate failed its stationarity contract;
   the candidate's full run dropped to about 121 observed Hz on a configured

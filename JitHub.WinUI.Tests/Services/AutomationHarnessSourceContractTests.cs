@@ -550,7 +550,8 @@ public sealed class AutomationHarnessSourceContractTests
 
         Assert.Contains("if (run is InlineImageRun imageRun)", source, StringComparison.Ordinal);
         Assert.Contains("AddImagePlan(imageRun.Image);", source, StringComparison.Ordinal);
-        Assert.Contains("RegisterImage(image);", source, StringComparison.Ordinal);
+        Assert.Contains("if (!RegisterImage(image))", source, StringComparison.Ordinal);
+        Assert.Contains("image.LoadCompleted += OnImageLoadCompleted;", source, StringComparison.Ordinal);
         Assert.Contains("_subscribedImages.Contains(completedImage)", source, StringComparison.Ordinal);
         Assert.Contains("UnsubscribeAllImages();", source, StringComparison.Ordinal);
     }
