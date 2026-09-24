@@ -375,9 +375,11 @@ fn open_document(state: &mut WorkerState, request: &Request) -> Result<Response,
         return Err(Reject::Worker("source hash mismatch"));
     }
 
-    let security = inspect_svg(source, request)?;
+    let parsed = parse_svg(source)?;
+    let security = inspect_svg_document(&parsed, request)?;
     let key = cache_key(request, &security.metadata);
-    let (tree, metadata, cache_key) = acquire_tree(state, request, source, &security, key)?;
+    let (tree, metadata, cache_key) =
+        acquire_tree(state, request, source, &parsed, &security, key)?;
     state.documents.insert(
         request.document_id,
         DocumentEntry {
@@ -511,7 +513,7 @@ struct Inspection {
     embedded_pixels: u64,
 }
 
-fn inspect_svg(source: &[u8], request: &Request) -> Result<Inspection, Reject> {
+fn parse_svg(source: &[u8]) -> Result<usvg::roxmltree::Document<'_>, Reject> {
     let text = std::str::from_utf8(source).map_err(|_| Reject::Unsupported("SVG is not UTF-8"))?;
     let lowercase_text = text.to_ascii_lowercase();
     if lowercase_text.contains("<!doctype")
@@ -524,8 +526,20 @@ fn inspect_svg(source: &[u8], request: &Request) -> Result<Inspection, Reject> {
         allow_dtd: false,
         ..Default::default()
     };
-    let document = usvg::roxmltree::Document::parse_with_options(text, parsing)
-        .map_err(|_| Reject::Unsupported("malformed XML"))?;
+    usvg::roxmltree::Document::parse_with_options(text, parsing)
+        .map_err(|_| Reject::Unsupported("malformed XML"))
+}
+
+#[cfg(test)]
+fn inspect_svg(source: &[u8], request: &Request) -> Result<Inspection, Reject> {
+    let document = parse_svg(source)?;
+    inspect_svg_document(&document, request)
+}
+
+fn inspect_svg_document(
+    document: &usvg::roxmltree::Document<'_>,
+    request: &Request,
+) -> Result<Inspection, Reject> {
     let root = document.root_element();
     if root.tag_name().name() != "svg" {
         return Err(Reject::Unsupported("root element is not SVG"));
@@ -1632,6 +1646,7 @@ fn acquire_tree(
     state: &mut WorkerState,
     request: &Request,
     source: &[u8],
+    parsed: &usvg::roxmltree::Document<'_>,
     inspection: &Inspection,
     key: CacheKey,
 ) -> Result<(Arc<usvg::Tree>, Metadata, Option<CacheKey>), Reject> {
@@ -1646,7 +1661,6 @@ fn acquire_tree(
     } else {
         None
     };
-    let transformed = transform_theme(source, request, &inspection.metadata)?;
     let mut options = usvg::Options {
         resources_dir: None,
         dpi: 96.0,
@@ -1662,10 +1676,20 @@ fn acquire_tree(
     if let Some(database) = font_database {
         options.fontdb = database;
     }
-    let tree = Arc::new(
+    // The security walk already parsed this exact source with DTDs disabled.
+    // Reuse that XML tree for ordinary artwork instead of copying and parsing
+    // large embedded-image payloads a second time. The authored source is
+    // still reparsed when a semantic theme transform actually changes it.
+    let tree = if inspection.metadata.uses_color_scheme
+        || (inspection.metadata.uses_current_color && request.flags & FLAG_HAS_SEMANTIC_COLOR != 0)
+    {
+        let transformed = transform_theme(source, request, &inspection.metadata)?;
         usvg::Tree::from_data(&transformed, &options)
-            .map_err(|_| Reject::Unsupported("SVG parsing failed"))?,
-    );
+    } else {
+        usvg::Tree::from_xmltree(parsed, &options)
+    }
+    .map_err(|_| Reject::Unsupported("SVG parsing failed"))?;
+    let tree = Arc::new(tree);
     let size = tree.size();
     let mut metadata = inspection.metadata;
     metadata.width = f64::from(size.width());
@@ -2474,10 +2498,12 @@ mod tests {
 
         request.hash = Sha256::digest(first).into();
         let first_key = cache_key(&request, &first_inspection.metadata);
+        let first_parsed = parse_svg(first).unwrap();
         acquire_tree(
             &mut state,
             &request,
             first,
+            &first_parsed,
             &first_inspection,
             first_key.clone(),
         )
@@ -2486,10 +2512,12 @@ mod tests {
 
         request.hash = Sha256::digest(second).into();
         let second_key = cache_key(&request, &second_inspection.metadata);
+        let second_parsed = parse_svg(second).unwrap();
         acquire_tree(
             &mut state,
             &request,
             second,
+            &second_parsed,
             &second_inspection,
             second_key.clone(),
         )
@@ -2518,9 +2546,10 @@ mod tests {
         request.hash = Sha256::digest(source).into();
         let inspection = inspect_svg(source, &request).unwrap();
         let key = cache_key(&request, &inspection.metadata);
+        let parsed = parse_svg(source).unwrap();
 
         let (tree, metadata, cache_key) =
-            acquire_tree(&mut state, &request, source, &inspection, key).unwrap();
+            acquire_tree(&mut state, &request, source, &parsed, &inspection, key).unwrap();
 
         assert_eq!(tree.size().width(), 2.0);
         assert_eq!(metadata.width, 2.0);

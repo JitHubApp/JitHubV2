@@ -278,6 +278,35 @@ complete before claiming this plan or the 1.0 performance goal is met.
   restore project and checked-in lock now hydrate that package before the
   unchanged fail-on-unknown gate. The local locked restore and strict notice
   generation pass; hosted validation of this fix is pending.
+- The `65c640f` top-500 audit (`35958672728`) has already failed its
+  ranks 151-200 shard. Rank 153 (`louislam/uptime-kuma`) resolved the
+  1,877,124-byte sponsor SVG but the isolated worker exceeded the unchanged
+  three-second **open** deadline; a separate badge resolved to no bytes and
+  is browser-broken. Rank 189 (`D4Vinci/Scrapling`) reported an unavailable
+  Asciinema/Camo image after a 20-second visible-image wait; no matching
+  image-resolution event was recorded, so that source-delivery path still
+  needs diagnosis. Neither case is cleared. The worker now reuses the XML
+  document parsed by its authoritative security walk for unthemed content,
+  avoiding a second XML parse and source copy. A deterministic offline
+  sponsor-shaped fixture with 576 image elements, 380 unique embedded PNGs,
+  and roughly 1.8 MB of source passes, as do all 58 x64 Release
+  provider tests and 16 native Rust tests. An exact live sponsor-byte local
+  diagnostic measured about 0.55 seconds to open on both old and new workers;
+  it does **not** establish a hosted deadline fix. The pinned x86/x64/ARM64
+  worker rebuilds match their staged binaries, and a local all-RID package
+  is 4,462,166 compressed bytes. These are unsigned development workers;
+  production signing remains a separate release gate. Hosted recurrence and
+  the rank-189 delivery trace are required before either failure can be
+  resolved.
+- That same in-progress `65c640f` audit also failed rank 348
+  (`marktext/marktext`): a Camo badge resolved to 469 SVG bytes and received
+  an `UnsupportedContent` rejection, while a later retrieval of the same
+  Camo URL returned a different 1,303-byte SVG. The rejected exact bytes
+  were not retained, so this remains an upstream-content hypothesis, not a
+  waiver. Rank 368 (`spring-projects/spring-framework`) rendered with zero
+  unavailable images and no recorded render failure but the app did not
+  close cleanly after the case; the audit artifact has no exit classification.
+  Both failures remain open, and the ranks 451-500 shard is still running.
 - Measured: the full x64 repeated-construction release benchmark is not yet
   qualified. Both reference and candidate failed its stationarity contract;
   the candidate's full run dropped to about 121 observed Hz on a configured

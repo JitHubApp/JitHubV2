@@ -618,6 +618,39 @@ public sealed class ResvgProviderTests
     }
 
     [Fact]
+    public async Task SponsorShapedFixture_Opens576EmbeddedImagesUnderTheHardDeadline()
+    {
+        // Mirrors the element count and source-byte scale of an image-heavy
+        // sponsor grid without depending on live or private README assets.
+        string[] payloads = Enumerable.Range(0, 380)
+            .Select(index => Convert.ToBase64String(CreatePng(
+                checked((byte)(index & 0xff)),
+                checked((byte)(index >> 8)),
+                64,
+                byte.MaxValue,
+                metadataBytes: 2_280,
+                metadataSeed: index)))
+            .ToArray();
+        var body = new StringBuilder();
+        for (int index = 0; index < 576; index++)
+        {
+            int column = index % 24;
+            int row = index / 24;
+            body.Append($"<image x='{column * 40}' y='{row * 40}' width='24' height='24' href='data:image/png;base64,{payloads[index % payloads.Length]}'/>");
+        }
+        byte[] source = Svg($"<svg xmlns='http://www.w3.org/2000/svg' width='960' height='960'>{body}</svg>");
+        Assert.InRange(source.Length, 1_700_000, 2_200_000);
+
+        await using var renderer = new ResvgMarkdownSvgRenderer();
+        using IMarkdownSvgDocument document = await renderer.OpenAsync(new MarkdownSvgOpenRequest(source));
+        using MarkdownSvgRaster raster = await document.RenderAsync(new MarkdownSvgRenderRequest(480, 480));
+
+        Assert.Equal(480, raster.WidthPixels);
+        Assert.Equal(480, raster.HeightPixels);
+        Assert.True(HasVisiblePixel(raster.Pixels.Span));
+    }
+
+    [Fact]
     public async Task RepeatedEmbeddedPayload_IsDeduplicatedAndRendersWithinUniqueBudget()
     {
         byte[] png = CreatePng(20, 100, 220, byte.MaxValue);
@@ -698,7 +731,13 @@ public sealed class ResvgProviderTests
         Assert.InRange(meanDelta, 0, 1);
     }
 
-    private static byte[] CreatePng(byte red, byte green, byte blue, byte alpha)
+    private static byte[] CreatePng(
+        byte red,
+        byte green,
+        byte blue,
+        byte alpha,
+        int metadataBytes = 0,
+        int metadataSeed = 0)
     {
         using var output = new MemoryStream();
         output.Write([137, 80, 78, 71, 13, 10, 26, 10]);
@@ -708,6 +747,15 @@ public sealed class ResvgProviderTests
         header[8] = 8;
         header[9] = 6;
         WritePngChunk(output, "IHDR", header);
+
+        if (metadataBytes > 0)
+        {
+            byte[] metadata = new byte[metadataBytes];
+            "Comment\0"u8.CopyTo(metadata);
+            for (int index = 8; index < metadata.Length; index++)
+                metadata[index] = checked((byte)('A' + ((index + metadataSeed) % 26)));
+            WritePngChunk(output, "tEXt", metadata);
+        }
 
         using var compressed = new MemoryStream();
         using (var zlib = new ZLibStream(compressed, CompressionLevel.SmallestSize, leaveOpen: true))
