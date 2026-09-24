@@ -1,3 +1,5 @@
+using System.Collections.Concurrent;
+using System.Diagnostics.Tracing;
 using System.Runtime.InteropServices;
 using MarkdownRenderer.Images;
 using MarkdownRenderer.Svg.Resvg.Internal;
@@ -7,6 +9,36 @@ namespace MarkdownRenderer.Svg.Resvg.Tests;
 
 public sealed class WorkerSchedulingTests
 {
+    [Fact]
+    public void WorkerTimeoutEvidenceContainsOnlyPhaseAndBoundedDeadline()
+    {
+        using var listener = new TimeoutListener();
+
+        WorkerTimeoutEvents.Log.Timeout((int)WorkerOperation.Render, 3_000);
+
+        Assert.Contains(((int)WorkerOperation.Render, 3_000), listener.Events);
+    }
+
+    private sealed class TimeoutListener : EventListener
+    {
+        public ConcurrentQueue<(int Stage, int DeadlineMilliseconds)> Events { get; } = new();
+
+        protected override void OnEventSourceCreated(EventSource eventSource)
+        {
+            if (eventSource.Name == "MarkdownRenderer.Svg.Resvg.Worker")
+                EnableEvents(eventSource, EventLevel.Warning);
+        }
+
+        protected override void OnEventWritten(EventWrittenEventArgs eventData)
+        {
+            if (eventData.EventId == 1 && eventData.Payload is { Count: 2 } payload &&
+                payload[0] is int stage && payload[1] is int deadlineMilliseconds)
+            {
+                Events.Enqueue((stage, deadlineMilliseconds));
+            }
+        }
+    }
+
     [Theory]
     [InlineData(Architecture.X64, 8, false, true)]
     [InlineData(Architecture.Arm64, 16, false, true)]

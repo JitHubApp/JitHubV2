@@ -388,12 +388,13 @@ internal static partial class ReadmeAuditProbe
         string renderFailure = Path.Combine(runtime, "render-failure.txt");
         string imageEvidence = Path.Combine(runtime, "image-unavailable.ndjson");
         string imageResolutionEvidence = Path.Combine(runtime, "image-resolution.ndjson");
+        string svgWorkerEvidence = Path.Combine(runtime, "svg-worker-timeouts.ndjson");
         string captureRequest = Path.Combine(runtime, "capture-request.json");
         string captureResponse = Path.Combine(runtime, "capture-response.json");
         foreach (string stale in new[]
         {
             appReady, hostReady, renderComplete, renderFailure, imageEvidence,
-            imageResolutionEvidence, captureRequest, captureResponse,
+            imageResolutionEvidence, svgWorkerEvidence, captureRequest, captureResponse,
         })
         {
             if (File.Exists(stale)) File.Delete(stale);
@@ -428,6 +429,7 @@ internal static partial class ReadmeAuditProbe
         startInfo.Environment["JITHUB_MARKDOWN_RENDER_FAILURE_EVIDENCE_PATH"] = renderFailure;
         startInfo.Environment["JITHUB_MARKDOWN_IMAGE_EVIDENCE_PATH"] = imageEvidence;
         startInfo.Environment["JITHUB_MARKDOWN_IMAGE_RESOLUTION_EVIDENCE_PATH"] = imageResolutionEvidence;
+        startInfo.Environment["JITHUB_MARKDOWN_SVG_WORKER_EVIDENCE_PATH"] = svgWorkerEvidence;
         startInfo.Environment["JITHUB_MARKDOWN_CAPTURE_REQUEST_PATH"] = captureRequest;
         startInfo.Environment["JITHUB_MARKDOWN_CAPTURE_RESPONSE_PATH"] = captureResponse;
 
@@ -617,6 +619,7 @@ internal static partial class ReadmeAuditProbe
                 traversal.Images);
             PreserveEvidenceFile(imageEvidence, Path.Combine(output, "image-unavailable.ndjson"));
             PreserveEvidenceFile(imageResolutionEvidence, Path.Combine(output, "image-resolution.ndjson"));
+            PreserveEvidenceFile(svgWorkerEvidence, Path.Combine(output, "svg-worker-timeouts.ndjson"));
 
             bool cleanExit = CloseAndWait(window, appProcess, launcher);
             window = null;

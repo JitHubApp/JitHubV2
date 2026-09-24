@@ -107,6 +107,9 @@ internal sealed partial class WindowsWorkerProcess : IAsyncDisposable, IDisposab
             }
             catch (OperationCanceledException exception) when (!cancellationToken.IsCancellationRequested)
             {
+                WorkerTimeoutEvents.Log.Timeout(
+                    stage: 0,
+                    deadlineMilliseconds: (int)WorkerSchedulingPolicy.InitializationDeadline.TotalMilliseconds);
                 throw new WorkerInitializationDeadlineException(
                     "The resvg worker did not complete startup before its initialization deadline.",
                     exception);
@@ -171,6 +174,9 @@ internal sealed partial class WindowsWorkerProcess : IAsyncDisposable, IDisposab
             }
             catch (OperationCanceledException exception) when (!cancellationToken.IsCancellationRequested)
             {
+                WorkerTimeoutEvents.Log.Timeout(
+                    stage: (int)request.Operation,
+                    deadlineMilliseconds: (int)deadline.TotalMilliseconds);
                 Dispose();
                 throw new WorkerDeadlineException("The resvg worker exceeded its request deadline.", exception);
             }

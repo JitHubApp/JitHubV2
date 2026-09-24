@@ -30,6 +30,7 @@ internal static class JitHubMarkdownRuntime
     private static MarkdownEngine? _engine;
     private static TextMateCodeBlockSyntaxHighlighter? _codeHighlighter;
     private static ResvgMarkdownSvgRenderer? _svgRenderer;
+    private static MarkdownSvgWorkerAuditListener? _svgAuditListener;
     private static MarkdownPerformanceSession? _performanceSession;
     private static long _performanceAccountId = long.MinValue;
     private static Task? _fontChangeTask;
@@ -78,6 +79,7 @@ internal static class JitHubMarkdownRuntime
             lock (Gate)
             {
                 ObjectDisposedException.ThrowIf(_isShuttingDown, typeof(JitHubMarkdownRuntime));
+                EnsureSvgAuditListenerLocked();
                 return _svgRenderer ??= new ResvgMarkdownSvgRenderer();
             }
         }
@@ -126,10 +128,17 @@ internal static class JitHubMarkdownRuntime
         lock (Gate)
         {
             ObjectDisposedException.ThrowIf(_isShuttingDown, typeof(JitHubMarkdownRuntime));
+            EnsureSvgAuditListenerLocked();
             renderer = _svgRenderer ??= new ResvgMarkdownSvgRenderer();
         }
 
         await renderer.WarmUpAsync(cancellationToken).ConfigureAwait(false);
+    }
+
+    private static void EnsureSvgAuditListenerLocked()
+    {
+        if (MarkdownLifecycleAutomationBridge.IsEvidenceEnabled)
+            _svgAuditListener ??= new MarkdownSvgWorkerAuditListener();
     }
 
     /// <summary>
@@ -171,6 +180,7 @@ internal static class JitHubMarkdownRuntime
         MarkdownEngine? engine;
         TextMateCodeBlockSyntaxHighlighter? codeHighlighter;
         ResvgMarkdownSvgRenderer? svgRenderer;
+        MarkdownSvgWorkerAuditListener? svgAuditListener;
         MarkdownPerformanceSession? performanceSession;
         TaskCompletionSource completion = new(TaskCreationOptions.RunContinuationsAsynchronously);
         lock (Gate)
@@ -187,6 +197,8 @@ internal static class JitHubMarkdownRuntime
             _codeHighlighter = null;
             svgRenderer = _svgRenderer;
             _svgRenderer = null;
+            svgAuditListener = _svgAuditListener;
+            _svgAuditListener = null;
             performanceSession = _performanceSession;
             _performanceSession = null;
             _performanceAccountId = long.MinValue;
@@ -194,7 +206,8 @@ internal static class JitHubMarkdownRuntime
             _shutdownTask = completion.Task;
         }
 
-        _ = Task.Run(() => ShutdownCoreAsync(engine, codeHighlighter, svgRenderer, performanceSession, completion));
+        _ = Task.Run(() => ShutdownCoreAsync(
+            engine, codeHighlighter, svgRenderer, svgAuditListener, performanceSession, completion));
         return completion.Task;
     }
 
@@ -207,6 +220,7 @@ internal static class JitHubMarkdownRuntime
         MarkdownEngine? engine;
         TextMateCodeBlockSyntaxHighlighter? codeHighlighter;
         ResvgMarkdownSvgRenderer? svgRenderer;
+        MarkdownSvgWorkerAuditListener? svgAuditListener;
         MarkdownPerformanceSession? performanceSession;
         lock (Gate)
         {
@@ -222,6 +236,8 @@ internal static class JitHubMarkdownRuntime
             _codeHighlighter = null;
             svgRenderer = _svgRenderer;
             _svgRenderer = null;
+            svgAuditListener = _svgAuditListener;
+            _svgAuditListener = null;
             performanceSession = _performanceSession;
             _performanceSession = null;
             _performanceAccountId = long.MinValue;
@@ -234,27 +250,34 @@ internal static class JitHubMarkdownRuntime
         engine?.Dispose();
         RepositorySvgGpuCache.Shutdown();
         svgRenderer?.Dispose();
+        svgAuditListener?.Dispose();
     }
 
     private static async Task ShutdownCoreAsync(
         MarkdownEngine? engine,
         TextMateCodeBlockSyntaxHighlighter? codeHighlighter,
         ResvgMarkdownSvgRenderer? svgRenderer,
+        MarkdownSvgWorkerAuditListener? svgAuditListener,
         MarkdownPerformanceSession? performanceSession,
         TaskCompletionSource completion)
     {
         try
         {
-            // Shared owners defer their final provider/native release until admitted
-            // callbacks retire, so shutdown does not race active work.
-            codeHighlighter?.Dispose();
-            if (performanceSession is not null)
-                await performanceSession.DisposeAsync().ConfigureAwait(false);
-            engine?.Dispose();
-            RepositorySvgGpuCache.Shutdown();
-            if (svgRenderer is not null)
+            try
             {
-                await svgRenderer.DisposeAsync().ConfigureAwait(false);
+                // Shared owners defer their final provider/native release until admitted
+                // callbacks retire, so shutdown does not race active work.
+                codeHighlighter?.Dispose();
+                if (performanceSession is not null)
+                    await performanceSession.DisposeAsync().ConfigureAwait(false);
+                engine?.Dispose();
+                RepositorySvgGpuCache.Shutdown();
+                if (svgRenderer is not null)
+                    await svgRenderer.DisposeAsync().ConfigureAwait(false);
+            }
+            finally
+            {
+                svgAuditListener?.Dispose();
             }
 
             completion.SetResult();

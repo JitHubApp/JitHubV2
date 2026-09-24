@@ -210,8 +210,14 @@ complete before claiming this plan or the 1.0 performance goal is met.
   build passed with 21/21 image/media observations and no unavailable image,
   but this is not a waiver for the hosted timeout. It may be a cold font/worker
   initialization or a three-second content-render deadline; current audit
-  evidence does not distinguish them. Preserve the failing artifact and add
-  phase-specific SVG timing/failure evidence before attributing or fixing it.
+  evidence does not distinguish them. The audit now listens for a privacy-safe
+  resvg worker deadline event that distinguishes process startup, font
+  catalog, open, render, and maintenance, preserving it with the case artifact.
+  The 57 Release x64 resvg tests, 3,053 Debug x64 app tests (including an
+  event-to-privacy-safe-file contract test), Release app/audit-harness builds,
+  and a focused rank-247 audit pass locally. This trace must still be verified
+  on a hosted recurrence; the timeout is unresolved and remains a release
+  blocker.
 - Measured: the full x64 repeated-construction release benchmark is not yet
   qualified. Both reference and candidate failed its stationarity contract;
   the candidate's full run dropped to about 121 observed Hz on a configured

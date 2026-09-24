@@ -21,6 +21,7 @@ internal static partial class MarkdownLifecycleAutomationBridge
     private const string LinkEvidencePathVariable = "JITHUB_MARKDOWN_LINK_EVIDENCE_PATH";
     private const string ImageEvidencePathVariable = "JITHUB_MARKDOWN_IMAGE_EVIDENCE_PATH";
     private const string ImageResolutionEvidencePathVariable = "JITHUB_MARKDOWN_IMAGE_RESOLUTION_EVIDENCE_PATH";
+    private const string SvgWorkerEvidencePathVariable = "JITHUB_MARKDOWN_SVG_WORKER_EVIDENCE_PATH";
     private const string RenderFailureEvidencePathVariable = "JITHUB_MARKDOWN_RENDER_FAILURE_EVIDENCE_PATH";
     private const string RenderCompleteEvidencePathVariable = "JITHUB_MARKDOWN_RENDER_COMPLETE_EVIDENCE_PATH";
     private const string CaptureRequestPathVariable = "JITHUB_MARKDOWN_CAPTURE_REQUEST_PATH";
@@ -315,6 +316,49 @@ internal static partial class MarkdownLifecycleAutomationBridge
         }
     }
 
+    public static void RecordSvgWorkerTimeout(int stage, int deadlineMilliseconds)
+    {
+        if (!IsEvidenceEnabled)
+            return;
+
+        string? path = Environment.GetEnvironmentVariable(SvgWorkerEvidencePathVariable);
+        if (string.IsNullOrWhiteSpace(path))
+            return;
+
+        string phase = stage switch
+        {
+            0 => "process-startup",
+            1 => "font-catalog",
+            2 => "open",
+            3 => "render",
+            4 => "cache-trim",
+            5 => "close-document",
+            _ => "unknown",
+        };
+        lock (SignalGate)
+        {
+            try
+            {
+                string fullPath = Path.GetFullPath(path);
+                Directory.CreateDirectory(Path.GetDirectoryName(fullPath)!);
+                string entry = JsonSerializer.Serialize(
+                    new SvgWorkerTimeoutSignal(
+                        Environment.ProcessId,
+                        phase,
+                        deadlineMilliseconds,
+                        DateTimeOffset.UtcNow),
+                    MarkdownLifecycleJsonContext.Default.SvgWorkerTimeoutSignal);
+                File.AppendAllText(fullPath, entry + Environment.NewLine);
+            }
+            catch (IOException)
+            {
+            }
+            catch (UnauthorizedAccessException)
+            {
+            }
+        }
+    }
+
     public static void RecordRenderFailure(string automationId, Exception exception)
     {
         ArgumentNullException.ThrowIfNull(exception);
@@ -509,6 +553,12 @@ internal static partial class MarkdownLifecycleAutomationBridge
         DateTimeOffset Timestamp,
         MarkdownAuditPerformanceSnapshot? Performance);
 
+    private sealed record SvgWorkerTimeoutSignal(
+        int ProcessId,
+        string Phase,
+        int DeadlineMilliseconds,
+        DateTimeOffset Timestamp);
+
     internal sealed record MarkdownAuditPerformanceSnapshot(
         long SourceCacheBytes,
         long SourceCacheHits,
@@ -546,6 +596,7 @@ internal static partial class MarkdownLifecycleAutomationBridge
     [JsonSerializable(typeof(ImageUnavailableSignal), TypeInfoPropertyName = "ImageUnavailableSignal")]
     [JsonSerializable(typeof(ImageResolutionSignal), TypeInfoPropertyName = "ImageResolutionSignal")]
     [JsonSerializable(typeof(RenderCompleteSignal), TypeInfoPropertyName = "RenderCompleteSignal")]
+    [JsonSerializable(typeof(SvgWorkerTimeoutSignal), TypeInfoPropertyName = "SvgWorkerTimeoutSignal")]
     [JsonSerializable(typeof(MarkdownAuditPerformanceSnapshot), TypeInfoPropertyName = "MarkdownAuditPerformanceSnapshot")]
     [JsonSerializable(typeof(MarkdownAuditCaptureRequest), TypeInfoPropertyName = "MarkdownAuditCaptureRequest")]
     [JsonSerializable(typeof(MarkdownAuditCaptureResponse), TypeInfoPropertyName = "MarkdownAuditCaptureResponse")]

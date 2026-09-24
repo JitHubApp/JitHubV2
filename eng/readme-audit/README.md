@@ -22,6 +22,9 @@ repository:
   scene preparation, failures, and cancellations). These diagnose outliers;
   each resolved image also records its resolver start and elapsed time. These
   do not prove same-byte parity or replace the release benchmark.
+- if an isolated resvg worker misses a deadline, a separate privacy-safe
+  record names the phase (process startup, font catalog, open, render, or
+  maintenance) and configured deadline without including SVG bytes or URLs.
 
 Run an optimized smoke audit (Release is the default and is required for
 browser-relative performance evidence):
