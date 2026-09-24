@@ -1115,7 +1115,10 @@ public sealed class GitHubImageServiceTests : IDisposable
             TimeSpan.FromMilliseconds(10),
             CancellationToken.None);
 
-        await primaryCanceled.Task.WaitAsync(TimeSpan.FromSeconds(2));
+        // The pipeline drains the canceled loser before returning. Assert that
+        // invariant directly; a second wall-clock wait can race its own timer
+        // under loaded CI without testing any additional behavior.
+        Assert.True(primaryCanceled.Task.IsCompletedSuccessfully);
         Assert.Equal("origin", result);
         Assert.Equal(0, failures);
     }

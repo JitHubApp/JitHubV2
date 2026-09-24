@@ -369,9 +369,38 @@ complete before claiming this plan or the 1.0 performance goal is met.
   retaining four-way parallelism and exact-rank consolidation, reducing
   per-runner lifetime and narrowing any future lost-runner interval. A
   contract test checks contiguous, nonoverlapping 1-500 coverage and that
-  the command count derives from each matrix range. The current run remains
-  incomplete; a successful full rerun and investigation of any recurrence
-  are required.
+  the command count derives from each matrix range. The `186f6ef` run later
+  consolidated 450/500 reported cases, all passing, with live first/full
+  p95 ratios 0.457/0.357; the 50 missing ranks were precisely 101-150. Its
+  failed runner produced neither job logs nor case artifacts, so it is not a
+  500/500 verdict. A successful full rerun and investigation of any
+  recurrence are required.
+- The first 25-case audit at `a98f9bd` (`35995469652`) has a concrete
+  renderer recurrence at rank 153 (`louislam/uptime-kuma`): one valid
+  1,877,124-byte, 1200×8120 sponsor SVG resolved in 132 ms, but the isolated
+  worker's **open** request exceeded the unchanged three-second deadline and
+  the image became unavailable. A separate Weblate badge had no resolved
+  asset; the audit's browser comparison excluded that broken reference. The
+  sponsor failure is not a transport or image-resolution delay. A live local
+  fetch returned the same byte length; after host sanitization, diagnostic
+  timings on this workstation were about 2 ms XML parse, 7 ms security
+  inspection, 68 ms font initialization, and 220 ms tree conversion. These
+  measurements do not explain or waive the hosted timeout. The deterministic
+  sponsor-shaped provider fixture now includes 576 embedded images, 1,152
+  text nodes, and 576 clipping rectangles rather than images alone; all 59
+  x64 Release provider tests pass locally under the existing hard deadline.
+  The hosted recurrence and a stage-level worker/CPU trace remain necessary
+  before considering the valid-content timeout fixed.
+- CI at `a98f9bd` exposed a CRLF-sensitive workflow-matrix contract test;
+  `44f9afe` validates both LF and CRLF while preserving the exact 1-500
+  coverage assertion. The local 3,057-test Debug x64 suite and one hosted
+  code-viewer and NativeAOT run pass with that change. A duplicate hosted
+  NativeAOT run then timed out in the Camo hedge test's two-second
+  post-result wait. The pipeline already cancels and drains its losing
+  request before returning; the test now asserts that completed-cancellation
+  invariant directly, without an unrelated wall-clock timer. The exact
+  3,057-test Debug x64 suite passes locally with coverage. Hosted recurrence
+  is still needed.
 - Measured: the full x64 repeated-construction release benchmark is not yet
   qualified. Both reference and candidate failed its stationarity contract;
   the candidate's full run dropped to about 121 observed Hz on a configured

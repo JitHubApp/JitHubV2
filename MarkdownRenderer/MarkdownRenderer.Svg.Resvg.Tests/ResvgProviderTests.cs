@@ -620,8 +620,9 @@ public sealed class ResvgProviderTests
     [Fact]
     public async Task SponsorShapedFixture_Opens576EmbeddedImagesUnderTheHardDeadline()
     {
-        // Mirrors the element count and source-byte scale of an image-heavy
-        // sponsor grid without depending on live or private README assets.
+        // Mirrors the element count, text/clip complexity, and source-byte
+        // scale of an image-heavy sponsor grid without depending on live or
+        // private README assets. A prior image-only shape missed its open cost.
         string[] payloads = Enumerable.Range(0, 380)
             .Select(index => Convert.ToBase64String(CreatePng(
                 checked((byte)(index & 0xff)),
@@ -634,19 +635,27 @@ public sealed class ResvgProviderTests
         var body = new StringBuilder();
         for (int index = 0; index < 576; index++)
         {
-            int column = index % 24;
-            int row = index / 24;
-            body.Append($"<image x='{column * 40}' y='{row * 40}' width='24' height='24' href='data:image/png;base64,{payloads[index % payloads.Length]}'/>");
+            int column = index % 10;
+            int row = index / 10;
+            int x = column * 120;
+            int y = row * 140;
+            int clipId = index + 1;
+            body.Append($"<a href='https://example.test/sponsor/{index}'>" +
+                $"<image x='{x}' y='{y}' width='100' height='100' href='data:image/png;base64,{payloads[index % payloads.Length]}'/>" +
+                $"<text x='{x}' y='{y + 105}' clip-path='url(#clip{clipId})' dominant-baseline='hanging'>Sponsor {index}</text>" +
+                $"<text x='{x}' y='{y + 125}' clip-path='url(#clip{clipId})' dominant-baseline='hanging'>USD {index}</text></a>" +
+                $"<clipPath id='clip{clipId}'><rect x='{x}' y='{y + 105}' width='105' height='40'/></clipPath>");
         }
-        byte[] source = Svg($"<svg xmlns='http://www.w3.org/2000/svg' width='960' height='960'>{body}</svg>");
+        byte[] source = Svg($"<svg xmlns='http://www.w3.org/2000/svg' width='1200' height='8120'>{body}</svg>");
         Assert.InRange(source.Length, 1_700_000, 2_200_000);
 
         await using var renderer = new ResvgMarkdownSvgRenderer();
         using IMarkdownSvgDocument document = await renderer.OpenAsync(new MarkdownSvgOpenRequest(source));
-        using MarkdownSvgRaster raster = await document.RenderAsync(new MarkdownSvgRenderRequest(480, 480));
+        Assert.True(document.Info.HasText);
+        using MarkdownSvgRaster raster = await document.RenderAsync(new MarkdownSvgRenderRequest(600, 4060));
 
-        Assert.Equal(480, raster.WidthPixels);
-        Assert.Equal(480, raster.HeightPixels);
+        Assert.Equal(600, raster.WidthPixels);
+        Assert.Equal(4060, raster.HeightPixels);
         Assert.True(HasVisiblePixel(raster.Pixels.Span));
     }
 
