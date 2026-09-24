@@ -16,13 +16,15 @@ internal sealed partial class MarkdownSvgWorkerAuditListener : EventListener
     protected override void OnEventWritten(EventWrittenEventArgs eventData)
     {
         if (eventData.EventId == 1 &&
-            eventData.Payload is { Count: 2 } payload &&
+            eventData.Payload is { Count: 3 } payload &&
             payload[0] is int stage &&
-            payload[1] is int deadlineMilliseconds)
+            payload[1] is int deadlineMilliseconds &&
+            payload[2] is int workerProcessCpuMilliseconds)
         {
             MarkdownLifecycleAutomationBridge.RecordSvgWorkerTimeout(
                 stage,
-                deadlineMilliseconds);
+                deadlineMilliseconds,
+                workerProcessCpuMilliseconds);
         }
     }
 }

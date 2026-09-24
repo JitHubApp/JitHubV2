@@ -29,12 +29,16 @@ public sealed class MarkdownSvgWorkerAuditListenerTests
                 targetHost: null);
             using var listener = new MarkdownSvgWorkerAuditListener();
 
-            TestWorkerEventSource.Log.Timeout(stage: 3, deadlineMilliseconds: 3_000);
+            TestWorkerEventSource.Log.Timeout(
+                stage: 3,
+                deadlineMilliseconds: 3_000,
+                workerProcessCpuMilliseconds: 1_250);
 
             string line = Assert.Single(File.ReadAllLines(path));
             using JsonDocument document = JsonDocument.Parse(line);
             Assert.Equal("render", document.RootElement.GetProperty("Phase").GetString());
             Assert.Equal(3_000, document.RootElement.GetProperty("DeadlineMilliseconds").GetInt32());
+            Assert.Equal(1_250, document.RootElement.GetProperty("WorkerProcessCpuMilliseconds").GetInt32());
             Assert.False(document.RootElement.TryGetProperty("Source", out _));
             Assert.False(document.RootElement.TryGetProperty("Url", out _));
         }
@@ -55,7 +59,7 @@ public sealed class MarkdownSvgWorkerAuditListenerTests
         public static readonly TestWorkerEventSource Log = new();
 
         [Event(1, Level = EventLevel.Warning)]
-        public void Timeout(int stage, int deadlineMilliseconds) =>
-            WriteEvent(1, stage, deadlineMilliseconds);
+        public void Timeout(int stage, int deadlineMilliseconds, int workerProcessCpuMilliseconds) =>
+            WriteEvent(1, stage, deadlineMilliseconds, workerProcessCpuMilliseconds);
     }
 }

@@ -31,18 +31,18 @@ public sealed class WorkerSchedulingTests
     }
 
     [Fact]
-    public void WorkerTimeoutEvidenceContainsOnlyPhaseAndBoundedDeadline()
+    public void WorkerTimeoutEvidenceContainsOnlyPhaseDeadlineAndWorkerCpu()
     {
         using var listener = new TimeoutListener();
 
-        WorkerTimeoutEvents.Log.Timeout((int)WorkerOperation.Render, 3_000);
+        WorkerTimeoutEvents.Log.Timeout((int)WorkerOperation.Render, 3_000, 1_250);
 
-        Assert.Contains(((int)WorkerOperation.Render, 3_000), listener.Events);
+        Assert.Contains(((int)WorkerOperation.Render, 3_000, 1_250), listener.Events);
     }
 
     private sealed class TimeoutListener : EventListener
     {
-        public ConcurrentQueue<(int Stage, int DeadlineMilliseconds)> Events { get; } = new();
+        public ConcurrentQueue<(int Stage, int DeadlineMilliseconds, int WorkerProcessCpuMilliseconds)> Events { get; } = new();
 
         protected override void OnEventSourceCreated(EventSource eventSource)
         {
@@ -52,10 +52,11 @@ public sealed class WorkerSchedulingTests
 
         protected override void OnEventWritten(EventWrittenEventArgs eventData)
         {
-            if (eventData.EventId == 1 && eventData.Payload is { Count: 2 } payload &&
-                payload[0] is int stage && payload[1] is int deadlineMilliseconds)
+            if (eventData.EventId == 1 && eventData.Payload is { Count: 3 } payload &&
+                payload[0] is int stage && payload[1] is int deadlineMilliseconds &&
+                payload[2] is int workerProcessCpuMilliseconds)
             {
-                Events.Enqueue((stage, deadlineMilliseconds));
+                Events.Enqueue((stage, deadlineMilliseconds, workerProcessCpuMilliseconds));
             }
         }
     }

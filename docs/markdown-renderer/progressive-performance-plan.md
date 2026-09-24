@@ -391,6 +391,25 @@ complete before claiming this plan or the 1.0 performance goal is met.
   x64 Release provider tests pass locally under the existing hard deadline.
   The hosted recurrence and a stage-level worker/CPU trace remain necessary
   before considering the valid-content timeout fixed.
+  That completed audit reported all 500 ranks: 499 passed and rank 153 failed.
+  Its live native/Edge first-render/full-page p95 ratios were 0.440/0.366;
+  these page-level measurements neither waive the missing image nor establish
+  the mandatory same-byte Edge parity or qualified release benchmark. The
+  `9a94a7a` full rerun (`36007051224`) is in progress.
+- Worker deadline evidence now includes the isolated worker process's CPU
+  milliseconds during each timed-out transaction, with `-1` when Windows
+  cannot provide a reading. CPU sampling is enabled only when an audit event
+  listener is attached, so normal SVG requests gain no process query. The
+  timeout sample is taken before worker termination and logged alongside phase
+  and unchanged deadline, without source bytes or URL.
+  It distinguishes a CPU-bound recurrence from time spent off-CPU but is
+  diagnostic only: it does not relax the three-second ceiling or fix the
+  sponsor SVG. The x64 Release provider suite (59 tests) and Debug x64 app
+  suite (3,057 tests) pass locally. One duplicate hosted NativeAOT run at
+  `9a94a7a` failed the Camo hedge test on a callback-completion assertion
+  while the other run passed; the test now inspects the canceled token itself
+  after the pipeline drains the loser, removing the separate callback signal
+  from that assertion. A hosted recurrence is still required.
 - CI at `a98f9bd` exposed a CRLF-sensitive workflow-matrix contract test;
   `44f9afe` validates both LF and CRLF while preserving the exact 1-500
   coverage assertion. The local 3,057-test Debug x64 suite and one hosted

@@ -1100,13 +1100,12 @@ public sealed class GitHubImageServiceTests : IDisposable
     [Fact]
     public async Task MarkdownImageFallback_HedgeUsesOriginWhilePrimaryIsStalled()
     {
-        var primaryCanceled = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        CancellationToken primaryToken = default;
         int failures = 0;
         string? result = await MarkdownImageFallbackPipeline.FirstSuccessfulHedgedAsync(
             async token =>
             {
-                using CancellationTokenRegistration registration = token.Register(
-                    () => primaryCanceled.TrySetResult());
+                primaryToken = token;
                 await Task.Delay(Timeout.InfiniteTimeSpan, token);
                 return "camo";
             },
@@ -1115,10 +1114,10 @@ public sealed class GitHubImageServiceTests : IDisposable
             TimeSpan.FromMilliseconds(10),
             CancellationToken.None);
 
-        // The pipeline drains the canceled loser before returning. Assert that
-        // invariant directly; a second wall-clock wait can race its own timer
-        // under loaded CI without testing any additional behavior.
-        Assert.True(primaryCanceled.Task.IsCompletedSuccessfully);
+        // Inspect the canceled token itself, without making this behavioral
+        // assertion depend on a separate callback's completion signal.
+        Assert.True(primaryToken.CanBeCanceled);
+        Assert.True(primaryToken.IsCancellationRequested);
         Assert.Equal("origin", result);
         Assert.Equal(0, failures);
     }

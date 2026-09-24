@@ -109,7 +109,8 @@ internal sealed partial class WindowsWorkerProcess : IAsyncDisposable, IDisposab
             {
                 WorkerTimeoutEvents.Log.Timeout(
                     stage: 0,
-                    deadlineMilliseconds: (int)WorkerSchedulingPolicy.InitializationDeadline.TotalMilliseconds);
+                    deadlineMilliseconds: (int)WorkerSchedulingPolicy.InitializationDeadline.TotalMilliseconds,
+                    workerProcessCpuMilliseconds: -1);
                 throw new WorkerInitializationDeadlineException(
                     "The resvg worker did not complete startup before its initialization deadline.",
                     exception);
@@ -163,6 +164,11 @@ internal sealed partial class WindowsWorkerProcess : IAsyncDisposable, IDisposab
             if (HasExited)
                 throw new WorkerProtocolException("The resvg worker exited before the request.");
 
+            // Audit-only evidence must not add a process query to every normal
+            // SVG request. The listener is installed before audit rendering.
+            long workerCpuAtStart = WorkerTimeoutEvents.Log.IsEnabled()
+                ? GetProcessCpuTicks()
+                : -1;
             using var operation = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
             operation.CancelAfter(deadline);
             byte[] requestFrame = WorkerProtocol.Encode(request);
@@ -175,9 +181,17 @@ internal sealed partial class WindowsWorkerProcess : IAsyncDisposable, IDisposab
             }
             catch (OperationCanceledException exception) when (!cancellationToken.IsCancellationRequested)
             {
+                long workerCpuAtTimeout = workerCpuAtStart >= 0
+                    ? GetProcessCpuTicks()
+                    : -1;
+                int workerProcessCpuMilliseconds = workerCpuAtStart >= 0 &&
+                    workerCpuAtTimeout >= workerCpuAtStart
+                        ? (int)Math.Min((workerCpuAtTimeout - workerCpuAtStart) / 10_000, int.MaxValue)
+                        : -1;
                 WorkerTimeoutEvents.Log.Timeout(
                     stage: (int)request.Operation,
-                    deadlineMilliseconds: (int)deadline.TotalMilliseconds);
+                    deadlineMilliseconds: (int)deadline.TotalMilliseconds,
+                    workerProcessCpuMilliseconds);
                 DisposeForRestart();
                 throw new WorkerDeadlineException("The resvg worker exceeded its request deadline.", exception);
             }
@@ -207,6 +221,26 @@ internal sealed partial class WindowsWorkerProcess : IAsyncDisposable, IDisposab
     }
 
     public void Dispose() => DisposeCore(waitForExit: false);
+
+    private long GetProcessCpuTicks()
+    {
+        try
+        {
+            if (!GetProcessTimes(_process, out _, out _, out FileTime kernel, out FileTime user))
+                return -1;
+
+            ulong kernelTicks = ((ulong)kernel.High << 32) | kernel.Low;
+            ulong userTicks = ((ulong)user.High << 32) | user.Low;
+            return userTicks <= long.MaxValue &&
+                   kernelTicks <= (ulong)long.MaxValue - userTicks
+                ? (long)(kernelTicks + userTicks)
+                : -1;
+        }
+        catch (ObjectDisposedException)
+        {
+            return -1;
+        }
+    }
 
     internal void DisposeForRestart() => DisposeCore(waitForExit: true);
 
@@ -603,6 +637,13 @@ internal sealed partial class WindowsWorkerProcess : IAsyncDisposable, IDisposab
         public uint ThreadId;
     }
 
+    [StructLayout(LayoutKind.Sequential)]
+    private struct FileTime
+    {
+        public uint Low;
+        public uint High;
+    }
+
     internal sealed class WorkerJob : IDisposable
     {
         private SafeJobHandle? _handle;
@@ -645,6 +686,15 @@ internal sealed partial class WindowsWorkerProcess : IAsyncDisposable, IDisposab
 
     [LibraryImport("kernel32.dll")]
     private static partial nint GetCurrentProcess();
+
+    [LibraryImport("kernel32.dll", SetLastError = true)]
+    [return: MarshalAs(UnmanagedType.Bool)]
+    private static partial bool GetProcessTimes(
+        SafeProcessHandle process,
+        out FileTime creation,
+        out FileTime exit,
+        out FileTime kernel,
+        out FileTime user);
 
     [LibraryImport("advapi32.dll", SetLastError = true)]
     [return: MarshalAs(UnmanagedType.Bool)]

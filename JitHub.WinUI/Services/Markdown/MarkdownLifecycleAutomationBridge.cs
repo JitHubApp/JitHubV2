@@ -316,7 +316,7 @@ internal static partial class MarkdownLifecycleAutomationBridge
         }
     }
 
-    public static void RecordSvgWorkerTimeout(int stage, int deadlineMilliseconds)
+    public static void RecordSvgWorkerTimeout(int stage, int deadlineMilliseconds, int workerProcessCpuMilliseconds)
     {
         if (!IsEvidenceEnabled)
             return;
@@ -346,6 +346,7 @@ internal static partial class MarkdownLifecycleAutomationBridge
                         Environment.ProcessId,
                         phase,
                         deadlineMilliseconds,
+                        workerProcessCpuMilliseconds,
                         DateTimeOffset.UtcNow),
                     MarkdownLifecycleJsonContext.Default.SvgWorkerTimeoutSignal);
                 File.AppendAllText(fullPath, entry + Environment.NewLine);
@@ -557,6 +558,7 @@ internal static partial class MarkdownLifecycleAutomationBridge
         int ProcessId,
         string Phase,
         int DeadlineMilliseconds,
+        int WorkerProcessCpuMilliseconds,
         DateTimeOffset Timestamp);
 
     internal sealed record MarkdownAuditPerformanceSnapshot(
