@@ -1,4 +1,5 @@
 using System;
+using System.Collections.Generic;
 using System.Threading;
 using Microsoft.Graphics.Canvas.Text;
 using Microsoft.UI.Xaml;
@@ -21,7 +22,8 @@ internal static class SharedCanvasTextFormatCache
     private static readonly WeightedLruCache<TextFormatKey, Entry> Cache = new(
         DefaultBudgetBytes,
         static entry => entry.WeightBytes,
-        static entry => entry.ReleaseCacheReference());
+        static entry => entry.ReleaseCacheReference(),
+        TextFormatKeyComparer.Instance);
 
     internal static Lease Acquire(
         ElementStyle style,
@@ -112,6 +114,19 @@ internal static class SharedCanvasTextFormatCache
         CanvasTextDirection Direction,
         CanvasLineSpacingMode LineSpacingMode,
         string LocaleName);
+
+    private sealed class TextFormatKeyComparer : IEqualityComparer<TextFormatKey>
+    {
+        internal static readonly TextFormatKeyComparer Instance = new();
+
+        public bool Equals(TextFormatKey left, TextFormatKey right) =>
+            (left with { LocaleName = string.Empty }) == (right with { LocaleName = string.Empty }) &&
+            StringComparer.OrdinalIgnoreCase.Equals(left.LocaleName, right.LocaleName);
+
+        public int GetHashCode(TextFormatKey key) => HashCode.Combine(
+            (key with { LocaleName = string.Empty }).GetHashCode(),
+            StringComparer.OrdinalIgnoreCase.GetHashCode(key.LocaleName));
+    }
 
     internal sealed class Entry
     {

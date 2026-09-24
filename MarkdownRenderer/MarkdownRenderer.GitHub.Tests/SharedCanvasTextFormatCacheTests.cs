@@ -6,6 +6,12 @@ using Xunit;
 
 namespace MarkdownRenderer.GitHub.Tests;
 
+[CollectionDefinition("Shared Canvas text format cache", DisableParallelization = true)]
+public sealed class SharedCanvasTextFormatCacheCollection
+{
+}
+
+[Collection("Shared Canvas text format cache")]
 public sealed class SharedCanvasTextFormatCacheTests
 {
     [Fact]
@@ -81,10 +87,18 @@ public sealed class SharedCanvasTextFormatCacheTests
                 CanvasHorizontalAlignment.Left,
                 FlowDirection.LeftToRight,
                 "ar-SA");
+        using SharedCanvasTextFormatCache.Lease englishAlternateCase =
+            SharedCanvasTextFormatCache.Acquire(
+                style,
+                CanvasWordWrapping.Wrap,
+                CanvasHorizontalAlignment.Left,
+                FlowDirection.LeftToRight,
+                "EN-us");
 
         Assert.NotSame(english.Format, arabic.Format);
-        Assert.Equal("en-US", english.Format.LocaleName);
-        Assert.Equal("ar-SA", arabic.Format.LocaleName);
+        Assert.Same(english.Format, englishAlternateCase.Format);
+        Assert.Equal("en-US", english.Format.LocaleName, ignoreCase: true);
+        Assert.Equal("ar-SA", arabic.Format.LocaleName, ignoreCase: true);
         Assert.Equal(2, SharedCanvasTextFormatCache.Statistics.Count);
     }
 

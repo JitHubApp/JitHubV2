@@ -395,7 +395,11 @@ complete before claiming this plan or the 1.0 performance goal is met.
   Its live native/Edge first-render/full-page p95 ratios were 0.440/0.366;
   these page-level measurements neither waive the missing image nor establish
   the mandatory same-byte Edge parity or qualified release benchmark. The
-  `9a94a7a` full rerun (`36007051224`) is in progress.
+  `9a94a7a` full rerun (`36007051224`) subsequently reported all 500
+  ranks: 499 passed, with only rank 101 failing; rank 153 passed with no
+  unavailable image. Its live first/full native-to-Edge p95 ratios were
+  0.453/0.377. The prior sponsor timeout remains intermittent and unresolved,
+  and these live ratios still do not establish same-byte parity.
 - That `9a94a7a` rerun's ranks 101-125 shard reported 24/25 passing. Rank
   101 (`immich-app/immich`) had two small, valid Camo SVG badges resolve to
   622 and 2,561 bytes in about 61 and 367 ms respectively, then both became
@@ -430,6 +434,15 @@ complete before claiming this plan or the 1.0 performance goal is met.
   invariant directly, without an unrelated wall-clock timer. The exact
   3,057-test Debug x64 suite passes locally with coverage. Hosted recurrence
   is still needed.
+- The `3cab771` preview CI reached all 1,419 Core tests, then failed three
+  `SharedCanvasTextFormatCacheTests`: parallel tests changed the process-wide
+  cache between absolute-count assertions, while DirectWrite returned
+  case-normalized locale tags (`en-us` rather than `en-US`) on that runner.
+  The cache tests now run in an isolated xUnit collection and compare locale
+  tags case-insensitively. Cache keys also treat equivalent locale casing as
+  one descriptor without allocating a lowercase string on every hot-path
+  lookup. The complete 401-test Release x64 GitHub suite passed four local
+  runs after this change; hosted validation remains pending.
 - Measured: the full x64 repeated-construction release benchmark is not yet
   qualified. Both reference and candidate failed its stationarity contract;
   the candidate's full run dropped to about 121 observed Hz on a configured
