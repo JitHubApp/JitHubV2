@@ -222,7 +222,9 @@ internal static partial class ReadmeAuditProbe
             }
             if (!native.CleanExit)
             {
-                failures.Add("JitHub did not close cleanly after the case.");
+                failures.Add(
+                    "JitHub did not close cleanly after the case" +
+                    (native.CloseFailure is null ? "." : $" ({native.CloseFailure})."));
             }
             if (native.LoadingImagesAfterTraversal != 0)
             {
@@ -390,12 +392,14 @@ internal static partial class ReadmeAuditProbe
         string imageEvidence = Path.Combine(runtime, "image-unavailable.ndjson");
         string imageResolutionEvidence = Path.Combine(runtime, "image-resolution.ndjson");
         string svgWorkerEvidence = Path.Combine(runtime, "svg-worker-timeouts.ndjson");
+        string shutdownStageEvidence = Path.Combine(runtime, "shutdown-stage.json");
         string captureRequest = Path.Combine(runtime, "capture-request.json");
         string captureResponse = Path.Combine(runtime, "capture-response.json");
         foreach (string stale in new[]
         {
             appReady, hostReady, renderComplete, renderFailure, imageEvidence,
-            imageResolutionEvidence, svgWorkerEvidence, captureRequest, captureResponse,
+            imageResolutionEvidence, svgWorkerEvidence, shutdownStageEvidence,
+            captureRequest, captureResponse,
         })
         {
             if (File.Exists(stale)) File.Delete(stale);
@@ -431,6 +435,7 @@ internal static partial class ReadmeAuditProbe
         startInfo.Environment["JITHUB_MARKDOWN_IMAGE_EVIDENCE_PATH"] = imageEvidence;
         startInfo.Environment["JITHUB_MARKDOWN_IMAGE_RESOLUTION_EVIDENCE_PATH"] = imageResolutionEvidence;
         startInfo.Environment["JITHUB_MARKDOWN_SVG_WORKER_EVIDENCE_PATH"] = svgWorkerEvidence;
+        startInfo.Environment["JITHUB_MARKDOWN_SHUTDOWN_STAGE_PATH"] = shutdownStageEvidence;
         startInfo.Environment["JITHUB_MARKDOWN_CAPTURE_REQUEST_PATH"] = captureRequest;
         startInfo.Environment["JITHUB_MARKDOWN_CAPTURE_RESPONSE_PATH"] = captureResponse;
 
@@ -489,7 +494,8 @@ internal static partial class ReadmeAuditProbe
                 int absentRawUnavailable = CountNonEmptyLines(imageEvidence);
                 string? absentFailure = File.Exists(renderFailure) ? File.ReadAllText(renderFailure) : null;
                 long absentPeakWorkingSetBytes = appProcess.PeakWorkingSet64;
-                bool absentCleanExit = CloseAndWait(window, appProcess, launcher);
+                ReadmeAuditCloseResult absentClose = CloseAndWait(window, appProcess, launcher);
+                PreserveEvidenceFile(shutdownStageEvidence, Path.Combine(output, "shutdown-stage.json"));
                 window = null;
                 return new NativeAuditResult
                 {
@@ -507,7 +513,8 @@ internal static partial class ReadmeAuditProbe
                     UnavailableImages = absentRawUnavailable,
                     RawUnavailableImages = absentRawUnavailable,
                     RenderFailure = absentFailure,
-                    CleanExit = absentCleanExit,
+                    CleanExit = absentClose.CleanExit,
+                    CloseFailure = absentClose.Failure,
                 };
             }
 
@@ -540,7 +547,8 @@ internal static partial class ReadmeAuditProbe
                         appProcess.TotalProcessorTime.TotalMilliseconds - cpuAtReadyMs);
                     string? sourceFailure = File.Exists(renderFailure) ? File.ReadAllText(renderFailure) : null;
                     long sourcePeakWorkingSetBytes = appProcess.PeakWorkingSet64;
-                    bool sourceCleanExit = CloseAndWait(window, appProcess, launcher);
+                    ReadmeAuditCloseResult sourceClose = CloseAndWait(window, appProcess, launcher);
+                    PreserveEvidenceFile(shutdownStageEvidence, Path.Combine(output, "shutdown-stage.json"));
                     window = null;
                     return new NativeAuditResult
                     {
@@ -558,7 +566,8 @@ internal static partial class ReadmeAuditProbe
                         UnavailableImages = 0,
                         RawUnavailableImages = 0,
                         RenderFailure = sourceFailure,
-                        CleanExit = sourceCleanExit,
+                        CleanExit = sourceClose.CleanExit,
+                        CloseFailure = sourceClose.Failure,
                     };
                 }
             }
@@ -622,7 +631,8 @@ internal static partial class ReadmeAuditProbe
             PreserveEvidenceFile(imageResolutionEvidence, Path.Combine(output, "image-resolution.ndjson"));
             PreserveEvidenceFile(svgWorkerEvidence, Path.Combine(output, "svg-worker-timeouts.ndjson"));
 
-            bool cleanExit = CloseAndWait(window, appProcess, launcher);
+            ReadmeAuditCloseResult close = CloseAndWait(window, appProcess, launcher);
+            PreserveEvidenceFile(shutdownStageEvidence, Path.Combine(output, "shutdown-stage.json"));
             window = null;
             return new NativeAuditResult
             {
@@ -654,7 +664,8 @@ internal static partial class ReadmeAuditProbe
                 UnavailableImages = unavailable,
                 RawUnavailableImages = rawUnavailable,
                 RenderFailure = failure,
-                CleanExit = cleanExit,
+                CleanExit = close.CleanExit,
+                CloseFailure = close.Failure,
             };
         }
         catch
@@ -2048,12 +2059,33 @@ internal static partial class ReadmeAuditProbe
         catch (JsonException) { return false; }
     }
 
-    private static bool CloseAndWait(Window window, Process appProcess, Process launcher)
+    private static ReadmeAuditCloseResult CloseAndWait(
+        Window window, Process appProcess, Process launcher)
     {
-        try { window.Close(); } catch { }
-        if (!appProcess.WaitForExit(12_000)) return false;
+        bool closeRequestFailed = false;
+        try { window.Close(); }
+        catch { closeRequestFailed = true; }
+
+        if (!appProcess.WaitForExit(12_000))
+        {
+            return new ReadmeAuditCloseResult(
+                false,
+                closeRequestFailed
+                    ? "window-close-request-failed; app-exit-timeout-12s"
+                    : "app-exit-timeout-12s");
+        }
+
+        if (appProcess.ExitCode != 0)
+        {
+            return new ReadmeAuditCloseResult(
+                false,
+                $"app-exit-code-0x{appProcess.ExitCode:X8}");
+        }
+
         if (!launcher.HasExited) launcher.WaitForExit(2_000);
-        return !launcher.HasExited || launcher.ExitCode == 0;
+        return launcher.HasExited && launcher.ExitCode != 0
+            ? new ReadmeAuditCloseResult(false, $"launcher-exit-code-0x{launcher.ExitCode:X8}")
+            : new ReadmeAuditCloseResult(true, null);
     }
 
     private static double TokenCoverage(string expected, string actual)
@@ -2616,7 +2648,10 @@ internal sealed class NativeAuditResult
     public int RawUnavailableImages { get; init; }
     public string? RenderFailure { get; init; }
     public bool CleanExit { get; init; }
+    public string? CloseFailure { get; init; }
 }
+
+internal readonly record struct ReadmeAuditCloseResult(bool CleanExit, string? Failure);
 
 internal sealed class ReadmeAuditComparison
 {

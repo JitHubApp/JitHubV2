@@ -26,6 +26,7 @@ internal static partial class MarkdownLifecycleAutomationBridge
     private const string RenderCompleteEvidencePathVariable = "JITHUB_MARKDOWN_RENDER_COMPLETE_EVIDENCE_PATH";
     private const string CaptureRequestPathVariable = "JITHUB_MARKDOWN_CAPTURE_REQUEST_PATH";
     private const string CaptureResponsePathVariable = "JITHUB_MARKDOWN_CAPTURE_RESPONSE_PATH";
+    private const string ShutdownStagePathVariable = "JITHUB_MARKDOWN_SHUTDOWN_STAGE_PATH";
     private const string HighContrastVariable = "JITHUB_AUTOMATION_HIGH_CONTRAST";
     private const string ResourceMapAbsentVariable = "JITHUB_AUTOMATION_RESOURCE_MAP_ABSENT";
     private const string ResourceMapEvidencePathVariable = "JITHUB_AUTOMATION_RESOURCE_MAP_EVIDENCE_PATH";
@@ -265,6 +266,22 @@ internal static partial class MarkdownLifecycleAutomationBridge
             catch (UnauthorizedAccessException)
             {
             }
+        }
+    }
+
+    public static void SignalShutdownStage(string stage)
+    {
+        if (!IsEvidenceEnabled)
+        {
+            return;
+        }
+
+        lock (SignalGate)
+        {
+            WriteSignal(
+                Environment.GetEnvironmentVariable(ShutdownStagePathVariable),
+                new ShutdownStageSignal(Environment.ProcessId, stage, DateTimeOffset.UtcNow),
+                MarkdownLifecycleJsonContext.Default.ShutdownStageSignal);
         }
     }
 
@@ -518,6 +535,8 @@ internal static partial class MarkdownLifecycleAutomationBridge
 
     private sealed record LifecycleReadySignal(int ProcessId, string Stage, DateTimeOffset Timestamp);
 
+    private sealed record ShutdownStageSignal(int ProcessId, string Stage, DateTimeOffset Timestamp);
+
     private sealed record ResourceMapFallbackSignal(int ProcessId, string Fallback, DateTimeOffset Timestamp);
 
     private sealed record LinkRouteSignal(
@@ -593,6 +612,7 @@ internal static partial class MarkdownLifecycleAutomationBridge
     private sealed record MarkdownLifecycleRuntimeSettings(double TextScaleFactor, int Revision);
 
     [JsonSerializable(typeof(LifecycleReadySignal), TypeInfoPropertyName = "LifecycleReadySignal")]
+    [JsonSerializable(typeof(ShutdownStageSignal), TypeInfoPropertyName = "ShutdownStageSignal")]
     [JsonSerializable(typeof(ResourceMapFallbackSignal), TypeInfoPropertyName = "ResourceMapFallbackSignal")]
     [JsonSerializable(typeof(LinkRouteSignal), TypeInfoPropertyName = "LinkRouteSignal")]
     [JsonSerializable(typeof(ImageUnavailableSignal), TypeInfoPropertyName = "ImageUnavailableSignal")]

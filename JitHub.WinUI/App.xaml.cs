@@ -993,18 +993,24 @@ public partial class App : Application
 
     private void CurrentDomain_ProcessExit(object? sender, EventArgs e)
     {
+        MarkdownLifecycleAutomationBridge.SignalShutdownStage("process-exit-started");
         try
         {
             _ = ShutdownBackgroundTasksAsync(TimeSpan.FromSeconds(2)).GetAwaiter().GetResult();
+            MarkdownLifecycleAutomationBridge.SignalShutdownStage("process-exit-background-drained");
             _ = ShutdownDiagnosticsAsync(TimeSpan.FromSeconds(2)).GetAwaiter().GetResult();
+            MarkdownLifecycleAutomationBridge.SignalShutdownStage("process-exit-diagnostics-drained");
         }
         catch (Exception exception)
         {
             LogUnhandledException(exception, "diagnostics-shutdown");
         }
 
+        MarkdownLifecycleAutomationBridge.SignalShutdownStage("process-exit-markdown-shutdown-started");
         JitHubMarkdownRuntime.ShutdownForProcessExit();
+        MarkdownLifecycleAutomationBridge.SignalShutdownStage("process-exit-renderer-shutdown-started");
         MarkdownRenderer.MarkdownRendererRuntime.Shutdown(TimeSpan.FromSeconds(1));
+        MarkdownLifecycleAutomationBridge.SignalShutdownStage("process-exit-completed");
     }
 
     internal Task<DiagnosticsShutdownResult> ShutdownDiagnosticsAsync(

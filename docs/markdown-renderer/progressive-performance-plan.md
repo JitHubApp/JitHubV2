@@ -443,6 +443,23 @@ complete before claiming this plan or the 1.0 performance goal is met.
   one descriptor without allocating a lowercase string on every hot-path
   lookup. The complete 401-test Release x64 GitHub suite passed four local
   runs after this change; hosted validation remains pending.
+- The completed `3cab771` top-500 audit (`36019774373`) reported 499/500
+  passes. Rank 395 (`h5bp/html5-boilerplate`) rendered with 100% text token
+  coverage, 99.29% structure, all four images observed, zero unavailable
+  images, and no renderer exception, but its app process did not close cleanly.
+  The old audit only recorded a boolean, so it cannot distinguish a 12-second
+  shutdown timeout from a nonzero launcher exit. The audit now records a
+  privacy-safe close classification, verifies the actual app process exit
+  code as well as the launcher, and retains the strict failed-case verdict.
+  An audit-only, atomic last-stage signal now distinguishes dialog dismissal,
+  background/diagnostics drain, performance-session retirement, engine/GPU/SVG
+  disposal, the final window close, and process-exit cleanup; the production
+  path does no stage I/O. The Release x64 app and audit-harness builds and 37
+  focused automation/bridge tests pass locally. A hosted recurrence is needed
+  to identify and fix the
+  shutdown cause; local live replay requires the read-only audit token and
+  account partition, which are not configured on this machine. The `c42f60f`
+  current-head audit is still running and predates this added classification.
 - Measured: the full x64 repeated-construction release benchmark is not yet
   qualified. Both reference and candidate failed its stationarity contract;
   the candidate's full run dropped to about 121 observed Hz on a configured

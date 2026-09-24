@@ -218,6 +218,12 @@ public sealed class AutomationHarnessSourceContractTests
         Assert.Contains("RepoCodeFileTree", nativeProbe, StringComparison.Ordinal);
         Assert.Contains("if (result.InfrastructureFailure)", nativeProbe, StringComparison.Ordinal);
         Assert.Contains("PreserveStartupDiagnostics(dataRoot, output, launcher)", nativeProbe, StringComparison.Ordinal);
+        Assert.Contains("app-exit-timeout-12s", nativeProbe, StringComparison.Ordinal);
+        Assert.Contains("app-exit-code-0x", nativeProbe, StringComparison.Ordinal);
+        Assert.Contains("launcher-exit-code-0x", nativeProbe, StringComparison.Ordinal);
+        Assert.Contains("CloseFailure = close.Failure", nativeProbe, StringComparison.Ordinal);
+        Assert.Contains("JITHUB_MARKDOWN_SHUTDOWN_STAGE_PATH", nativeProbe, StringComparison.Ordinal);
+        Assert.Contains("PreserveEvidenceFile(shutdownStageEvidence", nativeProbe, StringComparison.Ordinal);
         Assert.Contains("startup-process.txt", nativeProbe, StringComparison.Ordinal);
         Assert.Contains("await navigateReadme(", browserOracle, StringComparison.Ordinal);
         string browserNavigation = File.ReadAllText(Path.Combine(

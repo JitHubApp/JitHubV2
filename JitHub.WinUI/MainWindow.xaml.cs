@@ -758,26 +758,34 @@ public sealed partial class MainWindow : Window
 
     private async Task DrainDiagnosticsAndCloseAsync()
     {
+        MarkdownLifecycleAutomationBridge.SignalShutdownStage("window-close-requested");
         try
         {
             await DismissActiveContentDialogBeforeCloseAsync();
+            MarkdownLifecycleAutomationBridge.SignalShutdownStage("content-dialog-dismissed");
             App app = (App)Application.Current;
             app.QueueDiagnosticsCloseProbeIfRequested();
             await app.ShutdownBackgroundTasksAsync(TimeSpan.FromSeconds(5));
+            MarkdownLifecycleAutomationBridge.SignalShutdownStage("background-tasks-drained");
             await app.ShutdownDiagnosticsAsync(TimeSpan.FromSeconds(5));
+            MarkdownLifecycleAutomationBridge.SignalShutdownStage("diagnostics-drained");
         }
         finally
         {
+            MarkdownLifecycleAutomationBridge.SignalShutdownStage("markdown-shutdown-started");
             try
             {
                 await JitHubMarkdownRuntime.ShutdownAsync();
+                MarkdownLifecycleAutomationBridge.SignalShutdownStage("markdown-shutdown-completed");
             }
             catch (Exception exception)
             {
+                MarkdownLifecycleAutomationBridge.SignalShutdownStage("markdown-shutdown-failed");
                 App.LogHandledException(exception, "markdown-runtime-shutdown");
             }
 
             _allowCloseAfterDiagnostics = true;
+            MarkdownLifecycleAutomationBridge.SignalShutdownStage("window-final-close");
             Close();
         }
     }

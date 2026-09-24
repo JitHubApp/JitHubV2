@@ -14,6 +14,43 @@ public sealed class MarkdownSvgWorkerAuditEnvironmentCollection
 public sealed class MarkdownSvgWorkerAuditListenerTests
 {
     [Fact]
+    public void ShutdownStageSignalIsAuditOnlyAndKeepsOnlyTheLatestStage()
+    {
+        const string variable = "JITHUB_MARKDOWN_SHUTDOWN_STAGE_PATH";
+        string path = Path.Combine(
+            Path.GetTempPath(),
+            $"jithub-markdown-shutdown-{Guid.NewGuid():N}.json");
+        string? previousPath = Environment.GetEnvironmentVariable(variable);
+        try
+        {
+            Environment.SetEnvironmentVariable(variable, path);
+            MarkdownLifecycleAutomationBridge.ConfigureLaunchOptions(false, null);
+            MarkdownLifecycleAutomationBridge.SignalShutdownStage("not-an-audit");
+            Assert.False(File.Exists(path));
+
+            MarkdownLifecycleAutomationBridge.ConfigureLaunchOptions(true, null);
+            MarkdownLifecycleAutomationBridge.SignalShutdownStage("markdown-shutdown-started");
+            MarkdownLifecycleAutomationBridge.SignalShutdownStage("performance-session-disposal-started");
+
+            using JsonDocument document = JsonDocument.Parse(File.ReadAllText(path));
+            Assert.Equal(
+                "performance-session-disposal-started",
+                document.RootElement.GetProperty("Stage").GetString());
+            Assert.Equal(
+                Environment.ProcessId,
+                document.RootElement.GetProperty("ProcessId").GetInt32());
+            Assert.False(document.RootElement.TryGetProperty("Source", out _));
+            Assert.False(document.RootElement.TryGetProperty("Url", out _));
+        }
+        finally
+        {
+            MarkdownLifecycleAutomationBridge.ConfigureLaunchOptions(false, null);
+            Environment.SetEnvironmentVariable(variable, previousPath);
+            if (File.Exists(path)) File.Delete(path);
+        }
+    }
+
+    [Fact]
     public void WorkerTimeoutIsRecordedWithoutSourceData()
     {
         const string variable = "JITHUB_MARKDOWN_SVG_WORKER_EVIDENCE_PATH";

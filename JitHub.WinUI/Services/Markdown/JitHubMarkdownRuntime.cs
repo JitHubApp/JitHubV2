@@ -267,11 +267,16 @@ internal static class JitHubMarkdownRuntime
             {
                 // Shared owners defer their final provider/native release until admitted
                 // callbacks retire, so shutdown does not race active work.
+                MarkdownLifecycleAutomationBridge.SignalShutdownStage("highlighter-disposal-started");
                 codeHighlighter?.Dispose();
+                MarkdownLifecycleAutomationBridge.SignalShutdownStage("performance-session-disposal-started");
                 if (performanceSession is not null)
                     await performanceSession.DisposeAsync().ConfigureAwait(false);
+                MarkdownLifecycleAutomationBridge.SignalShutdownStage("markdown-engine-disposal-started");
                 engine?.Dispose();
+                MarkdownLifecycleAutomationBridge.SignalShutdownStage("svg-gpu-cache-shutdown-started");
                 RepositorySvgGpuCache.Shutdown();
+                MarkdownLifecycleAutomationBridge.SignalShutdownStage("svg-renderer-disposal-started");
                 if (svgRenderer is not null)
                     await svgRenderer.DisposeAsync().ConfigureAwait(false);
             }
