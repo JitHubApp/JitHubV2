@@ -61,6 +61,14 @@ complete before claiming this plan or the 1.0 performance goal is met.
   build, and x86/ARM64 optional-provider builds. This is the admission
   foundation only: Math/Mermaid deferral and a visible-first priority queue
   remain open, and no full benchmark verdict is claimed.
+- Locally verified, pending CI: a code-highlight completion rejected after
+  image-driven relayout now clears its in-flight key and reschedules the current
+  visible band. Cancellation or session retirement before publication also
+  clears the key; a replaced provider never retries. The completion decision
+  has focused tests, and the x64 Release renderer and sample builds, 944 fast
+  managed tests, and 401 GitHub renderer tests pass locally. This fixes a
+  stale-work hole, not the still-open Math/Mermaid scheduling or release
+  latency gate.
 - Done: JitHub tries the credential-free GitHub raw CDN for repository media
   before consuming authenticated Contents API budget, retaining the existing
   private/LFS fallback. The audit captures per-tile native traversal clocks and
@@ -235,6 +243,23 @@ complete before claiming this plan or the 1.0 performance goal is met.
   to harness overhead. The Release audit harness builds and
   the exact pinned rank-235 focused run passes locally with the new evidence
   field present (zero timeouts); its effectiveness awaits a recurrence.
+- The later `44543e1` live audit (`35957188043`) passed ranks 201-250,
+  including ranks 235 and 247. Rank 235 completed full native traversal in
+  1.23 seconds (native/Edge ratio 0.188) with no visible-image wait at or above
+  500 ms; rank 247 completed in 1.20 seconds (ratio 0.353) with all 21 images
+  observed, zero unavailable, and no recorded worker timeout. The 50-case
+  shard passed, but this is another live-network sample on an earlier head,
+  not same-byte proof or a waiver for the earlier 20-second wait and SVG
+  timeout. The full audit and current-head run remain pending.
+- That same shard confirms rank 203 (`d2l-ai/d2l-zh`) remains a native-work
+  outlier: first native render took 5.25 seconds (1.65 times Edge), full
+  traversal 5.27 seconds (1.30 times Edge), and first-render process CPU was
+  4.63 seconds. All five source requests resolved in 28-116 ms, with only
+  357 ms aggregate resolver time. At first render two raster CPU preparations
+  were active; by traversal completion their cumulative admission time was
+  6.42 seconds. Network delivery cannot explain this run's delay. Per-raster
+  decode/upload phase evidence and a same-byte replay are required before a
+  performance fix can be attributed or this outlier cleared.
 - Measured: the full x64 repeated-construction release benchmark is not yet
   qualified. Both reference and candidate failed its stationarity contract;
   the candidate's full run dropped to about 121 observed Hz on a configured

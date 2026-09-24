@@ -28,6 +28,39 @@ public sealed class CodeBlockHighlightPublicationFenceTests
         Assert.False(CodeBlockHighlightPublicationFence.IsCurrent(provider, provider, 1, 1, 1));
     }
 
+    [Fact]
+    public void RelayoutCompletionRetriesOnlyWhenTheOriginalWorkIsStillCurrent()
+    {
+        Assert.Equal(
+            CodeBlockHighlightCompletionAction.Publish,
+            CodeBlockHighlightPublicationFence.DecideCompletion(
+                snapshotChanged: false, isUnloaded: false, workCanceled: false,
+                sceneSessionDisposed: false, providerCurrent: true));
+        Assert.Equal(
+            CodeBlockHighlightCompletionAction.RetryCurrentSnapshot,
+            CodeBlockHighlightPublicationFence.DecideCompletion(
+                snapshotChanged: true, isUnloaded: false, workCanceled: false,
+                sceneSessionDisposed: false, providerCurrent: true));
+    }
+
+    [Theory]
+    [InlineData(true, false, false, true)]
+    [InlineData(false, true, false, true)]
+    [InlineData(false, false, true, true)]
+    [InlineData(false, false, false, false)]
+    public void RetiredCompletionNeverRetriesOrPublishes(
+        bool isUnloaded,
+        bool workCanceled,
+        bool sceneSessionDisposed,
+        bool providerCurrent)
+    {
+        Assert.Equal(
+            CodeBlockHighlightCompletionAction.Drop,
+            CodeBlockHighlightPublicationFence.DecideCompletion(
+                snapshotChanged: true, isUnloaded, workCanceled,
+                sceneSessionDisposed, providerCurrent));
+    }
+
 #pragma warning disable CS0618 // Pure-logic tests intentionally avoid the WinUI host-services source file.
     private sealed class TestHighlighter : ICodeBlockSyntaxHighlighter, IDisposable
 #pragma warning restore CS0618

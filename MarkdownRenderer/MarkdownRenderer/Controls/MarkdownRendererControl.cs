@@ -4450,14 +4450,10 @@ public partial class MarkdownRendererControl : UserControl, IDisposable, IMarkdo
         IMarkdownPerformanceSessionInternal? sceneSession,
         CancellationToken token)
     {
-        if (token.IsCancellationRequested)
-        {
-            DispatcherQueue.TryEnqueue(() => RemoveCodeBlockHighlightInFlight(key, generation));
-            return;
-        }
-
+        bool publicationQueued = false;
         try
         {
+            token.ThrowIfCancellationRequested();
             await _codeBlockHighlightSemaphore.WaitAsync(token).ConfigureAwait(false);
             try
             {
@@ -4475,36 +4471,44 @@ public partial class MarkdownRendererControl : UserControl, IDisposable, IMarkdo
                 if (workToken.IsCancellationRequested)
                     return;
 
-                DispatcherQueue.TryEnqueue(() =>
+                publicationQueued = DispatcherQueue.TryEnqueue(() =>
                 {
-                    if (_isUnloaded ||
-                        workToken.IsCancellationRequested ||
-                        sceneSession?.IsDisposed == true ||
-                        !ReferenceEquals(_snapshot, snapshot) ||
-                        !CodeBlockHighlightPublicationFence.IsCurrent(
-                            CodeHighlighter,
-                            highlighter,
-                            providerRevision,
-                            _codeBlockHighlightGeneration,
-                            generation))
+                    bool snapshotChanged = !ReferenceEquals(_snapshot, snapshot);
+                    bool providerCurrent = CodeBlockHighlightPublicationFence.IsCurrent(
+                        CodeHighlighter, highlighter, providerRevision,
+                        _codeBlockHighlightGeneration, generation);
+                    CodeBlockHighlightCompletionAction completion =
+                        CodeBlockHighlightPublicationFence.DecideCompletion(
+                            snapshotChanged,
+                            _isUnloaded,
+                            workToken.IsCancellationRequested,
+                            sceneSession?.IsDisposed == true,
+                            providerCurrent);
+                    try
                     {
-                        return;
+                        if (completion != CodeBlockHighlightCompletionAction.Publish)
+                            return;
+                        _codeBlockHighlightCache.Set(key, result);
+                        if (_codeBlockHighlightCache.TryGetValue(key, out _))
+                        {
+                            // The visible-band scheduler applies the retained
+                            // result to matching blocks without a document scan.
+                            ScheduleVisibleCodeBlockHighlighting();
+                        }
+                        else if (ApplyUncachedCodeBlockHighlightResult(
+                            snapshot, key, variant, providerIdentity, providerRevision, result))
+                        {
+                            // Oversized results cannot enter the bounded cache.
+                            // Publish to the current band directly, without
+                            // immediately requeuing the same expensive request.
+                            InvalidateCanvas();
+                        }
                     }
-                    _codeBlockHighlightCache.Set(key, result);
-                    RemoveCodeBlockHighlightInFlight(key, generation);
-                    if (_codeBlockHighlightCache.TryGetValue(key, out _))
+                    finally
                     {
-                        // The visible-band scheduler applies the retained
-                        // result to matching blocks without a document scan.
-                        ScheduleVisibleCodeBlockHighlighting();
-                    }
-                    else if (ApplyUncachedCodeBlockHighlightResult(
-                        snapshot, key, variant, providerIdentity, providerRevision, result))
-                    {
-                        // Oversized results cannot enter the bounded cache.
-                        // Publish to the current band directly, without
-                        // immediately requeuing the same expensive request.
-                        InvalidateCanvas();
+                        RemoveCodeBlockHighlightInFlight(key, generation);
+                        if (completion == CodeBlockHighlightCompletionAction.RetryCurrentSnapshot)
+                            ScheduleVisibleCodeBlockHighlighting();
                     }
                 });
             }
@@ -4515,12 +4519,18 @@ public partial class MarkdownRendererControl : UserControl, IDisposable, IMarkdo
         }
         catch (OperationCanceledException)
         {
-            DispatcherQueue.TryEnqueue(() => RemoveCodeBlockHighlightInFlight(key, generation));
+            // The completion key is released by the shared finally path.
         }
         catch (Exception ex)
         {
             MarkdownDiagnostics.WriteLine($"[MarkdownRendererControl] Code block highlighting failed: {ex.Message}");
-            DispatcherQueue.TryEnqueue(() => RemoveCodeBlockHighlightInFlight(key, generation));
+        }
+        finally
+        {
+            // Cancellation may occur after admission but before publication.
+            // A stale key must not suppress a future visible-band request.
+            if (!publicationQueued)
+                DispatcherQueue.TryEnqueue(() => RemoveCodeBlockHighlightInFlight(key, generation));
         }
     }
 
