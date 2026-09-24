@@ -209,8 +209,15 @@ complete before claiming this plan or the 1.0 performance goal is met.
   tracked set just before its returned task was signaled, allowing the
   cancellation snapshot to observe no work and return early. Snapshotting and
   that removal/completion transition now share one lock. All 14 coordinator
-  tests and all 3,051 Debug x64 app tests pass locally; current-head CI must
-  confirm the fix. This is CI correctness work, not a performance-gate pass.
+  tests and all 3,051 Debug x64 app tests pass locally. At `a95189a`, hosted
+  code-viewer CI then exposed a separate test synchronization bug: two stale
+  root-listing tests observed `Tree.RootReconciliationTask`, which is already
+  complete when the page owns the network refresh. They now assert that the
+  page's `TreeRefreshTask` is pending and await that task before checking the
+  authoritative result. The affected tests passed 20 consecutive local runs,
+  and the exact coverage-enabled 3,051-test CI command passed locally after
+  the test change. Current-head hosted CI must still confirm both fixes. This
+  is CI correctness work, not a performance-gate pass.
 - Open: actual source-byte in-flight admission (a host resolver currently owns
   its download buffer). It needs priority-aware byte admission across the
   renderer session and JitHub's HTTP/authenticated fetches, not a per-request

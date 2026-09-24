@@ -557,11 +557,12 @@ public sealed class RepoCodePageViewModelTests
         RepoCodePageViewModel viewModel = CreateViewModel(service);
         await viewModel.InitializeAsync("owner", "repo", "main", default);
         await viewModel.SelectFileAsync(File("removed.cs", "removed"), default);
+        Assert.False(viewModel.TreeRefreshTask.IsCompleted);
 
         service.RootResult.SetResult(Fresh<IReadOnlyList<RepoTreeNode>>([
             File("README.md", "readme")]
         ));
-        await WaitUntilAsync(() => viewModel.Preview.CurrentFile?.Path == "README.md");
+        await viewModel.TreeRefreshTask;
 
         Assert.Equal("readme", viewModel.Preview.CurrentFile!.Sha);
         Assert.Equal("current readme", viewModel.Preview.Text);
@@ -579,9 +580,10 @@ public sealed class RepoCodePageViewModelTests
         RepoCodePageViewModel viewModel = CreateViewModel(service);
         await viewModel.InitializeAsync("owner", "repo", "main", default);
         Task selection = viewModel.SelectFileAsync(File("removed.cs", "removed"), default);
+        Assert.False(viewModel.TreeRefreshTask.IsCompleted);
 
         service.RootResult.SetResult(Fresh<IReadOnlyList<RepoTreeNode>>([]));
-        await viewModel.Tree.RootReconciliationTask;
+        await viewModel.TreeRefreshTask;
         blob.SetResult(Fresh(Blob("removed", "obsolete")));
         await selection;
         await viewModel.Tree.AwaitPendingReconciliationSettledAsync(default);
