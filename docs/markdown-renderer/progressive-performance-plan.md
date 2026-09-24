@@ -193,6 +193,17 @@ complete before claiming this plan or the 1.0 performance goal is met.
   reflow case), and all 11 scripted touch/hosted-control UI checks passed;
   one High Contrast screenshot was inspected. This does not establish the
   first-viewport, frame, or memory release gates by itself.
+- Locally verified, pending current-head CI and a qualified benchmark:
+  semantic-tree depth-first traversal now uses one iterative ancestor path
+  instead of a recursive iterator per node. It preserves preorder, handles
+  20,000 nested nodes without stack overflow, and allocates under 32 KiB
+  while traversing 20,000 wide siblings in a focused test (3/3 pass). The
+  939 fast managed and 96 pixel tests pass on x64 Release. In
+  identical reduced 20-presentation local diagnostics, median managed
+  allocation per 1 MiB presentation changed from 35.04 to 33.76 MiB without
+  a parse-cache hit and 26.90 to 25.61 MiB with a hit. Both runs failed
+  timing stationarity, so their latency differences are not release evidence;
+  the full counterbalanced release protocol remains required.
 - Open: actual source-byte in-flight admission (a host resolver currently owns
   its download buffer). It needs priority-aware byte admission across the
   renderer session and JitHub's HTTP/authenticated fetches, not a per-request

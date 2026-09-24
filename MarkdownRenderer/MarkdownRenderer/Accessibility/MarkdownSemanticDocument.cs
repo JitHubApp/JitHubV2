@@ -550,11 +550,30 @@ internal sealed class MarkdownSemanticDocument
 
     public static IEnumerable<MarkdownSemanticNode> EnumerateDepthFirst(MarkdownSemanticNode node)
     {
-        yield return node;
-        foreach (var child in node.Children)
+        // A recursive iterator creates a state machine for every node and can
+        // exhaust the call stack on deeply nested (hostile or generated) input.
+        // Store one frame per ancestor; a very wide document root then needs
+        // constant auxiliary space rather than a stack of all its children.
+        var path = new List<(MarkdownSemanticNode Node, int NextChild)>(8)
         {
-            foreach (var descendant in EnumerateDepthFirst(child))
-                yield return descendant;
+            (node, 0),
+        };
+        yield return node;
+        while (path.Count != 0)
+        {
+            int top = path.Count - 1;
+            (MarkdownSemanticNode parent, int nextChild) = path[top];
+            IReadOnlyList<MarkdownSemanticNode> children = parent.Children;
+            if (nextChild >= children.Count)
+            {
+                path.RemoveAt(top);
+                continue;
+            }
+
+            path[top] = (parent, nextChild + 1);
+            MarkdownSemanticNode child = children[nextChild];
+            path.Add((child, 0));
+            yield return child;
         }
     }
 
