@@ -265,12 +265,17 @@ complete before claiming this plan or the 1.0 performance goal is met.
   measured image plans now use the existing subscription identity
   set for constant-time deduplication and a reusable vertical viewport index.
   Scroll-time source activation visits only nearby images rather than every
-  measured image, including after image-driven relayout. This targets the
-  1,800-image storm and long fully traversed READMEs. The x64 Release renderer
-  and sample build, 939 fast managed tests (including the indexed 1,800-image
-  reflow case), and all 11 scripted touch/hosted-control UI checks passed;
-  one High Contrast screenshot was inspected. This does not establish the
-  first-viewport, frame, or memory release gates by itself.
+  measured image, including after image-driven relayout. The aggregate UIA
+  visible-loading-image status now queries that same index rather than scanning
+  all measured images on each accessibility or audit poll (which can occur every
+  10 ms). This targets the 1,800-image storm and long fully traversed READMEs.
+  The x64 Release renderer build, 939 fast managed tests, and 401 GitHub
+  renderer tests, including the indexed 1,800-image reflow case, passed locally
+  after the UIA change. The earlier x64 Release sample build and all 11 scripted
+  touch/hosted-control UI checks passed for the source-activation index, and one
+  High Contrast screenshot was inspected. The UIA change still needs hosted
+  verification. None of this establishes the first-viewport, frame, or memory
+  release gates by itself.
 - Locally verified, pending current-head CI and a qualified benchmark:
   semantic-tree depth-first traversal now uses one iterative ancestor path
   instead of a recursive iterator per node. It preserves preorder, handles

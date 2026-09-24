@@ -2129,8 +2129,14 @@ public partial class MarkdownRendererControl : UserControl, IDisposable, IMarkdo
             return false;
 
         bool hasViewport = TryGetVisibleDocumentRect(out Windows.Foundation.Rect viewport);
-        foreach (Layout.Boxes.ImageBox image in _imagePlans)
+        ViewportBandIndex? imageIndex = hasViewport ? _imagePlanIndex : null;
+        ViewportRange range = imageIndex is not null
+            ? imageIndex.Find(viewport.Top, viewport.Bottom)
+            : new ViewportRange(0, _imagePlans.Count);
+        for (int index = range.Start; index < range.End; index++)
         {
+            Layout.Boxes.ImageBox image = _imagePlans[
+                imageIndex is not null ? imageIndex.GetBlockOrdinal(index) : index];
             if (image.AccessibilityState != MarkdownImageAccessibilityState.Loading)
                 continue;
 
