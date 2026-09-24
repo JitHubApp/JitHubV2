@@ -880,11 +880,7 @@ internal sealed class CodeBlockBox : BlockBox, IHorizontalOverflowBox
                     var numberRect = new Rect(numberLeft, visual.Top, numberWidth, visual.Height);
                     if (IsDrawableRectangle(numberRect))
                     {
-                        ds.DrawText(
-                            line.Label,
-                            numberRect,
-                            lineNumberStyle.Foreground,
-                            lineNumberFormat);
+                        DrawLineNumber(ds, line, numberRect, viewport, lineNumberStyle, lineNumberFormat);
                     }
                 }
 
@@ -974,11 +970,7 @@ internal sealed class CodeBlockBox : BlockBox, IHorizontalOverflowBox
                     Math.Max(1, first.Height));
                 if (IsDrawableRectangle(numberRect))
                 {
-                    ds.DrawText(
-                        line.Label,
-                        numberRect,
-                        lineNumberStyle.Foreground,
-                        lineNumberFormat);
+                    DrawLineNumber(ds, line, numberRect, viewport, lineNumberStyle, lineNumberFormat);
                 }
             }
 
@@ -1002,6 +994,37 @@ internal sealed class CodeBlockBox : BlockBox, IHorizontalOverflowBox
                         lineNumberFormat);
                 }
             }
+        }
+    }
+
+    private static void DrawLineNumber(
+        CanvasDrawingSession ds,
+        CodeLineInfo line,
+        Rect rectangle,
+        Rect viewport,
+        ElementStyle style,
+        CanvasTextFormat format)
+    {
+        try
+        {
+            ds.DrawText(line.Label, rectangle, style.Foreground, format);
+        }
+        catch (ArgumentException exception)
+        {
+            // Win2D can reject a rectangle or text-format value even after the
+            // generic finite-coordinate check. Preserve the failure while
+            // recording geometry (never code text) for a reproducible fix.
+            string detail = FormattableString.Invariant(
+                $"line={line.Number}, labelLength={line.Label.Length}, ") +
+                FormattableString.Invariant(
+                    $"rectangle={rectangle.X:R},{rectangle.Y:R},{rectangle.Width:R},{rectangle.Height:R}, ") +
+                FormattableString.Invariant(
+                    $"viewport={viewport.X:R},{viewport.Y:R},{viewport.Width:R},{viewport.Height:R}, ") +
+                FormattableString.Invariant(
+                    $"fontSize={style.FontSize:R}, fontFamily={style.FontFamily}.");
+            throw new InvalidOperationException(
+                "Code line-number DrawText rejected: " + detail,
+                exception);
         }
     }
 

@@ -251,6 +251,16 @@ complete before claiming this plan or the 1.0 performance goal is met.
   shard passed, but this is another live-network sample on an earlier head,
   not same-byte proof or a waiver for the earlier 20-second wait and SVG
   timeout. The full audit and current-head run remain pending.
+- The same `44543e1` full audit finished at 499/500: rank 465
+  (`xai-org/grok-1`) failed during the first native capture when Win2D
+  rejected a code-block line-number `DrawText` call with `E_INVALIDARG`.
+  An exact-manifest local replay with the hosted Edge evidence passed with
+  100% text coverage, 99.90% structure, and zero unavailable content, so the
+  hosted failure is intermittent or machine-specific, not cleared. The code
+  path now preserves that failure while adding privacy-safe line, rectangle,
+  viewport, and font details to the exception on recurrence. The subsequent
+  current-head audit (`35958672728`) is running; neither a local replay nor
+  diagnostic instrumentation counts as a 500/500 pass.
 - That same shard confirms rank 203 (`d2l-ai/d2l-zh`) remains a native-work
   outlier: first native render took 5.25 seconds (1.65 times Edge), full
   traversal 5.27 seconds (1.30 times Edge), and first-render process CPU was
@@ -260,6 +270,14 @@ complete before claiming this plan or the 1.0 performance goal is met.
   6.42 seconds. Network delivery cannot explain this run's delay. Per-raster
   decode/upload phase evidence and a same-byte replay are required before a
   performance fix can be attributed or this outlier cleared.
+- Preview validation at `65c640f` passed its x86/x64/ARM64 NativeAOT publish
+  checks but failed the strict package-compliance gate: `System.Memory 4.6.0`
+  is declared by a shipping package for a legacy target framework and its
+  archive was not restored by the net10-only project graph, leaving the
+  transitive license as `NOASSERTION`. A separate, nonshipping exact-version
+  restore project and checked-in lock now hydrate that package before the
+  unchanged fail-on-unknown gate. The local locked restore and strict notice
+  generation pass; hosted validation of this fix is pending.
 - Measured: the full x64 repeated-construction release benchmark is not yet
   qualified. Both reference and candidate failed its stationarity contract;
   the candidate's full run dropped to about 121 observed Hz on a configured

@@ -531,6 +531,13 @@ jobs:
             if ($LASTEXITCODE -ne 0) { throw "Locked package restore failed for '$project'." }
           }
 
+      - name: Restore legacy dependency license evidence in locked mode
+        run: |
+          & dotnet restore '.\MarkdownRenderer\eng\ComplianceDependencyRestore\ComplianceDependencyRestore.csproj' `
+            --locked-mode `
+            --disable-build-servers
+          if ($LASTEXITCODE -ne 0) { throw 'Locked restore failed for compliance dependency evidence.' }
+
       - name: Pack every shipping package twice into clean directories
         run: |
           $artifactRoot = Join-Path $env:RUNNER_TEMP 'markdownrenderer-preview'
