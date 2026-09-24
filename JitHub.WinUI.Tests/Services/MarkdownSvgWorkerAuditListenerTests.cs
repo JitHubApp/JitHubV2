@@ -14,6 +14,38 @@ public sealed class MarkdownSvgWorkerAuditEnvironmentCollection
 public sealed class MarkdownSvgWorkerAuditListenerTests
 {
     [Fact]
+    public void PreflightRejectionRecordsOnlyPolicyAndContentIdentity()
+    {
+        const string variable = "JITHUB_MARKDOWN_SVG_PREFLIGHT_EVIDENCE_PATH";
+        string path = Path.Combine(
+            Path.GetTempPath(),
+            $"jithub-svg-preflight-audit-{Guid.NewGuid():N}.ndjson");
+        string? previousPath = Environment.GetEnvironmentVariable(variable);
+        try
+        {
+            Environment.SetEnvironmentVariable(variable, path);
+            MarkdownLifecycleAutomationBridge.ConfigureLaunchOptions(true, null);
+            using var listener = new MarkdownSvgWorkerAuditListener();
+
+            TestPreflightEventSource.Log.Rejected("missing-root", 469, new string('A', 64));
+
+            string line = Assert.Single(File.ReadAllLines(path));
+            using JsonDocument document = JsonDocument.Parse(line);
+            Assert.Equal("missing-root", document.RootElement.GetProperty("Reason").GetString());
+            Assert.Equal(469, document.RootElement.GetProperty("SourceByteLength").GetInt32());
+            Assert.Equal(new string('A', 64), document.RootElement.GetProperty("SourceSha256").GetString());
+            Assert.False(document.RootElement.TryGetProperty("Source", out _));
+            Assert.False(document.RootElement.TryGetProperty("Url", out _));
+        }
+        finally
+        {
+            MarkdownLifecycleAutomationBridge.ConfigureLaunchOptions(false, null);
+            Environment.SetEnvironmentVariable(variable, previousPath);
+            if (File.Exists(path)) File.Delete(path);
+        }
+    }
+
+    [Fact]
     public void ShutdownStageSignalIsAuditOnlyAndKeepsOnlyTheLatestStage()
     {
         const string variable = "JITHUB_MARKDOWN_SHUTDOWN_STAGE_PATH";
@@ -98,5 +130,15 @@ public sealed class MarkdownSvgWorkerAuditListenerTests
         [Event(1, Level = EventLevel.Warning)]
         public void Timeout(int stage, int deadlineMilliseconds, int workerProcessCpuMilliseconds) =>
             WriteEvent(1, stage, deadlineMilliseconds, workerProcessCpuMilliseconds);
+    }
+
+    [EventSource(Name = "MarkdownRenderer.Svg.Resvg.Preflight")]
+    private sealed class TestPreflightEventSource : EventSource
+    {
+        public static readonly TestPreflightEventSource Log = new();
+
+        [Event(1, Level = EventLevel.Warning)]
+        public void Rejected(string reason, int sourceByteLength, string sourceSha256) =>
+            WriteEvent(1, reason, sourceByteLength, sourceSha256);
     }
 }

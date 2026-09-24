@@ -22,6 +22,7 @@ internal static partial class MarkdownLifecycleAutomationBridge
     private const string ImageEvidencePathVariable = "JITHUB_MARKDOWN_IMAGE_EVIDENCE_PATH";
     private const string ImageResolutionEvidencePathVariable = "JITHUB_MARKDOWN_IMAGE_RESOLUTION_EVIDENCE_PATH";
     private const string SvgWorkerEvidencePathVariable = "JITHUB_MARKDOWN_SVG_WORKER_EVIDENCE_PATH";
+    private const string SvgPreflightEvidencePathVariable = "JITHUB_MARKDOWN_SVG_PREFLIGHT_EVIDENCE_PATH";
     private const string RenderFailureEvidencePathVariable = "JITHUB_MARKDOWN_RENDER_FAILURE_EVIDENCE_PATH";
     private const string RenderCompleteEvidencePathVariable = "JITHUB_MARKDOWN_RENDER_COMPLETE_EVIDENCE_PATH";
     private const string CaptureRequestPathVariable = "JITHUB_MARKDOWN_CAPTURE_REQUEST_PATH";
@@ -377,6 +378,43 @@ internal static partial class MarkdownLifecycleAutomationBridge
         }
     }
 
+    public static void RecordSvgPreflightRejection(
+        string reason,
+        int sourceByteLength,
+        string sourceSha256)
+    {
+        if (!IsEvidenceEnabled)
+            return;
+
+        string? path = Environment.GetEnvironmentVariable(SvgPreflightEvidencePathVariable);
+        if (string.IsNullOrWhiteSpace(path))
+            return;
+
+        lock (SignalGate)
+        {
+            try
+            {
+                string fullPath = Path.GetFullPath(path);
+                Directory.CreateDirectory(Path.GetDirectoryName(fullPath)!);
+                string entry = JsonSerializer.Serialize(
+                    new SvgPreflightRejectionSignal(
+                        Environment.ProcessId,
+                        reason,
+                        sourceByteLength,
+                        sourceSha256,
+                        DateTimeOffset.UtcNow),
+                    MarkdownLifecycleJsonContext.Default.SvgPreflightRejectionSignal);
+                File.AppendAllText(fullPath, entry + Environment.NewLine);
+            }
+            catch (IOException)
+            {
+            }
+            catch (UnauthorizedAccessException)
+            {
+            }
+        }
+    }
+
     public static void RecordRenderFailure(string automationId, Exception exception)
     {
         ArgumentNullException.ThrowIfNull(exception);
@@ -580,6 +618,13 @@ internal static partial class MarkdownLifecycleAutomationBridge
         int WorkerProcessCpuMilliseconds,
         DateTimeOffset Timestamp);
 
+    private sealed record SvgPreflightRejectionSignal(
+        int ProcessId,
+        string Reason,
+        int SourceByteLength,
+        string SourceSha256,
+        DateTimeOffset Timestamp);
+
     internal sealed record MarkdownAuditPerformanceSnapshot(
         long SourceCacheBytes,
         long SourceCacheHits,
@@ -619,6 +664,7 @@ internal static partial class MarkdownLifecycleAutomationBridge
     [JsonSerializable(typeof(ImageResolutionSignal), TypeInfoPropertyName = "ImageResolutionSignal")]
     [JsonSerializable(typeof(RenderCompleteSignal), TypeInfoPropertyName = "RenderCompleteSignal")]
     [JsonSerializable(typeof(SvgWorkerTimeoutSignal), TypeInfoPropertyName = "SvgWorkerTimeoutSignal")]
+    [JsonSerializable(typeof(SvgPreflightRejectionSignal), TypeInfoPropertyName = "SvgPreflightRejectionSignal")]
     [JsonSerializable(typeof(MarkdownAuditPerformanceSnapshot), TypeInfoPropertyName = "MarkdownAuditPerformanceSnapshot")]
     [JsonSerializable(typeof(MarkdownAuditCaptureRequest), TypeInfoPropertyName = "MarkdownAuditCaptureRequest")]
     [JsonSerializable(typeof(MarkdownAuditCaptureResponse), TypeInfoPropertyName = "MarkdownAuditCaptureResponse")]

@@ -1,5 +1,6 @@
 using System.Collections.Concurrent;
 using System.Runtime.InteropServices;
+using System.Security.Cryptography;
 using MarkdownRenderer.Images;
 using MarkdownRenderer.Layout.Boxes;
 using MarkdownRenderer.Svg.Resvg.Internal;
@@ -22,6 +23,13 @@ public sealed class ResvgMarkdownSvgRenderer : IMarkdownSvgRenderer, IDisposable
             return MarkdownSvgSourcePreparation.Admit(prepared);
 
         string reason = budget.Reason ?? "invalid-content";
+        if (SvgPreflightAuditEvents.Log.IsEnabled())
+        {
+            SvgPreflightAuditEvents.Log.Rejected(
+                reason,
+                source.Length,
+                Convert.ToHexString(SHA256.HashData(source)));
+        }
         MarkdownSvgFailureReason failureReason = IsResourceLimitReason(reason)
             ? MarkdownSvgFailureReason.ResourceLimitExceeded
             : MarkdownSvgFailureReason.UnsupportedContent;

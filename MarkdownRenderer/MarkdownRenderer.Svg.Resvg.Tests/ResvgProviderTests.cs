@@ -1,5 +1,8 @@
 using System.Buffers.Binary;
+using System.Collections.Concurrent;
+using System.Diagnostics.Tracing;
 using System.IO.Compression;
+using System.Security.Cryptography;
 using System.Text;
 using MarkdownRenderer.Controls;
 using MarkdownRenderer.Images;
@@ -26,6 +29,42 @@ public sealed class ResvgProviderTests
         Assert.Null(rejected.SanitizedBytes);
         Assert.Equal(MarkdownSvgFailureReason.UnsupportedContent, rejected.FailureReason);
         Assert.Contains("external-image-reference", rejected.FailureDescription, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void HostPreflightRejectionEmitsReasonLengthAndHashWithoutSourceBytes()
+    {
+        using var listener = new PreflightListener();
+        using var renderer = new ResvgMarkdownSvgRenderer();
+        byte[] source = Svg("<html><body>not SVG</body></html>");
+
+        MarkdownSvgSourcePreparation rejected = renderer.PrepareSource(source, CancellationToken.None);
+
+        Assert.Equal(MarkdownSvgFailureReason.UnsupportedContent, rejected.FailureReason);
+        Assert.Contains(
+            ("missing-root", source.Length, Convert.ToHexString(SHA256.HashData(source))),
+            listener.Rejections);
+    }
+
+    private sealed class PreflightListener : EventListener
+    {
+        internal ConcurrentQueue<(string Reason, int Length, string Hash)> Rejections { get; } = new();
+
+        protected override void OnEventSourceCreated(EventSource eventSource)
+        {
+            if (eventSource.Name == "MarkdownRenderer.Svg.Resvg.Preflight")
+                EnableEvents(eventSource, EventLevel.Warning);
+        }
+
+        protected override void OnEventWritten(EventWrittenEventArgs eventData)
+        {
+            if (eventData.EventId == 1 && eventData.Payload is { Count: 3 } payload &&
+                payload[0] is string reason && payload[1] is int length &&
+                payload[2] is string hash)
+            {
+                Rejections.Enqueue((reason, length, hash));
+            }
+        }
     }
 
     [Fact]

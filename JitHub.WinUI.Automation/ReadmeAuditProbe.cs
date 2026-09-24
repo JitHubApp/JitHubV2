@@ -392,13 +392,15 @@ internal static partial class ReadmeAuditProbe
         string imageEvidence = Path.Combine(runtime, "image-unavailable.ndjson");
         string imageResolutionEvidence = Path.Combine(runtime, "image-resolution.ndjson");
         string svgWorkerEvidence = Path.Combine(runtime, "svg-worker-timeouts.ndjson");
+        string svgPreflightEvidence = Path.Combine(runtime, "svg-preflight-rejections.ndjson");
         string shutdownStageEvidence = Path.Combine(runtime, "shutdown-stage.json");
         string captureRequest = Path.Combine(runtime, "capture-request.json");
         string captureResponse = Path.Combine(runtime, "capture-response.json");
         foreach (string stale in new[]
         {
             appReady, hostReady, renderComplete, renderFailure, imageEvidence,
-            imageResolutionEvidence, svgWorkerEvidence, shutdownStageEvidence,
+            imageResolutionEvidence, svgWorkerEvidence, svgPreflightEvidence,
+            shutdownStageEvidence,
             captureRequest, captureResponse,
         })
         {
@@ -435,6 +437,7 @@ internal static partial class ReadmeAuditProbe
         startInfo.Environment["JITHUB_MARKDOWN_IMAGE_EVIDENCE_PATH"] = imageEvidence;
         startInfo.Environment["JITHUB_MARKDOWN_IMAGE_RESOLUTION_EVIDENCE_PATH"] = imageResolutionEvidence;
         startInfo.Environment["JITHUB_MARKDOWN_SVG_WORKER_EVIDENCE_PATH"] = svgWorkerEvidence;
+        startInfo.Environment["JITHUB_MARKDOWN_SVG_PREFLIGHT_EVIDENCE_PATH"] = svgPreflightEvidence;
         startInfo.Environment["JITHUB_MARKDOWN_SHUTDOWN_STAGE_PATH"] = shutdownStageEvidence;
         startInfo.Environment["JITHUB_MARKDOWN_CAPTURE_REQUEST_PATH"] = captureRequest;
         startInfo.Environment["JITHUB_MARKDOWN_CAPTURE_RESPONSE_PATH"] = captureResponse;
@@ -496,6 +499,7 @@ internal static partial class ReadmeAuditProbe
                 long absentPeakWorkingSetBytes = appProcess.PeakWorkingSet64;
                 ReadmeAuditCloseResult absentClose = CloseAndWait(window, appProcess, launcher);
                 PreserveEvidenceFile(shutdownStageEvidence, Path.Combine(output, "shutdown-stage.json"));
+                PreserveEvidenceFile(svgPreflightEvidence, Path.Combine(output, "svg-preflight-rejections.ndjson"));
                 window = null;
                 return new NativeAuditResult
                 {
@@ -549,6 +553,7 @@ internal static partial class ReadmeAuditProbe
                     long sourcePeakWorkingSetBytes = appProcess.PeakWorkingSet64;
                     ReadmeAuditCloseResult sourceClose = CloseAndWait(window, appProcess, launcher);
                     PreserveEvidenceFile(shutdownStageEvidence, Path.Combine(output, "shutdown-stage.json"));
+                    PreserveEvidenceFile(svgPreflightEvidence, Path.Combine(output, "svg-preflight-rejections.ndjson"));
                     window = null;
                     return new NativeAuditResult
                     {
@@ -630,6 +635,7 @@ internal static partial class ReadmeAuditProbe
             PreserveEvidenceFile(imageEvidence, Path.Combine(output, "image-unavailable.ndjson"));
             PreserveEvidenceFile(imageResolutionEvidence, Path.Combine(output, "image-resolution.ndjson"));
             PreserveEvidenceFile(svgWorkerEvidence, Path.Combine(output, "svg-worker-timeouts.ndjson"));
+            PreserveEvidenceFile(svgPreflightEvidence, Path.Combine(output, "svg-preflight-rejections.ndjson"));
 
             ReadmeAuditCloseResult close = CloseAndWait(window, appProcess, launcher);
             PreserveEvidenceFile(shutdownStageEvidence, Path.Combine(output, "shutdown-stage.json"));

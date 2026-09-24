@@ -442,7 +442,7 @@ complete before claiming this plan or the 1.0 performance goal is met.
   tags case-insensitively. Cache keys also treat equivalent locale casing as
   one descriptor without allocating a lowercase string on every hot-path
   lookup. The complete 401-test Release x64 GitHub suite passed four local
-  runs after this change; hosted validation remains pending.
+  runs after this change; Preview Validation passed on `89d1d08`.
 - The completed `3cab771` top-500 audit (`36019774373`) reported 499/500
   passes. Rank 395 (`h5bp/html5-boilerplate`) rendered with 100% text token
   coverage, 99.29% structure, all four images observed, zero unavailable
@@ -458,8 +458,23 @@ complete before claiming this plan or the 1.0 performance goal is met.
   focused automation/bridge tests pass locally. A hosted recurrence is needed
   to identify and fix the
   shutdown cause; local live replay requires the read-only audit token and
-  account partition, which are not configured on this machine. The `c42f60f`
-  current-head audit is still running and predates this added classification.
+  account partition, which are not configured on this machine. The subsequent
+  `c42f60f` audit below predates this added classification.
+- The `c42f60f` live audit (`36031465708`) finished at 499/500; rank 395
+  closed cleanly, but rank 348 (`marktext/marktext`) again marked one valid
+  browser-rendered Windows-download badge unavailable. JitHub resolved 469
+  bytes from its Camo URL in 20 ms, then SVG host preflight classified the
+  content as `UnsupportedContent`; Edge displayed a 124×20 badge, and a fresh
+  Camo/origin fetch returned a different 1,303-byte SVG. The original 469
+  bytes were not retained, so neither malformed upstream content nor an
+  overly strict renderer rule is established. An audit-only preflight event
+  now records the precise policy reason, received byte length, and SHA-256
+  identity without URLs or source bytes. The existing unavailable-image gate
+  remains strict. All 60 Release x64 resvg provider tests, 38 focused app
+  tests, and Release x64 app/audit-harness builds pass locally; the hosted
+  current-head recurrence is needed to diagnose and fix this case. Preview
+  Validation passed on `89d1d08`, confirming the locale-cache test fix under
+  hosted CI, but no full performance release verdict follows from it.
 - Measured: the full x64 repeated-construction release benchmark is not yet
   qualified. Both reference and candidate failed its stationarity contract;
   the candidate's full run dropped to about 121 observed Hz on a configured
