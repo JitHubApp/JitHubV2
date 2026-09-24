@@ -326,10 +326,18 @@ complete before claiming this plan or the 1.0 performance goal is met.
   without an origin request, accept either successful representation, and
   cancel/await the losing waiter without canceling other shared callers.
   The six focused fallback tests, all 3,057 x64 Release app tests, and the
-  x64 Release app build pass locally. This is not yet a rank-189 pass: the
-  earlier completed audit predates the hedge, and source/worker completion
-  must be verified in the pending latest-head full audit.
-- The older-head `398e132` top-500 run (`35975382655`) failed rank 54
+  x64 Release app build pass locally. The earlier completed audit predates the
+  hedge. The `186f6ef` ranks 151-200 shard has since passed 50/50. Rank 189
+  (`D4Vinci/Scrapling`) resolved 42 distinct image/media sources, reported
+  zero unavailable or still-loading images and no render failure, and closed
+  cleanly. Its native/Edge first/full ratios were 0.464/0.300. This verifies
+  the problematic page in one hosted recurrence, not the complete 500-case
+  verdict or a same-byte client-rendering comparison.
+- The older-head `398e132` top-500 run (`35975382655`) finished at 499/500
+  with first-render/full-page native/Edge p95 ratios of 0.504/0.478. Only
+  rank 54 failed; ranks 74, 153, 189, 203, 235, 247, 348, 368, and 465
+  passed in this particular live-network run, which does not erase their
+  earlier failure or same-byte performance evidence. Rank 54
   (`langgenius/dify`): 17 valid Camo SVGs resolved to nonempty bytes, but one
   worker **open** exceeded the unchanged three-second deadline and 16 others
   reported `WorkerFailure` immediately afterward. This is a failure cascade,
@@ -346,6 +354,24 @@ complete before claiming this plan or the 1.0 performance goal is met.
   release blocker even if unrelated queued images recover.
   The x86 and ARM64 Release provider builds also pass locally; architecture
   runtime and fault-injection evidence remain outstanding.
+  On the latest-head `186f6ef` run (`35985150159`), ranks 51-100 passed
+  50/50. Rank 54 resolved 36 image assets, reported zero unavailable images
+  and no worker timeout, and rendered with 100% text/99.01% structure. This
+  confirms that shard passed under CI, but does not isolate the restart change
+  as the cause or replace the still-running full 500-case verdict and forced
+  timeout/fault-injection tests. In the same run, the ranks 101-150 hosted
+  runner lost communication with GitHub after approximately 54 minutes,
+  before the always-on evidence upload could execute. GitHub's check
+  annotation cites runner termination, CPU/memory starvation, or network
+  isolation as possible causes; without job logs or case evidence this cannot
+  be classified as a renderer pass or a renderer defect. The next workflow
+  divides the same mandatory 500 ranks into twenty 25-case shards while
+  retaining four-way parallelism and exact-rank consolidation, reducing
+  per-runner lifetime and narrowing any future lost-runner interval. A
+  contract test checks contiguous, nonoverlapping 1-500 coverage and that
+  the command count derives from each matrix range. The current run remains
+  incomplete; a successful full rerun and investigation of any recurrence
+  are required.
 - Measured: the full x64 repeated-construction release benchmark is not yet
   qualified. Both reference and candidate failed its stationarity contract;
   the candidate's full run dropped to about 121 observed Hz on a configured

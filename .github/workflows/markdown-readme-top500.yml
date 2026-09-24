@@ -92,16 +92,26 @@ jobs:
       max-parallel: 4
       matrix:
         include:
-          - { start: 1, end: 50 }
-          - { start: 51, end: 100 }
-          - { start: 101, end: 150 }
-          - { start: 151, end: 200 }
-          - { start: 201, end: 250 }
-          - { start: 251, end: 300 }
-          - { start: 301, end: 350 }
-          - { start: 351, end: 400 }
-          - { start: 401, end: 450 }
-          - { start: 451, end: 500 }
+          - { start: 1, end: 25 }
+          - { start: 26, end: 50 }
+          - { start: 51, end: 75 }
+          - { start: 76, end: 100 }
+          - { start: 101, end: 125 }
+          - { start: 126, end: 150 }
+          - { start: 151, end: 175 }
+          - { start: 176, end: 200 }
+          - { start: 201, end: 225 }
+          - { start: 226, end: 250 }
+          - { start: 251, end: 275 }
+          - { start: 276, end: 300 }
+          - { start: 301, end: 325 }
+          - { start: 326, end: 350 }
+          - { start: 351, end: 375 }
+          - { start: 376, end: 400 }
+          - { start: 401, end: 425 }
+          - { start: 426, end: 450 }
+          - { start: 451, end: 475 }
+          - { start: 476, end: 500 }
     defaults:
       run:
         shell: pwsh
@@ -172,9 +182,10 @@ jobs:
       - name: Compare every README with GitHub in Edge
         run: |
           $output = Join-Path $env:RUNNER_TEMP 'readme-audit'
+          $shardCount = ${{ matrix.end }} - ${{ matrix.start }} + 1
           .\eng\Invoke-TopReadmeAudit.ps1 `
             -StartRank ${{ matrix.start }} `
-            -Count 50 `
+            -Count $shardCount `
             -Configuration Release `
             -ManifestPath (Join-Path $env:RUNNER_TEMP 'readme-corpus\top-repositories.json') `
             -OutputRoot $output

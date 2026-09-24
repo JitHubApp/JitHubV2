@@ -1,5 +1,6 @@
 using System;
 using System.IO;
+using System.Text.RegularExpressions;
 using Xunit;
 
 namespace JitHub.WinUI.Tests.Services;
@@ -134,6 +135,22 @@ public sealed class AutomationHarnessSourceContractTests
         Assert.Contains("pull_request:", workflow, StringComparison.Ordinal);
         Assert.Contains("merge-multiple: true", workflow, StringComparison.Ordinal);
         Assert.Contains("-ExpectedCount 500", workflow, StringComparison.Ordinal);
+        Assert.Contains("$shardCount = ${{ matrix.end }} - ${{ matrix.start }} + 1", workflow, StringComparison.Ordinal);
+        Assert.Contains("-Count $shardCount", workflow, StringComparison.Ordinal);
+        MatchCollection shardRanges = Regex.Matches(
+            workflow,
+            @"(?m)^\s+- \{ start: (?<start>\d+), end: (?<end>\d+) \}$");
+        Assert.NotEmpty(shardRanges);
+        int nextRank = 1;
+        foreach (Match shard in shardRanges)
+        {
+            int start = int.Parse(shard.Groups["start"].Value);
+            int end = int.Parse(shard.Groups["end"].Value);
+            Assert.Equal(nextRank, start);
+            Assert.InRange(end - start + 1, 1, 25);
+            nextRank = end + 1;
+        }
+        Assert.Equal(501, nextRank);
         Assert.Contains("$cases.Count -ne $ExpectedCount", merger, StringComparison.Ordinal);
         Assert.Contains("Native first-render p95", merger, StringComparison.Ordinal);
         Assert.Contains("Native full-page p95", merger, StringComparison.Ordinal);

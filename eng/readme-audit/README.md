@@ -83,10 +83,11 @@ schema, age (14 days or newer), exact rank coverage, uniqueness, commit/blob
 identities, and trusted GitHub URLs. No repository is skipped or substituted;
 stale or malformed fallback data fails the corpus job.
 
-The scheduled/manual workflow runs ten isolated 50-repository shards and then
+The scheduled/manual workflow runs twenty isolated 25-repository shards and then
 requires a consolidated, duplicate-free set of ranks 1–500. Missing shards or
 case files fail the final job; a partial run cannot be reported as a top-500
-pass.
+pass. Smaller shards bound each hosted runner's lifetime and narrow the
+diagnostic range if a runner disappears before its evidence upload.
 
 JitHub's audit build remains framework-dependent, matching the production
 deployment model. Each hosted runner installs the exact x64 Windows App Runtime
