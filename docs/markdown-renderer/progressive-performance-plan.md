@@ -278,8 +278,11 @@ complete before claiming this plan or the 1.0 performance goal is met.
   restore project and checked-in lock now hydrate that package before the
   unchanged fail-on-unknown gate. The local locked restore and strict notice
   generation pass; hosted validation of this fix is pending.
-- The `65c640f` top-500 audit (`35958672728`) has already failed its
-  ranks 151-200 shard. Rank 153 (`louislam/uptime-kuma`) resolved the
+- The `65c640f` top-500 audit (`35958672728`) finished at 495/500, with
+  five failures. Its aggregate native/Edge p95 ratios were 0.467 for first
+  render and 0.399 for full traversal, but those statistics cannot waive
+  failed cases or individual native stalls. Rank 153
+  (`louislam/uptime-kuma`) resolved the
   1,877,124-byte sponsor SVG but the isolated worker exceeded the unchanged
   three-second **open** deadline; a separate badge resolved to no bytes and
   is browser-broken. Rank 189 (`D4Vinci/Scrapling`) reported an unavailable
@@ -306,7 +309,15 @@ complete before claiming this plan or the 1.0 performance goal is met.
   waiver. Rank 368 (`spring-projects/spring-framework`) rendered with zero
   unavailable images and no recorded render failure but the app did not
   close cleanly after the case; the audit artifact has no exit classification.
-  Both failures remain open, and the ranks 451-500 shard is still running.
+  Both failures remain open. The ranks 451-500 shard also failed rank 465
+  (`xai-org/grok-1`) with the same Win2D line-number `E_INVALIDARG` as the
+  preceding hosted audit. That `65c640f` run predates the new geometry
+  diagnostic; the latest head must capture it. A local replay still passes,
+  so this is reproducible on the hosted runner but not yet explained.
+  Rank 203 completed quickly in this run (0.205 first-render and 0.184
+  full-page native/Edge ratios), which shows the earlier CPU outlier is
+  variable, not disproven. Rank 74 (`farion1231/cc-switch`) exceeded Edge's
+  full-page time by 2.28 times and needs a same-byte stage trace.
 - Measured: the full x64 repeated-construction release benchmark is not yet
   qualified. Both reference and candidate failed its stationarity contract;
   the candidate's full run dropped to about 121 observed Hz on a configured
