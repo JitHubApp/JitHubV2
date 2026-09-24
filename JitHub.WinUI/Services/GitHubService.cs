@@ -2192,6 +2192,36 @@ namespace JitHub.Services
                     GitHubImageFetchScope scope = publicDecision.IsThirdParty
                         ? GitHubImageFetchScope.UserApprovedHttps
                         : GitHubImageFetchScope.TrustedGitHub;
+                    if (publicDecision.Access == MarkdownRemoteImageAccess.AllowNetwork &&
+                        GitHubCamoImageMapParser.TryDecodeCanonicalSource(publicUri!, out _))
+                    {
+                        // A Camo HTTP request can consume all three 20-second
+                        // transport attempts before its origin fallback begins.
+                        // Hedge only canonical Camo URLs, and fetch the decoded
+                        // origin under the untrusted third-party policy below.
+                        MarkdownImageAsset? camoAsset = await MarkdownImageFallbackPipeline
+                            .FirstSuccessfulHedgedAsync(
+                                async token => await ReadCachedMarkdownImageAsync(
+                                    await _gitHubImageService.GetAsync(
+                                        publicUri!.AbsoluteUri,
+                                        scope,
+                                        token).ConfigureAwait(false),
+                                    publicUri!,
+                                    token).ConfigureAwait(false),
+                                token => TryResolveViaGitHubCamoOriginAsync(
+                                    publicUri!, context, token),
+                                static (attempt, exception) => HandledFailureReporter.Report(
+                                    exception,
+                                    attempt == 0
+                                        ? "markdown-image-camo-fetch"
+                                        : "markdown-image-camo-origin-fallback"),
+                                TimeSpan.FromMilliseconds(750),
+                                cancellationToken).ConfigureAwait(false);
+                        return camoAsset is null
+                            ? MarkdownImageResolution.Unavailable
+                            : MarkdownImageResolution.Resolved(camoAsset);
+                    }
+
                     GitHubCachedImage? publicImage = publicDecision.Access == MarkdownRemoteImageAccess.CacheOnly
                         ? await _gitHubImageService.TryGetCachedAsync(
                             publicUri!.ToString(),

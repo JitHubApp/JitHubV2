@@ -52,8 +52,8 @@ internal static partial class GitHubCamoImageMapParser
     /// <summary>
     /// Recovers the canonical origin encoded in GitHub's Camo path. Legacy
     /// HTTP origins are upgraded to HTTPS; plaintext fallback is never used.
-    /// This is used only as a bounded fallback when the trusted Camo endpoint itself
-    /// fails; the recovered URL still goes through the host's remote-image
+    /// This is used only as a bounded fallback when the trusted Camo endpoint
+    /// stalls or fails; the recovered URL still goes through the host's remote-image
     /// policy and an anonymous third-party fetch scope.
     /// </summary>
     internal static bool TryDecodeCanonicalSource(Uri? camoUri, out Uri sourceUri)

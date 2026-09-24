@@ -318,6 +318,17 @@ complete before claiming this plan or the 1.0 performance goal is met.
   full-page native/Edge ratios), which shows the earlier CPU outlier is
   variable, not disproven. Rank 74 (`farion1231/cc-switch`) exceeded Edge's
   full-page time by 2.28 times and needs a same-byte stage trace.
+- Pending hosted verification: the rank-189 Camo URL encodes a valid HTTPS
+  Asciinema origin. JitHub previously awaited as many as three 20-second Camo
+  transport attempts before trying that origin, which can outlast the audit's
+  visible-image window. Canonical Camo images now start the origin under its
+  untrusted third-party policy after a 750 ms hedge, retain a fast Camo result
+  without an origin request, accept either successful representation, and
+  cancel/await the losing waiter without canceling other shared callers.
+  The six focused fallback tests, all 3,057 x64 Release app tests, and the
+  x64 Release app build pass locally. This is not yet a rank-189 pass: the
+  current-head top-500 run predates the hedge, and source/worker completion
+  must be verified on a new full audit.
 - Measured: the full x64 repeated-construction release benchmark is not yet
   qualified. Both reference and candidate failed its stationarity contract;
   the candidate's full run dropped to about 121 observed Hz on a configured

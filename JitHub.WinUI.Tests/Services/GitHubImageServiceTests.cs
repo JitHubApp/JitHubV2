@@ -1079,6 +1079,87 @@ public sealed class GitHubImageServiceTests : IDisposable
     }
 
     [Fact]
+    public async Task MarkdownImageFallback_HedgeUsesFastPrimaryWithoutOriginRequest()
+    {
+        bool originStarted = false;
+        string? result = await MarkdownImageFallbackPipeline.FirstSuccessfulHedgedAsync(
+            _ => Task.FromResult<string?>("camo"),
+            _ =>
+            {
+                originStarted = true;
+                return Task.FromResult<string?>("origin");
+            },
+            (_, _) => { },
+            TimeSpan.FromSeconds(1),
+            CancellationToken.None);
+
+        Assert.Equal("camo", result);
+        Assert.False(originStarted);
+    }
+
+    [Fact]
+    public async Task MarkdownImageFallback_HedgeUsesOriginWhilePrimaryIsStalled()
+    {
+        var primaryCanceled = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        int failures = 0;
+        string? result = await MarkdownImageFallbackPipeline.FirstSuccessfulHedgedAsync(
+            async token =>
+            {
+                using CancellationTokenRegistration registration = token.Register(
+                    () => primaryCanceled.TrySetResult());
+                await Task.Delay(Timeout.InfiniteTimeSpan, token);
+                return "camo";
+            },
+            _ => Task.FromResult<string?>("origin"),
+            (_, _) => Interlocked.Increment(ref failures),
+            TimeSpan.FromMilliseconds(10),
+            CancellationToken.None);
+
+        await primaryCanceled.Task.WaitAsync(TimeSpan.FromSeconds(2));
+        Assert.Equal("origin", result);
+        Assert.Equal(0, failures);
+    }
+
+    [Fact]
+    public async Task MarkdownImageFallback_FailedHedgeStillAcceptsLatePrimary()
+    {
+        var primary = new TaskCompletionSource<string?>(TaskCreationOptions.RunContinuationsAsynchronously);
+        Task<string?> resultTask = MarkdownImageFallbackPipeline.FirstSuccessfulHedgedAsync(
+            _ => primary.Task,
+            _ => Task.FromException<string?>(new IOException("Origin failed.")),
+            (_, _) => { },
+            TimeSpan.Zero,
+            CancellationToken.None);
+
+        Assert.False(resultTask.IsCompleted);
+        primary.SetResult("camo");
+        Assert.Equal("camo", await resultTask);
+    }
+
+    [Fact]
+    public async Task MarkdownImageFallback_HedgePropagatesCallerCancellation()
+    {
+        using var cancellation = new CancellationTokenSource();
+        Task<string?> resultTask = MarkdownImageFallbackPipeline.FirstSuccessfulHedgedAsync(
+            async token =>
+            {
+                await Task.Delay(Timeout.InfiniteTimeSpan, token);
+                return "camo";
+            },
+            async token =>
+            {
+                await Task.Delay(Timeout.InfiniteTimeSpan, token);
+                return "origin";
+            },
+            (_, _) => { },
+            TimeSpan.Zero,
+            cancellation.Token);
+
+        cancellation.Cancel();
+        await Assert.ThrowsAnyAsync<OperationCanceledException>(() => resultTask);
+    }
+
+    [Fact]
     public void DecodeGitHubCamoCanonicalSource_UpgradesLegacyHttpOriginToHttps()
     {
         const string origin = "http://hits.dwyl.com/996icu/996ICU.svg";
