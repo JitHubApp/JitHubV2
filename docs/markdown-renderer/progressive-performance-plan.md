@@ -218,6 +218,23 @@ complete before claiming this plan or the 1.0 performance goal is met.
   and a focused rank-247 audit pass locally. This trace must still be verified
   on a hosted recurrence; the timeout is unresolved and remains a release
   blocker.
+- The same older-head audit has another passed-but-slow individual outlier:
+  rank 235 (`caddyserver/caddy`) took 24.36 seconds native versus 7.41 seconds
+  Edge for full traversal (3.62×), with 19.48 seconds of charged delay before
+  the first native tile and another 3.68 seconds before the second. Its
+  resolver evidence shows the listed remote assets completed within about
+  0.6 seconds, so this cannot be dismissed as slow delivery. A focused local
+  replay of the exact CI manifest commit passed in 743 ms full traversal;
+  first/final session snapshots showed 11 fetches and 47 ms cumulative CPU
+  preparation slot time. The 20-second visible-image wait needs per-image
+  and SVG-phase evidence on a recurrence, followed by same-byte replay. Rank
+  235 is a live outlier, not a benchmark waiver. The audit now records any
+  visible-image wait of at least 500 ms with its tile index and elapsed time;
+  on a 20-second deadline it also counts still-loading image peers. This
+  probes the UIA tree only once on timeout and charges that diagnostic walk
+  to harness overhead. The Release audit harness builds and
+  the exact pinned rank-235 focused run passes locally with the new evidence
+  field present (zero timeouts); its effectiveness awaits a recurrence.
 - Measured: the full x64 repeated-construction release benchmark is not yet
   qualified. Both reference and candidate failed its stationarity contract;
   the candidate's full run dropped to about 121 observed Hz on a configured

@@ -25,6 +25,10 @@ repository:
 - if an isolated resvg worker misses a deadline, a separate privacy-safe
   record names the phase (process startup, font catalog, open, render, or
   maintenance) and configured deadline without including SVG bytes or URLs.
+- visible-image waits of at least 500 ms record their tile index, duration,
+  and whether they reached the 20-second deadline. Only on a deadline does a
+  one-time UIA diagnostic count still-loading image peers; zero distinguishes
+  a stale aggregate status, while `-1` means that diagnostic walk failed.
 
 Run an optimized smoke audit (Release is the default and is required for
 browser-relative performance evidence):

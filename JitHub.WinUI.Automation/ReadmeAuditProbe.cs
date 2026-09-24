@@ -17,6 +17,7 @@ internal static partial class ReadmeAuditProbe
     private const string HostAutomationId = "MarkdownHost_RepositoryReadme_RepoCodeReadme";
     private const int ViewportWidth = 1000;
     private const int ViewportHeight = 900;
+    private const int SlowVisibleImageWaitMilliseconds = 500;
     private static readonly TimeSpan NativeTraversalTimeout = TimeSpan.FromMinutes(3);
     private static readonly JsonSerializerOptions JsonOptions = new()
     {
@@ -640,6 +641,7 @@ internal static partial class ReadmeAuditProbe
                 Width = traversal.Width,
                 EstimatedContentHeight = traversal.EstimatedContentHeight,
                 Tiles = traversal.Tiles,
+                VisibleImageWaits = traversal.VisibleImageWaits,
                 HeadingObservations = traversal.Headings,
                 LinkObservations = traversal.Links,
                 ImageObservations = traversal.Images,
@@ -695,6 +697,7 @@ internal static partial class ReadmeAuditProbe
         }
         var scroll = host.Patterns.Scroll.Pattern;
         var tiles = new List<AuditTile>();
+        var visibleImageWaits = new List<ReadmeAuditVisibleImageWait>();
         int headingObservations = 0;
         int linkObservations = 0;
         int imageObservations = 0;
@@ -729,7 +732,18 @@ internal static partial class ReadmeAuditProbe
             // size to stabilize before capturing or advancing again, without
             // walking the expensive full UIA subtree per viewport.
             auditOverheadMs += WaitForScrollSettled(scroll, TimeSpan.FromSeconds(2));
-            auditOverheadMs += WaitForVisibleImages(host, TimeSpan.FromSeconds(20));
+            VisibleImageWaitResult imageWait = WaitForVisibleImages(host, TimeSpan.FromSeconds(20));
+            auditOverheadMs += imageWait.ProbeOverheadMs;
+            if (imageWait.ElapsedMilliseconds >= SlowVisibleImageWaitMilliseconds)
+            {
+                visibleImageWaits.Add(new ReadmeAuditVisibleImageWait
+                {
+                    TileIndex = index,
+                    ElapsedMilliseconds = imageWait.ElapsedMilliseconds,
+                    TimedOut = imageWait.TimedOut,
+                    LoadingImageCount = imageWait.LoadingImageCount,
+                });
+            }
 
             Stopwatch automationProbe = Stopwatch.StartNew();
             double actual = scroll.VerticalScrollPercent.ValueOrDefault;
@@ -940,7 +954,8 @@ internal static partial class ReadmeAuditProbe
             disclosureObservations,
             nativeMermaidSources,
             loadingAfterTraversal,
-            auditOverheadMs);
+            auditOverheadMs,
+            visibleImageWaits);
     }
 
     private static double RevisitPendingImages(
@@ -976,7 +991,7 @@ internal static partial class ReadmeAuditProbe
             auditOverheadMs += WaitForScrollSettled(scroll, TimeSpan.FromSeconds(2));
             // Only UIA probing is audit overhead. Time spent waiting for an
             // actual visible image remains part of native full-page latency.
-            auditOverheadMs += WaitForVisibleImages(host, TimeSpan.FromSeconds(20));
+            auditOverheadMs += WaitForVisibleImages(host, TimeSpan.FromSeconds(20)).ProbeOverheadMs;
             previous = requested;
         }
 
@@ -1512,7 +1527,7 @@ internal static partial class ReadmeAuditProbe
         return result.ToString();
     }
 
-    private static double WaitForVisibleImages(
+    private static VisibleImageWaitResult WaitForVisibleImages(
         AutomationElement host,
         TimeSpan timeout)
     {
@@ -1530,11 +1545,32 @@ internal static partial class ReadmeAuditProbe
                 host.Properties.ItemStatus.ValueOrDefault);
             probe.Stop();
             probeOverheadMs += probe.Elapsed.TotalMilliseconds;
-            if (!isLoading) return probeOverheadMs;
+            if (!isLoading)
+                return new VisibleImageWaitResult(probeOverheadMs, false, 0, stopwatch.Elapsed.TotalMilliseconds);
             Thread.Sleep(10);
         }
 
-        return probeOverheadMs;
+        // Only on a deadline, inspect the full UIA tree once to distinguish a
+        // genuinely pending image from a stale aggregate ItemStatus. This
+        // diagnostic walk is harness overhead, not document render time.
+        Stopwatch diagnosticProbe = Stopwatch.StartNew();
+        int loadingImageCount;
+        try
+        {
+            loadingImageCount = host.FindAllDescendants().Count(IsLoadingImage);
+        }
+        catch (Exception exception) when (
+            exception is InvalidOperationException or TimeoutException or
+                System.Runtime.InteropServices.COMException)
+        {
+            loadingImageCount = -1;
+        }
+        diagnosticProbe.Stop();
+        return new VisibleImageWaitResult(
+            probeOverheadMs + diagnosticProbe.Elapsed.TotalMilliseconds,
+            true,
+            loadingImageCount,
+            stopwatch.Elapsed.TotalMilliseconds - diagnosticProbe.Elapsed.TotalMilliseconds);
     }
 
     private static bool IsLoadingImage(AutomationElement element) =>
@@ -2372,7 +2408,14 @@ internal static partial class ReadmeAuditProbe
         int Disclosures,
         IReadOnlyList<string> MermaidSources,
         int LoadingImages,
-        double AuditOverheadMs);
+        double AuditOverheadMs,
+        IReadOnlyList<ReadmeAuditVisibleImageWait> VisibleImageWaits);
+
+    private readonly record struct VisibleImageWaitResult(
+        double ProbeOverheadMs,
+        bool TimedOut,
+        int LoadingImageCount,
+        double ElapsedMilliseconds);
 
     private readonly record struct ScrollWaitResult(
         bool Succeeded,
@@ -2534,6 +2577,14 @@ internal sealed class AuditTile
     public double NativeChargedAtCaptureMs { get; init; }
 }
 
+internal sealed class ReadmeAuditVisibleImageWait
+{
+    public int TileIndex { get; init; }
+    public double ElapsedMilliseconds { get; init; }
+    public bool TimedOut { get; init; }
+    public int LoadingImageCount { get; init; }
+}
+
 internal sealed class NativeAuditResult
 {
     public double FirstRenderMs { get; init; }
@@ -2551,6 +2602,7 @@ internal sealed class NativeAuditResult
     public int Width { get; init; }
     public int EstimatedContentHeight { get; init; }
     public IReadOnlyList<AuditTile> Tiles { get; init; } = [];
+    public IReadOnlyList<ReadmeAuditVisibleImageWait> VisibleImageWaits { get; init; } = [];
     public int HeadingObservations { get; init; }
     public int LinkObservations { get; init; }
     public int ImageObservations { get; init; }
