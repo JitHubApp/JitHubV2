@@ -4333,6 +4333,10 @@ public partial class MarkdownRendererControl : UserControl, IDisposable, IMarkdo
         int generation = _codeBlockHighlightGeneration;
         int providerIdentity = RuntimeHelpers.GetHashCode(highlighter);
         int providerRevision = highlighter.Revision;
+        IMarkdownPerformanceSessionInternal? sceneSession =
+            PerformanceSession as IMarkdownPerformanceSessionInternal;
+        if (sceneSession?.IsDisposed == true)
+            return;
         bool appliedCached = false;
         TryGetViewport(out double viewportTop, out double viewportHeight, out _);
         LazyLayoutBand highlightBand = PerformanceSession is { } performanceSession
@@ -4383,7 +4387,7 @@ public partial class MarkdownRendererControl : UserControl, IDisposable, IMarkdo
                 continue;
 
             TrackCodeBlockHighlightTask(
-                HighlightCodeBlockAsync(snapshot, block, key, variant, highlighter, providerIdentity, providerRevision, generation, cts.Token));
+                HighlightCodeBlockAsync(snapshot, block, key, variant, highlighter, providerIdentity, providerRevision, generation, sceneSession, cts.Token));
         }
 
         if (appliedCached)
@@ -4437,6 +4441,7 @@ public partial class MarkdownRendererControl : UserControl, IDisposable, IMarkdo
         int providerIdentity,
         int providerRevision,
         int generation,
+        IMarkdownPerformanceSessionInternal? sceneSession,
         CancellationToken token)
     {
         if (token.IsCancellationRequested)
@@ -4450,19 +4455,25 @@ public partial class MarkdownRendererControl : UserControl, IDisposable, IMarkdo
             await _codeBlockHighlightSemaphore.WaitAsync(token).ConfigureAwait(false);
             try
             {
-                if (token.IsCancellationRequested)
+                using IMarkdownScenePreparationLease? sceneLease = sceneSession is null
+                    ? null
+                    : await sceneSession.EnterScenePreparationAsync(this, token)
+                        .ConfigureAwait(false);
+                CancellationToken workToken = sceneLease?.CancellationToken ?? token;
+                if (workToken.IsCancellationRequested)
                     return;
 
-                var request = new CodeBlockHighlightRequest(block.CodeLanguage, block.CodeText, variant, token);
-                var result = await highlighter.HighlightAsync(request, token).ConfigureAwait(false)
+                var request = new CodeBlockHighlightRequest(block.CodeLanguage, block.CodeText, variant, workToken);
+                var result = await highlighter.HighlightAsync(request, workToken).ConfigureAwait(false)
                     ?? CodeBlockHighlightResult.Empty;
-                if (token.IsCancellationRequested)
+                if (workToken.IsCancellationRequested)
                     return;
 
                 DispatcherQueue.TryEnqueue(() =>
                 {
                     if (_isUnloaded ||
-                        token.IsCancellationRequested ||
+                        workToken.IsCancellationRequested ||
+                        sceneSession?.IsDisposed == true ||
                         !ReferenceEquals(_snapshot, snapshot) ||
                         !CodeBlockHighlightPublicationFence.IsCurrent(
                             CodeHighlighter,
@@ -4496,7 +4507,7 @@ public partial class MarkdownRendererControl : UserControl, IDisposable, IMarkdo
                 _codeBlockHighlightSemaphore.Release();
             }
         }
-        catch (OperationCanceledException) when (token.IsCancellationRequested)
+        catch (OperationCanceledException)
         {
             DispatcherQueue.TryEnqueue(() => RemoveCodeBlockHighlightInFlight(key, generation));
         }

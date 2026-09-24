@@ -558,6 +558,7 @@ public sealed class MarkdownRenderer.Performance.MarkdownPerformanceOptions : Sy
   public int LookAheadViewports { get; init; }
   public int MaxConcurrentCpuPreparations { get; init; }
   public int MaxConcurrentImageFetches { get; init; }
+  public int MaxConcurrentScenePreparations { get; init; }
   public int ReservedVisibleImageFetches { get; init; }
   public long MaxRasterOutputPixels { get; init; }
   public long SourceCacheBudgetBytes { get; init; }
@@ -577,6 +578,8 @@ public sealed class MarkdownRenderer.Performance.MarkdownPerformanceSnapshot
   public long ImageFetchFailures { get; }
   public long ImageFetchMilliseconds { get; }
   public long ImageFetches { get; }
+  public long ScenePreparationMilliseconds { get; }
+  public long ScenePreparations { get; }
   public long SourceCacheBytes { get; }
   public long SourceCacheEvictions { get; }
   public long SourceCacheHits { get; }

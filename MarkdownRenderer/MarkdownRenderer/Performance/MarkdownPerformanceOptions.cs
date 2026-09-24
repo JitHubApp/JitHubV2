@@ -17,6 +17,9 @@ public sealed record MarkdownPerformanceOptions
     /// <summary>Maximum concurrent static raster decode and upload operations.</summary>
     public int MaxConcurrentCpuPreparations { get; init; } = IntPtr.Size == 4 ? 1 : 2;
 
+    /// <summary>Maximum concurrent opt-in scene preparations across documents.</summary>
+    public int MaxConcurrentScenePreparations { get; init; } = IntPtr.Size == 4 ? 1 : 2;
+
     /// <summary>Maximum bytes of resolved source images retained in memory.</summary>
     public long SourceCacheBudgetBytes { get; init; } = (IntPtr.Size == 4 ? 32L : 64L) * 1024 * 1024;
 
@@ -45,6 +48,9 @@ public sealed record MarkdownPerformanceOptions
         if (MaxConcurrentCpuPreparations < 1 ||
             MaxConcurrentCpuPreparations > (IntPtr.Size == 4 ? 1 : 2))
             throw new ArgumentOutOfRangeException(nameof(MaxConcurrentCpuPreparations));
+        if (MaxConcurrentScenePreparations < 1 ||
+            MaxConcurrentScenePreparations > (IntPtr.Size == 4 ? 1 : 2))
+            throw new ArgumentOutOfRangeException(nameof(MaxConcurrentScenePreparations));
         if (SourceCacheBudgetBytes < 0 ||
             SourceCacheBudgetBytes > (IntPtr.Size == 4 ? 32L : 64L) * 1024 * 1024)
             throw new ArgumentOutOfRangeException(nameof(SourceCacheBudgetBytes));

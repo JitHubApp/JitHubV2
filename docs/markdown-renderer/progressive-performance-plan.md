@@ -49,6 +49,18 @@ complete before claiming this plan or the 1.0 performance goal is met.
   whole-measured-document completion scan remains only in the non-progressive
   path. This removes avoidable scroll/publication work, but it is not evidence
   that the full 60/120 Hz release gate passes.
+- Locally verified, pending current-head CI and benchmark: opt-in code-block
+  highlighting now enters a shared document-fair scene-preparation admission
+  before invoking the highlighter. The separate lowerable scene concurrency
+  ceiling prevents several visible controls from multiplying CPU work; a
+  session lease links cancellation to session retirement and is released even
+  on provider failure. The non-opt-in control path is unchanged. Fairness,
+  cancellation, independent raster admission, and drain tests passed, as did
+  all 401 GitHub renderer and 939
+  fast managed tests, public API baseline verification, the x64 Release sample
+  build, and x86/ARM64 optional-provider builds. This is the admission
+  foundation only: Math/Mermaid deferral and a visible-first priority queue
+  remain open, and no full benchmark verdict is claimed.
 - Done: JitHub tries the credential-free GitHub raw CDN for repository media
   before consuming authenticated Contents API budget, retaining the existing
   private/LFS fallback. The audit captures per-tile native traversal clocks and
@@ -157,6 +169,17 @@ complete before claiming this plan or the 1.0 performance goal is met.
   audit is still required. The one-case report's styled-viewport SSIM was
   0.050 despite 100% text and 99.90% structure, so it is not proof of visual
   fidelity parity either.
+- The later `95519bd` live audit (Actions run `35942389322`) consolidated
+  500/500 passes with zero reported unavailable images. Native/Edge p95 ratios
+  were 0.486 first render and 0.352 full traversal. This is a live-network
+  pass on an earlier renderer head, not the current-head or same-byte release
+  gate. Two individual cases still exceed 1.10: rank 60
+  (`anthropics/claude-code`) has a 1.57 full-page ratio, and its 11,002,760-
+  byte GIF resolved about six seconds after the badges; delivery is a plausible
+  contributor, not a proven waiver. Rank 203 (`d2l-ai/d2l-zh`) has 2.10 first-
+  render and 1.79 full-page ratios with 4,969 ms first-render CPU, so native
+  client work remains a concrete suspect. Preserve both as same-byte replay
+  targets; do not infer parity from the aggregate p95.
 - Measured: the full x64 repeated-construction release benchmark is not yet
   qualified. Both reference and candidate failed its stationarity contract;
   the candidate's full run dropped to about 121 observed Hz on a configured
@@ -216,8 +239,10 @@ complete before claiming this plan or the 1.0 performance goal is met.
   page's `TreeRefreshTask` is pending and await that task before checking the
   authoritative result. The affected tests passed 20 consecutive local runs,
   and the exact coverage-enabled 3,051-test CI command passed locally after
-  the test change. Current-head hosted CI must still confirm both fixes. This
-  is CI correctness work, not a performance-gate pass.
+  the test change. The hosted code-viewer job passed at `cd45168`, confirming
+  both fixes under CI. This is CI correctness work, not a performance-gate
+  pass; the preview, live benchmark, and current-head top-500 jobs were still
+  running or queued at this checkpoint.
 - Open: actual source-byte in-flight admission (a host resolver currently owns
   its download buffer). It needs priority-aware byte admission across the
   renderer session and JitHub's HTTP/authenticated fetches, not a per-request
@@ -236,11 +261,12 @@ complete before claiming this plan or the 1.0 performance goal is met.
 ## Summary
 
 Close the measurable gap across parsing, layout, images, SVG, math, Mermaid,
-highlighting, and scrolling—not just image downloads. The current code already
-has background work and caches, but image prefetch starts only after render
-completion, ordinary raster images can be decoded at full source resolution,
-image completion can synchronously relayout blocks on the UI thread, and
-Math/Mermaid compilation is eager even for content far below the viewport.
+highlighting, and scrolling—not just image downloads. Image prefetch now starts
+after parsing and alongside layout, ordinary rasters use display-sized decode,
+and geometry-changing image reflow is prepared off the UI thread. Remaining
+gaps include in-flight source-byte admission, oversized raster tiling, bounded
+scene preparation beyond code highlighting, copy-on-write layout publication,
+and eager Math/Mermaid compilation far below the viewport.
 
 The new pipeline is opt-in for library consumers and enabled by JitHub. Browser
 comparisons will separate GitHub’s server/CDN advantage from work both renderers

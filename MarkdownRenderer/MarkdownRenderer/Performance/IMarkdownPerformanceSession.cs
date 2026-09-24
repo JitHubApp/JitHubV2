@@ -20,7 +20,9 @@ public sealed class MarkdownPerformanceSnapshot
         int pendingImageFetches,
         int activeImageFetches,
         long cpuPreparations,
-        long cpuPreparationMilliseconds)
+        long cpuPreparationMilliseconds,
+        long scenePreparations,
+        long scenePreparationMilliseconds)
     {
         SourceCacheBytes = sourceCacheBytes;
         SourceCacheHits = sourceCacheHits;
@@ -33,6 +35,8 @@ public sealed class MarkdownPerformanceSnapshot
         ActiveImageFetches = activeImageFetches;
         CpuPreparations = cpuPreparations;
         CpuPreparationMilliseconds = cpuPreparationMilliseconds;
+        ScenePreparations = scenePreparations;
+        ScenePreparationMilliseconds = scenePreparationMilliseconds;
     }
 
     /// <summary>Retained source bytes.</summary>
@@ -57,6 +61,10 @@ public sealed class MarkdownPerformanceSnapshot
     public long CpuPreparations { get; }
     /// <summary>Total elapsed raster preparation-slot time, rounded to milliseconds.</summary>
     public long CpuPreparationMilliseconds { get; }
+    /// <summary>Scene preparation slots admitted.</summary>
+    public long ScenePreparations { get; }
+    /// <summary>Total elapsed scene preparation-slot time, rounded to milliseconds.</summary>
+    public long ScenePreparationMilliseconds { get; }
 }
 
 /// <summary>
@@ -85,6 +93,14 @@ internal interface IMarkdownPerformanceSessionInternal : IMarkdownPerformanceSes
     ValueTask<IDisposable> EnterCpuPreparationAsync(
         object documentOwner,
         CancellationToken cancellationToken);
+    ValueTask<IMarkdownScenePreparationLease> EnterScenePreparationAsync(
+        object documentOwner,
+        CancellationToken cancellationToken);
+}
+
+internal interface IMarkdownScenePreparationLease : IDisposable
+{
+    CancellationToken CancellationToken { get; }
 }
 
 internal interface IMarkdownPerformanceDocumentScope : IMarkdownImageResolver, IDisposable

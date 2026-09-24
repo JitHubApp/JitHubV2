@@ -26,6 +26,7 @@ public sealed class MarkdownPerformanceSession : IMarkdownPerformanceSessionInte
     private readonly SemaphoreSlim _fetchSlots;
     private readonly FairDocumentAdmission _backgroundAdmission;
     private readonly FairDocumentAdmission _cpuPreparationAdmission;
+    private readonly FairDocumentAdmission _scenePreparationAdmission;
     private readonly CancellationTokenSource _lifetime = new();
     private readonly CancellationToken _lifetimeToken;
     private readonly bool _memoryPressureSubscribed;
@@ -44,6 +45,8 @@ public sealed class MarkdownPerformanceSession : IMarkdownPerformanceSessionInte
     private int _activeImageFetches;
     private long _cpuPreparations;
     private long _cpuPreparationMilliseconds;
+    private long _scenePreparations;
+    private long _scenePreparationMilliseconds;
     private int _disposed;
 
     /// <summary>Creates an opt-in session. Use a distinct session for each account/security partition.</summary>
@@ -56,6 +59,7 @@ public sealed class MarkdownPerformanceSession : IMarkdownPerformanceSessionInte
         _backgroundAdmission = new FairDocumentAdmission(
             options.MaxConcurrentImageFetches - options.ReservedVisibleImageFetches);
         _cpuPreparationAdmission = new FairDocumentAdmission(options.MaxConcurrentCpuPreparations);
+        _scenePreparationAdmission = new FairDocumentAdmission(options.MaxConcurrentScenePreparations);
         try
         {
             Windows.System.MemoryManager.AppMemoryUsageIncreased += OnAppMemoryUsageIncreased;
@@ -85,6 +89,11 @@ public sealed class MarkdownPerformanceSession : IMarkdownPerformanceSessionInte
         CancellationToken cancellationToken) =>
         EnterCpuPreparationAsync(documentOwner, cancellationToken);
 
+    ValueTask<IMarkdownScenePreparationLease> IMarkdownPerformanceSessionInternal.EnterScenePreparationAsync(
+        object documentOwner,
+        CancellationToken cancellationToken) =>
+        EnterScenePreparationAsync(documentOwner, cancellationToken);
+
     /// <summary>Returns aggregate counts without source URLs or content.</summary>
     public MarkdownPerformanceSnapshot GetSnapshot()
     {
@@ -102,7 +111,9 @@ public sealed class MarkdownPerformanceSession : IMarkdownPerformanceSessionInte
             Volatile.Read(ref _pendingImageFetches),
             Volatile.Read(ref _activeImageFetches),
             Interlocked.Read(ref _cpuPreparations),
-            Interlocked.Read(ref _cpuPreparationMilliseconds));
+            Interlocked.Read(ref _cpuPreparationMilliseconds),
+            Interlocked.Read(ref _scenePreparations),
+            Interlocked.Read(ref _scenePreparationMilliseconds));
     }
 
     /// <summary>Releases retained source bytes; active visible work is unaffected.</summary>
@@ -146,6 +157,29 @@ public sealed class MarkdownPerformanceSession : IMarkdownPerformanceSessionInte
         }
         catch
         {
+            RetireWork();
+            throw;
+        }
+    }
+
+    internal async ValueTask<IMarkdownScenePreparationLease> EnterScenePreparationAsync(
+        object documentOwner,
+        CancellationToken cancellationToken)
+    {
+        RegisterWork();
+        CancellationTokenSource? linked = null;
+        try
+        {
+            linked = CancellationTokenSource.CreateLinkedTokenSource(
+                cancellationToken, _lifetimeToken);
+            IDisposable admissionLease = await _scenePreparationAdmission.EnterAsync(
+                documentOwner, linked.Token).ConfigureAwait(false);
+            Interlocked.Increment(ref _scenePreparations);
+            return new ScenePreparationLease(admissionLease, linked, this, Stopwatch.GetTimestamp());
+        }
+        catch
+        {
+            linked?.Dispose();
             RetireWork();
             throw;
         }
@@ -782,6 +816,32 @@ public sealed class MarkdownPerformanceSession : IMarkdownPerformanceSessionInte
             finally
             {
                 Interlocked.Add(ref session._cpuPreparationMilliseconds,
+                    (long)Stopwatch.GetElapsedTime(started).TotalMilliseconds);
+                session.RetireWork();
+            }
+        }
+    }
+
+    private sealed class ScenePreparationLease(
+        IDisposable admissionLease,
+        CancellationTokenSource cancellation,
+        MarkdownPerformanceSession session,
+        long started) : IMarkdownScenePreparationLease
+    {
+        private IDisposable? _admissionLease = admissionLease;
+        public CancellationToken CancellationToken => cancellation.Token;
+        public void Dispose()
+        {
+            if (Interlocked.Exchange(ref _admissionLease, null) is not { } held)
+                return;
+            try
+            {
+                held.Dispose();
+            }
+            finally
+            {
+                cancellation.Dispose();
+                Interlocked.Add(ref session._scenePreparationMilliseconds,
                     (long)Stopwatch.GetElapsedTime(started).TotalMilliseconds);
                 session.RetireWork();
             }

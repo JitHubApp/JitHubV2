@@ -19,6 +19,10 @@ public sealed class MarkdownPerformanceSessionTests
         Assert.Throws<ArgumentOutOfRangeException>(() => new MarkdownPerformanceSession(
             MarkdownPerformanceOptions.Progressive with { MaxConcurrentCpuPreparations = 4 }));
         Assert.Throws<ArgumentOutOfRangeException>(() => new MarkdownPerformanceSession(
+            MarkdownPerformanceOptions.Progressive with { MaxConcurrentScenePreparations = 0 }));
+        Assert.Throws<ArgumentOutOfRangeException>(() => new MarkdownPerformanceSession(
+            MarkdownPerformanceOptions.Progressive with { MaxConcurrentScenePreparations = 4 }));
+        Assert.Throws<ArgumentOutOfRangeException>(() => new MarkdownPerformanceSession(
             MarkdownPerformanceOptions.Progressive with { MaxRasterOutputPixels = 8_388_609 }));
     }
 
@@ -270,6 +274,78 @@ public sealed class MarkdownPerformanceSessionTests
         Assert.False(retirement.IsCompleted);
         active.Dispose();
         await retirement.WaitAsync(TimeSpan.FromSeconds(5));
+    }
+
+    [Fact]
+    public async Task ScenePreparations_RotateBetweenDocumentOwners()
+    {
+        await using var session = new MarkdownPerformanceSession(
+            MarkdownPerformanceOptions.Progressive with { MaxConcurrentScenePreparations = 1 });
+        var firstOwner = new object();
+        var secondOwner = new object();
+        using IMarkdownScenePreparationLease initial = await session.EnterScenePreparationAsync(
+            firstOwner, CancellationToken.None);
+        Task<IMarkdownScenePreparationLease> firstA = session.EnterScenePreparationAsync(
+            firstOwner, CancellationToken.None).AsTask();
+        Task<IMarkdownScenePreparationLease> secondA = session.EnterScenePreparationAsync(
+            firstOwner, CancellationToken.None).AsTask();
+        Task<IMarkdownScenePreparationLease> firstB = session.EnterScenePreparationAsync(
+            secondOwner, CancellationToken.None).AsTask();
+        Task<IMarkdownScenePreparationLease> secondB = session.EnterScenePreparationAsync(
+            secondOwner, CancellationToken.None).AsTask();
+
+        initial.Dispose();
+        using IMarkdownScenePreparationLease leaseA1 = await firstA.WaitAsync(TimeSpan.FromSeconds(5));
+        Assert.False(firstB.IsCompleted);
+        leaseA1.Dispose();
+        using IMarkdownScenePreparationLease leaseB1 = await firstB.WaitAsync(TimeSpan.FromSeconds(5));
+        Assert.False(secondA.IsCompleted);
+        leaseB1.Dispose();
+        using IMarkdownScenePreparationLease leaseA2 = await secondA.WaitAsync(TimeSpan.FromSeconds(5));
+        Assert.False(secondB.IsCompleted);
+        leaseA2.Dispose();
+        using IMarkdownScenePreparationLease leaseB2 = await secondB.WaitAsync(TimeSpan.FromSeconds(5));
+        Assert.Equal(5, session.GetSnapshot().ScenePreparations);
+    }
+
+    [Fact]
+    public async Task SessionRetirement_CancelsQueuedScenePreparationAndSignalsActiveWork()
+    {
+        var session = new MarkdownPerformanceSession(
+            MarkdownPerformanceOptions.Progressive with { MaxConcurrentScenePreparations = 1 });
+        using IMarkdownScenePreparationLease active = await session.EnterScenePreparationAsync(
+            new object(), CancellationToken.None);
+        Task<IMarkdownScenePreparationLease> queued = session.EnterScenePreparationAsync(
+            new object(), CancellationToken.None).AsTask();
+
+        Task retirement = session.DisposeAsync().AsTask();
+        await Assert.ThrowsAnyAsync<OperationCanceledException>(
+            () => queued.WaitAsync(TimeSpan.FromSeconds(5)));
+        Assert.True(active.CancellationToken.IsCancellationRequested);
+        Assert.False(retirement.IsCompleted);
+        active.Dispose();
+        await retirement.WaitAsync(TimeSpan.FromSeconds(5));
+    }
+
+    [Fact]
+    public async Task SceneCancellation_DoesNotOccupyTheIndependentRasterLane()
+    {
+        await using var session = new MarkdownPerformanceSession(
+            MarkdownPerformanceOptions.Progressive with
+            {
+                MaxConcurrentScenePreparations = 1,
+                MaxConcurrentCpuPreparations = 1
+            });
+        using var cancellation = new CancellationTokenSource();
+        using IMarkdownScenePreparationLease scene = await session.EnterScenePreparationAsync(
+            new object(), cancellation.Token);
+        using IDisposable raster = await session.EnterCpuPreparationAsync(
+            new object(), CancellationToken.None).AsTask().WaitAsync(TimeSpan.FromSeconds(5));
+
+        cancellation.Cancel();
+        Assert.True(scene.CancellationToken.IsCancellationRequested);
+        Assert.Equal(1, session.GetSnapshot().ScenePreparations);
+        Assert.Equal(1, session.GetSnapshot().CpuPreparations);
     }
 
     private static async Task WaitForPendingFetchesAsync(
