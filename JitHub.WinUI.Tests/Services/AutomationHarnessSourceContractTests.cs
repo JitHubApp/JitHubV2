@@ -137,20 +137,26 @@ public sealed class AutomationHarnessSourceContractTests
         Assert.Contains("-ExpectedCount 500", workflow, StringComparison.Ordinal);
         Assert.Contains("$shardCount = ${{ matrix.end }} - ${{ matrix.start }} + 1", workflow, StringComparison.Ordinal);
         Assert.Contains("-Count $shardCount", workflow, StringComparison.Ordinal);
-        MatchCollection shardRanges = Regex.Matches(
-            workflow,
-            @"(?m)^\s+- \{ start: (?<start>\d+), end: (?<end>\d+) \}$");
-        Assert.NotEmpty(shardRanges);
-        int nextRank = 1;
-        foreach (Match shard in shardRanges)
+        // GitHub's Windows checkout may use CRLF even when the local checkout
+        // uses LF. Validate both representations, including exact rank coverage.
+        string lfWorkflow = workflow.Replace("\r\n", "\n", StringComparison.Ordinal);
+        foreach (string candidate in new[] { lfWorkflow, lfWorkflow.Replace("\n", "\r\n", StringComparison.Ordinal) })
         {
-            int start = int.Parse(shard.Groups["start"].Value);
-            int end = int.Parse(shard.Groups["end"].Value);
-            Assert.Equal(nextRank, start);
-            Assert.InRange(end - start + 1, 1, 25);
-            nextRank = end + 1;
+            MatchCollection shardRanges = Regex.Matches(
+                candidate,
+                @"(?m)^[ \t]*- \{ start: (?<start>\d+), end: (?<end>\d+) \}[ \t]*\r?$");
+            Assert.NotEmpty(shardRanges);
+            int nextRank = 1;
+            foreach (Match shard in shardRanges)
+            {
+                int start = int.Parse(shard.Groups["start"].Value);
+                int end = int.Parse(shard.Groups["end"].Value);
+                Assert.Equal(nextRank, start);
+                Assert.InRange(end - start + 1, 1, 25);
+                nextRank = end + 1;
+            }
+            Assert.Equal(501, nextRank);
         }
-        Assert.Equal(501, nextRank);
         Assert.Contains("$cases.Count -ne $ExpectedCount", merger, StringComparison.Ordinal);
         Assert.Contains("Native first-render p95", merger, StringComparison.Ordinal);
         Assert.Contains("Native full-page p95", merger, StringComparison.Ordinal);
