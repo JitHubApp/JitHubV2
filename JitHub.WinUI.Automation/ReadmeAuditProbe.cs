@@ -2068,30 +2068,42 @@ internal static partial class ReadmeAuditProbe
     private static ReadmeAuditCloseResult CloseAndWait(
         Window window, Process appProcess, Process launcher)
     {
-        bool closeRequestFailed = false;
-        try { window.Close(); }
-        catch { closeRequestFailed = true; }
-
-        if (!appProcess.WaitForExit(12_000))
+        // The packaged app may not be the process returned by Process.Start.
+        // Process.ExitCode throws for Process.GetProcessById attachments, so
+        // retain a native handle before closing the window and read that code.
+        IntPtr appExitHandle = NativeMethods.OpenProcessExitHandle(appProcess.Id);
+        try
         {
-            return new ReadmeAuditCloseResult(
-                false,
-                closeRequestFailed
-                    ? "window-close-request-failed; app-exit-timeout-12s"
-                    : "app-exit-timeout-12s");
-        }
+            bool closeRequestFailed = false;
+            try { window.Close(); }
+            catch { closeRequestFailed = true; }
 
-        if (appProcess.ExitCode != 0)
+            if (!appProcess.WaitForExit(12_000))
+            {
+                return new ReadmeAuditCloseResult(
+                    false,
+                    closeRequestFailed
+                        ? "window-close-request-failed; app-exit-timeout-12s"
+                        : "app-exit-timeout-12s");
+            }
+
+            uint appExitCode = NativeMethods.GetProcessExitCode(appExitHandle);
+            if (appExitCode != 0)
+            {
+                return new ReadmeAuditCloseResult(
+                    false,
+                    $"app-exit-code-0x{appExitCode:X8}");
+            }
+
+            if (!launcher.HasExited) launcher.WaitForExit(2_000);
+            return launcher.HasExited && launcher.ExitCode != 0
+                ? new ReadmeAuditCloseResult(false, $"launcher-exit-code-0x{launcher.ExitCode:X8}")
+                : new ReadmeAuditCloseResult(true, null);
+        }
+        finally
         {
-            return new ReadmeAuditCloseResult(
-                false,
-                $"app-exit-code-0x{appProcess.ExitCode:X8}");
+            NativeMethods.CloseProcessExitHandle(appExitHandle);
         }
-
-        if (!launcher.HasExited) launcher.WaitForExit(2_000);
-        return launcher.HasExited && launcher.ExitCode != 0
-            ? new ReadmeAuditCloseResult(false, $"launcher-exit-code-0x{launcher.ExitCode:X8}")
-            : new ReadmeAuditCloseResult(true, null);
     }
 
     private static double TokenCoverage(string expected, string actual)

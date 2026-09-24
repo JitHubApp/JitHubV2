@@ -220,6 +220,13 @@ public sealed class AutomationHarnessSourceContractTests
         Assert.Contains("PreserveStartupDiagnostics(dataRoot, output, launcher)", nativeProbe, StringComparison.Ordinal);
         Assert.Contains("app-exit-timeout-12s", nativeProbe, StringComparison.Ordinal);
         Assert.Contains("app-exit-code-0x", nativeProbe, StringComparison.Ordinal);
+        Assert.Contains("OpenProcessExitHandle(appProcess.Id)", nativeProbe, StringComparison.Ordinal);
+        Assert.Contains("GetProcessExitCode(appExitHandle)", nativeProbe, StringComparison.Ordinal);
+        Assert.Contains("CloseProcessExitHandle(appExitHandle)", nativeProbe, StringComparison.Ordinal);
+        Assert.True(
+            nativeProbe.IndexOf("OpenProcessExitHandle(appProcess.Id)", StringComparison.Ordinal) <
+            nativeProbe.IndexOf("try { window.Close(); }", StringComparison.Ordinal));
+        Assert.DoesNotContain("appProcess.ExitCode", nativeProbe, StringComparison.Ordinal);
         Assert.Contains("launcher-exit-code-0x", nativeProbe, StringComparison.Ordinal);
         Assert.Contains("CloseFailure = close.Failure", nativeProbe, StringComparison.Ordinal);
         Assert.Contains("JITHUB_MARKDOWN_SHUTDOWN_STAGE_PATH", nativeProbe, StringComparison.Ordinal);

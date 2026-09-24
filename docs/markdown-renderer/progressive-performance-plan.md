@@ -475,6 +475,16 @@ complete before claiming this plan or the 1.0 performance goal is met.
   current-head recurrence is needed to diagnose and fix this case. Preview
   Validation passed on `89d1d08`, confirming the locale-cache test fix under
   hosted CI, but no full performance release verdict follows from it.
+- The subsequent `89d1d08` top-500 run (`36037412566`) exposed an audit-harness
+  defect, not a renderer verdict: the first 25-case shard failed 25/25 after
+  rendering because `Process.ExitCode` throws for the PID-attached JitHub
+  process. The shutdown check now retains a native process handle before
+  requesting window close, reads its actual exit code through
+  `GetExitCodeProcess`, and closes the handle on every path. This preserves the
+  strict nonzero-exit and timeout gates. The Release x64 automation harness
+  builds and all 35 focused source-contract tests pass locally. A new hosted
+  500-case run is required; the failed run provides no valid renderer or
+  performance pass count.
 - Measured: the full x64 repeated-construction release benchmark is not yet
   qualified. Both reference and candidate failed its stationarity contract;
   the candidate's full run dropped to about 121 observed Hz on a configured
