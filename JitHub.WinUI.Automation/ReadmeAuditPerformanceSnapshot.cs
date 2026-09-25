@@ -68,7 +68,7 @@ internal sealed class ReadmeAuditPerformanceSnapshot
             !IsValidStageDuration(snapshot.Pipeline.LayoutMilliseconds) ||
             !IsValidStageDuration(snapshot.Pipeline.PublicationMilliseconds))
         {
-            throw new InvalidDataException("The Markdown performance counters exceed their bounds.");
+            throw new InvalidDataException("The Markdown performance counters or presentation stages are invalid.");
         }
 
         return snapshot;

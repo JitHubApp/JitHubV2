@@ -842,6 +842,26 @@ complete before claiming this plan or the 1.0 performance goal is met.
   instrumentation only: no current-head live outlier has been reclassified,
   the existing `RenderCompleted` signal precedes first paint, and neither
   same-byte parity nor the ≤2 ms publication gate is proved by these tests.
+  A local pinned rank-478 (`coreyhaines31/marketingskills`) production-app
+  audit confirmed that the new stage fields reach first and full evidence:
+  parse/extension 101.8 ms, setup 177.6 ms, background-layout wall 90.5 ms,
+  and UI publication 12.2 ms. Edge exited before DevTools became ready on
+  that host, so this case has no browser comparison; the one-shot local
+  publication measurement is not a qualified release sample and exceeds the
+  2 ms target. It makes UI publication a concrete next profiling target, not
+  a passed gate or a waiver.
+- Local Edge-oracle retries on this host failed before the DevTools port file
+  appeared; no browser-relative timing from them is valid. Investigation found
+  that Edge's spawned PID could exit with code zero while eight descendants
+  retained the oracle's unique temporary profile. The oracle now terminates
+  only `msedge.exe` processes whose command line names that exact generated
+  profile before removing it. A local integration check stopped all eight
+  processes for one stale audit profile while leaving another profile's eight
+  untouched; a subsequent failing-oracle smoke test left the total audit Edge
+  process count unchanged (24 before and after). After stopping the remaining
+  stale audit-owned profiles, the same smoke test left zero before and after;
+  the local DevTools startup failure itself remains unresolved, and hosted
+  Edge parity must still run. The workflow now runs the profile-lifetime tests.
 - The rank-367 Edge `net::ERR_NO_BUFFER_SPACE` failure now has one bounded
   fresh-navigation recovery after stopping the failed load and waiting one
   second. The successful attempt gets a post-wait CPU/layout baseline; retry

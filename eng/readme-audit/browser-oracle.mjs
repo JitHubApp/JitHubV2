@@ -4,6 +4,7 @@ import { existsSync } from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { DocumentReadinessTimeout, metricDelta, metricMap, navigateReadme } from "./browser-navigation.mjs";
+import { stopBrowserProfileProcesses } from "./browser-process-lifetime.mjs";
 
 const options = parseArguments(process.argv.slice(2));
 const outputDirectory = path.resolve(required("out"));
@@ -437,6 +438,11 @@ try {
       new Promise(resolve => edge.once("exit", resolve)),
       delay(1500),
     ]);
+  }
+  try {
+    await stopBrowserProfileProcesses(profileDirectory);
+  } catch (error) {
+    process.stderr.write(`warning: could not stop Edge profile processes: ${error.message}\n`);
   }
   for (let attempt = 0; attempt < 5; attempt++) {
     try {

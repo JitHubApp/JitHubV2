@@ -131,8 +131,8 @@ jobs:
         with:
           node-version: 22
 
-      - name: Verify bounded Edge navigation retry contract
-        run: node --test .\eng\readme-audit\browser-navigation.test.mjs
+      - name: Verify Edge navigation and profile-lifetime contracts
+        run: node --test .\eng\readme-audit\browser-navigation.test.mjs .\eng\readme-audit\browser-process-lifetime.test.mjs
 
       - name: Install pinned Windows App Runtime 1.8.10
         run: |
