@@ -896,6 +896,29 @@ complete before claiming this plan or the 1.0 performance goal is met.
   Its UI-publication stage was 12.9 ms: this single unqualified case still
   exceeds the ≤2 ms target and does not replace the same-byte corpus, 500-case
   rerun, or counterbalanced release benchmark.
+- Locally profiled, pending current-head CI: the internal
+  publication clock now partitions commit, overlay reset, realization-plan
+  construction, visible realization, and final notification, with visible
+  realization further separating embeds, highlighting, and adornments. The
+  production audit requires finite, additive phases and advances its case
+  schema so stale evidence cannot satisfy the new trace. A pinned rank-478
+  (`coreyhaines31/marketingskills`) one-case local replay measured 11.7 ms
+  total publication: 3.5 ms constructing plans and 5.8 ms realizing visible
+  content, including 4.2 ms scheduling the highlight band. Text-only inline
+  containers now skip image/embed rectangle discovery, reducing the same
+  case's measured plan-construction phase to 1.8 ms and total publication to
+  8.6 ms on a fresh local run. Progressive
+  highlighting now enters provider work on a worker thread, preserving the
+  highlighter's documented thread-safe contract and marshaling only the
+  result back to the UI dispatcher. This single live-network sample passed
+  content checks but had styled-viewport SSIM 0.132; it is neither a fidelity
+  pass nor a qualified latency sample. An image-bearing rank-170 replay also
+  passed with 3/3 image observations and no unavailable content; 944 fast
+  Core, 412 GitHub renderer, and 3,129 app tests passed locally, as did the
+  zero-warning Release x64 app and audit builds. The slow external-gate
+  mutation fixture was not completed locally and remains a CI requirement.
+  Publication remains above the ≤2 ms target; the remaining plan-construction
+  and highlight-band costs require further work.
 - The rank-367 Edge `net::ERR_NO_BUFFER_SPACE` failure now has one bounded
   fresh-navigation recovery after stopping the failed load and waiting one
   second. The successful attempt gets a post-wait CPU/layout baseline; retry

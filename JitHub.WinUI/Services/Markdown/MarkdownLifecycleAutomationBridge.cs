@@ -650,7 +650,17 @@ internal static partial class MarkdownLifecycleAutomationBridge
         double ParseMilliseconds,
         double SetupMilliseconds,
         double LayoutMilliseconds,
-        double PublicationMilliseconds);
+        double PublicationMilliseconds,
+        double CommitMilliseconds,
+        double OverlayResetMilliseconds,
+        double PlanConstructionMilliseconds,
+        double VisibleRealizationMilliseconds,
+        double EmbedRealizationMilliseconds,
+        double HighlightSchedulingMilliseconds,
+        double HighlightRetirementMilliseconds,
+        double HighlightBandSchedulingMilliseconds,
+        double AdornmentFocusMilliseconds,
+        double FinalNotificationMilliseconds);
 
     internal sealed record MarkdownAuditCaptureRequest(
         string RequestId,

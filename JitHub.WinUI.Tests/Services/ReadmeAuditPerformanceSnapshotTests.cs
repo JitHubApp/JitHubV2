@@ -31,7 +31,17 @@ public sealed class ReadmeAuditPerformanceSnapshotTests
               "ParseMilliseconds": 1.5,
               "SetupMilliseconds": 0.75,
               "LayoutMilliseconds": 2.5,
-              "PublicationMilliseconds": 0.5
+              "PublicationMilliseconds": 0.5,
+              "CommitMilliseconds": 0.1,
+              "OverlayResetMilliseconds": 0.1,
+              "PlanConstructionMilliseconds": 0.1,
+              "VisibleRealizationMilliseconds": 0.15,
+              "EmbedRealizationMilliseconds": 0.05,
+              "HighlightSchedulingMilliseconds": 0.05,
+              "HighlightRetirementMilliseconds": 0.02,
+              "HighlightBandSchedulingMilliseconds": 0.03,
+              "AdornmentFocusMilliseconds": 0.05,
+              "FinalNotificationMilliseconds": 0.05
             }
           }
         }
@@ -53,6 +63,16 @@ public sealed class ReadmeAuditPerformanceSnapshotTests
         Assert.Equal(0.75, snapshot.Pipeline.SetupMilliseconds);
         Assert.Equal(2.5, snapshot.Pipeline.LayoutMilliseconds);
         Assert.Equal(0.5, snapshot.Pipeline.PublicationMilliseconds);
+        Assert.Equal(0.1, snapshot.Pipeline.CommitMilliseconds);
+        Assert.Equal(0.1, snapshot.Pipeline.OverlayResetMilliseconds);
+        Assert.Equal(0.1, snapshot.Pipeline.PlanConstructionMilliseconds);
+        Assert.Equal(0.15, snapshot.Pipeline.VisibleRealizationMilliseconds);
+        Assert.Equal(0.05, snapshot.Pipeline.EmbedRealizationMilliseconds);
+        Assert.Equal(0.05, snapshot.Pipeline.HighlightSchedulingMilliseconds);
+        Assert.Equal(0.02, snapshot.Pipeline.HighlightRetirementMilliseconds);
+        Assert.Equal(0.03, snapshot.Pipeline.HighlightBandSchedulingMilliseconds);
+        Assert.Equal(0.05, snapshot.Pipeline.AdornmentFocusMilliseconds);
+        Assert.Equal(0.05, snapshot.Pipeline.FinalNotificationMilliseconds);
     }
 
     [Theory]
@@ -83,6 +103,16 @@ public sealed class ReadmeAuditPerformanceSnapshotTests
     [InlineData("SetupMilliseconds")]
     [InlineData("LayoutMilliseconds")]
     [InlineData("PublicationMilliseconds")]
+    [InlineData("CommitMilliseconds")]
+    [InlineData("OverlayResetMilliseconds")]
+    [InlineData("PlanConstructionMilliseconds")]
+    [InlineData("VisibleRealizationMilliseconds")]
+    [InlineData("EmbedRealizationMilliseconds")]
+    [InlineData("HighlightSchedulingMilliseconds")]
+    [InlineData("HighlightRetirementMilliseconds")]
+    [InlineData("HighlightBandSchedulingMilliseconds")]
+    [InlineData("AdornmentFocusMilliseconds")]
+    [InlineData("FinalNotificationMilliseconds")]
     public void Parse_RejectsMissingPipelineStage(string property)
     {
         JsonNode evidence = JsonNode.Parse(ValidEvidence)!;
@@ -107,10 +137,47 @@ public sealed class ReadmeAuditPerformanceSnapshotTests
     [InlineData("SetupMilliseconds", -1)]
     [InlineData("LayoutMilliseconds", -1)]
     [InlineData("PublicationMilliseconds", -1)]
+    [InlineData("CommitMilliseconds", -1)]
+    [InlineData("OverlayResetMilliseconds", -1)]
+    [InlineData("PlanConstructionMilliseconds", -1)]
+    [InlineData("VisibleRealizationMilliseconds", -1)]
+    [InlineData("EmbedRealizationMilliseconds", -1)]
+    [InlineData("HighlightSchedulingMilliseconds", -1)]
+    [InlineData("HighlightRetirementMilliseconds", -1)]
+    [InlineData("HighlightBandSchedulingMilliseconds", -1)]
+    [InlineData("AdornmentFocusMilliseconds", -1)]
+    [InlineData("FinalNotificationMilliseconds", -1)]
     public void Parse_RejectsInvalidPipelineStage(string property, double value)
     {
         JsonNode evidence = JsonNode.Parse(ValidEvidence)!;
         evidence["Performance"]!["Pipeline"]![property] = value;
+
+        Assert.Throws<InvalidDataException>(() => Parse(evidence));
+    }
+
+    [Fact]
+    public void Parse_RejectsPublicationPhasesThatDoNotAddToTheReportedTotal()
+    {
+        JsonNode evidence = JsonNode.Parse(ValidEvidence)!;
+        evidence["Performance"]!["Pipeline"]!["PlanConstructionMilliseconds"] = 0.3;
+
+        Assert.Throws<InvalidDataException>(() => Parse(evidence));
+    }
+
+    [Fact]
+    public void Parse_RejectsVisibleRealizationPhasesThatDoNotAddToTheReportedTotal()
+    {
+        JsonNode evidence = JsonNode.Parse(ValidEvidence)!;
+        evidence["Performance"]!["Pipeline"]!["EmbedRealizationMilliseconds"] = 0.2;
+
+        Assert.Throws<InvalidDataException>(() => Parse(evidence));
+    }
+
+    [Fact]
+    public void Parse_RejectsHighlightPhasesThatDoNotAddToTheReportedTotal()
+    {
+        JsonNode evidence = JsonNode.Parse(ValidEvidence)!;
+        evidence["Performance"]!["Pipeline"]!["HighlightRetirementMilliseconds"] = 0.04;
 
         Assert.Throws<InvalidDataException>(() => Parse(evidence));
     }

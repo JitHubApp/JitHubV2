@@ -66,7 +66,33 @@ internal sealed class ReadmeAuditPerformanceSnapshot
             !IsValidStageDuration(snapshot.Pipeline.ParseMilliseconds) ||
             !IsValidStageDuration(snapshot.Pipeline.SetupMilliseconds) ||
             !IsValidStageDuration(snapshot.Pipeline.LayoutMilliseconds) ||
-            !IsValidStageDuration(snapshot.Pipeline.PublicationMilliseconds))
+            !IsValidStageDuration(snapshot.Pipeline.PublicationMilliseconds) ||
+            !IsValidStageDuration(snapshot.Pipeline.CommitMilliseconds) ||
+            !IsValidStageDuration(snapshot.Pipeline.OverlayResetMilliseconds) ||
+            !IsValidStageDuration(snapshot.Pipeline.PlanConstructionMilliseconds) ||
+            !IsValidStageDuration(snapshot.Pipeline.VisibleRealizationMilliseconds) ||
+            !IsValidStageDuration(snapshot.Pipeline.EmbedRealizationMilliseconds) ||
+            !IsValidStageDuration(snapshot.Pipeline.HighlightSchedulingMilliseconds) ||
+            !IsValidStageDuration(snapshot.Pipeline.HighlightRetirementMilliseconds) ||
+            !IsValidStageDuration(snapshot.Pipeline.HighlightBandSchedulingMilliseconds) ||
+            !IsValidStageDuration(snapshot.Pipeline.AdornmentFocusMilliseconds) ||
+            !IsValidStageDuration(snapshot.Pipeline.FinalNotificationMilliseconds) ||
+            Math.Abs(
+                snapshot.Pipeline.HighlightRetirementMilliseconds +
+                snapshot.Pipeline.HighlightBandSchedulingMilliseconds -
+                snapshot.Pipeline.HighlightSchedulingMilliseconds) > 0.01 ||
+            Math.Abs(
+                snapshot.Pipeline.EmbedRealizationMilliseconds +
+                snapshot.Pipeline.HighlightSchedulingMilliseconds +
+                snapshot.Pipeline.AdornmentFocusMilliseconds -
+                snapshot.Pipeline.VisibleRealizationMilliseconds) > 0.01 ||
+            Math.Abs(
+                snapshot.Pipeline.CommitMilliseconds +
+                snapshot.Pipeline.OverlayResetMilliseconds +
+                snapshot.Pipeline.PlanConstructionMilliseconds +
+                snapshot.Pipeline.VisibleRealizationMilliseconds +
+                snapshot.Pipeline.FinalNotificationMilliseconds -
+                snapshot.Pipeline.PublicationMilliseconds) > 0.01)
         {
             throw new InvalidDataException("The Markdown performance counters or presentation stages are invalid.");
         }
@@ -86,6 +112,16 @@ internal sealed class ReadmeAuditPipelineTimingSnapshot
     public required double SetupMilliseconds { get; init; }
     public required double LayoutMilliseconds { get; init; }
     public required double PublicationMilliseconds { get; init; }
+    public required double CommitMilliseconds { get; init; }
+    public required double OverlayResetMilliseconds { get; init; }
+    public required double PlanConstructionMilliseconds { get; init; }
+    public required double VisibleRealizationMilliseconds { get; init; }
+    public required double EmbedRealizationMilliseconds { get; init; }
+    public required double HighlightSchedulingMilliseconds { get; init; }
+    public required double HighlightRetirementMilliseconds { get; init; }
+    public required double HighlightBandSchedulingMilliseconds { get; init; }
+    public required double AdornmentFocusMilliseconds { get; init; }
+    public required double FinalNotificationMilliseconds { get; init; }
 }
 
 [JsonSourceGenerationOptions(PropertyNameCaseInsensitive = true)]

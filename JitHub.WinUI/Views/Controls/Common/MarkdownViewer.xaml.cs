@@ -620,7 +620,17 @@ public sealed partial class MarkdownViewer : UserControl
                 pipeline.ParseMilliseconds,
                 pipeline.SetupMilliseconds,
                 pipeline.LayoutMilliseconds,
-                pipeline.PublicationMilliseconds));
+                pipeline.PublicationMilliseconds,
+                pipeline.CommitMilliseconds,
+                pipeline.OverlayResetMilliseconds,
+                pipeline.PlanConstructionMilliseconds,
+                pipeline.VisibleRealizationMilliseconds,
+                pipeline.EmbedRealizationMilliseconds,
+                pipeline.HighlightSchedulingMilliseconds,
+                pipeline.HighlightRetirementMilliseconds,
+                pipeline.HighlightBandSchedulingMilliseconds,
+                pipeline.AdornmentFocusMilliseconds,
+                pipeline.FinalNotificationMilliseconds));
     }
 #pragma warning restore MR1001
 

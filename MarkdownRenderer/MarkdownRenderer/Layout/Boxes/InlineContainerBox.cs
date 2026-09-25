@@ -25,6 +25,8 @@ internal readonly record struct IntrinsicWidthMetrics(float Minimum, float Prefe
 internal sealed partial class InlineContainerBox : BlockBox
 {
     private readonly List<InlineRun> _runs = new();
+    private bool _hasInlineImages;
+    private bool _hasInlineEmbeds;
     private readonly List<IReadOnlyList<string>> _effectiveRunAliases = new();
     private readonly List<ElementStyle?> _resolvedRunStyles = new();
     private readonly string _elementKey;
@@ -60,6 +62,8 @@ internal sealed partial class InlineContainerBox : BlockBox
     public InlineRun? HoveredRun { get; set; }
 
     public IReadOnlyList<InlineRun> Runs => _runs;
+    internal bool HasInlineImages => _hasInlineImages;
+    internal bool HasInlineEmbeds => _hasInlineEmbeds;
     public string ElementKey => _elementKey;
     public MarkdownLayoutContext Context => _context;
     public string? CodeLanguage { get; init; }
@@ -96,10 +100,15 @@ internal sealed partial class InlineContainerBox : BlockBox
         run.InlineIndex = _runs.Count;
         if (run is InlineImageRun imageRun)
         {
+            _hasInlineImages = true;
             // The image participates in asynchronous relayout and UIA using
             // the owning paragraph's logical block. Keep that identity on the
             // nested ImageBox so a late load can invalidate only this owner.
             imageRun.Image.BlockIndex = BlockIndex;
+        }
+        else if (run is InlineEmbedRun)
+        {
+            _hasInlineEmbeds = true;
         }
         _runs.Add(run);
         _effectiveRunAliases.Add(CombineAliases(_styleAliasKeys, run.StyleAliases));

@@ -4143,6 +4143,7 @@ public partial class MarkdownRendererControl : UserControl, IDisposable, IMarkdo
                 scrollRestore.ChangeView(null, Math.Clamp(targetOffset, 0, maxOffset), null, disableAnimation: true);
             }
         }
+        long commitEnded = Stopwatch.GetTimestamp();
 
         // UI thread: collect embed plans (don't realise yet), hook image
         // LoadCompleted, then realise only embeds that fall in the current
@@ -4173,6 +4174,7 @@ public partial class MarkdownRendererControl : UserControl, IDisposable, IMarkdo
             UpdateSelectionOverlay();
         else
             _selection.Clear();
+        long overlayResetEnded = Stopwatch.GetTimestamp();
         _focusableItems = snapshot.CollectFocusableItems();
         _focusedItemIndex = focusedLink is not null && TryGetFocusableIndexForLink(focusedLink, out var restoredFocusIndex)
             ? restoredFocusIndex
@@ -4181,16 +4183,21 @@ public partial class MarkdownRendererControl : UserControl, IDisposable, IMarkdo
         _pendingLazyFocus = null;
         _focusRing = null;              // evicted from overlay; will be lazily re-created on demand
         RebuildRealizationPlans(snapshot, preserveRealized: false);
+        long planConstructionEnded = Stopwatch.GetTimestamp();
         if (_scroll is not null)
         {
             _scroll.ViewChanged -= OnScrollViewChanged;
             _scroll.ViewChanged += OnScrollViewChanged;
         }
         RealizeVisibleEmbeds();
+        long embedRealizationEnded = Stopwatch.GetTimestamp();
         _ = RestartCodeBlockHighlighting();
+        long highlightRetirementEnded = Stopwatch.GetTimestamp();
         ScheduleVisibleCodeBlockHighlighting();
+        long highlightSchedulingEnded = Stopwatch.GetTimestamp();
         UpdateSelectionAdornerViewport();
         UpdateFocusRing();
+        long visibleRealizationEnded = Stopwatch.GetTimestamp();
 
         InvalidateCanvas();
         if (semanticInputChanged)
@@ -4198,13 +4205,24 @@ public partial class MarkdownRendererControl : UserControl, IDisposable, IMarkdo
             (FrameworkElementAutomationPeer.FromElement(this) as MarkdownAutomationPeer)?
                 .NotifyDocumentChanged();
         }
+        long publicationEnded = Stopwatch.GetTimestamp();
         _lastPipelineTiming = new MarkdownPipelineTimingSnapshot(
             generation,
             sourceUtf16Bytes,
             parseMilliseconds,
             setupMilliseconds,
             layoutMilliseconds,
-            Stopwatch.GetElapsedTime(publicationStarted).TotalMilliseconds);
+            Stopwatch.GetElapsedTime(publicationStarted, publicationEnded).TotalMilliseconds,
+            Stopwatch.GetElapsedTime(publicationStarted, commitEnded).TotalMilliseconds,
+            Stopwatch.GetElapsedTime(commitEnded, overlayResetEnded).TotalMilliseconds,
+            Stopwatch.GetElapsedTime(overlayResetEnded, planConstructionEnded).TotalMilliseconds,
+            Stopwatch.GetElapsedTime(planConstructionEnded, visibleRealizationEnded).TotalMilliseconds,
+            Stopwatch.GetElapsedTime(planConstructionEnded, embedRealizationEnded).TotalMilliseconds,
+            Stopwatch.GetElapsedTime(embedRealizationEnded, highlightSchedulingEnded).TotalMilliseconds,
+            Stopwatch.GetElapsedTime(embedRealizationEnded, highlightRetirementEnded).TotalMilliseconds,
+            Stopwatch.GetElapsedTime(highlightRetirementEnded, highlightSchedulingEnded).TotalMilliseconds,
+            Stopwatch.GetElapsedTime(highlightSchedulingEnded, visibleRealizationEnded).TotalMilliseconds,
+            Stopwatch.GetElapsedTime(visibleRealizationEnded, publicationEnded).TotalMilliseconds);
         } // end of snapshot try-block
         catch
         {
@@ -4364,6 +4382,9 @@ public partial class MarkdownRendererControl : UserControl, IDisposable, IMarkdo
             PerformanceSession as IMarkdownPerformanceSessionInternal;
         if (sceneSession?.IsDisposed == true)
             return;
+        Microsoft.UI.Dispatching.DispatcherQueue? dispatcher = DispatcherQueue;
+        if (dispatcher is null)
+            return;
         bool appliedCached = false;
         TryGetViewport(out double viewportTop, out double viewportHeight, out _);
         LazyLayoutBand highlightBand = PerformanceSession is { } performanceSession
@@ -4413,8 +4434,20 @@ public partial class MarkdownRendererControl : UserControl, IDisposable, IMarkdo
             if (!_codeBlockHighlightInFlight.Add(key))
                 continue;
 
-            TrackCodeBlockHighlightTask(
-                HighlightCodeBlockAsync(snapshot, block, key, variant, highlighter, providerIdentity, providerRevision, generation, sceneSession, cts.Token));
+            // A ValueTask provider may do substantial coordination or even
+            // complete synchronously before its first await. Progressive
+            // preparation must enter that path on a worker, not during the
+            // UI-thread publication or scroll callback.
+            Task highlightTask = PerformanceSession is null
+                ? HighlightCodeBlockAsync(
+                    snapshot, block, key, variant, highlighter, providerIdentity,
+                    providerRevision, generation, sceneSession, dispatcher, cts.Token)
+                : Task.Run(
+                    () => HighlightCodeBlockAsync(
+                        snapshot, block, key, variant, highlighter, providerIdentity,
+                        providerRevision, generation, sceneSession, dispatcher, cts.Token),
+                    CancellationToken.None);
+            TrackCodeBlockHighlightTask(highlightTask);
         }
 
         if (appliedCached)
@@ -4469,6 +4502,7 @@ public partial class MarkdownRendererControl : UserControl, IDisposable, IMarkdo
         int providerRevision,
         int generation,
         IMarkdownPerformanceSessionInternal? sceneSession,
+        Microsoft.UI.Dispatching.DispatcherQueue dispatcher,
         CancellationToken token)
     {
         bool publicationQueued = false;
@@ -4492,7 +4526,7 @@ public partial class MarkdownRendererControl : UserControl, IDisposable, IMarkdo
                 if (workToken.IsCancellationRequested)
                     return;
 
-                publicationQueued = DispatcherQueue.TryEnqueue(() =>
+                publicationQueued = dispatcher.TryEnqueue(() =>
                 {
                     bool snapshotChanged = !ReferenceEquals(_snapshot, snapshot);
                     bool providerCurrent = CodeBlockHighlightPublicationFence.IsCurrent(
@@ -4551,7 +4585,7 @@ public partial class MarkdownRendererControl : UserControl, IDisposable, IMarkdo
             // Cancellation may occur after admission but before publication.
             // A stale key must not suppress a future visible-band request.
             if (!publicationQueued)
-                DispatcherQueue.TryEnqueue(() => RemoveCodeBlockHighlightInFlight(key, generation));
+                dispatcher.TryEnqueue(() => RemoveCodeBlockHighlightInFlight(key, generation));
         }
     }
 
@@ -5476,35 +5510,48 @@ public partial class MarkdownRendererControl : UserControl, IDisposable, IMarkdo
             }
             case Layout.Boxes.InlineContainerBox icb:
             {
+                // Most paragraphs contain only text. Avoid walking their runs
+                // and querying DirectWrite geometry when no overlay/image
+                // plan can possibly be produced.
+                if (!icb.HasInlineImages && !icb.HasInlineEmbeds)
+                    break;
+
                 // Register completion before asking DirectWrite for rectangles. During the
                 // first commit an inline image can be measurable but not yet have a stable
                 // character region; paint will start it and completion must still reflow.
-                foreach (var run in icb.Runs)
+                if (icb.HasInlineImages)
                 {
-                    if (run is InlineImageRun imageRun)
+                    foreach (var run in icb.Runs)
                     {
-                        // Image registration must not depend on DirectWrite
-                        // returning a character rectangle for the object
-                        // replacement slot. In particular, a linked image on
-                        // an otherwise empty line can temporarily have no
-                        // region during the first layout pass. Keeping it out
-                        // of _imagePlans in that state leaves it permanently
-                        // "Loading" because no later viewport pass can start
-                        // it. A missing first-pass rectangle has the default
-                        // origin, which deliberately starts the bounded load;
-                        // EnumerateInlineImageRects synchronizes the real
-                        // bounds as soon as DirectWrite publishes them.
-                        AddImagePlan(imageRun.Image);
+                        if (run is InlineImageRun imageRun)
+                        {
+                            // Image registration must not depend on DirectWrite
+                            // returning a character rectangle for the object
+                            // replacement slot. In particular, a linked image on
+                            // an otherwise empty line can temporarily have no
+                            // region during the first layout pass. Keeping it out
+                            // of _imagePlans in that state leaves it permanently
+                            // "Loading" because no later viewport pass can start
+                            // it. A missing first-pass rectangle has the default
+                            // origin, which deliberately starts the bounded load;
+                            // EnumerateInlineImageRects synchronizes the real
+                            // bounds as soon as DirectWrite publishes them.
+                            AddImagePlan(imageRun.Image);
+                        }
                     }
                 }
-                foreach (var (run, rect) in icb.EnumerateEmbedRects())
+                if (icb.HasInlineEmbeds)
                 {
-                    _embedPlans.Add(new InlineEmbedPlan { Icb = icb, Run = run, Rect = rect });
+                    foreach (var (run, rect) in icb.EnumerateEmbedRects())
+                        _embedPlans.Add(new InlineEmbedPlan { Icb = icb, Run = run, Rect = rect });
                 }
                 // Force enumeration so each ImageBox receives its document
                 // bounds. Images were already added above, independently of
                 // whether this geometry query succeeds.
-                foreach (var _ in icb.EnumerateInlineImageRects()) { }
+                if (icb.HasInlineImages)
+                {
+                    foreach (var _ in icb.EnumerateInlineImageRects()) { }
+                }
                 break;
             }
             case Layout.Boxes.CodeBlockBox codeBlock:
