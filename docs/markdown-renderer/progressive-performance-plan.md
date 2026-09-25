@@ -540,6 +540,22 @@ complete before claiming this plan or the 1.0 performance goal is met.
   on a pre-change local replay, this is a targeted mitigation, not a proven
   fix. A new hosted 500/500 audit and cold/contended text SVG evidence are
   required.
+- The subsequent `8dfdc90` current-renderer-head live audit (Actions run
+  `36080015819`) completed 500/500 with zero failed cases and zero valid
+  unavailable images. Its consolidated native/Edge first-render ratio was
+  p50 0.246, p95 0.468; full-page ratio p50 0.199, p95 0.350. Rank 181's
+  Chinese-text SVG badges and the earlier rank-371 shutdown case both passed
+  this full run. Rank 102 (`jaywcjlove/awesome-mac`) still had a 1.432
+  full-page ratio, the only individual ratio above 1.10. Its case artifact
+  records a 20.01-second visible-image wait and two roughly 31.5-second
+  fetches returning no bytes for the same Camo/OpenCollective contributor SVG;
+  the Edge capture marks that exact URL complete with zero natural dimensions
+  (broken there too). The other recorded native image responses were below
+  325 ms. This attributes the observed live outlier to an upstream asset
+  failure, not measured native decode/layout work, but it is not a same-byte
+  client-rendering comparison or an exception to the image-availability gate.
+  This audit also does not substitute for the deterministic Edge corpus,
+  qualified counterbalanced benchmark, or architecture/device release matrix.
 - Measured: the full x64 repeated-construction release benchmark is not yet
   qualified. Both reference and candidate failed its stationarity contract;
   the candidate's full run dropped to about 121 observed Hz on a configured
@@ -649,6 +665,12 @@ complete before claiming this plan or the 1.0 performance goal is met.
 - Open: expanded deterministic corpus and live top-500/Edge same-byte release
   gates, device/theme/DPI and x86/ARM64 NativeAOT runtime matrices. The live
   audit requires the read-only GitHub audit credentials specified by its runner.
+- The separate product live-performance jobs for PR #99 remain queued on the
+  `self-hosted, Windows, X64, jithub-interactive` runner label set after their
+  contract jobs passed. The current GitHub credential receives HTTP 403 from
+  the repository runner-status API, so availability cannot be verified from
+  this task. An online, unlocked interactive runner with those labels is
+  required; queued jobs are not a performance pass.
 
 ## Summary
 
