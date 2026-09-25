@@ -25,8 +25,9 @@ internal readonly record struct IntrinsicWidthMetrics(float Minimum, float Prefe
 internal sealed partial class InlineContainerBox : BlockBox
 {
     private readonly List<InlineRun> _runs = new();
-    private bool _hasInlineImages;
-    private bool _hasInlineEmbeds;
+    private List<(InlineImageRun Run, int Offset)>? _inlineImageRuns;
+    private List<(InlineEmbedRun Run, int Offset)>? _inlineEmbedRuns;
+    private int _runTextLength;
     private readonly List<IReadOnlyList<string>> _effectiveRunAliases = new();
     private readonly List<ElementStyle?> _resolvedRunStyles = new();
     private readonly string _elementKey;
@@ -62,8 +63,12 @@ internal sealed partial class InlineContainerBox : BlockBox
     public InlineRun? HoveredRun { get; set; }
 
     public IReadOnlyList<InlineRun> Runs => _runs;
-    internal bool HasInlineImages => _hasInlineImages;
-    internal bool HasInlineEmbeds => _hasInlineEmbeds;
+    internal bool HasInlineImages => _inlineImageRuns is not null;
+    internal bool HasInlineEmbeds => _inlineEmbedRuns is not null;
+    internal IReadOnlyList<(InlineImageRun Run, int Offset)> InlineImageRuns =>
+        _inlineImageRuns is { } runs
+            ? runs
+            : Array.Empty<(InlineImageRun Run, int Offset)>();
     public string ElementKey => _elementKey;
     public MarkdownLayoutContext Context => _context;
     public string? CodeLanguage { get; init; }
@@ -98,17 +103,19 @@ internal sealed partial class InlineContainerBox : BlockBox
         System.Diagnostics.Debug.Assert(BlockIndex != 0,
             "BlockIndex must be assigned before calling Add(); source-map entries wnll be registered under block 0 otherwise.");
         run.InlineIndex = _runs.Count;
+        int runOffset = _runTextLength;
+        _runTextLength += run.Text.Length;
         if (run is InlineImageRun imageRun)
         {
-            _hasInlineImages = true;
+            (_inlineImageRuns ??= new()).Add((imageRun, runOffset));
             // The image participates in asynchronous relayout and UIA using
             // the owning paragraph's logical block. Keep that identity on the
             // nested ImageBox so a late load can invalidate only this owner.
             imageRun.Image.BlockIndex = BlockIndex;
         }
-        else if (run is InlineEmbedRun)
+        else if (run is InlineEmbedRun embedRun)
         {
-            _hasInlineEmbeds = true;
+            (_inlineEmbedRuns ??= new()).Add((embedRun, runOffset));
         }
         _runs.Add(run);
         _effectiveRunAliases.Add(CombineAliases(_styleAliasKeys, run.StyleAliases));
@@ -1002,18 +1009,17 @@ internal sealed partial class InlineContainerBox : BlockBox
     /// </summary>
     public IEnumerable<(InlineEmbedRun Run, Rect Rect)> EnumerateEmbedRects()
     {
-        if (_layout is null) yield break;
+        if (_layout is null || _inlineEmbedRuns is null) yield break;
         var style = GetContainerStyle();
         var (baseX, baseY) = GetSnappedOrigin(style);
 
-        int cumulative = 0;
-        foreach (var run in _runs)
+        foreach (var (emb, offset) in _inlineEmbedRuns)
         {
-            int len = run.Text.Length;
-            if (run is InlineEmbedRun emb && len > 0)
+            int len = emb.Text.Length;
+            if (len > 0)
             {
-                var regions = _layout.GetCharacterRegions(cumulative, len);
-                if (regions is null) { cumulative += len; continue; }
+                var regions = _layout.GetCharacterRegions(offset, len);
+                if (regions is null) continue;
                 foreach (var r in regions)
                 {
                     var lb = r.LayoutBounds;
@@ -1025,7 +1031,6 @@ internal sealed partial class InlineContainerBox : BlockBox
                     break;
                 }
             }
-            cumulative += len;
         }
     }
 
@@ -1036,18 +1041,17 @@ internal sealed partial class InlineContainerBox : BlockBox
     /// </summary>
     public IEnumerable<(InlineImageRun Run, Rect Rect)> EnumerateInlineImageRects()
     {
-        if (_layout is null) yield break;
+        if (_layout is null || _inlineImageRuns is null) yield break;
         var style = GetContainerStyle();
         var (baseX, baseY) = GetSnappedOrigin(style);
 
-        int cumulative = 0;
-        foreach (var run in _runs)
+        foreach (var (image, offset) in _inlineImageRuns)
         {
-            int len = run.Text.Length;
-            if (run is InlineImageRun image && len > 0)
+            int len = image.Text.Length;
+            if (len > 0)
             {
-                var regions = _layout.GetCharacterRegions(cumulative, len);
-                if (regions is null) { cumulative += len; continue; }
+                var regions = _layout.GetCharacterRegions(offset, len);
+                if (regions is null) continue;
                 foreach (var r in regions)
                 {
                     var lb = r.LayoutBounds;
@@ -1063,8 +1067,6 @@ internal sealed partial class InlineContainerBox : BlockBox
                     break;
                 }
             }
-
-            cumulative += len;
         }
     }
 

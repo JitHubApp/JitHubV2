@@ -929,6 +929,19 @@ complete before claiming this plan or the 1.0 performance goal is met.
   mutation fixture was not completed locally and remains a CI requirement.
   Publication remains above the ≤2 ms target; the remaining plan-construction
   and highlight-band costs require further work.
+- Locally verified, pending current-head CI: inline containers now retain
+  sparse image/embed run offsets as they are built. Publication registers only
+  those image runs, and rectangle enumeration asks DirectWrite only about the
+  corresponding character slots rather than rescanning every text run in a
+  mixed paragraph. A mixed UTF-16 emoji, two-image, two-hosted-embed geometry
+  test preserves source order and visual rectangles; all 413 GitHub renderer,
+  944 fast Core, and 3,129 app tests pass locally after one independently
+  passing rerun of a transient repository-view-model test. The zero-warning
+  Release x64 app build and pinned rank-170 production-app audit pass with
+  3/3 image observations and no unavailable content. Its one-shot publication
+  was 12.0 ms versus 12.9 ms before this sparse index, a difference too small
+  and uncontrolled to qualify as a latency-gate pass. The slow external-gate
+  mutation fixture and full benchmark remain open.
 - The rank-367 Edge `net::ERR_NO_BUFFER_SPACE` failure now has one bounded
   fresh-navigation recovery after stopping the failed load and waiting one
   second. The successful attempt gets a post-wait CPU/layout baseline; retry

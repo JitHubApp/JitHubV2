@@ -5521,23 +5521,20 @@ public partial class MarkdownRendererControl : UserControl, IDisposable, IMarkdo
                 // character region; paint will start it and completion must still reflow.
                 if (icb.HasInlineImages)
                 {
-                    foreach (var run in icb.Runs)
+                    foreach (var (imageRun, _) in icb.InlineImageRuns)
                     {
-                        if (run is InlineImageRun imageRun)
-                        {
-                            // Image registration must not depend on DirectWrite
-                            // returning a character rectangle for the object
-                            // replacement slot. In particular, a linked image on
-                            // an otherwise empty line can temporarily have no
-                            // region during the first layout pass. Keeping it out
-                            // of _imagePlans in that state leaves it permanently
-                            // "Loading" because no later viewport pass can start
-                            // it. A missing first-pass rectangle has the default
-                            // origin, which deliberately starts the bounded load;
-                            // EnumerateInlineImageRects synchronizes the real
-                            // bounds as soon as DirectWrite publishes them.
-                            AddImagePlan(imageRun.Image);
-                        }
+                        // Image registration must not depend on DirectWrite
+                        // returning a character rectangle for the object
+                        // replacement slot. In particular, a linked image on
+                        // an otherwise empty line can temporarily have no
+                        // region during the first layout pass. Keeping it out
+                        // of _imagePlans in that state leaves it permanently
+                        // "Loading" because no later viewport pass can start
+                        // it. A missing first-pass rectangle has the default
+                        // origin, which deliberately starts the bounded load;
+                        // EnumerateInlineImageRects synchronizes the real
+                        // bounds as soon as DirectWrite publishes them.
+                        AddImagePlan(imageRun.Image);
                     }
                 }
                 if (icb.HasInlineEmbeds)

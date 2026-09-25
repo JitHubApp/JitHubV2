@@ -589,8 +589,12 @@ public sealed class AutomationHarnessSourceContractTests
             "Controls",
             "MarkdownRendererControl.cs"));
 
-        Assert.Contains("if (run is InlineImageRun imageRun)", source, StringComparison.Ordinal);
+        Assert.Contains("foreach (var (imageRun, _) in icb.InlineImageRuns)", source, StringComparison.Ordinal);
         Assert.Contains("AddImagePlan(imageRun.Image);", source, StringComparison.Ordinal);
+        Assert.Contains("foreach (var _ in icb.EnumerateInlineImageRects())", source, StringComparison.Ordinal);
+        Assert.True(
+            source.IndexOf("AddImagePlan(imageRun.Image);", StringComparison.Ordinal) <
+            source.IndexOf("foreach (var _ in icb.EnumerateInlineImageRects())", StringComparison.Ordinal));
         Assert.Contains("if (!RegisterImage(image))", source, StringComparison.Ordinal);
         Assert.Contains("image.LoadCompleted += OnImageLoadCompleted;", source, StringComparison.Ordinal);
         Assert.Contains("_subscribedImages.Contains(completedImage)", source, StringComparison.Ordinal);
