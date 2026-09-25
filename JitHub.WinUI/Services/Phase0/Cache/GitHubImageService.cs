@@ -11,6 +11,7 @@ using System.Net.Http.Headers;
 using System.Net.Sockets;
 using System.Threading;
 using System.Threading.Tasks;
+using System.Xml;
 using JitHub.Services.Markdown;
 using MarkdownRenderer.Images;
 
@@ -93,6 +94,9 @@ public sealed partial class GitHubImageService : IGitHubImageService, IDisposabl
     // README corpus. A third idempotent GET is bounded and only reached for
     // errors classified as transient; policy and permanent responses fail fast.
     private const int MaxHttpAttempts = 3;
+    // Shields/Camo badges are small; let the isolated SVG worker own full
+    // validation of large documents instead of parsing them twice on fetch.
+    private const int MaxEarlySvgValidationBytes = 64 * 1024;
     private const long MemoryCacheByteBudget = 64L * 1024 * 1024;
     private const int MemoryCacheEntryBudget = 2048;
     private static readonly TimeSpan TransientRetryDelay = TimeSpan.FromMilliseconds(125);
@@ -644,12 +648,36 @@ public sealed partial class GitHubImageService : IGitHubImageService, IDisposabl
             string? contentType = response.Content.Headers.ContentType?.MediaType;
             (byte[] bytes, IDisposable? sourceByteLease) = await ReadBoundedAsync(
                 response.Content, admission, cancellationToken).ConfigureAwait(false);
-            return new GitHubImageDownload(
-                bytes,
-                contentType,
-                response.Headers.ETag?.ToString(),
-                response.Content.Headers.LastModified,
-                SourceByteLease: sourceByteLease);
+            try
+            {
+                // Camo can briefly return a truncated SVG with HTTP 200 and
+                // image/svg+xml. Reject it before it poisons the source cache;
+                // the existing bounded GET retry then has a chance to obtain
+                // the complete badge. Raster bytes with a stale SVG media type
+                // still follow their validated signature below.
+                if (bytes.Length <= MaxEarlySvgValidationBytes &&
+                    TryDetectSupportedImageContentType(bytes, contentType, out string detectedType) &&
+                    detectedType == "image/svg+xml" &&
+                    !IsWellFormedSvg(bytes))
+                {
+                    if (currentUri.Host.Equals("camo.githubusercontent.com", StringComparison.OrdinalIgnoreCase))
+                        throw new TransientCamoSvgPayloadException();
+
+                    throw new InvalidDataException("Remote SVG is not well-formed XML.");
+                }
+
+                return new GitHubImageDownload(
+                    bytes,
+                    contentType,
+                    response.Headers.ETag?.ToString(),
+                    response.Content.Headers.LastModified,
+                    SourceByteLease: sourceByteLease);
+            }
+            catch
+            {
+                sourceByteLease?.Dispose();
+                throw;
+            }
         }
 
         throw new InvalidDataException("Remote image exceeded the redirect limit.");
@@ -657,6 +685,9 @@ public sealed partial class GitHubImageService : IGitHubImageService, IDisposabl
 
     private static bool IsTransientHttpFailure(Exception exception)
     {
+        if (exception is TransientCamoSvgPayloadException)
+            return true;
+
         if (exception is OperationCanceledException)
         {
             // The caller token is checked by the catch filter. Reaching this path
@@ -1117,6 +1148,36 @@ public sealed partial class GitHubImageService : IGitHubImageService, IDisposabl
         contentType = string.Empty;
         return false;
     }
+
+    private static bool IsWellFormedSvg(byte[] bytes)
+    {
+        var settings = new XmlReaderSettings
+        {
+            DtdProcessing = DtdProcessing.Prohibit,
+            XmlResolver = null,
+            MaxCharactersInDocument = MaxImageBytes,
+        };
+        try
+        {
+            using var input = new MemoryStream(bytes, writable: false);
+            using XmlReader reader = XmlReader.Create(input, settings);
+            if (reader.MoveToContent() != XmlNodeType.Element ||
+                !reader.LocalName.Equals("svg", StringComparison.OrdinalIgnoreCase))
+            {
+                return false;
+            }
+
+            while (reader.Read()) { }
+            return true;
+        }
+        catch (XmlException)
+        {
+            return false;
+        }
+    }
+
+    private sealed class TransientCamoSvgPayloadException()
+        : IOException("GitHub Camo returned an incomplete SVG payload.");
 
     private static bool IsStillAvif(ReadOnlySpan<byte> bytes)
     {

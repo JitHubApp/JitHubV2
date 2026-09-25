@@ -1011,6 +1011,38 @@ internal sealed class CodeBlockBox : BlockBox, IHorizontalOverflowBox
         }
         catch (ArgumentException exception)
         {
+            Exception failure = exception;
+            if (exception.HResult == unchecked((int)0x80070057) &&
+                IsDrawableRectangle(rectangle))
+            {
+                // Win2D has intermittently rejected valid gutter geometry
+                // with an app-packaged font during audit capture. Keep the
+                // authored format on the normal path; retry only this
+                // nonessential gutter label with a system monospace family.
+                // A broken device or geometry still fails the second draw,
+                // preserving both exceptions for diagnosis.
+                try
+                {
+                    using var fallbackFormat = new CanvasTextFormat
+                    {
+                        FontFamily = "Consolas",
+                        FontSize = style.FontSize,
+                        FontWeight = style.FontWeight,
+                        FontStyle = style.FontStyle,
+                        LocaleName = format.LocaleName,
+                        WordWrapping = CanvasWordWrapping.NoWrap,
+                        HorizontalAlignment = CanvasHorizontalAlignment.Right,
+                        VerticalAlignment = CanvasVerticalAlignment.Top,
+                    };
+                    ds.DrawText(line.Label, rectangle, style.Foreground, fallbackFormat);
+                    return;
+                }
+                catch (ArgumentException fallbackException)
+                {
+                    failure = new AggregateException(exception, fallbackException);
+                }
+            }
+
             // Win2D can reject a rectangle or text-format value even after the
             // generic finite-coordinate check. Preserve the failure while
             // recording geometry (never code text) for a reproducible fix.
@@ -1024,7 +1056,7 @@ internal sealed class CodeBlockBox : BlockBox, IHorizontalOverflowBox
                     $"fontSize={style.FontSize:R}, fontFamily={style.FontFamily}.");
             throw new InvalidOperationException(
                 "Code line-number DrawText rejected: " + detail,
-                exception);
+                failure);
         }
     }
 

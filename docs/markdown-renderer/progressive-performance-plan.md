@@ -776,8 +776,59 @@ complete before claiming this plan or the 1.0 performance goal is met.
   and timed-out content is not replayed. This is a liveness mitigation, not
   yet a no-false-unavailable or latency-gate pass: the off-CPU stall still
   needs diagnosis and a full live rerun. The `62675d6` full audit
-  (`36127727158`) is running and is the first run whose byte-admission
-  counters can be trusted end-to-end; it predates this worker mitigation.
+  (`36127727158`) has now passed 500/500 with zero unavailable images that
+  Edge rendered, and native/Edge p95 ratios of 0.430 first render and 0.407
+  full traversal. It is the first complete run with the fixed source-byte
+  admission instrumentation, but predates this worker mitigation. Its six
+  individual ratios above 1.10 (ranks 102, 179, 399, 400, 451, and 478)
+  still require same-byte replay; the aggregate p95 must not hide them.
+  Rank 399 (`jellyfin/jellyfin`) had a 3.03 full-page ratio and two external
+  translation/Camo SVG resolutions lasting 35.2 and 39.5 seconds; Edge also
+  failed to render those two translation badges. Rank 400
+  (`twentyhq/twenty`) had a 1.36 full-page ratio while two small relative
+  repository SVGs took 4.5 and 5.2 seconds to resolve through the raw CDN.
+  Rank 102 (`jaywcjlove/awesome-mac`) waited 20 seconds at the bottom on one
+  still-loading image, and rank 451 (`lllyasviel/Fooocus`) waited 10.3 seconds
+  on its second tile even though its seven source resolutions each finished
+  within 202 ms. Those delays need decode/worker/publication stage traces;
+  source fetch alone does not explain rank 451. Ranks 179
+  (`Panniantong/Agent-Reach`) and 478 (`justjavac/wechat-miniapp-radar`)
+  took 7.8 and 6.0 seconds before first render with only 1.5 seconds of
+  aggregate image fetches and no images, respectively. Both contain CJK text,
+  but font/layout attribution is only a hypothesis pending a same-byte
+  controlled replay. These traces do not prove native client work meets the
+  same-byte gate. The `d6e9e2f` full audit (`36145602432`) finished with two
+  failing cases out of 500, so it does not qualify.
+  Rank 348 (`marktext/marktext`) received a 469-byte Camo payload labeled
+  `image/svg+xml`; host preflight identified invalid XML while Edge showed
+  the 124×20 badge. The same URL subsequently served a complete 1,303-byte
+  SVG. JitHub now validates fetched SVG XML before caching and retries only
+  malformed GitHub Camo payloads under the existing three-attempt GET limit.
+  The malformed body's source-byte lease is released before each retry; a
+  persistent malformed response fails without entering the cache. The early
+  XML check is limited to 64-KiB badge-sized payloads so large SVGs are not
+  fully parsed twice; their authoritative security check remains in the
+  isolated renderer. All 105
+  focused image-service tests, the 3,088-test Release x64 app suite outside
+  the slow mutation fixture, and the zero-warning Release x64 app build pass
+  locally. A pinned rank-348 replay using the failing run's saved Edge oracle
+  passed with zero unavailable images and its Windows badge visible, but the
+  live CDN served complete bytes during replay; only the injected test proves
+  recovery from a malformed first response. Rank 398
+  (`zylon-ai/private-gpt`) failed in native audit capture because Win2D
+  rejected a finite 24.56×17.29-DIP code line-number `DrawText` rectangle
+  with `E_INVALIDARG`. Ten local pinned replays passed, so its intermittent
+  cause is unresolved; do not mask it as a browser/network failure or count
+  those replays as a fix. Code line-number painting now retries only this
+  finite-geometry `E_INVALIDARG` case with the same size, weight, and style
+  but a system monospace font; a failed retry still surfaces both exceptions.
+  The normal renderer path passes 412 GitHub-renderer and 3,088 app tests plus a
+  zero-warning Release x64 app build, but the exceptional fallback has not
+  been exercised on the local machine. Both failing READMEs passed local
+  pinned one-case replays after the final build, without reproducing their
+  original transient inputs. A new full current-head audit and
+  qualified interactive benchmark remain required; the latter is still
+  queued for an online unlocked `jithub-interactive` runner.
 - The rank-367 Edge `net::ERR_NO_BUFFER_SPACE` failure now has one bounded
   fresh-navigation recovery after stopping the failed load and waiting one
   second. The successful attempt gets a post-wait CPU/layout baseline; retry

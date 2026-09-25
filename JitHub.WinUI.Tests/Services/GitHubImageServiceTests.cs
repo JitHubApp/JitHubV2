@@ -1234,6 +1234,83 @@ public sealed class GitHubImageServiceTests : IDisposable
     }
 
     [Fact]
+    public async Task GetAsync_RetriesTruncatedCamoSvgWithoutCachingOrLeakingAdmission()
+    {
+        const string source = "https://camo.githubusercontent.com/example-badge.svg";
+        byte[] truncated = "<svg xmlns=\"http://www.w3.org/2000/svg\"><text>cut"u8.ToArray();
+        byte[] complete = "<svg xmlns=\"http://www.w3.org/2000/svg\" width=\"124\" height=\"20\"></svg>"u8.ToArray();
+        GitHubImageCacheStore store = new(_root, GitHubCachePolicy.Default);
+        var handler = new SequencedSvgHandler(truncated, complete);
+        using HttpClient client = new(handler);
+        using GitHubImageService service = new(store, client);
+        var admission = new TrackingAdmission(4096);
+
+        GitHubCachedImage? image = await service.GetAsync(
+            source, GitHubImageFetchScope.TrustedGitHub, admission);
+        GitHubCachedImage? cached = await service.GetAsync(
+            source, GitHubImageFetchScope.TrustedGitHub, admission);
+
+        Assert.NotNull(image);
+        Assert.Equal(complete, image.Bytes);
+        Assert.Equal(complete, await File.ReadAllBytesAsync(image.FilePath));
+        Assert.True(cached!.IsFromCache);
+        Assert.Equal(2, handler.RequestCount);
+        Assert.Equal(0, admission.ActiveBytes);
+    }
+
+    [Fact]
+    public async Task GetAsync_ExhaustsBoundedMalformedCamoSvgRetryWithoutCaching()
+    {
+        byte[] truncated = "<svg xmlns=\"http://www.w3.org/2000/svg\"><text>cut"u8.ToArray();
+        GitHubImageCacheStore store = new(_root, GitHubCachePolicy.Default);
+        var handler = new SequencedSvgHandler(truncated);
+        using HttpClient client = new(handler);
+        using GitHubImageService service = new(store, client);
+        var admission = new TrackingAdmission(4096);
+
+        await Assert.ThrowsAnyAsync<IOException>(() => service.GetAsync(
+            "https://camo.githubusercontent.com/always-truncated.svg",
+            GitHubImageFetchScope.TrustedGitHub,
+            admission));
+
+        Assert.Equal(3, handler.RequestCount);
+        Assert.Equal(0, admission.ActiveBytes);
+        Assert.Empty(Directory.GetFiles(_root, "*", SearchOption.AllDirectories));
+    }
+
+    [Fact]
+    public async Task GetAsync_DoesNotRetryMalformedSvgFromUnrelatedHost()
+    {
+        byte[] truncated = "<svg xmlns=\"http://www.w3.org/2000/svg\"><text>cut"u8.ToArray();
+        GitHubImageCacheStore store = new(_root, GitHubCachePolicy.Default);
+        var handler = new SequencedSvgHandler(truncated);
+        using HttpClient client = new(handler);
+        using GitHubImageService service = new(store, client);
+
+        await Assert.ThrowsAsync<InvalidDataException>(() => service.GetAsync(
+            "https://images.example.com/invalid.svg",
+            GitHubImageFetchScope.UserApprovedHttps));
+
+        Assert.Equal(1, handler.RequestCount);
+    }
+
+    [Fact]
+    public async Task GetAsync_AcceptsRasterSignatureDespiteSvgMediaType()
+    {
+        GitHubImageCacheStore store = new(_root, GitHubCachePolicy.Default);
+        using HttpClient client = new(new RawImageHandler("image/svg+xml", PngBytes));
+        using GitHubImageService service = new(store, client);
+
+        GitHubCachedImage? image = await service.GetAsync(
+            "https://camo.githubusercontent.com/mislabeled-raster",
+            GitHubImageFetchScope.TrustedGitHub);
+
+        Assert.NotNull(image);
+        Assert.Equal("image/png", image.ContentType);
+        Assert.Equal(PngBytes, image.Bytes);
+    }
+
+    [Fact]
     public async Task GetAsync_AcceptsSignatureValidatedJpegWithGenericMediaType()
     {
         GitHubImageCacheStore store = new(_root, GitHubCachePolicy.Default);
@@ -1733,6 +1810,23 @@ public sealed class GitHubImageServiceTests : IDisposable
         {
             ByteArrayContent content = new(bytes);
             content.Headers.ContentType = new(contentType);
+            return Task.FromResult(new HttpResponseMessage(HttpStatusCode.OK) { Content = content });
+        }
+    }
+
+    private sealed class SequencedSvgHandler(params byte[][] payloads) : HttpMessageHandler
+    {
+        private int _requestCount;
+
+        public int RequestCount => Volatile.Read(ref _requestCount);
+
+        protected override Task<HttpResponseMessage> SendAsync(
+            HttpRequestMessage request,
+            CancellationToken cancellationToken)
+        {
+            int index = Interlocked.Increment(ref _requestCount) - 1;
+            ByteArrayContent content = new(payloads[Math.Min(index, payloads.Length - 1)]);
+            content.Headers.ContentType = new("image/svg+xml");
             return Task.FromResult(new HttpResponseMessage(HttpStatusCode.OK) { Content = content });
         }
     }
